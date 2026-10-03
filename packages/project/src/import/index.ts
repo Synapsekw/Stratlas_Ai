@@ -7,3 +7,10 @@ export * from './package';
 export * from './writer';
 export * from './report';
 export { importHcl, type ImportOptions, type ImportResult } from './hcl';
+export {
+  importAlzour,
+  decodeModelZip,
+  glbJson,
+  utmPairs,
+  type AlzourImportOptions,
+} from './alzour';
