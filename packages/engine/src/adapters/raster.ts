@@ -5,7 +5,6 @@ import {
   DoubleSide,
   Group,
   Mesh,
-  AdditiveBlending,
   MeshBasicMaterial,
   SRGBColorSpace,
   TextureLoader,
@@ -39,8 +38,8 @@ export function registerRasterFormat(format: RasterLayer['format'], handler: Ras
 }
 
 /**
- * Plot plans are line art on black without alpha: additive blending drops the black and lets the
- * lines glow over the ortho. Photographic rasters (ortho, dsm) stay opaque.
+ * Plot plans are line art with alpha (transparent background): drawn with normal alpha blending
+ * over the ortho, without writing depth. Photographic rasters (ortho, dsm) stay opaque.
  */
 function quadMesh(
   c: Corners,
@@ -66,7 +65,7 @@ function quadMesh(
     polygonOffset: true,
     polygonOffsetFactor: -2 - order,
     polygonOffsetUnits: -2 - order,
-    ...(overlay ? { transparent: true, blending: AdditiveBlending, depthWrite: false } : {}),
+    ...(overlay ? { transparent: true, depthWrite: false } : {}),
   });
   m.userData.aioKeepSide = true;
   m.clippingPlanes = ctx.scene.clippingPlanes;
@@ -106,9 +105,11 @@ async function imageRaster(layer: RasterLayer, ctx: AdapterContext): Promise<Lay
   mesh.userData.aioLayer = layer.id;
   ctx.scene.scene.add(mesh);
   mesh.updateMatrixWorld(true);
+  // video drapes on the ground imagery, not on line art overlays (it would paint the frame over
+  // their transparent background)
   const unregister = [
     ctx.scene.addRaycastTarget(mesh, layer.id),
-    ctx.scene.addProjectionReceiver(mesh),
+    ...(layer.role === 'plan' ? [] : [ctx.scene.addProjectionReceiver(mesh)]),
   ];
   ctx.scene.requestRender();
   return {
