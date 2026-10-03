@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@aio/schema": "workspace:*"
+    "@aio/schema": "workspace:*",
+    "proj4": "^2.22.0"
   }
 }
