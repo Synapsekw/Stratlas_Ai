@@ -2,5 +2,8 @@
 
 `@aio/schema` was frozen as `contracts-v1` at the end of Phase 0. Any change after that is recorded here before it merges.
 
-| Date | Change | Why | Streams affected | Approved by |
-| ---- | ------ | --- | ---------------- | ----------- |
+| Date       | Change                                                                                                                                                                                                   | Why                                                  | Streams affected     | Approved by                        |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | -------------------- | ---------------------------------- |
+| 2026-10-03 | Added IPC channels `library:add`, `project:writeIssues`, `packs:list`, `ai:send`, `ai:toolResult`, `ai:cancel`; event `ai:event`; `AioBridge`; `Settings.dataRoot`; `OpenResult` gains `id` and `issues` | Needed by streams S1, S7, S9 before fan-out          | S1, S2, S5, S7, S9   | Integration lead (before tag move) |
+| 2026-10-03 | Added `@aio/workspace` and stub components with final props                                                                                                                                              | Shared renderer state and seams for parallel streams | all renderer streams | Integration lead                   |
+| 2026-10-03 | Data conventions documented (`data-conventions.md`): local frame Y up, X east, Z south; pose, cloud, raster, issues file formats; package layout                                                         | Clarification, no schema change                      | all                  | Integration lead                   |

@@ -1,0 +1,70 @@
+# Data conventions (contracts v1 clarifications)
+
+These rules sit beside `@aio/schema` and are binding for every stream. They clarify how data inside a native project package is laid out; they do not change any schema.
+
+## 1. Scene frame
+
+- All geometry in a project (meshes after their layer `transform`, point clouds, poses, rasters, sightings) lives in one **local frame**: metres, right-handed, **Y up, X east, Z south** (three.js convention). North is `-Z`.
+- Project CRS coordinates relate to the local frame by `E = origin[0] + x`, `N = origin[1] - z`, `H = origin[2] + y`, where `origin` is the manifest `origin` in the manifest `crs` (projected, metres).
+- Source data in another frame (Asset Inspection Kit: Y up, X north, Z east; plant grids) is converted **at import** (stream S10). Mesh GLBs are not rewritten; the importer bakes the rotation and offset into the mesh layer `transform` (column-major 4x4, three.js `Matrix4.elements` order).
+
+## 2. Project package layout
+
+```
+<dataRoot>/projects/<project-id>/
+  manifest.json          aio.project/1
+  issues.json            { "schema": "aio.issues/1", "issues": Issue[] }
+  thumbnail.jpg          library poster (optional)
+  models/                GLB files
+  video/                 MP4 (H.264 or H.265)
+  posters/               JPG poster per clip
+  flights/               pose files (section 3)
+  clouds/                point cloud data (section 4)
+  rasters/               ortho, plans (image + placement or tile pyramid)
+  photos/                review copies (<= 2560 px) + thumbs/
+  panoramas/
+  report/                PDF report and exports
+```
+
+`<dataRoot>` defaults to `E:\Stratlas Data` on the development machine (`STRATLAS_DATA` env var overrides; Settings `dataRoot` in the app). Map packs live in `<dataRoot>/packs/<id>.pmtiles` with `<id>.json` (`MapPackInfo`).
+
+`aio://project/<project-id>/<relative path>` serves any file under the project folder with HTTP range support; `aio://packs/<id>.pmtiles` serves map packs.
+
+## 3. Flight pose files
+
+A video layer's `flight.src` points to a JSON file:
+
+```json
+{
+  "schema": "aio.flight/1",
+  "startUtcMs": 1676970000000,
+  "lens": { "model": "ftheta", "hfovDeg": 114, "aspect": 1.7778 },
+  "samples": [{ "t": 0, "pos": [x, y, z], "q": [qx, qy, qz, qw] }]
+}
+```
+
+- `t` is milliseconds since `startUtcMs`; samples sorted, about 10 Hz or better.
+- `pos` in the local frame (section 1).
+- `q` is the **camera** orientation as a three.js quaternion: the camera looks along its local `-Z` with `+Y` up in the image. Gimbal angles are already folded in.
+- Video time `v` (seconds) maps to project time `startUtcMs + offsetMs + v * 1000`, with `offsetMs` from the video layer.
+
+## 4. Point clouds
+
+- `format: "kit-packed"`: `src` is a binary of int16 x, y, z (millimetres) + uint8 intensity per point, little-endian, already in the local frame; scale 0.001. One file per flight is allowed; then use one layer per flight.
+- `format: "png-packed"`: `src` is an index JSON `{ "schema": "aio.pngcloud/1", "bounds": {"min":[..],"max":[..]}, "chunks": [{ "file": "clouds/c000.png", "points": n, "bounds": {...}, "lod": 0 }] }` with the decoding rules taken from the Al-Zour artifact (uint16 xyz quantised to chunk bounds, rgb), documented by S4 in `packages/pointcloud/README.md`.
+- `format: "copc"`: a COPC LAZ file in the project CRS; the adapter subtracts `origin` and applies section 1.
+
+## 5. Rasters
+
+- `format: "image"`: a single JPG/PNG/WebP with `corners` (`tl`, `tr`, `bl` in the local frame); drawn as a textured quad on the ground.
+- `format: "kit-pyramid"`: `src` is a `tiles.json` `{ "schema": "aio.tiles/1", "levels": [{ "z": 0, "tileSize": 512, "cols": c, "rows": r, "pattern": "rasters/ortho/{z}/{x}_{y}.webp" }], "corners": {...} }`.
+
+## 6. Issues
+
+`issues.json` holds every issue of the project. Writes go only through IPC `project:writeIssues` (atomic replace). Severity values must exist in the named severity model (`validateIssueAgainstModel`).
+
+## 7. Test data
+
+- Small real fixtures: `E:\Dev\AIO Software\docs\design\assets\` (git-ignored, see its `MANIFEST.md`): HCl tank GLB, 280k-point cloud, two clips with pose JSON (in tank frame), photos; Al-Zour plant GLB (Meshopt), ortho with placement, two clips with paths, panoramas.
+- Full sources being staged: `E:\Stratlas Data\sources\{hcl,alzour}\` with `INVENTORY.md`.
+- Native packages produced by S10: `E:\Stratlas Data\projects\{hcl,alzour}\`.
