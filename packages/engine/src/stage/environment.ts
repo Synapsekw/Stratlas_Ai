@@ -61,19 +61,19 @@ varying vec3 vW;
 vec2 waves(vec2 p, float t) {
   vec2 g = vec2(cos(p.x * 0.050 + t * 0.6), cos(p.y * 0.043 + t * 0.5)) * 0.50;
   g += vec2(cos((p.x + p.y) * 0.11 + t * 1.1), cos((p.x - p.y) * 0.097 + t * 0.9)) * 0.30;
-  g += vec2(cos(p.x * 0.31 + p.y * 0.17 - t * 1.7), cos(p.y * 0.27 - p.x * 0.13 + t * 1.5)) * 0.15;
   return g * 0.10;
 }
 void main() {
   float dist = length(cameraPosition - vW);
-  vec2 g = waves(vW.xz, uTime) * clamp(1.0 - dist / 4000.0, 0.25, 1.0);
+  // fade the small waves with distance so they never alias into moire
+  vec2 g = waves(vW.xz, uTime) * clamp(1.0 - dist / 1500.0, 0.1, 1.0);
   vec3 N = normalize(vec3(g.x, 1.0, g.y));
   vec3 V = normalize(cameraPosition - vW);
   vec3 R = reflect(-V, N); R.y = abs(R.y);
   float fr = 0.02 + 0.98 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
   vec3 sky = mix(uHorizon, uZenith, pow(clamp(R.y, 0.0, 1.0), 0.42));
   float sd = max(dot(R, uSun), 0.0);
-  vec3 spec = uSunCol * (pow(sd, 900.0) * 4.0 + pow(sd, 90.0) * 0.15);
+  vec3 spec = uSunCol * pow(sd, 700.0) * 0.6;
   vec3 body = mix(uDeep, uShallow, 0.35 + 0.3 * clamp(g.x * 4.0 + 0.5, 0.0, 1.0));
   vec3 col = mix(body, sky, clamp(fr, 0.0, 1.0)) + spec;
   col = mix(col, uHorizon, smoothstep(uFog.x, uFog.y, dist));

@@ -21,7 +21,7 @@ import {
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { StoreApi } from 'zustand/vanilla';
-import { PICK_LAYER, selectableNode } from '../adapters/model';
+import { PICK_LAYER, isMesh, selectableNode } from '../adapters/model';
 import {
   frameBox,
   headingDeg,
@@ -73,6 +73,23 @@ const visibleChain = (o: Object3D | null): boolean => {
   for (let p = o; p; p = p.parent) if (!p.visible) return false;
   return true;
 };
+
+/** Bounds of visible content, leaving out terrain (a modelled sea or mainland dwarfs the asset). */
+function expandWithoutTerrain(o: Object3D, box: Box3, tmp: Box3) {
+  if (!o.visible || o.userData.type === 'terrain') return;
+  if (isMesh(o)) {
+    const g = o.geometry;
+    if (!g.boundingBox) g.computeBoundingBox();
+    if (g.boundingBox) box.union(tmp.copy(g.boundingBox).applyMatrix4(o.matrixWorld));
+  }
+  for (const c of o.children) expandWithoutTerrain(c, box, tmp);
+}
+
+/** Display name from glTF extras; three.js copies the node name into userData.name, so skip that. */
+function extrasName(node: Object3D): string | null {
+  const n: unknown = node.userData.name;
+  return typeof n === 'string' && n !== node.name ? n : null;
+}
 
 const prefersReducedMotion = () =>
   typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -483,8 +500,7 @@ export class Stage implements EngineStage {
     for (const [root] of this.targets) {
       if (!visibleChain(root)) continue;
       if (root.userData.aioRaster === true) continue; // ground imagery does not drive framing
-      tmp.setFromObject(root);
-      box.union(tmp);
+      expandWithoutTerrain(root, box, tmp);
     }
     if (box.isEmpty()) {
       for (const [root] of this.targets) if (visibleChain(root)) box.union(tmp.setFromObject(root));
@@ -612,7 +628,7 @@ export class Stage implements EngineStage {
       for (const t of tags) {
         const node = root.getObjectByName(t.node);
         if (!node || node === selected || !visibleChain(node)) continue;
-        const detail = typeof node.userData.name === 'string' ? node.userData.name : (t.area ?? '');
+        const detail = extrasName(node) ?? t.area ?? '';
         specs.push({
           id: t.node,
           anchor: this.anchorOf(node),
@@ -622,14 +638,17 @@ export class Stage implements EngineStage {
       }
     }
     if (selected) {
-      const ud = selected.userData as { tag?: unknown; name?: unknown; type?: unknown };
-      const title = typeof ud.tag === 'string' ? ud.tag : selected.name;
+      const ud = selected.userData as { tag?: unknown; type?: unknown };
+      let manifestTag: AssetTag | undefined;
+      for (const [root] of this.targets)
+        manifestTag ??= ((root.userData.aioTags ?? []) as AssetTag[]).find(
+          (t) => t.node === selected.name,
+        );
+      const title = manifestTag?.tag ?? (typeof ud.tag === 'string' ? ud.tag : selected.name);
       const detail =
-        typeof ud.name === 'string'
-          ? ud.name
-          : typeof ud.type === 'string'
-            ? ud.type.replace(/_/g, ' ')
-            : '';
+        extrasName(selected) ??
+        manifestTag?.area ??
+        (typeof ud.type === 'string' ? ud.type.replace(/_/g, ' ') : '');
       specs.push({
         id: selected.name,
         anchor: this.anchorOf(selected),
