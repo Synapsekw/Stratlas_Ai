@@ -50,8 +50,8 @@ A video layer's `flight.src` points to a JSON file:
 
 ## 4. Point clouds
 
-- `format: "kit-packed"`: `src` is a binary of int16 x, y, z (millimetres) + uint8 intensity per point, little-endian, already in the local frame; scale 0.001. One file per flight is allowed; then use one layer per flight.
-- `format: "png-packed"`: `src` is an index JSON `{ "schema": "aio.pngcloud/1", "bounds": {"min":[..],"max":[..]}, "chunks": [{ "file": "clouds/c000.png", "points": n, "bounds": {...}, "lod": 0 }] }` with the decoding rules taken from the Al-Zour artifact (uint16 xyz quantised to chunk bounds, rgb), documented by S4 in `packages/pointcloud/README.md`.
+- `format: "kit-packed"`: `src` is a binary in **planar** layout, little-endian: all points' int16 x, y, z (millimetres, interleaved per point, 6 bytes each) first, then all uint8 intensities (1 byte per point), as in the HCl artifact `vy()` decoder. Coordinates already in the local frame unless the layer is given a transform; scale 0.001. One file per flight is allowed; then use one layer per flight.
+- `format: "png-packed"`: `src` is an index JSON `{ "schema": "aio.pngcloud/1", "bounds": {"min":[..],"max":[..]}, "chunks": [{ "file": "clouds/c000.png", "points": n, "bounds": {...}, "lod": 0 }] }` with the decoding rules taken from the Al-Zour artifact (uint16 xyz quantised to chunk bounds, rgb), documented in `packages/pointcloud/README.md` (authoritative). The legacy Al-Zour `pc.json` index is also accepted.
 - `format: "copc"`: a COPC LAZ file in the project CRS; the adapter subtracts `origin` and applies section 1.
 
 ## 5. Rasters
