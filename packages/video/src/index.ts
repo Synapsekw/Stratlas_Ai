@@ -25,12 +25,27 @@ export {
   type CameraAngles,
   type Telemetry,
 } from './telemetry';
+export { configureVideo, loadFlight, type VideoLayer } from './runtime';
+export {
+  acquirePlayer,
+  captureFrame,
+  getPlayer,
+  releasePlayer,
+  type ClipPlayer,
+  type PlayerStatus,
+} from './player';
+export {
+  DEFAULT_PROJECTOR,
+  PROJECTOR_DEPTH_LAYER,
+  Projector,
+  type ProjectorOptions,
+} from './projector';
+export {
+  registerVideoAdapters,
+  setCameraMode,
+  setProjection,
+  videoRig,
+  type CameraMode,
+  type VideoRig,
+} from './rig';
 export { VideoWindow, type VideoWindowProps } from './VideoWindow';
-
-/**
- * Registers video layer adapters with @aio/engine: flight path, drone marker and frustum, and the
- * projector that drapes the current frame on meshes and ground. Owner: stream S6. Phase 0: no-op.
- */
-export function registerVideoAdapters(): void {
-  /* implemented by stream S6 */
-}
