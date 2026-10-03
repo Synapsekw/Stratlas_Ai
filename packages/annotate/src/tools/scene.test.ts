@@ -36,6 +36,8 @@ function fakeHandle() {
     holdContinuous: () => () => undefined,
     projectionReceivers: () => [],
     raycast: () => null,
+    raycastRay: () => null,
+    addRaycastProvider: () => () => undefined,
     clippingPlanes: [],
     addRaycastTarget: () => () => undefined,
     addProjectionReceiver: () => () => undefined,

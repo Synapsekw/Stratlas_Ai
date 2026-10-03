@@ -1,6 +1,6 @@
 import type { ImageGeom, LensModel, Sighting, Vec2, Vec3 } from '@aio/schema';
 import type { SceneHandle } from '@aio/engine';
-import { Raycaster, Vector3, type Object3D } from 'three';
+import { Raycaster, Vector3, type Intersection, type Object3D } from 'three';
 import { pixelToWorldRay, type CameraPose } from './lens';
 
 export type MeshSighting = Extract<Sighting, { on: 'mesh' }>;
@@ -8,8 +8,12 @@ export type MeshSighting = Extract<Sighting, { on: 'mesh' }>;
 /** Layer id used for sightings that land on the ground plane rather than a mesh layer. */
 export const GROUND_LAYER = 'ground';
 
-/** What back-projection needs from the scene: the meshes that receive projections. */
-export type RaySurface = Pick<SceneHandle, 'projectionReceivers'>;
+/**
+ * What back-projection needs from the scene: the engine's world raycast when it has one (all
+ * visible content, picking copies of merged meshes), else the meshes that receive projections.
+ */
+export type RaySurface = Pick<SceneHandle, 'projectionReceivers'> &
+  Partial<Pick<SceneHandle, 'raycastRay'>>;
 
 /** Pixel centre of an image or frame geometry (null for masks, whose extent is unknown here). */
 export function geomCenter(g: ImageGeom): Vec2 | null {
@@ -52,9 +56,16 @@ interface Hit {
 }
 
 function castRay(origin: Vec3, dir: Vec3, surface: RaySurface): Hit | null {
-  const rc = new Raycaster(new Vector3(...origin), new Vector3(...dir).normalize());
-  const hits = rc.intersectObjects([...surface.projectionReceivers()], true);
-  const hit = hits[0];
+  const o = new Vector3(...origin);
+  const d = new Vector3(...dir).normalize();
+  let hit: Intersection | undefined;
+  if (surface.raycastRay) {
+    const h = surface.raycastRay(o, d) ?? undefined;
+    // The engine falls back to its ground plane; keep the rule below for that case.
+    hit = h && layerOf(h.object) !== GROUND_LAYER ? h : undefined;
+  } else {
+    hit = new Raycaster(o, d).intersectObjects([...surface.projectionReceivers()], true)[0];
+  }
   if (hit) {
     const n = hit.face
       ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld)

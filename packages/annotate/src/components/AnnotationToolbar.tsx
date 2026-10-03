@@ -1,6 +1,6 @@
-import { getActiveScene, onActiveScene, type SceneHandle } from '@aio/engine';
+import { getActiveScene, onActiveScene } from '@aio/engine';
 import { useWorkspace, workspace } from '@aio/workspace';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { annotateUi, beginSighting, useAnnotateUi } from '../runtime';
 import { installIssueOverlay, startSceneTool, type SceneTool } from '../tools/scene';
 import { SightingPicker } from './SightingPicker';
@@ -39,11 +39,10 @@ export function useIssueOverlay(): void {
 export function AnnotationToolbar({ className }: { className?: string }) {
   useIssueOverlay();
   const [tool, setTool] = useState<SceneTool | null>(null);
-  const [scene, setScene] = useState<SceneHandle | null>(getActiveScene());
+  // An external store: the scene may be published before this component subscribes.
+  const scene = useSyncExternalStore(onActiveScene, getActiveScene, getActiveScene);
   const attach = useAnnotateUi((s) => s.attachToSelected);
   const selection = useWorkspace((s) => s.selection);
-
-  useEffect(() => onActiveScene(setScene), []);
 
   useEffect(() => {
     if (!scene || !tool) return;

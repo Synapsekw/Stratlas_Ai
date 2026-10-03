@@ -8,6 +8,7 @@ import {
   Mesh,
   MeshBasicMaterial,
   PlaneGeometry,
+  Raycaster,
 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { backProject, backProjectOutline, geomCenter, GROUND_LAYER } from './backproject';
@@ -58,6 +59,17 @@ describe('backProject', () => {
     if (s?.geom.type !== 'spoint') throw new Error('expected a surface point');
     expect(s.geom.p[1]).toBeCloseTo(2, 6);
     expect(s.geom.n[1]).toBeCloseTo(1, 6);
+  });
+
+  it("prefers the engine's world raycast over the projection receivers", () => {
+    const { mesh } = floor('tank', 3);
+    const s = backProject(pose, pinhole, [640, 360], size, {
+      projectionReceivers: () => [],
+      raycastRay: (o, d) => new Raycaster(o, d).intersectObject(mesh, true)[0] ?? null,
+    });
+    expect(s?.layer).toBe('tank');
+    if (s?.geom.type !== 'spoint') throw new Error('expected a surface point');
+    expect(s.geom.p[1]).toBeCloseTo(3, 6);
   });
 
   it('falls back to the ground plane y = 0', () => {
