@@ -49,17 +49,20 @@ const assets: AssetLoaders = Object.fromEntries(
 
 let handler: MapProtocolHandler | null = null;
 let installed = false;
+let base = 'aio://packs/';
 
 export interface RuntimeOptions {
-  /** Base URL of pack files; the app uses aio://packs/ (served by main with range requests). */
+  /**
+   * Base URL of pack files; the app uses aio://packs/ (served by main with range requests). Sticky:
+   * later calls without it keep the last base (dev harness).
+   */
   packBase?: string;
 }
 
 /** Points the aiomap:// protocol at the given packs. Safe to call again when packs change. */
-export function installBasemap(
-  packs: readonly MapPack[],
-  { packBase = 'aio://packs/' } = {},
-): void {
+export function installBasemap(packs: readonly MapPack[], options: RuntimeOptions = {}): void {
+  if (options.packBase) base = options.packBase;
+  const packBase = base;
   handler = createMapProtocol({
     packs,
     openPack: (p) => new PMTiles(new FetchSource(`${packBase}${p.id}.pmtiles`)),
