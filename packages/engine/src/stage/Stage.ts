@@ -4,7 +4,6 @@ import {
   ACESFilmicToneMapping,
   Box3,
   DoubleSide,
-  FrontSide,
   Plane,
   PCFShadowMap,
   PerspectiveCamera,
@@ -18,6 +17,7 @@ import {
   type Material,
   type Mesh,
   type Object3D,
+  type Side,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { StoreApi } from 'zustand/vanilla';
@@ -762,11 +762,14 @@ export class Stage implements EngineStage {
 
   /* ----------------------------------------------------------------------- misc */
 
+  /** While a section is on, show back faces so cut solids read as shells; restore after. */
   private applySectionSide(mesh: Mesh) {
-    const side = this._section.enabled ? DoubleSide : FrontSide;
     const mats: Material[] = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const m of mats) {
-      if (m.side === side || m.userData.aioKeepSide === true) continue;
+      if (m.userData.aioKeepSide === true) continue;
+      m.userData.aioBaseSide ??= m.side;
+      const side = this._section.enabled ? DoubleSide : (m.userData.aioBaseSide as Side);
+      if (m.side === side) continue;
       m.side = side;
       m.needsUpdate = true;
     }
