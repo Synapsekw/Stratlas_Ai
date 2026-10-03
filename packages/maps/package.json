@@ -8,13 +8,20 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "dev": "vite --config dev/vite.config.mjs"
   },
   "dependencies": {
-    "@aio/schema": "workspace:*",
-    "@aio/geo": "workspace:*",
     "@aio/engine": "workspace:*",
+    "@aio/geo": "workspace:*",
+    "@aio/schema": "workspace:*",
     "@aio/workspace": "workspace:*",
+    "@protomaps/basemaps": "^5.7.2",
+    "maplibre-gl": "^6.11.2",
+    "pmtiles": "^4.5.0",
     "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@types/geojson": "^7946.0.16"
   }
 }

@@ -1,27 +1,35 @@
-/** An installed offline map pack (PMTiles). */
-export interface MapPack {
-  id: string;
-  label: string;
-  /** [west, south, east, north] in degrees. */
-  bbox: [number, number, number, number];
-  maxZoom: number;
-  sizeBytes: number;
-}
+import { getAdapter, registerAdapter } from '@aio/engine';
 
-/** MapLibre source URL for a pack served by the main process over aio://. */
-export function packUrl(pack: Pick<MapPack, 'id'>): string {
-  if (!/^[a-z0-9-]+$/.test(pack.id)) throw new Error(`Invalid map pack id "${pack.id}"`);
-  return `pmtiles://aio://packs/${pack.id}.pmtiles`;
-}
-
-/** True when the point lies inside the pack bounding box. */
-export function packCovers(pack: Pick<MapPack, 'bbox'>, lon: number, lat: number): boolean {
-  const [w, s, e, n] = pack.bbox;
-  return lon >= w && lon <= e && lat >= s && lat <= n;
-}
 export { MapView, type MapViewProps } from './MapView';
+export {
+  bboxOf,
+  orderPacks,
+  packCovers,
+  packFileUrl,
+  packsForTile,
+  packUrl,
+  tileBbox,
+  zoomForBbox,
+  type Bbox,
+  type MapPack,
+} from './packs';
+export { frameProjection, lonLatToUtm, utmToLonLat, type FrameProjection } from './geo';
+export { buildStyle, BASEMAP_SOURCE, MAP_PROTOCOL } from './style';
+export { footprint, issueAnchor, poseAt, rasterQuad, type LonLat } from './overlays';
 
-/** Registers basemap and raster ground adapters with @aio/engine. Owner: stream S5. Phase 0: no-op. */
+/**
+ * Registers the `basemap` ground adapter with @aio/engine: the offline street style rendered once
+ * around the project origin (5 km square) and draped as a ground quad. Idempotent.
+ */
 export function registerMapAdapters(): void {
-  /* implemented by stream S5 */
+  if (getAdapter('basemap')) return;
+  registerAdapter({
+    kind: 'basemap',
+    create: async (layer, ctx) => {
+      if (layer.kind !== 'basemap') throw new Error(`Not a basemap layer: ${layer.kind}`);
+      // MapLibre loads lazily, only when a project actually has a basemap layer.
+      const { createGround } = await import('./groundRender');
+      return createGround(layer, ctx);
+    },
+  });
 }
