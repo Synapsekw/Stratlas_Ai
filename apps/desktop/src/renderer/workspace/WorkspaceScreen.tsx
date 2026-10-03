@@ -22,7 +22,7 @@ function WorkspaceTimeline() {
     () =>
       project
         ? buildTimelineModel(project.manifest, issues, durations)
-        : { clips: [], issues: [], photos: [], captures: [], range: null },
+        : { clips: [], groups: [], issues: [], photos: [], captures: [], range: null },
     [project, issues, durations],
   );
   const capture = project?.manifest.captures.at(-1);
@@ -48,12 +48,16 @@ function WorkspaceTimeline() {
       onRate={(r) => {
         workspace.getState().setRate(r);
       }}
-      onClip={(id) => {
+      onClip={(id, atMs) => {
+        // A clip bar plays its clip: from the clicked time on a flight bar, else from the
+        // playhead when it is inside the clip, else from the clip start.
         selectClip(id);
+        const ws = workspace.getState();
         const clip = model.clips.find((c) => c.layerId === id);
-        const now = workspace.getState().nowMs;
-        if (clip && (now < clip.startMs || now > clip.endMs))
-          workspace.getState().setTime(clip.startMs);
+        if (atMs !== undefined) ws.setTime(atMs);
+        else if (clip && (ws.nowMs < clip.startMs || ws.nowMs >= clip.endMs - 250))
+          ws.setTime(clip.startMs);
+        ws.play();
       }}
       onIssue={(id) => {
         workspace.getState().select({ kind: 'issue', id });

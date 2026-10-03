@@ -57,4 +57,27 @@ describe('startPlaybackLoop', () => {
     expect(ws.getState().playing).toBe(false);
     stop();
   });
+
+  it('leaves the clock to the video while it is the clock master', () => {
+    const ws = createWorkspace();
+    ws.getState().setTime(1_000);
+    const frames: ((t: number) => void)[] = [];
+    let video = true;
+    const stop = startPlaybackLoop(
+      ws,
+      () => undefined,
+      (cb) => frames.push(cb),
+      () => undefined,
+      () => video,
+    );
+    ws.getState().play();
+    frames.shift()?.(0);
+    frames.shift()?.(50);
+    expect(ws.getState().nowMs).toBe(1_000);
+    ws.getState().setTime(1_040); // the video writes its frame time
+    video = false; // between clips the loop drives again, from the latest frame reference
+    frames.shift()?.(60);
+    expect(ws.getState().nowMs).toBe(1_050);
+    stop();
+  });
 });

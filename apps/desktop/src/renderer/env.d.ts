@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import type { AioBridge } from '@aio/schema';
 
 declare global {

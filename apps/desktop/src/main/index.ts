@@ -36,7 +36,8 @@ protocol.registerSchemesAsPrivileged([
 
 const CSP = [
   "default-src 'self' aio:",
-  "script-src 'self'",
+  // WebAssembly compile only (Meshopt GLB decoder), no JavaScript eval
+  "script-src 'self' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' aio: data: blob:",
   "media-src 'self' aio: blob:",

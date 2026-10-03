@@ -1,21 +1,15 @@
-import { getActiveScene, onActiveScene, SceneView } from '@aio/engine';
+import { getActiveScene, SceneView } from '@aio/engine';
 import { MapView } from '@aio/maps';
 import type { Layer } from '@aio/schema';
-import {
-  Compass,
-  crsLabel,
-  formatEastNorth,
-  headingDeg,
-  Icon,
-  localToProject,
-  type IconName,
-} from '@aio/ui';
+import { crsLabel, formatEastNorth, Icon, localToProject, type IconName } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { FocusZone } from '../FocusZone';
 import { shell, useShell } from '../shell';
 import type { StageMode } from '../store';
+import { useIssueOverlay } from '@aio/annotate';
 import { FloatingVideo } from './FloatingVideo';
+import { AnnotateTools, CameraModes, EngineTools, useEngineStage, ViewPresets } from './StageTools';
 
 const MODES: { mode: StageMode; label: string; icon: IconName }[] = [
   { mode: '3d', label: '3D', icon: 'scene' },
@@ -30,41 +24,6 @@ const KIND_TOGGLES: { kinds: Layer['kind'][]; label: string; icon: IconName }[] 
   { kinds: ['video'], label: 'Video projection and flight paths', icon: 'video' },
 ];
 
-/** Heading of the live 3D camera, updated when it changes by more than half a degree. */
-function useSceneHeading(): number | null {
-  const [heading, setHeading] = useState<number | null>(null);
-  useEffect(() => {
-    let offFrame: (() => void) | null = null;
-    let last = Number.NaN;
-    const attach = (h: ReturnType<typeof getActiveScene>) => {
-      offFrame?.();
-      offFrame = null;
-      if (!h) {
-        setHeading(null);
-        return;
-      }
-      const read = () => {
-        const e = h.camera.matrixWorld.elements;
-        // The camera looks down its local -Z; column 2 of the world matrix is local +Z.
-        const deg = headingDeg(-e[8], -e[10]);
-        if (!(Math.abs(deg - last) < 0.5)) {
-          last = deg;
-          setHeading(deg);
-        }
-      };
-      read();
-      offFrame = h.onFrame(read);
-    };
-    attach(getActiveScene());
-    const off = onActiveScene(attach);
-    return () => {
-      off();
-      offFrame?.();
-    };
-  }, []);
-  return heading;
-}
-
 function CursorReadout({ text }: { text: string | null }) {
   const crs = useWorkspace((s) => (s.project ? crsLabel(s.project.manifest.crs) : ''));
   return (
@@ -77,7 +36,6 @@ function CursorReadout({ text }: { text: string | null }) {
 }
 
 function ScenePane({ hidden }: { hidden: boolean }) {
-  const heading = useSceneHeading();
   const [cursor, setCursor] = useState<string | null>(null);
   const pending = useRef<{ x: number; y: number } | null>(null);
   const raf = useRef<number | null>(null);
@@ -126,8 +84,9 @@ function ScenePane({ hidden }: { hidden: boolean }) {
       }}
       aria-hidden={hidden}
     >
-      <SceneView className="fill" />
-      {heading !== null && <Compass headingDeg={heading} className="stage-compass" />}
+      <div className="fill">
+        <SceneView className="scene-fill" />
+      </div>
       <CursorReadout text={cursor} />
     </FocusZone>
   );
@@ -167,6 +126,8 @@ export function Stage() {
   const selection = useWorkspace((s) => s.selection);
   const stageRef = useRef<HTMLDivElement>(null);
   const showVideo = activeClip !== null && !videoHidden;
+  const engine = useEngineStage();
+  useIssueOverlay();
 
   return (
     <div className={`stage${docked && showVideo ? ' docked' : ''}`} ref={stageRef} data-mode={mode}>
@@ -174,7 +135,9 @@ export function Stage() {
         <ScenePane hidden={mode === 'map'} />
         {mode !== '3d' && (
           <FocusZone kind="map" className="pane pane-map">
-            <MapView className="fill" />
+            <div className="fill">
+              <MapView className="scene-fill" />
+            </div>
           </FocusZone>
         )}
         {docked && showVideo && <FloatingVideo layerId={activeClip} docked stageRef={stageRef} />}
@@ -204,7 +167,7 @@ export function Stage() {
               workspace.getState().flyTo({ kind: 'home' });
             }}
           >
-            <Icon name="target" />
+            <Icon name="maximize" />
             <span className="tip">Whole site</span>
           </button>
           <button
@@ -216,10 +179,12 @@ export function Stage() {
               if (selection) workspace.getState().flyTo({ kind: 'selection', selection });
             }}
           >
-            <Icon name="follow" />
+            <Icon name="target" />
             <span className="tip">Fly to selection</span>
           </button>
         </div>
+        {mode !== 'map' && <ViewPresets stage={engine} />}
+        {mode !== 'map' && <EngineTools stage={engine} />}
         <div className="tgroup-h overlay-box">
           {KIND_TOGGLES.map((k) => (
             <KindToggle key={k.label} {...k} />
@@ -236,10 +201,12 @@ export function Stage() {
               shell.getState().setVideoHidden(!videoHidden);
             }}
           >
-            <Icon name="droneeye" />
+            <Icon name="video" />
             <span className="tip">Video window</span>
           </button>
         </div>
+        {mode !== 'map' && <CameraModes stage={engine} />}
+        {mode !== 'map' && <AnnotateTools />}
         <span className="stbar-sp" />
         <div className="tgroup-h overlay-box">
           <button

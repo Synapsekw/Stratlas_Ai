@@ -17,13 +17,20 @@ export function advance(
 
 /**
  * While the workspace is playing, advance the project clock on every animation frame at the
- * current rate. Video windows follow nowMs. Returns a stop function.
+ * current rate. Returns a stop function.
+ *
+ * Clock contract with @aio/video: while the active clip has footage at the playhead, its video is
+ * the clock master and writes nowMs from each presented frame (requestVideoFrameCallback).
+ * `videoClock()` says so, and this loop then only keeps its frame reference, so the two never
+ * write competing times (which the player would read as a seek). Between clips, without a player
+ * or when the video fails, this loop drives the clock.
  */
 export function startPlaybackLoop(
   ws: StoreApi<Workspace>,
   clipEnd: () => number | undefined,
   raf: (cb: (t: number) => void) => number = requestAnimationFrame,
   caf: (id: number) => void = cancelAnimationFrame,
+  videoClock: () => boolean = () => false,
 ): () => void {
   let handle: number | null = null;
   let last: number | null = null;
@@ -35,7 +42,7 @@ export function startPlaybackLoop(
       last = null;
       return;
     }
-    if (last !== null) {
+    if (last !== null && !videoClock()) {
       const r = advance(s.nowMs, t - last, s.rate, clipEnd());
       s.setTime(r.nowMs);
       if (r.stop) {

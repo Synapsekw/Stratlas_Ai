@@ -1,3 +1,5 @@
+import { AnnotateStyles } from '@aio/annotate';
+import { getPlayer } from '@aio/video';
 import { workspace } from '@aio/workspace';
 import { useEffect } from 'react';
 import { getMedia } from './media';
@@ -54,6 +56,13 @@ function activeClipEnd(): number | undefined {
   return layer.flight.startUtcMs + layer.offsetMs + d;
 }
 
+/** The active clip's video writes the clock while it has footage at the playhead (see playback.ts). */
+function videoDrivesClock(): boolean {
+  const id = workspace.getState().activeClip;
+  const player = id ? getPlayer(id) : undefined;
+  return player !== undefined && player.status !== 'error' && player.status !== 'no-footage';
+}
+
 function Screen() {
   const screen = useShell((s) => s.screen);
   switch (screen) {
@@ -80,7 +89,13 @@ export function App() {
   useEffect(() => {
     void shell.getState().init();
     window.addEventListener('keydown', onKeyDown);
-    const stopPlayback = startPlaybackLoop(workspace, activeClipEnd);
+    const stopPlayback = startPlaybackLoop(
+      workspace,
+      activeClipEnd,
+      requestAnimationFrame,
+      cancelAnimationFrame,
+      videoDrivesClock,
+    );
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       stopPlayback();
@@ -93,6 +108,7 @@ export function App() {
 
   return (
     <div className="app" data-sb={collapsed ? 'collapsed' : 'expanded'} data-screen={screen}>
+      <AnnotateStyles />
       <TitleBar />
       <Sidebar />
       <main className="main">

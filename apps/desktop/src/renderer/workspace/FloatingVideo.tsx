@@ -1,3 +1,4 @@
+import { VideoAnnotator } from '@aio/annotate';
 import { Icon } from '@aio/ui';
 import { VideoWindow } from '@aio/video';
 import { useWorkspace } from '@aio/workspace';
@@ -130,7 +131,9 @@ export function FloatingVideo({ layerId, docked, stageRef }: Props) {
           </div>
         </div>
         <div className="vframe">
-          <VideoWindow layerId={layerId} className="fill" />
+          <VideoWindow layerId={layerId} className="scene-fill">
+            <VideoAnnotator key={layerId} layerId={layerId} />
+          </VideoWindow>
         </div>
       </div>
     </FocusZone>
