@@ -1,4 +1,4 @@
-import { defaultRoutes } from '@aio/ai';
+import { defaultRoutes } from '@aio/ai/routes';
 import { Settings, type IpcRequest } from '@aio/schema';
 import { join } from 'node:path';
 import { readJson, writeJsonAtomic } from './fsutil';

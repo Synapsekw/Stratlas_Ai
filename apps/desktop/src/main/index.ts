@@ -78,6 +78,7 @@ function emitAiEvent(event: IpcEvent<'ai:event'>): void {
 const agent = createAgentRuntime({
   getKey: (provider) => keys.getKey(provider),
   cloudAllowed: () => settings.current().cloudAi,
+  routes: () => settings.current().routes,
   emit: emitAiEvent,
 });
 
