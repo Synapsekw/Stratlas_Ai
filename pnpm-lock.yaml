@@ -159,6 +159,9 @@ importers:
       '@aio/workspace':
         specifier: workspace:*
         version: link:../workspace
+      three:
+        specifier: ^0.186.1
+        version: 0.186.1
 
   packages/brand: {}
 
@@ -173,6 +176,9 @@ importers:
       '@aio/workspace':
         specifier: workspace:*
         version: link:../workspace
+      three:
+        specifier: ^0.186.1
+        version: 0.186.1
 
   packages/geo:
     dependencies:
@@ -194,6 +200,9 @@ importers:
       '@aio/workspace':
         specifier: workspace:*
         version: link:../workspace
+      three:
+        specifier: ^0.186.1
+        version: 0.186.1
 
   packages/pointcloud:
     dependencies:
@@ -209,6 +218,9 @@ importers:
       '@aio/workspace':
         specifier: workspace:*
         version: link:../workspace
+      three:
+        specifier: ^0.186.1
+        version: 0.186.1
 
   packages/project:
     dependencies:
@@ -248,6 +260,9 @@ importers:
       '@aio/workspace':
         specifier: workspace:*
         version: link:../workspace
+      three:
+        specifier: ^0.186.1
+        version: 0.186.1
 
   packages/workspace:
     dependencies:
