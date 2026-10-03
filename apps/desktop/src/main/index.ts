@@ -2,6 +2,10 @@ import { brand } from '@aio/brand';
 import { app, BrowserWindow, ipcMain, protocol, session, shell } from 'electron';
 import { join } from 'node:path';
 import { validated } from './ipc';
+import { createAioHandler } from './protocol/handler';
+
+/** Opened projects: id to root folder, the only folders aio://project/ may read. */
+const projects = new Map<string, string>();
 
 // aio:// serves project files, map packs and app assets with range requests (stream S1).
 protocol.registerSchemesAsPrivileged([
@@ -74,7 +78,13 @@ void app.whenReady().then(() => {
       responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [CSP] },
     });
   });
-  protocol.handle('aio', () => new Response('Not found', { status: 404 }));
+  protocol.handle(
+    'aio',
+    createAioHandler({
+      projectRoot: (id) => projects.get(id),
+      packsDir: () => join(app.getPath('userData'), 'packs'),
+    }),
+  );
 
   ipcMain.handle('app:getInfo', (_e, req: unknown) =>
     validated('app:getInfo', () => ({
