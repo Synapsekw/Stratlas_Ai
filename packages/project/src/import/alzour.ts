@@ -146,6 +146,8 @@ const SURVEY_DATE = '2023-02-21';
  */
 const ORTHO_Y = 0.5;
 const PLOTPLAN_Y = 0.28;
+/** Colour under the ortho's no-data pixels: close to the app's water at the default view. */
+const ORTHO_NODATA_RGB = '#03383b';
 const AREAPLAN_Y = 0.26;
 const STREET_Y = -0.5;
 /** Plot plan line colour of the viewer (material colour 0xd10f0f over white lines). */
@@ -319,19 +321,30 @@ export async function importAlzour(opts: AlzourImportOptions): Promise<ImportRes
   const tileRel = (pattern: string, zz: number, x: number, y: number) =>
     pattern.replace('{z}', String(zz)).replace('{x}', String(x)).replace('{y}', String(y));
   let blankTiles = 0;
-  const blank = async (rel: string) => {
+  const blank = async (rel: string, transparentRgb?: string) => {
     blankTiles++;
-    await w.derive(rel, [], (out) => composeImage({ width: 64, height: 64, layers: [], out }));
+    await w.derive(rel, [], (out) =>
+      composeImage({
+        width: 64,
+        height: 64,
+        layers: [],
+        out,
+        ...(transparentRgb ? { transparentRgb } : {}),
+      }),
+    );
   };
-  /** Copy a full source tile, or pad an edge tile to the full size (top-left anchored). */
+  /**
+   * Ortho tile: edge tiles padded to the full size (top-left anchored); no-data pixels keep alpha 0
+   * and carry the sea colour, so a renderer that draws tiles opaque shows sea, not black.
+   */
   const placeTile = async (file: string, rel: string, full: number) => {
     const s = sizeOf(file);
-    if (s.width === full && s.height === full) return w.copy(file, rel);
-    rep.count('Raster edge tiles padded to full size');
+    if (s.width !== full || s.height !== full) rep.count('Raster edge tiles padded to full size');
     return w.derive(rel, [file], (out) =>
       composeImage({
         width: full,
         height: full,
+        transparentRgb: ORTHO_NODATA_RGB,
         layers: [{ file, x: 0, y: 0, w: s.width, h: s.height }],
         out,
       }),
@@ -364,7 +377,7 @@ export async function importAlzour(opts: AlzourImportOptions): Promise<ImportRes
       }
       const lf = lFile.get(`${Math.floor(i / k)}_${Math.floor(j / k)}`);
       if (!lf) {
-        await blank(rel);
+        await blank(rel, ORTHO_NODATA_RGB);
         continue;
       }
       const s = sizeOf(lf);
@@ -373,6 +386,7 @@ export async function importAlzour(opts: AlzourImportOptions): Promise<ImportRes
         composeImage({
           width: sub0,
           height: sub0,
+          transparentRgb: ORTHO_NODATA_RGB,
           layers: [{ file: lf, x: -(i % k) * sub0, y: -(j % k) * sub0, w: s.width, h: s.height }],
           out,
         }),
@@ -1024,7 +1038,7 @@ export async function importAlzour(opts: AlzourImportOptions): Promise<ImportRes
   ]);
   rep.section('What was converted', [
     `- Model: \`models/plant.glb\` (${formatBytes(glb.length)}, ${nodes.length} nodes, generator "${gltf.asset?.generator ?? '?'}"), decoded from the artifact's \`model_glb_zip.b64.txt\`. Tags: ${tags.length} register tags on model nodes, \`area\` = one of the ${ALZOUR_GROUPS.length} area groups (Site_Terrain has no register rows).`,
-    `- Ortho: \`kit-pyramid\` \`rasters/ortho/tiles.json\`, level 0 = ${colsL} x ${rowsL} low-detail tiles (${Math.hypot(...gL.u).toFixed(1)} m, ${((Math.hypot(...gL.u) / fullPx) * 100).toFixed(0)} cm/px), level ${zH} = ${colsH} x ${rowsH} high-detail tiles (${Math.hypot(...gH.u).toFixed(2)} m, ${((Math.hypot(...gH.u) / fullPx) * 100).toFixed(0)} cm/px). ${lay.ortho.H.length} high-detail tiles from the artifact, ${filled} cut from the low-detail level where the artifact has none; edge tiles padded with transparency to ${fullPx} px. Tile grid fit rms ${gH.rms.toFixed(3)} m (low ${gL.rms.toFixed(3)} m, origins ${gridGap.toFixed(3)} m apart). Drawn ${ORTHO_Y} m above grade.`,
+    `- Ortho: \`kit-pyramid\` \`rasters/ortho/tiles.json\`, level 0 = ${colsL} x ${rowsL} low-detail tiles (${Math.hypot(...gL.u).toFixed(1)} m, ${((Math.hypot(...gL.u) / fullPx) * 100).toFixed(0)} cm/px), level ${zH} = ${colsH} x ${rowsH} high-detail tiles (${Math.hypot(...gH.u).toFixed(2)} m, ${((Math.hypot(...gH.u) / fullPx) * 100).toFixed(0)} cm/px). ${lay.ortho.H.length} high-detail tiles from the artifact, ${filled} cut from the low-detail level where the artifact has none. Every tile re-encoded as WebP (quality 85) at ${fullPx} px, edge tiles padded; no-data pixels keep alpha 0 and carry the sea colour ${ORTHO_NODATA_RGB}. Tile grid fit rms ${gH.rms.toFixed(3)} m (low ${gL.rms.toFixed(3)} m, origins ${gridGap.toFixed(3)} m apart). Drawn ${ORTHO_Y} m above grade.`,
     `- Overall plot plan: \`kit-pyramid\` \`rasters/plotplan/tiles.json\`, level 1 = ${colsP} x ${rowsP} tiles (${planFull} px, ${Math.hypot(...gP.u).toFixed(1)} m), level 0 = ${colsP / 2} x ${rowsP / 2} merged tiles (${coarse} px). White line art re-coloured to the viewer's red (#d10f0f) with alpha kept; transparent pixels are black.`,
     '- Area plot plans: `plan_0.png` and `plan_1.png` (2 px/m in the plant grid) as two `image` rasters, re-coloured the same way.',
     `- ${streetNote}`,

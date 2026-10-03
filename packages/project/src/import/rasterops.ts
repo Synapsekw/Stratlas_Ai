@@ -21,6 +21,11 @@ export interface ComposeOptions {
   height: number;
   /** `transparent` (default) or an opaque `#rrggbb`. */
   background?: string;
+  /**
+   * Colour stored under fully transparent pixels of a transparent canvas (default black). A
+   * renderer that ignores alpha shows this colour there.
+   */
+  transparentRgb?: string;
   layers: readonly CanvasLayer[];
   out: string;
   /** WebP / JPEG quality 0..100 (default 85). */
@@ -35,7 +40,10 @@ export interface ComposeOptions {
 export async function composeImage(o: ComposeOptions): Promise<void> {
   const ext = extname(o.out).toLowerCase();
   const bg = o.background ?? 'transparent';
-  const color = bg === 'transparent' ? 'black@0.0' : bg.replace('#', '0x');
+  const color =
+    bg === 'transparent'
+      ? `${(o.transparentRgb ?? '#000000').replace('#', '0x')}@0.0`
+      : bg.replace('#', '0x');
   const args = [
     '-hide_banner',
     '-loglevel',
