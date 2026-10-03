@@ -27,9 +27,9 @@ const C = {
   park: '#0d1913',
   sand: '#15130f',
   building: '#1a1f23',
-  road: '#22272c',
-  roadMajor: '#2c3238',
-  highway: '#3a424a',
+  road: '#2a3036',
+  roadMajor: '#3a4249',
+  highway: '#4f5962',
 } as const;
 
 /** Protomaps dark flavour retuned to the Mission palette. */
@@ -107,6 +107,17 @@ export const MISSION_DARK: Flavor = {
   country_label: C.fg2,
   address_label: C.fg4,
   address_label_halo: C.bg1,
+  // POI icons stay muted so they never read as issue severities (red, orange, yellow) on the map.
+  pois: {
+    blue: '#78b3d6',
+    green: '#7bcc98',
+    lapis: '#78b3d6',
+    pink: C.fg1,
+    red: C.fg1,
+    slategray: C.fg2,
+    tangerine: C.fg1,
+    turquoise: '#78b3d6',
+  },
   landcover: {
     grassland: C.park,
     barren: C.sand,
