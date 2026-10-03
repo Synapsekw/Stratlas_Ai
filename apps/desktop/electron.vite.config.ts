@@ -13,7 +13,8 @@ export default defineConfig({
       },
       rollupOptions: {
         input: { index: resolve(import.meta.dirname, 'src/main/index.ts') },
-        external: ['electron', /^node:/],
+        // Native addons load from node_modules at runtime so each platform gets its own binary.
+        external: ['electron', /^node:/, /^@napi-rs\/keyring/],
       },
     },
   },
