@@ -484,8 +484,6 @@ export function registerVideoAdapters(): void {
   registerAdapter({
     kind: 'video',
     create(layer, ctx): Promise<LayerHandle> {
-      if (layer.kind !== 'video')
-        return Promise.reject(new Error(`Video adapter got a ${layer.kind} layer`));
       const rig = videoRig(ctx.scene);
       const ready = rig.addLayer(layer, ctx);
       const handle: LayerHandle = {

@@ -26,7 +26,6 @@ export function registerMapAdapters(): void {
   registerAdapter({
     kind: 'basemap',
     create: async (layer, ctx) => {
-      if (layer.kind !== 'basemap') throw new Error(`Not a basemap layer: ${layer.kind}`);
       // MapLibre loads lazily, only when a project actually has a basemap layer.
       const { createGround } = await import('./groundRender');
       return createGround(layer, ctx);
