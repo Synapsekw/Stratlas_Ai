@@ -1,4 +1,5 @@
 import { defaultRoutes } from '@aio/ai';
+import type { LabelMode, SavedView } from '@aio/engine';
 import type { LibraryEntry, Settings } from '@aio/schema';
 import type { Workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
@@ -32,6 +33,12 @@ export interface ShellState {
   rightCollapsed: boolean;
   videoDocked: boolean;
   videoHidden: boolean;
+  /** Component callouts in 3D: off, one per group, or all. */
+  labelMode: LabelMode;
+  /** Annotation tools shown under the stage toolbar. */
+  annotating: boolean;
+  /** Last 3D view per project id, so leaving and returning to Scene keeps the camera. */
+  views: Record<string, SavedView>;
 }
 
 export interface ShellActions {
@@ -49,6 +56,9 @@ export interface ShellActions {
   toggleRight: () => void;
   setVideoDocked: (docked: boolean) => void;
   setVideoHidden: (hidden: boolean) => void;
+  setLabelMode: (mode: LabelMode) => void;
+  setAnnotating: (on: boolean) => void;
+  saveView: (projectId: string, view: SavedView) => void;
   dismissOpenError: () => void;
 }
 
@@ -68,6 +78,9 @@ export function createShellStore(bridge: Bridge, workspace: StoreApi<Workspace>)
     rightCollapsed: false,
     videoDocked: false,
     videoHidden: false,
+    labelMode: 'key',
+    annotating: false,
+    views: {},
 
     init: async () => {
       const [settings] = await Promise.all([bridge.call('settings:get', {}), get().loadLibrary()]);
@@ -167,6 +180,15 @@ export function createShellStore(bridge: Bridge, workspace: StoreApi<Workspace>)
     },
     setVideoHidden: (videoHidden) => {
       set({ videoHidden });
+    },
+    setLabelMode: (labelMode) => {
+      set({ labelMode });
+    },
+    setAnnotating: (annotating) => {
+      set({ annotating });
+    },
+    saveView: (projectId, view) => {
+      set({ views: { ...get().views, [projectId]: view } });
     },
     dismissOpenError: () => {
       set({ openError: null });

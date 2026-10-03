@@ -1,27 +1,51 @@
-import { getActiveScene, SceneView } from '@aio/engine';
-import { MapView } from '@aio/maps';
-import type { Layer } from '@aio/schema';
+import {
+  AnnotationToolbar,
+  SightingPicker,
+  annotateUi,
+  useIssueOverlay,
+  useMapDraw,
+  type MapDraw,
+} from '@aio/annotate';
+import { getActiveScene, SceneView, type EngineStage } from '@aio/engine';
+import { MapView, type MapDrawMode, type MapDrawSeam } from '@aio/maps';
 import { crsLabel, formatEastNorth, Icon, localToProject, type IconName } from '@aio/ui';
+import { videoRig } from '@aio/video';
 import { useWorkspace, workspace } from '@aio/workspace';
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { FocusZone } from '../FocusZone';
+import { isTyping } from '../keys';
 import { shell, useShell } from '../shell';
 import type { StageMode } from '../store';
-import { useIssueOverlay } from '@aio/annotate';
 import { FloatingVideo } from './FloatingVideo';
-import { AnnotateTools, CameraModes, EngineTools, useEngineStage, ViewPresets } from './StageTools';
+import {
+  AnnotateToggle,
+  DisplayTools,
+  MeasureTools,
+  nextLabelMode,
+  PopTool,
+  toggleSection,
+  Tool,
+  useEngineStage,
+  VideoTools,
+  ViewTools,
+} from './StageTools';
+import { fitGroups, GAP, GROUP_LABEL, type GroupId } from './toolbarFit';
+import { insideView, stopCutaway, useCutaway, useCutawayState } from './useCutaway';
 
-const MODES: { mode: StageMode; label: string; icon: IconName }[] = [
-  { mode: '3d', label: '3D', icon: 'scene' },
-  { mode: 'map', label: 'Map', icon: 'map' },
-  { mode: 'split', label: 'Split', icon: 'split' },
-];
-
-const KIND_TOGGLES: { kinds: Layer['kind'][]; label: string; icon: IconName }[] = [
-  { kinds: ['mesh', 'legacy'], label: 'Models', icon: 'scene' },
-  { kinds: ['pointcloud'], label: 'Point clouds', icon: 'cloud' },
-  { kinds: ['raster', 'basemap'], label: 'Maps and rasters', icon: 'raster' },
-  { kinds: ['video'], label: 'Video projection and flight paths', icon: 'video' },
+const MODES: { mode: StageMode; label: string; icon: IconName; keys: string }[] = [
+  { mode: '3d', label: '3D', icon: 'scene', keys: '1' },
+  { mode: 'map', label: 'Map', icon: 'map', keys: '2' },
+  { mode: 'split', label: 'Split', icon: 'split', keys: '3' },
 ];
 
 function CursorReadout({ text }: { text: string | null }) {
@@ -92,42 +116,331 @@ function ScenePane({ hidden }: { hidden: boolean }) {
   );
 }
 
-function KindToggle({ kinds, label, icon }: (typeof KIND_TOGGLES)[number]) {
-  const ids = useWorkspace((s) =>
-    (s.project?.manifest.layers ?? [])
-      .filter((l) => kinds.includes(l.kind))
-      .map((l) => l.id)
-      .join('|'),
+/* ----------------------------------------------------------------------- toolbar */
+
+function StageToolbar({
+  stage,
+  mode,
+  barRef,
+}: {
+  stage: EngineStage | null;
+  mode: StageMode;
+  barRef: RefObject<HTMLDivElement | null>;
+}) {
+  const rightCollapsed = useShell((s) => s.rightCollapsed);
+  const map = mode === 'map';
+  const groups: GroupId[] = useMemo(
+    () =>
+      map
+        ? ['view', 'display', 'video', 'annotate']
+        : ['view', 'measure', 'display', 'video', 'annotate'],
+    [map],
   );
-  const anyVisible = useWorkspace((s) => ids.split('|').some((id) => id && !s.hidden[id]));
-  if (!ids) return null;
+  const widths = useRef(new Map<GroupId, number>());
+  const [hidden, setHidden] = useState<GroupId[]>([]);
+
+  const fit = useCallback(() => {
+    const bar = barRef.current;
+    if (!bar) return;
+    for (const el of bar.querySelectorAll<HTMLElement>('[data-group]'))
+      widths.current.set(el.dataset.group as GroupId, el.offsetWidth);
+    let fixed = 0;
+    for (const el of bar.querySelectorAll<HTMLElement>('[data-fixed]'))
+      fixed += el.offsetWidth + GAP;
+    const next = fitGroups(groups, widths.current, fixed, bar.clientWidth);
+    setHidden((prev) => (prev.join() === next.join() ? prev : next));
+  }, [barRef, groups]);
+
+  useLayoutEffect(fit);
+  useEffect(() => {
+    const bar = barRef.current;
+    if (!bar) return;
+    const ro = new ResizeObserver(fit);
+    ro.observe(bar);
+    return () => {
+      ro.disconnect();
+    };
+  }, [barRef, fit]);
+
+  const render = (g: GroupId): ReactNode => {
+    switch (g) {
+      case 'view':
+        return <ViewTools stage={stage} map={map} />;
+      case 'measure':
+        return <MeasureTools stage={stage} />;
+      case 'display':
+        return <DisplayTools stage={stage} map={map} />;
+      case 'video':
+        return <VideoTools stage={stage} map={map} />;
+      case 'annotate':
+        return <AnnotateToggle />;
+    }
+  };
+
   return (
-    <button
-      type="button"
-      className="tool"
-      aria-pressed={anyVisible}
-      aria-label={`${anyVisible ? 'Hide' : 'Show'} ${label.toLowerCase()}`}
-      onClick={() => {
-        for (const id of ids.split('|')) workspace.getState().setLayerVisible(id, !anyVisible);
-      }}
-    >
-      <Icon name={icon} />
-      <span className="tip">{label}</span>
-    </button>
+    <div className="stbar" ref={barRef}>
+      <div className="seg overlay-seg" role="group" aria-label="Stage view" data-fixed="">
+        {MODES.map((m) => (
+          <button
+            key={m.mode}
+            type="button"
+            aria-pressed={mode === m.mode}
+            aria-keyshortcuts={m.keys}
+            title={`${m.label} (${m.keys})`}
+            onClick={() => {
+              shell.getState().setStageMode(m.mode);
+            }}
+          >
+            <Icon name={m.icon} size={14} />
+            {m.label}
+          </button>
+        ))}
+      </div>
+      {groups
+        .filter((g) => !hidden.includes(g))
+        .map((g) => (
+          <div
+            key={g}
+            className="tgroup-h overlay-box"
+            role="group"
+            aria-label={GROUP_LABEL[g]}
+            data-group={g}
+          >
+            {render(g)}
+          </div>
+        ))}
+      {hidden.length > 0 && (
+        <div className="tgroup-h overlay-box">
+          <PopTool icon="more" label="More tools">
+            <div className="ovf">
+              {groups
+                .filter((g) => hidden.includes(g))
+                .map((g) => (
+                  <div className="ovf-row" key={g} role="group" aria-label={GROUP_LABEL[g]}>
+                    <span className="ovf-h">{GROUP_LABEL[g]}</span>
+                    <div className="tgroup-h">{render(g)}</div>
+                  </div>
+                ))}
+            </div>
+          </PopTool>
+        </div>
+      )}
+      <span className="stbar-sp" />
+      <div className="tgroup-h overlay-box" data-fixed="">
+        <button
+          type="button"
+          className="tool"
+          aria-pressed={!rightCollapsed}
+          aria-label={rightCollapsed ? 'Show the right panel' : 'Hide the right panel'}
+          aria-keyshortcuts="Control+Alt+B"
+          onClick={shell.getState().toggleRight}
+        >
+          <Icon name="sidebar" className="flip" />
+          <span className="tip tip-end">
+            Right panel <span className="kbd">Ctrl Alt B</span>
+          </span>
+        </button>
+      </div>
+    </div>
   );
+}
+
+/* ----------------------------------------------------------------------- annotate bar */
+
+const MAP_MODES: { mode: MapDrawMode; label: string; title: string }[] = [
+  { mode: 'point', label: 'Point', title: 'Map point' },
+  { mode: 'line', label: 'Line', title: 'Map line (double-click or Enter to finish)' },
+  { mode: 'polygon', label: 'Area', title: 'Map area (double-click or Enter to close)' },
+];
+
+function MapDrawTools({ draw }: { draw: MapDraw }) {
+  const { mode, finish, undo, cancel, setMode } = draw;
+  useEffect(() => {
+    if (!mode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (isTyping(e.target) || annotateUi.getState().pending) return;
+      if (e.key === 'Enter') finish();
+      else if (e.key === 'Backspace') undo();
+      else if (e.key === 'Escape') {
+        cancel();
+        setMode(null);
+      } else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [mode, finish, undo, cancel, setMode]);
+  return (
+    <div className="ann-toolbar stage-ann" role="toolbar" aria-label="Map annotation tools">
+      <span className="ann-cap">Map</span>
+      {MAP_MODES.map((m) => (
+        <button
+          key={m.mode}
+          type="button"
+          className="ann-btn ghost"
+          aria-pressed={mode === m.mode}
+          title={m.title}
+          onClick={() => {
+            setMode(mode === m.mode ? null : m.mode);
+          }}
+        >
+          {m.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------------------- status */
+
+/** What plays in 3D, and the cut-away that opens the asset when the drone is inside it. */
+function StageStatus({ stage }: { stage: EngineStage | null }) {
+  const playing = useWorkspace((s) => s.playing);
+  const clip = useWorkspace((s) =>
+    s.activeClip ? s.project?.manifest.layers.find((l) => l.id === s.activeClip) : undefined,
+  );
+  const inside = useCutawayState((s) => s.inside);
+  const engaged = useCutawayState((s) => s.engaged);
+  if (!clip) return null;
+  return (
+    <div className="stage-status" role="status">
+      <span className={`ss-chip${playing ? ' live' : ''}`}>
+        <i aria-hidden />
+        <b>{playing ? 'Playing' : 'Paused'}</b>
+        <span className="ss-name">{clip.name}</span>
+      </span>
+      {inside && stage && (
+        <span className="ss-chip ss-cut">
+          <Icon name="cutaway" size={14} />
+          <span>{engaged ? 'Cut open at the drone, clouds hidden' : 'Drone inside the asset'}</span>
+          {engaged ? (
+            <button
+              type="button"
+              className="btn sm ghost"
+              onClick={() => {
+                stopCutaway();
+                stage.requestRender();
+              }}
+            >
+              Close
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn sm ghost"
+              onClick={() => {
+                if (videoRig(stage).cameraMode === 'drone') return;
+                insideView(stage);
+              }}
+            >
+              Inside view <span className="kbd">C</span>
+            </button>
+          )}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------------------- stage */
+
+/** Map sightings go on the project's first map layer (or the plain basemap). */
+function mapLayerId(layers: readonly { id: string; kind: string }[]): string {
+  return layers.find((l) => l.kind === 'basemap' || l.kind === 'raster')?.id ?? 'basemap';
 }
 
 export function Stage() {
   const mode = useShell((s) => s.stageMode);
   const docked = useShell((s) => s.videoDocked);
   const videoHidden = useShell((s) => s.videoHidden);
-  const rightCollapsed = useShell((s) => s.rightCollapsed);
+  const labelMode = useShell((s) => s.labelMode);
+  const annotating = useShell((s) => s.annotating);
   const activeClip = useWorkspace((s) => s.activeClip);
-  const selection = useWorkspace((s) => s.selection);
+  const projectId = useWorkspace((s) => s.project?.id ?? null);
+  const mapLayer = useWorkspace((s) => mapLayerId(s.project?.manifest.layers ?? []));
   const stageRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
   const showVideo = activeClip !== null && !videoHidden;
   const engine = useEngineStage();
+  const mapDraw = useMapDraw(mapLayer);
   useIssueOverlay();
+  useCutaway(engine);
+
+  // Leaving and returning to Scene keeps the camera, per project.
+  useEffect(() => {
+    if (!engine || !projectId) return;
+    const saved = shell.getState().views[projectId];
+    if (saved) engine.restoreView(saved);
+    return () => {
+      shell.getState().saveView(projectId, engine.saveView());
+    };
+  }, [engine, projectId]);
+
+  useEffect(() => {
+    engine?.setLabelMode(labelMode);
+  }, [engine, labelMode]);
+
+  // Callouts keep clear of the toolbars, the floating video window and the readouts.
+  useEffect(() => {
+    if (!engine) return;
+    engine.setLabelKeepOut(() => {
+      const root = stageRef.current;
+      if (!root) return [];
+      return [
+        ...root.querySelectorAll(
+          '.stbar > :not(.stbar-sp), .stage-under > *, .vwin:not(.docked), .cursor-ro, .stage-pop',
+        ),
+      ].map((e) => e.getBoundingClientRect());
+    });
+    return () => {
+      engine.setLabelKeepOut(null);
+    };
+  }, [engine]);
+
+  // Leaving the map or the annotation tools stops a map drawing.
+  const { setMode: setMapDrawMode } = mapDraw;
+  useEffect(() => {
+    if (!annotating || mode === '3d') setMapDrawMode(null);
+  }, [annotating, mode, setMapDrawMode]);
+
+  // Stage shortcuts (single keys; the video annotator's own keys win inside the video window).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTyping(e.target) || annotateUi.getState().pending) return;
+      if (e.target instanceof HTMLElement && e.target.closest('.vwin')) return;
+      const sh = shell.getState();
+      const ws = workspace.getState();
+      const k = e.key.toLowerCase();
+      const three = sh.stageMode !== 'map' ? engine : null;
+      if (k === '1' || k === '2' || k === '3') {
+        sh.setStageMode(k === '1' ? '3d' : k === '2' ? 'map' : 'split');
+      } else if (k === 'h') ws.flyTo({ kind: 'home' });
+      else if (k === 'f' && ws.selection) ws.flyTo({ kind: 'selection', selection: ws.selection });
+      else if (k === 'm' && three) three.setTool(three.tool === 'measure' ? 'select' : 'measure');
+      else if (k === 'x' && three) toggleSection(three);
+      else if (k === 'l' && three) sh.setLabelMode(nextLabelMode(sh.labelMode));
+      else if (k === 'a') sh.setAnnotating(!sh.annotating);
+      else if (k === 'w' && ws.activeClip) sh.setVideoHidden(!sh.videoHidden);
+      else if (k === 'c' && three && ws.activeClip) insideView(three);
+      else if (k === 'escape' && three && three.tool !== 'select') three.setTool('select');
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [engine]);
+
+  const seam: MapDrawSeam = {
+    mode: mapDraw.mode,
+    vertices: mapDraw.state?.vertices ?? [],
+    onClick: mapDraw.onClick,
+    onFinish: mapDraw.finish,
+  };
 
   return (
     <div className={`stage${docked && showVideo ? ' docked' : ''}`} ref={stageRef} data-mode={mode}>
@@ -136,94 +449,31 @@ export function Stage() {
         {mode !== '3d' && (
           <FocusZone kind="map" className="pane pane-map">
             <div className="fill">
-              <MapView className="scene-fill" />
+              <MapView className="scene-fill" draw={seam} />
             </div>
           </FocusZone>
         )}
         {docked && showVideo && <FloatingVideo layerId={activeClip} docked stageRef={stageRef} />}
       </div>
-      <div className="stbar">
-        <div className="seg overlay-seg" role="group" aria-label="View">
-          {MODES.map((m) => (
-            <button
-              key={m.mode}
-              type="button"
-              aria-pressed={mode === m.mode}
+      <StageToolbar stage={engine} mode={mode} barRef={barRef} />
+      <div className="stage-under">
+        {annotating && (
+          <div className="ann-subbar overlay-box" role="group" aria-label="Annotation tools">
+            {mode !== 'map' && <AnnotationToolbar className="stage-ann" />}
+            {mode !== '3d' && <MapDrawTools draw={mapDraw} />}
+            <Tool
+              icon="x"
+              label="Close the annotation tools"
+              keys="A"
               onClick={() => {
-                shell.getState().setStageMode(m.mode);
+                shell.getState().setAnnotating(false);
               }}
-            >
-              <Icon name={m.icon} size={14} />
-              {m.label}
-            </button>
-          ))}
-        </div>
-        <div className="tgroup-h overlay-box">
-          <button
-            type="button"
-            className="tool"
-            aria-label="Fly to the whole site"
-            onClick={() => {
-              workspace.getState().flyTo({ kind: 'home' });
-            }}
-          >
-            <Icon name="maximize" />
-            <span className="tip">Whole site</span>
-          </button>
-          <button
-            type="button"
-            className="tool"
-            aria-label="Fly to the selection"
-            disabled={!selection}
-            onClick={() => {
-              if (selection) workspace.getState().flyTo({ kind: 'selection', selection });
-            }}
-          >
-            <Icon name="target" />
-            <span className="tip">Fly to selection</span>
-          </button>
-        </div>
-        {mode !== 'map' && <ViewPresets stage={engine} />}
-        {mode !== 'map' && <EngineTools stage={engine} />}
-        <div className="tgroup-h overlay-box">
-          {KIND_TOGGLES.map((k) => (
-            <KindToggle key={k.label} {...k} />
-          ))}
-        </div>
-        <div className="tgroup-h overlay-box">
-          <button
-            type="button"
-            className="tool"
-            aria-pressed={showVideo}
-            disabled={activeClip === null}
-            aria-label={showVideo ? 'Hide the video window' : 'Show the video window'}
-            onClick={() => {
-              shell.getState().setVideoHidden(!videoHidden);
-            }}
-          >
-            <Icon name="video" />
-            <span className="tip">Video window</span>
-          </button>
-        </div>
-        {mode !== 'map' && <CameraModes stage={engine} />}
-        {mode !== 'map' && <AnnotateTools />}
-        <span className="stbar-sp" />
-        <div className="tgroup-h overlay-box">
-          <button
-            type="button"
-            className="tool"
-            aria-pressed={!rightCollapsed}
-            aria-label={rightCollapsed ? 'Show the right panel' : 'Hide the right panel'}
-            aria-keyshortcuts="Control+Alt+B"
-            onClick={shell.getState().toggleRight}
-          >
-            <Icon name="sidebar" className="flip" />
-            <span className="tip tip-end">
-              Right panel <span className="kbd">Ctrl Alt B</span>
-            </span>
-          </button>
-        </div>
+            />
+          </div>
+        )}
+        {mode !== 'map' && <StageStatus stage={engine} />}
       </div>
+      <SightingPicker kinds={['map']} />
       {!docked && showVideo && (
         <FloatingVideo layerId={activeClip} docked={false} stageRef={stageRef} />
       )}

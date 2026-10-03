@@ -910,7 +910,7 @@ button.chip-status:hover {
   right: 12px;
   top: 12px;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
   pointer-events: none;
@@ -937,10 +937,165 @@ button.chip-status:hover {
 svg.flip {
   transform: scaleX(-1);
 }
-@container (max-width: 640px) {
-  .stbar .tgroup-h:nth-of-type(3) {
-    display: none;
+/* a tool that opens a panel carries a small corner caret */
+.tool .caret {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 0;
+  height: 0;
+  border-left: 3px solid transparent;
+  border-bottom: 3px solid currentColor;
+  opacity: 0.55;
+}
+
+/* overflow menu: groups that do not fit on the row, one per line */
+.ovf {
+  display: grid;
+  gap: 8px;
+}
+.ovf-row {
+  display: grid;
+  gap: 4px;
+}
+.ovf-h {
+  font-size: var(--t-11);
+  color: var(--fg-3);
+}
+.ovf-row .tgroup-h {
+  padding: 0;
+}
+
+/* under the toolbar: annotation tools, then the playing and cut-away status */
+.stage-under {
+  position: absolute;
+  left: 12px;
+  top: 54px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  z-index: 7;
+  pointer-events: none;
+  max-width: calc(100% - 24px);
+}
+.stage-under > * {
+  pointer-events: auto;
+}
+.ann-subbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 2px 2px 4px;
+  animation: sub-in 180ms var(--ease-x);
+}
+@keyframes sub-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
   }
+}
+.ann-subbar .ann-toolbar.stage-ann {
+  position: static;
+  border: 0;
+  background: none;
+  padding: 0;
+}
+.ann-subbar .ann-toolbar.stage-ann + .ann-toolbar.stage-ann {
+  border-left: 1px solid var(--line);
+  padding-left: 6px;
+  border-radius: 0;
+}
+.ann-cap {
+  font: 500 var(--t-11) / 1 var(--f-mono);
+  color: var(--fg-3);
+  padding: 0 6px 0 4px;
+}
+.stage-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  pointer-events: none;
+}
+.ss-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  background: var(--scrim);
+  font-size: var(--t-12);
+  color: var(--fg-1);
+  pointer-events: auto;
+  max-width: 100%;
+}
+.ss-chip > i {
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  background: var(--fg-3);
+  flex: none;
+}
+.ss-chip b {
+  font: 600 var(--t-11) / 1 var(--f-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.ss-chip.live {
+  border-color: var(--acc-a40);
+}
+.ss-chip.live > i {
+  border-radius: 50%;
+  background: var(--acc);
+  box-shadow: 0 0 0 0 var(--acc-a40);
+  animation: live 1.6s var(--ease) infinite;
+}
+.ss-chip.live b {
+  color: var(--acc-strong);
+}
+@keyframes live {
+  0% {
+    box-shadow: 0 0 0 0 var(--acc-a40);
+  }
+  70% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ss-chip.live > i,
+  .ann-subbar {
+    animation: none;
+  }
+}
+.ss-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.ss-cut {
+  padding-right: 3px;
+  color: var(--fg-1);
+}
+.ss-cut svg {
+  color: var(--acc);
+}
+.ss-cut .btn {
+  margin-left: 4px;
+}
+.ss-cut .btn .kbd {
+  margin-left: 2px;
+}
+
+/* the map's zoom buttons sit below the stage toolbar, clear of the right panel toggle */
+.pane-map .maplibregl-ctrl-top-right {
+  top: 50px;
 }
 
 /* stage popovers (section, point cloud display) */
@@ -952,11 +1107,42 @@ svg.flip {
   top: calc(100% + 8px);
   left: -2px;
   z-index: 20;
-  width: 260px;
+  width: 240px;
   padding: 10px 12px;
   background: var(--bg-1);
   border-color: var(--line-strong);
   box-shadow: 0 12px 32px oklch(0 0 0 / 0.45);
+}
+.stage-pop.wide {
+  width: 300px;
+}
+.stbar > :last-child .stage-pop,
+.ovf-row .stage-pop {
+  left: auto;
+  right: -2px;
+}
+.pop-seg {
+  display: flex;
+}
+.pop-seg button {
+  flex: 1;
+  justify-content: center;
+}
+.pop-note {
+  margin: 8px 0 0;
+  font-size: var(--t-11);
+  color: var(--fg-3);
+  line-height: 1.45;
+}
+.pop-form .pop-note {
+  margin: 0;
+}
+.pop-grow {
+  flex: 1;
+  color: var(--fg-1);
+}
+.pop-row > span.pop-grow:first-child {
+  color: var(--fg-1);
 }
 .pop-form {
   display: grid;

@@ -156,4 +156,23 @@ describe('shell store', () => {
     expect(ws.getState().project).toBeNull();
     expect(s.getState().screen).toBe('projects');
   });
+
+  it('keeps the last 3D view per project and starts with key labels and no annotation tools', () => {
+    const { bridge } = fakeBridge({});
+    const s = createShellStore(bridge, createWorkspace());
+    expect(s.getState().labelMode).toBe('key');
+    expect(s.getState().annotating).toBe(false);
+    const a = {
+      position: [1, 2, 3] as [number, number, number],
+      target: [0, 0, 0] as [number, number, number],
+    };
+    const b = {
+      position: [9, 9, 9] as [number, number, number],
+      target: [1, 1, 1] as [number, number, number],
+    };
+    s.getState().saveView('hcl', a);
+    s.getState().saveView('alzour', b);
+    s.getState().saveView('hcl', b);
+    expect(s.getState().views).toEqual({ hcl: b, alzour: b });
+  });
 });
