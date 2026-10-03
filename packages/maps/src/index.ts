@@ -2,6 +2,13 @@ import { getAdapter, registerAdapter } from '@aio/engine';
 
 export { MapView, type MapViewProps } from './MapView';
 export {
+  drawPreview,
+  isRepeatClick,
+  type MapDrawMode,
+  type MapDrawSeam,
+  type MapLngLat,
+} from './draw';
+export {
   bboxOf,
   orderPacks,
   packCovers,

@@ -2,11 +2,14 @@ import type { AioBridge } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
 import type { MapController } from './controller';
+import type { MapDrawSeam } from './draw';
 
 export interface MapViewProps {
   className?: string;
   /** Show the project's flight paths and video footprint (default true). */
   showFlights?: boolean;
+  /** Drawing on the map (map sightings): clicks, double click and a preview of the shape. */
+  draw?: MapDrawSeam;
 }
 
 type Status = 'loading' | 'ready' | 'no-packs' | 'error';
@@ -25,9 +28,16 @@ function bridge(): AioBridge | undefined {
  * Offline 2D map (MapLibre + PMTiles packs over aio://) with project rasters, flight paths and the
  * live video footprint, sharing selection and playhead through @aio/workspace. Owner: stream S5.
  */
-export function MapView({ className, showFlights = true }: MapViewProps) {
+export function MapView({ className, showFlights = true, draw }: MapViewProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<Status>('loading');
+  // The controller reads the latest seam on each click.
+  const drawRef = useRef<MapDrawSeam | null>(draw ?? null);
+  const ctlRef = useRef<MapController | null>(null);
+  useEffect(() => {
+    drawRef.current = draw ?? null;
+    ctlRef.current?.updateDraw();
+  }, [draw, draw?.mode, draw?.vertices]);
 
   useEffect(() => {
     const el = ref.current;
@@ -52,8 +62,14 @@ export function MapView({ className, showFlights = true }: MapViewProps) {
         // MapLibre loads lazily so @aio/maps stays importable without a DOM or WebGL.
         const { createMapController } = await import('./controller');
         if (gone()) return;
-        const ctl = createMapController(el, { packs, store: workspace, showFlights });
+        const ctl = createMapController(el, {
+          packs,
+          store: workspace,
+          showFlights,
+          draw: () => drawRef.current,
+        });
         life.ctl = ctl;
+        ctlRef.current = ctl;
         life.observer = new ResizeObserver(() => {
           ctl.resize();
         });
@@ -66,6 +82,7 @@ export function MapView({ className, showFlights = true }: MapViewProps) {
     })();
     return () => {
       life.disposed = true;
+      ctlRef.current = null;
       life.observer?.disconnect();
       life.ctl?.dispose();
     };

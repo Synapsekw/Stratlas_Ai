@@ -14,6 +14,7 @@ import {
   type MapLayerMouseEvent,
 } from 'maplibre-gl';
 import { Vector3 } from 'three';
+import { drawPreview, isRepeatClick, type MapDrawSeam } from './draw';
 import { frameProjection, type FrameProjection } from './geo';
 import { footprint, issueAnchor, poseAt, rasterQuad, type LonLat } from './overlays';
 import { bboxOf, orderPacks, type MapPack } from './packs';
@@ -41,6 +42,7 @@ const SRC = {
   drone: 'aio-drone',
   issues: 'aio-issues',
   view: 'aio-view3d',
+  draw: 'aio-draw',
 };
 
 export interface MapControllerOptions {
@@ -49,12 +51,16 @@ export interface MapControllerOptions {
   showFlights: boolean;
   /** Pack base URL override (dev harness); the app uses aio://packs/. */
   packBase?: string;
+  /** The current drawing seam (map sightings), read on every click. */
+  draw?: () => MapDrawSeam | null;
 }
 
 export interface MapController {
   /** The underlying MapLibre map (exports, tests, dev harness). */
   readonly map: MapLibreMap;
   resize(): void;
+  /** Redraw the drawing preview and switch the cursor and double-click for drawing. */
+  updateDraw(): void;
   dispose(): void;
 }
 
@@ -77,7 +83,7 @@ function parsePoses(json: unknown): PoseSample[] {
 
 export function createMapController(
   el: HTMLElement,
-  { packs, store, showFlights, packBase }: MapControllerOptions,
+  { packs, store, showFlights, packBase, draw }: MapControllerOptions,
 ): MapController {
   installBasemap(packs, packBase ? { packBase } : {});
   const ordered = orderPacks(packs);
@@ -203,6 +209,37 @@ export function createMapController(
       },
       paint: { 'text-color': INK.fg0, 'text-halo-color': INK.bg0, 'text-halo-width': 1.5 },
     });
+    map.addLayer({
+      id: 'aio-draw-line',
+      type: 'line',
+      source: SRC.draw,
+      filter: ['==', ['geometry-type'], 'LineString'],
+      paint: { 'line-color': INK.accStrong, 'line-width': 2, 'line-dasharray': [2, 1.5] },
+    });
+    map.addLayer({
+      id: 'aio-draw-point',
+      type: 'circle',
+      source: SRC.draw,
+      filter: ['==', ['geometry-type'], 'Point'],
+      paint: {
+        'circle-radius': 4,
+        'circle-color': INK.accStrong,
+        'circle-stroke-color': INK.bg0,
+        'circle-stroke-width': 1.5,
+      },
+    });
+  }
+
+  // ----- drawing (map sightings) -----
+  let lastClick: { x: number; y: number; t: number } | null = null;
+  let ready = false;
+  function updateDraw(): void {
+    const d = draw?.() ?? null;
+    const on = d?.mode != null;
+    if (map.getSource(SRC.draw)) setData(SRC.draw, drawPreview(d?.mode ?? null, d?.vertices ?? []));
+    map.getCanvas().style.cursor = on ? 'crosshair' : '';
+    if (on) map.doubleClickZoom.disable();
+    else map.doubleClickZoom.enable();
   }
 
   // ----- project rasters -----
@@ -472,6 +509,18 @@ export function createMapController(
 
   // ----- clicks -----
   function onClick(e: MapLayerMouseEvent): void {
+    const d = draw?.() ?? null;
+    if (d?.mode) {
+      const at = { x: e.point.x, y: e.point.y, t: performance.now() };
+      const repeat = isRepeatClick(lastClick, at);
+      lastClick = at;
+      if (!repeat)
+        d.onClick([e.lngLat.lng, e.lngLat.lat], {
+          x: e.originalEvent.clientX,
+          y: e.originalEvent.clientY,
+        });
+      return;
+    }
     const hit = map.queryRenderedFeatures(e.point, {
       layers: ['aio-issues-circle', 'aio-drone-point', 'aio-flights-line'],
     })[0];
@@ -491,15 +540,24 @@ export function createMapController(
   map.on('load', () => {
     if (disposed) return;
     addOverlayLayers();
+    ready = true;
     map.on('click', onClick);
+    map.on('dblclick', (e) => {
+      const d = draw?.() ?? null;
+      if (!d?.mode) return;
+      e.preventDefault();
+      d.onFinish();
+    });
+    const drawing = () => draw?.()?.mode != null;
     for (const id of ['aio-issues-circle', 'aio-flights-line', 'aio-drone-point']) {
       map.on('mouseenter', id, () => {
-        map.getCanvas().style.cursor = 'pointer';
+        if (!drawing()) map.getCanvas().style.cursor = 'pointer';
       });
       map.on('mouseleave', id, () => {
-        map.getCanvas().style.cursor = '';
+        if (!drawing()) map.getCanvas().style.cursor = '';
       });
     }
+    updateDraw();
 
     let prev = store.getState();
     void openProject(prev);
@@ -565,6 +623,9 @@ export function createMapController(
     map,
     resize: () => {
       map.resize();
+    },
+    updateDraw: () => {
+      if (ready) updateDraw();
     },
     dispose: () => {
       disposed = true;
