@@ -12,6 +12,13 @@ export {
 export { SceneView, type SceneViewProps } from './SceneView';
 export { configureEngine, type EngineConfig } from './config';
 export { registerEngineAdapters } from './adapters/register';
+export {
+  createPhotosAdapter,
+  frustumDepth,
+  imageHalfExtents,
+  posedPhotos,
+  type PosedPhoto,
+} from './adapters/photos';
 export { registerRasterFormat, type RasterFormatHandler } from './adapters/raster';
 export type { ViewPreset, CameraPose } from './camera/cameraMath';
 export { fitDistance, poseForPreset, frameBox, headingDeg } from './camera/cameraMath';
