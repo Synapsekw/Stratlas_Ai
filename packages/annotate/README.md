@@ -31,10 +31,10 @@ dependencies: `docs/architecture/SPEC.md` section 2.
 ## Seams for other streams
 
 - **Video (S6)**: mount `<VideoAnnotator layerId>` inside `VideoWindow` over the `<video>` (object-fit contain). Call `setFlightPoses(layerId, samples)` once the pose file is loaded (otherwise the annotator fetches it). Lens helpers live here (`pixelToCameraRay`, `cameraToPixel`) until S6 exports its own.
-- **Engine (S3)**: tag mesh roots with `userData.layerId` so sightings name their layer; `SceneHandle.raycastRay(origin, dir)` would let back-projection reuse the engine's picking (today it raycasts `projectionReceivers()` and falls back to the ground plane y = 0). Mount `<AnnotationToolbar>` in the stage tools; it installs the issue pins.
+- **Engine (S3)**: done. Mesh roots carry `userData.layerId`; back-projection uses `SceneHandle.raycastRay(origin, dir)` when the scene has it (picking copies of merged meshes, all visible content), else `projectionReceivers()`, then the ground plane y = 0. `<AnnotationToolbar>` is mounted in the stage tools; the stage also calls `useIssueOverlay()` so pins stay in every stage mode.
 - **Point clouds (S4)**: `pickCloudPoint` uses `SceneHandle.raycast` and expects `Points` hits; a `pickPoint` export with point index would allow `selection` sightings.
-- **Maps (S5)**: `useMapDraw(layerId)` plus `<SightingPicker kinds={['map']} />` in `MapView`.
-- **Shell (S2)**: `setAnnotationAuthor(name)`; place `IssueRegister` and `IssueDetail` in the right panel.
+- **Maps (S5)**: open. `useMapDraw(layerId)` plus `<SightingPicker kinds={['map']} />` belong inside `MapView`, which has no click or children seam for the app to use; S5 should wire MapLibre `click` / `dblclick` to it.
+- **Shell (S2)**: done. The author is the OS account (`app:getInfo` `user`) or the Settings override; `IssueRegister` and `IssueDetail` sit in the Issues screen and in the workspace right panel (Selection and Issues tabs); `VideoAnnotator` is a child of `VideoWindow`; flight poses go to `setFlightPoses` when a project opens.
 
 ## Credits
 

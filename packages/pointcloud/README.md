@@ -97,13 +97,11 @@ The cloud is split into chunks; each chunk is a lossless PNG whose pixels carry 
 - **EDL.** When on, the clouds render into an offscreen target (colour + depth texture) from a full-screen composite quad's `onBeforeRender`, so the pass runs inside the engine's own `renderer.render` call with the final camera matrices. The composite shades by the log-depth difference to 8 neighbours (Potree's EDL), and writes `gl_FragDepth` from the cloud depth so meshes and clouds still occlude each other correctly.
 - **Picking.** `pickPoint(handle, ndc, radiusPx = 6)` projects the loaded points of chunks near the ray and returns the front-most point within the pixel radius (skipping clipped points).
 
-## Engine seams (for S3)
+## Engine seams
 
-The package works with today's `SceneHandle` alone. These would make it tidier:
-
-- `SceneHandle.raycast` should include clouds: call `pickPoint(handle, { x, y })` and keep the nearer of the mesh hit and the point hit (`PointPick` is shaped like a three.js `Intersection`).
-- `onFrame` must run on camera moves too (render on demand): LOD and uniforms update there.
-- Shared section planes are read from `renderer.clippingPlanes`; if the engine keeps them elsewhere, expose them on the handle.
+- Done: `SceneHandle.raycast` includes clouds. The adapter registers `pickPoint` with `SceneHandle.addRaycastProvider` while a scene shows clouds; the engine keeps the nearer of the mesh hit and the point hit.
+- Done: point materials and `pickPoint` use the shared section planes `SceneHandle.clippingPlanes`, so the section tool cuts meshes and clouds together.
+- `onFrame` runs on camera moves too (render on demand): LOD and uniforms update there.
 - A post-process hook (or the EffectComposer) would let EDL run as a real pass instead of the composite quad; the quad keeps raycasting off and is flagged `userData.helper` so framing and picking can skip it.
 - Settings has no point-cloud section yet; budget, size, colour mode and EDL are remembered in localStorage (`stratlas.pointcloud.settings`).
 
