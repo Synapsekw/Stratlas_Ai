@@ -1,5 +1,5 @@
 import { defaultRoutes } from '@aio/ai';
-import { Settings } from '@aio/schema';
+import { Settings, type IpcRequest } from '@aio/schema';
 import { join } from 'node:path';
 import { readJson, writeJsonAtomic } from './fsutil';
 
@@ -43,7 +43,8 @@ function merge(defaults: Settings, raw: unknown): Settings {
 
 export interface SettingsStore {
   get(): Promise<Settings>;
-  set(patch: Partial<Settings>): Promise<Settings>;
+  /** Merge a partial update (undefined fields are ignored), validate and persist it. */
+  set(patch: IpcRequest<'settings:set'>): Promise<Settings>;
   /** Last known settings, for synchronous callers such as the AI runtime. */
   current(): Settings;
 }
@@ -68,7 +69,8 @@ export function createSettingsStore(file: string, defaults: Settings): SettingsS
   return {
     get: load,
     async set(patch) {
-      const next = Settings.parse({ ...(await load()), ...patch });
+      const given = Object.entries(patch).filter(([, v]) => v !== undefined);
+      const next = Settings.parse({ ...(await load()), ...Object.fromEntries(given) });
       await writeJsonAtomic(file, next);
       cache = next;
       return next;

@@ -87,6 +87,12 @@ describe('settings store', () => {
     expect(await store.get()).toEqual(defaults);
   });
 
+  it('treats undefined fields in a patch as not given', async () => {
+    const store = createSettingsStore(file, defaults);
+    const next = await store.set({ theme: undefined, sidebarCollapsed: true });
+    expect(next).toEqual({ ...defaults, sidebarCollapsed: true });
+  });
+
   it('exposes a synchronous snapshot after the first read', async () => {
     const store = createSettingsStore(file, defaults);
     await store.set({ cloudAi: true });
