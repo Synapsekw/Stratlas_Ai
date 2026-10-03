@@ -66,6 +66,15 @@ describe('poseForPreset', () => {
       fitDistance(sphere.radius, VFOV, 1.5, 1),
     );
   });
+
+  it('comes closer with a tighter margin (the home view of a tall asset)', () => {
+    const loose = poseForPreset('iso', sphere, VFOV, 1.5);
+    const tight = poseForPreset('iso', sphere, VFOV, 1.5, 0.95);
+    expect(tight.position.distanceTo(tight.target)).toBeLessThan(
+      loose.position.distanceTo(loose.target),
+    );
+    expect(tight.target.equals(loose.target)).toBe(true);
+  });
 });
 
 describe('frameBox', () => {

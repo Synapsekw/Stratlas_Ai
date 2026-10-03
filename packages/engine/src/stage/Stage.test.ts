@@ -235,7 +235,7 @@ describe('Stage', () => {
     store.getState().openProject(project([meshLayer('plant')]));
     await flush();
     expect(stage.raycast(0, 0)?.object.type).toBe('Mesh');
-    const ground = stage.raycast(0, -0.9);
+    const ground = stage.raycast(0.99, -0.99);
     expect(ground?.point.y).toBeCloseTo(0, 6);
     stage.dispose();
   });

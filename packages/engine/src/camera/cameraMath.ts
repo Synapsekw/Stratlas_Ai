@@ -44,8 +44,9 @@ export function poseForPreset(
   sphere: { center: Vector3; radius: number },
   vfovDeg: number,
   aspect: number,
+  margin = 1.15,
 ): CameraPose {
-  const d = fitDistance(sphere.radius, vfovDeg, aspect);
+  const d = fitDistance(sphere.radius, vfovDeg, aspect, margin);
   const target = sphere.center.clone();
   return { target, position: target.clone().addScaledVector(presetDirection(preset), d) };
 }

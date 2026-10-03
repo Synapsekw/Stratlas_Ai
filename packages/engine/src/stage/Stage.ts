@@ -68,6 +68,11 @@ export function createDefaultRenderer(canvas: HTMLCanvasElement): WebGLRenderer 
 type AssetTag = NonNullable<Extract<Layer, { kind: 'mesh' }>['tags']>[number];
 
 const FLY_MS = 900;
+/**
+ * The bounding sphere of a tall or long asset is mostly empty air: the home view fits it without
+ * the usual margin, so the asset fills the stage on first open.
+ */
+const HOME_MARGIN = 0.95;
 const CLICK_SLOP_PX = 5;
 
 interface Flight {
@@ -455,6 +460,7 @@ export class Stage implements EngineStage {
       sphere,
       this.camera.fov,
       this.aspect,
+      preset === 'home' || preset === 'iso' ? HOME_MARGIN : undefined,
     );
     this.autoFit = false;
     this.fly(pose);
@@ -587,7 +593,13 @@ export class Stage implements EngineStage {
       this.controls.maxDistance = radius * 25;
       applySection(this.clippingPlanes, this._section, this.contentCentre);
       if (this.autoFit) {
-        const pose = poseForPreset('iso', { center: centre, radius }, this.camera.fov, this.aspect);
+        const pose = poseForPreset(
+          'iso',
+          { center: centre, radius },
+          this.camera.fov,
+          this.aspect,
+          HOME_MARGIN,
+        );
         this.camera.position.copy(pose.position);
         this.controls.target.copy(pose.target);
         this.controls.update();
@@ -667,7 +679,7 @@ export class Stage implements EngineStage {
     let pose: CameraPose | null = null;
     if (t.kind === 'home') {
       const sphere = this.contentSphere();
-      if (sphere) pose = poseForPreset('iso', sphere, this.camera.fov, this.aspect);
+      if (sphere) pose = poseForPreset('iso', sphere, this.camera.fov, this.aspect, HOME_MARGIN);
     } else if (t.kind === 'point') {
       pose = poseForPoint(new Vector3(...t.p), current, t.distance);
     } else {
