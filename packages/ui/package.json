@@ -5,13 +5,15 @@
   "type": "module",
   "description": "Mission design tokens, components, icons, panels.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./tokens.css": "./src/tokens.css"
   },
   "scripts": {
     "test": "vitest run"
   },
   "dependencies": {
     "@aio/schema": "workspace:*",
-    "@aio/brand": "workspace:*"
+    "@aio/brand": "workspace:*",
+    "@aio/workspace": "workspace:*"
   }
 }

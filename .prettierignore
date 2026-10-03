@@ -6,3 +6,6 @@ docs/design
 docs/brand
 fixtures/data
 *.html
+out
+test-results
+dist-types

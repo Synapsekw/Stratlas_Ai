@@ -28,3 +28,4 @@ export function routeFor(routes: readonly ModelRoute[], task: AiTask): ModelRout
   }
   return r;
 }
+export { AgentPanel, type AgentPanelProps } from './AgentPanel';

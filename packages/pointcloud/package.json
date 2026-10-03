@@ -13,6 +13,7 @@
   "dependencies": {
     "@aio/schema": "workspace:*",
     "@aio/geo": "workspace:*",
-    "@aio/engine": "workspace:*"
+    "@aio/engine": "workspace:*",
+    "@aio/workspace": "workspace:*"
   }
 }

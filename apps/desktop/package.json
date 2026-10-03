@@ -1,0 +1,30 @@
+{
+  "name": "@aio/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Stratlas desktop app (Electron main, preload, renderer).",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "test": "vitest run",
+    "test:e2e": "electron-vite build && playwright test",
+    "dist:win": "electron-vite build && electron-builder --win --config electron-builder.yml"
+  },
+  "dependencies": {
+    "@aio/ai": "workspace:*",
+    "@aio/annotate": "workspace:*",
+    "@aio/brand": "workspace:*",
+    "@aio/engine": "workspace:*",
+    "@aio/geo": "workspace:*",
+    "@aio/maps": "workspace:*",
+    "@aio/pointcloud": "workspace:*",
+    "@aio/project": "workspace:*",
+    "@aio/schema": "workspace:*",
+    "@aio/ui": "workspace:*",
+    "@aio/video": "workspace:*",
+    "@aio/workspace": "workspace:*"
+  }
+}

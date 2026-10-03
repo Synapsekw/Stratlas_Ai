@@ -53,3 +53,12 @@ export function interpolatePose(samples: readonly PoseSample[], tMs: number): Po
   ];
   return { t: tMs, pos, q: slerp(a.q, b.q, f) };
 }
+export { VideoWindow, type VideoWindowProps } from './VideoWindow';
+
+/**
+ * Registers video layer adapters with @aio/engine: flight path, drone marker and frustum, and the
+ * projector that drapes the current frame on meshes and ground. Owner: stream S6. Phase 0: no-op.
+ */
+export function registerVideoAdapters(): void {
+  /* implemented by stream S6 */
+}

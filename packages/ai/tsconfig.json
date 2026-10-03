@@ -4,9 +4,16 @@
     "rootDir": "src",
     "outDir": "dist",
     "emitDeclarationOnly": true,
-    "lib": ["ES2023"],
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "types": ["node"]
   },
   "include": ["src"],
-  "references": [{ "path": "../schema" }]
+  "references": [
+    {
+      "path": "../schema"
+    },
+    {
+      "path": "../workspace"
+    }
+  ]
 }

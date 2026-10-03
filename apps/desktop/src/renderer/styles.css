@@ -1,0 +1,55 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg-0);
+  color: var(--fg-1);
+  font: 400 var(--t-13) / 1.45 var(--f-ui);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+.app {
+  display: grid;
+  grid-template-rows: var(--tb-h) minmax(0, 1fr);
+  height: 100%;
+}
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  background: var(--bg-chrome);
+  border-bottom: 1px solid var(--line);
+  app-region: drag;
+}
+
+.wordmark {
+  font: 600 var(--t-12) / 1 var(--f-ui);
+  letter-spacing: 0.18em;
+  color: var(--fg-0);
+}
+
+.chip {
+  font: 500 var(--t-11) / 1 var(--f-mono);
+  color: var(--acc);
+  padding: 4px 8px;
+  border: 1px solid var(--acc-a40);
+  border-radius: var(--r-2);
+}
+
+.stage {
+  display: grid;
+  min-height: 0;
+}
+
+.scene {
+  display: grid;
+  place-items: center;
+  color: var(--fg-3);
+}

@@ -8,5 +8,18 @@
     "types": ["node"]
   },
   "include": ["src"],
-  "references": [{ "path": "../schema" }, { "path": "../geo" }, { "path": "../engine" }]
+  "references": [
+    {
+      "path": "../schema"
+    },
+    {
+      "path": "../geo"
+    },
+    {
+      "path": "../engine"
+    },
+    {
+      "path": "../workspace"
+    }
+  ]
 }

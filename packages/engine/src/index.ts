@@ -43,3 +43,9 @@ export function getAdapter(kind: LayerKind): LayerAdapter | undefined {
 export function clearAdapters(): void {
   adapters.clear();
 }
+export { SceneView, type SceneViewProps } from './SceneView';
+
+/** Registers the mesh (GLB with Meshopt) and image raster adapters. Owner: stream S3. Phase 0: no-op. */
+export function registerEngineAdapters(): void {
+  /* implemented by stream S3 */
+}

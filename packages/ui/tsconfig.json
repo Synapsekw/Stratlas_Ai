@@ -8,5 +8,15 @@
     "types": ["node"]
   },
   "include": ["src"],
-  "references": [{ "path": "../schema" }, { "path": "../brand" }]
+  "references": [
+    {
+      "path": "../schema"
+    },
+    {
+      "path": "../brand"
+    },
+    {
+      "path": "../workspace"
+    }
+  ]
 }

@@ -19,3 +19,9 @@ export function packCovers(pack: Pick<MapPack, 'bbox'>, lon: number, lat: number
   const [w, s, e, n] = pack.bbox;
   return lon >= w && lon <= e && lat >= s && lat <= n;
 }
+export { MapView, type MapViewProps } from './MapView';
+
+/** Registers basemap and raster ground adapters with @aio/engine. Owner: stream S5. Phase 0: no-op. */
+export function registerMapAdapters(): void {
+  /* implemented by stream S5 */
+}

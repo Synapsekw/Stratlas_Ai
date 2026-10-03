@@ -14,6 +14,7 @@
     "@aio/schema": "workspace:*",
     "@aio/geo": "workspace:*",
     "@aio/engine": "workspace:*",
-    "@aio/video": "workspace:*"
+    "@aio/video": "workspace:*",
+    "@aio/workspace": "workspace:*"
   }
 }

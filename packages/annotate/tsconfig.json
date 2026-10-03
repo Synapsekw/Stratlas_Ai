@@ -9,9 +9,20 @@
   },
   "include": ["src"],
   "references": [
-    { "path": "../schema" },
-    { "path": "../geo" },
-    { "path": "../engine" },
-    { "path": "../video" }
+    {
+      "path": "../schema"
+    },
+    {
+      "path": "../geo"
+    },
+    {
+      "path": "../engine"
+    },
+    {
+      "path": "../video"
+    },
+    {
+      "path": "../workspace"
+    }
   ]
 }

@@ -37,3 +37,8 @@ export function decodeKitPacked(
   }
   return { positions, intensity, count };
 }
+
+/** Registers the point-cloud layer adapter with @aio/engine. Owner: stream S4. Phase 0: no-op. */
+export function registerPointcloudAdapters(): void {
+  /* implemented by stream S4 */
+}

@@ -14,3 +14,4 @@ export function nextIssueCode(existing: readonly string[], prefix: string): stri
   }
   return `${prefix}${String(max + 1).padStart(2, '0')}`;
 }
+export { IssueRegister, IssueDetail, PhotoViewer, VideoAnnotator } from './components';
