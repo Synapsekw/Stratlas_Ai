@@ -26,6 +26,7 @@
     "@aio/ui": "workspace:*",
     "@aio/video": "workspace:*",
     "@aio/workspace": "workspace:*",
-    "@napi-rs/keyring": "^2.1.0"
+    "@napi-rs/keyring": "^2.1.0",
+    "zod": "^4.6.5"
   }
 }

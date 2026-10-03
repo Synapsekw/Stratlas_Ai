@@ -135,6 +135,9 @@ importers:
       '@napi-rs/keyring':
         specifier: ^2.1.0
         version: 2.1.0
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
 
   packages/ai:
     dependencies:
