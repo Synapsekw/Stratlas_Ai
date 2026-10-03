@@ -2,8 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { detectPackageKind } from './index';
 
 describe('detectPackageKind', () => {
-  it('detects a native package', () => {
-    expect(detectPackageKind(['manifest.json', 'project.sqlite'])).toBe('native');
+  it('detects a native package from manifest.json alone', () => {
+    expect(detectPackageKind(['manifest.json'])).toBe('native');
+    expect(detectPackageKind(['manifest.json', 'issues.json', 'models/tank.glb'])).toBe('native');
+  });
+
+  it('prefers native over other kinds when manifest.json is present', () => {
+    expect(detectPackageKind(['manifest.json', 'layers.json', 'flights.json'])).toBe('native');
   });
 
   it('detects the HCl tank offline report', () => {
