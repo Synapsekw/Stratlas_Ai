@@ -1,4 +1,4 @@
-import { getActiveScene, onActiveScene, type SceneHandle } from '@aio/engine';
+import { getActiveScene, isEngineStage, onActiveScene, type SceneHandle } from '@aio/engine';
 import type { Sighting, Vec3 } from '@aio/schema';
 import type { Workspace } from '@aio/workspace';
 import {
@@ -234,6 +234,9 @@ export function installIssueOverlay(store: StoreApi<Workspace>): () => void {
     handle.scene.add(group);
     const sphere = new SphereGeometry(1, 16, 12);
     let pins: IssuePin[] = [];
+    let pinPoints: Vector3[] = [];
+    // component callouts keep their plates off the pins and codes
+    const offObstacles = isEngineStage(handle) ? handle.addLabelObstacles(() => pinPoints) : null;
 
     const rebuild = () => {
       for (const c of [...group.children]) {
@@ -243,6 +246,7 @@ export function installIssueOverlay(store: StoreApi<Workspace>): () => void {
       const s = store.getState();
       const sel = s.selection?.kind === 'issue' ? s.selection.id : null;
       pins = issuePins(s.issues, s.project?.manifest.severityModels ?? [], sel);
+      pinPoints = pins.map((p) => new Vector3(...p.p));
       for (const pin of pins) {
         const node = new Group();
         node.position.set(...pin.p);
@@ -322,6 +326,7 @@ export function installIssueOverlay(store: StoreApi<Workspace>): () => void {
     detach = () => {
       unsub();
       offFrame();
+      offObstacles?.();
       el.removeEventListener('pointerdown', onDown);
       el.removeEventListener('pointerup', onUp);
       handle.scene.remove(group);
