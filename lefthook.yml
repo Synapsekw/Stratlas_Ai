@@ -5,4 +5,6 @@ pre-commit:
 commit-msg:
   commands:
     commitlint:
-      run: pnpm exec commitlint --edit "{1}"
+      # No {1}: lefthook wraps the command in sh -c "...", so a quoted path with spaces breaks on
+      # Windows. Without an argument commitlint finds COMMIT_EDITMSG itself, worktrees included.
+      run: pnpm exec commitlint --edit
