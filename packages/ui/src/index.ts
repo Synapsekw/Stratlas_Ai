@@ -6,6 +6,24 @@ export const layout = {
   sidebarWidth: 252,
   sidebarCollapsedWidth: 52,
   titleBarHeight: 40,
+  rightPanelWidth: 360,
 } as const;
 
 export const TOKENS_CSS_PATH = './tokens.css';
+
+export { Icon, ICONS, type IconName, type IconProps, type IconSize } from './icons/Icon';
+export { Compass, type CompassProps } from './Compass';
+export { Kbd, SevChip, Switch, type SevChipProps, type SwitchProps } from './controls';
+export * from './format';
+export * from './coords';
+export * from './timeline/model';
+export { generateTicks, pickTickStep, type Tick, type TickStep } from './timeline/ticks';
+export { Timeline, RATES, type TimelineProps } from './timeline/Timeline';
+export * from './tree/model';
+export { DatasetTree, type DatasetTreeProps } from './tree/DatasetTree';
+export { rankCommands, scoreMatch, type Command } from './palette/rank';
+export {
+  CommandPalette,
+  type CommandPaletteProps,
+  type PaletteCommand,
+} from './palette/CommandPalette';
