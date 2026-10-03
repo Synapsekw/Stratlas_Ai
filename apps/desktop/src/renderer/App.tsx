@@ -1,9 +1,10 @@
 import { AnnotateStyles } from '@aio/annotate';
+import { buildTimelineModel } from '@aio/ui';
 import { getPlayer } from '@aio/video';
 import { workspace } from '@aio/workspace';
 import { useEffect } from 'react';
 import { getMedia } from './media';
-import { startPlaybackLoop } from './playback';
+import { nextClipInFlight, startPlaybackLoop } from './playback';
 import { IssuesScreen } from './screens/Issues';
 import { MediaScreen } from './screens/Media';
 import { ProjectsScreen } from './screens/Projects';
@@ -64,6 +65,31 @@ function videoDrivesClock(): boolean {
   return player !== undefined && player.status !== 'error' && player.status !== 'no-footage';
 }
 
+/**
+ * When the active clip plays to its end and the next clip of the same flight follows on, carry
+ * on with it (a flight is delivered as many short clips). Returns an unsubscribe function.
+ */
+function continueAcrossClips(): () => void {
+  return workspace.subscribe((s, prev) => {
+    if (!prev.playing || s.playing || !s.project || !s.activeClip) return;
+    if (s.activeClip !== prev.activeClip) return;
+    const clips = buildTimelineModel(s.project.manifest, [], getMedia().durations).clips;
+    const next = nextClipInFlight(clips, s.activeClip, s.nowMs);
+    if (!next) return;
+    const ended = s.activeClip;
+    // The player pauses and then sets the end time; continue after that settles.
+    queueMicrotask(() => {
+      const ws = workspace.getState();
+      if (ws.playing || ws.activeClip !== ended) return;
+      if (ws.selection?.kind === 'clip' && ws.selection.id === ended)
+        ws.select({ kind: 'clip', id: next.layerId, layer: next.layerId });
+      ws.setActiveClip(next.layerId);
+      ws.setTime(next.startMs);
+      ws.play();
+    });
+  });
+}
+
 function Screen() {
   const screen = useShell((s) => s.screen);
   switch (screen) {
@@ -98,9 +124,11 @@ export function App() {
       cancelAnimationFrame,
       videoDrivesClock,
     );
+    const stopContinue = continueAcrossClips();
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       stopPlayback();
+      stopContinue();
     };
   }, []);
 

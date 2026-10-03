@@ -1,3 +1,4 @@
+import type { ClipBar } from '@aio/ui';
 import type { Workspace } from '@aio/workspace';
 import type { StoreApi } from 'zustand/vanilla';
 
@@ -67,4 +68,30 @@ export function startPlaybackLoop(
     unsub();
     if (handle !== null) caf(handle);
   };
+}
+
+/** Longest gap between two clips of one flight that playback runs across. */
+const CONTINUE_GAP_MS = 1_500;
+
+/**
+ * The clip that carries on the same flight when `activeId` ends at `nowMs`: long flights are
+ * delivered as many short clips, and playback should run across them. Only for clips whose length
+ * is known, and only when the clock stopped at the clip end.
+ */
+export function nextClipInFlight(
+  clips: readonly ClipBar[],
+  activeId: string,
+  nowMs: number,
+): ClipBar | undefined {
+  const cur = clips.find((c) => c.layerId === activeId);
+  if (!cur || cur.estimated || Math.abs(nowMs - cur.endMs) > 300) return undefined;
+  return clips
+    .filter(
+      (c) =>
+        c.group === cur.group &&
+        c.layerId !== cur.layerId &&
+        c.startMs > cur.startMs &&
+        c.startMs - cur.endMs <= CONTINUE_GAP_MS,
+    )
+    .sort((a, b) => a.startMs - b.startMs)[0];
 }

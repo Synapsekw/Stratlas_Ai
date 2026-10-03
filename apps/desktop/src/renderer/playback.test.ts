@@ -1,6 +1,6 @@
 import { createWorkspace } from '@aio/workspace';
 import { describe, expect, it } from 'vitest';
-import { advance, startPlaybackLoop } from './playback';
+import { advance, nextClipInFlight, startPlaybackLoop } from './playback';
 
 describe('advance', () => {
   it('moves the clock by elapsed time times rate', () => {
@@ -79,5 +79,33 @@ describe('startPlaybackLoop', () => {
     frames.shift()?.(60);
     expect(ws.getState().nowMs).toBe(1_050);
     stop();
+  });
+});
+
+describe('nextClipInFlight', () => {
+  const bar = (id: string, startMs: number, endMs: number, group = 'f101', estimated = false) => ({
+    layerId: id,
+    name: id,
+    startMs,
+    endMs,
+    estimated,
+    group,
+  });
+  const clips = [
+    bar('a', 0, 60_000),
+    bar('b', 60_000, 120_000),
+    bar('c', 125_000, 180_000),
+    bar('x', 60_000, 70_000, 'f102'),
+  ];
+
+  it('continues with the next clip of the same flight when the clock stops at the end', () => {
+    expect(nextClipInFlight(clips, 'a', 59_980)?.layerId).toBe('b');
+  });
+  it('stops at a real gap, mid clip, and for clips of unknown length', () => {
+    expect(nextClipInFlight(clips, 'b', 120_000)).toBeUndefined();
+    expect(nextClipInFlight(clips, 'a', 30_000)).toBeUndefined();
+    expect(
+      nextClipInFlight([bar('a', 0, 60_000, 'f', true), bar('b', 60_000, 1)], 'a', 60_000),
+    ).toBeUndefined();
   });
 });
