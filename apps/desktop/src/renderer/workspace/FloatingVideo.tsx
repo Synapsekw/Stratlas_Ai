@@ -38,7 +38,14 @@ export function FloatingVideo({ layerId, docked, stageRef }: Props) {
     const ro = new ResizeObserver(() => {
       const win = winRef.current;
       if (!win) return;
-      setPos((p) => {
+      setPos((prev) => {
+        // until the user moves it, the window takes a share of the stage that leaves it usable
+        const p = remembered
+          ? prev
+          : {
+              ...prev,
+              width: Math.round(Math.min(DEFAULT_W, Math.max(280, stage.clientWidth * 0.42))),
+            };
         const maxLeft = Math.max(MARGIN, stage.clientWidth - win.offsetWidth - MARGIN);
         const maxBottom = Math.max(MARGIN, stage.clientHeight - win.offsetHeight - MARGIN);
         const next = {
@@ -46,7 +53,9 @@ export function FloatingVideo({ layerId, docked, stageRef }: Props) {
           left: Math.min(p.left, maxLeft),
           bottom: Math.min(p.bottom, maxBottom),
         };
-        return next.left === p.left && next.bottom === p.bottom ? p : next;
+        return next.left === prev.left && next.bottom === prev.bottom && next.width === prev.width
+          ? prev
+          : next;
       });
     });
     ro.observe(stage);
