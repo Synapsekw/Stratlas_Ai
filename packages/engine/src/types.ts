@@ -111,6 +111,8 @@ export interface EngineStage extends SceneHandle {
    * of these rectangles, read after every rendered frame.
    */
   setLabelKeepOut(provider: (() => Iterable<ClientRectLike>) | null): void;
+  /** The client rects of that UI right now, for HTML drawn on the stage (panorama view). */
+  uiKeepOut(): ClientRectLike[];
   /** World points (issue pins) that callout plates must not cover. Returns an unsubscribe. */
   addLabelObstacles(provider: () => Iterable<Vector3>): () => void;
   /** The current view, to restore when the stage is created again. */

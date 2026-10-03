@@ -170,6 +170,7 @@ export class Stage implements EngineStage {
   private _tool: StageTool = 'select';
   private _section: SectionState = { ...DEFAULT_SECTION };
   private _labelMode: LabelMode = 'key';
+  private keepOut: (() => Iterable<ClientRectLike>) | null = null;
 
   constructor(private readonly opts: StageOptions) {
     this.getAdapter = opts.getAdapter ?? registryAdapter;
@@ -417,8 +418,13 @@ export class Stage implements EngineStage {
   }
 
   setLabelKeepOut(provider: (() => Iterable<ClientRectLike>) | null): void {
+    this.keepOut = provider;
     this.overlay.setKeepOut(provider);
     this.need = true;
+  }
+
+  uiKeepOut(): ClientRectLike[] {
+    return this.keepOut ? [...this.keepOut()] : [];
   }
 
   addLabelObstacles(provider: () => Iterable<Vector3>): () => void {
