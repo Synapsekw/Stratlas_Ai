@@ -1,0 +1,24 @@
+# deps and builds
+node_modules/
+dist/
+out/
+.vite/
+coverage/
+*.tsbuildinfo
+playwright-report/
+test-results/
+*.log
+
+# secrets and local config
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+
+# client data never enters git
+docs/design/assets/
+fixtures/data/
+
+# OS
+.DS_Store
+Thumbs.db

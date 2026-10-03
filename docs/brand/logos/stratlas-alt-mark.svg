@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 100" width="340" height="100">
+<title>stratlas mark, concept B. Core and playhead</title>
+<!-- Wordmark is live text in IBM Plex Sans / IBM Plex Sans Arabic. Outline type before production. -->
+<g transform="translate(14 18)">
+<defs><clipPath id="str-b-clip"><rect x="6" y="8" width="52" height="48" rx="9"/></clipPath></defs>
+<g clip-path="url(#str-b-clip)">
+<path d="M6 8 C22 5 42 11 58 8 L58 19 C42 22 22 16 6 19 Z" style="fill:#15181D"/>
+<path d="M6 22 C22 19 42 25 58 22 L58 28 C42 31 22 25 6 28 Z" style="fill:#15181D" fill-opacity=".45"/>
+<path d="M6 31 C22 28 42 34 58 31 L58 42 C42 45 22 39 6 42 Z" style="fill:#15181D" fill-opacity=".8"/>
+<path d="M6 45 C22 42 42 48 58 45 L58 56 C42 59 22 53 6 56 Z" style="fill:#15181D" fill-opacity=".35"/>
+</g>
+<line x1="41" y1="6" x2="41" y2="61" style="stroke:#16866A" stroke-width="3.2" stroke-linecap="round"/>
+<path d="M35 1.5 L47 1.5 L41 8.5 Z" style="fill:#16866A"/>
+</g>
+<text x="94" y="55" font-family="'IBM Plex Sans', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:#15181D">STRATLAS</text>
+<text x="94" y="86" font-family="'IBM Plex Sans Arabic', 'Segoe UI', Tahoma, Arial, sans-serif" font-size="17" font-weight="500" style="fill:#15181D" fill-opacity=".72">ستراتلاس</text>
+</svg>

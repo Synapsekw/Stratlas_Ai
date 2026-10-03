@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<title>stratlas app icon, concept A. Plumb through layers</title>
+<rect width="512" height="512" rx="112" fill="#18202B"/>
+<path d="M80 374 L256 308 L432 374 L256 440 Z" fill="#E3EAF2" fill-opacity=".30"/>
+<path d="M80 286 L256 220 L432 286 L256 352 Z" fill="#E3EAF2" fill-opacity=".58"/>
+<path d="M80 198 L256 132 L432 198 L256 264 Z" fill="#45C79F"/>
+<line x1="256" y1="70" x2="256" y2="374" stroke="#E3EAF2" stroke-width="30" stroke-linecap="round"/>
+<circle cx="256" cy="68" r="28" fill="#E3EAF2"/>
+<circle cx="256" cy="374" r="32" fill="#E3EAF2"/>
+</svg>

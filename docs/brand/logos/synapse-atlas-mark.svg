@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 100" width="340" height="100">
+<title>synapse-atlas mark, concept A. Pose frustum</title>
+<!-- Wordmark is live text in IBM Plex Sans / IBM Plex Sans Arabic. Outline type before production. -->
+<g transform="translate(14 18)">
+<path d="M6 48 L34 39 L58 49 L30 59 Z" style="fill:#0A78A8;stroke:#0A78A8" fill-opacity=".32" stroke-width="2.6" stroke-linejoin="round"/>
+<path d="M24 8 L34 39" fill="none" style="stroke:#15181D" stroke-width="1.6" stroke-dasharray="2.6 2.6" stroke-opacity=".6"/>
+<path d="M6 48 L24 8 L58 49 M24 8 L30 59" fill="none" style="stroke:#15181D" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="24" cy="8" r="4.8" style="fill:#15181D"/>
+</g>
+<text x="94" y="24" font-family="'IBM Plex Sans', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="500" letter-spacing="0.34em" style="fill:#15181D">SYNAPSE</text>
+<text x="94" y="58" font-family="'IBM Plex Sans', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="38" font-weight="600" letter-spacing="0.005em" style="fill:#15181D">Atlas</text>
+<text x="94" y="86" font-family="'IBM Plex Sans Arabic', 'Segoe UI', Tahoma, Arial, sans-serif" font-size="17" font-weight="500" style="fill:#15181D" fill-opacity=".72">سينابس أطلس</text>
+</svg>

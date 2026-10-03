@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 100" width="340" height="100">
+<title>ocellus mark, concept B. Ocelli triad</title>
+<!-- Wordmark is live text in IBM Plex Sans / IBM Plex Sans Arabic. Outline type before production. -->
+<g transform="translate(14 18)">
+<line x1="6" y1="55" x2="58" y2="55" style="stroke:#15181D" stroke-width="3.6" stroke-linecap="round"/>
+<path d="M32 15 L14 41 L50 41 Z" fill="none" style="stroke:#15181D" stroke-width="2.2" stroke-linejoin="round"/>
+<circle cx="32" cy="15" r="7.5" style="fill:#D9481B"/>
+<circle cx="14" cy="41" r="6" style="fill:#15181D"/>
+<circle cx="50" cy="41" r="6" style="fill:#15181D"/>
+</g>
+<text x="94" y="56" font-family="'IBM Plex Sans', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="40" font-weight="500" letter-spacing="0.01em" style="fill:#15181D">Ocellus</text>
+<text x="94" y="86" font-family="'IBM Plex Sans Arabic', 'Segoe UI', Tahoma, Arial, sans-serif" font-size="17" font-weight="500" style="fill:#15181D" fill-opacity=".72">أوسيلوس</text>
+</svg>

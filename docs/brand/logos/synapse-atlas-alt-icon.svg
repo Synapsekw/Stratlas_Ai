@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<title>synapse-atlas app icon, concept B. Graticule A</title>
+<rect width="512" height="512" rx="112" fill="#0C1A2B"/>
+<g transform="translate(256 262) scale(.86) translate(-256 -252)">
+<path d="M64 456 C96 288 160 144 256 48 C352 144 416 288 448 456" fill="none" stroke="#EAF2FA" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+<line x1="256" y1="48" x2="256" y2="456" stroke="#EAF2FA" stroke-width="22" stroke-linecap="round"/>
+<path d="M99 328 Q256 392 413 328" fill="none" stroke="#EAF2FA" stroke-width="40" stroke-linecap="round"/>
+<circle cx="256" cy="360" r="62" fill="#0C1A2B"/>
+<circle cx="256" cy="360" r="42" fill="#38BCEB"/>
+</g>
+</svg>

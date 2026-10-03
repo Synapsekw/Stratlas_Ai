@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Name and Logo Options</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  color-scheme: light;
+  --bg: #F3F4F6;
+  --surface: #FFFFFF;
+  --surface-2: #F8F9FA;
+  --ink: #14171C;
+  --muted: #5A6270;
+  --line: #E1E4E8;
+  --accent: #0B6E8A;
+  --accent-ink: #FFFFFF;
+  --ground-dark: #0F1216;
+  --ground-dark-ink: #F2EEE6;
+  --ground-light: #F6F3EC;
+  --ground-light-ink: #15181D;
+  --g4: #1F7A4D; --g4-bg: #E3F3EA;
+  --g3: #2F6690; --g3-bg: #E4EEF6;
+  --g2: #8A5A00; --g2-bg: #FBF0D9;
+  --g1: #A33A2B; --g1-bg: #F9E3DF;
+  --rec: #9A6815; --rec-bg: #F7EBD3;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0E1114;
+    --surface: #161A1F;
+    --surface-2: #1B2026;
+    --ink: #E9EBEE;
+    --muted: #9AA3AE;
+    --line: #262C34;
+    --accent: #4DB8D6;
+    --accent-ink: #0E1114;
+    --g4: #6FD39F; --g4-bg: #15291F;
+    --g3: #7DB6E3; --g3-bg: #152331;
+    --g2: #E7B75A; --g2-bg: #2B2212;
+    --g1: #F08B7C; --g1-bg: #2E1714;
+    --rec: #E2B260; --rec-bg: #2B2212;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0E1114;
+  --surface: #161A1F;
+  --surface-2: #1B2026;
+  --ink: #E9EBEE;
+  --muted: #9AA3AE;
+  --line: #262C34;
+  --accent: #4DB8D6;
+  --accent-ink: #0E1114;
+  --g4: #6FD39F; --g4-bg: #15291F;
+  --g3: #7DB6E3; --g3-bg: #152331;
+  --g2: #E7B75A; --g2-bg: #2B2212;
+  --g1: #F08B7C; --g1-bg: #2E1714;
+  --rec: #E2B260; --rec-bg: #2B2212;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.wrap {
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 40px max(16px, env(safe-area-inset-right)) 72px max(16px, env(safe-area-inset-left));
+}
+.topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 28px; }
+.eyebrow { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.theme-btn {
+  font: 500 13px 'IBM Plex Sans', sans-serif; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; cursor: pointer;
+}
+.theme-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+h1 { font-size: clamp(30px, 5vw, 46px); line-height: 1.1; letter-spacing: -.015em; margin: 0 0 14px; font-weight: 600; }
+h2 { font-size: 24px; letter-spacing: -.01em; margin: 56px 0 8px; font-weight: 600; }
+h2 + .lede { margin-top: 0; }
+h3 { font-size: 28px; margin: 0; font-weight: 600; letter-spacing: -.01em; }
+h4 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+p { margin: 0 0 12px; }
+.lede { color: var(--muted); max-width: 72ch; }
+.intro { max-width: 76ch; }
+.note {
+  border-left: 3px solid var(--g2); background: var(--g2-bg); padding: 10px 14px; border-radius: 0 8px 8px 0;
+  font-size: 14px; max-width: 76ch; margin-top: 16px;
+}
+code { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12.5px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+
+/* recommendation */
+.rec-block {
+  margin-top: 36px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  padding: 24px; display: grid; grid-template-columns: minmax(0, 260px) minmax(0, 1fr); gap: 28px; align-items: center;
+}
+.rec-block .rec-mark {
+  background: var(--ground-dark); color: var(--ground-dark-ink); border-radius: 12px; padding: 20px;
+  display: flex; flex-direction: column; align-items: center; gap: 14px; --acc: #D6A04A;
+}
+.rec-block .rec-mark svg.lockup { max-width: 230px; }
+.rec-block h2 { margin: 0 0 10px; }
+.rec-block ul { margin: 0; padding-left: 18px; }
+.rec-block li { margin-bottom: 6px; }
+.rec-block .then { margin-top: 12px; color: var(--muted); font-size: 15px; }
+
+/* candidates */
+.cand { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 24px; margin-top: 20px; }
+.cand-head { border-bottom: 1px solid var(--line); padding-bottom: 14px; margin-bottom: 16px; }
+.cand-title { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; }
+.num { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 1px 7px; }
+.ar { font-family: 'IBM Plex Sans Arabic', 'Segoe UI', Tahoma, sans-serif; font-weight: 500; color: var(--muted); font-size: .75em; margin-left: 6px; }
+.style { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+.facts { display: grid; gap: 10px; margin: 0 0 20px; }
+.facts > div { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 12px; }
+.facts dt { font-family: 'IBM Plex Mono', monospace; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding-top: 3px; }
+.facts dd { margin: 0; }
+.pill { display: inline-block; font-size: 12px; font-weight: 600; line-height: 1; padding: 5px 9px; border-radius: 999px; white-space: nowrap; margin-right: 4px; vertical-align: 1px; }
+.pill.clear, .pill.short { color: var(--g4); background: var(--g4-bg); }
+.pill.caution { color: var(--g2); background: var(--g2-bg); }
+.pill.drop { color: var(--g1); background: var(--g1-bg); }
+.pill.reserve { color: var(--g3); background: var(--g3-bg); }
+.pill.rec { color: var(--rec); background: var(--rec-bg); }
+
+.concepts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.concept { border: 1px solid var(--line); border-radius: 12px; padding: 16px; background: var(--surface-2); min-width: 0; }
+.concept-head p { color: var(--muted); font-size: 14px; margin-bottom: 12px; }
+.grounds { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.ground { border-radius: 10px; padding: 18px 14px; display: flex; align-items: center; justify-content: center; min-height: 112px; }
+.on-dark { background: var(--ground-dark); color: var(--ground-dark-ink); --acc: var(--acc-d); }
+.on-light { background: var(--ground-light); color: var(--ground-light-ink); --acc: var(--acc-l); border: 1px solid #E4DFD4; }
+svg.lockup { width: 100%; max-width: 300px; height: auto; display: block; overflow: visible; }
+svg.lockup .wm { font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif; }
+svg.lockup .wm-ar { font-family: 'IBM Plex Sans Arabic', 'Segoe UI', Tahoma, sans-serif; }
+.iconrow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.iconrow figure { margin: 0; border-radius: 10px; padding: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.iconrow figure.big { background: var(--surface); border: 1px solid var(--line); flex: 1 1 100%; }
+.iconrow figure.sizes { flex: 1 1 140px; }
+.iconrow figcaption { font-family: 'IBM Plex Mono', monospace; font-size: 11px; opacity: .75; flex: 1 1 100%; }
+.iconrow figure.big figcaption { flex: 1 1 120px; color: var(--muted); opacity: 1; }
+svg.ic { display: block; flex: none; }
+.files { margin: 10px 0 0; font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+/* tables */
+table { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+th { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 500; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); background: var(--surface-2); }
+tr:last-child td { border-bottom: 0; }
+.g { display: inline-block; font-size: 12.5px; font-weight: 600; padding: 3px 8px; border-radius: 6px; white-space: nowrap; }
+.g4 { color: var(--g4); background: var(--g4-bg); }
+.g3 { color: var(--g3); background: var(--g3-bg); }
+.g2 { color: var(--g2); background: var(--g2-bg); }
+.g1 { color: var(--g1); background: var(--g1-bg); }
+table.ll td:nth-child(1) { width: 16%; }
+table.ll td:nth-child(4) { width: 1%; white-space: nowrap; }
+
+.method { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.method > div { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; font-size: 14.5px; }
+.method ul, .method ol { margin: 0; padding-left: 18px; }
+.method li { margin-bottom: 5px; }
+.sources { columns: 2; column-gap: 28px; font-size: 13px; padding-left: 18px; }
+.sources li { break-inside: avoid; margin-bottom: 4px; }
+a { color: var(--accent); }
+footer { margin-top: 48px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 16px; }
+
+@media (max-width: 900px) {
+  .concepts { grid-template-columns: 1fr; }
+  .rec-block { grid-template-columns: 1fr; }
+  .method { grid-template-columns: 1fr; }
+  .sources { columns: 1; }
+}
+@media (max-width: 640px) {
+  .wrap { padding-top: 24px; }
+  .cand, .rec-block { padding: 16px; }
+  .concept { padding: 12px; }
+  .facts > div { grid-template-columns: 1fr; gap: 2px; }
+  h3 { font-size: 24px; }
+  table.rt, table.rt tbody, table.rt tr, table.rt td { display: block; width: 100% !important; }
+  table.rt thead { display: none; }
+  table.rt tr { border-bottom: 1px solid var(--line); padding: 8px 0; }
+  table.rt td { border: 0; padding: 3px 12px; white-space: normal !important; }
+  table.rt td::before { content: attr(data-l); display: block; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs><symbol id="muq-a-sym" viewBox="0 0 64 64"><circle cx="32" cy="35" r="25.5" fill="none" style="stroke:currentColor" stroke-width="3.6"/>
+<circle cx="32" cy="24.75" r="15.25" fill="none" style="stroke:currentColor" stroke-width="3.6"/>
+<circle cx="32" cy="19.5" r="6" style="fill:var(--acc)"/></symbol>
+<symbol id="muq-a-icon" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#14171C"/><circle cx="256" cy="282" r="152" fill="none" stroke="#EFE6D2" stroke-width="40"/>
+<circle cx="256" cy="224" r="94" fill="none" stroke="#EFE6D2" stroke-width="40"/>
+<circle cx="256" cy="208" r="42" fill="#D6A04A"/></symbol>
+<symbol id="muq-b-sym" viewBox="0 0 64 64"><circle cx="32" cy="33" r="21" fill="none" style="stroke:currentColor" stroke-width="3.6"/>
+<path d="M32 2.5 L36 9.2 L28 9.2 Z" style="fill:currentColor"/>
+<g transform="rotate(-32 32 33)">
+<rect x="5" y="30.8" width="54" height="4.4" rx="1" style="fill:currentColor"/>
+<rect x="6" y="25" width="4" height="16" rx="1" style="fill:currentColor"/>
+<rect x="54" y="25" width="4" height="16" rx="1" style="fill:currentColor"/>
+</g>
+<circle cx="32" cy="33" r="5" style="fill:var(--acc)"/></symbol>
+<symbol id="muq-b-icon" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#14171C"/><circle cx="256" cy="264" r="150" fill="none" stroke="#EFE6D2" stroke-width="40"/>
+<path d="M256 32 L286 84 L226 84 Z" fill="#EFE6D2"/>
+<g transform="rotate(-32 256 264)">
+<rect x="56" y="242" width="400" height="44" rx="8" fill="#EFE6D2"/>
+<rect x="62" y="198" width="36" height="132" rx="8" fill="#EFE6D2"/>
+<rect x="414" y="198" width="36" height="132" rx="8" fill="#EFE6D2"/>
+</g>
+<circle cx="256" cy="264" r="62" fill="#14171C"/>
+<circle cx="256" cy="264" r="40" fill="#D6A04A"/></symbol>
+<symbol id="oce-a-sym" viewBox="0 0 64 64"><path d="M27 5 C40 15 40 49 27 59 C14 49 14 15 27 5 Z" fill="none" style="stroke:currentColor" stroke-width="3.4" stroke-linejoin="round"/>
+<path d="M3 20 L27 20 L55 32 M3 44 L27 44 L55 32" fill="none" style="stroke:currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="55" cy="32" r="5.2" style="fill:var(--acc)"/></symbol>
+<symbol id="oce-a-icon" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#16181B"/><path d="M212 70 C316 152 316 360 212 442 C108 360 108 152 212 70 Z" fill="none" stroke="#F3F1EC" stroke-width="38" stroke-linejoin="round"/>
+<path d="M58 178 L212 178 L414 256 M58 334 L212 334 L414 256" fill="none" stroke="#F3F1EC" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="414" cy="256" r="44" fill="#FF6A3D"/></symbol>
+<symbol id="oce-b-sym" viewBox="0 0 64 64"><line x1="6" y1="55" x2="58" y2="55" style="stroke:currentColor" stroke-width="3.6" stroke-linecap="round"/>
+<path d="M32 15 L14 41 L50 41 Z" fill="none" style="stroke:currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+<circle cx="32" cy="15" r="7.5" style="fill:var(--acc)"/>
+<circle cx="14" cy="41" r="6" style="fill:currentColor"/>
+<circle cx="50" cy="41" r="6" style="fill:currentColor"/></symbol>
+<symbol id="oce-b-icon" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#16181B"/><line x1="96" y1="430" x2="416" y2="430" stroke="#F3F1EC" stroke-width="40" stroke-linecap="round"/>
+<path d="M256 142 L128 330 L384 330 Z" fill="none" stroke="#F3F1EC" stroke-width="24" stroke-linejoin="round"/>
+<circle cx="256" cy="142" r="62" fill="#FF6A3D"/>
+<circle cx="128" cy="330" r="48" fill="#F3F1EC"/>
+<circle cx="384" cy="330" r="48" fill="#F3F1EC"/></symbol>
+<symbol id="str-a-sym" viewBox="0 0 64 64"><path d="M6 47 L32 37.5 L58 47 L32 56.5 Z" style="fill:currentColor" fill-opacity=".28"/>
+<path d="M6 35 L32 25.5 L58 35 L32 44.5 Z" style="fill:currentColor" fill-opacity=".55"/>
+<path d="M6 23 L32 13.5 L58 23 L32 32.5 Z" style="fill:var(--acc)"/>
+<line x1="32" y1="5" x2="32" y2="47" style="stroke:currentColor" stroke-width="2.8" stroke-linecap="round"/>
+<circle cx="32" cy="5" r="3.2" style="fill:currentColor"/>
+<circle cx="32" cy="47" r="3.6" style="fill:currentColor"/></symbol>
+<symbol id="str-a-icon" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#18202B"/><path d="M80 374 L256 308 L432 374 L256 440 Z" fill="#E3EAF2" fill-opacity=".30"/>
+<path d="M80 286 L256 220 L432 286 L256 352 Z" fill="#E3EAF2" fill-opacity=".58"/>
+<path d="M80 198 L256 132 L432 198 L256 264 Z" fill="#45C79F"/>
+<line x1="256" y1="70" x2="256" y2="374" stroke="#E3EAF2" stroke-width="30" stroke-linecap="round"/>
+<circle cx="256" cy="68" r="28" fill="#E3EAF2"/>
+<circle cx="256" cy="374" r="32" fill="#E3EAF2"/></symbol>
+<symbol id="str-b-sym" viewBox="0 0 64 64"><defs><clipPath id="str-b-clip"><rect x="6" y="8" width="52" height="48" rx="9"/></clipPath></defs>
+<g clip-path="url(#str-b-clip)">
+<path d="M6 8 C22 5 42 11 58 8 L58 19 C42 22 22 16 6 19 Z" style="fill:currentColor"/>
+<path d="M6 22 C22 19 42 25 58 22 L58 28 C42 31 22 25 6 28 Z" style="fill:currentColor" fill-opacity=".45"/>
+<path d="M6 31 C22 28 42 34 58 31 L58 42 C42 45 22 39 6 42 Z" style="fill:currentColor" fill-opacity=".8"/>
+<path d="M6 45 C22 42 42 48 58 45 L58 56 C42 59 22 53 6 56 Z" style="fill:currentColor" fill-opacity=".35"/>
+</g>
+<line x1="41" y1="6" x2="41" y2="61" style="stroke:var(--acc)" stroke-width="3.2" stroke-linecap="round"/>
+<path d="M35 1.5 L47 1.5 L41 8.5 Z" style="fill:var(--acc)"/></symbol>
+<symbol id="str-b-icon" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#18202B"/><defs><clipPath id="str-b-iclip"><rect x="72" y="96" width="368" height="336" rx="60"/></clipPath></defs>
+<g clip-path="url(#str-b-iclip)">
+<path d="M72 96 C192 74 320 118 440 96 L440 198 C320 220 192 176 72 198 Z" fill="#E3EAF2"/>
+<path d="M72 228 C192 206 320 250 440 228 L440 296 C320 318 192 274 72 296 Z" fill="#E3EAF2" fill-opacity=".5"/>
+<path d="M72 326 C192 304 320 348 440 326 L440 432 C320 454 192 410 72 432 Z" fill="#E3EAF2" fill-opacity=".82"/>
+</g>
+<line x1="318" y1="92" x2="318" y2="462" stroke="#45C79F" stroke-width="34" stroke-linecap="round"/>
+<path d="M270 36 L366 36 L318 98 Z" fill="#45C79F" stroke="#45C79F" stroke-width="10" stroke-linejoin="round"/></symbol>
+<symbol id="syn-a-sym" viewBox="0 0 64 64"><path d="M6 48 L34 39 L58 49 L30 59 Z" style="fill:var(--acc);stroke:var(--acc)" fill-opacity=".32" stroke-width="2.6" stroke-linejoin="round"/>
+<path d="M24 8 L34 39" fill="none" style="stroke:currentColor" stroke-width="1.6" stroke-dasharray="2.6 2.6" stroke-opacity=".6"/>
+<path d="M6 48 L24 8 L58 49 M24 8 L30 59" fill="none" style="stroke:currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="24" cy="8" r="4.8" style="fill:currentColor"/></symbol>
+<symbol id="syn-a-icon" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#0C1A2B"/><path d="M56 352 L262 284 L452 358 L246 438 Z" fill="#38BCEB" fill-opacity=".35" stroke="#38BCEB" stroke-width="28" stroke-linejoin="round"/>
+<path d="M56 352 L196 74 L452 358 M196 74 L246 438" fill="none" stroke="#EAF2FA" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="196" cy="74" r="42" fill="#EAF2FA"/></symbol>
+<symbol id="syn-b-sym" viewBox="0 0 64 64"><path d="M8 58 C12 36 20 18 32 6 C44 18 52 36 56 58" fill="none" style="stroke:currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<line x1="32" y1="6" x2="32" y2="58" style="stroke:currentColor" stroke-width="2.2" stroke-linecap="round"/>
+<path d="M12.4 41 Q32 49 51.6 41" fill="none" style="stroke:currentColor" stroke-width="4" stroke-linecap="round"/>
+<circle cx="32" cy="45" r="5" style="fill:var(--acc)"/></symbol>
+<symbol id="syn-b-icon" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#0C1A2B"/><g transform="translate(256 262) scale(.86) translate(-256 -252)">
+<path d="M64 456 C96 288 160 144 256 48 C352 144 416 288 448 456" fill="none" stroke="#EAF2FA" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+<line x1="256" y1="48" x2="256" y2="456" stroke="#EAF2FA" stroke-width="22" stroke-linecap="round"/>
+<path d="M99 328 Q256 392 413 328" fill="none" stroke="#EAF2FA" stroke-width="40" stroke-linecap="round"/>
+<circle cx="256" cy="360" r="62" fill="#0C1A2B"/>
+<circle cx="256" cy="360" r="42" fill="#38BCEB"/>
+</g></symbol></defs></svg>
+<div class="wrap">
+  <div class="topbar">
+    <span class="eyebrow">Synapse Solutions · Naming exploration · 3 Oct 2026</span>
+    <button class="theme-btn" type="button" id="themeBtn" aria-label="Switch colour theme">Theme: auto</button>
+  </div>
+
+  <h1>Name and Logo Options</h1>
+  <div class="intro">
+    <p class="lede">Name candidates for the offline-first desktop workspace. It fuses drone video and flight logs, 3D models, point clouds, maps and photos of industrial assets into one scene and one timeline, with an agent in every window. Buyers are asset-integrity managers in oil and gas, utilities and construction, and government clients in Kuwait and the UAE.</p>
+    <p class="lede">The bar for a name: credible in a ministry meeting, easy to say in English and Arabic, able to stand on its own, and free of software, GIS, drone and inspection conflicts.</p>
+    <p class="note"><strong>Quick screen, not legal clearance.</strong> Conflicts were checked with web searches on 3 Oct 2026. No trademark registers were searched and no domain availability was verified. See the method notes before committing.</p>
+  </div>
+
+  <div class="rec-block">
+    <div class="rec-mark">
+      <svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="muqantar lockup"><use href="#muq-a-sym" x="14" y="18" width="64" height="64"/><text x="94" y="56" class="wm" font-size="38" font-weight="600" letter-spacing="0.005em" style="fill:currentColor">Muqantar</text>
+<text x="94" y="86" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">مُقَنْطَر</text></svg>
+      <div style="display:flex;gap:10px;align-items:center"><svg class="ic" width="48" height="48" viewBox="0 0 512 512" role="img" aria-label="icon 48 px"><use href="#muq-a-icon"/></svg><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#muq-a-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#muq-a-icon"/></svg></div>
+    </div>
+    <div>
+      <span class="pill rec">Recommendation</span>
+      <h2 style="margin-top:10px">Muqantar, with the almucantar-rings mark</h2>
+      <ul>
+        <li><strong>It comes from the region's own science.</strong> <em>Al-muqanṭarāt</em> are the astrolabe's circles of equal altitude, and English astronomy still uses the word as <em>almucantar</em>. A Kuwaiti ministry and a European EPC contractor can both take it seriously.</li>
+        <li><strong>It means what the product does.</strong> Altitude, contour and vantage point. The mark uses the real geometry of an astrolabe plate, so the story is true and not decoration.</li>
+        <li><strong>Easy to say in both languages.</strong> In English it is moo-KAN-tar, with the q said as in "Qatar". In Arabic it is مُقَنْطَر. There are no p or v sounds.</li>
+        <li><strong>Cleanest screen of the four.</strong> No software, GIS, drone or inspection use was found. The rare word should make the .com and .ai easy to get.</li>
+        <li><strong>Cost:</strong> nobody knows the word yet. It needs a one-line story on the splash screen and in the deck ("named after the astrolabe's circles of altitude").</li>
+      </ul>
+      <p class="then">Runner-up: <strong>Ocellus</strong>, if you want an international, Latin tone. If sales would rather lean on the parent brand, the fallback is <strong>Synapse Atlas</strong>: quickest to launch, hardest to protect.</p>
+    </div>
+  </div>
+
+  <h2 id="shortlist">Shortlist</h2>
+  <p class="lede">Four names, one per style. Each has two logo concepts drawn from the subject itself: layers, the drone pose frustum, survey bearings, contour lines and lenses. Every concept is shown on a dark and a light ground, with its app icon at the 512 px master size and at 32 and 16 px.</p>
+  
+<section class="cand" id="muqantar">
+  <header class="cand-head">
+    <div class="cand-title">
+      <span class="num">1</span>
+      <h3>Muqantar <span class="ar" lang="ar" dir="rtl">مُقَنْطَر</span></h3>
+      <span class="pill rec">Recommended</span>
+    </div>
+    <p class="style">Arabic-rooted, heritage astronomy term</p>
+  </header>
+  <dl class="facts">
+    <div><dt>Meaning</dt><dd>The astrolabe's circles of equal altitude, <em>al-muqanṭarāt</em>, which entered English as <em>almucantar</em>. The word itself means arched or vaulted. It fits a tool that shows one asset from every altitude at once.</dd></div>
+    <div><dt>Say it</dt><dd>moo-KAN-tar (the q is said like the k in Qatar). Arabic: مُقَنْطَر, muqanṭar.</dd></div>
+    <div><dt>Screen</dt><dd><span class="pill clear">Clear on quick screen</span> No software, GIS, drone, reality-capture or inspection product found under Muqantar, Mukantar or Mucantar. The only near-matches are two small consultancies called <em>Almucantar</em> (UK IT consultancy, inc. 2009; Paris management consultancy). Because the word is rare, the .com and .ai look likely to be free. That is not verified.</dd></div>
+  </dl>
+  <div class="concepts">
+<div class="concept" style="--acc-d:#D6A04A;--acc-l:#9A6815">
+  <div class="concept-head"><h4>A. Almucantar rings</h4><p>Circles of equal altitude crowding toward the zenith, drawn the way they sit on an astrolabe plate. They also read as terrain contours with a drone point at the summit.</p></div>
+  <div class="grounds">
+    <div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="muqantar lockup"><use href="#muq-a-sym" x="14" y="18" width="64" height="64"/><text x="94" y="56" class="wm" font-size="38" font-weight="600" letter-spacing="0.005em" style="fill:currentColor">Muqantar</text>
+<text x="94" y="86" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">مُقَنْطَر</text></svg></div>
+    <div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="muqantar lockup"><use href="#muq-a-sym" x="14" y="18" width="64" height="64"/><text x="94" y="56" class="wm" font-size="38" font-weight="600" letter-spacing="0.005em" style="fill:currentColor">Muqantar</text>
+<text x="94" y="86" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">مُقَنْطَر</text></svg></div>
+  </div>
+  <div class="iconrow">
+    <figure class="big"><svg class="ic" width="112" height="112" viewBox="0 0 512 512" role="img" aria-label="icon 112 px"><use href="#muq-a-icon"/></svg><figcaption>512 px master, shown at 112</figcaption></figure>
+    <figure class="sizes on-dark"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#muq-a-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#muq-a-icon"/></svg><figcaption>32 / 16 px on dark</figcaption></figure>
+    <figure class="sizes on-light"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#muq-a-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#muq-a-icon"/></svg><figcaption>32 / 16 px on light</figcaption></figure>
+  </div>
+  <p class="files">Files: <code>logos/muqantar-mark.svg</code> <code>logos/muqantar-icon.svg</code></p>
+</div>
+<div class="concept" style="--acc-d:#D6A04A;--acc-l:#9A6815">
+  <div class="concept-head"><h4>B. Alidade bearing</h4><p>The astrolabe's sighting rule (the alidade) laid across a ring at a bearing, with a north mark. It works as a survey bearing.</p></div>
+  <div class="grounds">
+    <div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="muqantar lockup"><use href="#muq-b-sym" x="14" y="18" width="64" height="64"/><text x="94" y="56" class="wm" font-size="38" font-weight="600" letter-spacing="0.005em" style="fill:currentColor">Muqantar</text>
+<text x="94" y="86" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">مُقَنْطَر</text></svg></div>
+    <div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="muqantar lockup"><use href="#muq-b-sym" x="14" y="18" width="64" height="64"/><text x="94" y="56" class="wm" font-size="38" font-weight="600" letter-spacing="0.005em" style="fill:currentColor">Muqantar</text>
+<text x="94" y="86" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">مُقَنْطَر</text></svg></div>
+  </div>
+  <div class="iconrow">
+    <figure class="big"><svg class="ic" width="112" height="112" viewBox="0 0 512 512" role="img" aria-label="icon 112 px"><use href="#muq-b-icon"/></svg><figcaption>512 px master, shown at 112</figcaption></figure>
+    <figure class="sizes on-dark"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#muq-b-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#muq-b-icon"/></svg><figcaption>32 / 16 px on dark</figcaption></figure>
+    <figure class="sizes on-light"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#muq-b-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#muq-b-icon"/></svg><figcaption>32 / 16 px on light</figcaption></figure>
+  </div>
+  <p class="files">Files: <code>logos/muqantar-alt-mark.svg</code> <code>logos/muqantar-alt-icon.svg</code></p>
+</div></div>
+</section>
+<section class="cand" id="ocellus">
+  <header class="cand-head">
+    <div class="cand-title">
+      <span class="num">2</span>
+      <h3>Ocellus <span class="ar" lang="ar" dir="rtl">أوسيلوس</span></h3>
+      
+    </div>
+    <p class="style">Latin real word (zoology)</p>
+  </header>
+  <dl class="facts">
+    <div><dt>Meaning</dt><dd>"Little eye": the simple eyes of bees (drones included) and dragonflies, which hold the horizon and sense attitude. That is the same job as a pose estimate.</dd></div>
+    <div><dt>Say it</dt><dd>oh-SEL-us. Arabic: أوسيلوس. English stress can drift to OSS-el-us, so lead with audio in demos.</dd></div>
+    <div><dt>Screen</dt><dd><span class="pill caution">Caution</span> Ocellus Inc. is a cloud and IT consultancy (Schaumburg, IL), and another Ocellus Inc. makes aerogel materials (Livermore, CA). No drone, GIS or imaging product was found. The .com is almost certainly taken, so plan on ocellus.ai, ocellus.app or a prefix such as getocellus.</dd></div>
+  </dl>
+  <div class="concepts">
+<div class="concept" style="--acc-d:#FF6A3D;--acc-l:#D9481B">
+  <div class="concept-head"><h4>A. Lens axis</h4><p>A biconvex lens in section with two rays meeting at the focal point. This is the camera model behind every frame projected onto the asset.</p></div>
+  <div class="grounds">
+    <div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="ocellus lockup"><use href="#oce-a-sym" x="14" y="18" width="64" height="64"/><text x="94" y="56" class="wm" font-size="40" font-weight="500" letter-spacing="0.01em" style="fill:currentColor">Ocellus</text>
+<text x="94" y="86" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">أوسيلوس</text></svg></div>
+    <div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="ocellus lockup"><use href="#oce-a-sym" x="14" y="18" width="64" height="64"/><text x="94" y="56" class="wm" font-size="40" font-weight="500" letter-spacing="0.01em" style="fill:currentColor">Ocellus</text>
+<text x="94" y="86" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">أوسيلوس</text></svg></div>
+  </div>
+  <div class="iconrow">
+    <figure class="big"><svg class="ic" width="112" height="112" viewBox="0 0 512 512" role="img" aria-label="icon 112 px"><use href="#oce-a-icon"/></svg><figcaption>512 px master, shown at 112</figcaption></figure>
+    <figure class="sizes on-dark"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#oce-a-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#oce-a-icon"/></svg><figcaption>32 / 16 px on dark</figcaption></figure>
+    <figure class="sizes on-light"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#oce-a-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#oce-a-icon"/></svg><figcaption>32 / 16 px on light</figcaption></figure>
+  </div>
+  <p class="files">Files: <code>logos/ocellus-mark.svg</code> <code>logos/ocellus-icon.svg</code></p>
+</div>
+<div class="concept" style="--acc-d:#FF6A3D;--acc-l:#D9481B">
+  <div class="concept-head"><h4>B. Ocelli triad</h4><p>The three simple eyes over a horizon line. Three points fix a plane and a pose, which is the basis of triangulation.</p></div>
+  <div class="grounds">
+    <div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="ocellus lockup"><use href="#oce-b-sym" x="14" y="18" width="64" height="64"/><text x="94" y="56" class="wm" font-size="40" font-weight="500" letter-spacing="0.01em" style="fill:currentColor">Ocellus</text>
+<text x="94" y="86" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">أوسيلوس</text></svg></div>
+    <div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="ocellus lockup"><use href="#oce-b-sym" x="14" y="18" width="64" height="64"/><text x="94" y="56" class="wm" font-size="40" font-weight="500" letter-spacing="0.01em" style="fill:currentColor">Ocellus</text>
+<text x="94" y="86" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">أوسيلوس</text></svg></div>
+  </div>
+  <div class="iconrow">
+    <figure class="big"><svg class="ic" width="112" height="112" viewBox="0 0 512 512" role="img" aria-label="icon 112 px"><use href="#oce-b-icon"/></svg><figcaption>512 px master, shown at 112</figcaption></figure>
+    <figure class="sizes on-dark"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#oce-b-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#oce-b-icon"/></svg><figcaption>32 / 16 px on dark</figcaption></figure>
+    <figure class="sizes on-light"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#oce-b-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#oce-b-icon"/></svg><figcaption>32 / 16 px on light</figcaption></figure>
+  </div>
+  <p class="files">Files: <code>logos/ocellus-alt-mark.svg</code> <code>logos/ocellus-alt-icon.svg</code></p>
+</div></div>
+</section>
+<section class="cand" id="stratlas">
+  <header class="cand-head">
+    <div class="cand-title">
+      <span class="num">3</span>
+      <h3>Stratlas <span class="ar" lang="ar" dir="rtl">ستراتلاس</span></h3>
+      
+    </div>
+    <p class="style">Compound: strata + atlas</p>
+  </header>
+  <dl class="facts">
+    <div><dt>Meaning</dt><dd>An atlas made of layers. Every dataset (mesh, cloud, map, video) is one stratum in a single georeferenced stack.</dd></div>
+    <div><dt>Say it</dt><dd>STRAT-las. Arabic: ستراتلاس. Some Arabic speakers add a lead vowel (is-trat-las), which is normal and harmless.</dd></div>
+    <div><dt>Screen</dt><dd><span class="pill caution">Caution, low</span> The only use found is an open-source hobby tool (GPL, SourceForge and GitHub) that renders maps from real-time strategy games. Its repository was archived in 2021, and it is not commercial. No GIS, drone or inspection product was found. The name is coined and self-explanatory in English.</dd></div>
+  </dl>
+  <div class="concepts">
+<div class="concept" style="--acc-d:#45C79F;--acc-l:#16866A">
+  <div class="concept-head"><h4>A. Plumb through layers</h4><p>Three georeferenced layers (model, point cloud, map) held together by one plumb line through a single coordinate.</p></div>
+  <div class="grounds">
+    <div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="stratlas lockup"><use href="#str-a-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATLAS</text>
+<text x="94" y="86" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتلاس</text></svg></div>
+    <div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="stratlas lockup"><use href="#str-a-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATLAS</text>
+<text x="94" y="86" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتلاس</text></svg></div>
+  </div>
+  <div class="iconrow">
+    <figure class="big"><svg class="ic" width="112" height="112" viewBox="0 0 512 512" role="img" aria-label="icon 112 px"><use href="#str-a-icon"/></svg><figcaption>512 px master, shown at 112</figcaption></figure>
+    <figure class="sizes on-dark"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#str-a-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#str-a-icon"/></svg><figcaption>32 / 16 px on dark</figcaption></figure>
+    <figure class="sizes on-light"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#str-a-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#str-a-icon"/></svg><figcaption>32 / 16 px on light</figcaption></figure>
+  </div>
+  <p class="files">Files: <code>logos/stratlas-mark.svg</code> <code>logos/stratlas-icon.svg</code></p>
+</div>
+<div class="concept" style="--acc-d:#45C79F;--acc-l:#16866A">
+  <div class="concept-head"><h4>B. Core and playhead</h4><p>A core sample of strata cut by a timeline playhead: layers and time in one mark, like the workspace itself.</p></div>
+  <div class="grounds">
+    <div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="stratlas lockup"><use href="#str-b-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATLAS</text>
+<text x="94" y="86" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتلاس</text></svg></div>
+    <div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="stratlas lockup"><use href="#str-b-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATLAS</text>
+<text x="94" y="86" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتلاس</text></svg></div>
+  </div>
+  <div class="iconrow">
+    <figure class="big"><svg class="ic" width="112" height="112" viewBox="0 0 512 512" role="img" aria-label="icon 112 px"><use href="#str-b-icon"/></svg><figcaption>512 px master, shown at 112</figcaption></figure>
+    <figure class="sizes on-dark"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#str-b-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#str-b-icon"/></svg><figcaption>32 / 16 px on dark</figcaption></figure>
+    <figure class="sizes on-light"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#str-b-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#str-b-icon"/></svg><figcaption>32 / 16 px on light</figcaption></figure>
+  </div>
+  <p class="files">Files: <code>logos/stratlas-alt-mark.svg</code> <code>logos/stratlas-alt-icon.svg</code></p>
+</div></div>
+</section>
+<section class="cand" id="synapse-atlas">
+  <header class="cand-head">
+    <div class="cand-title">
+      <span class="num">4</span>
+      <h3>Synapse Atlas <span class="ar" lang="ar" dir="rtl">سينابس أطلس</span></h3>
+      
+    </div>
+    <p class="style">Synapse family: house mark + descriptor</p>
+  </header>
+  <dl class="facts">
+    <div><dt>Meaning</dt><dd>The company's atlas of every asset it has flown. It sells under the parent's name, which already has standing with GCC clients.</dd></div>
+    <div><dt>Say it</dt><dd>SIN-aps AT-las. Arabic: سينابس أطلس.</dd></div>
+    <div><dt>Screen</dt><dd><span class="pill caution">Caution</span> Both words are crowded in software. "Synapse" is used by Microsoft Azure Synapse Analytics and by Atlas Technology's <em>Synapse</em> wireless monitoring system (UK). "Atlas" is used by MongoDB Atlas and several drone makers. No product called "Synapse Atlas" was found. It is the weakest of the four to protect on its own and depends on the house mark. No new domain is needed (synapse-solutions.ai/atlas).</dd></div>
+  </dl>
+  <div class="concepts">
+<div class="concept" style="--acc-d:#38BCEB;--acc-l:#0A78A8">
+  <div class="concept-head"><h4>A. Pose frustum</h4><p>The drone's pose at the apex projecting its camera footprint onto the ground: the product's signature view, reduced to four lines.</p></div>
+  <div class="grounds">
+    <div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="synapse-atlas lockup"><use href="#syn-a-sym" x="14" y="18" width="64" height="64"/><text x="94" y="24" class="wm" font-size="12" font-weight="500" letter-spacing="0.34em" style="fill:currentColor">SYNAPSE</text>
+<text x="94" y="58" class="wm" font-size="38" font-weight="600" letter-spacing="0.005em" style="fill:currentColor">Atlas</text>
+<text x="94" y="86" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">سينابس أطلس</text></svg></div>
+    <div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="synapse-atlas lockup"><use href="#syn-a-sym" x="14" y="18" width="64" height="64"/><text x="94" y="24" class="wm" font-size="12" font-weight="500" letter-spacing="0.34em" style="fill:currentColor">SYNAPSE</text>
+<text x="94" y="58" class="wm" font-size="38" font-weight="600" letter-spacing="0.005em" style="fill:currentColor">Atlas</text>
+<text x="94" y="86" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">سينابس أطلس</text></svg></div>
+  </div>
+  <div class="iconrow">
+    <figure class="big"><svg class="ic" width="112" height="112" viewBox="0 0 512 512" role="img" aria-label="icon 112 px"><use href="#syn-a-icon"/></svg><figcaption>512 px master, shown at 112</figcaption></figure>
+    <figure class="sizes on-dark"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#syn-a-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#syn-a-icon"/></svg><figcaption>32 / 16 px on dark</figcaption></figure>
+    <figure class="sizes on-light"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#syn-a-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#syn-a-icon"/></svg><figcaption>32 / 16 px on light</figcaption></figure>
+  </div>
+  <p class="files">Files: <code>logos/synapse-atlas-mark.svg</code> <code>logos/synapse-atlas-icon.svg</code></p>
+</div>
+<div class="concept" style="--acc-d:#38BCEB;--acc-l:#0A78A8">
+  <div class="concept-head"><h4>B. Graticule A</h4><p>An A built from two meridians, a central meridian and a parallel. The node where they cross is the synapse.</p></div>
+  <div class="grounds">
+    <div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="synapse-atlas lockup"><use href="#syn-b-sym" x="14" y="18" width="64" height="64"/><text x="94" y="24" class="wm" font-size="12" font-weight="500" letter-spacing="0.34em" style="fill:currentColor">SYNAPSE</text>
+<text x="94" y="58" class="wm" font-size="38" font-weight="600" letter-spacing="0.005em" style="fill:currentColor">Atlas</text>
+<text x="94" y="86" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">سينابس أطلس</text></svg></div>
+    <div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="synapse-atlas lockup"><use href="#syn-b-sym" x="14" y="18" width="64" height="64"/><text x="94" y="24" class="wm" font-size="12" font-weight="500" letter-spacing="0.34em" style="fill:currentColor">SYNAPSE</text>
+<text x="94" y="58" class="wm" font-size="38" font-weight="600" letter-spacing="0.005em" style="fill:currentColor">Atlas</text>
+<text x="94" y="86" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">سينابس أطلس</text></svg></div>
+  </div>
+  <div class="iconrow">
+    <figure class="big"><svg class="ic" width="112" height="112" viewBox="0 0 512 512" role="img" aria-label="icon 112 px"><use href="#syn-b-icon"/></svg><figcaption>512 px master, shown at 112</figcaption></figure>
+    <figure class="sizes on-dark"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#syn-b-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#syn-b-icon"/></svg><figcaption>32 / 16 px on dark</figcaption></figure>
+    <figure class="sizes on-light"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#syn-b-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#syn-b-icon"/></svg><figcaption>32 / 16 px on light</figcaption></figure>
+  </div>
+  <p class="files">Files: <code>logos/synapse-atlas-alt-mark.svg</code> <code>logos/synapse-atlas-alt-icon.svg</code></p>
+</div></div>
+</section>
+
+  <h2 id="compare">Side by side</h2>
+  <p class="lede">A qualitative read, not a score. The screen-risk row reflects the quick web screen only.</p>
+  <table class="rt cmp">
+    <thead><tr><th>Criterion</th><th>Muqantar</th><th>Ocellus</th><th>Stratlas</th><th>Synapse Atlas</th></tr></thead>
+    <tbody><tr><td data-l="Criterion"><strong>Meaning fits the product</strong></td><td data-l="Muqantar"><span class="g g4">Strong</span></td><td data-l="Ocellus"><span class="g g4">Strong</span></td><td data-l="Stratlas"><span class="g g4">Strong</span></td><td data-l="Synapse Atlas"><span class="g g3">Good</span></td></tr>
+<tr><td data-l="Criterion"><strong>Easy for Arabic speakers</strong></td><td data-l="Muqantar"><span class="g g4">Strong</span></td><td data-l="Ocellus"><span class="g g3">Good</span></td><td data-l="Stratlas"><span class="g g2">Fair</span></td><td data-l="Synapse Atlas"><span class="g g3">Good</span></td></tr>
+<tr><td data-l="Criterion"><strong>Easy in English</strong></td><td data-l="Muqantar"><span class="g g3">Good</span></td><td data-l="Ocellus"><span class="g g2">Fair</span></td><td data-l="Stratlas"><span class="g g4">Strong</span></td><td data-l="Synapse Atlas"><span class="g g4">Strong</span></td></tr>
+<tr><td data-l="Criterion"><strong>Credible to a ministry</strong></td><td data-l="Muqantar"><span class="g g4">Strong</span></td><td data-l="Ocellus"><span class="g g3">Good</span></td><td data-l="Stratlas"><span class="g g3">Good</span></td><td data-l="Synapse Atlas"><span class="g g4">Strong</span></td></tr>
+<tr><td data-l="Criterion"><strong>Distinctive, ownable</strong></td><td data-l="Muqantar"><span class="g g4">Strong</span></td><td data-l="Ocellus"><span class="g g3">Good</span></td><td data-l="Stratlas"><span class="g g4">Strong</span></td><td data-l="Synapse Atlas"><span class="g g1">Weak</span></td></tr>
+<tr><td data-l="Criterion"><strong>Screen risk</strong></td><td data-l="Muqantar"><span class="g g4">Low</span></td><td data-l="Ocellus"><span class="g g2">Medium</span></td><td data-l="Stratlas"><span class="g g4">Low</span></td><td data-l="Synapse Atlas"><span class="g g2">Medium</span></td></tr>
+<tr><td data-l="Criterion"><strong>.com / .ai outlook</strong></td><td data-l="Muqantar"><span class="g g4">Likely free</span></td><td data-l="Ocellus"><span class="g g1">Likely taken</span></td><td data-l="Stratlas"><span class="g g2">Unclear</span></td><td data-l="Synapse Atlas"><span class="g g3">Not needed</span></td></tr></tbody>
+  </table>
+
+  <h2 id="longlist">Long list</h2>
+  <p class="lede">Every name considered, with its verdict. A name was dropped for a clear conflict in software, GIS, drones, reality capture or inspection, or for a reading that would hurt it in the room. "Well known" means the conflict is common industry knowledge and was not searched again.</p>
+  <table class="rt ll">
+    <thead><tr><th>Name</th><th>Style</th><th>Idea</th><th>Verdict</th><th>Why</th></tr></thead>
+    <tbody>
+<tr><td data-l="Name"><strong>Muqantar</strong></td><td data-l="Style">Arabic-rooted</td><td data-l="Idea">Astrolabe circles of equal altitude</td><td data-l="Verdict"><span class="pill short">Shortlisted</span></td><td data-l="Why">Shortlisted. Clear on screen.</td></tr>
+<tr><td data-l="Name"><strong>Ocellus</strong></td><td data-l="Style">Latin word</td><td data-l="Idea">Simple eye of bees and dragonflies</td><td data-l="Verdict"><span class="pill short">Shortlisted</span></td><td data-l="Why">Shortlisted. IT consultancy and materials firm share the name.</td></tr>
+<tr><td data-l="Name"><strong>Stratlas</strong></td><td data-l="Style">Compound</td><td data-l="Idea">Strata + atlas</td><td data-l="Verdict"><span class="pill short">Shortlisted</span></td><td data-l="Why">Shortlisted. Only an archived hobby tool for game maps.</td></tr>
+<tr><td data-l="Name"><strong>Synapse Atlas</strong></td><td data-l="Style">Synapse family</td><td data-l="Idea">House mark + atlas</td><td data-l="Verdict"><span class="pill short">Shortlisted</span></td><td data-l="Why">Shortlisted. Crowded words, but leans on the house mark.</td></tr>
+<tr><td data-l="Name"><strong>Majma</strong></td><td data-l="Style">Arabic</td><td data-l="Idea">Confluence, meeting place</td><td data-l="Verdict"><span class="pill reserve">Reserve</span></td><td data-l="Why">Clean in software, but in the Gulf it reads as "complex / mall" and echoes Al-Majmaah city.</td></tr>
+<tr><td data-l="Name"><strong>Alidade</strong></td><td data-l="Style">Arabic-rooted</td><td data-l="Idea">Sighting rule of a survey instrument</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Open-source Web-GIS platform named Alidade (MapLibre, PostGIS, 3D, glTF); Stadia Maps "Alidade" basemap styles.</td></tr>
+<tr><td data-l="Name"><strong>Nadir</strong></td><td data-l="Style">Arabic-rooted</td><td data-l="Idea">Straight-down camera view</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">GeoNadir drone-mapping platform; also a generic photogrammetry term.</td></tr>
+<tr><td data-l="Name"><strong>Azimuth</strong></td><td data-l="Style">Arabic-rooted</td><td data-l="Idea">Bearing from north</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Kvertus "Azimuth" and "Aero Azimuth" drone-detection systems.</td></tr>
+<tr><td data-l="Name"><strong>Altair</strong></td><td data-l="Style">Arabic star name</td><td data-l="Idea">"The flyer"</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Altair Engineering simulation software (well known, not re-searched).</td></tr>
+<tr><td data-l="Name"><strong>Aldebaran</strong></td><td data-l="Style">Arabic star name</td><td data-l="Idea">"The follower"</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Aldebaran Robotics, maker of NAO and Pepper (well known).</td></tr>
+<tr><td data-l="Name"><strong>Mizar</strong></td><td data-l="Style">Arabic star name</td><td data-l="Idea">Double star in the Plough</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">MIZAR 3D GIS web client appears in 3D GIS listings.</td></tr>
+<tr><td data-l="Name"><strong>Idrisi</strong></td><td data-l="Style">Heritage cartographer</td><td data-l="Idea">Al-Idrisi's world map</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">IDRISI / TerrSet GIS (Clark Labs), a direct GIS conflict.</td></tr>
+<tr><td data-l="Name"><strong>Alhazen</strong></td><td data-l="Style">Heritage optics</td><td data-l="Idea">Ibn al-Haytham</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Alhazen Technologies (software products: ERP, HMS).</td></tr>
+<tr><td data-l="Name"><strong>Biruni</strong></td><td data-l="Style">Heritage geodesy</td><td data-l="Idea">Al-Biruni measured the Earth</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Several software firms (Birunisoft data platform, Code Biruni, Biruni Teknopark).</td></tr>
+<tr><td data-l="Name"><strong>Jazari</strong></td><td data-l="Style">Heritage robotics</td><td data-l="Idea">Al-Jazari's automata</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Jazari Dynamics builds wastewater inspection robots; several Al-Jazari robotics firms.</td></tr>
+<tr><td data-l="Name"><strong>Astrolabe</strong></td><td data-l="Style">Instrument</td><td data-l="Idea">Arab-era astronomy instrument</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Astrolabe GIS (KSA) and Astrolabe Engineering (reality capture, Greece).</td></tr>
+<tr><td data-l="Name"><strong>Manzar</strong></td><td data-l="Style">Arabic</td><td data-l="Idea">View, scene</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">manzar.ai is held by Manzara Technologies (enterprise and sovereign AI).</td></tr>
+<tr><td data-l="Name"><strong>Basira</strong></td><td data-l="Style">Arabic</td><td data-l="Idea">Insight</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Basira AI, Basirah-AI, and a Basira AI on Qatar's Falak platform.</td></tr>
+<tr><td data-l="Name"><strong>Marsad</strong></td><td data-l="Style">Arabic</td><td data-l="Idea">Observatory</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Several Arabic monitoring and risk platforms named Marsad.</td></tr>
+<tr><td data-l="Name"><strong>Rasida</strong></td><td data-l="Style">Arabic</td><td data-l="Idea">The observing instrument</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">"Rasid" apps for industrial-complex management and for the Saudi Ministry of Housing; the feminine form is too close.</td></tr>
+<tr><td data-l="Name"><strong>Sadeem</strong></td><td data-l="Style">Arabic</td><td data-l="Idea">Nebula (a point cloud)</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Sadeem Technology (KSA): smart-city monitoring and data visualisation for governments, including the UAE.</td></tr>
+<tr><td data-l="Name"><strong>Suhail</strong></td><td data-l="Style">Arabic star</td><td data-l="Idea">Canopus, the Gulf's season star</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Abu Dhabi Civil Defence's "Suhail" firefighting drone.</td></tr>
+<tr><td data-l="Name"><strong>Sanad</strong></td><td data-l="Style">Arabic</td><td data-l="Idea">Support</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Sanad, Mubadala's aerospace MRO group (UAE).</td></tr>
+<tr><td data-l="Name"><strong>Bawsala</strong></td><td data-l="Style">Arabic</td><td data-l="Idea">Compass</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Saudi digital-addressing app; Al Bawsala; a KPI platform.</td></tr>
+<tr><td data-l="Name"><strong>Samt</strong></td><td data-l="Style">Arabic</td><td data-l="Idea">Bearing (root of azimuth and zenith)</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Samt, a Qatari software house.</td></tr>
+<tr><td data-l="Name"><strong>Kamal</strong></td><td data-l="Style">Arabic</td><td data-l="Idea">Arab navigators' star-sight card</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Kamal deployment tool (37signals); also a common given name.</td></tr>
+<tr><td data-l="Name"><strong>Athar, Kashf, Diraya, Tayf, Thabit</strong></td><td data-l="Style">Arabic</td><td data-l="Idea">Trace, survey, know-how, spectrum, fixed</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Each is already used by several regional software firms or apps (Thabit is a Kuwaiti delivery app).</td></tr>
+<tr><td data-l="Name"><strong>Zawiya, Nazira</strong></td><td data-l="Style">Arabic</td><td data-l="Idea">Angle; observer</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Zawiya carries a religious (Sufi lodge) reading; Nazira is close to Nazara Technologies (Dubai).</td></tr>
+<tr><td data-l="Name"><strong>Frustum</strong></td><td data-l="Style">Real word</td><td data-l="Idea">Camera view volume</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Frustum Inc. (generative CAD), acquired by PTC.</td></tr>
+<tr><td data-l="Name"><strong>Isoline</strong></td><td data-l="Style">Real word</td><td data-l="Idea">Contour line</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">HERE Isoline Routing API; generic GIS term that cannot be owned.</td></tr>
+<tr><td data-l="Name"><strong>Strata</strong></td><td data-l="Style">Real word</td><td data-l="Idea">Layers</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Strata Manufacturing (Mubadala aerospace, UAE).</td></tr>
+<tr><td data-l="Name"><strong>Lamina</strong></td><td data-l="Style">Latin word</td><td data-l="Idea">A thin layer</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Crowded AI namespace (Lamina, Lamini, Lamina Labs).</td></tr>
+<tr><td data-l="Name"><strong>Lamella</strong></td><td data-l="Style">Latin word</td><td data-l="Idea">A thin plate</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Clean, but "lamellar tearing" is a plate defect that inspectors log.</td></tr>
+<tr><td data-l="Name"><strong>Sightline</strong></td><td data-l="Style">Compound</td><td data-l="Idea">Line of sight</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">SightLine Applications: onboard video processing for drones.</td></tr>
+<tr><td data-l="Name"><strong>Sightglass</strong></td><td data-l="Style">Real word</td><td data-l="Idea">Tank level window</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Sightglass AI (SaaS), and the name means equipment to O&G users.</td></tr>
+<tr><td data-l="Name"><strong>Cardo</strong></td><td data-l="Style">Latin</td><td data-l="Idea">Roman survey axis</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Sounds like CARTO, an agentic GIS platform; Cardo AI (fintech data).</td></tr>
+<tr><td data-l="Name"><strong>Groma</strong></td><td data-l="Style">Latin</td><td data-l="Idea">Roman surveying cross</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">GROMA geodetic calculation software; Bitsight's Groma engine.</td></tr>
+<tr><td data-l="Name"><strong>Ortelia</strong></td><td data-l="Style">Coined</td><td data-l="Idea">After Ortelius, the atlas maker</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Ortelia: 3D exhibition-design software (now zetcom).</td></tr>
+<tr><td data-l="Name"><strong>Synorama</strong></td><td data-l="Style">Coined</td><td data-l="Idea">All views together</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Synorama: GCC data-management IT firm.</td></tr>
+<tr><td data-l="Name"><strong>Coaxis</strong></td><td data-l="Style">Coined</td><td data-l="Idea">Shared axes</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Coaxis / Viewpoint construction software.</td></tr>
+<tr><td data-l="Name"><strong>Conflua</strong></td><td data-l="Style">Coined</td><td data-l="Idea">Flowing together</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Too close to Confluence and Confluent.</td></tr>
+<tr><td data-l="Name"><strong>Orthia</strong></td><td data-l="Style">Coined</td><td data-l="Idea">From ortho-, true view</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Orthia AI (dental); ortho- reads as orthodontics.</td></tr>
+<tr><td data-l="Name"><strong>Fieldframe</strong></td><td data-l="Style">Compound</td><td data-l="Idea">Frame of the field</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">FieldFrame: job-site photo app.</td></tr>
+<tr><td data-l="Name"><strong>Synapse Fusion</strong></td><td data-l="Style">Synapse family</td><td data-l="Idea">Literal fusion</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Autodesk Fusion (3D CAD).</td></tr>
+<tr><td data-l="Name"><strong>Cairn, Lattice</strong></td><td data-l="Style">Real words</td><td data-l="Idea">Survey marker; mesh</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Cairn Energy (oil and gas); Anduril Lattice (drones and defence).</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="method">Method and next steps</h2>
+  <div class="method">
+    <div>
+      <h4>How the screen was run</h4>
+      <ul>
+        <li>About 45 names were generated across five styles: coined, real word, compound, Arabic-rooted and Latin-rooted. Names with p or v sounds were avoided because Arabic has neither.</li>
+        <li>Each name was searched against software, GIS, drone, reality-capture, inspection and GCC technology companies. Names whose conflict is common industry knowledge were noted without a fresh search.</li>
+        <li>Dropped for a clear conflict in an adjacent market, or for a confusingly similar sound (Cardo and CARTO, Rasida and Rasid).</li>
+        <li>Caution means the name is used by companies in unrelated fields or by inactive projects.</li>
+      </ul>
+    </div>
+    <div>
+      <h4>Before committing</h4>
+      <ol>
+        <li>Run a full trademark search in classes 9 and 42: WIPO Global Brand Database, USPTO, EUIPO, plus the UAE, Kuwait, KSA and GCC registers, including Arabic-script forms.</li>
+        <li>Check and register domains: .com, .ai, .ae and .com.kw.</li>
+        <li>Test pronunciation with five Arabic and five English speakers who have only seen the name written.</li>
+        <li>Have a native speaker review the Arabic spellings and any dialect readings.</li>
+        <li>The wordmarks are live IBM Plex Sans and IBM Plex Sans Arabic text. Have a type designer outline and kern them before production.</li>
+      </ol>
+    </div>
+  </div>
+
+  <h2 id="sources">Key conflict sources</h2>
+  <ul class="sources">
+    <li><a href="https://docs.stadiamaps.com/map-styles/alidade-smooth/" rel="noopener noreferrer" target="_blank">Stadia Maps: Alidade Smooth style</a></li><li><a href="https://dronemappingsoftware.com/p/geonadir/" rel="noopener noreferrer" target="_blank">GeoNadir drone mapping</a></li><li><a href="https://euromaidanpress.com/2024/09/01/ukrainian-company-unveils-aero-azimuth-new-aerostat-based-drone-operator-detection-system/" rel="noopener noreferrer" target="_blank">Kvertus Aero Azimuth</a></li><li><a href="https://www.ptc.com/en/news/2018/ptc-acquires-frustum" rel="noopener noreferrer" target="_blank">PTC acquires Frustum</a></li><li><a href="https://clarklabs.org/terrset/idrisi-gis/" rel="noopener noreferrer" target="_blank">TerrSet / IDRISI GIS</a></li><li><a href="https://carto.com/" rel="noopener noreferrer" target="_blank">CARTO agentic GIS</a></li><li><a href="https://www.crunchbase.com/organization/sightline-applications" rel="noopener noreferrer" target="_blank">SightLine Applications</a></li><li><a href="https://www.sanad.ae/" rel="noopener noreferrer" target="_blank">Sanad (Mubadala)</a></li><li><a href="https://www.crunchbase.com/organization/sadeem-technology" rel="noopener noreferrer" target="_blank">Sadeem Technology</a></li><li><a href="https://www.manzar.ai/" rel="noopener noreferrer" target="_blank">manzar.ai / Manzara Technologies</a></li><li><a href="https://gulfnews.com/uae/emergencies/uae-unveils-worlds-first-jet-powered-firefighting-drone-suhail-at-expo-2025-in-osaka-1.500143999" rel="noopener noreferrer" target="_blank">Suhail firefighting drone</a></li><li><a href="https://agisc.sa/en/home/" rel="noopener noreferrer" target="_blank">Astrolabe GIS (KSA)</a></li><li><a href="https://www.jazaridynamics.com/" rel="noopener noreferrer" target="_blank">Jazari Dynamics</a></li><li><a href="https://ortelia.com/products/" rel="noopener noreferrer" target="_blank">Ortelia Interactive</a></li><li><a href="https://groma.software.informer.com/8.0/" rel="noopener noreferrer" target="_blank">GROMA geodetic software</a></li><li><a href="https://www.zoominfo.com/c/ocellus-inc/346163517" rel="noopener noreferrer" target="_blank">Ocellus Inc. (IT consultancy)</a></li><li><a href="https://github.com/andreas-jonsson/stratlas" rel="noopener noreferrer" target="_blank">Stratlas (archived game-map tool)</a></li><li><a href="https://find-and-update.company-information.service.gov.uk/company/06908119" rel="noopener noreferrer" target="_blank">Almucantar Ltd (UK)</a></li><li><a href="http://www.atlastechnologymapping.co.uk/synapsesoftware.html" rel="noopener noreferrer" target="_blank">Atlas Technology: Synapse monitoring</a></li>
+  </ul>
+
+  <footer>
+    Logo files: <code>docs/brand/logos/&lt;name&gt;-mark.svg</code> and <code>&lt;name&gt;-icon.svg</code> hold concept A for each name. Concept B is in <code>&lt;name&gt;-alt-mark.svg</code> and <code>&lt;name&gt;-alt-icon.svg</code>. Mark files use the positive (light-ground) colours. Icons carry their own background.
+  </footer>
+</div>
+<script>
+(function () {
+  var btn = document.getElementById('themeBtn');
+  var root = document.documentElement;
+  var order = ['auto', 'light', 'dark'];
+  var mode = 'auto';
+  try { mode = localStorage.getItem('nlo-theme') || 'auto'; } catch (e) {}
+  function apply(m) {
+    mode = m;
+    if (m === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', m);
+    btn.textContent = 'Theme: ' + m;
+    try { localStorage.setItem('nlo-theme', m); } catch (e) {}
+  }
+  apply(order.indexOf(mode) >= 0 ? mode : 'auto');
+  btn.addEventListener('click', function () { apply(order[(order.indexOf(mode) + 1) % order.length]); });
+})();
+</script>
+</body>
+</html>

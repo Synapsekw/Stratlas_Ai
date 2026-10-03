@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Stratlas Flight</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="option-2-flight.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-projects" viewBox="0 0 20 20"><rect x="3" y="3" width="5.75" height="5.75" rx="1.25"/><rect x="11.25" y="3" width="5.75" height="5.75" rx="1.25"/><rect x="3" y="11.25" width="5.75" height="5.75" rx="1.25"/><rect x="11.25" y="11.25" width="5.75" height="5.75" rx="1.25"/></symbol>
+    <symbol id="i-fusion" viewBox="0 0 20 20"><path d="M10 2.75 17.25 6.5 10 10.25 2.75 6.5z"/><path d="M2.75 10 10 13.75 17.25 10"/><path d="M2.75 13.5 10 17.25l7.25-3.75"/></symbol>
+    <symbol id="i-inspect" viewBox="0 0 20 20"><path d="M3 7V4.25C3 3.56 3.56 3 4.25 3H7M13 3h2.75c.69 0 1.25.56 1.25 1.25V7M17 13v2.75c0 .69-.56 1.25-1.25 1.25H13M7 17H4.25C3.56 17 3 16.44 3 15.75V13"/><circle cx="10" cy="10" r="3"/></symbol>
+    <symbol id="i-flights" viewBox="0 0 20 20"><path d="M3 16.5c2.5-1 2.75-5 5.5-5.5s3.25 2 5.5 0 2-6.5 3-7.5"/><circle cx="3" cy="16.5" r="1.25"/><path d="m14.5 3.25 2.5.25-.25 2.5"/></symbol>
+    <symbol id="i-issues" viewBox="0 0 20 20"><path d="M5 17.25V3.25"/><path d="M5 3.75h9.5l-2 3.5 2 3.5H5"/></symbol>
+    <symbol id="i-report" viewBox="0 0 20 20"><path d="M5 2.75h6.75L15 6v11.25H5z"/><path d="M11.5 2.75V6.25H15M7.75 10h4.5M7.75 13h4.5"/></symbol>
+    <symbol id="i-map" viewBox="0 0 20 20"><path d="M2.75 5.25 7.25 3.5l5.5 2 4.5-1.75v11L12.75 16.5l-5.5-2-4.5 1.75z"/><path d="M7.25 3.5v11M12.75 5.5v11"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 20 20"><path d="M3.5 6h7.25M15.25 6h1.25M3.5 14h1.25M9.25 14h7.25"/><circle cx="13" cy="6" r="2.25"/><circle cx="7" cy="14" r="2.25"/></symbol>
+    <symbol id="i-search" viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.25"/><path d="m13 13 3.75 3.75"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></symbol>
+    <symbol id="i-import" viewBox="0 0 20 20"><path d="M10 3v9.25M6.5 9 10 12.5 13.5 9"/><path d="M3.5 12.5v2.75c0 .69.56 1.25 1.25 1.25h10.5c.69 0 1.25-.56 1.25-1.25V12.5"/></symbol>
+    <symbol id="i-down" viewBox="0 0 20 20"><path d="m6 8 4 4 4-4"/></symbol>
+    <symbol id="i-right" viewBox="0 0 20 20"><path d="m8 6 4 4-4 4"/></symbol>
+    <symbol id="i-updown" viewBox="0 0 20 20"><path d="m7 7.5 3-3 3 3M7 12.5l3 3 3-3"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 20 20"><path d="M2.5 10s2.75-5.25 7.5-5.25S17.5 10 17.5 10s-2.75 5.25-7.5 5.25S2.5 10 2.5 10z"/><circle cx="10" cy="10" r="2.25"/></symbol>
+    <symbol id="i-eyeoff" viewBox="0 0 20 20"><path d="M8.2 5a7.7 7.7 0 0 1 1.8-.25c4.75 0 7.5 5.25 7.5 5.25a13 13 0 0 1-1.9 2.6M12.6 14.6a7 7 0 0 1-2.6.65C5.25 15.25 2.5 10 2.5 10a13.3 13.3 0 0 1 3.2-3.8M3.5 3.5l13 13"/></symbol>
+    <symbol id="i-cube" viewBox="0 0 20 20"><path d="M10 2.75 16.5 6.4v7.2L10 17.25 3.5 13.6V6.4z"/><path d="M3.5 6.4 10 10l6.5-3.6M10 10v7.25"/></symbol>
+    <symbol id="i-points" viewBox="0 0 20 20"><circle cx="5" cy="6" r="1"/><circle cx="10" cy="4.5" r="1"/><circle cx="15" cy="6.5" r="1"/><circle cx="7.5" cy="10" r="1"/><circle cx="12.5" cy="10.5" r="1"/><circle cx="4.5" cy="14" r="1"/><circle cx="10" cy="15.5" r="1"/><circle cx="15.5" cy="14" r="1"/></symbol>
+    <symbol id="i-raster" viewBox="0 0 20 20"><rect x="3" y="3" width="14" height="14" rx="1.5"/><path d="M3 12.5 7.5 8.5l4 3.75 2-1.75L17 13.5"/><circle cx="13" cy="6.75" r="1.25"/></symbol>
+    <symbol id="i-video" viewBox="0 0 20 20"><rect x="2.75" y="5" width="10.5" height="10" rx="1.5"/><path d="m13.25 8.5 4-2.25v7.5l-4-2.25"/></symbol>
+    <symbol id="i-photo" viewBox="0 0 20 20"><path d="M3 6.25C3 5.56 3.56 5 4.25 5h2l1.25-1.75h5L13.75 5h2c.69 0 1.25.56 1.25 1.25v8.5c0 .69-.56 1.25-1.25 1.25H4.25C3.56 16 3 15.44 3 14.75z"/><circle cx="10" cy="10.25" r="2.75"/></symbol>
+    <symbol id="i-annot" viewBox="0 0 20 20"><path d="M3.25 16.75h3.5l9.1-9.1a1.77 1.77 0 0 0-2.5-2.5l-9.1 9.1z"/><path d="m11.75 6.5 2.5 2.5"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 20 20"><path d="M4 7h11.5M12.5 4l3 3-3 3M16 13H4.5M7.5 10l-3 3 3 3"/></symbol>
+    <symbol id="i-max" viewBox="0 0 20 20"><path d="M12 3.5h4.5V8M8 16.5H3.5V12M16.5 3.5 11.5 8.5M3.5 16.5l5-5"/></symbol>
+    <symbol id="i-play" viewBox="0 0 20 20"><path d="M6.5 4.5v11l9-5.5z" fill="currentColor"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 20 20"><path d="M7 4.5v11M13 4.5v11" stroke-width="2.25"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 20 20"><path d="M5 4.5v11M15 4.5 7.5 10l7.5 5.5z"/></symbol>
+    <symbol id="i-next" viewBox="0 0 20 20"><path d="M15 4.5v11M5 4.5l7.5 5.5L5 15.5z"/></symbol>
+    <symbol id="i-loop" viewBox="0 0 20 20"><path d="M14.5 3.5 17 6l-2.5 2.5"/><path d="M3 10V8.5A2.5 2.5 0 0 1 5.5 6H17M5.5 16.5 3 14l2.5-2.5"/><path d="M17 10v1.5a2.5 2.5 0 0 1-2.5 2.5H3"/></symbol>
+    <symbol id="i-drone" viewBox="0 0 20 20"><circle cx="4.75" cy="4.75" r="2"/><circle cx="15.25" cy="4.75" r="2"/><circle cx="4.75" cy="15.25" r="2"/><circle cx="15.25" cy="15.25" r="2"/><path d="m6.25 6.25 2 2M13.75 6.25l-2 2M6.25 13.75l2-2M13.75 13.75l-2-2"/><rect x="8" y="8" width="4" height="4" rx="1"/></symbol>
+    <symbol id="i-check" viewBox="0 0 20 20"><path d="m4.5 10.5 3.5 3.5 7.5-8"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 20 20"><path d="M7.5 4.5 4 8l3.5 3.5"/><path d="M4 8h7.5a4.25 4.25 0 0 1 0 8.5H8"/></symbol>
+    <symbol id="i-x" viewBox="0 0 20 20"><path d="m5.5 5.5 9 9M14.5 5.5l-9 9"/></symbol>
+    <symbol id="i-more" viewBox="0 0 20 20"><circle cx="5" cy="10" r=".9" fill="currentColor"/><circle cx="10" cy="10" r=".9" fill="currentColor"/><circle cx="15" cy="10" r=".9" fill="currentColor"/></symbol>
+    <symbol id="i-sidebar" viewBox="0 0 20 20"><rect x="2.75" y="3.75" width="14.5" height="12.5" rx="1.75"/><path d="M7.75 3.75v12.5"/></symbol>
+    <symbol id="i-key" viewBox="0 0 20 20"><circle cx="6.5" cy="13.5" r="3"/><path d="m8.75 11.25 7.5-7.5M13.5 6.5l2 2M11.75 8.25l1.5 1.5"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 20 20"><path d="M10 2.75 16 5v4.75c0 3.6-2.5 6.3-6 7.5-3.5-1.2-6-3.9-6-7.5V5z"/><path d="m7.5 10 1.75 1.75L12.75 8"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 20 20"><rect x="4.25" y="8.75" width="11.5" height="8.25" rx="1.5"/><path d="M6.75 8.75V6.5a3.25 3.25 0 0 1 6.5 0v2.25"/></symbol>
+    <symbol id="i-download" viewBox="0 0 20 20"><path d="M10 3v10M6 9.5l4 4 4-4M4 16.75h12"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 20 20"><path d="M16.25 10a6.25 6.25 0 1 1-1.83-4.42"/><path d="M16.5 3.5v3h-3"/></symbol>
+    <symbol id="i-cursor" viewBox="0 0 20 20"><path d="m4.5 3.5 11 5-4.75 1.75L9 15z"/></symbol>
+    <symbol id="i-box" viewBox="0 0 20 20"><rect x="4" y="5" width="12" height="10" rx=".5" stroke-dasharray="2.5 2"/><path d="M2.5 3.5h3v3h-3zM14.5 13.5h3v3h-3z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-poly" viewBox="0 0 20 20"><path d="M4 7 10 3.5l6 4.25-2 7.75H6.25z"/><circle cx="4" cy="7" r="1.25" fill="currentColor"/><circle cx="16" cy="7.75" r="1.25" fill="currentColor"/></symbol>
+    <symbol id="i-point" viewBox="0 0 20 20"><path d="M10 17.25s5.25-4.75 5.25-9a5.25 5.25 0 0 0-10.5 0c0 4.25 5.25 9 5.25 9z"/><circle cx="10" cy="8.25" r="1.75"/></symbol>
+    <symbol id="i-brush" viewBox="0 0 20 20"><path d="M16.75 3.25 9 11"/><path d="M8.5 11.5c-1.75-.25-3.25 1-3.5 2.75-.15 1-.75 2-1.75 2.5 3 .75 6 0 6.5-2.5"/></symbol>
+    <symbol id="i-track" viewBox="0 0 20 20"><rect x="2.75" y="6" width="6" height="5" rx=".5"/><rect x="11.25" y="9" width="6" height="5" rx=".5" stroke-dasharray="2 1.75"/><path d="M8.75 8.5h2.5"/></symbol>
+    <symbol id="i-ruler" viewBox="0 0 20 20"><path d="m3 13.5 10.5-10.5 3.5 3.5L6.5 17z"/><path d="m6.5 10 1.5 1.5M9 7.5l1.5 1.5M11.5 5l1.5 1.5"/></symbol>
+    <symbol id="i-section" viewBox="0 0 20 20"><path d="M3 7.5 10 3.5l7 4v5l-7 4-7-4z"/><path d="M2.5 11 17.5 9" stroke-dasharray="2 1.5"/></symbol>
+    <symbol id="i-frustum" viewBox="0 0 20 20"><rect x="7.5" y="3" width="5" height="3.5" rx=".75"/><path d="M7.5 6.5 3 16.5h14l-4.5-10"/></symbol>
+    <symbol id="i-follow" viewBox="0 0 20 20"><path d="M2.75 12.5 7 10l3.5 2 6.75-4.5"/><circle cx="17.25" cy="7.5" r="1.25"/><path d="M3 4.5h4M3 4.5v4"/></symbol>
+    <symbol id="i-agent" viewBox="0 0 20 20"><path d="M10 2.5 16.5 6.25v7.5L10 17.5l-6.5-3.75v-7.5z"/><circle cx="10" cy="10" r="2"/></symbol>
+    <symbol id="i-send" viewBox="0 0 20 20"><path d="M10 15.5V4.5M5.5 9 10 4.5 14.5 9"/></symbol>
+    <symbol id="i-clip" viewBox="0 0 20 20"><path d="m15.5 9.5-5.75 5.75a3.54 3.54 0 0 1-5-5l6.25-6.25a2.36 2.36 0 0 1 3.33 3.33l-6.1 6.1a1.18 1.18 0 0 1-1.67-1.67L12 6.25"/></symbol>
+    <symbol id="i-filter" viewBox="0 0 20 20"><path d="M3.5 5h13M6 10h8M8.5 15h3"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l2.5 2"/></symbol>
+    <symbol id="i-target" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6"/><path d="M10 2v3.5M10 14.5V18M2 10h3.5M14.5 10H18"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 20 20"><path d="M10 3 17 7l-7 4-7-4z"/><path d="m3 13 7 4 7-4"/></symbol>
+    <symbol id="i-offline" viewBox="0 0 20 20"><path d="M6 15.5h7.5a3.5 3.5 0 0 0 .75-6.92A5 5 0 0 0 5 8.25a3.65 3.65 0 0 0 1 7.25z"/><path d="m3 3 14 14"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 20 20"><path d="M6 15.5h7.5a3.5 3.5 0 0 0 .75-6.92A5 5 0 0 0 5 8.25a3.65 3.65 0 0 0 1 7.25z"/></symbol>
+    <symbol id="i-cpu" viewBox="0 0 20 20"><rect x="5" y="5" width="10" height="10" rx="1.5"/><path d="M8 2.5V5M12 2.5V5M8 15v2.5M12 15v2.5M2.5 8H5M2.5 12H5M15 8h2.5M15 12h2.5"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3c2 2 2.75 4.5 2.75 7S12 15 10 17c-2-2-2.75-4.5-2.75-7S8 5 10 3z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 20 20"><circle cx="10" cy="10" r="3.25"/><path d="M10 2.75v1.5M10 15.75v1.5M2.75 10h1.5M15.75 10h1.5M4.9 4.9l1.05 1.05M14.05 14.05l1.05 1.05M4.9 15.1l1.05-1.05M14.05 5.95l1.05-1.05"/></symbol>
+    <symbol id="i-keyboard" viewBox="0 0 20 20"><rect x="2.5" y="5" width="15" height="10" rx="1.5"/><path d="M5.5 8h.01M8.5 8h.01M11.5 8h.01M14.5 8h.01M6.5 12h7"/></symbol>
+    <symbol id="i-grip" viewBox="0 0 20 20"><circle cx="7.5" cy="6" r=".9" fill="currentColor"/><circle cx="12.5" cy="6" r=".9" fill="currentColor"/><circle cx="7.5" cy="10" r=".9" fill="currentColor"/><circle cx="12.5" cy="10" r=".9" fill="currentColor"/><circle cx="7.5" cy="14" r=".9" fill="currentColor"/><circle cx="12.5" cy="14" r=".9" fill="currentColor"/></symbol>
+    <symbol id="i-sev" viewBox="0 0 20 20"><path d="M3.5 15.5h3v-3h-3zM8.5 15.5h3V9h-3zM13.5 15.5h3V4.5h-3z"/></symbol>
+    <symbol id="i-tank" viewBox="0 0 20 20"><ellipse cx="10" cy="5" rx="6" ry="2"/><path d="M4 5v10c0 1.1 2.7 2 6 2s6-.9 6-2V5"/><path d="M4 10c0 1.1 2.7 2 6 2s6-.9 6-2"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 20 20"><path d="M5.5 13.5V9a4.5 4.5 0 0 1 9 0v4.5l1.25 1.75H4.25z"/><path d="M8.25 17.25h3.5"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 20 20"><path d="M12.5 3 17 7.5l-2.25.75-3 3 .25 3.25-1.25 1.25-6.25-6.25 1.25-1.25 3.25.25 3-3z"/><path d="m6.5 13.5-3.5 3.5"/></symbol>
+    <symbol id="i-link" viewBox="0 0 20 20"><path d="M8.5 11.5a3.25 3.25 0 0 0 4.6 0l2.6-2.6a3.25 3.25 0 0 0-4.6-4.6l-.9.9"/><path d="M11.5 8.5a3.25 3.25 0 0 0-4.6 0l-2.6 2.6a3.25 3.25 0 0 0 4.6 4.6l.9-.9"/></symbol>
+  </defs>
+</svg>
+
+<div class="app" id="app">
+  <!-- ================= SIDEBAR ================= -->
+  <aside class="sb" id="sb" aria-label="Sidebar">
+    <div class="sb-top">
+      <svg class="mark" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M6.5 16.5h13l-2.5 3h-13z" fill="oklch(0.5 0.01 255)"/>
+        <path d="M5 12.25h13l-2.5 3h-13z" fill="oklch(0.66 0.01 255)"/>
+        <path d="M8 8h13l-2.5 3h-13z" fill="var(--acc)"/>
+        <path d="M6.5 3.75h13l-2.5 3h-13z" fill="oklch(0.9 0.006 255)"/>
+      </svg>
+      <span class="wordmark fade">Stratlas<small>2.4</small></span>
+      <button class="sb-toggle" id="sbToggle" data-tip="Collapse sidebar" data-kbd="Ctrl B" aria-label="Toggle sidebar"><svg class="ic sm"><use href="#i-sidebar"/></svg></button>
+    </div>
+    <button class="proj-sw" id="projSw" data-tip="Switch project">
+      <span class="thumb" id="projThumb"></span>
+      <span class="t fade"><b id="projName">Al-Zour LNG terminal</b><span id="projSub">KIPIC · Kuwait</span></span>
+      <svg class="ic sm fade dim"><use href="#i-updown"/></svg>
+    </button>
+    <nav class="nav" aria-label="Primary">
+      <button class="nav-i" data-go="home" data-tip="Projects" data-kbd="G P"><svg class="ic"><use href="#i-projects"/></svg><span class="fade">Projects</span></button>
+      <button class="nav-i" data-go="ws" data-tip="Workspace" data-kbd="G W"><svg class="ic"><use href="#i-fusion"/></svg><span class="fade">Workspace</span></button>
+      <button class="nav-i" data-tip="Issues"><svg class="ic"><use href="#i-issues"/></svg><span class="fade">Issues</span><span class="count fade" id="navIssues">34</span></button>
+      <button class="nav-i" data-tip="Reports"><svg class="ic"><use href="#i-report"/></svg><span class="fade">Reports</span></button>
+    </nav>
+    <div class="sb-sec"><span class="fade">Datasets</span><span class="acts fade"><button class="icbtn" data-tip="Filter layers"><svg class="ic sm"><use href="#i-filter"/></svg></button><button class="icbtn" data-tip="Add dataset"><svg class="ic sm"><use href="#i-plus"/></svg></button></span></div>
+    <div class="tree" id="tree"></div>
+    <div class="sb-foot">
+      <button class="nav-i" data-go="settings" data-tip="Settings" data-kbd="Ctrl ,"><svg class="ic"><use href="#i-settings"/></svg><span class="fade">Settings</span><span class="kbd fade">Ctrl ,</span></button>
+      <div class="user" data-tip="Danijel · Synapse Solutions">
+        <span class="avatar">D</span>
+        <span class="t fade"><b>Danijel</b><span>Synapse Solutions</span></span>
+        <span class="dotok fade" title="Licence valid, offline"></span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ================= MAIN ================= -->
+  <div class="main">
+    <header class="titlebar">
+      <div class="crumbs" id="crumbs"></div>
+      <button class="cmdk"><svg class="ic sm"><use href="#i-search"/></svg>Search layers, assets, issues or run a command<span class="kbd">Ctrl K</span></button>
+      <div class="tb-right">
+        <span class="chip" id="chipNet"><svg class="ic"><use href="#i-offline"/></svg>Offline</span>
+        <span class="chip acc" id="chipAi"><svg class="ic"><use href="#i-agent"/></svg>Cloud AI: this project</span>
+      </div>
+      <div class="winctl" aria-hidden="true">
+        <button><svg class="ic sm" viewBox="0 0 20 20"><path d="M5 10h10"/></svg></button>
+        <button><svg class="ic sm" viewBox="0 0 20 20"><rect x="5" y="5" width="10" height="10" rx="1"/></svg></button>
+        <button class="x"><svg class="ic sm"><use href="#i-x"/></svg></button>
+      </div>
+    </header>
+
+    <main class="screens">
+      <!-- ================= 1 PROJECTS HOME ================= -->
+      <section class="screen" id="s-home" data-n="1" aria-label="Projects">
+        <div class="home">
+          <div class="home-main">
+            <div class="page-h">
+              <h1>Projects</h1>
+              <span class="sub">6 projects · 118.4 GB on this workstation</span>
+              <div class="acts">
+                <button class="btn"><svg class="ic"><use href="#i-import"/></svg>Import package</button>
+                <button class="btn pri"><svg class="ic"><use href="#i-plus"/></svg>New project</button>
+              </div>
+            </div>
+            <div class="hero">
+              <div class="poster" id="heroPoster">
+                <img class="bg" id="heroImg" alt="">
+                <div class="top"><span class="live" id="heroLive"><span class="rdot"></span>LAST SESSION</span><span>Resume where you left off · 2 h ago</span></div>
+                <div class="bot">
+                  <div>
+                    <h2>Al-Zour LNG terminal</h2>
+                    <div class="where">KIPIC · Al-Zour, Kuwait · plant fusion</div>
+                    <div class="stats">
+                      <div class="stat"><b>909</b><span>model nodes</span></div>
+                      <div class="stat"><b>25</b><span>clips · 3 h 12 m</span></div>
+                      <div class="stat"><b>842 M</b><span>points</span></div>
+                      <div class="stat"><b>2,182 m</b><span>ortho span</span></div>
+                    </div>
+                  </div>
+                  <button class="btn pri" data-go="fusion">Open workspace<svg class="ic"><use href="#i-right"/></svg></button>
+                </div>
+              </div>
+              <div class="sites" id="sites">
+                <div class="map" id="sitesMap"></div>
+                <div class="hd"><svg class="ic sm"><use href="#i-map"/></svg><b>Sites</b><span class="dim">6 sites · Kuwait, UAE</span><span style="margin-left:auto" class="dim mono">OSM · GCC pack</span></div>
+              </div>
+            </div>
+            <div class="tbl-h">
+              <h3>Library</h3>
+              <div class="seg" role="tablist"><button class="on">All 6</button><button>Plants</button><button>Inspections</button><button>Surveys</button></div>
+              <div class="acts"><span class="dim" style="font-size:12px">Sorted by last opened</span><button class="icbtn"><svg class="ic sm"><use href="#i-filter"/></svg></button></div>
+            </div>
+            <table class="ptable">
+              <thead><tr><th>Project</th><th>Type</th><th>Capture</th><th>Layers</th><th style="text-align:right">Size</th><th>Offline</th></tr></thead>
+              <tbody id="ptbody"></tbody>
+            </table>
+          </div>
+          <aside class="home-side">
+            <div class="side-sec">
+              <h4>Recent activity <span class="r">Today</span></h4>
+              <div class="act"><span class="ico agent"><svg class="ic"><use href="#i-agent"/></svg></span><div>Agent drafted <b>F12 lining blister</b> on HCl tank from flight 110, frame 162<time>11:48 · awaiting your approval</time></div></div>
+              <div class="act"><span class="ico"><svg class="ic"><use href="#i-video"/></svg></span><div><b>25 clips</b> aligned to flight logs on Al-Zour<time>10:12 · 3 h 12 m of footage</time></div></div>
+              <div class="act"><span class="ico"><svg class="ic"><use href="#i-annot"/></svg></span><div>Rania reviewed <b>14 findings</b> on EBSM flare stack<time>09:30</time></div></div>
+              <div class="act"><span class="ico"><svg class="ic"><use href="#i-report"/></svg></span><div>Exported <b>DAMAC facade report</b>, 206 pages<time>Yesterday</time></div></div>
+              <div class="act"><span class="ico"><svg class="ic"><use href="#i-sev"/></svg></span><div>Masafi volumes compared, <b>31 Dec 2020</b> vs <b>10 Jan 2021</b><time>Yesterday</time></div></div>
+            </div>
+            <div class="side-sec">
+              <h4>Offline map packs <span class="r">5.9 GB</span></h4>
+              <div class="pack"><span>GCC streets</span><span class="v">4.6 GB</span><span class="s">Kuwait, UAE, KSA, Qatar, Bahrain, Oman · z17</span><span class="v" style="color:var(--ok)">Current</span></div>
+              <div class="pack"><span>World overview</span><span class="v">1.3 GB</span><span class="s">z0 to z8 · Arabic and English labels</span><span class="v" style="color:var(--ok)">Current</span></div>
+              <div class="pack"><span>Kuwait update</span><span class="v">312 MB</span><span class="s">OSM extract 28 Sep 2026 · downloading</span><span class="v">62%</span><div class="meter"><i style="width:62%"></i></div></div>
+            </div>
+            <div class="side-sec">
+              <h4>Storage</h4>
+              <div class="pack"><span>Projects</span><span class="v">118.4 GB</span><span class="s">D:\Stratlas\Projects</span><span class="v dim">of 1.8 TB</span><div class="meter"><i style="width:7%; background: var(--tx-3)"></i></div></div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ================= 2 FUSION WORKSPACE ================= -->
+      <section class="screen" id="s-fusion" data-n="2" aria-label="Fusion workspace">
+        <div class="ws ws-f">
+          <div class="ws-center">
+            <div class="tiles tiles-f">
+              <div class="slot" data-slot="main">
+                <div class="tile" id="fT3d">
+                  <div class="tile-h"><svg class="ic"><use href="#i-cube"/></svg><b>3D fusion</b><span class="meta">Plant model · ortho 0.53 m · flight paths</span>
+                    <div class="acts"><button class="icbtn swapbtn" data-swap><svg class="ic"><use href="#i-swap"/></svg>Swap</button><button class="icbtn" data-tip="Agent for this window"><svg class="ic"><use href="#i-agent"/></svg></button><button class="icbtn" data-tip="Maximize"><svg class="ic"><use href="#i-max"/></svg></button></div></div>
+                  <div class="tile-b" id="fStage">
+                    <canvas class="gl" id="fCanvas"></canvas>
+                    <div class="labels" id="fLabels"></div>
+                    <div class="loading" id="fLoad"><div style="text-align:center">Streaming plant model, 909 nodes<div class="bar"><i></i></div></div></div>
+                    <div class="ov vtools">
+                      <button class="icbtn on" data-tip="Select"><svg class="ic"><use href="#i-cursor"/></svg></button>
+                      <button class="icbtn" data-tip="Measure"><svg class="ic"><use href="#i-ruler"/></svg></button>
+                      <button class="icbtn" data-tip="Annotate"><svg class="ic"><use href="#i-annot"/></svg></button>
+                      <button class="icbtn" data-tip="Section plane"><svg class="ic"><use href="#i-section"/></svg></button>
+                      <hr>
+                      <button class="icbtn on" data-tip="Camera frustum"><svg class="ic"><use href="#i-frustum"/></svg></button>
+                      <button class="icbtn on" data-tip="Flight paths"><svg class="ic"><use href="#i-flights"/></svg></button>
+                    </div>
+                    <div class="ov camseg"><div class="seg" id="fCamSeg"><button class="on" data-cam="orbit"><svg class="ic"><use href="#i-target"/></svg>Orbit</button><button data-cam="follow"><svg class="ic"><use href="#i-follow"/></svg>Follow</button><button data-cam="eye"><svg class="ic"><use href="#i-video"/></svg>Drone eye</button></div></div>
+                    <svg class="ov gizmo" id="fGizmo" viewBox="0 0 64 64"></svg>
+                    <div class="ov legend">
+                      <div class="lt"><svg class="ic xs"><use href="#i-flights"/></svg>Flight path, coloured by time</div>
+                      <div class="ramp"></div>
+                      <div class="row" id="fRampRow"><span>13:00</span><span>14:09</span><span>15:18</span></div>
+                    </div>
+                    <div class="ov coords"><span class="scale"><i></i><span id="fScale">100 m</span></span><span id="fCoord">28.7194 N, 48.3772 E · EL 100.3</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="slot" data-slot="b">
+                <div class="tile" id="fTmap">
+                  <div class="tile-h"><svg class="ic"><use href="#i-map"/></svg><b>Map</b><span class="meta">Ortho · GCC streets</span>
+                    <div class="acts"><button class="icbtn swapbtn" data-swap data-tip="Swap into main"><svg class="ic"><use href="#i-swap"/></svg>Swap</button></div></div>
+                  <div class="tile-b"><div class="mini" id="fMini"><div class="north">N</div></div></div>
+                </div>
+              </div>
+            </div>
+            <div class="dock">
+              <div class="panel">
+                <div class="panel-h"><svg class="ic sm"><use href="#i-flights"/></svg><b>Flights</b><span id="fFlCount">25 clips</span><div class="acts"><span class="chip acc" style="height:20px;font-size:11px;padding:0 6px">Agent filter · 5</span><button class="icbtn"><svg class="ic sm"><use href="#i-filter"/></svg></button></div></div>
+                <div class="flist" id="fFlist"></div>
+              </div>
+              <div class="panel tl">
+                <div class="panel-h">
+                  <div class="transport">
+                    <button class="icbtn" data-tip="Previous clip"><svg class="ic sm"><use href="#i-prev"/></svg></button>
+                    <button class="play" id="fPlay" aria-label="Play or pause"><svg class="ic sm"><use href="#i-pause"/></svg></button>
+                    <button class="icbtn" data-tip="Next clip"><svg class="ic sm"><use href="#i-next"/></svg></button>
+                    <button class="icbtn on" data-tip="Loop"><svg class="ic sm"><use href="#i-loop"/></svg></button>
+                  </div>
+                  <span class="tc" id="fTc">00:00.00</span>
+                  <div class="acts"><span class="rate">1.0×</span><div class="seg" style="margin-left:6px"><button class="on">Clip</button><button>Day</button></div></div>
+                </div>
+                <div class="tl-body" id="fTl"></div>
+              </div>
+            </div>
+          </div>
+          <div class="ws-right">
+            <div class="slot" data-slot="a">
+              <div class="tile" id="fTvid">
+                <div class="tile-h"><svg class="ic"><use href="#i-video"/></svg><b id="fVidTitle">Clip 14</b><span class="meta" id="fVidMeta">Mavic 3E · wide</span>
+                  <div class="acts"><button class="icbtn swapbtn" data-swap data-tip="Swap into main"><svg class="ic"><use href="#i-swap"/></svg>Swap</button><button class="icbtn" data-tip="Agent for this window"><svg class="ic"><use href="#i-agent"/></svg></button></div></div>
+                <div class="tile-b" id="fVidBox">
+                  <video class="vid" id="fVid" muted playsinline loop preload="auto" crossorigin="anonymous"></video>
+                  <div class="hud" id="fHud"></div>
+                  <div class="vscrub"><i id="fVScrub"></i></div>
+                </div>
+              </div>
+            </div>
+            <aside class="agent" id="fAgent"></aside>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 3 INSPECTION WORKSPACE ================= -->
+      <section class="screen" id="s-inspect" data-n="3" aria-label="Inspection workspace">
+        <div class="ws">
+          <div class="ws-center">
+            <div class="tiles insp" id="iTiles">
+              <div class="slot" data-slot="main"><div class="tile" id="iT3d">
+                <div class="tile-h"><svg class="ic"><use href="#i-cube"/></svg><b>3D inspection</b><span class="meta">Tank mesh · LiDAR 280 k of 1.4 M pts · video projected</span>
+                  <div class="acts"><button class="icbtn swapbtn" data-swap><svg class="ic"><use href="#i-swap"/></svg>Swap to main</button><button class="icbtn" data-tip="Agent for this window"><svg class="ic"><use href="#i-agent"/></svg></button><button class="icbtn" data-tip="Maximize"><svg class="ic"><use href="#i-max"/></svg></button></div></div>
+                <div class="tile-b" id="iStage">
+                  <canvas class="gl" id="iCanvas"></canvas>
+                  <div class="labels" id="iLabels"></div>
+                  <div class="loading" id="iLoad"><div style="text-align:center">Loading tank mesh and LiDAR<div class="bar"><i></i></div></div></div>
+                  <div class="ov vtools">
+                    <button class="icbtn" data-tip="Select"><svg class="ic"><use href="#i-cursor"/></svg></button>
+                    <button class="icbtn" data-tip="Measure"><svg class="ic"><use href="#i-ruler"/></svg></button>
+                    <button class="icbtn on" data-tip="Annotate on mesh"><svg class="ic"><use href="#i-annot"/></svg></button>
+                    <button class="icbtn" data-tip="Section plane"><svg class="ic"><use href="#i-section"/></svg></button>
+                    <hr>
+                    <button class="icbtn on" data-tip="Point cloud"><svg class="ic"><use href="#i-points"/></svg></button>
+                    <button class="icbtn on" data-tip="Video projection"><svg class="ic"><use href="#i-frustum"/></svg></button>
+                  </div>
+                  <div class="ov camseg"><div class="seg"><button class="on" data-icam="orbit"><svg class="ic"><use href="#i-target"/></svg>Orbit</button><button data-icam="follow"><svg class="ic"><use href="#i-follow"/></svg>Follow</button><button data-icam="eye"><svg class="ic"><use href="#i-video"/></svg>Drone eye</button></div></div>
+                  <svg class="ov gizmo" id="iGizmo" viewBox="0 0 64 64"></svg>
+                  <div class="ov legend" style="min-width:176px">
+                    <div class="lt"><svg class="ic xs"><use href="#i-points"/></svg>LiDAR intensity</div>
+                    <div class="ramp" style="background:linear-gradient(90deg, oklch(0.3 0.02 255), oklch(0.62 0.03 255), oklch(0.93 0.02 255))"></div>
+                    <div class="row"><span>low</span><span>flights 101, 108</span><span>high</span></div>
+                  </div>
+                  <div class="ov coords"><span class="scale"><i style="width:60px"></i>1 m</span><span id="iCoord">Bearing 118° · EL 9.8 m · r 2.0 m</span></div>
+                </div>
+              </div>
+              </div><div class="slot" data-slot="a"><div class="tile" id="iTvid">
+                <div class="tile-h"><svg class="ic"><use href="#i-video"/></svg><b>Flight 110</b><span class="meta" id="iVidMeta">External · Elios 3 · f-theta 114°</span>
+                  <div class="acts"><span class="chip" style="height:22px;font-size:11px;border-color:oklch(0.885 0.2 128 / 0.35);color:var(--acc)"><svg class="ic"><use href="#i-annot"/></svg>Annotating</span><button class="icbtn swapbtn" data-swap data-tip="Swap with main"><svg class="ic"><use href="#i-swap"/></svg></button><button class="icbtn on" data-tip="Agent attached to this window"><svg class="ic"><use href="#i-agent"/></svg></button></div></div>
+                <div class="tile-b" id="iVidBox">
+                  <video class="vid" id="iVid" muted playsinline preload="auto" crossorigin="anonymous"></video>
+                  <div class="hud" id="iHud"></div>
+                  <div class="xmark" id="iF02m"><i></i><span>F02 inside</span></div>
+                  <div class="drawbox" id="iBox" style="left:37.5%;top:44%;width:16%;height:21%">
+                    <span class="lab"><span class="sev" data-s="4">S4</span>Coating breakdown · draft F12</span>
+                    <i class="h" style="left:0;top:0"></i><i class="h" style="left:100%;top:0"></i><i class="h" style="left:0;top:100%"></i><i class="h" style="left:100%;top:100%"></i>
+                    <span class="sz">204 × 151 px · ≈ 0.38 × 0.28 m</span>
+                  </div>
+                  <svg class="cursor-x" id="iCur" style="left:53.5%;top:65%" viewBox="0 0 20 20"><path d="M10 2v6M10 12v6M2 10h6M12 10h6" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+                  <div class="atools">
+                    <button class="icbtn" data-tip="Select · V"><svg class="ic"><use href="#i-cursor"/></svg></button>
+                    <button class="icbtn on" data-tip="Box · B"><svg class="ic"><use href="#i-box"/></svg></button>
+                    <button class="icbtn" data-tip="Polygon · P"><svg class="ic"><use href="#i-poly"/></svg></button>
+                    <button class="icbtn" data-tip="Point · O"><svg class="ic"><use href="#i-point"/></svg></button>
+                                        <button class="icbtn" data-tip="Track across frames · T"><svg class="ic"><use href="#i-track"/></svg></button>
+                    <span class="vr"></span>
+                    <button class="pick">Coating breakdown<svg class="ic xs"><use href="#i-down"/></svg></button>
+                    <button class="pick"><span class="sev" data-s="4">S4</span><svg class="ic xs"><use href="#i-down"/></svg></button>
+                    <span class="vr"></span>
+                    <button class="icbtn" data-tip="Undo · Ctrl Z"><svg class="ic"><use href="#i-undo"/></svg></button>
+                  </div>
+                  <div class="vscrub"><i id="iVScrub"></i></div>
+                </div>
+              </div>
+              </div><div class="slot" data-slot="b"><div class="tile" id="iTphoto">
+                <div class="tile-h"><svg class="ic"><use href="#i-photo"/></svg><b>Sightings</b><span class="meta" id="iPhMeta">F02 · 3 views</span>
+                  <div class="acts"><button class="icbtn swapbtn" data-swap data-tip="Swap with main"><svg class="ic"><use href="#i-swap"/></svg></button></div></div>
+                <div class="tile-b" id="iPhotoB"></div>
+              </div></div>
+            </div>
+            <div class="dock">
+              <div class="panel">
+                <div class="panel-h"><svg class="ic sm"><use href="#i-flights"/></svg><b>Flights</b><span>10 Elios flights · 22 Nov 2023</span></div>
+                <div class="flist" id="iFlist"></div>
+              </div>
+              <div class="panel tl">
+                <div class="panel-h">
+                  <div class="transport">
+                    <button class="icbtn"><svg class="ic sm"><use href="#i-prev"/></svg></button>
+                    <button class="play" id="iPlay" aria-label="Play or pause"><svg class="ic sm"><use href="#i-play"/></svg></button>
+                    <button class="icbtn"><svg class="ic sm"><use href="#i-next"/></svg></button>
+                    <button class="icbtn"><svg class="ic sm"><use href="#i-loop"/></svg></button>
+                  </div>
+                  <span class="tc" id="iTc">00:55.40 <small>/ flight 110 · frame 162</small></span>
+                  <div class="acts"><span class="rate">0.25×</span><div class="seg" style="margin-left:6px"><button class="on">Clip</button><button>Flight</button></div></div>
+                </div>
+                <div class="tl-body" id="iTl"></div>
+              </div>
+            </div>
+          </div>
+          <aside class="dock-r">
+            <div class="issues">
+              <div class="iss-h"><svg class="ic sm dim"><use href="#i-issues"/></svg><b>Issues</b><span class="dim" style="font-size:12px">11 + 1 draft</span><div class="acts"><button class="icbtn"><svg class="ic sm"><use href="#i-filter"/></svg></button><button class="icbtn"><svg class="ic sm"><use href="#i-more"/></svg></button></div></div>
+              <div class="sevbar" id="iSevbar"></div>
+              <div class="ilist" id="iList"></div>
+            </div>
+            <div class="agent" id="iAgent" style="border-left:0;flex:1;min-height:0"></div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ================= 4 SETTINGS ================= -->
+      <section class="screen" id="s-settings" data-n="4" aria-label="Settings">
+        <div class="settings">
+          <nav class="set-nav" id="setNav">
+            <h2>Workstation</h2>
+            <a href="#set-general"><svg class="ic"><use href="#i-settings"/></svg>General</a>
+            <a href="#set-appear"><svg class="ic"><use href="#i-sun"/></svg>Appearance</a>
+            <a href="#set-keys"><svg class="ic"><use href="#i-keyboard"/></svg>Shortcuts</a>
+            <h2>AI and agents</h2>
+            <a href="#set-providers" class="on"><svg class="ic"><use href="#i-key"/></svg>Providers</a>
+            <a href="#set-routing"><svg class="ic"><use href="#i-cpu"/></svg>Model routing</a>
+            <a href="#set-agents"><svg class="ic"><use href="#i-agent"/></svg>Agents per window</a>
+            <a href="#set-privacy"><svg class="ic"><use href="#i-shield"/></svg>Data policy</a>
+            <h2>Data</h2>
+            <a href="#set-maps"><svg class="ic"><use href="#i-map"/></svg>Offline maps</a>
+            <a href="#set-sev"><svg class="ic"><use href="#i-sev"/></svg>Severity models</a>
+          </nav>
+          <div class="set-body" id="setBody">
+            <div class="set-col">
+              <section class="set-sec" id="set-providers">
+                <div class="page-h" style="margin-bottom:6px"><h1>AI and agents</h1></div>
+                <p class="lead" style="margin:0 0 18px;color:var(--tx-3);font-size:12.5px;max-width:72ch">Stratlas runs fully offline. Cloud AI is used only when you allow it here and the project's data policy permits it. Keys stay in Windows Credential Manager and are never written to project files or logs.</p>
+                <div class="master">
+                  <span class="ico"><svg class="ic"><use href="#i-offline"/></svg></span>
+                  <div><b>Network mode for AI</b><span>Offline only is the default for new projects. Current: cloud AI allowed where the project permits.</span>
+                    <div class="ledger"><span><i>Keys in vault</i>2 of 3</span><span><i>Sent this month</i>412 requests · 86 frames</span><span><i>Spend</i>$66.89</span><span><i>Last send</i>11:48 · Anthropic · 1 frame</span></div></div>
+                  <div class="seg" id="aiMode"><button>Offline only</button><button class="on">Allow cloud AI</button></div>
+                </div>
+                <div class="group">
+                  <div class="prov">
+                    <span class="plogo">A</span>
+                    <div class="nm"><b>Anthropic</b><span>Claude models</span></div>
+                    <div class="keyf"><svg class="ic"><use href="#i-lock"/></svg><span class="v">sk-ant-api03-••••••••••••••••••••7Q2f</span><button class="icbtn" style="width:22px;height:22px"><svg class="ic xs"><use href="#i-eye"/></svg></button></div>
+                    <span class="state"><i></i>Verified 2 min ago</span>
+                    <button class="btn sm ghost">Replace</button>
+                  </div>
+                  <div class="prov">
+                    <span class="plogo">O</span>
+                    <div class="nm"><b>OpenAI</b><span>GPT models</span></div>
+                    <div class="keyf"><svg class="ic"><use href="#i-lock"/></svg><span class="v">sk-proj-••••••••••••••••••••••••Hk9m</span><button class="icbtn" style="width:22px;height:22px"><svg class="ic xs"><use href="#i-eye"/></svg></button></div>
+                    <span class="state"><i></i>Verified yesterday</span>
+                    <button class="btn sm ghost">Replace</button>
+                  </div>
+                  <div class="prov">
+                    <span class="plogo">G</span>
+                    <div class="nm"><b>Google Gemini</b><span>Gemini models</span></div>
+                    <div class="keyf empty"><svg class="ic"><use href="#i-key"/></svg><span class="v">No key. Paste a key from Google AI Studio</span></div>
+                    <span class="state off"><i></i>Not set</span>
+                    <button class="btn sm">Add key</button>
+                  </div>
+                  <div class="road-row"><svg class="ic sm"><use href="#i-cpu"/></svg>Local models via Ollama<span class="roadmap">Roadmap</span><span style="margin-left:auto" class="mute">Pluggable provider layer, AI-9</span></div>
+                </div>
+              </section>
+
+              <section class="set-sec" id="set-routing">
+                <h3>Model routing</h3>
+                <p class="lead">Pick the provider and model for each kind of task. A fallback is used when the first choice is unavailable or offline.</p>
+                <div class="group">
+                  <table class="rtable">
+                    <thead><tr><th>Task</th><th>Model</th><th>Fallback</th><th>Sends</th><th style="text-align:right">This month</th></tr></thead>
+                    <tbody>
+                      <tr><td><b style="font-weight:540">Agent chat and tool use</b></td><td><span class="sel-f"><span class="pv"><span class="pd">A</span>Claude Opus 5.5</span><svg class="ic xs dim"><use href="#i-down"/></svg></span></td><td><span class="sel-f"><span class="pv"><span class="pd">O</span>GPT-5</span><svg class="ic xs dim"><use href="#i-down"/></svg></span></td><td><span class="tag">text</span> <span class="tag">frames</span></td><td class="mono" style="text-align:right">$38.20</td></tr>
+                      <tr><td><b style="font-weight:540">Vision on photos and frames</b></td><td><span class="sel-f"><span class="pv"><span class="pd">O</span>GPT-5</span><svg class="ic xs dim"><use href="#i-down"/></svg></span></td><td><span class="sel-f"><span class="pv"><span class="pd">A</span>Claude Opus 5.5</span><svg class="ic xs dim"><use href="#i-down"/></svg></span></td><td><span class="tag">images</span></td><td class="mono" style="text-align:right">$21.75</td></tr>
+                      <tr><td><b style="font-weight:540">Video understanding</b></td><td><span class="sel-f"><span class="pv"><span class="pd">G</span>Gemini 2.5 Pro</span><svg class="ic xs dim"><use href="#i-down"/></svg></span></td><td><span class="sel-f"><span class="pv"><span class="pd">A</span>Claude Opus 5.5</span><svg class="ic xs dim"><use href="#i-down"/></svg></span></td><td><span class="tag">frames</span></td><td class="mono" style="text-align:right;color:var(--warn)">Key missing</td></tr>
+                      <tr><td><b style="font-weight:540">Report writing</b></td><td><span class="sel-f"><span class="pv"><span class="pd">A</span>Claude Opus 5.5</span><svg class="ic xs dim"><use href="#i-down"/></svg></span></td><td><span class="sel-f"><span class="pv"><span class="pd">O</span>GPT-5</span><svg class="ic xs dim"><use href="#i-down"/></svg></span></td><td><span class="tag">text</span></td><td class="mono" style="text-align:right">$6.10</td></tr>
+                      <tr><td><b style="font-weight:540">Structured extraction</b></td><td><span class="sel-f"><span class="pv"><span class="pd">A</span>Claude Haiku 4.5</span><svg class="ic xs dim"><use href="#i-down"/></svg></span></td><td><span class="sel-f"><span class="pv"><span class="mute">None</span></span><svg class="ic xs dim"><use href="#i-down"/></svg></span></td><td><span class="tag">text</span></td><td class="mono" style="text-align:right">$0.84</td></tr>
+                      <tr><td><b style="font-weight:540;color:var(--tx-3)">Model building from drawings and clouds</b></td><td colspan="3"><span class="roadmap">Roadmap</span> <span class="mute" style="margin-left:6px">Release B: plot plans and point clouds to 3D</span></td><td></td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section class="set-sec" id="set-agents">
+                <h3>Agents per window</h3>
+                <p class="lead">Each window can open an agent bound to its own context: selection, current frame, visible layers and camera. Destructive or data-sending steps always wait for your approval.</p>
+                <div class="group wingrid">
+                  <div class="win"><div class="top"><svg class="ic"><use href="#i-cube"/></svg><b>3D view</b><span class="switch" role="switch" aria-checked="true"></span></div><div class="tools">fly_to · select · measure · section · set_time</div><div class="m">Opus 5.5 · asks before export</div></div>
+                  <div class="win"><div class="top"><svg class="ic"><use href="#i-map"/></svg><b>Map</b><span class="switch" role="switch" aria-checked="true"></span></div><div class="tools">fly_to · filter · draw_area · compare_dates</div><div class="m">Opus 5.5</div></div>
+                  <div class="win"><div class="top"><svg class="ic"><use href="#i-points"/></svg><b>Point cloud</b><span class="switch" role="switch" aria-checked="true"></span></div><div class="tools">classify · box_select · measure · section</div><div class="m">Opus 5.5</div></div>
+                  <div class="win"><div class="top"><svg class="ic"><use href="#i-photo"/></svg><b>Photo</b><span class="switch" role="switch" aria-checked="true"></span></div><div class="tools">detect · propose_annotation · draft_note</div><div class="m">GPT-5 vision · drafts only</div></div>
+                  <div class="win"><div class="top"><svg class="ic"><use href="#i-video"/></svg><b>Video</b><span class="switch" role="switch" aria-checked="true"></span></div><div class="tools">capture_frame · track · back_project · set_time</div><div class="m">Gemini 2.5 Pro · key missing</div></div>
+                  <div class="win"><div class="top"><svg class="ic"><use href="#i-report"/></svg><b>Report</b><span class="switch" role="switch" aria-checked="true"></span></div><div class="tools">draft_section · cite_issue · export_pdf</div><div class="m">Opus 5.5 · asks before export</div></div>
+                  <div class="win"><div class="top"><svg class="ic"><use href="#i-issues"/></svg><b>Issues</b><span class="switch" role="switch" aria-checked="true"></span></div><div class="tools">filter · merge_sightings · set_severity</div><div class="m">Opus 5.5 · drafts only</div></div>
+                  <div class="win"><div class="top"><svg class="ic"><use href="#i-flights"/></svg><b>Flights</b><span class="switch" role="switch" aria-checked="false"></span></div><div class="tools">query_paths · align_log · trim</div><div class="m dim">Off</div></div>
+                </div>
+              </section>
+
+              <section class="set-sec" id="set-privacy">
+                <h3>Data policy</h3>
+                <p class="lead">Default for new projects. Each project can tighten this; a project set to "never send" blocks every provider regardless of the switch above.</p>
+                <div class="group">
+                  <div class="radio"><span class="o"></span><div><b>Never send project data</b><span>Agents run with local tools only. No text, frames or images leave this workstation.</span></div></div>
+                  <div class="radio"><span class="o"></span><div><b>Text only</b><span>Questions, asset names, issue notes and measurements. No imagery.</span></div></div>
+                  <div class="radio on"><span class="o"></span><div><b>Text, frames and photos, preview first</b><span>Before the first send in a project, Stratlas shows exactly which frames and images will go to which provider.</span></div></div>
+                  <div class="srow"><div class="t"><b>Token and cost meter</b><span>Show usage per session and per project in the agent panel</span></div><span class="switch" role="switch" aria-checked="true"></span></div>
+                  <div class="srow"><div class="t"><b>Keep conversation history with the project</b><span>Stored in the project file, exportable as JSON</span></div><span class="switch" role="switch" aria-checked="true"></span></div>
+                </div>
+              </section>
+
+              <section class="set-sec" id="set-maps">
+                <h3>Offline maps</h3>
+                <p class="lead">OpenStreetMap vector packs rendered locally. GCC to street level, the world to overview zoom. Add a region when online or import a pack file when offline.</p>
+                <div class="mapgrid">
+                  <div class="group">
+                    <div class="packrow h"><span>Pack</span><span style="text-align:right">Size</span><span>Updated</span><span>Status</span></div>
+                    <div class="packrow"><span class="nm"><b>Kuwait</b><span>Streets z17 · AR, EN</span></span><span class="sz">312 MB</span><span class="dim">28 Sep 2026</span><span class="prog"><span>Updating · 62%</span><span class="meter"><i style="width:62%"></i></span></span></div>
+                    <div class="packrow"><span class="nm"><b>United Arab Emirates</b><span>Streets z17 · AR, EN</span></span><span class="sz">1.12 GB</span><span class="dim">12 Sep 2026</span><span class="state"><i></i>Installed</span></div>
+                    <div class="packrow"><span class="nm"><b>Saudi Arabia</b><span>Streets z17 · AR, EN</span></span><span class="sz">2.41 GB</span><span class="dim">12 Sep 2026</span><span class="state"><i></i>Installed</span></div>
+                    <div class="packrow"><span class="nm"><b>Qatar</b><span>Streets z17</span></span><span class="sz">141 MB</span><span class="dim">12 Sep 2026</span><span class="state"><i></i>Installed</span></div>
+                    <div class="packrow"><span class="nm"><b>Bahrain</b><span>Streets z17</span></span><span class="sz">48 MB</span><span class="dim">12 Sep 2026</span><span class="state"><i></i>Installed</span></div>
+                    <div class="packrow"><span class="nm"><b>Oman</b><span>Streets z17</span></span><span class="sz">608 MB</span><span class="dim">2 Jun 2026</span><span class="state warn"><i></i>Update available</span></div>
+                    <div class="packrow"><span class="nm"><b>World overview</b><span>z0 to z8 · AR, EN</span></span><span class="sz">1.31 GB</span><span class="dim">2 Jun 2026</span><span class="state"><i></i>Installed</span></div>
+                    <div class="road-row"><button class="btn sm"><svg class="ic"><use href="#i-plus"/></svg>Add region</button><button class="btn sm ghost"><svg class="ic"><use href="#i-import"/></svg>Import pack file</button><span style="margin-left:auto" class="mono">5.94 GB of 1.8 TB</span></div>
+                  </div>
+                  <div class="cov" id="mapCov"><span class="cap">Coverage · Al-Zour site ortho over Kuwait streets</span></div>
+                </div>
+              </section>
+
+              <section class="set-sec" id="set-sev">
+                <h3>Severity models</h3>
+                <p class="lead">Ordinal levels used by every annotation in a project. Start from a kit template, then edit names, colours, criteria and the recommended action.</p>
+                <div class="group sevm">
+                  <div class="sevm-list">
+                    <button class="on">Tank, rubber lined <span>5 + U</span></button>
+                    <button>Flare and stack <span>5</span></button>
+                    <button>Telecom tower <span>4</span></button>
+                    <button>OHTL tower <span>4</span></button>
+                    <button>Building facade <span>4</span></button>
+                    <button>Road, ASTM D6433 <span>L M H</span></button>
+                    <button>Stockpile <span>3</span></button>
+                    <button style="color:var(--tx-3)"><span style="display:inline-flex;gap:6px;align-items:center;font-family:var(--font);font-size:12.5px;color:var(--tx-3)"><svg class="ic xs"><use href="#i-plus"/></svg>New from template</span></button>
+                  </div>
+                  <div>
+                    <div class="lvl h"><span></span><span>Level</span><span>Name</span><span>Criteria</span><span>Recommended action</span><span></span></div>
+                    <div class="lvl" style="--c:var(--s5)"><svg class="ic sm grip"><use href="#i-grip"/></svg><span class="swatch">5</span><span class="nm">Critical</span><span class="cr">Through-wall crack or active leak; lining breach with substrate attack.</span><span class="ac">Isolate and drain. Repair before return to service.</span><button class="icbtn"><svg class="ic sm"><use href="#i-more"/></svg></button></div>
+                    <div class="lvl editing" style="--c:var(--s4)"><svg class="ic sm grip"><use href="#i-grip"/></svg><span class="swatch">4</span><span class="nm"><span class="inp">Major</span></span><span class="cr">Lining blister or patch damage over 0.1 m², or likely to expand.</span><span class="ac">Repair at next shutdown; re-inspect within 6 months.</span><button class="icbtn"><svg class="ic sm"><use href="#i-more"/></svg></button></div>
+                    <div class="lvl" style="--c:var(--s3)"><svg class="ic sm grip"><use href="#i-grip"/></svg><span class="swatch">3</span><span class="nm">Moderate</span><span class="cr">Local blisters, coating corrosion around patches, seam defects.</span><span class="ac">Monitor; include in next planned inspection.</span><button class="icbtn"><svg class="ic sm"><use href="#i-more"/></svg></button></div>
+                    <div class="lvl" style="--c:var(--s2)"><svg class="ic sm grip"><use href="#i-grip"/></svg><span class="swatch">2</span><span class="nm">Minor</span><span class="cr">Cosmetic staining, deposits, superficial scuffs.</span><span class="ac">Record only.</span><button class="icbtn"><svg class="ic sm"><use href="#i-more"/></svg></button></div>
+                    <div class="lvl" style="--c:var(--s1)"><svg class="ic sm grip"><use href="#i-grip"/></svg><span class="swatch">1</span><span class="nm">Observation</span><span class="cr">Noted condition, no defect.</span><span class="ac">None.</span><button class="icbtn"><svg class="ic sm"><use href="#i-more"/></svg></button></div>
+                    <div class="lvl unc"><svg class="ic sm grip"><use href="#i-grip"/></svg><span class="swatch">U</span><span class="nm">Uncertain</span><span class="cr">Not graded: image quality or access prevents a call.</span><span class="ac">Re-capture or inspect in person.</span><button class="icbtn"><svg class="ic sm"><use href="#i-more"/></svg></button></div>
+                    <div class="road-row"><button class="btn sm"><svg class="ic"><use href="#i-plus"/></svg>Add level</button><span>Used by <b style="color:var(--tx-1);font-weight:540">HCl Tank 710-D-130335</b> · 12 issues</span><span style="margin-left:auto">Template: Asset Inspection Kit, tank profile</span></div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="statusbar">
+      <span><svg class="ic"><use href="#i-offline"/></svg>Offline · maps local</span>
+      <span id="sbGpu"><svg class="ic"><use href="#i-cpu"/></svg>RTX 4080 · 60 fps</span>
+      <span id="sbCrs">CRS · UTM 39N, plant grid</span>
+      <span class="gap"></span>
+      <nav class="switcher" aria-label="Screens">
+        <span id="capText"><b>Option 2: Flight</b>, screen 1 of 4</span>
+        <span class="dots"><button data-scr="home">1</button><button data-scr="fusion">2</button><button data-scr="inspect">3</button><button data-scr="settings">4</button></span>
+      </nav>
+      <span class="gap"></span>
+      <span id="sbSave"><svg class="ic"><use href="#i-check"/></svg>Autosaved 11:52</span>
+      <span>Agent · 2.1 k tokens · $0.03</span>
+    </footer>
+  </div>
+</div>
+
+<div class="tip" id="tip"></div>
+
+<script type="module" src="option-2-flight.js?v=25"></script>
+</body>
+</html>

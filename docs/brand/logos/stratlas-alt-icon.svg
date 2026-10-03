@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<title>stratlas app icon, concept B. Core and playhead</title>
+<rect width="512" height="512" rx="112" fill="#18202B"/>
+<defs><clipPath id="str-b-iclip"><rect x="72" y="96" width="368" height="336" rx="60"/></clipPath></defs>
+<g clip-path="url(#str-b-iclip)">
+<path d="M72 96 C192 74 320 118 440 96 L440 198 C320 220 192 176 72 198 Z" fill="#E3EAF2"/>
+<path d="M72 228 C192 206 320 250 440 228 L440 296 C320 318 192 274 72 296 Z" fill="#E3EAF2" fill-opacity=".5"/>
+<path d="M72 326 C192 304 320 348 440 326 L440 432 C320 454 192 410 72 432 Z" fill="#E3EAF2" fill-opacity=".82"/>
+</g>
+<line x1="318" y1="92" x2="318" y2="462" stroke="#45C79F" stroke-width="34" stroke-linecap="round"/>
+<path d="M270 36 L366 36 L318 98 Z" fill="#45C79F" stroke="#45C79F" stroke-width="10" stroke-linejoin="round"/>
+</svg>

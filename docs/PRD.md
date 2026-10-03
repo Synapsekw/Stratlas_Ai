@@ -1,0 +1,249 @@
+# Product Requirements Document
+
+|           |                                                                                                                                                                                      |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Product   | **Stratlas** (temporary working name and R5 placeholder mark, decided 2026-10-03; final name and logo come later, see `docs/brand/`)                                                 |
+| Owner     | Synapse Solutions                                                                                                                                                                    |
+| Status    | Approved v1.1 (2026-10-03)                                                                                                                                                           |
+| Changes   | v1.1: annotation suite and severity models added to Release A (section 6.4); Kestrel stays a separate app, code may be copied from it; YOLO training out of scope; shell is Electron |
+| Date      | 2026-10-03                                                                                                                                                                           |
+| Platforms | Windows 10/11 x64, macOS 13+ (Apple silicon and Intel)                                                                                                                               |
+
+## 1. Summary
+
+Synapse delivers drone and reality-capture work (inspections, surveys, digital twins) as interactive review pages. Six of them prove the format: HCl Tank 710-D-130335, EBSM Flare Inspection, DAMAC Hills tower facade, Masafi Stockpile Review, 1st Ring Road Survey and the Al-Zour LNG Plant Model. Each is a separate web page with its own viewer code, bound to one dataset, hosted on claude.ai, and limited to 256 MB.
+
+The product is one installed, offline-first desktop application that opens, fuses and reviews all of these datasets, and then lets the team build new deliverables from raw data. Its defining capability is **fusion**: any mix of 3D models, point clouds, maps, orthomosaics, drone video with flight logs, photos and findings shown in one georeferenced scene on one timeline. AI agents from Anthropic, OpenAI or Google are available in every window when the user allows cloud AI.
+
+## 2. Problem
+
+- Each deliverable is a one-off. New jobs mean rebuilding or re-skinning a viewer, and four separate viewer codebases have drifted apart.
+- Web hosting caps size and fidelity: photos are downsized, point clouds are thinned to about 1%, ortho pyramids are cut, and data is base64-encoded (33% heavier).
+- Customers in oil and gas, utilities and government often cannot use cloud links on site or on restricted networks.
+- The ability to make a deliverable lives in scripts and in hand work by Claude, not in a tool the team can run.
+- Combining datasets (video on the model, model on the map, two survey dates) is possible only where a viewer was hand-built for it.
+
+## 3. Goals and non-goals
+
+### Goals
+
+1. Open every existing review package offline with the same look, behaviour and performance as today, or better.
+2. Fuse heterogeneous spatial data in one scene and timeline: video projected on models and ground, flight paths, models on maps, point clouds, photos with poses, findings.
+3. Work fully offline, including street maps for the GCC and a world overview.
+4. Let the team create new projects from raw data (Release B), not only replay existing ones.
+5. Offer AI agents in every window, with provider and model chosen in Settings, and the user's keys stored securely.
+6. Give customers a read-only player and exportable packages.
+7. Be a professionally engineered codebase: typed, linted, formatted, tested, documented, reproducible builds.
+
+### Non-goals (for now)
+
+- Photogrammetry or LiDAR processing from raw images or scans (Pix4D, Metashape, DJI Terra stay upstream).
+- Flight planning or drone control.
+- A cloud SaaS or multi-tenant server. Optional sync can come later.
+- Mobile apps.
+- Real-time collaboration.
+
+## 4. Users
+
+| Persona  | Who                                                  | Needs                                                                                                                                  |
+| -------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Builder  | Synapse engineer, surveyor or inspector              | Import raw data, align layers, run detection, edit findings and boundaries, produce the PDF and package, use agents to speed up review |
+| Reviewer | Synapse project lead, QA                             | Open any project fast, compare dates, check findings, approve and export                                                               |
+| Customer | Asset-integrity manager, HSE lead, ministry engineer | Open the package offline, navigate the asset, see findings on the model and in photos and video, export CSV and PDF; no editing        |
+| Admin    | Synapse IT                                           | Install, license, manage map packs and AI policy per machine                                                                           |
+
+## 5. Releases
+
+### Release A: Player and Workspace (build first)
+
+An offline desktop app that:
+
+- keeps a **project library** and opens the six existing jobs and any future offline package built by the existing kits;
+- hosts the existing viewers inside one shell with a shared look, navigation, settings and file handling (legacy viewer mode);
+- provides the new **Fusion workspace** with the two mandatory experiences rebuilt on the shared engine: Al-Zour (plant model + map + ortho + video with flight path and ground footprint + point cloud + panoramas) and HCl Tank (tank mesh + LiDAR point cloud + video projected on the mesh + flight scrubber + section cut + findings);
+- includes a full **annotation suite** with severity models: issues marked on meshes, images, video, point clouds and maps, linked across datasets;
+- ships **offline maps** (GCC street level + world overview) and a map pack manager;
+- includes **AI settings** (Anthropic, OpenAI, Gemini keys, model routing, offline-only switch) and the **agent panel** framework attached to every window, with a first set of read and navigation tools;
+- installs on Windows and macOS with signed installers.
+
+### Release B: Builder
+
+Authoring inside the app: import raw data, align and georeference, run the Asset Inspection Kit, Volumetric Survey Kit, road and plant pipelines from a UI, human-in-the-loop detection review, AI-assisted detection and narrative, PDF and package export, customer package with read-only player. See section 9.
+
+### Later
+
+- 3D model building from 2D drawings and plot plans, and from point clouds (AI-assisted, using the configured providers).
+- Change detection between capture dates across all layer types.
+- Optional team sync and project sharing.
+
+## 6. Functional requirements: Release A
+
+IDs are stable. Priority: **M** must, **S** should, **C** could.
+
+### 6.1 Project library
+
+| ID    | Requirement                                                                                                                                                  | P   |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --- |
+| LIB-1 | Show all projects with name, site, customer, capture dates, type (inspection, volumetric, road, twin), layers present, size on disk, and offline-ready state | M   |
+| LIB-2 | Add a project by opening a folder or package file; projects live where the user chooses (local disk, NAS path); the library stores references, not copies    | M   |
+| LIB-3 | Import the six existing jobs from their offline folders, or from the published artifacts when no offline folder exists                                       | M   |
+| LIB-4 | Search, filter and sort; recent projects; pin favourites                                                                                                     | S   |
+| LIB-5 | Map view of project locations on the offline basemap                                                                                                         | S   |
+| LIB-6 | Detect missing or moved data and offer to relink                                                                                                             | S   |
+
+### 6.2 Fusion scene
+
+| ID     | Requirement                                                                                                                                                                                  | P   |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- |
+| FUS-1  | One scene with a project coordinate reference system (CRS) and local origin; all layers georeferenced (WGS84, UTM, local engineering grid with a defined transform)                          | M   |
+| FUS-2  | Layer types: mesh (glTF/GLB, OBJ), point cloud, basemap, raster (ortho, DSM, plot plan), video track, flight path, photo set, panoramas, findings, measurements, volumes, annotations        | M   |
+| FUS-3  | Layer tree with visibility, opacity, colour mode, ordering, grouping by area or asset; per-layer metadata panel                                                                              | M   |
+| FUS-4  | Synchronised views: 3D, 2D map, video, photo, point cloud and report windows share selection, time and camera where meaningful                                                               | M   |
+| FUS-5  | Global timeline: video clips, flight segments, photo capture times, survey dates; scrub, play, rate, loop; frame-accurate sync to the flight log                                             | M   |
+| FUS-6  | Video projection: project the current video frame from the drone pose onto meshes (HCl tank) and onto ground or ortho (Al-Zour); pinhole and f-theta lens models; per-clip alignment offsets | M   |
+| FUS-7  | Drone marker, path line, view frustum, follow-cam and drone-eye camera modes                                                                                                                 | M   |
+| FUS-8  | Point clouds rendered with level of detail streaming; at least 1 billion points per project on the reference workstation; colour by RGB, intensity, height, classification or flight         | M   |
+| FUS-9  | Section and clipping planes, box clip                                                                                                                                                        | M   |
+| FUS-10 | Measure distance, height, area, angle on mesh, cloud and map                                                                                                                                 | S   |
+| FUS-11 | Panorama viewer linked to its position in the scene                                                                                                                                          | S   |
+| FUS-12 | Compare two capture dates side by side or with a swipe                                                                                                                                       | C   |
+| FUS-13 | Saved views and bookmarks, shareable inside a project                                                                                                                                        | S   |
+
+### 6.3 Review content
+
+| ID    | Requirement                                                                                                                                                              | P                          |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------- |
+| REV-1 | Findings register with severity, class, zone, side, height; filter, search, sort; findings placed on the model as pins or patches; linked to photos with masks and boxes | M                          |
+| REV-2 | Photo viewer: pan, zoom, mask overlay with opacity, uncertain areas, metadata                                                                                            | M                          |
+| REV-3 | Volumetric review: piles, bases, volumes, cut and fill, sections, boundary edits stored locally per project                                                              | M (via legacy viewer in A) |
+| REV-4 | Road review: defects, stages, PCI grid, chainage, measure                                                                                                                | M (via legacy viewer in A) |
+| REV-5 | PDF report viewer inside the app                                                                                                                                         | M                          |
+| REV-6 | Exports: CSV, GeoJSON, masks ZIP, model, screenshots; native save dialogs                                                                                                | M                          |
+
+### 6.4 Annotation suite and severity models
+
+Every dataset can be annotated. An annotation marks an issue (or an observation) and carries a class, a severity from the project's severity model, a status, a note and its author. One real-world defect seen in several datasets is one **issue** with several **sightings** (for example a corrosion patch marked on a photo, on a video frame and on the mesh).
+
+| ID     | Requirement                                                                                                                                                                                                                                                                                                                                                        | P   |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --- |
+| ANN-1  | Annotate meshes (GLB): point, polyline, polygon and painted patch on the surface                                                                                                                                                                                                                                                                                   | M   |
+| ANN-2  | Annotate images: box, rotated box, polygon, point, brush/mask; zoom-aware editing                                                                                                                                                                                                                                                                                  | M   |
+| ANN-3  | Annotate video: box or polygon on a frame, tracks across frames by keyframe interpolation, and time-range events (start, end, label)                                                                                                                                                                                                                               | M   |
+| ANN-4  | Annotate point clouds: point, box region, polygon region, selection of points                                                                                                                                                                                                                                                                                      | M   |
+| ANN-5  | Annotate maps, orthos and panoramas: point, line, polygon                                                                                                                                                                                                                                                                                                          | M   |
+| ANN-6  | Severity models: configurable per project from templates; ordinal levels with name, colour, criteria text and recommended action; optional "uncertain, not graded" level; examples shipped for flare/stack, telecom tower, OHTL tower, tank, building facade (from the Asset Inspection Kit profiles), road distresses (ASTM D6433 low/medium/high) and stockpiles | M   |
+| ANN-7  | Class catalogues (defect taxonomies) per asset type, editable, with colours and hotkeys; import from kit profiles                                                                                                                                                                                                                                                  | M   |
+| ANN-8  | Issues and sightings: link annotations across datasets into one issue; issue register with filters, search, sort; status workflow draft, reviewed, approved, closed                                                                                                                                                                                                | M   |
+| ANN-9  | Cross-view placement: an image or video-frame annotation is back-projected onto the mesh or ground from the camera pose; a mesh annotation shows in every photo and frame that sees it                                                                                                                                                                             | M   |
+| ANN-10 | Undo and redo, keyboard-first tools, snapping, measurement attached to an annotation                                                                                                                                                                                                                                                                               | M   |
+| ANN-11 | Import annotations from the kits (kit JSON), COCO and YOLO text; export CSV, GeoJSON, COCO and kit JSON; issues feed the PDF report                                                                                                                                                                                                                                | M   |
+| ANN-12 | Agents may propose annotations, always as drafts that a person approves                                                                                                                                                                                                                                                                                            | S   |
+| ANN-13 | Audit trail per issue: who changed what, when                                                                                                                                                                                                                                                                                                                      | S   |
+
+### 6.5 Offline maps
+
+| ID    | Requirement                                                                                                                                               | P   |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | --- |
+| MAP-1 | Vector street basemap from OpenStreetMap, rendered offline; GCC (Kuwait, UAE, Saudi Arabia, Qatar, Bahrain, Oman) to street level, world to overview zoom | M   |
+| MAP-2 | Basemap as a 2D map window and as the ground plane of the 3D scene                                                                                        | M   |
+| MAP-3 | Map pack manager: list installed packs, size, date; add a region by bounding box or country when online; import a pack file when offline                  | S   |
+| MAP-4 | Dark and light map styles matching the app theme; Arabic and English labels                                                                               | S   |
+| MAP-5 | Project rasters (orthos, plot plans) as map layers                                                                                                        | M   |
+| MAP-6 | Optional satellite imagery packs only from sources whose licence allows offline redistribution                                                            | C   |
+
+### 6.6 AI providers and agents
+
+| ID   | Requirement                                                                                                                                                                                                                                          | P   |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- |
+| AI-1 | Settings to add API keys for Anthropic, OpenAI and Google Gemini; keys entered by the user, stored in the OS credential vault, never written to project files or logs                                                                                | M   |
+| AI-2 | Global switch: offline only (default) or allow cloud AI; per-project policy that can forbid sending project data to any provider                                                                                                                     | M   |
+| AI-3 | Model routing per task: agent chat, image and video understanding, report writing, structured extraction, model building (later); user picks provider and model per task                                                                             | M   |
+| AI-4 | Every window (3D, map, point cloud, photo, video, report, findings) can open an agent panel bound to that window's context: selection, current frame, visible layers, camera                                                                         | M   |
+| AI-5 | Agents act through a typed tool registry (fly to, filter, select, measure, set time, capture frame, draft note, compare dates, export); every action is shown as a step the user can approve or undo; destructive or data-sending actions always ask | M   |
+| AI-6 | Show what will be sent to the provider before the first send in a project (frames, images, text)                                                                                                                                                     | S   |
+| AI-7 | Token and cost meter per session and per project                                                                                                                                                                                                     | S   |
+| AI-8 | Conversation history stored with the project, exportable                                                                                                                                                                                             | S   |
+| AI-9 | Pluggable provider layer so a local model (for example via Ollama) can be added later                                                                                                                                                                | C   |
+
+### 6.7 Shell, settings, packaging
+
+| ID    | Requirement                                                                                            | P   |
+| ----- | ------------------------------------------------------------------------------------------------------ | --- |
+| APP-1 | Windows and macOS installers, code-signed; macOS notarised                                             | M   |
+| APP-2 | Updates by installer file (offline) and optional online update check                                   | S   |
+| APP-3 | Light and dark themes; brand theming for report output (e&, Zain, whitelabel, partner kits)            | M   |
+| APP-4 | Keyboard-driven: command palette, shortcuts, focus management                                          | S   |
+| APP-5 | Customer mode: read-only player, no AI unless enabled by the package, export limits set by the package | S   |
+| APP-6 | Crash-safe autosave of review state; logs a user can export                                            | S   |
+| APP-7 | English UI; layout and fonts ready for Arabic and right-to-left                                        | S   |
+
+## 7. Non-functional requirements
+
+| Area            | Requirement                                                                                                                                                                                                                                 |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Offline         | With cloud AI off, the app makes zero network requests. Verified by a test that blocks the network.                                                                                                                                         |
+| Performance     | Reference workstation (RTX 4070 class, 32 GB): 60 fps in the Al-Zour and HCl workspaces; project open under 5 s to first frame; video scrub latency under 100 ms. Minimum laptop (integrated GPU, 16 GB): 30 fps with reduced point budget. |
+| Scale           | Projects up to 500 GB on disk; streamed, never fully loaded into memory.                                                                                                                                                                    |
+| Fidelity        | No loss against today's artifacts: full-resolution photos, full ortho pyramids, full point clouds where available.                                                                                                                          |
+| Security        | Context-isolated renderer, no Node in the renderer, strict content security policy, IPC allow-list, keys in the OS vault, signed builds.                                                                                                    |
+| Reliability     | Opening a corrupt or partial package fails with a message that names the missing file and the fix.                                                                                                                                          |
+| Portability     | One codebase for Windows and macOS; paths, file dialogs and network shares (SMB, UNC) handled on both.                                                                                                                                      |
+| Maintainability | TypeScript strict, ESLint, Prettier, unit and end-to-end tests in CI, documented architecture decisions (ADRs).                                                                                                                             |
+| Accessibility   | Keyboard reachable, visible focus, contrast AA for UI text.                                                                                                                                                                                 |
+
+## 8. Data formats
+
+| Kind        | Release A                                              | Release B adds                                      |
+| ----------- | ------------------------------------------------------ | --------------------------------------------------- |
+| Mesh        | glTF/GLB (meshopt, Draco)                              | OBJ, FBX, IFC (read-only)                           |
+| Point cloud | Existing packed clouds, COPC/LAZ, Potree 2 octree      | LAS, E57, PLY, conversion to COPC                   |
+| Raster      | Kit tile pyramids, PMTiles, MBTiles, GeoTIFF/COG       | DSM processing, orthomosaic tiling                  |
+| Video       | MP4 (H.264, H.265), DJI SRT telemetry, kit flight JSON | DJI flight logs, Flyability Elios logs, AirData CSV |
+| Photos      | JPEG with EXIF and DJI XMP                             | RAW previews, thermal radiometric JPEG              |
+| Vector      | GeoJSON, KML                                           | DXF, shapefile                                      |
+| Package     | Existing kit offline folders and artifact builds       | Native project package format (see architecture)    |
+
+## 9. Release B requirements (Builder)
+
+| ID     | Requirement                                                                                                                                                                                                                                                                                                | P   |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- |
+| BLD-1  | New project wizard: pick type (inspection, volumetric, road, twin, free fusion), CRS, origin, brand                                                                                                                                                                                                        | M   |
+| BLD-2  | Import raw inputs: photos, video plus telemetry, flight logs, models, point clouds, orthos, DSMs, drawings                                                                                                                                                                                                 | M   |
+| BLD-3  | Alignment tools: georeference a model by picking points, align video to the model (offsets, lens calibration), align survey dates                                                                                                                                                                          | M   |
+| BLD-4  | Run the existing pipelines from the UI (Asset Inspection Kit, Volumetric Survey Kit, road builder, plant builder) through a bundled Python runtime, with progress, logs and resume                                                                                                                         | M   |
+| BLD-5  | Detection review: contact sheets, draw or edit boxes and masks, set class, severity and note; mark uncertain                                                                                                                                                                                               | M   |
+| BLD-6  | AI-assisted detection on photos and video frames using the configured vision model, always reviewed by a person before it counts                                                                                                                                                                           | S   |
+| BLD-7  | AI-drafted narrative and method text from the project statistics, edited by the user                                                                                                                                                                                                                       | S   |
+| BLD-8  | PDF report generation in the house format, with brand selection                                                                                                                                                                                                                                            | M   |
+| BLD-9  | Export a customer package: read-only player plus data, optionally encrypted, optionally size-limited                                                                                                                                                                                                       | M   |
+| BLD-10 | Local detection inference (exported ONNX models through onnxruntime; SAM-class assist for masks) as an offline alternative to cloud vision. Model training is out of scope until a later release; Ultralytics is AGPL-3.0, so customer builds run ONNX exports only unless an Enterprise licence is bought | C   |
+| BLD-11 | Model building from drawings and point clouds (agent-assisted procedural modelling)                                                                                                                                                                                                                        | C   |
+
+## 10. Success metrics
+
+- All six reference projects open offline and pass a visual comparison against today's artifacts.
+- Al-Zour and HCl workspaces hold 60 fps on the reference workstation with video playing and projection on.
+- A new inspection deliverable built end to end in the app (Release B) in under one working day for a 300-photo job.
+- Zero network requests in offline mode across the end-to-end test suite.
+
+## 11. Risks and open questions
+
+| Risk or question                                 | Note                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Licensing of baked Mapbox tiles in existing jobs | Mapbox terms restrict offline redistribution. New packs use OpenStreetMap data (ODbL, attribution) only. Legacy jobs keep their baked images; confirm with Mapbox terms before customer distribution.                                                                                                                                                                                                                                        |
+| DJI flight log decryption                        | Newer DJI `.txt` logs need a key fetched from DJI online. SRT telemetry works offline. Release B decrypts when online and caches.                                                                                                                                                                                                                                                                                                            |
+| Pipeline source locations                        | Asset Inspection Kit and Volumetric Survey Kit are in the vault. The road builder and the Al-Zour plant builder still need to be located.                                                                                                                                                                                                                                                                                                    |
+| Python runtime on Windows                        | GDAL and rasterio on Windows are packaged via conda-forge. Size and signing need a spike.                                                                                                                                                                                                                                                                                                                                                    |
+| Code signing                                     | Windows: two channels. Microsoft Store (MSIX, signed by Microsoft; company account for Synapse Solutions, registration started 2026-10-03) for connected users, plus an OV code-signing certificate in a cloud HSM for the offline NSIS installer and our own binaries (Azure Artifact Signing likely unavailable to a GCC entity). macOS: Apple Developer Program as an organization (needs a D-U-N-S number), Developer ID + notarisation. |
+| Licensing model                                  | Per-seat, per-project or free player? Decide before customer mode ships.                                                                                                                                                                                                                                                                                                                                                                     |
+| AI data policy                                   | Customer contracts may forbid sending imagery to cloud AI. The per-project policy (AI-2) must default to forbid for customer packages.                                                                                                                                                                                                                                                                                                       |
+
+## 12. Glossary
+
+- **Fusion**: showing several georeferenced datasets in one scene and timeline, with their relationships (video on model, model on map).
+- **Package**: a folder or file holding one project's data and manifest, openable offline.
+- **Legacy viewer**: an existing kit viewer hosted unchanged inside the app.
+- **Flight log**: drone pose over time (position, attitude, gimbal), used to sync and project video.
+- **f-theta**: fisheye lens model where image radius is proportional to angle (Elios camera).
+- **COPC**: Cloud Optimized Point Cloud, a LAZ file organised for streaming.
+- **PMTiles**: single-file tile archive for offline maps.

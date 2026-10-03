@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Stratlas Round Two</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:light;--bg:#F3F4F6;--surface:#FFFFFF;--surface-2:#F8F9FA;--ink:#14171C;--muted:#5A6270;--line:#E1E4E8;--accent:#0B6E8A;
+--ground-dark:#101419;--ground-dark-ink:#E3EAF2;--ground-light:#F5F3EE;--ground-light-ink:#15181D;
+--g4:#1F7A4D;--g4-bg:#E3F3EA;--g3:#2F6690;--g3-bg:#E4EEF6;--g2:#8A5A00;--g2-bg:#FBF0D9;--g1:#A33A2B;--g1-bg:#F9E3DF;--rec:#16866A;--rec-bg:#DDF2EA}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#0E1114;--surface:#161A1F;--surface-2:#1B2026;--ink:#E9EBEE;--muted:#9AA3AE;--line:#262C34;--accent:#4DB8D6;
+--g4:#6FD39F;--g4-bg:#15291F;--g3:#7DB6E3;--g3-bg:#152331;--g2:#E7B75A;--g2-bg:#2B2212;--g1:#F08B7C;--g1-bg:#2E1714;--rec:#6FD3B3;--rec-bg:#12291F}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#0E1114;--surface:#161A1F;--surface-2:#1B2026;--ink:#E9EBEE;--muted:#9AA3AE;--line:#262C34;--accent:#4DB8D6;
+--g4:#6FD39F;--g4-bg:#15291F;--g3:#7DB6E3;--g3-bg:#152331;--g2:#E7B75A;--g2-bg:#2B2212;--g1:#F08B7C;--g1-bg:#2E1714;--rec:#6FD3B3;--rec-bg:#12291F}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:16px;line-height:1.55;overflow-wrap:anywhere}
+.wrap{max-width:1180px;margin:0 auto;padding:40px max(16px,env(safe-area-inset-right)) 72px max(16px,env(safe-area-inset-left))}
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:28px}
+.eyebrow{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.theme-btn{font:500 13px 'IBM Plex Sans',sans-serif;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:6px 14px;cursor:pointer}
+.theme-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1{font-size:clamp(30px,5vw,46px);line-height:1.1;letter-spacing:-.015em;margin:0 0 14px;font-weight:600}
+h2{font-size:24px;letter-spacing:-.01em;margin:56px 0 8px;font-weight:600}
+h3{font-size:20px;margin:0;font-weight:600}
+h4{margin:0 0 6px;font-size:15px;font-weight:600}
+p{margin:0 0 12px}.lede{color:var(--muted);max-width:74ch}
+.note{border-left:3px solid var(--g2);background:var(--g2-bg);padding:10px 14px;border-radius:0 8px 8px 0;font-size:14px;max-width:76ch;margin-top:16px}
+code{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12px;background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+.pill{display:inline-block;font-size:12px;font-weight:600;line-height:1;padding:5px 9px;border-radius:999px;white-space:nowrap;margin-right:4px;vertical-align:1px}
+.pill.clear,.pill.short{color:var(--g4);background:var(--g4-bg)}.pill.caution{color:var(--g2);background:var(--g2-bg)}
+.pill.drop{color:var(--g1);background:var(--g1-bg)}.pill.rec{color:var(--rec);background:var(--rec-bg)}
+.tag{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:11px;border:1px solid var(--line);border-radius:6px;padding:2px 7px;color:var(--muted);margin:0 4px 4px 0}
+.on-dark{background:var(--ground-dark);color:var(--ground-dark-ink);--acc:#45C79F}
+.on-light{background:var(--ground-light);color:var(--ground-light-ink);--acc:#16866A;border:1px solid #E4DFD4}
+.mono-w{background:#FFFFFF;color:#000000;--acc:#000000;border:1px solid #E4DFD4}
+.mono-b{background:#000000;color:#FFFFFF;--acc:#FFFFFF}
+svg.lockup{width:100%;max-width:300px;height:auto;display:block;overflow:visible}
+svg.lockup .wm{font-family:'IBM Plex Sans','Segoe UI',sans-serif}
+svg.lockup .wm-ar{font-family:'IBM Plex Sans Arabic','Segoe UI',Tahoma,sans-serif}
+svg.sym,svg.ic{display:block;flex:none}
+
+.rec-block{margin-top:32px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:24px;display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:28px;align-items:center}
+.rec-visual{display:grid;gap:8px}
+.rec-visual .ground{min-height:100px}
+.rec-icons{display:flex;gap:10px;align-items:center;padding:12px;border-radius:10px}
+.rec-block ul{margin:0;padding-left:18px}.rec-block li{margin-bottom:6px}
+
+.grid6{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin-top:16px}
+.rcard{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;min-width:0}
+.rcard header{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:baseline;margin-bottom:6px}
+.rcard .desc{color:var(--muted);font-size:14px}
+.row-sym{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:8px}
+.tile{border-radius:10px;display:flex;align-items:center;justify-content:center;gap:10px;padding:10px;min-height:112px}
+.tile svg.sym{max-width:100%;height:auto}
+.grounds{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ground{border-radius:10px;padding:16px 12px;display:flex;align-items:center;justify-content:center;min-height:96px}
+.iconrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.iconrow figure{margin:0;border-radius:10px;padding:10px;display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.iconrow figure.big{background:var(--surface-2);border:1px solid var(--line);flex:1 1 200px}
+.iconrow figure.sizes{flex:1 1 120px}
+.iconrow figcaption{font-family:'IBM Plex Mono',monospace;font-size:11px;opacity:.75;flex:1 1 100%}
+.iconrow figure.big figcaption{flex:1 1 80px;color:var(--muted);opacity:1}
+.files{margin:10px 0 0;font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+
+table{width:100%;border-collapse:collapse;font-size:14px;background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+th,td{text-align:left;vertical-align:top;padding:10px 12px;border-bottom:1px solid var(--line)}
+th{font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:500;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);background:var(--surface-2)}
+tr:last-child td{border-bottom:0}
+.g{display:inline-block;font-size:12.5px;font-weight:600;padding:3px 8px;border-radius:6px;white-space:nowrap}
+.g4{color:var(--g4);background:var(--g4-bg)}.g3{color:var(--g3);background:var(--g3-bg)}.g2{color:var(--g2);background:var(--g2-bg)}.g1{color:var(--g1);background:var(--g1-bg)}
+
+.cand{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px;margin-top:16px}
+.cand-head{border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:14px}
+.cand-title{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}
+.cand-title h3{font-size:24px}
+.ar{font-family:'IBM Plex Sans Arabic','Segoe UI',Tahoma,sans-serif;font-weight:500;color:var(--muted);font-size:.8em;margin-left:6px}
+.style{margin:4px 0 0;color:var(--muted);font-size:14px}
+.cand-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:20px;align-items:start}
+.cand-lockups{display:grid;gap:8px}
+.facts{display:grid;gap:10px;margin:0}
+.facts>div{display:grid;grid-template-columns:96px minmax(0,1fr);gap:12px}
+.facts dt{font-family:'IBM Plex Mono',monospace;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding-top:3px}
+.facts dd{margin:0;font-size:15px}
+
+.compare{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;margin-top:16px}
+.compare .ground{min-height:92px}
+.method{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.method>div{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;font-size:14.5px}
+.method ul,.method ol{margin:0;padding-left:18px}.method li{margin-bottom:5px}
+.sources{columns:2;column-gap:28px;font-size:13px;padding-left:18px}.sources li{break-inside:avoid;margin-bottom:4px}
+a{color:var(--accent)}
+footer{margin-top:48px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:16px}
+@media (max-width:980px){.grid6{grid-template-columns:1fr}.rec-block{grid-template-columns:1fr}.cand-grid{grid-template-columns:1fr}.method{grid-template-columns:1fr}.sources{columns:1}}
+@media (max-width:640px){
+ .wrap{padding-top:24px}.rcard,.cand,.rec-block{padding:14px}
+ .row-sym{grid-template-columns:1fr 1fr}.grounds{grid-template-columns:1fr}
+ .facts>div{grid-template-columns:1fr;gap:2px}
+ table.rt,table.rt tbody,table.rt tr,table.rt td{display:block;width:100%!important}
+ table.rt thead{display:none}
+ table.rt tr{border-bottom:1px solid var(--line);padding:8px 0}
+ table.rt td{border:0;padding:3px 12px;white-space:normal!important}
+ table.rt td::before{content:attr(data-l);display:block;font-family:'IBM Plex Mono',monospace;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs><symbol id="r1-sym" viewBox="0 0 64 64"><g transform="translate(0 0)"><defs><mask id="r1-h-m2" maskUnits="userSpaceOnUse" x="-16" y="-16" width="96" height="96"><rect x="-16" y="-16" width="96" height="96" fill="white"/><polygon points="8,20 32,8 56,20 32,32" fill="black" stroke="black" stroke-width="6" stroke-linejoin="miter"/><polygon points="8,32 32,20 56,32 32,44" fill="black" stroke="black" stroke-width="6" stroke-linejoin="miter"/></mask><mask id="r1-h-m1" maskUnits="userSpaceOnUse" x="-16" y="-16" width="96" height="96"><rect x="-16" y="-16" width="96" height="96" fill="white"/><polygon points="8,20 32,8 56,20 32,32" fill="black" stroke="black" stroke-width="6" stroke-linejoin="miter"/></mask></defs><polygon points="8,44 32,32 56,44 32,56" style="fill:currentColor" mask="url(#r1-h-m2)"/><polygon points="8,32 32,20 56,32 32,44" style="fill:currentColor" mask="url(#r1-h-m1)"/><polygon points="8,20 32,8 56,20 32,32" style="fill:var(--acc)"/></g></symbol><symbol id="r1-icon" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#18202B"/><g transform="translate(256 256) scale(6.6) translate(-32 -32)"><defs><mask id="r1-hi-m2" maskUnits="userSpaceOnUse" x="-16" y="-16" width="96" height="96"><rect x="-16" y="-16" width="96" height="96" fill="white"/><polygon points="8,20 32,8 56,20 32,32" fill="black" stroke="black" stroke-width="6" stroke-linejoin="miter"/><polygon points="8,32 32,20 56,32 32,44" fill="black" stroke="black" stroke-width="6" stroke-linejoin="miter"/></mask><mask id="r1-hi-m1" maskUnits="userSpaceOnUse" x="-16" y="-16" width="96" height="96"><rect x="-16" y="-16" width="96" height="96" fill="white"/><polygon points="8,20 32,8 56,20 32,32" fill="black" stroke="black" stroke-width="6" stroke-linejoin="miter"/></mask></defs><polygon points="8,44 32,32 56,44 32,56" style="fill:#E3EAF2" mask="url(#r1-hi-m2)"/><polygon points="8,32 32,20 56,32 32,44" style="fill:#E3EAF2" mask="url(#r1-hi-m1)"/><polygon points="8,20 32,8 56,20 32,32" style="fill:#45C79F"/></g></symbol><symbol id="r2-sym" viewBox="0 0 64 64"><g transform="translate(0 1)"><defs><mask id="r2-h-m3" maskUnits="userSpaceOnUse" x="-16" y="-16" width="96" height="96"><rect x="-16" y="-16" width="96" height="96" fill="white"/><polygon points="10,24 32,13 54,24 32,35" fill="black" stroke="black" stroke-width="5" stroke-linejoin="miter"/><polygon points="10,33 32,22 54,33 32,44" fill="black" stroke="black" stroke-width="5" stroke-linejoin="miter"/><polygon points="10,42 32,31 54,42 32,53" fill="black" stroke="black" stroke-width="5" stroke-linejoin="miter"/></mask><mask id="r2-h-m2" maskUnits="userSpaceOnUse" x="-16" y="-16" width="96" height="96"><rect x="-16" y="-16" width="96" height="96" fill="white"/><polygon points="10,24 32,13 54,24 32,35" fill="black" stroke="black" stroke-width="5" stroke-linejoin="miter"/><polygon points="10,33 32,22 54,33 32,44" fill="black" stroke="black" stroke-width="5" stroke-linejoin="miter"/></mask><mask id="r2-h-m1" maskUnits="userSpaceOnUse" x="-16" y="-16" width="96" height="96"><rect x="-16" y="-16" width="96" height="96" fill="white"/><polygon points="10,24 32,13 54,24 32,35" fill="black" stroke="black" stroke-width="5" stroke-linejoin="miter"/></mask></defs><polygon points="10,51 32,40 54,51 32,62" style="fill:currentColor" mask="url(#r2-h-m3)"/><polygon points="10,42 32,31 54,42 32,53" style="fill:currentColor" mask="url(#r2-h-m2)"/><polygon points="10,33 32,22 54,33 32,44" style="fill:currentColor" mask="url(#r2-h-m1)"/><polygon points="10,24 32,13 54,24 32,35" style="fill:var(--acc)"/><path d="M10 24 L26 3.5 L54 24" fill="none" style="stroke:currentColor" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/><circle cx="26" cy="3.5" r="3.4" style="fill:currentColor"/></g></symbol><symbol id="r2-icon" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#18202B"/><g transform="translate(256 256) scale(6.2) translate(-32 -31)"><defs><mask id="r2-hi-m3" maskUnits="userSpaceOnUse" x="-16" y="-16" width="96" height="96"><rect x="-16" y="-16" width="96" height="96" fill="white"/><polygon points="10,24 32,13 54,24 32,35" fill="black" stroke="black" stroke-width="5" stroke-linejoin="miter"/><polygon points="10,33 32,22 54,33 32,44" fill="black" stroke="black" stroke-width="5" stroke-linejoin="miter"/><polygon points="10,42 32,31 54,42 32,53" fill="black" stroke="black" stroke-width="5" stroke-linejoin="miter"/></mask><mask id="r2-hi-m2" maskUnits="userSpaceOnUse" x="-16" y="-16" width="96" height="96"><rect x="-16" y="-16" width="96" height="96" fill="white"/><polygon points="10,24 32,13 54,24 32,35" fill="black" stroke="black" stroke-width="5" stroke-linejoin="miter"/><polygon points="10,33 32,22 54,33 32,44" fill="black" stroke="black" stroke-width="5" stroke-linejoin="miter"/></mask><mask id="r2-hi-m1" maskUnits="userSpaceOnUse" x="-16" y="-16" width="96" height="96"><rect x="-16" y="-16" width="96" height="96" fill="white"/><polygon points="10,24 32,13 54,24 32,35" fill="black" stroke="black" stroke-width="5" stroke-linejoin="miter"/></mask></defs><polygon points="10,51 32,40 54,51 32,62" style="fill:#E3EAF2" mask="url(#r2-hi-m3)"/><polygon points="10,42 32,31 54,42 32,53" style="fill:#E3EAF2" mask="url(#r2-hi-m2)"/><polygon points="10,33 32,22 54,33 32,44" style="fill:#E3EAF2" mask="url(#r2-hi-m1)"/><polygon points="10,24 32,13 54,24 32,35" style="fill:#45C79F"/><path d="M10 24 L26 3.5 L54 24" fill="none" style="stroke:#E3EAF2" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/><circle cx="26" cy="3.5" r="3.4" style="fill:#E3EAF2"/></g></symbol><symbol id="r3-sym" viewBox="0 0 64 64"><g transform="translate(0 0.5)"><path d="M6 21 C22 16 42 26 58 21" fill="none" style="stroke:var(--acc)" stroke-width="4" stroke-linecap="round"/><path d="M6 30 C22 26 42 34 58 30" fill="none" style="stroke:currentColor" stroke-width="4" stroke-linecap="round"/><path d="M6 39 C22 36 42 42 58 39" fill="none" style="stroke:currentColor" stroke-width="4" stroke-linecap="round"/><path d="M6 48 C22 46 42 50 58 48" fill="none" style="stroke:currentColor" stroke-width="4" stroke-linecap="round"/><path d="M6 57 C22 56 42 58 58 57" fill="none" style="stroke:currentColor" stroke-width="4" stroke-linecap="round"/><polygon points="18,4 24.5,14 11.5,14" style="fill:currentColor"/></g></symbol><symbol id="r3-icon" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#18202B"/><g transform="translate(256 256) scale(6.4) translate(-32 -31.5)"><path d="M6 21 C22 16 42 26 58 21" fill="none" style="stroke:#45C79F" stroke-width="4" stroke-linecap="round"/><path d="M6 30 C22 26 42 34 58 30" fill="none" style="stroke:#E3EAF2" stroke-width="4" stroke-linecap="round"/><path d="M6 39 C22 36 42 42 58 39" fill="none" style="stroke:#E3EAF2" stroke-width="4" stroke-linecap="round"/><path d="M6 48 C22 46 42 50 58 48" fill="none" style="stroke:#E3EAF2" stroke-width="4" stroke-linecap="round"/><path d="M6 57 C22 56 42 58 58 57" fill="none" style="stroke:#E3EAF2" stroke-width="4" stroke-linecap="round"/><polygon points="18,4 24.5,14 11.5,14" style="fill:#E3EAF2"/></g></symbol><symbol id="r4-sym" viewBox="0 0 64 64"><g transform="translate(0 1)"><polygon points="8,46 32,34 56,46 32,58" style="fill:currentColor;stroke:currentColor" fill-opacity=".10" stroke-width="2" stroke-linejoin="round"/><path d="M20 40 L44 52 M44 40 L20 52 M14 43 L38 55 M26 37 L50 49" fill="none" style="stroke:currentColor" stroke-width="1.3" stroke-opacity=".75"/><polygon points="8,36 32,24 56,36 32,48" style="fill:currentColor;stroke:currentColor" fill-opacity=".14" stroke-width="2" stroke-linejoin="round"/><circle cx="22" cy="36" r="1.35" style="fill:currentColor"/><circle cx="28" cy="33" r="1.35" style="fill:currentColor"/><circle cx="34" cy="38" r="1.35" style="fill:currentColor"/><circle cx="40" cy="34" r="1.35" style="fill:currentColor"/><circle cx="44" cy="37" r="1.35" style="fill:currentColor"/><circle cx="30" cy="40" r="1.35" style="fill:currentColor"/><circle cx="37" cy="31" r="1.35" style="fill:currentColor"/><circle cx="18" cy="37" r="1.35" style="fill:currentColor"/><circle cx="46" cy="35" r="1.35" style="fill:currentColor"/><polygon points="8,26 32,14 56,26 32,38" style="fill:currentColor;stroke:currentColor" fill-opacity=".18" stroke-width="2" stroke-linejoin="round"/><path d="M8 26 L56 26 M32 14 L20 32 M32 14 L44 32 M20 20 L32 38 M44 20 L32 38" fill="none" style="stroke:currentColor" stroke-width="1.3" stroke-opacity=".8"/><polygon points="8,16 32,4 56,16 32,28" style="fill:var(--acc);stroke:var(--acc)" stroke-width="2" stroke-linejoin="round"/><polygon points="28.5,12.5 28.5,19.5 37,16" style="fill:currentColor"/></g></symbol><symbol id="r4-icon" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#18202B"/><g transform="translate(256 256) scale(6.4) translate(-32 -31)"><polygon points="8,46 32,34 56,46 32,58" style="fill:#E3EAF2;stroke:#E3EAF2" fill-opacity=".30" stroke-width="0" stroke-linejoin="round"/><polygon points="8,36 32,24 56,36 32,48" style="fill:#E3EAF2;stroke:#E3EAF2" fill-opacity=".48" stroke-width="0" stroke-linejoin="round"/><polygon points="8,26 32,14 56,26 32,38" style="fill:#E3EAF2;stroke:#E3EAF2" fill-opacity=".66" stroke-width="0" stroke-linejoin="round"/><polygon points="8,16 32,4 56,16 32,28" style="fill:#45C79F;stroke:#45C79F" stroke-width="2" stroke-linejoin="round"/></g></symbol><symbol id="r5-sym" viewBox="0 0 64 64"><g transform="translate(0 -0.25)"><defs><mask id="r5-h-m2" maskUnits="userSpaceOnUse" x="-16" y="-16" width="96" height="96"><rect x="-16" y="-16" width="96" height="96" fill="white"/><polygon points="12,26 32,16 52,26 32,36" fill="black" stroke="black" stroke-width="5" stroke-linejoin="miter"/><polygon points="12,35 32,25 52,35 32,45" fill="black" stroke="black" stroke-width="5" stroke-linejoin="miter"/></mask><mask id="r5-h-m1" maskUnits="userSpaceOnUse" x="-16" y="-16" width="96" height="96"><rect x="-16" y="-16" width="96" height="96" fill="white"/><polygon points="12,26 32,16 52,26 32,36" fill="black" stroke="black" stroke-width="5" stroke-linejoin="miter"/></mask></defs><polygon points="12,44 32,34 52,44 32,54" style="fill:currentColor" mask="url(#r5-h-m2)"/><polygon points="12,35 32,25 52,35 32,45" style="fill:currentColor" mask="url(#r5-h-m1)"/><polygon points="12,26 32,16 52,26 32,36" style="fill:var(--acc)"/><line x1="32" y1="6.6" x2="32" y2="13.2" style="stroke:currentColor" stroke-width="2.6" stroke-linecap="round"/><circle cx="32" cy="4" r="2.6" fill="none" style="stroke:currentColor" stroke-width="2"/><polygon points="27.5,56.8 36.5,56.8 32,63.5" style="fill:currentColor"/></g></symbol><symbol id="r5-icon" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#18202B"/><g transform="translate(256 256) scale(6.4) translate(-32 -32.25)"><defs><mask id="r5-hi-m2" maskUnits="userSpaceOnUse" x="-16" y="-16" width="96" height="96"><rect x="-16" y="-16" width="96" height="96" fill="white"/><polygon points="12,26 32,16 52,26 32,36" fill="black" stroke="black" stroke-width="5" stroke-linejoin="miter"/><polygon points="12,35 32,25 52,35 32,45" fill="black" stroke="black" stroke-width="5" stroke-linejoin="miter"/></mask><mask id="r5-hi-m1" maskUnits="userSpaceOnUse" x="-16" y="-16" width="96" height="96"><rect x="-16" y="-16" width="96" height="96" fill="white"/><polygon points="12,26 32,16 52,26 32,36" fill="black" stroke="black" stroke-width="5" stroke-linejoin="miter"/></mask></defs><polygon points="12,44 32,34 52,44 32,54" style="fill:#E3EAF2" mask="url(#r5-hi-m2)"/><polygon points="12,35 32,25 52,35 32,45" style="fill:#E3EAF2" mask="url(#r5-hi-m1)"/><polygon points="12,26 32,16 52,26 32,36" style="fill:#45C79F"/><line x1="32" y1="6.6" x2="32" y2="13.2" style="stroke:#E3EAF2" stroke-width="2.6" stroke-linecap="round"/><circle cx="32" cy="4" r="2.6" fill="none" style="stroke:#E3EAF2" stroke-width="2"/><polygon points="27.5,56.8 36.5,56.8 32,63.5" style="fill:#E3EAF2"/></g></symbol><symbol id="r6-sym" viewBox="0 0 64 64"><g transform="translate(0 2)"><defs><mask id="r6-h-m4" maskUnits="userSpaceOnUse" x="-16" y="-16" width="96" height="96"><rect x="-16" y="-16" width="96" height="96" fill="white"/><polygon points="6,14 26,4 46,14 26,24" fill="black" stroke="black" stroke-width="4" stroke-linejoin="miter"/><polygon points="9,22 29,12 49,22 29,32" fill="black" stroke="black" stroke-width="4" stroke-linejoin="miter"/><polygon points="12,30 32,20 52,30 32,40" fill="black" stroke="black" stroke-width="4" stroke-linejoin="miter"/><polygon points="15,38 35,28 55,38 35,48" fill="black" stroke="black" stroke-width="4" stroke-linejoin="miter"/></mask><mask id="r6-h-m3" maskUnits="userSpaceOnUse" x="-16" y="-16" width="96" height="96"><rect x="-16" y="-16" width="96" height="96" fill="white"/><polygon points="6,14 26,4 46,14 26,24" fill="black" stroke="black" stroke-width="4" stroke-linejoin="miter"/><polygon points="9,22 29,12 49,22 29,32" fill="black" stroke="black" stroke-width="4" stroke-linejoin="miter"/><polygon points="12,30 32,20 52,30 32,40" fill="black" stroke="black" stroke-width="4" stroke-linejoin="miter"/></mask><mask id="r6-h-m2" maskUnits="userSpaceOnUse" x="-16" y="-16" width="96" height="96"><rect x="-16" y="-16" width="96" height="96" fill="white"/><polygon points="6,14 26,4 46,14 26,24" fill="black" stroke="black" stroke-width="4" stroke-linejoin="miter"/><polygon points="9,22 29,12 49,22 29,32" fill="black" stroke="black" stroke-width="4" stroke-linejoin="miter"/></mask><mask id="r6-h-m1" maskUnits="userSpaceOnUse" x="-16" y="-16" width="96" height="96"><rect x="-16" y="-16" width="96" height="96" fill="white"/><polygon points="6,14 26,4 46,14 26,24" fill="black" stroke="black" stroke-width="4" stroke-linejoin="miter"/></mask></defs><polygon points="18,46 38,36 58,46 38,56" style="fill:currentColor" mask="url(#r6-h-m4)"/><polygon points="15,38 35,28 55,38 35,48" style="fill:currentColor" mask="url(#r6-h-m3)"/><polygon points="12,30 32,20 52,30 32,40" style="fill:currentColor" mask="url(#r6-h-m2)"/><polygon points="9,22 29,12 49,22 29,32" style="fill:currentColor" mask="url(#r6-h-m1)"/><polygon points="6,14 26,4 46,14 26,24" style="fill:var(--acc)"/></g></symbol><symbol id="r6-icon" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#18202B"/><g transform="translate(256 256) scale(6.2) translate(-32 -30)"><defs><mask id="r6-hi-m4" maskUnits="userSpaceOnUse" x="-16" y="-16" width="96" height="96"><rect x="-16" y="-16" width="96" height="96" fill="white"/><polygon points="6,14 26,4 46,14 26,24" fill="black" stroke="black" stroke-width="4" stroke-linejoin="miter"/><polygon points="9,22 29,12 49,22 29,32" fill="black" stroke="black" stroke-width="4" stroke-linejoin="miter"/><polygon points="12,30 32,20 52,30 32,40" fill="black" stroke="black" stroke-width="4" stroke-linejoin="miter"/><polygon points="15,38 35,28 55,38 35,48" fill="black" stroke="black" stroke-width="4" stroke-linejoin="miter"/></mask><mask id="r6-hi-m3" maskUnits="userSpaceOnUse" x="-16" y="-16" width="96" height="96"><rect x="-16" y="-16" width="96" height="96" fill="white"/><polygon points="6,14 26,4 46,14 26,24" fill="black" stroke="black" stroke-width="4" stroke-linejoin="miter"/><polygon points="9,22 29,12 49,22 29,32" fill="black" stroke="black" stroke-width="4" stroke-linejoin="miter"/><polygon points="12,30 32,20 52,30 32,40" fill="black" stroke="black" stroke-width="4" stroke-linejoin="miter"/></mask><mask id="r6-hi-m2" maskUnits="userSpaceOnUse" x="-16" y="-16" width="96" height="96"><rect x="-16" y="-16" width="96" height="96" fill="white"/><polygon points="6,14 26,4 46,14 26,24" fill="black" stroke="black" stroke-width="4" stroke-linejoin="miter"/><polygon points="9,22 29,12 49,22 29,32" fill="black" stroke="black" stroke-width="4" stroke-linejoin="miter"/></mask><mask id="r6-hi-m1" maskUnits="userSpaceOnUse" x="-16" y="-16" width="96" height="96"><rect x="-16" y="-16" width="96" height="96" fill="white"/><polygon points="6,14 26,4 46,14 26,24" fill="black" stroke="black" stroke-width="4" stroke-linejoin="miter"/></mask></defs><polygon points="18,46 38,36 58,46 38,56" style="fill:#E3EAF2" mask="url(#r6-hi-m4)"/><polygon points="15,38 35,28 55,38 35,48" style="fill:#E3EAF2" mask="url(#r6-hi-m3)"/><polygon points="12,30 32,20 52,30 32,40" style="fill:#E3EAF2" mask="url(#r6-hi-m2)"/><polygon points="9,22 29,12 49,22 29,32" style="fill:#E3EAF2" mask="url(#r6-hi-m1)"/><polygon points="6,14 26,4 46,14 26,24" style="fill:#45C79F"/></g></symbol></defs></svg>
+<div class="wrap">
+  <div class="topbar">
+    <span class="eyebrow">Synapse Solutions · Naming round 2 · 3 Oct 2026</span>
+    <button class="theme-btn" type="button" id="themeBtn" aria-label="Switch colour theme">Theme: auto</button>
+  </div>
+  <h1>Stratlas mark, refined, and names that fit it</h1>
+  <p class="lede">The founder chose the stacked-layers idea from round 1. This round refines that mark six ways: 3, 4 or 5 layers; isometric plates, flat bands or translucent typed planes; with or without a capture cue (drone frustum, survey tick); all built to work in one colour at 16 px. It then screens fresh names with the same layered, fused meaning. The round-1 page is unchanged.</p>
+  <p class="note"><strong>Quick screen, not legal clearance.</strong> Collisions were checked with web searches on 3 Oct 2026. No trademark registers were searched and no domains were verified.</p>
+
+  <div class="rec-block">
+    <div class="rec-visual">
+      <div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="STRATLAS lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATLAS</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتلاس</text></svg></div>
+      <div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="STRATLAS lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATLAS</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتلاس</text></svg></div>
+      <div class="rec-icons on-dark"><svg class="ic" width="64" height="64" viewBox="0 0 512 512" role="img" aria-label="icon 64 px"><use href="#r5-icon"/></svg><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#r5-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#r5-icon"/></svg><svg class="sym" width="16" height="16" viewBox="0 0 64 64" role="img" aria-label="symbol 16 px"><use href="#r5-sym"/></svg></div>
+    </div>
+    <div>
+      <span class="pill rec">Recommendation</span>
+      <h2 style="margin:10px 0 10px">Stratlas, with R5 "Plumb through layers"</h2>
+      <ul>
+        <li><strong>The mark says the product in one figure.</strong> Several georeferenced layers, one shared coordinate, measured from above. The plumb line, station ring and bob tie it to survey and capture without a cliché drone silhouette, and it is the direct descendant of the mark the founder picked.</li>
+        <li><strong>It survives being small.</strong> The plates are separated by real cut gaps, so the mark reads in one colour, at 16 px and on any ground. Three layers keep each band at least one pixel thick at 16 px.</li>
+        <li><strong>The name explains itself.</strong> Strata + atlas lands on first read with English-speaking engineers and is easy to say in Arabic. The founder already likes it.</li>
+        <li><strong>The one risk to clear first:</strong> the Strat- stem is crowded in drone software (Trimble Stratus above all). Put Stratlas vs Stratus in front of a trademark attorney before spending on it. If it fails, <strong>Atlastra</strong> keeps the same meaning and the same mark with a cleaner screen. <strong>Nadeed</strong> is the strongest Arabic-first alternative.</li>
+        <li>Runner-up mark: <strong>R2</strong> (frustum), for a more explicit capture story on large formats. It can be the illustrative companion to R5.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="refinements">1 · Six refinements of the layered mark</h2>
+  <p class="lede">All six sit on a 64-unit grid with a 2:1 isometric slope. Plate vertices fall on whole units, and every gap is real transparency (masked), not a painted background, so each mark works in one colour on any ground. Each card shows: the symbol on dark and light; a one-colour test at 48 and 16 px; the horizontal lockup; and the app icon at 512 (shown at 112), 32 and 16 px.</p>
+  <div class="grid6">
+<article class="rcard" id="r1">
+  <header><h3>R1 · Three plates</h3><div class="tags"><span class="tag">3 layers</span><span class="tag">isometric 2:1</span><span class="tag">mono-first</span></div></header>
+  <p class="desc">The base construction. Three plates on a 2:1 isometric grid (every vertex on a 4-unit grid, gaps cut as real transparency). It is the most compact and reads cleanly at 16 px. On its own it sits close to the generic "layers" UI icon, which is why the other refinements add capture cues.</p>
+  <div class="row-sym">
+    <div class="tile on-dark"><svg class="sym" width="96" height="96" viewBox="0 0 64 64" role="img" aria-label="symbol 96 px"><use href="#r1-sym"/></svg></div>
+    <div class="tile on-light"><svg class="sym" width="96" height="96" viewBox="0 0 64 64" role="img" aria-label="symbol 96 px"><use href="#r1-sym"/></svg></div>
+    <div class="tile mono-w" title="Monochrome, black on white"><svg class="sym" width="48" height="48" viewBox="0 0 64 64" role="img" aria-label="symbol 48 px"><use href="#r1-sym"/></svg><svg class="sym" width="16" height="16" viewBox="0 0 64 64" role="img" aria-label="symbol 16 px"><use href="#r1-sym"/></svg></div>
+    <div class="tile mono-b" title="Monochrome, white on black"><svg class="sym" width="48" height="48" viewBox="0 0 64 64" role="img" aria-label="symbol 48 px"><use href="#r1-sym"/></svg><svg class="sym" width="16" height="16" viewBox="0 0 64 64" role="img" aria-label="symbol 16 px"><use href="#r1-sym"/></svg></div>
+  </div>
+  <div class="grounds">
+    <div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="STRATLAS lockup"><use href="#r1-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATLAS</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتلاس</text></svg></div>
+    <div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="STRATLAS lockup"><use href="#r1-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATLAS</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتلاس</text></svg></div>
+  </div>
+  <div class="iconrow">
+    <figure class="big"><svg class="ic" width="112" height="112" viewBox="0 0 512 512" role="img" aria-label="icon 112 px"><use href="#r1-icon"/></svg><figcaption>512 px master shown at 112</figcaption></figure>
+    <figure class="sizes on-dark"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#r1-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#r1-icon"/></svg><figcaption>32 / 16 on dark</figcaption></figure>
+    <figure class="sizes on-light"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#r1-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#r1-icon"/></svg><figcaption>32 / 16 on light</figcaption></figure>
+  </div>
+  <p class="files">Files: <code>logos/round2/stratlas-r1-plates3-symbol.svg</code> <code>-mark.svg</code> <code>-icon.svg</code></p>
+</article>
+<article class="rcard" id="r2">
+  <header><h3>R2 · Four plates + frustum</h3><div class="tags"><span class="tag">4 layers</span><span class="tag">isometric</span><span class="tag">drone frustum</span></div></header>
+  <p class="desc">Four layers (map, cloud, mesh, video). A drone pose sits above, off-centre, and its view frustum lands exactly on the top plate's corners, so the top layer becomes the camera footprint. This is capture plus fusion in one figure.</p>
+  <div class="row-sym">
+    <div class="tile on-dark"><svg class="sym" width="96" height="96" viewBox="0 0 64 64" role="img" aria-label="symbol 96 px"><use href="#r2-sym"/></svg></div>
+    <div class="tile on-light"><svg class="sym" width="96" height="96" viewBox="0 0 64 64" role="img" aria-label="symbol 96 px"><use href="#r2-sym"/></svg></div>
+    <div class="tile mono-w" title="Monochrome, black on white"><svg class="sym" width="48" height="48" viewBox="0 0 64 64" role="img" aria-label="symbol 48 px"><use href="#r2-sym"/></svg><svg class="sym" width="16" height="16" viewBox="0 0 64 64" role="img" aria-label="symbol 16 px"><use href="#r2-sym"/></svg></div>
+    <div class="tile mono-b" title="Monochrome, white on black"><svg class="sym" width="48" height="48" viewBox="0 0 64 64" role="img" aria-label="symbol 48 px"><use href="#r2-sym"/></svg><svg class="sym" width="16" height="16" viewBox="0 0 64 64" role="img" aria-label="symbol 16 px"><use href="#r2-sym"/></svg></div>
+  </div>
+  <div class="grounds">
+    <div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="STRATLAS lockup"><use href="#r2-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATLAS</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتلاس</text></svg></div>
+    <div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="STRATLAS lockup"><use href="#r2-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATLAS</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتلاس</text></svg></div>
+  </div>
+  <div class="iconrow">
+    <figure class="big"><svg class="ic" width="112" height="112" viewBox="0 0 512 512" role="img" aria-label="icon 112 px"><use href="#r2-icon"/></svg><figcaption>512 px master shown at 112</figcaption></figure>
+    <figure class="sizes on-dark"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#r2-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#r2-icon"/></svg><figcaption>32 / 16 on dark</figcaption></figure>
+    <figure class="sizes on-light"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#r2-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#r2-icon"/></svg><figcaption>32 / 16 on light</figcaption></figure>
+  </div>
+  <p class="files">Files: <code>logos/round2/stratlas-r2-frustum4-symbol.svg</code> <code>-mark.svg</code> <code>-icon.svg</code></p>
+</article>
+<article class="rcard" id="r3">
+  <header><h3>R3 · Five contour bands</h3><div class="tags"><span class="tag">5 layers</span><span class="tag">flat bands</span><span class="tag">survey benchmark</span></div></header>
+  <p class="desc">Flat bands, like strata in section or contours in profile. They settle from wavy terrain at the top to a flat datum at the bottom. A trig-point triangle marks the survey benchmark. Calm and cartographic, but it loses the 3D read.</p>
+  <div class="row-sym">
+    <div class="tile on-dark"><svg class="sym" width="96" height="96" viewBox="0 0 64 64" role="img" aria-label="symbol 96 px"><use href="#r3-sym"/></svg></div>
+    <div class="tile on-light"><svg class="sym" width="96" height="96" viewBox="0 0 64 64" role="img" aria-label="symbol 96 px"><use href="#r3-sym"/></svg></div>
+    <div class="tile mono-w" title="Monochrome, black on white"><svg class="sym" width="48" height="48" viewBox="0 0 64 64" role="img" aria-label="symbol 48 px"><use href="#r3-sym"/></svg><svg class="sym" width="16" height="16" viewBox="0 0 64 64" role="img" aria-label="symbol 16 px"><use href="#r3-sym"/></svg></div>
+    <div class="tile mono-b" title="Monochrome, white on black"><svg class="sym" width="48" height="48" viewBox="0 0 64 64" role="img" aria-label="symbol 48 px"><use href="#r3-sym"/></svg><svg class="sym" width="16" height="16" viewBox="0 0 64 64" role="img" aria-label="symbol 16 px"><use href="#r3-sym"/></svg></div>
+  </div>
+  <div class="grounds">
+    <div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="STRATLAS lockup"><use href="#r3-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATLAS</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتلاس</text></svg></div>
+    <div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="STRATLAS lockup"><use href="#r3-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATLAS</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتلاس</text></svg></div>
+  </div>
+  <div class="iconrow">
+    <figure class="big"><svg class="ic" width="112" height="112" viewBox="0 0 512 512" role="img" aria-label="icon 112 px"><use href="#r3-icon"/></svg><figcaption>512 px master shown at 112</figcaption></figure>
+    <figure class="sizes on-dark"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#r3-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#r3-icon"/></svg><figcaption>32 / 16 on dark</figcaption></figure>
+    <figure class="sizes on-light"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#r3-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#r3-icon"/></svg><figcaption>32 / 16 on light</figcaption></figure>
+  </div>
+  <p class="files">Files: <code>logos/round2/stratlas-r3-contours5-symbol.svg</code> <code>-mark.svg</code> <code>-icon.svg</code></p>
+</article>
+<article class="rcard" id="r4">
+  <header><h3>R4 · Fused typed planes</h3><div class="tags"><span class="tag">4 layers</span><span class="tag">translucent</span><span class="tag">map + cloud + mesh + video</span></div></header>
+  <p class="desc">Four translucent planes, each showing its data type: map grid, point cloud, mesh, and a video frame on top. It is the most literal "fusion" story and good as a hero illustration. The icon has to drop the textures, so it is not an icon-grade master.</p>
+  <div class="row-sym">
+    <div class="tile on-dark"><svg class="sym" width="96" height="96" viewBox="0 0 64 64" role="img" aria-label="symbol 96 px"><use href="#r4-sym"/></svg></div>
+    <div class="tile on-light"><svg class="sym" width="96" height="96" viewBox="0 0 64 64" role="img" aria-label="symbol 96 px"><use href="#r4-sym"/></svg></div>
+    <div class="tile mono-w" title="Monochrome, black on white"><svg class="sym" width="48" height="48" viewBox="0 0 64 64" role="img" aria-label="symbol 48 px"><use href="#r4-sym"/></svg><svg class="sym" width="16" height="16" viewBox="0 0 64 64" role="img" aria-label="symbol 16 px"><use href="#r4-sym"/></svg></div>
+    <div class="tile mono-b" title="Monochrome, white on black"><svg class="sym" width="48" height="48" viewBox="0 0 64 64" role="img" aria-label="symbol 48 px"><use href="#r4-sym"/></svg><svg class="sym" width="16" height="16" viewBox="0 0 64 64" role="img" aria-label="symbol 16 px"><use href="#r4-sym"/></svg></div>
+  </div>
+  <div class="grounds">
+    <div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="STRATLAS lockup"><use href="#r4-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATLAS</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتلاس</text></svg></div>
+    <div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="STRATLAS lockup"><use href="#r4-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATLAS</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتلاس</text></svg></div>
+  </div>
+  <div class="iconrow">
+    <figure class="big"><svg class="ic" width="112" height="112" viewBox="0 0 512 512" role="img" aria-label="icon 112 px"><use href="#r4-icon"/></svg><figcaption>512 px master shown at 112</figcaption></figure>
+    <figure class="sizes on-dark"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#r4-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#r4-icon"/></svg><figcaption>32 / 16 on dark</figcaption></figure>
+    <figure class="sizes on-light"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#r4-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#r4-icon"/></svg><figcaption>32 / 16 on light</figcaption></figure>
+  </div>
+  <p class="files">Files: <code>logos/round2/stratlas-r4-fused4-symbol.svg</code> <code>-mark.svg</code> <code>-icon.svg</code></p>
+</article>
+<article class="rcard" id="r5">
+  <header><h3>R5 · Plumb through layers</h3><div class="tags"><span class="tag">3 layers</span><span class="tag">isometric</span><span class="tag">plumb bob</span></div></header>
+  <p class="desc">Refines the round-1 mark the founder liked. The stack is threaded on one plumb line: a survey-station ring above, a plumb bob below pointing at the ground mark. Every layer is tied to a single coordinate. An earlier version cut the line through the plates, but that split them into leaf shapes, so the line is implied through the stack instead. It is the clearest "one point, every layer" statement.</p>
+  <div class="row-sym">
+    <div class="tile on-dark"><svg class="sym" width="96" height="96" viewBox="0 0 64 64" role="img" aria-label="symbol 96 px"><use href="#r5-sym"/></svg></div>
+    <div class="tile on-light"><svg class="sym" width="96" height="96" viewBox="0 0 64 64" role="img" aria-label="symbol 96 px"><use href="#r5-sym"/></svg></div>
+    <div class="tile mono-w" title="Monochrome, black on white"><svg class="sym" width="48" height="48" viewBox="0 0 64 64" role="img" aria-label="symbol 48 px"><use href="#r5-sym"/></svg><svg class="sym" width="16" height="16" viewBox="0 0 64 64" role="img" aria-label="symbol 16 px"><use href="#r5-sym"/></svg></div>
+    <div class="tile mono-b" title="Monochrome, white on black"><svg class="sym" width="48" height="48" viewBox="0 0 64 64" role="img" aria-label="symbol 48 px"><use href="#r5-sym"/></svg><svg class="sym" width="16" height="16" viewBox="0 0 64 64" role="img" aria-label="symbol 16 px"><use href="#r5-sym"/></svg></div>
+  </div>
+  <div class="grounds">
+    <div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="STRATLAS lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATLAS</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتلاس</text></svg></div>
+    <div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="STRATLAS lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATLAS</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتلاس</text></svg></div>
+  </div>
+  <div class="iconrow">
+    <figure class="big"><svg class="ic" width="112" height="112" viewBox="0 0 512 512" role="img" aria-label="icon 112 px"><use href="#r5-icon"/></svg><figcaption>512 px master shown at 112</figcaption></figure>
+    <figure class="sizes on-dark"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#r5-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#r5-icon"/></svg><figcaption>32 / 16 on dark</figcaption></figure>
+    <figure class="sizes on-light"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#r5-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#r5-icon"/></svg><figcaption>32 / 16 on light</figcaption></figure>
+  </div>
+  <p class="files">Files: <code>logos/round2/stratlas-r5-plumb3-symbol.svg</code> <code>-mark.svg</code> <code>-icon.svg</code></p>
+</article>
+<article class="rcard" id="r6">
+  <header><h3>R6 · Five offset strata</h3><div class="tags"><span class="tag">5 layers</span><span class="tag">offset parallelograms</span><span class="tag">dip</span></div></header>
+  <p class="desc">Five thin plates, each stepped 3 units along the slope, like dipping strata in an outcrop. It has the most geological character and the most motion. At 16 px the fifth layer fuses, so 5 is the ceiling for layer count.</p>
+  <div class="row-sym">
+    <div class="tile on-dark"><svg class="sym" width="96" height="96" viewBox="0 0 64 64" role="img" aria-label="symbol 96 px"><use href="#r6-sym"/></svg></div>
+    <div class="tile on-light"><svg class="sym" width="96" height="96" viewBox="0 0 64 64" role="img" aria-label="symbol 96 px"><use href="#r6-sym"/></svg></div>
+    <div class="tile mono-w" title="Monochrome, black on white"><svg class="sym" width="48" height="48" viewBox="0 0 64 64" role="img" aria-label="symbol 48 px"><use href="#r6-sym"/></svg><svg class="sym" width="16" height="16" viewBox="0 0 64 64" role="img" aria-label="symbol 16 px"><use href="#r6-sym"/></svg></div>
+    <div class="tile mono-b" title="Monochrome, white on black"><svg class="sym" width="48" height="48" viewBox="0 0 64 64" role="img" aria-label="symbol 48 px"><use href="#r6-sym"/></svg><svg class="sym" width="16" height="16" viewBox="0 0 64 64" role="img" aria-label="symbol 16 px"><use href="#r6-sym"/></svg></div>
+  </div>
+  <div class="grounds">
+    <div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="STRATLAS lockup"><use href="#r6-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATLAS</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتلاس</text></svg></div>
+    <div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="STRATLAS lockup"><use href="#r6-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATLAS</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتلاس</text></svg></div>
+  </div>
+  <div class="iconrow">
+    <figure class="big"><svg class="ic" width="112" height="112" viewBox="0 0 512 512" role="img" aria-label="icon 112 px"><use href="#r6-icon"/></svg><figcaption>512 px master shown at 112</figcaption></figure>
+    <figure class="sizes on-dark"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#r6-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#r6-icon"/></svg><figcaption>32 / 16 on dark</figcaption></figure>
+    <figure class="sizes on-light"><svg class="ic" width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="icon 32 px"><use href="#r6-icon"/></svg><svg class="ic" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="icon 16 px"><use href="#r6-icon"/></svg><figcaption>32 / 16 on light</figcaption></figure>
+  </div>
+  <p class="files">Files: <code>logos/round2/stratlas-r6-offset5-symbol.svg</code> <code>-mark.svg</code> <code>-icon.svg</code></p>
+</article></div>
+
+  <h3 style="margin-top:28px;margin-bottom:10px">How they compare</h3>
+  <table class="rt"><thead><tr><th>Criterion</th><th>R1</th><th>R2</th><th>R3</th><th>R4</th><th>R5</th><th>R6</th></tr></thead><tbody><tr><td data-l="Criterion"><strong>Layer count</strong></td><td data-l="R1 · Three plates">3</td><td data-l="R2 · Four plates + frustum">4</td><td data-l="R3 · Five contour bands">5</td><td data-l="R4 · Fused typed planes">4</td><td data-l="R5 · Plumb through layers">3</td><td data-l="R6 · Five offset strata">5</td></tr><tr><td data-l="Criterion"><strong>Construction</strong></td><td data-l="R1 · Three plates">Isometric plates</td><td data-l="R2 · Four plates + frustum">Isometric plates</td><td data-l="R3 · Five contour bands">Flat bands</td><td data-l="R4 · Fused typed planes">Translucent planes</td><td data-l="R5 · Plumb through layers">Isometric plates</td><td data-l="R6 · Five offset strata">Offset plates</td></tr><tr><td data-l="Criterion"><strong>Capture cue</strong></td><td data-l="R1 · Three plates">None</td><td data-l="R2 · Four plates + frustum">Drone frustum</td><td data-l="R3 · Five contour bands">Benchmark</td><td data-l="R4 · Fused typed planes">Video frame</td><td data-l="R5 · Plumb through layers">Plumb line + bob</td><td data-l="R6 · Five offset strata">None</td></tr><tr><td data-l="Criterion"><strong>One colour</strong></td><td data-l="R1 · Three plates"><span class="g g4">Yes</span></td><td data-l="R2 · Four plates + frustum"><span class="g g4">Yes</span></td><td data-l="R3 · Five contour bands"><span class="g g4">Yes</span></td><td data-l="R4 · Fused typed planes"><span class="g g1">Weak</span></td><td data-l="R5 · Plumb through layers"><span class="g g4">Yes</span></td><td data-l="R6 · Five offset strata"><span class="g g4">Yes</span></td></tr><tr><td data-l="Criterion"><strong>16 px read</strong></td><td data-l="R1 · Three plates"><span class="g g4">Strong</span></td><td data-l="R2 · Four plates + frustum"><span class="g g3">Good</span></td><td data-l="R3 · Five contour bands"><span class="g g3">Good</span></td><td data-l="R4 · Fused typed planes"><span class="g g1">Weak</span></td><td data-l="R5 · Plumb through layers"><span class="g g3">Good</span></td><td data-l="R6 · Five offset strata"><span class="g g2">Fair</span></td></tr><tr><td data-l="Criterion"><strong>Distinctive</strong></td><td data-l="R1 · Three plates"><span class="g g2">Fair</span></td><td data-l="R2 · Four plates + frustum"><span class="g g4">Strong</span></td><td data-l="R3 · Five contour bands"><span class="g g3">Good</span></td><td data-l="R4 · Fused typed planes"><span class="g g3">Good</span></td><td data-l="R5 · Plumb through layers"><span class="g g4">Strong</span></td><td data-l="R6 · Five offset strata"><span class="g g3">Good</span></td></tr></tbody></table>
+
+  <h2 id="names">2 · Names that carry the layered meaning</h2>
+  <p class="lede">About 24 fresh names were screened, built from strata, layer, stack, atlas, horizon and survey roots across Latin, Greek, Arabic and coined compounds. Five are shortlisted, Stratlas included. Each is set in the R5 lockup so they compare like for like.</p>
+  
+<section class="cand">
+  <header class="cand-head">
+    <div class="cand-title"><h3>Stratlas <span class="ar" lang="ar" dir="rtl">ستراتلاس</span></h3><span class="pill rec">Recommended</span></div>
+    <p class="style">Coined compound: strata + atlas</p>
+  </header>
+  <div class="cand-grid">
+    <dl class="facts">
+      <div><dt>Meaning</dt><dd>An atlas made of layers. Every dataset is one stratum in a single georeferenced stack. Its meaning is obvious in English on first read.</dd></div>
+      <div><dt>Say it</dt><dd>STRAT-las. Arabic: ستراتلاس. Some Arabic speakers add a lead vowel (is-trat-las), which is harmless.</dd></div>
+      <div><dt>Screen</dt><dd><span class="pill caution">Caution</span> The exact name is held only by an archived open-source hobby tool that renders maps from 1990s strategy games (alpha 2012, repo archived 2021). The real risk is the crowded <em>Strat-</em> stem in drone software: Trimble <em>Stratus</em> (drone data platform), open-source <em>Stratum GCS</em> and <em>STRATA</em> (UAV video-to-3D), and the <em>StratOS</em> drone simulator. Stratlas vs Stratus needs an attorney's view first.</dd></div>
+      <div><dt>Domains</dt><dd>stratlas.com is not verified; it may be parked. stratlas.ai looks likely to be free.</dd></div>
+    </dl>
+    <div class="cand-lockups">
+      <div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="STRATLAS lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATLAS</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتلاس</text></svg></div>
+      <div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="STRATLAS lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATLAS</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتلاس</text></svg></div>
+    </div>
+  </div>
+</section>
+<section class="cand">
+  <header class="cand-head">
+    <div class="cand-title"><h3>Atlastra <span class="ar" lang="ar" dir="rtl">أتلاسترا</span></h3></div>
+    <p class="style">Coined compound: atlas + strata (and Latin astra, stars)</p>
+  </header>
+  <div class="cand-grid">
+    <dl class="facts">
+      <div><dt>Meaning</dt><dd>The same atlas-of-layers idea, read from the other end. The hidden <em>astra</em> nods to surveying by the sky (GNSS, the drone overhead).</dd></div>
+      <div><dt>Say it</dt><dd>at-LAS-tra. Arabic: أتلاسترا. No p or v; easy in both languages. Some readers may split it as at-last-ra.</dd></div>
+      <div><dt>Screen</dt><dd><span class="pill clear">Clear on quick screen</span> The only exact use is a small electronic-music artist. The UAE's Astra Tech (Botim) shares the "astra" ending but is in a different field. No software, GIS, drone or inspection product was found.</dd></div>
+      <div><dt>Domains</dt><dd>A rare coinage, so the .com and .ai look likely to be free (not verified).</dd></div>
+    </dl>
+    <div class="cand-lockups">
+      <div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="ATLASTRA lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">ATLASTRA</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">أتلاسترا</text></svg></div>
+      <div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="ATLASTRA lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">ATLASTRA</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">أتلاسترا</text></svg></div>
+    </div>
+  </div>
+</section>
+<section class="cand">
+  <header class="cand-head">
+    <div class="cand-title"><h3>Nadeed <span class="ar" lang="ar" dir="rtl">نَضِيد</span></h3></div>
+    <p class="style">Arabic-rooted, classical word</p>
+  </header>
+  <div class="cand-grid">
+    <dl class="facts">
+      <div><dt>Meaning</dt><dd>Classical Arabic for "set in layers, stacked tier on tier, neatly arranged". It is the strata idea in one native word, and it is built on ḍād, the letter Arabic is named for (lughat al-ḍād).</dd></div>
+      <div><dt>Say it</dt><dd>na-DEED. Arabic: نَضِيد. English speakers say d for ض, which is fine.</dd></div>
+      <div><dt>Screen</dt><dd><span class="pill clear">Clear on quick screen</span> No product or company found in English or Arabic searches. The nearest names are the Nadeem chat app and NADSOFT (web agencies). The word has a classical and Qur'anic register (50:10), which is dignified but should get a native-speaker check. Its meaning is opaque outside Arabic.</dd></div>
+      <div><dt>Domains</dt><dd>The .com and .ai look likely to be free (not verified). nadeed.ae and .com.kw are worth securing.</dd></div>
+    </dl>
+    <div class="cand-lockups">
+      <div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="NADEED lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">NADEED</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">نَضِيد</text></svg></div>
+      <div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="NADEED lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">NADEED</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">نَضِيد</text></svg></div>
+    </div>
+  </div>
+</section>
+<section class="cand">
+  <header class="cand-head">
+    <div class="cand-title"><h3>Tibaq <span class="ar" lang="ar" dir="rtl">طِبَاق</span></h3></div>
+    <p class="style">Arabic-rooted, classical word</p>
+  </header>
+  <div class="cand-grid">
+    <dl class="facts">
+      <div><dt>Meaning</dt><dd>"Layers one above another", as in the classical image of the heavens in layers. In rhetoric it also means antithesis. Short and strong.</dd></div>
+      <div><dt>Say it</dt><dd>ti-BAAQ (q as in Qatar). Arabic: طِبَاق.</dd></div>
+      <div><dt>Screen</dt><dd><span class="pill caution">Caution</span> It is a near-homophone of <em>Tabaq</em>, a UAE food-delivery app (ae.tabaq) and another Tabaq meals app, which is a sound collision in the core market. A Malayalam web magazine uses Tibaq. No software, GIS or drone use was found.</dd></div>
+      <div><dt>Domains</dt><dd>tibaq.com is likely taken or parked (the magazine is on tibaq.in). Plan on tibaq.ai or a prefix.</dd></div>
+    </dl>
+    <div class="cand-lockups">
+      <div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="TIBAQ lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">TIBAQ</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">طِبَاق</text></svg></div>
+      <div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="TIBAQ lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">TIBAQ</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">طِبَاق</text></svg></div>
+    </div>
+  </div>
+</section>
+<section class="cand">
+  <header class="cand-head">
+    <div class="cand-title"><h3>Strataxis <span class="ar" lang="ar" dir="rtl">ستراتاكسيس</span></h3></div>
+    <p class="style">Coined compound: strata + axis</p>
+  </header>
+  <div class="cand-grid">
+    <dl class="facts">
+      <div><dt>Meaning</dt><dd>Layers registered on one shared axis, which is the plumb line in mark R5.</dd></div>
+      <div><dt>Say it</dt><dd>strat-AX-is. Arabic: ستراتاكسيس. Long, with a str- cluster.</dd></div>
+      <div><dt>Screen</dt><dd><span class="pill caution">Caution</span> Several management consultancies (Switzerland, India, the Netherlands, Africa) use it to mean "strategy + axis", and most readers will take it that way too. No software, GIS or drone use was found.</dd></div>
+      <div><dt>Domains</dt><dd>strataxis.com is listed for sale on a name marketplace, so it can be bought.</dd></div>
+    </dl>
+    <div class="cand-lockups">
+      <div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="STRATAXIS lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATAXIS</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتاكسيس</text></svg></div>
+      <div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="STRATAXIS lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATAXIS</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتاكسيس</text></svg></div>
+    </div>
+  </div>
+</section>
+
+  <h3 style="margin-top:28px;margin-bottom:4px">Side by side in the R5 lockup</h3>
+  <div class="compare"><div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="STRATLAS lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATLAS</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتلاس</text></svg></div><div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="STRATLAS lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATLAS</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتلاس</text></svg></div><div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="ATLASTRA lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">ATLASTRA</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">أتلاسترا</text></svg></div><div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="ATLASTRA lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">ATLASTRA</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">أتلاسترا</text></svg></div><div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="NADEED lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">NADEED</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">نَضِيد</text></svg></div><div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="NADEED lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">NADEED</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">نَضِيد</text></svg></div><div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="TIBAQ lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">TIBAQ</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">طِبَاق</text></svg></div><div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="TIBAQ lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">TIBAQ</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">طِبَاق</text></svg></div><div class="ground on-dark"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="STRATAXIS lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATAXIS</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتاكسيس</text></svg></div><div class="ground on-light"><svg class="lockup" viewBox="0 0 340 100" role="img" aria-label="STRATAXIS lockup"><use href="#r5-sym" x="14" y="18" width="64" height="64"/><text x="94" y="55" class="wm" font-size="31" font-weight="600" letter-spacing="0.12em" style="fill:currentColor">STRATAXIS</text><text x="94" y="84" class="wm-ar" font-size="17" font-weight="500" style="fill:currentColor" fill-opacity=".72">ستراتاكسيس</text></svg></div></div>
+
+  <h3 style="margin-top:28px;margin-bottom:10px">Long list</h3>
+  <table class="rt"><thead><tr><th>Name</th><th>Style</th><th>Idea</th><th>Verdict</th><th>Why</th></tr></thead><tbody><tr><td data-l="Name"><strong>Stratlas</strong></td><td data-l="Style">Compound</td><td data-l="Idea">Strata + atlas</td><td data-l="Verdict"><span class="pill short">Shortlisted</span></td><td data-l="Why">Shortlisted. Archived hobby tool only, but the Strat- stem is crowded in drone software.</td></tr><tr><td data-l="Name"><strong>Atlastra</strong></td><td data-l="Style">Compound</td><td data-l="Idea">Atlas + strata (+ astra)</td><td data-l="Verdict"><span class="pill short">Shortlisted</span></td><td data-l="Why">Shortlisted. Only a music artist uses it.</td></tr><tr><td data-l="Name"><strong>Nadeed</strong></td><td data-l="Style">Arabic</td><td data-l="Idea">Set in layers</td><td data-l="Verdict"><span class="pill short">Shortlisted</span></td><td data-l="Why">Shortlisted. Nothing found.</td></tr><tr><td data-l="Name"><strong>Tibaq</strong></td><td data-l="Style">Arabic</td><td data-l="Idea">Layers one above another</td><td data-l="Verdict"><span class="pill short">Shortlisted</span></td><td data-l="Why">Shortlisted with caution. Sounds like the UAE food app Tabaq.</td></tr><tr><td data-l="Name"><strong>Strataxis</strong></td><td data-l="Style">Compound</td><td data-l="Idea">Strata + axis</td><td data-l="Verdict"><span class="pill short">Shortlisted</span></td><td data-l="Why">Shortlisted with caution. Consultancies use it; the .com is for sale.</td></tr><tr><td data-l="Name"><strong>Tabaqa</strong></td><td data-l="Style">Arabic</td><td data-l="Idea">A layer, a class</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Too close to the Tabaq food-delivery apps (UAE). Also reads as "social class".</td></tr><tr><td data-l="Name"><strong>Stratica</strong></td><td data-l="Style">Coined</td><td data-l="Idea">Of strata</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Brainworks Stratica: SaaS ad and CRM platform for publishers.</td></tr><tr><td data-l="Name"><strong>Stratum</strong></td><td data-l="Style">Real word</td><td data-l="Idea">One layer</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Stratum GCS (drone ground control) and STRATA (UAV video-to-3D), both open source; Trimble Stratus nearby.</td></tr><tr><td data-l="Name"><strong>Stroma</strong></td><td data-l="Style">Greek</td><td data-l="Idea">A bed, a layer</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Stroma Ltd (building-compliance SaaS for construction and energy); Stroma Vision (industrial safety computer vision).</td></tr><tr><td data-l="Name"><strong>Varve</strong></td><td data-l="Style">Geology</td><td data-l="Idea">A yearly sediment layer (layer + time)</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Varve: a local-first desktop design suite, close in positioning. Also has a v sound.</td></tr><tr><td data-l="Name"><strong>Laminar</strong></td><td data-l="Style">Real word</td><td data-l="Idea">Flowing in layers</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Laminar (AI-agent observability, YC) and Laminar (industrial sensing + AI).</td></tr><tr><td data-l="Name"><strong>GeoStrata</strong></td><td data-l="Style">Compound</td><td data-l="Idea">Ground layers</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">GeoStrata, a geotechnical engineering firm in the same client world.</td></tr><tr><td data-l="Name"><strong>Tephra</strong></td><td data-l="Style">Geology</td><td data-l="Idea">Ash layer used to date strata</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Tephra security-monitoring platform; several fintech and data products.</td></tr><tr><td data-l="Name"><strong>Tabulata</strong></td><td data-l="Style">Latin</td><td data-l="Idea">Floors, storeys</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Too close to Tabula, an offline field-data capture app.</td></tr><tr><td data-l="Name"><strong>Sheaf</strong></td><td data-l="Style">Maths / real word</td><td data-l="Idea">Local data glued over space</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Several apps and a SaaS platform; too abstract for buyers.</td></tr><tr><td data-l="Name"><strong>Sedima</strong></td><td data-l="Style">Coined</td><td data-l="Idea">From sediment</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Sedimap (geolocation, now Viasat Connect); several Sedima companies.</td></tr><tr><td data-l="Name"><strong>Lithica</strong></td><td data-l="Style">Coined</td><td data-l="Idea">Of stone</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Too close to Lithic (fintech API).</td></tr><tr><td data-l="Name"><strong>Fieldstack</strong></td><td data-l="Style">Compound</td><td data-l="Idea">A stack of field data</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">FieldStack retail SaaS.</td></tr><tr><td data-l="Name"><strong>Tessella</strong></td><td data-l="Style">Latin</td><td data-l="Idea">Small tile of a mosaic</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Tessella (analytics firm, now part of Capgemini).</td></tr><tr><td data-l="Name"><strong>Lamintra</strong></td><td data-l="Style">Coined</td><td data-l="Idea">Lamina + intra</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Lamintra UI component library.</td></tr><tr><td data-l="Name"><strong>Plaxis</strong></td><td data-l="Style">Greek</td><td data-l="Idea">Plate, layer</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">PLAXIS geotechnical software (Bentley), well known.</td></tr><tr><td data-l="Name"><strong>Mesa</strong></td><td data-l="Style">Real word</td><td data-l="Idea">A layered table landform</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Mesa 3D graphics library, well known.</td></tr><tr><td data-l="Name"><strong>Bedrock</strong></td><td data-l="Style">Real word</td><td data-l="Idea">Base layer</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Amazon Bedrock (AI), well known.</td></tr><tr><td data-l="Name"><strong>Isopach, Shale</strong></td><td data-l="Style">Geology</td><td data-l="Idea">Layer-thickness map; layered rock</td><td data-l="Verdict"><span class="pill drop">Dropped</span></td><td data-l="Why">Generic oil-and-gas terms with fixed meanings; Isopach has a p sound.</td></tr></tbody></table>
+
+  <h2 id="method">Method and next steps</h2>
+  <div class="method">
+    <div>
+      <h4>Mark construction</h4>
+      <ul>
+        <li>The grid is 64 units with a 2:1 isometric slope (26.57°), so plate edges render as clean pixel steps.</li>
+        <li>Gaps are 2 to 3 units, cut with SVG masks. Lines are 2.6 to 4 units. Accent is always the top or capture layer.</li>
+        <li>Icons use the same geometry scaled about 6.4 times on a 512 rounded square. R4 drops its data textures in the icon.</li>
+        <li>Wordmarks are live IBM Plex Sans and IBM Plex Sans Arabic text. Outline and kern them before production.</li>
+      </ul>
+    </div>
+    <div>
+      <h4>Before committing</h4>
+      <ol>
+        <li>Get an attorney's opinion on Stratlas vs Trimble Stratus, then a full search in classes 9 and 42 (WIPO, USPTO, EUIPO, UAE, Kuwait, KSA, GCC), including Arabic script.</li>
+        <li>Check and buy domains: .com, .ai, .ae, .com.kw.</li>
+        <li>Have a native speaker review Nadeed and Tibaq for register and dialect readings.</li>
+        <li>Test R5 at 16 px in the real Windows tray and macOS dock before locking it.</li>
+      </ol>
+    </div>
+  </div>
+
+  <h2 id="sources">Key collision sources</h2>
+  <ul class="sources"><li><a href="https://sitechla.com/solutions/software-solutions/trimble-stratus-software/" rel="noopener noreferrer" target="_blank">Trimble Stratus drone software</a></li><li><a href="https://github.com/dhathri-kesavulu/Stratum_GCS" rel="noopener noreferrer" target="_blank">Stratum GCS (open source)</a></li><li><a href="https://github.com/kanishkarkarthik1256/Strata" rel="noopener noreferrer" target="_blank">STRATA UAV video-to-3D (open source)</a></li><li><a href="https://stratlas.sourceforge.net/" rel="noopener noreferrer" target="_blank">Stratlas game-map renderer</a></li><li><a href="https://music.apple.com/us/artist/atlastra/1441476464" rel="noopener noreferrer" target="_blank">Atlastra (music artist)</a></li><li><a href="https://www.squadhelp.com/name/Strataxis" rel="noopener noreferrer" target="_blank">Strataxis.com for sale</a></li><li><a href="https://play.google.com/store/apps/details?id=ae.tabaq.android" rel="noopener noreferrer" target="_blank">Tabaq food delivery (UAE)</a></li><li><a href="https://tibaq.in/contact-us/" rel="noopener noreferrer" target="_blank">Tibaq web magazine</a></li><li><a href="https://www.brainworks.com/stratica/" rel="noopener noreferrer" target="_blank">Brainworks Stratica</a></li><li><a href="https://www.crunchbase.com/organization/stroma-vision" rel="noopener noreferrer" target="_blank">Stroma Vision</a></li><li><a href="https://varve.studio/product/" rel="noopener noreferrer" target="_blank">Varve design suite</a></li><li><a href="https://laminar.sh/" rel="noopener noreferrer" target="_blank">Laminar AI</a></li><li><a href="https://www.geostrata.net/about/" rel="noopener noreferrer" target="_blank">GeoStrata</a></li><li><a href="https://www.tephra.co.uk/products/platform/" rel="noopener noreferrer" target="_blank">Tephra platform</a></li><li><a href="https://play.google.com/store/apps/details?id=com.tracmap.companion&hl=en_US" rel="noopener noreferrer" target="_blank">Tabula field data app</a></li></ul>
+
+  <footer>Files: <code>docs/brand/logos/round2/stratlas-r1 … r6-symbol.svg</code>, <code>-mark.svg</code>, <code>-icon.svg</code>, plus <code>&lt;name&gt;-r5-mark.svg</code> for each shortlisted name. Mark files use the positive (light-ground) colours. Round 1 is unchanged in <code>name-logo-options.html</code>.</footer>
+</div>
+<script>
+(function(){var b=document.getElementById('themeBtn'),r=document.documentElement,o=['auto','light','dark'],m='auto';
+try{m=localStorage.getItem('nlo2-theme')||'auto'}catch(e){}
+function a(x){m=x;if(x==='auto')r.removeAttribute('data-theme');else r.setAttribute('data-theme',x);b.textContent='Theme: '+x;try{localStorage.setItem('nlo2-theme',x)}catch(e){}}
+a(o.indexOf(m)>=0?m:'auto');b.addEventListener('click',function(){a(o[(o.indexOf(m)+1)%o.length])});})();
+</script>
+</body>
+</html>

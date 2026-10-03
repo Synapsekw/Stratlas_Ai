@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<title>ocellus app icon, concept A. Lens axis</title>
+<rect width="512" height="512" rx="112" fill="#16181B"/>
+<path d="M212 70 C316 152 316 360 212 442 C108 360 108 152 212 70 Z" fill="none" stroke="#F3F1EC" stroke-width="38" stroke-linejoin="round"/>
+<path d="M58 178 L212 178 L414 256 M58 334 L212 334 L414 256" fill="none" stroke="#F3F1EC" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="414" cy="256" r="44" fill="#FF6A3D"/>
+</svg>

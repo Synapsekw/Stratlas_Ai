@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 100" width="340" height="100">
+<title>muqantar mark, concept B. Alidade bearing</title>
+<!-- Wordmark is live text in IBM Plex Sans / IBM Plex Sans Arabic. Outline type before production. -->
+<g transform="translate(14 18)">
+<circle cx="32" cy="33" r="21" fill="none" style="stroke:#15181D" stroke-width="3.6"/>
+<path d="M32 2.5 L36 9.2 L28 9.2 Z" style="fill:#15181D"/>
+<g transform="rotate(-32 32 33)">
+<rect x="5" y="30.8" width="54" height="4.4" rx="1" style="fill:#15181D"/>
+<rect x="6" y="25" width="4" height="16" rx="1" style="fill:#15181D"/>
+<rect x="54" y="25" width="4" height="16" rx="1" style="fill:#15181D"/>
+</g>
+<circle cx="32" cy="33" r="5" style="fill:#9A6815"/>
+</g>
+<text x="94" y="56" font-family="'IBM Plex Sans', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="38" font-weight="600" letter-spacing="0.005em" style="fill:#15181D">Muqantar</text>
+<text x="94" y="86" font-family="'IBM Plex Sans Arabic', 'Segoe UI', Tahoma, Arial, sans-serif" font-size="17" font-weight="500" style="fill:#15181D" fill-opacity=".72">مُقَنْطَر</text>
+</svg>

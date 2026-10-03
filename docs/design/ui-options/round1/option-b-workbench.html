@@ -1,0 +1,935 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Option B Workbench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:dark;
+--bg:#0b0c0e;--panel:#141518;--panel-2:#17191c;--raised:#1d1f23;--hover:#22252a;--press:#2a2d33;
+--line:#25282d;--line-2:#32363c;--line-3:#464b53;
+--text:#e1e3e7;--text-2:#a6abb4;--muted:#737881;
+--accent:#c6df5a;--accent-ink:#121409;--accent-soft:rgba(198,223,90,.12);--accent-line:rgba(198,223,90,.5);
+--cyan:#58c5e4;--cyan-soft:rgba(88,197,228,.15);--cyan-line:rgba(88,197,228,.55);
+--sev5:#ff5a4e;--sev4:#ff9b3d;--sev3:#eec94c;--ok:#5cd29a;--warn:#eec94c;
+--vp-bg:#0a0b0d;--vp-head:#111215;--sel:rgba(88,197,228,.13);
+--shadow:0 18px 50px rgba(0,0,0,.6);
+--ui:"Archivo",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+--mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){color-scheme:light;
+--bg:#d6d9dd;--panel:#f4f5f7;--panel-2:#eceef1;--raised:#ffffff;--hover:#e2e5e9;--press:#d7dbe0;
+--line:#d0d4d9;--line-2:#bfc4cb;--line-3:#a2a8b1;
+--text:#15171a;--text-2:#454a53;--muted:#757b85;
+--accent:#5b7a05;--accent-ink:#ffffff;--accent-soft:rgba(91,122,5,.11);--accent-line:rgba(91,122,5,.5);
+--cyan:#0a7fa6;--cyan-soft:rgba(10,127,166,.11);--cyan-line:rgba(10,127,166,.5);
+--sev5:#d8382d;--sev4:#d9731a;--sev3:#b98f0b;--ok:#1c9862;--warn:#a98306;
+--vp-bg:#121316;--vp-head:#e7e9ec;--sel:rgba(10,127,166,.11);--shadow:0 18px 50px rgba(20,25,35,.22)}}
+:root[data-theme="light"]{color-scheme:light;
+--bg:#d6d9dd;--panel:#f4f5f7;--panel-2:#eceef1;--raised:#ffffff;--hover:#e2e5e9;--press:#d7dbe0;
+--line:#d0d4d9;--line-2:#bfc4cb;--line-3:#a2a8b1;
+--text:#15171a;--text-2:#454a53;--muted:#757b85;
+--accent:#5b7a05;--accent-ink:#ffffff;--accent-soft:rgba(91,122,5,.11);--accent-line:rgba(91,122,5,.5);
+--cyan:#0a7fa6;--cyan-soft:rgba(10,127,166,.11);--cyan-line:rgba(10,127,166,.5);
+--sev5:#d8382d;--sev4:#d9731a;--sev3:#b98f0b;--ok:#1c9862;--warn:#a98306;
+--vp-bg:#121316;--vp-head:#e7e9ec;--sel:rgba(10,127,166,.11);--shadow:0 18px 50px rgba(20,25,35,.22)}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font:400 12.5px/1.38 var(--ui);font-stretch:97%;overflow:hidden;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+button,input,textarea,select{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.i.s{width:14px;height:14px}.i.xs{width:12px;height:12px}.i.l{width:20px;height:20px;stroke-width:1.45}
+.i.f{fill:currentColor;stroke:none}
+.m,.mono{font-family:var(--mono);font-size:11.5px;letter-spacing:-.015em;font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}.t2{color:var(--text-2)}
+.sp{flex:1}
+b{font-weight:600}
+
+/* ---------- title bar ---------- */
+.app{display:grid;grid-template-rows:36px minmax(0,1fr) 24px;height:100vh;height:100dvh}
+.titlebar{display:flex;align-items:center;background:var(--panel-2);border-bottom:1px solid var(--line);min-width:0;user-select:none}
+.brand{display:flex;align-items:center;gap:8px;height:100%;padding:0 14px 0 13px;border-right:1px solid var(--line);font-weight:650;font-stretch:118%;letter-spacing:.02em;font-size:13px;flex:none}
+.brand svg{width:17px;height:17px}
+.menus{display:flex;height:100%;flex:none}
+.menus button{height:100%;padding:0 8px;color:var(--text-2);font-size:12px}
+.menus button:hover{color:var(--text);background:var(--hover)}
+.wtabs{display:flex;height:100%;margin-left:4px;overflow-x:auto;scrollbar-width:none;min-width:0;border-left:1px solid var(--line)}
+.wtabs::-webkit-scrollbar{display:none}
+.wtab{display:flex;align-items:center;gap:7px;padding:0 13px;height:100%;color:var(--text-2);border-right:1px solid var(--line);position:relative;white-space:nowrap;font-size:12.5px}
+.wtab:hover{color:var(--text);background:var(--hover)}
+.wtab.on{background:var(--panel);color:var(--text)}
+.wtab.on::before{content:"";position:absolute;left:-1px;right:-1px;top:0;height:2px;background:var(--accent)}
+.wtab.on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:var(--panel)}
+.wtab .k{font-size:10.5px;color:var(--muted);font-stretch:88%;text-transform:uppercase;letter-spacing:.07em;border:1px solid var(--line-2);padding:0 4px;border-radius:2px;line-height:15px}
+.wtab.on .k{color:var(--accent);border-color:var(--accent-line)}
+.palette-hint{display:flex;align-items:center;gap:8px;height:24px;width:250px;padding:0 6px 0 9px;border:1px solid var(--line-2);border-radius:4px;background:var(--panel);color:var(--muted);margin:0 10px;flex:none}
+.palette-hint:hover{border-color:var(--line-3);color:var(--text-2)}
+.palette-hint .lbl{flex:1;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kbd{font:500 10.5px/1 var(--mono);padding:2px 4px 2px;border:1px solid var(--line-2);border-bottom-width:2px;border-radius:3px;color:var(--text-2);background:var(--raised);white-space:nowrap}
+.tb-status{display:flex;gap:6px;align-items:center;flex:none}
+.pill{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px;border:1px solid var(--line-2);border-radius:3px;font-size:11.5px;color:var(--text-2);white-space:nowrap}
+.pill .dot{width:6px;height:6px;border-radius:50%;background:var(--ok)}
+.winctl{display:flex;height:100%;margin-left:6px;flex:none}
+.winctl button{width:42px;height:100%;display:grid;place-items:center;color:var(--text-2)}
+.winctl button:hover{background:var(--hover)}.winctl button.x:hover{background:#c42b1c;color:#fff}
+
+/* ---------- shell ---------- */
+.main{display:grid;grid-template-columns:44px minmax(0,1fr);min-height:0;min-width:0}
+.act{display:flex;flex-direction:column;align-items:center;background:var(--panel-2);border-right:1px solid var(--line);padding:4px 0;gap:2px}
+.act button{width:44px;height:40px;display:grid;place-items:center;color:var(--muted);position:relative}
+.act button:hover{color:var(--text)}
+.act button.on{color:var(--text)}
+.act button.on::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:2px;background:var(--accent)}
+.act .sep{width:22px;height:1px;background:var(--line-2);margin:4px 0}
+.act .badge{position:absolute;right:8px;top:7px;min-width:14px;height:14px;padding:0 3px;border-radius:7px;background:var(--accent);color:var(--accent-ink);font:600 9.5px/14px var(--mono)}
+.screens{position:relative;min-width:0;min-height:0}
+.screen{display:none;height:100%;min-height:0;min-width:0}
+.screen.on{display:grid}
+.status{display:flex;align-items:center;gap:16px;padding:0 260px 0 10px;background:var(--panel-2);border-top:1px solid var(--line);font:11px var(--mono);color:var(--text-2);white-space:nowrap;overflow:hidden;letter-spacing:-.01em}
+.status span{display:inline-flex;align-items:center;gap:5px}
+.status .dot{width:6px;height:6px;border-radius:50%;background:var(--ok)}
+.caption{position:fixed;right:8px;bottom:3px;z-index:60;font:500 11px/16px var(--mono);padding:0 8px;background:var(--raised);border:1px solid var(--line-2);color:var(--text-2);border-radius:3px;pointer-events:none;letter-spacing:-.01em}
+.caption b{color:var(--accent);font-weight:600}
+
+/* ---------- panes ---------- */
+.pane{background:var(--panel);display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
+.ph{height:28px;flex:none;display:flex;align-items:center;gap:6px;padding:0 6px 0 10px;border-bottom:1px solid var(--line);background:var(--panel-2);font-size:10.5px;font-weight:600;font-stretch:90%;letter-spacing:.075em;text-transform:uppercase;color:var(--text-2);white-space:nowrap;min-width:0}
+.ph .c{font:500 10.5px var(--mono);color:var(--muted);letter-spacing:0;text-transform:none}
+.ph.bt{border-top:1px solid var(--line)}
+.ptabs{display:flex;height:100%;margin-left:-10px}
+.ptabs button{height:100%;padding:0 10px;color:var(--muted);font:inherit;letter-spacing:inherit;text-transform:inherit;position:relative}
+.ptabs button:hover{color:var(--text)}
+.ptabs button.on{color:var(--text);background:var(--panel)}
+.ptabs button.on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:var(--panel)}
+.ptabs button.on::before{content:"";position:absolute;left:0;right:0;top:0;height:1px;background:var(--accent)}
+.ib{width:22px;height:22px;display:inline-grid;place-items:center;border-radius:3px;color:var(--text-2);flex:none}
+.ib:hover{background:var(--hover);color:var(--text)}
+.ib.on{color:var(--accent);background:var(--accent-soft)}
+.btn{height:24px;padding:0 9px;border:1px solid var(--line-2);background:var(--raised);color:var(--text);border-radius:3px;display:inline-flex;align-items:center;gap:6px;font-size:12px;white-space:nowrap;flex:none}
+.btn:hover{border-color:var(--line-3);background:var(--hover)}
+.btn.pri{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.btn.pri:hover{filter:brightness(1.07)}
+.btn.sm{height:22px;padding:0 7px;font-size:11.5px}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--text-2)}
+.btn.ghost:hover{background:var(--hover);color:var(--text)}
+.btn.dng{color:var(--sev5)}
+.tag{display:inline-flex;align-items:center;gap:4px;font:500 10.5px/16px var(--mono);padding:0 5px;border:1px solid var(--line-2);border-radius:2px;color:var(--text-2);white-space:nowrap;letter-spacing:-.01em}
+.tag.acc{color:var(--accent);border-color:var(--accent-line);background:var(--accent-soft)}
+.tag.cy{color:var(--cyan);border-color:var(--cyan-line);background:var(--cyan-soft)}
+.tag.warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,transparent)}
+.sev{display:inline-grid;place-items:center;min-width:18px;height:16px;padding:0 3px;font:700 10.5px/1 var(--mono);border-radius:2px;color:#15130c}
+.sev.s5{background:var(--sev5)}.sev.s4{background:var(--sev4)}.sev.s3{background:var(--sev3)}
+.dotc{display:inline-block;width:7px;height:7px;border-radius:50%;flex:none}
+.split{background:var(--line);position:relative;z-index:4}
+.split::before{content:"";position:absolute;inset:0 -3px}
+.split.h::before{inset:-3px 0}
+.split.v{cursor:col-resize}.split.h{cursor:row-resize}
+.split:hover,.split.drag{background:var(--accent-line)}
+.scroll{overflow:auto;min-height:0;scrollbar-width:thin;scrollbar-color:var(--line-3) transparent}
+.scroll::-webkit-scrollbar{width:9px;height:9px}.scroll::-webkit-scrollbar-thumb{background:var(--line-2);border:2px solid var(--panel);border-radius:6px}
+.search-mini{display:flex;align-items:center;gap:6px;height:28px;padding:0 8px;border-bottom:1px solid var(--line);color:var(--muted);flex:none}
+.search-mini input{flex:1;min-width:0;background:transparent;border:0;outline:0;font-size:12px;color:var(--text)}
+.search-mini input::placeholder{color:var(--muted)}
+
+/* tree */
+.tree{padding:3px 0}
+.tr{display:flex;align-items:center;height:22px;padding-right:6px;gap:5px;white-space:nowrap;cursor:default;color:var(--text);position:relative}
+.tr:hover{background:var(--hover)}
+.tr.sel{background:var(--sel)}
+.tr.sel::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--cyan)}
+.tr .tw{width:12px;height:12px;color:var(--muted);flex:none;display:grid;place-items:center}
+.tr .lb{overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.tr .ct{font:10.5px var(--mono);color:var(--muted)}
+.tr .ey{color:var(--muted);opacity:.85}
+.tr .ey.off{opacity:.3}
+.tr .ti{color:var(--text-2)}
+.tr.dim .lb{color:var(--muted)}
+.tr .sw{width:8px;height:8px;border-radius:1px;flex:none}
+
+dl.kv{display:grid;grid-template-columns:88px minmax(0,1fr);font-size:12px}
+dl.kv dt{color:var(--muted);padding:3px 0 3px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+dl.kv dd{padding:3px 10px 3px 6px;border-bottom:1px solid var(--line);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+dl.kv dd.m{font-family:var(--mono);font-size:11.5px}
+dl.kv dd .tag{margin-right:3px}
+
+/* ---------- workbench grid ---------- */
+.ws{grid-template-columns:var(--lw) 1px minmax(0,1fr) 1px var(--rw);grid-template-rows:minmax(0,1fr) 1px var(--th);background:var(--bg)}
+.ws>.left{grid-column:1;grid-row:1}
+.ws>.sx1{grid-column:2;grid-row:1}
+.ws>.center{grid-column:3;grid-row:1;min-width:0;min-height:0;display:flex}
+.ws>.sx2{grid-column:4;grid-row:1/4}
+.ws>.right{grid-column:5;grid-row:1/4}
+.ws>.sy{grid-column:1/4;grid-row:2}
+.ws>.tl{grid-column:1/4;grid-row:3}
+.vpgrid{flex:1;display:grid;min-width:0;min-height:0;grid-template-columns:calc(var(--vx) - .5px) 1px minmax(0,1fr);grid-template-rows:calc(var(--vy) - .5px) 1px minmax(0,1fr)}
+.vpgrid>.g11{grid-area:1/1/2/2}.vpgrid>.g13{grid-area:1/3/2/4}.vpgrid>.g31{grid-area:3/1/4/2}.vpgrid>.g33{grid-area:3/3/4/4}
+.vpgrid>.gv{grid-area:1/2/4/3}.vpgrid>.gh{grid-area:2/1/3/4}.vpgrid>.ghr{grid-area:2/3/3/4}
+.vpgrid>.g1t{grid-area:1/1/4/2}
+.vpgrid.maxed>*:not(.max){display:none}
+.vpgrid.maxed>.vp.max{grid-area:1/1/4/4}
+
+/* viewport */
+.vp{position:relative;display:flex;flex-direction:column;background:var(--vp-bg);min-width:0;min-height:0}
+.vp::after{content:"";position:absolute;inset:0;border:1px solid transparent;pointer-events:none;z-index:8}
+.vp.focus::after{border-color:var(--accent-line)}
+.vph{height:26px;flex:none;display:flex;align-items:center;gap:6px;padding:0 3px 0 8px;background:var(--vp-head);border-bottom:1px solid var(--line);font-size:12px;white-space:nowrap;min-width:0;overflow:hidden}
+.vph .ty{display:flex;align-items:center;gap:6px;font-weight:600;color:var(--text)}
+.vp.focus .vph .ty .i{color:var(--accent)}
+.vph .meta{font:11px var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;min-width:0;letter-spacing:-.02em}
+.vph .lc{font:500 10.5px/15px var(--mono);color:var(--text-2);border:1px solid var(--line-2);border-radius:2px;padding:0 4px;flex:none}
+.vph .ib{width:22px;height:20px}
+.vph .agb{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 6px;border-radius:3px;color:var(--text-2);font-size:11.5px;border:1px solid transparent;flex:none}
+.vph .agb:hover{background:var(--hover);color:var(--text)}
+.vp.bound .vph .agb{color:var(--accent);border-color:var(--accent-line);background:var(--accent-soft)}
+.seg{display:inline-flex;border:1px solid var(--line-2);border-radius:3px;overflow:hidden;flex:none}
+.seg button{height:18px;padding:0 6px;font-size:11px;color:var(--text-2);border-right:1px solid var(--line-2)}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--accent-soft);color:var(--accent)}
+.seg.lg button{height:24px;padding:0 11px;font-size:12px}
+.vpb{position:relative;flex:1;min-height:0;overflow:hidden;color:#e6e8ec}
+.vpb canvas{position:absolute;left:0;top:0;display:block}
+.ov{position:absolute;z-index:3;pointer-events:none;font:10.5px/1.45 var(--mono);color:rgba(230,233,238,.78);letter-spacing:-.01em;text-shadow:0 1px 2px rgba(0,0,0,.8)}
+.ov.tl{left:8px;top:6px}.ov.tr{right:8px;top:6px;text-align:right}.ov.bl{left:8px;bottom:6px}.ov.br{right:8px;bottom:6px;text-align:right}
+.ov b{color:#fff;font-weight:600}
+.lbl3{position:absolute;z-index:4;pointer-events:none;transform:translate(-50%,-100%);font:600 10.5px/1 var(--mono);padding:3px 5px;border-radius:2px;white-space:nowrap;background:rgba(12,13,15,.82);color:#e8eaee;border:1px solid rgba(255,255,255,.14)}
+.lbl3::after{content:"";position:absolute;left:50%;bottom:-5px;width:1px;height:5px;background:rgba(255,255,255,.4)}
+.lbl3.sel{border-color:#58c5e4;color:#58c5e4}
+.lbl3.dr{background:#c6df5a;color:#121409;border-color:#c6df5a}
+.lbl3.dr::after{background:#c6df5a}
+.lbl3.area{background:none;border:0;color:rgba(230,233,238,.55);font-weight:500;letter-spacing:.06em;transform:translate(-50%,-50%)}
+.lbl3.area::after{display:none}
+.lbl3.f{padding:2px 4px;font-size:10px}
+.lbl3.f.s5{border-color:#ff5a4e}.lbl3.f.s4{border-color:#ff9b3d}.lbl3.f.s3{border-color:#eec94c}
+.lbl3.f.hi{background:#ff9b3d;color:#15130c}
+.lbl3.nz{background:none;border:0;color:rgba(200,205,212,.6);font-weight:500;font-size:9.5px}
+.lbl3.nz::after{display:none}
+.gizmo{position:absolute;left:8px;bottom:8px;width:44px;height:44px;z-index:3;pointer-events:none}
+.vmsg{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font:12px var(--mono);text-align:center;padding:20px}
+.letter{position:absolute;inset:0;background:#000}
+.ctrlbar{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);z-index:5;display:flex;gap:2px;padding:2px;background:rgba(14,15,18,.82);border:1px solid rgba(255,255,255,.1);border-radius:4px;pointer-events:auto}
+.ctrlbar button{height:22px;padding:0 7px;display:flex;align-items:center;gap:5px;color:#c9ccd2;font-size:11px;border-radius:2px}
+.ctrlbar button:hover{background:rgba(255,255,255,.08)}
+.ctrlbar button.on{color:#c6df5a;background:rgba(198,223,90,.12)}
+
+/* ---------- timeline ---------- */
+.tl{display:flex;flex-direction:column;background:var(--panel);min-height:0;min-width:0;overflow:hidden}
+.tlh{height:32px;flex:none;display:flex;align-items:center;gap:6px;padding:0 8px;border-bottom:1px solid var(--line);background:var(--panel-2);white-space:nowrap;min-width:0;overflow:hidden}
+.tlh .ttl{font-size:10.5px;font-weight:600;font-stretch:90%;letter-spacing:.075em;text-transform:uppercase;color:var(--text-2);margin-right:4px}
+.transport{display:flex;align-items:center;gap:1px;border:1px solid var(--line-2);border-radius:3px;padding:1px;background:var(--panel)}
+.transport button{width:24px;height:20px;display:grid;place-items:center;color:var(--text-2);border-radius:2px}
+.transport button:hover{background:var(--hover);color:var(--text)}
+.transport button.play{color:var(--accent)}
+.tc{font:600 13px var(--mono);color:var(--text);letter-spacing:-.02em;padding:0 6px}
+.tc em{font-style:normal;color:var(--accent)}
+.tcs{font:11px var(--mono);color:var(--muted)}
+.tl-scroll{flex:1;min-height:0;overflow:hidden;display:flex}
+.tl-body{position:relative;flex:1;min-width:0;display:flex;flex-direction:column}
+.trk{display:grid;grid-template-columns:var(--tn,168px) minmax(0,1fr);border-bottom:1px solid var(--line);flex:none}
+.trk .tn{display:flex;align-items:center;gap:6px;padding:0 6px 0 8px;border-right:1px solid var(--line);background:var(--panel-2);font-size:11.5px;color:var(--text-2);white-space:nowrap;overflow:hidden;min-width:0}
+.trk .tn .lb{flex:1;overflow:hidden;text-overflow:ellipsis}
+.trk .tn .i{color:var(--muted)}
+.tlane{position:relative;min-width:0;overflow:hidden;cursor:text}
+.trk.ruler .tlane{background:var(--panel-2)}
+.tick{position:absolute;top:0;bottom:0;border-left:1px solid var(--line-2)}
+.tick.mn{top:auto;height:5px;bottom:0;border-color:var(--line-3)}
+.tick span{position:absolute;left:4px;top:3px;font:10px var(--mono);color:var(--muted)}
+.clip{position:absolute;top:3px;bottom:3px;border:1px solid var(--line-3);background:var(--raised);border-radius:2px;font:10.5px/16px var(--mono);padding:0 5px;overflow:hidden;white-space:nowrap;color:var(--text-2);display:flex;gap:6px;align-items:center;letter-spacing:-.02em}
+.clip em{font-style:normal;color:var(--muted)}
+.clip.vid{border-color:var(--cyan-line);background:var(--cyan-soft)}
+.clip.vid.on{background:color-mix(in srgb,var(--cyan) 32%,transparent);border-color:var(--cyan);color:var(--text)}
+.clip.b{border-color:var(--line-3);background:color-mix(in srgb,var(--text-2) 10%,transparent)}
+.clip.b.on{border-color:var(--text-2);color:var(--text)}
+.arange{position:absolute;top:3px;bottom:3px;border:1px dashed var(--accent-line);background:repeating-linear-gradient(135deg,var(--accent-soft) 0 3px,transparent 3px 7px);border-radius:2px;font:10px/14px var(--mono);color:var(--accent);padding:0 3px;overflow:hidden;white-space:nowrap}
+.tl.ok-agent .arange{border-style:solid;background:color-mix(in srgb,var(--accent) 22%,transparent)}
+.tl.undone .arange{display:none}
+.mk{position:absolute;top:2px;bottom:2px;display:flex;align-items:center;gap:4px;font:10px var(--mono);color:var(--text-2);white-space:nowrap;transform:translateX(-5px)}
+.mk i{width:9px;height:9px;transform:rotate(45deg);border:1px solid var(--text-2);background:var(--panel);flex:none}
+.mk.f i{transform:none;border-radius:1px;border:0;width:8px;height:12px}
+.mk.draft{opacity:.75}.mk.draft i{outline:1px dashed var(--accent);outline-offset:1px}
+.tl-cv{position:absolute;left:0;top:0;width:100%;height:100%}
+.playhead{position:absolute;top:0;bottom:0;width:0;border-left:1px solid var(--accent);pointer-events:none;z-index:6}
+.playhead::before{content:"";position:absolute;left:-5px;top:0;width:9px;height:9px;background:var(--accent);clip-path:polygon(0 0,100% 0,100% 55%,50% 100%,0 55%)}
+.phov{position:absolute;top:0;bottom:0;right:0;left:var(--tn,168px);pointer-events:none}
+.fchips{display:flex;gap:2px;overflow:hidden}
+.fchip{height:20px;padding:0 6px;border:1px solid var(--line-2);border-radius:2px;font:10.5px/18px var(--mono);color:var(--text-2);white-space:nowrap}
+.fchip:hover{color:var(--text);border-color:var(--line-3)}
+.fchip.on{color:var(--accent-ink);background:var(--accent);border-color:var(--accent);font-weight:600}
+
+/* ---------- agent ---------- */
+.agent{display:flex;flex-direction:column;flex:1;min-height:0}
+.bind{flex:none;padding:7px 10px 8px;border-bottom:1px solid var(--line);background:linear-gradient(var(--accent-soft),var(--accent-soft)),var(--panel-2);transition:background .3s}
+.bind.flash{background:linear-gradient(color-mix(in srgb,var(--accent) 28%,transparent),color-mix(in srgb,var(--accent) 28%,transparent)),var(--panel-2)}
+.bind-l{display:flex;align-items:center;gap:7px;font-size:12px;min-width:0}
+.bind-l .i{color:var(--accent)}
+.bind-l .tx{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bind-l .tx b{font-family:var(--mono);font-size:11.5px;font-weight:600;letter-spacing:-.02em}
+.ctx{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.cx{font:10.5px/17px var(--mono);padding:0 5px;border:1px solid var(--line-2);border-radius:2px;color:var(--text-2);background:var(--panel);white-space:nowrap;letter-spacing:-.02em}
+.cx b{color:var(--text);font-weight:500}
+.cx.pol{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+.thread{flex:1;min-height:0;overflow-y:auto;padding:10px 10px 14px;display:flex;flex-direction:column;gap:12px}
+.msg .who{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-bottom:4px;font-weight:600;letter-spacing:.02em}
+.msg .who span{font:400 10.5px var(--mono);letter-spacing:-.02em}
+.msg .who .i{color:var(--accent)}
+.msg.u .bubble{background:var(--raised);border:1px solid var(--line-2);border-radius:3px;padding:7px 9px;font-size:12.5px;line-height:1.45}
+.msg.a p{font-size:12.5px;line-height:1.5;color:var(--text);margin:7px 0}
+.msg.a p b{font-weight:600}
+.lnk{color:var(--cyan);cursor:pointer;font-family:var(--mono);font-size:11.5px;border-bottom:1px dotted var(--cyan-line)}
+.steps{list-style:none;border:1px solid var(--line);border-radius:3px;background:var(--panel-2);overflow:hidden}
+.step{display:grid;grid-template-columns:14px minmax(0,1fr) auto;gap:7px;padding:5px 8px;border-top:1px solid var(--line);font-size:11.5px;align-items:start}
+.step:first-child{border-top:0}
+.step>.i{margin-top:1px;color:var(--ok)}
+.step code{font:600 11px var(--mono);color:var(--cyan);letter-spacing:-.02em}
+.step .arg{font:11px var(--mono);color:var(--text-2);letter-spacing:-.02em}
+.step .res{font:10.5px/1.45 var(--mono);color:var(--muted);margin-top:1px;letter-spacing:-.02em}
+.step .res b{color:var(--text-2);font-weight:500}
+.step .dur{font:10.5px var(--mono);color:var(--muted)}
+.step .acts{display:flex;gap:4px;margin-top:5px;align-items:center}
+.step .st{font:10.5px var(--mono);color:var(--ok)}
+.step.pend>.i{color:var(--accent)}
+.step.undone>.i{color:var(--muted)}.step.undone code{color:var(--muted);text-decoration:line-through}
+.prop{border:1px solid var(--accent-line);border-radius:3px;margin-top:8px;background:var(--panel-2);overflow:hidden}
+.prop-h{display:flex;align-items:center;gap:6px;padding:5px 8px;background:var(--accent-soft);border-bottom:1px solid var(--accent-line);font-size:11.5px;font-weight:600}
+.prop-h code{font:600 11px var(--mono);color:var(--accent)}
+.prop-h .st{margin-left:auto;font:500 10.5px var(--mono);color:var(--accent)}
+.prop dl.kv{grid-template-columns:76px minmax(0,1fr)}
+.prop dl.kv dd{white-space:normal}
+.prop .diff del{color:var(--muted)}.prop .diff ins{text-decoration:none;color:var(--accent)}
+.prop-a{display:flex;gap:6px;padding:7px 8px;align-items:center}
+.prop.done{border-color:var(--line-2)}.prop.done .prop-h{background:transparent;border-color:var(--line)}
+.prop.done .prop-h .st{color:var(--ok)}
+.prop.rej{opacity:.6}
+table.mini{width:100%;border-collapse:collapse;font:11px var(--mono);margin-top:4px;letter-spacing:-.02em}
+table.mini th{text-align:left;font-weight:500;color:var(--muted);padding:3px 6px;border-bottom:1px solid var(--line-2)}
+table.mini td{padding:3px 6px;border-bottom:1px solid var(--line);color:var(--text-2)}
+table.mini tr[data-seek]{cursor:pointer}
+table.mini tr[data-seek]:hover td{background:var(--hover);color:var(--text)}
+table.mini tr.best td{color:var(--text)}
+table.mini td.r,table.mini th.r{text-align:right}
+.sugg{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+.sugg button{height:22px;padding:0 8px;border:1px solid var(--line-2);border-radius:3px;font-size:11.5px;color:var(--text-2);background:var(--panel)}
+.sugg button:hover{color:var(--text);border-color:var(--line-3)}
+.composer{flex:none;border-top:1px solid var(--line);padding:8px;background:var(--panel-2)}
+.composer textarea{width:100%;resize:none;background:var(--panel);border:1px solid var(--line-2);border-radius:3px;padding:6px 8px;font-size:12.5px;outline:0;line-height:1.4}
+.composer textarea:focus{border-color:var(--accent-line)}
+.cmp-row{display:flex;align-items:center;gap:6px;margin-top:6px}
+.cmp-row .mp{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 6px;border:1px solid var(--line-2);border-radius:3px;font:10.5px var(--mono);color:var(--text-2);white-space:nowrap}
+
+/* inspector */
+.insp{flex:none;overflow:auto;border-bottom:1px solid var(--line)}
+.insp-t{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line)}
+.insp-t .ico{width:28px;height:28px;border:1px solid var(--line-2);border-radius:3px;display:grid;place-items:center;color:var(--cyan);flex:none;background:var(--cyan-soft)}
+.insp-t b{display:block;font-size:13px}
+.insp-t span{font:10.5px var(--mono);color:var(--muted)}
+
+/* dataset list */
+.dsl .row{display:grid;grid-template-columns:38px minmax(0,1fr) auto;gap:8px;align-items:center;height:32px;padding:0 8px;border-bottom:1px solid var(--line)}
+.dsl .row:hover{background:var(--hover)}
+.dsl .row.sel{background:var(--sel)}
+.dsl .th{width:38px;height:22px;border-radius:2px;border:1px solid var(--line-2)}
+.dsl .nm{font:11px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:-.02em}
+.dsl .nm small{display:block;color:var(--muted);font-size:10px}
+.dsl .sz{font:10.5px var(--mono);color:var(--muted);text-align:right}
+
+/* ---------- screen 1 ---------- */
+.s1{grid-template-columns:224px minmax(0,1fr) 304px;gap:1px;background:var(--line)}
+.s1c{display:grid;grid-template-rows:46px minmax(0,1fr) 1px var(--dh,196px);min-width:0;min-height:0;background:var(--panel)}
+.toolbar{display:flex;align-items:center;gap:8px;padding:0 10px 0 14px;border-bottom:1px solid var(--line);min-width:0}
+.toolbar h1{font-size:15px;font-weight:650;font-stretch:110%;letter-spacing:.005em}
+.filter{display:flex;align-items:center;gap:6px;height:24px;width:220px;padding:0 8px;border:1px solid var(--line-2);border-radius:3px;background:var(--panel-2);color:var(--muted)}
+.filter input{border:0;background:transparent;outline:0;flex:1;min-width:0;font-size:12px;color:var(--text)}
+.navlist{padding:4px 0}
+.nl{display:flex;align-items:center;gap:8px;width:100%;height:26px;padding:0 10px;color:var(--text-2);font-size:12.5px;text-align:left;position:relative}
+.nl:hover{background:var(--hover);color:var(--text)}
+.nl.on{color:var(--text);background:var(--sel)}
+.nl.on::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--cyan)}
+.nl .c{margin-left:auto;font:10.5px var(--mono);color:var(--muted)}
+.drop{margin:10px;border:1px dashed var(--line-3);border-radius:3px;padding:12px 10px;color:var(--muted);font-size:11.5px;line-height:1.45;display:flex;gap:9px}
+.drop b{color:var(--text-2);display:block;margin-bottom:2px}
+.tbl{width:100%;border-collapse:collapse;table-layout:fixed}
+.tbl th{position:sticky;top:0;background:var(--panel-2);z-index:1;text-align:left;font-weight:600;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);height:26px;padding:0 8px;border-bottom:1px solid var(--line);font-stretch:90%;white-space:nowrap}
+.tbl td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tbl tbody tr{cursor:default}
+.tbl tbody tr:hover td{background:var(--hover)}
+.tbl tbody tr.sel td{background:var(--sel)}
+.tbl tbody tr.sel td:first-child{box-shadow:inset 2px 0 0 var(--cyan)}
+.tbl .pn b{display:block;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.tbl .pn span{display:block;font:10.5px var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;letter-spacing:-.02em;margin-top:2px}
+.tbl canvas.thumb{width:72px;height:46px;border:1px solid var(--line-2);border-radius:2px;display:block}
+.lay{display:flex;gap:3px}
+.lay i{width:20px;height:20px;display:grid;place-items:center;border:1px solid var(--line-2);border-radius:2px;color:var(--text-2)}
+.lay i.no{opacity:.25;border-style:dashed}
+.offl{display:flex;align-items:center;gap:6px;font-size:12px}
+.offl .bar{width:44px}
+.bar{height:4px;background:var(--line-2);border-radius:2px;overflow:hidden;flex:none}
+.bar i{display:block;height:100%;background:var(--accent)}
+.bar.cy i{background:var(--cyan)}
+.log{font:11px/1.5 var(--mono);padding:4px 0;letter-spacing:-.02em}
+.log .ln{display:grid;grid-template-columns:86px 16px minmax(0,1fr);gap:8px;padding:3px 12px;align-items:start;color:var(--text-2)}
+.log .ln:hover{background:var(--hover)}
+.log .ln .tm{color:var(--muted)}
+.log .ln .i{margin-top:1px}
+.log .ln b{color:var(--text);font-weight:500}
+.prevbox{padding:10px;border-bottom:1px solid var(--line)}
+.prevbox canvas{width:100%;height:auto;aspect-ratio:16/9;display:block;border:1px solid var(--line-2);border-radius:2px;background:var(--vp-bg)}
+.prevbox h3{font-size:14px;font-weight:650;margin-top:9px;font-stretch:104%}
+.prevbox .sub{font:10.5px var(--mono);color:var(--muted);margin-top:2px}
+.prevbox .acts{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.packs .pk{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;padding:7px 10px;border-bottom:1px solid var(--line);align-items:center}
+.packs .pk .nm{font-size:12px;font-weight:500}
+.packs .pk .meta{font:10.5px var(--mono);color:var(--muted);grid-column:1}
+.packs .pk .st{grid-row:1/3;grid-column:2;display:flex;align-items:center;gap:6px;font:10.5px var(--mono);color:var(--text-2)}
+.packs .pk .bar{grid-column:1/3;margin-top:3px}
+.diskline{padding:8px 10px;font:10.5px var(--mono);color:var(--muted)}
+
+/* ---------- screen 4 ---------- */
+.s4{grid-template-columns:232px minmax(0,1fr) 300px;gap:1px;background:var(--line)}
+.setnav .grp{font-size:10.5px;font-weight:600;letter-spacing:.075em;text-transform:uppercase;color:var(--muted);padding:12px 12px 4px;font-stretch:90%}
+.setmain{background:var(--panel);min-width:0;min-height:0;overflow:auto}
+.setin{max-width:1000px;padding:0 0 60px}
+.sethead{display:flex;align-items:center;gap:10px;padding:14px 24px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel);z-index:3}
+.sethead h1{font-size:16px;font-weight:650;font-stretch:110%}
+.sec{padding:18px 24px 6px;border-bottom:1px solid var(--line)}
+.sec>h2{font-size:14px;font-weight:650;font-stretch:105%;display:flex;align-items:center;gap:8px}
+.sec>h2 .i{color:var(--accent)}
+.sec>p.d{color:var(--text-2);font-size:12px;margin:4px 0 12px;max-width:720px}
+.srow{display:grid;grid-template-columns:250px minmax(0,1fr);gap:18px;padding:11px 0;border-top:1px solid var(--line);align-items:start}
+.srow .l b{display:block;font-size:12.5px;font-weight:600}
+.srow .l span{display:block;color:var(--muted);font-size:11.5px;margin-top:2px;line-height:1.4}
+.sw{width:30px;height:16px;border-radius:8px;background:var(--line-3);position:relative;flex:none;display:inline-block;vertical-align:middle;cursor:pointer}
+.sw::after{content:"";position:absolute;left:2px;top:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:left .15s}
+.sw.on{background:var(--accent)}.sw.on::after{left:16px;background:var(--accent-ink)}
+.selbox{display:inline-flex;align-items:center;justify-content:space-between;gap:8px;height:24px;padding:0 5px 0 8px;border:1px solid var(--line-2);background:var(--raised);border-radius:3px;min-width:0;font:11.5px var(--mono);color:var(--text);white-space:nowrap;letter-spacing:-.02em}
+.selbox .i{color:var(--muted)}
+.selbox.dis{color:var(--muted);border-style:dashed}
+.prov{border:1px solid var(--line);border-radius:3px;overflow:hidden;margin-bottom:10px}
+.prov-h{display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--panel-2);border-bottom:1px solid var(--line)}
+.prov-h .lg{width:26px;height:26px;border:1px solid var(--line-2);border-radius:3px;display:grid;place-items:center;font:700 11px var(--mono);color:var(--text);background:var(--panel)}
+.prov-h b{font-size:13px}
+.prov-b{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0}
+.prov-b>div{padding:8px 12px;border-right:1px solid var(--line)}
+.prov-b>div:last-child{border-right:0}
+.prov-b label{display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;font-weight:600;font-stretch:90%;margin-bottom:3px}
+.keyf{display:flex;align-items:center;gap:6px;font:11.5px var(--mono);letter-spacing:-.02em}
+.keyf .i{color:var(--ok)}
+.keyin{width:100%;height:24px;border:1px dashed var(--line-3);background:var(--panel);border-radius:3px;padding:0 8px;font:11.5px var(--mono);outline:0}
+.stbl{width:100%;border-collapse:collapse;font-size:12px}
+.stbl th{text-align:left;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--line-2);font-stretch:90%;white-space:nowrap}
+.stbl td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+.stbl tr.road td{color:var(--muted)}
+.stbl td.m{font-family:var(--mono);font-size:11.5px;letter-spacing:-.02em}
+.scroll-x{overflow-x:auto;max-width:100%}
+.rbox{padding:10px 12px;border-bottom:1px solid var(--line)}
+.rbox h4{font-size:12px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.flow{font:11px/1.6 var(--mono);color:var(--text-2);letter-spacing:-.02em}
+.flow .y{color:var(--ok)}.flow .n{color:var(--sev5)}.flow .w{color:var(--warn)}
+.chk{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px}
+
+/* ---------- palette ---------- */
+.cmdk{position:fixed;inset:0;background:rgba(0,0,0,.42);display:none;z-index:200;padding:70px 16px 16px}
+.cmdk.on{display:block}
+.cmdk-box{max-width:600px;margin:0 auto;background:var(--raised);border:1px solid var(--line-3);border-radius:5px;box-shadow:var(--shadow);overflow:hidden}
+.cmdk-in{display:flex;align-items:center;gap:8px;height:42px;padding:0 12px;border-bottom:1px solid var(--line-2);color:var(--muted)}
+.cmdk-in input{flex:1;border:0;outline:0;background:transparent;font-size:14px;color:var(--text);min-width:0}
+.cmdk-list{max-height:380px;overflow:auto;padding:4px 0}
+.cmdk-g{font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:8px 12px 3px;font-stretch:90%}
+.cmdk-it{display:flex;align-items:center;gap:10px;height:30px;padding:0 12px;color:var(--text-2);font-size:12.5px;cursor:pointer}
+.cmdk-it .sp{flex:1}
+.cmdk-it.on,.cmdk-it:hover{background:var(--sel);color:var(--text)}
+.cmdk-ft{display:flex;gap:14px;padding:7px 12px;border-top:1px solid var(--line-2);font-size:11px;color:var(--muted)}
+
+/* ---------- responsive ---------- */
+@media (max-width:1320px){.menus{display:none}}
+@media (max-width:1180px){.wtab .k{display:none}.tb-status{display:none}.palette-hint{width:190px}}
+@media (max-width:860px){
+  body{overflow-x:hidden;overflow-y:auto;height:auto}
+  html{height:auto}
+  .app{display:block;height:auto;min-height:100dvh}
+  .titlebar{position:sticky;top:0;z-index:50;height:40px}
+  .brand{padding:0 10px}
+  .winctl,.menus,.tb-status{display:none}
+  .palette-hint{width:auto;margin:0 6px}.palette-hint .lbl,.palette-hint .kbd{display:none}
+  .main{display:block}
+  .act{display:none}
+  .status{display:none}
+  .screen.on{display:flex!important;flex-direction:column;gap:12px;height:auto;padding:12px 16px 56px;background:var(--bg)}
+  .screen>*{grid-column:auto!important;grid-row:auto!important}
+  .screen .split{display:none}
+  .pane,.setmain,.s1c,.tl{border:1px solid var(--line);border-radius:3px}
+  .ws>.center{order:1;height:auto}
+  .ws>.right{order:2}
+  .ws>.tl{order:3}
+  .ws>.left{order:4}
+  .vpgrid{display:flex;flex-direction:column;gap:1px;background:var(--line)}
+  .vpgrid>.vp{height:300px;flex:none}
+  .vpgrid>.vp.tall{height:360px}
+  .vpgrid>.pane{min-height:320px}
+  .tree,.dsl{max-height:320px}
+  .left .scroll{max-height:320px}
+  .right .insp{max-height:none}
+  .right .thread{max-height:none;overflow:visible}
+  .tl-scroll{overflow-x:auto}
+  .tl-body{min-width:780px}
+  .tl{height:auto}
+  .tlh{overflow-x:auto}
+  .s1c{display:flex;flex-direction:column}
+  .s1c .tablewrap{overflow-x:auto}
+  .s1c .tbl{min-width:760px}
+  .s1c .dock{height:auto}
+  .toolbar{flex-wrap:wrap;height:auto;padding:10px;gap:8px}
+  .filter{width:100%;order:5}
+  .setmain{overflow:visible}
+  .sethead{position:static;flex-wrap:wrap}
+  .sec{padding:16px 12px 6px}
+  .srow{grid-template-columns:minmax(0,1fr);gap:8px}
+  .prov-b{grid-template-columns:minmax(0,1fr)}
+  .prov-b>div{border-right:0;border-bottom:1px solid var(--line)}
+  .caption{bottom:8px;right:8px;left:auto;max-width:calc(100vw - 16px)}
+  .s4 .setnav{display:none}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<defs>
+<symbol id="i-home" viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></symbol>
+<symbol id="i-fusion" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M11 4v16M3 13h18"/></symbol>
+<symbol id="i-tank" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="6" ry="2.2"/><path d="M6 6v12c0 1.2 2.7 2.2 6 2.2s6-1 6-2.2V6M18 10h3M3 15h3"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.6-4.6"/></symbol>
+<symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4h11l-2 4 2 4H5"/></symbol>
+<symbol id="i-ruler" viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7.5 12.5l2 2M10.5 9.5l2 2M13.5 6.5l2 2"/></symbol>
+<symbol id="i-agent" viewBox="0 0 24 24"><path d="M12 2.8l8 4.6v9.2l-8 4.6-8-4.6V7.4z"/><circle cx="12" cy="12" r="2.4"/><path d="M12 2.8v6.8M19.9 16.6l-5.8-3.3M4.1 16.6l5.8-3.3"/></symbol>
+<symbol id="i-report" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 12h7M9 16h7M9 8h3"/></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></symbol>
+<symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></symbol>
+<symbol id="i-cube" viewBox="0 0 24 24"><path d="M12 2.8l8 4.6v9.2l-8 4.6-8-4.6V7.4z"/><path d="M4 7.4l8 4.6 8-4.6M12 12v9.2"/></symbol>
+<symbol id="i-map" viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></symbol>
+<symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="1"/><path d="M16 10.5l5-3v9l-5-3z"/></symbol>
+<symbol id="i-points" viewBox="0 0 24 24"><path d="M5 8h.01M9 5h.01M13 7h.01M18 5h.01M7 12h.01M11 11h.01M16 11h.01M20 9h.01M5 17h.01M10 16h.01M14 15h.01M19 15h.01M8 20h.01M13 19h.01M17 19h.01" stroke-width="2.6"/></symbol>
+<symbol id="i-photo" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="1"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-8 8"/></symbol>
+<symbol id="i-pano" viewBox="0 0 24 24"><path d="M3 7c6-2 12-2 18 0v10c-6-2-12-2-18 0z"/><path d="M8 14l3-3 2 2 2-1 3 3"/></symbol>
+<symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 12.5l9 5 9-5M3 16.5l9 5 9-5"/></symbol>
+<symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="7" ry="2.5"/><path d="M5 5.5v13c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-13M5 12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5"/></symbol>
+<symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/></symbol>
+<symbol id="i-eyeoff" viewBox="0 0 24 24"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12z"/><path d="M4 4l16 16"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="1"/><path d="M8 11V8a4 4 0 018 0v3"/></symbol>
+<symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+<symbol id="i-chevd" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+<symbol id="i-max" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+<symbol id="i-more" viewBox="0 0 24 24"><path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="3"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></symbol>
+<symbol id="i-pause" viewBox="0 0 24 24"><path d="M7 5h3.2v14H7zM13.8 5H17v14h-3.2z" fill="currentColor"/></symbol>
+<symbol id="i-prev" viewBox="0 0 24 24"><path d="M6 5v14M18 5l-9 7 9 7z"/></symbol>
+<symbol id="i-next" viewBox="0 0 24 24"><path d="M18 5v14M6 5l9 7-9 7z"/></symbol>
+<symbol id="i-stepb" viewBox="0 0 24 24"><path d="M14 7l-5 5 5 5"/></symbol>
+<symbol id="i-stepf" viewBox="0 0 24 24"><path d="M10 7l5 5-5 5"/></symbol>
+<symbol id="i-loop" viewBox="0 0 24 24"><path d="M17 2l3 3-3 3M4 11V9a4 4 0 014-4h12M7 22l-3-3 3-3M20 13v2a4 4 0 01-4 4H4"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-import" viewBox="0 0 24 24"><path d="M12 3v11M7.5 9.5L12 14l4.5-4.5M4 15v5h16v-5"/></symbol>
+<symbol id="i-dl" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 11-2.4-5.7"/><path d="M20 4v5h-5"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+<symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 6L4 11l5 5"/><path d="M4 11h10.5a5 5 0 010 10H11"/></symbol>
+<symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/></symbol>
+<symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 3h6l-1 6 4 4H6l4-4z"/><path d="M12 13v8"/></symbol>
+<symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 00.6-8A6 6 0 006 11.4 3.3 3.3 0 007 18z"/></symbol>
+<symbol id="i-cloudoff" viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 00.6-8A6 6 0 006 11.4 3.3 3.3 0 007 18z"/><path d="M4 4l16 16"/></symbol>
+<symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M14.5 8.5l2 2"/></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></symbol>
+<symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/><rect x="9.5" y="9.5" width="5" height="5"/><path d="M9 2.5V6M15 2.5V6M9 18v3.5M15 18v3.5M2.5 9H6M2.5 15H6M18 9h3.5M18 15h3.5"/></symbol>
+<symbol id="i-drone" viewBox="0 0 24 24"><circle cx="5.5" cy="5.5" r="2.5"/><circle cx="18.5" cy="5.5" r="2.5"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/><path d="M7.5 7.5l2.5 2.5M16.5 7.5L14 10M7.5 16.5l2.5-2.5M16.5 16.5L14 14"/><rect x="10" y="10" width="4" height="4"/></symbol>
+<symbol id="i-section" viewBox="0 0 24 24"><path d="M3 12h3M9 12h2M14 12h2M19 12h2"/><path d="M6 4v5h12V4M6 20v-5h12v5"/></symbol>
+<symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.5"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></symbol>
+<symbol id="i-cam" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+<symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.6 5.7 3.6 9s-1.1 6.3-3.6 9c-2.5-2.7-3.6-5.7-3.6-9S9.5 5.7 12 3z"/></symbol>
+<symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3.5l9.5 17h-19z"/><path d="M12 10v5M12 17.6v.4"/></symbol>
+<symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2.5-6.5z"/><path d="M11.5 13.5L20 4"/></symbol>
+<symbol id="i-at" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M15.5 12v1.5a2.5 2.5 0 005 0V12a8.5 8.5 0 10-3.3 6.7"/></symbol>
+<symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 5h16l-6 8v6l-4-2v-4z"/></symbol>
+<symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z"/></symbol>
+<symbol id="i-min" viewBox="0 0 24 24"><path d="M6 12h12"/></symbol>
+<symbol id="i-sq" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6h7l2 2h9v11H3z"/></symbol>
+<symbol id="i-hdd" viewBox="0 0 24 24"><rect x="3" y="13" width="18" height="7" rx="1"/><path d="M5 13l2.5-8h9L19 13M7 16.5h.01"/></symbol>
+<symbol id="i-spark" viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 4-7 5 5"/></symbol>
+<symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+<symbol id="i-net" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="5"/><rect x="3" y="16" width="6" height="5"/><rect x="15" y="16" width="6" height="5"/><path d="M12 8v4M6 16v-4h12v4"/></symbol>
+<symbol id="i-flare" viewBox="0 0 24 24"><path d="M11 21V8h2v13M9 21h6M12 8c-2-1.5-1.5-3.5 0-5 1.5 1.5 2 3.5 0 5"/></symbol>
+<symbol id="i-building" viewBox="0 0 24 24"><path d="M5 21V3h10v18M15 9h4v12M3 21h18M8 7h4M8 11h4M8 15h4"/></symbol>
+<symbol id="i-pile" viewBox="0 0 24 24"><path d="M2 19c2-5 4-8 7-8s4 3 5 5c1-3 3-6 5-6s3 5 3 9z"/></symbol>
+<symbol id="i-road" viewBox="0 0 24 24"><path d="M8 3L4 21M16 3l4 18M12 4v3M12 10v4M12 17v4"/></symbol>
+<symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"/></symbol>
+<symbol id="i-box" viewBox="0 0 24 24"><path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/></symbol>
+</defs>
+</svg>
+
+<div class="app">
+<header class="titlebar">
+  <div class="brand"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="2.5" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10 2.5v15M2.5 10h15" stroke="currentColor" stroke-width=".9" opacity=".45"/><rect x="10" y="2.5" width="7.5" height="7.5" fill="var(--accent)"/></svg><span>Product</span></div>
+  <nav class="menus"><button>File</button><button>Edit</button><button>View</button><button>Layer</button><button>Timeline</button><button>Agent</button><button>Help</button></nav>
+  <nav class="wtabs" aria-label="Screens">
+    <button class="wtab" data-go="1"><svg class="i s"><use href="#i-home"/></svg>Projects</button>
+    <button class="wtab" data-go="2"><svg class="i s"><use href="#i-fusion"/></svg>Al-Zour LNG <span class="k">Fusion</span></button>
+    <button class="wtab" data-go="3"><svg class="i s"><use href="#i-tank"/></svg>HCl 710-D-130335 <span class="k">Inspection</span></button>
+    <button class="wtab" data-go="4"><svg class="i s"><use href="#i-gear"/></svg>Settings</button>
+  </nav>
+  <span class="sp"></span>
+  <button class="palette-hint" id="openK" title="Command palette"><svg class="i s"><use href="#i-search"/></svg><span class="lbl">Commands, layers, frames</span><span class="kbd">Ctrl K</span></button>
+  <div class="tb-status"><span class="pill"><span class="dot"></span>Offline ready</span></div>
+  <button class="ib" id="themeBtn" title="Toggle light / dark" style="margin-left:6px"><svg class="i s"><use href="#i-moon"/></svg></button>
+  <div class="winctl"><button title="Minimise"><svg class="i s"><use href="#i-min"/></svg></button><button title="Maximise"><svg class="i xs"><use href="#i-sq"/></svg></button><button class="x" title="Close"><svg class="i s"><use href="#i-x"/></svg></button></div>
+</header>
+
+<div class="main">
+<nav class="act" aria-label="Activity bar">
+  <button data-go="1" title="Projects"><svg class="i l"><use href="#i-home"/></svg></button>
+  <button data-go="2" title="Fusion workspace"><svg class="i l"><use href="#i-fusion"/></svg></button>
+  <button data-go="3" title="Inspection workspace"><svg class="i l"><use href="#i-tank"/></svg></button>
+  <span class="sep"></span>
+  <button title="Search"><svg class="i l"><use href="#i-search"/></svg></button>
+  <button title="Findings"><svg class="i l"><use href="#i-flag"/></svg><span class="badge">3</span></button>
+  <button title="Measure"><svg class="i l"><use href="#i-ruler"/></svg></button>
+  <button title="Reports"><svg class="i l"><use href="#i-report"/></svg></button>
+  <span class="sp"></span>
+  <button title="Agents"><svg class="i l"><use href="#i-agent"/></svg></button>
+  <button data-go="4" title="Settings"><svg class="i l"><use href="#i-gear"/></svg></button>
+  <button title="Account"><svg class="i l"><use href="#i-user"/></svg></button>
+</nav>
+
+<div class="screens">
+
+<!-- ================= SCREEN 1 : PROJECTS ================= -->
+<section class="screen s1" data-s="1">
+  <aside class="pane">
+    <div class="ph">Library</div>
+    <div class="navlist" id="libNav"></div>
+    <div class="ph bt">Sources</div>
+    <div class="navlist">
+      <button class="nl"><svg class="i s"><use href="#i-hdd"/></svg>E:\Projects<span class="c">385.9 GB</span></button>
+      <button class="nl"><svg class="i s"><use href="#i-net"/></svg>\\synapse-nas\deliverables<span class="c">2.1 TB</span></button>
+      <button class="nl"><svg class="i s"><use href="#i-box"/></svg>Customer packages<span class="c">3</span></button>
+    </div>
+    <div class="sp"></div>
+    <div class="drop"><svg class="i"><use href="#i-import"/></svg><div><b>Drop to import</b>GLB, LAS/LAZ, E57, COPC, MP4 + SRT, DJI and Elios flight logs, GeoTIFF, PDF</div></div>
+  </aside>
+  <div class="s1c" style="--dh:196px">
+    <div class="toolbar">
+      <h1>Projects</h1><span class="mono muted">6 projects &middot; 385.9 GB</span>
+      <span class="sp"></span>
+      <label class="filter"><svg class="i s"><use href="#i-filter"/></svg><input placeholder="Filter by name, client, site"></label>
+      <div class="seg lg"><button class="on" title="Rows"><svg class="i s"><use href="#i-sliders"/></svg></button><button title="Tiles"><svg class="i s"><use href="#i-home"/></svg></button></div>
+      <button class="btn"><svg class="i s"><use href="#i-import"/></svg>Import</button>
+      <button class="btn pri"><svg class="i s"><use href="#i-plus"/></svg>New project</button>
+    </div>
+    <div class="tablewrap scroll">
+      <table class="tbl" id="projTbl">
+        <colgroup><col style="width:90px"><col><col style="width:118px"><col style="width:108px"><col style="width:76px"><col style="width:186px"><col style="width:150px"></colgroup>
+        <thead><tr><th></th><th>Project</th><th>Site</th><th>Captured</th><th>Size</th><th>Layers</th><th>Offline</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="split h" data-var="--dh" data-dir="-1" data-min="90" data-max="420" data-host=".s1c"></div>
+    <div class="dock pane" style="border:0">
+      <div class="ph"><div class="ptabs"><button class="on">Activity</button><button>Jobs <span class="c">2</span></button><button>Problems <span class="c">1</span></button></div><span class="sp"></span><button class="ib" title="Clear"><svg class="i s"><use href="#i-x"/></svg></button></div>
+      <div class="log scroll" id="actLog"></div>
+    </div>
+  </div>
+  <aside class="pane">
+    <div class="ph">Preview<span class="sp"></span><button class="ib"><svg class="i s"><use href="#i-more"/></svg></button></div>
+    <div class="prevbox">
+      <canvas id="prevCv" width="560" height="315"></canvas>
+      <h3 id="prevName">Al-Zour LNG Terminal</h3>
+      <div class="sub" id="prevSub"></div>
+      <div class="acts"><button class="btn pri" id="prevOpen"><svg class="i s"><use href="#i-ext"/></svg>Open workspace</button><button class="btn"><svg class="i s"><use href="#i-box"/></svg>Export player</button></div>
+    </div>
+    <div class="ph">Offline map packs<span class="sp"></span><span class="c">5 of 7</span></div>
+    <div class="packs scroll" id="packs" style="flex:1"></div>
+    <div class="diskline">Map cache 8.1 GB of 40 GB &middot; E:\ProductData\maps</div>
+  </aside>
+  <div class="caption">Option B: <b>Workbench</b>, screen 1 of 4</div>
+</section>
+
+<!-- ================= SCREEN 2 : FUSION AL-ZOUR ================= -->
+<section class="screen ws" data-s="2" id="s2" style="--lw:236px;--rw:344px;--th:214px">
+  <aside class="pane left">
+    <div class="ph"><div class="ptabs"><button class="on">Outliner</button><button>Layers</button><button>Saved views</button></div><span class="sp"></span><button class="ib" title="Filter"><svg class="i s"><use href="#i-filter"/></svg></button></div>
+    <label class="search-mini"><svg class="i s"><use href="#i-search"/></svg><input placeholder="Filter 909 nodes, 12 areas"></label>
+    <div class="tree scroll" id="azTree" style="flex:1"></div>
+    <div class="ph bt"><div class="ptabs"><button class="on">Video <span class="c">25</span></button><button>Panos <span class="c">12</span></button><button>Photos</button></div><span class="sp"></span><span class="c">71.6 GB</span></div>
+    <div class="dsl scroll" id="azDs" style="height:204px;flex:none"></div>
+  </aside>
+  <div class="split v sx1" data-var="--lw" data-min="180" data-max="420"></div>
+  <div class="center">
+    <div class="vpgrid" id="azGrid" style="--vx:52%;--vy:50%">
+      <div class="vp g11" data-vp="3d">
+        <div class="vph"><span class="ty"><svg class="i s"><use href="#i-cube"/></svg>3D</span><span class="lc">9 layers</span><span class="meta">Persp &middot; Lit &middot; 909 nodes</span><span class="sp"></span>
+          <button class="ib on" title="Follow drone" data-follow="3d"><svg class="i s"><use href="#i-target"/></svg></button>
+          <button class="agb" data-agent="3d" title="Bind agent to this window"><svg class="i s"><use href="#i-agent"/></svg>Agent</button>
+          <button class="ib" data-max title="Maximise"><svg class="i s"><use href="#i-max"/></svg></button></div>
+        <div class="vpb" id="az3d"><div class="ov tl"><b>Al-Zour LNG Terminal</b><br>AlZour_Plant_v14.glb &middot; ortho 2026-03</div>
+          <div class="ov br" id="az3dInfo">EPSG:32639 &middot; 1 u = 1 m</div>
+          <svg class="gizmo" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="rgba(0,0,0,.35)" stroke="rgba(255,255,255,.12)"/><path d="M22 22l12 5" stroke="#ff6a5c" stroke-width="2"/><path d="M22 22v-14" stroke="#9fd65a" stroke-width="2"/><path d="M22 22l-11 6" stroke="#5aa8ff" stroke-width="2"/><text x="35" y="31" fill="#ff6a5c" font-size="8" font-family="monospace">E</text><text x="19" y="7" fill="#9fd65a" font-size="8" font-family="monospace">U</text><text x="5" y="33" fill="#5aa8ff" font-size="8" font-family="monospace">N</text></svg>
+        </div>
+      </div>
+      <div class="split v gv" data-var="--vx" data-pct data-host="#azGrid"></div>
+      <div class="vp g13" data-vp="map">
+        <div class="vph"><span class="ty"><svg class="i s"><use href="#i-map"/></svg>Map</span><span class="lc">4 layers</span><span class="meta" id="azMapMeta">OSM KW z18 + Ortho 3.2 cm</span><span class="sp"></span>
+          <button class="ib on" title="Follow drone" data-follow="map"><svg class="i s"><use href="#i-target"/></svg></button>
+          <button class="agb" data-agent="map"><svg class="i s"><use href="#i-agent"/></svg>Agent</button>
+          <button class="ib" data-max title="Maximise"><svg class="i s"><use href="#i-max"/></svg></button></div>
+        <div class="vpb" id="azMap"></div>
+      </div>
+      <div class="split h gh" data-var="--vy" data-pct data-host="#azGrid"></div>
+      <div class="vp g31 focus bound" data-vp="video">
+        <div class="vph"><span class="ty"><svg class="i s"><use href="#i-video"/></svg>Video</span><span class="lc">2 layers</span><span class="meta" id="azVidMeta">DJI_0412.MP4 &middot; 3840&times;2160 &middot; 29.97</span><span class="sp"></span>
+          <button class="ib on" title="Project footprint" id="azProjBtn"><svg class="i s"><use href="#i-section"/></svg></button>
+          <button class="agb" data-agent="video"><svg class="i s"><use href="#i-agent"/></svg>Agent</button>
+          <button class="ib" data-max title="Maximise"><svg class="i s"><use href="#i-max"/></svg></button></div>
+        <div class="vpb" id="azVid"></div>
+      </div>
+      <div class="vp g33" data-vp="pc">
+        <div class="vph"><span class="ty"><svg class="i s"><use href="#i-points"/></svg>Point cloud</span><span class="lc">1 layer</span><span class="meta">AlZour_2026-03.copc &middot; LOD 6</span><span class="sp"></span>
+          <div class="seg" id="pcMode"><button class="on" data-m="rgb">RGB</button><button data-m="elev">Elev</button></div>
+          <button class="agb" data-agent="pc"><svg class="i s"><use href="#i-agent"/></svg>Agent</button>
+          <button class="ib" data-max title="Maximise"><svg class="i s"><use href="#i-max"/></svg></button></div>
+        <div class="vpb" id="azPc"><div class="ov bl">842.1 M pts total &middot; <b id="pcIn">4.12 M</b> streamed in view &middot; thinned 1:204</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="split v sx2" data-var="--rw" data-dir="-1" data-min="280" data-max="560"></div>
+  <aside class="pane right">
+    <div class="ph"><div class="ptabs"><button class="on">Properties</button><button>Clip</button><button>Display</button></div><span class="sp"></span><button class="ib"><svg class="i s"><use href="#i-lock"/></svg></button></div>
+    <div class="insp scroll" style="max-height:206px">
+      <div class="insp-t"><div class="ico"><svg class="i"><use href="#i-tank"/></svg></div><div style="flex:1;min-width:0"><b>LNG Tank T-02</b><span>node 3 / 909 &middot; Area 03 Tank Farm</span></div><button class="ib" title="Fly to"><svg class="i s"><use href="#i-target"/></svg></button></div>
+      <dl class="kv">
+        <dt>Type</dt><dd>Full containment, 9% Ni inner</dd>
+        <dt>Capacity</dt><dd class="m">225,000 m&sup3;</dd>
+        <dt>Size</dt><dd class="m">&Oslash; 88.0 m &middot; H 50.4 m</dd>
+        <dt>Centre</dt><dd class="m">E 243 630.0 &nbsp;N 3 177 650.0</dd>
+        <dt>Linked</dt><dd><span class="tag cy">6 clips</span><span class="tag">41 photos</span><span class="tag">2 panos</span></dd>
+        <dt>Findings</dt><dd><span class="tag" id="azFindTag">1 open</span> <span class="muted mono">F-AZ-014</span></dd>
+        <dt>Source</dt><dd class="m">AlZour_Plant_v14.glb</dd>
+      </dl>
+    </div>
+    <div class="ph"><svg class="i s" style="color:var(--accent)"><use href="#i-agent"/></svg>Agent<span class="c">claude-sonnet-4-5</span><span class="sp"></span><button class="ib" title="New conversation"><svg class="i s"><use href="#i-plus"/></svg></button><button class="ib"><svg class="i s"><use href="#i-more"/></svg></button></div>
+    <div class="agent">
+      <div class="bind" id="azBind">
+        <div class="bind-l"><svg class="i s"><use href="#i-link"/></svg><span class="tx">Agent: <b id="azBindTxt">Video window, DJI_0412.MP4 @ 02:14</b></span><button class="ib on" title="Follow focused window"><svg class="i s"><use href="#i-pin"/></svg></button></div>
+        <div class="ctx" id="azCtx"><span class="cx">frame <b id="azFrame">4,027</b></span><span class="cx">selection <b>T-02</b></span><span class="cx"><b>8</b> visible layers</span><span class="cx pol">policy: text only, vision local</span></div>
+      </div>
+      <div class="thread scroll" id="azThread">
+        <div class="msg u"><div class="who">You <span>10:41</span></div><div class="bubble">Show me every clip that passes over Tank T-02 and the frames where the roof is visible.</div></div>
+        <div class="msg a"><div class="who"><svg class="i s"><use href="#i-agent"/></svg>Agent <span>10:41 &middot; 5 tools &middot; 14.0 s</span></div>
+          <ol class="steps">
+            <li class="step"><svg class="i s"><use href="#i-check"/></svg><div><code>find_asset</code> <span class="arg">"T-02"</span><div class="res">LNG Tank T-02 &middot; Area 03 &middot; &Oslash; 88 m &middot; roof 6,082 m&sup2;</div></div><span class="dur">0.1 s</span></li>
+            <li class="step"><svg class="i s"><use href="#i-check"/></svg><div><code>intersect_flight_paths</code> <span class="arg">25 clips &times; roof + 15 m</span><div class="res">&rarr; <b>6 clips</b>, 9 passes</div></div><span class="dur">0.8 s</span></li>
+            <li class="step"><svg class="i s"><use href="#i-check"/></svg><div><code>sample_frames</code> <span class="arg">6 clips @ 2 fps</span><div class="res">footprints projected on roof &rarr; <b>1,184 frames</b> tested</div></div><span class="dur">3.9 s</span></li>
+            <li class="step"><svg class="i s"><use href="#i-check"/></svg><div><code>classify_roof_visible</code> <span class="arg">detector-v3.2, on device</span><div class="res">&rarr; <b>212 frames</b> with roof coverage &ge; 40 %</div></div><span class="dur">9.1 s</span></li>
+            <li class="step" id="azMarkStep"><svg class="i s"><use href="#i-check"/></svg><div><code>add_timeline_markers</code> <span class="arg">6 ranges &rarr; Agent track</span><div class="acts"><span class="st">Applied</span><button class="btn sm ghost" data-undo="marks"><svg class="i xs"><use href="#i-undo"/></svg>Undo</button></div></div><span class="dur">0.1 s</span></li>
+          </ol>
+          <p>6 of 25 clips pass over T-02. <b>212 frames</b> show the roof with at least 40 % coverage. Best view is <span class="lnk" data-seek="804.4">DJI_0412.MP4 @ 02:14</span>, near nadir, 91 % of the roof in frame.</p>
+          <table class="mini">
+            <thead><tr><th>Clip</th><th>Range</th><th class="r">Frames</th><th class="r">Best</th></tr></thead>
+            <tbody>
+              <tr><td>DJI_0398</td><td>01:12&ndash;01:40</td><td class="r">28</td><td class="r">01:31</td></tr>
+              <tr class="best" data-seek="804.4"><td>DJI_0412 &#9679;</td><td>01:58&ndash;02:31</td><td class="r">64</td><td class="r">02:14</td></tr>
+              <tr data-seek="1052"><td>DJI_0415</td><td>00:40&ndash;01:05</td><td class="r">31</td><td class="r">00:52</td></tr>
+              <tr data-seek="1705"><td>DJI_0421</td><td>02:50&ndash;03:22</td><td class="r">46</td><td class="r">03:05</td></tr>
+              <tr><td>DJI_0430</td><td>00:15&ndash;00:38</td><td class="r">19</td><td class="r">00:27</td></tr>
+              <tr><td>DJI_0433</td><td>03:40&ndash;04:02</td><td class="r">24</td><td class="r">03:51</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="msg u"><div class="who">You <span>10:43</span></div><div class="bubble">Open the best one and keep the map following the drone. Log the coating damage on the roof platform as a finding.</div></div>
+        <div class="msg a"><div class="who"><svg class="i s"><use href="#i-agent"/></svg>Agent <span>10:43 &middot; 3 tools &middot; 1.2 s</span></div>
+          <ol class="steps">
+            <li class="step"><svg class="i s"><use href="#i-check"/></svg><div><code>seek_video</code> <span class="arg">DJI_0412.MP4 &rarr; 02:14.12</span></div><span class="dur">0.2 s</span></li>
+            <li class="step"><svg class="i s"><use href="#i-check"/></svg><div><code>link_views</code> <span class="arg">3D, Map, Point cloud &rarr; follow drone</span><div class="acts"><span class="st">Applied</span><button class="btn sm ghost" data-undo="link"><svg class="i xs"><use href="#i-undo"/></svg>Undo</button></div></div><span class="dur">0.0 s</span></li>
+          </ol>
+          <div class="prop" id="azProp">
+            <div class="prop-h"><svg class="i s"><use href="#i-flag"/></svg><code>draft_finding</code> F-AZ-015<span class="st">Needs approval</span></div>
+            <dl class="kv">
+              <dt>Asset</dt><dd>T-02 roof &middot; platform PSV-2</dd>
+              <dt>Type</dt><dd>Coating breakdown, handrail base</dd>
+              <dt>Severity</dt><dd><span class="sev s3">3</span> &nbsp;Monitor</dd>
+              <dt>Size</dt><dd class="m">&asymp; 1.2 &times; 0.4 m (from footprint)</dd>
+              <dt>Evidence</dt><dd class="m">DJI_0412 02:14.12 &middot; frame 4,027</dd>
+            </dl>
+            <div class="prop-a"><button class="btn pri sm" data-approve="az"><svg class="i xs"><use href="#i-check"/></svg>Approve</button><button class="btn sm">Edit</button><button class="btn sm ghost" data-reject="az">Reject</button><span class="sp"></span><span class="mono muted" style="font-size:10.5px">adds to Findings track</span></div>
+          </div>
+          <p>Views are linked to the drone. The draft uses the current frame and its projected footprint; approve it to add F-AZ-015 to the findings track.</p>
+          <div class="sugg"><button>Export contact sheet (212 frames)</button><button>Compare with Dec 2025 flight</button><button>Fly 3D to T-02</button></div>
+        </div>
+      </div>
+      <div class="composer">
+        <textarea rows="2" placeholder="Ask about DJI_0412.MP4, the selection or visible layers"></textarea>
+        <div class="cmp-row"><span class="mp"><svg class="i xs"><use href="#i-at"/></svg>Video window</span><span class="mp"><svg class="i xs"><use href="#i-cloud"/></svg>Sonnet 4.5</span><span class="sp"></span><span class="kbd">Ctrl &#8629;</span><button class="btn pri sm"><svg class="i xs"><use href="#i-send"/></svg>Send</button></div>
+      </div>
+    </div>
+  </aside>
+  <div class="split h sy" data-var="--th" data-dir="-1" data-min="120" data-max="440"></div>
+  <div class="tl ok-agent" id="azTl">
+    <div class="tlh">
+      <span class="ttl">Timeline</span>
+      <div class="transport"><button data-tp="prev" title="Previous clip"><svg class="i s"><use href="#i-prev"/></svg></button><button data-tp="back" title="Back 1 s"><svg class="i s"><use href="#i-stepb"/></svg></button><button data-tp="play" class="play" title="Play / pause (Space)"><svg class="i s"><use href="#i-pause"/></svg></button><button data-tp="fwd" title="Forward 1 s"><svg class="i s"><use href="#i-stepf"/></svg></button><button data-tp="next" title="Next clip"><svg class="i s"><use href="#i-next"/></svg></button></div>
+      <span class="tc" id="azTc">09:33:24<em>;12</em></span>
+      <span class="tcs" id="azTcs">DJI_0412.MP4 02:14.12 / 04:12.00</span>
+      <span class="sp"></span>
+      <span class="tcs">11 Mar 2026 &middot; local UTC+3</span>
+      <div class="seg"><button>0.5&times;</button><button class="on">1&times;</button><button>2&times;</button><button>4&times;</button></div>
+      <button class="ib on" title="Loop"><svg class="i s"><use href="#i-loop"/></svg></button>
+      <button class="ib" title="Snap to clips"><svg class="i s"><use href="#i-link"/></svg></button>
+    </div>
+    <div class="tl-scroll"><div class="tl-body" id="azTlBody"></div></div>
+  </div>
+  <div class="caption">Option B: <b>Workbench</b>, screen 2 of 4</div>
+</section>
+
+<!-- ================= SCREEN 3 : INSPECTION HCl ================= -->
+<section class="screen ws" data-s="3" id="s3" style="--lw:236px;--rw:344px;--th:196px">
+  <aside class="pane left">
+    <div class="ph"><div class="ptabs"><button class="on">Outliner</button><button>Layers</button></div><span class="sp"></span><button class="ib"><svg class="i s"><use href="#i-filter"/></svg></button></div>
+    <div class="tree scroll" id="hcTree" style="flex:1"></div>
+    <div class="ph bt">Nozzle schedule<span class="sp"></span><span class="c">10</span></div>
+    <div class="scroll" style="height:232px;flex:none"><table class="mini" id="nzTbl" style="margin:0"></table></div>
+  </aside>
+  <div class="split v sx1" data-var="--lw" data-min="180" data-max="420"></div>
+  <div class="center">
+    <div class="vpgrid" id="hcGrid" style="--vx:57%;--vy:54%">
+      <div class="vp g1t tall" data-vp="3d">
+        <div class="vph"><span class="ty"><svg class="i s"><use href="#i-cube"/></svg>3D</span><span class="lc">5 layers</span><span class="meta">710-D-130335_v6.glb &middot; LiDAR 1.42 M</span><span class="sp"></span>
+          <div class="seg" id="hcCamSeg"><button class="on" data-cm="orbit">Orbit</button><button data-cm="follow">Follow</button><button data-cm="eye">Drone eye</button></div>
+          <button class="agb" data-agent="3d"><svg class="i s"><use href="#i-agent"/></svg>Agent</button>
+          <button class="ib" data-max title="Maximise"><svg class="i s"><use href="#i-max"/></svg></button></div>
+        <div class="vpb" id="hc3d">
+          <div class="ov tl"><b>HCl Tank 710-D-130335</b> &middot; KOC<br>&Oslash; 8.0 m &middot; H 9.0 m &middot; rubber lined 6 mm</div>
+          <div class="ov tr" id="hcLegend">deviation from design radius<br><span style="display:inline-block;width:120px;height:6px;background:linear-gradient(90deg,#3b6cff,#38d6e0,#62d26f,#f2d43f,#ff5a3c);vertical-align:middle"></span><br>-10 mm &nbsp; &nbsp; 0 &nbsp; &nbsp; +10 mm</div>
+          <div class="ctrlbar"><button class="on" data-tg="cut"><svg class="i s"><use href="#i-section"/></svg>Section</button><button class="on" data-tg="pc"><svg class="i s"><use href="#i-points"/></svg>Point cloud</button><button class="on" data-tg="proj"><svg class="i s"><use href="#i-video"/></svg>Projection</button><button class="on" data-tg="find"><svg class="i s"><use href="#i-flag"/></svg>Findings</button><button><svg class="i s"><use href="#i-ruler"/></svg>Measure</button></div>
+        </div>
+      </div>
+      <div class="split v gv" data-var="--vx" data-pct data-host="#hcGrid"></div>
+      <div class="vp g13 focus bound" data-vp="video">
+        <div class="vph"><span class="ty"><svg class="i s"><use href="#i-video"/></svg>Video</span><span class="lc">FLT-07</span><span class="meta">HCl_F07_Elios3.mp4 &middot; f-theta</span><span class="sp"></span>
+          <button class="ib on" title="Detections overlay" id="hcDetBtn"><svg class="i s"><use href="#i-target"/></svg></button>
+          <button class="agb" data-agent="video"><svg class="i s"><use href="#i-agent"/></svg>Agent</button>
+          <button class="ib" data-max title="Maximise"><svg class="i s"><use href="#i-max"/></svg></button></div>
+        <div class="vpb" id="hcVid"></div>
+      </div>
+      <div class="split h ghr" data-var="--vy" data-pct data-host="#hcGrid"></div>
+      <div class="pane g33" data-vp="find" style="border-top:0">
+        <div class="ph">Findings<span class="c">11</span><span class="sp"></span><span class="sev s5">3</span><span class="sev s4">4</span><span class="sev s3">4</span><button class="ib" style="margin-left:4px"><svg class="i s"><use href="#i-filter"/></svg></button></div>
+        <div class="scroll" style="flex:1"><table class="mini" id="hcFind" style="margin:0"></table></div>
+      </div>
+    </div>
+  </div>
+  <div class="split v sx2" data-var="--rw" data-dir="-1" data-min="280" data-max="560"></div>
+  <aside class="pane right">
+    <div class="ph"><div class="ptabs"><button class="on">Properties</button><button>Flight</button><button>Display</button></div><span class="sp"></span><button class="ib"><svg class="i s"><use href="#i-lock"/></svg></button></div>
+    <div class="insp scroll" style="max-height:214px" id="hcInsp"></div>
+    <div class="ph"><svg class="i s" style="color:var(--accent)"><use href="#i-agent"/></svg>Agent<span class="c">claude-sonnet-4-5 + gpt-5 vision</span><span class="sp"></span><button class="ib"><svg class="i s"><use href="#i-plus"/></svg></button><button class="ib"><svg class="i s"><use href="#i-more"/></svg></button></div>
+    <div class="agent">
+      <div class="bind" id="hcBind">
+        <div class="bind-l"><svg class="i s"><use href="#i-link"/></svg><span class="tx">Agent: <b id="hcBindTxt">Video window, HCl_F07_Elios3.mp4 @ 04:37</b></span><button class="ib on"><svg class="i s"><use href="#i-pin"/></svg></button></div>
+        <div class="ctx"><span class="cx">frame <b id="hcFrame">8,312</b></span><span class="cx">pose <b id="hcPoseCx">az 219.0&deg; el 4.30 m</b></span><span class="cx">selection <b id="hcSelCx">F07</b></span><span class="cx pol">policy: frames allowed, 1280 px</span></div>
+      </div>
+      <div class="thread scroll" id="hcThread">
+        <div class="msg u"><div class="who">You <span>10:38</span></div><div class="bubble">Is the blister at this frame the same as F07? Check the lining deviation in the point cloud and update the note.</div></div>
+        <div class="msg a"><div class="who"><svg class="i s"><use href="#i-agent"/></svg>Agent <span>10:38 &middot; 5 tools &middot; 4.5 s</span></div>
+          <ol class="steps">
+            <li class="step"><svg class="i s"><use href="#i-check"/></svg><div><code>read_frame</code> <span class="arg">04:37.02 &middot; f-theta undistort</span><div class="res">frame <b>8,312</b> &middot; cal Elios3-4412 (14 Jul 2026)</div></div><span class="dur">0.4 s</span></li>
+            <li class="step"><svg class="i s"><use href="#i-check"/></svg><div><code>project_to_mesh</code> <span class="arg">pose &rarr; lining</span><div class="res">patch C2 &middot; az 219.0&deg; &middot; el 4.30 m &middot; <b>7.1 m&sup2;</b></div></div><span class="dur">0.2 s</span></li>
+            <li class="step"><svg class="i s"><use href="#i-check"/></svg><div><code>detect_defects</code> <span class="arg">gpt-5 vision, 1280 px crop</span><div class="res"><b>5 blisters</b> &Oslash; 18&ndash;42 mm &middot; 1 pinhole candidate</div></div><span class="dur">2.7 s</span></li>
+            <li class="step"><svg class="i s"><use href="#i-check"/></svg><div><code>query_points</code> <span class="arg">LiDAR r = 0.30 m</span><div class="res">18,240 pts &middot; max <b>+7.8 mm</b> vs design radius</div></div><span class="dur">1.1 s</span></li>
+            <li class="step"><svg class="i s"><use href="#i-check"/></svg><div><code>match_findings</code> <span class="arg">cluster, pinhole</span><div class="res">&rarr; <b>F07</b> at 0.06 m &middot; pinhole &rarr; <b>F08</b> (S5)</div></div><span class="dur">0.1 s</span></li>
+          </ol>
+          <div class="prop" id="hcProp">
+            <div class="prop-h"><svg class="i s"><use href="#i-flag"/></svg><code>update_finding</code> F07<span class="st">Needs approval</span></div>
+            <dl class="kv diff">
+              <dt>Extent</dt><dd><del>3 blisters</del> &rarr; <ins>5 blisters, &Oslash; 18&ndash;42 mm</ins></dd>
+              <dt>Bulge</dt><dd class="m"><del>+5.1 mm</del> &rarr; <ins>+7.8 mm</ins></dd>
+              <dt>Evidence</dt><dd class="m"><ins>+ frame 8,312, + LiDAR section</ins></dd>
+              <dt>Severity</dt><dd><span class="sev s4">4</span> &nbsp;unchanged</dd>
+            </dl>
+            <div class="prop-a"><button class="btn pri sm" data-approve="hc"><svg class="i xs"><use href="#i-check"/></svg>Approve</button><button class="btn sm">Edit</button><button class="btn sm ghost" data-reject="hc">Reject</button></div>
+          </div>
+          <p>Yes, this is <b>F07</b>. It has grown from 3 to 5 blisters since FLT-03 and the LiDAR bulge is now +7.8 mm. The pinhole 0.9 m above matches <b>F08</b> (holiday, S5). I suggest a 15 kV spark test over both before the repair plan.</p>
+          <div class="sugg"><button data-hcseek="F08">Seek to F08</button><button>Section cut at 4.30 m</button><button>Add both to report &sect;4.2</button></div>
+        </div>
+      </div>
+      <div class="composer">
+        <textarea rows="2" placeholder="Ask about this frame, the flight or the selected finding"></textarea>
+        <div class="cmp-row"><span class="mp"><svg class="i xs"><use href="#i-at"/></svg>Video window</span><span class="mp"><svg class="i xs"><use href="#i-cloud"/></svg>Sonnet 4.5</span><span class="sp"></span><span class="kbd">Ctrl &#8629;</span><button class="btn pri sm"><svg class="i xs"><use href="#i-send"/></svg>Send</button></div>
+      </div>
+    </div>
+  </aside>
+  <div class="split h sy" data-var="--th" data-dir="-1" data-min="120" data-max="440"></div>
+  <div class="tl" id="hcTl">
+    <div class="tlh">
+      <span class="ttl">Flight scrubber</span>
+      <div class="fchips" id="hcFlights"></div>
+      <div class="transport"><button data-tp="back" title="Back 1 s"><svg class="i s"><use href="#i-stepb"/></svg></button><button data-tp="play" class="play"><svg class="i s"><use href="#i-play"/></svg></button><button data-tp="fwd" title="Forward 1 s"><svg class="i s"><use href="#i-stepf"/></svg></button></div>
+      <span class="tc" id="hcTc">04:37<em>.02</em></span>
+      <span class="tcs">/ 09:48.00 &middot; 30 fps</span>
+      <span class="sp"></span>
+      <span class="tcs">22 Jul 2026 &middot; Elios 3 &middot; SN 4412</span>
+    </div>
+    <div class="tl-scroll"><div class="tl-body" id="hcTlBody"></div></div>
+  </div>
+  <div class="caption">Option B: <b>Workbench</b>, screen 3 of 4</div>
+</section>
+
+<!-- ================= SCREEN 4 : SETTINGS ================= -->
+<section class="screen s4" data-s="4">
+  <aside class="pane setnav">
+    <div class="ph">Settings</div>
+    <label class="search-mini"><svg class="i s"><use href="#i-search"/></svg><input placeholder="Search settings"></label>
+    <div class="scroll" style="flex:1">
+      <div class="grp">AI and agents</div>
+      <button class="nl on" data-jump="st-prov"><svg class="i s"><use href="#i-key"/></svg>Providers and keys</button>
+      <button class="nl" data-jump="st-route"><svg class="i s"><use href="#i-net"/></svg>Model routing</button>
+      <button class="nl" data-jump="st-agents"><svg class="i s"><use href="#i-agent"/></svg>Agent per window</button>
+      <button class="nl" data-jump="st-priv"><svg class="i s"><use href="#i-shield"/></svg>Privacy and data</button>
+      <div class="grp">Maps</div>
+      <button class="nl" data-jump="st-maps"><svg class="i s"><use href="#i-globe"/></svg>Offline map packs<span class="c">5 / 7</span></button>
+      <button class="nl"><svg class="i s"><use href="#i-map"/></svg>Basemap style</button>
+      <div class="grp">Workspace</div>
+      <button class="nl"><svg class="i s"><use href="#i-fusion"/></svg>Viewports and layouts</button>
+      <button class="nl"><svg class="i s"><use href="#i-clock"/></svg>Timeline</button>
+      <button class="nl"><svg class="i s"><use href="#i-sliders"/></svg>Keymap</button>
+      <div class="grp">System</div>
+      <button class="nl"><svg class="i s"><use href="#i-hdd"/></svg>Storage and cache</button>
+      <button class="nl"><svg class="i s"><use href="#i-cpu"/></svg>GPU and streaming</button>
+      <button class="nl"><svg class="i s"><use href="#i-refresh"/></svg>Updates</button>
+    </div>
+  </aside>
+  <div class="setmain scroll" id="setMain"><div class="setin" id="setIn"></div></div>
+  <aside class="pane">
+    <div class="ph">What leaves this device</div>
+    <div class="scroll" style="flex:1" id="setRight"></div>
+  </aside>
+  <div class="caption">Option B: <b>Workbench</b>, screen 4 of 4</div>
+</section>
+
+</div><!-- screens -->
+</div><!-- main -->
+<footer class="status" id="status"></footer>
+</div><!-- app -->
+
+<div class="cmdk" id="cmdk"><div class="cmdk-box">
+  <div class="cmdk-in"><svg class="i"><use href="#i-search"/></svg><input id="cmdkIn" placeholder="Type a command, layer, asset or timecode"><span class="kbd">Esc</span></div>
+  <div class="cmdk-list" id="cmdkList"></div>
+  <div class="cmdk-ft"><span><span class="kbd">&uarr;&darr;</span> navigate</span><span><span class="kbd">&#8629;</span> run</span><span><span class="kbd">&gt;</span> commands only</span><span><span class="kbd">@</span> assets</span></div>
+</div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/*__JS_CORE__*/
+</script>
+</body>
+</html>

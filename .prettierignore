@@ -1,0 +1,8 @@
+pnpm-lock.yaml
+dist
+out
+coverage
+docs/design
+docs/brand
+fixtures/data
+*.html
