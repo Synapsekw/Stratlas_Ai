@@ -5,13 +5,20 @@
   "type": "module",
   "description": "Project packages: read, write, importers for kit formats, exports.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./import": "./src/import/index.ts"
   },
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "import:hcl": "jiti ../../tools/import/hcl.mjs",
+    "import:alzour": "jiti ../../tools/import/alzour.mjs"
   },
   "dependencies": {
     "@aio/schema": "workspace:*",
-    "@aio/geo": "workspace:*"
+    "@aio/geo": "workspace:*",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "jiti": "^2.6.1"
   }
 }
