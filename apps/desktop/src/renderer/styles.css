@@ -994,7 +994,7 @@ svg.flip {
 }
 /* the annotator's tools sit under the clip chip, clear of the telemetry chips */
 .vframe .ann-video .bar {
-  top: 34px;
+  top: 38px;
   bottom: auto;
 }
 
@@ -1086,9 +1086,27 @@ svg.flip {
 .right > * {
   width: var(--rp-w);
 }
+.ctx-wrap {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-bottom: 1px solid var(--line);
+}
+.ctx-wrap.tall {
+  flex: 0 1 62%;
+}
+.ctx-tabs {
+  margin: 8px 12px 0;
+  align-self: flex-start;
+}
+.ctx-fill {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
 .ctx {
   flex: none;
-  border-bottom: 1px solid var(--line);
 }
 .ctx-body {
   padding: 12px 12px 14px;

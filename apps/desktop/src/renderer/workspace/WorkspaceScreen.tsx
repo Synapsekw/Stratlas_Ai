@@ -1,7 +1,8 @@
 import { AgentPanel } from '@aio/ai';
+import { IssueDetail, IssueRegister } from '@aio/annotate';
 import { buildTimelineModel, formatDate, neighbourClip, Timeline } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useMedia } from '../media';
 import { selectClip } from '../shell/Sidebar';
 import { useShell } from '../shell';
@@ -72,6 +73,49 @@ function WorkspaceTimeline() {
   );
 }
 
+/** Top of the right panel: the selection (issue detail for an issue) or the issue register. */
+function ContextPanel() {
+  const [tab, setTab] = useState<'selection' | 'issues'>('selection');
+  const issueId = useWorkspace((s) => (s.selection?.kind === 'issue' ? s.selection.id : null));
+  const count = useWorkspace((s) => s.issues.length);
+  const tall = tab === 'issues' || issueId !== null;
+  return (
+    <div className={`ctx-wrap${tall ? ' tall' : ''}`}>
+      <div className="seg ctx-tabs" role="tablist" aria-label="Context">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'selection'}
+          aria-pressed={tab === 'selection'}
+          onClick={() => {
+            setTab('selection');
+          }}
+        >
+          Selection
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'issues'}
+          aria-pressed={tab === 'issues'}
+          onClick={() => {
+            setTab('issues');
+          }}
+        >
+          Issues <span className="mono faint">{count}</span>
+        </button>
+      </div>
+      {tab === 'issues' ? (
+        <IssueRegister className="ctx-fill" />
+      ) : issueId ? (
+        <IssueDetail issueId={issueId} className="ctx-fill" />
+      ) : (
+        <SelectionCard />
+      )}
+    </div>
+  );
+}
+
 export function WorkspaceScreen() {
   const hasProject = useWorkspace((s) => s.project !== null);
   const focused = useWorkspace((s) => s.focusedWindow);
@@ -90,7 +134,7 @@ export function WorkspaceScreen() {
         aria-hidden={rightCollapsed}
         inert={rightCollapsed}
       >
-        <SelectionCard />
+        <ContextPanel />
         <div className="agent">
           <AgentPanel window={focused ?? 'scene3d'} className="agent-host" />
         </div>
