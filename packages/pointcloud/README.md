@@ -1,5 +1,113 @@
 # @aio/pointcloud
 
-Point clouds: COPC and legacy packed decoders in workers, octree LOD, EDL.
+Point clouds for the shared 3D scene: packed-cloud decoders in Web Workers, chunk LOD under a global point budget, a point material with four colour modes, Eye-Dome Lighting, point picking and a React control panel.
 
-See `docs/architecture/SPEC.md` section 2 for ownership and dependencies. Public API: `src/index.ts`.
+Owner: stream S4. Depends on `@aio/schema`, `@aio/engine` (see `docs/architecture/SPEC.md` section 2). Public API: `src/index.ts`.
+
+## Usage
+
+```ts
+import { registerPointcloudAdapters, pickPoint, PointCloudControls } from '@aio/pointcloud';
+
+registerPointcloudAdapters(); // once, at app start, next to registerEngineAdapters()
+// SceneView then creates a layer for every manifest layer of kind "pointcloud".
+
+const hit = pickPoint(handle, { x: ndcX, y: ndcY }); // nearest visible point within 6 px
+// <PointCloudControls /> anywhere in the UI: colour mode, point size, budget, EDL toggle
+```
+
+Formats: `kit-packed` and `png-packed`. `copc` and `potree2` layers are rejected with a clear error for now.
+
+## Formats
+
+All positions are in the project local frame (`docs/architecture/data-conventions.md` section 1: metres, Y up, X east, Z south).
+
+### `kit-packed` (HCl tank, Asset Inspection Kit)
+
+`src` is a single binary file, no header, little-endian, **planar**:
+
+| Bytes        | Content                                               |
+| ------------ | ----------------------------------------------------- |
+| `0 .. 6N-1`  | block A: N x (int16 x, int16 y, int16 z), millimetres |
+| `6N .. 7N-1` | block B: N x uint8 intensity (0..255)                 |
+
+`N = byteLength / 7`. Metres = `int16 * 0.001`. This is the layout of the HCl artifact (`vy()` builds `Int16Array(buf, 0, 3N)` and `buf.slice(6N)`) and of `docs/design/assets/hcl/cloud.json`. Note: it is not interleaved per point. One file per flight; one layer per flight. The per-flight colour mode gives each kit layer its own palette colour (palette `Vd` of the HCl artifact) in layer creation order.
+
+### `png-packed` (Al-Zour photogrammetry)
+
+The cloud is split into chunks; each chunk is a lossless PNG whose pixels carry a byte stream.
+
+**Chunk pixels.** Decode the PNG with no colour conversion and no premultiplication (`createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' })`, then `getImageData`). Read the **R, G, B** bytes of consecutive pixels in row-major order (alpha is ignored) into one stream. For a chunk of N points the first 9N bytes of the stream are nine planes of N bytes:
+
+| Plane | Bytes        | Content          |
+| ----- | ------------ | ---------------- |
+| 0     | `0 .. N-1`   | x low byte       |
+| 1     | `N .. 2N-1`  | x high byte      |
+| 2     | `2N .. 3N-1` | y low byte       |
+| 3     | `3N .. 4N-1` | y high byte      |
+| 4     | `4N .. 5N-1` | z low byte       |
+| 5     | `5N .. 6N-1` | z high byte      |
+| 6     | `6N .. 7N-1` | red (8-bit sRGB) |
+| 7     | `7N .. 8N-1` | green            |
+| 8     | `8N .. 9N-1` | blue             |
+
+`u = lo | hi << 8` (uint16). Position per axis = `offset + scale * u`. Trailing pixel bytes beyond 9N are padding. The image must hold at least `ceil(9N / 3)` pixels.
+
+**Index (`aio.pngcloud/1`)**, the layer `src`:
+
+```json
+{
+  "schema": "aio.pngcloud/1",
+  "bounds": { "min": [x, y, z], "max": [x, y, z] },
+  "spacing": 0.45,
+  "chunks": [
+    {
+      "file": "clouds/alzour/l0.png",
+      "points": 1048576,
+      "bounds": { "min": [..], "max": [..] },
+      "lod": 0,
+      "quant": { "offset": [x, y, z], "scale": 0.0123 }
+    }
+  ]
+}
+```
+
+- `file`: path relative to the **project package root** (resolved through `AdapterContext.url({ path })`).
+- `points`: N for the chunk (required: the PNG may be padded).
+- `bounds`: tight chunk bounds in the local frame; used for LOD distance.
+- `lod`: `0` = overview chunk(s), always loaded; `1, 2, ...` = finer chunks. Refinement is **additive**: a finer chunk adds points to the coarser ones (it does not replace them).
+- `quant` (optional): `offset` (Vec3) and `scale` (number for all axes, or Vec3). Without `quant` the uint16 range spans the chunk `bounds`: `offset = bounds.min`, `scale = (bounds.max - bounds.min) / 65535`.
+- `spacing` (optional): typical point spacing in metres; sets the default point size.
+
+**Legacy Al-Zour `pc/pc.json`** (also accepted, so the artifact data can be loaded before import):
+
+```json
+{ "levels": [[{ "f": "pc/l0.png", "n": 1048576, "o": [x, y, z], "q": 0.0123 }],
+             [{ "f": "pc/1_0_0.png", "n": 250000, "o": [..], "q": .., "b": [minX, minZ, maxX, maxZ] }]],
+  "urls": { "pc/1_0_0.png": "_blob/..." } }
+```
+
+`levels[k]` becomes `lod: k`; `o` is the offset and `q` the uniform scale; `b` is the 2D tile footprint (height unknown, the LOD box sits on `o.y`); `urls` (optional) maps a chunk file to its stored blob. Files resolve relative to the index URL. S10 converts this to `aio.pngcloud/1` losslessly with `quant: { offset: o, scale: q }`, `bounds` from `b` plus the decoded height range, and file paths made package-relative.
+
+## Runtime
+
+- **Workers.** All decoding runs in a pool of module workers (`src/worker.ts`); the main thread never decodes. The worker fetches the URL itself, decodes PNGs with `createImageBitmap` + `OffscreenCanvas`, and posts back transferable buffers: quantised positions (int16 or uint16, scaled on the GPU through the object transform), colours or intensities, and bounds.
+- **LOD and budget.** `selectChunks` ranks every chunk of every cloud in the scene by angular size (half-diagonal over distance), always keeps lod 0, and fills the global budget (default 6 M points). Loaded chunks outside the selection stay until the total passes budget x 1.1, then the farthest unload. Up to four decodes run at a time; each landing chunk calls `requestRender()`.
+- **Material.** Size attenuation (`size * pxPerMetre / depth`) clamped to 1..`maxPixels`; round points; colour modes `rgb`, `intensity`, `height` (turbo-like ramp over the cloud height range) and `flight`. A cloud without RGB draws `rgb` as tinted intensity; a cloud without intensity draws `intensity` as luminance. Honours `renderer.clippingPlanes` (the shared section planes) and the logarithmic depth buffer.
+- **EDL.** When on, the clouds render into an offscreen target (colour + depth texture) from a full-screen composite quad's `onBeforeRender`, so the pass runs inside the engine's own `renderer.render` call with the final camera matrices. The composite shades by the log-depth difference to 8 neighbours (Potree's EDL), and writes `gl_FragDepth` from the cloud depth so meshes and clouds still occlude each other correctly.
+- **Picking.** `pickPoint(handle, ndc, radiusPx = 6)` projects the loaded points of chunks near the ray and returns the front-most point within the pixel radius (skipping clipped points).
+
+## Engine seams (for S3)
+
+The package works with today's `SceneHandle` alone. These would make it tidier:
+
+- `SceneHandle.raycast` should include clouds: call `pickPoint(handle, { x, y })` and keep the nearer of the mesh hit and the point hit (`PointPick` is shaped like a three.js `Intersection`).
+- `onFrame` must run on camera moves too (render on demand): LOD and uniforms update there.
+- Shared section planes are read from `renderer.clippingPlanes`; if the engine keeps them elsewhere, expose them on the handle.
+- A post-process hook (or the EffectComposer) would let EDL run as a real pass instead of the composite quad; the quad keeps raycasting off and is flagged `userData.helper` so framing and picking can skip it.
+- Settings has no point-cloud section yet; budget, size, colour mode and EDL are remembered in localStorage (`stratlas.pointcloud.settings`).
+
+## Credits
+
+- Packed decoders and the point shader idea: HCl tank and Al-Zour viewer artifacts (Synapse).
+- EDL, point budget presets, colour mode fallbacks and the clip box approach follow Kestrel `frontend/src/clouds/` (MIT), which in turn uses potree-core's EDL. The EDL shader here is a port of Potree's `edl.fs` (Markus Schuetz, BSD-2-Clause).
