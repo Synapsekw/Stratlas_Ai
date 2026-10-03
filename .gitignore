@@ -24,3 +24,4 @@ fixtures/data/
 .DS_Store
 Thumbs.db
 dist-types/
+.claude/worktrees/
