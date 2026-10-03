@@ -8,7 +8,8 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "dev": "vite --config dev/vite.config.ts"
   },
   "dependencies": {
     "@aio/schema": "workspace:*",
