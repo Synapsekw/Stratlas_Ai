@@ -33,7 +33,8 @@ dependencies: `docs/architecture/SPEC.md` section 2.
 - **Video (S6)**: mount `<VideoAnnotator layerId>` inside `VideoWindow` over the `<video>` (object-fit contain). Call `setFlightPoses(layerId, samples)` once the pose file is loaded (otherwise the annotator fetches it). Lens helpers live here (`pixelToCameraRay`, `cameraToPixel`) until S6 exports its own.
 - **Engine (S3)**: done. Mesh roots carry `userData.layerId`; back-projection uses `SceneHandle.raycastRay(origin, dir)` when the scene has it (picking copies of merged meshes, all visible content), else `projectionReceivers()`, then the ground plane y = 0. `<AnnotationToolbar>` is mounted in the stage tools; the stage also calls `useIssueOverlay()` so pins stay in every stage mode.
 - **Point clouds (S4)**: `pickCloudPoint` uses `SceneHandle.raycast` and expects `Points` hits; a `pickPoint` export with point index would allow `selection` sightings.
-- **Maps (S5)**: open. `useMapDraw(layerId)` plus `<SightingPicker kinds={['map']} />` belong inside `MapView`, which has no click or children seam for the app to use; S5 should wire MapLibre `click` / `dblclick` to it.
+- **Maps (S5)**: done. `MapView` takes a `draw` seam (mode, vertices, `onClick`, `onFinish`); the app's stage feeds it from `useMapDraw(layerId)` and mounts `<SightingPicker kinds={['map']} />`.
+- **Engine (S3) callouts**: the issue overlay registers its pins with `EngineStage.addLabelObstacles`, so component callout plates never cover them.
 - **Shell (S2)**: done. The author is the OS account (`app:getInfo` `user`) or the Settings override; `IssueRegister` and `IssueDetail` sit in the Issues screen and in the workspace right panel (Selection and Issues tabs); `VideoAnnotator` is a child of `VideoWindow`; flight poses go to `setFlightPoses` when a project opens.
 
 ## Credits

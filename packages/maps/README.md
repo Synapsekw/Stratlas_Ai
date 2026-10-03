@@ -28,6 +28,9 @@ after a fresh clone. Sprites (`assets/sprites/dark*`) are small and committed.
   leaves `aiomap://` (tested in `style.test.ts`). Arabic is shaped natively by MapLibre 6.
 - Style: Protomaps `dark` flavour retuned to the Mission palette; labels follow
   `<html lang>`: `en` shows English with the Arabic local name beneath, `ar` shows Arabic.
+- `MapView` takes an optional `draw` seam (`MapDrawSeam`): while its `mode` is set, clicks add
+  vertices (the second click of a double click is dropped), a double click finishes instead of
+  zooming, the cursor is a crosshair and `drawPreview` draws the shape so far.
 - `MapView` reads packs from `packs:list`, centres and fits on the open project (manifest
   `origin`, WGS84 UTM or EPSG 4326), and draws project image rasters (and kit pyramids at one
   coarse level), every video layer's flight path, the active clip's drone and ground footprint at
