@@ -6,13 +6,22 @@
   "description": "AI providers (Anthropic, OpenAI, Gemini), model routing, agent loop, tool registry.",
   "exports": {
     ".": "./src/index.ts",
-    "./main": "./src/main.ts"
+    "./main": "./src/main.ts",
+    "./routes": "./src/routes.ts"
   },
   "scripts": {
     "test": "vitest run"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "4.0.71",
+    "@ai-sdk/google": "4.0.87",
+    "@ai-sdk/openai": "4.0.83",
+    "@ai-sdk/provider": "4.0.21",
+    "@aio/engine": "workspace:*",
     "@aio/schema": "workspace:*",
-    "@aio/workspace": "workspace:*"
+    "@aio/workspace": "workspace:*",
+    "ai": "7.0.127",
+    "three": "0.186.1",
+    "zod": "4.6.5"
   }
 }
