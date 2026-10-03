@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { mockIssue, mockManifest } from '../__fixtures__/project';
+import type { Layer } from '@aio/schema';
+import { mockIssue, mockManifest, T0 } from '../__fixtures__/project';
 import { buildDatasetTree } from './model';
 
 describe('buildDatasetTree', () => {
@@ -58,5 +59,38 @@ describe('buildDatasetTree', () => {
   it('marks layer rows with their layer id', () => {
     const video = tree.find((g) => g.kind === 'video');
     expect(video?.items.map((i) => i.layerId)).toEqual(['dji0665', 'dji0789']);
+  });
+});
+
+describe('flights in the dataset tree', () => {
+  const clip = (n: number): Layer => ({
+    kind: 'video',
+    id: `v${String(n)}`,
+    name: `Flight 101 · Roof · clip ${String(n + 1)} of 2`,
+    visible: true,
+    src: { path: `video/v${String(n)}.mp4` },
+    flight: { src: { path: 'flights/f101.json' }, startUtcMs: T0 },
+    lens: { model: 'ftheta', hfovDeg: 114, aspect: 1.7778 },
+    offsetMs: n * 60_000,
+  });
+
+  it('puts the clips of one flight under a flight row and still counts clips', () => {
+    const tree = buildDatasetTree({ ...mockManifest(), layers: [clip(0), clip(1)] }, [], {
+      v0: 60_000,
+      v1: 24_000,
+    });
+    const video = tree.find((g) => g.kind === 'video');
+    expect(video?.count).toBe(2);
+    expect(video?.items).toEqual([
+      {
+        id: 'flight:flights/f101.json@' + String(T0),
+        name: 'Flight 101 · Roof',
+        meta: '1:24',
+        children: [
+          { id: 'v0', layerId: 'v0', layerKind: 'video', name: 'clip 1 of 2', meta: '1:00' },
+          { id: 'v1', layerId: 'v1', layerKind: 'video', name: 'clip 2 of 2', meta: '0:24' },
+        ],
+      },
+    ]);
   });
 });

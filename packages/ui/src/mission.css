@@ -676,6 +676,31 @@ select.input option {
   color: var(--acc-ink);
   font-weight: 600;
 }
+.trk .seg-c.grp {
+  padding: 0;
+}
+.trk .seg-c.grp.has-on {
+  border-color: var(--acc-a40);
+}
+.trk .seg-c.grp .grp-sep {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 1px;
+  background: var(--line-strong);
+}
+.trk .seg-c.grp .grp-on {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 2px;
+  background: var(--acc);
+}
+.trk .seg-c.grp .grp-n {
+  position: relative;
+  padding: 0 4px;
+  pointer-events: none;
+}
 .trk .seg-lbl {
   position: absolute;
   z-index: 2;
@@ -818,6 +843,22 @@ select.input option {
 .titem:hover {
   background: var(--bg-2);
   color: var(--fg-0);
+}
+/* a flight row (clips cut from one flight log) and its clips */
+.titem.flight {
+  padding-left: 14px;
+  gap: 6px;
+}
+.titem.flight .chev {
+  color: var(--fg-3);
+  flex: none;
+  transition: transform 160ms var(--ease);
+}
+.titem.flight .chev.open {
+  transform: rotate(90deg);
+}
+.titem.sub {
+  padding-left: 44px;
 }
 .titem .tn {
   overflow: hidden;

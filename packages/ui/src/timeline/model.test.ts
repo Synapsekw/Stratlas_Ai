@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { mockIssue, mockManifest, T0 } from '../__fixtures__/project';
-import { buildTimelineModel, clipAt, DEFAULT_CLIP_MS, neighbourClip, severityColor } from './model';
+import type { Layer } from '@aio/schema';
+import {
+  buildTimelineModel,
+  clipAt,
+  DEFAULT_CLIP_MS,
+  flightGroupName,
+  flightGroups,
+  neighbourClip,
+  severityColor,
+} from './model';
 
 describe('buildTimelineModel', () => {
   const manifest = mockManifest();
@@ -14,6 +23,7 @@ describe('buildTimelineModel', () => {
         startMs: T0,
         endMs: T0 + 11_000,
         estimated: false,
+        group: `flights/dji0665.json@${String(T0)}`,
       },
       {
         layerId: 'dji0789',
@@ -21,6 +31,7 @@ describe('buildTimelineModel', () => {
         startMs: T0 + 3_605_000,
         endMs: T0 + 3_605_000 + DEFAULT_CLIP_MS,
         estimated: true,
+        group: `flights/dji0789.json@${String(T0 + 3_600_000)}`,
       },
     ]);
   });
@@ -108,5 +119,45 @@ describe('severityColor', () => {
   it('returns undefined for unknown models or levels', () => {
     expect(severityColor(models, 'nope', 3)).toBeUndefined();
     expect(severityColor(models, 'tank', 4)).toBeUndefined();
+  });
+});
+
+describe('flight groups', () => {
+  const clip = (n: number, flight = 'flights/f101.json'): Layer => ({
+    kind: 'video',
+    id: `v${String(n)}`,
+    name: `Flight 101 · Shell pass 1 · clip ${String(n + 1)} of 3`,
+    visible: true,
+    src: { path: `video/v${String(n)}.mp4` },
+    flight: { src: { path: flight }, startUtcMs: T0 },
+    lens: { model: 'ftheta', hfovDeg: 114, aspect: 1.7778 },
+    offsetMs: n * 60_000,
+  });
+
+  it('names a flight from the common prefix of its clip names', () => {
+    expect(
+      flightGroupName(
+        ['Flight 101 · Shell pass 1 · clip 1 of 7', 'Flight 101 · Shell pass 1 · clip 2 of 7'],
+        'f101',
+      ),
+    ).toBe('Flight 101 · Shell pass 1');
+    expect(flightGroupName(['A', 'B'], 'f101')).toBe('f101');
+    expect(flightGroupName(['DJI_0665 overview'], 'x')).toBe('DJI_0665 overview');
+  });
+
+  it('groups clips cut from one flight log and keeps the timeline grouped', () => {
+    const layers = [clip(2), clip(0), clip(1), clip(0, 'flights/f102.json')];
+    const groups = flightGroups(layers);
+    expect(groups.map((g) => [g.name, g.clips.map((c) => c.id)])).toEqual([
+      ['Flight 101 · Shell pass 1', ['v0', 'v1', 'v2']],
+      ['Flight 101 · Shell pass 1 · clip 1 of 3', ['v0']],
+    ]);
+    const m = buildTimelineModel({ ...mockManifest(), layers }, [], { v2: 30_000 });
+    expect(m.groups[0]).toMatchObject({
+      name: 'Flight 101 · Shell pass 1',
+      startMs: T0,
+      endMs: T0 + 150_000,
+      clips: ['v0', 'v1', 'v2'],
+    });
   });
 });

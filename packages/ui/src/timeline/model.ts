@@ -1,4 +1,4 @@
-import type { Issue, ProjectManifest, SeverityModel } from '@aio/schema';
+import type { Issue, Layer, ProjectManifest, SeverityModel } from '@aio/schema';
 
 /** Length assumed for a clip until its flight log tells us the real one. */
 export const DEFAULT_CLIP_MS = 60_000;
@@ -10,6 +10,72 @@ export interface ClipBar {
   endMs: number;
   /** True while the duration is the default guess. */
   estimated: boolean;
+  /** Id of the flight the clip was cut from (see `flightGroups`). */
+  group: string;
+}
+
+/** Clips cut from one flight log, in time order. */
+export interface ClipGroup {
+  id: string;
+  name: string;
+  startMs: number;
+  endMs: number;
+  /** Video layer ids. */
+  clips: string[];
+}
+
+type VideoLayer = Extract<Layer, { kind: 'video' }>;
+
+function commonPrefix(names: readonly string[]): string {
+  let p = names[0] ?? '';
+  for (const n of names) while (!n.startsWith(p)) p = p.slice(0, -1);
+  return p;
+}
+
+/**
+ * A readable name for the clips of one flight: their common name prefix without a trailing
+ * "clip" counter ("Flight 101 · Shell pass 1 · clip 1 of 7" gives "Flight 101 · Shell pass 1"),
+ * else `fallback`.
+ */
+export function flightGroupName(names: readonly string[], fallback: string): string {
+  if (names.length === 1) return names[0] ?? fallback;
+  const p = commonPrefix(names)
+    .replace(/(clip|part|segment|video)?\s*\d*\s*$/i, '')
+    .replace(/[\s·:,|/-]+$/, '');
+  return p.length >= 3 ? p : fallback;
+}
+
+const flightKey = (l: VideoLayer) =>
+  `${'path' in l.flight.src ? l.flight.src.path : l.flight.src.hash}@${String(l.flight.startUtcMs)}`;
+
+/**
+ * Video layers grouped by the flight log they were cut from (same pose file and start time), in
+ * manifest order. Long flights are delivered as many short clips; this keeps them together.
+ */
+export function flightGroups(
+  layers: readonly Layer[],
+): { id: string; name: string; clips: VideoLayer[] }[] {
+  const groups = new Map<string, VideoLayer[]>();
+  for (const l of layers) {
+    if (l.kind !== 'video') continue;
+    const key = flightKey(l);
+    const g = groups.get(key);
+    if (g) g.push(l);
+    else groups.set(key, [l]);
+  }
+  return [...groups].map(([id, clips]) => {
+    const src = clips[0]?.flight.src;
+    const file = src && 'path' in src ? (src.path.split('/').pop() ?? id) : id;
+    clips.sort((a, b) => a.offsetMs - b.offsetMs);
+    return {
+      id,
+      name: flightGroupName(
+        clips.map((c) => c.name),
+        file.replace(/\.[^.]+$/, ''),
+      ),
+      clips,
+    };
+  });
 }
 
 export interface IssueMark {
@@ -34,6 +100,8 @@ export interface CaptureMark {
 
 export interface TimelineModel {
   clips: ClipBar[];
+  /** Clips by flight, in time order. */
+  groups: ClipGroup[];
   issues: IssueMark[];
   photos: PhotoMark[];
   captures: CaptureMark[];
@@ -63,18 +131,31 @@ export function buildTimelineModel(
 ): TimelineModel {
   const clips: ClipBar[] = [];
   const photos: PhotoMark[] = [];
-  for (const layer of manifest.layers) {
-    if (layer.kind === 'video') {
+  const groups: ClipGroup[] = [];
+  for (const g of flightGroups(manifest.layers)) {
+    const bars = g.clips.map((layer) => {
       const startMs = layer.flight.startUtcMs + layer.offsetMs;
       const known = durations[layer.id];
-      clips.push({
+      return {
         layerId: layer.id,
         name: layer.name,
         startMs,
         endMs: startMs + (known ?? DEFAULT_CLIP_MS),
         estimated: known === undefined,
-      });
-    } else if (layer.kind === 'photos') {
+        group: g.id,
+      };
+    });
+    clips.push(...bars);
+    groups.push({
+      id: g.id,
+      name: g.name,
+      startMs: Math.min(...bars.map((b) => b.startMs)),
+      endMs: Math.max(...bars.map((b) => b.endMs)),
+      clips: bars.map((b) => b.layerId),
+    });
+  }
+  for (const layer of manifest.layers) {
+    if (layer.kind === 'photos') {
       for (const item of layer.items) {
         const t = item.takenAt ? Date.parse(item.takenAt) : NaN;
         if (!Number.isNaN(t)) photos.push({ layerId: layer.id, photoId: item.id, tMs: t });
@@ -82,6 +163,7 @@ export function buildTimelineModel(
     }
   }
   clips.sort((a, b) => a.startMs - b.startMs);
+  groups.sort((a, b) => a.startMs - b.startMs);
 
   const clipStart = new Map(clips.map((c) => [c.layerId, c.startMs]));
   const photoTime = new Map(photos.map((p) => [`${p.layerId}/${p.photoId}`, p.tMs]));
@@ -133,7 +215,7 @@ export function buildTimelineModel(
     range = [a - pad, b + pad];
   }
 
-  return { clips, issues: marks, photos, captures, range };
+  return { clips, groups, issues: marks, photos, captures, range };
 }
 
 export function clipAt(model: TimelineModel, tMs: number): ClipBar | undefined {

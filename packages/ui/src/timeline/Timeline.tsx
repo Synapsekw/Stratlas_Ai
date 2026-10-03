@@ -25,7 +25,8 @@ export interface TimelineProps {
   onSeek: (tMs: number) => void;
   onTogglePlay: () => void;
   onRate: (rate: number) => void;
-  onClip: (layerId: string) => void;
+  /** A clip was chosen; `atMs` is the clicked time when the click landed on a flight bar. */
+  onClip: (layerId: string, atMs?: number) => void;
   onIssue?: (issueId: string) => void;
   onStep: (dir: 1 | -1) => void;
   /** Right-aligned context line, e.g. capture date and time base. */
@@ -34,6 +35,8 @@ export interface TimelineProps {
 }
 
 const MIN_SPAN = 2_000;
+/** Below this average clip width (px) a flight's clips draw as one bar. */
+const GROUP_BELOW_PX = 28;
 
 function tickLabel(t: number, major: number): string {
   const d = new Date(t);
@@ -303,7 +306,64 @@ export function Timeline(props: TimelineProps) {
               ))}
             </div>
             <div className="trk">
+              {model.groups.map((g) => {
+                const left = x(g.startMs);
+                const w = x(g.endMs) - left;
+                // Clips too narrow to click on their own draw as one bar for their flight.
+                if (g.clips.length < 2 || ((w / 100) * width) / g.clips.length >= GROUP_BELOW_PX)
+                  return null;
+                if (left + w < -1 || left > 101) return null;
+                const members = model.clips.filter((c) => c.group === g.id);
+                const on = members.find((c) => c.layerId === activeClip);
+                const within = (t: number) =>
+                  `${(((t - g.startMs) / (g.endMs - g.startMs)) * 100).toFixed(3)}%`;
+                return (
+                  <button
+                    key={g.id}
+                    type="button"
+                    data-hit
+                    className={`seg-c grp${on ? ' has-on' : ''}`}
+                    style={{ left: `${left}%`, width: `calc(${w}% - 1px)` }}
+                    title={`${g.name} · ${String(members.length)} clips`}
+                    aria-label={`${g.name}, ${String(members.length)} clips`}
+                    aria-pressed={on !== undefined}
+                    onClick={(e) => {
+                      const t = timeAt(e.clientX);
+                      const hit =
+                        members.find((c) => t >= c.startMs && t <= c.endMs) ??
+                        members.reduce((a, b) =>
+                          Math.abs((a.startMs + a.endMs) / 2 - t) <=
+                          Math.abs((b.startMs + b.endMs) / 2 - t)
+                            ? a
+                            : b,
+                        );
+                      onClip(hit.layerId, Math.min(Math.max(t, hit.startMs), hit.endMs));
+                    }}
+                  >
+                    {members.slice(1).map((c) => (
+                      <i key={c.layerId} className="grp-sep" style={{ left: within(c.startMs) }} />
+                    ))}
+                    {on && (
+                      <i
+                        className="grp-on"
+                        style={{
+                          left: within(on.startMs),
+                          width: within(g.startMs + on.endMs - on.startMs),
+                        }}
+                      />
+                    )}
+                    <span className="grp-n">{(w / 100) * width > 72 ? g.name : ''}</span>
+                  </button>
+                );
+              })}
               {model.clips.map((c) => {
+                const g = model.groups.find((gr) => gr.id === c.group);
+                if (
+                  g &&
+                  g.clips.length >= 2 &&
+                  (((x(g.endMs) - x(g.startMs)) / 100) * width) / g.clips.length < GROUP_BELOW_PX
+                )
+                  return null;
                 const on = c.layerId === activeClip;
                 const left = x(c.startMs);
                 const w = x(c.endMs) - left;

@@ -25,6 +25,103 @@ export function DatasetTree(props: DatasetTreeProps) {
   const [open, setOpen] = useState<Partial<Record<TreeGroupKind, boolean>>>({});
   const isOpen = (k: TreeGroupKind) => open[k] ?? DEFAULT_OPEN.includes(k);
   const [showAll, setShowAll] = useState<Partial<Record<TreeGroupKind, boolean>>>({});
+  /** Flight rows the user opened or closed; others open while they hold the active clip. */
+  const [flightOpen, setFlightOpen] = useState<Record<string, boolean>>({});
+
+  const row = (it: TreeItem, sub: boolean) => {
+    const off = it.layerId ? hidden[it.layerId] === true : false;
+    const sel = it.id === selectedId;
+    return (
+      <div
+        key={it.id}
+        role="treeitem"
+        aria-selected={sel}
+        tabIndex={0}
+        className={`titem${sub ? ' sub' : ''}${sel ? ' sel' : ''}${off ? ' hidden' : ''}`}
+        title={it.name}
+        onClick={() => {
+          props.onSelect(it);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            props.onSelect(it);
+          }
+        }}
+      >
+        {it.layerId === activeClip && it.layerKind === 'video' && (
+          <span className="live" title="Active clip" />
+        )}
+        <span className="tn">{it.name}</span>
+        {it.meta && <span className="tm">{it.meta}</span>}
+        {it.layerId ? (
+          <button
+            type="button"
+            className={`eye${off ? ' off' : ''}`}
+            aria-label={`${off ? 'Show' : 'Hide'} ${it.name}`}
+            aria-pressed={!off}
+            title={off ? 'Show' : 'Hide'}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (it.layerId) props.onToggleVisible(it.layerId, off);
+            }}
+          >
+            <Icon name={off ? 'eye-off' : 'eye'} size={14} />
+          </button>
+        ) : (
+          <span className="eye-sp" />
+        )}
+      </div>
+    );
+  };
+
+  const flightRow = (it: TreeItem, children: TreeItem[]) => {
+    const live = children.some((c) => c.layerId === activeClip);
+    const open = flightOpen[it.id] ?? (live || children.some((c) => c.id === selectedId));
+    const ids = children.flatMap((c) => (c.layerId ? [c.layerId] : []));
+    const off = ids.every((id) => hidden[id] === true);
+    return (
+      <div key={it.id} role="treeitem" aria-expanded={open} aria-selected={false}>
+        <div
+          tabIndex={0}
+          className={`titem flight${off ? ' hidden' : ''}`}
+          title={it.name}
+          onClick={() => {
+            setFlightOpen((o) => ({ ...o, [it.id]: !open }));
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setFlightOpen((o) => ({ ...o, [it.id]: !open }));
+            }
+          }}
+        >
+          <Icon name="chev-r" size={12} className={`chev${open ? ' open' : ''}`} />
+          {live && <span className="live" title="Holds the active clip" />}
+          <span className="tn">{it.name}</span>
+          {it.meta && <span className="tm">{it.meta}</span>}
+          <button
+            type="button"
+            className={`eye${off ? ' off' : ''}`}
+            aria-label={`${off ? 'Show' : 'Hide'} ${it.name}`}
+            aria-pressed={!off}
+            title={off ? 'Show' : 'Hide'}
+            onClick={(e) => {
+              e.stopPropagation();
+              for (const id of ids) props.onToggleVisible(id, off);
+            }}
+          >
+            <Icon name={off ? 'eye-off' : 'eye'} size={14} />
+          </button>
+        </div>
+        {open && (
+          <div role="group" className="titems-sub">
+            {children.map((c) => row(c, true))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="tree" role="tree" aria-label="Datasets">
@@ -34,7 +131,11 @@ export function DatasetTree(props: DatasetTreeProps) {
         const rows = all
           ? g.items
           : g.items.filter(
-              (it, i) => i < ROW_LIMIT || it.id === selectedId || it.layerId === activeClip,
+              (it, i) =>
+                i < ROW_LIMIT ||
+                it.id === selectedId ||
+                it.layerId === activeClip ||
+                it.children?.some((c) => c.layerId === activeClip || c.id === selectedId),
             );
         const hiddenRows = g.items.length - rows.length;
         return (
@@ -60,52 +161,7 @@ export function DatasetTree(props: DatasetTreeProps) {
             </button>
             {expanded && (
               <div className="titems" role="group">
-                {rows.map((it) => {
-                  const off = it.layerId ? hidden[it.layerId] === true : false;
-                  const sel = it.id === selectedId;
-                  return (
-                    <div
-                      key={it.id}
-                      role="treeitem"
-                      aria-selected={sel}
-                      tabIndex={0}
-                      className={`titem${sel ? ' sel' : ''}${off ? ' hidden' : ''}`}
-                      title={it.name}
-                      onClick={() => {
-                        props.onSelect(it);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          props.onSelect(it);
-                        }
-                      }}
-                    >
-                      {it.layerId === activeClip && it.layerKind === 'video' && (
-                        <span className="live" title="Active clip" />
-                      )}
-                      <span className="tn">{it.name}</span>
-                      {it.meta && <span className="tm">{it.meta}</span>}
-                      {it.layerId ? (
-                        <button
-                          type="button"
-                          className={`eye${off ? ' off' : ''}`}
-                          aria-label={`${off ? 'Show' : 'Hide'} ${it.name}`}
-                          aria-pressed={!off}
-                          title={off ? 'Show' : 'Hide'}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (it.layerId) props.onToggleVisible(it.layerId, off);
-                          }}
-                        >
-                          <Icon name={off ? 'eye-off' : 'eye'} size={14} />
-                        </button>
-                      ) : (
-                        <span className="eye-sp" />
-                      )}
-                    </div>
-                  );
-                })}
+                {rows.map((it) => (it.children ? flightRow(it, it.children) : row(it, false)))}
                 {(hiddenRows > 0 || (showAll[g.kind] && g.items.length > ROW_LIMIT + 1)) && (
                   <button
                     type="button"

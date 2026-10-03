@@ -1,5 +1,6 @@
 import type { Issue, Layer, ProjectManifest } from '@aio/schema';
 import { formatCompact, formatDuration } from '../format';
+import { flightGroups } from '../timeline/model';
 import type { IconName } from '../icons/Icon';
 
 export type TreeGroupKind =
@@ -13,6 +14,8 @@ export interface TreeItem {
   layerKind?: Layer['kind'];
   name: string;
   meta?: string;
+  /** A flight row: its clips, shown when the row is expanded. */
+  children?: TreeItem[];
 }
 
 export interface TreeGroup {
@@ -75,9 +78,45 @@ export function buildDatasetTree(
   const groups = new Map<TreeGroupKind, TreeGroup>(
     GROUPS.map((g) => [g.kind, { ...g, count: 0, items: [] }]),
   );
+  // Clips cut from one flight log sit under one flight row.
+  const flights = new Map<string, ReturnType<typeof flightGroups>[number]>();
+  for (const f of flightGroups(manifest.layers)) {
+    if (f.clips.length > 1) for (const c of f.clips) flights.set(c.id, f);
+  }
+  const placed = new Set<string>();
   for (const layer of manifest.layers) {
     const g = groups.get(groupOf[layer.kind]);
     if (!g) continue;
+    const flight = flights.get(layer.id);
+    if (flight) {
+      g.count += 1;
+      if (placed.has(flight.id)) continue;
+      placed.add(flight.id);
+      const children = flight.clips.map((c) => {
+        const m = metaOf(c, durations);
+        return {
+          id: c.id,
+          layerId: c.id,
+          layerKind: c.kind,
+          name: c.name.startsWith(flight.name)
+            ? c.name.slice(flight.name.length).replace(/^[\s·:,|-]+/, '') || c.name
+            : c.name,
+          ...(m !== undefined ? { meta: m } : {}),
+        };
+      });
+      const total = flight.clips.reduce<number | undefined>(
+        (n, c) =>
+          n === undefined || durations[c.id] === undefined ? undefined : n + (durations[c.id] ?? 0),
+        0,
+      );
+      g.items.push({
+        id: `flight:${flight.id}`,
+        name: flight.name,
+        meta: total !== undefined ? formatDuration(total) : `${String(children.length)} clips`,
+        children,
+      });
+      continue;
+    }
     const meta = metaOf(layer, durations);
     g.items.push({
       id: layer.id,
