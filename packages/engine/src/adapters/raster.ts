@@ -5,6 +5,7 @@ import {
   DoubleSide,
   Group,
   Mesh,
+  AdditiveBlending,
   MeshBasicMaterial,
   SRGBColorSpace,
   TextureLoader,
@@ -37,7 +38,17 @@ export function registerRasterFormat(format: RasterLayer['format'], handler: Ras
   formatHandlers.set(format, handler);
 }
 
-function quadMesh(c: Corners, tex: Texture | null, ctx: AdapterContext, order: number): Mesh {
+/**
+ * Plot plans are line art on black without alpha: additive blending drops the black and lets the
+ * lines glow over the ortho. Photographic rasters (ortho, dsm) stay opaque.
+ */
+function quadMesh(
+  c: Corners,
+  tex: Texture | null,
+  ctx: AdapterContext,
+  order: number,
+  overlay = false,
+): Mesh {
   const g = new BufferGeometry();
   g.setAttribute('position', new BufferAttribute(quadPositions(c), 3));
   g.setAttribute(
@@ -55,6 +66,7 @@ function quadMesh(c: Corners, tex: Texture | null, ctx: AdapterContext, order: n
     polygonOffset: true,
     polygonOffsetFactor: -2 - order,
     polygonOffsetUnits: -2 - order,
+    ...(overlay ? { transparent: true, blending: AdditiveBlending, depthWrite: false } : {}),
   });
   m.userData.aioKeepSide = true;
   m.clippingPlanes = ctx.scene.clippingPlanes;
@@ -82,7 +94,13 @@ async function loadTexture(url: string, ctx: AdapterContext): Promise<Texture> {
 async function imageRaster(layer: RasterLayer, ctx: AdapterContext): Promise<LayerHandle> {
   if (!layer.corners) throw new Error(`Raster "${layer.name}" has no corners`);
   const tex = await loadTexture(ctx.url(layer.src), ctx);
-  const mesh = quadMesh(layer.corners, tex, ctx, layer.role === 'plan' ? 2 : 0);
+  const mesh = quadMesh(
+    layer.corners,
+    tex,
+    ctx,
+    layer.role === 'plan' ? 2 : 0,
+    layer.role === 'plan',
+  );
   mesh.name = `layer:${layer.id}`;
   mesh.userData.aioRaster = true;
   mesh.userData.aioLayer = layer.id;
@@ -161,7 +179,13 @@ async function pyramidRaster(layer: RasterLayer, ctx: AdapterContext): Promise<L
             tex.dispose();
             return;
           }
-          const mesh = quadMesh(c, tex, ctx, info.order);
+          const mesh = quadMesh(
+            c,
+            tex,
+            ctx,
+            layer.role === 'plan' ? info.order + 2 : info.order,
+            layer.role === 'plan',
+          );
           mesh.updateMatrixWorld(true);
           group.add(mesh);
           tiles.set(k, mesh);
