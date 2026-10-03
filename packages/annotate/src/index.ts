@@ -1,17 +1,84 @@
 export type { Issue, Sighting, SeverityModel, ClassCatalogue } from '@aio/schema';
 export { validateIssueAgainstModel } from '@aio/schema';
 
-/** Next free issue code for a prefix: F01..F99, then F100. */
-export function nextIssueCode(existing: readonly string[], prefix: string): string {
-  if (!/^[A-Z]{1,3}$/.test(prefix)) {
-    throw new Error(`Issue prefix must be 1 to 3 capital letters, got "${prefix}"`);
-  }
-  let max = 0;
-  for (const code of existing) {
-    if (!code.startsWith(prefix)) continue;
-    const n = Number(code.slice(prefix.length));
-    if (Number.isInteger(n) && n > max) max = n;
-  }
-  return `${prefix}${String(max + 1).padStart(2, '0')}`;
-}
-export { IssueRegister, IssueDetail, PhotoViewer, VideoAnnotator } from './components';
+// Issue model (pure)
+export * from './model/ops';
+export * from './model/query';
+export { History, applyChange, invert, type Change } from './model/history';
+export {
+  createIssueEditor,
+  type AuditEntry,
+  type CreateInput,
+  type DeriveSightings,
+  type EditorState,
+  type IssueEditor,
+  type IssueEditorOptions,
+} from './model/editor';
+export {
+  createIssueSaver,
+  ipcWriteIssues,
+  type IssueSaver,
+  type SaveState,
+  type SaveStateName,
+  type WriteIssues,
+} from './model/persist';
+
+// Cross-view placement (ANN-9)
+export * from './crossview/lens';
+export {
+  backProject,
+  backProjectOutline,
+  geomCenter,
+  layerOf,
+  GROUND_LAYER,
+  type MeshSighting,
+  type RaySurface,
+} from './crossview/backproject';
+export { createDeriver, type DeriverSources } from './crossview/derive';
+
+// Tools
+export * from './video/track';
+export * from './tools/cloud';
+export * from './tools/map';
+export {
+  bestAnchor,
+  initialMeshDraw,
+  issuePins,
+  meshDrawReducer,
+  meshSightingFromDraw,
+  pickSurface,
+  severityColor,
+  sightingAnchor,
+  surfacePointFromHit,
+  type IssuePin,
+  type MeshDrawEvent,
+  type MeshDrawMode,
+  type MeshDrawState,
+} from './tools/mesh';
+export { installIssueOverlay, ndcOf, startSceneTool, type SceneTool } from './tools/scene';
+export * as imageGeometry from './image/geometry';
+
+// Import helpers (stream S10)
+export * from './import';
+
+// App runtime and components
+export {
+  annotateUi,
+  beginSighting,
+  cancelSighting,
+  confirmSighting,
+  focusIssue,
+  getFlightPoses,
+  issueEditor,
+  issueSaver,
+  loadFlightPoses,
+  rememberImageSize,
+  setAnnotationAuthor,
+  setFlightPoses,
+  useAnnotateUi,
+  useIssueEditorState,
+  type AnnotateUiState,
+  type ImageTool,
+  type PendingSighting,
+} from './runtime';
+export * from './components';
