@@ -493,6 +493,19 @@ export const ICONS = {
       <path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4" />
     </>
   ),
+  tag: (
+    <>
+      <path d="M3 3.5h6.2l7.8 7.8-5.7 5.7L3.5 9.2z" />
+      <circle cx="6.6" cy="7" r="1.1" />
+    </>
+  ),
+  cutaway: (
+    <>
+      <path d="M4 5.5c0-1.4 2.7-2.5 6-2.5s6 1.1 6 2.5v9c0 1.4-2.7 2.5-6 2.5s-6-1.1-6-2.5z" />
+      <path d="M10 3v14" strokeDasharray="1.6 1.6" />
+      <circle cx="13" cy="9.5" r="1.3" />
+    </>
+  ),
 } satisfies Record<string, ReactElement>;
 
 export type IconName = keyof typeof ICONS;
