@@ -50,8 +50,13 @@ const PATH_END = new Color('#ff5a5a');
 interface ClipEntry {
   layer: VideoLayer;
   flight: Flight | null;
-  line: Line | null;
   visible: boolean;
+}
+
+/** One drawn path per flight log; long flights are delivered as many clips sharing it. */
+interface FlightPath {
+  line: Line;
+  clips: Set<string>;
 }
 
 function decodeBase64(b64: string): ArrayBuffer {
@@ -80,6 +85,7 @@ export class VideoRig {
   readonly projector: Projector;
   readonly group = new Group();
   private readonly clips = new Map<string, ClipEntry>();
+  private readonly paths = new Map<Flight, FlightPath>();
   private readonly drone = new Group();
   private gimbal: Object3D | null = null;
   private props: Object3D[] = [];
@@ -156,14 +162,19 @@ export class VideoRig {
   }
 
   async addLayer(layer: VideoLayer, ctx: AdapterContext): Promise<void> {
-    const entry: ClipEntry = { layer, flight: null, line: null, visible: true };
+    const entry: ClipEntry = { layer, flight: null, visible: true };
     this.clips.set(layer.id, entry);
     const flight = await loadFlight(ctx.url(layer.flight.src));
     if (this.clips.get(layer.id) !== entry) return;
     entry.flight = flight;
-    entry.line = this.buildPath(flight);
-    entry.line.userData.videoLayer = layer.id;
-    this.group.add(entry.line);
+    let path = this.paths.get(flight);
+    if (!path) {
+      path = { line: this.buildPath(flight), clips: new Set() };
+      path.line.userData.videoLayer = layer.id;
+      this.paths.set(flight, path);
+      this.group.add(path.line);
+    }
+    path.clips.add(layer.id);
     this.syncActive();
     this.handle.requestRender();
   }
@@ -172,10 +183,15 @@ export class VideoRig {
     const e = this.clips.get(id);
     if (!e) return;
     this.clips.delete(id);
-    if (e.line) {
-      this.group.remove(e.line);
-      e.line.geometry.dispose();
-      (e.line.material as LineBasicMaterial).dispose();
+    const path = e.flight ? this.paths.get(e.flight) : undefined;
+    if (path && e.flight) {
+      path.clips.delete(id);
+      if (path.clips.size === 0) {
+        this.paths.delete(e.flight);
+        this.group.remove(path.line);
+        path.line.geometry.dispose();
+        (path.line.material as LineBasicMaterial).dispose();
+      }
     }
     if (this.activeId === id) this.syncActive();
     this.handle.requestRender();
@@ -265,13 +281,12 @@ export class VideoRig {
       this.hold = null;
     }
     this.activeId = want;
-    for (const [cid, e] of this.clips) {
-      if (!e.line) continue;
-      const m = e.line.material as LineBasicMaterial;
-      const on = cid === want;
+    for (const path of this.paths.values()) {
+      const m = path.line.material as LineBasicMaterial;
+      const on = want !== null && path.clips.has(want);
       m.opacity = on ? 1 : 0.3;
       m.depthTest = !on;
-      e.line.renderOrder = on ? 6 : 5;
+      path.line.renderOrder = on ? 6 : 5;
     }
     const entry = want ? this.clips.get(want) : undefined;
     if (!want || !entry?.flight) {
@@ -321,8 +336,12 @@ export class VideoRig {
     const s = videoStore().getState();
     const entry = this.activeId ? this.clips.get(this.activeId) : undefined;
     const flight = entry?.flight;
-    for (const [id, e] of this.clips) {
-      if (e.line) e.line.visible = this.pathsOn && e.visible && !s.hidden[id];
+    for (const path of this.paths.values()) {
+      let shown = false;
+      for (const id of path.clips) {
+        if (this.clips.get(id)?.visible === true && !s.hidden[id]) shown = true;
+      }
+      path.line.visible = this.pathsOn && shown;
     }
     if (!entry || !flight || !this.player) {
       this.pose.valid = false;
