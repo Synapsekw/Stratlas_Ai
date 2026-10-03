@@ -1,0 +1,89 @@
+# Base packaging config for the desktop app.
+#
+# Product identity (productName, appId, executableName, copyright, Store identity) and the
+# signing and notarisation switches are NOT set here. tools/release/brand-config.mjs reads
+# @aio/brand and the environment and writes build/generated/electron-builder.json, which
+# extends this file. Package with `pnpm -F @aio/desktop dist:win` (see docs/release/README.md).
+# Never write the product name in this file; brand-config fails the build if you do.
+
+directories:
+  output: dist
+  buildResources: build
+
+# electron-vite bundles main, preload, renderer and every @aio/* workspace package into out/.
+files:
+  - out/**/*
+  - package.json
+  - '!out/**/*.map'
+  - '!**/*.{test,spec}.{js,cjs,mjs,ts,tsx}'
+  - '!**/{e2e,test,tests,__tests__}/**'
+
+asar: true
+compression: normal
+
+# Electron fuses, flipped at package time (SPEC section 8, tech-evaluation section 1).
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  onlyLoadAppFromAsar: true
+  enableEmbeddedAsarIntegrityValidation: true
+  enableCookieEncryption: true
+
+# Windows: offline NSIS installer and portable exe; `dist:win:store` builds the MSIX for the Store.
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  icon: build/icon.ico
+  signtoolOptions:
+    rfc3161TimeStampServer: http://timestamp.digicert.com
+    signingHashAlgorithms: [sha256]
+
+nsis:
+  oneClick: false
+  # Per-user install without elevation; build/installer.nsh forces the per-user mode.
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  deleteAppDataOnUninstall: false
+  include: build/installer.nsh
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  artifactName: ${productName}-${version}-win-${arch}-setup.${ext}
+
+portable:
+  artifactName: ${productName}-${version}-win-${arch}-portable.${ext}
+
+# Microsoft Store (MSIX). Identity values come from STORE_* env vars (docs/release/README.md).
+# Microsoft re-signs Store submissions, so this package does not need our certificate.
+appx:
+  artifactName: ${productName}-${version}-win-${arch}-store.${ext}
+  backgroundColor: '#18202B'
+  showNameOnTiles: true
+  languages: [en-US]
+  minVersion: 10.0.17763.0
+  maxVersionTested: 10.0.26100.0
+
+# macOS: Developer ID signing with hardened runtime; notarisation is switched on by
+# brand-config when Apple credentials are present.
+mac:
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  icon: build/icon.icns
+  category: public.app-category.productivity
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: false
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}
+
+dmg:
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}
