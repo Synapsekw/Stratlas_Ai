@@ -38,6 +38,11 @@ describe('rankCommands', () => {
     expect(rankCommands(list, 'set').map((c) => c.id)).toEqual(['d']);
     expect(rankCommands(list, 'f01').map((c) => c.id)).toEqual(['c']);
   });
+  it('prefers a consecutive prefix over a match split across words', () => {
+    const issueCmd = cmd('i', 'D04  Staining at pump skid', 'Issues');
+    const clipCmd = cmd('v', 'DJI_0601', 'Layers');
+    expect(rankCommands([clipCmd, issueCmd], 'd0').map((c) => c.id)).toEqual(['i', 'v']);
+  });
   it('searches keywords too', () => {
     expect(rankCommands(list, 'critical').map((c) => c.id)).toEqual(['c']);
   });

@@ -178,8 +178,9 @@ function describe(
         'Last capture',
         capture ? `${formatDate(capture.date)} · ${capture.label}` : 'None recorded',
       ],
-      ['Origin', <span className="mono">{formatEastNorth(m.origin[0], m.origin[1])}</span>],
+      ['CRS', crsLabel(m.crs)],
     ],
+    position: [0, 0, 0],
   };
 }
 

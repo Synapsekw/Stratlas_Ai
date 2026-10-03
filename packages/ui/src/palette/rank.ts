@@ -32,7 +32,7 @@ export function scoreMatch(query: string, text: string): number | null {
     const found = t.indexOf(ch, ti);
     if (found < 0) return null;
     let s = 1;
-    if (found === prev + 1) s += 4;
+    if (found === prev + 1) s += 8;
     if (isBoundary(t, found)) s += 6;
     if (found === 0) s += 8;
     score += s;
