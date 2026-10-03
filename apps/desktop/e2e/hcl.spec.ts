@@ -137,3 +137,185 @@ test('HCl opens with a drawn 3D scene, plays a clip and lists its 11 issues', as
 
   expect(errors).toEqual([]);
 });
+
+interface StageInspect {
+  __stratlas: {
+    workspace: {
+      getState(): {
+        playing: boolean;
+        hidden: Record<string, true>;
+        project: { manifest: { layers: { id: string; kind: string }[] } } | null;
+        setTime(t: number): void;
+        setActiveClip(id: string): void;
+        play(): void;
+        pause(): void;
+      };
+    };
+    stage(): {
+      labelMode: string;
+      section: { enabled: boolean };
+      saveView(): { position: number[]; target: number[] };
+      scene: { getObjectByName(n: string): { children: { count?: number }[] } | undefined };
+    } | null;
+  };
+}
+
+/** Run a probe in the renderer with the app's inspection hook typed. */
+async function inspect<T>(win: Page, fn: (w: StageInspect) => T): Promise<T> {
+  const handle = await win.evaluateHandle(() => window);
+  try {
+    return await win.evaluate(fn as unknown as (w: Window) => T, handle);
+  } finally {
+    await handle.dispose();
+  }
+}
+
+async function openHcl(app: ElectronApplication, win: Page, width = 1440, height = 900) {
+  await app.evaluate(
+    ({ BrowserWindow }, [w, h]) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(w ?? 1440, h ?? 900);
+    },
+    [width, height],
+  );
+  await win.getByTestId('project-card').filter({ hasText: 'HCl' }).first().click();
+  await expect(win.locator('[data-scene-view] canvas')).toBeVisible();
+  await expect
+    .poll(
+      () =>
+        inspect(
+          win,
+          (w) => w.__stratlas.stage()?.scene.getObjectByName('layer:tank') !== undefined,
+        ),
+      {
+        timeout: 30_000,
+      },
+    )
+    .toBe(true);
+}
+
+/** Rows the stage toolbar's items sit on (by their vertical centres). */
+const toolbarRows = (win: Page) =>
+  win.evaluate(() => {
+    const mids = [...document.querySelectorAll('.stbar > :not(.stbar-sp)')].map((e) => {
+      const r = e.getBoundingClientRect();
+      return Math.round((r.top + r.bottom) / 2 / 8);
+    });
+    return new Set(mids).size;
+  });
+
+test('stage polish: one-row toolbar, label modes, annotate tools on demand, camera memory', async ({
+  app,
+  win,
+}) => {
+  await openHcl(app, win);
+
+  // The toolbar fits one row at 1440 px without an overflow menu.
+  await expect.poll(() => toolbarRows(win)).toBe(1);
+  await expect(win.getByRole('button', { name: 'More tools' })).toHaveCount(0);
+
+  // Key labels by default: a few group callouts, not every component.
+  const callouts = () => win.locator('[data-callout]').count();
+  await expect.poll(() => inspect(win, (w) => w.__stratlas.stage()?.labelMode)).toBe('key');
+  await expect.poll(callouts).toBeGreaterThan(2);
+  expect(await callouts()).toBeLessThanOrEqual(12);
+  await win.keyboard.press('l');
+  await expect.poll(callouts).toBeGreaterThan(40);
+  await win.keyboard.press('l');
+  await expect.poll(callouts).toBe(0);
+  await win.keyboard.press('l');
+
+  // The annotation tools show only in Annotate mode.
+  await expect(win.locator('.ann-subbar')).toHaveCount(0);
+  await win.keyboard.press('a');
+  await expect(win.locator('.ann-subbar').getByRole('button', { name: 'Pin' })).toBeVisible();
+  await win.keyboard.press('a');
+  await expect(win.locator('.ann-subbar')).toHaveCount(0);
+
+  // Space plays and pauses even right after clicking a stage tool.
+  await win.getByRole('button', { name: 'Measure a distance' }).click();
+  await win.keyboard.press('Space');
+  await expect.poll(async () => (await clock(win)).playing).toBe(true);
+  await win.keyboard.press('Space');
+  await expect.poll(async () => (await clock(win)).playing).toBe(false);
+  await win.keyboard.press('Escape');
+
+  // The map's zoom buttons sit clear of the right panel toggle.
+  await win.keyboard.press('2');
+  const zoom = win.locator('.maplibregl-ctrl-top-right');
+  await expect(zoom).toBeVisible({ timeout: 15_000 });
+  const z = await zoom.boundingBox();
+  const t = await win.getByRole('button', { name: /right panel/ }).boundingBox();
+  if (!z || !t) throw new Error('no zoom control or panel toggle');
+  expect(z.y >= t.y + t.height || t.y >= z.y + z.height || z.x >= t.x + t.width).toBe(true);
+  await win.keyboard.press('1');
+
+  // Leaving the scene and coming back keeps the camera.
+  await win.keyboard.press('h');
+  await win.waitForTimeout(1500);
+  const canvas = await win.locator('[data-scene-view] canvas').boundingBox();
+  if (!canvas) throw new Error('no canvas');
+  await win.mouse.move(canvas.x + canvas.width * 0.6, canvas.y + canvas.height * 0.4);
+  await win.mouse.down();
+  await win.mouse.move(canvas.x + canvas.width * 0.45, canvas.y + canvas.height * 0.35, {
+    steps: 8,
+  });
+  await win.mouse.up();
+  await win.waitForTimeout(1500);
+  const before = await inspect(win, (w) => w.__stratlas.stage()?.saveView());
+  await win.locator('.nav-item', { hasText: 'Issues' }).first().click();
+  await win.locator('.nav-item', { hasText: 'Scene' }).first().click();
+  await expect.poll(() => inspect(win, (w) => w.__stratlas.stage() !== null)).toBe(true);
+  await win.waitForTimeout(3000);
+  const after = await inspect(win, (w) => w.__stratlas.stage()?.saveView());
+  if (!before || !after) throw new Error('no view');
+  for (let i = 0; i < 3; i++) expect(after.position[i]).toBeCloseTo(before.position[i] ?? 0, 0);
+
+  // At 1100 px the toolbar still fits one row, with the rest under More.
+  await app.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0]?.setContentSize(1100, 800);
+  });
+  await expect(win.getByRole('button', { name: 'More tools' })).toBeVisible();
+  await expect.poll(() => toolbarRows(win)).toBe(1);
+});
+
+test('playing inside the tank cuts it open; photos and flights reach Media', async ({
+  app,
+  win,
+}) => {
+  await openHcl(app, win);
+  // 257 posed photos drawn as frustums
+  await expect
+    .poll(() =>
+      inspect(
+        win,
+        (w) => w.__stratlas.stage()?.scene.getObjectByName('photos:photos')?.children[2]?.count,
+      ),
+    )
+    .toBe(257);
+
+  // Flight 101, clip 3: the drone is inside the tank.
+  const bar = win.locator('.seg-c.grp').first();
+  const box = await bar.boundingBox();
+  if (!box) throw new Error('no flight bar');
+  await bar.click({ position: { x: box.width * 0.4, y: box.height / 2 } });
+  await expect
+    .poll(() => inspect(win, (w) => w.__stratlas.stage()?.section.enabled), { timeout: 20_000 })
+    .toBe(true);
+  await expect(win.getByText('Cut open at the drone', { exact: false })).toBeVisible();
+  const cloudsHidden = await inspect(win, (w) => {
+    const s = w.__stratlas.workspace.getState();
+    return (s.project?.manifest.layers ?? [])
+      .filter((l) => l.kind === 'pointcloud')
+      .every((l) => s.hidden[l.id]);
+  });
+  expect(cloudsHidden).toBe(true);
+  // Close restores the section and the clouds.
+  await win.locator('.ss-cut').getByRole('button', { name: 'Close' }).click();
+  await expect.poll(() => inspect(win, (w) => w.__stratlas.stage()?.section.enabled)).toBe(false);
+  await win.keyboard.press('Space');
+
+  // Media groups the 76 clips into 10 flights.
+  await win.locator('.nav-item', { hasText: 'Media' }).first().click();
+  await expect(win.locator('.m-flight')).toHaveCount(10);
+  await expect(win.locator('#m-flight-clips .m-card')).toHaveCount(7);
+});
