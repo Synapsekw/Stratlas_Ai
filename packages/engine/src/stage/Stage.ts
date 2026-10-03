@@ -72,7 +72,7 @@ const FLY_MS = 900;
  * The bounding sphere of a tall or long asset is mostly empty air: the home view fits it without
  * the usual margin, so the asset fills the stage on first open.
  */
-const HOME_MARGIN = 0.95;
+const HOME_MARGIN = 1.05;
 const CLICK_SLOP_PX = 5;
 
 interface Flight {
