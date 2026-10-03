@@ -1,0 +1,82 @@
+/* Stratlas Mission design tokens. Source: docs/design/DIRECTION.md (from the round 2 Mission reference build). */
+:root {
+  color-scheme: dark;
+  /* neutrals: near-black blue-grey, hue 250 */
+  --bg-0: oklch(0.145 0.008 250); /* stage surround, deepest */
+  --bg-1: oklch(0.175 0.009 250); /* panels */
+  --bg-2: oklch(0.205 0.01 250); /* raised: inputs, hover */
+  --bg-3: oklch(0.24 0.011 250); /* pressed, selected neutral */
+  --bg-chrome: oklch(0.16 0.009 250); /* title bar, sidebar */
+  --line: oklch(0.275 0.011 250);
+  --line-soft: oklch(0.225 0.01 250);
+  --line-strong: oklch(0.36 0.012 250);
+  --fg-0: oklch(0.945 0.006 250);
+  --fg-1: oklch(0.8 0.01 250);
+  --fg-2: oklch(0.64 0.012 250);
+  --fg-3: oklch(0.5 0.012 250);
+  --fg-4: oklch(0.4 0.012 250);
+  /* one controlled accent: jade from the Stratlas mark */
+  --acc: oklch(0.79 0.115 172);
+  --acc-strong: oklch(0.86 0.12 172);
+  --acc-ink: oklch(0.2 0.03 172);
+  --acc-a12: oklch(0.79 0.115 172 / 0.12);
+  --acc-a20: oklch(0.79 0.115 172 / 0.2);
+  --acc-a40: oklch(0.79 0.115 172 / 0.4);
+  /* semantic severity, client scale 1..5 */
+  --s5: oklch(0.66 0.19 25);
+  --s4: oklch(0.74 0.155 55);
+  --s3: oklch(0.84 0.14 92);
+  --s2: oklch(0.74 0.08 235);
+  --s1: oklch(0.7 0.02 250);
+  --s5-a: oklch(0.66 0.19 25 / 0.16);
+  --s4-a: oklch(0.74 0.155 55 / 0.16);
+  --s3-a: oklch(0.84 0.14 92 / 0.14);
+  --s2-a: oklch(0.74 0.08 235 / 0.16);
+  --ok: oklch(0.78 0.11 155);
+  --warn: var(--s3);
+  --danger: var(--s5);
+  /* overlay ink on imagery */
+  --ov: oklch(0.96 0.008 250);
+  --ov-dim: oklch(0.96 0.008 250 / 0.55);
+  --ov-faint: oklch(0.96 0.008 250 / 0.22);
+  --scrim: oklch(0.13 0.01 250 / 0.82);
+
+  --f-ui: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+  --f-cond: 'IBM Plex Sans Condensed', 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  --f-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+  --t-11: 11px;
+  --t-12: 12px;
+  --t-13: 13px;
+  --t-14: 14px;
+  --t-16: 16px;
+  --t-20: 20px;
+  --t-24: 24px;
+  --r-2: 2px;
+  --r-4: 4px;
+  --r-6: 6px;
+  --ease: cubic-bezier(0.25, 1, 0.5, 1); /* ease-out-quart */
+  --ease-x: cubic-bezier(0.16, 1, 0.3, 1); /* ease-out-expo */
+  --sb-w: 252px;
+  --sb-w-c: 52px;
+  --tb-h: 40px;
+}
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg-0: oklch(0.93 0.006 250);
+  --bg-1: oklch(0.975 0.004 250);
+  --bg-2: oklch(0.95 0.005 250);
+  --bg-3: oklch(0.91 0.007 250);
+  --bg-chrome: oklch(0.96 0.005 250);
+  --line: oklch(0.86 0.008 250);
+  --line-soft: oklch(0.9 0.006 250);
+  --line-strong: oklch(0.76 0.01 250);
+  --fg-0: oklch(0.2 0.012 250);
+  --fg-1: oklch(0.36 0.012 250);
+  --fg-2: oklch(0.5 0.012 250);
+  --fg-3: oklch(0.6 0.01 250);
+  --fg-4: oklch(0.7 0.008 250);
+  --acc: oklch(0.56 0.11 172);
+  --acc-strong: oklch(0.48 0.11 172);
+  --acc-ink: oklch(0.98 0.01 172);
+}

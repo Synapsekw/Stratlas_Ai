@@ -1,0 +1,17 @@
+{
+  "name": "@aio/video",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Video playback controller, flight pose interpolation, telemetry parsers, lens models.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aio/schema": "workspace:*",
+    "@aio/geo": "workspace:*"
+  }
+}

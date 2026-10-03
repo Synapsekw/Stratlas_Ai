@@ -1,0 +1,19 @@
+{
+  "name": "@aio/annotate",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Annotation suite: issues, sightings, severity models, tools, back-projection.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aio/schema": "workspace:*",
+    "@aio/geo": "workspace:*",
+    "@aio/engine": "workspace:*",
+    "@aio/video": "workspace:*"
+  }
+}

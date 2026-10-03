@@ -1,0 +1,16 @@
+{
+  "name": "@aio/ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI providers (Anthropic, OpenAI, Gemini), model routing, agent loop, tool registry.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aio/schema": "workspace:*"
+  }
+}

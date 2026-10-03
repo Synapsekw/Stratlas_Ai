@@ -1,0 +1,16 @@
+{
+  "name": "@aio/geo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CRS registry, float64 project origin, transforms, quadtree tiling.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aio/schema": "workspace:*"
+  }
+}

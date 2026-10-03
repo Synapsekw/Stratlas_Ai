@@ -1,4 +1,16 @@
 {
   "files": [],
-  "references": [{ "path": "packages/schema" }]
+  "references": [
+    { "path": "packages/schema" },
+    { "path": "packages/brand" },
+    { "path": "packages/geo" },
+    { "path": "packages/engine" },
+    { "path": "packages/pointcloud" },
+    { "path": "packages/maps" },
+    { "path": "packages/video" },
+    { "path": "packages/annotate" },
+    { "path": "packages/ai" },
+    { "path": "packages/ui" },
+    { "path": "packages/project" }
+  ]
 }

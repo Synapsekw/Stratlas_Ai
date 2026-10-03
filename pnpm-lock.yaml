@@ -51,11 +51,100 @@ importers:
         specifier: ^5.0.3
         version: 5.0.3(@types/node@24.19.1)(vite@8.3.2(@types/node@24.19.1)(jiti@2.6.1)(yaml@2.9.1))
 
+  packages/ai:
+    dependencies:
+      '@aio/schema':
+        specifier: workspace:*
+        version: link:../schema
+
+  packages/annotate:
+    dependencies:
+      '@aio/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@aio/geo':
+        specifier: workspace:*
+        version: link:../geo
+      '@aio/schema':
+        specifier: workspace:*
+        version: link:../schema
+      '@aio/video':
+        specifier: workspace:*
+        version: link:../video
+
+  packages/brand: {}
+
+  packages/engine:
+    dependencies:
+      '@aio/geo':
+        specifier: workspace:*
+        version: link:../geo
+      '@aio/schema':
+        specifier: workspace:*
+        version: link:../schema
+
+  packages/geo:
+    dependencies:
+      '@aio/schema':
+        specifier: workspace:*
+        version: link:../schema
+
+  packages/maps:
+    dependencies:
+      '@aio/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@aio/geo':
+        specifier: workspace:*
+        version: link:../geo
+      '@aio/schema':
+        specifier: workspace:*
+        version: link:../schema
+
+  packages/pointcloud:
+    dependencies:
+      '@aio/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@aio/geo':
+        specifier: workspace:*
+        version: link:../geo
+      '@aio/schema':
+        specifier: workspace:*
+        version: link:../schema
+
+  packages/project:
+    dependencies:
+      '@aio/geo':
+        specifier: workspace:*
+        version: link:../geo
+      '@aio/schema':
+        specifier: workspace:*
+        version: link:../schema
+
   packages/schema:
     dependencies:
       zod:
         specifier: ^4.6.5
         version: 4.6.5
+
+  packages/ui:
+    dependencies:
+      '@aio/brand':
+        specifier: workspace:*
+        version: link:../brand
+      '@aio/schema':
+        specifier: workspace:*
+        version: link:../schema
+
+  packages/video:
+    dependencies:
+      '@aio/geo':
+        specifier: workspace:*
+        version: link:../geo
+      '@aio/schema':
+        specifier: workspace:*
+        version: link:../schema
 
 packages:
 

@@ -1,0 +1,17 @@
+{
+  "name": "@aio/ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Mission design tokens, components, icons, panels.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aio/schema": "workspace:*",
+    "@aio/brand": "workspace:*"
+  }
+}

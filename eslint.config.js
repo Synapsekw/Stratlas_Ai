@@ -63,5 +63,9 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    files: ['**/*.test.{ts,tsx}', '**/e2e/**/*.ts'],
+    rules: { 'no-restricted-imports': 'off' },
+  },
   prettier,
 );
