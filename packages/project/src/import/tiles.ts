@@ -199,3 +199,34 @@ export function invertPixelAffine(a: PixelAffine, x: number, z: number): [number
   const dz = z - a23;
   return [(a22 * dx - a12 * dz) / det, (-a21 * dx + a11 * dz) / det];
 }
+
+/**
+ * Largest distance (m) between the corners of each source tile (TL, TR, BR, BL as placed by the
+ * source viewer) and where a pyramid on grid `g` puts that tile's pixels. Tiles are padded to
+ * `full` px, top-left anchored, so a `width` x `height` px tile covers the first
+ * `width / full` x `height / full` of its grid cell.
+ */
+export function placementError(
+  g: TileGrid,
+  tiles: readonly (PlacedTile & { width: number; height: number })[],
+  full: number,
+): number {
+  let worst = 0;
+  for (const t of tiles) {
+    const ij = tileIndexOf(t.f);
+    if (!ij) continue;
+    const fu = t.width / full;
+    const fv = t.height / full;
+    const want = [
+      gridPoint(g, ij.i, ij.j),
+      gridPoint(g, ij.i + fu, ij.j),
+      gridPoint(g, ij.i + fu, ij.j + fv),
+      gridPoint(g, ij.i, ij.j + fv),
+    ];
+    want.forEach((p, k) => {
+      const c = t.c[k];
+      if (c) worst = Math.max(worst, Math.hypot(c[0] - p[0], c[1] - p[1]));
+    });
+  }
+  return worst;
+}

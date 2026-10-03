@@ -24,6 +24,7 @@ import {
   fitTileGrid,
   gridCorners,
   invertPixelAffine,
+  placementError,
   tileFraction,
   tileIndexOf,
   type PlacedTile,
@@ -44,6 +45,7 @@ const fit = fitSimilarity2D(
 );
 const origin: Vec3 = [245714, 3179542, 100];
 const frame = plantFrame(fit, origin);
+const PLOT_Y = 0.62;
 
 describe('tile grids of the plant twin rasters', () => {
   // a grid turned 18 deg in the plant scene, 163.84 m tiles, last column and row cut short
@@ -95,6 +97,52 @@ describe('tile grids of the plant twin rasters', () => {
     expect(c.bl[0] - c.tl[0]).toBeCloseTo(0, 3);
     expect(c.tr[0] - c.tl[0]).toBeCloseTo(4 * step, 3);
     expect(c.bl[2] - c.tl[2]).toBeCloseTo(3 * step, 3);
+  });
+
+  it('puts every padded tile where the viewer drew it (plot plan placement)', () => {
+    // plot plan layout: 8 x 5 tiles of 2048 px, last column 664 px and last row 1338 px wide
+    const full = 2048;
+    const plan = tiles.map((t) => {
+      const ij = tileIndexOf(t.f) ?? { i: 0, j: 0 };
+      return {
+        ...t,
+        width: ij.i === 3 ? 0.3 * full : full,
+        height: ij.j === 2 ? 0.97 * full : full,
+      };
+    });
+    const g = fitTileGrid(plan);
+    expect(placementError(g, plan, full)).toBeLessThan(1e-6);
+    // in the local frame, the pyramid quad maps each source corner to the matching pixel corner
+    const cols = 4;
+    const rows = 4; // padded to an even row count, as the importer does
+    const c = gridCorners(g, cols, rows, PLOT_Y, frame);
+    const lerp = (s: number, t: number): Vec3 => [
+      c.tl[0] + s * (c.tr[0] - c.tl[0]) + t * (c.bl[0] - c.tl[0]),
+      c.tl[1] + s * (c.tr[1] - c.tl[1]) + t * (c.bl[1] - c.tl[1]),
+      c.tl[2] + s * (c.tr[2] - c.tl[2]) + t * (c.bl[2] - c.tl[2]),
+    ];
+    for (const t of plan) {
+      const ij = tileIndexOf(t.f) ?? { i: 0, j: 0 };
+      const fu = t.width / full;
+      const fv = t.height / full;
+      const px = [
+        [0, 0],
+        [fu, 0],
+        [fu, fv],
+        [0, fv],
+      ] as const;
+      t.c.forEach(([x, z], k) => {
+        const [du, dv] = px[k] ?? [0, 0];
+        const want = mapPoint(frame, [x, PLOT_Y, z]);
+        const got = lerp((ij.i + du) / cols, (ij.j + dv) / rows);
+        expect(Math.hypot(got[0] - want[0], got[1] - want[1], got[2] - want[2])).toBeLessThan(1e-6);
+      });
+    }
+    // a tile the viewer drew 1.5 m off the grid is reported
+    const moved = plan.map((t, k) =>
+      k === 5 ? { ...t, c: t.c.map(([x, z]) => [x + 1.5, z] as [number, number]) } : t,
+    );
+    expect(placementError(fitTileGrid(plan), moved, full)).toBeCloseTo(1.5, 6);
   });
 
   it('fits and inverts a pixel to ground affine', () => {

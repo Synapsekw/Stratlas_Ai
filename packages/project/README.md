@@ -46,8 +46,11 @@ under `_blob/`, `plant.glb` decoded from `model_glb_zip.b64.txt`). `src/import/a
   the turn baked into the mesh `transform`; tags from the asset register with the area group label.
 - Ortho: `kit-pyramid` of the 32 cm (z0) and 8 cm (z2) tiles; missing fine tiles are cut from z0.
   No-data keeps alpha 0 with the sea colour under it (the 3D raster adapter draws tiles opaque).
-- Plot plans: overall plan as a two-level pyramid, area plans as `image` rasters; white line art
-  re-coloured red. Street map: the Mapbox mosaics placed on one canvas (`image` raster).
+- Plot plans: overall plan as a two-level pyramid on the viewer's tile corners (the report gives the
+  worst corner offset), area plans as `image` rasters, both as PNG line art with alpha
+  (`lineArtToAlpha`: own alpha, or a black or white ground made transparent; monochrome lines take
+  the viewer's red), drawn just above the ortho. Street map: the Mapbox mosaics placed on one canvas
+  (`image` raster). Raster files an earlier run wrote and this one does not are pruned.
 - Point cloud: every `pc.json` chunk turned into the local frame and re-quantised (`pngcloud.ts`).
 - Clips: one `aio.flight/1` per drone flight; lens pinhole 83 deg (16:9 clips narrower).
 - Photos and panoramas with poses; wide panorama coverage in `panoramas/panoramas.json`.

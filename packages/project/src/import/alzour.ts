@@ -45,7 +45,7 @@ import {
   plantVideoToFlight,
 } from './plant';
 import { convertPngChunk } from './pngcloud';
-import { composeImage, tintLineArt } from './rasterops';
+import { composeImage, writeLineArtPng } from './rasterops';
 import { ImportReport, formatBytes } from './report';
 import {
   applyPixelAffine,
@@ -54,6 +54,7 @@ import {
   gridCorners,
   gridPoint,
   invertPixelAffine,
+  placementError,
   tileIndexOf,
   type Corners,
   type PixelAffine,
@@ -145,12 +146,13 @@ const SURVEY_DATE = '2023-02-21';
  * and lifts the ortho just above that ground instead.
  */
 const ORTHO_Y = 0.5;
-const PLOTPLAN_Y = 0.28;
+/** Plot plans lie just above the ortho so their line art overlays it. */
+const PLOTPLAN_Y = 0.62;
 /** Colour under the ortho's no-data pixels: close to the app's water at the default view. */
 const ORTHO_NODATA_RGB = '#03383b';
-const AREAPLAN_Y = 0.26;
+const AREAPLAN_Y = 0.6;
 const STREET_Y = -0.5;
-/** Plot plan line colour of the viewer (material colour 0xd10f0f over white lines). */
+/** Plot plan line colour of the viewer (material colour 0xd10f0f times the white line art). */
 const PLAN_RGB = [209, 15, 15] as const;
 const STILL_ASPECT = 16 / 9;
 const THUMB_TIME_S = 20;
@@ -418,17 +420,25 @@ export async function importAlzour(opts: AlzourImportOptions): Promise<ImportRes
     `ortho: ${lay.ortho.L.length} + ${lay.ortho.H.length} tiles, ${filled} filled from low detail`,
   );
 
-  // Overall plot plan: kit-pyramid, tinted line art ----------------------------------------------
+  // Overall plot plan: kit-pyramid of line art PNGs with alpha, placed like the viewer's tiles -----
   const gP = fitTileGrid(lay.plan);
   const colsP = Math.ceil((gP.maxI + 1) / 2) * 2;
   const rowsP = Math.ceil((gP.maxJ + 1) / 2) * 2;
   const planFull = Math.max(...lay.plan.map((t) => sizeOf(blob(t.f, lay.urls)).width));
-  const planPattern = 'rasters/plotplan/{z}/{x}_{y}.webp';
+  const planPattern = 'rasters/plotplan/{z}/{x}_{y}.png';
   const pHave = new Map<string, string>();
   for (const t of lay.plan) {
     const ij = tileIndexOf(t.f);
     if (ij) pHave.set(`${ij.i}_${ij.j}`, blob(t.f, lay.urls));
   }
+  // the viewer drew every tile on its own corners; the pyramid puts them on one fitted grid
+  const planError = placementError(
+    gP,
+    lay.plan.map((t) => ({ ...t, ...sizeOf(blob(t.f, lay.urls)) })),
+    planFull,
+  );
+  if (planError > 0.05)
+    rep.warn(`Plot plan tiles sit up to ${planError.toFixed(2)} m off the fitted tile grid`);
   const p1 = new Map<string, string>();
   for (let j = 0; j < rowsP; j++) {
     for (let i = 0; i < colsP; i++) {
@@ -438,7 +448,12 @@ export async function importAlzour(opts: AlzourImportOptions): Promise<ImportRes
         await blank(rel);
         continue;
       }
-      await w.derive(rel, [have], (out) => tintLineArt(have, out, PLAN_RGB, planFull, planFull));
+      await w.derive(rel, [have], (out) =>
+        writeLineArtPng(have, out, sizeOf(have), {
+          tint: PLAN_RGB,
+          padTo: { width: planFull, height: planFull },
+        }),
+      );
       p1.set(`${i}_${j}`, w.abs(rel));
       rep.count('Plot plan tiles');
     }
@@ -511,8 +526,10 @@ export async function importAlzour(opts: AlzourImportOptions): Promise<ImportRes
       rep.warn(`${a.file} missing; area plot plan not imported`);
       continue;
     }
-    const rel = `rasters/${a.id}.png`;
-    await w.derive(rel, [src(a.file)], (out) => tintLineArt(src(a.file), out, PLAN_RGB));
+    const rel = `rasters/areaplans/${a.id.replace('area-plans-', '')}.png`;
+    await w.derive(rel, [src(a.file)], (out) =>
+      writeLineArtPng(src(a.file), out, sizeOf(src(a.file)), { tint: PLAN_RGB }),
+    );
     const el = 100 + AREAPLAN_Y;
     layers.push({
       kind: 'raster',
@@ -1039,8 +1056,8 @@ export async function importAlzour(opts: AlzourImportOptions): Promise<ImportRes
   rep.section('What was converted', [
     `- Model: \`models/plant.glb\` (${formatBytes(glb.length)}, ${nodes.length} nodes, generator "${gltf.asset?.generator ?? '?'}"), decoded from the artifact's \`model_glb_zip.b64.txt\`. Tags: ${tags.length} register tags on model nodes, \`area\` = one of the ${ALZOUR_GROUPS.length} area groups (Site_Terrain has no register rows).`,
     `- Ortho: \`kit-pyramid\` \`rasters/ortho/tiles.json\`, level 0 = ${colsL} x ${rowsL} low-detail tiles (${Math.hypot(...gL.u).toFixed(1)} m, ${((Math.hypot(...gL.u) / fullPx) * 100).toFixed(0)} cm/px), level ${zH} = ${colsH} x ${rowsH} high-detail tiles (${Math.hypot(...gH.u).toFixed(2)} m, ${((Math.hypot(...gH.u) / fullPx) * 100).toFixed(0)} cm/px). ${lay.ortho.H.length} high-detail tiles from the artifact, ${filled} cut from the low-detail level where the artifact has none. Every tile re-encoded as WebP (quality 85) at ${fullPx} px, edge tiles padded; no-data pixels keep alpha 0 and carry the sea colour ${ORTHO_NODATA_RGB}. Tile grid fit rms ${gH.rms.toFixed(3)} m (low ${gL.rms.toFixed(3)} m, origins ${gridGap.toFixed(3)} m apart). Drawn ${ORTHO_Y} m above grade.`,
-    `- Overall plot plan: \`kit-pyramid\` \`rasters/plotplan/tiles.json\`, level 1 = ${colsP} x ${rowsP} tiles (${planFull} px, ${Math.hypot(...gP.u).toFixed(1)} m), level 0 = ${colsP / 2} x ${rowsP / 2} merged tiles (${coarse} px). White line art re-coloured to the viewer's red (#d10f0f) with alpha kept; transparent pixels are black.`,
-    '- Area plot plans: `plan_0.png` and `plan_1.png` (2 px/m in the plant grid) as two `image` rasters, re-coloured the same way.',
+    `- Overall plot plan: \`kit-pyramid\` \`rasters/plotplan/tiles.json\`, level 1 = ${colsP} x ${rowsP} tiles (${planFull} px, ${Math.hypot(...gP.u).toFixed(1)} m), level 0 = ${colsP / 2} x ${rowsP / 2} merged tiles (${coarse} px). Tile grid fit rms ${gP.rms.toFixed(3)} m; every source tile's corners as the viewer placed them lie within ${planError.toFixed(3)} m of the pyramid placement. Line art as PNG with alpha: the background is transparent, the monochrome (white) lines take the viewer's red (#d10f0f). Drawn ${PLOTPLAN_Y} m above grade, over the ortho.`,
+    `- Area plot plans: \`plan_0.png\` and \`plan_1.png\` (2 px/m in the plant grid, E -60 to 2620, N 20 to 1080 as the viewer) as two \`image\` rasters in \`rasters/areaplans/\`, converted the same way, ${AREAPLAN_Y} m above grade.`,
     `- ${streetNote}`,
     `- Point cloud: \`png-packed\` \`clouds/alzour/index.json\` (aio.pngcloud/1), ${chunks.length} chunks (lod 0: 1 overview, lod 1 and 2: ${pc.levels[1]?.length ?? 0} + ${pc.levels[2]?.length ?? 0} tiles), ${pcPoints.toLocaleString('en')} points, decoded with the viewer rule \`o + q * u\`, turned into the local frame and quantised again to a cube per chunk (step <= 0.1 mm over the source step). ${pc.note ?? ''}`,
     `- Video: ${videoLayers.length} clips copied as delivered (H.264, ${[...new Set([...infos.values()].map((i) => `${i.width}x${i.height}`))].join(', ')}), JPEG poster at 1 s (960 px). One \`aio.flight/1\` file per drone flight (\`flights/flightN.json\`, ${flightDocs.size} flights) so the app groups the clips; each clip's \`offsetMs\` is its start minus the flight start. Lens pinhole 83 deg for 5.1K (17:9) clips; 16:9 clips get the cropped width (${clipHfovDeg(16 / 9).toFixed(1)} deg).`,
@@ -1068,6 +1085,11 @@ export async function importAlzour(opts: AlzourImportOptions): Promise<ImportRes
   rep.warn(
     '16:9 clips (flight 4): the source states only 83 deg for all clips; the narrower field of view is derived from the sensor crop and is approximate.',
   );
+  const pruned = w.prune('rasters');
+  if (pruned.length)
+    rep.note(
+      `Removed ${pruned.length} raster files of an earlier import that this run no longer writes.`,
+    );
   w.write('IMPORT-REPORT.md', rep.toMarkdown(opts.out));
 
   return {
