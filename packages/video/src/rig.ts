@@ -8,6 +8,7 @@ import type { LensModel } from '@aio/schema';
 import {
   BufferAttribute,
   BufferGeometry,
+  CanvasTexture,
   Color,
   Euler,
   Group,
@@ -16,6 +17,8 @@ import {
   LineSegments,
   Quaternion,
   SRGBColorSpace,
+  Sprite,
+  SpriteMaterial,
   Vector3,
   VideoTexture,
   type Object3D,
@@ -66,6 +69,46 @@ function decodeBase64(b64: string): ArrayBuffer {
   return u.buffer;
 }
 
+/**
+ * A screen-constant ring around the drone, drawn over everything, so the drone reads from outside
+ * the asset; it pulses while the clip plays. Null without a 2D canvas (tests).
+ */
+function beaconSprite(): Sprite | null {
+  if (typeof document === 'undefined') return null;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  if (!g) return null;
+  g.strokeStyle = 'rgba(84, 212, 181, 1)';
+  g.lineWidth = 3;
+  g.beginPath();
+  g.arc(32, 32, 22, 0, Math.PI * 2);
+  g.stroke();
+  g.fillStyle = 'rgba(84, 212, 181, 0.16)';
+  g.fill();
+  g.fillStyle = 'rgba(84, 212, 181, 1)';
+  g.beginPath();
+  g.arc(32, 32, 3.5, 0, Math.PI * 2);
+  g.fill();
+  const tex = new CanvasTexture(c);
+  tex.colorSpace = SRGBColorSpace;
+  const s = new Sprite(
+    new SpriteMaterial({
+      map: tex,
+      depthTest: false,
+      depthWrite: false,
+      transparent: true,
+      sizeAttenuation: false,
+    }),
+  );
+  s.name = 'DroneBeacon';
+  s.renderOrder = 30;
+  s.visible = false;
+  return s;
+}
+
+const BEACON_SIZE = 0.06;
+
 /** Border of the image (and the four corner spokes) as camera-frame unit rays. */
 function frustumRays(lens: LensModel): Vector3[] {
   const border: [number, number][] = [];
@@ -90,6 +133,7 @@ export class VideoRig {
   private gimbal: Object3D | null = null;
   private props: Object3D[] = [];
   private readonly frustum: LineSegments;
+  private readonly beacon = beaconSprite();
   private frustumRays: Vector3[] = [];
   private activeId: string | null = null;
   private player: ClipPlayer | null = null;
@@ -146,6 +190,7 @@ export class VideoRig {
     this.frustum.frustumCulled = false;
     this.frustum.visible = false;
     this.group.add(this.drone, this.frustum);
+    if (this.beacon) this.group.add(this.beacon);
     handle.scene.add(this.group);
     this.offs.push(handle.onFrame(this.frame));
     this.offs.push(
@@ -293,6 +338,7 @@ export class VideoRig {
       this.projector.setEnabled(false);
       this.projector.detachAll();
       this.drone.visible = this.frustum.visible = false;
+      if (this.beacon) this.beacon.visible = false;
       this.pose.valid = false;
       return;
     }
@@ -371,6 +417,14 @@ export class VideoRig {
     if (this.player.playing) for (const pr of this.props) pr.rotation.y += 0.9;
     this.drone.scale.setScalar(Math.min(120, Math.max(1, (camDist * 0.03) / 0.35)));
     this.drone.visible = layerVisible && !drone;
+    if (this.beacon) {
+      this.beacon.visible = layerVisible && !drone;
+      this.beacon.position.copy(this.pose.pos);
+      const playing = this.player.playing;
+      const k = playing ? 0.5 + 0.5 * Math.sin(performance.now() / 160) : 0;
+      this.beacon.scale.setScalar(BEACON_SIZE * (1 + 0.35 * k));
+      this.beacon.material.opacity = playing ? 0.95 - 0.45 * k : 0.8;
+    }
 
     // frustum: border rays to a length that reads at this zoom, clipped at the ground plane
     this.updateFrustum(Math.min(400, Math.max(0.6, camDist * 0.12)));
@@ -450,6 +504,8 @@ export class VideoRig {
     if (this.activeId) releasePlayer(this.activeId);
     this.hold?.();
     this.texture?.dispose();
+    this.beacon?.material.map?.dispose();
+    this.beacon?.material.dispose();
     this.projector.dispose();
     this.handle.scene.remove(this.group);
     this.group.traverse((o) => {
