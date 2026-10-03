@@ -71,6 +71,26 @@ export type RaycastProvider = (ndcX: number, ndcY: number) => Intersection | nul
 export type StageTool = 'select' | 'measure' | 'section';
 
 /**
+ * Component callouts: `off` shows only the selected and hovered component, `key` adds one callout
+ * per component group (manifest tag `area`), `all` labels every tagged component.
+ */
+export type LabelMode = 'off' | 'key' | 'all';
+
+/** A client-space rectangle, as returned by getBoundingClientRect. */
+export interface ClientRectLike {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+/** Camera position and orbit target in the local frame, for saving and restoring a view. */
+export interface SavedView {
+  position: [number, number, number];
+  target: [number, number, number];
+}
+
+/**
  * The full 3D stage behind SceneView: everything in SceneHandle plus the controls the UI drives
  * (view presets, tools, section). Get it with `getActiveStage()`.
  */
@@ -81,7 +101,22 @@ export interface EngineStage extends SceneHandle {
   setTool(tool: StageTool): void;
   readonly section: SectionState;
   setSection(patch: Partial<SectionState>): void;
+  /** The point section offsets are measured from (centre of the visible content). */
+  sectionOrigin(): Vector3;
   clearMeasure(): void;
+  readonly labelMode: LabelMode;
+  setLabelMode(mode: LabelMode): void;
+  /**
+   * UI drawn over the stage (video window, toolbars). Callout dots, leaders and plates keep clear
+   * of these rectangles, read after every rendered frame.
+   */
+  setLabelKeepOut(provider: (() => Iterable<ClientRectLike>) | null): void;
+  /** World points (issue pins) that callout plates must not cover. Returns an unsubscribe. */
+  addLabelObstacles(provider: () => Iterable<Vector3>): () => void;
+  /** The current view, to restore when the stage is created again. */
+  saveView(): SavedView;
+  /** Jump (or fly) to a saved view; the stage no longer frames content as it loads. */
+  restoreView(view: SavedView, animate?: boolean): void;
   /** Dev-only frame-time overlay (also Ctrl+Shift+F). */
   setPerfOverlay(on: boolean): void;
   /** Listen for tool or section changes, for toolbar state. */

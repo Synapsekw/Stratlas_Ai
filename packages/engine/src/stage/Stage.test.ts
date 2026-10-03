@@ -110,6 +110,46 @@ function boxAdapter(handles: { visible: boolean; disposed: boolean }[]): LayerAd
   };
 }
 
+/** Three tagged components: two nozzles (one bigger) and the roof, like a manifest's tags. */
+function taggedAdapter(): LayerAdapter {
+  return {
+    kind: 'mesh',
+    create: (layer, ctx) => {
+      const root = new Group();
+      const parts: [string, number, number][] = [
+        ['N1_Neck', 1, -6],
+        ['N2_Neck', 2, 6],
+        ['Roof_Head', 8, 0],
+      ];
+      for (const [name, size, x] of parts) {
+        const node = new Group();
+        node.name = name;
+        const mesh = new Mesh(new BoxGeometry(size, size, size), new MeshStandardMaterial());
+        mesh.position.set(x, 5, 0);
+        node.add(mesh);
+        root.add(node);
+      }
+      root.userData.aioTags = [
+        { node: 'N1_Neck', tag: 'N1', area: 'Nozzles' },
+        { node: 'N2_Neck', tag: 'N2', area: 'Nozzles' },
+        { node: 'Roof_Head', tag: 'Roof head', area: 'Roof' },
+      ];
+      root.userData.aioTagged = new Set(['N1_Neck', 'N2_Neck', 'Roof_Head']);
+      ctx.scene.scene.add(root);
+      root.updateMatrixWorld(true);
+      const off = ctx.scene.addRaycastTarget(root, layer.id);
+      return Promise.resolve({
+        setVisible(v: boolean) {
+          root.visible = v;
+        },
+        dispose() {
+          off();
+        },
+      });
+    },
+  };
+}
+
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe('Stage', () => {
@@ -271,6 +311,43 @@ describe('Stage', () => {
     expect(planes).toHaveLength(1);
     stage.setSection({ enabled: false });
     expect(planes).toHaveLength(0);
+    stage.dispose();
+  });
+
+  it('labels component groups by default, every component on demand, none when off', async () => {
+    const { stage, store, resize } = make(taggedAdapter());
+    resize(800, 600);
+    store.getState().openProject(project([meshLayer('plant')]));
+    await flush();
+    const ids = () =>
+      [...container.querySelectorAll<HTMLElement>('[data-callout]')]
+        .map((e) => e.dataset.callout)
+        .sort();
+    expect(stage.labelMode).toBe('key');
+    // one callout per group; a group of one shows its component
+    expect(ids()).toEqual(['Roof_Head', 'group:Nozzles']);
+    const group = container.querySelector('[data-callout="group:Nozzles"]');
+    expect(group?.textContent).toContain('2 components');
+    stage.setLabelMode('all');
+    expect(ids()).toEqual(['N1_Neck', 'N2_Neck', 'Roof_Head']);
+    stage.setLabelMode('off');
+    expect(ids()).toEqual([]);
+    // the selection is always labelled
+    store.getState().select({ kind: 'asset', id: 'N1_Neck', layer: 'plant' });
+    expect(ids()).toEqual(['N1_Neck']);
+    stage.dispose();
+  });
+
+  it('restores a saved view and stops framing content once restored', async () => {
+    const { stage, store, resize } = make();
+    resize(800, 600);
+    store.getState().openProject(project([meshLayer('plant')]));
+    // restored before the layers finish loading: loading must not reframe
+    stage.restoreView({ position: [40, 30, 20], target: [1, 2, 3] });
+    await flush();
+    const v = stage.saveView();
+    expect(v.target).toEqual([1, 2, 3]);
+    expect(v.position[0]).toBeCloseTo(40);
     stage.dispose();
   });
 

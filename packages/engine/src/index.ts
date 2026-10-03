@@ -16,4 +16,5 @@ export { registerRasterFormat, type RasterFormatHandler } from './adapters/raste
 export type { ViewPreset, CameraPose } from './camera/cameraMath';
 export { fitDistance, poseForPreset, frameBox, headingDeg } from './camera/cameraMath';
 export type { SectionState } from './tools/section';
+export { DEFAULT_SECTION } from './tools/section';
 export { PALETTE } from './palette';

@@ -1,6 +1,15 @@
 import { Vector3, type PerspectiveCamera } from 'three';
 import { FONT_MONO, FONT_UI, PALETTE } from '../palette';
-import { declutter, estimateLabelWidth, type LabelBox } from './declutter';
+import type { ClientRectLike } from '../types';
+import {
+  estimateLabelWidth,
+  LEADER_TAIL,
+  LEADER_Y,
+  placeCallouts,
+  type CalloutItem,
+  type CalloutSide,
+  type ScreenRect,
+} from './declutter';
 
 export interface CalloutSpec {
   id: string;
@@ -8,6 +17,10 @@ export interface CalloutSpec {
   /** First line is the tag (mono, bold); the rest are details. */
   lines: string[];
   selected: boolean;
+  /** Expanded whatever it overlaps (the hovered component). */
+  forced?: boolean;
+  /** Higher wins a collision among unforced callouts (nearer the camera breaks ties). */
+  rank?: number;
 }
 
 interface CalloutEl {
@@ -18,7 +31,9 @@ interface CalloutEl {
   plate: HTMLDivElement;
   w: number;
   h: number;
-  expanded: boolean | null;
+  up: number;
+  dx: number;
+  side: CalloutSide | null | undefined;
   shown: boolean | null;
 }
 
@@ -40,6 +55,8 @@ export class Overlay {
   readonly root: HTMLDivElement;
   private readonly callouts = new Map<string, CalloutEl>();
   private hoverId: string | null = null;
+  private keepOut: (() => Iterable<ClientRectLike>) | null = null;
+  private readonly obstacles = new Set<() => Iterable<Vector3>>();
   private readonly compass: SVGSVGElement;
   private readonly compassRose: SVGGElement;
   private readonly compassText: SVGTextElement;
@@ -247,10 +264,11 @@ export class Overlay {
       left: '0',
       top: `${-up}px`,
       overflow: 'visible',
+      transformOrigin: '0 0',
     });
     leader.append(
       svg('path', {
-        d: `M2,${up - 2} L${dx},0 L${dx + 10},0`,
+        d: `M2,${up - 2} L${dx},0 L${dx + LEADER_TAIL},0`,
         stroke: col,
         'stroke-width': 1,
         fill: 'none',
@@ -260,14 +278,14 @@ export class Overlay {
     const plate = document.createElement('div');
     Object.assign(plate.style, {
       position: 'absolute',
-      left: `${dx + 10}px`,
-      top: `${-up - 15}px`,
+      left: `${dx + LEADER_TAIL}px`,
+      top: `${-up - LEADER_Y}px`,
       width: `${w}px`,
       boxSizing: 'border-box',
       padding: '4px 8px',
       background: PALETTE.plateCss,
       border: `1px solid ${spec.selected ? PALETTE.accCss : PALETTE.ovFaintCss}`,
-      borderLeft: `2px solid ${col}`,
+      borderRadius: '2px',
       whiteSpace: 'nowrap',
       overflow: 'hidden',
       textOverflow: 'ellipsis',
@@ -284,12 +302,41 @@ export class Overlay {
     });
     el.append(leader, plate, dot);
     this.root.insertBefore(el, this.compass);
-    return { spec, el, dot, leader, plate, w, h, expanded: null, shown: null };
+    return { spec, el, dot, leader, plate, w, h, up, dx, side: undefined, shown: null };
+  }
+
+  /** UI drawn over the stage (video window, toolbars) that callouts must keep clear of. */
+  setKeepOut(provider: (() => Iterable<ClientRectLike>) | null) {
+    this.keepOut = provider;
+  }
+
+  /** World points (issue pins) whose screen spot callout plates must not cover. */
+  addObstacles(provider: () => Iterable<Vector3>): () => void {
+    this.obstacles.add(provider);
+    return () => {
+      this.obstacles.delete(provider);
+    };
+  }
+
+  private screenKeepOut(width: number, height: number): ScreenRect[] {
+    // the compass, bottom right
+    const out: ScreenRect[] = [{ x: width - 72, y: height - 72, w: 72, h: 72 }];
+    if (!this.keepOut) return out;
+    const host = this.root.getBoundingClientRect();
+    for (const r of this.keepOut()) {
+      const x = r.left - host.left;
+      const y = r.top - host.top;
+      const w = r.right - r.left;
+      const h = r.bottom - r.top;
+      if (w <= 0 || h <= 0 || x > width || y > height || x + w < 0 || y + h < 0) continue;
+      out.push({ x, y, w, h });
+    }
+    return out;
   }
 
   /** Project, declutter and place everything. Call after each rendered frame. */
   update(camera: PerspectiveCamera, width: number, height: number, headingDeg: number) {
-    const boxes: LabelBox[] = [];
+    const items: CalloutItem[] = [];
     const screen = new Map<string, [number, number]>();
     const camPos = camera.position;
     for (const c of this.callouts.values()) {
@@ -302,35 +349,56 @@ export class Overlay {
         continue;
       }
       screen.set(c.spec.id, p);
-      const up = c.spec.selected ? 56 : 30;
-      const dx = c.spec.selected ? 20 : 14;
-      boxes.push({
+      items.push({
         id: c.spec.id,
-        x: p[0] + dx + 10,
-        y: p[1] - up - 15,
+        ax: p[0],
+        ay: p[1],
         w: c.w,
         h: c.h,
-        priority: (c.spec.selected ? 1e9 : 0) - c.spec.anchor.distanceTo(camPos),
+        up: c.up,
+        run: c.dx,
+        priority: (c.spec.rank ?? 0) * 1e6 - c.spec.anchor.distanceTo(camPos),
       });
     }
     const forced = new Set<string>();
-    for (const c of this.callouts.values()) if (c.spec.selected) forced.add(c.spec.id);
+    for (const c of this.callouts.values())
+      if (c.spec.selected || c.spec.forced) forced.add(c.spec.id);
     if (this.hoverId) forced.add(this.hoverId);
-    const expanded = declutter(boxes, forced);
+    const obstacles: ScreenRect[] = [];
+    if (items.length > 0)
+      for (const provider of this.obstacles)
+        for (const w of provider()) {
+          const p = this.project(w, camera, width, height);
+          // a pin ball and its code label to the right
+          if (p) obstacles.push({ x: p[0] - 9, y: p[1] - 12, w: 72, h: 24 });
+        }
+    const { sides, hidden } = placeCallouts(items, {
+      forced,
+      keepOut: items.length > 0 ? this.screenKeepOut(width, height) : [],
+      obstacles,
+      width,
+      height,
+    });
     for (const [id, p] of screen) {
       const c = this.callouts.get(id);
       if (!c) continue;
-      if (c.shown !== true) {
-        c.el.style.display = '';
-        c.shown = true;
+      const show = !hidden.has(id);
+      if (c.shown !== show) {
+        c.el.style.display = show ? '' : 'none';
+        c.shown = show;
       }
+      if (!show) continue;
       c.el.style.transform = `translate3d(${p[0].toFixed(1)}px, ${p[1].toFixed(1)}px, 0)`;
-      const ex = expanded.has(id);
-      if (c.expanded !== ex) {
+      const side = sides.get(id) ?? null;
+      if (c.side !== side) {
+        const ex = side !== null;
         c.leader.style.display = ex ? '' : 'none';
         c.plate.style.display = ex ? '' : 'none';
+        c.leader.style.transform = side === 'left' ? 'scaleX(-1)' : '';
+        c.plate.style.left =
+          side === 'left' ? `${-(c.dx + LEADER_TAIL) - c.w}px` : `${c.dx + LEADER_TAIL}px`;
         c.el.style.zIndex = ex ? (c.spec.selected ? '3' : '2') : '1';
-        c.expanded = ex;
+        c.side = side;
       }
     }
 

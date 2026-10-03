@@ -37,7 +37,15 @@ import { Overlay, type CalloutSpec } from '../overlay/Overlay';
 import { getAdapter as registryAdapter } from '../registry';
 import { MeasureTool } from '../tools/measure';
 import { DEFAULT_SECTION, applySection, type SectionState } from '../tools/section';
-import type { EngineStage, LayerAdapter, RaycastProvider, StageTool } from '../types';
+import type {
+  ClientRectLike,
+  EngineStage,
+  LabelMode,
+  LayerAdapter,
+  RaycastProvider,
+  SavedView,
+  StageTool,
+} from '../types';
 import { Environment } from './environment';
 import { Highlighter } from './highlight';
 
@@ -91,6 +99,12 @@ function extrasName(node: Object3D): string | null {
   return typeof n === 'string' && n !== node.name ? n : null;
 }
 
+/** "Access_Indicative" reads "Access indicative". */
+export function groupLabel(area: string): string {
+  const words = area.replace(/[_-]+/g, ' ').trim().split(/\s+/);
+  return words.map((w, i) => (i === 0 ? w : w.toLowerCase())).join(' ');
+}
+
 const prefersReducedMotion = () =>
   typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -123,6 +137,9 @@ export class Stage implements EngineStage {
   private readonly holders = new Map<symbol, string>();
   private readonly stateCbs = new Set<() => void>();
   private readonly anchors = new WeakMap<Object3D, Vector3>();
+  private readonly volumes = new WeakMap<Object3D, number>();
+  private readonly nodeCache = new WeakMap<Object3D, Map<string, Object3D | null>>();
+  private readonly groupNodes = new Map<string, Object3D[]>();
   private readonly warnedKinds = new Set<string>();
   private readonly t0 = performance.now();
 
@@ -147,6 +164,7 @@ export class Stage implements EngineStage {
   private contentCentre = new Vector3();
   private _tool: StageTool = 'select';
   private _section: SectionState = { ...DEFAULT_SECTION };
+  private _labelMode: LabelMode = 'key';
 
   constructor(private readonly opts: StageOptions) {
     this.getAdapter = opts.getAdapter ?? registryAdapter;
@@ -190,6 +208,11 @@ export class Stage implements EngineStage {
     this.scene.add(this.highlight.group, this.measureTool.line);
     this.overlay = new Overlay(opts.container, {
       onCalloutClick: (id) => {
+        const group = this.groupNodes.get(id);
+        if (group) {
+          this.frameNodes(group);
+          return;
+        }
         const hit = this.findNode(id);
         if (hit) opts.store.getState().select({ kind: 'asset', id, layer: hit.layerId });
       },
@@ -347,6 +370,10 @@ export class Stage implements EngineStage {
     this.emitState();
   }
 
+  sectionOrigin(): Vector3 {
+    return this.contentCentre.clone();
+  }
+
   clearMeasure(): void {
     this.measureTool.clear();
     this.overlay.setMeasure(null, null, '');
@@ -370,6 +397,54 @@ export class Stage implements EngineStage {
     return () => {
       this.stateCbs.delete(cb);
     };
+  }
+
+  get labelMode(): LabelMode {
+    return this._labelMode;
+  }
+
+  setLabelMode(mode: LabelMode): void {
+    if (mode === this._labelMode) return;
+    this._labelMode = mode;
+    this.rebuildCallouts();
+    this.need = true;
+    this.emitState();
+  }
+
+  setLabelKeepOut(provider: (() => Iterable<ClientRectLike>) | null): void {
+    this.overlay.setKeepOut(provider);
+    this.need = true;
+  }
+
+  addLabelObstacles(provider: () => Iterable<Vector3>): () => void {
+    const off = this.overlay.addObstacles(provider);
+    this.need = true;
+    return () => {
+      off();
+      this.need = true;
+    };
+  }
+
+  saveView(): SavedView {
+    const p = this.camera.position;
+    const t = this.controls.target;
+    return { position: [p.x, p.y, p.z], target: [t.x, t.y, t.z] };
+  }
+
+  restoreView(view: SavedView, animate = false): void {
+    this.flight = null;
+    this.autoFit = false;
+    if (animate) {
+      this.fly({
+        position: new Vector3().fromArray(view.position),
+        target: new Vector3().fromArray(view.target),
+      });
+      return;
+    }
+    this.camera.position.fromArray(view.position);
+    this.controls.target.fromArray(view.target);
+    this.controls.update();
+    this.need = true;
   }
 
   setViewPreset(preset: ViewPreset | 'home'): void {
@@ -650,43 +725,141 @@ export class Stage implements EngineStage {
     return a;
   }
 
+  /** Visible bounding-box volume, to pick the most prominent component of a group. */
+  private volumeOf(node: Object3D): number {
+    let v = this.volumes.get(node);
+    if (v === undefined) {
+      const size = new Box3().setFromObject(node).getSize(new Vector3());
+      v = Math.max(size.x, 1e-3) * Math.max(size.y, 1e-3) * Math.max(size.z, 1e-3);
+      this.volumes.set(node, v);
+    }
+    return v;
+  }
+
+  private nodeIn(root: Object3D, name: string): Object3D | null {
+    let cache = this.nodeCache.get(root);
+    if (!cache) {
+      cache = new Map();
+      this.nodeCache.set(root, cache);
+    }
+    let node = cache.get(name);
+    if (node === undefined) {
+      node = root.name === name ? root : (root.getObjectByName(name) ?? null);
+      cache.set(name, node);
+    }
+    return node;
+  }
+
+  /** Title and detail lines for a component, from the manifest tag or the glTF extras. */
+  private describe(node: Object3D): string[] {
+    const ud = node.userData as { tag?: unknown; type?: unknown };
+    let manifestTag: AssetTag | undefined;
+    for (const [root] of this.targets)
+      manifestTag ??= ((root.userData.aioTags ?? []) as AssetTag[]).find(
+        (t) => t.node === node.name,
+      );
+    const title = manifestTag?.tag ?? (typeof ud.tag === 'string' ? ud.tag : node.name);
+    const detail =
+      extrasName(node) ??
+      manifestTag?.area ??
+      (typeof ud.type === 'string' ? ud.type.replace(/_/g, ' ') : '');
+    return detail ? [title, detail] : [title];
+  }
+
+  private frameNodes(nodes: readonly Object3D[]) {
+    const box = new Box3();
+    for (const n of nodes) box.expandByObject(n);
+    const pose = frameBox(
+      box,
+      { position: this.camera.position, target: this.controls.target },
+      this.camera.fov,
+      this.aspect,
+    );
+    if (!pose) return;
+    this.autoFit = false;
+    this.fly(pose);
+  }
+
+  /**
+   * Callouts for the label mode: the selected and hovered component always; in `key` mode one
+   * callout per component group (its most prominent member); in `all` mode every tagged component.
+   */
   private rebuildCallouts() {
     const specs: CalloutSpec[] = [];
     const selected = this.highlight.selected;
+    const hovered = this.highlight.hovered;
+    const mode = this._labelMode;
+    const groups = new Map<string, { nodes: Object3D[]; tags: AssetTag[] }>();
+    let hoverListed = false;
     for (const [root] of this.targets) {
       if (!visibleChain(root)) continue;
       const tags = (root.userData.aioTags ?? []) as AssetTag[];
       for (const t of tags) {
-        const node = root.getObjectByName(t.node);
-        if (!node || node === selected || !visibleChain(node)) continue;
+        const node = this.nodeIn(root, t.node);
+        if (!node || !visibleChain(node)) continue;
+        if (mode === 'key' && t.area) {
+          const g = groups.get(t.area) ?? { nodes: [], tags: [] };
+          g.nodes.push(node);
+          g.tags.push(t);
+          groups.set(t.area, g);
+        }
+        if (node === selected) continue;
+        const isHover = node === hovered;
+        if (mode !== 'all' && !isHover) continue;
+        if (isHover) hoverListed = true;
         const detail = extrasName(node) ?? t.area ?? '';
         specs.push({
           id: t.node,
           anchor: this.anchorOf(node),
           lines: detail ? [t.tag, detail] : [t.tag],
           selected: false,
+          forced: isHover,
         });
       }
     }
-    if (selected) {
-      const ud = selected.userData as { tag?: unknown; type?: unknown };
-      let manifestTag: AssetTag | undefined;
-      for (const [root] of this.targets)
-        manifestTag ??= ((root.userData.aioTags ?? []) as AssetTag[]).find(
-          (t) => t.node === selected.name,
-        );
-      const title = manifestTag?.tag ?? (typeof ud.tag === 'string' ? ud.tag : selected.name);
-      const detail =
-        extrasName(selected) ??
-        manifestTag?.area ??
-        (typeof ud.type === 'string' ? ud.type.replace(/_/g, ' ') : '');
+    this.groupNodes.clear();
+    for (const [area, g] of groups) {
+      const only = g.nodes.length === 1 ? g.nodes[0] : undefined;
+      const onlyTag = g.tags[0];
+      if (only && onlyTag) {
+        if (only === selected || only === hovered) continue;
+        specs.push({
+          id: onlyTag.node,
+          anchor: this.anchorOf(only),
+          lines: [onlyTag.tag, groupLabel(area)],
+          selected: false,
+          rank: 1,
+        });
+        continue;
+      }
+      let rep = g.nodes[0];
+      for (const n of g.nodes) if (rep && this.volumeOf(n) > this.volumeOf(rep)) rep = n;
+      if (!rep) continue;
+      const id = `group:${area}`;
+      this.groupNodes.set(id, g.nodes);
+      specs.push({
+        id,
+        anchor: this.anchorOf(rep),
+        lines: [groupLabel(area), `${g.nodes.length} components`],
+        selected: false,
+        rank: 1,
+      });
+    }
+    if (hovered && hovered !== selected && !hoverListed)
+      specs.push({
+        id: hovered.name,
+        anchor: this.anchorOf(hovered),
+        lines: this.describe(hovered),
+        selected: false,
+        forced: true,
+      });
+    if (selected)
       specs.push({
         id: selected.name,
         anchor: this.anchorOf(selected),
-        lines: detail ? [title, detail] : [title],
+        lines: this.describe(selected),
         selected: true,
       });
-    }
     this.overlay.setCallouts(specs);
   }
 
@@ -772,14 +945,20 @@ export class Stage implements EngineStage {
       if (!ev || this.disposed) return;
       const [x, y] = this.toNdc(ev);
       const node = this._tool === 'measure' ? null : (this.pick(x, y)?.node ?? null);
-      if (this.highlight.set('hover', node)) this.need = true;
+      if (this.highlight.set('hover', node)) {
+        this.need = true;
+        this.rebuildCallouts();
+      }
       this.canvas.style.cursor = this._tool === 'measure' ? 'crosshair' : node ? 'pointer' : '';
     });
   };
 
   private readonly onPointerLeave = () => {
     this.hoverEvent = null;
-    if (this.highlight.set('hover', null)) this.need = true;
+    if (this.highlight.set('hover', null)) {
+      this.need = true;
+      this.rebuildCallouts();
+    }
   };
 
   private readonly onKey = (e: KeyboardEvent) => {
