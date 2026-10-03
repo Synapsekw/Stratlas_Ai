@@ -328,6 +328,13 @@ export function Timeline(props: TimelineProps) {
                     aria-label={`${g.name}, ${String(members.length)} clips`}
                     aria-pressed={on !== undefined}
                     onClick={(e) => {
+                      // Keyboard activation has no pointer position: play the flight's active
+                      // clip, else its first.
+                      if (e.detail === 0) {
+                        const c = on ?? members[0];
+                        if (c) onClip(c.layerId);
+                        return;
+                      }
                       const t = timeAt(e.clientX);
                       const hit =
                         members.find((c) => t >= c.startMs && t <= c.endMs) ??
