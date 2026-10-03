@@ -285,6 +285,9 @@ importers:
 
   packages/video:
     dependencies:
+      '@aio/engine':
+        specifier: workspace:*
+        version: link:../engine
       '@aio/geo':
         specifier: workspace:*
         version: link:../geo

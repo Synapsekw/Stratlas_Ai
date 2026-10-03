@@ -16,6 +16,9 @@
       "path": "../geo"
     },
     {
+      "path": "../engine"
+    },
+    {
       "path": "../workspace"
     }
   ]
