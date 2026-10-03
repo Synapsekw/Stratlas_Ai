@@ -270,6 +270,8 @@ export class CloudManager {
         baseSize: l.baseSize,
         tint: l.tint,
       });
+      // the section tool cuts meshes and clouds together through this shared array
+      l.material.clippingPlanes = this.handle.clippingPlanes;
       for (const o of l.chunks) if (o.object) o.object.material = l.material;
     }
     const pts = new Points(geo, l.material);

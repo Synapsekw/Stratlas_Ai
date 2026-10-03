@@ -2,7 +2,7 @@ import type { AdapterContext, SceneHandle } from '@aio/engine';
 import { clearAdapters, getAdapter } from '@aio/engine';
 import type { Layer } from '@aio/schema';
 import type { Vector2 } from 'three';
-import { PerspectiveCamera, Points, Scene } from 'three';
+import { PerspectiveCamera, Plane, Points, Scene, Vector3 } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPointcloudAdapter, registerPointcloudAdapters } from './adapter';
 import { createPointcloudSettings } from './settings';
@@ -38,6 +38,8 @@ function fakeHandle() {
     holdContinuous: () => () => undefined,
     projectionReceivers: () => [],
     raycast: () => null,
+    clippingPlanes: [],
+    addRaycastProvider: () => () => undefined,
   } as unknown as SceneHandle;
   const frame = () => {
     for (const f of frames) f(16);
@@ -122,6 +124,38 @@ describe('pointcloud adapter', () => {
     expect(points).toBe(0);
     layer.dispose();
     expect(handle.scene.getObjectByName('PointCloudEDLComposite')).toBeFalsy();
+  });
+
+  it('joins SceneHandle.raycast while clouds are shown and shares the section planes', async () => {
+    const { handle, frame } = fakeHandle();
+    const providers: unknown[] = [];
+    const planes = [new Plane(new Vector3(1, 0, 0), 0)];
+    Object.assign(handle, {
+      clippingPlanes: planes,
+      addRaycastProvider: (p: unknown) => {
+        providers.push(p);
+        return () => providers.splice(providers.indexOf(p), 1);
+      },
+    });
+    const d = fakeDecoder();
+    const settings = createPointcloudSettings(null);
+    settings.getState().setEdl(false);
+    const adapter = createPointcloudAdapter({ decoder: () => d.decoder, settings });
+    const a = await adapter.create(kitLayer('f101'), { scene: handle, url: () => 'x' });
+    const b = await adapter.create(kitLayer('f102'), { scene: handle, url: () => 'y' });
+    expect(providers).toHaveLength(1);
+    frame();
+    d.finishAll();
+    await flush();
+    let material: unknown = null;
+    handle.scene.traverse((o) => {
+      if (o instanceof Points) material = o.material;
+    });
+    expect((material as { clippingPlanes: Plane[] } | null)?.clippingPlanes).toBe(planes);
+    a.dispose();
+    expect(providers).toHaveLength(1);
+    b.dispose();
+    expect(providers).toHaveLength(0);
   });
 
   it('puts points straight into the main scene with EDL off', async () => {

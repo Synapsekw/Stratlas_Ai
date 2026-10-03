@@ -23,6 +23,8 @@ function setup(clippingPlanes: Plane[] = []) {
       domElement: { clientWidth: 500, clientHeight: 500 },
     },
     projectId: 'p',
+    clippingPlanes,
+    addRaycastProvider: () => () => undefined,
     requestRender: () => undefined,
     onFrame: (cb: () => void) => {
       frames.add(cb);

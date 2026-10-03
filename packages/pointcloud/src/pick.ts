@@ -19,7 +19,7 @@ const world = new Vector3();
 
 /**
  * Nearest visible point to normalised device coordinates within `radiusPx` CSS pixels:
- * the front-most point inside the radius, skipping points cut by `renderer.clippingPlanes`.
+ * the front-most point inside the radius, skipping points cut by the shared section planes.
  */
 export function pickPoint(
   handle: SceneHandle,
@@ -36,8 +36,7 @@ export function pickPoint(
   const h = Math.max(1, el?.clientHeight ?? 1);
   const rx = (2 * radiusPx) / w;
   const ry = (2 * radiusPx) / h;
-  const planes: readonly Plane[] =
-    (handle.renderer as { clippingPlanes?: Plane[] }).clippingPlanes ?? [];
+  const planes: readonly Plane[] = handle.clippingPlanes;
 
   // ray through the cursor, to cull chunks whose bounding sphere is far from it
   const origin = cam.getWorldPosition(new Vector3());

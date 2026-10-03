@@ -1,6 +1,7 @@
 import { getAdapter, registerAdapter, type LayerAdapter, type SceneHandle } from '@aio/engine';
 import type { StoreApi } from 'zustand/vanilla';
 import { CloudManager, type ChunkState } from './manager';
+import { pickPoint } from './pick';
 import { parsePngCloudIndex, type PngCloudIndex } from './pngIndex';
 import { createWorkerPool, type Decoder } from './pool';
 import { pointcloudSettings, type PointcloudSettings } from './settings';
@@ -18,6 +19,7 @@ export interface PointcloudAdapterOptions {
 export const KIT_BASE_SIZE = 0.025;
 
 const managers = new WeakMap<SceneHandle, CloudManager>();
+const pickers = new WeakMap<SceneHandle, () => void>();
 
 /** The cloud manager of a scene, if it shows any cloud. Used by picking. */
 export function getCloudManager(handle: SceneHandle): CloudManager | undefined {
@@ -100,6 +102,11 @@ export function createPointcloudAdapter(
       if (!manager) {
         manager = new CloudManager(handle, makeDecoder, settings);
         managers.set(handle, manager);
+        // clouds take part in SceneHandle.raycast (cursor readout, annotation, measure)
+        pickers.set(
+          handle,
+          handle.addRaycastProvider((x, y) => pickPoint(handle, { x, y })),
+        );
       }
       const m = manager;
       m.addLayer(layer.id, chunks, baseSize);
@@ -113,6 +120,8 @@ export function createPointcloudAdapter(
           if (m.empty) {
             m.dispose();
             managers.delete(handle);
+            pickers.get(handle)?.();
+            pickers.delete(handle);
           }
         },
       };
