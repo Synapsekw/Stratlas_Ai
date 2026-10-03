@@ -35,12 +35,13 @@ The app reads projects and map packs from `E:\Stratlas Data` (change it in Setti
 4. Click a tank or building to select it (asset tag and area), Labels (L) to see area callouts.
 5. Map and Split: the plant on the offline street map with flight paths and the live footprint.
 6. Annotate (A): pin an issue on a tank or draw on a video frame; it is saved to the project.
+7. Plot plans: switch on Overall or Area plot plans under Maps and rasters; the drawings overlay the ortho.
+8. Panoramas: click a panorama marker to step inside it; drag to look, scroll to zoom, Esc returns to 3D.
 
 ## Known limits in M1
 
 - Position of the HCl tank on the map is approximate (the source has no survey position); flight start times are nominal, relative timing is exact.
 - Point clouds hide while a clip plays inside the tank (the cut-away view).
-- Al-Zour plot plans are misplaced (hidden by default; fix in progress) and panoramas have no viewer yet (in progress).
 - Al-Zour clip field of view is estimated (79 to 83 degrees), so projected video can look slightly doubled on tank rims.
 - No light theme yet; Arabic UI not yet.
 - Unsigned build; no auto-update.
