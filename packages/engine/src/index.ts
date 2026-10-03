@@ -20,6 +20,14 @@ export {
   type PosedPhoto,
 } from './adapters/photos';
 export { registerRasterFormat, type RasterFormatHandler } from './adapters/raster';
+export { createPanoramasAdapter } from './adapters/panoramas';
+export {
+  FULL_SPHERE,
+  coverageFromImage,
+  panoUv,
+  parsePanoIndex,
+  type PanoCoverage,
+} from './adapters/panoMath';
 export type { ViewPreset, CameraPose } from './camera/cameraMath';
 export { fitDistance, poseForPreset, frameBox, headingDeg } from './camera/cameraMath';
 export type { SectionState } from './tools/section';
