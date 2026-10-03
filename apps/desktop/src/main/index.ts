@@ -4,6 +4,7 @@ import { ipcEvents, type IpcChannel, type IpcEvent } from '@aio/schema';
 import { Entry } from '@napi-rs/keyring';
 import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, shell } from 'electron';
 import { existsSync } from 'node:fs';
+import { userInfo } from 'node:os';
 import { join } from 'node:path';
 import { validated, type Handler } from './ipc';
 import { createKeyVault } from './keys';
@@ -88,11 +89,22 @@ function handle<C extends IpcChannel>(channel: C, handler: Handler<C>): void {
   ipcMain.handle(channel, (_e, req: unknown) => run(req));
 }
 
+/** The OS account name, when the platform has one. */
+function osUser(): { user?: string } {
+  try {
+    const name = userInfo().username.trim();
+    return name ? { user: name } : {};
+  } catch {
+    return {};
+  }
+}
+
 function registerIpc(): void {
   handle('app:getInfo', () => ({
     name: brand.productName,
     version: app.getVersion(),
     platform: process.platform,
+    ...osUser(),
   }));
 
   handle('settings:get', () => settings.get());

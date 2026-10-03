@@ -9,7 +9,8 @@ import { MediaScreen } from './screens/Media';
 import { ProjectsScreen } from './screens/Projects';
 import { ReportsScreen } from './screens/Reports';
 import { SettingsScreen } from './screens/Settings';
-import { shell, useShell } from './shell';
+import { initAuthor } from './author';
+import { bridge, shell, useShell } from './shell';
 import { Palette } from './shell/Palette';
 import { Sidebar } from './shell/Sidebar';
 import { TitleBar } from './shell/TitleBar';
@@ -88,6 +89,7 @@ export function App() {
 
   useEffect(() => {
     void shell.getState().init();
+    void initAuthor(bridge);
     window.addEventListener('keydown', onKeyDown);
     const stopPlayback = startPlaybackLoop(
       workspace,

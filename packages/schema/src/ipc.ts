@@ -58,7 +58,13 @@ export const ChatMessage = z.object({
 export const ipc = {
   'app:getInfo': {
     request: Empty,
-    response: z.object({ name: z.string(), version: z.string(), platform: z.string() }),
+    response: z.object({
+      name: z.string(),
+      version: z.string(),
+      platform: z.string(),
+      /** OS account name, the default author of new issues. */
+      user: z.string().optional(),
+    }),
   },
   'library:list': { request: Empty, response: z.array(LibraryEntry) },
   'library:add': {

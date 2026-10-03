@@ -3,6 +3,7 @@ import type { AiProvider, AiTask } from '@aio/schema';
 import { formatBytes, Icon, SevChip, Switch, type IconName } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useState } from 'react';
+import { setAuthorName, useAuthor } from '../author';
 import { bridge, shell, useCall, useShell } from '../shell';
 
 type Page = 'ai' | 'privacy' | 'data' | 'maps' | 'severity';
@@ -335,27 +336,56 @@ function Privacy() {
   );
 }
 
+function AuthorName() {
+  const { override, osUser } = useAuthor();
+  const [value, setValue] = useState(override);
+  return (
+    <div className="sblock">
+      <h2>Your name on issues</h2>
+      <p className="help">
+        New issues and their audit trail carry this name.
+        {osUser ? ` Leave it empty to use your account name, ${osUser}.` : ''}
+      </p>
+      <input
+        className="input"
+        aria-label="Your name on issues"
+        style={{ width: '100%', maxWidth: 320 }}
+        value={value}
+        placeholder={osUser || 'Your name'}
+        maxLength={80}
+        onChange={(e) => {
+          setValue(e.target.value);
+          setAuthorName(e.target.value);
+        }}
+      />
+    </div>
+  );
+}
+
 function DataFolder() {
   const dataRoot = useShell((s) => s.settings.dataRoot);
   return (
-    <div className="sblock">
-      <h2>Data folder</h2>
-      <p className="help">
-        Projects live in <span className="mono">projects\</span> and map packs in{' '}
-        <span className="mono">packs\</span> inside this folder. Changing it reloads the library.
-      </p>
-      <div className="path-row">
-        <Icon name="layers" size={14} className="faint" />
-        <span className="mono">{dataRoot || 'Not set'}</span>
-        <button
-          type="button"
-          className="btn sm"
-          onClick={() => void shell.getState().chooseDataRoot()}
-        >
-          Change folder
-        </button>
+    <>
+      <AuthorName />
+      <div className="sblock">
+        <h2>Data folder</h2>
+        <p className="help">
+          Projects live in <span className="mono">projects\</span> and map packs in{' '}
+          <span className="mono">packs\</span> inside this folder. Changing it reloads the library.
+        </p>
+        <div className="path-row">
+          <Icon name="layers" size={14} className="faint" />
+          <span className="mono">{dataRoot || 'Not set'}</span>
+          <button
+            type="button"
+            className="btn sm"
+            onClick={() => void shell.getState().chooseDataRoot()}
+          >
+            Change folder
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
