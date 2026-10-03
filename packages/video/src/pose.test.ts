@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PoseSample } from '@aio/schema';
-import { interpolatePose } from './index';
+import { interpolatePose } from './pose';
 
 const id: [number, number, number, number] = [0, 0, 0, 1];
 const s: PoseSample[] = [
