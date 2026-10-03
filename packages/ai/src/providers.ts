@@ -8,7 +8,7 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogle } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
 import type { LanguageModel } from 'ai';
-import { PROVIDER_LABELS } from './routing';
+import { PROVIDER_LABELS } from './routes';
 
 export interface ModelProvider {
   /** Matches the `provider` of a model route. */

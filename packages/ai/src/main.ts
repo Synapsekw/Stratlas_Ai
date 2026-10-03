@@ -21,7 +21,7 @@ import {
 import { estimateCostUsd } from './pricing';
 import { contextBlock, systemPrompt } from './prompt';
 import { createProviderRegistry, type ProviderRegistry } from './providers';
-import { defaultRoutes, missingKeyMessage, routeFor, type ModelRoute } from './routing';
+import { defaultRoutes, missingKeyMessage, routeFor, type ModelRoute } from './routes';
 import { riskOf, toolsForWindow } from './tools';
 
 export { createProviderRegistry, builtInProviders } from './providers';

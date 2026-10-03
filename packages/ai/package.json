@@ -6,7 +6,8 @@
   "description": "AI providers (Anthropic, OpenAI, Gemini), model routing, agent loop, tool registry.",
   "exports": {
     ".": "./src/index.ts",
-    "./main": "./src/main.ts"
+    "./main": "./src/main.ts",
+    "./routes": "./src/routes.ts"
   },
   "scripts": {
     "test": "vitest run"

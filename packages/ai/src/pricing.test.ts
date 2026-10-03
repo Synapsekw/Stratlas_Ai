@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { estimateCostUsd, formatMeter } from './pricing';
-import { missingKeyMessage, modelLabel } from './routing';
+import { missingKeyMessage, modelLabel } from './routes';
 
 describe('cost estimate', () => {
   it('prices input and output per million tokens', () => {

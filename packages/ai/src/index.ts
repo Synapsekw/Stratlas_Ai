@@ -6,5 +6,5 @@ export {
   PROVIDERS,
   routeFor,
   type ModelRoute,
-} from './routing';
+} from './routes';
 export { AgentPanel, type AgentPanelProps } from './AgentPanel';
