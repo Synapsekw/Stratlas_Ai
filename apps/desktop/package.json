@@ -11,9 +11,16 @@
     "preview": "electron-vite preview",
     "test": "vitest run",
     "test:e2e": "electron-vite build && playwright test",
-    "dist:win": "electron-vite build && electron-builder --win --config electron-builder.yml"
+    "dist:win": "electron-vite build && node ../../tools/release/dist.mjs --win",
+    "dist:config": "node ../../tools/release/brand-config.mjs --print",
+    "dist:win:store": "electron-vite build && node ../../tools/release/dist.mjs --win appx",
+    "dist:mac": "electron-vite build && node ../../tools/release/dist.mjs --mac"
   },
   "dependencies": {
+    "@napi-rs/keyring": "^2.1.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
     "@aio/ai": "workspace:*",
     "@aio/annotate": "workspace:*",
     "@aio/brand": "workspace:*",
@@ -25,8 +32,6 @@
     "@aio/schema": "workspace:*",
     "@aio/ui": "workspace:*",
     "@aio/video": "workspace:*",
-    "@aio/workspace": "workspace:*",
-    "@napi-rs/keyring": "^2.1.0",
-    "zod": "^4.6.5"
+    "@aio/workspace": "workspace:*"
   }
 }
