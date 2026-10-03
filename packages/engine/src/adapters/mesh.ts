@@ -66,6 +66,8 @@ export const meshAdapter: LayerAdapter<'mesh'> = {
     const group = new Group();
     group.name = `layer:${layer.id}`;
     group.userData.aioLayer = layer.id;
+    // annotation sightings and back-projection name their layer from the nearest layerId
+    group.userData.layerId = layer.id;
     group.matrixAutoUpdate = false;
     group.matrix.copy(layerMatrix(layer.transform));
 

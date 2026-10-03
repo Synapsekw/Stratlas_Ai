@@ -1,7 +1,15 @@
 // @vitest-environment jsdom
 import type { Layer, ProjectManifest } from '@aio/schema';
 import { createWorkspace, type OpenProject } from '@aio/workspace';
-import { BoxGeometry, Group, Mesh, MeshStandardMaterial, type WebGLRenderer } from 'three';
+import {
+  BoxGeometry,
+  Group,
+  Mesh,
+  MeshStandardMaterial,
+  Points,
+  Vector3,
+  type WebGLRenderer,
+} from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LayerAdapter, LayerHandle } from '../types';
 import { Stage } from './Stage';
@@ -189,6 +197,46 @@ describe('Stage', () => {
     expect(stage.raycast(0, 0)?.object.type).toBe('Mesh');
     const ground = stage.raycast(0, -0.9);
     expect(ground?.point.y).toBeCloseTo(0, 6);
+    stage.dispose();
+  });
+
+  it('casts world rays against content, ignoring section planes, then the ground', async () => {
+    const { stage, store, resize } = make();
+    resize(800, 600);
+    store.getState().openProject(project([meshLayer('plant')]));
+    await flush();
+    stage.setSection({ enabled: true, bearingDeg: 0 });
+    const hit = stage.raycastRay(new Vector3(0, 5, 50), new Vector3(0, 0, -1));
+    expect(hit?.object.type).toBe('Mesh');
+    expect(hit?.point.z).toBeCloseTo(5);
+    const ground = stage.raycastRay(new Vector3(30, 10, 30), new Vector3(0, -1, 0));
+    expect(ground?.point.y).toBeCloseTo(0, 6);
+    expect(stage.raycastRay(new Vector3(30, 10, 30), new Vector3(0, 1, 0))).toBeNull();
+    stage.dispose();
+  });
+
+  it('keeps the nearest of mesh hits and raycast providers', async () => {
+    const { stage, store, resize } = make();
+    resize(800, 600);
+    store.getState().openProject(project([meshLayer('plant')]));
+    await flush();
+    const mesh = stage.raycast(0, 0);
+    expect(mesh).not.toBeNull();
+    const near = new Points();
+    const off = stage.addRaycastProvider(() => ({
+      distance: (mesh?.distance ?? 0) - 1,
+      point: new Vector3(),
+      object: near,
+    }));
+    expect(stage.raycast(0, 0)?.object).toBe(near);
+    off();
+    expect(stage.raycast(0, 0)?.object.type).toBe('Mesh');
+    stage.addRaycastProvider(() => ({
+      distance: (mesh?.distance ?? 0) + 1,
+      point: new Vector3(),
+      object: near,
+    }));
+    expect(stage.raycast(0, 0)?.object.type).toBe('Mesh');
     stage.dispose();
   });
 

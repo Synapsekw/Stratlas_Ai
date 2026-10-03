@@ -6,6 +6,7 @@ import type {
   PerspectiveCamera,
   Plane,
   Scene,
+  Vector3,
   WebGLRenderer,
 } from 'three';
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -42,6 +43,17 @@ export interface SceneHandle {
   /** Raycast from normalised device coordinates against meshes, ground and point clouds. */
   raycast(ndcX: number, ndcY: number): Intersection | null;
   /**
+   * Cast a world-space ray (camera poses of photos and video frames) against visible content,
+   * then the ground plane y = 0. Section planes are ignored: the camera saw the real asset.
+   * Mesh hits name their layer through `userData.layerId` on the layer root.
+   */
+  raycastRay(origin: Vector3, dir: Vector3): Intersection | null;
+  /**
+   * Add a picker that `raycast` consults besides meshes (point clouds); the nearest hit wins.
+   * Returns an unsubscribe function.
+   */
+  addRaycastProvider(provider: RaycastProvider): () => void;
+  /**
    * Section planes shared by every layer. Assign this exact array to `material.clippingPlanes`
    * (and set `clipShadows`) so the section tool cuts meshes and clouds together. The engine
    * mutates it in place; three.js recompiles when its length changes.
@@ -52,6 +64,9 @@ export interface SceneHandle {
   /** Register a mesh that should receive projected video. */
   addProjectionReceiver(mesh: Mesh): () => void;
 }
+
+/** Extra content for `SceneHandle.raycast`, e.g. point picking within a few pixels. */
+export type RaycastProvider = (ndcX: number, ndcY: number) => Intersection | null;
 
 export type StageTool = 'select' | 'measure' | 'section';
 

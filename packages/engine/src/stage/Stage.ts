@@ -37,7 +37,7 @@ import { Overlay, type CalloutSpec } from '../overlay/Overlay';
 import { getAdapter as registryAdapter } from '../registry';
 import { MeasureTool } from '../tools/measure';
 import { DEFAULT_SECTION, applySection, type SectionState } from '../tools/section';
-import type { EngineStage, LayerAdapter, StageTool } from '../types';
+import type { EngineStage, LayerAdapter, RaycastProvider, StageTool } from '../types';
 import { Environment } from './environment';
 import { Highlighter } from './highlight';
 
@@ -118,6 +118,7 @@ export class Stage implements EngineStage {
   private readonly stats = new FrameStats(120);
   private readonly targets = new Map<Object3D, string>();
   private readonly receivers = new Set<Mesh>();
+  private readonly providers = new Set<RaycastProvider>();
   private readonly frameCbs = new Set<(dtMs: number) => void>();
   private readonly holders = new Map<symbol, string>();
   private readonly stateCbs = new Set<() => void>();
@@ -277,10 +278,40 @@ export class Stage implements EngineStage {
   }
 
   raycast(ndcX: number, ndcY: number): Intersection | null {
-    const hit = this.intersect(ndcX, ndcY)[0];
+    let hit: Intersection | null = this.intersect(ndcX, ndcY)[0] ?? null;
+    for (const provider of this.providers) {
+      const h = provider(ndcX, ndcY);
+      if (h && (!hit || h.distance < hit.distance)) hit = h;
+    }
     if (hit) return hit;
     // the ground: a horizontal plane at y = 0
     this.raycaster.setFromCamera(this.ndc.set(ndcX, ndcY), this.camera);
+    return this.groundHit();
+  }
+
+  raycastRay(origin: Vector3, dir: Vector3): Intersection | null {
+    this.raycaster.set(origin, dir.clone().normalize());
+    this.raycaster.layers.mask = 1 | (1 << PICK_LAYER);
+    const hits: Intersection[] = [];
+    for (const [root] of this.targets) {
+      if (!visibleChain(root)) continue;
+      this.raycaster.intersectObject(root, true, hits);
+    }
+    const hit = hits
+      .filter((h) => visibleChain(h.object))
+      .sort((a, b) => a.distance - b.distance)[0];
+    return hit ?? this.groundHit();
+  }
+
+  addRaycastProvider(provider: RaycastProvider): () => void {
+    this.providers.add(provider);
+    return () => {
+      this.providers.delete(provider);
+    };
+  }
+
+  /** The current raycaster ray against the ground plane y = 0. */
+  private groundHit(): Intersection | null {
     const p = this.raycaster.ray.intersectPlane(new Plane(new Vector3(0, 1, 0), 0), new Vector3());
     if (!p) return null;
     return { distance: this.raycaster.ray.origin.distanceTo(p), point: p, object: this.env.ground };
@@ -801,6 +832,7 @@ export class Stage implements EngineStage {
     this.renderer.dispose();
     this.canvas.remove();
     this.frameCbs.clear();
+    this.providers.clear();
     this.holders.clear();
     this.stateCbs.clear();
   }
