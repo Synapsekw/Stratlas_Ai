@@ -29,6 +29,28 @@ gets an `IMPORT-REPORT.md` with counts, sizes, the frame check and warnings.
   N x uint8 intensity (planar, as the Asset Inspection Kit and the design fixture `cloud.bin`).
 - `png-packed` cloud index (`aio.pngcloud/1`): each chunk PNG (RGB) holds a byte stream of 9 planes
   of n bytes: x lo, x hi, y lo, y hi, z lo, z hi, r, g, b. Position in the local frame
-  `= bounds.min + u / 65535 * (bounds.max - bounds.min)`; the bounds are a cube, so this equals the
-  Al-Zour viewer rule `o + q * u` (both are given per chunk; `aabb` is the tight box).
-- Flight files: `aio.flight/1`, optional top-level `name`.
+  `= quant.offset + quant.scale * u` (the Al-Zour viewer rule `o + q * u`); chunk `bounds` is the
+  tight box, `lod` 0 the overview (see `packages/pointcloud/README.md`).
+- Flight files: `aio.flight/1`, optional top-level `name`. Clips cut from one drone flight share
+  one file (same `src` and `startUtcMs`) and differ by `offsetMs`, so the app groups them.
+- `kit-pyramid` rasters (`aio.tiles/1`): every level spans the same `corners`, tiles are square
+  and edge tiles are padded (top-left anchored) so all tiles of a level have one ground size.
+
+### Al-Zour (plant twin artifact)
+
+Source: the staged artifact (`INVENTORY.md`, `blob-map.json`, published files plus asset-store blobs
+under `_blob/`, `plant.glb` decoded from `model_glb_zip.b64.txt`). `src/import/alzour.ts`:
+
+- Frame: rigid plant grid to UTM-39 fit from the GLB node extras (`plant.ts`, `fit.ts`), origin at
+  plant E 1300 / N 450, height 100 on the plant datum (local `y = EL - 100`). The GLB is copied and
+  the turn baked into the mesh `transform`; tags from the asset register with the area group label.
+- Ortho: `kit-pyramid` of the 32 cm (z0) and 8 cm (z2) tiles; missing fine tiles are cut from z0.
+  No-data keeps alpha 0 with the sea colour under it (the 3D raster adapter draws tiles opaque).
+- Plot plans: overall plan as a two-level pyramid, area plans as `image` rasters; white line art
+  re-coloured red. Street map: the Mapbox mosaics placed on one canvas (`image` raster).
+- Point cloud: every `pc.json` chunk turned into the local frame and re-quantised (`pngcloud.ts`).
+- Clips: one `aio.flight/1` per drone flight; lens pinhole 83 deg (16:9 clips narrower).
+- Photos and panoramas with poses; wide panorama coverage in `panoramas/panoramas.json`.
+- Checks in `IMPORT-REPORT.md`: frame fit residuals, pose round trip, view-axis ground hits and
+  assets in frame for every clip, LNG tanks in frame for the two design clips, and a comparison
+  with the design clip paths when `docs/design/assets/alzour` is present.
