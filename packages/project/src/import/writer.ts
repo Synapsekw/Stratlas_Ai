@@ -1,6 +1,15 @@
 import { createHash } from 'node:crypto';
 import { copyFile, mkdir, rename, stat, utimes } from 'node:fs/promises';
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 
 export type WriteResult = 'written' | 'skipped';
@@ -80,6 +89,33 @@ export class PackageWriter {
     await make(dst);
     if (!existsSync(dst)) throw new Error(`Derive step did not produce ${rel}`);
     return this.done(rel, 'written');
+  }
+
+  /**
+   * Delete files under `dirRel` that this run did not write or skip (outputs of an earlier import
+   * that changed format or name), then empty folders. Returns the removed paths.
+   */
+  prune(dirRel: string): string[] {
+    const base = dirRel.replace(/\\/g, '/').replace(/\/$/, '');
+    const removed: string[] = [];
+    const walk = (rel: string): boolean => {
+      const abs = this.abs(rel);
+      let empty = true;
+      for (const e of readdirSync(abs, { withFileTypes: true })) {
+        const child = `${rel}/${e.name}`;
+        if (e.isDirectory()) {
+          if (walk(child)) rmSync(this.abs(child), { recursive: true, force: true });
+          else empty = false;
+        } else if (this.files.has(child)) empty = false;
+        else {
+          rmSync(this.abs(child), { force: true });
+          removed.push(child);
+        }
+      }
+      return empty;
+    };
+    if (existsSync(this.abs(base))) walk(base);
+    return removed;
   }
 }
 

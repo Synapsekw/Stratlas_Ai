@@ -1,6 +1,8 @@
 import { execFile } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { extname } from 'node:path';
 import { promisify } from 'node:util';
+import { encodePng, type RawImage } from './png';
 
 const run = promisify(execFile);
 const FFMPEG = process.env.FFMPEG ?? 'ffmpeg';
@@ -87,28 +89,134 @@ export async function composeImage(o: ComposeOptions): Promise<void> {
   await run(FFMPEG, args, { maxBuffer: 1 << 24 });
 }
 
+/** Where a line art raster gets its transparency from. */
+export type LineArtBackground = 'alpha' | 'black' | 'white';
+
+export interface LineArtOptions {
+  /**
+   * Colour for monochrome line art (white, grey or black lines), which would otherwise vanish on a
+   * pale or dark ground. Coloured line art keeps its own colours.
+   */
+  tint?: readonly [number, number, number];
+}
+
+/** Share of pixels that must be see-through for an image to count as already carrying alpha. */
+const ALPHA_SHARE = 0.005;
+/** Largest channel spread (0..255) of a line pixel that still counts as grey. */
+const GREY_SPREAD = 24;
+
 /**
- * Line art drawn white on transparent (the plant twin plot plans, which the viewer tinted with a
- * material colour) re-coloured to `rgb` and padded to `width` x `height`: line pixels take the
- * colour, fully transparent pixels become black, alpha is kept. Shown with alpha blending the
- * result matches the viewer; drawn opaque it reads as coloured lines on black.
+ * Background of a line art raster: its own alpha when enough pixels are see-through, else black
+ * or white by the mean luminance of the border pixels (drawings are framed by their background).
  */
-export async function tintLineArt(
+export function lineArtBackground(img: RawImage): LineArtBackground {
+  const { width: w, height: h, channels: ch, data } = img;
+  if (ch === 4) {
+    let clear = 0;
+    for (let i = 3; i < data.length; i += 4) if ((data[i] ?? 255) < 250) clear++;
+    if (clear / (w * h) > ALPHA_SHARE) return 'alpha';
+  }
+  let sum = 0;
+  let n = 0;
+  const add = (x: number, y: number) => {
+    const o = (y * w + x) * ch;
+    sum += ((data[o] ?? 0) + (data[o + 1] ?? 0) + (data[o + 2] ?? 0)) / 3;
+    n++;
+  };
+  for (let x = 0; x < w; x++) {
+    add(x, 0);
+    add(x, h - 1);
+  }
+  for (let y = 1; y < h - 1; y++) {
+    add(0, y);
+    add(w - 1, y);
+  }
+  return n && sum / n > 127.5 ? 'white' : 'black';
+}
+
+/**
+ * Line art with a transparent background, RGBA. The background (the image's own alpha, or a black
+ * or white ground) becomes alpha 0 and line pixels keep their colour, un-mixed from the ground so
+ * anti-aliased edges fade instead of keeping a dark or pale fringe. Monochrome line art takes
+ * `tint`. Pixels under alpha 0 carry the line colour, so filtering never bleeds the old ground in.
+ */
+export function lineArtToAlpha(img: RawImage, opts: LineArtOptions = {}): RawImage {
+  const { width: w, height: h, channels: ch, data } = img;
+  const bg = lineArtBackground(img);
+  const out = new Uint8Array(w * h * 4);
+  let coloured = false;
+  for (let p = 0; p < w * h; p++) {
+    const i = p * ch;
+    let r = data[i] ?? 0;
+    let g = data[i + 1] ?? 0;
+    let b = data[i + 2] ?? 0;
+    let a: number;
+    if (bg === 'alpha') a = ch === 4 ? (data[i + 3] ?? 255) : 255;
+    else if (bg === 'black') {
+      a = Math.max(r, g, b);
+      if (a > 0) {
+        r = Math.round((r * 255) / a);
+        g = Math.round((g * 255) / a);
+        b = Math.round((b * 255) / a);
+      }
+    } else {
+      a = 255 - Math.min(r, g, b);
+      if (a > 0) {
+        r = Math.round(255 - ((255 - r) * 255) / a);
+        g = Math.round(255 - ((255 - g) * 255) / a);
+        b = Math.round(255 - ((255 - b) * 255) / a);
+      }
+    }
+    if (a > 0 && Math.max(r, g, b) - Math.min(r, g, b) > GREY_SPREAD) coloured = true;
+    const o = p * 4;
+    out[o] = r;
+    out[o + 1] = g;
+    out[o + 2] = b;
+    out[o + 3] = a;
+  }
+  const tint = !coloured && opts.tint ? opts.tint : null;
+  if (tint) {
+    for (let o = 0; o < out.length; o += 4) out.set(tint, o);
+  } else {
+    // under alpha 0 the colour of the nearest line pixel on the row (else the last one seen)
+    let last: [number, number, number] = [0, 0, 0];
+    for (let o = 0; o < out.length; o += 4) {
+      if ((out[o + 3] ?? 0) > 0) last = [out[o] ?? 0, out[o + 1] ?? 0, out[o + 2] ?? 0];
+      else out.set(last, o);
+    }
+  }
+  return { width: w, height: h, channels: 4, data: out };
+}
+
+/** Decode any image ffmpeg reads to 8-bit RGBA, padded (top-left anchored, transparent). */
+export async function readRgba(
+  src: string,
+  width: number,
+  height: number,
+  padTo?: { width: number; height: number },
+): Promise<RawImage> {
+  const W = padTo?.width ?? width;
+  const H = padTo?.height ?? height;
+  const pad = W !== width || H !== height ? `,pad=${W}:${H}:0:0:color=black@0.0` : '';
+  const args = ['-hide_banner', '-loglevel', 'error', '-i', src, '-vf', `format=rgba${pad}`];
+  args.push('-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-');
+  const { stdout } = await run(FFMPEG, args, { encoding: 'buffer', maxBuffer: W * H * 4 + 1024 });
+  if (stdout.length !== W * H * 4)
+    throw new Error(`readRgba: ${src} decoded to ${stdout.length} bytes, expected ${W * H * 4}`);
+  return { width: W, height: H, channels: 4, data: new Uint8Array(stdout) };
+}
+
+/**
+ * Line art raster (plot plan tile or sheet) to a PNG with alpha, see {@link lineArtToAlpha},
+ * optionally padded to `padTo` (top-left anchored) so edge tiles keep the full tile size.
+ */
+export async function writeLineArtPng(
   src: string,
   out: string,
-  rgb: readonly [number, number, number],
-  width?: number,
-  height?: number,
+  size: { width: number; height: number },
+  opts: LineArtOptions & { padTo?: { width: number; height: number } } = {},
 ): Promise<void> {
-  const ext = extname(out).toLowerCase();
-  const [r, g, b] = rgb;
-  const pad = width && height ? `,pad=${width}:${height}:0:0:color=black@0.0` : '';
-  const vf =
-    `format=rgba${pad},geq=r='if(gt(alpha(X,Y),0),${r},0)':g='if(gt(alpha(X,Y),0),${g},0)':` +
-    `b='if(gt(alpha(X,Y),0),${b},0)':a='alpha(X,Y)'`;
-  const args = ['-hide_banner', '-loglevel', 'error', '-y', '-i', src, '-vf', vf, '-frames:v', '1'];
-  if (ext === '.webp') args.push('-c:v', 'libwebp', '-quality', '90', '-pix_fmt', 'yuva420p');
-  else if (ext !== '.png') throw new Error(`tintLineArt: unsupported output ${out}`);
-  args.push(out);
-  await run(FFMPEG, args, { maxBuffer: 1 << 24 });
+  if (extname(out).toLowerCase() !== '.png') throw new Error(`writeLineArtPng: ${out} is not .png`);
+  const img = await readRgba(src, size.width, size.height, opts.padTo);
+  writeFileSync(out, encodePng(lineArtToAlpha(img, opts)));
 }

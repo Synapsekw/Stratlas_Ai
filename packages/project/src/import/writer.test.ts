@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -79,5 +79,26 @@ describe('imageSize', () => {
     v.setUint32(16, 4096);
     v.setUint32(20, 2048);
     expect(imageSize(buf)).toEqual({ width: 4096, height: 2048 });
+  });
+});
+
+describe('PackageWriter.prune', () => {
+  it('removes files under a folder that the run did not write, and empty folders', () => {
+    const w = new PackageWriter(join(dir, 'out'));
+    w.write('rasters/plotplan/0/0_0.png', 'new');
+    w.write('rasters/keep.json', '{}');
+    const old = new PackageWriter(join(dir, 'out'));
+    old.write('rasters/plotplan/0/0_0.webp', 'old');
+    old.write('rasters/area-plans-west.png', 'old');
+    old.write('rasters/old/1/x.webp', 'old');
+    old.write('video/a.mp4', 'outside');
+    expect(w.prune('rasters').sort()).toEqual([
+      'rasters/area-plans-west.png',
+      'rasters/old/1/x.webp',
+      'rasters/plotplan/0/0_0.webp',
+    ]);
+    expect(readFileSync(join(dir, 'out/rasters/plotplan/0/0_0.png'), 'utf8')).toBe('new');
+    expect(readFileSync(join(dir, 'out/video/a.mp4'), 'utf8')).toBe('outside');
+    expect(existsSync(join(dir, 'out/rasters/old'))).toBe(false);
   });
 });
