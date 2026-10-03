@@ -11,20 +11,12 @@ import { ProjectsScreen } from './screens/Projects';
 import { ReportsScreen } from './screens/Reports';
 import { SettingsScreen } from './screens/Settings';
 import { initAuthor } from './author';
+import { spaceIsPlayPause } from './keys';
 import { bridge, shell, useShell } from './shell';
 import { Palette } from './shell/Palette';
 import { Sidebar } from './shell/Sidebar';
 import { TitleBar } from './shell/TitleBar';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
-
-function isTyping(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return (
-    target.isContentEditable ||
-    ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) ||
-    target.closest('[role="dialog"]') !== null
-  );
-}
 
 function onKeyDown(e: KeyboardEvent) {
   const s = shell.getState();
@@ -39,8 +31,7 @@ function onKeyDown(e: KeyboardEvent) {
   } else if (mod && key === 'b') {
     e.preventDefault();
     void s.toggleSidebar();
-  } else if (key === ' ' && !mod && !isTyping(e.target) && s.screen === 'scene') {
-    if (e.target instanceof HTMLButtonElement) return;
+  } else if (key === ' ' && !mod && s.screen === 'scene' && spaceIsPlayPause(e.target)) {
     const ws = workspace.getState();
     if (!ws.project) return;
     e.preventDefault();
