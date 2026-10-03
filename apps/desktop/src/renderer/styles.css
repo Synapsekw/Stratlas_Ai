@@ -1498,6 +1498,61 @@ svg.flip {
   font-size: 11px;
   color: var(--fg-3);
 }
+/* flights: one card per flight log, its clips below */
+.m-flight {
+  position: relative;
+}
+.m-flight-main {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  min-width: 0;
+}
+.m-poster {
+  position: relative;
+}
+.m-badge {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--scrim);
+  color: var(--ov);
+  font-size: 11px;
+}
+.m-live {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--acc);
+  color: var(--acc-ink);
+  font: 600 10.5px / 1.3 var(--f-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.m-play {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  background: var(--scrim);
+  border-color: var(--line);
+  opacity: 0;
+  transition: opacity 140ms var(--ease);
+}
+.m-flight:hover .m-play,
+.m-play:focus-visible {
+  opacity: 1;
+}
+.m-grid.flights {
+  grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
+  gap: 10px;
+}
+.m-grid.clips {
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+}
 .media-viewer {
   display: flex;
   flex-direction: column;

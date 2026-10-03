@@ -368,6 +368,16 @@ export function Stage() {
   useIssueOverlay();
   useCutaway(engine);
 
+  // A photo picked in 3D (or from an issue's sightings) opens in the Media photo viewer.
+  useEffect(
+    () =>
+      workspace.subscribe((s, prev) => {
+        if (s.selection !== prev.selection && s.selection?.kind === 'photo')
+          shell.getState().go('media');
+      }),
+    [],
+  );
+
   // Leaving and returning to Scene keeps the camera, per project.
   useEffect(() => {
     if (!engine || !projectId) return;
