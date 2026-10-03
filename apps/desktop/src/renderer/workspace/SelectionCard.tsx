@@ -277,20 +277,23 @@ export function SelectionCard() {
           </div>
         </div>
         <dl className="kv">
-          <dt>Site frame</dt>
-          <dd className="mono">{card.position ? formatLocal(card.position) : 'No position'}</dd>
-          <dt>{crsLabel(m.crs).split(' · ')[0]}</dt>
-          <dd className="mono">
-            {project3 ? (
-              <>
+          {card.position && project3 ? (
+            <>
+              <dt>Site frame</dt>
+              <dd className="mono">{formatLocal(card.position)}</dd>
+              <dt>{crsLabel(m.crs).split(' · ')[0]}</dt>
+              <dd className="mono">
                 {formatEastNorth(project3[0], project3[1])}
                 <br />
                 EL {project3[2].toFixed(2)} m
-              </>
-            ) : (
-              'No position'
-            )}
-          </dd>
+              </dd>
+            </>
+          ) : (
+            <>
+              <dt>Position</dt>
+              <dd className="faint">Not known for this selection</dd>
+            </>
+          )}
           {card.rows.map(([k, v]) => (
             <div className="kv-row" key={k}>
               <dt>{k}</dt>

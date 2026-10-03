@@ -41,6 +41,25 @@ describe('buildTimelineModel', () => {
     expect(buildTimelineModel(manifest, [issue], {}).issues).toEqual([]);
   });
 
+  it('places issues seen on a timed photo at the photo time', () => {
+    const issue = mockIssue({
+      severity: 3,
+      sightings: [
+        { on: 'image', layer: 'findings', photo: 'p2', geom: { type: 'point', x: 1, y: 1 } },
+        { on: 'image', layer: 'findings', photo: 'p1', geom: { type: 'point', x: 1, y: 1 } },
+      ],
+    });
+    expect(buildTimelineModel(manifest, [issue], {}).issues).toEqual([
+      {
+        issueId: 'i1',
+        code: 'F01',
+        tMs: Date.parse('2023-02-21T12:30:00Z'),
+        color: '#e3c44f',
+        severity: 3,
+      },
+    ]);
+  });
+
   it('adds timed photos and captures', () => {
     const m = buildTimelineModel(manifest, [], {});
     expect(m.photos).toEqual([

@@ -321,9 +321,9 @@ export function Timeline(props: TimelineProps) {
                         onClip(c.layerId);
                       }}
                     >
-                      {w > 6 ? c.name : ''}
+                      {(w / 100) * width > 96 ? c.name : ''}
                     </button>
-                    {on && w <= 6 && (
+                    {on && (w / 100) * width <= 96 && (
                       <span className="seg-lbl" style={{ left: `calc(${left + w}% + 4px)` }}>
                         {c.name}
                       </span>
@@ -334,7 +334,7 @@ export function Timeline(props: TimelineProps) {
             </div>
             <div className="trk">
               {model.issues.length === 0 && (
-                <span className="empty">No issues with a video sighting</span>
+                <span className="empty">No issues seen in clips or timed photos</span>
               )}
               {model.issues.map((m) => (
                 <button

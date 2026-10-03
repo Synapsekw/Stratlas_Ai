@@ -16,17 +16,27 @@ export interface DatasetTreeProps {
 }
 
 const DEFAULT_OPEN: TreeGroupKind[] = ['models', 'maps', 'video', 'annotations'];
+/** Rows shown per group before a "more" row; selected and active rows always show. */
+const ROW_LIMIT = 8;
 
 /** Datasets of the open project grouped by kind, with counts, visibility and selection. */
 export function DatasetTree(props: DatasetTreeProps) {
   const { groups, hidden, selectedId, activeClip, collapsed } = props;
   const [open, setOpen] = useState<Partial<Record<TreeGroupKind, boolean>>>({});
   const isOpen = (k: TreeGroupKind) => open[k] ?? DEFAULT_OPEN.includes(k);
+  const [showAll, setShowAll] = useState<Partial<Record<TreeGroupKind, boolean>>>({});
 
   return (
     <div className="tree" role="tree" aria-label="Datasets">
       {groups.map((g) => {
         const expanded = !collapsed && isOpen(g.kind);
+        const all = showAll[g.kind] === true || g.items.length <= ROW_LIMIT + 1;
+        const rows = all
+          ? g.items
+          : g.items.filter(
+              (it, i) => i < ROW_LIMIT || it.id === selectedId || it.layerId === activeClip,
+            );
+        const hiddenRows = g.items.length - rows.length;
         return (
           <div key={g.kind} role="treeitem" aria-expanded={expanded} aria-selected={false}>
             <button
@@ -50,7 +60,7 @@ export function DatasetTree(props: DatasetTreeProps) {
             </button>
             {expanded && (
               <div className="titems" role="group">
-                {g.items.map((it) => {
+                {rows.map((it) => {
                   const off = it.layerId ? hidden[it.layerId] === true : false;
                   const sel = it.id === selectedId;
                   return (
@@ -96,6 +106,19 @@ export function DatasetTree(props: DatasetTreeProps) {
                     </div>
                   );
                 })}
+                {(hiddenRows > 0 || (showAll[g.kind] && g.items.length > ROW_LIMIT + 1)) && (
+                  <button
+                    type="button"
+                    className="titem more"
+                    onClick={() => {
+                      setShowAll((s) => ({ ...s, [g.kind]: !s[g.kind] }));
+                    }}
+                  >
+                    <span className="tn">
+                      {hiddenRows > 0 ? `${String(hiddenRows)} more` : 'Show fewer'}
+                    </span>
+                  </button>
+                )}
               </div>
             )}
           </div>

@@ -231,7 +231,6 @@ button.chip-status:hover {
 }
 .sb-sec {
   padding: 8px;
-  width: var(--sb-w);
 }
 .app[data-sb='collapsed'] .sb-sec,
 .app[data-sb='collapsed'] .sb-foot {
@@ -635,6 +634,8 @@ button.chip-status:hover {
 }
 .pc-size {
   margin-left: auto;
+  flex: none;
+  white-space: nowrap;
   font-size: 11px;
   color: var(--fg-2);
 }

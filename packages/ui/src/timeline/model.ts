@@ -84,22 +84,30 @@ export function buildTimelineModel(
   clips.sort((a, b) => a.startMs - b.startMs);
 
   const clipStart = new Map(clips.map((c) => [c.layerId, c.startMs]));
-  const marks: IssueMark[] = [];
-  for (const issue of issues) {
-    for (const s of issue.sightings) {
-      if (s.on !== 'video') continue;
+  const photoTime = new Map(photos.map((p) => [`${p.layerId}/${p.photoId}`, p.tMs]));
+  /** Time of a sighting: video track start, or the time the photo was taken. */
+  const sightingTime = (s: Issue['sightings'][number]): number | undefined => {
+    if (s.on === 'video') {
       const start = clipStart.get(s.layer);
       const first = s.range?.[0] ?? s.track[0]?.t;
-      if (start === undefined || first === undefined) continue;
-      marks.push({
-        issueId: issue.id,
-        code: issue.code,
-        tMs: start + first,
-        color: severityColor(manifest.severityModels, issue.severityModelId, issue.severity),
-        severity: issue.severity,
-      });
-      break;
+      return start === undefined || first === undefined ? undefined : start + first;
     }
+    if (s.on === 'image') return photoTime.get(`${s.layer}/${s.photo}`);
+    return undefined;
+  };
+  const marks: IssueMark[] = [];
+  for (const issue of issues) {
+    const times = issue.sightings.map(sightingTime).filter((t) => t !== undefined);
+    const video = issue.sightings.find((s) => s.on === 'video');
+    const tMs = (video && sightingTime(video)) ?? times[0];
+    if (tMs === undefined) continue;
+    marks.push({
+      issueId: issue.id,
+      code: issue.code,
+      tMs,
+      color: severityColor(manifest.severityModels, issue.severityModelId, issue.severity),
+      severity: issue.severity,
+    });
   }
 
   const captures: CaptureMark[] = manifest.captures

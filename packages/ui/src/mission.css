@@ -678,6 +678,12 @@ select.input option {
 }
 .trk .seg-lbl {
   position: absolute;
+  z-index: 2;
+  padding: 0 4px;
+  margin-top: -1px;
+  border-radius: 2px;
+  background: var(--bg-1);
+  box-shadow: 0 0 0 1px var(--acc-a40);
   top: 6px;
   font: 500 10px/14px var(--f-mono);
   color: var(--acc);
@@ -793,6 +799,7 @@ select.input option {
 .titems {
   padding: 2px 0 6px;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1px;
 }
 .titem {
@@ -1009,4 +1016,13 @@ select.input option {
     transition-duration: 1ms !important;
     animation: none !important;
   }
+}
+.titem.more {
+  width: 100%;
+  color: var(--fg-3);
+  text-align: left;
+}
+.titem.more:hover {
+  color: var(--acc);
+  background: none;
 }
