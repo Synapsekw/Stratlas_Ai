@@ -120,7 +120,8 @@ float aioProjWeight(out vec2 uv) {
   float edge = aioProjVignette > 0.0 ? smoothstep(0.0, aioProjVignette, min(e.x, e.y)) : 1.0;
   vec3 fn = normalize(cross(dFdx(vAioProjW), dFdy(vAioProjW)));
   float facing = abs(dot(fn, -rel / L));
-  float w = aioProjOpacity * edge * smoothstep(0.03, 0.18, facing);
+  float far = 1.0 - smoothstep(0.65 * aioProjMaxDist, aioProjMaxDist, L);
+  float w = aioProjOpacity * edge * far * smoothstep(0.06, 0.28, facing);
   if (aioDepthOn > 0.5) {
     vec4 c = aioDepthVP * vec4(vAioProjW, 1.0);
     if (c.w > 0.0) {

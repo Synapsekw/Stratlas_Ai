@@ -99,6 +99,8 @@ export class VideoRig {
   private readonly pose = { pos: new Vector3(), q: new Quaternion(), valid: false };
   projectionOn = true;
   pathsOn = true;
+  /** When true the projection range follows the active flight's height (set false by the UI). */
+  autoRange = true;
 
   constructor(
     readonly handle: SceneHandle,
@@ -285,6 +287,11 @@ export class VideoRig {
     tex.colorSpace = SRGBColorSpace;
     this.texture = tex;
     this.projector.setTexture(tex);
+    if (this.autoRange) {
+      // paint out to about 8x the flight height: covers the footprint, cuts the horizon smear
+      const top = Math.max(...entry.flight.samples.map((s) => s.pos[1]));
+      this.projector.setOptions({ maxDistance: Math.min(5000, Math.max(30, top * 8)) });
+    }
     this.lens = entry.layer.lens;
     this.projector.setLens(entry.layer.lens);
     this.frustumRays = frustumRays(entry.layer.lens);
@@ -460,6 +467,7 @@ export function setProjection(
   const { enabled, paths, ...rest } = o;
   if (enabled !== undefined) rig.projectionOn = enabled;
   if (paths !== undefined) rig.pathsOn = paths;
+  if (rest.maxDistance !== undefined) rig.autoRange = false;
   rig.projector.setOptions(rest);
   handle.requestRender();
 }
