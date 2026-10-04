@@ -17,6 +17,8 @@ export interface MapViewProps {
   issueFilter?: ReadonlySet<string> | null;
   /** Colour issues by their severity (default) or by their class. */
   issueColorBy?: IssueColorBy;
+  /** Show the 3D camera's view wedge (default true). */
+  cameraWedge?: boolean;
 }
 
 type Status = 'loading' | 'ready' | 'no-packs' | 'error';
@@ -42,6 +44,7 @@ export function MapView({
   overlays,
   issueFilter = null,
   issueColorBy = 'severity',
+  cameraWedge = true,
 }: MapViewProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<Status>('loading');
@@ -63,6 +66,9 @@ export function MapView({
   useEffect(() => {
     ctlRef.current?.setIssueColor(issueColorBy);
   }, [issueColorBy, started]);
+  useEffect(() => {
+    ctlRef.current?.setCameraWedge(cameraWedge);
+  }, [cameraWedge, started]);
 
   useEffect(() => {
     const el = ref.current;

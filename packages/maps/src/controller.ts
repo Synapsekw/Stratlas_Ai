@@ -88,6 +88,8 @@ export interface MapController {
   /** Show only these issues (null: all). */
   setIssueFilter(only: ReadonlySet<string> | null): void;
   setIssueColor(by: IssueColorBy): void;
+  /** Show the 3D camera's view wedge (default on). */
+  setCameraWedge(on: boolean): void;
   dispose(): void;
 }
 
@@ -137,6 +139,8 @@ export function createMapController(
     dragRotate: false,
     pitchWithRotate: false,
   });
+  // Test hook: end-to-end tests query rendered features through the container.
+  Object.assign(el, { __aioMap: map });
   map.addControl(new AttributionControl({ compact: true }), 'bottom-right');
   map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
   map.addControl(new ScaleControl({ unit: 'metric' }), 'bottom-left');
@@ -543,6 +547,11 @@ export function createMapController(
   }
 
   // ----- issues -----
+  let wedge = true;
+  function applyWedge(): void {
+    for (const id of ['aio-view3d-fill', 'aio-view3d-line'])
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', wedge ? 'visible' : 'none');
+  }
   let issueFilter: ReadonlySet<string> | null = null;
   let issueColor: IssueColorBy = 'severity';
   function renderIssues(s: Workspace): void {
@@ -598,7 +607,7 @@ export function createMapController(
           ...(l.minzoom !== undefined ? { minzoom: l.minzoom } : {}),
           ...(l.maxzoom !== undefined ? { maxzoom: l.maxzoom } : {}),
         } as AddLayerObject,
-        OVERLAY_BEFORE,
+        l.above ? 'aio-draw-line' : OVERLAY_BEFORE,
       );
       ids.push(lid);
     }
@@ -905,6 +914,7 @@ export function createMapController(
       updatePyramids();
     });
     applyIssueColor();
+    applyWedge();
     syncOverlays();
     updateDraw();
 
@@ -988,6 +998,10 @@ export function createMapController(
     setIssueColor: (by) => {
       issueColor = by;
       applyIssueColor();
+    },
+    setCameraWedge: (on) => {
+      wedge = on;
+      applyWedge();
     },
     dispose: () => {
       disposed = true;

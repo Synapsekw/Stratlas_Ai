@@ -13,6 +13,8 @@ export interface OverlayLayer {
   filter?: unknown[];
   minzoom?: number;
   maxzoom?: number;
+  /** Draw above the issues (labels, ticks); overlays sit under them by default. */
+  above?: boolean;
 }
 
 /**

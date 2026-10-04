@@ -75,6 +75,39 @@ describe('installIssueOverlay', () => {
     expect(frames).toHaveLength(0);
   });
 
+  it('drapes polygon map sightings on the ground and outlines the selected one', () => {
+    const store = createWorkspace();
+    const sq = (lon: number, lat: number) => [
+      [lon, lat],
+      [lon + 0.0001, lat],
+      [lon + 0.0001, lat + 0.0001],
+      [lon, lat],
+    ];
+    store.getState().openProject({ id: 'p', root: 'r', manifest }, [
+      makeIssue({
+        id: 'm',
+        sightings: [
+          {
+            on: 'map',
+            layer: 'ortho',
+            geojson: { type: 'Polygon', coordinates: [sq(48.39, 28.71)] },
+          },
+        ],
+      }),
+    ]);
+    const uninstall = installIssueOverlay(store);
+    const { handle } = fakeHandle();
+    setActiveScene(handle);
+    const drape = handle.scene.getObjectByName('annotate-map-shapes');
+    // outline and fill, no pin (no 3D anchor)
+    expect(drape?.children).toHaveLength(2);
+    expect(pinGroup(handle)?.children).toHaveLength(0);
+    store.getState().select({ kind: 'issue', id: 'm' });
+    expect(drape?.children).toHaveLength(3);
+    uninstall();
+    expect(handle.scene.getObjectByName('annotate-map-shapes')).toBeUndefined();
+  });
+
   it('attaches to a scene that was already active', () => {
     const store = createWorkspace();
     store.getState().openProject({ id: 'p', root: 'r', manifest }, [makeIssue()]);

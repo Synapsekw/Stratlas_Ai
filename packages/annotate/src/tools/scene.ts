@@ -2,11 +2,14 @@ import { getActiveScene, isEngineStage, onActiveScene, type SceneHandle } from '
 import type { Sighting, Vec3 } from '@aio/schema';
 import type { Workspace } from '@aio/workspace';
 import {
+  BufferAttribute,
   BufferGeometry,
   CanvasTexture,
+  DoubleSide,
   Group,
   Line,
   LineBasicMaterial,
+  LineSegments,
   Mesh,
   MeshBasicMaterial,
   Points,
@@ -21,6 +24,7 @@ import {
 } from 'three';
 import type { StoreApi } from 'zustand/vanilla';
 import { cloudBoxSighting, cloudPointSighting, pickCloudPoint } from './cloud';
+import { drapedShapes, mapToLocal, type MapToLocal } from './drape';
 import {
   initialMeshDraw,
   issuePins,
@@ -220,6 +224,113 @@ function disposeTree(o: Object3D) {
   });
 }
 
+type DrapeIssues = Parameters<typeof drapedShapes>[0];
+type DrapeModels = Parameters<typeof drapedShapes>[1];
+
+/** Height of draped map shapes above the ground plane, metres. */
+const DRAPE_Y = 0.05;
+
+/**
+ * Issues' polygon map sightings draped on the ground (y = 0): outlines and a light fill in the
+ * severity colour, the selected issue outlined in white on top. Drawn without depth test so the
+ * ortho tiles never hide them.
+ */
+function createDrape(handle: SceneHandle) {
+  const group = new Group();
+  group.name = 'annotate-map-shapes';
+  handle.scene.add(group);
+  const lineMat = new LineBasicMaterial({
+    vertexColors: true,
+    depthTest: false,
+    transparent: true,
+    opacity: 0.95,
+  });
+  const fillMat = new MeshBasicMaterial({
+    vertexColors: true,
+    depthTest: false,
+    depthWrite: false,
+    transparent: true,
+    opacity: 0.2,
+    side: DoubleSide,
+  });
+  const selMat = new LineBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true });
+  let lines: LineSegments | null = null;
+  let fill: Mesh | null = null;
+  let sel: LineSegments | null = null;
+  let faceIssue: string[] = [];
+  const clear = (o: LineSegments | Mesh | null) => {
+    if (!o) return;
+    group.remove(o);
+    o.geometry.dispose();
+  };
+  return {
+    /** Every shape again (issues or project changed). */
+    shapes(issues: DrapeIssues, models: DrapeModels, toLocal: MapToLocal | null) {
+      clear(lines);
+      clear(fill);
+      lines = null;
+      fill = null;
+      faceIssue = [];
+      if (!toLocal) return;
+      const d = drapedShapes(issues, models, null, toLocal, DRAPE_Y);
+      if (d.lines.positions.length) {
+        const g = new BufferGeometry();
+        g.setAttribute('position', new BufferAttribute(d.lines.positions, 3));
+        g.setAttribute('color', new BufferAttribute(d.lines.colors, 3));
+        lines = new LineSegments(g, lineMat);
+        lines.renderOrder = 901;
+        lines.frustumCulled = false;
+        group.add(lines);
+      }
+      if (d.fill.indices.length) {
+        const g = new BufferGeometry();
+        g.setAttribute('position', new BufferAttribute(d.fill.positions, 3));
+        g.setAttribute('color', new BufferAttribute(d.fill.colors, 3));
+        g.setIndex(d.fill.indices);
+        g.computeBoundingSphere();
+        fill = new Mesh(g, fillMat);
+        fill.renderOrder = 900;
+        faceIssue = d.fill.faceIssue;
+        group.add(fill);
+      }
+      handle.requestRender();
+    },
+    /** Outline the selected issue (or nothing). */
+    select(issue: DrapeIssues[number] | null, models: DrapeModels, toLocal: MapToLocal | null) {
+      clear(sel);
+      sel = null;
+      if (issue && toLocal) {
+        const d = drapedShapes([issue], models, issue.id, toLocal, DRAPE_Y);
+        if (d.selected) {
+          const g = new BufferGeometry();
+          g.setAttribute('position', new BufferAttribute(d.selected.positions, 3));
+          sel = new LineSegments(g, selMat);
+          sel.renderOrder = 902;
+          sel.frustumCulled = false;
+          group.add(sel);
+        }
+      }
+      handle.requestRender();
+    },
+    /** The issue whose draped fill is under the ray, if any. */
+    pick(rc: Raycaster): string | null {
+      if (!fill) return null;
+      const hit = rc.intersectObject(fill, false)[0];
+      const face = hit?.faceIndex;
+      return face !== undefined && face !== null ? (faceIssue[face] ?? null) : null;
+    },
+    dispose() {
+      clear(lines);
+      clear(fill);
+      clear(sel);
+      handle.scene.remove(group);
+      lineMat.dispose();
+      fillMat.dispose();
+      selMat.dispose();
+    },
+  };
+}
+
 /**
  * Draw every issue with a 3D anchor as a pin (severity colour, code label) in the active scene,
  * keep pins a constant size on screen, and select an issue when its pin is clicked. Follows the
@@ -237,6 +348,23 @@ export function installIssueOverlay(store: StoreApi<Workspace>): () => void {
     let pinPoints: Vector3[] = [];
     // component callouts keep their plates off the pins and codes
     const offObstacles = isEngineStage(handle) ? handle.addLabelObstacles(() => pinPoints) : null;
+    const drape = createDrape(handle);
+    let toLocal: MapToLocal | null = null;
+    const drapeAll = () => {
+      const s = store.getState();
+      const m = s.project?.manifest;
+      toLocal = m ? mapToLocal(m.crs, m.origin) : null;
+      drape.shapes(s.issues, m?.severityModels ?? [], toLocal);
+    };
+    const drapeSelection = () => {
+      const s = store.getState();
+      const id = s.selection?.kind === 'issue' ? s.selection.id : null;
+      drape.select(
+        s.issues.find((x) => x.id === id) ?? null,
+        s.project?.manifest.severityModels ?? [],
+        toLocal,
+      );
+    };
 
     const rebuild = () => {
       for (const c of [...group.children]) {
@@ -299,6 +427,9 @@ export function installIssueOverlay(store: StoreApi<Workspace>): () => void {
       ) {
         rebuild();
       }
+      if (s.issues !== prev.issues || s.project !== prev.project) drapeAll();
+      if (s.issues !== prev.issues || s.selection !== prev.selection || s.project !== prev.project)
+        drapeSelection();
     });
 
     const el = handle.renderer.domElement;
@@ -316,12 +447,14 @@ export function installIssueOverlay(store: StoreApi<Workspace>): () => void {
       const [x, y] = ndcOf(e, el);
       rc.setFromCamera(new Vector2(x, y), handle.camera);
       const hit = rc.intersectObjects(group.children, true).find((h) => h.object.userData.issueId);
-      const id = hit?.object.userData.issueId as string | undefined;
+      const id = (hit?.object.userData.issueId as string | undefined) ?? drape.pick(rc);
       if (id) store.getState().select({ kind: 'issue', id });
     };
     el.addEventListener('pointerdown', onDown);
     el.addEventListener('pointerup', onUp);
     rebuild();
+    drapeAll();
+    drapeSelection();
 
     detach = () => {
       unsub();
@@ -331,6 +464,7 @@ export function installIssueOverlay(store: StoreApi<Workspace>): () => void {
       el.removeEventListener('pointerup', onUp);
       handle.scene.remove(group);
       disposeTree(group);
+      drape.dispose();
       sphere.dispose();
       handle.requestRender();
     };
