@@ -43,6 +43,7 @@ import {
   useRoadKeys,
 } from '../road/RoadTools';
 import { useRoad } from '../road/store';
+import { useRoadSetupMap } from '../road/RoadSetup';
 import { useRoadMap } from '../road/useRoadMap';
 import { isTyping } from '../keys';
 import { shell, useShell } from '../shell';
@@ -532,6 +533,7 @@ export function Stage() {
   const engine = useEngineStage();
   const mapDraw = useMapDraw(mapLayer);
   const roadMap = useRoadMap();
+  const roadSetup = useRoadSetupMap();
   const isRoad = roadMap !== null;
   const closeupOn = useRoad((s) => s.closeup);
   const selectedIssue = useWorkspace((s) =>
@@ -650,15 +652,21 @@ export function Stage() {
     };
   }, [engine, isRoad]);
 
-  const seam: MapDrawSeam = roadMap?.measure ?? {
-    mode: mapDraw.mode,
-    vertices: mapDraw.state?.vertices ?? [],
-    onClick: mapDraw.onClick,
-    onFinish: mapDraw.finish,
-  };
+  const seam: MapDrawSeam = roadMap?.measure ??
+    roadSetup?.seam ?? {
+      mode: mapDraw.mode,
+      vertices: mapDraw.state?.vertices ?? [],
+      onClick: mapDraw.onClick,
+      onFinish: mapDraw.finish,
+    };
 
   return (
-    <div className={`stage${docked && showVideo ? ' docked' : ''}`} ref={stageRef} data-mode={mode}>
+    <div
+      className={`stage${docked && showVideo ? ' docked' : ''}`}
+      ref={stageRef}
+      data-mode={mode}
+      data-pop-bounds
+    >
       {/* 3D and map panes keep their geometry in a right-to-left UI. */}
       <div
         className={`stage-panes${docked && showVideo ? ' with-video' : ''}${closeup ? ' with-dock' : ''}`}
@@ -680,7 +688,9 @@ export function Stage() {
                       issueColorBy: roadMap.issueColorBy,
                       cameraWedge: mode === 'split',
                     }
-                  : {})}
+                  : roadSetup
+                    ? { overlays: roadSetup.overlays }
+                    : {})}
               />
             </div>
             {roadMap && <RoadLegend />}

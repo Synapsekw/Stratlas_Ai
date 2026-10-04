@@ -82,8 +82,11 @@ export function clipHfovDeg(aspect: number, fullHfovDeg = 83, fullAspect = 5120 
  * rendered the model in drone-eye view at a sweep of lenses and compared each render with the
  * video frame (edge correlation, a small turn and shift allowed for pose error) over 6 frames of
  * DJI_0665 (5.1K 17:9) and 6 of DJI_0789 (4K60 16:9). The source's 83 deg was never measured.
+ * Re-fitted by A1 (2026-10-05) with the camera heights corrected (absolute altitude on the plant
+ * datum) jointly with orientation and position over 38 frames of 25 clips: one lens, 70.9 deg, for
+ * both frame shapes (B2 had 72.2 and 65.6 while the heights were 20 to 44 m low).
  */
-export const ALZOUR_HFOV_DEG = { wide: 72.2, uhd: 65.6 } as const;
+export const ALZOUR_HFOV_DEG = { wide: 70.9, uhd: 70.9 } as const;
 
 /** Calibrated field of view by frame shape; other shapes keep the sensor-crop estimate. */
 export function calibratedHfovDeg(aspect: number): number {

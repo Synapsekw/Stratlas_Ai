@@ -1,9 +1,11 @@
-import { formatBytes, formatDate, Icon } from '@aio/ui';
+import { packageEditAllowed } from '@aio/schema';
+import { formatBytes, formatDate, Icon, t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useState } from 'react';
 import { landingScreen } from '../legacy';
 import { welcomeTips } from '../player';
 import { shell, useShell } from '../shell';
+import { ExtractPackage } from '../shell/ExtractPackage';
 import { NoProject } from './NoProject';
 
 /** Customer welcome for a read-only package: what this is, when it was captured, what to try. */
@@ -69,10 +71,10 @@ export function WelcomeScreen() {
           </dl>
           <h2 className="caps">What to try</h2>
           <ol className="tips">
-            {tips.map((t, i) => (
-              <li key={t}>
+            {tips.map((tip, i) => (
+              <li key={tip}>
                 <span>{String(i + 1).padStart(2, '0')}</span>
-                {t}
+                {tip}
               </li>
             ))}
           </ol>
@@ -97,6 +99,13 @@ export function WelcomeScreen() {
               </button>
             )}
           </div>
+          {packageEditAllowed(pkg.header) && (
+            <div className="welcome-extract">
+              <h2 className="caps">{t('package.extract.title')}</h2>
+              <p className="muted">{t('package.extract.text')}</p>
+              <ExtractPackage projectId={project.id} pkg={pkg} />
+            </div>
+          )}
         </div>
         <div className="welcome-media">
           {!thumbFailed && (

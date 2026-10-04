@@ -5,10 +5,10 @@ import {
   type JobStep,
   type PipelineName,
 } from '@aio/schema';
-import { Icon, type IconName } from '@aio/ui';
+import { Icon, t, type IconName } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { buildParams, canResume, FORMS, isActive, type Field } from '../jobs';
+import { buildParams, canResume, FORMS, isActive, type Field, type JobDraft } from '../jobs';
 import { bridge, jobs, useJobs } from '../shell';
 
 const STATUS: Record<JobRecord['status'], { label: string; tone: string }> = {
@@ -135,7 +135,7 @@ function FieldInput({
         <div className="nj-row">
           <input
             id={id}
-            className={`input${field.kind === 'text' || field.kind === 'folder' ? ' mono' : ''}`}
+            className={`input${field.kind === 'number' || field.kind === 'origin' ? '' : ' mono'}`}
             value={value}
             placeholder={field.placeholder}
             spellCheck={false}
@@ -157,6 +157,26 @@ function FieldInput({
               Choose
             </button>
           )}
+          {(field.kind === 'file' || field.kind === 'files') && (
+            <button
+              type="button"
+              className="btn sm"
+              onClick={() => {
+                const multi = field.kind === 'files';
+                void bridge
+                  .call('dialog:openFiles', {
+                    title: field.label,
+                    ...(field.filters ? { filters: field.filters } : {}),
+                    multi,
+                  })
+                  .then((r) => {
+                    if (r.ok && r.value.paths.length) onChange(r.value.paths.join('; '));
+                  });
+              }}
+            >
+              {t('jobs.chooseFile')}
+            </button>
+          )}
         </div>
       )}
       {field.help && <p className="nj-help">{field.help}</p>}
@@ -164,15 +184,15 @@ function FieldInput({
   );
 }
 
-function NewJob({ onClose }: { onClose: () => void }) {
+function NewJob({ onClose, draft }: { onClose: () => void; draft?: JobDraft | null }) {
   const projectRoot = useWorkspace((s) => s.project?.root);
   const projectType = useWorkspace((s) => s.project?.manifest.type);
   const runtime = useJobs((s) => s.runtime);
   const [pipeline, setPipeline] = useState<PipelineName>(
-    projectType === 'inspection' ? 'inspection.run' : 'aik.cameras',
+    draft?.pipeline ?? (projectType === 'inspection' ? 'inspection.run' : 'aik.cameras'),
   );
-  const [project, setProject] = useState(projectRoot ?? '');
-  const [values, setValues] = useState<Record<string, string>>({});
+  const [project, setProject] = useState(draft?.project ?? projectRoot ?? '');
+  const [values, setValues] = useState<Record<string, string>>(draft?.values ?? {});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const info = PIPELINES.find((p) => p.name === pipeline);
@@ -493,13 +513,16 @@ export function JobsScreen() {
   const selected = useJobs((s) => s.selected);
   const runtime = useJobs((s) => s.runtime);
   const loadError = useJobs((s) => s.error);
-  const [creating, setCreating] = useState(false);
+  // A form filled in elsewhere (road setup) opens on arrival; it is used once.
+  const [draft] = useState(() => jobs.getState().draft);
+  const [creating, setCreating] = useState(draft !== null);
   const anyActive = list.some(isActive);
   const now = useNow(anyActive);
   const job = list.find((j) => j.id === selected) ?? list[0];
 
   useEffect(() => {
     void jobs.getState().refresh();
+    jobs.getState().prepare(null);
   }, []);
 
   const active = list.filter(isActive);
@@ -541,6 +564,7 @@ export function JobsScreen() {
         {loadError && <p className="nj-err">{loadError}</p>}
         {creating && (
           <NewJob
+            draft={draft}
             onClose={() => {
               setCreating(false);
             }}

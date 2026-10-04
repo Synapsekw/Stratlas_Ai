@@ -20,7 +20,7 @@ dependencies: `docs/architecture/SPEC.md` section 2.
 | `src/tools/`            | Mesh draw state and pins (`mesh.ts`), point-cloud regions (`cloud.ts`), map drawing (`map.ts`), scene tools (`scene.ts`)                 |
 | `src/tools/overlay.ts`  | 3D issue pins at scale: one GPU point draw, screen clustering (`declutter.ts`), pooled code labels, heat map, Pins filter (`pinDisplay`) |
 | `src/import.ts`         | Kit importers: HCl `findings.json`, EBSM and DAMAC `annotations.json`, kit severity models                                               |
-| `src/detections/`       | Detection review (BLD-5), `@aio/annotate/detections`: adapter, review reducer, acceptance into issues, contact sheet window              |
+| `src/detections/`       | Detection review (BLD-5), `@aio/annotate/detections`: pass file bridge, review reducer, acceptance into issues                           |
 | `src/runtime.ts`        | App-wide editor over the global workspace, pose and image-size caches, shared tool and picker state                                      |
 | `src/components/`       | `IssueRegister`, `IssueDetail`, `PhotoViewer`, `VideoAnnotator`, `AnnotationToolbar`, `SightingPicker`, `useMapDraw`                     |
 
@@ -43,13 +43,9 @@ dependencies: `docs/architecture/SPEC.md` section 2.
 
 ## Detection review (BLD-5)
 
-`@aio/annotate/detections` is pure (no React) so main can validate with it. Until `aio.detections/1` lands in `@aio/schema` (stream P1), `src/detections/model.ts` is the local model and `parseDetectionsFile` / `toDetectionsFile` the adapter. Assumed layout of `<project>/detections.json`:
+`@aio/annotate/detections` is pure (no React). Detections live in the inspection pipeline's passes, `aio.detections/1` (`@aio/schema` `detections.ts`, data-conventions section 11): one file per pass in `<project>/detections/`. `src/detections/model.ts` is the bridge: `readPasses` turns the files into the review's model (one `Detection` per entry, with its `pass`, its pixel grid `size` and shape `geom`), `writePass` writes a pass back, keeping entries the review did not change byte for byte and every field it does not own. Drawings go to `review.json`, each AI run to `ai-<run>.json`.
 
-- `{ "schema": "aio.detections/1", "detections": Detection[], "runs": DetectionRun[] }`
-- Detection: `id`; `source` `{ kind: "photo", layer, photo }` or `{ kind: "frame", layer, t }` (`t` in video seconds); `size` `[w, h]` of the image the shape is drawn on; `geom` (schema `ImageGeom`, pixels); `classId` (empty when the proposer's word matched no class) and `label?`; `severity` (level, `"uncertain"` or null); `uncertain`; `note`; `confidence?` (0 to 1); `status` `draft`, `accepted` (with `issueId`) or `rejected`; `origin` `human` (author), `ai` (provider, model, promptVersion, runId) or `pipeline` (pipeline, version?, model?); `createdAt`, `updatedAt`, `reviewedBy?`, `reviewedAt?`.
-- DetectionRun: one AI or pipeline pass (`id`, `at`, `kind`, provider, model, promptVersion, images, detections, tokens, `costUsd?`).
-
-Accepting goes through the issue editor (validated, saved, undoable in the register): a new draft issue (`source` `agent` for AI, `import` for a pipeline, `human` for a drawing) with the provenance in its note, or one more sighting of an existing issue. A frame detection becomes a one-keyframe video sighting. Accepted detections are final in the review; one whose issue was deleted can be reopened.
+Statuses: `draft` waits for review; `rejected` never counts; `accepted` without `issueId` is counted by the inspection pipeline, which makes the issue; `accepted` with `issueId` is an issue already (made in the review, or by the pipeline, shown from `inspection/issues-map.json` and never written back). Accepting goes through the issue editor (validated, saved, undoable in the register): a new draft issue (`source` `agent` for AI and local model passes, `import` for imports, `human` for a drawing) with the provenance in its note, or one more sighting of an existing issue; the detection then carries `issueId`, so the pipeline places it on that issue instead of making a second one. A frame detection becomes a one-keyframe video sighting. Accepted detections are final in the review; one whose issue was deleted can be reopened.
 
 Mask assist is a seam: `maskToPolygon` turns a decoder mask into an outline; the desktop main process runs a SAM-class ONNX model only when the pipeline pack has `models/sam/{encoder,decoder}.onnx` and `onnxruntime-node` loads (no model ships).
 

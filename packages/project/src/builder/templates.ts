@@ -4,6 +4,7 @@ import type {
   ProjectManifest,
   SeverityTemplate,
 } from '@aio/schema';
+import { ROAD_CATALOGUE, ROAD_SEVERITY_MODEL } from '../import/ringroad-model';
 
 /** Used when no project offers a better model: three grades with neutral wording. */
 export const GENERAL_TEMPLATE: SeverityTemplate = {
@@ -49,8 +50,22 @@ export const GENERAL_TEMPLATE: SeverityTemplate = {
 };
 
 /**
+ * Road surveys: ASTM D6433 grades and the asphalt distress classes, as the 1st Ring Road import
+ * and the road builder (`road.build`) write them. Its catalogue (`assetType: 'road'`) makes a new
+ * project open in the road workspace.
+ */
+export const ROAD_TEMPLATE: SeverityTemplate = {
+  id: ROAD_SEVERITY_MODEL.id,
+  label: ROAD_SEVERITY_MODEL.name,
+  source: 'Built in',
+  model: ROAD_SEVERITY_MODEL,
+  catalogue: ROAD_CATALOGUE,
+};
+
+/**
  * Severity models of the projects in the library as wizard templates, each once (by model id),
- * with the classes that use it; the general template last.
+ * with the classes that use it; then the general template, and the road template unless a
+ * project already offers it.
  */
 export function severityTemplates(manifests: readonly ProjectManifest[]): SeverityTemplate[] {
   const byId = new Map<string, SeverityTemplate>();
@@ -79,6 +94,7 @@ export function severityTemplates(manifests: readonly ProjectManifest[]): Severi
     }
   }
   if (!byId.has(GENERAL_TEMPLATE.id)) byId.set(GENERAL_TEMPLATE.id, GENERAL_TEMPLATE);
+  if (!byId.has(ROAD_TEMPLATE.id)) byId.set(ROAD_TEMPLATE.id, ROAD_TEMPLATE);
   return [...byId.values()];
 }
 
@@ -107,5 +123,6 @@ export function newProjectManifest(
     classCatalogues: t.catalogue ? [t.catalogue] : [],
     ...(req.brand ? { brand: req.brand } : {}),
     type: req.type,
+    ...(req.verticalDatum ? { verticalDatum: req.verticalDatum } : {}),
   };
 }

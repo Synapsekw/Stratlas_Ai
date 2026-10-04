@@ -47,6 +47,7 @@ const SUFFIX: Record<ExportFormat, string> = {
   'kit-json': '-assessment.json',
   'masks-zip': '-masks.zip',
   'report-pdf': '-issue-register.pdf',
+  'house-pdf': '-report.pdf',
 };
 
 /** Save dialog filter per format. */
@@ -57,6 +58,7 @@ export const EXPORT_FILTERS: Record<ExportFormat, { name: string; extensions: st
   'kit-json': { name: 'Kit assessment JSON', extensions: ['json'] },
   'masks-zip': { name: 'ZIP', extensions: ['zip'] },
   'report-pdf': { name: 'PDF', extensions: ['pdf'] },
+  'house-pdf': { name: 'PDF', extensions: ['pdf'] },
 };
 
 /** File name offered in the save dialog: the project name made file safe, plus the format. */
@@ -222,7 +224,7 @@ export async function runExport(
   onProgress: Progress = () => undefined,
   signal?: AbortSignal,
 ): Promise<ExportResult> {
-  if (job.format === 'report-pdf') {
+  if (job.format === 'report-pdf' || job.format === 'house-pdf') {
     throw new Error('The PDF report is printed from a report window, not the export process.');
   }
   const part = `${job.outPath}.part`;

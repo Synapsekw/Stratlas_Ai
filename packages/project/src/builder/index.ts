@@ -13,9 +13,11 @@ export {
   updateLayers,
   writeManifestFile,
 } from './create';
+export * from './altitude';
 export {
   NO_PIPELINE,
   importRawFiles,
+  planRawAltitudes,
   type ImageOps,
   type ImportDeps,
   type ImportResult,

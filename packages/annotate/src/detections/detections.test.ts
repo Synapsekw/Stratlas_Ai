@@ -1,4 +1,4 @@
-import type { ClassCatalogue, Issue, SeverityModel } from '@aio/schema';
+import { DetectionsFile, type ClassCatalogue, type Issue, type SeverityModel } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { acceptProblem, linkCandidates, newIssueInput, sightingOf } from './accept';
 import {
@@ -15,19 +15,14 @@ import {
 } from './geometry';
 import { gridWindow, scrollToIndex } from './grid';
 import { largestRegion, maskToPolygon, traceBoundary, type BinaryMask } from './mask';
-import {
-  DETECTIONS_SCHEMA,
-  parseDetectionsFile,
-  sourceKey,
-  toDetectionsFile,
-  type Detection,
-} from './model';
+import { aiPassName, boundsOf, readPasses, sourceKey, writePass, type Detection } from './model';
 
 const NOW = '2026-10-05T10:00:00.000Z';
 
 function det(over: Partial<Detection> = {}): Detection {
   return {
     id: 'd1',
+    pass: 'ai-r1.json',
     source: { kind: 'photo', layer: 'photos', photo: 'p001' },
     size: [1000, 800],
     geom: { type: 'box', x: 10, y: 10, w: 50, h: 40 },
@@ -77,35 +72,173 @@ const catalogue: ClassCatalogue = {
 };
 const ctx = { models: [model, noUnc], catalogues: [catalogue] };
 
-describe('detections file adapter', () => {
-  it('round-trips and keeps provenance', () => {
-    const file = toDetectionsFile(
-      [det()],
-      [{ id: 'r1', at: NOW, kind: 'ai', images: 1, detections: 1, costUsd: 0.01 }],
-    );
-    const back = parseDetectionsFile(JSON.parse(JSON.stringify(file)));
-    expect(back.ok && back.value.detections[0]).toEqual(det());
-    expect(back.ok && back.value.runs[0]?.costUsd).toBe(0.01);
-  });
+type Bbox = [number, number, number, number];
 
-  it('refuses another schema, a bad shape, duplicate ids and accepted without an issue', () => {
-    expect(parseDetectionsFile({ schema: 'x', detections: [] }).ok).toBe(false);
-    const bad = (d: unknown) => parseDetectionsFile({ schema: DETECTIONS_SCHEMA, detections: [d] });
-    expect(bad({ ...det(), geom: { type: 'box', x: 0, y: 0, w: -1, h: 2 } }).ok).toBe(false);
-    expect(bad({ ...det(), status: 'accepted' }).ok).toBe(false);
-    expect(bad({ ...det(), source: { kind: 'frame', layer: 'v', t: -1 } }).ok).toBe(false);
-    expect(parseDetectionsFile({ schema: DETECTIONS_SCHEMA, detections: [det(), det()] }).ok).toBe(
-      false,
-    );
-  });
+const passCtx = {
+  photoLayer: (photo: string, fileLayer: string | undefined) =>
+    fileLayer ?? (photo.startsWith('p') ? 'photos' : null),
+  photoSize: (_layer: string, photo: string): [number, number] | null =>
+    photo === 'p404' ? null : [2560, 1708],
+  classId: (raw: string) =>
+    raw === 'moderate' || raw === 'Moderate visible rust'
+      ? 'moderate'
+      : raw === 'crack'
+        ? 'crack'
+        : null,
+  pipelineIssue: (id: string) => (id === 'piped' ? 'insp-1' : null),
+};
 
-  it('clamps confidence and keys sources', () => {
-    const r = parseDetectionsFile({
-      schema: DETECTIONS_SCHEMA,
-      detections: [{ ...det(), confidence: 3 }],
+const aiFile: DetectionsFile = {
+  schema: 'aio.detections/1',
+  source: 'ai',
+  producer: 'anthropic claude-opus-5-5',
+  run: { id: 'run-1', provider: 'anthropic', model: 'claude-opus-5-5', promptVersion: 'detect-v1' },
+  detections: [
+    {
+      id: 'a1',
+      photo: 'p001',
+      class: 'moderate',
+      severity: 2,
+      status: 'draft',
+      bbox: [10, 20, 60, 80] as Bbox,
+      confidence: 0.8,
+    },
+    {
+      photo: 'p002',
+      class: 'Moderate visible rust',
+      bbox: [0, 0, 0.5, 0.5] as Bbox,
+      space: 'normalized',
+      component: 'flange',
+    },
+    { id: 's1', class: 'moderate', space: 'sheet', sheet: 'sheet-00', bbox: [1, 1, 9, 9] as Bbox },
+    {
+      id: 'graffiti',
+      photo: 'p003',
+      class: 'graffiti',
+      status: 'draft',
+      bbox: [0, 0, 400, 300] as Bbox,
+      space: 'source',
+      width: 4000,
+      height: 3000,
+    },
+    { id: 'gone', photo: 'p404', class: 'crack', bbox: [1, 1, 5, 5] as Bbox },
+    { id: 'piped', photo: 'p005', class: 'crack', bbox: [1, 1, 5, 5] as Bbox },
+  ],
+};
+
+describe('pass files (aio.detections/1) bridge', () => {
+  it('reads passes into the review model: spaces, classes, origins, pipeline issues', () => {
+    const r = readPasses([{ name: 'ai-run-1.json', file: aiFile }], passCtx);
+    expect(r.hidden).toBe(2); // the contact sheet box and the photo of unknown size
+    expect(r.runs).toEqual([{ ...aiFile.run, pass: 'ai-run-1.json' }]);
+    const [a1, anon, graffiti, piped] = r.detections;
+    expect(a1).toMatchObject({
+      id: 'a1',
+      pass: 'ai-run-1.json',
+      size: [2560, 1708],
+      geom: { type: 'box', x: 10, y: 20, w: 50, h: 60 },
+      classId: 'moderate',
+      status: 'draft',
+      origin: {
+        kind: 'ai',
+        model: 'claude-opus-5-5',
+        promptVersion: 'detect-v1',
+        runId: 'run-1',
+      },
     });
-    expect(r.ok && r.value.detections[0]?.confidence).toBe(1);
+    expect(anon).toMatchObject({
+      id: 'ai-run-1.json#1',
+      size: [1, 1],
+      status: 'accepted',
+      classId: 'moderate',
+      component: 'flange',
+    });
+    expect(graffiti).toMatchObject({ classId: '', label: 'graffiti', size: [4000, 3000] });
+    expect(piped).toMatchObject({ status: 'accepted', issueId: 'insp-1', issuedBy: 'pipeline' });
+  });
+
+  it('writes back unchanged entries as they were and changed ones with geometry and issue', () => {
+    const r = readPasses([{ name: 'ai-run-1.json', file: aiFile }], passCtx);
+    const rec = r.passes[0];
+    if (!rec) throw new Error('no pass');
+    const loaded = new Map(r.detections.map((d) => [d.id, d]));
+    const tri: [number, number][] = [
+      [10, 20],
+      [60, 20],
+      [35, 80],
+    ];
+    const edited: Detection[] = r.detections.map((d) =>
+      d.id === 'a1'
+        ? { ...d, status: 'accepted', issueId: 'issue-9', geom: { type: 'polygon', points: tri } }
+        : d.id === 'ai-run-1.json#1'
+          ? { ...d, status: 'rejected' }
+          : d,
+    );
+    const out = writePass(rec, edited, loaded, rec.header.run);
+    expect(DetectionsFile.safeParse(out).success).toBe(true);
+    expect(out.run).toEqual(aiFile.run);
+    const [a1, anon, graffiti, piped, sheet, gone] = out.detections;
+    expect(a1).toMatchObject({
+      id: 'a1',
+      status: 'accepted',
+      issueId: 'issue-9',
+      space: 'source',
+      width: 2560,
+      height: 1708,
+      bbox: [10, 20, 60, 80],
+      geom: { type: 'polygon' },
+      origin: {
+        provider: 'anthropic',
+        model: 'claude-opus-5-5',
+        promptVersion: 'detect-v1',
+        runId: 'run-1',
+      },
+    });
+    // an entry without an id stays without one; its normalized space and component stay
+    expect(anon).toMatchObject({ status: 'rejected', space: 'normalized', component: 'flange' });
+    expect(anon && 'id' in anon).toBe(false);
+    // untouched entries (and the pipeline's) are the original objects
+    expect(graffiti).toBe(aiFile.detections[3]);
+    expect(piped).toBe(aiFile.detections[5]);
+    expect(piped?.issueId).toBeUndefined();
+    // entries the review cannot show are kept
+    expect([sheet, gone]).toEqual([aiFile.detections[2], aiFile.detections[4]]);
+  });
+
+  it('writes a new drawing for the pipeline: bounds from the shape, human source override', () => {
+    const rec = readPasses(
+      [{ name: 'review.json', file: { schema: 'aio.detections/1', source: 'ai', detections: [] } }],
+      passCtx,
+    ).passes[0];
+    if (!rec) throw new Error('no pass');
+    const drawn = det({
+      id: 'h1',
+      pass: 'review.json',
+      origin: { kind: 'human', author: 'D' },
+      geom: { type: 'point', x: 100, y: 50 },
+      size: [2560, 1708],
+    });
+    const out = writePass(rec, [drawn], new Map());
+    expect(out.detections[0]).toMatchObject({
+      id: 'h1',
+      source: 'human',
+      bbox: [96, 46, 104, 54],
+      origin: { author: 'D' },
+    });
+    expect(DetectionsFile.safeParse(out).success).toBe(true);
+    expect(boundsOf({ type: 'rotbox', x: 0, y: 0, w: 10, h: 10, angleDeg: 45 })[0]).toBeCloseTo(
+      5 - Math.SQRT2 * 5,
+    );
+    expect(aiPassName('2026 10/05:x')).toBe('ai-2026-10-05-x.json');
     expect(sourceKey({ kind: 'frame', layer: 'v', t: 1.2345 })).toBe('frame:v:1235');
+  });
+
+  it('a normalized detection becomes image pixels when accepted', () => {
+    const d = det({ size: [1, 1], geom: { type: 'box', x: 0.1, y: 0.2, w: 0.5, h: 0.25 } });
+    const s = sightingOf(d, [1000, 800]);
+    expect(s.ok && s.value).toMatchObject({
+      geom: { type: 'box', x: 100, y: 160, w: 500, h: 200 },
+    });
   });
 });
 
@@ -240,16 +373,13 @@ describe('accepting', () => {
     expect(acceptProblem(det({ classId: 'nope' }), ctx)).toBe('unknown-class');
     expect(acceptProblem(det({ severity: null }), ctx)).toBe('no-severity');
     expect(acceptProblem(det({ severity: 7 }), ctx)).toBe('bad-severity');
-    expect(
-      acceptProblem(
-        det({
-          source: { kind: 'frame', layer: 'v', t: 2 },
-          geom: { type: 'mask', src: { path: 'm.png' } },
-        }),
-        ctx,
-      ),
-    ).toBe('mask-on-frame');
     expect(acceptProblem(det(), ctx)).toBeNull();
+    expect(
+      newIssueInput(det({ origin: { kind: 'model', producer: 'yolo-v8.onnx' } }), ctx),
+    ).toMatchObject({ ok: true, value: { source: 'agent' } });
+    expect(newIssueInput(det({ origin: { kind: 'import', producer: 'coco' } }), ctx)).toMatchObject(
+      { ok: true, value: { source: 'import' } },
+    );
   });
 
   it('frame detections become one-keyframe video sightings; a person’s drawing stays human', () => {

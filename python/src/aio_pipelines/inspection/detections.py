@@ -15,6 +15,11 @@ Rules (the same in the zod schema):
   ``sheet`` (pixels of a contact sheet named in ``sheet``, from the last run's sheets).
 - ``id`` is kept stable by the producer; without one it is derived from the photo, the class and
   the rounded box, which is also how duplicates across files are merged (kit README).
+- Review fields (``geom``, ``label``, ``uncertain``, ``origin``, reviewer and times) are not read:
+  ``bbox`` is the shape's bounds. ``frame`` detections (video frames) are not placed and skipped.
+- ``issueId``: a person made (or extended) that issue from the detection in the review. It is
+  placed like any other, but never grouped into an issue of its own: the commit step adds the
+  placement (mesh sighting) to that issue when it has none.
 """
 
 from __future__ import annotations
@@ -220,6 +225,9 @@ class Reader:
             ):
                 raise JobError(f"{path.name}: detection {i + 1} needs bbox [x0, y0, x1, y1].")
             photo = raw.get("photo")
+            if photo is None and isinstance(raw.get("frame"), dict):
+                self._skip("video frame, not placed")
+                continue
             if space == "sheet":
                 sheet = self.sheets.get(str(raw.get("sheet")))
                 hit = Ct.sheet_to_photo(sheet, bbox) if sheet else None
@@ -254,8 +262,11 @@ class Reader:
                 "width": raw.get("width") if space == "source" else None,
                 "height": raw.get("height") if space == "source" else None,
             }
-            self._add(d, {"source": raw.get("source") if raw.get("source") in SOURCES else source,
-                          "file": path.name, "status": status}, opts)  # fmt: skip
+            meta = {"source": raw.get("source") if raw.get("source") in SOURCES else source,
+                    "file": path.name, "status": status}  # fmt: skip
+            if isinstance(raw.get("issueId"), str) and raw["issueId"]:
+                meta["issueId"] = raw["issueId"]
+            self._add(d, meta, opts)
 
     def add_kit(self, dets: list[dict[str, Any]], path: Path, fmt: str, opts: dict[str, Any]) -> None:
         self.assessed = None  # the kit adapter assesses every photo

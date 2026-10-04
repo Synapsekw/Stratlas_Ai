@@ -7,6 +7,7 @@ import {
   Mesh,
   MeshBasicMaterial,
   SphereGeometry,
+  Vector3,
   type Intersection,
   type Object3D,
 } from 'three';
@@ -23,6 +24,30 @@ export function hitLayer(hit: Intersection): string | null {
 }
 
 const paneEl = () => document.querySelector<HTMLElement>('.pane-3d');
+
+/**
+ * Height (local y) of the top model surface under a plan point: a ray straight down through the
+ * loaded scene, skipping anything that is not a model or point cloud layer (photo frustums,
+ * flight paths). Null without a 3D view or with no model there.
+ */
+export function terrainHeightAt(x: number, z: number): number | null {
+  const h = getActiveScene();
+  if (!h) return null;
+  const kinds = new Map(
+    (workspace.getState().project?.manifest.layers ?? []).map((l) => [l.id, l.kind]),
+  );
+  let top = 10_000;
+  for (let i = 0; i < 8; i++) {
+    const hit = h.raycastRay(new Vector3(x, top, z), new Vector3(0, -1, 0));
+    if (!hit) return null;
+    const id = hitLayer(hit);
+    if (id === null) return null; // the ground plane: no model under the point
+    const kind = kinds.get(id);
+    if (kind === 'mesh' || kind === 'pointcloud') return hit.point.y;
+    top = hit.point.y - 0.01;
+  }
+  return null;
+}
 
 /**
  * While `armed`, a click (no drag) on the 3D view calls `onPick` with what is under the cursor.

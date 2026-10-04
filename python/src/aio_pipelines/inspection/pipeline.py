@@ -340,7 +340,7 @@ class InspectionRun:
             from ..aik import records as R_
             from . import frame as Fr
             from .detections import Catalogue
-            from .issues import proposals
+            from .issues import links, proposals
 
             st = read_state(ctx)
             cat = Catalogue(Fr.read_manifest(ctx.project))
@@ -353,6 +353,7 @@ class InspectionRun:
             uncertain_fixups(R, meta["meta"], job.profile)
             layer_of = layer_finder(ctx.stage("kit/model.glb"), st["nodes"])
             props = proposals(R, meta["meta"], cat, frame, st["cameras"], layer_of)
+            linked = links(R, meta["meta"], frame, layer_of)
             summary = R_.summary(R)
             summary["stats"]["detections"] = len(R["findings"])
             summary["stats"]["skipped"] = meta["skipped"]
@@ -364,6 +365,7 @@ class InspectionRun:
             atomic_write_json(ctx.stage("out/records.json"), json.loads(json.dumps(summary, default=str)))
             atomic_write_bytes(ctx.stage("out/findings.csv"), R_.csv_text(R).encode("utf-8"))
             atomic_write_json(ctx.stage("proposals.json"), props)
+            atomic_write_json(ctx.stage("links.json"), linked)
             s = R["stats"]
             ctx.log(
                 f"{s['findings']} findings in {len(props)} groups ({s['mapped']} placed on the model), "
@@ -379,6 +381,8 @@ class InspectionRun:
             commit_files(ctx, [("out/detections.json", f"{out_dir}/detections.json"),
                                ("out/findings.csv", f"{out_dir}/findings.csv")])  # fmt: skip
             props = json.loads(ctx.stage("proposals.json").read_text("utf-8"))
+            links_path = ctx.stage("links.json")
+            linked = json.loads(links_path.read_text("utf-8")) if links_path.exists() else []
             issues_path = ctx.out("issues.json")
             current: list[dict[str, Any]] = []
             if issues_path.exists():
@@ -391,7 +395,7 @@ class InspectionRun:
                 current = list(doc.get("issues") or [])
             map_path = ctx.out(f"{out_dir}/issues-map.json")
             old_map = json.loads(map_path.read_text("utf-8")) if map_path.exists() else None
-            issues, new_map, counts = merge(current, old_map, props, now_iso())
+            issues, new_map, counts = merge(current, old_map, props, now_iso(), linked)
             # records: which issue each defect became
             rec_path = ctx.stage("out/records.json")
             if rec_path.exists():
@@ -418,6 +422,16 @@ class InspectionRun:
                 + (
                     f", {counts['stale']} earlier ones no longer backed by detections (kept for review)"
                     if counts["stale"]
+                    else ""
+                )
+                + (
+                    f", {counts['linked']} accepted in the review ({counts['placed']} placed on the model)"
+                    if counts["linked"]
+                    else ""
+                )
+                + (
+                    f", {counts['orphaned']} accepted in the review whose issue was deleted (not made again)"
+                    if counts["orphaned"]
                     else ""
                 )
             )

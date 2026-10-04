@@ -2,7 +2,12 @@ import { defaultRoutes } from '@aio/ai';
 import { setAnnotateReadOnly } from '@aio/annotate';
 import { volumetric } from '@aio/volumetric';
 import type { LabelMode, SavedView } from '@aio/engine';
-import type { LibraryEntry, PackageInfo, Settings } from '@aio/schema';
+import {
+  type LibraryEntry,
+  type PackageInfo,
+  type PackageOrigin,
+  type Settings,
+} from '@aio/schema';
 import type { Workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
@@ -65,6 +70,8 @@ export interface ShellState {
   unlock: { path: string; error: string } | null;
   /** The package export dialog is open for this project id. */
   exportFor: string | null;
+  /** The open folder project was extracted from a package (`package-origin.json`). */
+  origin: PackageOrigin | null;
 }
 
 export interface ShellActions {
@@ -130,6 +137,7 @@ export function createShellStore(
     pkg: null,
     unlock: null,
     exportFor: null,
+    origin: null,
 
     init: async () => {
       const [settings] = await Promise.all([bridge.call('settings:get', {}), get().loadLibrary()]);
@@ -189,6 +197,8 @@ export function createShellStore(
         opening: null,
         unlock: null,
         pkg,
+        // A project extracted from a package says where it came from.
+        origin: pkg ? null : (r.value.origin ?? null),
         annotating: pkg ? false : get().annotating,
         screen: player ? 'welcome' : landingScreen(manifest),
       });
@@ -218,7 +228,7 @@ export function createShellStore(
     closeProject: () => {
       workspace.getState().closeProject();
       setReadOnly(false);
-      set({ screen: 'projects', pkg: null });
+      set({ screen: 'projects', pkg: null, origin: null });
     },
 
     addProjectFolder: async () => {

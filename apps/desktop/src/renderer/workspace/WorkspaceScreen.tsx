@@ -10,6 +10,7 @@ import { cloudAiBlocked } from '../player';
 import { useShell } from '../shell';
 import { ChainageRuler } from '../road/ChainageRuler';
 import { RoadPanel } from '../road/RoadPanel';
+import { RoadSetupCard } from '../road/RoadSetup';
 import { useIsRoad } from '../road/useRoadMap';
 import { NoProject } from '../screens/NoProject';
 import { SelectionCard } from './SelectionCard';
@@ -206,7 +207,14 @@ export function WorkspaceScreen() {
         aria-hidden={rightCollapsed}
         inert={rightCollapsed}
       >
-        {road ? <RoadPanel /> : <ContextPanel />}
+        {road ? (
+          <RoadPanel />
+        ) : (
+          <>
+            <RoadSetupCard />
+            <ContextPanel />
+          </>
+        )}
         <div className="agent">
           {cloudAiBlocked(pkg) ? (
             <p className="faint small" style={{ padding: 12 }} data-testid="agent-blocked">

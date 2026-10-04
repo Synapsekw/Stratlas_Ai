@@ -4,6 +4,9 @@ import { Issue } from './annotation';
 import { Conversation, ConversationId, ConversationSummary } from './conversation';
 import { JobEvent, JobId, JobLogLine, JobRecord, JobStartRequest, RuntimeInfo } from './jobs';
 import {
+  AltitudeChoice,
+  AltitudePlan,
+  ImportHeights,
   ImportItem,
   LayerPatch,
   NewProjectRequest,
@@ -12,19 +15,17 @@ import {
 } from './builder';
 import { ProjectManifest } from './manifest';
 import { HexColor } from './common';
-import { AiPolicy, ExportKind, PackageInfo } from './package';
+import { AiPolicy, EditPolicy, ExportKind, PackageInfo, PackageOrigin } from './package';
 import { BoundaryEditsFile, VolumesFile } from './volumes';
+import { DetectionsFile } from './detections';
+import { NarrativeFile, ReportContentsSettings } from './report';
 
 const Empty = z.object({}).strict();
 
-/**
- * `<project>/detections.json` on the wire (BLD-5). Only the envelope is checked here; main
- * validates the contents with `@aio/annotate/detections` until `aio.detections/1` lands in this
- * package (stream P1). Pending integration lead, see contract-changes.md.
- */
-export const DetectionsFileEnvelope = z
-  .object({ schema: z.literal('aio.detections/1'), detections: z.array(z.unknown()) })
-  .loose();
+/** A detection pass file name in `<project>/detections/` (`review.json`, `ai-<run>.json`). */
+export const DetectionPassName = z
+  .string()
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.json$/, 'A pass file is a plain .json file name.');
 
 /** One image of an `ai:detect` request: scaled down and encoded in the renderer. */
 export const DetectImage = z
@@ -149,6 +150,8 @@ export const Settings = z.object({
     .optional(),
   /** Company name, logo and accent for generated reports. Absent: neutral reports. */
   reportBranding: ReportBrandingSettings.optional(),
+  /** Sections of the house-format report and which issues get a page. Absent: everything. */
+  reportContents: ReportContentsSettings.optional(),
 });
 
 /** West, south, east, north in WGS84 degrees. */
@@ -171,8 +174,11 @@ export const MapPackInfo = z.object({
   sizeBytes: z.number().int().nonnegative(),
   /** When the pack file was written (ISO 8601). Older packs fall back to the file date. */
   builtAt: z.string().optional(),
-  /** How the pack arrived: the in-app download, a file import, or tools/maps/build-packs.mjs. */
-  source: z.enum(['download', 'import', 'build-tool']).optional(),
+  /**
+   * How the pack arrived: the in-app download, a file import, tools/maps/build-packs.mjs, or
+   * `package`: carried inside an open `.aio` package (listed only while this machine lacks it).
+   */
+  source: z.enum(['download', 'import', 'build-tool', 'package']).optional(),
   /** Protomaps planet build the pack was cut from, e.g. `20261003`. */
   build: z.string().optional(),
 });
@@ -208,6 +214,8 @@ const OpenResult = z.discriminatedUnion('ok', [
     issues: z.array(Issue),
     /** Present when the project was opened from a `.aio` package (never written to). */
     package: PackageInfo.optional(),
+    /** A folder project extracted from a package: its `package-origin.json`. */
+    origin: PackageOrigin.optional(),
   }),
   z.object({
     ok: z.literal(false),
@@ -236,7 +244,35 @@ export const PackagePlan = z.object({
   totalFiles: z.number().int().nonnegative(),
   /** Free space on the volume of the data folder, when known. */
   freeBytes: z.number().int().nonnegative().optional(),
+  /**
+   * The map pack region the package would carry (when `mapPack` was asked for): clipped from an
+   * installed pack, or why none can be (no pack covers the site, no georeference). Its bytes are
+   * included in `totalBytes` when `ok`.
+   */
+  mapPack: z
+    .discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        /** Installed pack the region is clipped from. */
+        sourceId: z.string(),
+        sourceLabel: z.string(),
+        bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+        maxZoom: z.number().int(),
+        bytes: z.number().int().nonnegative(),
+        tiles: z.number().int().nonnegative(),
+      }),
+      z.object({ ok: z.literal(false), reason: z.string() }),
+    ])
+    .optional(),
 });
+
+/** Embed the map region a project needs: its area plus a margin, up to a zoom. */
+export const PackageMapPackRequest = z
+  .object({
+    maxZoom: z.number().int().min(0).max(15),
+    marginKm: z.number().min(0).max(100),
+  })
+  .strict();
 
 export const PackageExportOptions = z
   .object({
@@ -245,6 +281,10 @@ export const PackageExportOptions = z
     exclude: z.array(z.string()),
     readOnly: z.boolean(),
     aiPolicy: AiPolicy,
+    /** Whether the holder may extract an editable copy (absent: follows `readOnly`). */
+    editPolicy: EditPolicy.optional(),
+    /** Embed the map region the project needs, clipped from an installed pack. */
+    mapPack: PackageMapPackRequest.optional(),
     exports: z.array(ExportKind),
     /** AES-256 (WinZip AE-2) for every member when set. */
     passphrase: z.string().min(8).max(256).optional(),
@@ -258,8 +298,9 @@ export const PackageExportOptions = z
   .strict();
 
 /**
- * Issue exports (PRD REV-6, ANN-11). `report-pdf` is the branded issue register report printed
- * from an offscreen window; the others are written by the data utility process.
+ * Issue exports (PRD REV-6, ANN-11). `report-pdf` is the branded issue register report and
+ * `house-pdf` the full house-format report (BLD-8), both printed from an offscreen window; the
+ * others are written by the data utility process.
  */
 export const EXPORT_FORMATS = [
   'csv',
@@ -268,6 +309,7 @@ export const EXPORT_FORMATS = [
   'kit-json',
   'masks-zip',
   'report-pdf',
+  'house-pdf',
 ] as const;
 export const ExportFormat = z.enum(EXPORT_FORMATS);
 
@@ -282,6 +324,7 @@ export const EXPORT_FORMAT_KIND = {
   'kit-json': 'kit-json',
   'masks-zip': 'masks',
   'report-pdf': 'report-pdf',
+  'house-pdf': 'report-pdf',
 } as const satisfies Record<z.infer<typeof ExportFormat>, ExportKind>;
 
 export const ReportFile = z.object({
@@ -369,6 +412,26 @@ export const ipc = {
   'project:writeBoundaries': {
     request: z.object({ projectId: z.string().min(1), file: BoundaryEditsFile }).strict(),
     response: z.object({ ok: z.boolean(), error: z.string().optional() }),
+  },
+  /**
+   * Save a road centreline drawn on the map as `<project>/road/centreline-drawn.geojson` (a
+   * LineString in lon/lat, atomic replace with `.bak`), for the road builder (`road.build`).
+   * Answers the project-relative path.
+   */
+  'project:writeCentreline': {
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        coordinates: z
+          .array(z.tuple([z.number().min(-180).max(180), z.number().min(-90).max(90)]))
+          .min(2)
+          .max(20000),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), path: z.string() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
   },
   'packs:list': { request: Empty, response: z.array(MapPackInfo) },
   /** Start downloading a region (explicit online action; refused when offline-only). */
@@ -522,22 +585,34 @@ export const ipc = {
       }),
     ]),
   },
-  /** Detections waiting for review (`detections.json`); null when the project has none yet. */
+  /**
+   * Every detection pass of the project (`<project>/detections/*.json`, `aio.detections/1`,
+   * data-conventions section 11) for the review, with the pixel size of the photos whose boxes
+   * are in preview space and the inspection pipeline's issues (`inspection/issues-map.json`:
+   * issue id to the detection ids it was made from).
+   */
   'detections:read': {
     request: z.object({ projectId: z.string().min(1) }).strict(),
     response: z.discriminatedUnion('ok', [
       z.object({
         ok: z.literal(true),
-        file: DetectionsFileEnvelope.nullable(),
+        files: z.array(z.object({ name: DetectionPassName, file: DetectionsFile })),
+        /** Files in detections/ the review cannot read (kit lists, COCO, invalid), left as they are. */
+        problems: z.array(z.object({ name: z.string(), error: z.string() })),
+        /** `<layer>/<photo>` to `[width, height]` of the photo file. */
+        sizes: z.record(z.string(), z.tuple([z.number(), z.number()])),
+        issuesMap: z.record(z.string(), z.array(z.string())),
         /** A package: the review can be read but not saved. */
         readOnly: z.boolean(),
       }),
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
   },
-  /** Replace `<project>/detections.json` atomically with a `.bak` (refused for packages). */
+  /** Replace one pass file `<project>/detections/<name>` atomically with a `.bak` (not in packages). */
   'detections:write': {
-    request: z.object({ projectId: z.string().min(1), file: DetectionsFileEnvelope }).strict(),
+    request: z
+      .object({ projectId: z.string().min(1), name: DetectionPassName, file: DetectionsFile })
+      .strict(),
     response: z.object({ ok: z.boolean(), error: z.string().optional() }),
   },
   /** Mask assist (BLD-10): available only with a SAM-class model in the pipeline pack. */
@@ -640,7 +715,13 @@ export const ipc = {
   'app:takeOpenPath': { request: Empty, response: z.object({ path: z.string().nullable() }) },
   /** Size report for a package of an open project, for the given layer exclusions. */
   'package:plan': {
-    request: z.object({ projectId: z.string().min(1), exclude: z.array(z.string()) }).strict(),
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        exclude: z.array(z.string()),
+        mapPack: PackageMapPackRequest.optional(),
+      })
+      .strict(),
     response: z.discriminatedUnion('ok', [
       z.object({ ok: z.literal(true), plan: PackagePlan }),
       z.object({ ok: z.literal(false), error: z.string() }),
@@ -660,6 +741,19 @@ export const ipc = {
   'package:cancel': {
     request: z.object({ jobId: z.string().min(1) }).strict(),
     response: z.object({ ok: z.boolean() }),
+  },
+  /**
+   * Extract to edit: copy an open package (already unlocked) into a new editable project folder
+   * in the data root, with `package-origin.json`. Refused when the package forbids editing; the
+   * `.aio` file is only read. Progress arrives as `package:progress` with the same `jobId`
+   * (cancel with `package:cancel`). `root` is null when cancelled.
+   */
+  'package:extract': {
+    request: z.object({ jobId: z.string().min(1), projectId: z.string().min(1) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), root: z.string().nullable() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
   },
   /**
    * Export the issues of an open project: main asks where to save with the native dialog, then
@@ -721,7 +815,13 @@ export const ipc = {
         ok: z.literal(true),
         lon: z.number(),
         lat: z.number(),
+        /**
+         * Ground height for the origin: the take-off point's absolute altitude (photo absolute
+         * altitude minus its height above take-off) when the photo has both, else its GPS altitude.
+         */
         alt: z.number().optional(),
+        /** `takeoff`: `alt` is the take-off point; `photo`: the camera's own altitude. */
+        altFrom: z.enum(['takeoff', 'photo']).optional(),
         takenAt: z.string().optional(),
       }),
       z.object({ ok: z.literal(false), error: z.string() }),
@@ -764,6 +864,46 @@ export const ipc = {
   'report:list': {
     request: z.object({ projectId: z.string().min(1) }).strict(),
     response: z.object({ files: z.array(ReportFile) }),
+  },
+  /**
+   * The narrative of an open project (`report/narrative.json`, BLD-7): null when none was saved.
+   * `readOnly` for a package, whose narrative can be read but not changed.
+   */
+  'report:readNarrative': {
+    request: z.object({ projectId: z.string().min(1) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), file: NarrativeFile.nullable(), readOnly: z.boolean() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /** Replace `report/narrative.json` atomically, keeping a `.bak` of the previous file. */
+  'report:writeNarrative': {
+    request: z.object({ projectId: z.string().min(1), file: NarrativeFile }).strict(),
+    response: z.object({ ok: z.boolean(), error: z.string().optional() }),
+  },
+  /**
+   * One text completion on a task route (the report narrative, BLD-7), without tools. The
+   * renderer shows the exact `system` and `prompt` first (AI-6). Cancel with `ai:cancel`.
+   */
+  'ai:draftText': {
+    request: z
+      .object({
+        runId: z.string().min(1).max(64),
+        projectId: z.string().min(1),
+        task: AiTask,
+        system: z.string().min(1).max(20_000),
+        prompt: z.string().min(1).max(200_000),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        text: z.string(),
+        provider: z.string(),
+        model: z.string(),
+      }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
   },
   'app:about': {
     request: Empty,
@@ -851,11 +991,32 @@ export const ipc = {
         paths: z.array(z.string().min(1)).min(1),
         /** The aircraft clock's offset from UTC in minutes; default from the project longitude. */
         utcOffsetMin: z.number().int().min(-720).max(840).optional(),
+        /** How camera heights are made (data-conventions section 3a); default `auto`. */
+        altitude: AltitudeChoice.optional(),
       })
       .strict(),
     response: z.discriminatedUnion('ok', [
-      z.object({ ok: z.literal(true), manifest: ProjectManifest, items: z.array(ImportItem) }),
+      z.object({
+        ok: z.literal(true),
+        manifest: ProjectManifest,
+        items: z.array(ImportItem),
+        /** The height rule applied, when any file got a camera height. */
+        heights: ImportHeights.optional(),
+      }),
       z.object({ ok: z.literal(false), error: z.string(), items: z.array(ImportItem).optional() }),
+    ]),
+  },
+  /**
+   * What the files of an import carry for camera heights (absolute and relative altitude, the
+   * lowest logged position), so the import UI can propose the height rule before `builder:import`.
+   */
+  'builder:altitudePlan': {
+    request: z
+      .object({ projectId: z.string().min(1), paths: z.array(z.string().min(1)).min(1) })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), plan: AltitudePlan }),
+      z.object({ ok: z.literal(false), error: z.string() }),
     ]),
   },
   /**
@@ -947,6 +1108,7 @@ export type ProviderUsage = z.infer<typeof ProviderUsage>;
 export type ProjectUsage = z.infer<typeof ProjectUsage>;
 export type PackagePlan = z.infer<typeof PackagePlan>;
 export type PackageExportOptions = z.infer<typeof PackageExportOptions>;
+export type PackageMapPackRequest = z.infer<typeof PackageMapPackRequest>;
 export type ExportFormat = z.infer<typeof ExportFormat>;
 export type ReportFile = z.infer<typeof ReportFile>;
 export type ReportBrandingSettings = z.infer<typeof ReportBrandingSettings>;

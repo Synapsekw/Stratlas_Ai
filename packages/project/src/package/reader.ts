@@ -1,5 +1,6 @@
+import { createHmac } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { open } from 'node:fs/promises';
+import { open, rm } from 'node:fs/promises';
 import { Readable, Transform } from 'node:stream';
 import { crc32 } from 'node:zlib';
 import {
@@ -62,6 +63,17 @@ export interface ZipArchive {
   read(name: string): Promise<Buffer>;
   /** Bytes `start` to `end` (inclusive) of a member, streamed from the archive in place. */
   stream(name: string, start?: number, end?: number): Promise<Readable>;
+  /**
+   * Copy a whole member to a new file `dest` (never overwrites), verified on the way: CRC-32
+   * for plain members, the AES auth code for encrypted ones. A bad member leaves no file.
+   */
+  copyTo(name: string, dest: string, o?: CopyOptions): Promise<void>;
+}
+
+export interface CopyOptions {
+  signal?: AbortSignal;
+  /** Bytes of this member copied so far. */
+  onBytes?: (done: number) => void;
 }
 
 const damaged = (file: string, why: string) =>
@@ -343,6 +355,65 @@ class Archive implements ZipArchive {
       );
     }
     return aesCtrXor(keys.aesKey, cipher, 0);
+  }
+
+  async copyTo(name: string, dest: string, o: CopyOptions = {}): Promise<void> {
+    const e = this.entry(name);
+    const at = await this.dataOffset(name);
+    const keys = e.encrypted ? await this.requireKeys(e) : null;
+    const mac = keys ? createHmac('sha1', keys.hmacKey) : null;
+    const out = await open(dest, 'wx');
+    let ok = false;
+    try {
+      let crc = 0;
+      let done = 0;
+      if (e.size > 0) {
+        const raw = createReadStream(this.file, {
+          start: at,
+          end: at + e.size - 1,
+          highWaterMark: 4 * 1024 * 1024,
+        });
+        try {
+          for await (const chunk of raw) {
+            if (o.signal?.aborted) {
+              const err = new Error('Cancelled');
+              err.name = 'AbortError';
+              throw err;
+            }
+            const c = chunk as Buffer;
+            let plain = c;
+            if (keys && mac) {
+              mac.update(c);
+              plain = aesCtrXor(keys.aesKey, c, done);
+            } else crc = crc32(c, crc);
+            let w = 0;
+            while (w < plain.length) {
+              const { bytesWritten } = await out.write(plain, w, plain.length - w, done + w);
+              w += bytesWritten;
+            }
+            done += c.length;
+            o.onBytes?.(done);
+          }
+        } finally {
+          raw.destroy();
+        }
+      }
+      if (done !== e.size) throw damaged(this.file, `${name} is cut short`);
+      if (keys && mac) {
+        const stored = await readAt(this.file, at + e.size, AES_AUTH_BYTES);
+        if (!mac.digest().subarray(0, AES_AUTH_BYTES).equals(stored)) {
+          throw new ZipError(
+            `${name} in ${this.file} is damaged or was altered (authentication failed).`,
+          );
+        }
+      } else if (e.size > 0 && crc >>> 0 !== e.crc32 >>> 0) {
+        throw damaged(this.file, `${name} failed its checksum`);
+      }
+      ok = true;
+    } finally {
+      await out.close();
+      if (!ok) await rm(dest, { force: true });
+    }
   }
 
   async stream(name: string, start = 0, end?: number): Promise<Readable> {

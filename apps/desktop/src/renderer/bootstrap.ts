@@ -3,7 +3,7 @@ import { setFlightPoses } from '@aio/annotate';
 import { configureEngine, getActiveStage, registerEngineAdapters } from '@aio/engine';
 import { captureMap, registerMapAdapters } from '@aio/maps';
 import { pointcloudSettings, registerPointcloudAdapters } from '@aio/pointcloud';
-import { loadFlight, registerVideoAdapters } from '@aio/video';
+import { loadFlight, registerVideoAdapters, videoRig } from '@aio/video';
 import { volumetric } from '@aio/volumetric';
 import { assetUrl, workspace, type OpenProject } from '@aio/workspace';
 import { graphics } from './graphics';
@@ -67,6 +67,11 @@ export function bootstrap(): void {
       volumetric,
       graphics,
       pointcloud: pointcloudSettings,
+      /** The video rig of the live stage (calibration tests: logged pose, model view). */
+      videoRig: () => {
+        const stage = getActiveStage();
+        return stage ? videoRig(stage) : null;
+      },
     },
   });
   shareFlightPoses(workspace.getState().project);

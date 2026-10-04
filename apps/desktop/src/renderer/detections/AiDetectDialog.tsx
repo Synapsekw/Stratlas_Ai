@@ -23,7 +23,8 @@ import { MediaThumb } from '../thumbs/Thumb';
 import { promptTaxonomy, sampleTimes, toDraftDetections, type DetectItem } from './convert';
 import { frameThumb, prepareItem } from './prepare';
 import { startDetectRun, type DetectRunner, type RunProgress } from './runner';
-import { detections, dispatch } from './store';
+import { detections, dispatch, noteAssessed } from './store';
+import { aiPassName } from '@aio/annotate/detections';
 
 export type DetectScope = 'selected' | 'current' | 'unreviewed' | 'frames';
 
@@ -156,11 +157,23 @@ export function AiDetectDialog({
 
   const send = () => {
     if (!canSend || !manifest) return;
-    const runId = `det-${globalThis.crypto.randomUUID()}`;
+    // a run id that sorts by time: the pass file is ai-<run>.json
+    const stamp = new Date()
+      .toISOString()
+      .replace(/[-:]/g, '')
+      .replace(/\..*$/, '')
+      .replace('T', '-');
+    const runId = `${stamp}-${globalThis.crypto.randomUUID().slice(0, 6)}`;
+    const pass = aiPassName(runId);
+    noteAssessed(
+      pass,
+      items.flatMap((i) => (i.kind === 'photo' ? [i.photo] : [])),
+    );
     setRetry(null);
     runner.current = startDetectRun(
       {
         runId,
+        pass,
         projectId,
         items,
         classes: taxonomy.classes,
@@ -188,6 +201,7 @@ export function AiDetectDialog({
             model: res.model,
             promptVersion: res.promptVersion,
             runId,
+            pass,
             now: new Date().toISOString(),
             existing: detections.getState().review.detections,
             newId: () => globalThis.crypto.randomUUID(),

@@ -36,8 +36,16 @@ player (APP-5). Node only.
   manifest, and names any layer file that is missing.
 
 Legacy layers that the importer hard-linked into `legacy/` take real space in a package (the
-size report shows it); leave the legacy layer out for a smaller delivery. Map packs are not
-packaged.
+size report shows it); leave the legacy layer out for a smaller delivery. A map region can ride
+along as extra members (`exportPackage({ extra })`, written by the desktop app as
+`packs/<id>.pmtiles` and `packs/<id>.json`, see data-conventions section 8).
+
+- **Extract to edit:** `extractProject` copies an opened package into a new project folder
+  `<dataRoot>/projects/<file name>-edit/`, every member verified on the way (`ZipArchive.copyTo`:
+  CRC-32, or the AES auth code), the manifest id set to the folder name, and
+  `package-origin.json` recording the package and when it was exported. It works in a hidden
+  folder and renames it at the end, so a cancelled or failed extract leaves nothing; it refuses
+  packages whose `editPolicy` forbids it (`extractRefusal`) and never writes the `.aio` file.
 
 ## Exports (stream N3)
 

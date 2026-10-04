@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { inflateRawSync } from 'node:zlib';
 import { z } from 'zod';
+import { FlightHeights } from '@aio/schema';
 import type {
   Layer,
   LensModel,
@@ -30,6 +31,7 @@ import {
   registerTags,
   type RegisterRow,
 } from './alzour-model';
+import { carryVideoCalibration } from './calibration';
 import { fitSimilarity2D, applySimilarity2D, type Similarity2D } from './fit';
 import { AioFlight, poseAt } from './flight';
 import { invertFrame, mapPoint, mapQuat, meshTransform, type FrameMap } from './frames';
@@ -40,11 +42,15 @@ import { CHROMIUM_CODECS, extractFrame, probeVideo, transcodeH264, type VideoInf
 import { makeProxy } from './proxy';
 import { ISSUES_SCHEMA, validatePackage } from './package';
 import {
+  ALZOUR_ABS_TO_EL,
+  ALZOUR_HEIGHTS,
+  LEGACY_HEIGHTS,
   djiLocalToUtcMs,
   plantCameraQuat,
   plantFrame,
   plantToScene,
   plantVideoToFlight,
+  trackElShift,
 } from './plant';
 import { convertPngChunk } from './pngcloud';
 import { composeImage, writeLineArtPng } from './rasterops';
@@ -86,6 +92,8 @@ const PcJson = z.object({
 });
 const FlightsJson = z.object({
   camera: z.object({ hfov_deg: z.number(), aspect: z.number() }).loose(),
+  /** "EL = 100 (plant grade at takeoff) + barometric relative altitude; ..." */
+  note: z.string().optional(),
   videos: z.record(
     z.string(),
     z.object({
@@ -94,6 +102,10 @@ const FlightsJson = z.object({
       dur: z.number(),
       hz: z.number().positive(),
       track: z.array(z.array(z.number())),
+      /** Relative altitude at the clip start, metres. */
+      alt_rel_start: z.number().optional(),
+      /** Absolute minus relative altitude: the take-off point's absolute altitude, metres. */
+      abs_minus_rel: z.number().optional(),
     }),
   ),
 });
@@ -252,8 +264,33 @@ interface PyramidLevel {
 export interface AlzourImportOptions extends ImportOptions {
   /** Optional folder with the design clip paths (`clip_*_path.json`) used as an independent pose check. */
   designAssets?: string;
+  /**
+   * Camera heights of the clips. `absolute` (default): plant EL = DJI absolute altitude + 100 m
+   * (track EL + `abs_minus_rel`). `relative`: the artifact's EL = 100 + relative altitude, right
+   * only for a take-off at plant grade; kept to reproduce imports made before the fix.
+   */
+  altitude?: 'absolute' | 'relative';
 }
 
+/**
+ * Import the Al-Zour plant twin artifact.
+ *
+ * Camera heights (data-conventions section 3a): the artifact's clip tracks carry EL = 100 +
+ * relative altitude, which assumes every take-off at plant grade. The take-offs were not at grade:
+ * against the plant model each flight sat 20 to 44 m too low, by exactly its `abs_minus_rel`
+ * (M6 stream A1). The importer therefore uses absolute altitude on the plant datum, `EL = absolute
+ * + 100` ({@link ALZOUR_ABS_TO_EL}), records the rule in each flight file (`heights`) and sets the
+ * project's `verticalDatum`, so raw imports into the project agree. Relative altitude plus a
+ * take-off EL is right instead when the take-off point's EL is known (surveyed, or a take-off at
+ * grade) or when the absolute altitude drifts within a flight.
+ *
+ * Re-import: projects imported before this fix carry the height error as a per-clip
+ * `positionOffsetM` (calibration saved in the app, e.g. `alzour` by A1). A re-import keeps each
+ * clip's calibration but takes the change of its logged heights off the offset
+ * ({@link carryVideoCalibration}): a pure datum compensation is dropped, any horizontal or residual
+ * part stays, and the import report lists every clip. The previous rule is read from the old flight
+ * files' `heights` (absent: the old relative rule).
+ */
 export async function importAlzour(opts: AlzourImportOptions): Promise<ImportResult> {
   const log = opts.log ?? (() => undefined);
   const src = (...p: string[]) => join(opts.src, ...p);
@@ -262,6 +299,9 @@ export async function importAlzour(opts: AlzourImportOptions): Promise<ImportRes
   const rep = new ImportReport('Al-Zour LNG import terminal: import report');
   const layers: Layer[] = [];
   const blob = blobResolver(opts.src);
+  const heights = opts.altitude === 'relative' ? LEGACY_HEIGHTS : ALZOUR_HEIGHTS;
+  // the previous import (re-import): its manifest and the height rule of its flight files
+  const previous = readPrevious(opts.out);
 
   // Model and frame -----------------------------------------------------------------------------
   const glbPath = src('plant.glb');
@@ -823,9 +863,27 @@ export async function importAlzour(opts: AlzourImportOptions): Promise<ImportRes
     const fname = `Flight ${f} · ${hhmm(first.video.created)}`;
     const merged = mergeFlightClips(
       clips,
-      (c) => plantVideoToFlight(c.video, frame, c.startUtcMs, c.lens),
+      (c) =>
+        plantVideoToFlight(
+          c.video,
+          frame,
+          c.startUtcMs,
+          c.lens,
+          undefined,
+          trackElShift(c.video, heights).shift,
+        ),
       fname,
     );
+    const sources = new Set(clips.map((c) => trackElShift(c.video, heights).source));
+    merged.doc.heights = {
+      ...heights,
+      source: sources.size > 1 ? 'mixed' : (sources.values().next().value ?? heights.source),
+    };
+    for (const c of clips)
+      if (heights.source === 'absolute' && c.video.abs_minus_rel === undefined)
+        rep.warn(
+          `${c.name}: no abs_minus_rel in flights.json; its heights use the take-off at plant grade.`,
+        );
     flightDocs.set(f, merged);
     const flightRel = `flights/flight${f}.json`;
     w.writeJson(flightRel, AioFlight.parse(merged.doc), false);
@@ -895,6 +953,14 @@ export async function importAlzour(opts: AlzourImportOptions): Promise<ImportRes
     site: 'KIPIC Al-Zour LNG import terminal, Kuwait',
     crs: { epsg: 32639 },
     origin,
+    ...(heights.source === 'absolute'
+      ? {
+          verticalDatum: {
+            absAltOffsetM: ALZOUR_ABS_TO_EL,
+            note: 'Plant EL = DJI absolute altitude + 100 m (fitted against the plant model; EL 100 is plant grade)',
+          },
+        }
+      : {}),
     captures: [
       {
         id: 'survey-2023-02-21',
@@ -908,7 +974,16 @@ export async function importAlzour(opts: AlzourImportOptions): Promise<ImportRes
     classCatalogues: [PLANT_CATALOGUE],
   };
   const valid = validatePackage(manifestInput, []);
-  w.writeJson('manifest.json', valid.manifest);
+  // a re-import keeps the clips' calibration, minus the change of their logged heights
+  const deltaY = new Map<string, number>();
+  for (const clips of byFlight.values())
+    for (const c of clips) {
+      const id = `clip-${c.name}`;
+      const was = trackElShift(c.video, previous.heights.get(id) ?? LEGACY_HEIGHTS).shift;
+      deltaY.set(id, trackElShift(c.video, heights).shift - was);
+    }
+  const carried = carryVideoCalibration(previous.manifest, valid.manifest.layers, deltaY);
+  w.writeJson('manifest.json', { ...valid.manifest, layers: carried.layers });
   w.writeJson('issues.json', { schema: ISSUES_SCHEMA, issues: valid.issues });
 
   // Verification ---------------------------------------------------------------------------------
@@ -916,12 +991,13 @@ export async function importAlzour(opts: AlzourImportOptions): Promise<ImportRes
   let roundTrip = 0;
   for (const clips of byFlight.values()) {
     for (const c of clips) {
-      const doc = plantVideoToFlight(c.video, frame, c.startUtcMs, c.lens);
+      const shift = trackElShift(c.video, heights).shift;
+      const doc = plantVideoToFlight(c.video, frame, c.startUtcMs, c.lens, undefined, shift);
       c.video.track.forEach((row, i) => {
         const s = doc.samples[i];
         if (!s) return;
         const back = mapPoint(inv, s.pos);
-        const want = plantToScene(row[0] ?? 0, row[1] ?? 0, row[2] ?? 0);
+        const want = plantToScene(row[0] ?? 0, row[1] ?? 0, (row[2] ?? 0) + shift);
         roundTrip = Math.max(roundTrip, Math.hypot(...sub(back, want)));
       });
     }
@@ -1054,8 +1130,28 @@ export async function importAlzour(opts: AlzourImportOptions): Promise<ImportRes
     `Plant scene frame (\`x = E - 1300\`, \`y = EL - 100\`, \`z = -(N - 450)\`) to local: turn ${fit.thetaDeg.toFixed(4)} deg about +Y, then offset [${frame.offset.map((x) => x.toFixed(3)).join(', ')}] m. The GLB is copied unchanged; the turn and offset are baked into the mesh layer \`transform\`. Everything else (ortho, plans, street map, point cloud, poses, photos, panoramas) is converted into the local frame.`,
     `Azimuths: plant azimuth + ${thetaCw.toFixed(4)} deg = grid azimuth. Panorama \`headingDeg\` is the grid azimuth of the image centre column.`,
   ]);
+  const perFlight = [...byFlight.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([f, clips]) => {
+      const c = clips[0];
+      return c ? `flight ${String(f)} ${trackElShift(c.video, heights).shift.toFixed(1)} m` : '';
+    })
+    .filter(Boolean);
+  rep.section('Camera heights', [
+    heights.source === 'absolute'
+      ? `Plant EL = DJI absolute altitude + ${String(ALZOUR_ABS_TO_EL)} m: each clip's track EL (the artifact's 100 + relative altitude, a take-off at plant grade) plus its \`abs_minus_rel\` (${perFlight.join(', ')}). With the take-off at grade every flight sat 20 to 44 m too low against the plant model (M6 stream A1). Flight files record the rule as \`heights\`; the manifest's \`verticalDatum\` makes raw imports into this project use the same datum.`
+      : 'Plant EL = 100 + relative altitude (take-off assumed at plant grade), as imported before the height fix; the clips sit 20 to 44 m too low.',
+    ...(carried.notes.length
+      ? [
+          '',
+          'Calibration kept from the previous import:',
+          '',
+          ...carried.notes.map((n) => `- ${n}`),
+        ]
+      : []),
+  ]);
   rep.section('Camera pose check', [
-    `All 25 clip tracks: converted camera positions mapped back to the plant frame match the source track to ${(roundTrip * 1000).toFixed(2)} mm. Camera orientation = stabilised heading + gimbal pitch (no roll), as the original viewer: Euler(gimbal pitch, -azimuth, 0, YXZ) in the plant frame, then the plant-to-local turn.`,
+    `All 25 clip tracks: converted camera positions mapped back to the plant frame match the source track (with the height rule) to ${(roundTrip * 1000).toFixed(2)} mm. Camera orientation = stabilised heading + gimbal pitch (no roll), as the original viewer: Euler(gimbal pitch, -azimuth, 0, YXZ) in the plant frame, then the plant-to-local turn.`,
     `View axis at 10, 30, 50, 70 and 90 % of every clip (${checked} poses): ${onSite} meet plant grade inside the surveyed site (ortho extent ${(Math.hypot(...u) / 1000).toFixed(2)} x ${(Math.hypot(...v) / 1000).toFixed(2)} km), ${checked - onSite - looksUp} meet it outside (sea, approach), ${looksUp} point at or above the horizon. Register assets (base point) inside the camera frame within 3 km: at least one in ${withAssets} of ${checked} poses.`,
     ...knownLines,
     '',
@@ -1093,7 +1189,7 @@ export async function importAlzour(opts: AlzourImportOptions): Promise<ImportRes
     'Camera positions are GNSS/barometric (about +-2 m) with heading from the aircraft compass; the clips have no photogrammetric alignment.',
   );
   rep.warn(
-    'Clip fields of view are calibrated against the plant model (about +-2 deg); the clip poses still show a pitch offset of about 8 deg against the model, which the lens does not absorb.',
+    'Clip fields of view were calibrated against the plant model (about +-2 deg) with the old camera heights (take-off at grade); with the corrected heights a gimbal bias of about a degree remains (M6 stream A1), which Calibrate video takes per clip.',
   );
   const pruned = w.prune('rasters');
   if (pruned.length)
@@ -1110,6 +1206,36 @@ export async function importAlzour(opts: AlzourImportOptions): Promise<ImportRes
     skipped: w.stats.skipped,
     warnings: rep.warnings,
   };
+}
+
+/**
+ * The package an earlier import wrote at `out`: its manifest (plain JSON) and, per video layer, the
+ * height rule of its flight file (absent in files written before the rule was recorded).
+ */
+function readPrevious(out: string): { manifest: unknown; heights: Map<string, FlightHeights> } {
+  const heights = new Map<string, FlightHeights>();
+  const file = join(out, 'manifest.json');
+  if (!existsSync(file)) return { manifest: undefined, heights };
+  let manifest: unknown;
+  try {
+    manifest = JSON.parse(readFileSync(file, 'utf8'));
+  } catch {
+    return { manifest: undefined, heights };
+  }
+  const layers = (manifest as { layers?: unknown }).layers;
+  for (const l of Array.isArray(layers) ? (layers as unknown[]) : []) {
+    const v = l as { kind?: unknown; id?: unknown; flight?: { src?: { path?: unknown } } };
+    const path = v.flight?.src?.path;
+    if (v.kind !== 'video' || typeof v.id !== 'string' || typeof path !== 'string') continue;
+    try {
+      const doc = JSON.parse(readFileSync(join(out, path), 'utf8')) as { heights?: unknown };
+      const h = FlightHeights.safeParse(doc.heights);
+      if (h.success) heights.set(v.id, h.data);
+    } catch {
+      // a missing flight file: the old rule is assumed
+    }
+  }
+  return { manifest, heights };
 }
 
 /** The original recording of a clip: `<originals>/<name>.MOV` or `.MP4`, any case. */

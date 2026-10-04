@@ -361,6 +361,58 @@
 .b-import li.queued .st {
   color: var(--s3);
 }
+.b-heights {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  overflow: auto;
+}
+.b-heights p {
+  margin: 0;
+  line-height: 1.45;
+}
+.b-heights .notice {
+  align-items: flex-start;
+  margin: 0;
+}
+.b-heights-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--t-12);
+  font-weight: 600;
+}
+.b-heights-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-inline-start: 22px;
+}
+.b-heights-field label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--t-12);
+  color: var(--fg-1);
+}
+.b-heights-field input {
+  width: 110px;
+  font: 500 12px var(--f-mono);
+}
+.b-heights-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+.b-heights-line {
+  margin: 8px 12px 0;
+  line-height: 1.45;
+}
+.b-heights-line.notice {
+  align-items: flex-start;
+}
 .b-progress {
   height: 3px;
   background: var(--bg-3);
@@ -520,6 +572,41 @@
   gap: 6px;
   align-items: center;
   color: var(--fg-2);
+}
+.b-grid3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.b-field {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.b-field .input {
+  width: 100%;
+  min-width: 0;
+}
+.b-fitwhat {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: center;
+}
+.b-fitwhat legend {
+  width: 100%;
+  padding: 0;
+  margin-bottom: 2px;
+}
+.b-fitwhat label {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  color: var(--fg-2);
+  white-space: nowrap;
 }
 .b-mini-map {
   height: 200px;

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { Id, IsoDate, Vec3, err, ok, uniqueIds, type Result } from './common';
 import { Layer } from './layers';
 import { ClassCatalogue, SeverityModel } from './severity';
-import { ProjectType } from './builder';
+import { ProjectType, VerticalDatum } from './builder';
 
 export const SCHEMA_VERSION = 'aio.project/1' as const;
 
@@ -29,6 +29,11 @@ export const ProjectManifest = z
     brand: z.string().optional(),
     /** What the project is for (builder wizard); absent on imported kit projects. */
     type: ProjectType.optional(),
+    /**
+     * How drone absolute altitudes become project heights (`H = absolute + absAltOffsetM`); raw
+     * imports use absolute altitude when it is set, else relative altitude plus a take-off height.
+     */
+    verticalDatum: VerticalDatum.optional(),
   })
   .superRefine(uniqueIds('layers'))
   .superRefine(uniqueIds('severityModels'))

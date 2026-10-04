@@ -21,7 +21,6 @@ import {
   Menu,
   nativeImage,
   nativeTheme,
-  net,
   protocol,
   screen,
   session,
@@ -38,9 +37,11 @@ import { listConversations, loadConversation, saveConversation } from './convers
 import { demoProjectPaths } from './demo';
 import { createExportJobs } from './exports/jobs';
 import { printReport } from './exports/reportWindow';
+import { readNarrative, readPackageNarrative, writeNarrative } from './narrative';
 import { listReports } from './exports/reports';
 import { runInUtility } from './exports/utility';
 import {
+  builderAltitudePlan,
   builderImport,
   builderTemplates,
   builderUpdateLayers,
@@ -56,8 +57,10 @@ import { findPack, JobRunner, JobStore, openTarget, safeJobEvent } from './jobs'
 import { createKeyVault } from './keys';
 import { addToLibrary, createLibraryStore, listLibrary } from './library';
 import { captureConsole, createLog, exportLogs } from './logs';
+import { embeddedPacks, findEmbedded, listWithEmbedded } from './packs/embed';
+import { httpSource } from './packs/extract';
 import { createPackManager } from './packs/manager';
-import { createExtract, findLatestBuild, resolvePmtiles } from './packs/pmtiles';
+import { buildSource, findLatestBuild } from './packs/pmtiles';
 import { createOnlineUpdater, type UpdaterLike } from './update/online';
 import { probeWithPowerShell, verifyInstaller } from './update/verify';
 import { OFFSCREEN_SWITCHES, offscreenOrigin, windowMode } from './windowMode';
@@ -74,9 +77,10 @@ import {
 } from './packages';
 import { openProject, ProjectRegistry, readManifest, writeProjectIssues } from './project';
 import { readPackageVolumes, readVolumes, writeBoundaries } from './boundaries';
-import { readDetections, readPackageDetections, writeDetections } from './detections';
+import { folderFiles, packageFiles, readDetectionPasses, writeDetectionPass } from './detections';
 import { createMaskAssist, loadOnnxRuntime } from './maskAssist';
 import { resolveInside } from './protocol/paths';
+import { writeCentreline } from './centreline';
 import { createAioHandler } from './protocol/handler';
 import { cspForUrl } from './protocol/legacy';
 import { saveFile } from './saveFile';
@@ -192,29 +196,23 @@ function broadcast<E extends 'packs:job'>(event: E, payload: IpcEvent<E>): void 
   for (const win of BrowserWindow.getAllWindows()) win.webContents.send(event, parsed.data);
 }
 
-const pmtilesBin = resolvePmtiles({
-  env: process.env,
-  platform: process.platform,
-  packaged: app.isPackaged,
-  resourcesPath: process.resourcesPath,
-  appPath: app.getAppPath(),
-  exists: existsSync,
-});
-
 // The map pack download is one of only two network paths (the other is cloud AI), and runs
-// only when the person starts it in Settings, Maps.
+// only when the person starts it in Settings, Maps. Planet builds come from Protomaps (or the
+// STRATLAS_PACK_SOURCE mirror) by HTTP ranges, so a cut-off download continues where it stopped.
+const planetBuilds = buildSource(process.env);
+// Map data is fetched in its own session: the default session blocks every http(s) request so
+// the renderer stays offline by construction (hardenSession).
+const mapFetch = (url: string, init?: RequestInit) =>
+  session.fromPartition('stratlas-maps').fetch(url, init);
 const packs = createPackManager({
   packsDir: () => join(settings.current().dataRoot, 'packs'),
   offlineOnly: () => settings.current().offlineOnly === true,
   emit: (job) => {
     broadcast('packs:job', job);
   },
-  extract: pmtilesBin
-    ? createExtract(pmtilesBin, (cmd, args) =>
-        spawn(cmd, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }),
-      )
-    : null,
-  latestBuild: (signal) => findLatestBuild((url, init) => net.fetch(url, init), signal),
+  source: (url, identity) => httpSource(url, mapFetch, identity),
+  buildBase: planetBuilds.base,
+  latestBuild: (signal) => findLatestBuild(mapFetch, signal, planetBuilds),
 });
 
 const updates = createOnlineUpdater({
@@ -344,12 +342,15 @@ const exportJobs = createExportJobs({
   },
   chooseSavePath,
   runFile: runInUtility,
-  printReport: async (args, progress, signal) =>
-    printReport(args, progress, signal, {
+  printReport: async (args, progress, signal) => {
+    const current = await settings.get();
+    return printReport(args, progress, signal, {
       devUrl,
       devTools: dev,
-      branding: (await settings.get()).reportBranding,
-    }),
+      branding: current.reportBranding,
+      contents: current.reportContents,
+    });
+  },
   emit: emitExportProgress,
 });
 
@@ -467,9 +468,14 @@ function registerIpc(): void {
         : await dialog.showSaveDialog(options);
       return r.canceled || !r.filePath ? null : r.filePath;
     },
+    packs: { dir: () => join(settings.current().dataRoot, 'packs'), list: () => packs.list() },
+    tempDir: () => app.getPath('temp'),
+    dataRoot: () => settings.current().dataRoot,
+    ...osUser(),
   });
   handle('package:plan', (req) => packageJobs.plan(req));
   handle('package:export', (req) => packageJobs.export(req));
+  handle('package:extract', (req) => packageJobs.extract(req));
   handle('package:cancel', (req) => packageJobs.cancel(req));
 
   handle('app:takeOpenPath', () => {
@@ -496,16 +502,29 @@ function registerIpc(): void {
     }
     return writeBoundaries(root, file);
   });
+  handle('project:writeCentreline', ({ projectId, coordinates }) => {
+    if (registry.package(projectId))
+      return {
+        ok: false,
+        error: 'This project is a read-only package. Nothing can be saved in it.',
+      };
+    const root = registry.root(projectId);
+    if (root === undefined)
+      return { ok: false, error: `Project "${projectId}" is not open. Open it, then save again.` };
+    return writeCentreline(root, coordinates);
+  });
 
   // Detection review (BLD-5) and AI-assisted detection (BLD-6).
-  handle('detections:read', ({ projectId }) => {
-    const root = registry.root(projectId);
-    if (root !== undefined) return readDetections(root);
+  handle('detections:read', async ({ projectId }) => {
     const pkg = registry.package(projectId);
-    if (pkg) return readPackageDetections(pkg.archive);
-    return { ok: false, error: `Project "${projectId}" is not open.` };
+    if (pkg) return readDetectionPasses(packageFiles(pkg.archive), pkg.manifest, true);
+    const root = registry.root(projectId);
+    if (root === undefined) return { ok: false, error: `Project "${projectId}" is not open.` };
+    const manifest = await readManifest(root);
+    if (!manifest.ok) return { ok: false, error: manifest.error };
+    return readDetectionPasses(folderFiles(root), manifest.value, false);
   });
-  handle('detections:write', ({ projectId, file }) => {
+  handle('detections:write', ({ projectId, name, file }) => {
     if (registry.package(projectId))
       return {
         ok: false,
@@ -515,7 +534,7 @@ function registerIpc(): void {
     if (root === undefined) {
       return { ok: false, error: `Project "${projectId}" is not open. Open it, then save again.` };
     }
-    return writeDetections(root, file);
+    return writeDetectionPass(root, name, file);
   });
   const maskAssist = createMaskAssist({
     packDir: async () =>
@@ -559,7 +578,12 @@ function registerIpc(): void {
   });
   handle('ai:detect', (req) => agent.detect(req));
 
-  handle('packs:list', () => packs.list());
+  // Map packs carried by open packages join the list when this machine lacks that area.
+  handle('packs:list', async () => {
+    const installed = await packs.list();
+    const open = registry.openPackages();
+    return listWithEmbedded(installed, await embeddedPacks(installed, open));
+  });
   handle('packs:jobs', () => packs.jobs());
   handle('packs:download', (region) => packs.download(region));
   handle('packs:cancel', ({ id }) => packs.cancel(id));
@@ -729,6 +753,23 @@ function registerIpc(): void {
 
   handle('export:run', (req) => exportJobs.run(req));
   handle('export:cancel', ({ jobId }) => ({ ok: exportJobs.cancel(jobId) }));
+  handle('report:readNarrative', ({ projectId }) => {
+    const root = registry.root(projectId);
+    if (root !== undefined) return readNarrative(root);
+    const pkg = registry.package(projectId);
+    if (pkg) return readPackageNarrative(pkg.archive);
+    return { ok: false, error: `Project "${projectId}" is not open.` };
+  });
+  handle('report:writeNarrative', ({ projectId, file }) => {
+    if (registry.package(projectId))
+      return {
+        ok: false,
+        error: 'This project is a read-only package. Its report text cannot be changed.',
+      };
+    const r = openRoot(projectId);
+    return 'error' in r ? { ok: false, error: r.error } : writeNarrative(r.root, file);
+  });
+  handle('ai:draftText', (req) => agent.draft(req));
   handle('report:list', async ({ projectId }) => {
     const root = registry.root(projectId);
     if (root !== undefined) return { files: await listReports(root) };
@@ -793,6 +834,7 @@ function registerIpc(): void {
         },
       }),
   );
+  handle('builder:altitudePlan', (req) => builderAltitudePlan(req, registry));
   handle(
     'builder:updateLayers',
     (req) => packageRefusal(req.projectId) ?? builderUpdateLayers(req, registry),
@@ -996,6 +1038,7 @@ if (!app.requestSingleInstanceLock()) {
         packsDir: () => join(settings.current().dataRoot, 'packs'),
         thumbsDir,
         brandingDir,
+        embeddedPack: (id) => findEmbedded(id, registry.openPackages()),
       }),
     );
     registerIpc();

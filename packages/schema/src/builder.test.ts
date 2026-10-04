@@ -68,6 +68,31 @@ describe('builder ipc contracts', () => {
         patch: { lens: { model: 'pinhole', hfovDeg: 71.6, aspect: 1.7778 }, offsetMs: -120 },
       }).success,
     ).toBe(true);
+    expect(
+      req.safeParse({
+        projectId: 'p',
+        layerIds: ['v1'],
+        patch: { orientation: { yawDeg: 0.4, pitchDeg: -7.9, rollDeg: 0.2 } },
+      }).success,
+    ).toBe(true);
+    expect(
+      req.safeParse({ projectId: 'p', layerIds: ['v1'], patch: { orientation: null } }).success,
+    ).toBe(true);
+    expect(
+      req.safeParse({ projectId: 'p', layerIds: ['v1'], patch: { positionOffsetM: [1, 40, -2] } })
+        .success,
+    ).toBe(true);
+    expect(
+      req.safeParse({ projectId: 'p', layerIds: ['v1'], patch: { positionOffsetM: [1, 40] } })
+        .success,
+    ).toBe(false);
+    expect(
+      req.safeParse({
+        projectId: 'p',
+        layerIds: ['v1'],
+        patch: { orientation: { yawDeg: 0, pitchDeg: 120, rollDeg: 0 } },
+      }).success,
+    ).toBe(false);
     expect(req.safeParse({ projectId: 'p', layerIds: [], patch: { offsetMs: 1 } }).success).toBe(
       false,
     );

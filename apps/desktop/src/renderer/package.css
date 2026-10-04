@@ -321,3 +321,33 @@
     grid-template-columns: 1fr;
   }
 }
+.welcome-extract {
+  margin-top: 28px;
+}
+.welcome-extract p {
+  margin: 6px 0 12px;
+  max-width: 60ch;
+}
+.extract-pkg {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.extract-pkg .pkg-progress {
+  width: 100%;
+}
+.pkg-map {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-top: 8px;
+}
+.pkg-map label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.pkg-map select {
+  width: auto;
+}

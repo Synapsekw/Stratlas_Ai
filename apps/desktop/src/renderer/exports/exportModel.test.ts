@@ -34,6 +34,7 @@ describe('export actions', () => {
       'kit-json',
       'masks-zip',
       'report-pdf',
+      'house-pdf',
       'snapshot',
     ]);
   });

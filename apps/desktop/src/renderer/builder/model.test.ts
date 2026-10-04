@@ -1,14 +1,32 @@
 import { fromWgs84 } from '@aio/geo';
-import type { Layer } from '@aio/schema';
+import type { Layer, SeverityTemplate } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
   clipVideoTime,
+  defaultTemplateFor,
   invertMat4,
   modelPoint,
   parseCoordinate,
   wizardProblems,
   type WizardForm,
 } from './model';
+
+describe('defaultTemplateFor', () => {
+  const tpl = (id: string, assetType?: string): SeverityTemplate => ({
+    id,
+    label: id,
+    source: 'test',
+    model: { id, name: id, levels: [{ value: 1, label: 'L', color: '#000000', criteria: '' }] },
+    ...(assetType ? { catalogue: { id: `${id}-c`, name: 'c', assetType, classes: [] } } : {}),
+  });
+  const list = [tpl('aik-stack', 'asset'), tpl('general'), tpl('road-astm-d6433', 'road')];
+  it('gives a road survey the road catalogue and other types the first other one', () => {
+    expect(defaultTemplateFor('road', list)).toBe('road-astm-d6433');
+    expect(defaultTemplateFor('inspection', list)).toBe('aik-stack');
+    expect(defaultTemplateFor('road', [tpl('general')])).toBe('general');
+    expect(defaultTemplateFor('road', [])).toBeNull();
+  });
+});
 
 describe('parseCoordinate', () => {
   it('reads latitude, longitude (and height) in degrees', () => {

@@ -15,6 +15,13 @@ import type { Bridge } from './bridge';
 
 const LOG_KEEP = 2000;
 
+/** A new job form filled in elsewhere (the road setup panel), opened by the Jobs screen. */
+export interface JobDraft {
+  pipeline: PipelineName;
+  project: string;
+  values: Record<string, string>;
+}
+
 export interface JobsState {
   /** null until the first jobs:list answer. */
   runtime: RuntimeInfo | null;
@@ -23,6 +30,7 @@ export interface JobsState {
   logs: Record<string, JobLogLine[]>;
   selected: string | null;
   error: string | null;
+  draft: JobDraft | null;
 }
 
 export interface JobsActions {
@@ -34,6 +42,8 @@ export interface JobsActions {
   start: (req: IpcRequest<'jobs:start'>) => Promise<string | null>;
   cancel: (id: string) => Promise<string | null>;
   open: (id: string, what: 'output' | 'log' | 'project') => Promise<string | null>;
+  /** Fill in a new job form for the Jobs screen (null clears it). */
+  prepare: (draft: JobDraft | null) => void;
 }
 
 export type Jobs = JobsState & JobsActions;
@@ -57,10 +67,31 @@ export function applyJobEvent(
 }
 
 /** Pipelines that add layers to the project manifest when they finish. */
-const MANIFEST_WRITERS: ReadonlySet<string> = new Set(['pointcloud.to_copc', 'volumetric.build']);
+const MANIFEST_WRITERS: ReadonlySet<string> = new Set([
+  'pointcloud.to_copc',
+  'volumetric.build',
+  'road.build',
+]);
+/** Pipelines that also write issues.json (and road.json): the open project reopens whole. */
+const PROJECT_WRITERS: ReadonlySet<string> = new Set(['road.build']);
 
 const folderKey = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
 const sameFolder = (a: string, b: string) => folderKey(a) === folderKey(b);
+
+function justFinished(
+  prev: readonly JobRecord[],
+  next: readonly JobRecord[],
+  root: string,
+  pipelines: ReadonlySet<string>,
+): boolean {
+  return next.some(
+    (j) =>
+      j.status === 'done' &&
+      pipelines.has(j.pipeline) &&
+      sameFolder(j.project, root) &&
+      prev.find((p) => p.id === j.id)?.status !== 'done',
+  );
+}
 
 /**
  * True when a job that writes the manifest of the project at `root` has just finished: the open
@@ -71,13 +102,19 @@ export function finishedManifestJob(
   next: readonly JobRecord[],
   root: string,
 ): boolean {
-  return next.some(
-    (j) =>
-      j.status === 'done' &&
-      MANIFEST_WRITERS.has(j.pipeline) &&
-      sameFolder(j.project, root) &&
-      prev.find((p) => p.id === j.id)?.status !== 'done',
-  );
+  return justFinished(prev, next, root, MANIFEST_WRITERS);
+}
+
+/**
+ * True when a job that rewrites the project's issues (the road builder) has just finished: the
+ * open project should reload its manifest and its issues.
+ */
+export function finishedProjectJob(
+  prev: readonly JobRecord[],
+  next: readonly JobRecord[],
+  root: string,
+): boolean {
+  return justFinished(prev, next, root, PROJECT_WRITERS);
 }
 
 /** Pipelines that merge issues into the project's issues.json when they finish. */
@@ -145,6 +182,11 @@ export function createJobsStore(bridge: Bridge, on: AioBridge['on'] | undefined)
     logs: {},
     selected: null,
     error: null,
+    draft: null,
+
+    prepare: (draft) => {
+      set({ draft });
+    },
 
     init: async () => {
       if (!following && on) {
@@ -219,14 +261,19 @@ function mergeLog(history: JobLogLine[], live: JobLogLine[] | undefined): JobLog
 export interface Field {
   key: string;
   label: string;
-  kind: 'folder' | 'text' | 'number' | 'origin' | 'select';
+  /** `file` picks one file, `files` one or more (separated by `;`, sent as a list when several). */
+  kind: 'folder' | 'file' | 'files' | 'text' | 'number' | 'origin' | 'select';
   /** A select whose values are 'true' / 'false' sends a boolean. */
   boolean?: boolean;
   required?: boolean;
   placeholder?: string;
   help?: string;
   options?: { value: string; label: string }[];
+  /** File types offered by the Choose button of a `file` or `files` field. */
+  filters?: { name: string; extensions: string[] }[];
 }
+
+const GEO_FILES = ['geojson', 'json', 'kml', 'dxf', 'shp', 'js'];
 
 export const FORMS: Record<PipelineName, Field[]> = {
   'aik.cameras': [
@@ -338,6 +385,65 @@ export const FORMS: Record<PipelineName, Field[]> = {
       placeholder: 'inspection',
     },
   ],
+  'road.build': [
+    {
+      key: 'centreline',
+      label: t('jobs.road.centreline'),
+      kind: 'file',
+      required: true,
+      placeholder: 'road/centreline-drawn.geojson',
+      help: t('jobs.road.centrelineHelp'),
+      filters: [{ name: t('jobs.road.filterGeo'), extensions: GEO_FILES }],
+    },
+    {
+      key: 'ortho',
+      label: t('jobs.road.ortho'),
+      kind: 'files',
+      placeholder: 'D:/survey/ortho.tif',
+      help: t('jobs.road.orthoHelp'),
+      filters: [{ name: t('jobs.road.filterRaster'), extensions: ['tif', 'tiff'] }],
+    },
+    {
+      key: 'defects',
+      label: t('jobs.road.defects'),
+      kind: 'file',
+      placeholder: 'D:/survey/defects.geojson',
+      help: t('jobs.road.defectsHelp'),
+      filters: [{ name: t('jobs.road.filterGeo'), extensions: GEO_FILES }],
+    },
+    {
+      key: 'units',
+      label: t('jobs.road.units'),
+      kind: 'select',
+      options: [
+        { value: '', label: t('jobs.road.unitsChainage') },
+        { value: 'grid', label: t('jobs.road.unitsGrid') },
+      ],
+    },
+    {
+      key: 'unitLength',
+      label: t('jobs.road.unitLength'),
+      kind: 'number',
+      placeholder: '31',
+      help: t('jobs.road.unitLengthHelp'),
+    },
+    { key: 'lanes', label: t('jobs.road.lanes'), kind: 'number', placeholder: '2' },
+    { key: 'laneWidth', label: t('jobs.road.laneWidth'), kind: 'number', placeholder: '3.65' },
+    {
+      key: 'pavement',
+      label: t('jobs.road.pavement'),
+      kind: 'file',
+      help: t('jobs.road.pavementHelp'),
+      filters: [{ name: t('jobs.road.filterRaster'), extensions: ['tif', 'tiff'] }],
+    },
+    {
+      key: 'orthoCm',
+      label: t('jobs.road.orthoCm'),
+      kind: 'number',
+      placeholder: t('jobs.road.orthoCmPlaceholder'),
+    },
+    { key: 'centrelineEpsg', label: t('jobs.road.centrelineEpsg'), kind: 'number' },
+  ],
   'system.selftest': [
     {
       key: 'seconds',
@@ -376,6 +482,12 @@ export function buildParams(
       params[f.key] = parts;
     } else if (f.boolean) {
       params[f.key] = raw === 'true';
+    } else if (f.kind === 'files') {
+      const list = raw
+        .split(';')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      params[f.key] = list.length === 1 ? list[0] : list;
     } else {
       params[f.key] = raw;
     }

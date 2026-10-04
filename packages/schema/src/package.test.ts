@@ -5,8 +5,24 @@ import {
   ipc,
   LibraryEntry,
   PACKAGE_HEADER_FILE,
+  packageEditAllowed,
   parsePackageHeader,
 } from './index';
+
+describe('edit policy', () => {
+  it('lets a package say whether it may be extracted, defaulting to its read-only flag', () => {
+    const parse = (extra: object) => {
+      const r = parsePackageHeader({ ...header, ...extra });
+      if (!r.ok) throw new Error(r.error);
+      return r.value;
+    };
+    expect(packageEditAllowed(parse({}))).toBe(false);
+    expect(packageEditAllowed(parse({ readOnly: false }))).toBe(true);
+    expect(packageEditAllowed(parse({ editPolicy: 'allow' }))).toBe(true);
+    expect(packageEditAllowed(parse({ readOnly: false, editPolicy: 'forbid' }))).toBe(false);
+    expect(parsePackageHeader({ ...header, editPolicy: 'maybe' }).ok).toBe(false);
+  });
+});
 
 const header = {
   schema: 'aio.package/1',

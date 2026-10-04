@@ -70,6 +70,18 @@ describe('road model (aio.road/1)', () => {
     if (!r.ok) expect(r.error).toMatch(/chainage/i);
   });
 
+  it('takes units along the road (road builder) without grid cells', () => {
+    const doc = road();
+    const unit = doc.pci.units[0];
+    if (!unit) throw new Error('fixture');
+    doc.pci.units = [{ ...unit, id: 's0000', cells: [], fromKm: 0, toKm: 0.03 }];
+    expect(parseRoadModel(doc).ok).toBe(false);
+    doc.pci.layout = 'chainage';
+    const r = parseRoadModel(doc);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.pci.units[0]?.toKm).toBe(0.03);
+  });
+
   it('refuses another schema with a message a person can act on', () => {
     const r = parseRoadModel({ ...road(), schema: 'aio.road/2' });
     expect(r.ok).toBe(false);

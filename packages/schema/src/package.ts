@@ -24,6 +24,15 @@ export const ExportKind = z.enum([
 /** May project data be sent to a cloud AI provider while this package is open. */
 export const AiPolicy = z.enum(['forbid', 'allow']);
 
+/** May the holder extract the package into an editable project ("extract to edit"). */
+export const EditPolicy = z.enum(['forbid', 'allow']);
+
+/** Folder inside a package that holds embedded map packs (`<id>.pmtiles` with `<id>.json`). */
+export const EMBEDDED_PACKS_DIR = 'packs';
+
+/** File an extracted project keeps at its root: where it came from. */
+export const PACKAGE_ORIGIN_FILE = 'package-origin.json';
+
 export const DEFAULT_PACKAGE_EXPORTS: readonly z.infer<typeof ExportKind>[] = [
   'issues-csv',
   'report-pdf',
@@ -43,6 +52,11 @@ export const PackageHeader = z.object({
   /** Player mode: no editing, issues are never written. */
   readOnly: z.boolean().default(true),
   aiPolicy: AiPolicy.default('forbid'),
+  /**
+   * Extract to edit. Absent in packages written before it existed: then a working package
+   * (`readOnly: false`) may be extracted and a customer package may not (`packageEditAllowed`).
+   */
+  editPolicy: EditPolicy.optional(),
   exports: z.array(ExportKind).default([...DEFAULT_PACKAGE_EXPORTS]),
   /** Layers of the source project left out of the package. */
   excludedLayers: z.array(Id).default([]),
@@ -64,8 +78,39 @@ export const PackageInfo = z.object({
   sizeBytes: z.number().int().nonnegative(),
 });
 
+/**
+ * `package-origin.json` in a project extracted from a package: the package it came from and when
+ * that package was exported, shown with the project so nobody mistakes the copy for the source.
+ */
+export const PackageOrigin = z.object({
+  schema: z.literal('aio.origin/1'),
+  /** File name of the `.aio` package. */
+  package: z.string().min(1),
+  /** Where the package was when it was extracted. */
+  path: z.string().optional(),
+  /** Project id inside the package (the builder's project). */
+  projectId: Id,
+  /** When the package was exported (`PackageHeader.createdAt`). */
+  exportedAt: IsoTime,
+  /** App that exported it. */
+  exportedBy: z.string().optional(),
+  extractedAt: IsoTime,
+  /** Person (OS account) who extracted it. */
+  extractedBy: z.string().optional(),
+  encrypted: z.boolean(),
+});
+
+/** May this package be extracted into an editable project. */
+export function packageEditAllowed(
+  header: Pick<PackageHeader, 'editPolicy' | 'readOnly'>,
+): boolean {
+  return header.editPolicy === undefined ? !header.readOnly : header.editPolicy === 'allow';
+}
+
 export type ExportKind = z.infer<typeof ExportKind>;
 export type AiPolicy = z.infer<typeof AiPolicy>;
+export type EditPolicy = z.infer<typeof EditPolicy>;
+export type PackageOrigin = z.infer<typeof PackageOrigin>;
 export type PackageHeader = z.infer<typeof PackageHeader>;
 export type PackageHeaderInput = z.input<typeof PackageHeader>;
 export type PackageInfo = z.infer<typeof PackageInfo>;

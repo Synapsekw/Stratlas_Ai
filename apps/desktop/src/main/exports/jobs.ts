@@ -34,9 +34,15 @@ export interface ExportDeps {
     progress: (p: ExportProgress) => void,
     signal: AbortSignal,
   ) => Promise<ExportResult>;
-  /** Render and print the issue register report. */
+  /** Render and print the issue register report (`report-pdf`) or the house report (`house-pdf`). */
   printReport: (
-    args: { projectId: string; root: string; outPath: string; issueIds?: string[] | undefined },
+    args: {
+      projectId: string;
+      root: string;
+      outPath: string;
+      issueIds?: string[] | undefined;
+      kind: 'register' | 'house';
+    },
     progress: (p: ExportProgress) => void,
     signal: AbortSignal,
   ) => Promise<ExportResult>;
@@ -100,9 +106,15 @@ export function createExportJobs(deps: ExportDeps): ExportJobs {
     };
     try {
       const r =
-        req.format === 'report-pdf'
+        req.format === 'report-pdf' || req.format === 'house-pdf'
           ? await deps.printReport(
-              { projectId: req.projectId, root, outPath, issueIds: req.issueIds },
+              {
+                projectId: req.projectId,
+                root,
+                outPath,
+                issueIds: req.issueIds,
+                kind: req.format === 'house-pdf' ? 'house' : 'register',
+              },
               progress,
               ac.signal,
             )

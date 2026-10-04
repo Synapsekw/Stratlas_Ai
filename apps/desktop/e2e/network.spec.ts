@@ -4,10 +4,11 @@ test('the zero-network guard blocks and records main-process requests', async ({
   app,
   network,
 }) => {
-  const errors = await app.evaluate(async ({ net }) => {
+  const errors = await app.evaluate(async ({ net, session }) => {
     const attempts = [
       () => fetch('https://example.invalid/node-fetch'),
       () => net.fetch('https://example.invalid/electron-net'),
+      () => session.fromPartition('stratlas-maps').fetch('https://example.invalid/session'),
     ];
     const messages: string[] = [];
     for (const attempt of attempts) {
@@ -20,12 +21,13 @@ test('the zero-network guard blocks and records main-process requests', async ({
     }
     return messages;
   });
-  expect(errors).toHaveLength(2);
+  expect(errors).toHaveLength(3);
   for (const message of errors) expect(message).toContain('zero-network guard');
   // Drain the deliberate requests so the fixture's zero-network assertion still holds.
   expect(await network.drain()).toEqual([
     'https://example.invalid/node-fetch',
     'https://example.invalid/electron-net',
+    'https://example.invalid/session',
   ]);
 });
 

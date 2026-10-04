@@ -4,7 +4,14 @@
  * current one (double-click an edge adds a vertex, Shift-click a vertex removes it).
  */
 import { AnnotateStyles, DrawLayer, type ImageTool, type ShapeItem } from '@aio/annotate';
-import type { Detection, DetectionSource } from '@aio/annotate/detections';
+import {
+  clampGeom,
+  scaleGeom,
+  sourceKey,
+  type Detection,
+  type DetectionSource,
+} from '@aio/annotate/detections';
+import { noteImageSize } from './store';
 import { imageGeometry } from '@aio/annotate';
 import type { ImageGeom, Layer } from '@aio/schema';
 import { useT } from '@aio/ui';
@@ -62,7 +69,8 @@ export function ReviewEditor({
   /** Bumped by the screen (F key) to fit the image again. */
   fitSignal: number;
   onCreate: (geom: ImageGeom, size: Size) => void;
-  onEdit: (id: string, geom: ImageGeom, size: Size) => void;
+  /** The edited shape in the detection's own pixel grid. */
+  onEdit: (id: string, geom: ImageGeom) => void;
   onSelect: (id: string | null) => void;
 }) {
   const t = useT();
@@ -107,21 +115,34 @@ export function ReviewEditor({
     };
   }, []);
 
+  // a detection's shape is in its own pixel grid (`size`); the editor works in the image's
+  const toImage = useCallback(
+    (d: Detection): ImageGeom =>
+      natural ? scaleGeom(d.geom, natural.width / d.size[0], natural.height / d.size[1]) : d.geom,
+    [natural],
+  );
   const items = useMemo<ShapeItem[]>(
     () =>
       shapes.map((s) => {
         const selected = s.detection.id === currentId;
         return {
           key: s.detection.id,
-          geom: s.detection.geom,
+          geom: toImage(s.detection),
           color: s.color,
           label: s.label,
           selected,
           editable: selected && !readOnly && s.detection.status !== 'accepted',
         };
       }),
-    [shapes, currentId, readOnly],
+    [shapes, currentId, readOnly, toImage],
   );
+
+  const back = (id: string, geom: ImageGeom, size: Size) => {
+    const d = shapes.find((x) => x.detection.id === id)?.detection;
+    if (!d) return;
+    const g = clampGeom(geom, size);
+    onEdit(id, scaleGeom(g, d.size[0] / size.width, d.size[1] / size.height));
+  };
 
   const style = {
     transform: `translate(${String(view.x)}px, ${String(view.y)}px) scale(${String(view.scale)})`,
@@ -143,6 +164,7 @@ export function ReviewEditor({
           onLoad={(e) => {
             const im = e.currentTarget;
             setLoaded({ key, size: { width: im.naturalWidth, height: im.naturalHeight } });
+            noteImageSize(sourceKey(source), [im.naturalWidth, im.naturalHeight]);
           }}
           onError={() => {
             setLoaded({ key, size: null });
@@ -163,6 +185,7 @@ export function ReviewEditor({
           onSeeked={(e) => {
             const v = e.currentTarget;
             setLoaded({ key, size: { width: v.videoWidth, height: v.videoHeight } });
+            noteImageSize(sourceKey(source), [v.videoWidth, v.videoHeight]);
           }}
           onError={() => {
             setLoaded({ key, size: null });
@@ -179,13 +202,13 @@ export function ReviewEditor({
             if (!readOnly) onCreate(geom, natural);
           }}
           onEdit={(id, geom) => {
-            onEdit(id, geom, natural);
+            back(id, geom, natural);
           }}
           onVertexInsert={(id, geom) => {
-            onEdit(id, geom, natural);
+            back(id, geom, natural);
           }}
           onVertexRemove={(id, geom) => {
-            onEdit(id, geom, natural);
+            back(id, geom, natural);
           }}
           onSelect={onSelect}
           onPan={(dx, dy) => {

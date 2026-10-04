@@ -15,6 +15,7 @@ export const PipelineName = z.enum([
   'volumetric.process',
   'pointcloud.to_copc',
   'inspection.run',
+  'road.build',
   'system.selftest',
   'volumetric.build',
 ]);
@@ -59,6 +60,12 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
       'Contact sheets, detections placed on the model, grouped into issues, and the stats for the report.',
   },
   {
+    name: 'road.build',
+    title: 'Road survey',
+    description:
+      'Ortho tiles, chainage from the centreline, defect polygons, ASTM D6433 sample units, deducts and PCI.',
+  },
+  {
     name: 'system.selftest',
     title: 'Check the pipeline pack',
     description:
@@ -95,6 +102,14 @@ export const AikCamerasParams = z
     longEdge: z.number().int().min(256).max(16384).optional(),
     out: ProjectPath.optional(),
     photosOut: ProjectPath.optional(),
+    /**
+     * Camera heights (data-conventions section 3a). `auto` (default): absolute altitude minus the
+     * origin's ground altitude when an origin is given, else relative altitude above the take-off
+     * point (the estimated ground). A photo without the preferred altitude uses the other.
+     */
+    altitude: z.enum(['auto', 'absolute', 'relative']).optional(),
+    /** Height of the take-off point above the ground datum, for relative altitude (metres). */
+    takeoffHeight: z.number().min(-500).max(5000).optional(),
   })
   .strict();
 
@@ -199,6 +214,37 @@ export const InspectionRunParams = z
   })
   .strict();
 
+const Epsg = z.number().int().min(1024).max(999999);
+
+/** `road.build` (python `aio_pipelines/road/pipeline.py`): input files are read only. */
+export const RoadBuildParams = z
+  .object({
+    /** GeoJSON (drawn in the app or from GIS), KML, DXF or the kit's centreline_utm.json. */
+    centreline: z.string().min(1),
+    /** CRS of a DXF centreline (default: the project CRS). */
+    centrelineEpsg: Epsg.optional(),
+    /** Orthomosaic GeoTIFF, or several blocks drawn in order. */
+    ortho: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]).optional(),
+    /** Finest ortho pixel (cm); default the GeoTIFF's own. */
+    orthoCm: z.number().min(0.5).max(100).optional(),
+    /** Defect polygons: GeoJSON, a shapefile (.shp) or the road review's defects.js. */
+    defects: z.string().min(1).optional(),
+    defectsEpsg: Epsg.optional(),
+    /** Pavement footprint raster (pixels above 0); default the centreline buffered by the lanes. */
+    pavement: z.string().min(1).optional(),
+    /** Sample units along the road (default) or on a square grid as delivered for the Ring Road. */
+    units: z.enum(['chainage', 'grid']).optional(),
+    /** Unit length (chainage) or cell size (grid), metres. */
+    unitLength: z.number().min(5).max(200).optional(),
+    lanes: z.number().int().min(1).max(12).optional(),
+    laneWidth: z.number().min(2).max(6).optional(),
+    /** Grid origin (E, N) in the project CRS, without a pavement raster. */
+    gridOrigin: z.tuple([z.number(), z.number()]).optional(),
+    closeups: z.boolean().optional(),
+    name: z.string().min(1).optional(),
+  })
+  .strict();
+
 export const SelfTestParams = z.object({ seconds: z.number().min(0).max(600).optional() }).strict();
 
 const PARAMS = {
@@ -208,6 +254,7 @@ const PARAMS = {
   'volumetric.process': VolumetricProcessParams,
   'pointcloud.to_copc': PointcloudToCopcParams,
   'inspection.run': InspectionRunParams,
+  'road.build': RoadBuildParams,
   'system.selftest': SelfTestParams,
   'volumetric.build': VolumetricBuildParams,
 } as const satisfies Record<PipelineName, z.ZodType>;

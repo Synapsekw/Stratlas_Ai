@@ -155,6 +155,18 @@ export async function createDataRoot(): Promise<DataRoot> {
 export class NetworkGuard {
   private readonly renderer: string[] = [];
   private app: ElectronApplication | undefined;
+  /**
+   * @param allow Loopback origins (`http://127.0.0.1:<port>`) a test serves itself and lets the
+   *   main process reach, e.g. the map pack download test. Pass the same list to `launchApp` as
+   *   `AIO_NETWORK_GUARD_ALLOW`. Anything else stays blocked and fails the test.
+   */
+  constructor(private readonly allow: readonly string[] = []) {
+    for (const origin of allow) {
+      const u = new URL(origin);
+      if (u.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname))
+        throw new Error(`The zero-network guard only allows loopback origins, not ${origin}`);
+    }
+  }
 
   async attach(app: ElectronApplication): Promise<void> {
     this.app = app;
@@ -166,21 +178,61 @@ export class NetworkGuard {
     // Fail network requests instead of letting them reach the internet.
     await context.route(/^(https?|wss?|ftp):/i, (route) => route.abort('internetdisconnected'));
     // Electron's own net module bypasses Node, so guard it in main as well.
-    await app.evaluate(({ net }) => {
+    await app.evaluate(({ net, session }, allow) => {
       const log = (globalThis as { __aioNetworkLog?: string[] }).__aioNetworkLog;
-      if (!log) throw new Error('network-guard.cjs did not load in the main process');
+      const passed = (globalThis as { __aioNetworkAllowed?: string[] }).__aioNetworkAllowed;
+      if (!log || !passed) throw new Error('network-guard.cjs did not load in the main process');
       const block = (target: string) => {
         log.push(target);
         return new Error(`Network access blocked by the e2e zero-network guard: ${target}`);
       };
-      net.fetch = (input) =>
-        Promise.reject(
-          block(typeof input === 'string' ? input : 'url' in input ? input.url : String(input)),
-        );
-      net.request = (options) => {
-        throw block(typeof options === 'string' ? options : (options.url ?? 'net.request'));
+      const allowed = (url: string) => {
+        try {
+          return allow.includes(new URL(url).origin);
+        } catch {
+          return false;
+        }
       };
-    });
+      const originalFetch = net.fetch.bind(net);
+      // net.fetch goes through net.request, so both pass the allowed origins.
+      const originalRequest = net.request.bind(net);
+      net.fetch = (input, init) => {
+        const url = typeof input === 'string' ? input : 'url' in input ? input.url : String(input);
+        if (allowed(url)) {
+          passed.push(url);
+          return originalFetch(input, init);
+        }
+        return Promise.reject(block(url));
+      };
+      net.request = (options) => {
+        const url = typeof options === 'string' ? options : (options.url ?? 'net.request');
+        if (allowed(url)) return originalRequest(options);
+        throw block(url);
+      };
+      // Every session's fetch (the map downloads use their own session).
+      const proto = Object.getPrototypeOf(session.defaultSession) as {
+        fetch: (this: unknown, input: string | Request, init?: RequestInit) => Promise<Response>;
+      };
+      const sessionFetch = proto.fetch;
+      proto.fetch = function (input, init) {
+        const url = typeof input === 'string' ? input : input.url;
+        if (allowed(url)) {
+          passed.push(url);
+          return sessionFetch.call(this, input, init);
+        }
+        return Promise.reject(block(url));
+      };
+    }, this.allow);
+  }
+
+  /** Requests let through to the allowed loopback origins, in order. */
+  async allowed(): Promise<string[]> {
+    return this.app
+      ? this.app.evaluate(
+          () =>
+            (globalThis as { __aioNetworkAllowed?: string[] }).__aioNetworkAllowed?.slice() ?? [],
+        )
+      : [];
   }
 
   /** Outbound requests so far, renderer and main, without clearing them. */

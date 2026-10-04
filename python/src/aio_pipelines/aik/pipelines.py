@@ -32,7 +32,17 @@ class AikCameras:
     def validate(self, params: dict[str, Any]) -> dict[str, Any]:
         known_keys(
             params,
-            {"photos", "origin", "assetHeight", "sensorWidthMm", "longEdge", "out", "photosOut"},
+            {
+                "photos",
+                "origin",
+                "assetHeight",
+                "sensorWidthMm",
+                "longEdge",
+                "out",
+                "photosOut",
+                "altitude",
+                "takeoffHeight",
+            },
             self.name,
         )
         out = {
@@ -43,7 +53,11 @@ class AikCameras:
             "longEdge": number(params, "longEdge", 2560, 256, 16384, integer=True),
             "out": text(params, "out", "cameras.json"),
             "photosOut": text(params, "photosOut", "photos"),
+            "altitude": text(params, "altitude", "auto"),
+            "takeoffHeight": number(params, "takeoffHeight", None, -500, 5000),
         }
+        if out["altitude"] not in ("auto", "absolute", "relative"):
+            raise JobError("altitude must be auto, absolute or relative.")
         if out["origin"] is not None:
             lat, lon, _ = out["origin"]
             if not (-90 <= lat <= 90 and -180 <= lon <= 180):
@@ -98,12 +112,31 @@ class AikCameras:
             origin = params.get("origin")
             estimated = origin is None
             if estimated:
-                origin = list(C.estimate_origin([it["meta"] for it in located]))
+                metas = [it["meta"] for it in located]
+                origin = list(C.estimate_origin(metas))
+                how = C.ground_altitude(metas)[1]
                 ctx.log(
-                    "No origin given: using the mean photo position and the lowest photo altitude "
+                    f"No origin given: using the mean photo position and the {how} as the ground "
                     f"({origin[0]:.6f}, {origin[1]:.6f}, {origin[2]:.1f} m). Set the asset base for real work.",
                     "warn",
                 )
+            # heights (data-conventions 3a): a given origin is the absolute altitude datum; without
+            # one, relative altitude above the take-off point, which sits takeoffHeight above ground
+            mode = params.get("altitude", "auto")
+            prefer = mode if mode != "auto" else ("relative" if estimated else "absolute")
+            takeoff_h = params.get("takeoffHeight")
+            if takeoff_h is None:
+                t = C.takeoff_altitude([it["meta"] for it in located])
+                takeoff_h = t - origin[2] if t is not None and not estimated else 0.0
+            ctx.log(
+                f"Camera heights: {prefer} altitude"
+                + (
+                    f" minus the ground altitude {origin[2]:.1f} m"
+                    if prefer == "absolute"
+                    else f" plus the take-off height {takeoff_h:.1f} m above the ground"
+                )
+                + "; photos without it use the other altitude."
+            )
             folders = sorted({Path(it["path"]).parent.relative_to(root).as_posix() for it in items})
             out_dir = os.path.dirname(params["out"].replace("\\", "/"))
             photos = []
@@ -115,14 +148,28 @@ class AikCameras:
                     os.path.relpath(f"{params['photosOut']}/{pid}.jpg", out_dir or ".")
                 ).as_posix()
                 seq = src.parent.relative_to(root).as_posix() if len(folders) > 1 else "1"
-                ps = C.pose(it["meta"], origin, params.get("sensorWidthMm"), params.get("assetHeight"))
+                ps = C.pose(
+                    it["meta"],
+                    origin,
+                    params.get("sensorWidthMm"),
+                    params.get("assetHeight"),
+                    prefer,
+                    takeoff_h,
+                )
                 photos.append(C.camera_record(pid, src, root, it["meta"], ps, file_rel, seq))
                 ctx.progress((n + 1) / len(located))
+            by_source: dict[str, int] = {}
+            for p in photos:
+                by_source[p["altitude_source"]] = by_source.get(p["altitude_source"], 0) + 1
+            off = [f"{n} {s}" for s, n in sorted(by_source.items()) if s != prefer]
+            if off:
+                ctx.log(f"Heights not from {prefer} altitude: {', '.join(off)}.", "warn")
             cams = {
                 "photos": photos,
                 "alignment": {
                     "origin": origin,
                     "origin_estimated": estimated,
+                    "heights": {"prefer": prefer, "takeoff_height": takeoff_h, "sources": by_source},
                     "model_axes": "X north, Y up above ground datum, Z east",
                     "accuracy": "GPS and gimbal metadata; not survey registration",
                 },
@@ -136,6 +183,7 @@ class AikCameras:
                 "skipped": len(missing),
                 "origin": origin,
                 "originEstimated": estimated,
+                "heights": {"prefer": prefer, "takeoffHeight": takeoff_h, "sources": by_source},
             }
 
         def review(ctx: StepContext) -> dict[str, Any]:

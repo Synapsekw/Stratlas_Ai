@@ -59,6 +59,7 @@ function deps(detect: RunnerDeps['detect']) {
 
 const input = {
   runId: 'run-1',
+  pass: 'ai-run-1.json',
   projectId: 'ebsm',
   items,
   classes: [{ id: 'moderate', label: 'Moderate' }],

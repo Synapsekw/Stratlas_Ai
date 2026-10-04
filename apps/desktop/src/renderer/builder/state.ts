@@ -1,8 +1,17 @@
-import type { AioBridge, ImportItem, IpcEvent, LayerPatch } from '@aio/schema';
+import type {
+  AioBridge,
+  AltitudeChoice,
+  ImportHeights,
+  ImportItem,
+  IpcEvent,
+  LayerPatch,
+} from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { bridge, shell } from '../shell';
+import { heightsPrompt, needsTakeoff, type HeightsPrompt } from './heights';
+import { terrainHeightAt } from './pick';
 
 export type AlignTool = { kind: 'mesh'; layerId: string } | { kind: 'video'; layerId: string };
 
@@ -11,7 +20,9 @@ export interface BuilderState {
   /** Import in progress (progress from main), or null. */
   importing: { done: number; total: number; file: string } | null;
   /** Outcome of the last import, shown until dismissed. */
-  importResult: { items: ImportItem[]; error: string | null } | null;
+  importResult: { items: ImportItem[]; error: string | null; heights?: ImportHeights } | null;
+  /** Camera heights to confirm before the import runs (relative altitude needs a take-off H). */
+  heightsPrompt: HeightsPrompt | null;
   align: AlignTool | null;
 }
 
@@ -20,7 +31,14 @@ export interface BuilderActions {
   closeWizard: () => void;
   /** Create a project from the wizard, then open it. */
   created: (path: string) => Promise<void>;
-  importFiles: (paths: readonly string[]) => Promise<void>;
+  /**
+   * Import raw files. Without `altitude`, files whose camera heights need a take-off height stop
+   * at the heights prompt first (data-conventions section 3a).
+   */
+  importFiles: (paths: readonly string[], altitude?: AltitudeChoice) => Promise<void>;
+  /** Run the prompted import with the confirmed heights, or drop it. */
+  confirmHeights: (altitude: AltitudeChoice) => Promise<void>;
+  cancelHeights: () => void;
   pickAndImport: () => Promise<void>;
   dismissImport: () => void;
   startAlign: (tool: AlignTool) => void;
@@ -56,6 +74,7 @@ export const builder = createStore<Builder>()((set, get) => ({
   wizardOpen: false,
   importing: null,
   importResult: null,
+  heightsPrompt: null,
   align: null,
 
   openWizard: () => {
@@ -72,20 +91,43 @@ export const builder = createStore<Builder>()((set, get) => ({
     shell.getState().go('scene');
   },
 
-  importFiles: async (paths) => {
+  importFiles: async (paths, altitude) => {
     const project = workspace.getState().project;
     if (!project) {
       set({ importResult: { items: [], error: 'Open or create a project first, then import.' } });
       return;
     }
     if (!paths.length || get().importing) return;
-    set({ importing: { done: 0, total: paths.length, file: '' }, importResult: null });
+    if (!altitude) {
+      const plan = await bridge.call('builder:altitudePlan', {
+        projectId: project.id,
+        paths: [...paths],
+      });
+      if (plan.ok && plan.value.ok && needsTakeoff(plan.value.plan)) {
+        const p = plan.value.plan;
+        const y = p.takeoff ? terrainHeightAt(p.takeoff.x, p.takeoff.z) : null;
+        set({
+          importResult: null,
+          heightsPrompt: heightsPrompt(paths, p, project.manifest.origin[2], y),
+        });
+        return;
+      }
+    }
+    set({
+      importing: { done: 0, total: paths.length, file: '' },
+      importResult: null,
+      heightsPrompt: null,
+    });
     const aio = window.aio as AioBridge | undefined;
     const off = aio?.on('builder:progress', (e: IpcEvent<'builder:progress'>) => {
       if (e.projectId === project.id)
         set({ importing: { done: e.done, total: e.total, file: e.file } });
     });
-    const r = await bridge.call('builder:import', { projectId: project.id, paths: [...paths] });
+    const r = await bridge.call('builder:import', {
+      projectId: project.id,
+      paths: [...paths],
+      ...(altitude ? { altitude } : {}),
+    });
     off?.();
     if (!r.ok) {
       set({ importing: null, importResult: { items: [], error: r.error } });
@@ -97,7 +139,14 @@ export const builder = createStore<Builder>()((set, get) => ({
     }
     if (workspace.getState().project?.id === project.id)
       workspace.getState().replaceManifest(r.value.manifest);
-    set({ importing: null, importResult: { items: r.value.items, error: null } });
+    set({
+      importing: null,
+      importResult: {
+        items: r.value.items,
+        error: null,
+        ...(r.value.heights ? { heights: r.value.heights } : {}),
+      },
+    });
     void shell.getState().loadLibrary();
   },
 
@@ -113,6 +162,16 @@ export const builder = createStore<Builder>()((set, get) => ({
 
   dismissImport: () => {
     set({ importResult: null });
+  },
+
+  confirmHeights: async (altitude) => {
+    const p = get().heightsPrompt;
+    if (!p) return;
+    set({ heightsPrompt: null });
+    await get().importFiles(p.paths, altitude);
+  },
+  cancelHeights: () => {
+    set({ heightsPrompt: null });
   },
 
   startAlign: (align) => {

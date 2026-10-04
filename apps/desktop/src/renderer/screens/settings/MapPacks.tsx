@@ -25,6 +25,7 @@ const SOURCE_LABEL: Record<NonNullable<MapPackInfo['source']>, string> = {
   download: 'Downloaded',
   import: 'Imported',
   'build-tool': 'Built',
+  package: t('settings.maps.fromPackage'),
 };
 
 const STATE_LABEL: Record<PackJob['state'], string> = {
@@ -126,7 +127,7 @@ function JobRow({ job, onChange }: { job: PackJob; onChange: () => void }) {
               disabled={busy}
               onClick={() => void act('packs:resume')}
             >
-              Resume
+              {job.state === 'interrupted' ? t('settings.maps.resume') : t('settings.maps.again')}
             </button>
           )}
           {!active && (
@@ -156,8 +157,10 @@ function JobRow({ job, onChange }: { job: PackJob; onChange: () => void }) {
       {job.error && <p className="prov-err">{job.error}</p>}
       {job.state === 'interrupted' && (
         <p className="help">
-          The app closed during this download. Resume starts the region again from the same planet
-          build {job.build ?? ''}.
+          {t('settings.maps.interrupted', {
+            size: formatBytes(job.bytes ?? 0),
+            build: job.build ?? '',
+          })}
         </p>
       )}
       {error && <p className="prov-err">{error}</p>}
@@ -548,7 +551,7 @@ export function MapPacks() {
                     >
                       Show
                     </button>
-                    {confirm === p.id ? (
+                    {p.source === 'package' ? null : confirm === p.id ? (
                       <>
                         <button
                           type="button"

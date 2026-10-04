@@ -4,7 +4,13 @@ import type { SeverityTemplate, Vec3 } from '@aio/schema';
 import { Icon, t, type IconName } from '@aio/ui';
 import { useEffect, useMemo, useState } from 'react';
 import { bridge, jobs, shell } from '../shell';
-import { PROJECT_TYPES, parseCoordinate, wizardProblems, type WizardForm } from './model';
+import {
+  defaultTemplateFor,
+  PROJECT_TYPES,
+  parseCoordinate,
+  wizardProblems,
+  type WizardForm,
+} from './model';
 import { builder, useBuilder } from './state';
 import { buildParams, emptySurvey, noSurveys, surveyProblem, type SurveyInput } from './surveys';
 import { VolumetricSurveys } from './VolumetricSurveys';
@@ -65,11 +71,17 @@ function Wizard() {
     severityTemplate: null,
   });
   const [crsTouched, setCrsTouched] = useState(false);
+  const [sevTouched, setSevTouched] = useState(false);
   const [crsQuery, setCrsQuery] = useState('');
   const [originMode, setOriginMode] = useState<OriginMode>('photo');
   const [source, setSource] = useState<OriginSource | null>(null);
   const [typed, setTyped] = useState('');
   const [height, setHeight] = useState('0');
+  /**
+   * The origin height came from a photo's absolute altitude, so project heights share the drone's
+   * absolute altitude datum (vertical datum offset 0); typing another height drops it.
+   */
+  const [datumFrom, setDatumFrom] = useState<string | null>(null);
   const [captureDate, setCaptureDate] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [templates, setTemplates] = useState<SeverityTemplate[]>([]);
@@ -86,7 +98,7 @@ function Wizard() {
       setTemplates(r.value.severity);
       setForm((f) => ({
         ...f,
-        severityTemplate: f.severityTemplate ?? r.value.severity[0]?.id ?? null,
+        severityTemplate: f.severityTemplate ?? defaultTemplateFor(f.type, r.value.severity),
       }));
     });
   }, []);
@@ -138,14 +150,22 @@ function Wizard() {
         h: Math.round((g.alt ?? 0) * 10) / 10,
         from: `photo ${name}`,
       },
-      `From ${name}${g.alt !== undefined ? ', height from its GPS altitude' : ''}.`,
+      `From ${name}${
+        g.alt === undefined
+          ? ''
+          : g.altFrom === 'takeoff'
+            ? ', height of its take-off point (absolute altitude minus height above take-off)'
+            : ', height from its GPS altitude (the camera, not the ground: check it)'
+      }.`,
     );
+    setDatumFrom(g.alt !== undefined ? name : null);
     setHeight(String(Math.round((g.alt ?? 0) * 10) / 10));
     if (g.takenAt) setCaptureDate(g.takenAt.slice(0, 10));
   };
 
   const fromTyped = (text: string) => {
     setTyped(text);
+    setDatumFrom(null);
     const p = parseCoordinate(text, form.epsg);
     if (!p) {
       setSource(null);
@@ -170,6 +190,7 @@ function Wizard() {
 
   const fromMap = (lngLat: [number, number]) => {
     const h = Number(height) || 0;
+    setDatumFrom(null);
     place(
       { kind: 'll', lon: lngLat[0], lat: lngLat[1], h, from: 'map' },
       'Clicked on the offline map.',
@@ -178,6 +199,7 @@ function Wizard() {
 
   const setH = (v: string) => {
     setHeight(v);
+    setDatumFrom(null);
     const h = Number(v);
     if (!Number.isFinite(h) || !source) return;
     setSource({ ...source, h });
@@ -202,6 +224,14 @@ function Wizard() {
       origin,
       severityTemplate: form.severityTemplate,
       ...(captureDate ? { captureDate } : {}),
+      ...(datumFrom
+        ? {
+            verticalDatum: {
+              absAltOffsetM: 0,
+              note: `Project heights are the drone absolute altitude (origin from ${datumFrom}).`,
+            },
+          }
+        : {}),
     });
     setBusy(false);
     if (!r.ok) {
@@ -319,7 +349,14 @@ function Wizard() {
                       className="b-card"
                       aria-pressed={form.type === t.id}
                       onClick={() => {
-                        setForm({ ...form, type: t.id });
+                        setForm({
+                          ...form,
+                          type: t.id,
+                          // the grading follows the type until the person picks one
+                          severityTemplate: sevTouched
+                            ? form.severityTemplate
+                            : defaultTemplateFor(t.id, templates),
+                        });
                       }}
                     >
                       <Icon name={TYPE_ICON[t.id]} size={16} />
@@ -501,6 +538,7 @@ function Wizard() {
                       aria-selected={form.severityTemplate === t.id}
                       aria-pressed={form.severityTemplate === t.id}
                       onClick={() => {
+                        setSevTouched(true);
                         setForm({ ...form, severityTemplate: t.id });
                       }}
                     >

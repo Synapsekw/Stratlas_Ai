@@ -9,6 +9,7 @@ import {
   clampGeom,
   currentOf,
   queueOf,
+  REVIEW_PASS,
   sourceCounts,
   sourceKey,
   canRedo,
@@ -65,6 +66,8 @@ export function DetectionsScreen() {
   const save = useDetections((s) => s.save);
   const problem = useDetections((s) => s.problem);
   const issueError = useDetections((s) => s.issueError);
+  const hidden = useDetections((s) => s.hidden);
+  const problems = useDetections((s) => s.problems);
   const { classById, classes } = useTaxonomy();
   const { durations } = useMedia(project);
   const [tool, setTool] = useState<ImageTool>('select');
@@ -82,8 +85,10 @@ export function DetectionsScreen() {
   const maskAvailable = mask?.ok === true && mask.value.available;
 
   const projectId = project?.id ?? null;
+  // Read the passes each time the review opens: a pipeline run or another tool may have
+  // written passes or issues since (pending edits are saved first).
   useEffect(() => {
-    if (projectId) void loadDetections(projectId);
+    if (projectId) void loadDetections(projectId, true);
   }, [projectId]);
 
   const layers = useMemo(() => project?.manifest.layers ?? [], [project]);
@@ -521,6 +526,12 @@ export function DetectionsScreen() {
           {loadError}
         </p>
       )}
+      {hidden > 0 && <p className="det-banner">{t('det.sheet.hidden', { count: hidden })}</p>}
+      {problems.map((pr) => (
+        <p key={pr.name} className="det-banner">
+          {t('det.sheet.problem', { name: pr.name, error: pr.error })}
+        </p>
+      ))}
       {review.lastError && (
         <p className="det-banner" role="status">
           {t(ERROR_KEY[review.lastError])}
@@ -552,12 +563,15 @@ export function DetectionsScreen() {
               tool={tool}
               readOnly={readOnly}
               fitSignal={fitSignal}
-              onCreate={(geom, size) => {
+              onCreate={(drawn, size) => {
+                const geom = drawn.type === 'mask' ? null : clampGeom(drawn, size);
+                if (!geom) return;
                 const d: Detection = {
                   id: globalThis.crypto.randomUUID(),
+                  pass: REVIEW_PASS,
                   source: shownSource,
                   size: [size.width, size.height],
-                  geom: clampGeom(geom, size),
+                  geom,
                   classId: current?.classId ?? '',
                   severity: lastSeverity,
                   uncertain: false,
@@ -570,8 +584,9 @@ export function DetectionsScreen() {
                 dispatch({ type: 'add', detections: [d], label: t('det.drawLabel') });
                 setTool('select');
               }}
-              onEdit={(id, geom, size) => {
-                dispatch({ type: 'edit', id, patch: { geom: clampGeom(geom, size) }, now: now() });
+              onEdit={(id, geom) => {
+                if (geom.type !== 'mask')
+                  dispatch({ type: 'edit', id, patch: { geom }, now: now() });
               }}
               onSelect={(id) => {
                 if (id) dispatch({ type: 'select', id });

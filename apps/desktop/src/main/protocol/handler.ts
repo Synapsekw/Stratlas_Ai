@@ -21,6 +21,8 @@ export interface AioRoots {
   thumbsDir?(): string;
   /** userData folder of the report logo (`aio://branding/<file>`). */
   brandingDir?(): string;
+  /** A map pack carried inside an open package (`packs/<id>.pmtiles`), served in place. */
+  embeddedPack?(id: string): { archive: ZipArchive; member: string } | undefined;
 }
 
 const PACK = /^([a-z0-9-]+)\.pmtiles$/;
@@ -158,7 +160,8 @@ async function serveLegacyDocument(read: () => Promise<string>, projectId: strin
  * - `aio://project/<id>/<path>` serves a file inside the registered project root, or a member
  *   of an opened `.aio` package (by offset, in place).
  * - `aio://project/<id>/legacy/<...>.html` serves a legacy viewer with its shims (legacy.ts).
- * - `aio://packs/<id>.pmtiles` serves a map pack from the packs folder.
+ * - `aio://packs/<id>.pmtiles` serves a map pack from the packs folder, or one carried inside
+ *   an open package (`roots.embeddedPack`).
  * - `aio://thumb/<id>/<path>` serves a small thumbnail of a project image, or 404 (thumbs.ts).
  * - `aio://branding/<logo>` serves the person's report logo from userData.
  */
@@ -225,7 +228,10 @@ export function createAioHandler(roots: AioRoots): (req: Request) => Promise<Res
 
     if (url.host === 'packs') {
       const [name, ...rest] = segments;
-      if (name === undefined || rest.length > 0 || !PACK.test(name)) return status(404);
+      const m = name === undefined || rest.length > 0 ? null : PACK.exec(name);
+      if (!m?.[1] || name === undefined) return status(404);
+      const embedded = roots.embeddedPack?.(m[1]);
+      if (embedded) return serveMember(embedded.archive, embedded.member, req);
       return serveFile(join(roots.packsDir(), name), req);
     }
 
