@@ -92,3 +92,30 @@ test('library, settings and aio:// work offline and the protocol refuses travers
     await rm(base, { recursive: true, force: true });
   }
 });
+
+test('isolated test profiles open windows off-screen without a taskbar button', async () => {
+  const { mkdtemp } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const base = await mkdtemp(join(tmpdir(), 'stratlas-offscreen-'));
+  const app = await electron.launch({
+    args: [join(import.meta.dirname, '../out/main/index.js')],
+    env: {
+      ...process.env,
+      STRATLAS_USER_DATA: join(base, 'user'),
+      STRATLAS_DATA: join(base, 'data'),
+    },
+  });
+  const win = await app.firstWindow();
+  await win.waitForLoadState('domcontentloaded');
+  const placed = await app.evaluate(({ BrowserWindow, screen }) => {
+    const w = BrowserWindow.getAllWindows()[0];
+    const b = w?.getBounds();
+    const left = Math.min(...screen.getAllDisplays().map((d) => d.bounds.x));
+    return { right: b ? b.x + b.width : 0, left, focused: w?.isFocused() ?? true };
+  });
+  expect(placed.right).toBeLessThan(placed.left);
+  expect(placed.focused).toBe(false);
+  // It still renders: the shell is on the page.
+  await expect(win.locator('.titlebar')).toBeVisible();
+  await app.close();
+});
