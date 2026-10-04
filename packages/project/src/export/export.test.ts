@@ -11,7 +11,9 @@ import {
   issuesKitAssessment,
   noDashes,
   parseCsv,
+  reportFooter,
   reportModel,
+  resolveReportBranding,
 } from './index';
 
 const ctx = () => ({ manifest: sampleManifest(), issues: sampleIssues() });
@@ -141,7 +143,10 @@ describe('issuesKitAssessment', () => {
 
 describe('reportModel', () => {
   it('counts by severity, class and zone and orders the register worst first', () => {
-    const r = reportModel(ctx(), { brandName: 'Stratlas', now: new Date('2026-10-04T08:00:00Z') });
+    const r = reportModel(ctx(), {
+      branding: resolveReportBranding(undefined, 'Stratlas'),
+      now: new Date('2026-10-04T08:00:00Z'),
+    });
     expect(r.title).toBe('Sample site');
     expect(r.bySeverity.map((s) => `${s.label}:${String(s.count)}`)).toEqual([
       'Severe:1',
@@ -160,5 +165,50 @@ describe('reportModel', () => {
     );
     expect(r.rows[0]?.position).toEqual([10, 2, -20]);
     expect(JSON.stringify(r)).not.toMatch(/[–—]/);
+  });
+});
+
+describe('report branding', () => {
+  it('is neutral by default: no company, no logo, a small product credit', () => {
+    const b = resolveReportBranding(undefined, 'Stratlas');
+    expect(b).toEqual({ name: null, logo: null, accent: null, credit: 'Made with Stratlas' });
+    expect(resolveReportBranding({ companyName: '   ' }, 'Stratlas').name).toBeNull();
+  });
+
+  it("uses the person's own company name, logo and accent", () => {
+    const b = resolveReportBranding(
+      { companyName: ' Synapse Solutions ', logo: 'logo-abc123.png', accent: '#2266aa' },
+      'Stratlas',
+    );
+    expect(b).toEqual({
+      name: 'Synapse Solutions',
+      logo: 'logo-abc123.png',
+      accent: '#2266aa',
+      credit: null,
+    });
+    expect(resolveReportBranding({ logo: 'logo-abc123.svg' }, 'Stratlas').credit).toBeNull();
+  });
+
+  it("never takes the project's imported client brand or customer", () => {
+    const c = ctx();
+    const manifest = { ...c.manifest, brand: 'eand', customer: 'e& UAE' };
+    const r = reportModel(
+      { ...c, manifest },
+      { branding: resolveReportBranding(undefined, 'Stratlas'), now: new Date('2026-10-04') },
+    );
+    expect(r.branding.name).toBeNull();
+    expect(r.branding.logo).toBeNull();
+    expect(reportFooter(r)).toBe(
+      'Sample site  |  Issue register 2026-10-04  |  Made with Stratlas',
+    );
+    expect(reportFooter(r)).not.toMatch(/eand|e&/);
+  });
+
+  it('puts the company first in the footer when set', () => {
+    const r = reportModel(ctx(), {
+      branding: resolveReportBranding({ companyName: 'Synapse' }, 'Stratlas'),
+      now: new Date('2026-10-04'),
+    });
+    expect(reportFooter(r)).toBe('Synapse  |  Sample site  |  Issue register 2026-10-04');
   });
 });

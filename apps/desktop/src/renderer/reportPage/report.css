@@ -11,6 +11,7 @@
   --band: #f2f5f8;
   --acc: #1a9e86;
   --acc-dark: #0f3d3a;
+  --acc-light: #7fe0cb;
 }
 * {
   box-sizing: border-box;
@@ -69,11 +70,31 @@ h2 {
   border-radius: 2mm;
 }
 .cover .brand {
+  display: flex;
+  align-items: center;
+  gap: 6mm;
+  min-height: 12mm;
   font-size: 13pt;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #7fe0cb;
+  color: var(--acc-light);
+}
+/* the person's logo on a light plate, so any logo reads on the dark cover */
+.cover .logo {
+  display: inline-flex;
+  align-items: center;
+  padding: 3mm 4mm;
+  border-radius: 1.5mm;
+  background: #ffffff;
+}
+.cover .logo img {
+  display: block;
+  /* a definite height: an SVG with only a viewBox has no size of its own */
+  height: 14mm;
+  width: auto;
+  max-width: 60mm;
+  object-fit: contain;
 }
 .cover-main {
   align-self: center;

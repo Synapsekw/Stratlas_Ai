@@ -1,7 +1,7 @@
 import { crsOption, fromWgs84, searchCrs, toWgs84, utmEpsgFor } from '@aio/geo';
 import { LocationPicker } from '@aio/maps';
-import type { ReportBrand, SeverityTemplate, Vec3 } from '@aio/schema';
-import { Icon, type IconName } from '@aio/ui';
+import type { SeverityTemplate, Vec3 } from '@aio/schema';
+import { Icon, t, type IconName } from '@aio/ui';
 import { useEffect, useMemo, useState } from 'react';
 import { bridge } from '../shell';
 import { PROJECT_TYPES, parseCoordinate, wizardProblems, type WizardForm } from './model';
@@ -61,7 +61,6 @@ function Wizard() {
     type: 'inspection',
     epsg: 32639,
     severityTemplate: null,
-    brand: 'whitelabel',
   });
   const [crsTouched, setCrsTouched] = useState(false);
   const [crsQuery, setCrsQuery] = useState('');
@@ -72,7 +71,6 @@ function Wizard() {
   const [captureDate, setCaptureDate] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [templates, setTemplates] = useState<SeverityTemplate[]>([]);
-  const [brands, setBrands] = useState<ReportBrand[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,7 +81,6 @@ function Wizard() {
         return;
       }
       setTemplates(r.value.severity);
-      setBrands(r.value.brands);
       setForm((f) => ({
         ...f,
         severityTemplate: f.severityTemplate ?? r.value.severity[0]?.id ?? null,
@@ -197,7 +194,6 @@ function Wizard() {
       epsg: form.epsg,
       origin,
       severityTemplate: form.severityTemplate,
-      brand: form.brand,
       ...(captureDate ? { captureDate } : {}),
     });
     setBusy(false);
@@ -505,23 +501,7 @@ function Wizard() {
                   ))}
                 </div>
               </div>
-              <div className="b-field">
-                <span>Report brand</span>
-                <div className="seg" role="group" aria-label="Report brand">
-                  {brands.map((b) => (
-                    <button
-                      key={b.id}
-                      type="button"
-                      aria-pressed={form.brand === b.id}
-                      onClick={() => {
-                        setForm({ ...form, brand: b.id });
-                      }}
-                    >
-                      {b.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <p className="faint small">{t('builder.reportBranding')}</p>
             </>
           )}
 
@@ -553,8 +533,6 @@ function Wizard() {
                 <dd>{captureDate ?? 'From the imported data'}</dd>
                 <dt>Severity model</dt>
                 <dd>{template?.label ?? '-'}</dd>
-                <dt>Brand</dt>
-                <dd>{brands.find((b) => b.id === form.brand)?.label ?? form.brand}</dd>
               </dl>
             </>
           )}

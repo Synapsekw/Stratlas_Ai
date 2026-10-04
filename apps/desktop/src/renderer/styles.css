@@ -2092,6 +2092,111 @@ svg.flip {
 .path-row .btn {
   margin-inline-start: auto;
 }
+
+/* settings: report branding */
+.brand-set > .notice {
+  margin-bottom: 20px;
+}
+.brand-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 28px;
+  align-items: start;
+}
+.brand-acts {
+  margin-inline-start: auto;
+  display: flex;
+  gap: 8px;
+}
+.path-row .brand-acts .btn {
+  margin-inline-start: 0;
+}
+.brand-logo-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 4px 10px;
+  border-radius: var(--r-4);
+  background: #ffffff;
+}
+.brand-logo-chip img {
+  /* a definite height: an SVG with only a viewBox has no size of its own */
+  height: 32px;
+  width: auto;
+  max-width: 160px;
+  object-fit: contain;
+}
+.brand-accent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--t-12);
+  color: var(--fg-1);
+}
+.brand-accent input[type='color'] {
+  width: 36px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  background: none;
+}
+/* a small copy of the report cover (reportPage/report.css) */
+.brand-pv {
+  aspect-ratio: 210 / 297;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  padding: 18px 16px;
+  border-radius: 4px;
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--pv-acc) 38%, #0b141a) 0%,
+    #13252f 70%
+  );
+  color: #eef3f6;
+  box-shadow: 0 1px 0 var(--line-soft);
+}
+.brand-pv-mark {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  font: 600 10px / 1.2 var(--f-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--pv-acc) 55%, #ffffff);
+}
+.brand-pv-logo {
+  display: inline-flex;
+  padding: 4px 6px;
+  border-radius: 2px;
+  background: #ffffff;
+}
+.brand-pv-logo img {
+  height: 18px;
+  width: auto;
+  max-width: 90px;
+  object-fit: contain;
+}
+.brand-pv-main {
+  align-self: center;
+  display: grid;
+  gap: 6px;
+}
+.brand-pv-kicker {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #a9c4c6;
+}
+.brand-pv-main b {
+  font-size: 20px;
+  line-height: 1.1;
+}
+.brand-pv-credit {
+  font-size: 9px;
+  color: #8fa8ad;
+}
 .sev-ed {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);

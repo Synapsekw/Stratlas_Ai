@@ -3,11 +3,16 @@
 import '@aio/ui/fonts.css';
 import './report.css';
 import { brand } from '@aio/brand';
-import { reportModel, type ReportRow } from '@aio/project/export';
+import {
+  reportFooter,
+  reportModel,
+  resolveReportBranding,
+  type ReportRow,
+} from '@aio/project/export';
 import { Issue, parseManifest, type ProjectManifest } from '@aio/schema';
 import { assetUrl } from '@aio/workspace';
 import { z } from 'zod';
-import { cropRect, reportHtml, type IssueImages } from './layout';
+import { brandingFromQuery, cropRect, reportHtml, type IssueImages } from './layout';
 import { createSnapshotter, type Snapshotter } from './snapshots';
 
 interface PageState {
@@ -91,8 +96,12 @@ async function run(): Promise<void> {
     .parse(await json(assetUrl(projectId, { path: 'issues.json' })));
   const wanted = ids ? new Set(ids.split(',')) : null;
   const issues = wanted ? file.issues.filter((i) => wanted.has(i.id)) : file.issues;
-  const brandName = manifest.brand ?? brand.productName;
-  const model = reportModel({ manifest, issues }, { brandName });
+  // Branding is the person's own (Settings, Report branding), never the project's client brand.
+  const branding = resolveReportBranding(
+    brandingFromQuery(params.get('branding')),
+    brand.productName,
+  );
+  const model = reportModel({ manifest, issues }, { branding });
   document.title = `${model.title} issue register`;
 
   set({ phase: 'Loading the 3D model', total: model.rows.length });
@@ -136,7 +145,7 @@ async function run(): Promise<void> {
     state: 'ready',
     phase: 'Ready to print',
     count: model.rows.length,
-    footer: `${model.brandName}  |  ${model.title}  |  Issue register ${model.date}`,
+    footer: reportFooter(model),
   });
 }
 

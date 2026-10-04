@@ -1,6 +1,12 @@
 // Issue register report layout: pure HTML building blocks, printed to PDF by main.
-import { noDashes, type CountRow, type ReportModel, type ReportRow } from '@aio/project/export';
-import type { Vec3 } from '@aio/schema';
+import {
+  noDashes,
+  type CountRow,
+  type ReportBranding,
+  type ReportModel,
+  type ReportRow,
+} from '@aio/project/export';
+import { ReportBrandingSettings, type Vec3 } from '@aio/schema';
 
 export function esc(s: string): string {
   return s
@@ -123,13 +129,41 @@ export interface IssueImages {
 const chip = (color: string, label: string) =>
   `<span class="chip"><i style="background:${esc(color)}"></i>${txt(label)}</span>`;
 
+/** The person's branding main passed in the page query (`branding`), when it is valid. */
+export function brandingFromQuery(raw: string | null): ReportBrandingSettings | undefined {
+  if (!raw) return undefined;
+  try {
+    const r = ReportBrandingSettings.safeParse(JSON.parse(raw));
+    return r.success ? r.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** URL of the person's logo, served by main from userData. */
+export const logoUrl = (file: string) => `aio://branding/${encodeURIComponent(file)}`;
+
+/** Accent colour overrides for a report with the person's own accent. */
+function brandStyle(b: ReportBranding): string {
+  if (!b.accent || !/^#[0-9a-f]{6}$/i.test(b.accent)) return '';
+  const a = b.accent;
+  return `<style>:root{--acc:${a};--acc-dark:color-mix(in srgb, ${a} 38%, #0b141a);--acc-light:color-mix(in srgb, ${a} 55%, #ffffff)}</style>`;
+}
+
+/** Cover header: the person's logo and company name, or nothing for a neutral report. */
+function brandMark(b: ReportBranding): string {
+  const logo = b.logo ? `<span class="logo"><img src="${esc(logoUrl(b.logo))}" alt=""></span>` : '';
+  const name = b.name ? `<span class="brand-name">${txt(b.name)}</span>` : '';
+  return `<div class="brand">${logo}${name}</div>`;
+}
+
 function cover(m: ReportModel): string {
   const worst = m.bySeverity
     .filter((s) => s.count > 0)
     .map((s) => `${chip(s.color, s.label)}<b>${String(s.count)}</b>`)
     .join('');
   return `<section class="cover">
-  <div class="brand">${txt(m.brandName)}</div>
+  ${brandMark(m.branding)}
   <div class="cover-main">
     <div class="kicker">Issue register</div>
     <h1>${txt(m.title)}</h1>
@@ -209,6 +243,7 @@ function issuePage(r: ReportRow, img: IssueImages | undefined): string {
 /** The whole report body. */
 export function reportHtml(m: ReportModel, images: ReadonlyMap<string, IssueImages>): string {
   return [
+    brandStyle(m.branding),
     cover(m),
     summary(m),
     register(m),

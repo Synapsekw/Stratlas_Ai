@@ -1,6 +1,14 @@
-import type { ReportModel, ReportRow } from '@aio/project/export';
+import { resolveReportBranding, type ReportModel, type ReportRow } from '@aio/project/export';
 import { describe, expect, it } from 'vitest';
-import { barChart, cropRect, esc, exteriorPose, reportHtml, snapshotPose } from './layout';
+import {
+  barChart,
+  brandingFromQuery,
+  cropRect,
+  esc,
+  exteriorPose,
+  reportHtml,
+  snapshotPose,
+} from './layout';
 
 describe('cropRect', () => {
   it('frames the marked box with context at 4:3, inside the image', () => {
@@ -85,24 +93,60 @@ const row = (code: string): ReportRow => ({
   normal: null,
 });
 
+const model = (branding = resolveReportBranding(undefined, 'Stratlas')): ReportModel => ({
+  title: 'Tower',
+  customer: 'ACME',
+  site: 'Dubai',
+  branding,
+  date: '2026-10-04',
+  crs: 'EPSG:32640',
+  captureLabel: 'Survey, 2024-06-05',
+  total: 2,
+  bySeverity: [{ label: 'Severe', color: '#ee3f4b', count: 2 }],
+  byClass: [{ label: 'Glazing', color: '#ee3f4b', count: 2 }],
+  byZone: [{ zone: 'Roof', count: 2 }],
+  byStatus: [{ status: 'approved', count: 2 }],
+  rows: [row('D001'), row('D002')],
+});
+
+describe('report branding', () => {
+  it('has no logo, company or accent by default', () => {
+    const html = reportHtml(model(), new Map());
+    expect(html).not.toContain('aio://branding/');
+    expect(html).not.toContain('class="logo"');
+    expect(html).not.toContain('brand-name');
+    expect(html).not.toContain('<style>');
+  });
+
+  it("shows the person's logo, company name and accent when set", () => {
+    const b = resolveReportBranding(
+      { companyName: 'Synapse <Solutions>', logo: 'logo-abc123def.png', accent: '#2266aa' },
+      'Stratlas',
+    );
+    const html = reportHtml(model(b), new Map());
+    expect(html).toContain('<img src="aio://branding/logo-abc123def.png" alt="">');
+    expect(html).toContain('<span class="brand-name">Synapse &lt;Solutions&gt;</span>');
+    expect(html).toContain('--acc:#2266aa');
+  });
+
+  it('reads only valid branding from the page query', () => {
+    expect(brandingFromQuery(null)).toBeUndefined();
+    expect(brandingFromQuery('{not json')).toBeUndefined();
+    expect(brandingFromQuery(JSON.stringify({ logo: '../../secret.png' }))).toBeUndefined();
+    expect(brandingFromQuery(JSON.stringify({ accent: 'red' }))).toBeUndefined();
+    expect(brandingFromQuery(JSON.stringify({ companyName: 'A', accent: '#aabbcc' }))).toEqual({
+      companyName: 'A',
+      accent: '#aabbcc',
+    });
+  });
+});
+
 describe('reportHtml', () => {
   it('lays out a cover, summary, register and one page per issue', () => {
-    const model: ReportModel = {
-      title: 'Tower',
-      customer: 'ACME',
-      site: 'Dubai',
-      brandName: 'Stratlas',
-      date: '2026-10-04',
-      crs: 'EPSG:32640',
-      captureLabel: 'Survey, 2024-06-05',
-      total: 2,
-      bySeverity: [{ label: 'Severe', color: '#ee3f4b', count: 2 }],
-      byClass: [{ label: 'Glazing', color: '#ee3f4b', count: 2 }],
-      byZone: [{ zone: 'Roof', count: 2 }],
-      byStatus: [{ status: 'approved', count: 2 }],
-      rows: [row('D001'), row('D002')],
+    const m: ReportModel = {
+      ...model(),
     };
-    const html = reportHtml(model, new Map([['D001', { photo: 'data:image/jpeg;base64,AA' }]]));
+    const html = reportHtml(m, new Map([['D001', { photo: 'data:image/jpeg;base64,AA' }]]));
     expect(html).toContain('class="cover"');
     expect(html).toContain('Issue register');
     expect((html.match(/class="issue-page"/g) ?? []).length).toBe(2);

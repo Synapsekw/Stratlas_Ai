@@ -22,9 +22,19 @@ import { About } from './settings/About';
 import { Appearance } from './settings/Appearance';
 import { MapPacks } from './settings/MapPacks';
 import { ProviderConnection } from './settings/ProviderConnection';
+import { ReportBranding } from './settings/ReportBranding';
 
 type Page =
-  'ai' | 'usage' | 'privacy' | 'data' | 'maps' | 'severity' | 'graphics' | 'appearance' | 'about';
+  | 'ai'
+  | 'usage'
+  | 'privacy'
+  | 'data'
+  | 'maps'
+  | 'severity'
+  | 'branding'
+  | 'graphics'
+  | 'appearance'
+  | 'about';
 
 const PAGES: { page: Page; label: MessageKey; icon: IconName; group: MessageKey }[] = [
   { page: 'ai', label: 'settings.page.ai', icon: 'agent', group: 'settings.group.intelligence' },
@@ -46,6 +56,12 @@ const PAGES: { page: Page; label: MessageKey; icon: IconName; group: MessageKey 
     page: 'severity',
     label: 'settings.page.severity',
     icon: 'issues',
+    group: 'settings.group.data',
+  },
+  {
+    page: 'branding',
+    label: 'settings.page.branding',
+    icon: 'report',
     group: 'settings.group.data',
   },
   {
@@ -808,6 +824,7 @@ const HEAD: Record<Page, { title: MessageKey; text: MessageKey }> = {
   data: { title: 'settings.page.data', text: 'settings.data.text' },
   maps: { title: 'settings.page.maps', text: 'settings.maps.text' },
   severity: { title: 'settings.page.severity', text: 'settings.severity.text' },
+  branding: { title: 'settings.page.branding', text: 'settings.branding.text' },
   graphics: { title: 'settings.page.graphics', text: 'settings.graphics.text' },
   appearance: { title: 'settings.page.appearance', text: 'settings.appearance.text' },
   about: { title: 'settings.page.about', text: 'settings.about.text' },
@@ -873,6 +890,7 @@ export function SettingsScreen() {
           {page === 'data' && <DataFolder />}
           {page === 'maps' && <MapPacks />}
           {page === 'severity' && <Severity />}
+          {page === 'branding' && <ReportBranding />}
           {page === 'graphics' && <Graphics />}
           {page === 'appearance' && <Appearance />}
           {page === 'about' && <About />}

@@ -1,4 +1,4 @@
-import type { Issue, Vec3 } from '@aio/schema';
+import type { Issue, ReportBrandingSettings, Vec3 } from '@aio/schema';
 import {
   bestPhoto,
   classInfo,
@@ -44,11 +44,45 @@ export interface ReportRow {
   normal: Vec3 | null;
 }
 
+/**
+ * Branding of a report Stratlas generates. It comes from the person's own Settings (Report
+ * branding), never from the project: an imported kit's client brand (`manifest.brand`, the
+ * customer) is not a brand the report may carry.
+ */
+export interface ReportBranding {
+  /** Company name on the cover and in the footer, or null for a neutral report. */
+  name: string | null;
+  /** Logo file name in the app's branding folder (`aio://branding/<logo>`), or null. */
+  logo: string | null;
+  /** Accent colour `#rrggbb`, or null for the house accent. */
+  accent: string | null;
+  /** Small credit in the footer of a neutral report ("Made with Stratlas"), else null. */
+  credit: string | null;
+}
+
+/** The report branding for the person's settings: neutral unless they set their own. */
+export function resolveReportBranding(
+  user: ReportBrandingSettings | undefined,
+  productName: string,
+): ReportBranding {
+  const name = noDashes(user?.companyName?.trim() ?? '') || null;
+  const logo = user?.logo ?? null;
+  const accent = user?.accent && /^#[0-9a-f]{6}$/i.test(user.accent) ? user.accent : null;
+  return { name, logo, accent, credit: name || logo ? null : `Made with ${productName}` };
+}
+
+/** Text printed at the foot of every page of the issue register. */
+export function reportFooter(m: Pick<ReportModel, 'branding' | 'title' | 'date'>): string {
+  return [m.branding.name, m.title, `Issue register ${m.date}`, m.branding.credit]
+    .filter((s): s is string => Boolean(s))
+    .join('  |  ');
+}
+
 export interface ReportModel {
   title: string;
   customer: string;
   site: string;
-  brandName: string;
+  branding: ReportBranding;
   date: string;
   crs: string;
   captureLabel: string;
@@ -70,7 +104,7 @@ function normalOf(issue: Issue): Vec3 | null {
 /** Everything the issue register report shows, ready to lay out. Text has no em or en dashes. */
 export function reportModel(
   ctx: ExportContext,
-  opts: { brandName: string; now?: Date },
+  opts: { branding: ReportBranding; now?: Date },
 ): ReportModel {
   const m = ctx.manifest;
   const now = opts.now ?? new Date();
@@ -160,7 +194,7 @@ export function reportModel(
     title: noDashes(m.name),
     customer: noDashes(m.customer ?? ''),
     site: noDashes(m.site ?? ''),
-    brandName: noDashes(opts.brandName),
+    branding: opts.branding,
     date: now.toISOString().slice(0, 10),
     crs,
     captureLabel: capture ? noDashes(`${capture.label}, ${capture.date}`) : '',

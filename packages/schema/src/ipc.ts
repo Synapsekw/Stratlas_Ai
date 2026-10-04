@@ -11,6 +11,7 @@ import {
   SeverityTemplate,
 } from './builder';
 import { ProjectManifest } from './manifest';
+import { HexColor } from './common';
 import { AiPolicy, ExportKind, PackageInfo } from './package';
 import { BoundaryEditsFile, VolumesFile } from './volumes';
 
@@ -64,6 +65,22 @@ export const ProjectUsage = z.object({
   providers: z.array(ProviderUsage),
 });
 
+/**
+ * The person's own company branding for the reports Stratlas generates (issue register PDF).
+ * The logo file lives in the app's userData `branding/` folder (never in a project) and is
+ * served as `aio://branding/<logo>`. Unset fields mean neutral reports: no company name, no logo.
+ */
+export const ReportBrandingSettings = z.object({
+  companyName: z.string().max(120).optional(),
+  /** Accent colour of the report (cover, rules), `#rrggbb`. */
+  accent: HexColor.optional(),
+  /** File name of the copied logo inside userData `branding/`, e.g. `logo-1a2b3c4d.png`. */
+  logo: z
+    .string()
+    .regex(/^logo-[a-z0-9]{6,64}\.(png|jpg|svg)$/)
+    .optional(),
+});
+
 /** An http(s) URL, or empty for "not set". */
 const OptionalUrl = z.union([z.literal(''), z.url({ protocol: /^https?$/ })]);
 
@@ -98,6 +115,8 @@ export const Settings = z.object({
     .max(128)
     .regex(/^[A-Za-z0-9_-]*$/, 'A workspace ID has only letters, digits, _ and -.')
     .optional(),
+  /** Company name, logo and accent for generated reports. Absent: neutral reports. */
+  reportBranding: ReportBrandingSettings.optional(),
 });
 
 /** West, south, east, north in WGS84 degrees. */
@@ -577,6 +596,35 @@ export const ipc = {
     response: z.object({ ok: z.boolean() }),
   },
   /** PDF reports delivered with the project (`report/*.pdf`). */
+  /**
+   * Copy a logo (PNG, JPG or SVG, at most 5 MB) into userData `branding/` and make it the report
+   * logo (`Settings.reportBranding.logo`). The previous logo file is removed.
+   */
+  'branding:setLogo': {
+    request: z.object({ path: z.string().min(1) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), settings: Settings }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /** Forget the report logo and delete its copy. */
+  'branding:clearLogo': { request: Empty, response: Settings },
+  /**
+   * Store a thumbnail the renderer made of a project image (JPEG, at most 512 KB) in the
+   * userData thumbnail cache, so `aio://thumb/<id>/<path>` serves it next time.
+   */
+  'thumbs:put': {
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        path: z.string().min(1).max(1024),
+        data: z.instanceof(Uint8Array).refine((d) => d.byteLength <= 512 * 1024, {
+          message: 'Thumbnail is larger than 512 KB',
+        }),
+      })
+      .strict(),
+    response: z.object({ ok: z.boolean() }),
+  },
   'report:list': {
     request: z.object({ projectId: z.string().min(1) }).strict(),
     response: z.object({ files: z.array(ReportFile) }),
@@ -765,6 +813,7 @@ export type PackagePlan = z.infer<typeof PackagePlan>;
 export type PackageExportOptions = z.infer<typeof PackageExportOptions>;
 export type ExportFormat = z.infer<typeof ExportFormat>;
 export type ReportFile = z.infer<typeof ReportFile>;
+export type ReportBrandingSettings = z.infer<typeof ReportBrandingSettings>;
 
 /** The typed bridge the preload exposes as window.aio. */
 export interface AioBridge {

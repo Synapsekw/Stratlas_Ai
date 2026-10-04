@@ -47,6 +47,8 @@ import {
   photoGps,
 } from './builder';
 import { builderPipelineJobs } from './builderJobs';
+import { importLogo, removeLogo } from './branding';
+import { putThumb } from './thumbs';
 import { nativeImageOps } from './images';
 import { validated, type Handler } from './ipc';
 import { findPack, JobRunner, JobStore, openTarget, safeJobEvent } from './jobs';
@@ -146,6 +148,10 @@ const settings = createSettingsStore(
   ),
 );
 const library = createLibraryStore(join(app.getPath('userData'), 'library.json'));
+/** The person's report logo (Settings, Report branding). */
+const brandingDir = () => join(app.getPath('userData'), 'branding');
+/** Thumbnails the renderer generated for project images without their own (Media). */
+const thumbsDir = () => join(app.getPath('userData'), 'cache', 'thumbs');
 const policy = new ProjectPolicy(registry);
 // A `.aio` the app was started with (double-click); the renderer takes it once at start.
 let pendingOpenPath: string | null = packagePathFromArgv(process.argv);
@@ -334,8 +340,12 @@ const exportJobs = createExportJobs({
   },
   chooseSavePath,
   runFile: runInUtility,
-  printReport: (args, progress, signal) =>
-    printReport(args, progress, signal, { devUrl, devTools: dev }),
+  printReport: async (args, progress, signal) =>
+    printReport(args, progress, signal, {
+      devUrl,
+      devTools: dev,
+      branding: (await settings.get()).reportBranding,
+    }),
   emit: emitExportProgress,
 });
 
@@ -382,6 +392,30 @@ function registerIpc(): void {
     const next = await settings.set(patch);
     if (patch.theme) applyTheme(next.theme);
     return next;
+  });
+
+  // Report branding: the person's own logo, copied into userData (never into a project).
+  handle('branding:setLogo', async ({ path }) => {
+    const r = await importLogo(path, brandingDir());
+    if (!r.ok) return r;
+    const before = (await settings.get()).reportBranding;
+    const next = await settings.set({ reportBranding: { ...before, logo: r.file } });
+    if (before?.logo !== r.file) await removeLogo(brandingDir(), before?.logo);
+    return { ok: true as const, settings: next };
+  });
+  handle('branding:clearLogo', async () => {
+    const before = (await settings.get()).reportBranding;
+    const rest = { ...before };
+    delete rest.logo;
+    const next = await settings.set({ reportBranding: rest });
+    await removeLogo(brandingDir(), before?.logo);
+    return next;
+  });
+  handle('thumbs:put', async ({ projectId, path, data }) => {
+    const archive = registry.package(projectId)?.archive;
+    const root = registry.root(projectId);
+    const src = archive ? { archive } : root !== undefined ? { root } : null;
+    return { ok: src ? await putThumb(src, path, data, thumbsDir()) : false };
   });
 
   handle('library:list', async () => {
@@ -894,6 +928,8 @@ if (!app.requestSingleInstanceLock()) {
         projectRoot: (id) => registry.root(id),
         projectPackage: (id) => registry.package(id)?.archive,
         packsDir: () => join(settings.current().dataRoot, 'packs'),
+        thumbsDir,
+        brandingDir,
       }),
     );
     registerIpc();

@@ -40,7 +40,6 @@ describe('wizardProblems', () => {
     epsg: 32639,
     origin: [221029, 3214462, 31.7],
     severityTemplate: 'aik-stack',
-    brand: 'whitelabel',
   };
 
   it('accepts a complete form', () => {

@@ -11,7 +11,6 @@ export interface WizardForm {
   /** Project CRS (E, N, H), null until chosen. */
   origin: Vec3 | null;
   severityTemplate: string | null;
-  brand: string;
 }
 
 export const PROJECT_TYPES: { id: ProjectType; label: string; hint: string }[] = [
