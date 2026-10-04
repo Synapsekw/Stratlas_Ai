@@ -15,4 +15,6 @@ See `docs/architecture/SPEC.md` section 2 for ownership and dependencies. Public
 - `SceneHandle.raycastRay(origin, dir)`: a world ray (photo and frame poses) against visible content, ignoring section planes, then the ground plane.
 - Mesh layer roots carry `userData.layerId` (and `userData.aioLayer`).
 - `EngineStage.controls` is the OrbitControls (`target`, `enabled`), used by the video rig's follow and drone-eye modes.
+- Perf HUD: Ctrl+Shift+F (any build) or `setPerfOverlay(true)` shows fps, frame time p50/p95, points and draw calls of the last frame (every render call, the point-cloud EDL pass included) and a GPU memory estimate (geometry, textures, drawing buffer, shadow map; objects list offscreen scenes they render in `userData.offscreen`). `perfStats()` returns the same numbers for tests; frame times are collected only while the HUD is on.
+- Quality: `configureEngine({ quality: { maxPixelRatio, shadowMapSize } })` for new stages and `EngineStage.setQuality` for a live one; the app sets both from its GPU tier presets.
 - `SceneView` sets `position: relative` on its root; size it from the host (for example `width: 100%; height: 100%`), not with an absolutely positioned class.

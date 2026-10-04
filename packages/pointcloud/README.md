@@ -17,9 +17,32 @@ const hit = pickPoint(handle, { x: ndcX, y: ndcY }); // nearest visible point wi
 // <ElevationLegend range={useElevationRange()} toElevation={(y) => ...} /> on the stage
 ```
 
-Formats: `kit-packed` and `png-packed`. `copc` and `potree2` layers are rejected with a clear error for now.
+Formats: `copc`, `kit-packed` and `png-packed`. `potree2` layers are rejected with a clear error for now.
 
 ## Formats
+
+### `copc` (Cloud Optimized Point Cloud, LAS 1.4 point formats 6, 7, 8)
+
+`src` is a `.copc.laz` file in the project package. Points are in the project CRS (manifest `crs`;
+a different EPSG in the file's WKT is reported); the adapter maps them to the local frame with the
+manifest `origin`: `x = E - origin[0]`, `y = H - origin[2]`, `z = origin[1] - N`. Conversion with
+PDAL: `tools/pointcloud/README.md`.
+
+- **Reading.** The worker pool (half the cores, 2 to 8 workers) reads the header and hierarchy
+  pages with copc.js and decompresses nodes with laz-perf (WASM bundled with the app, never a CDN),
+  all by HTTP range requests on `aio://` (206 answers). Nodes come back as uint16 positions over
+  the node box (scaled on the GPU through the object transform), 8-bit RGB and intensity (16-bit
+  values are reduced when any exceeds 255) and the ASPRS class per point.
+- **Level of detail.** `selectNodes` (`octree.ts`) walks every cloud's octree from the roots,
+  largest angular size first, skipping nodes outside the view frustum; a node's children join the
+  frontier while its spacing projects to more than 1.5 px (screen-space error). Selection stops at
+  the global point budget; hierarchy pages are fetched when the walk reaches them. Loaded nodes
+  outside the selection stay while the total is under budget x 1.1. Octree points draw at the
+  spacing of their deepest loaded descendant (Potree's adaptive size). Flat chunk sets
+  (`png-packed`) use the same walk as one level under their overview.
+- **Classification.** Colour mode `classification` (ASPRS palette, `classes.ts`);
+  `<ClassificationLegend />` lists the classes of the shown points with their share, and a click
+  hides a class (`hiddenClasses` in the settings, any colour mode).
 
 All positions are in the project local frame (`docs/architecture/data-conventions.md` section 1: metres, Y up, X east, Z south).
 
@@ -105,7 +128,8 @@ The cloud is split into chunks; each chunk is a lossless PNG whose pixels carry 
 - Done: point materials and `pickPoint` use the shared section planes `SceneHandle.clippingPlanes`, so the section tool cuts meshes and clouds together.
 - `onFrame` runs on camera moves too (render on demand): LOD and uniforms update there.
 - A post-process hook (or the EffectComposer) would let EDL run as a real pass instead of the composite quad; the quad keeps raycasting off and is flagged `userData.helper` so framing and picking can skip it.
-- Settings has no point-cloud section yet; budget, size, colour mode and EDL are remembered in localStorage (`stratlas.pointcloud.settings`).
+- Budget, size, colour mode, hidden classes and EDL are remembered in localStorage (`stratlas.pointcloud.settings`). The app's graphics quality preset (Settings, Graphics quality) sets the budget and EDL when the GPU tier changes.
+- The EDL composite lists its cloud scene in `userData.offscreen`, so the engine's perf HUD counts the clouds' GPU memory.
 
 ## Credits
 
