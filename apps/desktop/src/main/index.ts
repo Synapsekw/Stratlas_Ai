@@ -238,11 +238,13 @@ function isAllowedRendererUrl(url: string): boolean {
 function hardenSession(): void {
   const ses = session.defaultSession;
   ses.webRequest.onHeadersReceived((details, callback) => {
+    const csp = cspForUrl(details.url, CSP);
+    if (csp === null) {
+      callback({});
+      return;
+    }
     callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Content-Security-Policy': [cspForUrl(details.url, CSP)],
-      },
+      responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [csp] },
     });
   });
   ses.webRequest.onBeforeRequest((details, callback) => {

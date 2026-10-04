@@ -31,15 +31,23 @@ export function isLegacyDocument(segments: readonly string[]): boolean {
   return segments.length >= 2 && segments[0] === 'legacy' && last !== undefined && HTML.test(last);
 }
 
-/** The CSP for a response: the legacy policy for legacy documents, else the app policy. */
-export function cspForUrl(url: string, appCsp: string): string {
+/** Chromium's own pages (the built-in PDF viewer, DevTools) bring their own policy. */
+const BROWSER_PAGES = ['chrome:', 'chrome-extension:', 'devtools:'];
+
+/**
+ * The CSP for a response: the legacy policy for legacy documents, none for Chromium's own pages
+ * and for PDFs (the built-in viewer renders them), else the app policy.
+ */
+export function cspForUrl(url: string, appCsp: string): string | null {
   let u: URL;
   try {
     u = new URL(url);
   } catch {
     return appCsp;
   }
+  if (BROWSER_PAGES.includes(u.protocol)) return null;
   if (u.protocol !== 'aio:' || u.host !== 'project') return appCsp;
+  if (/\.pdf$/i.test(u.pathname)) return null;
   const segments = u.pathname.split('/').filter((s) => s !== '');
   return isLegacyDocument(segments.slice(1)) ? LEGACY_CSP : appCsp;
 }

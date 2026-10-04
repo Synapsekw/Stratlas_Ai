@@ -26,6 +26,16 @@ describe('cspForUrl', () => {
   it('gives legacy documents the legacy policy', () => {
     expect(cspForUrl('aio://project/masafi/legacy/Masafi%20Review.html', app)).toBe(LEGACY_CSP);
   });
+  it("leaves Chromium's own pages alone (the built-in PDF viewer needs chrome://resources)", () => {
+    expect(cspForUrl('chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/index.html', app)).toBe(
+      null,
+    );
+    expect(cspForUrl('chrome://resources/js/load_time_data.js', app)).toBe(null);
+    expect(cspForUrl('devtools://devtools/bundled/devtools_app.html', app)).toBe(null);
+  });
+  it('sets no policy on a PDF, which the built-in viewer renders', () => {
+    expect(cspForUrl('aio://project/masafi/legacy/Volume%20Report.PDF', app)).toBe(null);
+  });
   it('keeps the app policy for everything else', () => {
     expect(cspForUrl('aio://project/masafi/legacy/data/site.js', app)).toBe(app);
     expect(cspForUrl('aio://project/masafi/report.html', app)).toBe(app);
