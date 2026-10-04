@@ -8,9 +8,9 @@ import {
   Mesh,
   MeshBasicMaterial,
   SRGBColorSpace,
+  Texture,
   TextureLoader,
   Vector3,
-  type Texture,
 } from 'three';
 import { GROUND_LAYER, groundImageryMaterial, type GroundUniforms } from '../stage/groundShading';
 import type { AdapterContext, LayerAdapter, LayerHandle, SceneHandle } from '../types';
@@ -96,8 +96,66 @@ function disposeQuad(mesh: Mesh) {
   m.dispose();
 }
 
+type DecodeReply = { id: number; bitmap: ImageBitmap } | { id: number; error: string };
+
+interface ImageDecoder {
+  worker: Worker;
+  next: number;
+  pending: Map<number, { resolve: (b: ImageBitmap) => void; reject: (e: Error) => void }>;
+}
+
+/** One shared decode worker (imageDecode.worker.ts), started on first use. */
+let decoder: ImageDecoder | null = null;
+
+function decodeInWorker(url: string): Promise<ImageBitmap> {
+  if (!decoder) {
+    const worker = new Worker(new URL('./imageDecode.worker.ts', import.meta.url), {
+      type: 'module',
+      name: 'image-decode',
+    });
+    const d: ImageDecoder = { worker, next: 1, pending: new Map() };
+    worker.onmessage = (e: MessageEvent<DecodeReply>) => {
+      const p = d.pending.get(e.data.id);
+      if (!p) return;
+      d.pending.delete(e.data.id);
+      if ('bitmap' in e.data) p.resolve(e.data.bitmap);
+      else p.reject(new Error(e.data.error));
+    };
+    worker.onerror = (e) => {
+      for (const p of d.pending.values()) p.reject(new Error(e.message || 'Image decode failed'));
+      d.pending.clear();
+    };
+    decoder = d;
+  }
+  const d = decoder;
+  const id = d.next++;
+  return new Promise<ImageBitmap>((resolve, reject) => {
+    d.pending.set(id, { resolve, reject });
+    d.worker.postMessage({ id, url });
+  });
+}
+
+/**
+ * The image decoded in a worker (createImageBitmap there), so its first frame only uploads it:
+ * an <img> texture is decoded synchronously inside the upload, 40 to 350 ms for a 2048 px ortho
+ * tile, which stalls the frame that first draws it.
+ */
+async function loadImage(url: string): Promise<Texture> {
+  if (typeof Worker === 'undefined' || typeof createImageBitmap !== 'function')
+    return new TextureLoader().loadAsync(url);
+  // decoded flipped: an ImageBitmap ignores UNPACK_FLIP_Y
+  const bmp = await decodeInWorker(url);
+  const tex = new Texture(bmp);
+  tex.flipY = false;
+  tex.needsUpdate = true;
+  tex.addEventListener('dispose', () => {
+    bmp.close();
+  });
+  return tex;
+}
+
 async function loadTexture(url: string, ctx: AdapterContext): Promise<Texture> {
-  const tex = await new TextureLoader().loadAsync(url);
+  const tex = await loadImage(url);
   tex.colorSpace = SRGBColorSpace;
   tex.anisotropy = Math.min(8, ctx.scene.renderer.capabilities.getMaxAnisotropy());
   return tex;
@@ -151,6 +209,8 @@ async function pyramidRaster(layer: RasterLayer, ctx: AdapterContext): Promise<L
   group.userData.aioLayer = layer.id;
   ctx.scene.scene.add(group);
   const tiles = new Map<string, Mesh | null>(); // null while loading
+  // decoded tiles waiting for their frame: one new tile (one texture upload) per frame
+  const arrived: { key: string; mesh: Mesh }[] = [];
   const byZ = new Map(index.levels.map((l, i) => [l.z, { level: l, order: i }]));
   let disposed = false;
   let tick = 0;
@@ -202,8 +262,7 @@ async function pyramidRaster(layer: RasterLayer, ctx: AdapterContext): Promise<L
             layer.role === 'plan',
           );
           mesh.updateMatrixWorld(true);
-          group.add(mesh);
-          tiles.set(k, mesh);
+          arrived.push({ key: k, mesh });
           ctx.scene.requestRender();
         },
         () => {
@@ -221,6 +280,14 @@ async function pyramidRaster(layer: RasterLayer, ctx: AdapterContext): Promise<L
   const unregister = [
     ctx.scene.addRaycastTarget(group, layer.id),
     ctx.scene.onFrame(() => {
+      const next = arrived.shift();
+      if (next) {
+        if (tiles.has(next.key) && tiles.get(next.key) === null) {
+          group.add(next.mesh);
+          tiles.set(next.key, next.mesh);
+        } else disposeQuad(next.mesh);
+        if (arrived.length) ctx.scene.requestRender();
+      }
       update(false);
     }),
   ];
@@ -236,6 +303,7 @@ async function pyramidRaster(layer: RasterLayer, ctx: AdapterContext): Promise<L
       for (const u of unregister) u();
       ctx.scene.scene.remove(group);
       for (const m of tiles.values()) if (m) disposeQuad(m);
+      for (const a of arrived.splice(0)) disposeQuad(a.mesh);
       disposeQuad(base);
       tiles.clear();
       ctx.scene.requestRender();

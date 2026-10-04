@@ -65,6 +65,8 @@ async function load(clip: Plane[] = []) {
   );
   for (const f of frames) f();
   await new Promise((r) => setTimeout(r, 0));
+  // decoded chunks reach the scene on the next frame
+  for (const f of frames) f();
   return handle;
 }
 
