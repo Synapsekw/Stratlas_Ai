@@ -64,6 +64,13 @@ export const EXPORT_ACTIONS: readonly ExportAction[] = [
     icon: 'report',
   },
   {
+    id: 'house-pdf',
+    label: 'Project report (PDF)',
+    title: 'Export the project report in the house format as PDF',
+    hint: 'Cover to appendices',
+    icon: 'report',
+  },
+  {
     id: 'snapshot',
     label: '3D view snapshot (PNG)',
     title: 'Save a snapshot of the 3D view',

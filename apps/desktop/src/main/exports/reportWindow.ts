@@ -1,4 +1,4 @@
-import type { ReportBrandingSettings } from '@aio/schema';
+import type { ReportBrandingSettings, ReportContentsSettings } from '@aio/schema';
 import { BrowserWindow } from 'electron';
 import { rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -13,8 +13,10 @@ export interface ReportPageState {
   error?: string;
   /** Issues laid out. */
   count?: number;
-  /** Text printed at the foot of every page. */
+  /** Text printed at the foot of every page (issue register; the house report draws its own). */
   footer?: string;
+  /** Pages laid out (house report). */
+  pages?: number;
 }
 
 const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${String(c.charCodeAt(0))};`);
@@ -32,27 +34,43 @@ export interface ReportWindowOptions {
   timeoutMs?: number;
   /** The person's report branding from Settings; absent for a neutral report. */
   branding?: ReportBrandingSettings | undefined;
+  /** Sections of the house report from Settings; absent for every section. */
+  contents?: ReportContentsSettings | undefined;
 }
 
-/** Query of the report page: the project, the chosen issues and the person's branding. */
+/**
+ * Query of the report page: the project, the chosen issues, the person's branding and (house
+ * report) the chosen sections.
+ */
 export function reportQuery(
   args: { projectId: string; issueIds?: string[] | undefined },
   branding: ReportBrandingSettings | undefined,
+  contents?: ReportContentsSettings,
 ): Record<string, string> {
   const query: Record<string, string> = { project: args.projectId };
   if (args.issueIds) query.ids = args.issueIds.join(',');
   if (branding && Object.keys(branding).length > 0) query.branding = JSON.stringify(branding);
+  if (contents && Object.keys(contents).length > 0) query.contents = JSON.stringify(contents);
   return query;
 }
+
+/** The page main loads for a report kind. */
+export const REPORT_PAGES = { register: 'report.html', house: 'house.html' } as const;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * The branded issue register report: an offscreen window lays the report out from the project
- * files (aio://), renders 3D snapshots and photo crops, then main prints it with printToPDF.
+ * The branded issue register report, or the house-format report: an offscreen window lays the
+ * report out from the project files (aio://), renders 3D snapshots and photo crops, then main
+ * prints it with printToPDF. The house report draws its own page frames, headers and footers.
  */
 export async function printReport(
-  args: { projectId: string; outPath: string; issueIds?: string[] | undefined },
+  args: {
+    projectId: string;
+    outPath: string;
+    issueIds?: string[] | undefined;
+    kind?: 'register' | 'house';
+  },
   progress: (p: ExportProgress) => void,
   signal: AbortSignal,
   opts: ReportWindowOptions,
@@ -72,19 +90,18 @@ export async function printReport(
   });
   const part = `${args.outPath}.part`;
   const cancelled = () => signal.aborted;
-  const query = reportQuery(args, opts.branding);
+  const house = args.kind === 'house';
+  const page = REPORT_PAGES[house ? 'house' : 'register'];
+  const query = reportQuery(args, opts.branding, house ? opts.contents : undefined);
   try {
     if (opts.devUrl) {
-      const url = new URL(
-        'report.html',
-        opts.devUrl.endsWith('/') ? opts.devUrl : `${opts.devUrl}/`,
-      );
+      const url = new URL(page, opts.devUrl.endsWith('/') ? opts.devUrl : `${opts.devUrl}/`);
       for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
       await win.loadURL(url.toString());
     } else {
-      await win.loadFile(join(import.meta.dirname, '../renderer/report.html'), { query });
+      await win.loadFile(join(import.meta.dirname, `../renderer/${page}`), { query });
     }
-    const deadline = Date.now() + (opts.timeoutMs ?? 15 * 60_000);
+    const deadline = Date.now() + (opts.timeoutMs ?? (house ? 90 : 15) * 60_000);
     let state: ReportPageState | null = null;
     for (;;) {
       if (signal.aborted) throw new Error('Export cancelled.');
@@ -99,16 +116,30 @@ export async function printReport(
       if (state?.state === 'ready') break;
       await sleep(250);
     }
-    progress({ phase: 'Printing the PDF', done: state.total, total: state.total });
-    const pdf = await win.webContents.printToPDF({
-      printBackground: true,
-      preferCSSPageSize: true,
-      pageSize: 'A4',
-      margins: { top: 0.5, bottom: 0.6, left: 0.5, right: 0.5 },
-      displayHeaderFooter: true,
-      headerTemplate: '<span></span>',
-      footerTemplate: footerTemplate(state.footer ?? ''),
+    progress({
+      phase: state.pages ? `Printing ${String(state.pages)} pages` : 'Printing the PDF',
+      done: state.total,
+      total: state.total,
     });
+    const pdf = await win.webContents.printToPDF(
+      house
+        ? {
+            printBackground: true,
+            preferCSSPageSize: true,
+            pageSize: 'A4',
+            margins: { top: 0, bottom: 0, left: 0, right: 0 },
+            displayHeaderFooter: false,
+          }
+        : {
+            printBackground: true,
+            preferCSSPageSize: true,
+            pageSize: 'A4',
+            margins: { top: 0.5, bottom: 0.6, left: 0.5, right: 0.5 },
+            displayHeaderFooter: true,
+            headerTemplate: '<span></span>',
+            footerTemplate: footerTemplate(state.footer ?? ''),
+          },
+    );
     if (cancelled()) throw new Error('Export cancelled.');
     await writeFile(part, pdf);
     await rename(part, args.outPath);

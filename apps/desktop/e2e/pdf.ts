@@ -33,3 +33,30 @@ export async function pdfPages(file: string, count = 1): Promise<PdfPage[]> {
     await task.destroy();
   }
 }
+
+/** Number of pages of a PDF and the text of the pages asked for (1-based), whitespace collapsed. */
+export async function pdfText(
+  file: string,
+  pages: readonly number[],
+): Promise<{ count: number; text: Map<number, string> }> {
+  const data = new Uint8Array(await readFile(file));
+  const task = getDocument({ data, useSystemFonts: false });
+  const doc = await task.promise;
+  try {
+    const text = new Map<number, string>();
+    for (const n of pages) {
+      if (n < 1 || n > doc.numPages) continue;
+      const content = await (await doc.getPage(n)).getTextContent();
+      text.set(
+        n,
+        content.items
+          .map((it) => ('str' in it ? it.str : ''))
+          .join(' ')
+          .replace(/\s+/g, ' '),
+      );
+    }
+    return { count: doc.numPages, text };
+  } finally {
+    await task.destroy();
+  }
+}

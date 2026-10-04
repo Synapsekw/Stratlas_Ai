@@ -170,3 +170,18 @@ Detections are boxes on photos found by a person, an AI vision pass or a local m
 The pipeline converts the project into a kit job in its staging folder (kit model frame: X north, Y up, Z east, around the asset axis, which is the centre of the models' footprint), places every box on the models with the kit's back-projection (median hit of a 5 x 5 ray grid in the central half of the box), groups placed detections of the same class within `cluster_m` (default max(0.75 m, 2% of the model height)) into defects numbered from the top down, and writes one issue per defect: a mesh sighting at the group's medoid (local frame) and an image sighting (box) per detection. Photos without a position cannot place detections and are reported; photos without a lens get the kit's 70 degree field of view (`hfovDeg`).
 
 `issues.json` is merged, never replaced: every issue already there stays. The map remembers the issues the pipeline wrote; a later run updates such an issue only while it is exactly as the pipeline left it (same hash), keeps its id, code and creation time, and leaves it alone once a person changed it. Issues no detection backs any more stay for review. The previous file is kept as `issues.json.bak`. When the job finishes, an open project takes the merged issues from disk and keeps edits made in the app meanwhile.
+
+## 12. Generated reports and their text
+
+The house-format project report (`house-pdf`, BLD-8) is printed from `apps/desktop/src/renderer/house.html` in an offscreen window: the page lays out fixed A4 page frames itself (cover, contents, executive summary, scope and method, site and data, statistics, findings register, one page per issue, appendices, back page), then main prints it with no margins. It reads `manifest.json`, `issues.json`, `thumbnail.jpg`, `volumes.json` and `edits/boundaries.json` (volumetric), `road.json` (road) and `report/narrative.json`, all optional except the first two. It carries the person's branding (section 2), never a client brand. `Settings.reportContents` chooses the sections and which issues get a page (`all` graded issues by default; `above-lowest` lists the lowest level in the register only, as the delivered facade reports do; uncertain items are always listed in an appendix).
+
+```
+<project>/report/
+  narrative.json        aio.narrative/1: every saved version of the report text
+  narrative.json.bak    the previous file
+```
+
+- `parts.summary`, `parts.method` and `parts.findings` hold `versions`, newest last; the report prints the newest version of each part, or a text filled from the statistics when none was saved. Restoring an old version saves it again as the newest; nothing is deleted (at most 50 versions per part are kept).
+- `source` says where a version came from: `ai` (with `provider` and `model`), `template` (cloud AI off: statistics filled in, judgement left as `[bracketed]` prompts the report highlights) or `user`.
+- Written only through IPC `report:writeNarrative` (atomic replace with `.bak`); a `.aio` package carries the file and the app reads it in place, read only.
+- The AI draft sends the project statistics only (counts, labels, dates, severity scale, volumes and PCI figures; no photos, positions or notes) on the `report` route with `ai:draftText`, after the AI-6 preview of the exact instructions and request.

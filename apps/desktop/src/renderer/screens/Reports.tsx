@@ -1,16 +1,104 @@
-import type { IssueStatus, ReportFile } from '@aio/schema';
+import {
+  REPORT_SECTIONS,
+  reportSectionOn,
+  type IssuePagesRule,
+  type IssueStatus,
+  type ReportContentsSettings,
+  type ReportFile,
+  type ReportSectionId,
+} from '@aio/schema';
 import { formatBytes, Icon, SevChip, t } from '@aio/ui';
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import { useState } from 'react';
 import { FocusZone } from '../FocusZone';
 import { actionAllowed } from '../exports/exportModel';
 import { runExportAction } from '../exports/exports';
+import { NarrativeEditor } from '../report/NarrativeEditor';
 import { PdfViewer } from '../report/PdfViewer';
-import { ExtractPackage } from '../shell/ExtractPackage';
 import { shell, useCall, useShell } from '../shell';
 import { NoProject } from './NoProject';
 
 const STATUSES: IssueStatus[] = ['draft', 'reviewed', 'approved', 'closed'];
+
+type Key = Parameters<typeof t>[0];
+const tk = (key: string) => t(key as Key);
+
+const PAGE_RULES: { id: IssuePagesRule; label: string }[] = [
+  { id: 'all', label: 'reports.house.pages.all' },
+  { id: 'above-lowest', label: 'reports.house.pages.above' },
+  { id: 'none', label: 'reports.house.pages.none' },
+];
+
+function saveContents(next: ReportContentsSettings) {
+  void shell.getState().updateSettings({ reportContents: next });
+}
+
+/** The house report: which sections it prints, which issues get a page, and the export. */
+function ProjectReport(props: { allowed: boolean; onText: () => void }) {
+  const contents = useShell((s) => s.settings.reportContents);
+  const toggle = (id: ReportSectionId) => {
+    const sections = { ...contents?.sections, [id]: !reportSectionOn(contents, id) };
+    saveContents({ ...contents, sections });
+  };
+  return (
+    <section className="sblock" data-testid="house-report">
+      <h2>{t('reports.house.title')}</h2>
+      <p className="muted rep-note">{t('reports.house.text')}</p>
+      <p className="faint small rep-note">{t('reports.brandingHint')}</p>
+      <fieldset className="rep-sections">
+        <legend className="caps">{t('reports.house.sections')}</legend>
+        {REPORT_SECTIONS.map((id) => (
+          <label key={id} className="rep-check">
+            <input
+              type="checkbox"
+              checked={reportSectionOn(contents, id)}
+              onChange={() => {
+                toggle(id);
+              }}
+            />
+            {id === 'contents' ? t('house.contents') : tk(`house.sec.${id}`)}
+          </label>
+        ))}
+      </fieldset>
+      <label className="rep-pages">
+        <span className="caps">{t('reports.house.issuePages')}</span>
+        <select
+          className="input"
+          value={contents?.issuePages ?? 'all'}
+          onChange={(e) => {
+            saveContents({ ...contents, issuePages: e.target.value as IssuePagesRule });
+          }}
+        >
+          {PAGE_RULES.map((r) => (
+            <option key={r.id} value={r.id}>
+              {tk(r.label)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="rep-acts">
+        <button type="button" className="btn" onClick={props.onText}>
+          <Icon name="anno" size={14} />
+          {t('reports.text.open')}
+        </button>
+        {props.allowed ? (
+          <button
+            type="button"
+            className="btn primary"
+            onClick={() => {
+              runExportAction('house-pdf');
+            }}
+          >
+            <Icon name="download" size={14} />
+            {t('reports.house.export')}
+          </button>
+        ) : (
+          <p className="faint small">This package does not allow PDF exports.</p>
+        )}
+      </div>
+    </section>
+  );
+}
 
 function ReportList(props: {
   files: ReportFile[] | null;
@@ -48,6 +136,7 @@ export function ReportsScreen() {
   const pkg = useShell((s) => s.pkg);
   const listed = useCall('report:list', { projectId: project?.id ?? '' }, project?.id ?? null);
   const [picked, setPicked] = useState<Record<string, string>>({});
+  const [textOpen, setTextOpen] = useState(false);
   if (!project) return <NoProject view="Reports" />;
   const files = listed === null ? null : listed.ok ? listed.value.files : [];
   const selected = picked[project.id] ?? files?.[0]?.path ?? null;
@@ -75,6 +164,12 @@ export function ReportsScreen() {
               }}
             />
           </section>
+          <ProjectReport
+            allowed={actionAllowed('house-pdf', pkg)}
+            onText={() => {
+              setTextOpen(true);
+            }}
+          />
           <section className="sblock">
             <h2>
               Issue register <span className="sub">{issues.length} issues</span>
@@ -117,13 +212,6 @@ export function ReportsScreen() {
                 <Icon name="download" size={14} />
                 Export package
               </button>
-            </section>
-          )}
-          {pkg && (
-            <section className="sblock">
-              <h2>{t('package.extract.title')}</h2>
-              <p className="muted rep-note">{t('package.extract.text')}</p>
-              <ExtractPackage projectId={project.id} pkg={pkg} />
             </section>
           )}
           <section className="sblock">
@@ -172,7 +260,14 @@ export function ReportsScreen() {
         </div>
       </aside>
       <section className="rep-view" aria-label="Report viewer">
-        {file ? (
+        {textOpen ? (
+          <NarrativeEditor
+            key={project.id}
+            onClose={() => {
+              setTextOpen(false);
+            }}
+          />
+        ) : file ? (
           <PdfViewer
             key={file.path}
             url={assetUrl(project.id, { path: file.path })}
