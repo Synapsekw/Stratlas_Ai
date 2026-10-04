@@ -2,9 +2,10 @@ import type { AioBridge } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
 import { setActiveMap } from './capture';
-import type { MapController } from './controller';
+import type { IssueColorBy, MapController } from './controller';
 import type { MapDrawSeam } from './draw';
 import { ALL_ISSUES, type MapIssueDisplay } from './overlays';
+import type { MapOverlay } from './vector';
 
 export interface MapViewProps {
   className?: string;
@@ -14,6 +15,14 @@ export interface MapViewProps {
   draw?: MapDrawSeam;
   /** Issue markers: pins filter and heat map (default: every issue, clustered). */
   issues?: MapIssueDisplay;
+  /** GeoJSON overlays drawn under the issues (road centreline, PCI units, density cells). */
+  overlays?: readonly MapOverlay[];
+  /** Show only these issues (default: all). */
+  issueFilter?: ReadonlySet<string> | null;
+  /** Colour issues by their severity (default) or by their class. */
+  issueColorBy?: IssueColorBy;
+  /** Show the 3D camera's view wedge (default true). */
+  cameraWedge?: boolean;
 }
 
 type Status = 'loading' | 'ready' | 'no-packs' | 'error';
@@ -32,7 +41,16 @@ function bridge(): AioBridge | undefined {
  * Offline 2D map (MapLibre + PMTiles packs over aio://) with project rasters, flight paths and the
  * live video footprint, sharing selection and playhead through @aio/workspace. Owner: stream S5.
  */
-export function MapView({ className, showFlights = true, draw, issues }: MapViewProps) {
+export function MapView({
+  className,
+  showFlights = true,
+  draw,
+  issues,
+  overlays,
+  issueFilter = null,
+  issueColorBy = 'severity',
+  cameraWedge = true,
+}: MapViewProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<Status>('loading');
   // The controller reads the latest seam on each click.
@@ -47,6 +65,20 @@ export function MapView({ className, showFlights = true, draw, issues }: MapView
     drawRef.current = draw ?? null;
     ctlRef.current?.updateDraw();
   }, [draw, draw?.mode, draw?.vertices]);
+  // Overlays, filter and colouring, applied when the map starts and on change.
+  const [started, setStarted] = useState(0);
+  useEffect(() => {
+    ctlRef.current?.setOverlays(overlays ?? []);
+  }, [overlays, started]);
+  useEffect(() => {
+    ctlRef.current?.setIssueFilter(issueFilter);
+  }, [issueFilter, started]);
+  useEffect(() => {
+    ctlRef.current?.setIssueColor(issueColorBy);
+  }, [issueColorBy, started]);
+  useEffect(() => {
+    ctlRef.current?.setCameraWedge(cameraWedge);
+  }, [cameraWedge, started]);
 
   useEffect(() => {
     const el = ref.current;
@@ -81,6 +113,7 @@ export function MapView({ className, showFlights = true, draw, issues }: MapView
         life.ctl = ctl;
         ctlRef.current = ctl;
         setActiveMap(ctl);
+        setStarted((n) => n + 1);
         life.observer = new ResizeObserver(() => {
           ctl.resize();
         });

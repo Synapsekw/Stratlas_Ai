@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AssetRef, Id, IsoTime, Mat4, Quat, Vec3 } from './common';
+import { AssetRef, HexColor, Id, IsoTime, Mat4, Quat, Vec3 } from './common';
 
 export const LensModel = z.discriminatedUnion('model', [
   z.object({
@@ -49,6 +49,40 @@ export const PanoRef = z.object({
 
 const base = { id: Id, name: z.string().min(1), visible: z.boolean().default(true) };
 
+const Opacity = z.number().min(0).max(1);
+
+/**
+ * How a `vector` layer draws on the map (and draped on the 3D ground): any of line, fill,
+ * circle and label, optionally coloured by a numeric feature property with step stops.
+ */
+export const VectorStyle = z.object({
+  line: z
+    .object({
+      color: HexColor,
+      width: z.number().positive().default(1.5),
+      opacity: Opacity.optional(),
+      dash: z.array(z.number().nonnegative()).optional(),
+    })
+    .optional(),
+  fill: z.object({ color: HexColor, opacity: Opacity.default(0.3) }).optional(),
+  circle: z.object({ color: HexColor, radius: z.number().positive().default(4) }).optional(),
+  /** A feature property shown as text at points (and along lines). */
+  label: z.object({ field: z.string().min(1), size: z.number().positive().optional() }).optional(),
+  /** Step colour ramp: the colour of the last stop at or below the value of `field`. */
+  colorBy: z
+    .object({
+      field: z.string().min(1),
+      stops: z
+        .array(z.tuple([z.number(), HexColor]))
+        .min(1)
+        .refine((s) => s.every((x, i) => i === 0 || x[0] > (s[i - 1]?.[0] ?? -Infinity)), {
+          message: 'Colour stops must be in ascending order',
+        }),
+    })
+    .optional(),
+  minZoom: z.number().min(0).max(24).optional(),
+});
+
 export const Layer = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('mesh'),
@@ -91,6 +125,14 @@ export const Layer = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('photos'), ...base, items: z.array(PhotoRef) }),
   z.object({ kind: z.literal('panoramas'), ...base, items: z.array(PanoRef) }),
   z.object({
+    kind: z.literal('vector'),
+    ...base,
+    /** A GeoJSON FeatureCollection in lon/lat (WGS84). */
+    src: AssetRef,
+    format: z.literal('geojson'),
+    style: VectorStyle.optional(),
+  }),
+  z.object({
     kind: z.literal('legacy'),
     ...base,
     viewer: z.enum(['aik', 'volumetric', 'road', 'twin']),
@@ -103,5 +145,6 @@ export type PoseSample = z.infer<typeof PoseSample>;
 export type FlightRef = z.infer<typeof FlightRef>;
 export type PhotoRef = z.infer<typeof PhotoRef>;
 export type PanoRef = z.infer<typeof PanoRef>;
+export type VectorStyle = z.infer<typeof VectorStyle>;
 export type Layer = z.infer<typeof Layer>;
 export type LayerKind = Layer['kind'];

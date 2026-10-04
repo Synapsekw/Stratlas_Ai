@@ -2,7 +2,7 @@ import type { IpcChannel, PackageInfo, ProjectManifest } from '@aio/schema';
 import { createWorkspace } from '@aio/workspace';
 import { describe, expect, it } from 'vitest';
 import type { Bridge, Res } from './bridge';
-import { cloudAiBlocked, welcomeTips } from './player';
+import { cloudAiBlocked, exportAllowed, welcomeTips } from './player';
 import { createShellStore } from './store';
 
 type Handlers = Partial<Record<IpcChannel, (req: unknown) => unknown>>;
@@ -139,6 +139,9 @@ describe('player helpers', () => {
     expect(cloudAiBlocked(pkg(true, 'forbid'))).toBe(true);
     expect(cloudAiBlocked(pkg(true, 'allow'))).toBe(false);
     expect(cloudAiBlocked(null)).toBe(false);
+    expect(exportAllowed(null, 'report-pdf')).toBe(true);
+    expect(exportAllowed(pkg(true), 'issues-csv')).toBe(true);
+    expect(exportAllowed(pkg(true), 'report-pdf')).toBe(false);
   });
 
   it('suggests what to try from the layers and issues of the project', () => {

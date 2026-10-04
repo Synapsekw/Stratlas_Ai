@@ -139,6 +139,44 @@ describe('installIssueOverlay', () => {
     uninstall();
   });
 
+  it('drapes polygon map sightings on the ground and outlines the selected one', () => {
+    const store = createWorkspace();
+    const sq = (lon: number, lat: number) => [
+      [lon, lat],
+      [lon + 0.0001, lat],
+      [lon + 0.0001, lat + 0.0001],
+      [lon, lat],
+    ];
+    store.getState().openProject({ id: 'p', root: 'r', manifest }, [
+      makeIssue({
+        id: 'm',
+        sightings: [
+          {
+            on: 'map',
+            layer: 'ortho',
+            geojson: { type: 'Polygon', coordinates: [sq(48.39, 28.71)] },
+          },
+        ],
+      }),
+    ]);
+    const display = createPinDisplay(null);
+    const uninstall = installIssueOverlay(store, display);
+    const { handle, frames } = fakeHandle();
+    setActiveScene(handle);
+    frame(frames);
+    const drape = handle.scene.getObjectByName('annotate-map-shapes');
+    // outline and fill, no pin (no 3D anchor)
+    expect(drape?.children).toHaveLength(2);
+    expect(layoutOf(handle)?.items).toHaveLength(0);
+    store.getState().select({ kind: 'issue', id: 'm' });
+    expect(drape?.children).toHaveLength(3);
+    // the pin filter hides the shape too (the selected outline stays)
+    display.getState().setFilter('off');
+    expect(drape?.children).toHaveLength(1);
+    uninstall();
+    expect(handle.scene.getObjectByName('annotate-map-shapes')).toBeUndefined();
+  });
+
   it('attaches to a scene that was already active', () => {
     const store = createWorkspace();
     store.getState().openProject({ id: 'p', root: 'r', manifest }, [makeIssue()]);

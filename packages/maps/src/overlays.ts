@@ -1,5 +1,4 @@
 import type { Issue, LensModel, PoseSample, SeverityModel, Vec3 } from '@aio/schema';
-import type { Feature, Point } from 'geojson';
 import { Quaternion, Vector3 } from 'three';
 import type { FrameProjection } from './geo';
 
@@ -154,16 +153,6 @@ export interface MapIssueDisplay {
 
 export const ALL_ISSUES: MapIssueDisplay = { show: true, minSeverity: null, heat: false };
 
-const NEUTRAL = '#8a94a6';
-const rankOf = (s: Issue['severity']) => (s === 'uncertain' ? -1 : s);
-
-function colorOf(models: readonly SeverityModel[], issue: Issue): string {
-  const m = models.find((x) => x.id === issue.severityModelId);
-  if (!m) return NEUTRAL;
-  if (issue.severity === 'uncertain') return m.uncertain?.color ?? NEUTRAL;
-  return m.levels.find((l) => l.value === issue.severity)?.color ?? NEUTRAL;
-}
-
 /** Rank to colour pairs (ascending) over the project's models: cluster badges by worst member. */
 export function severityRankColors(models: readonly SeverityModel[]): [number, string][] {
   const out = new Map<number, string>();
@@ -172,56 +161,4 @@ export function severityRankColors(models: readonly SeverityModel[]): [number, s
     for (const l of m.levels) if (!out.has(l.value)) out.set(l.value, l.color);
   }
   return [...out.entries()].sort((a, b) => a[0] - b[0]);
-}
-
-/**
- * Issue markers for the map: `points` feed the clustered source (filtered, without the
- * selected issue), `focus` holds the selected issue (never clustered) and the hovered one (drawn
- * again on top), both labelled, and `heat` every issue the severity threshold keeps, weighted
- * by severity.
- */
-export function issueFeatures(
-  issues: readonly Issue[],
-  proj: FrameProjection | null,
-  models: readonly SeverityModel[],
-  display: MapIssueDisplay,
-  focus: { selected: string | null; hover: string | null },
-): { points: Feature<Point>[]; focus: Feature<Point>[]; heat: Feature<Point>[] } {
-  const points: Feature<Point>[] = [];
-  const near: Feature<Point>[] = [];
-  const heat: Feature<Point>[] = [];
-  const top = Math.max(1, ...models.flatMap((m) => m.levels.map((l) => l.value)));
-  for (const issue of issues) {
-    const rank = rankOf(issue.severity);
-    const kept = display.minSeverity === null || rank >= display.minSeverity;
-    const selected = issue.id === focus.selected;
-    const hovered = issue.id === focus.hover;
-    if (!kept && !selected) continue;
-    const at = issueAnchor(issue, proj);
-    if (!at) continue;
-    const geometry: Point = { type: 'Point', coordinates: at };
-    if (display.heat && kept) {
-      heat.push({
-        type: 'Feature',
-        properties: { weight: rank < 0 ? 0.25 : 0.4 + (0.6 * rank) / top },
-        geometry,
-      });
-    }
-    const properties = {
-      issueId: issue.id,
-      code: issue.code,
-      rank,
-      color: colorOf(models, issue),
-      selected,
-    };
-    // The hovered pin stays in its cluster source (no re-clustering on hover) and is drawn
-    // again on top with its code; the selected one leaves the clusters.
-    if (selected || (hovered && display.show && kept)) {
-      near.push({ type: 'Feature', properties, geometry });
-    }
-    if (!selected && display.show && kept) {
-      points.push({ type: 'Feature', properties, geometry });
-    }
-  }
-  return { points, focus: near, heat };
 }

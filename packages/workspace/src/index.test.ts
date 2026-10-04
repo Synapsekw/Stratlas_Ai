@@ -67,6 +67,22 @@ describe('workspace store', () => {
     ws.getState().consumeCamera(first + 1);
     expect(ws.getState().camera).toBeNull();
   });
+
+  it('keeps the last camera request after the 3D view consumes it, so the map can follow', () => {
+    const ws = createWorkspace();
+    const seen: (number | undefined)[] = [];
+    // the 3D view consumes inside its listener, before later listeners run
+    ws.subscribe((s) => {
+      if (s.camera) s.consumeCamera(s.camera.seq);
+    });
+    ws.subscribe((s, prev) => {
+      if (s.lastCamera !== prev.lastCamera) seen.push(s.lastCamera?.seq);
+    });
+    ws.getState().flyTo({ kind: 'point', p: [1, 0, 2] });
+    expect(ws.getState().camera).toBeNull();
+    expect(ws.getState().lastCamera?.target).toEqual({ kind: 'point', p: [1, 0, 2] });
+    expect(seen).toHaveLength(1);
+  });
 });
 
 describe('assetUrl', () => {

@@ -2,14 +2,8 @@ import type { Issue, PoseSample } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { frameProjection } from './geo';
 import type { SeverityModel } from '@aio/schema';
-import {
-  footprint,
-  issueAnchor,
-  issueFeatures,
-  poseAt,
-  rasterQuad,
-  severityRankColors,
-} from './overlays';
+import { footprint, issueAnchor, poseAt, rasterQuad, severityRankColors } from './overlays';
+import { issueFeatures as featuresOf } from './vector';
 
 const TANK_UTM: [number, number] = [245747.13, 3179641.87];
 const TANK_LONLAT: [number, number] = [48.39709173227198, 28.719105268785743];
@@ -153,19 +147,35 @@ describe('issue features for the clustered map layer', () => {
   });
   const issues = [mk('a', 1), mk('b', 3, 48.1), mk('c', 'uncertain', 48.2)];
   const all = { show: true, minSeverity: null, heat: false };
+  const issueFeatures = (
+    list: Issue[],
+    p: null,
+    models: SeverityModel[],
+    display: typeof all | { show: boolean; minSeverity: number | null; heat: boolean },
+    focus: { selected: string | null; hover: string | null },
+  ) =>
+    featuresOf(list, {
+      models,
+      catalogues: [],
+      selectedId: focus.selected,
+      proj: p,
+      display,
+      hoverId: focus.hover,
+    });
 
   it('colours each point from its severity model and ranks uncertain lowest', () => {
     const f = issueFeatures(issues, null, [model], all, { selected: null, hover: null });
-    expect(f.points.map((p) => [prop(p, 'code'), prop(p, 'color'), prop(p, 'rank')])).toEqual([
+    // lowest rank first, so the most severe draw on top
+    expect(f.points.map((p) => [prop(p, 'code'), prop(p, 'sevColor'), prop(p, 'rank')])).toEqual([
+      ['C', '#999999', -1],
       ['A', '#111111', 1],
       ['B', '#333333', 3],
-      ['C', '#999999', -1],
     ]);
   });
 
   it('keeps the selected issue out of the clusters and labels it and the hovered one', () => {
     const f = issueFeatures(issues, null, [model], all, { selected: 'b', hover: 'a' });
-    expect(f.points.map((p) => prop(p, 'code'))).toEqual(['A', 'C']);
+    expect(f.points.map((p) => prop(p, 'code'))).toEqual(['C', 'A']);
     expect(f.focus.map((p) => [prop(p, 'code'), prop(p, 'selected')])).toEqual([
       ['A', false],
       ['B', true],
@@ -200,14 +210,15 @@ describe('issue features for the clustered map layer', () => {
       { ...all, show: false, heat: true },
       { selected: null, hover: null },
     );
+    // uncertain, low, high
     expect(f.heat.map((p) => prop(p, 'weight'))).toEqual([
       expect.any(Number),
-      1,
       expect.any(Number),
+      1,
     ]);
     const w = f.heat.map((p) => Number(prop(p, 'weight')));
     expect(w[0]).toBeLessThan(w[1] ?? 0);
-    expect(w[2]).toBeLessThan(w[0] ?? 0);
+    expect(w[1]).toBeLessThan(w[2] ?? 0);
   });
 
   it('maps ranks to the worst colour for cluster badges', () => {

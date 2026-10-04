@@ -13,6 +13,7 @@ import { ReviewScreen } from './screens/Review';
 import { SettingsScreen } from './screens/Settings';
 import { WelcomeScreen } from './screens/Welcome';
 import { initAuthor } from './author';
+import { roadStore, startRoadSync } from './road/store';
 import { spaceIsPlayPause } from './keys';
 import { bridge, shell, useShell } from './shell';
 import { PackageExportDialog } from './shell/PackageExport';
@@ -138,8 +139,15 @@ export function App() {
     );
     const stopContinue = continueAcrossClips();
     const stopOpenPath = openPackagesHandedOver();
+    const stopRoad = startRoadSync();
+    // A road survey opens map first.
+    const stopRoadMode = roadStore.subscribe((s, prev) => {
+      if (s.status === 'ready' && prev.status !== 'ready') shell.getState().setStageMode('map');
+    });
     return () => {
       stopOpenPath();
+      stopRoad();
+      stopRoadMode();
       window.removeEventListener('keydown', onKeyDown);
       stopPlayback();
       stopContinue();

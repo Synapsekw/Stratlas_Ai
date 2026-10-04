@@ -25,6 +25,16 @@ import {
   type RefObject,
 } from 'react';
 import { FocusZone } from '../FocusZone';
+import {
+  CloseupDock,
+  MeasureBar,
+  PciUnitCard,
+  RoadLegend,
+  RoadToolGroup,
+  useRoadKeys,
+} from '../road/RoadTools';
+import { useRoad } from '../road/store';
+import { useRoadMap } from '../road/useRoadMap';
 import { isTyping } from '../keys';
 import { shell, useShell } from '../shell';
 import type { StageMode } from '../store';
@@ -146,21 +156,22 @@ function StageToolbar({
   mode: StageMode;
   barRef: RefObject<HTMLDivElement | null>;
 }) {
+  const road = useRoad((s) => s.status === 'ready');
   const rightCollapsed = useShell((s) => s.rightCollapsed);
   const cloudPanelOpen = useShell((s) => s.cloudPanelOpen);
   const hasClouds = useWorkspace((s) =>
     (s.project?.manifest.layers ?? []).some((l) => l.kind === 'pointcloud'),
   );
   const map = mode === 'map';
-  const groups: GroupId[] = useMemo(
-    () =>
-      map
-        ? ['view', 'display', 'video', 'annotate']
-        : hasClouds
-          ? ['view', 'measure', 'display', 'clouds', 'video', 'annotate']
-          : ['view', 'measure', 'display', 'video', 'annotate'],
-    [map, hasClouds],
-  );
+  const groups: GroupId[] = useMemo(() => {
+    const base: GroupId[] = map
+      ? ['view', 'display', 'video', 'annotate']
+      : hasClouds
+        ? ['view', 'measure', 'display', 'clouds', 'video', 'annotate']
+        : ['view', 'measure', 'display', 'video', 'annotate'];
+    // the road tools work on the map
+    return road && mode !== '3d' ? [...base.slice(0, -1), 'road', 'annotate'] : base;
+  }, [map, hasClouds, road, mode]);
   const [moreOpen, setMoreOpen] = useState(false);
   const widths = useRef(new Map<GroupId, number>());
   const [hidden, setHidden] = useState<GroupId[]>([]);
@@ -202,6 +213,8 @@ function StageToolbar({
         return <VideoTools stage={stage} map={map} />;
       case 'annotate':
         return <AnnotateToggle />;
+      case 'road':
+        return <RoadToolGroup />;
     }
   };
 
@@ -402,6 +415,15 @@ export function Stage() {
   const showVideo = activeClip !== null && !videoHidden;
   const engine = useEngineStage();
   const mapDraw = useMapDraw(mapLayer);
+  const roadMap = useRoadMap();
+  const closeupOn = useRoad((s) => s.closeup);
+  const selectedIssue = useWorkspace((s) =>
+    s.selection?.kind === 'issue' ? s.selection.id : null,
+  );
+  const hasPhoto = useRoad((s) => s.rows.some((r) => r.id === selectedIssue && r.photo));
+  const closeup = roadMap !== null && closeupOn && hasPhoto && mode !== '3d';
+  // road keys first: they run before the stage keys below
+  useRoadKeys(roadMap !== null);
   useIssueOverlay();
   // The Pins control drives the map markers too.
   const pinFilter = usePinDisplay((s) => s.filter);
@@ -506,7 +528,7 @@ export function Stage() {
     };
   }, [engine]);
 
-  const seam: MapDrawSeam = {
+  const seam: MapDrawSeam = roadMap?.measure ?? {
     mode: mapDraw.mode,
     vertices: mapDraw.state?.vertices ?? [],
     onClick: mapDraw.onClick,
@@ -515,15 +537,33 @@ export function Stage() {
 
   return (
     <div className={`stage${docked && showVideo ? ' docked' : ''}`} ref={stageRef} data-mode={mode}>
-      <div className={`stage-panes${docked && showVideo ? ' with-video' : ''}`} data-mode={mode}>
+      <div
+        className={`stage-panes${docked && showVideo ? ' with-video' : ''}${closeup ? ' with-dock' : ''}`}
+        data-mode={mode}
+      >
         <ScenePane hidden={mode === 'map'} />
         {mode !== '3d' && (
           <FocusZone kind="map" className="pane pane-map">
             <div className="fill">
-              <MapView className="scene-fill" draw={seam} issues={mapIssues} />
+              <MapView
+                className="scene-fill"
+                draw={seam}
+                issues={mapIssues}
+                {...(roadMap
+                  ? {
+                      overlays: roadMap.overlays,
+                      issueFilter: roadMap.issueFilter,
+                      issueColorBy: roadMap.issueColorBy,
+                      cameraWedge: mode === 'split',
+                    }
+                  : {})}
+              />
             </div>
+            {roadMap && <RoadLegend />}
+            {roadMap && <PciUnitCard />}
           </FocusZone>
         )}
+        {closeup && <CloseupDock />}
         {docked && showVideo && <FloatingVideo layerId={activeClip} docked stageRef={stageRef} />}
       </div>
       <StageToolbar stage={engine} mode={mode} barRef={barRef} />
@@ -542,6 +582,7 @@ export function Stage() {
             />
           </div>
         )}
+        {roadMap && mode !== '3d' && <MeasureBar />}
         {mode !== 'map' && <StageStatus stage={engine} />}
       </div>
       <SightingPicker kinds={['map']} />

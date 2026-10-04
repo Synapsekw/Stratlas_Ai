@@ -9,12 +9,16 @@ import {
   Group,
   Matrix4,
   Points,
+  Raycaster,
   SRGBColorSpace,
   ShaderMaterial,
+  Vector2,
   Vector3,
 } from 'three';
 import type { StoreApi } from 'zustand/vanilla';
-import { hitItem, layoutPins, type PinItem, type PinLabel } from './declutter';
+import { hitItem, layoutPins, pinPasses, type PinItem, type PinLabel } from './declutter';
+import { mapToLocal, type MapToLocal } from './drape';
+import { createDrapeLayer } from './drapeLayer';
 import { issuePins, type IssuePin } from './mesh';
 import { pinDisplay as defaultDisplay, type PinDisplayState } from './pinDisplay';
 
@@ -268,8 +272,9 @@ const heatWeight = (rank: number, top: number) =>
  * with count badges coloured by the worst member, codes only for the selected and hovered
  * pin or while the view is uncrowded (pooled DOM labels, only those in view), the pin filter
  * and an optional severity heat map. A pin click selects its issue; a badge click flies in
- * to separate its pins, or lists them when they share one spot. Follows the active scene
- * through `onActiveScene`. Returns an uninstall function.
+ * to separate its pins, or lists them when they share one spot. Issues' polygon map sightings
+ * are draped on the ground (same filter; the selected one outlined) and select on click.
+ * Follows the active scene through `onActiveScene`. Returns an uninstall function.
  */
 export function installIssueOverlay(
   store: StoreApi<Workspace>,
@@ -332,6 +337,30 @@ export function installIssueOverlay(
 
     // component callouts keep their plates off the drawn pins and badges
     const offObstacles = isEngineStage(handle) ? handle.addLabelObstacles(() => obstacles) : null;
+
+    // polygon map sightings draped on the ground
+    const drape = createDrapeLayer(handle);
+    let toLocal: MapToLocal | null = null;
+    const drapeAll = () => {
+      const s = store.getState();
+      const m = s.project?.manifest;
+      const f = display.getState().filter;
+      toLocal = m ? mapToLocal(m.crs, m.origin) : null;
+      drape.shapes(
+        f === 'all' ? s.issues : s.issues.filter((i) => pinPasses(i.severity, f)),
+        m?.severityModels ?? [],
+        toLocal,
+      );
+    };
+    const drapeSelection = () => {
+      const s = store.getState();
+      const id = s.selection?.kind === 'issue' ? s.selection.id : null;
+      drape.select(
+        s.issues.find((x) => x.id === id) ?? null,
+        s.project?.manifest.severityModels ?? [],
+        toLocal,
+      );
+    };
 
     const rebuild = () => {
       const s = store.getState();
@@ -444,8 +473,14 @@ export function installIssueOverlay(
     const unsub = store.subscribe((s, prev) => {
       if (s.issues !== prev.issues || s.selection !== prev.selection || s.project !== prev.project)
         rebuild();
+      if (s.issues !== prev.issues || s.project !== prev.project) drapeAll();
+      if (s.issues !== prev.issues || s.selection !== prev.selection || s.project !== prev.project)
+        drapeSelection();
     });
-    const unsubDisplay = display.subscribe(rebuild);
+    const unsubDisplay = display.subscribe((d, prev) => {
+      rebuild();
+      if (d.filter !== prev.filter) drapeAll();
+    });
 
     const local = (e: { clientX: number; clientY: number }) => {
       const r = (el as Partial<HTMLElement>).getBoundingClientRect?.();
@@ -482,6 +517,7 @@ export function installIssueOverlay(
       });
     };
 
+    const rc = new Raycaster();
     let down: { x: number; y: number } | null = null;
     const onDown = (e: PointerEvent) => {
       if (e.button === 0) down = { x: e.clientX, y: e.clientY };
@@ -494,7 +530,18 @@ export function installIssueOverlay(
       down = null;
       const at = local(e);
       const hit = hitItem(items, at.x, at.y);
-      if (!hit) return;
+      if (!hit) {
+        // a draped map shape under the click
+        const r = (el as Partial<HTMLElement>).getBoundingClientRect?.();
+        if (!r?.width || !r.height) return;
+        rc.setFromCamera(
+          new Vector2((at.x / r.width) * 2 - 1, -(at.y / r.height) * 2 + 1),
+          handle.camera,
+        );
+        const id = drape.pick(rc);
+        if (id) store.getState().select({ kind: 'issue', id });
+        return;
+      }
       const first = hit.members[0];
       if (hit.kind === 'pin' && first)
         store.getState().select({ kind: 'issue', id: first.issueId });
@@ -528,6 +575,8 @@ export function installIssueOverlay(
     el.addEventListener('pointerup', onUp as EventListener);
     el.addEventListener('pointermove', onMove as EventListener);
     rebuild();
+    drapeAll();
+    drapeSelection();
 
     detach = () => {
       unsub();
@@ -539,6 +588,7 @@ export function installIssueOverlay(
       el.removeEventListener('pointerup', onUp as EventListener);
       el.removeEventListener('pointermove', onMove as EventListener);
       labels.dispose();
+      drape.dispose();
       handle.scene.remove(group);
       discBuf.geometry.dispose();
       heatBuf.geometry.dispose();

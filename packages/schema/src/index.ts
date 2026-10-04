@@ -3,6 +3,7 @@ export * from './layers';
 export * from './severity';
 export * from './annotation';
 export * from './manifest';
+export * from './road';
 export * from './agent';
 export * from './conversation';
 export * from './package';

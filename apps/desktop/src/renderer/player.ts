@@ -1,4 +1,4 @@
-import type { PackageInfo, ProjectManifest } from '@aio/schema';
+import type { ExportKind, PackageInfo, ProjectManifest } from '@aio/schema';
 
 /** Cloud AI is off for this package whatever Settings say (AI-2, default forbid). */
 export function cloudAiBlocked(pkg: PackageInfo | null): boolean {
@@ -8,6 +8,14 @@ export function cloudAiBlocked(pkg: PackageInfo | null): boolean {
 /** Player mode: a read-only customer package is open. */
 export function isPlayer(pkg: PackageInfo | null): boolean {
   return pkg?.header.readOnly ?? false;
+}
+
+/**
+ * May this kind of file be saved while the project is open: always for a folder project, and
+ * inside a package only for the kinds its header allows (main enforces it again on save).
+ */
+export function exportAllowed(pkg: PackageInfo | null, kind: ExportKind): boolean {
+  return pkg === null || pkg.header.exports.includes(kind);
 }
 
 const plural = (n: number, one: string, many = `${one}s`) => `${String(n)} ${n === 1 ? one : many}`;

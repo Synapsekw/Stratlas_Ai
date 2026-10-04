@@ -7,6 +7,9 @@ import { useMedia } from '../media';
 import { selectClip } from '../shell/Sidebar';
 import { cloudAiBlocked } from '../player';
 import { useShell } from '../shell';
+import { ChainageRuler } from '../road/ChainageRuler';
+import { RoadPanel } from '../road/RoadPanel';
+import { useIsRoad } from '../road/useRoadMap';
 import { NoProject } from '../screens/NoProject';
 import { SelectionCard } from './SelectionCard';
 import { Stage } from './Stage';
@@ -122,21 +125,23 @@ export function WorkspaceScreen() {
   const focused = useWorkspace((s) => s.focusedWindow);
   const rightCollapsed = useShell((s) => s.rightCollapsed);
   const pkg = useShell((s) => s.pkg);
+  const road = useIsRoad();
   if (!hasProject) return <NoProject view="Scene" />;
 
   return (
-    <section className={`screen ws${rightCollapsed ? ' right-off' : ''}`} aria-label="Scene">
+    <section
+      className={`screen ws${rightCollapsed ? ' right-off' : ''}${road ? ' road' : ''}`}
+      aria-label="Scene"
+    >
       <Stage />
-      <div className="tl-wrap">
-        <WorkspaceTimeline />
-      </div>
+      <div className="tl-wrap">{road ? <ChainageRuler /> : <WorkspaceTimeline />}</div>
       <aside
         className="right"
         aria-label="Context"
         aria-hidden={rightCollapsed}
         inert={rightCollapsed}
       >
-        <ContextPanel />
+        {road ? <RoadPanel /> : <ContextPanel />}
         <div className="agent">
           {cloudAiBlocked(pkg) ? (
             <p className="faint small" style={{ padding: 12 }} data-testid="agent-blocked">

@@ -32,14 +32,31 @@ after a fresh clone. Sprites (`assets/sprites/dark*`) are small and committed.
   vertices (the second click of a double click is dropped), a double click finishes instead of
   zooming, the cursor is a crosshair and `drawPreview` draws the shape so far.
 - `MapView` reads packs from `packs:list`, centres and fits on the open project (manifest
-  `origin`, WGS84 UTM or EPSG 4326), and draws project image rasters (and kit pyramids at one
-  coarse level), every video layer's flight path, the active clip's drone and ground footprint at
-  `workspace.nowMs`, issues anchored by map, mesh or point cloud sightings, and a wedge for the 3D
-  camera. Click an issue or flight to select it; Alt+click flies the 3D camera to that point.
-- Issues are a clustered GeoJSON source: count badges in the colour of the worst member (from the
+  `origin`, WGS84 UTM or EPSG 4326), and draws project image rasters, every video layer's flight
+  path, the active clip's drone and ground footprint at `workspace.nowMs`, issues anchored by map,
+  mesh or point cloud sightings, and a wedge for the 3D camera (`cameraWedge`). Click an issue or
+  flight to select it; Alt+click flies the 3D camera to that point. Hovering an issue or an
+  overlay feature shows a tooltip.
+- Kit pyramids draw at full detail: one coarse level (at most 16 tiles) stays as a backdrop and
+  `pyramidView` picks, after every move, the coarsest level as sharp as the screen and the tiles
+  in view (at most 48) as image sources. A tile missing from the package is not asked for again.
+- Issues are clustered GeoJSON sources: count badges in the colour of the worst member (from the
   project's severity models), a badge click zooms to where it splits, codes from z17 where they
-  fit. The selected issue is never clustered; hover shows a code. `MapView` `issues`
+  fit. The selected issue is never clustered; hover shows a code and a tooltip. `MapView` `issues`
   (`MapIssueDisplay`: show, minSeverity, heat) follows the app's Pins control and adds a heatmap.
+- Issues with a Polygon or MultiPolygon map sighting draw as polygons from z17 and are clustered
+  points below (their own source, clustering up to z16; other issues cluster up to z19). Markers
+  and shapes are coloured by their severity model (`issueColorBy="class"`: by class colour),
+  higher severities on top; the selected one gets a white halo. `issueFilter` keeps only the
+  given issue ids. `issueFeatures` builds every issue feature (points, focus, heat, shapes).
+- GeoJSON overlay seam: `overlays` (`MapOverlay[]`: inline features or an `aio://` URL, MapLibre
+  style layers, `visible`, optional `tooltip` and `onClick`) draw between the rasters and the
+  issues (`above: true` layers over them). Manifest `vector` layers become overlays through
+  `styleLayers` (line, fill, circle, label, step `colorBy`, `minZoom`) and follow layer visibility.
+- The map follows `workspace.lastCamera`: a point request centres it (its distance sets the
+  zoom), an issue request fits its polygon, home fits the project.
+- `lineLengthM` and `polygonAreaM2` measure lon/lat shapes on the WGS84 ellipsoid (local radii,
+  centimetre level over a site). The container element carries `__aioMap` for end-to-end tests.
 - `registerMapAdapters()` registers a `basemap` ground: the style rendered once (2048 px over a
   5 km square around the origin) by a hidden MapLibre map and draped as a quad at y = -0.2.
 

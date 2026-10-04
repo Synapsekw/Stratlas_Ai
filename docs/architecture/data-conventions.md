@@ -81,3 +81,11 @@ A project folder (section 2) delivered as one file (BLD-9) and opened in place (
 - A package is **never written**: `project:writeIssues` refuses it, the renderer switches annotation to read-only, and no file is added next to it. Cloud AI runs only when Settings allow it **and** the header says `aiPolicy: 'allow'`. `dialog:saveFile` accepts only the export kinds in the header (`exportKindForFile`).
 - Customer packages (`readOnly: true`) open on the welcome screen (player mode). Packages carry no map packs; basemap layers fall back to the project rasters.
 - The OS association (`fileAssociations` in `apps/desktop/electron-builder.yml`) and the single-instance hand-off pass a double-clicked `.aio` to the running app; opened packages join the library (`library.json` keeps the file path).
+
+## 9. Vector overlays and road surveys
+
+- A `vector` layer (`format: "geojson"`) points at a GeoJSON FeatureCollection in lon/lat (WGS84). Its optional `style` (line, fill, circle, label, a step `colorBy` ramp on a numeric property, `minZoom`) draws it on the 2D map.
+- A road survey keeps `road.json` (`aio.road/1`, `RoadModel` in `@aio/schema`) at the package root. The app looks for it when the project declares a `legacy` layer with `viewer: "road"` or a class catalogue with `assetType: "road"`, and then opens the road workspace (map first, chainage ruler, PCI and density overlays).
+- Road grids (PCI sample units and density cells) are aligned to the project CRS: cell `(i, j)` of size `c` spans local x `origin[0] + j c` to `+ c` and z `origin[2] + i c` to `+ c` (`origin` is `pci.grid.origin` or `density.gridOrigin`).
+- `road.json` `overlays` names project-relative GeoJSON files by role: `centreline` (the centreline as a LineString with `chainageKm`, and chainage ticks as Points with `km` and `label`) and `pciUnits` (unit cells as MultiPolygons with `id`, `km`, `pciLow`, `pciMedium`, `pciHigh`).
+- Map sightings (`on: "map"`) keep their GeoJSON in lon/lat; Polygon and MultiPolygon sightings draw as polygons on the map and draped on the 3D ground.

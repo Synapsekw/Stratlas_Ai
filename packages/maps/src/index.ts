@@ -27,13 +27,31 @@ export {
   ALL_ISSUES,
   footprint,
   issueAnchor,
-  issueFeatures,
   poseAt,
   rasterQuad,
   severityRankColors,
   type LonLat,
   type MapIssueDisplay,
 } from './overlays';
+export {
+  issueFeatures,
+  issueShapeBounds,
+  lineLengthM,
+  polygonAreaM2,
+  styleLayers,
+  type IssueFeatureOptions,
+  type IssueFeatureSet,
+  type MapOverlay,
+  type OverlayLayer,
+} from './vector';
+export {
+  levelMetresPerPx,
+  pyramidView,
+  type GroundBox,
+  type PyramidIndex,
+  type PyramidTile,
+} from './pyramid';
+export type { IssueColorBy } from './controller';
 
 /**
  * Registers the `basemap` ground adapter with @aio/engine: the offline street style rendered once

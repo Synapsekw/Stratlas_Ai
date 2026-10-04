@@ -36,7 +36,17 @@ export const toolInputs = {
   list_layers: z
     .object({
       kind: z
-        .enum(['mesh', 'pointcloud', 'basemap', 'raster', 'video', 'photos', 'panoramas', 'legacy'])
+        .enum([
+          'mesh',
+          'pointcloud',
+          'basemap',
+          'raster',
+          'vector',
+          'video',
+          'photos',
+          'panoramas',
+          'legacy',
+        ])
         .optional(),
     })
     .strict(),
