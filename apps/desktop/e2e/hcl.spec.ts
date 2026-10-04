@@ -1,7 +1,7 @@
 /**
- * End to end on the real HCl tank project (1 mesh, 10 point clouds, 76 clips, 11 issues). Runs
- * only on machines that hold the project at E:\Stratlas Data\projects\hcl (or under
- * STRATLAS_HCL_DATA); skipped elsewhere. Read-only: it never edits the project.
+ * End to end on the real HCl tank project (1 mesh, 10 point clouds, one clip per flight, saved
+ * issues). Runs only on machines that hold the project at E:\Stratlas Data\projects\hcl (or
+ * under STRATLAS_HCL_DATA); skipped elsewhere. Read-only: it never edits the project.
  */
 import { test as base, type ElectronApplication, type Page } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
@@ -76,6 +76,37 @@ const clock = (win: Page) =>
     };
   });
 
+/**
+ * Play flight 101's clip from `frac` of the way in: put the playhead there, then click the clip's
+ * timeline bar (a bar plays from the playhead when it is inside the clip).
+ */
+async function playFlight101(win: Page, frac: number) {
+  const bar = win.locator('.seg-c[title^="Flight 101"]').first();
+  await expect(bar).toBeVisible({ timeout: 30_000 });
+  await win.evaluate((f) => {
+    const ws = (
+      window as unknown as {
+        __stratlas: {
+          workspace: {
+            getState(): {
+              project: {
+                manifest: {
+                  layers: { id: string; offsetMs?: number; flight?: { startUtcMs: number } }[];
+                };
+              } | null;
+              setTime(t: number): void;
+            };
+          };
+        };
+      }
+    ).__stratlas.workspace.getState();
+    const l = ws.project?.manifest.layers.find((x) => x.id === 'video-101');
+    if (!l?.flight || l.offsetMs === undefined) throw new Error('no clip video-101');
+    ws.setTime(l.flight.startUtcMs + l.offsetMs + f * 386_000);
+  }, frac);
+  await bar.click();
+}
+
 test('HCl opens with a drawn 3D scene, plays a clip and lists its saved issues', async ({
   win,
 }) => {
@@ -118,14 +149,11 @@ test('HCl opens with a drawn 3D scene, plays a clip and lists its saved issues',
     )
     .toBeGreaterThan(12);
 
-  // Clips are grouped by flight; clicking a flight bar plays the clip under the cursor.
-  const bar = win.locator('.seg-c.grp').first();
-  const box = await bar.boundingBox();
-  if (!box) throw new Error('no flight bar in the timeline');
-  await bar.click({ position: { x: box.width * 0.4, y: box.height / 2 } });
+  // One clip per flight; its bar plays it from the playhead.
+  await playFlight101(win, 0.4);
   const start = await clock(win);
   expect(start.playing).toBe(true);
-  expect(start.activeClip).toMatch(/^video-101-/);
+  expect(start.activeClip).toBe('video-101');
   await expect
     .poll(async () => (await clock(win)).nowMs - start.nowMs, { timeout: 20_000 })
     .toBeGreaterThan(1_500);
@@ -305,11 +333,8 @@ test('playing inside the tank cuts it open; photos and flights reach Media', asy
     )
     .toBe(257);
 
-  // Flight 101, clip 3: the drone is inside the tank.
-  const bar = win.locator('.seg-c.grp').first();
-  const box = await bar.boundingBox();
-  if (!box) throw new Error('no flight bar');
-  await bar.click({ position: { x: box.width * 0.4, y: box.height / 2 } });
+  // Flight 101, 40 % in: the drone is inside the tank.
+  await playFlight101(win, 0.4);
   await expect
     .poll(() => inspect(win, (w) => w.__stratlas.stage()?.section.enabled), { timeout: 20_000 })
     .toBe(true);
@@ -326,8 +351,8 @@ test('playing inside the tank cuts it open; photos and flights reach Media', asy
   await expect.poll(() => inspect(win, (w) => w.__stratlas.stage()?.section.enabled)).toBe(false);
   await win.keyboard.press('Space');
 
-  // Media groups the 76 clips into 10 flights.
+  // Media lists the 10 flights, one continuous clip each.
   await win.locator('.nav-item', { hasText: 'Media' }).first().click();
   await expect(win.locator('.m-flight')).toHaveCount(10);
-  await expect(win.locator('#m-flight-clips .m-card')).toHaveCount(7);
+  await expect(win.locator('#m-flight-clips .m-card')).toHaveCount(1);
 });
