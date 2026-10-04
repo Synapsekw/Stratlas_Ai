@@ -26,6 +26,7 @@ const KIND: Record<Layer['kind'], { label: string; icon: IconName }> = {
   pointcloud: { label: 'Point cloud', icon: 'cloud' },
   basemap: { label: 'Offline basemap', icon: 'map' },
   raster: { label: 'Raster', icon: 'raster' },
+  vector: { label: 'Map overlay', icon: 'map' },
   video: { label: 'Video clip', icon: 'video' },
   photos: { label: 'Photo set', icon: 'photo' },
   panoramas: { label: 'Panoramas', icon: 'pano' },

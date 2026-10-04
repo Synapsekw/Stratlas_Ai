@@ -44,6 +44,7 @@ const groupOf: Record<Layer['kind'], TreeGroupKind> = {
   pointcloud: 'pointclouds',
   basemap: 'maps',
   raster: 'maps',
+  vector: 'maps',
   video: 'video',
   photos: 'photos',
   panoramas: 'panoramas',
@@ -61,6 +62,8 @@ function metaOf(layer: Layer, durations: Readonly<Record<string, number>>): stri
       return 'offline';
     case 'raster':
       return layer.role;
+    case 'vector':
+      return 'GeoJSON';
     case 'video': {
       const d = durations[layer.id];
       return d !== undefined ? formatDuration(d) : undefined;
