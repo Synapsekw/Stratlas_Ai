@@ -138,7 +138,12 @@ test('agent: preview, history, restored approval, export and meter', async () =>
     await expect
       .poll(async () => {
         const files = await readdir(dir).catch(() => []);
-        const texts = await Promise.all(files.map((f) => readFile(join(dir, f), 'utf8')));
+        // an atomic write's temp file can be renamed away between the listing and the read
+        const texts = await Promise.all(
+          files
+            .filter((f) => f.endsWith('.json'))
+            .map((f) => readFile(join(dir, f), 'utf8').catch(() => '')),
+        );
         return texts.some((t) => t.includes('"status": "awaiting"'));
       })
       .toBe(true);
