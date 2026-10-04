@@ -3,7 +3,10 @@ import {
   DatasetTree,
   formatDate,
   Icon,
+  t,
+  useT,
   type IconName,
+  type MessageKey,
   type TreeItem,
 } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
@@ -17,18 +20,18 @@ import { updateFlightPaths, useFlightPathModel } from '../workspace/pathModel';
 
 interface NavDef {
   screen: Screen;
-  label: string;
+  label: MessageKey;
   icon: IconName;
 }
 
-const REVIEW: NavDef = { screen: 'review', label: 'Original review', icon: 'history' };
+const REVIEW: NavDef = { screen: 'review', label: 'nav.review', icon: 'history' };
 
 const NAV: NavDef[] = [
-  { screen: 'projects', label: 'Projects', icon: 'projects' },
-  { screen: 'scene', label: 'Scene', icon: 'scene' },
-  { screen: 'issues', label: 'Issues', icon: 'issues' },
-  { screen: 'media', label: 'Media', icon: 'media' },
-  { screen: 'reports', label: 'Reports', icon: 'report' },
+  { screen: 'projects', label: 'nav.projects', icon: 'projects' },
+  { screen: 'scene', label: 'nav.scene', icon: 'scene' },
+  { screen: 'issues', label: 'nav.issues', icon: 'issues' },
+  { screen: 'media', label: 'nav.media', icon: 'media' },
+  { screen: 'reports', label: 'nav.reports', icon: 'report' },
 ];
 
 function NavItem({
@@ -50,9 +53,9 @@ function NavItem({
       }}
     >
       <Icon name={def.icon} />
-      <span className="lbl">{def.label}</span>
+      <span className="lbl">{t(def.label)}</span>
       {count !== undefined && <span className="count">{count}</span>}
-      <span className="tip">{def.label}</span>
+      <span className="tip">{t(def.label)}</span>
     </button>
   );
 }
@@ -96,7 +99,7 @@ function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
       ]
         .filter(Boolean)
         .join(' · ')
-    : 'Choose a project from the library';
+    : t('nav.chooseProject');
 
   return (
     <div className="proj-wrap" ref={ref}>
@@ -116,7 +119,7 @@ function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
           <Icon name={manifest ? 'layers' : 'projects'} />
         </span>
         <span className="pt">
-          <b>{manifest?.name ?? 'No project open'}</b>
+          <b dir="auto">{manifest?.name ?? t('nav.noProject')}</b>
           <span>{meta}</span>
         </span>
         <Icon name="updown" size={14} className="faint" />
@@ -238,6 +241,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
 }
 
 export function Sidebar() {
+  useT();
   const screen = useShell((s) => s.screen);
   const collapsed = useShell((s) => s.settings.sidebarCollapsed);
   const libCount = useShell((s) => s.library?.length);
@@ -247,9 +251,9 @@ export function Sidebar() {
   const nav = hasReview ? [...NAV.slice(0, 2), REVIEW, ...NAV.slice(2)] : NAV;
 
   return (
-    <aside className="sidebar" aria-label="Primary">
+    <aside className="sidebar" aria-label={t('nav.primary')}>
       <div className="sb-scroll">
-        <nav className="sb-sec sb-nav" aria-label="Sections">
+        <nav className="sb-sec sb-nav" aria-label={t('nav.sections')}>
           {nav.map((n) => (
             <NavItem
               key={n.screen}
@@ -268,7 +272,7 @@ export function Sidebar() {
       </div>
       <div className="sb-foot">
         <NavItem
-          def={{ screen: 'settings', label: 'Settings', icon: 'settings' }}
+          def={{ screen: 'settings', label: 'nav.settings', icon: 'settings' }}
           current={screen === 'settings'}
         />
         <button
@@ -282,10 +286,11 @@ export function Sidebar() {
           data-testid="sidebar-toggle"
         >
           <Icon name="sidebar" />
-          <span className="lbl">Collapse</span>
+          <span className="lbl">{t('nav.collapse')}</span>
           <span className="count">Ctrl B</span>
           <span className="tip">
-            {collapsed ? 'Expand' : 'Collapse'} sidebar <span className="kbd">Ctrl B</span>
+            {t(collapsed ? 'nav.expandSidebar' : 'nav.collapseSidebar')}{' '}
+            <span className="kbd">Ctrl B</span>
           </span>
         </button>
       </div>
