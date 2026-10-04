@@ -32,6 +32,7 @@
     "@aio/schema": "workspace:*",
     "@aio/ui": "workspace:*",
     "@aio/video": "workspace:*",
+    "@aio/volumetric": "workspace:*",
     "@aio/workspace": "workspace:*"
   }
 }

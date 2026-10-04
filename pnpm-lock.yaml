@@ -139,6 +139,9 @@ importers:
       '@aio/video':
         specifier: workspace:*
         version: link:../../packages/video
+      '@aio/volumetric':
+        specifier: workspace:*
+        version: link:../../packages/volumetric
       '@aio/workspace':
         specifier: workspace:*
         version: link:../../packages/workspace
@@ -335,6 +338,24 @@ importers:
       '@aio/schema':
         specifier: workspace:*
         version: link:../schema
+      '@aio/workspace':
+        specifier: workspace:*
+        version: link:../workspace
+      three:
+        specifier: ^0.186.1
+        version: 0.186.1
+
+  packages/volumetric:
+    dependencies:
+      '@aio/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@aio/schema':
+        specifier: workspace:*
+        version: link:../schema
+      '@aio/ui':
+        specifier: workspace:*
+        version: link:../ui
       '@aio/workspace':
         specifier: workspace:*
         version: link:../workspace
