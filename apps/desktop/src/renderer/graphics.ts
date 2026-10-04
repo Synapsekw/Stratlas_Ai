@@ -1,6 +1,6 @@
 /**
- * Graphics quality presets (GPU tiers): point budget, eye-dome lighting, shadow map size and pixel
- * ratio, detected from the WebGL renderer string with an override in Settings.
+ * Graphics quality presets (GPU tiers): point budget, eye-dome lighting, shadow map size and
+ * softness, water detail and pixel ratio, detected from the WebGL renderer string with an override in Settings.
  */
 import { configureEngine, getActiveStage, type StageQuality } from '@aio/engine';
 import { pointcloudSettings, type PointcloudSettings } from '@aio/pointcloud';
@@ -23,14 +23,20 @@ export const GPU_TIERS: Record<GpuTier, TierPreset> = {
     pointBudget: 2_000_000,
     edl: false,
     shadowMapSize: 1024,
+    shadowSoftness: 1,
+    water: 'simple',
+    waterFps: 0,
     maxPixelRatio: 1,
-    hint: 'Integrated graphics: 2 M points, no eye-dome lighting',
+    hint: 'Integrated graphics: 2 M points, no eye-dome lighting, still water',
   },
   medium: {
     label: 'Medium',
     pointBudget: 4_000_000,
     edl: true,
     shadowMapSize: 2048,
+    shadowSoftness: 1.5,
+    water: 'full',
+    waterFps: 12,
     maxPixelRatio: 1,
     hint: 'Entry graphics cards and laptops: 4 M points',
   },
@@ -39,6 +45,9 @@ export const GPU_TIERS: Record<GpuTier, TierPreset> = {
     pointBudget: 8_000_000,
     edl: true,
     shadowMapSize: 4096,
+    shadowSoftness: 2,
+    water: 'full',
+    waterFps: 20,
     maxPixelRatio: 1.5,
     hint: 'Mid-range graphics cards: 8 M points',
   },
@@ -47,6 +56,9 @@ export const GPU_TIERS: Record<GpuTier, TierPreset> = {
     pointBudget: 16_000_000,
     edl: true,
     shadowMapSize: 4096,
+    shadowSoftness: 2.5,
+    water: 'full',
+    waterFps: 30,
     maxPixelRatio: 2,
     hint: 'Workstation graphics (RTX 4070 class and up): 16 M points',
   },
@@ -182,6 +194,9 @@ export function createGraphics(opts: GraphicsOptions): StoreApi<GraphicsState> {
       const quality: StageQuality = {
         maxPixelRatio: p.maxPixelRatio,
         shadowMapSize: p.shadowMapSize,
+        shadowSoftness: p.shadowSoftness,
+        water: p.water,
+        waterFps: p.waterFps,
       };
       configureEngine({ quality });
       getActiveStage()?.setQuality(quality);

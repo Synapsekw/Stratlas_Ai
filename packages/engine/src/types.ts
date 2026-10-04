@@ -12,10 +12,33 @@ import type {
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { ViewPreset } from './camera/cameraMath';
 import type { StageQuality } from './config';
+import type { EnvironmentSettings, SiteLocation } from './stage/envDefaults';
+import type { EnvironmentMode } from './stage/environment';
 import type { PerfStats } from './stage/perf';
 import type { SectionState } from './tools/section';
 
-export type { PerfStats, StageQuality };
+export type { EnvironmentMode, EnvironmentSettings, PerfStats, SiteLocation, StageQuality };
+
+/** The stage environment now: the settings plus what follows from them. */
+export interface EnvironmentInfo extends EnvironmentSettings {
+  /** The project's place on the Earth; null without a geographic origin (no sun position). */
+  location: SiteLocation | null;
+  /** Sun position for `timeMs` at `location` (a fixed studio light when location is null). */
+  sun: {
+    azimuthDeg: number;
+    elevationDeg: number;
+    /** Unit vector toward the sun, local frame (x east, y up, z south). */
+    direction: [number, number, number];
+  };
+  /** Unit vector toward the light that casts shadows now: the sun, the moon or the studio lamp. */
+  lightDirection: [number, number, number];
+  /** Sea level found in the project data (local y), or null. */
+  dataWaterLevel: number | null;
+  /** Water is drawn now (toggle on and a level known). */
+  waterShown: boolean;
+  /** 0 by day, 1 by night (sky mode). */
+  night: number;
+}
 
 /** A rendering surface the app mounts into a panel. */
 export interface Viewport {
@@ -135,9 +158,16 @@ export interface EngineStage extends SceneHandle {
   setPerfOverlay(on: boolean): void;
   /** What the perf HUD shows; frame times are only collected while it is on. */
   perfStats(): PerfStats;
-  /** Pixel ratio cap and shadow map size of the graphics quality preset. */
+  /** Pixel ratio cap, shadow and water detail of the graphics quality preset. */
   readonly quality: StageQuality;
   setQuality(q: Partial<StageQuality>): void;
+  /**
+   * Backdrop, sun and water: sky or studio, the instant the sun is computed for (from the
+   * project's location), the water toggle and level. Starts from `defaultEnvironment(manifest)`
+   * on every project open; the app re-applies the user's per-project choice.
+   */
+  readonly environment: EnvironmentInfo;
+  setEnvironment(patch: Partial<EnvironmentSettings>): void;
   /** Listen for tool or section changes, for toolbar state. */
   onStateChange(cb: () => void): () => void;
 }

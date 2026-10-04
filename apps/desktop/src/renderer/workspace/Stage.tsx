@@ -32,6 +32,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
+import { EnvironmentTool, useStageEnvironment } from '../environment/EnvironmentTool';
 import { FocusZone } from '../FocusZone';
 import {
   CloseupDock,
@@ -335,6 +336,11 @@ function StageToolbar({
         </div>
       )}
       <span className="stbar-sp" />
+      {!map && stage && (
+        <div className="tgroup-h overlay-box env-slot" data-fixed="">
+          <EnvironmentTool stage={stage} />
+        </div>
+      )}
       <div className="tgroup-h overlay-box" data-fixed="">
         <button
           type="button"
@@ -548,6 +554,8 @@ export function Stage() {
     [pinFilter, pinHeat],
   );
   useCutaway(engine);
+  // sky or studio, time of day and water, per project
+  useStageEnvironment(engine);
 
   // Flight paths: all, the active clip's flight only, or none, and single hidden flights.
   const paths = useFlightPathModel();

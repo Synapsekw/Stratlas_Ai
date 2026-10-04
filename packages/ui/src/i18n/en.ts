@@ -59,6 +59,38 @@ export const en = {
   // Library
   'library.count_one': '{count} project',
   'library.count_other': '{count} projects',
+
+  // Stage environment (backdrop, sun and time of day, water)
+  'stage.env.button': 'Environment and time of day',
+  'stage.env.title': 'Environment',
+  'stage.env.backdrop': 'Backdrop',
+  'stage.env.sky': 'Sky',
+  'stage.env.studio': 'Studio',
+  'stage.env.skyHint': 'Daylight from the sun over the site at the date and time below.',
+  'stage.env.studioHint': 'Neutral dark backdrop with a fixed light, for a single asset.',
+  'stage.env.noLocation':
+    'The project has no geographic origin, so the sun cannot be placed. The light stays fixed.',
+  'stage.env.date': 'Date',
+  'stage.env.time': 'Time',
+  'stage.env.timeOfDay': 'Time of day',
+  'stage.env.utc': 'UTC{offset}',
+  'stage.env.sun': 'Sun {elevation}° up, bearing {azimuth}°',
+  'stage.env.night': 'Sun {elevation}° below the horizon, moonlight',
+  'stage.env.captureTime': 'Capture time',
+  'stage.env.now': 'Now',
+  'stage.env.water': 'Water',
+  'stage.env.waterLevel': 'Level',
+  'stage.env.waterUnit': 'm EL',
+  'stage.env.waterFromData': 'Sea level from the project data: EL {level} m.',
+  'stage.env.waterSet': 'Water drawn at the level set here. Clear it to use the project data.',
+  'stage.env.waterNone': 'No sea level in the project data. Enter a level to draw water.',
+  'stage.env.reset': 'Project defaults',
+  'settings.graphics.water': 'Water',
+  'settings.graphics.waterHint': 'Sea surface: animated waves, or still on integrated graphics',
+  'settings.graphics.waterFull': 'Animated',
+  'settings.graphics.waterSimple': 'Still',
+  'settings.graphics.shadowSoftness': 'Shadow edges',
+  'settings.graphics.shadowSoftnessHint': 'Softness of sun shadows, texels',
   'library.build': '{product} {version} · built {date}',
 
   // Dataset tree: eyes over all layers and over a group
