@@ -34,6 +34,15 @@ import { loadFlight, videoStore, type VideoLayer } from './runtime';
 
 export type CameraMode = 'free' | 'follow' | 'drone';
 
+/** Which flight paths the rig draws: every flight, only the active clip's flight, or none. */
+export type FlightPathMode = 'all' | 'active' | 'off';
+
+export interface FlightPathOptions {
+  mode: FlightPathMode;
+  /** Clips whose flight path the user hid (a path hides when every clip of it is listed). */
+  hiddenClips?: ReadonlySet<string>;
+}
+
 /** Optional orbit-controls seam on the scene handle (target and enable flag). */
 interface ControlsLike {
   target: Vector3;
@@ -149,6 +158,9 @@ export class VideoRig {
   private readonly pose = { pos: new Vector3(), q: new Quaternion(), valid: false };
   projectionOn = true;
   pathsOn = true;
+  /** Flight path display; independent of the clips, so hiding paths keeps the drone and video. */
+  private pathMode: FlightPathMode = 'all';
+  private hiddenPathClips: ReadonlySet<string> = new Set();
   /** When true the projection range follows the active flight's height (set false by the UI). */
   autoRange = true;
 
@@ -247,6 +259,17 @@ export class VideoRig {
     if (!e) return;
     e.visible = v;
     this.handle.requestRender();
+  }
+
+  /** Show every flight path, only the active clip's, or none; and hide single flights. */
+  setFlightPaths(o: FlightPathOptions) {
+    this.pathMode = o.mode;
+    if (o.hiddenClips) this.hiddenPathClips = o.hiddenClips;
+    this.handle.requestRender();
+  }
+
+  get flightPaths(): { mode: FlightPathMode; hiddenClips: ReadonlySet<string> } {
+    return { mode: this.pathMode, hiddenClips: this.hiddenPathClips };
   }
 
   setCameraMode(mode: CameraMode) {
@@ -384,10 +407,15 @@ export class VideoRig {
     const flight = entry?.flight;
     for (const path of this.paths.values()) {
       let shown = false;
+      let userHidden = true;
       for (const id of path.clips) {
         if (this.clips.get(id)?.visible === true && !s.hidden[id]) shown = true;
+        if (!this.hiddenPathClips.has(id)) userHidden = false;
       }
-      path.line.visible = this.pathsOn && shown;
+      const wanted =
+        this.pathMode === 'all' ||
+        (this.pathMode === 'active' && s.activeClip !== null && path.clips.has(s.activeClip));
+      path.line.visible = this.pathsOn && shown && wanted && !userHidden;
     }
     if (!entry || !flight || !this.player) {
       this.pose.valid = false;
