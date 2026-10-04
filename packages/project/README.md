@@ -5,6 +5,22 @@ Project packages: read, write, importers for kit formats, exports.
 See `docs/architecture/SPEC.md` section 2 for ownership and dependencies. Public API: `src/index.ts`
 (renderer safe) and `src/import/index.ts` (Node only: file system, ffmpeg).
 
+## Exports (stream N3)
+
+`src/export/index.ts` (`@aio/project/export`, pure, renderer safe) builds every issue export from
+a manifest and its issues; `src/export/node.ts` (`@aio/project/export/node`) adds PNG masks and a
+streaming store-mode ZIP. The desktop app runs them in an export utility process
+(`apps/desktop/src/main/exports/`) behind `export:run`, so large registers never block the UI.
+
+| Format       | Content                                                                                                                                                                                                       |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Issues CSV   | `CSV_COLUMNS` (stable, append only), UTF-8 with BOM, CRLF; severity and class labels from the models, sightings count, zone, position in the project CRS and WGS84                                            |
+| GeoJSON      | RFC 7946, one feature per map, mesh or point-cloud sighting in WGS84 (heights in metres); properties carry code, labels, severity colour and project CRS easting and northing                                 |
+| COCO         | Categories from the class catalogue (ids from 1), images are the review copies (size read from the file header), boxes, rotated boxes and polygons as segmentation, points as 1 px boxes; masks go to the ZIP |
+| Kit JSON     | Asset Inspection Kit `assessment.json` shape (`photos` status, `findings` with corner boxes, `group` = issue code) plus an `issues` list with positions                                                       |
+| Masks ZIP    | Kit masks and overlays where the import brought them, else a class-index mask and RGBA overlay drawn from the boxes, polygons and points; `masks.json` indexes photos, files and issues                       |
+| Report model | `reportModel`: counts by severity, class (catalogue) and zone (`issueZone` reads the note), register rows worst first with best photo and 3D position; no em or en dashes (`noDashes`)                        |
+
 ## Importers (stream S10)
 
 Convert staged source folders into native packages laid out per `docs/architecture/data-conventions.md`.
