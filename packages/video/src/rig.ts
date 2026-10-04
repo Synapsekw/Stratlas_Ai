@@ -120,6 +120,22 @@ function frustumRays(lens: LensModel): Vector3[] {
   return border.map(([x, y]) => new Vector3(...imageToRay(lens, x, y)));
 }
 
+/** Steepest view counted as looking at the ground (about 14 degrees below the horizon). */
+const MIN_GROUND_SLOPE = 0.25;
+
+/**
+ * The orbit target for drone-eye: where the view axis meets the ground (y = 0), at most four
+ * heights away when the camera looks near or above the horizon. The stage takes its near / far
+ * planes, shadow frustum and ortho tile LOD from the camera-to-target distance, so the target must
+ * sit at the real viewing distance: a point a metre ahead of the lens collapses the near plane to
+ * a centimetre and the depth buffer can no longer tell the sea from the ground below.
+ */
+function droneEyeTarget(pos: Vector3, q: Quaternion): Vector3 {
+  const dir = new Vector3(0, 0, -1).applyQuaternion(q);
+  const height = Math.max(1, pos.y);
+  return pos.clone().addScaledVector(dir, height / Math.max(-dir.y, MIN_GROUND_SLOPE));
+}
+
 /**
  * Everything the video layers draw in one scene: flight paths, the drone marker and frustum at
  * the active clip's pose, the projector, and the follow / drone-eye camera modes.
@@ -463,8 +479,7 @@ export class VideoRig {
         cam.updateProjectionMatrix();
       }
       cam.updateMatrixWorld();
-      if (controls)
-        controls.target.copy(this.pose.pos).add(new Vector3(0, 0, -1).applyQuaternion(this.pose.q));
+      if (controls) controls.target.copy(droneEyeTarget(this.pose.pos, this.pose.q));
     }
   };
 

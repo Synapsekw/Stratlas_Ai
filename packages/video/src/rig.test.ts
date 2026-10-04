@@ -2,7 +2,7 @@
 import type { SceneHandle } from '@aio/engine';
 import type { Layer, ProjectManifest } from '@aio/schema';
 import { createWorkspace } from '@aio/workspace';
-import { Line, PerspectiveCamera, Scene, type Mesh, type WebGLRenderer } from 'three';
+import { Line, PerspectiveCamera, Scene, Vector3, type Mesh, type WebGLRenderer } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { VideoRig } from './rig';
 import { configureVideo } from './runtime';
@@ -80,6 +80,67 @@ describe('VideoRig flight paths', () => {
     expect(lines(rig)).toHaveLength(2);
     rig.removeLayer('v1');
     expect(lines(rig)).toHaveLength(1);
+    rig.dispose();
+  });
+});
+
+describe('VideoRig drone-eye', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps the orbit target on the ground the drone films, not a metre ahead of the lens', async () => {
+    // 120 m up, camera pitched 45 degrees down: the view ray meets the ground ~170 m away. The
+    // stage derives near / far, the shadow frustum and the ortho tile LOD from the distance to
+    // the orbit target; a target 1 m ahead gave a near plane of 1 cm against a 58 km far plane on
+    // Al-Zour, and the sea plane z-fought through the plant and the ortho (flicker).
+    const s = Math.sin(-Math.PI / 8);
+    const c = Math.cos(Math.PI / 8);
+    const high = {
+      ...flight,
+      lens: { model: 'pinhole', hfovDeg: 80, aspect: 1.7778 },
+      samples: [
+        { t: 0, pos: [0, 120, 0], q: [s, 0, 0, c] },
+        { t: 10_000, pos: [10, 120, 0], q: [s, 0, 0, c] },
+      ],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(high)))),
+    );
+    const layer = {
+      ...clip(0, 'flights/high.json'),
+      lens: { model: 'pinhole' as const, hfovDeg: 80, aspect: 1.7778 },
+      offsetMs: 0,
+    };
+    const store = createWorkspace();
+    const manifest = { layers: [layer] } as unknown as ProjectManifest;
+    store.getState().openProject({ id: 'p', root: 'x', manifest });
+    configureVideo({ store, resolveUrl: (_p, ref) => ('path' in ref ? ref.path : ref.hash) });
+    const frames: (() => void)[] = [];
+    const controls = { target: new Vector3(), enabled: true };
+    const h = Object.assign(handle(), {
+      controls,
+      onFrame: (cb: () => void) => {
+        frames.push(cb);
+        return () => undefined;
+      },
+    });
+    const rig = new VideoRig(h);
+    await rig.addLayer(layer, { scene: h, url: (r) => ('path' in r ? r.path : r.hash) });
+    store.getState().setActiveClip(layer.id);
+    store.getState().setTime(high.startUtcMs + 2_000);
+    rig.setCameraMode('drone');
+    for (const f of frames) f();
+
+    const cam = h.camera;
+    expect(cam.position.y).toBeCloseTo(120);
+    const toTarget = controls.target.clone().sub(cam.position);
+    const look = new Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+    // on the view axis, at the ground
+    expect(toTarget.clone().normalize().dot(look)).toBeCloseTo(1, 5);
+    expect(controls.target.y).toBeCloseTo(0, 3);
+    expect(toTarget.length()).toBeCloseTo(120 / Math.sin(Math.PI / 4), 1);
     rig.dispose();
   });
 });
