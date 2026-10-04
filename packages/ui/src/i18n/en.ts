@@ -260,6 +260,20 @@ export const en = {
   'settings.about.licences': 'Third-party licences',
   'settings.about.installFromFile': 'Install update from file',
   'settings.about.checkOnline': 'Check for updates online',
+  // Jobs: inspection pipeline form
+  'jobs.inspection.detections': 'Detections',
+  'jobs.inspection.detectionsHelp':
+    'aio.detections/1 files or folders, from review, AI or a local model. Empty: the project detections folder.',
+  'jobs.inspection.drafts': 'Unreviewed AI detections',
+  'jobs.inspection.draftsLeaveOut': 'Leave out until a person accepts them',
+  'jobs.inspection.draftsCount': 'Count them too',
+  'jobs.inspection.minConfidence': 'Minimum confidence',
+  'jobs.inspection.minConfidenceHint': '0 to 1, optional',
+  'jobs.inspection.clusterM': 'Group detections within (m)',
+  'jobs.inspection.clusterMHint': 'Kit default',
+  'jobs.inspection.hfovDeg': 'Field of view for photos without a lens (deg)',
+  'jobs.inspection.hfovDegHelp': 'The kit default is 70 degrees.',
+  'jobs.inspection.out': 'Output folder',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

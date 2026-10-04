@@ -166,8 +166,11 @@ function FieldInput({
 
 function NewJob({ onClose }: { onClose: () => void }) {
   const projectRoot = useWorkspace((s) => s.project?.root);
+  const projectType = useWorkspace((s) => s.project?.manifest.type);
   const runtime = useJobs((s) => s.runtime);
-  const [pipeline, setPipeline] = useState<PipelineName>('aik.cameras');
+  const [pipeline, setPipeline] = useState<PipelineName>(
+    projectType === 'inspection' ? 'inspection.run' : 'aik.cameras',
+  );
   const [project, setProject] = useState(projectRoot ?? '');
   const [values, setValues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);

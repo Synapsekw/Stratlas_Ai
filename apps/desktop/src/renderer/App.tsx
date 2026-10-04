@@ -1,4 +1,4 @@
-import { AnnotateStyles } from '@aio/annotate';
+import { AnnotateStyles, issueSaver } from '@aio/annotate';
 import { buildTimelineModel } from '@aio/ui';
 import { getPlayer } from '@aio/video';
 import { volumetric, VolumetricStyles } from '@aio/volumetric';
@@ -18,7 +18,7 @@ import { initAuthor } from './author';
 import { roadStore, startRoadSync } from './road/store';
 import { Toasts } from './exports/Toasts';
 import { spaceIsPlayPause } from './keys';
-import { finishedManifestJob } from './jobs';
+import { finishedIssuesJob, finishedManifestJob, mergeDiskIssues } from './jobs';
 import { bridge, jobs, shell, useShell } from './shell';
 import { PackageExportDialog } from './shell/PackageExport';
 import { Palette } from './shell/Palette';
@@ -148,6 +148,18 @@ export function App() {
           workspace.getState().replaceManifest(r.value.manifest);
       });
     });
+    // the inspection pipeline merged issues.json on disk: take its issues, keep unsaved edits
+    const stopIssueReload = jobs.subscribe((s, prev) => {
+      const project = workspace.getState().project;
+      if (!project || !finishedIssuesJob(prev.jobs, s.jobs, project.root)) return;
+      void bridge.call('project:open', { path: project.root }).then((r) => {
+        const ws = workspace.getState();
+        if (!r.ok || !r.value.ok || ws.project?.id !== project.id) return;
+        const merged = mergeDiskIssues(ws.issues, r.value.issues);
+        workspace.setState({ issues: merged.issues });
+        if (merged.unsaved) issueSaver.schedule(project.id, merged.issues);
+      });
+    });
     void initAuthor(bridge);
     window.addEventListener('keydown', onKeyDown);
     const stopPlayback = startPlaybackLoop(
@@ -171,6 +183,7 @@ export function App() {
     return () => {
       stopOpenPath();
       stopJobReload();
+      stopIssueReload();
       stopRoad();
       stopRoadMode();
       window.removeEventListener('keydown', onKeyDown);

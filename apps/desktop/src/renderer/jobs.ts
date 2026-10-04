@@ -1,6 +1,7 @@
 import {
   pipelineParams,
   type AioBridge,
+  type Issue,
   type IpcRequest,
   type JobEvent,
   type JobLogLine,
@@ -8,6 +9,7 @@ import {
   type PipelineName,
   type RuntimeInfo,
 } from '@aio/schema';
+import { t } from '@aio/ui';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { Bridge } from './bridge';
 
@@ -76,6 +78,55 @@ export function finishedManifestJob(
       sameFolder(j.project, root) &&
       prev.find((p) => p.id === j.id)?.status !== 'done',
   );
+}
+
+/** Pipelines that merge issues into the project's issues.json when they finish. */
+const ISSUE_WRITERS: ReadonlySet<string> = new Set(['inspection.run']);
+
+/**
+ * True when a job that writes the issues of the project at `root` has just finished: the open
+ * project should take the merged issues from disk (inspection pipeline).
+ */
+export function finishedIssuesJob(
+  prev: readonly JobRecord[],
+  next: readonly JobRecord[],
+  root: string,
+): boolean {
+  return next.some(
+    (j) =>
+      j.status === 'done' &&
+      ISSUE_WRITERS.has(j.pipeline) &&
+      sameFolder(j.project, root) &&
+      prev.find((p) => p.id === j.id)?.status !== 'done',
+  );
+}
+
+/**
+ * The open project's issues after a pipeline merged issues.json on disk: the disk list, except
+ * where the person changed an issue in the app since (newer `updatedAt`) or made one that is not
+ * saved yet. Returns the list and whether it holds unsaved work to write back.
+ */
+export function mergeDiskIssues(
+  open: readonly Issue[],
+  disk: readonly Issue[],
+): { issues: Issue[]; unsaved: boolean } {
+  const local = new Map(open.map((i) => [i.id, i]));
+  let unsaved = false;
+  const issues = disk.map((d) => {
+    const mine = local.get(d.id);
+    if (mine && mine.updatedAt > d.updatedAt) {
+      unsaved = true;
+      return mine;
+    }
+    return d;
+  });
+  const onDisk = new Set(disk.map((i) => i.id));
+  for (const i of open)
+    if (!onDisk.has(i.id)) {
+      issues.push(i);
+      unsaved = true;
+    }
+  return { issues, unsaved };
 }
 
 export function isActive(job: Pick<JobRecord, 'status'>): boolean {
@@ -169,6 +220,8 @@ export interface Field {
   key: string;
   label: string;
   kind: 'folder' | 'text' | 'number' | 'origin' | 'select';
+  /** A select whose values are 'true' / 'false' sends a boolean. */
+  boolean?: boolean;
   required?: boolean;
   placeholder?: string;
   help?: string;
@@ -232,6 +285,50 @@ export const FORMS: Record<PipelineName, Field[]> = {
     { key: 'epsg', label: 'Project EPSG', kind: 'number', placeholder: 'From the project' },
     { key: 'out', label: 'COPC file', kind: 'text', placeholder: 'clouds/<name>.copc.laz' },
   ],
+  'inspection.run': [
+    {
+      key: 'detections',
+      label: t('jobs.inspection.detections'),
+      kind: 'text',
+      placeholder: 'detections',
+      help: t('jobs.inspection.detectionsHelp'),
+    },
+    {
+      key: 'includeDrafts',
+      label: t('jobs.inspection.drafts'),
+      kind: 'select',
+      boolean: true,
+      options: [
+        { value: '', label: t('jobs.inspection.draftsLeaveOut') },
+        { value: 'true', label: t('jobs.inspection.draftsCount') },
+      ],
+    },
+    {
+      key: 'minConfidence',
+      label: t('jobs.inspection.minConfidence'),
+      kind: 'number',
+      placeholder: t('jobs.inspection.minConfidenceHint'),
+    },
+    {
+      key: 'clusterM',
+      label: t('jobs.inspection.clusterM'),
+      kind: 'number',
+      placeholder: t('jobs.inspection.clusterMHint'),
+    },
+    {
+      key: 'hfovDeg',
+      label: t('jobs.inspection.hfovDeg'),
+      kind: 'number',
+      placeholder: '70',
+      help: t('jobs.inspection.hfovDegHelp'),
+    },
+    {
+      key: 'out',
+      label: t('jobs.inspection.out'),
+      kind: 'text',
+      placeholder: 'inspection',
+    },
+  ],
   'system.selftest': [
     {
       key: 'seconds',
@@ -268,6 +365,8 @@ export function buildParams(
         return { ok: false, error: `${f.label}: give latitude, longitude and ground altitude.` };
       }
       params[f.key] = parts;
+    } else if (f.boolean) {
+      params[f.key] = raw === 'true';
     } else {
       params[f.key] = raw;
     }

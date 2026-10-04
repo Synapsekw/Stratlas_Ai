@@ -1,4 +1,4 @@
-import type { IpcChannel, JobEvent, JobRecord } from '@aio/schema';
+import type { IpcChannel, Issue, JobEvent, JobRecord } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import type { Bridge, Res } from './bridge';
 import {
@@ -6,8 +6,10 @@ import {
   buildParams,
   canResume,
   createJobsStore,
+  finishedIssuesJob,
   finishedManifestJob,
   isActive,
+  mergeDiskIssues,
 } from './jobs';
 
 const job = (over: Partial<JobRecord> = {}): JobRecord => ({
@@ -137,5 +139,58 @@ describe('finishedManifestJob', () => {
     expect(finishedManifestJob([running], [done], 'E:/data/projects/other')).toBe(false);
     const selftest = { ...done, pipeline: 'system.selftest' as const };
     expect(finishedManifestJob([running], [selftest], 'E:/data/projects/site')).toBe(false);
+  });
+});
+
+describe('inspection jobs', () => {
+  it('sends the review choices as checked params', () => {
+    expect(
+      buildParams('inspection.run', {
+        detections: 'detections/ai.json',
+        includeDrafts: 'true',
+        minConfidence: '0.5',
+      }),
+    ).toEqual({
+      ok: true,
+      params: { detections: 'detections/ai.json', includeDrafts: true, minConfidence: 0.5 },
+    });
+    expect(buildParams('inspection.run', {})).toEqual({ ok: true, params: {} });
+    expect(buildParams('inspection.run', { minConfidence: '3' })).toMatchObject({ ok: false });
+  });
+
+  it('takes the merged issues once the inspection pipeline finishes on the open project', () => {
+    const running = job({ id: 'i1', pipeline: 'inspection.run', project: 'E:/data/p/' });
+    const done = { ...running, status: 'done' as const };
+    expect(finishedIssuesJob([running], [done], 'e:/data/p')).toBe(true);
+    expect(finishedIssuesJob([done], [done], 'e:/data/p')).toBe(false);
+    expect(finishedManifestJob([running], [done], 'e:/data/p')).toBe(false);
+  });
+
+  it('keeps edits made in the app while the job ran', () => {
+    const issue = (id: string, updatedAt: string, title = id): Issue => ({
+      id,
+      code: 'D01',
+      classId: 'crack',
+      severityModelId: 'm',
+      severity: 1,
+      status: 'draft',
+      title,
+      note: '',
+      author: 'a',
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt,
+      sightings: [{ on: 'mesh', layer: 'l', geom: { type: 'spoint', p: [0, 0, 0], n: [0, 1, 0] } }],
+      source: 'human',
+    });
+    const disk = [issue('a', '2026-01-02T00:00:00Z', 'disk'), issue('p', '2026-01-03T00:00:00Z')];
+    const open = [issue('a', '2026-01-04T00:00:00Z', 'edited'), issue('n', '2026-01-04T00:00:00Z')];
+    const r = mergeDiskIssues(open, disk);
+    expect(r.issues.map((i) => [i.id, i.title])).toEqual([
+      ['a', 'edited'],
+      ['p', 'p'],
+      ['n', 'n'],
+    ]);
+    expect(r.unsaved).toBe(true);
+    expect(mergeDiskIssues(disk, disk)).toEqual({ issues: disk, unsaved: false });
   });
 });
