@@ -45,6 +45,8 @@ const CUBE_MIN = [244770, 3178785, 70];
 const CUBE = 2200;
 const DEPTH = 2;
 const CELL = CUBE / 2 ** DEPTH;
+/** Cells with more points are split into four (see step 3). */
+const SPLIT_ABOVE = Number(arg('split', '100000000'));
 /** Shared by every file so the LAZ chunks can be merged: 1 mm, offset at the cube corner. */
 const QUANT = {
   scale_x: 0.001,
@@ -185,27 +187,79 @@ if (!existsSync(baseCopc)) {
   ]);
 }
 
-// 3. one COPC per cell, one at a time (writers.copc is multi-threaded and memory hungry)
+// 3. writers.copc slows down sharply above about 100 M points (single-threaded phases and paging
+//    on 64 GB), so dense cells are split once more into four depth-3 cells (275 m)
+const units = [];
+const split = new Set();
 for (const c of filled) {
-  c.copc = join(work, `${c.name}.copc.laz`);
-  if (existsSync(c.copc)) continue;
-  await pipeline(`${c.name}-copc`, [
-    { type: 'readers.las', filename: c.laz, tag: 'pts' },
-    { type: 'readers.text', filename: anchors(c.name, c.min, CELL), tag: 'anchors' },
-    { type: 'filters.merge', inputs: ['pts', 'anchors'] },
-    copcWriter(c.copc),
-  ]);
+  if (c.head.count <= SPLIT_ABOVE) {
+    units.push({ name: c.name, laz: c.laz, min: c.min, size: CELL, key: [DEPTH, c.ix, c.iy, 0] });
+    continue;
+  }
+  split.add(`${DEPTH}-${c.ix}-${c.iy}-0`);
+  for (let b = 0; b < 2; b++)
+    for (let a = 0; a < 2; a++) {
+      const half = CELL / 2;
+      const min = [c.min[0] + a * half, c.min[1] + b * half, c.min[2]];
+      units.push({
+        name: `${c.name}-${a}${b}`,
+        laz: join(work, `${c.name}-${a}${b}.laz`),
+        min,
+        size: half,
+        key: [DEPTH + 1, 2 * c.ix + a, 2 * c.iy + b, 0],
+        from: c.laz,
+      });
+    }
 }
+await pool(
+  units.filter((u) => u.from && !existsSync(u.laz)),
+  jobs,
+  async (u) => {
+    const [x0, y0, z0] = u.min;
+    const e = u.size - 0.0005;
+    await pipeline(
+      u.name,
+      [
+        { type: 'readers.las', filename: u.from },
+        { type: 'filters.crop', bounds: `([${x0},${x0 + e}],[${y0},${y0 + e}],[${z0},${z0 + e}])` },
+        {
+          type: 'writers.las',
+          filename: u.laz,
+          compression: true,
+          minor_version: 4,
+          dataformat_id: 7,
+          ...QUANT,
+        },
+      ],
+      true,
+    );
+  },
+);
+const kept = units.filter((u) => lasHeader(u.laz).count > 0);
+const unitTotal = kept.reduce((s, u) => s + lasHeader(u.laz).count, 0);
+if (unitTotal !== total) throw new Error(`Splitting lost points: ${unitTotal} of ${total}`);
 
-// 4. merge: the base keeps depths 0 and 1, each cell brings depth 2 and below
+// 4. one COPC per cell, two at a time (writers.copc is multi-threaded and memory hungry)
+await pool(kept, 2, async (u) => {
+  u.copc = join(work, `${u.name}.copc.laz`);
+  if (existsSync(u.copc)) return;
+  await pipeline(`${u.name}-copc`, [
+    { type: 'readers.las', filename: u.laz, tag: 'pts' },
+    { type: 'readers.text', filename: anchors(u.name, u.min, u.size), tag: 'anchors' },
+    { type: 'filters.merge', inputs: ['pts', 'anchors'] },
+    copcWriter(u.copc),
+  ]);
+});
+
+// 5. merge: the base brings depths 0 and 1 (and depth 2 over split cells), each cell the rest
 const bounds = {
   min: [0, 1, 2].map((a) => Math.min(...filled.map((c) => c.head.min[a]))),
   max: [0, 1, 2].map((a) => Math.max(...filled.map((c) => c.head.max[a]))),
 };
 const r = mergeCopc({
   base: baseCopc,
-  maxDepth: DEPTH - 1,
-  tiles: filled.map((c) => ({ file: c.copc, key: [DEPTH, c.ix, c.iy, 0] })),
+  keepBase: (k) => k[0] < DEPTH || (k[0] === DEPTH && split.has(k.join('-'))),
+  tiles: kept.map((u) => ({ file: u.copc, key: u.key })),
   out,
   bounds,
   log,

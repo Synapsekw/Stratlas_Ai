@@ -63,13 +63,24 @@ What `alzour-copc.mjs` does:
 2. **Cells**: a 2200 m cube from E 244770, N 3178785, EL 70; each 550 m cell (octree depth 2) is
    cropped in a streaming pipeline (low memory, 6 at a time).
 3. **Top levels**: a 1/50 sample in a COPC whose cube is the whole octree.
-4. **Cell COPCs**: `writers.copc` per cell, with two class 7 (low noise) anchor points at the
+4. **Dense cells split**: `writers.copc` slows down sharply above about 100 M points (one
+   330 M point cell ran over an hour on one core and paged), so cells above `--split`
+   (default 100 M) are cropped once more into four 275 m cells (depth 3); the sample then also
+   brings depth 2 over them.
+5. **Cell COPCs**: `writers.copc` per cell, two at a time, with two class 7 (low noise) anchor points at the
    cell's minimum corner and minimum + (550, 0, 0), because PDAL makes the cube
    `[min, min + max extent]` of the data. They sit 30 m below grade at cell corners.
-5. **Merge** (`merge-copc.mjs`): depths 0 and 1 from the sample, depth 2 and below from the cells,
+6. **Merge** (`merge-copc.mjs`): the top levels from the sample, everything below from the cells,
    the LAZ chunks copied byte for byte (same point format, scale 1 mm and offset), one hierarchy
    page. The LAZ chunk table is empty: COPC readers (copc.js, PDAL readers.copc) find chunks
-   through the hierarchy. `pdal info --summary` reads every point back.
+   through the hierarchy.
+
+Result (2026-10-04, reference workstation): `alzour.copc.laz`, 5.84 GiB, 34,950 nodes,
+841,904,083 points: all 841,703,158 source points plus 200,925 sample points of the top levels
+and the anchors. Bounds E 244772.154 to 246908.609, N 3178788.329 to 3179941.359, EL 82.828 to
+175.753 (anchors at EL 70). `pdal info --stats` decodes all 841,904,083 points. Time: about
+10 min of streaming crops (6 at a time), 8 min for the sample, 40 min of cell COPCs (the
+largest, 180 M points, 31 min) and 1 min to merge.
 
 ## Test fixture
 

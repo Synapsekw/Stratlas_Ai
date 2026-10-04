@@ -1,7 +1,8 @@
 // Merges COPC files whose cubes are cells of one octree into a single COPC file, copying the
 // compressed node chunks byte for byte (no recompression):
 //
-// - `base`: a COPC file whose cube is the whole octree; its nodes down to `maxDepth` are kept.
+// - `base`: a COPC file whose cube is the whole octree; its nodes with depth <= `maxDepth` are kept,
+//   or the nodes `keepBase(key)` accepts.
 // - `tiles`: COPC files whose cube is exactly the octree cell `key` [d, x, y, z]; every node is
 //   re-keyed under that cell.
 //
@@ -109,9 +110,18 @@ const same = (a, b) => a.every((v, i) => Math.abs(v - (b[i] ?? NaN)) < 1e-9);
  * Merge. `bounds` (optional) is written to the header (data bounds without helper points).
  * Returns { nodes, points, bytes }.
  */
-export function mergeCopc({ base, maxDepth, tiles, out, bounds, log = () => undefined }) {
+export function mergeCopc({
+  base,
+  maxDepth = 0,
+  keepBase,
+  tiles,
+  out,
+  bounds,
+  log = () => undefined,
+}) {
   const b = readCopc(base);
-  const inputs = [{ src: b, map: (k) => (k[0] <= maxDepth ? k : null) }];
+  const keep = keepBase ?? ((k) => k[0] <= maxDepth);
+  const inputs = [{ src: b, map: (k) => (keep(k) ? k : null) }];
   const cube = b.copc.halfsize * 2;
   const cubeMin = b.copc.center.map((c) => c - b.copc.halfsize);
   for (const t of tiles) {
