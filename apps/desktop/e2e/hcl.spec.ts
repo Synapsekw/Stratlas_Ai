@@ -290,7 +290,36 @@ test('stage polish: one-row toolbar, label modes, annotate tools on demand, came
   await expect.poll(() => toolbarRows(win)).toBe(1);
 });
 
-test('playing inside the tank cuts it open; photos and flights reach Media', async ({
+/** The tank's materials as the renderer draws them (blending, opacity, depth writes). */
+const tankMaterials = (win: Page) =>
+  win.evaluate(() => {
+    interface Mat {
+      uuid: string;
+      transparent: boolean;
+      opacity: number;
+      depthWrite: boolean;
+    }
+    interface Node {
+      isMesh?: boolean;
+      material?: Mat | Mat[];
+      traverse(f: (o: Node) => void): void;
+    }
+    const stage = (
+      window as unknown as {
+        __stratlas: { stage(): { scene: { getObjectByName(n: string): Node | undefined } } | null };
+      }
+    ).__stratlas.stage();
+    const mats = new Map<string, Mat>();
+    stage?.scene.getObjectByName('layer:tank')?.traverse((o) => {
+      if (!o.isMesh || !o.material) return;
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) mats.set(m.uuid, m);
+    });
+    return [...mats.values()]
+      .sort((a, b) => a.uuid.localeCompare(b.uuid))
+      .map((m) => ({ transparent: m.transparent, opacity: m.opacity, depthWrite: m.depthWrite }));
+  });
+
+test('the tank is cut or made transparent only by hand; photos and flights reach Media', async ({
   app,
   win,
 }) => {
@@ -305,26 +334,76 @@ test('playing inside the tank cuts it open; photos and flights reach Media', asy
     )
     .toBe(257);
 
-  // Flight 101, clip 3: the drone is inside the tank.
+  // Flight 101, clip 3: the drone is inside the tank. Nothing is cut automatically.
+  const section = () => inspect(win, (w) => w.__stratlas.stage()?.section.enabled);
+  const cloudsHidden = () =>
+    inspect(win, (w) => {
+      const s = w.__stratlas.workspace.getState();
+      return (s.project?.manifest.layers ?? [])
+        .filter((l) => l.kind === 'pointcloud')
+        .every((l) => s.hidden[l.id]);
+    });
+  const before = await tankMaterials(win);
+  expect(before.length).toBeGreaterThan(0);
   const bar = win.locator('.seg-c.grp').first();
   const box = await bar.boundingBox();
   if (!box) throw new Error('no flight bar');
   await bar.click({ position: { x: box.width * 0.4, y: box.height / 2 } });
-  await expect
-    .poll(() => inspect(win, (w) => w.__stratlas.stage()?.section.enabled), { timeout: 20_000 })
-    .toBe(true);
-  await expect(win.getByText('Cut open at the drone', { exact: false })).toBeVisible();
-  const cloudsHidden = await inspect(win, (w) => {
-    const s = w.__stratlas.workspace.getState();
-    return (s.project?.manifest.layers ?? [])
-      .filter((l) => l.kind === 'pointcloud')
-      .every((l) => s.hidden[l.id]);
-  });
-  expect(cloudsHidden).toBe(true);
-  // Close restores the section and the clouds.
-  await win.locator('.ss-cut').getByRole('button', { name: 'Close' }).click();
-  await expect.poll(() => inspect(win, (w) => w.__stratlas.stage()?.section.enabled)).toBe(false);
+  const status = win.getByTestId('cutaway-status');
+  await expect(status).toContainText('Drone inside the asset', { timeout: 20_000 });
+  await win.waitForTimeout(1500);
+  expect(await section()).toBe(false);
+  expect(await cloudsHidden()).toBe(false);
   await win.keyboard.press('Space');
+
+  // Cut, by hand from the toolbar: the section opens at the drone and the clouds hide.
+  const tool = win.getByRole('button', { name: 'See inside the asset: cut or transparent' });
+  await tool.click();
+  const panel = win.getByTestId('cutaway-panel');
+  await panel.getByRole('button', { name: 'Cut', exact: true }).click();
+  await expect.poll(section).toBe(true);
+  await expect(status).toContainText('Cut open at the drone');
+  await expect.poll(cloudsHidden).toBe(true);
+
+  // Transparent: the section comes back off, the tank's materials blend without depth writes.
+  await panel.getByRole('button', { name: 'Transparent', exact: true }).click();
+  await expect.poll(section).toBe(false);
+  await expect(status).toContainText('Asset transparent');
+  await expect
+    .poll(async () => (await tankMaterials(win)).every((m) => m.transparent && !m.depthWrite))
+    .toBe(true);
+  await panel.getByRole('slider', { name: 'Opacity' }).fill('0.5');
+  await expect
+    .poll(async () =>
+      (await tankMaterials(win)).every(
+        (m, i) => Math.abs(m.opacity - 0.5 * (before[i]?.opacity ?? 1)) < 0.01,
+      ),
+    )
+    .toBe(true);
+  expect(await cloudsHidden()).toBe(true);
+  // the popover never scrolls the stage sideways
+  expect(await win.locator('.stage').evaluate((e) => e.scrollLeft)).toBe(0);
+  await win.waitForTimeout(800);
+  await shot(win, 'transparent');
+  await win.keyboard.press('Escape');
+
+  // The choice is remembered per project, across a restart of the window.
+  await win.reload();
+  await win.waitForLoadState('domcontentloaded');
+  await openHcl(app, win);
+  await expect
+    .poll(async () => (await tankMaterials(win)).every((m) => m.transparent && !m.depthWrite), {
+      timeout: 20_000,
+    })
+    .toBe(true);
+
+  // Solid again: every material exactly as it was, the clouds back.
+  await win.getByTestId('cutaway-status').getByRole('button', { name: 'Solid' }).click();
+  // (the reload made new materials: compare them as a set)
+  const sorted = (ms: unknown[]) => ms.map((m) => JSON.stringify(m)).sort();
+  await expect.poll(async () => sorted(await tankMaterials(win))).toEqual(sorted(before));
+  await expect.poll(cloudsHidden).toBe(false);
+  expect(await section()).toBe(false);
 
   // Media groups the 76 clips into 10 flights.
   await win.locator('.nav-item', { hasText: 'Media' }).first().click();

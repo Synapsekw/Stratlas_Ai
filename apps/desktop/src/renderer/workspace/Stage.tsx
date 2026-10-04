@@ -16,7 +16,7 @@ import {
   useClassificationLegend,
   useElevationRange,
 } from '@aio/pointcloud';
-import { crsLabel, formatEastNorth, Icon, localToProject, type IconName } from '@aio/ui';
+import { crsLabel, formatEastNorth, Icon, localToProject, useT, type IconName } from '@aio/ui';
 import { setFlightPaths, videoRig } from '@aio/video';
 import { useVolumetric, VolumetricStage } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
@@ -62,7 +62,14 @@ import {
   ViewTools,
 } from './StageTools';
 import { fitGroups, GAP, GROUP_LABEL, type GroupId } from './toolbarFit';
-import { insideView, stopCutaway, useCutaway, useCutawayState } from './useCutaway';
+import {
+  insideView,
+  setCutawayMode,
+  stopCutaway,
+  useCutaway,
+  useCutawayPref,
+  useCutawayState,
+} from './useCutaway';
 import { VolumeTools } from './VolumeTools';
 
 const MODES: { mode: StageMode; label: string; icon: IconName; keys: string }[] = [
@@ -375,48 +382,82 @@ function MapDrawTools({ draw }: { draw: MapDraw }) {
 
 /* ----------------------------------------------------------------------- status */
 
-/** What plays in 3D, and the cut-away that opens the asset when the drone is inside it. */
+/** What plays in 3D, and how the asset is opened (chosen by hand) when the drone is inside it. */
 function StageStatus({ stage }: { stage: EngineStage | null }) {
+  const t = useT();
   const playing = useWorkspace((s) => s.playing);
   const clip = useWorkspace((s) =>
     s.activeClip ? s.project?.manifest.layers.find((l) => l.id === s.activeClip) : undefined,
   );
   const inside = useCutawayState((s) => s.inside);
   const engaged = useCutawayState((s) => s.engaged);
-  if (!clip) return null;
+  const { mode } = useCutawayPref();
+  const open = engaged && mode !== 'off';
+  if (!clip && !open) return null;
   return (
     <div className="stage-status" role="status">
-      <span className={`ss-chip${playing ? ' live' : ''}`}>
-        <i aria-hidden />
-        <b>{playing ? 'Playing' : 'Paused'}</b>
-        <span className="ss-name">{clip.name}</span>
-      </span>
-      {inside && stage && (
-        <span className="ss-chip ss-cut">
+      {clip && (
+        <span className={`ss-chip${playing ? ' live' : ''}`}>
+          <i aria-hidden />
+          <b>{playing ? 'Playing' : 'Paused'}</b>
+          <span className="ss-name">{clip.name}</span>
+        </span>
+      )}
+      {stage && (open || inside) && (
+        <span className="ss-chip ss-cut" data-testid="cutaway-status">
           <Icon name="cutaway" size={14} />
-          <span>{engaged ? 'Cut open at the drone, clouds hidden' : 'Drone inside the asset'}</span>
-          {engaged ? (
+          <span>
+            {!open
+              ? t('stage.cutaway.droneInside')
+              : mode === 'transparent'
+                ? t('stage.cutaway.seeThrough')
+                : inside
+                  ? t('stage.cutaway.cutAtDrone')
+                  : t('stage.cutaway.cutOpen')}
+          </span>
+          {open ? (
             <button
               type="button"
               className="btn sm ghost"
+              title={t('stage.cutaway.solidTip')}
               onClick={() => {
                 stopCutaway();
                 stage.requestRender();
               }}
             >
-              Close
+              {t('stage.cutaway.solid')}
             </button>
           ) : (
-            <button
-              type="button"
-              className="btn sm ghost"
-              onClick={() => {
-                if (videoRig(stage).cameraMode === 'drone') return;
-                insideView(stage);
-              }}
-            >
-              Inside view <span className="kbd">C</span>
-            </button>
+            <>
+              <button
+                type="button"
+                className="btn sm ghost"
+                onClick={() => {
+                  setCutawayMode('cut');
+                }}
+              >
+                {t('stage.cutaway.cut')}
+              </button>
+              <button
+                type="button"
+                className="btn sm ghost"
+                onClick={() => {
+                  setCutawayMode('transparent');
+                }}
+              >
+                {t('stage.cutaway.transparent')}
+              </button>
+              <button
+                type="button"
+                className="btn sm ghost"
+                onClick={() => {
+                  if (videoRig(stage).cameraMode === 'drone') return;
+                  insideView(stage);
+                }}
+              >
+                {t('stage.cutaway.insideView')} <span className="kbd">C</span>
+              </button>
+            </>
           )}
         </span>
       )}

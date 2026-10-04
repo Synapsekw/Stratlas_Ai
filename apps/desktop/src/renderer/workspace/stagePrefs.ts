@@ -1,11 +1,14 @@
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import { parseCutawayPref, type CutawayPref } from './cutaway';
 import { parseVideoRect, type VideoRect } from './videoWindow';
 
 /** Stage layout choices remembered per project on this machine. */
 export interface StagePref {
   /** Where the floating video window sits and how wide it is (absent: the default place). */
   video?: VideoRect;
+  /** Off, Cut or Transparent, and the see-through opacity (absent: off). */
+  cutaway?: CutawayPref;
 }
 
 const KEY = 'stratlas.stagePrefs';
@@ -16,6 +19,8 @@ function parsePref(v: unknown): StagePref {
   const out: StagePref = {};
   const video = parseVideoRect(raw.video);
   if (video) out.video = video;
+  const cutaway = parseCutawayPref(raw.cutaway);
+  if (cutaway) out.cutaway = cutaway;
   return out;
 }
 

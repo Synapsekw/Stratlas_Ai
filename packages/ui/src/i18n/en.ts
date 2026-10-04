@@ -55,6 +55,29 @@ export const en = {
   'tree.eye.showGroup': '{group}: show all',
   'tree.eye.showGroupMixed': '{group}: show all (some are hidden)',
 
+  // Scene stage: seeing inside the asset (cut or see-through, never automatic)
+  'stage.cutaway.tool': 'See inside the asset: cut or transparent',
+  'stage.cutaway.title': 'Inside the asset',
+  'stage.cutaway.modes': 'Asset view',
+  'stage.cutaway.off': 'Off',
+  'stage.cutaway.cut': 'Cut',
+  'stage.cutaway.transparent': 'Transparent',
+  'stage.cutaway.offHint': 'The asset is drawn solid. Nothing is cut or faded automatically.',
+  'stage.cutaway.cutHint':
+    'Cuts the asset open toward you: at the drone while it is inside, else through the middle. Point clouds hide meanwhile.',
+  'stage.cutaway.transparentHint':
+    'Draws the asset see-through, so the drone, its path and its video inside stay visible. Point clouds hide meanwhile.',
+  'stage.cutaway.opacity': 'Opacity',
+  'stage.cutaway.insideView': 'Inside view',
+  'stage.cutaway.insideViewTip': 'Fly behind the drone and look where it looks',
+  'stage.cutaway.droneOutside': 'Inside view needs the drone inside the asset',
+  'stage.cutaway.droneInside': 'Drone inside the asset',
+  'stage.cutaway.cutAtDrone': 'Cut open at the drone, clouds hidden',
+  'stage.cutaway.cutOpen': 'Cut open, clouds hidden',
+  'stage.cutaway.seeThrough': 'Asset transparent, clouds hidden',
+  'stage.cutaway.solid': 'Solid',
+  'stage.cutaway.solidTip': 'Draw the asset solid again',
+
   // Scene stage: floating video window
   'stage.video.window': 'Video {name}',
   'stage.video.titleBar': 'Video window title bar',

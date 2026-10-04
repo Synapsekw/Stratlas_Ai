@@ -1,5 +1,5 @@
 import type { SectionState } from '@aio/engine';
-import { Vector3, type Box3 } from 'three';
+import { Vector3, type Box3, type Material, type Mesh, type Object3D } from 'three';
 
 const DEG = Math.PI / 180;
 
@@ -66,4 +66,104 @@ export function insideViewPose(
     .addScaledVector(h, -distance)
     .add(new Vector3(0, distance * 0.35, 0));
   return { position, target };
+}
+
+/* ----------------------------------------------------------------------- modes */
+
+/**
+ * How the asset is opened to see the drone inside it, chosen by hand (never automatic): drawn
+ * solid, cut open toward the viewer, or drawn see-through.
+ */
+export type CutawayMode = 'off' | 'cut' | 'transparent';
+
+export const CUTAWAY_MODES: readonly CutawayMode[] = ['off', 'cut', 'transparent'];
+
+export interface CutawayPref {
+  mode: CutawayMode;
+  /** Opacity of the asset in Transparent mode, 0.05..0.95. */
+  opacity: number;
+}
+
+export const DEFAULT_CUTAWAY: CutawayPref = { mode: 'off', opacity: 0.3 };
+
+export const MIN_OPACITY = 0.05;
+export const MAX_OPACITY = 0.95;
+
+export function clampOpacity(o: number): number {
+  return Number.isFinite(o) ? Math.min(MAX_OPACITY, Math.max(MIN_OPACITY, o)) : 0.3;
+}
+
+/** A remembered choice read back from storage, or null when it is not one. */
+export function parseCutawayPref(v: unknown): CutawayPref | null {
+  if (!v || typeof v !== 'object') return null;
+  const { mode, opacity } = v as Record<string, unknown>;
+  if (typeof mode !== 'string' || !CUTAWAY_MODES.includes(mode as CutawayMode)) return null;
+  return {
+    mode: mode as CutawayMode,
+    opacity: typeof opacity === 'number' ? clampOpacity(opacity) : DEFAULT_CUTAWAY.opacity,
+  };
+}
+
+/* ----------------------------------------------------------------------- see-through */
+
+/** The material fields Transparent mode changes, as they were. */
+interface SavedLook {
+  transparent: boolean;
+  opacity: number;
+  depthWrite: boolean;
+}
+
+export interface SeeThrough {
+  /** Materials made see-through. */
+  readonly count: number;
+  setOpacity(opacity: number): void;
+  /** Puts every material back exactly as it was. */
+  restore(): void;
+}
+
+function isMesh(o: Object3D): o is Mesh {
+  return 'isMesh' in o;
+}
+
+/**
+ * Draw every mesh under `root` see-through: blended at `opacity` times its own opacity and without
+ * writing depth, so the drone, its flight path and the video projected on the far walls show
+ * through the near walls. `restore()` undoes exactly what was changed.
+ */
+export function makeSeeThrough(root: Object3D, opacity: number): SeeThrough {
+  const saved = new Map<Material, SavedLook>();
+  root.traverse((o) => {
+    if (!isMesh(o)) return;
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+      if (!saved.has(m))
+        saved.set(m, { transparent: m.transparent, opacity: m.opacity, depthWrite: m.depthWrite });
+    }
+  });
+  const apply = (o: number) => {
+    const k = clampOpacity(o);
+    for (const [m, was] of saved) m.opacity = was.opacity * k;
+  };
+  for (const m of saved.keys()) {
+    m.transparent = true;
+    m.depthWrite = false;
+    m.needsUpdate = true;
+  }
+  apply(opacity);
+  let restored = false;
+  return {
+    count: saved.size,
+    setOpacity: (o) => {
+      if (!restored) apply(o);
+    },
+    restore: () => {
+      if (restored) return;
+      restored = true;
+      for (const [m, was] of saved) {
+        m.transparent = was.transparent;
+        m.opacity = was.opacity;
+        m.depthWrite = was.depthWrite;
+        m.needsUpdate = true;
+      }
+    },
+  };
 }
