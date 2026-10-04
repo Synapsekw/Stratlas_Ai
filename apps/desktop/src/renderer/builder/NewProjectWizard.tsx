@@ -3,9 +3,11 @@ import { LocationPicker } from '@aio/maps';
 import type { SeverityTemplate, Vec3 } from '@aio/schema';
 import { Icon, t, type IconName } from '@aio/ui';
 import { useEffect, useMemo, useState } from 'react';
-import { bridge } from '../shell';
+import { bridge, jobs, shell } from '../shell';
 import { PROJECT_TYPES, parseCoordinate, wizardProblems, type WizardForm } from './model';
 import { builder, useBuilder } from './state';
+import { buildParams, emptySurvey, noSurveys, surveyProblem, type SurveyInput } from './surveys';
+import { VolumetricSurveys } from './VolumetricSurveys';
 
 const TYPE_ICON: Record<WizardForm['type'], IconName> = {
   inspection: 'flare',
@@ -73,6 +75,7 @@ function Wizard() {
   const [templates, setTemplates] = useState<SeverityTemplate[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [surveys, setSurveys] = useState<SurveyInput[]>([emptySurvey()]);
 
   useEffect(() => {
     void bridge.call('builder:templates', {}).then((r) => {
@@ -180,8 +183,12 @@ function Wizard() {
     setSource({ ...source, h });
   };
 
+  // a volumetric project can start from its survey data: the kit runs as a job once it exists
+  const volumetric = form.type === 'volumetric';
+  const surveyBlock = volumetric ? surveyProblem(surveys) : null;
+
   const create = async () => {
-    if (Object.keys(problems).length || !origin) return;
+    if (Object.keys(problems).length || !origin || surveyBlock) return;
     setBusy(true);
     setError(null);
     const customer = form.customer.trim();
@@ -205,7 +212,20 @@ function Wizard() {
       setError(r.value.error);
       return;
     }
+    const build = volumetric && !noSurveys(surveys) ? buildParams(surveys) : null;
+    const jobError = build
+      ? await jobs
+          .getState()
+          .start({ pipeline: 'volumetric.build', project: r.value.path, params: build })
+      : null;
     await builder.getState().created(r.value.path);
+    if (build) {
+      shell.getState().go('jobs');
+      if (jobError)
+        builder.setState({
+          importResult: { items: [], error: t('builder.surveys.startFailed', { error: jobError }) },
+        });
+    }
   };
 
   const stepBlocked = (i: number): string | null =>
@@ -533,7 +553,18 @@ function Wizard() {
                 <dd>{captureDate ?? 'From the imported data'}</dd>
                 <dt>Severity model</dt>
                 <dd>{template?.label ?? '-'}</dd>
+                {volumetric && (
+                  <>
+                    <dt>{t('builder.surveys.title')}</dt>
+                    <dd>
+                      {noSurveys(surveys)
+                        ? t('builder.surveys.none')
+                        : t('builder.surveys.count', { count: surveys.length })}
+                    </dd>
+                  </>
+                )}
               </dl>
+              {volumetric && <VolumetricSurveys value={surveys} onChange={setSurveys} />}
             </>
           )}
         </div>
@@ -576,7 +607,7 @@ function Wizard() {
             <button
               type="button"
               className="btn primary"
-              disabled={busy || Object.keys(problems).length > 0}
+              disabled={busy || Object.keys(problems).length > 0 || Boolean(surveyBlock)}
               onClick={() => void create()}
             >
               {busy ? <span className="spin" /> : <Icon name="plus" size={14} />}

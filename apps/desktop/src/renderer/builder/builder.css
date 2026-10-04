@@ -571,3 +571,22 @@
   padding: 3px 6px;
   border-radius: 3px;
 }
+/* survey dates of a new volumetric project */
+.b-survey {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  justify-items: start;
+}
+.b-survey .b-inline > .hint {
+  min-width: 92px;
+}
+.b-survey .mono {
+  color: var(--fg-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}

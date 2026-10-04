@@ -15,6 +15,7 @@ export const PipelineName = z.enum([
   'volumetric.process',
   'pointcloud.to_copc',
   'system.selftest',
+  'volumetric.build',
 ]);
 export type PipelineName = z.infer<typeof PipelineName>;
 
@@ -38,6 +39,12 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
     name: 'volumetric.process',
     title: 'Stockpile volumes',
     description: 'Piles from DSM GeoTIFFs, four bases, volumes and change between two dates.',
+  },
+  {
+    name: 'volumetric.build',
+    title: 'Volumetric survey',
+    description:
+      'Raw DSM and ortho GeoTIFFs (or point clouds) per date to piles, toe lines, four bases, volumes, change and terrain.',
   },
   {
     name: 'pointcloud.to_copc',
@@ -111,6 +118,46 @@ export const VolumetricProcessParams = z
   })
   .strict();
 
+/** One survey date of a volumetric build: a DSM GeoTIFF or a point cloud, and an optional ortho. */
+export const VolumetricSurvey = z
+  .object({
+    /** Short key (e1, e2); defaults to the position. */
+    id: z
+      .string()
+      .regex(/^[a-z0-9][a-z0-9-]{0,15}$/)
+      .optional(),
+    date: z.iso.date(),
+    label: z.string().min(1).optional(),
+    /** DSM GeoTIFF (absolute, or relative to the project). Read only. */
+    dsm: z.string().min(1).optional(),
+    /** LAS, LAZ, E57 or PLY instead of a DSM. Read only. */
+    cloud: z.string().min(1).optional(),
+    /** Orthomosaic GeoTIFF (RGB or RGBA). Read only. */
+    ortho: z.string().min(1).optional(),
+  })
+  .loose()
+  .refine((s) => Boolean(s.dsm) !== Boolean(s.cloud), {
+    message: 'Each survey needs a DSM or a point cloud.',
+  });
+
+/** The Volumetric Survey Kit job (`volumetric/job.json`): surveys first to last, optional grid. */
+export const VolumetricBuildConfig = z
+  .object({
+    epochs: z.array(VolumetricSurvey).min(1).max(2),
+    grid: z.record(z.string(), z.number()).optional(),
+    detect: z.record(z.string(), z.unknown()).optional(),
+    volume: z.record(z.string(), z.unknown()).optional(),
+  })
+  .loose();
+
+export const VolumetricBuildParams = z
+  .object({
+    /** Kit job file, default `volumetric/job.json` (written by a first build). */
+    job: z.string().min(1).optional(),
+    config: VolumetricBuildConfig.optional(),
+  })
+  .strict();
+
 export const PointcloudToCopcParams = z
   .object({
     /** LAS, LAZ, E57 or PLY file (absolute). Read only. */
@@ -132,6 +179,7 @@ const PARAMS = {
   'volumetric.process': VolumetricProcessParams,
   'pointcloud.to_copc': PointcloudToCopcParams,
   'system.selftest': SelfTestParams,
+  'volumetric.build': VolumetricBuildParams,
 } as const satisfies Record<PipelineName, z.ZodType>;
 
 export function pipelineParams(name: PipelineName): z.ZodType<Record<string, unknown>> {
