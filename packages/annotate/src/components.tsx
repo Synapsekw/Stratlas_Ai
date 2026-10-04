@@ -7,3 +7,10 @@ export { SightingPicker } from './components/SightingPicker';
 export { useMapDraw, type MapDraw } from './components/MapDraw';
 export { AnnotateStyles } from './components/styles';
 export { PinControls } from './components/PinControls';
+export { DrawLayer, type DrawLayerProps, type ShapeItem } from './components/DrawLayer';
+export {
+  SeverityBadge,
+  severityLabel,
+  useTaxonomy,
+  type ProjectTaxonomy,
+} from './components/common';
