@@ -47,10 +47,13 @@ export function PhotoViewer({
   layerId,
   photoId,
   className,
+  editOutlines = true,
 }: {
   layerId: string;
   photoId: string;
   className?: string;
+  /** The selected issue's outline shows vertex handles to edit it (default true). */
+  editOutlines?: boolean;
 }) {
   const project = useWorkspace((s) => s.project);
   const issues = useWorkspace((s) => s.issues);
@@ -122,7 +125,7 @@ export function PhotoViewer({
           color,
           label: issue.code,
           selected,
-          editable: selected,
+          editable: selected && editOutlines,
         });
       }
       // ANN-9: a 3D sighting shows in every posed photo that sees it.
@@ -146,7 +149,7 @@ export function PhotoViewer({
       }
     }
     return out;
-  }, [issues, modelById, selectedIssueId, layerId, photoId, natural, photo]);
+  }, [issues, modelById, selectedIssueId, layerId, photoId, natural, photo, editOutlines]);
 
   const masks = useMemo(() => {
     const out: string[] = [];
