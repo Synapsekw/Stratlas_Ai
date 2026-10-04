@@ -5,6 +5,7 @@ import threading
 import pytest
 from PIL import Image
 
+from aio_pipelines.aik import cameras as C
 from aio_pipelines.aik.cameras import pose, read_meta
 from aio_pipelines.aik.pipelines import AikCameras
 from aio_pipelines.runtime import Cancelled, JobError
@@ -113,6 +114,61 @@ def test_cancel_during_review_copies_then_resume(tmp_path, project):
     assert result["status"] == "done"
     assert len(list((project / "photos").glob("*.jpg"))) == 6
     assert any("already written" in m["message"] for m in rec.of("log"))
+
+
+def test_camera_height_paths():
+    # Al-Zour flight 1 numbers: 113.7 m above take-off, absolute = relative + 41.9
+    both = {"AbsoluteAltitude": 155.6, "RelativeAltitude": 113.7}
+    # absolute altitude above the given ground altitude (the origin is the datum)
+    assert C.camera_height(both, 41.9) == pytest.approx((113.7, "absolute"))
+    assert C.camera_height(both, 30.0)[0] == pytest.approx(125.6)
+    # relative altitude plus the take-off height above the ground
+    assert C.camera_height(both, 0.0, "relative", 2.5) == pytest.approx((116.2, "relative"))
+    # XMP missing: the EXIF GPS altitude counts as absolute
+    assert C.camera_height({"altitude": 50.0}, 30.0, "relative") == (20.0, "absolute")
+    assert C.camera_height({"RelativeAltitude": 12.0}, 30.0, "absolute", 1.0) == (13.0, "relative")
+    assert C.camera_height({}, 30.0, "absolute", 1.5) == (1.5, "none")
+
+
+def test_ground_for_an_estimated_origin_is_the_take_off_point():
+    metas = [
+        {"AbsoluteAltitude": 155.6, "RelativeAltitude": 113.7},
+        {"AbsoluteAltitude": 60.0, "RelativeAltitude": 18.0},
+        {"altitude": 70.0},
+    ]
+    assert C.takeoff_altitude(metas) == pytest.approx(41.95)
+    assert C.ground_altitude(metas) == pytest.approx((41.95, "take-off point (absolute minus relative altitude)"))
+    # without relative altitude only the lowest photo is known (a camera, not the ground)
+    assert C.ground_altitude([{"altitude": 70.0}, {"altitude": 65.0}]) == (65.0, "lowest photo altitude")
+    assert C.takeoff_altitude([{"altitude": 70.0}]) is None
+
+
+def test_cameras_job_uses_relative_altitude_without_an_origin(tmp_path, project):
+    # four photos 12 m above a take-off point the aircraft logged at absolute altitude 40 m
+    for i in range(4):
+        lat, lon = offset_latlon(LAT0, LON0, 30 * math.cos(i), 30 * math.sin(i))
+        drone_jpeg(tmp_path / "raw" / f"DJI_{i:04d}.JPG", lat, lon, 52 + i, yaw=0, pitch=-5, rel=12 + i)
+    result, rec = run_job(AikCameras(), project, {"photos": str(tmp_path / "raw"), "longEdge": 400})
+    poses = result["outputs"]["poses"]
+    assert poses["origin"][2] == pytest.approx(40, abs=0.01)
+    assert poses["heights"] == {"prefer": "relative", "takeoffHeight": 0.0, "sources": {"relative": 4}}
+    cams = json.loads((project / "cameras.json").read_text())
+    assert [c["position"][1] for c in cams["photos"]] == pytest.approx([12, 13, 14, 15], abs=0.01)
+    assert {c["altitude_source"] for c in cams["photos"]} == {"relative"}
+    assert any("take-off point" in m["message"] for m in rec.of("log"))
+
+
+def test_cameras_job_uses_absolute_altitude_with_an_origin(tmp_path, project):
+    photos = make_photos(tmp_path / "raw", n=3)
+    result, _ = run_job(
+        AikCameras(),
+        project,
+        {"photos": str(photos), "origin": [LAT0, LON0, GROUND], "altitude": "absolute", "longEdge": 400},
+    )
+    assert result["outputs"]["poses"]["heights"]["sources"] == {"absolute": 3}
+    # a typed take-off height applies to relative altitude only
+    with pytest.raises(JobError, match="altitude must be"):
+        AikCameras().validate({"photos": "x", "altitude": "ellipsoid"})
 
 
 def test_params_are_checked():

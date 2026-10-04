@@ -3,7 +3,18 @@
 Ported from Asset Inspection Kit ``kit/cameras.py``.
 
 origin = the asset's base centre (WGS84) and the ground altitude in the same datum as the photo
-altitudes. Model frame: X north, Y up (metres above the ground datum), Z east. Orientation:
+altitudes. Model frame: X north, Y up (metres above the ground datum), Z east.
+
+Camera heights (Stratlas data-conventions section 3a, the same rule as the app's raw import):
+absolute altitude is XMP ``AbsoluteAltitude``, else EXIF ``GPSAltitude`` (barometric offset to GNSS,
+nominally above mean sea level and often tens of metres off, drifting between flights; ellipsoidal
+on RTK aircraft); relative altitude is XMP ``RelativeAltitude`` (height above the take-off point).
+With a given origin, its ground altitude is the datum: ``y = absolute - ground``. Without one, the
+ground is the take-off point (median of absolute minus relative altitude) and ``y = relative +
+takeoff height`` (the take-off point's height above the ground datum, default 0). A photo without
+the preferred altitude uses the other one; without either it sits at the take-off height.
+
+Orientation:
 GimbalYawDegree / GimbalPitchDegree / GimbalRollDegree from DJI XMP when present, else
 FlightYawDegree, else EXIF GPSImgDirection, else the camera is aimed at the asset axis. The
 target is the point on the view ray nearest the asset's vertical axis. FOV comes from
@@ -89,23 +100,56 @@ def read_meta(path) -> dict[str, Any]:
     return out
 
 
+def altitudes(meta) -> tuple[float | None, float | None]:
+    """(absolute, relative) altitude of a photo: XMP AbsoluteAltitude else EXIF GPS altitude, and
+    XMP RelativeAltitude (height above the take-off point)."""
+    return meta.get("AbsoluteAltitude", meta.get("altitude")), meta.get("RelativeAltitude")
+
+
+def takeoff_altitude(metas) -> float | None:
+    """The take-off point's absolute altitude: the median of absolute minus relative altitude."""
+    d = sorted(a - r for a, r in (altitudes(m) for m in metas) if a is not None and r is not None)
+    if not d:
+        return None
+    k = len(d) // 2
+    return d[k] if len(d) % 2 else (d[k - 1] + d[k]) / 2
+
+
+def ground_altitude(metas) -> tuple[float, str]:
+    """Ground altitude for an estimated origin, and how it was found: the take-off point when the
+    photos log their height above it, else the lowest photo (a camera, not the ground)."""
+    t = takeoff_altitude(metas)
+    if t is not None:
+        return t, "take-off point (absolute minus relative altitude)"
+    alts = [a for a, _ in (altitudes(m) for m in metas) if a is not None]
+    return (min(alts), "lowest photo altitude") if alts else (0.0, "no altitude in the photos")
+
+
 def estimate_origin(metas: list[dict[str, Any]]) -> tuple[float, float, float]:
-    """Mean photo position and the lowest photo altitude: a rough origin when none is given."""
+    """Mean photo position and the ground altitude (``ground_altitude``): a rough origin when none
+    is given."""
     located = [m for m in metas if "latitude" in m]
     lat = sum(m["latitude"] for m in located) / len(located)
     lon = sum(m["longitude"] for m in located) / len(located)
-    alts = [m.get("AbsoluteAltitude", m.get("altitude")) for m in located]
-    alts = [a for a in alts if a is not None]
-    return (lat, lon, min(alts) if alts else 0.0)
+    return (lat, lon, ground_altitude(located)[0])
 
 
-def pose(meta, origin, sensor_w=None, asset_height=None):
+def camera_height(meta, alt0, prefer="absolute", takeoff_height=0.0) -> tuple[float, str]:
+    """Camera height above the ground datum ``alt0`` and the altitude it came from (``absolute``,
+    ``relative`` or ``none``). Absolute: ``abs - alt0``; relative: ``takeoff_height + rel``."""
+    a, r = altitudes(meta)
+    by_abs = (a - alt0, "absolute") if a is not None else None
+    by_rel = (takeoff_height + r, "relative") if r is not None else None
+    pick = (by_abs or by_rel) if prefer == "absolute" else (by_rel or by_abs)
+    return pick or (takeoff_height, "none")
+
+
+def pose(meta, origin, sensor_w=None, asset_height=None, prefer="absolute", takeoff_height=0.0):
     lat0, lon0, alt0 = origin
     Re = 6378137.0
     x = math.radians(meta["latitude"] - lat0) * Re
     z = math.radians(meta["longitude"] - lon0) * Re * math.cos(math.radians(lat0))
-    alt = meta.get("AbsoluteAltitude", meta.get("altitude", alt0))
-    y = alt - alt0
+    y, height_source = camera_height(meta, alt0, prefer, takeoff_height)
     W, H = meta["width"], meta["height"]
     if meta.get("focal35"):
         hf = 2 * math.degrees(math.atan(36 / (2 * meta["focal35"])))
@@ -147,6 +191,7 @@ def pose(meta, origin, sensor_w=None, asset_height=None):
         "up": [round(v, 5) for v in up],
         "hfov": round(hf, 4),
         "vfov": round(vf, 4),
+        "altitude_source": height_source,
     }
 
 
