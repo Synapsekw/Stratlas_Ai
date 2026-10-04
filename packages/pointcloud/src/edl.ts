@@ -113,6 +113,8 @@ export class EdlPass {
     this.quad.name = 'PointCloudEDLComposite';
     this.quad.frustumCulled = false;
     this.quad.userData.helper = true;
+    // the perf HUD (engine) counts the GPU memory of scenes rendered from here
+    this.quad.userData.offscreen = [this.cloudScene];
     this.quad.raycast = () => undefined;
     this.quad.onBeforeRender = (renderer, _scene, camera) => {
       this.renderClouds(renderer, camera);

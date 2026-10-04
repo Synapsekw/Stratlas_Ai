@@ -1,18 +1,26 @@
 import { getAdapter, registerAdapter, type LayerAdapter, type SceneHandle } from '@aio/engine';
+import { workspace } from '@aio/workspace';
 import type { StoreApi } from 'zustand/vanilla';
-import { CloudManager, type ChunkState } from './manager';
+import { copcChunkSeeds } from './copcLayer';
+import { CloudManager, type ChunkSeed, type CopcLayerInfo } from './manager';
 import { pickPoint } from './pick';
 import { parsePngCloudIndex, type PngCloudIndex } from './pngIndex';
 import { createWorkerPool, type Decoder } from './pool';
 import { pointcloudSettings, type PointcloudSettings } from './settings';
+import { pointcloudStats } from './stats';
 
-type ChunkSeed = Omit<ChunkState, 'object' | 'busy' | 'failed'>;
+type V3 = readonly [number, number, number];
 
 export interface PointcloudAdapterOptions {
   /** Creates the decoder for a scene; default: a pool of module workers. */
   decoder?: () => Decoder;
   settings?: StoreApi<PointcloudSettings>;
   fetchJson?: (url: string) => Promise<unknown>;
+  /**
+   * The project origin [E, N, H] that COPC coordinates are relative to; default: the open
+   * project's manifest `origin`.
+   */
+  origin?: () => V3 | null;
 }
 
 /** Base point size for kit (LiDAR, voxel-thinned to about 2 cm) clouds, metres. */
@@ -30,6 +38,15 @@ async function defaultFetchJson(url: string): Promise<unknown> {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`Could not load the point cloud index ${url} (${r.status})`);
   return r.json();
+}
+
+function projectOrigin(): V3 | null {
+  return workspace.getState().project?.manifest.origin ?? null;
+}
+
+function projectEpsg(): number | null {
+  const crs = workspace.getState().project?.manifest.crs;
+  return crs && 'epsg' in crs ? crs.epsg : null;
 }
 
 /** Typical spacing: the index's own value, else sqrt(ground area / points). */
@@ -61,13 +78,37 @@ export function createPointcloudAdapter(
   const makeDecoder = opts.decoder ?? (() => createWorkerPool());
   const settings = opts.settings ?? pointcloudSettings;
   const fetchJson = opts.fetchJson ?? defaultFetchJson;
+  const originOf = opts.origin ?? projectOrigin;
+
+  const managerFor = (handle: SceneHandle): CloudManager => {
+    let manager = managers.get(handle);
+    if (!manager) {
+      manager = new CloudManager(handle, makeDecoder, settings);
+      managers.set(handle, manager);
+      // clouds take part in SceneHandle.raycast (cursor readout, annotation, measure)
+      pickers.set(
+        handle,
+        handle.addRaycastProvider((x, y) => pickPoint(handle, { x, y })),
+      );
+    }
+    return manager;
+  };
+  const release = (handle: SceneHandle, m: CloudManager) => {
+    if (!m.empty) return;
+    m.dispose();
+    managers.delete(handle);
+    pickers.get(handle)?.();
+    pickers.delete(handle);
+  };
 
   return {
     kind: 'pointcloud',
     async create(layer, ctx) {
       let chunks: ChunkSeed[];
       let baseSize: number;
+      let copc: CopcLayerInfo | null = null;
       const url = ctx.url(layer.src);
+      const handle = ctx.scene;
       if (layer.format === 'kit-packed') {
         chunks = [
           {
@@ -93,23 +134,38 @@ export function createPointcloudAdapter(
           lod: c.lod,
         }));
         baseSize = pngBaseSize(idx);
+      } else if (layer.format === 'copc') {
+        const origin = originOf();
+        if (!origin) throw new Error('A COPC layer needs the project origin');
+        const m = managerFor(handle);
+        try {
+          const dec = m.getDecoder();
+          if (!dec.copcSource || !dec.copcPage) throw new Error('This decoder cannot read COPC');
+          const source = await dec.copcSource(url);
+          const epsg = projectEpsg();
+          if (source.epsg !== undefined && epsg !== null && source.epsg !== epsg) {
+            const msg = `${layer.name}: the cloud is in EPSG ${source.epsg}, the project in EPSG ${epsg}`;
+            console.warn(msg);
+            pointcloudStats.getState().addError(msg);
+          }
+          const root = await dec.copcPage(url, source.rootPage);
+          chunks = copcChunkSeeds(layer.id, url, source, root, origin);
+          baseSize = source.spacing;
+          copc = { url, source, origin };
+        } catch (e) {
+          release(handle, m);
+          throw e;
+        }
       } else {
         throw new Error(`Point cloud format "${layer.format}" is not supported yet`);
       }
 
-      const handle = ctx.scene;
-      let manager = managers.get(handle);
-      if (!manager) {
-        manager = new CloudManager(handle, makeDecoder, settings);
-        managers.set(handle, manager);
-        // clouds take part in SceneHandle.raycast (cursor readout, annotation, measure)
-        pickers.set(
-          handle,
-          handle.addRaycastProvider((x, y) => pickPoint(handle, { x, y })),
-        );
-      }
-      const m = manager;
-      m.addLayer(layer.id, chunks, baseSize, layer.format === 'png-packed');
+      const m = managerFor(handle);
+      // png-packed clouds carry colour; COPC does in point formats 7 and 8
+      const rgbHint =
+        layer.format === 'png-packed' ||
+        (copc !== null && copc.source.layout.pointDataRecordFormat !== 6);
+      m.addLayer(layer.id, chunks, baseSize, rgbHint, copc);
       if (!layer.visible) m.setVisible(layer.id, false);
       return {
         setVisible: (v) => {
@@ -117,12 +173,7 @@ export function createPointcloudAdapter(
         },
         dispose: () => {
           m.removeLayer(layer.id);
-          if (m.empty) {
-            m.dispose();
-            managers.delete(handle);
-            pickers.get(handle)?.();
-            pickers.delete(handle);
-          }
+          release(handle, m);
         },
       };
     },

@@ -1,9 +1,14 @@
 /** Decode worker: fetches and decodes point chunks off the main thread. */
-import { handleDecode, type DecodeDeps, type DecodeRequest } from './protocol';
+import createLazPerf from 'laz-perf/lib/worker/laz-perf.js';
+// bundled with the app (no CDN): Vite emits the WASM file and gives its URL
+import lazPerfWasm from 'laz-perf/lib/worker/laz-perf.wasm?url';
+import { rangeGetter } from './copc';
+import type { LazPerfLike } from './copcDecode';
+import { handleRequest, type DecodeDeps, type WorkerRequest } from './protocol';
 
 /** The parts of DedicatedWorkerGlobalScope used here (the webworker lib clashes with DOM). */
 interface WorkerScope {
-  onmessage: ((e: MessageEvent<DecodeRequest>) => void) | null;
+  onmessage: ((e: MessageEvent<WorkerRequest>) => void) | null;
   postMessage(message: unknown, transfer: Transferable[]): void;
 }
 const scope = globalThis as unknown as WorkerScope;
@@ -13,6 +18,8 @@ async function fetchBytes(url: string): Promise<ArrayBuffer> {
   if (!r.ok) throw new Error(`Could not load ${url} (${r.status})`);
   return r.arrayBuffer();
 }
+
+let laz: Promise<LazPerfLike> | null = null;
 
 const deps: DecodeDeps = {
   fetchBytes,
@@ -34,10 +41,15 @@ const deps: DecodeDeps = {
     const data = g.getImageData(0, 0, canvas.width, canvas.height).data;
     return { data, w: canvas.width, h: canvas.height };
   },
+  copc: {
+    getter: (url) => rangeGetter(url),
+    lazPerf: () =>
+      (laz ??= createLazPerf({ locateFile: () => lazPerfWasm }) as Promise<LazPerfLike>),
+  },
 };
 
 scope.onmessage = (e) => {
-  void handleDecode(e.data, deps).then(({ result, transfer }) => {
+  void handleRequest(e.data, deps).then(({ result, transfer }) => {
     scope.postMessage(result, transfer);
   });
 };

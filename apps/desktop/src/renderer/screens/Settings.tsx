@@ -15,13 +15,15 @@ import { Icon, SevChip, Switch, t, useT, type IconName, type MessageKey } from '
 import { useWorkspace } from '@aio/workspace';
 import { useState } from 'react';
 import { setAuthorName, useAuthor } from '../author';
+import { GPU_TIERS, TIER_ORDER, graphics, useGraphics, type GpuTier } from '../graphics';
 import { cloudAiBlocked } from '../player';
 import { bridge, shell, useCall, useShell } from '../shell';
 import { About } from './settings/About';
 import { Appearance } from './settings/Appearance';
 import { MapPacks } from './settings/MapPacks';
 
-type Page = 'ai' | 'usage' | 'privacy' | 'data' | 'maps' | 'severity' | 'appearance' | 'about';
+type Page =
+  'ai' | 'usage' | 'privacy' | 'data' | 'maps' | 'severity' | 'graphics' | 'appearance' | 'about';
 
 const PAGES: { page: Page; label: MessageKey; icon: IconName; group: MessageKey }[] = [
   { page: 'ai', label: 'settings.page.ai', icon: 'agent', group: 'settings.group.intelligence' },
@@ -46,6 +48,12 @@ const PAGES: { page: Page; label: MessageKey; icon: IconName; group: MessageKey 
     group: 'settings.group.data',
   },
   {
+    page: 'graphics',
+    label: 'settings.page.graphics',
+    icon: 'scene',
+    group: 'settings.group.app',
+  },
+  {
     page: 'appearance',
     label: 'settings.page.appearance',
     icon: 'sun',
@@ -53,6 +61,81 @@ const PAGES: { page: Page; label: MessageKey; icon: IconName; group: MessageKey 
   },
   { page: 'about', label: 'settings.page.about', icon: 'refresh', group: 'settings.group.app' },
 ];
+
+const millions = (n: number) => `${String(n / 1e6)} M`;
+
+function Graphics() {
+  const g = graphics();
+  const renderer = useGraphics((s) => s.renderer);
+  const detected = useGraphics((s) => s.detected);
+  const override = useGraphics((s) => s.override);
+  const tier = useGraphics((s) => s.tier);
+  const p = GPU_TIERS[tier];
+  const choices: { id: GpuTier | null; label: string; hint: string }[] = [
+    {
+      id: null,
+      label: `Auto (${GPU_TIERS[detected].label})`,
+      hint: 'Follow the detected graphics card',
+    },
+    ...TIER_ORDER.map((t) => ({ id: t, label: GPU_TIERS[t].label, hint: GPU_TIERS[t].hint })),
+  ];
+  return (
+    <>
+      <div className="sblock">
+        <h2>
+          Quality preset <span className="sub">{p.label} in use</span>
+        </h2>
+        <p className="help">
+          Sets the point budget, eye-dome lighting, shadow detail and render resolution. The point
+          budget and lighting can still be changed in the point cloud panel.
+        </p>
+        <div className="seg pop-seg" role="group" aria-label="Graphics quality preset">
+          {choices.map((c) => (
+            <button
+              key={c.id ?? 'auto'}
+              type="button"
+              aria-pressed={override === c.id}
+              title={c.hint}
+              onClick={() => {
+                g.getState().setOverride(c.id);
+              }}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="sblock" data-testid="graphics-preset">
+        <h2>{p.label}</h2>
+        <div className="opt">
+          <b>Point budget</b>
+          <span>Points drawn at once across every cloud</span>
+          <span className="mono">{millions(p.pointBudget)}</span>
+        </div>
+        <div className="opt">
+          <b>Eye-dome lighting</b>
+          <span>Depth shading of point clouds</span>
+          <span className="mono">{p.edl ? 'On' : 'Off'}</span>
+        </div>
+        <div className="opt">
+          <b>Shadow map</b>
+          <span>Sun shadow detail, texels</span>
+          <span className="mono">{p.shadowMapSize}</span>
+        </div>
+        <div className="opt">
+          <b>Pixel ratio</b>
+          <span>Highest render resolution on high density screens</span>
+          <span className="mono">{p.maxPixelRatio}x</span>
+        </div>
+      </div>
+      <div className="sblock">
+        <h2>Graphics card</h2>
+        <p className="help mono">{renderer ?? 'Not reported by the system'}</p>
+        <p className="help">Press Ctrl+Shift+F in the 3D view for frame rate and memory.</p>
+      </div>
+    </>
+  );
+}
 
 const PROVIDER_INFO: Record<
   AiProvider,
@@ -723,6 +806,7 @@ const HEAD: Record<Page, { title: MessageKey; text: MessageKey }> = {
   data: { title: 'settings.page.data', text: 'settings.data.text' },
   maps: { title: 'settings.page.maps', text: 'settings.maps.text' },
   severity: { title: 'settings.page.severity', text: 'settings.severity.text' },
+  graphics: { title: 'settings.page.graphics', text: 'settings.graphics.text' },
   appearance: { title: 'settings.page.appearance', text: 'settings.appearance.text' },
   about: { title: 'settings.page.about', text: 'settings.about.text' },
 };
@@ -787,6 +871,7 @@ export function SettingsScreen() {
           {page === 'data' && <DataFolder />}
           {page === 'maps' && <MapPacks />}
           {page === 'severity' && <Severity />}
+          {page === 'graphics' && <Graphics />}
           {page === 'appearance' && <Appearance />}
           {page === 'about' && <About />}
         </div>

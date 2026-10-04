@@ -23,8 +23,23 @@ describe('createPointMaterial', () => {
     expect(png.defines).toEqual({ HAS_RGB: '' });
   });
 
+  it('reads ASPRS classes when the cloud has them, with a colour and a show flag per class', () => {
+    const copc = createPointMaterial({
+      hasRgb: true,
+      hasIntensity: true,
+      hasClass: true,
+      baseSize: 0.1,
+      tint: '#000000',
+    });
+    expect(copc.defines).toEqual({ HAS_RGB: '', HAS_INTENSITY: '', HAS_CLASS: '' });
+    expect(copc.uniforms.uClassColours.value).toHaveLength(32);
+    expect(copc.uniforms.uClassShown.value).toHaveLength(32);
+    expect(copc.uniforms.uClassShown.value.every((v: number) => v === 1)).toBe(true);
+    expect(copc.vertexShader).toContain('uClassColours[');
+  });
+
   it('maps every colour mode and keeps the HCl flight palette', () => {
-    expect(Object.values(MODE_INDEX).sort()).toEqual([0, 1, 2, 3]);
+    expect(Object.values(MODE_INDEX).sort()).toEqual([0, 1, 2, 3, 4]);
     expect(FLIGHT_PALETTE[0]).toBe('#5ab0ff');
     expect(FLIGHT_PALETTE).toHaveLength(10);
   });
@@ -36,6 +51,12 @@ describe('EDL', () => {
     expect(n).toHaveLength(16);
     expect(n.slice(0, 2)).toEqual([1, 0]);
     for (let i = 0; i < 16; i += 2) expect(Math.hypot(n[i] ?? 0, n[i + 1] ?? 0)).toBeCloseTo(1, 5);
+  });
+
+  it('lists its cloud scene as offscreen content, so the perf HUD counts the clouds', () => {
+    const pass = new EdlPass(false);
+    expect(pass.quad.userData.offscreen).toEqual([pass.cloudScene]);
+    pass.dispose();
   });
 
   it('builds a non-pickable full-screen composite that writes depth', () => {

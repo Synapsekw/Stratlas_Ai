@@ -9,7 +9,13 @@ import {
 } from '@aio/annotate';
 import { getActiveScene, SceneView, type EngineStage } from '@aio/engine';
 import { MapView, type MapDrawMode, type MapDrawSeam, type MapIssueDisplay } from '@aio/maps';
-import { ElevationLegend, useElevationRange } from '@aio/pointcloud';
+import {
+  ClassificationLegend,
+  ElevationLegend,
+  pointcloudSettings,
+  useClassificationLegend,
+  useElevationRange,
+} from '@aio/pointcloud';
 import { crsLabel, formatEastNorth, Icon, localToProject, type IconName } from '@aio/ui';
 import { setFlightPaths, videoRig } from '@aio/video';
 import { useVolumetric, VolumetricStage } from '@aio/volumetric';
@@ -89,6 +95,21 @@ function StageElevationLegend() {
   );
 }
 
+/** The classes of the shown points while the clouds are coloured by classification. */
+function StageClassLegend() {
+  const { counts, hidden } = useClassificationLegend();
+  return (
+    <ClassificationLegend
+      className="elev-legend class-legend overlay-box"
+      counts={counts}
+      hidden={hidden}
+      onToggle={(c) => {
+        pointcloudSettings.getState().toggleClass(c);
+      }}
+    />
+  );
+}
+
 function ScenePane({ hidden, engine }: { hidden: boolean; engine: EngineStage | null }) {
   const [cursor, setCursor] = useState<string | null>(null);
   const pending = useRef<{ x: number; y: number } | null>(null);
@@ -144,6 +165,7 @@ function ScenePane({ hidden, engine }: { hidden: boolean; engine: EngineStage | 
       <CursorReadout text={cursor} />
       <StageElevationLegend />
       <VolumetricStage stage={engine} />
+      <StageClassLegend />
     </FocusZone>
   );
 }

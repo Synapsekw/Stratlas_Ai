@@ -15,9 +15,12 @@ export interface PointCloudControlsProps {
   store?: StoreApi<PointcloudSettings>;
   /** Whether the clouds carry RGB colour; defaults to what the loaded clouds report. */
   rgb?: boolean;
+  /** Whether a cloud carries ASPRS classes; defaults to what the loaded clouds report. */
+  classes?: boolean;
 }
 
 export const NO_RGB_HINT = 'This point cloud has no colour (RGB), only intensity';
+export const NO_CLASS_HINT = 'These point clouds have no classification (COPC and LAS clouds do)';
 
 const millions = (n: number) => `${(n / 1e6).toFixed(n >= 1e7 || n % 1e6 === 0 ? 0 : 1)} M`;
 
@@ -50,6 +53,7 @@ export function PointCloudControls({
   className,
   store = pointcloudSettings,
   rgb,
+  classes,
 }: PointCloudControlsProps) {
   const colourMode = useStore(store, (x) => x.colourMode);
   const sizeScale = useStore(store, (x) => x.sizeScale);
@@ -58,6 +62,7 @@ export function PointCloudControls({
   const counts = usePointcloudCounts();
   const st = store.getState();
   const hasRgb = rgb ?? (counts.layers === 0 || counts.rgb);
+  const hasClass = classes ?? (counts.classes !== null && counts.classes !== undefined);
   // intensity-only clouds draw the RGB choice as their intensity view
   const shown = colourMode === 'rgb' && !hasRgb ? 'intensity' : colourMode;
 
@@ -67,14 +72,16 @@ export function PointCloudControls({
         <span style={s.label}>Colour by</span>
         <div style={s.seg}>
           {COLOUR_MODES.map((m) => {
-            const off = m.id === 'rgb' && !hasRgb;
+            const noRgb = m.id === 'rgb' && !hasRgb;
+            const noClass = m.id === 'classification' && !hasClass && shown !== m.id;
+            const off = noRgb || noClass;
             return (
               <button
                 key={m.id}
                 type="button"
                 aria-pressed={shown === m.id}
                 disabled={off}
-                title={off ? NO_RGB_HINT : m.hint}
+                title={noRgb ? NO_RGB_HINT : noClass ? NO_CLASS_HINT : m.hint}
                 style={s.btn(shown === m.id, off)}
                 onClick={() => {
                   st.setColourMode(m.id);

@@ -11,7 +11,11 @@ import type {
 } from 'three';
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { ViewPreset } from './camera/cameraMath';
+import type { StageQuality } from './config';
+import type { PerfStats } from './stage/perf';
 import type { SectionState } from './tools/section';
+
+export type { PerfStats, StageQuality };
 
 /** A rendering surface the app mounts into a panel. */
 export interface Viewport {
@@ -119,8 +123,13 @@ export interface EngineStage extends SceneHandle {
   saveView(): SavedView;
   /** Jump (or fly) to a saved view; the stage no longer frames content as it loads. */
   restoreView(view: SavedView, animate?: boolean): void;
-  /** Dev-only frame-time overlay (also Ctrl+Shift+F). */
+  /** The perf HUD: fps, frame time p50/p95, points, draw calls, GPU memory (also Ctrl+Shift+F). */
   setPerfOverlay(on: boolean): void;
+  /** What the perf HUD shows; frame times are only collected while it is on. */
+  perfStats(): PerfStats;
+  /** Pixel ratio cap and shadow map size of the graphics quality preset. */
+  readonly quality: StageQuality;
+  setQuality(q: Partial<StageQuality>): void;
   /** Listen for tool or section changes, for toolbar state. */
   onStateChange(cb: () => void): () => void;
 }

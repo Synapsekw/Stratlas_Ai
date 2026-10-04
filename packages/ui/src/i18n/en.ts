@@ -60,6 +60,7 @@ export const en = {
   'settings.page.severity': 'Severity models',
   'settings.page.appearance': 'Appearance',
   'settings.page.about': 'About and updates',
+  'settings.page.graphics': 'Graphics quality',
   'settings.notSaved': 'Settings are not being saved: {error}',
 
   // Page introductions
@@ -104,6 +105,8 @@ export const en = {
     'Remove {label}? Maps lose this area until the pack is added again.',
 
   // About
+  'settings.graphics.text':
+    'Presets matched to the graphics card, detected when the app starts. Choose one to override it on this workstation.',
   'settings.about.text': 'Version, licences, logs and updates.',
   'settings.about.version': 'Version',
   'settings.about.dataFolder': 'Data folder',

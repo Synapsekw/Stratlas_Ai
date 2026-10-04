@@ -36,6 +36,22 @@ export {
 export { pointcloudStats, usePointcloudCounts, type CloudCounts } from './stats';
 export { FLIGHT_PALETTE, MODE_INDEX } from './material';
 export {
+  ClassificationLegend,
+  useClassificationLegend,
+  type ClassificationLegendProps,
+} from './ClassificationLegend';
+export { ASPRS_CLASSES, classColour, className, legendEntries, type LegendEntry } from './classes';
+export {
+  epsgFromWkt,
+  rangeGetter,
+  readCopcPage,
+  readCopcSource,
+  type CopcHierarchy,
+  type CopcSource,
+} from './copc';
+export { nodeBounds, selectNodes, type LodNode, type NodeSelectOptions } from './octree';
+export {
+  NO_CLASS_HINT,
   NO_RGB_HINT,
   PointCloudControls,
   type PointCloudControlsProps,

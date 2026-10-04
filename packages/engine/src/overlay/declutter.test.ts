@@ -76,6 +76,19 @@ describe('FrameStats', () => {
     expect(s.worstMs()).toBe(16);
   });
 
+  it('reports frame time percentiles', () => {
+    const s = new FrameStats(100);
+    let t = 0;
+    s.tick(t);
+    // 90 frames of 10 ms, 10 of 30 ms
+    for (let i = 0; i < 90; i++) s.tick((t += 10));
+    for (let i = 0; i < 10; i++) s.tick((t += 30));
+    expect(s.percentileMs(50)).toBe(10);
+    expect(s.percentileMs(95)).toBe(30);
+    expect(s.count()).toBe(100);
+    expect(new FrameStats(4).percentileMs(95)).toBe(0);
+  });
+
   it('ignores idle gaps longer than a second', () => {
     const s = new FrameStats(4);
     for (const t of [0, 16, 2000, 2016]) s.tick(t);

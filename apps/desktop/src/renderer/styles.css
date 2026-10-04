@@ -1245,6 +1245,14 @@ svg.flip {
   pointer-events: none;
   background: var(--scrim);
 }
+.class-legend {
+  pointer-events: auto;
+  max-height: 50%;
+  overflow: auto;
+}
+.class-legend button:hover {
+  background: var(--bg-3, rgba(255, 255, 255, 0.06));
+}
 .pop-row {
   display: flex;
   align-items: center;

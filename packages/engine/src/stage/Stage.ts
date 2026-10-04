@@ -31,6 +31,7 @@ import {
   type CameraPose,
   type ViewPreset,
 } from '../camera/cameraMath';
+import { engineConfig, type StageQuality } from '../config';
 import { LayerSync } from '../layers/layerSync';
 import { FrameStats } from '../overlay/declutter';
 import { Overlay, type CalloutSpec } from '../overlay/Overlay';
@@ -47,6 +48,7 @@ import type {
   StageTool,
 } from '../types';
 import { Environment } from './environment';
+import { estimateGpuBytes, formatPerf, type PerfStats } from './perf';
 import { Highlighter } from './highlight';
 
 export interface StageOptions {
@@ -61,7 +63,7 @@ export interface StageOptions {
 
 export function createDefaultRenderer(canvas: HTMLCanvasElement): WebGLRenderer {
   const r = new WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  r.setPixelRatio(Math.min(window.devicePixelRatio || 1, engineConfig().quality.maxPixelRatio));
   return r;
 }
 
@@ -165,6 +167,9 @@ export class Stage implements EngineStage {
   private downAt: [number, number] | null = null;
   private perfHold: (() => void) | null = null;
   private lastRenderMs = 0;
+  private gpuAt = -Infinity;
+  private gpuBytes = 0;
+  private _quality: StageQuality = { ...engineConfig().quality };
   private disposed = false;
   private contentCentre = new Vector3();
   private _tool: StageTool = 'select';
@@ -210,6 +215,9 @@ export class Stage implements EngineStage {
     });
 
     this.env = new Environment(this.scene, r);
+    this.env.setShadowMapSize(this._quality.shadowMapSize);
+    // perf counters cover a whole frame; renderNow resets them
+    if (r.info as Partial<WebGLRenderer['info']> | undefined) r.info.autoReset = false;
     this.highlight = new Highlighter(this.clippingPlanes);
     this.scene.add(this.highlight.group, this.measureTool.line);
     this.overlay = new Overlay(opts.container, {
@@ -390,7 +398,9 @@ export class Stage implements EngineStage {
     if (on === (this.perfHold !== null)) return;
     if (on) {
       this.stats.reset();
+      this.gpuAt = -Infinity;
       this.perfHold = this.holdContinuous('perf overlay');
+      this.overlay.setPerf(formatPerf(this.perfStats()));
     } else {
       this.perfHold?.();
       this.perfHold = null;
@@ -501,6 +511,9 @@ export class Stage implements EngineStage {
       this.renderer.shadowMap.needsUpdate = true;
       this.shadowDirty = false;
     }
+    // one frame's counters across every render call (the point-cloud EDL pass renders inside)
+    const info = this.renderer.info as Partial<WebGLRenderer['info']>;
+    info.reset?.();
     this.renderer.render(this.scene, this.camera);
     this.lastRenderMs = performance.now() - t;
     this.overlay.update(
@@ -511,14 +524,52 @@ export class Stage implements EngineStage {
     );
     if (this.perfHold) {
       this.stats.tick(now);
-      const info = this.renderer.info.render;
-      this.overlay.setPerf(
-        `${this.stats.fps().toFixed(0).padStart(3)} fps   worst ${this.stats.worstMs().toFixed(1)} ms\n` +
-          `cpu ${this.lastRenderMs.toFixed(2)} ms\n` +
-          `draws ${info.calls}   tris ${(info.triangles / 1000).toFixed(0)}k\n` +
-          `Ctrl+Shift+F to close`,
-      );
+      if (now - this.gpuAt > 500) {
+        this.gpuAt = now;
+        this.gpuBytes = estimateGpuBytes([this.scene]) + this.targetBytes();
+      }
+      this.overlay.setPerf(formatPerf(this.perfStats()));
     }
+  }
+
+  /** Frame statistics while the perf HUD is on (Ctrl+Shift+F); zeros otherwise. */
+  perfStats(): PerfStats {
+    const r = (this.renderer.info as Partial<WebGLRenderer['info']>).render;
+    return {
+      fps: this.stats.fps(),
+      p50: this.stats.percentileMs(50),
+      p95: this.stats.percentileMs(95),
+      frames: this.stats.count(),
+      points: r?.points ?? 0,
+      calls: r?.calls ?? 0,
+      triangles: r?.triangles ?? 0,
+      gpuBytes: this.gpuBytes,
+      cpuMs: this.lastRenderMs,
+    };
+  }
+
+  /** Drawing buffer (colour, depth, 4x MSAA) and the sun's shadow map, bytes. */
+  private targetBytes(): number {
+    const pr = this.renderer.getPixelRatio();
+    const px = this.width * pr * this.height * pr;
+    const shadow = this.env.shadowMapSize ** 2 * 4;
+    return px * 8 * 5 + shadow;
+  }
+
+  get quality(): StageQuality {
+    return { ...this._quality };
+  }
+
+  /** Pixel ratio cap and shadow map size (the graphics quality preset). */
+  setQuality(q: Partial<StageQuality>): void {
+    this._quality = { ...this._quality, ...q };
+    const pr = Math.min(window.devicePixelRatio || 1, this._quality.maxPixelRatio);
+    if (pr !== this.renderer.getPixelRatio() || q.maxPixelRatio !== undefined) {
+      this.renderer.setPixelRatio(pr);
+      if (this.width > 0 && this.height > 0) this.resize(this.width, this.height);
+    }
+    if (this.env.setShadowMapSize(this._quality.shadowMapSize)) this.shadowDirty = true;
+    this.need = true;
   }
 
   private resize(w: number, h: number) {
@@ -990,7 +1041,7 @@ export class Stage implements EngineStage {
   };
 
   private readonly onKey = (e: KeyboardEvent) => {
-    if (e.ctrlKey && e.shiftKey && (e.key === 'F' || e.key === 'f') && this.opts.devTools) {
+    if (e.ctrlKey && e.shiftKey && (e.key === 'F' || e.key === 'f')) {
       e.preventDefault();
       this.setPerfOverlay(this.perfHold === null);
       return;

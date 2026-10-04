@@ -2,10 +2,11 @@ import { registerAppHooks, registerFrameSource } from '@aio/ai';
 import { setFlightPoses } from '@aio/annotate';
 import { configureEngine, getActiveStage, registerEngineAdapters } from '@aio/engine';
 import { captureMap, registerMapAdapters } from '@aio/maps';
-import { registerPointcloudAdapters } from '@aio/pointcloud';
+import { pointcloudSettings, registerPointcloudAdapters } from '@aio/pointcloud';
 import { loadFlight, registerVideoAdapters } from '@aio/video';
 import { volumetric } from '@aio/volumetric';
 import { assetUrl, workspace, type OpenProject } from '@aio/workspace';
+import { graphics } from './graphics';
 import { shell } from './shell';
 
 let started = false;
@@ -45,6 +46,8 @@ export function bootstrap(): void {
   if (started) return;
   started = true;
   configureEngine({ resolveUrl: assetUrl, devTools: import.meta.env.DEV });
+  // GPU tier: pixel ratio, shadows, point budget and EDL before the first stage exists
+  graphics().getState().apply();
   registerEngineAdapters();
   registerPointcloudAdapters();
   registerVideoAdapters();
@@ -57,7 +60,15 @@ export function bootstrap(): void {
     },
   });
   // Inspection hook for the end-to-end tests and DevTools (read the clock, the live scene).
-  Object.assign(window, { __stratlas: { workspace, stage: getActiveStage, volumetric } });
+  Object.assign(window, {
+    __stratlas: {
+      workspace,
+      stage: getActiveStage,
+      volumetric,
+      graphics,
+      pointcloud: pointcloudSettings,
+    },
+  });
   shareFlightPoses(workspace.getState().project);
   workspace.subscribe((s, prev) => {
     if (s.project !== prev.project) shareFlightPoses(s.project);
