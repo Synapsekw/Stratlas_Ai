@@ -20,6 +20,7 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
+  MeshStandardMaterial,
   Plane,
   RGBAFormat,
   SRGBColorSpace,
@@ -31,15 +32,20 @@ import {
 } from 'three';
 import type { StoreApi } from 'zustand/vanilla';
 import type { ScenePile } from '../model/compute';
-import type { Raster } from '../model/dsm';
 import type { EN } from '../model/edit';
-import type { Volumetric } from '../store';
+import type { SurfaceMode, Volumetric } from '../store';
 import { bodyGeometry, swipePlane, toLocalFn, type ToLocal } from './geometry';
 
 const SELECT = 0x5ad2b4;
 const EDIT = 0xffd23f;
 
 type WithMap = Material & { map?: Texture | null };
+
+/** Visible itself and through all its parents. */
+function visibleChain(o: Object3D | null): boolean {
+  for (let x = o; x; x = x.parent) if (!x.visible) return false;
+  return true;
+}
 
 function disposeGroup(g: Object3D) {
   while (g.children.length) {
@@ -69,12 +75,12 @@ export class VolumetricScene {
   private sceneSeq = 0;
   private liveDrawn: unknown = null;
   private sectionDrawn: unknown = null;
-  private surfaceKey = '';
-  private surfaceTex: Texture | null = null;
-  private surfaceSeq = 0;
-  private readonly rasters = new Map<string, Promise<Raster>>();
-  private readonly savedMaps = new Map<Material, Texture | null>();
-  private texturedRoot: Object3D | null = null;
+  private readonly drapes = new Map<
+    string,
+    { mode: SurfaceMode; root: Object3D; group: Group; material: MeshStandardMaterial }
+  >();
+  private readonly pendingDrapes = new Set<string>();
+  private readonly textures = new Map<string, Promise<Texture>>();
   private readonly savedClip = new Map<Material, Plane[] | null>();
   private readonly swipeRight = new Plane();
   private readonly swipeLeft = new Plane();
@@ -120,7 +126,6 @@ export class VolumetricScene {
     for (const u of this.unsub) u();
     this.unsub.length = 0;
     this.sceneSeq++;
-    this.surfaceSeq++;
     this.restoreSurface();
     this.restoreClip();
     this.restoreCallouts();
@@ -164,7 +169,6 @@ export class VolumetricScene {
     void this.updateBodies();
     this.updateEdit();
     void this.updateSection();
-    this.surfaceKey = s.surface === 'photo' ? '' : `${s.surface}/${s.shownEpoch()}`;
     this.stage.requestRender();
   }
 
@@ -492,66 +496,141 @@ export class VolumetricScene {
     this.reconcileCallouts();
   }
 
-  private reconcileSurface(): void {
+  /** Which survey drapes are wanted: both photos while swiping, else the shown survey. */
+  private wantedDrapes(): Map<string, SurfaceMode> {
     const s = this.store.getState();
-    const key = this.surfaceKey;
-    const root = key ? this.terrainRoot(s.shownEpoch()) : null;
-    if (!key || !root) {
-      if (this.texturedRoot) this.restoreSurface();
-      return;
+    const epochs = s.file?.captures.map((c) => c.epoch) ?? [];
+    const first = epochs[0];
+    const last = epochs.at(-1);
+    if (s.swipe && first && last && first !== last)
+      return new Map<string, SurfaceMode>([
+        [first, 'photo'],
+        [last, 'photo'],
+      ]);
+    return new Map<string, SurfaceMode>([[s.shownEpoch(), s.surface]]);
+  }
+
+  /**
+   * The survey texture (photo, change or relief) draped over the terrain: a copy of the terrain
+   * meshes that keep their texture coordinates, drawn just in front of the terrain.
+   */
+  private reconcileSurface(): void {
+    const want = this.wantedDrapes();
+    for (const [epoch, d] of this.drapes) {
+      const root = this.terrainRoot(epoch);
+      if (want.get(epoch) !== d.mode || root !== d.root) this.removeDrape(epoch);
+      else d.group.visible = visibleChain(root);
     }
-    if (this.texturedRoot === root && this.surfaceTex?.userData.key === key) return;
-    const svc = s.service;
-    if (!svc) return;
-    let p = this.rasters.get(key);
-    if (!p) {
-      p = s.surface === 'change' ? svc.changeRaster() : svc.reliefRaster(s.shownEpoch());
-      p.catch(() => this.rasters.delete(key));
-      this.rasters.set(key, p);
+    for (const [epoch, mode] of want) {
+      if (this.drapes.has(epoch) || this.pendingDrapes.has(epoch)) continue;
+      const root = this.terrainRoot(epoch);
+      if (root) this.buildDrape(epoch, mode, root);
     }
-    const seq = ++this.surfaceSeq;
-    void p.then((r) => {
-      if (seq !== this.surfaceSeq || this.surfaceKey !== key) return;
-      const tex = new DataTexture(
-        new Uint8Array(r.data.buffer.slice(0)),
-        r.width,
-        r.height,
-        RGBAFormat,
-      );
-      tex.flipY = false;
-      tex.colorSpace = SRGBColorSpace;
-      tex.magFilter = LinearFilter;
-      tex.minFilter = LinearFilter;
-      tex.generateMipmaps = false;
-      tex.needsUpdate = true;
-      tex.userData.key = key;
-      this.restoreSurface();
-      this.surfaceTex = tex;
-      this.texturedRoot = root;
-      root.parent?.traverse((o) => {
-        const m = o as Partial<Mesh>;
-        if (!m.isMesh || !m.material) return;
-        for (const mat of Array.isArray(m.material) ? m.material : [m.material]) {
-          const wm = mat as WithMap;
-          if (!('map' in wm) || this.savedMaps.has(mat)) continue;
-          this.savedMaps.set(mat, wm.map ?? null);
-          wm.map = tex;
-          mat.needsUpdate = true;
-        }
+  }
+
+  private surfaceTexture(
+    epoch: string,
+    mode: SurfaceMode,
+    root: Object3D,
+  ): Promise<Texture | null> {
+    if (mode === 'photo') {
+      let map: Texture | null = null;
+      root.traverse((o) => {
+        const m = (o as Partial<Mesh>).material as WithMap | undefined;
+        if (!map && m && !Array.isArray(m) && m.map) map = m.map;
       });
-      this.stage.requestRender();
-    });
+      return Promise.resolve(map);
+    }
+    const key = mode === 'change' ? 'change' : `elev/${epoch}`;
+    let p = this.textures.get(key);
+    if (!p) {
+      const svc = this.store.getState().service;
+      if (!svc) return Promise.resolve(null);
+      const r = mode === 'change' ? svc.changeRaster() : svc.reliefRaster(epoch);
+      p = r.then((raster) => {
+        const tex = new DataTexture(
+          new Uint8Array(raster.data.buffer.slice(0)),
+          raster.width,
+          raster.height,
+          RGBAFormat,
+        );
+        tex.flipY = false;
+        tex.colorSpace = SRGBColorSpace;
+        tex.magFilter = LinearFilter;
+        tex.minFilter = LinearFilter;
+        tex.generateMipmaps = false;
+        tex.anisotropy = 4;
+        tex.needsUpdate = true;
+        return tex;
+      });
+      p.catch(() => this.textures.delete(key));
+      this.textures.set(key, p);
+    }
+    return p;
+  }
+
+  private buildDrape(epoch: string, mode: SurfaceMode, root: Object3D): void {
+    this.pendingDrapes.add(epoch);
+    void this.surfaceTexture(epoch, mode, root).then(
+      (tex) => {
+        this.pendingDrapes.delete(epoch);
+        if (!tex || !this.unsub.length) return;
+        if (this.wantedDrapes().get(epoch) !== mode || this.terrainRoot(epoch) !== root) return;
+        const material = new MeshStandardMaterial({
+          map: tex,
+          roughness: 1,
+          metalness: 0,
+          polygonOffset: true,
+          polygonOffsetFactor: -1,
+          polygonOffsetUnits: -4,
+          clippingPlanes: this.stage.clippingPlanes,
+        });
+        const group = new Group();
+        group.name = `drape:${epoch}`;
+        root.updateMatrixWorld(true);
+        root.traverse((o) => {
+          const m = o as Partial<Mesh>;
+          if (!m.isMesh || !m.geometry || o.userData.aioMerged === true) return;
+          if (!m.geometry.hasAttribute('uv')) return;
+
+          const d = new Mesh(m.geometry, material);
+          d.matrixAutoUpdate = false;
+          d.matrix.copy(o.matrixWorld);
+          d.receiveShadow = true;
+          group.add(d);
+        });
+        group.visible = visibleChain(root);
+        this.group.add(group);
+        this.drapes.set(epoch, { mode, root, group, material });
+        this.stage.requestRender();
+      },
+      (e: unknown) => {
+        this.pendingDrapes.delete(epoch);
+        this.store.getState().setMessage(e instanceof Error ? e.message : String(e));
+      },
+    );
+  }
+
+  private removeDrape(epoch: string): void {
+    const d = this.drapes.get(epoch);
+    if (!d) return;
+    this.group.remove(d.group);
+    d.material.dispose();
+    this.drapes.delete(epoch);
+    this.stage.requestRender();
   }
 
   private restoreSurface(): void {
-    for (const [mat, map] of this.savedMaps) {
-      (mat as WithMap).map = map;
-      mat.needsUpdate = true;
-    }
-    this.savedMaps.clear();
-    this.surfaceTex?.dispose();
-    this.surfaceTex = null;
-    this.texturedRoot = null;
+    for (const epoch of [...this.drapes.keys()]) this.removeDrape(epoch);
+    this.pendingDrapes.clear();
+    for (const p of this.textures.values())
+      void p.then(
+        (t) => {
+          t.dispose();
+        },
+        () => undefined,
+      );
+    this.textures.clear();
   }
 
   private reconcileSwipe(): void {
@@ -561,6 +640,11 @@ export class VolumetricScene {
     const last = epochs.at(-1);
     if (!s.swipe || !first || !last || first === last) {
       if (this.savedClip.size) this.restoreClip();
+      for (const d of this.drapes.values())
+        if (d.material.clippingPlanes !== this.stage.clippingPlanes) {
+          d.material.clippingPlanes = this.stage.clippingPlanes;
+          d.material.needsUpdate = true;
+        }
       return;
     }
     swipePlane(this.stage.camera, s.swipeX, this.swipeRight);
@@ -577,7 +661,12 @@ export class VolumetricScene {
       [first, this.clipLeft],
       [last, this.clipRight],
     ] as const) {
-      this.terrainRoot(epoch)?.parent?.traverse((o) => {
+      const drape = this.drapes.get(epoch);
+      if (drape && drape.material.clippingPlanes !== arr) {
+        drape.material.clippingPlanes = arr;
+        drape.material.needsUpdate = true;
+      }
+      this.terrainRoot(epoch)?.traverse((o) => {
         const m = o as Partial<Mesh>;
         if (!m.material) return;
         for (const mat of Array.isArray(m.material) ? m.material : [m.material]) {

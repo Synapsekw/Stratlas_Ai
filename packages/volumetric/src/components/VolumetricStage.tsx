@@ -534,7 +534,12 @@ export function VolumetricStage({ stage }: { stage: EngineStage | null }) {
         if (p) void s.addSectionPoint([p[0], p[1]]);
         return;
       }
-      if (s.edit || s.body !== 'lift') return;
+      if (s.edit) {
+        // the scene selection stays on the pile being edited
+        e.stopPropagation();
+        return;
+      }
+      if (s.body !== 'lift') return;
       ray.setFromCamera(new Vector2(...ndcOf(stage, e.clientX, e.clientY)), stage.camera);
       const tops: Object3D[] = [];
       scene.group.traverse((o) => {
@@ -547,11 +552,18 @@ export function VolumetricStage({ stage }: { stage: EngineStage | null }) {
         s.select(pile);
       }
     };
+    // callout plates select on click: not while picking section points or editing a boundary
+    const onClick = (e: MouseEvent) => {
+      const s = volumetric.getState();
+      if (s.section.mode === 'picking' || s.edit) e.stopPropagation();
+    };
     host.addEventListener('pointerdown', onDown, true);
     host.addEventListener('pointerup', onUp, true);
+    host.addEventListener('click', onClick, true);
     return () => {
       host.removeEventListener('pointerdown', onDown, true);
       host.removeEventListener('pointerup', onUp, true);
+      host.removeEventListener('click', onClick, true);
     };
   }, [stage, scene]);
 
