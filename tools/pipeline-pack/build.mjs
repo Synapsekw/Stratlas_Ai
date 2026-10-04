@@ -222,7 +222,7 @@ async function main() {
       [
         '-I',
         '-c',
-        'import numpy, scipy, rasterio, trimesh, skimage, PIL, yaml, rtree; print(rasterio.__gdal_version__)',
+        'import numpy, scipy, rasterio, trimesh, skimage, PIL, yaml, rtree, shapely, shapefile; print(rasterio.__gdal_version__)',
       ],
       { capture: true },
     ).trim();

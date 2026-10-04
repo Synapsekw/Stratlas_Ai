@@ -9,7 +9,18 @@ from typing import Any
 from .params import known_keys, number
 from .runtime import Step, StepContext, atomic_write_json, commit_files
 
-LIBRARIES = ["numpy", "scipy", "PIL", "yaml", "skimage", "rasterio", "trimesh", "rtree"]
+LIBRARIES = [
+    "numpy",
+    "scipy",
+    "PIL",
+    "yaml",
+    "skimage",
+    "rasterio",
+    "trimesh",
+    "rtree",
+    "shapely",
+    "shapefile",
+]
 
 
 class SelfTest:
