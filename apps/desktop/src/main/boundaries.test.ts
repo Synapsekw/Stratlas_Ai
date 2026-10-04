@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { writeBoundaries } from './boundaries';
+import { readVolumes, writeBoundaries } from './boundaries';
 import { sampleManifest, writeProject } from './testing';
 
 let base: string;
@@ -53,6 +53,32 @@ function edit(over: Partial<BoundaryEdit> = {}): BoundaryEdit {
 const file = (...edits: BoundaryEdit[]): BoundaryEditsFile => ({
   schema: 'aio.boundaries/1',
   edits,
+});
+
+describe('readVolumes', () => {
+  it('reads volumes.json and the saved edits', async () => {
+    const dir = await writeProject(join(base, 'p'), sampleManifest(), {
+      'volumes.json': JSON.stringify(volumes),
+      'edits/boundaries.json': JSON.stringify(file(edit())),
+    });
+    const r = await readVolumes(dir);
+    expect(r.ok && r.volumes?.piles[0]?.id).toBe('P01');
+    expect(r.ok && r.edits?.edits).toHaveLength(1);
+  });
+
+  it('gives nulls for a project without volumes or edits', async () => {
+    const dir = await writeProject(join(base, 'p'));
+    expect(await readVolumes(dir)).toEqual({ ok: true, volumes: null, edits: null });
+  });
+
+  it('says which file is invalid', async () => {
+    const dir = await writeProject(join(base, 'p'), sampleManifest(), {
+      'volumes.json': JSON.stringify({ ...volumes, defaultBase: 'mean' }),
+    });
+    const r = await readVolumes(dir);
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.error).toMatch(/volumes\.json/);
+  });
 });
 
 describe('writeBoundaries', () => {

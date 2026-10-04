@@ -142,6 +142,22 @@ describe('edits/boundaries.json (aio.boundaries/1)', () => {
     expect(r.success).toBe(false);
   });
 
+  it('is read with volumes.json through project:readVolumes', () => {
+    const res = ipc['project:readVolumes'].response;
+    expect(ipc['project:readVolumes'].request.safeParse({ projectId: 'masafi' }).success).toBe(
+      true,
+    );
+    expect(res.safeParse({ ok: true, volumes: null, edits: null }).success).toBe(true);
+    expect(
+      res.safeParse({
+        ok: true,
+        volumes: volumesFile(),
+        edits: { schema: 'aio.boundaries/1', edits: [edit()] },
+      }).success,
+    ).toBe(true);
+    expect(res.safeParse({ ok: false, error: 'bad' }).success).toBe(true);
+  });
+
   it('is written through project:writeBoundaries, validated in main', () => {
     const req = ipc['project:writeBoundaries'].request;
     const file = { schema: 'aio.boundaries/1', edits: [edit()] };

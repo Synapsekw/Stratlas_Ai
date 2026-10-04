@@ -11,7 +11,7 @@ import { createKeyVault } from './keys';
 import { addToLibrary, createLibraryStore, listLibrary, listPacks } from './library';
 import { buildMenu } from './menu';
 import { popupAction } from './popup';
-import { writeBoundaries } from './boundaries';
+import { readVolumes, writeBoundaries } from './boundaries';
 import { openProject, ProjectRegistry, writeIssues } from './project';
 import { createAioHandler } from './protocol/handler';
 import { cspForUrl } from './protocol/legacy';
@@ -130,6 +130,11 @@ function registerIpc(): void {
       return { ok: false, error: `Project "${projectId}" is not open. Open it, then save again.` };
     }
     return writeIssues(root, issues);
+  });
+  handle('project:readVolumes', ({ projectId }) => {
+    const root = registry.root(projectId);
+    if (root === undefined) return { ok: false, error: `Project "${projectId}" is not open.` };
+    return readVolumes(root);
   });
   handle('project:writeBoundaries', ({ projectId, file }) => {
     const root = registry.root(projectId);
