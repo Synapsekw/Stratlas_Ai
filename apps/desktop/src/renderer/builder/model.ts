@@ -1,5 +1,5 @@
 import { crsOption, fromWgs84 } from '@aio/geo';
-import type { Layer, ProjectType, Vec3 } from '@aio/schema';
+import type { Layer, ProjectType, SeverityTemplate, Vec3 } from '@aio/schema';
 
 /** The new project wizard's form. */
 export interface WizardForm {
@@ -24,6 +24,19 @@ export const PROJECT_TYPES: { id: ProjectType; label: string; hint: string }[] =
   { id: 'twin', label: 'Digital twin', hint: 'Plant model, ortho, point cloud, flights' },
   { id: 'fusion', label: 'Free fusion', hint: 'Any mix of data in one scene' },
 ];
+
+/**
+ * The severity template a new project of a type starts with: a road survey takes one with a road
+ * catalogue (so it opens in the road workspace), other types the first that is not a road one.
+ */
+export function defaultTemplateFor(
+  type: ProjectType,
+  templates: readonly SeverityTemplate[],
+): string | null {
+  const road = (t: SeverityTemplate) => t.catalogue?.assetType === 'road';
+  const pick = type === 'road' ? templates.find(road) : templates.find((t) => !road(t));
+  return (pick ?? templates[0])?.id ?? null;
+}
 
 /** Problems that block creating the project, by field. */
 export function wizardProblems(f: WizardForm): Partial<Record<'name' | 'epsg' | 'origin', string>> {

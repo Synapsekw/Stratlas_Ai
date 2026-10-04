@@ -520,3 +520,34 @@
   flex: 1;
   min-height: 0;
 }
+
+/* road setup: a road survey before the road builder has run */
+.rr-setup {
+  flex: none;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.rr-setup h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--t-13);
+  color: var(--fg-0);
+}
+.rr-setup p {
+  margin: 0;
+}
+.rr-setup .ok {
+  color: var(--ok);
+}
+.rr-setup .bad {
+  color: var(--s3);
+}
+.rr-setup-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}

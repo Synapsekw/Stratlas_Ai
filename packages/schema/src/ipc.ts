@@ -370,6 +370,26 @@ export const ipc = {
     request: z.object({ projectId: z.string().min(1), file: BoundaryEditsFile }).strict(),
     response: z.object({ ok: z.boolean(), error: z.string().optional() }),
   },
+  /**
+   * Save a road centreline drawn on the map as `<project>/road/centreline-drawn.geojson` (a
+   * LineString in lon/lat, atomic replace with `.bak`), for the road builder (`road.build`).
+   * Answers the project-relative path.
+   */
+  'project:writeCentreline': {
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        coordinates: z
+          .array(z.tuple([z.number().min(-180).max(180), z.number().min(-90).max(90)]))
+          .min(2)
+          .max(20000),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), path: z.string() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
   'packs:list': { request: Empty, response: z.array(MapPackInfo) },
   /** Start downloading a region (explicit online action; refused when offline-only). */
   'packs:download': { request: PackRegion.strict(), response: Ok },

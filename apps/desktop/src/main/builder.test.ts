@@ -28,7 +28,10 @@ describe('builder main handlers', () => {
     await writeProject(join(base, 'projects', 'hcl'), sampleManifest());
     const t = await builderTemplates(base, []);
     expect(t.severity.map((s) => s.id)).toContain(sampleManifest().severityModels[0]?.id);
-    expect(t.severity.at(-1)?.id).toBe('general-inspection');
+    expect(t.severity.slice(-2).map((s) => s.id)).toEqual([
+      'general-inspection',
+      'road-astm-d6433',
+    ]);
     expect(t.brands.map((b) => b.id)).toContain('eand');
   });
 

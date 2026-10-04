@@ -14,6 +14,8 @@ dependencies = [
   "rasterio>=1.4",
   "trimesh>=4.5",
   "rtree>=1.3",
+  "shapely>=2.0",
+  "pyshp>=2.3",
 ]
 
 [dependency-groups]

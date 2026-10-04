@@ -71,6 +71,8 @@ describe('road project', () => {
         classCatalogues: [{ id: 'c', name: 'C', assetType: 'road', classes: [] }],
       }),
     ).toBe(true);
+    // a new road from the wizard, before the road builder has run
+    expect(isRoadProject({ ...base, type: 'road' })).toBe(true);
   });
 });
 

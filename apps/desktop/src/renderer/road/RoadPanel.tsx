@@ -1,4 +1,5 @@
 import { IssueDetail } from '@aio/annotate';
+import { t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { exportAllowed } from '../player';
@@ -124,7 +125,12 @@ function RoadSummary() {
         </dd>
         <dt>Sample units</dt>
         <dd className="mono">
-          {nf.format(road.pci.units.length)} · {road.pci.grid.cellM} m grid
+          {road.pci.layout === 'chainage'
+            ? t('road.unitsAlong', {
+                count: nf.format(road.pci.units.length),
+                length: road.pci.grid.cellM,
+              })
+            : `${nf.format(road.pci.units.length)} · ${String(road.pci.grid.cellM)} m grid`}
         </dd>
       </dl>
       <div className="rr-types" role="list" aria-label="Defect types">

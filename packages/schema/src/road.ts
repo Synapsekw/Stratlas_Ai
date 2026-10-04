@@ -24,13 +24,19 @@ export const PciUnit = z.object({
   pavementM2: z.number().nonnegative(),
   pci: BySeverity,
   km: z.number(),
+  /** Chainage the unit runs from and to (units along the road, `pci.layout: 'chainage'`). */
+  fromKm: z.number().optional(),
+  toKm: z.number().optional(),
   /** Deducts under the headline severity. */
   deducts: z.array(
     z.object({ distress: z.string().min(1), densityPct: z.number(), deduct: z.number() }),
   ),
-  /** Grid cells [i, j] the unit covers (see `pci.grid`). */
-  cells: z.array(z.tuple([z.number().int(), z.number().int()])).min(1),
+  /** Grid cells [i, j] the unit covers (see `pci.grid`); empty for units along the road. */
+  cells: z.array(z.tuple([z.number().int(), z.number().int()])),
 });
+
+/** How sample units are laid out: square cells of `pci.grid` (as delivered) or along the road. */
+export const PciLayout = z.enum(['grid', 'chainage']);
 
 export const DensityCell = z.object({
   i: z.number().int(),
@@ -65,6 +71,8 @@ export const RoadModel = z
       coveragePct: z.number().optional(),
       /** Rating classes, highest `min` first. */
       ratings: z.array(PciRating).min(1),
+      /** Unit layout (absent: grid). For units along the road `grid.cellM` is the unit length. */
+      layout: PciLayout.optional(),
       grid: z.object({ cellM: z.number().positive(), origin: Vec3 }),
       sections: z.array(PciSection),
       units: z.array(PciUnit),
@@ -85,11 +93,21 @@ export const RoadModel = z
         path: ['centreline', 'chainageKm'],
       });
     }
+    if ((r.pci.layout ?? 'grid') === 'grid') {
+      const i = r.pci.units.findIndex((u) => u.cells.length === 0);
+      if (i >= 0)
+        ctx.addIssue({
+          code: 'custom',
+          message: 'A grid sample unit needs at least one cell',
+          path: ['pci', 'units', i, 'cells'],
+        });
+    }
   });
 
 export type PciRating = z.infer<typeof PciRating>;
 export type PciSection = z.infer<typeof PciSection>;
 export type PciUnit = z.infer<typeof PciUnit>;
+export type PciLayout = z.infer<typeof PciLayout>;
 export type DensityCell = z.infer<typeof DensityCell>;
 export type RoadModel = z.infer<typeof RoadModel>;
 export type RoadModelInput = z.input<typeof RoadModel>;

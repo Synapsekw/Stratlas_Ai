@@ -5,9 +5,13 @@ import type { Issue, PciRating, ProjectManifest, RoadModel, Vec3 } from '@aio/sc
  * density classes and the defect list (rows, filters, sorting, chainage bins).
  */
 
-/** A road survey: the original road review or a road class catalogue (data-conventions 8). */
+/**
+ * A road survey: the original road review, a road class catalogue (data-conventions 9) or a
+ * project the wizard created as a road.
+ */
 export function isRoadProject(manifest: ProjectManifest): boolean {
   return (
+    manifest.type === 'road' ||
     manifest.layers.some((l) => l.kind === 'legacy' && l.viewer === 'road') ||
     manifest.classCatalogues.some((c) => c.assetType === 'road')
   );
