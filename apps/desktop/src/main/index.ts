@@ -382,8 +382,15 @@ if (!app.requestSingleInstanceLock()) {
   });
 }
 
-app.on('before-quit', () => {
-  void aiProjects.flush();
+// Usage is written in batches; write the last batch before the process ends.
+let usageFlushed = false;
+app.on('before-quit', (e) => {
+  if (usageFlushed) return;
+  e.preventDefault();
+  usageFlushed = true;
+  void aiProjects.flush().finally(() => {
+    app.quit();
+  });
 });
 
 app.on('window-all-closed', () => {

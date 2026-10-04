@@ -1,0 +1,222 @@
+/**
+ * The agent end to end with the scripted test model (STRATLAS_AI_TEST_PROVIDER, isolated profile
+ * only): the send preview before the first cloud send (AI-6), conversation history saved in the
+ * project and resumed (AI-8), an approval that survives a restart, Markdown export, the per-project
+ * cost meter (AI-7) and the package AI policy. Zero network throughout.
+ */
+import { ProjectManifest } from '@aio/schema';
+import type { ElectronApplication, Page } from '@playwright/test';
+import { readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import {
+  createDataRoot,
+  expect,
+  launchApp,
+  NetworkGuard,
+  test,
+  tinyManifest,
+  type DataRoot,
+} from './fixtures';
+
+const SHOTS = process.env.STRATLAS_E2E_SHOTS;
+
+/** The tiny project with an issue class, so the agent can draft issues in it. */
+function agentManifest(extra: Record<string, unknown> = {}) {
+  return {
+    ...ProjectManifest.parse({
+      ...tinyManifest(),
+      severityModels: [
+        {
+          id: 'sev',
+          name: 'Severity 1 to 5',
+          levels: [1, 2, 3, 4, 5].map((value) => ({
+            value,
+            label: `S${String(value)}`,
+            color: '#e8c547',
+            criteria: 'Test',
+          })),
+        },
+      ],
+      classCatalogues: [
+        {
+          id: 'cat',
+          name: 'Test',
+          assetType: 'tank',
+          classes: [{ id: 'rust', label: 'Rust', color: '#aa5500', severityModel: 'sev' }],
+        },
+      ],
+    }),
+    ...extra,
+  };
+}
+
+/** Apps still open, closed by `cleanup` when a test fails half way. */
+const open = new Set<ElectronApplication>();
+
+async function cleanup(data: DataRoot) {
+  for (const app of open) await app.close().catch(() => undefined);
+  open.clear();
+  await rm(data.base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+}
+
+async function start(data: DataRoot) {
+  const app = await launchApp(data, { STRATLAS_AI_TEST_PROVIDER: '1' });
+  open.add(app);
+  const network = new NetworkGuard();
+  await network.attach(app);
+  const win = await app.firstWindow();
+  await win.waitForLoadState('domcontentloaded');
+  return { app, win, network };
+}
+
+async function openTiny(win: Page) {
+  await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
+  await expect(win.locator('.crumbs')).toContainText('E2E tiny project');
+}
+
+/** Issues in the open project (runs in the renderer). */
+const issueCount = () =>
+  (
+    window as unknown as {
+      __stratlas: { workspace: { getState(): { issues: unknown[] } } };
+    }
+  ).__stratlas.workspace.getState().issues.length;
+
+const agent = (win: Page) => win.getByRole('region', { name: 'Agent' });
+
+async function ask(win: Page, text: string) {
+  const box = agent(win).getByRole('textbox', { name: 'Message the agent' });
+  await expect(box).toBeEnabled();
+  await box.fill(text);
+  await box.press('Enter');
+}
+
+async function shot(win: Page, name: string) {
+  if (SHOTS) await win.screenshot({ path: join(SHOTS, `${name}.png`) });
+}
+
+async function close(app: ElectronApplication, network: NetworkGuard) {
+  const outbound = await network.outbound();
+  await app.close();
+  open.delete(app);
+  expect(outbound, 'the app made network requests').toEqual([]);
+}
+
+test('agent: preview, history, restored approval, export and meter', async () => {
+  test.setTimeout(120_000);
+  const data = await createDataRoot();
+  try {
+    await writeFile(join(data.projectDir, 'manifest.json'), JSON.stringify(agentManifest()));
+    let run = await start(data);
+    let { win } = run;
+    await win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: true }));
+    await openTiny(win);
+
+    // AI-6: the first send in the project stops at a preview of exactly what leaves the machine.
+    await ask(win, 'Hello agent');
+    const dialog = win.getByRole('dialog', { name: 'Send to Anthropic?' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText('claude-sonnet-5-5');
+    await expect(dialog).toContainText('Hello agent');
+    await expect(dialog).toContainText('"name": "E2E tiny project"');
+    await shot(win, 'agent-preview');
+    await dialog.getByRole('button', { name: 'Send' }).click();
+    await expect(dialog).toBeHidden();
+    await expect(agent(win)).toContainText('Scripted reply to: Hello agent');
+
+    // Later sends in this project go straight out; a read tool runs at once.
+    await ask(win, 'measure from the origin');
+    await expect(agent(win)).toContainText('Tool measure_distance returned');
+    await expect(agent(win).locator('.step.done')).toContainText('5.00 m');
+    await expect(agent(win)).toContainText('This project4.0k tok');
+
+    // A write step waits for approval and is saved waiting.
+    await ask(win, 'please draft an issue here');
+    await expect(agent(win).locator('.step.awaiting')).toContainText('create_issue_draft');
+    await shot(win, 'agent-awaiting');
+    const dir = join(data.projectDir, 'ai', 'conversations');
+    await expect
+      .poll(async () => {
+        const files = await readdir(dir).catch(() => []);
+        const texts = await Promise.all(files.map((f) => readFile(join(dir, f), 'utf8')));
+        return texts.some((t) => t.includes('"status": "awaiting"'));
+      })
+      .toBe(true);
+    await close(run.app, run.network);
+
+    // After a restart: the conversation is listed with its waiting approval and resumes waiting.
+    run = await start(data);
+    win = run.win;
+    await openTiny(win);
+    await agent(win).getByRole('button', { name: 'Conversations in this project' }).click();
+    const item = agent(win).getByRole('list', { name: 'Saved conversations' }).getByRole('button');
+    await expect(item).toContainText('Hello agent');
+    await expect(item).toContainText('1 approval waiting');
+    await shot(win, 'agent-history');
+    await item.click();
+    const waiting = agent(win).locator('.step.awaiting');
+    await expect(waiting).toContainText('create_issue_draft');
+    // Nothing ran on its own.
+    expect(await win.evaluate(issueCount)).toBe(0);
+    await agent(win).getByRole('button', { name: 'Approve' }).click();
+    await expect(agent(win).locator('.step.done').last()).toContainText('AG01 drafted');
+    await expect(agent(win)).toContainText('Approved later and run: create_issue_draft');
+    expect(await win.evaluate(issueCount)).toBe(1);
+    await shot(win, 'agent-approved-after-restart');
+
+    // AI-8: export as Markdown through the save dialog.
+    const md = join(data.base, 'chat.md');
+    await run.app.evaluate(({ dialog: d }, path) => {
+      d.showSaveDialog = () => Promise.resolve({ canceled: false, filePath: path });
+    }, md);
+    await agent(win).getByRole('button', { name: 'Export this conversation as Markdown' }).click();
+    await expect.poll(() => readFile(md, 'utf8').catch(() => '')).toContain('## You');
+    const text = await readFile(md, 'utf8');
+    expect(text).toContain('Hello agent');
+    expect(text).toContain('`create_issue_draft` (done): AG01 drafted');
+
+    // AI-7: Settings lists tokens and cost per project and provider.
+    await win.getByRole('button', { name: 'Settings' }).first().click();
+    await win.getByRole('button', { name: 'Usage and cost' }).click();
+    const table = win.getByRole('table', { name: 'Agent usage by project and provider' });
+    await expect(table).toContainText('E2E tiny project');
+    await expect(table).toContainText('Anthropic');
+    await shot(win, 'settings-usage');
+    await win.getByRole('button', { name: 'AI providers' }).click();
+    await expect(win.getByText('Use a local model')).toBeVisible();
+    await shot(win, 'settings-local-model');
+    await close(run.app, run.network);
+  } finally {
+    await cleanup(data);
+  }
+});
+
+test('agent: a package that forbids cloud AI keeps the agent off', async () => {
+  const data = await createDataRoot();
+  try {
+    await writeFile(
+      join(data.projectDir, 'manifest.json'),
+      JSON.stringify(agentManifest({ aiPolicy: 'forbid' })),
+    );
+    const run = await start(data);
+    await run.win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: true }));
+    await openTiny(run.win);
+    await expect(agent(run.win)).toContainText(
+      'This project does not allow sending its data to cloud AI',
+    );
+    await expect(agent(run.win).getByRole('textbox', { name: 'Message the agent' })).toBeDisabled();
+    const sent = await run.win.evaluate(() =>
+      window.aio.invoke('ai:send', {
+        runId: 'x',
+        projectId: 'e2e-tiny',
+        window: 'scene3d',
+        context: {},
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    );
+    expect(sent.ok).toBe(false);
+    await close(run.app, run.network);
+  } finally {
+    await cleanup(data);
+  }
+});
