@@ -35,6 +35,8 @@ export interface OrthoLevelStats {
   srcZoom: number;
   tiles: number;
   bytes: number;
+  /** Largest per-tile affine miss at this level (source px, about the level pixel size). */
+  errPx: number;
 }
 
 export interface OrthoBuildResult {
@@ -47,6 +49,7 @@ export interface OrthoBuildResult {
 interface Stamp {
   stamp: string;
   maxErrPx: number;
+  errPx: Record<string, number>;
   tiles: Record<string, string[]>;
 }
 
@@ -130,6 +133,38 @@ class TileCache {
 }
 
 /**
+ * Read a `w` x `h` px window (top-left at level pixel `x0`, `y0`) of a written pyramid level as
+ * RGBA; missing tiles stay transparent.
+ */
+export async function readPyramidRegion(
+  root: string,
+  level: PyramidLevel,
+  x0: number,
+  y0: number,
+  w: number,
+  h: number,
+): Promise<RgbaImage> {
+  const s = level.tileSize;
+  const img: RgbaImage = { data: new Uint8Array(w * h * 4), width: w, height: h };
+  for (let ty = Math.floor(y0 / s); ty <= Math.floor((y0 + h - 1) / s); ty++)
+    for (let tx = Math.floor(x0 / s); tx <= Math.floor((x0 + w - 1) / s); tx++) {
+      const file = `${root}/${tileRel(level, tx, ty)}`;
+      if (!existsSync(file)) continue;
+      const { data, info } = await sharp(readFileSync(file))
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      for (let y = Math.max(y0, ty * s); y < Math.min(y0 + h, (ty + 1) * s); y++) {
+        const sx0 = Math.max(x0, tx * s);
+        const sx1 = Math.min(x0 + w, (tx + 1) * s);
+        const from = ((y - ty * s) * info.width + (sx0 - tx * s)) * 4;
+        img.data.set(data.subarray(from, from + (sx1 - sx0) * 4), ((y - y0) * w + (sx0 - x0)) * 4);
+      }
+    }
+  return img;
+}
+
+/**
  * Resample a Web Mercator tile pyramid into the plan's local-frame pyramid: every output tile
  * gets its own affine to the source zoom of its level (`tileToSource`), bilinear on premultiplied
  * colour. Tiles with no source pixel are not written.
@@ -161,7 +196,13 @@ export async function buildOrthoPyramid(o: OrthoBuildOptions): Promise<OrthoBuil
           o.w.keep(tileRel(l, x, y));
           bytes += statSync(o.w.abs(tileRel(l, x, y))).size;
         }
-        return { z: l.z, srcZoom: l.srcZoom, tiles: names.length, bytes };
+        return {
+          z: l.z,
+          srcZoom: l.srcZoom,
+          tiles: names.length,
+          bytes,
+          errPx: prev.errPx[String(l.z)] ?? 0,
+        };
       });
       o.w.writeJson(stampRel, prev);
       return { levels, maxErrPx: prev.maxErrPx, reused: true };
@@ -177,17 +218,24 @@ export async function buildOrthoPyramid(o: OrthoBuildOptions): Promise<OrthoBuil
   }
 
   const cache = new TileCache(o.tiles);
-  const stamp: Stamp = { stamp: o.stamp ?? '', maxErrPx: 0, tiles: {} };
+  const stamp: Stamp = { stamp: o.stamp ?? '', maxErrPx: 0, errPx: {}, tiles: {} };
   const levels: OrthoLevelStats[] = [];
   for (const level of o.plan.levels) {
     const t0 = Date.now();
     const names: string[] = [];
-    const stats: OrthoLevelStats = { z: level.z, srcZoom: level.srcZoom, tiles: 0, bytes: 0 };
+    const stats: OrthoLevelStats = {
+      z: level.z,
+      srcZoom: level.srcZoom,
+      tiles: 0,
+      bytes: 0,
+      errPx: 0,
+    };
     const pending = new Set<Promise<void>>();
     const cands = candidates(o, level, byZoom.get(level.srcZoom) ?? []);
     for (const [tx, ty] of cands) {
       const m = tileToSource(o.plan, level, tx, ty, o.toLonLat);
       stamp.maxErrPx = Math.max(stamp.maxErrPx, m.err);
+      stats.errPx = Math.max(stats.errPx, m.err);
       const win = windowTiles(m, level.tileSize);
       const parts: { x: number; y: number; p: Promise<Uint8Array> }[] = [];
       for (let y = win.y0; y < win.y1; y++)
@@ -240,6 +288,7 @@ export async function buildOrthoPyramid(o: OrthoBuildOptions): Promise<OrthoBuil
     await Promise.all(pending);
     names.sort();
     stamp.tiles[String(level.z)] = names;
+    stamp.errPx[String(level.z)] = stats.errPx;
     levels.push(stats);
     log(
       `ortho level ${level.z} (source z${level.srcZoom}): ${stats.tiles} tiles of ${cands.length} candidates in ${((Date.now() - t0) / 1000).toFixed(1)} s`,

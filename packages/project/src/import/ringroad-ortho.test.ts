@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import sharp from 'sharp';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { fromWgs84, toWgs84 } from '@aio/geo';
-import { buildOrthoPyramid } from './ringroad-ortho';
+import { buildOrthoPyramid, readPyramidRegion } from './ringroad-ortho';
 import { SRC_TILE, planPyramid, worldPx } from './ringroad-tiles';
 import { PackageWriter } from './writer';
 
@@ -59,6 +59,7 @@ describe('ortho pyramid from mercator tiles', () => {
     const w = new PackageWriter(join(dir, 'out'));
     const r = await buildOrthoPyramid({ tiles, plan, toLonLat, w, quality: 90 });
     expect(r.maxErrPx).toBeLessThan(0.01);
+    expect(r.levels.map((l) => l.errPx < 0.01)).toEqual([true, true]);
     expect(r.levels.map((l) => l.tiles)).toEqual([1, 4]);
 
     // the dot in the finest level: expected tile and pixel from its UTM position
@@ -83,6 +84,19 @@ describe('ortho pyramid from mercator tiles', () => {
     // within one pixel (3.25 cm) of where the UTM position says
     expect(Math.abs(best.x + 0.5 - (gu - tx * 64))).toBeLessThan(1.2);
     expect(Math.abs(best.y + 0.5 - (gv - ty * 64))).toBeLessThan(1.2);
+
+    // a window across tile edges reads the same pixel back
+    const x0 = Math.round(gu) - 40;
+    const y0 = Math.round(gv) - 40;
+    const region = await readPyramidRegion(join(dir, 'out'), fine, x0, y0, 80, 80);
+    let peak = { v: -1, x: 0, y: 0 };
+    for (let y = 0; y < 80; y++)
+      for (let x = 0; x < 80; x++) {
+        const v = region.data[(y * 80 + x) * 4] ?? 0;
+        if (v > peak.v) peak = { v, x, y };
+      }
+    expect(peak.x + x0).toBe(best.x + tx * 64);
+    expect(peak.y + y0).toBe(best.y + ty * 64);
   });
 
   it('skips tiles with no source and keeps tiles of an unchanged source on a re-run', async () => {
@@ -105,6 +119,7 @@ describe('ortho pyramid from mercator tiles', () => {
     const w2 = new PackageWriter(join(dir, 'out'));
     const again = await buildOrthoPyramid({ tiles, plan, toLonLat, w: w2, stamp: 'v1' });
     expect(again.reused).toBe(true);
+    expect(again.levels[1]?.errPx).toBe(first.levels[1]?.errPx);
     // four tiles kept and the unchanged source stamp
     expect(w2.stats).toEqual({ written: 0, skipped: 5 });
   });

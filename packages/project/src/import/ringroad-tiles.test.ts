@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { fromWgs84, toWgs84 } from '@aio/geo';
 import {
+  bestShift,
   levelCorners,
   parseRrtBundle,
   planPyramid,
@@ -181,6 +182,47 @@ describe('bilinear resampling', () => {
     // samples at source (0.5, 0): half way between red pixel 0 and transparent pixel 1
     expect(out.data[0]).toBe(255);
     expect(out.data[3]).toBe(128);
+  });
+});
+
+describe('image shift check', () => {
+  // a textured 40 x 30 grey image and the same image moved 3 px right and 2 px down
+  const w = 40;
+  const h = 30;
+  const tex = (x: number, y: number) => Math.sin(x * 0.7) * 40 + Math.cos(y * 1.3 + x * 0.2) * 50;
+  const a = new Float32Array(w * h);
+  const b = new Float32Array(w * h);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      a[y * w + x] = tex(x, y);
+      b[y * w + x] = tex(x - 3, y - 2);
+    }
+
+  it('finds the offset of b against a', () => {
+    const s = bestShift(a, b, w, h, 6);
+    expect(s).toMatchObject({ dx: 3, dy: 2 });
+    expect(s.score).toBeGreaterThan(0.99);
+  });
+
+  it('refines the shift to a fraction of a pixel', () => {
+    const smooth = (x: number, y: number) =>
+      Math.sin(x * 0.31) * 50 + Math.cos(y * 0.27 + x * 0.05) * 40;
+    const p = new Float32Array(w * h);
+    const q = new Float32Array(w * h);
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        p[y * w + x] = smooth(x, y);
+        q[y * w + x] = smooth(x - 1.4, y + 0.6);
+      }
+    const s = bestShift(p, q, w, h, 4);
+    // a parabola through three correlation samples is good to about a tenth of a pixel
+    expect(Math.abs(s.sx - 1.4)).toBeLessThan(0.15);
+    expect(Math.abs(s.sy + 0.6)).toBeLessThan(0.15);
+  });
+
+  it('reports no correlation for a flat image', () => {
+    const s = bestShift(new Float32Array(w * h), b, w, h, 4);
+    expect(s.score).toBe(0);
   });
 });
 

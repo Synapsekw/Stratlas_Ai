@@ -256,6 +256,64 @@ export function resampleBilinear(
   return { data: out, covered };
 }
 
+/**
+ * Shift (px) of image `b` against `a` (both `w` x `h` grey) that maximises the normalised cross
+ * correlation of `a(x, y)` with `b(x + dx, y + dy)` over the centre (a `max + 1` px margin kept).
+ * `dx`, `dy` are whole pixels, `sx`, `sy` refined by a parabola through the neighbours. `score` is
+ * the correlation (0 when either image is flat).
+ */
+export function bestShift(
+  a: Float32Array,
+  b: Float32Array,
+  w: number,
+  h: number,
+  max: number,
+): { dx: number; dy: number; sx: number; sy: number; score: number } {
+  const m = max + 1;
+  const ncc = (dx: number, dy: number) => {
+    let n = 0;
+    let sa = 0;
+    let sb = 0;
+    let saa = 0;
+    let sbb = 0;
+    let sab = 0;
+    for (let y = m; y < h - m; y++)
+      for (let x = m; x < w - m; x++) {
+        const va = a[y * w + x] ?? 0;
+        const vb = b[(y + dy) * w + x + dx] ?? 0;
+        n++;
+        sa += va;
+        sb += vb;
+        saa += va * va;
+        sbb += vb * vb;
+        sab += va * vb;
+      }
+    const va = saa - (sa * sa) / n;
+    const vb = sbb - (sb * sb) / n;
+    if (n === 0 || va <= 1e-9 || vb <= 1e-9) return 0;
+    return (sab - (sa * sb) / n) / Math.sqrt(va * vb);
+  };
+  let best = { dx: 0, dy: 0, score: 0 };
+  for (let dy = -max; dy <= max; dy++)
+    for (let dx = -max; dx <= max; dx++) {
+      const score = ncc(dx, dy);
+      if (score > best.score) best = { dx, dy, score };
+    }
+  const refine = (lo: number, mid: number, hi: number) => {
+    const den = lo - 2 * mid + hi;
+    return den < 0 ? Math.max(-0.5, Math.min(0.5, (lo - hi) / (2 * den))) : 0;
+  };
+  const { dx, dy, score } = best;
+  if (score === 0) return { dx, dy, sx: dx, sy: dy, score };
+  return {
+    dx,
+    dy,
+    sx: dx + refine(ncc(dx - 1, dy), score, ncc(dx + 1, dy)),
+    sy: dy + refine(ncc(dx, dy - 1), score, ncc(dx, dy + 1)),
+    score,
+  };
+}
+
 /** Sort tile coordinates along a Z-order (Morton) curve. */
 export function zOrder(tiles: readonly (readonly [number, number])[]): [number, number][] {
   const key = (x: number, y: number) => {
