@@ -20,9 +20,15 @@ const CHANNELS = {
   'ai:cancel': true,
   'dialog:openFolder': true,
   'dialog:saveFile': true,
+  'export:run': true,
+  'export:cancel': true,
+  'report:list': true,
 } as const satisfies Record<IpcChannel, true>;
 
-const EVENTS = { 'ai:event': true } as const satisfies Record<IpcEventName, true>;
+const EVENTS = { 'ai:event': true, 'export:progress': true } as const satisfies Record<
+  IpcEventName,
+  true
+>;
 
 const known = <K extends string>(table: Record<K, true>, key: string): key is K =>
   Object.prototype.hasOwnProperty.call(table, key);

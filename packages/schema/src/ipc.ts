@@ -49,6 +49,27 @@ const OpenResult = z.discriminatedUnion('ok', [
   z.object({ ok: z.literal(false), error: z.string() }),
 ]);
 
+/**
+ * Issue exports (PRD REV-6, ANN-11). `report-pdf` is the branded issue register report printed
+ * from an offscreen window; the others are written by the data utility process.
+ */
+export const EXPORT_FORMATS = [
+  'csv',
+  'geojson',
+  'coco',
+  'kit-json',
+  'masks-zip',
+  'report-pdf',
+] as const;
+export const ExportFormat = z.enum(EXPORT_FORMATS);
+
+export const ReportFile = z.object({
+  /** Path relative to the project folder, for aio://project/<id>/<path>. */
+  path: z.string().min(1),
+  name: z.string().min(1),
+  sizeBytes: z.number().int().nonnegative(),
+});
+
 export const ChatMessage = z.object({
   role: z.enum(['user', 'assistant']),
   content: z.string(),
@@ -140,6 +161,41 @@ export const ipc = {
       .strict(),
     response: z.object({ path: z.string().nullable(), error: z.string().optional() }),
   },
+  /**
+   * Export the issues of an open project: main asks where to save with the native dialog, then
+   * writes the file off the UI thread and pushes `export:progress` events for `jobId`. `path`
+   * is null when the person cancels the dialog or the job.
+   */
+  'export:run': {
+    request: z
+      .object({
+        jobId: z.string().min(1).max(64),
+        projectId: z.string().min(1),
+        format: ExportFormat,
+        /** Only these issues (the register's current filter); all issues when absent. */
+        issueIds: z.array(z.string().min(1)).optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        path: z.string().nullable(),
+        /** Issues (or files, for masks) written. */
+        count: z.number().int().nonnegative().optional(),
+        bytes: z.number().int().nonnegative().optional(),
+      }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  'export:cancel': {
+    request: z.object({ jobId: z.string().min(1).max(64) }).strict(),
+    response: z.object({ ok: z.boolean() }),
+  },
+  /** PDF reports delivered with the project (`report/*.pdf`). */
+  'report:list': {
+    request: z.object({ projectId: z.string().min(1) }).strict(),
+    response: z.object({ files: z.array(ReportFile) }),
+  },
 } as const satisfies Record<string, { request: z.ZodType; response: z.ZodType }>;
 
 /** Events pushed from main to the renderer. */
@@ -164,6 +220,13 @@ export const ipcEvents = {
     z.object({ type: z.literal('done'), runId: z.string() }),
     z.object({ type: z.literal('error'), runId: z.string(), message: z.string() }),
   ]),
+  /** Progress of an `export:run` job; `phase` is a short sentence for the toast. */
+  'export:progress': z.object({
+    jobId: z.string(),
+    phase: z.string(),
+    done: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative(),
+  }),
 } as const satisfies Record<string, z.ZodType>;
 
 export type IpcChannel = keyof typeof ipc;
@@ -175,6 +238,8 @@ export type LibraryEntry = z.infer<typeof LibraryEntry>;
 export type Settings = z.infer<typeof Settings>;
 export type MapPackInfo = z.infer<typeof MapPackInfo>;
 export type ChatMessage = z.infer<typeof ChatMessage>;
+export type ExportFormat = z.infer<typeof ExportFormat>;
+export type ReportFile = z.infer<typeof ReportFile>;
 
 /** The typed bridge the preload exposes as window.aio. */
 export interface AioBridge {
