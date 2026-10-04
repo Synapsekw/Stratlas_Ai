@@ -393,10 +393,7 @@ export class JobRunner {
           if (!(e instanceof RpcError)) return;
           settle(() => {
             if (e.code === RPC.CANCELLED) {
-              this.writeLog(job.id, {
-                level: 'warn',
-                message: 'Cancelled. Resume continues from the last finished step.',
-              });
+              // The runtime has already logged what it kept.
               this.update(job.id, (j) => this.finish(j, 'cancelled'), true);
             } else {
               this.update(job.id, (j) => this.finish(j, 'failed', j.error ?? e.message), true);
