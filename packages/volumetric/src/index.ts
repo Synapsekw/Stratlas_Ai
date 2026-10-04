@@ -19,3 +19,21 @@ export {
 } from './model/compute';
 export { connectVolumeService, startVolumeWorker, type VolumeService } from './worker/client';
 export type { WorkerInit } from './worker/protocol';
+export * from './model/layers';
+export {
+  createVolumetricStore,
+  useVolumetric,
+  volumetric,
+  type BodyMode,
+  type EditSession,
+  type SectionState,
+  type SurfaceMode,
+  type Volumetric,
+  type VolumetricDeps,
+} from './store';
+export { VolumetricScene } from './scene/controller';
+export { VolumesPanel, BaseSelect } from './components/VolumesPanel';
+export { VolumetricStage } from './components/VolumetricStage';
+export { ProfileChart } from './components/ProfileChart';
+export { VolumetricStyles } from './components/styles';
+export { f0, f1, sgn } from './components/format';
