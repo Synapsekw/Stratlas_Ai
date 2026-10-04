@@ -4,7 +4,7 @@ import {
   type IpcEvent,
   type PackagePlan,
 } from '@aio/schema';
-import { formatBytes, Icon, Switch } from '@aio/ui';
+import { formatBytes, Icon, Switch, t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useState } from 'react';
 import { EXPORT_CHOICES, groupLayers, toggleGroup, validatePassphrase } from '../packageModel';
@@ -15,6 +15,9 @@ type Phase =
   | { kind: 'running'; jobId: string; progress: IpcEvent<'package:progress'> | null }
   | { kind: 'done'; path: string; bytes: number | undefined }
   | { kind: 'error'; message: string };
+
+const MAP_ZOOMS = [10, 11, 12, 13, 14, 15];
+const MAP_MARGINS = [1, 2, 5, 10];
 
 const newJobId = () => `pkg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -39,12 +42,18 @@ function ExportForm({ projectId, name }: { projectId: string; name: string }) {
   const [pass, setPass] = useState('');
   const [again, setAgain] = useState('');
   const [message, setMessage] = useState('');
+  const [allowEdit, setAllowEdit] = useState(false);
+  const [withMap, setWithMap] = useState(false);
+  const [mapZoom, setMapZoom] = useState(14);
+  const [mapMargin, setMapMargin] = useState(2);
   const [phase, setPhase] = useState<Phase>({ kind: 'setup' });
 
-  const excludeKey = [...excluded].sort().join('|');
+  const mapPack = withMap ? { maxZoom: mapZoom, marginKm: mapMargin } : undefined;
+  const excludeKey = `${[...excluded].sort().join('|')}#${mapPack ? `${String(mapZoom)}/${String(mapMargin)}` : ''}`;
   useEffect(() => {
     let live = true;
-    void bridge.call('package:plan', { projectId, exclude: [...excluded] }).then((r) => {
+    const request = { projectId, exclude: [...excluded], ...(mapPack ? { mapPack } : {}) };
+    void bridge.call('package:plan', request).then((r) => {
       if (!live) return;
       if (!r.ok) setPlanError(r.error);
       else if (!r.value.ok) setPlanError(r.value.error);
@@ -72,6 +81,8 @@ function ExportForm({ projectId, name }: { projectId: string; name: string }) {
   const groups = useMemo(() => groupLayers(plan?.layers ?? [], excluded), [plan, excluded]);
   const passError = encrypt ? validatePassphrase(pass, again) : null;
   const tooBig = plan?.freeBytes !== undefined && plan.totalBytes > plan.freeBytes;
+  const region = withMap ? plan?.mapPack : undefined;
+  const mapBlocked = withMap && region?.ok !== true;
   const close = () => {
     if (phase.kind !== 'running') shell.getState().setExportFor(null);
   };
@@ -88,6 +99,8 @@ function ExportForm({ projectId, name }: { projectId: string; name: string }) {
         exclude: [...excluded],
         readOnly,
         aiPolicy: allowAi ? 'allow' : 'forbid',
+        editPolicy: allowEdit ? 'allow' : 'forbid',
+        ...(mapPack ? { mapPack } : {}),
         exports: EXPORT_CHOICES.map((c) => c.kind).filter((k) => exportsAllowed.has(k)),
         ...(encrypt ? { passphrase: pass } : {}),
         ...(welcome ? { welcome: { message: welcome } } : {}),
@@ -182,6 +195,68 @@ function ExportForm({ projectId, name }: { projectId: string; name: string }) {
             </div>
           </section>
 
+          <section className="dlg-sec" data-testid="pkg-map">
+            <div className="pkg-row">
+              <span>{t('package.export.mapPack')}</span>
+              <Switch checked={withMap} label={t('package.export.mapPack')} onChange={setWithMap} />
+            </div>
+            <p>{t('package.export.mapHelp')}</p>
+            {withMap && (
+              <div className="pkg-map">
+                <label>
+                  <span>{t('package.export.mapZoom')}</span>
+                  <select
+                    className="input"
+                    value={mapZoom}
+                    aria-label={t('package.export.mapZoom')}
+                    onChange={(e) => {
+                      setMapZoom(Number(e.target.value));
+                    }}
+                  >
+                    {MAP_ZOOMS.map((z) => (
+                      <option key={z} value={z}>
+                        {z}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>{t('package.export.mapMargin')}</span>
+                  <select
+                    className="input"
+                    value={mapMargin}
+                    aria-label={t('package.export.mapMargin')}
+                    onChange={(e) => {
+                      setMapMargin(Number(e.target.value));
+                    }}
+                  >
+                    {MAP_MARGINS.map((km) => (
+                      <option key={km} value={km}>
+                        {t('package.export.mapMarginKm', { km })}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {region?.ok ? (
+                  <span className="mono" data-testid="pkg-map-size">
+                    {t('package.export.mapFrom', {
+                      pack: region.sourceLabel,
+                      tiles: region.tiles,
+                      size: formatBytes(region.bytes),
+                    })}
+                  </span>
+                ) : region ? (
+                  <p className="notice danger" role="alert" data-testid="pkg-map-size">
+                    <Icon name="warn" size={14} />
+                    {region.reason}
+                  </p>
+                ) : (
+                  <span className="faint">...</span>
+                )}
+              </div>
+            )}
+          </section>
+
           <section className="pkg-size" aria-label="Size report" data-testid="pkg-size">
             <div>
               <b>{plan ? formatBytes(plan.totalBytes) : '...'}</b>
@@ -206,6 +281,14 @@ function ExportForm({ projectId, name }: { projectId: string; name: string }) {
             <div className="pkg-row">
               <span>Allow cloud AI with this package (off: never sent to any provider)</span>
               <Switch checked={allowAi} label="Allow cloud AI" onChange={setAllowAi} />
+            </div>
+            <div className="pkg-row">
+              <span>{t('package.export.allowEdit')}</span>
+              <Switch
+                checked={allowEdit}
+                label={t('package.export.allowEdit')}
+                onChange={setAllowEdit}
+              />
             </div>
             <p style={{ marginTop: 8 }}>The customer may save:</p>
             <div className="pkg-opts">
@@ -335,7 +418,7 @@ function ExportForm({ projectId, name }: { projectId: string; name: string }) {
               <button
                 type="button"
                 className="btn primary"
-                disabled={plan === null || passError !== null || tooBig}
+                disabled={plan === null || passError !== null || tooBig || mapBlocked}
                 onClick={() => void start()}
                 data-testid="pkg-export"
               >

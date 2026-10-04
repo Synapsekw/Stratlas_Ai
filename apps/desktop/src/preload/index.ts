@@ -41,6 +41,7 @@ const CHANNELS = {
   'package:plan': true,
   'package:export': true,
   'package:cancel': true,
+  'package:extract': true,
   'export:run': true,
   'export:cancel': true,
   'report:list': true,

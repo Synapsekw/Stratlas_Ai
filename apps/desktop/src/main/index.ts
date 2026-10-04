@@ -21,7 +21,6 @@ import {
   Menu,
   nativeImage,
   nativeTheme,
-  net,
   protocol,
   screen,
   session,
@@ -56,8 +55,10 @@ import { findPack, JobRunner, JobStore, openTarget, safeJobEvent } from './jobs'
 import { createKeyVault } from './keys';
 import { addToLibrary, createLibraryStore, listLibrary } from './library';
 import { captureConsole, createLog, exportLogs } from './logs';
+import { embeddedPacks, findEmbedded, listWithEmbedded } from './packs/embed';
+import { httpSource } from './packs/extract';
 import { createPackManager } from './packs/manager';
-import { createExtract, findLatestBuild, resolvePmtiles } from './packs/pmtiles';
+import { buildSource, findLatestBuild } from './packs/pmtiles';
 import { createOnlineUpdater, type UpdaterLike } from './update/online';
 import { probeWithPowerShell, verifyInstaller } from './update/verify';
 import { OFFSCREEN_SWITCHES, offscreenOrigin, windowMode } from './windowMode';
@@ -193,29 +194,23 @@ function broadcast<E extends 'packs:job'>(event: E, payload: IpcEvent<E>): void 
   for (const win of BrowserWindow.getAllWindows()) win.webContents.send(event, parsed.data);
 }
 
-const pmtilesBin = resolvePmtiles({
-  env: process.env,
-  platform: process.platform,
-  packaged: app.isPackaged,
-  resourcesPath: process.resourcesPath,
-  appPath: app.getAppPath(),
-  exists: existsSync,
-});
-
 // The map pack download is one of only two network paths (the other is cloud AI), and runs
-// only when the person starts it in Settings, Maps.
+// only when the person starts it in Settings, Maps. Planet builds come from Protomaps (or the
+// STRATLAS_PACK_SOURCE mirror) by HTTP ranges, so a cut-off download continues where it stopped.
+const planetBuilds = buildSource(process.env);
+// Map data is fetched in its own session: the default session blocks every http(s) request so
+// the renderer stays offline by construction (hardenSession).
+const mapFetch = (url: string, init?: RequestInit) =>
+  session.fromPartition('stratlas-maps').fetch(url, init);
 const packs = createPackManager({
   packsDir: () => join(settings.current().dataRoot, 'packs'),
   offlineOnly: () => settings.current().offlineOnly === true,
   emit: (job) => {
     broadcast('packs:job', job);
   },
-  extract: pmtilesBin
-    ? createExtract(pmtilesBin, (cmd, args) =>
-        spawn(cmd, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }),
-      )
-    : null,
-  latestBuild: (signal) => findLatestBuild((url, init) => net.fetch(url, init), signal),
+  source: (url, identity) => httpSource(url, mapFetch, identity),
+  buildBase: planetBuilds.base,
+  latestBuild: (signal) => findLatestBuild(mapFetch, signal, planetBuilds),
 });
 
 const updates = createOnlineUpdater({
@@ -468,9 +463,14 @@ function registerIpc(): void {
         : await dialog.showSaveDialog(options);
       return r.canceled || !r.filePath ? null : r.filePath;
     },
+    packs: { dir: () => join(settings.current().dataRoot, 'packs'), list: () => packs.list() },
+    tempDir: () => app.getPath('temp'),
+    dataRoot: () => settings.current().dataRoot,
+    ...osUser(),
   });
   handle('package:plan', (req) => packageJobs.plan(req));
   handle('package:export', (req) => packageJobs.export(req));
+  handle('package:extract', (req) => packageJobs.extract(req));
   handle('package:cancel', (req) => packageJobs.cancel(req));
 
   handle('app:takeOpenPath', () => {
@@ -571,7 +571,12 @@ function registerIpc(): void {
   });
   handle('ai:detect', (req) => agent.detect(req));
 
-  handle('packs:list', () => packs.list());
+  // Map packs carried by open packages join the list when this machine lacks that area.
+  handle('packs:list', async () => {
+    const installed = await packs.list();
+    const open = registry.openPackages();
+    return listWithEmbedded(installed, await embeddedPacks(installed, open));
+  });
   handle('packs:jobs', () => packs.jobs());
   handle('packs:download', (region) => packs.download(region));
   handle('packs:cancel', ({ id }) => packs.cancel(id));
@@ -1008,6 +1013,7 @@ if (!app.requestSingleInstanceLock()) {
         packsDir: () => join(settings.current().dataRoot, 'packs'),
         thumbsDir,
         brandingDir,
+        embeddedPack: (id) => findEmbedded(id, registry.openPackages()),
       }),
     );
     registerIpc();

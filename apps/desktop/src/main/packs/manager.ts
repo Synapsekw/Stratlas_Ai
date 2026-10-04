@@ -3,35 +3,35 @@ import { copyFile, mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import { readJson, writeJsonAtomic } from '../fsutil';
 import { listPacks } from '../library';
+import {
+  EXTRACT_SCHEMA,
+  planExtract,
+  runExtract,
+  StartOverError,
+  type ExtractPlan,
+  type RangeSource,
+} from './extract';
 import { checkPack } from './header';
 
 /** Protomaps daily planet builds (https://docs.protomaps.com/basemaps/downloads). */
 export const BUILD_BASE = 'https://build.protomaps.com/';
 
-export interface ExtractRequest {
-  /** Remote planet archive, e.g. https://build.protomaps.com/20261003.pmtiles. */
-  source: string;
-  /** Output file (a partial file in the downloads folder). */
-  out: string;
-  bbox: readonly [number, number, number, number];
-  maxZoom: number;
-  signal: AbortSignal;
-  /** Fraction done, 0 to 1. */
-  onProgress(fraction: number): void;
-}
-
-/** Runs `pmtiles extract`; resolves when the output file is complete. */
-export type Extract = (req: ExtractRequest) => Promise<void>;
-
 export interface PackManagerOptions {
   packsDir: () => string;
   offlineOnly: () => boolean;
   emit: (job: PackJob) => void;
-  /** null when this build has no extract tool. */
-  extract: Extract | null;
+  /**
+   * The planet archive at `url` read by HTTP ranges; `identity` (ETag) is set when continuing a
+   * download, so a changed file is noticed.
+   */
+  source: (url: string, identity?: string) => RangeSource;
+  /** Where planet builds live (default Protomaps); a local server in tests. */
+  buildBase?: string;
   /** Key of the newest planet build, e.g. `20261003` (an online lookup). */
   latestBuild: (signal: AbortSignal) => Promise<string>;
   now?: () => Date;
+  /** Pause before retrying a dropped connection (default 1 s, doubling). */
+  retryDelayMs?: number;
 }
 
 interface Result {
@@ -57,6 +57,14 @@ async function exists(p: string): Promise<boolean> {
   }
 }
 
+async function sizeOf(p: string): Promise<number> {
+  try {
+    return (await stat(p)).size;
+  } catch {
+    return 0;
+  }
+}
+
 /** A pack id from a file name: lowercase ASCII words joined by dashes. */
 export function slugId(name: string): string {
   const slug = name
@@ -68,20 +76,28 @@ export function slugId(name: string): string {
   return slug || 'pack';
 }
 
+/** The verified result does not match what was asked for: the partial file is not kept. */
+class VerifyError extends Error {}
+
 /**
  * Installed map packs, downloads of new regions from the Protomaps daily build (the only network
  * path besides cloud AI, and only when the person starts it), file imports and removal.
  *
- * Downloads write `<packs>/.downloads/<id>.pmtiles.part` and keep a job record
- * `<packs>/.downloads/<id>.json`, so a download cut off by a restart shows as interrupted and
- * can be resumed against the same planet build. `pmtiles extract` cannot continue a partial
- * file, so resuming starts that region's extract again.
+ * A download is a PMTiles extract over HTTP ranges (`extract.ts`): its plan (`<id>.plan.json`,
+ * the source ETag and the byte runs to copy) and the partial file `<id>.pmtiles.part` live in
+ * `<packs>/.downloads` beside the job record `<id>.json`. A dropped connection is retried; a
+ * download cut off by an error, a crash or quitting the app stays `interrupted` with its partial
+ * file, and Resume continues from the last byte with a Range request against the same planet
+ * build. Cancel and Dismiss delete the partial file. A finished pack is checked (size, every
+ * gzip tile's CRC-32, header zoom and area) before it is installed.
  */
 export function createPackManager(o: PackManagerOptions) {
   const now = o.now ?? (() => new Date());
+  const base = o.buildBase ?? BUILD_BASE;
   const entries = new Map<string, Entry>();
   const downloads = () => join(o.packsDir(), '.downloads');
   const recordPath = (id: string) => join(downloads(), `${id}.json`);
+  const planPath = (id: string) => join(downloads(), `${id}.plan.json`);
   const partPath = (id: string) => join(downloads(), `${id}.pmtiles.part`);
   const packPath = (id: string) => join(o.packsDir(), `${id}.pmtiles`);
   const infoPath = (id: string) => join(o.packsDir(), `${id}.json`);
@@ -105,69 +121,115 @@ export function createPackManager(o: PackManagerOptions) {
     return (await exists(packPath(id))) || (await exists(infoPath(id)));
   }
 
+  async function clearPartial(id: string): Promise<void> {
+    await rm(partPath(id), { force: true });
+    await rm(planPath(id), { force: true });
+  }
+
+  async function savedPlan(id: string): Promise<ExtractPlan | null> {
+    try {
+      const p = (await readJson(planPath(id))) as ExtractPlan | undefined;
+      return p?.schema === EXTRACT_SCHEMA ? p : null;
+    } catch {
+      return null;
+    }
+  }
+
   async function run(entry: Entry): Promise<void> {
     const ac = new AbortController();
     entry.abort = ac;
     const { id } = entry.job;
     const part = partPath(id);
     let lastStep = -1;
-    const sizer = setInterval(() => {
-      void stat(part).then(
-        (s) => {
-          if (running(id) && s.size !== entry.job.bytes) update(entry, { bytes: s.size });
-        },
-        () => undefined,
-      );
-    }, 1000);
     try {
-      const extract = o.extract;
-      if (!extract) throw new Error('This build does not include the map download tool.');
       if (!entry.job.build) {
         entry.job = { ...entry.job, build: await o.latestBuild(ac.signal) };
         await persist(entry.job);
       }
+      const url = `${base}${entry.job.build ?? ''}.pmtiles`;
       await mkdir(downloads(), { recursive: true });
-      await rm(part, { force: true });
-      await extract({
-        source: `${BUILD_BASE}${entry.job.build ?? ''}.pmtiles`,
-        out: part,
-        bbox: entry.job.bbox,
-        maxZoom: entry.job.maxZoom,
-        signal: ac.signal,
-        onProgress: (f) => {
-          const progress = Math.max(0, Math.min(1, f));
-          const step = Math.floor(progress * 200);
-          if (step === lastStep || entry.job.state !== 'running') return;
-          lastStep = step;
-          update(entry, { progress });
-        },
-      });
+
+      const copy = async (plan: ExtractPlan, source: RangeSource, head?: Buffer) => {
+        await runExtract({
+          source,
+          plan,
+          ...(head ? { head } : {}),
+          out: part,
+          signal: ac.signal,
+          ...(o.retryDelayMs !== undefined ? { retryDelayMs: o.retryDelayMs } : {}),
+          onProgress: (done, total) => {
+            const progress = total > 0 ? done / total : 1;
+            const step = Math.floor(progress * 200);
+            if (step === lastStep || entry.job.state !== 'running') return;
+            lastStep = step;
+            update(entry, { progress, bytes: plan.headBytes + done });
+            if (done === total) update(entry, { state: 'verifying' });
+          },
+        });
+        return plan;
+      };
+      const fresh = async () => {
+        await clearPartial(id);
+        const source = o.source(url);
+        const { plan, head } = await planExtract(source, {
+          bbox: entry.job.bbox,
+          maxZoom: entry.job.maxZoom,
+          signal: ac.signal,
+        });
+        await writeJsonAtomic(planPath(id), plan);
+        return copy(plan, source, head);
+      };
+
+      const saved = await savedPlan(id);
+      let plan: ExtractPlan;
+      if (saved) {
+        try {
+          plan = await copy(saved, o.source(url, saved.identity));
+        } catch (e) {
+          // The build changed on the server or the partial file is unusable: start the region again.
+          if (!(e instanceof StartOverError)) throw e;
+          plan = await fresh();
+        }
+      } else plan = await fresh();
+
       if (ac.signal.aborted) throw new Error('Cancelled');
-      update(entry, { state: 'verifying' });
-      await checkPack(part, { maxZoom: entry.job.maxZoom, bbox: entry.job.bbox });
-      if (await installed(id)) throw new Error(`A map pack "${id}" was installed meanwhile.`);
+      if (entry.job.state !== 'verifying') update(entry, { state: 'verifying' });
+      try {
+        await checkPack(part, { maxZoom: plan.maxZoom, bbox: entry.job.bbox });
+      } catch (e) {
+        throw new VerifyError(message(e));
+      }
+      if (await installed(id)) throw new VerifyError(`A map pack "${id}" was installed meanwhile.`);
       const size = (await stat(part)).size;
       await rename(part, packPath(id));
       const info: MapPackInfo = {
         id,
         label: entry.job.label,
         bbox: [...entry.job.bbox],
-        maxZoom: entry.job.maxZoom,
+        maxZoom: plan.maxZoom,
         sizeBytes: size,
         builtAt: now().toISOString(),
         source: 'download',
         ...(entry.job.build ? { build: entry.job.build } : {}),
       };
       await writeJsonAtomic(infoPath(id), info);
+      await rm(planPath(id), { force: true });
       await rm(recordPath(id), { force: true });
       update(entry, { state: 'done', progress: 1, bytes: size });
     } catch (e) {
-      await rm(part, { force: true }).catch(() => undefined);
-      if (ac.signal.aborted) update(entry, { state: 'cancelled', error: undefined });
-      else update(entry, { state: 'failed', error: message(e) });
+      const partial = await sizeOf(part);
+      if (ac.signal.aborted) {
+        await clearPartial(id).catch(() => undefined);
+        update(entry, { state: 'cancelled', error: undefined, progress: 0, bytes: 0 });
+      } else if (partial > 0 && !(e instanceof VerifyError) && (await savedPlan(id))) {
+        // Kept for Resume: the next run continues from the partial file.
+        update(entry, { state: 'interrupted', error: message(e), bytes: partial });
+      } else {
+        await clearPartial(id).catch(() => undefined);
+        update(entry, { state: 'failed', error: message(e) });
+      }
       await persist(entry.job).catch(() => undefined);
     } finally {
-      clearInterval(sizer);
       entry.abort = undefined;
     }
   }
@@ -179,9 +241,6 @@ export function createPackManager(o: PackManagerOptions) {
   function refuse(): string | null {
     if (o.offlineOnly()) {
       return 'This workstation is set to offline-only. Turn that off in Settings, Privacy to download map data.';
-    }
-    if (!o.extract) {
-      return 'This build does not include the map download tool (go-pmtiles). Import a pack file instead.';
     }
     return null;
   }
@@ -205,11 +264,16 @@ export function createPackManager(o: PackManagerOptions) {
       return [...entries.values()].map((e) => e.job);
     },
 
-    /** Load job records left by an earlier session; running ones become interrupted. */
+    /**
+     * Load job records left by an earlier session; running ones become interrupted and keep their
+     * partial file for Resume.
+     */
     async restore(): Promise<void> {
       let names: string[];
       try {
-        names = (await readdir(downloads())).filter((n) => n.endsWith('.json'));
+        names = (await readdir(downloads())).filter(
+          (n) => n.endsWith('.json') && !n.endsWith('.plan.json'),
+        );
       } catch {
         return;
       }
@@ -219,10 +283,19 @@ export function createPackManager(o: PackManagerOptions) {
           if (!r.success || entries.has(r.data.id)) continue;
           let job = r.data;
           if (job.state === 'running' || job.state === 'verifying') {
-            job = { ...job, state: 'interrupted' };
+            const bytes = await sizeOf(partPath(job.id));
+            const plan = await savedPlan(job.id);
+            job = {
+              ...job,
+              state: 'interrupted',
+              bytes,
+              progress:
+                plan && plan.dataBytes > 0
+                  ? Math.max(0, Math.min(1, (bytes - plan.headBytes) / plan.dataBytes))
+                  : 0,
+            };
             await persist(job);
           }
-          await rm(partPath(job.id), { force: true });
           entries.set(job.id, { job });
         } catch (e) {
           console.warn(`Map pack job ${name} is unreadable: ${message(e)}`);
@@ -253,6 +326,7 @@ export function createPackManager(o: PackManagerOptions) {
       entries.set(job.id, entry);
       try {
         await persist(job);
+        await clearPartial(job.id);
       } catch (e) {
         entries.delete(job.id);
         return { ok: false, error: `The packs folder is not writable: ${message(e)}` };
@@ -269,12 +343,13 @@ export function createPackManager(o: PackManagerOptions) {
       if (entry.job.state === 'done') return { ok: false, error: 'That download has finished.' };
       const why = refuse();
       if (why) return { ok: false, error: why };
-      update(entry, { state: 'running', progress: 0, bytes: 0, error: undefined });
+      update(entry, { state: 'running', error: undefined });
       await persist(entry.job);
       start(entry);
       return { ok: true };
     },
 
+    /** Stop a running download and delete its partial file. */
     async cancel(id: string): Promise<Result> {
       const entry = entries.get(id);
       if (!entry?.abort || !running(id)) {
@@ -289,7 +364,7 @@ export function createPackManager(o: PackManagerOptions) {
       if (running(id)) return { ok: false, error: 'Cancel the download first.' };
       if (!entries.delete(id)) return { ok: false, error: `No download "${id}".` };
       await rm(recordPath(id), { force: true });
-      await rm(partPath(id), { force: true });
+      await clearPartial(id);
       return { ok: true };
     },
 

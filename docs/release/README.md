@@ -17,7 +17,7 @@ Output in `apps/desktop/dist/`:
 | `<Product>-<version>-win-x64-portable.exe` | Portable build, runs without installing                              |
 | `win-unpacked/`                            | The unpacked app, handy for quick checks                             |
 
-Before packaging, fetch the go-pmtiles CLI once so the app can download map regions (Settings, Offline maps): `node tools/maps/build-packs.mjs --tool-only` (writes `tools/maps/bin/pmtiles.exe`, git-ignored; `extraResources` copies it to `resources/bin/`). Without it the build still imports pack files but says that region downloads are not available. Demo projects in `apps/desktop/demo/<project>/` ship the same way (`resources/demo/`) and appear in the library on first run.
+Region downloads (Settings, Offline maps) need no external tool: the app extracts PMTiles itself (`apps/desktop/src/main/packs/extract.ts`). The go-pmtiles CLI is only used by `tools/maps/build-packs.mjs` to build the starter packs; the `extraResources` entry for `resources/bin/` can go once the integration lead confirms. Demo projects in `apps/desktop/demo/<project>/` ship the same way (`resources/demo/`) and appear in the library on first run.
 
 Without a certificate the build is unsigned. Windows SmartScreen then shows "Windows protected your PC": choose **More info**, then **Run anyway**. That is expected for test builds.
 
@@ -116,7 +116,7 @@ Hardened runtime is always on (`build/entitlements.mac.plist`: JIT only). Notari
 
 - **From a file (offline, APP-2):** Settings, About and updates, Install update from file. The person picks the NSIS `setup.exe`; main checks it is a Windows `.exe`, that `Get-AuthenticodeSignature` reports `Valid`, that the signer subject names the company in `@aio/brand`, and that its product version is newer than the running app. Only then does "Install and restart" run it (detached) and quit. Unsigned test builds are refused by design.
 - **Online check (optional):** off by default. The person switches it on and sets an update address; "Check now" uses electron-updater's `generic` provider against that address (`latest.yml` plus the installer, as produced by `electron-builder --publish` to a folder or share). Nothing is checked automatically, and the switch is disabled on an offline-only workstation (Settings, Privacy and cloud).
-- **Map data:** "Add a region" in Settings, Offline maps is the only other online action. It runs `pmtiles extract` against the newest Protomaps daily build at build.protomaps.com, verifies the result (PMTiles v3 header, vector tiles, zoom and area, complete length) and writes `MapPackInfo` next to the pack. Interrupted downloads resume against the same planet build (go-pmtiles cannot continue a partial file, so the region is extracted again).
+- **Map data:** "Add a region" in Settings, Offline maps is the only other online action. It extracts the region by HTTP range requests from the newest Protomaps daily build at build.protomaps.com, verifies the result (planned size, every gzip tile's CRC-32, PMTiles v3 header, vector tiles, zoom and area) and writes `MapPackInfo` next to the pack. A dropped connection is retried; an interrupted download (error, crash, app quit) keeps its partial file and resumes from the last byte against the same planet build, checked with `If-Range` on the build's ETag (a changed build starts the region again). Cancel deletes the partial file.
 
 ## Continuous integration
 

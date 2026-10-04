@@ -15,6 +15,38 @@ const { syncBuiltinESMExports } = require('node:module');
 const log = [];
 Object.defineProperty(globalThis, '__aioNetworkLog', { value: log, enumerable: false });
 
+/**
+ * Explicit exceptions for tests that run their own server on this machine (the map pack
+ * download test): AIO_NETWORK_GUARD_ALLOW lists origins such as http://127.0.0.1:41234. Only
+ * loopback origins are honoured; every allowed request is recorded in __aioNetworkAllowed.
+ */
+const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]']);
+const allowed = new Set(
+  (process.env.AIO_NETWORK_GUARD_ALLOW ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => {
+      try {
+        const u = new URL(s);
+        return u.protocol === 'http:' && LOOPBACK.has(u.hostname) && u.origin === s;
+      } catch {
+        return false;
+      }
+    }),
+);
+/** @type {string[]} */
+const allowedLog = [];
+Object.defineProperty(globalThis, '__aioNetworkAllowed', { value: allowedLog, enumerable: false });
+function isAllowed(target) {
+  try {
+    if (!allowed.has(new URL(target).origin)) return false;
+  } catch {
+    return false;
+  }
+  allowedLog.push(target);
+  return true;
+}
+
 function blocked(target) {
   log.push(target);
   const error = new Error(`Network access blocked by the e2e zero-network guard: ${target}`);
@@ -34,8 +66,11 @@ function describeRequest(args) {
 
 for (const mod of [http, https]) {
   for (const name of ['request', 'get']) {
+    const original = mod[name];
     mod[name] = (...args) => {
-      throw blocked(describeRequest(args));
+      const target = describeRequest(args);
+      if (isAllowed(target)) return original.apply(mod, args);
+      throw blocked(target);
     };
   }
 }
@@ -56,6 +91,7 @@ function guardSocket(mod, name) {
       : typeof second === 'string'
         ? second
         : 'localhost';
+    if (allowed.has(`http://${host}:${port}`)) return original.apply(mod, args);
     throw blocked(`tcp://${host}:${port}`);
   };
 }
@@ -63,8 +99,10 @@ guardSocket(net, 'connect');
 guardSocket(net, 'createConnection');
 guardSocket(tls, 'connect');
 
-globalThis.fetch = (input) => {
+const nodeFetch = globalThis.fetch;
+globalThis.fetch = (input, init) => {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  if (isAllowed(url)) return nodeFetch(input, init);
   return Promise.reject(blocked(url));
 };
 

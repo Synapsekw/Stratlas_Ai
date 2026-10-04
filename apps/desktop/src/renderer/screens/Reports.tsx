@@ -6,6 +6,7 @@ import { FocusZone } from '../FocusZone';
 import { actionAllowed } from '../exports/exportModel';
 import { runExportAction } from '../exports/exports';
 import { PdfViewer } from '../report/PdfViewer';
+import { ExtractPackage } from '../shell/ExtractPackage';
 import { shell, useCall, useShell } from '../shell';
 import { NoProject } from './NoProject';
 
@@ -116,6 +117,13 @@ export function ReportsScreen() {
                 <Icon name="download" size={14} />
                 Export package
               </button>
+            </section>
+          )}
+          {pkg && (
+            <section className="sblock">
+              <h2>{t('package.extract.title')}</h2>
+              <p className="muted rep-note">{t('package.extract.text')}</p>
+              <ExtractPackage projectId={project.id} pkg={pkg} />
             </section>
           )}
           <section className="sblock">

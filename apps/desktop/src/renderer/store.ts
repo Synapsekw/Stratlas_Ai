@@ -2,7 +2,7 @@ import { defaultRoutes } from '@aio/ai';
 import { setAnnotateReadOnly } from '@aio/annotate';
 import { volumetric } from '@aio/volumetric';
 import type { LabelMode, SavedView } from '@aio/engine';
-import type { LibraryEntry, PackageInfo, Settings } from '@aio/schema';
+import { PackageOrigin, type LibraryEntry, type PackageInfo, type Settings } from '@aio/schema';
 import type { Workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
@@ -65,6 +65,8 @@ export interface ShellState {
   unlock: { path: string; error: string } | null;
   /** The package export dialog is open for this project id. */
   exportFor: string | null;
+  /** The open folder project was extracted from a package (`package-origin.json`). */
+  origin: PackageOrigin | null;
 }
 
 export interface ShellActions {
@@ -100,6 +102,20 @@ export type Shell = ShellState & ShellActions;
 export interface ShellOptions {
   /** Player mode on or off (annotation read-only); called on every project open and close. */
   onReadOnly?: (on: boolean) => void;
+  /** `package-origin.json` of an open folder project, or null when it has none. */
+  loadOrigin?: (projectId: string) => Promise<PackageOrigin | null>;
+}
+
+/** Read `package-origin.json` through aio:// (absent for most projects). */
+export async function fetchOrigin(projectId: string): Promise<PackageOrigin | null> {
+  try {
+    const res = await fetch(`aio://project/${encodeURIComponent(projectId)}/package-origin.json`);
+    if (!res.ok) return null;
+    const r = PackageOrigin.safeParse(await res.json());
+    return r.success ? r.data : null;
+  } catch {
+    return null;
+  }
 }
 
 export function createShellStore(
@@ -130,6 +146,7 @@ export function createShellStore(
     pkg: null,
     unlock: null,
     exportFor: null,
+    origin: null,
 
     init: async () => {
       const [settings] = await Promise.all([bridge.call('settings:get', {}), get().loadLibrary()]);
@@ -189,10 +206,17 @@ export function createShellStore(
         opening: null,
         unlock: null,
         pkg,
+        origin: null,
         annotating: pkg ? false : get().annotating,
         screen: player ? 'welcome' : landingScreen(manifest),
       });
       if (pkg) void get().loadLibrary();
+      // A project extracted from a package says where it came from.
+      else if (options.loadOrigin) {
+        void options.loadOrigin(id).then((origin) => {
+          if (origin && workspace.getState().project?.id === id) set({ origin });
+        });
+      }
     },
 
     cancelUnlock: () => {
@@ -218,7 +242,7 @@ export function createShellStore(
     closeProject: () => {
       workspace.getState().closeProject();
       setReadOnly(false);
-      set({ screen: 'projects', pkg: null });
+      set({ screen: 'projects', pkg: null, origin: null });
     },
 
     addProjectFolder: async () => {
@@ -302,6 +326,7 @@ export function getShell(workspace: StoreApi<Workspace>): StoreApi<Shell> {
       setAnnotateReadOnly(on);
       volumetric.getState().setReadOnly(on);
     },
+    loadOrigin: fetchOrigin,
   });
   return shellStore;
 }

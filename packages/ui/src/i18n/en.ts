@@ -42,6 +42,27 @@ export const en = {
   'titlebar.package': 'Package',
   'titlebar.readOnlyPackageTip': 'Opened from {file}. Nothing in this package can be changed.',
   'titlebar.packageTip': 'Opened in place from {file}. Issues are not saved into the package.',
+  'titlebar.copyOf': 'Copy of {file}',
+  'titlebar.copyOfTip':
+    'Extracted from the package {file} (exported {exported}) on {extracted}. Changes here stay in this project; the package is unchanged.',
+
+  // Packages: extract to edit, map regions
+  'package.extract.title': 'Edit a copy',
+  'package.extract.text':
+    'Extract this package into a new project in your data folder: every layer, issue and edit comes along, and you can annotate and change it. The package file stays as it is.',
+  'package.extract.button': 'Extract to edit',
+  'package.extract.forbidden':
+    'The sender did not allow editing this package. Ask them for a package that allows extract to edit.',
+  'package.extract.progress': '{done} of {total}',
+  'package.extract.cancel': 'Cancel',
+  'package.export.allowEdit': 'Allow the customer to extract an editable copy',
+  'package.export.mapPack': 'Include the map region for this site',
+  'package.export.mapHelp':
+    'Clipped from an installed map pack: the site plus a margin. The player uses it when its machine has no map pack for the site.',
+  'package.export.mapZoom': 'Detail up to zoom',
+  'package.export.mapMargin': 'Margin',
+  'package.export.mapMarginKm': '{km} km',
+  'package.export.mapFrom': 'From {pack}: {tiles} tiles, {size}',
 
   // Stage tools
   'stage.pins.show': 'Show issue pins',
@@ -413,6 +434,11 @@ export const en = {
   'settings.maps.remove': 'Remove',
   'settings.maps.removeConfirm':
     'Remove {label}? Maps lose this area until the pack is added again.',
+  'settings.maps.fromPackage': 'In open package',
+  'settings.maps.resume': 'Resume',
+  'settings.maps.again': 'Download again',
+  'settings.maps.interrupted':
+    'The download stopped at {size}. Resume continues from there with the same planet build {build}; the finished pack is checked tile by tile.',
 
   // About
   'settings.graphics.text':

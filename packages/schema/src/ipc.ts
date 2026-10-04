@@ -12,7 +12,7 @@ import {
 } from './builder';
 import { ProjectManifest } from './manifest';
 import { HexColor } from './common';
-import { AiPolicy, ExportKind, PackageInfo } from './package';
+import { AiPolicy, EditPolicy, ExportKind, PackageInfo } from './package';
 import { BoundaryEditsFile, VolumesFile } from './volumes';
 
 const Empty = z.object({}).strict();
@@ -171,8 +171,11 @@ export const MapPackInfo = z.object({
   sizeBytes: z.number().int().nonnegative(),
   /** When the pack file was written (ISO 8601). Older packs fall back to the file date. */
   builtAt: z.string().optional(),
-  /** How the pack arrived: the in-app download, a file import, or tools/maps/build-packs.mjs. */
-  source: z.enum(['download', 'import', 'build-tool']).optional(),
+  /**
+   * How the pack arrived: the in-app download, a file import, tools/maps/build-packs.mjs, or
+   * `package`: carried inside an open `.aio` package (listed only while this machine lacks it).
+   */
+  source: z.enum(['download', 'import', 'build-tool', 'package']).optional(),
   /** Protomaps planet build the pack was cut from, e.g. `20261003`. */
   build: z.string().optional(),
 });
@@ -236,7 +239,35 @@ export const PackagePlan = z.object({
   totalFiles: z.number().int().nonnegative(),
   /** Free space on the volume of the data folder, when known. */
   freeBytes: z.number().int().nonnegative().optional(),
+  /**
+   * The map pack region the package would carry (when `mapPack` was asked for): clipped from an
+   * installed pack, or why none can be (no pack covers the site, no georeference). Its bytes are
+   * included in `totalBytes` when `ok`.
+   */
+  mapPack: z
+    .discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        /** Installed pack the region is clipped from. */
+        sourceId: z.string(),
+        sourceLabel: z.string(),
+        bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+        maxZoom: z.number().int(),
+        bytes: z.number().int().nonnegative(),
+        tiles: z.number().int().nonnegative(),
+      }),
+      z.object({ ok: z.literal(false), reason: z.string() }),
+    ])
+    .optional(),
 });
+
+/** Embed the map region a project needs: its area plus a margin, up to a zoom. */
+export const PackageMapPackRequest = z
+  .object({
+    maxZoom: z.number().int().min(0).max(15),
+    marginKm: z.number().min(0).max(100),
+  })
+  .strict();
 
 export const PackageExportOptions = z
   .object({
@@ -245,6 +276,10 @@ export const PackageExportOptions = z
     exclude: z.array(z.string()),
     readOnly: z.boolean(),
     aiPolicy: AiPolicy,
+    /** Whether the holder may extract an editable copy (absent: follows `readOnly`). */
+    editPolicy: EditPolicy.optional(),
+    /** Embed the map region the project needs, clipped from an installed pack. */
+    mapPack: PackageMapPackRequest.optional(),
     exports: z.array(ExportKind),
     /** AES-256 (WinZip AE-2) for every member when set. */
     passphrase: z.string().min(8).max(256).optional(),
@@ -660,7 +695,13 @@ export const ipc = {
   'app:takeOpenPath': { request: Empty, response: z.object({ path: z.string().nullable() }) },
   /** Size report for a package of an open project, for the given layer exclusions. */
   'package:plan': {
-    request: z.object({ projectId: z.string().min(1), exclude: z.array(z.string()) }).strict(),
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        exclude: z.array(z.string()),
+        mapPack: PackageMapPackRequest.optional(),
+      })
+      .strict(),
     response: z.discriminatedUnion('ok', [
       z.object({ ok: z.literal(true), plan: PackagePlan }),
       z.object({ ok: z.literal(false), error: z.string() }),
@@ -680,6 +721,19 @@ export const ipc = {
   'package:cancel': {
     request: z.object({ jobId: z.string().min(1) }).strict(),
     response: z.object({ ok: z.boolean() }),
+  },
+  /**
+   * Extract to edit: copy an open package (already unlocked) into a new editable project folder
+   * in the data root, with `package-origin.json`. Refused when the package forbids editing; the
+   * `.aio` file is only read. Progress arrives as `package:progress` with the same `jobId`
+   * (cancel with `package:cancel`). `root` is null when cancelled.
+   */
+  'package:extract': {
+    request: z.object({ jobId: z.string().min(1), projectId: z.string().min(1) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), root: z.string().nullable() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
   },
   /**
    * Export the issues of an open project: main asks where to save with the native dialog, then
@@ -967,6 +1021,7 @@ export type ProviderUsage = z.infer<typeof ProviderUsage>;
 export type ProjectUsage = z.infer<typeof ProjectUsage>;
 export type PackagePlan = z.infer<typeof PackagePlan>;
 export type PackageExportOptions = z.infer<typeof PackageExportOptions>;
+export type PackageMapPackRequest = z.infer<typeof PackageMapPackRequest>;
 export type ExportFormat = z.infer<typeof ExportFormat>;
 export type ReportFile = z.infer<typeof ReportFile>;
 export type ReportBrandingSettings = z.infer<typeof ReportBrandingSettings>;
