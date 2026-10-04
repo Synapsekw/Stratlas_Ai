@@ -45,12 +45,11 @@ function Graphics() {
           Sets the point budget, eye-dome lighting, shadow detail and render resolution. The point
           budget and lighting can still be changed in the point cloud panel.
         </p>
-        <div className="pop-seg" role="group" aria-label="Graphics quality preset">
+        <div className="seg pop-seg" role="group" aria-label="Graphics quality preset">
           {choices.map((c) => (
             <button
               key={c.id ?? 'auto'}
               type="button"
-              className="btn sm"
               aria-pressed={override === c.id}
               title={c.hint}
               onClick={() => {

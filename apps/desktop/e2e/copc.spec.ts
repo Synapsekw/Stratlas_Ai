@@ -85,3 +85,26 @@ test('a COPC layer streams, colours by classification and hides a class', async 
   await expect(legend.getByRole('button', { name: 'Show Ground' })).toBeVisible();
   if (SHOTS) await win.screenshot({ path: join(SHOTS, 'copc-synthetic-no-ground.png') });
 });
+
+test('Settings, Graphics quality overrides the detected GPU tier', async ({ win }) => {
+  await win.getByRole('button', { name: 'Settings' }).first().click();
+  await win.getByRole('button', { name: 'Graphics quality' }).click();
+  const presets = win.getByRole('group', { name: 'Graphics quality preset' });
+  await expect(presets.getByRole('button', { name: /^Auto \(/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await presets.getByRole('button', { name: 'Low', exact: true }).click();
+  await expect(presets.getByRole('button', { name: 'Low', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(win.getByTestId('graphics-preset')).toContainText('2 M');
+  const s = await win.evaluate(() => {
+    const w = window as unknown as {
+      __stratlas: { pointcloud: { getState(): { budget: number; edl: boolean } } };
+    };
+    return w.__stratlas.pointcloud.getState();
+  });
+  expect(s).toMatchObject({ budget: 2_000_000, edl: false });
+});
