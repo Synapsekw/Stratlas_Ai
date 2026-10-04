@@ -7,6 +7,7 @@ import {
   tileToSource,
   windowTiles,
   zOrder,
+  blankSlots,
   type Affine2,
   type PyramidLevel,
   type PyramidPlan,
@@ -32,6 +33,11 @@ export interface OrthoBuildOptions {
    * every tile of the level it draws). Default 0.
    */
   completeUpTo?: number;
+  /**
+   * On larger levels, no-data tiles in the empty slots within this many tiles of a real one (the
+   * 3D adapter loads the slots nearest the view target and retries missing ones). Default 0.
+   */
+  blankRings?: number;
   log?: (msg: string) => void;
 }
 
@@ -296,8 +302,11 @@ export async function buildOrthoPyramid(o: OrthoBuildOptions): Promise<OrthoBuil
       if (pending.size >= 8) await Promise.race(pending);
     }
     await Promise.all(pending);
-    if (level.cols * level.rows <= (o.completeUpTo ?? 0)) {
-      const have = new Set(names);
+    const slots = blankSlots(level.cols, level.rows, new Set(names), {
+      completeUpTo: o.completeUpTo ?? 0,
+      rings: o.blankRings ?? 0,
+    });
+    if (slots.length) {
       const size = level.tileSize;
       const px = new Uint8Array(size * size * 4);
       for (let i = 0; i < size * size; i++) px.set([fill[0], fill[1], fill[2], 0], i * 4);
@@ -306,15 +315,13 @@ export async function buildOrthoPyramid(o: OrthoBuildOptions): Promise<OrthoBuil
       })
         .webp({ lossless: true, exact: true })
         .toBuffer();
-      for (let y = 0; y < level.rows; y++)
-        for (let x = 0; x < level.cols; x++) {
-          if (have.has(`${x}_${y}`)) continue;
-          o.w.write(tileRel(level, x, y), blank);
-          names.push(`${x}_${y}`);
-          stats.tiles++;
-          stats.blank++;
-          stats.bytes += blank.length;
-        }
+      for (const [x, y] of slots) {
+        o.w.write(tileRel(level, x, y), blank);
+        names.push(`${x}_${y}`);
+        stats.tiles++;
+        stats.blank++;
+        stats.bytes += blank.length;
+      }
     }
     names.sort();
     stamp.tiles[String(level.z)] = names;

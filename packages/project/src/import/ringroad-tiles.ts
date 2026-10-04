@@ -314,6 +314,33 @@ export function bestShift(
   };
 }
 
+/**
+ * Empty slots (row-major) that get a no-data tile: all of them on a level with at most
+ * `completeUpTo` slots, else those within `rings` tiles (Chebyshev) of a real tile `x_y` in `have`.
+ */
+export function blankSlots(
+  cols: number,
+  rows: number,
+  have: ReadonlySet<string>,
+  o: { completeUpTo: number; rings: number },
+): [number, number][] {
+  const want = new Set<string>();
+  if (cols * rows <= o.completeUpTo) {
+    for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) want.add(`${x}_${y}`);
+  } else if (o.rings > 0) {
+    for (const k of have) {
+      const [hx, hy] = k.split('_').map(Number) as [number, number];
+      for (let y = Math.max(0, hy - o.rings); y <= Math.min(rows - 1, hy + o.rings); y++)
+        for (let x = Math.max(0, hx - o.rings); x <= Math.min(cols - 1, hx + o.rings); x++)
+          want.add(`${x}_${y}`);
+    }
+  }
+  return [...want]
+    .filter((k) => !have.has(k))
+    .map((k) => k.split('_').map(Number) as [number, number])
+    .sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+}
+
 /** Sort tile coordinates along a Z-order (Morton) curve. */
 export function zOrder(tiles: readonly (readonly [number, number])[]): [number, number][] {
   const key = (x: number, y: number) => {

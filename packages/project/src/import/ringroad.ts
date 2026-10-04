@@ -50,7 +50,7 @@ const TILE_PX = 1024;
 const LEVELS = 8;
 const FINEST_SRC_ZOOM = 22;
 /** Bump when the resampling changes, so a re-run rebuilds the ortho. */
-const ORTHO_ALGO = 'rr-ortho-3';
+const ORTHO_ALGO = 'rr-ortho-5';
 /** Viewer navy under no-data pixels (the 3D view draws ortho tiles opaque). */
 const NO_DATA: [number, number, number] = [20, 29, 45];
 const CREATED_AT = '2024-04-02T00:00:00+03:00';
@@ -347,7 +347,8 @@ export async function importRingroad(opts: ImportOptions): Promise<ImportResult>
     w,
     stamp,
     fill: NO_DATA,
-    completeUpTo: 16,
+    completeUpTo: 1024,
+    blankRings: 2,
     log,
   });
   if (ortho.reused) log('ortho: source unchanged, tiles of the previous run kept');
@@ -652,7 +653,7 @@ export async function importRingroad(opts: ImportOptions): Promise<ImportResult>
     '- `MapView` has no GeoJSON overlay layer in the manifest (raster kinds only), so the centreline, chainage and PCI units are not drawn on the map yet; they wait in `road.json` and `road/*.geojson`.',
     '- `MapView` draws a kit pyramid at one coarse level (at most 16 tiles, here 1.04 m per pixel) and issues as points: cracks are visible in 3D and in the close-ups, not on the 2D map.',
     '- The 3D view shows no marker for map sightings (`sightingAnchor` in @aio/annotate reads mesh and point cloud sightings only), so defects are not pinned in 3D.',
-    `- The 3D kit pyramid adapter plans tiles over every slot of a level (${(plan.levels[plan.levels.length - 1]?.cols ?? 0) ** 2} at level 7, measured 3.6 ms per update with 1024 px tiles against 17 ms with 512 px, hence 1024) and retries missing tiles; the corridor fills a small part of the square.`,
+    `- The 3D kit pyramid adapter plans tiles over every slot of a level (${(plan.levels[plan.levels.length - 1]?.cols ?? 0) ** 2} at level 7, measured 3.6 ms per update with 1024 px tiles against 17 ms with 512 px, hence 1024) and requests (and retries every few frames) missing tiles, and it draws ortho tiles opaque, so no-data shows as the viewer navy over the basemap inside the square. To keep the logs clean the importer writes small no-data tiles into every empty slot of levels 0 to 5 and two tiles around the corridor on levels 6 and 7; a 3D view far off the corridor at close range can still ask for missing tiles. A tile list in tiles.json would let the adapter skip them.`,
   ]);
   w.write('IMPORT-REPORT.md', rep.toMarkdown(opts.out));
   return {

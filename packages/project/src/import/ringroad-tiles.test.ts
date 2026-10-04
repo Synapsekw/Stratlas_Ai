@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { fromWgs84, toWgs84 } from '@aio/geo';
 import {
   bestShift,
+  blankSlots,
   levelCorners,
   parseRrtBundle,
   planPyramid,
@@ -223,6 +224,26 @@ describe('image shift check', () => {
   it('reports no correlation for a flat image', () => {
     const s = bestShift(new Float32Array(w * h), b, w, h, 4);
     expect(s.score).toBe(0);
+  });
+});
+
+describe('no-data slots', () => {
+  it('fills every empty slot of a small level', () => {
+    expect(blankSlots(2, 2, new Set(['0_0']), { completeUpTo: 4, rings: 0 })).toEqual([
+      [1, 0],
+      [0, 1],
+      [1, 1],
+    ]);
+  });
+
+  it('fills a ring around the real tiles of a large level, inside the grid', () => {
+    const slots = blankSlots(8, 8, new Set(['0_0', '1_0']), { completeUpTo: 4, rings: 1 });
+    expect(slots).toEqual([
+      [2, 0],
+      [0, 1],
+      [1, 1],
+      [2, 1],
+    ]);
   });
 });
 
