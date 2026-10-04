@@ -1,14 +1,14 @@
 import type {
   AioBridge,
+  Conversation,
   IpcChannel,
   IpcEvent,
   IpcRequest,
   IpcResponse,
-  Settings,
 } from '@aio/schema';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import type { RendererToolContext } from './renderer-tools';
-import { AgentSession } from './session';
+import { AgentSession, resetPreviewMemory } from './session';
 import { fixtureWorkspace } from './test-fixtures';
 
 interface Call {
@@ -16,25 +16,75 @@ interface Call {
   req: unknown;
 }
 
-function fakeBridge(opts: { cloudAi?: boolean; hasKey?: boolean; sendError?: string } = {}) {
+interface BridgeOpts {
+  cloudAi?: boolean;
+  hasKey?: boolean;
+  sendError?: string;
+  /** Default true so the conversation tests are not stopped by the send preview. */
+  alwaysAllow?: boolean;
+  cloud?: boolean;
+  saved?: Conversation;
+}
+
+function fakeBridge(opts: BridgeOpts = {}) {
   const calls: Call[] = [];
   let listener: ((e: IpcEvent<'ai:event'>) => void) | null = null;
-  const settings: Settings = {
-    cloudAi: opts.cloudAi ?? true,
-    theme: 'dark',
-    sidebarCollapsed: false,
-    dataRoot: 'E:/data',
-    routes: [{ task: 'chat', provider: 'openai', model: 'gpt-5' }],
-  };
+  const route = { task: 'chat' as const, provider: 'openai' as const, model: 'gpt-5' };
+  const status: IpcResponse<'ai:status'> =
+    opts.cloudAi === false
+      ? { ready: false, reason: 'cloud-off', message: 'Cloud AI is off.', cloud: true, route }
+      : opts.hasKey === false
+        ? {
+            ready: false,
+            reason: 'no-key',
+            message: 'Add an OpenAI key in Settings, AI providers.',
+            cloud: true,
+            route,
+          }
+        : { ready: true, route, cloud: opts.cloud ?? true };
   const bridge: AioBridge = {
     invoke: <C extends IpcChannel>(channel: C, req: IpcRequest<C>) => {
       calls.push({ channel, req });
       const answer: Partial<Record<IpcChannel, unknown>> = {
-        'settings:get': settings,
-        'ai:hasKey': { present: opts.hasKey ?? true },
+        'ai:status': status,
+        'ai:project': {
+          alwaysAllow: opts.alwaysAllow ?? true,
+          policy: 'allow',
+          usage: [
+            {
+              provider: 'openai',
+              inputTokens: 500,
+              outputTokens: 10,
+              costUsd: 0.5,
+              costKnown: true,
+            },
+          ],
+        },
+        'ai:setConsent': { ok: true },
         'ai:send': opts.sendError ? { ok: false, error: opts.sendError } : { ok: true },
         'ai:toolResult': { ok: true },
         'ai:cancel': { ok: true },
+        'ai:saveConversation': { ok: true },
+        'ai:listConversations': {
+          ok: true,
+          conversations: opts.saved
+            ? [
+                {
+                  id: opts.saved.id,
+                  title: opts.saved.title,
+                  window: opts.saved.window,
+                  createdAt: opts.saved.createdAt,
+                  updatedAt: opts.saved.updatedAt,
+                  turns: opts.saved.turns.length,
+                  pending: 1,
+                },
+              ]
+            : [],
+        },
+        'ai:loadConversation': opts.saved
+          ? { ok: true, conversation: opts.saved }
+          : { ok: false, error: 'Not found.' },
+        'dialog:saveFile': { path: 'C:/out/chat.md' },
       };
       return Promise.resolve(answer[channel] as IpcResponse<C>);
     },
@@ -50,7 +100,11 @@ function fakeBridge(opts: { cloudAi?: boolean; hasKey?: boolean; sendError?: str
   return { bridge, emit, sent };
 }
 
-function setup(opts: Parameters<typeof fakeBridge>[0] = {}) {
+beforeEach(() => {
+  resetPreviewMemory();
+});
+
+function setup(opts: BridgeOpts = {}) {
   const b = fakeBridge(opts);
   const ws = fixtureWorkspace();
   let n = 0;
@@ -67,6 +121,8 @@ function setup(opts: Parameters<typeof fakeBridge>[0] = {}) {
     window: 'scene3d',
     toolContext,
     newId: () => `id${++n}`,
+    now: () => new Date('2026-10-04T10:00:00Z'),
+    saveDelayMs: 0,
   });
   session.connect();
   return { ...b, ws, session };
@@ -279,5 +335,237 @@ describe('agent session conversation', () => {
     await t.session.send('hi');
     t.emit({ type: 'text', runId: 'someone-else', delta: 'nope' });
     expect(t.session.getState().turns[1]).toMatchObject({ parts: [] });
+  });
+});
+
+describe('send preview (AI-6)', () => {
+  it('shows what will be sent before the first cloud send in a project', async () => {
+    const t = setup({ alwaysAllow: false });
+    await t.session.refresh();
+    await t.session.send('Look at this', { attachFrame: true });
+    expect(t.sent('ai:send')).toHaveLength(0);
+    expect(t.session.getState().preview).toMatchObject({
+      text: 'Look at this',
+      image: 'data:image/jpeg;base64,AAAA',
+      route: { provider: 'openai', model: 'gpt-5' },
+      context: { window: 'scene3d', project: { name: 'Tank farm' } },
+    });
+    await t.session.confirmPreview();
+    expect(t.session.getState().preview).toBeNull();
+    expect(t.sent('ai:send')[0]?.req).toMatchObject({
+      projectId: 'p1',
+      image: 'data:image/jpeg;base64,AAAA',
+    });
+    expect(t.sent('ai:setConsent')).toHaveLength(0);
+    t.emit({ type: 'done', runId: 'id1' });
+    // Once confirmed, later sends in this project go straight out.
+    await t.session.send('And now?');
+    expect(t.sent('ai:send')).toHaveLength(2);
+  });
+
+  it('stores "Always allow for this project"', async () => {
+    const t = setup({ alwaysAllow: false });
+    await t.session.refresh();
+    await t.session.send('hi');
+    await t.session.confirmPreview({ always: true });
+    expect(t.sent('ai:setConsent')[0]?.req).toEqual({ projectId: 'p1', alwaysAllow: true });
+    expect(t.session.getState().alwaysAllow).toBe(true);
+  });
+
+  it('sends nothing when the preview is cancelled', async () => {
+    const t = setup({ alwaysAllow: false });
+    await t.session.refresh();
+    await t.session.send('hi');
+    t.session.cancelPreview();
+    expect(t.session.getState().preview).toBeNull();
+    expect(t.sent('ai:send')).toHaveLength(0);
+    expect(t.session.getState().turns).toHaveLength(0);
+  });
+
+  it('skips the preview for a local model', async () => {
+    const t = setup({ alwaysAllow: false, cloud: false });
+    await t.session.refresh();
+    await t.session.send('hi');
+    expect(t.session.getState().preview).toBeNull();
+    expect(t.sent('ai:send')).toHaveLength(1);
+  });
+});
+
+describe('history and the project meter', () => {
+  it('saves the conversation to the project after a reply', async () => {
+    const t = setup();
+    await t.session.send('What is open?');
+    t.emit({ type: 'text', runId: 'id1', delta: 'Two issues.' });
+    t.emit({ type: 'done', runId: 'id1' });
+    await t.session.settled();
+    const last = t.sent('ai:saveConversation').at(-1)?.req as IpcRequest<'ai:saveConversation'>;
+    expect(last.projectId).toBe('p1');
+    expect(last.conversation).toMatchObject({
+      schema: 'aio.conversation/1',
+      id: 'id2',
+      title: 'What is open?',
+      window: 'scene3d',
+      turns: [
+        { kind: 'user', text: 'What is open?' },
+        { kind: 'assistant', status: 'done', parts: [{ type: 'text', text: 'Two issues.' }] },
+      ],
+    });
+  });
+
+  it('adds usage to the project meter per provider', async () => {
+    const t = setup();
+    await t.session.refresh();
+    await t.session.send('hi');
+    t.emit({
+      type: 'usage',
+      runId: 'id1',
+      inputTokens: 100,
+      outputTokens: 5,
+      costUsd: 0.25,
+      provider: 'openai',
+      model: 'gpt-5',
+    });
+    expect(t.session.getState().projectUsage).toEqual([
+      { provider: 'openai', inputTokens: 600, outputTokens: 15, costUsd: 0.75, costKnown: true },
+    ]);
+  });
+
+  it('exports the conversation as Markdown', async () => {
+    const t = setup();
+    await t.session.send('Summarise');
+    t.emit({ type: 'text', runId: 'id1', delta: 'All good.' });
+    t.emit({ type: 'done', runId: 'id1' });
+    const r = await t.session.exportMarkdown();
+    expect(r).toEqual({ path: 'C:/out/chat.md' });
+    const req = t.sent('dialog:saveFile')[0]?.req as IpcRequest<'dialog:saveFile'>;
+    expect(req.defaultName).toBe('Tank farm agent 2026-10-04-10-00.md');
+    expect(req.data).toContain('## You\n\nSummarise');
+    expect(req.data).toContain('All good.');
+  });
+});
+
+describe('approvals after a restart', () => {
+  const saved: Conversation = {
+    schema: 'aio.conversation/1',
+    id: 'old',
+    title: 'Draft it',
+    window: 'map',
+    createdAt: '2026-10-03T10:00:00.000Z',
+    updatedAt: '2026-10-03T10:01:00.000Z',
+    turns: [
+      { kind: 'user', id: 'u1', text: 'Draft it', chips: [], frame: false },
+      {
+        kind: 'assistant',
+        id: 'a1',
+        runId: 'r-old',
+        parts: [
+          { type: 'step', callId: 'k1' },
+          { type: 'step', callId: 'k2' },
+        ],
+        status: 'streaming',
+      },
+    ],
+    steps: {
+      k1: {
+        callId: 'k1',
+        name: 'create_issue_draft',
+        input: {
+          title: 'Rust',
+          severity: 3,
+          classId: 'corrosion',
+          at: { kind: 'point', p: [0, 0, 0] },
+        },
+        risk: 'write',
+        status: 'awaiting',
+        canUndo: false,
+      },
+      k2: {
+        callId: 'k2',
+        name: 'list_issues',
+        input: {},
+        risk: 'read',
+        status: 'running',
+        canUndo: false,
+      },
+    },
+    usage: { inputTokens: 10, outputTokens: 2, costUsd: 0, costKnown: true },
+  };
+
+  it('lists saved conversations and restores waiting approvals as waiting', async () => {
+    const t = setup({ saved });
+    await t.session.listHistory();
+    expect(t.session.getState().history).toMatchObject([{ id: 'old', pending: 1 }]);
+    expect(await t.session.resume('old')).toBeNull();
+    const s = t.session.getState();
+    expect(s.id).toBe('old');
+    expect(s.steps.k1?.status).toBe('awaiting');
+    expect(s.steps.k2?.status).toBe('cancelled');
+    expect(s.turns[1]).toMatchObject({ status: 'stopped' });
+    // Nothing ran on its own.
+    expect(t.ws.getState().issues).toHaveLength(3);
+    expect(t.sent('ai:toolResult')).toHaveLength(0);
+  });
+
+  it('runs a restored approval only on approve and notes it for the model', async () => {
+    const t = setup({ saved });
+    await t.session.resume('old');
+    await t.session.approve('k1');
+    expect(t.ws.getState().issues).toHaveLength(4);
+    expect(t.session.getState().steps.k1).toMatchObject({
+      status: 'done',
+      summary: 'AG01 drafted',
+    });
+    expect(t.sent('ai:toolResult')).toHaveLength(0);
+    const reply = t.session.getState().turns[1];
+    expect(reply?.kind === 'assistant' ? reply.parts.at(-1) : null).toEqual({
+      type: 'text',
+      text: '\n(Approved later and run: create_issue_draft, AG01 drafted.)',
+    });
+    await t.session.settled();
+    const last = t.sent('ai:saveConversation').at(-1)?.req as IpcRequest<'ai:saveConversation'>;
+    expect(last.conversation.steps.k1?.status).toBe('done');
+  });
+
+  it('rejects a restored approval without running it', async () => {
+    const t = setup({ saved });
+    await t.session.resume('old');
+    t.session.reject('k1');
+    expect(t.session.getState().steps.k1?.status).toBe('rejected');
+    expect(t.ws.getState().issues).toHaveLength(3);
+    expect(t.sent('ai:toolResult')).toHaveLength(0);
+  });
+
+  it('keeps a waiting approval waiting in the saved file when the panel closes', async () => {
+    const b = fakeBridge();
+    const ws = fixtureWorkspace();
+    let n = 0;
+    const session = new AgentSession({
+      bridge: b.bridge,
+      window: 'scene3d',
+      toolContext: () => ({
+        workspace: ws,
+        window: 'scene3d',
+        scene: () => null,
+        fetchJson: () => Promise.reject(new Error('offline')),
+        captureFrame: () => Promise.resolve(null),
+        now: () => new Date(),
+      }),
+      newId: () => `id${++n}`,
+      saveDelayMs: 10_000,
+    });
+    const disconnect = session.connect();
+    await session.send('draft it');
+    b.emit({
+      type: 'tool-call',
+      runId: 'id1',
+      callId: 'c1',
+      name: 'create_issue_draft',
+      input: { title: 'Rust', severity: 3 },
+      risk: 'write',
+    });
+    disconnect();
+    await session.settled();
+    const last = b.sent('ai:saveConversation').at(-1)?.req as IpcRequest<'ai:saveConversation'>;
+    expect(last.conversation.steps.c1?.status).toBe('awaiting');
   });
 });

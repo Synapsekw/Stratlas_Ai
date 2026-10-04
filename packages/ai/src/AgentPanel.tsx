@@ -1,4 +1,4 @@
-import type { AioBridge, WindowKind } from '@aio/schema';
+import type { AioBridge, ConversationSummary, WindowKind } from '@aio/schema';
 import { useWorkspace } from '@aio/workspace';
 import {
   useEffect,
@@ -10,11 +10,11 @@ import {
 } from 'react';
 import { bindingLabel } from './context';
 import { PANEL_CSS } from './panel-css';
-import { formatMeter } from './pricing';
+import { formatMeter, totalUsage } from './pricing';
 import { WINDOW_LABELS } from './prompt';
 import { defaultToolContext } from './renderer-tools';
 import { modelLabel, PROVIDER_LABELS } from './routes';
-import { AgentSession, type Availability, type Step, type Turn } from './session';
+import { AgentSession, type Availability, type SendPreview, type Step, type Turn } from './session';
 import { SUGGESTIONS } from './suggestions';
 import { getToolSpec } from './tools';
 
@@ -30,9 +30,16 @@ function getBridge(): AioBridge | null {
   return (globalThis as { aio?: AioBridge }).aio ?? null;
 }
 
+function providerName(provider: string): string {
+  return provider in PROVIDER_LABELS
+    ? PROVIDER_LABELS[provider as keyof typeof PROVIDER_LABELS]
+    : provider;
+}
+
 /**
- * Agent panel: conversation, tool steps with approve, reject and undo, cost meter. Sends through
- * window.aio 'ai:send', executes renderer tools on 'ai:event' tool calls. Owner: stream S9.
+ * Agent panel: conversation, tool steps with approve, reject and undo, history, send preview and
+ * the session and project meters. Sends through window.aio 'ai:send', executes renderer tools on
+ * 'ai:event' tool calls. Owner: stream S9.
  */
 export function AgentPanel({ window: win, className }: AgentPanelProps) {
   const [session] = useState(
@@ -45,13 +52,19 @@ export function AgentPanel({ window: win, className }: AgentPanelProps) {
   );
   const state = useSyncExternalStore(session.subscribe, session.getState);
   const binding = useWorkspace((s) => bindingLabel(win, s));
+  const projectId = useWorkspace((s) => s.project?.id ?? null);
   const [draft, setDraft] = useState('');
   const [attach, setAttach] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const log = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    session.setWindow(win);
+  }, [session, win]);
+
+  useEffect(() => {
     const disconnect = session.connect();
-    void session.refresh();
     const onFocus = () => {
       void session.refresh();
     };
@@ -61,6 +74,13 @@ export function AgentPanel({ window: win, className }: AgentPanelProps) {
       disconnect();
     };
   }, [session]);
+
+  // A different project: a fresh conversation, its consent, policy and meter.
+  useEffect(() => {
+    session.reset();
+    setShowHistory(false);
+    void session.refresh();
+  }, [session, projectId]);
 
   useEffect(() => {
     const el = log.current;
@@ -84,7 +104,18 @@ export function AgentPanel({ window: win, className }: AgentPanelProps) {
     }
   };
   const tokens = state.usage.inputTokens + state.usage.outputTokens;
+  const project = totalUsage(state.projectUsage);
+  const projectTokens = project.inputTokens + project.outputTokens;
   const route = state.availability.status === 'ready' ? state.availability.route : null;
+  const cloud = state.availability.status === 'ready' && state.availability.cloud;
+  const openHistory = () => {
+    setShowHistory((v) => !v);
+    void session.listHistory();
+  };
+  const exportChat = async () => {
+    const r = await session.exportMarkdown();
+    setNotice(r.error ?? (r.path ? `Saved to ${r.path}` : null));
+  };
 
   return (
     <section className={['aio-agent', className].filter(Boolean).join(' ')} aria-label="Agent">
@@ -103,11 +134,33 @@ export function AgentPanel({ window: win, className }: AgentPanelProps) {
           <button
             type="button"
             className="ag-btn ghost icon"
+            title="Conversations in this project"
+            aria-label="Conversations in this project"
+            aria-pressed={showHistory}
+            disabled={!projectId}
+            onClick={openHistory}
+          >
+            <Icon name="history" />
+          </button>
+          <button
+            type="button"
+            className="ag-btn ghost icon"
+            title="Export this conversation as Markdown"
+            aria-label="Export this conversation as Markdown"
+            disabled={state.turns.length === 0}
+            onClick={() => void exportChat()}
+          >
+            <Icon name="download" />
+          </button>
+          <button
+            type="button"
+            className="ag-btn ghost icon"
             title="New conversation"
             aria-label="New conversation"
             disabled={state.turns.length === 0}
             onClick={() => {
               session.reset();
+              setShowHistory(false);
             }}
           >
             <Icon name="new" />
@@ -116,7 +169,18 @@ export function AgentPanel({ window: win, className }: AgentPanelProps) {
       </header>
 
       <div className="ag-log" ref={log} aria-live="polite">
-        {state.availability.status === 'disabled' ? (
+        {showHistory ? (
+          <History
+            items={state.history}
+            current={state.id}
+            onOpen={(id) => {
+              void session.resume(id).then((error) => {
+                setNotice(error);
+                if (!error) setShowHistory(false);
+              });
+            }}
+          />
+        ) : state.availability.status === 'disabled' && state.turns.length === 0 ? (
           <Disabled availability={state.availability} onRetry={() => void session.refresh()} />
         ) : state.turns.length === 0 ? (
           <div className="ag-empty">
@@ -141,9 +205,7 @@ export function AgentPanel({ window: win, className }: AgentPanelProps) {
               key={t.id}
               turn={t}
               steps={state.steps}
-              who={
-                route ? `${modelLabel(route.model)} · ${PROVIDER_LABELS[route.provider]}` : 'Agent'
-              }
+              who={route ? `${modelLabel(route.model)} · ${providerName(route.provider)}` : 'Agent'}
               session={session}
             />
           ))
@@ -151,6 +213,21 @@ export function AgentPanel({ window: win, className }: AgentPanelProps) {
       </div>
 
       <footer className="ag-in">
+        {(notice ?? state.saveError) && (
+          <div className="ag-note" role="status">
+            {state.saveError ? `History is not saved: ${state.saveError}` : notice}
+            <button
+              type="button"
+              className="ag-btn ghost icon"
+              aria-label="Dismiss"
+              onClick={() => {
+                setNotice(null);
+              }}
+            >
+              <Icon name="x" size={12} />
+            </button>
+          </div>
+        )}
         <div className="ag-box">
           <textarea
             value={draft}
@@ -211,31 +288,198 @@ export function AgentPanel({ window: win, className }: AgentPanelProps) {
           </div>
         </div>
         <div className="ag-row">
-          <span>{route ? `${modelLabel(route.model)} · cloud` : 'Cloud AI off'}</span>
+          <span>
+            {route
+              ? `${modelLabel(route.model)} · ${cloud ? 'cloud' : 'on this machine'}`
+              : 'Agent off'}
+          </span>
           <span className="sp" />
           <span
             className="ag-mono"
-            title={`${state.usage.inputTokens} input and ${state.usage.outputTokens} output tokens this session; cost is an estimate`}
+            title={`${String(state.usage.inputTokens)} input and ${String(state.usage.outputTokens)} output tokens in this conversation; cost is an estimate`}
           >
             {formatMeter(tokens, state.usage.costKnown ? state.usage.costUsd : undefined)}
           </span>
+          {projectId && (
+            <span
+              className="ag-mono ag-proj"
+              title={`${String(project.inputTokens)} input and ${String(project.outputTokens)} output tokens in this project on this workstation; cost is an estimate`}
+            >
+              Project {formatMeter(projectTokens, project.costKnown ? project.costUsd : undefined)}
+            </span>
+          )}
         </div>
       </footer>
+      {state.preview && (
+        <PreviewDialog
+          preview={state.preview}
+          projectName={projectNameOf(state.preview)}
+          onCancel={() => {
+            session.cancelPreview();
+          }}
+          onSend={(always) => void session.confirmPreview({ always })}
+        />
+      )}
     </section>
   );
 }
 
+function projectNameOf(p: SendPreview): string {
+  const project = p.context.project as { name?: unknown } | null | undefined;
+  return typeof project?.name === 'string' ? project.name : 'this project';
+}
+
+/** AI-6: exactly what leaves the machine with this message, before the first send in a project. */
+function PreviewDialog({
+  preview,
+  projectName,
+  onCancel,
+  onSend,
+}: {
+  preview: SendPreview;
+  projectName: string;
+  onCancel: () => void;
+  onSend: (always: boolean) => void;
+}) {
+  const [always, setAlways] = useState(false);
+  const sendRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    sendRef.current?.focus();
+  }, []);
+  return (
+    <div
+      className="ag-modal-back"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onCancel();
+      }}
+    >
+      <div className="ag-modal" role="dialog" aria-modal="true" aria-labelledby="ag-prev-h">
+        <h4 id="ag-prev-h">Send to {providerName(preview.route.provider)}?</h4>
+        <p className="ag-sub">
+          This is the first message to a cloud provider in {projectName}. This is exactly what
+          leaves this workstation:
+        </p>
+        <dl className="ag-sent">
+          <dt>Provider and model</dt>
+          <dd className="ag-mono">
+            {providerName(preview.route.provider)} · {preview.route.model}
+          </dd>
+          <dt>Your message</dt>
+          <dd>{preview.text}</dd>
+          <dt>Window context (text)</dt>
+          <dd>
+            <pre>{JSON.stringify(preview.context, null, 2)}</pre>
+          </dd>
+          <dt>Attached frame</dt>
+          <dd>
+            {preview.image ? (
+              <img src={preview.image} alt="The frame that will be sent" />
+            ) : (
+              <span className="ag-faint">None</span>
+            )}
+          </dd>
+        </dl>
+        <p className="ag-sub">
+          Later frames and other data-sending steps still ask before they run.
+        </p>
+        <label className="ag-check">
+          <input
+            type="checkbox"
+            checked={always}
+            onChange={(e) => {
+              setAlways(e.target.checked);
+            }}
+          />
+          Always allow for this project
+        </label>
+        <div className="ag-modal-acts">
+          <button type="button" className="ag-btn" onClick={onCancel}>
+            Cancel
+          </button>
+          <button
+            ref={sendRef}
+            type="button"
+            className="ag-btn primary"
+            onClick={() => {
+              onSend(always);
+            }}
+          >
+            <Icon name="send" size={12} />
+            Send
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function History({
+  items,
+  current,
+  onOpen,
+}: {
+  items: ConversationSummary[] | null;
+  current: string;
+  onOpen: (id: string) => void;
+}) {
+  if (items === null) return <p className="ag-faint">Loading conversations</p>;
+  if (items.length === 0) {
+    return (
+      <div className="ag-empty">
+        <p>No saved conversations in this project yet. Conversations save as you go.</p>
+      </div>
+    );
+  }
+  return (
+    <ul className="ag-hist" aria-label="Saved conversations">
+      {items.map((c) => (
+        <li key={c.id}>
+          <button
+            type="button"
+            aria-current={c.id === current}
+            onClick={() => {
+              onOpen(c.id);
+            }}
+          >
+            <b>{c.title || 'Untitled conversation'}</b>
+            <span className="ag-mono">
+              {c.updatedAt.slice(0, 16).replace('T', ' ')} · {WINDOW_LABELS[c.window]} ·{' '}
+              {String(c.turns)} messages
+            </span>
+            {c.pending > 0 && (
+              <span className="ag-pending">
+                {c.pending === 1 ? '1 approval waiting' : `${String(c.pending)} approvals waiting`}
+              </span>
+            )}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+const OFF_HELP: Partial<Record<string, string[]>> = {
+  'cloud-off': [
+    'Open Settings, Privacy and cloud.',
+    'Switch on Allow cloud AI.',
+    'Add an API key for Anthropic, OpenAI or Google Gemini in Settings, AI providers.',
+  ],
+  'no-key': ['Open Settings, AI providers.', 'Add an API key for the provider of Agent chat.'],
+  'local-off': ['Open Settings, AI providers.', 'Turn on the local model and check its address.'],
+};
+
 function Disabled({ availability, onRetry }: { availability: Availability; onRetry: () => void }) {
   if (availability.status !== 'disabled') return null;
+  const help = OFF_HELP[availability.reason];
   return (
     <div className="ag-off" role="status">
       <b>The agent is off</b>
       <p>{availability.message}</p>
-      {availability.reason !== 'no-bridge' && (
+      {help && (
         <ol>
-          <li>Open Settings, AI providers.</li>
-          <li>Switch on Allow cloud AI.</li>
-          <li>Add an API key for Anthropic, OpenAI or Google Gemini.</li>
+          {help.map((h) => (
+            <li key={h}>{h}</li>
+          ))}
         </ol>
       )}
       {availability.reason !== 'no-bridge' && (
@@ -410,11 +654,23 @@ export function describeStep(step: Pick<Step, 'name' | 'input'>): string {
     return `Adds draft issue "${title}", severity ${String(sev)}`;
   }
   if (step.name === 'capture_frame') return 'Sends the current frame to the AI provider';
+  if (step.name === 'export_issues') return 'Writes the matching issues to a CSV file you choose';
   const description = getToolSpec(step.name)?.meta.description;
   return description ?? `Runs ${step.name}`;
 }
 
-type IconName = 'agent' | 'check' | 'clock' | 'x' | 'undo' | 'send' | 'stop' | 'camera' | 'new';
+type IconName =
+  | 'agent'
+  | 'check'
+  | 'clock'
+  | 'x'
+  | 'undo'
+  | 'send'
+  | 'stop'
+  | 'camera'
+  | 'new'
+  | 'history'
+  | 'download';
 
 const PATHS: Record<IconName, string> = {
   agent:
@@ -427,6 +683,8 @@ const PATHS: Record<IconName, string> = {
   stop: 'M6 6h8v8H6z',
   camera: 'M3 7h3l1.5-2h5L14 7h3v9H3zM10 9a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z',
   new: 'M10 4v12M4 10h12',
+  history: 'M3.5 10a6.5 6.5 0 1 0 2-4.7M3 3v3h3M10 6.5V10l2.5 1.5',
+  download: 'M10 3v9M6 8.5l4 4 4-4M4 15.5h12',
 };
 
 function Icon({ name, size = 14 }: { name: IconName; size?: number }) {

@@ -34,22 +34,38 @@ async function render(bridge: AioBridge | null) {
   return host;
 }
 
-function bridge(cloudAi: boolean) {
+function bridge(cloudAi: boolean, alwaysAllow = true) {
   const sent: IpcRequest<'ai:send'>[] = [];
   let listener: ((e: IpcEvent<'ai:event'>) => void) | null = null;
   const b: AioBridge = {
     invoke: <C extends IpcChannel>(channel: C, req: IpcRequest<C>) => {
       if (channel === 'ai:send') sent.push(req as IpcRequest<'ai:send'>);
+      const route = { task: 'chat', provider: 'anthropic', model: 'claude-sonnet-5-5' };
       const answer: Partial<Record<IpcChannel, unknown>> = {
-        'settings:get': {
-          cloudAi,
-          theme: 'dark',
-          sidebarCollapsed: false,
-          dataRoot: 'E:/data',
-          routes: [{ task: 'chat', provider: 'anthropic', model: 'claude-sonnet-5-5' }],
+        'ai:status': cloudAi
+          ? { ready: true, route, cloud: true }
+          : {
+              ready: false,
+              reason: 'cloud-off',
+              message: 'Cloud AI is off. Turn it on in Settings, AI providers, to use the agent.',
+              cloud: true,
+              route,
+            },
+        'ai:project': {
+          alwaysAllow,
+          policy: 'allow',
+          usage: [
+            {
+              provider: 'anthropic',
+              inputTokens: 100_000,
+              outputTokens: 2_000,
+              costUsd: 1.5,
+              costKnown: true,
+            },
+          ],
         },
-        'ai:hasKey': { present: true },
         'ai:send': { ok: true },
+        'ai:listConversations': { ok: true, conversations: [] },
       };
       return Promise.resolve((answer[channel] ?? { ok: true }) as IpcResponse<C>);
     },
@@ -103,6 +119,30 @@ describe('AgentPanel', () => {
     expect(el.textContent).toContain('Two clips.');
     expect(el.textContent).toContain('12.4k tok · $0.04');
     expect(el.textContent).toContain('Claude Sonnet 5.5');
+  });
+});
+
+describe('AgentPanel send preview', () => {
+  it('shows provider, model, text and context before the first send, then sends', async () => {
+    workspace.getState().openProject({ id: 'p1', root: 'E:/x', manifest: fixtureManifest() }, []);
+    const t = bridge(true, false);
+    const el = await render(t.b);
+    expect(el.textContent).toContain('Project 102.0k tok · $1.50');
+    await act(async () => {
+      el.querySelector<HTMLButtonElement>('.ag-sug')?.click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    const dialog = el.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain('Anthropic');
+    expect(dialog?.textContent).toContain('claude-sonnet-5-5');
+    expect(dialog?.textContent).toContain('Tank farm');
+    expect(t.sent).toHaveLength(0);
+    await act(async () => {
+      dialog?.querySelector<HTMLButtonElement>('button.primary')?.click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(t.sent).toHaveLength(1);
+    expect(el.querySelector('[role="dialog"]')).toBeNull();
   });
 });
 
