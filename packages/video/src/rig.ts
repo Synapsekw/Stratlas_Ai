@@ -167,6 +167,8 @@ export class VideoRig {
   private player: ClipPlayer | null = null;
   private texture: VideoTexture | null = null;
   private lens: LensModel | null = null;
+  /** Lens under calibration (Align): replaces the active clip's lens until cleared. */
+  private lensOverride: LensModel | null = null;
   private mode: CameraMode = 'free';
   private saved: { pos: Vector3; quat: Quaternion; up: Vector3; fov: number; near: number } | null =
     null;
@@ -326,6 +328,24 @@ export class VideoRig {
     return this.mode;
   }
 
+  /**
+   * Try a lens on the active clip without saving it (lens calibration): the drone-eye camera,
+   * frustum and projector use it until `null` restores the layer's own lens.
+   */
+  setLensOverride(lens: LensModel | null) {
+    this.lensOverride = lens;
+    const entry = this.activeId ? this.clips.get(this.activeId) : undefined;
+    const use = lens ?? entry?.layer.lens;
+    if (use) this.applyLens(use);
+    this.handle.requestRender();
+  }
+
+  private applyLens(lens: LensModel) {
+    this.lens = lens;
+    this.projector.setLens(lens);
+    this.frustumRays = frustumRays(lens);
+  }
+
   /** Current projector pose, if a clip is active and has a flight. */
   currentPose(): { pos: Vector3; q: Quaternion } | null {
     return this.pose.valid ? { pos: this.pose.pos.clone(), q: this.pose.q.clone() } : null;
@@ -397,9 +417,7 @@ export class VideoRig {
       const top = Math.max(...entry.flight.samples.map((s) => s.pos[1]));
       this.projector.setOptions({ maxDistance: Math.min(5000, Math.max(30, top * 8)) });
     }
-    this.lens = entry.layer.lens;
-    this.projector.setLens(entry.layer.lens);
-    this.frustumRays = frustumRays(entry.layer.lens);
+    this.applyLens(this.lensOverride ?? entry.layer.lens);
     const onPlay = () => {
       this.hold ??= this.handle.holdContinuous('video playback');
     };
@@ -574,6 +592,11 @@ export function videoRig(handle: SceneHandle): VideoRig {
     rigs.set(handle, rig);
   }
   return rig;
+}
+
+/** Try a lens on the active clip (calibration); `null` restores the clip's own lens. */
+export function setCalibrationLens(handle: SceneHandle, lens: LensModel | null): void {
+  videoRig(handle).setLensOverride(lens);
 }
 
 /** Follow-cam and drone-eye views for the UI. */
