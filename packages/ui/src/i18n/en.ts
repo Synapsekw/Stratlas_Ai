@@ -46,6 +46,19 @@ export const en = {
   'library.count_one': '{count} project',
   'library.count_other': '{count} projects',
 
+  // Scene stage: floating video window
+  'stage.video.window': 'Video {name}',
+  'stage.video.titleBar': 'Video window title bar',
+  'stage.video.moveHint':
+    'Drag to move, double-click to reset. Arrow keys move, plus and minus resize.',
+  'stage.video.resize': 'Resize the video window',
+  'stage.video.float': 'Float over the stage',
+  'stage.video.floatLabel': 'Float the video window',
+  'stage.video.dock': 'Dock beside the stage',
+  'stage.video.dockLabel': 'Dock the video window',
+  'stage.video.hide': 'Hide video window',
+  'stage.video.hideLabel': 'Hide the video window',
+
   // Settings navigation
   'settings.title': 'Settings',
   'settings.sections': 'Settings sections',

@@ -331,3 +331,131 @@ test('playing inside the tank cuts it open; photos and flights reach Media', asy
   await expect(win.locator('.m-flight')).toHaveCount(10);
   await expect(win.locator('#m-flight-clips .m-card')).toHaveCount(7);
 });
+
+/** Off-screen screenshots for the founder's review (outside the repo). */
+const SHOTS = process.env.STRATLAS_SHOTS;
+async function shot(win: Page, name: string) {
+  if (SHOTS) await win.screenshot({ path: join(SHOTS, `hcl-${name}.png`) });
+}
+
+interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+const boxOf = async (win: Page, testId: string): Promise<Box> => {
+  const b = await win.getByTestId(testId).boundingBox();
+  if (!b) throw new Error(`no ${testId}`);
+  return b;
+};
+
+test('the video window moves, resizes with its aspect ratio and remembers its place', async ({
+  app,
+  win,
+}) => {
+  await openHcl(app, win);
+  const video = win.getByTestId('video-window');
+  await expect(video).toBeVisible();
+  const stage = await win.locator('.stage').boundingBox();
+  if (!stage) throw new Error('no stage');
+  const start = await boxOf(win, 'video-window');
+  // It starts at the bottom left of the stage.
+  expect(start.x - stage.x).toBeCloseTo(12, 0);
+
+  // Drag the title bar: the window follows the pointer.
+  const head = await boxOf(win, 'video-header');
+  const from = { x: head.x + 60, y: head.y + head.height / 2 };
+  await win.mouse.move(from.x, from.y);
+  await win.mouse.down();
+  await win.mouse.move(from.x + 300, from.y - 200, { steps: 10 });
+  await win.mouse.up();
+  const moved = await boxOf(win, 'video-window');
+  expect(moved.x - start.x).toBeCloseTo(300, -1);
+  expect(moved.y - start.y).toBeCloseTo(-200, -1);
+  expect(moved.width).toBeCloseTo(start.width, 0);
+
+  // Dragging far away keeps it inside the stage.
+  await win.mouse.move(from.x + 300, from.y - 200);
+  await win.mouse.down();
+  await win.mouse.move(from.x + 4000, from.y - 4000, { steps: 6 });
+  await win.mouse.up();
+  const corner = await boxOf(win, 'video-window');
+  expect(corner.x + corner.width).toBeLessThanOrEqual(stage.x + stage.width - 11);
+  // the title bar stays below the toolbar row, where it can be grabbed again
+  expect(corner.y).toBeGreaterThanOrEqual(stage.y + 55);
+  // ... and back to the left, half way down
+  const head2 = await boxOf(win, 'video-header');
+  const dx = stage.x + 60 - corner.x;
+  const dy = stage.y + stage.height * 0.3 - corner.y;
+  await win.mouse.move(head2.x + 60, head2.y + 10);
+  await win.mouse.down();
+  await win.mouse.move(head2.x + 60 + dx, head2.y + 10 + dy, { steps: 10 });
+  await win.mouse.up();
+  const mid = await boxOf(win, 'video-window');
+
+  // The bottom-right corner resizes; the frame keeps 16:9.
+  const se = win.locator('.vwin-rs.rs-se');
+  const h = await se.boundingBox();
+  if (!h) throw new Error('no resize corner');
+  await win.mouse.move(h.x + h.width / 2, h.y + h.height / 2);
+  await win.mouse.down();
+  await win.mouse.move(h.x + h.width / 2 + 160, h.y + h.height / 2 + 20, { steps: 10 });
+  await win.mouse.up();
+  const bigger = await boxOf(win, 'video-window');
+  expect(bigger.width - mid.width).toBeCloseTo(160, -1);
+  expect(bigger.x).toBeCloseTo(mid.x, 0);
+  expect(bigger.y).toBeCloseTo(mid.y, 0);
+  const frame = await win.locator('.vwin .vframe').boundingBox();
+  if (!frame) throw new Error('no frame');
+  expect(frame.width / frame.height).toBeCloseTo(16 / 9, 1);
+  await shot(win, 'video-moved');
+
+  // The west edge cannot shrink it below the minimum.
+  const w = await win.locator('.vwin-rs.rs-w').boundingBox();
+  if (!w) throw new Error('no west edge');
+  await win.mouse.move(w.x + 2, w.y + w.height / 2);
+  await win.mouse.down();
+  await win.mouse.move(w.x + 2 + 2000, w.y + w.height / 2, { steps: 6 });
+  await win.mouse.up();
+  const smallest = await boxOf(win, 'video-window');
+  expect(smallest.width).toBeCloseTo(240, -1);
+  expect(smallest.x + smallest.width).toBeCloseTo(bigger.x + bigger.width, -1);
+
+  // Keyboard: the focused title bar moves with the arrow keys and resizes with plus.
+  await win.getByTestId('video-header').focus();
+  await win.keyboard.press('ArrowLeft');
+  await win.keyboard.press('Shift+ArrowUp');
+  await win.keyboard.press('+');
+  const keyed = await boxOf(win, 'video-window');
+  expect(keyed.x - smallest.x).toBeCloseTo(-10, 0);
+  expect(keyed.width - smallest.width).toBeCloseTo(20, 0);
+  expect(keyed.y + keyed.height - (smallest.y + smallest.height)).toBeCloseTo(-50, 0);
+
+  // Callouts keep clear of the moved window.
+  await win.waitForTimeout(800);
+  const overlapping = await win.evaluate(() => {
+    const v = document.querySelector('[data-testid="video-window"]')?.getBoundingClientRect();
+    if (!v) return -1;
+    return [...document.querySelectorAll('[data-callout]')].filter((c) => {
+      const r = c.getBoundingClientRect();
+      if (r.width === 0 || getComputedStyle(c).visibility === 'hidden') return false;
+      return r.left < v.right && r.right > v.left && r.top < v.bottom && r.bottom > v.top;
+    }).length;
+  });
+  expect(overlapping).toBe(0);
+
+  // Place and size survive leaving the scene.
+  await win.locator('.nav-item', { hasText: 'Issues' }).first().click();
+  await win.locator('.nav-item', { hasText: 'Scene' }).first().click();
+  await expect(video).toBeVisible();
+  const back = await boxOf(win, 'video-window');
+  expect(back.x).toBeCloseTo(keyed.x, 0);
+  expect(back.width).toBeCloseTo(keyed.width, 0);
+
+  // Double-click on the title puts it back.
+  await win.getByTestId('video-header').dblclick({ position: { x: 40, y: 10 } });
+  const reset = await boxOf(win, 'video-window');
+  expect(reset.x).toBeCloseTo(start.x, 0);
+  expect(reset.y).toBeCloseTo(start.y, 0);
+});

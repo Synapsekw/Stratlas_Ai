@@ -1348,9 +1348,86 @@ svg.flip {
   border-radius: var(--r-4);
   overflow: hidden;
   box-shadow: 0 8px 24px var(--shadow);
-  min-width: 280px;
-  max-width: calc(100% - 24px);
-  resize: horizontal;
+}
+/* edges and corners resize the floating window (the frame keeps its aspect ratio) */
+.vwin-rs {
+  position: absolute;
+  z-index: 3;
+  touch-action: none;
+}
+.vwin-rs.rs-n,
+.vwin-rs.rs-s {
+  inset-inline: 10px;
+  height: 6px;
+  cursor: ns-resize;
+}
+.vwin-rs.rs-n {
+  top: 0;
+}
+.vwin-rs.rs-s {
+  bottom: 0;
+}
+.vwin-rs.rs-e,
+.vwin-rs.rs-w {
+  top: 10px;
+  bottom: 10px;
+  width: 6px;
+  cursor: ew-resize;
+}
+.vwin-rs.rs-e {
+  right: 0; /* physical: the window is placed by physical left */
+}
+.vwin-rs.rs-w {
+  left: 0; /* physical: the window is placed by physical left */
+}
+.vwin-rs.rs-ne,
+.vwin-rs.rs-nw,
+.vwin-rs.rs-se,
+.vwin-rs.rs-sw {
+  width: 12px;
+  height: 12px;
+}
+.vwin-rs.rs-ne {
+  top: 0;
+  right: 0; /* physical: the window is placed by physical left */
+  cursor: nesw-resize;
+}
+.vwin-rs.rs-sw {
+  bottom: 0;
+  left: 0; /* physical: the window is placed by physical left */
+  cursor: nesw-resize;
+}
+.vwin-rs.rs-nw {
+  top: 0;
+  left: 0; /* physical: the window is placed by physical left */
+  cursor: nwse-resize;
+}
+.vwin-rs.rs-se {
+  bottom: 0;
+  right: 0; /* physical: the window is placed by physical left */
+  cursor: nwse-resize;
+}
+/* a small grip in the bottom-right corner says the window resizes */
+.vwin-rs.rs-se::after {
+  content: '';
+  position: absolute;
+  right: 3px; /* physical: the window is placed by physical left */
+  bottom: 3px;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--ov-dim); /* physical: the window is placed by physical left */
+  border-bottom: 1.5px solid var(--ov-dim);
+  opacity: 0.7;
+}
+.vwin.moving {
+  user-select: none;
+}
+.vwin.moving .vframe {
+  pointer-events: none;
+}
+.vh:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
 }
 .vwin.docked {
   position: relative;
