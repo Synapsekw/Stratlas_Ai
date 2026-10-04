@@ -26,7 +26,7 @@ export interface TimelineProps {
   onSeek: (tMs: number) => void;
   onTogglePlay: () => void;
   onRate: (rate: number) => void;
-  /** A clip was chosen; `atMs` is the clicked time when the click landed on a flight bar. */
+  /** A clip was chosen; `atMs` is the clicked time when a pointer clicked its bar or flight bar. */
   onClip: (layerId: string, atMs?: number) => void;
   onIssue?: (issueId: string) => void;
   onStep: (dir: 1 | -1) => void;
@@ -408,8 +408,15 @@ export function Timeline(props: TimelineProps) {
                       style={{ left: `${left}%`, width: `calc(${w}% - 1px)` }}
                       title={`${c.name}${c.estimated ? ' (length not known yet)' : ''}`}
                       aria-pressed={on}
-                      onClick={() => {
-                        onClip(c.layerId);
+                      onClick={(e) => {
+                        // a click plays from the clicked point; keyboard activation (no
+                        // pointer position) from the playhead or the clip start
+                        if (e.detail === 0) onClip(c.layerId);
+                        else
+                          onClip(
+                            c.layerId,
+                            Math.min(Math.max(timeAt(e.clientX), c.startMs), c.endMs - 250),
+                          );
                       }}
                     >
                       {(w / 100) * width > 96 ? c.name : ''}

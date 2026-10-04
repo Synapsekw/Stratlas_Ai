@@ -60,8 +60,8 @@ function WorkspaceTimeline() {
         workspace.getState().setRate(r);
       }}
       onClip={(id, atMs) => {
-        // A clip bar plays its clip: from the clicked time on a flight bar, else from the
-        // playhead when it is inside the clip, else from the clip start.
+        // A clip bar plays its clip: from the clicked time, else (keyboard) from the playhead
+        // when it is inside the clip, else from the clip start.
         selectClip(id);
         const ws = workspace.getState();
         const clip = model.clips.find((c) => c.layerId === id);

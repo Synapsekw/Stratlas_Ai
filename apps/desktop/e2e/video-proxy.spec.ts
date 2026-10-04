@@ -239,6 +239,22 @@ test.describe('HCl joined flight clips', () => {
     `HCl at ${HCL} has no joined clip video-101`,
   );
 
+  test('a click on a whole-flight bar plays from the clicked point', async ({ win }) => {
+    await open(win, 'HCl');
+    const start = clipStart(hclLayers, 'video-101');
+    const bar = win.locator('.seg-c[title^="Flight 101"]').first();
+    await expect(bar).toBeVisible({ timeout: 30_000 });
+    const box = await bar.boundingBox();
+    if (!box) throw new Error('no flight 101 bar');
+    await bar.click({ position: { x: box.width * 0.75, y: box.height / 2 } });
+    const now = await win.evaluate(
+      () => (window as unknown as Inspect).__stratlas.workspace.getState().nowMs,
+    );
+    const len = 386_050;
+    // within a pixel or two of three quarters in, not the clip start
+    expect(Math.abs(now - (start + 0.75 * len))).toBeLessThan(len * 0.05);
+  });
+
   test('flight 101 plays across the old 60 s boundary; F10 evidence is at its time', async ({
     win,
   }, testInfo) => {

@@ -77,8 +77,9 @@ const clock = (win: Page) =>
   });
 
 /**
- * Play flight 101's clip from `frac` of the way in: put the playhead there, then click the clip's
- * timeline bar (a bar plays from the playhead when it is inside the clip).
+ * Play flight 101's clip from `frac` of the way in: put the playhead there, then activate the
+ * clip's timeline bar from the keyboard (which plays from the playhead when it is inside the clip;
+ * a pointer click plays from the clicked point).
  */
 async function playFlight101(win: Page, frac: number) {
   const bar = win.locator('.seg-c[title^="Flight 101"]').first();
@@ -104,7 +105,8 @@ async function playFlight101(win: Page, frac: number) {
     if (!l?.flight || l.offsetMs === undefined) throw new Error('no clip video-101');
     ws.setTime(l.flight.startUtcMs + l.offsetMs + f * 386_000);
   }, frac);
-  await bar.click();
+  await bar.focus();
+  await win.keyboard.press('Enter');
 }
 
 test('HCl opens with a drawn 3D scene, plays a clip and lists its saved issues', async ({

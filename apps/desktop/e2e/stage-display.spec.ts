@@ -99,7 +99,11 @@ const cloudModes = (win: Page) =>
     return [...modes];
   });
 
-async function pathsTest(win: Page, card: string, flights: number) {
+/**
+ * `groups`: the project has flights made of several clips, whose rows carry their own path eye
+ * (Al-Zour). HCl has one whole clip per flight, so its rows are clips with the layer eye only.
+ */
+async function pathsTest(win: Page, card: string, flights: number, groups = true) {
   await open(win, card);
   await expect.poll(async () => (await rig(win)).total, { timeout: 30_000 }).toBe(flights);
   // many clips: only the active clip's flight path draws at first
@@ -126,6 +130,7 @@ async function pathsTest(win: Page, card: string, flights: number) {
   await win.keyboard.press('p');
   await expect.poll(async () => (await rig(win)).shown).toBe(1);
 
+  if (!groups) return;
   // the eye on the active flight's row hides its path only
   const hiddenBefore = await win.evaluate(
     () => Object.keys((window as unknown as Inspect).__stratlas.workspace.getState().hidden).length,
@@ -350,7 +355,7 @@ test.describe('HCl', () => {
     await expect(win.getByTestId('timeline-bar')).toHaveCount(0);
   });
   test('flight paths: all, active clip only, off, P, and per flight', async ({ win }) => {
-    await pathsTest(win, 'HCl', 10);
+    await pathsTest(win, 'HCl', 10, false);
   });
   test('point cloud colour by elevation; RGB disabled for intensity-only clouds', async ({
     win,
