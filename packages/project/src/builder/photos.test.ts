@@ -1,7 +1,7 @@
 import { fromWgs84 } from '@aio/geo';
 import type { Vec3 } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { photoRef, photoLens } from './photos';
+import { photoAltitude, photoHeight, photoRef, photoLens } from './photos';
 
 const origin = (lon: number, lat: number, h: number): Vec3 => {
   const p = fromWgs84([lon, lat, 0], 32639);
@@ -63,6 +63,54 @@ describe('photoRef', () => {
       { epsg: 32639, origin: [0, 0, 0], utcOffsetMin: 0 },
     );
     expect(r).toEqual({ id: 'x', src: { path: 'photos/x.jpg' } });
+  });
+});
+
+describe('photo heights (data-conventions 3a)', () => {
+  const o = origin(47.98, 29.38, 100);
+  const frame = { epsg: 32639, origin: o, utcOffsetMin: 180 };
+  // a DJI photo of Al-Zour flight 1: 113.7 m above take-off, absolute = relative + 41.9
+  const meta = {
+    gps: { lat: 29.38, lon: 47.98, alt: 155.6 },
+    dji: { lat: 29.38, lon: 47.98, absAlt: 155.6, relAlt: 113.7 },
+  };
+
+  it('XMP absolute altitude plus the project datum offset', () => {
+    const f = {
+      ...frame,
+      heights: { prefer: 'absolute' as const, absOffsetM: 100, takeoffH: 100 },
+    };
+    expect(photoHeight(meta, f).source).toBe('absolute');
+    expect(photoRef('a', 'a.jpg', meta, f).pos?.[1]).toBeCloseTo(155.6, 6);
+  });
+
+  it('XMP relative altitude plus the take-off height', () => {
+    const f = {
+      ...frame,
+      heights: { prefer: 'relative' as const, absOffsetM: 0, takeoffH: 141.9 },
+    };
+    expect(photoHeight(meta, f).source).toBe('relative');
+    // take-off at EL 141.9: 141.9 + 113.7 - origin 100
+    expect(photoRef('a', 'a.jpg', meta, f).pos?.[1]).toBeCloseTo(155.6, 6);
+  });
+
+  it('EXIF GPS altitude counts as absolute; missing altitudes fall back', () => {
+    expect(photoAltitude({ gps: { lat: 1, lon: 2, alt: 31.7 } })).toEqual({
+      abs: 31.7,
+      rel: undefined,
+    });
+    const rel = {
+      ...frame,
+      heights: { prefer: 'relative' as const, absOffsetM: 0, takeoffH: 100 },
+    };
+    expect(photoHeight({ gps: { lat: 29.38, lon: 47.98, alt: 31.7 } }, rel)).toEqual({
+      h: 31.7,
+      source: 'absolute',
+    });
+    expect(photoHeight({ dji: { relAlt: 20 } }, frame)).toEqual({ h: 120, source: 'relative' });
+    const none = photoRef('n', 'n.jpg', { gps: { lat: 29.38, lon: 47.98 } }, rel);
+    expect(none.pos?.[1]).toBeCloseTo(0, 6);
+    expect(photoHeight({ gps: { lat: 29.38, lon: 47.98 } }, rel).source).toBe('none');
   });
 });
 

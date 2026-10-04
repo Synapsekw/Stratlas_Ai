@@ -86,12 +86,19 @@ export async function photoGps(path: string): Promise<IpcResponse<'builder:photo
     const lon = meta.dji?.lon ?? meta.gps?.lon;
     if (lat === undefined || lon === undefined)
       return { ok: false, error: 'This photo has no GPS position. Pick a geotagged photo.' };
-    const alt = meta.dji?.absAlt ?? meta.gps?.alt;
+    // the origin is on the ground: the take-off point's absolute altitude when the photo logs its
+    // height above take-off, else the camera's own altitude (data-conventions section 3a)
+    const abs = meta.dji?.absAlt ?? meta.gps?.alt;
+    const rel = meta.dji?.relAlt;
+    const takeoff = abs !== undefined && rel !== undefined;
+    const alt = takeoff ? Math.round((abs - rel) * 1000) / 1000 : abs;
     return {
       ok: true,
       lat,
       lon,
-      ...(alt !== undefined ? { alt } : {}),
+      ...(alt !== undefined
+        ? { alt, altFrom: takeoff ? ('takeoff' as const) : ('photo' as const) }
+        : {}),
       ...(meta.takenAt ? { takenAt: meta.takenAt } : {}),
     };
   } catch (e) {
@@ -122,11 +129,44 @@ export const videoTools: VideoTools = {
       utcOffsetMin: o.utcOffsetMin,
       aspect: o.aspect,
       name: o.name,
+      heights: o.heights,
     });
     const timing = srtTimingCheck(frames, o.frameTimesMs);
-    return { doc: r.doc, warnings: r.warnings, orientation: r.orientation, timing };
+    return {
+      doc: r.doc,
+      warnings: r.warnings,
+      orientation: r.orientation,
+      heightSource: r.heightSource,
+      timing,
+    };
+  },
+  srtAltitudes(text) {
+    const frames = parseDjiSrt(text).filter(
+      (f) => f.lat !== undefined && f.lon !== undefined && !(f.lat === 0 && f.lon === 0),
+    );
+    const home = frames.find((f) => f.home)?.home;
+    return {
+      readings: frames.map((f) => ({ lat: f.lat, lon: f.lon, abs: f.absAlt, rel: f.relAlt })),
+      ...(home ? { home } : {}),
+    };
   },
 };
+
+/** What the files of an import carry for camera heights (`builder:altitudePlan`). */
+export async function builderAltitudePlan(
+  req: IpcRequest<'builder:altitudePlan'>,
+  registry: ProjectRegistry,
+): Promise<IpcResponse<'builder:altitudePlan'>> {
+  const root = registry.root(req.projectId);
+  if (root === undefined)
+    return { ok: false, error: `Project "${req.projectId}" is not open. Open it, then import.` };
+  try {
+    const plan = await (await lib()).planRawAltitudes(root, req.paths, { video: videoTools });
+    return { ok: true, plan };
+  } catch (e) {
+    return { ok: false, error: errorText(e) };
+  }
+}
 
 /** A JPEG poster frame through ffmpeg when it is installed; rejects otherwise. */
 export async function ffmpegPoster(video: string, atS: number, out: string): Promise<void> {
@@ -188,11 +228,17 @@ export async function builderImport(
       poster: ffmpegPoster,
       proxy: ffmpegProxy,
       ...(req.utcOffsetMin !== undefined ? { utcOffsetMin: req.utcOffsetMin } : {}),
+      ...(req.altitude ? { altitude: req.altitude } : {}),
       onProgress: (done, total, file) => {
         d.emit({ projectId: req.projectId, done, total, file });
       },
     });
-    return { ok: true, manifest: r.manifest, items: r.items };
+    return {
+      ok: true,
+      manifest: r.manifest,
+      items: r.items,
+      ...(r.heights ? { heights: r.heights } : {}),
+    };
   } catch (e) {
     return { ok: false, error: `Import failed: ${errorText(e)}` };
   }

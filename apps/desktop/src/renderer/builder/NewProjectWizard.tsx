@@ -70,6 +70,11 @@ function Wizard() {
   const [source, setSource] = useState<OriginSource | null>(null);
   const [typed, setTyped] = useState('');
   const [height, setHeight] = useState('0');
+  /**
+   * The origin height came from a photo's absolute altitude, so project heights share the drone's
+   * absolute altitude datum (vertical datum offset 0); typing another height drops it.
+   */
+  const [datumFrom, setDatumFrom] = useState<string | null>(null);
   const [captureDate, setCaptureDate] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [templates, setTemplates] = useState<SeverityTemplate[]>([]);
@@ -138,14 +143,22 @@ function Wizard() {
         h: Math.round((g.alt ?? 0) * 10) / 10,
         from: `photo ${name}`,
       },
-      `From ${name}${g.alt !== undefined ? ', height from its GPS altitude' : ''}.`,
+      `From ${name}${
+        g.alt === undefined
+          ? ''
+          : g.altFrom === 'takeoff'
+            ? ', height of its take-off point (absolute altitude minus height above take-off)'
+            : ', height from its GPS altitude (the camera, not the ground: check it)'
+      }.`,
     );
+    setDatumFrom(g.alt !== undefined ? name : null);
     setHeight(String(Math.round((g.alt ?? 0) * 10) / 10));
     if (g.takenAt) setCaptureDate(g.takenAt.slice(0, 10));
   };
 
   const fromTyped = (text: string) => {
     setTyped(text);
+    setDatumFrom(null);
     const p = parseCoordinate(text, form.epsg);
     if (!p) {
       setSource(null);
@@ -170,6 +183,7 @@ function Wizard() {
 
   const fromMap = (lngLat: [number, number]) => {
     const h = Number(height) || 0;
+    setDatumFrom(null);
     place(
       { kind: 'll', lon: lngLat[0], lat: lngLat[1], h, from: 'map' },
       'Clicked on the offline map.',
@@ -178,6 +192,7 @@ function Wizard() {
 
   const setH = (v: string) => {
     setHeight(v);
+    setDatumFrom(null);
     const h = Number(v);
     if (!Number.isFinite(h) || !source) return;
     setSource({ ...source, h });
@@ -202,6 +217,14 @@ function Wizard() {
       origin,
       severityTemplate: form.severityTemplate,
       ...(captureDate ? { captureDate } : {}),
+      ...(datumFrom
+        ? {
+            verticalDatum: {
+              absAltOffsetM: 0,
+              note: `Project heights are the drone absolute altitude (origin from ${datumFrom}).`,
+            },
+          }
+        : {}),
     });
     setBusy(false);
     if (!r.ok) {

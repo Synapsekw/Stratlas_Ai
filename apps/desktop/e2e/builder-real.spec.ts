@@ -203,8 +203,14 @@ test('new project from raw EBSM photos and the GLB: create, import, align, annot
     const manifest = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as {
       origin: [number, number, number];
       layers: { kind: string; id: string; items?: unknown[] }[];
+      verticalDatum?: { absAltOffsetM: number };
     };
     expect(manifest.layers.map((l) => l.kind).sort()).toEqual(['mesh', 'photos']);
+    // the origin height came from the photo's absolute altitude: heights share that datum
+    expect(manifest.verticalDatum?.absAltOffsetM).toBe(0);
+    await expect(panel.getByTestId('import-heights-line')).toContainText(
+      'absolute altitude + 0.0 m',
+    );
     await panel.getByRole('button', { name: 'Close' }).click();
 
     // 3. the GLB loads in the kit frame (X north): frame it alone
@@ -347,6 +353,12 @@ test('raw DJI video with its SRT imports as a placed clip and opens in calibrati
     await expect(win.getByTestId('empty-project')).toBeVisible({ timeout: 30_000 });
     await nextOpenDialog(app, [mp4]);
     await win.getByRole('button', { name: 'Import files' }).click();
+    // relative altitude in a project without a vertical datum: confirm the take-off height
+    const heights = win.getByTestId('import-heights');
+    await expect(heights).toBeVisible({ timeout: 60_000 });
+    await expect(heights.getByTestId('takeoff-warning')).toBeVisible();
+    await shot(win, '11a-dji-heights.png');
+    await heights.getByRole('button', { name: 'Import' }).click();
     const panel = win.getByTestId('import-panel');
     await expect(panel).toContainText('SRT matches the video frames within', { timeout: 120_000 });
     const msg = (await panel.locator('li p').first().textContent()) ?? '';

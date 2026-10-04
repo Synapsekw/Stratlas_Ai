@@ -1,5 +1,15 @@
-import { cameraQuatFromGimbal, fromWgs84, gridConvergenceDeg, lensFromFocal35 } from '@aio/geo';
-import type { LensModel, PoseSample, Vec3 } from '@aio/schema';
+import {
+  cameraQuatFromGimbal,
+  fromWgs84,
+  gridConvergenceDeg,
+  lensFromFocal35,
+  projectHeight,
+  summariseSources,
+  takeoffAbsAltitude,
+  type HeightRule,
+  type HeightSource,
+} from '@aio/geo';
+import type { FlightHeights, LensModel, PoseSample, Vec3 } from '@aio/schema';
 
 /**
  * DJI SRT telemetry: one subtitle per video frame (or per second on older aircraft). Parsed per
@@ -15,10 +25,16 @@ export interface SrtFrame {
   clock?: string;
   lat?: number;
   lon?: number;
-  /** Height above the take-off point, metres. */
+  /** Height above the take-off point (`rel_alt`, `BAROMETER`, `H`), metres. */
   relAlt?: number;
-  /** Altitude the aircraft reports (barometric or GNSS fused), metres. */
+  /**
+   * Absolute altitude the aircraft reports (`abs_alt`, `altitude`, else the third value of
+   * `GPS(lon, lat, alt)`), metres: barometric offset to GNSS, nominally above mean sea level, often
+   * tens of metres off; ellipsoidal on RTK aircraft. Only a project height through a datum offset.
+   */
   absAlt?: number;
+  /** Home (take-off) point of older aircraft (`HOME(lon, lat)`). */
+  home?: { lat: number; lon: number };
   /** Gimbal angles in degrees: yaw from true north clockwise, pitch up positive, roll right down. */
   gimbal?: { yaw: number; pitch: number; roll: number };
   /** 35 mm equivalent focal length, mm. */
@@ -68,17 +84,18 @@ function parseBlock(lines: readonly string[], fallbackIndex: number): SrtFrame |
   if (lat !== undefined && lon !== undefined) {
     frame.lat = lat;
     frame.lon = lon;
-  } else {
-    const gps = /GPS\s*\(\s*([-+]?[\d.]+)\s*,\s*([-+]?[\d.]+)(?:\s*,\s*([-+]?[\d.]+))?/.exec(body);
-    if (gps) {
-      frame.lon = Number(gps[1]);
-      frame.lat = Number(gps[2]);
-    }
   }
+  const gps = /GPS\s*\(\s*([-+]?[\d.]+)\s*,\s*([-+]?[\d.]+)(?:\s*,\s*([-+]?[\d.]+))?/.exec(body);
+  if (gps && frame.lat === undefined) {
+    frame.lon = Number(gps[1]);
+    frame.lat = Number(gps[2]);
+  }
+  const home = /HOME\s*\(\s*([-+]?[\d.]+)\s*,\s*([-+]?[\d.]+)/.exec(body);
+  if (home) frame.home = { lon: Number(home[1]), lat: Number(home[2]) };
   const rel = kv.get('rel_alt') ?? kv.get('barometer') ?? kv.get('h');
   if (rel !== undefined) frame.relAlt = rel;
-  const abs = kv.get('abs_alt') ?? kv.get('altitude');
-  if (abs !== undefined) frame.absAlt = abs;
+  const abs = kv.get('abs_alt') ?? kv.get('altitude') ?? (gps?.[3] ? Number(gps[3]) : undefined);
+  if (abs !== undefined && Number.isFinite(abs)) frame.absAlt = abs;
   const gy = kv.get('gb_yaw');
   const gp = kv.get('gb_pitch');
   if (gy !== undefined && gp !== undefined)
@@ -115,11 +132,14 @@ export interface SrtFlightOptions {
   /** Width / height of the video frame. */
   aspect: number;
   /**
-   * `rel` (default): take-off height plus the relative altitude, the steadier value on DJI
-   * aircraft; `abs`: the altitude the aircraft reports.
+   * The height rule (`@aio/geo` `projectHeight`, data-conventions section 3a): absolute altitude
+   * plus the project's datum offset, or relative altitude plus the take-off height. When absent,
+   * `altitude` and `takeoffHeight` make one with no datum offset.
    */
+  heights?: HeightRule;
+  /** Shorthand for `heights`: `rel` (default) prefers relative, `abs` absolute altitude. */
   altitude?: 'rel' | 'abs';
-  /** Project height (H) of the take-off point for `rel`; default the origin height. */
+  /** Project height (H) of the take-off point for relative altitude; default the origin height. */
   takeoffHeight?: number;
   /** Camera pitch when the SRT has no gimbal angles; default -30 degrees. */
   defaultPitchDeg?: number;
@@ -135,9 +155,14 @@ export interface SrtFlight {
     startUtcMs: number;
     lens: LensModel;
     samples: PoseSample[];
+    heights: FlightHeights;
   };
   /** `gimbal` when every frame had gimbal angles, `estimated` when heading follows the track. */
   orientation: 'gimbal' | 'estimated';
+  /** The altitude the sample heights came from (`mixed`: some frames fell back). */
+  heightSource: HeightSource | 'mixed';
+  /** The take-off point's absolute altitude (median of absolute minus relative), or null. */
+  takeoffAbsAlt: number | null;
   warnings: string[];
 }
 
@@ -198,17 +223,25 @@ export function srtToFlight(frames: readonly SrtFrame[], o: SrtFlightOptions): S
       'The SRT file has no clock; the clip starts at time zero. Set its time in Align.',
     );
   }
-  const mode = o.altitude ?? 'rel';
-  const takeoff = o.takeoffHeight ?? o.origin[2];
-  const height = (f: SrtFrame): number => {
-    if (mode === 'abs' && f.absAlt !== undefined) return f.absAlt;
-    if (f.relAlt !== undefined) return takeoff + f.relAlt;
-    return f.absAlt ?? takeoff;
+  const rule: HeightRule = o.heights ?? {
+    prefer: o.altitude === 'abs' ? 'absolute' : 'relative',
+    absOffsetM: 0,
+    takeoffH: o.takeoffHeight ?? o.origin[2],
   };
-  if (mode === 'rel' && !usable.some((f) => f.relAlt !== undefined))
-    warnings.push('No relative altitude in the SRT; the reported altitude is used.');
-  const pos: Vec3[] = usable.map((f) => {
-    const p = fromWgs84([f.lon, f.lat, height(f)], o.epsg);
+  const heights = usable.map((f) => projectHeight({ abs: f.absAlt, rel: f.relAlt }, rule));
+  const heightSource = summariseSources(heights.map((h) => h.source)) ?? 'none';
+  const count = (s: HeightSource) => heights.filter((h) => h.source === s).length;
+  const other = rule.prefer === 'absolute' ? 'relative' : 'absolute';
+  if (count(other))
+    warnings.push(
+      `${String(count(other))} of ${String(heights.length)} frames have no ${rule.prefer} altitude; their ${other} altitude is used.`,
+    );
+  if (count('none'))
+    warnings.push(
+      `${String(count('none'))} frames have no altitude; they are placed at the take-off height.`,
+    );
+  const pos: Vec3[] = usable.map((f, i) => {
+    const p = fromWgs84([f.lon, f.lat, heights[i]?.h ?? rule.takeoffH], o.epsg);
     return [p[0] - o.origin[0], p[2] - o.origin[2], 0 - (p[1] - o.origin[1])];
   });
   const t = usable.map((f) => Math.round(f.startMs - t0));
@@ -254,8 +287,11 @@ export function srtToFlight(frames: readonly SrtFrame[], o: SrtFlightOptions): S
       startUtcMs: Math.round(startUtcMs),
       lens,
       samples,
+      heights: { source: heightSource, absOffsetM: rule.absOffsetM, takeoffH: rule.takeoffH },
     },
     orientation: gimbal ? 'gimbal' : 'estimated',
+    heightSource,
+    takeoffAbsAlt: takeoffAbsAltitude(usable.map((f) => ({ abs: f.absAlt, rel: f.relAlt }))),
     warnings,
   };
 }

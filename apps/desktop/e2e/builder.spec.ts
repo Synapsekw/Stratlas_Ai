@@ -1,4 +1,4 @@
-import { fromWgs84 } from '@aio/geo';
+import { fromWgs84, toWgs84 } from '@aio/geo';
 import { withExif } from '@aio/project/builder/testing';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -207,4 +207,75 @@ test('a new project from the wizard, raw photos and a model, georeferenced by ty
   expect(Math.hypot(tr[0] ?? 0, tr[2] ?? 0)).toBeCloseTo(2, 1);
   expect(tr[12]).toBeCloseTo(5, 0);
   expect(tr[14]).toBeCloseTo(-3, 0);
+});
+
+test('camera heights: relative altitude asks for the take-off height, proposed from the model', async ({
+  app,
+  win,
+  dataRoot,
+}) => {
+  // a DJI photo 3.5 m above its take-off point, over the tiny project's 1 m quad (at y 0)
+  const jpeg = await sharp({
+    create: { width: 64, height: 48, channels: 3, background: '#808080' },
+  })
+    .jpeg()
+    .toBuffer();
+  const ll = toWgs84([500000.5, 3200000.5, 0], 32639);
+  const photo = join(dataRoot.base, 'DJI_0100.JPG');
+  await writeFile(
+    photo,
+    withExif(
+      {
+        make: 'DJI',
+        lat: ll[1],
+        lon: ll[0],
+        alt: 45.4,
+        focal35: 24,
+        width: 64,
+        height: 48,
+        dji: {
+          GimbalYawDegree: '+0',
+          GimbalPitchDegree: '-90',
+          GimbalRollDegree: '0',
+          AbsoluteAltitude: '+45.40',
+          RelativeAltitude: '+3.50',
+        },
+      },
+      jpeg,
+    ),
+  );
+  await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
+  await win.evaluate(() => {
+    (window as unknown as Inspect).__stratlas.workspace.getState().flyTo({ kind: 'home' });
+  });
+  await expect
+    .poll(() => layerHits(win, 'quad').then((h) => h.length), { timeout: 30_000 })
+    .toBeGreaterThan(0);
+
+  await nextOpenDialog(app, [photo]);
+  await win.keyboard.press('Control+K');
+  await win.keyboard.type('Import raw data');
+  await win.keyboard.press('Enter');
+  const card = win.getByTestId('import-heights');
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  await expect(card).toContainText('Model height under the take-off point');
+  await expect(card.getByRole('spinbutton', { name: 'Take-off height' })).toHaveValue('0.0');
+  // the absolute option proposes the offset that agrees with that take-off height
+  await card.getByText('Absolute altitude + datum offset').click();
+  await expect(card.getByRole('spinbutton', { name: 'Datum offset' })).toHaveValue('-41.90');
+  await card.getByText('Relative altitude + take-off height').click();
+  await card.getByRole('spinbutton', { name: 'Take-off height' }).fill('7.5');
+  await card.getByRole('button', { name: 'Import' }).click();
+
+  const panel = win.getByTestId('import-panel');
+  await expect(panel).toContainText('Imported 1 of 1 files', { timeout: 30_000 });
+  await expect(panel.getByTestId('import-heights-line')).toHaveText(
+    'Heights: relative altitude + take-off at H 7.5 m (typed at import).',
+  );
+  const m = JSON.parse(
+    await readFile(join(dataRoot.root, 'projects', 'e2e-tiny', 'manifest.json'), 'utf8'),
+  ) as { layers: { kind: string; items?: { pos?: number[] }[] }[] };
+  const pos = m.layers.find((l) => l.kind === 'photos')?.items?.[0]?.pos ?? [];
+  // H = 7.5 + 3.5, origin H 0
+  expect(pos[1]).toBeCloseTo(11, 3);
 });

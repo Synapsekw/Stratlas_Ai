@@ -41,6 +41,7 @@ import { printReport } from './exports/reportWindow';
 import { listReports } from './exports/reports';
 import { runInUtility } from './exports/utility';
 import {
+  builderAltitudePlan,
   builderImport,
   builderTemplates,
   builderUpdateLayers,
@@ -793,6 +794,7 @@ function registerIpc(): void {
         },
       }),
   );
+  handle('builder:altitudePlan', (req) => builderAltitudePlan(req, registry));
   handle(
     'builder:updateLayers',
     (req) => packageRefusal(req.projectId) ?? builderUpdateLayers(req, registry),

@@ -5,10 +5,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createProject, updateLayers } from './create';
+import { createProject, updateLayers, writeManifestFile } from './create';
 import {
   NO_PIPELINE,
   importRawFiles,
+  planRawAltitudes,
   type ImportDeps,
   type PipelineJobs,
   type VideoTools,
@@ -259,12 +260,15 @@ describe('importRawFiles', () => {
             startUtcMs: Date.UTC(2023, 11, 25, 8, 35, 42, 772),
             lens: { model: 'pinhole', hfovDeg: 71.59, aspect: 1.7778 },
             samples: [{ t: 0, pos: [0, 100, 0], q: [0, 0, 0, 1] }],
+            heights: { source: 'relative', absOffsetM: 0, takeoffH: o.heights.takeoffH },
           },
           warnings: ['No gimbal angles.'],
           timing: { withinOneFrame: true, maxErrorMs: 1.3, frameMs: 33.4 },
           orientation: 'estimated',
+          heightSource: 'relative',
         };
       },
+      srtAltitudes: () => ({ readings: [] }),
     };
     // only the MP4 is given: the SRT next to it is found on disk
     const r = await importRawFiles(root, [join(dir, 'DJI_0498.MP4')], deps({ video }));
@@ -300,11 +304,14 @@ describe('importRawFiles', () => {
         startUtcMs: Date.UTC(2023, 1, 21, 13, 22, 38),
         lens: { model: 'pinhole', hfovDeg: 72.2, aspect: 1.8963 },
         samples: [{ t: 0, pos: [0, 100, 0], q: [0, 0, 0, 1] }],
+        heights: { source: 'relative', absOffsetM: 0, takeoffH: 30 },
       },
       warnings: [],
       timing: { withinOneFrame: true, maxErrorMs: 1, frameMs: 20 },
       orientation: 'gimbal',
+      heightSource: 'relative',
     }),
+    srtAltitudes: () => ({ readings: [] }),
   });
 
   it('writes a review proxy instead of copying the original when a proxy step is given', async () => {
@@ -371,6 +378,139 @@ describe('importRawFiles', () => {
       ['unknown', 'skipped'],
     ]);
     expect(r.items[0]?.message).toMatch(/SRT/);
+  });
+});
+
+describe('camera heights of a raw import (data-conventions 3a)', () => {
+  // a DJI photo 113.7 m above its take-off point; the aircraft logs absolute = relative + 41.9
+  const djiPhoto = (rel: string | null, abs: string | null) =>
+    withExif({
+      make: 'DJI',
+      lat: 29.0276,
+      lon: 48.1352,
+      ...(abs ? { alt: Number(abs) } : {}),
+      dji: {
+        GimbalYawDegree: '+10',
+        GimbalPitchDegree: '-40',
+        GimbalRollDegree: '0',
+        ...(abs ? { AbsoluteAltitude: abs } : {}),
+        ...(rel ? { RelativeAltitude: rel } : {}),
+      },
+    });
+  const photoY = async (root: string) => {
+    const m = await readManifest(root);
+    const l = m.layers.find((x) => x.kind === 'photos');
+    return l?.kind === 'photos' ? l.items.map((p) => p.pos?.[1]) : [];
+  };
+
+  it('relative altitude plus the confirmed take-off height when the project has no datum', async () => {
+    const root = await project();
+    const f = join(dir, 'DJI_0001.JPG');
+    await writeFile(f, djiPhoto('+113.70', '+155.60'));
+    const r = await importRawFiles(
+      root,
+      [f],
+      deps({ altitude: { source: 'auto', takeoffH: 41.5, takeoffFrom: 'terrain' } }),
+    );
+    expect(r.items[0]?.heightSource).toBe('relative');
+    expect(r.heights).toEqual({ source: 'relative', offsetM: 41.5, from: 'terrain' });
+    // H = 41.5 + 113.7, origin H 30
+    expect((await photoY(root))[0]).toBeCloseTo(125.2, 6);
+  });
+
+  it('takes the origin height as take-off height when nothing is confirmed, and says so', async () => {
+    const root = await project();
+    const f = join(dir, 'DJI_0001.JPG');
+    await writeFile(f, djiPhoto('+113.70', '+155.60'));
+    const r = await importRawFiles(root, [f], deps());
+    expect(r.heights).toEqual({ source: 'relative', offsetM: 30, from: 'origin' });
+    expect((await photoY(root))[0]).toBeCloseTo(113.7, 6);
+  });
+
+  it('absolute altitude plus the project datum when the project defines one', async () => {
+    const root = await project();
+    const m = await readManifest(root);
+    await writeManifestFile(root, {
+      ...m,
+      verticalDatum: { absAltOffsetM: 100, note: 'Plant EL = absolute + 100' },
+    });
+    const f = join(dir, 'DJI_0001.JPG');
+    await writeFile(f, djiPhoto('+113.70', '+155.60'));
+    const r = await importRawFiles(root, [f], deps());
+    expect(r.items[0]?.heightSource).toBe('absolute');
+    expect(r.heights).toEqual({
+      source: 'absolute',
+      offsetM: 100,
+      from: 'datum',
+      note: 'Plant EL = absolute + 100',
+    });
+    // H = 155.6 + 100, origin H 30
+    expect((await photoY(root))[0]).toBeCloseTo(225.6, 6);
+  });
+
+  it('saves an offset picked at import as the project datum', async () => {
+    const root = await project();
+    const f = join(dir, 'DJI_0001.JPG');
+    await writeFile(f, djiPhoto('+113.70', '+155.60'));
+    const r = await importRawFiles(
+      root,
+      [f],
+      deps({ altitude: { source: 'absolute', absAltOffsetM: -18.5 } }),
+    );
+    expect(r.heights).toMatchObject({ source: 'absolute', offsetM: -18.5, from: 'datum' });
+    expect((await readManifest(root)).verticalDatum?.absAltOffsetM).toBe(-18.5);
+    expect((await photoY(root))[0]).toBeCloseTo(155.6 - 18.5 - 30, 6);
+  });
+
+  it('falls back per file and reports absolute altitude without a datum as uncorrected', async () => {
+    const root = await project();
+    const abs = join(dir, 'ABS.JPG');
+    const none = join(dir, 'NONE.JPG');
+    await writeFile(abs, djiPhoto(null, '+155.60'));
+    await writeFile(none, djiPhoto(null, null));
+    const r = await importRawFiles(root, [abs], deps());
+    expect(r.items[0]?.heightSource).toBe('absolute');
+    expect(r.items[0]?.message).toMatch(/no datum correction/);
+    expect(r.heights).toEqual({ source: 'absolute', offsetM: 0, from: 'uncorrected' });
+    const n = await importRawFiles(root, [none], deps());
+    expect(n.items[0]?.heightSource).toBe('none');
+    expect(n.items[0]?.message).toMatch(/No altitude logged/);
+    expect(await photoY(root)).toEqual([125.6, 0]);
+  });
+
+  it('plans the rule from what the files carry, with the take-off point', async () => {
+    const root = await project();
+    const a = join(dir, 'DJI_0001.JPG');
+    const b = join(dir, 'DJI_0002.JPG');
+    await writeFile(a, djiPhoto('+113.70', '+155.60'));
+    await writeFile(b, djiPhoto('+2.00', '+43.90'));
+    await writeFile(join(dir, 'DJI_0498.MP4'), new Uint8Array(16));
+    await writeFile(join(dir, 'DJI_0498.SRT'), 'srt');
+    const video: VideoTools = {
+      probe: () => Promise.reject(new Error('unused')),
+      flightFromSrt: () => {
+        throw new Error('unused');
+      },
+      srtAltitudes: () => ({
+        readings: [{ lat: 29.0277, lon: 48.1352, abs: 60, rel: 18 }],
+      }),
+    };
+    const plan = await planRawAltitudes(root, [a, b, join(dir, 'DJI_0498.MP4')], { video });
+    expect(plan).toMatchObject({
+      files: 3,
+      absolute: 3,
+      relative: 3,
+      datum: null,
+      recommended: 'relative',
+      takeoffAbsAlt: 41.9,
+    });
+    // the lowest logged position (photo b, 2 m above take-off) at the origin
+    expect(plan.takeoff?.relAltM).toBe(2);
+    expect(Math.abs(plan.takeoff?.x ?? 99)).toBeLessThan(1);
+    const m = await readManifest(root);
+    await writeManifestFile(root, { ...m, verticalDatum: { absAltOffsetM: 100 } });
+    const withDatum = await planRawAltitudes(root, [a], { video });
+    expect(withDatum.recommended).toBe('absolute');
   });
 });
 
