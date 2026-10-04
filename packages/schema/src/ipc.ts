@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { AiProvider, AiTask, ToolRisk, WindowKind } from './agent';
 import { Issue } from './annotation';
 import { ProjectManifest } from './manifest';
+import { BoundaryEditsFile } from './volumes';
 
 const Empty = z.object({}).strict();
 
@@ -77,6 +78,14 @@ export const ipc = {
   'project:open': { request: z.object({ path: z.string().min(1) }).strict(), response: OpenResult },
   'project:writeIssues': {
     request: z.object({ projectId: z.string().min(1), issues: z.array(Issue) }).strict(),
+    response: z.object({ ok: z.boolean(), error: z.string().optional() }),
+  },
+  /**
+   * Replace `<project>/edits/boundaries.json` (stockpile toe lines corrected by hand) atomically,
+   * keeping a `.bak` of the previous file.
+   */
+  'project:writeBoundaries': {
+    request: z.object({ projectId: z.string().min(1), file: BoundaryEditsFile }).strict(),
     response: z.object({ ok: z.boolean(), error: z.string().optional() }),
   },
   'packs:list': { request: Empty, response: z.array(MapPackInfo) },
