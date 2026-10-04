@@ -1,5 +1,5 @@
 import { reportBrands } from '@aio/brand';
-import type { ImageOps, PipelineJobs, VideoTools } from '@aio/project/builder';
+import type { ImageOps, PipelineJobs, ProxyEncoder, VideoTools } from '@aio/project/builder';
 import type { IpcEvent, IpcRequest, IpcResponse, ProjectManifest } from '@aio/schema';
 import { readMp4VideoInfo, parseDjiSrt, srtTimingCheck, srtToFlight } from '@aio/video/telemetry';
 import { execFile } from 'node:child_process';
@@ -153,6 +153,18 @@ export async function ffmpegPoster(video: string, atS: number, out: string): Pro
   );
 }
 
+let proxyEncoder: Promise<ProxyEncoder> | undefined;
+
+/**
+ * A 1920 px H.264 review copy of a drone recording through ffmpeg (hardware encoding when the
+ * machine has it); rejects when ffmpeg is missing, and the import then copies the original.
+ */
+export async function ffmpegProxy(src: string, out: string): Promise<void> {
+  const l = await lib();
+  proxyEncoder ??= l.detectProxyEncoder();
+  await l.makeProxy(out, { inputs: [src], encoder: await proxyEncoder });
+}
+
 export interface BuilderImportDeps {
   registry: ProjectRegistry;
   images: ImageOps;
@@ -174,6 +186,7 @@ export async function builderImport(
       jobs: d.jobs ?? NO_PIPELINE,
       video: videoTools,
       poster: ffmpegPoster,
+      proxy: ffmpegProxy,
       ...(req.utcOffsetMin !== undefined ? { utcOffsetMin: req.utcOffsetMin } : {}),
       onProgress: (done, total, file) => {
         d.emit({ projectId: req.projectId, done, total, file });
