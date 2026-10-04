@@ -2,6 +2,7 @@ import { deflateRawSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import type { LensModel, Vec3 } from '@aio/schema';
 import {
+  calibratedHfovDeg,
   clipHfovDeg,
   groundHit,
   inParallelogram,
@@ -271,6 +272,15 @@ describe('camera checks', () => {
     expect(clipHfovDeg(5120 / 2700)).toBe(83);
     expect(clipHfovDeg(960 / 506)).toBe(83);
     expect(clipHfovDeg(16 / 9)).toBeCloseTo(79.3, 1);
+  });
+
+  it('uses the field of view calibrated against the plant model per frame size', () => {
+    expect(calibratedHfovDeg(960 / 506)).toBe(72.2);
+    expect(calibratedHfovDeg(5120 / 2700)).toBe(72.2);
+    expect(calibratedHfovDeg(16 / 9)).toBe(65.6);
+    expect(calibratedHfovDeg(960 / 540)).toBe(65.6);
+    // other frame sizes keep the sensor-crop estimate
+    expect(calibratedHfovDeg(4 / 3)).toBe(clipHfovDeg(4 / 3));
   });
 
   it('tests points against the survey parallelogram', () => {
