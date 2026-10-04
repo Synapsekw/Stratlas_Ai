@@ -17,11 +17,12 @@ export interface DatasetTreeProps {
    * The eye on a flight row shows and hides that flight's path in 3D (its clips keep their own
    * eyes). Without it the flight eye hides every clip of the flight.
    */
-  flightPath?: { shown: (flightId: string) => boolean; onToggle: (flightId: string) => void };
+  flightPath?:
+    { shown: (flightId: string) => boolean; onToggle: (flightId: string) => void } | undefined;
   /** A settings button on point cloud rows (colour, size, budget, EDL). */
-  onLayerSettings?: (item: TreeItem) => void;
+  onLayerSettings?: ((item: TreeItem) => void) | undefined;
   /** Groups open at first; defaults to models, maps, video and annotations. */
-  defaultOpen?: readonly TreeGroupKind[];
+  defaultOpen?: readonly TreeGroupKind[] | undefined;
 }
 
 const DEFAULT_OPEN: TreeGroupKind[] = ['models', 'maps', 'video', 'annotations'];
