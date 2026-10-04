@@ -307,6 +307,8 @@ export interface RangeServer {
 export async function rangeServer(
   file: () => Buffer,
   path = '/planet.pmtiles',
+  /** Small files served whole by path, e.g. a `builds.json` index. */
+  extra: Record<string, string> = {},
 ): Promise<RangeServer> {
   const { createServer } = await import('node:http');
   const ranges: string[] = [];
@@ -314,8 +316,17 @@ export async function rangeServer(
   let stall: { bytes: number; minLength: number } | null = null;
   let etag: string | null = '"v1"';
   const server = createServer((req, res) => {
+    const other = req.url === undefined ? undefined : extra[req.url];
+    if (other !== undefined) {
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end(other);
+      return;
+    }
     if (req.url !== path) {
       res.writeHead(404).end();
+      return;
+    }
+    if (req.method === 'HEAD') {
+      res.writeHead(200, { 'Content-Length': String(file().length) }).end();
       return;
     }
     const body = file();

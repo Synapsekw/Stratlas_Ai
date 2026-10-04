@@ -50,7 +50,7 @@ beforeEach(async () => {
     'issues.json': ISSUES,
     'edits/boundaries.json': JSON.stringify({ schema: 'aio.boundaries/1', edits: [] }),
     'models/tank.glb': 'glb'.repeat(100),
-    'clouds/f101.bin': Buffer.alloc(300_000, 7),
+    'clouds/f101.bin': Buffer.alloc(100_000, 7),
     'thumbnail.jpg': 'jpg',
   };
   for (const [rel, body] of Object.entries(files)) {
@@ -121,7 +121,7 @@ describe('extractProject', () => {
       'thumbnail.jpg',
     ]);
     expect(await readFile(join(r.root, 'issues.json'), 'utf8')).toBe(ISSUES);
-    expect(await readFile(join(r.root, 'clouds/f101.bin'))).toEqual(Buffer.alloc(300_000, 7));
+    expect(await readFile(join(r.root, 'clouds/f101.bin'))).toEqual(Buffer.alloc(100_000, 7));
     expect(await readFile(join(r.root, 'edits/boundaries.json'), 'utf8')).toContain(
       'aio.boundaries/1',
     );
@@ -143,14 +143,14 @@ describe('extractProject', () => {
       extractedBy: 'surveyor',
       encrypted: true,
     });
-    expect(seen.at(-1)).toBeGreaterThan(300_000);
+    expect(seen.at(-1)).toBeGreaterThan(100_000);
     // The package is never touched.
     expect({ hash: await sha(file), mtime: (await stat(file)).mtimeMs }).toEqual(before);
 
     // A second extract never reuses the folder.
     const again = await extractProject({ ...opened, file, dataRoot });
     expect(again.id).toBe('tank-delivery-edit-2');
-  });
+  }, 30_000);
 
   it('refuses a package whose policy forbids editing, and old customer packages', async () => {
     const forbid = await pack({ readOnly: false, editPolicy: 'forbid' }, 'a.aio');

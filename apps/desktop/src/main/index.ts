@@ -20,7 +20,6 @@ import {
   ipcMain,
   Menu,
   nativeTheme,
-  net,
   protocol,
   screen,
   session,
@@ -188,16 +187,19 @@ function broadcast<E extends 'packs:job'>(event: E, payload: IpcEvent<E>): void 
 // only when the person starts it in Settings, Maps. Planet builds come from Protomaps (or the
 // STRATLAS_PACK_SOURCE mirror) by HTTP ranges, so a cut-off download continues where it stopped.
 const planetBuilds = buildSource(process.env);
+// Map data is fetched in its own session: the default session blocks every http(s) request so
+// the renderer stays offline by construction (hardenSession).
+const mapFetch = (url: string, init?: RequestInit) =>
+  session.fromPartition('stratlas-maps').fetch(url, init);
 const packs = createPackManager({
   packsDir: () => join(settings.current().dataRoot, 'packs'),
   offlineOnly: () => settings.current().offlineOnly === true,
   emit: (job) => {
     broadcast('packs:job', job);
   },
-  source: (url, identity) => httpSource(url, (u, init) => net.fetch(u, init), identity),
+  source: (url, identity) => httpSource(url, mapFetch, identity),
   buildBase: planetBuilds.base,
-  latestBuild: (signal) =>
-    findLatestBuild((url, init) => net.fetch(url, init), signal, planetBuilds),
+  latestBuild: (signal) => findLatestBuild(mapFetch, signal, planetBuilds),
 });
 
 const updates = createOnlineUpdater({

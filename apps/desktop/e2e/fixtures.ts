@@ -178,7 +178,7 @@ export class NetworkGuard {
     // Fail network requests instead of letting them reach the internet.
     await context.route(/^(https?|wss?|ftp):/i, (route) => route.abort('internetdisconnected'));
     // Electron's own net module bypasses Node, so guard it in main as well.
-    await app.evaluate(({ net }, allow) => {
+    await app.evaluate(({ net, session }, allow) => {
       const log = (globalThis as { __aioNetworkLog?: string[] }).__aioNetworkLog;
       const passed = (globalThis as { __aioNetworkAllowed?: string[] }).__aioNetworkAllowed;
       if (!log || !passed) throw new Error('network-guard.cjs did not load in the main process');
@@ -186,23 +186,41 @@ export class NetworkGuard {
         log.push(target);
         return new Error(`Network access blocked by the e2e zero-network guard: ${target}`);
       };
+      const allowed = (url: string) => {
+        try {
+          return allow.includes(new URL(url).origin);
+        } catch {
+          return false;
+        }
+      };
       const originalFetch = net.fetch.bind(net);
+      // net.fetch goes through net.request, so both pass the allowed origins.
+      const originalRequest = net.request.bind(net);
       net.fetch = (input, init) => {
         const url = typeof input === 'string' ? input : 'url' in input ? input.url : String(input);
-        let origin: string;
-        try {
-          origin = new URL(url).origin;
-        } catch {
-          origin = '';
-        }
-        if (allow.includes(origin)) {
+        if (allowed(url)) {
           passed.push(url);
           return originalFetch(input, init);
         }
         return Promise.reject(block(url));
       };
       net.request = (options) => {
-        throw block(typeof options === 'string' ? options : (options.url ?? 'net.request'));
+        const url = typeof options === 'string' ? options : (options.url ?? 'net.request');
+        if (allowed(url)) return originalRequest(options);
+        throw block(url);
+      };
+      // Every session's fetch (the map downloads use their own session).
+      const proto = Object.getPrototypeOf(session.defaultSession) as {
+        fetch: (this: unknown, input: string | Request, init?: RequestInit) => Promise<Response>;
+      };
+      const sessionFetch = proto.fetch;
+      proto.fetch = function (input, init) {
+        const url = typeof input === 'string' ? input : input.url;
+        if (allowed(url)) {
+          passed.push(url);
+          return sessionFetch.call(this, input, init);
+        }
+        return Promise.reject(block(url));
       };
     }, this.allow);
   }
