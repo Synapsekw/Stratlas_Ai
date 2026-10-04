@@ -11,7 +11,8 @@ export const WindowKind = z.enum([
   'report',
   'issues',
 ]);
-export const AiProvider = z.enum(['anthropic', 'openai', 'google']);
+/** `local` is an OpenAI-compatible endpoint on this machine (for example Ollama); it needs no key. */
+export const AiProvider = z.enum(['anthropic', 'openai', 'google', 'local']);
 export const AiTask = z.enum(['chat', 'vision', 'report', 'extract', 'build']);
 
 /** Metadata for an agent tool. The executable `run` lives in @aio/ai and the owning package. */

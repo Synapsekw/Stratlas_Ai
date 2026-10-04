@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AiProvider,
+  Conversation,
   ipc,
+  ipcEvents,
+  LocalModelSettings,
   needsApproval,
+  Settings,
   parseManifest,
   Issue,
   ToolMeta,
@@ -198,5 +203,108 @@ describe('ipc contracts', () => {
     expect(res.safeParse({ path: null }).success).toBe(true);
     expect(res.safeParse({ path: 'C:/Users/x/register.csv' }).success).toBe(true);
     expect(res.safeParse({ path: null, error: 'Disk full' }).success).toBe(true);
+  });
+});
+
+describe('agent history and usage contracts', () => {
+  const conversation = {
+    schema: 'aio.conversation/1',
+    id: 'c-1',
+    title: 'Fly to the worst issue',
+    window: 'scene3d',
+    createdAt: '2026-10-04T10:00:00.000Z',
+    updatedAt: '2026-10-04T10:01:00.000Z',
+    turns: [
+      { kind: 'user', id: 'u1', text: 'Draft an issue', chips: [], frame: false },
+      {
+        kind: 'assistant',
+        id: 'a1',
+        runId: 'r1',
+        parts: [
+          { type: 'text', text: 'Drafting.' },
+          { type: 'step', callId: 'k1' },
+        ],
+        status: 'done',
+      },
+    ],
+    steps: {
+      k1: {
+        callId: 'k1',
+        name: 'create_issue_draft',
+        input: { title: 'Rust', severity: 3 },
+        risk: 'write',
+        status: 'awaiting',
+        canUndo: false,
+      },
+    },
+    usage: { inputTokens: 10, outputTokens: 5, costUsd: 0.001, costKnown: true },
+  };
+
+  it('accepts a saved conversation and keeps pending approvals', () => {
+    const r = Conversation.safeParse(conversation);
+    expect(r.success).toBe(true);
+    expect(r.data?.steps.k1?.status).toBe('awaiting');
+  });
+
+  it('refuses conversation ids that could leave the folder', () => {
+    expect(Conversation.safeParse({ ...conversation, id: '../x' }).success).toBe(false);
+    const load = ipc['ai:loadConversation'].request;
+    expect(load.safeParse({ projectId: 'p', id: 'c-1' }).success).toBe(true);
+    expect(load.safeParse({ projectId: 'p', id: '..\\x' }).success).toBe(false);
+  });
+
+  it('knows the local provider and an optional local model in settings', () => {
+    expect(AiProvider.safeParse('local').success).toBe(true);
+    expect(
+      Settings.safeParse({
+        cloudAi: false,
+        theme: 'dark',
+        sidebarCollapsed: false,
+        dataRoot: 'E:/d',
+        routes: [{ task: 'chat', provider: 'local', model: 'llama3.2' }],
+        localModel: { enabled: true, baseUrl: 'http://localhost:11434/v1', model: 'llama3.2' },
+      }).success,
+    ).toBe(true);
+    expect(
+      LocalModelSettings.safeParse({ enabled: true, baseUrl: 'ftp://x', model: 'm' }).success,
+    ).toBe(false);
+  });
+
+  it('tags usage events with provider and model and sends with a project id', () => {
+    const e = ipcEvents['ai:event'].safeParse({
+      type: 'usage',
+      runId: 'r',
+      inputTokens: 1,
+      outputTokens: 2,
+      provider: 'anthropic',
+      model: 'claude-opus-5-5',
+    });
+    expect(e.success).toBe(true);
+    expect(
+      ipc['ai:send'].request.safeParse({
+        runId: 'r',
+        projectId: 'p',
+        window: 'map',
+        context: {},
+        messages: [{ role: 'user', content: 'hi' }],
+      }).success,
+    ).toBe(true);
+  });
+
+  it('reports usage per project and provider', () => {
+    const provider = {
+      provider: 'anthropic',
+      inputTokens: 1,
+      outputTokens: 2,
+      costUsd: 0.1,
+      costKnown: true,
+    };
+    expect(
+      ipc['ai:usage'].response.safeParse({
+        projects: [
+          { key: 'e:/p', name: 'P', updatedAt: '2026-10-04T10:00:00.000Z', providers: [provider] },
+        ],
+      }).success,
+    ).toBe(true);
   });
 });

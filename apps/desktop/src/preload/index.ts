@@ -18,6 +18,13 @@ const CHANNELS = {
   'ai:send': true,
   'ai:toolResult': true,
   'ai:cancel': true,
+  'ai:status': true,
+  'ai:project': true,
+  'ai:setConsent': true,
+  'ai:usage': true,
+  'ai:listConversations': true,
+  'ai:loadConversation': true,
+  'ai:saveConversation': true,
   'dialog:openFolder': true,
   'dialog:saveFile': true,
 } as const satisfies Record<IpcChannel, true>;
