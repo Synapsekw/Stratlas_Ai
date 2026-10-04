@@ -18,6 +18,12 @@ See `docs/architecture/SPEC.md` section 2 for ownership and dependencies. Public
 | `projector.ts` | `Projector`: patches receiver materials with `onBeforeCompile` (reversible), distance-map occlusion, opacity, vignette, range fade                                                                                                                                             |
 | `rig.ts`       | `registerVideoAdapters()`, `setCameraMode(handle, 'free' \| 'follow' \| 'drone')`, `setProjection(handle, {...})`, `videoRig(handle).setFlightPaths({ mode: 'all' \| 'active' \| 'off', hiddenClips })` (paths only; the drone, frustum and projection follow the clip layers) |
 | `kit.ts`       | fixture adapter (MANIFEST pose files to `aio.flight/1`), tests and harnesses only; the production importer is S10's                                                                                                                                                            |
+| `srt.ts`       | DJI SRT telemetry: `parseDjiSrt` (Mavic 3, Enterprise with gimbal angles, Phantom 4 forms), `srtToFlight` (one sample per frame at its subtitle time, rel or abs altitude, gimbal or track heading, grid convergence), `srtTimingCheck` against the video frame times          |
+| `mp4.ts`       | `readMp4VideoInfo`: size, codec and every frame presentation time from the `moov` box (stts, ctts, edit list), no decoding                                                                                                                                                     |
+| `calibrate.ts` | `fitLens`: field of view from point pairs (frame pixel, model point, pose), with a small camera turn as a nuisance parameter; `projectPair`                                                                                                                                    |
+
+`@aio/video/telemetry` exports the SRT, MP4 and lens-fit code without three.js or React, for the main process.
+`setCalibrationLens(handle, lens)` tries a lens on the active clip (drone-eye camera, frustum, projector) until `null`.
 
 ## Clock rules
 

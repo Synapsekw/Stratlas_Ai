@@ -5,6 +5,22 @@ Project packages: read, write, importers for kit formats, exports.
 See `docs/architecture/SPEC.md` section 2 for ownership and dependencies. Public API: `src/index.ts`
 (renderer safe) and `src/import/index.ts` (Node only: file system, ffmpeg).
 
+## Builder (stream B2)
+
+`src/builder/` (`@aio/project/builder`, Node only) backs the new project wizard, raw import and
+alignment saves in the app:
+
+- `createProject` makes `<dataRoot>/projects/<id>/` (never reusing a folder) with a manifest built
+  from a severity template (`severityTemplates` collects the models of the library's projects) and an
+  empty `issues.json`. `updateLayers` saves a mesh `transform` or a video `offsetMs` and `lens`;
+  every manifest write is validated with `parseManifest` and keeps `manifest.json.bak`.
+- `importRawFiles`: JPEG photos (EXIF GPS, DJI XMP gimbal angles, `readPhotoMeta`; review copy
+  <= 2560 px and 480 px thumb), MP4/MOV with the DJI SRT of the same name (to `aio.flight/1`,
+  frame timing checked), GLB, OBJ (+ MTL and textures, `objToGlb`), small GeoTIFF orthos and DSMs
+  (`decodeTiff`: strips or tiles, none, LZW, Deflate, PackBits; GeoKeys or world file and .prj).
+  LAS, LAZ, E57, PLY and large or BigTIFF rasters become pipeline-pack jobs (`PipelineJobs`,
+  methods `pointcloud.toCopc` and `raster.tile`) and report `needs-pipeline` until it is installed.
+
 ## Importers (stream S10)
 
 Convert staged source folders into native packages laid out per `docs/architecture/data-conventions.md`.
