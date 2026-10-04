@@ -193,6 +193,9 @@ export class Overlay {
       whiteSpace: 'pre',
       display: 'none',
     });
+    this.perf.dataset.perfHud = '';
+    this.perf.setAttribute('role', 'status');
+    this.perf.setAttribute('aria-label', 'Performance');
     root.append(this.perf);
   }
 

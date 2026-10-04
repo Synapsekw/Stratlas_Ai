@@ -351,6 +351,38 @@ describe('Stage', () => {
     stage.dispose();
   });
 
+  it('toggles the perf HUD with Ctrl+Shift+F, also without dev tools', () => {
+    const { stage, resize } = make();
+    resize(800, 600);
+    const hud = () => container.querySelector<HTMLElement>('[data-perf-hud]');
+    expect(hud()?.style.display).toBe('none');
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F', ctrlKey: true, shiftKey: true }));
+    expect(hud()?.style.display).toBe('');
+    stage.renderNow(16, 1000);
+    stage.renderNow(16, 1016);
+    const s = stage.perfStats();
+    expect(s.frames).toBeGreaterThan(0);
+    expect(s.p95).toBeGreaterThan(0);
+    expect(hud()?.textContent).toContain('fps');
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F', ctrlKey: true, shiftKey: true }));
+    expect(hud()?.style.display).toBe('none');
+    stage.dispose();
+  });
+
+  it('applies quality presets: pixel ratio cap and shadow map size', () => {
+    const { stage, resize } = make();
+    resize(800, 600);
+    const spy = vi.spyOn(stage.renderer, 'setPixelRatio');
+    stage.setQuality({ maxPixelRatio: 1, shadowMapSize: 1024 });
+    expect(spy).toHaveBeenCalledWith(Math.min(window.devicePixelRatio || 1, 1));
+    const sun = stage.scene.getObjectByName('env:sun') as unknown as {
+      shadow: { mapSize: { x: number } };
+    };
+    expect(sun.shadow.mapSize.x).toBe(1024);
+    expect(stage.quality).toEqual({ maxPixelRatio: 1, shadowMapSize: 1024 });
+    stage.dispose();
+  });
+
   it('removes its canvas and stops listening on dispose', () => {
     const { stage, store } = make();
     expect(container.querySelector('canvas')).not.toBeNull();

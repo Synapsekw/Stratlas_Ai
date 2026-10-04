@@ -237,6 +237,19 @@ export class FrameStats {
     return this.dts.reduce((a, b) => Math.max(a, b), 0);
   }
 
+  /** Frame time at percentile `p` (0..100, nearest rank) over the window; 0 with no frames. */
+  percentileMs(p: number): number {
+    if (!this.dts.length) return 0;
+    const sorted = [...this.dts].sort((a, b) => a - b);
+    const rank = Math.ceil((p / 100) * sorted.length);
+    return sorted[Math.min(sorted.length, Math.max(1, rank)) - 1] ?? 0;
+  }
+
+  /** Frames in the window. */
+  count(): number {
+    return this.dts.length;
+  }
+
   reset(): void {
     this.dts.length = 0;
     this.last = null;

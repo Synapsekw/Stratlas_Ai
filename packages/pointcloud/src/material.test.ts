@@ -53,6 +53,12 @@ describe('EDL', () => {
     for (let i = 0; i < 16; i += 2) expect(Math.hypot(n[i] ?? 0, n[i + 1] ?? 0)).toBeCloseTo(1, 5);
   });
 
+  it('lists its cloud scene as offscreen content, so the perf HUD counts the clouds', () => {
+    const pass = new EdlPass(false);
+    expect(pass.quad.userData.offscreen).toEqual([pass.cloudScene]);
+    pass.dispose();
+  });
+
   it('builds a non-pickable full-screen composite that writes depth', () => {
     const pass = new EdlPass(true);
     expect(pass.quad.frustumCulled).toBe(false);

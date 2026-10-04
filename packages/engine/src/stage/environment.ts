@@ -105,6 +105,23 @@ export class Environment {
   private readonly snapped = new Vector3();
   private readonly lastShadowTarget = new Vector3(Infinity, 0, 0);
   private lastShadowDist = 0;
+  private maxShadow = 4096;
+
+  /** Edge of the sun's shadow map, texels. */
+  get shadowMapSize(): number {
+    return this.sun.shadow.mapSize.x;
+  }
+
+  /** Change the shadow map edge (quality preset); true when it changed. */
+  setShadowMapSize(size: number): boolean {
+    const s = Math.max(256, Math.min(this.maxShadow, size));
+    if (s === this.sun.shadow.mapSize.x) return false;
+    this.sun.shadow.mapSize.set(s, s);
+    this.sun.shadow.map?.dispose();
+    this.sun.shadow.map = null;
+    this.lastShadowTarget.set(Infinity, 0, 0);
+    return true;
+  }
 
   constructor(
     private readonly scene: Scene,
@@ -142,6 +159,7 @@ export class Environment {
       (renderer.capabilities as Partial<WebGLRenderer['capabilities']> | undefined)
         ?.maxTextureSize ?? 4096,
     );
+    this.maxShadow = size;
     this.sun.shadow.mapSize.set(size, size);
     this.sun.shadow.bias = -0.0004;
     scene.add(this.hemi, this.sun, this.sun.target);
