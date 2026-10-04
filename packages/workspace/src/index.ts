@@ -40,6 +40,8 @@ export interface WorkspaceState {
   hidden: Record<string, true>;
   focusedWindow: WindowKind | null;
   camera: CameraRequest | null;
+  /** The latest camera request, kept after the 3D view consumes it (the map follows it). */
+  lastCamera: CameraRequest | null;
 }
 
 export interface WorkspaceActions {
@@ -73,6 +75,7 @@ const initial: WorkspaceState = {
   hidden: {},
   focusedWindow: null,
   camera: null,
+  lastCamera: null,
 };
 
 export function createWorkspace(): StoreApi<Workspace> {
@@ -135,7 +138,8 @@ export function createWorkspace(): StoreApi<Workspace> {
     },
     flyTo: (target) => {
       seq += 1;
-      set({ camera: { seq, target } });
+      const camera = { seq, target };
+      set({ camera, lastCamera: camera });
     },
     consumeCamera: (s) => {
       if (get().camera?.seq === s) set({ camera: null });
