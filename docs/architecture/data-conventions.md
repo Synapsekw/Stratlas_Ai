@@ -109,3 +109,54 @@ Volumetric projects keep their volumes beside the manifest (schemas in `@aio/sch
 - `grids` locates the source grids the app recomputes volumes on: `piles` (10 cm pile grids, `{id}`), `dsm` (0.4 m site DSM, `{epoch}`) and `coarse` (0.4 m pile masks), all in the Volumetric Survey Kit script format (`window.VS_*` JSON with zlib and base64 grids, decoded in `packages/volumetric/src/model/kitdata.ts`). When absent, readers use the kit layout the importer copies unchanged: `legacy/data/piles/{id}.js`, `legacy/data/dsm_{epoch}.js`, `legacy/data/vol.js`.
 - The app reads both files through IPC `project:readVolumes` (validated in main). `edits/boundaries.json` is written only through IPC `project:writeBoundaries` (atomic replace with `.bak`). One edit per pile and epoch; an edit's volumes replace the automatic ones in every register, total and export.
 - A `.aio` package carries both files; the app reads them from the package and never writes edits into it (section 8).
+
+## 11. Detections and the inspection pipeline
+
+Detections are boxes on photos found by a person, an AI vision pass or a local model. Each pass is one file in the project (schema in `@aio/schema` `detections.ts`, checked again in `python/src/aio_pipelines/inspection/detections.py`):
+
+```
+<project>/
+  detections/<pass>.json      aio.detections/1, written by review (R1), AI (R2) or ONNX passes
+  inspection/                 written by the inspection pipeline (inspection.run)
+    contact/sheet-NN.jpg      contact sheets, 4 photos across, photo ids burned in
+    contact/layout.json       aio.contact-sheets/1: each sheet's cells (photo, x, y, w, h, pw, ph)
+    detections.json           the detections that counted in the last run (aio.detections/1, preview space)
+    records.json              Asset Inspection Kit records summary and stats (aio.aik-records/1)
+    findings.csv              the kit findings CSV
+    issues-map.json           aio.inspection-issues/1: the pipeline's issues, their detections and hashes
+```
+
+```json
+{
+  "schema": "aio.detections/1",
+  "source": "ai",
+  "producer": "anthropic claude vision",
+  "createdAt": "2026-10-05T08:00:00Z",
+  "layer": "photos",
+  "assessed": "all",
+  "detections": [
+    {
+      "id": "a1",
+      "photo": "p001",
+      "class": "corrosion",
+      "severity": 2,
+      "bbox": [412, 300, 470, 352],
+      "confidence": 0.81,
+      "status": "draft",
+      "note": "Rust streak below the flange"
+    }
+  ]
+}
+```
+
+- `source`: `human`, `ai`, `model` (local ONNX) or `import`; a detection may override it. Issues from `ai` or `model` detections are `source: "agent"`, the rest `import`.
+- `status`: absent or `accepted` counts; `draft` (an AI or model result nobody accepted) counts only when the job runs with `includeDrafts`; `rejected` never counts. Nothing from AI counts until a person accepts it.
+- `class`: a class id of the project's class catalogue (a label is accepted). `severity`: a level of that class's severity model or `"uncertain"`; default 2 (the kit adapter's default) or the lowest level.
+- `bbox`: `[x0, y0, x1, y1]` in `space`: `preview` (default; pixels of the project photo file, the grid of image sightings), `source` (pixels of an original of `width` x `height`), `normalized` (0 to 1) or `sheet` (pixels of the contact sheet `sheet` of the last run; the photo is the one under the box centre).
+- `id`: stable per detection, chosen by the producer; without one it is derived from the photo, the class and the rounded box, which also merges duplicates across files.
+- `assessed`: the photos the pass looked at (`"all"` by default), for the assessed count in the stats.
+- The kit's own inputs are accepted too: a kit list (`[{ "image", "class", "bbox", "space"?, "normalized"? }]`), COCO, and YOLO folders with `yoloNames`.
+
+The pipeline converts the project into a kit job in its staging folder (kit model frame: X north, Y up, Z east, around the asset axis, which is the centre of the models' footprint), places every box on the models with the kit's back-projection (median hit of a 5 x 5 ray grid in the central half of the box), groups placed detections of the same class within `cluster_m` (default max(0.75 m, 2% of the model height)) into defects numbered from the top down, and writes one issue per defect: a mesh sighting at the group's medoid (local frame) and an image sighting (box) per detection. Photos without a position cannot place detections and are reported; photos without a lens get the kit's 70 degree field of view (`hfovDeg`).
+
+`issues.json` is merged, never replaced: every issue already there stays. The map remembers the issues the pipeline wrote; a later run updates such an issue only while it is exactly as the pipeline left it (same hash), keeps its id, code and creation time, and leaves it alone once a person changed it. Issues no detection backs any more stay for review. The previous file is kept as `issues.json.bak`. When the job finishes, an open project takes the merged issues from disk and keeps edits made in the app meanwhile.
