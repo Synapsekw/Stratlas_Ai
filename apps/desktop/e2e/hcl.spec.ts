@@ -459,3 +459,61 @@ test('the video window moves, resizes with its aspect ratio and remembers its pl
   expect(reset.x).toBeCloseTo(start.x, 0);
   expect(reset.y).toBeCloseTo(start.y, 0);
 });
+
+/** Shown state of the project's layers, and whether the tank group draws in 3D. */
+const layerState = (win: Page) =>
+  inspect(win, (w) => {
+    const s = w.__stratlas.workspace.getState();
+    const layers = s.project?.manifest.layers ?? [];
+    const off = (kind?: string) =>
+      layers.filter((l) => (kind ? l.kind === kind : true) && s.hidden[l.id]).length;
+    const tank = w.__stratlas.stage()?.scene.getObjectByName('layer:tank') as
+      { visible?: boolean } | undefined;
+    return {
+      total: layers.length,
+      clouds: layers.filter((l) => l.kind === 'pointcloud').length,
+      hidden: off(),
+      cloudsHidden: off('pointcloud'),
+      tankVisible: tank?.visible === true,
+    };
+  });
+
+test('the eye over all layers and the group eyes switch many layers at once', async ({
+  app,
+  win,
+}) => {
+  await openHcl(app, win);
+  const master = win.locator('.tree-h .eye');
+  await expect(master).toHaveAttribute('data-visibility', 'all');
+  const start = await layerState(win);
+  expect(start.hidden).toBe(0);
+
+  // One click hides every layer, the tank included.
+  await master.click();
+  await expect.poll(async () => (await layerState(win)).hidden).toBe(start.total);
+  await expect.poll(async () => (await layerState(win)).tankVisible).toBe(false);
+  await expect(master).toHaveAttribute('data-visibility', 'none');
+
+  // A group eye shows just its group: the master turns mixed.
+  const clouds = win.locator('.tgroup-row', { hasText: 'Point clouds' }).locator('.eye');
+  await expect(clouds).toHaveAttribute('aria-label', 'Point clouds: show all');
+  await clouds.click();
+  await expect.poll(async () => (await layerState(win)).cloudsHidden).toBe(0);
+  expect((await layerState(win)).hidden).toBe(start.total - start.clouds);
+  await expect(master).toHaveAttribute('data-visibility', 'mixed');
+
+  // From mixed the master shows everything again.
+  await master.click();
+  await expect.poll(async () => (await layerState(win)).hidden).toBe(0);
+  await expect.poll(async () => (await layerState(win)).tankVisible).toBe(true);
+  await expect(master).toHaveAttribute('data-visibility', 'all');
+
+  // Hiding the clouds group hides the clouds only.
+  await clouds.click();
+  await expect.poll(async () => (await layerState(win)).cloudsHidden).toBe(start.clouds);
+  expect((await layerState(win)).hidden).toBe(start.clouds);
+  await expect(master).toHaveAttribute('data-visibility', 'mixed');
+  await shot(win, 'master-eye');
+  await clouds.click();
+  await expect.poll(async () => (await layerState(win)).hidden).toBe(0);
+});

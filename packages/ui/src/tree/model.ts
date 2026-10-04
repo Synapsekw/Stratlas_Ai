@@ -142,3 +142,34 @@ export function buildDatasetTree(
   }
   return [...groups.values()].filter((g) => g.items.length > 0);
 }
+
+/** Shown state of a set of layers: every one, none, or some (a mixed eye). */
+export type Visibility = 'all' | 'none' | 'mixed';
+
+/** Layer ids under a tree item (a flight row holds its clips). */
+function itemLayerIds(it: TreeItem): string[] {
+  return [...(it.layerId ? [it.layerId] : []), ...(it.children ?? []).flatMap(itemLayerIds)];
+}
+
+/** Every layer id in a group, flight clips included. */
+export function groupLayerIds(group: TreeGroup): string[] {
+  return group.items.flatMap(itemLayerIds);
+}
+
+/** Every layer id in the tree. */
+export function treeLayerIds(groups: readonly TreeGroup[]): string[] {
+  return groups.flatMap(groupLayerIds);
+}
+
+export function visibilityOf(
+  layerIds: readonly string[],
+  hidden: Readonly<Record<string, true>>,
+): Visibility {
+  const off = layerIds.filter((id) => hidden[id] === true).length;
+  return off === 0 ? 'all' : off === layerIds.length ? 'none' : 'mixed';
+}
+
+/** What a click on a group or master eye does: hide when all show, else show them all. */
+export function eyeTarget(v: Visibility): boolean {
+  return v !== 'all';
+}

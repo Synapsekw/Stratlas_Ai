@@ -100,6 +100,14 @@ export const ICONS = {
       <circle cx="16" cy="5.5" r="2" />
     </>
   ),
+  /** Some of the layers shown: the eye with a half-filled pupil. */
+  'eye-mixed': (
+    <>
+      <path d="M2 10s3-5.5 8-5.5S18 10 18 10s-3 5.5-8 5.5S2 10 2 10z" />
+      <circle cx="10" cy="10" r="2.3" />
+      <path d="M10 7.7a2.3 2.3 0 0 0 0 4.6z" fill="currentColor" />
+    </>
+  ),
   'eye-off': (
     <>
       <path d="M3 3l14 14M8.3 5c.5-.1 1.1-.2 1.7-.2 5 0 8 5.2 8 5.2s-.8 1.5-2.4 2.9M5.4 6.6C3.2 8.1 2 10 2 10s3 5.2 8 5.2c1.4 0 2.6-.4 3.6-.9" />

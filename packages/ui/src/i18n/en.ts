@@ -46,6 +46,15 @@ export const en = {
   'library.count_one': '{count} project',
   'library.count_other': '{count} projects',
 
+  // Dataset tree: eyes over all layers and over a group
+  'tree.eye.all': 'All layers',
+  'tree.eye.hideAll': 'Hide all layers',
+  'tree.eye.showAll': 'Show all layers',
+  'tree.eye.showAllMixed': 'Show all layers (some are hidden)',
+  'tree.eye.hideGroup': '{group}: hide all',
+  'tree.eye.showGroup': '{group}: show all',
+  'tree.eye.showGroupMixed': '{group}: show all (some are hidden)',
+
   // Scene stage: floating video window
   'stage.video.window': 'Video {name}',
   'stage.video.titleBar': 'Video window title bar',

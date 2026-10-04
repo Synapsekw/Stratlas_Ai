@@ -59,6 +59,8 @@ export interface WorkspaceActions {
   setActiveClip(layerId: string | null): void;
   select(selection: Selection | null): void;
   setLayerVisible(layerId: string, visible: boolean): void;
+  /** Show or hide many layers in one update (the master and group eyes of the layer tree). */
+  setLayersVisible(layerIds: readonly string[], visible: boolean): void;
   isLayerVisible(layerId: string): boolean;
   upsertIssue(issue: Issue): void;
   removeIssue(issueId: string): void;
@@ -147,6 +149,18 @@ export function createWorkspace(): StoreApi<Workspace> {
       ) as Record<string, true>;
       if (!visible) hidden[layerId] = true;
       set({ hidden });
+    },
+    setLayersVisible: (layerIds, visible) => {
+      const before = get().hidden;
+      const hidden: Record<string, true> = { ...before };
+      for (const id of layerIds) {
+        if (visible) Reflect.deleteProperty(hidden, id);
+        else hidden[id] = true;
+      }
+      const changed =
+        Object.keys(hidden).length !== Object.keys(before).length ||
+        Object.keys(hidden).some((id) => !before[id]);
+      if (changed) set({ hidden });
     },
     isLayerVisible: (layerId) => !get().hidden[layerId],
     upsertIssue: (issue) => {
