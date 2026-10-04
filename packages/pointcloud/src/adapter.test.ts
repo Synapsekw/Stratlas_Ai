@@ -63,6 +63,7 @@ function fakeDecoder(points = 10) {
             position: new Int16Array(points * 3),
             intensity: new Uint8Array(points),
             bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+            heights: Float32Array.from([0, 0.5, 1]),
           });
         });
       });
@@ -295,7 +296,17 @@ describe('COPC layers', () => {
     pointDataLength: 100,
   });
 
-  function copcDecoder(hier: Record<number, CopcHierarchy>) {
+  /** Heights of a level-0 (root) node: ground 0..10 m with two stray points far off. */
+  const ROOT_HEIGHTS = Float32Array.from([
+    -500,
+    ...Array.from({ length: 998 }, (_, i) => (i / 997) * 10),
+    900,
+  ]);
+
+  function copcDecoder(
+    hier: Record<number, CopcHierarchy>,
+    heights: (offset: number) => Float32Array = () => ROOT_HEIGHTS,
+  ) {
     const jobs: Parameters<Decoder['decode']>[0][] = [];
     const pages: number[] = [];
     const decoder: Decoder = {
@@ -312,6 +323,7 @@ describe('COPC layers', () => {
           classes: { 2: n },
           quant: { offset: [0, 0, 0], scale: [0.001, 0.001, 0.001] },
           bounds: { min: [0, 0, 0], max: [64, 64, 64] },
+          heights: heights(job.kind === 'copc' ? job.node.pointDataOffset : 0),
         });
       },
       copcSource: () => Promise.resolve(source),
@@ -334,12 +346,16 @@ describe('COPC layers', () => {
     format: 'copc',
   };
 
-  async function open(hier: Record<number, CopcHierarchy>, eye: [number, number, number]) {
+  async function open(
+    hier: Record<number, CopcHierarchy>,
+    eye: [number, number, number],
+    heights?: (offset: number) => Float32Array,
+  ) {
     const { handle, frame } = fakeHandle();
     handle.camera.position.set(...eye);
     handle.camera.lookAt(32, 32, 32);
     handle.camera.updateMatrixWorld();
-    const d = copcDecoder(hier);
+    const d = copcDecoder(hier, heights);
     const settings = createPointcloudSettings(null);
     settings.getState().setEdl(false);
     const adapter = createPointcloudAdapter({
@@ -351,7 +367,18 @@ describe('COPC layers', () => {
       scene: handle,
       url: (r) => ('path' in r ? `aio://project/p/${r.path}` : 'x'),
     });
-    return { handle, frame, d, layer };
+    return { handle, frame, d, layer, settings };
+  }
+
+  /** The elevation uniform of every drawn node. */
+  function rampRanges(handle: SceneHandle): [number, number][] {
+    const out: [number, number][] = [];
+    handle.scene.traverse((o) => {
+      if (!(o instanceof Points)) return;
+      const u = (o.material as { uniforms: { uHeight: { value: Vector2 } } }).uniforms.uHeight;
+      out.push([u.value.x, u.value.y]);
+    });
+    return out;
   }
 
   it('reads the header and root page in the decoder, then loads the root node first', async () => {
@@ -409,5 +436,59 @@ describe('COPC layers', () => {
         hasClass = true;
     });
     expect(hasClass).toBe(true);
+  });
+
+  it('colours elevation over the point heights, not the octree cube, without outliers', async () => {
+    // the 64 m cube would put 0..10 m of ground in the bottom sixth of the ramp: all blue
+    const { handle, frame, settings } = await open(
+      { 10: { nodes: { '0-0-0-0': info(500, 1000) }, pages: {} } },
+      [32, 5000, 32],
+    );
+    settings.getState().setColourMode('height');
+    frame();
+    await flush();
+    frame();
+    const c = pointcloudStats.getState().byScene.get(handle);
+    const [lo, hi] = c?.heightRange ?? [NaN, NaN];
+    expect(lo).toBeCloseTo(0, 0);
+    expect(hi).toBeCloseTo(10, 0);
+    expect(c?.heightExtent).toEqual([-500, 900]);
+    const ranges = rampRanges(handle);
+    expect(ranges.length).toBe(1);
+    expect(ranges[0]?.[0]).toBeCloseTo(lo, 5);
+    expect(ranges[0]?.[1]).toBeCloseTo(hi, 5);
+  });
+
+  it('keeps one elevation range for every node as finer nodes stream in', async () => {
+    const root = {
+      nodes: { '0-0-0-0': info(500, 1000), '1-0-0-0': info(100, 2000) },
+      pages: {},
+    };
+    // a child node over a 40 m stack: the coarse root sample still sets the range
+    const { handle, frame, d } = await open({ 10: root }, [32, 80, 32], (off) =>
+      off === 2000 ? Float32Array.from([30, 35, 40]) : ROOT_HEIGHTS,
+    );
+    frame();
+    await flush();
+    frame();
+    expect(d.jobs.length).toBe(2);
+    const ranges = rampRanges(handle);
+    expect(ranges.length).toBe(2);
+    expect(new Set(ranges.map((r) => r.join(','))).size).toBe(1);
+    expect(ranges[0]?.[1]).toBeCloseTo(10, 0);
+  });
+
+  it('uses a hand-set elevation range for every node and forgets it when the cloud closes', async () => {
+    const { handle, frame, settings, layer } = await open(
+      { 10: { nodes: { '0-0-0-0': info(500, 1000) }, pages: {} } },
+      [32, 5000, 32],
+    );
+    frame();
+    await flush();
+    settings.getState().setHeightRange([2, 6]);
+    frame();
+    expect(rampRanges(handle)).toEqual([[2, 6]]);
+    layer.dispose();
+    expect(settings.getState().heightRange).toBeNull();
   });
 });

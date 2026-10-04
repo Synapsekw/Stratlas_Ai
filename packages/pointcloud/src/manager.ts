@@ -16,6 +16,7 @@ import type { LasLayout } from './copcDecode';
 import { copcChunkSeeds } from './copcLayer';
 import type { Bounds3, Quantisation } from './decode';
 import { EdlPass } from './edl';
+import { robustHeightRange, type HeightSample, type HeightStats } from './heights';
 import {
   FLIGHT_PALETTE,
   MODE_INDEX,
@@ -62,6 +63,8 @@ export interface ChunkState {
   page?: CopcPage;
   /** Points per class (COPC), once decoded. */
   classes?: Record<number, number>;
+  /** A sample of the chunk's point heights (local Y), once decoded; kept after unloading. */
+  heights?: Float32Array;
 }
 
 export type ChunkSeed = Omit<ChunkState, 'object' | 'busy' | 'failed'>;
@@ -114,6 +117,9 @@ export class CloudManager {
   private decoder: Decoder | null = null;
   private pxPerM = 800;
   private sizeScale = 1;
+  /** Automatic elevation range; recomputed when `heightsDirty`. */
+  private heights: HeightStats | null = null;
+  private heightsDirty = true;
 
   constructor(
     readonly handle: SceneHandle,
@@ -193,6 +199,7 @@ export class CloudManager {
     };
     this.layers.set(id, layer);
     this.dirty = true;
+    this.heightsDirty = true;
     this.updateStats();
     this.handle.requestRender();
     return layer;
@@ -204,6 +211,7 @@ export class CloudManager {
     l.visible = visible;
     l.group.visible = visible;
     this.dirty = true;
+    this.heightsDirty = true;
     this.handle.requestRender();
   }
 
@@ -214,6 +222,7 @@ export class CloudManager {
     l.material?.dispose();
     l.group.removeFromParent();
     this.layers.delete(id);
+    this.heightsDirty = true;
     this.updateStats();
     this.handle.requestRender();
   }
@@ -232,7 +241,8 @@ export class CloudManager {
     this.pxPerM = pxPerM;
     this.sizeScale = s.sizeScale;
     const maxPx = s.maxPixels * r.getPixelRatio();
-    const [hMin, hMax] = this.heightRange() ?? [0, 10];
+    // one range for every node of every cloud: the user's, else the clouds' robust range
+    const [hMin, hMax] = s.heightRange ?? this.heightRange() ?? [0, 10];
     for (const l of this.layers.values()) {
       const m = l.material;
       if (!m) continue;
@@ -262,19 +272,33 @@ export class CloudManager {
     }
   }
 
-  /** Height range of the loaded chunks of visible clouds, local Y; null with none loaded. */
-  heightRange(): [number, number] | null {
-    let lo = Infinity;
-    let hi = -Infinity;
+  /**
+   * Automatic elevation range of the visible clouds, local Y (the frame the shader colours):
+   * the 1st to 99th percentile of the point heights sampled from each cloud's coarsest decoded
+   * level (the octree root, the overview chunk, a whole kit cloud). That level spans the whole
+   * cloud, stays loaded, and keeps the colours from shifting as finer nodes stream in. COPC node
+   * boxes are octree cubes, far taller than the points, so they never set the range.
+   */
+  heightStats(): HeightStats | null {
+    if (!this.heightsDirty) return this.heights;
+    this.heightsDirty = false;
+    const samples: HeightSample[] = [];
     for (const l of this.layers.values()) {
       if (!l.visible) continue;
+      let top = Infinity;
+      for (const c of l.chunks) if (c.heights?.length && c.lod < top) top = c.lod;
       for (const c of l.chunks) {
-        if (!c.object) continue;
-        lo = Math.min(lo, c.bounds.min[1]);
-        hi = Math.max(hi, c.bounds.max[1]);
+        if (c.lod !== top || !c.heights?.length) continue;
+        samples.push({ heights: c.heights, weight: Math.max(c.points, 1) / c.heights.length });
       }
     }
-    return Number.isFinite(lo) && hi > lo ? [lo, hi] : null;
+    this.heights = robustHeightRange(samples);
+    return this.heights;
+  }
+
+  /** The automatic elevation range (see heightStats); null before any cloud is decoded. */
+  heightRange(): [number, number] | null {
+    return this.heightStats()?.range ?? null;
   }
 
   private update(eye: [number, number, number], budget: number, frustum: Plane4[]): void {
@@ -497,6 +521,10 @@ export class CloudManager {
     if (src.kind !== 'copc') c.bounds = d.bounds;
     c.points = d.count;
     if (d.classes) c.classes = d.classes;
+    if (d.heights?.length) {
+      c.heights = d.heights;
+      this.heightsDirty = true;
+    }
     c.object = pts;
     l.group.add(pts);
   }
@@ -536,6 +564,7 @@ export class CloudManager {
       layers: this.layers.size,
       rgb,
       heightRange: this.heightRange(),
+      heightExtent: this.heightStats()?.extent ?? null,
       classes,
     });
   }
@@ -543,6 +572,8 @@ export class CloudManager {
   dispose(): void {
     for (const id of [...this.layers.keys()]) this.removeLayer(id);
     for (const u of this.unsubscribers) u();
+    // a hand-set elevation range belongs to this site
+    if (this.settings.getState().heightRange) this.settings.getState().setHeightRange(null);
     this.edl?.dispose();
     this.root.removeFromParent();
     this.decoder?.dispose();

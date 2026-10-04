@@ -34,7 +34,9 @@ describe('handleDecode', () => {
     expect(Array.from(result.position)).toEqual([0, 0, 0, 1000, 0, 0, 2000, 0, 0]);
     expect(Array.from(result.intensity ?? [])).toEqual([0, 1, 2]);
     expect(result.bounds.max[0]).toBe(2);
-    expect(transfer).toHaveLength(2);
+    // the height sample for the elevation range travels with it
+    expect(Array.from(result.heights ?? [])).toEqual([0, 0, 0]);
+    expect(transfer).toHaveLength(3);
   });
 
   it('decodes a png chunk through the image decoder', async () => {

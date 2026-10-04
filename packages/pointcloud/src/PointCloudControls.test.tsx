@@ -30,6 +30,39 @@ describe('PointCloudControls', () => {
     expect(html).not.toMatch(/[–—]/); // no en or em dashes in user-facing text
   });
 
+  it('shows the elevation range in metres with Auto while colouring by elevation', () => {
+    const store = seeded({ colourMode: 'height' });
+    const heights = { range: [-17, 76] as const, extent: [-30, 900] as const };
+    const html = renderToStaticMarkup(
+      <PointCloudControls store={store} rgb heights={heights} toElevation={(y) => 100 + y} />,
+    );
+    expect(html).toContain('Elevation range');
+    expect(html).toMatch(/aria-pressed="true"[^>]*>Auto</);
+    expect(html).toMatch(/aria-label="Elevation ramp top"[^>]*min="-30"[^>]*max="900"/);
+    expect(html).toMatch(/value="76"/);
+    expect(html).toContain('176.0 m');
+    expect(html).toContain('83.0 m');
+    // not in other colour modes
+    const rgb = renderToStaticMarkup(
+      <PointCloudControls store={seeded({ colourMode: 'rgb' })} rgb heights={heights} />,
+    );
+    expect(rgb).not.toContain('Elevation range');
+  });
+
+  it('shows a hand-set elevation range with Auto off', () => {
+    const live = seeded({ colourMode: 'height' });
+    live.getState().setHeightRange([0, 40]);
+    // a static render reads the initial state: hand it the current one
+    const store = { ...live, getInitialState: live.getState };
+    const heights = { range: [-17, 76] as const, extent: [-30, 900] as const };
+    const html = renderToStaticMarkup(
+      <PointCloudControls store={store} rgb heights={heights} toElevation={(y) => y} />,
+    );
+    expect(html).toMatch(/aria-pressed="false"[^>]*>Auto</);
+    expect(html).toContain('40.0 m');
+    expect(html).toContain('0.0 m');
+  });
+
   it('disables RGB with a reason for intensity-only clouds and shows intensity instead', () => {
     const store = seeded({ colourMode: 'rgb' });
     const html = renderToStaticMarkup(<PointCloudControls store={store} rgb={false} />);
