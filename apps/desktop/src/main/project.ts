@@ -2,6 +2,8 @@ import { openPackage, type ZipArchive } from '@aio/project/package';
 import {
   Issue,
   PACKAGE_EXTENSION,
+  PACKAGE_ORIGIN_FILE,
+  PackageOrigin,
   parseManifest,
   validateIssueAgainstModel,
   type IpcResponse,
@@ -208,7 +210,25 @@ export async function openProject(
   const issues = await readIssues(root);
   if (!issues.ok) return issues;
   const id = registry.register(root);
-  return { ok: true, id, root, manifest: manifest.value, issues: issues.value };
+  const origin = await readOrigin(root);
+  return {
+    ok: true,
+    id,
+    root,
+    manifest: manifest.value,
+    issues: issues.value,
+    ...(origin ? { origin } : {}),
+  };
+}
+
+/** `package-origin.json` of a project extracted from a package; null when absent or not valid. */
+async function readOrigin(root: string): Promise<PackageOrigin | null> {
+  try {
+    const r = PackageOrigin.safeParse(await readJson(join(root, PACKAGE_ORIGIN_FILE)));
+    return r.success ? r.data : null;
+  } catch {
+    return null;
+  }
 }
 
 /** `project:writeIssues`: folder projects only; a package is never written. */

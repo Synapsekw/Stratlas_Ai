@@ -12,7 +12,7 @@ import {
 } from './builder';
 import { ProjectManifest } from './manifest';
 import { HexColor } from './common';
-import { AiPolicy, EditPolicy, ExportKind, PackageInfo } from './package';
+import { AiPolicy, EditPolicy, ExportKind, PackageInfo, PackageOrigin } from './package';
 import { BoundaryEditsFile, VolumesFile } from './volumes';
 import { DetectionsFile } from './detections';
 import { NarrativeFile, ReportContentsSettings } from './report';
@@ -211,6 +211,8 @@ const OpenResult = z.discriminatedUnion('ok', [
     issues: z.array(Issue),
     /** Present when the project was opened from a `.aio` package (never written to). */
     package: PackageInfo.optional(),
+    /** A folder project extracted from a package: its `package-origin.json`. */
+    origin: PackageOrigin.optional(),
   }),
   z.object({
     ok: z.literal(false),

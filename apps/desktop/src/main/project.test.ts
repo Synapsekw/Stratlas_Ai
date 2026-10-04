@@ -55,6 +55,31 @@ describe('openProject', () => {
     expect(reg.root('alzour')).toBe(dir);
   });
 
+  it('answers the package origin of an extracted project, and none for others', async () => {
+    const origin = {
+      schema: 'aio.origin/1',
+      package: 'HCl customer.aio',
+      projectId: 'hcl',
+      exportedAt: '2026-10-04T08:00:00Z',
+      extractedAt: '2026-10-05T09:00:00Z',
+      encrypted: false,
+    };
+    const dir = await writeProject(join(base, 'hcl-edit'), sampleManifest(), {
+      'package-origin.json': JSON.stringify(origin),
+    });
+    const r = await openProject(dir, new ProjectRegistry());
+    if (!r.ok) throw new Error(r.error);
+    expect(r.origin).toMatchObject({ package: 'HCl customer.aio', projectId: 'hcl' });
+    const plain = await openProject(await writeProject(join(base, 'plain')), new ProjectRegistry());
+    if (!plain.ok) throw new Error(plain.error);
+    expect(plain.origin).toBeUndefined();
+    const bad = await writeProject(join(base, 'bad'), sampleManifest(), {
+      'package-origin.json': '{"schema":"aio.origin/1"}',
+    });
+    const b = await openProject(bad, new ProjectRegistry());
+    expect(b.ok && b.origin).toBe(undefined);
+  });
+
   it('treats a missing issues.json as no issues', async () => {
     const dir = await writeProject(join(base, 'p'));
     const r = await openProject(dir, new ProjectRegistry());
