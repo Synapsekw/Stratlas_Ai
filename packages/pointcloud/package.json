@@ -11,10 +11,15 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@aio/schema": "workspace:*",
-    "@aio/geo": "workspace:*",
     "@aio/engine": "workspace:*",
+    "@aio/geo": "workspace:*",
+    "@aio/schema": "workspace:*",
     "@aio/workspace": "workspace:*",
+    "copc": "0.0.9",
+    "laz-perf": "0.0.7",
     "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@types/emscripten": "^1.41.6"
   }
 }
