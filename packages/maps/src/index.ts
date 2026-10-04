@@ -1,6 +1,7 @@
 import { getAdapter, registerAdapter } from '@aio/engine';
 
 export { MapView, type MapViewProps } from './MapView';
+export { captureMap } from './capture';
 export {
   drawPreview,
   isRepeatClick,
