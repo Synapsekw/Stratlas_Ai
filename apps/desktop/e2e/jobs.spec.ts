@@ -1,5 +1,6 @@
+import { PIPELINES } from '@aio/schema';
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, rmdirSync, symlinkSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, launchApp, test } from './fixtures';
@@ -51,6 +52,72 @@ test('without a pipeline pack the Jobs panel says where it looked', async ({ win
   await expect(win.locator('.jobs-rt.missing')).toContainText(join(dataRoot.root, 'runtime'));
   await win.getByRole('button', { name: 'New job' }).click();
   await expect(win.getByTestId('job-start')).toBeDisabled();
+});
+
+/**
+ * An installed runtime folder (`<data folder>/runtime`, e.g. `E:/Stratlas Data/runtime`), only read:
+ * the app must pick its newest pack, list every pipeline of the schema in it and pass the selftest.
+ */
+const RUNTIME = process.env.STRATLAS_E2E_RUNTIME ?? '';
+
+test.describe('with an installed runtime folder', () => {
+  test.skip(
+    !RUNTIME,
+    'set STRATLAS_E2E_RUNTIME to a data folder runtime, e.g. E:/Stratlas Data/runtime',
+  );
+
+  test('the app picks the newest pipeline pack, which lists every pipeline and passes its selftest', async ({
+    dataRoot,
+    network,
+  }) => {
+    test.setTimeout(120_000);
+    const versions = readdirSync(RUNTIME)
+      .map((n) => /^pipeline-pack-(\d+(?:\.\d+)*)$/.exec(n)?.[1])
+      .filter((v): v is string => v !== undefined)
+      .sort((a, b) => {
+        const x = a.split('.').map(Number);
+        const y = b.split('.').map(Number);
+        for (let i = 0; i < Math.max(x.length, y.length); i++)
+          if ((x[i] ?? 0) !== (y[i] ?? 0)) return (y[i] ?? 0) - (x[i] ?? 0);
+        return 0;
+      });
+    const newest = versions[0] ?? '';
+    expect(newest, `no pipeline-pack-<version> in ${RUNTIME}`).not.toBe('');
+    const packManifest = JSON.parse(
+      await readFile(join(RUNTIME, `pipeline-pack-${newest}`, 'manifest.json'), 'utf8'),
+    ) as { pipelines: { name: string }[] };
+    expect(packManifest.pipelines.map((p) => p.name).sort()).toEqual(
+      PIPELINES.map((p) => p.name).sort(),
+    );
+
+    // The real runtime is linked in read only; the link (not the packs) is removed afterwards.
+    const link = join(dataRoot.root, 'runtime');
+    symlinkSync(RUNTIME, link, 'junction');
+    const app = await launchApp(dataRoot, {
+      STRATLAS_PIPELINE_PYTHON: '',
+      STRATLAS_PIPELINE_PACK: '',
+    });
+    await network.attach(app);
+    try {
+      const win = await app.firstWindow();
+      await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
+      await expect(win.locator('.jobs-rt')).toContainText(`Pipeline pack ${newest}`);
+      await win.getByRole('button', { name: 'New job' }).click();
+      await win.getByLabel('Pipeline', { exact: true }).selectOption('system.selftest');
+      await win.getByLabel(/^Project folder/).fill(dataRoot.projectDir);
+      await win.getByLabel('Wait (s)').fill('0');
+      await win.getByTestId('job-start').click();
+      const detail = win.locator('.job-detail');
+      await expect(detail.locator('.jd-h .job-state')).toHaveText('Done', { timeout: 60_000 });
+      const id = (await detail.locator('.jd-t .mono').textContent()) ?? '';
+      const log = await readFile(join(dataRoot.projectDir, 'jobs', id, 'job.log'), 'utf8');
+      for (const lib of ['numpy', 'rasterio', 'shapely', 'shapefile']) expect(log).toContain(lib);
+      expect(await network.outbound()).toEqual([]);
+    } finally {
+      await app.close();
+      rmdirSync(link);
+    }
+  });
 });
 
 test.describe('with the runtime', () => {
