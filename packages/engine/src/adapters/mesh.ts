@@ -12,12 +12,14 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { engineConfig } from '../config';
 import type { LayerAdapter, LayerHandle, SceneHandle } from '../types';
+import { MASK_LAYER, maskTerrainMaterial, type GroundUniforms } from '../stage/groundShading';
 import { isMesh, layerMatrix, markNodes, mergeByMaterial } from './model';
 
 /** Extra hooks the engine's own stage offers; other SceneHandle implementations may lack them. */
 interface StageHooks {
   setWaterLevel(level: number | null): void;
   invalidateShadows(): void;
+  groundUniforms(): GroundUniforms;
 }
 const hooks = (s: SceneHandle): Partial<StageHooks> => s as Partial<StageHooks>;
 
@@ -35,6 +37,8 @@ function loader(): GLTFLoader {
 }
 
 const GROUNDISH = /^(Ground|Ground_Mainland|Paving|Asphalt|Laydown|Slope|Concrete)/;
+/** Ground surfaces whose modelled outline may overhang the real shore (cut where imagery shows sea). */
+const SHORE = /^(Ground|Ground_Mainland|Paving|Asphalt|Laydown|Slope|Rock_Armour)$/;
 
 function disposeTree(root: Object3D) {
   const geos = new Set<BufferGeometry>();
@@ -85,14 +89,27 @@ export const meshAdapter: LayerAdapter<'mesh'> = {
     }
 
     const materials = new Set<Material>();
+    const terrainMats = new Set<Material>();
+    group.updateMatrixWorld(true);
+    const box = new Box3();
     root.traverse((o) => {
       if (!isMesh(o)) return;
       const m = o;
       const terrain = o.userData.type === 'terrain' || o.parent?.userData.type === 'terrain';
-      m.castShadow = !terrain;
+      // pavements, slabs and roads lie on the ground: their shadow is invisible there, and where
+      // an indicative outline overhangs the real shore it would darken the water
+      box.setFromObject(o);
+      const flat = box.max.y - box.min.y < 1 && box.max.y < 1.5;
+      m.castShadow = !terrain && !flat;
       m.receiveShadow = true;
-      for (const mat of Array.isArray(m.material) ? m.material : [m.material]) materials.add(mat);
+      for (const mat of Array.isArray(m.material) ? m.material : [m.material]) {
+        materials.add(mat);
+        if ((terrain && o !== sea) || SHORE.test(mat.name)) terrainMats.add(mat);
+      }
     });
+    // modelled shores are indicative: where the imagery shows sea, the water wins
+    const ground = hooks(stage).groundUniforms?.();
+    if (ground) for (const mat of terrainMats) maskTerrainMaterial(mat, ground);
     for (const mat of materials) {
       mat.clippingPlanes = stage.clippingPlanes;
       mat.clipShadows = true;
@@ -103,6 +120,11 @@ export const meshAdapter: LayerAdapter<'mesh'> = {
 
     const merged = mergeByMaterial(root, group);
     for (const m of merged) group.add(m);
+    // what stands on land: the land mask that lets animated water show through photographed sea
+    group.traverse((o) => {
+      if (isMesh(o) && o.layers.isEnabled(0)) o.layers.enable(MASK_LAYER);
+    });
+    root.userData.aioLandMask = true;
 
     // static content: compute world matrices once and skip them in the per-frame update
     stage.scene.add(group);
@@ -131,7 +153,6 @@ export const meshAdapter: LayerAdapter<'mesh'> = {
       setVisible(v) {
         if (group.visible === v) return;
         group.visible = v;
-        if (seaTop !== null) hooks(stage).setWaterLevel?.(v ? seaTop : null);
         hooks(stage).invalidateShadows?.();
         stage.requestRender();
       },

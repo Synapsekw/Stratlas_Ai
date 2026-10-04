@@ -33,3 +33,5 @@ export { fitDistance, poseForPreset, frameBox, headingDeg } from './camera/camer
 export type { SectionState } from './tools/section';
 export { DEFAULT_SECTION } from './tools/section';
 export { PALETTE } from './palette';
+export { solarPosition, skyDirection, utcOffsetHours, type SolarPosition } from './stage/solar';
+export { defaultEnvironment, defaultMode, defaultTime, siteLocation } from './stage/envDefaults';

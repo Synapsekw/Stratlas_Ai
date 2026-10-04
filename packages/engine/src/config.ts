@@ -7,6 +7,12 @@ export interface StageQuality {
   maxPixelRatio: number;
   /** Edge of the sun's shadow map, texels (capped by the GPU's texture size). */
   shadowMapSize: number;
+  /** Shadow edge softness (PCF filter radius), texels. */
+  shadowSoftness: number;
+  /** Water: layered animated waves, or one still layer for integrated graphics. */
+  water: 'full' | 'simple';
+  /** Frames per second the water animates at while nothing else redraws; 0 keeps it still. */
+  waterFps: number;
 }
 
 export interface EngineConfig {
@@ -24,7 +30,13 @@ const config: EngineConfig = {
   resolveUrl: assetUrl,
   dracoDecoderPath: null,
   devTools: false,
-  quality: { maxPixelRatio: 1.5, shadowMapSize: 4096 },
+  quality: {
+    maxPixelRatio: 1.5,
+    shadowMapSize: 4096,
+    shadowSoftness: 2.5,
+    water: 'full',
+    waterFps: 30,
+  },
 };
 
 /** Configure the engine before mounting SceneView (dev harness, tests, app composition). */

@@ -1,4 +1,5 @@
 import type { Layer } from '@aio/schema';
+import type { MeshLambertMaterial } from 'three';
 import {
   BufferAttribute,
   BufferGeometry,
@@ -11,7 +12,8 @@ import {
   Vector3,
   type Texture,
 } from 'three';
-import type { AdapterContext, LayerAdapter, LayerHandle } from '../types';
+import { GROUND_LAYER, groundImageryMaterial, type GroundUniforms } from '../stage/groundShading';
+import type { AdapterContext, LayerAdapter, LayerHandle, SceneHandle } from '../types';
 import {
   QUAD_INDEX,
   QUAD_UVS,
@@ -37,6 +39,11 @@ export function registerRasterFormat(format: RasterLayer['format'], handler: Ras
   formatHandlers.set(format, handler);
 }
 
+/** Ground shading the engine's own stage offers (other SceneHandle implementations lack it). */
+function groundUniforms(scene: SceneHandle): GroundUniforms | undefined {
+  return (scene as Partial<{ groundUniforms(): GroundUniforms }>).groundUniforms?.();
+}
+
 /**
  * Plot plans are line art with alpha (transparent background): drawn with normal alpha blending
  * over the ortho, without writing depth. Photographic rasters (ortho, dsm) stay opaque.
@@ -58,18 +65,25 @@ function quadMesh(
   g.setIndex(QUAD_INDEX);
   g.computeBoundingSphere();
   g.computeBoundingBox();
-  const m = new MeshBasicMaterial({
-    map: tex,
-    toneMapped: false,
-    side: DoubleSide,
-    polygonOffset: true,
-    polygonOffsetFactor: -2 - order,
-    polygonOffsetUnits: -2 - order,
-    ...(overlay ? { transparent: true, depthWrite: false } : {}),
-  });
+  // photographed ground takes the time of day, the sun's shadows and the water's land mask
+  const ground = overlay ? undefined : groundUniforms(ctx.scene);
+  const m: MeshBasicMaterial | MeshLambertMaterial = ground
+    ? groundImageryMaterial(tex, ground, { masked: true })
+    : new MeshBasicMaterial({ map: tex, toneMapped: false });
+  m.side = DoubleSide;
+  m.polygonOffset = true;
+  m.polygonOffsetFactor = -2 - order;
+  m.polygonOffsetUnits = -2 - order;
+  if (overlay) {
+    m.transparent = true;
+    m.depthWrite = false;
+  }
   m.userData.aioKeepSide = true;
   m.clippingPlanes = ctx.scene.clippingPlanes;
   const mesh = new Mesh(g, m);
+  mesh.receiveShadow = ground !== undefined;
+  // imagery tells the land mask where the sea is
+  if (ground) mesh.layers.enable(GROUND_LAYER);
   mesh.renderOrder = -4 + order;
   mesh.matrixAutoUpdate = false;
   return mesh;
@@ -77,7 +91,7 @@ function quadMesh(
 
 function disposeQuad(mesh: Mesh) {
   mesh.geometry.dispose();
-  const m = mesh.material as MeshBasicMaterial;
+  const m = mesh.material as MeshBasicMaterial | MeshLambertMaterial;
   m.map?.dispose();
   m.dispose();
 }

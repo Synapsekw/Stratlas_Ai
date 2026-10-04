@@ -422,8 +422,97 @@ describe('Stage', () => {
       shadow: { mapSize: { x: number } };
     };
     expect(sun.shadow.mapSize.x).toBe(1024);
-    expect(stage.quality).toEqual({ maxPixelRatio: 1, shadowMapSize: 1024 });
+    expect(stage.quality).toMatchObject({ maxPixelRatio: 1, shadowMapSize: 1024 });
     stage.dispose();
+  });
+
+  describe('environment', () => {
+    const ortho: Layer = {
+      kind: 'raster',
+      id: 'ortho',
+      name: 'Ortho',
+      visible: true,
+      src: { path: 'rasters/ortho.jpg' },
+      role: 'ortho',
+      format: 'image',
+      corners: { tl: [-100, 0, -100], tr: [100, 0, -100], bl: [-100, 0, 100] },
+    };
+    const site = (layers: Layer[]): OpenProject => {
+      const p = project(layers);
+      return {
+        ...p,
+        manifest: {
+          ...p.manifest,
+          origin: [245714, 3179542, 100],
+          captures: [{ id: 'c', label: 'Survey', date: '2023-02-21' }],
+        },
+      };
+    };
+
+    it('lights a placed site with ground imagery by the sky, anything else in the studio', () => {
+      const { stage, store } = make();
+      store.getState().openProject(site([meshLayer('plant'), ortho]));
+      expect(stage.environment.mode).toBe('sky');
+      expect(stage.environment.location?.lat).toBeCloseTo(28.73, 1);
+      expect(stage.environment.location?.lon).toBeCloseTo(48.38, 1);
+      // capture date at 10:00 site time (UTC+3)
+      expect(new Date(stage.environment.timeMs).toISOString()).toBe('2023-02-21T07:00:00.000Z');
+      store.getState().openProject({ ...site([meshLayer('tank')]), id: 'p2' });
+      expect(stage.environment.mode).toBe('studio');
+      store.getState().openProject({ ...project([meshLayer('x'), ortho]), id: 'p3' });
+      expect(stage.environment.mode).toBe('studio'); // no geographic origin
+      stage.dispose();
+    });
+
+    it('moves the sun with the time of day and keeps a moon light at night', () => {
+      const { stage, store } = make();
+      store.getState().openProject(site([meshLayer('plant'), ortho]));
+      const changed = vi.fn();
+      stage.onStateChange(changed);
+      stage.setEnvironment({ timeMs: Date.UTC(2023, 1, 21, 5, 0) }); // 08:00 local
+      const morning = stage.environment.sun;
+      stage.setEnvironment({ timeMs: Date.UTC(2023, 1, 21, 14, 0) }); // 17:00 local
+      const evening = stage.environment.sun;
+      expect(changed).toHaveBeenCalled();
+      expect(morning.direction[0]).toBeGreaterThan(0.3); // east
+      expect(evening.direction[0]).toBeLessThan(-0.3); // west
+      expect(evening.elevationDeg).toBeLessThan(morning.elevationDeg + 20);
+      stage.setEnvironment({ timeMs: Date.UTC(2023, 1, 21, 20, 0) }); // 23:00 local
+      expect(stage.environment.sun.elevationDeg).toBeLessThan(-20);
+      expect(stage.environment.night).toBe(1);
+      expect(stage.environment.lightDirection[1]).toBeGreaterThan(0.5);
+      stage.dispose();
+    });
+
+    it('shows water at the sea level found in the data, or a level set by hand', () => {
+      const { stage, store } = make();
+      store.getState().openProject(site([meshLayer('plant'), ortho]));
+      expect(stage.environment.waterShown).toBe(false);
+      stage.setWaterLevel(-6.44);
+      expect(stage.environment).toMatchObject({ dataWaterLevel: -6.44, waterShown: true });
+      expect(stage.scene.getObjectByName('env:water')?.position.y).toBeCloseTo(-6.44);
+      stage.setEnvironment({ water: false });
+      expect(stage.environment.waterShown).toBe(false);
+      expect(stage.scene.getObjectByName('env:water')).toBeUndefined();
+      stage.setEnvironment({ water: true, waterLevel: -2 });
+      expect(stage.scene.getObjectByName('env:water')?.position.y).toBeCloseTo(-2);
+      stage.setEnvironment({ waterLevel: null });
+      expect(stage.scene.getObjectByName('env:water')?.position.y).toBeCloseTo(-6.44);
+      stage.dispose();
+    });
+
+    it('switches backdrops: sky dome and studio dome', () => {
+      const { stage, store } = make();
+      store.getState().openProject(site([meshLayer('plant'), ortho]));
+      const sky = () => stage.scene.getObjectByName('env:physicalSky');
+      const dome = () => stage.scene.getObjectByName('env:sky');
+      expect(sky()?.visible).toBe(true);
+      expect(dome()?.visible).toBe(false);
+      stage.setEnvironment({ mode: 'studio' });
+      expect(sky()?.visible).toBe(false);
+      expect(dome()?.visible).toBe(true);
+      stage.dispose();
+    });
   });
 
   it('removes its canvas and stops listening on dispose', () => {

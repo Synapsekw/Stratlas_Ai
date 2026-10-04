@@ -1,7 +1,6 @@
 import type { AssetRef, Layer, LayerKind } from '@aio/schema';
 import type { CameraRequest, OpenProject, Selection, Workspace } from '@aio/workspace';
 import {
-  ACESFilmicToneMapping,
   Box3,
   DoubleSide,
   Plane,
@@ -41,13 +40,18 @@ import { DEFAULT_SECTION, applySection, type SectionState } from '../tools/secti
 import type {
   ClientRectLike,
   EngineStage,
+  EnvironmentInfo,
+  EnvironmentSettings,
   LabelMode,
   LayerAdapter,
   RaycastProvider,
   SavedView,
   StageTool,
 } from '../types';
+import { defaultEnvironment, siteLocation, type SiteLocation } from './envDefaults';
 import { Environment } from './environment';
+import type { GroundUniforms } from './groundShading';
+import { skyDirection, solarPosition } from './solar';
 import { estimateGpuBytes, formatPerf, type PerfStats } from './perf';
 import { Highlighter } from './highlight';
 
@@ -177,6 +181,20 @@ export class Stage implements EngineStage {
   private _section: SectionState = { ...DEFAULT_SECTION };
   private _labelMode: LabelMode = 'key';
   private keepOut: (() => Iterable<ClientRectLike>) | null = null;
+  private envSettings: EnvironmentSettings = {
+    mode: 'studio',
+    timeMs: Date.UTC(2023, 5, 21, 9),
+    water: true,
+    waterLevel: null,
+  };
+  private location: SiteLocation | null = null;
+  private sunPos = {
+    azimuthDeg: 135,
+    elevationDeg: 45,
+    direction: [0, 0, 0] as [number, number, number],
+  };
+  private dataWaterLevel: number | null = null;
+  private maskDirty = false;
 
   constructor(private readonly opts: StageOptions) {
     this.getAdapter = opts.getAdapter ?? registryAdapter;
@@ -194,8 +212,6 @@ export class Stage implements EngineStage {
 
     const r = (opts.createRenderer ?? createDefaultRenderer)(this.canvas);
     r.outputColorSpace = SRGBColorSpace;
-    r.toneMapping = ACESFilmicToneMapping;
-    r.toneMappingExposure = 1.0;
     r.shadowMap.enabled = true;
     r.shadowMap.type = PCFShadowMap;
     r.shadowMap.autoUpdate = false;
@@ -216,7 +232,8 @@ export class Stage implements EngineStage {
     });
 
     this.env = new Environment(this.scene, r);
-    this.env.setShadowMapSize(this._quality.shadowMapSize);
+    this.env.setQuality(this.envQuality());
+    this.applyEnvironment();
     // perf counters cover a whole frame; renderNow resets them
     if (r.info as Partial<WebGLRenderer['info']> | undefined) r.info.autoReset = false;
     this.highlight = new Highlighter(this.clippingPlanes);
@@ -503,6 +520,8 @@ export class Stage implements EngineStage {
     this.lastNow = now;
     if (this.flight) this.stepFlight(now);
     if (this.controls.update()) this.need = true;
+    // animated water and a pending sky light map draw at their own idle rate
+    if (this.env.wantsFrame(now)) this.need = true;
     if (!this.need && this.holders.size === 0) return;
     this.need = false;
     this.renderNow(dt, now);
@@ -513,7 +532,8 @@ export class Stage implements EngineStage {
     if (this.disposed || this.width < 1 || this.height < 1) return;
     for (const cb of this.frameCbs) cb(dtMs);
     const t = performance.now();
-    if (this.env.update(this.camera, this.controls.target, (t - this.t0) / 1000))
+    if (this.maskDirty) this.buildLandMask();
+    if (this.env.update(this.camera, this.controls.target, (t - this.t0) / 1000, now))
       this.shadowDirty = true;
     if (this.shadowDirty) {
       this.renderer.shadowMap.needsUpdate = true;
@@ -576,8 +596,109 @@ export class Stage implements EngineStage {
       this.renderer.setPixelRatio(pr);
       if (this.width > 0 && this.height > 0) this.resize(this.width, this.height);
     }
-    if (this.env.setShadowMapSize(this._quality.shadowMapSize)) this.shadowDirty = true;
+    if (this.env.setQuality(this.envQuality())) this.shadowDirty = true;
     this.need = true;
+  }
+
+  private envQuality() {
+    const q = this._quality;
+    return {
+      shadowMapSize: q.shadowMapSize,
+      shadowSoftness: q.shadowSoftness,
+      water: q.water,
+      waterFps: q.waterFps,
+      maskSize: q.water === 'full' ? 2048 : 1024,
+    };
+  }
+
+  /* ----------------------------------------------------------------------- environment */
+
+  get environment(): EnvironmentInfo {
+    const d = this.env.lightDirection;
+    return {
+      ...this.envSettings,
+      location: this.location,
+      sun: { ...this.sunPos, direction: [...this.sunPos.direction] },
+      lightDirection: [d.x, d.y, d.z],
+      dataWaterLevel: this.dataWaterLevel,
+      waterShown: this.env.waterY !== null,
+      night: this.env.daylight?.night ?? 0,
+    };
+  }
+
+  setEnvironment(patch: Partial<EnvironmentSettings>): void {
+    const next = { ...this.envSettings };
+    if (patch.mode === 'sky' || patch.mode === 'studio') next.mode = patch.mode;
+    if (patch.timeMs !== undefined && Number.isFinite(patch.timeMs)) next.timeMs = patch.timeMs;
+    if (patch.water !== undefined) next.water = patch.water;
+    if (patch.waterLevel !== undefined)
+      next.waterLevel =
+        patch.waterLevel !== null && Number.isFinite(patch.waterLevel) ? patch.waterLevel : null;
+    this.envSettings = next;
+    this.applyEnvironment();
+    this.emitState();
+  }
+
+  /** Sun from the project's location and time; backdrop; water. */
+  private applyEnvironment() {
+    const s = this.envSettings;
+    this.env.setMode(s.mode);
+    const loc = this.location;
+    const pos = loc
+      ? solarPosition(s.timeMs, loc.lat, loc.lon)
+      : { azimuthDeg: 135, elevationDeg: 45 };
+    const dir = skyDirection(pos.azimuthDeg, pos.elevationDeg, loc?.convergenceDeg ?? 0);
+    this.sunPos = { ...pos, direction: dir };
+    this.env.setSun(new Vector3(...dir), pos.elevationDeg);
+    this.applyWater();
+    this.shadowDirty = true;
+    this.need = true;
+  }
+
+  private applyWater() {
+    const s = this.envSettings;
+    const level = s.waterLevel ?? this.dataWaterLevel;
+    const show = s.water && level !== null;
+    const before = this.env.waterY;
+    this.env.setWater(show ? level : null);
+    if (!show) this.env.setMaskOn(false);
+    else if (before !== level) this.maskDirty = true;
+    this.need = true;
+  }
+
+  /**
+   * Cut the photographed sea out of the ground imagery: a top-down mask of the land meshes
+   * (the plant model) above the water, over the extent of the visible rasters.
+   */
+  private buildLandMask() {
+    this.maskDirty = false;
+    const level = this.env.waterY;
+    if (level === null) return;
+    const rasters = new Box3();
+    const land = new Box3();
+    const tmp = new Box3();
+    for (const [root] of this.targets) {
+      if (!visibleChain(root)) continue;
+      if (root.userData.aioRaster === true) rasters.union(tmp.setFromObject(root));
+      else if (root.userData.aioLandMask === true) land.union(tmp.setFromObject(root));
+    }
+    if (rasters.isEmpty()) {
+      this.env.setMaskOn(false);
+      return;
+    }
+    // The photo is flat at the raster height: it stands for ground near that height only. Slopes
+    // below it (revetments, quay walls) are drawn by the model and the clouds, not the photo.
+    const ok = this.env.renderLandMask(
+      { minX: rasters.min.x, maxX: rasters.max.x, minZ: rasters.min.z, maxZ: rasters.max.z },
+      Math.max(land.max.y, rasters.max.y, level) + 5,
+      Math.max(level + 0.3, rasters.min.y - 1.5),
+    );
+    this.env.setMaskOn(ok);
+  }
+
+  /** Shared uniforms for ground imagery (raster adapter): daylight, shadows, land mask. */
+  groundUniforms(): GroundUniforms {
+    return this.env.groundUniforms;
   }
 
   private resize(w: number, h: number) {
@@ -606,8 +727,12 @@ export class Stage implements EngineStage {
       this.project = s.project;
       this.sync.sync(s.project.manifest.layers, s.hidden);
     } else if (s.project !== prev.project) this.openProject(s.project);
-    else if (s.hidden !== prev.hidden && s.project)
+    else if (s.hidden !== prev.hidden && s.project) {
       this.sync?.sync(s.project.manifest.layers, s.hidden);
+      // shown or hidden layers change the land mask and what casts shadows
+      if (this.env.waterY !== null) this.maskDirty = true;
+      this.shadowDirty = true;
+    }
     if (s.selection !== prev.selection) this.applySelection(s.selection);
     if (s.camera && s.camera !== prev.camera) this.handleCamera(s.camera);
   };
@@ -624,7 +749,11 @@ export class Stage implements EngineStage {
     this.autoFit = true;
     this.pendingCamera = null;
     this.pendingSelection = null;
-    this.env.setWater(null, this.contentCentre);
+    this.dataWaterLevel = null;
+    this.location = project ? siteLocation(project.manifest) : null;
+    if (project) this.envSettings = defaultEnvironment(project.manifest, Date.now());
+    this.applyEnvironment();
+    this.emitState();
     if (project) {
       const sync = new LayerSync({
         getAdapter: this.getAdapter,
@@ -664,6 +793,11 @@ export class Stage implements EngineStage {
       const radius = box.getSize(new Vector3()).length() / 2;
       this.contentCentre.copy(centre);
       this.env.setContentRadius(radius, centre);
+      // shadows fall from the content onto the ground and the water below it
+      const sb = box.clone();
+      sb.min.y = Math.min(sb.min.y, 0, this.env.waterY ?? 0);
+      this.env.setShadowBounds(sb);
+      if (this.env.waterY !== null) this.maskDirty = true;
       this.controls.minDistance = Math.max(radius * 0.002, 0.05);
       this.controls.maxDistance = radius * 25;
       applySection(this.clippingPlanes, this._section, this.contentCentre);
@@ -710,10 +844,13 @@ export class Stage implements EngineStage {
     };
   }
 
-  /** Water level for a modelled sea, set by the mesh adapter. */
+  /** Water level of a modelled sea (local y), set by the mesh adapter; null when it goes. */
   setWaterLevel(level: number | null): void {
-    this.env.setWater(level, this.contentCentre);
-    this.need = true;
+    if (level === this.dataWaterLevel) return;
+    this.dataWaterLevel = level;
+    this.applyWater();
+    this.shadowDirty = true;
+    this.emitState();
   }
 
   /** Redraw the shadow map on the next frame (content moved or changed visibility). */
