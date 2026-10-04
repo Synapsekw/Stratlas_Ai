@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import { AiProvider, AiTask, ToolRisk, WindowKind } from './agent';
 import { Issue } from './annotation';
+import {
+  ImportItem,
+  LayerPatch,
+  NewProjectRequest,
+  ReportBrand,
+  SeverityTemplate,
+} from './builder';
 import { ProjectManifest } from './manifest';
 
 const Empty = z.object({}).strict();
@@ -140,6 +147,81 @@ export const ipc = {
       .strict(),
     response: z.object({ path: z.string().nullable(), error: z.string().optional() }),
   },
+  /** Pick one or more files with the native dialog; `paths` is empty when the person cancels. */
+  'dialog:openFiles': {
+    request: z
+      .object({
+        title: z.string().optional(),
+        filters: z
+          .array(z.object({ name: z.string(), extensions: z.array(z.string().min(1)) }))
+          .optional(),
+        multi: z.boolean().optional(),
+      })
+      .strict(),
+    response: z.object({ paths: z.array(z.string()) }),
+  },
+  /** Severity templates (from the projects in the library) and report brands for the wizard. */
+  'builder:templates': {
+    request: Empty,
+    response: z.object({ severity: z.array(SeverityTemplate), brands: z.array(ReportBrand) }),
+  },
+  /** Create `<dataRoot>/projects/<id>/` with a valid manifest and an empty issue register. */
+  'builder:createProject': {
+    request: NewProjectRequest,
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), path: z.string(), manifest: ProjectManifest }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /** GPS position and capture time of a photo (wizard: origin from the first GPS photo). */
+  'builder:photoGps': {
+    request: z.object({ path: z.string().min(1) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        lon: z.number(),
+        lat: z.number(),
+        alt: z.number().optional(),
+        takenAt: z.string().optional(),
+      }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /**
+   * Import raw files into an open project (photos, video with DJI SRT, GLB/OBJ, GeoTIFF; point
+   * clouds and large rasters go to the pipeline pack). Progress arrives as `builder:progress`.
+   */
+  'builder:import': {
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        paths: z.array(z.string().min(1)).min(1),
+        /** The aircraft clock's offset from UTC in minutes; default from the project longitude. */
+        utcOffsetMin: z.number().int().min(-720).max(840).optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), manifest: ProjectManifest, items: z.array(ImportItem) }),
+      z.object({ ok: z.literal(false), error: z.string(), items: z.array(ImportItem).optional() }),
+    ]),
+  },
+  /**
+   * Save an alignment: a mesh layer `transform` (georeference) or a video layer's `offsetMs` and
+   * `lens` (calibration), to one or more layers. The manifest is backed up and validated first.
+   */
+  'builder:updateLayers': {
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        layerIds: z.array(z.string().min(1)).min(1),
+        patch: LayerPatch,
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), manifest: ProjectManifest, backup: z.string() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
 } as const satisfies Record<string, { request: z.ZodType; response: z.ZodType }>;
 
 /** Events pushed from main to the renderer. */
@@ -164,6 +246,12 @@ export const ipcEvents = {
     z.object({ type: z.literal('done'), runId: z.string() }),
     z.object({ type: z.literal('error'), runId: z.string(), message: z.string() }),
   ]),
+  'builder:progress': z.object({
+    projectId: z.string(),
+    done: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative(),
+    file: z.string(),
+  }),
 } as const satisfies Record<string, z.ZodType>;
 
 export type IpcChannel = keyof typeof ipc;
@@ -180,4 +268,9 @@ export type ChatMessage = z.infer<typeof ChatMessage>;
 export interface AioBridge {
   invoke<C extends IpcChannel>(channel: C, request: IpcRequest<C>): Promise<IpcResponse<C>>;
   on<E extends IpcEventName>(event: E, listener: (payload: IpcEvent<E>) => void): () => void;
+  /**
+   * Absolute path of a file dropped on the window (Electron `webUtils.getPathForFile`), or an
+   * empty string for files that do not come from disk. Optional: absent outside Electron.
+   */
+  pathForFile?(file: File): string;
 }

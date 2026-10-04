@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { brand } from './index';
+import { brand, reportBrands } from './index';
+
+describe('reportBrands', () => {
+  it('offers white label first, then the client brands, with unique ids', () => {
+    expect(reportBrands[0]?.id).toBe('whitelabel');
+    expect(reportBrands.map((b) => b.id)).toEqual(expect.arrayContaining(['eand', 'zain']));
+    expect(new Set(reportBrands.map((b) => b.id)).size).toBe(reportBrands.length);
+  });
+});
 
 describe('brand', () => {
   it('has a product name and a reverse-DNS app id', () => {

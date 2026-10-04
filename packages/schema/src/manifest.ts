@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { Id, IsoDate, Vec3, err, ok, uniqueIds, type Result } from './common';
 import { Layer } from './layers';
 import { ClassCatalogue, SeverityModel } from './severity';
+import { ProjectType } from './builder';
 
 export const SCHEMA_VERSION = 'aio.project/1' as const;
 
@@ -26,6 +27,8 @@ export const ProjectManifest = z
     severityModels: z.array(SeverityModel),
     classCatalogues: z.array(ClassCatalogue),
     brand: z.string().optional(),
+    /** What the project is for (builder wizard); absent on imported kit projects. */
+    type: ProjectType.optional(),
   })
   .superRefine(uniqueIds('layers'))
   .superRefine(uniqueIds('severityModels'))
