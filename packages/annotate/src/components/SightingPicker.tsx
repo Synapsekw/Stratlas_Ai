@@ -105,7 +105,15 @@ export function SightingPicker({ kinds }: { kinds: readonly Sighting['on'][] }) 
   const top = Math.max(8, Math.min(at.y + 12, window.innerHeight - 380));
 
   return (
-    <div className="ann-pop" style={{ left, top }} role="dialog" aria-label="New issue">
+    <div
+      className="ann-pop"
+      style={{ left, top }}
+      role="dialog"
+      aria-label="New issue"
+      ref={(el) => {
+        if (el) keepInside(el, at);
+      }}
+    >
       <AnnotateStyles />
       <div className="ann-faint">
         {stage === 'class' ? 'Class (hotkey)' : 'Severity (digit, u = uncertain)'}
@@ -174,4 +182,29 @@ export function SightingPicker({ kinds }: { kinds: readonly Sighting['on'][] }) 
       </div>
     </div>
   );
+}
+
+/**
+ * Place the popover next to the click in window coordinates and inside the area that hosts it
+ * (an ancestor marked `data-pop-bounds`, such as the stage, else the window), so side panels never
+ * cover its buttons. A transformed or filtered ancestor makes `position: fixed` relative to
+ * itself; its offset is measured and taken out.
+ */
+function keepInside(el: HTMLElement, at: { x: number; y: number }): void {
+  const host = el.closest('[data-pop-bounds]');
+  const r = host
+    ? host.getBoundingClientRect()
+    : { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
+  const w = el.offsetWidth || 248;
+  const h = el.offsetHeight || 372;
+  const right = Math.min(r.right, window.innerWidth);
+  const bottom = Math.min(r.bottom, window.innerHeight);
+  const x = Math.max(r.left + 8, Math.min(at.x + 12, right - w - 8));
+  const y = Math.max(r.top + 8, Math.min(at.y + 12, bottom - h - 8));
+  // the containing block's origin: where `left: 0; top: 0` lands in the window
+  const now = el.getBoundingClientRect();
+  const originX = now.left - (parseFloat(el.style.left) || 0);
+  const originY = now.top - (parseFloat(el.style.top) || 0);
+  el.style.left = `${String(x - originX)}px`;
+  el.style.top = `${String(y - originY)}px`;
 }

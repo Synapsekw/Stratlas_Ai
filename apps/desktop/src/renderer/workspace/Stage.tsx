@@ -661,7 +661,12 @@ export function Stage() {
     };
 
   return (
-    <div className={`stage${docked && showVideo ? ' docked' : ''}`} ref={stageRef} data-mode={mode}>
+    <div
+      className={`stage${docked && showVideo ? ' docked' : ''}`}
+      ref={stageRef}
+      data-mode={mode}
+      data-pop-bounds
+    >
       {/* 3D and map panes keep their geometry in a right-to-left UI. */}
       <div
         className={`stage-panes${docked && showVideo ? ' with-video' : ''}${closeup ? ' with-dock' : ''}`}
