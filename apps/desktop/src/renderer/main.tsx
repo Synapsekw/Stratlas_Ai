@@ -2,6 +2,7 @@ import '@aio/ui/fonts.css';
 import '@aio/ui/tokens.css';
 import '@aio/ui/mission.css';
 import './styles.css';
+import './report/reports.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
