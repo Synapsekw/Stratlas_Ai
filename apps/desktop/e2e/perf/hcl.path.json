@@ -1,0 +1,15 @@
+{
+  "project": "hcl",
+  "card": "HCl",
+  "note": "Recorded orbit around the tank in the local frame (metres): home, round the shell at mid height, over the roof, close to a nozzle, back.",
+  "durationMs": 20000,
+  "keys": [
+    { "position": [11.3, 16.2, 11.0], "target": [0, 4.9, -0.2] },
+    { "position": [-15, 10, 12], "target": [0, 4.9, -0.2] },
+    { "position": [-18, 6, -10], "target": [0, 4.5, -0.2] },
+    { "position": [4, 24, -16], "target": [0, 6, 0] },
+    { "position": [14, 4, 2], "target": [0, 4, 0] },
+    { "position": [8, 7, 8], "target": [0, 5, 0] },
+    { "position": [11.3, 16.2, 11.0], "target": [0, 4.9, -0.2] }
+  ]
+}
