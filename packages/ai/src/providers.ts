@@ -1,12 +1,14 @@
 /**
  * Provider layer (AI-9). A provider turns a model id and an optional key into an AI SDK language
- * model. The three cloud providers are built in; a local provider (for example Ollama) can be
- * registered later with `cloud: false, needsKey: false` and is then allowed with cloud AI off.
- * Main process only: this module pulls in the provider SDKs.
+ * model. The three cloud providers are built in. The local provider talks to an OpenAI-compatible
+ * server on this machine (for example Ollama); it is `cloud: false, needsKey: false` and so allowed
+ * with cloud AI off, but only while its address is a loopback address. Main process only: this
+ * module pulls in the provider SDKs.
  */
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogle } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
+import type { LocalModelSettings } from '@aio/schema';
 import type { LanguageModel } from 'ai';
 import { PROVIDER_LABELS } from './routes';
 
@@ -51,6 +53,34 @@ export function builtInProviders(): ModelProvider[] {
       languageModel: (model, key) => createGoogle({ apiKey: key ?? '' })(model),
     },
   ];
+}
+
+/** True for localhost, 127.0.0.0/8 and ::1: requests to these never leave the machine. */
+export function isLoopbackUrl(url: string): boolean {
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  if (host === 'localhost' || host.endsWith('.localhost')) return true;
+  if (host === '[::1]' || host === '::1') return true;
+  return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+}
+
+/**
+ * The local model from Settings. An address on another machine sends data off this one, so it is
+ * then treated as a cloud provider (refused while cloud AI is off or the project forbids it).
+ */
+export function localProvider(cfg: Pick<LocalModelSettings, 'baseUrl'>): ModelProvider {
+  return {
+    id: 'local',
+    label: PROVIDER_LABELS.local,
+    cloud: !isLoopbackUrl(cfg.baseUrl),
+    needsKey: false,
+    languageModel: (model) =>
+      createOpenAI({ baseURL: cfg.baseUrl, apiKey: 'local', name: 'local' }).chat(model),
+  };
 }
 
 export function createProviderRegistry(

@@ -5,7 +5,16 @@
  * person approves it for write and send risk). Keys come from the host and never leave this module.
  * Nothing here logs prompts, images or keys.
  */
-import type { AiProvider, IpcEvent, IpcRequest, WindowKind } from '@aio/schema';
+import type {
+  AiPolicy,
+  AiProvider,
+  AiTask,
+  IpcEvent,
+  IpcRequest,
+  IpcResponse,
+  LocalModelSettings,
+  WindowKind,
+} from '@aio/schema';
 import {
   APICallError,
   RetryError,
@@ -20,11 +29,23 @@ import {
 } from 'ai';
 import { estimateCostUsd } from './pricing';
 import { contextBlock, systemPrompt } from './prompt';
-import { createProviderRegistry, type ProviderRegistry } from './providers';
+import {
+  createProviderRegistry,
+  localProvider,
+  type ModelProvider,
+  type ProviderRegistry,
+} from './providers';
 import { defaultRoutes, missingKeyMessage, routeFor, type ModelRoute } from './routes';
 import { riskOf, toolsForWindow } from './tools';
 
-export { createProviderRegistry, builtInProviders } from './providers';
+export {
+  createProviderRegistry,
+  builtInProviders,
+  isLoopbackUrl,
+  localProvider,
+} from './providers';
+export { createScriptedProvider } from './scripted';
+export { addProviderUsage, totalUsage, type ProviderUsageRow } from './pricing';
 export type { ModelProvider, ProviderRegistry } from './providers';
 
 /** What the agent runtime needs from the Electron main process. */
@@ -36,12 +57,28 @@ export interface AgentRuntimeHost {
   emit(event: IpcEvent<'ai:event'>): void;
   /** Model routes from Settings; defaults to defaultRoutes(). */
   routes?(): readonly ModelRoute[];
+  /** The local model entry from Settings; the local provider exists only while it is enabled. */
+  localModel?(): LocalModelSettings | undefined;
+  /** The open project's AI policy (from its package manifest); `forbid` blocks cloud providers. */
+  policy?(projectId: string): Promise<AiPolicy>;
+  /** Called for every model step with tokens and the estimated cost, for the per-project meter. */
+  recordUsage?(projectId: string, usage: StepUsage): void;
+}
+
+export interface StepUsage {
+  provider: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd?: number;
 }
 
 export interface AgentRuntime {
   send(req: IpcRequest<'ai:send'>): Promise<{ ok: boolean; error?: string }>;
   toolResult(req: IpcRequest<'ai:toolResult'>): void;
   cancel(runId: string): void;
+  /** Whether the chat route can answer now, and why not. Never calls a provider. */
+  status(req: IpcRequest<'ai:status'>): Promise<IpcResponse<'ai:status'>>;
 }
 
 export interface AgentRuntimeOptions {
@@ -59,6 +96,10 @@ export const MESSAGES = {
   cloudOff: 'Cloud AI is off. Turn it on in Settings, AI providers, to use the agent.',
   busy: 'The agent is already working on this message.',
   noProvider: 'This AI provider is not available. Choose another in Settings, AI providers.',
+  forbidden:
+    'This project does not allow sending its data to cloud AI. A local model set up in Settings, AI providers, can still be used.',
+  localOff:
+    'The local model is off. Turn it on in Settings, AI providers, or route the agent to a cloud provider.',
   declined: 'The person declined this action. Do not try it again unless they ask.',
   stopped: 'Stopped.',
   stepLimit: `I stopped after ${MAX_STEPS} steps. Send another message to continue.`,
@@ -82,6 +123,16 @@ interface Run {
 }
 
 class Cancelled extends Error {}
+
+type Check =
+  | { ok: true; route: ModelRoute; provider: ModelProvider }
+  | {
+      ok: false;
+      reason: NonNullable<IpcResponse<'ai:status'>['reason']>;
+      message: string;
+      route?: ModelRoute;
+      cloud: boolean;
+    };
 
 export function createAgentRuntime(
   host: AgentRuntimeHost,
@@ -137,10 +188,60 @@ export function createAgentRuntime(
     return set;
   }
 
-  async function execute(req: IpcRequest<'ai:send'>, run: Run, route: ModelRoute, label: string) {
+  function resolveProvider(id: string): ModelProvider | undefined {
+    const registered = providers.get(id);
+    if (registered) return registered;
+    if (id !== 'local') return undefined;
+    const cfg = host.localModel?.();
+    return cfg?.enabled ? localProvider(cfg) : undefined;
+  }
+
+  /** Every gate before a call, in order: route, provider, cloud switch, project policy, key. */
+  async function check(task: AiTask, projectId: string | undefined): Promise<Check> {
+    let route: ModelRoute;
+    try {
+      route = routeFor(host.routes?.() ?? defaultRoutes(), task);
+    } catch (e) {
+      return {
+        ok: false,
+        reason: 'no-route',
+        message: e instanceof Error ? e.message : MESSAGES.failed,
+        cloud: true,
+      };
+    }
+    const provider = resolveProvider(route.provider);
+    if (!provider) {
+      return route.provider === 'local'
+        ? { ok: false, reason: 'local-off', message: MESSAGES.localOff, route, cloud: false }
+        : { ok: false, reason: 'no-provider', message: MESSAGES.noProvider, route, cloud: true };
+    }
+    const cloud = provider.cloud;
+    if (cloud && !host.cloudAllowed()) {
+      return { ok: false, reason: 'cloud-off', message: MESSAGES.cloudOff, route, cloud };
+    }
+    if (cloud && projectId && host.policy && (await host.policy(projectId)) === 'forbid') {
+      return { ok: false, reason: 'forbidden', message: MESSAGES.forbidden, route, cloud };
+    }
+    if (provider.needsKey && !(await host.getKey(route.provider))) {
+      return {
+        ok: false,
+        reason: 'no-key',
+        message: missingKeyMessage(provider.label),
+        route,
+        cloud,
+      };
+    }
+    return { ok: true, route, provider };
+  }
+
+  async function execute(
+    req: IpcRequest<'ai:send'>,
+    run: Run,
+    route: ModelRoute,
+    provider: ModelProvider,
+  ) {
     const { runId } = req;
-    const provider = providers.get(route.provider);
-    if (!provider) throw new Error('unreachable: provider checked before start');
+    const label = provider.label;
     const key = provider.needsKey ? await host.getKey(route.provider) : null;
     const model = provider.languageModel(route.model, key);
     let steps = 0;
@@ -165,7 +266,19 @@ export function createAgentRuntime(
           case 'finish-step':
             steps += 1;
             lastFinish = part.finishReason;
-            host.emit(usageEvent(runId, route.model, part.usage));
+            {
+              const event = usageEvent(runId, route, part.usage);
+              host.emit(event);
+              if (req.projectId && event.type === 'usage') {
+                host.recordUsage?.(req.projectId, {
+                  provider: route.provider,
+                  model: route.model,
+                  inputTokens: event.inputTokens,
+                  outputTokens: event.outputTokens,
+                  ...(event.costUsd !== undefined ? { costUsd: event.costUsd } : {}),
+                });
+              }
+            }
             break;
           case 'error':
             throw part.error;
@@ -194,35 +307,44 @@ export function createAgentRuntime(
   }
 
   return {
-    send: (req) => {
-      if (runs.has(req.runId)) return Promise.resolve({ ok: false, error: MESSAGES.busy });
-      let route: ModelRoute;
-      try {
-        route = routeFor(host.routes?.() ?? defaultRoutes(), req.image ? 'vision' : 'chat');
-      } catch (e) {
-        return Promise.resolve({
-          ok: false,
-          error: e instanceof Error ? e.message : MESSAGES.failed,
-        });
-      }
-      const provider = providers.get(route.provider);
-      if (!provider) return Promise.resolve({ ok: false, error: MESSAGES.noProvider });
-      if (provider.cloud && !host.cloudAllowed()) {
-        return Promise.resolve({ ok: false, error: MESSAGES.cloudOff });
-      }
+    send: async (req) => {
+      if (runs.has(req.runId)) return { ok: false, error: MESSAGES.busy };
       const run: Run = { controller: new AbortController(), pending: new Map() };
       runs.set(req.runId, run);
-      const start = async (): Promise<{ ok: boolean; error?: string }> => {
-        if (provider.needsKey && !(await host.getKey(route.provider))) {
-          runs.delete(req.runId);
-          return { ok: false, error: missingKeyMessage(provider.label) };
-        }
-        void execute(req, run, route, provider.label).finally(() => {
-          runs.delete(req.runId);
-        });
-        return { ok: true };
+      const gate = await check(req.image ? 'vision' : 'chat', req.projectId);
+      if (!gate.ok) {
+        runs.delete(req.runId);
+        return { ok: false, error: gate.message };
+      }
+      void execute(req, run, gate.route, gate.provider).finally(() => {
+        runs.delete(req.runId);
+      });
+      return { ok: true };
+    },
+    status: async (req) => {
+      const gate = await check('chat', req.projectId);
+      if (gate.ok) {
+        return {
+          ready: true,
+          route: { task: gate.route.task, provider: gate.route.provider, model: gate.route.model },
+          cloud: gate.provider.cloud,
+        };
+      }
+      return {
+        ready: false,
+        reason: gate.reason,
+        message: gate.message,
+        ...(gate.route
+          ? {
+              route: {
+                task: gate.route.task,
+                provider: gate.route.provider,
+                model: gate.route.model,
+              },
+            }
+          : {}),
+        cloud: gate.cloud,
       };
-      return start();
     },
     toolResult: (res) => {
       const resolve = runs.get(res.runId)?.pending.get(res.callId);
@@ -291,18 +413,23 @@ function imageOf(result: unknown): { base64: string; mediaType: string; caption:
   return parsed ? { ...parsed, caption: JSON.stringify(rest) } : null;
 }
 
-function usageEvent(runId: string, model: string, u: LanguageModelUsage): IpcEvent<'ai:event'> {
+function usageEvent(runId: string, route: ModelRoute, u: LanguageModelUsage): IpcEvent<'ai:event'> {
   const inputTokens = u.inputTokens ?? 0;
   const outputTokens = u.outputTokens ?? 0;
-  const costUsd = estimateCostUsd(model, {
+  const tags = { provider: route.provider, model: route.model };
+  // A local model runs on this machine: no per-token cost.
+  if (route.provider === 'local') {
+    return { type: 'usage', runId, inputTokens, outputTokens, costUsd: 0, ...tags };
+  }
+  const costUsd = estimateCostUsd(route.model, {
     inputTokens,
     outputTokens,
     cacheReadTokens: u.inputTokenDetails.cacheReadTokens ?? 0,
     cacheWriteTokens: u.inputTokenDetails.cacheWriteTokens ?? 0,
   });
   return costUsd === undefined
-    ? { type: 'usage', runId, inputTokens, outputTokens }
-    : { type: 'usage', runId, inputTokens, outputTokens, costUsd };
+    ? { type: 'usage', runId, inputTokens, outputTokens, ...tags }
+    : { type: 'usage', runId, inputTokens, outputTokens, costUsd, ...tags };
 }
 
 function unwrap(e: unknown): unknown {

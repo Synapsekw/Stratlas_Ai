@@ -43,6 +43,8 @@ function setup(opts: {
   doStream?: MockLanguageModelV4['doStream'];
   cloud?: boolean;
   keys?: Partial<Record<AiProvider, string>>;
+  host?: Partial<AgentRuntimeHost>;
+  providers?: ModelProvider[];
 }) {
   const chat = new MockLanguageModelV4({
     modelId: 'claude-sonnet-5-5',
@@ -80,9 +82,10 @@ function setup(opts: {
         }
       }
     },
+    ...opts.host,
   };
   const runtime = createAgentRuntime(host, {
-    providers: createProviderRegistry([anthropic]),
+    providers: createProviderRegistry([anthropic, ...(opts.providers ?? [])]),
     maxRetries: 0,
   });
   const next = (pred: (e: AiEvent) => boolean) =>
@@ -294,5 +297,119 @@ describe('agent runtime', () => {
     expect(await t.runtime.send(req())).toEqual({ ok: false, error: MESSAGES.busy });
     t.runtime.cancel('r1');
     await t.end('r1');
+  });
+
+  it('meters usage to the project with provider and model', async () => {
+    const recorded: unknown[] = [];
+    const t = setup({
+      steps: [textStep('ok')],
+      host: {
+        recordUsage: (projectId, u) => {
+          recorded.push({ projectId, ...u });
+        },
+      },
+    });
+    await t.runtime.send(req({ projectId: 'p1' }));
+    await t.end('r1');
+    const u = t.events.find((e) => e.type === 'usage');
+    expect(u).toMatchObject({ provider: 'anthropic', model: 'claude-sonnet-5-5' });
+    expect(recorded).toEqual([
+      expect.objectContaining({ projectId: 'p1', provider: 'anthropic', inputTokens: 100 }),
+    ]);
+  });
+});
+
+describe('project AI policy and the local model', () => {
+  const localModel = new MockLanguageModelV4({
+    modelId: 'llama3.2',
+    doStream: [stream(textStep('Local answer.'))],
+  });
+  const local: ModelProvider = {
+    id: 'local',
+    label: 'Local model',
+    cloud: false,
+    needsKey: false,
+    languageModel: () => localModel,
+  };
+  const localRoutes = () => [
+    { task: 'chat' as const, provider: 'local' as const, model: 'llama3.2' },
+  ];
+
+  it('refuses cloud providers for a project whose package forbids them', async () => {
+    const t = setup({ steps: [textStep('hi')], host: { policy: () => Promise.resolve('forbid') } });
+    expect(await t.runtime.send(req({ projectId: 'p1' }))).toEqual({
+      ok: false,
+      error: MESSAGES.forbidden,
+    });
+    expect(t.chat.doStreamCalls).toHaveLength(0);
+    expect(await t.runtime.status({ projectId: 'p1' })).toMatchObject({
+      ready: false,
+      reason: 'forbidden',
+      cloud: true,
+    });
+  });
+
+  it('allows a local model with cloud AI off and under a forbid policy', async () => {
+    const t = setup({
+      cloud: false,
+      keys: {},
+      providers: [local],
+      host: { routes: localRoutes, policy: () => Promise.resolve('forbid') },
+    });
+    expect(await t.runtime.status({ projectId: 'p1' })).toMatchObject({
+      ready: true,
+      cloud: false,
+      route: { provider: 'local' },
+    });
+    expect(await t.runtime.send(req({ projectId: 'p1' }))).toEqual({ ok: true });
+    expect((await t.end('r1')).type).toBe('done');
+    expect(text(t.events)).toBe('Local answer.');
+    const u = t.events.find((e) => e.type === 'usage');
+    expect(u).toMatchObject({ provider: 'local', costUsd: 0 });
+  });
+
+  it('builds the local provider from settings and keeps it off by default', async () => {
+    const t = setup({ cloud: false, host: { routes: localRoutes } });
+    expect(await t.runtime.status({})).toMatchObject({ ready: false, reason: 'local-off' });
+    const on = setup({
+      cloud: false,
+      host: {
+        routes: localRoutes,
+        localModel: () => ({ enabled: true, baseUrl: 'http://127.0.0.1:11434/v1', model: 'x' }),
+      },
+    });
+    expect(await on.runtime.status({})).toMatchObject({ ready: true, cloud: false });
+  });
+
+  it('treats a local endpoint on another machine as cloud', async () => {
+    const t = setup({
+      cloud: false,
+      host: {
+        routes: localRoutes,
+        localModel: () => ({ enabled: true, baseUrl: 'http://10.0.0.5:11434/v1', model: 'x' }),
+      },
+    });
+    expect(await t.runtime.status({})).toMatchObject({
+      ready: false,
+      reason: 'cloud-off',
+      cloud: true,
+    });
+  });
+
+  it('reports cloud off and a missing key in the status', async () => {
+    expect(await setup({ cloud: false }).runtime.status({})).toMatchObject({
+      ready: false,
+      reason: 'cloud-off',
+    });
+    expect(await setup({ keys: {} }).runtime.status({})).toMatchObject({
+      ready: false,
+      reason: 'no-key',
+      message: 'Add an Anthropic key in Settings, AI providers.',
+    });
+    expect(await setup({}).runtime.status({})).toMatchObject({
+      ready: true,
+      cloud: true,
+      route: { provider: 'anthropic', model: 'claude-sonnet-5-5' },
+    });
   });
 });

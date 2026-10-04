@@ -4,4 +4,5 @@ export * from './severity';
 export * from './annotation';
 export * from './manifest';
 export * from './agent';
+export * from './conversation';
 export * from './ipc';

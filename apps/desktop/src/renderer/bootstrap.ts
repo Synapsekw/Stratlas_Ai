@@ -1,9 +1,11 @@
+import { registerAppHooks, registerFrameSource } from '@aio/ai';
 import { setFlightPoses } from '@aio/annotate';
 import { configureEngine, getActiveStage, registerEngineAdapters } from '@aio/engine';
-import { registerMapAdapters } from '@aio/maps';
+import { captureMap, registerMapAdapters } from '@aio/maps';
 import { registerPointcloudAdapters } from '@aio/pointcloud';
 import { loadFlight, registerVideoAdapters } from '@aio/video';
 import { assetUrl, workspace, type OpenProject } from '@aio/workspace';
+import { shell } from './shell';
 
 let started = false;
 
@@ -46,6 +48,13 @@ export function bootstrap(): void {
   registerPointcloudAdapters();
   registerVideoAdapters();
   registerMapAdapters();
+  // Agent seams: the map's frame for capture_frame, and screens the agent's tools can open.
+  registerFrameSource('map', () => captureMap());
+  registerAppHooks({
+    openReview: () => {
+      shell.getState().go('review');
+    },
+  });
   // Inspection hook for the end-to-end tests and DevTools (read the clock, the live scene).
   Object.assign(window, { __stratlas: { workspace, stage: getActiveStage } });
   shareFlightPoses(workspace.getState().project);

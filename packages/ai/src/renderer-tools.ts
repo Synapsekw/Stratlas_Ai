@@ -4,209 +4,52 @@
  * with `ai:toolResult`. Other packages add tools with registerRendererTool (plus registerToolSpec in
  * a module both processes load). Errors thrown as ToolError carry fixed text for the model.
  */
-import { getActiveScene, type SceneHandle } from '@aio/engine';
+import { getActiveScene } from '@aio/engine';
 import {
   validateIssueAgainstModel,
+  type AioBridge,
   type Issue,
-  type Layer,
   type Sighting,
   type Vec3,
   type WindowKind,
 } from '@aio/schema';
-import { assetUrl, workspace, type Selection, type Workspace } from '@aio/workspace';
-import { Box3, Vector3 } from 'three';
-import type { StoreApi } from 'zustand/vanilla';
+import { assetUrl, workspace, type Selection } from '@aio/workspace';
+import './analysis-tools';
 import { clipStartUtcMs, selectionLabel } from './context';
 import { parseFlight, passNear } from './geometry';
-import { getToolSpec, toolInputs, type Target, type ToolInput, type ToolName } from './tools';
+import { capturePhoto, MAX_EDGE } from './photo-frame';
+import {
+  appHooks,
+  assetPoint,
+  assetRef,
+  cameraUndo,
+  clip,
+  clips,
+  define,
+  findIssue,
+  iso,
+  plural,
+  project,
+  round1,
+  severityRank,
+  issueRow,
+  targetPoint,
+  ToolError,
+  type RendererToolContext,
+} from './tool-kit';
+import type { Target } from './tools';
 
-export interface RendererToolContext {
-  workspace: StoreApi<Workspace>;
-  /** The window the agent is bound to. */
-  window: WindowKind;
-  scene(): SceneHandle | null;
-  fetchJson(url: string): Promise<unknown>;
-  /** A JPEG or PNG data URL of what the window shows, or null. */
-  captureFrame(window: WindowKind): Promise<string | null>;
-  now(): Date;
-}
-
-export interface ToolRunResult {
-  /** JSON for the model. `{ image: dataUrl, ... }` reaches the model as an image. */
-  result: unknown;
-  /** Short text for the step chip, e.g. "4 of 25 clips". */
-  summary: string;
-  /** Puts the view back as it was (time, camera, selection, visibility, a new draft). */
-  undo?: () => void;
-}
-
-export type RendererToolRun = (input: unknown, ctx: RendererToolContext) => Promise<ToolRunResult>;
-
-/** A failure with a message that is safe and useful to show the model and the person. */
-export class ToolError extends Error {
-  override name = 'ToolError';
-}
-
-const executors = new Map<string, RendererToolRun>();
-
-export function registerRendererTool(name: string, run: RendererToolRun): void {
-  if (executors.has(name)) throw new Error(`A renderer tool named "${name}" is already registered`);
-  executors.set(name, run);
-}
-
-export function getRendererTool(name: string): RendererToolRun | undefined {
-  return executors.get(name);
-}
-
-/** Validate the input against the catalogue schema, then run. */
-export async function runRendererTool(
-  name: string,
-  rawInput: unknown,
-  ctx: RendererToolContext,
-): Promise<ToolRunResult> {
-  const run = executors.get(name);
-  const spec = getToolSpec(name);
-  if (!run || !spec) throw new ToolError(`The tool "${name}" is not available in this window.`);
-  if (spec.meta.windows && !spec.meta.windows.includes(ctx.window)) {
-    throw new ToolError(`The tool "${name}" is not available in this window.`);
-  }
-  const parsed = spec.input.safeParse(rawInput);
-  if (!parsed.success) {
-    const first = parsed.error.issues[0];
-    const where = first?.path.length ? ` at ${first.path.join('.')}` : '';
-    throw new ToolError(`Invalid input${where}: ${first?.message ?? 'does not match the tool'}.`);
-  }
-  return run(parsed.data, ctx);
-}
-
-function define<N extends ToolName>(
-  name: N,
-  run: (input: ToolInput<N>, ctx: RendererToolContext) => Promise<ToolRunResult> | ToolRunResult,
-): void {
-  registerRendererTool(name, (input, ctx) =>
-    Promise.resolve(run(toolInputs[name].parse(input) as ToolInput<N>, ctx)),
-  );
-}
-
-// Helpers ------------------------------------------------------------------------------------
-
-type VideoLayer = Extract<Layer, { kind: 'video' }>;
-type MeshLayer = Extract<Layer, { kind: 'mesh' }>;
-
-function project(ctx: RendererToolContext) {
-  const p = ctx.workspace.getState().project;
-  if (!p) throw new ToolError('No project is open.');
-  return p;
-}
-
-function clips(ctx: RendererToolContext): VideoLayer[] {
-  return project(ctx).manifest.layers.filter((l): l is VideoLayer => l.kind === 'video');
-}
-
-function clip(ctx: RendererToolContext, id: string): VideoLayer {
-  const c = clips(ctx).find((l) => l.id === id || l.name === id);
-  if (!c) throw new ToolError(`No clip "${id}" in this project. Use list_clips to see them.`);
-  return c;
-}
-
-function findIssue(ctx: RendererToolContext, idOrCode: string): Issue {
-  const issues = ctx.workspace.getState().issues;
-  const i = issues.find((x) => x.id === idOrCode) ?? issues.find((x) => x.code === idOrCode);
-  if (!i) throw new ToolError(`No issue "${idOrCode}" in this project.`);
-  return i;
-}
-
-const iso = (ms: number) => new Date(ms).toISOString();
-const round1 = (n: number) => Math.round(n * 10) / 10;
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
-
-function centroid(points: readonly Vec3[]): Vec3 | null {
-  if (points.length === 0) return null;
-  const s = points.reduce<Vec3>((a, p) => [a[0] + p[0], a[1] + p[1], a[2] + p[2]], [0, 0, 0]);
-  return [s[0] / points.length, s[1] / points.length, s[2] / points.length];
-}
-
-/** A 3D point for an issue from its first sighting that has one. */
-function issuePoint(issue: Issue): Vec3 | null {
-  for (const s of issue.sightings) {
-    if (s.on === 'mesh') {
-      const g = s.geom;
-      if (g.type === 'spoint') return g.p;
-      if (g.type === 'spolyline' || g.type === 'spolygon') return centroid(g.points);
-      if (g.center) return g.center;
-    }
-    if (s.on === 'pointcloud') {
-      const g = s.geom;
-      if (g.type === 'point3') return g.p;
-      if (g.type === 'box3') return centroid([g.min, g.max]);
-      if (g.type === 'polygon3') return centroid(g.points);
-    }
-  }
-  return null;
-}
-
-/** The mesh layer and scene node for an asset tag (or node name). */
-function assetRef(ctx: RendererToolContext, id: string): { layer: MeshLayer; node: string } | null {
-  for (const l of project(ctx).manifest.layers) {
-    if (l.kind !== 'mesh') continue;
-    const tag = l.tags?.find((t) => t.tag === id || t.node === id);
-    if (tag) return { layer: l, node: tag.node };
-  }
-  return null;
-}
-
-function assetPoint(ctx: RendererToolContext, id: string): Vec3 {
-  const ref = assetRef(ctx, id);
-  const scene = ctx.scene();
-  if (!scene) {
-    throw new ToolError(
-      `Open the 3D view to locate asset "${id}", or give a point or an issue instead.`,
-    );
-  }
-  const obj = scene.scene.getObjectByName(ref?.node ?? id);
-  if (!obj) throw new ToolError(`No asset "${id}" in the 3D scene.`);
-  const c = new Box3().setFromObject(obj).getCenter(new Vector3());
-  return [c.x, c.y, c.z];
-}
-
-function targetPoint(ctx: RendererToolContext, t: Target): Vec3 {
-  if (t.kind === 'point') return t.p;
-  if (t.kind === 'asset') return assetPoint(ctx, t.id);
-  const issue = findIssue(ctx, t.id);
-  const p = issuePoint(issue);
-  if (!p) throw new ToolError(`Issue ${issue.code} has no 3D location.`);
-  return p;
-}
-
-function issueRow(i: Issue) {
-  return {
-    id: i.id,
-    code: i.code,
-    title: i.title,
-    classId: i.classId,
-    severity: i.severity,
-    status: i.status,
-    source: i.source,
-    layers: [...new Set(i.sightings.map((s) => s.layer))],
-  };
-}
-
-function severityRank(s: Issue['severity']): number {
-  return s === 'uncertain' ? -1 : s;
-}
-
-function cameraUndo(ctx: RendererToolContext): (() => void) | undefined {
-  const scene = ctx.scene();
-  if (!scene) return undefined;
-  const pos = scene.camera.position.clone();
-  const quat = scene.camera.quaternion.clone();
-  return () => {
-    scene.camera.position.copy(pos);
-    scene.camera.quaternion.copy(quat);
-    scene.camera.updateMatrixWorld();
-    scene.requestRender();
-  };
-}
+export {
+  getRendererTool,
+  registerAppHooks,
+  registerRendererTool,
+  runRendererTool,
+  ToolError,
+  type AppHooks,
+  type RendererToolContext,
+  type RendererToolRun,
+  type ToolRunResult,
+} from './tool-kit';
 
 // Read tools ---------------------------------------------------------------------------------
 
@@ -556,8 +399,7 @@ export function registerFrameSource(window: WindowKind, source: FrameSource): ()
   };
 }
 
-/** Longest edge sent to vision models; larger frames cost more and do not help. */
-const MAX_EDGE = 1568;
+/** Longest edge sent to vision models (MAX_EDGE): larger frames cost more and do not help. */
 
 function canvasFrom(source: CanvasImageSource, width: number, height: number): string | null {
   if (!width || !height) return null;
@@ -588,10 +430,22 @@ async function defaultCapture(window: WindowKind): Promise<string | null> {
     const c = scene.renderer.domElement;
     return canvasFrom(c, c.width, c.height);
   }
-  return Promise.resolve(null);
+  if (window === 'photo') return capturePhoto(workspace.getState());
+  // The map registers its own source (it must repaint before reading its WebGL canvas).
+  return null;
+}
+
+function bridgeSave(): RendererToolContext['saveFile'] {
+  const aio = (globalThis as { aio?: AioBridge }).aio;
+  if (!aio) return undefined;
+  return async (defaultName, data) => {
+    const r = await aio.invoke('dialog:saveFile', { defaultName, data });
+    return r.error ? { path: r.path, error: r.error } : { path: r.path };
+  };
 }
 
 export function defaultToolContext(window: WindowKind): RendererToolContext {
+  const save = bridgeSave();
   return {
     workspace,
     window,
@@ -603,5 +457,7 @@ export function defaultToolContext(window: WindowKind): RendererToolContext {
     },
     captureFrame: defaultCapture,
     now: () => new Date(),
+    ...(save ? { saveFile: save } : {}),
+    app: appHooks,
   };
 }

@@ -28,6 +28,7 @@ export const Target = z.discriminatedUnion('kind', [
 ]);
 export type Target = z.infer<typeof Target>;
 
+const Status = z.enum(['draft', 'reviewed', 'approved', 'closed']);
 const SelectionKind = z.enum(['asset', 'issue', 'clip', 'photo', 'layer', 'pano']);
 const Severity = z.union([z.number().int().min(0).max(9), z.literal('uncertain')]);
 
@@ -109,6 +110,48 @@ export const toolInputs = {
   capture_frame: z.object({}).strict(),
   summarize_issues: z
     .object({ status: z.enum(['draft', 'reviewed', 'approved', 'closed']).optional() })
+    .strict(),
+  compare_captures: z
+    .object({
+      from: z.string().min(1).optional().describe('Capture id, label or date; default the first'),
+      to: z.string().min(1).optional().describe('Capture id, label or date; default the last'),
+      base: z
+        .enum(['tin', 'plane', 'avg', 'low'])
+        .optional()
+        .describe('Stockpile base for volumes; default the survey default'),
+    })
+    .strict(),
+  measure_distance: z.object({ from: Target, to: Target }).strict(),
+  export_issues: z
+    .object({
+      status: Status.optional(),
+      classId: z.string().min(1).optional(),
+      severityMin: z.number().int().min(0).max(9).optional(),
+    })
+    .strict(),
+  summarize_by_zone: z
+    .object({
+      status: Status.optional(),
+      kmBin: z
+        .number()
+        .positive()
+        .max(100)
+        .default(1)
+        .describe('Chainage bin in km for road projects'),
+    })
+    .strict(),
+  summarize_by_class: z.object({ status: Status.optional() }).strict(),
+  find_issues_near: z
+    .object({
+      target: Target,
+      radiusM: z.number().positive().max(5000).default(25),
+      limit: z.number().int().positive().max(200).default(50),
+    })
+    .strict(),
+  open_original_review: z
+    .object({
+      layerId: z.string().min(1).optional().describe('Legacy layer id; default the first'),
+    })
     .strict(),
 } as const;
 
@@ -217,6 +260,48 @@ const BUILT_IN: ToolSpec[] = [
       'Counts of issues by severity, status and class, plus the most severe ones, for writing a summary.',
     scope: 'project',
     risk: 'read',
+  }),
+  spec('compare_captures', {
+    description:
+      'Compare two capture dates. For stockpile surveys: volume per pile and in total at each date and the change, from the survey volumes. Otherwise: issue counts at each date and the issues added between them.',
+    scope: 'project',
+    risk: 'read',
+  }),
+  spec('measure_distance', {
+    description:
+      'Distance in metres between two assets, issues or points: straight line, horizontal and height difference.',
+    scope: 'project',
+    risk: 'read',
+  }),
+  spec('export_issues', {
+    description:
+      'Export issues (optionally filtered) to a CSV file the person chooses. Writes a file, so the app asks for approval first.',
+    scope: 'project',
+    risk: 'write',
+  }),
+  spec('summarize_by_zone', {
+    description:
+      'Issue counts per zone (area of the asset, or chainage bin on roads), with severity and the worst issues in each.',
+    scope: 'project',
+    risk: 'read',
+  }),
+  spec('summarize_by_class', {
+    description:
+      'Issue counts per issue class with severity and status breakdown and the worst issues in each class.',
+    scope: 'project',
+    risk: 'read',
+  }),
+  spec('find_issues_near', {
+    description:
+      'Find issues within radiusM metres of an asset, an issue or a point, closest first, with their distance.',
+    scope: 'project',
+    risk: 'read',
+  }),
+  spec('open_original_review', {
+    description:
+      "Open the project's original offline review (the delivered viewer) full screen in the app.",
+    scope: 'app',
+    risk: 'navigate',
   }),
 ];
 

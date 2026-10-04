@@ -1,4 +1,14 @@
-import { defaultRoutes, PROVIDERS, type ModelRoute } from '@aio/ai';
+import {
+  DEFAULT_LOCAL_MODEL,
+  defaultRoutes,
+  formatMeter,
+  PRICES_AS_OF,
+  PROVIDER_LABELS,
+  PROVIDERS,
+  ROUTE_PROVIDERS,
+  totalUsage,
+  type ModelRoute,
+} from '@aio/ai';
 import type { AiProvider, AiTask } from '@aio/schema';
 import { formatBytes, Icon, SevChip, Switch, type IconName } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
@@ -6,10 +16,11 @@ import { useState } from 'react';
 import { setAuthorName, useAuthor } from '../author';
 import { bridge, shell, useCall, useShell } from '../shell';
 
-type Page = 'ai' | 'privacy' | 'data' | 'maps' | 'severity';
+type Page = 'ai' | 'usage' | 'privacy' | 'data' | 'maps' | 'severity';
 
 const PAGES: { page: Page; label: string; icon: IconName; group: string }[] = [
   { page: 'ai', label: 'AI providers', icon: 'agent', group: 'Intelligence' },
+  { page: 'usage', label: 'Usage and cost', icon: 'report', group: 'Intelligence' },
   { page: 'privacy', label: 'Privacy and cloud', icon: 'shield', group: 'Intelligence' },
   { page: 'data', label: 'Data folder', icon: 'layers', group: 'Data' },
   { page: 'maps', label: 'Offline maps', icon: 'map', group: 'Data' },
@@ -24,19 +35,25 @@ const PROVIDER_INFO: Record<
     name: 'Anthropic',
     logo: 'A',
     placeholder: 'Paste an Anthropic API key',
-    models: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'],
+    models: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5', 'claude-fable-5-1'],
   },
   openai: {
     name: 'OpenAI',
     logo: 'O',
     placeholder: 'Paste an OpenAI API key',
-    models: ['gpt-5', 'gpt-5-mini'],
+    models: ['gpt-6.1-sol', 'gpt-6-luna', 'gpt-6-astra'],
   },
   google: {
     name: 'Google Gemini',
     logo: 'G',
     placeholder: 'Paste a Gemini API key',
-    models: ['gemini-2.5-pro', 'gemini-2.5-flash'],
+    models: ['gemini-3.1-pro-preview', 'gemini-3.5-flash', 'gemini-3.1-flash-lite'],
+  },
+  local: {
+    name: 'Local model',
+    logo: 'L',
+    placeholder: '',
+    models: [DEFAULT_LOCAL_MODEL.model],
   },
 };
 
@@ -179,6 +196,7 @@ function ProviderRow({ provider }: { provider: AiProvider }) {
 
 function Routing() {
   const routes = useShell((s) => s.settings.routes);
+  const localModel = useShell((s) => s.settings.localModel);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const save = (next: ModelRoute[]) => void shell.getState().updateSettings({ routes: next });
   const routeFor = (task: AiTask): ModelRoute =>
@@ -242,11 +260,14 @@ function Routing() {
                       const provider = e.target.value as AiProvider;
                       replace(task, {
                         provider,
-                        model: PROVIDER_INFO[provider].models[0] ?? r.model,
+                        model:
+                          provider === 'local'
+                            ? (localModel?.model ?? DEFAULT_LOCAL_MODEL.model)
+                            : (PROVIDER_INFO[provider].models[0] ?? r.model),
                       });
                     }}
                   >
-                    {PROVIDERS.map((p) => (
+                    {ROUTE_PROVIDERS.map((p) => (
                       <option key={p} value={p}>
                         {PROVIDER_INFO[p].name}
                       </option>
@@ -282,6 +303,141 @@ function Routing() {
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/** AI-9: an OpenAI-compatible model server on this machine (Ollama), off by default. */
+function LocalModel() {
+  const stored = useShell((s) => s.settings.localModel);
+  const cfg = stored ?? DEFAULT_LOCAL_MODEL;
+  const [baseUrl, setBaseUrl] = useState(cfg.baseUrl);
+  const [model, setModel] = useState(cfg.model);
+  const [error, setError] = useState<string | null>(null);
+  const save = async (patch: Partial<typeof cfg>) => {
+    const next = { ...cfg, ...patch };
+    const e = await shell.getState().updateSettings({ localModel: next });
+    setError(e ? 'Use an address such as http://localhost:11434/v1 and a model name.' : null);
+  };
+  return (
+    <div className="sblock">
+      <h2>
+        Local model <span className="sub">OpenAI-compatible, for example Ollama</span>
+      </h2>
+      <div className="opt">
+        <b>Use a local model</b>
+        <span>
+          Route a task to Local model below. While the address is on this machine nothing leaves
+          this workstation, so it works with cloud AI off and in projects that forbid cloud AI.
+        </span>
+        <Switch
+          checked={cfg.enabled}
+          label="Use a local model"
+          onChange={(v) => void save({ enabled: v })}
+        />
+      </div>
+      <div className="local-row">
+        <label>
+          <span className="faint">Address</span>
+          <input
+            className="input mono"
+            aria-label="Local model address"
+            value={baseUrl}
+            spellCheck={false}
+            onChange={(e) => {
+              setBaseUrl(e.target.value);
+            }}
+            onBlur={() => {
+              if (baseUrl.trim() !== cfg.baseUrl) void save({ baseUrl: baseUrl.trim() });
+            }}
+          />
+        </label>
+        <label>
+          <span className="faint">Model</span>
+          <input
+            className="input mono"
+            aria-label="Local model name"
+            value={model}
+            spellCheck={false}
+            onChange={(e) => {
+              setModel(e.target.value);
+            }}
+            onBlur={() => {
+              if (model.trim() && model.trim() !== cfg.model) void save({ model: model.trim() });
+            }}
+          />
+        </label>
+      </div>
+      {error && (
+        <p className="prov-err" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+const usd = (n: number, known: boolean) =>
+  `${known ? '' : 'at least '}$${n < 0.01 && n > 0 ? '<0.01' : n.toFixed(2)}`;
+
+/** AI-7: tokens and estimated cost per project and provider on this workstation. */
+function Usage() {
+  const data = useCall('ai:usage', {}, 0);
+  if (data === null) return <div className="skel-line" />;
+  if (!data.ok) {
+    return (
+      <p className="notice warn">
+        <Icon name="warn" size={14} />
+        {data.error}
+      </p>
+    );
+  }
+  const projects = data.value.projects;
+  const all = totalUsage(projects.flatMap((p) => p.providers));
+  return (
+    <div className="sblock">
+      <h2>
+        By project{' '}
+        <span className="sub">
+          {formatMeter(all.inputTokens + all.outputTokens, all.costKnown ? all.costUsd : undefined)}
+        </span>
+      </h2>
+      <p className="help">
+        Estimates from list prices checked on {PRICES_AS_OF}; the provider&apos;s invoice is
+        authoritative. A local model costs nothing per token.
+      </p>
+      {projects.length === 0 ? (
+        <p className="help">No agent use yet.</p>
+      ) : (
+        <table className="tbl" aria-label="Agent usage by project and provider">
+          <thead>
+            <tr>
+              <th>Project</th>
+              <th>Provider</th>
+              <th>Input tokens</th>
+              <th>Output tokens</th>
+              <th>Estimated cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            {projects.flatMap((p) =>
+              p.providers.map((u, i) => (
+                <tr key={`${p.key}:${u.provider}`}>
+                  <td>{i === 0 ? <b className="hi">{p.name}</b> : null}</td>
+                  <td>
+                    {u.provider in PROVIDER_LABELS
+                      ? PROVIDER_LABELS[u.provider as keyof typeof PROVIDER_LABELS]
+                      : u.provider}
+                  </td>
+                  <td className="mono">{u.inputTokens.toLocaleString('en-US')}</td>
+                  <td className="mono">{u.outputTokens.toLocaleString('en-US')}</td>
+                  <td className="mono">{usd(u.costUsd, u.costKnown)}</td>
+                </tr>
+              )),
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
@@ -533,6 +689,10 @@ function Severity() {
 }
 
 const HEAD: Record<Page, { title: string; text: string }> = {
+  usage: {
+    title: 'Usage and cost',
+    text: 'Tokens the agent used and their estimated cost, per project and provider, on this workstation.',
+  },
   ai: {
     title: 'AI providers',
     text: 'Keys go to the system credential vault. They never enter project files or logs, and the app never shows a stored key.',
@@ -605,9 +765,11 @@ export function SettingsScreen() {
                   <ProviderRow key={p} provider={p} />
                 ))}
               </div>
+              <LocalModel />
               <Routing />
             </>
           )}
+          {page === 'usage' && <Usage />}
           {page === 'privacy' && <Privacy />}
           {page === 'data' && <DataFolder />}
           {page === 'maps' && <Maps />}

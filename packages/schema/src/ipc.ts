@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { AiProvider, AiTask, ToolRisk, WindowKind } from './agent';
 import { Issue } from './annotation';
+import { Conversation, ConversationId, ConversationSummary } from './conversation';
 import { ProjectManifest } from './manifest';
 
 const Empty = z.object({}).strict();
@@ -20,13 +21,49 @@ export const LibraryEntry = z.object({
   layerCounts: z.record(z.string(), z.number().int().nonnegative()).optional(),
 });
 
+/** An OpenAI-compatible model server on this machine (for example Ollama). Off by default. */
+export const LocalModelSettings = z.object({
+  enabled: z.boolean(),
+  baseUrl: z.url({ protocol: /^https?$/ }),
+  model: z.string().min(1).max(200),
+});
+
+export const ModelRouteSchema = z.object({
+  task: AiTask,
+  provider: AiProvider,
+  model: z.string().min(1),
+});
+
+/** Tokens and estimated cost for one provider. */
+export const ProviderUsage = z.object({
+  provider: z.string().min(1),
+  inputTokens: z.number().nonnegative(),
+  outputTokens: z.number().nonnegative(),
+  costUsd: z.number().nonnegative(),
+  /** False when a model had no price in the table: the cost is then a lower bound. */
+  costKnown: z.boolean(),
+});
+
+export const ProjectUsage = z.object({
+  /** Normalised project root, the key of the usage store. */
+  key: z.string(),
+  name: z.string(),
+  updatedAt: z.string(),
+  providers: z.array(ProviderUsage),
+});
+
+/** What a package or project allows the agent to do with cloud providers. */
+export const AiPolicy = z.enum(['allow', 'forbid']);
+
 export const Settings = z.object({
   cloudAi: z.boolean(),
   theme: z.enum(['dark', 'light']),
   sidebarCollapsed: z.boolean(),
   /** Folder that holds projects and map packs, e.g. E:\Stratlas Data. */
   dataRoot: z.string(),
-  routes: z.array(z.object({ task: AiTask, provider: AiProvider, model: z.string().min(1) })),
+  routes: z.array(ModelRouteSchema),
+  /** Optional so settings written before the local provider existed stay valid. */
+  localModel: LocalModelSettings.optional(),
 });
 
 export const MapPackInfo = z.object({
@@ -94,6 +131,8 @@ export const ipc = {
     request: z
       .object({
         runId: z.string().min(1),
+        /** Open project: usage is metered to it and its AI policy applies. */
+        projectId: z.string().min(1).optional(),
         window: WindowKind,
         /** Snapshot of the window context: selection, time, visible layers, frame info. */
         context: z.record(z.string(), z.unknown()),
@@ -119,6 +158,60 @@ export const ipc = {
   'ai:cancel': {
     request: z.object({ runId: z.string().min(1) }).strict(),
     response: z.object({ ok: z.boolean() }),
+  },
+  /** Can the agent answer right now (cloud switch, key, project policy, local model)? */
+  'ai:status': {
+    request: z.object({ projectId: z.string().min(1).optional() }).strict(),
+    response: z.object({
+      ready: z.boolean(),
+      reason: z
+        .enum(['cloud-off', 'no-key', 'forbidden', 'no-provider', 'no-route', 'local-off'])
+        .optional(),
+      message: z.string().optional(),
+      route: ModelRouteSchema.optional(),
+      /** The chat route sends data off this machine. */
+      cloud: z.boolean(),
+    }),
+  },
+  /** Per-project agent state kept on this workstation: send consent, policy, usage. */
+  'ai:project': {
+    request: z.object({ projectId: z.string().min(1) }).strict(),
+    response: z.object({
+      alwaysAllow: z.boolean(),
+      policy: AiPolicy,
+      usage: z.array(ProviderUsage),
+    }),
+  },
+  /** "Always allow for this project" in the send preview (AI-6). */
+  'ai:setConsent': {
+    request: z.object({ projectId: z.string().min(1), alwaysAllow: z.boolean() }).strict(),
+    response: z.object({ ok: z.boolean(), error: z.string().optional() }),
+  },
+  /** Tokens and estimated cost per project and provider (AI-7), for Settings. */
+  'ai:usage': {
+    request: Empty,
+    response: z.object({ projects: z.array(ProjectUsage) }),
+  },
+  /** Saved conversations of a project, newest first (AI-8). */
+  'ai:listConversations': {
+    request: z.object({ projectId: z.string().min(1) }).strict(),
+    response: z.object({
+      ok: z.boolean(),
+      conversations: z.array(ConversationSummary),
+      error: z.string().optional(),
+    }),
+  },
+  'ai:loadConversation': {
+    request: z.object({ projectId: z.string().min(1), id: ConversationId }).strict(),
+    response: z.object({
+      ok: z.boolean(),
+      conversation: Conversation.optional(),
+      error: z.string().optional(),
+    }),
+  },
+  'ai:saveConversation': {
+    request: z.object({ projectId: z.string().min(1), conversation: Conversation }).strict(),
+    response: z.object({ ok: z.boolean(), error: z.string().optional() }),
   },
   'dialog:openFolder': {
     request: z.object({ title: z.string().optional() }).strict(),
@@ -160,6 +253,8 @@ export const ipcEvents = {
       inputTokens: z.number(),
       outputTokens: z.number(),
       costUsd: z.number().optional(),
+      provider: z.string().optional(),
+      model: z.string().optional(),
     }),
     z.object({ type: z.literal('done'), runId: z.string() }),
     z.object({ type: z.literal('error'), runId: z.string(), message: z.string() }),
@@ -175,6 +270,10 @@ export type LibraryEntry = z.infer<typeof LibraryEntry>;
 export type Settings = z.infer<typeof Settings>;
 export type MapPackInfo = z.infer<typeof MapPackInfo>;
 export type ChatMessage = z.infer<typeof ChatMessage>;
+export type LocalModelSettings = z.infer<typeof LocalModelSettings>;
+export type ProviderUsage = z.infer<typeof ProviderUsage>;
+export type ProjectUsage = z.infer<typeof ProjectUsage>;
+export type AiPolicy = z.infer<typeof AiPolicy>;
 
 /** The typed bridge the preload exposes as window.aio. */
 export interface AioBridge {

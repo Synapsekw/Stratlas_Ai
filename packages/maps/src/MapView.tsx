@@ -1,6 +1,7 @@
 import type { AioBridge } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
+import { setActiveMap } from './capture';
 import type { MapController } from './controller';
 import type { MapDrawSeam } from './draw';
 
@@ -70,6 +71,7 @@ export function MapView({ className, showFlights = true, draw }: MapViewProps) {
         });
         life.ctl = ctl;
         ctlRef.current = ctl;
+        setActiveMap(ctl);
         life.observer = new ResizeObserver(() => {
           ctl.resize();
         });
@@ -83,6 +85,7 @@ export function MapView({ className, showFlights = true, draw }: MapViewProps) {
     return () => {
       life.disposed = true;
       ctlRef.current = null;
+      if (life.ctl) setActiveMap(null);
       life.observer?.disconnect();
       life.ctl?.dispose();
     };

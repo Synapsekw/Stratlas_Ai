@@ -1,4 +1,9 @@
-import { createAgentRuntime } from '@aio/ai/main';
+import {
+  builtInProviders,
+  createAgentRuntime,
+  createProviderRegistry,
+  createScriptedProvider,
+} from '@aio/ai/main';
 import { brand } from '@aio/brand';
 import { ipcEvents, type IpcChannel, type IpcEvent } from '@aio/schema';
 import { Entry } from '@napi-rs/keyring';
@@ -6,6 +11,8 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, shell } f
 import { existsSync } from 'node:fs';
 import { userInfo } from 'node:os';
 import { join } from 'node:path';
+import { createAiProjectStore, readAiPolicy } from './aiProjects';
+import { listConversations, loadConversation, saveConversation } from './conversations';
 import { validated, type Handler } from './ipc';
 import { createKeyVault } from './keys';
 import { addToLibrary, createLibraryStore, listLibrary, listPacks } from './library';
@@ -83,12 +90,49 @@ function emitAiEvent(event: IpcEvent<'ai:event'>): void {
   targetWindow()?.webContents.send('ai:event', parsed.data);
 }
 
-const agent = createAgentRuntime({
-  getKey: (provider) => keys.getKey(provider),
-  cloudAllowed: () => settings.current().cloudAi,
-  routes: () => settings.current().routes,
-  emit: emitAiEvent,
-});
+const aiProjects = createAiProjectStore(join(app.getPath('userData'), 'ai-projects.json'));
+/** Names of opened projects by id, for the usage list in Settings. */
+const projectNames = new Map<string, string>();
+
+/**
+ * End-to-end tests drive the agent with a scripted model in place of the three cloud providers.
+ * Only an isolated profile can ask for it, so a person's installation never runs it.
+ */
+const scripted =
+  process.env.STRATLAS_AI_TEST_PROVIDER === '1' && Boolean(process.env.STRATLAS_USER_DATA);
+const providers = createProviderRegistry(
+  scripted
+    ? (['anthropic', 'openai', 'google'] as const).map((id) => createScriptedProvider(id))
+    : builtInProviders(),
+);
+
+const agent = createAgentRuntime(
+  {
+    getKey: (provider) => keys.getKey(provider),
+    cloudAllowed: () => settings.current().cloudAi,
+    routes: () => settings.current().routes,
+    localModel: () => settings.current().localModel,
+    policy: async (projectId) => {
+      const root = registry.root(projectId);
+      return root === undefined ? 'allow' : readAiPolicy(root);
+    },
+    recordUsage: (projectId, usage) => {
+      const root = registry.root(projectId);
+      if (root !== undefined)
+        aiProjects.addUsage(root, projectNames.get(projectId) ?? projectId, usage);
+    },
+    emit: emitAiEvent,
+  },
+  { providers },
+);
+
+/** The folder of an open project, or a fixed message the panel can show. */
+function openRoot(projectId: string): { root: string } | { error: string } {
+  const root = registry.root(projectId);
+  return root === undefined
+    ? { error: `Project "${projectId}" is not open. Open it, then try again.` }
+    : { root };
+}
 
 function handle<C extends IpcChannel>(channel: C, handler: Handler<C>): void {
   const run = validated(channel, handler);
@@ -122,7 +166,11 @@ function registerIpc(): void {
   });
   handle('library:add', ({ path }) => addToLibrary(path, library, registry));
 
-  handle('project:open', ({ path }) => openProject(path, registry));
+  handle('project:open', async ({ path }) => {
+    const r = await openProject(path, registry);
+    if (r.ok) projectNames.set(r.id, r.manifest.name);
+    return r;
+  });
   handle('project:writeIssues', ({ projectId, issues }) => {
     const root = registry.root(projectId);
     if (root === undefined) {
@@ -143,6 +191,34 @@ function registerIpc(): void {
   handle('ai:cancel', ({ runId }) => {
     agent.cancel(runId);
     return { ok: true };
+  });
+  handle('ai:status', (req) => agent.status(req));
+  handle('ai:project', async ({ projectId }) => {
+    const root = registry.root(projectId);
+    if (root === undefined) return { alwaysAllow: false, policy: 'allow' as const, usage: [] };
+    const [state, policy] = await Promise.all([aiProjects.get(root), readAiPolicy(root)]);
+    return { ...state, policy };
+  });
+  handle('ai:setConsent', async ({ projectId, alwaysAllow }) => {
+    const r = openRoot(projectId);
+    if ('error' in r) return { ok: false, error: r.error };
+    await aiProjects.setConsent(r.root, projectNames.get(projectId) ?? projectId, alwaysAllow);
+    return { ok: true };
+  });
+  handle('ai:usage', async () => ({ projects: await aiProjects.list() }));
+  handle('ai:listConversations', ({ projectId }) => {
+    const r = openRoot(projectId);
+    return 'error' in r
+      ? { ok: false, conversations: [], error: r.error }
+      : listConversations(r.root);
+  });
+  handle('ai:loadConversation', ({ projectId, id }) => {
+    const r = openRoot(projectId);
+    return 'error' in r ? { ok: false, error: r.error } : loadConversation(r.root, id);
+  });
+  handle('ai:saveConversation', ({ projectId, conversation }) => {
+    const r = openRoot(projectId);
+    return 'error' in r ? { ok: false, error: r.error } : saveConversation(r.root, conversation);
   });
 
   handle('dialog:openFolder', async ({ title }) => {
@@ -305,6 +381,17 @@ if (!app.requestSingleInstanceLock()) {
     });
   });
 }
+
+// Usage is written in batches; write the last batch before the process ends.
+let usageFlushed = false;
+app.on('before-quit', (e) => {
+  if (usageFlushed) return;
+  e.preventDefault();
+  usageFlushed = true;
+  void aiProjects.flush().finally(() => {
+    app.quit();
+  });
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

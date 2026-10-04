@@ -1,10 +1,12 @@
 // Renderer entry. The main process imports '@aio/ai/main' (runtime) and '@aio/ai/routes'.
 export {
+  DEFAULT_LOCAL_MODEL,
   defaultRoutes,
   missingKeyMessage,
   modelLabel,
   PROVIDER_LABELS,
   PROVIDERS,
+  ROUTE_PROVIDERS,
   routeFor,
   type ModelRoute,
 } from './routes';
@@ -22,13 +24,25 @@ export {
 } from './tools';
 export {
   defaultToolContext,
+  registerAppHooks,
   registerFrameSource,
   registerRendererTool,
   runRendererTool,
   ToolError,
+  type AppHooks,
   type RendererToolContext,
   type RendererToolRun,
   type ToolRunResult,
 } from './renderer-tools';
-export { estimateCostUsd, formatMeter, PRICES_AS_OF } from './pricing';
+export {
+  addProviderUsage,
+  estimateCostUsd,
+  formatMeter,
+  PRICES_AS_OF,
+  totalUsage,
+  type ProviderUsageRow,
+  type UsageTotals,
+} from './pricing';
+export { conversationMarkdown, issuesCsv } from './exporting';
+export { photoPlan } from './photo-frame';
 export { SUGGESTIONS } from './suggestions';
