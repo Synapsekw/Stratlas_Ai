@@ -15,6 +15,18 @@ describe('applyChange', () => {
     expect(applyChange([a], create)).toEqual([a, b]);
     expect(applyChange([a, b], invert(create))).toEqual([a]);
   });
+
+  it('puts deleted issues back where they were on undo', () => {
+    const c = makeIssue({ id: 'c', code: 'F03' });
+    const del: Change = {
+      label: 'Merge',
+      before: { a, c },
+      after: { a: null, c: null },
+      at: { a: 0, c: 2 },
+    };
+    expect(applyChange([a, b, c], del)).toEqual([b]);
+    expect(applyChange([b], invert(del))).toEqual([a, b, c]);
+  });
 });
 
 describe('History', () => {

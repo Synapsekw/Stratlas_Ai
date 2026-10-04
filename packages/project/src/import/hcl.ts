@@ -27,6 +27,7 @@ import { imageSize } from './image';
 import { extractWindowJson, parseKitDataJs } from './kitdata';
 import { roundVec } from './math';
 import { CHROMIUM_CODECS, extractFrame, probeVideo, resizeImage, transcodeH264 } from './media';
+import { mergeImportedIssues, readSavedIssues } from './keep';
 import { ISSUES_SCHEMA, validatePackage } from './package';
 import { ImportReport, formatBytes } from './report';
 import { PackageWriter } from './writer';
@@ -290,7 +291,11 @@ export async function importHcl(opts: ImportOptions): Promise<ImportResult> {
     severityModels: [HCL_SEVERITY_MODEL],
     classCatalogues: [HCL_CATALOGUE],
   };
-  const valid = validatePackage(manifestInput, issues);
+  // A re-run keeps issues people added or edited in the app (merged by id).
+  const merged = mergeImportedIssues(readSavedIssues(opts.out), issues);
+  const kept = merged.filter((i) => !issues.includes(i)).length;
+  if (kept) rep.count('Issues kept from the app (added or edited there)', kept);
+  const valid = validatePackage(manifestInput, merged);
   w.writeJson('manifest.json', valid.manifest);
   w.writeJson('issues.json', { schema: ISSUES_SCHEMA, issues: valid.issues });
 

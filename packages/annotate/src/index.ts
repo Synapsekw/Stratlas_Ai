@@ -4,10 +4,12 @@ export { validateIssueAgainstModel } from '@aio/schema';
 // Issue model (pure)
 export * from './model/ops';
 export * from './model/query';
+export * from './model/register';
 export { History, applyChange, invert, type Change } from './model/history';
 export {
   createIssueEditor,
   type AuditEntry,
+  type BulkResult,
   type CreateInput,
   type DeriveSightings,
   type EditorState,
@@ -57,6 +59,26 @@ export {
   type MeshDrawState,
 } from './tools/mesh';
 export { installIssueOverlay, ndcOf, startSceneTool, type SceneTool } from './tools/scene';
+export {
+  clusterScreen,
+  hitItem,
+  layoutPins,
+  parsePinFilter,
+  pinPasses,
+  placeLabels,
+  sevRank,
+  type PinFilter,
+  type PinItem,
+  type PinLabel,
+  type ScreenCluster,
+  type ScreenPin,
+} from './tools/declutter';
+export {
+  createPinDisplay,
+  pinDisplay,
+  usePinDisplay,
+  type PinDisplayState,
+} from './tools/pinDisplay';
 export * as imageGeometry from './image/geometry';
 
 // Import helpers (stream S10)

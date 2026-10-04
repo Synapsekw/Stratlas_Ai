@@ -10,13 +10,24 @@ import {
   Map as MapLibreMap,
   NavigationControl,
   ScaleControl,
+  type ExpressionSpecification,
   type GeoJSONSource,
   type MapLayerMouseEvent,
 } from 'maplibre-gl';
 import { Vector3 } from 'three';
 import { drawPreview, isRepeatClick, type MapDrawSeam } from './draw';
 import { frameProjection, type FrameProjection } from './geo';
-import { footprint, issueAnchor, poseAt, rasterQuad, type LonLat } from './overlays';
+import {
+  ALL_ISSUES,
+  footprint,
+  issueAnchor,
+  issueFeatures,
+  poseAt,
+  rasterQuad,
+  severityRankColors,
+  type LonLat,
+  type MapIssueDisplay,
+} from './overlays';
 import { bboxOf, orderPacks, type MapPack } from './packs';
 import { installBasemap } from './runtime';
 import { buildStyle } from './style';
@@ -41,6 +52,8 @@ const SRC = {
   flights: 'aio-flights',
   drone: 'aio-drone',
   issues: 'aio-issues',
+  issuesFocus: 'aio-issues-focus',
+  issuesHeat: 'aio-issues-heat',
   view: 'aio-view3d',
   draw: 'aio-draw',
 };
@@ -53,6 +66,8 @@ export interface MapControllerOptions {
   packBase?: string;
   /** The current drawing seam (map sightings), read on every click. */
   draw?: () => MapDrawSeam | null;
+  /** How issues are drawn (pins filter, heat map), read on every issue redraw. */
+  issues?: () => MapIssueDisplay;
 }
 
 export interface MapController {
@@ -61,6 +76,8 @@ export interface MapController {
   resize(): void;
   /** Redraw the drawing preview and switch the cursor and double-click for drawing. */
   updateDraw(): void;
+  /** Redraw the issue markers after the display settings changed. */
+  updateIssues(): void;
   dispose(): void;
 }
 
@@ -83,7 +100,7 @@ function parsePoses(json: unknown): PoseSample[] {
 
 export function createMapController(
   el: HTMLElement,
-  { packs, store, showFlights, packBase, draw }: MapControllerOptions,
+  { packs, store, showFlights, packBase, draw, issues: issueDisplay }: MapControllerOptions,
 ): MapController {
   installBasemap(packs, packBase ? { packBase } : {});
   const ordered = orderPacks(packs);
@@ -121,7 +138,46 @@ export function createMapController(
   };
 
   function addOverlayLayers(): void {
-    for (const id of Object.values(SRC)) map.addSource(id, { type: 'geojson', data: EMPTY });
+    for (const id of Object.values(SRC)) {
+      if (id === SRC.issues) continue;
+      map.addSource(id, { type: 'geojson', data: EMPTY });
+    }
+    // Issues cluster on the GPU side of MapLibre: badges carry the count and the worst rank.
+    map.addSource(SRC.issues, {
+      type: 'geojson',
+      data: EMPTY,
+      cluster: true,
+      clusterRadius: 42,
+      clusterMaxZoom: 19,
+      clusterProperties: { top: ['max', ['get', 'rank']] },
+    });
+    map.addLayer({
+      id: 'aio-issues-heat',
+      type: 'heatmap',
+      source: SRC.issuesHeat,
+      maxzoom: 21,
+      paint: {
+        'heatmap-weight': ['get', 'weight'],
+        'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 10, 0.6, 18, 2.2],
+        'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 10, 6, 15, 18, 19, 40],
+        'heatmap-opacity': 0.75,
+        'heatmap-color': [
+          'interpolate',
+          ['linear'],
+          ['heatmap-density'],
+          0,
+          'rgba(0,0,0,0)',
+          0.15,
+          'rgba(120,179,214,0.45)',
+          0.4,
+          '#ebc751',
+          0.7,
+          '#f48d3c',
+          1,
+          '#f05653',
+        ],
+      },
+    });
     map.addLayer({
       id: 'aio-view3d-fill',
       type: 'fill',
@@ -171,43 +227,85 @@ export function createMapController(
       },
     });
     map.addLayer({
+      id: 'aio-issues-cluster',
+      type: 'circle',
+      source: SRC.issues,
+      filter: ['has', 'point_count'],
+      paint: {
+        'circle-radius': ['step', ['get', 'point_count'], 10, 10, 12, 50, 15, 200, 18, 1000, 21],
+        'circle-color': INK.fg2,
+        'circle-stroke-color': INK.bg0,
+        'circle-stroke-width': 1.5,
+      },
+    });
+    map.addLayer({
+      id: 'aio-issues-count',
+      type: 'symbol',
+      source: SRC.issues,
+      filter: ['has', 'point_count'],
+      layout: {
+        'text-field': ['get', 'point_count_abbreviated'],
+        'text-font': ['Noto Sans Medium'],
+        'text-size': 11,
+        'text-allow-overlap': true,
+        'text-ignore-placement': true,
+      },
+      paint: { 'text-color': INK.bg0 },
+    });
+    map.addLayer({
       id: 'aio-issues-circle',
       type: 'circle',
       source: SRC.issues,
+      filter: ['!', ['has', 'point_count']],
       paint: {
-        'circle-radius': ['case', ['get', 'selected'], 9, 6],
-        'circle-color': [
-          'match',
-          ['get', 'severity'],
-          1,
-          INK.sev[1],
-          2,
-          INK.sev[2],
-          3,
-          INK.sev[3],
-          4,
-          INK.sev[4],
-          5,
-          INK.sev[5],
-          INK.fg2,
-        ],
-        'circle-stroke-color': ['case', ['get', 'selected'], INK.fg0, INK.bg0],
-        'circle-stroke-width': ['case', ['get', 'selected'], 3, 1.5],
+        'circle-radius': 5.5,
+        'circle-color': ['get', 'color'],
+        'circle-stroke-color': INK.bg0,
+        'circle-stroke-width': 1.5,
       },
     });
+    // Codes only where they fit (symbol collision) and only close in.
     map.addLayer({
       id: 'aio-issues-label',
       type: 'symbol',
       source: SRC.issues,
-      minzoom: 14,
+      filter: ['!', ['has', 'point_count']],
+      minzoom: 17,
       layout: {
         'text-field': ['get', 'code'],
         'text-font': ['Noto Sans Medium'],
         'text-size': 11,
-        'text-offset': [0, 1.3],
+        'text-offset': [0, 1.2],
         'text-anchor': 'top',
+        'text-padding': 4,
       },
       paint: { 'text-color': INK.fg0, 'text-halo-color': INK.bg0, 'text-halo-width': 1.5 },
+    });
+    map.addLayer({
+      id: 'aio-issues-focus',
+      type: 'circle',
+      source: SRC.issuesFocus,
+      paint: {
+        'circle-radius': ['case', ['get', 'selected'], 9, 7],
+        'circle-color': ['get', 'color'],
+        'circle-stroke-color': ['case', ['get', 'selected'], INK.fg0, INK.bg0],
+        'circle-stroke-width': ['case', ['get', 'selected'], 3, 2],
+      },
+    });
+    map.addLayer({
+      id: 'aio-issues-focus-label',
+      type: 'symbol',
+      source: SRC.issuesFocus,
+      layout: {
+        'text-field': ['get', 'code'],
+        'text-font': ['Noto Sans Medium'],
+        'text-size': 12,
+        'text-offset': [0, 1.3],
+        'text-anchor': 'top',
+        'text-allow-overlap': true,
+        'text-ignore-placement': true,
+      },
+      paint: { 'text-color': INK.fg0, 'text-halo-color': INK.bg0, 'text-halo-width': 2 },
     });
     map.addLayer({
       id: 'aio-draw-line',
@@ -404,23 +502,28 @@ export function createMapController(
   }
 
   // ----- issues -----
-  function renderIssues(s: Workspace): void {
-    const features: Feature[] = [];
-    for (const issue of s.issues) {
-      const at = issueAnchor(issue, proj);
-      if (!at) continue;
-      features.push({
-        type: 'Feature',
-        properties: {
-          issueId: issue.id,
-          code: issue.code,
-          severity: issue.severity === 'uncertain' ? 0 : issue.severity,
-          selected: s.selection?.kind === 'issue' && s.selection.id === issue.id,
-        },
-        geometry: { type: 'Point', coordinates: at },
-      });
-    }
-    setData(SRC.issues, fc(features));
+  let hoverIssue: string | null = null;
+  function renderIssues(s: Workspace, focusOnly = false): void {
+    if (!map.getSource(SRC.issues)) return;
+    const models = s.project?.manifest.severityModels ?? [];
+    const f = issueFeatures(s.issues, proj, models, issueDisplay?.() ?? ALL_ISSUES, {
+      selected: s.selection?.kind === 'issue' ? s.selection.id : null,
+      hover: hoverIssue,
+    });
+    setData(SRC.issuesFocus, fc(f.focus));
+    if (focusOnly) return;
+    setData(SRC.issues, fc(f.points));
+    setData(SRC.issuesHeat, fc(f.heat));
+  }
+
+  /** Cluster badges take the colour of their worst member, from the project's models. */
+  function paintClusters(s: Workspace): void {
+    if (!map.getLayer('aio-issues-cluster')) return;
+    const pairs = severityRankColors(s.project?.manifest.severityModels ?? []);
+    const color = pairs.length
+      ? (['match', ['get', 'top'], ...pairs.flat(), INK.fg2] as unknown as ExpressionSpecification)
+      : INK.fg2;
+    map.setPaintProperty('aio-issues-cluster', 'circle-color', color);
   }
 
   function applyVisibility(s: Workspace): void {
@@ -482,6 +585,7 @@ export function createMapController(
     const now = store.getState();
     renderFlights(now);
     renderDrone(now);
+    paintClusters(now);
     renderIssues(now);
     applyVisibility(now);
     const issuePts = now.issues.map((i) => issueAnchor(i, proj)).filter((x): x is LonLat => !!x);
@@ -522,11 +626,25 @@ export function createMapController(
       return;
     }
     const hit = map.queryRenderedFeatures(e.point, {
-      layers: ['aio-issues-circle', 'aio-drone-point', 'aio-flights-line'],
+      layers: [
+        'aio-issues-focus',
+        'aio-issues-cluster',
+        'aio-issues-circle',
+        'aio-drone-point',
+        'aio-flights-line',
+      ],
     })[0];
-    const props = hit?.properties as { issueId?: string; layerId?: string } | undefined;
+    const props = hit?.properties as
+      { issueId?: string; layerId?: string; cluster_id?: number } | undefined;
     const st = store.getState();
-    if (props?.issueId) {
+    if (props?.cluster_id !== undefined && hit?.geometry.type === 'Point') {
+      // Expand a badge: zoom to where it splits.
+      const center = hit.geometry.coordinates as [number, number];
+      const src = map.getSource<GeoJSONSource>(SRC.issues);
+      void src?.getClusterExpansionZoom(props.cluster_id).then((zoom) => {
+        map.easeTo({ center, zoom: Math.min(zoom, 20), duration: 400 });
+      });
+    } else if (props?.issueId) {
       st.select({ kind: 'issue', id: props.issueId });
     } else if (props?.layerId) {
       st.setActiveClip(props.layerId);
@@ -549,7 +667,13 @@ export function createMapController(
       d.onFinish();
     });
     const drawing = () => draw?.()?.mode != null;
-    for (const id of ['aio-issues-circle', 'aio-flights-line', 'aio-drone-point']) {
+    for (const id of [
+      'aio-issues-circle',
+      'aio-issues-cluster',
+      'aio-issues-focus',
+      'aio-flights-line',
+      'aio-drone-point',
+    ]) {
       map.on('mouseenter', id, () => {
         if (!drawing()) map.getCanvas().style.cursor = 'pointer';
       });
@@ -558,6 +682,19 @@ export function createMapController(
       });
     }
     updateDraw();
+    // Hover shows a pin's code wherever it is.
+    map.on('mousemove', 'aio-issues-circle', (e) => {
+      const id = (e.features?.[0]?.properties as { issueId?: string } | undefined)?.issueId;
+      if (id && id !== hoverIssue) {
+        hoverIssue = id;
+        renderIssues(store.getState(), true);
+      }
+    });
+    map.on('mouseleave', 'aio-issues-circle', () => {
+      if (hoverIssue === null) return;
+      hoverIssue = null;
+      renderIssues(store.getState(), true);
+    });
 
     let prev = store.getState();
     void openProject(prev);
@@ -567,6 +704,7 @@ export function createMapController(
         const last = prev;
         prev = s;
         if (s.project !== last.project) {
+          paintClusters(s);
           void openProject(s);
           return;
         }
@@ -626,6 +764,9 @@ export function createMapController(
     },
     updateDraw: () => {
       if (ready) updateDraw();
+    },
+    updateIssues: () => {
+      if (ready) renderIssues(store.getState());
     },
     dispose: () => {
       disposed = true;

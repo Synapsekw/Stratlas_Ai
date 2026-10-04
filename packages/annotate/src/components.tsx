@@ -6,3 +6,4 @@ export { AnnotationToolbar, useIssueOverlay } from './components/AnnotationToolb
 export { SightingPicker } from './components/SightingPicker';
 export { useMapDraw, type MapDraw } from './components/MapDraw';
 export { AnnotateStyles } from './components/styles';
+export { PinControls } from './components/PinControls';

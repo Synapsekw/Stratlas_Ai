@@ -249,6 +249,15 @@ describe('kit findings to issues', () => {
     expect(i.note).toContain('40.0 m');
   });
 
+  it('marks graded findings from the delivered report as reviewed', () => {
+    const kit = {
+      profile: PROFILE,
+      photos: [photo('p086')],
+      findings: [finding('F01', 'p086')],
+    } as KitDoc;
+    expect(buildKitIssues(kit, ctx()).map((i) => i.status)).toEqual(['reviewed']);
+  });
+
   it('groups region findings by defect, takes the worst severity and pins points', () => {
     const kit = {
       profile: {
@@ -342,9 +351,9 @@ describe('kit findings to issues', () => {
           id === 'p006' ? { uncertain: `photos/masks/${id}_uncertain_mask.png` } : {},
       }),
     );
-    expect(issues.map((i) => [i.code, i.severity, i.classId])).toEqual([
-      ['U01', 'uncertain', 'uncertain'],
-      ['U02', 'uncertain', 'uncertain'],
+    expect(issues.map((i) => [i.code, i.severity, i.classId, i.status])).toEqual([
+      ['U01', 'uncertain', 'uncertain', 'draft'],
+      ['U02', 'uncertain', 'uncertain', 'draft'],
     ]);
     expect(issues[0]?.sightings[0]).toEqual({
       on: 'image',

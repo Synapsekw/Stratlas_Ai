@@ -22,6 +22,7 @@ import { extractWindowJson } from './kitdata';
 import { roundVec } from './math';
 import { resizeImage } from './media';
 import { ISSUES_SCHEMA, validatePackage } from './package';
+import { mergeImportedIssues, readSavedIssues } from './keep';
 import { ImportReport, formatBytes } from './report';
 import { PackageWriter } from './writer';
 
@@ -449,7 +450,11 @@ export async function importAik(opts: AikImportOptions): Promise<AikImportResult
     severityModels: [severity],
     classCatalogues: [catalogue],
   };
-  const valid = validatePackage(manifestInput, issues);
+  // A re-run keeps issues people added or edited in the app (merged by id).
+  const merged = mergeImportedIssues(readSavedIssues(opts.out), issues);
+  const kept = merged.filter((i) => !issues.includes(i)).length;
+  if (kept) rep.count('Issues kept from the app (added or edited there)', kept);
+  const valid = validatePackage(manifestInput, merged);
   w.writeJson('manifest.json', valid.manifest);
   w.writeJson('issues.json', { schema: ISSUES_SCHEMA, issues: valid.issues });
   for (const d of ['photos', 'models/patches', 'rasters', 'legacy']) w.prune(d);

@@ -8,10 +8,12 @@ export interface Change {
   label: string;
   before: Readonly<Record<string, Issue | null>>;
   after: Readonly<Record<string, Issue | null>>;
+  /** List positions of the issues before the change, so an undone delete returns in place. */
+  at?: Readonly<Record<string, number>>;
 }
 
 export function invert(c: Change): Change {
-  return { label: c.label, before: c.after, after: c.before };
+  return { label: c.label, before: c.after, after: c.before, ...(c.at ? { at: c.at } : {}) };
 }
 
 /** Apply the `after` side of a change to a list of issues; existing issues keep their place. */
@@ -27,9 +29,15 @@ export function applyChange(issues: readonly Issue[], c: Change): Issue[] {
     const next = c.after[i.id];
     if (next) out.push(next);
   }
+  const placed: [number, Issue][] = [];
   for (const [id, next] of Object.entries(c.after)) {
-    if (!seen.has(id) && next) out.push(next);
+    if (seen.has(id) || !next) continue;
+    const at = c.at?.[id];
+    if (at === undefined) out.push(next);
+    else placed.push([at, next]);
   }
+  for (const [at, next] of placed.sort((x, y) => x[0] - y[0]))
+    out.splice(Math.min(at, out.length), 0, next);
   return out;
 }
 

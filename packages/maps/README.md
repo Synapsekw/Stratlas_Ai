@@ -36,6 +36,10 @@ after a fresh clone. Sprites (`assets/sprites/dark*`) are small and committed.
   coarse level), every video layer's flight path, the active clip's drone and ground footprint at
   `workspace.nowMs`, issues anchored by map, mesh or point cloud sightings, and a wedge for the 3D
   camera. Click an issue or flight to select it; Alt+click flies the 3D camera to that point.
+- Issues are a clustered GeoJSON source: count badges in the colour of the worst member (from the
+  project's severity models), a badge click zooms to where it splits, codes from z17 where they
+  fit. The selected issue is never clustered; hover shows a code. `MapView` `issues`
+  (`MapIssueDisplay`: show, minSeverity, heat) follows the app's Pins control and adds a heatmap.
 - `registerMapAdapters()` registers a `basemap` ground: the style rendered once (2048 px over a
   5 km square around the origin) by a hidden MapLibre map and draped as a quad at y = -0.2.
 

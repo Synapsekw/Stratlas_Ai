@@ -1,7 +1,15 @@
 import type { Issue, PoseSample } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { frameProjection } from './geo';
-import { footprint, issueAnchor, poseAt, rasterQuad } from './overlays';
+import type { SeverityModel } from '@aio/schema';
+import {
+  footprint,
+  issueAnchor,
+  issueFeatures,
+  poseAt,
+  rasterQuad,
+  severityRankColors,
+} from './overlays';
 
 const TANK_UTM: [number, number] = [245747.13, 3179641.87];
 const TANK_LONLAT: [number, number] = [48.39709173227198, 28.719105268785743];
@@ -111,5 +119,103 @@ describe('issue anchors', () => {
       sightings: [{ on: 'image', layer: 'p', photo: 'x', geom: { type: 'point', x: 1, y: 2 } }],
     };
     expect(issueAnchor(issue, proj)).toBeNull();
+  });
+});
+
+const prop = (f: { properties: Record<string, unknown> | null }, k: string): unknown =>
+  f.properties?.[k];
+
+describe('issue features for the clustered map layer', () => {
+  const model: SeverityModel = {
+    id: 'road',
+    name: 'Road',
+    levels: [
+      { value: 1, label: 'Low', color: '#111111', criteria: 'l' },
+      { value: 2, label: 'Medium', color: '#222222', criteria: 'm' },
+      { value: 3, label: 'High', color: '#333333', criteria: 'h' },
+    ],
+    uncertain: { label: 'Uncertain', color: '#999999' },
+  };
+  const mk = (id: string, severity: Issue['severity'], lon = 48): Issue => ({
+    id,
+    code: id.toUpperCase(),
+    classId: 'c',
+    severityModelId: 'road',
+    severity,
+    status: 'reviewed',
+    title: 't',
+    note: '',
+    author: 'a',
+    createdAt: '2026-10-03T00:00:00Z',
+    updatedAt: '2026-10-03T00:00:00Z',
+    source: 'import',
+    sightings: [{ on: 'map', layer: 'o', geojson: { type: 'Point', coordinates: [lon, 29] } }],
+  });
+  const issues = [mk('a', 1), mk('b', 3, 48.1), mk('c', 'uncertain', 48.2)];
+  const all = { show: true, minSeverity: null, heat: false };
+
+  it('colours each point from its severity model and ranks uncertain lowest', () => {
+    const f = issueFeatures(issues, null, [model], all, { selected: null, hover: null });
+    expect(f.points.map((p) => [prop(p, 'code'), prop(p, 'color'), prop(p, 'rank')])).toEqual([
+      ['A', '#111111', 1],
+      ['B', '#333333', 3],
+      ['C', '#999999', -1],
+    ]);
+  });
+
+  it('keeps the selected issue out of the clusters and labels it and the hovered one', () => {
+    const f = issueFeatures(issues, null, [model], all, { selected: 'b', hover: 'a' });
+    expect(f.points.map((p) => prop(p, 'code'))).toEqual(['A', 'C']);
+    expect(f.focus.map((p) => [prop(p, 'code'), prop(p, 'selected')])).toEqual([
+      ['A', false],
+      ['B', true],
+    ]);
+  });
+
+  it('applies the severity threshold and the off switch, but keeps the selection', () => {
+    const min = issueFeatures(
+      issues,
+      null,
+      [model],
+      { ...all, minSeverity: 2 },
+      { selected: null, hover: null },
+    );
+    expect(min.points.map((p) => prop(p, 'code'))).toEqual(['B']);
+    const off = issueFeatures(
+      issues,
+      null,
+      [model],
+      { ...all, show: false },
+      { selected: 'c', hover: null },
+    );
+    expect(off.points).toEqual([]);
+    expect(off.focus.map((p) => prop(p, 'code'))).toEqual(['C']);
+  });
+
+  it('gives the heat layer every issue the threshold keeps, weighted by severity', () => {
+    const f = issueFeatures(
+      issues,
+      null,
+      [model],
+      { ...all, show: false, heat: true },
+      { selected: null, hover: null },
+    );
+    expect(f.heat.map((p) => prop(p, 'weight'))).toEqual([
+      expect.any(Number),
+      1,
+      expect.any(Number),
+    ]);
+    const w = f.heat.map((p) => Number(prop(p, 'weight')));
+    expect(w[0]).toBeLessThan(w[1] ?? 0);
+    expect(w[2]).toBeLessThan(w[0] ?? 0);
+  });
+
+  it('maps ranks to the worst colour for cluster badges', () => {
+    expect(severityRankColors([model])).toEqual([
+      [-1, '#999999'],
+      [1, '#111111'],
+      [2, '#222222'],
+      [3, '#333333'],
+    ]);
   });
 });

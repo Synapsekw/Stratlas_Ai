@@ -4,10 +4,11 @@ import {
   annotateUi,
   useIssueOverlay,
   useMapDraw,
+  usePinDisplay,
   type MapDraw,
 } from '@aio/annotate';
 import { getActiveScene, SceneView, type EngineStage } from '@aio/engine';
-import { MapView, type MapDrawMode, type MapDrawSeam } from '@aio/maps';
+import { MapView, type MapDrawMode, type MapDrawSeam, type MapIssueDisplay } from '@aio/maps';
 import { ElevationLegend, useElevationRange } from '@aio/pointcloud';
 import { crsLabel, formatEastNorth, Icon, localToProject, type IconName } from '@aio/ui';
 import { setFlightPaths, videoRig } from '@aio/video';
@@ -402,6 +403,17 @@ export function Stage() {
   const engine = useEngineStage();
   const mapDraw = useMapDraw(mapLayer);
   useIssueOverlay();
+  // The Pins control drives the map markers too.
+  const pinFilter = usePinDisplay((s) => s.filter);
+  const pinHeat = usePinDisplay((s) => s.heat);
+  const mapIssues = useMemo<MapIssueDisplay>(
+    () => ({
+      show: pinFilter !== 'off',
+      minSeverity: typeof pinFilter === 'number' ? pinFilter : null,
+      heat: pinHeat,
+    }),
+    [pinFilter, pinHeat],
+  );
   useCutaway(engine);
 
   // Flight paths: all, the active clip's flight only, or none, and single hidden flights.
@@ -508,7 +520,7 @@ export function Stage() {
         {mode !== '3d' && (
           <FocusZone kind="map" className="pane pane-map">
             <div className="fill">
-              <MapView className="scene-fill" draw={seam} />
+              <MapView className="scene-fill" draw={seam} issues={mapIssues} />
             </div>
           </FocusZone>
         )}

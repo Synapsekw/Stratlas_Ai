@@ -23,7 +23,17 @@ export {
 } from './packs';
 export { frameProjection, lonLatToUtm, utmToLonLat, type FrameProjection } from './geo';
 export { buildStyle, BASEMAP_SOURCE, MAP_PROTOCOL } from './style';
-export { footprint, issueAnchor, poseAt, rasterQuad, type LonLat } from './overlays';
+export {
+  ALL_ISSUES,
+  footprint,
+  issueAnchor,
+  issueFeatures,
+  poseAt,
+  rasterQuad,
+  severityRankColors,
+  type LonLat,
+  type MapIssueDisplay,
+} from './overlays';
 
 /**
  * Registers the `basemap` ground adapter with @aio/engine: the offline street style rendered once

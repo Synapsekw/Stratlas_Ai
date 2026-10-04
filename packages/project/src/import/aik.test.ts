@@ -262,4 +262,34 @@ describe('importAik (synthetic kit offline build)', () => {
     expect(r.written).toBe(0);
     expect(r.skipped).toBeGreaterThan(10);
   }, 60_000);
+
+  it('keeps issues people added or edited when it runs again', async () => {
+    const file = join(out(), 'issues.json');
+    const saved = JSON.parse(readFileSync(file, 'utf8')) as { schema: string; issues: Issue[] };
+    const [f01, u01] = saved.issues;
+    if (!f01 || !u01) throw new Error('expected two issues');
+    const later = '2026-10-04T03:00:00.000Z';
+    const mine: Issue = {
+      ...f01,
+      id: 'c0ffee00-0000-4000-8000-000000000001',
+      code: 'F12',
+      source: 'human',
+      status: 'draft',
+      author: 'D',
+      createdAt: later,
+      updatedAt: later,
+    };
+    const edited: Issue = { ...u01, note: 'Checked on site.', updatedAt: later };
+    writeFileSync(file, JSON.stringify({ ...saved, issues: [f01, edited, mine] }));
+    await run();
+    const after = (JSON.parse(readFileSync(file, 'utf8')) as { issues: unknown[] }).issues.map(
+      (i) => Issue.parse(i),
+    );
+    expect(after.map((i) => [i.code, i.status, i.source])).toEqual([
+      ['F01', 'reviewed', 'import'],
+      ['U01', 'draft', 'import'],
+      ['F12', 'draft', 'human'],
+    ]);
+    expect(after[1]?.note).toBe('Checked on site.');
+  }, 60_000);
 });
