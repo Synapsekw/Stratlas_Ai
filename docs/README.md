@@ -14,6 +14,7 @@ The order below follows the product process: requirements, then brand and UI dir
 | [architecture/SPEC.md](architecture/SPEC.md)                       | System architecture for Releases A and B, parallel delivery model                                                            | Approved v1.0       |
 | [architecture/adr/](architecture/adr/)                             | Architecture decision records: 0001 Electron, 0002 Mission UI                                                                | Accepted            |
 | `plans/`                                                           | Implementation plans, one per milestone                                                                                      | After SPEC approval |
+| [TESTING.md](TESTING.md)                                           | Founder test checklist, one stage per milestone (M1 to M9)                                                                   | Living              |
 
 ## Reference material
 
