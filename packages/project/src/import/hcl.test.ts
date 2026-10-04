@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Issue, parseManifest } from '@aio/schema';
-import { importHcl } from './hcl';
+import { hclChapters, importHcl } from './hcl';
 import {
   HCL_SEVERITY_MODEL,
   buildHclIssue,
@@ -213,4 +213,24 @@ describe.skipIf(!hasFfmpeg)('importHcl on a one-flight slice', () => {
     const after = JSON.parse(readFileSync(file, 'utf8')) as { issues: Issue[] };
     expect(after.issues.map((i) => i.code)).toEqual([...saved.issues.map((i) => i.code), 'F12']);
   }, 60_000);
+});
+
+describe('hclChapters', () => {
+  it('lists the MOV chapters of one flight folder in order', () => {
+    const root = mkdtempSync(join(tmpdir(), 'aio-hcl-orig-'));
+    try {
+      mkdirSync(join(root, '101-acid tank-1-00'));
+      mkdirSync(join(root, '1010-other'));
+      for (const f of ['101_0002.MOV', '101_0001.MOV', '101_0003.JPG', 'x_thermal.mp4'])
+        writeFileSync(join(root, '101-acid tank-1-00', f), '');
+      expect(hclChapters(root, '101')).toEqual([
+        join(root, '101-acid tank-1-00', '101_0001.MOV'),
+        join(root, '101-acid tank-1-00', '101_0002.MOV'),
+      ]);
+      expect(hclChapters(root, '102')).toEqual([]);
+      expect(hclChapters(join(root, 'missing'), '101')).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

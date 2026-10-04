@@ -28,6 +28,7 @@ import { extractWindowJson, parseKitDataJs } from './kitdata';
 import { roundVec } from './math';
 import { CHROMIUM_CODECS, extractFrame, probeVideo, resizeImage, transcodeH264 } from './media';
 import { mergeImportedIssues, readSavedIssues } from './keep';
+import { makeProxy } from './proxy';
 import { ISSUES_SCHEMA, validatePackage } from './package';
 import { ImportReport, formatBytes } from './report';
 import { PackageWriter } from './writer';
@@ -37,6 +38,11 @@ export interface ImportOptions {
   src: string;
   /** Project package folder to create or update. */
   out: string;
+  /**
+   * Folder with the original recordings (read only). When given, video comes from there as
+   * 1920 px proxies instead of the delivered 960 px clips; for HCl one clip per flight.
+   */
+  originals?: string;
   log?: (msg: string) => void;
 }
 
@@ -134,7 +140,33 @@ export async function importHcl(opts: ImportOptions): Promise<ImportResult> {
       }
     }
 
-    for (const [k, seg] of kf.segments.entries()) {
+    const chapters = opts.originals ? hclChapters(opts.originals, fe.id) : [];
+    if (opts.originals && chapters.length === 0)
+      rep.warn(`No original recording for flight ${fe.id}; the delivered 60 s clips are used.`);
+    if (chapters.length > 0) {
+      // The camera splits a recording into chapters; the delivered clips are 60 s pieces of the
+      // chapters joined, so one proxy of the joined chapters starts where the first piece did.
+      const rel = `video/v${fe.id}.mp4`;
+      await w.derive(rel, chapters, async (out) => {
+        await makeProxy(out, { inputs: chapters });
+      });
+      const posterRel = `posters/v${fe.id}.jpg`;
+      const proxy = join(opts.out, rel);
+      await w.derive(posterRel, [proxy], (out) => extractFrame(proxy, 1, out, 960));
+      videoLayers.push({
+        kind: 'video',
+        id: `video-${fe.id}`,
+        name: `Flight ${fe.id} · ${fe.name}`,
+        visible: true,
+        src: { path: rel },
+        flight: { src: { path: flightRel }, startUtcMs },
+        lens: doc.lens,
+        offsetMs: clipOffsetMs(0, kf.segment_s, t0),
+        poster: { path: posterRel },
+      });
+      rep.count('Video clips');
+    }
+    for (const [k, seg] of chapters.length > 0 ? [] : kf.segments.entries()) {
       const clipSrc = src('video', seg);
       const clipInfo = k === 0 ? info : await probeVideo(clipSrc);
       let rel = `video/${seg}`;
@@ -184,7 +216,9 @@ export async function importHcl(opts: ImportOptions): Promise<ImportResult> {
     } else {
       rep.warn(`No point cloud for flight ${fe.id}`);
     }
-    log(`flight ${fe.id}: ${doc.samples.length} samples, ${kf.segments.length} clips`);
+    log(
+      `flight ${fe.id}: ${doc.samples.length} samples, ${chapters.length > 0 ? `1 clip from ${chapters.length} chapters` : `${kf.segments.length} clips`}`,
+    );
   }
   layers.push(...cloudLayers, ...videoLayers);
 
@@ -322,8 +356,10 @@ export async function importHcl(opts: ImportOptions): Promise<ImportResult> {
   ]);
   rep.section('What was converted', [
     `- Model: \`models/${glbName}\` (GLB as delivered, ${formatBytes(readFileSync(src('app', glbName)).length)}), tags from the kit model metadata.`,
-    `- Flights: ${flights.length} kit flight logs to \`flights/fNNN.json\` (aio.flight/1, f-theta 114 deg). Sample time 0 is the first log sample (about 15.6 s before the video starts); each 60 s clip is its own video layer with \`offsetMs = k * 60000 - t0\`.`,
-    '- Video: MP4 clips copied as is (H.264 High, 960x540, 25 fps, plays in Chromium); a JPEG poster per clip at 1 s.',
+    `- Flights: ${flights.length} kit flight logs to \`flights/fNNN.json\` (aio.flight/1, f-theta 114 deg). Sample time 0 is the first log sample (about 15.6 s before the video starts); ${opts.originals ? 'one video layer per flight with `offsetMs = -t0`.' : 'each 60 s clip is its own video layer with `offsetMs = k * 60000 - t0`.'}`,
+    opts.originals
+      ? '- Video: one 1920 px H.264 proxy per flight made from the original camera chapters (joined; a keyframe every second); a JPEG poster at 1 s.'
+      : '- Video: MP4 clips copied as is (H.264 High, 960x540, 25 fps, plays in Chromium); a JPEG poster per clip at 1 s.',
     '- Point clouds: per-flight Elios 3 LiDAR (base64 in `data/cloudNNN.js`) rotated into the local frame, `kit-packed` layout: N x int16 xyz (mm, LE) then N x uint8 intensity.',
     '- Photos: every POI photo with an image (full 1280x960 copy where the package has one, else the 480x360 POI thumbnail) plus the 4 video frames used as finding evidence; pose = camera position and quaternion of the flight log at the POI time.',
     '- Issues: F01 to F11 from the 3D report findings register, severity model "HCl lining" (1 to 5), a mesh sighting at each photo target and an image sighting at the centre of each finding photo.',
@@ -351,4 +387,15 @@ export async function importHcl(opts: ImportOptions): Promise<ImportResult> {
     skipped: w.stats.skipped,
     warnings: rep.warnings,
   };
+}
+
+/** Camera chapters of one flight's recording: the MOV files of `<originals>/<flight>-...`, in order. */
+export function hclChapters(originals: string, flightId: string): string[] {
+  if (!existsSync(originals)) return [];
+  const dir = readdirSync(originals).find((d) => d.startsWith(`${flightId}-`));
+  if (!dir) return [];
+  return readdirSync(join(originals, dir))
+    .filter((f) => /\.mov$/i.test(f))
+    .sort()
+    .map((f) => join(originals, dir, f));
 }

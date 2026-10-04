@@ -22,3 +22,11 @@ export {
   type PipelineJobs,
   type VideoTools,
 } from './raw';
+export {
+  detectProxyEncoder,
+  makePoster,
+  makeProxy,
+  proxyArgs,
+  type ProxyEncoder,
+  type ProxyOptions,
+} from '../import/proxy';

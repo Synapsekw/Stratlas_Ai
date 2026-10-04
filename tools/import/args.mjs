@@ -1,6 +1,9 @@
 import { join } from 'node:path';
 
-/** `--src` and `--out` with defaults under STRATLAS_DATA (or E:\Stratlas Data). */
+/**
+ * `--src` and `--out` with defaults under STRATLAS_DATA (or E:\Stratlas Data), and the optional
+ * `--originals` folder of original recordings (video proxies are made from them).
+ */
 export function parseArgs(project) {
   const root = process.env.STRATLAS_DATA ?? 'E:\\Stratlas Data';
   const args = process.argv.slice(2);
@@ -11,5 +14,6 @@ export function parseArgs(project) {
   return {
     src: get('src') ?? join(root, 'sources', project),
     out: get('out') ?? join(root, 'projects', project),
+    originals: get('originals'),
   };
 }

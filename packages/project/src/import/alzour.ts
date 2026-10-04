@@ -37,6 +37,7 @@ import type { ImportOptions, ImportResult } from './hcl';
 import { imageSize } from './image';
 import { quatNormalize, round, roundVec, sub } from './math';
 import { CHROMIUM_CODECS, extractFrame, probeVideo, transcodeH264, type VideoInfo } from './media';
+import { makeProxy } from './proxy';
 import { ISSUES_SCHEMA, validatePackage } from './package';
 import {
   djiLocalToUtcMs,
@@ -835,15 +836,23 @@ export async function importAlzour(opts: AlzourImportOptions): Promise<ImportRes
       if (!info) continue;
       const file = src('videos', `${c.name}.mp4`);
       let rel = `video/${c.name}.mp4`;
-      if (CHROMIUM_CODECS.has(info.codec)) await w.copy(file, rel);
+      const orig = opts.originals ? alzourOriginal(opts.originals, c.name) : undefined;
+      if (opts.originals && !orig)
+        rep.warn(`No original recording for ${c.name}; the delivered 960 px clip is used.`);
+      if (orig)
+        await w.derive(rel, [orig], async (out) => {
+          await makeProxy(out, { inputs: [orig] });
+        });
+      else if (CHROMIUM_CODECS.has(info.codec)) await w.copy(file, rel);
       else {
         rel = `video/${c.name}.h264.mp4`;
         await w.derive(rel, [file], (out) => transcodeH264(file, out));
         rep.warn(`${c.name}: codec ${info.codec} transcoded to H.264`);
       }
       const posterRel = `posters/${c.name}.jpg`;
-      await w.derive(posterRel, [file], (out) =>
-        extractFrame(file, Math.min(1, info.durationS / 2), out, 960),
+      const posterSrc = orig ? join(opts.out, rel) : file;
+      await w.derive(posterRel, [posterSrc], (out) =>
+        extractFrame(posterSrc, Math.min(1, info.durationS / 2), out, 960),
       );
       videoLayers.push({
         kind: 'video',
@@ -1061,7 +1070,7 @@ export async function importAlzour(opts: AlzourImportOptions): Promise<ImportRes
     `- Area plot plans: \`plan_0.png\` and \`plan_1.png\` (2 px/m in the plant grid, E -60 to 2620, N 20 to 1080 as the viewer) as two \`image\` rasters in \`rasters/areaplans/\`, converted the same way, ${AREAPLAN_Y} m above grade.`,
     `- ${streetNote}`,
     `- Point cloud: \`png-packed\` \`clouds/alzour/index.json\` (aio.pngcloud/1), ${chunks.length} chunks (lod 0: 1 overview, lod 1 and 2: ${pc.levels[1]?.length ?? 0} + ${pc.levels[2]?.length ?? 0} tiles), ${pcPoints.toLocaleString('en')} points, decoded with the viewer rule \`o + q * u\`, turned into the local frame and quantised again to a cube per chunk (step <= 0.1 mm over the source step). ${pc.note ?? ''}`,
-    `- Video: ${videoLayers.length} clips copied as delivered (H.264, ${[...new Set([...infos.values()].map((i) => `${i.width}x${i.height}`))].join(', ')}), JPEG poster at 1 s (960 px). One \`aio.flight/1\` file per drone flight (\`flights/flightN.json\`, ${flightDocs.size} flights) so the app groups the clips; each clip's \`offsetMs\` is its start minus the flight start. Lens pinhole ${String(ALZOUR_HFOV_DEG.wide)} deg for 5.1K (17:9) clips and ${String(ALZOUR_HFOV_DEG.uhd)} deg for 4K (16:9), calibrated against the plant model (the source stated 83 deg for all clips).`,
+    `- Video: ${videoLayers.length} clips ${opts.originals ? 'as 1920 px H.264 proxies made from the original recordings (a keyframe every second; lens aspect from the delivered clips)' : `copied as delivered (H.264, ${[...new Set([...infos.values()].map((i) => `${i.width}x${i.height}`))].join(', ')})`}, JPEG poster at 1 s (960 px). One \`aio.flight/1\` file per drone flight (\`flights/flightN.json\`, ${flightDocs.size} flights) so the app groups the clips; each clip's \`offsetMs\` is its start minus the flight start. Lens pinhole ${String(ALZOUR_HFOV_DEG.wide)} deg for 5.1K (17:9) clips and ${String(ALZOUR_HFOV_DEG.uhd)} deg for 4K (16:9), calibrated against the plant model (the source stated 83 deg for all clips).`,
     `- Photos: ${photoItems.length} stills (2048 px review copies as delivered, 320 px thumbs) with position, orientation (heading with the viewer's fitted correction, gimbal pitch, roll) and lens (pinhole 71.5 deg).`,
     `- Panoramas: ${panoItems.length} (${media.panos.filter((p) => p.kind === 'sphere').length} equirectangular 360, ${media.panos.filter((p) => p.kind === 'wide').length} wide partial) with position and heading; full coverage metadata in \`panoramas/panoramas.json\`.`,
     `- Issues: none in the source; \`issues.json\` is empty. Severity model "${PLANT_SEVERITY_MODEL.name}" (1 Observation to 5 Critical, plus To be confirmed) and class catalogue "${PLANT_CATALOGUE.name}" (${PLANT_CATALOGUE.classes.length} classes).`,
@@ -1101,4 +1110,11 @@ export async function importAlzour(opts: AlzourImportOptions): Promise<ImportRes
     skipped: w.stats.skipped,
     warnings: rep.warnings,
   };
+}
+
+/** The original recording of a clip: `<originals>/<name>.MOV` or `.MP4`, any case. */
+export function alzourOriginal(originals: string, name: string): string | undefined {
+  if (!existsSync(originals)) return undefined;
+  const f = readdirSync(originals).find((n) => /\.(mov|mp4)$/i.test(n) && n.slice(0, -4) === name);
+  return f ? join(originals, f) : undefined;
 }

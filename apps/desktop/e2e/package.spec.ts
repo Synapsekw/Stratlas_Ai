@@ -175,7 +175,7 @@ test.describe('HCl as a customer package', () => {
 
         // Video streams from the archive: a byte range equals the source file's bytes.
         const range = await win.evaluate(async (pid) => {
-          const r = await fetch(`aio://project/${pid}/video/v101_00.mp4`, {
+          const r = await fetch(`aio://project/${pid}/video/v101.mp4`, {
             headers: { Range: 'bytes=1000000-1000999' },
           });
           const b = new Uint8Array(await r.arrayBuffer());
@@ -183,17 +183,16 @@ test.describe('HCl as a customer package', () => {
         }, id);
         expect(range.status).toBe(206);
         expect(range.length).toBe(1000);
-        const fh = await open(join(HCL, 'video', 'v101_00.mp4'), 'r');
+        const fh = await open(join(HCL, 'video', 'v101.mp4'), 'r');
         const src = Buffer.alloc(16);
         await fh.read(src, 0, 16, 1_000_000);
         await fh.close();
         expect(range.head).toEqual([...src]);
 
         // Play a clip from the timeline, then seek it far into the clip.
-        const bar = win.locator('.seg-c.grp').first();
-        const box = await bar.boundingBox();
-        if (!box) throw new Error('no flight bar in the timeline');
-        await bar.click({ position: { x: box.width * 0.4, y: box.height / 2 } });
+        const bar = win.locator('.seg-c[title^="Flight 101"]').first();
+        await expect(bar).toBeVisible();
+        await bar.click();
         const video = win.locator('[data-video-window] video');
         await expect
           .poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime), {

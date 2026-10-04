@@ -35,7 +35,11 @@ const SKIP = [
   /^manifest\.json$/,
   /^aio-package\.json$/,
   /^IMPORT-REPORT\.md$/i,
-  /\.(bak|tmp|partial|aio)$/i,
+  /\.(bak|tmp|part|partial|aio)$/i,
+  // Copies kept aside by data fixes: `manifest.before-copc.json`, `video.before-1080/`, and
+  // proxies being staged in `video.next-1080/`.
+  /^[^/]+\.before-[^/]*\.json$/i,
+  /^[^/]+\.(before|next)-[^/]+\//i,
   /(^|\/)(Thumbs\.db|desktop\.ini|\.DS_Store)$/i,
 ];
 

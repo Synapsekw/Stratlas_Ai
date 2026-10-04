@@ -292,6 +292,75 @@ describe('importRawFiles', () => {
     expect(m.captures.map((c) => c.date)).toContain('2023-12-25');
   });
 
+  const djiVideo = (codec: string): VideoTools => ({
+    probe: () =>
+      Promise.resolve({ width: 5120, height: 2700, codec, durationMs: 4000, frameTimesMs: [0] }),
+    flightFromSrt: () => ({
+      doc: {
+        startUtcMs: Date.UTC(2023, 1, 21, 13, 22, 38),
+        lens: { model: 'pinhole', hfovDeg: 72.2, aspect: 1.8963 },
+        samples: [{ t: 0, pos: [0, 100, 0], q: [0, 0, 0, 1] }],
+      },
+      warnings: [],
+      timing: { withinOneFrame: true, maxErrorMs: 1, frameMs: 20 },
+      orientation: 'gimbal',
+    }),
+  });
+
+  it('writes a review proxy instead of copying the original when a proxy step is given', async () => {
+    const root = await project();
+    await writeFile(join(dir, 'DJI_0658.MOV'), new Uint8Array(16));
+    await writeFile(join(dir, 'DJI_0658.SRT'), 'srt');
+    const calls: string[][] = [];
+    const posters: string[] = [];
+    const r = await importRawFiles(
+      root,
+      [join(dir, 'DJI_0658.MOV'), join(dir, 'DJI_0658.SRT')],
+      deps({
+        video: djiVideo('apch'),
+        proxy: async (src, out) => {
+          calls.push([src, out]);
+          await writeFile(out, 'proxy');
+        },
+        poster: async (video, _at, out) => {
+          posters.push(video);
+          await writeFile(out, 'jpg');
+        },
+      }),
+    );
+    expect(r.items[0]).toMatchObject({ kind: 'video', status: 'imported' });
+    expect(r.items[0]?.message).toMatch(/1920 px/);
+    expect(calls).toEqual([[join(dir, 'DJI_0658.MOV'), join(root, 'video', 'dji-0658.mp4')]]);
+    expect(posters).toEqual([join(root, 'video', 'dji-0658.mp4')]);
+    expect(await readdir(join(root, 'video'))).toEqual(['dji-0658.mp4']);
+    const m = await readManifest(root);
+    expect(m.layers.find((l) => l.kind === 'video')).toMatchObject({
+      src: { path: 'video/dji-0658.mp4' },
+      poster: { path: 'posters/dji-0658.jpg' },
+    });
+  });
+
+  it('copies a playable original when the proxy fails, and fails an unplayable one', async () => {
+    const root = await project();
+    for (const n of ['A.MP4', 'A.SRT', 'B.MOV', 'B.SRT'])
+      await writeFile(join(dir, n), new Uint8Array(4));
+    const failing = () => Promise.reject(new Error('ffmpeg missing'));
+    const a = await importRawFiles(
+      root,
+      [join(dir, 'A.MP4')],
+      deps({ video: djiVideo('hvc1'), proxy: failing }),
+    );
+    expect(a.items[0]).toMatchObject({ status: 'imported' });
+    expect(a.items[0]?.message).toMatch(/ffmpeg missing.*original was copied/);
+    expect(await readdir(join(root, 'video'))).toEqual(['a.mp4']);
+    const b = await importRawFiles(
+      root,
+      [join(dir, 'B.MOV')],
+      deps({ video: djiVideo('apch'), proxy: failing }),
+    );
+    expect(b.items[0]).toMatchObject({ status: 'error' });
+  });
+
   it('skips a video without SRT telemetry and an unknown file, and reports both', async () => {
     const root = await project();
     await writeFile(join(dir, 'clip.mp4'), new Uint8Array(16));

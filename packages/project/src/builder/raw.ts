@@ -77,6 +77,12 @@ export interface ImportDeps {
   video?: VideoTools;
   /** JPEG poster of a video frame (ffmpeg); optional. */
   poster?: (video: string, atS: number, out: string) => Promise<void>;
+  /**
+   * Review proxy of a recording (`makeProxy`: 1920 px H.264 MP4, a keyframe every second). When
+   * given, clips are proxied instead of copied, so the project stays small and codecs Chromium
+   * cannot play (ProRes) need no pipeline pack. Writes `out` only when it succeeds.
+   */
+  proxy?: (src: string, out: string) => Promise<void>;
   /** Clock offset of the cameras from UTC in minutes; default from the project longitude. */
   utcOffsetMin?: number;
   onProgress?: (done: number, total: number, file: string) => void;
@@ -303,7 +309,7 @@ export async function importRawFiles(
           });
         } else {
           const info = await deps.video.probe(file);
-          if (!PLAYABLE.has(info.codec)) {
+          if (!PLAYABLE.has(info.codec) && !deps.proxy) {
             await job(file, 'video', 'video.transcode', { srt });
           } else {
             const base = slug(name.slice(0, -ext.length), 'clip');
@@ -320,8 +326,21 @@ export async function importRawFiles(
             });
             await mkdir(join(root, 'video'), { recursive: true });
             await mkdir(join(root, 'flights'), { recursive: true });
-            const vrel = `video/${fileId}${ext}`;
-            await copyFile(file, join(root, vrel));
+            let vrel = `video/${fileId}${ext}`;
+            let proxyNote: string | undefined;
+            let proxied = false;
+            if (deps.proxy) {
+              try {
+                await deps.proxy(file, join(root, `video/${fileId}.mp4`));
+                vrel = `video/${fileId}.mp4`;
+                proxied = true;
+                proxyNote = 'Review copy at 1920 px (H.264); the original stays where it is.';
+              } catch (e) {
+                if (!PLAYABLE.has(info.codec)) throw e;
+                proxyNote = `No review copy (${e instanceof Error ? e.message : String(e)}); the original was copied.`;
+              }
+            }
+            if (!proxied) await copyFile(file, join(root, vrel));
             const frel = `flights/${fileId}.json`;
             await writeFile(
               join(root, frel),
@@ -332,7 +351,11 @@ export async function importRawFiles(
               try {
                 await mkdir(join(root, 'posters'), { recursive: true });
                 poster = `posters/${fileId}.jpg`;
-                await deps.poster(file, Math.min(1, info.durationMs / 2000), join(root, poster));
+                await deps.poster(
+                  join(root, vrel),
+                  Math.min(1, info.durationMs / 2000),
+                  join(root, poster),
+                );
               } catch {
                 poster = undefined;
               }
@@ -358,7 +381,7 @@ export async function importRawFiles(
               kind: 'video',
               status: 'imported',
               layerId: id,
-              message: [timing, ...r.warnings].join(' '),
+              message: [timing, ...r.warnings, ...(proxyNote ? [proxyNote] : [])].join(' '),
             });
           }
         }
