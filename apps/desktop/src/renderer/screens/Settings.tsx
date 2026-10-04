@@ -123,6 +123,20 @@ function Graphics() {
           <span className="mono">{p.shadowMapSize}</span>
         </div>
         <div className="opt">
+          <b>{t('settings.graphics.shadowSoftness')}</b>
+          <span>{t('settings.graphics.shadowSoftnessHint')}</span>
+          <span className="mono">{p.shadowSoftness}</span>
+        </div>
+        <div className="opt">
+          <b>{t('settings.graphics.water')}</b>
+          <span>{t('settings.graphics.waterHint')}</span>
+          <span className="mono">
+            {t(
+              p.water === 'full' ? 'settings.graphics.waterFull' : 'settings.graphics.waterSimple',
+            )}
+          </span>
+        </div>
+        <div className="opt">
           <b>Pixel ratio</b>
           <span>Highest render resolution on high density screens</span>
           <span className="mono">{p.maxPixelRatio}x</span>

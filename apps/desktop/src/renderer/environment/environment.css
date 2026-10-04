@@ -1,0 +1,50 @@
+/* the environment popover: backdrop, date and time of day, water (Mission stage popover) */
+.env-pop .env-date,
+.env-pop .env-level {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 6px;
+  font: inherit;
+  font-size: var(--t-12);
+  color: var(--fg-0);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2, 2px);
+  color-scheme: dark;
+}
+.env-pop .env-level {
+  font-family: var(--f-mono, 'IBM Plex Mono', monospace);
+}
+.env-pop .env-date:focus-visible,
+.env-pop .env-level:focus-visible {
+  outline: 1px solid var(--acc);
+  outline-offset: 0;
+}
+.env-pop .env-tz {
+  min-width: 0;
+}
+.env-sun {
+  font-size: 11px;
+  color: var(--fg-2);
+  padding-inline-start: 60px;
+  margin-top: -4px;
+}
+.env-sun.night {
+  color: var(--fg-3);
+}
+.env-quick {
+  display: flex;
+  gap: 6px;
+  padding-inline-start: 60px;
+  margin-top: -2px;
+}
+.env-reset {
+  justify-self: start;
+}
+
+/* the environment tool sits at the right end of the stage toolbar: open toward the left */
+.stbar > .env-slot .stage-pop {
+  inset-inline-start: auto;
+  inset-inline-end: -2px;
+}
