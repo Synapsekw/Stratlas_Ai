@@ -9,9 +9,13 @@ import { join } from 'node:path';
 import { validated, type Handler } from './ipc';
 import { createKeyVault } from './keys';
 import { addToLibrary, createLibraryStore, listLibrary, listPacks } from './library';
+import { createExportJobs } from './exports/jobs';
+import { printReport } from './exports/reportWindow';
+import { listReports } from './exports/reports';
+import { runInUtility } from './exports/utility';
 import { buildMenu } from './menu';
 import { popupAction } from './popup';
-import { openProject, ProjectRegistry, writeIssues } from './project';
+import { openProject, ProjectRegistry, readManifest, writeIssues } from './project';
 import { createAioHandler } from './protocol/handler';
 import { cspForUrl } from './protocol/legacy';
 import { saveFile } from './saveFile';
@@ -90,6 +94,38 @@ const agent = createAgentRuntime({
   emit: emitAiEvent,
 });
 
+function emitExportProgress(event: IpcEvent<'export:progress'>): void {
+  const parsed = ipcEvents['export:progress'].safeParse(event);
+  if (parsed.success) targetWindow()?.webContents.send('export:progress', parsed.data);
+}
+
+/** Save dialog for exports, parented to the app window. */
+async function chooseSavePath(
+  defaultPath: string,
+  filter: { name: string; extensions: string[] },
+): Promise<string | null> {
+  const win = targetWindow();
+  const options = { defaultPath, filters: [filter], title: 'Export' };
+  const r = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
+  return r.canceled || !r.filePath ? null : r.filePath;
+}
+
+const exportJobs = createExportJobs({
+  projectRoot: (id) => registry.root(id),
+  projectName: async (root) => {
+    const m = await readManifest(root);
+    return m.ok ? m.value.name : 'project';
+  },
+  get downloadsDir() {
+    return app.getPath('downloads');
+  },
+  chooseSavePath,
+  runFile: runInUtility,
+  printReport: (args, progress, signal) =>
+    printReport(args, progress, signal, { devUrl, devTools: dev }),
+  emit: emitExportProgress,
+});
+
 function handle<C extends IpcChannel>(channel: C, handler: Handler<C>): void {
   const run = validated(channel, handler);
   ipcMain.handle(channel, (_e, req: unknown) => run(req));
@@ -152,6 +188,13 @@ function registerIpc(): void {
       ? await dialog.showOpenDialog(win, options)
       : await dialog.showOpenDialog(options);
     return { path: r.canceled ? null : (r.filePaths[0] ?? null) };
+  });
+
+  handle('export:run', (req) => exportJobs.run(req));
+  handle('export:cancel', ({ jobId }) => ({ ok: exportJobs.cancel(jobId) }));
+  handle('report:list', async ({ projectId }) => {
+    const root = registry.root(projectId);
+    return { files: root === undefined ? [] : await listReports(root) };
   });
 
   handle('dialog:saveFile', (req) =>

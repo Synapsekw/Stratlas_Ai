@@ -1,0 +1,289 @@
+/* Issue register report, printed to A4 by main (printToPDF margins and footer). */
+@page {
+  size: A4;
+}
+:root {
+  --ink: #18202a;
+  --ink-2: #485363;
+  --ink-3: #7a8594;
+  --rule: #d5dbe3;
+  --paper: #ffffff;
+  --band: #f2f5f8;
+  --acc: #1a9e86;
+  --acc-dark: #0f3d3a;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 9.5pt;
+  line-height: 1.4;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 600;
+}
+h2 {
+  font-size: 15pt;
+  margin-bottom: 10pt;
+  padding-bottom: 6pt;
+  border-bottom: 2px solid var(--acc);
+}
+.small {
+  font-size: 8pt;
+  color: var(--ink-3);
+}
+
+/* chips */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.chip i {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+/* cover */
+.cover {
+  height: 266mm;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  padding: 16mm 14mm;
+  background: linear-gradient(160deg, var(--acc-dark) 0%, #13252f 70%);
+  color: #eef3f6;
+  break-after: page;
+  border-radius: 2mm;
+}
+.cover .brand {
+  font-size: 13pt;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7fe0cb;
+}
+.cover-main {
+  align-self: center;
+}
+.cover .kicker {
+  font-size: 11pt;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #a9c4c6;
+  margin-bottom: 6mm;
+}
+.cover h1 {
+  font-size: 32pt;
+  line-height: 1.1;
+  margin-bottom: 6mm;
+}
+.cover .who {
+  font-size: 12pt;
+  color: #c9d6dc;
+  margin-bottom: 14mm;
+}
+.cover .tally {
+  font-size: 13pt;
+  color: #c9d6dc;
+}
+.cover .big {
+  font-size: 40pt;
+  font-weight: 600;
+  color: #fff;
+  margin-right: 6px;
+}
+.cover .sevrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4mm 8mm;
+  margin-top: 6mm;
+  font-size: 11pt;
+}
+.cover .sevrow b {
+  margin-left: -4mm;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.cover-meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2mm 8mm;
+  margin: 0;
+  font-size: 9.5pt;
+  color: #c9d6dc;
+}
+.cover-meta dt {
+  color: #8fa8ad;
+}
+.cover-meta dd {
+  margin: 0;
+}
+
+/* summary */
+.summary {
+  break-after: page;
+}
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 3mm;
+  margin-bottom: 8mm;
+}
+.tile {
+  border: 1px solid var(--rule);
+  border-radius: 1.5mm;
+  padding: 3mm;
+  display: grid;
+}
+.tile b {
+  font-size: 18pt;
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 500;
+}
+.tile span {
+  color: var(--ink-3);
+  text-transform: capitalize;
+}
+.tile.total {
+  background: var(--band);
+}
+.charts {
+  display: grid;
+  gap: 7mm;
+}
+.charts figure {
+  margin: 0;
+  break-inside: avoid;
+}
+.charts figcaption {
+  font-weight: 600;
+  margin-bottom: 2mm;
+}
+.chart .cl {
+  font-size: 11px;
+  fill: var(--ink);
+}
+.chart .cn {
+  font-size: 11px;
+  fill: var(--ink-2);
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* register */
+.register {
+  break-after: page;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 8.5pt;
+}
+thead {
+  display: table-header-group;
+}
+th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--ink-2);
+  border-bottom: 1.5px solid var(--ink-2);
+  padding: 4px 6px;
+}
+td {
+  border-bottom: 1px solid var(--rule);
+  padding: 4px 6px;
+  vertical-align: top;
+}
+tr {
+  break-inside: avoid;
+}
+td.code {
+  font-family: 'IBM Plex Mono', monospace;
+  white-space: nowrap;
+}
+
+/* one page per issue */
+.issue-page {
+  break-before: page;
+  break-inside: avoid;
+}
+.ih {
+  display: flex;
+  align-items: center;
+  gap: 4mm;
+  padding-bottom: 3mm;
+  margin-bottom: 4mm;
+  border-bottom: 2px solid var(--acc);
+}
+.ih .code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13pt;
+  font-weight: 600;
+  color: var(--acc-dark);
+}
+.ih h3 {
+  flex: 1;
+  font-size: 13pt;
+}
+.ih .chip {
+  font-size: 10pt;
+  font-weight: 600;
+}
+.figs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4mm;
+  margin-bottom: 5mm;
+}
+.figs figure {
+  margin: 0;
+}
+.figs img,
+.figs .noimg {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  display: block;
+  border: 1px solid var(--rule);
+  border-radius: 1mm;
+  background: var(--band);
+}
+.figs .noimg {
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+}
+.figs figcaption {
+  font-size: 8pt;
+  color: var(--ink-3);
+  margin-top: 1.5mm;
+}
+.meta {
+  display: grid;
+  grid-template-columns: 30mm 1fr;
+  gap: 1.5mm 4mm;
+  margin: 0 0 5mm;
+}
+.meta dt {
+  color: var(--ink-3);
+}
+.meta dd {
+  margin: 0;
+}
+.note {
+  padding: 3mm 4mm;
+  background: var(--band);
+  border-left: 3px solid var(--acc);
+  border-radius: 1mm;
+}
