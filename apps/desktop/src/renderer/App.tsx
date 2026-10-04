@@ -12,6 +12,7 @@ import { ReportsScreen } from './screens/Reports';
 import { ReviewScreen } from './screens/Review';
 import { SettingsScreen } from './screens/Settings';
 import { initAuthor } from './author';
+import { Toasts } from './exports/Toasts';
 import { spaceIsPlayPause } from './keys';
 import { bridge, shell, useShell } from './shell';
 import { Palette } from './shell/Palette';
@@ -139,6 +140,7 @@ export function App() {
         <Screen />
       </main>
       <Palette />
+      <Toasts />
     </div>
   );
 }

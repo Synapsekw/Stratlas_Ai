@@ -3,6 +3,8 @@ import type { Layer } from '@aio/schema';
 import { CommandPalette, type IconName, type PaletteCommand } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useMemo } from 'react';
+import { EXPORT_ACTIONS } from '../exports/exportModel';
+import { runExportAction } from '../exports/exports';
 import { legacyLayers } from '../legacy';
 import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
@@ -190,6 +192,29 @@ export function Palette() {
             }),
           });
       }
+      for (const a of EXPORT_ACTIONS) {
+        list.push({
+          id: `export:${a.id}`,
+          title: a.title,
+          group: 'Export',
+          icon: a.icon,
+          hint: a.hint,
+          keywords: ['export', 'save', 'download', a.label],
+          run: () => {
+            runExportAction(a.id, { legend: true });
+          },
+        });
+      }
+      list.push({
+        id: 'export:snapshot-plain',
+        title: 'Save a snapshot of the 3D view without legend',
+        group: 'Export',
+        icon: 'camera',
+        keywords: ['export', 'screenshot', 'png', 'image'],
+        run: () => {
+          runExportAction('snapshot', { legend: false });
+        },
+      });
       action('close', 'Close project', 'x', s.closeProject);
     }
     for (const e of library ?? []) {
