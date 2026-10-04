@@ -3,61 +3,80 @@ import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { pmtilesFile, type PmtilesFixture } from '../testing';
-import { createPackManager, type Extract, type ExtractRequest } from './manager';
+import {
+  noise,
+  pmtilesArchive,
+  pmtilesFile,
+  rangeServer,
+  tilesOver,
+  type RangeServer,
+} from '../testing';
+import { httpSource } from './extract';
+import { createPackManager } from './manager';
 
 /** Asymmetric matcher typed as unknown, so object literals stay type-safe. */
 const matching = (re: RegExp): unknown => expect.stringMatching(re);
 
 let base: string;
 let packsDir: string;
+let server: RangeServer;
+let build: Buffer;
+
+const QATAR_BOX: [number, number, number, number] = [50.74, 24.47, 51.65, 26.2];
+const qatar: PackRegion = { id: 'qatar-z10', label: 'Qatar', bbox: QATAR_BOX, maxZoom: 10 };
+/** Only tile data requests are longer than this; directory reads stay untouched by faults. */
+const DATA = 20_000;
 
 beforeEach(async () => {
   base = await mkdtemp(join(tmpdir(), 'aio-packs-'));
   packsDir = join(base, 'packs');
   await mkdir(packsDir, { recursive: true });
+  // A planet build stand-in over Qatar to zoom 10, served from 127.0.0.1 (no internet).
+  build = pmtilesArchive({
+    tiles: tilesOver(QATAR_BOX, 0, 10, (z, x, y) =>
+      noise(`${String(z)}/${String(x)}/${String(y)}`, 4000),
+    ),
+    bbox: QATAR_BOX,
+    leafSize: 16,
+  });
+  server = await rangeServer(() => build, '/20261003.pmtiles');
 });
 afterEach(async () => {
+  await server.close();
   await rm(base, { recursive: true, force: true });
 });
 
-const qatar: PackRegion = {
-  id: 'qatar-z12',
-  label: 'Qatar',
-  bbox: [50.74, 24.47, 51.65, 26.2],
-  maxZoom: 12,
-};
-
-/** An extract tool stand-in that writes a valid (or deliberately broken) archive. */
-function fakeExtract(fixture: Partial<PmtilesFixture> = {}, calls: ExtractRequest[] = []): Extract {
-  return async (req) => {
-    calls.push(req);
-    req.onProgress(0.5);
-    await writeFile(
-      req.out,
-      pmtilesFile({ maxZoom: req.maxZoom, bbox: [...req.bbox], ...fixture }),
-    );
-    req.onProgress(1);
-  };
-}
-
 function manager(over: Partial<Parameters<typeof createPackManager>[0]> = {}) {
   const events: PackJob[] = [];
+  const waiters: { test: (j: PackJob) => boolean; done: (j: PackJob) => void }[] = [];
   let builds = 0;
   const m = createPackManager({
     packsDir: () => packsDir,
     offlineOnly: () => false,
-    emit: (j) => events.push(j),
-    extract: fakeExtract(),
+    emit: (j) => {
+      events.push(j);
+      for (const w of waiters.filter((x) => x.test(j))) {
+        waiters.splice(waiters.indexOf(w), 1);
+        w.done(j);
+      }
+    },
+    source: (url, identity) => httpSource(url, (u, init) => fetch(u, init), identity),
+    buildBase: server.url.replace('20261003.pmtiles', ''),
     latestBuild: () => {
       builds++;
       return Promise.resolve('20261003');
     },
     now: () => new Date('2026-10-04T08:00:00.000Z'),
+    retryDelayMs: 1,
     ...over,
   });
-  return { m, events, builds: () => builds };
+  /** The first job event (from now on) that passes `test`; no timers involved. */
+  const until = (test: (j: PackJob) => boolean) =>
+    new Promise<PackJob>((done) => waiters.push({ test, done }));
+  return { m, events, until, builds: () => builds };
 }
+
+const part = () => join(packsDir, '.downloads', 'qatar-z10.pmtiles.part');
 
 describe('pack downloads', () => {
   it('refuses to go online on an offline-only workstation', async () => {
@@ -66,119 +85,149 @@ describe('pack downloads', () => {
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/offline-only/i);
     expect(m.jobs()).toEqual([]);
+    expect(server.ranges).toEqual([]);
   });
 
-  it('explains when the download tool is missing from the build', async () => {
-    const { m } = manager({ extract: null });
-    const r = await m.download(qatar);
-    expect(r).toMatchObject({ ok: false });
-    expect(r.error).toMatch(/download tool/);
-  });
-
-  it('extracts the region from the newest Protomaps build and installs a verified pack', async () => {
-    const calls: ExtractRequest[] = [];
-    const { m, events } = manager({ extract: fakeExtract({}, calls) });
+  it('extracts the region from the newest build over ranges and installs a verified pack', async () => {
+    const { m, events, builds } = manager();
     expect(await m.download(qatar)).toEqual({ ok: true });
     await m.settled(qatar.id);
 
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.source).toBe('https://build.protomaps.com/20261003.pmtiles');
-    expect(calls[0]?.bbox).toEqual(qatar.bbox);
-    expect(calls[0]?.maxZoom).toBe(12);
-
+    expect(builds()).toBe(1);
+    expect(server.ranges[0]).toBe('bytes=0-16383');
     const job = m.jobs().find((j) => j.id === qatar.id);
     expect(job).toMatchObject({ state: 'done', progress: 1, build: '20261003' });
     expect(events.map((e) => e.state)).toContain('verifying');
-    expect(events.some((e) => e.state === 'running' && e.progress === 0.5)).toBe(true);
+    expect(events.some((e) => e.state === 'running' && e.progress > 0 && e.progress < 1)).toBe(
+      true,
+    );
 
     const packs = await m.list();
     expect(packs).toHaveLength(1);
     expect(packs[0]).toMatchObject({
-      id: 'qatar-z12',
+      id: 'qatar-z10',
       label: 'Qatar',
-      maxZoom: 12,
+      maxZoom: 10,
       source: 'download',
       build: '20261003',
       builtAt: '2026-10-04T08:00:00.000Z',
     });
-    expect(packs[0]?.sizeBytes).toBe((await stat(join(packsDir, 'qatar-z12.pmtiles'))).size);
-    // No partial files or job records are left behind.
+    expect(packs[0]?.sizeBytes).toBe((await stat(join(packsDir, 'qatar-z10.pmtiles'))).size);
+    // No partial files, plans or job records are left behind.
     expect(await readdir(join(packsDir, '.downloads'))).toEqual([]);
   });
 
-  it('refuses a region whose id is already installed or downloading', async () => {
-    await writeFile(join(packsDir, 'qatar-z12.pmtiles'), pmtilesFile());
+  it('refuses a region whose id is already installed', async () => {
+    await writeFile(join(packsDir, 'qatar-z10.pmtiles'), pmtilesFile());
     const { m } = manager();
     const r = await m.download(qatar);
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/already installed/);
   });
 
-  it('fails the job and installs nothing when the result does not verify', async () => {
-    const { m } = manager({ extract: fakeExtract({ truncate: 5 }) });
-    await m.download(qatar);
-    await m.settled(qatar.id);
-    const job = m.jobs()[0];
-    expect(job?.state).toBe('failed');
-    expect(job?.error).toMatch(/incomplete/);
-    expect(await m.list()).toEqual([]);
-    expect(await readdir(packsDir)).toEqual(['.downloads']);
-  });
-
-  it('reports a failing extract tool', async () => {
-    const { m } = manager({
-      extract: () => Promise.reject(new Error('pmtiles exited with code 1: 404 Not Found')),
-    });
+  it('fails the job and keeps no partial file when the server has no such build', async () => {
+    const { m } = manager({ latestBuild: () => Promise.resolve('19990101') });
     await m.download(qatar);
     await m.settled(qatar.id);
     expect(m.jobs()[0]).toMatchObject({ state: 'failed', error: matching(/404/) });
-  });
-
-  it('cancels a running download and keeps the job so it can be resumed', async () => {
-    let seen: AbortSignal | undefined;
-    const { m } = manager({
-      extract: (req) =>
-        new Promise((_ok, fail) => {
-          seen = req.signal;
-          req.signal.addEventListener('abort', () => {
-            fail(new Error('aborted'));
-          });
-        }),
-    });
-    await m.download(qatar);
-    await new Promise((r) => setTimeout(r, 10));
-    expect(m.jobs()[0]?.state).toBe('running');
-    expect(await m.cancel(qatar.id)).toEqual({ ok: true });
-    await m.settled(qatar.id);
-    expect(seen?.aborted).toBe(true);
-    expect(m.jobs()[0]?.state).toBe('cancelled');
     expect(await m.list()).toEqual([]);
+    expect(await readdir(join(packsDir, '.downloads'))).toEqual(['qatar-z10.json']);
   });
 
-  it('marks a download cut off by a restart as interrupted and resumes it on the same build', async () => {
-    const first = manager({ extract: () => new Promise(() => undefined) });
-    await first.m.download(qatar);
-    await new Promise((r) => setTimeout(r, 10));
-    expect(first.builds()).toBe(1);
+  it('keeps the partial file when the link keeps dropping and resumes it with a Range request', async () => {
+    const { m, events } = manager();
+    // The first data request and all three retries are cut short: the run ends interrupted.
+    server.cutAfter(5000, 4, DATA);
+    await m.download(qatar);
+    await m.settled(qatar.id);
+    const job = m.jobs()[0];
+    expect(job?.state).toBe('interrupted');
+    expect(job?.error).toBeTruthy();
+    const partial = (await stat(part())).size;
+    expect(partial).toBeGreaterThan(0);
+    expect(job?.bytes).toBe(partial);
 
-    // A new app session reads the job record left on disk.
-    const calls: ExtractRequest[] = [];
+    server.ranges.length = 0;
+    expect(await m.resume(qatar.id)).toEqual({ ok: true });
+    await m.settled(qatar.id);
+    expect(m.jobs()[0]?.state).toBe('done');
+    expect(events.at(-1)?.state).toBe('done');
+    // No directory reads again: the resume asked straight for the missing tile data.
+    expect(server.ranges).not.toContain('bytes=0-16383');
+    expect(Number(/^bytes=(\d+)-/.exec(server.ranges[0] ?? '')?.[1])).toBeGreaterThan(16_384);
+
+    // The resumed pack is byte for byte what a clean download gives.
+    const resumed = await readFile(join(packsDir, 'qatar-z10.pmtiles'));
+    const clean = manager();
+    expect(await clean.m.remove('qatar-z10')).toEqual({ ok: true });
+    await clean.m.download(qatar);
+    await clean.m.settled(qatar.id);
+    expect(await readFile(join(packsDir, 'qatar-z10.pmtiles'))).toEqual(resumed);
+  });
+
+  it('marks a download cut off by a restart as interrupted and resumes it from the partial file', async () => {
+    const first = manager();
+    server.cutAfter(8000, 4, DATA);
+    await first.m.download(qatar);
+    await first.m.settled(qatar.id);
+    const partial = (await stat(part())).size;
+    expect(partial).toBeGreaterThan(0);
+    // The record as a killed app leaves it: still running.
+    const record = join(packsDir, '.downloads', 'qatar-z10.json');
+    const saved = JSON.parse(await readFile(record, 'utf8')) as PackJob;
+    await writeFile(record, JSON.stringify({ ...saved, state: 'running', error: undefined }));
+
+    // A new app session reads the job record and the plan left on disk.
     const second = manager({
-      extract: fakeExtract({}, calls),
       latestBuild: () => Promise.reject(new Error('must not look up the build again')),
     });
     await second.m.restore();
-    expect(second.m.jobs()[0]).toMatchObject({ id: qatar.id, state: 'interrupted' });
+    expect(second.m.jobs()[0]).toMatchObject({
+      id: qatar.id,
+      state: 'interrupted',
+      bytes: partial,
+    });
+    expect(second.m.jobs()[0]?.progress).toBeGreaterThan(0);
+    server.ranges.length = 0;
     expect(await second.m.resume(qatar.id)).toEqual({ ok: true });
     await second.m.settled(qatar.id);
-    expect(calls[0]?.source).toContain('20261003');
     expect(second.m.jobs()[0]?.state).toBe('done');
+    expect(server.ranges).not.toContain('bytes=0-16383');
   });
 
-  it('dismisses a finished job', async () => {
-    const { m } = manager({ extract: fakeExtract({ truncate: 5 }) });
+  it('starts the region again when the build changed on the server', async () => {
+    const { m } = manager();
+    server.cutAfter(4000, 4, DATA);
     await m.download(qatar);
     await m.settled(qatar.id);
+    expect(m.jobs()[0]?.state).toBe('interrupted');
+    server.setEtag('"v2"');
+    server.ranges.length = 0;
+    await m.resume(qatar.id);
+    await m.settled(qatar.id);
+    expect(m.jobs()[0]?.state).toBe('done');
+    expect(server.ranges).toContain('bytes=0-16383');
+  });
+
+  it('cancels a running download and deletes its partial file', async () => {
+    const { m, until } = manager();
+    // The server sends some tile data, then nothing: the job stays running until cancelled.
+    server.stallAfter(6000, DATA);
+    const progressed = until((j) => j.state === 'running' && (j.bytes ?? 0) > 0);
+    await m.download(qatar);
+    await progressed;
+    expect(await m.cancel(qatar.id)).toEqual({ ok: true });
+    expect(m.jobs()[0]).toMatchObject({ state: 'cancelled', bytes: 0 });
+    expect(await readdir(join(packsDir, '.downloads'))).toEqual(['qatar-z10.json']);
+    expect(await m.list()).toEqual([]);
+  });
+
+  it('dismisses a job with its partial file', async () => {
+    const { m } = manager();
+    server.cutAfter(4000, 4, DATA);
+    await m.download(qatar);
+    await m.settled(qatar.id);
+    expect(m.jobs()[0]?.state).toBe('interrupted');
     expect(await m.dismiss(qatar.id)).toEqual({ ok: true });
     expect(m.jobs()).toEqual([]);
     expect(await readdir(join(packsDir, '.downloads'))).toEqual([]);

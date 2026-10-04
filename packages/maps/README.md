@@ -21,9 +21,10 @@ after a fresh clone. Sprites (`assets/sprites/dark*`) are small and committed.
 In the app, Settings, Offline maps manages packs (`PackCoverage` draws them on a small world map):
 import a `.pmtiles` file (with an optional `MapPackInfo` `.json` beside it), remove a pack, or
 add a region online by country (`regions.ts`: GCC states and a world list) or a drawn box at a
-chosen max zoom, with a size estimate (`estimate.ts`, fitted to the packs above). Downloads run
-the bundled go-pmtiles `extract` in the main process (`apps/desktop/src/main/packs/`), are
-verified and written with `source`, `build` and `builtAt`.
+chosen max zoom, with a size estimate (`estimate.ts`, fitted to the packs above). Downloads are a
+TypeScript PMTiles extract over HTTP ranges in the main process (`apps/desktop/src/main/packs/`),
+resume from the partial file after a dropped link or a restart, are verified (size, every gzip
+tile's CRC-32, header zoom and area) and written with `source`, `build` and `builtAt`.
 
 ## Runtime
 

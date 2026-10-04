@@ -104,6 +104,10 @@ export const en = {
   'settings.maps.remove': 'Remove',
   'settings.maps.removeConfirm':
     'Remove {label}? Maps lose this area until the pack is added again.',
+  'settings.maps.resume': 'Resume',
+  'settings.maps.again': 'Download again',
+  'settings.maps.interrupted':
+    'The download stopped at {size}. Resume continues from there with the same planet build {build}; the finished pack is checked tile by tile.',
 
   // About
   'settings.graphics.text':

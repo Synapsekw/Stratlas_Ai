@@ -53,8 +53,9 @@ import { findPack, JobRunner, JobStore, openTarget, safeJobEvent } from './jobs'
 import { createKeyVault } from './keys';
 import { addToLibrary, createLibraryStore, listLibrary } from './library';
 import { captureConsole, createLog, exportLogs } from './logs';
+import { httpSource } from './packs/extract';
 import { createPackManager } from './packs/manager';
-import { createExtract, findLatestBuild, resolvePmtiles } from './packs/pmtiles';
+import { buildSource, findLatestBuild } from './packs/pmtiles';
 import { createOnlineUpdater, type UpdaterLike } from './update/online';
 import { probeWithPowerShell, verifyInstaller } from './update/verify';
 import { OFFSCREEN_SWITCHES, offscreenOrigin, windowMode } from './windowMode';
@@ -182,29 +183,20 @@ function broadcast<E extends 'packs:job'>(event: E, payload: IpcEvent<E>): void 
   for (const win of BrowserWindow.getAllWindows()) win.webContents.send(event, parsed.data);
 }
 
-const pmtilesBin = resolvePmtiles({
-  env: process.env,
-  platform: process.platform,
-  packaged: app.isPackaged,
-  resourcesPath: process.resourcesPath,
-  appPath: app.getAppPath(),
-  exists: existsSync,
-});
-
 // The map pack download is one of only two network paths (the other is cloud AI), and runs
-// only when the person starts it in Settings, Maps.
+// only when the person starts it in Settings, Maps. Planet builds come from Protomaps (or the
+// STRATLAS_PACK_SOURCE mirror) by HTTP ranges, so a cut-off download continues where it stopped.
+const planetBuilds = buildSource(process.env);
 const packs = createPackManager({
   packsDir: () => join(settings.current().dataRoot, 'packs'),
   offlineOnly: () => settings.current().offlineOnly === true,
   emit: (job) => {
     broadcast('packs:job', job);
   },
-  extract: pmtilesBin
-    ? createExtract(pmtilesBin, (cmd, args) =>
-        spawn(cmd, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }),
-      )
-    : null,
-  latestBuild: (signal) => findLatestBuild((url, init) => net.fetch(url, init), signal),
+  source: (url, identity) => httpSource(url, (u, init) => net.fetch(u, init), identity),
+  buildBase: planetBuilds.base,
+  latestBuild: (signal) =>
+    findLatestBuild((url, init) => net.fetch(url, init), signal, planetBuilds),
 });
 
 const updates = createOnlineUpdater({
