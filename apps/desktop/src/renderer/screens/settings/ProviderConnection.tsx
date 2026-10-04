@@ -31,8 +31,9 @@ function AnthropicWorkspace() {
   const stored = useShell((s) => s.settings.anthropicWorkspaceId) ?? '';
   const [value, setValue] = useState(stored);
   const [error, setError] = useState<string | null>(null);
-  const save = async () => {
-    const next = value.trim();
+  // Reads the field itself: a handler from the render before the last keystroke still saves it.
+  const save = async (raw: string) => {
+    const next = raw.trim();
     if (next === stored) return;
     // Checked here as well as in main, so a typo never reaches the stored settings.
     if (!WORKSPACE_ID.test(next)) {
@@ -58,9 +59,9 @@ function AnthropicWorkspace() {
             setValue(e.target.value);
             setError(null);
           }}
-          onBlur={() => void save()}
+          onBlur={(e) => void save(e.currentTarget.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') void save();
+            if (e.key === 'Enter') void save(e.currentTarget.value);
           }}
         />
       </label>
