@@ -17,6 +17,8 @@ pnpm import:ebsm     # Asset Inspection Kit offline build, EBSM flare stack (EPS
 pnpm import:damac    # Asset Inspection Kit offline build, DAMAC tower facade (EPSG 32640)
 
 pnpm import:masafi   # E:\Stratlas Data\sources\masafi -> E:\Stratlas Data\projects\masafi
+
+pnpm import:ringroad # E:\Stratlas Data\sources\ringroad -> E:\Stratlas Data\projects\ringroad
 # options: --src <folder> --out <folder>; STRATLAS_DATA overrides the data root
 ```
 
@@ -103,3 +105,28 @@ Source: the kit's offline build (`job.json`, `data/*.js` with `window.VS_*` grid
   between dates; totals, yard polygon and excluded zones. Kept for a future native volumetric panel.
 - Legacy layer (`viewer: "volumetric"`): the offline viewer with its data under `legacy/`.
 - No issues; severity model "Stockpile" (1 to 3) and classes spillage, unsafe slope, encroachment.
+
+### 1st Ring Road (road review)
+
+Source: the Leaflet road review (`1st Ring Road Review.html`, `data/defects.js`, `data/grid.js`,
+`_build/crops.json`, `ortho/` tile bundles, `closeups/`, `lib/`). `src/import/ringroad.ts`:
+
+- Frame: EPSG 32638 (UTM 38N), origin at the corridor centre, ground at `y = 0`.
+- Ortho: the review's Web Mercator tiles (`ortho/b13`, `ortho/b18`: `RRT("z/x/y",{...base64
+WebP})` script bundles, z13 to z22) resampled into a `kit-pyramid` aligned to UTM: 8 levels of
+  1024 px WebP tiles, 3.25 cm at level 7 (`ringroad-tiles.ts`, `ringroad-ortho.ts`). One affine
+  for the whole Mercator grid would miss by about 0.3 m, so each output tile has its own affine
+  (exact to 0.01 px) and is resampled bilinearly on premultiplied colour. Re-runs keep the tiles
+  while the bundles are unchanged (`rasters/ortho/source.json`).
+- Issues: one per defect polygon, code `D` + FID, class = defect type, severity model "Road
+  distress (ASTM D6433)" with stage Few, Intermediate, Extensive as Low, Medium, High; a map
+  sighting (GeoJSON polygon, lon/lat) and the viewer outline on the close-up (photos layer
+  `closeups`).
+- `road.json` (`aio.road/1`): centreline in the local frame with chainage, network, section and
+  sample unit PCI (Low, Medium, High) with deducts on the 15 m UTM grid, density grids; plus
+  `road/centreline.geojson` and `road/pci-units.geojson` for map overlays.
+- Legacy layer (`viewer: 'road'`): the review page under `legacy/` with its data, close-ups and an
+  `ortho-hd/` folder rebuilt from the bundles (the page's own tile format), so it runs unchanged.
+- Checks in `IMPORT-REPORT.md`: issue count, lon/lat to UTM round trip of the viewer centroids,
+  close-up outlines against the polygons, and the ortho against the close-ups (cut from the 1.25 cm
+  GeoTIFF) by normalised cross correlation.

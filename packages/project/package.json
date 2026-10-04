@@ -14,14 +14,16 @@
     "import:alzour": "jiti ../../tools/import/alzour.mjs",
     "import:ebsm": "jiti ../../tools/import/ebsm.mjs",
     "import:damac": "jiti ../../tools/import/damac.mjs",
-    "import:masafi": "jiti ../../tools/import/masafi.mjs"
+    "import:masafi": "jiti ../../tools/import/masafi.mjs",
+    "import:ringroad": "jiti ../../tools/import/ringroad.mjs"
   },
   "dependencies": {
-    "@aio/schema": "workspace:*",
     "@aio/geo": "workspace:*",
+    "@aio/schema": "workspace:*",
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "jiti": "^2.6.1"
+    "jiti": "^2.6.1",
+    "sharp": "^0.35.5"
   }
 }

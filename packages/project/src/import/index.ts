@@ -17,3 +17,4 @@ export {
 export { importAik, type AikImportOptions, type AikImportResult } from './aik';
 export * from './aik-model';
 export { importMasafi, decodeDsmScript, type MasafiImportOptions } from './masafi';
+export { importRingroad } from './ringroad';

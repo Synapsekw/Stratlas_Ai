@@ -43,6 +43,17 @@ describe('PackageWriter is idempotent', () => {
     expect(w.stats.skipped).toBe(1);
   });
 
+  it('keeps an existing file as skipped so prune leaves it, and reports a missing one', () => {
+    const w = new PackageWriter(join(dir, 'out'));
+    w.write('rasters/a.webp', 'x');
+    const again = new PackageWriter(join(dir, 'out'));
+    expect(again.keep('rasters/a.webp')).toBe(true);
+    expect(again.keep('rasters/b.webp')).toBe(false);
+    expect(again.stats.skipped).toBe(1);
+    expect(again.prune('rasters')).toEqual([]);
+    expect(existsSync(join(dir, 'out/rasters/a.webp'))).toBe(true);
+  });
+
   it('runs a derive step only when the output is missing or older than its sources', async () => {
     const src = join(dir, 's.txt');
     writeFileSync(src, 'x');
