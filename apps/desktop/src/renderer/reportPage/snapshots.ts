@@ -155,7 +155,7 @@ export async function createSnapshotter(
         -Math.cos(az) * Math.cos(el),
       );
       const fov = (camera.fov * Math.PI) / 180;
-      const dist = (radius / Math.sin(fov / 2)) * 0.82;
+      const dist = (radius / Math.sin(fov / 2)) * 0.64;
       camera.up.set(0, 1, 0);
       camera.position.copy(center).addScaledVector(dir, dist);
       camera.near = Math.max(0.01, dist / 500);

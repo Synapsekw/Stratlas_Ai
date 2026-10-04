@@ -9,7 +9,10 @@ const nf = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 0 });
 const nf1 = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 1 });
 
 /** 12,345 */
-export const num = (n: number): string => nf.format(n);
+export const num = (n: number): string => {
+  const s = nf.format(n);
+  return s === '-0' ? '0' : s;
+};
 /** 12.3 */
 export const num1 = (n: number): string => nf1.format(n);
 

@@ -375,6 +375,20 @@ figcaption {
   grid-template-columns: 1fr 1fr;
   gap: 5mm;
 }
+.maps.one {
+  grid-template-columns: 1fr;
+}
+.ip-loc {
+  height: 69mm;
+  border: 0.3mm solid var(--rule);
+  background: #ffffff;
+  overflow: hidden;
+}
+.ip-loc .map {
+  border: 0;
+  height: 100%;
+  width: 100%;
+}
 .map {
   display: block;
   border: 0.3mm solid var(--rule);
@@ -392,6 +406,19 @@ figcaption {
   font-size: 9px;
   fill: var(--ink-2);
   font-family: var(--f-ui);
+}
+.map .pile {
+  fill: color-mix(in srgb, var(--acc) 22%, white);
+  stroke: var(--acc-ink);
+  stroke-width: 1;
+}
+.map .pl {
+  font-size: 9px;
+  font-weight: 600;
+  fill: var(--ink);
+}
+.figs.n1 {
+  grid-template-columns: 0.62fr;
 }
 .map .north path {
   fill: var(--ink);

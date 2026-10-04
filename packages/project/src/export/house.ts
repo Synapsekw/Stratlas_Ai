@@ -12,7 +12,13 @@ import {
   type RoadModel,
   type VolumesFile,
 } from '@aio/schema';
-import { compareCodes, noDashes, severityModelOf, type ExportContext } from './facts';
+import {
+  compareCodes,
+  issueLocation,
+  noDashes,
+  severityModelOf,
+  type ExportContext,
+} from './facts';
 import { reportModel, type ReportBranding, type ReportModel, type ReportRow } from './report';
 
 export type HouseKind = 'inspection' | 'volumetric' | 'road' | 'fusion';
@@ -66,6 +72,8 @@ export interface VolumeRow {
   change: number;
   /** A toe line on some date was corrected by hand. */
   edited: boolean;
+  /** Toe line on the last date the pile exists, `[x, z]` local metres; null without one. */
+  outline: [number, number][] | null;
 }
 
 export interface VolumeSummary {
@@ -89,20 +97,31 @@ export interface RoadSummary {
   coveragePct: number | null;
   /** Sample units per rating class under the headline severity, best first. */
   ratings: { label: string; color: string; min: number; count: number }[];
-  sections: { fromKm: number; toKm: number; pci: number | null; rating: string }[];
+  sections: { fromKm: number; toKm: number; pci: number | null; rating: string; color: string }[];
   units: number;
   /** Sample units with the lowest PCI, worst first. */
-  worst: { id: string; km: number; pci: number; rating: string; distress: string }[];
+  worst: {
+    id: string;
+    km: number;
+    pci: number;
+    rating: string;
+    color: string;
+    distress: string;
+  }[];
 }
 
 export interface PlanPoint {
+  /** Issue id. */
+  id: string;
   /** Local x (east) and z (south), metres. */
   x: number;
   z: number;
-  /** Height (local y), metres. */
+  /** Height (local y), metres; 0 for an issue placed on the map only. */
   y: number;
   color: string;
   code: string;
+  /** Placed on the map only (no 3D position). */
+  map: boolean;
 }
 
 export interface HouseModel {
@@ -264,17 +283,20 @@ function volumeSummary(v: VolumesFile, edits: BoundaryEditsFile | null): VolumeS
     let areaM2: number | null = null;
     let heightM: number | null = null;
     let anyEdit = false;
+    let outline: [number, number][] | null = null;
     const net = v.captures.map((c) => {
       const e = p.epochs[c.epoch];
       const fix = edited.get(`${p.id}/${c.epoch}`);
       if (fix) {
         anyEdit = true;
         areaM2 = fix.areaM2;
+        outline = fix.ring.map(([x, z]) => [x, z]);
         heightM = fix.heightM;
         return fix.volumes[base].net;
       }
       if (!e) return null;
       areaM2 = e.areaM2;
+      outline = e.ring.length >= 3 ? e.ring.map(([x, z]) => [x, z]) : outline;
       heightM = e.heightM;
       return e.volumes[base].net;
     });
@@ -287,6 +309,7 @@ function volumeSummary(v: VolumesFile, edits: BoundaryEditsFile | null): VolumeS
       heightM,
       change: p.change.net,
       edited: anyEdit,
+      outline,
     };
   });
   const totals = v.captures.map((_, i) => piles.reduce((sum, p) => sum + (p.net[i] ?? 0), 0));
@@ -324,11 +347,13 @@ function roadSummary(r: RoadModel): RoadSummary {
     .slice(0, 12)
     .map((u) => {
       const top = [...u.deducts].sort((a, b) => b.deduct - a.deduct)[0];
+      const rating = pciRating(r.pci.ratings, u.pci[h]);
       return {
         id: u.id,
         km: u.km,
         pci: u.pci[h] ?? 0,
-        rating: pciRating(r.pci.ratings, u.pci[h]).label,
+        rating: rating.label,
+        color: rating.color,
         distress: noDashes((top?.distress ?? '').replace(/_/g, ' ')),
       };
     });
@@ -345,12 +370,16 @@ function roadSummary(r: RoadModel): RoadSummary {
       min: x.min,
       count: counts.get(noDashes(x.label)) ?? 0,
     })),
-    sections: r.pci.sections.map((s) => ({
-      fromKm: s.fromKm,
-      toKm: s.toKm,
-      pci: s.pci[h],
-      rating: pciRating(r.pci.ratings, s.pci[h]).label,
-    })),
+    sections: r.pci.sections.map((s) => {
+      const rating = pciRating(r.pci.ratings, s.pci[h]);
+      return {
+        fromKm: s.fromKm,
+        toKm: s.toKm,
+        pci: s.pci[h],
+        rating: rating.label,
+        color: rating.color,
+      };
+    }),
     units: r.pci.units.length,
     worst,
   };
@@ -382,11 +411,22 @@ export function houseReportModel(input: HouseInput): HouseModel {
   );
   const { layers, totals } = dataRows(m);
   const plan: PlanPoint[] = [];
-  for (const r of base.rows)
+  const byId = new Map(input.issues.map((i) => [i.id, i]));
+  for (const r of base.rows) {
     if (r.position) {
       const [x, y, z] = r.position;
-      plan.push({ x, y, z, color: r.severityColor, code: r.code });
+      plan.push({ id: r.id, x, y, z, color: r.severityColor, code: r.code, map: false });
+      continue;
     }
+    // placed on the map only: back to the local frame from the project CRS
+    const issue = byId.get(r.id);
+    const loc = issue ? issueLocation(m, issue) : null;
+    if (loc) {
+      const x = loc.project[0] - m.origin[0];
+      const z = m.origin[1] - loc.project[1];
+      plan.push({ id: r.id, x, y: 0, z, color: r.severityColor, code: r.code, map: true });
+    }
+  }
   return {
     base,
     kind,

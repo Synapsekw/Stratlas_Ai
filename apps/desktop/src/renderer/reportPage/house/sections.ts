@@ -10,7 +10,7 @@ import type { NarrativeSectionId, ReportSectionId } from '@aio/schema';
 import { t } from '@aio/ui';
 import { listOf, longDate, num, num1 } from '../../report/narrativeTemplate';
 import { barChart, esc, logoUrl } from '../layout';
-import { planMap, sideView } from './charts';
+import { isFlat, pileMap, planMap, sideView } from './charts';
 import type { Pager } from './pager';
 
 type Key = Parameters<typeof t>[0];
@@ -248,6 +248,25 @@ export function layoutSummary(p: Pager, ctx: HouseContext, n: string): void {
   } else if (h.kind === 'inspection') {
     p.add(el(`<p class="empty">${txt(tk('house.noIssues'))}</p>`));
   }
+  const v = h.volumes;
+  if (v && v.piles.length > 0) {
+    const last = v.captures.length - 1;
+    const largest = [...v.piles]
+      .filter((x) => x.net[last] !== null && x.net[last] !== undefined)
+      .sort((a, b) => (b.net[last] ?? 0) - (a.net[last] ?? 0))
+      .slice(0, 8);
+    subheading(p, tk('house.volumes.largest'));
+    p.table(
+      tableMaker('grid num', [
+        tk('house.col.pile'),
+        `${longDate(v.captures[last]?.date ?? '')}, m³`,
+        tk('house.col.changeM3'),
+      ]),
+      largest.map((x) =>
+        row([`<b>${txt(x.name)}</b>`, num(x.net[last] ?? 0), num(x.change)], 'num'),
+      ),
+    );
+  }
 }
 
 /* ------------------------------------------------------------------------------------ scope */
@@ -311,7 +330,7 @@ export function layoutSite(p: Pager, ctx: HouseContext, n: string): void {
   ];
   if (data.photos > 0) items.push({ value: num(data.photos), label: tk('house.layer.photos') });
   if (data.points > 0)
-    items.push({ value: num1(data.points / 1e6), label: `${tk('house.layer.pointcloud')}, M` });
+    items.push({ value: num1(data.points / 1e6), label: tk('house.kpi.points') });
   if (data.videos > 0) items.push({ value: num(data.videos), label: tk('house.layer.video') });
   p.add(tiles(items));
   subheading(p, tk('house.captures'));
@@ -331,24 +350,37 @@ export function layoutSite(p: Pager, ctx: HouseContext, n: string): void {
     );
   });
   if (figs.length > 0) {
-    subheading(p, tk('house.overview'));
+    subheading(p, ctx.images.overview.length > 0 ? tk('house.overview') : tk('house.picture'));
     p.add(
       el(
         `<div class="figs n${String(Math.min(figs.length, 3))}">${figs.slice(0, 3).join('')}</div>`,
       ),
     );
   }
-  subheading(p, tk('house.coverage'));
-  if (h.plan.length > 0) {
-    const rank = colourRank(h);
-    p.add(
-      el(
-        `<div class="maps"><figure>${planMap(h.plan, rank, tk('house.coverage.plan'))}<figcaption>${txt(tk('house.coverage.plan'))}</figcaption></figure><figure>${sideView(h.plan, rank, tk('house.coverage.side'))}<figcaption>${txt(tk('house.coverage.side'))}</figcaption></figure></div>`,
-      ),
-    );
-    p.add(el(`<p class="caption">${txt(tk('house.coverage.caption'))}</p>`));
-  } else {
-    p.add(el(`<p class="empty">${txt(tk('house.coverage.none'))}</p>`));
+  const piles = h.volumes ? pileMap(h.volumes.piles, tk('house.pileMap')) : '';
+  if (piles) {
+    subheading(p, tk('house.pileMap'));
+    p.add(el(`<figure class="chartfig">${piles}</figure>`));
+    p.add(el(`<p class="caption">${txt(tk('house.pileMap.caption'))}</p>`));
+  }
+  // a stockpile survey without issues: the pile map stands in for the findings map
+  if (!piles || h.plan.length > 0) {
+    subheading(p, tk('house.coverage'));
+    if (h.plan.length > 0) {
+      const rank = colourRank(h);
+      const plan = (w: number, ht: number) =>
+        `<figure>${planMap(h.plan, rank, tk('house.coverage.plan'), { width: w, height: ht })}<figcaption>${txt(tk('house.coverage.plan'))}</figcaption></figure>`;
+      p.add(
+        el(
+          isFlat(h.plan)
+            ? `<div class="maps one">${plan(FULL, 330)}</div>`
+            : `<div class="maps">${plan(340, 260)}<figure>${sideView(h.plan, rank, tk('house.coverage.side'))}<figcaption>${txt(tk('house.coverage.side'))}</figcaption></figure></div>`,
+        ),
+      );
+      p.add(el(`<p class="caption">${txt(tk('house.coverage.caption'))}</p>`));
+    } else {
+      p.add(el(`<p class="empty">${txt(tk('house.coverage.none'))}</p>`));
+    }
   }
   subheading(p, tk('house.data'));
   kindTable(p, h);
@@ -556,7 +588,15 @@ function layoutRoad(p: Pager, h: HouseModel): void {
       tk('house.col.rating'),
     ]),
     r.sections.map((s) =>
-      row([num1(s.fromKm), num1(s.toKm), s.pci === null ? '' : num1(s.pci), txt(s.rating)], 'num'),
+      row(
+        [
+          km(s.fromKm),
+          km(s.toKm),
+          s.pci === null ? '' : num1(s.pci),
+          s.rating ? chip(s.color, s.rating) : '',
+        ],
+        'num',
+      ),
     ),
   );
   if (r.worst.length > 0) {
@@ -569,7 +609,9 @@ function layoutRoad(p: Pager, h: HouseModel): void {
         tk('house.col.rating'),
         tk('house.col.distress'),
       ]),
-      r.worst.map((w) => row([esc(w.id), num1(w.km), num1(w.pci), txt(w.rating), txt(w.distress)])),
+      r.worst.map((w) =>
+        row([esc(w.id), km(w.km), num1(w.pci), chip(w.color, w.rating), txt(w.distress)]),
+      ),
     );
   }
 }
@@ -630,7 +672,12 @@ export function layoutRegister(p: Pager, ctx: HouseContext, n: string): Map<stri
 
 /* ------------------------------------------------------------------------------- issue page */
 
+/** Chainage in km with metres: 0.25, 7.45. */
+const km = (v: number) => (Math.round(v * 100) / 100).toFixed(2);
+
 export interface IssueImages {
+  /** Where an issue placed on the map only lies, among its neighbours (SVG). */
+  locator?: string;
   /** Source photo with the marked area and the close-up frame. */
   photo?: string;
   /** Close-up of the marked area. */
@@ -643,6 +690,8 @@ export interface IssueExtra {
   photoName: string;
   captured: string;
   action: string;
+  /** `action` is the grade's meaning, the level has no action. */
+  actionIsCriteria: boolean;
   disclaimer: string;
 }
 
@@ -666,16 +715,18 @@ export function issuePageHtml(r: ReportRow, img: IssueImages, extra: IssueExtra)
     [tk('house.issue.author'), `${r.author}${r.updatedAt ? `, ${r.updatedAt}` : ''}`],
   ];
   const view = img.view
-    ? `<img src="${esc(img.view)}" alt="">`
-    : `<div class="noimg">${txt(r.position ? tk('house.issue.noView') : tk('house.issue.noPosition'))}</div>`;
+    ? `<img src="${esc(img.view)}" alt=""><figcaption>${txt(tk('house.issue.view'))}</figcaption>`
+    : img.locator
+      ? `<div class="ip-loc">${img.locator}</div><figcaption>${txt(tk('house.issue.locator'))}</figcaption>`
+      : `<div class="noimg">${txt(r.position ? tk('house.issue.noView') : tk('house.issue.noPosition'))}</div>`;
   const photo = img.photo
     ? `<div class="ip-photo"><img src="${esc(img.photo)}" alt=""></div><p class="caption">${txt(tk('house.issue.source'))}</p>`
     : `<div class="ip-photo"><div class="noimg">${txt(tk('house.issue.noPhoto'))}</div></div>`;
   const note = r.note.trim();
   return `<div class="ip-head"><div class="ip-tl"><div class="kicker">${txt(kicker)}</div><h2>${txt(r.title)}</h2></div><div class="ip-sev"><span class="lbl">${txt(tk('house.issue.severity'))}</span>${chip(r.severityColor, r.severityLabel)}</div>${height ? `<div class="ip-ht"><span class="lbl">${txt(tk('house.issue.height'))}</span><b>${esc(height)}</b></div>` : ''}</div>
-<div class="ip-top"><figure class="ip-view">${view}<figcaption>${txt(tk('house.issue.view'))}</figcaption></figure><dl class="ip-meta">${meta.map(([k, v]) => `<dt>${txt(k)}</dt><dd>${txt(v)}</dd>`).join('')}</dl></div>
+<div class="ip-top"><figure class="ip-view">${view}</figure><dl class="ip-meta">${meta.map(([k, v]) => `<dt>${txt(k)}</dt><dd>${txt(v)}</dd>`).join('')}</dl></div>
 ${photo}
-<div class="ip-bottom${img.closeup ? '' : ' wide'}">${img.closeup ? `<figure class="ip-close"><img src="${esc(img.closeup)}" alt=""><figcaption>${txt(tk('house.issue.closeup'))}</figcaption></figure>` : ''}<div class="ip-note"><h3>${txt(tk('house.issue.note'))}</h3><p class="note${extra.action ? '' : ' long'}">${note ? txt(note) : `<span class="faint">${txt(tk('house.issue.noNote'))}</span>`}</p>${extra.action ? `<h3>${txt(tk('house.issue.action'))}</h3><p class="action">${txt(extra.action)}</p>` : ''}<p class="faint small">${txt(extra.disclaimer)}</p></div></div>`;
+<div class="ip-bottom${img.closeup ? '' : ' wide'}">${img.closeup ? `<figure class="ip-close"><img src="${esc(img.closeup)}" alt=""><figcaption>${txt(tk('house.issue.closeup'))}</figcaption></figure>` : ''}<div class="ip-note"><h3>${txt(tk('house.issue.note'))}</h3><p class="note${extra.action ? '' : ' long'}">${note ? txt(note) : `<span class="faint">${txt(tk('house.issue.noNote'))}</span>`}</p>${extra.action ? `<h3>${txt(tk(extra.actionIsCriteria ? 'house.issue.criteria' : 'house.issue.action'))}</h3><p class="action">${txt(extra.action)}</p>` : ''}<p class="faint small">${txt(extra.disclaimer)}</p></div></div>`;
 }
 
 /* ------------------------------------------------------------------------------- appendices */

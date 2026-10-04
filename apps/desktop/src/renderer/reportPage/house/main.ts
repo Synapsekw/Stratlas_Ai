@@ -20,6 +20,7 @@ import {
   ReportContentsSettings,
   VolumesFile,
   type NarrativeSectionId,
+  type Issue as IssueT,
   type ProjectManifest,
   type ReportSectionId,
 } from '@aio/schema';
@@ -28,6 +29,7 @@ import { z } from 'zod';
 import { longDate, templateNarrative } from '../../report/narrativeTemplate';
 import { brandingFromQuery } from '../layout';
 import { createSnapshotter, type Snapshotter } from '../snapshots';
+import { locatorMap } from './charts';
 import { issuePhotos } from './images';
 import { Pager } from './pager';
 import {
@@ -93,6 +95,13 @@ function parsed<T>(schema: z.ZodType<T>, raw: unknown, what: string): T | null {
 
 const blobUrl = (b: Blob | null | undefined) => (b ? URL.createObjectURL(b) : undefined);
 const two = (n: number) => String(n).padStart(2, '0');
+
+/** Does the issue's severity level say what to do (else the report shows what it means)? */
+function hasAction(m: ProjectManifest, issue: IssueT): boolean {
+  if (issue.severity === 'uncertain') return false;
+  const model = m.severityModels.find((s) => s.id === issue.severityModelId);
+  return Boolean(model?.levels.find((l) => l.value === issue.severity)?.action);
+}
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 /** Name and capture time of the photo an issue page shows. */
@@ -253,6 +262,9 @@ async function run(): Promise<void> {
   let registerCells = new Map<string, HTMLElement>();
   const issuePageOf = new Map<string, number>();
   const byId = new Map(issues.map((i) => [i.id, i]));
+  const planById = new Map(h.plan.map((p) => [p.id, p]));
+  const rank = new Map<string, number>();
+  [...h.base.bySeverity].reverse().forEach((s, i) => rank.set(s.color, i));
 
   for (const id of h.sections) {
     switch (id) {
@@ -309,6 +321,8 @@ async function run(): Promise<void> {
           }
           const b = performance.now();
           photoMs += b - a;
+          const spot = row.position ? undefined : planById.get(row.id);
+          if (spot) images.locator = locatorMap(h.plan, spot, rank, row.code);
           if (snap && row.position) {
             try {
               const view = blobUrl(await snap.shoot(row.position, row.normal, row.severityColor));
@@ -326,6 +340,7 @@ async function run(): Promise<void> {
               photoName: pf?.name ?? '',
               captured: pf?.at ?? '',
               action: issue ? issueAction(manifest, issue) : '',
+              actionIsCriteria: issue ? !hasAction(manifest, issue) : false,
               disclaimer: disclaimerOf(h),
             }),
           );

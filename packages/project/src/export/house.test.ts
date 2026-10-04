@@ -31,7 +31,11 @@ describe('houseReportModel', () => {
     expect(h.uncertain.map((r) => r.code)).toEqual(['D001']);
     expect(h.totals).toMatchObject({ photos: 3, meshes: 1 });
     expect(h.withPhoto).toBe(2);
-    expect(h.plan.map((p) => p.code).sort()).toEqual(['D001', 'D002']);
+    expect(h.plan.map((p) => [p.code, p.map]).sort()).toEqual([
+      ['D001', false],
+      ['D002', false],
+      ['D010', true],
+    ]);
     expect(h.scale[0]?.levels.map((l) => l.label)).toEqual(['Severe', 'Minor']);
   });
 

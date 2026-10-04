@@ -2,6 +2,7 @@
 // project report, drafted by AI from the statistics (after the AI-6 preview) or from a template
 // when cloud AI is off, edited in place and saved as versions in `report/narrative.json`.
 import { narrativeRequest, parseNarrativeReply, type NarrativeRequest } from '@aio/ai/narrative';
+import { PROVIDER_LABELS } from '@aio/ai/routes';
 import {
   houseReportModel,
   narrativeFacts,
@@ -110,7 +111,7 @@ function PreviewDialog({ preview, project }: { preview: Preview; project: string
         <div className="dlg-h">
           <Icon name="send" size={16} />
           <h2 id="nar-prev-h">
-            {tk('reports.text.previewTitle', { provider: preview.route.provider })}
+            {tk('reports.text.previewTitle', { provider: PROVIDER_LABELS[preview.route.provider] })}
           </h2>
         </div>
         <div className="dlg-b">
@@ -118,7 +119,7 @@ function PreviewDialog({ preview, project }: { preview: Preview; project: string
           <dl className="nar-sent">
             <dt className="caps">{tk('reports.text.previewModel')}</dt>
             <dd className="mono">
-              {preview.route.provider} · {preview.route.model}
+              {PROVIDER_LABELS[preview.route.provider]} · {preview.route.model}
             </dd>
             <dt className="caps">{tk('reports.text.previewSystem')}</dt>
             <dd>
