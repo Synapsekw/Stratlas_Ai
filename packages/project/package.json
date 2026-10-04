@@ -13,7 +13,8 @@
     "import:hcl": "jiti ../../tools/import/hcl.mjs",
     "import:alzour": "jiti ../../tools/import/alzour.mjs",
     "import:ebsm": "jiti ../../tools/import/ebsm.mjs",
-    "import:damac": "jiti ../../tools/import/damac.mjs"
+    "import:damac": "jiti ../../tools/import/damac.mjs",
+    "import:masafi": "jiti ../../tools/import/masafi.mjs"
   },
   "dependencies": {
     "@aio/schema": "workspace:*",

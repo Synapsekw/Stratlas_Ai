@@ -15,6 +15,8 @@ pnpm import:hcl      # E:\Stratlas Data\sources\hcl    -> E:\Stratlas Data\proje
 pnpm import:alzour   # E:\Stratlas Data\sources\alzour -> E:\Stratlas Data\projects\alzour
 pnpm import:ebsm     # Asset Inspection Kit offline build, EBSM flare stack (EPSG 32639)
 pnpm import:damac    # Asset Inspection Kit offline build, DAMAC tower facade (EPSG 32640)
+
+pnpm import:masafi   # E:\Stratlas Data\sources\masafi -> E:\Stratlas Data\projects\masafi
 # options: --src <folder> --out <folder>; STRATLAS_DATA overrides the data root
 ```
 
@@ -83,3 +85,21 @@ under `_blob/`, `plant.glb` decoded from `model_glb_zip.b64.txt`). `src/import/a
 - Checks in `IMPORT-REPORT.md`: frame fit residuals, pose round trip, view-axis ground hits and
   assets in frame for every clip, LNG tanks in frame for the two design clips, and a comparison
   with the design clip paths when `docs/design/assets/alzour` is present.
+
+### Masafi (Volumetric Survey Kit stockpile review)
+
+Source: the kit's offline build (`job.json`, `data/*.js` with `window.VS_*` grids, `work/dsm_<epoch>.npy`,
+`tiles/<epoch>/<z>/<x>_<y>.webp`, the offline viewer HTML, PDF and register CSV). `src/import/masafi.ts`:
+
+- Frame: origin at the centre of the job grid, height the lowest DSM value floored; everything hangs
+  off the grid's top-left corner as in the kit.
+- Terrain per date: GLB (`glb.ts`) from the 0.1 m DSM block-averaged to a 0.5 m lattice
+  (`terrain.ts`): ground at 1 m, one node per pile (`Pxx_<epoch>`, zone plus a buffer) at 0.5 m with
+  the toe line as a line primitive; fine and coarse cells meet without cracks. Textured with the kit's
+  site texture. Pile nodes are mesh tags (ID, default-base volume) and show as callouts.
+- Ortho per date: `kit-pyramid` of the finest four kit levels, every level on one whole-tile window.
+- `volumes.json` (`aio.volumes/1`): every pile, date and base (tin, plane, avg, low) recomputed from
+  the 10 cm pile grids (`vsdata.ts`, the viewer's maths) and checked against `site.js`; change
+  between dates; totals, yard polygon and excluded zones. Kept for a future native volumetric panel.
+- Legacy layer (`viewer: "volumetric"`): the offline viewer with its data under `legacy/`.
+- No issues; severity model "Stockpile" (1 to 3) and classes spillage, unsafe slope, encroachment.
