@@ -184,8 +184,8 @@ export class Overlay {
     this.perf = document.createElement('div');
     Object.assign(this.perf.style, {
       position: 'absolute',
-      left: '8px',
-      top: '8px',
+      right: '8px',
+      top: '96px', // below the stage toolbar, clear of the floating video window (bottom left)
       padding: '6px 8px',
       background: 'oklch(0.13 0.01 250 / .86)',
       border: `1px solid ${PALETTE.ovFaintCss}`,
