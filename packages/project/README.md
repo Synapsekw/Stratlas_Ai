@@ -13,6 +13,8 @@ Convert staged source folders into native packages laid out per `docs/architectu
 cd packages/project
 pnpm import:hcl      # E:\Stratlas Data\sources\hcl    -> E:\Stratlas Data\projects\hcl
 pnpm import:alzour   # E:\Stratlas Data\sources\alzour -> E:\Stratlas Data\projects\alzour
+pnpm import:ebsm     # Asset Inspection Kit offline build, EBSM flare stack (EPSG 32639)
+pnpm import:damac    # Asset Inspection Kit offline build, DAMAC tower facade (EPSG 32640)
 # options: --src <folder> --out <folder>; STRATLAS_DATA overrides the data root
 ```
 
@@ -35,6 +37,30 @@ gets an `IMPORT-REPORT.md` with counts, sizes, the frame check and warnings.
   one file (same `src` and `startUtcMs`) and differ by `offsetMs`, so the app groups them.
 - `kit-pyramid` rasters (`aio.tiles/1`): every level spans the same `corners`, tiles are square
   and edge tiles are padded (top-left anchored) so all tiles of a level have one ground size.
+
+### Asset Inspection Kit offline builds (EBSM, DAMAC and later jobs)
+
+`src/import/aik.ts` (I/O) and `aik-model.ts` (pure, tested) read any kit offline build: the
+`window.KIT` document in `OPEN ... Review.html`, the `data/*.js` chunk scripts
+(`__kitData("key","base64")`, gzip when the kit marks `gz`) and, when present, `_rebuild/job/`
+(`cameras.json` for the photo kind, `surface.json` patches, `assessment.json` ids, `job.yaml` cover).
+
+- Frame: kit (X north, Y up, Z east, origin at the asset base) to local by
+  `Ry(90 deg + theta)`, where theta is fitted from every photo's kit position against its GPS in
+  the project UTM zone (grid convergence and kit yaw). The origin is where the kit origin lands;
+  H is the median of GPS altitude minus kit height. Baked into the mesh `transform`.
+- Mesh: `downloads/*.glb` as delivered (the viewer's `data/model.js` is the same GLB, gzip-wrapped).
+- Photos: kit 2560 px review copies with poses (position, target, up; pinhole kit hfov) and 480 px
+  thumbnails; H20T thermal frames (`kind: "T"`) in a second photo layer. `photos: 'reviewed'` keeps
+  photos with a finding or uncertain area plus the report cover.
+- Masks: `photos/masks/<id>_mask.png` (class index), `_overlay.png`, `_uncertain_mask.png` and
+  `_uncertain_overlay.png`, cut from the viewer's mask sprites.
+- Severity model and class catalogue from the kit profile. Issues: one per finding (photo unit,
+  F codes) or per defect (region unit, D codes, worst severity) with boxes, masks and mesh
+  sightings (`spatch` to `models/patches/<fid>.json` decals in the local frame, or `spoint` pins);
+  one `uncertain` issue per uncertain-only photo (U codes).
+- `legacy/`: the whole offline viewer as hard links (no extra space on the same volume), layer
+  `legacy` with `viewer: 'aik'`. `IMPORT-REPORT.md` compares every count with the kit stats.
 
 ### Al-Zour (plant twin artifact)
 
