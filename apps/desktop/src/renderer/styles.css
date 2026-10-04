@@ -2466,6 +2466,17 @@ svg.flip {
 .count {
   unicode-bidi: isolate;
 }
+/* Mixed-direction text: inline labels and table cells take their direction from their own
+   first strong character, so "1.2 GB", dates and English names keep their order inside a
+   right-to-left layout (and Arabic text inside a left-to-right one). Cells stay aligned with
+   the layout. */
+[dir='rtl'] :is(span, b, code, dd, dt, label) {
+  unicode-bidi: plaintext;
+}
+[dir='rtl'] td:not([class*='acts']) {
+  unicode-bidi: plaintext;
+  text-align: right;
+}
 /* Directional icons (chevrons, arrows) point the other way in a right-to-left layout. */
 [dir='rtl'] .flip-rtl {
   transform: scaleX(-1);
