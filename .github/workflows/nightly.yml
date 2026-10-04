@@ -61,6 +61,8 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
+          # pnpm is enabled by corepack below; its store is cached explicitly.
+          package-manager-cache: false
 
       - run: corepack enable
 

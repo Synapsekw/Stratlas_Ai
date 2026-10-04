@@ -18,6 +18,10 @@ const ALLOWED = new Set([
   'CC0-1.0',
   'BlueOak-1.0.0',
   'Unlicense',
+  // Font licence: bundling the fonts in an app is allowed (IBM Plex, the UI typeface).
+  'OFL-1.1',
+  // PSF licence, permissive (argparse, under js-yaml).
+  'Python-2.0',
 ]);
 const DENIED = /^(A?GPL)(-[0-9.]+)?(-only|-or-later|\+)?$/i;
 
