@@ -225,6 +225,94 @@ function SiteSummary() {
   );
 }
 
+/** Cut and fill between the surveys: the whole yard, by pile, and the two ways to count it. */
+function ChangeSummary() {
+  const file = useVolumetric((s) => s.file);
+  const piles = useVolumetric((s) => s.piles);
+  const density = useVolumetric((s) => s.density);
+  const rows = useMemo(() => [...piles].sort((a, b) => a.change.net - b.change.net), [piles]);
+  if (!file) return null;
+  const first = file.captures[0];
+  const last = file.captures.at(-1);
+  const sc = file.siteChange;
+  const inv =
+    (last ? totals(piles, last.epoch, file.defaultBase).net : 0) -
+    (first ? totals(piles, first.epoch, file.defaultBase).net : 0);
+  const mx = Math.max(1, ...rows.map((p) => Math.max(p.change.cut, p.change.fill)));
+  const span = `${short(first?.label ?? '')} to ${short(last?.label ?? '')}`;
+  return (
+    <div data-testid="vol-change">
+      <section className="vol-sec" aria-label="Cut and fill">
+        <h3>Change {span}</h3>
+        <div className="vol-kpis">
+          <div className="vol-cut">
+            <span>Cut</span>
+            <b>{f0(sc.cut)} m³</b>
+            <small>whole yard</small>
+          </div>
+          <div className="vol-fill">
+            <span>Fill</span>
+            <b>{f0(sc.fill)} m³</b>
+            <small>whole yard</small>
+          </div>
+          <div className="vol-hot">
+            <span>Net</span>
+            <b>{sgn(sc.net)} m³</b>
+            <small>{f0(sc.net * density)} t</small>
+          </div>
+          <div>
+            <span>Deadband</span>
+            <b>{file.deadbandM.toFixed(2)} m</b>
+            <small>smaller changes ignored</small>
+          </div>
+        </div>
+      </section>
+      <section className="vol-sec" aria-label="Change by pile">
+        <h3>By pile</h3>
+        <div className="vol-chg" role="list">
+          {rows.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              role="listitem"
+              data-pile={p.id}
+              onClick={() => {
+                volumetric.getState().select(p.id);
+              }}
+            >
+              <b>{p.id}</b>
+              <span className="vol-cbar" aria-hidden>
+                <i className="c" style={{ width: `${((p.change.cut / mx) * 50).toFixed(1)}%` }} />
+                <i className="f" style={{ width: `${((p.change.fill / mx) * 50).toFixed(1)}%` }} />
+              </span>
+              <span
+                className={`v ${p.change.net < -50 ? 'vol-cut' : p.change.net > 50 ? 'vol-fill' : 'vol-flat'}`}
+              >
+                {sgn(p.change.net)}
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+      <section className="vol-sec" aria-label="Two ways to count the change">
+        <h3>Two ways to count the change</h3>
+        <p className="vol-note">
+          Surface to surface, the piles changed by <b>{sgn(file.pileChange.net)} m³</b>. Comparing
+          the two inventories (
+          {file.bases.find((b) => b.id === file.defaultBase)?.label.toLowerCase()} base) gives{' '}
+          <b>{sgn(inv)} m³</b>.
+        </p>
+        <p className="vol-note">
+          The gap is material dug from below the earlier toe line. An inventory only counts what
+          stands above its base, so a pile cut back into the floor looks smaller than the material
+          that actually left. Use surface to surface for what moved, and the inventory for what is
+          on hand.
+        </p>
+      </section>
+    </div>
+  );
+}
+
 function PileDetail({ id }: { id: string }) {
   const s = useVolumetric((x) => x);
   const pile = s.piles.find((p) => p.id === id);
@@ -503,6 +591,7 @@ export function VolumesPanel({ className }: { className?: string }) {
   const status = useVolumetric((s) => s.status);
   const error = useVolumetric((s) => s.error);
   const selected = useVolumetric((s) => s.selected);
+  const surface = useVolumetric((s) => s.surface);
   if (status === 'loading' || status === 'idle')
     return (
       <div className={`vol-panel ${className ?? ''}`}>
@@ -527,7 +616,7 @@ export function VolumesPanel({ className }: { className?: string }) {
         <PileDetail id={selected} />
       ) : (
         <>
-          <SiteSummary />
+          {surface === 'change' ? <ChangeSummary /> : <SiteSummary />}
           <Register />
         </>
       )}

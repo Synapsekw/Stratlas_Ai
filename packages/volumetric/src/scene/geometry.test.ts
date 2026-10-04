@@ -32,9 +32,9 @@ describe('bodyGeometry', () => {
   it('draws quads where all four cells are inside, top above base', () => {
     const g = bodyGeometry(cells(), local, { lifted: false, change: false });
     expect(Array.from(g.index)).toHaveLength(6);
-    // cell (0, 0): E 100.5 N 200.5 top 12 -> local (0.5, 2.12, -0.5) (lifted by 0.12 m when in place)
+    // cell (0, 0): E 100.5 N 200.5 top 12 -> local (0.5, 2.2, -0.5) (lifted by 0.2 m when in place)
     expect(g.top[0]).toBeCloseTo(0.5, 6);
-    expect(g.top[1]).toBeCloseTo(2.12, 6);
+    expect(g.top[1]).toBeCloseTo(2.2, 6);
     expect(g.top[2]).toBeCloseTo(-0.5, 6);
     expect(g.bottom[1]).toBeCloseTo(0, 6);
     expect(g.lift).toBe(0);

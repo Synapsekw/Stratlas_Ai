@@ -66,6 +66,17 @@ const css = `
 .vol-bars .vol-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--fg-3); }
 .vol-bars button[aria-pressed='true'] .vol-bar i { background: var(--acc); }
 .vol-bars .v { text-align: right; font: 500 var(--t-12)/1 var(--f-mono); }
+.vol-chg { display: grid; gap: 1px; }
+.vol-chg button { all: unset; box-sizing: border-box; display: grid; grid-template-columns: 40px 1fr 64px; gap: 10px; align-items: center; height: 24px; padding: 0 6px; border-radius: var(--r-4); cursor: pointer; font: 500 var(--t-12)/1 var(--f-mono); color: var(--fg-1); }
+.vol-chg button:hover { background: var(--bg-2); }
+.vol-chg button:focus-visible { outline: 2px solid var(--acc); outline-offset: -2px; }
+.vol-chg b { color: var(--fg-0); }
+.vol-chg .v { text-align: right; }
+.vol-cbar { position: relative; height: 8px; }
+.vol-cbar::after { content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--line-strong); }
+.vol-cbar i { position: absolute; top: 0; bottom: 0; border-radius: 1px; }
+.vol-cbar i.c { right: 50%; background: #e8794f; }
+.vol-cbar i.f { left: 50%; background: #6aa6e8; }
 .vol-facts { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; margin: 0; font-size: var(--t-12); }
 .vol-facts dt { color: var(--fg-3); }
 .vol-facts dd { margin: 0; text-align: right; font-family: var(--f-mono); color: var(--fg-1); }

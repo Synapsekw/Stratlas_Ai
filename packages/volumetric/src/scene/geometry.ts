@@ -44,7 +44,7 @@ export function bodyGeometry(
       const v = j * b.nx + i;
       if (!b.ins[v]) continue;
       const E = b.e0 + i * b.cell;
-      const t = local(E, N, (b.top[v] ?? 0) + lift + (opts.lifted ? 0 : 0.12));
+      const t = local(E, N, (b.top[v] ?? 0) + lift + (opts.lifted ? 0 : 0.2));
       const s = local(E, N, (b.bot[v] ?? 0) + lift);
       top.set(t, v * 3);
       bottom.set(s, v * 3);

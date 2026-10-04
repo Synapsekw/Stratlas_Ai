@@ -582,7 +582,7 @@ export class VolumetricScene {
           metalness: 0,
           polygonOffset: true,
           polygonOffsetFactor: -1,
-          polygonOffsetUnits: -4,
+          polygonOffsetUnits: -1,
           clippingPlanes: this.stage.clippingPlanes,
         });
         const group = new Group();

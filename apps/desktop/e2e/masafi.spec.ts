@@ -229,6 +229,15 @@ test('Masafi register, recomputed volumes, 3D selection, surfaces and section', 
       },
     )
     .toBe(true);
+  // the panel counts the change by pile, cut to fill
+  await win.getByRole('button', { name: 'All piles' }).click();
+  await expect(win.getByTestId('vol-change').locator('button[data-pile]').first()).toHaveAttribute(
+    'data-pile',
+    'P05',
+  );
+  await expect(win.getByTestId('vol-change').locator('button[data-pile="P05"]')).toContainText(
+    '−5,116',
+  );
   await win.getByRole('button', { name: 'Surface colours' }).click();
   await win.getByRole('button', { name: /^Photo/ }).click();
   await win.keyboard.press('Escape');
@@ -249,7 +258,6 @@ test('Masafi register, recomputed volumes, 3D selection, surfaces and section', 
   await win.locator('.vol-dates button', { hasText: 'Swipe' }).click();
 
   // Section across the yard: a profile of both surveys with cut and fill areas.
-  await win.getByRole('button', { name: 'All piles' }).click();
   await win.locator('body').press('h'); // whole site
   await win.waitForTimeout(1200);
   await win.getByRole('button', { name: 'Section line between the surveys' }).click();
