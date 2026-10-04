@@ -1,6 +1,7 @@
+import { pinDisplay } from '@aio/annotate';
 import { COLOUR_MODES, pointcloudSettings } from '@aio/pointcloud';
 import type { Layer } from '@aio/schema';
-import { CommandPalette, type IconName, type PaletteCommand } from '@aio/ui';
+import { CommandPalette, t, type IconName, type PaletteCommand } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useMemo } from 'react';
 import { actionAllowed, allowedActions } from '../exports/exportModel';
@@ -11,6 +12,7 @@ import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
 import { PATH_MODES, setPathMode, togglePaths } from '../workspace/flightPaths';
 import { updateFlightPaths } from '../workspace/pathModel';
+import { toggleTimeline } from '../workspace/timelinePref';
 import { selectClip } from './Sidebar';
 
 const LAYER_ICON: Record<Layer['kind'], IconName> = {
@@ -150,6 +152,24 @@ export function Palette() {
         }),
       );
       const layers = project.manifest.layers;
+      action(
+        'pins',
+        t('stage.pins.toggle'),
+        'pin',
+        scene(() => {
+          pinDisplay.getState().togglePins();
+        }),
+        'I',
+      );
+      action(
+        'timeline',
+        t('timeline.toggle'),
+        'clock',
+        scene(() => {
+          toggleTimeline(project);
+        }),
+        'T',
+      );
       const clouds = layers.filter((l) => l.kind === 'pointcloud');
       if (clouds.length > 0) {
         const rgb = clouds.some((l) => l.format === 'png-packed');

@@ -168,6 +168,32 @@ describe('pin layout', () => {
     expect(out.items.flatMap((i) => i.members.map((m) => m.issueId))).toEqual(['b']);
   });
 
+  it('leaves pins behind a surface out of the view and out of every cluster count', () => {
+    // b and d sit on the far side of the model, under a and c on screen
+    const back = new Set(['b', 'd']);
+    const pins = [mk('a', 100, 1), mk('b', 104, 3), mk('c', 400), mk('d', 405), mk('e', 410)];
+    const out = layoutPins({ ...base, pins, visible: (p) => !back.has(p.issueId) });
+    expect(out.occluded).toBe(2);
+    expect(out.items.map((i) => [i.kind, i.members.map((m) => m.issueId).sort()])).toEqual([
+      ['pin', ['a']],
+      ['cluster', ['c', 'e']],
+    ]);
+    // the badge takes its colour from the visible members only (b, rank 3, is hidden)
+    expect(out.items[0]?.color).toBe('#000001');
+    expect(out.labels.find((l) => l.kind === 'count')?.text).toBe('2');
+    expect(hitItem(out.items, 104, 100)?.key).toBe('a');
+  });
+
+  it('keeps the selected pin even behind a surface', () => {
+    const out = layoutPins({
+      ...base,
+      pins: [mk('s', 100, 1, { selected: true }), mk('t', 300)],
+      visible: () => false,
+    });
+    expect(out.items.map((i) => i.key)).toEqual(['s']);
+    expect(out.occluded).toBe(1);
+  });
+
   it('hit-tests the item under the cursor, preferring the selected pin', () => {
     const out = layoutPins({
       ...base,

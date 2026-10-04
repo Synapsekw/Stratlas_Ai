@@ -6,10 +6,10 @@ import {
   type SectionState,
   type ViewPreset,
 } from '@aio/engine';
-import { PinControls, usePinDisplay } from '@aio/annotate';
+import { PinControls, pinDisplay, usePinDisplay } from '@aio/annotate';
 import { PointCloudControls } from '@aio/pointcloud';
 import type { Layer } from '@aio/schema';
-import { Icon, type IconName } from '@aio/ui';
+import { Icon, useT, type IconName } from '@aio/ui';
 import { setCameraMode, videoRig, type CameraMode } from '@aio/video';
 import { useWorkspace, workspace } from '@aio/workspace';
 import {
@@ -381,13 +381,34 @@ function KindRow({ kinds, label, icon }: (typeof KINDS)[number]) {
   );
 }
 
-/** Callout labels and layer visibility by kind. */
+/**
+ * Issue pins on and off in one click (I), so the severity heat map reads cleanly. The Layers
+ * popover sets the same filter: the button turns the pins back on to the last filter it chose.
+ */
+export function PinToggle() {
+  const t = useT();
+  const on = usePinDisplay((s) => s.filter !== 'off');
+  return (
+    <Tool
+      icon="pin"
+      label={on ? t('stage.pins.hide') : t('stage.pins.show')}
+      keys="I"
+      pressed={on}
+      onClick={() => {
+        pinDisplay.getState().togglePins();
+      }}
+    />
+  );
+}
+
+/** Callout labels, the issue pin toggle and layer visibility by kind. */
 export function DisplayTools({ stage, map }: { stage: EngineStage | null; map: boolean }) {
   const labelMode = useShell((s) => s.labelMode);
   const pinFilter = usePinDisplay((s) => s.filter);
   const heat = usePinDisplay((s) => s.heat);
   return (
     <>
+      <PinToggle />
       {!map && (
         <PopTool icon="tag" label="Labels" keys="L" pressed={labelMode !== 'off'} disabled={!stage}>
           <div className="pop-form">

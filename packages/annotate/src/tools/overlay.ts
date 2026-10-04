@@ -20,6 +20,7 @@ import { hitItem, layoutPins, pinPasses, type PinItem, type PinLabel } from './d
 import { mapToLocal, type MapToLocal } from './drape';
 import { createDrapeLayer } from './drapeLayer';
 import { issuePins, type IssuePin } from './mesh';
+import { createOcclusion, type OcclusionFactory } from './occlusion';
 import { pinDisplay as defaultDisplay, type PinDisplayState } from './pinDisplay';
 
 /** Screen radius (CSS px) within which pins merge into a count badge. */
@@ -266,9 +267,16 @@ function openClusterList(
 const heatWeight = (rank: number, top: number) =>
   rank < 0 ? 0.35 : 0.45 + 0.55 * (top > 1 ? (rank - 1) / (top - 1) : 1);
 
+export interface IssueOverlayOptions {
+  /** How pins behind surfaces are found (tests pass a stand-in). */
+  occlusion?: OcclusionFactory;
+}
+
 /**
  * Issue pins in the active scene, built for thousands of issues: one GPU point draw for every
- * pin and cluster badge (severity colour, constant screen size), screen-space clustering
+ * pin and cluster badge (severity colour, constant screen size), pins behind the model left out
+ * (a depth snapshot of the opaque surfaces, see `createOcclusion`), screen-space clustering
+ * of the pins in sight only
  * with count badges coloured by the worst member, codes only for the selected and hovered
  * pin or while the view is uncrowded (pooled DOM labels, only those in view), the pin filter
  * and an optional severity heat map. A pin click selects its issue; a badge click flies in
@@ -279,7 +287,9 @@ const heatWeight = (rank: number, top: number) =>
 export function installIssueOverlay(
   store: StoreApi<Workspace>,
   display: StoreApi<PinDisplayState> = defaultDisplay,
+  options: IssueOverlayOptions = {},
 ): () => void {
+  const occlusionOf = options.occlusion ?? createOcclusion;
   let detach: (() => void) | null = null;
 
   const attach = (handle: SceneHandle) => {
@@ -334,6 +344,10 @@ export function installIssueOverlay(
     let lastW = 0;
     let lastH = 0;
     let closeList: (() => void) | null = null;
+    const occlusion = occlusionOf(handle, group, () => {
+      dirty = true;
+      handle.requestRender();
+    });
 
     // component callouts keep their plates off the drawn pins and badges
     const offObstacles = isEngineStage(handle) ? handle.addLabelObstacles(() => obstacles) : null;
@@ -425,6 +439,7 @@ export function installIssueOverlay(
         hoverId,
         width: w,
         height: h,
+        visible: (pin) => occlusion.clear(pin.p),
       });
       items = out.items;
       group.userData.layout = out;
@@ -451,6 +466,8 @@ export function installIssueOverlay(
     const offFrame = handle.onFrame(() => {
       const cam = handle.camera;
       cam.updateMatrixWorld();
+      // only while pins draw: the heat map has its own depth test
+      if (pins.length > 0) occlusion.frame(performance.now());
       const w = el.clientWidth;
       const h = el.clientHeight;
       if (
@@ -583,6 +600,7 @@ export function installIssueOverlay(
       unsubDisplay();
       offFrame();
       offObstacles?.();
+      occlusion.dispose();
       closeList?.();
       el.removeEventListener('pointerdown', onDown as EventListener);
       el.removeEventListener('pointerup', onUp as EventListener);

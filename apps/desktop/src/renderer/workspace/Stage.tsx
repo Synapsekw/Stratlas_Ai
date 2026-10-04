@@ -2,6 +2,7 @@ import {
   AnnotationToolbar,
   SightingPicker,
   annotateUi,
+  pinDisplay,
   useIssueOverlay,
   useMapDraw,
   usePinDisplay,
@@ -62,6 +63,7 @@ import {
   ViewTools,
 } from './StageTools';
 import { fitGroups, GAP, GROUP_LABEL, type GroupId } from './toolbarFit';
+import { toggleTimeline } from './timelinePref';
 import { insideView, stopCutaway, useCutaway, useCutawayState } from './useCutaway';
 import { VolumeTools } from './VolumeTools';
 
@@ -257,13 +259,14 @@ function StageToolbar({
             type="button"
             aria-pressed={mode === m.mode}
             aria-keyshortcuts={m.keys}
+            aria-label={m.label}
             title={`${m.label} (${m.keys})`}
             onClick={() => {
               shell.getState().setStageMode(m.mode);
             }}
           >
             <Icon name={m.icon} size={14} />
-            {m.label}
+            <span className="mode-l">{m.label}</span>
           </button>
         ))}
       </div>
@@ -446,6 +449,7 @@ export function Stage() {
   const engine = useEngineStage();
   const mapDraw = useMapDraw(mapLayer);
   const roadMap = useRoadMap();
+  const isRoad = roadMap !== null;
   const closeupOn = useRoad((s) => s.closeup);
   const selectedIssue = useWorkspace((s) =>
     s.selection?.kind === 'issue' ? s.selection.id : null,
@@ -547,6 +551,8 @@ export function Stage() {
       else if (k === 'a') sh.setAnnotating(!sh.annotating);
       else if (k === 'w' && ws.activeClip) sh.setVideoHidden(!sh.videoHidden);
       else if (k === 'p' && three && flightPathModel()) updateFlightPaths(togglePaths);
+      else if (k === 'i') pinDisplay.getState().togglePins();
+      else if (k === 't' && !isRoad) toggleTimeline(ws.project);
       else if (k === 'c' && three && ws.activeClip) insideView(three);
       else if (k === 'escape' && three && three.tool !== 'select') three.setTool('select');
       else return;
@@ -556,7 +562,7 @@ export function Stage() {
     return () => {
       window.removeEventListener('keydown', onKey);
     };
-  }, [engine]);
+  }, [engine, isRoad]);
 
   const seam: MapDrawSeam = roadMap?.measure ?? {
     mode: mapDraw.mode,

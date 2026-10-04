@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { formatClock, formatCount } from '../format';
+import { t } from '../i18n';
 import { Icon } from '../icons/Icon';
 import type { TimelineModel } from './model';
 import { generateTicks, pickTickStep } from './ticks';
@@ -31,6 +32,9 @@ export interface TimelineProps {
   onStep: (dir: 1 | -1) => void;
   /** Right-aligned context line, e.g. capture date and time base. */
   context?: ReactNode;
+  /** Collapse the timeline (a button at the end of the header); `hideKeys` names its shortcut. */
+  onHide?: () => void;
+  hideKeys?: string;
   className?: string;
 }
 
@@ -265,6 +269,21 @@ export function Timeline(props: TimelineProps) {
             <Icon name="plus" size={14} />
           </button>
         </div>
+        {props.onHide && (
+          <button
+            className="tool tip-up tl-hide"
+            type="button"
+            onClick={props.onHide}
+            aria-label={t('timeline.hide')}
+            aria-keyshortcuts={props.hideKeys}
+          >
+            <Icon name="chevdown" />
+            <span className="tip tip-end">
+              {t('timeline.hide')}
+              {props.hideKeys && <span className="kbd">{props.hideKeys}</span>}
+            </span>
+          </button>
+        )}
       </div>
       {hasTime ? (
         <div className="tl-body">

@@ -4,6 +4,7 @@ import { createWorkspace } from '@aio/workspace';
 import { PerspectiveCamera, Scene, type Points, type WebGLRenderer } from 'three';
 import { afterEach, describe, expect, it } from 'vitest';
 import { catalogue, makeIssue, photoSighting, tankModel } from '../testing';
+import type { OcclusionFactory } from './occlusion';
 import { createPinDisplay } from './pinDisplay';
 import { installIssueOverlay, ndcOf } from './scene';
 
@@ -175,6 +176,54 @@ describe('installIssueOverlay', () => {
     expect(drape?.children).toHaveLength(1);
     uninstall();
     expect(handle.scene.getObjectByName('annotate-map-shapes')).toBeUndefined();
+  });
+
+  it('leaves occluded pins out of the view and the badges, and follows new snapshots', () => {
+    const store = createWorkspace();
+    store
+      .getState()
+      .openProject({ id: 'p', root: 'r', manifest }, [
+        makeIssue(),
+        makeIssue({ id: 'c', code: 'F03' }),
+        makeIssue({ id: 'far', code: 'F04', sightings: [farSighting] }),
+      ]);
+    // the stand-in hides every pin with x < 5 (the "back face") until told otherwise
+    let hideBack = true;
+    let update: () => void = () => undefined;
+    let frames = 0;
+    const occlusion: OcclusionFactory = (_h, skip, onUpdate) => {
+      expect(skip.name).toBe('annotate-issue-pins');
+      update = onUpdate;
+      return {
+        frame: () => {
+          frames++;
+        },
+        clear: (p) => !hideBack || p[0] >= 5,
+        dispose: () => undefined,
+      };
+    };
+    const { handle, frames: cbs } = fakeHandle();
+    setActiveScene(handle);
+    const uninstall = installIssueOverlay(store, createPinDisplay(null), { occlusion });
+    frame(cbs);
+    expect(frames).toBe(1);
+    const shown = () =>
+      layoutOf(handle)?.items.flatMap((i) =>
+        (i.members as { issueId: string }[]).map((m) => m.issueId),
+      );
+    // makeIssue's anchor is on the back: only the far-side pin remains, no badge
+    expect(shown()).toEqual(['far']);
+    expect(layoutOf(handle)?.items.map((i) => i.kind)).toEqual(['pin']);
+    // the selected issue shows wherever it is
+    store.getState().select({ kind: 'issue', id: 'c' });
+    frame(cbs);
+    expect(shown()?.sort()).toEqual(['c', 'far']);
+    // a new snapshot (the camera came round) brings the others back
+    hideBack = false;
+    update();
+    frame(cbs);
+    expect(shown()?.sort()).toEqual(['c', 'far', 'i1']);
+    uninstall();
   });
 
   it('attaches to a scene that was already active', () => {
