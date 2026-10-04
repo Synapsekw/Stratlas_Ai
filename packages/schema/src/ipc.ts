@@ -4,6 +4,9 @@ import { Issue } from './annotation';
 import { Conversation, ConversationId, ConversationSummary } from './conversation';
 import { JobEvent, JobId, JobLogLine, JobRecord, JobStartRequest, RuntimeInfo } from './jobs';
 import {
+  AltitudeChoice,
+  AltitudePlan,
+  ImportHeights,
   ImportItem,
   LayerPatch,
   NewProjectRequest,
@@ -721,7 +724,13 @@ export const ipc = {
         ok: z.literal(true),
         lon: z.number(),
         lat: z.number(),
+        /**
+         * Ground height for the origin: the take-off point's absolute altitude (photo absolute
+         * altitude minus its height above take-off) when the photo has both, else its GPS altitude.
+         */
         alt: z.number().optional(),
+        /** `takeoff`: `alt` is the take-off point; `photo`: the camera's own altitude. */
+        altFrom: z.enum(['takeoff', 'photo']).optional(),
         takenAt: z.string().optional(),
       }),
       z.object({ ok: z.literal(false), error: z.string() }),
@@ -851,11 +860,32 @@ export const ipc = {
         paths: z.array(z.string().min(1)).min(1),
         /** The aircraft clock's offset from UTC in minutes; default from the project longitude. */
         utcOffsetMin: z.number().int().min(-720).max(840).optional(),
+        /** How camera heights are made (data-conventions section 3a); default `auto`. */
+        altitude: AltitudeChoice.optional(),
       })
       .strict(),
     response: z.discriminatedUnion('ok', [
-      z.object({ ok: z.literal(true), manifest: ProjectManifest, items: z.array(ImportItem) }),
+      z.object({
+        ok: z.literal(true),
+        manifest: ProjectManifest,
+        items: z.array(ImportItem),
+        /** The height rule applied, when any file got a camera height. */
+        heights: ImportHeights.optional(),
+      }),
       z.object({ ok: z.literal(false), error: z.string(), items: z.array(ImportItem).optional() }),
+    ]),
+  },
+  /**
+   * What the files of an import carry for camera heights (absolute and relative altitude, the
+   * lowest logged position), so the import UI can propose the height rule before `builder:import`.
+   */
+  'builder:altitudePlan': {
+    request: z
+      .object({ projectId: z.string().min(1), paths: z.array(z.string().min(1)).min(1) })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), plan: AltitudePlan }),
+      z.object({ ok: z.literal(false), error: z.string() }),
     ]),
   },
   /**
