@@ -19,6 +19,7 @@ import {
   dialog,
   ipcMain,
   Menu,
+  nativeImage,
   nativeTheme,
   net,
   protocol,
@@ -73,6 +74,9 @@ import {
 } from './packages';
 import { openProject, ProjectRegistry, readManifest, writeProjectIssues } from './project';
 import { readPackageVolumes, readVolumes, writeBoundaries } from './boundaries';
+import { readDetections, readPackageDetections, writeDetections } from './detections';
+import { createMaskAssist, loadOnnxRuntime } from './maskAssist';
+import { resolveInside } from './protocol/paths';
 import { createAioHandler } from './protocol/handler';
 import { cspForUrl } from './protocol/legacy';
 import { saveFile } from './saveFile';
@@ -492,6 +496,68 @@ function registerIpc(): void {
     }
     return writeBoundaries(root, file);
   });
+
+  // Detection review (BLD-5) and AI-assisted detection (BLD-6).
+  handle('detections:read', ({ projectId }) => {
+    const root = registry.root(projectId);
+    if (root !== undefined) return readDetections(root);
+    const pkg = registry.package(projectId);
+    if (pkg) return readPackageDetections(pkg.archive);
+    return { ok: false, error: `Project "${projectId}" is not open.` };
+  });
+  handle('detections:write', ({ projectId, file }) => {
+    if (registry.package(projectId))
+      return {
+        ok: false,
+        error: 'This project is a read-only package. Detections are not saved into it.',
+      };
+    const root = registry.root(projectId);
+    if (root === undefined) {
+      return { ok: false, error: `Project "${projectId}" is not open. Open it, then save again.` };
+    }
+    return writeDetections(root, file);
+  });
+  const maskAssist = createMaskAssist({
+    packDir: async () =>
+      (await findPack({ dataRoot: settings.current().dataRoot, env: process.env })).pack?.dir ??
+      null,
+    loadRuntime: loadOnnxRuntime,
+    decode: (path, maxSide) => {
+      const img = nativeImage.createFromPath(path);
+      if (img.isEmpty()) return Promise.reject(new Error(`Could not decode ${path}`));
+      const { width, height } = img.getSize();
+      const s = Math.min(1, maxSide / Math.max(width, height));
+      const scaled =
+        s < 1 ? img.resize({ width: Math.round(width * s), height: Math.round(height * s) }) : img;
+      const size = scaled.getSize();
+      // toBitmap is BGRA on every platform Electron supports here: swap to RGBA.
+      const bgra = scaled.toBitmap();
+      const rgba = new Uint8Array(bgra.length);
+      for (let i = 0; i < bgra.length; i += 4) {
+        rgba[i] = bgra[i + 2] ?? 0;
+        rgba[i + 1] = bgra[i + 1] ?? 0;
+        rgba[i + 2] = bgra[i] ?? 0;
+        rgba[i + 3] = bgra[i + 3] ?? 255;
+      }
+      return Promise.resolve({
+        width,
+        height,
+        scaledWidth: size.width,
+        scaledHeight: size.height,
+        rgba,
+      });
+    },
+  });
+  handle('detections:maskAssistStatus', () => maskAssist.status());
+  handle('detections:maskAssist', async ({ projectId, path, box }) => {
+    const root = registry.root(projectId);
+    if (root === undefined)
+      return { ok: false, error: 'Mask assist works on projects opened from a folder.' };
+    const r = await resolveInside(root, path);
+    if (!r.ok) return { ok: false, error: `The photo ${path} is not in this project.` };
+    return maskAssist.segment(r.path, box);
+  });
+  handle('ai:detect', (req) => agent.detect(req));
 
   handle('packs:list', () => packs.list());
   handle('packs:jobs', () => packs.jobs());

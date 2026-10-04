@@ -13,6 +13,7 @@ const VIEW_LABEL: Record<Screen, MessageKey> = {
   review: 'nav.review',
   issues: 'nav.issues',
   media: 'nav.media',
+  detections: 'nav.detections',
   reports: 'nav.reports',
   jobs: 'nav.jobs',
   settings: 'nav.settings',

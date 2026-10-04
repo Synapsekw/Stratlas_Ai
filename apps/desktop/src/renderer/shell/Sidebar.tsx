@@ -34,6 +34,7 @@ const NAV: NavDef[] = [
   { screen: 'scene', label: 'nav.scene', icon: 'scene' },
   { screen: 'issues', label: 'nav.issues', icon: 'issues' },
   { screen: 'media', label: 'nav.media', icon: 'media' },
+  { screen: 'detections', label: 'nav.detections', icon: 'target' },
   { screen: 'reports', label: 'nav.reports', icon: 'report' },
   { screen: 'jobs', label: 'nav.jobs', icon: 'clock' },
 ];

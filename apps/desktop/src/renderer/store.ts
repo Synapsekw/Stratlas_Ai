@@ -17,6 +17,7 @@ export type Screen =
   | 'review'
   | 'issues'
   | 'media'
+  | 'detections'
   | 'reports'
   | 'jobs'
   | 'settings';
