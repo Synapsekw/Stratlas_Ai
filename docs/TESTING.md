@@ -30,14 +30,14 @@ One document for every test round, one stage per milestone. Each stage lists wha
 
 ## Status
 
-| Stage               | What it covers                                                                                                     | Build it needs                                                                                                                        | Status                                                                    |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| M1 to M4 (baseline) | The six projects, fusion scene, annotation, maps, AI, platform, reports and exports, packages, builder basics      | The current installer (M5 build, 4 Oct 2026) or later                                                                                 | Tested by the founder; the feedback was fixed in M5                       |
-| M5                  | Fixes from the M4 feedback: Masafi, DAMAC, video, layers, cut-away, split, sky and water, report branding, AI keys | The M5 installer, built 4 Oct 2026 after the sky and water merge (commit `862c9df`) or later                                          | Not yet tested by the founder                                             |
-| M6                  | Builder completion: pipelines from raw data, detection review, AI detection, report, packages and map packs        | A new build from main with the M6 merges (commit `5333987` or later), and a pipeline pack built after them (see M6, Before you start) | In progress: X2, P1, P2, R1, R2 merged; P3, X1 merging; R3, R4, A1 coming |
-| M7                  | Release hardening and distribution                                                                                 | Not built yet                                                                                                                         | Planned                                                                   |
-| M8                  | Change detection and modelling                                                                                     | Not built yet                                                                                                                         | Planned                                                                   |
-| M9                  | Team features and release 1.0                                                                                      | Not built yet                                                                                                                         | Planned                                                                   |
+| Stage               | What it covers                                                                                                                                         | Build it needs                                                                                                                | Status                                                                                    |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| M1 to M4 (baseline) | The six projects, fusion scene, annotation, maps, AI, platform, reports and exports, packages, builder basics                                          | The current installer (M6 build, 4 Oct 2026) or later                                                                         | Tested by the founder; the feedback was fixed in M5                                       |
+| M5                  | Fixes from the M4 feedback: Masafi, DAMAC, video, layers, cut-away, split, sky and water, report branding, AI keys                                     | The M5 installer, built 4 Oct 2026 after the sky and water merge (commit `862c9df`) or later                                  | Not yet tested by the founder                                                             |
+| M6                  | Builder completion: pipelines from raw data, detection review, AI detection, report text and project report, video calibration, packages and map packs | The M6 installer, built 4 Oct 2026 from main at commit `4624bf2` or later, and pipeline pack 0.2.0 (see M6, Before you start) | Everything merged (P1, P2, P3, R1, R2, R3, R4, A1, X1, X2); not yet tested by the founder |
+| M7                  | Release hardening and distribution                                                                                                                     | Not built yet                                                                                                                 | Planned                                                                                   |
+| M8                  | Change detection and modelling                                                                                                                         | Not built yet                                                                                                                 | Planned                                                                                   |
+| M9                  | Team features and release 1.0                                                                                                                          | Not built yet                                                                                                                 | Planned                                                                                   |
 
 ## Stage M1 to M4: baseline
 
@@ -72,7 +72,7 @@ Everything that was new in M1, M3 and M4 and still behaves the same. Lines that 
 - [ ] Drone-eye view (camera button) while playing: steady, no flicker.
 - [ ] Click a panorama marker: drag to look, scroll to zoom, **Esc** returns to 3D.
 - [ ] **Maps and rasters**: switch on Overall or Area plot plans; the red line art lines up with roads and tanks.
-- [ ] Play a clip, **Calibrate video**: time offset and field of view (lens 72.2 and 65.6 degrees).
+- [ ] Play a clip, **Calibrate video**: time offset and field of view. Changed in M6: one 70.9 degree lens for every clip, plus orientation and position (see M6, A1).
 
 ### The other four projects
 
@@ -194,123 +194,133 @@ Build: the M5 installer, 4 Oct 2026, or later. Below is what changed after your 
 - [ ] **Test connection** next to each provider shows the exact answer or error.
 - [ ] Agent errors show the provider's own message (never the key).
 
-## Stage M6: builder completion (in progress)
+## Stage M6: builder completion
 
-Goal: build a complete deliverable inside Stratlas, from raw data to a reviewed, reported and packaged project. Each part below says whether it is merged, merging now, or coming.
+Goal: build a complete deliverable inside Stratlas, from raw data to a reviewed, reported and packaged project. Everything below is merged: P1, P2, P3, R1, R2, R3, R4, A1, X1 and X2. Each builder step uses one of the sample datasets in `E:\Stratlas Data\samples` (each has a README with the same steps and the numbers to expect).
 
 ### Before you start
 
-- [ ] The build stamp shows a commit at or after `5333987` (4 Oct 2026, 19:16).
-- [ ] **Jobs** shows "Pipeline pack <version>" at the top.
-- [ ] The pipeline pack must be built after the M6 merges. The one in `E:\Stratlas Data\runtime\pipeline-pack-0.1.0` (4 Oct, 08:51) is older. If a job stops at once with "There is no pipeline called ...", the pack is too old: ask me for a new one.
+- [ ] The build stamp shows commit `4624bf2` or later (4 Oct 2026).
+- [ ] **Jobs** shows "Pipeline pack 0.2.0" at the top. The pack is `E:\Stratlas Data\runtime\pipeline-pack-0.2.0`; the app takes the newest pack in that folder, so the old `pipeline-pack-0.1.0` can stay. If a job stops at once with "There is no pipeline called ...", the app is using an older pack.
+- [ ] The samples are in `E:\Stratlas Data\samples`: `inspection-hcl-mini` (6 MB), `volumetric-masafi-mini` (29 MB), `road-ringroad-mini` (104 MB). They are copies and crops; your projects and sources were not changed. Pick their files from there; the app only reads them.
 - [ ] Work on new projects or copies. Pipelines and accepted detections write into the open project (always with a backup, never dropping your own issues).
 
-### X2 Point cloud streaming smoothness (merged)
+### P1 Inspection from raw data (sample `inspection-hcl-mini`)
 
-- [ ] Al-Zour, full-resolution cloud on, **Ctrl+Shift+F** for the performance overlay.
-- [ ] Fly from the overview down to a tank, then along the pipe racks: detail streams in without the regular stutter of M4.
-- [ ] Frame time stays mostly under 20 ms, about 55 to 60 fps.
-- [ ] No freezes of a few hundred ms when the ortho loads new tiles.
-- [ ] Turn and zoom quickly: coarse detail first, finer detail after, no holes left behind.
-- [ ] HCl with its LiDAR on: just as smooth.
+Places detections (boxes on posed photos) on the model, groups them into issues, makes contact sheets and the stats for the report. The sample is 20 HCl tank photos with GPS and gimbal tags, the tank model and one AI pass with 8 accepted and 9 waiting boxes.
 
-### P2 Volumetric survey from raw data (merged)
+- [ ] Projects, **New project**: name `HCl sample`, type **Inspection** (the default), **Next**.
+- [ ] Origin: **Typed coordinate** `29.0769043, 48.0838033, 0`. The CRS list selects **WGS 84 / UTM zone 39N**, EPSG:32639, "site zone". **Next**.
+- [ ] Severity model: **HCl lining** (From HCl Tank 710-D-130335). **Next**, **Create project**. The project opens empty.
+- [ ] **Import files**: the 20 photos in `photos\` and `HCl-Tank-710-D-130335.glb`. "Imported 21 of 21 files", no Camera heights card (these photos carry absolute altitude only), **Close**. The cameras sit inside the tank.
+- [ ] Copy `detections\hcl-ai-pass.json` into `E:\Stratlas Data\projects\hcl-sample\detections\` (make the folder). Detection passes always live in `<project>\detections\`.
+- [ ] **Jobs**, **New job**: **Pipeline** is already **Inspection: detections to issues**; **Unreviewed AI detections** is **Leave out until a person accepts them**. **Start job**.
+- [ ] Six steps: Read the project, Contact sheets, Read detections, Place detections on the model, Group into issues and stats, Write to the project. Then **Done**. The log says "Not counted: 9 draft, not reviewed" and "Issues: 4 new".
+- [ ] **Issues**: D01 Coating blister, D02 Corrosion, D03 Patch damage (severity 4), D04 Coating blister, all "Lining Roof", pinned on the tank roof where the delivered HCl findings F04, F05, F02 and F06 are.
+- [ ] Run the job again: "Issues: 0 new, 0 updated, 4 unchanged". Nothing duplicated. Contact sheets are in `<project>\inspection\contact\`.
 
-You need one or two survey dates, each with a DSM GeoTIFF or a point cloud, and optionally an orthomosaic GeoTIFF for the photo texture.
+### R1 Detections review (same project)
 
-- [ ] Projects, **New project**: name, type **Volumetric**, **Next**.
-- [ ] Origin: click the map or **Typed coordinate**; **Next**, **Next**.
-- [ ] **Survey data**: fill in **Survey date**, pick a **DSM GeoTIFF** (or **Point cloud**), then **Pick orthomosaic**.
-- [ ] **Add a second survey date**, give it a date and no surface: "Every survey needs a DSM or a point cloud." and **Create project** stays greyed out.
-- [ ] The same date twice: "Two surveys have the same date."
-- [ ] Pick the second surface. The summary reads "2 survey dates, built in Jobs after creating". **Create project**.
-- [ ] **Jobs** opens with **Volumetric survey** running. Steps tick off: Read the surveys and set the grid, DSM of survey 1 and 2, Ortho tiles of survey 1 and 2, Detect piles, toe lines, bases and volumes, Package the kit grids, Terrain meshes, ortho pyramids and volumes, Write to the project. Then **Done**.
-- [ ] **Scene**: the terrain with its photo texture and the **Volumes** register, as on Masafi. Switch dates and bases, click a pile.
+One detections contract: every pass (yours, AI, model) is a file in `<project>\detections\`; the review writes its decisions back into that file; `inspection.run` places reviewed boxes on the issue the review made and never makes a second issue for them.
+
+- [ ] Sidebar **Detections**: "9 waiting · 8 accepted · 0 rejected". **Photos shown**: **With detections** or **All photos**.
+- [ ] Pick photo 101-0007. The 41% box in the top-left corner is the false alarm ("Shadow on the lining"): **Reject** (**X**), then **Reopen** it and reject it again.
+- [ ] Inspector: **Class** (**C**), **Severity** (**1** to **5** on HCl lining), **Uncertain (U)**, **Note (N)**. **J** and **K** step through detections.
+- [ ] **Accept** (**A** or **Enter**) a waiting box: "Accepted as issue <code>." **Open in Issues** shows it as a draft issue with this photo.
+- [ ] A second box on the same spot: **Link** (**L**), find the issue by code or title: the box becomes a sighting of it.
+- [ ] Accept or link the rest: "0 waiting · 16 accepted · 1 rejected" (when you accept each box on its own). The save state reads **Saved**; `hcl-ai-pass.json` now holds your decisions.
+- [ ] **Ctrl+Z** and **Ctrl+Y** undo and redo review changes. **Ctrl**+click selects several tiles; **Clear selection** empties it. The confidence slider hides proposals under "Confidence N% and up".
+- [ ] Run the inspection job again: the log says "Not counted: 1 rejected" and "8 accepted in the review (8 placed on the model)", "0 new ... 4 unchanged". The issues you accepted get their pin on the shell joints; none is made twice.
+- [ ] **Outline** (**M**): "No mask model is installed in the pipeline pack." (none ships yet).
+- [ ] EBSM (299 photos): the contact sheet scrolls smoothly. In a package opened in the player the screen says **Read only**.
+
+### R2 Detect with AI
+
+Needs Cloud AI on and a key with a vision model (Settings, AI providers). Use the HCl sample project.
+
+- [ ] **Ctrl**+click 2 to 4 tiles (**All photos**), then **Detect with AI (4 photos)**.
+- [ ] **What to send**: the selected photos, the photo in the editor, all photos without detections, or **Video frames** (a **Clip** and **One frame every** N **seconds**). **Images per request**. **What to look for (optional)**.
+- [ ] **Estimate**: "4 images in one request, about ... tokens in and ... out: about $..." and "An estimate from list prices. The provider's invoice is authoritative."
+- [ ] **What leaves this workstation**: thumbnails of exactly those images. Open **Instructions and request text** to read the full request.
+- [ ] **Send 4 images**: progress, **Stop** works, then **Done** with tokens and cost. The results land as a new pass file in `<project>\detections\`.
+- [ ] Proposals are **Waiting** with "Proposed by <model>, prompt <version>." and "Confidence N%". Nothing is in Issues until you accept it. A label the project does not know: "The model called it "...". Pick a class."
+- [ ] Cloud AI off: the dialog says so and Send is greyed out. A wrong key: the provider's exact error, nothing added. **Settings, Usage and cost** includes the detection tokens.
+
+### P2 Volumetric survey from raw data (sample `volumetric-masafi-mini`)
+
+Two survey dates (DSM and ortho GeoTIFFs) of a corner of the Masafi yard with two piles.
+
+- [ ] Projects, **New project**: name `Masafi sample`, type **Volumetric**, **Next**.
+- [ ] Origin: **Typed coordinate** `28.9106819, 48.0532713, 51`; the CRS list selects **WGS 84 / UTM zone 39N**. **Next**, **Next**.
+- [ ] **Survey data**: **Survey date** `2020-12-31`, **DSM GeoTIFF** `2020-12-31_dsm.tif`, **Pick orthomosaic** `2020-12-31_ortho.tif`.
+- [ ] **Add a second survey date** without a surface: "Every survey needs a DSM or a point cloud." and **Create project** stays greyed out. The same date twice: "Two surveys have the same date."
+- [ ] Second date `2021-01-10` with `2021-01-10_dsm.tif` and `2021-01-10_ortho.tif`. The summary reads "2 survey dates, built in Jobs after creating". **Create project**.
+- [ ] **Jobs** runs **Volumetric survey** (about 20 s): Read the surveys and set the grid, DSM of survey 1 and 2, Ortho tiles of survey 1 and 2, Detect piles, toe lines, bases and volumes, Package the kit grids, Terrain meshes, ortho pyramids and volumes, Write to the project. **Done**.
+- [ ] **Scene**: two textured terrains and the **Volumes** register with 2 piles (P06 and P07 of the delivered Masafi, numbered P01 and P02 here). Triangulated toe: P01 1,612.6 m³ (31 Dec) and 1,446.7 m³ (10 Jan), P02 262.4 and 309.7 m³; change -342.3 and +89.2 m³. These are the delivered Masafi figures; the README lists all four bases.
+- [ ] Switch dates and bases, click a pile, **Swipe** between the dates.
 - [ ] Quit Stratlas during a run and reopen: the job shows **Interrupted** with **Resume**; Resume carries on from the next step.
 
-### P1 Inspection pipeline (merged)
+### P3 Road survey from raw data (sample `road-ringroad-mini`)
 
-Places detections (boxes on posed photos) on the model, groups them into issues, makes contact sheets and the stats for the report.
+The 1st Ring Road from km 3.00 to 3.25: ortho, centreline, defect polygons and the delivered pavement footprint.
 
-- [ ] Projects, **New project**: name, type **Inspection** (the default), origin, **Create project**. The project opens empty.
-- [ ] **Import files**: drone photos with GPS and a GLB model. "Imported N of N files", then **Close**.
-- [ ] **Jobs**, **New job**: **Pipeline** is already **Inspection: detections to issues**. **Start job**.
-- [ ] Six steps: Read the project, Contact sheets, Read detections, Place detections on the model, Group into issues and stats, Write to the project. Then **Done**.
-- [ ] With no detections yet, the log says "No detections yet. Review the contact sheets or run a detection pass ...". Contact sheets are in `<project>\inspection\contact\`.
-- [ ] Put a detections file (aio.detections/1, kit, COCO or YOLO) in `<project>\detections\`, or name it in the **Detections** field, and run again.
-- [ ] **Issues** lists the new issues, titled like "Crack, Tower body", pinned on the model where the boxes are; their photos are sightings.
-- [ ] Issues you made before the run are unchanged.
-- [ ] Run the job again: the same issues, nothing duplicated.
-- [ ] **Unreviewed AI detections**: **Leave out until a person accepts them** (default) does not count AI drafts; the log says how many were left out.
-- [ ] Optional, on a copy of HCl: new issues land on the tank with the HCl lining severities; the 13 existing issues stay.
+- [ ] Projects, **New project**: name `Ring Road sample`, type **Road**, **Next**.
+- [ ] Origin: **Typed coordinate** `29.3589992, 47.9750289, 0`; the CRS list selects **WGS 84 / UTM zone 38N**, EPSG:32638. **Next**.
+- [ ] The severity step preselects **Road distress (ASTM D6433)**. **Next**, **Create project**. The project opens in **Road setup**: "This road survey has no road model yet ...".
+- [ ] **Import files**: `ringroad-km3.00-3.25-ortho.tif`. "Imported 1 of 1 files".
+- [ ] Optional: **Draw centreline**: the stage switches to the map; click along the road; **Backspace** removes the last point; **Finish**: "Centreline saved as road/centreline-drawn.geojson." **Run the road builder** opens Jobs with it filled in.
+- [ ] **Jobs**, **New job**, **Road survey**: **Centreline** `centreline.geojson` (the delivered chainage 3.00 to 3.25 km), **Orthomosaic GeoTIFF** the ortho, **Defect polygons** `defects.geojson`, **Sample units** **Square grid (as delivered for the 1st Ring Road)**, **Pavement raster** `pavement.tif`. **Start job**.
+- [ ] **Done** in about 20 s. The log: "78 defects: 52 Transverse cracking, 10 Longitudinal cracking, 8 Raveling, 6 Bleeding, 1 Rutting, 1 Block cracking" and "73 sample units (grid), network PCI 95.6 / 88.3 / 77.4".
+- [ ] The 50 grid units wholly inside the stretch have exactly the PCI of the delivered 1st Ring Road (click one in the PCI grid and compare with the same cell in the 1st Ring Road project).
+- [ ] **Scene**: the road workspace as on 1st Ring Road: chainage ruler, "78 of 78 defects", **P** for the PCI grid with its legend, click a defect row for its **Close-up**.
+- [ ] Variant: **Sample units** **Along the road** (default 31 m units): 8 units, network PCI 97.3 / 91.2 / 81.8.
 
-### R1 Detections screen (merged)
+### R3 Report text and R4 project report
 
-Use the inspection project from P1 (accepting adds draft issues to the open project). EBSM is fine for looking and scrolling.
+Do this on each sample project, and on HCl, EBSM and 1st Ring Road.
 
-- [ ] Sidebar **Detections**: contact sheet, counts "0 waiting · 0 accepted · 0 rejected".
-- [ ] **Photos shown**: **With detections** or **All photos**. With none yet: "No photos with detections yet. Show all photos, draw a box, or detect with AI."
-- [ ] EBSM (299 photos): the sheet scrolls smoothly.
-- [ ] Pick a photo. **Drawing tools**: **Box**, then **Polygon**: draw over a defect; reshape it with **Select**.
-- [ ] Inspector: **Class** (**C**), **Severity** (**1** to **9**), **Uncertain (U)**, **Note (N)**.
-- [ ] **Accept** with no class: "Pick a class before accepting (C)."
-- [ ] **Accept** (**A** or **Enter**): "Accepted as issue <code>." **Open in Issues** shows it as a draft issue with this photo.
-- [ ] **Link** (**L**): find an issue by code or title, add the box as a sighting of it.
-- [ ] **Reject** (**X**) a proposal, then **Reopen** it.
-- [ ] **J** and **K** step through detections ("2 of 5").
-- [ ] **Ctrl+Z** and **Ctrl+Y** undo and redo review changes; the save state reads **Saved**.
-- [ ] **Ctrl**+click selects several tiles; **Clear selection** empties it.
-- [ ] Confidence slider hides proposals under "Confidence N% and up".
-- [ ] **Outline** (**M**): without a mask model in the pipeline pack it says "No mask model is installed in the pipeline pack." (none ships yet).
-- [ ] In a package opened in the player, the screen says **Read only**.
+- [ ] **Reports**, **Report text**, **Edit report text**: executive summary, method and findings overview. With Cloud AI off, **Fill from template**: "Cloud AI is off, so the text was filled from a template. Replace the parts in [brackets]."
+- [ ] With Cloud AI on, **Draft with AI**: the first time a preview shows exactly what is sent (the instructions and the statistics, no photos, positions or notes); **Send**. Edit the text, **Save version**. **Versions** lists AI draft, Template and Edited versions; **Restore this version** brings one back. **Back to the reports**.
+- [ ] **Project report**: **Sections**, **Issue pages** (**Every graded issue**, **All but the lowest level**, **None, register only**), **Export project report PDF**. The PDF: cover with your branding (or "Made with Stratlas"), contents, executive summary (your saved text), scope and method, site and data with a locator map, statistics, findings register, one page per issue, appendices.
+- [ ] Volumetric sample: the stockpile map and the volume table. Road sample: the road ratings; road surveys default to **All but the lowest level**.
+- [ ] A project with no issues (a new empty one) still prints.
 
-### R2 Detect with AI (merged)
+### A1 Calibrate video (Al-Zour)
 
-Needs Cloud AI on and a key with a vision model (Settings, AI providers).
+The Al-Zour project already carries the A1 calibration: one 70.9 degree lens and an orientation and position offset per clip for all 25 clips, fitted on the corrected camera heights. The 8 degree pitch error of M5 is gone.
 
-- [ ] **Ctrl**+click 2 to 4 tiles, then **Detect with AI (4 photos)**.
-- [ ] **What to send**: the selected photos, the photo or frame in the editor, all photos without detections, or **Video frames** (pick a **Clip** and **One frame every** N **seconds**). **Images per request**. **What to look for (optional)**.
-- [ ] **Estimate**: "4 images in one request, about ... tokens in and ... out: about $..." and "An estimate from list prices. The provider's invoice is authoritative."
-- [ ] **What leaves this workstation**: thumbnails of exactly those images, "These images go to <provider>, each scaled to at most N px ...". Open **Instructions and request text** to read the full request.
-- [ ] **Send 4 images**: "N of 4 images sent, N proposals"; **Stop** works; then **Done** with tokens and cost.
-- [ ] **Review the results**: proposals are **Waiting**, with "Proposed by <model>, prompt <version>." and "Confidence N%". Nothing is in Issues until you accept it.
-- [ ] A label the project does not know: "The model called it "...". Pick a class."
-- [ ] Turn Cloud AI off: the dialog says Cloud AI is off and Send is greyed out.
-- [ ] A wrong key: the provider's exact error, nothing added.
-- [ ] **Settings, Usage and cost** includes the detection tokens for this project.
+- [ ] Al-Zour, play **DJI_0665**: the live frame drapes onto the tanks and pipe racks without the old pitch offset; the drone-eye view lines up with the model.
+- [ ] **Calibrate video**: **Time offset**, **Field of view**, **Orientation** (**Pitch**, **Yaw**, **Roll** offset), **Position** (**East**, **North**, **Up**, metres), each with a live preview.
+- [ ] **Point pairs**: click a sharp feature in the frame, then the same feature on the model (or type its coordinate), **Add pair**; three to six pairs across the frame; **Values to fit**; **Fit**: "Fitted from N pairs: ..." with **Before fit**, **Error now** and **Held out** errors.
+- [ ] **Refine automatically** lines the frame up with the model by their edges; on Al-Zour it often says the edges do not agree clearly (see Known limits): use point pairs.
+- [ ] **Save calibration**, optionally "Use this orientation and position for all N clips of this flight": "Saved: offset ..., field of view ..., orientation ..., position ...". **Reset** goes back to the saved values.
 
-### P3 Road survey from raw data (merging now)
+### Camera heights in Import
 
-Steps written from the branch; labels may still move once merged. You need an orthomosaic GeoTIFF and defect polygons (GeoJSON, a shapefile or a road review `defects.js`).
+- [ ] In a project made from a typed origin, import DJI photos or a video with its `.SRT` that logged relative altitude: the **Camera heights** card asks **Relative altitude + take-off height** (**Take-off height H (m)**, proposed from the model under the take-off point, or the origin height with a warning) or **Absolute altitude + datum offset** (**Offset (m)**, saved as the project's vertical datum).
+- [ ] After the import the panel says which altitude was used and with which number. A project made from a photo origin imports without asking.
 
-- [ ] Projects, **New project**: type **Road**. The severity step preselects **Road distress (ASTM D6433)**. **Create project**.
-- [ ] The project opens in **Road setup**: "This road survey has no road model yet ...".
-- [ ] **Import files**: the orthomosaic. "Imported 1 of 1 files".
-- [ ] **Draw centreline**: the stage switches to the map. Click along the road from km 0; **Backspace** removes the last point; the counter shows points and length. **Finish**: "Centreline saved as road/centreline-drawn.geojson."
-- [ ] **Run the road builder**: Jobs opens with **Road survey** and the **Centreline** filled in. Fill **Orthomosaic GeoTIFF** and **Defect polygons**; choose **Sample units** (**Along the road** or **Square grid**) and **Unit length (m)**. **Start job**.
-- [ ] **Done**; the log shows the network PCI.
-- [ ] **Scene**: the road workspace as on 1st Ring Road: chainage ruler, "N of N defects", **P** for the PCI grid with its legend, click a defect row for its **Close-up**.
+### X1 Packages and map packs
 
-### X1 Packages and map packs (merging now)
-
-Steps written from the branch; labels may still move once merged.
-
-- [ ] HCl, **Reports**, **Export package**: switch on **Include the map region for this site**, set **Detail up to zoom** and **Margin**. A line reads "From Kuwait streets: N tiles, size" and the package size grows.
+- [ ] HCl, **Reports**, **Export package**: switch on **Include the map region for this site**, set **Detail up to zoom** and **Margin**. A line reads "From <pack>: N tiles, size" and the package size grows.
 - [ ] Switch on **Allow the customer to extract an editable copy**. **Export**: "Package written."
-- [ ] Open the `.aio`: **Start exploring**, press **2** for the map: streets draw. **Settings, Offline maps** lists the region as **In open package**.
-- [ ] Best check: on a PC (or data folder) without the Kuwait pack, the map still draws from the package.
-- [ ] **Reports**, **Edit a copy**, **Extract to edit**: progress, then a new project opens with the chip "Copy of <file>.aio" and no "Read-only package" chip.
-- [ ] Annotate the copy (**A**, **Pin** on the tank): the issue is saved in the new project. The `.aio` file is unchanged.
+- [ ] Open the `.aio`: **Start exploring**, press **2** for the map: streets draw. **Settings, Offline maps** lists the region as **In open package**. Best check: on a PC or data folder without the Kuwait pack, the map still draws from the package.
+- [ ] **Reports**, **Edit a copy**, **Extract to edit**: progress, then a new project opens with "Copy of <file>.aio" in the title bar and no "Read-only package" chip. Annotate the copy: the issue is saved in the new project; the `.aio` file is unchanged.
 - [ ] A package exported without the allow switch: "The sender did not allow editing this package ...".
-- [ ] Resumable download (only if you agree to a download from build.protomaps.com): **Settings, Offline maps**, **Add a region**, a small country, start. Quit Stratlas mid-download.
-- [ ] Reopen: the job shows **Interrupted**, "The download stopped at ... Resume continues from there ...". **Resume**: it finishes and the pack shows as downloaded.
+- [ ] Resumable download (only if you agree to a download from build.protomaps.com): **Settings, Offline maps**, **Add a region**, a small country, start, quit Stratlas mid-download. Reopen: **Interrupted**, "The download stopped at ... Resume continues from there ...". **Resume**: it finishes and the pack shows as downloaded.
 
-### Coming in M6
+### X2 Point cloud streaming smoothness
 
-- **R3 Narrative** (coming): AI-drafted executive summary, method and findings text from the project statistics; edited in place; versioned.
-- **R4 House-format report** (coming): PDF report for any project type in the house format (cover, method, statistics, register, one page per issue, appendices) with your branding.
-- **A1 Al-Zour orientation** (coming): per-clip pitch, roll and yaw calibration against the model, next to time offset and lens; removes the 8 degree pitch error.
-- **End to end** (coming, the M6 exit): one project of each type (inspection, volumetric, road) built from raw data, reviewed, reported and packaged on your machine.
+Measured on this PC: the recorded Al-Zour fly-through holds 60 fps with a p95 frame time of 16.8 ms in 5 of 5 runs (M4: 53 to 55 fps, p95 flipping between 16.8 and 33.3 ms).
+
+- [ ] Al-Zour, full-resolution cloud on, **Ctrl+Shift+F** for the performance overlay.
+- [ ] Fly from the overview down to a tank, then along the pipe racks: detail streams in without the regular stutter of M4; frame time mostly under 20 ms.
+- [ ] No freezes of a few hundred ms when the ortho loads new tiles. Turn and zoom quickly: coarse detail first, finer after, no holes left behind.
+- [ ] HCl with its LiDAR on: just as smooth.
+
+### End to end (the M6 exit)
+
+- [ ] One project of each type from the samples (inspection, volumetric, road): built, reviewed (inspection), report text saved, project report exported, and exported as a package that opens in the player.
 
 ## Stage M7: release hardening and distribution (planned)
 
@@ -332,7 +342,9 @@ Current limits only; each is removed from this list when fixed.
 
 - HCl position on the map is approximate (the source has no survey position); flight start times are nominal, relative timing is exact.
 - DAMAC origin height is approximate (no survey control in the source).
-- Al-Zour clips sit about 8 degrees off in pitch against the model. The lens is fixed; orientation calibration is A1 (coming in M6).
+- Video calibration is one constant offset per clip (orientation, position, time, lens): no bias that changes along a clip. On Al-Zour, **Refine automatically** is weak (the edges rarely agree clearly on the plant); point pairs work.
+- No geoid model: camera heights are the drone's absolute or relative altitude plus the offset or take-off height you give; a project's vertical datum is one offset.
+- One take-off height per import batch: import flights that took off from different heights separately.
 - Al-Zour sea level (93.56 m) is marked indicative; adjust it in the sun popover if the waterline looks high. A few light surf patches near the west breakwater read as land and show as flat patches on the water.
 
 ### Viewer
@@ -345,13 +357,13 @@ Current limits only; each is removed from this list when fixed.
 ### Reports, packages and maps
 
 - Report branding is one setting for all projects (no per-project override yet).
-- Narrative text and the house-format report for any project type are not built yet (R3, R4).
-- Until X1 is merged: packages cannot be edited, map packs are not included in packages, and a map pack download cannot resume a partial file.
+- Road project reports default to issue pages for all but the lowest level (a page per Ring Road defect would be over 2,000 pages); pick **Every graded issue** to print them all.
 
 ### Builder
 
-- The pipeline pack is not in the installer; it lives in `E:\Stratlas Data\runtime` and must match the build.
-- **Outline** (mask assist) needs a mask model in the pipeline pack; none ships yet (licences).
+- The pipeline pack is not in the installer; it lives in `E:\Stratlas Data\runtime` (now `pipeline-pack-0.2.0`) and must match the build. The app uses the newest pack there.
+- **Outline** (mask assist) needs a mask model file in the pipeline pack; none ships yet (licences).
+- The HCl sample's GPS and gimbal tags are written from the delivered camera poses (the Elios 3 logs no GPS in the tank) around the approximate HCl origin; a real photo set brings its own tags.
 - Cloud AI detection needs Cloud AI on and your own key; cost is an estimate from list prices.
 
 ### Release
