@@ -71,11 +71,17 @@ export function ElevationLegend({
   );
 }
 
-/** The range the legend shows: the clouds' height range while they are coloured by elevation. */
+/**
+ * The range the legend shows while the clouds are coloured by elevation: the hand-set range, else
+ * the clouds' automatic one (1st to 99th percentile of their heights). The same range the shader
+ * uses.
+ */
 export function useElevationRange(
   store: StoreApi<PointcloudSettings> = pointcloudSettings,
 ): readonly [number, number] | null {
   const mode = useStore(store, (x) => x.colourMode);
+  const manual = useStore(store, (x) => x.heightRange);
   const counts = usePointcloudCounts();
-  return mode === 'height' && counts.loaded > 0 ? counts.heightRange : null;
+  if (mode !== 'height' || counts.loaded === 0) return null;
+  return manual ?? counts.heightRange;
 }

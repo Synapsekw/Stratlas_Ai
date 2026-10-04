@@ -10,6 +10,7 @@ import {
 } from './copc';
 import type { LasLayout, LazPerfLike } from './copcDecode';
 import { decodeKitPacked, decodePngChunk, type Bounds3, type Quantisation } from './decode';
+import { sampleHeights } from './heights';
 
 type V3 = readonly [number, number, number];
 
@@ -49,6 +50,8 @@ export interface DecodedChunk {
   quant?: { offset: [number, number, number]; scale: [number, number, number] };
   /** Tight bounds in the local frame, metres. */
   bounds: Bounds3;
+  /** A spread sample of the points' local heights (Y), metres, for the elevation range. */
+  heights?: Float32Array;
 }
 
 export type DecodeResult = DecodedChunk | { id: number; error: string };
@@ -89,29 +92,44 @@ export async function handleRequest(
     switch (req.kind) {
       case 'kit': {
         const c = decodeKitPacked(await deps.fetchBytes(req.url), req.scale);
+        const heights = sampleHeights(c.count, (i) => c.positions[3 * i + 1] ?? NaN);
         const result: DecodedChunk = {
           id: req.id,
           count: c.count,
           position: c.raw,
           intensity: c.intensity,
           bounds: c.bounds,
+          heights,
         };
         return {
           result,
-          transfer: [c.raw.buffer as ArrayBuffer, c.intensity.buffer as ArrayBuffer],
+          transfer: [
+            c.raw.buffer as ArrayBuffer,
+            c.intensity.buffer as ArrayBuffer,
+            heights.buffer as ArrayBuffer,
+          ],
         };
       }
       case 'png': {
         const img = await deps.decodeImage(req.url);
         const c = decodePngChunk(img.data, img.w, img.h, req.quant, req.points);
+        const heights = sampleHeights(c.count, (i) => c.positions[3 * i + 1] ?? NaN);
         const result: DecodedChunk = {
           id: req.id,
           count: c.count,
           position: c.raw,
           rgb: c.rgb,
           bounds: c.bounds,
+          heights,
         };
-        return { result, transfer: [c.raw.buffer as ArrayBuffer, c.rgb.buffer as ArrayBuffer] };
+        return {
+          result,
+          transfer: [
+            c.raw.buffer as ArrayBuffer,
+            c.rgb.buffer as ArrayBuffer,
+            heights.buffer as ArrayBuffer,
+          ],
+        };
       }
       case 'copc-source': {
         const source = await readCopcSource(needCopc(deps).getter(req.url));
@@ -138,8 +156,9 @@ export async function handleRequest(
           quant: d.quant,
           classes: d.classes,
           bounds: d.bounds,
+          heights: d.heights,
         };
-        const transfer = [d.position.buffer as ArrayBuffer];
+        const transfer = [d.position.buffer as ArrayBuffer, d.heights.buffer as ArrayBuffer];
         for (const [key, arr] of [
           ['rgb', d.rgb],
           ['intensity', d.intensity],

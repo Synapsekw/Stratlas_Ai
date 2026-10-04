@@ -74,6 +74,23 @@ describe('decodeLasRecords', () => {
     expect(d.bounds.max[0]).toBeCloseTo(6.5, 6);
   });
 
+  it('samples the heights relative to the origin, unquantised and outside the box too', () => {
+    // a stray point 900 m up stays in the sample (the range drops it), not clamped to the box
+    const pts: Pt[] = [
+      { e: 245714, n: 3179542, h: 100 },
+      { e: 245714, n: 3179542, h: 175.753 },
+      { e: 245714, n: 3179542, h: 1000 },
+    ];
+    const d = decodeLasRecords(
+      records(6, pts, [245000, 3179000, 0]),
+      layout(6, 30),
+      3,
+      origin,
+      box,
+    );
+    expect([...d.heights].map((y) => Math.round(y * 1000) / 1000)).toEqual([0, 75.753, 900]);
+  });
+
   it('keeps intensity and classification, and counts the classes', () => {
     const pts: Pt[] = [
       { e: 245714, n: 3179542, h: 100, i: 65280, c: 2 },

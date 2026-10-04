@@ -35,6 +35,11 @@ export interface PointcloudSettingsState {
   maxPixels: number;
   /** ASPRS class codes not drawn (any colour mode), ascending. */
   hiddenClasses: number[];
+  /**
+   * Elevation ramp range set by hand, [bottom, top] in local Y metres; null follows the clouds
+   * (1st to 99th percentile of their heights). Kept for the session only: it belongs to a site.
+   */
+  heightRange: readonly [number, number] | null;
 }
 
 export interface PointcloudSettingsActions {
@@ -46,6 +51,8 @@ export interface PointcloudSettingsActions {
   /** Hide or show one class. */
   toggleClass(code: number): void;
   showAllClasses(): void;
+  /** Set the elevation ramp range by hand (ordered, at least 1 cm apart), or null for automatic. */
+  setHeightRange(range: readonly [number, number] | null): void;
 }
 
 export type PointcloudSettings = PointcloudSettingsState & PointcloudSettingsActions;
@@ -58,6 +65,7 @@ const defaults: PointcloudSettingsState = {
   edlStrength: 1,
   maxPixels: 24,
   hiddenClasses: [],
+  heightRange: null,
 };
 
 const isClass = (c: unknown): c is number =>
@@ -84,6 +92,14 @@ function restore(storage: Storage | null): Partial<PointcloudSettingsState> {
 
 const clampSize = (s: number) => Math.min(SIZE_RANGE[1], Math.max(SIZE_RANGE[0], s));
 const clampStrength = (s: number) => Math.min(4, Math.max(0.1, s));
+
+/** [lo, hi] ordered and at least 1 cm apart; null for non-finite input. */
+function orderedRange(r: readonly [number, number]): readonly [number, number] | null {
+  const [a, b] = r;
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  const lo = Math.min(a, b);
+  return [lo, Math.max(a, b, lo + 0.01)];
+}
 
 function snapBudget(n: number): number {
   let best: number = DEFAULT_BUDGET;
@@ -134,6 +150,9 @@ export function createPointcloudSettings(
     },
     showAllClasses: () => {
       set({ hiddenClasses: [] });
+    },
+    setHeightRange: (r) => {
+      set({ heightRange: r ? orderedRange(r) : null });
     },
   }));
   store.subscribe((s) => {

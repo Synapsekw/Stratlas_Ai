@@ -60,6 +60,23 @@ describe('pointcloud settings', () => {
     expect(createPointcloudSettings(storage).getState().hiddenClasses).toEqual([]);
   });
 
+  it('sets the elevation range by hand, ordered, for the session only', () => {
+    const storage = memory();
+    const a = createPointcloudSettings(storage);
+    expect(a.getState().heightRange).toBeNull();
+    a.getState().setHeightRange([40, -5]);
+    expect(a.getState().heightRange).toEqual([-5, 40]);
+    a.getState().setHeightRange([3, 3]);
+    expect(a.getState().heightRange).toEqual([3, 3.01]);
+    a.getState().setHeightRange([NaN, 3]);
+    expect(a.getState().heightRange).toBeNull();
+    a.getState().setHeightRange([0, 50]);
+    // a range belongs to one site: not restored on the next start
+    expect(createPointcloudSettings(storage).getState().heightRange).toBeNull();
+    a.getState().setHeightRange(null);
+    expect(a.getState().heightRange).toBeNull();
+  });
+
   it('offers budgets up to 16 M for fast GPUs', () => {
     expect(BUDGETS.at(-1)).toBe(16_000_000);
   });

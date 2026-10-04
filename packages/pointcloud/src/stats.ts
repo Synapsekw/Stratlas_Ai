@@ -12,8 +12,13 @@ export interface CloudCounts {
   layers: number;
   /** Some cloud carries RGB colour (png-packed ones are assumed to before they decode). */
   rgb: boolean;
-  /** Height range of the loaded, visible points in the local frame (Y up), metres. */
+  /**
+   * Automatic elevation range of the visible clouds in the local frame (Y up), metres: the 1st to
+   * 99th percentile of their point heights.
+   */
   heightRange: readonly [number, number] | null;
+  /** Lowest and highest sampled point height of the visible clouds, local Y, metres. */
+  heightExtent?: readonly [number, number] | null;
   /** Points per ASPRS class among the loaded, visible points; null when no cloud has classes. */
   classes?: Readonly<Record<number, number>> | null;
 }
@@ -52,6 +57,7 @@ export const pointcloudStats = createStore<StatsState>()((set) => ({
         prev.layers === c.layers &&
         prev.rgb === c.rgb &&
         sameRange(prev.heightRange, c.heightRange) &&
+        sameRange(prev.heightExtent ?? null, c.heightExtent ?? null) &&
         sameClasses(prev.classes, c.classes)
       ) {
         return s;
@@ -81,6 +87,7 @@ export function totalCounts(byScene: Map<object, CloudCounts>): CloudCounts {
     layers: 0,
     rgb: false,
     heightRange: null,
+    heightExtent: null,
     classes: null,
   };
   for (const c of byScene.values()) {
@@ -94,6 +101,11 @@ export function totalCounts(byScene: Map<object, CloudCounts>): CloudCounts {
       out.heightRange = out.heightRange
         ? [Math.min(out.heightRange[0], h[0]), Math.max(out.heightRange[1], h[1])]
         : h;
+    const e = c.heightExtent;
+    if (e)
+      out.heightExtent = out.heightExtent
+        ? [Math.min(out.heightExtent[0], e[0]), Math.max(out.heightExtent[1], e[1])]
+        : e;
     if (c.classes) {
       const merged: Record<number, number> = { ...(out.classes ?? {}) };
       for (const [k, n] of Object.entries(c.classes)) merged[+k] = (merged[+k] ?? 0) + n;

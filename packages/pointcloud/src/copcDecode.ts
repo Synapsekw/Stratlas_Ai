@@ -1,4 +1,5 @@
 /** COPC node decoding: LAS point records to quantised local-frame arrays. Pure, worker side. */
+import { sampleHeights } from './heights';
 
 type V3 = readonly [number, number, number];
 
@@ -22,6 +23,8 @@ export interface DecodedCopcNode {
   classes: Record<number, number>;
   /** Tight bounds in the local frame. */
   bounds: { min: [number, number, number]; max: [number, number, number] };
+  /** A spread sample of the points' local heights (Y), unquantised. */
+  heights: Float32Array;
 }
 
 /** Byte offsets of the fields read here, per point data record format (LAS 1.4 R15). */
@@ -118,6 +121,7 @@ export function decodeLasRecords(
     classification,
     classes,
     bounds: count ? { min, max } : { min: [...lo], max: [...lo] },
+    heights: sampleHeights(count, (k) => v.getInt32(k * len + 8, true) * sz + oz - origin[2]),
   };
   if (rgb16) out.rgb = to8(rgb16, cMax > 255);
   return out;
