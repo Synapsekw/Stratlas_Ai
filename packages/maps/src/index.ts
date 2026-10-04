@@ -1,6 +1,7 @@
 import { getAdapter, registerAdapter } from '@aio/engine';
 
 export { MapView, type MapViewProps } from './MapView';
+export { LocationPicker, type LocationPickerProps } from './LocationPicker';
 export {
   drawPreview,
   isRepeatClick,

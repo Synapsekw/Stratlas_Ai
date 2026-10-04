@@ -18,6 +18,7 @@ import { Palette } from './shell/Palette';
 import { Sidebar } from './shell/Sidebar';
 import { TitleBar } from './shell/TitleBar';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
+import { BuilderLayer } from './builder/BuilderLayer';
 
 function onKeyDown(e: KeyboardEvent) {
   const s = shell.getState();
@@ -139,6 +140,7 @@ export function App() {
         <Screen />
       </main>
       <Palette />
+      <BuilderLayer />
     </div>
   );
 }
