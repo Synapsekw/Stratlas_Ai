@@ -1159,6 +1159,22 @@ svg.flip {
 .pane-map .maplibregl-ctrl-top-right {
   top: 50px;
 }
+/* hover tooltip over issues and overlays on the map */
+.aio-map-tip {
+  pointer-events: none;
+}
+.aio-map-tip .maplibregl-popup-content {
+  padding: 6px 9px;
+  background: var(--bg-1);
+  color: var(--fg-0);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  font: var(--t-12) / 1.4 var(--f-ui);
+  box-shadow: 0 8px 20px oklch(0 0 0 / 0.4);
+}
+.aio-map-tip .maplibregl-popup-tip {
+  display: none;
+}
 
 /* stage popovers (section, point cloud, flight paths) */
 .pop-anchor {

@@ -23,6 +23,24 @@ export {
 export { frameProjection, lonLatToUtm, utmToLonLat, type FrameProjection } from './geo';
 export { buildStyle, BASEMAP_SOURCE, MAP_PROTOCOL } from './style';
 export { footprint, issueAnchor, poseAt, rasterQuad, type LonLat } from './overlays';
+export {
+  issueFeatures,
+  issueShapeBounds,
+  lineLengthM,
+  polygonAreaM2,
+  styleLayers,
+  type IssueFeatureOptions,
+  type MapOverlay,
+  type OverlayLayer,
+} from './vector';
+export {
+  levelMetresPerPx,
+  pyramidView,
+  type GroundBox,
+  type PyramidIndex,
+  type PyramidTile,
+} from './pyramid';
+export type { IssueColorBy } from './controller';
 
 /**
  * Registers the `basemap` ground adapter with @aio/engine: the offline street style rendered once

@@ -2,15 +2,19 @@
 // (project, issues, clock, active clip, selection, visibility) into overlay sources and writes
 // clicks back as selections.
 import { getActiveScene, onActiveScene, type SceneHandle } from '@aio/engine';
-import type { Layer, PoseSample, Vec3 } from '@aio/schema';
+import type { Issue, Layer, PoseSample, Vec3 } from '@aio/schema';
 import { assetUrl, type createWorkspace, type Workspace } from '@aio/workspace';
 import type { Feature, FeatureCollection } from 'geojson';
 import {
   AttributionControl,
   Map as MapLibreMap,
   NavigationControl,
+  Popup,
   ScaleControl,
+  type AddLayerObject,
   type GeoJSONSource,
+  type CircleLayerSpecification,
+  type ExpressionSpecification,
   type MapLayerMouseEvent,
 } from 'maplibre-gl';
 import { Vector3 } from 'three';
@@ -18,14 +22,31 @@ import { drawPreview, isRepeatClick, type MapDrawSeam } from './draw';
 import { frameProjection, type FrameProjection } from './geo';
 import { footprint, issueAnchor, poseAt, rasterQuad, type LonLat } from './overlays';
 import { bboxOf, orderPacks, type MapPack } from './packs';
+import { pyramidView, type PyramidIndex } from './pyramid';
+import { issueFeatures, issueShapeBounds, styleLayers, type MapOverlay } from './vector';
 import { installBasemap } from './runtime';
 import { buildStyle } from './style';
 
 type VideoLayer = Extract<Layer, { kind: 'video' }>;
 type RasterLayer = Extract<Layer, { kind: 'raster' }>;
+type VectorLayer = Extract<Layer, { kind: 'vector' }>;
+
+/** How issues are coloured on the map: by their severity model or by their class. */
+export type IssueColorBy = 'severity' | 'class';
 type Collection = FeatureCollection;
 
 const EMPTY: Collection = { type: 'FeatureCollection', features: [] };
+
+/** Issue shapes (map polygons) draw from this zoom; below it they are points. */
+const SHAPE_ZOOM = 17;
+const ISSUE_LAYERS = [
+  'aio-issue-shape-fill',
+  'aio-issue-shape-line',
+  'aio-issues-circle',
+  'aio-issues-circle-far',
+];
+/** The lowest issue layer: overlays go under it. */
+const OVERLAY_BEFORE = 'aio-issue-shape-fill';
 
 // Mission tokens as hex (see style.ts).
 const INK = {
@@ -41,6 +62,7 @@ const SRC = {
   flights: 'aio-flights',
   drone: 'aio-drone',
   issues: 'aio-issues',
+  shapes: 'aio-issue-shapes',
   view: 'aio-view3d',
   draw: 'aio-draw',
 };
@@ -61,7 +83,17 @@ export interface MapController {
   resize(): void;
   /** Redraw the drawing preview and switch the cursor and double-click for drawing. */
   updateDraw(): void;
+  /** GeoJSON overlays (road centreline, PCI units, density) drawn under the issues. */
+  setOverlays(overlays: readonly MapOverlay[]): void;
+  /** Show only these issues (null: all). */
+  setIssueFilter(only: ReadonlySet<string> | null): void;
+  setIssueColor(by: IssueColorBy): void;
   dispose(): void;
+}
+
+/** Metres per screen pixel at a latitude and MapLibre zoom (512 px tiles). */
+export function metresPerPx(lat: number, zoom: number): number {
+  return (40_075_016.686 * Math.cos((lat * Math.PI) / 180)) / (512 * 2 ** zoom);
 }
 
 function fc(features: Feature[]): Collection {
@@ -99,7 +131,7 @@ export function createMapController(
       [homeBox[0], homeBox[1]],
       [homeBox[2], homeBox[3]],
     ],
-    maxZoom: 20,
+    maxZoom: 22,
     renderWorldCopies: false,
     attributionControl: false,
     dragRotate: false,
@@ -170,36 +202,67 @@ export function createMapController(
         'circle-stroke-width': 2,
       },
     });
+    const color: ExpressionSpecification = ['get', 'sevColor'];
+    map.addLayer({
+      id: 'aio-issue-shape-fill',
+      type: 'fill',
+      source: SRC.shapes,
+      minzoom: SHAPE_ZOOM,
+      paint: { 'fill-color': color, 'fill-opacity': 0.16 },
+    });
+    map.addLayer({
+      id: 'aio-issue-shape-halo',
+      type: 'line',
+      source: SRC.shapes,
+      minzoom: SHAPE_ZOOM - 1,
+      filter: ['==', ['get', 'selected'], true],
+      layout: { 'line-join': 'round' },
+      paint: { 'line-color': INK.fg0, 'line-width': 6, 'line-opacity': 0.9 },
+    });
+    map.addLayer({
+      id: 'aio-issue-shape-line',
+      type: 'line',
+      source: SRC.shapes,
+      minzoom: SHAPE_ZOOM,
+      layout: { 'line-join': 'round' },
+      paint: {
+        'line-color': color,
+        'line-width': ['case', ['get', 'selected'], 2.5, 1.8],
+        'line-opacity': 0.95,
+      },
+    });
+    const circlePaint: CircleLayerSpecification['paint'] = {
+      'circle-radius': [
+        'case',
+        ['get', 'selected'],
+        9,
+        ['+', 3, ['*', 0.9, ['to-number', ['get', 'severity'], 1]]],
+      ],
+      'circle-color': color,
+      'circle-stroke-color': ['case', ['get', 'selected'], INK.fg0, INK.bg0],
+      'circle-stroke-width': ['case', ['get', 'selected'], 3, 1],
+    };
+    // issues without a shape are always points; shaped issues are points until their shape shows
     map.addLayer({
       id: 'aio-issues-circle',
       type: 'circle',
       source: SRC.issues,
-      paint: {
-        'circle-radius': ['case', ['get', 'selected'], 9, 6],
-        'circle-color': [
-          'match',
-          ['get', 'severity'],
-          1,
-          INK.sev[1],
-          2,
-          INK.sev[2],
-          3,
-          INK.sev[3],
-          4,
-          INK.sev[4],
-          5,
-          INK.sev[5],
-          INK.fg2,
-        ],
-        'circle-stroke-color': ['case', ['get', 'selected'], INK.fg0, INK.bg0],
-        'circle-stroke-width': ['case', ['get', 'selected'], 3, 1.5],
-      },
+      filter: ['!', ['get', 'hasShape']],
+      paint: circlePaint,
+    });
+    map.addLayer({
+      id: 'aio-issues-circle-far',
+      type: 'circle',
+      source: SRC.issues,
+      maxzoom: SHAPE_ZOOM,
+      filter: ['get', 'hasShape'],
+      paint: circlePaint,
     });
     map.addLayer({
       id: 'aio-issues-label',
       type: 'symbol',
       source: SRC.issues,
-      minzoom: 14,
+      minzoom: 17,
       layout: {
         'text-field': ['get', 'code'],
         'text-font': ['Noto Sans Medium'],
@@ -248,13 +311,15 @@ export function createMapController(
     if (layer.format === 'image' && layer.corners) {
       out.push({ url: assetUrl(id, layer.src), quad: rasterQuad(layer.corners, p) });
     } else if (layer.format === 'kit-pyramid') {
-      // Draw one coarse level as a grid of image quads (at most 16 tiles).
+      // One coarse level stays as a backdrop (at most 16 tiles); finer tiles follow the view.
       const res = await fetch(assetUrl(id, layer.src));
       const tiles = (await res.json()) as {
         levels?: { z: number; tileSize: number; cols: number; rows: number; pattern: string }[];
         corners?: { tl: Vec3; tr: Vec3; bl: Vec3 };
       };
       const corners = tiles.corners ?? layer.corners;
+      if (corners && tiles.levels?.length)
+        pyramids.push({ layer, index: { levels: tiles.levels, corners } });
       const levels = [...(tiles.levels ?? [])].sort((a, b) => b.cols * b.rows - a.cols * a.rows);
       const level = levels.find((l) => l.cols * l.rows <= 16) ?? levels[levels.length - 1];
       if (!corners || !level) return out;
@@ -317,7 +382,81 @@ export function createMapController(
     return all;
   }
 
+  // ----- kit pyramids at full detail: the tiles of the level that matches the view -----
+  const pyramids: { layer: RasterLayer; index: PyramidIndex }[] = [];
+  const pyrTiles = new Map<string, { sid: string; layerId: string; z: number }>();
+  const missing = new Set<string>();
+  let pyrTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function dropTile(key: string): void {
+    const t = pyrTiles.get(key);
+    if (!t) return;
+    if (map.getLayer(t.sid)) map.removeLayer(t.sid);
+    if (map.getSource(t.sid)) map.removeSource(t.sid);
+    pyrTiles.delete(key);
+  }
+
+  function updatePyramids(): void {
+    if (!proj || !pyramids.length || !ready) return;
+    const p = proj;
+    const b = map.getBounds();
+    const corners = [
+      p.toLocal(b.getWest(), b.getNorth()),
+      p.toLocal(b.getEast(), b.getNorth()),
+      p.toLocal(b.getEast(), b.getSouth()),
+      p.toLocal(b.getWest(), b.getSouth()),
+    ];
+    const view = {
+      minX: Math.min(...corners.map((c) => c[0])),
+      maxX: Math.max(...corners.map((c) => c[0])),
+      minZ: Math.min(...corners.map((c) => c[2])),
+      maxZ: Math.max(...corners.map((c) => c[2])),
+    };
+    const mpp = metresPerPx(map.getCenter().lat, map.getZoom());
+    const keep = new Set<string>();
+    const stale: string[] = [];
+    for (const { layer, index } of pyramids) {
+      const coarse = Math.max(...index.levels.filter((l) => l.cols * l.rows <= 16).map((l) => l.z));
+      const v = pyramidView(index, view, mpp);
+      const hidden = store.getState().hidden[layer.id] === true;
+      for (const t of v && v.z > coarse && !hidden ? v.tiles : []) {
+        const key = `${layer.id}/${t.key}`;
+        keep.add(key);
+        if (pyrTiles.has(key) || missing.has(key)) continue;
+        const sid = `aio-pyr-${layer.id}-${t.z}-${t.x}-${t.y}`;
+        map.addSource(sid, {
+          type: 'image',
+          url: assetUrl(projectId ?? '', { path: t.path }),
+          coordinates: rasterQuad(t.corners, p),
+        });
+        map.addLayer(
+          {
+            id: sid,
+            type: 'raster',
+            source: sid,
+            metadata: { layerId: layer.id },
+            paint: { 'raster-opacity': 1, 'raster-fade-duration': 0 },
+          },
+          'aio-view3d-fill',
+        );
+        pyrTiles.set(key, { sid, layerId: layer.id, z: t.z });
+      }
+      if (v) for (const [key, t] of pyrTiles) if (!keep.has(key) && t.z !== v.z) stale.push(key);
+      for (const [key, t] of pyrTiles) if (!keep.has(key) && t.z === v?.z) dropTile(key);
+      if (!v) for (const key of [...pyrTiles.keys()]) if (!keep.has(key)) dropTile(key);
+    }
+    // Tiles of the previous level stay a moment, under the new ones, while those load.
+    if (pyrTimer) clearTimeout(pyrTimer);
+    pyrTimer = setTimeout(() => {
+      pyrTimer = null;
+      for (const key of stale) if (!keep.has(key)) dropTile(key);
+    }, 900);
+  }
+
   function clearProject(): void {
+    for (const key of [...pyrTiles.keys()]) dropTile(key);
+    pyramids.length = 0;
+    missing.clear();
     for (const sid of rasterIds) {
       if (map.getLayer(sid)) map.removeLayer(sid);
       if (map.getSource(sid)) map.removeSource(sid);
@@ -404,29 +543,165 @@ export function createMapController(
   }
 
   // ----- issues -----
+  let issueFilter: ReadonlySet<string> | null = null;
+  let issueColor: IssueColorBy = 'severity';
   function renderIssues(s: Workspace): void {
-    const features: Feature[] = [];
-    for (const issue of s.issues) {
-      const at = issueAnchor(issue, proj);
-      if (!at) continue;
-      features.push({
-        type: 'Feature',
-        properties: {
-          issueId: issue.id,
-          code: issue.code,
-          severity: issue.severity === 'uncertain' ? 0 : issue.severity,
-          selected: s.selection?.kind === 'issue' && s.selection.id === issue.id,
-        },
-        geometry: { type: 'Point', coordinates: at },
-      });
+    const manifest = s.project?.manifest;
+    const { points, shapes } = issueFeatures(s.issues, {
+      models: manifest?.severityModels ?? [],
+      catalogues: manifest?.classCatalogues ?? [],
+      selectedId: s.selection?.kind === 'issue' ? s.selection.id : null,
+      proj,
+      only: issueFilter,
+    });
+    setData(SRC.issues, points);
+    setData(SRC.shapes, shapes);
+  }
+  function applyIssueColor(): void {
+    const prop = issueColor === 'class' ? 'classColor' : 'sevColor';
+    if (!map.getLayer('aio-issues-circle')) return;
+    map.setPaintProperty('aio-issue-shape-fill', 'fill-color', ['get', prop]);
+    map.setPaintProperty('aio-issue-shape-line', 'line-color', ['get', prop]);
+    map.setPaintProperty('aio-issues-circle', 'circle-color', ['get', prop]);
+    map.setPaintProperty('aio-issues-circle-far', 'circle-color', ['get', prop]);
+  }
+
+  // ----- GeoJSON overlays (props and manifest vector layers) -----
+  interface Mounted {
+    overlay: MapOverlay;
+    layerIds: string[];
+  }
+  const mounted = new Map<string, Mounted>();
+  let propOverlays: readonly MapOverlay[] = [];
+  let vectorOverlays: MapOverlay[] = [];
+
+  function unmount(id: string): void {
+    const m = mounted.get(id);
+    if (!m) return;
+    for (const l of m.layerIds) if (map.getLayer(l)) map.removeLayer(l);
+    if (map.getSource(`aio-ov-${id}`)) map.removeSource(`aio-ov-${id}`);
+    mounted.delete(id);
+  }
+
+  function mountLayers(o: MapOverlay): string[] {
+    const ids: string[] = [];
+    for (const l of o.layers) {
+      const lid = `aio-ov-${o.id}-${l.id}`;
+      map.addLayer(
+        {
+          id: lid,
+          type: l.type,
+          source: `aio-ov-${o.id}`,
+          ...(l.paint ? { paint: l.paint } : {}),
+          layout: { ...(l.layout ?? {}), visibility: o.visible === false ? 'none' : 'visible' },
+          ...(l.filter ? { filter: l.filter } : {}),
+          ...(l.minzoom !== undefined ? { minzoom: l.minzoom } : {}),
+          ...(l.maxzoom !== undefined ? { maxzoom: l.maxzoom } : {}),
+        } as AddLayerObject,
+        OVERLAY_BEFORE,
+      );
+      ids.push(lid);
     }
-    setData(SRC.issues, fc(features));
+    return ids;
+  }
+
+  function syncOverlays(): void {
+    if (!ready) return;
+    const wanted = [...vectorOverlays, ...propOverlays];
+    const ids = new Set(wanted.map((o) => o.id));
+    for (const id of [...mounted.keys()]) if (!ids.has(id)) unmount(id);
+    for (const o of wanted) {
+      const m = mounted.get(o.id);
+      const sid = `aio-ov-${o.id}`;
+      if (!m) {
+        map.addSource(sid, { type: 'geojson', data: o.data });
+        mounted.set(o.id, { overlay: o, layerIds: mountLayers(o) });
+        continue;
+      }
+      if (m.overlay.data !== o.data) void map.getSource<GeoJSONSource>(sid)?.setData(o.data);
+      if (m.overlay.layers !== o.layers) {
+        for (const l of m.layerIds) if (map.getLayer(l)) map.removeLayer(l);
+        m.layerIds = mountLayers(o);
+      } else if ((m.overlay.visible !== false) !== (o.visible !== false)) {
+        for (const l of m.layerIds)
+          map.setLayoutProperty(l, 'visibility', o.visible === false ? 'none' : 'visible');
+      }
+      m.overlay = o;
+    }
+  }
+
+  function overlayAt(
+    e: MapLayerMouseEvent,
+  ): { o: MapOverlay; props: Record<string, unknown> } | null {
+    const layers = [...mounted.values()]
+      .filter((m) => m.overlay.visible !== false && (m.overlay.onClick ?? m.overlay.tooltip))
+      .flatMap((m) => m.layerIds)
+      .filter((l) => map.getLayer(l));
+    if (!layers.length) return null;
+    const hit = map.queryRenderedFeatures(e.point, { layers })[0];
+    if (!hit) return null;
+    const id = hit.layer.id;
+    const m = [...mounted.values()].find((x) => x.layerIds.includes(id));
+    return m ? { o: m.overlay, props: hit.properties } : null;
+  }
+
+  function vectorOverlaysFor(layers: readonly Layer[], id: string, s: Workspace): MapOverlay[] {
+    return layers
+      .filter((l): l is VectorLayer => l.kind === 'vector')
+      .map((l) => ({
+        id: `layer-${l.id}`,
+        data: assetUrl(id, l.src),
+        layers: styleLayers(l.style),
+        visible: !s.hidden[l.id],
+      }));
+  }
+
+  // ----- hover tooltip over issues and overlays -----
+  const tip = new Popup({
+    closeButton: false,
+    closeOnClick: false,
+    className: 'aio-map-tip',
+    offset: 12,
+    maxWidth: '320px',
+  });
+  function onHover(e: MapLayerMouseEvent): void {
+    if (draw?.()?.mode) {
+      tip.remove();
+      return;
+    }
+    const issueLayers = ISSUE_LAYERS.filter((l) => map.getLayer(l));
+    const hit = issueLayers.length
+      ? map.queryRenderedFeatures(e.point, { layers: issueLayers })[0]
+      : undefined;
+    let text: string | null;
+    if (hit) {
+      const p = hit.properties as { code?: string; title?: string; severityLabel?: string };
+      text = `${p.code ?? ''} · ${p.title ?? ''}${p.severityLabel ? `\n${p.severityLabel}` : ''}`;
+    } else {
+      const ov = overlayAt(e);
+      text = ov?.o.tooltip?.(ov.props) ?? null;
+    }
+    map.getCanvas().style.cursor = hit || text ? 'pointer' : '';
+    if (!text) {
+      tip.remove();
+      return;
+    }
+    const el = document.createElement('div');
+    el.textContent = text;
+    el.style.whiteSpace = 'pre-line';
+    tip.setLngLat(e.lngLat).setDOMContent(el).addTo(map);
   }
 
   function applyVisibility(s: Workspace): void {
     for (const sid of rasterIds) {
       const layerId = (map.getLayer(sid)?.metadata as { layerId?: string } | undefined)?.layerId;
       if (layerId) map.setLayoutProperty(sid, 'visibility', s.hidden[layerId] ? 'none' : 'visible');
+    }
+    updatePyramids();
+    const project = s.project;
+    if (project) {
+      vectorOverlays = vectorOverlaysFor(project.manifest.layers, project.id, s);
+      syncOverlays();
     }
   }
 
@@ -499,6 +774,47 @@ export function createMapController(
     }
   }
 
+  /** A camera request (fly to a point or an issue) moves the map too; the 3D view consumes it. */
+  function followCamera(s: Workspace): void {
+    const req = s.lastCamera;
+    if (!req || !proj) return;
+    const t = req.target;
+    if (t.kind === 'point') {
+      const at = proj.toLonLat(t.p);
+      const d = t.distance;
+      let zoom = map.getZoom();
+      if (d !== undefined) {
+        const wantMpp = (d * 1.5) / Math.max(200, map.getCanvas().clientWidth);
+        zoom = Math.log2((40_075_016.686 * Math.cos((at[1] * Math.PI) / 180)) / (512 * wantMpp));
+      }
+      map.easeTo({ center: at, zoom: Math.min(22, Math.max(3, zoom)), duration: 500 });
+    } else if (t.kind === 'selection' && t.selection.kind === 'issue') {
+      const id = t.selection.id;
+      const issue = s.issues.find((i) => i.id === id);
+      if (issue) focusIssueOnMap(issue);
+    }
+  }
+
+  function focusIssueOnMap(issue: Issue): void {
+    const b = issueShapeBounds(issue);
+    if (b) {
+      // Small defects get context around them; large ones fill the view.
+      const padM = 4;
+      const dLat = padM / 111_000;
+      const dLon = padM / (111_000 * Math.cos((b[1] * Math.PI) / 180));
+      map.fitBounds(
+        [
+          [b[0] - dLon, b[1] - dLat],
+          [b[2] + dLon, b[3] + dLat],
+        ],
+        { padding: 60, maxZoom: 22, duration: 600 },
+      );
+      return;
+    }
+    const at = issueAnchor(issue, proj);
+    if (at) map.easeTo({ center: at, zoom: Math.max(map.getZoom(), 18), duration: 500 });
+  }
+
   function focusSelection(s: Workspace): void {
     if (s.selection?.kind !== 'issue') return;
     const id = s.selection.id;
@@ -522,15 +838,20 @@ export function createMapController(
       return;
     }
     const hit = map.queryRenderedFeatures(e.point, {
-      layers: ['aio-issues-circle', 'aio-drone-point', 'aio-flights-line'],
+      layers: [...ISSUE_LAYERS, 'aio-drone-point', 'aio-flights-line'].filter((l) =>
+        map.getLayer(l),
+      ),
     })[0];
     const props = hit?.properties as { issueId?: string; layerId?: string } | undefined;
     const st = store.getState();
+    const ov = props ? null : overlayAt(e);
     if (props?.issueId) {
       st.select({ kind: 'issue', id: props.issueId });
     } else if (props?.layerId) {
       st.setActiveClip(props.layerId);
       st.select({ kind: 'clip', id: props.layerId });
+    } else if (ov?.o.onClick) {
+      ov.o.onClick(ov.props, [e.lngLat.lng, e.lngLat.lat]);
     } else if (e.originalEvent.altKey && proj) {
       // Alt+click: move the 3D camera to this ground point.
       st.flyTo({ kind: 'point', p: proj.toLocal(e.lngLat.lng, e.lngLat.lat) });
@@ -549,7 +870,7 @@ export function createMapController(
       d.onFinish();
     });
     const drawing = () => draw?.()?.mode != null;
-    for (const id of ['aio-issues-circle', 'aio-flights-line', 'aio-drone-point']) {
+    for (const id of ['aio-flights-line', 'aio-drone-point']) {
       map.on('mouseenter', id, () => {
         if (!drawing()) map.getCanvas().style.cursor = 'pointer';
       });
@@ -557,6 +878,34 @@ export function createMapController(
         if (!drawing()) map.getCanvas().style.cursor = '';
       });
     }
+    let hoverRaf = 0;
+    map.on('mousemove', (e) => {
+      if (drawing()) return;
+      if (hoverRaf) cancelAnimationFrame(hoverRaf);
+      hoverRaf = requestAnimationFrame(() => {
+        hoverRaf = 0;
+        onHover(e);
+      });
+    });
+    map.on('mouseout', () => tip.remove());
+    // A tile of a pyramid that is not in the package (outside the survey) is not asked for again.
+    map.on('error', (e: { sourceId?: string; error?: unknown }) => {
+      const sid = e.sourceId;
+      if (sid?.startsWith('aio-pyr-')) {
+        for (const [key, t] of pyrTiles)
+          if (t.sid === sid) {
+            missing.add(key);
+            dropTile(key);
+          }
+        return;
+      }
+      console.error('Map error', e.error ?? e);
+    });
+    map.on('moveend', () => {
+      updatePyramids();
+    });
+    applyIssueColor();
+    syncOverlays();
     updateDraw();
 
     let prev = store.getState();
@@ -579,6 +928,7 @@ export function createMapController(
           renderFlights(s);
         if (s.hidden !== last.hidden) applyVisibility(s);
         if (s.selection !== last.selection) focusSelection(s);
+        if (s.lastCamera !== last.lastCamera) followCamera(s);
         if (
           s.nowMs !== last.nowMs ||
           s.activeClip !== last.activeClip ||
@@ -627,8 +977,22 @@ export function createMapController(
     updateDraw: () => {
       if (ready) updateDraw();
     },
+    setOverlays: (overlays) => {
+      propOverlays = overlays;
+      syncOverlays();
+    },
+    setIssueFilter: (only) => {
+      issueFilter = only;
+      if (ready) renderIssues(store.getState());
+    },
+    setIssueColor: (by) => {
+      issueColor = by;
+      applyIssueColor();
+    },
     dispose: () => {
       disposed = true;
+      if (pyrTimer) clearTimeout(pyrTimer);
+      tip.remove();
       for (const c of cleanups) c();
       map.remove();
     },

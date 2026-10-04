@@ -1,8 +1,9 @@
 import type { AioBridge } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
-import type { MapController } from './controller';
+import type { IssueColorBy, MapController } from './controller';
 import type { MapDrawSeam } from './draw';
+import type { MapOverlay } from './vector';
 
 export interface MapViewProps {
   className?: string;
@@ -10,6 +11,12 @@ export interface MapViewProps {
   showFlights?: boolean;
   /** Drawing on the map (map sightings): clicks, double click and a preview of the shape. */
   draw?: MapDrawSeam;
+  /** GeoJSON overlays drawn under the issues (road centreline, PCI units, density cells). */
+  overlays?: readonly MapOverlay[];
+  /** Show only these issues (default: all). */
+  issueFilter?: ReadonlySet<string> | null;
+  /** Colour issues by their severity (default) or by their class. */
+  issueColorBy?: IssueColorBy;
 }
 
 type Status = 'loading' | 'ready' | 'no-packs' | 'error';
@@ -28,7 +35,14 @@ function bridge(): AioBridge | undefined {
  * Offline 2D map (MapLibre + PMTiles packs over aio://) with project rasters, flight paths and the
  * live video footprint, sharing selection and playhead through @aio/workspace. Owner: stream S5.
  */
-export function MapView({ className, showFlights = true, draw }: MapViewProps) {
+export function MapView({
+  className,
+  showFlights = true,
+  draw,
+  overlays,
+  issueFilter = null,
+  issueColorBy = 'severity',
+}: MapViewProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<Status>('loading');
   // The controller reads the latest seam on each click.
@@ -38,6 +52,17 @@ export function MapView({ className, showFlights = true, draw }: MapViewProps) {
     drawRef.current = draw ?? null;
     ctlRef.current?.updateDraw();
   }, [draw, draw?.mode, draw?.vertices]);
+  // Overlays, filter and colouring, applied when the map starts and on change.
+  const [started, setStarted] = useState(0);
+  useEffect(() => {
+    ctlRef.current?.setOverlays(overlays ?? []);
+  }, [overlays, started]);
+  useEffect(() => {
+    ctlRef.current?.setIssueFilter(issueFilter);
+  }, [issueFilter, started]);
+  useEffect(() => {
+    ctlRef.current?.setIssueColor(issueColorBy);
+  }, [issueColorBy, started]);
 
   useEffect(() => {
     const el = ref.current;
@@ -70,6 +95,7 @@ export function MapView({ className, showFlights = true, draw }: MapViewProps) {
         });
         life.ctl = ctl;
         ctlRef.current = ctl;
+        setStarted((n) => n + 1);
         life.observer = new ResizeObserver(() => {
           ctl.resize();
         });
