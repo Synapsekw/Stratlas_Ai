@@ -1,9 +1,11 @@
 import {
   parseManifest,
+  type CameraOrientation,
   type LayerPatch,
   type NewProjectRequest,
   type ProjectManifest,
   type SeverityTemplate,
+  type Vec3,
 } from '@aio/schema';
 import { copyFile, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -97,9 +99,15 @@ export async function createProject(
   return { root, manifest };
 }
 
+/** Orientation bias to a thousandth of a degree (well below a pixel on any frame). */
+function roundOrientation(o: CameraOrientation): CameraOrientation {
+  const r = (v: number) => Math.round(v * 1000) / 1000;
+  return { yawDeg: r(o.yawDeg), pitchDeg: r(o.pitchDeg), rollDeg: r(o.rollDeg) };
+}
+
 /**
- * Apply an alignment to layers and save: a `transform` to mesh layers (georeference), `offsetMs`
- * and `lens` to video layers (calibration). Backs up and validates the manifest first.
+ * Apply an alignment to layers and save: a `transform` to mesh layers (georeference), `offsetMs`,
+ * `lens`, `orientation` and `positionOffsetM` to video layers (calibration). Backs up and validates the manifest first.
  */
 export async function updateLayers(
   root: string,
@@ -120,11 +128,18 @@ export async function updateLayers(
     }
     if (l.kind !== 'video')
       throw new Error(`"${l.name}" is not a video; time offset and lens belong to video layers.`);
-    return {
+    const next = {
       ...l,
       ...(patch.offsetMs !== undefined ? { offsetMs: Math.round(patch.offsetMs) } : {}),
       ...(patch.lens ? { lens: patch.lens } : {}),
+      ...(patch.orientation ? { orientation: roundOrientation(patch.orientation) } : {}),
+      ...(patch.positionOffsetM
+        ? { positionOffsetM: patch.positionOffsetM.map((v) => Math.round(v * 1000) / 1000) as Vec3 }
+        : {}),
     };
+    if (patch.orientation === null) delete next.orientation;
+    if (patch.positionOffsetM === null) delete next.positionOffsetM;
+    return next;
   });
   const manifest: ProjectManifest = { ...m, layers };
   const backup = await writeManifestFile(root, manifest);

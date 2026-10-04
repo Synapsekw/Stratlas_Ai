@@ -64,5 +64,37 @@ export {
   type SrtTiming,
 } from './srt';
 export { readMp4VideoInfo, type Mp4VideoInfo, type ReadAt } from './mp4';
-export { fitLens, projectPair, type LensFit, type LensFitStats, type LensPair } from './calibrate';
-export { setCalibrationLens } from './rig';
+export {
+  calibrationStats,
+  fitCalibration,
+  fitLens,
+  pairErrorPx,
+  pairsNeeded,
+  projectCalibrated,
+  projectPair,
+  type CalibrationFit,
+  type CalibrationFitOptions,
+  type CalibrationParam,
+  type CalibrationState,
+  type LensFit,
+  type LensFitStats,
+  type LensPair,
+  type PoseLookup,
+} from './calibrate';
+export {
+  NO_ORIENTATION,
+  biasQuat,
+  composeOrientation,
+  isZeroOrientation,
+  orientCamera,
+  orientationFromQuat,
+} from './orientation';
+export {
+  autoAlign,
+  grayFromRgba,
+  resizeGray,
+  type AutoAlignOptions,
+  type AutoAlignResult,
+  type GrayImage,
+} from './autoalign';
+export { setCalibrationLens, setCalibrationOrientation, setCalibrationPosition } from './rig';

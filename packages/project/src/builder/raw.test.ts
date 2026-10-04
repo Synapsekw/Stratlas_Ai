@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createProject, updateLayers } from './create';
+import { createProject, updateLayers, writeManifestFile } from './create';
 import {
   NO_PIPELINE,
   importRawFiles,
@@ -318,5 +318,44 @@ describe('updateLayers', () => {
       updateLayers(root, ['mesh-m'], { lens: { model: 'pinhole', hfovDeg: 70, aspect: 1.5 } }),
     ).rejects.toThrow(/video/);
     await expect(updateLayers(root, ['nope'], { transform: t })).rejects.toThrow(/nope/);
+  });
+
+  it('saves and clears a video orientation bias without touching the other fields', async () => {
+    const root = await project();
+    const m = await readManifest(root);
+    const clip = {
+      kind: 'video' as const,
+      id: 'clip-a',
+      name: 'Clip A',
+      visible: true,
+      src: { path: 'video/a.mp4' },
+      flight: { src: { path: 'flights/a.json' }, startUtcMs: 1676974958000 },
+      lens: { model: 'pinhole' as const, hfovDeg: 72.2, aspect: 1.8972 },
+      offsetMs: 144000,
+    };
+    await writeManifestFile(root, { ...m, layers: [...m.layers, clip] });
+    const r = await updateLayers(root, ['clip-a'], {
+      orientation: { yawDeg: 0.41234, pitchDeg: -7.98765, rollDeg: 0.2 },
+    });
+    expect(r.manifest.layers.find((l) => l.id === 'clip-a')).toMatchObject({
+      offsetMs: 144000,
+      lens: clip.lens,
+      orientation: { yawDeg: 0.412, pitchDeg: -7.988, rollDeg: 0.2 },
+    });
+    const moved = await updateLayers(root, ['clip-a'], { positionOffsetM: [1.23456, 40, -2] });
+    expect(moved.manifest.layers.find((l) => l.id === 'clip-a')).toMatchObject({
+      positionOffsetM: [1.235, 40, -2],
+      orientation: { pitchDeg: -7.988 },
+    });
+    const cleared = await updateLayers(root, ['clip-a'], {
+      orientation: null,
+      positionOffsetM: null,
+    });
+    const after = cleared.manifest.layers.find((l) => l.id === 'clip-a');
+    expect(after && 'orientation' in after).toBe(false);
+    expect(after && 'positionOffsetM' in after).toBe(false);
+    expect((await readManifest(root)).layers.find((l) => l.id === 'clip-a')).toMatchObject({
+      offsetMs: 144000,
+    });
   });
 });

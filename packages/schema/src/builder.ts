@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { IsoDate, Mat4, Vec3 } from './common';
-import { LensModel } from './layers';
+import { CameraOrientation, LensModel } from './layers';
 import { ClassCatalogue, SeverityModel } from './severity';
 
 /** What a project is for; picks defaults in the builder and the landing screen. */
@@ -50,15 +50,28 @@ export const ImportItem = z.object({
   jobId: z.string().optional(),
 });
 
-/** Patch for `builder:updateLayers`: a mesh georeference, or a video time and lens calibration. */
+/**
+ * Patch for `builder:updateLayers`: a mesh georeference, or a video calibration (time offset,
+ * lens, orientation bias, position offset; `null` clears a bias).
+ */
 export const LayerPatch = z.union([
   z.object({ transform: Mat4 }).strict(),
   z
-    .object({ offsetMs: z.number().optional(), lens: LensModel.optional() })
+    .object({
+      offsetMs: z.number().optional(),
+      lens: LensModel.optional(),
+      orientation: CameraOrientation.nullable().optional(),
+      positionOffsetM: Vec3.nullable().optional(),
+    })
     .strict()
-    .refine((p) => p.offsetMs !== undefined || p.lens !== undefined, {
-      message: 'Give offsetMs, lens or both',
-    }),
+    .refine(
+      (p) =>
+        p.offsetMs !== undefined ||
+        p.lens !== undefined ||
+        p.orientation !== undefined ||
+        p.positionOffsetM !== undefined,
+      { message: 'Give offsetMs, lens, orientation or positionOffsetM' },
+    ),
 ]);
 
 export type ProjectType = z.infer<typeof ProjectType>;
