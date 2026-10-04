@@ -183,7 +183,12 @@ def process(
     log: Callable[..., None] = lambda *a, **k: None,
     check: Callable[[], None] = lambda: None,
     progress: Callable[[float, str | None], None] = lambda f, m=None: None,
+    work: dict | None = None,
 ) -> dict:
+    """Run the kit's process step. ``work``, when given, receives the arrays the kit's
+    ``process.py`` saved under ``out/work/`` for ``package.py``: ``zones`` (zones05.npy),
+    ``labels`` per epoch (lab05_<e>.npy) and ``piledata`` ((pile, epoch) -> pile_bases dict,
+    piledata.pkl)."""
     G = job["grid"]
     R10 = G["dsm_res"]
     R = R10 * F
@@ -274,6 +279,10 @@ def process(
         (cents[k - 1], {e: (k if (LAB[e] == k).sum() * R * R >= 60 else None) for e in EPS}, k) for k in order
     ]
 
+    if work is not None:
+        work["zones"] = zl.astype(np.int16)
+        work["labels"] = {e: LAB[e].astype(np.int16) for e in EPS}
+        work["piledata"] = {}
     meta = {}
     for e in job["epochs"]:
         res["epochs"][e["id"]] = {k: e[k] for k in EPOCH_META if k in e}
@@ -289,6 +298,8 @@ def process(
             if not k:
                 continue
             d = pile_bases(Z10[e], LAB[e], k, ND[e], R10, log)
+            if work is not None:
+                work["piledata"][(pid, e)] = d
             vol = {b: volumes(d["z"], d["m"], d["bases"][b], R10) for b in ("low", "avg", "plane", "tin")}
             y0, y1, x0, x1 = d["bbox5"]
             m = d["m"]

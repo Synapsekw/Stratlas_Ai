@@ -6,6 +6,7 @@ from .aik.pipelines import AikCameras, AikProject, AikRecords
 from .pointcloud import PointcloudToCopc
 from .runtime import Pipeline
 from .selftest import SelfTest
+from .volumetric.build import VolumetricBuild
 from .volumetric.pipeline import VolumetricProcess
 
 
@@ -15,6 +16,7 @@ def all_pipelines() -> dict[str, Pipeline]:
         AikProject(),
         AikRecords(),
         VolumetricProcess(),
+        VolumetricBuild(),
         PointcloudToCopc(),
         SelfTest(),
     ]
