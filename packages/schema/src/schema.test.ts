@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   ipc,
+  ipcEvents,
+  MapPackInfo,
   needsApproval,
+  PackJob,
+  Settings,
   parseManifest,
   Issue,
   ToolMeta,
@@ -198,5 +202,80 @@ describe('ipc contracts', () => {
     expect(res.safeParse({ path: null }).success).toBe(true);
     expect(res.safeParse({ path: 'C:/Users/x/register.csv' }).success).toBe(true);
     expect(res.safeParse({ path: null, error: 'Disk full' }).success).toBe(true);
+  });
+
+  it('keeps old settings files valid and accepts the platform settings', () => {
+    const old = {
+      cloudAi: false,
+      theme: 'dark',
+      sidebarCollapsed: false,
+      dataRoot: 'E:/Data',
+      routes: [],
+    };
+    expect(Settings.safeParse(old).success).toBe(true);
+    const next = {
+      ...old,
+      theme: 'system',
+      direction: 'rtl',
+      offlineOnly: true,
+      updateCheck: false,
+      updateUrl: 'https://updates.example.com/stratlas/',
+    };
+    expect(Settings.safeParse(next).success).toBe(true);
+    expect(Settings.safeParse({ ...old, direction: 'up' }).success).toBe(false);
+    expect(Settings.safeParse({ ...old, updateUrl: 'ftp://x' }).success).toBe(false);
+    expect(Settings.safeParse({ ...old, updateUrl: '' }).success).toBe(true);
+  });
+
+  it('describes map packs with an optional build date and source', () => {
+    const pack = { id: 'kuwait', label: 'Kuwait', bbox: [46.5, 28.5, 48.5, 30.1], maxZoom: 15 };
+    expect(MapPackInfo.safeParse({ ...pack, sizeBytes: 1 }).success).toBe(true);
+    expect(
+      MapPackInfo.safeParse({
+        ...pack,
+        sizeBytes: 1,
+        builtAt: '2026-10-03T00:00:00.000Z',
+        source: 'download',
+        build: '20261003',
+      }).success,
+    ).toBe(true);
+    expect(MapPackInfo.safeParse({ ...pack, sizeBytes: 1, source: 'web' }).success).toBe(false);
+  });
+
+  it('starts a pack download only for a sane region', () => {
+    const req = ipc['packs:download'].request;
+    const ok = { id: 'qatar', label: 'Qatar', bbox: [50.7, 24.4, 51.7, 26.2], maxZoom: 14 };
+    expect(req.safeParse(ok).success).toBe(true);
+    expect(req.safeParse({ ...ok, maxZoom: 16 }).success).toBe(false);
+    expect(req.safeParse({ ...ok, id: 'Bad Id' }).success).toBe(false);
+    expect(req.safeParse({ ...ok, bbox: [52, 24, 51, 26] }).success).toBe(false);
+    expect(req.safeParse({ ...ok, bbox: [50, -91, 51, 26] }).success).toBe(false);
+  });
+
+  it('reports pack jobs with progress', () => {
+    const job = {
+      id: 'qatar',
+      label: 'Qatar',
+      bbox: [50.7, 24.4, 51.7, 26.2],
+      maxZoom: 14,
+      state: 'running',
+      progress: 0.4,
+      bytes: 1200,
+      startedAt: '2026-10-04T08:00:00.000Z',
+    };
+    expect(PackJob.safeParse(job).success).toBe(true);
+    expect(PackJob.safeParse({ ...job, progress: 2 }).success).toBe(false);
+    expect(ipcEvents['packs:job'].safeParse(job).success).toBe(true);
+  });
+
+  it('installs updates only from an installer path', () => {
+    const req = ipc['update:verifyFile'].request;
+    expect(req.safeParse({ path: 'C:/Downloads/Setup.exe' }).success).toBe(true);
+    expect(req.safeParse({ path: '' }).success).toBe(false);
+    const res = ipc['update:verifyFile'].response;
+    expect(
+      res.safeParse({ ok: true, version: '0.2.0', current: '0.1.0', signer: 'CN=Synapse' }).success,
+    ).toBe(true);
+    expect(res.safeParse({ ok: false, error: 'Not signed' }).success).toBe(true);
   });
 });

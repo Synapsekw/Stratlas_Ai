@@ -25,6 +25,10 @@ export function defaultSettings(dataRoot: string): Settings {
     sidebarCollapsed: false,
     dataRoot,
     routes: defaultRoutes(),
+    direction: 'ltr',
+    offlineOnly: false,
+    updateCheck: false,
+    updateUrl: '',
   };
 }
 
