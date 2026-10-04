@@ -19,7 +19,10 @@ export type MeasureMode = 'line' | 'polygon';
 export interface RoadState {
   /** Project the road model belongs to. */
   projectId: string | null;
-  status: 'none' | 'loading' | 'ready' | 'error';
+  /** `setup`: a road survey without road.json yet (the road builder has not run). */
+  status: 'none' | 'loading' | 'ready' | 'error' | 'setup';
+  /** Drawing the centreline on the map (setup), its vertices in lon/lat. */
+  draw: { on: boolean; vertices: MapLngLat[] };
   error: string | null;
   road: RoadModel | null;
   /** Every defect (issue with a map sighting), with chainage. */
@@ -43,6 +46,7 @@ export interface RoadState {
 const initial: RoadState = {
   projectId: null,
   status: 'none',
+  draw: { on: false, vertices: [] },
   error: null,
   road: null,
   rows: [],
@@ -86,13 +90,21 @@ function rowsFor(ws: Workspace, road: RoadModel): DefectRow[] {
   });
 }
 
+/** `road.json` of the project, or null when it has none (404). */
+async function fetchRoad(url: string): Promise<unknown> {
+  const res = await fetch(url);
+  if (res.status === 404) return null;
+  return res.json();
+}
+
 /**
  * Follow the open project: load `road.json` for a road survey (data-conventions section 9) and
- * keep the defect rows in step with the issues. Returns an unsubscribe function.
+ * keep the defect rows in step with the issues. A road survey without road.json (the road
+ * builder has not run yet) is in `setup`. Returns an unsubscribe function.
  */
 export function startRoadSync(
   store = workspace,
-  load: (url: string) => Promise<unknown> = async (url) => (await fetch(url)).json(),
+  load: (url: string) => Promise<unknown> = fetchRoad,
 ): () => void {
   let seq = 0;
   const open = (ws: Workspace) => {
@@ -107,6 +119,10 @@ export function startRoadSync(
     void load(assetUrl(project.id, { path: 'road.json' }))
       .then((json) => {
         if (mine !== seq) return;
+        if (json === null) {
+          roadStore.setState({ status: 'setup' });
+          return;
+        }
         const r = parseRoadModel(json);
         if (!r.ok) {
           roadStore.setState({ status: 'error', error: r.error });

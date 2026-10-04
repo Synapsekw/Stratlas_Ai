@@ -12,6 +12,7 @@ const CHANNELS = {
   'project:writeIssues': true,
   'project:readVolumes': true,
   'project:writeBoundaries': true,
+  'project:writeCentreline': true,
   'packs:list': true,
   'settings:get': true,
   'settings:set': true,

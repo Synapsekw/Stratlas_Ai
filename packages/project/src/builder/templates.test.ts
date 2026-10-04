@@ -1,6 +1,11 @@
 import { parseManifest, type ProjectManifest } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { GENERAL_TEMPLATE, newProjectManifest, severityTemplates } from './templates';
+import {
+  GENERAL_TEMPLATE,
+  newProjectManifest,
+  ROAD_TEMPLATE,
+  severityTemplates,
+} from './templates';
 
 const sev = (id: string, name: string) => ({
   id,
@@ -35,9 +40,23 @@ describe('severityTemplates', () => {
       project('HCl', [sev('hcl-lining', 'HCl lining')]),
       project('EBSM copy', [sev('aik-stack', 'Stack')]),
     ]);
-    expect(t.map((x) => x.id)).toEqual(['aik-stack', 'hcl-lining', GENERAL_TEMPLATE.id]);
+    expect(t.map((x) => x.id)).toEqual([
+      'aik-stack',
+      'hcl-lining',
+      GENERAL_TEMPLATE.id,
+      ROAD_TEMPLATE.id,
+    ]);
     expect(t[0]?.source).toBe('EBSM, EBSM copy');
     expect(t[0]?.catalogue?.classes.map((c) => c.id)).toEqual(['corrosion']);
+  });
+
+  it('offers the road template (a road catalogue) once', () => {
+    expect(ROAD_TEMPLATE.catalogue?.assetType).toBe('road');
+    expect(ROAD_TEMPLATE.catalogue?.classes).toHaveLength(10);
+    const ring = project('Ring', []);
+    ring.severityModels = [ROAD_TEMPLATE.model];
+    const t = severityTemplates([ring]);
+    expect(t.filter((x) => x.id === ROAD_TEMPLATE.id)).toHaveLength(1);
   });
 });
 

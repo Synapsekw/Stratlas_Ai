@@ -7,6 +7,7 @@ import {
   canResume,
   createJobsStore,
   finishedManifestJob,
+  finishedProjectJob,
   isActive,
 } from './jobs';
 
@@ -137,5 +138,48 @@ describe('finishedManifestJob', () => {
     expect(finishedManifestJob([running], [done], 'E:/data/projects/other')).toBe(false);
     const selftest = { ...done, pipeline: 'system.selftest' as const };
     expect(finishedManifestJob([running], [selftest], 'E:/data/projects/site')).toBe(false);
+    expect(finishedProjectJob([running], [done], 'E:/data/projects/site')).toBe(false);
+  });
+
+  it('reopens the project whole (manifest and issues) when the road builder finishes', () => {
+    const running = job({ id: 'r1', pipeline: 'road.build', project: 'E:\\p', status: 'running' });
+    const done = { ...running, status: 'done' as const };
+    expect(finishedManifestJob([running], [done], 'E:/p')).toBe(true);
+    expect(finishedProjectJob([running], [done], 'E:/p')).toBe(true);
+  });
+});
+
+describe('road builder form', () => {
+  it('sends one ortho as a path and several blocks as a list', () => {
+    expect(
+      buildParams('road.build', {
+        centreline: 'road/centreline-drawn.geojson',
+        ortho: 'D:/a.tif',
+        units: '',
+        unitLength: '30',
+      }),
+    ).toEqual({
+      ok: true,
+      params: { centreline: 'road/centreline-drawn.geojson', ortho: 'D:/a.tif', unitLength: 30 },
+    });
+    const two = buildParams('road.build', {
+      centreline: 'c.dxf',
+      ortho: 'D:/b1.tif; D:/b2.tif;',
+      units: 'grid',
+    });
+    expect(two).toEqual({
+      ok: true,
+      params: { centreline: 'c.dxf', ortho: ['D:/b1.tif', 'D:/b2.tif'], units: 'grid' },
+    });
+    expect(buildParams('road.build', {})).toMatchObject({ ok: false });
+  });
+
+  it('a draft fills in the next new job form once', () => {
+    const { bridge } = fakeBridge({});
+    const store = createJobsStore(bridge, undefined);
+    store.getState().prepare({ pipeline: 'road.build', project: 'E:\\p', values: { lanes: '3' } });
+    expect(store.getState().draft?.values.lanes).toBe('3');
+    store.getState().prepare(null);
+    expect(store.getState().draft).toBeNull();
   });
 });

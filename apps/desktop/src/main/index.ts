@@ -73,6 +73,7 @@ import {
 } from './packages';
 import { openProject, ProjectRegistry, readManifest, writeProjectIssues } from './project';
 import { readPackageVolumes, readVolumes, writeBoundaries } from './boundaries';
+import { writeCentreline } from './centreline';
 import { createAioHandler } from './protocol/handler';
 import { cspForUrl } from './protocol/legacy';
 import { saveFile } from './saveFile';
@@ -491,6 +492,17 @@ function registerIpc(): void {
       return { ok: false, error: `Project "${projectId}" is not open. Open it, then save again.` };
     }
     return writeBoundaries(root, file);
+  });
+  handle('project:writeCentreline', ({ projectId, coordinates }) => {
+    if (registry.package(projectId))
+      return {
+        ok: false,
+        error: 'This project is a read-only package. Nothing can be saved in it.',
+      };
+    const root = registry.root(projectId);
+    if (root === undefined)
+      return { ok: false, error: `Project "${projectId}" is not open. Open it, then save again.` };
+    return writeCentreline(root, coordinates);
   });
 
   handle('packs:list', () => packs.list());

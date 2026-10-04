@@ -101,6 +101,19 @@ describe('road sync', () => {
     expect(roadStore.getState().status).toBe('none');
   });
 
+  it('a road survey without road.json waits in setup for the road builder', async () => {
+    const ws = createWorkspace();
+    stop = startRoadSync(ws, () => Promise.resolve(null));
+    ws.getState().openProject({
+      id: 'new-road',
+      root: 'x',
+      manifest: { ...manifest, layers: [], type: 'road' },
+    });
+    await expect.poll(() => roadStore.getState().status).toBe('setup');
+    expect(roadStore.getState().road).toBeNull();
+    expect(roadStore.getState().draw).toEqual({ on: false, vertices: [] });
+  });
+
   it('reports a broken road model', async () => {
     const ws = createWorkspace();
     stop = startRoadSync(ws, () => Promise.resolve({ schema: 'aio.road/1' }));

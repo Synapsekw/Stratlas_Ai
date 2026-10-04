@@ -260,6 +260,52 @@ export const en = {
   'settings.about.licences': 'Third-party licences',
   'settings.about.installFromFile': 'Install update from file',
   'settings.about.checkOnline': 'Check for updates online',
+
+  // Road builder (road.build in the Jobs panel)
+  'jobs.chooseFile': 'Choose',
+  'jobs.road.centreline': 'Centreline',
+  'jobs.road.centrelineHelp':
+    'GeoJSON, KML, DXF or the kit centreline. A line drawn on the map is road/centreline-drawn.geojson.',
+  'jobs.road.centrelineEpsg': 'Centreline EPSG (DXF only)',
+  'jobs.road.ortho': 'Orthomosaic GeoTIFF',
+  'jobs.road.orthoHelp': 'One file, or several blocks separated by a semicolon. Read only.',
+  'jobs.road.orthoCm': 'Finest ortho pixel (cm)',
+  'jobs.road.orthoCmPlaceholder': 'As the GeoTIFF',
+  'jobs.road.defects': 'Defect polygons',
+  'jobs.road.defectsHelp':
+    'GeoJSON, a shapefile (.shp) or the road review defects.js, with a type and a stage per defect. Read only.',
+  'jobs.road.pavement': 'Pavement raster',
+  'jobs.road.pavementHelp':
+    'Optional footprint, pixels above 0 are pavement. Without it, the centreline buffered by the lanes.',
+  'jobs.road.units': 'Sample units',
+  'jobs.road.unitsChainage': 'Along the road',
+  'jobs.road.unitsGrid': 'Square grid (as delivered for the 1st Ring Road)',
+  'jobs.road.unitLength': 'Unit length (m)',
+  'jobs.road.unitLengthHelp':
+    'Along the road: about 225 m² per unit (ASTM D6433) by default. Grid: the cell size, 15 m by default.',
+  'jobs.road.lanes': 'Lanes',
+  'jobs.road.laneWidth': 'Lane width (m)',
+  'jobs.road.filterGeo': 'Lines and polygons',
+  'jobs.road.filterRaster': 'GeoTIFF',
+
+  // Road workspace before the road builder has run
+  'road.setup.title': 'Road setup',
+  'road.setup.text':
+    'This road survey has no road model yet. Draw the centreline on the map over the orthomosaic, or import one, then run the road builder.',
+  'road.setup.draw': 'Draw centreline',
+  'road.setup.drawing':
+    'Click along the road from its start (km 0). Double click or Finish to end, Backspace removes the last point.',
+  'road.setup.mapOnly': 'Switch the stage to the map to draw.',
+  'road.setup.finish': 'Finish',
+  'road.setup.clear': 'Clear',
+  'road.setup.cancel': 'Cancel',
+  'road.setup.points_one': '{count} point',
+  'road.setup.points_other': '{count} points, {length}',
+  'road.setup.saved': 'Centreline saved as {path}.',
+  'road.setup.run': 'Run the road builder',
+  'road.setup.runHelp':
+    'Opens a new road survey job for this project, with the drawn centreline filled in.',
+  'road.unitsAlong': '{count} · {length} m along the road',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

@@ -18,7 +18,7 @@ import { initAuthor } from './author';
 import { roadStore, startRoadSync } from './road/store';
 import { Toasts } from './exports/Toasts';
 import { spaceIsPlayPause } from './keys';
-import { finishedManifestJob } from './jobs';
+import { finishedManifestJob, finishedProjectJob } from './jobs';
 import { bridge, jobs, shell, useShell } from './shell';
 import { PackageExportDialog } from './shell/PackageExport';
 import { Palette } from './shell/Palette';
@@ -142,10 +142,13 @@ export function App() {
     const stopJobReload = jobs.subscribe((s, prev) => {
       const project = workspace.getState().project;
       if (!project || !finishedManifestJob(prev.jobs, s.jobs, project.root)) return;
+      // the road builder also rewrites issues.json and road.json: reopen the project whole
+      const whole = finishedProjectJob(prev.jobs, s.jobs, project.root);
       void bridge.call('project:open', { path: project.root }).then((r) => {
-        const now = workspace.getState().project;
-        if (r.ok && r.value.ok && now?.id === project.id)
-          workspace.getState().replaceManifest(r.value.manifest);
+        const ws = workspace.getState();
+        if (!r.ok || !r.value.ok || ws.project?.id !== project.id) return;
+        if (whole) ws.openProject({ ...project, manifest: r.value.manifest }, r.value.issues);
+        else ws.replaceManifest(r.value.manifest);
       });
     });
     void initAuthor(bridge);
