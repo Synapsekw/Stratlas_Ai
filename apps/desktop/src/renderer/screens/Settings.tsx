@@ -4,9 +4,10 @@ import { formatBytes, Icon, SevChip, Switch, type IconName } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useState } from 'react';
 import { setAuthorName, useAuthor } from '../author';
+import { GPU_TIERS, TIER_ORDER, graphics, useGraphics, type GpuTier } from '../graphics';
 import { bridge, shell, useCall, useShell } from '../shell';
 
-type Page = 'ai' | 'privacy' | 'data' | 'maps' | 'severity';
+type Page = 'ai' | 'privacy' | 'data' | 'maps' | 'severity' | 'graphics';
 
 const PAGES: { page: Page; label: string; icon: IconName; group: string }[] = [
   { page: 'ai', label: 'AI providers', icon: 'agent', group: 'Intelligence' },
@@ -14,7 +15,84 @@ const PAGES: { page: Page; label: string; icon: IconName; group: string }[] = [
   { page: 'data', label: 'Data folder', icon: 'layers', group: 'Data' },
   { page: 'maps', label: 'Offline maps', icon: 'map', group: 'Data' },
   { page: 'severity', label: 'Severity models', icon: 'issues', group: 'Data' },
+  { page: 'graphics', label: 'Graphics quality', icon: 'scene', group: 'Display' },
 ];
+
+const millions = (n: number) => `${String(n / 1e6)} M`;
+
+function Graphics() {
+  const g = graphics();
+  const renderer = useGraphics((s) => s.renderer);
+  const detected = useGraphics((s) => s.detected);
+  const override = useGraphics((s) => s.override);
+  const tier = useGraphics((s) => s.tier);
+  const p = GPU_TIERS[tier];
+  const choices: { id: GpuTier | null; label: string; hint: string }[] = [
+    {
+      id: null,
+      label: `Auto (${GPU_TIERS[detected].label})`,
+      hint: 'Follow the detected graphics card',
+    },
+    ...TIER_ORDER.map((t) => ({ id: t, label: GPU_TIERS[t].label, hint: GPU_TIERS[t].hint })),
+  ];
+  return (
+    <>
+      <div className="sblock">
+        <h2>
+          Quality preset <span className="sub">{p.label} in use</span>
+        </h2>
+        <p className="help">
+          Sets the point budget, eye-dome lighting, shadow detail and render resolution. The point
+          budget and lighting can still be changed in the point cloud panel.
+        </p>
+        <div className="pop-seg" role="group" aria-label="Graphics quality preset">
+          {choices.map((c) => (
+            <button
+              key={c.id ?? 'auto'}
+              type="button"
+              className="btn sm"
+              aria-pressed={override === c.id}
+              title={c.hint}
+              onClick={() => {
+                g.getState().setOverride(c.id);
+              }}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="sblock" data-testid="graphics-preset">
+        <h2>{p.label}</h2>
+        <div className="opt">
+          <b>Point budget</b>
+          <span>Points drawn at once across every cloud</span>
+          <span className="mono">{millions(p.pointBudget)}</span>
+        </div>
+        <div className="opt">
+          <b>Eye-dome lighting</b>
+          <span>Depth shading of point clouds</span>
+          <span className="mono">{p.edl ? 'On' : 'Off'}</span>
+        </div>
+        <div className="opt">
+          <b>Shadow map</b>
+          <span>Sun shadow detail, texels</span>
+          <span className="mono">{p.shadowMapSize}</span>
+        </div>
+        <div className="opt">
+          <b>Pixel ratio</b>
+          <span>Highest render resolution on high density screens</span>
+          <span className="mono">{p.maxPixelRatio}x</span>
+        </div>
+      </div>
+      <div className="sblock">
+        <h2>Graphics card</h2>
+        <p className="help mono">{renderer ?? 'Not reported by the system'}</p>
+        <p className="help">Press Ctrl+Shift+F in the 3D view for frame rate and memory.</p>
+      </div>
+    </>
+  );
+}
 
 const PROVIDER_INFO: Record<
   AiProvider,
@@ -549,6 +627,10 @@ const HEAD: Record<Page, { title: string; text: string }> = {
     title: 'Offline maps',
     text: 'Vector map packs render with no network. They are shared by every project on this workstation.',
   },
+  graphics: {
+    title: 'Graphics quality',
+    text: 'Presets matched to the graphics card, detected when the app starts. Choose one to override it on this workstation.',
+  },
   severity: {
     title: 'Severity models',
     text: 'Each project grades issues with its own model. Levels carry a colour, criteria and a recommended action.',
@@ -612,6 +694,7 @@ export function SettingsScreen() {
           {page === 'data' && <DataFolder />}
           {page === 'maps' && <Maps />}
           {page === 'severity' && <Severity />}
+          {page === 'graphics' && <Graphics />}
         </div>
       </div>
     </section>

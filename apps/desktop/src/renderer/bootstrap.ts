@@ -1,9 +1,10 @@
 import { setFlightPoses } from '@aio/annotate';
 import { configureEngine, getActiveStage, registerEngineAdapters } from '@aio/engine';
 import { registerMapAdapters } from '@aio/maps';
-import { registerPointcloudAdapters } from '@aio/pointcloud';
+import { pointcloudSettings, registerPointcloudAdapters } from '@aio/pointcloud';
 import { loadFlight, registerVideoAdapters } from '@aio/video';
 import { assetUrl, workspace, type OpenProject } from '@aio/workspace';
+import { graphics } from './graphics';
 
 let started = false;
 
@@ -42,12 +43,16 @@ export function bootstrap(): void {
   if (started) return;
   started = true;
   configureEngine({ resolveUrl: assetUrl, devTools: import.meta.env.DEV });
+  // GPU tier: pixel ratio, shadows, point budget and EDL before the first stage exists
+  graphics().getState().apply();
   registerEngineAdapters();
   registerPointcloudAdapters();
   registerVideoAdapters();
   registerMapAdapters();
   // Inspection hook for the end-to-end tests and DevTools (read the clock, the live scene).
-  Object.assign(window, { __stratlas: { workspace, stage: getActiveStage } });
+  Object.assign(window, {
+    __stratlas: { workspace, stage: getActiveStage, graphics, pointcloud: pointcloudSettings },
+  });
   shareFlightPoses(workspace.getState().project);
   workspace.subscribe((s, prev) => {
     if (s.project !== prev.project) shareFlightPoses(s.project);
