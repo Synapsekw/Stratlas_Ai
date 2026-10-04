@@ -236,6 +236,27 @@ test.describe('HCl as a customer package', () => {
         await expect(detail.getByText('Delete issue')).toHaveCount(0);
         await expect(detail.locator('input, textarea, select')).toHaveCount(0);
         await shot(win, 'n4-04-issues');
+        // The register browses only; exports follow the package's allow-list (CSV, PDF, PNG).
+        await expect(win.locator('.ann-bulk')).toHaveCount(0);
+        await expect(win.locator('.ann-row .ann-tick')).toHaveCount(0);
+        await win.getByRole('button', { name: 'Export', exact: true }).click();
+        const menu = win.getByRole('menu', { name: 'Export' });
+        await expect(menu.getByRole('menuitem', { name: /Issues CSV/ })).toBeVisible();
+        for (const hidden of [/GeoJSON/, /COCO/, /Masks ZIP/, /Kit JSON/])
+          await expect(menu.getByRole('menuitem', { name: hidden })).toHaveCount(0);
+        await shot(win, 'n4-04b-export-menu');
+        await win.keyboard.press('Escape');
+        const geo = await win.evaluate(
+          (pid) =>
+            window.aio.invoke('export:run', {
+              jobId: 'e2e-geo',
+              projectId: pid,
+              format: 'geojson',
+            }),
+          id,
+        );
+        expect(geo.ok).toBe(false);
+        expect(geo.ok ? '' : geo.error).toMatch(/does not allow/);
         const refused = await win.evaluate(
           (pid) => window.aio.invoke('project:writeIssues', { projectId: pid, issues: [] }),
           id,

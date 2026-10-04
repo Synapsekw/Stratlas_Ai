@@ -3,6 +3,8 @@ import type { Layer } from '@aio/schema';
 import { CommandPalette, type IconName, type PaletteCommand } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useMemo } from 'react';
+import { actionAllowed, allowedActions } from '../exports/exportModel';
+import { runExportAction } from '../exports/exports';
 import { legacyLayers } from '../legacy';
 import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
@@ -51,6 +53,7 @@ export function Palette() {
   const issues = useWorkspace((s) => s.issues);
   const hidden = useWorkspace((s) => s.hidden);
   const playing = useWorkspace((s) => s.playing);
+  const pkg = useShell((s) => s.pkg);
 
   const commands = useMemo<PaletteCommand[]>(() => {
     const s = shell.getState();
@@ -73,7 +76,7 @@ export function Palette() {
     action('sidebar', 'Toggle sidebar', 'sidebar', () => void s.toggleSidebar(), 'Ctrl B');
     action('add-folder', 'Add project folder', 'import', () => void s.addProjectFolder());
     action('open-package', 'Open a project package (.aio)', 'lock', () => void s.openPackageFile());
-    if (project && !s.pkg) {
+    if (project && !pkg) {
       action('export-package', 'Export project package', 'download', () => {
         s.setExportFor(project.id);
       });
@@ -198,6 +201,31 @@ export function Palette() {
             }),
           });
       }
+      // a package offers only the exports its header allows
+      for (const a of allowedActions(pkg)) {
+        list.push({
+          id: `export:${a.id}`,
+          title: a.title,
+          group: 'Export',
+          icon: a.icon,
+          hint: a.hint,
+          keywords: ['export', 'save', 'download', a.label],
+          run: () => {
+            runExportAction(a.id, { legend: true });
+          },
+        });
+      }
+      if (actionAllowed('snapshot', pkg))
+        list.push({
+          id: 'export:snapshot-plain',
+          title: 'Save a snapshot of the 3D view without legend',
+          group: 'Export',
+          icon: 'camera',
+          keywords: ['export', 'screenshot', 'png', 'image'],
+          run: () => {
+            runExportAction('snapshot', { legend: false });
+          },
+        });
       action('close', 'Close project', 'x', s.closeProject);
     }
     for (const e of library ?? []) {
@@ -256,7 +284,7 @@ export function Palette() {
       });
     }
     return list;
-  }, [library, cloudAi, project, issues, hidden, playing]);
+  }, [library, cloudAi, project, pkg, issues, hidden, playing]);
 
   if (!open) return null;
   return (

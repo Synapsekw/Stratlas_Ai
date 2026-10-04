@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   AiProvider,
   Conversation,
+  EXPORT_FORMATS,
+  EXPORT_FORMAT_KIND,
+  exportKindForFile,
   ipc,
   ipcEvents,
   LocalModelSettings,
@@ -203,6 +206,49 @@ describe('ipc contracts', () => {
     expect(res.safeParse({ path: null }).success).toBe(true);
     expect(res.safeParse({ path: 'C:/Users/x/register.csv' }).success).toBe(true);
     expect(res.safeParse({ path: null, error: 'Disk full' }).success).toBe(true);
+  });
+
+  it('runs an export by format for an open project', () => {
+    const req = ipc['export:run'].request;
+    const job = { jobId: 'j1', projectId: 'hcl', format: 'csv' };
+    expect(req.safeParse(job).success).toBe(true);
+    for (const format of EXPORT_FORMATS) {
+      expect(req.safeParse({ ...job, format }).success).toBe(true);
+    }
+    expect(req.safeParse({ ...job, format: 'xlsx' }).success).toBe(false);
+    expect(req.safeParse({ ...job, path: 'C:/x.csv' }).success).toBe(false);
+    expect(req.safeParse({ ...job, issueIds: ['F01'] }).success).toBe(true);
+    const res = ipc['export:run'].response;
+    expect(res.safeParse({ ok: true, path: null }).success).toBe(true);
+    expect(res.safeParse({ ok: true, path: 'C:/x.csv', count: 3, bytes: 120 }).success).toBe(true);
+    expect(res.safeParse({ ok: false, error: 'Disk full' }).success).toBe(true);
+    expect(ipc['export:cancel'].request.safeParse({ jobId: 'j1' }).success).toBe(true);
+  });
+
+  it('maps every export format to the package export kind of its file', () => {
+    const ext = {
+      csv: 'csv',
+      geojson: 'geojson',
+      coco: 'json',
+      'kit-json': 'json',
+      'masks-zip': 'zip',
+      'report-pdf': 'pdf',
+    } as const;
+    for (const format of EXPORT_FORMATS) {
+      expect(EXPORT_FORMAT_KIND[format]).toBe(exportKindForFile(`x.${ext[format]}`));
+    }
+  });
+
+  it('lists report files and reports export progress', () => {
+    expect(ipc['report:list'].request.safeParse({ projectId: 'hcl' }).success).toBe(true);
+    expect(
+      ipc['report:list'].response.safeParse({
+        files: [{ path: 'report/a.pdf', name: 'a.pdf', sizeBytes: 10 }],
+      }).success,
+    ).toBe(true);
+    const ev = ipcEvents['export:progress'];
+    expect(ev.safeParse({ jobId: 'j1', phase: 'Writing', done: 1, total: 4 }).success).toBe(true);
+    expect(ev.safeParse({ jobId: 'j1', phase: 'Writing', done: -1, total: 4 }).success).toBe(false);
   });
 });
 

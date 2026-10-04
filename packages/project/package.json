@@ -7,7 +7,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./import": "./src/import/index.ts",
-    "./package": "./src/package/index.ts"
+    "./package": "./src/package/index.ts",
+    "./export": "./src/export/index.ts",
+    "./export/node": "./src/export/node.ts"
   },
   "scripts": {
     "test": "vitest run",

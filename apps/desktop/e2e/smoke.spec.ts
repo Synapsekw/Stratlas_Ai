@@ -7,7 +7,12 @@ import { sampleManifest, writeProject } from '../src/main/testing';
 const ALLOWED = ['file:', 'aio:', 'devtools:', 'data:', 'blob:', 'chrome-extension:'];
 
 test('the app starts, exposes the bridge and makes no network requests', async () => {
-  const app = await electron.launch({ args: [join(import.meta.dirname, '../out/main/index.js')] });
+  // an isolated profile: the person's settings stay untouched and the window opens off-screen
+  const base = await mkdtemp(join(tmpdir(), 'stratlas-e2e-'));
+  const app = await electron.launch({
+    args: [join(import.meta.dirname, '../out/main/index.js')],
+    env: { ...process.env, STRATLAS_USER_DATA: join(base, 'user') },
+  });
   const outbound: string[] = [];
   app.context().on('request', (req) => {
     const proto = new URL(req.url()).protocol;
@@ -31,6 +36,7 @@ test('the app starts, exposes the bridge and makes no network requests', async (
 
   expect(outbound).toEqual([]);
   await app.close();
+  await rm(base, { recursive: true, force: true });
 });
 
 test('library, settings and aio:// work offline and the protocol refuses traversal', async () => {

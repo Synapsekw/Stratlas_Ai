@@ -32,12 +32,16 @@ const CHANNELS = {
   'package:plan': true,
   'package:export': true,
   'package:cancel': true,
+  'export:run': true,
+  'export:cancel': true,
+  'report:list': true,
 } as const satisfies Record<IpcChannel, true>;
 
 const EVENTS = {
   'ai:event': true,
   'package:progress': true,
   'app:openPath': true,
+  'export:progress': true,
 } as const satisfies Record<IpcEventName, true>;
 
 const known = <K extends string>(table: Record<K, true>, key: string): key is K =>

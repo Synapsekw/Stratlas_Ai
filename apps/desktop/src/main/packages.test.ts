@@ -1,7 +1,7 @@
 import { exportPackage } from '@aio/project/package';
 import { PackageHeader, ProjectManifest } from '@aio/schema';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -11,8 +11,11 @@ import {
   cloudAllowedFor,
   createPackageJobs,
   createPlanCache,
+  exportFormatRefusal,
   packagePathFromArgv,
+  packageReports,
   ProjectPolicy,
+  stagePackageExport,
 } from './packages';
 import { openProject, ProjectRegistry, writeProjectIssues } from './project';
 import { createAioHandler } from './protocol/handler';
@@ -164,6 +167,39 @@ describe('player policy', () => {
     expect(checkExport(undefined, 'model.glb')).toBeNull();
     expect(checkExport(header, 'issues.csv')).toBeNull();
     expect(checkExport(header, 'report.pdf')).toMatch(/does not allow/);
+  });
+
+  it('limits issue exports to the package list and keeps photo exports to folders', () => {
+    const header = PackageHeader.parse({
+      schema: 'aio.package/1',
+      projectId: 'p',
+      createdAt: '2026-10-04T00:00:00Z',
+      exports: ['issues-csv', 'kit-json', 'masks'],
+    });
+    expect(exportFormatRefusal(undefined, 'masks-zip')).toBeNull();
+    expect(exportFormatRefusal(header, 'csv')).toBeNull();
+    expect(exportFormatRefusal(header, 'kit-json')).toBeNull();
+    expect(exportFormatRefusal(header, 'report-pdf')).toMatch(/does not allow saving PDF/);
+    expect(exportFormatRefusal(header, 'geojson')).toMatch(/does not allow/);
+    expect(exportFormatRefusal(header, 'masks-zip')).toMatch(/project folder/);
+  });
+
+  it('lists the reports a package carries and stages its issues for an export', async () => {
+    const file = await makePackage(join(base, 'staged.aio'));
+    const reg = new ProjectRegistry();
+    const opened = await openProject(file, reg);
+    if (!opened.ok) throw new Error(opened.error);
+    const pkg = reg.package(opened.id);
+    if (!pkg) throw new Error('no package');
+    expect(packageReports(pkg.archive).every((r) => r.path.startsWith('report/'))).toBe(true);
+    const staged = await stagePackageExport(pkg, base);
+    const issues = JSON.parse(await readFile(join(staged.root, 'issues.json'), 'utf8')) as {
+      issues: unknown[];
+    };
+    expect(issues.issues).toHaveLength(opened.issues.length);
+    expect(existsSync(join(staged.root, 'manifest.json'))).toBe(true);
+    await staged.dispose();
+    expect(existsSync(staged.root)).toBe(false);
   });
 
   it('follows the project that was opened last', async () => {

@@ -27,10 +27,22 @@ import { OFFSCREEN_SWITCHES, offscreenOrigin, windowMode } from './windowMode';
 import { validated, type Handler } from './ipc';
 import { createKeyVault } from './keys';
 import { addToLibrary, createLibraryStore, listLibrary, listPacks } from './library';
+import { createExportJobs } from './exports/jobs';
+import { printReport } from './exports/reportWindow';
+import { listReports } from './exports/reports';
+import { runInUtility } from './exports/utility';
 import { buildMenu } from './menu';
 import { popupAction } from './popup';
-import { createPackageJobs, createPlanCache, packagePathFromArgv, ProjectPolicy } from './packages';
-import { openProject, ProjectRegistry, writeProjectIssues } from './project';
+import {
+  createPackageJobs,
+  createPlanCache,
+  exportFormatRefusal,
+  packagePathFromArgv,
+  packageReports,
+  ProjectPolicy,
+  stagePackageExport,
+} from './packages';
+import { openProject, ProjectRegistry, readManifest, writeProjectIssues } from './project';
 import { createAioHandler } from './protocol/handler';
 import { cspForUrl } from './protocol/legacy';
 import { saveFile } from './saveFile';
@@ -170,6 +182,45 @@ function openRoot(projectId: string): { root: string } | { error: string } {
     : { root };
 }
 
+function emitExportProgress(event: IpcEvent<'export:progress'>): void {
+  const parsed = ipcEvents['export:progress'].safeParse(event);
+  if (parsed.success) targetWindow()?.webContents.send('export:progress', parsed.data);
+}
+
+/** Save dialog for exports, parented to the app window. */
+async function chooseSavePath(
+  defaultPath: string,
+  filter: { name: string; extensions: string[] },
+): Promise<string | null> {
+  const win = targetWindow();
+  const options = { defaultPath, filters: [filter], title: 'Export' };
+  const r = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
+  return r.canceled || !r.filePath ? null : r.filePath;
+}
+
+const exportJobs = createExportJobs({
+  projectRoot: (id) => registry.root(id),
+  // Package export limits (APP-5): the header's allow-list, checked before the save dialog.
+  refuse: (id, format) => exportFormatRefusal(registry.package(id)?.header, format),
+  // A package is read in place: its manifest and issues are staged in a temp folder for the job.
+  stage: async (id) => {
+    const pkg = registry.package(id);
+    return pkg ? stagePackageExport(pkg, app.getPath('temp')) : undefined;
+  },
+  projectName: async (root) => {
+    const m = await readManifest(root);
+    return m.ok ? m.value.name : 'project';
+  },
+  get downloadsDir() {
+    return app.getPath('downloads');
+  },
+  chooseSavePath,
+  runFile: runInUtility,
+  printReport: (args, progress, signal) =>
+    printReport(args, progress, signal, { devUrl, devTools: dev }),
+  emit: emitExportProgress,
+});
+
 function handle<C extends IpcChannel>(channel: C, handler: Handler<C>): void {
   const run = validated(channel, handler);
   ipcMain.handle(channel, (_e, req: unknown) => run(req));
@@ -296,6 +347,16 @@ function registerIpc(): void {
       ? await dialog.showOpenDialog(win, options)
       : await dialog.showOpenDialog(options);
     return { path: r.canceled ? null : (r.filePaths[0] ?? null) };
+  });
+
+  handle('export:run', (req) => exportJobs.run(req));
+  handle('export:cancel', ({ jobId }) => ({ ok: exportJobs.cancel(jobId) }));
+  handle('report:list', async ({ projectId }) => {
+    const root = registry.root(projectId);
+    if (root !== undefined) return { files: await listReports(root) };
+    // a package lists the PDFs it carries; the viewer reads them in place
+    const pkg = registry.package(projectId);
+    return { files: pkg ? packageReports(pkg.archive) : [] };
   });
 
   handle('dialog:openFile', async ({ title, filters }) => {

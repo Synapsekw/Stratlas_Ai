@@ -14,6 +14,7 @@ import { SettingsScreen } from './screens/Settings';
 import { WelcomeScreen } from './screens/Welcome';
 import { initAuthor } from './author';
 import { roadStore, startRoadSync } from './road/store';
+import { Toasts } from './exports/Toasts';
 import { spaceIsPlayPause } from './keys';
 import { bridge, shell, useShell } from './shell';
 import { PackageExportDialog } from './shell/PackageExport';
@@ -169,6 +170,7 @@ export function App() {
       <Palette />
       <UnlockDialog />
       <PackageExportDialog />
+      <Toasts />
     </div>
   );
 }

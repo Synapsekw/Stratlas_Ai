@@ -1,6 +1,7 @@
 import { IssueDetail, IssueRegister } from '@aio/annotate';
 import { Icon } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
+import { ExportMenu } from '../exports/ExportMenu';
 import { FocusZone } from '../FocusZone';
 import { NoProject } from './NoProject';
 
@@ -18,6 +19,8 @@ export function IssuesScreen() {
             Issue register
           </h3>
           <span className="sub mono">{count}</span>
+          <span className="grow" />
+          <ExportMenu />
         </div>
         <IssueRegister className="fill-col" />
       </div>

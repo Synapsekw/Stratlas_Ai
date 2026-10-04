@@ -5,18 +5,23 @@ import {
   volumeFreeBytes,
   type PackagePlanResult,
   type SourceFile,
+  type ZipArchive,
 } from '@aio/project/package';
 import {
+  EXPORT_FORMAT_KIND,
   exportKindForFile,
   PACKAGE_EXTENSION,
+  type ExportFormat,
   type IpcEvent,
   type IpcRequest,
   type IpcResponse,
   type PackageHeader,
   type ProjectManifest,
+  type ReportFile,
 } from '@aio/schema';
-import { basename, dirname, extname } from 'node:path';
-import { readManifest, type ProjectRegistry } from './project';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { basename, dirname, extname, join } from 'node:path';
+import { readManifest, type PackageSource, type ProjectRegistry } from './project';
 
 const EXPORT_LABEL: Record<string, string> = {
   'issues-csv': 'issue CSV',
@@ -40,6 +45,56 @@ export function checkExport(header: PackageHeader | undefined, name: string): st
   const kind = exportKindForFile(name);
   if (header.exports.includes(kind)) return null;
   return `This package does not allow saving ${EXPORT_LABEL[kind] ?? kind} files. Ask the sender for a package that includes them.`;
+}
+
+/**
+ * Null when an issue export (`export:run`) may run for a project with this package header (none:
+ * a folder project); otherwise the message for the person. COCO and masks read the photo files
+ * of a project folder, so a package never offers them.
+ */
+export function exportFormatRefusal(
+  header: PackageHeader | undefined,
+  format: ExportFormat,
+): string | null {
+  if (!header) return null;
+  const kind = EXPORT_FORMAT_KIND[format];
+  if (!header.exports.includes(kind))
+    return `This package does not allow saving ${EXPORT_LABEL[kind] ?? kind} files. Ask the sender for a package that includes them.`;
+  if (format === 'coco' || format === 'masks-zip')
+    return 'COCO and mask exports need the project folder with its photos; they are not available from a package.';
+  return null;
+}
+
+/** `report:list` for a package: the PDFs it carries in `report/`, read in place. */
+export function packageReports(archive: Pick<ZipArchive, 'entries'>): ReportFile[] {
+  const out: ReportFile[] = [];
+  for (const [name, e] of archive.entries) {
+    const m = /^report\/([^/]+\.pdf)$/i.exec(name);
+    if (m?.[1]) out.push({ path: name, name: m[1], sizeBytes: e.size });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * A temp folder with a package's manifest and issues, for the export utility (which reads a
+ * project folder). The package itself is never written; `dispose` removes the folder.
+ */
+export async function stagePackageExport(
+  pkg: Pick<PackageSource, 'archive' | 'manifest'>,
+  tempDir: string,
+): Promise<{ root: string; dispose(): Promise<void> }> {
+  const root = await mkdtemp(join(tempDir, 'stratlas-export-'));
+  try {
+    await writeFile(join(root, 'manifest.json'), JSON.stringify(pkg.manifest));
+    const issues = pkg.archive.entries.has('issues.json')
+      ? await pkg.archive.read('issues.json')
+      : JSON.stringify({ schema: 'aio.issues/1', issues: [] });
+    await writeFile(join(root, 'issues.json'), issues);
+  } catch (e) {
+    await rm(root, { recursive: true, force: true });
+    throw e;
+  }
+  return { root, dispose: () => rm(root, { recursive: true, force: true }) };
 }
 
 /** The policy of the project opened last (the one the person is looking at). */
