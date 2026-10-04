@@ -33,6 +33,9 @@ describe('issueZone', () => {
     expect(issueZone(seal)).toBe('Not zoned');
     expect(issueZone({ ...seal, note: 'Bleeding at km 7.452' })).toBe('km 7');
     expect(issueZone({ ...seal, note: 'Tinted patch.\nZone L11.' })).toBe('L11');
+    expect(
+      issueZone({ ...seal, note: 'Location: 61.7 m above datum, East side, Level 15, top floor.' }),
+    ).toBe('Level 15, top floor');
   });
 });
 

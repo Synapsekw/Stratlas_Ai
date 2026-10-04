@@ -74,6 +74,9 @@ export function classInfo(m: ProjectManifest, classId: string): { label: string;
  * "Area: <zone>." line, a "Zone <zone>." line, or the road chainage kilometre.
  */
 export function issueZone(issue: Issue): string {
+  // kit: "Location: <h> m above datum, <side> side, <zone>." (the zone may hold commas)
+  const sided = /Location:[^,\n]*,[^,\n]*\bside,\s*([^\n]+?)\.?\s*$/m.exec(issue.note);
+  if (sided?.[1]) return sided[1].trim();
   const loc = /Location:[^\n]*?,\s*([^,\n]+?)\.?\s*$/m.exec(issue.note);
   if (loc?.[1]) return loc[1].trim();
   const area = /Area:\s*([^.\n]+)/.exec(issue.note);
