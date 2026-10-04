@@ -1,4 +1,12 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -48,6 +56,27 @@ describe('PackageWriter is idempotent', () => {
     expect(await w.derive('posters/p.jpg', [src], make)).toBe('written');
     expect(await w.derive('posters/p.jpg', [src], make)).toBe('skipped');
     expect(runs).toBe(1);
+  });
+});
+
+describe('PackageWriter.link', () => {
+  it('hard-links a source file (same inode) and skips it on a re-run', async () => {
+    const src = join(dir, 'p.jpg');
+    writeFileSync(src, 'photo');
+    const w = new PackageWriter(join(dir, 'out'));
+    expect(await w.link(src, 'legacy/photos/p.jpg')).toBe('written');
+    expect(statSync(join(dir, 'out/legacy/photos/p.jpg')).ino).toBe(statSync(src).ino);
+    expect(await w.link(src, 'legacy/photos/p.jpg')).toBe('skipped');
+    expect(w.files.has('legacy/photos/p.jpg')).toBe(true);
+  });
+
+  it('replaces a stale file at the destination', async () => {
+    const src = join(dir, 'p.jpg');
+    writeFileSync(src, 'photo v2');
+    const w = new PackageWriter(join(dir, 'out'));
+    w.write('legacy/p.jpg', 'old');
+    expect(await w.link(src, 'legacy/p.jpg')).toBe('written');
+    expect(readFileSync(join(dir, 'out/legacy/p.jpg'), 'utf8')).toBe('photo v2');
   });
 });
 

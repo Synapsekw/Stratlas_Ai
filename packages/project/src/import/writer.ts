@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { copyFile, mkdir, rename, stat, utimes } from 'node:fs/promises';
+import { copyFile, link, mkdir, rename, stat, utimes } from 'node:fs/promises';
 import {
   existsSync,
   mkdirSync,
@@ -50,6 +50,27 @@ export class PackageWriter {
     await copyFile(src, tmp);
     await utimes(tmp, s.atime, s.mtime);
     await rename(tmp, dst);
+    return this.done(rel, 'written');
+  }
+
+  /**
+   * Hard-link `src` at `rel` (no extra disk space on the same volume); falls back to a copy when
+   * the volumes differ. Skipped when the destination already is that file.
+   */
+  async link(src: string, rel: string): Promise<WriteResult> {
+    const dst = this.abs(rel);
+    const s = await stat(src);
+    if (existsSync(dst)) {
+      const d = statSync(dst);
+      if (d.ino === s.ino && d.dev === s.dev) return this.done(rel, 'skipped');
+      rmSync(dst, { force: true });
+    }
+    await mkdir(dirname(dst), { recursive: true });
+    try {
+      await link(src, dst);
+    } catch {
+      return this.copy(src, rel);
+    }
     return this.done(rel, 'written');
   }
 
