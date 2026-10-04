@@ -32,7 +32,22 @@ const css = `
 textarea.ann-input { height: auto; min-height: 56px; padding: 6px 8px; line-height: 1.45; resize: vertical; font-family: var(--f-ui); }
 .ann-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; background: var(--sev, var(--s1)); }
 .ann-list { flex: 1; min-height: 0; overflow-y: auto; outline: none; }
-.ann-row { display: grid; grid-template-columns: 40px 1fr auto; gap: 2px 10px; padding: 8px 12px; border-bottom: 1px solid var(--line-soft); cursor: pointer; align-items: center; }
+.ann-row { display: grid; grid-template-columns: 14px 44px minmax(0, 1fr) auto; gap: 2px 10px; height: 48px; box-sizing: border-box; padding: 0 12px; align-content: center; border-bottom: 1px solid var(--line-soft); cursor: pointer; align-items: center; }
+.ann-row .ann-tick { grid-row: span 2; }
+.ann-tick { margin: 0; width: 13px; height: 13px; accent-color: var(--acc); cursor: pointer; opacity: .55; }
+.ann-row:hover .ann-tick, .ann-row.checked .ann-tick, .ann-bulk .ann-tick { opacity: 1; }
+.ann-row.checked { background: var(--acc-a12, var(--bg-2)); }
+.ann-group { display: flex; align-items: center; gap: 8px; width: 100%; height: 30px; box-sizing: border-box; padding: 0 12px; border: 0; border-bottom: 1px solid var(--line); background: var(--bg-2); color: var(--fg-1); font: 600 var(--t-11)/1 var(--f-ui); letter-spacing: .04em; text-transform: uppercase; cursor: pointer; text-align: left; }
+.ann-group:hover { background: var(--bg-3); }
+.ann-group .car { width: 10px; color: var(--fg-3); font-size: 10px; }
+.ann-group .gl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ann-group .gc { font: 500 var(--t-11)/1 var(--f-mono); color: var(--fg-3); text-transform: none; }
+.ann-bulk { display: flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-bottom: 1px solid var(--line-soft); flex: none; }
+.ann-bulk[data-active='true'] { background: color-mix(in oklch, var(--acc) 8%, var(--bg-1)); }
+.ann-bulk .cnt { font: 600 var(--t-12)/1 var(--f-mono); color: var(--acc-strong); margin-right: 4px; white-space: nowrap; }
+.ann-bulk .ann-faint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ann-notice { padding: 6px 12px; font-size: var(--t-11); color: var(--fg-2); border-bottom: 1px solid var(--line-soft); flex: none; }
+.ann-dir { min-width: 26px; justify-content: center; font-family: var(--f-mono); }
 .ann-row:hover { background: var(--bg-2); }
 .ann-row[aria-selected='true'] { background: var(--bg-2); box-shadow: inset 0 0 0 1px var(--line-strong); }
 .ann-row .iid { font: 600 var(--t-12)/1 var(--f-mono); color: var(--fg-0); grid-row: span 2; }

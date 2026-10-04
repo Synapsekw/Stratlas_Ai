@@ -4,10 +4,12 @@ export { validateIssueAgainstModel } from '@aio/schema';
 // Issue model (pure)
 export * from './model/ops';
 export * from './model/query';
+export * from './model/register';
 export { History, applyChange, invert, type Change } from './model/history';
 export {
   createIssueEditor,
   type AuditEntry,
+  type BulkResult,
   type CreateInput,
   type DeriveSightings,
   type EditorState,
