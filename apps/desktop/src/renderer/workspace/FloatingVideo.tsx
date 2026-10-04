@@ -102,7 +102,7 @@ export function FloatingVideo({ layerId, docked, stageRef }: Props) {
       style={docked ? undefined : { left: pos.left, bottom: pos.bottom, width: pos.width }}
       aria-label={`Video ${layer.name}`}
     >
-      <div ref={winRef} className="vwin-in">
+      <div ref={winRef} className="vwin-in" dir="ltr">
         <div
           className="vh"
           onPointerDown={onDown}

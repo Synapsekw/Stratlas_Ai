@@ -163,7 +163,12 @@ export function Timeline(props: TimelineProps) {
   const active = model.clips.find((c) => c.layerId === activeClip);
 
   return (
-    <div className={props.className ? `tl ${props.className}` : 'tl'} aria-label="Timeline">
+    // Time runs left to right in every UI direction.
+    <div
+      className={props.className ? `tl ${props.className}` : 'tl'}
+      aria-label="Timeline"
+      dir="ltr"
+    >
       <div className="tl-h">
         <div className="transport">
           <button
