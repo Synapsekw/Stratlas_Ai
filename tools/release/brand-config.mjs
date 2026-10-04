@@ -72,13 +72,18 @@ export function macSigning(env) {
 /** Microsoft Store identity; placeholders keep local appx builds possible before Partner Center. */
 export function storeIdentity(brand, env) {
   const companyId = brand.company.replace(/[^A-Za-z0-9]/g, '');
-  const placeholder = !has(env, 'STORE_IDENTITY_NAME', 'STORE_PUBLISHER');
+  // Partner Center identity lives in brand.json (public values); env vars override it.
+  const store = brand.store ?? {};
+  const placeholder =
+    !has(env, 'STORE_IDENTITY_NAME', 'STORE_PUBLISHER') && !(store.identityName && store.publisher);
   return {
     placeholder,
     appx: {
-      identityName: env.STORE_IDENTITY_NAME ?? `${companyId}.${brand.executableName}`,
-      publisher: env.STORE_PUBLISHER ?? `CN=${companyId}Dev`,
-      publisherDisplayName: env.STORE_PUBLISHER_DISPLAY_NAME ?? brand.company,
+      identityName:
+        env.STORE_IDENTITY_NAME ?? store.identityName ?? `${companyId}.${brand.executableName}`,
+      publisher: env.STORE_PUBLISHER ?? store.publisher ?? `CN=${companyId}Dev`,
+      publisherDisplayName:
+        env.STORE_PUBLISHER_DISPLAY_NAME ?? store.publisherDisplayName ?? brand.company,
       displayName: brand.productName,
       applicationId: brand.executableName.replace(/[^A-Za-z0-9.]/g, ''),
     },
