@@ -278,10 +278,10 @@ describe('camera checks', () => {
   });
 
   it('uses the field of view calibrated against the plant model per frame size', () => {
-    expect(calibratedHfovDeg(960 / 506)).toBe(72.2);
-    expect(calibratedHfovDeg(5120 / 2700)).toBe(72.2);
-    expect(calibratedHfovDeg(16 / 9)).toBe(65.6);
-    expect(calibratedHfovDeg(960 / 540)).toBe(65.6);
+    expect(calibratedHfovDeg(960 / 506)).toBe(70.9);
+    expect(calibratedHfovDeg(5120 / 2700)).toBe(70.9);
+    expect(calibratedHfovDeg(16 / 9)).toBe(70.9);
+    expect(calibratedHfovDeg(960 / 540)).toBe(70.9);
     // other frame sizes keep the sensor-crop estimate
     expect(calibratedHfovDeg(4 / 3)).toBe(clipHfovDeg(4 / 3));
   });
