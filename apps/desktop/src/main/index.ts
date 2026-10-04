@@ -7,12 +7,23 @@ import {
 import { brand } from '@aio/brand';
 import { ipcEvents, type IpcChannel, type IpcEvent } from '@aio/schema';
 import { Entry } from '@napi-rs/keyring';
-import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  protocol,
+  screen,
+  session,
+  shell,
+} from 'electron';
 import { existsSync } from 'node:fs';
 import { userInfo } from 'node:os';
 import { join } from 'node:path';
 import { createAiProjectStore, readAiPolicy } from './aiProjects';
 import { listConversations, loadConversation, saveConversation } from './conversations';
+import { OFFSCREEN_SWITCHES, offscreenOrigin, windowMode } from './windowMode';
 import { validated, type Handler } from './ipc';
 import { createKeyVault } from './keys';
 import { addToLibrary, createLibraryStore, listLibrary, listPacks } from './library';
@@ -33,6 +44,25 @@ const dev = !app.isPackaged;
 const devUrl = process.env.ELECTRON_RENDERER_URL;
 
 // aio:// serves project files and map packs with range requests.
+// Test and agent runs (isolated profiles) keep their windows off-screen; see windowMode.ts.
+const winMode = windowMode(process.env);
+if (winMode === 'offscreen') {
+  for (const [name, value] of OFFSCREEN_SWITCHES) app.commandLine.appendSwitch(name, value);
+}
+
+/** Off-screen placement for every window when running under an isolated profile. */
+function placement(width: number): { x?: number; y?: number; skipTaskbar?: boolean } {
+  if (winMode !== 'offscreen') return {};
+  const displays = screen.getAllDisplays().map((d) => d.bounds);
+  return { ...offscreenOrigin(displays, width), skipTaskbar: true };
+}
+
+/** Show a window without stealing focus when it lives off-screen. */
+function reveal(win: BrowserWindow): void {
+  if (winMode === 'offscreen') win.showInactive();
+  else win.show();
+}
+
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'aio',
@@ -331,6 +361,8 @@ function openViewerWindow(url: string, title: string): void {
     title: `${title} - ${brand.productName}`,
     backgroundColor: '#0f1318',
     autoHideMenuBar: true,
+    show: false,
+    ...placement(1100),
     ...(parent ? { parent } : {}),
     webPreferences: {
       contextIsolation: true,
@@ -341,6 +373,9 @@ function openViewerWindow(url: string, title: string): void {
     },
   });
   win.removeMenu();
+  win.once('ready-to-show', () => {
+    reveal(win);
+  });
   win.on('page-title-updated', (e) => {
     e.preventDefault();
   });
@@ -356,12 +391,14 @@ function createWindow(): BrowserWindow {
     title: brand.productName,
     backgroundColor: '#0f1318',
     show: false,
+    ...placement(1440),
     titleBarStyle: 'hidden',
     ...(process.platform === 'win32'
       ? { titleBarOverlay: { color: '#11161c', symbolColor: '#c9d1dc', height: 40 } }
       : {}),
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.cjs'),
+      backgroundThrottling: winMode !== 'offscreen',
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
@@ -370,7 +407,7 @@ function createWindow(): BrowserWindow {
     },
   });
   win.once('ready-to-show', () => {
-    win.show();
+    reveal(win);
   });
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null;
