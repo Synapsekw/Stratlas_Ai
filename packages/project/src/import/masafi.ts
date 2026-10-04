@@ -61,8 +61,9 @@ const Job = z.object({
   }),
 });
 
-/** Colour under the ortho's no-data pixels (the 3D raster adapter draws tiles opaque): sand. */
-const ORTHO_NODATA_RGB = '#b9ab94';
+/** Colour under the ortho's no-data pixels (the 3D raster adapter draws tiles opaque): the stage
+ * background, so the pyramid's padding fades into it around the survey. */
+const ORTHO_NODATA_RGB = '#141b24';
 /** Toe line (pile outline) colour, linear RGB of #ffc400, drawn this far above the surface. */
 const TOE_COLOR: [number, number, number, number] = [1, 0.552, 0, 1];
 const TOE_LIFT_M = 0.15;
@@ -248,7 +249,7 @@ export async function importMasafi(opts: MasafiImportOptions): Promise<ImportRes
     meshLayers.push({
       kind: 'mesh',
       id: `terrain-${ep.date}`,
-      name: `Terrain and stockpiles, ${ep.label}`,
+      name: `Terrain ${ep.label}`,
       visible: e === latest,
       src: { path: rel },
       transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
@@ -381,7 +382,7 @@ export async function importMasafi(opts: MasafiImportOptions): Promise<ImportRes
     layers.push({
       kind: 'raster',
       id: `ortho-${ep.date}`,
-      name: `Orthomosaic, ${ep.label}`,
+      name: `Ortho ${ep.label}`,
       visible: e === latest,
       src: { path: tilesRel },
       role: 'ortho',
