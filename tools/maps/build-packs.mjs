@@ -12,6 +12,8 @@
 //   node tools/maps/build-packs.mjs --assets-only   only the style assets
 //   node tools/maps/build-packs.mjs --no-assets     packs only
 //   node tools/maps/build-packs.mjs --build=20261003 pin a planet build
+//   node tools/maps/build-packs.mjs --tool-only     only fetch the pmtiles CLI (bundled into the
+//                                                   app by electron-builder extraResources)
 //
 // Env: STRATLAS_DATA overrides the data root (default E:\Stratlas Data).
 
@@ -173,6 +175,10 @@ async function main() {
   const names = argv.filter((a) => !a.startsWith('--'));
   const pinned = argv.find((a) => a.startsWith('--build='))?.slice(8);
 
+  if (flags.has('--tool-only')) {
+    log(`pmtiles CLI: ${await ensurePmtiles()}`);
+    return;
+  }
   if (!flags.has('--no-assets')) await fetchAssets();
   if (flags.has('--assets-only')) return;
 

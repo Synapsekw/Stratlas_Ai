@@ -17,6 +17,8 @@ Output in `apps/desktop/dist/`:
 | `<Product>-<version>-win-x64-portable.exe` | Portable build, runs without installing                              |
 | `win-unpacked/`                            | The unpacked app, handy for quick checks                             |
 
+Before packaging, fetch the go-pmtiles CLI once so the app can download map regions (Settings, Offline maps): `node tools/maps/build-packs.mjs --tool-only` (writes `tools/maps/bin/pmtiles.exe`, git-ignored; `extraResources` copies it to `resources/bin/`). Without it the build still imports pack files but says that region downloads are not available. Demo projects in `apps/desktop/demo/<project>/` ship the same way (`resources/demo/`) and appear in the library on first run.
+
 Without a certificate the build is unsigned. Windows SmartScreen then shows "Windows protected your PC": choose **More info**, then **Run anyway**. That is expected for test builds.
 
 ## Commands
@@ -24,7 +26,7 @@ Without a certificate the build is unsigned. Windows SmartScreen then shows "Win
 | Command                               | Does                                                                 |
 | ------------------------------------- | -------------------------------------------------------------------- |
 | `pnpm -F @aio/desktop dist:win`       | NSIS installer + portable exe (x64)                                  |
-| `pnpm -F @aio/desktop dist:win:store` | Microsoft Store package (`.appx`, MSIX format) for Partner Center    |
+| `pnpm -F @aio/desktop dist:win:store` | Microsoft Store package (`.msix`) for Partner Center                 |
 | `pnpm -F @aio/desktop dist:mac`       | `dmg` + `zip` for arm64 and x64 (run on a Mac)                       |
 | `pnpm -F @aio/desktop dist:config`    | Write and print the effective electron-builder config, build nothing |
 | `pnpm icons`                          | Re-render `apps/desktop/build/` icons from `packages/brand/icon.svg` |
@@ -64,13 +66,20 @@ OV certificates issued since June 2023 must live in hardware (a cloud HSM), so t
 
 ### Microsoft Store (MSIX)
 
+`pnpm -F @aio/desktop dist:win:store` writes `apps/desktop/dist/<Product>-<version>-win-x64-store.msix`. The manifest gets:
+
+- **Identity** from, first match wins: the `STORE_*` environment variables, then `store` in `packages/brand/brand.json` (the reserved Partner Center values, public identifiers), then placeholders (`<Company>.<Executable>`, `CN=<Company>Dev`) that build locally but Partner Center rejects.
+- **Capabilities:** `runFullTrust` (a desktop app; `electron-builder.yml` `appx.capabilities`).
+- **File association:** `.aio` project packages (`fileAssociations` in `tools/release/brand-config.mjs`, shared with the NSIS installer).
+- **Version** `<version>.0` from `apps/desktop/package.json`; each Store submission needs a higher version.
+
 | Variable                       | From                                                      |
 | ------------------------------ | --------------------------------------------------------- |
 | `STORE_IDENTITY_NAME`          | Partner Center, Product identity, `Package/Identity/Name` |
 | `STORE_PUBLISHER`              | Partner Center, `Package/Identity/Publisher` (`CN=...`)   |
 | `STORE_PUBLISHER_DISPLAY_NAME` | Partner Center, publisher display name                    |
 
-Without them the package uses placeholders (`<Company>.<Executable>`, `CN=<Company>Dev`) so the Store build can be tested locally, but Partner Center will reject it. Microsoft signs Store packages on submission; the `.appx` does not need our certificate.
+Microsoft signs Store packages during certification; the `.msix` does not need our certificate. A Store copy takes its updates from the Store: Settings, About hides "Install update from file" and the online check there.
 
 If `dist:win:store` fails with `spawn UNKNOWN` (the `makeappx.exe` bundled with electron-builder does not start on some Windows 11 builds), point electron-builder at a local Windows SDK:
 
@@ -78,6 +87,19 @@ If `dist:win:store` fails with `spawn UNKNOWN` (the `makeappx.exe` bundled with 
 $env:ELECTRON_BUILDER_WINDOWS_KITS_PATH = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\x64"
 pnpm -F @aio/desktop dist:win:store
 ```
+
+Check the package before uploading: rename a copy to `.zip` and read `AppxManifest.xml` (identity, `runFullTrust`, the `.aio` `uap:FileTypeAssociation`), or run the Windows App Certification Kit (`appcert.exe test -appxpackagepath <file>.msix -reportoutputpath report.xml`, from the Windows SDK).
+
+#### Partner Center steps
+
+The full submission guide, listing and privacy drafts are in `STORE-SUBMISSION.md`. In short:
+
+1. **Reserve the product:** partner.microsoft.com/dashboard, Apps and games, New product, MSIX or PWA app, reserve the name. The package identity comes from the first reserved name and never changes.
+2. **Identity:** Product management, Product identity. Copy `Package/Identity/Name`, `Package/Identity/Publisher` and `PublisherDisplayName` into `packages/brand/brand.json` `store` (or the `STORE_*` variables / CI repository variables).
+3. **Build** the `.msix` as above and check the manifest.
+4. **Submission:** Pricing and availability (markets, private audience or hidden for the first release), Properties (category Productivity, privacy policy URL, required because cloud AI can send data when the person turns it on), Age ratings (IARC questionnaire), Packages (upload the `.msix`; Partner Center checks the identity), Store listing (description, screenshots from the demo project, logos from `apps/desktop/build/appx/`).
+5. **Restricted capability:** `runFullTrust` asks for a justification in Submission options: "Desktop application (Electron) that reads local project folders and map packs chosen by the user."
+6. **Certification** takes one to three working days. Store certification runs the app with no client data, so the first-run library screen explains how to add a project; ship a demo project in `apps/desktop/demo/` for reviewers when one is approved for publication.
 
 ### macOS
 
@@ -89,6 +111,12 @@ pnpm -F @aio/desktop dist:win:store
 | `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`              | Notarisation with an Apple ID                                     |
 
 Hardened runtime is always on (`build/entitlements.mac.plist`: JIT only). Notarisation runs only when the app is signed and one set of Apple credentials is present; electron-builder staples the ticket.
+
+## Updates
+
+- **From a file (offline, APP-2):** Settings, About and updates, Install update from file. The person picks the NSIS `setup.exe`; main checks it is a Windows `.exe`, that `Get-AuthenticodeSignature` reports `Valid`, that the signer subject names the company in `@aio/brand`, and that its product version is newer than the running app. Only then does "Install and restart" run it (detached) and quit. Unsigned test builds are refused by design.
+- **Online check (optional):** off by default. The person switches it on and sets an update address; "Check now" uses electron-updater's `generic` provider against that address (`latest.yml` plus the installer, as produced by `electron-builder --publish` to a folder or share). Nothing is checked automatically, and the switch is disabled on an offline-only workstation (Settings, Privacy and cloud).
+- **Map data:** "Add a region" in Settings, Offline maps is the only other online action. It runs `pmtiles extract` against the newest Protomaps daily build at build.protomaps.com, verifies the result (PMTiles v3 header, vector tiles, zoom and area, complete length) and writes `MapPackInfo` next to the pack. Interrupted downloads resume against the same planet build (go-pmtiles cannot continue a partial file, so the region is extracted again).
 
 ## Continuous integration
 

@@ -120,6 +120,15 @@ export function effectiveConfig(rawEnv = process.env, now = new Date()) {
     },
     win: win.win,
     nsis: { shortcutName: brand.productName, uninstallDisplayName: brand.productName },
+    // Project packages open in the app (NSIS registry entries, MSIX uap:FileTypeAssociation).
+    fileAssociations: [
+      {
+        ext: 'aio',
+        name: `${brand.executableName}.Package`,
+        description: `${brand.productName} project package`,
+        role: 'Editor',
+      },
+    ],
     appx: store.appx,
     mac: mac.mac,
     dmg: { title: `${brand.productName} \${version}` },
