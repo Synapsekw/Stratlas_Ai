@@ -10,8 +10,11 @@ import { validated, type Handler } from './ipc';
 import { createKeyVault } from './keys';
 import { addToLibrary, createLibraryStore, listLibrary, listPacks } from './library';
 import { buildMenu } from './menu';
+import { popupAction } from './popup';
 import { openProject, ProjectRegistry, writeIssues } from './project';
 import { createAioHandler } from './protocol/handler';
+import { cspForUrl } from './protocol/legacy';
+import { saveFile } from './saveFile';
 import { createSettingsStore, defaultDataRoot, defaultSettings } from './settings';
 
 // Tests and side-by-side dev runs can isolate their profile (and with it the single-instance lock).
@@ -147,6 +150,48 @@ function registerIpc(): void {
       : await dialog.showOpenDialog(options);
     return { path: r.canceled ? null : (r.filePaths[0] ?? null) };
   });
+
+  handle('dialog:saveFile', (req) =>
+    saveFile(req, {
+      downloadsDir: app.getPath('downloads'),
+      choose: async (defaultPath) => {
+        const win = targetWindow();
+        const options = { defaultPath, ...(req.title ? { title: req.title } : {}) };
+        const r = win
+          ? await dialog.showSaveDialog(win, options)
+          : await dialog.showSaveDialog(options);
+        return r.canceled || !r.filePath ? null : r.filePath;
+      },
+    }),
+  );
+}
+
+/**
+ * A plain window for a project file a legacy viewer opens in a new tab (its PDF report, a
+ * photo). No preload, sandboxed, and it shows only aio:// content.
+ */
+function openViewerWindow(url: string, title: string): void {
+  const parent = targetWindow();
+  const win = new BrowserWindow({
+    width: 1100,
+    height: 900,
+    title: `${title} - ${brand.productName}`,
+    backgroundColor: '#0f1318',
+    autoHideMenuBar: true,
+    ...(parent ? { parent } : {}),
+    webPreferences: {
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+      webSecurity: true,
+      devTools: dev,
+    },
+  });
+  win.removeMenu();
+  win.on('page-title-updated', (e) => {
+    e.preventDefault();
+  });
+  void win.loadURL(url);
 }
 
 function createWindow(): BrowserWindow {
@@ -194,21 +239,27 @@ function hardenSession(): void {
   const ses = session.defaultSession;
   ses.webRequest.onHeadersReceived((details, callback) => {
     callback({
-      responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [CSP] },
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [cspForUrl(details.url, CSP)],
+      },
     });
   });
   ses.webRequest.onBeforeRequest((details, callback) => {
     callback({ cancel: !isAllowedRendererUrl(details.url) });
   });
-  ses.setPermissionRequestHandler((_wc, _permission, callback) => {
-    callback(false);
+  // Only plain-text clipboard writes (legacy viewers' "Copy coordinates"); everything else is off.
+  ses.setPermissionRequestHandler((_wc, permission, callback) => {
+    callback(permission === 'clipboard-sanitized-write');
   });
 }
 
 app.on('web-contents-created', (_e, contents) => {
   // Never navigate away from the app, open windows inside it or attach webviews.
   contents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('https://')) void shell.openExternal(url);
+    const action = popupAction(url, (id) => registry.root(id) !== undefined);
+    if (action.kind === 'external') void shell.openExternal(action.url);
+    else if (action.kind === 'viewer') openViewerWindow(action.url, action.title);
     return { action: 'deny' };
   });
   contents.on('will-navigate', (e) => {
