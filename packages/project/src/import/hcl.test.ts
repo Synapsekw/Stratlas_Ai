@@ -191,4 +191,26 @@ describe.skipIf(!hasFfmpeg)('importHcl on a one-flight slice', () => {
     expect(r.written).toBe(0);
     expect(r.skipped).toBeGreaterThan(5);
   }, 60_000);
+
+  it('keeps issues the founder created in the app on a re-run', async () => {
+    const file = join(out(), 'issues.json');
+    const saved = JSON.parse(readFileSync(file, 'utf8')) as { schema: string; issues: Issue[] };
+    const first = saved.issues[0];
+    if (!first) throw new Error('no imported issue');
+    const at = '2026-10-04T03:00:26.657Z';
+    const mine: Issue = {
+      ...first,
+      id: 'f48c7a80-1f4b-42ec-89b3-fc0e0b83ef89',
+      code: 'F12',
+      source: 'human',
+      status: 'draft',
+      author: 'D',
+      createdAt: at,
+      updatedAt: at,
+    };
+    writeFileSync(file, JSON.stringify({ ...saved, issues: [...saved.issues, mine] }));
+    await importHcl({ src: src(), out: out() });
+    const after = JSON.parse(readFileSync(file, 'utf8')) as { issues: Issue[] };
+    expect(after.issues.map((i) => i.code)).toEqual([...saved.issues.map((i) => i.code), 'F12']);
+  }, 60_000);
 });

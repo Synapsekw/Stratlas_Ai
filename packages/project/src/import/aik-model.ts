@@ -403,7 +403,8 @@ export function buildKitIssues(
         classId: cls.id,
         severityModelId: ctx.severityModelId,
         severity: worst.severity,
-        status: 'draft',
+        // Graded findings come from a delivered, reviewed report.
+        status: 'reviewed',
         title: worst.component ? `${cls.label}, ${worst.component}` : cls.label,
         note: [...notes, where(worst), seen, cover].filter(Boolean).join('\n'),
         author: ctx.author ?? AUTHOR,
