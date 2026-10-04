@@ -38,6 +38,8 @@ const FRAME_MS = 1000 / 30;
 const SAME_FRAME_MS = 40;
 /** Edge agreement below this ratio to the search median reads as no clear answer. */
 const AUTO_MIN_CONTRAST = 1.15;
+/** A turn that raises the edge agreement by less than this factor is not trusted. */
+const AUTO_MIN_GAIN = 1.02;
 
 const AXES: {
   key: Axis;
@@ -303,7 +305,7 @@ export function CalibrateVideo({ layerId }: { layerId: string }) {
         return;
       }
       const r = autoAlign(render, frame, lens);
-      if (r.contrast < AUTO_MIN_CONTRAST || r.score <= r.startScore) {
+      if (r.contrast < AUTO_MIN_CONTRAST || r.score < r.startScore * AUTO_MIN_GAIN) {
         setSay({ text: t('calibrate.orient.autoWeak', { after: fmt(r.score) }), tone: 'bad' });
         return;
       }
@@ -665,10 +667,10 @@ export function CalibrateVideo({ layerId }: { layerId: string }) {
           <div className="sec" data-testid="calibrate-position">
             <b>{t('calibrate.pos.title')}</b>
             <p className="say">{t('calibrate.pos.help')}</p>
-            <div className="b-inline">
+            <div className="b-grid3">
               {POS_AXES.map(({ label, index, sign }) => (
-                <label key={label} className="b-inline" style={{ flex: 1 }}>
-                  <span className="faint">{t(label)}</span>
+                <label key={label} className="b-field">
+                  <span className="faint">{t('calibrate.pos.unit', { axis: t(label) })}</span>
                   <input
                     className="input mono"
                     type="number"
@@ -687,7 +689,6 @@ export function CalibrateVideo({ layerId }: { layerId: string }) {
                   />
                 </label>
               ))}
-              <span className="faint">m</span>
             </div>
           </div>
 
@@ -731,10 +732,8 @@ export function CalibrateVideo({ layerId }: { layerId: string }) {
                 </button>
               )}
             </div>
-            <fieldset className="b-inline" style={{ border: 0, padding: 0, margin: 0 }}>
-              <legend className="faint" style={{ float: 'left', marginRight: 6 }}>
-                {t('calibrate.pairs.fitWhat')}
-              </legend>
+            <fieldset className="b-fitwhat">
+              <legend className="faint">{t('calibrate.pairs.fitWhat')}</legend>
               {(
                 [
                   ['orientation', 'calibrate.pairs.fitOrientation'],

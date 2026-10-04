@@ -165,6 +165,7 @@ export const en = {
   'calibrate.pos.north': 'North',
   'calibrate.pos.up': 'Up',
   'calibrate.pos.input': '{axis} offset in metres',
+  'calibrate.pos.unit': '{axis} (m)',
   'calibrate.pos.enu': 'east {e} m, north {n} m, up {u} m',
   'calibrate.pairs.title': 'Point pairs',
   'calibrate.pairs.help':

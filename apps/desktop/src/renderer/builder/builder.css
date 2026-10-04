@@ -521,6 +521,41 @@
   align-items: center;
   color: var(--fg-2);
 }
+.b-grid3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.b-field {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.b-field .input {
+  width: 100%;
+  min-width: 0;
+}
+.b-fitwhat {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: center;
+}
+.b-fitwhat legend {
+  width: 100%;
+  padding: 0;
+  margin-bottom: 2px;
+}
+.b-fitwhat label {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  color: var(--fg-2);
+  white-space: nowrap;
+}
 .b-mini-map {
   height: 200px;
   border: 1px solid var(--line);
