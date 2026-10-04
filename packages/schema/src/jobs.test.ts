@@ -40,12 +40,30 @@ describe('pipeline params', () => {
     expect(p.safeParse({ out: 'C:/abs.json' }).success).toBe(false);
   });
 
+  it('takes a volumetric build as surveys with a DSM or a point cloud each', () => {
+    const p = pipelineParams('volumetric.build');
+    const dsm = { date: '2026-01-01', dsm: 'D:/s/e1_dsm.tif', ortho: 'D:/s/e1_ortho.tif' };
+    const cloud = { date: '2026-01-10', cloud: 'D:/s/e2.laz' };
+    expect(p.safeParse({ config: { epochs: [dsm, cloud] } }).success).toBe(true);
+    expect(p.safeParse({ job: 'volumetric/job.json' }).success).toBe(true);
+    expect(p.safeParse({}).success).toBe(true);
+    expect(p.safeParse({ config: { epochs: [] } }).success).toBe(false);
+    expect(p.safeParse({ config: { epochs: [dsm, cloud, dsm] } }).success).toBe(false);
+    expect(p.safeParse({ config: { epochs: [{ date: '2026-01-01' }] } }).success).toBe(false);
+    expect(p.safeParse({ config: { epochs: [{ ...dsm, cloud: 'D:/s/e1.laz' }] } }).success).toBe(
+      false,
+    );
+    expect(p.safeParse({ config: { epochs: [{ ...dsm, date: '1 Jan' }] } }).success).toBe(false);
+    expect(p.safeParse({ config: { epochs: [dsm] }, out: 'x' }).success).toBe(false);
+  });
+
   it('lists every pipeline with a title', () => {
     expect(PIPELINES.map((p) => p.name)).toEqual([
       'aik.cameras',
       'aik.project',
       'aik.records',
       'volumetric.process',
+      'volumetric.build',
       'pointcloud.to_copc',
       'system.selftest',
     ]);

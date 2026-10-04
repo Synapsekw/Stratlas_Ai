@@ -233,6 +233,27 @@ export const en = {
     'Carries your company name and logo from Settings, Report branding. Without them it is neutral.',
   'builder.reportBranding':
     'Reports carry your own company name and logo from Settings, Report branding.',
+  'builder.surveys.title': 'Survey data',
+  'builder.surveys.text':
+    'Optional. One or two survey dates, each with a DSM GeoTIFF or a point cloud, and an orthomosaic for the photo texture. Once the project exists the Volumetric Survey Kit runs as a job: piles, toe lines, four bases, volumes and the change between the dates.',
+  'builder.surveys.date': 'Survey date',
+  'builder.surveys.surface': 'Surface',
+  'builder.surveys.ortho': 'Orthomosaic',
+  'builder.surveys.pickDsm': 'DSM GeoTIFF',
+  'builder.surveys.pickCloud': 'Point cloud',
+  'builder.surveys.pickOrtho': 'Pick orthomosaic',
+  'builder.surveys.noOrtho': 'None (point colours, if any)',
+  'builder.surveys.clear': 'Clear',
+  'builder.surveys.add': 'Add a second survey date',
+  'builder.surveys.remove': 'Remove this survey date',
+  'builder.surveys.needDate': 'Give every survey a date.',
+  'builder.surveys.needSurface': 'Every survey needs a DSM or a point cloud.',
+  'builder.surveys.sameDate': 'Two surveys have the same date.',
+  'builder.surveys.none': 'None, add data later',
+  'builder.surveys.count_one': '{count} survey date, built in Jobs after creating',
+  'builder.surveys.count_other': '{count} survey dates, built in Jobs after creating',
+  'builder.surveys.startFailed':
+    'The project was created, but the volumetric build did not start: {error}',
 
   // Maps
   'settings.maps.text':

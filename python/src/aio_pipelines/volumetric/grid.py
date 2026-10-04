@@ -3,6 +3,10 @@
 The output is a float32 ``.npy`` (NaN = no data, cell = grid.dsm_res, block mean of the source
 pixels whose centres fall in the cell). It is written as a memory map, row block by row block,
 with a ``.progress`` file holding the next block: a cancelled or crashed run continues from there.
+
+The kit assumes a source finer than the grid (Pix4D DSMs at the GSD, a 0.1 m grid). A coarser
+source would leave empty cells between its pixel centres, so it is sampled bilinearly instead
+(``rasterio.warp.reproject``); that branch is an addition, the block mean is the kit's.
 """
 
 from __future__ import annotations
@@ -49,6 +53,34 @@ def _bin_block(d, bands, ytop, nrows, res, W, X0):
     return arr, (ri, ci, okr, okc)
 
 
+def source_res(d) -> float:
+    """Pixel size of a north-up raster (the larger of its two axes), in CRS units."""
+    return max(abs(d.transform.a), abs(d.transform.e))
+
+
+def _bilinear_block(d, ytop, nrows, res, W, X0):
+    """Bilinear sample of band 1 at the centres of target rows [0, nrows) below ytop (NaN = no data)."""
+    import rasterio
+    from rasterio.transform import from_origin
+    from rasterio.warp import Resampling, reproject
+
+    # both sides share the job CRS; a raster without one is taken as already in it
+    crs = d.crs or "EPSG:3857"
+    dst = np.full((nrows, W), np.nan, np.float32)
+    reproject(
+        source=rasterio.band(d, 1),
+        destination=dst,
+        src_crs=crs,
+        dst_transform=from_origin(X0, ytop, res, res),
+        dst_crs=crs,
+        dst_nodata=np.nan,
+        src_nodata=d.nodata,
+        resampling=Resampling.bilinear,
+    )
+    dst[dst < -9000] = np.nan
+    return dst
+
+
 def resample_dsm(
     src: Path,
     grid: dict,
@@ -76,6 +108,7 @@ def resample_dsm(
     try:
         with rasterio.open(src) as d:
             nod = d.nodata
+            coarse = source_res(d) > res * 1.01
             for rb in range(start, H, BLOCK_ROWS):
                 try:
                     check()
@@ -85,7 +118,11 @@ def resample_dsm(
                     raise
                 n = min(BLOCK_ROWS, H - rb)
                 ytop = Y1 - rb * res
-                arr, ix = _bin_block(d, 1, ytop, n, res, W, X0)
+                if coarse:
+                    m[rb : rb + n] = _bilinear_block(d, ytop, n, res, W, X0)
+                    arr = None
+                else:
+                    arr, ix = _bin_block(d, 1, ytop, n, res, W, X0)
                 if arr is not None:
                     ri, ci, okr, okc = ix
                     z = arr[okr][:, okc]

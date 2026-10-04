@@ -55,7 +55,7 @@ export function applyJobEvent(
 }
 
 /** Pipelines that add layers to the project manifest when they finish. */
-const MANIFEST_WRITERS: ReadonlySet<string> = new Set(['pointcloud.to_copc']);
+const MANIFEST_WRITERS: ReadonlySet<string> = new Set(['pointcloud.to_copc', 'volumetric.build']);
 
 const folderKey = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
 const sameFolder = (a: string, b: string) => folderKey(a) === folderKey(b);
@@ -219,6 +219,15 @@ export const FORMS: Record<PipelineName, Field[]> = {
   'volumetric.process': [
     { key: 'job', label: 'Survey job file', kind: 'text', placeholder: 'job.json' },
     { key: 'out', label: 'Piles file', kind: 'text', placeholder: 'piles.json' },
+  ],
+  'volumetric.build': [
+    {
+      key: 'job',
+      label: 'Survey job file',
+      kind: 'text',
+      placeholder: 'volumetric/job.json',
+      help: 'Written by the first build from the new project wizard. Edit its detect block, then run again.',
+    },
   ],
   'pointcloud.to_copc': [
     {
