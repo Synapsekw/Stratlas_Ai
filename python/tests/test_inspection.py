@@ -269,6 +269,70 @@ def test_a_cancelled_job_resumes_and_the_project_is_untouched_until_commit(proje
     assert result["outputs"]["commit"]["new"] == 2
 
 
+def review_issue(iid, photo, bbox):
+    """An issue a person accepted in the review: one image sighting, no placement yet."""
+    x0, y0, x1, y1 = bbox
+    return {
+        "id": iid, "code": "F01", "classId": "corrosion", "severityModelId": "general-inspection",
+        "severity": 2, "status": "draft", "title": "Corrosion", "note": "", "author": "reviewer",
+        "createdAt": "2026-01-03T00:00:00Z", "updatedAt": "2026-01-03T00:00:00Z", "source": "agent",
+        "sightings": [{"on": "image", "layer": "photos", "photo": photo,
+                       "geom": {"type": "box", "x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0}}],
+    }  # fmt: skip
+
+
+def test_review_accepted_detections_are_placed_on_their_issue_not_made_again(project):
+    b1, b2 = box_at("e1", EAST_SPOT), box_at("e2", EAST_SPOT)
+    native_project(project, [review_issue("rev-1", "e1", b1)])
+    write_detections(
+        project,
+        [
+            # accepted in the review into rev-1 (the second one linked to it), with review fields
+            {"id": "a", "photo": "e1", "class": "corrosion", "severity": 2, "bbox": b1, "status": "accepted",
+             "issueId": "rev-1", "space": "source", "width": W, "height": H,
+             "geom": {"type": "box", "x": b1[0], "y": b1[1], "w": 16, "h": 16},
+             "origin": {"provider": "anthropic", "model": "claude-opus-5-5", "promptVersion": "detect-v1",
+                        "runId": "r1"}, "reviewedBy": "dan", "reviewedAt": "2026-01-03T00:00:00Z"},
+            {"id": "b", "photo": "e2", "class": "corrosion", "bbox": b2, "status": "accepted", "issueId": "rev-1"},
+            # accepted for the pipeline (no issue yet)
+            {"id": "c", "photo": "n1", "class": "crack", "bbox": box_at("n1", NORTH_TOP), "status": "accepted"},
+            # a video frame: not placed
+            {"id": "f", "frame": {"layer": "clip", "t": 3.5}, "class": "crack", "bbox": [1, 1, 9, 9],
+             "space": "source", "width": 1920, "height": 1080, "status": "accepted"},
+        ],
+        name="ai-run.json",
+        source="ai",
+        run={"id": "r1", "provider": "anthropic", "model": "claude-opus-5-5", "promptVersion": "detect-v1"},
+    )  # fmt: skip
+    result, _ = run_job(InspectionRun(), project, {}, job_id="j1")
+    out = result["outputs"]
+    assert out["detections"]["detections"] == 3
+    assert out["detections"]["skipped"] == {"video frame, not placed": 1}
+    c = out["commit"]
+    assert (c["new"], c["linked"], c["placed"], c["orphaned"]) == (1, 1, 1, 0)
+    issues = issues_of(project)
+    assert len(issues) == 2  # the review's issue and one pipeline issue (the crack); no duplicate
+    rev = next(i for i in issues if i["id"] == "rev-1")
+    assert mesh_point(rev) == pytest.approx(EAST_SPOT, abs=0.15)
+    assert [s["on"] for s in rev["sightings"]] == ["image", "mesh"]  # nothing else changed
+    assert rev["code"] == "F01" and rev["title"] == "Corrosion" and rev["status"] == "draft"
+    crack = next(i for i in issues if i["id"] != "rev-1")
+    assert crack["classId"] == "crack" and crack["source"] == "agent"
+    mp = json.loads((project / "inspection" / "issues-map.json").read_text())
+    assert "rev-1" not in mp["issues"]  # the pipeline never claims the review's issue
+    assert mp["issues"][crack["id"]]["detections"] == ["c"]
+
+    # a second run changes nothing; a deleted review issue is not made again
+    again, _ = run_job(InspectionRun(), project, {}, job_id="j2")
+    assert again["outputs"]["commit"]["placed"] == 0 and issues_of(project) == issues
+    doc = json.loads((project / "issues.json").read_text())
+    doc["issues"] = [i for i in doc["issues"] if i["id"] != "rev-1"]
+    (project / "issues.json").write_text(json.dumps(doc))
+    third, _ = run_job(InspectionRun(), project, {}, job_id="j3")
+    assert third["outputs"]["commit"]["orphaned"] == 1 and third["outputs"]["commit"]["new"] == 0
+    assert [i["id"] for i in issues_of(project)] == [crack["id"]]
+
+
 def test_resume_is_refused_when_the_detections_changed(project):
     from aio_pipelines.runtime import Cancelled
 

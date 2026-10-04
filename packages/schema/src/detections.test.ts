@@ -40,6 +40,62 @@ describe('aio.detections/1', () => {
   });
 });
 
+describe('aio.detections/1 review fields', () => {
+  const review = {
+    id: 'r1',
+    photo: 'p001',
+    class: 'corrosion',
+    status: 'accepted',
+    issueId: 'issue-1',
+    space: 'source',
+    width: 2560,
+    height: 1708,
+    bbox: [10, 10, 60, 40],
+    geom: {
+      type: 'polygon',
+      points: [
+        [10, 10],
+        [60, 10],
+        [35, 40],
+      ],
+    },
+    uncertain: true,
+    label: 'rust',
+    origin: {
+      provider: 'anthropic',
+      model: 'claude-opus-5-5',
+      promptVersion: 'detect-v1',
+      runId: 'r',
+    },
+    reviewedBy: 'dan',
+    reviewedAt: '2026-10-05T10:00:00Z',
+  };
+  const frame = {
+    id: 'f1',
+    frame: { layer: 'clip', t: 3.5 },
+    class: 'crack',
+    space: 'source',
+    width: 1920,
+    height: 1080,
+    bbox: [1, 1, 9, 9],
+  };
+  const parse = (d: unknown, extra: Record<string, unknown> = {}) =>
+    DetectionsFile.safeParse({ ...file, ...extra, detections: [d] }).success;
+
+  it('takes shapes, video frames, issue links, origins and the run', () => {
+    expect(parse(review)).toBe(true);
+    expect(parse(frame, { run: { id: 'r', model: 'm', images: 4, costUsd: 0.02 } })).toBe(true);
+  });
+
+  it('refuses a frame and a photo together, a frame without its size, unknown run keys', () => {
+    expect(parse({ ...frame, photo: 'p001' })).toBe(false);
+    expect(parse({ ...frame, width: undefined })).toBe(false);
+    expect(parse({ ...frame, space: 'preview' })).toBe(false);
+    expect(parse({ ...review, geom: { type: 'mask', src: { path: 'm.png' } } })).toBe(false);
+    expect(parse(review, { run: { id: 'r', extra: 1 } })).toBe(false);
+  });
+});
+
 describe('inspection.run params', () => {
   const p = pipelineParams('inspection.run');
   it('takes the detections, review and clustering options', () => {

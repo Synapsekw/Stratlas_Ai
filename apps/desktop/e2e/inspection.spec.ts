@@ -215,6 +215,114 @@ async function runInspection(win: Page, expectDefault: boolean): Promise<string>
   return (await detail.locator('.jd-t .mono').textContent()) ?? '';
 }
 
+/**
+ * A tower inspection project built in the app from raw inputs: a 4 x 20 x 4 m box model and
+ * three DJI photos with gimbal angles, imported through the raw import. Returns the project
+ * folder, its posed photos and the pixel of a local point in a photo.
+ */
+async function buildTower(
+  app: ElectronApplication,
+  win: Page,
+  dataRoot: { base: string; root: string },
+) {
+  // raw inputs: a 4 x 20 x 4 m tower and three DJI photos with gimbal angles
+  const origin = fromWgs84([48.1352, 29.0276, 30], 32639);
+  const W = 800;
+  const H = 600;
+  const plain = await sharp({
+    create: { width: W, height: H, channels: 3, background: '#7a8590' },
+  })
+    .jpeg()
+    .toBuffer();
+  const shots: { name: string; at: Vec3; yaw: number; pitch: number }[] = [
+    { name: 'DJI_0001.JPG', at: [25, 10, 0], yaw: -90, pitch: 0 },
+    { name: 'DJI_0002.JPG', at: [20, 14, 12], yaw: -56.3, pitch: -10.5 },
+    { name: 'DJI_0003.JPG', at: [0, 16, -25], yaw: 180, pitch: 0 },
+  ];
+  const files: string[] = [];
+  for (const s of shots) {
+    const [lon, lat, alt] = toWgs84(
+      [origin[0] + s.at[0], origin[1] - s.at[2], 30 + s.at[1]],
+      32639,
+    );
+    const f = join(dataRoot.base, s.name);
+    await writeFile(
+      f,
+      withExif(
+        {
+          make: 'DJI',
+          lat,
+          lon,
+          alt,
+          focal35: 24,
+          width: W,
+          height: H,
+          dateTimeOriginal: '2026:01:02 10:00:00',
+          dji: {
+            GimbalYawDegree: s.yaw.toFixed(1),
+            GimbalPitchDegree: s.pitch.toFixed(1),
+            GimbalRollDegree: '0',
+            AbsoluteAltitude: alt.toFixed(2),
+          },
+        },
+        plain,
+      ),
+    );
+    files.push(f);
+  }
+  const glb = join(dataRoot.base, 'tower.glb');
+  await writeFile(glb, boxGlb([-2, 0, -2], [2, 20, 2]));
+
+  // 1. new inspection project (the wizard's default type)
+  await win.getByTestId('new-project').first().click();
+  const wiz = win.getByTestId('new-project-wizard');
+  await wiz.getByLabel('Project name').fill('Tower inspection');
+  await expect(wiz.getByRole('button', { name: /Inspection/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await wiz.getByRole('button', { name: 'Next' }).click();
+  await wiz.getByRole('button', { name: 'Typed coordinate' }).click();
+  await wiz.getByLabel('Origin coordinate').fill('29.0276, 48.1352, 30');
+  await wiz.getByRole('button', { name: 'Next' }).click();
+  await wiz.getByRole('button', { name: 'Next' }).click();
+  await wiz.getByRole('button', { name: 'Create project' }).click();
+  await expect(win.getByTestId('empty-project')).toBeVisible({ timeout: 30_000 });
+  const root = join(dataRoot.root, 'projects', 'tower-inspection');
+
+  // 2. raw import: photos with poses and the model
+  await nextOpenDialog(app, [...files, glb]);
+  await win.getByRole('button', { name: 'Import files' }).click();
+  const panel = win.getByTestId('import-panel');
+  await expect(panel).toContainText('Imported 4 of 4 files', { timeout: 30_000 });
+  await panel.getByRole('button', { name: 'Close' }).click();
+  const manifest = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as {
+    type: string;
+    layers: {
+      kind: string;
+      id: string;
+      items?: { id: string; pos: Vec3; q: Quat; lens: LensModel }[];
+    }[];
+  };
+  expect(manifest.type).toBe('inspection');
+  const photos = manifest.layers.find((l) => l.kind === 'photos')?.items ?? [];
+  expect(photos).toHaveLength(3);
+
+  // 3. detections from a review pass: boxes around known points of the tower's faces. The kit
+  // places a box at the median-distance hit of a 5 x 5 ray grid in its central half, which can
+  // sit up to about a quarter box from the centre: small boxes keep that under 15 cm here.
+  const EAST: Vec3 = [2, 10, 0];
+  const NORTH: Vec3 = [0, 16, -2];
+  const px = (i: number, p: Vec3) => {
+    const ph = photos[i];
+    if (!ph) throw new Error('photo missing');
+    const r = toPixel(ph, ph.lens.hfovDeg, [W, H], p);
+    if (!r) throw new Error(`${ph.id} does not see ${p.join(', ')}`);
+    return r;
+  };
+  return { root, photos, px, EAST, NORTH };
+}
+
 test.describe('inspection pipeline', () => {
   test.skip(!hasPython, `no Python with aio_pipelines at ${venvPython}`);
 
@@ -227,101 +335,7 @@ test.describe('inspection pipeline', () => {
     await network.attach(app);
     try {
       const win = await app.firstWindow();
-      // raw inputs: a 4 x 20 x 4 m tower and three DJI photos with gimbal angles
-      const origin = fromWgs84([48.1352, 29.0276, 30], 32639);
-      const W = 800;
-      const H = 600;
-      const plain = await sharp({
-        create: { width: W, height: H, channels: 3, background: '#7a8590' },
-      })
-        .jpeg()
-        .toBuffer();
-      const shots: { name: string; at: Vec3; yaw: number; pitch: number }[] = [
-        { name: 'DJI_0001.JPG', at: [25, 10, 0], yaw: -90, pitch: 0 },
-        { name: 'DJI_0002.JPG', at: [20, 14, 12], yaw: -56.3, pitch: -10.5 },
-        { name: 'DJI_0003.JPG', at: [0, 16, -25], yaw: 180, pitch: 0 },
-      ];
-      const files: string[] = [];
-      for (const s of shots) {
-        const [lon, lat, alt] = toWgs84(
-          [origin[0] + s.at[0], origin[1] - s.at[2], 30 + s.at[1]],
-          32639,
-        );
-        const f = join(dataRoot.base, s.name);
-        await writeFile(
-          f,
-          withExif(
-            {
-              make: 'DJI',
-              lat,
-              lon,
-              alt,
-              focal35: 24,
-              width: W,
-              height: H,
-              dateTimeOriginal: '2026:01:02 10:00:00',
-              dji: {
-                GimbalYawDegree: s.yaw.toFixed(1),
-                GimbalPitchDegree: s.pitch.toFixed(1),
-                GimbalRollDegree: '0',
-                AbsoluteAltitude: alt.toFixed(2),
-              },
-            },
-            plain,
-          ),
-        );
-        files.push(f);
-      }
-      const glb = join(dataRoot.base, 'tower.glb');
-      await writeFile(glb, boxGlb([-2, 0, -2], [2, 20, 2]));
-
-      // 1. new inspection project (the wizard's default type)
-      await win.getByTestId('new-project').first().click();
-      const wiz = win.getByTestId('new-project-wizard');
-      await wiz.getByLabel('Project name').fill('Tower inspection');
-      await expect(wiz.getByRole('button', { name: /Inspection/ })).toHaveAttribute(
-        'aria-pressed',
-        'true',
-      );
-      await wiz.getByRole('button', { name: 'Next' }).click();
-      await wiz.getByRole('button', { name: 'Typed coordinate' }).click();
-      await wiz.getByLabel('Origin coordinate').fill('29.0276, 48.1352, 30');
-      await wiz.getByRole('button', { name: 'Next' }).click();
-      await wiz.getByRole('button', { name: 'Next' }).click();
-      await wiz.getByRole('button', { name: 'Create project' }).click();
-      await expect(win.getByTestId('empty-project')).toBeVisible({ timeout: 30_000 });
-      const root = join(dataRoot.root, 'projects', 'tower-inspection');
-
-      // 2. raw import: photos with poses and the model
-      await nextOpenDialog(app, [...files, glb]);
-      await win.getByRole('button', { name: 'Import files' }).click();
-      const panel = win.getByTestId('import-panel');
-      await expect(panel).toContainText('Imported 4 of 4 files', { timeout: 30_000 });
-      await panel.getByRole('button', { name: 'Close' }).click();
-      const manifest = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as {
-        type: string;
-        layers: {
-          kind: string;
-          id: string;
-          items?: { id: string; pos: Vec3; q: Quat; lens: LensModel }[];
-        }[];
-      };
-      expect(manifest.type).toBe('inspection');
-      const photos = manifest.layers.find((l) => l.kind === 'photos')?.items ?? [];
-      expect(photos).toHaveLength(3);
-
-      // 3. detections from a review pass: boxes around known points of the tower's faces. The kit
-      // places a box at the median-distance hit of a 5 x 5 ray grid in its central half, which can
-      // sit up to about a quarter box from the centre: small boxes keep that under 15 cm here.
-      const EAST: Vec3 = [2, 10, 0];
-      const NORTH: Vec3 = [0, 16, -2];
-      const px = (i: number, p: Vec3) => {
-        const ph = photos[i];
-        if (!ph) throw new Error('photo missing');
-        const r = toPixel(ph, ph.lens.hfovDeg, [W, H], p);
-        if (!r) throw new Error(`${ph.id} does not see ${p.join(', ')}`);
-        return r;
-      };
+      const { root, photos, px, EAST, NORTH } = await buildTower(app, win, dataRoot);
       const [p1, p2, p3] = photos;
       await mkdir(join(root, 'detections'), { recursive: true });
       await writeFile(
@@ -445,6 +459,146 @@ test.describe('inspection pipeline', () => {
         JSON.parse(await readFile(join(root, 'issues.json'), 'utf8')) as { issues: Issue[] }
       ).issues;
       expect(again).toEqual(issues);
+      expect(await network.outbound()).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('an AI pass reviewed in the app: the pipeline places the accepted ones on their issue, no duplicate', async ({
+    dataRoot,
+    network,
+  }) => {
+    test.setTimeout(240_000);
+    const app = await launchApp(dataRoot, { STRATLAS_PIPELINE_PYTHON: venvPython });
+    await network.attach(app);
+    try {
+      const win = await app.firstWindow();
+      const { root, photos, px, EAST, NORTH } = await buildTower(app, win, dataRoot);
+      const [p1, p2, p3] = photos;
+      await mkdir(join(root, 'detections'), { recursive: true });
+      // an AI pass nobody reviewed yet: two views of one rust spot and a false alarm
+      await writeFile(
+        join(root, 'detections', 'ai-run-1.json'),
+        JSON.stringify({
+          schema: 'aio.detections/1',
+          source: 'ai',
+          producer: 'anthropic claude-opus-5-5',
+          run: {
+            id: 'run-1',
+            provider: 'anthropic',
+            model: 'claude-opus-5-5',
+            promptVersion: 'detect-v1',
+          },
+          detections: [
+            {
+              id: 'a1',
+              photo: p1?.id,
+              class: 'corrosion',
+              severity: 2,
+              status: 'draft',
+              confidence: 0.9,
+              bbox: box(px(0, EAST), 5),
+            },
+            {
+              id: 'a2',
+              photo: p2?.id,
+              class: 'corrosion',
+              severity: 2,
+              status: 'draft',
+              confidence: 0.8,
+              bbox: box(px(1, EAST), 5),
+            },
+            {
+              id: 'a3',
+              photo: p1?.id,
+              class: 'corrosion',
+              severity: 1,
+              status: 'draft',
+              confidence: 0.4,
+              bbox: [10, 10, 60, 40],
+            },
+          ],
+        }),
+      );
+      // a person's pass the pipeline turns into an issue of its own
+      await writeFile(
+        join(root, 'detections', 'review.json'),
+        JSON.stringify({
+          schema: 'aio.detections/1',
+          source: 'human',
+          detections: [{ id: 'r1', photo: p3?.id, class: 'crack', bbox: box(px(2, NORTH), 5) }],
+        }),
+      );
+
+      // review: X rejects the false alarm, A accepts the first view, L links the second to it
+      await win.locator('.sb-nav .nav-item', { hasText: 'Detections' }).click();
+      const counts = win.getByTestId('det-counts');
+      await expect(counts).toContainText('3 waiting · 1 accepted · 0 rejected');
+      const inspector = win.getByTestId('det-inspector');
+      await expect(inspector).toContainText('Confidence 40%');
+      await win.getByTestId('det-sheet').locator('.det-tile').first().click();
+      await win.keyboard.press('x');
+      await expect(inspector).toContainText('Confidence 90%');
+      await win.keyboard.press('a');
+      await expect(counts).toContainText('1 waiting · 2 accepted · 1 rejected');
+      await expect(inspector).toContainText('Confidence 80%');
+      await win.keyboard.press('l');
+      await win.getByPlaceholder('Find an issue by code or title').press('Enter');
+      await expect(counts).toContainText('0 waiting · 3 accepted · 1 rejected');
+      await expect(win.getByTestId('det-save')).toHaveText('Saved');
+
+      // on disk: both views name the review's issue; the false alarm is rejected
+      const pass = async () =>
+        (
+          JSON.parse(await readFile(join(root, 'detections', 'ai-run-1.json'), 'utf8')) as {
+            detections: { id: string; status: string; issueId?: string }[];
+          }
+        ).detections;
+      await expect
+        .poll(async () => (await pass()).map((d) => `${d.id}:${d.status}`).join(','))
+        .toBe('a1:accepted,a2:accepted,a3:rejected');
+      const [a1, a2] = await pass();
+      expect(a1?.issueId).toBeTruthy();
+      expect(a2?.issueId).toBe(a1?.issueId);
+      await expect
+        .poll(async () =>
+          (
+            JSON.parse(await readFile(join(root, 'issues.json'), 'utf8')) as { issues: Issue[] }
+          ).issues.map((i) => i.id),
+        )
+        .toEqual([a1?.issueId]);
+
+      // the pipeline places the review's issue and makes one issue of its own (the person's crack)
+      const jobId = await runInspection(win, true);
+      const log = await readFile(join(root, 'jobs', jobId, 'job.log'), 'utf8');
+      expect(log).toContain('1 rejected');
+      expect(log).toContain('1 accepted in the review');
+      const issues = (
+        JSON.parse(await readFile(join(root, 'issues.json'), 'utf8')) as { issues: Issue[] }
+      ).issues;
+      expect(issues).toHaveLength(2);
+      const rust = issues.find((i) => i.id === a1?.issueId);
+      const crack = issues.find((i) => i.id !== a1?.issueId);
+      expect(rust?.code).toBe('F01');
+      expect(rust?.sightings.filter((s) => s.on === 'image')).toHaveLength(2);
+      expect(rust?.sightings.filter((s) => s.on === 'mesh')).toHaveLength(1);
+      expect(offBy(rust, EAST)).toBeLessThan(0.3);
+      expect(crack).toMatchObject({ classId: 'crack', code: 'D01' });
+      expect(issues.filter((i) => i.classId === 'corrosion')).toHaveLength(1);
+
+      // the review shows the pipeline's issue and offers nothing to accept twice
+      await win.locator('.sb-nav .nav-item', { hasText: 'Detections' }).click();
+      await win.getByRole('button', { name: 'All', exact: true }).click();
+      await expect(counts).toContainText('0 waiting · 3 accepted · 1 rejected');
+      const crackTile = win
+        .getByTestId('det-sheet')
+        .locator('.det-tile', { hasText: p3?.id ?? '' });
+      await crackTile.click();
+      await expect(win.getByTestId('det-accepted-as')).toHaveText(
+        'The inspection pipeline made issue D01 from it.',
+      );
+      await expect(win.getByTestId('det-accept')).toHaveCount(0);
       expect(await network.outbound()).toEqual([]);
     } finally {
       await app.close();

@@ -131,7 +131,8 @@ export const en = {
   'det.uncertain.as': 'Uncertain: accept as "{label}" (U)',
   'det.uncertain.flag': 'Uncertain (U)',
   'det.origin.ai': 'Proposed by {model}, prompt {prompt}.',
-  'det.origin.pipeline': 'Proposed by the {pipeline} pipeline.',
+  'det.origin.model': 'Proposed by the local model {producer}.',
+  'det.origin.import': 'Imported from {producer}.',
   'det.origin.human': 'Drawn by {author}.',
   'det.confidence': 'Confidence {pct}%',
   'det.modelSaid': 'The model called it "{label}". Pick a class.',
@@ -154,6 +155,14 @@ export const en = {
   'det.mask': 'Outline',
   'det.mask.tip': 'Outline the object in the box with the mask model (M)',
   'det.acceptedAs': 'Accepted as issue {code}.',
+  'det.acceptedByPipeline': 'The inspection pipeline made issue {code} from it.',
+  'det.acceptedForPipeline':
+    'Accepted. The inspection pipeline places it and makes the issue when it runs.',
+  'det.sheet.hidden_one':
+    '{count} detection is on a contact sheet or a photo the review cannot find; it stays in its file.',
+  'det.sheet.hidden_other':
+    '{count} detections are on contact sheets or photos the review cannot find; they stay in their files.',
+  'det.sheet.problem': '{name} is left as it is: {error}',
   'det.openIssue': 'Open in Issues',
   'det.issueGone': 'The issue made from this detection no longer exists.',
   'det.problem.noClass': 'Pick a class before accepting (C).',

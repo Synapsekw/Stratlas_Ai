@@ -55,6 +55,7 @@ function convert(
     model: 'claude-opus-5-5',
     promptVersion: 'detect-v1',
     runId: 'run-1',
+    pass: 'ai-run-1.json',
     now: NOW,
     existing,
     newId: () => `n${String(++n)}`,
@@ -81,6 +82,7 @@ describe('AI results to draft detections', () => {
     expect(skipped).toBe(0);
     expect(detections[0]).toEqual({
       id: 'n1',
+      pass: 'ai-run-1.json',
       source: { kind: 'photo', layer: 'photos', photo: 'p001' },
       size: [2560, 1708],
       geom: { type: 'box', x: 640, y: 854, w: 640, h: 427 },

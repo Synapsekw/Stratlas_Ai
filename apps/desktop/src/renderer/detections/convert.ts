@@ -41,6 +41,8 @@ export interface ConvertInput {
   model: string;
   promptVersion: string;
   runId: string;
+  /** The pass file the run writes (`ai-<run>.json`). */
+  pass: string;
   now: string;
   existing: readonly Detection[];
   newId: () => string;
@@ -86,6 +88,7 @@ export function toDraftDetections(o: ConvertInput): { detections: Detection[]; s
           : null;
       const d: Detection = {
         id: o.newId(),
+        pass: o.pass,
         source,
         size: [size.width, size.height],
         geom,

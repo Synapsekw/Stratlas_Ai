@@ -60,12 +60,14 @@ function OriginLine({ d }: { d: Detection }) {
       </p>
     );
   }
-  if (d.origin.kind === 'pipeline') {
+  if (d.origin.kind === 'model' || d.origin.kind === 'import') {
     return (
       <p className="det-origin">
         <Icon name="clock" size={12} />
         <span>
-          {t('det.origin.pipeline', { pipeline: d.origin.pipeline })}
+          {t(d.origin.kind === 'model' ? 'det.origin.model' : 'det.origin.import', {
+            producer: d.origin.producer,
+          })}
           {conf !== null && <b className="mono">{` ${t('det.confidence', { pct: conf })}`}</b>}
         </span>
       </p>
@@ -74,7 +76,7 @@ function OriginLine({ d }: { d: Detection }) {
   return (
     <p className="det-origin">
       <Icon name="anno" size={12} />
-      <span>{t('det.origin.human', { author: d.origin.author })}</span>
+      <span>{t('det.origin.human', { author: 'author' in d.origin ? d.origin.author : '' })}</span>
     </p>
   );
 }
@@ -334,9 +336,15 @@ export function Inspector(p: InspectorProps) {
 
         {d.status === 'accepted' ? (
           <div className="det-accepted">
-            {issue ? (
+            {!d.issueId ? (
+              <p className="ann-faint">{t('det.acceptedForPipeline')}</p>
+            ) : issue ? (
               <>
-                <p>{t('det.acceptedAs', { code: issue.code })}</p>
+                <p data-testid="det-accepted-as">
+                  {t(d.issuedBy === 'pipeline' ? 'det.acceptedByPipeline' : 'det.acceptedAs', {
+                    code: issue.code,
+                  })}
+                </p>
                 <button
                   type="button"
                   className="ann-btn"

@@ -11,7 +11,7 @@
  */
 import type { ElectronApplication, Page } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, launchApp, NetworkGuard, test } from './fixtures';
@@ -201,18 +201,43 @@ test('detection review: AI drafts, reject and accept with the keyboard', async (
     expect(issue?.note).toContain(
       'Detected by claude-opus-5-5 (prompt detect-v1, confidence 80 %)',
     );
-    await expect
-      .poll(async () => {
-        const text = await readFile(join(c.projectDir, 'detections.json'), 'utf8').catch(() => '');
-        if (!text) return '';
-        const f = JSON.parse(text) as { detections: { status: string }[]; runs: unknown[] };
-        return `${f.detections.map((d) => d.status).join(',')} runs ${String(f.runs.length)}`;
-      })
-      .toBe('rejected,accepted,draft,draft runs 1');
-    const review = JSON.parse(await readFile(join(c.projectDir, 'detections.json'), 'utf8')) as {
-      detections: { status: string; issueId?: string }[];
+    // The AI run is one pass file, aio.detections/1, beside any other passes.
+    const passFile = async () => {
+      const names = (
+        await readdir(join(c.projectDir, 'detections')).catch(() => [] as string[])
+      ).filter((n) => /^ai-.+\.json$/.test(n));
+      if (names.length !== 1 || !names[0]) return null;
+      return JSON.parse(await readFile(join(c.projectDir, 'detections', names[0]), 'utf8')) as {
+        schema: string;
+        source: string;
+        assessed?: string[];
+        run?: { model?: string; promptVersion?: string; images?: number };
+        detections: {
+          status: string;
+          issueId?: string;
+          space?: string;
+          geom?: unknown;
+          bbox: number[];
+        }[];
+      };
     };
-    expect(review.detections[1]?.issueId).toBe(issue?.id);
+    await expect
+      .poll(async () => (await passFile())?.detections.map((d) => d.status).join(','))
+      .toBe('rejected,accepted,draft,draft');
+    const pass = await passFile();
+    expect(pass).toMatchObject({
+      schema: 'aio.detections/1',
+      source: 'ai',
+      assessed: ['p001', 'p002', 'p003', 'p004'],
+      run: { model: 'claude-opus-5-5', promptVersion: 'detect-v1', images: 4 },
+    });
+    expect(pass?.detections[1]?.issueId).toBe(issue?.id);
+    expect(pass?.detections[2]).toMatchObject({
+      status: 'draft',
+      space: 'source',
+      geom: { type: 'box' },
+    });
+    expect(existsSync(join(c.projectDir, 'detections.json'))).toBe(false);
 
     // A model answer that is not the detection format: the exact reason, nothing added.
     await win.getByTestId('det-ai-open').click();

@@ -8,6 +8,8 @@ import { cornersOf, geomOutline, MIN_BOX_SIDE, type Point, type Size } from '../
  */
 
 export type Polygon = Extract<ImageGeom, { type: 'polygon' }>;
+/** A shape a detection can have (every image shape but a mask). */
+export type ShapeGeom = Exclude<ImageGeom, { type: 'mask' }>;
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -48,7 +50,7 @@ export function removeVertex(poly: Polygon, i: number): Polygon | null {
 }
 
 /** Keep a shape inside the image (a box is cut at the edges, vertices are pulled in). */
-export function clampGeom(g: ImageGeom, size: Size): ImageGeom {
+export function clampGeom<G extends ImageGeom>(g: G, size: Size): G {
   const W = size.width;
   const H = size.height;
   switch (g.type) {
@@ -58,7 +60,7 @@ export function clampGeom(g: ImageGeom, size: Size): ImageGeom {
       const x1 = clamp(g.x + g.w, 0, W);
       const y1 = clamp(g.y + g.h, 0, H);
       return {
-        type: 'box',
+        ...g,
         x: x0,
         y: y0,
         w: Math.max(MIN_BOX_SIDE, x1 - x0),
@@ -78,7 +80,7 @@ export function clampGeom(g: ImageGeom, size: Size): ImageGeom {
  * A normalised box `[x, y, w, h]` (0 to 1 of the image, top-left origin) in pixels, or null when
  * it is not a usable box (outside the image, empty, not numbers).
  */
-export function normBoxToPixels(box: readonly number[], size: Size): ImageGeom | null {
+export function normBoxToPixels(box: readonly number[], size: Size): ShapeGeom | null {
   const [x, y, w, h] = box;
   if ([x, y, w, h].some((n) => typeof n !== 'number' || !Number.isFinite(n))) return null;
   const x0 = clamp(x ?? 0, 0, 1) * size.width;
@@ -90,7 +92,7 @@ export function normBoxToPixels(box: readonly number[], size: Size): ImageGeom |
 }
 
 /** A normalised polygon (0 to 1 pairs) in pixels, or null with fewer than three usable points. */
-export function normPolygonToPixels(pts: readonly unknown[], size: Size): ImageGeom | null {
+export function normPolygonToPixels(pts: readonly unknown[], size: Size): ShapeGeom | null {
   const points: Vec2[] = [];
   for (const p of pts) {
     if (!Array.isArray(p) || p.length < 2) continue;
@@ -170,4 +172,19 @@ export function boundsIou(a: ImageGeom, b: ImageGeom): number {
   const inter = ix * iy;
   const union = A.w * A.h + B.w * B.h - inter;
   return union > 0 ? inter / union : 0;
+}
+
+/** A shape scaled by `sx`, `sy` (between pixel grids; a rotated box keeps its angle). */
+export function scaleGeom<G extends ImageGeom>(g: G, sx: number, sy: number): G {
+  switch (g.type) {
+    case 'box':
+    case 'rotbox':
+      return { ...g, x: g.x * sx, y: g.y * sy, w: g.w * sx, h: g.h * sy };
+    case 'point':
+      return { ...g, x: g.x * sx, y: g.y * sy };
+    case 'polygon':
+      return { ...g, points: g.points.map(([x, y]): Vec2 => [x * sx, y * sy]) };
+    default:
+      return g;
+  }
 }
