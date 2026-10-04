@@ -4,7 +4,7 @@ import type { Layer, ProjectManifest } from '@aio/schema';
 import { createWorkspace } from '@aio/workspace';
 import { Line, PerspectiveCamera, Scene, type Mesh, type WebGLRenderer } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { VideoRig } from './rig';
+import { setFlightPaths, VideoRig } from './rig';
 import { configureVideo } from './runtime';
 
 const flight = {
@@ -125,6 +125,15 @@ describe('VideoRig flight paths', () => {
     expect(shown()).toEqual(['v0']);
     rig.setFlightPaths({ mode: 'all', hiddenClips: new Set() });
     expect(shown()).toEqual(['v0', 'v2']);
+    rig.dispose();
+  });
+
+  it('keeps the path choice for a scene across rigs (a new project builds a new rig)', () => {
+    const h = handle();
+    setFlightPaths(h, { mode: 'off', hiddenClips: new Set(['v1']) });
+    const rig = new VideoRig(h);
+    expect(rig.flightPaths.mode).toBe('off');
+    expect([...rig.flightPaths.hiddenClips]).toEqual(['v1']);
     rig.dispose();
   });
 });

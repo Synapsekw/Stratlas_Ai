@@ -43,6 +43,7 @@ export {
 export {
   registerVideoAdapters,
   setCameraMode,
+  setFlightPaths,
   setProjection,
   videoRig,
   type CameraMode,

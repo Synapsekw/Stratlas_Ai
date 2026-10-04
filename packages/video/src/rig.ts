@@ -56,6 +56,9 @@ function controlsOf(h: SceneHandle): ControlsLike | null {
   return null;
 }
 
+/** The path choice per scene, kept when the rig is rebuilt (another project in the same scene). */
+const pathChoice = new WeakMap<SceneHandle, FlightPathOptions>();
+
 const PATH_START = new Color('#5ab0ff');
 const PATH_END = new Color('#ff5a5a');
 
@@ -169,6 +172,8 @@ export class VideoRig {
     projectorOptions: Partial<ProjectorOptions> = {},
   ) {
     this.projector = new Projector(projectorOptions);
+    const paths = pathChoice.get(handle);
+    if (paths) this.setFlightPaths(paths);
     this.group.name = 'VideoRig';
     this.drone.name = 'Drone';
     this.drone.visible = false;
@@ -559,6 +564,15 @@ export function videoRig(handle: SceneHandle): VideoRig {
 /** Follow-cam and drone-eye views for the UI. */
 export function setCameraMode(handle: SceneHandle, mode: CameraMode): void {
   videoRig(handle).setCameraMode(mode);
+}
+
+/**
+ * Flight paths for the UI: all, the active clip's flight only, or none, plus clips whose path is
+ * hidden. Remembered for the scene, so a rig built later (next project) starts with it.
+ */
+export function setFlightPaths(handle: SceneHandle, o: FlightPathOptions): void {
+  pathChoice.set(handle, { ...pathChoice.get(handle), ...o });
+  rigs.get(handle)?.setFlightPaths(o);
 }
 
 /** Projection opacity, vignette and on/off for the UI. */
