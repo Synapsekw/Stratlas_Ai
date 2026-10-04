@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   childKeys,
   frustumPlanes,
+  indexNodes,
   nodeBounds,
   parentKey,
   parseKey,
@@ -153,5 +154,18 @@ describe('selectNodes', () => {
     ];
     const r = selectNodes(flat, [5, 5, -20], { ...opts, budget: 20, minScreenRatio: 0.02 });
     expect(r.load).toEqual(['r', 'a']);
+  });
+
+  it('reuses one index across selections as loaded flags and the eye change', () => {
+    const nodes = tree(3);
+    const index = indexNodes(nodes);
+    const near: [number, number, number] = [8, 20, 8];
+    const far: [number, number, number] = [60, 300, 60];
+    const o = { ...opts, budget: 2000 };
+    expect(selectNodes(nodes, near, o, index)).toEqual(selectNodes(nodes, near, o));
+    for (const n of nodes) n.loaded = selectNodes(nodes, near, o, index).load.includes(n.key);
+    const moved = selectNodes(nodes, far, o, index);
+    expect(moved).toEqual(selectNodes(nodes, far, o));
+    expect(moved.unload.length).toBeGreaterThan(0);
   });
 });

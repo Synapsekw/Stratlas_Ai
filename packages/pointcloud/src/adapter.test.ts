@@ -150,6 +150,7 @@ describe('pointcloud adapter', () => {
     frame();
     d.finishAll();
     await flush();
+    frame();
     let material: unknown = null;
     handle.scene.traverse((o) => {
       if (o instanceof Points) material = o.material;
@@ -171,6 +172,8 @@ describe('pointcloud adapter', () => {
     frame();
     d.finishAll();
     await flush();
+    // decoded chunks reach the scene on the next frame
+    frame();
     let points = 0;
     handle.scene.traverse((o) => {
       if (o instanceof Points) points += 1;
@@ -490,5 +493,44 @@ describe('COPC layers', () => {
     expect(rampRanges(handle)).toEqual([[2, 6]]);
     layer.dispose();
     expect(settings.getState().heightRange).toBeNull();
+  });
+
+  it('spreads a burst of decoded nodes over frames under the upload budget', async () => {
+    // a root and three children of 300 k points: 3.3 MB each on the GPU, so one per frame
+    const nodes: CopcHierarchy['nodes'] = { '0-0-0-0': info(300_000, 1000) };
+    ['1-0-0-0', '1-1-0-0', '1-0-1-0'].forEach((k, i) => {
+      nodes[k] = info(300_000, 2000 + i);
+    });
+    const { handle, frame, d } = await open({ 10: { nodes, pages: {} } }, [32, 80, 32]);
+    const drawn = () => {
+      let n = 0;
+      handle.scene.traverse((o) => {
+        if (o instanceof Points) n++;
+      });
+      return n;
+    };
+    frame();
+    await flush();
+    expect(d.jobs).toHaveLength(4);
+    const sizes = () => {
+      const out: number[] = [];
+      handle.scene.traverse((o) => {
+        if (o instanceof Points)
+          out.push((o.material as { uniforms: { uSize: { value: number } } }).uniforms.uSize.value);
+      });
+      return out;
+    };
+    const counts: number[] = [];
+    frame();
+    counts.push(drawn());
+    // the root lands first, at the root spacing
+    expect(sizes()).toEqual([1]);
+    for (let i = 0; i < 4; i++) {
+      frame();
+      counts.push(drawn());
+    }
+    expect(counts).toEqual([1, 2, 3, 4, 4]);
+    // with its children loaded the root draws at their (finer) spacing, like them
+    expect(sizes()).toEqual([0.5, 0.5, 0.5, 0.5]);
   });
 });

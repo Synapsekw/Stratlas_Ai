@@ -24,11 +24,19 @@ import {
   createPointMaterial,
   type PointMaterial,
 } from './material';
-import { parentKey, selectNodes, type LodNode, type Plane4 } from './octree';
+import {
+  indexNodes,
+  parentKey,
+  selectNodes,
+  type LodIndex,
+  type LodNode,
+  type Plane4,
+} from './octree';
 import type { Decoder } from './pool';
 import type { DecodedChunk } from './protocol';
 import type { PointcloudSettings } from './settings';
 import { pointcloudStats } from './stats';
+import { IntervalGate, LOD_INTERVAL_MS, STATS_INTERVAL_MS, UploadQueue } from './stream';
 
 type V3 = readonly [number, number, number];
 
@@ -92,6 +100,31 @@ export interface CloudLayerState {
   visible: boolean;
   copc: CopcLayerInfo | null;
   pagesLoading: Set<string>;
+  /** Chunks with an object in the scene. */
+  loaded: Set<ChunkState>;
+  /**
+   * COPC: one material per octree depth, sharing every uniform of `material` but the point size,
+   * so nodes draw at their own size without re-uploading the uniforms object by object.
+   */
+  depthMaterials: Map<number, PointMaterial>;
+  /** Shallowest octree depth whose chunks carry a height sample (the elevation range level). */
+  heightLod: number;
+}
+
+/** A decoded chunk waiting for its frame. */
+interface Ready {
+  layer: CloudLayerState;
+  chunk: ChunkState;
+  data: DecodedChunk;
+}
+
+/** The level-of-detail inputs, rebuilt only when the chunk set or the layer visibility changes. */
+interface LodCache {
+  version: number;
+  chunks: ChunkState[];
+  nodes: LodNode[];
+  owner: Map<string, CloudLayerState>;
+  index: LodIndex;
 }
 
 const MAX_INFLIGHT = 8;
@@ -107,7 +140,21 @@ export class CloudManager {
   readonly root = new Group();
   private edl: EdlPass | null = null;
   private inflight = 0;
+  /** Reselect on the next frame (chunk set, budget or visibility changed). */
   private dirty = true;
+  /** Bumped when the chunk set or the layer visibility changes; invalidates `lod`. */
+  private version = 0;
+  private lod: LodCache | null = null;
+  /** Wanted chunks not loaded yet, highest priority first (the last selection). */
+  private wanted: string[] = [];
+  private wantedAt = 0;
+  private readonly ready = new UploadQueue<Ready>();
+  private readonly lodGate = new IntervalGate(LOD_INTERVAL_MS);
+  private readonly statsGate = new IntervalGate(STATS_INTERVAL_MS);
+  private sizesDirty = false;
+  private statsDirty = true;
+  /** Parent chunk of each octree chunk (null at the root), resolved once. */
+  private readonly parents = new WeakMap<ChunkState, ChunkState | null>();
   private created = 0;
   private readonly lastView = new Matrix4().set(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
   private readonly viewProj = new Matrix4();
@@ -196,9 +243,12 @@ export class CloudManager {
       visible: true,
       copc,
       pagesLoading: new Set(),
+      loaded: new Set(),
+      depthMaterials: new Map(),
+      heightLod: Infinity,
     };
     this.layers.set(id, layer);
-    this.dirty = true;
+    this.structureChanged();
     this.heightsDirty = true;
     this.updateStats();
     this.handle.requestRender();
@@ -210,7 +260,7 @@ export class CloudManager {
     if (!l) return;
     l.visible = visible;
     l.group.visible = visible;
-    this.dirty = true;
+    this.structureChanged();
     this.heightsDirty = true;
     this.handle.requestRender();
   }
@@ -219,9 +269,11 @@ export class CloudManager {
     const l = this.layers.get(id);
     if (!l) return;
     for (const c of l.chunks) this.unloadChunk(c);
-    l.material?.dispose();
+    for (const r of this.ready.remove((x) => x.layer === l)) r.chunk.busy = false;
+    this.disposeMaterials(l);
     l.group.removeFromParent();
     this.layers.delete(id);
+    this.structureChanged();
     this.heightsDirty = true;
     this.updateStats();
     this.handle.requestRender();
@@ -231,8 +283,16 @@ export class CloudManager {
     return this.layers.size === 0;
   }
 
+  /** The chunk set or the layer visibility changed: rebuild the LOD inputs and reselect. */
+  private structureChanged(): void {
+    this.version++;
+    this.dirty = true;
+    this.statsDirty = true;
+  }
+
   /** Runs before every rendered frame. */
   private frame(): void {
+    const now = performance.now();
     const s = this.settings.getState();
     const cam = this.handle.camera;
     const r = this.handle.renderer;
@@ -241,24 +301,21 @@ export class CloudManager {
     this.pxPerM = pxPerM;
     this.sizeScale = s.sizeScale;
     const maxPx = s.maxPixels * r.getPixelRatio();
-    // one range for every node of every cloud: the user's, else the clouds' robust range
-    const [hMin, hMax] = s.heightRange ?? this.heightRange() ?? [0, 10];
-    for (const l of this.layers.values()) {
-      const m = l.material;
-      if (!m) continue;
-      m.uniforms.uSize.value = l.baseSize * s.sizeScale;
-      m.uniforms.uPxPerM.value = pxPerM;
-      m.uniforms.uMaxPx.value = maxPx;
-      m.uniforms.uMode.value = MODE_INDEX[s.colourMode];
-      m.uniforms.uHeight.value.set(hMin, hMax);
+
+    // decoded nodes reach the GPU a frame's budget at a time (stream.ts)
+    if (this.ready.size) {
+      this.ready.drain((x) => {
+        this.attachReady(x);
+      });
     }
-    if (this.edl) this.edl.strength = s.edlStrength;
 
     cam.updateMatrixWorld();
     this.viewProj.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
-    if (!matricesClose(this.viewProj, this.lastView)) this.dirty = true;
-    if (this.dirty) {
+    // while the camera moves the selection is redone every LOD_INTERVAL_MS, not every frame
+    const moved = !matricesClose(this.viewProj, this.lastView);
+    if (this.dirty || (moved && this.lodGate.due(now))) {
       this.dirty = false;
+      this.lodGate.mark(now);
       this.lastView.copy(this.viewProj);
       const eye = cam.getWorldPosition(new Vector3());
       this.frustum.setFromProjectionMatrix(this.viewProj);
@@ -269,7 +326,35 @@ export class CloudManager {
         p.constant,
       ]);
       this.update([eye.x, eye.y, eye.z], s.budget, planes);
+    } else if (moved) {
+      // come back when the interval is up, even if the camera stops now
+      this.handle.requestRender();
     }
+    this.loadWanted();
+    if (this.sizesDirty) this.updateSizes();
+
+    // one range for every node of every cloud: the user's, else the clouds' robust range
+    const [hMin, hMax] = s.heightRange ?? this.heightRange() ?? [0, 10];
+    for (const l of this.layers.values()) {
+      const m = l.material;
+      if (!m) continue;
+      m.uniforms.uSize.value = l.baseSize * s.sizeScale;
+      m.uniforms.uPxPerM.value = pxPerM;
+      m.uniforms.uMaxPx.value = maxPx;
+      m.uniforms.uMode.value = MODE_INDEX[s.colourMode];
+      m.uniforms.uHeight.value.set(hMin, hMax);
+      const s0 = l.copc?.source.spacing ?? l.baseSize;
+      for (const [d, dm] of l.depthMaterials) dm.uniforms.uSize.value = (s0 / 2 ** d) * s.sizeScale;
+    }
+    if (this.edl) this.edl.strength = s.edlStrength;
+
+    const busy = this.ready.size > 0 || this.inflight > 0;
+    if (this.statsDirty && (!busy || this.statsGate.due(now))) {
+      this.statsGate.mark(now);
+      this.updateStats();
+    }
+    // keep frames coming while decoded nodes wait for their turn
+    if (this.ready.size) this.handle.requestRender();
   }
 
   /**
@@ -301,9 +386,12 @@ export class CloudManager {
     return this.heightStats()?.range ?? null;
   }
 
-  private update(eye: [number, number, number], budget: number, frustum: Plane4[]): void {
-    const owner = new Map<string, CloudLayerState>();
+  /** The LOD inputs for the current chunk set, rebuilt only when it changed. */
+  private lodInputs(): LodCache {
+    if (this.lod?.version === this.version) return this.lod;
+    const chunks: ChunkState[] = [];
     const nodes: LodNode[] = [];
+    const owner = new Map<string, CloudLayerState>();
     for (const l of this.layers.values()) {
       for (const c of l.chunks) {
         if (!l.visible) {
@@ -317,20 +405,36 @@ export class CloudManager {
           points: c.points,
           bounds: c.bounds,
           root: c.lod === 0,
-          loaded: c.object !== null || c.busy,
+          loaded: false,
         };
         if (c.children) n.children = c.children;
         if (c.spacing !== undefined) n.spacing = c.spacing;
         if (c.page) n.page = true;
+        chunks.push(c);
         nodes.push(n);
       }
     }
-    const sel = selectNodes(nodes, eye, {
-      budget,
-      pxPerM: this.pxPerM,
-      minPx: REFINE_PX,
-      frustum,
-    });
+    this.lod = { version: this.version, chunks, nodes, owner, index: indexNodes(nodes) };
+    return this.lod;
+  }
+
+  private update(eye: [number, number, number], budget: number, frustum: Plane4[]): void {
+    const { chunks, nodes, owner, index } = this.lodInputs();
+    for (let i = 0; i < chunks.length; i++) {
+      const c = chunks[i];
+      const n = nodes[i];
+      if (!c || !n) continue;
+      // flat chunks learn their count and tight bounds when decoded
+      n.points = c.points;
+      n.bounds = c.bounds;
+      n.loaded = c.object !== null || c.busy;
+    }
+    const sel = selectNodes(
+      nodes,
+      eye,
+      { budget, pxPerM: this.pxPerM, minPx: REFINE_PX, frustum },
+      index,
+    );
     for (const key of sel.unload) {
       const c = owner.get(key)?.byKey.get(key);
       if (c && !c.busy) this.unloadChunk(c);
@@ -340,38 +444,74 @@ export class CloudManager {
       const c = l?.byKey.get(key);
       if (l && c) this.loadPage(l, c);
     }
-    for (const key of sel.load) {
-      if (this.inflight >= MAX_INFLIGHT) {
-        this.dirty = true; // come back next frame
-        break;
-      }
-      const c = owner.get(key)?.byKey.get(key);
-      if (c) this.loadChunk(c);
-    }
-    this.updateSizes();
-    this.updateStats();
+    this.wanted = sel.load;
+    this.wantedAt = 0;
   }
 
-  /** Octree point size: the spacing of the deepest loaded node under each node (Potree's adaptive size). */
+  /** Starts decodes from the last selection while workers are free (no reselection needed). */
+  private loadWanted(): void {
+    const owner = this.lod?.owner;
+    if (!owner) return;
+    while (this.inflight < MAX_INFLIGHT && this.wantedAt < this.wanted.length) {
+      const key = this.wanted[this.wantedAt++];
+      if (key === undefined) break;
+      const c = owner.get(key)?.byKey.get(key);
+      if (c && !c.object && !c.busy && !c.failed && !c.page) this.loadChunk(c);
+    }
+  }
+
+  /** The parent chunk of an octree chunk, looked up once. */
+  private parentOf(l: CloudLayerState, c: ChunkState): ChunkState | null {
+    let p = this.parents.get(c);
+    if (p === undefined) {
+      const k = parentKey(nodeKeyOf(c.key));
+      p = k === null ? null : (l.byKey.get(`${l.id}#${k}`) ?? null);
+      this.parents.set(c, p);
+    }
+    return p;
+  }
+
+  /**
+   * Octree point size: the spacing of the deepest loaded node under each node (Potree's adaptive
+   * size), applied as the material of that depth. Runs when the loaded set changed.
+   */
   private updateSizes(): void {
+    this.sizesDirty = false;
     for (const l of this.layers.values()) {
-      if (!l.copc) continue;
-      const deepest = new Map<string, number>();
-      for (const c of l.chunks) {
-        if (!c.object) continue;
-        for (let k: string | null = nodeKeyOf(c.key); k; k = parentKey(k)) {
+      if (!l.copc || !l.material) continue;
+      const deepest = new Map<ChunkState, number>();
+      for (const c of l.loaded) {
+        for (let k: ChunkState | null = c; k; k = this.parentOf(l, k)) {
           const d = deepest.get(k);
           if (d !== undefined && d >= c.lod) break;
           deepest.set(k, c.lod);
         }
       }
-      const s0 = l.copc.source.spacing;
-      for (const c of l.chunks) {
+      for (const c of l.loaded) {
         if (!c.object) continue;
-        const d = deepest.get(nodeKeyOf(c.key)) ?? c.lod;
-        c.object.userData.size = s0 / 2 ** d;
+        c.object.material = this.depthMaterial(l, l.material, deepest.get(c) ?? c.lod);
       }
     }
+  }
+
+  /** The layer's material at octree depth `d` (point size = root spacing / 2^d). */
+  private depthMaterial(l: CloudLayerState, base: PointMaterial, d: number): PointMaterial {
+    let m = l.depthMaterials.get(d);
+    if (!m) {
+      m = base.clone();
+      const s0 = l.copc?.source.spacing ?? l.baseSize;
+      // every uniform shared with the base material but the size
+      m.uniforms = { ...base.uniforms, uSize: { value: (s0 / 2 ** d) * this.sizeScale } };
+      m.clippingPlanes = this.handle.clippingPlanes;
+      l.depthMaterials.set(d, m);
+    }
+    return m;
+  }
+
+  private disposeMaterials(l: CloudLayerState): void {
+    for (const m of l.depthMaterials.values()) m.dispose();
+    l.depthMaterials.clear();
+    l.material?.dispose();
   }
 
   private loadPage(l: CloudLayerState, c: ChunkState): void {
@@ -405,8 +545,7 @@ export class CloudManager {
       })
       .finally(() => {
         l.pagesLoading.delete(c.key);
-        this.dirty = true;
-        this.updateStats();
+        this.structureChanged();
         this.handle.requestRender();
       });
   }
@@ -437,11 +576,19 @@ export class CloudManager {
     dec
       .decode(job)
       .then((d) => {
-        c.busy = false;
         this.inflight--;
         const l = this.layerOf(c);
-        if (!l) return;
-        this.attach(l, c, d);
+        if (!l) {
+          c.busy = false;
+          return;
+        }
+        // stays busy until its frame comes (frame -> attachReady)
+        const bytes =
+          d.position.byteLength +
+          (d.rgb?.byteLength ?? 0) +
+          (d.intensity?.byteLength ?? 0) +
+          (d.classification?.byteLength ?? 0);
+        this.ready.push({ layer: l, chunk: c, data: d }, bytes, c.lod);
       })
       .catch((e: unknown) => {
         c.busy = false;
@@ -450,13 +597,23 @@ export class CloudManager {
         const msg = e instanceof Error ? e.message : String(e);
         console.warn(`Point cloud chunk ${c.key} could not be loaded: ${msg}`);
         pointcloudStats.getState().addError(`${c.key}: ${msg}`);
+        this.structureChanged();
       })
       .finally(() => {
-        this.dirty = true;
-        this.updateSizes();
-        this.updateStats();
+        this.statsDirty = true;
         this.handle.requestRender();
       });
+  }
+
+  private attachReady({ layer: l, chunk: c, data: d }: Ready): void {
+    c.busy = false;
+    // the layer went away or hid while the node waited
+    if (this.layers.get(l.id) !== l || l.byKey.get(c.key) !== c) return;
+    if (!l.visible && c.lod > 0) return;
+    if (c.object) return;
+    this.attach(l, c, d);
+    this.sizesDirty = true;
+    this.statsDirty = true;
   }
 
   private attach(l: CloudLayerState, c: ChunkState, d: DecodedChunk): void {
@@ -474,7 +631,7 @@ export class CloudManager {
       l.hasRgb = !!d.rgb;
       l.hasIntensity = !!d.intensity;
       l.hasClass = !!d.classification;
-      l.material?.dispose();
+      this.disposeMaterials(l);
       l.material = createPointMaterial({
         hasRgb: l.hasRgb,
         hasIntensity: l.hasIntensity,
@@ -485,7 +642,8 @@ export class CloudManager {
       applyHiddenClasses(l.material, this.settings.getState().hiddenClasses);
       // the section tool cuts meshes and clouds together through this shared array
       l.material.clippingPlanes = this.handle.clippingPlanes;
-      for (const o of l.chunks) if (o.object) o.object.material = l.material;
+      for (const o of l.loaded) if (o.object) o.object.material = l.material;
+      this.sizesDirty = true;
     }
     const pts = new Points(geo, l.material);
     pts.name = `pointcloud:${l.id}:${c.key}`;
@@ -502,15 +660,8 @@ export class CloudManager {
         pts.scale.set(q.scale[0], q.scale[1], q.scale[2]);
       }
     }
-    if (src.kind === 'copc') {
-      // octree nodes draw at the spacing of their deepest loaded descendant (updateSizes)
-      pts.userData.size = c.spacing ?? l.baseSize;
-      pts.onBeforeRender = () => {
-        const m = pts.material;
-        m.uniforms.uSize.value = (pts.userData.size as number) * this.sizeScale;
-        m.uniformsNeedUpdate = true;
-      };
-    }
+    // octree nodes draw at the spacing of their deepest loaded descendant (updateSizes)
+    if (src.kind === 'copc') pts.material = this.depthMaterial(l, l.material, c.lod);
     pts.updateMatrix();
     // The bounding sphere in local (quantised) units, from the decoded bounds.
     const inv = pts.matrix.clone().invert();
@@ -523,9 +674,14 @@ export class CloudManager {
     if (d.classes) c.classes = d.classes;
     if (d.heights?.length) {
       c.heights = d.heights;
-      this.heightsDirty = true;
+      // only the shallowest sampled level sets the range (heightStats)
+      if (c.lod <= l.heightLod) {
+        l.heightLod = c.lod;
+        this.heightsDirty = true;
+      }
     }
     c.object = pts;
+    l.loaded.add(c);
     l.group.add(pts);
   }
 
@@ -534,27 +690,29 @@ export class CloudManager {
     c.object.removeFromParent();
     c.object.geometry.dispose();
     c.object = null;
+    this.layerOf(c)?.loaded.delete(c);
+    this.sizesDirty = true;
+    this.statsDirty = true;
   }
 
   private updateStats(): void {
+    this.statsDirty = false;
     let loaded = 0;
     let total = 0;
-    let loading = 0;
+    const loading = this.inflight + this.ready.size;
     let rgb = false;
     let classes: Record<number, number> | null = null;
     for (const l of this.layers.values()) {
       if (l.material ? l.hasRgb : l.rgbHint) rgb = true;
       if (l.copc) total += l.copc.source.pointCount;
-      for (const c of l.chunks) {
-        if (!l.copc) total += c.points;
-        if (c.object && l.visible) {
-          loaded += c.points;
-          if (c.classes) {
-            classes ??= {};
-            for (const [k, n] of Object.entries(c.classes)) classes[+k] = (classes[+k] ?? 0) + n;
-          }
+      else for (const c of l.chunks) total += c.points;
+      if (!l.visible) continue;
+      for (const c of l.loaded) {
+        loaded += c.points;
+        if (c.classes) {
+          classes ??= {};
+          for (const [k, n] of Object.entries(c.classes)) classes[+k] = (classes[+k] ?? 0) + n;
         }
-        if (c.busy) loading++;
       }
     }
     pointcloudStats.getState().setCounts(this.handle, {
@@ -570,6 +728,7 @@ export class CloudManager {
   }
 
   dispose(): void {
+    for (const r of this.ready.clear()) r.chunk.busy = false;
     for (const id of [...this.layers.keys()]) this.removeLayer(id);
     for (const u of this.unsubscribers) u();
     // a hand-set elevation range belongs to this site

@@ -231,6 +231,27 @@ class Heap<T> {
   }
 }
 
+/** Lookups over a node list; depends only on the keys and children, so it can be kept between calls. */
+export interface LodIndex {
+  byKey: ReadonlyMap<string, LodNode>;
+  /** Child key to parent key. */
+  parentOf: ReadonlyMap<string, string>;
+}
+
+/**
+ * The lookups `selectNodes` needs. Build once per change of the node set (not of its loaded flags
+ * or the camera) and pass it to every selection: rebuilding it is most of a selection's cost.
+ */
+export function indexNodes(nodes: readonly LodNode[]): LodIndex {
+  const byKey = new Map<string, LodNode>();
+  const parentOf = new Map<string, string>();
+  for (const n of nodes) {
+    byKey.set(n.key, n);
+    for (const c of n.children ?? []) parentOf.set(c, n.key);
+  }
+  return { byKey, parentOf };
+}
+
 /**
  * Screen-space-error traversal under a global budget, across every cloud in the scene:
  *
@@ -246,20 +267,12 @@ export function selectNodes(
   nodes: readonly LodNode[],
   eye: V3,
   opts: NodeSelectOptions,
+  index: LodIndex = indexNodes(nodes),
 ): NodeSelection {
   const minPx = opts.minPx ?? 1;
   const minRatio = opts.minScreenRatio ?? 0.02;
   const hyst = opts.hysteresis ?? 1.1;
-  const byKey = new Map<string, LodNode>();
-  const parented = new Set<string>();
-  const parentOf = new Map<string, string>();
-  for (const n of nodes) {
-    byKey.set(n.key, n);
-    for (const c of n.children ?? []) {
-      parented.add(c);
-      parentOf.set(c, n.key);
-    }
-  }
+  const { byKey, parentOf } = index;
 
   const wanted = new Set<string>();
   const order: string[] = [];
@@ -290,7 +303,7 @@ export function selectNodes(
   }
   for (const n of nodes) {
     if (n.root) pushChildren(n);
-    else if (!parented.has(n.key)) heap.push(nodePriority(n.bounds, eye), n);
+    else if (!parentOf.has(n.key)) heap.push(nodePriority(n.bounds, eye), n);
   }
 
   for (let top = heap.pop(); top; top = heap.pop()) {
