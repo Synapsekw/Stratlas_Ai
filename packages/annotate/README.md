@@ -20,6 +20,7 @@ dependencies: `docs/architecture/SPEC.md` section 2.
 | `src/tools/`            | Mesh draw state and pins (`mesh.ts`), point-cloud regions (`cloud.ts`), map drawing (`map.ts`), scene tools (`scene.ts`)                 |
 | `src/tools/overlay.ts`  | 3D issue pins at scale: one GPU point draw, screen clustering (`declutter.ts`), pooled code labels, heat map, Pins filter (`pinDisplay`) |
 | `src/import.ts`         | Kit importers: HCl `findings.json`, EBSM and DAMAC `annotations.json`, kit severity models                                               |
+| `src/detections/`       | Detection review (BLD-5), `@aio/annotate/detections`: adapter, review reducer, acceptance into issues, contact sheet window              |
 | `src/runtime.ts`        | App-wide editor over the global workspace, pose and image-size caches, shared tool and picker state                                      |
 | `src/components/`       | `IssueRegister`, `IssueDetail`, `PhotoViewer`, `VideoAnnotator`, `AnnotationToolbar`, `SightingPicker`, `useMapDraw`                     |
 
@@ -39,6 +40,18 @@ dependencies: `docs/architecture/SPEC.md` section 2.
 - **Engine (S3) callouts**: the issue overlay registers the drawn pins and cluster badges with `EngineStage.addLabelObstacles`, so component callout plates never cover them.
 - **Pins at scale**: `installIssueOverlay(store, display?)` clusters pins in screen space (badge colour = worst member), shows codes for the selected and hovered pin or while at most 50 items are on screen, and draws an additive severity heat map when `pinDisplay.heat` is on. `<PinControls>` (All, Severity N and above, Off, heat map) sits in the stage display tools; the app hands the same setting to `MapView` as `issues`.
 - **Shell (S2)**: done. The author is the OS account (`app:getInfo` `user`) or the Settings override; `IssueRegister` and `IssueDetail` sit in the Issues screen and in the workspace right panel (Selection and Issues tabs); `VideoAnnotator` is a child of `VideoWindow`; flight poses go to `setFlightPoses` when a project opens.
+
+## Detection review (BLD-5)
+
+`@aio/annotate/detections` is pure (no React) so main can validate with it. Until `aio.detections/1` lands in `@aio/schema` (stream P1), `src/detections/model.ts` is the local model and `parseDetectionsFile` / `toDetectionsFile` the adapter. Assumed layout of `<project>/detections.json`:
+
+- `{ "schema": "aio.detections/1", "detections": Detection[], "runs": DetectionRun[] }`
+- Detection: `id`; `source` `{ kind: "photo", layer, photo }` or `{ kind: "frame", layer, t }` (`t` in video seconds); `size` `[w, h]` of the image the shape is drawn on; `geom` (schema `ImageGeom`, pixels); `classId` (empty when the proposer's word matched no class) and `label?`; `severity` (level, `"uncertain"` or null); `uncertain`; `note`; `confidence?` (0 to 1); `status` `draft`, `accepted` (with `issueId`) or `rejected`; `origin` `human` (author), `ai` (provider, model, promptVersion, runId) or `pipeline` (pipeline, version?, model?); `createdAt`, `updatedAt`, `reviewedBy?`, `reviewedAt?`.
+- DetectionRun: one AI or pipeline pass (`id`, `at`, `kind`, provider, model, promptVersion, images, detections, tokens, `costUsd?`).
+
+Accepting goes through the issue editor (validated, saved, undoable in the register): a new draft issue (`source` `agent` for AI, `import` for a pipeline, `human` for a drawing) with the provenance in its note, or one more sighting of an existing issue. A frame detection becomes a one-keyframe video sighting. Accepted detections are final in the review; one whose issue was deleted can be reopened.
+
+Mask assist is a seam: `maskToPolygon` turns a decoder mask into an outline; the desktop main process runs a SAM-class ONNX model only when the pipeline pack has `models/sam/{encoder,decoder}.onnx` and `onnxruntime-node` loads (no model ships).
 
 ## Credits
 
