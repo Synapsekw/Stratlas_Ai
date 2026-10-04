@@ -4,7 +4,7 @@ import {
   type LayerHandle,
   type SceneHandle,
 } from '@aio/engine';
-import type { LensModel } from '@aio/schema';
+import type { CameraOrientation, LensModel, Quat, Vec3 } from '@aio/schema';
 import {
   BufferAttribute,
   BufferGeometry,
@@ -15,18 +15,22 @@ import {
   Line,
   LineBasicMaterial,
   LineSegments,
+  PerspectiveCamera,
   Quaternion,
   SRGBColorSpace,
   Sprite,
   SpriteMaterial,
   Vector3,
   VideoTexture,
+  WebGLRenderTarget,
   type Object3D,
 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRONE_GLB_BASE64 } from './drone-glb';
 import type { Flight } from './flight';
+import { grayFromRgba, type GrayImage } from './autoalign';
 import { imageToRay } from './lens';
+import { orientCamera } from './orientation';
 import { acquirePlayer, releasePlayer, type ClipPlayer } from './player';
 import { interpolatePose } from './pose';
 import { Projector, type ProjectorOptions } from './projector';
@@ -169,6 +173,12 @@ export class VideoRig {
   private lens: LensModel | null = null;
   /** Lens under calibration (Align): replaces the active clip's lens until cleared. */
   private lensOverride: LensModel | null = null;
+  /** Orientation bias under calibration: replaces the active clip's bias until cleared. */
+  private orientationOverride: CameraOrientation | null = null;
+  /** Position offset under calibration: replaces the active clip's offset until cleared. */
+  private positionOverride: Vec3 | null = null;
+  /** The logged (unbiased) pose of the active clip at the current time. */
+  private readonly logPose = { pos: new Vector3(), q: new Quaternion(), flightMs: 0 };
   private mode: CameraMode = 'free';
   private saved: { pos: Vector3; quat: Quaternion; up: Vector3; fov: number; near: number } | null =
     null;
@@ -340,6 +350,92 @@ export class VideoRig {
     this.handle.requestRender();
   }
 
+  /**
+   * Try an orientation bias on the active clip without saving it (calibration): projection,
+   * frustum and drone-eye camera use it until `null` restores the layer's own bias.
+   */
+  setOrientationOverride(o: CameraOrientation | null) {
+    this.orientationOverride = o;
+    this.handle.requestRender();
+  }
+
+  /**
+   * Try a camera position offset (local frame, metres) on the active clip without saving it;
+   * `null` restores the layer's own offset.
+   */
+  setPositionOverride(offset: Vec3 | null) {
+    this.positionOverride = offset;
+    this.handle.requestRender();
+  }
+
+  /** The bias in use for the active clip (the calibration trial, else the layer's). */
+  activeOrientation(): CameraOrientation | null {
+    const entry = this.activeId ? this.clips.get(this.activeId) : undefined;
+    return this.orientationOverride ?? entry?.layer.orientation ?? null;
+  }
+
+  /**
+   * The logged camera pose of the active clip now, before any orientation bias, and its flight
+   * time (milliseconds since the flight start): what calibration pairs are measured against.
+   */
+  loggedPose(): { pos: Vec3; q: Quat; flightMs: number } | null {
+    if (!this.pose.valid) return null;
+    const { pos, q, flightMs } = this.logPose;
+    return { pos: [pos.x, pos.y, pos.z], q: [q.x, q.y, q.z, q.w], flightMs };
+  }
+
+  /** The flight of a clip, once loaded. */
+  flightOf(layerId: string): Flight | null {
+    return this.clips.get(layerId)?.flight ?? null;
+  }
+
+  /**
+   * Render the scene (without the rig's own drawings) from the active clip's camera with its
+   * current lens and orientation, as a grey image `width` pixels wide: the model view that
+   * automatic orientation refine compares with the video frame. Pinhole lenses only.
+   */
+  renderModelView(width: number): GrayImage | null {
+    const v = this.renderModelRgba(width);
+    return v ? grayFromRgba(v.rgba, v.width, v.height) : null;
+  }
+
+  /** As `renderModelView`, in colour: RGBA rows from the top. */
+  renderModelRgba(width: number): { width: number; height: number; rgba: Uint8Array } | null {
+    const lens = this.lens;
+    if (!this.pose.valid || lens?.model !== 'pinhole') return null;
+    const height = Math.max(1, Math.round(width / lens.aspect));
+    const vfov = 2 * Math.atan(Math.tan((lens.hfovDeg * Math.PI) / 360) / lens.aspect);
+    const cam = new PerspectiveCamera((vfov * 180) / Math.PI, lens.aspect, 0.5, 20000);
+    cam.position.copy(this.pose.pos);
+    cam.quaternion.copy(this.pose.q);
+    cam.updateMatrixWorld();
+    cam.updateProjectionMatrix();
+    const target = new WebGLRenderTarget(width, height, { samples: 4 });
+    const r = this.handle.renderer;
+    const was = { group: this.group.visible, target: r.getRenderTarget() };
+    this.group.visible = false;
+    const projector = this.projector.enabled;
+    this.projector.setEnabled(false);
+    try {
+      r.setRenderTarget(target);
+      r.render(this.handle.scene, cam);
+      const px = new Uint8Array(width * height * 4);
+      r.readRenderTargetPixels(target, 0, 0, width, height, px);
+      // rows come bottom-up from WebGL
+      const rgba = new Uint8Array(px.length);
+      const row = width * 4;
+      for (let y = 0; y < height; y++)
+        rgba.set(px.subarray((height - 1 - y) * row, (height - y) * row), y * row);
+      return { width, height, rgba };
+    } finally {
+      r.setRenderTarget(was.target);
+      this.group.visible = was.group;
+      this.projector.setEnabled(projector);
+      target.dispose();
+      this.handle.requestRender();
+    }
+  }
+
   private applyLens(lens: LensModel) {
     this.lens = lens;
     this.projector.setLens(lens);
@@ -461,9 +557,15 @@ export class VideoRig {
       return;
     }
     const layerVisible = entry.visible && !s.hidden[entry.layer.id];
-    const p = interpolatePose(flight.samples, s.nowMs - flight.startUtcMs);
+    const flightMs = s.nowMs - flight.startUtcMs;
+    const p = interpolatePose(flight.samples, flightMs);
+    this.logPose.pos.fromArray(p.pos);
+    this.logPose.q.fromArray(p.q);
+    this.logPose.flightMs = flightMs;
+    const off = this.positionOverride ?? entry.layer.positionOffsetM;
     this.pose.pos.fromArray(p.pos);
-    this.pose.q.fromArray(p.q);
+    if (off) this.pose.pos.add(new Vector3(off[0], off[1], off[2]));
+    this.pose.q.fromArray(orientCamera(p.q, this.orientationOverride ?? entry.layer.orientation));
     this.pose.valid = true;
     const win = this.player.window;
     const covered =
@@ -592,6 +694,19 @@ export function videoRig(handle: SceneHandle): VideoRig {
     rigs.set(handle, rig);
   }
   return rig;
+}
+
+/** Try an orientation bias on the active clip (calibration); `null` restores the clip's own. */
+export function setCalibrationOrientation(
+  handle: SceneHandle,
+  orientation: CameraOrientation | null,
+): void {
+  videoRig(handle).setOrientationOverride(orientation);
+}
+
+/** Try a camera position offset on the active clip (calibration); `null` restores the clip's. */
+export function setCalibrationPosition(handle: SceneHandle, offset: Vec3 | null): void {
+  videoRig(handle).setPositionOverride(offset);
 }
 
 /** Try a lens on the active clip (calibration); `null` restores the clip's own lens. */

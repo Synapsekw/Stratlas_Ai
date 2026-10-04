@@ -2,7 +2,7 @@
 // (project, issues, clock, active clip, selection, visibility) into overlay sources and writes
 // clicks back as selections.
 import { getActiveScene, onActiveScene, type SceneHandle } from '@aio/engine';
-import type { Issue, Layer, PoseSample, Vec3 } from '@aio/schema';
+import type { CameraOrientation, Issue, Layer, PoseSample, Vec3 } from '@aio/schema';
 import { assetUrl, type createWorkspace, type Workspace } from '@aio/workspace';
 import type { Feature, FeatureCollection } from 'geojson';
 import {
@@ -17,7 +17,7 @@ import {
   type ExpressionSpecification,
   type MapLayerMouseEvent,
 } from 'maplibre-gl';
-import { Vector3 } from 'three';
+import { Euler, Quaternion, Vector3 } from 'three';
 import { drawPreview, isRepeatClick, type MapDrawSeam } from './draw';
 import { frameProjection, type FrameProjection } from './geo';
 import {
@@ -35,6 +35,30 @@ import { pyramidView, type PyramidIndex } from './pyramid';
 import { issueFeatures, issueShapeBounds, styleLayers, type MapOverlay } from './vector';
 import { installBasemap } from './runtime';
 import { buildStyle } from './style';
+
+/**
+ * A logged camera pose with the clip's calibration: orientation bias (Euler 'YXZ', degrees, in
+ * the camera frame) and position offset (local frame, metres).
+ */
+function withBias(
+  pose: PoseSample,
+  o: CameraOrientation | undefined,
+  offset: Vec3 | undefined,
+): PoseSample {
+  if (!o && !offset) return pose;
+  const d = Math.PI / 180;
+  const q = o
+    ? new Quaternion(...pose.q).multiply(
+        new Quaternion().setFromEuler(
+          new Euler(o.pitchDeg * d, o.yawDeg * d, o.rollDeg * d, 'YXZ'),
+        ),
+      )
+    : new Quaternion(...pose.q);
+  const pos: Vec3 = offset
+    ? [pose.pos[0] + offset[0], pose.pos[1] + offset[1], pose.pos[2] + offset[2]]
+    : pose.pos;
+  return { ...pose, pos, q: [q.x, q.y, q.z, q.w] };
+}
 
 type VideoLayer = Extract<Layer, { kind: 'video' }>;
 type RasterLayer = Extract<Layer, { kind: 'raster' }>;
@@ -680,9 +704,13 @@ export function createMapController(
       return;
     }
     const height = Math.max(1, pose.pos[1]);
-    const ring = footprint(pose, f.layer.lens, { maxRange: Math.min(3000, height * 8) }).map((v) =>
-      proj ? proj.toLonLat(v) : [0, 0],
-    );
+    const ring = footprint(
+      withBias(pose, f.layer.orientation, f.layer.positionOffsetM),
+      f.layer.lens,
+      {
+        maxRange: Math.min(3000, height * 8),
+      },
+    ).map((v) => (proj ? proj.toLonLat(v) : [0, 0]));
     const first = ring[0];
     setData(
       SRC.drone,

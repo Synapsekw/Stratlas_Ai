@@ -15,6 +15,19 @@ export const LensModel = z.discriminatedUnion('model', [
   }),
 ]);
 
+/**
+ * Orientation bias of a video clip's camera against its flight log, in degrees, applied in the
+ * camera frame after the logged orientation: `q = qLog * Ry(yaw) * Rx(pitch) * Rz(roll)` (three.js
+ * camera axes: +X image right, +Y image up, looking down -Z). Positive pitch tilts the view up,
+ * positive yaw turns it left, positive roll turns the camera counterclockwise about its view axis.
+ * It soaks up gimbal and IMU errors of the log (calibrated against the model, BLD-3).
+ */
+export const CameraOrientation = z.object({
+  yawDeg: z.number().min(-180).max(180),
+  pitchDeg: z.number().min(-90).max(90),
+  rollDeg: z.number().min(-180).max(180),
+});
+
 /** One drone pose. `t` is milliseconds since flight start; position in the project local frame. */
 export const PoseSample = z.object({
   t: z.number().nonnegative(),
@@ -120,6 +133,15 @@ export const Layer = z.discriminatedUnion('kind', [
     flight: FlightRef,
     lens: LensModel,
     offsetMs: z.number().default(0),
+    /** Camera orientation bias against the flight log (calibration); none means zero. */
+    orientation: CameraOrientation.optional(),
+    /**
+     * Camera position correction against the flight log, metres in the local frame (x east, y up,
+     * z south), added to every logged position of the clip (calibration). Soaks up a wrong
+     * altitude datum (barometric height from a take-off point that is not plant grade) and GPS
+     * bias; none means zero.
+     */
+    positionOffsetM: Vec3.optional(),
     poster: AssetRef.optional(),
   }),
   z.object({ kind: z.literal('photos'), ...base, items: z.array(PhotoRef) }),
@@ -141,6 +163,7 @@ export const Layer = z.discriminatedUnion('kind', [
 ]);
 
 export type LensModel = z.infer<typeof LensModel>;
+export type CameraOrientation = z.infer<typeof CameraOrientation>;
 export type PoseSample = z.infer<typeof PoseSample>;
 export type FlightRef = z.infer<typeof FlightRef>;
 export type PhotoRef = z.infer<typeof PhotoRef>;
