@@ -73,6 +73,16 @@ export class PackageWriter {
     return this.write(rel, JSON.stringify(value, null, pretty ? 2 : undefined) + '\n');
   }
 
+  /**
+   * Count an existing file as up to date (skipped) without reading it, for generated files whose
+   * inputs the caller has checked itself. False (and nothing recorded) when the file is missing.
+   */
+  keep(rel: string): boolean {
+    if (!existsSync(this.abs(rel))) return false;
+    this.done(rel, 'skipped');
+    return true;
+  }
+
   /** Produce `rel` with `make(absPath)` unless it exists and is newer than all `sources`. */
   async derive(
     rel: string,
