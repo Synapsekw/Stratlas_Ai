@@ -5,6 +5,40 @@ Project packages: read, write, importers for kit formats, exports.
 See `docs/architecture/SPEC.md` section 2 for ownership and dependencies. Public API: `src/index.ts`
 (renderer safe) and `src/import/index.ts` (Node only: file system, ffmpeg).
 
+## Packages (`@aio/project/package`, stream N4)
+
+A `.aio` package is one file holding a whole project for delivery (BLD-9) and the read-only
+player (APP-5). Node only.
+
+- **Format:** ZIP with ZIP64 records, **store mode only** (no compression), so every member's
+  bytes sit verbatim in the file and the app serves them by offset with HTTP ranges (video
+  seeking, COPC, tiles) without unpacking. Member names are the project's relative paths
+  (UTF-8). Order: `aio-package.json`, `manifest.json`, `issues.json`, `thumbnail.jpg`, then the
+  rest by path.
+- **Header:** `aio-package.json` (`aio.package/1`, `PackageHeader` in `@aio/schema`): `readOnly`
+  (default true), `aiPolicy` (default `forbid`), allowed `exports`, `excludedLayers`, optional
+  `welcome` text and tips. A package without a header opens as a read-only customer package.
+- **Encryption (optional):** WinZip AES-256, AE-2 (method 99, extra `0x9901`): per-member salt,
+  PBKDF2-HMAC-SHA1 (1000 rounds) keys, AES-CTR with a little-endian counter (any byte range
+  decrypts on its own) and a 10-byte HMAC-SHA1 auth code. 7-Zip and libarchive open it with the
+  passphrase. File names stay readable in the directory; contents do not. Whole-member reads
+  (header, manifest, issues) verify the auth code; ranged reads cannot and do not.
+- **Layers:** `planPackage` maps files to layers (sources, posters, flight files, photo
+  thumbnails, and the folder beside an index for tile pyramids, PNG clouds and legacy viewers).
+  A file shared by several layers stays while any of them stays; files no layer owns (issues,
+  masks, report, thumbnail) always go. Backups, temp files, `IMPORT-REPORT.md` and other `.aio`
+  files never do. The plan reports bytes per layer for the size report.
+- **Writer:** `writeZip` streams 4 MB chunks to `<out>.partial` with positional writes, patches
+  each CRC in place, reports progress, honours an `AbortSignal`, and renames on success; a
+  cancelled or failed export leaves nothing behind. `exportPackage` checks free space first.
+- **Reader:** `openZip` indexes the central directory (ZIP64 aware), rejects compressed or
+  foreign-encrypted members and unsafe names; `openPackage` unlocks, validates the header and
+  manifest, and names any layer file that is missing.
+
+Legacy layers that the importer hard-linked into `legacy/` take real space in a package (the
+size report shows it); leave the legacy layer out for a smaller delivery. Map packs are not
+packaged.
+
 ## Importers (stream S10)
 
 Convert staged source folders into native packages laid out per `docs/architecture/data-conventions.md`.
