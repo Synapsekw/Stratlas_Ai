@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { deflateRawSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import type { LensModel, Vec3 } from '@aio/schema';
@@ -13,7 +16,7 @@ import {
   type FlightClip,
 } from './alzour-check';
 import { ALZOUR_GROUPS, parseCsv, parseRegister, registerTags } from './alzour-model';
-import { decodeModelZip, glbJson, utmPairs } from './alzour';
+import { alzourOriginal, decodeModelZip, glbJson, utmPairs } from './alzour';
 import { fitSimilarity2D } from './fit';
 import { cameraForward } from './flight';
 import { mapPoint } from './frames';
@@ -333,5 +336,21 @@ describe('flights from clips', () => {
       'x',
     );
     expect(doc.samples.map((s) => s.t)).toEqual([0, 100, 200, 300]);
+  });
+});
+
+describe('alzourOriginal', () => {
+  it('finds the MOV or MP4 recording of a clip by name', () => {
+    const root = mkdtempSync(join(tmpdir(), 'aio-alzour-orig-'));
+    try {
+      for (const f of ['DJI_0658.MOV', 'DJI_0666.MP4', 'DJI_0666.SRT', 'DJI_06660.MP4'])
+        writeFileSync(join(root, f), '');
+      expect(alzourOriginal(root, 'DJI_0658')).toBe(join(root, 'DJI_0658.MOV'));
+      expect(alzourOriginal(root, 'DJI_0666')).toBe(join(root, 'DJI_0666.MP4'));
+      expect(alzourOriginal(root, 'DJI_0700')).toBeUndefined();
+      expect(alzourOriginal(join(root, 'missing'), 'DJI_0658')).toBeUndefined();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
