@@ -21,6 +21,18 @@ files:
 asar: true
 compression: normal
 
+# Shipped next to app.asar (process.resourcesPath):
+#   bin/pmtiles(.exe)  go-pmtiles CLI for map pack downloads (Settings, Maps). Fetch it with
+#                      `node tools/maps/build-packs.mjs --tool-only` before packaging; without it
+#                      the app still imports pack files but cannot download regions.
+#   demo/<project>/    optional demo projects listed in the library (apps/desktop/demo/).
+extraResources:
+  - from: ../../tools/maps/bin
+    to: bin
+    filter: ['pmtiles', 'pmtiles.exe']
+  - from: demo
+    to: demo
+
 # Electron fuses, flipped at package time (SPEC section 8, tech-evaluation section 1).
 electronFuses:
   runAsNode: false
@@ -30,16 +42,11 @@ electronFuses:
   enableEmbeddedAsarIntegrityValidation: true
   enableCookieEncryption: true
 
-# Double-click a `.aio` project package to open it read-only in the app (APP-5, BLD-9). The
-# path arrives in argv (Windows, Linux) or as `open-file` (macOS); a running instance gets it
-# through the single-instance hand-off (src/main/index.ts).
-fileAssociations:
-  - ext: aio
-    name: Project package
-    description: Project package
-    role: Viewer
-    mimeType: application/vnd.aio-package+zip
-    icon: icon
+# Double-click a `.aio` project package to open it in the app (APP-5, BLD-9): the association
+# (NSIS registry entries, MSIX uap:FileTypeAssociation, macOS document type) is written by
+# tools/release/brand-config.mjs, since its name carries the brand. The path arrives in argv
+# (Windows, Linux) or as `open-file` (macOS); a running instance gets it through the
+# single-instance hand-off (src/main/index.ts).
 
 # Windows: offline NSIS installer and portable exe; `dist:win:store` builds the MSIX for the Store.
 win:
@@ -72,7 +79,9 @@ portable:
 # Microsoft Store (MSIX). Identity values come from STORE_* env vars (docs/release/README.md).
 # Microsoft re-signs Store submissions, so this package does not need our certificate.
 appx:
-  artifactName: ${productName}-${version}-win-${arch}-store.${ext}
+  # MSIX format; Partner Center takes .msix and .appx alike.
+  artifactName: ${productName}-${version}-win-${arch}-store.msix
+  capabilities: [runFullTrust]
   backgroundColor: '#18202B'
   showNameOnTiles: true
   languages: [en-US]

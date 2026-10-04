@@ -120,6 +120,19 @@ export function effectiveConfig(rawEnv = process.env, now = new Date()) {
     },
     win: win.win,
     nsis: { shortcutName: brand.productName, uninstallDisplayName: brand.productName },
+    // Project packages open in the app (NSIS registry entries, MSIX uap:FileTypeAssociation,
+    // macOS document type). The only `.aio` association: electron-builder.yml declares none.
+    // A package is never written, so the app is its viewer.
+    fileAssociations: [
+      {
+        ext: 'aio',
+        name: `${brand.executableName}.Package`,
+        description: `${brand.productName} project package`,
+        role: 'Viewer',
+        mimeType: 'application/vnd.aio-package+zip',
+        icon: 'icon',
+      },
+    ],
     appx: store.appx,
     mac: mac.mac,
     dmg: { title: `${brand.productName} \${version}` },

@@ -52,6 +52,26 @@ describe('settings store', () => {
     expect(defaults.sidebarCollapsed).toBe(false);
     expect(defaults.dataRoot).toBe('D:\\Data');
     expect(defaults.routes.length).toBeGreaterThan(0);
+    expect(defaults.direction).toBe('ltr');
+    expect(defaults.offlineOnly).toBe(false);
+    expect(defaults.updateCheck).toBe(false);
+    expect(defaults.updateUrl).toBe('');
+  });
+
+  it('upgrades a settings file written before the platform settings existed', async () => {
+    await writeFile(
+      file,
+      JSON.stringify({
+        cloudAi: true,
+        theme: 'light',
+        sidebarCollapsed: true,
+        dataRoot: 'X:/data',
+      }),
+    );
+    const s = await createSettingsStore(file, defaults).get();
+    expect(s.theme).toBe('light');
+    expect(s.direction).toBe('ltr');
+    expect(s.updateCheck).toBe(false);
   });
 
   it('returns defaults when no file exists', async () => {

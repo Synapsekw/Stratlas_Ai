@@ -129,9 +129,130 @@ export const MISSION_DARK: Flavor = {
   },
 };
 
+// Light Mission tokens (tokens.css, data-theme light) in sRGB hex, plus map-only tints.
+const L = {
+  bg0: '#e5e8ec',
+  bg1: '#f5f6f8',
+  bg2: '#eceef1',
+  bg3: '#dfe2e6',
+  line: '#d0d4d9',
+  lineStrong: '#b1b6bd',
+  fg1: '#383d44',
+  fg2: '#585e66',
+  fg3: '#737980',
+  fg4: '#959aa1',
+  water: '#c6d8e3',
+  park: '#d9e6da',
+  sand: '#eee8da',
+  building: '#dcdfe3',
+  road: '#ffffff',
+  roadMajor: '#ffffff',
+  highway: '#f6f1e6',
+  casing: '#cdd2d8',
+} as const;
+
+/** Protomaps light flavour retuned to the light Mission palette (MAP-4). */
+export const MISSION_LIGHT: Flavor = {
+  ...namedFlavor('light'),
+  background: L.bg0,
+  earth: L.bg1,
+  park_a: L.park,
+  park_b: L.park,
+  hospital: L.bg2,
+  industrial: L.bg2,
+  school: L.bg2,
+  wood_a: L.park,
+  wood_b: L.park,
+  pedestrian: L.bg2,
+  scrub_a: L.bg1,
+  scrub_b: L.bg1,
+  glacier: L.bg2,
+  sand: L.sand,
+  beach: L.sand,
+  aerodrome: L.bg2,
+  runway: L.bg3,
+  water: L.water,
+  zoo: L.bg2,
+  military: L.bg2,
+  pier: L.bg3,
+  buildings: L.building,
+  tunnel_other_casing: L.casing,
+  tunnel_minor_casing: L.casing,
+  tunnel_link_casing: L.casing,
+  tunnel_major_casing: L.casing,
+  tunnel_highway_casing: L.casing,
+  tunnel_other: L.bg2,
+  tunnel_minor: L.bg2,
+  tunnel_link: L.bg2,
+  tunnel_major: L.bg2,
+  tunnel_highway: L.bg3,
+  minor_service_casing: L.casing,
+  minor_casing: L.casing,
+  link_casing: L.casing,
+  major_casing_late: L.casing,
+  highway_casing_late: L.casing,
+  major_casing_early: L.casing,
+  highway_casing_early: L.casing,
+  other: L.road,
+  minor_service: L.road,
+  minor_a: L.road,
+  minor_b: L.road,
+  link: L.roadMajor,
+  major: L.roadMajor,
+  highway: L.highway,
+  railway: L.lineStrong,
+  boundaries: L.lineStrong,
+  bridges_other_casing: L.casing,
+  bridges_minor_casing: L.casing,
+  bridges_link_casing: L.casing,
+  bridges_major_casing: L.casing,
+  bridges_highway_casing: L.casing,
+  bridges_other: L.road,
+  bridges_minor: L.road,
+  bridges_link: L.roadMajor,
+  bridges_major: L.roadMajor,
+  bridges_highway: L.highway,
+  roads_label_minor: L.fg3,
+  roads_label_minor_halo: L.bg1,
+  roads_label_major: L.fg2,
+  roads_label_major_halo: L.bg1,
+  ocean_label: L.fg3,
+  subplace_label: L.fg3,
+  subplace_label_halo: L.bg1,
+  city_label: L.fg1,
+  city_label_halo: L.bg1,
+  state_label: L.fg4,
+  state_label_halo: L.bg1,
+  country_label: L.fg2,
+  address_label: L.fg4,
+  address_label_halo: L.bg1,
+  // POI icons stay muted so they never read as issue severities on the map.
+  pois: {
+    blue: '#4f7f9e',
+    green: '#4f8a63',
+    lapis: '#4f7f9e',
+    pink: L.fg2,
+    red: L.fg2,
+    slategray: L.fg3,
+    tangerine: L.fg2,
+    turquoise: '#4f7f9e',
+  },
+  landcover: {
+    grassland: L.park,
+    barren: L.sand,
+    urban_area: L.bg2,
+    farmland: L.park,
+    glacier: L.bg2,
+    scrub: L.bg1,
+    forest: L.park,
+  },
+};
+
 export interface StyleOptions {
   /** Label language: English (with the Arabic local name beneath) or Arabic. */
   lang: 'en' | 'ar';
+  /** Follows the app theme. Default dark. */
+  flavour?: 'dark' | 'light';
   /** Highest zoom any installed pack reaches; MapLibre overzooms beyond it. */
   maxZoom?: number;
 }
@@ -156,12 +277,16 @@ function bundledFonts<T>(v: T): T {
  * The offline basemap style. Every URL uses the internal `aiomap://` protocol: tiles resolve to the
  * installed packs over aio://packs, glyphs and sprites to files bundled with the app.
  */
-export function buildStyle({ lang, maxZoom = 15 }: StyleOptions): StyleSpecification {
+export function buildStyle({
+  lang,
+  maxZoom = 15,
+  flavour = 'dark',
+}: StyleOptions): StyleSpecification {
   return {
     version: 8,
-    name: 'Mission dark',
+    name: `Mission ${flavour}`,
     glyphs: `${MAP_PROTOCOL}://glyphs/{fontstack}/{range}.pbf`,
-    sprite: `${MAP_PROTOCOL}://sprites/dark`,
+    sprite: `${MAP_PROTOCOL}://sprites/${flavour}`,
     sources: {
       [BASEMAP_SOURCE]: {
         type: 'vector',
@@ -171,6 +296,8 @@ export function buildStyle({ lang, maxZoom = 15 }: StyleOptions): StyleSpecifica
         attribution: '© OpenStreetMap contributors',
       },
     },
-    layers: bundledFonts(layers(BASEMAP_SOURCE, MISSION_DARK, { lang })),
+    layers: bundledFonts(
+      layers(BASEMAP_SOURCE, flavour === 'light' ? MISSION_LIGHT : MISSION_DARK, { lang }),
+    ),
   };
 }

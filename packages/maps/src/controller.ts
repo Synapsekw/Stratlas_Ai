@@ -63,14 +63,29 @@ const ISSUE_LAYERS = [
 const OVERLAY_BEFORE = 'aio-issues-heat';
 
 // Mission tokens as hex (see style.ts).
-const INK = {
-  acc: '#60d3b2',
-  accStrong: '#73ebc8',
-  fg0: '#eaedf1',
-  fg2: '#878d93',
-  bg0: '#080a0d',
-  sev: { 1: '#95a0ab', 2: '#78b3d6', 3: '#ebc751', 4: '#f48d3c', 5: '#f05653' },
-};
+const INKS = {
+  dark: {
+    acc: '#60d3b2',
+    accStrong: '#73ebc8',
+    fg0: '#eaedf1',
+    fg2: '#878d93',
+    bg0: '#080a0d',
+    sev: { 1: '#95a0ab', 2: '#78b3d6', 3: '#ebc751', 4: '#f48d3c', 5: '#f05653' },
+  },
+  light: {
+    acc: '#14866e',
+    accStrong: '#0d6f5b',
+    fg0: '#22262c',
+    fg2: '#5a6068',
+    bg0: '#f5f6f8',
+    sev: { 1: '#7c8792', 2: '#3f78a6', 3: '#c69a12', 4: '#d4691c', 5: '#d23b3b' },
+  },
+} as const;
+
+/** The app theme the map follows: `data-theme` on <html> (resolved, never `system`). */
+export function documentFlavour(): 'dark' | 'light' {
+  return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+}
 
 const SRC = {
   flights: 'aio-flights',
@@ -144,13 +159,15 @@ export function createMapController(
   installBasemap(packs, packBase ? { packBase } : {});
   const ordered = orderPacks(packs);
   const lang = document.documentElement.lang.startsWith('ar') ? 'ar' : 'en';
+  const flavour = documentFlavour();
+  const INK = INKS[flavour];
   const maxZoom = Math.max(6, ...packs.map((p) => p.maxZoom));
   const home = ordered.find((p) => p.maxZoom > 6) ?? ordered[0];
   const homeBox = home?.bbox ?? [-180, -85, 180, 85];
 
   const map = new MapLibreMap({
     container: el,
-    style: buildStyle({ lang, maxZoom }),
+    style: buildStyle({ lang, maxZoom, flavour }),
     bounds: [
       [homeBox[0], homeBox[1]],
       [homeBox[2], homeBox[3]],

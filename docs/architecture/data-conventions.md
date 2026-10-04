@@ -80,7 +80,7 @@ A project folder (section 2) delivered as one file (BLD-9) and opened in place (
 - `aio-package.json` (`PackageHeader`, `aio.package/1`) first, then `manifest.json` with the excluded layers removed. A package without a header is treated as a read-only customer package.
 - A package is **never written**: `project:writeIssues` refuses it, the renderer switches annotation to read-only, and no file is added next to it. Cloud AI runs only when Settings allow it **and** the header says `aiPolicy: 'allow'`. `dialog:saveFile` accepts only the export kinds in the header (`exportKindForFile`).
 - Customer packages (`readOnly: true`) open on the welcome screen (player mode). Packages carry no map packs; basemap layers fall back to the project rasters.
-- The OS association (`fileAssociations` in `apps/desktop/electron-builder.yml`) and the single-instance hand-off pass a double-clicked `.aio` to the running app; opened packages join the library (`library.json` keeps the file path).
+- The OS association (`fileAssociations` written by `tools/release/brand-config.mjs`, one entry for NSIS, MSIX and macOS) and the single-instance hand-off pass a double-clicked `.aio` to the running app; opened packages join the library (`library.json` keeps the file path).
 
 ## 9. Vector overlays and road surveys
 

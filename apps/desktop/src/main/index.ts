@@ -5,7 +5,7 @@ import {
   createScriptedProvider,
 } from '@aio/ai/main';
 import { brand } from '@aio/brand';
-import { ipcEvents, type IpcChannel, type IpcEvent } from '@aio/schema';
+import { ipcEvents, type IpcChannel, type IpcEvent, type Settings } from '@aio/schema';
 import { Entry } from '@napi-rs/keyring';
 import {
   app,
@@ -13,24 +13,35 @@ import {
   dialog,
   ipcMain,
   Menu,
+  nativeTheme,
+  net,
   protocol,
   screen,
   session,
   shell,
 } from 'electron';
+import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { userInfo } from 'node:os';
+import { stat } from 'node:fs/promises';
+import { arch, release, userInfo } from 'node:os';
 import { join } from 'node:path';
+import licenses from 'virtual:licenses';
 import { createAiProjectStore, readAiPolicy } from './aiProjects';
 import { listConversations, loadConversation, saveConversation } from './conversations';
-import { OFFSCREEN_SWITCHES, offscreenOrigin, windowMode } from './windowMode';
-import { validated, type Handler } from './ipc';
-import { createKeyVault } from './keys';
-import { addToLibrary, createLibraryStore, listLibrary, listPacks } from './library';
+import { demoProjectPaths } from './demo';
 import { createExportJobs } from './exports/jobs';
 import { printReport } from './exports/reportWindow';
 import { listReports } from './exports/reports';
 import { runInUtility } from './exports/utility';
+import { validated, type Handler } from './ipc';
+import { createKeyVault } from './keys';
+import { addToLibrary, createLibraryStore, listLibrary } from './library';
+import { captureConsole, createLog, exportLogs } from './logs';
+import { createPackManager } from './packs/manager';
+import { createExtract, findLatestBuild, resolvePmtiles } from './packs/pmtiles';
+import { createOnlineUpdater, type UpdaterLike } from './update/online';
+import { probeWithPowerShell, verifyInstaller } from './update/verify';
+import { OFFSCREEN_SWITCHES, offscreenOrigin, windowMode } from './windowMode';
 import { buildMenu } from './menu';
 import { popupAction } from './popup';
 import {
@@ -53,6 +64,11 @@ const userDataOverride = process.env.STRATLAS_USER_DATA;
 if (userDataOverride) app.setPath('userData', userDataOverride);
 
 const dev = !app.isPackaged;
+
+// Main-process log in <userData>/logs (Settings, About, Export logs).
+const logsDir = join(app.getPath('userData'), 'logs');
+const appLog = createLog(logsDir);
+captureConsole(appLog);
 const devUrl = process.env.ELECTRON_RENDERER_URL;
 
 // aio:// serves project files and map packs with range requests.
@@ -122,6 +138,88 @@ const keyService = process.env.STRATLAS_USER_DATA ? `${brand.appId}.isolated` : 
 const keys = createKeyVault(keyService, (service, account) => new Entry(service, account));
 
 let mainWindow: BrowserWindow | null = null;
+
+/** Window chrome colours per resolved theme (title bar overlay, first paint). */
+const CHROME = {
+  dark: { background: '#0f1318', overlay: '#11161c', symbols: '#c9d1dc' },
+  light: { background: '#eef1f4', overlay: '#f3f5f7', symbols: '#2c333c' },
+} as const;
+
+const chrome = () => CHROME[nativeTheme.shouldUseDarkColors ? 'dark' : 'light'];
+
+/** Follow the theme setting in native UI (dialogs, menus, title bar buttons). */
+function applyTheme(theme: Settings['theme']): void {
+  nativeTheme.themeSource = theme;
+  const c = chrome();
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.setBackgroundColor(c.background);
+    if (process.platform === 'win32' && win === mainWindow) {
+      win.setTitleBarOverlay({ color: c.overlay, symbolColor: c.symbols, height: 40 });
+    }
+  }
+}
+
+function broadcast<E extends 'packs:job'>(event: E, payload: IpcEvent<E>): void {
+  const parsed = ipcEvents[event].safeParse(payload);
+  if (!parsed.success) return;
+  for (const win of BrowserWindow.getAllWindows()) win.webContents.send(event, parsed.data);
+}
+
+const pmtilesBin = resolvePmtiles({
+  env: process.env,
+  platform: process.platform,
+  packaged: app.isPackaged,
+  resourcesPath: process.resourcesPath,
+  appPath: app.getAppPath(),
+  exists: existsSync,
+});
+
+// The map pack download is one of only two network paths (the other is cloud AI), and runs
+// only when the person starts it in Settings, Maps.
+const packs = createPackManager({
+  packsDir: () => join(settings.current().dataRoot, 'packs'),
+  offlineOnly: () => settings.current().offlineOnly === true,
+  emit: (job) => {
+    broadcast('packs:job', job);
+  },
+  extract: pmtilesBin
+    ? createExtract(pmtilesBin, (cmd, args) =>
+        spawn(cmd, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }),
+      )
+    : null,
+  latestBuild: (signal) => findLatestBuild((url, init) => net.fetch(url, init), signal),
+});
+
+const updates = createOnlineUpdater({
+  settings: () => settings.current(),
+  currentVersion: app.getVersion(),
+  load: async () => {
+    // Loaded only when the person checks, so nothing update-related runs otherwise.
+    const mod = (await import('electron-updater')) as unknown as {
+      autoUpdater?: UpdaterLike;
+      default?: { autoUpdater: UpdaterLike };
+    };
+    const updater = mod.autoUpdater ?? mod.default?.autoUpdater;
+    if (!updater) throw new Error('The updater is not available in this build.');
+    return updater;
+  },
+});
+
+const fileExists = async (p: string) => {
+  try {
+    return (await stat(p)).isFile();
+  } catch {
+    return false;
+  }
+};
+
+const verifyDeps = () => ({
+  platform: process.platform,
+  currentVersion: app.getVersion(),
+  publisher: brand.company,
+  exists: fileExists,
+  probe: probeWithPowerShell,
+});
 
 function targetWindow(): BrowserWindow | null {
   return BrowserWindow.getFocusedWindow() ?? mainWindow ?? BrowserWindow.getAllWindows()[0] ?? null;
@@ -245,11 +343,20 @@ function registerIpc(): void {
   }));
 
   handle('settings:get', () => settings.get());
-  handle('settings:set', (patch) => settings.set(patch));
+  handle('settings:set', async (patch) => {
+    const next = await settings.set(patch);
+    if (patch.theme) applyTheme(next.theme);
+    return next;
+  });
 
   handle('library:list', async () => {
     const { dataRoot } = await settings.get();
-    return listLibrary({ dataRoot, extraPaths: await library.paths(), registry });
+    const demos = await demoProjectPaths({
+      env: process.env,
+      packaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+    });
+    return listLibrary({ dataRoot, extraPaths: [...(await library.paths()), ...demos], registry });
   });
   handle('library:add', ({ path }) => addToLibrary(path, library, registry));
 
@@ -298,7 +405,93 @@ function registerIpc(): void {
     return { path };
   });
 
-  handle('packs:list', async () => listPacks(join((await settings.get()).dataRoot, 'packs')));
+  handle('packs:list', () => packs.list());
+  handle('packs:jobs', () => packs.jobs());
+  handle('packs:download', (region) => packs.download(region));
+  handle('packs:cancel', ({ id }) => packs.cancel(id));
+  handle('packs:resume', ({ id }) => packs.resume(id));
+  handle('packs:dismiss', ({ id }) => packs.dismiss(id));
+  handle('packs:remove', ({ id }) => packs.remove(id));
+  handle('packs:import', ({ path, label }) => packs.importFile(path, label));
+
+  // dialog:openFile (packages, installers, map pack files) is registered once, below.
+  handle('app:about', () => ({
+    version: app.getVersion(),
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node,
+    platform: `${process.platform} ${release()}`,
+    arch: arch(),
+    dataRoot: settings.current().dataRoot,
+    userData: app.getPath('userData'),
+    logsDir,
+    packaged: app.isPackaged,
+    store: process.windowsStore,
+  }));
+  handle('app:licenses', () => licenses);
+  handle('app:exportLogs', async () => {
+    const day = new Date().toISOString().slice(0, 10);
+    const win = targetWindow();
+    const options = {
+      title: 'Export logs',
+      defaultPath: join(app.getPath('downloads'), `${brand.productName}-logs-${day}.txt`),
+      filters: [{ name: 'Text', extensions: ['txt'] }],
+    };
+    const r = win
+      ? await dialog.showSaveDialog(win, options)
+      : await dialog.showSaveDialog(options);
+    if (r.canceled || !r.filePath) return { path: null };
+    try {
+      await appLog.flush();
+      await exportLogs(logsDir, r.filePath, [
+        `${brand.productName} ${app.getVersion()}${app.isPackaged ? '' : ' (development)'}`,
+        `Electron ${process.versions.electron}, Chrome ${process.versions.chrome}, Node ${process.versions.node}`,
+        `Platform ${process.platform} ${release()} ${arch()}`,
+        `Data folder ${settings.current().dataRoot}`,
+        `Exported ${new Date().toISOString()}`,
+      ]);
+      return { path: r.filePath };
+    } catch (e) {
+      return { path: null, error: e instanceof Error ? e.message : String(e) };
+    }
+  });
+  handle('app:showFolder', async ({ which }) => {
+    const dir =
+      which === 'data'
+        ? settings.current().dataRoot
+        : which === 'logs'
+          ? logsDir
+          : app.getPath('userData');
+    const error = await shell.openPath(dir);
+    return error ? { ok: false, error } : { ok: true };
+  });
+
+  const STORE_UPDATES = 'This copy comes from the Microsoft Store, which installs its updates.';
+  handle('update:verifyFile', ({ path }) =>
+    process.windowsStore
+      ? { ok: false as const, error: STORE_UPDATES }
+      : verifyInstaller(path, verifyDeps()),
+  );
+  handle('update:installFile', async ({ path }) => {
+    if (process.windowsStore) return { ok: false, error: STORE_UPDATES };
+    const r = await verifyInstaller(path, verifyDeps());
+    if (!r.ok) return { ok: false, error: r.error };
+    try {
+      const child = spawn(path, [], { detached: true, stdio: 'ignore' });
+      child.unref();
+    } catch (e) {
+      return { ok: false, error: `The installer did not start: ${String(e)}` };
+    }
+    appLog.write('info', [`Installing update ${r.version} from ${path}; quitting.`]);
+    setTimeout(() => {
+      app.quit();
+    }, 300);
+    return { ok: true };
+  });
+  handle('update:check', () =>
+    process.windowsStore ? { ok: false as const, error: STORE_UPDATES } : updates.check(),
+  );
+  handle('update:downloadAndInstall', () => updates.downloadAndInstall());
 
   handle('ai:setKey', ({ provider, key }) => keys.setKey(provider, key));
   handle('ai:hasKey', async ({ provider }) => ({ present: await keys.hasKey(provider) }));
@@ -420,7 +613,7 @@ function openViewerWindow(url: string, title: string): void {
     width: 1100,
     height: 900,
     title: `${title} - ${brand.productName}`,
-    backgroundColor: '#0f1318',
+    backgroundColor: chrome().background,
     autoHideMenuBar: true,
     show: false,
     ...placement(1100),
@@ -450,12 +643,12 @@ function createWindow(): BrowserWindow {
     minWidth: 1100,
     minHeight: 700,
     title: brand.productName,
-    backgroundColor: '#0f1318',
+    backgroundColor: chrome().background,
     show: false,
     ...placement(1440),
     titleBarStyle: 'hidden',
     ...(process.platform === 'win32'
-      ? { titleBarOverlay: { color: '#11161c', symbolColor: '#c9d1dc', height: 40 } }
+      ? { titleBarOverlay: { color: chrome().overlay, symbolColor: chrome().symbols, height: 40 } }
       : {}),
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.cjs'),
@@ -542,7 +735,14 @@ if (!app.requestSingleInstanceLock()) {
     app.setAppUserModelId(brand.appId);
     Menu.setApplicationMenu(buildMenu(dev));
     hardenSession();
-    await settings.get();
+    const initial = await settings.get();
+    nativeTheme.themeSource = initial.theme;
+    nativeTheme.on('updated', () => {
+      applyTheme(settings.current().theme);
+    });
+    await packs.restore().catch((e: unknown) => {
+      console.warn('Map pack jobs could not be restored', e);
+    });
     protocol.handle(
       'aio',
       createAioHandler({

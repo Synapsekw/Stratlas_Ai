@@ -9,23 +9,49 @@ import {
   totalUsage,
   type ModelRoute,
 } from '@aio/ai';
+import { brand } from '@aio/brand';
 import type { AiProvider, AiTask } from '@aio/schema';
-import { formatBytes, Icon, SevChip, Switch, type IconName } from '@aio/ui';
+import { Icon, SevChip, Switch, t, useT, type IconName, type MessageKey } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useState } from 'react';
 import { setAuthorName, useAuthor } from '../author';
 import { cloudAiBlocked } from '../player';
 import { bridge, shell, useCall, useShell } from '../shell';
+import { About } from './settings/About';
+import { Appearance } from './settings/Appearance';
+import { MapPacks } from './settings/MapPacks';
 
-type Page = 'ai' | 'usage' | 'privacy' | 'data' | 'maps' | 'severity';
+type Page = 'ai' | 'usage' | 'privacy' | 'data' | 'maps' | 'severity' | 'appearance' | 'about';
 
-const PAGES: { page: Page; label: string; icon: IconName; group: string }[] = [
-  { page: 'ai', label: 'AI providers', icon: 'agent', group: 'Intelligence' },
-  { page: 'usage', label: 'Usage and cost', icon: 'report', group: 'Intelligence' },
-  { page: 'privacy', label: 'Privacy and cloud', icon: 'shield', group: 'Intelligence' },
-  { page: 'data', label: 'Data folder', icon: 'layers', group: 'Data' },
-  { page: 'maps', label: 'Offline maps', icon: 'map', group: 'Data' },
-  { page: 'severity', label: 'Severity models', icon: 'issues', group: 'Data' },
+const PAGES: { page: Page; label: MessageKey; icon: IconName; group: MessageKey }[] = [
+  { page: 'ai', label: 'settings.page.ai', icon: 'agent', group: 'settings.group.intelligence' },
+  {
+    page: 'usage',
+    label: 'settings.page.usage',
+    icon: 'report',
+    group: 'settings.group.intelligence',
+  },
+  {
+    page: 'privacy',
+    label: 'settings.page.privacy',
+    icon: 'shield',
+    group: 'settings.group.intelligence',
+  },
+  { page: 'data', label: 'settings.page.data', icon: 'layers', group: 'settings.group.data' },
+  { page: 'maps', label: 'settings.page.maps', icon: 'map', group: 'settings.group.data' },
+  {
+    page: 'severity',
+    label: 'settings.page.severity',
+    icon: 'issues',
+    group: 'settings.group.data',
+  },
+  {
+    page: 'appearance',
+    label: 'settings.page.appearance',
+    icon: 'sun',
+    group: 'settings.group.app',
+  },
+  { page: 'about', label: 'settings.page.about', icon: 'refresh', group: 'settings.group.app' },
 ];
 
 const PROVIDER_INFO: Record<
@@ -470,6 +496,7 @@ function Privacy() {
           </p>
         </div>
       </div>
+      <OfflineOnly />
       <div className="sblock">
         <h2>Always on</h2>
         <div className="opt">
@@ -498,6 +525,27 @@ function Privacy() {
         </div>
       </div>
     </>
+  );
+}
+
+function OfflineOnly() {
+  const offlineOnly = useShell((s) => s.settings.offlineOnly === true);
+  return (
+    <div className="sblock">
+      <div className="master">
+        <b>Offline-only workstation</b>
+        <Switch
+          checked={offlineOnly}
+          label="Offline-only workstation"
+          onChange={(v) => void shell.getState().updateSettings({ offlineOnly: v })}
+        />
+        <p>
+          {offlineOnly
+            ? 'On: map pack downloads and online update checks are disabled. Packs and updates come in as files.'
+            : 'Off: you can start a map pack download or an update check yourself. Nothing goes online on its own.'}
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -551,65 +599,6 @@ function DataFolder() {
         </div>
       </div>
     </>
-  );
-}
-
-function Maps() {
-  const dataRoot = useShell((s) => s.settings.dataRoot);
-  const packs = useCall('packs:list', {}, dataRoot);
-  return (
-    <div className="sblock">
-      <h2>
-        Installed packs{' '}
-        <span className="sub">
-          {packs?.ok
-            ? `${String(packs.value.length)} · ${formatBytes(packs.value.reduce((n, p) => n + p.sizeBytes, 0))}`
-            : ''}
-        </span>
-      </h2>
-      {packs === null && <div className="skel-line" />}
-      {packs && !packs.ok && (
-        <p className="notice warn">
-          <Icon name="warn" size={14} />
-          {packs.error}
-        </p>
-      )}
-      {packs?.ok && packs.value.length === 0 && (
-        <p className="help">
-          No map packs in{' '}
-          <span className="mono">{dataRoot ? `${dataRoot}\\packs` : 'the data folder'}</span>. Maps
-          show project rasters only until a pack is added.
-        </p>
-      )}
-      {packs?.ok && packs.value.length > 0 && (
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th>Region</th>
-              <th>Size</th>
-              <th>Max zoom</th>
-              <th>Bounds</th>
-            </tr>
-          </thead>
-          <tbody>
-            {packs.value.map((p) => (
-              <tr key={p.id}>
-                <td>
-                  <div className="cell-h">
-                    <Icon name="globe" size={14} className="faint" />
-                    <b className="hi">{p.label}</b>
-                    <span className="mono faint">{p.id}</span>
-                  </div>
-                </td>
-                <td className="mono">{formatBytes(p.sizeBytes)}</td>
-                <td className="mono">z{p.maxZoom}</td>
-                <td className="mono faint">{p.bbox.map((v) => v.toFixed(1)).join(', ')}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
   );
 }
 
@@ -697,45 +686,30 @@ function Severity() {
   );
 }
 
-const HEAD: Record<Page, { title: string; text: string }> = {
-  usage: {
-    title: 'Usage and cost',
-    text: 'Tokens the agent used and their estimated cost, per project and provider, on this workstation.',
-  },
-  ai: {
-    title: 'AI providers',
-    text: 'Keys go to the system credential vault. They never enter project files or logs, and the app never shows a stored key.',
-  },
-  privacy: {
-    title: 'Privacy and cloud',
-    text: 'Stratlas works fully offline. Cloud AI is opt-in, and every action that sends data or changes the project asks you first.',
-  },
-  data: {
-    title: 'Data folder',
-    text: 'Where projects and offline map packs live on this workstation.',
-  },
-  maps: {
-    title: 'Offline maps',
-    text: 'Vector map packs render with no network. They are shared by every project on this workstation.',
-  },
-  severity: {
-    title: 'Severity models',
-    text: 'Each project grades issues with its own model. Levels carry a colour, criteria and a recommended action.',
-  },
+const HEAD: Record<Page, { title: MessageKey; text: MessageKey }> = {
+  ai: { title: 'settings.page.ai', text: 'settings.ai.text' },
+  usage: { title: 'settings.page.usage', text: 'settings.usage.text' },
+  privacy: { title: 'settings.page.privacy', text: 'settings.privacy.text' },
+  data: { title: 'settings.page.data', text: 'settings.data.text' },
+  maps: { title: 'settings.page.maps', text: 'settings.maps.text' },
+  severity: { title: 'settings.page.severity', text: 'settings.severity.text' },
+  appearance: { title: 'settings.page.appearance', text: 'settings.appearance.text' },
+  about: { title: 'settings.page.about', text: 'settings.about.text' },
 };
 
 export function SettingsScreen() {
+  useT();
   const [page, setPage] = useState<Page>('ai');
   const error = useShell((s) => s.settingsError);
   return (
-    <section className="screen settings" aria-label="Settings">
-      <nav className="set-nav" aria-label="Settings sections">
-        <h2>Settings</h2>
+    <section className="screen settings" aria-label={t('settings.title')}>
+      <nav className="set-nav" aria-label={t('settings.sections')}>
+        <h2>{t('settings.title')}</h2>
         {PAGES.map((p, i) => {
           const head = i === 0 || PAGES[i - 1]?.group !== p.group ? p.group : null;
           return (
             <div key={p.page}>
-              {head && <div className="grp caps">{head}</div>}
+              {head && <div className="grp caps">{t(head)}</div>}
               <button
                 type="button"
                 aria-current={page === p.page}
@@ -744,7 +718,7 @@ export function SettingsScreen() {
                 }}
               >
                 <Icon name={p.icon} />
-                {p.label}
+                {t(p.label)}
               </button>
             </div>
           );
@@ -754,14 +728,14 @@ export function SettingsScreen() {
         <div className="set-page">
           <header>
             <div>
-              <h1>{HEAD[page].title}</h1>
-              <p>{HEAD[page].text}</p>
+              <h1>{t(HEAD[page].title)}</h1>
+              <p>{t(HEAD[page].text, { product: brand.productName })}</p>
             </div>
           </header>
           {error && (
             <p className="notice warn" role="status">
               <Icon name="warn" size={14} />
-              Settings are not being saved: {error}
+              {t('settings.notSaved', { error })}
             </p>
           )}
           {page === 'ai' && (
@@ -781,8 +755,10 @@ export function SettingsScreen() {
           {page === 'usage' && <Usage />}
           {page === 'privacy' && <Privacy />}
           {page === 'data' && <DataFolder />}
-          {page === 'maps' && <Maps />}
+          {page === 'maps' && <MapPacks />}
           {page === 'severity' && <Severity />}
+          {page === 'appearance' && <Appearance />}
+          {page === 'about' && <About />}
         </div>
       </div>
     </section>

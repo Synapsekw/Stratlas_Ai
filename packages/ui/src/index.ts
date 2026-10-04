@@ -23,6 +23,19 @@ export * from './tree/model';
 export { DatasetTree, type DatasetTreeProps } from './tree/DatasetTree';
 export { rankCommands, scoreMatch, type Command } from './palette/rank';
 export {
+  catalogueProblems,
+  directionOf,
+  en as messagesEn,
+  getLocale,
+  placeholders,
+  setLocale,
+  t,
+  useT,
+  type Catalogue,
+  type MessageKey,
+  type Vars,
+} from './i18n';
+export {
   CommandPalette,
   type CommandPaletteProps,
   type PaletteCommand,

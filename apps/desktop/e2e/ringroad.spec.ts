@@ -58,8 +58,10 @@ function mapFacts(win: Page) {
       (d) => '__aioMap' in d,
     ) as unknown as { __aioMap: MapLike } | undefined;
     const map = host?.__aioMap;
-    if (!map) return null;
-    const ids = map.getStyle().layers.map((l) => l.id);
+    // a theme change restarts the map: the old one has no style until the new one replaces it
+    const style = map?.getStyle();
+    if (!map || !style) return null;
+    const ids = style.layers.map((l) => l.id);
     const rendered = (id: string) =>
       ids.includes(id) ? map.queryRenderedFeatures({ layers: [id] }).length : -1;
     return {

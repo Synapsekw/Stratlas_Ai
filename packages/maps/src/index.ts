@@ -2,6 +2,10 @@ import { getAdapter, registerAdapter } from '@aio/engine';
 
 export { MapView, type MapViewProps } from './MapView';
 export { captureMap } from './capture';
+export { PackCoverage, type PackCoverageProps } from './PackCoverage';
+export { bboxPolygon, coverageFeatures, dragBbox } from './coverageData';
+export { estimatePackBytes, normaliseBbox, tileCount, type PackEstimate } from './estimate';
+export { COUNTRIES, GCC_IDS, packIdFor, regionById, type Region } from './regions';
 export {
   drawPreview,
   isRepeatClick,

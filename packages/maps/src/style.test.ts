@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BASEMAP_SOURCE, buildStyle, MISSION_DARK } from './style';
+import { BASEMAP_SOURCE, buildStyle, MISSION_DARK, MISSION_LIGHT } from './style';
 
 /** Every string anywhere in a JSON value. */
 function strings(v: unknown, out: string[] = []): string[] {
@@ -38,6 +38,21 @@ describe('offline basemap style', () => {
     const style = buildStyle({ lang: 'en' });
     const bg = style.layers.find((l) => l.type === 'background');
     expect(bg?.paint).toMatchObject({ 'background-color': MISSION_DARK.background });
+  });
+
+  it('has a light flavour for the light theme', () => {
+    const style = buildStyle({ lang: 'en', flavour: 'light' });
+    const bg = style.layers.find((l) => l.type === 'background');
+    expect(bg?.paint).toMatchObject({ 'background-color': MISSION_LIGHT.background });
+    expect(MISSION_LIGHT.background).not.toBe(MISSION_DARK.background);
+    expect(style.sprite).toBe('aiomap://sprites/light');
+    expect(style.name).toBe('Mission light');
+    expect(buildStyle({ lang: 'en' }).name).toBe('Mission dark');
+  });
+
+  it('keeps the light flavour offline and on bundled fonts', () => {
+    const all = strings(buildStyle({ lang: 'ar', flavour: 'light' }));
+    for (const s of all) expect(s).not.toMatch(/https?:/i);
   });
 
   it('labels in English with the Arabic local name, or in Arabic', () => {

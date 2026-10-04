@@ -35,6 +35,21 @@ const CHANNELS = {
   'export:run': true,
   'export:cancel': true,
   'report:list': true,
+  'packs:download': true,
+  'packs:jobs': true,
+  'packs:cancel': true,
+  'packs:resume': true,
+  'packs:dismiss': true,
+  'packs:remove': true,
+  'packs:import': true,
+  'app:about': true,
+  'app:licenses': true,
+  'app:exportLogs': true,
+  'app:showFolder': true,
+  'update:verifyFile': true,
+  'update:installFile': true,
+  'update:check': true,
+  'update:downloadAndInstall': true,
 } as const satisfies Record<IpcChannel, true>;
 
 const EVENTS = {
@@ -42,6 +57,7 @@ const EVENTS = {
   'package:progress': true,
   'app:openPath': true,
   'export:progress': true,
+  'packs:job': true,
 } as const satisfies Record<IpcEventName, true>;
 
 const known = <K extends string>(table: Record<K, true>, key: string): key is K =>

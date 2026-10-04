@@ -55,24 +55,78 @@ export const ProjectUsage = z.object({
   providers: z.array(ProviderUsage),
 });
 
+/** An http(s) URL, or empty for "not set". */
+const OptionalUrl = z.union([z.literal(''), z.url({ protocol: /^https?$/ })]);
+
 export const Settings = z.object({
   cloudAi: z.boolean(),
-  theme: z.enum(['dark', 'light']),
+  /** `system` follows the operating system's light or dark preference. */
+  theme: z.enum(['dark', 'light', 'system']),
   sidebarCollapsed: z.boolean(),
   /** Folder that holds projects and map packs, e.g. E:\Stratlas Data. */
   dataRoot: z.string(),
   routes: z.array(ModelRouteSchema),
   /** Optional so settings written before the local provider existed stay valid. */
   localModel: LocalModelSettings.optional(),
+  /** Layout direction of the UI (Arabic readiness). Default `ltr`. */
+  direction: z.enum(['ltr', 'rtl']).optional(),
+  /**
+   * Offline-only workstation: every online action (map pack download, update check) is disabled.
+   * Default false; the app still makes no request unless the person starts one.
+   */
+  offlineOnly: z.boolean().optional(),
+  /** Allow the "Check for updates" button (electron-updater, generic provider). Default false. */
+  updateCheck: z.boolean().optional(),
+  /** Base URL of the update feed (`latest.yml` lives there). Empty when not set. */
+  updateUrl: OptionalUrl.optional(),
 });
 
+/** West, south, east, north in WGS84 degrees. */
+export const Bbox = z
+  .tuple([
+    z.number().min(-180).max(180),
+    z.number().min(-90).max(90),
+    z.number().min(-180).max(180),
+    z.number().min(-90).max(90),
+  ])
+  .refine(([w, s, e, n]) => w < e && s < n, 'The box must have west < east and south < north');
+
+const PackId = z.string().regex(/^[a-z0-9-]+$/);
+
 export const MapPackInfo = z.object({
-  id: z.string().regex(/^[a-z0-9-]+$/),
+  id: PackId,
   label: z.string(),
   bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]),
   maxZoom: z.number().int(),
   sizeBytes: z.number().int().nonnegative(),
+  /** When the pack file was written (ISO 8601). Older packs fall back to the file date. */
+  builtAt: z.string().optional(),
+  /** How the pack arrived: the in-app download, a file import, or tools/maps/build-packs.mjs. */
+  source: z.enum(['download', 'import', 'build-tool']).optional(),
+  /** Protomaps planet build the pack was cut from, e.g. `20261003`. */
+  build: z.string().optional(),
 });
+
+/** A region to download from the Protomaps daily build. */
+export const PackRegion = z.object({
+  id: PackId.min(1).max(48),
+  label: z.string().min(1).max(80),
+  bbox: Bbox,
+  maxZoom: z.number().int().min(0).max(15),
+});
+
+export const PackJob = PackRegion.extend({
+  state: z.enum(['running', 'verifying', 'done', 'failed', 'cancelled', 'interrupted']),
+  /** 0 to 1, as reported by the extract tool. */
+  progress: z.number().min(0).max(1),
+  /** Bytes written so far. */
+  bytes: z.number().int().nonnegative().optional(),
+  error: z.string().optional(),
+  startedAt: z.string(),
+  build: z.string().optional(),
+});
+
+const Ok = z.object({ ok: z.boolean(), error: z.string().optional() });
 
 const OpenResult = z.discriminatedUnion('ok', [
   z.object({
@@ -172,6 +226,27 @@ export const ChatMessage = z.object({
   content: z.string(),
 });
 
+export const LicenseEntry = z.object({
+  name: z.string(),
+  version: z.string(),
+  license: z.string(),
+  homepage: z.string().optional(),
+  author: z.string().optional(),
+});
+
+const VerifyResult = z.discriminatedUnion('ok', [
+  z.object({
+    ok: z.literal(true),
+    /** Version of the installer. */
+    version: z.string(),
+    /** Version of the running app. */
+    current: z.string(),
+    /** Subject of the signing certificate. */
+    signer: z.string(),
+  }),
+  z.object({ ok: z.literal(false), error: z.string() }),
+]);
+
 /** The single list of request/response channels between renderer and main. Main validates every request. */
 export const ipc = {
   'app:getInfo': {
@@ -203,6 +278,25 @@ export const ipc = {
     response: z.object({ ok: z.boolean(), error: z.string().optional() }),
   },
   'packs:list': { request: Empty, response: z.array(MapPackInfo) },
+  /** Start downloading a region (explicit online action; refused when offline-only). */
+  'packs:download': { request: PackRegion.strict(), response: Ok },
+  'packs:jobs': { request: Empty, response: z.array(PackJob) },
+  'packs:cancel': { request: z.object({ id: PackId }).strict(), response: Ok },
+  /** Restart an interrupted, failed or cancelled download with the same planet build. */
+  'packs:resume': { request: z.object({ id: PackId }).strict(), response: Ok },
+  /** Forget a finished, failed or cancelled job (and its partial file). */
+  'packs:dismiss': { request: z.object({ id: PackId }).strict(), response: Ok },
+  'packs:remove': { request: z.object({ id: PackId }).strict(), response: Ok },
+  /** Copy a `.pmtiles` file (and its optional `.json` beside it) into the packs folder. */
+  'packs:import': {
+    request: z
+      .object({ path: z.string().min(1), label: z.string().min(1).max(80).optional() })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), pack: MapPackInfo }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
   'settings:get': { request: Empty, response: Settings },
   'settings:set': { request: Settings.partial().strict(), response: Settings },
   'ai:setKey': {
@@ -319,7 +413,7 @@ export const ipc = {
       .strict(),
     response: z.object({ path: z.string().nullable(), error: z.string().optional() }),
   },
-  /** Pick a file (a `.aio` package) with the native dialog. */
+  /** Pick one existing file (a `.aio` package, an installer) with the native dialog. */
   'dialog:openFile': {
     request: z
       .object({
@@ -391,6 +485,51 @@ export const ipc = {
     request: z.object({ projectId: z.string().min(1) }).strict(),
     response: z.object({ files: z.array(ReportFile) }),
   },
+  'app:about': {
+    request: Empty,
+    response: z.object({
+      version: z.string(),
+      electron: z.string(),
+      chrome: z.string(),
+      node: z.string(),
+      platform: z.string(),
+      arch: z.string(),
+      dataRoot: z.string(),
+      userData: z.string(),
+      logsDir: z.string(),
+      packaged: z.boolean(),
+      /** Installed from the Microsoft Store (MSIX): the Store delivers updates. */
+      store: z.boolean().optional(),
+    }),
+  },
+  /** Third-party packages shipped in the app, generated from the dependency tree at build time. */
+  'app:licenses': { request: Empty, response: z.array(LicenseEntry) },
+  /** Write the app logs and system details into one text file the person chooses. */
+  'app:exportLogs': {
+    request: Empty,
+    response: z.object({ path: z.string().nullable(), error: z.string().optional() }),
+  },
+  'app:showFolder': {
+    request: z.object({ which: z.enum(['data', 'logs', 'userData']) }).strict(),
+    response: Ok,
+  },
+  /** Check an installer file: valid signature and a newer version than this app. */
+  'update:verifyFile': {
+    request: z.object({ path: z.string().min(1) }).strict(),
+    response: VerifyResult,
+  },
+  /** Verify again, run the installer and quit. */
+  'update:installFile': { request: z.object({ path: z.string().min(1) }).strict(), response: Ok },
+  /** Optional online check (electron-updater, generic provider); refused when offline-only. */
+  'update:check': {
+    request: Empty,
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), available: z.boolean(), version: z.string().optional() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /** Download the update found by `update:check`, then quit and install it. */
+  'update:downloadAndInstall': { request: Empty, response: Ok },
 } as const satisfies Record<string, { request: z.ZodType; response: z.ZodType }>;
 
 /** Events pushed from main to the renderer. */
@@ -434,6 +573,8 @@ export const ipcEvents = {
     done: z.number().int().nonnegative(),
     total: z.number().int().nonnegative(),
   }),
+  /** A pack download job changed (progress, state). */
+  'packs:job': PackJob,
 } as const satisfies Record<string, z.ZodType>;
 
 export type IpcChannel = keyof typeof ipc;
@@ -444,6 +585,10 @@ export type IpcEvent<E extends IpcEventName> = z.output<(typeof ipcEvents)[E]>;
 export type LibraryEntry = z.infer<typeof LibraryEntry>;
 export type Settings = z.infer<typeof Settings>;
 export type MapPackInfo = z.infer<typeof MapPackInfo>;
+export type PackRegion = z.infer<typeof PackRegion>;
+export type PackJob = z.infer<typeof PackJob>;
+export type LicenseEntry = z.infer<typeof LicenseEntry>;
+export type ThemeSetting = Settings['theme'];
 export type ChatMessage = z.infer<typeof ChatMessage>;
 export type LocalModelSettings = z.infer<typeof LocalModelSettings>;
 export type ProviderUsage = z.infer<typeof ProviderUsage>;

@@ -18,6 +18,13 @@ The same tool fetches the glyph PBFs (Noto Sans Regular, Medium, Italic; Latin a
 ranges) into the git-ignored `assets/fonts/`: run `node tools/maps/build-packs.mjs --assets-only`
 after a fresh clone. Sprites (`assets/sprites/dark*`) are small and committed.
 
+In the app, Settings, Offline maps manages packs (`PackCoverage` draws them on a small world map):
+import a `.pmtiles` file (with an optional `MapPackInfo` `.json` beside it), remove a pack, or
+add a region online by country (`regions.ts`: GCC states and a world list) or a drawn box at a
+chosen max zoom, with a size estimate (`estimate.ts`, fitted to the packs above). Downloads run
+the bundled go-pmtiles `extract` in the main process (`apps/desktop/src/main/packs/`), are
+verified and written with `source`, `build` and `builtAt`.
+
 ## Runtime
 
 - One merged vector source `aiomap://tiles/{z}/{x}/{y}`: the internal `aiomap` MapLibre protocol
@@ -26,7 +33,10 @@ after a fresh clone. Sprites (`assets/sprites/dark*`) are small and committed.
   the map is empty.
 - Glyphs and sprites resolve to files bundled by Vite (`?url` imports). No URL in the style
   leaves `aiomap://` (tested in `style.test.ts`). Arabic is shaped natively by MapLibre 6.
-- Style: Protomaps `dark` flavour retuned to the Mission palette; labels follow
+- Style: Protomaps `dark` and `light` flavours retuned to the Mission palettes, following the app
+  theme (`data-theme` on `<html>`; the map restarts in the new flavour). The light sprite sheet is
+  optional (`build-packs.mjs` fetches it); until it is bundled the light style uses the dark
+  sheet's icons. Labels follow
   `<html lang>`: `en` shows English with the Arabic local name beneath, `ar` shows Arabic.
 - `MapView` takes an optional `draw` seam (`MapDrawSeam`): while its `mode` is set, clicks add
   vertices (the second click of a double click is dropped), a double click finishes instead of

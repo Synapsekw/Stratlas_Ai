@@ -20,6 +20,10 @@ export const DEFAULT_SETTINGS: Settings = {
   sidebarCollapsed: false,
   dataRoot: '',
   routes: defaultRoutes(),
+  direction: 'ltr',
+  offlineOnly: false,
+  updateCheck: false,
+  updateUrl: '',
 };
 
 export interface ShellState {

@@ -537,9 +537,11 @@ export function Stage() {
 
   return (
     <div className={`stage${docked && showVideo ? ' docked' : ''}`} ref={stageRef} data-mode={mode}>
+      {/* 3D and map panes keep their geometry in a right-to-left UI. */}
       <div
         className={`stage-panes${docked && showVideo ? ' with-video' : ''}${closeup ? ' with-dock' : ''}`}
         data-mode={mode}
+        dir="ltr"
       >
         <ScenePane hidden={mode === 'map'} />
         {mode !== '3d' && (

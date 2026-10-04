@@ -40,6 +40,16 @@
   --ov-dim: oklch(0.96 0.008 250 / 0.55);
   --ov-faint: oklch(0.96 0.008 250 / 0.22);
   --scrim: oklch(0.13 0.01 250 / 0.82);
+  /* elevation, chrome and state lines */
+  --shadow: oklch(0.08 0.01 250 / 0.55);
+  --backdrop: oklch(0.1 0.01 250 / 0.5);
+  --scrollbar: oklch(0.34 0.012 250);
+  --map-bg: oklch(0.135 0.016 238);
+  --danger-ink: oklch(0.8 0.12 25);
+  --danger-line: oklch(0.66 0.19 25 / 0.45);
+  --warn-line: oklch(0.84 0.14 92 / 0.35);
+  /* ink on solid severity swatches */
+  --sev-ink: oklch(0.15 0.02 250);
 
   --f-ui: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
   --f-cond: 'IBM Plex Sans Condensed', 'IBM Plex Sans', 'Segoe UI', sans-serif;
@@ -61,6 +71,8 @@
   --sb-w-c: 52px;
   --tb-h: 40px;
 }
+/* Light theme: secondary (DIRECTION.md) but complete. Same hues, contrast tuned for a light
+   surface; overlay ink on imagery stays light because imagery stays dark. */
 :root[data-theme='light'] {
   color-scheme: light;
   --bg-0: oklch(0.93 0.006 250);
@@ -72,11 +84,38 @@
   --line-soft: oklch(0.9 0.006 250);
   --line-strong: oklch(0.76 0.01 250);
   --fg-0: oklch(0.2 0.012 250);
-  --fg-1: oklch(0.36 0.012 250);
-  --fg-2: oklch(0.5 0.012 250);
-  --fg-3: oklch(0.6 0.01 250);
-  --fg-4: oklch(0.7 0.008 250);
+  --fg-1: oklch(0.34 0.012 250);
+  --fg-2: oklch(0.46 0.012 250);
+  --fg-3: oklch(0.56 0.01 250);
+  --fg-4: oklch(0.68 0.008 250);
   --acc: oklch(0.56 0.11 172);
   --acc-strong: oklch(0.48 0.11 172);
   --acc-ink: oklch(0.98 0.01 172);
+  --acc-a12: oklch(0.56 0.11 172 / 0.12);
+  --acc-a20: oklch(0.56 0.11 172 / 0.2);
+  --acc-a40: oklch(0.56 0.11 172 / 0.4);
+  --s5: oklch(0.58 0.2 25);
+  --s4: oklch(0.64 0.16 55);
+  --s3: oklch(0.7 0.15 85);
+  --s2: oklch(0.56 0.1 240);
+  --s1: oklch(0.58 0.02 250);
+  --s5-a: oklch(0.58 0.2 25 / 0.12);
+  --s4-a: oklch(0.64 0.16 55 / 0.14);
+  --s3-a: oklch(0.7 0.15 85 / 0.16);
+  --s2-a: oklch(0.56 0.1 240 / 0.12);
+  --ok: oklch(0.56 0.12 155);
+  --warn: var(--s3);
+  --danger: var(--s5);
+  --ov: oklch(0.96 0.008 250);
+  --ov-dim: oklch(0.96 0.008 250 / 0.55);
+  --ov-faint: oklch(0.96 0.008 250 / 0.22);
+  --scrim: oklch(0.13 0.01 250 / 0.82);
+  --shadow: oklch(0.3 0.02 250 / 0.18);
+  --backdrop: oklch(0.3 0.01 250 / 0.3);
+  --scrollbar: oklch(0.78 0.01 250);
+  --map-bg: oklch(0.93 0.008 240);
+  --danger-ink: oklch(0.5 0.18 25);
+  --danger-line: oklch(0.58 0.2 25 / 0.4);
+  --warn-line: oklch(0.7 0.15 85 / 0.5);
+  --sev-ink: oklch(0.15 0.02 250);
 }
