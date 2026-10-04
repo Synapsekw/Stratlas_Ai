@@ -90,6 +90,12 @@ const files: SourceFile[] = [
   { path: 'legacy/data/model.js', size: 9000 },
   { path: 'old.aio', size: 99999 },
   { path: 'x.tmp', size: 1 },
+  { path: 'manifest.before-video-1080.json', size: 900 },
+  { path: 'issues.before-video-1080.json', size: 100 },
+  { path: 'video.before-1080/v1_00.mp4', size: 400 },
+  { path: 'posters.before-1080/v1_00.jpg', size: 4 },
+  { path: 'video.next-1080/v1.mp4', size: 5000 },
+  { path: 'video/v3.mp4.part', size: 10 },
 ];
 
 const paths = (p: ReturnType<typeof planPackage>) => p.members.map((m) => m.path).sort();
@@ -101,6 +107,7 @@ describe('planPackage', () => {
     expect(paths(p)).not.toContain('IMPORT-REPORT.md');
     expect(paths(p)).not.toContain('old.aio');
     expect(paths(p)).not.toContain('x.tmp');
+    expect(paths(p).filter((x) => /before|next|\.part$/.test(x))).toEqual([]);
     // The manifest is written fresh by the exporter.
     expect(paths(p)).not.toContain('manifest.json');
     expect(paths(p)).toContain('issues.json');
