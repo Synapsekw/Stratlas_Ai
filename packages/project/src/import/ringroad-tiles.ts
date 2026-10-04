@@ -79,8 +79,13 @@ export function planPyramid(
       `Ortho extent ${w.toFixed(0)} x ${h.toFixed(0)} m does not fit a ${size.toFixed(0)} m pyramid`,
     );
   }
-  const left = Math.floor((bounds.minE + bounds.maxE) / 2 - size / 2);
-  const top = Math.ceil((bounds.minN + bounds.maxN) / 2 + size / 2);
+  // centred, snapped to whole metres when the slack allows it
+  const leftExact = (bounds.minE + bounds.maxE) / 2 - size / 2;
+  const topExact = (bounds.minN + bounds.maxN) / 2 + size / 2;
+  const l = Math.floor(leftExact);
+  const t = Math.ceil(topExact);
+  const left = l + size >= bounds.maxE ? l : leftExact;
+  const top = t - size <= bounds.minN ? t : topExact;
   const dir = o.dir ?? 'rasters/ortho';
   const levels: PyramidLevel[] = [];
   for (let z = 0; z < o.levels; z++) {

@@ -78,6 +78,15 @@ describe('local frame pyramid plan', () => {
     expect(c.bl[2] - c.tl[2]).toBeCloseTo(plan.size, 9);
   });
 
+  it('still covers bounds that leave less than a metre to snap the corner', () => {
+    const b = { minE: 790613.2, minN: 3254421.3, maxE: 790616.2, maxN: 3254424.3 };
+    const p = planPyramid(b, { finestM: 0.0325, tileSize: 64, levels: 2, finestSrcZoom: 22 });
+    expect(p.left).toBeLessThanOrEqual(b.minE);
+    expect(p.left + p.size).toBeGreaterThanOrEqual(b.maxE);
+    expect(p.top).toBeGreaterThanOrEqual(b.maxN);
+    expect(p.top - p.size).toBeLessThanOrEqual(b.minN);
+  });
+
   it('refuses bounds larger than the pyramid', () => {
     expect(() =>
       planPyramid(
