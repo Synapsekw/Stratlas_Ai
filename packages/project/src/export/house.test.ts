@@ -1,7 +1,14 @@
 import { ProjectManifest, type RoadModel, type VolumesFile } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { sampleIssues, sampleManifest } from './fixtures';
-import { houseKind, houseReportModel, issueAction, narrativeFacts, pciRating } from './house';
+import {
+  defaultIssuePages,
+  houseKind,
+  houseReportModel,
+  issueAction,
+  narrativeFacts,
+  pciRating,
+} from './house';
 import { resolveReportBranding } from './report';
 
 const branding = resolveReportBranding(undefined, 'Stratlas');
@@ -60,6 +67,24 @@ describe('houseReportModel', () => {
     expect(none.issuePages).toEqual([]);
     expect(none.sections).not.toContain('issues');
     expect(none.sections).toContain('register');
+  });
+
+  it('gives a road survey pages only above the lowest level unless the person chose', () => {
+    const manifest = ProjectManifest.parse({ ...sampleManifest(), type: 'road' });
+    const h = houseReportModel({ manifest, issues: sampleIssues(), branding, now });
+    expect(h.kind).toBe('road');
+    expect(h.issuePagesRule).toBe('above-lowest');
+    expect(h.issuePages.map((r) => r.code)).toEqual(['D002']);
+    const all = houseReportModel({
+      manifest,
+      issues: sampleIssues(),
+      branding,
+      now,
+      contents: { issuePages: 'all' },
+    });
+    expect(all.issuePages.map((r) => r.code)).toEqual(['D002', 'D010']);
+    expect(defaultIssuePages('inspection')).toBe('all');
+    expect(defaultIssuePages('volumetric')).toBe('all');
   });
 
   it('prints a project without issues', () => {

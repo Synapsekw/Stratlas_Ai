@@ -1,3 +1,4 @@
+import { defaultIssuePages, houseKind } from '@aio/project/export';
 import {
   REPORT_SECTIONS,
   reportSectionOn,
@@ -15,8 +16,10 @@ import { actionAllowed } from '../exports/exportModel';
 import { runExportAction } from '../exports/exports';
 import { NarrativeEditor } from '../report/NarrativeEditor';
 import { PdfViewer } from '../report/PdfViewer';
+import { ExtractPackage } from '../shell/ExtractPackage';
 import { shell, useCall, useShell } from '../shell';
 import { NoProject } from './NoProject';
+import { useRoad } from '../road/store';
 
 const STATUSES: IssueStatus[] = ['draft', 'reviewed', 'approved', 'closed'];
 
@@ -34,7 +37,12 @@ function saveContents(next: ReportContentsSettings) {
 }
 
 /** The house report: which sections it prints, which issues get a page, and the export. */
-function ProjectReport(props: { allowed: boolean; onText: () => void }) {
+function ProjectReport(props: {
+  allowed: boolean;
+  /** The issue page rule when none is chosen (it follows the project kind). */
+  defaultPages: IssuePagesRule;
+  onText: () => void;
+}) {
   const contents = useShell((s) => s.settings.reportContents);
   const toggle = (id: ReportSectionId) => {
     const sections = { ...contents?.sections, [id]: !reportSectionOn(contents, id) };
@@ -64,7 +72,7 @@ function ProjectReport(props: { allowed: boolean; onText: () => void }) {
         <span className="caps">{t('reports.house.issuePages')}</span>
         <select
           className="input"
-          value={contents?.issuePages ?? 'all'}
+          value={contents?.issuePages ?? props.defaultPages}
           onChange={(e) => {
             saveContents({ ...contents, issuePages: e.target.value as IssuePagesRule });
           }}
@@ -134,6 +142,7 @@ export function ReportsScreen() {
   const project = useWorkspace((s) => s.project);
   const issues = useWorkspace((s) => s.issues);
   const pkg = useShell((s) => s.pkg);
+  const roadOpen = useRoad((s) => s.status === 'ready' || s.status === 'setup');
   const listed = useCall('report:list', { projectId: project?.id ?? '' }, project?.id ?? null);
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [textOpen, setTextOpen] = useState(false);
@@ -166,6 +175,9 @@ export function ReportsScreen() {
           </section>
           <ProjectReport
             allowed={actionAllowed('house-pdf', pkg)}
+            defaultPages={defaultIssuePages(
+              houseKind(project.manifest, issues, roadOpen ? { road: true } : {}),
+            )}
             onText={() => {
               setTextOpen(true);
             }}
@@ -212,6 +224,13 @@ export function ReportsScreen() {
                 <Icon name="download" size={14} />
                 Export package
               </button>
+            </section>
+          )}
+          {pkg && (
+            <section className="sblock">
+              <h2>{t('package.extract.title')}</h2>
+              <p className="muted rep-note">{t('package.extract.text')}</p>
+              <ExtractPackage projectId={project.id} pkg={pkg} />
             </section>
           )}
           <section className="sblock">

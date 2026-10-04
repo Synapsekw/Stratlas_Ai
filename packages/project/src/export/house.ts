@@ -168,6 +168,15 @@ export function houseKind(
   return issues.length > 0 ? 'inspection' : 'fusion';
 }
 
+/**
+ * The issue page rule when the person has not chosen one: a road survey prints pages only above
+ * the lowest level (a full Ring Road report with a page per defect runs to thousands of pages),
+ * every other kind a page per issue.
+ */
+export function defaultIssuePages(kind: HouseKind): IssuePagesRule {
+  return kind === 'road' ? 'above-lowest' : 'all';
+}
+
 const rank = (r: ReportRow) => (r.severity === 'uncertain' ? -1 : r.severity);
 
 /** The lowest severity value of each model, for the `above-lowest` issue page rule. */
@@ -393,7 +402,7 @@ export function houseReportModel(input: HouseInput): HouseModel {
     ...(input.now ? { now: input.now } : {}),
   });
   const kind = houseKind(m, input.issues, { volumes: input.volumes, road: input.road });
-  const rule = input.contents?.issuePages ?? 'all';
+  const rule = input.contents?.issuePages ?? defaultIssuePages(kind);
   const issuePages = issuePageRows(m, input.issues, base.rows, rule);
   const sections = (
     [
