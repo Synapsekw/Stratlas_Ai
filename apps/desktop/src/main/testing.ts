@@ -100,3 +100,63 @@ export async function writeProject(
   }
   return dir;
 }
+
+export interface PmtilesFixture {
+  minZoom?: number;
+  maxZoom?: number;
+  /** West, south, east, north. */
+  bbox?: [number, number, number, number];
+  /** 1 = MVT (vector), 2 = PNG. */
+  tileType?: number;
+  version?: number;
+  /** Drop bytes from the end, as a cut-off download would. */
+  truncate?: number;
+}
+
+/**
+ * A minimal PMTiles v3 archive: header, an uncompressed root directory with one tile (z0) and
+ * a small JSON metadata block. Enough for header parsing and verification.
+ */
+export function pmtilesFile(o: PmtilesFixture = {}): Buffer {
+  const [w, s, e, n] = o.bbox ?? [46.5, 28.5, 48.5, 30.1];
+  const tile = Buffer.from('fake-mvt-tile');
+  // Directory: 1 entry; tile id delta 0, run length 1, length, offset + 1.
+  const dir = Buffer.from([1, 0, 1, tile.length, 1]);
+  const meta = Buffer.from(JSON.stringify({ name: 'fixture', attribution: 'OpenStreetMap' }));
+  const header = Buffer.alloc(127);
+  header.write('PMTiles', 0, 'ascii');
+  header.writeUInt8(o.version ?? 3, 7);
+  const u64 = (v: number, at: number) => {
+    header.writeBigUInt64LE(BigInt(v), at);
+  };
+  const rootOff = 127;
+  const metaOff = rootOff + dir.length;
+  const dataOff = metaOff + meta.length;
+  u64(rootOff, 8);
+  u64(dir.length, 16);
+  u64(metaOff, 24);
+  u64(meta.length, 32);
+  u64(dataOff + tile.length, 40);
+  u64(0, 48);
+  u64(dataOff, 56);
+  u64(tile.length, 64);
+  u64(1, 72);
+  u64(1, 80);
+  u64(1, 88);
+  header.writeUInt8(1, 96); // clustered
+  header.writeUInt8(1, 97); // internal compression: none
+  header.writeUInt8(1, 98); // tile compression: none
+  header.writeUInt8(o.tileType ?? 1, 99);
+  header.writeUInt8(o.minZoom ?? 0, 100);
+  header.writeUInt8(o.maxZoom ?? 15, 101);
+  const e7 = (v: number) => Math.round(v * 1e7);
+  header.writeInt32LE(e7(w), 102);
+  header.writeInt32LE(e7(s), 106);
+  header.writeInt32LE(e7(e), 110);
+  header.writeInt32LE(e7(n), 114);
+  header.writeUInt8(o.minZoom ?? 0, 118);
+  header.writeInt32LE(e7((w + e) / 2), 119);
+  header.writeInt32LE(e7((s + n) / 2), 123);
+  const all = Buffer.concat([header, dir, meta, tile]);
+  return o.truncate ? all.subarray(0, all.length - o.truncate) : all;
+}
