@@ -209,6 +209,54 @@ export function pathToImagePolygon(
   return pts.map(([x, y]) => [r2((x / 1000) * width), r2((y / 1000) * height)]);
 }
 
+/** Georeferencing of one source GeoTIFF block (pixel-is-area tie point at the top-left corner). */
+export interface OrthoBlock {
+  name: string;
+  ox: number;
+  oy: number;
+  sx: number;
+  sy: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * The ground window a close-up image really shows. `_build/closeups.py` reads the overview level
+ * `L = floor(log2(side / 0.0126 / 1200))` (at least 0) and the source pixels from
+ * `int((X0 - ox) / rx)` to `ceil((X1 - ox) / rx)` (rows likewise), then stretches that window over
+ * the image: up to one source pixel more than the crop box on each side. Blocks are drawn in order,
+ * so the last block covering the box centre is the one on top.
+ */
+export function closeupFrame(
+  box: readonly [number, number, number, number],
+  blocks: readonly OrthoBlock[],
+): { block: string; level: number; left: number; right: number; top: number; bottom: number } {
+  const [x0, y0, x1, y1] = box;
+  const cx = (x0 + x1) / 2;
+  const cy = (y0 + y1) / 2;
+  const covering = blocks.filter(
+    (b) => cx >= b.ox && cx <= b.ox + b.w * b.sx && cy <= b.oy && cy >= b.oy - b.h * b.sy,
+  );
+  const b = covering[covering.length - 1] ?? blocks[blocks.length - 1];
+  if (!b) throw new Error('No ortho blocks');
+  const side = Math.max(x1 - x0, y1 - y0);
+  const level = Math.max(0, Math.floor(Math.log2(Math.max(side / 0.0126 / 1200, 1))));
+  const rx = b.sx * 2 ** level;
+  const ry = b.sy * 2 ** level;
+  const c0 = Math.trunc((x0 - b.ox) / rx);
+  const c1 = Math.ceil((x1 - b.ox) / rx);
+  const r0 = Math.trunc((b.oy - y1) / ry);
+  const r1 = Math.ceil((b.oy - y0) / ry);
+  return {
+    block: b.name,
+    level,
+    left: b.ox + c0 * rx,
+    right: b.ox + c1 * rx,
+    top: b.oy - r0 * ry,
+    bottom: b.oy - r1 * ry,
+  };
+}
+
 // PCI sample units ---------------------------------------------------------------------------------
 
 export interface PciUnit {

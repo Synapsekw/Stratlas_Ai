@@ -5,7 +5,7 @@ import sharp from 'sharp';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { fromWgs84, toWgs84 } from '@aio/geo';
 import { buildOrthoPyramid, readPyramidRegion } from './ringroad-ortho';
-import { SRC_TILE, planPyramid, worldPx } from './ringroad-tiles';
+import { SRC_TILE, planPyramid, worldPx, worldPxToLonLat } from './ringroad-tiles';
 import { PackageWriter } from './writer';
 
 const UTM38 = 32638;
@@ -97,6 +97,26 @@ describe('ortho pyramid from mercator tiles', () => {
       }
     expect(peak.x + x0).toBe(best.x + tx * 64);
     expect(peak.y + y0).toBe(best.y + ty * 64);
+
+    // sub-pixel: the blob's brightness centroid sits where the centre of the source dot pixel
+    // (world px floor + 0.5) lands, in pixel-edge coordinates (pixel k spans k to k + 1)
+    const [wx, wy] = worldPx(dot[0], dot[1], 22);
+    const [clon, clat] = worldPxToLonLat(Math.floor(wx) + 0.5, Math.floor(wy) + 0.5, 22);
+    const [ce, cn] = fromWgs84([clon, clat, 0], UTM38);
+    const wantU = (ce - plan.left) / fine.metresPerPx - x0;
+    const wantV = (plan.top - cn) / fine.metresPerPx - y0;
+    let sw = 0;
+    let su = 0;
+    let sv = 0;
+    for (let y = 0; y < 80; y++)
+      for (let x = 0; x < 80; x++) {
+        const v = Math.max(0, (region.data[(y * 80 + x) * 4] ?? 0) - 110);
+        sw += v;
+        su += v * (x + 0.5);
+        sv += v * (y + 0.5);
+      }
+    expect(Math.abs(su / sw - wantU)).toBeLessThan(0.15);
+    expect(Math.abs(sv / sw - wantV)).toBeLessThan(0.15);
   });
 
   it('skips tiles with no source and keeps tiles of an unchanged source on a re-run', async () => {

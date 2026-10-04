@@ -9,6 +9,7 @@ import {
   buildRoadDoc,
   buildRoadIssue,
   classIdOf,
+  closeupFrame,
   defectCode,
   pathToImagePolygon,
   pciUnitsGeojson,
@@ -258,6 +259,34 @@ describe('defects as issues', () => {
       const issue = buildRoadIssue(d, ctx);
       expect(`${issue.title} ${issue.note}`).not.toMatch(/[–—]/);
     }
+  });
+});
+
+describe('close-up frames', () => {
+  const block = { name: 'B', ox: 1000, oy: 5000, sx: 0.0125, sy: 0.0125, w: 400000, h: 400000 };
+
+  it('reproduces the build window: whole source pixels around the box at the native level', () => {
+    // 5 m box: native 397 px, level 0; start floors, end ceils to whole 1.25 cm pixels
+    const f = closeupFrame([1100.001, 4900.002, 1105.001, 4905.002], [block]);
+    expect(f.level).toBe(0);
+    expect(f.left).toBeCloseTo(1100, 9);
+    expect(f.right).toBeCloseTo(1105.0125, 9);
+    expect(f.top).toBeCloseTo(4905.0125, 9);
+    expect(f.bottom).toBeCloseTo(4900, 9);
+  });
+
+  it('reads a coarser overview for a large box', () => {
+    // 40 m box: native 3175 px, level 1 (2.5 cm pixels)
+    const f = closeupFrame([1100.01, 4900.01, 1140.01, 4940.01], [block]);
+    expect(f.level).toBe(1);
+    expect(f.left).toBeCloseTo(1100, 9);
+    expect(f.right).toBeCloseTo(1140.025, 9);
+  });
+
+  it('takes the last block that covers the box centre (it is drawn on top)', () => {
+    const other = { ...block, name: 'C', ox: 1100.005 };
+    expect(closeupFrame([1100.001, 4900.002, 1105.001, 4905.002], [block, other]).block).toBe('C');
+    expect(closeupFrame([1000.5, 4900, 1001, 4900.5], [block, other]).block).toBe('B');
   });
 });
 

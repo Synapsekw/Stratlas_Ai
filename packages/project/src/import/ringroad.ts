@@ -21,12 +21,14 @@ import {
   buildRoadDoc,
   buildRoadIssue,
   classIdOf,
+  closeupFrame,
   defectCode,
   pathToImagePolygon,
   pciUnitsGeojson,
   photoIdOf,
   readDefects,
   severityOfStage,
+  type OrthoBlock,
   type RrDefect,
 } from './ringroad-model';
 import {
@@ -56,6 +58,31 @@ const AUTHOR = 'MPW defect shapefile (2 Apr 2024)';
 const CAPTURE_DATE = '2024-03-31';
 const LEGACY_DIR = 'legacy';
 const STAGE_COLOR: Record<number, string> = { 1: '#fad34b', 2: '#ff7a2d', 3: '#ee3f4b' };
+/**
+ * Georeferencing of the two 1.25 cm GeoTIFF blocks the close-ups were cut from (ModelTiepoint and
+ * ModelPixelScale of `1st Ring Road\Orthomosaic\*.tif`, pixel is area), in the order the build
+ * draws them. Used only to check the ortho against the close-ups.
+ */
+const ORTHO_BLOCKS: OrthoBlock[] = [
+  {
+    name: 'Block 2',
+    ox: 787311.4358901078,
+    oy: 3252970.739499368,
+    sx: 0.0124165,
+    sy: 0.0124165,
+    w: 162603,
+    h: 134291,
+  },
+  {
+    name: 'Block 1',
+    ox: 789202.26390585,
+    oy: 3254474.190344988,
+    sx: 0.0125837,
+    sy: 0.0125837,
+    w: 144942,
+    h: 246095,
+  },
+];
 
 const toLonLat = (e: number, n: number): [number, number] => {
   const [lon, lat] = toWgs84([e, n, 0], EPSG);
@@ -181,7 +208,9 @@ async function landingChecks(
     const box = crops.get(d.id);
     const file = closeups(d.id);
     if (!box || !file) continue;
-    const [e0, n0, e1, n1] = box;
+    // the ground the close-up really shows (whole GeoTIFF pixels around the crop box)
+    const f = closeupFrame(box, ORTHO_BLOCKS);
+    const [e0, n0, e1, n1] = [f.left, f.bottom, f.right, f.top];
     const x0 = Math.round((e0 - plan.left) / mpp);
     const y0 = Math.round((plan.top - n1) / mpp);
     const w = Math.round((e1 - e0) / mpp);
@@ -486,6 +515,8 @@ export async function importRingroad(opts: ImportOptions): Promise<ImportResult>
   let outlineMax = 0;
   let outlineSum = 0;
   let outlineN = 0;
+  let windowMax = 0;
+  let windowSum = 0;
   for (const d of defects) {
     const box = crops.get(d.id);
     const size = sizes.get(photoIdOf(d.id));
@@ -494,6 +525,7 @@ export async function importRingroad(opts: ImportOptions): Promise<ImportResult>
     const ring = d.g.slice(0, -1);
     if (poly.length !== ring.length) continue;
     const [e0, n0, e1, n1] = box;
+    const f = closeupFrame(box, ORTHO_BLOCKS);
     ring.forEach(([lon, lat], i) => {
       const [e, n] = toProject(lon, lat);
       const p = poly[i];
@@ -505,6 +537,13 @@ export async function importRingroad(opts: ImportOptions): Promise<ImportResult>
       outlineMax = Math.max(outlineMax, dist);
       outlineSum += dist;
       outlineN++;
+      // where the vertex really is in the image (the image spans the whole-pixel window)
+      const real = Math.hypot(
+        ((e - f.left) / (f.right - f.left)) * size.width - p[0],
+        ((f.top - n) / (f.top - f.bottom)) * size.height - p[1],
+      );
+      windowMax = Math.max(windowMax, real);
+      windowSum += real;
     });
   }
   const landing = await landingChecks(opts.out, plan, defects, crops, (fid) => {
@@ -587,12 +626,14 @@ export async function importRingroad(opts: ImportOptions): Promise<ImportResult>
       `| ${c.code} | ${c.km.toFixed(3)} | ${c.dxCm.toFixed(1)} | ${c.dyCm.toFixed(1)} | ${c.score.toFixed(2)} |`,
   );
   const worstLanding = Math.max(0, ...landing.map((c) => Math.hypot(c.dxCm, c.dyCm)));
+  const meanDx = landing.reduce((a, c) => a + c.dxCm, 0) / Math.max(1, landing.length);
+  const meanDy = landing.reduce((a, c) => a + c.dyCm, 0) / Math.max(1, landing.length);
   rep.section('Checks', [
     `- \`parseManifest\` and every issue against its severity model: pass (\`validatePackage\`).`,
     `- Issues ${valid.issues.length} = defects in \`data/defects.js\` ${defects.length}.`,
     `- Viewer coordinates: every defect centroid (lon/lat as the review places it) converted to UTM lands within ${(roundTrip * 100).toFixed(1)} cm of the shapefile UTM centroid.`,
-    `- Close-up outlines: the viewer path against the defect polygon placed through the crop box, ${outlineN} vertices, mean ${(outlineSum / Math.max(1, outlineN)).toFixed(2)} px, max ${outlineMax.toFixed(2)} px.`,
-    `- Ortho landing: the package ortho (level 7) against the close-ups, which the review cut straight from the 1.25 cm GeoTIFF over a UTM box; best shift by normalised cross correlation (search 10 px = 32.5 cm, refined below a pixel, crop box start taken out). Worst offset ${worstLanding.toFixed(1)} cm, mean ${(landing.reduce((a, c) => a + Math.hypot(c.dxCm, c.dyCm), 0) / Math.max(1, landing.length)).toFixed(1)} cm. The close-ups themselves start on a whole GeoTIFF pixel at or before the box corner (\`closeups.py\` truncates \`int((X0 - ox) / rx)\`), so the reference can sit up to one 1.25 to 5 cm source pixel off the box, towards negative dx and dy here.`,
+    `- Close-up outlines: the viewer path against the defect polygon placed through the crop box, ${outlineN} vertices, mean ${(outlineSum / Math.max(1, outlineN)).toFixed(2)} px, max ${outlineMax.toFixed(2)} px. The build stretches a window of whole GeoTIFF pixels around the crop box over each close-up (\`closeups.py\` reads \`int((X0 - ox) / rx)\` to \`ceil((X1 - ox) / rx)\`), so against the ground the image really shows, the viewer outline (kept as delivered for the image sightings) is off by mean ${(windowSum / Math.max(1, outlineN)).toFixed(2)} px, max ${windowMax.toFixed(2)} px.`,
+    `- Ortho landing: the package ortho (level 7) against the close-ups, which the review cut straight from the 1.25 cm GeoTIFFs; each close-up's real ground window is rebuilt from the GeoTIFF tie points and pixel sizes (blocks 1 and 2) the way \`closeups.py\` reads it. Best shift by normalised cross correlation, search 10 px (32.5 cm), refined below a pixel. Worst offset ${worstLanding.toFixed(1)} cm, mean ${(landing.reduce((a, c) => a + Math.hypot(c.dxCm, c.dyCm), 0) / Math.max(1, landing.length)).toFixed(1)} cm (one package pixel is 3.25 cm); mean dx ${meanDx.toFixed(1)} cm, dy ${meanDy.toFixed(1)} cm. The resampling itself is exact to about 0.1 px (unit test with a synthetic dot), so the common offset is in the review tiles: it is about half a pixel of the 2.5 cm GeoTIFF overview their z22 level was rendered from (\`tiler.py\`, \`RR_LEVEL=1\`).`,
     '',
     '| Issue | km | dx (cm) | dy (cm) | Correlation |',
     '| --- | ---: | ---: | ---: | ---: |',
