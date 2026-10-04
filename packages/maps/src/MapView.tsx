@@ -3,6 +3,7 @@ import { workspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
 import type { MapController } from './controller';
 import type { MapDrawSeam } from './draw';
+import { useDocumentTheme } from './theme';
 
 export interface MapViewProps {
   className?: string;
@@ -13,22 +14,6 @@ export interface MapViewProps {
 }
 
 type Status = 'loading' | 'ready' | 'no-packs' | 'error';
-
-/** The resolved app theme (`data-theme` on <html>), updated when it changes. */
-function useDocumentTheme(): string {
-  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme ?? 'dark');
-  useEffect(() => {
-    const html = document.documentElement;
-    const observer = new MutationObserver(() => {
-      setTheme(html.dataset.theme ?? 'dark');
-    });
-    observer.observe(html, { attributes: true, attributeFilter: ['data-theme', 'lang'] });
-    return () => {
-      observer.disconnect();
-    };
-  }, []);
-  return theme;
-}
 
 const MESSAGES: Record<Exclude<Status, 'ready'>, string> = {
   loading: 'Loading map',
