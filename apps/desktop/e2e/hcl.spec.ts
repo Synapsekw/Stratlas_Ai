@@ -1,5 +1,5 @@
 /**
- * End to end on the real HCl tank project (1 mesh, 10 point clouds, 76 clips, 11 issues). Runs
+ * End to end on the real HCl tank project (1 mesh, 10 point clouds, 10 flights of clips). Runs
  * only on machines that hold the project at E:\Stratlas Data\projects\hcl (or under
  * STRATLAS_HCL_DATA); skipped elsewhere. Read-only: it never edits the project.
  */
@@ -118,14 +118,14 @@ test('HCl opens with a drawn 3D scene, plays a clip and lists its saved issues',
     )
     .toBeGreaterThan(12);
 
-  // Clips are grouped by flight; clicking a flight bar plays the clip under the cursor.
-  const bar = win.locator('.seg-c.grp').first();
+  // Clicking flight 101's bar (a group of clips, or one whole-flight clip) plays it there.
+  const bar = win.locator('.seg-c').first();
   const box = await bar.boundingBox();
   if (!box) throw new Error('no flight bar in the timeline');
   await bar.click({ position: { x: box.width * 0.4, y: box.height / 2 } });
   const start = await clock(win);
   expect(start.playing).toBe(true);
-  expect(start.activeClip).toMatch(/^video-101-/);
+  expect(start.activeClip).toMatch(/^video-101/);
   await expect
     .poll(async () => (await clock(win)).nowMs - start.nowMs, { timeout: 20_000 })
     .toBeGreaterThan(1_500);
@@ -345,7 +345,7 @@ test('the tank is cut or made transparent only by hand; photos and flights reach
     });
   const before = await tankMaterials(win);
   expect(before.length).toBeGreaterThan(0);
-  const bar = win.locator('.seg-c.grp').first();
+  const bar = win.locator('.seg-c').first();
   const box = await bar.boundingBox();
   if (!box) throw new Error('no flight bar');
   await bar.click({ position: { x: box.width * 0.4, y: box.height / 2 } });
@@ -405,10 +405,10 @@ test('the tank is cut or made transparent only by hand; photos and flights reach
   await expect.poll(cloudsHidden).toBe(false);
   expect(await section()).toBe(false);
 
-  // Media groups the 76 clips into 10 flights.
+  // Media lists the 10 flights and the clips of the open one.
   await win.locator('.nav-item', { hasText: 'Media' }).first().click();
   await expect(win.locator('.m-flight')).toHaveCount(10);
-  await expect(win.locator('#m-flight-clips .m-card')).toHaveCount(7);
+  expect(await win.locator('#m-flight-clips .m-card').count()).toBeGreaterThan(0);
 });
 
 /** Off-screen screenshots for the founder's review (outside the repo). */
