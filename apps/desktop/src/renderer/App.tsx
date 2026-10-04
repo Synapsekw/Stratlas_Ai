@@ -17,6 +17,7 @@ import { bridge, shell, useShell } from './shell';
 import { Palette } from './shell/Palette';
 import { Sidebar } from './shell/Sidebar';
 import { TitleBar } from './shell/TitleBar';
+import { applyAppearance } from './theme';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
 
 function onKeyDown(e: KeyboardEvent) {
@@ -105,6 +106,7 @@ function Screen() {
 export function App() {
   const collapsed = useShell((s) => s.settings.sidebarCollapsed);
   const theme = useShell((s) => s.settings.theme);
+  const direction = useShell((s) => s.settings.direction);
   const screen = useShell((s) => s.screen);
 
   useEffect(() => {
@@ -127,8 +129,16 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const apply = () => {
+      applyAppearance(document.documentElement, { theme, direction }, media.matches);
+    };
+    apply();
+    media.addEventListener('change', apply);
+    return () => {
+      media.removeEventListener('change', apply);
+    };
+  }, [theme, direction]);
 
   return (
     <div className="app" data-sb={collapsed ? 'collapsed' : 'expanded'} data-screen={screen}>

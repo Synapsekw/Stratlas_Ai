@@ -54,7 +54,7 @@ code {
   border-radius: var(--r-4);
   font-size: var(--t-12);
   color: var(--fg-1);
-  border: 1px solid oklch(0.84 0.14 92 / 0.35);
+  border: 1px solid var(--warn-line);
   background: var(--s3-a);
   margin: 0 0 14px;
 }
@@ -62,7 +62,7 @@ code {
   color: var(--s3);
 }
 .notice.danger {
-  border-color: oklch(0.66 0.19 25 / 0.45);
+  border-color: var(--danger-line);
   background: var(--s5-a);
 }
 .notice.danger svg {
@@ -389,7 +389,7 @@ button.chip-status:hover {
   border-radius: var(--r-4);
   background: var(--bg-1);
   padding: 4px;
-  box-shadow: 0 12px 32px oklch(0.08 0.01 250 / 0.55);
+  box-shadow: 0 12px 32px var(--shadow);
   max-height: 320px;
   overflow-y: auto;
   animation: cmdk-in 160ms var(--ease-x);
@@ -946,7 +946,7 @@ button.chip-status:hover {
   pointer-events: none;
 }
 .pane-map {
-  background: oklch(0.135 0.016 238);
+  background: var(--map-bg);
 }
 .stage-compass {
   position: absolute;
@@ -1173,7 +1173,7 @@ svg.flip {
   padding: 10px 12px;
   background: var(--bg-1);
   border-color: var(--line-strong);
-  box-shadow: 0 12px 32px oklch(0 0 0 / 0.45);
+  box-shadow: 0 12px 32px var(--shadow);
 }
 .stage-pop.wide {
   width: 300px;
@@ -1268,7 +1268,7 @@ svg.flip {
   border: 1px solid var(--line);
   border-radius: var(--r-4);
   overflow: hidden;
-  box-shadow: 0 8px 24px oklch(0.1 0.01 250 / 0.45);
+  box-shadow: 0 8px 24px var(--shadow);
   min-width: 280px;
   max-width: calc(100% - 24px);
   resize: horizontal;
@@ -1888,7 +1888,7 @@ svg.flip {
 .prov-err {
   grid-column: 2 / 4;
   font-size: var(--t-12);
-  color: oklch(0.8 0.12 25);
+  color: var(--danger-ink);
 }
 .master {
   display: grid;
@@ -2038,7 +2038,7 @@ svg.flip {
   display: grid;
   place-items: center;
   font: 600 12px/1 var(--f-mono);
-  color: oklch(0.15 0.02 250);
+  color: var(--sev-ink);
 }
 .lvl.uncertain .sw {
   background: repeating-linear-gradient(-45deg, var(--bg-3) 0 4px, var(--bg-2) 4px 8px);

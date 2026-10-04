@@ -2,7 +2,7 @@
 * {
   box-sizing: border-box;
   scrollbar-width: thin;
-  scrollbar-color: oklch(0.34 0.012 250) transparent;
+  scrollbar-color: var(--scrollbar) transparent;
 }
 html,
 body,
@@ -937,7 +937,7 @@ select.input option {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: oklch(0.1 0.01 250 / 0.5);
+  background: var(--backdrop);
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -952,7 +952,7 @@ select.input option {
   background: var(--bg-1);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-6);
-  box-shadow: 0 24px 64px oklch(0.08 0.01 250 / 0.6);
+  box-shadow: 0 24px 64px var(--shadow);
   overflow: hidden;
   animation: cmdk-in 180ms var(--ease-x);
 }
