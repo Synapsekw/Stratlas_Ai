@@ -3,11 +3,12 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 
 export type ColourMode = 'rgb' | 'intensity' | 'height' | 'flight';
 
-export const COLOUR_MODES: readonly { id: ColourMode; label: string }[] = [
-  { id: 'rgb', label: 'RGB' },
-  { id: 'intensity', label: 'Intensity' },
-  { id: 'height', label: 'Height' },
-  { id: 'flight', label: 'Per flight' },
+/** Colour modes as the UI names them ('height' colours by elevation). */
+export const COLOUR_MODES: readonly { id: ColourMode; label: string; hint: string }[] = [
+  { id: 'rgb', label: 'RGB', hint: 'True colour from the survey' },
+  { id: 'height', label: 'Elevation', hint: 'Height ramp, low blue to high red' },
+  { id: 'intensity', label: 'Intensity', hint: 'Return intensity, or brightness without it' },
+  { id: 'flight', label: 'Flight', hint: 'One colour per capture flight' },
 ];
 
 export const BUDGETS = [1_000_000, 2_000_000, 4_000_000, 6_000_000, 8_000_000, 12_000_000] as const;

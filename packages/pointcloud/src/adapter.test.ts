@@ -6,6 +6,7 @@ import { PerspectiveCamera, Plane, Points, Scene, Vector3 } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPointcloudAdapter, registerPointcloudAdapters } from './adapter';
 import { createPointcloudSettings } from './settings';
+import { pointcloudStats } from './stats';
 import type { Decoder } from './pool';
 import type { DecodedChunk, DecodeRequest } from './protocol';
 
@@ -218,5 +219,21 @@ describe('pointcloud adapter', () => {
     await expect(
       adapter.create({ ...kitLayer('c'), format: 'copc' }, { scene: handle, url: () => 'x' }),
     ).rejects.toThrow('not supported yet');
+  });
+
+  it('publishes whether the clouds carry RGB and their height range for the UI', async () => {
+    const { handle, frame } = fakeHandle();
+    const d = fakeDecoder();
+    const settings = createPointcloudSettings(null);
+    settings.getState().setColourMode('height');
+    const adapter = createPointcloudAdapter({ decoder: () => d.decoder, settings });
+    await adapter.create(kitLayer('f101'), { scene: handle, url: () => 'x' });
+    frame();
+    // a kit-packed cloud is intensity only, known before it is decoded
+    expect(pointcloudStats.getState().byScene.get(handle)?.rgb).toBe(false);
+    d.finishAll();
+    await flush();
+    frame();
+    expect(pointcloudStats.getState().byScene.get(handle)?.heightRange).toEqual([0, 1]);
   });
 });

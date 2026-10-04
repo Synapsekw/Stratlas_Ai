@@ -1,4 +1,5 @@
 import { Color, ShaderMaterial, Vector2 } from 'three';
+import { ELEVATION_RAMP_GLSL } from './ramp';
 import type { ColourMode } from './settings';
 
 /** The HCl artifact flight palette (`Vd`). */
@@ -41,10 +42,7 @@ uniform vec2 uHeight;
 uniform vec3 uTint;
 varying vec3 vC;
 
-vec3 ramp(float t) {
-  return clamp(vec3(1.5 - abs(4.0 * t - 3.0), 1.5 - abs(4.0 * t - 2.0), 1.5 - abs(4.0 * t - 1.0)), 0.0, 1.0);
-}
-
+${ELEVATION_RAMP_GLSL}
 void main() {
   vec4 world = modelMatrix * vec4(position, 1.0);
   vec4 mvPosition = viewMatrix * world;
@@ -67,10 +65,14 @@ void main() {
   if (uMode < 0.5) {
     vC = rgb;
   } else if (uMode < 1.5) {
+#ifdef HAS_RGB
     vC = vec3(0.08 + 0.92 * inten);
+#else
+    // an intensity-only cloud's own look (the kit's tinted intensity) is its intensity view
+    vC = rgb;
+#endif
   } else if (uMode < 2.5) {
-    float t = clamp((world.y - uHeight.x) / max(1e-3, uHeight.y - uHeight.x), 0.0, 1.0);
-    vC = mix(vec3(0.18, 0.2, 0.55), ramp(t), smoothstep(0.0, 0.08, t));
+    vC = elevationRamp((world.y - uHeight.x) / max(1e-3, uHeight.y - uHeight.x));
   } else {
     vC = uTint * (0.35 + inten * 0.65);
   }

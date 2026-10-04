@@ -34,5 +34,16 @@ export {
   type PointcloudSettings,
 } from './settings';
 export { pointcloudStats, usePointcloudCounts, type CloudCounts } from './stats';
-export { FLIGHT_PALETTE } from './material';
-export { PointCloudControls, type PointCloudControlsProps } from './PointCloudControls';
+export { FLIGHT_PALETTE, MODE_INDEX } from './material';
+export {
+  NO_RGB_HINT,
+  PointCloudControls,
+  type PointCloudControlsProps,
+} from './PointCloudControls';
+export {
+  ElevationLegend,
+  elevationColour,
+  elevationGradient,
+  useElevationRange,
+  type ElevationLegendProps,
+} from './ElevationLegend';
