@@ -49,13 +49,13 @@ function setup(mode: string, opts: { pack?: boolean; grace?: number } = {}) {
   return { store, runner, events, spawned };
 }
 
-function finished(runner: JobRunner, id: string): Promise<JobRecord> {
+function finished(runner: JobRunner, id: string, closed = true): Promise<JobRecord> {
   return new Promise((resolve, reject) => {
     const t0 = Date.now();
     const poll = () => {
       const j = runner.get(id);
-      if (j && ['done', 'failed', 'cancelled'].includes(j.status) && !runner.isRunning(id))
-        resolve(j);
+      const ended = j && ['done', 'failed', 'cancelled'].includes(j.status);
+      if (j && ended && (!closed || !runner.isRunning(id))) resolve(j);
       else if (Date.now() - t0 > 15_000) reject(new Error(`timeout, status ${String(j?.status)}`));
       else setTimeout(poll, 20);
     };
@@ -115,7 +115,8 @@ describe('JobRunner', () => {
     if (!r.ok) throw new Error(r.error);
     await new Promise((res) => setTimeout(res, 300));
     expect(runner.cancel(r.job.id)).toEqual({ ok: true });
-    const job = await finished(runner, r.job.id);
+    // Resume as soon as it reads Cancelled, while the runtime may still be closing.
+    const job = await finished(runner, r.job.id, false);
     expect(job.status).toBe('cancelled');
     expect(job.steps.find((s) => s.name === 'two')?.state).toBe('cancelled');
     const resumed = await runner.start({ resume: job.id });

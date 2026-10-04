@@ -37,6 +37,8 @@ interface Live {
   cancelTimer?: NodeJS.Timeout;
   stderrTail: string[];
   settled: boolean;
+  /** Resolves when the runtime process has exited and its streams are closed. */
+  closed: Promise<void>;
 }
 
 const RESUMABLE = new Set(['failed', 'cancelled', 'interrupted']);
@@ -113,7 +115,12 @@ export class JobRunner {
     if ('resume' in req) {
       const prev = this.deps.store.get(req.resume);
       if (!prev) return { ok: false, error: `There is no job ${req.resume}.` };
-      if (this.live.has(prev.id)) return { ok: false, error: 'That job is already running.' };
+      const running = this.live.get(prev.id);
+      if (running && !running.settled) {
+        return { ok: false, error: 'That job is already running.' };
+      }
+      // A job that just stopped may still be closing its runtime; let it finish first.
+      if (running) await this.closeLive(running);
       if (!RESUMABLE.has(prev.status)) {
         return { ok: false, error: `A ${prev.status} job cannot be resumed.` };
       }
@@ -213,6 +220,18 @@ export class JobRunner {
 
   // internals
 
+  private async closeLive(live: Live): Promise<void> {
+    const timeout = new Promise<'late'>((resolve) =>
+      setTimeout(() => {
+        resolve('late');
+      }, 5000),
+    );
+    if ((await Promise.race([live.closed, timeout])) === 'late') {
+      live.child.kill();
+      await live.closed;
+    }
+  }
+
   private iso(): string {
     return this.now().toISOString();
   }
@@ -275,9 +294,12 @@ export class JobRunner {
     }
     const log = createWriteStream(join(jobDir(job), 'job.log'), { flags: 'a' });
     const client = new RpcClient(child.stdout, child.stdin);
-    const live: Live = { child, client, log, stderrTail: [], settled: false };
+    let markClosed: () => void = () => undefined;
+    const closed = new Promise<void>((resolve) => {
+      markClosed = resolve;
+    });
+    const live: Live = { child, client, log, stderrTail: [], settled: false, closed };
     this.live.set(job.id, live);
-    this.logs.delete(job.id);
     this.writeLog(job.id, {
       level: 'info',
       message: `${job.status === 'starting' && job.steps.length ? 'Resuming' : 'Starting'} ${job.pipeline} with pipeline pack ${pack.version}`,
@@ -347,8 +369,9 @@ export class JobRunner {
         this.writeLog(job.id, { level: 'error', message: why });
         this.update(job.id, (j) => this.finish(j, 'failed', why), true);
       });
-      this.live.delete(job.id);
+      if (this.live.get(job.id) === live) this.live.delete(job.id);
       log.end();
+      markClosed();
     });
 
     client

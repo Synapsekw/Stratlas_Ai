@@ -43,6 +43,9 @@ export function applyJobEvent(
 ): Pick<JobsState, 'jobs' | 'logs'> {
   if (e.type === 'update') {
     const i = s.jobs.findIndex((j) => j.id === e.job.id);
+    // An invoke answer can arrive after newer pushed events; never go back in time.
+    const known = s.jobs[i];
+    if (known && known.updatedAt > e.job.updatedAt) return s;
     const jobs = i < 0 ? [e.job, ...s.jobs] : s.jobs.map((j, k) => (k === i ? e.job : j));
     return { jobs, logs: s.logs };
   }

@@ -40,6 +40,12 @@ describe('applyJobEvent', () => {
     expect(s.jobs[1]?.progress).toBe(0.9);
   });
 
+  it('ignores a record older than the one it has (a late invoke answer)', () => {
+    const newer = job({ updatedAt: '2026-10-04T10:00:05.000Z', progress: 0.5 });
+    const s = applyJobEvent({ jobs: [newer], logs: {} }, { type: 'update', job: job() });
+    expect(s.jobs[0]).toBe(newer);
+  });
+
   it('appends log lines per job', () => {
     const line = { time: 't', level: 'info' as const, message: 'hello' };
     const s = applyJobEvent({ jobs: [], logs: {} }, { type: 'log', jobId: 'j1', line });
