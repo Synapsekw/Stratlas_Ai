@@ -770,6 +770,7 @@ export function createMapController(
     applyVisibility(now);
     const issuePts = now.issues.map((i) => issueAnchor(i, proj)).filter((x): x is LonLat => !!x);
     const box = bboxOf([...rasterPts, ...flightPts, ...issuePts]);
+    projectBox = box;
     if (box) {
       map.fitBounds(
         [
@@ -783,12 +784,24 @@ export function createMapController(
     }
   }
 
+  /** What the project covers (rasters, flights, issues), for the home view. */
+  let projectBox: ReturnType<typeof bboxOf> = null;
+
   /** A camera request (fly to a point or an issue) moves the map too; the 3D view consumes it. */
   function followCamera(s: Workspace): void {
     const req = s.lastCamera;
     if (!req || !proj) return;
     const t = req.target;
-    if (t.kind === 'point') {
+    if (t.kind === 'home') {
+      if (projectBox)
+        map.fitBounds(
+          [
+            [projectBox[0], projectBox[1]],
+            [projectBox[2], projectBox[3]],
+          ],
+          { padding: 40, maxZoom: 17, duration: 500 },
+        );
+    } else if (t.kind === 'point') {
       const at = proj.toLonLat(t.p);
       const d = t.distance;
       let zoom = map.getZoom();
@@ -797,7 +810,7 @@ export function createMapController(
         zoom = Math.log2((40_075_016.686 * Math.cos((at[1] * Math.PI) / 180)) / (512 * wantMpp));
       }
       map.easeTo({ center: at, zoom: Math.min(22, Math.max(3, zoom)), duration: 500 });
-    } else if (t.kind === 'selection' && t.selection.kind === 'issue') {
+    } else if (t.selection.kind === 'issue') {
       const id = t.selection.id;
       const issue = s.issues.find((i) => i.id === id);
       if (issue) focusIssueOnMap(issue);
