@@ -6,6 +6,7 @@
 //   node ../../tools/release/dist.mjs --mac            dmg + zip
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { appDir, writeEffectiveConfig } from './brand-config.mjs';
 
 const { path } = writeEffectiveConfig();
@@ -17,4 +18,14 @@ const env = Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !
 if (!env.CSC_LINK && !env.CSC_NAME) env.CSC_IDENTITY_AUTO_DISCOVERY = 'false';
 
 const result = spawnSync(process.execPath, args, { cwd: appDir, stdio: 'inherit', env });
-process.exit(result.status ?? 1);
+if (result.status !== 0) process.exit(result.status ?? 1);
+
+// Never hand over a package that cannot start: check the bundle, then launch the packaged app.
+for (const step of ['check-bundle.mjs', 'smoke-packaged.mjs']) {
+  const r = spawnSync(process.execPath, [fileURLToPath(new URL(step, import.meta.url))], {
+    cwd: appDir,
+    stdio: 'inherit',
+    env,
+  });
+  if (r.status !== 0) process.exit(r.status ?? 1);
+}

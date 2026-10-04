@@ -1,6 +1,6 @@
 // Writes issue exports to disk. Runs in the export utility process (worker.ts), never on the
 // UI thread; also called directly by unit tests.
-import { imageSize } from '@aio/project/import';
+import { imageSize } from '@aio/project/image';
 import {
   issuesCoco,
   issuesCsv,

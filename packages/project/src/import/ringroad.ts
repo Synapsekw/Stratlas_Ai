@@ -1,7 +1,11 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
-import sharp from 'sharp';
+import type SharpFactory from 'sharp';
+import { loadSharp } from './sharp-lazy';
+
+/** Set by the entry functions below before any image work (see sharp-lazy.ts). */
+let sharp: typeof SharpFactory;
 import { fromWgs84, toWgs84 } from '@aio/geo';
 import type { Layer, PhotoRef, ProjectManifestInput, Vec3 } from '@aio/schema';
 import type { ImportOptions, ImportResult } from './hcl';
@@ -292,6 +296,7 @@ async function writeThumbnail(
 }
 
 export async function importRingroad(opts: ImportOptions): Promise<ImportResult> {
+  sharp = await loadSharp();
   const log = opts.log ?? (() => undefined);
   const src = (...p: string[]) => join(opts.src, ...p);
   const w = new PackageWriter(opts.out);

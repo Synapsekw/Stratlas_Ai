@@ -796,6 +796,17 @@ function createWindow(): BrowserWindow {
     if (mainWindow === win) mainWindow = null;
   });
 
+  // Release smoke check: the packaged app must load its UI and exit 0 (tools/release/smoke-packaged.mjs).
+  if (process.env.STRATLAS_SMOKE === '1') {
+    win.webContents.once('did-finish-load', () => {
+      setTimeout(() => {
+        app.exit(0);
+      }, 1500);
+    });
+    win.webContents.once('render-process-gone', () => {
+      app.exit(2);
+    });
+  }
   if (devUrl) void win.loadURL(devUrl);
   else void win.loadFile(join(import.meta.dirname, '../renderer/index.html'));
   return win;

@@ -1,6 +1,10 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
-import sharp from 'sharp';
+import type SharpFactory from 'sharp';
+import { loadSharp } from './sharp-lazy';
+
+/** Set by the entry functions below before any image work (see sharp-lazy.ts). */
+let sharp: typeof SharpFactory;
 import {
   SRC_TILE,
   resampleBilinear,
@@ -158,6 +162,7 @@ export async function readPyramidRegion(
   w: number,
   h: number,
 ): Promise<RgbaImage> {
+  sharp = await loadSharp();
   const s = level.tileSize;
   const img: RgbaImage = { data: new Uint8Array(w * h * 4), width: w, height: h };
   for (let ty = Math.floor(y0 / s); ty <= Math.floor((y0 + h - 1) / s); ty++)
@@ -184,6 +189,7 @@ export async function readPyramidRegion(
  * colour. Tiles with no source pixel are not written.
  */
 export async function buildOrthoPyramid(o: OrthoBuildOptions): Promise<OrthoBuildResult> {
+  sharp = await loadSharp();
   const first = o.plan.levels[0];
   if (!first) throw new Error('Pyramid plan has no levels');
   const stampRel = `${dirname(dirname(first.pattern)).replace(/\\/g, '/')}/source.json`;
