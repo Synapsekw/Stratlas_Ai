@@ -1885,6 +1885,17 @@ svg.flip {
   flex: 1;
   font-family: var(--f-mono);
 }
+.local-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 10px;
+}
+.local-row label {
+  display: grid;
+  gap: 4px;
+  font-size: var(--t-12);
+}
 .prov-err {
   grid-column: 2 / 4;
   font-size: var(--t-12);
