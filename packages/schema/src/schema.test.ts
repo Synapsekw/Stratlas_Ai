@@ -264,6 +264,23 @@ describe('ipc contracts', () => {
     expect(Settings.safeParse({ ...old, updateUrl: '' }).success).toBe(true);
   });
 
+  it('accepts an Anthropic workspace ID or none', () => {
+    const base = {
+      cloudAi: true,
+      theme: 'dark',
+      sidebarCollapsed: false,
+      dataRoot: 'E:/Data',
+      routes: [],
+    };
+    expect(
+      Settings.parse({ ...base, anthropicWorkspaceId: ' wrkspc_01AbC ' }).anthropicWorkspaceId,
+    ).toBe('wrkspc_01AbC');
+    expect(Settings.safeParse({ ...base, anthropicWorkspaceId: '' }).success).toBe(true);
+    expect(Settings.safeParse({ ...base, anthropicWorkspaceId: 'wrkspc 01; drop' }).success).toBe(
+      false,
+    );
+  });
+
   it('describes map packs with an optional build date and source', () => {
     const pack = { id: 'kuwait', label: 'Kuwait', bbox: [46.5, 28.5, 48.5, 30.1], maxZoom: 15 };
     expect(MapPackInfo.safeParse({ ...pack, sizeBytes: 1 }).success).toBe(true);

@@ -3,7 +3,8 @@
  * renderer sends `ai:send`; the runtime streams `ai:event`s back and, when the model calls a tool,
  * emits `tool-call` and waits for `ai:toolResult` from the renderer, which runs the tool (after the
  * person approves it for write and send risk). Keys come from the host and never leave this module.
- * Nothing here logs prompts, images or keys.
+ * Nothing here logs prompts, images or keys. Provider errors are shown and logged with the
+ * provider's own text, sanitised by `describeError` (keys removed, length capped).
  */
 import type {
   AiPolicy,
@@ -16,8 +17,7 @@ import type {
   WindowKind,
 } from '@aio/schema';
 import {
-  APICallError,
-  RetryError,
+  generateText,
   stepCountIs,
   streamText,
   type JSONValue,
@@ -27,6 +27,7 @@ import {
   type ToolSet,
   type UserContent,
 } from 'ai';
+import { describeError } from './errors';
 import { estimateCostUsd } from './pricing';
 import { contextBlock, systemPrompt } from './prompt';
 import {
@@ -35,10 +36,12 @@ import {
   type ModelProvider,
   type ProviderRegistry,
 } from './providers';
-import { defaultRoutes, missingKeyMessage, routeFor, type ModelRoute } from './routes';
+import { defaultRoutes, missingKeyMessage, routeFor, TEST_MODELS, type ModelRoute } from './routes';
 import { riskOf, toolsForWindow } from './tools';
 
+export { describeError, sanitize, type DescribedError } from './errors';
 export {
+  anthropicHeaders,
   createProviderRegistry,
   builtInProviders,
   isLoopbackUrl,
@@ -46,7 +49,7 @@ export {
 } from './providers';
 export { createScriptedProvider } from './scripted';
 export { addProviderUsage, totalUsage, type ProviderUsageRow } from './pricing';
-export type { ModelProvider, ProviderRegistry } from './providers';
+export type { BuiltInProviderOptions, ModelProvider, ProviderRegistry } from './providers';
 
 /** What the agent runtime needs from the Electron main process. */
 export interface AgentRuntimeHost {
@@ -79,6 +82,11 @@ export interface AgentRuntime {
   cancel(runId: string): void;
   /** Whether the chat route can answer now, and why not. Never calls a provider. */
   status(req: IpcRequest<'ai:status'>): Promise<IpcResponse<'ai:status'>>;
+  /**
+   * One minimal request to a provider (Settings, Test connection), with the model its routes use.
+   * Only on the person's click: it calls out when cloud AI is on.
+   */
+  testConnection(req: IpcRequest<'ai:testConnection'>): Promise<IpcResponse<'ai:testConnection'>>;
 }
 
 export interface AgentRuntimeOptions {
@@ -91,7 +99,7 @@ export interface AgentRuntimeOptions {
 
 const MAX_STEPS = 8;
 
-/** Fixed texts: errors never echo provider messages, which can contain request content. */
+/** Fixed texts. Provider errors are described by `describeError` in errors.ts. */
 export const MESSAGES = {
   cloudOff: 'Cloud AI is off. Turn it on in Settings, AI providers, to use the agent.',
   busy: 'The agent is already working on this message.',
@@ -104,15 +112,12 @@ export const MESSAGES = {
   stopped: 'Stopped.',
   stepLimit: `I stopped after ${MAX_STEPS} steps. Send another message to continue.`,
   failed: 'Something went wrong in the agent. Try again.',
-  offline: (p: string) =>
-    `Cannot reach ${p}. Check the internet connection, or keep working offline.`,
-  keyRejected: (p: string) =>
-    `${p} did not accept the API key. Check it in Settings, AI providers.`,
-  rateLimited: (p: string) => `${p} is busy or rate limited. Wait a moment and try again.`,
-  server: (p: string) => `${p} had a server error. Try again in a moment.`,
-  badRequest: (p: string) =>
-    `${p} could not handle this request. Start a new conversation or choose another model.`,
+  noTestModel: 'No model is set for this provider. Choose one in Settings, AI providers.',
 } as const;
+
+/** The connection test asks for a one-word answer: a few tokens in and out. */
+const TEST_PROMPT = 'Reply with the single word OK.';
+const TEST_TIMEOUT_MS = 30_000;
 
 type Outcome =
   { status: 'ok'; result: unknown } | { status: 'error'; message: string } | { status: 'declined' };
@@ -256,6 +261,9 @@ export function createAgentRuntime(
         abortSignal: run.controller.signal,
         maxRetries: options.maxRetries ?? 2,
         maxOutputTokens: 16_000,
+        // Errors arrive as stream parts and are logged below, sanitised; the SDK default would
+        // print the raw error to the console (and so to the log file).
+        onError: () => undefined,
       });
       for await (const part of result.stream) {
         if (run.controller.signal.aborted) throw new Cancelled();
@@ -294,15 +302,13 @@ export function createAgentRuntime(
       }
       host.emit({ type: 'done', runId });
     } catch (e) {
-      const message =
-        e instanceof Cancelled || run.controller.signal.aborted
-          ? MESSAGES.stopped
-          : errorMessage(e, label);
-      if (!(e instanceof Cancelled) && !run.controller.signal.aborted) {
-        // Only the class and status: provider messages can quote the request.
-        console.warn(`agent run failed: ${errorKind(e)}`);
+      if (e instanceof Cancelled || run.controller.signal.aborted) {
+        host.emit({ type: 'error', runId, message: MESSAGES.stopped });
+        return;
       }
-      host.emit({ type: 'error', runId, message });
+      const described = describeError(e, { label, model: route.model, secrets: [key] });
+      console.warn(`agent run failed: ${described.log}`);
+      host.emit({ type: 'error', runId, message: described.message });
     }
   }
 
@@ -345,6 +351,48 @@ export function createAgentRuntime(
           : {}),
         cloud: gate.cloud,
       };
+    },
+    testConnection: async ({ provider: id }) => {
+      const provider = resolveProvider(id);
+      if (!provider) {
+        return { ok: false, message: id === 'local' ? MESSAGES.localOff : MESSAGES.noProvider };
+      }
+      if (provider.cloud && !host.cloudAllowed()) return { ok: false, message: MESSAGES.cloudOff };
+      const routes = host.routes?.() ?? defaultRoutes();
+      const routed =
+        routes.find((r) => r.provider === id && r.task === 'chat') ??
+        routes.find((r) => r.provider === id);
+      const model =
+        routed?.model ?? (id === 'local' ? host.localModel?.()?.model : TEST_MODELS[id]);
+      if (!model) return { ok: false, message: MESSAGES.noTestModel };
+      const key = provider.needsKey ? await host.getKey(id) : null;
+      if (provider.needsKey && !key) {
+        return { ok: false, message: missingKeyMessage(provider.label), model };
+      }
+      try {
+        const result = await generateText({
+          model: provider.languageModel(model, key),
+          prompt: TEST_PROMPT,
+          maxOutputTokens: 256,
+          maxRetries: 0,
+          abortSignal: AbortSignal.timeout(TEST_TIMEOUT_MS),
+        });
+        const reply = result.text.trim().slice(0, 40);
+        return {
+          ok: true,
+          message: `${provider.label} answered with ${model}${reply ? `: "${reply}"` : ''}.`,
+          model,
+        };
+      } catch (e) {
+        const described = describeError(e, { label: provider.label, model, secrets: [key] });
+        console.warn(`connection test failed: ${described.log}`);
+        return {
+          ok: false,
+          message: described.message,
+          model,
+          ...(described.status !== undefined ? { status: described.status } : {}),
+        };
+      }
     },
     toolResult: (res) => {
       const resolve = runs.get(res.runId)?.pending.get(res.callId);
@@ -430,41 +478,4 @@ function usageEvent(runId: string, route: ModelRoute, u: LanguageModelUsage): Ip
   return costUsd === undefined
     ? { type: 'usage', runId, inputTokens, outputTokens, ...tags }
     : { type: 'usage', runId, inputTokens, outputTokens, costUsd, ...tags };
-}
-
-function unwrap(e: unknown): unknown {
-  return RetryError.isInstance(e) ? e.lastError : e;
-}
-
-function errorMessage(err: unknown, label: string): string {
-  const e = unwrap(err);
-  if (APICallError.isInstance(e)) {
-    const s = e.statusCode;
-    if (s === 401 || s === 403) return MESSAGES.keyRejected(label);
-    if (s === 429 || s === 529) return MESSAGES.rateLimited(label);
-    if (s !== undefined && s >= 500) return MESSAGES.server(label);
-    if (s !== undefined && s >= 400) return MESSAGES.badRequest(label);
-    return MESSAGES.offline(label);
-  }
-  if (isNetworkError(e)) return MESSAGES.offline(label);
-  return MESSAGES.failed;
-}
-
-function isNetworkError(e: unknown): boolean {
-  if (!(e instanceof Error)) return false;
-  const code =
-    (e as { code?: unknown; cause?: { code?: unknown } }).code ??
-    (e as { cause?: { code?: unknown } }).cause?.code;
-  if (
-    typeof code === 'string' &&
-    /^(ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|UND_ERR)/.test(code)
-  )
-    return true;
-  return e instanceof TypeError && /fetch failed|network/i.test(e.message);
-}
-
-function errorKind(err: unknown): string {
-  const e = unwrap(err);
-  if (APICallError.isInstance(e)) return `APICallError ${e.statusCode ?? 'no status'}`;
-  return e instanceof Error ? e.name : typeof e;
 }

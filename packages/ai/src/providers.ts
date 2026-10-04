@@ -29,28 +29,50 @@ export interface ProviderRegistry {
   list(): ModelProvider[];
 }
 
-export function builtInProviders(): ModelProvider[] {
+export interface BuiltInProviderOptions {
+  /**
+   * Anthropic workspace for keys that are not scoped to one (organisation keys): sent as the
+   * `anthropic-workspace-id` header. Read on every request so a change in Settings applies at once.
+   */
+  anthropicWorkspaceId?: () => string | undefined;
+  /** Replaces the network for tests. */
+  fetch?: typeof globalThis.fetch;
+}
+
+/** The `anthropic-workspace-id` header, or nothing when no workspace is set. */
+export function anthropicHeaders(workspaceId: string | undefined): Record<string, string> {
+  const id = workspaceId?.trim();
+  return id ? { 'anthropic-workspace-id': id } : {};
+}
+
+export function builtInProviders(options: BuiltInProviderOptions = {}): ModelProvider[] {
+  const fetch = options.fetch ? { fetch: options.fetch } : {};
   return [
     {
       id: 'anthropic',
       label: PROVIDER_LABELS.anthropic,
       cloud: true,
       needsKey: true,
-      languageModel: (model, key) => createAnthropic({ apiKey: key ?? '' })(model),
+      languageModel: (model, key) =>
+        createAnthropic({
+          apiKey: key ?? '',
+          headers: anthropicHeaders(options.anthropicWorkspaceId?.()),
+          ...fetch,
+        })(model),
     },
     {
       id: 'openai',
       label: PROVIDER_LABELS.openai,
       cloud: true,
       needsKey: true,
-      languageModel: (model, key) => createOpenAI({ apiKey: key ?? '' })(model),
+      languageModel: (model, key) => createOpenAI({ apiKey: key ?? '', ...fetch })(model),
     },
     {
       id: 'google',
       label: PROVIDER_LABELS.google,
       cloud: true,
       needsKey: true,
-      languageModel: (model, key) => createGoogle({ apiKey: key ?? '' })(model),
+      languageModel: (model, key) => createGoogle({ apiKey: key ?? '', ...fetch })(model),
     },
   ];
 }

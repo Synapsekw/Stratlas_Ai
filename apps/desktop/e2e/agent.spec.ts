@@ -220,3 +220,52 @@ test('agent: a package that forbids cloud AI keeps the agent off', async () => {
     await cleanup(data);
   }
 });
+
+test('agent: Settings tests the connection and keeps the Anthropic workspace ID', async () => {
+  const data = await createDataRoot();
+  try {
+    const run = await start(data);
+    const { win } = run;
+    const testConnection = () =>
+      win.evaluate(() => window.aio.invoke('ai:testConnection', { provider: 'anthropic' }));
+    // Cloud AI is off by default: the test does not call out.
+    expect(await testConnection()).toEqual({
+      ok: false,
+      message: 'Cloud AI is off. Turn it on in Settings, AI providers, to use the agent.',
+    });
+    await win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: true }));
+    expect(await testConnection()).toEqual({
+      ok: true,
+      message: 'Scripted test model answered with claude-sonnet-5-5: "OK".',
+      model: 'claude-sonnet-5-5',
+    });
+
+    await win.getByRole('button', { name: 'Settings' }).first().click();
+    await win.getByRole('button', { name: 'AI providers' }).click();
+    const field = win.getByRole('textbox', { name: 'Anthropic workspace ID' });
+    await field.fill('wrkspc_01E2ETest');
+    await field.press('Enter');
+    await expect
+      .poll(async () => {
+        const text = await readFile(join(data.userData, 'settings.json'), 'utf8').catch(() => '');
+        return (JSON.parse(text || '{}') as { anthropicWorkspaceId?: string }).anthropicWorkspaceId;
+      })
+      .toBe('wrkspc_01E2ETest');
+    await field.fill('not a workspace!');
+    await field.press('Enter');
+    await expect(win.getByRole('alert')).toContainText('A workspace ID has only letters');
+    // A typo is refused in place: the stored ID stays and Settings keep saving.
+    await expect(win.getByText('Settings are not being saved')).toHaveCount(0);
+    expect(
+      (
+        JSON.parse(await readFile(join(data.userData, 'settings.json'), 'utf8')) as {
+          anthropicWorkspaceId?: string;
+        }
+      ).anthropicWorkspaceId,
+    ).toBe('wrkspc_01E2ETest');
+    await shot(win, 'settings-anthropic-workspace');
+    await close(run.app, run.network);
+  } finally {
+    await cleanup(data);
+  }
+});

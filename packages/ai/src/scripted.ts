@@ -109,7 +109,14 @@ function scriptedModel(modelId: string): LanguageModelV4 {
     provider: 'scripted',
     modelId,
     supportedUrls: {},
-    doGenerate: () => Promise.reject(new Error('The scripted model only streams.')),
+    // Settings, Test connection: one non-streamed answer.
+    doGenerate: () =>
+      Promise.resolve({
+        content: [{ type: 'text', text: 'OK' }],
+        finishReason: { unified: 'stop', raw: 'end_turn' },
+        usage: USAGE,
+        warnings: [],
+      }),
     doStream: (options) => {
       const list = parts(options.prompt);
       return Promise.resolve({

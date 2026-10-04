@@ -1,5 +1,6 @@
 import type { LanguageModelV4StreamPart } from '@ai-sdk/provider';
 import type { AiProvider, IpcEvent, IpcRequest } from '@aio/schema';
+import { APICallError } from 'ai';
 import { convertArrayToReadableStream, MockLanguageModelV4 } from 'ai/test';
 import { describe, expect, it, vi } from 'vitest';
 import { createAgentRuntime, MESSAGES, type AgentRuntime, type AgentRuntimeHost } from './main';
@@ -411,5 +412,92 @@ describe('project AI policy and the local model', () => {
       cloud: true,
       route: { provider: 'anthropic', model: 'claude-sonnet-5-5' },
     });
+  });
+});
+
+describe('provider errors and the connection test', () => {
+  it('shows and logs the provider error text, never the key', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const t = setup({
+      keys: { anthropic: 'sk-ant-api03-SECRET-0123456789' },
+      doStream: () =>
+        Promise.reject(
+          new APICallError({
+            message: 'messages.0: key sk-ant-api03-SECRET-0123456789 echoed',
+            url: 'https://api.anthropic.com/v1/messages',
+            requestBodyValues: {},
+            statusCode: 400,
+            data: {
+              type: 'error',
+              error: {
+                type: 'invalid_request_error',
+                message: 'messages.0: key sk-ant-api03-SECRET-0123456789 echoed',
+              },
+            },
+          }),
+        ),
+    });
+    await t.runtime.send(req());
+    const end = await t.end('r1');
+    expect(end).toMatchObject({
+      type: 'error',
+      message: expect.stringContaining(
+        'Anthropic: messages.0: key [key] echoed. (HTTP 400)',
+      ) as unknown,
+    });
+    const logged = warn.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(logged).toContain(
+      'agent run failed: APICallError 400 invalid_request_error (Anthropic claude-sonnet-5-5): messages.0: key [key] echoed',
+    );
+    expect(logged).not.toContain('SECRET');
+    // The SDK's own console.error of the raw error is switched off.
+    expect(error).not.toHaveBeenCalled();
+    warn.mockRestore();
+    error.mockRestore();
+  });
+
+  it('refuses the connection test when cloud AI is off or the key is missing', async () => {
+    expect(await setup({ cloud: false }).runtime.testConnection({ provider: 'anthropic' })).toEqual(
+      { ok: false, message: MESSAGES.cloudOff },
+    );
+    expect(await setup({ keys: {} }).runtime.testConnection({ provider: 'anthropic' })).toEqual({
+      ok: false,
+      message: 'Add an Anthropic key in Settings, AI providers.',
+      model: 'claude-sonnet-5-5',
+    });
+    expect(await setup({}).runtime.testConnection({ provider: 'local' })).toEqual({
+      ok: false,
+      message: MESSAGES.localOff,
+    });
+  });
+
+  it('tests a provider no route uses with its smallest model', async () => {
+    const seen: string[] = [];
+    const openai: ModelProvider = {
+      id: 'openai',
+      label: 'OpenAI',
+      cloud: true,
+      needsKey: true,
+      languageModel: (model) => {
+        seen.push(model);
+        return new MockLanguageModelV4({
+          modelId: model,
+          doGenerate: {
+            content: [{ type: 'text', text: 'OK' }],
+            finishReason: { unified: 'stop', raw: 'stop' },
+            usage: usage(5, 1),
+            warnings: [],
+          },
+        });
+      },
+    };
+    const t = setup({ providers: [openai] });
+    expect(await t.runtime.testConnection({ provider: 'openai' })).toEqual({
+      ok: true,
+      message: 'OpenAI answered with gpt-6-luna: "OK".',
+      model: 'gpt-6-luna',
+    });
+    expect(seen).toEqual(['gpt-6-luna']);
   });
 });

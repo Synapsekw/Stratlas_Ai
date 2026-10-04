@@ -1981,6 +1981,11 @@ svg.flip {
   font-size: var(--t-12);
   color: var(--danger-ink);
 }
+.prov-ok {
+  grid-column: 2 / 4;
+  font-size: var(--t-12);
+  color: var(--ok);
+}
 .master {
   display: grid;
   grid-template-columns: 1fr auto;
