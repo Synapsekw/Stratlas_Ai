@@ -124,6 +124,22 @@ export const ipc = {
     request: z.object({ title: z.string().optional() }).strict(),
     response: z.object({ path: z.string().nullable() }),
   },
+  /**
+   * Ask where to save a file with the native dialog, then write it. Used by the legacy viewer
+   * host for `window.claude.use('downloads')`. `path` is null when the person cancels; `error`
+   * says why a chosen file could not be written.
+   */
+  'dialog:saveFile': {
+    request: z
+      .object({
+        /** File name only; main drops any folder part. */
+        defaultName: z.string().min(1).max(255),
+        data: z.union([z.string(), z.instanceof(Uint8Array)]),
+        title: z.string().optional(),
+      })
+      .strict(),
+    response: z.object({ path: z.string().nullable(), error: z.string().optional() }),
+  },
 } as const satisfies Record<string, { request: z.ZodType; response: z.ZodType }>;
 
 /** Events pushed from main to the renderer. */

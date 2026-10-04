@@ -183,4 +183,20 @@ describe('ipc contracts', () => {
       false,
     );
   });
+
+  it('saves a file by name with text or bytes, never a path', () => {
+    const req = ipc['dialog:saveFile'].request;
+    expect(req.safeParse({ defaultName: 'register.csv', data: 'a,b' }).success).toBe(true);
+    expect(
+      req.safeParse({ defaultName: 'model.glb', data: new Uint8Array([1, 2]), title: 'Save' })
+        .success,
+    ).toBe(true);
+    expect(req.safeParse({ defaultName: '', data: 'x' }).success).toBe(false);
+    expect(req.safeParse({ defaultName: 'x.csv', data: 3 }).success).toBe(false);
+    expect(req.safeParse({ defaultName: 'x.csv', data: 'x', path: 'C:/x' }).success).toBe(false);
+    const res = ipc['dialog:saveFile'].response;
+    expect(res.safeParse({ path: null }).success).toBe(true);
+    expect(res.safeParse({ path: 'C:/Users/x/register.csv' }).success).toBe(true);
+    expect(res.safeParse({ path: null, error: 'Disk full' }).success).toBe(true);
+  });
 });
