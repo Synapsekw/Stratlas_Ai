@@ -44,5 +44,22 @@ export {
   type UsageTotals,
 } from './pricing';
 export { conversationMarkdown, issuesCsv } from './exporting';
+export {
+  DEFAULT_BATCH,
+  DETECT_PROMPT_VERSION,
+  MAX_BATCH,
+  SEND_MAX_PX,
+  detectInstructions,
+  detectUserText,
+  estimateDetect,
+  imageTokens,
+  planBatches,
+  sendSize,
+  type AiDetection,
+  type DetectClass,
+  type DetectEstimate,
+  type DetectPromptInput,
+  type DetectSeverity,
+} from './detect';
 export { photoPlan } from './photo-frame';
 export { SUGGESTIONS } from './suggestions';

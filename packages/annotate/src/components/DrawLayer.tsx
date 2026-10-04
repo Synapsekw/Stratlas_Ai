@@ -14,6 +14,7 @@ import {
   type Size,
   type ViewTransform,
 } from '../image/geometry';
+import { insertVertex, nearestEdge, removeVertex } from '../detections/geometry';
 import type { ImageTool } from '../runtime';
 
 export interface ShapeItem {
@@ -34,6 +35,10 @@ export interface DrawLayerProps {
   onEdit?: (key: string, geom: ImageGeom) => void;
   onSelect?: (key: string | null) => void;
   onPan: (dx: number, dy: number) => void;
+  /** Double-click on an edge of the selected polygon: add a vertex there (select tool). */
+  onVertexInsert?: (key: string, geom: ImageGeom) => void;
+  /** Shift-click on a vertex of the selected polygon: remove it (three stay at least). */
+  onVertexRemove?: (key: string, geom: ImageGeom) => void;
 }
 
 type Gesture =
@@ -123,6 +128,11 @@ export function DrawLayer(props: DrawLayerProps) {
           const hd = toDisplay(h, view);
           return Math.hypot(hd.x - d.x, hd.y - d.y) <= HANDLE_PX + 3;
         });
+        if (hi >= 0 && e.shiftKey && selected.geom.type === 'polygon' && props.onVertexRemove) {
+          const fewer = removeVertex(selected.geom, hi);
+          if (fewer) props.onVertexRemove(selected.key, fewer);
+          return;
+        }
         if (hi >= 0) {
           setGesture({
             kind: 'handle',
@@ -246,7 +256,15 @@ export function DrawLayer(props: DrawLayerProps) {
       onPointerLeave={() => {
         setHover(null);
       }}
-      onDoubleClick={() => {
+      onDoubleClick={(e) => {
+        if (tool === 'select' && selected?.geom.type === 'polygon' && props.onVertexInsert) {
+          const p = img(e);
+          const edge = nearestEdge(selected.geom, p);
+          if (edge.distance <= (HANDLE_PX + 3) / view.scale) {
+            props.onVertexInsert(selected.key, insertVertex(selected.geom, edge.index, p));
+          }
+          return;
+        }
         if (tool === 'polygon')
           finishPolygon(clicks.slice(0, -1).length >= 3 ? clicks.slice(0, -1) : clicks);
       }}

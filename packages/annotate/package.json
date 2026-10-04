@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Annotation suite: issues, sightings, severity models, tools, back-projection.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./detections": "./src/detections/index.ts"
   },
   "scripts": {
     "test": "vitest run"

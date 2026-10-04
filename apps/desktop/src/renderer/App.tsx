@@ -9,6 +9,7 @@ import { nextClipInFlight, startPlaybackLoop } from './playback';
 import { IssuesScreen } from './screens/Issues';
 import { JobsScreen } from './screens/Jobs';
 import { MediaScreen } from './screens/Media';
+import { DetectionsScreen } from './screens/Detections';
 import { ProjectsScreen } from './screens/Projects';
 import { ReportsScreen } from './screens/Reports';
 import { ReviewScreen } from './screens/Review';
@@ -120,6 +121,8 @@ function Screen() {
       return <IssuesScreen />;
     case 'media':
       return <MediaScreen />;
+    case 'detections':
+      return <DetectionsScreen />;
     case 'reports':
       return <ReportsScreen />;
     case 'jobs':

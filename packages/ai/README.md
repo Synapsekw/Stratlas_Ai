@@ -16,6 +16,7 @@ See `docs/architecture/SPEC.md` section 2 for ownership and dependencies. Public
 | `tools.ts`, `tool-kit.ts` | Tool catalogue (shared by both processes) and the renderer registry and helpers.                                                                                                                               |
 | `renderer-tools.ts`       | Navigation, issue and capture tools. Frame capture: video, 3D and point cloud from their canvases, photo through `photo-frame.ts` (photo, mask overlay, issue shapes), map through a source the app registers. |
 | `analysis-tools.ts`       | `compare_captures`, `measure_distance`, `find_issues_near`, `summarize_by_zone`, `summarize_by_class`, `export_issues` (write, approval first), `open_original_review`.                                        |
+| `detect.ts`               | AI-assisted detection (BLD-6): prompt and `DETECT_PROMPT_VERSION`, batches, cost estimate from each provider's image token rules, reply parser. Main runs `detect()` (`ai:detect`).                            |
 | `pricing.ts`              | Price table and per-provider usage sums for the meter.                                                                                                                                                         |
 
 ## Approvals and restarts
