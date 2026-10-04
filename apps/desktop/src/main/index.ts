@@ -11,6 +11,7 @@ import { createKeyVault } from './keys';
 import { addToLibrary, createLibraryStore, listLibrary, listPacks } from './library';
 import { buildMenu } from './menu';
 import { popupAction } from './popup';
+import { writeBoundaries } from './boundaries';
 import { openProject, ProjectRegistry, writeIssues } from './project';
 import { createAioHandler } from './protocol/handler';
 import { cspForUrl } from './protocol/legacy';
@@ -129,6 +130,13 @@ function registerIpc(): void {
       return { ok: false, error: `Project "${projectId}" is not open. Open it, then save again.` };
     }
     return writeIssues(root, issues);
+  });
+  handle('project:writeBoundaries', ({ projectId, file }) => {
+    const root = registry.root(projectId);
+    if (root === undefined) {
+      return { ok: false, error: `Project "${projectId}" is not open. Open it, then save again.` };
+    }
+    return writeBoundaries(root, file);
   });
 
   handle('packs:list', async () => listPacks(join((await settings.get()).dataRoot, 'packs')));

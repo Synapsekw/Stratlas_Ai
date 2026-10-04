@@ -10,6 +10,7 @@ const CHANNELS = {
   'library:add': true,
   'project:open': true,
   'project:writeIssues': true,
+  'project:writeBoundaries': true,
   'packs:list': true,
   'settings:get': true,
   'settings:set': true,
