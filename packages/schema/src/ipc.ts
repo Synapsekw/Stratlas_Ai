@@ -88,6 +88,16 @@ export const Settings = z.object({
   updateCheck: z.boolean().optional(),
   /** Base URL of the update feed (`latest.yml` lives there). Empty when not set. */
   updateUrl: OptionalUrl.optional(),
+  /**
+   * Anthropic workspace ID, sent as the `anthropic-workspace-id` header. Needed only with a key
+   * that is not scoped to a workspace (an organisation key). Empty when not set.
+   */
+  anthropicWorkspaceId: z
+    .string()
+    .trim()
+    .max(128)
+    .regex(/^[A-Za-z0-9_-]*$/, 'A workspace ID has only letters, digits, _ and -.')
+    .optional(),
 });
 
 /** West, south, east, north in WGS84 degrees. */
@@ -338,6 +348,20 @@ export const ipc = {
   'ai:hasKey': {
     request: z.object({ provider: AiProvider }).strict(),
     response: z.object({ present: z.boolean() }),
+  },
+  /**
+   * Settings, Test connection: one minimal request to the provider with the model its routes use,
+   * reporting the provider's exact answer or error. Calls out only when cloud AI is on.
+   */
+  'ai:testConnection': {
+    request: z.object({ provider: AiProvider }).strict(),
+    response: z.object({
+      ok: z.boolean(),
+      message: z.string(),
+      model: z.string().optional(),
+      /** HTTP status of a provider error. */
+      status: z.number().int().optional(),
+    }),
   },
   'ai:send': {
     request: z

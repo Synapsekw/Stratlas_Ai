@@ -264,7 +264,10 @@ const scripted =
 const providers = createProviderRegistry(
   scripted
     ? (['anthropic', 'openai', 'google'] as const).map((id) => createScriptedProvider(id))
-    : builtInProviders(),
+    : builtInProviders({
+        // Keys not scoped to a workspace need the workspace ID (Settings, AI providers).
+        anthropicWorkspaceId: () => settings.current().anthropicWorkspaceId,
+      }),
 );
 
 const agent = createAgentRuntime(
@@ -546,6 +549,7 @@ function registerIpc(): void {
 
   handle('ai:setKey', ({ provider, key }) => keys.setKey(provider, key));
   handle('ai:hasKey', async ({ provider }) => ({ present: await keys.hasKey(provider) }));
+  handle('ai:testConnection', (req) => agent.testConnection(req));
   handle('ai:send', (req) => agent.send(req));
   handle('ai:toolResult', (req) => {
     agent.toolResult(req);

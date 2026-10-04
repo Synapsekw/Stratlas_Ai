@@ -17,6 +17,7 @@ const CHANNELS = {
   'settings:set': true,
   'ai:setKey': true,
   'ai:hasKey': true,
+  'ai:testConnection': true,
   'ai:send': true,
   'ai:toolResult': true,
   'ai:cancel': true,

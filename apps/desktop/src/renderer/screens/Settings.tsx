@@ -21,6 +21,7 @@ import { bridge, shell, useCall, useShell } from '../shell';
 import { About } from './settings/About';
 import { Appearance } from './settings/Appearance';
 import { MapPacks } from './settings/MapPacks';
+import { ProviderConnection } from './settings/ProviderConnection';
 
 type Page =
   'ai' | 'usage' | 'privacy' | 'data' | 'maps' | 'severity' | 'graphics' | 'appearance' | 'about';
@@ -300,6 +301,7 @@ function ProviderRow({ provider }: { provider: AiProvider }) {
         </p>
       )}
       {status && !status.ok && <p className="prov-err">{status.error}</p>}
+      <ProviderConnection provider={provider} keyPresent={present} />
     </div>
   );
 }

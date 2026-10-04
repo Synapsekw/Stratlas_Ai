@@ -30,6 +30,16 @@ export function defaultRoutes(): ModelRoute[] {
   ];
 }
 
+/**
+ * Models for Settings, Test connection, when no route uses the provider: the smallest current
+ * model of each, so the test costs a fraction of a cent.
+ */
+export const TEST_MODELS: Record<(typeof PROVIDERS)[number], string> = {
+  anthropic: 'claude-haiku-4-5',
+  openai: 'gpt-6-luna',
+  google: 'gemini-3.1-flash-lite',
+};
+
 export function routeFor(routes: readonly ModelRoute[], task: AiTask): ModelRoute {
   const r = routes.find((x) => x.task === task);
   if (!r) {
