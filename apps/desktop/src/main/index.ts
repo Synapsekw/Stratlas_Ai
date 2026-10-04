@@ -6,6 +6,14 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, shell } f
 import { existsSync } from 'node:fs';
 import { userInfo } from 'node:os';
 import { join } from 'node:path';
+import {
+  builderImport,
+  builderTemplates,
+  builderUpdateLayers,
+  createBuilderProject,
+  photoGps,
+} from './builder';
+import { nativeImageOps } from './images';
 import { validated, type Handler } from './ipc';
 import { createKeyVault } from './keys';
 import { addToLibrary, createLibraryStore, listLibrary, listPacks } from './library';
@@ -153,6 +161,38 @@ function registerIpc(): void {
       : await dialog.showOpenDialog(options);
     return { path: r.canceled ? null : (r.filePaths[0] ?? null) };
   });
+
+  handle('dialog:openFiles', async ({ title, filters, multi }) => {
+    const win = targetWindow();
+    const options = {
+      properties: ['openFile' as const, ...(multi === false ? [] : ['multiSelections' as const])],
+      ...(title ? { title } : {}),
+      ...(filters ? { filters } : {}),
+    };
+    const r = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options);
+    return { paths: r.canceled ? [] : r.filePaths };
+  });
+
+  handle('builder:templates', async () =>
+    builderTemplates((await settings.get()).dataRoot, await library.paths()),
+  );
+  handle('builder:createProject', async (req) =>
+    createBuilderProject(req, (await settings.get()).dataRoot, await library.paths()),
+  );
+  handle('builder:photoGps', ({ path }) => photoGps(path));
+  handle('builder:import', (req) =>
+    builderImport(req, {
+      registry,
+      images: nativeImageOps,
+      emit: (e) => {
+        const parsed = ipcEvents['builder:progress'].safeParse(e);
+        if (parsed.success) targetWindow()?.webContents.send('builder:progress', parsed.data);
+      },
+    }),
+  );
+  handle('builder:updateLayers', (req) => builderUpdateLayers(req, registry));
 
   handle('dialog:saveFile', (req) =>
     saveFile(req, {

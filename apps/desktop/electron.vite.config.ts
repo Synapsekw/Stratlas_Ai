@@ -9,7 +9,7 @@ export default defineConfig({
   main: {
     build: {
       externalizeDeps: {
-        exclude: ['@aio/schema', '@aio/brand', '@aio/ai', '@aio/project', '@aio/geo'],
+        exclude: ['@aio/schema', '@aio/brand', '@aio/ai', '@aio/project', '@aio/geo', '@aio/video'],
       },
       rollupOptions: {
         input: { index: resolve(import.meta.dirname, 'src/main/index.ts') },
