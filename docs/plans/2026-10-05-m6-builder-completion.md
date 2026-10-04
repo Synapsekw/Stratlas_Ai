@@ -43,4 +43,4 @@ As in M4: worktree streams, integration lead merges when green, rebuilds the ins
 ## Exit
 
 - One new project of each type built in the app from raw data, reviewed, reported and packaged, end to end, on the founder's machine.
-- `docs/TESTING-M6.md` with every BLD "must" checked by a test or a screenshot.
+- Stage M6 of `docs/TESTING.md` with every BLD "must" checked by a test or a screenshot.
