@@ -52,6 +52,11 @@ export interface ExportPackageOptions {
   files?: readonly SourceFile[];
   /** Free bytes where the package goes (tests); defaults to the volume's free space. */
   freeBytes?: (dir: string) => Promise<number | undefined>;
+  /**
+   * Further members written after the project files, e.g. an embedded map pack
+   * (`packs/<id>.pmtiles` and `packs/<id>.json`); a project file of the same name is left out.
+   */
+  extra?: readonly ZipMember[];
 }
 
 /** Free space of the volume that holds `dir`, or undefined when the OS does not say. */
@@ -86,8 +91,10 @@ export async function exportPackage(o: ExportPackageOptions): Promise<{ bytes: n
     const i = FIRST.indexOf(p);
     return i < 0 ? FIRST.length : i;
   };
+  const extra = o.extra ?? [];
+  const replaced = new Set(extra.map((m) => m.name));
   const rest = plan.members
-    .slice()
+    .filter((f) => !replaced.has(f.path))
     .sort((a, b) => rank(a.path) - rank(b.path) || a.path.localeCompare(b.path));
   const members: ZipMember[] = [
     { name: PACKAGE_HEADER_FILE, data: json(header) },
@@ -98,9 +105,11 @@ export async function exportPackage(o: ExportPackageOptions): Promise<{ bytes: n
       size: f.size,
       ...(f.mtimeMs !== undefined ? { mtimeMs: f.mtimeMs } : {}),
     })),
+    ...extra,
   ];
 
-  const need = plan.totalBytes + 64 * 1024 + members.length * 256;
+  const bytes = members.reduce((n, m) => n + ('data' in m ? m.data.length : m.size), 0);
+  const need = bytes + 64 * 1024 + members.length * 256;
   const free = await (o.freeBytes ?? volumeFreeBytes)(dirname(o.out));
   if (free !== undefined && free < need) {
     throw new Error(

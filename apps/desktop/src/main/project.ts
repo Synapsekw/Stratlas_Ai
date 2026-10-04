@@ -82,6 +82,11 @@ export class ProjectRegistry {
   package(id: string): PackageSource | undefined {
     return this.packages.get(id);
   }
+
+  /** Every package opened in this session, by project id. */
+  openPackages(): [string, PackageSource][] {
+    return [...this.packages.entries()];
+  }
 }
 
 type Loaded<T> = { ok: true; value: T } | { ok: false; error: string };

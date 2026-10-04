@@ -1,5 +1,5 @@
 import { brand } from '@aio/brand';
-import { Icon, t, useT, type MessageKey } from '@aio/ui';
+import { formatDate, Icon, t, useT, type MessageKey } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { Fragment } from 'react';
 import { cloudAiBlocked } from '../player';
@@ -35,6 +35,7 @@ export function TitleBar() {
   const screen = useShell((s) => s.screen);
   const cloudSetting = useShell((s) => s.settings.cloudAi);
   const pkg = useShell((s) => s.pkg);
+  const origin = useShell((s) => s.origin);
   const blocked = cloudAiBlocked(pkg);
   const cloudAi = cloudSetting && !blocked;
   const manifest = useWorkspace((s) => s.project?.manifest);
@@ -92,6 +93,20 @@ export function TitleBar() {
           >
             <Icon name="lock" size={14} />
             {t(pkg.header.readOnly ? 'titlebar.readOnlyPackage' : 'titlebar.package')}
+          </span>
+        )}
+        {!pkg && origin && (
+          <span
+            className="chip-status"
+            title={t('titlebar.copyOfTip', {
+              file: origin.package,
+              exported: formatDate(origin.exportedAt),
+              extracted: formatDate(origin.extractedAt),
+            })}
+            data-testid="origin-chip"
+          >
+            <Icon name="copy" size={14} />
+            {t('titlebar.copyOf', { file: origin.package })}
           </span>
         )}
         <span className="chip-status" title={t('titlebar.offlineTip')}>

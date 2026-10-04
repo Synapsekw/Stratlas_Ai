@@ -349,3 +349,60 @@ describe('package export jobs', () => {
     expect(!plan.ok && plan.error).toMatch(/project folder/);
   });
 });
+
+describe('extract to edit', () => {
+  async function opened(header: Partial<PackageHeader>, passphrase?: string) {
+    const file = await makePackage(join(base, 'Al-Zour delivery.aio'), {
+      header,
+      ...(passphrase ? { passphrase } : {}),
+    });
+    const registry = new ProjectRegistry();
+    const r = await openProject(file, registry, passphrase);
+    if (!r.ok) throw new Error(r.error);
+    const events: number[] = [];
+    const jobs = createPackageJobs({
+      registry,
+      cache: createPlanCache(),
+      createdBy: 'test',
+      chooseTarget: () => Promise.resolve(null),
+      progress: (e) => events.push(e.filesDone),
+      dataRoot: () => join(base, 'data'),
+      user: 'surveyor',
+    });
+    return { jobs, id: r.id, events, registry };
+  }
+
+  it('extracts an unlocked package into an editable project that saves issues', async () => {
+    const { jobs, id, events } = await opened({ editPolicy: 'allow' }, 'correct horse battery');
+    const r = await jobs.extract({ jobId: 'x', projectId: id });
+    if (!r.ok || !r.root) throw new Error(r.ok ? 'cancelled' : r.error);
+    expect(r.root).toBe(join(base, 'data', 'projects', 'al-zour-delivery-edit'));
+    expect(events.length).toBeGreaterThan(0);
+    const origin = JSON.parse(await readFile(join(r.root, 'package-origin.json'), 'utf8')) as {
+      package: string;
+      extractedBy: string;
+    };
+    expect(origin).toMatchObject({ package: 'Al-Zour delivery.aio', extractedBy: 'surveyor' });
+
+    // The copy is a normal project: it opens as a folder and takes issue edits.
+    const registry = new ProjectRegistry();
+    const copy = await openProject(r.root, registry);
+    if (!copy.ok) throw new Error(copy.error);
+    expect(copy.package).toBeUndefined();
+    expect(copy.issues).toHaveLength(1);
+    const saved = await writeProjectIssues(registry, copy.id, [
+      ...copy.issues,
+      sampleIssue({ id: 'i2', code: 'F02', title: 'Added after extract' }),
+    ]);
+    expect(saved).toEqual({ ok: true });
+  });
+
+  it('refuses a package that forbids editing and a project that is not a package', async () => {
+    const { jobs, id } = await opened({ readOnly: true });
+    const r = await jobs.extract({ jobId: 'x', projectId: id });
+    expect(!r.ok && r.error).toMatch(/did not allow editing/);
+    const folder = await jobs.extract({ jobId: 'y', projectId: 'nope' });
+    expect(!folder.ok && folder.error).toMatch(/Open the package first/);
+    expect(existsSync(join(base, 'data', 'projects'))).toBe(false);
+  });
+});

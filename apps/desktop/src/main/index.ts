@@ -53,6 +53,7 @@ import { findPack, JobRunner, JobStore, openTarget, safeJobEvent } from './jobs'
 import { createKeyVault } from './keys';
 import { addToLibrary, createLibraryStore, listLibrary } from './library';
 import { captureConsole, createLog, exportLogs } from './logs';
+import { embeddedPacks, findEmbedded, listWithEmbedded } from './packs/embed';
 import { httpSource } from './packs/extract';
 import { createPackManager } from './packs/manager';
 import { buildSource, findLatestBuild } from './packs/pmtiles';
@@ -418,9 +419,14 @@ function registerIpc(): void {
         : await dialog.showSaveDialog(options);
       return r.canceled || !r.filePath ? null : r.filePath;
     },
+    packs: { dir: () => join(settings.current().dataRoot, 'packs'), list: () => packs.list() },
+    tempDir: () => app.getPath('temp'),
+    dataRoot: () => settings.current().dataRoot,
+    ...osUser(),
   });
   handle('package:plan', (req) => packageJobs.plan(req));
   handle('package:export', (req) => packageJobs.export(req));
+  handle('package:extract', (req) => packageJobs.extract(req));
   handle('package:cancel', (req) => packageJobs.cancel(req));
 
   handle('app:takeOpenPath', () => {
@@ -448,7 +454,12 @@ function registerIpc(): void {
     return writeBoundaries(root, file);
   });
 
-  handle('packs:list', () => packs.list());
+  // Map packs carried by open packages join the list when this machine lacks that area.
+  handle('packs:list', async () => {
+    const installed = await packs.list();
+    const open = registry.openPackages();
+    return listWithEmbedded(installed, await embeddedPacks(installed, open));
+  });
   handle('packs:jobs', () => packs.jobs());
   handle('packs:download', (region) => packs.download(region));
   handle('packs:cancel', ({ id }) => packs.cancel(id));
@@ -882,6 +893,7 @@ if (!app.requestSingleInstanceLock()) {
         projectRoot: (id) => registry.root(id),
         projectPackage: (id) => registry.package(id)?.archive,
         packsDir: () => join(settings.current().dataRoot, 'packs'),
+        embeddedPack: (id) => findEmbedded(id, registry.openPackages()),
       }),
     );
     registerIpc();

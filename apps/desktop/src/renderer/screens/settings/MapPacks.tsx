@@ -25,6 +25,7 @@ const SOURCE_LABEL: Record<NonNullable<MapPackInfo['source']>, string> = {
   download: 'Downloaded',
   import: 'Imported',
   'build-tool': 'Built',
+  package: t('settings.maps.fromPackage'),
 };
 
 const STATE_LABEL: Record<PackJob['state'], string> = {
@@ -550,7 +551,7 @@ export function MapPacks() {
                     >
                       Show
                     </button>
-                    {confirm === p.id ? (
+                    {p.source === 'package' ? null : confirm === p.id ? (
                       <>
                         <button
                           type="button"
