@@ -22,14 +22,10 @@ asar: true
 compression: normal
 
 # Shipped next to app.asar (process.resourcesPath):
-#   bin/pmtiles(.exe)  go-pmtiles CLI for map pack downloads (Settings, Maps). Fetch it with
-#                      `node tools/maps/build-packs.mjs --tool-only` before packaging; without it
-#                      the app still imports pack files but cannot download regions.
 #   demo/<project>/    optional demo projects listed in the library (apps/desktop/demo/).
+# Map pack downloads need no external tool (main `packs/extract.ts`); the go-pmtiles CLI in
+# tools/maps/bin is only for `tools/maps/build-packs.mjs` and is not packaged.
 extraResources:
-  - from: ../../tools/maps/bin
-    to: bin
-    filter: ['pmtiles', 'pmtiles.exe']
   - from: demo
     to: demo
 

@@ -12,8 +12,8 @@
 //   node tools/maps/build-packs.mjs --assets-only   only the style assets
 //   node tools/maps/build-packs.mjs --no-assets     packs only
 //   node tools/maps/build-packs.mjs --build=20261003 pin a planet build
-//   node tools/maps/build-packs.mjs --tool-only     only fetch the pmtiles CLI (bundled into the
-//                                                   app by electron-builder extraResources)
+//   node tools/maps/build-packs.mjs --tool-only     only fetch the pmtiles CLI (a build tool here;
+//                                                   the app extracts regions itself)
 //
 // Env: STRATLAS_DATA overrides the data root (default E:\Stratlas Data).
 

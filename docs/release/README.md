@@ -17,7 +17,7 @@ Output in `apps/desktop/dist/`:
 | `<Product>-<version>-win-x64-portable.exe` | Portable build, runs without installing                              |
 | `win-unpacked/`                            | The unpacked app, handy for quick checks                             |
 
-Region downloads (Settings, Offline maps) need no external tool: the app extracts PMTiles itself (`apps/desktop/src/main/packs/extract.ts`). The go-pmtiles CLI is only used by `tools/maps/build-packs.mjs` to build the starter packs; the `extraResources` entry for `resources/bin/` can go once the integration lead confirms. Demo projects in `apps/desktop/demo/<project>/` ship the same way (`resources/demo/`) and appear in the library on first run.
+Region downloads (Settings, Offline maps) need no external tool: the app extracts PMTiles itself (`apps/desktop/src/main/packs/extract.ts`). The go-pmtiles CLI is only used by `tools/maps/build-packs.mjs` to build the starter packs and is not packaged. Demo projects in `apps/desktop/demo/<project>/` ship next to the app (`resources/demo/`) and appear in the library on first run.
 
 Without a certificate the build is unsigned. Windows SmartScreen then shows "Windows protected your PC": choose **More info**, then **Run anyway**. That is expected for test builds.
 
