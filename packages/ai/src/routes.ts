@@ -1,6 +1,17 @@
 import type { AiProvider, AiTask } from '@aio/schema';
 
+/** Cloud providers that take an API key. */
 export const PROVIDERS = ['anthropic', 'openai', 'google'] as const satisfies readonly AiProvider[];
+
+/** Every provider a route can use: the cloud ones and a local model on this machine. */
+export const ROUTE_PROVIDERS = [...PROVIDERS, 'local'] as const satisfies readonly AiProvider[];
+
+/** Defaults for the local model entry in Settings (Ollama's OpenAI-compatible endpoint). */
+export const DEFAULT_LOCAL_MODEL = {
+  enabled: false,
+  baseUrl: 'http://localhost:11434/v1',
+  model: 'llama3.2-vision',
+} as const;
 
 export interface ModelRoute {
   task: AiTask;
@@ -14,7 +25,7 @@ export function defaultRoutes(): ModelRoute[] {
     { task: 'chat', provider: 'anthropic', model: 'claude-sonnet-5-5' },
     { task: 'vision', provider: 'anthropic', model: 'claude-opus-5-5' },
     { task: 'report', provider: 'anthropic', model: 'claude-sonnet-5-5' },
-    { task: 'extract', provider: 'openai', model: 'gpt-5-mini' },
+    { task: 'extract', provider: 'openai', model: 'gpt-6-luna' },
     { task: 'build', provider: 'anthropic', model: 'claude-opus-5-5' },
   ];
 }
@@ -34,6 +45,7 @@ export const PROVIDER_LABELS: Record<AiProvider, string> = {
   anthropic: 'Anthropic',
   openai: 'OpenAI',
   google: 'Google Gemini',
+  local: 'Local model',
 };
 
 /** "Add an Anthropic key in Settings, AI providers." */

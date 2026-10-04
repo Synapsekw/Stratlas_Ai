@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { estimateCostUsd, formatMeter } from './pricing';
+import { addProviderUsage, estimateCostUsd, formatMeter, totalUsage } from './pricing';
 import { missingKeyMessage, modelLabel } from './routes';
 
 describe('cost estimate', () => {
@@ -23,6 +23,55 @@ describe('cost estimate', () => {
     expect(estimateCostUsd('some-local-model', { inputTokens: 1, outputTokens: 1 })).toBe(
       undefined,
     );
+  });
+
+  it('knows the current OpenAI and Gemini models verified on the pricing pages', () => {
+    expect(
+      estimateCostUsd('gpt-6.1-sol', { inputTokens: 1_000_000, outputTokens: 1_000_000 }),
+    ).toBeCloseTo(12);
+    expect(
+      estimateCostUsd('gemini-3.1-pro-preview', { inputTokens: 1_000_000, outputTokens: 0 }),
+    ).toBeCloseTo(2);
+    expect(
+      estimateCostUsd('claude-fable-5-1', {
+        inputTokens: 1_000_000,
+        outputTokens: 0,
+        cacheReadTokens: 1_000_000,
+      }),
+    ).toBeCloseTo(0.25);
+  });
+
+  it('adds usage per provider and totals it', () => {
+    let list = addProviderUsage([], {
+      provider: 'anthropic',
+      inputTokens: 10,
+      outputTokens: 2,
+      costUsd: 0.5,
+    });
+    list = addProviderUsage(list, {
+      provider: 'anthropic',
+      inputTokens: 5,
+      outputTokens: 1,
+      costUsd: 0.25,
+    });
+    list = addProviderUsage(list, { provider: 'local', inputTokens: 7, outputTokens: 3 });
+    list = addProviderUsage(list, { provider: 'openai', inputTokens: 1, outputTokens: 1 });
+    expect(list.find((u) => u.provider === 'anthropic')).toEqual({
+      provider: 'anthropic',
+      inputTokens: 15,
+      outputTokens: 3,
+      costUsd: 0.75,
+      costKnown: true,
+    });
+    // A local model costs nothing; an unpriced cloud model makes the cost a lower bound.
+    expect(list.find((u) => u.provider === 'local')?.costKnown).toBe(true);
+    expect(list.find((u) => u.provider === 'openai')?.costKnown).toBe(false);
+    expect(totalUsage(list)).toEqual({
+      inputTokens: 23,
+      outputTokens: 7,
+      costUsd: 0.75,
+      costKnown: false,
+    });
   });
 
   it('formats the meter', () => {
