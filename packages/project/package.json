@@ -6,7 +6,9 @@
   "description": "Project packages: read, write, importers for kit formats, exports.",
   "exports": {
     ".": "./src/index.ts",
-    "./import": "./src/import/index.ts"
+    "./import": "./src/import/index.ts",
+    "./export": "./src/export/index.ts",
+    "./export/node": "./src/export/node.ts"
   },
   "scripts": {
     "test": "vitest run",
