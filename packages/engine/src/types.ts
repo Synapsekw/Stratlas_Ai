@@ -108,6 +108,14 @@ export interface EngineStage extends SceneHandle {
   /** The point section offsets are measured from (centre of the visible content). */
   sectionOrigin(): Vector3;
   clearMeasure(): void;
+  /**
+   * Let an overlay take a left click on the stage before the stage selects or measures (section
+   * points, boundary editing). The handler gets the pointer-up of a click that did not drag;
+   * returning true means the stage ignores that click. Returns an unsubscribe. Overlays must claim
+   * clicks here rather than stop the pointer events: the orbit controls need every release, or
+   * they keep rotating with the mouse.
+   */
+  claimClicks(handler: (e: PointerEvent) => boolean): () => void;
   readonly labelMode: LabelMode;
   setLabelMode(mode: LabelMode): void;
   /**

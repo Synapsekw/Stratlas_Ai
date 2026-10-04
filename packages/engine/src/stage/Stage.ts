@@ -165,6 +165,7 @@ export class Stage implements EngineStage {
   private hoverRaf = 0;
   private hoverEvent: PointerEvent | null = null;
   private downAt: [number, number] | null = null;
+  private readonly clickClaims = new Set<(e: PointerEvent) => boolean>();
   private perfHold: (() => void) | null = null;
   private lastRenderMs = 0;
   private gpuAt = -Infinity;
@@ -358,6 +359,13 @@ export class Stage implements EngineStage {
 
   get tool(): StageTool {
     return this._tool;
+  }
+
+  claimClicks(handler: (e: PointerEvent) => boolean): () => void {
+    this.clickClaims.add(handler);
+    return () => {
+      this.clickClaims.delete(handler);
+    };
   }
 
   setTool(tool: StageTool): void {
@@ -999,6 +1007,7 @@ export class Stage implements EngineStage {
     if (!d || e.button !== 0) return;
     const slop = e.pointerType === 'touch' ? 12 : CLICK_SLOP_PX;
     if (Math.hypot(e.clientX - d[0], e.clientY - d[1]) > slop) return;
+    for (const claim of this.clickClaims) if (claim(e)) return;
     const [x, y] = this.toNdc(e);
     if (this._tool === 'measure') {
       const hit = this.raycast(x, y);
