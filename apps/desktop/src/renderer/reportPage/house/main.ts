@@ -1,0 +1,393 @@
+// The house-format project report page (BLD-8). Main loads it in an offscreen window, polls
+// `window.__report` for progress, and prints it with printToPDF once `state` is `ready`.
+import '@aio/ui/fonts.css';
+import './house.css';
+import { brand } from '@aio/brand';
+import {
+  houseReportModel,
+  issueAction,
+  narrativeFacts,
+  resolveReportBranding,
+  type HouseModel,
+} from '@aio/project/export';
+import {
+  BoundaryEditsFile,
+  currentNarrative,
+  Issue,
+  NarrativeFile,
+  parseManifest,
+  parseRoadModel,
+  ReportContentsSettings,
+  VolumesFile,
+  type NarrativeSectionId,
+  type ProjectManifest,
+  type ReportSectionId,
+} from '@aio/schema';
+import { assetUrl } from '@aio/workspace';
+import { z } from 'zod';
+import { longDate, templateNarrative } from '../../report/narrativeTemplate';
+import { brandingFromQuery } from '../layout';
+import { createSnapshotter, type Snapshotter } from '../snapshots';
+import { issuePhotos } from './images';
+import { Pager } from './pager';
+import {
+  backHtml,
+  contentsHtml,
+  coverHtml,
+  disclaimerOf,
+  frameHtml,
+  issuePageHtml,
+  kickerOf,
+  layoutAppendices,
+  layoutRegister,
+  layoutScope,
+  layoutSite,
+  layoutStatistics,
+  layoutSummary,
+  sectionTitle,
+  type ContentsEntry,
+  type HouseContext,
+  type IssueImages,
+} from './sections';
+
+interface PageState {
+  state: 'loading' | 'ready' | 'error';
+  phase: string;
+  done: number;
+  total: number;
+  error?: string;
+  count?: number;
+  pages?: number;
+  /** Seconds spent per phase, for the e2e timing report. */
+  timings?: Record<string, number>;
+}
+
+const w = window as unknown as { __report: PageState };
+w.__report = { state: 'loading', phase: 'Reading the project', done: 0, total: 0 };
+const set = (patch: Partial<PageState>) => {
+  w.__report = { ...w.__report, ...patch };
+};
+
+async function json(url: string): Promise<unknown> {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${url} answered ${String(r.status)}`);
+  return (await r.json()) as unknown;
+}
+
+/** A project file, or null when it is missing or unreadable. */
+async function optional(projectId: string, path: string): Promise<unknown> {
+  try {
+    const r = await fetch(assetUrl(projectId, { path }));
+    return r.ok ? ((await r.json()) as unknown) : null;
+  } catch {
+    return null;
+  }
+}
+
+function parsed<T>(schema: z.ZodType<T>, raw: unknown, what: string): T | null {
+  if (raw === null) return null;
+  const r = schema.safeParse(raw);
+  if (!r.success) console.warn(`Report: ${what} is invalid and left out`, r.error.issues[0]);
+  return r.success ? r.data : null;
+}
+
+const blobUrl = (b: Blob | null | undefined) => (b ? URL.createObjectURL(b) : undefined);
+const two = (n: number) => String(n).padStart(2, '0');
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+/** Name and capture time of the photo an issue page shows. */
+function photoFacts(
+  m: ProjectManifest,
+  layer: string,
+  photo: string,
+): { name: string; at: string } {
+  const l = m.layers.find((x) => x.id === layer);
+  if (l?.kind !== 'photos') return { name: '', at: '' };
+  const item = l.items.find((i) => i.id === photo);
+  const path = item && 'path' in item.src ? item.src.path : '';
+  const at = item?.takenAt ? `${longDate(item.takenAt)}, ${item.takenAt.slice(11, 16)}` : '';
+  return { name: path.split('/').pop() ?? photo, at };
+}
+
+async function run(): Promise<void> {
+  const t0 = performance.now();
+  const timings: Record<string, number> = {};
+  const lap = (name: string, since: number) => {
+    timings[name] = Math.round((performance.now() - since) / 100) / 10;
+  };
+  const params = new URLSearchParams(location.search);
+  const projectId = params.get('project');
+  if (!projectId) throw new Error('No project given to the report.');
+  const ids = params.get('ids');
+  const pm = parseManifest(await json(assetUrl(projectId, { path: 'manifest.json' })));
+  if (!pm.ok) throw new Error(pm.error);
+  const manifest = pm.value;
+  const file = z
+    .object({ issues: z.array(Issue) })
+    .parse(await json(assetUrl(projectId, { path: 'issues.json' })));
+  const wanted = ids ? new Set(ids.split(',')) : null;
+  const issues = wanted ? file.issues.filter((i) => wanted.has(i.id)) : file.issues;
+  const [narrativeRaw, volumesRaw, editsRaw, roadRaw] = await Promise.all([
+    optional(projectId, 'report/narrative.json'),
+    optional(projectId, 'volumes.json'),
+    optional(projectId, 'edits/boundaries.json'),
+    optional(projectId, 'road.json'),
+  ]);
+  const narrative = parsed(NarrativeFile, narrativeRaw, 'report/narrative.json');
+  const road = roadRaw === null ? null : parseRoadModel(roadRaw);
+  // Branding is the person's own (Settings, Report branding), never the project's client brand.
+  const branding = resolveReportBranding(
+    brandingFromQuery(params.get('branding')),
+    brand.productName,
+  );
+  let contents: ReportContentsSettings | undefined;
+  try {
+    const raw = params.get('contents');
+    contents = raw ? ReportContentsSettings.parse(JSON.parse(raw)) : undefined;
+  } catch {
+    contents = undefined;
+  }
+  const h: HouseModel = houseReportModel({
+    manifest,
+    issues,
+    branding,
+    contents,
+    volumes: parsed(VolumesFile, volumesRaw, 'volumes.json'),
+    edits: parsed(BoundaryEditsFile, editsRaw, 'edits/boundaries.json'),
+    road: road?.ok ? road.value : null,
+  });
+  document.title = `${h.base.title} report`;
+  const template = templateNarrative(narrativeFacts(h), { todo: false });
+  const text = Object.fromEntries(
+    (['summary', 'method', 'findings'] as const).map((id: NarrativeSectionId) => [
+      id,
+      currentNarrative(narrative, id) ?? template[id],
+    ]),
+  ) as Record<NarrativeSectionId, string>;
+  lap('read', t0);
+
+  // The person's accent colour
+  if (branding.accent) {
+    const a = branding.accent;
+    const style = document.createElement('style');
+    style.textContent = `:root{--acc:${a};--acc-ink:color-mix(in srgb, ${a} 45%, #0b141a);--acc-soft:color-mix(in srgb, ${a} 12%, #ffffff);--acc-light:color-mix(in srgb, ${a} 55%, #ffffff)}`;
+    document.head.appendChild(style);
+  }
+
+  const t1 = performance.now();
+  set({ phase: 'Loading the 3D model', done: 0, total: h.issuePages.length });
+  let snap: Snapshotter | null = null;
+  try {
+    snap = await createSnapshotter(projectId, manifest, { width: 760, height: 560, quality: 0.78 });
+  } catch (e) {
+    console.warn('Report: no 3D views', e);
+  }
+  const fetchBlob = async (path: string): Promise<Blob | null> => {
+    try {
+      const r = await fetch(assetUrl(projectId, { path }));
+      return r.ok ? await r.blob() : null;
+    } catch {
+      return null;
+    }
+  };
+  const overview: string[] = [];
+  if (snap && h.sections.includes('site')) {
+    for (const [az, el] of [
+      [225, 28],
+      [45, 28],
+    ] as const) {
+      const u = blobUrl(await snap.overview(az, el));
+      if (u) overview.push(u);
+    }
+  }
+  const thumbnail = blobUrl(await fetchBlob('thumbnail.jpg'));
+  const ctx: HouseContext = {
+    h,
+    text,
+    images: { overview, ...(thumbnail ? { thumbnail } : {}) },
+    product: brand.productName,
+  };
+  lap('model', t1);
+
+  // Fonts first: the pages are measured as they are filled.
+  await Promise.all(
+    ['400', '500', '600'].map((wt) => document.fonts.load(`${wt} 10pt "IBM Plex Sans"`)),
+  );
+  await document.fonts.load('600 10pt "IBM Plex Sans Condensed"');
+  await document.fonts.load('600 10pt "IBM Plex Mono"');
+
+  const root = document.getElementById('report');
+  if (!root) throw new Error('Missing #report');
+  const frame = (section: string) => {
+    const page = document.createElement('section');
+    page.className = `pg ${section}`;
+    page.dataset.section = section;
+    if (section === 'cover' || section === 'back') {
+      root.appendChild(page);
+      return { page, body: page };
+    }
+    page.innerHTML = frameHtml(ctx);
+    root.appendChild(page);
+    const body = page.querySelector('.pg-b');
+    if (!(body instanceof HTMLElement)) throw new Error('Missing page body');
+    return { page, body };
+  };
+  const pager = new Pager({
+    root,
+    frame,
+    overflows: (body) => body.scrollHeight > body.clientHeight + 1,
+  });
+
+  const t2 = performance.now();
+  set({ phase: 'Laying out pages' });
+  pager.fixed('cover', coverHtml(ctx));
+  const contentsPage = h.sections.includes('contents') ? pager.fixed('contents', '') : null;
+  const entries: ContentsEntry[] = [];
+  let num = 0;
+  const numbered = (id: ReportSectionId) => {
+    num++;
+    const n = two(num);
+    entries.push({ label: sectionTitle(id), page: pager.pages.length + 1, num: n });
+    return n;
+  };
+  let registerCells = new Map<string, HTMLElement>();
+  const issuePageOf = new Map<string, number>();
+  const byId = new Map(issues.map((i) => [i.id, i]));
+
+  for (const id of h.sections) {
+    switch (id) {
+      case 'contents':
+        break;
+      case 'summary': {
+        const n = numbered(id);
+        pager.start(id);
+        layoutSummary(pager, ctx, n);
+        break;
+      }
+      case 'scope': {
+        const n = numbered(id);
+        pager.start(id);
+        layoutScope(pager, ctx, n);
+        break;
+      }
+      case 'site': {
+        const n = numbered(id);
+        pager.start(id);
+        layoutSite(pager, ctx, n);
+        break;
+      }
+      case 'statistics': {
+        const n = numbered(id);
+        pager.start(id);
+        layoutStatistics(pager, ctx, n);
+        break;
+      }
+      case 'register': {
+        const n = numbered(id);
+        pager.start(id);
+        registerCells = layoutRegister(pager, ctx, n);
+        lap('front', t2);
+        break;
+      }
+      case 'issues': {
+        numbered(id);
+        const t3 = performance.now();
+        let done = 0;
+        let photoMs = 0;
+        let viewMs = 0;
+        for (const row of h.issuePages) {
+          const images: IssueImages = {};
+          const a = performance.now();
+          try {
+            const p = await issuePhotos(fetchBlob, byId.get(row.id), row);
+            const photo = blobUrl(p.photo);
+            const closeup = blobUrl(p.closeup);
+            if (photo) images.photo = photo;
+            if (closeup) images.closeup = closeup;
+          } catch (e) {
+            console.warn(`Report: photo of ${row.code}`, e);
+          }
+          const b = performance.now();
+          photoMs += b - a;
+          if (snap && row.position) {
+            try {
+              const view = blobUrl(await snap.shoot(row.position, row.normal, row.severityColor));
+              if (view) images.view = view;
+            } catch (e) {
+              console.warn(`Report: 3D view of ${row.code}`, e);
+            }
+          }
+          viewMs += performance.now() - b;
+          const pf = row.photo ? photoFacts(manifest, row.photo.layer, row.photo.photo) : null;
+          const issue = byId.get(row.id);
+          pager.fixed(
+            'issue',
+            issuePageHtml(row, images, {
+              photoName: pf?.name ?? '',
+              captured: pf?.at ?? '',
+              action: issue ? issueAction(manifest, issue) : '',
+              disclaimer: disclaimerOf(h),
+            }),
+          );
+          issuePageOf.set(row.id, pager.pages.length);
+          done++;
+          if (done % 5 === 0 || done === h.issuePages.length) {
+            set({ phase: 'Drawing issue pages', done, total: h.issuePages.length });
+            await tick();
+          }
+        }
+        timings.issuePhotos = Math.round(photoMs / 100) / 10;
+        timings.issueViews = Math.round(viewMs / 100) / 10;
+        lap('issues', t3);
+        break;
+      }
+      case 'appendices': {
+        num++;
+        const first = pager.pages.length + 1;
+        entries.push({ label: sectionTitle(id), page: first, num: two(num) });
+        layoutAppendices(pager, ctx, (title, letter) => {
+          entries.push({ label: title, page: pager.start('appendix'), num: letter, sub: true });
+        });
+        break;
+      }
+    }
+  }
+  snap?.dispose();
+  pager.fixed('back', backHtml(ctx));
+
+  // Page numbers, the contents and the register's page column.
+  const pages = pager.pages;
+  pages.forEach((page, i) => {
+    const n = page.querySelector('.pg-n');
+    if (n) n.textContent = String(i + 1);
+  });
+  for (const [id, cell] of registerCells) {
+    const page = issuePageOf.get(id);
+    if (page !== undefined) cell.textContent = String(page);
+  }
+  if (contentsPage) {
+    const body = contentsPage.querySelector('.pg-b');
+    if (body) body.innerHTML = contentsHtml(entries, kickerOf(h));
+  }
+
+  set({ phase: 'Preparing images' });
+  await document.fonts.ready;
+  await Promise.all(
+    [...root.querySelectorAll('img')].map((img) => img.decode().catch(() => undefined)),
+  );
+  lap('total', t0);
+  set({
+    state: 'ready',
+    phase: 'Ready to print',
+    done: h.issuePages.length,
+    total: h.issuePages.length,
+    count: h.base.total,
+    pages: pages.length,
+    timings,
+  });
+}
+
+run().catch((e: unknown) => {
+  console.error(e);
+  set({ state: 'error', error: e instanceof Error ? e.message : String(e) });
+});

@@ -27,6 +27,8 @@ import { exteriorPose, snapshotPose } from './layout';
 export interface Snapshotter {
   /** JPEG blob of the view at an issue, marked with its severity colour. */
   shoot(position: Vec3, normal: Vec3 | null, color: string): Promise<Blob | null>;
+  /** JPEG blob of the whole model from a compass bearing (0 north, 90 east) and an elevation. */
+  overview(azimuthDeg: number, elevationDeg: number): Promise<Blob | null>;
   dispose(): void;
 }
 
@@ -37,7 +39,11 @@ export const VIEW_H = 600;
 export async function createSnapshotter(
   projectId: string,
   manifest: ProjectManifest,
+  opts: { width?: number; height?: number; quality?: number } = {},
 ): Promise<Snapshotter | null> {
+  const width = opts.width ?? VIEW_W;
+  const height = opts.height ?? VIEW_H;
+  const quality = opts.quality ?? 0.8;
   const meshes = manifest.layers.filter((l) => l.kind === 'mesh' && l.visible);
   if (meshes.length === 0) return null;
   const loader = new GLTFLoader();
@@ -83,11 +89,11 @@ export async function createSnapshotter(
   scene.add(sun);
 
   const canvas = document.createElement('canvas');
-  canvas.width = VIEW_W;
-  canvas.height = VIEW_H;
+  canvas.width = width;
+  canvas.height = height;
   const renderer = new WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
-  renderer.setSize(VIEW_W, VIEW_H, false);
-  const camera = new PerspectiveCamera(50, VIEW_W / VIEW_H, 0.05, radius * 20);
+  renderer.setSize(width, height, false);
+  const camera = new PerspectiveCamera(50, width / height, 0.05, radius * 20);
 
   const pin = new Group();
   const dotMat = new MeshBasicMaterial({ depthTest: false, transparent: true });
@@ -130,7 +136,36 @@ export async function createSnapshotter(
       pin.quaternion.copy(camera.quaternion);
       renderer.render(scene, camera);
       return new Promise<Blob | null>((r) => {
-        canvas.toBlob(r, 'image/jpeg', 0.8);
+        canvas.toBlob(r, 'image/jpeg', quality);
+      });
+    },
+    async overview(azimuthDeg, elevationDeg) {
+      for (const m of materials) {
+        m.transparent = false;
+        m.opacity = 1;
+        m.depthWrite = true;
+      }
+      pin.visible = false;
+      const az = (azimuthDeg * Math.PI) / 180;
+      const el = (elevationDeg * Math.PI) / 180;
+      // north is -z, east is +x
+      const dir = new Vector3(
+        Math.sin(az) * Math.cos(el),
+        Math.sin(el),
+        -Math.cos(az) * Math.cos(el),
+      );
+      const fov = (camera.fov * Math.PI) / 180;
+      const dist = (radius / Math.sin(fov / 2)) * 0.82;
+      camera.up.set(0, 1, 0);
+      camera.position.copy(center).addScaledVector(dir, dist);
+      camera.near = Math.max(0.01, dist / 500);
+      camera.far = dist + radius * 4;
+      camera.lookAt(center);
+      camera.updateProjectionMatrix();
+      renderer.render(scene, camera);
+      pin.visible = true;
+      return new Promise<Blob | null>((r) => {
+        canvas.toBlob(r, 'image/jpeg', 0.82);
       });
     },
     dispose() {

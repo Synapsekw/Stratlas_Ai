@@ -142,6 +142,8 @@ export default defineConfig({
           index: resolve(import.meta.dirname, 'src/renderer/index.html'),
           // the issue register report, printed from an offscreen window
           report: resolve(import.meta.dirname, 'src/renderer/report.html'),
+          // the house-format project report (BLD-8), printed the same way
+          house: resolve(import.meta.dirname, 'src/renderer/house.html'),
         },
       },
     },

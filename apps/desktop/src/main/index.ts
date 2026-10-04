@@ -37,6 +37,7 @@ import { listConversations, loadConversation, saveConversation } from './convers
 import { demoProjectPaths } from './demo';
 import { createExportJobs } from './exports/jobs';
 import { printReport } from './exports/reportWindow';
+import { readNarrative, readPackageNarrative, writeNarrative } from './narrative';
 import { listReports } from './exports/reports';
 import { runInUtility } from './exports/utility';
 import {
@@ -340,12 +341,15 @@ const exportJobs = createExportJobs({
   },
   chooseSavePath,
   runFile: runInUtility,
-  printReport: async (args, progress, signal) =>
-    printReport(args, progress, signal, {
+  printReport: async (args, progress, signal) => {
+    const current = await settings.get();
+    return printReport(args, progress, signal, {
       devUrl,
       devTools: dev,
-      branding: (await settings.get()).reportBranding,
-    }),
+      branding: current.reportBranding,
+      contents: current.reportContents,
+    });
+  },
   emit: emitExportProgress,
 });
 
@@ -663,6 +667,23 @@ function registerIpc(): void {
 
   handle('export:run', (req) => exportJobs.run(req));
   handle('export:cancel', ({ jobId }) => ({ ok: exportJobs.cancel(jobId) }));
+  handle('report:readNarrative', ({ projectId }) => {
+    const root = registry.root(projectId);
+    if (root !== undefined) return readNarrative(root);
+    const pkg = registry.package(projectId);
+    if (pkg) return readPackageNarrative(pkg.archive);
+    return { ok: false, error: `Project "${projectId}" is not open.` };
+  });
+  handle('report:writeNarrative', ({ projectId, file }) => {
+    if (registry.package(projectId))
+      return {
+        ok: false,
+        error: 'This project is a read-only package. Its report text cannot be changed.',
+      };
+    const r = openRoot(projectId);
+    return 'error' in r ? { ok: false, error: r.error } : writeNarrative(r.root, file);
+  });
+  handle('ai:draftText', (req) => agent.draft(req));
   handle('report:list', async ({ projectId }) => {
     const root = registry.root(projectId);
     if (root !== undefined) return { files: await listReports(root) };
