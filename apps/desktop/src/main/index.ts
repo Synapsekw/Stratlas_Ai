@@ -581,7 +581,12 @@ function registerIpc(): void {
   });
   handle('ai:saveConversation', ({ projectId, conversation }) => {
     const r = openRoot(projectId);
-    return 'error' in r ? { ok: false, error: r.error } : saveConversation(r.root, conversation);
+    if ('error' in r) return { ok: false, error: r.error };
+    // Tracked so quitting waits for it: a waiting approval must survive the app closing.
+    const write = saveConversation(r.root, conversation);
+    pendingWrites.add(write);
+    void write.finally(() => pendingWrites.delete(write));
+    return write;
   });
 
   handle('jobs:list', () => jobs.list());
@@ -885,13 +890,18 @@ if (!app.requestSingleInstanceLock()) {
   });
 }
 
-// Usage is written in batches; write the last batch before the process ends.
+/** Conversation saves still being written; quitting waits for them (at most 3 s). */
+const pendingWrites = new Set<Promise<unknown>>();
+
+// Usage is written in batches and conversations on every change; finish both before exiting.
 let usageFlushed = false;
 app.on('before-quit', (e) => {
   if (usageFlushed) return;
   e.preventDefault();
   usageFlushed = true;
-  void aiProjects.flush().finally(() => {
+  const writes = Promise.allSettled([aiProjects.flush(), ...pendingWrites]);
+  const limit = new Promise((resolve) => setTimeout(resolve, 3000));
+  void Promise.race([writes, limit]).finally(() => {
     app.quit();
   });
 });
