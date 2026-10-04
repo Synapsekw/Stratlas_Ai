@@ -300,15 +300,19 @@ export function AgentPanel({ window: win, className }: AgentPanelProps) {
           >
             {formatMeter(tokens, state.usage.costKnown ? state.usage.costUsd : undefined)}
           </span>
-          {projectId && (
+        </div>
+        {projectId && (
+          <div className="ag-row ag-proj">
+            <span>This project</span>
+            <span className="sp" />
             <span
-              className="ag-mono ag-proj"
+              className="ag-mono"
               title={`${String(project.inputTokens)} input and ${String(project.outputTokens)} output tokens in this project on this workstation; cost is an estimate`}
             >
-              Project {formatMeter(projectTokens, project.costKnown ? project.costUsd : undefined)}
+              {formatMeter(projectTokens, project.costKnown ? project.costUsd : undefined)}
             </span>
-          )}
-        </div>
+          </div>
+        )}
       </footer>
       {state.preview && (
         <PreviewDialog

@@ -26,7 +26,8 @@ export const PANEL_CSS = `
 .aio-agent .step.undone code, .aio-agent .step.cancelled code, .aio-agent .step.rejected code { color: var(--fg-3); text-decoration: line-through; }
 .aio-agent .step .sr { font: 400 var(--t-11)/1 var(--f-mono); color: var(--fg-3); white-space: nowrap; display: flex; align-items: center; gap: 6px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
 .aio-agent .approve { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--line-soft); align-items: center; }
-.aio-agent .approve .note { font-size: var(--t-11); color: var(--fg-2); margin-right: auto; }
+.aio-agent .approve .note { font-size: var(--t-11); color: var(--fg-2); margin-right: auto; min-width: 0; }
+.aio-agent .approve .ag-btn { flex: none; white-space: nowrap; }
 .aio-agent .ag-btn { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: var(--r-4); border: 1px solid var(--line); background: var(--bg-2); color: var(--fg-1); font: 500 var(--t-12)/1 var(--f-ui); cursor: pointer; transition: background 120ms var(--ease), border-color 120ms var(--ease); }
 .aio-agent .ag-btn:hover { background: var(--bg-3); border-color: var(--line-strong); }
 .aio-agent .ag-btn:focus-visible, .aio-agent .ag-sug:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
@@ -53,7 +54,8 @@ export const PANEL_CSS = `
 .aio-agent .ag-box textarea::placeholder { color: var(--fg-3); }
 .aio-agent .ag-row { display: flex; align-items: center; gap: 6px; font-size: var(--t-11); color: var(--fg-3); min-width: 0; }
 .aio-agent .ag-row .sp { flex: 1; }
-.aio-agent .ag-mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.aio-agent .ag-mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.aio-agent .ag-in > .ag-row > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .aio-agent .typing { display: inline-flex; gap: 3px; padding: 4px 0; }
 .aio-agent .typing i { width: 4px; height: 4px; border-radius: 50%; background: var(--fg-3); animation: aio-agent-blink 1.2s infinite; }
 .aio-agent .typing i:nth-child(2) { animation-delay: 0.2s; }

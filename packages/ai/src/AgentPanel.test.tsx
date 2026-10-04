@@ -127,7 +127,7 @@ describe('AgentPanel send preview', () => {
     workspace.getState().openProject({ id: 'p1', root: 'E:/x', manifest: fixtureManifest() }, []);
     const t = bridge(true, false);
     const el = await render(t.b);
-    expect(el.textContent).toContain('Project 102.0k tok · $1.50');
+    expect(el.textContent).toContain('102.0k tok · $1.50');
     await act(async () => {
       el.querySelector<HTMLButtonElement>('.ag-sug')?.click();
       await new Promise((r) => setTimeout(r, 0));
