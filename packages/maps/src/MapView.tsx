@@ -3,6 +3,7 @@ import { workspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
 import type { MapController } from './controller';
 import type { MapDrawSeam } from './draw';
+import { ALL_ISSUES, type MapIssueDisplay } from './overlays';
 
 export interface MapViewProps {
   className?: string;
@@ -10,6 +11,8 @@ export interface MapViewProps {
   showFlights?: boolean;
   /** Drawing on the map (map sightings): clicks, double click and a preview of the shape. */
   draw?: MapDrawSeam;
+  /** Issue markers: pins filter and heat map (default: every issue, clustered). */
+  issues?: MapIssueDisplay;
 }
 
 type Status = 'loading' | 'ready' | 'no-packs' | 'error';
@@ -28,12 +31,17 @@ function bridge(): AioBridge | undefined {
  * Offline 2D map (MapLibre + PMTiles packs over aio://) with project rasters, flight paths and the
  * live video footprint, sharing selection and playhead through @aio/workspace. Owner: stream S5.
  */
-export function MapView({ className, showFlights = true, draw }: MapViewProps) {
+export function MapView({ className, showFlights = true, draw, issues }: MapViewProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<Status>('loading');
   // The controller reads the latest seam on each click.
   const drawRef = useRef<MapDrawSeam | null>(draw ?? null);
   const ctlRef = useRef<MapController | null>(null);
+  const issuesRef = useRef<MapIssueDisplay>(issues ?? ALL_ISSUES);
+  useEffect(() => {
+    issuesRef.current = issues ?? ALL_ISSUES;
+    ctlRef.current?.updateIssues();
+  }, [issues, issues?.show, issues?.minSeverity, issues?.heat]);
   useEffect(() => {
     drawRef.current = draw ?? null;
     ctlRef.current?.updateDraw();
@@ -67,6 +75,7 @@ export function MapView({ className, showFlights = true, draw }: MapViewProps) {
           store: workspace,
           showFlights,
           draw: () => drawRef.current,
+          issues: () => issuesRef.current,
         });
         life.ctl = ctl;
         ctlRef.current = ctl;
