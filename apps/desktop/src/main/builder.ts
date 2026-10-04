@@ -1,15 +1,5 @@
 import { reportBrands } from '@aio/brand';
-import {
-  createProject,
-  importRawFiles,
-  NO_PIPELINE,
-  readPhotoMeta,
-  severityTemplates,
-  updateLayers,
-  type ImageOps,
-  type PipelineJobs,
-  type VideoTools,
-} from '@aio/project/builder';
+import type { ImageOps, PipelineJobs, VideoTools } from '@aio/project/builder';
 import type { IpcEvent, IpcRequest, IpcResponse, ProjectManifest } from '@aio/schema';
 import { readMp4VideoInfo, parseDjiSrt, srtTimingCheck, srtToFlight } from '@aio/video/telemetry';
 import { execFile } from 'node:child_process';
@@ -19,6 +9,12 @@ import { promisify } from 'node:util';
 import { readManifest, type ProjectRegistry } from './project';
 
 const run = promisify(execFile);
+
+/**
+ * The builder library loads on first use: it keeps start-up lean, and a static import of it
+ * currently makes the main bundle come out empty (rolldown, vite 8).
+ */
+const lib = () => import('@aio/project/builder');
 
 /** Manifests of the native projects in the data folder and the folders the person added. */
 export async function libraryManifests(
@@ -50,7 +46,7 @@ export async function builderTemplates(
   extraPaths: readonly string[],
 ): Promise<IpcResponse<'builder:templates'>> {
   return {
-    severity: severityTemplates(await libraryManifests(dataRoot, extraPaths)),
+    severity: (await lib()).severityTemplates(await libraryManifests(dataRoot, extraPaths)),
     brands: [...reportBrands],
   };
 }
@@ -70,7 +66,7 @@ export async function createBuilderProject(
         : (severity.find((t) => t.id === req.severityTemplate) ?? null);
     if (req.severityTemplate !== null && !template)
       return { ok: false, error: `Severity template "${req.severityTemplate}" was not found.` };
-    const r = await createProject(dataRoot, req, template);
+    const r = await (await lib()).createProject(dataRoot, req, template);
     return { ok: true, path: r.root, manifest: r.manifest };
   } catch (e) {
     return { ok: false, error: `Could not create the project: ${errorText(e)}` };
@@ -85,7 +81,7 @@ export async function photoGps(path: string): Promise<IpcResponse<'builder:photo
     const b = new Uint8Array(512 * 1024);
     const { bytesRead } = await fh.read(b, 0, b.length, 0);
     await fh.close();
-    const meta = readPhotoMeta(b.subarray(0, bytesRead));
+    const meta = (await lib()).readPhotoMeta(b.subarray(0, bytesRead));
     const lat = meta.dji?.lat ?? meta.gps?.lat;
     const lon = meta.dji?.lon ?? meta.gps?.lon;
     if (lat === undefined || lon === undefined)
@@ -172,6 +168,7 @@ export async function builderImport(
   if (root === undefined)
     return { ok: false, error: `Project "${req.projectId}" is not open. Open it, then import.` };
   try {
+    const { importRawFiles, NO_PIPELINE } = await lib();
     const r = await importRawFiles(root, req.paths, {
       images: d.images,
       jobs: d.jobs ?? NO_PIPELINE,
@@ -199,7 +196,7 @@ export async function builderUpdateLayers(
       error: `Project "${req.projectId}" is not open. Open it, then save again.`,
     };
   try {
-    const r = await updateLayers(root, req.layerIds, req.patch);
+    const r = await (await lib()).updateLayers(root, req.layerIds, req.patch);
     return { ok: true, manifest: r.manifest, backup: r.backup };
   } catch (e) {
     return { ok: false, error: errorText(e) };
