@@ -39,8 +39,6 @@ import { bodyGeometry, swipePlane, toLocalFn, type ToLocal } from './geometry';
 const SELECT = 0x5ad2b4;
 const EDIT = 0xffd23f;
 
-type WithMap = Material & { map?: Texture | null };
-
 /** Visible itself and through all its parents. */
 function visibleChain(o: Object3D | null): boolean {
   for (let x = o; x; x = x.parent) if (!x.visible) return false;
@@ -496,23 +494,21 @@ export class VolumetricScene {
     this.reconcileCallouts();
   }
 
-  /** Which survey drapes are wanted: both photos while swiping, else the shown survey. */
+  /**
+   * Which survey drapes are wanted: the change or relief colours on the shown survey. Photos need
+   * none: the terrain meshes draw their own textures (the engine's merge keeps their UVs), also
+   * for both surveys while swiping.
+   */
   private wantedDrapes(): Map<string, SurfaceMode> {
     const s = this.store.getState();
-    const epochs = s.file?.captures.map((c) => c.epoch) ?? [];
-    const first = epochs[0];
-    const last = epochs.at(-1);
-    if (s.swipe && first && last && first !== last)
-      return new Map<string, SurfaceMode>([
-        [first, 'photo'],
-        [last, 'photo'],
-      ]);
+    if (s.swipe || s.surface === 'photo') return new Map<string, SurfaceMode>();
     return new Map<string, SurfaceMode>([[s.shownEpoch(), s.surface]]);
   }
 
   /**
-   * The survey texture (photo, change or relief) draped over the terrain: a copy of the terrain
-   * meshes that keep their texture coordinates, drawn just in front of the terrain.
+   * The change or relief colours draped over the terrain: a copy of the terrain meshes (with their
+   * texture coordinates) drawn just in front of the terrain, so the survey's own materials stay
+   * untouched.
    */
   private reconcileSurface(): void {
     const want = this.wantedDrapes();
@@ -528,19 +524,8 @@ export class VolumetricScene {
     }
   }
 
-  private surfaceTexture(
-    epoch: string,
-    mode: SurfaceMode,
-    root: Object3D,
-  ): Promise<Texture | null> {
-    if (mode === 'photo') {
-      let map: Texture | null = null;
-      root.traverse((o) => {
-        const m = (o as Partial<Mesh>).material as WithMap | undefined;
-        if (!map && m && !Array.isArray(m) && m.map) map = m.map;
-      });
-      return Promise.resolve(map);
-    }
+  private surfaceTexture(epoch: string, mode: SurfaceMode): Promise<Texture | null> {
+    if (mode === 'photo') return Promise.resolve(null);
     const key = mode === 'change' ? 'change' : `elev/${epoch}`;
     let p = this.textures.get(key);
     if (!p) {
@@ -571,7 +556,7 @@ export class VolumetricScene {
 
   private buildDrape(epoch: string, mode: SurfaceMode, root: Object3D): void {
     this.pendingDrapes.add(epoch);
-    void this.surfaceTexture(epoch, mode, root).then(
+    void this.surfaceTexture(epoch, mode).then(
       (tex) => {
         this.pendingDrapes.delete(epoch);
         if (!tex || !this.unsub.length) return;

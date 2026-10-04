@@ -35,7 +35,7 @@ project's `legacy/` folder. Public API: `src/index.ts`. Ownership and dependenci
 | Path                                 | What                                                                                                                                                                  |
 | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/store.ts`                       | `volumetric` store: loads through IPC `project:readVolumes`, survey, base, surface, body mode, selection (in step with the scene's pile node), section, editor, saves |
-| `src/scene/controller.ts`            | `VolumetricScene`: volume bodies (lifted or in place), base plates, toe lines, change bodies, survey drapes (photo, cut and fill, relief), swipe clipping, callouts   |
+| `src/scene/controller.ts`            | `VolumetricScene`: volume bodies (lifted or in place), base plates, toe lines, change bodies, survey drapes (cut and fill, relief), swipe clipping, callouts          |
 | `src/components/VolumesPanel.tsx`    | Right panel: inventory, sortable register (fill, cut, net, change) with CSV, cut and fill by pile, pile detail with the four bases, recomputed volume, long section   |
 | `src/components/VolumetricStage.tsx` | Over the 3D pane: boundary handles, swipe divider, section and edit bars, legend, notices; section picking and body clicks                                            |
 
@@ -47,8 +47,9 @@ Seams used in other packages, read only unless noted: the stage's `onFrame`, `ra
 `clippingPlanes`, `controls.enabled` (off while a handle is dragged) and `setLabelMode`; terrain
 layer groups `layer:<id>` (their material clipping planes are swapped during the swipe and
 restored); the layer root's `userData.aioTags` is replaced (never mutated) so callouts show the
-chosen base. The engine's merged terrain meshes carry no UVs, so survey textures are drawn on
-copies of the original (pick-layer) meshes.
+chosen base. The engine's merged terrain meshes keep their UVs, so survey photos show on the
+terrain itself; change and relief colours are drawn on copies of the original (pick-layer)
+meshes so the survey materials stay untouched.
 
 ## Parity
 

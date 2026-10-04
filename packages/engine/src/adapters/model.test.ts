@@ -8,8 +8,16 @@ import {
   MeshStandardMaterial,
   Vector3,
 } from 'three';
-import { describe, expect, it } from 'vitest';
-import { PICK_LAYER, layerMatrix, markNodes, mergeByMaterial, selectableNode } from './model';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  PICK_LAYER,
+  attributeSignature,
+  layerMatrix,
+  markNodes,
+  mergeByMaterial,
+  selectableNode,
+} from './model';
 
 describe('layerMatrix', () => {
   it('reads the manifest transform in column-major order', () => {
@@ -121,6 +129,8 @@ describe('mergeByMaterial', () => {
     expect(steel.geometry.boundingBox?.min.x).toBeCloseTo(-10.5);
     expect(steel.geometry.boundingBox?.max.x).toBeCloseTo(10.5);
     expect(steel.geometry.index?.count).toBe(72);
+    // texture coordinates survive the merge
+    expect(steel.geometry.getAttribute('uv').count).toBe(48);
     // originals stay for picking, on the pick layer only
     expect(a.layers.mask).toBe(1 << PICK_LAYER);
   });
@@ -148,4 +158,128 @@ describe('mergeByMaterial', () => {
     expect(m.geometry.getAttribute('position').count).toBe(3);
     expect(m.geometry.getAttribute('normal').getZ(0)).toBeCloseTo(1, 5);
   });
+
+  it('keeps texture coordinates and merges only geometries with the same attributes', () => {
+    const mat = new MeshStandardMaterial();
+    const tri = (uv: boolean) => {
+      const g = new BufferGeometry();
+      g.setAttribute(
+        'position',
+        new BufferAttribute(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), 3),
+      );
+      g.setAttribute(
+        'normal',
+        new BufferAttribute(new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), 3),
+      );
+      // quantised UVs (KHR_mesh_quantization) come back as floats
+      if (uv)
+        g.setAttribute(
+          'uv',
+          new BufferAttribute(new Uint16Array([0, 0, 65535, 0, 0, 65535]), 2, true),
+        );
+      return g;
+    };
+    expect(attributeSignature(tri(true))).toBe('normal:3,position:3,uv:2');
+    const root = new Group();
+    const a = new Mesh(tri(true), mat);
+    const b = new Mesh(tri(true), mat);
+    b.position.set(5, 0, 0);
+    const plain = new Mesh(tri(false), mat);
+    root.add(a, b, plain);
+    root.updateMatrixWorld(true);
+    const merged = mergeByMaterial(root, root);
+    expect(merged).toHaveLength(2);
+    const textured = merged.find((m) => m.geometry.hasAttribute('uv'));
+    if (!textured) throw new Error('uv dropped');
+    const uv = textured.geometry.getAttribute('uv');
+    expect(uv.count).toBe(6);
+    expect([uv.getX(1), uv.getY(1), uv.getX(5), uv.getY(5)]).toEqual([1, 0, 0, 1]);
+    expect(textured.geometry.getAttribute('position').getX(4)).toBeCloseTo(6);
+  });
+
+  it('keeps the UVs of a textured GLB', async () => {
+    const glb = texturedGlb();
+    // no DOM here: the image does not decode (the loader logs it), the geometry loads as is
+    vi.stubGlobal('self', globalThis);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const gltf = await new GLTFLoader().parseAsync(glb, '');
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    const root = gltf.scene;
+    root.updateMatrixWorld(true);
+    const meshes: Mesh[] = [];
+    root.traverse((o) => {
+      if ((o as Partial<Mesh>).isMesh === true) meshes.push(o as Mesh);
+    });
+    expect(meshes).toHaveLength(2);
+    const merged = mergeByMaterial(root, root);
+    expect(merged).toHaveLength(1);
+    const geo = merged[0]?.geometry;
+    if (!geo) throw new Error('no merge');
+    const uv = geo.getAttribute('uv');
+    expect(uv.count).toBe(6);
+    expect([uv.getX(2), uv.getY(2)]).toEqual([0.25, 0.75]);
+    expect([uv.getX(5), uv.getY(5)]).toEqual([0.25, 0.75]);
+  });
 });
+
+/** A GLB with one textured triangle drawn by two nodes (one material, POSITION, NORMAL, UV). */
+function texturedGlb(): ArrayBuffer {
+  const pos = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+  const nor = new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]);
+  const uv = new Float32Array([0, 0, 1, 0, 0.25, 0.75]);
+  const bin = new Uint8Array(pos.byteLength + nor.byteLength + uv.byteLength);
+  bin.set(new Uint8Array(pos.buffer), 0);
+  bin.set(new Uint8Array(nor.buffer), pos.byteLength);
+  bin.set(new Uint8Array(uv.buffer), pos.byteLength + nor.byteLength);
+  const png =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const json = {
+    asset: { version: '2.0' },
+    scene: 0,
+    scenes: [{ nodes: [0, 1] }],
+    nodes: [{ mesh: 0 }, { mesh: 0, translation: [3, 0, 0] }],
+    meshes: [
+      { primitives: [{ attributes: { POSITION: 0, NORMAL: 1, TEXCOORD_0: 2 }, material: 0 }] },
+    ],
+    materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }],
+    textures: [{ source: 0 }],
+    images: [{ uri: png }],
+    buffers: [{ byteLength: bin.byteLength }],
+    bufferViews: [
+      { buffer: 0, byteOffset: 0, byteLength: pos.byteLength },
+      { buffer: 0, byteOffset: pos.byteLength, byteLength: nor.byteLength },
+      { buffer: 0, byteOffset: pos.byteLength + nor.byteLength, byteLength: uv.byteLength },
+    ],
+    accessors: [
+      {
+        bufferView: 0,
+        componentType: 5126,
+        count: 3,
+        type: 'VEC3',
+        min: [0, 0, 0],
+        max: [1, 1, 0],
+      },
+      { bufferView: 1, componentType: 5126, count: 3, type: 'VEC3' },
+      { bufferView: 2, componentType: 5126, count: 3, type: 'VEC2' },
+    ],
+  };
+  let text = JSON.stringify(json);
+  while (text.length % 4) text += ' ';
+  const jsonBytes = new TextEncoder().encode(text);
+  const total = 12 + 8 + jsonBytes.byteLength + 8 + bin.byteLength;
+  const out = new ArrayBuffer(total);
+  const dv = new DataView(out);
+  dv.setUint32(0, 0x46546c67, true);
+  dv.setUint32(4, 2, true);
+  dv.setUint32(8, total, true);
+  dv.setUint32(12, jsonBytes.byteLength, true);
+  dv.setUint32(16, 0x4e4f534a, true);
+  new Uint8Array(out, 20, jsonBytes.byteLength).set(jsonBytes);
+  const b = 20 + jsonBytes.byteLength;
+  dv.setUint32(b, bin.byteLength, true);
+  dv.setUint32(b + 4, 0x004e4942, true);
+  new Uint8Array(out, b + 8, bin.byteLength).set(bin);
+  return out;
+}

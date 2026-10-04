@@ -1,6 +1,7 @@
 import {
   BufferAttribute,
   BufferGeometry,
+  type InterleavedBufferAttribute,
   Matrix3,
   Matrix4,
   Mesh,
@@ -69,10 +70,30 @@ const _inv = new Matrix4();
 const _n = new Matrix3();
 const _v = new Vector3();
 
+type AnyAttribute = BufferAttribute | InterleavedBufferAttribute;
+
 /**
- * Merge every visible single-material mesh under `root` into one mesh per material (and shadow
- * flag), with geometry in the local space of `space`. Turns about 1 800 glTF primitives into a
- * few dozen draws. The originals move to PICK_LAYER: still raycast for picking, no longer drawn.
+ * The vertex attributes a geometry brings, as `name:itemSize` sorted: only geometries with the
+ * same set merge, so texture coordinates, tangents and colours are never dropped or misaligned.
+ */
+export function attributeSignature(g: BufferGeometry): string {
+  return Object.entries(g.attributes)
+    .map(([name, a]) => `${name}:${String(a.itemSize)}`)
+    .sort()
+    .join(',');
+}
+
+/** Component `k` of vertex `i`, denormalised (quantised UVs come back as floats). */
+function component(a: AnyAttribute, i: number, k: number): number {
+  return k === 0 ? a.getX(i) : k === 1 ? a.getY(i) : k === 2 ? a.getZ(i) : a.getW(i);
+}
+
+/**
+ * Merge every visible single-material mesh under `root` into one mesh per material, shadow flag
+ * and vertex attribute set, with geometry in the local space of `space`. Turns about 1 800 glTF
+ * primitives into a few dozen draws. Every attribute is kept: positions and normals (and tangent
+ * directions) move into `space`, texture coordinates and the rest are copied. The originals move
+ * to PICK_LAYER: still raycast for picking, no longer drawn.
  */
 export function mergeByMaterial(root: Object3D, space: Object3D): Mesh[] {
   root.updateMatrixWorld(true);
@@ -86,8 +107,11 @@ export function mergeByMaterial(root: Object3D, space: Object3D): Mesh[] {
     if ((o as { isSkinnedMesh?: boolean }).isSkinnedMesh === true) return;
     if (!visibleTo(o, root)) return;
     const material = mesh.material as Material;
-    if (material.vertexColors || !mesh.geometry.hasAttribute('position')) return;
-    const key = `${material.uuid}|${mesh.castShadow ? 1 : 0}`;
+    const g = mesh.geometry;
+    if (material.vertexColors || !g.hasAttribute('position')) return;
+    // morph targets animate per mesh: leave those meshes as they are
+    if (Object.keys(g.morphAttributes).length > 0) return;
+    const key = `${material.uuid}|${mesh.castShadow ? 1 : 0}|${attributeSignature(g)}`;
     let b = buckets.get(key);
     if (!b) {
       b = { material, cast: mesh.castShadow, meshes: [] };
@@ -98,6 +122,12 @@ export function mergeByMaterial(root: Object3D, space: Object3D): Mesh[] {
 
   const out: Mesh[] = [];
   for (const { material, cast, meshes } of buckets.values()) {
+    const first = meshes[0];
+    if (!first) continue;
+    const layout = Object.entries(first.geometry.attributes).map(([name, a]) => ({
+      name,
+      size: a.itemSize,
+    }));
     let vCount = 0;
     let iCount = 0;
     for (const m of meshes) {
@@ -106,27 +136,41 @@ export function mergeByMaterial(root: Object3D, space: Object3D): Mesh[] {
       vCount += n;
       iCount += g.index ? g.index.count : n;
     }
-    const pos = new Float32Array(vCount * 3);
-    const nor = new Float32Array(vCount * 3);
+    const arrays = new Map(layout.map((l) => [l.name, new Float32Array(vCount * l.size)]));
     const idx = new Uint32Array(iCount);
     let vo = 0;
     let io = 0;
     for (const m of meshes) {
       const g = m.geometry;
-      const p = g.getAttribute('position');
-      const nAttr = g.getAttribute('normal') as BufferAttribute | undefined;
+      const count = g.getAttribute('position').count;
       _m.multiplyMatrices(_inv, m.matrixWorld);
       _n.getNormalMatrix(_m);
-      for (let i = 0; i < p.count; i++) {
-        _v.fromBufferAttribute(p, i).applyMatrix4(_m);
-        pos[(vo + i) * 3] = _v.x;
-        pos[(vo + i) * 3 + 1] = _v.y;
-        pos[(vo + i) * 3 + 2] = _v.z;
-        if (nAttr) {
-          _v.fromBufferAttribute(nAttr, i).applyMatrix3(_n).normalize();
-          nor[(vo + i) * 3] = _v.x;
-          nor[(vo + i) * 3 + 1] = _v.y;
-          nor[(vo + i) * 3 + 2] = _v.z;
+      for (const { name, size } of layout) {
+        const src: AnyAttribute = g.getAttribute(name);
+        const dst = arrays.get(name);
+        if (!dst) continue;
+        for (let i = 0; i < count; i++) {
+          const at = (vo + i) * size;
+          if (name === 'position') {
+            _v.fromBufferAttribute(src, i).applyMatrix4(_m);
+            dst[at] = _v.x;
+            dst[at + 1] = _v.y;
+            dst[at + 2] = _v.z;
+          } else if (name === 'normal') {
+            _v.fromBufferAttribute(src, i).applyMatrix3(_n).normalize();
+            dst[at] = _v.x;
+            dst[at + 1] = _v.y;
+            dst[at + 2] = _v.z;
+          } else if (name === 'tangent') {
+            _v.set(src.getX(i), src.getY(i), src.getZ(i)).transformDirection(_m);
+            dst[at] = _v.x;
+            dst[at + 1] = _v.y;
+            dst[at + 2] = _v.z;
+            // the handedness flips with a mirroring transform
+            if (size > 3) dst[at + 3] = src.getW(i) * (_m.determinant() < 0 ? -1 : 1);
+          } else {
+            for (let k = 0; k < size; k++) dst[at + k] = component(src, i, k);
+          }
         }
       }
       if (g.index) {
@@ -134,16 +178,19 @@ export function mergeByMaterial(root: Object3D, space: Object3D): Mesh[] {
         for (let i = 0; i < src.count; i++) idx[io + i] = src.getX(i) + vo;
         io += src.count;
       } else {
-        for (let i = 0; i < p.count; i++) idx[io + i] = vo + i;
-        io += p.count;
+        for (let i = 0; i < count; i++) idx[io + i] = vo + i;
+        io += count;
       }
-      vo += p.count;
+      vo += count;
       m.layers.set(PICK_LAYER);
     }
     const geo = new BufferGeometry();
-    geo.setAttribute('position', new BufferAttribute(pos, 3));
-    geo.setAttribute('normal', new BufferAttribute(nor, 3));
+    for (const { name, size } of layout) {
+      const arr = arrays.get(name);
+      if (arr) geo.setAttribute(name, new BufferAttribute(arr, size));
+    }
     geo.setIndex(new BufferAttribute(idx, 1));
+    if (!geo.hasAttribute('normal')) geo.computeVertexNormals();
     geo.computeBoundingSphere();
     geo.computeBoundingBox();
     const merged = new Mesh(geo, material);
