@@ -45,6 +45,7 @@ export const en = {
   // Library
   'library.count_one': '{count} project',
   'library.count_other': '{count} projects',
+  'library.build': '{product} {version} · built {date}',
 
   // Settings navigation
   'settings.title': 'Settings',
@@ -109,6 +110,7 @@ export const en = {
     'Presets matched to the graphics card, detected when the app starts. Choose one to override it on this workstation.',
   'settings.about.text': 'Version, licences, logs and updates.',
   'settings.about.version': 'Version',
+  'settings.about.build': 'Build {date} ({commit})',
   'settings.about.dataFolder': 'Data folder',
   'settings.about.logs': 'Logs',
   'settings.about.exportLogs': 'Export logs',

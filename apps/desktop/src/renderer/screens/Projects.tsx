@@ -1,8 +1,10 @@
+import { brand } from '@aio/brand';
 import type { LibraryEntry } from '@aio/schema';
-import { formatBytes, formatCompact, formatDate, Icon, type IconName } from '@aio/ui';
+import { formatBytes, formatCompact, formatDate, Icon, t, type IconName } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useMemo, useState } from 'react';
 import { builder } from '../builder/state';
+import { build, formatBuildTime } from '../buildStamp';
 import { shell, useCall, useShell } from '../shell';
 
 const LAYER_CHIPS: { key: string; icon: IconName; label: string }[] = [
@@ -285,6 +287,19 @@ function Workstation() {
           <span className="kbd">Space</span>
         </div>
       </section>
+      {build.time && (
+        <footer
+          className="hs-sec hs-build faint"
+          data-testid="build-stamp"
+          title={`${build.time} (${build.commit})`}
+        >
+          {t('library.build', {
+            product: brand.productName,
+            version: build.version,
+            date: formatBuildTime(build.time, { year: false }),
+          })}
+        </footer>
+      )}
     </aside>
   );
 }

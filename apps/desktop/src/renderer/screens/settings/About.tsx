@@ -2,6 +2,7 @@ import { brand } from '@aio/brand';
 import type { IpcResponse } from '@aio/schema';
 import { Icon, Switch, t } from '@aio/ui';
 import { useMemo, useState } from 'react';
+import { build, formatBuildTime } from '../../buildStamp';
 import { bridge, shell, useCall, useShell } from '../../shell';
 
 type Verified = IpcResponse<'update:verifyFile'>;
@@ -296,6 +297,14 @@ export function About() {
             <b>
               {brand.productName} <span className="mono">{a?.version ?? ''}</span>
             </b>
+            {build.time && (
+              <span className="faint" data-testid="about-build" title={build.time}>
+                {t('settings.about.build', {
+                  date: formatBuildTime(build.time),
+                  commit: build.commit,
+                })}
+              </span>
+            )}
             <span className="faint">
               {a
                 ? `Electron ${a.electron} · Chromium ${a.chrome} · Node ${a.node} · ${a.platform} ${a.arch}${a.packaged ? '' : ' · development build'}`

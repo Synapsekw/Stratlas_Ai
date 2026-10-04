@@ -1,6 +1,7 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'electron-vite';
 import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { cp, readFile, stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join, normalize, resolve } from 'node:path';
@@ -79,6 +80,29 @@ function licenses(): Plugin {
   };
 }
 
+/**
+ * `__STRATLAS_BUILD__`: when and from which commit this bundle was built, shown in Settings,
+ * About and on the Projects screen so a stale installed copy is obvious. Without git (a source
+ * archive) the commit is "dev"; the build never fails over it.
+ */
+function buildStamp(): { time: string; commit: string; version: string } {
+  let commit = 'dev';
+  try {
+    commit =
+      execSync('git rev-parse --short HEAD', {
+        cwd: import.meta.dirname,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim() || 'dev';
+  } catch {
+    // no git, or not a checkout
+  }
+  const pkg = JSON.parse(readFileSync(resolve(import.meta.dirname, 'package.json'), 'utf8')) as {
+    version?: string;
+  };
+  return { time: new Date().toISOString(), commit, version: pkg.version ?? '' };
+}
+
 export default defineConfig({
   main: {
     plugins: [licenses()],
@@ -110,6 +134,7 @@ export default defineConfig({
   renderer: {
     root: resolve(import.meta.dirname, 'src/renderer'),
     plugins: [react(), pdfjsAssets()],
+    define: { __STRATLAS_BUILD__: JSON.stringify(buildStamp()) },
     resolve: { noExternal: bundled },
     build: {
       rollupOptions: {
