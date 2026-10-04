@@ -20,6 +20,7 @@ import { stat } from 'node:fs/promises';
 import { arch, release, userInfo } from 'node:os';
 import { join } from 'node:path';
 import licenses from 'virtual:licenses';
+import { demoProjectPaths } from './demo';
 import { validated, type Handler } from './ipc';
 import { createKeyVault } from './keys';
 import { addToLibrary, createLibraryStore, listLibrary } from './library';
@@ -228,7 +229,12 @@ function registerIpc(): void {
 
   handle('library:list', async () => {
     const { dataRoot } = await settings.get();
-    return listLibrary({ dataRoot, extraPaths: await library.paths(), registry });
+    const demos = await demoProjectPaths({
+      env: process.env,
+      packaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+    });
+    return listLibrary({ dataRoot, extraPaths: [...(await library.paths()), ...demos], registry });
   });
   handle('library:add', ({ path }) => addToLibrary(path, library, registry));
 

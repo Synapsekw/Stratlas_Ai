@@ -159,6 +159,19 @@ function EmptyLibrary({ dataRoot, error }: { dataRoot: string; error: string | n
           <code>manifest.json</code> with its models, clips, maps and issues. Imported projects
           appear here as soon as their folder is in place.
         </p>
+        <ol className="le-steps" aria-label="Getting started">
+          <li>
+            <b>Pick the data folder</b> where projects and offline map packs live on this
+            workstation.
+          </li>
+          <li>
+            <b>Add a project:</b> copy its folder into <code>projects</code>, or add a folder from
+            anywhere with Add project folder.
+          </li>
+          <li>
+            <b>Add maps:</b> in Settings, Offline maps, import a map pack file or download a region.
+          </li>
+        </ol>
         <dl className="kv le-kv">
           <dt>Data folder</dt>
           <dd className="mono">{dataRoot || 'Not set yet'}</dd>
