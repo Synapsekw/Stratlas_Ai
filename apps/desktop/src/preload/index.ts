@@ -50,6 +50,11 @@ const CHANNELS = {
   'update:installFile': true,
   'update:check': true,
   'update:downloadAndInstall': true,
+  'jobs:start': true,
+  'jobs:list': true,
+  'jobs:cancel': true,
+  'jobs:log': true,
+  'jobs:open': true,
 } as const satisfies Record<IpcChannel, true>;
 
 const EVENTS = {
@@ -58,6 +63,7 @@ const EVENTS = {
   'app:openPath': true,
   'export:progress': true,
   'packs:job': true,
+  'jobs:event': true,
 } as const satisfies Record<IpcEventName, true>;
 
 const known = <K extends string>(table: Record<K, true>, key: string): key is K =>

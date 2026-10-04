@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { AiProvider, AiTask, ToolRisk, WindowKind } from './agent';
 import { Issue } from './annotation';
 import { Conversation, ConversationId, ConversationSummary } from './conversation';
+import { JobEvent, JobId, JobLogLine, JobRecord, JobStartRequest, RuntimeInfo } from './jobs';
 import { ProjectManifest } from './manifest';
 import { AiPolicy, ExportKind, PackageInfo } from './package';
 
@@ -530,10 +531,41 @@ export const ipc = {
   },
   /** Download the update found by `update:check`, then quit and install it. */
   'update:downloadAndInstall': { request: Empty, response: Ok },
+  /** Start a pipeline job on a project folder, or resume a cancelled, failed or interrupted one. */
+  'jobs:start': {
+    request: JobStartRequest,
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), job: JobRecord }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /** Every known job (newest first) and the pipeline pack the app found. */
+  'jobs:list': {
+    request: Empty,
+    response: z.object({ runtime: RuntimeInfo, jobs: z.array(JobRecord) }),
+  },
+  /** Ask the job to stop; main kills the runtime if it has not stopped after a grace period. */
+  'jobs:cancel': {
+    request: z.object({ jobId: JobId }).strict(),
+    response: z.object({ ok: z.boolean(), error: z.string().optional() }),
+  },
+  /** The last lines of a job's log (live lines also arrive as `jobs:event`). */
+  'jobs:log': {
+    request: z
+      .object({ jobId: JobId, tail: z.number().int().min(1).max(5000).optional() })
+      .strict(),
+    response: z.object({ lines: z.array(JobLogLine) }),
+  },
+  /** Show a job's output (its first artifact), its log file or the project folder in the OS file browser. */
+  'jobs:open': {
+    request: z.object({ jobId: JobId, what: z.enum(['output', 'log', 'project']) }).strict(),
+    response: z.object({ ok: z.boolean(), error: z.string().optional() }),
+  },
 } as const satisfies Record<string, { request: z.ZodType; response: z.ZodType }>;
 
 /** Events pushed from main to the renderer. */
 export const ipcEvents = {
+  'jobs:event': JobEvent,
   'ai:event': z.discriminatedUnion('type', [
     z.object({ type: z.literal('text'), runId: z.string(), delta: z.string() }),
     z.object({

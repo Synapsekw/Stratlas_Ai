@@ -8,3 +8,4 @@ export * from './agent';
 export * from './conversation';
 export * from './package';
 export * from './ipc';
+export * from './jobs';

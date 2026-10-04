@@ -42,6 +42,7 @@ const SCREENS: { screen: Screen; title: string; icon: IconName }[] = [
   { screen: 'issues', title: 'Issues', icon: 'issues' },
   { screen: 'media', title: 'Media', icon: 'media' },
   { screen: 'reports', title: 'Reports', icon: 'report' },
+  { screen: 'jobs', title: 'Jobs', icon: 'clock' },
   { screen: 'settings', title: 'Settings', icon: 'settings' },
 ];
 

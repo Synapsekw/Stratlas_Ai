@@ -14,6 +14,7 @@ export const en = {
   'nav.issues': 'Issues',
   'nav.media': 'Media',
   'nav.reports': 'Reports',
+  'nav.jobs': 'Jobs',
   'nav.settings': 'Settings',
   'nav.sections': 'Sections',
   'nav.primary': 'Primary',

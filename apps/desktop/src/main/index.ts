@@ -5,7 +5,13 @@ import {
   createScriptedProvider,
 } from '@aio/ai/main';
 import { brand } from '@aio/brand';
-import { ipcEvents, type IpcChannel, type IpcEvent, type Settings } from '@aio/schema';
+import {
+  ipcEvents,
+  PACKAGE_EXTENSION,
+  type IpcChannel,
+  type IpcEvent,
+  type Settings,
+} from '@aio/schema';
 import { Entry } from '@napi-rs/keyring';
 import {
   app,
@@ -34,6 +40,7 @@ import { printReport } from './exports/reportWindow';
 import { listReports } from './exports/reports';
 import { runInUtility } from './exports/utility';
 import { validated, type Handler } from './ipc';
+import { findPack, JobRunner, JobStore, openTarget, safeJobEvent } from './jobs';
 import { createKeyVault } from './keys';
 import { addToLibrary, createLibraryStore, listLibrary } from './library';
 import { captureConsole, createLog, exportLogs } from './logs';
@@ -319,6 +326,21 @@ const exportJobs = createExportJobs({
   emit: emitExportProgress,
 });
 
+const jobStore = new JobStore(join(app.getPath('userData'), 'jobs.json'));
+const jobs = new JobRunner({
+  store: jobStore,
+  findPack: () => findPack({ dataRoot: settings.current().dataRoot, env: process.env }),
+  emit: (event) => {
+    const safe = safeJobEvent(event);
+    if (!safe) {
+      console.error(`Dropped an invalid jobs:event of type ${event.type}.`);
+      return;
+    }
+    const win = mainWindow ?? BrowserWindow.getAllWindows()[0];
+    if (win && !win.isDestroyed()) win.webContents.send('jobs:event', safe);
+  },
+});
+
 function handle<C extends IpcChannel>(channel: C, handler: Handler<C>): void {
   const run = validated(channel, handler);
   ipcMain.handle(channel, (_e, req: unknown) => run(req));
@@ -533,6 +555,31 @@ function registerIpc(): void {
     return 'error' in r ? { ok: false, error: r.error } : saveConversation(r.root, conversation);
   });
 
+  handle('jobs:list', () => jobs.list());
+  handle('jobs:start', (req) => {
+    // A package is read-only: pipelines write into a project folder only.
+    if ('project' in req && req.project.toLowerCase().endsWith(PACKAGE_EXTENSION))
+      return {
+        ok: false,
+        error: 'Pipelines run on a project folder. A .aio package is read-only.',
+      };
+    return jobs.start(req);
+  });
+  handle('jobs:cancel', ({ jobId }) => jobs.cancel(jobId));
+  handle('jobs:log', async ({ jobId, tail }) => ({ lines: await jobs.log(jobId, tail) }));
+  handle('jobs:open', async ({ jobId, what }) => {
+    const job = jobs.get(jobId);
+    if (!job) return { ok: false, error: `There is no job ${jobId}.` };
+    const target = openTarget(job, what);
+    if (!target) return { ok: false, error: 'This job has not written any output yet.' };
+    if (target.action === 'reveal') {
+      shell.showItemInFolder(target.path);
+      return { ok: true };
+    }
+    const error = await shell.openPath(target.path);
+    return error ? { ok: false, error } : { ok: true };
+  });
+
   handle('dialog:openFolder', async ({ title }) => {
     const win = targetWindow();
     const options = { properties: ['openDirectory' as const], ...(title ? { title } : {}) };
@@ -743,6 +790,7 @@ if (!app.requestSingleInstanceLock()) {
     await packs.restore().catch((e: unknown) => {
       console.warn('Map pack jobs could not be restored', e);
     });
+    await jobStore.load();
     protocol.handle(
       'aio',
       createAioHandler({
@@ -769,6 +817,11 @@ app.on('before-quit', (e) => {
   void aiProjects.flush().finally(() => {
     app.quit();
   });
+});
+
+// Running pipelines stop with the app; their jobs show as interrupted and resume later.
+app.on('will-quit', () => {
+  jobs.shutdownSync();
 });
 
 app.on('window-all-closed', () => {

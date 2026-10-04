@@ -1,7 +1,9 @@
-import type { IpcChannel, IpcRequest, IpcResponse } from '@aio/schema';
+import type { AioBridge, IpcChannel, IpcRequest, IpcResponse } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { useEffect, useState } from 'react';
+import { useStore } from 'zustand';
 import { createBridge, type Res } from './bridge';
+import { createJobsStore, type Jobs } from './jobs';
 import { getShell, useShellStore, type Shell } from './store';
 
 /** Typed, never-throwing access to main. */
@@ -9,6 +11,14 @@ export const bridge = createBridge(window.aio);
 
 /** The app shell store: screen, settings, library, palette and stage layout. */
 export const shell = getShell(workspace);
+
+/** Pipeline jobs: list, live progress and logs pushed from main. */
+const aio = window.aio as AioBridge | undefined;
+export const jobs = createJobsStore(bridge, aio?.on.bind(aio));
+
+export function useJobs<T>(selector: (s: Jobs) => T): T {
+  return useStore(jobs, selector);
+}
 
 /** Call a read-only channel when `key` changes; null while loading. */
 export function useCall<C extends IpcChannel>(

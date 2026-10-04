@@ -13,7 +13,8 @@ import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { legacyLayers } from '../legacy';
 import { useMedia } from '../media';
-import { shell, useShell } from '../shell';
+import { isActive } from '../jobs';
+import { shell, useJobs, useShell } from '../shell';
 import type { Screen } from '../store';
 import { flightPathShown, toggleFlightPath } from '../workspace/flightPaths';
 import { updateFlightPaths, useFlightPathModel } from '../workspace/pathModel';
@@ -32,6 +33,7 @@ const NAV: NavDef[] = [
   { screen: 'issues', label: 'nav.issues', icon: 'issues' },
   { screen: 'media', label: 'nav.media', icon: 'media' },
   { screen: 'reports', label: 'nav.reports', icon: 'report' },
+  { screen: 'jobs', label: 'nav.jobs', icon: 'clock' },
 ];
 
 function NavItem({
@@ -246,9 +248,13 @@ export function Sidebar() {
   const collapsed = useShell((s) => s.settings.sidebarCollapsed);
   const libCount = useShell((s) => s.library?.length);
   const issueCount = useWorkspace((s) => (s.project ? s.issues.length : undefined));
+  const runningJobs = useJobs((s) => s.jobs.filter(isActive).length);
   const hasReview = useWorkspace((s) => legacyLayers(s.project?.manifest).length > 0);
   // The original review sits right after Scene when the open project has one.
-  const nav = hasReview ? [...NAV.slice(0, 2), REVIEW, ...NAV.slice(2)] : NAV;
+  const pkg = useShell((s) => s.pkg);
+  const withReview = hasReview ? [...NAV.slice(0, 2), REVIEW, ...NAV.slice(2)] : NAV;
+  // Pipelines write into project folders: a package (player) has no Jobs.
+  const nav = pkg ? withReview.filter((n) => n.screen !== 'jobs') : withReview;
 
   return (
     <aside className="sidebar" aria-label={t('nav.primary')}>
@@ -260,7 +266,13 @@ export function Sidebar() {
               def={n}
               current={screen === n.screen}
               count={
-                n.screen === 'projects' ? libCount : n.screen === 'issues' ? issueCount : undefined
+                n.screen === 'projects'
+                  ? libCount
+                  : n.screen === 'issues'
+                    ? issueCount
+                    : n.screen === 'jobs' && runningJobs > 0
+                      ? runningJobs
+                      : undefined
               }
             />
           ))}

@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { getMedia } from './media';
 import { nextClipInFlight, startPlaybackLoop } from './playback';
 import { IssuesScreen } from './screens/Issues';
+import { JobsScreen } from './screens/Jobs';
 import { MediaScreen } from './screens/Media';
 import { ProjectsScreen } from './screens/Projects';
 import { ReportsScreen } from './screens/Reports';
@@ -16,7 +17,7 @@ import { initAuthor } from './author';
 import { roadStore, startRoadSync } from './road/store';
 import { Toasts } from './exports/Toasts';
 import { spaceIsPlayPause } from './keys';
-import { bridge, shell, useShell } from './shell';
+import { bridge, jobs, shell, useShell } from './shell';
 import { PackageExportDialog } from './shell/PackageExport';
 import { Palette } from './shell/Palette';
 import { UnlockDialog } from './shell/UnlockDialog';
@@ -118,6 +119,8 @@ function Screen() {
       return <MediaScreen />;
     case 'reports':
       return <ReportsScreen />;
+    case 'jobs':
+      return <JobsScreen />;
     case 'settings':
       return <SettingsScreen />;
   }
@@ -131,6 +134,7 @@ export function App() {
 
   useEffect(() => {
     void shell.getState().init();
+    void jobs.getState().init();
     void initAuthor(bridge);
     window.addEventListener('keydown', onKeyDown);
     const stopPlayback = startPlaybackLoop(

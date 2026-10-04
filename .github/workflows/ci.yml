@@ -71,6 +71,15 @@ jobs:
       - run: pnpm test
       - run: pnpm -F @aio/desktop build
 
+      # The Jobs panel e2e runs real pipelines in the development venv (python/.venv).
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+      - name: Pipeline runtime venv
+        working-directory: python
+        run: uv sync --frozen
+
       - name: E2E (Playwright + Electron, zero-network guard)
         run: pnpm test:e2e
 
@@ -82,6 +91,35 @@ jobs:
           path: apps/desktop/test-results/
           retention-days: 14
           if-no-files-found: ignore
+
+  python:
+    name: pipelines (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+        working-directory: python
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+      - name: Sync the locked environment (CPython 3.13)
+        run: uv sync --frozen
+      - name: Ruff lint
+        run: uv run --frozen ruff check .
+      - name: Ruff format
+        run: uv run --frozen ruff format --check .
+      - name: Pytest
+        run: uv run --frozen pytest
+      - name: Entry point
+        run: uv run --frozen python -m aio_pipelines --list
 
   licenses:
     name: licence check
