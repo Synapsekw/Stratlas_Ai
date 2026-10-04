@@ -34,6 +34,15 @@ import { loadFlight, videoStore, type VideoLayer } from './runtime';
 
 export type CameraMode = 'free' | 'follow' | 'drone';
 
+/** Which flight paths the rig draws: every flight, only the active clip's flight, or none. */
+export type FlightPathMode = 'all' | 'active' | 'off';
+
+export interface FlightPathOptions {
+  mode: FlightPathMode;
+  /** Clips whose flight path the user hid (a path hides when every clip of it is listed). */
+  hiddenClips?: ReadonlySet<string>;
+}
+
 /** Optional orbit-controls seam on the scene handle (target and enable flag). */
 interface ControlsLike {
   target: Vector3;
@@ -46,6 +55,9 @@ function controlsOf(h: SceneHandle): ControlsLike | null {
     return c as ControlsLike;
   return null;
 }
+
+/** The path choice per scene, kept when the rig is rebuilt (another project in the same scene). */
+const pathChoice = new WeakMap<SceneHandle, FlightPathOptions>();
 
 const PATH_START = new Color('#5ab0ff');
 const PATH_END = new Color('#ff5a5a');
@@ -165,6 +177,9 @@ export class VideoRig {
   private readonly pose = { pos: new Vector3(), q: new Quaternion(), valid: false };
   projectionOn = true;
   pathsOn = true;
+  /** Flight path display; independent of the clips, so hiding paths keeps the drone and video. */
+  private pathMode: FlightPathMode = 'all';
+  private hiddenPathClips: ReadonlySet<string> = new Set();
   /** When true the projection range follows the active flight's height (set false by the UI). */
   autoRange = true;
 
@@ -173,6 +188,8 @@ export class VideoRig {
     projectorOptions: Partial<ProjectorOptions> = {},
   ) {
     this.projector = new Projector(projectorOptions);
+    const paths = pathChoice.get(handle);
+    if (paths) this.setFlightPaths(paths);
     this.group.name = 'VideoRig';
     this.drone.name = 'Drone';
     this.drone.visible = false;
@@ -263,6 +280,17 @@ export class VideoRig {
     if (!e) return;
     e.visible = v;
     this.handle.requestRender();
+  }
+
+  /** Show every flight path, only the active clip's, or none; and hide single flights. */
+  setFlightPaths(o: FlightPathOptions) {
+    this.pathMode = o.mode;
+    if (o.hiddenClips) this.hiddenPathClips = o.hiddenClips;
+    this.handle.requestRender();
+  }
+
+  get flightPaths(): { mode: FlightPathMode; hiddenClips: ReadonlySet<string> } {
+    return { mode: this.pathMode, hiddenClips: this.hiddenPathClips };
   }
 
   setCameraMode(mode: CameraMode) {
@@ -400,10 +428,15 @@ export class VideoRig {
     const flight = entry?.flight;
     for (const path of this.paths.values()) {
       let shown = false;
+      let userHidden = true;
       for (const id of path.clips) {
         if (this.clips.get(id)?.visible === true && !s.hidden[id]) shown = true;
+        if (!this.hiddenPathClips.has(id)) userHidden = false;
       }
-      path.line.visible = this.pathsOn && shown;
+      const wanted =
+        this.pathMode === 'all' ||
+        (this.pathMode === 'active' && s.activeClip !== null && path.clips.has(s.activeClip));
+      path.line.visible = this.pathsOn && shown && wanted && !userHidden;
     }
     if (!entry || !flight || !this.player) {
       this.pose.valid = false;
@@ -546,6 +579,15 @@ export function videoRig(handle: SceneHandle): VideoRig {
 /** Follow-cam and drone-eye views for the UI. */
 export function setCameraMode(handle: SceneHandle, mode: CameraMode): void {
   videoRig(handle).setCameraMode(mode);
+}
+
+/**
+ * Flight paths for the UI: all, the active clip's flight only, or none, plus clips whose path is
+ * hidden. Remembered for the scene, so a rig built later (next project) starts with it.
+ */
+export function setFlightPaths(handle: SceneHandle, o: FlightPathOptions): void {
+  pathChoice.set(handle, { ...pathChoice.get(handle), ...o });
+  rigs.get(handle)?.setFlightPaths(o);
 }
 
 /** Projection opacity, vignette and on/off for the UI. */

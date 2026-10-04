@@ -92,6 +92,14 @@ export const ICONS = {
       <circle cx="10" cy="10" r="2.3" />
     </>
   ),
+  /** A flight path: dashed track from the take-off dot to the drone. */
+  path: (
+    <>
+      <path d="M3.5 16c2.5 0 3.2-5 6.5-5s3.6-4.5 5-4.5" strokeDasharray="2 1.6" />
+      <circle cx="3.5" cy="16" r="1.4" fill="currentColor" />
+      <circle cx="16" cy="5.5" r="2" />
+    </>
+  ),
   'eye-off': (
     <>
       <path d="M3 3l14 14M8.3 5c.5-.1 1.1-.2 1.7-.2 5 0 8 5.2 8 5.2s-.8 1.5-2.4 2.9M5.4 6.6C3.2 8.1 2 10 2 10s3 5.2 8 5.2c1.4 0 2.6-.4 3.6-.9" />

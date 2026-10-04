@@ -33,6 +33,8 @@ export interface CloudLayerState {
   baseSize: number;
   hasRgb: boolean;
   hasIntensity: boolean;
+  /** RGB expected from the format before any chunk is decoded (png-packed carries colour). */
+  rgbHint: boolean;
   visible: boolean;
 }
 
@@ -90,7 +92,12 @@ export class CloudManager {
     }
   }
 
-  addLayer(id: string, chunks: Omit<ChunkState, 'object' | 'busy' | 'failed'>[], baseSize: number) {
+  addLayer(
+    id: string,
+    chunks: Omit<ChunkState, 'object' | 'busy' | 'failed'>[],
+    baseSize: number,
+    rgbHint = false,
+  ) {
     const group = new Group();
     group.name = `pointcloud:${id}`;
     group.userData.layerId = id;
@@ -104,6 +111,7 @@ export class CloudManager {
       baseSize,
       hasRgb: false,
       hasIntensity: false,
+      rgbHint,
       visible: true,
     };
     this.layers.set(id, layer);
@@ -145,7 +153,7 @@ export class CloudManager {
     const buf = r.getDrawingBufferSize(this.bufferSize);
     const pxPerM = buf.y / (2 * Math.tan((cam.fov * Math.PI) / 360));
     const maxPx = s.maxPixels * r.getPixelRatio();
-    const [hMin, hMax] = this.heightRange();
+    const [hMin, hMax] = this.heightRange() ?? [0, 10];
     for (const l of this.layers.values()) {
       const m = l.material;
       if (!m) continue;
@@ -167,7 +175,8 @@ export class CloudManager {
     }
   }
 
-  private heightRange(): [number, number] {
+  /** Height range of the loaded chunks of visible clouds, local Y; null with none loaded. */
+  heightRange(): [number, number] | null {
     let lo = Infinity;
     let hi = -Infinity;
     for (const l of this.layers.values()) {
@@ -178,7 +187,7 @@ export class CloudManager {
         hi = Math.max(hi, c.bounds.max[1]);
       }
     }
-    return Number.isFinite(lo) && hi > lo ? [lo, hi] : [0, 10];
+    return Number.isFinite(lo) && hi > lo ? [lo, hi] : null;
   }
 
   private update(eye: [number, number, number], budget: number): void {
@@ -309,16 +318,23 @@ export class CloudManager {
     let loaded = 0;
     let total = 0;
     let loading = 0;
+    let rgb = false;
     for (const l of this.layers.values()) {
+      if (l.material ? l.hasRgb : l.rgbHint) rgb = true;
       for (const c of l.chunks) {
         total += c.points;
         if (c.object && l.visible) loaded += c.points;
         if (c.busy) loading++;
       }
     }
-    pointcloudStats
-      .getState()
-      .setCounts(this.handle, { loaded, total, loading, layers: this.layers.size });
+    pointcloudStats.getState().setCounts(this.handle, {
+      loaded,
+      total,
+      loading,
+      layers: this.layers.size,
+      rgb,
+      heightRange: this.heightRange(),
+    });
   }
 
   dispose(): void {

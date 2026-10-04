@@ -8,8 +8,9 @@ import {
 } from '@aio/annotate';
 import { getActiveScene, SceneView, type EngineStage } from '@aio/engine';
 import { MapView, type MapDrawMode, type MapDrawSeam } from '@aio/maps';
+import { ElevationLegend, useElevationRange } from '@aio/pointcloud';
 import { crsLabel, formatEastNorth, Icon, localToProject, type IconName } from '@aio/ui';
-import { videoRig } from '@aio/video';
+import { setFlightPaths, videoRig } from '@aio/video';
 import { useWorkspace, workspace } from '@aio/workspace';
 import {
   useCallback,
@@ -27,8 +28,11 @@ import { isTyping } from '../keys';
 import { shell, useShell } from '../shell';
 import type { StageMode } from '../store';
 import { FloatingVideo } from './FloatingVideo';
+import { hiddenPathClips, togglePaths } from './flightPaths';
+import { flightPathModel, updateFlightPaths, useFlightPathModel } from './pathModel';
 import {
   AnnotateToggle,
+  CloudTools,
   DisplayTools,
   MeasureTools,
   nextLabelMode,
@@ -56,6 +60,19 @@ function CursorReadout({ text }: { text: string | null }) {
       <br />
       {text ?? 'Point at the scene for coordinates'}
     </div>
+  );
+}
+
+/** The elevation ramp and its range in metres while the clouds are coloured by elevation. */
+function StageElevationLegend() {
+  const range = useElevationRange();
+  const origin = useWorkspace((s) => s.project?.manifest.origin);
+  return (
+    <ElevationLegend
+      className="elev-legend overlay-box"
+      range={range}
+      toElevation={(y) => (origin ? localToProject(origin, [0, y, 0])[2] : y)}
+    />
   );
 }
 
@@ -112,6 +129,7 @@ function ScenePane({ hidden }: { hidden: boolean }) {
         <SceneView className="scene-fill" />
       </div>
       <CursorReadout text={cursor} />
+      <StageElevationLegend />
     </FocusZone>
   );
 }
@@ -128,14 +146,21 @@ function StageToolbar({
   barRef: RefObject<HTMLDivElement | null>;
 }) {
   const rightCollapsed = useShell((s) => s.rightCollapsed);
+  const cloudPanelOpen = useShell((s) => s.cloudPanelOpen);
+  const hasClouds = useWorkspace((s) =>
+    (s.project?.manifest.layers ?? []).some((l) => l.kind === 'pointcloud'),
+  );
   const map = mode === 'map';
   const groups: GroupId[] = useMemo(
     () =>
       map
         ? ['view', 'display', 'video', 'annotate']
-        : ['view', 'measure', 'display', 'video', 'annotate'],
-    [map],
+        : hasClouds
+          ? ['view', 'measure', 'display', 'clouds', 'video', 'annotate']
+          : ['view', 'measure', 'display', 'video', 'annotate'],
+    [map, hasClouds],
   );
+  const [moreOpen, setMoreOpen] = useState(false);
   const widths = useRef(new Map<GroupId, number>());
   const [hidden, setHidden] = useState<GroupId[]>([]);
 
@@ -170,6 +195,8 @@ function StageToolbar({
         return <MeasureTools stage={stage} />;
       case 'display':
         return <DisplayTools stage={stage} map={map} />;
+      case 'clouds':
+        return <CloudTools />;
       case 'video':
         return <VideoTools stage={stage} map={map} />;
       case 'annotate':
@@ -211,7 +238,16 @@ function StageToolbar({
         ))}
       {hidden.length > 0 && (
         <div className="tgroup-h overlay-box">
-          <PopTool icon="more" label="More tools">
+          <PopTool
+            icon="more"
+            label="More tools"
+            // the point cloud panel opened from the sidebar or palette opens More when it is there
+            open={moreOpen || (cloudPanelOpen && hidden.includes('clouds'))}
+            onOpenChange={(o) => {
+              setMoreOpen(o);
+              if (!o && hidden.includes('clouds')) shell.getState().setCloudPanel(false);
+            }}
+          >
             <div className="ovf">
               {groups
                 .filter((g) => hidden.includes(g))
@@ -368,6 +404,18 @@ export function Stage() {
   useIssueOverlay();
   useCutaway(engine);
 
+  // Flight paths: all, the active clip's flight only, or none, and single hidden flights.
+  const paths = useFlightPathModel();
+  const pathPref = paths?.pref;
+  const pathFlights = paths?.flights;
+  useEffect(() => {
+    if (!engine || !pathPref || !pathFlights) return;
+    setFlightPaths(engine, {
+      mode: pathPref.mode,
+      hiddenClips: hiddenPathClips(pathPref, pathFlights),
+    });
+  }, [engine, pathPref, pathFlights]);
+
   // A photo picked in 3D (or from an issue's sightings) opens in the Media photo viewer.
   useEffect(
     () =>
@@ -400,7 +448,7 @@ export function Stage() {
       if (!root) return [];
       return [
         ...root.querySelectorAll(
-          '.stbar > :not(.stbar-sp), .stage-under > *, .vwin:not(.docked), .cursor-ro, .stage-pop',
+          '.stbar > :not(.stbar-sp), .stage-under > *, .vwin:not(.docked), .cursor-ro, .stage-pop, .elev-legend',
         ),
       ].map((e) => e.getBoundingClientRect());
     });
@@ -434,6 +482,7 @@ export function Stage() {
       else if (k === 'l' && three) sh.setLabelMode(nextLabelMode(sh.labelMode));
       else if (k === 'a') sh.setAnnotating(!sh.annotating);
       else if (k === 'w' && ws.activeClip) sh.setVideoHidden(!sh.videoHidden);
+      else if (k === 'p' && three && flightPathModel()) updateFlightPaths(togglePaths);
       else if (k === 'c' && three && ws.activeClip) insideView(three);
       else if (k === 'escape' && three && three.tool !== 'select') three.setTool('select');
       else return;

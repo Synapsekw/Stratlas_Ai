@@ -175,4 +175,16 @@ describe('shell store', () => {
     s.getState().saveView('hcl', b);
     expect(s.getState().views).toEqual({ hcl: b, alzour: b });
   });
+
+  it('opens the point cloud panel from the sidebar or the palette onto the scene', () => {
+    const { bridge } = fakeBridge({});
+    const s = createShellStore(bridge, createWorkspace());
+    expect(s.getState().cloudPanelOpen).toBe(false);
+    s.getState().openCloudPanel();
+    expect(s.getState().cloudPanelOpen).toBe(true);
+    expect(s.getState().screen).toBe('scene');
+    expect(s.getState().stageMode).toBe('3d');
+    s.getState().setCloudPanel(false);
+    expect(s.getState().cloudPanelOpen).toBe(false);
+  });
 });

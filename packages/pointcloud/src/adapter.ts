@@ -109,7 +109,7 @@ export function createPointcloudAdapter(
         );
       }
       const m = manager;
-      m.addLayer(layer.id, chunks, baseSize);
+      m.addLayer(layer.id, chunks, baseSize, layer.format === 'png-packed');
       if (!layer.visible) m.setVisible(layer.id, false);
       return {
         setVisible: (v) => {

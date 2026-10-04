@@ -11,6 +11,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMedia } from '../media';
 import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
+import { flightPathShown, toggleFlightPath } from '../workspace/flightPaths';
+import { updateFlightPaths, useFlightPathModel } from '../workspace/pathModel';
 
 interface NavDef {
   screen: Screen;
@@ -174,6 +176,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   const selection = useWorkspace((s) => s.selection);
   const activeClip = useWorkspace((s) => s.activeClip);
   const { durations } = useMedia(project);
+  const paths = useFlightPathModel();
   const groups = useMemo(
     () => (project ? buildDatasetTree(project.manifest, issues, durations) : []),
     [project, issues, durations],
@@ -208,6 +211,19 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
         collapsed={collapsed}
         onToggleVisible={(id, visible) => {
           workspace.getState().setLayerVisible(id, visible);
+        }}
+        flightPath={
+          paths
+            ? {
+                shown: (id) => flightPathShown(paths.pref, id, paths.activeFlight),
+                onToggle: (id) => {
+                  updateFlightPaths((p, m) => toggleFlightPath(p, id, m.flights, m.activeFlight));
+                },
+              }
+            : undefined
+        }
+        onLayerSettings={() => {
+          shell.getState().openCloudPanel();
         }}
         onSelect={onSelect}
         onRailGroup={() => {

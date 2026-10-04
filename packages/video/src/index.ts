@@ -43,9 +43,12 @@ export {
 export {
   registerVideoAdapters,
   setCameraMode,
+  setFlightPaths,
   setProjection,
   videoRig,
   type CameraMode,
+  type FlightPathMode,
+  type FlightPathOptions,
   type VideoRig,
 } from './rig';
 export { VideoWindow, type VideoWindowProps } from './VideoWindow';

@@ -1,9 +1,12 @@
+import { COLOUR_MODES, pointcloudSettings } from '@aio/pointcloud';
 import type { Layer } from '@aio/schema';
 import { CommandPalette, type IconName, type PaletteCommand } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useMemo } from 'react';
 import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
+import { PATH_MODES, setPathMode, togglePaths } from '../workspace/flightPaths';
+import { updateFlightPaths } from '../workspace/pathModel';
 import { selectClip } from './Sidebar';
 
 const LAYER_ICON: Record<Layer['kind'], IconName> = {
@@ -120,6 +123,60 @@ export function Palette() {
           ws.flyTo({ kind: 'home' });
         }),
       );
+      const layers = project.manifest.layers;
+      const clouds = layers.filter((l) => l.kind === 'pointcloud');
+      if (clouds.length > 0) {
+        const rgb = clouds.some((l) => l.format === 'png-packed');
+        for (const m of COLOUR_MODES) {
+          if (m.id === 'rgb' && !rgb) continue;
+          list.push({
+            id: `cloud-colour:${m.id}`,
+            title: `Colour point cloud by ${m.id === 'rgb' ? 'RGB' : m.label.toLowerCase()}`,
+            group: 'Actions',
+            icon: 'cloud',
+            keywords: ['colour', 'color', 'colorize', 'colorization', 'point cloud', m.hint],
+            hint: 'Point cloud',
+            run: scene(() => {
+              pointcloudSettings.getState().setColourMode(m.id);
+              // a hidden cloud would show nothing: bring it in
+              if (clouds.every((l) => hidden[l.id]))
+                for (const l of clouds) ws.setLayerVisible(l.id, true);
+            }),
+          });
+        }
+        list.push({
+          id: 'cloud-panel',
+          title: 'Point cloud display: colour, size, budget',
+          group: 'Actions',
+          icon: 'cloud',
+          keywords: ['colour', 'color', 'elevation', 'eye-dome', 'EDL', 'points'],
+          run: () => {
+            s.openCloudPanel();
+          },
+        });
+      }
+      if (layers.some((l) => l.kind === 'video')) {
+        action(
+          'paths',
+          'Turn flight paths off or on',
+          'path',
+          scene(() => {
+            updateFlightPaths(togglePaths);
+          }),
+          'P',
+        );
+        for (const m of PATH_MODES)
+          list.push({
+            id: `paths:${m.mode}`,
+            title: `Flight paths: ${m.label.toLowerCase()}`,
+            group: 'Actions',
+            icon: 'path',
+            keywords: ['flight path', 'track', 'trajectory', m.hint],
+            run: scene(() => {
+              updateFlightPaths((p) => setPathMode(p, m.mode));
+            }),
+          });
+      }
       action('close', 'Close project', 'x', s.closeProject);
     }
     for (const e of library ?? []) {

@@ -13,7 +13,8 @@ registerPointcloudAdapters(); // once, at app start, next to registerEngineAdapt
 // SceneView then creates a layer for every manifest layer of kind "pointcloud".
 
 const hit = pickPoint(handle, { x: ndcX, y: ndcY }); // nearest visible point within 6 px
-// <PointCloudControls /> anywhere in the UI: colour mode, point size, budget, EDL toggle
+// <PointCloudControls /> anywhere in the UI: colour by RGB / Elevation / Intensity / Flight, point size, budget, EDL
+// <ElevationLegend range={useElevationRange()} toElevation={(y) => ...} /> on the stage
 ```
 
 Formats: `kit-packed` and `png-packed`. `copc` and `potree2` layers are rejected with a clear error for now.
@@ -93,7 +94,8 @@ The cloud is split into chunks; each chunk is a lossless PNG whose pixels carry 
 
 - **Workers.** All decoding runs in a pool of module workers (`src/worker.ts`); the main thread never decodes. The worker fetches the URL itself, decodes PNGs with `createImageBitmap` + `OffscreenCanvas`, and posts back transferable buffers: quantised positions (int16 or uint16, scaled on the GPU through the object transform), colours or intensities, and bounds.
 - **LOD and budget.** `selectChunks` ranks every chunk of every cloud in the scene by angular size (half-diagonal over distance), always keeps lod 0, and fills the global budget (default 6 M points). Loaded chunks outside the selection stay until the total passes budget x 1.1, then the farthest unload. Up to four decodes run at a time; each landing chunk calls `requestRender()`.
-- **Material.** Size attenuation (`size * pxPerMetre / depth`) clamped to 1..`maxPixels`; round points; colour modes `rgb`, `intensity`, `height` (turbo-like ramp over the cloud height range) and `flight`. A cloud without RGB draws `rgb` as tinted intensity; a cloud without intensity draws `intensity` as luminance. Honours `renderer.clippingPlanes` (the shared section planes) and the logarithmic depth buffer.
+- **Material.** Size attenuation (`size * pxPerMetre / depth`) clamped to 1..`maxPixels`; round points; colour modes `rgb`, `height` (shown as Elevation: the Turbo ramp from `ramp.ts` over the height range of the loaded, visible chunks), `intensity` and `flight`. A cloud without RGB draws `rgb` and `intensity` as its tinted intensity, and the controls disable RGB for it; a cloud without intensity draws `intensity` as luminance.
+- **Elevation legend.** `useElevationRange()` gives the range while clouds are coloured by elevation (null otherwise); `<ElevationLegend range toElevation />` draws the same ramp with the top, middle and bottom in metres. `pointcloudStats` also reports whether the clouds carry RGB. Honours `renderer.clippingPlanes` (the shared section planes) and the logarithmic depth buffer.
 - **EDL.** When on, the clouds render into an offscreen target (colour + depth texture) from a full-screen composite quad's `onBeforeRender`, so the pass runs inside the engine's own `renderer.render` call with the final camera matrices. The composite shades by the log-depth difference to 8 neighbours (Potree's EDL), and writes `gl_FragDepth` from the cloud depth so meshes and clouds still occlude each other correctly.
 - **Picking.** `pickPoint(handle, ndc, radiusPx = 6)` projects the loaded points of chunks near the ray and returns the front-most point within the pixel radius (skipping clipped points).
 

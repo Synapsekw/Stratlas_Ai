@@ -896,6 +896,14 @@ select.input option {
 .titem .eye.off {
   color: var(--fg-4);
 }
+/* a row action (point cloud settings): always in view, quieter than a hover eye */
+.titem .eye.tact {
+  opacity: 0.7;
+}
+.titem:hover .eye.tact,
+.titem .eye.tact:focus-visible {
+  opacity: 1;
+}
 .titem .eye-sp {
   width: 20px;
   flex: none;

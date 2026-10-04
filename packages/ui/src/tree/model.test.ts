@@ -84,6 +84,7 @@ describe('flights in the dataset tree', () => {
     expect(video?.items).toEqual([
       {
         id: 'flight:flights/f101.json@' + String(T0),
+        flightId: 'flights/f101.json@' + String(T0),
         name: 'Flight 101 · Roof',
         meta: '1:24',
         children: [
