@@ -385,7 +385,37 @@ function DataFolder() {
           </button>
         </div>
       </div>
+      <PipelinePack dataRoot={dataRoot} />
     </>
+  );
+}
+
+function PipelinePack({ dataRoot }: { dataRoot: string }) {
+  const list = useCall('jobs:list', {}, dataRoot);
+  const runtime = list?.ok ? list.value.runtime : null;
+  return (
+    <div className="sblock">
+      <h2>Pipeline pack</h2>
+      <p className="help">
+        Builder pipelines run in a separately installed Python pack, found in{' '}
+        <span className="mono">runtime\pipeline-pack-&lt;version&gt;\</span> inside the data folder.
+      </p>
+      <div className="path-row" data-testid="pipeline-pack">
+        <Icon name={runtime?.found ? 'check' : 'warn'} size={14} className="faint" />
+        {list === null ? (
+          <span className="faint">Looking</span>
+        ) : !list.ok ? (
+          <span>{list.error}</span>
+        ) : runtime?.found ? (
+          <span>
+            Version <b className="mono">{runtime.version}</b>{' '}
+            <span className="mono faint">{runtime.dir}</span>
+          </span>
+        ) : (
+          <span>{runtime?.problem}</span>
+        )}
+      </div>
+    </div>
   );
 }
 

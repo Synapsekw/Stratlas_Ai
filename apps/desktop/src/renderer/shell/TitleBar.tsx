@@ -12,6 +12,7 @@ const VIEW_LABEL: Record<Screen, string> = {
   issues: 'Issues',
   media: 'Media',
   reports: 'Reports',
+  jobs: 'Jobs',
   settings: 'Settings',
 };
 
