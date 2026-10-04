@@ -1,6 +1,15 @@
 import { useState } from 'react';
+import { useT } from '../i18n';
 import { Icon } from '../icons/Icon';
-import type { TreeGroup, TreeGroupKind, TreeItem } from './model';
+import {
+  eyeTarget,
+  groupLayerIds,
+  visibilityOf,
+  type TreeGroup,
+  type TreeGroupKind,
+  type TreeItem,
+  type Visibility,
+} from './model';
 
 export interface DatasetTreeProps {
   groups: readonly TreeGroup[];
@@ -10,6 +19,11 @@ export interface DatasetTreeProps {
   /** Icon rail mode: groups show as icons with tooltips. */
   collapsed: boolean;
   onToggleVisible: (layerId: string, visible: boolean) => void;
+  /**
+   * Show or hide many layers at once (one store update). With it, every group header gets an eye
+   * over its layers.
+   */
+  onSetVisible?: ((layerIds: string[], visible: boolean) => void) | undefined;
   onSelect: (item: TreeItem) => void;
   /** Called when a group is activated in rail mode (expand the sidebar and open the group). */
   onRailGroup?: (kind: TreeGroupKind) => void;
@@ -29,9 +43,50 @@ const DEFAULT_OPEN: TreeGroupKind[] = ['models', 'maps', 'video', 'annotations']
 /** Rows shown per group before a "more" row; selected and active rows always show. */
 const ROW_LIMIT = 8;
 
+const EYE_ICON = { all: 'eye', none: 'eye-off', mixed: 'eye-mixed' } as const;
+
+/**
+ * An eye over many layers: open when all show, crossed when none do, half-filled when some do.
+ * A click hides them all when all show, else shows them all.
+ */
+export function VisibilityEye({
+  layerIds,
+  hidden,
+  onSet,
+  labels,
+  className,
+}: {
+  layerIds: readonly string[];
+  hidden: Readonly<Record<string, true>>;
+  onSet: (layerIds: string[], visible: boolean) => void;
+  /** Accessible names for the click in each state (hide all; show all; show all from mixed). */
+  labels: Record<Visibility, string>;
+  className?: string;
+}) {
+  if (layerIds.length === 0) return null;
+  const v = visibilityOf(layerIds, hidden);
+  return (
+    <button
+      type="button"
+      className={`eye${v === 'all' ? '' : v === 'none' ? ' off' : ' mixed'}${className ? ` ${className}` : ''}`}
+      aria-label={labels[v]}
+      aria-pressed={v === 'all' ? true : v === 'none' ? false : 'mixed'}
+      title={labels[v]}
+      data-visibility={v}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSet([...layerIds], eyeTarget(v));
+      }}
+    >
+      <Icon name={EYE_ICON[v]} size={14} />
+    </button>
+  );
+}
+
 /** Datasets of the open project grouped by kind, with counts, visibility and selection. */
 export function DatasetTree(props: DatasetTreeProps) {
   const { groups, hidden, selectedId, activeClip, collapsed } = props;
+  const t = useT();
   const [open, setOpen] = useState<Partial<Record<TreeGroupKind, boolean>>>({});
   const isOpen = (k: TreeGroupKind) => open[k] ?? (props.defaultOpen ?? DEFAULT_OPEN).includes(k);
   const [showAll, setShowAll] = useState<Partial<Record<TreeGroupKind, boolean>>>({});
@@ -171,25 +226,39 @@ export function DatasetTree(props: DatasetTreeProps) {
         const hiddenRows = g.items.length - rows.length;
         return (
           <div key={g.kind} role="treeitem" aria-expanded={expanded} aria-selected={false}>
-            <button
-              type="button"
-              className="tgroup-btn"
-              aria-expanded={expanded}
-              onClick={() => {
-                if (collapsed) {
-                  setOpen((o) => ({ ...o, [g.kind]: true }));
-                  props.onRailGroup?.(g.kind);
-                } else setOpen((o) => ({ ...o, [g.kind]: !isOpen(g.kind) }));
-              }}
-            >
-              <Icon name="chev-r" size={12} className="chev" />
-              <Icon name={g.icon} />
-              <span className="glbl">{g.label}</span>
-              <span className="gcount">{g.count}</span>
-              <span className="tip">
-                {g.label} · {g.count}
-              </span>
-            </button>
+            <div className="tgroup-row">
+              <button
+                type="button"
+                className="tgroup-btn"
+                aria-expanded={expanded}
+                onClick={() => {
+                  if (collapsed) {
+                    setOpen((o) => ({ ...o, [g.kind]: true }));
+                    props.onRailGroup?.(g.kind);
+                  } else setOpen((o) => ({ ...o, [g.kind]: !isOpen(g.kind) }));
+                }}
+              >
+                <Icon name="chev-r" size={12} className="chev" />
+                <Icon name={g.icon} />
+                <span className="glbl">{g.label}</span>
+                <span className="gcount">{g.count}</span>
+                <span className="tip">
+                  {g.label} · {g.count}
+                </span>
+              </button>
+              {props.onSetVisible && !collapsed && (
+                <VisibilityEye
+                  layerIds={groupLayerIds(g)}
+                  hidden={hidden}
+                  onSet={props.onSetVisible}
+                  labels={{
+                    all: t('tree.eye.hideGroup', { group: g.label }),
+                    none: t('tree.eye.showGroup', { group: g.label }),
+                    mixed: t('tree.eye.showGroupMixed', { group: g.label }),
+                  }}
+                />
+              )}
+            </div>
             {expanded && (
               <div className="titems" role="group">
                 {rows.map((it) => (it.children ? flightRow(it, it.children) : row(it, false)))}

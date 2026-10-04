@@ -4,7 +4,9 @@ import {
   formatDate,
   Icon,
   t,
+  treeLayerIds,
   useT,
+  VisibilityEye,
   type IconName,
   type MessageKey,
   type TreeItem,
@@ -196,6 +198,10 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
       ? (selection.layer ?? selection.id)
       : null;
 
+  const setVisible = (ids: string[], visible: boolean) => {
+    workspace.getState().setLayersVisible(ids, visible);
+  };
+
   const onSelect = (it: TreeItem) => {
     if (!it.layerId) {
       shell.getState().go('issues');
@@ -209,7 +215,19 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     <div className="sb-sec sb-tree">
       <div className="tree-h sb-hide">
         <span className="caps">Datasets</span>
-        <span className="mono faint">{project.manifest.layers.length}</span>
+        <span className="tree-h-end">
+          <span className="mono faint">{project.manifest.layers.length}</span>
+          <VisibilityEye
+            layerIds={treeLayerIds(groups)}
+            hidden={hidden}
+            onSet={setVisible}
+            labels={{
+              all: t('tree.eye.hideAll'),
+              none: t('tree.eye.showAll'),
+              mixed: t('tree.eye.showAllMixed'),
+            }}
+          />
+        </span>
       </div>
       <DatasetTree
         groups={groups}
@@ -220,6 +238,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
         onToggleVisible={(id, visible) => {
           workspace.getState().setLayerVisible(id, visible);
         }}
+        onSetVisible={setVisible}
         flightPath={
           paths
             ? {

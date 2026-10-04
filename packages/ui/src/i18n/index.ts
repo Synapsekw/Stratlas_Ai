@@ -78,6 +78,8 @@ export function useT(): typeof t {
       };
     },
     () => locale,
+    // static rendering (tests, exports) reads the current locale too
+    () => locale,
   );
   return t;
 }

@@ -1,7 +1,24 @@
 import { DEFAULT_SECTION } from '@aio/engine';
-import { Box3, Plane, Vector3 } from 'three';
+import {
+  Box3,
+  BoxGeometry,
+  Group,
+  Mesh,
+  MeshBasicMaterial,
+  MeshStandardMaterial,
+  Plane,
+  Vector3,
+} from 'three';
 import { describe, expect, it } from 'vitest';
-import { bearingDeg, cutawayFor, insideAsset, insideViewPose, sameCut } from './cutaway';
+import {
+  bearingDeg,
+  cutawayFor,
+  insideAsset,
+  insideViewPose,
+  makeSeeThrough,
+  parseCutawayPref,
+  sameCut,
+} from './cutaway';
 
 const DEG = Math.PI / 180;
 
@@ -67,5 +84,73 @@ describe('cut-away for a drone inside the asset', () => {
     // straight down: still a usable direction
     const down = insideViewPose(drone, new Vector3(0, -1, 0), 8);
     expect(Number.isFinite(down.position.z)).toBe(true);
+  });
+});
+
+describe('the see-through asset', () => {
+  /** A tank: two meshes sharing one material, one with a material array, one already blended. */
+  function tank() {
+    const shell = new MeshStandardMaterial({ opacity: 1 });
+    const roof = new MeshStandardMaterial({ opacity: 0.8, transparent: true });
+    const ladder = new MeshBasicMaterial();
+    ladder.depthWrite = false;
+    const geo = new BoxGeometry();
+    const root = new Group();
+    root.add(new Mesh(geo, shell), new Mesh(geo, shell), new Mesh(geo, [roof, ladder]));
+    return { root, shell, roof, ladder };
+  }
+  const snapshot = (...ms: { transparent: boolean; opacity: number; depthWrite: boolean }[]) =>
+    ms.map((m) => ({ transparent: m.transparent, opacity: m.opacity, depthWrite: m.depthWrite }));
+
+  it('blends every material once, scaled by its own opacity, without writing depth', () => {
+    const { root, shell, roof, ladder } = tank();
+    const look = makeSeeThrough(root, 0.4);
+    expect(look.count).toBe(3);
+    for (const m of [shell, roof, ladder]) {
+      expect(m.transparent).toBe(true);
+      expect(m.depthWrite).toBe(false);
+    }
+    expect(shell.opacity).toBeCloseTo(0.4);
+    expect(roof.opacity).toBeCloseTo(0.32);
+    look.setOpacity(0.7);
+    expect(shell.opacity).toBeCloseTo(0.7);
+    expect(roof.opacity).toBeCloseTo(0.56);
+  });
+
+  it('restores exactly what the materials were, also after opacity changes', () => {
+    const { root, shell, roof, ladder } = tank();
+    const before = snapshot(shell, roof, ladder);
+    const versions = [shell, roof, ladder].map((m) => m.version);
+    const look = makeSeeThrough(root, 0.25);
+    look.setOpacity(0.9);
+    look.restore();
+    expect(snapshot(shell, roof, ladder)).toEqual(before);
+    // the renderer rebuilds the programs (blending changed back)
+    [shell, roof, ladder].forEach((m, i) => {
+      expect(m.version).toBeGreaterThan(versions[i] ?? 0);
+    });
+    // restoring twice or changing opacity afterwards does nothing
+    look.restore();
+    look.setOpacity(0.1);
+    expect(snapshot(shell, roof, ladder)).toEqual(before);
+  });
+
+  it('keeps the opacity within usable limits', () => {
+    const { root, shell } = tank();
+    makeSeeThrough(root, 0);
+    expect(shell.opacity).toBeCloseTo(0.05);
+    const again = tank();
+    makeSeeThrough(again.root, 3);
+    expect(again.shell.opacity).toBeCloseTo(0.95);
+  });
+
+  it('reads back a remembered mode, or nothing', () => {
+    expect(parseCutawayPref({ mode: 'transparent', opacity: 0.5 })).toEqual({
+      mode: 'transparent',
+      opacity: 0.5,
+    });
+    expect(parseCutawayPref({ mode: 'cut' })?.opacity).toBeCloseTo(0.3);
+    expect(parseCutawayPref({ mode: 'auto' })).toBeNull();
+    expect(parseCutawayPref(null)).toBeNull();
   });
 });

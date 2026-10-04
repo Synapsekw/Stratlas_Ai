@@ -793,6 +793,12 @@ select.input option {
   padding: 6px 10px 4px;
   height: 30px;
 }
+.tree-h-end {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-inline-end: -6px;
+}
 .tree-h .caps {
   color: var(--fg-3);
 }
@@ -826,6 +832,55 @@ select.input option {
   margin-inline-start: auto;
   font: 500 11px/1 var(--f-mono);
   color: var(--fg-3);
+}
+/* a group header with its eye over all the group's layers */
+.tgroup-row {
+  display: flex;
+  align-items: center;
+  border-radius: var(--r-4);
+}
+.tgroup-row .tgroup-btn {
+  flex: 1;
+  min-width: 0;
+}
+.tgroup-row:hover {
+  background: var(--bg-2);
+}
+.tgroup-row:hover .tgroup-btn {
+  background: none;
+}
+.tgroup-row > .eye,
+.tree-h .eye {
+  color: var(--fg-3);
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: var(--r-2);
+}
+.tgroup-row > .eye {
+  margin-inline-end: 4px;
+  opacity: 0;
+}
+.tgroup-row:hover > .eye,
+.tgroup-row > .eye:focus-visible,
+.tgroup-row > .eye.off,
+.tgroup-row > .eye.mixed {
+  opacity: 1;
+}
+.tgroup-row > .eye:hover,
+.tree-h .eye:hover {
+  color: var(--fg-0);
+  background: var(--bg-3);
+}
+.tgroup-row > .eye.off,
+.tree-h .eye.off {
+  color: var(--fg-4);
+}
+.tgroup-row > .eye.mixed,
+.tree-h .eye.mixed {
+  color: var(--fg-2);
 }
 .titems {
   padding: 2px 0 6px;

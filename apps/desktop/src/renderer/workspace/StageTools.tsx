@@ -25,7 +25,8 @@ import {
 import { shell, useShell } from '../shell';
 import { PATH_MODES, setPathMode } from './flightPaths';
 import { updateFlightPaths, useFlightPathModel } from './pathModel';
-import { insideView, stopCutaway, useCutawayState } from './useCutaway';
+import { CutawayPanel } from './CutawayTool';
+import { useCutawayPref } from './useCutaway';
 
 /** The live 3D stage (view presets, tools, section), re-rendering on tool and section changes. */
 export function useEngineStage(): EngineStage | null {
@@ -543,8 +544,8 @@ const CAMERA_MODES: { mode: CameraMode; label: string; icon: IconName }[] = [
 export function VideoTools({ stage, map }: { stage: EngineStage | null; map: boolean }) {
   const activeClip = useWorkspace((s) => s.activeClip);
   const videoHidden = useShell((s) => s.videoHidden);
-  const inside = useCutawayState((s) => s.inside);
-  const engaged = useCutawayState((s) => s.engaged);
+  const cut = useCutawayPref();
+  const t = useT();
   const showVideo = activeClip !== null && !videoHidden;
   const mode = stage && activeClip ? videoRig(stage).cameraMode : 'free';
   const [, bump] = useReducer((n: number) => n + 1, 0);
@@ -577,27 +578,15 @@ export function VideoTools({ stage, map }: { stage: EngineStage | null; map: boo
           />
         ))}
       {!map && (
-        <Tool
+        <PopTool
           icon="cutaway"
-          label={
-            inside
-              ? 'Inside view: cut the asset open at the drone'
-              : 'Inside view (drone is outside)'
-          }
-          keys="C"
-          pressed={engaged}
-          disabled={!stage || !inside}
-          onClick={() => {
-            if (!stage) return;
-            if (engaged) stopCutaway();
-            else {
-              if (videoRig(stage).cameraMode === 'drone') setCameraMode(stage, 'free');
-              insideView(stage);
-            }
-            stage.requestRender();
-            bump();
-          }}
-        />
+          label={t('stage.cutaway.tool')}
+          pressed={cut.mode !== 'off'}
+          disabled={!stage}
+          wide
+        >
+          <CutawayPanel stage={stage} />
+        </PopTool>
       )}
     </>
   );

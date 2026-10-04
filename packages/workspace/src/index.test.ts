@@ -52,6 +52,24 @@ describe('workspace store', () => {
     expect(ws.getState().isLayerVisible('a')).toBe(true);
   });
 
+  it('shows and hides many layers in one update', () => {
+    const ws = createWorkspace();
+    ws.getState().setLayerVisible('c', false);
+    let updates = 0;
+    const off = ws.subscribe(() => {
+      updates += 1;
+    });
+    ws.getState().setLayersVisible(['a', 'b', 'c'], false);
+    expect(updates).toBe(1);
+    expect(ws.getState().hidden).toEqual({ a: true, b: true, c: true });
+    ws.getState().setLayersVisible(['a', 'b', 'c'], false);
+    expect(updates).toBe(1);
+    ws.getState().setLayersVisible(['a', 'c'], true);
+    expect(updates).toBe(2);
+    expect(ws.getState().hidden).toEqual({ b: true });
+    off();
+  });
+
   it('rejects an absurd playback rate', () => {
     expect(() => {
       createWorkspace().getState().setRate(0);

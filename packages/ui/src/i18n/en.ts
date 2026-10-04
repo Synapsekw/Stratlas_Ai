@@ -61,6 +61,71 @@ export const en = {
   'library.count_other': '{count} projects',
   'library.build': '{product} {version} · built {date}',
 
+  // Dataset tree: eyes over all layers and over a group
+  'tree.eye.all': 'All layers',
+  'tree.eye.hideAll': 'Hide all layers',
+  'tree.eye.showAll': 'Show all layers',
+  'tree.eye.showAllMixed': 'Show all layers (some are hidden)',
+  'tree.eye.hideGroup': '{group}: hide all',
+  'tree.eye.showGroup': '{group}: show all',
+  'tree.eye.showGroupMixed': '{group}: show all (some are hidden)',
+
+  // Scene stage: seeing inside the asset (cut or see-through, never automatic)
+  'stage.cutaway.tool': 'See inside the asset: cut or transparent',
+  'stage.cutaway.title': 'Inside the asset',
+  'stage.cutaway.modes': 'Asset view',
+  'stage.cutaway.off': 'Off',
+  'stage.cutaway.cut': 'Cut',
+  'stage.cutaway.transparent': 'Transparent',
+  'stage.cutaway.offHint': 'The asset is drawn solid. Nothing is cut or faded automatically.',
+  'stage.cutaway.cutHint':
+    'Cuts the asset open toward you: at the drone while it is inside, else through the middle. Point clouds hide meanwhile.',
+  'stage.cutaway.transparentHint':
+    'Draws the asset see-through, so the drone, its path and its video inside stay visible. Point clouds hide meanwhile.',
+  'stage.cutaway.opacity': 'Opacity',
+  'stage.cutaway.insideView': 'Inside view',
+  'stage.cutaway.insideViewTip': 'Fly behind the drone and look where it looks',
+  'stage.cutaway.droneOutside': 'Inside view needs the drone inside the asset',
+  'stage.cutaway.droneInside': 'Drone inside the asset',
+  'stage.cutaway.cutAtDrone': 'Cut open at the drone, clouds hidden',
+  'stage.cutaway.cutOpen': 'Cut open, clouds hidden',
+  'stage.cutaway.seeThrough': 'Asset transparent, clouds hidden',
+  'stage.cutaway.solid': 'Solid',
+  'stage.cutaway.solidTip': 'Draw the asset solid again',
+
+  // Scene stage: what each side of the split shows
+  'stage.split.left': 'Left side shows',
+  'stage.split.right': 'Right side shows',
+  'stage.pane.3d': '3D view',
+  'stage.pane.map': 'Map',
+  'stage.pane.video': 'Video',
+  'stage.pane.photo': 'Photos',
+  'stage.pane.raster': 'Ortho and plans',
+  'stage.pane.report': 'Report',
+  'stage.pane.noClip': 'No clip is active. Pick one on the timeline or in Media.',
+  'stage.pane.noPhoto': 'This project has no photos.',
+  'stage.pane.prevPhoto': 'Previous photo',
+  'stage.pane.nextPhoto': 'Next photo',
+  'stage.pane.photoCount': '{n} of {total}',
+  'stage.pane.whichRaster': 'Raster layer',
+  'stage.pane.whichReport': 'Report file',
+  'stage.pane.loading': 'Loading',
+  'stage.pane.rasterError': 'The raster could not be shown ({error}).',
+  'stage.pane.fit': 'Fit the whole raster',
+
+  // Scene stage: floating video window
+  'stage.video.window': 'Video {name}',
+  'stage.video.titleBar': 'Video window title bar',
+  'stage.video.moveHint':
+    'Drag to move, double-click to reset. Arrow keys move, plus and minus resize.',
+  'stage.video.resize': 'Resize the video window',
+  'stage.video.float': 'Float over the stage',
+  'stage.video.floatLabel': 'Float the video window',
+  'stage.video.dock': 'Dock beside the stage',
+  'stage.video.dockLabel': 'Dock the video window',
+  'stage.video.hide': 'Hide video window',
+  'stage.video.hideLabel': 'Hide the video window',
+
   // Settings navigation
   'settings.title': 'Settings',
   'settings.sections': 'Settings sections',
