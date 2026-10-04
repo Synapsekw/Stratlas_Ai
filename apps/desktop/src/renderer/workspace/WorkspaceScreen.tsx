@@ -1,6 +1,7 @@
 import { AgentPanel } from '@aio/ai';
 import { IssueDetail, IssueRegister } from '@aio/annotate';
 import { buildTimelineModel, formatDate, neighbourClip, Timeline } from '@aio/ui';
+import { useVolumetric, VolumesPanel } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useMemo, useState } from 'react';
 import { useMedia } from '../media';
@@ -75,13 +76,33 @@ function WorkspaceTimeline() {
 
 /** Top of the right panel: the selection (issue detail for an issue) or the issue register. */
 function ContextPanel() {
-  const [tab, setTab] = useState<'selection' | 'issues'>('selection');
+  const [chosen, setTab] = useState<'selection' | 'issues' | 'volumes' | null>(null);
   const issueId = useWorkspace((s) => (s.selection?.kind === 'issue' ? s.selection.id : null));
   const count = useWorkspace((s) => s.issues.length);
-  const tall = tab === 'issues' || issueId !== null;
+  const volumes = useVolumetric((s) => s.status !== 'none' && s.status !== 'idle');
+  const piles = useVolumetric((s) => s.piles.length);
+  // volumetric projects open on their volumes
+  const tab =
+    chosen === 'volumes' && !volumes
+      ? 'selection'
+      : (chosen ?? (volumes ? 'volumes' : 'selection'));
+  const tall = tab === 'issues' || tab === 'volumes' || issueId !== null;
   return (
-    <div className={`ctx-wrap${tall ? ' tall' : ''}`}>
+    <div className={`ctx-wrap${tall ? ' tall' : ''}${tab === 'volumes' ? ' vol' : ''}`}>
       <div className="seg ctx-tabs" role="tablist" aria-label="Context">
+        {volumes && (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'volumes'}
+            aria-pressed={tab === 'volumes'}
+            onClick={() => {
+              setTab('volumes');
+            }}
+          >
+            Volumes <span className="mono faint">{piles}</span>
+          </button>
+        )}
         <button
           type="button"
           role="tab"
@@ -105,7 +126,9 @@ function ContextPanel() {
           Issues <span className="mono faint">{count}</span>
         </button>
       </div>
-      {tab === 'issues' ? (
+      {tab === 'volumes' ? (
+        <VolumesPanel className="ctx-fill" />
+      ) : tab === 'issues' ? (
         <IssueRegister className="ctx-fill" />
       ) : issueId ? (
         <IssueDetail issueId={issueId} className="ctx-fill" />
@@ -120,10 +143,14 @@ export function WorkspaceScreen() {
   const hasProject = useWorkspace((s) => s.project !== null);
   const focused = useWorkspace((s) => s.focusedWindow);
   const rightCollapsed = useShell((s) => s.rightCollapsed);
+  const volumes = useVolumetric((s) => s.status === 'ready');
   if (!hasProject) return <NoProject view="Scene" />;
 
   return (
-    <section className={`screen ws${rightCollapsed ? ' right-off' : ''}`} aria-label="Scene">
+    <section
+      className={`screen ws${rightCollapsed ? ' right-off' : ''}${volumes ? ' ws-vol' : ''}`}
+      aria-label="Scene"
+    >
       <Stage />
       <div className="tl-wrap">
         <WorkspaceTimeline />

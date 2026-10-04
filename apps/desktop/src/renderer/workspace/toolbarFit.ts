@@ -1,11 +1,12 @@
 /** Stage toolbar groups and how many fit on one row. */
-export type GroupId = 'view' | 'measure' | 'display' | 'clouds' | 'video' | 'annotate';
+export type GroupId = 'view' | 'measure' | 'display' | 'clouds' | 'volumes' | 'video' | 'annotate';
 
 export const GROUP_LABEL: Record<GroupId, string> = {
   view: 'View',
   measure: 'Measure and section',
   display: 'Labels and layers',
   clouds: 'Point clouds',
+  volumes: 'Volumes',
   video: 'Video and camera',
   annotate: 'Annotate',
 };
@@ -14,7 +15,15 @@ export const GROUP_LABEL: Record<GroupId, string> = {
  * Groups move into the overflow menu in this order as the stage narrows. The point cloud control
  * stays on the bar almost to the end: tucked under More nobody found it.
  */
-const COLLAPSE_ORDER: GroupId[] = ['display', 'video', 'view', 'measure', 'clouds', 'annotate'];
+const COLLAPSE_ORDER: GroupId[] = [
+  'display',
+  'video',
+  'view',
+  'measure',
+  'clouds',
+  'volumes',
+  'annotate',
+];
 export const GAP = 8;
 const MORE_W = 36;
 

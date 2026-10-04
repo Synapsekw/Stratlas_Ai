@@ -1,6 +1,7 @@
 import { AnnotateStyles } from '@aio/annotate';
 import { buildTimelineModel } from '@aio/ui';
 import { getPlayer } from '@aio/video';
+import { volumetric, VolumetricStyles } from '@aio/volumetric';
 import { workspace } from '@aio/workspace';
 import { useEffect } from 'react';
 import { getMedia } from './media';
@@ -119,10 +120,15 @@ export function App() {
       videoDrivesClock,
     );
     const stopContinue = continueAcrossClips();
+    // a volumetric project opens its volumes (volumes.json beside the manifest)
+    const stopVolumes = workspace.subscribe((s, prev) => {
+      if (s.project !== prev.project) void volumetric.getState().load();
+    });
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       stopPlayback();
       stopContinue();
+      stopVolumes();
     };
   }, []);
 
@@ -133,6 +139,7 @@ export function App() {
   return (
     <div className="app" data-sb={collapsed ? 'collapsed' : 'expanded'} data-screen={screen}>
       <AnnotateStyles />
+      <VolumetricStyles />
       <TitleBar />
       <Sidebar />
       <main className="main">
