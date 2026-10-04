@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createPinDisplay } from './pinDisplay';
+import { createPinDisplay, togglePinFilter } from './pinDisplay';
 
 function memory() {
   const m = new Map<string, string>();
@@ -24,6 +24,30 @@ describe('pin display settings', () => {
     expect(createPinDisplay(store).getState()).toMatchObject({ filter: 2, heat: true });
     a.getState().setFilter('off');
     expect(createPinDisplay(store).getState().filter).toBe('off');
+  });
+
+  it('turns the pins off and back on to the last filter in one step', () => {
+    expect(togglePinFilter('all', 'all')).toBe('off');
+    expect(togglePinFilter('off', 2)).toBe(2);
+    const store = memory();
+    const d = createPinDisplay(store);
+    d.getState().setFilter(2);
+    d.getState().togglePins();
+    expect(d.getState().filter).toBe('off');
+    d.getState().togglePins();
+    expect(d.getState().filter).toBe(2);
+    // the popover and the toggle share one setting: Off in the popover, then the toggle
+    d.getState().setFilter('all');
+    d.getState().setFilter('off');
+    d.getState().togglePins();
+    expect(d.getState().filter).toBe('all');
+    // the filter to return to is remembered with the pins off
+    d.getState().setFilter(3);
+    d.getState().togglePins();
+    const again = createPinDisplay(store);
+    expect(again.getState()).toMatchObject({ filter: 'off', lastOn: 3 });
+    again.getState().togglePins();
+    expect(again.getState().filter).toBe(3);
   });
 
   it('survives storage that throws', () => {

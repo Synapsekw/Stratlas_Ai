@@ -70,15 +70,26 @@ export {
   type PinFilter,
   type PinItem,
   type PinLabel,
+  type PinLayout,
   type ScreenCluster,
   type ScreenPin,
 } from './tools/declutter';
 export {
   createPinDisplay,
   pinDisplay,
+  togglePinFilter,
   usePinDisplay,
   type PinDisplayState,
+  type ShownFilter,
 } from './tools/pinDisplay';
+export {
+  createOcclusion,
+  occlusionSlack,
+  pointClear,
+  type DepthSnapshot,
+  type OcclusionFactory,
+  type OcclusionSource,
+} from './tools/occlusion';
 export * as imageGeometry from './image/geometry';
 
 // Import helpers (stream S10)

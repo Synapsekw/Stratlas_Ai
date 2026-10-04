@@ -42,6 +42,20 @@ export const en = {
   'titlebar.readOnlyPackageTip': 'Opened from {file}. Nothing in this package can be changed.',
   'titlebar.packageTip': 'Opened in place from {file}. Issues are not saved into the package.',
 
+  // Stage tools
+  'stage.pins.show': 'Show issue pins',
+  'stage.pins.hide': 'Hide issue pins',
+  'stage.pins.toggle': 'Turn issue pins off or on',
+
+  // Timeline
+  'timeline.title': 'Timeline',
+  'timeline.show': 'Show the timeline',
+  'timeline.hide': 'Hide the timeline',
+  'timeline.toggle': 'Show or hide the timeline',
+  'timeline.noVideo': 'No video in this project',
+  'timeline.clips_one': '{count} clip',
+  'timeline.clips_other': '{count} clips',
+
   // Library
   'library.count_one': '{count} project',
   'library.count_other': '{count} projects',

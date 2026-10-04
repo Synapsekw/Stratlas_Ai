@@ -81,6 +81,16 @@ export const ICONS = {
       <path d="M5 8l5 5 5-5" />
     </>
   ),
+  chevup: (
+    <>
+      <path d="M5.5 12.5L10 8l4.5 4.5" />
+    </>
+  ),
+  chevdown: (
+    <>
+      <path d="M5.5 7.5L10 12l4.5-4.5" />
+    </>
+  ),
   updown: (
     <>
       <path d="M6.5 8L10 4.5 13.5 8M6.5 12l3.5 3.5 3.5-3.5" />

@@ -1,6 +1,6 @@
 import { AgentPanel } from '@aio/ai';
 import { IssueDetail, IssueRegister } from '@aio/annotate';
-import { buildTimelineModel, formatDate, neighbourClip, Timeline } from '@aio/ui';
+import { buildTimelineModel, formatDate, Icon, neighbourClip, Timeline, useT } from '@aio/ui';
 import { useVolumetric, VolumesPanel } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useMemo, useState } from 'react';
@@ -14,6 +14,7 @@ import { useIsRoad } from '../road/useRoadMap';
 import { NoProject } from '../screens/NoProject';
 import { SelectionCard } from './SelectionCard';
 import { Stage } from './Stage';
+import { toggleTimeline, useTimelineShown } from './timelinePref';
 
 function WorkspaceTimeline() {
   const project = useWorkspace((s) => s.project);
@@ -43,6 +44,10 @@ function WorkspaceTimeline() {
       activeClip={activeClip}
       selectedIssue={selection?.kind === 'issue' ? selection.id : null}
       context={`${capture ? `${formatDate(capture.date)} · ` : ''}UTC`}
+      hideKeys="T"
+      onHide={() => {
+        toggleTimeline(workspace.getState().project);
+      }}
       onSeek={(t) => {
         workspace.getState().setTime(t);
       }}
@@ -75,6 +80,38 @@ function WorkspaceTimeline() {
         workspace.getState().setTime(c.startMs);
       }}
     />
+  );
+}
+
+/**
+ * The timeline folded away (projects without video start like this): a thin bar that brings it
+ * back, saying why it is folded.
+ */
+function TimelineBar() {
+  const t = useT();
+  const clips = useWorkspace(
+    (s) => s.project?.manifest.layers.filter((l) => l.kind === 'video').length ?? 0,
+  );
+  return (
+    <div className="tl-bar" data-testid="timeline-bar">
+      <button
+        type="button"
+        className="tl-bar-btn"
+        aria-label={t('timeline.show')}
+        aria-keyshortcuts="T"
+        title={`${t('timeline.show')} (T)`}
+        onClick={() => {
+          toggleTimeline(workspace.getState().project);
+        }}
+      >
+        <Icon name="clock" size={14} />
+        {t('timeline.title')}
+        <Icon name="chevup" size={14} />
+      </button>
+      <span className="tl-bar-note">
+        {clips > 0 ? t('timeline.clips', { count: clips }) : t('timeline.noVideo')}
+      </span>
+    </div>
   );
 }
 
@@ -150,6 +187,8 @@ export function WorkspaceScreen() {
   const pkg = useShell((s) => s.pkg);
   const road = useIsRoad();
   const volumes = useVolumetric((s) => s.status === 'ready');
+  const project = useWorkspace((s) => s.project);
+  const timeline = useTimelineShown(project);
   if (!hasProject) return <NoProject view="Scene" />;
 
   return (
@@ -158,7 +197,9 @@ export function WorkspaceScreen() {
       aria-label="Scene"
     >
       <Stage />
-      <div className="tl-wrap">{road ? <ChainageRuler /> : <WorkspaceTimeline />}</div>
+      <div className="tl-wrap">
+        {road ? <ChainageRuler /> : timeline ? <WorkspaceTimeline /> : <TimelineBar />}
+      </div>
       <aside
         className="right"
         aria-label="Context"
