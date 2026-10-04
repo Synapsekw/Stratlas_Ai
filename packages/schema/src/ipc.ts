@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { AiProvider, AiTask, ToolRisk, WindowKind } from './agent';
 import { Issue } from './annotation';
 import { ProjectManifest } from './manifest';
+import { AiPolicy, ExportKind, PackageInfo } from './package';
 
 const Empty = z.object({}).strict();
 
@@ -18,6 +19,8 @@ export const LibraryEntry = z.object({
   thumbnail: z.string().optional(),
   captureDate: z.string().optional(),
   layerCounts: z.record(z.string(), z.number().int().nonnegative()).optional(),
+  /** Set when the entry is a single-file `.aio` package rather than a folder. */
+  package: z.object({ encrypted: z.boolean(), readOnly: z.boolean() }).optional(),
 });
 
 export const Settings = z.object({
@@ -45,9 +48,56 @@ const OpenResult = z.discriminatedUnion('ok', [
     root: z.string(),
     manifest: ProjectManifest,
     issues: z.array(Issue),
+    /** Present when the project was opened from a `.aio` package (never written to). */
+    package: PackageInfo.optional(),
   }),
-  z.object({ ok: z.literal(false), error: z.string() }),
+  z.object({
+    ok: z.literal(false),
+    error: z.string(),
+    /** The package is encrypted: ask for the passphrase and open again. */
+    needsPassphrase: z.boolean().optional(),
+  }),
 ]);
+
+/** Size of what a package would hold, per layer and in total. */
+export const PackagePlan = z.object({
+  layers: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      kind: z.string(),
+      /** Bytes only this layer brings (files shared with kept layers are not counted). */
+      bytes: z.number().int().nonnegative(),
+      files: z.number().int().nonnegative(),
+    }),
+  ),
+  /** Manifest, issues, thumbnail, report and other files every package carries. */
+  baseBytes: z.number().int().nonnegative(),
+  /** Bytes and files of the package for the requested exclusions. */
+  totalBytes: z.number().int().nonnegative(),
+  totalFiles: z.number().int().nonnegative(),
+  /** Free space on the volume of the data folder, when known. */
+  freeBytes: z.number().int().nonnegative().optional(),
+});
+
+export const PackageExportOptions = z
+  .object({
+    projectId: z.string().min(1),
+    /** Layer ids to leave out. */
+    exclude: z.array(z.string()),
+    readOnly: z.boolean(),
+    aiPolicy: AiPolicy,
+    exports: z.array(ExportKind),
+    /** AES-256 (WinZip AE-2) for every member when set. */
+    passphrase: z.string().min(8).max(256).optional(),
+    welcome: z
+      .object({
+        message: z.string().max(2000).optional(),
+        tips: z.array(z.string().min(1).max(200)).max(8).optional(),
+      })
+      .optional(),
+  })
+  .strict();
 
 export const ChatMessage = z.object({
   role: z.enum(['user', 'assistant']),
@@ -74,7 +124,12 @@ export const ipc = {
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
   },
-  'project:open': { request: z.object({ path: z.string().min(1) }).strict(), response: OpenResult },
+  'project:open': {
+    request: z
+      .object({ path: z.string().min(1), passphrase: z.string().min(1).max(256).optional() })
+      .strict(),
+    response: OpenResult,
+  },
   'project:writeIssues': {
     request: z.object({ projectId: z.string().min(1), issues: z.array(Issue) }).strict(),
     response: z.object({ ok: z.boolean(), error: z.string().optional() }),
@@ -140,6 +195,43 @@ export const ipc = {
       .strict(),
     response: z.object({ path: z.string().nullable(), error: z.string().optional() }),
   },
+  /** Pick a file (a `.aio` package) with the native dialog. */
+  'dialog:openFile': {
+    request: z
+      .object({
+        title: z.string().optional(),
+        filters: z
+          .array(z.object({ name: z.string(), extensions: z.array(z.string().min(1)) }))
+          .optional(),
+      })
+      .strict(),
+    response: z.object({ path: z.string().nullable() }),
+  },
+  /** The path the app was started with (double-clicked `.aio`), once; null afterwards. */
+  'app:takeOpenPath': { request: Empty, response: z.object({ path: z.string().nullable() }) },
+  /** Size report for a package of an open project, for the given layer exclusions. */
+  'package:plan': {
+    request: z.object({ projectId: z.string().min(1), exclude: z.array(z.string()) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), plan: PackagePlan }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /**
+   * Ask where to save, then stream the package there. Progress arrives as `package:progress`
+   * events with the same `jobId`. `path` is null when the person cancels the dialog or the job.
+   */
+  'package:export': {
+    request: z.object({ jobId: z.string().min(1), options: PackageExportOptions }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), path: z.string().nullable(), bytes: z.number().optional() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  'package:cancel': {
+    request: z.object({ jobId: z.string().min(1) }).strict(),
+    response: z.object({ ok: z.boolean() }),
+  },
 } as const satisfies Record<string, { request: z.ZodType; response: z.ZodType }>;
 
 /** Events pushed from main to the renderer. */
@@ -164,6 +256,16 @@ export const ipcEvents = {
     z.object({ type: z.literal('done'), runId: z.string() }),
     z.object({ type: z.literal('error'), runId: z.string(), message: z.string() }),
   ]),
+  'package:progress': z.object({
+    jobId: z.string(),
+    bytesDone: z.number().nonnegative(),
+    bytesTotal: z.number().nonnegative(),
+    filesDone: z.number().int().nonnegative(),
+    filesTotal: z.number().int().nonnegative(),
+    current: z.string().optional(),
+  }),
+  /** A second launch (double-clicked `.aio`) handed its path to this instance. */
+  'app:openPath': z.object({ path: z.string().min(1) }),
 } as const satisfies Record<string, z.ZodType>;
 
 export type IpcChannel = keyof typeof ipc;
@@ -175,6 +277,8 @@ export type LibraryEntry = z.infer<typeof LibraryEntry>;
 export type Settings = z.infer<typeof Settings>;
 export type MapPackInfo = z.infer<typeof MapPackInfo>;
 export type ChatMessage = z.infer<typeof ChatMessage>;
+export type PackagePlan = z.infer<typeof PackagePlan>;
+export type PackageExportOptions = z.infer<typeof PackageExportOptions>;
 
 /** The typed bridge the preload exposes as window.aio. */
 export interface AioBridge {
