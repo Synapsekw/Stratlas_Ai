@@ -46,6 +46,7 @@ describe('pipeline params', () => {
       'aik.project',
       'aik.records',
       'volumetric.process',
+      'pointcloud.to_copc',
       'system.selftest',
     ]);
     for (const p of PIPELINES) expect(p.title.length).toBeGreaterThan(3);

@@ -54,6 +54,30 @@ export function applyJobEvent(
   return { jobs: s.jobs, logs: { ...s.logs, [e.jobId]: next } };
 }
 
+/** Pipelines that add layers to the project manifest when they finish. */
+const MANIFEST_WRITERS: ReadonlySet<string> = new Set(['pointcloud.to_copc']);
+
+const folderKey = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+const sameFolder = (a: string, b: string) => folderKey(a) === folderKey(b);
+
+/**
+ * True when a job that writes the manifest of the project at `root` has just finished: the open
+ * project should reload its manifest (a converted point cloud appears as a layer).
+ */
+export function finishedManifestJob(
+  prev: readonly JobRecord[],
+  next: readonly JobRecord[],
+  root: string,
+): boolean {
+  return next.some(
+    (j) =>
+      j.status === 'done' &&
+      MANIFEST_WRITERS.has(j.pipeline) &&
+      sameFolder(j.project, root) &&
+      prev.find((p) => p.id === j.id)?.status !== 'done',
+  );
+}
+
 export function isActive(job: Pick<JobRecord, 'status'>): boolean {
   return job.status === 'starting' || job.status === 'running' || job.status === 'cancelling';
 }
@@ -195,6 +219,18 @@ export const FORMS: Record<PipelineName, Field[]> = {
   'volumetric.process': [
     { key: 'job', label: 'Survey job file', kind: 'text', placeholder: 'job.json' },
     { key: 'out', label: 'Piles file', kind: 'text', placeholder: 'piles.json' },
+  ],
+  'pointcloud.to_copc': [
+    {
+      key: 'src',
+      label: 'Point cloud file',
+      kind: 'text',
+      required: true,
+      placeholder: 'D:/scans/site.laz',
+      help: 'LAS, LAZ, E57 or PLY. Read only.',
+    },
+    { key: 'epsg', label: 'Project EPSG', kind: 'number', placeholder: 'From the project' },
+    { key: 'out', label: 'COPC file', kind: 'text', placeholder: 'clouds/<name>.copc.laz' },
   ],
   'system.selftest': [
     {

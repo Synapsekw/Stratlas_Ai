@@ -1,7 +1,14 @@
 import type { IpcChannel, JobEvent, JobRecord } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import type { Bridge, Res } from './bridge';
-import { applyJobEvent, buildParams, canResume, createJobsStore, isActive } from './jobs';
+import {
+  applyJobEvent,
+  buildParams,
+  canResume,
+  createJobsStore,
+  finishedManifestJob,
+  isActive,
+} from './jobs';
 
 const job = (over: Partial<JobRecord> = {}): JobRecord => ({
   id: 'j1',
@@ -113,5 +120,22 @@ describe('buildParams', () => {
       ok: false,
       error: expect.stringContaining('inside the project') as string,
     });
+  });
+});
+
+describe('finishedManifestJob', () => {
+  it('reloads the open project once when its point cloud conversion finishes', () => {
+    const running = job({
+      id: 'c1',
+      pipeline: 'pointcloud.to_copc',
+      project: 'E:\\data\\projects\\site',
+      status: 'running',
+    });
+    const done = { ...running, status: 'done' as const };
+    expect(finishedManifestJob([running], [done], 'e:/data/projects/site/')).toBe(true);
+    expect(finishedManifestJob([done], [done], 'E:/data/projects/site')).toBe(false);
+    expect(finishedManifestJob([running], [done], 'E:/data/projects/other')).toBe(false);
+    const selftest = { ...done, pipeline: 'system.selftest' as const };
+    expect(finishedManifestJob([running], [selftest], 'E:/data/projects/site')).toBe(false);
   });
 });

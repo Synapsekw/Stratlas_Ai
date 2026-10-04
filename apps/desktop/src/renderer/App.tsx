@@ -18,6 +18,7 @@ import { initAuthor } from './author';
 import { roadStore, startRoadSync } from './road/store';
 import { Toasts } from './exports/Toasts';
 import { spaceIsPlayPause } from './keys';
+import { finishedManifestJob } from './jobs';
 import { bridge, jobs, shell, useShell } from './shell';
 import { PackageExportDialog } from './shell/PackageExport';
 import { Palette } from './shell/Palette';
@@ -137,6 +138,16 @@ export function App() {
   useEffect(() => {
     void shell.getState().init();
     void jobs.getState().init();
+    // a finished conversion (point cloud to COPC) adds a layer: reload the open manifest
+    const stopJobReload = jobs.subscribe((s, prev) => {
+      const project = workspace.getState().project;
+      if (!project || !finishedManifestJob(prev.jobs, s.jobs, project.root)) return;
+      void bridge.call('project:open', { path: project.root }).then((r) => {
+        const now = workspace.getState().project;
+        if (r.ok && r.value.ok && now?.id === project.id)
+          workspace.getState().replaceManifest(r.value.manifest);
+      });
+    });
     void initAuthor(bridge);
     window.addEventListener('keydown', onKeyDown);
     const stopPlayback = startPlaybackLoop(
@@ -159,6 +170,7 @@ export function App() {
     });
     return () => {
       stopOpenPath();
+      stopJobReload();
       stopRoad();
       stopRoadMode();
       window.removeEventListener('keydown', onKeyDown);

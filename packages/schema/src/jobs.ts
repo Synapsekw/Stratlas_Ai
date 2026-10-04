@@ -13,6 +13,7 @@ export const PipelineName = z.enum([
   'aik.project',
   'aik.records',
   'volumetric.process',
+  'pointcloud.to_copc',
   'system.selftest',
 ]);
 export type PipelineName = z.infer<typeof PipelineName>;
@@ -37,6 +38,11 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
     name: 'volumetric.process',
     title: 'Stockpile volumes',
     description: 'Piles from DSM GeoTIFFs, four bases, volumes and change between two dates.',
+  },
+  {
+    name: 'pointcloud.to_copc',
+    title: 'Point cloud to COPC',
+    description: 'LAS, LAZ or E57 to a COPC file in the project CRS, added as a layer (PDAL).',
   },
   {
     name: 'system.selftest',
@@ -105,6 +111,18 @@ export const VolumetricProcessParams = z
   })
   .strict();
 
+export const PointcloudToCopcParams = z
+  .object({
+    /** LAS, LAZ, E57 or PLY file (absolute). Read only. */
+    src: z.string().min(1),
+    /** Project-relative COPC file; default `clouds/<name>.copc.laz`. */
+    out: ProjectPath.optional(),
+    /** Project CRS: the cloud is reprojected to it when the file declares its own. */
+    epsg: z.number().int().min(1024).max(999999).optional(),
+    origin: z.tuple([z.number(), z.number(), z.number()]).optional(),
+  })
+  .strict();
+
 export const SelfTestParams = z.object({ seconds: z.number().min(0).max(600).optional() }).strict();
 
 const PARAMS = {
@@ -112,6 +130,7 @@ const PARAMS = {
   'aik.project': AikProjectParams,
   'aik.records': AikRecordsParams,
   'volumetric.process': VolumetricProcessParams,
+  'pointcloud.to_copc': PointcloudToCopcParams,
   'system.selftest': SelfTestParams,
 } as const satisfies Record<PipelineName, z.ZodType>;
 

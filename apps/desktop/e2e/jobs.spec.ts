@@ -1,5 +1,6 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, launchApp, test } from './fixtures';
 
@@ -15,6 +16,35 @@ const venvPython =
     ? join(repo, 'python', '.venv', 'Scripts', 'python.exe')
     : join(repo, 'python', '.venv', 'bin', 'python'));
 const hasPython = existsSync(venvPython);
+/** PDAL for the point cloud conversion: AIO_PDAL, or the development install. */
+const pdal =
+  process.env.AIO_PDAL ??
+  (process.platform === 'win32' ? 'E:/Dev/tools/pdal/Library/bin/pdal.exe' : '/usr/bin/pdal');
+const hasPdal = existsSync(pdal);
+
+/** A synthetic 400-point LAZ near the tiny project's origin (UTM 39N), written by PDAL. */
+async function smallLaz(dir: string): Promise<string> {
+  const rows = ['X,Y,Z,Intensity'];
+  for (let i = 0; i < 400; i++)
+    rows.push(
+      `${String(500000 + (i % 20))},${String(3200000 + Math.floor(i / 20))},${String(i % 9)},${String(i % 200)}`,
+    );
+  const txt = join(dir, 'scan.txt');
+  const laz = join(dir, 'Site Scan.laz');
+  await writeFile(txt, `${rows.join('\n')}\n`);
+  const pipe = join(dir, 'make-laz.json');
+  await writeFile(
+    pipe,
+    JSON.stringify({
+      pipeline: [
+        { type: 'readers.text', filename: txt },
+        { type: 'writers.las', filename: laz, compression: 'laszip', a_srs: 'EPSG:32639' },
+      ],
+    }),
+  );
+  execFileSync(pdal, ['pipeline', pipe]);
+  return laz;
+}
 
 test('without a pipeline pack the Jobs panel says where it looked', async ({ win, dataRoot }) => {
   await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
@@ -76,6 +106,85 @@ test.describe('with the runtime', () => {
       expect(log).toContain('Libraries: numpy');
       expect(existsSync(join(dataRoot.projectDir, 'jobs', id, 'selftest.json'))).toBe(true);
       await expect(win.locator('.job-row')).toHaveCount(2);
+      expect(await network.outbound()).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('a LAZ dropped into a project converts to COPC in the pipeline pack and appears as a layer', async ({
+    dataRoot,
+    network,
+  }) => {
+    test.skip(!hasPdal, `no PDAL at ${pdal} (set AIO_PDAL)`);
+    test.setTimeout(120_000);
+    const laz = await smallLaz(dataRoot.base);
+    const app = await launchApp(dataRoot, {
+      STRATLAS_PIPELINE_PYTHON: venvPython,
+      AIO_PDAL: pdal,
+    });
+    await network.attach(app);
+    try {
+      const win = await app.firstWindow();
+      await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
+      await expect(win.locator('[data-scene-view] canvas')).toBeVisible();
+      const projectId = await win.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __stratlas: { workspace: { getState(): { project: { id: string } | null } } };
+            }
+          ).__stratlas.workspace.getState().project?.id ?? '',
+      );
+      // the same IPC the drop zone and the import command use
+      const r = await win.evaluate(
+        ({ projectId, laz }) => window.aio.invoke('builder:import', { projectId, paths: [laz] }),
+        { projectId, laz },
+      );
+      expect(r.ok).toBe(true);
+      const item = r.ok ? r.items[0] : undefined;
+      expect(item).toMatchObject({ kind: 'pointcloud', status: 'queued' });
+      const jobId = item?.jobId ?? '';
+
+      // The job runs in the Jobs panel to the end.
+      await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
+      await expect
+        .poll(
+          async () => {
+            const list = await win.evaluate(() => window.aio.invoke('jobs:list', {}));
+            return list.jobs.find((j) => j.id === jobId)?.status;
+          },
+          { timeout: 90_000 },
+        )
+        .toBe('done');
+      const out = join(dataRoot.projectDir, 'clouds', 'site-scan.copc.laz');
+      expect(existsSync(out)).toBe(true);
+      const manifest = JSON.parse(
+        await readFile(join(dataRoot.projectDir, 'manifest.json'), 'utf8'),
+      ) as { layers: { kind: string; id: string; format?: string; src?: { path: string } }[] };
+      expect(manifest.layers.find((l) => l.kind === 'pointcloud')).toMatchObject({
+        id: 'cloud-site-scan',
+        format: 'copc',
+        src: { path: 'clouds/site-scan.copc.laz' },
+      });
+      // the open project reloads its manifest: the layer is in the workspace too
+      await expect
+        .poll(() =>
+          win.evaluate(() =>
+            (
+              window as unknown as {
+                __stratlas: {
+                  workspace: {
+                    getState(): { project: { manifest: { layers: { id: string }[] } } | null };
+                  };
+                };
+              }
+            ).__stratlas.workspace
+              .getState()
+              .project?.manifest.layers.some((l) => l.id === 'cloud-site-scan'),
+          ),
+        )
+        .toBe(true);
       expect(await network.outbound()).toEqual([]);
     } finally {
       await app.close();

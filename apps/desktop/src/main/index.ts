@@ -46,6 +46,7 @@ import {
   createBuilderProject,
   photoGps,
 } from './builder';
+import { builderPipelineJobs } from './builderJobs';
 import { nativeImageOps } from './images';
 import { validated, type Handler } from './ipc';
 import { findPack, JobRunner, JobStore, openTarget, safeJobEvent } from './jobs';
@@ -675,6 +676,8 @@ function registerIpc(): void {
       builderImport(req, {
         registry,
         images: nativeImageOps,
+        // point clouds convert in the pipeline pack as jobs (Jobs panel)
+        jobs: builderPipelineJobs(jobs),
         emit: (e) => {
           const parsed = ipcEvents['builder:progress'].safeParse(e);
           if (parsed.success) targetWindow()?.webContents.send('builder:progress', parsed.data);
