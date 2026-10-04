@@ -199,8 +199,15 @@ class VolumetricBuild:
                     if not las.exists():
                         from .cloud import to_las
 
-                        ctx.log(f"Converting {Path(e['cloud']).name} to LAS with PDAL")
-                        to_las(Path(e["cloud"]), las, epsg, lambda st: _pdal(ctx, st))
+                        src = Path(e["cloud"])
+                        ctx.log(f"Converting {src.name} to LAS with PDAL")
+                        # reproject only a cloud that declares its CRS (as pointcloud.to_copc does)
+                        srs = _pdal_srs(ctx, src)
+                        if epsg and not srs:
+                            ctx.log(
+                                f"{src.name} declares no CRS; it is taken as EPSG:{epsg} already.", "warn"
+                            )
+                        to_las(src, las, epsg if srs else None, lambda st: _pdal(ctx, st))
                     e["las"] = str(las)
                 elif "cloud" in e:
                     e["las"] = e["cloud"]
@@ -379,6 +386,17 @@ class VolumetricBuild:
 def _epsg(job: dict) -> int | None:
     m = re.match(r"EPSG:(\d+)$", job.get("crs") or "")
     return int(m.group(1)) if m else None
+
+
+def _pdal_srs(ctx: StepContext, src: Path) -> str:
+    """The WKT a point cloud declares ('' when none), from ``pdal info --summary``."""
+    from ..pointcloud import PDAL_MISSING, _run, find_pdal
+
+    pdal = find_pdal()
+    if not pdal:
+        raise JobError(PDAL_MISSING)
+    info = json.loads(_run(ctx, [pdal, "info", "--summary", str(src)], "Read the point cloud"))
+    return ((info.get("summary") or {}).get("srs") or {}).get("wkt") or ""
 
 
 def _pdal(ctx: StepContext, stages: list) -> None:

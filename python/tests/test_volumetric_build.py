@@ -431,3 +431,42 @@ def test_the_las_reader_reads_points_and_colours(tmp_path):
         and math.isclose(z.max(), 8 + 10.0 + 0.01 * 40 + 0.005 * 80, abs_tol=0.5)
     )
     assert rgb.shape == (x.size, 3) and rgb[:, 1].max() == 30000
+
+
+def test_a_rerun_from_the_kept_job_file_replaces_the_layers(tmp_path, project):
+    manifest(project)
+    cfg = {"epochs": surveys(tmp_path, [{"A": 8.0, "B": 7.0}], ortho=False)}
+    run_job(VolumetricBuild(), project, {"config": cfg})
+    first = json.loads((project / "volumes.json").read_text("utf-8"))
+    assert len(first["piles"]) == 2
+    # the reviewer excludes pile B in the kept job (the kit's detect block), then runs it again
+    job = json.loads((project / "volumetric" / "job.json").read_text("utf-8"))
+    bx, by = PILES["B"][0], PILES["B"][1]
+    job["detect"] = {"exclude": [{"at": [round(bx / 0.5), round((SIZE - by) / 0.5)], "reason": "Bund"}]}
+    (project / "volumetric" / "job.json").write_text(json.dumps(job), "utf-8")
+    result, _ = run_job(VolumetricBuild(), project, {}, job_id="j2")
+    assert result["status"] == "done"
+    doc = json.loads((project / "volumes.json").read_text("utf-8"))
+    assert len(doc["piles"]) == 1 and doc["excluded"][0]["reason"] == "Bund"
+    m = json.loads((project / "manifest.json").read_text("utf-8"))
+    assert [x["id"] for x in m["layers"]] == ["terrain-2026-01-01"]
+    assert [c["id"] for c in m["captures"]] == ["survey-2026-01-01"]
+
+
+def test_a_laz_goes_through_pdal(tmp_path, project):
+    import subprocess
+
+    from aio_pipelines.pointcloud import find_pdal
+
+    pdal = find_pdal()
+    if not pdal:
+        pytest.skip("no PDAL (set AIO_PDAL)")
+    las = write_las(tmp_path / "scan.las", {"A": 8.0}, spacing=0.2)
+    laz = tmp_path / "scan.laz"
+    subprocess.run([pdal, "translate", str(las), str(laz)], check=True, capture_output=True)
+    manifest(project)
+    cfg = {"epochs": [{"date": "2026-03-01", "cloud": str(laz)}]}
+    run_job(VolumetricBuild(), project, {"config": cfg})
+    doc = json.loads((project / "volumes.json").read_text("utf-8"))
+    e = doc["piles"][0]["epochs"]["e1"]
+    assert e["volumes"]["plane"]["net"] == pytest.approx(cone(12 * e["heightM"] / 8, e["heightM"]), rel=0.08)

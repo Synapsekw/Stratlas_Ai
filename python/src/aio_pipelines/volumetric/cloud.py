@@ -6,9 +6,10 @@ written to LAS by PDAL (``pdal translate``, the same PDAL ``pointcloud.to_copc``
 also reprojects to the project CRS when the file declares its own.
 
 The DSM is the mean height of the points in each cell, the same estimator the kit's resample
-uses on a DSM (a block mean); the colour raster is the mean colour. Cells without points stay
-no data, except single empty cells inside the cloud, which take the mean of their neighbours
-(sparse spots in a dense cloud, not real holes).
+uses on a DSM (a block mean); the colour raster is the mean colour. A cloud sparser than the
+0.1 m grid leaves empty cells between its points: an empty cell with at least three of its eight
+neighbours holding data takes their mean, repeated ``GAP_PASSES`` times, so gaps up to about
+0.5 m close and larger holes (no survey there) stay no data.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from ..runtime import JobError
 # offset of the 16-bit R, G, B fields per point format
 RGB_OFFSET = {2: 20, 3: 28, 5: 28, 7: 30, 8: 30, 10: 30}
 CHUNK = 2_000_000
+GAP_PASSES = 5
 
 
 class LasHeader:
@@ -129,13 +131,22 @@ def rasterise(
         raise JobError(f"No point of {las.name} falls inside the survey grid.")
     with np.errstate(invalid="ignore", divide="ignore"):
         dsm = (s / c).reshape(H, W)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        rgbm = [(col[k] / c).reshape(H, W) for k in range(3)] if col is not None else []
     empty = (c == 0).reshape(H, W)
-    # single empty cells inside the cloud take the mean of their (at least 5 of 8) neighbours
-    nb = ndi.convolve((~empty).astype(np.int32), np.ones((3, 3), np.int32), mode="constant") - (~empty)
-    filled = np.where(empty, 0, dsm)
-    sums = ndi.convolve(filled, np.ones((3, 3)), mode="constant")
-    lone = empty & (nb >= 5)
-    dsm[lone] = sums[lone] / nb[lone]
+    k3 = np.ones((3, 3))
+    for _ in range(GAP_PASSES):
+        check()
+        have = ~empty
+        nb = ndi.convolve(have.astype(np.float64), k3, mode="constant")
+        grow = empty & (nb >= 3)
+        if not grow.any():
+            break
+        for a in [dsm, *rgbm]:
+            sums = ndi.convolve(np.where(have, a, 0.0), k3, mode="constant")
+            a[grow] = sums[grow] / nb[grow]
+        empty = empty & ~grow
+    dsm[empty] = np.nan
     nodata = -10000.0
     profile = {
         "driver": "GTiff",
@@ -154,9 +165,8 @@ def rasterise(
     if col is not None and rgb_out is not None:
         scale = 257.0 if cmax > 255 else 1.0
         img = np.zeros((4, H, W), np.uint8)
-        with np.errstate(invalid="ignore", divide="ignore"):
-            for k in range(3):
-                img[k] = np.nan_to_num(np.round(col[k] / c / scale), nan=0).clip(0, 255).reshape(H, W)
+        for k in range(3):
+            img[k] = np.nan_to_num(np.round(rgbm[k] / scale), nan=0).clip(0, 255)
         img[3] = np.where(empty, 0, 255)
         with rasterio.open(rgb_out, "w", count=4, dtype="uint8", **profile) as d:
             d.write(img)
