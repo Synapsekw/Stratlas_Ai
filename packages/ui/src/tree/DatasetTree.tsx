@@ -13,6 +13,15 @@ export interface DatasetTreeProps {
   onSelect: (item: TreeItem) => void;
   /** Called when a group is activated in rail mode (expand the sidebar and open the group). */
   onRailGroup?: (kind: TreeGroupKind) => void;
+  /**
+   * The eye on a flight row shows and hides that flight's path in 3D (its clips keep their own
+   * eyes). Without it the flight eye hides every clip of the flight.
+   */
+  flightPath?: { shown: (flightId: string) => boolean; onToggle: (flightId: string) => void };
+  /** A settings button on point cloud rows (colour, size, budget, EDL). */
+  onLayerSettings?: (item: TreeItem) => void;
+  /** Groups open at first; defaults to models, maps, video and annotations. */
+  defaultOpen?: readonly TreeGroupKind[];
 }
 
 const DEFAULT_OPEN: TreeGroupKind[] = ['models', 'maps', 'video', 'annotations'];
@@ -23,7 +32,7 @@ const ROW_LIMIT = 8;
 export function DatasetTree(props: DatasetTreeProps) {
   const { groups, hidden, selectedId, activeClip, collapsed } = props;
   const [open, setOpen] = useState<Partial<Record<TreeGroupKind, boolean>>>({});
-  const isOpen = (k: TreeGroupKind) => open[k] ?? DEFAULT_OPEN.includes(k);
+  const isOpen = (k: TreeGroupKind) => open[k] ?? (props.defaultOpen ?? DEFAULT_OPEN).includes(k);
   const [showAll, setShowAll] = useState<Partial<Record<TreeGroupKind, boolean>>>({});
   /** Flight rows the user opened or closed; others open while they hold the active clip. */
   const [flightOpen, setFlightOpen] = useState<Record<string, boolean>>({});
@@ -54,6 +63,20 @@ export function DatasetTree(props: DatasetTreeProps) {
         )}
         <span className="tn">{it.name}</span>
         {it.meta && <span className="tm">{it.meta}</span>}
+        {it.layerKind === 'pointcloud' && props.onLayerSettings && (
+          <button
+            type="button"
+            className="eye tact"
+            aria-label={`Point cloud colour and display: ${it.name}`}
+            title="Colour by RGB, elevation, intensity or flight; size and budget"
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onLayerSettings?.(it);
+            }}
+          >
+            <Icon name="settings" size={14} />
+          </button>
+        )}
         {it.layerId ? (
           <button
             type="button"
@@ -79,12 +102,18 @@ export function DatasetTree(props: DatasetTreeProps) {
     const live = children.some((c) => c.layerId === activeClip);
     const open = flightOpen[it.id] ?? (live || children.some((c) => c.id === selectedId));
     const ids = children.flatMap((c) => (c.layerId ? [c.layerId] : []));
-    const off = ids.every((id) => hidden[id] === true);
+    const clipsOff = ids.every((id) => hidden[id] === true);
+    const path = props.flightPath && it.flightId !== undefined ? props.flightPath : null;
+    const pathOff = path && it.flightId !== undefined ? !path.shown(it.flightId) : false;
+    const off = path ? pathOff : clipsOff;
+    const eyeLabel = path
+      ? `${off ? 'Show' : 'Hide'} the flight path of ${it.name}`
+      : `${off ? 'Show' : 'Hide'} ${it.name}`;
     return (
       <div key={it.id} role="treeitem" aria-expanded={open} aria-selected={false}>
         <div
           tabIndex={0}
-          className={`titem flight${off ? ' hidden' : ''}`}
+          className={`titem flight${clipsOff ? ' hidden' : ''}`}
           title={it.name}
           onClick={() => {
             setFlightOpen((o) => ({ ...o, [it.id]: !open }));
@@ -103,12 +132,13 @@ export function DatasetTree(props: DatasetTreeProps) {
           <button
             type="button"
             className={`eye${off ? ' off' : ''}`}
-            aria-label={`${off ? 'Show' : 'Hide'} ${it.name}`}
+            aria-label={eyeLabel}
             aria-pressed={!off}
-            title={off ? 'Show' : 'Hide'}
+            title={path ? `${off ? 'Show' : 'Hide'} this flight path in 3D` : off ? 'Show' : 'Hide'}
             onClick={(e) => {
               e.stopPropagation();
-              for (const id of ids) props.onToggleVisible(id, off);
+              if (path && it.flightId !== undefined) path.onToggle(it.flightId);
+              else for (const id of ids) props.onToggleVisible(id, off);
             }}
           >
             <Icon name={off ? 'eye-off' : 'eye'} size={14} />

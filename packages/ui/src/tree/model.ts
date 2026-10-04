@@ -16,6 +16,8 @@ export interface TreeItem {
   meta?: string;
   /** A flight row: its clips, shown when the row is expanded. */
   children?: TreeItem[];
+  /** A flight row: the flight id (`flightGroups`), for its flight path. */
+  flightId?: string;
 }
 
 export interface TreeGroup {
@@ -111,6 +113,7 @@ export function buildDatasetTree(
       );
       g.items.push({
         id: `flight:${flight.id}`,
+        flightId: flight.id,
         name: flight.name,
         meta: total !== undefined ? formatDuration(total) : `${String(children.length)} clips`,
         children,
