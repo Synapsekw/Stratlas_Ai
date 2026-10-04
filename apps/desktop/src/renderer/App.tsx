@@ -12,6 +12,7 @@ import { ReportsScreen } from './screens/Reports';
 import { ReviewScreen } from './screens/Review';
 import { SettingsScreen } from './screens/Settings';
 import { initAuthor } from './author';
+import { roadStore, startRoadSync } from './road/store';
 import { spaceIsPlayPause } from './keys';
 import { bridge, shell, useShell } from './shell';
 import { Palette } from './shell/Palette';
@@ -119,7 +120,14 @@ export function App() {
       videoDrivesClock,
     );
     const stopContinue = continueAcrossClips();
+    const stopRoad = startRoadSync();
+    // A road survey opens map first.
+    const stopRoadMode = roadStore.subscribe((s, prev) => {
+      if (s.status === 'ready' && prev.status !== 'ready') shell.getState().setStageMode('map');
+    });
     return () => {
+      stopRoad();
+      stopRoadMode();
       window.removeEventListener('keydown', onKeyDown);
       stopPlayback();
       stopContinue();
