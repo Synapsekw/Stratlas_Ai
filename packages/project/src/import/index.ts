@@ -14,3 +14,4 @@ export {
   utmPairs,
   type AlzourImportOptions,
 } from './alzour';
+export { importMasafi, decodeDsmScript, type MasafiImportOptions } from './masafi';

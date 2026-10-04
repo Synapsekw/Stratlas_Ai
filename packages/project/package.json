@@ -11,7 +11,8 @@
   "scripts": {
     "test": "vitest run",
     "import:hcl": "jiti ../../tools/import/hcl.mjs",
-    "import:alzour": "jiti ../../tools/import/alzour.mjs"
+    "import:alzour": "jiti ../../tools/import/alzour.mjs",
+    "import:masafi": "jiti ../../tools/import/masafi.mjs"
   },
   "dependencies": {
     "@aio/schema": "workspace:*",
