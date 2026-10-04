@@ -99,7 +99,7 @@ def test_a_job_streams_progress_and_answers_when_done(client, tmp_path):
 def test_cancel_then_resume(client, tmp_path):
     params = {"jobId": "c1", "name": "system.selftest", "project": str(tmp_path), "params": {"seconds": 30}}
     rid = client.request("jobs.run", params)
-    client.until(lambda m: m.get("method") == "progress" and m["params"]["step"] == "wait", timeout=120)
+    client.until(lambda m: m.get("method") == "progress" and m["params"].get("step") == "wait", timeout=120)
     cid = client.request("cancel", {"jobId": "c1"})
     _, seen = client.until(lambda m: m.get("id") == rid, timeout=10)
     answers = {m["id"]: m for m in seen if "id" in m}
@@ -111,7 +111,7 @@ def test_cancel_then_resume(client, tmp_path):
 
     rid = client.request("jobs.run", params)
     msg, _ = client.until(
-        lambda m: m.get("method") == "progress" and m["params"]["step"] == "libraries", timeout=60
+        lambda m: m.get("method") == "progress" and m["params"].get("step") == "libraries", timeout=60
     )
     assert msg["params"]["state"] == "skipped"
     client.request("cancel", {"jobId": "c1"})
@@ -123,7 +123,7 @@ def test_closing_stdin_cancels_running_jobs_and_exits(client, tmp_path):
         "jobs.run",
         {"jobId": "e1", "name": "system.selftest", "project": str(tmp_path), "params": {"seconds": 60}},
     )
-    client.until(lambda m: m.get("method") == "progress" and m["params"]["step"] == "wait", timeout=120)
+    client.until(lambda m: m.get("method") == "progress" and m["params"].get("step") == "wait", timeout=120)
     client.p.stdin.close()
     assert client.p.wait(15) == 0
     assert json.loads((tmp_path / "jobs" / "e1" / "job.json").read_text())["status"] == "cancelled"

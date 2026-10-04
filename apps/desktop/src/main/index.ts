@@ -7,6 +7,7 @@ import { existsSync } from 'node:fs';
 import { userInfo } from 'node:os';
 import { join } from 'node:path';
 import { validated, type Handler } from './ipc';
+import { findPack, JobRunner, JobStore, openTarget, safeJobEvent } from './jobs';
 import { createKeyVault } from './keys';
 import { addToLibrary, createLibraryStore, listLibrary, listPacks } from './library';
 import { buildMenu } from './menu';
@@ -90,6 +91,21 @@ const agent = createAgentRuntime({
   emit: emitAiEvent,
 });
 
+const jobStore = new JobStore(join(app.getPath('userData'), 'jobs.json'));
+const jobs = new JobRunner({
+  store: jobStore,
+  findPack: () => findPack({ dataRoot: settings.current().dataRoot, env: process.env }),
+  emit: (event) => {
+    const safe = safeJobEvent(event);
+    if (!safe) {
+      console.error(`Dropped an invalid jobs:event of type ${event.type}.`);
+      return;
+    }
+    const win = mainWindow ?? BrowserWindow.getAllWindows()[0];
+    if (win && !win.isDestroyed()) win.webContents.send('jobs:event', safe);
+  },
+});
+
 function handle<C extends IpcChannel>(channel: C, handler: Handler<C>): void {
   const run = validated(channel, handler);
   ipcMain.handle(channel, (_e, req: unknown) => run(req));
@@ -143,6 +159,23 @@ function registerIpc(): void {
   handle('ai:cancel', ({ runId }) => {
     agent.cancel(runId);
     return { ok: true };
+  });
+
+  handle('jobs:list', () => jobs.list());
+  handle('jobs:start', (req) => jobs.start(req));
+  handle('jobs:cancel', ({ jobId }) => jobs.cancel(jobId));
+  handle('jobs:log', async ({ jobId, tail }) => ({ lines: await jobs.log(jobId, tail) }));
+  handle('jobs:open', async ({ jobId, what }) => {
+    const job = jobs.get(jobId);
+    if (!job) return { ok: false, error: `There is no job ${jobId}.` };
+    const target = openTarget(job, what);
+    if (!target) return { ok: false, error: 'This job has not written any output yet.' };
+    if (target.action === 'reveal') {
+      shell.showItemInFolder(target.path);
+      return { ok: true };
+    }
+    const error = await shell.openPath(target.path);
+    return error ? { ok: false, error } : { ok: true };
   });
 
   handle('dialog:openFolder', async ({ title }) => {
@@ -290,6 +323,7 @@ if (!app.requestSingleInstanceLock()) {
     Menu.setApplicationMenu(buildMenu(dev));
     hardenSession();
     await settings.get();
+    await jobStore.load();
     protocol.handle(
       'aio',
       createAioHandler({
@@ -305,6 +339,11 @@ if (!app.requestSingleInstanceLock()) {
     });
   });
 }
+
+// Running pipelines stop with the app; their jobs show as interrupted and resume later.
+app.on('will-quit', () => {
+  jobs.shutdownSync();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

@@ -82,6 +82,12 @@ def test_a_job_stages_then_commits_and_writes_manifests(tmp_path):
     step = json.loads((tmp_path / "jobs" / "j1" / "steps" / "01-make.json").read_text())
     assert step["outputs"] == {"bytes": 5}
     assert rec.of("artifact") == [{"jobId": "j1", "path": "result/out.txt", "kind": "file"}]
+    plan = rec.of("progress")[0]
+    assert plan["state"] == "plan"
+    assert plan["plan"] == [
+        {"name": "make", "title": "Make the file"},
+        {"name": "commit", "title": "Write to project"},
+    ]
     fractions = [m["fraction"] for m in rec.of("progress")]
     assert fractions == sorted(fractions) and fractions[-1] == 1.0
 

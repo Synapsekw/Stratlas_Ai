@@ -117,7 +117,7 @@ def test_a_cancelled_resample_resumes_from_its_last_block(tmp_path, project):
     seen = []
 
     def emit(method, msg):
-        if method == "progress" and msg["step"] == "resample-1" and msg["state"] == "running":
+        if method == "progress" and msg.get("step") == "resample-1" and msg["state"] == "running":
             seen.append(msg["stepFraction"])
             ev.set()
 

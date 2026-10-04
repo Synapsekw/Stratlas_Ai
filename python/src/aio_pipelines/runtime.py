@@ -320,6 +320,16 @@ class Job:
         self.steps_dir.mkdir(parents=True, exist_ok=True)
         states = ["pending"] * len(self.steps)
         self._manifest("running", states=states)
+        self.emit(
+            "progress",
+            {
+                "jobId": self.job_id,
+                "state": "plan",
+                "steps": len(self.steps),
+                "plan": [{"name": s.name, "title": s.title} for s in self.steps],
+                "fraction": 0.0,
+            },
+        )
         current = 0
         try:
             for i, step in enumerate(self.steps):

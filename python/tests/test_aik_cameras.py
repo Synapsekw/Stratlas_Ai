@@ -98,7 +98,7 @@ def test_cancel_during_review_copies_then_resume(tmp_path, project):
     params = {"photos": str(photos), "origin": [LAT0, LON0, GROUND], "longEdge": 800}
 
     def emit(method, msg):
-        if method == "progress" and msg["step"] == "review" and msg["state"] == "running":
+        if method == "progress" and msg.get("step") == "review" and msg["state"] == "running":
             ev.set()
 
     from aio_pipelines.runtime import Job
