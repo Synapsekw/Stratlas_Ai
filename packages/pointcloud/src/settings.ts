@@ -1,17 +1,24 @@
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
-export type ColourMode = 'rgb' | 'intensity' | 'height' | 'flight';
+export type ColourMode = 'rgb' | 'intensity' | 'height' | 'flight' | 'classification';
 
 /** Colour modes as the UI names them ('height' colours by elevation). */
 export const COLOUR_MODES: readonly { id: ColourMode; label: string; hint: string }[] = [
   { id: 'rgb', label: 'RGB', hint: 'True colour from the survey' },
   { id: 'height', label: 'Elevation', hint: 'Height ramp, low blue to high red' },
   { id: 'intensity', label: 'Intensity', hint: 'Return intensity, or brightness without it' },
+  {
+    id: 'classification',
+    label: 'Classification',
+    hint: 'ASPRS class: ground, vegetation, buildings, water and more',
+  },
   { id: 'flight', label: 'Flight', hint: 'One colour per capture flight' },
 ];
 
-export const BUDGETS = [1_000_000, 2_000_000, 4_000_000, 6_000_000, 8_000_000, 12_000_000] as const;
+export const BUDGETS = [
+  1_000_000, 2_000_000, 4_000_000, 6_000_000, 8_000_000, 12_000_000, 16_000_000,
+] as const;
 export const DEFAULT_BUDGET = 6_000_000;
 export const SIZE_RANGE = [0.25, 4] as const;
 const KEY = 'stratlas.pointcloud.settings';
@@ -26,6 +33,8 @@ export interface PointcloudSettingsState {
   edlStrength: number;
   /** Largest on-screen point, CSS pixels. */
   maxPixels: number;
+  /** ASPRS class codes not drawn (any colour mode), ascending. */
+  hiddenClasses: number[];
 }
 
 export interface PointcloudSettingsActions {
@@ -34,6 +43,9 @@ export interface PointcloudSettingsActions {
   setBudget(points: number): void;
   setEdl(on: boolean): void;
   setEdlStrength(strength: number): void;
+  /** Hide or show one class. */
+  toggleClass(code: number): void;
+  showAllClasses(): void;
 }
 
 export type PointcloudSettings = PointcloudSettingsState & PointcloudSettingsActions;
@@ -45,7 +57,11 @@ const defaults: PointcloudSettingsState = {
   edl: true,
   edlStrength: 1,
   maxPixels: 24,
+  hiddenClasses: [],
 };
+
+const isClass = (c: unknown): c is number =>
+  typeof c === 'number' && Number.isInteger(c) && c >= 0 && c < 256;
 
 function restore(storage: Storage | null): Partial<PointcloudSettingsState> {
   try {
@@ -59,6 +75,7 @@ function restore(storage: Storage | null): Partial<PointcloudSettingsState> {
     if (typeof v.budget === 'number') out.budget = snapBudget(v.budget);
     if (typeof v.edl === 'boolean') out.edl = v.edl;
     if (typeof v.edlStrength === 'number') out.edlStrength = clampStrength(v.edlStrength);
+    if (Array.isArray(v.hiddenClasses)) out.hiddenClasses = v.hiddenClasses.filter(isClass);
     return out;
   } catch {
     return {};
@@ -83,8 +100,8 @@ function browserStorage(): Storage | null {
 }
 
 /**
- * Point-cloud display settings. Remembered per machine in localStorage until Settings gains a
- * point-cloud section (see the S4 report: contract seam).
+ * Point-cloud display settings. Remembered per machine in localStorage; the graphics quality
+ * preset (Settings) sets the budget and EDL when it changes.
  */
 export function createPointcloudSettings(
   storage: Storage | null = browserStorage(),
@@ -107,6 +124,17 @@ export function createPointcloudSettings(
     setEdlStrength: (s) => {
       set({ edlStrength: clampStrength(s) });
     },
+    toggleClass: (code) => {
+      if (!isClass(code)) return;
+      set((s) => ({
+        hiddenClasses: s.hiddenClasses.includes(code)
+          ? s.hiddenClasses.filter((c) => c !== code)
+          : [...s.hiddenClasses, code].sort((a, b) => a - b),
+      }));
+    },
+    showAllClasses: () => {
+      set({ hiddenClasses: [] });
+    },
   }));
   store.subscribe((s) => {
     try {
@@ -118,6 +146,7 @@ export function createPointcloudSettings(
           budget: s.budget,
           edl: s.edl,
           edlStrength: s.edlStrength,
+          hiddenClasses: s.hiddenClasses,
         }),
       );
     } catch {

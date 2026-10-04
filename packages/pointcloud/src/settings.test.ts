@@ -46,6 +46,24 @@ describe('pointcloud settings', () => {
     expect(b.edl).toBe(false);
   });
 
+  it('colours by classification and hides chosen classes, remembered', () => {
+    const storage = memory();
+    const a = createPointcloudSettings(storage);
+    a.getState().setColourMode('classification');
+    a.getState().toggleClass(7);
+    a.getState().toggleClass(18);
+    a.getState().toggleClass(18);
+    const b = createPointcloudSettings(storage).getState();
+    expect(b.colourMode).toBe('classification');
+    expect(b.hiddenClasses).toEqual([7]);
+    b.showAllClasses();
+    expect(createPointcloudSettings(storage).getState().hiddenClasses).toEqual([]);
+  });
+
+  it('offers budgets up to 16 M for fast GPUs', () => {
+    expect(BUDGETS.at(-1)).toBe(16_000_000);
+  });
+
   it('ignores corrupt storage', () => {
     const storage = memory();
     storage.setItem('stratlas.pointcloud.settings', '{not json');

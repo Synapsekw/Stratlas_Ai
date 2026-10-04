@@ -14,6 +14,8 @@ export interface CloudCounts {
   rgb: boolean;
   /** Height range of the loaded, visible points in the local frame (Y up), metres. */
   heightRange: readonly [number, number] | null;
+  /** Points per ASPRS class among the loaded, visible points; null when no cloud has classes. */
+  classes?: Readonly<Record<number, number>> | null;
 }
 
 interface StatsState {
@@ -29,6 +31,13 @@ function sameRange(a: CloudCounts['heightRange'], b: CloudCounts['heightRange'])
   return Math.abs(a[0] - b[0]) < 1e-3 && Math.abs(a[1] - b[1]) < 1e-3;
 }
 
+function sameClasses(a: CloudCounts['classes'], b: CloudCounts['classes']): boolean {
+  if (!a || !b) return (a ?? null) === (b ?? null);
+  const ka = Object.keys(a);
+  if (ka.length !== Object.keys(b).length) return false;
+  return ka.every((k) => a[Number(k)] === b[Number(k)]);
+}
+
 /** Live point-cloud counters for the controls and status bars. */
 export const pointcloudStats = createStore<StatsState>()((set) => ({
   byScene: new Map(),
@@ -42,7 +51,8 @@ export const pointcloudStats = createStore<StatsState>()((set) => ({
         prev.loading === c.loading &&
         prev.layers === c.layers &&
         prev.rgb === c.rgb &&
-        sameRange(prev.heightRange, c.heightRange)
+        sameRange(prev.heightRange, c.heightRange) &&
+        sameClasses(prev.classes, c.classes)
       ) {
         return s;
       }
@@ -71,6 +81,7 @@ export function totalCounts(byScene: Map<object, CloudCounts>): CloudCounts {
     layers: 0,
     rgb: false,
     heightRange: null,
+    classes: null,
   };
   for (const c of byScene.values()) {
     out.loaded += c.loaded;
@@ -83,6 +94,11 @@ export function totalCounts(byScene: Map<object, CloudCounts>): CloudCounts {
       out.heightRange = out.heightRange
         ? [Math.min(out.heightRange[0], h[0]), Math.max(out.heightRange[1], h[1])]
         : h;
+    if (c.classes) {
+      const merged: Record<number, number> = { ...(out.classes ?? {}) };
+      for (const [k, n] of Object.entries(c.classes)) merged[+k] = (merged[+k] ?? 0) + n;
+      out.classes = merged;
+    }
   }
   return out;
 }

@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { ClassificationLegend } from './ClassificationLegend';
 import { ElevationLegend, elevationColour, elevationGradient } from './ElevationLegend';
 import { PointCloudControls } from './PointCloudControls';
 import { createPointcloudSettings } from './settings';
@@ -35,6 +36,36 @@ describe('PointCloudControls', () => {
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>RGB</);
     expect(html).toMatch(/title="[^"]*no colour[^"]*"[^>]*>RGB</i);
     expect(html).toMatch(/aria-pressed="true"[^>]*>Intensity/);
+  });
+});
+
+describe('classification', () => {
+  it('offers Classification, disabled with a reason when no cloud carries classes', () => {
+    const store = seeded({ colourMode: 'rgb' });
+    const on = renderToStaticMarkup(<PointCloudControls store={store} rgb classes />);
+    expect(on).toMatch(/<button[^>]*>Classification</);
+    expect(on).not.toMatch(/<button[^>]*disabled=""[^>]*>Classification</);
+    const off = renderToStaticMarkup(<PointCloudControls store={store} rgb classes={false} />);
+    expect(off).toMatch(/<button[^>]*disabled=""[^>]*>Classification</);
+    expect(off).toMatch(/title="[^"]*no classification[^"]*"[^>]*>Classification</i);
+  });
+
+  it('lists the classes present with their share and a show or hide toggle each', () => {
+    const html = renderToStaticMarkup(
+      <ClassificationLegend counts={{ 2: 600, 6: 300, 7: 100 }} hidden={[7]} />,
+    );
+    expect(html).toContain('data-component="classification-legend"');
+    expect(html.indexOf('Ground')).toBeLessThan(html.indexOf('Building'));
+    expect(html).toContain('60 %');
+    expect(html).toMatch(
+      /aria-pressed="true"[^>]*aria-label="Hide Ground"|aria-label="Hide Ground"[^>]*aria-pressed="true"/,
+    );
+    expect(html).toMatch(/aria-label="Show Low noise"/);
+    expect(html).not.toMatch(/[–—]/);
+  });
+
+  it('renders nothing without classes', () => {
+    expect(renderToStaticMarkup(<ClassificationLegend counts={null} hidden={[]} />)).toBe('');
   });
 });
 

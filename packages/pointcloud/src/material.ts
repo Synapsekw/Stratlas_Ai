@@ -1,4 +1,5 @@
 import { Color, ShaderMaterial, Vector2 } from 'three';
+import { classColour } from './classes';
 import { ELEVATION_RAMP_GLSL } from './ramp';
 import type { ColourMode } from './settings';
 
@@ -21,7 +22,11 @@ export const MODE_INDEX: Record<ColourMode, number> = {
   intensity: 1,
   height: 2,
   flight: 3,
+  classification: 4,
 };
+
+/** Class codes 0..31 have their own colour and show flag; higher codes share slot 31. */
+export const CLASS_SLOTS = 32;
 
 const vertexShader = /* glsl */ `
 #include <common>
@@ -33,6 +38,9 @@ attribute vec3 aRgb;
 #ifdef HAS_INTENSITY
 attribute float aIntensity;
 #endif
+#ifdef HAS_CLASS
+attribute float aClass;
+#endif
 uniform float uSize;
 uniform float uPxPerM;
 uniform float uMinPx;
@@ -40,10 +48,23 @@ uniform float uMaxPx;
 uniform float uMode;
 uniform vec2 uHeight;
 uniform vec3 uTint;
+uniform vec3 uClassColours[${CLASS_SLOTS}];
+uniform float uClassShown[${CLASS_SLOTS}];
 varying vec3 vC;
 
 ${ELEVATION_RAMP_GLSL}
 void main() {
+#ifdef HAS_CLASS
+  int cls = int(min(aClass, ${CLASS_SLOTS - 1}.0) + 0.5);
+#else
+  int cls = 1; // unclassified
+#endif
+  if (uClassShown[cls] < 0.5) {
+    // hidden class: outside the clip volume, so nothing is rasterised
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    gl_PointSize = 0.0;
+    return;
+  }
   vec4 world = modelMatrix * vec4(position, 1.0);
   vec4 mvPosition = viewMatrix * world;
   gl_Position = projectionMatrix * mvPosition;
@@ -73,8 +94,11 @@ void main() {
 #endif
   } else if (uMode < 2.5) {
     vC = elevationRamp((world.y - uHeight.x) / max(1e-3, uHeight.y - uHeight.x));
-  } else {
+  } else if (uMode < 3.5) {
     vC = uTint * (0.35 + inten * 0.65);
+  } else {
+    // class colour, shaded a little by brightness so structure still reads
+    vC = uClassColours[cls] * (0.75 + 0.25 * inten);
   }
 
   #include <logdepthbuf_vertex>
@@ -100,6 +124,8 @@ void main() {
 export interface PointMaterialOptions {
   hasRgb: boolean;
   hasIntensity: boolean;
+  /** ASPRS class per point (COPC). */
+  hasClass?: boolean;
   /** World size of a point in metres before the user's size scale. */
   baseSize: number;
   tint: string;
@@ -114,15 +140,23 @@ export type PointMaterial = ShaderMaterial & {
     uMode: { value: number };
     uHeight: { value: Vector2 };
     uTint: { value: Color };
+    uClassColours: { value: Color[] };
+    uClassShown: { value: number[] };
   };
   userData: { baseSize: number };
 };
 
-/** Point material: attenuated size with a pixel clamp, four colour modes, clipping planes. */
+/** Linear-space class colours for the shader (the output pass converts to sRGB). */
+function classColours(): Color[] {
+  return Array.from({ length: CLASS_SLOTS }, (_, c) => new Color(classColour(c)));
+}
+
+/** Point material: attenuated size with a pixel clamp, five colour modes, clipping planes. */
 export function createPointMaterial(o: PointMaterialOptions): PointMaterial {
   const defines: Record<string, string> = {};
   if (o.hasRgb) defines.HAS_RGB = '';
   if (o.hasIntensity) defines.HAS_INTENSITY = '';
+  if (o.hasClass) defines.HAS_CLASS = '';
   const m = new ShaderMaterial({
     defines,
     vertexShader,
@@ -136,8 +170,17 @@ export function createPointMaterial(o: PointMaterialOptions): PointMaterial {
       uMode: { value: 0 },
       uHeight: { value: new Vector2(0, 10) },
       uTint: { value: new Color(o.tint) },
+      uClassColours: { value: classColours() },
+      uClassShown: { value: new Array<number>(CLASS_SLOTS).fill(1) },
     },
   }) as PointMaterial;
   m.userData.baseSize = o.baseSize;
   return m;
+}
+
+/** Sets the per-class show flags from the hidden class codes. */
+export function applyHiddenClasses(m: PointMaterial, hidden: readonly number[]): void {
+  const shown = m.uniforms.uClassShown.value;
+  shown.fill(1);
+  for (const c of hidden) shown[Math.min(c, CLASS_SLOTS - 1)] = 0;
 }

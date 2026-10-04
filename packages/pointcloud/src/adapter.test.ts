@@ -1,12 +1,13 @@
 import type { AdapterContext, SceneHandle } from '@aio/engine';
 import { clearAdapters, getAdapter } from '@aio/engine';
 import type { Layer } from '@aio/schema';
-import type { Vector2 } from 'three';
+import type { BufferGeometry, Vector2 } from 'three';
 import { PerspectiveCamera, Plane, Points, Scene, Vector3 } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPointcloudAdapter, registerPointcloudAdapters } from './adapter';
 import { createPointcloudSettings } from './settings';
 import { pointcloudStats } from './stats';
+import type { CopcHierarchy, CopcSource } from './copc';
 import type { Decoder } from './pool';
 import type { DecodedChunk, DecodeRequest } from './protocol';
 
@@ -202,6 +203,9 @@ describe('pointcloud adapter', () => {
       settings,
       fetchJson: () => Promise.resolve(index),
     });
+    // chunks outside the view frustum are not loaded: look along the row of chunks
+    handle.camera.lookAt(150, 0, 25);
+    handle.camera.updateMatrixWorld();
     await adapter.create(
       { ...kitLayer('pc'), format: 'png-packed', src: { path: 'clouds/pc.json' } },
       { scene: handle, url: (r) => ('path' in r ? `aio://project/p/${r.path}` : 'x') },
@@ -217,8 +221,40 @@ describe('pointcloud adapter', () => {
     const { handle } = fakeHandle();
     const adapter = createPointcloudAdapter({ decoder: () => fakeDecoder().decoder });
     await expect(
-      adapter.create({ ...kitLayer('c'), format: 'copc' }, { scene: handle, url: () => 'x' }),
+      adapter.create({ ...kitLayer('c'), format: 'potree2' }, { scene: handle, url: () => 'x' }),
     ).rejects.toThrow('not supported yet');
+  });
+
+  it('skips flat chunks outside the view frustum', async () => {
+    const { handle, frame } = fakeHandle();
+    const d = fakeDecoder(1000);
+    const chunk = (x: number, lod: number) => ({
+      file: `clouds/c${x}.png`,
+      points: 1000,
+      lod,
+      bounds: { min: [x, 0, 0], max: [x + 20, 10, 20] },
+    });
+    const index = {
+      schema: 'aio.pngcloud/1',
+      bounds: { min: [-500, 0, 0], max: [500, 10, 20] },
+      chunks: [chunk(0, 0), chunk(-10, 1), chunk(400, 1)],
+    };
+    const adapter = createPointcloudAdapter({
+      decoder: () => d.decoder,
+      settings: createPointcloudSettings(null),
+      fetchJson: () => Promise.resolve(index),
+    });
+    handle.camera.lookAt(0, 0, 10); // c400 lies far to the right, outside the 60 degree view
+    handle.camera.updateMatrixWorld();
+    await adapter.create(
+      { ...kitLayer('pc'), format: 'png-packed', src: { path: 'clouds/pc.json' } },
+      { scene: handle, url: (r) => ('path' in r ? `aio://project/p/${r.path}` : 'x') },
+    );
+    frame();
+    expect(d.jobs.map((j) => j.url)).toEqual([
+      'aio://project/p/clouds/c0.png',
+      'aio://project/p/clouds/c-10.png',
+    ]);
   });
 
   it('publishes whether the clouds carry RGB and their height range for the UI', async () => {
@@ -235,5 +271,143 @@ describe('pointcloud adapter', () => {
     await flush();
     frame();
     expect(pointcloudStats.getState().byScene.get(handle)?.heightRange).toEqual([0, 1]);
+  });
+});
+
+describe('COPC layers', () => {
+  const layout = {
+    pointDataRecordFormat: 7,
+    pointDataRecordLength: 36,
+    scale: [0.001, 0.001, 0.001] as const,
+    offset: [0, 0, 0] as const,
+  };
+  const source: CopcSource = {
+    layout,
+    // a 64 m cube whose local frame (origin E 0, N 64, H 0) spans x 0..64, y 0..64, z 0..64
+    cube: { min: [0, 0, 0], max: [64, 64, 64] },
+    spacing: 1,
+    pointCount: 1000,
+    rootPage: { pageOffset: 10, pageLength: 64 },
+  };
+  const info = (n: number, at: number) => ({
+    pointCount: n,
+    pointDataOffset: at,
+    pointDataLength: 100,
+  });
+
+  function copcDecoder(hier: Record<number, CopcHierarchy>) {
+    const jobs: Parameters<Decoder['decode']>[0][] = [];
+    const pages: number[] = [];
+    const decoder: Decoder = {
+      decode(job) {
+        jobs.push(job);
+        const n = job.kind === 'copc' ? job.node.pointCount : 1;
+        return Promise.resolve({
+          id: 0,
+          count: n,
+          position: new Uint16Array(n * 3),
+          rgb: new Uint8Array(n * 3),
+          intensity: new Uint8Array(n),
+          classification: new Uint8Array(n).fill(2),
+          classes: { 2: n },
+          quant: { offset: [0, 0, 0], scale: [0.001, 0.001, 0.001] },
+          bounds: { min: [0, 0, 0], max: [64, 64, 64] },
+        });
+      },
+      copcSource: () => Promise.resolve(source),
+      copcPage: (_url, page) => {
+        pages.push(page.pageOffset);
+        const h = hier[page.pageOffset];
+        return h ? Promise.resolve(h) : Promise.reject(new Error('no page'));
+      },
+      dispose: vi.fn(),
+    };
+    return { decoder, jobs, pages };
+  }
+
+  const copcLayer: CloudLayer = {
+    kind: 'pointcloud',
+    id: 'full',
+    name: 'Full cloud',
+    visible: true,
+    src: { path: 'clouds/full.copc.laz' },
+    format: 'copc',
+  };
+
+  async function open(hier: Record<number, CopcHierarchy>, eye: [number, number, number]) {
+    const { handle, frame } = fakeHandle();
+    handle.camera.position.set(...eye);
+    handle.camera.lookAt(32, 32, 32);
+    handle.camera.updateMatrixWorld();
+    const d = copcDecoder(hier);
+    const settings = createPointcloudSettings(null);
+    settings.getState().setEdl(false);
+    const adapter = createPointcloudAdapter({
+      decoder: () => d.decoder,
+      settings,
+      origin: () => [0, 64, 0],
+    });
+    const layer = await adapter.create(copcLayer, {
+      scene: handle,
+      url: (r) => ('path' in r ? `aio://project/p/${r.path}` : 'x'),
+    });
+    return { handle, frame, d, layer };
+  }
+
+  it('reads the header and root page in the decoder, then loads the root node first', async () => {
+    const { frame, d } = await open(
+      { 10: { nodes: { '0-0-0-0': info(500, 1000), '1-0-0-0': info(100, 2000) }, pages: {} } },
+      [32, 5000, 32],
+    );
+    expect(d.pages).toEqual([10]);
+    frame();
+    // far away the root spacing (1 m) projects under a pixel: only the root loads
+    expect(d.jobs).toEqual([
+      {
+        kind: 'copc',
+        url: 'aio://project/p/clouds/full.copc.laz',
+        node: info(500, 1000),
+        layout,
+        origin: [0, 64, 0],
+        box: { min: [0, 0, 0], max: [64, 64, 64] },
+      },
+    ]);
+  });
+
+  it('refines into child nodes up close and fetches hierarchy pages it reaches', async () => {
+    const root = {
+      nodes: { '0-0-0-0': info(500, 1000), '1-0-0-0': info(100, 2000) },
+      pages: { '1-1-1-1': { pageOffset: 20, pageLength: 32 } },
+    };
+    const child = { nodes: { '1-1-1-1': info(50, 3000) }, pages: {} };
+    const { frame, d } = await open({ 10: root, 20: child }, [32, 80, 32]);
+    frame();
+    await flush();
+    expect(d.jobs.map((j) => (j.kind === 'copc' ? j.node.pointDataOffset : 0))).toEqual([
+      1000, 2000,
+    ]);
+    expect(d.pages).toEqual([10, 20]);
+    frame();
+    await flush();
+    frame();
+    expect(d.jobs.map((j) => (j.kind === 'copc' ? j.node.pointDataOffset : 0))).toContain(3000);
+  });
+
+  it('publishes the classes of the loaded points for the legend', async () => {
+    const { handle, frame } = await open(
+      { 10: { nodes: { '0-0-0-0': info(500, 1000) }, pages: {} } },
+      [32, 5000, 32],
+    );
+    frame();
+    await flush();
+    frame();
+    const c = pointcloudStats.getState().byScene.get(handle);
+    expect(c?.classes).toEqual({ 2: 500 });
+    let hasClass = false;
+    handle.scene.traverse((o) => {
+      if (o instanceof Points && (o.geometry as BufferGeometry).hasAttribute('aClass'))
+        hasClass = true;
+    });
+    expect(hasClass).toBe(true);
   });
 });
