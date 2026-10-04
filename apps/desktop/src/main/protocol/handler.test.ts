@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createAioHandler } from './handler';
+import { LEGACY_CSP } from './legacy';
 import { mimeFor } from './mime';
 
 let base: string;
@@ -13,6 +14,14 @@ beforeAll(async () => {
   await mkdir(join(base, 'p1', 'video'), { recursive: true });
   await writeFile(join(base, 'p1', 'video', 'clip 1.mp4'), BODY);
   await writeFile(join(base, 'p1', 'model.glb'), 'glTF');
+  await mkdir(join(base, 'p1', 'legacy', 'data'), { recursive: true });
+  await writeFile(
+    join(base, 'p1', 'legacy', 'Old Review.html'),
+    '<!doctype html><html><head><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito">' +
+      '<script src="data/site.js"></script></head><body>review</body></html>',
+  );
+  await writeFile(join(base, 'p1', 'legacy', 'data', 'site.js'), 'window.SITE=1;');
+  await writeFile(join(base, 'p1', 'report.html'), '<html><head></head></html>');
   await writeFile(join(base, 'secret.txt'), 'secret');
   await mkdir(join(base, 'packs'));
   await writeFile(join(base, 'packs', 'gcc.pmtiles'), 'PMTiles');
@@ -98,6 +107,38 @@ describe('aio:// handler', () => {
     expect((await get('aio://packs/gcc.json')).status).toBe(404);
   });
 
+  it('serves a legacy viewer document with the shims first and the legacy CSP', async () => {
+    const res = await get('aio://project/p1/legacy/Old%20Review.html', { Range: 'bytes=0-3' });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('text/html; charset=utf-8');
+    expect(res.headers.get('content-security-policy')).toBe(LEGACY_CSP);
+    const html = await res.text();
+    expect(res.headers.get('content-length')).toBe(String(Buffer.byteLength(html)));
+    const shim = html.indexOf('"projectId":"p1"');
+    expect(shim).toBeGreaterThan(-1);
+    expect(shim).toBeLessThan(html.indexOf('<script src="data/site.js">'));
+    expect(html).not.toContain('fonts.googleapis.com');
+    expect(html).toContain('<body>review</body>');
+  });
+
+  it('answers HEAD on a legacy document without a body', async () => {
+    const res = await get('aio://project/p1/legacy/Old%20Review.html', {}, 'HEAD');
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('');
+  });
+
+  it('serves the files next to a legacy viewer unchanged', async () => {
+    const res = await get('aio://project/p1/legacy/data/site.js');
+    expect(res.headers.get('content-type')).toBe('text/javascript; charset=utf-8');
+    expect(res.headers.get('content-security-policy')).toBeNull();
+    expect(await res.text()).toBe('window.SITE=1;');
+  });
+
+  it('does not touch HTML outside legacy/', async () => {
+    const res = await get('aio://project/p1/report.html');
+    expect(await res.text()).toBe('<html><head></head></html>');
+  });
+
   it('answers 404 for unknown hosts', async () => {
     expect((await get('aio://elsewhere/x')).status).toBe(404);
   });
@@ -115,6 +156,16 @@ describe('mimeFor', () => {
     ['a.pmtiles', 'application/vnd.pmtiles'],
     ['a.pdf', 'application/pdf'],
     ['a.bin', 'application/octet-stream'],
+    ['a.htm', 'text/html; charset=utf-8'],
+    ['a.mjs', 'text/javascript; charset=utf-8'],
+    ['a.woff2', 'font/woff2'],
+    ['a.woff', 'font/woff'],
+    ['a.ttf', 'font/ttf'],
+    ['a.gif', 'image/gif'],
+    ['a.zip', 'application/zip'],
+    ['a.xml', 'application/xml'],
+    ['a.ico', 'image/x-icon'],
+    ['a.avif', 'image/avif'],
     ['a.unknown', 'application/octet-stream'],
   ])('%s is %s', (file, type) => {
     expect(mimeFor(file)).toBe(type);
