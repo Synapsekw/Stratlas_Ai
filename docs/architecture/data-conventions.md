@@ -24,11 +24,14 @@ These rules sit beside `@aio/schema` and are binding for every stream. They clar
   photos/                review copies (<= 2560 px) + thumbs/
   panoramas/
   report/                PDF report and exports
+  legacy/                the original offline viewer, copied unchanged (legacy layer `entry`)
 ```
 
 `<dataRoot>` defaults to `E:\Stratlas Data` on the development machine (`STRATLAS_DATA` env var overrides; Settings `dataRoot` in the app). Map packs live in `<dataRoot>/packs/<id>.pmtiles` with `<id>.json` (`MapPackInfo`).
 
 `aio://project/<project-id>/<relative path>` serves any file under the project folder with HTTP range support; `aio://packs/<id>.pmtiles` serves map packs.
+
+A `legacy` layer's `entry` is the viewer's HTML inside `legacy/`, for example `{ "path": "legacy/Masafi Stockpile Review.html" }`, with everything the viewer reads (`data/`, `lib/`, `tiles/`, `report/`, ...) beside it as delivered. HTML under `legacy/` is served with the platform shims injected first and a CSP that allows the viewer's own `aio:` files and nothing remote (see `apps/desktop/src/main/protocol/shim.ts`).
 
 ## 3. Flight pose files
 

@@ -19,6 +19,7 @@ const CHANNELS = {
   'ai:toolResult': true,
   'ai:cancel': true,
   'dialog:openFolder': true,
+  'dialog:saveFile': true,
 } as const satisfies Record<IpcChannel, true>;
 
 const EVENTS = { 'ai:event': true } as const satisfies Record<IpcEventName, true>;

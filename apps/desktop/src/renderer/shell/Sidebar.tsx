@@ -8,6 +8,7 @@ import {
 } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { legacyLayers } from '../legacy';
 import { useMedia } from '../media';
 import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
@@ -19,6 +20,8 @@ interface NavDef {
   label: string;
   icon: IconName;
 }
+
+const REVIEW: NavDef = { screen: 'review', label: 'Original review', icon: 'history' };
 
 const NAV: NavDef[] = [
   { screen: 'projects', label: 'Projects', icon: 'projects' },
@@ -239,12 +242,15 @@ export function Sidebar() {
   const collapsed = useShell((s) => s.settings.sidebarCollapsed);
   const libCount = useShell((s) => s.library?.length);
   const issueCount = useWorkspace((s) => (s.project ? s.issues.length : undefined));
+  const hasReview = useWorkspace((s) => legacyLayers(s.project?.manifest).length > 0);
+  // The original review sits right after Scene when the open project has one.
+  const nav = hasReview ? [...NAV.slice(0, 2), REVIEW, ...NAV.slice(2)] : NAV;
 
   return (
     <aside className="sidebar" aria-label="Primary">
       <div className="sb-scroll">
         <nav className="sb-sec sb-nav" aria-label="Sections">
-          {NAV.map((n) => (
+          {nav.map((n) => (
             <NavItem
               key={n.screen}
               def={n}

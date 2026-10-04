@@ -1,7 +1,8 @@
 import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
+import { LEGACY_CSP, isLegacyDocument, prepareLegacyHtml } from './legacy';
 import { mimeFor } from './mime';
 import { resolveInside } from './paths';
 import { parseRange } from './range';
@@ -72,8 +73,29 @@ export async function serveFile(file: string, req: Request): Promise<Response> {
 }
 
 /**
+ * Serve a legacy viewer document: shims injected, remote links removed, legacy CSP. The page
+ * is small and rewritten, so it is always a whole 200 response.
+ */
+async function serveLegacyDocument(file: string, projectId: string, req: Request) {
+  let html: string;
+  try {
+    html = prepareLegacyHtml(await readFile(file, 'utf8'), projectId);
+  } catch {
+    return status(404);
+  }
+  const headers = {
+    ...COMMON,
+    'Content-Type': 'text/html; charset=utf-8',
+    'Content-Length': String(Buffer.byteLength(html)),
+    'Content-Security-Policy': LEGACY_CSP,
+  };
+  return new Response(req.method === 'HEAD' ? null : html, { status: 200, headers });
+}
+
+/**
  * Handler for `protocol.handle('aio', ...)`:
  * - `aio://project/<id>/<path>` serves a file inside the registered project root.
+ * - `aio://project/<id>/legacy/<...>.html` serves a legacy viewer with its shims (legacy.ts).
  * - `aio://packs/<id>.pmtiles` serves a map pack from the packs folder.
  */
 export function createAioHandler(roots: AioRoots): (req: Request) => Promise<Response> {
@@ -90,10 +112,12 @@ export function createAioHandler(roots: AioRoots): (req: Request) => Promise<Res
 
     if (url.host === 'project') {
       const [id, ...rest] = segments;
-      const root = id === undefined ? undefined : roots.projectRoot(id);
-      if (root === undefined || rest.length === 0) return status(404);
+      if (id === undefined || rest.length === 0) return status(404);
+      const root = roots.projectRoot(id);
+      if (root === undefined) return status(404);
       const resolved = await resolveInside(root, rest.join('/'));
       if (!resolved.ok) return status(resolved.status);
+      if (isLegacyDocument(rest)) return serveLegacyDocument(resolved.path, id, req);
       return serveFile(resolved.path, req);
     }
 
