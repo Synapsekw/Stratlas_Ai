@@ -94,7 +94,7 @@ export const VolumesFile = z
     totals: z.record(z.string(), z.record(z.string(), z.number())),
     pileChange: FillCut,
     siteChange: FillCut.extend({ area_m2: z.number().optional() }).loose(),
-    aoi: RingXZ.optional(),
+    aoi: RingXZ.nullable().optional(),
     excluded: z.array(z.object({ reason: z.string(), ring: RingXZ }).loose()).optional(),
     grids: VolumeGrids.optional(),
   })
