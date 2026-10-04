@@ -29,4 +29,4 @@ export const ASSET_GLYPH_RANGES = [
 ];
 
 /** Protomaps v4 sprite sheets. */
-export const ASSET_SPRITES = ['dark'];
+export const ASSET_SPRITES = ['dark', 'light'];

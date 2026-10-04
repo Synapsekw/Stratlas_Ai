@@ -84,8 +84,15 @@ describe('aiomap protocol', () => {
     await expect(handler({ url: 'aiomap://elsewhere/x' }, ac)).rejects.toThrow(
       'Unknown map resource',
     );
-    await expect(handler({ url: 'aiomap://sprites/light.json', type: 'json' }, ac)).rejects.toThrow(
+    await expect(handler({ url: 'aiomap://sprites/white.json', type: 'json' }, ac)).rejects.toThrow(
       'not bundled',
     );
+  });
+
+  it('falls back to the dark sprite sheet when the light one is not bundled', async () => {
+    const j = await handler({ url: 'aiomap://sprites/light.json', type: 'json' }, ac);
+    expect(j.data).toEqual({ poi: { x: 0 } });
+    const i = await handler({ url: 'aiomap://sprites/light.png', type: 'image' }, ac);
+    expect(text(i.data)).toBe('png');
   });
 });

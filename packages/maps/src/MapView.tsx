@@ -14,6 +14,22 @@ export interface MapViewProps {
 
 type Status = 'loading' | 'ready' | 'no-packs' | 'error';
 
+/** The resolved app theme (`data-theme` on <html>), updated when it changes. */
+function useDocumentTheme(): string {
+  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme ?? 'dark');
+  useEffect(() => {
+    const html = document.documentElement;
+    const observer = new MutationObserver(() => {
+      setTheme(html.dataset.theme ?? 'dark');
+    });
+    observer.observe(html, { attributes: true, attributeFilter: ['data-theme', 'lang'] });
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+  return theme;
+}
+
 const MESSAGES: Record<Exclude<Status, 'ready'>, string> = {
   loading: 'Loading map',
   'no-packs': 'No map packs installed. Add a pack in Settings, Maps.',
@@ -31,6 +47,8 @@ function bridge(): AioBridge | undefined {
 export function MapView({ className, showFlights = true, draw }: MapViewProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<Status>('loading');
+  // The style is built once per controller; a theme change restarts the map in the new flavour.
+  const theme = useDocumentTheme();
   // The controller reads the latest seam on each click.
   const drawRef = useRef<MapDrawSeam | null>(draw ?? null);
   const ctlRef = useRef<MapController | null>(null);
@@ -86,10 +104,16 @@ export function MapView({ className, showFlights = true, draw }: MapViewProps) {
       life.observer?.disconnect();
       life.ctl?.dispose();
     };
-  }, [showFlights]);
+  }, [showFlights, theme]);
 
   return (
-    <div className={className} style={{ position: 'relative', minHeight: 0 }} aria-label="Map">
+    <div
+      className={className}
+      // Geographic content keeps left-to-right layout in a right-to-left UI.
+      dir="ltr"
+      style={{ position: 'relative', minHeight: 0 }}
+      aria-label="Map"
+    >
       <div ref={ref} style={{ position: 'absolute', inset: 0 }} />
       {status !== 'ready' && (
         <div

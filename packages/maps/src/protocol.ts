@@ -73,7 +73,10 @@ export function createMapProtocol(options: MapProtocolOptions): MapProtocolHandl
 
     if (kind === 'sprites') {
       const file = rest.join('/');
-      const load = assets[`sprites/${file}`];
+      // The light sheet is optional (tools/maps/build-packs.mjs fetches it); until it is bundled
+      // the light style uses the dark sheet's icons.
+      const load =
+        assets[`sprites/${file}`] ?? assets[`sprites/${file.replace(/^light(?=[@.])/, 'dark')}`];
       if (!load) throw new Error(`Sprite ${file} is not bundled`);
       const buf = await load();
       if (type === 'json' || file.endsWith('.json'))
