@@ -100,7 +100,7 @@ export function exteriorPose(p: Vec3, center: Vec3, radius: number): { eye: Vec3
 /** Horizontal bar chart as inline SVG. */
 export function barChart(rows: readonly CountRow[], width = 520): string {
   const rowH = 22;
-  const labelW = 190;
+  const labelW = Math.round(width * 0.4);
   const countW = 44;
   const barW = width - labelW - countW;
   const max = Math.max(1, ...rows.map((r) => r.count));
@@ -161,8 +161,10 @@ function summary(m: ReportModel): string {
   <div class="tiles"><div class="tile total"><b>${String(m.total)}</b><span>issues</span></div>${statuses}</div>
   <div class="charts">
     <figure><figcaption>By severity</figcaption>${barChart(m.bySeverity)}</figure>
-    <figure><figcaption>By class</figcaption>${barChart(m.byClass.slice(0, 16))}</figure>
-    <figure><figcaption>By zone</figcaption>${barChart(zones)}${more}</figure>
+  </div>
+  <div class="charts two">
+    <figure><figcaption>By class</figcaption>${barChart(m.byClass.slice(0, 16), 380)}</figure>
+    <figure><figcaption>By zone</figcaption>${barChart(zones, 380)}${more}</figure>
   </div>
 </section>`;
 }

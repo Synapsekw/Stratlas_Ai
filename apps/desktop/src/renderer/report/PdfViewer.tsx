@@ -317,7 +317,10 @@ export function PdfViewer({ url, title }: PdfViewerProps) {
       for (let i = 1; i <= doc.numPages; i++) {
         if (i % 10 === 1) setSearching(`Reading page ${String(i)} of ${String(doc.numPages)}`);
         const tc = await (await doc.getPage(i)).getTextContent();
-        out.push(tc.items.map((it) => ('str' in it ? it.str : '')).join(' '));
+        // as pdf.js find: pieces of a line join directly, line ends become a space
+        out.push(
+          tc.items.map((it) => ('str' in it ? it.str + (it.hasEOL ? ' ' : '') : '')).join(''),
+        );
       }
       texts.current = out;
       setSearching(null);

@@ -30,8 +30,8 @@ export interface Snapshotter {
   dispose(): void;
 }
 
-export const VIEW_W = 960;
-export const VIEW_H = 720;
+export const VIEW_W = 800;
+export const VIEW_H = 600;
 
 /** Load the visible mesh layers once; null when the project has no mesh. */
 export async function createSnapshotter(
@@ -130,7 +130,7 @@ export async function createSnapshotter(
       pin.quaternion.copy(camera.quaternion);
       renderer.render(scene, camera);
       return new Promise<Blob | null>((r) => {
-        canvas.toBlob(r, 'image/jpeg', 0.84);
+        canvas.toBlob(r, 'image/jpeg', 0.8);
       });
     },
     dispose() {

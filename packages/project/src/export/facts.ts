@@ -71,13 +71,15 @@ export function classInfo(m: ProjectManifest, classId: string): { label: string;
 
 /**
  * The zone an issue lies in, read from its note: the kit "Location: ..., <zone>." line, the
- * "Area: <zone>." line, or the road chainage kilometre.
+ * "Area: <zone>." line, a "Zone <zone>." line, or the road chainage kilometre.
  */
 export function issueZone(issue: Issue): string {
   const loc = /Location:[^\n]*?,\s*([^,\n]+?)\.?\s*$/m.exec(issue.note);
   if (loc?.[1]) return loc[1].trim();
   const area = /Area:\s*([^.\n]+)/.exec(issue.note);
   if (area?.[1]) return area[1].trim();
+  const zone = /(?:^|\n)Zone\s+([^.\n]+)/.exec(issue.note);
+  if (zone?.[1]) return zone[1].trim();
   const km = /\bkm (\d+)(?:\.\d+)?/.exec(`${issue.title} ${issue.note}`);
   if (km?.[1]) return `km ${km[1]}`;
   return 'Not zoned';

@@ -162,6 +162,11 @@ h2 {
 .charts {
   display: grid;
   gap: 7mm;
+  margin-bottom: 8mm;
+}
+.charts.two {
+  grid-template-columns: 1fr 1fr;
+  gap: 8mm;
 }
 .charts figure {
   margin: 0;

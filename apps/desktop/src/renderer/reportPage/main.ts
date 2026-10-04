@@ -27,8 +27,8 @@ const set = (patch: Partial<PageState>) => {
   w.__report = { ...w.__report, ...patch };
 };
 
-const PHOTO_W = 960;
-const PHOTO_H = 720;
+const PHOTO_W = 800;
+const PHOTO_H = 600;
 
 async function json(url: string): Promise<unknown> {
   const r = await fetch(url);
@@ -73,7 +73,7 @@ async function photoCrop(projectId: string, row: ReportRow): Promise<string | un
   }
   return blobUrl(
     await new Promise<Blob | null>((r) => {
-      c.toBlob(r, 'image/jpeg', 0.82);
+      c.toBlob(r, 'image/jpeg', 0.78);
     }),
   );
 }
