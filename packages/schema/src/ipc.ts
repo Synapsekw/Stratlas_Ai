@@ -259,6 +259,8 @@ export const ipc = {
       userData: z.string(),
       logsDir: z.string(),
       packaged: z.boolean(),
+      /** Installed from the Microsoft Store (MSIX): the Store delivers updates. */
+      store: z.boolean().optional(),
     }),
   },
   /** Third-party packages shipped in the app, generated from the dependency tree at build time. */

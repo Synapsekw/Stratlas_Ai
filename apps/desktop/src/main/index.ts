@@ -280,6 +280,7 @@ function registerIpc(): void {
     userData: app.getPath('userData'),
     logsDir,
     packaged: app.isPackaged,
+    store: process.windowsStore,
   }));
   handle('app:licenses', () => licenses);
   handle('app:exportLogs', async () => {
@@ -319,8 +320,14 @@ function registerIpc(): void {
     return error ? { ok: false, error } : { ok: true };
   });
 
-  handle('update:verifyFile', ({ path }) => verifyInstaller(path, verifyDeps()));
+  const STORE_UPDATES = 'This copy comes from the Microsoft Store, which installs its updates.';
+  handle('update:verifyFile', ({ path }) =>
+    process.windowsStore
+      ? { ok: false as const, error: STORE_UPDATES }
+      : verifyInstaller(path, verifyDeps()),
+  );
   handle('update:installFile', async ({ path }) => {
+    if (process.windowsStore) return { ok: false, error: STORE_UPDATES };
     const r = await verifyInstaller(path, verifyDeps());
     if (!r.ok) return { ok: false, error: r.error };
     try {
@@ -335,7 +342,9 @@ function registerIpc(): void {
     }, 300);
     return { ok: true };
   });
-  handle('update:check', () => updates.check());
+  handle('update:check', () =>
+    process.windowsStore ? { ok: false as const, error: STORE_UPDATES } : updates.check(),
+  );
   handle('update:downloadAndInstall', () => updates.downloadAndInstall());
 
   handle('ai:setKey', ({ provider, key }) => keys.setKey(provider, key));

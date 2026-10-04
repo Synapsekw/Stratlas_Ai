@@ -359,8 +359,16 @@ export function About() {
       </div>
       <div className="sblock">
         <h2>Updates</h2>
-        <UpdateFromFile />
-        <OnlineCheck />
+        {a?.store ? (
+          <p className="help">
+            This copy comes from the Microsoft Store, which installs its updates.
+          </p>
+        ) : (
+          <>
+            <UpdateFromFile />
+            <OnlineCheck />
+          </>
+        )}
       </div>
       <Licences />
     </>
