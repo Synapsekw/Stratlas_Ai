@@ -39,6 +39,8 @@ export interface ShellState {
   annotating: boolean;
   /** Last 3D view per project id, so leaving and returning to Scene keeps the camera. */
   views: Record<string, SavedView>;
+  /** The point cloud panel (colour, size, budget, EDL) under the stage toolbar is open. */
+  cloudPanelOpen: boolean;
 }
 
 export interface ShellActions {
@@ -59,6 +61,9 @@ export interface ShellActions {
   setLabelMode: (mode: LabelMode) => void;
   setAnnotating: (on: boolean) => void;
   saveView: (projectId: string, view: SavedView) => void;
+  setCloudPanel: (open: boolean) => void;
+  /** Show the point cloud panel from anywhere: the scene, in a mode with the 3D view. */
+  openCloudPanel: () => void;
   dismissOpenError: () => void;
 }
 
@@ -81,6 +86,7 @@ export function createShellStore(bridge: Bridge, workspace: StoreApi<Workspace>)
     labelMode: 'key',
     annotating: false,
     views: {},
+    cloudPanelOpen: false,
 
     init: async () => {
       const [settings] = await Promise.all([bridge.call('settings:get', {}), get().loadLibrary()]);
@@ -189,6 +195,17 @@ export function createShellStore(bridge: Bridge, workspace: StoreApi<Workspace>)
     },
     saveView: (projectId, view) => {
       set({ views: { ...get().views, [projectId]: view } });
+    },
+    setCloudPanel: (cloudPanelOpen) => {
+      set({ cloudPanelOpen });
+    },
+    openCloudPanel: () => {
+      const { stageMode } = get();
+      set({
+        screen: 'scene',
+        stageMode: stageMode === 'map' ? '3d' : stageMode,
+        cloudPanelOpen: true,
+      });
     },
     dismissOpenError: () => {
       set({ openError: null });

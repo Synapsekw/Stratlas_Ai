@@ -12,7 +12,9 @@ import { Icon, type IconName } from '@aio/ui';
 import { setCameraMode, videoRig, type CameraMode } from '@aio/video';
 import { useWorkspace, workspace } from '@aio/workspace';
 import {
+  useCallback,
   useEffect,
+  useLayoutEffect,
   useReducer,
   useRef,
   useState,
@@ -20,6 +22,8 @@ import {
   type ReactNode,
 } from 'react';
 import { shell, useShell } from '../shell';
+import { PATH_MODES, setPathMode } from './flightPaths';
+import { updateFlightPaths, useFlightPathModel } from './pathModel';
 import { insideView, stopCutaway, useCutawayState } from './useCutaway';
 
 /** The live 3D stage (view presets, tools, section), re-rendering on tool and section changes. */
@@ -67,7 +71,10 @@ export function Tool({ icon, label, keys, pressed, disabled, onClick }: ToolProp
   );
 }
 
-/** A tool button that opens a panel below it; closes on outside click and Escape. */
+/**
+ * A tool button that opens a panel below it; closes on outside click and Escape. Pass `open` and
+ * `onOpenChange` to open it from elsewhere (the sidebar, the command palette).
+ */
 export function PopTool({
   icon,
   label,
@@ -75,6 +82,8 @@ export function PopTool({
   pressed,
   disabled,
   wide,
+  open: openProp,
+  onOpenChange,
   children,
 }: {
   icon: IconName;
@@ -83,9 +92,24 @@ export function PopTool({
   pressed?: boolean;
   disabled?: boolean;
   wide?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
+  const [own, setOwn] = useState(false);
+  const open = openProp ?? own;
+  const change = useRef(onOpenChange);
+  useLayoutEffect(() => {
+    change.current = onOpenChange;
+  });
+  const controlled = openProp !== undefined;
+  const setOpen = useCallback(
+    (o: boolean) => {
+      if (!controlled) setOwn(o);
+      change.current?.(o);
+    },
+    [controlled],
+  );
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -101,7 +125,7 @@ export function PopTool({
       window.removeEventListener('pointerdown', away);
       window.removeEventListener('keydown', esc);
     };
-  }, [open]);
+  }, [open, setOpen]);
   return (
     <div className="pop-anchor" ref={ref}>
       <button
@@ -329,7 +353,7 @@ const KINDS: { kinds: Layer['kind'][]; label: string; icon: IconName }[] = [
   { kinds: ['pointcloud'], label: 'Point clouds', icon: 'cloud' },
   { kinds: ['photos'], label: 'Photo cameras', icon: 'photo' },
   { kinds: ['raster', 'basemap'], label: 'Maps and rasters', icon: 'raster' },
-  { kinds: ['video'], label: 'Video and flight paths', icon: 'video' },
+  { kinds: ['video'], label: 'Video clips', icon: 'video' },
 ];
 
 function KindRow({ kinds, label, icon }: (typeof KINDS)[number]) {
@@ -356,12 +380,9 @@ function KindRow({ kinds, label, icon }: (typeof KINDS)[number]) {
   );
 }
 
-/** Callout labels, layer visibility by kind and point-cloud display. */
+/** Callout labels and layer visibility by kind. */
 export function DisplayTools({ stage, map }: { stage: EngineStage | null; map: boolean }) {
   const labelMode = useShell((s) => s.labelMode);
-  const hasClouds = useWorkspace((s) =>
-    (s.project?.manifest.layers ?? []).some((l) => l.kind === 'pointcloud'),
-  );
   return (
     <>
       {!map && (
@@ -394,12 +415,88 @@ export function DisplayTools({ stage, map }: { stage: EngineStage | null; map: b
           ))}
         </div>
       </PopTool>
-      {!map && hasClouds && (
-        <PopTool icon="point" label="Point cloud display" wide>
-          <PointCloudControls className="pop-form" />
-        </PopTool>
-      )}
     </>
+  );
+}
+
+/* ----------------------------------------------------------------------- point clouds */
+
+/** Cloud layer ids of the open project, joined (a stable selector value). */
+const cloudIds = (layers: readonly Layer[] | undefined) =>
+  (layers ?? [])
+    .filter((l) => l.kind === 'pointcloud')
+    .map((l) => l.id)
+    .join('|');
+
+/** The point cloud panel: show it, colour by RGB, elevation, intensity or flight, size, EDL. */
+export function CloudTools() {
+  const open = useShell((s) => s.cloudPanelOpen);
+  const ids = useWorkspace((s) => cloudIds(s.project?.manifest.layers));
+  const shown = useWorkspace((s) => ids.split('|').some((id) => id && !s.hidden[id]));
+  const many = ids.includes('|');
+  if (!ids) return null;
+  return (
+    <PopTool
+      icon="cloud"
+      label="Point cloud"
+      wide
+      open={open}
+      onOpenChange={(o) => {
+        shell.getState().setCloudPanel(o);
+      }}
+    >
+      <div className="pop-form" data-testid="cloud-panel">
+        <span className="pop-title">Point cloud{many ? 's' : ''}</span>
+        <label className="pop-row">
+          <Icon name="cloud" size={14} className="muted" />
+          <span className="pop-grow">Show the point cloud{many ? 's' : ''}</span>
+          <input
+            type="checkbox"
+            checked={shown}
+            onChange={() => {
+              for (const id of ids.split('|')) workspace.getState().setLayerVisible(id, !shown);
+            }}
+          />
+        </label>
+        <PointCloudControls className="pop-form" />
+      </div>
+    </PopTool>
+  );
+}
+
+/* ----------------------------------------------------------------------- flight paths */
+
+/** All, active clip only or no flight paths in 3D (P turns them off and back on). */
+export function FlightPathTool() {
+  const m = useFlightPathModel();
+  if (!m) return null;
+  const { mode } = m.pref;
+  const current = PATH_MODES.find((p) => p.mode === mode);
+  return (
+    <PopTool icon="path" label="Flight paths" keys="P" pressed={mode !== 'off'} wide>
+      <div className="pop-form" data-testid="path-panel">
+        <span className="pop-title">Flight paths</span>
+        <div className="seg pop-seg" role="group" aria-label="Flight paths">
+          {PATH_MODES.map((p) => (
+            <button
+              key={p.mode}
+              type="button"
+              aria-pressed={mode === p.mode}
+              title={p.hint}
+              onClick={() => {
+                updateFlightPaths((pref) => setPathMode(pref, p.mode));
+              }}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <p className="pop-note">
+          {current?.hint}. <span className="kbd">P</span> turns the paths off and on; the eye on a
+          flight in the Video list hides that flight&apos;s path.
+        </p>
+      </div>
+    </PopTool>
   );
 }
 
@@ -432,6 +529,7 @@ export function VideoTools({ stage, map }: { stage: EngineStage | null; map: boo
           shell.getState().setVideoHidden(!videoHidden);
         }}
       />
+      {!map && <FlightPathTool />}
       {!map &&
         CAMERA_MODES.map((m) => (
           <Tool

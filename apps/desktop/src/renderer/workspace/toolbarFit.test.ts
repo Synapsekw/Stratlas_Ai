@@ -35,4 +35,19 @@ describe('stage toolbar fit', () => {
     expect(fitGroups(map, widths, FIXED, 660)).toEqual([]);
     expect(fitGroups(map, widths, FIXED, 600)).toEqual(['display']);
   });
+
+  it('keeps the point cloud group on the bar until only annotate is left', () => {
+    const all: GroupId[] = ['view', 'measure', 'display', 'clouds', 'video', 'annotate'];
+    const w = new Map(widths).set('clouds', 36);
+    const hidden = fitGroups(all, w, FIXED, 380);
+    expect(hidden).toEqual(['display', 'video', 'view', 'measure']);
+    expect(fitGroups(all, w, FIXED, 200)).toEqual([
+      'display',
+      'video',
+      'view',
+      'measure',
+      'clouds',
+      'annotate',
+    ]);
+  });
 });

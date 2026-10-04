@@ -1098,7 +1098,7 @@ svg.flip {
   top: 50px;
 }
 
-/* stage popovers (section, point cloud display) */
+/* stage popovers (section, point cloud, flight paths) */
 .pop-anchor {
   position: relative;
 }
@@ -1149,6 +1149,20 @@ svg.flip {
   gap: 10px;
   font-size: var(--t-12);
   color: var(--fg-1);
+}
+.pop-title {
+  font-size: var(--t-12);
+  font-weight: 600;
+  color: var(--fg-0);
+}
+/* the elevation ramp while the clouds are coloured by elevation */
+.elev-legend {
+  position: absolute;
+  right: 14px;
+  bottom: 84px;
+  z-index: 4;
+  pointer-events: none;
+  background: var(--scrim);
 }
 .pop-row {
   display: flex;
