@@ -104,3 +104,6 @@ export function wgs84ToUtm(lon: number, lat: number, zone = 39): [number, number
   const [e, n] = fromWgs84([lon, lat, 0], 32600 + zone);
   return [e, n];
 }
+
+export * from './crs';
+export * from './similarity';
