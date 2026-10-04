@@ -4,7 +4,7 @@
  * STRATLAS_HCL_DATA); skipped elsewhere. Read-only: it never edits the project.
  */
 import { test as base, type ElectronApplication, type Page } from '@playwright/test';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -13,6 +13,12 @@ import { expect, launchApp, NetworkGuard } from './fixtures';
 
 const DATA = process.env.STRATLAS_HCL_DATA ?? 'E:\\Stratlas Data';
 const HCL = join(DATA, 'projects', 'hcl');
+
+/** Issues saved in the real project: 11 imported plus any the founder added while testing. */
+function savedIssueCount(): number {
+  const file = JSON.parse(readFileSync(join(HCL, 'issues.json'), 'utf8')) as { issues: unknown[] };
+  return file.issues.length;
+}
 
 interface Inspect {
   __stratlas: {
@@ -70,7 +76,9 @@ const clock = (win: Page) =>
     };
   });
 
-test('HCl opens with a drawn 3D scene, plays a clip and lists its 11 issues', async ({ win }) => {
+test('HCl opens with a drawn 3D scene, plays a clip and lists its saved issues', async ({
+  win,
+}) => {
   const errors: string[] = [];
   win.on('pageerror', (e) => errors.push(e.message));
   win.on('console', (m) => {
@@ -80,7 +88,9 @@ test('HCl opens with a drawn 3D scene, plays a clip and lists its 11 issues', as
   await win.getByTestId('project-card').filter({ hasText: 'HCl' }).first().click();
   const canvas = win.locator('[data-scene-view] canvas');
   await expect(canvas).toBeVisible();
-  await expect.poll(async () => (await clock(win)).issues, { timeout: 30_000 }).toBe(11);
+  await expect
+    .poll(async () => (await clock(win)).issues, { timeout: 30_000 })
+    .toBe(savedIssueCount());
 
   // The tank mesh has loaded into the scene ...
   await expect
@@ -132,7 +142,9 @@ test('HCl opens with a drawn 3D scene, plays a clip and lists its 11 issues', as
   });
 
   await win.locator('.nav-item', { hasText: 'Issues' }).first().click();
-  await expect(win.locator('.nav-item', { hasText: 'Issues' }).locator('.count')).toHaveText('11');
+  await expect(win.locator('.nav-item', { hasText: 'Issues' }).locator('.count')).toHaveText(
+    String(savedIssueCount()),
+  );
   await expect(win.getByText('F05', { exact: true }).first()).toBeVisible();
 
   expect(errors).toEqual([]);

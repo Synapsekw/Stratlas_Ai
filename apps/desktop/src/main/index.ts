@@ -60,7 +60,10 @@ const settings = createSettingsStore(
   ),
 );
 const library = createLibraryStore(join(app.getPath('userData'), 'library.json'));
-const keys = createKeyVault(brand.appId, (service, account) => new Entry(service, account));
+// An isolated profile (tests, demos) gets its own vault service, so it never reads or writes the
+// person's real API keys.
+const keyService = process.env.STRATLAS_USER_DATA ? `${brand.appId}.isolated` : brand.appId;
+const keys = createKeyVault(keyService, (service, account) => new Entry(service, account));
 
 let mainWindow: BrowserWindow | null = null;
 
