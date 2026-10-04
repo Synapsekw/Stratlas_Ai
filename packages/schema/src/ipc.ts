@@ -14,6 +14,7 @@ import { ProjectManifest } from './manifest';
 import { HexColor } from './common';
 import { AiPolicy, ExportKind, PackageInfo } from './package';
 import { BoundaryEditsFile, VolumesFile } from './volumes';
+import { NarrativeFile, ReportContentsSettings } from './report';
 
 const Empty = z.object({}).strict();
 
@@ -117,6 +118,8 @@ export const Settings = z.object({
     .optional(),
   /** Company name, logo and accent for generated reports. Absent: neutral reports. */
   reportBranding: ReportBrandingSettings.optional(),
+  /** Sections of the house-format report and which issues get a page. Absent: everything. */
+  reportContents: ReportContentsSettings.optional(),
 });
 
 /** West, south, east, north in WGS84 degrees. */
@@ -226,8 +229,9 @@ export const PackageExportOptions = z
   .strict();
 
 /**
- * Issue exports (PRD REV-6, ANN-11). `report-pdf` is the branded issue register report printed
- * from an offscreen window; the others are written by the data utility process.
+ * Issue exports (PRD REV-6, ANN-11). `report-pdf` is the branded issue register report and
+ * `house-pdf` the full house-format report (BLD-8), both printed from an offscreen window; the
+ * others are written by the data utility process.
  */
 export const EXPORT_FORMATS = [
   'csv',
@@ -236,6 +240,7 @@ export const EXPORT_FORMATS = [
   'kit-json',
   'masks-zip',
   'report-pdf',
+  'house-pdf',
 ] as const;
 export const ExportFormat = z.enum(EXPORT_FORMATS);
 
@@ -250,6 +255,7 @@ export const EXPORT_FORMAT_KIND = {
   'kit-json': 'kit-json',
   'masks-zip': 'masks',
   'report-pdf': 'report-pdf',
+  'house-pdf': 'report-pdf',
 } as const satisfies Record<z.infer<typeof ExportFormat>, ExportKind>;
 
 export const ReportFile = z.object({
@@ -416,7 +422,13 @@ export const ipc = {
   },
   /** Can the agent answer right now (cloud switch, key, project policy, local model)? */
   'ai:status': {
-    request: z.object({ projectId: z.string().min(1).optional() }).strict(),
+    request: z
+      .object({
+        projectId: z.string().min(1).optional(),
+        /** The route to check; `chat` when absent. */
+        task: AiTask.optional(),
+      })
+      .strict(),
     response: z.object({
       ready: z.boolean(),
       reason: z
@@ -628,6 +640,46 @@ export const ipc = {
   'report:list': {
     request: z.object({ projectId: z.string().min(1) }).strict(),
     response: z.object({ files: z.array(ReportFile) }),
+  },
+  /**
+   * The narrative of an open project (`report/narrative.json`, BLD-7): null when none was saved.
+   * `readOnly` for a package, whose narrative can be read but not changed.
+   */
+  'report:readNarrative': {
+    request: z.object({ projectId: z.string().min(1) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), file: NarrativeFile.nullable(), readOnly: z.boolean() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /** Replace `report/narrative.json` atomically, keeping a `.bak` of the previous file. */
+  'report:writeNarrative': {
+    request: z.object({ projectId: z.string().min(1), file: NarrativeFile }).strict(),
+    response: z.object({ ok: z.boolean(), error: z.string().optional() }),
+  },
+  /**
+   * One text completion on a task route (the report narrative, BLD-7), without tools. The
+   * renderer shows the exact `system` and `prompt` first (AI-6). Cancel with `ai:cancel`.
+   */
+  'ai:draftText': {
+    request: z
+      .object({
+        runId: z.string().min(1).max(64),
+        projectId: z.string().min(1),
+        task: AiTask,
+        system: z.string().min(1).max(20_000),
+        prompt: z.string().min(1).max(200_000),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        text: z.string(),
+        provider: z.string(),
+        model: z.string(),
+      }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
   },
   'app:about': {
     request: Empty,

@@ -235,6 +235,7 @@ describe('ipc contracts', () => {
       'kit-json': 'json',
       'masks-zip': 'zip',
       'report-pdf': 'pdf',
+      'house-pdf': 'pdf',
     } as const;
     for (const format of EXPORT_FORMATS) {
       expect(EXPORT_FORMAT_KIND[format]).toBe(exportKindForFile(`x.${ext[format]}`));

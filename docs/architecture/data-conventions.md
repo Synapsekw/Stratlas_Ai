@@ -109,3 +109,18 @@ Volumetric projects keep their volumes beside the manifest (schemas in `@aio/sch
 - `grids` locates the source grids the app recomputes volumes on: `piles` (10 cm pile grids, `{id}`), `dsm` (0.4 m site DSM, `{epoch}`) and `coarse` (0.4 m pile masks), all in the Volumetric Survey Kit script format (`window.VS_*` JSON with zlib and base64 grids, decoded in `packages/volumetric/src/model/kitdata.ts`). When absent, readers use the kit layout the importer copies unchanged: `legacy/data/piles/{id}.js`, `legacy/data/dsm_{epoch}.js`, `legacy/data/vol.js`.
 - The app reads both files through IPC `project:readVolumes` (validated in main). `edits/boundaries.json` is written only through IPC `project:writeBoundaries` (atomic replace with `.bak`). One edit per pile and epoch; an edit's volumes replace the automatic ones in every register, total and export.
 - A `.aio` package carries both files; the app reads them from the package and never writes edits into it (section 8).
+
+## 11. Generated reports and their text
+
+The house-format project report (`house-pdf`, BLD-8) is printed from `apps/desktop/src/renderer/house.html` in an offscreen window: the page lays out fixed A4 page frames itself (cover, contents, executive summary, scope and method, site and data, statistics, findings register, one page per issue, appendices, back page), then main prints it with no margins. It reads `manifest.json`, `issues.json`, `thumbnail.jpg`, `volumes.json` and `edits/boundaries.json` (volumetric), `road.json` (road) and `report/narrative.json`, all optional except the first two. It carries the person's branding (section 2), never a client brand. `Settings.reportContents` chooses the sections and which issues get a page (`all` graded issues by default; `above-lowest` lists the lowest level in the register only, as the delivered facade reports do; uncertain items are always listed in an appendix).
+
+```
+<project>/report/
+  narrative.json        aio.narrative/1: every saved version of the report text
+  narrative.json.bak    the previous file
+```
+
+- `parts.summary`, `parts.method` and `parts.findings` hold `versions`, newest last; the report prints the newest version of each part, or a text filled from the statistics when none was saved. Restoring an old version saves it again as the newest; nothing is deleted (at most 50 versions per part are kept).
+- `source` says where a version came from: `ai` (with `provider` and `model`), `template` (cloud AI off: statistics filled in, judgement left as `[bracketed]` prompts the report highlights) or `user`.
+- Written only through IPC `report:writeNarrative` (atomic replace with `.bak`); a `.aio` package carries the file and the app reads it in place, read only.
+- The AI draft sends the project statistics only (counts, labels, dates, severity scale, volumes and PCI figures; no photos, positions or notes) on the `report` route with `ai:draftText`, after the AI-6 preview of the exact instructions and request.
