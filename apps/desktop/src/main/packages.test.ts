@@ -1,5 +1,6 @@
 import { exportPackage } from '@aio/project/package';
 import { PackageHeader, ProjectManifest } from '@aio/schema';
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,6 +9,7 @@ import { listLibrary } from './library';
 import {
   checkExport,
   cloudAllowedFor,
+  createPackageJobs,
   createPlanCache,
   packagePathFromArgv,
   ProjectPolicy,
@@ -240,5 +242,74 @@ describe('packagePathFromArgv', () => {
     expect(packagePathFromArgv(['electron', '.', '--flag', 'x.AIO'])).toBe('x.AIO');
     expect(packagePathFromArgv(['electron', 'out/main/index.js'])).toBeNull();
     expect(packagePathFromArgv(['app', '--open=x.aio'])).toBeNull();
+  });
+});
+
+describe('package export jobs', () => {
+  const options = (projectId: string) => ({
+    projectId,
+    exclude: [],
+    readOnly: true,
+    aiPolicy: 'forbid' as const,
+    exports: ['issues-csv' as const],
+  });
+
+  async function setup(target: string | null) {
+    const registry = new ProjectRegistry();
+    const opened = await openProject(root, registry);
+    if (!opened.ok) throw new Error(opened.error);
+    const events: number[] = [];
+    let jobs: ReturnType<typeof createPackageJobs> | null = null;
+    jobs = createPackageJobs({
+      registry,
+      cache: createPlanCache(),
+      createdBy: 'test',
+      chooseTarget: () => Promise.resolve(target),
+      progress: (e) => {
+        events.push(e.bytesDone);
+        // Cancel as soon as the first progress arrives when asked to.
+        if (target?.endsWith('cancel')) jobs?.cancel({ jobId: e.jobId });
+      },
+    });
+    return { jobs, id: opened.id };
+  }
+
+  it('writes the package where the person chose, adding the .aio extension', async () => {
+    const { jobs, id } = await setup(join(base, 'out', 'delivery'));
+    await mkdir(join(base, 'out'));
+    const r = await jobs.export({ jobId: 'j1', options: options(id) });
+    expect(r).toMatchObject({ ok: true, path: join(base, 'out', 'delivery.aio') });
+    expect(existsSync(join(base, 'out', 'delivery.aio'))).toBe(true);
+  });
+
+  it('answers a cancelled dialog or a cancelled job with no path and leaves no file', async () => {
+    const none = await setup(null);
+    expect(await none.jobs.export({ jobId: 'j1', options: options(none.id) })).toEqual({
+      ok: true,
+      path: null,
+    });
+    const cancelled = await setup(join(base, 'cancel'));
+    const r = await cancelled.jobs.export({ jobId: 'j2', options: options(cancelled.id) });
+    expect(r).toEqual({ ok: true, path: null });
+    expect(existsSync(join(base, 'cancel.aio'))).toBe(false);
+    expect(existsSync(join(base, 'cancel.aio.partial'))).toBe(false);
+  });
+
+  it('refuses to export a package from a package', async () => {
+    const file = await makePackage(join(base, 'alzour.aio'));
+    const registry = new ProjectRegistry();
+    const opened = await openProject(file, registry);
+    if (!opened.ok) throw new Error(opened.error);
+    const jobs = createPackageJobs({
+      registry,
+      cache: createPlanCache(),
+      createdBy: 'test',
+      chooseTarget: () => Promise.resolve(join(base, 'x.aio')),
+      progress: () => undefined,
+    });
+    const r = await jobs.export({ jobId: 'j', options: options(opened.id) });
+    expect(r.ok).toBe(false);
+    const plan = await jobs.plan({ projectId: opened.id, exclude: [] });
+    expect(!plan.ok && plan.error).toMatch(/project folder/);
   });
 });
