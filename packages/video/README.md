@@ -32,5 +32,8 @@ the player reports `no-footage`; the master reaching its end pauses the workspac
   (`crossOrigin = 'anonymous'` is set on every video).
 - Follow-cam and drone-eye move the orbit target and disable the controls when the scene handle
   exposes `controls: { target: Vector3; enabled: boolean }` (optional; without it only the camera moves).
+  Drone-eye puts the target where the view axis meets the ground (at most four flight heights
+  away), because the stage takes near / far, the shadow frustum and the ortho tile LOD from the
+  camera-to-target distance.
 - `projectionReceivers()` should return mesh layers and ground tiles; the projector picks up new
   receivers every frame and uses camera layer 30 (`PROJECTOR_DEPTH_LAYER`) for its depth pass.
