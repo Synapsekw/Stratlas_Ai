@@ -2,11 +2,13 @@ import { brand } from '@aio/brand';
 import { Icon } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { Fragment } from 'react';
+import { cloudAiBlocked } from '../player';
 import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
 
 const VIEW_LABEL: Record<Screen, string> = {
   projects: 'Projects',
+  welcome: 'Welcome',
   scene: 'Scene',
   review: 'Original review',
   issues: 'Issues',
@@ -29,7 +31,10 @@ export function BrandMark() {
 
 export function TitleBar() {
   const screen = useShell((s) => s.screen);
-  const cloudAi = useShell((s) => s.settings.cloudAi);
+  const cloudSetting = useShell((s) => s.settings.cloudAi);
+  const pkg = useShell((s) => s.pkg);
+  const blocked = cloudAiBlocked(pkg);
+  const cloudAi = cloudSetting && !blocked;
   const manifest = useWorkspace((s) => s.project?.manifest);
 
   const crumbs: string[] =
@@ -65,6 +70,20 @@ export function TitleBar() {
         <span className="kbd">Ctrl K</span>
       </button>
       <div className="tb-status">
+        {pkg && (
+          <span
+            className="chip-status ro"
+            title={
+              pkg.header.readOnly
+                ? `Opened from ${pkg.file}. Nothing in this package can be changed.`
+                : `Opened in place from ${pkg.file}. Issues are not saved into the package.`
+            }
+            data-testid="readonly-chip"
+          >
+            <Icon name="lock" size={14} />
+            {pkg.header.readOnly ? 'Read-only package' : 'Package'}
+          </span>
+        )}
         <span
           className="chip-status"
           title="Runs with no network. Projects, maps and models are local."
@@ -76,9 +95,11 @@ export function TitleBar() {
           type="button"
           className="chip-status"
           title={
-            cloudAi
-              ? 'Cloud AI is allowed. Change in Settings.'
-              : 'Cloud AI is off. Change in Settings.'
+            blocked
+              ? 'This package does not allow cloud AI. Nothing is sent to any provider.'
+              : cloudAi
+                ? 'Cloud AI is allowed. Change in Settings.'
+                : 'Cloud AI is off. Change in Settings.'
           }
           onClick={() => {
             shell.getState().go('settings');
@@ -86,7 +107,7 @@ export function TitleBar() {
           data-testid="cloud-chip"
         >
           <span className={cloudAi ? 'dot' : 'dot off'} />
-          {cloudAi ? 'Cloud AI' : 'Cloud AI off'}
+          {blocked && cloudSetting ? 'Cloud AI blocked' : cloudAi ? 'Cloud AI' : 'Cloud AI off'}
         </button>
       </div>
     </header>

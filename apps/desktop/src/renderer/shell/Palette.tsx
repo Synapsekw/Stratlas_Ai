@@ -70,6 +70,12 @@ export function Palette() {
     };
     action('sidebar', 'Toggle sidebar', 'sidebar', () => void s.toggleSidebar(), 'Ctrl B');
     action('add-folder', 'Add project folder', 'import', () => void s.addProjectFolder());
+    action('open-package', 'Open a project package (.aio)', 'lock', () => void s.openPackageFile());
+    if (project && !s.pkg) {
+      action('export-package', 'Export project package', 'download', () => {
+        s.setExportFor(project.id);
+      });
+    }
     action(
       'cloud',
       cloudAi ? 'Turn cloud AI off' : 'Turn cloud AI on',

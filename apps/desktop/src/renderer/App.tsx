@@ -11,10 +11,13 @@ import { ProjectsScreen } from './screens/Projects';
 import { ReportsScreen } from './screens/Reports';
 import { ReviewScreen } from './screens/Review';
 import { SettingsScreen } from './screens/Settings';
+import { WelcomeScreen } from './screens/Welcome';
 import { initAuthor } from './author';
 import { spaceIsPlayPause } from './keys';
 import { bridge, shell, useShell } from './shell';
+import { PackageExportDialog } from './shell/PackageExport';
 import { Palette } from './shell/Palette';
+import { UnlockDialog } from './shell/UnlockDialog';
 import { Sidebar } from './shell/Sidebar';
 import { TitleBar } from './shell/TitleBar';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
@@ -82,11 +85,26 @@ function continueAcrossClips(): () => void {
   });
 }
 
+/**
+ * A `.aio` the app was started with (double-click), and any handed over later by a second
+ * launch, opens in this window. Returns an unsubscribe function.
+ */
+function openPackagesHandedOver(): () => void {
+  void bridge.call('app:takeOpenPath', {}).then((r) => {
+    if (r.ok && r.value.path) void shell.getState().openProject(r.value.path);
+  });
+  return window.aio.on('app:openPath', ({ path }) => {
+    void shell.getState().openProject(path);
+  });
+}
+
 function Screen() {
   const screen = useShell((s) => s.screen);
   switch (screen) {
     case 'projects':
       return <ProjectsScreen />;
+    case 'welcome':
+      return <WelcomeScreen />;
     case 'scene':
       return <WorkspaceScreen />;
     case 'review':
@@ -119,7 +137,9 @@ export function App() {
       videoDrivesClock,
     );
     const stopContinue = continueAcrossClips();
+    const stopOpenPath = openPackagesHandedOver();
     return () => {
+      stopOpenPath();
       window.removeEventListener('keydown', onKeyDown);
       stopPlayback();
       stopContinue();
@@ -139,6 +159,8 @@ export function App() {
         <Screen />
       </main>
       <Palette />
+      <UnlockDialog />
+      <PackageExportDialog />
     </div>
   );
 }
