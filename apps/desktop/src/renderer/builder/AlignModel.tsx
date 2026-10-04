@@ -262,6 +262,9 @@ export function AlignModel({ layerId }: { layerId: string }) {
           </div>
           {pending && (
             <>
+              <p className="say mono" data-testid="align-pending">
+                Model point {f2(pending[0])} {f2(pending[1])} {f2(pending[2])}
+              </p>
               <div className="b-inline">
                 <span className="faint">Target from</span>
                 <div className="seg" role="group" aria-label="Target from">

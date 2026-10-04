@@ -55,10 +55,11 @@ export function useStagePick(
       const before = workspace.getState().selection;
       const hit = getActiveScene()?.raycast(x, y) ?? null;
       cb.current(hit, { x: e.clientX, y: e.clientY });
-      // the stage selects on the same click; keep the selection the person had
-      queueMicrotask(() => {
+      // the stage selects on the same click (its own pointerup runs after this capture
+      // listener); put the selection back once it has
+      setTimeout(() => {
         workspace.getState().select(before);
-      });
+      }, 0);
     };
     pane.addEventListener('pointerdown', pd, true);
     pane.addEventListener('pointerup', pu, true);
