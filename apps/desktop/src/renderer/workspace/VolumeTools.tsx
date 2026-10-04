@@ -4,7 +4,7 @@ import { PopTool, Tool } from './StageTools';
 const SURFACES: { v: SurfaceMode; t: string; d: string }[] = [
   { v: 'photo', t: 'Photo', d: 'Orthomosaic draped on the terrain' },
   { v: 'elev', t: 'Elevation', d: 'Colour relief of the ground' },
-  { v: 'change', t: 'Cut and fill', d: 'Height change between the first and last survey' },
+  { v: 'change', t: 'Cut / fill', d: 'Height change between the first and last survey' },
 ];
 
 const BODIES: { v: BodyMode; t: string; d: string }[] = [
@@ -14,8 +14,8 @@ const BODIES: { v: BodyMode; t: string; d: string }[] = [
 ];
 
 /**
- * Stage tools of a volumetric project: survey date and swipe, surface colours, volume bodies and
- * the section line. State lives in the volumetric store (@aio/volumetric).
+ * Stage tools of a volumetric project: survey date and swipe, surface colours (photo, elevation,
+ * cut and fill, always on the toolbar), volume bodies and the section line. State lives in the volumetric store (@aio/volumetric).
  */
 export function VolumeTools() {
   const captures = useVolumetric((s) => s.file?.captures ?? []);
@@ -57,26 +57,23 @@ export function VolumeTools() {
           Swipe
         </button>
       </div>
-      <PopTool icon="raster" label="Surface colours" pressed={surface !== 'photo'}>
-        <div className="pop-list" role="group" aria-label="Surface colours">
-          {SURFACES.map((s) => (
-            <button
-              key={s.v}
-              type="button"
-              className="pop-item"
-              aria-pressed={surface === s.v}
-              disabled={s.v === 'change' && editing}
-              onClick={() => {
-                if (swipe) v.setSwipe(false);
-                v.setSurface(s.v);
-              }}
-            >
-              <b>{s.t}</b>
-              <small>{s.d}</small>
-            </button>
-          ))}
-        </div>
-      </PopTool>
+      <div className="seg vol-surface" role="group" aria-label="Surface colours">
+        {SURFACES.map((s) => (
+          <button
+            key={s.v}
+            type="button"
+            aria-pressed={surface === s.v}
+            title={s.d}
+            disabled={s.v === 'change' && editing}
+            onClick={() => {
+              if (swipe) v.setSwipe(false);
+              v.setSurface(s.v);
+            }}
+          >
+            {s.t}
+          </button>
+        ))}
+      </div>
       <PopTool icon="pile" label="Volume bodies" pressed={body !== 'off'}>
         <div className="pop-list" role="group" aria-label="Volume bodies">
           {BODIES.map((b) => (

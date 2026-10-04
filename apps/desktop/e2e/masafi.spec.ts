@@ -52,6 +52,8 @@ const test = base.extend<{ root: string; app: ElectronApplication; win: Page }>(
   root: async ({}, use) => {
     const dir = await mkdtemp(join(tmpdir(), 'aio-masafi-'));
     await cp(MASAFI, join(dir, 'data', 'projects', 'masafi'), { recursive: true });
+    // start from the delivered volumes: edits saved while testing the real project are left out
+    await rm(join(dir, 'data', 'projects', 'masafi', 'edits'), { recursive: true, force: true });
     await use(dir);
     await rm(dir, { recursive: true, force: true });
   },
@@ -102,6 +104,12 @@ async function inspect<T, A>(
   } finally {
     await w.dispose();
   }
+}
+
+/** The project's saved boundary edits as text, or null when there are none. */
+function boundariesOf(project: string): string | null {
+  const f = join(project, 'edits', 'boundaries.json');
+  return existsSync(f) ? readFileSync(f, 'utf8') : null;
 }
 
 async function openMasafi(win: Page) {
@@ -212,10 +220,23 @@ test('Masafi register, recomputed volumes, 3D selection, surfaces and section', 
   await expect(win.getByTestId('vol-net')).toHaveText('14,687 m³');
   await win.locator('.vol-dates button', { hasText: '10 Jan' }).click();
 
+  // Elevation colours drape on the shown survey, straight from the toolbar.
+  const surfaces = win.getByRole('group', { name: 'Surface colours' });
+  await surfaces.getByRole('button', { name: 'Elevation' }).click();
+  await expect
+    .poll(
+      () =>
+        inspect(
+          win,
+          ({ w }) => w.__stratlas.stage()?.scene.getObjectByName('drape:e2')?.visible ?? false,
+          null,
+        ),
+      { timeout: 20_000 },
+    )
+    .toBe(true);
+
   // Cut and fill colours drape on the last survey.
-  await win.getByRole('button', { name: 'Surface colours' }).click();
-  await win.getByRole('button', { name: /Cut and fill/ }).click();
-  await win.keyboard.press('Escape');
+  await surfaces.getByRole('button', { name: 'Cut / fill' }).click();
   await expect
     .poll(
       () =>
@@ -230,7 +251,7 @@ test('Masafi register, recomputed volumes, 3D selection, surfaces and section', 
     )
     .toBe(true);
   // the panel counts the change by pile, cut to fill
-  await win.getByRole('button', { name: 'All piles' }).click();
+  await win.getByRole('button', { name: 'All piles', exact: true }).click();
   await expect(win.getByTestId('vol-change').locator('button[data-pile]').first()).toHaveAttribute(
     'data-pile',
     'P05',
@@ -238,9 +259,26 @@ test('Masafi register, recomputed volumes, 3D selection, surfaces and section', 
   await expect(win.getByTestId('vol-change').locator('button[data-pile="P05"]')).toContainText(
     '−5,116',
   );
-  await win.getByRole('button', { name: 'Surface colours' }).click();
-  await win.getByRole('button', { name: /^Photo/ }).click();
-  await win.keyboard.press('Escape');
+  await surfaces.getByRole('button', { name: 'Photo' }).click();
+
+  // Piles hide one by one or all at once: body, toe line and callout go; the selected one stays.
+  const pileDrawn = (id: string) =>
+    inspect(
+      win,
+      ({ w, a }) => w.__stratlas.stage()?.scene.getObjectByName(`vol:${a}`) !== undefined,
+      id,
+    );
+  await win.getByRole('button', { name: 'Hide P03 in 3D' }).click();
+  await expect.poll(() => pileDrawn('P03')).toBe(false);
+  await expect.poll(() => pileDrawn('P05')).toBe(true);
+  // with some hidden the one button shows every pile, then hides every pile, then shows them again
+  await win.getByTestId('vol-eye-all').click();
+  await expect.poll(() => pileDrawn('P03')).toBe(true);
+  await win.getByTestId('vol-eye-all').click();
+  await expect.poll(() => pileDrawn('P05')).toBe(false);
+  await expect(win.locator('[data-testid="vol-register"] tfoot')).toContainText('19 hidden');
+  await win.getByTestId('vol-eye-all').click();
+  await expect.poll(() => pileDrawn('P05')).toBe(true);
 
   // Swipe shows both surveys.
   await win.locator('.vol-dates button', { hasText: 'Swipe' }).click();
@@ -263,7 +301,24 @@ test('Masafi register, recomputed volumes, 3D selection, surfaces and section', 
   await win.getByRole('button', { name: 'Section line between the surveys' }).click();
   const box = await win.locator('[data-scene-view] canvas').boundingBox();
   if (!box) throw new Error('no canvas');
+  const camera = () =>
+    inspect(
+      win,
+      ({ w }) => {
+        const p = (
+          w.__stratlas.stage() as unknown as {
+            camera: { position: { x: number; y: number; z: number } };
+          }
+        ).camera.position;
+        return [p.x, p.y, p.z].map((v) => Math.round(v * 100) / 100);
+      },
+      null,
+    );
   await win.mouse.click(box.x + box.width * 0.42, box.y + box.height * 0.45);
+  // after the first point the camera stays put while the mouse moves to the second
+  const before = await camera();
+  await win.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.4, { steps: 12 });
+  expect(await camera()).toEqual(before);
   await win.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.4);
   await expect(win.getByTestId('vol-sec-cut')).toHaveText(/\d+ m² cut/, { timeout: 20_000 });
   await expect(win.getByTestId('vol-sec-fill')).toHaveText(/\d+ m² fill/);
@@ -279,6 +334,7 @@ test('Masafi boundary edit in 3D is recomputed, saved to the project, and export
   win,
   root,
 }) => {
+  const realBefore = boundariesOf(MASAFI);
   await openMasafi(win);
   await win.locator('[data-testid="vol-register"] tbody tr[data-pile="P02"]').click();
   await win.getByRole('button', { name: 'Edit boundary' }).click();
@@ -311,7 +367,7 @@ test('Masafi boundary edit in 3D is recomputed, saved to the project, and export
   );
 
   // The register carries the edit, and the CSV export says so.
-  await win.getByRole('button', { name: 'All piles' }).click();
+  await win.getByRole('button', { name: 'All piles', exact: true }).click();
   await expect(rowNet(win, 'P02')).toHaveText(Math.round(net).toLocaleString('en-US'));
   await expect(win.locator('tr[data-pile="P02"] .vol-ed')).toHaveCount(1);
   const target = join(root, 'register.csv');
@@ -324,6 +380,6 @@ test('Masafi boundary edit in 3D is recomputed, saved to the project, and export
   expect(csv).toHaveLength(20);
   expect(csv[0]?.startsWith('pile,name,status,e1_date')).toBe(true);
   expect(csv.find((l) => l.startsWith('P02,'))?.endsWith('edited 10 Jan 2021')).toBe(true);
-  // the real project stays as delivered
-  expect(existsSync(join(MASAFI, 'edits'))).toBe(false);
+  // the real project is never written
+  expect(boundariesOf(MASAFI)).toBe(realBefore);
 });

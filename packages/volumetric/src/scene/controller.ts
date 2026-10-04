@@ -178,7 +178,7 @@ export class VolumetricScene {
     const epoch = s.shownEpoch();
     const origin = s.origin;
     const piles = s.piles
-      .filter((p) => p.id !== s.edit?.pile && (chg || p.epochs[epoch]))
+      .filter((p) => p.id !== s.edit?.pile && s.isPileShown(p.id) && (chg || p.epochs[epoch]))
       .map((p) => {
         const src = chg ? p.zoneRing : (p.epochs[epoch]?.ring ?? p.zoneRing);
         return {
@@ -674,7 +674,7 @@ export class VolumetricScene {
     this.stage.requestRender();
   }
 
-  /** Pile callouts show the net volume on the chosen base, edits included. */
+  /** Pile callouts show the net volume on the chosen base, edits included; hidden piles none. */
   private reconcileCallouts(): void {
     const s = this.store.getState();
     const roots = Object.entries(s.layers)
@@ -686,8 +686,10 @@ export class VolumetricScene {
           ] as const,
       )
       .filter((x): x is readonly [string, Object3D] => x[1] !== undefined);
+    const shown = s.piles.filter((p) => s.isPileShown(p.id)).map((p) => p.id);
     const key = JSON.stringify([
       s.base,
+      shown,
       s.edits.length,
       s.edits.map((e) => e.updatedAt),
       roots.map((r) => r[1].uuid),
@@ -701,7 +703,12 @@ export class VolumetricScene {
           { node: string; tag: string; area?: string }[] | undefined;
         if (!Array.isArray(tags)) return;
         o.userData.aioTagsOriginal ??= tags as unknown;
-        o.userData.aioTags = tags.map((t) => {
+        const original = o.userData.aioTagsOriginal as typeof tags;
+        // hidden piles lose their callout; tags that are not piles stay
+        const kept = original.filter(
+          (t) => !s.piles.some((q) => q.id === t.tag) || shown.includes(t.tag),
+        );
+        o.userData.aioTags = kept.map((t) => {
           const p = s.piles.find((q) => q.id === t.tag);
           const v = p?.epochs[epoch]?.volumes[s.base].net;
           return v === undefined ? t : { ...t, area: `${nf.format(Math.round(v))} m³` };

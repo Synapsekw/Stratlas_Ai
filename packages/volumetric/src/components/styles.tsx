@@ -43,6 +43,14 @@ const css = `
 .vol-reg tbody tr[aria-selected='true'] { background: var(--acc-a12); box-shadow: inset 2px 0 0 var(--acc); }
 .vol-reg tbody tr:focus-visible { outline: 2px solid var(--acc); outline-offset: -2px; }
 .vol-reg tbody tr.absent td:not(.id) { color: var(--fg-4); }
+.vol-reg th:first-child { white-space: nowrap; }
+.vol-reg th:first-child button:not(.vol-eye) { width: auto; vertical-align: middle; }
+.vol-reg th button.vol-eye, .vol-reg td button.vol-eye { all: unset; box-sizing: border-box; display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 4px; border-radius: 4px; color: var(--fg-2); cursor: pointer; vertical-align: middle; flex: none; }
+.vol-reg button.vol-eye[aria-pressed='false'] { color: var(--fg-4); }
+.vol-reg button.vol-eye:hover { background: var(--bg-3); color: var(--fg-0); }
+.vol-reg button.vol-eye:focus-visible { outline: 2px solid var(--acc); outline-offset: -2px; }
+.vol-reg td.id { white-space: nowrap; }
+.vol-reg .vol-hidden-n { color: var(--fg-3); font-weight: 400; }
 .vol-reg tfoot td { border-bottom: 0; border-top: 1px solid var(--line); color: var(--fg-0); font-weight: 600; }
 .vol-reg tfoot td:first-child { text-align: left; color: var(--fg-3); font-weight: 400; }
 .vol-ed { display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--s3); vertical-align: 1px; }

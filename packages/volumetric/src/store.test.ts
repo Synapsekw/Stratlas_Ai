@@ -276,6 +276,40 @@ describe('volumetric store: dates and selection', () => {
   });
 });
 
+describe('volumetric store: pile visibility', () => {
+  it('hides and shows piles one by one or all at once; the selected pile always shows', async () => {
+    const { store } = setup();
+    await store.getState().load();
+    const s = () => store.getState();
+    expect(s().hidden).toEqual([]);
+    s().setPileVisible('P01', false);
+    expect(s().hidden).toEqual(['P01']);
+    expect(s().isPileShown('P01')).toBe(false);
+    expect(s().isPileShown('P02')).toBe(true);
+    s().setPileVisible('P01', true);
+    expect(s().hidden).toEqual([]);
+    s().setAllPilesVisible(false);
+    expect([...s().hidden].sort()).toEqual(
+      s()
+        .piles.map((p) => p.id)
+        .sort(),
+    );
+    s().select('P02');
+    expect(s().isPileShown('P02')).toBe(true);
+    expect(s().isPileShown('P01')).toBe(false);
+    s().setAllPilesVisible(true);
+    expect(s().hidden).toEqual([]);
+  });
+
+  it('starts every project with all piles shown', async () => {
+    const { store } = setup();
+    await store.getState().load();
+    store.getState().setAllPilesVisible(false);
+    await store.getState().load();
+    expect(store.getState().hidden).toEqual([]);
+  });
+});
+
 describe('volumetric store: boundary editor', () => {
   it('starts from the simplified automatic line and recomputes in the worker', async () => {
     const { store, service } = setup();

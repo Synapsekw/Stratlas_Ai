@@ -80,7 +80,9 @@ function Register() {
   const base = useVolumetric((s) => s.base);
   const sort = useVolumetric((s) => s.sort);
   const selected = useVolumetric((s) => s.selected);
+  const hidden = useVolumetric((s) => s.hidden);
   const deadband = useVolumetric((s) => s.file?.deadbandM ?? 0.1);
+  const allShown = hidden.length === 0;
   const rows = useMemo(
     () => sortRows(registerRows(piles, epoch, base), sort.key, sort.dir),
     [piles, epoch, base, sort],
@@ -118,6 +120,21 @@ function Register() {
                   sort.key === c.key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'
                 }
               >
+                {c.key === 'id' && (
+                  <button
+                    type="button"
+                    className="vol-eye"
+                    aria-pressed={allShown}
+                    title={allShown ? 'Hide every pile in 3D' : 'Show every pile in 3D'}
+                    aria-label={allShown ? 'Hide every pile in 3D' : 'Show every pile in 3D'}
+                    data-testid="vol-eye-all"
+                    onClick={() => {
+                      volumetric.getState().setAllPilesVisible(!allShown);
+                    }}
+                  >
+                    <Icon name={allShown ? 'eye' : 'eye-off'} size={14} />
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -147,6 +164,22 @@ function Register() {
               }}
             >
               <td className="id">
+                <button
+                  type="button"
+                  className="vol-eye"
+                  aria-pressed={!hidden.includes(r.id)}
+                  title={hidden.includes(r.id) ? 'Show this pile in 3D' : 'Hide this pile in 3D'}
+                  aria-label={`${hidden.includes(r.id) ? 'Show' : 'Hide'} ${r.id} in 3D`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    volumetric.getState().setPileVisible(r.id, hidden.includes(r.id));
+                  }}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
+                  <Icon name={hidden.includes(r.id) ? 'eye-off' : 'eye'} size={14} />
+                </button>
                 {r.id}
                 {r.edited && <span className="vol-ed" title="Boundary edited by hand" />}
               </td>
@@ -165,7 +198,12 @@ function Register() {
         </tbody>
         <tfoot>
           <tr>
-            <td>{tot.piles}</td>
+            <td>
+              {tot.piles}
+              {hidden.length > 0 && (
+                <small className="vol-hidden-n"> · {hidden.length} hidden</small>
+              )}
+            </td>
             <td>{f0(tot.fill)}</td>
             <td>{f0(tot.cut)}</td>
             <td className="net">{f0(tot.net)}</td>

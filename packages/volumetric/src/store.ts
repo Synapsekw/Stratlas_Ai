@@ -69,6 +69,8 @@ export interface VolumetricState {
   body: BodyMode;
   density: number;
   selected: string | null;
+  /** Piles whose volume, toe line and callout are hidden in 3D (the selected pile still shows). */
+  hidden: string[];
   sort: { key: SortKey; dir: 'asc' | 'desc' };
   section: SectionState;
   edit: EditSession | null;
@@ -97,6 +99,10 @@ export interface VolumetricActions {
   setDensity(density: number): void;
   setSort(key: SortKey): void;
   select(pile: string | null, opts?: { fly?: boolean }): void;
+  setPileVisible(pile: string, visible: boolean): void;
+  setAllPilesVisible(visible: boolean): void;
+  /** Drawn in 3D: not hidden, or the selected pile. */
+  isPileShown(pile: string): boolean;
   step(dir: 1 | -1): void;
   startSection(): void;
   addSectionPoint(p: EN): Promise<void>;
@@ -148,6 +154,7 @@ const initial: VolumetricState = {
   body: 'lift',
   density: 1.6,
   selected: null,
+  hidden: [],
   sort: { key: 'id', dir: 'asc' },
   section: { mode: 'idle', points: [], profile: null, busy: false },
   edit: null,
@@ -450,6 +457,20 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
           if (opts.fly !== false) ws().flyTo({ kind: 'selection', selection: a });
         }
         refreshPile();
+      },
+
+      setPileVisible(pile, visible) {
+        const hidden = get().hidden.filter((id) => id !== pile);
+        set({ hidden: visible ? hidden : [...hidden, pile] });
+      },
+
+      setAllPilesVisible(visible) {
+        set({ hidden: visible ? [] : get().piles.map((p) => p.id) });
+      },
+
+      isPileShown(pile) {
+        const s = get();
+        return pile === s.selected || !s.hidden.includes(pile);
       },
 
       step(dir) {
