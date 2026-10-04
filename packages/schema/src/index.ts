@@ -5,3 +5,4 @@ export * from './annotation';
 export * from './manifest';
 export * from './agent';
 export * from './ipc';
+export * from './jobs';
