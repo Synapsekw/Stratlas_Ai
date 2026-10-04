@@ -513,56 +513,44 @@ export function VolumetricStage({ stage }: { stage: EngineStage | null }) {
   }, [scene]);
 
   // Clicks on the stage: section points while picking, and lifted volume bodies select their pile.
+  // Claimed through the stage, never by stopping the pointer events: the orbit controls must see
+  // every release, or they keep turning the camera with the mouse after the first section point.
   useEffect(() => {
     if (!stage || !scene) return;
     const canvas = stage.renderer.domElement;
     const host = canvas.parentElement;
     if (!host) return;
-    let down: { x: number; y: number } | null = null;
     const ray = new Raycaster();
-    const onDown = (e: PointerEvent) => {
-      down = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
-    };
-    const onUp = (e: PointerEvent) => {
-      const d = down;
-      down = null;
-      if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5 || stage.tool !== 'select') return;
+    const release = stage.claimClicks((e) => {
+      if (stage.tool !== 'select') return false;
       const s = volumetric.getState();
       if (s.section.mode === 'picking') {
-        e.stopPropagation();
         const p = pickGround(stage, e.clientX, e.clientY);
         if (p) void s.addSectionPoint([p[0], p[1]]);
-        return;
+        return true;
       }
-      if (s.edit) {
-        // the scene selection stays on the pile being edited
-        e.stopPropagation();
-        return;
-      }
-      if (s.body !== 'lift') return;
+      // the scene selection stays on the pile being edited
+      if (s.edit) return true;
+      if (s.body !== 'lift') return false;
       ray.setFromCamera(new Vector2(...ndcOf(stage, e.clientX, e.clientY)), stage.camera);
       const tops: Object3D[] = [];
       scene.group.traverse((o) => {
         if (o.name === 'body-top' && o.visible) tops.push(o);
       });
-      const hit = ray.intersectObjects(tops, false)[0];
-      const pile = hit?.object.parent?.userData.pile as string | undefined;
-      if (pile) {
-        e.stopPropagation();
-        s.select(pile);
-      }
-    };
+      const pile = ray.intersectObjects(tops, false)[0]?.object.parent?.userData.pile as
+        string | undefined;
+      if (!pile) return false;
+      s.select(pile);
+      return true;
+    });
     // callout plates select on click: not while picking section points or editing a boundary
     const onClick = (e: MouseEvent) => {
       const s = volumetric.getState();
       if (s.section.mode === 'picking' || s.edit) e.stopPropagation();
     };
-    host.addEventListener('pointerdown', onDown, true);
-    host.addEventListener('pointerup', onUp, true);
     host.addEventListener('click', onClick, true);
     return () => {
-      host.removeEventListener('pointerdown', onDown, true);
-      host.removeEventListener('pointerup', onUp, true);
+      release();
       host.removeEventListener('click', onClick, true);
     };
   }, [stage, scene]);
