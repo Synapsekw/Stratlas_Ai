@@ -1,6 +1,7 @@
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { parseCutawayPref, type CutawayPref } from './cutaway';
+import { parseSplitPref, type SplitPref } from './splitModel';
 import { parseVideoRect, type VideoRect } from './videoWindow';
 
 /** Stage layout choices remembered per project on this machine. */
@@ -9,6 +10,8 @@ export interface StagePref {
   video?: VideoRect;
   /** Off, Cut or Transparent, and the see-through opacity (absent: off). */
   cutaway?: CutawayPref;
+  /** What each side of the split stage shows (absent: 3D left, map right). */
+  split?: SplitPref;
 }
 
 const KEY = 'stratlas.stagePrefs';
@@ -21,6 +24,8 @@ function parsePref(v: unknown): StagePref {
   if (video) out.video = video;
   const cutaway = parseCutawayPref(raw.cutaway);
   if (cutaway) out.cutaway = cutaway;
+  const split = parseSplitPref(raw.split);
+  if (split) out.split = split;
   return out;
 }
 

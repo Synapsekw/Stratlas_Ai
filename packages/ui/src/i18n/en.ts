@@ -78,6 +78,26 @@ export const en = {
   'stage.cutaway.solid': 'Solid',
   'stage.cutaway.solidTip': 'Draw the asset solid again',
 
+  // Scene stage: what each side of the split shows
+  'stage.split.left': 'Left side shows',
+  'stage.split.right': 'Right side shows',
+  'stage.pane.3d': '3D view',
+  'stage.pane.map': 'Map',
+  'stage.pane.video': 'Video',
+  'stage.pane.photo': 'Photos',
+  'stage.pane.raster': 'Ortho and plans',
+  'stage.pane.report': 'Report',
+  'stage.pane.noClip': 'No clip is active. Pick one on the timeline or in Media.',
+  'stage.pane.noPhoto': 'This project has no photos.',
+  'stage.pane.prevPhoto': 'Previous photo',
+  'stage.pane.nextPhoto': 'Next photo',
+  'stage.pane.photoCount': '{n} of {total}',
+  'stage.pane.whichRaster': 'Raster layer',
+  'stage.pane.whichReport': 'Report file',
+  'stage.pane.loading': 'Loading',
+  'stage.pane.rasterError': 'The raster could not be shown ({error}).',
+  'stage.pane.fit': 'Fit the whole raster',
+
   // Scene stage: floating video window
   'stage.video.window': 'Video {name}',
   'stage.video.titleBar': 'Video window title bar',

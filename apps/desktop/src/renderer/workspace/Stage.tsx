@@ -46,6 +46,8 @@ import { isTyping } from '../keys';
 import { shell, useShell } from '../shell';
 import type { StageMode } from '../store';
 import { FloatingVideo } from './FloatingVideo';
+import { PaneChooser, SplitPane, useSplit } from './SplitPanes';
+import { sideOf, type Side } from './splitModel';
 import { hiddenPathClips, togglePaths } from './flightPaths';
 import { flightPathModel, updateFlightPaths, useFlightPathModel } from './pathModel';
 import {
@@ -117,7 +119,18 @@ function StageClassLegend() {
   );
 }
 
-function ScenePane({ hidden, engine }: { hidden: boolean; engine: EngineStage | null }) {
+function ScenePane({
+  hidden,
+  engine,
+  side,
+  corner,
+}: {
+  hidden: boolean;
+  engine: EngineStage | null;
+  /** The split side it shows on. */
+  side?: Side | undefined;
+  corner?: ReactNode;
+}) {
   const [cursor, setCursor] = useState<string | null>(null);
   const pending = useRef<{ x: number; y: number } | null>(null);
   const raf = useRef<number | null>(null);
@@ -160,6 +173,7 @@ function ScenePane({ hidden, engine }: { hidden: boolean; engine: EngineStage | 
     <FocusZone
       kind="scene3d"
       className={`pane pane-3d${hidden ? ' is-hidden' : ''}`}
+      data-side={side}
       onPointerMove={onMove}
       onPointerLeave={() => {
         setCursor(null);
@@ -173,6 +187,7 @@ function ScenePane({ hidden, engine }: { hidden: boolean; engine: EngineStage | 
       <StageElevationLegend />
       <VolumetricStage stage={engine} />
       <StageClassLegend />
+      {corner}
     </FocusZone>
   );
 }
@@ -181,13 +196,17 @@ function ScenePane({ hidden, engine }: { hidden: boolean; engine: EngineStage | 
 
 function StageToolbar({
   stage,
-  mode,
+  mode: stageMode,
+  tools,
   barRef,
 }: {
   stage: EngineStage | null;
   mode: StageMode;
+  /** The panes the tools work on (a split may show neither the 3D view nor the map). */
+  tools: StageMode;
   barRef: RefObject<HTMLDivElement | null>;
 }) {
+  const mode = tools;
   const road = useRoad((s) => s.status === 'ready');
   const rightCollapsed = useShell((s) => s.rightCollapsed);
   const cloudPanelOpen = useShell((s) => s.cloudPanelOpen);
@@ -262,7 +281,7 @@ function StageToolbar({
           <button
             key={m.mode}
             type="button"
-            aria-pressed={mode === m.mode}
+            aria-pressed={stageMode === m.mode}
             aria-keyshortcuts={m.keys}
             title={`${m.label} (${m.keys})`}
             onClick={() => {
@@ -483,7 +502,24 @@ export function Stage() {
   const mapLayer = useWorkspace((s) => mapLayerId(s.project?.manifest.layers ?? []));
   const stageRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
-  const showVideo = activeClip !== null && !videoHidden;
+  // Split: each side shows the pane chosen for it (3D and map by default).
+  const split = useSplit();
+  const splitting = mode === 'split';
+  const sides = split.sides;
+  const show3d = mode === '3d' || (splitting && sideOf(sides, '3d') !== undefined);
+  const showMap = mode === 'map' || (splitting && sideOf(sides, 'map') !== undefined);
+  const videoPane = splitting && sideOf(sides, 'video') !== undefined;
+  const photoSide = splitting && sideOf(sides, 'photo') !== undefined;
+  const photoPane = useRef(photoSide);
+  useEffect(() => {
+    photoPane.current = photoSide;
+  }, [photoSide]);
+  const at = (kind: '3d' | 'map') => (splitting ? sideOf(sides, kind) : undefined);
+  const chooser = (kind: '3d' | 'map') => {
+    const side = at(kind);
+    return side ? <PaneChooser side={side} split={split} /> : null;
+  };
+  const showVideo = activeClip !== null && !videoHidden && !videoPane;
   const engine = useEngineStage();
   const mapDraw = useMapDraw(mapLayer);
   const roadMap = useRoadMap();
@@ -492,7 +528,7 @@ export function Stage() {
     s.selection?.kind === 'issue' ? s.selection.id : null,
   );
   const hasPhoto = useRoad((s) => s.rows.some((r) => r.id === selectedIssue && r.photo));
-  const closeup = roadMap !== null && closeupOn && hasPhoto && mode !== '3d';
+  const closeup = roadMap !== null && closeupOn && hasPhoto && showMap;
   // road keys first: they run before the stage keys below
   useRoadKeys(roadMap !== null);
   useIssueOverlay();
@@ -525,7 +561,8 @@ export function Stage() {
   useEffect(
     () =>
       workspace.subscribe((s, prev) => {
-        if (s.selection !== prev.selection && s.selection?.kind === 'photo')
+        // (unless a split side shows photos: the photo opens there)
+        if (s.selection !== prev.selection && s.selection?.kind === 'photo' && !photoPane.current)
           shell.getState().go('media');
       }),
     [],
@@ -553,7 +590,7 @@ export function Stage() {
       if (!root) return [];
       return [
         ...root.querySelectorAll(
-          '.stbar > :not(.stbar-sp), .stage-under > *, .vwin:not(.docked), .cursor-ro, .stage-pop, .elev-legend',
+          '.stbar > :not(.stbar-sp), .stage-under > *, .vwin:not(.docked), .cursor-ro, .stage-pop, .elev-legend, .pane-chooser',
         ),
       ].map((e) => e.getBoundingClientRect());
     });
@@ -565,8 +602,8 @@ export function Stage() {
   // Leaving the map or the annotation tools stops a map drawing.
   const { setMode: setMapDrawMode } = mapDraw;
   useEffect(() => {
-    if (!annotating || mode === '3d') setMapDrawMode(null);
-  }, [annotating, mode, setMapDrawMode]);
+    if (!annotating || !showMap) setMapDrawMode(null);
+  }, [annotating, showMap, setMapDrawMode]);
 
   // Stage shortcuts (single keys; the video annotator's own keys win inside the video window).
   useEffect(() => {
@@ -614,9 +651,9 @@ export function Stage() {
         data-mode={mode}
         dir="ltr"
       >
-        <ScenePane hidden={mode === 'map'} engine={engine} />
-        {mode !== '3d' && (
-          <FocusZone kind="map" className="pane pane-map">
+        <ScenePane hidden={!show3d} engine={engine} side={at('3d')} corner={chooser('3d')} />
+        {showMap && (
+          <FocusZone kind="map" className="pane pane-map" data-side={at('map')}>
             <div className="fill">
               <MapView
                 className="scene-fill"
@@ -634,17 +671,25 @@ export function Stage() {
             </div>
             {roadMap && <RoadLegend />}
             {roadMap && <PciUnitCard />}
+            {chooser('map')}
           </FocusZone>
         )}
+        {splitting && <SplitPane side="left" split={split} />}
+        {splitting && <SplitPane side="right" split={split} />}
         {closeup && <CloseupDock />}
         {docked && showVideo && <FloatingVideo layerId={activeClip} docked stageRef={stageRef} />}
       </div>
-      <StageToolbar stage={engine} mode={mode} barRef={barRef} />
+      <StageToolbar
+        stage={engine}
+        mode={mode}
+        tools={show3d ? (showMap ? 'split' : '3d') : 'map'}
+        barRef={barRef}
+      />
       <div className="stage-under">
         {annotating && (
           <div className="ann-subbar overlay-box" role="group" aria-label="Annotation tools">
-            {mode !== 'map' && <AnnotationToolbar className="stage-ann" />}
-            {mode !== '3d' && <MapDrawTools draw={mapDraw} />}
+            {show3d && <AnnotationToolbar className="stage-ann" />}
+            {showMap && <MapDrawTools draw={mapDraw} />}
             <Tool
               icon="x"
               label="Close the annotation tools"
@@ -655,8 +700,8 @@ export function Stage() {
             />
           </div>
         )}
-        {roadMap && mode !== '3d' && <MeasureBar />}
-        {mode !== 'map' && <StageStatus stage={engine} />}
+        {roadMap && showMap && <MeasureBar />}
+        {show3d && <StageStatus stage={engine} />}
       </div>
       <SightingPicker kinds={['map']} />
       {!docked && showVideo && (

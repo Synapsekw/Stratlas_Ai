@@ -596,3 +596,85 @@ test('the eye over all layers and the group eyes switch many layers at once', as
   await clouds.click();
   await expect.poll(async () => (await layerState(win)).hidden).toBe(0);
 });
+
+test('split screen: each side shows the pane chosen for it', async ({ app, win }) => {
+  await openHcl(app, win);
+  await win.keyboard.press('3');
+  const left = win.getByTestId('pane-chooser-left').locator('select');
+  const right = win.getByTestId('pane-chooser-right').locator('select');
+  // As before: 3D on the left, the map on the right.
+  await expect(left).toHaveValue('3d');
+  await expect(right).toHaveValue('map');
+  await expect(win.locator('.pane-map')).toBeVisible();
+
+  // HCl offers what it has: no rasters, so no ortho. The 3D view cannot go on both sides.
+  const offered = await right.locator('option').evaluateAll((os) =>
+    os.map((o) => ({
+      value: (o as HTMLOptionElement).value,
+      off: (o as HTMLOptionElement).disabled,
+    })),
+  );
+  expect(offered).toEqual([
+    { value: '3d', off: true },
+    { value: 'map', off: false },
+    { value: 'video', off: false },
+    { value: 'photo', off: false },
+    { value: 'report', off: false },
+  ]);
+
+  // Video on the right: the floating window gives way to the pane, the map goes.
+  await right.selectOption('video');
+  await expect(win.getByTestId('pane-video')).toBeVisible();
+  await expect(win.getByTestId('video-window')).toHaveCount(0);
+  await expect(win.locator('.pane-map')).toHaveCount(0);
+  await expect(win.getByTestId('pane-video').locator('[data-video-window] video')).toHaveCount(1);
+  const panes = async () => {
+    const l = await win.locator('.pane-3d').boundingBox();
+    const r = await win.getByTestId('pane-video').boundingBox();
+    if (!l || !r) throw new Error('no panes');
+    return { l, r };
+  };
+  const { l, r } = await panes();
+  expect(l.x).toBeLessThan(r.x);
+  expect(l.width).toBeCloseTo(r.width, -1);
+  await win.waitForTimeout(1200);
+  await shot(win, 'split-3d-video');
+
+  // Photos on the left: the 3D view hides (still one stage), the photo shows there.
+  await left.selectOption('photo');
+  await expect(win.getByTestId('pane-photo')).toBeVisible();
+  await expect(win.locator('.pane-3d')).toHaveClass(/is-hidden/);
+  await expect(win.locator('[data-scene-view] canvas')).toHaveCount(1);
+  const photoBox = await win.getByTestId('pane-photo').boundingBox();
+  const videoBox = await win.getByTestId('pane-video').boundingBox();
+  if (!photoBox || !videoBox) throw new Error('no panes');
+  expect(photoBox.x).toBeLessThan(videoBox.x);
+  await win.getByRole('button', { name: 'Next photo' }).click();
+  await expect(win.getByTestId('pane-photo').locator('.pane-bar')).toContainText('2 of');
+
+  // The report on the right; the left cannot pick it as well.
+  await right.selectOption('report');
+  await expect(win.getByTestId('pane-report')).toBeVisible();
+  await expect(left.locator('option[value="report"]')).toBeDisabled();
+  await expect(win.getByTestId('pane-report').locator('canvas').first()).toBeVisible({
+    timeout: 20_000,
+  });
+  await win.waitForTimeout(800);
+  await shot(win, 'split-photo-report');
+
+  // Remembered per project: back to the scene after a restart of the window.
+  await left.selectOption('3d');
+  await right.selectOption('video');
+  await win.reload();
+  await win.waitForLoadState('domcontentloaded');
+  await openHcl(app, win);
+  await win.keyboard.press('3');
+  await expect(win.getByTestId('pane-chooser-left').locator('select')).toHaveValue('3d');
+  await expect(win.getByTestId('pane-chooser-right').locator('select')).toHaveValue('video');
+  await expect(win.getByTestId('pane-video')).toBeVisible();
+
+  // 3D mode alone has no choosers and the floating video comes back.
+  await win.keyboard.press('1');
+  await expect(win.getByTestId('pane-chooser-left')).toHaveCount(0);
+  await expect(win.getByTestId('video-window')).toBeVisible();
+});
