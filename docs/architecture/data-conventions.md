@@ -55,6 +55,33 @@ A video layer's `flight.src` points to a JSON file:
 - `q` is the **camera** orientation as a three.js quaternion: the camera looks along its local `-Z` with `+Y` up in the image. Gimbal angles are already folded in.
 - Video time `v` (seconds) maps to project time `startUtcMs + offsetMs + v * 1000`, with `offsetMs` from the video layer.
 - Calibration on the video layer (BLD-3, optional): the camera that took the frame is at `pos + positionOffsetM` (local frame, metres) with orientation `q * Ry(yawDeg) * Rx(pitchDeg) * Rz(rollDeg)` from `orientation` (camera-frame bias, three.js Euler `YXZ`). Projection, frustum, drone-eye view, map footprint and video sightings all use the calibrated pose; the pose file stays as logged.
+- Optional `heights` (`FlightHeights`): the rule the sample heights came from (section 3a), `{ "source": "absolute" | "relative" | "none" | "mixed", "absOffsetM": 100, "takeoffH": 100 }` (`mixed`: some samples fell back to the other altitude). A file without it predates the record; an importer that rewrites the file compares the two to rebase calibration.
+
+## 3a. Camera elevation (drone altitudes to project heights)
+
+Every importer that places a drone camera (raw import of photos and of video with its SRT, the Al-Zour importer, pipeline `aik.cameras`) follows one rule. Code: `@aio/geo` `projectHeight`, `@aio/project/builder` `resolveHeights`, `python/src/aio_pipelines/aik/cameras.py` `camera_height`.
+
+Drones log two altitudes:
+
+| Altitude | Where                                                                                                                         | What it is                                                                                                                                                                                                                                                                                                                                                           |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Relative | SRT `rel_alt` (older `BAROMETER`, `H`), XMP `RelativeAltitude`                                                                | Barometric height above the take-off point. Steady within a flight; a project height only once the take-off point's height is known.                                                                                                                                                                                                                                 |
+| Absolute | SRT `abs_alt` (older `altitude`, or the third value of `GPS(lon, lat, alt)`), XMP `AbsoluteAltitude`, else EXIF `GPSAltitude` | Barometric, offset to GNSS at power-on, nominally above mean sea level but often tens of metres off, and it drifts between flights (Al-Zour: the take-off point read 41.9, 32.2, 28.4, 25.6, 22.7 m over five flights; a Mavic 3 SRT logged `abs_alt` 81 m below `rel_alt`). RTK aircraft write ellipsoidal heights. A project height only through a vertical datum. |
+
+The project's vertical datum is the optional manifest field `verticalDatum` (`VerticalDatum`): `H = absolute altitude + absAltOffsetM`, with a `note`. For ellipsoidal (RTK) altitudes in an orthometric project the offset is minus the geoid undulation at the site; for a site datum it is the shift between the two (Al-Zour: plant EL = absolute + 100). The new project wizard sets offset 0 when the origin height comes from a photo's absolute altitude (heights then share that datum); the Al-Zour importer sets +100.
+
+Rule:
+
+1. **Absolute altitude with the datum** when the project defines `verticalDatum` (or the person picks absolute altitude at import with an offset; the import saves it as the project's datum so later imports agree).
+2. **Else relative altitude plus the take-off height** `H = takeoffH + relative`. The import UI asks for the take-off H before it imports and proposes the model height under the take-off point (a ray down through the loaded models at the SRT `HOME` point, else at the lowest logged position); with no model there it proposes the origin height (local y 0) with a visible warning.
+3. Per reading, a file without the preferred altitude uses the other one; a reading with neither sits at the take-off height. Items say so (`ImportItem.heightSource`: `absolute`, `relative`, `none`, `mixed`).
+4. Absolute altitude without a datum (a project with none, files with no relative altitude) is used as logged and the summary warns that it can be tens of metres off.
+
+The import summary (`builder:import` response `heights`, `ImportHeights`) states the source and the number: the datum offset, or the take-off H and where it came from (`terrain`, `typed`, `origin`), so the person can correct it. `builder:altitudePlan` returns what the files carry (`AltitudePlan`: counts, the project datum, the proposed rule, the take-off position and the take-off point's absolute altitude, the median of absolute minus relative altitude). The wizard's origin from a photo takes the take-off point's absolute altitude (absolute minus relative) as the ground height, not the camera's.
+
+Relative altitude plus a take-off height is the better choice when the take-off point's height is known (surveyed, or a take-off on the model) and when the absolute altitude drifts between flights; absolute altitude is better when the project has a fitted or surveyed datum and the flights took off from places of unknown height. A video layer's `positionOffsetM` (BLD-3 calibration) soaks up what remains; a re-import that changes the logged heights takes that change off the offset (Al-Zour, `carryVideoCalibration`).
+
+`aik.cameras` (kit frame, heights above the ground altitude of `origin`): with a given origin, absolute altitude minus its ground altitude; without one, the ground is the take-off point (median of absolute minus relative altitude) and heights are relative altitude plus `takeoffHeight` (default 0). Params `altitude` (`auto`, `absolute`, `relative`) and `takeoffHeight` override; every camera record carries `altitude_source`.
 
 ## 4. Point clouds
 

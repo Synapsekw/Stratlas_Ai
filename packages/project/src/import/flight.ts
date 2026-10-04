@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LensModel, PoseSample, Quat, Vec3 } from '@aio/schema';
+import { FlightHeights, LensModel, PoseSample, Quat, Vec3 } from '@aio/schema';
 import { mapPoint, mapQuat, type FrameMap } from './frames';
 import { angleDeg, quatNormalize, quatRotate, quatSlerp, round, roundVec, sub } from './math';
 
@@ -10,6 +10,8 @@ export const AioFlight = z.object({
   startUtcMs: z.number().int(),
   lens: LensModel,
   samples: z.array(PoseSample).min(1),
+  /** The altitude rule of the sample heights (data-conventions section 3a); absent in older files. */
+  heights: FlightHeights.optional(),
 });
 export type AioFlight = z.infer<typeof AioFlight>;
 

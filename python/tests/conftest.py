@@ -56,6 +56,7 @@ def drone_jpeg(
     roll: float | None = None,
     size=(4000, 3000),
     focal35: float = 24,
+    rel: float | None = None,
 ):
     """A JPEG with EXIF GPS and focal length and, optionally, a DJI XMP packet with gimbal angles."""
     img = Image.new("RGB", size, (90, 110, 130))
@@ -77,6 +78,8 @@ def drone_jpeg(
     if yaw is not None:
         attrs = f'drone-dji:GimbalYawDegree="{yaw:+.1f}" drone-dji:GimbalPitchDegree="{(pitch or 0):+.1f}"'
         attrs += f' drone-dji:GimbalRollDegree="{(roll or 0):+.1f}" drone-dji:AbsoluteAltitude="{alt:+.2f}"'
+        if rel is not None:
+            attrs += f' drone-dji:RelativeAltitude="{rel:+.2f}"'
         xmp = (
             '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
             f'<rdf:Description xmlns:drone-dji="http://www.dji.com/drone-dji/1.0/" {attrs}/></rdf:RDF></x:xmpmeta>'

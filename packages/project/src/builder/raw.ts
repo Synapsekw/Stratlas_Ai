@@ -1,6 +1,10 @@
-import { fromWgs84, isKnownCrs, toWgs84 } from '@aio/geo';
+import { fromWgs84, isKnownCrs, toWgs84, type HeightRule, type HeightSource } from '@aio/geo';
 import type {
+  AltitudeChoice,
+  AltitudePlan,
   Capture,
+  FlightHeights,
+  ImportHeights,
   ImportItem,
   Layer,
   LensModel,
@@ -11,10 +15,17 @@ import type {
 import { open, copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import { encodePng } from '../import/png';
+import {
+  altitudePlan,
+  heightNote,
+  importHeights,
+  resolveHeights,
+  type FileAltitudes,
+} from './altitude';
 import { slug, uniqueId, readManifestFile, writeManifestFile } from './create';
 import { readPhotoMeta } from './exif';
 import { objToGlb } from './obj';
-import { photoRef } from './photos';
+import { photoAltitude, photoHeight, photoRef } from './photos';
 import {
   decodeTiff,
   epsgFromPrj,
@@ -62,13 +73,18 @@ export interface VideoTools {
       aspect: number;
       name: string;
       frameTimesMs: number[];
+      /** Height rule (data-conventions section 3a). */
+      heights: HeightRule;
     },
   ): {
-    doc: { startUtcMs: number; lens: LensModel; samples: unknown[] };
+    doc: { startUtcMs: number; lens: LensModel; samples: unknown[]; heights: FlightHeights };
     warnings: string[];
     timing: { withinOneFrame: boolean; maxErrorMs: number; frameMs: number };
     orientation: 'gimbal' | 'estimated';
+    heightSource: HeightSource | 'mixed';
   };
+  /** Altitudes and positions of every SRT frame (and the home point when logged), for the plan. */
+  srtAltitudes(srt: string): FileAltitudes;
 }
 
 export interface ImportDeps {
@@ -85,6 +101,8 @@ export interface ImportDeps {
   proxy?: (src: string, out: string) => Promise<void>;
   /** Clock offset of the cameras from UTC in minutes; default from the project longitude. */
   utcOffsetMin?: number;
+  /** How camera heights are made (data-conventions section 3a); default `auto`. */
+  altitude?: AltitudeChoice;
   onProgress?: (done: number, total: number, file: string) => void;
 }
 
@@ -92,6 +110,8 @@ export interface ImportResult {
   manifest: ProjectManifest;
   items: ImportItem[];
   backup: string;
+  /** The height rule applied, when any file got a camera height. */
+  heights?: ImportHeights;
 }
 
 const PHOTO = new Set(['.jpg', '.jpeg']);
@@ -195,6 +215,14 @@ export async function importRawFiles(
   const m = structuredClone(await readManifestFile(root));
   const epsg = epsgOf(m);
   const utcOffsetMin = deps.utcOffsetMin ?? defaultUtcOffset(m);
+  const heights = resolveHeights(m, deps.altitude);
+  // absolute altitude is corrected by a datum: the project's, or one set at this import
+  const datumDefined = m.verticalDatum !== undefined || heights.summary.from === 'datum';
+  /** The item's height note when it did not use the rule's own altitude. */
+  const offRule = (source: ImportItem['heightSource']) =>
+    source && source !== heights.summary.source
+      ? [heightNote(source, heights.rule, datumDefined)]
+      : [];
   const items: ImportItem[] = [];
   const consumed = new Set<string>();
   const pipeline = await deps.jobs.available().catch(() => false);
@@ -275,19 +303,26 @@ export async function importRawFiles(
         if (long > 0 && long <= REVIEW_PX) await copyFile(file, join(root, rel));
         else await deps.images.resizeJpeg(file, join(root, rel), REVIEW_PX);
         await deps.images.resizeJpeg(file, join(root, 'photos', 'thumbs', `${id}.jpg`), THUMB_PX);
-        const ref: PhotoRef = photoRef(id, rel, meta, { epsg, origin: m.origin, utcOffsetMin });
+        const frame = { epsg, origin: m.origin, utcOffsetMin, heights: heights.rule };
+        const ref: PhotoRef = photoRef(id, rel, meta, frame);
         layer.items = [...layer.items, ref];
         addCapture(m, meta.takenAt?.slice(0, 10));
+        const heightSource = ref.pos ? photoHeight(meta, frame).source : undefined;
+        const message = [
+          ...(ref.pos
+            ? ref.q
+              ? []
+              : ['Placed by GPS; no gimbal angles, so the view direction is unknown.']
+            : ['No GPS position: listed in Media, not placed in the scene.']),
+          ...offRule(heightSource),
+        ].join(' ');
         items.push({
           file: name,
           kind: 'photo',
           status: 'imported',
           layerId: layer.id,
-          ...(ref.pos
-            ? ref.q
-              ? {}
-              : { message: 'Placed by GPS; no gimbal angles, so the view direction is unknown.' }
-            : { message: 'No GPS position: listed in Media, not placed in the scene.' }),
+          ...(message ? { message } : {}),
+          ...(heightSource ? { heightSource } : {}),
         });
       } else if (VIDEO.has(ext)) {
         const srt = await sibling(file, '.srt', paths);
@@ -323,6 +358,7 @@ export async function importRawFiles(
               aspect,
               name: name.slice(0, -ext.length),
               frameTimesMs: info.frameTimesMs,
+              heights: heights.rule,
             });
             await mkdir(join(root, 'video'), { recursive: true });
             await mkdir(join(root, 'flights'), { recursive: true });
@@ -381,7 +417,13 @@ export async function importRawFiles(
               kind: 'video',
               status: 'imported',
               layerId: id,
-              message: [timing, ...r.warnings, ...(proxyNote ? [proxyNote] : [])].join(' '),
+              message: [
+                timing,
+                ...r.warnings,
+                ...offRule(r.heightSource),
+                ...(proxyNote ? [proxyNote] : []),
+              ].join(' '),
+              heightSource: r.heightSource,
             });
           }
         }
@@ -542,7 +584,44 @@ export async function importRawFiles(
       tick(name);
     }
   }
+  const placed = items.filter((i) => i.status === 'imported' && i.heightSource);
+  // a datum the person set at this import becomes the project's, so later imports agree
+  if (heights.saveDatum && placed.some((i) => i.heightSource !== 'relative'))
+    m.verticalDatum = heights.saveDatum;
+  const summary = importHeights(heights, placed, datumDefined);
   const changed = items.some((i) => i.status === 'imported');
   const backup = changed ? await writeManifestFile(root, m) : '';
-  return { manifest: m, items, backup };
+  return { manifest: m, items, backup, ...(summary ? { heights: summary } : {}) };
+}
+
+/**
+ * What the files of an import carry for camera heights (`builder:altitudePlan`): photos with GPS
+ * (their XMP and EXIF altitudes) and videos with their SRT. Files it cannot read are left out;
+ * the import reports them.
+ */
+export async function planRawAltitudes(
+  root: string,
+  paths: readonly string[],
+  deps: { video?: VideoTools },
+): Promise<AltitudePlan> {
+  const m = await readManifestFile(root);
+  const files: FileAltitudes[] = [];
+  for (const file of paths) {
+    const ext = extname(file).toLowerCase();
+    try {
+      if (PHOTO.has(ext)) {
+        const meta = readPhotoMeta(await readHead(file, 512 * 1024));
+        const lat = meta.dji?.lat ?? meta.gps?.lat;
+        const lon = meta.dji?.lon ?? meta.gps?.lon;
+        if (lat === undefined || lon === undefined) continue;
+        files.push({ readings: [{ ...photoAltitude(meta), lat, lon }] });
+      } else if (VIDEO.has(ext) && deps.video) {
+        const srt = await sibling(file, '.srt', paths);
+        if (srt) files.push(deps.video.srtAltitudes(await readFile(srt, 'utf8')));
+      }
+    } catch {
+      // unreadable: the import itself reports it
+    }
+  }
+  return altitudePlan(m, epsgOf(m), files);
 }

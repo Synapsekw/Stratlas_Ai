@@ -5,11 +5,15 @@ import { invertFrame, mapPoint, meshTransform, applyMat4 } from './frames';
 import { cameraForward } from './flight';
 import { mapQuat } from './frames';
 import {
+  ALZOUR_ABS_TO_EL,
+  ALZOUR_HEIGHTS,
+  LEGACY_HEIGHTS,
   djiLocalToUtcMs,
   plantCameraQuat,
   plantFrame,
   plantToScene,
   plantVideoToFlight,
+  trackElShift,
 } from './plant';
 
 /** Plant grid to UTM 39N pairs from plant.glb node extras (20-T-0001 platforms and two more). */
@@ -86,5 +90,57 @@ describe('plant frame to local frame', () => {
     expect(doc.samples.map((s) => s.t)).toEqual([0, 100]);
     const fwd = cameraForward(doc.samples[0]?.q ?? [0, 0, 0, 1]);
     expect((Math.asin(fwd[1]) * 180) / Math.PI).toBeCloseTo(-25.3, 3);
+  });
+
+  describe('camera heights (absolute altitude on the plant datum)', () => {
+    // first rows and abs_minus_rel of one clip per flight in the artifact's flights.json; the
+    // track EL is 100 + relative altitude (take-off assumed at plant grade)
+    const clips = [
+      { flight: 1, el: 213.7, absMinusRel: 41.9 },
+      { flight: 2, el: 213.0, absMinusRel: 32.2 },
+      { flight: 3, el: 211.09, absMinusRel: 28.4 },
+      { flight: 4, el: 203.47, absMinusRel: 25.6 },
+      { flight: 5, el: 207.82, absMinusRel: 22.7 },
+    ];
+    const lens = { model: 'pinhole' as const, hfovDeg: 72.2, aspect: 1.8963 };
+
+    it('lifts each flight by its absolute minus relative altitude: EL = absolute + 100', () => {
+      for (const c of clips) {
+        const v = { abs_minus_rel: c.absMinusRel };
+        expect(trackElShift(v, ALZOUR_HEIGHTS)).toEqual({
+          shift: c.absMinusRel,
+          source: 'absolute',
+        });
+        expect(trackElShift(v, LEGACY_HEIGHTS)).toEqual({ shift: 0, source: 'relative' });
+        const doc = plantVideoToFlight(
+          {
+            flight: c.flight,
+            created: '2023-02-21T13:22:38Z',
+            dur: 0.1,
+            hz: 10,
+            track: [[1300, 450, c.el, 90, -20, 0, 0]],
+          },
+          f,
+          0,
+          lens,
+          undefined,
+          trackElShift(v, ALZOUR_HEIGHTS).shift,
+        );
+        // local y = EL - origin H (100): relative altitude + abs_minus_rel = absolute altitude
+        const absolute = c.el - 100 + c.absMinusRel;
+        expect(doc.samples[0]?.pos[1]).toBeCloseTo(absolute + ALZOUR_ABS_TO_EL - 100, 3);
+      }
+    });
+
+    it('falls back to the take-off at grade for a clip without abs_minus_rel', () => {
+      expect(trackElShift({}, ALZOUR_HEIGHTS)).toEqual({ shift: 0, source: 'relative' });
+      // a typed take-off EL for the relative rule
+      const typed = trackElShift(
+        { abs_minus_rel: 41.9 },
+        { source: 'relative', absOffsetM: 100, takeoffH: 141.9 },
+      );
+      expect(typed.source).toBe('relative');
+      expect(typed.shift).toBeCloseTo(41.9, 9);
+    });
   });
 });

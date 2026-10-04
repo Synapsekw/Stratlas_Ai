@@ -102,6 +102,14 @@ export const AikCamerasParams = z
     longEdge: z.number().int().min(256).max(16384).optional(),
     out: ProjectPath.optional(),
     photosOut: ProjectPath.optional(),
+    /**
+     * Camera heights (data-conventions section 3a). `auto` (default): absolute altitude minus the
+     * origin's ground altitude when an origin is given, else relative altitude above the take-off
+     * point (the estimated ground). A photo without the preferred altitude uses the other.
+     */
+    altitude: z.enum(['auto', 'absolute', 'relative']).optional(),
+    /** Height of the take-off point above the ground datum, for relative altitude (metres). */
+    takeoffHeight: z.number().min(-500).max(5000).optional(),
   })
   .strict();
 

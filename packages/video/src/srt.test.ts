@@ -183,6 +183,71 @@ describe('srtToFlight', () => {
     expect(fwd[0]).toBeGreaterThan(0.85);
     expect(fwd[1]).toBeCloseTo(-0.5, 2);
   });
+
+  describe('camera heights (data-conventions 3a)', () => {
+    const base = { epsg: 32639, origin, utcOffsetMin: 180, aspect: 16 / 9 };
+
+    it('relative altitude plus the take-off height, recorded in the flight file', () => {
+      const r = srtToFlight(parseDjiSrt(MAVIC3), {
+        ...base,
+        heights: { prefer: 'relative', absOffsetM: 0, takeoffH: 13.5 },
+      });
+      expect(r.heightSource).toBe('relative');
+      // H = 13.5 + 288.3, local y = H - origin H (10)
+      expect(r.doc.samples[0]?.pos[1]).toBeCloseTo(291.8, 6);
+      expect(r.doc.heights).toEqual({ source: 'relative', absOffsetM: 0, takeoffH: 13.5 });
+      // the aircraft put its take-off point at absolute altitude 207.368 - 288.3
+      expect(r.takeoffAbsAlt).toBeCloseTo(-80.932, 6);
+      expect(r.warnings.join(' ')).not.toMatch(/altitude/);
+    });
+
+    it('absolute altitude plus the project datum offset', () => {
+      // Al-Zour numbers: relative 113.7, absolute minus relative 41.9, plant EL = absolute + 100
+      const srt = MAVIC3.replace(
+        'rel_alt: 288.300 abs_alt: 207.368',
+        'rel_alt: 113.700 abs_alt: 155.600',
+      );
+      const r = srtToFlight(parseDjiSrt(srt), {
+        ...base,
+        heights: { prefer: 'absolute', absOffsetM: 100, takeoffH: 100 },
+      });
+      expect(r.heightSource).toBe('absolute');
+      expect(r.doc.samples[0]?.pos[1]).toBeCloseTo(255.6 - 10, 6);
+      expect(r.doc.heights.absOffsetM).toBe(100);
+      // the second frame still has the Mavic 3 altitudes: absolute is used there too
+      expect(r.doc.samples[1]?.pos[1]).toBeCloseTo(207.468 + 100 - 10, 6);
+      expect(r.takeoffAbsAlt).not.toBeNull();
+    });
+
+    it('falls back frame by frame and says so', () => {
+      const noRel = MAVIC3.replace('rel_alt: 288.300 ', '');
+      const r = srtToFlight(parseDjiSrt(noRel), {
+        ...base,
+        heights: { prefer: 'relative', absOffsetM: 0, takeoffH: 10 },
+      });
+      expect(r.heightSource).toBe('mixed');
+      expect(r.doc.samples[0]?.pos[1]).toBeCloseTo(207.368 - 10, 6);
+      expect(r.warnings.join(' ')).toMatch(/1 of 2 frames have no relative altitude/);
+    });
+
+    it('places frames without any altitude at the take-off height', () => {
+      const bare = MAVIC3.replace(/\[rel_alt: [\d.]+ abs_alt: [\d.]+\] /g, '');
+      const r = srtToFlight(parseDjiSrt(bare), {
+        ...base,
+        heights: { prefer: 'absolute', absOffsetM: 100, takeoffH: 12 },
+      });
+      expect(r.heightSource).toBe('none');
+      expect(r.doc.samples.map((s) => s.pos[1])).toEqual([2, 2]);
+      expect(r.takeoffAbsAlt).toBeNull();
+      expect(r.warnings.join(' ')).toMatch(/2 frames have no altitude/);
+    });
+
+    it('reads the GPS altitude and home point of older aircraft', () => {
+      const [f] = parseDjiSrt(PHANTOM);
+      expect(f?.absAlt).toBe(16);
+      expect(f?.home).toEqual({ lon: 48.1, lat: 29 });
+    });
+  });
 });
 
 describe('srtTimingCheck', () => {

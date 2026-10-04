@@ -3,6 +3,7 @@ import { Icon, type IconName } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useState } from 'react';
 import { useShell } from '../shell';
+import { heightsLine, offsetFromTakeoff, promptChoice, type HeightsPrompt } from './heights';
 import { builder, useBuilder } from './state';
 
 const STATUS: Record<ImportItem['status'], { icon: IconName; label: string }> = {
@@ -84,10 +85,150 @@ export function ImportLayer() {
   );
 }
 
+const num = (v: string) => (v.trim() === '' ? Number.NaN : Number(v));
+
+/**
+ * Camera heights before an import whose drones logged relative altitude (height above the
+ * take-off point): the take-off height H, proposed from the model under the take-off point, or
+ * absolute altitude with a datum offset that becomes the project's (data-conventions section 3a).
+ */
+function HeightsCard({ p }: { p: HeightsPrompt }) {
+  const [source, setSource] = useState<'relative' | 'absolute'>('relative');
+  const [takeoff, setTakeoff] = useState(p.takeoffH.toFixed(1));
+  const [offset, setOffset] = useState(() => {
+    const o = offsetFromTakeoff(p.plan, p.takeoffH);
+    return o === null ? '0' : o.toFixed(2);
+  });
+  const h = num(takeoff);
+  const off = num(offset);
+  const valid = source === 'relative' ? Number.isFinite(h) : Number.isFinite(off);
+  const lowest = p.plan.takeoff?.relAltM ?? 0;
+  const abs = p.plan.takeoffAbsAlt;
+  return (
+    <section className="b-import" aria-label="Camera heights" data-testid="import-heights">
+      <header>
+        <Icon name="import" size={14} />
+        Camera heights for {String(p.plan.files)} {p.plan.files === 1 ? 'file' : 'files'}
+      </header>
+      <div className="b-heights">
+        <p className="small">
+          The drone logged its height above the take-off point. Give the take-off point&apos;s
+          height in the project, or use its absolute altitude with a datum offset.
+        </p>
+        <label className="b-heights-opt">
+          <input
+            type="radio"
+            name="heights-source"
+            checked={source === 'relative'}
+            onChange={() => {
+              setSource('relative');
+            }}
+          />
+          <span>Relative altitude + take-off height</span>
+        </label>
+        {source === 'relative' && (
+          <div className="b-heights-field">
+            <label>
+              Take-off height H (m)
+              <input
+                type="number"
+                step="0.1"
+                value={takeoff}
+                aria-label="Take-off height"
+                onChange={(e) => {
+                  setTakeoff(e.target.value);
+                }}
+              />
+            </label>
+            {p.takeoffFrom === 'terrain' ? (
+              <p className="faint small">
+                Model height under the take-off point (y {(p.takeoffH - p.originH).toFixed(1)} m).
+              </p>
+            ) : (
+              <p className="notice warn small" data-testid="takeoff-warning">
+                <Icon name="warn" size={14} />
+                No model under the take-off point: the project origin height (y 0) is assumed. Check
+                it, or heights will be off by the take-off point&apos;s elevation.
+              </p>
+            )}
+            {lowest > 2 && (
+              <p className="faint small">
+                The logs start {lowest.toFixed(0)} m above the take-off point; its position is taken
+                from the lowest logged position.
+              </p>
+            )}
+          </div>
+        )}
+        {p.plan.absolute > 0 && (
+          <label className="b-heights-opt">
+            <input
+              type="radio"
+              name="heights-source"
+              checked={source === 'absolute'}
+              onChange={() => {
+                setSource('absolute');
+              }}
+            />
+            <span>Absolute altitude + datum offset</span>
+          </label>
+        )}
+        {source === 'absolute' && (
+          <div className="b-heights-field">
+            <label>
+              Offset (m)
+              <input
+                type="number"
+                step="0.01"
+                value={offset}
+                aria-label="Datum offset"
+                onChange={(e) => {
+                  setOffset(e.target.value);
+                }}
+              />
+            </label>
+            <p className="faint small">
+              Project height = absolute altitude + offset, saved as the project&apos;s vertical
+              datum for later imports.
+              {abs !== null &&
+                ` The aircraft logged its take-off point at absolute altitude ${abs.toFixed(1)} m.`}
+            </p>
+          </div>
+        )}
+        <div className="b-heights-actions">
+          <button
+            type="button"
+            className="btn ghost sm"
+            onClick={() => {
+              builder.getState().cancelHeights();
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn primary sm"
+            disabled={!valid}
+            onClick={() => {
+              void builder
+                .getState()
+                .confirmHeights(promptChoice(p, { source, takeoffH: h, offsetM: off }));
+            }}
+          >
+            Import
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function ImportStatus() {
   const importing = useBuilder((s) => s.importing);
   const result = useBuilder((s) => s.importResult);
+  const prompt = useBuilder((s) => s.heightsPrompt);
+  if (prompt && !importing) return <HeightsCard p={prompt} />;
   if (!importing && !result) return null;
+  const heights = result?.heights ? heightsLine(result.heights) : null;
   const counts = result
     ? result.items.reduce<Record<string, number>>(
         (m, i) => ({ ...m, [i.status]: (m[i.status] ?? 0) + 1 }),
@@ -133,6 +274,17 @@ function ImportStatus() {
         <p className="notice danger" style={{ margin: 12 }}>
           <Icon name="warn" size={14} />
           {result.error}
+        </p>
+      )}
+      {heights && (
+        <p
+          className={
+            heights.warn ? 'notice warn small b-heights-line' : 'faint small b-heights-line'
+          }
+          data-testid="import-heights-line"
+        >
+          {heights.warn && <Icon name="warn" size={14} />}
+          {heights.text}
         </p>
       )}
       {result && result.items.length > 0 && (

@@ -123,5 +123,6 @@ export function newProjectManifest(
     classCatalogues: t.catalogue ? [t.catalogue] : [],
     ...(req.brand ? { brand: req.brand } : {}),
     type: req.type,
+    ...(req.verticalDatum ? { verticalDatum: req.verticalDatum } : {}),
   };
 }
