@@ -156,3 +156,68 @@ describe('IssueEditor', () => {
     expect(editor.state.canUndo).toBe(false);
   });
 });
+
+describe('IssueEditor bulk actions', () => {
+  const three = () => [
+    makeIssue({ id: 'a', code: 'F01', severity: 2 }),
+    makeIssue({ id: 'b', code: 'F02', severity: 4, status: 'reviewed' }),
+    makeIssue({ id: 'c', code: 'F03', severity: 3, status: 'approved' }),
+  ];
+
+  it('sets the status of many issues in one undo step, walking the workflow', () => {
+    const { store, editor, calls } = setup(three());
+    const r = editor.setStatusMany(['a', 'b', 'c'], 'approved');
+    expect(r).toEqual({ changed: 2, skipped: [] });
+    expect(store.getState().issues.map((i) => i.status)).toEqual([
+      'approved',
+      'approved',
+      'approved',
+    ]);
+    expect(calls).toHaveLength(1);
+    expect(editor.state.undoLabel).toBe('Set 2 issues to approved');
+    editor.undo();
+    expect(store.getState().issues.map((i) => i.status)).toEqual(['draft', 'reviewed', 'approved']);
+  });
+
+  it('keeps the issue order of the register on bulk edits', () => {
+    const { store, editor } = setup(three());
+    editor.setStatusMany(['a'], 'reviewed');
+    expect(store.getState().issues.map((i) => i.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('sets the class of many issues and reports those it cannot change', () => {
+    const { store, editor } = setup([...three(), makeIssue({ id: 'd', code: 'F04', severity: 5 })]);
+    // pothole uses the 1 to 3 road model: severity 4 and 5 do not fit it
+    const r = editor.setClassMany(['a', 'b', 'c', 'd'], 'pothole');
+    expect(r.changed).toBe(2);
+    expect(r.skipped.map((s) => s.code)).toEqual(['F02', 'F04']);
+    expect(store.getState().issues.map((i) => i.classId)).toEqual([
+      'pothole',
+      'crack',
+      'pothole',
+      'crack',
+    ]);
+    editor.undo();
+    expect(store.getState().issues.every((i) => i.classId === 'crack')).toBe(true);
+  });
+
+  it('merges duplicates into the most severe one in one undo step', () => {
+    const { store, editor } = setup(three());
+    store.getState().select({ kind: 'issue', id: 'a' });
+    const r = editor.mergeMany(['a', 'b', 'c']);
+    expect(r.ok && r.value.id).toBe('b');
+    const after = store.getState().issues;
+    expect(after.map((i) => i.id)).toEqual(['b']);
+    expect(after[0]?.sightings).toHaveLength(3);
+    expect(after[0]?.note).toContain('Merged F01');
+    expect(after[0]?.note).toContain('Merged F03');
+    expect(store.getState().selection).toEqual({ kind: 'issue', id: 'b' });
+    editor.undo();
+    expect(store.getState().issues.map((i) => i.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('needs two issues to merge', () => {
+    const { editor } = setup(three());
+    expect(editor.mergeMany(['a']).ok).toBe(false);
+  });
+});
