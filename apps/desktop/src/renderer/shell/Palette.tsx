@@ -5,6 +5,7 @@ import { useWorkspace, workspace } from '@aio/workspace';
 import { useMemo } from 'react';
 import { actionAllowed, allowedActions } from '../exports/exportModel';
 import { runExportAction } from '../exports/exports';
+import { builder } from '../builder/state';
 import { legacyLayers } from '../legacy';
 import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
@@ -227,8 +228,58 @@ export function Palette() {
             runExportAction('snapshot', { legend: false });
           },
         });
+      // a package is read-only: no import, georeference or calibration
+      if (!pkg) {
+        list.push({
+          id: 'builder:import',
+          title: 'Import raw data into this project',
+          group: 'Actions',
+          icon: 'import',
+          keywords: ['photos', 'video', 'srt', 'glb', 'obj', 'geotiff', 'las', 'laz', 'add data'],
+          run: () => void builder.getState().pickAndImport(),
+        });
+        const meshes = layers.filter((l) => l.kind === 'mesh');
+        if (meshes[0]) {
+          const first = meshes[0];
+          list.push({
+            id: 'builder:align-mesh',
+            title: 'Georeference a model by point pairs',
+            group: 'Actions',
+            icon: 'target',
+            keywords: ['align', 'gcp', 'control points', 'place model', 'transform'],
+            run: () => {
+              builder.getState().startAlign({ kind: 'mesh', layerId: first.id });
+            },
+          });
+        }
+        const clip =
+          layers.find((l) => l.kind === 'video' && l.id === ws.activeClip) ??
+          layers.find((l) => l.kind === 'video');
+        if (clip) {
+          list.push({
+            id: 'builder:calibrate-video',
+            title: 'Calibrate video: time offset and field of view',
+            group: 'Actions',
+            icon: 'droneeye',
+            keywords: ['align', 'lens', 'fov', 'offset', 'sync', 'calibration'],
+            run: () => {
+              builder.getState().startAlign({ kind: 'video', layerId: clip.id });
+            },
+          });
+        }
+      }
       action('close', 'Close project', 'x', s.closeProject);
     }
+    list.push({
+      id: 'builder:new',
+      title: 'New project',
+      group: 'Actions',
+      icon: 'plus',
+      keywords: ['create', 'wizard', 'builder', 'start'],
+      run: () => {
+        builder.getState().openWizard();
+      },
+    });
     for (const e of library ?? []) {
       list.push({
         id: `project:${e.id}`,

@@ -536,7 +536,17 @@ export class Stage implements EngineStage {
   /* ----------------------------------------------------------------------- workspace */
 
   private readonly onStore = (s: Workspace, prev: Workspace) => {
-    if (s.project !== prev.project) this.openProject(s.project);
+    if (
+      s.project !== prev.project &&
+      s.project &&
+      this.sync &&
+      this.project?.id === s.project.id &&
+      this.project.root === s.project.root
+    ) {
+      // Same project, edited manifest (import, alignment): only changed layers reload.
+      this.project = s.project;
+      this.sync.sync(s.project.manifest.layers, s.hidden);
+    } else if (s.project !== prev.project) this.openProject(s.project);
     else if (s.hidden !== prev.hidden && s.project)
       this.sync?.sync(s.project.manifest.layers, s.hidden);
     if (s.selection !== prev.selection) this.applySelection(s.selection);

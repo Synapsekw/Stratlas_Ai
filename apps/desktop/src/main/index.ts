@@ -39,6 +39,14 @@ import { createExportJobs } from './exports/jobs';
 import { printReport } from './exports/reportWindow';
 import { listReports } from './exports/reports';
 import { runInUtility } from './exports/utility';
+import {
+  builderImport,
+  builderTemplates,
+  builderUpdateLayers,
+  createBuilderProject,
+  photoGps,
+} from './builder';
+import { nativeImageOps } from './images';
 import { validated, type Handler } from './ipc';
 import { findPack, JobRunner, JobStore, openTarget, safeJobEvent } from './jobs';
 import { createKeyVault } from './keys';
@@ -631,6 +639,52 @@ function registerIpc(): void {
       : await dialog.showOpenDialog(options);
     return { path: r.canceled ? null : (r.filePaths[0] ?? null) };
   });
+
+  handle('dialog:openFiles', async ({ title, filters, multi }) => {
+    const win = targetWindow();
+    const options = {
+      properties: ['openFile' as const, ...(multi === false ? [] : ['multiSelections' as const])],
+      ...(title ? { title } : {}),
+      ...(filters ? { filters } : {}),
+    };
+    const r = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options);
+    return { paths: r.canceled ? [] : r.filePaths };
+  });
+
+  handle('builder:templates', async () =>
+    builderTemplates((await settings.get()).dataRoot, await library.paths()),
+  );
+  handle('builder:createProject', async (req) =>
+    createBuilderProject(req, (await settings.get()).dataRoot, await library.paths()),
+  );
+  handle('builder:photoGps', ({ path }) => photoGps(path));
+  // A package is read-only: nothing is imported into it and no layer is re-aligned.
+  const packageRefusal = (projectId: string) =>
+    registry.package(projectId)
+      ? {
+          ok: false as const,
+          error: 'This project is a read-only package. Nothing can be added or changed.',
+        }
+      : null;
+  handle(
+    'builder:import',
+    (req) =>
+      packageRefusal(req.projectId) ??
+      builderImport(req, {
+        registry,
+        images: nativeImageOps,
+        emit: (e) => {
+          const parsed = ipcEvents['builder:progress'].safeParse(e);
+          if (parsed.success) targetWindow()?.webContents.send('builder:progress', parsed.data);
+        },
+      }),
+  );
+  handle(
+    'builder:updateLayers',
+    (req) => packageRefusal(req.projectId) ?? builderUpdateLayers(req, registry),
+  );
 
   handle('dialog:saveFile', (req) => {
     // Export limits of an open package (APP-5).

@@ -85,6 +85,50 @@ describe('workspace store', () => {
   });
 });
 
+describe('replaceManifest', () => {
+  it('swaps the manifest of the open project and keeps clock, selection and visibility', () => {
+    const ws = createWorkspace();
+    ws.getState().openProject({ id: 'hcl', root: 'R', manifest });
+    ws.getState().setTime(123);
+    ws.getState().select({ kind: 'layer', id: 'tank' });
+    const hidden = ws.getState().hidden;
+    const next = { ...manifest, name: 'Renamed' };
+    ws.getState().replaceManifest(next);
+    const s = ws.getState();
+    expect(s.project).toEqual({ id: 'hcl', root: 'R', manifest: next });
+    expect(s.nowMs).toBe(123);
+    expect(s.selection?.id).toBe('tank');
+    expect(s.hidden).toBe(hidden);
+  });
+
+  it('shows layers that are new in the manifest unless they are saved hidden', () => {
+    const ws = createWorkspace();
+    ws.getState().openProject({ id: 'hcl', root: 'R', manifest });
+    const extra = {
+      ...manifest,
+      layers: [...manifest.layers, { ...manifest.layers[1], id: 'new', visible: false }],
+    };
+    ws.getState().replaceManifest(extra as typeof manifest);
+    expect(ws.getState().hidden).toEqual({ tank: true, new: true });
+  });
+
+  it('makes the first imported clip active when none was', () => {
+    const ws = createWorkspace();
+    const noClips = { ...manifest, layers: manifest.layers.filter((l) => l.kind !== 'video') };
+    ws.getState().openProject({ id: 'hcl', root: 'R', manifest: noClips });
+    expect(ws.getState().activeClip).toBeNull();
+    ws.getState().replaceManifest(manifest);
+    expect(ws.getState().activeClip).toBe('f110');
+    expect(ws.getState().nowMs).toBe(1_700_000_000_250);
+  });
+
+  it('does nothing without an open project', () => {
+    const ws = createWorkspace();
+    ws.getState().replaceManifest(manifest);
+    expect(ws.getState().project).toBeNull();
+  });
+});
+
 describe('assetUrl', () => {
   it('builds project asset urls', () => {
     expect(assetUrl('al-zour', { path: 'video/DJI 0789.mp4' })).toBe(

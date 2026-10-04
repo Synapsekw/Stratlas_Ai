@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Video playback controller, flight pose interpolation, telemetry parsers, lens models.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./telemetry": "./src/telemetry-node.ts"
   },
   "scripts": {
     "test": "vitest run"

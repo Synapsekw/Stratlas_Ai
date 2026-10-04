@@ -26,6 +26,7 @@ import { Sidebar } from './shell/Sidebar';
 import { TitleBar } from './shell/TitleBar';
 import { applyAppearance } from './theme';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
+import { BuilderLayer } from './builder/BuilderLayer';
 
 function onKeyDown(e: KeyboardEvent) {
   const s = shell.getState();
@@ -192,6 +193,7 @@ export function App() {
       <UnlockDialog />
       <PackageExportDialog />
       <Toasts />
+      <BuilderLayer />
     </div>
   );
 }

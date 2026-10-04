@@ -6,6 +6,7 @@ export { PackCoverage, type PackCoverageProps } from './PackCoverage';
 export { bboxPolygon, coverageFeatures, dragBbox } from './coverageData';
 export { estimatePackBytes, normaliseBbox, tileCount, type PackEstimate } from './estimate';
 export { COUNTRIES, GCC_IDS, packIdFor, regionById, type Region } from './regions';
+export { LocationPicker, type LocationPickerProps } from './LocationPicker';
 export {
   drawPreview,
   isRepeatClick,

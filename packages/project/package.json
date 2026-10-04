@@ -9,7 +9,9 @@
     "./import": "./src/import/index.ts",
     "./package": "./src/package/index.ts",
     "./export": "./src/export/index.ts",
-    "./export/node": "./src/export/node.ts"
+    "./export/node": "./src/export/node.ts",
+    "./builder": "./src/builder/index.ts",
+    "./builder/testing": "./src/builder/testing.ts"
   },
   "scripts": {
     "test": "vitest run",

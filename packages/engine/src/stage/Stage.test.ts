@@ -216,6 +216,19 @@ describe('Stage', () => {
     stage.dispose();
   });
 
+  it('keeps unchanged layers when the open project only gets a new manifest', async () => {
+    const { stage, store, handles } = make();
+    store.getState().openProject(project([meshLayer('plant')]));
+    await flush();
+    const before = store.getState().project?.manifest;
+    if (!before) throw new Error('no project');
+    store.getState().replaceManifest({ ...before, layers: [...before.layers, meshLayer('tank')] });
+    await flush();
+    expect(handles).toHaveLength(2);
+    expect(handles[0]?.disposed).toBe(false);
+    stage.dispose();
+  });
+
   it('frames the content on load and picks the tagged node under the cursor', async () => {
     const { stage, store, resize } = make();
     resize(800, 600);

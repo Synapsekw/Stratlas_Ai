@@ -2,6 +2,7 @@ import type { LibraryEntry } from '@aio/schema';
 import { formatBytes, formatCompact, formatDate, Icon, type IconName } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useMemo, useState } from 'react';
+import { builder } from '../builder/state';
 import { shell, useCall, useShell } from '../shell';
 
 const LAYER_CHIPS: { key: string; icon: IconName; label: string }[] = [
@@ -190,11 +191,22 @@ function EmptyLibrary({ dataRoot, error }: { dataRoot: string; error: string | n
         <div className="le-acts">
           <button
             type="button"
-            className="btn primary"
+            className="btn"
             onClick={() => void shell.getState().addProjectFolder()}
           >
-            <Icon name="plus" size={14} />
+            <Icon name="import" size={14} />
             Add project folder
+          </button>
+          <button
+            type="button"
+            className="btn primary"
+            onClick={() => {
+              builder.getState().openWizard();
+            }}
+            data-testid="new-project"
+          >
+            <Icon name="plus" size={14} />
+            New project
           </button>
           <button
             type="button"
@@ -356,11 +368,22 @@ export function ProjectsScreen() {
             </button>
             <button
               type="button"
-              className="btn primary"
+              className="btn"
               onClick={() => void shell.getState().addProjectFolder()}
             >
-              <Icon name="plus" size={14} />
+              <Icon name="import" size={14} />
               Add project folder
+            </button>
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() => {
+                builder.getState().openWizard();
+              }}
+              data-testid="new-project"
+            >
+              <Icon name="plus" size={14} />
+              New project
             </button>
           </div>
         </header>

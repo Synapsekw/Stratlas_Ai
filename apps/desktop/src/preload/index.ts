@@ -1,5 +1,5 @@
 import type { AioBridge, IpcChannel, IpcEventName } from '@aio/schema';
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
 
 // Only the declared channels exist; main validates every request against @aio/schema. The lists
 // are type-checked against the contract so a new channel cannot be forgotten here. (No runtime
@@ -57,6 +57,12 @@ const CHANNELS = {
   'jobs:cancel': true,
   'jobs:log': true,
   'jobs:open': true,
+  'dialog:openFiles': true,
+  'builder:templates': true,
+  'builder:createProject': true,
+  'builder:photoGps': true,
+  'builder:import': true,
+  'builder:updateLayers': true,
 } as const satisfies Record<IpcChannel, true>;
 
 const EVENTS = {
@@ -66,6 +72,7 @@ const EVENTS = {
   'export:progress': true,
   'packs:job': true,
   'jobs:event': true,
+  'builder:progress': true,
 } as const satisfies Record<IpcEventName, true>;
 
 const known = <K extends string>(table: Record<K, true>, key: string): key is K =>
@@ -87,6 +94,14 @@ const bridge: AioBridge = {
     return () => {
       ipcRenderer.off(event, wrapped);
     };
+  },
+  // Dropped files: the sandboxed renderer has no File.path; main still validates every path.
+  pathForFile: (file) => {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch {
+      return '';
+    }
   },
 };
 

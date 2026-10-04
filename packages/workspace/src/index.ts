@@ -47,6 +47,11 @@ export interface WorkspaceState {
 export interface WorkspaceActions {
   openProject(project: OpenProject, issues?: Issue[]): void;
   closeProject(): void;
+  /**
+   * Replace the open project's manifest after an edit (import, alignment). Clock, selection and
+   * visibility stay; new layers saved as hidden start hidden.
+   */
+  replaceManifest(manifest: ProjectManifest): void;
   setTime(nowMs: number): void;
   play(): void;
   pause(): void;
@@ -93,6 +98,24 @@ export function createWorkspace(): StoreApi<Workspace> {
         hidden: Object.fromEntries(
           project.manifest.layers.filter((l) => !l.visible).map((l) => [l.id, true as const]),
         ),
+      });
+    },
+    replaceManifest: (manifest) => {
+      const { project, hidden, activeClip } = get();
+      if (!project) return;
+      const known = new Set(project.manifest.layers.map((l) => l.id));
+      const added = manifest.layers.filter((l) => !known.has(l.id) && !l.visible);
+      const clip = activeClip ? null : manifest.layers.find((l) => l.kind === 'video');
+      set({
+        project: { ...project, manifest },
+        ...(clip?.kind === 'video'
+          ? { activeClip: clip.id, nowMs: clip.flight.startUtcMs + clip.offsetMs }
+          : {}),
+        ...(added.length
+          ? {
+              hidden: { ...hidden, ...Object.fromEntries(added.map((l) => [l.id, true as const])) },
+            }
+          : {}),
       });
     },
     closeProject: () => {

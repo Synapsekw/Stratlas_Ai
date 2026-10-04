@@ -77,6 +77,21 @@ export function clipHfovDeg(aspect: number, fullHfovDeg = 83, fullAspect = 5120 
   return round((Math.atan(t) * 360) / Math.PI, 2);
 }
 
+/**
+ * Horizontal field of view calibrated against the plant model (stream B2, 2026-10-04): the app
+ * rendered the model in drone-eye view at a sweep of lenses and compared each render with the
+ * video frame (edge correlation, a small turn and shift allowed for pose error) over 6 frames of
+ * DJI_0665 (5.1K 17:9) and 6 of DJI_0789 (4K60 16:9). The source's 83 deg was never measured.
+ */
+export const ALZOUR_HFOV_DEG = { wide: 72.2, uhd: 65.6 } as const;
+
+/** Calibrated field of view by frame shape; other shapes keep the sensor-crop estimate. */
+export function calibratedHfovDeg(aspect: number): number {
+  if (Math.abs(aspect - 5120 / 2700) < 0.01) return ALZOUR_HFOV_DEG.wide;
+  if (Math.abs(aspect - 16 / 9) < 0.01) return ALZOUR_HFOV_DEG.uhd;
+  return clipHfovDeg(aspect);
+}
+
 /** Camera orientation of a track row in the local frame (as `plantVideoToFlight`). */
 export function trackQuat(frame: FrameMap, az: number, gimbalPitch: number): Quat {
   return mapQuat(frame, plantCameraQuat(az, gimbalPitch));

@@ -12,7 +12,8 @@ import type {
   Vec3,
 } from '@aio/schema';
 import {
-  clipHfovDeg,
+  ALZOUR_HFOV_DEG,
+  calibratedHfovDeg,
   groundHit,
   inParallelogram,
   localToPlant,
@@ -800,7 +801,7 @@ export async function importAlzour(opts: AlzourImportOptions): Promise<ImportRes
     const aspect = round(info.width / info.height, 4);
     const lens: LensModel = {
       model: 'pinhole',
-      hfovDeg: clipHfovDeg(aspect, flights.camera.hfov_deg, flights.camera.aspect),
+      hfovDeg: calibratedHfovDeg(aspect),
       aspect,
     };
     const clip: FlightClip = {
@@ -1060,7 +1061,7 @@ export async function importAlzour(opts: AlzourImportOptions): Promise<ImportRes
     `- Area plot plans: \`plan_0.png\` and \`plan_1.png\` (2 px/m in the plant grid, E -60 to 2620, N 20 to 1080 as the viewer) as two \`image\` rasters in \`rasters/areaplans/\`, converted the same way, ${AREAPLAN_Y} m above grade.`,
     `- ${streetNote}`,
     `- Point cloud: \`png-packed\` \`clouds/alzour/index.json\` (aio.pngcloud/1), ${chunks.length} chunks (lod 0: 1 overview, lod 1 and 2: ${pc.levels[1]?.length ?? 0} + ${pc.levels[2]?.length ?? 0} tiles), ${pcPoints.toLocaleString('en')} points, decoded with the viewer rule \`o + q * u\`, turned into the local frame and quantised again to a cube per chunk (step <= 0.1 mm over the source step). ${pc.note ?? ''}`,
-    `- Video: ${videoLayers.length} clips copied as delivered (H.264, ${[...new Set([...infos.values()].map((i) => `${i.width}x${i.height}`))].join(', ')}), JPEG poster at 1 s (960 px). One \`aio.flight/1\` file per drone flight (\`flights/flightN.json\`, ${flightDocs.size} flights) so the app groups the clips; each clip's \`offsetMs\` is its start minus the flight start. Lens pinhole 83 deg for 5.1K (17:9) clips; 16:9 clips get the cropped width (${clipHfovDeg(16 / 9).toFixed(1)} deg).`,
+    `- Video: ${videoLayers.length} clips copied as delivered (H.264, ${[...new Set([...infos.values()].map((i) => `${i.width}x${i.height}`))].join(', ')}), JPEG poster at 1 s (960 px). One \`aio.flight/1\` file per drone flight (\`flights/flightN.json\`, ${flightDocs.size} flights) so the app groups the clips; each clip's \`offsetMs\` is its start minus the flight start. Lens pinhole ${String(ALZOUR_HFOV_DEG.wide)} deg for 5.1K (17:9) clips and ${String(ALZOUR_HFOV_DEG.uhd)} deg for 4K (16:9), calibrated against the plant model (the source stated 83 deg for all clips).`,
     `- Photos: ${photoItems.length} stills (2048 px review copies as delivered, 320 px thumbs) with position, orientation (heading with the viewer's fitted correction, gimbal pitch, roll) and lens (pinhole 71.5 deg).`,
     `- Panoramas: ${panoItems.length} (${media.panos.filter((p) => p.kind === 'sphere').length} equirectangular 360, ${media.panos.filter((p) => p.kind === 'wide').length} wide partial) with position and heading; full coverage metadata in \`panoramas/panoramas.json\`.`,
     `- Issues: none in the source; \`issues.json\` is empty. Severity model "${PLANT_SEVERITY_MODEL.name}" (1 Observation to 5 Critical, plus To be confirmed) and class catalogue "${PLANT_CATALOGUE.name}" (${PLANT_CATALOGUE.classes.length} classes).`,
@@ -1083,7 +1084,7 @@ export async function importAlzour(opts: AlzourImportOptions): Promise<ImportRes
     'Camera positions are GNSS/barometric (about +-2 m) with heading from the aircraft compass; the clips have no photogrammetric alignment.',
   );
   rep.warn(
-    '16:9 clips (flight 4): the source states only 83 deg for all clips; the narrower field of view is derived from the sensor crop and is approximate.',
+    'Clip fields of view are calibrated against the plant model (about +-2 deg); the clip poses still show a pitch offset of about 8 deg against the model, which the lens does not absorb.',
   );
   const pruned = w.prune('rasters');
   if (pruned.length)

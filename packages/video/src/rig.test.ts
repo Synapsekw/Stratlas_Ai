@@ -197,4 +197,46 @@ describe('VideoRig drone-eye', () => {
     expect(toTarget.length()).toBeCloseTo(120 / Math.sin(Math.PI / 4), 1);
     rig.dispose();
   });
+
+  it('tries a calibration lens on the drone-eye camera and restores the clip lens', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(flight)))),
+    );
+    const layer = {
+      ...clip(0, 'flights/cal.json'),
+      lens: { model: 'pinhole' as const, hfovDeg: 80, aspect: 2 },
+      offsetMs: 0,
+    };
+    const store = createWorkspace();
+    store.getState().openProject({
+      id: 'p',
+      root: 'x',
+      manifest: { layers: [layer] } as unknown as ProjectManifest,
+    });
+    configureVideo({ store, resolveUrl: (_p, ref) => ('path' in ref ? ref.path : ref.hash) });
+    const frames: (() => void)[] = [];
+    const h = Object.assign(handle(), {
+      onFrame: (cb: () => void) => {
+        frames.push(cb);
+        return () => undefined;
+      },
+    });
+    const rig = new VideoRig(h);
+    await rig.addLayer(layer, { scene: h, url: (r) => ('path' in r ? r.path : r.hash) });
+    store.getState().setActiveClip(layer.id);
+    store.getState().setTime(flight.startUtcMs + 500);
+    rig.setCameraMode('drone');
+    const vfov = (hfov: number) =>
+      (2 * Math.atan(Math.tan((hfov * Math.PI) / 360) / 2) * 180) / Math.PI;
+    for (const f of frames) f();
+    expect(h.camera.fov).toBeCloseTo(vfov(80), 3);
+    rig.setLensOverride({ model: 'pinhole', hfovDeg: 70, aspect: 2 });
+    for (const f of frames) f();
+    expect(h.camera.fov).toBeCloseTo(vfov(70), 3);
+    rig.setLensOverride(null);
+    for (const f of frames) f();
+    expect(h.camera.fov).toBeCloseTo(vfov(80), 3);
+    rig.dispose();
+  });
 });
