@@ -52,6 +52,15 @@ export const en = {
   'settings.page.about': 'About and updates',
   'settings.notSaved': 'Settings are not being saved: {error}',
 
+  // Page introductions
+  'settings.ai.text':
+    'Keys go to the system credential vault. They never enter project files or logs, and the app never shows a stored key.',
+  'settings.privacy.text':
+    '{product} works fully offline. Cloud AI is opt-in, and every action that sends data or changes the project asks you first.',
+  'settings.data.text': 'Where projects and offline map packs live on this workstation.',
+  'settings.severity.text':
+    'Each project grades issues with its own model. Levels carry a colour, criteria and a recommended action.',
+
   // Appearance
   'settings.appearance.text':
     'Theme and layout direction. Dark is the working theme; light suits bright rooms and printouts.',
