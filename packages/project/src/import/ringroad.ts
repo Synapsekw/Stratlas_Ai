@@ -50,7 +50,7 @@ const TILE_PX = 1024;
 const LEVELS = 8;
 const FINEST_SRC_ZOOM = 22;
 /** Bump when the resampling changes, so a re-run rebuilds the ortho. */
-const ORTHO_ALGO = 'rr-ortho-2';
+const ORTHO_ALGO = 'rr-ortho-3';
 /** Viewer navy under no-data pixels (the 3D view draws ortho tiles opaque). */
 const NO_DATA: [number, number, number] = [20, 29, 45];
 const CREATED_AT = '2024-04-02T00:00:00+03:00';
@@ -340,7 +340,16 @@ export async function importRingroad(opts: ImportOptions): Promise<ImportResult>
       ]),
     )
     .digest('hex');
-  const ortho = await buildOrthoPyramid({ tiles, plan, toLonLat, w, stamp, fill: NO_DATA, log });
+  const ortho = await buildOrthoPyramid({
+    tiles,
+    plan,
+    toLonLat,
+    w,
+    stamp,
+    fill: NO_DATA,
+    completeUpTo: 16,
+    log,
+  });
   if (ortho.reused) log('ortho: source unchanged, tiles of the previous run kept');
   const corners = levelCorners(plan, origin);
   w.writeJson('rasters/ortho/tiles.json', {
@@ -577,7 +586,7 @@ export async function importRingroad(opts: ImportOptions): Promise<ImportResult>
   ]);
   const levelRows = plan.levels.map((l) => {
     const s = ortho.levels.find((x) => x.z === l.z);
-    return `| ${l.z} | z${l.srcZoom} | ${(l.metresPerPx * 100).toFixed(2)} cm | ${l.cols} x ${l.rows} | ${((s?.errPx ?? 0) * l.metresPerPx * 100).toFixed(2)} cm | ${s?.tiles ?? 0} | ${formatBytes(s?.bytes ?? 0)} |`;
+    return `| ${l.z} | z${l.srcZoom} | ${(l.metresPerPx * 100).toFixed(2)} cm | ${l.cols} x ${l.rows} | ${((s?.errPx ?? 0) * l.metresPerPx * 100).toFixed(2)} cm | ${s?.tiles ?? 0}${s?.blank ? ` (${s.blank} no-data)` : ''} | ${formatBytes(s?.bytes ?? 0)} |`;
   });
   rep.section('Orthomosaic', [
     `\`rasters/ortho/tiles.json\` (\`aio.tiles/1\`, format \`kit-pyramid\`): a square of ${plan.size.toFixed(2)} m aligned to UTM 38N, top-left E ${plan.left}, N ${plan.top}, ${TILE_PX} px WebP tiles \`rasters/ortho/{z}/{x}_{y}.webp\`, no-data transparent over the viewer navy. Corners (local): tl ${JSON.stringify(corners.tl)}, tr ${JSON.stringify(corners.tr)}, bl ${JSON.stringify(corners.bl)}.`,

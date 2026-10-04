@@ -27,6 +27,11 @@ export interface OrthoBuildOptions {
   fill?: readonly [number, number, number];
   /** Fingerprint of the source; when it matches the last run, existing tiles are kept. */
   stamp?: string;
+  /**
+   * Levels with at most this many slots get a no-data tile in every empty slot (MapView loads
+   * every tile of the level it draws). Default 0.
+   */
+  completeUpTo?: number;
   log?: (msg: string) => void;
 }
 
@@ -34,6 +39,8 @@ export interface OrthoLevelStats {
   z: number;
   srcZoom: number;
   tiles: number;
+  /** Of `tiles`, no-data tiles written into empty slots. */
+  blank: number;
   bytes: number;
   /** Largest per-tile affine miss at this level (source px, about the level pixel size). */
   errPx: number;
@@ -50,6 +57,7 @@ interface Stamp {
   stamp: string;
   maxErrPx: number;
   errPx: Record<string, number>;
+  blank: Record<string, number>;
   tiles: Record<string, string[]>;
 }
 
@@ -200,6 +208,7 @@ export async function buildOrthoPyramid(o: OrthoBuildOptions): Promise<OrthoBuil
           z: l.z,
           srcZoom: l.srcZoom,
           tiles: names.length,
+          blank: prev.blank[String(l.z)] ?? 0,
           bytes,
           errPx: prev.errPx[String(l.z)] ?? 0,
         };
@@ -218,7 +227,7 @@ export async function buildOrthoPyramid(o: OrthoBuildOptions): Promise<OrthoBuil
   }
 
   const cache = new TileCache(o.tiles);
-  const stamp: Stamp = { stamp: o.stamp ?? '', maxErrPx: 0, errPx: {}, tiles: {} };
+  const stamp: Stamp = { stamp: o.stamp ?? '', maxErrPx: 0, errPx: {}, blank: {}, tiles: {} };
   const levels: OrthoLevelStats[] = [];
   for (const level of o.plan.levels) {
     const t0 = Date.now();
@@ -227,6 +236,7 @@ export async function buildOrthoPyramid(o: OrthoBuildOptions): Promise<OrthoBuil
       z: level.z,
       srcZoom: level.srcZoom,
       tiles: 0,
+      blank: 0,
       bytes: 0,
       errPx: 0,
     };
@@ -274,7 +284,7 @@ export async function buildOrthoPyramid(o: OrthoBuildOptions): Promise<OrthoBuil
         raw: { width: size, height: size, channels: 4 },
       });
       const job: Promise<void> = (out.covered === size * size ? raw.removeAlpha() : raw)
-        .webp({ quality, alphaQuality: 90, effort: 4 })
+        .webp({ quality, alphaQuality: 90, effort: 4, exact: true })
         .toBuffer()
         .then((buf) => {
           o.w.write(rel, buf);
@@ -286,9 +296,30 @@ export async function buildOrthoPyramid(o: OrthoBuildOptions): Promise<OrthoBuil
       if (pending.size >= 8) await Promise.race(pending);
     }
     await Promise.all(pending);
+    if (level.cols * level.rows <= (o.completeUpTo ?? 0)) {
+      const have = new Set(names);
+      const size = level.tileSize;
+      const px = new Uint8Array(size * size * 4);
+      for (let i = 0; i < size * size; i++) px.set([fill[0], fill[1], fill[2], 0], i * 4);
+      const blank = await sharp(Buffer.from(px.buffer), {
+        raw: { width: size, height: size, channels: 4 },
+      })
+        .webp({ lossless: true, exact: true })
+        .toBuffer();
+      for (let y = 0; y < level.rows; y++)
+        for (let x = 0; x < level.cols; x++) {
+          if (have.has(`${x}_${y}`)) continue;
+          o.w.write(tileRel(level, x, y), blank);
+          names.push(`${x}_${y}`);
+          stats.tiles++;
+          stats.blank++;
+          stats.bytes += blank.length;
+        }
+    }
     names.sort();
     stamp.tiles[String(level.z)] = names;
     stamp.errPx[String(level.z)] = stats.errPx;
+    stamp.blank[String(level.z)] = stats.blank;
     levels.push(stats);
     log(
       `ortho level ${level.z} (source z${level.srcZoom}): ${stats.tiles} tiles of ${cands.length} candidates in ${((Date.now() - t0) / 1000).toFixed(1)} s`,

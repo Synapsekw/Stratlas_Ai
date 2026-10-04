@@ -119,6 +119,76 @@ describe('ortho pyramid from mercator tiles', () => {
     expect(Math.abs(sv / sw - wantV)).toBeLessThan(0.15);
   });
 
+  it('keeps the no-data colour under transparent pixels (the 3D view draws ortho opaque)', async () => {
+    const dot: [number, number] = [47.9941911, 29.3854794];
+    const [x, y] = worldPx(dot[0], dot[1], 22).map((v) => Math.floor(v / SRC_TILE));
+    // one high-contrast source tile (road markings next to no-data are what the encoder smears)
+    const px = Buffer.alloc(SRC_TILE * SRC_TILE * 4);
+    let seed = 7;
+    for (let i = 0; i < SRC_TILE * SRC_TILE; i++) {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      const v = seed % 3 === 0 ? 250 : 15;
+      px.set([v, v, v, 255], i * 4);
+    }
+    const tile = await sharp(px, { raw: { width: SRC_TILE, height: SRC_TILE, channels: 4 } })
+      .webp({ lossless: true })
+      .toBuffer();
+    const one = new Map([[`22/${x}/${y}`, new Uint8Array(tile)]]);
+    const [e, n] = fromWgs84([dot[0], dot[1], 0], UTM38);
+    const plan = planPyramid(
+      { minE: e - 7, minN: n - 7, maxE: e + 7, maxN: n + 7 },
+      { finestM: 0.0325, tileSize: 256, levels: 2, finestSrcZoom: 22 },
+    );
+    const w = new PackageWriter(join(dir, 'out'));
+    await buildOrthoPyramid({ tiles: one, plan, toLonLat, w, fill: [20, 29, 45] });
+    let clear = 0;
+    let wrong = 0;
+    let worst = 0;
+    for (const f of w.files) {
+      if (!f.endsWith('.webp')) continue;
+      const { data } = await sharp(readFileSync(w.abs(f)))
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i + 3] !== 0) continue;
+        clear++;
+        const dev = Math.max(
+          Math.abs((data[i] ?? 0) - 20),
+          Math.abs((data[i + 1] ?? 0) - 29),
+          Math.abs((data[i + 2] ?? 0) - 45),
+        );
+        worst = Math.max(worst, dev);
+        if (dev > 32) wrong++;
+      }
+    }
+    expect(clear).toBeGreaterThan(1000);
+    // lossy coding rings a little next to the content; smeared rows would be far off
+    expect(wrong, `worst ${worst}`).toBe(0);
+  });
+
+  it('writes no-data tiles into the empty slots of small levels (the 2D map loads every tile)', async () => {
+    const dot: [number, number] = [47.9941911, 29.3854794];
+    const tiles = await sourceTiles(22, dot);
+    const [e, n] = fromWgs84([dot[0], dot[1], 0], UTM38);
+    const plan = planPyramid(
+      { minE: e - 1.5, minN: n - 1.5, maxE: e + 1.5, maxN: n + 1.5 },
+      { finestM: 0.0325, tileSize: 64, levels: 2, finestSrcZoom: 22 },
+    );
+    const w = new PackageWriter(join(dir, 'out'));
+    const r = await buildOrthoPyramid({ tiles, plan, toLonLat, w, completeUpTo: 1 });
+    // level 0 (one slot) has no z21 source but gets a blank tile; level 1 (4 slots) is real
+    expect(r.levels.map((l) => [l.tiles, l.blank])).toEqual([
+      [1, 1],
+      [4, 0],
+    ]);
+    const { data } = await sharp(readFileSync(w.abs('rasters/ortho/0/0_0.webp')))
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    expect(data[3]).toBe(0);
+  });
+
   it('skips tiles with no source and keeps tiles of an unchanged source on a re-run', async () => {
     const dot: [number, number] = [47.9941911, 29.3854794];
     const tiles = await sourceTiles(22, dot);
