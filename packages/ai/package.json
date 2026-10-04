@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./main": "./src/main.ts",
-    "./routes": "./src/routes.ts"
+    "./routes": "./src/routes.ts",
+    "./narrative": "./src/narrative.ts"
   },
   "scripts": {
     "test": "vitest run"

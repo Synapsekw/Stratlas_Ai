@@ -87,6 +87,11 @@ export interface AgentRuntime {
    * Only on the person's click: it calls out when cloud AI is on.
    */
   testConnection(req: IpcRequest<'ai:testConnection'>): Promise<IpcResponse<'ai:testConnection'>>;
+  /**
+   * One text completion on a task route without tools (the report narrative, BLD-7), behind the
+   * same gates as the agent. Usage is metered to the project. Cancel with `cancel(runId)`.
+   */
+  draft(req: IpcRequest<'ai:draftText'>): Promise<IpcResponse<'ai:draftText'>>;
 }
 
 export interface AgentRuntimeOptions {
@@ -328,7 +333,7 @@ export function createAgentRuntime(
       return { ok: true };
     },
     status: async (req) => {
-      const gate = await check('chat', req.projectId);
+      const gate = await check(req.task ?? 'chat', req.projectId);
       if (gate.ok) {
         return {
           ready: true,
@@ -392,6 +397,49 @@ export function createAgentRuntime(
           model,
           ...(described.status !== undefined ? { status: described.status } : {}),
         };
+      }
+    },
+    draft: async (req) => {
+      if (runs.has(req.runId)) return { ok: false, error: MESSAGES.busy };
+      const run: Run = { controller: new AbortController(), pending: new Map() };
+      runs.set(req.runId, run);
+      try {
+        const gate = await check(req.task, req.projectId);
+        if (!gate.ok) return { ok: false, error: gate.message };
+        const { route, provider } = gate;
+        const key = provider.needsKey ? await host.getKey(route.provider) : null;
+        try {
+          const result = await generateText({
+            model: provider.languageModel(route.model, key),
+            instructions: req.system,
+            prompt: req.prompt,
+            maxOutputTokens: 8_000,
+            maxRetries: options.maxRetries ?? 2,
+            abortSignal: run.controller.signal,
+          });
+          const event = usageEvent(req.runId, route, result.usage);
+          if (event.type === 'usage') {
+            host.recordUsage?.(req.projectId, {
+              provider: route.provider,
+              model: route.model,
+              inputTokens: event.inputTokens,
+              outputTokens: event.outputTokens,
+              ...(event.costUsd !== undefined ? { costUsd: event.costUsd } : {}),
+            });
+          }
+          return { ok: true, text: result.text, provider: route.provider, model: route.model };
+        } catch (e) {
+          if (run.controller.signal.aborted) return { ok: false, error: MESSAGES.stopped };
+          const described = describeError(e, {
+            label: provider.label,
+            model: route.model,
+            secrets: [key],
+          });
+          console.warn(`draft failed: ${described.log}`);
+          return { ok: false, error: described.message };
+        }
+      } finally {
+        runs.delete(req.runId);
       }
     },
     toolResult: (res) => {
