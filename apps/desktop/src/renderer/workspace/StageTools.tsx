@@ -406,22 +406,23 @@ export function DisplayTools({ stage, map }: { stage: EngineStage | null; map: b
               ))}
             </div>
             <p className="pop-note">
-              {LABEL_MODES.find((m) => m.mode === labelMode)?.hint}. Issue pins have their own
-              control.
+              {LABEL_MODES.find((m) => m.mode === labelMode)?.hint}. Issue pins: see Layers.
             </p>
           </div>
         </PopTool>
       )}
-      <PopTool icon="pin" label="Issue pins" pressed={pinFilter !== 'off' || heat} wide>
-        <div className="pop-form">
-          <PinControls />
-        </div>
-      </PopTool>
-      <PopTool icon="layers" label="Layers">
+      <PopTool
+        icon="layers"
+        label="Layers and issue pins"
+        pressed={pinFilter !== 'all' || heat}
+        wide
+      >
         <div className="pop-form">
           {KINDS.map((k) => (
             <KindRow key={k.label} {...k} />
           ))}
+          <span className="pop-title">Issue pins</span>
+          <PinControls />
         </div>
       </PopTool>
     </>
