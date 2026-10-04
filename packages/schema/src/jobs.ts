@@ -14,6 +14,7 @@ export const PipelineName = z.enum([
   'aik.records',
   'volumetric.process',
   'pointcloud.to_copc',
+  'inspection.run',
   'system.selftest',
   'volumetric.build',
 ]);
@@ -50,6 +51,12 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
     name: 'pointcloud.to_copc',
     title: 'Point cloud to COPC',
     description: 'LAS, LAZ or E57 to a COPC file in the project CRS, added as a layer (PDAL).',
+  },
+  {
+    name: 'inspection.run',
+    title: 'Inspection: detections to issues',
+    description:
+      'Contact sheets, detections placed on the model, grouped into issues, and the stats for the report.',
   },
   {
     name: 'system.selftest',
@@ -170,6 +177,28 @@ export const PointcloudToCopcParams = z
   })
   .strict();
 
+export const InspectionRunParams = z
+  .object({
+    /** `aio.detections/1` (or kit, COCO) files and folders; default the project's `detections/`. */
+    detections: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]).optional(),
+    /** Count unreviewed (draft) AI and model detections too. */
+    includeDrafts: z.boolean().optional(),
+    minConfidence: z.number().min(0).max(1).optional(),
+    /** Same-class detections closer than this are one issue; default the kit's max(0.75 m, 2% of the height). */
+    clusterM: z.number().min(0.01).max(1000).optional(),
+    /** Field of view for photos without a lens; default the kit's 70 degrees. */
+    hfovDeg: z.number().min(1).max(179).optional(),
+    /** Kit vertical profile for zones and sides; default from the class catalogue's asset type. */
+    profile: z.enum(['stack', 'tank', 'telecom-tower', 'ohtl-tower']).optional(),
+    sheetsPer: z.number().int().min(1).max(64).optional(),
+    sheetWidth: z.number().int().min(400).max(8000).optional(),
+    /** YOLO class index to class id, comma separated (YOLO folders only). */
+    yoloNames: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]).optional(),
+    /** Folder for sheets, register, stats and the issue map; default `inspection`. */
+    out: ProjectPath.optional(),
+  })
+  .strict();
+
 export const SelfTestParams = z.object({ seconds: z.number().min(0).max(600).optional() }).strict();
 
 const PARAMS = {
@@ -178,6 +207,7 @@ const PARAMS = {
   'aik.records': AikRecordsParams,
   'volumetric.process': VolumetricProcessParams,
   'pointcloud.to_copc': PointcloudToCopcParams,
+  'inspection.run': InspectionRunParams,
   'system.selftest': SelfTestParams,
   'volumetric.build': VolumetricBuildParams,
 } as const satisfies Record<PipelineName, z.ZodType>;

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .aik.pipelines import AikCameras, AikProject, AikRecords
+from .inspection.pipeline import InspectionRun
 from .pointcloud import PointcloudToCopc
 from .runtime import Pipeline
 from .selftest import SelfTest
@@ -15,6 +16,7 @@ def all_pipelines() -> dict[str, Pipeline]:
         AikCameras(),
         AikProject(),
         AikRecords(),
+        InspectionRun(),
         VolumetricProcess(),
         VolumetricBuild(),
         PointcloudToCopc(),
