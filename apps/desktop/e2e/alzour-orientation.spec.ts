@@ -12,7 +12,8 @@
  * Steps: a tank-rim view of the projected video (before); the held-out pairs' errors with the
  * saved calibration; the guided fit (orientation and position) from the fit pairs; the held-out
  * errors again; save to the clips of the flight; the tank-rim view again (after). Errors are
- * printed and must drop.
+ * printed and must drop (by half for a clip with no saved orientation or position; a clip that
+ * already has one must stay close to it).
  */
 import { _electron as electron, expect, test, type Locator, type Page } from '@playwright/test';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -50,6 +51,9 @@ interface Hooks {
               kind: string;
               offsetMs?: number;
               flight?: { startUtcMs: number };
+              lens?: { hfovDeg?: number };
+              orientation?: { yawDeg: number; pitchDeg: number; rollDeg: number };
+              positionOffsetM?: [number, number, number];
             }[];
           };
         } | null;
@@ -201,6 +205,17 @@ test('guided orientation calibration of an Al-Zour clip', async () => {
     await tankRimShot(win, join(OUT, `orient-${tag}-before.png`));
     if (plan.shotsOnly) return;
 
+    // The clip as the project has it now: a clip that already carries a saved orientation or
+    // position (the real Al-Zour after A1) is checked for agreement, not for a big drop.
+    const saved = await win.evaluate((id) => {
+      const ws = (window as unknown as Hooks).__stratlas.workspace.getState();
+      const l = ws.project?.manifest.layers.find((x) => x.id === id);
+      return {
+        hfov: l?.lens?.hfovDeg ?? null,
+        calibrated: l?.orientation !== undefined || l?.positionOffsetM !== undefined,
+      };
+    }, `clip-${plan.clip}`);
+
     await win.keyboard.press('Control+K');
     await win.keyboard.type('Calibrate video');
     await win.keyboard.press('Enter');
@@ -237,7 +252,7 @@ test('guided orientation calibration of an Al-Zour clip', async () => {
 
     process.stdout.write(
       [
-        `${plan.clip}: ${said}`,
+        `${plan.clip} (lens ${saved.hfov === null ? 'none' : `${String(saved.hfov)} deg`}, ${saved.calibrated ? 'calibrated' : 'not calibrated'}): ${said}`,
         `fit pairs (${String(fitted.length)}): rms ${rms(fitted).toFixed(1)} px | ${stats}`,
         `held-out t=${String(plan.heldOut.t)} s (${String(before.length)} pairs): before rms ${rms(before).toFixed(1)} px, after rms ${rms(after).toFixed(1)} px`,
         `before ${before.map((v) => v.toFixed(0)).join(' ')}`,
@@ -246,7 +261,12 @@ test('guided orientation calibration of an Al-Zour clip', async () => {
       ].join('\n'),
     );
     expect(after).toHaveLength(before.length);
-    expect(rms(after)).toBeLessThan(rms(before) / 2);
+    if (saved.calibrated) {
+      // a one-frame refit of a clip calibrated over many frames stays close to it
+      expect(rms(after)).toBeLessThan(Math.max(4, rms(before) * 1.5));
+    } else {
+      expect(rms(after)).toBeLessThan(rms(before) / 2);
+    }
 
     if (plan.save) {
       await panel.getByTestId('calibration-save').click();
