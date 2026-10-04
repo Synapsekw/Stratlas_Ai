@@ -143,6 +143,7 @@ Everything that was new in M1, M3 and M4 and still behaves the same. Lines that 
 - [ ] Projects, **New project**: name, customer, type, coordinate system (UTM zone search), origin (map click or **Typed coordinate**), severity template, brand. The project opens empty.
 - [ ] Drag in a few drone photos with GPS: they appear as posed cameras.
 - [ ] Drag in a DJI video with its `.SRT`: a clip with its flight path appears and plays in sync.
+- [ ] Camera heights: in a project made from a typed origin, drag in DJI photos or a video with its `.SRT`. A **Camera heights** card asks for the take-off height (proposed from the model under the take-off point, or the origin height with a warning). After the import the panel says which altitude was used and with which number. A project made from a photo origin imports without asking (absolute altitude, offset 0).
 - [ ] Drag in a GLB, then **Georeference** it by clicking 3 point pairs; residuals show.
 - [ ] Drag in a small LAS or LAZ: a **Jobs** entry converts it (progress, log); the cloud appears when done.
 
