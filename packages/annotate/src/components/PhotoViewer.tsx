@@ -15,6 +15,7 @@ import {
   beginSighting,
   issueEditor,
   rememberImageSize,
+  useAnnotateReadOnly,
   useAnnotateUi,
   type ImageTool,
 } from '../runtime';
@@ -55,7 +56,10 @@ export function PhotoViewer({
   const project = useWorkspace((s) => s.project);
   const issues = useWorkspace((s) => s.issues);
   const selection = useWorkspace((s) => s.selection);
-  const tool = useAnnotateUi((s) => s.imageTool);
+  const readOnly = useAnnotateReadOnly();
+  const pickedTool = useAnnotateUi((s) => s.imageTool);
+  // A read-only package only selects: no drawing, no handle editing.
+  const tool: ImageTool = readOnly ? 'select' : pickedTool;
   const { modelById } = useTaxonomy();
   const stageRef = useRef<HTMLDivElement>(null);
   const [loaded, setLoaded] = useState<{ url: string; size: Size | null } | null>(null);
@@ -122,7 +126,7 @@ export function PhotoViewer({
           color,
           label: issue.code,
           selected,
-          editable: selected,
+          editable: selected && !readOnly,
         });
       }
       // ANN-9: a 3D sighting shows in every posed photo that sees it.
@@ -146,7 +150,7 @@ export function PhotoViewer({
       }
     }
     return out;
-  }, [issues, modelById, selectedIssueId, layerId, photoId, natural, photo]);
+  }, [issues, modelById, selectedIssueId, layerId, photoId, natural, photo, readOnly]);
 
   const masks = useMemo(() => {
     const out: string[] = [];
@@ -185,7 +189,7 @@ export function PhotoViewer({
     if (e.ctrlKey || e.metaKey || e.altKey || annotateUi.getState().pending) return;
     const k = e.key.toLowerCase();
     const t = IMAGE_TOOLS.find((x) => x.key === k);
-    if (t) annotateUi.setState({ imageTool: t.id });
+    if (t && !readOnly) annotateUi.setState({ imageTool: t.id });
     else if (k === 'f') fit();
     else if (k === '+' || k === '=') setView((v) => zoomAround(v, center(), ZOOM_STEP));
     else if (k === '-') setView((v) => zoomAround(v, center(), 1 / ZOOM_STEP));
@@ -308,20 +312,21 @@ export function PhotoViewer({
         />
       )}
       <div className="ann-toolbar" role="toolbar" aria-label="Photo annotation tools">
-        {IMAGE_TOOLS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            className="ann-btn ghost"
-            aria-pressed={tool === t.id}
-            title={`${t.label} (${t.key.toUpperCase()})`}
-            onClick={() => {
-              annotateUi.setState({ imageTool: t.id });
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
+        {!readOnly &&
+          IMAGE_TOOLS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className="ann-btn ghost"
+              aria-pressed={tool === t.id}
+              title={`${t.label} (${t.key.toUpperCase()})`}
+              onClick={() => {
+                annotateUi.setState({ imageTool: t.id });
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
         {masks.length > 0 && (
           <>
             <span className="sep" />
@@ -358,7 +363,7 @@ export function PhotoViewer({
         </button>
       </div>
       <div className="ann-zoom">{Math.round(view.scale * 100)}%</div>
-      <SightingPicker kinds={['image']} />
+      {!readOnly && <SightingPicker kinds={['image']} />}
     </div>
   );
 }

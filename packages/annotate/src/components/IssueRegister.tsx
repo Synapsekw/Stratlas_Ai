@@ -10,7 +10,7 @@ import {
   type DatasetKind,
   type IssueSortKey,
 } from '../model/query';
-import { focusIssue, issueEditor, useIssueEditorState } from '../runtime';
+import { focusIssue, issueEditor, useAnnotateReadOnly, useIssueEditorState } from '../runtime';
 import { severityColor } from '../tools/mesh';
 import { SeverityBadge, kindLabel, sevStyle, useTaxonomy } from './common';
 import { AnnotateStyles } from './styles';
@@ -67,6 +67,7 @@ export function IssueRegister({ className }: { className?: string }) {
   const selection = useWorkspace((s) => s.selection);
   const { classById, modelById, classes } = useTaxonomy();
   const editor = useIssueEditorState();
+  const readOnly = useAnnotateReadOnly();
   const [text, setText] = useState('');
   const [sev, setSev] = useState<Severity | null>(null);
   const [classId, setClassId] = useState('');
@@ -134,25 +135,33 @@ export function IssueRegister({ className }: { className?: string }) {
         <h3>Issues</h3>
         <span className="sub">{issues.length}</span>
         <div className="acts">
-          <SaveIndicator />
-          <button
-            type="button"
-            className="ann-btn ghost"
-            disabled={!editor.canUndo}
-            title={editor.undoLabel ? `Undo ${editor.undoLabel} (Ctrl+Z)` : 'Undo (Ctrl+Z)'}
-            onClick={() => issueEditor.undo()}
-          >
-            Undo
-          </button>
-          <button
-            type="button"
-            className="ann-btn ghost"
-            disabled={!editor.canRedo}
-            title={editor.redoLabel ? `Redo ${editor.redoLabel} (Ctrl+Y)` : 'Redo (Ctrl+Y)'}
-            onClick={() => issueEditor.redo()}
-          >
-            Redo
-          </button>
+          {readOnly ? (
+            <span className="ann-tag" title="Opened from a read-only package">
+              Read-only
+            </span>
+          ) : (
+            <>
+              <SaveIndicator />
+              <button
+                type="button"
+                className="ann-btn ghost"
+                disabled={!editor.canUndo}
+                title={editor.undoLabel ? `Undo ${editor.undoLabel} (Ctrl+Z)` : 'Undo (Ctrl+Z)'}
+                onClick={() => issueEditor.undo()}
+              >
+                Undo
+              </button>
+              <button
+                type="button"
+                className="ann-btn ghost"
+                disabled={!editor.canRedo}
+                title={editor.redoLabel ? `Redo ${editor.redoLabel} (Ctrl+Y)` : 'Redo (Ctrl+Y)'}
+                onClick={() => issueEditor.redo()}
+              >
+                Redo
+              </button>
+            </>
+          )}
         </div>
       </div>
       <div className="ann-filter">

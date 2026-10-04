@@ -59,6 +59,8 @@ textarea.ann-input { height: auto; min-height: 56px; padding: 6px 8px; line-heig
 .ann-audit { font: 400 var(--t-11)/1.5 var(--f-mono); color: var(--fg-3); margin: 0; padding-left: 14px; }
 .ann-error { color: var(--danger); font-size: var(--t-11); }
 .ann-faint { color: var(--fg-3); font-size: var(--t-11); }
+.ann-ro-title { color: var(--fg-0); font-size: var(--t-14); font-weight: 600; line-height: 1.35; }
+.ann-ro-note { margin: 0; color: var(--fg-1); font-size: var(--t-13); line-height: 1.5; white-space: pre-wrap; }
 
 .ann-stage { position: relative; overflow: hidden; background: var(--bg-0); width: 100%; height: 100%; touch-action: none; user-select: none; }
 .ann-stage img.ann-img { position: absolute; left: 0; top: 0; transform-origin: 0 0; image-rendering: auto; pointer-events: none; }

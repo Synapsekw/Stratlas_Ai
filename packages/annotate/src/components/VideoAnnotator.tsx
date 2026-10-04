@@ -8,6 +8,7 @@ import {
   loadFlightPoses,
   rememberImageSize,
   annotateUi,
+  useAnnotateReadOnly,
   useAnnotateUi,
   type ImageTool,
 } from '../runtime';
@@ -51,7 +52,10 @@ export function VideoAnnotator({ layerId, frameSize }: { layerId: string; frameS
   const rootRef = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState<Size>({ width: 0, height: 0 });
   const [videoSize, setVideoSize] = useState<Size | null>(null);
-  const [active, setActive] = useState(false);
+  const [picked, setActive] = useState(false);
+  const readOnly = useAnnotateReadOnly();
+  // A read-only package never annotates.
+  const active = picked && !readOnly;
 
   const layer = project?.manifest.layers.find((l) => l.id === layerId);
   const clip = layer?.kind === 'video' ? layer : null;
@@ -220,17 +224,19 @@ export function VideoAnnotator({ layerId, frameSize }: { layerId: string; frameS
         role="toolbar"
         aria-label="Video annotation"
       >
-        <button
-          type="button"
-          className="ann-btn ghost"
-          aria-pressed={active}
-          title="Annotate this clip (Esc to stop)"
-          onClick={() => {
-            setActive((a) => !a);
-          }}
-        >
-          Annotate
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            className="ann-btn ghost"
+            aria-pressed={active}
+            title="Annotate this clip (Esc to stop)"
+            onClick={() => {
+              setActive((a) => !a);
+            }}
+          >
+            Annotate
+          </button>
+        )}
         {active &&
           VIDEO_TOOLS.map((x) => (
             <button
@@ -296,7 +302,7 @@ export function VideoAnnotator({ layerId, frameSize }: { layerId: string; frameS
           {formatClock(t)}
         </span>
       </div>
-      <SightingPicker kinds={['video']} />
+      {!readOnly && <SightingPicker kinds={['video']} />}
     </div>
   );
 }
