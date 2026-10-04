@@ -2475,7 +2475,7 @@ svg.flip {
 }
 [dir='rtl'] td:not([class*='acts']) {
   unicode-bidi: plaintext;
-  text-align: right;
+  text-align: right; /* physical: only under [dir='rtl'] */
 }
 /* Directional icons (chevrons, arrows) point the other way in a right-to-left layout. */
 [dir='rtl'] .flip-rtl {
