@@ -242,6 +242,30 @@ export function sortDefects(rows: readonly DefectRow[], by: DefectSort): DefectR
   return [...rows].sort(cmp[by]);
 }
 
+const csvCell = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+
+/** The defects as CSV, with project CRS easting and northing of each centroid. */
+export function defectsCsv(rows: readonly DefectRow[], origin: Vec3): string {
+  const head = 'code,type,severity,area_m2,extent_m,chainage_km,offset_m,easting,northing,closeup';
+  const lines = rows.map((r) =>
+    [
+      r.code,
+      r.classLabel,
+      r.severityLabel,
+      r.areaM2 === null ? '' : String(r.areaM2),
+      r.extentM === null ? '' : String(r.extentM),
+      r.km.toFixed(3),
+      r.offsetM.toFixed(2),
+      (origin[0] + r.at[0]).toFixed(2),
+      (origin[1] - r.at[1]).toFixed(2),
+      r.photo?.photo ?? '',
+    ]
+      .map(csvCell)
+      .join(','),
+  );
+  return `${[head, ...lines].join('\n')}\n`;
+}
+
 export interface ChainageBin {
   fromKm: number;
   toKm: number;

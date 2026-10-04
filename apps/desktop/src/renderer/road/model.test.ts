@@ -4,6 +4,7 @@ import {
   chainageAt,
   chainageBins,
   defectRows,
+  defectsCsv,
   densityBreaks,
   densityColor,
   filterDefects,
@@ -225,6 +226,22 @@ describe('defect rows', () => {
     expect(sortDefects(rows, 'severity').map((r) => r.id)).toEqual(['1', '2', '3']);
     expect(sortDefects(rows, 'chainage').map((r) => r.id)).toEqual(['1', '3', '2']);
     expect(sortDefects(rows, 'area').map((r) => r.id)).toEqual(['2', '3', '1']);
+  });
+
+  it('exports rows as CSV with quoted text and the close-up name', () => {
+    const second = rows[1];
+    if (!second) throw new Error('row missing');
+    const csv = defectsCsv(
+      [...rows.slice(0, 1), { ...second, classLabel: 'A, "B"' }],
+      [1000, 2000, 0],
+    );
+    const lines = csv.trim().split('\n');
+    expect(lines[0]).toBe(
+      'code,type,severity,area_m2,extent_m,chainage_km,offset_m,easting,northing,closeup',
+    );
+    expect(lines).toHaveLength(3);
+    expect(lines[1]).toBe('D0001,Potholes,High,2,,0.010,0.00,1010.00,2000.00,f1');
+    expect(lines[2]?.startsWith('D0002,"A, ""B""",Low,20,')).toBe(true);
   });
 
   it('counts defects per chainage bin and severity', () => {

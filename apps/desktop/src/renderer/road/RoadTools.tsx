@@ -466,7 +466,12 @@ export function CloseupDock() {
           <Icon name="x" />
         </button>
       </header>
-      <PhotoViewer layerId={row.photo.layer} photoId={row.photo.photo} className="rr-cu-view" />
+      <PhotoViewer
+        layerId={row.photo.layer}
+        photoId={row.photo.photo}
+        className="rr-cu-view"
+        editOutlines={false}
+      />
     </aside>
   );
 }
@@ -483,9 +488,10 @@ export function useRoadKeys(active: boolean): void {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTyping(e.target)) return;
       const k = e.key.toLowerCase();
-      // the list and the ruler use the arrows themselves
-      const own = e.target instanceof HTMLElement && e.target.closest('.rr-list, .rr-track');
-      if (own && k.startsWith('arrow')) return;
+      // the ruler uses the arrows itself, the list up and down
+      const el = e.target instanceof HTMLElement ? e.target : null;
+      if (el?.closest('.rr-track') && k.startsWith('arrow')) return;
+      if (el?.closest('.rr-list') && (k === 'arrowup' || k === 'arrowdown')) return;
       const s = roadStore.getState();
       const onMap = shell.getState().stageMode !== '3d';
       if (k === 'p') setRoad({ overlay: s.overlay === 'pci' ? 'none' : 'pci' });

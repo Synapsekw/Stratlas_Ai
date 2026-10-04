@@ -1,7 +1,8 @@
 import { IssueDetail } from '@aio/annotate';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { pciRating, type DefectRow, type DefectSort } from './model';
+import { bridge } from '../shell';
+import { defectsCsv, pciRating, type DefectRow, type DefectSort } from './model';
 import { setFilter, setRoad, useRoad } from './store';
 import { focusDefect, useFilteredDefects } from './useRoadMap';
 
@@ -156,7 +157,37 @@ function RoadSummary() {
 
 /* ----------------------------------------------------------------------- defect list */
 
-function DefectFilters({ shown }: { shown: number }) {
+/** Save the listed defects as CSV through the native save dialog. */
+function ExportCsv({ rows, filtered }: { rows: readonly DefectRow[]; filtered: boolean }) {
+  const project = useWorkspace((s) => s.project);
+  const [note, setNote] = useState<string | null>(null);
+  if (!project) return null;
+  return (
+    <button
+      type="button"
+      className="btn sm ghost"
+      title={note ?? `Save these ${nf.format(rows.length)} defects as CSV`}
+      disabled={!rows.length}
+      onClick={() => {
+        const name = `${project.id}-defects${filtered ? '-filtered' : ''}.csv`;
+        void bridge
+          .call('dialog:saveFile', {
+            defaultName: name,
+            data: defectsCsv(rows, project.manifest.origin),
+            title: 'Export defects',
+          })
+          .then((r) => {
+            setNote(r.ok ? (r.value.error ?? null) : r.error);
+          });
+      }}
+    >
+      CSV
+    </button>
+  );
+}
+
+function DefectFilters({ rows }: { rows: readonly DefectRow[] }) {
+  const shown = rows.length;
   const filter = useRoad((s) => s.filter);
   const sort = useRoad((s) => s.sort);
   const total = useRoad((s) => s.rows.length);
@@ -233,6 +264,7 @@ function DefectFilters({ shown }: { shown: number }) {
             Reset
           </button>
         )}
+        <ExportCsv rows={rows} filtered={active} />
         <select
           className="rr-sort"
           aria-label="Sort defects"
@@ -329,7 +361,7 @@ export function DefectList() {
 
   return (
     <div className="rr-list-wrap">
-      <DefectFilters shown={rows.length} />
+      <DefectFilters rows={rows} />
       <div
         className="rr-list"
         ref={box}
