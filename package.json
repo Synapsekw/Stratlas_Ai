@@ -7,7 +7,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "lint": "eslint . --max-warnings 0",
+    "lint": "node tools/lint.mjs",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
