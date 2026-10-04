@@ -1,51 +1,22 @@
 import { PhotoViewer } from '@aio/annotate';
-import type { AssetRef, Layer } from '@aio/schema';
+import type { Layer } from '@aio/schema';
 import { formatClock, formatCount, formatDate, formatDuration, Icon } from '@aio/ui';
-import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
+import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FocusZone } from '../FocusZone';
 import { useMedia } from '../media';
 import { shell } from '../shell';
 import { selectClip } from '../shell/Sidebar';
+import { MediaThumb } from '../thumbs/Thumb';
 import { flightCards, flightOf, type FlightCard } from './mediaModel';
 import { NoProject } from './NoProject';
 
 const PHOTO_LIMIT = 600;
 
-function safeUrl(projectId: string, ref: AssetRef | undefined): string | undefined {
-  if (!ref) return undefined;
-  try {
-    return assetUrl(projectId, ref);
-  } catch {
-    return undefined;
-  }
-}
-
 /** "Flight 101 · Shell pass 1 · clip 3 of 7" reads "clip 3 of 7" under its flight. */
 function clipLabel(name: string, flight: string): string {
   const rest = name.startsWith(flight) ? name.slice(flight.length).replace(/^[\s·:,|/-]+/, '') : '';
   return rest || name;
-}
-
-function Poster({ src, icon }: { src: string | undefined; icon: 'video' | 'photo' | 'pano' }) {
-  const [failed, setFailed] = useState(false);
-  return (
-    <div className="m-thumb">
-      {src && !failed ? (
-        <img
-          src={src}
-          alt=""
-          loading="lazy"
-          draggable={false}
-          onError={() => {
-            setFailed(true);
-          }}
-        />
-      ) : (
-        <Icon name={icon} size={20} />
-      )}
-    </div>
-  );
 }
 
 /** Play a clip in the Scene from its start. */
@@ -80,7 +51,7 @@ function FlightTile({
         onClick={onOpen}
       >
         <div className="m-poster">
-          <Poster src={safeUrl(projectId, flight.poster)} icon="video" />
+          <MediaThumb projectId={projectId} asset={flight.poster} icon="video" thumb={false} />
           <span className="m-badge mono">
             {flight.estimated ? '~' : ''}
             {formatDuration(flight.endMs - flight.startMs)}
@@ -149,7 +120,7 @@ export function MediaScreen() {
 
   return (
     <section className={`screen media${photo ? ' with-viewer' : ''}`} aria-label="Media">
-      <div className="media-main">
+      <div className="media-main" ref={photoRef} data-thumb-root>
         <header className="page-h">
           <h1>Media</h1>
           <p className="muted">
@@ -214,7 +185,12 @@ export function MediaScreen() {
                       playClip(c);
                     }}
                   >
-                    <Poster src={safeUrl(project.id, c.poster)} icon="video" />
+                    <MediaThumb
+                      projectId={project.id}
+                      asset={c.poster}
+                      icon="video"
+                      thumb={false}
+                    />
                     <div className="m-meta">
                       <b>{clipLabel(c.name, shownFlight.name)}</b>
                       <span className="mono">
@@ -233,7 +209,7 @@ export function MediaScreen() {
             <h2 className="caps">
               {set.name} <span className="mono faint">{formatCount(set.items.length)}</span>
             </h2>
-            <div className="m-grid" ref={photoRef}>
+            <div className="m-grid">
               {set.items.slice(0, PHOTO_LIMIT).map((p) => (
                 <button
                   key={p.id}
@@ -245,7 +221,7 @@ export function MediaScreen() {
                   }}
                   title={p.takenAt ? `${p.id} · ${formatDate(p.takenAt)}` : p.id}
                 >
-                  <Poster src={safeUrl(project.id, p.src)} icon="photo" />
+                  <MediaThumb projectId={project.id} asset={p.src} icon="photo" />
                 </button>
               ))}
             </div>
@@ -273,7 +249,7 @@ export function MediaScreen() {
                     shell.getState().go('scene');
                   }}
                 >
-                  <Poster src={safeUrl(project.id, p.src)} icon="pano" />
+                  <MediaThumb projectId={project.id} asset={p.src} icon="pano" />
                   <div className="m-meta">
                     <b>{p.id}</b>
                     <span className="mono">HDG {String(p.headingDeg)}°</span>

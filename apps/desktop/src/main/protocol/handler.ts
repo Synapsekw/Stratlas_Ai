@@ -3,6 +3,8 @@ import { createReadStream } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
+import { LOGO_NAME } from '../branding';
+import { findThumb } from '../thumbs';
 import { LEGACY_CSP, isLegacyDocument, prepareLegacyHtml } from './legacy';
 import { mimeFor } from './mime';
 import { resolveInside } from './paths';
@@ -15,6 +17,10 @@ export interface AioRoots {
   projectPackage?(id: string): ZipArchive | undefined;
   /** Folder that holds `<id>.pmtiles` map packs. */
   packsDir(): string;
+  /** userData folder of generated thumbnails (`aio://thumb/...`). */
+  thumbsDir?(): string;
+  /** userData folder of the report logo (`aio://branding/<file>`). */
+  brandingDir?(): string;
 }
 
 const PACK = /^([a-z0-9-]+)\.pmtiles$/;
@@ -39,8 +45,18 @@ function decodeSegments(pathname: string): string[] | null {
   }
 }
 
+/**
+ * Thumbnails and the logo do not change under their URL (a new source image or logo gets a new
+ * cache key or file name), so the renderer may keep them in its memory cache.
+ */
+const KEEP = { 'Cache-Control': 'max-age=3600' };
+
 /** Serve one file with HTTP Range support and a streamed body. */
-export async function serveFile(file: string, req: Request): Promise<Response> {
+export async function serveFile(
+  file: string,
+  req: Request,
+  extra: Record<string, string> = {},
+): Promise<Response> {
   let size: number;
   try {
     const s = await stat(file);
@@ -53,6 +69,7 @@ export async function serveFile(file: string, req: Request): Promise<Response> {
     ...COMMON,
     'Content-Type': mimeFor(file),
     'Accept-Ranges': 'bytes',
+    ...extra,
   };
   const range = parseRange(req.headers.get('range'), size);
   if (range === 'unsatisfiable') {
@@ -76,7 +93,12 @@ export async function serveFile(file: string, req: Request): Promise<Response> {
 }
 
 /** Serve one member of a store-mode package with HTTP Range support, read in place. */
-export async function serveMember(archive: ZipArchive, name: string, req: Request) {
+export async function serveMember(
+  archive: ZipArchive,
+  name: string,
+  req: Request,
+  extra: Record<string, string> = {},
+) {
   const entry = archive.entries.get(name);
   if (!entry) return status(404);
   const size = entry.size;
@@ -84,6 +106,7 @@ export async function serveMember(archive: ZipArchive, name: string, req: Reques
     ...COMMON,
     'Content-Type': mimeFor(name),
     'Accept-Ranges': 'bytes',
+    ...extra,
   };
   const range = parseRange(req.headers.get('range'), size);
   if (range === 'unsatisfiable') {
@@ -136,6 +159,8 @@ async function serveLegacyDocument(read: () => Promise<string>, projectId: strin
  *   of an opened `.aio` package (by offset, in place).
  * - `aio://project/<id>/legacy/<...>.html` serves a legacy viewer with its shims (legacy.ts).
  * - `aio://packs/<id>.pmtiles` serves a map pack from the packs folder.
+ * - `aio://thumb/<id>/<path>` serves a small thumbnail of a project image, or 404 (thumbs.ts).
+ * - `aio://branding/<logo>` serves the person's report logo from userData.
  */
 export function createAioHandler(roots: AioRoots): (req: Request) => Promise<Response> {
   return async (req) => {
@@ -174,6 +199,28 @@ export function createAioHandler(roots: AioRoots): (req: Request) => Promise<Res
         return serveLegacyDocument(() => readFile(resolved.path, 'utf8'), id, req);
       }
       return serveFile(resolved.path, req);
+    }
+
+    if (url.host === 'thumb') {
+      const [id, ...rest] = segments;
+      const cacheDir = roots.thumbsDir?.();
+      if (id === undefined || rest.length === 0 || cacheDir === undefined) return status(404);
+      const archive = roots.projectPackage?.(id);
+      const root = roots.projectRoot(id);
+      const source = archive ? { archive } : root !== undefined ? { root } : null;
+      if (!source) return status(404);
+      const found = await findThumb(source, rest.join('/'), cacheDir);
+      if (found.kind === 'file') return serveFile(found.path, req, KEEP);
+      if (found.kind === 'member') return serveMember(found.archive, found.name, req, KEEP);
+      return status(found.kind === 'forbidden' ? 403 : 404);
+    }
+
+    if (url.host === 'branding') {
+      const [name, ...rest] = segments;
+      const dir = roots.brandingDir?.();
+      if (name === undefined || rest.length > 0 || !LOGO_NAME.test(name) || dir === undefined)
+        return status(404);
+      return serveFile(join(dir, name), req, KEEP);
     }
 
     if (url.host === 'packs') {

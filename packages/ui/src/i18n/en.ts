@@ -90,6 +90,38 @@ export const en = {
   'settings.appearance.language': 'Language',
   'settings.appearance.english': 'English',
 
+  // Report branding
+  'settings.page.branding': 'Report branding',
+  'settings.branding.text':
+    'Your company name and logo on the reports {product} generates. Delivered reports are never changed.',
+  'settings.branding.neutral':
+    'Reports are neutral now: the project name, no company and no logo, with a small "Made with {product}" line.',
+  'settings.branding.custom': 'Every report you generate carries this branding.',
+  'settings.branding.company': 'Company name',
+  'settings.branding.companyPlaceholder': 'Your company',
+  'settings.branding.companyHelp': 'On the report cover and at the foot of every page.',
+  'settings.branding.logo': 'Logo',
+  'settings.branding.logoHelp':
+    'PNG, JPG or SVG up to 5 MB. Kept in this workstation profile, never in a project folder.',
+  'settings.branding.noLogo': 'No logo',
+  'settings.branding.pickLogo': 'Choose logo',
+  'settings.branding.replaceLogo': 'Replace logo',
+  'settings.branding.removeLogo': 'Remove logo',
+  'settings.branding.pickTitle': 'Choose a logo for reports',
+  'settings.branding.images': 'Images',
+  'settings.branding.accent': 'Accent colour',
+  'settings.branding.accentHelp': 'Report cover and headings. Reset to use the house colour.',
+  'settings.branding.accentReset': 'Reset',
+  'settings.branding.accentDefault': 'House colour',
+  'settings.branding.preview': 'Cover preview',
+  'settings.branding.previewKicker': 'Issue register',
+  'settings.branding.previewTitle': 'Project name',
+  'settings.branding.credit': 'Made with {product}',
+  'reports.brandingHint':
+    'Carries your company name and logo from Settings, Report branding. Without them it is neutral.',
+  'builder.reportBranding':
+    'Reports carry your own company name and logo from Settings, Report branding.',
+
   // Maps
   'settings.maps.text':
     'Vector map packs render with no network. They are shared by every project on this workstation.',

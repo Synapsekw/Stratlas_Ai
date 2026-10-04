@@ -1,5 +1,5 @@
 import type { IssueStatus, ReportFile } from '@aio/schema';
-import { formatBytes, Icon, SevChip } from '@aio/ui';
+import { formatBytes, Icon, SevChip, t } from '@aio/ui';
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import { useState } from 'react';
 import { FocusZone } from '../FocusZone';
@@ -79,9 +79,10 @@ export function ReportsScreen() {
               Issue register <span className="sub">{issues.length} issues</span>
             </h2>
             <p className="muted rep-note">
-              A branded PDF: cover, charts by severity, class and zone, the register, and one page
+              A PDF report: cover, charts by severity, class and zone, the register, and one page
               per issue with its best photo and a 3D view.
             </p>
+            <p className="faint small rep-note">{t('reports.brandingHint')}</p>
             {actionAllowed('report-pdf', pkg) ? (
               <button
                 type="button"

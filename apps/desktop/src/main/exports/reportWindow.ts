@@ -1,3 +1,4 @@
+import type { ReportBrandingSettings } from '@aio/schema';
 import { BrowserWindow } from 'electron';
 import { rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -29,6 +30,19 @@ export interface ReportWindowOptions {
   devTools: boolean;
   /** Give up after this long (ms). */
   timeoutMs?: number;
+  /** The person's report branding from Settings; absent for a neutral report. */
+  branding?: ReportBrandingSettings | undefined;
+}
+
+/** Query of the report page: the project, the chosen issues and the person's branding. */
+export function reportQuery(
+  args: { projectId: string; issueIds?: string[] | undefined },
+  branding: ReportBrandingSettings | undefined,
+): Record<string, string> {
+  const query: Record<string, string> = { project: args.projectId };
+  if (args.issueIds) query.ids = args.issueIds.join(',');
+  if (branding && Object.keys(branding).length > 0) query.branding = JSON.stringify(branding);
+  return query;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -58,8 +72,7 @@ export async function printReport(
   });
   const part = `${args.outPath}.part`;
   const cancelled = () => signal.aborted;
-  const query: Record<string, string> = { project: args.projectId };
-  if (args.issueIds) query.ids = args.issueIds.join(',');
+  const query = reportQuery(args, opts.branding);
   try {
     if (opts.devUrl) {
       const url = new URL(
