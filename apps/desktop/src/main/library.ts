@@ -172,6 +172,22 @@ async function buildPackageEntry(file: string, registry: ProjectRegistry): Promi
   }
   if (encrypted) {
     const id = registry.register(file);
+    // Unlocked earlier in this session: show it like a plain package.
+    const unlocked = registry.package(id);
+    if (unlocked) {
+      const entry = summarise(unlocked.manifest, {
+        id,
+        name: fallbackName,
+        path: file,
+        kind: 'native',
+        sizeBytes,
+        package: { encrypted: true, readOnly: unlocked.header.readOnly },
+      });
+      if (unlocked.archive.entries.has('thumbnail.jpg')) {
+        entry.thumbnail = `aio://project/${id}/thumbnail.jpg`;
+      }
+      return { ok: true, entry };
+    }
     return {
       ok: true,
       entry: {
@@ -187,7 +203,7 @@ async function buildPackageEntry(file: string, registry: ProjectRegistry): Promi
   const r = await openPackage(file);
   if (!r.ok) return r;
   const { archive, header, manifest } = r.value;
-  const id = registry.registerPackage({ file, archive, header });
+  const id = registry.registerPackage({ file, archive, header, manifest });
   const entry = summarise(manifest, {
     id,
     name: fallbackName,

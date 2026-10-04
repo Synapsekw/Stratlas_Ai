@@ -36,6 +36,7 @@ export interface PackageSource {
   file: string;
   archive: ZipArchive;
   header: PackageHeader;
+  manifest: ProjectManifest;
 }
 
 const isPackagePath = (p: string) => p.toLowerCase().endsWith(PACKAGE_EXTENSION);
@@ -165,7 +166,7 @@ export async function openPackageProject(
     'Ask the sender for a new copy of the package.',
   );
   if (!issues.ok) return issues;
-  const id = registry.registerPackage({ file, archive, header });
+  const id = registry.registerPackage({ file, archive, header, manifest });
   return {
     ok: true,
     id,

@@ -204,6 +204,23 @@ describe('library entries for packages', () => {
     expect(enc).toMatchObject({ name: 'Customer copy', package: { encrypted: true } });
     expect(enc?.sizeBytes).toBeGreaterThan(0);
   });
+
+  it('shows an encrypted package by its project once it was unlocked in this session', async () => {
+    const dataRoot = join(base, 'data');
+    const locked = await makePackage(join(base, 'Customer copy.aio'), {
+      passphrase: 'correct horse',
+    });
+    const registry = new ProjectRegistry();
+    const opened = await openProject(locked, registry, 'correct horse');
+    expect(opened.ok).toBe(true);
+    const [entry] = await listLibrary({ dataRoot, extraPaths: [locked], registry });
+    expect(entry).toMatchObject({
+      name: 'Al-Zour LNG Terminal',
+      customer: 'KIPIC',
+      package: { encrypted: true, readOnly: true },
+    });
+    expect(entry?.thumbnail).toMatch(/thumbnail\.jpg$/);
+  });
 });
 
 describe('package plan cache', () => {
