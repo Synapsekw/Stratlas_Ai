@@ -30,6 +30,26 @@ project's `legacy/` folder. Public API: `src/index.ts`. Ownership and dependenci
 | `src/model/compute.ts`  | `VolumeCompute`: lazy grid loading and every computation, used by the worker                                      |
 | `src/worker/`           | Worker entry, message protocol (typed arrays transferred) and `startVolumeWorker` client                          |
 
+## Workspace
+
+| Path                                 | What                                                                                                                                                                  |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/store.ts`                       | `volumetric` store: loads through IPC `project:readVolumes`, survey, base, surface, body mode, selection (in step with the scene's pile node), section, editor, saves |
+| `src/scene/controller.ts`            | `VolumetricScene`: volume bodies (lifted or in place), base plates, toe lines, change bodies, survey drapes (photo, cut and fill, relief), swipe clipping, callouts   |
+| `src/components/VolumesPanel.tsx`    | Right panel: inventory, sortable register (fill, cut, net, change) with CSV, cut and fill by pile, pile detail with the four bases, recomputed volume, long section   |
+| `src/components/VolumetricStage.tsx` | Over the 3D pane: boundary handles, swipe divider, section and edit bars, legend, notices; section picking and body clicks                                            |
+
+The app composes it: `App.tsx` loads the store when a project opens, `WorkspaceScreen` adds the
+Volumes tab, `Stage` mounts `VolumetricStage` and the Volumes toolbar group
+(`apps/desktop/src/renderer/workspace/VolumeTools.tsx`).
+
+Seams used in other packages, read only unless noted: the stage's `onFrame`, `raycast`,
+`clippingPlanes`, `controls.enabled` (off while a handle is dragged) and `setLabelMode`; terrain
+layer groups `layer:<id>` (their material clipping planes are swapped during the swipe and
+restored); the layer root's `userData.aioTags` is replaced (never mutated) so callouts show the
+chosen base. The engine's merged terrain meshes carry no UVs, so survey textures are drawn on
+copies of the original (pick-layer) meshes.
+
 ## Parity
 
 `src/model/masafi.test.ts` runs on the real Masafi package when present: all 152 pile volumes
