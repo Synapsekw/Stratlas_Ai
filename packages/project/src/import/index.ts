@@ -14,3 +14,5 @@ export {
   utmPairs,
   type AlzourImportOptions,
 } from './alzour';
+export { importAik, type AikImportOptions, type AikImportResult } from './aik';
+export * from './aik-model';
