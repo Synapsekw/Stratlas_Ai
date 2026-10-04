@@ -17,6 +17,7 @@ const NOW = '2026-10-05T10:00:00.000Z';
 function det(id: string, over: Partial<Detection> = {}): Detection {
   return {
     id,
+    pass: 'ai-r1.json',
     source: { kind: 'photo', layer: 'photos', photo: 'p001' },
     size: [1000, 800],
     geom: { type: 'box', x: 10, y: 10, w: 50, h: 40 },
@@ -192,7 +193,7 @@ describe('review decisions', () => {
       type: 'add',
       detections: [det('m1'), det('m2')],
       label: 'AI',
-      run: { id: 'r2', at: NOW, kind: 'ai', images: 2, detections: 2 },
+      run: { id: 'r2', at: NOW, images: 2, detections: 2, pass: 'ai-r2.json' },
     });
     expect(ai.currentId).toBe('a');
     expect(ai.runs).toHaveLength(1);

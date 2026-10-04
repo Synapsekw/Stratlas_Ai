@@ -301,7 +301,10 @@ export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewS
         detections: [...action.detections],
         runs: [...(action.runs ?? [])],
       };
-      return { ...base, currentId: queueOf(base)[0]?.id ?? null };
+      // reading the same passes again keeps the reviewer's place
+      const q = queueOf(base);
+      const keep = q.some((d) => d.id === state.currentId) ? state.currentId : null;
+      return { ...base, currentId: keep ?? q[0]?.id ?? null };
     }
     case 'filter': {
       const next = { ...state, filter: action.filter };

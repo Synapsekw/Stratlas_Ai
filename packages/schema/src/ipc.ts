@@ -14,17 +14,14 @@ import { ProjectManifest } from './manifest';
 import { HexColor } from './common';
 import { AiPolicy, ExportKind, PackageInfo } from './package';
 import { BoundaryEditsFile, VolumesFile } from './volumes';
+import { DetectionsFile } from './detections';
 
 const Empty = z.object({}).strict();
 
-/**
- * `<project>/detections.json` on the wire (BLD-5). Only the envelope is checked here; main
- * validates the contents with `@aio/annotate/detections` until `aio.detections/1` lands in this
- * package (stream P1). Pending integration lead, see contract-changes.md.
- */
-export const DetectionsFileEnvelope = z
-  .object({ schema: z.literal('aio.detections/1'), detections: z.array(z.unknown()) })
-  .loose();
+/** A detection pass file name in `<project>/detections/` (`review.json`, `ai-<run>.json`). */
+export const DetectionPassName = z
+  .string()
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.json$/, 'A pass file is a plain .json file name.');
 
 /** One image of an `ai:detect` request: scaled down and encoded in the renderer. */
 export const DetectImage = z
@@ -522,22 +519,34 @@ export const ipc = {
       }),
     ]),
   },
-  /** Detections waiting for review (`detections.json`); null when the project has none yet. */
+  /**
+   * Every detection pass of the project (`<project>/detections/*.json`, `aio.detections/1`,
+   * data-conventions section 11) for the review, with the pixel size of the photos whose boxes
+   * are in preview space and the inspection pipeline's issues (`inspection/issues-map.json`:
+   * issue id to the detection ids it was made from).
+   */
   'detections:read': {
     request: z.object({ projectId: z.string().min(1) }).strict(),
     response: z.discriminatedUnion('ok', [
       z.object({
         ok: z.literal(true),
-        file: DetectionsFileEnvelope.nullable(),
+        files: z.array(z.object({ name: DetectionPassName, file: DetectionsFile })),
+        /** Files in detections/ the review cannot read (kit lists, COCO, invalid), left as they are. */
+        problems: z.array(z.object({ name: z.string(), error: z.string() })),
+        /** `<layer>/<photo>` to `[width, height]` of the photo file. */
+        sizes: z.record(z.string(), z.tuple([z.number(), z.number()])),
+        issuesMap: z.record(z.string(), z.array(z.string())),
         /** A package: the review can be read but not saved. */
         readOnly: z.boolean(),
       }),
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
   },
-  /** Replace `<project>/detections.json` atomically with a `.bak` (refused for packages). */
+  /** Replace one pass file `<project>/detections/<name>` atomically with a `.bak` (not in packages). */
   'detections:write': {
-    request: z.object({ projectId: z.string().min(1), file: DetectionsFileEnvelope }).strict(),
+    request: z
+      .object({ projectId: z.string().min(1), name: DetectionPassName, file: DetectionsFile })
+      .strict(),
     response: z.object({ ok: z.boolean(), error: z.string().optional() }),
   },
   /** Mask assist (BLD-10): available only with a SAM-class model in the pipeline pack. */

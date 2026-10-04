@@ -74,7 +74,7 @@ import {
 } from './packages';
 import { openProject, ProjectRegistry, readManifest, writeProjectIssues } from './project';
 import { readPackageVolumes, readVolumes, writeBoundaries } from './boundaries';
-import { readDetections, readPackageDetections, writeDetections } from './detections';
+import { folderFiles, packageFiles, readDetectionPasses, writeDetectionPass } from './detections';
 import { createMaskAssist, loadOnnxRuntime } from './maskAssist';
 import { resolveInside } from './protocol/paths';
 import { createAioHandler } from './protocol/handler';
@@ -498,14 +498,16 @@ function registerIpc(): void {
   });
 
   // Detection review (BLD-5) and AI-assisted detection (BLD-6).
-  handle('detections:read', ({ projectId }) => {
-    const root = registry.root(projectId);
-    if (root !== undefined) return readDetections(root);
+  handle('detections:read', async ({ projectId }) => {
     const pkg = registry.package(projectId);
-    if (pkg) return readPackageDetections(pkg.archive);
-    return { ok: false, error: `Project "${projectId}" is not open.` };
+    if (pkg) return readDetectionPasses(packageFiles(pkg.archive), pkg.manifest, true);
+    const root = registry.root(projectId);
+    if (root === undefined) return { ok: false, error: `Project "${projectId}" is not open.` };
+    const manifest = await readManifest(root);
+    if (!manifest.ok) return { ok: false, error: manifest.error };
+    return readDetectionPasses(folderFiles(root), manifest.value, false);
   });
-  handle('detections:write', ({ projectId, file }) => {
+  handle('detections:write', ({ projectId, name, file }) => {
     if (registry.package(projectId))
       return {
         ok: false,
@@ -515,7 +517,7 @@ function registerIpc(): void {
     if (root === undefined) {
       return { ok: false, error: `Project "${projectId}" is not open. Open it, then save again.` };
     }
-    return writeDetections(root, file);
+    return writeDetectionPass(root, name, file);
   });
   const maskAssist = createMaskAssist({
     packDir: async () =>

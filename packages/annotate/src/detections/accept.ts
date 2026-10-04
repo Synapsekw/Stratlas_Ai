@@ -1,6 +1,6 @@
-import { err, ok, type Issue, type Result, type Sighting } from '@aio/schema';
+import { err, ok, type DetectionGeom, type Issue, type Result, type Sighting } from '@aio/schema';
 import { findClass, findModel, type IssueContext } from '../model/ops';
-import { toFrameGeom } from './geometry';
+import { scaleGeom, toFrameGeom } from './geometry';
 import type { Detection } from './model';
 
 /*
@@ -26,12 +26,23 @@ export type AcceptProblem =
   | 'no-uncertain'
   | 'mask-on-frame';
 
+/**
+ * The shape in the pixels of the image an issue sighting uses. A normalized pass (`size` 1 x 1)
+ * cannot be scaled without the image: `imageSize` gives it (the review knows it once loaded).
+ */
+export function inPixels(d: Detection, imageSize?: readonly [number, number]): DetectionGeom {
+  const target = imageSize ?? d.size;
+  if (target[0] === d.size[0] && target[1] === d.size[1]) return d.geom;
+  return scaleGeom(d.geom, target[0] / d.size[0], target[1] / d.size[1]);
+}
+
 /** The sighting a detection adds to an issue. */
-export function sightingOf(d: Detection): Result<Sighting> {
+export function sightingOf(d: Detection, imageSize?: readonly [number, number]): Result<Sighting> {
+  const geom0 = inPixels(d, imageSize);
   if (d.source.kind === 'photo') {
-    return ok({ on: 'image', layer: d.source.layer, photo: d.source.photo, geom: d.geom });
+    return ok({ on: 'image', layer: d.source.layer, photo: d.source.photo, geom: geom0 });
   }
-  const geom = toFrameGeom(d.geom);
+  const geom = toFrameGeom(geom0);
   if (!geom) return err('mask-on-frame');
   return ok({ on: 'video', layer: d.source.layer, track: [{ t: d.source.t, geom }] });
 }
@@ -57,16 +68,31 @@ export function acceptedSeverity(
 }
 
 /** Null when the detection can be accepted, else the first problem. */
-export function acceptProblem(d: Detection, ctx: IssueContext): AcceptProblem | null {
+export function acceptProblem(
+  d: Detection,
+  ctx: IssueContext,
+  imageSize?: readonly [number, number],
+): AcceptProblem | null {
   const sev = acceptedSeverity(d, ctx);
   if (!sev.ok) return sev.error;
-  const s = sightingOf(d);
+  const s = sightingOf(d, imageSize);
   return s.ok ? null : (s.error as AcceptProblem);
 }
 
-/** The issue's `source`: a person's drawing is human, a model's proposal agent, a pipeline's import. */
+/**
+ * The issue's `source`: AI and local model proposals make `agent` issues (as in the inspection
+ * pipeline), imports `import`, a person's drawing `human`.
+ */
 export function issueSourceOf(d: Detection): Issue['source'] {
-  return d.origin.kind === 'ai' ? 'agent' : d.origin.kind === 'pipeline' ? 'import' : 'human';
+  switch (d.origin.kind) {
+    case 'ai':
+    case 'model':
+      return 'agent';
+    case 'import':
+      return 'import';
+    case 'human':
+      return 'human';
+  }
 }
 
 /** Provenance written into the issue note, so the register shows where a finding came from. */
@@ -79,8 +105,9 @@ export function provenanceLine(d: Detection): string {
   switch (d.origin.kind) {
     case 'ai':
       return `Detected by ${d.origin.model} (prompt ${d.origin.promptVersion || 'unversioned'}${conf}) on ${where}, accepted by a reviewer.`;
-    case 'pipeline':
-      return `Detected by the ${d.origin.pipeline} pipeline${d.origin.model ? ` (${d.origin.model})` : ''}${conf} on ${where}, accepted by a reviewer.`;
+    case 'model':
+    case 'import':
+      return `Detected by ${d.origin.producer}${conf} on ${where}, accepted by a reviewer.`;
     case 'human':
       return '';
   }
@@ -99,10 +126,11 @@ export interface AcceptAsNew {
 export function newIssueInput(
   d: Detection,
   ctx: IssueContext,
+  imageSize?: readonly [number, number],
 ): { ok: true; value: AcceptAsNew } | { ok: false; error: AcceptProblem } {
   const sev = acceptedSeverity(d, ctx);
   if (!sev.ok) return sev;
-  const s = sightingOf(d);
+  const s = sightingOf(d, imageSize);
   if (!s.ok) return { ok: false, error: s.error as AcceptProblem };
   const note = [d.note.trim(), provenanceLine(d)].filter(Boolean).join('\n');
   const cls = findClass(ctx, d.classId);

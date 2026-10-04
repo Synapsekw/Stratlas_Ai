@@ -13,6 +13,9 @@ Merging (``merge``), so a run never loses anyone's work:
   with (or whose id it would get), keeping that issue's id, code and creation time.
 - An issue a person changed since (hash differs: edited, reviewed, moved) is left exactly as it is.
 - An earlier pipeline issue no detection backs any more stays in place for review.
+- Detections a person already accepted into an issue in the review (``issueId``) are not grouped
+  into issues of their own (``links``): their placement is added to that issue as a mesh sighting
+  when it has none, and nothing else of it changes. An issue that no longer exists is not made again.
 New issues get the next free ``D`` codes, top of the asset first, like the kit's defect ids.
 """
 
@@ -71,6 +74,8 @@ def proposals(R, meta, cat, frame, cams, layer_of, out: dict[str, Any] | None = 
     """
     groups: dict[str, list[dict[str, Any]]] = {}
     for f in R["findings"]:
+        if meta[f["key"]].get("issueId"):
+            continue  # accepted into an issue in the review: see links()
         groups.setdefault(f.get("defect") or f["key"], []).append(f)
 
     def rank(kv):  # kit defect ids D01, D02 ... number the groups from the top down
@@ -156,6 +161,35 @@ def proposals(R, meta, cat, frame, cams, layer_of, out: dict[str, Any] | None = 
     return out_list
 
 
+def links(R, meta, frame, layer_of) -> list[dict[str, Any]]:
+    """Placements of detections accepted into an issue in the review, one per issue.
+
+    Each: ``{"issueId", "detections", "mesh"}`` with the mesh sighting at the medoid of the issue's
+    placed detections, or ``mesh: None`` when none was placed.
+    """
+    by_issue: dict[str, list[dict[str, Any]]] = {}
+    for f in R["findings"]:
+        iid = meta[f["key"]].get("issueId")
+        if iid:
+            by_issue.setdefault(iid, []).append(f)
+    out = []
+    for iid in sorted(by_issue):
+        g = by_issue[iid]
+        placed = [f for f in g if f.get("center") is not None]
+        mesh = None
+        if placed:
+            c = [sum(f["center"][i] for f in placed) / len(placed) for i in range(3)]
+            med = min(placed, key=lambda f: (math.dist(f["center"], c), f["key"]))
+            n = frame.dir_to_local(med["normal"]) if med.get("normal") else [0, 1, 0]
+            mesh = {
+                "on": "mesh",
+                "layer": layer_of([med["center"]])[0],
+                "geom": {"type": "spoint", "p": _r(frame.to_local(med["center"])), "n": _r(n)},
+            }
+        out.append({"issueId": iid, "detections": sorted(f["key"] for f in g), "mesh": mesh})
+    return out
+
+
 def _new_id(detections: list[str], taken: set[str]) -> str:
     base = "insp-" + hashlib.sha1(min(detections).encode("utf-8")).hexdigest()[:10]
     out, n = base, 2
@@ -180,6 +214,7 @@ def merge(
     old_map: dict[str, Any] | None,
     props: list[dict[str, Any]],
     stamp: str,
+    linked: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, int]]:
     """Merge proposals into the current issues. Returns (issues, new map, counts)."""
     entries: dict[str, Any] = dict((old_map or {}).get("issues") or {})
@@ -188,7 +223,18 @@ def merge(
     claimed: set[str] = set()
     result = {i["id"]: i for i in current}  # everything already there stays
     order = [i["id"] for i in current]
-    counts = {"new": 0, "updated": 0, "unchanged": 0, "kept_edited": 0, "stale": 0, "user": 0}
+    counts = {"new": 0, "updated": 0, "unchanged": 0, "kept_edited": 0, "stale": 0, "user": 0,
+              "linked": 0, "placed": 0, "orphaned": 0}  # fmt: skip
+    for link in linked or []:
+        issue = result.get(link["issueId"])
+        if issue is None:
+            counts["orphaned"] += 1  # deleted after the review accepted it: not made again
+            continue
+        counts["linked"] += 1
+        if link.get("mesh") and not any(s.get("on") == "mesh" for s in issue.get("sightings", [])):
+            sightings = [*issue.get("sightings", []), link["mesh"]]
+            result[issue["id"]] = {**issue, "sightings": sightings, "updatedAt": stamp}
+            counts["placed"] += 1
     new_entries: dict[str, Any] = {}
 
     for p in props:

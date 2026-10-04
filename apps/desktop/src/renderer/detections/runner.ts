@@ -55,6 +55,8 @@ export interface RunnerDeps {
 
 export interface RunInput {
   runId: string;
+  /** The pass file of this run (`ai-<run>.json`). */
+  pass: string;
   projectId: string;
   items: readonly DetectItem[];
   classes: DetectClass[];
@@ -101,8 +103,8 @@ export function startDetectRun(input: RunInput, deps: RunnerDeps): DetectRunner 
     if (p.batchesDone > 0) {
       const run: DetectionRun = {
         id: input.runId,
+        pass: input.pass,
         at: deps.now(),
-        kind: 'ai',
         provider,
         model,
         promptVersion,
