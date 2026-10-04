@@ -1,0 +1,47 @@
+# Vertical asset profile: overhead transmission line (OHTL) lattice towers and poles.
+id: ohtl-tower
+name: "Transmission tower (OHTL)"
+asset_noun: tower
+finding_noun: defects
+assessment_title: "Transmission tower visual inspection report"
+finding_unit: region
+placement: point
+overlay: boxes
+classes:
+  - {id: 1, key: insulator, label: "Insulator damage (chipped, flashover, broken shed)", color: "#ee3f4b"}
+  - {id: 2, key: conductor, label: "Conductor / jumper damage or broken strands", color: "#e94b9a"}
+  - {id: 3, key: hardware, label: "Fittings, clamps, dampers displaced or missing", color: "#ff7a2d"}
+  - {id: 4, key: member, label: "Missing, bent or damaged tower member", color: "#c0392b"}
+  - {id: 5, key: corrosion, label: "Corrosion on steelwork or bolts", color: "#fad34b"}
+  - {id: 6, key: nest, label: "Bird nest or foreign object", color: "#7cc46b"}
+  - {id: 7, key: vegetation, label: "Vegetation encroachment", color: "#2e9e6a"}
+  - {id: 8, key: signage, label: "Missing danger plate, number plate or anti-climb", color: "#34a6d9"}
+  - {id: 9, key: uncertain, label: "Uncertain, needs a closer look", uncertain: true, color: "#b68ef8"}
+severity:
+  - {level: 1, label: Minor, long: "Minor, next cycle", color: "#fad34b", bg: "#fff4cc", fg: "#6b5100"}
+  - {level: 2, label: Significant, long: "Significant, schedule repair", color: "#ff7a2d", bg: "#ffe6d6", fg: "#8a3200"}
+  - {level: 3, label: Critical, long: "Critical, outage risk", color: "#ee3f4b", bg: "#FFE5E5", fg: "#8c0010"}
+uncertain: {label: Uncertain, long: "Uncertain, review", color: "#b68ef8", bg: "#efe6ff", fg: "#56337f"}
+none: {label: "No finding", long: "No defect seen", color: "#b3b0aa"}
+not_assessed: {label: "Not assessed", long: "Not assessed", color: "#dcd9d3"}
+zones:
+  - {id: peak, label: "Peak and earthwire", from: 0.88, to: 1.0}
+  - {id: arms, label: "Crossarms and insulators", from: 0.55, to: 0.88}
+  - {id: body, label: "Tower body", from: 0.12, to: 0.55}
+  - {id: legs, label: "Legs and foundation", from: 0.0, to: 0.12}
+sides:                            # faces relative to the line direction; set job.asset.line_azimuth_deg
+  type: faces
+  labels: ["Line ahead", "Right face", "Line back", "Left face"]
+breakdowns: [class, zone, component]
+ranking: {by: severity, n: 6, title: "Highest priority defects", sub: "Ordered by severity, then by size in the photo."}
+coverage_label: "of photo"
+facts: [severity, class, defect, height, zone, component, side, photo, captured, position, camera]
+limits:
+  - {title: "Visual only", text: "Findings describe what is visible in the photos. Electrical condition, clearances and loading are not measured."}
+  - {title: "Draft, unvalidated", text: "Hairline cracks and hidden damage can be missed. Confirm critical findings before switching or climbing."}
+  - {title: "Approximate positions", text: "Heights and faces come from estimated camera poses and the 3D model. They guide a line crew; they are not surveyed."}
+footer_disclaimer: "Visual inspection. Not an electrical or structural assessment."
+detect_hints: |
+  Work phase by phase: earthwire peak, each crossarm, each insulator string (both ends), jumpers, dampers,
+  spacers, then the body, legs, anti-climb device, plates and the ground around the base. Flashover marks
+  are dark tracking or glaze loss on sheds. Box each defect; name the phase/arm in the component field.

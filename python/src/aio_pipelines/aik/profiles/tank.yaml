@@ -1,0 +1,41 @@
+# Vertical asset profile: storage tanks, silos, pressure vessels, columns.
+id: tank
+name: "Tank, silo or vessel"
+asset_noun: tank
+finding_noun: defects
+assessment_title: "Tank visual inspection report"
+finding_unit: region
+placement: patch
+overlay: both
+classes:
+  - {id: 1, key: coating, label: "Coating breakdown / blistering", color: "#fad34b"}
+  - {id: 2, key: corrosion, label: "Visible corrosion", color: "#ff7a2d"}
+  - {id: 3, key: seam, label: "Weld or seam staining / weeping", color: "#ee3f4b"}
+  - {id: 4, key: deformation, label: "Dent, bulge or deformation", color: "#e94b9a"}
+  - {id: 5, key: fitting, label: "Nozzle, stair, handrail or fitting damage", color: "#34a6d9"}
+  - {id: 6, key: insulation, label: "Insulation or cladding damage", color: "#7cc46b"}
+  - {id: 9, key: uncertain, label: "Uncertain, needs a closer look", uncertain: true, color: "#b68ef8"}
+severity:
+  - {level: 1, label: Minor, long: "Minor, monitor", color: "#fad34b", bg: "#fff4cc", fg: "#6b5100"}
+  - {level: 2, label: Moderate, long: "Moderate, plan repair", color: "#ff7a2d", bg: "#ffe6d6", fg: "#8a3200"}
+  - {level: 3, label: Severe, long: "Severe, inspect urgently", color: "#ee3f4b", bg: "#FFE5E5", fg: "#8c0010"}
+uncertain: {label: Uncertain, long: "Uncertain, review", color: "#b68ef8", bg: "#efe6ff", fg: "#56337f"}
+none: {label: "No finding", long: "No defect seen", color: "#b3b0aa"}
+not_assessed: {label: "Not assessed", long: "Not assessed", color: "#dcd9d3"}
+zones:
+  - {id: roof, label: "Roof", from: 0.9, to: 1.0}
+  - {id: shell, label: "Shell courses", from: 0.1, to: 0.9}
+  - {id: bottom, label: "Bottom course / foundation", from: 0.0, to: 0.1}
+sides: {type: compass}
+breakdowns: [class, zone, component]
+ranking: {by: coverage, n: 6, title: "Largest affected areas", sub: "Share of the photo covered by the finding."}
+coverage_label: "of photo"
+facts: [severity, class, defect, height, zone, component, side, coverage, photo, captured, position, camera]
+limits:
+  - {title: "Visual only", text: "Findings describe the visible surface. Wall thickness, pitting depth and fitness for service are not measured."}
+  - {title: "Draft, unvalidated", text: "Findings under insulation or low-contrast coatings can be missed. Confirm before repair planning."}
+  - {title: "Approximate positions", text: "Heights and bearings come from estimated camera poses and the 3D model; they are not surveyed."}
+footer_disclaimer: "Visual inspection. Not an API 653 / fitness-for-service assessment."
+detect_hints: |
+  Scan each shell course band by band, the roof, wind girder, stairs, nozzles, manways and the chime/foundation
+  ring. Staining that runs down from a seam suggests weeping. Box each defect; use the mask for large coating areas.

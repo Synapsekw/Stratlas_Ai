@@ -1,0 +1,43 @@
+# Vertical asset profile: telecom lattice towers, monopoles, rooftop masts.
+id: telecom-tower
+name: "Telecom tower or mast"
+asset_noun: tower
+finding_noun: defects
+assessment_title: "Tower visual inspection report"
+finding_unit: region
+placement: point
+overlay: boxes
+classes:
+  - {id: 1, key: corrosion, label: "Corrosion on steelwork or fasteners", color: "#ff7a2d"}
+  - {id: 2, key: fastener, label: "Missing or loose fastener", color: "#ee3f4b"}
+  - {id: 3, key: antenna, label: "Antenna or mount misalignment / damage", color: "#e94b9a"}
+  - {id: 4, key: cable, label: "Cable, tray or clamp issue", color: "#34a6d9"}
+  - {id: 5, key: coating, label: "Paint / galvanising breakdown", color: "#fad34b"}
+  - {id: 6, key: foreign, label: "Bird nest or foreign object", color: "#7cc46b"}
+  - {id: 7, key: lighting, label: "Aviation light or earthing defect", color: "#9d7bea"}
+  - {id: 9, key: uncertain, label: "Uncertain, needs a closer look", uncertain: true, color: "#b68ef8"}
+severity:
+  - {level: 1, label: Minor, long: "Minor, monitor", color: "#fad34b", bg: "#fff4cc", fg: "#6b5100"}
+  - {level: 2, label: Significant, long: "Significant, plan repair", color: "#ff7a2d", bg: "#ffe6d6", fg: "#8a3200"}
+  - {level: 3, label: Critical, long: "Critical, act now", color: "#ee3f4b", bg: "#FFE5E5", fg: "#8c0010"}
+uncertain: {label: Uncertain, long: "Uncertain, review", color: "#b68ef8", bg: "#efe6ff", fg: "#56337f"}
+none: {label: "No finding", long: "No defect seen", color: "#b3b0aa"}
+not_assessed: {label: "Not assessed", long: "Not assessed", color: "#dcd9d3"}
+zones:
+  - {id: antenna, label: "Antenna zone", from: 0.8, to: 1.0}
+  - {id: body, label: "Tower body", from: 0.1, to: 0.8}
+  - {id: base, label: "Base / foundation", from: 0.0, to: 0.1}
+sides: {type: compass}
+breakdowns: [class, zone, component]
+ranking: {by: severity, n: 6, title: "Highest priority defects", sub: "Ordered by severity, then by size in the photo."}
+coverage_label: "of photo"
+facts: [severity, class, defect, height, zone, component, side, photo, captured, position, camera]
+limits:
+  - {title: "Visual only", text: "Findings describe what is visible in the photos. Torque, section loss and structural capacity are not measured."}
+  - {title: "Draft, unvalidated", text: "Small or hidden defects can be missed. Every critical finding needs confirmation on site."}
+  - {title: "Approximate positions", text: "Heights and faces come from estimated camera poses and the 3D model. They guide a climber; they are not surveyed."}
+footer_disclaimer: "Visual inspection. Not a structural or load-capacity assessment."
+detect_hints: |
+  Check each leg, bracing member, platform, antenna mount, RRU, feeder/cable run, ladder and the base/foundation.
+  Missing bolts show as empty holes or asymmetric bolt patterns. Antenna misalignment shows as tilt or twist relative
+  to neighbours. Note bird nests on platforms. Box each defect tightly; one box per defect.

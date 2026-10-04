@@ -1,0 +1,40 @@
+# Vertical asset profile: stacks, chimneys, flares, vent stacks.
+# Every field can be overridden per job under `profile:` in job.yaml.
+id: stack
+name: "Stack, chimney or flare"
+asset_noun: stack                 # "side of the stack", "part of the stack"
+finding_noun: candidate corrosion # headline noun: "78 photos show candidate corrosion"
+assessment_title: "Visual corrosion inspection report"
+finding_unit: photo               # photo: one finding per affected photo | region: one per detected region
+placement: patch                  # patch: mask projected onto the model | point: pin at the region centre | none
+overlay: mask                     # mask | boxes | both (how findings are drawn on the photo)
+classes:                          # label values in the class-index masks (0 = unmarked)
+  - {id: 1, key: light, label: "Light visual staining / surface oxidation", severity: 1, color: "#fad34b"}
+  - {id: 2, key: moderate, label: "Moderate visible rust", severity: 2, color: "#ff7a2d"}
+  - {id: 3, key: heavy, label: "Heavy visible deterioration", severity: 3, color: "#ee3f4b"}
+  - {id: 4, key: uncertain, label: "Uncertain / heat affected", uncertain: true, color: "#b68ef8"}
+severity:                         # ordinal scale, low to high
+  - {level: 1, label: Light, long: "Light staining", color: "#fad34b", bg: "#fff4cc", fg: "#6b5100"}
+  - {level: 2, label: Moderate, long: "Moderate visible rust", color: "#ff7a2d", bg: "#ffe6d6", fg: "#8a3200"}
+  - {level: 3, label: Heavy, long: "Heavy deterioration", color: "#ee3f4b", bg: "#FFE5E5", fg: "#8c0010"}
+uncertain: {label: Uncertain, long: "Uncertain / heat affected only", color: "#b68ef8", bg: "#efe6ff", fg: "#56337f"}
+none: {label: "No finding", long: "No confident finding", color: "#b3b0aa"}
+not_assessed: {label: "Not assessed", long: "Not assessed", color: "#dcd9d3"}
+zones:                            # fractions of asset height, top first; job.asset.zones (metres) overrides
+  - {id: head, label: "Top / head", from: 0.92, to: 1.0}
+  - {id: shaft, label: "Shaft / access", from: 0.19, to: 0.92}
+  - {id: base, label: "Base / inlet", from: 0.0, to: 0.19}
+sides: {type: compass}            # compass: N/NE/...; faces: see ohtl-tower.yaml
+breakdowns: [zone, component]     # summary tables / bars
+ranking: {by: coverage, n: 6, title: "Largest marked areas", sub: "The photos with the highest share of pixels marked. The share is measured on the photo, not on the steel surface."}
+coverage_label: "marked"          # "0.25% marked"
+facts: [severity, height, zone, component, side, coverage, photo, captured, position, camera]
+limits:
+  - {title: "Visual only", text: "Grades describe what corrosion looks like in the photo. They do not measure metal loss, pitting depth or fitness for service."}
+  - {title: "Draft, unvalidated", text: "Fine or low-contrast corrosion can be missed, and similar-looking coatings or deposits can be marked."}
+  - {title: "Approximate positions", text: "The model and camera poses are estimated from photos and GPS. Positions guide the eye; they are not surveyed locations."}
+footer_disclaimer: "Draft visual assessment. Not an engineering or fitness-for-service assessment."
+detect_hints: |
+  Look for rust colouration (orange/brown staining, streaks, flaking) on shell plates, seams, flanges,
+  bolted connections, ladders, platforms, brackets and nozzles. Heat oxidation near a flare tip, soot and
+  brown coatings are ambiguous: label them uncertain, never graded. Grade 3 only for visible flaking or scale.
