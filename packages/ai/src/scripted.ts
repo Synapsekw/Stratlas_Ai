@@ -9,6 +9,7 @@ import type {
   LanguageModelV4Prompt,
   LanguageModelV4StreamPart,
 } from '@ai-sdk/provider';
+import { DETECT_MARKER } from './detect';
 import type { ModelProvider } from './providers';
 
 /** Keyword (lower case, in the user's message) to the tool call the script makes. */
@@ -78,6 +79,48 @@ export function scriptedTurn(
   return { kind: 'text', text: `Scripted reply to: ${text.slice(0, 120)}` };
 }
 
+/**
+ * Detection requests (`ai:detect`): one proposal per image, in the first class of the prompt,
+ * at a box that moves with the image number, so tests can predict it. A hint containing
+ * "nothing" returns no proposals; one containing "garbage" returns text that is not JSON.
+ */
+export function scriptedDetections(prompt: LanguageModelV4Prompt): string | null {
+  const user = lastUserText(prompt);
+  const marker = prompt.some(
+    (m) =>
+      m.role === 'user' &&
+      m.content.some((p) => p.type === 'text' && p.text.includes(DETECT_MARKER)),
+  );
+  if (!marker) return null;
+  const system = prompt.find((m) => m.role === 'system');
+  const sysText = system?.role === 'system' ? system.content : '';
+  const cls = /"id":"([^"]+)"/.exec(sysText)?.[1] ?? 'defect';
+  const firstText =
+    prompt
+      .filter((m) => m.role === 'user')
+      .flatMap((m) => m.content.filter((p) => p.type === 'text').map((p) => p.text))
+      .find((t) => t.includes(DETECT_MARKER)) ?? user;
+  if (/garbage/i.test(firstText)) return 'I could not do that.';
+  const count = Number(/There are (\d+) images/.exec(firstText)?.[1] ?? '1');
+  const empty = /nothing/i.test(firstText);
+  const images = Array.from({ length: count }, (_, i) => ({
+    image: i + 1,
+    detections: empty
+      ? []
+      : [
+          {
+            class: cls,
+            box: [0.2 + 0.05 * (i % 4), 0.3, 0.25, 0.2],
+            confidence: 0.9 - 0.1 * (i % 4),
+            severity: 2,
+            uncertain: false,
+            note: `Scripted proposal on image ${String(i + 1)}.`,
+          },
+        ],
+  }));
+  return JSON.stringify({ images });
+}
+
 let calls = 0;
 
 function scriptedModel(modelId: string): LanguageModelV4 {
@@ -109,10 +152,10 @@ function scriptedModel(modelId: string): LanguageModelV4 {
     provider: 'scripted',
     modelId,
     supportedUrls: {},
-    // Settings, Test connection: one non-streamed answer.
-    doGenerate: () =>
+    // Settings, Test connection (OK) and AI detection: one non-streamed answer.
+    doGenerate: (options) =>
       Promise.resolve({
-        content: [{ type: 'text', text: 'OK' }],
+        content: [{ type: 'text', text: scriptedDetections(options.prompt) ?? 'OK' }],
         finishReason: { unified: 'stop', raw: 'end_turn' },
         usage: USAGE,
         warnings: [],

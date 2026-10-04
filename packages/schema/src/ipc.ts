@@ -17,6 +17,38 @@ import { BoundaryEditsFile, VolumesFile } from './volumes';
 
 const Empty = z.object({}).strict();
 
+/**
+ * `<project>/detections.json` on the wire (BLD-5). Only the envelope is checked here; main
+ * validates the contents with `@aio/annotate/detections` until `aio.detections/1` lands in this
+ * package (stream P1). Pending integration lead, see contract-changes.md.
+ */
+export const DetectionsFileEnvelope = z
+  .object({ schema: z.literal('aio.detections/1'), detections: z.array(z.unknown()) })
+  .loose();
+
+/** One image of an `ai:detect` request: scaled down and encoded in the renderer. */
+export const DetectImage = z
+  .object({
+    /** The caller's key for the image (photo or frame), echoed in the result. */
+    key: z.string().min(1).max(300),
+    dataUrl: z.string().startsWith('data:image/'),
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
+  })
+  .strict();
+
+/** One proposal in an `ai:detect` result, coordinates normalised (0 to 1, top-left origin). */
+export const AiDetectionResult = z.object({
+  classId: z.string(),
+  label: z.string(),
+  box: z.tuple([z.number(), z.number(), z.number(), z.number()]).optional(),
+  polygon: z.array(z.tuple([z.number(), z.number()])).optional(),
+  confidence: z.number().min(0).max(1).optional(),
+  severity: z.number().int().nullable().optional(),
+  uncertain: z.boolean().optional(),
+  note: z.string().optional(),
+});
+
 export const LibraryEntry = z.object({
   id: z.string(),
   name: z.string(),
@@ -416,7 +448,13 @@ export const ipc = {
   },
   /** Can the agent answer right now (cloud switch, key, project policy, local model)? */
   'ai:status': {
-    request: z.object({ projectId: z.string().min(1).optional() }).strict(),
+    request: z
+      .object({
+        projectId: z.string().min(1).optional(),
+        /** The route to check; `chat` when absent (`vision` for AI detection). */
+        task: AiTask.optional(),
+      })
+      .strict(),
     response: z.object({
       ready: z.boolean(),
       reason: z
@@ -427,6 +465,104 @@ export const ipc = {
       /** The chat route sends data off this machine. */
       cloud: z.boolean(),
     }),
+  },
+  /**
+   * AI-assisted detection (BLD-6): one request with up to 8 images to the vision route, after the
+   * person saw the preview and the estimate. Same gates as the agent (cloud switch, project
+   * policy, key); usage is metered to the project. Results are proposals for the review.
+   */
+  'ai:detect': {
+    request: z
+      .object({
+        runId: z.string().min(1),
+        projectId: z.string().min(1),
+        classes: z
+          .array(z.object({ id: z.string().min(1), label: z.string().min(1) }).strict())
+          .min(1)
+          .max(300),
+        severity: z
+          .object({
+            levels: z
+              .array(
+                z
+                  .object({
+                    value: z.number().int(),
+                    label: z.string(),
+                    criteria: z.string().optional(),
+                  })
+                  .strict(),
+              )
+              .max(20),
+            uncertain: z.boolean().optional(),
+          })
+          .strict()
+          .optional(),
+        hint: z.string().max(2000).optional(),
+        images: z.array(DetectImage).min(1).max(8),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        provider: z.string(),
+        model: z.string(),
+        promptVersion: z.string(),
+        results: z.array(z.object({ key: z.string(), detections: z.array(AiDetectionResult) })),
+        inputTokens: z.number().nonnegative(),
+        outputTokens: z.number().nonnegative(),
+        costUsd: z.number().nonnegative().optional(),
+        warnings: z.array(z.string()),
+      }),
+      z.object({
+        ok: z.literal(false),
+        error: z.string(),
+        /** HTTP status of a provider error. */
+        status: z.number().int().optional(),
+        stopped: z.boolean().optional(),
+      }),
+    ]),
+  },
+  /** Detections waiting for review (`detections.json`); null when the project has none yet. */
+  'detections:read': {
+    request: z.object({ projectId: z.string().min(1) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        file: DetectionsFileEnvelope.nullable(),
+        /** A package: the review can be read but not saved. */
+        readOnly: z.boolean(),
+      }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /** Replace `<project>/detections.json` atomically with a `.bak` (refused for packages). */
+  'detections:write': {
+    request: z.object({ projectId: z.string().min(1), file: DetectionsFileEnvelope }).strict(),
+    response: z.object({ ok: z.boolean(), error: z.string().optional() }),
+  },
+  /** Mask assist (BLD-10): available only with a SAM-class model in the pipeline pack. */
+  'detections:maskAssistStatus': {
+    request: Empty,
+    response: z.object({
+      available: z.boolean(),
+      model: z.string().optional(),
+      reason: z.enum(['no-model', 'no-runtime', 'failed']).optional(),
+      detail: z.string().optional(),
+    }),
+  },
+  /** Outline the object inside a box on a project photo (pixels of the photo). */
+  'detections:maskAssist': {
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        path: z.string().min(1),
+        box: z.tuple([z.number(), z.number(), z.number().positive(), z.number().positive()]),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), points: z.array(z.tuple([z.number(), z.number()])).min(3) }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
   },
   /** Per-project agent state kept on this workstation: send consent, policy, usage. */
   'ai:project': {

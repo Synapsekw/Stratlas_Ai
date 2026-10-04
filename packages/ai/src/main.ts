@@ -27,6 +27,12 @@ import {
   type ToolSet,
   type UserContent,
 } from 'ai';
+import {
+  DETECT_PROMPT_VERSION,
+  detectInstructions,
+  detectUserText,
+  parseDetectReply,
+} from './detect';
 import { describeError } from './errors';
 import { estimateCostUsd } from './pricing';
 import { contextBlock, systemPrompt } from './prompt';
@@ -87,6 +93,11 @@ export interface AgentRuntime {
    * Only on the person's click: it calls out when cloud AI is on.
    */
   testConnection(req: IpcRequest<'ai:testConnection'>): Promise<IpcResponse<'ai:testConnection'>>;
+  /**
+   * AI-assisted detection (BLD-6): one batch of images to the vision route, through the same
+   * gates as the agent. `cancel(runId)` stops it. Never retried silently past `maxRetries`.
+   */
+  detect(req: IpcRequest<'ai:detect'>): Promise<IpcResponse<'ai:detect'>>;
 }
 
 export interface AgentRuntimeOptions {
@@ -118,6 +129,8 @@ export const MESSAGES = {
 /** The connection test asks for a one-word answer: a few tokens in and out. */
 const TEST_PROMPT = 'Reply with the single word OK.';
 const TEST_TIMEOUT_MS = 30_000;
+/** One detection batch (up to 8 large images) may take a while on a busy provider. */
+const DETECT_TIMEOUT_MS = 180_000;
 
 type Outcome =
   { status: 'ok'; result: unknown } | { status: 'error'; message: string } | { status: 'declined' };
@@ -312,6 +325,79 @@ export function createAgentRuntime(
     }
   }
 
+  async function runDetect(
+    req: IpcRequest<'ai:detect'>,
+    run: Run,
+    route: ModelRoute,
+    provider: ModelProvider,
+  ): Promise<IpcResponse<'ai:detect'>> {
+    const key = provider.needsKey ? await host.getKey(route.provider) : null;
+    const prompt = { classes: req.classes, severity: req.severity, hint: req.hint };
+    const content: UserContent = [
+      { type: 'text', text: detectUserText(req.images.length, req.hint) },
+    ];
+    for (const [i, im] of req.images.entries()) {
+      const img = parseDataUrl(im.dataUrl);
+      if (!img) return { ok: false, error: `Image ${String(i + 1)} is not an image data URL.` };
+      content.push({ type: 'text', text: `Image ${String(i + 1)}` });
+      content.push({ type: 'file', data: img.base64, mediaType: img.mediaType });
+    }
+    try {
+      const result = await generateText({
+        model: provider.languageModel(route.model, key),
+        instructions: detectInstructions(prompt),
+        messages: [{ role: 'user', content }],
+        maxRetries: options.maxRetries ?? 2,
+        maxOutputTokens: 8_000,
+        abortSignal: AbortSignal.any([
+          run.controller.signal,
+          AbortSignal.timeout(DETECT_TIMEOUT_MS),
+        ]),
+      });
+      const u = usageEvent(req.runId, route, result.usage);
+      const usage = u.type === 'usage' ? u : null;
+      if (usage) {
+        host.recordUsage?.(req.projectId, {
+          provider: route.provider,
+          model: route.model,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          ...(usage.costUsd !== undefined ? { costUsd: usage.costUsd } : {}),
+        });
+      }
+      const parsed = parseDetectReply(result.text, req.images.length, req.classes);
+      if (typeof parsed === 'string') {
+        console.warn(`detection reply unreadable (${provider.label} ${route.model})`);
+        return { ok: false, error: `${provider.label}, ${route.model}: ${parsed}` };
+      }
+      return {
+        ok: true,
+        provider: route.provider,
+        model: route.model,
+        promptVersion: DETECT_PROMPT_VERSION,
+        results: req.images.map((im, i) => ({ key: im.key, detections: parsed.results[i] ?? [] })),
+        inputTokens: usage?.inputTokens ?? 0,
+        outputTokens: usage?.outputTokens ?? 0,
+        ...(usage?.costUsd !== undefined ? { costUsd: usage.costUsd } : {}),
+        warnings: parsed.warnings,
+      };
+    } catch (e) {
+      if (run.controller.signal.aborted)
+        return { ok: false, error: MESSAGES.stopped, stopped: true };
+      const described = describeError(e, {
+        label: provider.label,
+        model: route.model,
+        secrets: [key],
+      });
+      console.warn(`detection request failed: ${described.log}`);
+      return {
+        ok: false,
+        error: described.message,
+        ...(described.status !== undefined ? { status: described.status } : {}),
+      };
+    }
+  }
+
   return {
     send: async (req) => {
       if (runs.has(req.runId)) return { ok: false, error: MESSAGES.busy };
@@ -327,8 +413,20 @@ export function createAgentRuntime(
       });
       return { ok: true };
     },
+    detect: async (req) => {
+      if (runs.has(req.runId)) return { ok: false, error: MESSAGES.busy };
+      const run: Run = { controller: new AbortController(), pending: new Map() };
+      runs.set(req.runId, run);
+      try {
+        const gate = await check('vision', req.projectId);
+        if (!gate.ok) return { ok: false, error: gate.message };
+        return await runDetect(req, run, gate.route, gate.provider);
+      } finally {
+        runs.delete(req.runId);
+      }
+    },
     status: async (req) => {
-      const gate = await check('chat', req.projectId);
+      const gate = await check(req.task ?? 'chat', req.projectId);
       if (gate.ok) {
         return {
           ready: true,
