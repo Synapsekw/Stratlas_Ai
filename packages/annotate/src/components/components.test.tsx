@@ -10,6 +10,7 @@ import { IssueRegister } from './IssueRegister';
 import { PhotoViewer } from './PhotoViewer';
 import { VideoAnnotator } from './VideoAnnotator';
 import { AnnotationToolbar } from './AnnotationToolbar';
+import { setAnnotateReadOnly } from '../runtime';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 // jsdom has no ResizeObserver: a stand-in that never fires.
@@ -112,5 +113,37 @@ describe('components render', () => {
     );
     expect(renderToString(<VideoAnnotator layerId="f108" />)).toContain('Annotate');
     expect(renderToString(<AnnotationToolbar />)).toContain('Cloud box');
+  });
+
+  it('in a read-only package shows issues without any edit control or annotation tool', () => {
+    workspace
+      .getState()
+      .openProject({ id: 'hcl', root: 'r', manifest }, [
+        makeIssue({ sightings: [photoSighting, photoSighting], note: 'Lining blistered at seam' }),
+      ]);
+    setAnnotateReadOnly(true);
+    try {
+      const detail = renderToString(<IssueDetail issueId="i1" />);
+      expect(detail).toContain('Lining blistered at seam');
+      expect(detail).toContain('Photo F01 · box');
+      for (const edit of [
+        'Mark reviewed',
+        'Delete issue',
+        'Merge here',
+        '<input',
+        '<textarea',
+        '<select',
+      ]) {
+        expect(detail).not.toContain(edit);
+      }
+      expect(renderToString(<IssueRegister />)).not.toContain('Undo');
+      expect(renderToString(<AnnotationToolbar />)).toBe('');
+      expect(renderToString(<VideoAnnotator layerId="f108" />)).not.toContain('Annotate');
+      const photo = renderToString(<PhotoViewer layerId="photos" photoId="F01" />);
+      expect(photo).toContain('aio://project/hcl/photos/F01.jpg');
+      expect(photo).not.toContain('Rotated box');
+    } finally {
+      setAnnotateReadOnly(false);
+    }
   });
 });

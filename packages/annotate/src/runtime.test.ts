@@ -7,7 +7,9 @@ import {
   cancelSighting,
   confirmSighting,
   focusIssue,
+  issueEditor,
   issueSaver,
+  setAnnotateReadOnly,
 } from './runtime';
 import { catalogue, makeIssue, meshSighting, photoSighting, tankModel } from './testing';
 
@@ -28,6 +30,21 @@ describe('annotation runtime', () => {
     issueSaver.cancel();
     annotateUi.setState({ pending: null, attachToSelected: false });
     workspace.getState().closeProject();
+  });
+
+  it('in a read-only package a finished shape opens nothing and the editor refuses changes', () => {
+    workspace.getState().openProject({ id: 'hcl', root: 'r', manifest }, []);
+    setAnnotateReadOnly(true);
+    try {
+      beginSighting(photoSighting, { x: 10, y: 20 });
+      expect(annotateUi.getState().pending).toBeNull();
+      const r = issueEditor.create({ sighting: photoSighting, classId: 'crack', severity: 4 });
+      expect(r.ok).toBe(false);
+      expect(workspace.getState().issues).toEqual([]);
+      expect(issueSaver.status.state).toBe('saved');
+    } finally {
+      setAnnotateReadOnly(false);
+    }
   });
 
   it('a finished shape opens the picker, and confirming creates and selects the issue', () => {

@@ -1,8 +1,11 @@
+import { openPackage, type ZipArchive } from '@aio/project/package';
 import {
   Issue,
+  PACKAGE_EXTENSION,
   parseManifest,
   validateIssueAgainstModel,
   type IpcResponse,
+  type PackageHeader,
   type ProjectManifest,
 } from '@aio/schema';
 import { stat } from 'node:fs/promises';
@@ -28,28 +31,56 @@ const keyOf = (root: string) => {
   return process.platform === 'win32' ? r.toLowerCase() : r;
 };
 
+/** A `.aio` package opened in place: members are served from the archive by offset. */
+export interface PackageSource {
+  file: string;
+  archive: ZipArchive;
+  header: PackageHeader;
+  manifest: ProjectManifest;
+}
+
+const isPackagePath = (p: string) => p.toLowerCase().endsWith(PACKAGE_EXTENSION);
+
 /**
- * Project id to root folder. Only registered roots are reachable through aio://project/<id>/,
- * so the renderer can never point the protocol at an arbitrary folder.
+ * Project id to root folder or opened package. Only registered projects are reachable through
+ * aio://project/<id>/, so the renderer can never point the protocol at an arbitrary path.
  */
 export class ProjectRegistry {
   private readonly byId = new Map<string, string>();
   private readonly byKey = new Map<string, string>();
+  private readonly packages = new Map<string, PackageSource>();
 
-  register(root: string): string {
-    const key = keyOf(root);
+  private idFor(path: string): string {
+    const key = keyOf(path);
     const known = this.byKey.get(key);
     if (known !== undefined) return known;
-    const base = slugify(basename(resolve(root)));
+    const name = basename(resolve(path));
+    const base = slugify(isPackagePath(name) ? name.slice(0, -PACKAGE_EXTENSION.length) : name);
     let id = base;
     for (let n = 2; this.byId.has(id); n++) id = `${base}-${String(n)}`;
-    this.byId.set(id, resolve(root));
+    this.byId.set(id, resolve(path));
     this.byKey.set(key, id);
     return id;
   }
 
+  register(root: string): string {
+    return this.idFor(root);
+  }
+
+  /** Register (or refresh, after a re-export) an opened package. */
+  registerPackage(source: PackageSource): string {
+    const id = this.idFor(source.file);
+    this.packages.set(id, source);
+    return id;
+  }
+
+  /** Root folder of a folder project; undefined for packages and unknown ids. */
   root(id: string): string | undefined {
-    return this.byId.get(id);
+    return this.packages.has(id) ? undefined : this.byId.get(id);
+  }
+
+  package(id: string): PackageSource | undefined {
+    return this.packages.get(id);
   }
 }
 
@@ -103,15 +134,63 @@ export async function readIssues(root: string): Promise<Loaded<Issue[]>> {
   return { ok: true, value: parsed.data.issues };
 }
 
+function parseIssues(raw: unknown, where: string, fix: string): Loaded<Issue[]> {
+  if (raw === undefined) return { ok: true, value: [] };
+  const parsed = IssuesFile.safeParse(raw);
+  if (!parsed.success) {
+    const first = parsed.error.issues[0];
+    const at = first?.path.length ? ` at ${first.path.join('.')}` : '';
+    return {
+      ok: false,
+      error: `${where} is invalid${at}: ${first?.message ?? 'unknown error'}. ${fix}`,
+    };
+  }
+  return { ok: true, value: parsed.data.issues };
+}
+
+/** Open a `.aio` package in place (nothing is unpacked or written). */
+export async function openPackageProject(
+  path: string,
+  registry: ProjectRegistry,
+  passphrase?: string,
+): Promise<IpcResponse<'project:open'>> {
+  const file = resolve(path);
+  const r = await openPackage(file, passphrase);
+  if (!r.ok) {
+    return { ok: false, error: r.error, ...(r.needsPassphrase ? { needsPassphrase: true } : {}) };
+  }
+  const { archive, header, manifest, issuesJson } = r.value;
+  const issues = parseIssues(
+    issuesJson,
+    `issues.json in ${basename(file)}`,
+    'Ask the sender for a new copy of the package.',
+  );
+  if (!issues.ok) return issues;
+  const id = registry.registerPackage({ file, archive, header, manifest });
+  return {
+    ok: true,
+    id,
+    root: file,
+    manifest,
+    issues: issues.value,
+    package: { header, file, encrypted: archive.encrypted, sizeBytes: archive.sizeBytes },
+  };
+}
+
 export async function openProject(
   path: string,
   registry: ProjectRegistry,
+  passphrase?: string,
 ): Promise<IpcResponse<'project:open'>> {
   const root = resolve(path);
   try {
     const s = await stat(root);
     if (!s.isDirectory()) {
-      return { ok: false, error: `${root} is a file. Pick the project folder instead.` };
+      if (isPackagePath(root)) return await openPackageProject(root, registry, passphrase);
+      return {
+        ok: false,
+        error: `${root} is a file. Pick the project folder or a ${PACKAGE_EXTENSION} package instead.`,
+      };
     }
   } catch {
     return {
@@ -125,6 +204,25 @@ export async function openProject(
   if (!issues.ok) return issues;
   const id = registry.register(root);
   return { ok: true, id, root, manifest: manifest.value, issues: issues.value };
+}
+
+/** `project:writeIssues`: folder projects only; a package is never written. */
+export async function writeProjectIssues(
+  registry: ProjectRegistry,
+  projectId: string,
+  issues: Issue[],
+): Promise<{ ok: boolean; error?: string }> {
+  if (registry.package(projectId)) {
+    return {
+      ok: false,
+      error: 'This project is a read-only package. Issues are not saved into it.',
+    };
+  }
+  const root = registry.root(projectId);
+  if (root === undefined) {
+    return { ok: false, error: `Project "${projectId}" is not open. Open it, then save again.` };
+  }
+  return writeIssues(root, issues);
 }
 
 /** Validate issues against the project's severity models, then replace issues.json atomically. */

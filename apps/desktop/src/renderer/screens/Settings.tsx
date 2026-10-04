@@ -14,6 +14,7 @@ import { formatBytes, Icon, SevChip, Switch, type IconName } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useState } from 'react';
 import { setAuthorName, useAuthor } from '../author';
+import { cloudAiBlocked } from '../player';
 import { bridge, shell, useCall, useShell } from '../shell';
 
 type Page = 'ai' | 'usage' | 'privacy' | 'data' | 'maps' | 'severity';
@@ -444,8 +445,16 @@ function Usage() {
 
 function Privacy() {
   const cloudAi = useShell((s) => s.settings.cloudAi);
+  const pkg = useShell((s) => s.pkg);
   return (
     <>
+      {cloudAiBlocked(pkg) && (
+        <p className="notice warn" role="status">
+          <Icon name="lock" size={14} />
+          The open package does not allow cloud AI. While it is open nothing is sent to any
+          provider, whatever this switch says.
+        </p>
+      )}
       <div className="sblock">
         <div className="master">
           <b>Cloud AI</b>

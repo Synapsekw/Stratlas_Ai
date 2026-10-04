@@ -2,7 +2,7 @@ import type { Issue, Layer, Sighting } from '@aio/schema';
 import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
 import { useState } from 'react';
 import { nextStatus, previousStatus } from '../model/ops';
-import { focusIssue, issueEditor, useIssueEditorState } from '../runtime';
+import { focusIssue, issueEditor, useAnnotateReadOnly, useIssueEditorState } from '../runtime';
 import { sightingAnchor, severityColor } from '../tools/mesh';
 import { projectMsFromVideo } from '../video/track';
 import { SeverityBadge, kindLabel, sevStyle, sightingLabel, useTaxonomy } from './common';
@@ -50,6 +50,7 @@ export function IssueDetail({ issueId, className }: { issueId: string; className
   const project = useWorkspace((s) => s.project);
   const { classes, classById, modelById } = useTaxonomy();
   const { lastError } = useIssueEditorState();
+  const readOnly = useAnnotateReadOnly();
   const [linkTarget, setLinkTarget] = useState('');
 
   if (!issue) {
@@ -102,93 +103,106 @@ export function IssueDetail({ issueId, className }: { issueId: string; className
           </span>
         </div>
 
-        <label className="ann-field">
-          <span>Title</span>
-          <input
-            key={`t-${issue.updatedAt}`}
-            className="ann-input"
-            defaultValue={issue.title}
-            onBlur={(e) => {
-              const v = e.target.value.trim();
-              if (v && v !== issue.title) issueEditor.update(issue.id, { title: v });
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') e.currentTarget.blur();
-            }}
-          />
-        </label>
-        <label className="ann-field">
-          <span>Class</span>
-          <select
-            className="ann-select"
-            value={issue.classId}
-            onChange={(e) => issueEditor.update(issue.id, { classId: e.target.value })}
-          >
-            {!cls && <option value={issue.classId}>{issue.classId}</option>}
-            {classes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="ann-field">
-          <span>Severity</span>
-          <div className="ann-seg" role="group" aria-label="Severity">
-            {severities.map((v) => (
-              <button
-                key={String(v)}
-                type="button"
-                aria-pressed={issue.severity === v}
-                title={
-                  v === 'uncertain'
-                    ? model?.uncertain?.label
-                    : model?.levels.find((l) => l.value === v)?.criteria
-                }
-                onClick={() => issueEditor.update(issue.id, { severity: v })}
+        {readOnly ? (
+          <>
+            <b className="ann-ro-title">{issue.title}</b>
+            {issue.note && <p className="ann-ro-note">{issue.note}</p>}
+          </>
+        ) : (
+          <>
+            <label className="ann-field">
+              <span>Title</span>
+              <input
+                key={`t-${issue.updatedAt}`}
+                className="ann-input"
+                defaultValue={issue.title}
+                onBlur={(e) => {
+                  const v = e.target.value.trim();
+                  if (v && v !== issue.title) issueEditor.update(issue.id, { title: v });
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.currentTarget.blur();
+                }}
+              />
+            </label>
+            <label className="ann-field">
+              <span>Class</span>
+              <select
+                className="ann-select"
+                value={issue.classId}
+                onChange={(e) => issueEditor.update(issue.id, { classId: e.target.value })}
               >
-                <span className="ann-dot" style={sevStyle(severityColor(model, v))} />
-                {v === 'uncertain' ? '?' : v}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="ann-field">
-          <span>Status</span>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {prev && (
-              <button
-                type="button"
-                className="ann-btn"
-                onClick={() => issueEditor.setStatus(issue.id, prev)}
-              >
-                Back to {prev}
-              </button>
-            )}
-            {next && (
-              <button
-                type="button"
-                className="ann-btn primary"
-                onClick={() => issueEditor.setStatus(issue.id, next)}
-              >
-                {next === 'reviewed' ? 'Mark reviewed' : next === 'approved' ? 'Approve' : 'Close'}
-              </button>
-            )}
-          </div>
-        </div>
-        <label className="ann-field" style={{ alignItems: 'start' }}>
-          <span>Note</span>
-          <textarea
-            key={`n-${issue.updatedAt}`}
-            className="ann-input"
-            defaultValue={issue.note}
-            onBlur={(e) => {
-              if (e.target.value !== issue.note)
-                issueEditor.update(issue.id, { note: e.target.value });
-            }}
-          />
-        </label>
-        {lastError && <div className="ann-error">{lastError}</div>}
+                {!cls && <option value={issue.classId}>{issue.classId}</option>}
+                {classes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="ann-field">
+              <span>Severity</span>
+              <div className="ann-seg" role="group" aria-label="Severity">
+                {severities.map((v) => (
+                  <button
+                    key={String(v)}
+                    type="button"
+                    aria-pressed={issue.severity === v}
+                    title={
+                      v === 'uncertain'
+                        ? model?.uncertain?.label
+                        : model?.levels.find((l) => l.value === v)?.criteria
+                    }
+                    onClick={() => issueEditor.update(issue.id, { severity: v })}
+                  >
+                    <span className="ann-dot" style={sevStyle(severityColor(model, v))} />
+                    {v === 'uncertain' ? '?' : v}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="ann-field">
+              <span>Status</span>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {prev && (
+                  <button
+                    type="button"
+                    className="ann-btn"
+                    onClick={() => issueEditor.setStatus(issue.id, prev)}
+                  >
+                    Back to {prev}
+                  </button>
+                )}
+                {next && (
+                  <button
+                    type="button"
+                    className="ann-btn primary"
+                    onClick={() => issueEditor.setStatus(issue.id, next)}
+                  >
+                    {next === 'reviewed'
+                      ? 'Mark reviewed'
+                      : next === 'approved'
+                        ? 'Approve'
+                        : 'Close'}
+                  </button>
+                )}
+              </div>
+            </div>
+            <label className="ann-field" style={{ alignItems: 'start' }}>
+              <span>Note</span>
+              <textarea
+                key={`n-${issue.updatedAt}`}
+                className="ann-input"
+                defaultValue={issue.note}
+                onBlur={(e) => {
+                  if (e.target.value !== issue.note)
+                    issueEditor.update(issue.id, { note: e.target.value });
+                }}
+              />
+            </label>
+          </>
+        )}
+        {lastError && !readOnly && <div className="ann-error">{lastError}</div>}
 
         <div className="ann-faint">Sightings ({issue.sightings.length})</div>
         <div className="ann-sightings">
@@ -215,7 +229,7 @@ export function IssueDetail({ issueId, className }: { issueId: string; className
                 </div>
                 <div className="stl">
                   <span title={sightingLabel(s)}>{sightingLabel(s)}</span>
-                  {issue.sightings.length > 1 && (
+                  {issue.sightings.length > 1 && !readOnly && (
                     <button
                       type="button"
                       className="ann-btn ghost danger"
@@ -235,7 +249,7 @@ export function IssueDetail({ issueId, className }: { issueId: string; className
           })}
         </div>
 
-        {others.length > 0 && (
+        {others.length > 0 && !readOnly && (
           <div className="ann-field">
             <span>Same defect</span>
             <div style={{ display: 'flex', gap: 4 }}>
@@ -282,15 +296,17 @@ export function IssueDetail({ issueId, className }: { issueId: string; className
             </ol>
           </>
         )}
-        <div>
-          <button
-            type="button"
-            className="ann-btn ghost danger"
-            onClick={() => issueEditor.remove(issue.id)}
-          >
-            Delete issue
-          </button>
-        </div>
+        {!readOnly && (
+          <div>
+            <button
+              type="button"
+              className="ann-btn ghost danger"
+              onClick={() => issueEditor.remove(issue.id)}
+            >
+              Delete issue
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

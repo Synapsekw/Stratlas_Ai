@@ -27,9 +27,18 @@ const CHANNELS = {
   'ai:saveConversation': true,
   'dialog:openFolder': true,
   'dialog:saveFile': true,
+  'dialog:openFile': true,
+  'app:takeOpenPath': true,
+  'package:plan': true,
+  'package:export': true,
+  'package:cancel': true,
 } as const satisfies Record<IpcChannel, true>;
 
-const EVENTS = { 'ai:event': true } as const satisfies Record<IpcEventName, true>;
+const EVENTS = {
+  'ai:event': true,
+  'package:progress': true,
+  'app:openPath': true,
+} as const satisfies Record<IpcEventName, true>;
 
 const known = <K extends string>(table: Record<K, true>, key: string): key is K =>
   Object.prototype.hasOwnProperty.call(table, key);

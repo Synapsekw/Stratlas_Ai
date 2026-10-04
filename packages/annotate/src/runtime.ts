@@ -52,6 +52,23 @@ export function rememberImageSize(layerId: string, photoId: string | null, size:
 
 export const issueSaver = createIssueSaver({ write: ipcWriteIssues, delayMs: 600 });
 
+/** Read-only while the open project is a customer package (player mode): no tools, no edits. */
+const readOnlyStore = createStore<{ readOnly: boolean }>()(() => ({ readOnly: false }));
+
+/** The shell switches this on when a read-only package opens and off when it closes. */
+export function setAnnotateReadOnly(on: boolean): void {
+  readOnlyStore.setState({ readOnly: on });
+  if (on) annotateUi.setState({ pending: null, meshTool: null, attachToSelected: false });
+}
+
+export function isAnnotateReadOnly(): boolean {
+  return readOnlyStore.getState().readOnly;
+}
+
+export function useAnnotateReadOnly(): boolean {
+  return useStore(readOnlyStore, (s) => s.readOnly);
+}
+
 let author = 'user';
 /** Name written into new issues and the audit trail (the shell sets it from Settings). */
 export function setAnnotationAuthor(name: string): void {
@@ -62,6 +79,7 @@ export const issueEditor: IssueEditor = createIssueEditor({
   store: workspace,
   saver: issueSaver,
   author: () => author,
+  readOnly: isAnnotateReadOnly,
   derive: createDeriver({
     layers: () => workspace.getState().project?.manifest.layers ?? [],
     scene: () => getActiveScene(),
@@ -129,6 +147,7 @@ export function useAnnotateUi<T>(selector: (s: AnnotateUiState) => T): T {
  * class and severity picker for a new issue.
  */
 export function beginSighting(sighting: Sighting, at?: { x: number; y: number }): void {
+  if (isAnnotateReadOnly()) return;
   const sel = workspace.getState().selection;
   if (annotateUi.getState().attachToSelected && sel?.kind === 'issue') {
     issueEditor.addSighting(sel.id, sighting);

@@ -156,3 +156,31 @@ describe('IssueEditor', () => {
     expect(editor.state.canUndo).toBe(false);
   });
 });
+
+describe('IssueEditor in a read-only package', () => {
+  it('refuses every change, never saves and keeps undo empty', () => {
+    const store = createWorkspace();
+    const existing = makeIssue({ id: 'a', code: 'D01' });
+    store.getState().openProject({ id: 'hcl', root: 'x', manifest }, [existing]);
+    const { saver, calls } = fakeSaver();
+    let readOnly = true;
+    const editor = createIssueEditor({ store, saver, clock: () => NOW, readOnly: () => readOnly });
+    const results = [
+      editor.create({ sighting: photoSighting, classId: 'crack', severity: 4 }),
+      editor.update('a', { title: 'x' }),
+      editor.setStatus('a', 'approved'),
+      editor.addSighting('a', meshSighting),
+      editor.removeSighting('a', 0),
+      editor.remove('a'),
+    ];
+    for (const r of results) {
+      expect(r.ok).toBe(false);
+      expect(!r.ok && r.error).toMatch(/read-only/i);
+    }
+    expect(store.getState().issues).toEqual([existing]);
+    expect(calls).toEqual([]);
+    expect(editor.state.canUndo).toBe(false);
+    readOnly = false;
+    expect(editor.update('a', { title: 'x' }).ok).toBe(true);
+  });
+});

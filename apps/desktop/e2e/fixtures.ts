@@ -208,10 +208,12 @@ export class NetworkGuard {
 export async function launchApp(
   dataRoot: DataRoot,
   env: Record<string, string> = {},
+  /** Arguments after the app entry, e.g. a double-clicked `.aio` path. */
+  extraArgs: string[] = [],
 ): Promise<ElectronApplication> {
   return electron.launch({
     // `-r` preloads the guard before the app's main module (Playwright drops NODE_OPTIONS).
-    args: ['-r', GUARD, MAIN_ENTRY],
+    args: ['-r', GUARD, MAIN_ENTRY, ...extraArgs],
     env: {
       ...(process.env as Record<string, string>),
       STRATLAS_DATA: dataRoot.root,

@@ -5,4 +5,5 @@ export * from './annotation';
 export * from './manifest';
 export * from './agent';
 export * from './conversation';
+export * from './package';
 export * from './ipc';

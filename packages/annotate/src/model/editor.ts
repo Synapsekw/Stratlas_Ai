@@ -68,13 +68,18 @@ export interface IssueEditorOptions {
   clock?: () => string;
   newId?: () => string;
   derive?: DeriveSightings;
+  /** True while the open project is a read-only package: every change is refused, nothing is saved. */
+  readOnly?: () => boolean;
 }
+
+export const READ_ONLY_ERROR = 'This project is a read-only package. Issues cannot be changed.';
 
 export function createIssueEditor(opts: IssueEditorOptions): IssueEditor {
   const { store, saver } = opts;
   const author = opts.author ?? (() => 'user');
   const clock = opts.clock ?? (() => new Date().toISOString());
   const makeId = opts.newId ?? randomId;
+  const readOnly = opts.readOnly ?? (() => false);
   const history = new History();
   const auditLog = new Map<string, AuditEntry[]>();
   const listeners = new Set<() => void>();
@@ -137,6 +142,7 @@ export function createIssueEditor(opts: IssueEditorOptions): IssueEditor {
   }
 
   function commit(label: string, after: Record<string, Issue | null>): Result<null> {
+    if (readOnly()) return fail(READ_ONLY_ERROR);
     const ctx = context();
     for (const issue of Object.values(after)) {
       if (!issue) continue;
@@ -167,6 +173,7 @@ export function createIssueEditor(opts: IssueEditorOptions): IssueEditor {
     label: (i: Issue) => string,
     fn: (i: Issue, now: string) => Result<Issue>,
   ): Result<Issue> {
+    if (readOnly()) return fail(READ_ONLY_ERROR);
     const cur = get(id);
     if (!cur) return fail(`Issue "${id}" does not exist`);
     const r = fn(cur, clock());
@@ -181,6 +188,7 @@ export function createIssueEditor(opts: IssueEditorOptions): IssueEditor {
     },
     context,
     create(input) {
+      if (readOnly()) return fail(READ_ONLY_ERROR);
       const r = createIssue(
         store.getState().issues,
         { ...input, id: input.id ?? makeId(), author: input.author ?? author(), now: clock() },
@@ -227,6 +235,7 @@ export function createIssueEditor(opts: IssueEditorOptions): IssueEditor {
       );
     },
     moveSighting(fromId, index, toId) {
+      if (readOnly()) return fail(READ_ONLY_ERROR);
       const from = get(fromId);
       const to = get(toId);
       if (!from || !to) return fail('Both issues must exist to link a sighting');
@@ -239,6 +248,7 @@ export function createIssueEditor(opts: IssueEditorOptions): IssueEditor {
       return c.ok ? ok(r.value.to) : err(c.error);
     },
     merge(targetId, sourceId) {
+      if (readOnly()) return fail(READ_ONLY_ERROR);
       const target = get(targetId);
       const source = get(sourceId);
       if (!target || !source) return fail('Both issues must exist to merge');
@@ -251,11 +261,13 @@ export function createIssueEditor(opts: IssueEditorOptions): IssueEditor {
       return c.ok ? ok(merged) : err(c.error);
     },
     remove(id) {
+      if (readOnly()) return fail(READ_ONLY_ERROR);
       const cur = get(id);
       if (!cur) return fail(`Issue "${id}" does not exist`);
       return commit(`Delete ${cur.code}`, { [id]: null });
     },
     undo() {
+      if (readOnly()) return false;
       const c = history.undo();
       if (!c) return false;
       write(c);
@@ -263,6 +275,7 @@ export function createIssueEditor(opts: IssueEditorOptions): IssueEditor {
       return true;
     },
     redo() {
+      if (readOnly()) return false;
       const c = history.redo();
       if (!c) return false;
       write(c);

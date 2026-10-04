@@ -13,6 +13,7 @@ export {
   type EditorState,
   type IssueEditor,
   type IssueEditorOptions,
+  READ_ONLY_ERROR,
 } from './model/editor';
 export {
   createIssueSaver,
@@ -71,10 +72,13 @@ export {
   getFlightPoses,
   issueEditor,
   issueSaver,
+  isAnnotateReadOnly,
   loadFlightPoses,
   rememberImageSize,
+  setAnnotateReadOnly,
   setAnnotationAuthor,
   setFlightPoses,
+  useAnnotateReadOnly,
   useAnnotateUi,
   useIssueEditorState,
   type AnnotateUiState,

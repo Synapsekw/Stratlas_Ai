@@ -87,7 +87,16 @@ function ProjectCard({
     >
       <div className="pc-media">
         <Thumb entry={entry} />
-        <span className="pc-kind">{KIND_LABEL[entry.kind]}</span>
+        <span className="pc-kind">
+          {entry.package ? (
+            <>
+              <Icon name={entry.package.encrypted ? 'key' : 'lock'} size={12} />
+              {entry.package.encrypted ? 'Encrypted package' : 'Package'}
+            </>
+          ) : (
+            KIND_LABEL[entry.kind]
+          )}
+        </span>
         {current && <span className="pc-open">Open</span>}
         {opening && (
           <span className="pc-busy">
@@ -323,6 +332,15 @@ export function ProjectsScreen() {
                 </div>
               </>
             )}
+            <button
+              type="button"
+              className="btn"
+              onClick={() => void shell.getState().openPackageFile()}
+              data-testid="open-package"
+            >
+              <Icon name="lock" size={14} />
+              Open package
+            </button>
             <button
               type="button"
               className="btn primary"

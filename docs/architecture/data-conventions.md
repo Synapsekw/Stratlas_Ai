@@ -71,3 +71,13 @@ A video layer's `flight.src` points to a JSON file:
 - Small real fixtures: `E:\Dev\AIO Software\docs\design\assets\` (git-ignored, see its `MANIFEST.md`): HCl tank GLB, 280k-point cloud, two clips with pose JSON (in tank frame), photos; Al-Zour plant GLB (Meshopt), ortho with placement, two clips with paths, panoramas.
 - Full sources being staged: `E:\Stratlas Data\sources\{hcl,alzour}\` with `INVENTORY.md`.
 - Native packages produced by S10: `E:\Stratlas Data\projects\{hcl,alzour}\`.
+
+## 8. Single-file packages (`.aio`)
+
+A project folder (section 2) delivered as one file (BLD-9) and opened in place (APP-5). Written and read by `@aio/project/package` (format details in `packages/project/README.md`).
+
+- ZIP with ZIP64 records, **store mode only**; members are the folder's relative paths. Optional WinZip AES-256 (AE-2) for every member. No unpacking: `aio://project/<id>/<path>` serves members by offset with ranges, exactly as for a folder.
+- `aio-package.json` (`PackageHeader`, `aio.package/1`) first, then `manifest.json` with the excluded layers removed. A package without a header is treated as a read-only customer package.
+- A package is **never written**: `project:writeIssues` refuses it, the renderer switches annotation to read-only, and no file is added next to it. Cloud AI runs only when Settings allow it **and** the header says `aiPolicy: 'allow'`. `dialog:saveFile` accepts only the export kinds in the header (`exportKindForFile`).
+- Customer packages (`readOnly: true`) open on the welcome screen (player mode). Packages carry no map packs; basemap layers fall back to the project rasters.
+- The OS association (`fileAssociations` in `apps/desktop/electron-builder.yml`) and the single-instance hand-off pass a double-clicked `.aio` to the running app; opened packages join the library (`library.json` keeps the file path).

@@ -576,6 +576,9 @@ export function VideoTools({ stage, map }: { stage: EngineStage | null; map: boo
 
 export function AnnotateToggle() {
   const on = useShell((s) => s.annotating);
+  // Packages are never annotated (player mode).
+  const pkg = useShell((s) => s.pkg);
+  if (pkg) return null;
   return (
     <Tool
       icon="anno"

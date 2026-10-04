@@ -2,6 +2,7 @@ import type { IssueStatus } from '@aio/schema';
 import { Icon, SevChip } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { FocusZone } from '../FocusZone';
+import { shell, useShell } from '../shell';
 import { NoProject } from './NoProject';
 
 const STATUSES: IssueStatus[] = ['draft', 'reviewed', 'approved', 'closed'];
@@ -9,6 +10,7 @@ const STATUSES: IssueStatus[] = ['draft', 'reviewed', 'approved', 'closed'];
 export function ReportsScreen() {
   const project = useWorkspace((s) => s.project);
   const issues = useWorkspace((s) => s.issues);
+  const pkg = useShell((s) => s.pkg);
   if (!project) return <NoProject view="Reports" />;
   const models = project.manifest.severityModels;
 
@@ -21,6 +23,20 @@ export function ReportsScreen() {
             What a report of {project.manifest.name} would contain today. Report drafting and PDF
             export are not in this build yet.
           </p>
+          {!pkg && (
+            <button
+              type="button"
+              className="btn"
+              style={{ marginTop: 12 }}
+              onClick={() => {
+                shell.getState().setExportFor(project.id);
+              }}
+              data-testid="export-package"
+            >
+              <Icon name="download" size={14} />
+              Export package
+            </button>
+          )}
         </header>
         <div className="rep-grid">
           <section className="sblock">

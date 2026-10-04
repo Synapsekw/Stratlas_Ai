@@ -1,7 +1,7 @@
 import { getActiveScene, onActiveScene } from '@aio/engine';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { annotateUi, beginSighting, useAnnotateUi } from '../runtime';
+import { annotateUi, beginSighting, useAnnotateReadOnly, useAnnotateUi } from '../runtime';
 import { installIssueOverlay, startSceneTool, type SceneTool } from '../tools/scene';
 import { SightingPicker } from './SightingPicker';
 import { AnnotateStyles } from './styles';
@@ -43,6 +43,7 @@ export function AnnotationToolbar({ className }: { className?: string }) {
   const scene = useSyncExternalStore(onActiveScene, getActiveScene, getActiveScene);
   const attach = useAnnotateUi((s) => s.attachToSelected);
   const selection = useWorkspace((s) => s.selection);
+  const readOnly = useAnnotateReadOnly();
 
   useEffect(() => {
     if (!scene || !tool) return;
@@ -51,6 +52,7 @@ export function AnnotationToolbar({ className }: { className?: string }) {
     });
   }, [scene, tool]);
 
+  if (readOnly) return null;
   return (
     <div
       className={`ann-toolbar ${className ?? ''}`}
