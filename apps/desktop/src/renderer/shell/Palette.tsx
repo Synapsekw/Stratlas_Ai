@@ -2,6 +2,7 @@ import type { Layer } from '@aio/schema';
 import { CommandPalette, type IconName, type PaletteCommand } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useMemo } from 'react';
+import { legacyLayers } from '../legacy';
 import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
 import { selectClip } from './Sidebar';
@@ -19,7 +20,7 @@ const LAYER_ICON: Record<Layer['kind'], IconName> = {
 
 const LAYER_KIND: Record<Layer['kind'], string> = {
   mesh: 'Model',
-  legacy: 'Legacy viewer',
+  legacy: 'Original review',
   pointcloud: 'Point cloud',
   basemap: 'Basemap',
   raster: 'Raster',
@@ -72,6 +73,18 @@ export function Palette() {
       'agent',
       () => void s.updateSettings({ cloudAi: !cloudAi }),
     );
+    if (legacyLayers(project?.manifest).length > 0) {
+      list.push({
+        id: 'go:review',
+        title: 'Open the original review',
+        group: 'Navigate',
+        icon: 'history',
+        keywords: ['legacy', 'viewer', 'original', 'snapshot'],
+        run: () => {
+          s.go('review');
+        },
+      });
+    }
     if (project) {
       const scene = (fn: () => void) => () => {
         s.go('scene');
@@ -134,6 +147,20 @@ export function Palette() {
       });
     }
     for (const l of project?.manifest.layers ?? []) {
+      if (l.kind === 'legacy') {
+        list.push({
+          id: `layer:${l.id}`,
+          title: l.name,
+          group: 'Layers',
+          icon: 'history',
+          keywords: [LAYER_KIND[l.kind]],
+          hint: 'Original review',
+          run: () => {
+            s.go('review');
+          },
+        });
+        continue;
+      }
       list.push({
         id: `layer:${l.id}`,
         title: l.name,

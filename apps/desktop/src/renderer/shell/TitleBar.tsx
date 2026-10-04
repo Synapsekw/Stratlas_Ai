@@ -8,6 +8,7 @@ import type { Screen } from '../store';
 const VIEW_LABEL: Record<Screen, string> = {
   projects: 'Projects',
   scene: 'Scene',
+  review: 'Original review',
   issues: 'Issues',
   media: 'Media',
   reports: 'Reports',

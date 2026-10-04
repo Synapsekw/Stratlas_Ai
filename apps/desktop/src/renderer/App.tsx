@@ -9,6 +9,7 @@ import { IssuesScreen } from './screens/Issues';
 import { MediaScreen } from './screens/Media';
 import { ProjectsScreen } from './screens/Projects';
 import { ReportsScreen } from './screens/Reports';
+import { ReviewScreen } from './screens/Review';
 import { SettingsScreen } from './screens/Settings';
 import { initAuthor } from './author';
 import { spaceIsPlayPause } from './keys';
@@ -88,6 +89,8 @@ function Screen() {
       return <ProjectsScreen />;
     case 'scene':
       return <WorkspaceScreen />;
+    case 'review':
+      return <ReviewScreen />;
     case 'issues':
       return <IssuesScreen />;
     case 'media':

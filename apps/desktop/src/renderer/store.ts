@@ -5,8 +5,9 @@ import type { Workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { createBridge, type Bridge } from './bridge';
+import { landingScreen } from './legacy';
 
-export type Screen = 'projects' | 'scene' | 'issues' | 'media' | 'reports' | 'settings';
+export type Screen = 'projects' | 'scene' | 'review' | 'issues' | 'media' | 'reports' | 'settings';
 export type StageMode = '3d' | 'map' | 'split';
 
 /** Used until main answers settings:get. Offline first: cloud AI is off. */
@@ -128,7 +129,7 @@ export function createShellStore(bridge: Bridge, workspace: StoreApi<Workspace>)
       }
       const { id, root, manifest, issues } = r.value;
       workspace.getState().openProject({ id, root, manifest }, issues);
-      set({ opening: null, screen: 'scene' });
+      set({ opening: null, screen: landingScreen(manifest) });
     },
 
     closeProject: () => {

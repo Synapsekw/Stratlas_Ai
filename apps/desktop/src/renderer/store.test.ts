@@ -108,6 +108,34 @@ describe('shell store', () => {
     expect(s.getState().opening).toBeNull();
   });
 
+  it('opens a project that only has an original review straight into the review', async () => {
+    const legacyOnly: ProjectManifest = {
+      ...manifest,
+      layers: [
+        {
+          kind: 'legacy',
+          id: 'review',
+          name: 'Masafi review',
+          viewer: 'volumetric',
+          entry: { path: 'legacy/Masafi Stockpile Review.html' },
+          visible: true,
+        },
+      ],
+    };
+    const { bridge } = fakeBridge({
+      'project:open': () => ({
+        ok: true,
+        id: 'masafi',
+        root: 'E:\\m',
+        manifest: legacyOnly,
+        issues: [],
+      }),
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    await s.getState().openProject('E:\\m');
+    expect(s.getState().screen).toBe('review');
+  });
+
   it('reports a project that fails to open and stays put', async () => {
     const { bridge } = fakeBridge({
       'project:open': () => ({ ok: false, error: 'Project manifest is invalid' }),
