@@ -11,7 +11,8 @@ import { createKeyVault } from './keys';
 import { addToLibrary, createLibraryStore, listLibrary, listPacks } from './library';
 import { buildMenu } from './menu';
 import { popupAction } from './popup';
-import { openProject, ProjectRegistry, writeIssues } from './project';
+import { createPackageJobs, createPlanCache, packagePathFromArgv, ProjectPolicy } from './packages';
+import { openProject, ProjectRegistry, writeProjectIssues } from './project';
 import { createAioHandler } from './protocol/handler';
 import { cspForUrl } from './protocol/legacy';
 import { saveFile } from './saveFile';
@@ -63,6 +64,9 @@ const settings = createSettingsStore(
   ),
 );
 const library = createLibraryStore(join(app.getPath('userData'), 'library.json'));
+const policy = new ProjectPolicy(registry);
+// A `.aio` the app was started with (double-click); the renderer takes it once at start.
+let pendingOpenPath: string | null = packagePathFromArgv(process.argv);
 // An isolated profile (tests, demos) gets its own vault service, so it never reads or writes the
 // person's real API keys.
 const keyService = process.env.STRATLAS_USER_DATA ? `${brand.appId}.isolated` : brand.appId;
@@ -85,7 +89,8 @@ function emitAiEvent(event: IpcEvent<'ai:event'>): void {
 
 const agent = createAgentRuntime({
   getKey: (provider) => keys.getKey(provider),
-  cloudAllowed: () => settings.current().cloudAi,
+  // Cloud AI also needs the open package's permission (AI-2, default forbid).
+  cloudAllowed: () => policy.cloudAllowed(settings.current().cloudAi),
   routes: () => settings.current().routes,
   emit: emitAiEvent,
 });
@@ -122,13 +127,48 @@ function registerIpc(): void {
   });
   handle('library:add', ({ path }) => addToLibrary(path, library, registry));
 
-  handle('project:open', ({ path }) => openProject(path, registry));
-  handle('project:writeIssues', ({ projectId, issues }) => {
-    const root = registry.root(projectId);
-    if (root === undefined) {
-      return { ok: false, error: `Project "${projectId}" is not open. Open it, then save again.` };
+  handle('project:open', async ({ path, passphrase }) => {
+    const r = await openProject(path, registry, passphrase);
+    if (r.ok) {
+      policy.opened(r.id);
+      // Packages opened by double-click or File > Open stay in the library.
+      if (r.package) await library.add(r.package.file).catch(() => undefined);
     }
-    return writeIssues(root, issues);
+    return r;
+  });
+  handle('project:writeIssues', ({ projectId, issues }) =>
+    writeProjectIssues(registry, projectId, issues),
+  );
+
+  const packageJobs = createPackageJobs({
+    registry,
+    cache: createPlanCache(),
+    createdBy: `${brand.productName} ${app.getVersion()}`,
+    progress: (event) => {
+      const parsed = ipcEvents['package:progress'].safeParse(event);
+      if (parsed.success) targetWindow()?.webContents.send('package:progress', parsed.data);
+    },
+    chooseTarget: async (defaultName) => {
+      const win = targetWindow();
+      const options = {
+        title: 'Export project package',
+        defaultPath: join(app.getPath('documents'), defaultName),
+        filters: [{ name: 'Project package', extensions: ['aio'] }],
+      };
+      const r = win
+        ? await dialog.showSaveDialog(win, options)
+        : await dialog.showSaveDialog(options);
+      return r.canceled || !r.filePath ? null : r.filePath;
+    },
+  });
+  handle('package:plan', (req) => packageJobs.plan(req));
+  handle('package:export', (req) => packageJobs.export(req));
+  handle('package:cancel', (req) => packageJobs.cancel(req));
+
+  handle('app:takeOpenPath', () => {
+    const path = pendingOpenPath;
+    pendingOpenPath = null;
+    return { path };
   });
 
   handle('packs:list', async () => listPacks(join((await settings.get()).dataRoot, 'packs')));
@@ -154,8 +194,24 @@ function registerIpc(): void {
     return { path: r.canceled ? null : (r.filePaths[0] ?? null) };
   });
 
-  handle('dialog:saveFile', (req) =>
-    saveFile(req, {
+  handle('dialog:openFile', async ({ title, filters }) => {
+    const win = targetWindow();
+    const options = {
+      properties: ['openFile' as const],
+      ...(title ? { title } : {}),
+      ...(filters ? { filters } : {}),
+    };
+    const r = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options);
+    return { path: r.canceled ? null : (r.filePaths[0] ?? null) };
+  });
+
+  handle('dialog:saveFile', (req) => {
+    // Export limits of an open package (APP-5).
+    const refused = policy.checkExport(req.defaultName);
+    if (refused) return { path: null, error: refused };
+    return saveFile(req, {
       downloadsDir: app.getPath('downloads'),
       choose: async (defaultPath) => {
         const win = targetWindow();
@@ -165,9 +221,29 @@ function registerIpc(): void {
           : await dialog.showSaveDialog(options);
         return r.canceled || !r.filePath ? null : r.filePath;
       },
-    }),
-  );
+    });
+  });
 }
+
+/** Hand a package path to the renderer (second launch, macOS open-file). */
+function openPathInApp(path: string): void {
+  const win = mainWindow;
+  if (!win) {
+    pendingOpenPath = path;
+    return;
+  }
+  if (win.isMinimized()) win.restore();
+  win.focus();
+  const parsed = ipcEvents['app:openPath'].safeParse({ path });
+  if (parsed.success) win.webContents.send('app:openPath', parsed.data);
+}
+
+// macOS delivers double-clicked documents as an event, before or after ready.
+app.on('open-file', (e, path) => {
+  e.preventDefault();
+  if (app.isReady()) openPathInApp(path);
+  else pendingOpenPath = path;
+});
 
 /**
  * A plain window for a project file a legacy viewer opens in a new tab (its PDF report, a
@@ -278,7 +354,12 @@ app.on('web-contents-created', (_e, contents) => {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_e, argv) => {
+    const path = packagePathFromArgv(argv);
+    if (path) {
+      openPathInApp(path);
+      return;
+    }
     const win = mainWindow;
     if (!win) return;
     if (win.isMinimized()) win.restore();
@@ -294,6 +375,7 @@ if (!app.requestSingleInstanceLock()) {
       'aio',
       createAioHandler({
         projectRoot: (id) => registry.root(id),
+        projectPackage: (id) => registry.package(id)?.archive,
         packsDir: () => join(settings.current().dataRoot, 'packs'),
       }),
     );

@@ -30,6 +30,17 @@ electronFuses:
   enableEmbeddedAsarIntegrityValidation: true
   enableCookieEncryption: true
 
+# Double-click a `.aio` project package to open it read-only in the app (APP-5, BLD-9). The
+# path arrives in argv (Windows, Linux) or as `open-file` (macOS); a running instance gets it
+# through the single-instance hand-off (src/main/index.ts).
+fileAssociations:
+  - ext: aio
+    name: Project package
+    description: Project package
+    role: Viewer
+    mimeType: application/vnd.aio-package+zip
+    icon: icon
+
 # Windows: offline NSIS installer and portable exe; `dist:win:store` builds the MSIX for the Store.
 win:
   target:

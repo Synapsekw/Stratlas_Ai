@@ -1,5 +1,12 @@
 import { detectPackageKind, type PackageKind } from '@aio/project';
-import { MapPackInfo, type IpcResponse, type LibraryEntry } from '@aio/schema';
+import { openPackage, openZip } from '@aio/project/package';
+import {
+  MapPackInfo,
+  PACKAGE_EXTENSION,
+  type IpcResponse,
+  type LibraryEntry,
+  type ProjectManifest,
+} from '@aio/schema';
 import { readdir, stat } from 'node:fs/promises';
 import { basename, join, relative, resolve } from 'node:path';
 import { z } from 'zod';
@@ -44,6 +51,16 @@ async function isDir(p: string): Promise<boolean> {
     return false;
   }
 }
+
+async function isFile(p: string): Promise<boolean> {
+  try {
+    return (await stat(p)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+const isPackageFile = (p: string) => p.toLowerCase().endsWith(PACKAGE_EXTENSION);
 
 async function exists(p: string): Promise<boolean> {
   try {
@@ -123,7 +140,68 @@ export async function detectFolder(dir: string): Promise<PackageKind | null> {
 
 type Built = { ok: true; entry: LibraryEntry } | { ok: false; error: string };
 
+/** Summary fields shared by folders and packages. */
+function summarise(m: ProjectManifest, entry: LibraryEntry): LibraryEntry {
+  const layerCounts: Record<string, number> = {};
+  for (const l of m.layers) layerCounts[l.kind] = (layerCounts[l.kind] ?? 0) + 1;
+  const captureDate = m.captures
+    .map((c) => c.date)
+    .sort()
+    .at(-1);
+  const out: LibraryEntry = { ...entry, name: m.name, layerCounts };
+  if (m.customer !== undefined) out.customer = m.customer;
+  if (m.site !== undefined) out.site = m.site;
+  if (captureDate !== undefined) out.captureDate = captureDate;
+  return out;
+}
+
+/**
+ * A `.aio` package. Plain packages are opened (directory and manifest only) and registered so
+ * their thumbnail streams from inside; encrypted ones show by file name until unlocked.
+ */
+async function buildPackageEntry(file: string, registry: ProjectRegistry): Promise<Built> {
+  const fallbackName = basename(file).slice(0, -PACKAGE_EXTENSION.length);
+  let encrypted: boolean;
+  let sizeBytes: number;
+  try {
+    const zip = await openZip(file);
+    encrypted = zip.encrypted;
+    sizeBytes = zip.sizeBytes;
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+  if (encrypted) {
+    const id = registry.register(file);
+    return {
+      ok: true,
+      entry: {
+        id,
+        name: fallbackName,
+        path: file,
+        kind: 'native',
+        sizeBytes,
+        package: { encrypted: true, readOnly: true },
+      },
+    };
+  }
+  const r = await openPackage(file);
+  if (!r.ok) return r;
+  const { archive, header, manifest } = r.value;
+  const id = registry.registerPackage({ file, archive, header });
+  const entry = summarise(manifest, {
+    id,
+    name: fallbackName,
+    path: file,
+    kind: 'native',
+    sizeBytes,
+    package: { encrypted: false, readOnly: header.readOnly },
+  });
+  if (archive.entries.has('thumbnail.jpg')) entry.thumbnail = `aio://project/${id}/thumbnail.jpg`;
+  return { ok: true, entry };
+}
+
 async function buildEntry(dir: string, registry: ProjectRegistry): Promise<Built> {
+  if (isPackageFile(dir) && (await isFile(dir))) return buildPackageEntry(dir, registry);
   const kind = await detectFolder(dir);
   if (kind === null) {
     return {
@@ -140,32 +218,21 @@ async function buildEntry(dir: string, registry: ProjectRegistry): Promise<Built
   }
   const manifest = await readManifest(dir);
   if (!manifest.ok) return manifest;
-  const m = manifest.value;
   const id = registry.register(dir);
-  const layerCounts: Record<string, number> = {};
-  for (const l of m.layers) layerCounts[l.kind] = (layerCounts[l.kind] ?? 0) + 1;
-  const captureDate = m.captures
-    .map((c) => c.date)
-    .sort()
-    .at(-1);
-  const entry: LibraryEntry = {
+  const entry = summarise(manifest.value, {
     id,
-    name: m.name,
+    name: manifest.value.name,
     path: dir,
     kind: 'native',
     sizeBytes: await folderSize(dir),
-    layerCounts,
-  };
-  if (m.customer !== undefined) entry.customer = m.customer;
-  if (m.site !== undefined) entry.site = m.site;
-  if (captureDate !== undefined) entry.captureDate = captureDate;
+  });
   if (await exists(join(dir, 'thumbnail.jpg'))) {
     entry.thumbnail = `aio://project/${id}/thumbnail.jpg`;
   }
   return { ok: true, entry };
 }
 
-/** Projects under `<dataRoot>/projects/*` plus folders the person added. */
+/** Projects and `.aio` packages under `<dataRoot>/projects/*` plus folders and packages the person added. */
 export async function listLibrary(o: {
   dataRoot: string;
   extraPaths: string[];
@@ -177,11 +244,14 @@ export async function listLibrary(o: {
     for (const e of await readdir(projectsDir, { withFileTypes: true })) {
       const dir = join(projectsDir, e.name);
       if (e.isDirectory() && (await exists(join(dir, 'manifest.json')))) candidates.push(dir);
+      else if (e.isFile() && isPackageFile(e.name)) candidates.push(dir);
     }
   } catch {
     // No projects folder yet: only user-added folders.
   }
-  for (const p of o.extraPaths) if (await isDir(p)) candidates.push(resolve(p));
+  for (const p of o.extraPaths) {
+    if ((await isDir(p)) || (isPackageFile(p) && (await isFile(p)))) candidates.push(resolve(p));
+  }
 
   const seen = new Set<string>();
   const entries: LibraryEntry[] = [];
@@ -202,8 +272,11 @@ export async function addToLibrary(
   registry: ProjectRegistry,
 ): Promise<IpcResponse<'library:add'>> {
   const dir = resolve(path);
-  if (!(await isDir(dir))) {
-    return { ok: false, error: `Folder not found: ${dir}. Pick an existing project folder.` };
+  if (!(await isDir(dir)) && !(isPackageFile(dir) && (await isFile(dir)))) {
+    return {
+      ok: false,
+      error: `Not found: ${dir}. Pick an existing project folder or ${PACKAGE_EXTENSION} package.`,
+    };
   }
   const r = await buildEntry(dir, registry);
   if (!r.ok) return r;
