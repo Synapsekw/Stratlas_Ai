@@ -14,6 +14,7 @@ export const PipelineName = z.enum([
   'aik.records',
   'volumetric.process',
   'pointcloud.to_copc',
+  'road.build',
   'system.selftest',
 ]);
 export type PipelineName = z.infer<typeof PipelineName>;
@@ -43,6 +44,12 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
     name: 'pointcloud.to_copc',
     title: 'Point cloud to COPC',
     description: 'LAS, LAZ or E57 to a COPC file in the project CRS, added as a layer (PDAL).',
+  },
+  {
+    name: 'road.build',
+    title: 'Road survey',
+    description:
+      'Ortho tiles, chainage from the centreline, defect polygons, ASTM D6433 sample units, deducts and PCI.',
   },
   {
     name: 'system.selftest',
@@ -123,6 +130,37 @@ export const PointcloudToCopcParams = z
   })
   .strict();
 
+const Epsg = z.number().int().min(1024).max(999999);
+
+/** `road.build` (python `aio_pipelines/road/pipeline.py`): input files are read only. */
+export const RoadBuildParams = z
+  .object({
+    /** GeoJSON (drawn in the app or from GIS), KML, DXF or the kit's centreline_utm.json. */
+    centreline: z.string().min(1),
+    /** CRS of a DXF centreline (default: the project CRS). */
+    centrelineEpsg: Epsg.optional(),
+    /** Orthomosaic GeoTIFF, or several blocks drawn in order. */
+    ortho: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]).optional(),
+    /** Finest ortho pixel (cm); default the GeoTIFF's own. */
+    orthoCm: z.number().min(0.5).max(100).optional(),
+    /** Defect polygons: GeoJSON, a shapefile (.shp) or the road review's defects.js. */
+    defects: z.string().min(1).optional(),
+    defectsEpsg: Epsg.optional(),
+    /** Pavement footprint raster (pixels above 0); default the centreline buffered by the lanes. */
+    pavement: z.string().min(1).optional(),
+    /** Sample units along the road (default) or on a square grid as delivered for the Ring Road. */
+    units: z.enum(['chainage', 'grid']).optional(),
+    /** Unit length (chainage) or cell size (grid), metres. */
+    unitLength: z.number().min(5).max(200).optional(),
+    lanes: z.number().int().min(1).max(12).optional(),
+    laneWidth: z.number().min(2).max(6).optional(),
+    /** Grid origin (E, N) in the project CRS, without a pavement raster. */
+    gridOrigin: z.tuple([z.number(), z.number()]).optional(),
+    closeups: z.boolean().optional(),
+    name: z.string().min(1).optional(),
+  })
+  .strict();
+
 export const SelfTestParams = z.object({ seconds: z.number().min(0).max(600).optional() }).strict();
 
 const PARAMS = {
@@ -131,6 +169,7 @@ const PARAMS = {
   'aik.records': AikRecordsParams,
   'volumetric.process': VolumetricProcessParams,
   'pointcloud.to_copc': PointcloudToCopcParams,
+  'road.build': RoadBuildParams,
   'system.selftest': SelfTestParams,
 } as const satisfies Record<PipelineName, z.ZodType>;
 

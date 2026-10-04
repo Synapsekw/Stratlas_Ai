@@ -47,9 +47,29 @@ describe('pipeline params', () => {
       'aik.records',
       'volumetric.process',
       'pointcloud.to_copc',
+      'road.build',
       'system.selftest',
     ]);
     for (const p of PIPELINES) expect(p.title.length).toBeGreaterThan(3);
+  });
+
+  it('takes the road builder inputs: one ortho or several blocks, units along the road or a grid', () => {
+    const p = pipelineParams('road.build');
+    expect(p.safeParse({ centreline: 'road/centreline-drawn.geojson' }).success).toBe(true);
+    expect(
+      p.safeParse({
+        centreline: 'C:/raw/cl.dxf',
+        centrelineEpsg: 32638,
+        ortho: ['C:/raw/b1.tif', 'C:/raw/b2.tif'],
+        defects: 'C:/raw/defects.shp',
+        units: 'grid',
+        unitLength: 15,
+        gridOrigin: [787313.5, 3254469.2],
+      }).success,
+    ).toBe(true);
+    expect(p.safeParse({}).success).toBe(false);
+    expect(p.safeParse({ centreline: 'x', units: 'hex' }).success).toBe(false);
+    expect(p.safeParse({ centreline: 'x', laneWidth: 12 }).success).toBe(false);
   });
 });
 
