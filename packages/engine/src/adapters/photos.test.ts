@@ -9,7 +9,9 @@ import {
   createPhotosAdapter,
   frustumDepth,
   imageHalfExtents,
+  needsPins,
   photoMatrix,
+  photoStations,
   posedPhotos,
 } from './photos';
 
@@ -78,6 +80,56 @@ describe('photo frustums', () => {
     ).toBe(20);
   });
 
+  it('sizes frustums to the spread of a site, not to bursts taken from one hover point', () => {
+    // Al-Zour: a few photos at a time from one hover point (5 cm apart), stations ~500 m apart.
+    const burst = (x: number, z: number): [number, number, number][] => [
+      [x, 150, z],
+      [x + 0.05, 150, z],
+      [x + 0.1, 150, z + 0.05],
+    ];
+    const site = [
+      ...burst(-450, -150),
+      ...burst(350, -140),
+      ...burst(-880, -310),
+      ...burst(880, 220),
+    ];
+    expect(frustumDepth(site)).toBeGreaterThan(10);
+    // a dense set inside one asset keeps its spacing-based size
+    const ring = Array.from({ length: 120 }, (_, i): [number, number, number] => {
+      const a = (i / 120) * Math.PI * 2;
+      return [5 * Math.cos(a), 3, 5 * Math.sin(a)];
+    });
+    expect(frustumDepth(ring)).toBeCloseTo(0.6 * 2 * 5 * Math.sin(Math.PI / 120), 3);
+  });
+
+  it('groups photos taken from one point into a station', () => {
+    const stations = photoStations(
+      [
+        { pos: [0, 100, 0] },
+        { pos: [0.05, 100, 0] },
+        { pos: [400, 30, 0] },
+        { pos: [0.1, 100.1, 0] },
+      ],
+      10,
+    );
+    expect(stations.map((s) => s.photos)).toEqual([[0, 1, 3], [2]]);
+    expect(stations[0]?.pos).toEqual([0, 100, 0]);
+  });
+
+  it('pins photos that are lost at site scale, not a dense set inside an asset', () => {
+    const far = photoStations(
+      [{ pos: [-450, 150, -150] }, { pos: [350, 30, -140] }, { pos: [-880, 120, -310] }],
+      15,
+    );
+    expect(needsPins(far, 15)).toBe(true);
+    const ring = Array.from({ length: 120 }, (_, i) => {
+      const a = (i / 120) * Math.PI * 2;
+      return { pos: [5 * Math.cos(a), 3, 5 * Math.sin(a)] as [number, number, number] };
+    });
+    const depth = frustumDepth(ring.map((r) => r.pos));
+    expect(needsPins(photoStations(ring, depth), depth)).toBe(false);
+  });
+
   it('widens the image with the lens and caps fisheyes', () => {
     const [hx, hy] = imageHalfExtents({ model: 'pinhole', hfovDeg: 90, aspect: 2 });
     expect(hx).toBeCloseTo(1);
@@ -118,5 +170,39 @@ describe('photo frustums', () => {
     expect(store.getState().selection).toBeNull();
     lh.dispose();
     expect(h.scene.getObjectByName('photos:photos')).toBeUndefined();
+  });
+
+  it('pins site-scale photos, including ones with a position only, and selects on a pin click', async () => {
+    const site: PhotosLayer = {
+      kind: 'photos',
+      id: 'site',
+      name: 'Drone photos',
+      visible: true,
+      items: [
+        { id: 'a1', src: { path: 'photos/a1.jpg' }, pos: [0, 2, 0], q: [0, 0, 0, 1] },
+        { id: 'a2', src: { path: 'photos/a2.jpg' }, pos: [0.05, 2, 0], q: [0, 0, 0, 1] },
+        { id: 'b', src: { path: 'photos/b.jpg' }, pos: [600, 120, -300], q: [0, 0, 0, 1] },
+        { id: 'c', src: { path: 'photos/c.jpg' }, pos: [-700, 90, 400] },
+        { id: 'nowhere', src: { path: 'photos/n.jpg' } },
+      ],
+    };
+    const store = createWorkspace();
+    const canvas = document.createElement('canvas');
+    canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 200 }) as DOMRect;
+    const h = handle(canvas);
+    h.camera.position.set(0, 2, 50);
+    h.camera.lookAt(0, 2, 0);
+    h.camera.updateMatrixWorld();
+    const lh = await createPhotosAdapter(store).create(site, { url: () => '', scene: h });
+    const group = h.scene.getObjectByName('photos:site');
+    const pins = group?.children.filter((o) => o.name.startsWith('photo-pin:')) ?? [];
+    // one pin per station: a1 and a2 share theirs; c has no orientation but still has a place
+    expect(pins.map((p) => p.name)).toEqual(['photo-pin:a1', 'photo-pin:b', 'photo-pin:c']);
+    canvas.dispatchEvent(
+      new PointerEvent('pointerdown', { clientX: 100, clientY: 100, button: 0 }),
+    );
+    canvas.dispatchEvent(new PointerEvent('pointerup', { clientX: 100, clientY: 100, button: 0 }));
+    expect(store.getState().selection).toEqual({ kind: 'photo', id: 'a1', layer: 'site' });
+    lh.dispose();
   });
 });

@@ -5,7 +5,6 @@ import {
   BackSide,
   BufferAttribute,
   BufferGeometry,
-  CanvasTexture,
   Color,
   Group,
   LinearFilter,
@@ -26,6 +25,7 @@ import {
 import type { StoreApi } from 'zustand/vanilla';
 import { FONT_MONO, FONT_UI, PALETTE } from '../palette';
 import { isEngineStage } from '../registry';
+import { MARKER_GLYPH, markerTexture } from './marker';
 import type { AdapterContext, LayerAdapter, LayerHandle, SavedView } from '../types';
 import {
   FULL_SPHERE,
@@ -50,38 +50,6 @@ const MARKER_HOVER = 0.042;
 const SPHERE_R = 50;
 /** Camera layer the immersive view renders alone, so the scene behind the sphere costs nothing. */
 const PANO_LAYER = 31;
-/** The Mission pano glyph (20 x 20 viewBox), as in the sidebar icon set. */
-const GLYPH = ['M2.5 5.5c5 1.3 10 1.3 15 0v9c-5-1.3-10-1.3-15 0z', 'M10 6.5v7.2'];
-
-/** Marker icon: a dark plate with a ring and the pano glyph; `on` draws the ring in the accent. */
-function markerTexture(on: boolean): Texture | null {
-  const S = 96;
-  const c = document.createElement('canvas');
-  c.width = c.height = S;
-  const g = c.getContext('2d');
-  if (!g) return null;
-  const m = S / 2;
-  g.beginPath();
-  g.arc(m, m, 40, 0, Math.PI * 2);
-  g.fillStyle = 'rgba(20, 24, 30, 0.86)';
-  g.fill();
-  g.lineWidth = on ? 6 : 4;
-  g.strokeStyle = on ? PALETTE.accCss : 'rgba(223, 230, 238, 0.85)';
-  g.stroke();
-  g.save();
-  g.translate(m - 26, m - 26);
-  g.scale(2.6, 2.6);
-  g.lineWidth = 1.5;
-  g.lineJoin = 'round';
-  g.lineCap = 'round';
-  g.strokeStyle = on ? PALETTE.accCss : '#eef2f6';
-  for (const d of GLYPH) g.stroke(new Path2D(d));
-  g.restore();
-  const t = new CanvasTexture(c);
-  t.colorSpace = SRGBColorSpace;
-  return t;
-}
-
 const VERTEX = /* glsl */ `
 varying vec3 vDir;
 void main() {
@@ -332,8 +300,8 @@ export function createPanoramasAdapter(
       group.userData.aioLayer = layer.id;
 
       // markers and stems
-      const texOff = markerTexture(false);
-      const texOn = markerTexture(true);
+      const texOff = markerTexture(MARKER_GLYPH.pano, false);
+      const texOn = markerTexture(MARKER_GLYPH.pano, true);
       const sprites: Sprite[] = [];
       const stemPos = new Float32Array(items.length * 6);
       items.forEach((p, i) => {
