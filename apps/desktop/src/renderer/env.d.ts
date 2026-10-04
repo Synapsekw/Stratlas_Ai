@@ -5,4 +5,7 @@ declare global {
   interface Window {
     aio: AioBridge;
   }
+
+  /** Build stamp injected by electron.vite.config.ts (`define`); read it through ./buildStamp. */
+  const __STRATLAS_BUILD__: { time: string; commit: string; version: string };
 }
