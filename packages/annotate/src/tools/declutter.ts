@@ -191,28 +191,45 @@ export interface PinLayoutInput {
   hoverId: string | null;
   width: number;
   height: number;
+  /**
+   * Whether a pin can be seen (not behind a surface). Hidden pins are left out entirely: no disc,
+   * no code, and no count in a cluster badge. The selected pin always shows.
+   */
+  visible?: (pin: IssuePin) => boolean;
 }
 
 const CODE_H = 16;
 const codeWidth = (code: string) => 7.4 * code.length + 12;
 
+export interface PinLayout {
+  items: PinItem[];
+  labels: PinLabel[];
+  /** Pins on screen but hidden behind a surface. */
+  occluded: number;
+}
+
 /**
- * Lay out issue pins for one view: project, cluster in screen space (the selected pin stays
- * on its own), and choose the labels: a count on every cluster badge, codes for the selected
- * and hovered pin always and for other pins only while the view is uncrowded and the code
- * fits without touching another label or pin.
+ * Lay out issue pins for one view: project, drop the pins behind a surface, cluster the rest in
+ * screen space (the selected pin stays on its own), and choose the labels: a count on every
+ * cluster badge, codes for the selected and hovered pin always and for other pins only while the
+ * view is uncrowded and the code fits without touching another label or pin.
  */
-export function layoutPins(input: PinLayoutInput): { items: PinItem[]; labels: PinLabel[] } {
-  const { pins, screen, radius, hoverId } = input;
+export function layoutPins(input: PinLayoutInput): PinLayout {
+  const { pins, screen, radius, hoverId, visible } = input;
   const items: PinItem[] = [];
   const free: ScreenPin[] = [];
   const at: { x: number; y: number }[] = [];
+  let occluded = 0;
   pins.forEach((pin, i) => {
     const s = screen(pin.p);
     at[i] = s ?? { x: NaN, y: NaN };
     if (!s) return;
     if (pin.selected) {
       items.push(single(pin, s));
+      return;
+    }
+    if (visible && !visible(pin)) {
+      occluded++;
       return;
     }
     free.push({ i, x: s.x, y: s.y, rank: pin.rank });
@@ -290,7 +307,7 @@ export function layoutPins(input: PinLayoutInput): { items: PinItem[]; labels: P
       color: pin.color,
     });
   }
-  return { items, labels };
+  return { items, labels, occluded };
 }
 
 function single(pin: IssuePin, s: { x: number; y: number }): PinItem {
