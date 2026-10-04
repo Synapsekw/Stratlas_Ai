@@ -45,6 +45,7 @@ export {
   localProvider,
 } from './providers';
 export { createScriptedProvider } from './scripted';
+export { addProviderUsage, totalUsage, type ProviderUsageRow } from './pricing';
 export type { ModelProvider, ProviderRegistry } from './providers';
 
 /** What the agent runtime needs from the Electron main process. */
