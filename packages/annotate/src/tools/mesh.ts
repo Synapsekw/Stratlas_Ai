@@ -2,6 +2,7 @@ import type { SceneHandle } from '@aio/engine';
 import type { Issue, SeverityModel, Sighting, Vec3 } from '@aio/schema';
 import { Vector3, type Intersection } from 'three';
 import { layerOf } from '../crossview/backproject';
+import { pinPasses, sevRank, type PinFilter } from './declutter';
 
 /** Mesh annotation (ANN-1): point, polyline and polygon placed on surfaces with the scene ray. */
 export type MeshSighting = Extract<Sighting, { on: 'mesh' }>;
@@ -68,15 +69,20 @@ export interface IssuePin {
   color: string;
   selected: boolean;
   draft: boolean;
+  /** Severity for ordering and clustering (`sevRank`: uncertain lowest). */
+  rank: number;
 }
 
+/** Pins of the issues with a 3D anchor that pass `filter`; the selected issue always shows. */
 export function issuePins(
   issues: readonly Issue[],
   models: readonly SeverityModel[],
   selectedId: string | null,
+  filter: PinFilter = 'all',
 ): IssuePin[] {
   const out: IssuePin[] = [];
   for (const i of issues) {
+    if (i.id !== selectedId && !pinPasses(i.severity, filter)) continue;
     const p = bestAnchor(i);
     if (!p) continue;
     out.push({
@@ -89,6 +95,7 @@ export function issuePins(
       ),
       selected: i.id === selectedId,
       draft: i.status === 'draft',
+      rank: sevRank(i.severity),
     });
   }
   return out;

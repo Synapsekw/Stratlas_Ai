@@ -46,6 +46,10 @@ textarea.ann-input { height: auto; min-height: 56px; padding: 6px 8px; line-heig
 .ann-sev.unc i { background: repeating-linear-gradient(-45deg, var(--sev) 0 1.5px, transparent 1.5px 3px); }
 .ann-tag { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border: 1px solid var(--line); border-radius: 3px; font-size: var(--t-11); color: var(--fg-2); white-space: nowrap; }
 .ann-tag.acc { border-color: var(--acc-a40); color: var(--acc); }
+.ann-pins { display: flex; flex-direction: column; gap: 8px; min-width: 220px; }
+.ann-pins .ann-faint { margin: 0; line-height: 1.4; max-width: 260px; }
+.ann-check { display: inline-flex; align-items: center; gap: 8px; font-size: var(--t-12); color: var(--fg-1); cursor: pointer; }
+.ann-check input { accent-color: var(--acc); margin: 0; }
 .ann-empty { padding: 24px 16px; color: var(--fg-3); font-size: var(--t-12); text-align: center; }
 .ann-body { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px; overflow-y: auto; }
 .ann-field { display: grid; grid-template-columns: 72px 1fr; gap: 8px; align-items: center; font-size: var(--t-12); }

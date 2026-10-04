@@ -65,8 +65,30 @@ describe('issuePins', () => {
       'i1',
     );
     expect(pins).toEqual([
-      { issueId: 'i1', code: 'F01', p: [1, 2, 3], color: '#e5484d', selected: true, draft: true },
+      {
+        issueId: 'i1',
+        code: 'F01',
+        p: [1, 2, 3],
+        color: '#e5484d',
+        selected: true,
+        draft: true,
+        rank: 5,
+      },
     ]);
+  });
+
+  it('applies the pin filter but always keeps the selected issue', () => {
+    const issues = [
+      makeIssue(),
+      makeIssue({ id: 'low', code: 'F02', severity: 2 }),
+      makeIssue({ id: 'unc', code: 'F03', severity: 'uncertain' }),
+    ];
+    const ids = (sel: string | null, f: Parameters<typeof issuePins>[3]) =>
+      issuePins(issues, [tankModel], sel, f).map((p) => p.issueId);
+    expect(ids(null, 'all')).toEqual(['i1', 'low', 'unc']);
+    expect(ids(null, 3)).toEqual(['i1']);
+    expect(ids(null, 'off')).toEqual([]);
+    expect(ids('low', 'off')).toEqual(['low']);
   });
 
   it('colours uncertain and unknown severities', () => {

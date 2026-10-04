@@ -6,6 +6,7 @@ import {
   type SectionState,
   type ViewPreset,
 } from '@aio/engine';
+import { PinControls, usePinDisplay } from '@aio/annotate';
 import { PointCloudControls } from '@aio/pointcloud';
 import type { Layer } from '@aio/schema';
 import { Icon, type IconName } from '@aio/ui';
@@ -383,6 +384,8 @@ function KindRow({ kinds, label, icon }: (typeof KINDS)[number]) {
 /** Callout labels and layer visibility by kind. */
 export function DisplayTools({ stage, map }: { stage: EngineStage | null; map: boolean }) {
   const labelMode = useShell((s) => s.labelMode);
+  const pinFilter = usePinDisplay((s) => s.filter);
+  const heat = usePinDisplay((s) => s.heat);
   return (
     <>
       {!map && (
@@ -403,11 +406,17 @@ export function DisplayTools({ stage, map }: { stage: EngineStage | null; map: b
               ))}
             </div>
             <p className="pop-note">
-              {LABEL_MODES.find((m) => m.mode === labelMode)?.hint}. Issue pins always show.
+              {LABEL_MODES.find((m) => m.mode === labelMode)?.hint}. Issue pins have their own
+              control.
             </p>
           </div>
         </PopTool>
       )}
+      <PopTool icon="pin" label="Issue pins" pressed={pinFilter !== 'off' || heat} wide>
+        <div className="pop-form">
+          <PinControls />
+        </div>
+      </PopTool>
       <PopTool icon="layers" label="Layers">
         <div className="pop-form">
           {KINDS.map((k) => (

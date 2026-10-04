@@ -56,6 +56,26 @@ export {
   type MeshDrawState,
 } from './tools/mesh';
 export { installIssueOverlay, ndcOf, startSceneTool, type SceneTool } from './tools/scene';
+export {
+  clusterScreen,
+  hitItem,
+  layoutPins,
+  parsePinFilter,
+  pinPasses,
+  placeLabels,
+  sevRank,
+  type PinFilter,
+  type PinItem,
+  type PinLabel,
+  type ScreenCluster,
+  type ScreenPin,
+} from './tools/declutter';
+export {
+  createPinDisplay,
+  pinDisplay,
+  usePinDisplay,
+  type PinDisplayState,
+} from './tools/pinDisplay';
 export * as imageGeometry from './image/geometry';
 
 // Import helpers (stream S10)
