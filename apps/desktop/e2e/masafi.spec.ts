@@ -250,7 +250,7 @@ test('Masafi register, recomputed volumes, 3D selection, surfaces and section', 
 
   // Section across the yard: a profile of both surveys with cut and fill areas.
   await win.getByRole('button', { name: 'All piles' }).click();
-  await win.getByRole('button', { name: 'Whole site' }).click();
+  await win.locator('body').press('h'); // whole site
   await win.waitForTimeout(1200);
   await win.getByRole('button', { name: 'Section line between the surveys' }).click();
   const box = await win.locator('[data-scene-view] canvas').boundingBox();
