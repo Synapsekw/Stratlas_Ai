@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { parseManifest } from '@aio/schema';
+import { parseManifest, VolumesFile } from '@aio/schema';
 import { parseGlb } from './glb';
 import { importMasafi } from './masafi';
 
@@ -243,6 +243,22 @@ describe('Masafi stockpile import (synthetic kit build)', () => {
     expect(p?.epochs.e2?.volumes.low?.net).toBeCloseTo(0.5, 3);
     expect(p?.change.net).toBeCloseTo(-0.5, 3);
     expect(v.check.maxRelDiff).toBeLessThan(0.005);
+  });
+
+  it('writes a volumes.json the volumetric workspace reads, with its grids and survey layers', () => {
+    const v = VolumesFile.parse(JSON.parse(readFileSync(join(out(), 'volumes.json'), 'utf8')));
+    expect(v.grids).toEqual({
+      format: 'vs-kit-js',
+      piles: 'legacy/data/piles/{id}.js',
+      dsm: 'legacy/data/dsm_{epoch}.js',
+      coarse: 'legacy/data/vol.js',
+    });
+    const c = v.captures.find((x) => x.epoch === 'e2');
+    expect(c?.layers).toEqual([`terrain-${c?.date ?? ''}`, `ortho-${c?.date ?? ''}`]);
+    const man = JSON.parse(readFileSync(join(out(), 'manifest.json'), 'utf8')) as {
+      layers: { id: string }[];
+    };
+    for (const id of c?.layers ?? []) expect(man.layers.map((l) => l.id)).toContain(id);
   });
 
   it('keeps the offline viewer, the report and the register', () => {

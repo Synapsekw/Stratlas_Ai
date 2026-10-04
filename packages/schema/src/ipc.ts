@@ -5,6 +5,7 @@ import { Conversation, ConversationId, ConversationSummary } from './conversatio
 import { JobEvent, JobId, JobLogLine, JobRecord, JobStartRequest, RuntimeInfo } from './jobs';
 import { ProjectManifest } from './manifest';
 import { AiPolicy, ExportKind, PackageInfo } from './package';
+import { BoundaryEditsFile, VolumesFile } from './volumes';
 
 const Empty = z.object({}).strict();
 
@@ -276,6 +277,29 @@ export const ipc = {
   },
   'project:writeIssues': {
     request: z.object({ projectId: z.string().min(1), issues: z.array(Issue) }).strict(),
+    response: z.object({ ok: z.boolean(), error: z.string().optional() }),
+  },
+  /**
+   * The stockpile volumes of an open project (`volumes.json`) and the toe lines corrected by hand
+   * (`edits/boundaries.json`); null when the project has none.
+   */
+  'project:readVolumes': {
+    request: z.object({ projectId: z.string().min(1) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        volumes: VolumesFile.nullable(),
+        edits: BoundaryEditsFile.nullable(),
+      }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /**
+   * Replace `<project>/edits/boundaries.json` (stockpile toe lines corrected by hand) atomically,
+   * keeping a `.bak` of the previous file.
+   */
+  'project:writeBoundaries': {
+    request: z.object({ projectId: z.string().min(1), file: BoundaryEditsFile }).strict(),
     response: z.object({ ok: z.boolean(), error: z.string().optional() }),
   },
   'packs:list': { request: Empty, response: z.array(MapPackInfo) },

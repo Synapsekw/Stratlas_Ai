@@ -7,5 +7,6 @@ export * from './road';
 export * from './agent';
 export * from './conversation';
 export * from './package';
+export * from './volumes';
 export * from './ipc';
 export * from './jobs';

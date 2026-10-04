@@ -12,6 +12,7 @@ import { MapView, type MapDrawMode, type MapDrawSeam, type MapIssueDisplay } fro
 import { ElevationLegend, useElevationRange } from '@aio/pointcloud';
 import { crsLabel, formatEastNorth, Icon, localToProject, type IconName } from '@aio/ui';
 import { setFlightPaths, videoRig } from '@aio/video';
+import { useVolumetric, VolumetricStage } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
 import {
   useCallback,
@@ -56,6 +57,7 @@ import {
 } from './StageTools';
 import { fitGroups, GAP, GROUP_LABEL, type GroupId } from './toolbarFit';
 import { insideView, stopCutaway, useCutaway, useCutawayState } from './useCutaway';
+import { VolumeTools } from './VolumeTools';
 
 const MODES: { mode: StageMode; label: string; icon: IconName; keys: string }[] = [
   { mode: '3d', label: '3D', icon: 'scene', keys: '1' },
@@ -87,7 +89,7 @@ function StageElevationLegend() {
   );
 }
 
-function ScenePane({ hidden }: { hidden: boolean }) {
+function ScenePane({ hidden, engine }: { hidden: boolean; engine: EngineStage | null }) {
   const [cursor, setCursor] = useState<string | null>(null);
   const pending = useRef<{ x: number; y: number } | null>(null);
   const raf = useRef<number | null>(null);
@@ -141,6 +143,7 @@ function ScenePane({ hidden }: { hidden: boolean }) {
       </div>
       <CursorReadout text={cursor} />
       <StageElevationLegend />
+      <VolumetricStage stage={engine} />
     </FocusZone>
   );
 }
@@ -162,16 +165,19 @@ function StageToolbar({
   const hasClouds = useWorkspace((s) =>
     (s.project?.manifest.layers ?? []).some((l) => l.kind === 'pointcloud'),
   );
+  const hasVolumes = useVolumetric((s) => s.status === 'ready');
   const map = mode === 'map';
   const groups: GroupId[] = useMemo(() => {
     const base: GroupId[] = map
       ? ['view', 'display', 'video', 'annotate']
-      : hasClouds
-        ? ['view', 'measure', 'display', 'clouds', 'video', 'annotate']
-        : ['view', 'measure', 'display', 'video', 'annotate'];
+      : hasVolumes
+        ? ['view', 'measure', 'volumes', 'display', 'video', 'annotate']
+        : hasClouds
+          ? ['view', 'measure', 'display', 'clouds', 'video', 'annotate']
+          : ['view', 'measure', 'display', 'video', 'annotate'];
     // the road tools work on the map
     return road && mode !== '3d' ? [...base.slice(0, -1), 'road', 'annotate'] : base;
-  }, [map, hasClouds, road, mode]);
+  }, [map, hasClouds, hasVolumes, road, mode]);
   const [moreOpen, setMoreOpen] = useState(false);
   const widths = useRef(new Map<GroupId, number>());
   const [hidden, setHidden] = useState<GroupId[]>([]);
@@ -209,6 +215,8 @@ function StageToolbar({
         return <DisplayTools stage={stage} map={map} />;
       case 'clouds':
         return <CloudTools />;
+      case 'volumes':
+        return <VolumeTools />;
       case 'video':
         return <VideoTools stage={stage} map={map} />;
       case 'annotate':
@@ -543,7 +551,7 @@ export function Stage() {
         data-mode={mode}
         dir="ltr"
       >
-        <ScenePane hidden={mode === 'map'} />
+        <ScenePane hidden={mode === 'map'} engine={engine} />
         {mode !== '3d' && (
           <FocusZone kind="map" className="pane pane-map">
             <div className="fill">

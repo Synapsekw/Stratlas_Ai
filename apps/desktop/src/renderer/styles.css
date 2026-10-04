@@ -1269,6 +1269,58 @@ svg.flip {
   min-width: 48px;
   text-align: end;
 }
+/* a list of choices with a line of explanation each (volumetric surface and body modes) */
+.pop-list {
+  display: grid;
+  gap: 2px;
+}
+.pop-item {
+  display: grid;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--r-4);
+  background: transparent;
+  color: var(--fg-1);
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
+}
+.pop-item b {
+  font-size: var(--t-12);
+  font-weight: 600;
+}
+.pop-item small {
+  font-size: var(--t-11);
+  color: var(--fg-3);
+}
+.pop-item:hover:not(:disabled) {
+  background: var(--bg-2);
+}
+.pop-item[aria-pressed='true'] {
+  background: var(--acc-a12);
+  box-shadow: inset 2px 0 0 var(--acc);
+  color: var(--fg-0);
+}
+.pop-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.vol-dates {
+  background: transparent;
+}
+.vol-dates button {
+  font-family: var(--f-mono);
+  font-size: var(--t-12);
+}
+
+/* volumetric projects: a wider right panel for the pile register */
+.ws-vol {
+  --rp-w: 400px;
+}
+.ctx-wrap.tall.vol {
+  flex: 0 1 80%;
+}
 .stbar .ann-toolbar.stage-ann {
   border-radius: var(--r-4);
   backdrop-filter: none;

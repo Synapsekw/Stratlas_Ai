@@ -1,5 +1,6 @@
 import { defaultRoutes } from '@aio/ai';
 import { setAnnotateReadOnly } from '@aio/annotate';
+import { volumetric } from '@aio/volumetric';
 import type { LabelMode, SavedView } from '@aio/engine';
 import type { LibraryEntry, PackageInfo, Settings } from '@aio/schema';
 import type { Workspace } from '@aio/workspace';
@@ -296,7 +297,10 @@ let shellStore: StoreApi<Shell> | null = null;
 /** The app-wide shell store, bound to window.aio and the app workspace. */
 export function getShell(workspace: StoreApi<Workspace>): StoreApi<Shell> {
   shellStore ??= createShellStore(createBridge(window.aio), workspace, {
-    onReadOnly: setAnnotateReadOnly,
+    onReadOnly: (on) => {
+      setAnnotateReadOnly(on);
+      volumetric.getState().setReadOnly(on);
+    },
   });
   return shellStore;
 }

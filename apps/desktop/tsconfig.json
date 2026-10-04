@@ -19,6 +19,7 @@
     { "path": "../../packages/annotate" },
     { "path": "../../packages/ai" },
     { "path": "../../packages/ui" },
+    { "path": "../../packages/volumetric" },
     { "path": "../../packages/project" },
     { "path": "../../packages/geo" }
   ]

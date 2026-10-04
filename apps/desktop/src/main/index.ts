@@ -61,6 +61,7 @@ import {
   stagePackageExport,
 } from './packages';
 import { openProject, ProjectRegistry, readManifest, writeProjectIssues } from './project';
+import { readPackageVolumes, readVolumes, writeBoundaries } from './boundaries';
 import { createAioHandler } from './protocol/handler';
 import { cspForUrl } from './protocol/legacy';
 import { saveFile } from './saveFile';
@@ -425,6 +426,25 @@ function registerIpc(): void {
     const path = pendingOpenPath;
     pendingOpenPath = null;
     return { path };
+  });
+  handle('project:readVolumes', ({ projectId }) => {
+    const root = registry.root(projectId);
+    if (root !== undefined) return readVolumes(root);
+    const pkg = registry.package(projectId);
+    if (pkg) return readPackageVolumes(pkg.archive);
+    return { ok: false, error: `Project "${projectId}" is not open.` };
+  });
+  handle('project:writeBoundaries', ({ projectId, file }) => {
+    if (registry.package(projectId))
+      return {
+        ok: false,
+        error: 'This project is a read-only package. Boundaries cannot be changed.',
+      };
+    const root = registry.root(projectId);
+    if (root === undefined) {
+      return { ok: false, error: `Project "${projectId}" is not open. Open it, then save again.` };
+    }
+    return writeBoundaries(root, file);
   });
 
   handle('packs:list', () => packs.list());

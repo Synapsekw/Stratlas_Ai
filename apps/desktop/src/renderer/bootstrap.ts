@@ -4,6 +4,7 @@ import { configureEngine, getActiveStage, registerEngineAdapters } from '@aio/en
 import { captureMap, registerMapAdapters } from '@aio/maps';
 import { registerPointcloudAdapters } from '@aio/pointcloud';
 import { loadFlight, registerVideoAdapters } from '@aio/video';
+import { volumetric } from '@aio/volumetric';
 import { assetUrl, workspace, type OpenProject } from '@aio/workspace';
 import { shell } from './shell';
 
@@ -56,7 +57,7 @@ export function bootstrap(): void {
     },
   });
   // Inspection hook for the end-to-end tests and DevTools (read the clock, the live scene).
-  Object.assign(window, { __stratlas: { workspace, stage: getActiveStage } });
+  Object.assign(window, { __stratlas: { workspace, stage: getActiveStage, volumetric } });
   shareFlightPoses(workspace.getState().project);
   workspace.subscribe((s, prev) => {
     if (s.project !== prev.project) shareFlightPoses(s.project);

@@ -1,0 +1,20 @@
+{
+  "name": "@aio/volumetric",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Native volumetric workspace: stockpile register, four bases, volumes recomputed in a worker, cut and fill, sections, boundary editor.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aio/engine": "workspace:*",
+    "@aio/schema": "workspace:*",
+    "@aio/ui": "workspace:*",
+    "@aio/workspace": "workspace:*",
+    "three": "^0.186.1"
+  }
+}

@@ -455,7 +455,22 @@ export async function importMasafi(opts: MasafiImportOptions): Promise<ImportRes
       captureId: captureId(epochOf(e).date),
       date: epochOf(e).date,
       label: epochOf(e).label,
+      layers: layers
+        .filter((l) => l.id === `terrain-${epochOf(e).date}` || l.id === `ortho-${epochOf(e).date}`)
+        .map((l) => l.id),
     })),
+    // the kit's own 10 cm pile grids, 0.4 m DSMs and pile masks, copied unchanged with the viewer:
+    // the volumetric workspace recomputes and edits volumes on them (data-conventions section 10)
+    ...(html
+      ? {
+          grids: {
+            format: 'vs-kit-js',
+            piles: 'legacy/data/piles/{id}.js',
+            dsm: 'legacy/data/dsm_{epoch}.js',
+            coarse: 'legacy/data/vol.js',
+          },
+        }
+      : {}),
     piles: pileDocs,
     totals: site.totals,
     pileChange: site.pile_change,

@@ -37,22 +37,23 @@ Rules that keep it fast, safe and offline:
 
 pnpm workspaces. Every package has one owner stream (section 9), its own tests, and a public API in `src/index.ts`. Packages depend only on `schema` and on packages listed under "depends on".
 
-| Package               | Responsibility                                                                                                                                                          | Depends on                 |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| `packages/schema`     | zod schemas and TS types: project manifest, layers, time, annotations, severity models, IPC contracts, agent tools                                                      | none                       |
-| `packages/geo`        | CRS registry (proj4, EPSG defs bundled), float64 project origin, transforms, quadtree tiling, geodesy                                                                   | schema                     |
-| `packages/engine`     | three.js scene graph, cameras and controls, picking, layer render adapters, projector shaders, clipping, measure                                                        | schema, geo                |
-| `packages/pointcloud` | COPC reader (copc.js + laz-perf) in workers, octree LOD, EDL, legacy packed clouds, Potree 2 adapter                                                                    | schema, geo, engine        |
-| `packages/maps`       | MapLibre 2D map, PMTiles protocol over aio://, styles, glyphs, sprites; 3D ground quadtree from raster tiles                                                            | schema, geo, engine        |
-| `packages/video`      | playback controller (`<video>` + rVFC), WebCodecs exact-frame, telemetry parsers (kit flight JSON, DJI SRT), clip-to-flight sync, lens models (pinhole, f-theta)        | schema, geo                |
-| `packages/annotate`   | annotation tools for mesh, image, video, point cloud, map; issues and sightings; severity models; back-projection; undo stack                                           | schema, geo, engine, video |
-| `packages/ai`         | provider registry (Anthropic, OpenAI, Gemini via AI SDK), model routing, agent loop, tool registry, approval policy, cost meter; split into `ai/main` and `ai/renderer` | schema                     |
-| `packages/brand`      | product name, app ID, wordmark, icon set, report brand themes (e&, Zain, whitelabel); the only place the product name lives                                             | none                       |
-| `packages/ui`         | design tokens, components, icons, dockview panels, command palette                                                                                                      | schema                     |
-| `packages/project`    | package read/write, importers for the six kit formats, exports (CSV, GeoJSON, COCO, kit JSON, ZIP64)                                                                    | schema, geo                |
-| `apps/desktop`        | Electron main, preload, data utility process, renderer app composition                                                                                                  | all                        |
-| `legacy/`             | the four existing viewer builds, hosted unchanged (Release A fallback and parity reference)                                                                             | none                       |
-| `python/`             | Release B pipelines (copied from the Asset Inspection Kit, the Volumetric Survey Kit and Kestrel backend modules)                                                       | none                       |
+| Package               | Responsibility                                                                                                                                                          | Depends on                    |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| `packages/schema`     | zod schemas and TS types: project manifest, layers, time, annotations, severity models, IPC contracts, agent tools                                                      | none                          |
+| `packages/geo`        | CRS registry (proj4, EPSG defs bundled), float64 project origin, transforms, quadtree tiling, geodesy                                                                   | schema                        |
+| `packages/engine`     | three.js scene graph, cameras and controls, picking, layer render adapters, projector shaders, clipping, measure                                                        | schema, geo                   |
+| `packages/pointcloud` | COPC reader (copc.js + laz-perf) in workers, octree LOD, EDL, legacy packed clouds, Potree 2 adapter                                                                    | schema, geo, engine           |
+| `packages/maps`       | MapLibre 2D map, PMTiles protocol over aio://, styles, glyphs, sprites; 3D ground quadtree from raster tiles                                                            | schema, geo, engine           |
+| `packages/video`      | playback controller (`<video>` + rVFC), WebCodecs exact-frame, telemetry parsers (kit flight JSON, DJI SRT), clip-to-flight sync, lens models (pinhole, f-theta)        | schema, geo                   |
+| `packages/annotate`   | annotation tools for mesh, image, video, point cloud, map; issues and sightings; severity models; back-projection; undo stack                                           | schema, geo, engine, video    |
+| `packages/ai`         | provider registry (Anthropic, OpenAI, Gemini via AI SDK), model routing, agent loop, tool registry, approval policy, cost meter; split into `ai/main` and `ai/renderer` | schema                        |
+| `packages/brand`      | product name, app ID, wordmark, icon set, report brand themes (e&, Zain, whitelabel); the only place the product name lives                                             | none                          |
+| `packages/ui`         | design tokens, components, icons, dockview panels, command palette                                                                                                      | schema                        |
+| `packages/volumetric` | native volumetric workspace: stockpile register, four bases, volumes recomputed from the kit grids in a worker, cut and fill, sections, boundary editor (N1)            | schema, engine, ui, workspace |
+| `packages/project`    | package read/write, importers for the six kit formats, exports (CSV, GeoJSON, COCO, kit JSON, ZIP64)                                                                    | schema, geo                   |
+| `apps/desktop`        | Electron main, preload, data utility process, renderer app composition                                                                                                  | all                           |
+| `legacy/`             | the four existing viewer builds, hosted unchanged (Release A fallback and parity reference)                                                                             | none                          |
+| `python/`             | Release B pipelines (copied from the Asset Inspection Kit, the Volumetric Survey Kit and Kestrel backend modules)                                                       | none                          |
 
 ## 3. Core contracts (written first, frozen early)
 

@@ -1,11 +1,13 @@
 /** Stage toolbar groups and how many fit on one row. */
-export type GroupId = 'view' | 'measure' | 'display' | 'clouds' | 'video' | 'annotate' | 'road';
+export type GroupId =
+  'view' | 'measure' | 'display' | 'clouds' | 'volumes' | 'video' | 'annotate' | 'road';
 
 export const GROUP_LABEL: Record<GroupId, string> = {
   view: 'View',
   measure: 'Measure and section',
   display: 'Labels and layers',
   clouds: 'Point clouds',
+  volumes: 'Volumes',
   video: 'Video and camera',
   annotate: 'Annotate',
   road: 'Road layers and measure',
@@ -22,6 +24,7 @@ const COLLAPSE_ORDER: GroupId[] = [
   'measure',
   'clouds',
   'road',
+  'volumes',
   'annotate',
 ];
 export const GAP = 8;
