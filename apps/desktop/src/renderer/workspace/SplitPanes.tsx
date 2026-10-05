@@ -102,7 +102,12 @@ export function PaneChooser({ side, split }: { side: Side; split: SplitModel }) 
   const twin = isTwin(split);
   const linked = !split.sides.unlinked;
   return (
-    <div className={`pane-chooser overlay-box side-${side}`} data-testid={`pane-chooser-${side}`}>
+    // over the stage (street map, imagery), like the stage toolbar: dark in every theme
+    <div
+      className={`pane-chooser overlay-box side-${side}`}
+      data-testid={`pane-chooser-${side}`}
+      data-surface="dark"
+    >
       <Icon name={PANE[current].icon} size={14} className="muted" />
       <select
         className="input"
