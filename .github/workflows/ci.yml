@@ -69,10 +69,15 @@ jobs:
       - name: Install ffmpeg (Windows)
         if: runner.os == 'Windows'
         uses: FedericoCarboni/setup-ffmpeg@v3
-      # That action has no Apple silicon build; Homebrew has ffmpeg bottles for the runners.
+      # That action has no Apple silicon build. Homebrew's plain ffmpeg has no libwebp (the kit
+      # importers write WebP tiles); ffmpeg-full has it but is keg-only, so put it on the PATH.
       - name: Install ffmpeg (macOS)
         if: runner.os == 'macOS'
-        run: brew install ffmpeg
+        run: |
+          brew install ffmpeg-full
+          echo "$(brew --prefix ffmpeg-full)/bin" >> "$GITHUB_PATH"
+      - name: ffmpeg encodes WebP
+        run: ffmpeg -hide_banner -encoders | grep -w libwebp
       # Electron fetches its binary lazily on first launch; parallel e2e workers would race.
       - name: Download Electron binary
         run: node node_modules/electron/install.js
