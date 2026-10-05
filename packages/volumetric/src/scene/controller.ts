@@ -6,6 +6,8 @@
  * layers' materials (texture and clipping, restored afterwards) and the pile callout text.
  */
 import type { EngineStage } from '@aio/engine';
+import type { VolumeBaseId } from '@aio/schema';
+import { t } from '@aio/ui';
 import {
   BufferAttribute,
   BufferGeometry,
@@ -32,6 +34,7 @@ import {
 } from 'three';
 import type { StoreApi } from 'zustand/vanilla';
 import type { ScenePile } from '../model/compute';
+import type { Raster } from '../model/dsm';
 import type { EN } from '../model/edit';
 import type { SurfaceMode, Volumetric } from '../store';
 import { bodyGeometry, swipePlane, toLocalFn, type ToLocal } from './geometry';
@@ -75,10 +78,24 @@ export class VolumetricScene {
   private sectionDrawn: unknown = null;
   private readonly drapes = new Map<
     string,
-    { mode: SurfaceMode; root: Object3D; group: Group; material: MeshStandardMaterial }
+    {
+      mode: SurfaceMode;
+      key: string;
+      root: Object3D;
+      group: Group;
+      material: Material;
+      /** The texture belongs to this drape (elevation); the change texture is shared. */
+      texture: Texture | null;
+    }
   >();
-  private readonly pendingDrapes = new Set<string>();
-  private readonly textures = new Map<string, Promise<Texture>>();
+  /** Drapes being built, by survey: the key they are built for. */
+  private readonly pendingDrapes = new Map<string, string>();
+  private changeTexture: Promise<Texture> | null = null;
+  /** Survey orthos hidden in 3D (their terrain mesh carries the same photo), by layer id. */
+  private readonly hiddenOrthos = new Map<string, Object3D>();
+  /** Toe lines baked into the terrain models, hidden while attached, and the models looked at. */
+  private readonly hiddenToes = new Set<Object3D>();
+  private readonly toeRoots = new Set<Object3D>();
   private readonly savedClip = new Map<Material, Plane[] | null>();
   private readonly swipeRight = new Plane();
   private readonly swipeLeft = new Plane();
@@ -92,6 +109,8 @@ export class VolumetricScene {
   constructor(
     readonly stage: EngineStage,
     private readonly store: StoreApi<Volumetric>,
+    /** Whether the app shows a layer (to give hidden survey orthos back their state). */
+    private readonly layerVisible: (id: string) => boolean = () => true,
   ) {
     this.group.name = 'volumetric';
     this.group.add(this.bodies, this.sectionG, this.editG);
@@ -127,6 +146,7 @@ export class VolumetricScene {
     this.restoreSurface();
     this.restoreClip();
     this.restoreCallouts();
+    this.restoreOrthos();
     disposeGroup(this.bodies);
     disposeGroup(this.sectionG);
     disposeGroup(this.editG);
@@ -163,7 +183,6 @@ export class VolumetricScene {
       return;
     }
     this.group.visible = true;
-    this.bodies.visible = !s.swipe;
     void this.updateBodies();
     this.updateEdit();
     void this.updateSection();
@@ -194,7 +213,7 @@ export class VolumetricScene {
       selected: s.selected,
       piles,
     };
-    const key = JSON.stringify([req, s.body, !!s.edit]);
+    const key = JSON.stringify([req, s.body, !!s.edit, s.swipe]);
     if (key === this.sceneKey) return;
     this.sceneKey = key;
     const seq = ++this.sceneSeq;
@@ -214,7 +233,8 @@ export class VolumetricScene {
     const local = this.local;
     const clip = this.stage.clippingPlanes;
     const editing = !!s.edit;
-    const lifted = s.body === 'lift' && !editing;
+    // while swiping between the dates only the toe lines show: the bodies would hide the ground
+    const lifted = s.body === 'lift' && !editing && !s.swipe;
     for (const p of piles) {
       const sel = p.id === s.selected;
       const dim = (!!s.selected && !sel) || editing;
@@ -222,7 +242,7 @@ export class VolumetricScene {
       g.name = `vol:${p.id}`;
       g.userData.pile = p.id;
       let lift = 0;
-      if (p.body && s.body !== 'off') {
+      if (p.body && s.body !== 'off' && !s.swipe) {
         const geo = bodyGeometry(p.body, local, { lifted, change: chg });
         lift = geo.lift;
         const top = new BufferGeometry();
@@ -487,89 +507,180 @@ export class VolumetricScene {
 
   /* ------------------------------------------------------------------ per frame */
 
-  /** Apply what depends on loaded layers: surface colours, swipe clipping, callout text. */
+  /** Apply what depends on loaded layers: surface colours, swipe clipping, callout text, orthos. */
   private reconcile(): void {
+    this.reconcileOrthos();
+    this.reconcileModelToes();
     this.reconcileSurface();
     this.reconcileSwipe();
     this.reconcileCallouts();
   }
 
   /**
-   * Which survey drapes are wanted: the change or relief colours on the shown survey. Photos need
-   * none: the terrain meshes draw their own textures (the engine's merge keeps their UVs), also
-   * for both surveys while swiping.
+   * A survey's flat ortho raster is not drawn in 3D when the survey has a terrain mesh: the mesh
+   * carries the same photo on the real ground, and the flat quad (at the site's datum height)
+   * would cut through it and show its no-data margin as a frame around the yard. The map still
+   * draws the orthos.
    */
-  private wantedDrapes(): Map<string, SurfaceMode> {
+  private reconcileOrthos(): void {
     const s = this.store.getState();
-    if (s.swipe || s.surface === 'photo') return new Map<string, SurfaceMode>();
-    return new Map<string, SurfaceMode>([[s.shownEpoch(), s.surface]]);
+    for (const sl of Object.values(s.layers)) {
+      if (!sl.terrain) continue;
+      for (const id of sl.layers) {
+        if (id === sl.terrain) continue;
+        let o = this.hiddenOrthos.get(id);
+        if (!o?.parent) {
+          o = this.stage.scene.getObjectByName(`layer:${id}`);
+          if (o?.userData.aioRaster !== true) continue;
+          this.hiddenOrthos.set(id, o);
+        }
+        if (o.visible) {
+          o.visible = false;
+          this.stage.requestRender();
+        }
+      }
+    }
+  }
+
+  private restoreOrthos(): void {
+    for (const [id, o] of this.hiddenOrthos) o.visible = this.layerVisible(id);
+    this.hiddenOrthos.clear();
+    for (const l of this.hiddenToes) l.visible = true;
+    this.hiddenToes.clear();
+    this.toeRoots.clear();
+  }
+
+  /**
+   * The terrain models carry every pile's toe line baked in (line primitives): they would show
+   * all toe lines all the time. They are hidden; the overlay draws the toe lines of the piles
+   * revealed or shown on purpose.
+   */
+  private reconcileModelToes(): void {
+    const s = this.store.getState();
+    for (const sl of Object.values(s.layers)) {
+      const root = sl.terrain ? this.stage.scene.getObjectByName(`layer:${sl.terrain}`) : null;
+      if (!root || this.toeRoots.has(root)) continue;
+      // a model still loading has no children yet: look again on a later frame
+      if (!root.children.length) continue;
+      this.toeRoots.add(root);
+      root.traverse((o) => {
+        if ((o as Partial<Line>).isLine !== true || !o.visible) return;
+        o.visible = false;
+        this.hiddenToes.add(o);
+      });
+      this.stage.requestRender();
+    }
+  }
+
+  /**
+   * Which survey drapes are wanted: the change or relief colours on the shown survey, keyed by
+   * what they show. Photos need none: the terrain meshes draw their own textures (the engine's
+   * merge keeps their UVs), also for both surveys while swiping. The relief waits for the survey
+   * heights (its automatic range).
+   */
+  private wantedDrapes(): Map<string, { mode: SurfaceMode; key: string }> {
+    const s = this.store.getState();
+    const out = new Map<string, { mode: SurfaceMode; key: string }>();
+    if (s.swipe || s.surface === 'photo') return out;
+    const epoch = s.shownEpoch();
+    if (s.surface === 'change') out.set(epoch, { mode: 'change', key: 'change' });
+    else {
+      const r = s.reliefStyle();
+      if (r)
+        out.set(epoch, {
+          mode: 'elev',
+          key: `elev/${epoch}/${r.ramp}/${r.lo.toFixed(2)}/${r.hi.toFixed(2)}/${String(r.hillshade)}`,
+        });
+    }
+    return out;
   }
 
   /**
    * The change or relief colours draped over the terrain: a copy of the terrain meshes (with their
    * texture coordinates) drawn just in front of the terrain, so the survey's own materials stay
-   * untouched.
+   * untouched. A restyled relief replaces the old one only once it is ready (no flash of photo
+   * while a range slider moves).
    */
   private reconcileSurface(): void {
     const want = this.wantedDrapes();
     for (const [epoch, d] of this.drapes) {
       const root = this.terrainRoot(epoch);
-      if (want.get(epoch) !== d.mode || root !== d.root) this.removeDrape(epoch);
+      const w = want.get(epoch);
+      if (w?.mode !== d.mode || root !== d.root) this.removeDrape(epoch);
       else d.group.visible = visibleChain(root);
     }
-    for (const [epoch, mode] of want) {
-      if (this.drapes.has(epoch) || this.pendingDrapes.has(epoch)) continue;
+    for (const [epoch, w] of want) {
+      if (this.drapes.get(epoch)?.key === w.key || this.pendingDrapes.has(epoch)) continue;
       const root = this.terrainRoot(epoch);
-      if (root) this.buildDrape(epoch, mode, root);
+      if (root) this.buildDrape(epoch, w.mode, w.key, root);
     }
   }
 
+  private static texture(raster: Raster): Texture {
+    const tex = new DataTexture(
+      new Uint8Array(raster.data.buffer.slice(0)),
+      raster.width,
+      raster.height,
+      RGBAFormat,
+    );
+    tex.flipY = false;
+    tex.colorSpace = SRGBColorSpace;
+    tex.magFilter = LinearFilter;
+    tex.minFilter = LinearFilter;
+    tex.generateMipmaps = false;
+    tex.anisotropy = 4;
+    tex.needsUpdate = true;
+    return tex;
+  }
+
+  /** The texture of a drape: the shared change colours, or a relief of its own. */
   private surfaceTexture(epoch: string, mode: SurfaceMode): Promise<Texture | null> {
-    if (mode === 'photo') return Promise.resolve(null);
-    const key = mode === 'change' ? 'change' : `elev/${epoch}`;
-    let p = this.textures.get(key);
-    if (!p) {
-      const svc = this.store.getState().service;
-      if (!svc) return Promise.resolve(null);
-      const r = mode === 'change' ? svc.changeRaster() : svc.reliefRaster(epoch);
-      p = r.then((raster) => {
-        const tex = new DataTexture(
-          new Uint8Array(raster.data.buffer.slice(0)),
-          raster.width,
-          raster.height,
-          RGBAFormat,
-        );
-        tex.flipY = false;
-        tex.colorSpace = SRGBColorSpace;
-        tex.magFilter = LinearFilter;
-        tex.minFilter = LinearFilter;
-        tex.generateMipmaps = false;
-        tex.anisotropy = 4;
-        tex.needsUpdate = true;
-        return tex;
-      });
-      p.catch(() => this.textures.delete(key));
-      this.textures.set(key, p);
+    const s = this.store.getState();
+    const svc = s.service;
+    if (mode === 'photo' || !svc) return Promise.resolve(null);
+    if (mode === 'change') {
+      if (!this.changeTexture) {
+        const p = svc.changeRaster().then((r) => VolumetricScene.texture(r));
+        p.catch(() => {
+          this.changeTexture = null;
+        });
+        this.changeTexture = p;
+      }
+      return this.changeTexture;
     }
-    return p;
+    const style = s.reliefStyle();
+    if (!style) return Promise.resolve(null);
+    return svc.reliefRaster(epoch, style).then((r) => VolumetricScene.texture(r));
   }
 
-  private buildDrape(epoch: string, mode: SurfaceMode, root: Object3D): void {
-    this.pendingDrapes.add(epoch);
+  private buildDrape(epoch: string, mode: SurfaceMode, key: string, root: Object3D): void {
+    this.pendingDrapes.set(epoch, key);
+    const hillshade = mode === 'elev' && this.store.getState().elevation.hillshade;
     void this.surfaceTexture(epoch, mode).then(
       (tex) => {
         this.pendingDrapes.delete(epoch);
-        if (!tex || !this.unsub.length) return;
-        if (this.wantedDrapes().get(epoch) !== mode || this.terrainRoot(epoch) !== root) return;
-        const material = new MeshStandardMaterial({
+        const own = mode === 'elev' ? tex : null;
+        if (!tex || !this.unsub.length) {
+          own?.dispose();
+          return;
+        }
+        if (this.wantedDrapes().get(epoch)?.key !== key || this.terrainRoot(epoch) !== root) {
+          own?.dispose();
+          return;
+        }
+        // cells without data are transparent: the survey photo shows there, never black
+        const common = {
           map: tex,
-          roughness: 1,
-          metalness: 0,
+          alphaTest: 0.5,
           polygonOffset: true,
           polygonOffsetFactor: -1,
           polygonOffsetUnits: -1,
           clippingPlanes: this.stage.clippingPlanes,
-        });
+        };
+        // a relief lit by its own hillshade is drawn as it is (vivid); otherwise the sun lights it
+        const material: Material = hillshade
+          ? new MeshBasicMaterial({ ...common, toneMapped: false })
+          : new MeshStandardMaterial({ ...common, roughness: 1, metalness: 0 });
         const group = new Group();
         group.name = `drape:${epoch}`;
         root.updateMatrixWorld(true);
@@ -585,8 +696,9 @@ export class VolumetricScene {
           group.add(d);
         });
         group.visible = visibleChain(root);
+        this.removeDrape(epoch);
         this.group.add(group);
-        this.drapes.set(epoch, { mode, root, group, material });
+        this.drapes.set(epoch, { mode, key, root, group, material, texture: own });
         this.stage.requestRender();
       },
       (e: unknown) => {
@@ -601,6 +713,7 @@ export class VolumetricScene {
     if (!d) return;
     this.group.remove(d.group);
     d.material.dispose();
+    d.texture?.dispose();
     this.drapes.delete(epoch);
     this.stage.requestRender();
   }
@@ -608,14 +721,13 @@ export class VolumetricScene {
   private restoreSurface(): void {
     for (const epoch of [...this.drapes.keys()]) this.removeDrape(epoch);
     this.pendingDrapes.clear();
-    for (const p of this.textures.values())
-      void p.then(
-        (t) => {
-          t.dispose();
-        },
-        () => undefined,
-      );
-    this.textures.clear();
+    void this.changeTexture?.then(
+      (t) => {
+        t.dispose();
+      },
+      () => undefined,
+    );
+    this.changeTexture = null;
   }
 
   private reconcileSwipe(): void {
@@ -674,7 +786,11 @@ export class VolumetricScene {
     this.stage.requestRender();
   }
 
-  /** Pile callouts show the net volume on the chosen base, edits included; hidden piles none. */
+  /**
+   * Pile callouts: the selected pile shows its measurement (volume on the chosen base, tonnage,
+   * height, base), piles shown on purpose their net volume, edits included. Other piles keep only
+   * their name, without a group, so no label mode lists them and hovering one names it.
+   */
   private reconcileCallouts(): void {
     const s = this.store.getState();
     const roots = Object.entries(s.layers)
@@ -690,6 +806,8 @@ export class VolumetricScene {
     const key = JSON.stringify([
       s.base,
       shown,
+      s.selected,
+      s.density,
       s.edits.length,
       s.edits.map((e) => e.updatedAt),
       roots.map((r) => r[1].uuid),
@@ -697,6 +815,10 @@ export class VolumetricScene {
     if (key === this.calloutKey) return;
     this.calloutKey = key;
     const nf = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+    const n1 = new Intl.NumberFormat('en-US', {
+      maximumFractionDigits: 1,
+      minimumFractionDigits: 1,
+    });
     for (const [epoch, group] of roots) {
       group.traverse((o) => {
         const tags = o.userData.aioTags as
@@ -704,14 +826,21 @@ export class VolumetricScene {
         if (!Array.isArray(tags)) return;
         o.userData.aioTagsOriginal ??= tags as unknown;
         const original = o.userData.aioTagsOriginal as typeof tags;
-        // hidden piles lose their callout; tags that are not piles stay
-        const kept = original.filter(
-          (t) => !s.piles.some((q) => q.id === t.tag) || shown.includes(t.tag),
-        );
-        o.userData.aioTags = kept.map((t) => {
+        o.userData.aioTags = original.map((t) => {
           const p = s.piles.find((q) => q.id === t.tag);
-          const v = p?.epochs[epoch]?.volumes[s.base].net;
-          return v === undefined ? t : { ...t, area: `${nf.format(Math.round(v))} m³` };
+          if (!p) return t;
+          const plain = { ...t };
+          delete plain.area;
+          if (!shown.includes(p.id)) return plain;
+          const ep = p.epochs[epoch];
+          const v = ep?.volumes[s.base].net;
+          if (v === undefined || !ep) return plain;
+          const vol = `${nf.format(Math.round(v))} m³`;
+          if (p.id !== s.selected) return { ...t, area: vol };
+          const tonnes = `${nf.format(Math.round(v * s.density))} t`;
+          const height = `${n1.format(ep.heightM)} m high`;
+          const base = baseShort(s.base);
+          return { ...t, area: [vol, tonnes, height, base].join(' · ') };
         });
       });
     }
@@ -729,6 +858,11 @@ export class VolumetricScene {
       }
     });
   }
+}
+
+/** Short name of a base for the measurement callout. */
+function baseShort(base: VolumeBaseId): string {
+  return t(`vol.baseShort.${base}`);
 }
 
 /** Points every `step` metres from a to b, both ends included. */

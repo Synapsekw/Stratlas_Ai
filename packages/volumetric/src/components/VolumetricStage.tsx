@@ -1,5 +1,6 @@
 import type { EngineStage } from '@aio/engine';
-import { Icon } from '@aio/ui';
+import { Icon, t } from '@aio/ui';
+import { workspace } from '@aio/workspace';
 import {
   useEffect,
   useLayoutEffect,
@@ -9,7 +10,7 @@ import {
 } from 'react';
 import { Raycaster, Vector2, Vector3, type Object3D } from 'three';
 import type { EN } from '../model/edit';
-import { CHANGE_RAMP } from '../model/dsm';
+import { CHANGE_RAMP, RAMP_IDS, rampCss } from '../model/dsm';
 import { VolumetricScene } from '../scene/controller';
 import { useVolumetric, volumetric } from '../store';
 import { f0, sgn } from './format';
@@ -250,6 +251,7 @@ function EditBar() {
         </span>
         <b data-testid="vol-edit-net">{edit.busy && !edit.live ? '·' : `${f0(v)} m³`}</b>
         <small>{note}</small>
+        <small className="vol-eb-hint">{t('vol.edit.hint')}</small>
       </div>
       <div className="vol-eb-a">
         <button
@@ -404,17 +406,130 @@ function SwipeDivider() {
   );
 }
 
+const m1 = (v: number) => t('vol.elev.metres', { value: v.toFixed(1) });
+
+/** Ramp, range (metres) and hillshade of the Elevation surface, with its legend. */
+function ElevationControls() {
+  const elevation = useVolumetric((s) => s.elevation);
+  const relief = useVolumetric((s) => s.relief);
+  const v = volumetric.getState();
+  const range = elevation.range ?? relief?.auto;
+  const style = range ? { ramp: elevation.ramp, lo: range[0], hi: range[1] } : null;
+  if (!relief || !style)
+    return (
+      <>
+        <b>{t('vol.elev.title')}</b>
+        <span className="vol-elev-note">{t('vol.elev.reading')}</span>
+      </>
+    );
+  const [min, max] = relief.extent;
+  const step = Math.max(0.1, Math.round(((max - min) / 200) * 10) / 10);
+  const setRange = (lo: number, hi: number) => {
+    if (hi - lo < step) return;
+    v.setElevation({ range: [lo, hi] });
+  };
+  return (
+    <div className="vol-elev" data-testid="vol-elev">
+      <div className="vol-row">
+        <b>{t('vol.elev.title')}</b>
+        <label className="vol-hs" title={t('vol.elev.hillshadeTip')}>
+          <input
+            type="checkbox"
+            checked={elevation.hillshade}
+            onChange={(e) => {
+              v.setElevation({ hillshade: e.target.checked });
+            }}
+          />
+          {t('vol.elev.hillshade')}
+        </label>
+      </div>
+      <div className="vol-ramps" role="radiogroup" aria-label={t('vol.elev.ramp')}>
+        {RAMP_IDS.map((r) => (
+          <button
+            key={r}
+            type="button"
+            role="radio"
+            aria-checked={elevation.ramp === r}
+            aria-label={t(`vol.elev.ramp.${r}`)}
+            title={t(`vol.elev.ramp.${r}`)}
+            data-ramp={r}
+            style={{ background: rampCss(r) }}
+            onClick={() => {
+              v.setElevation({ ramp: r });
+            }}
+          />
+        ))}
+      </div>
+      <div className="ramp" style={{ background: rampCss(style.ramp) }} />
+      <div className="ends">
+        <span>{m1(style.lo)}</span>
+        <span>{m1((style.lo + style.hi) / 2)}</span>
+        <span>{m1(style.hi)}</span>
+      </div>
+      <label className="vol-rng">
+        <span>{t('vol.elev.low')}</span>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={style.lo}
+          aria-label={t('vol.elev.low')}
+          onChange={(e) => {
+            setRange(parseFloat(e.target.value), style.hi);
+          }}
+        />
+      </label>
+      <label className="vol-rng">
+        <span>{t('vol.elev.high')}</span>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={style.hi}
+          aria-label={t('vol.elev.high')}
+          onChange={(e) => {
+            setRange(style.lo, parseFloat(e.target.value));
+          }}
+        />
+      </label>
+      <button
+        type="button"
+        className="btn sm ghost"
+        aria-pressed={elevation.range === null}
+        title={t('vol.elev.autoTip')}
+        onClick={() => {
+          v.setElevation({ range: null });
+        }}
+      >
+        {t('vol.elev.auto')}
+      </button>
+    </div>
+  );
+}
+
 function Legend() {
   const surface = useVolumetric((s) => s.surface);
   const body = useVolumetric((s) => s.body);
   const base = useVolumetric((s) => s.file?.bases.find((b) => b.id === s.base)?.label);
   const deadband = useVolumetric((s) => s.file?.deadbandM ?? 0.1);
   const swipe = useVolumetric((s) => s.swipe);
+  const anyShown = useVolumetric((s) => s.selected !== null || s.shown.length > 0);
   if (swipe) return null;
   const R = CHANGE_RAMP;
   const rgb = (c: readonly number[]) => `rgb(${c.join(',')})`;
+  if (surface === 'photo' && !anyShown)
+    return (
+      <div className="vol-legend vol-hint overlay-box" data-testid="vol-hint">
+        {t('vol.reveal')}
+      </div>
+    );
   return (
-    <div className="vol-legend overlay-box" aria-label="Legend">
+    <div
+      className={`vol-legend overlay-box${surface === 'elev' ? ' live' : ''}`}
+      aria-label="Legend"
+    >
       {surface === 'change' && (
         <>
           <b>Height change</b>
@@ -431,16 +546,9 @@ function Legend() {
           </div>
         </>
       )}
-      {surface === 'elev' && (
-        <>
-          <b>Elevation</b>
-          <div
-            className="ramp"
-            style={{ background: 'linear-gradient(90deg,#1f6fbf,#3fb56a,#f0e19a,#a8835f,#ffffff)' }}
-          />
-        </>
-      )}
+      {surface === 'elev' && <ElevationControls />}
       {body !== 'off' &&
+        anyShown &&
         (surface === 'change' ? (
           <>
             <span className="key">
@@ -464,10 +572,12 @@ function Legend() {
             </span>
           </>
         ))}
-      <span className="key">
-        <i className="line" />
-        Toe line
-      </span>
+      {anyShown && (
+        <span className="key">
+          <i className="line" />
+          Toe line
+        </span>
+      )}
     </div>
   );
 }
@@ -500,9 +610,38 @@ export function VolumetricStage({ stage }: { stage: EngineStage | null }) {
   const ready = useVolumetric((s) => s.status === 'ready');
   const picking = useVolumetric((s) => s.section.mode === 'picking');
   const scene = useMemo(
-    () => (stage && ready ? new VolumetricScene(stage, volumetric) : null),
+    () =>
+      stage && ready
+        ? new VolumetricScene(stage, volumetric, (id) => workspace.getState().isLayerVisible(id))
+        : null,
     [stage, ready],
   );
+
+  // Esc: stop picking a section, else hide the revealed pile (not while a boundary is edited);
+  // Enter saves a boundary edit.
+  useEffect(() => {
+    if (!ready) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || isTyping(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.target instanceof HTMLElement && e.target.closest('dialog, [role="dialog"]')) return;
+      const s = volumetric.getState();
+      if (e.key === 'Escape') {
+        if (s.section.mode === 'picking') s.clearSection();
+        else if (s.selected && !s.edit) s.select(null);
+        else return;
+      } else if (e.key === 'Enter' && s.edit && (s.edit.dirty || s.edit.resetToAuto)) {
+        if (s.saving || s.edit.busy) return;
+        if (e.target instanceof HTMLElement && e.target.closest('button, a, tr, [role="button"]'))
+          return;
+        void s.saveEdit();
+      } else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [ready]);
 
   useEffect(() => {
     if (!scene) return;

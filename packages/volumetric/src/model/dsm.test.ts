@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { DsmGrid } from './kitdata';
-import { changeColour, changeRaster, reliefColour, sampleDsm, sectionProfile } from './dsm';
+import {
+  changeColour,
+  changeRaster,
+  heightStats,
+  hillshade,
+  isRampId,
+  RAMP_IDS,
+  rampColour,
+  rampCss,
+  reliefColour,
+  reliefRaster,
+  sampleDsm,
+  sectionProfile,
+} from './dsm';
 
 /** 4 x 3 cells of 1 m from (0, 3): heights rise 1 m per column east, cm above zoff 50. */
 function grid(epoch: string, add = 0, valid?: number[]): DsmGrid {
@@ -79,8 +92,65 @@ describe('change colours', () => {
     expect(r.data[6] ?? 0).toBeGreaterThan(r.data[4] ?? 0);
   });
 
-  it('ramps elevation from blue (low) to white (high)', () => {
-    expect(reliefColour(0, 0, 10)).toEqual([31, 111, 191]);
+  it('ramps the terrain relief from green (low) to white (high)', () => {
+    const low = reliefColour(0, 0, 10);
+    expect(low[1]).toBeGreaterThan(low[0]);
+    expect(low[1]).toBeGreaterThan(low[2]);
     expect(reliefColour(10, 0, 10)).toEqual([255, 255, 255]);
+  });
+});
+
+describe('elevation ramps', () => {
+  it('offers vivid, perceptual, terrain and grey ramps', () => {
+    expect(RAMP_IDS).toEqual(['turbo', 'spectral', 'viridis', 'terrain', 'inferno', 'grey']);
+    expect(isRampId('viridis')).toBe(true);
+    expect(isRampId('toString')).toBe(false);
+  });
+
+  it('clamps to the ends of the range and interpolates between stops', () => {
+    expect(rampColour(-5, 0, 10, 'grey')).toEqual([32, 32, 32]);
+    expect(rampColour(50, 0, 10, 'grey')).toEqual([255, 255, 255]);
+    const mid = rampColour(5, 0, 10, 'grey');
+    expect(mid[0]).toBe(Math.round(32 + (255 - 32) / 2));
+    // turbo: dark blue at the bottom, dark red at the top
+    const lo = rampColour(0, 0, 1, 'turbo');
+    const hi = rampColour(1, 0, 1, 'turbo');
+    expect(lo[2]).toBeGreaterThan(lo[0]);
+    expect(hi[0]).toBeGreaterThan(hi[2]);
+    expect(rampCss('viridis').startsWith('linear-gradient(90deg, #440154')).toBe(true);
+  });
+
+  it('keeps cells without data transparent so the photo shows through', () => {
+    const d = grid('e1', 0, [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]);
+    for (const hs of [false, true]) {
+      const r = reliefRaster(d, 50, 53, { ramp: 'viridis', hillshade: hs });
+      expect(r.data[3]).toBe(0);
+      expect(r.data[4 * 11 + 3]).toBe(0);
+      expect(r.data[7]).toBe(255);
+    }
+  });
+
+  it('lights slopes facing the north-west sun and darkens the others', () => {
+    // heights rise to the east: the slope faces west, lit by the west and north-west lights
+    const west = hillshade(grid('e1'));
+    // the mirror: rising to the west, the slope faces east, away from the light
+    const mirrored = grid('e1');
+    for (let y = 0; y < 3; y++) for (let x = 0; x < 4; x++) mirrored.z[y * 4 + x] = (3 - x) * 100;
+    const east = hillshade(mirrored);
+    expect(west[5] ?? 0).toBeGreaterThan(east[5] ?? 0);
+    // flat ground keeps its colour (shade about 0.71)
+    const flat = grid('e1');
+    flat.z.fill(0);
+    expect(hillshade(flat)[5]).toBeCloseTo(Math.SQRT1_2, 5);
+    expect(Number.isNaN(hillshade(grid('e1', 0, [0, ...new Array<number>(11).fill(1)]))[0])).toBe(
+      true,
+    );
+  });
+
+  it('measures the automatic range and extent of the surveys', () => {
+    const { auto, extent } = heightStats([grid('e1')], 1);
+    expect(extent).toEqual([50, 53]);
+    expect(auto[0]).toBeGreaterThanOrEqual(50);
+    expect(auto[1]).toBeLessThanOrEqual(53);
   });
 });

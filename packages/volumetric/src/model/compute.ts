@@ -14,10 +14,12 @@ import {
 } from './bodies';
 import {
   changeRaster,
+  heightStats,
   reliefRaster,
   sampleDsm,
   sectionProfile,
   type Raster,
+  type ReliefStyle,
   type SectionProfile,
 } from './dsm';
 import {
@@ -103,12 +105,15 @@ export interface GridInfo {
   y1: number;
   /** Elevation range for the colour relief (1st and 99th percentile of both surveys), m. */
   relief: [number, number];
+  /** Lowest and highest valid height of both surveys, m. */
+  extent: [number, number];
 }
 
 export class VolumeCompute {
   private readonly piles = new Map<string, Promise<PileGrid>>();
   private readonly dsms = new Map<string, Promise<DsmGrid>>();
   private coarseP: Promise<CoarseGrids> | null = null;
+  private gridP: Promise<GridInfo> | null = null;
   private readonly editCache = new Map<string, EditGeometry | null>();
 
   constructor(private readonly o: ComputeOptions) {}
@@ -161,16 +166,20 @@ export class VolumeCompute {
     return this.coarseP;
   }
 
-  async grid(): Promise<GridInfo> {
-    const ds = await Promise.all(this.o.epochs.map((e) => this.dsm(e)));
-    const d = ds[0];
-    if (!d) throw new Error('No survey');
-    const hs: number[] = [];
-    for (const g of ds)
-      for (let i = 0; i < g.z.length; i += 7) if (g.valid[i]) hs.push((g.z[i] ?? 0) / 100 + g.zoff);
-    hs.sort((a, b) => a - b);
-    const q = (f: number) => hs[Math.min(hs.length - 1, Math.floor(f * (hs.length - 1)))] ?? 0;
-    return { w: d.w, h: d.h, res: d.res, x0: d.x0, y1: d.y1, relief: [q(0.01), q(0.99)] };
+  grid(): Promise<GridInfo> {
+    if (!this.gridP) {
+      const p = Promise.all(this.o.epochs.map((e) => this.dsm(e))).then((ds): GridInfo => {
+        const d = ds[0];
+        if (!d) throw new Error('No survey');
+        const { auto, extent } = heightStats(ds);
+        return { w: d.w, h: d.h, res: d.res, x0: d.x0, y1: d.y1, relief: auto, extent };
+      });
+      p.catch(() => {
+        this.gridP = null;
+      });
+      this.gridP = p;
+    }
+    return this.gridP;
   }
 
   /** The automatic volumes of a pile recomputed from its 10 cm grid, per epoch. */
@@ -262,9 +271,18 @@ export class VolumeCompute {
     return changeRaster(await this.dsm(this.first), await this.dsm(this.last), this.o.deadband);
   }
 
-  async reliefRaster(epoch: string): Promise<Raster> {
-    const g = await this.grid();
-    return reliefRaster(await this.dsm(epoch), g.relief[0], g.relief[1]);
+  /**
+   * Colour relief of a survey: the style's ramp, range and hillshade; without a range, the 1st to
+   * 99th percentile of both surveys.
+   */
+  async reliefRaster(epoch: string, style: Partial<ReliefStyle> = {}): Promise<Raster> {
+    let { lo, hi } = style;
+    if (lo === undefined || hi === undefined) {
+      const g = await this.grid();
+      lo ??= g.relief[0];
+      hi ??= g.relief[1];
+    }
+    return reliefRaster(await this.dsm(epoch), lo, hi, style);
   }
 
   /** Surface heights under points (E, N) of one survey, null where there is no data. */

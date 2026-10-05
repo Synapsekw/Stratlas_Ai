@@ -10,7 +10,13 @@ import type {
 import { createWorkspace } from '@aio/workspace';
 import { describe, expect, it, vi } from 'vitest';
 import type { EditResponse } from './model/compute';
-import { createVolumetricStore, type VolumetricDeps } from './store';
+import {
+  createVolumetricStore,
+  parseVolumePrefs,
+  type VolumePrefs,
+  type VolumePrefStore,
+  type VolumetricDeps,
+} from './store';
 import type { VolumeService } from './worker/client';
 
 const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
@@ -129,7 +135,19 @@ function editResponse(net: number): EditResponse {
   };
 }
 
-function setup(opts: { edits?: BoundaryEdit[]; noVolumes?: boolean } = {}) {
+function memoryPrefs(): VolumePrefStore {
+  const all = new Map<string, VolumePrefs>();
+  return {
+    read: (id) => structuredClone(all.get(id) ?? {}),
+    write: (id, p) => {
+      all.set(id, structuredClone(p));
+    },
+  };
+}
+
+function setup(
+  opts: { edits?: BoundaryEdit[]; noVolumes?: boolean; prefs?: VolumePrefStore } = {},
+) {
   const ws = createWorkspace();
   ws.getState().openProject({ id: 'masafi', root: 'E:/m', manifest });
   const calls: { channel: IpcChannel; req: unknown }[] = [];
@@ -151,7 +169,9 @@ function setup(opts: { edits?: BoundaryEdit[]; noVolumes?: boolean } = {}) {
     pileSection: vi.fn(() => Promise.resolve({ s: [], z1: [], z2: [], base: [] })),
     changeRaster: vi.fn(),
     reliefRaster: vi.fn(),
-    grid: vi.fn(),
+    grid: vi.fn(() =>
+      Promise.resolve({ w: 1, h: 1, res: 1, x0: 0, y1: 0, relief: [48, 62], extent: [45, 70] }),
+    ),
     heights: vi.fn(),
     dispose: vi.fn(),
   } as unknown as VolumeService;
@@ -173,6 +193,7 @@ function setup(opts: { edits?: BoundaryEdit[]; noVolumes?: boolean } = {}) {
     },
     bridge: () => bridge,
     now: () => '2026-10-04T12:00:00.000Z',
+    ...(opts.prefs ? { prefs: opts.prefs } : {}),
   };
   const store = createVolumetricStore(deps);
   return { store, ws, calls, service, started, reads };
@@ -277,36 +298,134 @@ describe('volumetric store: dates and selection', () => {
 });
 
 describe('volumetric store: pile visibility', () => {
-  it('hides and shows piles one by one or all at once; the selected pile always shows', async () => {
+  it('shows no pile until one is selected; the selected pile always shows', async () => {
     const { store } = setup();
     await store.getState().load();
     const s = () => store.getState();
-    expect(s().hidden).toEqual([]);
-    s().setPileVisible('P01', false);
-    expect(s().hidden).toEqual(['P01']);
+    expect(s().shown).toEqual([]);
     expect(s().isPileShown('P01')).toBe(false);
-    expect(s().isPileShown('P02')).toBe(true);
-    s().setPileVisible('P01', true);
-    expect(s().hidden).toEqual([]);
-    s().setAllPilesVisible(false);
-    expect([...s().hidden].sort()).toEqual(
-      s()
-        .piles.map((p) => p.id)
-        .sort(),
-    );
+    expect(s().isPileShown('P02')).toBe(false);
     s().select('P02');
     expect(s().isPileShown('P02')).toBe(true);
     expect(s().isPileShown('P01')).toBe(false);
-    s().setAllPilesVisible(true);
-    expect(s().hidden).toEqual([]);
+    s().select(null);
+    expect(s().isPileShown('P02')).toBe(false);
   });
 
-  it('starts every project with all piles shown', async () => {
+  it('shows piles one by one or all at once on purpose', async () => {
     const { store } = setup();
     await store.getState().load();
-    store.getState().setAllPilesVisible(false);
+    const s = () => store.getState();
+    s().setPileVisible('P01', true);
+    expect(s().shown).toEqual(['P01']);
+    expect(s().isPileShown('P01')).toBe(true);
+    expect(s().isPileShown('P02')).toBe(false);
+    s().setPileVisible('P01', false);
+    expect(s().shown).toEqual([]);
+    s().setAllPilesVisible(true);
+    expect([...s().shown].sort()).toEqual(['P01', 'P02']);
+    s().setAllPilesVisible(false);
+    expect(s().shown).toEqual([]);
+  });
+
+  it('remembers "show all" per project, not single piles', async () => {
+    const prefs = memoryPrefs();
+    const { store } = setup({ prefs });
     await store.getState().load();
-    expect(store.getState().hidden).toEqual([]);
+    store.getState().setAllPilesVisible(true);
+    await store.getState().load();
+    expect([...store.getState().shown].sort()).toEqual(['P01', 'P02']);
+    // hiding one pile ends "all"; the next opening starts with none again
+    store.getState().setPileVisible('P02', false);
+    await store.getState().load();
+    expect(store.getState().shown).toEqual([]);
+    store.getState().setPileVisible('P01', true);
+    await store.getState().load();
+    expect(store.getState().shown).toEqual([]);
+    // another project keeps its own choice
+    expect(prefs.read('other')).toEqual({});
+  });
+});
+
+describe('volumetric store: click to reveal', () => {
+  it('flies to a pile picked on the terrain and hides it again on empty ground', async () => {
+    const { store, ws } = setup();
+    await store.getState().load();
+    ws.getState().select({ kind: 'asset', id: 'P02_e2', layer: 'terrain-2' });
+    expect(store.getState().selected).toBe('P02');
+    expect(store.getState().isPileShown('P02')).toBe(true);
+    expect(ws.getState().camera?.target).toEqual({
+      kind: 'selection',
+      selection: { kind: 'asset', id: 'P02_e2', layer: 'terrain-2' },
+    });
+    ws.getState().select(null);
+    expect(store.getState().selected).toBeNull();
+    expect(store.getState().isPileShown('P02')).toBe(false);
+  });
+
+  it('switches the survey when a layer of the other date is turned on by hand', async () => {
+    const { store, ws } = setup();
+    await store.getState().load();
+    expect(store.getState().epoch).toBe('e2');
+    ws.getState().setLayerVisible('ortho-1', true);
+    expect(store.getState().epoch).toBe('e1');
+    expect(ws.getState().isLayerVisible('terrain-2')).toBe(false);
+    expect(ws.getState().isLayerVisible('terrain-1')).toBe(true);
+    // swiping shows both terrains without switching
+    store.getState().setSwipe(true);
+    expect(store.getState().epoch).toBe('e1');
+    expect(ws.getState().isLayerVisible('terrain-2')).toBe(true);
+  });
+});
+
+describe('volumetric store: elevation colours', () => {
+  it('starts vivid with hillshade, resolves the automatic range from the worker', async () => {
+    const { store, service } = setup();
+    await store.getState().load();
+    expect(store.getState().elevation).toEqual({ ramp: 'turbo', range: null, hillshade: true });
+    expect(store.getState().reliefStyle()).toBeNull();
+    store.getState().setSurface('elev');
+    await vi.waitFor(() => {
+      expect(store.getState().relief).not.toBeNull();
+    });
+    expect(service.grid).toHaveBeenCalledTimes(1);
+    expect(store.getState().reliefStyle()).toEqual({
+      ramp: 'turbo',
+      lo: 48,
+      hi: 62,
+      hillshade: true,
+    });
+    store.getState().setElevation({ ramp: 'viridis', range: [50, 55], hillshade: false });
+    expect(store.getState().reliefStyle()).toEqual({
+      ramp: 'viridis',
+      lo: 50,
+      hi: 55,
+      hillshade: false,
+    });
+    // an empty range is refused
+    store.getState().setElevation({ range: [55, 55] });
+    expect(store.getState().elevation.range).toEqual([50, 55]);
+  });
+
+  it('remembers the ramp, range and hillshade per project', async () => {
+    const prefs = memoryPrefs();
+    const { store } = setup({ prefs });
+    await store.getState().load();
+    store.getState().setElevation({ ramp: 'inferno', range: [49, 60], hillshade: false });
+    await store.getState().load();
+    expect(store.getState().elevation).toEqual({
+      ramp: 'inferno',
+      range: [49, 60],
+      hillshade: false,
+    });
+  });
+
+  it('reads stored prefs defensively', () => {
+    expect(parseVolumePrefs(null)).toEqual({});
+    expect(parseVolumePrefs({ showAll: 'yes', elevation: { ramp: 'rainbow' } })).toEqual({});
+    expect(parseVolumePrefs({ showAll: true, elevation: { ramp: 'grey', range: [5, 1] } })).toEqual(
+      { showAll: true, elevation: { ramp: 'grey', range: null, hillshade: true } },
+    );
   });
 });
 

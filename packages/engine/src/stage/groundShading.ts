@@ -71,12 +71,13 @@ const FRAG_MASK = /* glsl */ `
 if ( uMaskOn > 0.5 && uMaskPass < 0.5 && aioIsSea( vAioWorld ) ) discard;`;
 /**
  * In the mask pass, imagery says what it shows: sea (cyan dominant: green and blue well above
- * red and close to each other, unlike blue roofs or vegetation) or land; no data leaves the
- * meshes' answer in place.
+ * red and close to each other, unlike blue roofs or vegetation) or land; no data (transparent or
+ * black) leaves the meshes' answer in place.
  */
 const FRAG_CLASSIFY = /* glsl */ `
 #include <map_fragment>
 if ( uMaskPass > 0.5 ) {
+  if ( diffuseColor.a < 0.5 ) discard;
   vec3 s = pow( max( diffuseColor.rgb, vec3( 0.0 ) ), vec3( 1.0 / 2.2 ) );
   if ( s.r + s.g + s.b < 0.06 ) discard;
   bool sea = s.g - s.r > 0.06 && s.b - s.r > 0.07 && abs( s.b - s.g ) < 0.12;

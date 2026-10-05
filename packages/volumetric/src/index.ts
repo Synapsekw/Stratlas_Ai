@@ -22,9 +22,15 @@ export type { WorkerInit } from './worker/protocol';
 export * from './model/layers';
 export {
   createVolumetricStore,
+  DEFAULT_ELEVATION,
+  localPrefStore,
+  parseVolumePrefs,
   useVolumetric,
   volumetric,
   type BodyMode,
+  type ElevationStyle,
+  type VolumePrefs,
+  type VolumePrefStore,
   type EditSession,
   type SectionState,
   type SurfaceMode,
