@@ -1,6 +1,7 @@
-import { APICallError, RetryError } from 'ai';
+import { APICallError, generateText, RetryError } from 'ai';
 import { describe, expect, it } from 'vitest';
-import { describeError, sanitize } from './errors';
+import { describeError, isWorkspaceError, sanitize } from './errors';
+import { createScriptedProvider, WORKSPACE_REQUIRED_BODY } from './scripted';
 
 const KEY = 'sk-ant-api03-NOT-A-REAL-KEY-0123456789abcdef';
 
@@ -39,6 +40,18 @@ describe('describeError', () => {
     expect(d.log).toMatch(
       /^APICallError 400 invalid_request_error \(Anthropic claude-sonnet-5-5\): This API key is not scoped/,
     );
+  });
+
+  it('tags the workspace error so the agent panel and Settings can offer the fix in place', () => {
+    expect(describeError(apiError(400, WORKSPACE_400), anthropic).code).toBe('anthropic-workspace');
+    // The scripted test model answers with the same body.
+    expect(JSON.parse(WORKSPACE_REQUIRED_BODY)).toEqual(WORKSPACE_400);
+    const other = describeError(
+      apiError(400, { type: 'error', error: { type: 'invalid_request_error', message: 'bad' } }),
+      anthropic,
+    );
+    expect(other.code).toBeUndefined();
+    expect(isWorkspaceError(500, 'not scoped to a workspace')).toBe(false);
   });
 
   it('names the model when it is not found', () => {
@@ -141,5 +154,27 @@ describe('sanitize', () => {
     const long = sanitize('x'.repeat(1000));
     expect(long.length).toBe(400);
     expect(long.endsWith('...')).toBe(true);
+  });
+});
+
+describe('scripted workspace mode (end-to-end tests)', () => {
+  it('answers the workspace 400 until a workspace ID is set', async () => {
+    let id = '';
+    const provider = createScriptedProvider('anthropic', true, { workspaceId: () => id });
+    const ask = () =>
+      generateText({
+        model: provider.languageModel('claude-sonnet-5-5', null),
+        prompt: 'Reply with OK.',
+        maxRetries: 0,
+      });
+    const failure = await ask().then(
+      () => null,
+      (e: unknown) => e,
+    );
+    const d = describeError(failure, { label: 'Anthropic', model: 'claude-sonnet-5-5' });
+    expect(d).toMatchObject({ status: 400, code: 'anthropic-workspace' });
+    expect(d.log).toMatch(/^APICallError 400 invalid_request_error/);
+    id = 'wrkspc_01Test';
+    expect((await ask()).text).toBe('OK');
   });
 });

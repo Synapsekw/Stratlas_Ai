@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AiProvider, AiTask, ToolRisk, WindowKind } from './agent';
+import { AiErrorCode, AiProvider, AiTask, ToolRisk, WindowKind } from './agent';
 import { Issue } from './annotation';
 import { Conversation, ConversationId, ConversationSummary } from './conversation';
 import { JobEvent, JobId, JobLogLine, JobRecord, JobStartRequest, RuntimeInfo } from './jobs';
@@ -475,6 +475,8 @@ export const ipc = {
       model: z.string().optional(),
       /** HTTP status of a provider error. */
       status: z.number().int().optional(),
+      /** A provider error the app can offer a fix for (focus the field that fixes it). */
+      code: AiErrorCode.optional(),
     }),
   },
   'ai:send': {
@@ -1061,7 +1063,13 @@ export const ipcEvents = {
       model: z.string().optional(),
     }),
     z.object({ type: z.literal('done'), runId: z.string() }),
-    z.object({ type: z.literal('error'), runId: z.string(), message: z.string() }),
+    z.object({
+      type: z.literal('error'),
+      runId: z.string(),
+      message: z.string(),
+      /** A provider error the agent panel offers a fix for in place (see AiErrorCode). */
+      code: AiErrorCode.optional(),
+    }),
   ]),
   'package:progress': z.object({
     jobId: z.string(),

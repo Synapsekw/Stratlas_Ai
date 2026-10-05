@@ -13,6 +13,7 @@ import { RoadPanel } from '../road/RoadPanel';
 import { RoadSetupCard } from '../road/RoadSetup';
 import { useIsRoad } from '../road/useRoadMap';
 import { NoProject } from '../screens/NoProject';
+import { AgentFixCard } from './AgentFixCard';
 import { SelectionCard } from './SelectionCard';
 import { Stage } from './Stage';
 import { toggleTimeline, useTimelineShown } from './timelinePref';
@@ -221,7 +222,11 @@ export function WorkspaceScreen() {
               This package does not allow cloud AI. Nothing from it is sent to any provider.
             </p>
           ) : (
-            <AgentPanel window={focused ?? 'scene3d'} className="agent-host" />
+            <AgentPanel
+              window={focused ?? 'scene3d'}
+              className="agent-host"
+              renderFix={(controls) => <AgentFixCard {...controls} />}
+            />
           )}
         </div>
       </aside>

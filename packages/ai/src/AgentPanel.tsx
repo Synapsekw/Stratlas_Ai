@@ -14,14 +14,35 @@ import { formatMeter, totalUsage } from './pricing';
 import { WINDOW_LABELS } from './prompt';
 import { defaultToolContext } from './renderer-tools';
 import { modelLabel, PROVIDER_LABELS } from './routes';
-import { AgentSession, type Availability, type SendPreview, type Step, type Turn } from './session';
+import {
+  AgentSession,
+  type AgentFix,
+  type Availability,
+  type SendPreview,
+  type Step,
+  type Turn,
+} from './session';
 import { SUGGESTIONS } from './suggestions';
 import { getToolSpec } from './tools';
+
+/** What the app's fix card gets when a reply failed with an error it can fix in place. */
+export interface AgentFixControls {
+  fix: AgentFix;
+  /** Send the failed message again (call once the fix is in place). */
+  retry: () => Promise<void>;
+  /** Hide the card; the error stays in the conversation. */
+  dismiss: () => void;
+}
 
 export interface AgentPanelProps {
   /** The window this agent is bound to; its context travels with every message. */
   window: WindowKind;
   className?: string;
+  /**
+   * An inline card under a reply that failed with a fixable provider error (AiErrorCode), for
+   * example the Anthropic workspace ID. The app renders it, so it can use its settings and strings.
+   */
+  renderFix?: (controls: AgentFixControls) => ReactNode;
 }
 
 const CAPTURE_WINDOWS: readonly WindowKind[] = ['video', 'scene3d', 'pointcloud', 'photo', 'map'];
@@ -41,7 +62,7 @@ function providerName(provider: string): string {
  * the session and project meters. Sends through window.aio 'ai:send', executes renderer tools on
  * 'ai:event' tool calls. Owner: stream S9.
  */
-export function AgentPanel({ window: win, className }: AgentPanelProps) {
+export function AgentPanel({ window: win, className, renderFix }: AgentPanelProps) {
   const [session] = useState(
     () =>
       new AgentSession({
@@ -85,7 +106,7 @@ export function AgentPanel({ window: win, className }: AgentPanelProps) {
   useEffect(() => {
     const el = log.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [state.turns, state.steps]);
+  }, [state.turns, state.steps, state.fix]);
 
   const ready = state.availability.status === 'ready';
   const canCapture = CAPTURE_WINDOWS.includes(win);
@@ -200,15 +221,27 @@ export function AgentPanel({ window: win, className }: AgentPanelProps) {
             ))}
           </div>
         ) : (
-          state.turns.map((t) => (
-            <TurnView
-              key={t.id}
-              turn={t}
-              steps={state.steps}
-              who={route ? `${modelLabel(route.model)} · ${providerName(route.provider)}` : 'Agent'}
-              session={session}
-            />
-          ))
+          <>
+            {state.turns.map((t) => (
+              <TurnView
+                key={t.id}
+                turn={t}
+                steps={state.steps}
+                who={
+                  route ? `${modelLabel(route.model)} · ${providerName(route.provider)}` : 'Agent'
+                }
+                session={session}
+              />
+            ))}
+            {state.fix &&
+              renderFix?.({
+                fix: state.fix,
+                retry: () => session.retry(),
+                dismiss: () => {
+                  session.dismissFix();
+                },
+              })}
+          </>
         )}
       </div>
 

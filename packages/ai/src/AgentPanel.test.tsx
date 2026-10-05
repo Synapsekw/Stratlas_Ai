@@ -4,7 +4,12 @@ import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
-import { AgentPanel, describeStep } from './AgentPanel';
+import {
+  AgentPanel,
+  describeStep,
+  type AgentFixControls,
+  type AgentPanelProps,
+} from './AgentPanel';
 import { fixtureManifest } from './test-fixtures';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -21,13 +26,13 @@ afterEach(() => {
   workspace.getState().closeProject();
 });
 
-async function render(bridge: AioBridge | null) {
+async function render(bridge: AioBridge | null, props: Partial<AgentPanelProps> = {}) {
   if (bridge) (globalThis as { aio?: AioBridge }).aio = bridge;
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
   await act(async () => {
-    root?.render(<AgentPanel window="scene3d" />);
+    root?.render(<AgentPanel window="scene3d" {...props} />);
     await Promise.resolve();
   });
   await act(() => new Promise((r) => setTimeout(r, 0)));
@@ -119,6 +124,42 @@ describe('AgentPanel', () => {
     expect(el.textContent).toContain('Two clips.');
     expect(el.textContent).toContain('12.4k tok · $0.04');
     expect(el.textContent).toContain('Claude Sonnet 5.5');
+  });
+});
+
+describe('AgentPanel fixes in place', () => {
+  it('renders the app card under a reply that failed with a fixable error, and retries', async () => {
+    workspace.getState().openProject({ id: 'p1', root: 'E:/x', manifest: fixtureManifest() }, []);
+    const t = bridge(true);
+    let controls: AgentFixControls | null = null;
+    const el = await render(t.b, {
+      renderFix: (c) => {
+        controls = c;
+        return <div data-testid="fix">{c.fix.code}</div>;
+      },
+    });
+    await act(async () => {
+      el.querySelector<HTMLButtonElement>('.ag-sug')?.click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    await act(async () => {
+      t.emit({
+        type: 'error',
+        runId: t.sent[0]?.runId ?? '',
+        message: 'Anthropic: not scoped to a workspace. (HTTP 400)',
+        code: 'anthropic-workspace',
+      });
+      await Promise.resolve();
+    });
+    expect(el.querySelector('.ag-err')?.textContent).toContain('not scoped to a workspace');
+    expect(el.querySelector('[data-testid="fix"]')?.textContent).toBe('anthropic-workspace');
+    await act(async () => {
+      await controls?.retry();
+    });
+    expect(t.sent).toHaveLength(2);
+    expect(t.sent[1]?.messages).toEqual(t.sent[0]?.messages);
+    expect(el.querySelector('[data-testid="fix"]')).toBeNull();
+    expect(el.querySelector('.ag-err')).toBeNull();
   });
 });
 

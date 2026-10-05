@@ -338,6 +338,62 @@ describe('agent session conversation', () => {
   });
 });
 
+describe('provider errors fixed in place', () => {
+  const WORKSPACE =
+    'Anthropic: This API key is not scoped to a workspace. (HTTP 400) Enter the workspace ID.';
+
+  it('offers the fix for a coded error and sends the failed message again once fixed', async () => {
+    const t = setup();
+    await t.session.send('Hello');
+    const first = t.sent('ai:send')[0]?.req as IpcRequest<'ai:send'>;
+    t.emit({ type: 'error', runId: first.runId, message: WORKSPACE, code: 'anthropic-workspace' });
+    let s = t.session.getState();
+    expect(s.turns[1]).toMatchObject({ status: 'error', error: WORKSPACE });
+    expect(s.fix).toEqual({ code: 'anthropic-workspace', runId: first.runId, text: 'Hello' });
+
+    await t.session.retry();
+    s = t.session.getState();
+    expect(s.fix).toBeNull();
+    // The failed exchange is replaced: the message is in the conversation once.
+    expect(s.turns.filter((x) => x.kind === 'user')).toHaveLength(1);
+    expect(s.turns.some((x) => x.kind === 'assistant' && x.status === 'error')).toBe(false);
+    const again = t.sent('ai:send')[1]?.req as IpcRequest<'ai:send'>;
+    expect(again.runId).not.toBe(first.runId);
+    expect(again.messages).toEqual([{ role: 'user', content: 'Hello' }]);
+    t.emit({ type: 'text', runId: again.runId, delta: 'Hi.' });
+    t.emit({ type: 'done', runId: again.runId });
+    expect(t.session.getState().turns.at(-1)).toMatchObject({ status: 'done' });
+  });
+
+  it('offers no fix for other errors, and the card can be dismissed', async () => {
+    const t = setup();
+    await t.session.send('Hello');
+    const run = (t.sent('ai:send')[0]?.req as IpcRequest<'ai:send'>).runId;
+    t.emit({ type: 'error', runId: run, message: 'Anthropic had a server error.' });
+    expect(t.session.getState().fix).toBeNull();
+    await t.session.retry();
+    expect(t.sent('ai:send')).toHaveLength(1);
+
+    await t.session.send('Again');
+    const second = (t.sent('ai:send')[1]?.req as IpcRequest<'ai:send'>).runId;
+    t.emit({ type: 'error', runId: second, message: WORKSPACE, code: 'anthropic-workspace' });
+    expect(t.session.getState().fix).not.toBeNull();
+    t.session.dismissFix();
+    expect(t.session.getState().fix).toBeNull();
+    // The error stays in the conversation.
+    expect(t.session.getState().turns.at(-1)).toMatchObject({ status: 'error' });
+  });
+
+  it('drops the fix on a new conversation', async () => {
+    const t = setup();
+    await t.session.send('Hello');
+    const run = (t.sent('ai:send')[0]?.req as IpcRequest<'ai:send'>).runId;
+    t.emit({ type: 'error', runId: run, message: WORKSPACE, code: 'anthropic-workspace' });
+    t.session.reset();
+    expect(t.session.getState().fix).toBeNull();
+  });
+});
+
 describe('send preview (AI-6)', () => {
   it('shows what will be sent before the first cloud send in a project', async () => {
     const t = setup({ alwaysAllow: false });

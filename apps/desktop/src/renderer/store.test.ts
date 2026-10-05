@@ -74,6 +74,17 @@ describe('shell store', () => {
     expect(DEFAULT_SETTINGS.cloudAi).toBe(false);
   });
 
+  it('opens Settings with a field to focus, cleared once focused', () => {
+    const s = createShellStore(fakeBridge({}).bridge, createWorkspace());
+    s.getState().openSettings('anthropic-workspace');
+    expect(s.getState().screen).toBe('settings');
+    expect(s.getState().settingsFocus).toBe('anthropic-workspace');
+    s.getState().clearSettingsFocus();
+    expect(s.getState().settingsFocus).toBeNull();
+    s.getState().openSettings();
+    expect(s.getState().settingsFocus).toBeNull();
+  });
+
   it('toggles the sidebar optimistically and persists it', async () => {
     const { bridge, calls } = fakeBridge({
       'settings:set': (req) => ({ ...DEFAULT_SETTINGS, ...(req as Partial<Settings>) }),
