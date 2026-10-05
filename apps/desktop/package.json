@@ -35,6 +35,7 @@
     "@aio/video": "workspace:*",
     "@aio/volumetric": "workspace:*",
     "@aio/workspace": "workspace:*",
+    "@axe-core/playwright": "^4.13.0",
     "pdfjs-dist": "^6.4.299"
   }
 }
