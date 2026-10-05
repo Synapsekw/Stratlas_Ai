@@ -13,6 +13,7 @@ import { RoadPanel } from '../road/RoadPanel';
 import { RoadSetupCard } from '../road/RoadSetup';
 import { useIsRoad } from '../road/useRoadMap';
 import { NoProject } from '../screens/NoProject';
+import { agentWindow } from './agentWindow';
 import { SelectionCard } from './SelectionCard';
 import { Stage } from './Stage';
 import { toggleTimeline, useTimelineShown } from './timelinePref';
@@ -183,7 +184,9 @@ function ContextPanel() {
 
 export function WorkspaceScreen() {
   const hasProject = useWorkspace((s) => s.project !== null);
-  const focused = useWorkspace((s) => s.focusedWindow);
+  const focusedWindow = useWorkspace((s) => s.focusedWindow);
+  const stageMode = useShell((s) => s.stageMode);
+  const focused = agentWindow(focusedWindow, stageMode);
   const rightCollapsed = useShell((s) => s.rightCollapsed);
   const pkg = useShell((s) => s.pkg);
   const road = useIsRoad();
@@ -221,7 +224,7 @@ export function WorkspaceScreen() {
               This package does not allow cloud AI. Nothing from it is sent to any provider.
             </p>
           ) : (
-            <AgentPanel window={focused ?? 'scene3d'} className="agent-host" />
+            <AgentPanel window={focused} className="agent-host" />
           )}
         </div>
       </aside>
