@@ -144,6 +144,8 @@ export default defineConfig({
           report: resolve(import.meta.dirname, 'src/renderer/report.html'),
           // the house-format project report (BLD-8), printed the same way
           house: resolve(import.meta.dirname, 'src/renderer/house.html'),
+          // the user guide on A4, printed by tools/guide/build-pdf.mjs
+          guide: resolve(import.meta.dirname, 'src/renderer/guide.html'),
         },
       },
     },

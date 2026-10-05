@@ -1,0 +1,100 @@
+/* The printed user guide (guide.html), A4, light. */
+
+@page {
+  size: A4;
+  margin: 16mm 16mm 18mm;
+}
+
+html,
+body {
+  margin: 0;
+  background: #fff;
+  color: #1d232b;
+  font-family: var(--f-ui);
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.pg-cover {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 240mm;
+  break-after: page;
+}
+
+.pg-mark {
+  color: var(--acc);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.pg-cover h1 {
+  margin: 6px 0 10px;
+  font-size: 44px;
+  font-weight: 600;
+}
+
+.pg-sub,
+.pg-company {
+  margin: 0 0 4px;
+  color: #5b6573;
+  font-size: 13px;
+}
+
+.pg-contents {
+  break-after: page;
+}
+
+.pg-contents h2 {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.pg-contents ol {
+  padding-inline-start: 22px;
+  font-size: 14px;
+  line-height: 2;
+}
+
+.pg-note {
+  margin-top: 24px;
+  color: #5b6573;
+  font-size: 12px;
+}
+
+.pg-chapter {
+  max-width: none;
+  break-before: page;
+  font-size: 12.5px;
+}
+
+.pg-num {
+  color: var(--acc);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.pg-chapter h1 {
+  margin-top: 4px;
+}
+
+.pg-chapter h2,
+.pg-chapter h3 {
+  break-after: avoid;
+}
+
+.pg-chapter figure,
+.pg-chapter table,
+.pg-chapter .guide-tip,
+.pg-chapter li {
+  break-inside: avoid;
+}
+
+.pg-chapter figure img {
+  max-height: 110mm;
+}
