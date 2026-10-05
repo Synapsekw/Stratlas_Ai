@@ -1,5 +1,5 @@
 import { brand } from '@aio/brand';
-import { Menu, type MenuItemConstructorOptions } from 'electron';
+import { BrowserWindow, Menu, type MenuItemConstructorOptions } from 'electron';
 
 /** Minimal app menu. DevTools and reload exist only in development builds. */
 export function buildMenu(dev: boolean): Menu {
@@ -52,6 +52,22 @@ export function buildMenu(dev: boolean): Menu {
       ],
     },
     { role: 'windowMenu' },
+    {
+      role: 'help',
+      submenu: [
+        {
+          label: 'User guide',
+          accelerator: 'F1',
+          // The renderer opens the guide on F1 (also where the menu bar is hidden).
+          click: (_item, win) => {
+            if (win instanceof BrowserWindow) {
+              win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'F1' });
+              win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'F1' });
+            }
+          },
+        },
+      ],
+    },
   ];
   return Menu.buildFromTemplate(template);
 }

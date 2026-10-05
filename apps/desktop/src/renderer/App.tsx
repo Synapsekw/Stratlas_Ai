@@ -32,6 +32,8 @@ import { UnlockDialog } from './shell/UnlockDialog';
 import { Sidebar } from './shell/Sidebar';
 import { TitleBar } from './shell/TitleBar';
 import { applyAppearance } from './theme';
+import { HelpPanel } from './help/HelpPanel';
+import { help } from './help/store';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
 import { BuilderLayer } from './builder/BuilderLayer';
 import { Lightbox } from './issueCard/Lightbox';
@@ -42,7 +44,12 @@ function onKeyDown(e: KeyboardEvent) {
   const s = shell.getState();
   const mod = e.ctrlKey || e.metaKey;
   const key = e.key.toLowerCase();
-  if (mod && key === 'k') {
+  if (e.key === 'F1') {
+    e.preventDefault();
+    const h = help.getState();
+    if (h.open) h.closeHelp();
+    else h.openHelp();
+  } else if (mod && key === 'k') {
     e.preventDefault();
     s.setPalette(!s.paletteOpen);
   } else if (mod && e.altKey && key === 'b') {
@@ -246,6 +253,7 @@ export function App() {
       <Toasts />
       <BuilderLayer />
       <Lightbox />
+      <HelpPanel />
     </div>
   );
 }

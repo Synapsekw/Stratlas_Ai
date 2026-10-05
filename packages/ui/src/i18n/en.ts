@@ -1051,6 +1051,18 @@ export const en = {
   'media.findings.tileUngraded_one': '{count} finding',
   'media.findings.tileUngraded_other': '{count} findings',
   'media.photoLimit': 'Showing the first {limit} of {total}. Use Ctrl K to find a photo by name.',
+  // User guide (F1): help panel and the "?" links
+  'help.title': 'User guide',
+  'help.open': 'User guide (F1)',
+  'help.search': 'Search the guide',
+  'help.contents': 'Contents',
+  'help.results': 'Search results',
+  'help.count_one': '{count} section',
+  'help.count_other': '{count} sections',
+  'help.noResults': 'Nothing in the guide matches "{query}".',
+  'help.close': 'Close the guide (Esc)',
+  'help.topic': 'Help on this',
+  'help.compare': 'Help on comparing dates',
   'det.sheet.issues_one': '{count} issue on this photo',
   'det.sheet.issues_other': '{count} issues on this photo',
 } as const satisfies Record<string, string>;

@@ -10,6 +10,7 @@ import {
 } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { FocusZone } from '../FocusZone';
+import { HelpLink } from '../help/HelpPanel';
 import { useGraphics } from '../graphics';
 import { shell, useShell } from '../shell';
 import { compareNotice } from './compare';
@@ -75,6 +76,7 @@ export function CompareButton({ split }: { split: SplitModel }) {
         <Icon name="history" />
         <span className="tip">{label}</span>
       </button>
+      {twin && <HelpLink topic={{ chapter: 'compare-dates' }} label={t('help.compare')} />}
     </div>
   );
 }

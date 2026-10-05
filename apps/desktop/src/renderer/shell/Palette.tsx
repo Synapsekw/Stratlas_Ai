@@ -7,6 +7,7 @@ import { useMemo } from 'react';
 import { actionAllowed, allowedActions } from '../exports/exportModel';
 import { runExportAction } from '../exports/exports';
 import { builder } from '../builder/state';
+import { help } from '../help/store';
 import { legacyLayers } from '../legacy';
 import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
@@ -79,6 +80,15 @@ export function Palette() {
     const action = (id: string, title: string, icon: IconName, run: () => void, hint?: string) => {
       list.push({ id, title, group: 'Actions', icon, run, ...(hint ? { hint } : {}) });
     };
+    action(
+      'help',
+      t('help.open'),
+      'search',
+      () => {
+        help.getState().openHelp();
+      },
+      'F1',
+    );
     action('sidebar', 'Toggle sidebar', 'sidebar', () => void s.toggleSidebar(), 'Ctrl B');
     action('add-folder', 'Add project folder', 'import', () => void s.addProjectFolder());
     action('open-package', 'Open a project package (.aio)', 'lock', () => void s.openPackageFile());
