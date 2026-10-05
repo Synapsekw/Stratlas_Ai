@@ -156,6 +156,38 @@ function waterNormalTexture(): DataTexture {
 
 const lin = (hex: number) => new Color(hex);
 
+/**
+ * World-space size of one step of a 24-bit depth buffer at distance `dist` from a perspective
+ * camera with these clip planes: dist^2 (far - near) / (near far 2^24).
+ */
+export function depthStep(dist: number, near: number, far: number): number {
+  return (dist * dist * (far - near)) / (near * far * 2 ** 24);
+}
+
+/** Depth steps kept between a model face on y = 0 and the grid, and the grid and the ground. */
+const GROUND_GAP_STEPS = 12;
+
+/** How far below y = 0 the grid and the ground plane sit (both positive), metres. */
+export interface GroundDrop {
+  grid: number;
+  ground: number;
+}
+
+/**
+ * Where the grid and the ground go for a camera `dist` from its orbit target, given its clip
+ * planes and the world size of one screen pixel at that distance. Models are often authored
+ * standing on y = 0 (a tank's plinth top, a slab, a quad): a ground plane exactly there ties with
+ * those faces in the depth buffer and the two flicker through each other as the camera moves.
+ * Each layer drops a dozen depth steps (triangles against triangles) and at least a pixel (grid
+ * lines interpolate depth up to half a pixel off, whatever the viewing angle) below the one
+ * above, so the model always wins and the grid always shows on the ground, while the drop stays
+ * a couple of pixels: nothing visibly floats.
+ */
+export function groundDrop(dist: number, near: number, far: number, pixel: number): GroundDrop {
+  const layer = Math.max(GROUND_GAP_STEPS * depthStep(dist, near, far), pixel);
+  return { grid: layer, ground: 2 * layer };
+}
+
 /** Tone mapping and base exposure per backdrop. */
 const TONE: Record<EnvironmentMode, { mapping: ToneMapping; exposure: number }> = {
   studio: { mapping: ACESFilmicToneMapping, exposure: 1 },
@@ -179,7 +211,7 @@ export class Environment {
   private readonly sky: Sky;
   private readonly envSky: Sky;
   private readonly envScene = new Scene();
-  private readonly grid: GridHelper;
+  readonly grid: GridHelper;
   private readonly fog: Fog;
   private readonly normals: DataTexture;
   private readonly waterTime = { value: 0 };
@@ -199,6 +231,8 @@ export class Environment {
   private skyElevation = 45;
   private day: Daylight | null = null;
   private radius = 50;
+  /** Current drop of the grid and the ground below y = 0 (`groundDrop`). */
+  private drop: GroundDrop = { grid: 0, ground: 0 };
   private readonly centre = new Vector3();
   private readonly shadowBox = new Box3(new Vector3(-50, -1, -50), new Vector3(50, 50, 50));
   private readonly lastShadowTarget = new Vector3(Infinity, 0, 0);
@@ -466,14 +500,14 @@ export class Environment {
     }
     const groundSize = r * 60;
     this.ground.scale.set(groundSize, 1, groundSize);
-    this.ground.position.set(centre.x, 0, centre.z);
+    this.ground.position.set(centre.x, -this.drop.ground, centre.z);
     // grid cell: 1, 10 or 100 m depending on scale; 40 cells across the content
     const cell = Math.pow(10, Math.max(0, Math.round(Math.log10(r / 4))));
     const cells = Math.ceil((r * 8) / cell);
     this.grid.scale.setScalar(cells * cell);
     this.grid.position.set(
       Math.round(centre.x / cell) * cell,
-      0.002 * cell,
+      -this.drop.grid,
       Math.round(centre.z / cell) * cell,
     );
     (this.grid.geometry as { dispose(): void }).dispose();
@@ -614,6 +648,11 @@ export class Environment {
       camera.far = far;
       camera.updateProjectionMatrix();
     }
+    // world size of a pixel at the target: canvas height in device pixels (1000 without one)
+    const canvas = (this.renderer as Partial<WebGLRenderer>).domElement;
+    const h = canvas && canvas.height > 0 ? canvas.height : 1000;
+    const pixel = (2 * d * Math.tan((camera.fov * Math.PI) / 360)) / h;
+    this.placeGround(groundDrop(d, camera.near, camera.far, pixel));
     if (
       this.shadowForced ||
       this.lastShadowTarget.distanceTo(target) > d * 0.02 ||
@@ -625,6 +664,13 @@ export class Environment {
       return this.placeShadow(target, d);
     }
     return false;
+  }
+
+  /** Lower the grid and the ground so faces modelled on y = 0 draw in front (`groundDrop`). */
+  private placeGround(drop: GroundDrop) {
+    this.drop = drop;
+    this.ground.position.y = -drop.ground;
+    this.grid.position.y = -drop.grid;
   }
 
   private readonly lastFit = { pos: new Vector3(), ext: 0, near: 0, far: 0 };
