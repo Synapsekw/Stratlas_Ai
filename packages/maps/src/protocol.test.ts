@@ -62,6 +62,20 @@ describe('aiomap protocol', () => {
     expect((r.data as ArrayBuffer).byteLength).toBe(0);
   });
 
+  it('hands out a new empty buffer per miss, so each can be transferred to a worker', async () => {
+    // MapLibre transfers (detaches) every response buffer; a shared one fails from the second miss.
+    for (const url of [
+      'aiomap://tiles/10/518/352',
+      'aiomap://tiles/10/519/352',
+      'aiomap://glyphs/Noto%20Sans%20Thai/3584-3839.pbf',
+      'aiomap://glyphs/Noto%20Sans%20Thai/3840-4095.pbf',
+    ]) {
+      const r = await handler({ url, type: 'arrayBuffer' }, ac);
+      const buf = r.data as ArrayBuffer;
+      expect(() => structuredClone(buf, { transfer: [buf] })).not.toThrow();
+    }
+  });
+
   it('opens each pack once', () => {
     expect(opened.sort()).toEqual(['gcc', 'world']);
   });
