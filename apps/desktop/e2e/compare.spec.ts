@@ -68,7 +68,9 @@ interface Inspect {
     };
     stage(): StageLike | null;
     volumetric: { getState(): { status: string; selected: string | null; epoch: string } };
-    graphics(): { getState(): { renderer: string | null; tier: string } };
+    graphics(): {
+      getState(): { renderer: string | null; tier: string; setOverride(t: string | null): void };
+    };
     compare(): {
       second: StageLike | null;
       link: { linked: boolean } | null;
@@ -97,6 +99,21 @@ async function inspect<T, A>(
   } finally {
     await w.dispose();
   }
+}
+
+/**
+ * CI runners draw with a software GPU, detected as the Low tier, where Compare dates offers two
+ * maps (or the swipe) instead of two 3D views by design. Tests of the two 3D views pin Medium.
+ */
+async function pinTwoViewTier(win: Page): Promise<void> {
+  await inspect(
+    win,
+    ({ w }) => {
+      const g = w.__stratlas.graphics().getState();
+      if (g.tier === 'low') g.setOverride('medium');
+    },
+    null,
+  );
 }
 
 async function shot(win: Page, name: string) {
@@ -220,6 +237,7 @@ fixtures(
     await win.locator('.nav-item', { hasText: 'Projects' }).first().click();
     await win.getByTestId('project-card').filter({ hasText: 'E2E two dates' }).first().click();
     await expect(win.locator('[data-scene-view=""] canvas')).toBeVisible();
+    await pinTwoViewTier(win);
     await win.getByTestId('compare-dates').click();
     await expect(win.locator('[data-scene-view] canvas')).toHaveCount(2);
     await expect(win.getByTestId('pane-date-left')).toHaveValue('jan');
@@ -267,6 +285,7 @@ fixtures(
       });
 
     // leaving the comparison: one 3D view, every date as the layer tree says
+    await pinTwoViewTier(win);
     await win.getByTestId('compare-dates').click();
     await expect(win.locator('[data-scene-view] canvas')).toHaveCount(1);
     await expect
@@ -454,6 +473,7 @@ real.describe('Masafi', () => {
       const single = await measure(app, win, 6000);
 
       // Compare dates: 31 Dec 2020 on the left, 10 Jan 2021 on the right
+      await pinTwoViewTier(win);
       await win.getByTestId('compare-dates').click();
       await expect(win.locator('[data-scene-view] canvas')).toHaveCount(2);
       await expect(win.getByTestId('pane-date-left')).toHaveValue('survey-2020-12-31');
@@ -754,6 +774,7 @@ real.describe('Al-Zour with a synthetic second survey', () => {
       await win.waitForTimeout(4000);
       const single = await measure(app, win, 6000);
 
+      await pinTwoViewTier(win);
       await win.getByTestId('compare-dates').click();
       await expect(win.locator('[data-scene-view] canvas')).toHaveCount(2);
       await expect
