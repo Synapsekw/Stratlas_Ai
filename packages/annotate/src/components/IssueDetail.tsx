@@ -43,8 +43,20 @@ function thumbFor(s: Sighting, layers: readonly Layer[], projectId: string | und
   return null;
 }
 
-/** Detail and edit form for one issue (class, severity, status, note, sightings). */
-export function IssueDetail({ issueId, className }: { issueId: string; className?: string }) {
+/**
+ * Detail and edit form for one issue (class, severity, status, note, sightings). `embedded` is
+ * the edit part only, inside a card that already shows the code, severity, status and photos:
+ * no header, no summary row, sightings as plain chips (no photo thumbnails).
+ */
+export function IssueDetail({
+  issueId,
+  className,
+  embedded = false,
+}: {
+  issueId: string;
+  className?: string;
+  embedded?: boolean;
+}) {
   const issue = useWorkspace((s) => s.issues.find((i) => i.id === issueId));
   const issues = useWorkspace((s) => s.issues);
   const project = useWorkspace((s) => s.project);
@@ -74,34 +86,43 @@ export function IssueDetail({ issueId, className }: { issueId: string; className
   ];
 
   return (
-    <div className={`ann-panel ${className ?? ''}`} data-testid="issue-detail">
+    <div
+      className={`ann-panel${embedded ? ' embedded' : ''} ${className ?? ''}`}
+      data-testid={embedded ? 'issue-edit' : 'issue-detail'}
+    >
       <AnnotateStyles />
-      <div className="ann-h">
-        <h3>
-          {issue.code} · {cls?.label ?? issue.classId}
-        </h3>
-        <div className="acts">
-          <button
-            type="button"
-            className="ann-btn ghost"
-            title="Fly to the best sighting"
-            onClick={() => {
-              focusIssue(issue);
-            }}
-          >
-            Fly to
-          </button>
+      {!embedded && (
+        <div className="ann-h">
+          <h3>
+            {issue.code} · {cls?.label ?? issue.classId}
+          </h3>
+          <div className="acts">
+            <button
+              type="button"
+              className="ann-btn ghost"
+              title="Fly to the best sighting"
+              onClick={() => {
+                focusIssue(issue);
+              }}
+            >
+              Fly to
+            </button>
+          </div>
         </div>
-      </div>
+      )}
       <div className="ann-body">
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-          <SeverityBadge model={model} severity={issue.severity} withLabel />
-          <span className={`ann-tag${issue.status === 'draft' ? ' acc' : ''}`}>{issue.status}</span>
-          {issue.source !== 'human' && <span className="ann-tag">{issue.source}</span>}
-          <span className="ann-faint" style={{ marginLeft: 'auto' }}>
-            by {issue.author} · {issue.updatedAt.slice(0, 16).replace('T', ' ')}
-          </span>
-        </div>
+        {!embedded && (
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <SeverityBadge model={model} severity={issue.severity} withLabel />
+            <span className={`ann-tag${issue.status === 'draft' ? ' acc' : ''}`}>
+              {issue.status}
+            </span>
+            {issue.source !== 'human' && <span className="ann-tag">{issue.source}</span>}
+            <span className="ann-faint" style={{ marginLeft: 'auto' }}>
+              by {issue.author} · {issue.updatedAt.slice(0, 16).replace('T', ' ')}
+            </span>
+          </div>
+        )}
 
         {readOnly ? (
           <>
@@ -207,7 +228,7 @@ export function IssueDetail({ issueId, className }: { issueId: string; className
         <div className="ann-faint">Sightings ({issue.sightings.length})</div>
         <div className="ann-sightings">
           {issue.sightings.map((s, idx) => {
-            const thumb = thumbFor(s, layers, project?.id);
+            const thumb = embedded ? null : thumbFor(s, layers, project?.id);
             return (
               <div
                 key={idx}

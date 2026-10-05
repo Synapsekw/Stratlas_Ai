@@ -584,6 +584,7 @@ export function IssueRegister({ className }: { className?: string }) {
       <div
         ref={listRef}
         className="ann-list"
+        data-issue-list
         role="listbox"
         aria-label="Issues"
         aria-multiselectable={!readOnly}

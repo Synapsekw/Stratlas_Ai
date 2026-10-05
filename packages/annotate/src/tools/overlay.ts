@@ -174,6 +174,7 @@ class LabelLayer {
       if (el.textContent !== l.text) el.textContent = l.text;
       const count = l.kind === 'count';
       el.dataset.kind = l.kind;
+      el.dataset.key = l.key;
       el.style.font = count
         ? '700 11px/1 "IBM Plex Mono", Consolas, monospace'
         : '600 11px/16px "IBM Plex Mono", Consolas, monospace';
@@ -186,6 +187,16 @@ class LabelLayer {
         ? `translate(${l.x.toFixed(1)}px, ${l.y.toFixed(1)}px) translate(-50%, -50%)`
         : `translate(${l.x.toFixed(1)}px, ${(l.y - 8).toFixed(1)}px)`;
     });
+  }
+  /** The issue whose code label is under a client point (labels take no pointer events). */
+  hitCode(clientX: number, clientY: number): string | null {
+    for (const el of this.pool) {
+      if (el.style.display === 'none' || el.dataset.kind !== 'code') continue;
+      const r = el.getBoundingClientRect();
+      if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom)
+        return el.dataset.key ?? null;
+    }
+    return null;
   }
   dispose(): void {
     this.root?.remove();
@@ -547,6 +558,12 @@ export function installIssueOverlay(
       down = null;
       const at = local(e);
       const hit = hitItem(items, at.x, at.y);
+      // an issue's code label picks the issue like its pin
+      const labelled = hit ? null : labels.hitCode(e.clientX, e.clientY);
+      if (labelled) {
+        store.getState().select({ kind: 'issue', id: labelled });
+        return;
+      }
       if (!hit) {
         // a draped map shape under the click
         const r = (el as Partial<HTMLElement>).getBoundingClientRect?.();
@@ -569,13 +586,15 @@ export function installIssueOverlay(
       if (e.buttons) return;
       const at = local(e);
       const hit = hitItem(items, at.x, at.y);
-      const id = hit?.kind === 'pin' ? (hit.members[0]?.issueId ?? null) : null;
+      // over a code label: keep its pin hovered (the label stays) and show it can be clicked
+      const labelled = hit ? null : labels.hitCode(e.clientX, e.clientY);
+      const id = hit?.kind === 'pin' ? (hit.members[0]?.issueId ?? null) : labelled;
       const style = (el as Partial<HTMLElement>).style;
       if (style) {
-        if (hit && (style.cursor === '' || hoverCursor)) {
+        if ((hit || labelled) && (style.cursor === '' || hoverCursor)) {
           style.cursor = 'pointer';
           hoverCursor = true;
-        } else if (!hit && hoverCursor) {
+        } else if (!hit && !labelled && hoverCursor) {
           style.cursor = '';
           hoverCursor = false;
         }

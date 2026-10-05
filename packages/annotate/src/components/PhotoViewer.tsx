@@ -1,6 +1,15 @@
 import type { ImageGeom, Sighting } from '@aio/schema';
 import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type Ref,
+} from 'react';
 import { worldToPixel } from '../crossview/lens';
 import {
   ZOOM_STEP,
@@ -43,18 +52,39 @@ interface Pinch {
   dist: number;
 }
 
+/** Fit and zoom from outside (a lightbox's own buttons). */
+export interface PhotoViewerHandle {
+  fit(): void;
+  /** Zoom about the centre by `factor` (above 1 zooms in). */
+  zoom(factor: number): void;
+}
+
 /** Photo viewer with pan, zoom, mask overlay and annotation tools. */
 export function PhotoViewer({
   layerId,
   photoId,
   className,
   editOutlines = true,
+  viewOnly = false,
+  marks = true,
+  projected = true,
+  handle,
 }: {
   layerId: string;
   photoId: string;
   className?: string;
   /** The selected issue's outline shows vertex handles to edit it (default true). */
   editOutlines?: boolean;
+  /**
+   * Look only: no annotation tools or toolbar, a click never changes the selection, and the
+   * F, +, - and M keys are left to the host (which drives the view through `handle`).
+   */
+  viewOnly?: boolean;
+  /** Issue shapes and mask overlays drawn (default true). */
+  marks?: boolean;
+  /** Issues marked only in 3D drawn where this posed photo sees them (default true). */
+  projected?: boolean;
+  handle?: Ref<PhotoViewerHandle>;
 }) {
   const project = useWorkspace((s) => s.project);
   const issues = useWorkspace((s) => s.issues);
@@ -62,7 +92,7 @@ export function PhotoViewer({
   const readOnly = useAnnotateReadOnly();
   const pickedTool = useAnnotateUi((s) => s.imageTool);
   // A read-only package only selects: no drawing, no handle editing.
-  const tool: ImageTool = readOnly ? 'select' : pickedTool;
+  const tool: ImageTool = readOnly || viewOnly ? 'select' : pickedTool;
   const { modelById } = useTaxonomy();
   const stageRef = useRef<HTMLDivElement>(null);
   const [loaded, setLoaded] = useState<{ url: string; size: Size | null } | null>(null);
@@ -133,7 +163,7 @@ export function PhotoViewer({
         });
       }
       // ANN-9: a 3D sighting shows in every posed photo that sees it.
-      if (!onPhoto && natural && photo?.pos && photo.q && photo.lens) {
+      if (projected && !onPhoto && natural && photo?.pos && photo.q && photo.lens) {
         const p = bestAnchor(issue);
         const px = p
           ? worldToPixel({ pos: photo.pos, q: photo.q }, photo.lens, p, [
@@ -163,6 +193,7 @@ export function PhotoViewer({
     photo,
     readOnly,
     editOutlines,
+    projected,
   ]);
 
   const masks = useMemo(() => {
@@ -199,6 +230,7 @@ export function PhotoViewer({
   };
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (viewOnly) return;
     if (e.ctrlKey || e.metaKey || e.altKey || annotateUi.getState().pending) return;
     const k = e.key.toLowerCase();
     const t = IMAGE_TOOLS.find((x) => x.key === k);
@@ -214,6 +246,18 @@ export function PhotoViewer({
     x: (stageRef.current?.clientWidth ?? 0) / 2,
     y: (stageRef.current?.clientHeight ?? 0) / 2,
   });
+  useImperativeHandle(
+    handle,
+    () => ({
+      fit,
+      zoom: (factor: number) => {
+        const el = stageRef.current;
+        const at = { x: (el?.clientWidth ?? 0) / 2, y: (el?.clientHeight ?? 0) / 2 };
+        setView((v) => zoomAround(v, at, factor));
+      },
+    }),
+    [fit],
+  );
 
   // Two-finger pinch on touch screens.
   const onPointerDownCapture = (e: React.PointerEvent) => {
@@ -293,6 +337,7 @@ export function PhotoViewer({
       )}
       {project &&
         showOverlay &&
+        marks &&
         natural &&
         masks.map((m) => (
           <img
@@ -312,10 +357,11 @@ export function PhotoViewer({
           view={view}
           size={natural}
           tool={tool}
-          shapes={shapes}
+          shapes={marks ? shapes : []}
           onCreate={onCreate}
           onEdit={onEdit}
           onSelect={(key) => {
+            if (viewOnly) return;
             const id = key?.replace(/^proj:/, '').split(':')[0];
             workspace.getState().select(id ? { kind: 'issue', id } : null);
           }}
@@ -324,59 +370,61 @@ export function PhotoViewer({
           }}
         />
       )}
-      <div className="ann-toolbar" role="toolbar" aria-label="Photo annotation tools">
-        {!readOnly &&
-          IMAGE_TOOLS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              className="ann-btn ghost"
-              aria-pressed={tool === t.id}
-              title={`${t.label} (${t.key.toUpperCase()})`}
-              onClick={() => {
-                annotateUi.setState({ imageTool: t.id });
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
-        {masks.length > 0 && (
-          <>
-            <span className="sep" />
-            <button
-              type="button"
-              className="ann-btn ghost"
-              aria-pressed={showOverlay}
-              title="Mask overlay (M)"
-              onClick={() => {
-                setShowOverlay((x) => !x);
-              }}
-            >
-              Mask
-            </button>
-            <label>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.05}
-                value={opacity}
-                aria-label="Mask opacity"
-                onChange={(e) => {
-                  setOpacity(Number(e.target.value));
+      {!viewOnly && (
+        <div className="ann-toolbar" role="toolbar" aria-label="Photo annotation tools">
+          {!readOnly &&
+            IMAGE_TOOLS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className="ann-btn ghost"
+                aria-pressed={tool === t.id}
+                title={`${t.label} (${t.key.toUpperCase()})`}
+                onClick={() => {
+                  annotateUi.setState({ imageTool: t.id });
                 }}
-              />
-              {Math.round(opacity * 100)}%
-            </label>
-          </>
-        )}
-        <span className="sep" />
-        <button type="button" className="ann-btn ghost" title="Fit (F)" onClick={fit}>
-          Fit
-        </button>
-      </div>
+              >
+                {t.label}
+              </button>
+            ))}
+          {masks.length > 0 && (
+            <>
+              <span className="sep" />
+              <button
+                type="button"
+                className="ann-btn ghost"
+                aria-pressed={showOverlay}
+                title="Mask overlay (M)"
+                onClick={() => {
+                  setShowOverlay((x) => !x);
+                }}
+              >
+                Mask
+              </button>
+              <label>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={opacity}
+                  aria-label="Mask opacity"
+                  onChange={(e) => {
+                    setOpacity(Number(e.target.value));
+                  }}
+                />
+                {Math.round(opacity * 100)}%
+              </label>
+            </>
+          )}
+          <span className="sep" />
+          <button type="button" className="ann-btn ghost" title="Fit (F)" onClick={fit}>
+            Fit
+          </button>
+        </div>
+      )}
       <div className="ann-zoom">{Math.round(view.scale * 100)}%</div>
-      {!readOnly && <SightingPicker kinds={['image']} />}
+      {!readOnly && !viewOnly && <SightingPicker kinds={['image']} />}
     </div>
   );
 }
