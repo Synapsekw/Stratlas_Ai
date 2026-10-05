@@ -270,6 +270,11 @@ const heatWeight = (rank: number, top: number) =>
 export interface IssueOverlayOptions {
   /** How pins behind surfaces are found (tests pass a stand-in). */
   occlusion?: OcclusionFactory;
+  /**
+   * Draw on this scene only, not on whichever is active (a second 3D view, comparing two dates:
+   * the same pins in both views).
+   */
+  scene?: SceneHandle;
 }
 
 /**
@@ -615,6 +620,15 @@ export function installIssueOverlay(
       handle.requestRender();
     };
   };
+
+  // a given scene (a second 3D view comparing dates) instead of the active one
+  if (options.scene) {
+    attach(options.scene);
+    return () => {
+      detach?.();
+      detach = null;
+    };
+  }
 
   const off = onActiveScene((h) => {
     detach?.();
