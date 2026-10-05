@@ -18,7 +18,7 @@ import {
   useElevationRange,
 } from '@aio/pointcloud';
 import { crsLabel, formatEastNorth, Icon, localToProject, useT, type IconName } from '@aio/ui';
-import { setFlightPaths, videoRig } from '@aio/video';
+import { setDroneTelemetry, setFlightPaths, videoRig } from '@aio/video';
 import { useVolumetric, VolumetricStage } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
 import {
@@ -52,6 +52,7 @@ import { FloatingVideo } from './FloatingVideo';
 import { PaneChooser, SplitPane, useSplit } from './SplitPanes';
 import { sideOf, type Side } from './splitModel';
 import { hiddenPathClips, togglePaths } from './flightPaths';
+import { telemetryLabels, toggleTelemetry, useTelemetryOn } from './telemetryPref';
 import { flightPathModel, updateFlightPaths, useFlightPathModel } from './pathModel';
 import {
   AnnotateToggle,
@@ -572,6 +573,14 @@ export function Stage() {
     });
   }, [engine, pathPref, pathFlights]);
 
+  // Drone telemetry (trace and HUD of the playing clip), per project, independent of the paths.
+  const telemetry = useTelemetryOn();
+  const tr = useT();
+  useEffect(() => {
+    if (!engine) return;
+    setDroneTelemetry(engine, { on: telemetry, labels: telemetryLabels() });
+  }, [engine, telemetry, tr]);
+
   // A photo picked in 3D (or from an issue's sightings) opens in the Media photo viewer.
   useEffect(
     () =>
@@ -640,6 +649,7 @@ export function Stage() {
       else if (k === 'a') sh.setAnnotating(!sh.annotating);
       else if (k === 'w' && ws.activeClip) sh.setVideoHidden(!sh.videoHidden);
       else if (k === 'p' && three && flightPathModel()) updateFlightPaths(togglePaths);
+      else if (k === 'd' && three && flightPathModel()) toggleTelemetry();
       else if (k === 'i') pinDisplay.getState().togglePins();
       else if (k === 't' && !isRoad) toggleTimeline(ws.project);
       else if (k === 'c' && three && ws.activeClip) insideView(three);

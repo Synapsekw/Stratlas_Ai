@@ -15,6 +15,19 @@ export interface StageQuality {
   waterFps: number;
 }
 
+/** Words the engine shows on the stage (photo and panorama markers); keys of the app catalogue. */
+export type EngineTextKey =
+  | 'stage.markers.photo'
+  | 'stage.markers.photos'
+  | 'stage.markers.pano'
+  | 'stage.markers.panos'
+  | 'stage.markers.open'
+  | 'stage.markers.list'
+  | 'stage.markers.more'
+  | 'stage.markers.timeRange';
+
+export type EngineText = (key: EngineTextKey, vars?: Record<string, string | number>) => string;
+
 export interface EngineConfig {
   /** Turns a project asset into a fetchable URL. Default: aio://project/<id>/... */
   resolveUrl: (projectId: string, ref: AssetRef) => string;
@@ -24,6 +37,8 @@ export interface EngineConfig {
   devTools: boolean;
   /** Quality for stages created from now on; `EngineStage.setQuality` changes a live one. */
   quality: StageQuality;
+  /** Stage words from the app's catalogue (`t` of @aio/ui); the default shows the keys. */
+  text: EngineText;
 }
 
 const config: EngineConfig = {
@@ -37,6 +52,7 @@ const config: EngineConfig = {
     water: 'full',
     waterFps: 30,
   },
+  text: (key, vars) => (vars ? `${key} ${Object.values(vars).map(String).join(' ')}` : key),
 };
 
 /** Configure the engine before mounting SceneView (dev harness, tests, app composition). */

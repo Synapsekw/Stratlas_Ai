@@ -43,10 +43,12 @@ export {
 export {
   registerVideoAdapters,
   setCameraMode,
+  setDroneTelemetry,
   setFlightPaths,
   setProjection,
   videoRig,
   type CameraMode,
+  type DroneTelemetryOptions,
   type FlightPathMode,
   type FlightPathOptions,
   type VideoRig,
@@ -98,3 +100,14 @@ export {
   type GrayImage,
 } from './autoalign';
 export { setCalibrationLens, setCalibrationOrientation, setCalibrationPosition } from './rig';
+export { DEFAULT_TRACE_LABELS, DroneTrace, type TraceLabels } from './trace';
+export {
+  distanceAt,
+  formatDistance,
+  tickDistances,
+  tickStep,
+  traceProfile,
+  traceReadout,
+  type TraceProfile,
+  type TraceReadout,
+} from './traceMath';

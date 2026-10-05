@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { Layer } from '@aio/schema';
 import { createWorkspace } from '@aio/workspace';
-import { PerspectiveCamera, Scene, Sprite, Vector3, type Plane, type WebGLRenderer } from 'three';
+import { PerspectiveCamera, Scene, Vector3, type Plane, type WebGLRenderer } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import type { SceneHandle } from '../types';
 import { createPanoramasAdapter, hudTopInset } from './panoramas';
@@ -70,9 +70,12 @@ describe('panoramas layer', () => {
       url: (r) => `aio://project/p/${'path' in r ? r.path : r.hash}`,
       scene: h,
     });
-    const group = h.scene.getObjectByName('panoramas:panos');
-    const markers = group?.children.filter((c): c is Sprite => c instanceof Sprite) ?? [];
-    expect(markers.map((m) => m.name)).toEqual(['pano:a', 'pano:b']);
+    // one round marker per panorama (b is off to the right, out of view)
+    for (const f of frames) f(16);
+    const icons = [...host.querySelectorAll<HTMLElement>('[data-markers=pano] .aio-mk')].filter(
+      (e) => e.style.display !== 'none',
+    );
+    expect(icons.map((e) => e.dataset.kind)).toEqual(['pano']);
 
     // a click away from the markers does nothing
     click(canvas, 10, 10);
@@ -99,7 +102,8 @@ describe('panoramas layer', () => {
     expect(camera.layers.mask).toBe(1);
     expect(host.querySelector('.aio-pano-hud')).toBeNull();
     expect(overlay.style.visibility).toBe('');
-    expect(frames.size).toBe(0);
+    // only the markers' own layout pass is left
+    expect(frames.size).toBe(1);
 
     // selecting something else leaves the immersive view too
     click(canvas, 100, 100);

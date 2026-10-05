@@ -12,6 +12,8 @@ export interface StagePref {
   cutaway?: CutawayPref;
   /** What each side of the split stage shows (absent: 3D left, map right). */
   split?: SplitPref;
+  /** Drone telemetry (trace and HUD) while a clip plays or scrubs (absent: on). */
+  telemetry?: boolean;
 }
 
 const KEY = 'stratlas.stagePrefs';
@@ -26,6 +28,7 @@ function parsePref(v: unknown): StagePref {
   if (cutaway) out.cutaway = cutaway;
   const split = parseSplitPref(raw.split);
   if (split) out.split = split;
+  if (typeof raw.telemetry === 'boolean') out.telemetry = raw.telemetry;
   return out;
 }
 

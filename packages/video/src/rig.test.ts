@@ -128,6 +128,46 @@ describe('VideoRig flight paths', () => {
     rig.dispose();
   });
 
+  it('draws the telemetry trace of the active clip whatever the paths, and turns it off', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(flight)))),
+    );
+    const clips = [clip(0, 'flights/a.json'), clip(1, 'flights/b.json')];
+    const store = createWorkspace();
+    const manifest = { layers: clips, origin: [0, 0, 100] } as unknown as ProjectManifest;
+    store.getState().openProject({ id: 'p', root: 'x', manifest });
+    store.getState().setActiveClip(null);
+    configureVideo({ store, resolveUrl: (_p, ref) => ('path' in ref ? ref.path : ref.hash) });
+    const frames: ((dtMs: number) => void)[] = [];
+    const rig = new VideoRig(handle(frames));
+    const ctx = {
+      scene: rig.handle,
+      url: (r: { path: string } | { hash: string }) => ('path' in r ? `aio://${r.path}` : r.hash),
+    };
+    await Promise.all(clips.map((c) => rig.addLayer(c, ctx)));
+    const step = () => {
+      for (const f of frames) f(16);
+    };
+    const activePath = () =>
+      lines(rig).find((l) => l.userData.videoLayer === 'v0') as Line | undefined;
+    store.getState().setActiveClip('v0');
+    store.getState().setTime(flight.startUtcMs + 500);
+    step();
+    expect(rig.trace.group.visible).toBe(true);
+    // the trace leads: the active flight's path steps back
+    expect((activePath()?.material as { opacity: number }).opacity).toBeLessThan(1);
+    rig.setFlightPaths({ mode: 'off' });
+    step();
+    expect(rig.trace.group.visible).toBe(true);
+    rig.setDroneTelemetry({ on: false });
+    step();
+    expect(rig.trace.group.visible).toBe(false);
+    expect(rig.droneTelemetry).toBe(false);
+    expect((activePath()?.material as { opacity: number }).opacity).toBe(1);
+    rig.dispose();
+  });
+
   it('keeps the path choice for a scene across rigs (a new project builds a new rig)', () => {
     const h = handle();
     setFlightPaths(h, { mode: 'off', hiddenClips: new Set(['v1']) });

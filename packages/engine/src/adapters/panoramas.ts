@@ -11,21 +11,17 @@ import {
   LineBasicMaterial,
   LineSegments,
   Mesh,
-  Raycaster,
   SRGBColorSpace,
   ShaderMaterial,
   SphereGeometry,
-  Sprite,
-  SpriteMaterial,
   TextureLoader,
-  Vector2,
   Vector3,
   type Texture,
 } from 'three';
 import type { StoreApi } from 'zustand/vanilla';
 import { FONT_MONO, FONT_UI, PALETTE } from '../palette';
 import { isEngineStage } from '../registry';
-import { MARKER_GLYPH, markerTexture } from './marker';
+import { MarkerLayer } from './markers';
 import type { AdapterContext, LayerAdapter, LayerHandle, SavedView } from '../types';
 import {
   FULL_SPHERE,
@@ -42,10 +38,6 @@ import {
 
 type PanoLayer = Extract<Layer, { kind: 'panoramas' }>;
 
-const CLICK_SLOP_PX = 5;
-/** Marker size as a share of the viewport height (sprites without size attenuation). */
-const MARKER = 0.034;
-const MARKER_HOVER = 0.042;
 /** Radius of the panorama sphere around the camera, metres (inside the camera's near/far). */
 const SPHERE_R = 50;
 /** Camera layer the immersive view renders alone, so the scene behind the sphere costs nothing. */
@@ -299,27 +291,9 @@ export function createPanoramasAdapter(
       group.name = `panoramas:${layer.id}`;
       group.userData.aioLayer = layer.id;
 
-      // markers and stems
-      const texOff = markerTexture(MARKER_GLYPH.pano, false);
-      const texOn = markerTexture(MARKER_GLYPH.pano, true);
-      const sprites: Sprite[] = [];
+      // markers (one icon per place, merged on screen with a count) and stems to the ground
       const stemPos = new Float32Array(items.length * 6);
       items.forEach((p, i) => {
-        const mat = new SpriteMaterial({
-          map: texOff,
-          color: texOff ? 0xffffff : PALETTE.hover,
-          depthTest: false,
-          depthWrite: false,
-          sizeAttenuation: false,
-          transparent: true,
-        });
-        const s = new Sprite(mat);
-        s.position.set(...p.pos);
-        s.scale.set(MARKER, MARKER, 1);
-        s.renderOrder = 30;
-        s.userData.panoIndex = i;
-        s.name = `pano:${p.id}`;
-        sprites.push(s);
         stemPos.set([...p.pos, p.pos[0], Math.min(0, p.pos[1]), p.pos[2]], i * 6);
       });
       const stemGeo = new BufferGeometry();
@@ -328,104 +302,45 @@ export function createPanoramasAdapter(
       const stemMat = new LineBasicMaterial({
         color: PALETTE.hover,
         transparent: true,
-        opacity: 0.35,
+        opacity: 0.3,
         depthWrite: false,
       });
       const stems = new LineSegments(stemGeo, stemMat);
+      stems.name = 'pano-stems';
       stems.renderOrder = 3;
-      group.add(stems, ...sprites);
+      group.add(stems);
       scene.scene.add(group);
       group.updateMatrixWorld(true);
 
-      let hovered = -1;
-      let selected = -1;
-      const paintMarker = (i: number) => {
-        const s = sprites[i];
-        if (!s) return;
-        const on = i === hovered || i === selected;
-        s.material.map = on ? texOn : texOff;
-        s.material.color.set(texOff ? 0xffffff : on ? PALETTE.acc : PALETTE.hover);
-        const k = i === hovered ? MARKER_HOVER : MARKER;
-        s.scale.set(k, k, 1);
-      };
-      const setHovered = (i: number) => {
-        if (i === hovered) return;
-        const was = hovered;
-        hovered = i;
-        paintMarker(was);
-        paintMarker(i);
-        scene.requestRender();
-      };
+      const canvas = scene.renderer.domElement;
+      const selectedIds = new Set<number>();
+      const markers = new MarkerLayer({
+        scene,
+        kind: 'pano',
+        sites: items.map((p, i) => ({ pos: p.pos, members: [i] })),
+        member: (i) => {
+          const p = items[i];
+          return { id: p?.id ?? '', full: p ? ctx.url(p.src) : undefined };
+        },
+        open: (i) => {
+          const p = items[i];
+          if (!p) return;
+          store.getState().select({ kind: 'pano', id: p.id, layer: layer.id });
+          enter(i);
+        },
+        selected: () => selectedIds,
+      });
       const paintSelection = () => {
         const s = store.getState().selection;
         const i =
           s?.kind === 'pano' && (s.layer === undefined || s.layer === layer.id)
             ? items.findIndex((p) => p.id === s.id)
             : -1;
-        if (i === selected) return;
-        const was = selected;
-        selected = i;
-        paintMarker(was);
-        paintMarker(i);
-        scene.requestRender();
+        selectedIds.clear();
+        if (i >= 0) selectedIds.add(i);
+        markers.refresh();
       };
       paintSelection();
-
-      // picking: the nearest marker under the pointer (markers draw over everything)
-      const canvas = scene.renderer.domElement;
-      const rc = new Raycaster();
-      const ndc = (e: PointerEvent | MouseEvent): Vector2 => {
-        const r = canvas.getBoundingClientRect();
-        return new Vector2(
-          ((e.clientX - r.left) / r.width) * 2 - 1,
-          -((e.clientY - r.top) / r.height) * 2 + 1,
-        );
-      };
-      const pick = (e: PointerEvent | MouseEvent): number => {
-        if (!group.visible || immersed) return -1;
-        rc.setFromCamera(ndc(e), scene.camera);
-        const hit = rc.intersectObjects(sprites, false)[0];
-        const i = hit?.object.userData.panoIndex as number | undefined;
-        return i ?? -1;
-      };
-      let down: { x: number; y: number } | null = null;
-      let hoverRaf = 0;
-      let hoverEvent: PointerEvent | null = null;
-      const onDown = (e: PointerEvent) => {
-        down = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
-      };
-      const onUp = (e: PointerEvent) => {
-        const d = down;
-        down = null;
-        if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > CLICK_SLOP_PX) return;
-        const i = pick(e);
-        const p = items[i];
-        if (!p) return;
-        store.getState().select({ kind: 'pano', id: p.id, layer: layer.id });
-        enter(i);
-      };
-      const onMove = (e: PointerEvent) => {
-        if (e.pointerType !== 'mouse' || e.buttons !== 0) return;
-        hoverEvent = e;
-        if (hoverRaf) return;
-        // after the stage's own hover frame, so the marker cursor wins
-        hoverRaf = requestAnimationFrame(() => {
-          hoverRaf = 0;
-          const ev = hoverEvent;
-          if (!ev) return;
-          const i = pick(ev);
-          setHovered(i);
-          if (i >= 0) canvas.style.cursor = 'pointer';
-        });
-      };
-      const onLeave = () => {
-        hoverEvent = null;
-        setHovered(-1);
-      };
-      canvas.addEventListener('pointerdown', onDown);
-      canvas.addEventListener('pointerup', onUp);
-      canvas.addEventListener('pointermove', onMove);
-      canvas.addEventListener('pointerleave', onLeave);
 
       // immersive view ---------------------------------------------------------------------------
       const uniforms = {
@@ -648,7 +563,6 @@ export function createPanoramasAdapter(
           hud.root.addEventListener('wheel', hudWheel, { passive: false });
           hud.root.focus({ preventScroll: true });
         }
-        setHovered(-1);
         immersed = true;
         scene.scene.add(sphere);
         sphere.visible = true;
@@ -715,24 +629,15 @@ export function createPanoramasAdapter(
       return {
         setVisible(visible: boolean) {
           group.visible = visible;
-          if (!visible) {
-            setHovered(-1);
-            leave();
-          }
+          markers.setVisible(visible);
+          if (!visible) leave();
           scene.requestRender();
         },
         dispose() {
           leave();
           unsub();
-          if (hoverRaf) cancelAnimationFrame(hoverRaf);
-          canvas.removeEventListener('pointerdown', onDown);
-          canvas.removeEventListener('pointerup', onUp);
-          canvas.removeEventListener('pointermove', onMove);
-          canvas.removeEventListener('pointerleave', onLeave);
+          markers.dispose();
           scene.scene.remove(group);
-          for (const s of sprites) s.material.dispose();
-          texOff?.dispose();
-          texOn?.dispose();
           stemGeo.dispose();
           stemMat.dispose();
           sphereGeo.dispose();

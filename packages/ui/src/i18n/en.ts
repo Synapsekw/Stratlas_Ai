@@ -300,6 +300,32 @@ export const en = {
   'stage.cutaway.solid': 'Solid',
   'stage.cutaway.solidTip': 'Draw the asset solid again',
 
+  // Scene stage: drone telemetry while a clip plays (trace, distance ticks, HUD)
+  'stage.telemetry.show': 'Show drone telemetry: flown track, distances, HUD',
+  'stage.telemetry.hide': 'Hide drone telemetry',
+  'stage.telemetry.toggle': 'Turn drone telemetry off or on',
+  'stage.telemetry.hud.title': 'TELEMETRY',
+  'stage.telemetry.hud.distance': 'DIST',
+  'stage.telemetry.hud.agl': 'AGL',
+  'stage.telemetry.hud.elevation': 'EL',
+  'stage.telemetry.hud.speed': 'GS',
+  'stage.telemetry.hud.heading': 'HDG',
+  'stage.telemetry.hud.gimbal': 'GMB',
+  'stage.telemetry.hud.clipTime': 'T+',
+  'stage.telemetry.hud.start': 'START',
+
+  // Scene stage: photo and panorama markers (one per place, with a count)
+  'stage.markers.photo': 'Photo {id}',
+  'stage.markers.photos_one': '{count} photo',
+  'stage.markers.photos_other': '{count} photos',
+  'stage.markers.pano': 'Panorama {id}',
+  'stage.markers.panos_one': '{count} panorama',
+  'stage.markers.panos_other': '{count} panoramas',
+  'stage.markers.open': 'Click to open',
+  'stage.markers.list': 'Click to list them',
+  'stage.markers.more': '{count} more: zoom in',
+  'stage.markers.timeRange': '{from} to {to}',
+
   // Scene stage: what each side of the split shows
   'stage.split.left': 'Left side shows',
   'stage.split.right': 'Right side shows',

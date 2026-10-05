@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { Layer } from '@aio/schema';
 import { createWorkspace } from '@aio/workspace';
-import type { InstancedMesh } from 'three';
+import type { InstancedMesh, LineSegments } from 'three';
 import { PerspectiveCamera, Scene, Vector3, type Plane, type WebGLRenderer } from 'three';
 import { describe, expect, it } from 'vitest';
 import type { SceneHandle } from '../types';
@@ -53,6 +53,11 @@ function handle(canvas: HTMLCanvasElement): SceneHandle {
     addProjectionReceiver: () => () => undefined,
   };
 }
+
+const click = (canvas: HTMLCanvasElement, x: number, y: number) => {
+  canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: x, clientY: y, button: 0 }));
+  canvas.dispatchEvent(new PointerEvent('pointerup', { clientX: x, clientY: y, button: 0 }));
+};
 
 describe('photo frustums', () => {
   it('draws only posed photos, sized to their spacing', () => {
@@ -172,37 +177,65 @@ describe('photo frustums', () => {
     expect(h.scene.getObjectByName('photos:photos')).toBeUndefined();
   });
 
-  it('pins site-scale photos, including ones with a position only, and selects on a pin click', async () => {
+  it('draws one marker per place, lists a merged place and stems site-scale photos', async () => {
     const site: PhotosLayer = {
       kind: 'photos',
       id: 'site',
       name: 'Drone photos',
       visible: true,
       items: [
-        { id: 'a1', src: { path: 'photos/a1.jpg' }, pos: [0, 2, 0], q: [0, 0, 0, 1] },
-        { id: 'a2', src: { path: 'photos/a2.jpg' }, pos: [0.05, 2, 0], q: [0, 0, 0, 1] },
+        {
+          id: 'a1',
+          src: { path: 'photos/a1.jpg' },
+          pos: [0, 2, 0],
+          q: [0, 0, 0, 1],
+          takenAt: '2023-02-21T10:30:48Z',
+        },
+        {
+          id: 'a2',
+          src: { path: 'photos/a2.jpg' },
+          pos: [0.05, 2, 0],
+          q: [0, 0, 0, 1],
+          takenAt: '2023-02-21T10:30:55Z',
+        },
         { id: 'b', src: { path: 'photos/b.jpg' }, pos: [600, 120, -300], q: [0, 0, 0, 1] },
         { id: 'c', src: { path: 'photos/c.jpg' }, pos: [-700, 90, 400] },
         { id: 'nowhere', src: { path: 'photos/n.jpg' } },
       ],
     };
     const store = createWorkspace();
+    const host = document.createElement('div');
     const canvas = document.createElement('canvas');
     canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 200 }) as DOMRect;
+    host.append(canvas);
+    document.body.append(host);
     const h = handle(canvas);
     h.camera.position.set(0, 2, 50);
     h.camera.lookAt(0, 2, 0);
     h.camera.updateMatrixWorld();
-    const lh = await createPhotosAdapter(store).create(site, { url: () => '', scene: h });
-    const group = h.scene.getObjectByName('photos:site');
-    const pins = group?.children.filter((o) => o.name.startsWith('photo-pin:')) ?? [];
-    // one pin per station: a1 and a2 share theirs; c has no orientation but still has a place
-    expect(pins.map((p) => p.name)).toEqual(['photo-pin:a1', 'photo-pin:b', 'photo-pin:c']);
-    canvas.dispatchEvent(
-      new PointerEvent('pointerdown', { clientX: 100, clientY: 100, button: 0 }),
+    const lh = await createPhotosAdapter(store).create(site, {
+      url: (r) => `aio://project/p/${'path' in r ? r.path : r.hash}`,
+      scene: h,
+    });
+    // stems for the three places (a1 and a2 share one; c has a place but no orientation)
+    const stems = h.scene.getObjectByName('photos:site')?.getObjectByName('photo-stems') as
+      LineSegments | undefined;
+    expect(stems?.geometry.getAttribute('position').count).toBe(6);
+    // a click on the a place: one icon with a count of two opens their list
+    click(canvas, 100, 100);
+    const icons = [...host.querySelectorAll<HTMLElement>('[data-markers=photo] .aio-mk')].filter(
+      (e) => e.style.display !== 'none',
     );
-    canvas.dispatchEvent(new PointerEvent('pointerup', { clientX: 100, clientY: 100, button: 0 }));
-    expect(store.getState().selection).toEqual({ kind: 'photo', id: 'a1', layer: 'site' });
+    expect(icons.map((e) => e.dataset.count)).toEqual(['2']);
+    const list = host.querySelector('[data-testid=marker-list]');
+    const rows = [...(list?.querySelectorAll('button') ?? [])];
+    expect(rows.map((r) => r.querySelector('b')?.textContent)).toEqual(['a1', 'a2']);
+    expect(rows[0]?.querySelector('img')?.getAttribute('src')).toBe('aio://thumb/p/photos/a1.jpg');
+    rows[1]?.click();
+    expect(store.getState().selection).toEqual({ kind: 'photo', id: 'a2', layer: 'site' });
+    expect(host.querySelector('[data-testid=marker-list]')).toBeNull();
     lh.dispose();
+    expect(host.querySelector('[data-markers]')).toBeNull();
+    host.remove();
   });
 });
