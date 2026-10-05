@@ -27,6 +27,7 @@ import { conversationMarkdown } from './exporting';
 import { addProviderUsage, type ProviderUsageRow, type UsageTotals } from './pricing';
 import { runRendererTool, ToolError, type RendererToolContext } from './renderer-tools';
 import type { ModelRoute } from './routes';
+import { spatialContext } from './site';
 import { undoable } from './tools';
 
 export type { StepStatus };
@@ -222,7 +223,10 @@ export class AgentSession {
     const trimmed = text.trim();
     if (!bridge || !trimmed || this.state.busy || this.state.preview) return;
     const ctx = this.deps.toolContext();
-    const context = assembleContext(ctx.workspace.getState(), this.window);
+    const context = {
+      ...assembleContext(ctx.workspace.getState(), this.window),
+      ...spatialContext(ctx, this.window),
+    };
     let image: string | undefined;
     if (opts.attachFrame) image = (await ctx.captureFrame(this.window)) ?? undefined;
     const a = this.state.availability;
