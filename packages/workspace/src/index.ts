@@ -200,3 +200,18 @@ export function assetUrl(projectId: string, ref: AssetRef): string {
     throw new Error(`Asset path "${ref.path}" may not leave the project folder`);
   return `aio://project/${encodeURIComponent(projectId)}/${clean.split('/').map(encodeURIComponent).join('/')}`;
 }
+
+export {
+  canCompare,
+  captureHidden,
+  captureIndex,
+  captureSelection,
+  counterpart,
+  dateSpellings,
+  knownCapture,
+  scopedStore,
+  type CaptureHints,
+  type CaptureIndex,
+  type ScopedStore,
+  type StoreScope,
+} from './captures';
