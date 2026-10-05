@@ -134,16 +134,21 @@ function ProjectCard({
   );
 }
 
-function PackageDiagram() {
+/** The folder separator of the platform, read from a path main gave us (`/` on macOS). */
+function separatorOf(path: string): string {
+  return path.includes('/') && !path.includes('\\') ? '/' : '\\';
+}
+
+function PackageDiagram({ sep }: { sep: string }) {
   const rows: [string, string][] = [
-    ['projects\\', ''],
-    ['  <project>\\', ''],
+    [`projects${sep}`, ''],
+    [`  <project>${sep}`, ''],
     ['    manifest.json', 'layers, CRS, severity models'],
     ['    issues.json', 'issue register'],
     ['    thumbnail.jpg', 'library poster'],
-    ['    models\\  video\\  clouds\\', ''],
-    ['    rasters\\  photos\\  panoramas\\', ''],
-    ['packs\\', 'offline map packs'],
+    [`    models${sep}  video${sep}  clouds${sep}`, ''],
+    [`    rasters${sep}  photos${sep}  panoramas${sep}`, ''],
+    [`packs${sep}`, 'offline map packs'],
   ];
   return (
     <pre className="pkg-tree" aria-label="Project folder layout">
@@ -159,6 +164,7 @@ function PackageDiagram() {
 }
 
 function EmptyLibrary({ dataRoot, error }: { dataRoot: string; error: string | null }) {
+  const sep = separatorOf(dataRoot);
   return (
     <div className="lib-empty">
       <div className="le-text">
@@ -188,7 +194,9 @@ function EmptyLibrary({ dataRoot, error }: { dataRoot: string; error: string | n
           <dt>Data folder</dt>
           <dd className="mono">{dataRoot || 'Not set yet'}</dd>
           <dt>Projects in</dt>
-          <dd className="mono">{dataRoot ? `${dataRoot}\\projects` : 'Set a data folder first'}</dd>
+          <dd className="mono">
+            {dataRoot ? `${dataRoot}${sep}projects` : 'Set a data folder first'}
+          </dd>
         </dl>
         <div className="le-acts">
           <button
@@ -226,7 +234,7 @@ function EmptyLibrary({ dataRoot, error }: { dataRoot: string; error: string | n
           </p>
         )}
       </div>
-      <PackageDiagram />
+      <PackageDiagram sep={sep} />
     </div>
   );
 }

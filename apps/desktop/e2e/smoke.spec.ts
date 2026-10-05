@@ -119,7 +119,9 @@ test('isolated test profiles open windows off-screen without a taskbar button', 
     const left = Math.min(...screen.getAllDisplays().map((d) => d.bounds.x));
     return { right: b ? b.x + b.width : 0, left, focused: w?.isFocused() ?? true };
   });
-  expect(placed.right).toBeLessThan(placed.left);
+  // macOS (AppKit constrainFrameRect:toScreen:) moves a titled window back onto a display when it
+  // is shown, so there it only opens without focus; Windows keeps it left of every display.
+  if (process.platform !== 'darwin') expect(placed.right).toBeLessThan(placed.left);
   expect(placed.focused).toBe(false);
   // It still renders: the shell is on the page.
   await expect(win.locator('.titlebar')).toBeVisible();
