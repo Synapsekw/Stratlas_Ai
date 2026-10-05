@@ -38,7 +38,7 @@ const files = (dir) =>
 const appParts = (app) => [
   ...dirs(join(app, 'src')),
   ...files(join(app, 'src')).map((f) => [f]),
-  ...dirs(app).filter((d) => !/[\\/](src|node_modules|out|dist)$/.test(d)),
+  ...dirs(app).filter((d) => !/[\\/](src|node_modules|out|dist|demo)$/.test(d)),
   ...(files(app).length ? [files(app)] : []),
 ];
 

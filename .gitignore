@@ -17,6 +17,8 @@ test-results/
 .claude/settings.local.json
 
 # client data never enters git
+# (the demo project is synthetic but large: built by tools/demo/build-demo.mjs at dist time)
+apps/desktop/demo/
 docs/design/assets/
 fixtures/data/
 

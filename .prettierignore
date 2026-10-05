@@ -11,3 +11,4 @@ test-results
 dist-types
 .claude
 python
+apps/desktop/demo

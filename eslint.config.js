@@ -17,6 +17,7 @@ export default tseslint.config(
       'docs/design/**',
       'docs/brand/**',
       'fixtures/data/**',
+      'apps/desktop/demo/**',
     ],
   },
   js.configs.recommended,
