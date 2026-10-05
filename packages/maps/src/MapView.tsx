@@ -2,11 +2,11 @@ import type { AioBridge } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
 import { setActiveMap } from './capture';
+import { MAP_SURFACE } from './ink';
 import type { IssueColorBy, MapController } from './controller';
 import type { MapDrawSeam } from './draw';
 import { ALL_ISSUES, type MapIssueDisplay } from './overlays';
 import type { MapOverlay } from './vector';
-import { useDocumentTheme } from './theme';
 
 export interface MapViewProps {
   className?: string;
@@ -54,8 +54,6 @@ export function MapView({
 }: MapViewProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<Status>('loading');
-  // The style is built once per controller; a theme change restarts the map in the new flavour.
-  const theme = useDocumentTheme();
   // The controller reads the latest seam on each click.
   const drawRef = useRef<MapDrawSeam | null>(draw ?? null);
   const ctlRef = useRef<MapController | null>(null);
@@ -134,14 +132,15 @@ export function MapView({
       life.observer?.disconnect();
       life.ctl?.dispose();
     };
-  }, [showFlights, theme]);
+  }, [showFlights]);
 
   return (
     <div
-      className={className}
+      className={['aio-map', className].filter(Boolean).join(' ')}
       // Geographic content keeps left-to-right layout in a right-to-left UI.
       dir="ltr"
-      style={{ position: 'relative', minHeight: 0 }}
+      data-surface="dark"
+      style={{ ...MAP_SURFACE, position: 'relative', minHeight: 0 }}
       aria-label="Map"
     >
       <div ref={ref} style={{ position: 'absolute', inset: 0 }} />
@@ -153,7 +152,6 @@ export function MapView({
             inset: 0,
             display: 'grid',
             placeItems: 'center',
-            color: 'var(--fg-2)',
             font: 'var(--t-13) var(--f-ui)',
             pointerEvents: 'none',
           }}

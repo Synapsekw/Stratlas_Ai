@@ -2,6 +2,7 @@
 import { Map as MapLibreMap, type GeoJSONSource, type MapMouseEvent } from 'maplibre-gl';
 import { coverageFeatures, dragBbox } from './coverageData';
 import type { Bbox, MapPack } from './packs';
+import { MAP_INK } from './ink';
 import { installBasemap } from './runtime';
 import { buildStyle } from './style';
 
@@ -12,25 +13,20 @@ export interface CoverageState {
   drawing: boolean;
 }
 
-const COLOURS = {
-  dark: { line: '#8a929b', hi: '#73ebc8', draft: '#ebc751' },
-  light: { line: '#6b727a', hi: '#0d6f5b', draft: '#b58500' },
-} as const;
+/** Pack outlines, the highlighted pack and the draft region, on the (always dark) street map. */
+const c = { line: MAP_INK.fg2, hi: MAP_INK.accStrong, draft: MAP_INK.warn } as const;
 
 export function createCoverageMap(
   el: HTMLElement,
   initial: CoverageState,
-  flavour: 'dark' | 'light',
   onDraw: (bbox: Bbox) => void,
 ) {
   installBasemap(initial.packs);
-  const c = COLOURS[flavour];
   const map = new MapLibreMap({
     container: el,
     style: buildStyle({
       lang: document.documentElement.lang.startsWith('ar') ? 'ar' : 'en',
       maxZoom: Math.max(6, ...initial.packs.map((p) => p.maxZoom)),
-      flavour,
     }),
     center: [45, 24],
     zoom: 1.2,
@@ -41,6 +37,8 @@ export function createCoverageMap(
     dragRotate: false,
     pitchWithRotate: false,
   });
+  // Test hook: end-to-end tests read the style through the container.
+  Object.assign(el, { __aioMap: map });
 
   let state = initial;
   let loaded = false;

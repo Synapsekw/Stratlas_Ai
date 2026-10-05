@@ -10,8 +10,13 @@ export {
   routeFor,
   type ModelRoute,
 } from './routes';
-export { AgentPanel, describeStep, type AgentPanelProps } from './AgentPanel';
-export { AgentSession, type SessionState, type Step, type Turn } from './session';
+export {
+  AgentPanel,
+  describeStep,
+  type AgentFixControls,
+  type AgentPanelProps,
+} from './AgentPanel';
+export { AgentSession, type AgentFix, type SessionState, type Step, type Turn } from './session';
 export { assembleContext, bindingLabel } from './context';
 export {
   allToolSpecs,

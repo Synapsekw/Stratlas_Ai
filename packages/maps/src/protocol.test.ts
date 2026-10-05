@@ -103,10 +103,9 @@ describe('aiomap protocol', () => {
     );
   });
 
-  it('falls back to the dark sprite sheet when the light one is not bundled', async () => {
-    const j = await handler({ url: 'aiomap://sprites/light.json', type: 'json' }, ac);
-    expect(j.data).toEqual({ poi: { x: 0 } });
-    const i = await handler({ url: 'aiomap://sprites/light.png', type: 'image' }, ac);
-    expect(text(i.data)).toBe('png');
+  it('serves only the bundled dark sprite sheet (the street maps are always dark)', async () => {
+    await expect(handler({ url: 'aiomap://sprites/light.json', type: 'json' }, ac)).rejects.toThrow(
+      'not bundled',
+    );
   });
 });

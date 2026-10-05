@@ -28,5 +28,5 @@ export const ASSET_GLYPH_RANGES = [
   '65024-65279',
 ];
 
-/** Protomaps v4 sprite sheets. */
-export const ASSET_SPRITES = ['dark', 'light'];
+/** Protomaps v4 sprite sheets. The street maps are always dark, so only the dark sheet. */
+export const ASSET_SPRITES = ['dark'];

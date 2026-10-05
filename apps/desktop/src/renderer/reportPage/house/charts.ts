@@ -54,6 +54,8 @@ function scatter(
     box?: Box;
     /** The issue the drawing is about, drawn large on top. */
     focus?: PlanPoint;
+    /** Extra class on the SVG (`loc`: the dark locator map). */
+    cls?: string;
   },
 ): string {
   const { width, height } = opts;
@@ -78,7 +80,7 @@ function scatter(
     .join('');
   const f = opts.focus;
   const focus = f
-    ? `<circle cx="${X(a(f)).toFixed(1)}" cy="${Y(b(f)).toFixed(1)}" r="7" fill="${esc(f.color)}" stroke="#16202b" stroke-width="1.5"/><circle cx="${X(a(f)).toFixed(1)}" cy="${Y(b(f)).toFixed(1)}" r="13" fill="none" stroke="${esc(f.color)}" stroke-width="2"/>`
+    ? `<circle cx="${X(a(f)).toFixed(1)}" cy="${Y(b(f)).toFixed(1)}" r="7" fill="${esc(f.color)}" stroke="${opts.cls === 'loc' ? '#ffffff' : '#16202b'}" stroke-width="1.5"/><circle cx="${X(a(f)).toFixed(1)}" cy="${Y(b(f)).toFixed(1)}" r="13" fill="none" stroke="${esc(f.color)}" stroke-width="2"/>`
     : '';
   // scale bar: a nice length near a quarter of the drawing
   const step = niceStep((box.maxA - box.minA) / 4);
@@ -89,7 +91,7 @@ function scatter(
     ? `<g class="north" transform="translate(${(width - 14).toFixed(1)},16)"><path d="M0,-10 L5,6 L0,3 L-5,6 Z"/><text y="18" text-anchor="middle">N</text></g>`
     : '';
   const frame = `<rect class="frame" x="${ox.toFixed(1)}" y="${oy.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}"/>`;
-  return `<svg class="map" viewBox="0 0 ${String(width)} ${String(height)}" width="100%" role="img" aria-label="${esc(opts.label)}">${frame}${dots}${focus}${scale}${north}</svg>`;
+  return `<svg class="map${opts.cls ? ` ${opts.cls}` : ''}" viewBox="0 0 ${String(width)} ${String(height)}" width="100%" role="img" aria-label="${esc(opts.label)}">${frame}${dots}${focus}${scale}${north}</svg>`;
 }
 
 /** Points sorted so the most severe (drawn last) end on top; uses the order of `rank`. */
@@ -144,7 +146,8 @@ export function isFlat(points: readonly PlanPoint[]): boolean {
 
 /**
  * Where one issue lies among its neighbours, from above: a square `spanM` metres wide centred on
- * it, north up, with a scale bar. For issues placed on the map only (no 3D view).
+ * it, north up, with a scale bar. For issues placed on the map only (no 3D view). Drawn dark, like
+ * every map in the app (class `loc`, house.css).
  */
 export function locatorMap(
   points: readonly PlanPoint[],
@@ -174,7 +177,7 @@ export function locatorMap(
     ordered(near, rank),
     (p) => p.x,
     (p) => -p.z,
-    { ...size, north: true, label, box, focus },
+    { ...size, north: true, label, box, focus, cls: 'loc' },
   );
 }
 

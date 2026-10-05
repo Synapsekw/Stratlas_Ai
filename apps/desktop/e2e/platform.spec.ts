@@ -46,6 +46,85 @@ test('imports a map pack file, shows it on the coverage map and removes it', asy
   expect(await readdir(join(dataRoot.root, 'packs'))).toEqual([]);
 });
 
+/** Style name, background colour and control colour of the MapLibre map inside `selector`. */
+function streetMap(win: Page, selector: string) {
+  return win.evaluate((sel) => {
+    const host = [...document.querySelectorAll(`${sel} div`)].find((d) => '__aioMap' in d) as
+      | {
+          __aioMap: {
+            getStyle(): { name?: string; layers: { type: string; paint?: object }[] } | undefined;
+          };
+        }
+      | undefined;
+    const style = host?.__aioMap.getStyle();
+    if (!style) return null;
+    const bg = style.layers.find((l) => l.type === 'background')?.paint as
+      Record<string, string> | undefined;
+    const root = document.querySelector(`${sel} [data-surface='dark']`);
+    const zoom = document.querySelector(`${sel} .maplibregl-ctrl-group`);
+    return {
+      name: style.name,
+      background: bg?.['background-color'],
+      surface: root ? getComputedStyle(root).backgroundColor : null,
+      controls: zoom ? getComputedStyle(zoom).backgroundColor : null,
+    };
+  }, selector);
+}
+
+/** Relative lightness (0 to 1) of a #rrggbb, rgb() or oklch() CSS colour string. */
+function lightness(css: string | null | undefined): number {
+  if (!css) return 1;
+  const hex = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(css);
+  if (hex) {
+    const [r, g, b] = hex.slice(1).map((x) => parseInt(x, 16));
+    return (0.2126 * (r ?? 255) + 0.7152 * (g ?? 255) + 0.0722 * (b ?? 255)) / 255;
+  }
+  const ok = /oklch\(([\d.]+)/.exec(css);
+  if (ok) return Number(ok[1]);
+  const [r = 255, g = 255, b = 255] = (css.match(/[\d.]+/g) ?? []).map(Number);
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+}
+
+test('street maps stay dark in the light theme: coverage map and Map view', async ({
+  app,
+  win,
+  dataRoot,
+}) => {
+  const src = join(dataRoot.base, 'Doha Streets.pmtiles');
+  await writeFile(src, pmtilesFile({ maxZoom: 14, bbox: [51.4, 25.2, 51.6, 25.4] }));
+  await openSettings(win, 'Appearance');
+  await win.getByRole('radio', { name: /^Light/ }).click();
+  await expect(win.locator('html')).toHaveAttribute('data-theme', 'light');
+
+  await openSettings(win, 'Offline maps');
+  await answerOpenDialog(app, src);
+  await win.getByRole('button', { name: 'Import pack file' }).click();
+  await expect(win.getByTestId('pack-table')).toContainText('Doha Streets');
+  await expect
+    .poll(() => streetMap(win, '[data-testid="pack-coverage"]').then((m) => m?.name))
+    .toBe('Mission dark');
+  const coverage = await streetMap(win, '[data-testid="pack-coverage"]');
+  expect(lightness(coverage?.background)).toBeLessThan(0.1);
+
+  // The Map view of a project: the street style, its surface and its controls are dark.
+  await win.locator('.nav-item', { hasText: 'Projects' }).click();
+  await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
+  await win.getByRole('button', { name: 'Map', exact: true }).first().click();
+  await expect.poll(() => streetMap(win, '.pane-map').then((m) => m?.name)).toBe('Mission dark');
+  await expect
+    .poll(() => streetMap(win, '.pane-map').then((m) => m?.controls ?? null))
+    .not.toBeNull();
+  const map = await streetMap(win, '.pane-map');
+  expect(lightness(map?.background)).toBeLessThan(0.1);
+  expect(lightness(map?.surface)).toBeLessThan(0.1);
+  expect(lightness(map?.controls)).toBeLessThan(0.25);
+  // The chrome around it follows the light theme.
+  const chrome = await win
+    .locator('.sidebar')
+    .evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(lightness(chrome)).toBeGreaterThan(0.8);
+});
+
 test('refuses a file that is not a map pack', async ({ app, win, dataRoot }) => {
   const src = join(dataRoot.base, 'notes.pmtiles');
   await writeFile(src, 'not a pack');

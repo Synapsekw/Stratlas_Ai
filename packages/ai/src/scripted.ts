@@ -2,12 +2,15 @@
  * A scripted language model for end-to-end tests and offline demos. It never touches the network:
  * it reads the newest user message, answers with a fixed text or one tool call picked by keyword,
  * and after a tool result it reports what the tool returned. The desktop app registers it only
- * when an isolated test profile asks for it (STRATLAS_AI_TEST_PROVIDER with STRATLAS_USER_DATA).
+ * when an isolated test profile asks for it (STRATLAS_AI_TEST_PROVIDER with STRATLAS_USER_DATA);
+ * STRATLAS_AI_TEST_SCRIPT=workspace-400 makes its Anthropic answer the workspace 400 until Settings
+ * has a workspace ID.
  */
-import type {
-  LanguageModelV4,
-  LanguageModelV4Prompt,
-  LanguageModelV4StreamPart,
+import {
+  APICallError,
+  type LanguageModelV4,
+  type LanguageModelV4Prompt,
+  type LanguageModelV4StreamPart,
 } from '@ai-sdk/provider';
 import { DETECT_MARKER } from './detect';
 import type { ModelProvider } from './providers';
@@ -148,9 +151,49 @@ export function scriptedNarrative(prompt: LanguageModelV4Prompt): string | null 
   return JSON.stringify(Object.fromEntries(parts.map((p) => [p, text[p] ?? `Scripted ${p}.`])));
 }
 
+/**
+ * The 400 the Messages API answers when an organisation key (not scoped to a workspace) is sent
+ * without the `anthropic-workspace-id` header, as the installed app logged it on 2026-10-04.
+ */
+export const WORKSPACE_REQUIRED_BODY = JSON.stringify({
+  type: 'error',
+  error: {
+    type: 'invalid_request_error',
+    message:
+      'This API key is not scoped to a workspace, so this request must include the anthropic-workspace-id header with the ID of the workspace to use. Add the header, or use an API key that is scoped to a workspace.',
+  },
+});
+
+export interface ScriptedOptions {
+  /**
+   * Stand in for an organisation key: every request fails with the workspace 400
+   * (WORKSPACE_REQUIRED_BODY) until this returns a workspace ID, as Anthropic does. For the agent
+   * panel's in-place fix (end-to-end test).
+   */
+  workspaceId?: () => string | undefined;
+}
+
+function workspaceError(modelId: string): APICallError {
+  const data = JSON.parse(WORKSPACE_REQUIRED_BODY) as unknown;
+  return new APICallError({
+    message: 'Bad Request',
+    url: 'scripted://messages',
+    requestBodyValues: { model: modelId },
+    statusCode: 400,
+    responseBody: WORKSPACE_REQUIRED_BODY,
+    isRetryable: false,
+    data,
+  });
+}
+
 let calls = 0;
 
-function scriptedModel(modelId: string): LanguageModelV4 {
+function scriptedModel(modelId: string, options: ScriptedOptions = {}): LanguageModelV4 {
+  // Rejects like the provider when an organisation key has no workspace ID yet.
+  const refused = () =>
+    options.workspaceId !== undefined && !options.workspaceId()?.trim()
+      ? workspaceError(modelId)
+      : null;
   const parts = (prompt: LanguageModelV4Prompt): LanguageModelV4StreamPart[] => {
     const turn = scriptedTurn(prompt);
     calls += 1;
@@ -181,8 +224,10 @@ function scriptedModel(modelId: string): LanguageModelV4 {
     supportedUrls: {},
     // Settings, Test connection (OK), AI detection and the report narrative (JSON): one
     // non-streamed answer.
-    doGenerate: (options) =>
-      Promise.resolve({
+    doGenerate: (options) => {
+      const error = refused();
+      if (error) return Promise.reject(error);
+      return Promise.resolve({
         content: [
           {
             type: 'text',
@@ -192,8 +237,11 @@ function scriptedModel(modelId: string): LanguageModelV4 {
         finishReason: { unified: 'stop', raw: 'end_turn' },
         usage: USAGE,
         warnings: [],
-      }),
+      });
+    },
     doStream: (options) => {
+      const error = refused();
+      if (error) return Promise.reject(error);
       const list = parts(options.prompt);
       return Promise.resolve({
         stream: new ReadableStream<LanguageModelV4StreamPart>({
@@ -211,12 +259,16 @@ function scriptedModel(modelId: string): LanguageModelV4 {
  * A provider that answers every model id with the script. `id` is the route provider it stands in
  * for; `cloud` decides whether the cloud switch and project policy apply, as for the real one.
  */
-export function createScriptedProvider(id: string, cloud = true): ModelProvider {
+export function createScriptedProvider(
+  id: string,
+  cloud = true,
+  options: ScriptedOptions = {},
+): ModelProvider {
   return {
     id,
     label: 'Scripted test model',
     cloud,
     needsKey: false,
-    languageModel: (model) => scriptedModel(model),
+    languageModel: (model) => scriptedModel(model, options),
   };
 }

@@ -355,6 +355,22 @@ export const en = {
     'Tokens the agent used and their estimated cost, per project and provider, on this workstation.',
   'settings.ai.text':
     'Keys go to the system credential vault. They never enter project files or logs, and the app never shows a stored key.',
+  'settings.ai.workspaceInvalid':
+    'A workspace ID has only letters, digits, _ and -, such as wrkspc_01AbC.',
+  'settings.ai.workspaceNeeded':
+    'Anthropic needs the workspace ID for this key. Enter it above, then test again.',
+
+  // Agent panel: provider errors fixed in place
+  'agent.fix.workspace.title': 'Workspace ID needed',
+  'agent.fix.workspace.text':
+    'This Anthropic API key is not tied to a workspace, so every request must name one: enter the workspace ID from the Anthropic Console.',
+  'agent.fix.workspace.label': 'Anthropic workspace ID',
+  'agent.fix.workspace.placeholder': 'wrkspc_01...',
+  'agent.fix.workspace.empty': 'Enter the workspace ID first.',
+  'agent.fix.retry': 'Test and retry',
+  'agent.fix.testing': 'Testing',
+  'agent.fix.openSettings': 'Open AI settings',
+  'agent.fix.dismiss': 'Dismiss',
   'settings.privacy.text':
     '{product} works fully offline. Cloud AI is opt-in, and every action that sends data or changes the project asks you first.',
   'settings.data.text': 'Where projects and offline map packs live on this workstation.',

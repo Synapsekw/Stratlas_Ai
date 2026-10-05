@@ -3,6 +3,7 @@
 // by MapView so importing @aio/maps never pulls MapLibre into tests or the main process.
 import { addProtocol, setWorkerUrl } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import './map.css';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { FetchSource, PMTiles } from 'pmtiles';
 import type { MapPack } from './packs';

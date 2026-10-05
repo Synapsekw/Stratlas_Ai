@@ -326,7 +326,12 @@ export function createAgentRuntime(
       }
       const described = describeError(e, { label, model: route.model, secrets: [key] });
       console.warn(`agent run failed: ${described.log}`);
-      host.emit({ type: 'error', runId, message: described.message });
+      host.emit({
+        type: 'error',
+        runId,
+        message: described.message,
+        ...(described.code ? { code: described.code } : {}),
+      });
     }
   }
 
@@ -494,6 +499,7 @@ export function createAgentRuntime(
           message: described.message,
           model,
           ...(described.status !== undefined ? { status: described.status } : {}),
+          ...(described.code ? { code: described.code } : {}),
         };
       }
     },

@@ -14,6 +14,12 @@ export const WindowKind = z.enum([
 /** `local` is an OpenAI-compatible endpoint on this machine (for example Ollama); it needs no key. */
 export const AiProvider = z.enum(['anthropic', 'openai', 'google', 'local']);
 export const AiTask = z.enum(['chat', 'vision', 'report', 'extract', 'build']);
+/**
+ * Provider errors the app can offer a fix for in place. `anthropic-workspace`: the Anthropic key is
+ * not scoped to a workspace, so requests need the `anthropic-workspace-id` header (the workspace ID
+ * in Settings, AI providers).
+ */
+export const AiErrorCode = z.enum(['anthropic-workspace']);
 
 /** Metadata for an agent tool. The executable `run` lives in @aio/ai and the owning package. */
 export const ToolMeta = z.object({
@@ -29,6 +35,7 @@ export type ToolScope = z.infer<typeof ToolScope>;
 export type WindowKind = z.infer<typeof WindowKind>;
 export type AiProvider = z.infer<typeof AiProvider>;
 export type AiTask = z.infer<typeof AiTask>;
+export type AiErrorCode = z.infer<typeof AiErrorCode>;
 export type ToolMeta = z.infer<typeof ToolMeta>;
 
 /** Write and send actions always need the person's approval. */

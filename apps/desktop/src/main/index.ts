@@ -269,9 +269,22 @@ const projectNames = new Map<string, string>();
  */
 const scripted =
   process.env.STRATLAS_AI_TEST_PROVIDER === '1' && Boolean(process.env.STRATLAS_USER_DATA);
+/**
+ * STRATLAS_AI_TEST_SCRIPT=workspace-400: the scripted Anthropic stands in for an organisation key
+ * and answers the workspace 400 until Settings has a workspace ID (agent panel fix, e2e).
+ */
+const scriptedWorkspace = scripted && process.env.STRATLAS_AI_TEST_SCRIPT === 'workspace-400';
 const providers = createProviderRegistry(
   scripted
-    ? (['anthropic', 'openai', 'google'] as const).map((id) => createScriptedProvider(id))
+    ? (['anthropic', 'openai', 'google'] as const).map((id) =>
+        createScriptedProvider(
+          id,
+          true,
+          id === 'anthropic' && scriptedWorkspace
+            ? { workspaceId: () => settings.current().anthropicWorkspaceId }
+            : {},
+        ),
+      )
     : builtInProviders({
         // Keys not scoped to a workspace need the workspace ID (Settings, AI providers).
         anthropicWorkspaceId: () => settings.current().anthropicWorkspaceId,

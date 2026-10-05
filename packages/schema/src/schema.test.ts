@@ -411,6 +411,23 @@ describe('agent history and usage contracts', () => {
     ).toBe(false);
   });
 
+  it('tags provider errors the app can fix in place', () => {
+    const base = { type: 'error', runId: 'r', message: 'Anthropic: not scoped to a workspace.' };
+    expect(ipcEvents['ai:event'].safeParse(base).success).toBe(true);
+    expect(ipcEvents['ai:event'].safeParse({ ...base, code: 'anthropic-workspace' }).success).toBe(
+      true,
+    );
+    expect(ipcEvents['ai:event'].safeParse({ ...base, code: 'other' }).success).toBe(false);
+    expect(
+      ipc['ai:testConnection'].response.safeParse({
+        ok: false,
+        message: 'x',
+        status: 400,
+        code: 'anthropic-workspace',
+      }).success,
+    ).toBe(true);
+  });
+
   it('tags usage events with provider and model and sends with a project id', () => {
     const e = ipcEvents['ai:event'].safeParse({
       type: 'usage',

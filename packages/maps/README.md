@@ -34,11 +34,17 @@ tile's CRC-32, header zoom and area) and written with `source`, `build` and `bui
   the map is empty.
 - Glyphs and sprites resolve to files bundled by Vite (`?url` imports). No URL in the style
   leaves `aiomap://` (tested in `style.test.ts`). Arabic is shaped natively by MapLibre 6.
-- Style: Protomaps `dark` and `light` flavours retuned to the Mission palettes, following the app
-  theme (`data-theme` on `<html>`; the map restarts in the new flavour). The light sprite sheet is
-  optional (`build-packs.mjs` fetches it); until it is bundled the light style uses the dark
-  sheet's icons. Labels follow
-  `<html lang>`: `en` shows English with the Arabic local name beneath, `ar` shows Arabic.
+- Style: one street style, always dark (founder decision 2026-10-05), in every app theme and
+  everywhere a map appears (Map view, split panes, the 3D `basemap` ground, road workspace, the
+  wizard and georeference pickers, Settings coverage, the package player). It is the Protomaps
+  `dark` flavour retuned to the Mission tokens (`src/ink.ts`: `STREET` for the basemap,
+  `MAP_INK` for overlays, both converted from the tokens' oklch): land, water and land use a few
+  steps apart, roads lighter by class, labels between `--fg-3` and `--fg-1`, no severity hue or
+  accent in the basemap, POI icons dimmed. `style.test.ts` checks the contrasts. A `basemap`
+  layer's `style` field is not read. Map roots carry `aio-map` and `data-surface="dark"`, so
+  the dark Mission tokens apply inside them (controls, popups, status text, `src/map.css`) even in
+  the light app theme. Labels follow `<html lang>`: `en` shows English with the Arabic local name
+  beneath, `ar` shows Arabic.
 - `MapView` takes an optional `draw` seam (`MapDrawSeam`): while its `mode` is set, clicks add
   vertices (the second click of a double click is dropped), a double click finishes instead of
   zooming, the cursor is a crosshair and `drawPreview` draws the shape so far.

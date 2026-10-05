@@ -1,0 +1,83 @@
+/* MapLibre controls on the street maps, which are always dark. Every map root carries
+   `aio-map` and `data-surface="dark"` (the dark Mission tokens apply inside it in every app
+   theme); the fallbacks are the same tokens as hex for pages without tokens.css. */
+
+.aio-map .maplibregl-ctrl-group {
+  background: var(--bg-1, #0e1114);
+  border-radius: var(--r-4, 4px);
+}
+.aio-map .maplibregl-ctrl-group:not(:empty) {
+  box-shadow:
+    0 0 0 1px var(--line-strong, #383e43),
+    0 4px 12px var(--shadow, rgb(0 0 0 / 0.5));
+}
+.aio-map .maplibregl-ctrl-group button + button {
+  border-top: 1px solid var(--line, #24282d);
+}
+.aio-map .maplibregl-ctrl button:not(:disabled):hover {
+  background-color: var(--bg-3, #1b2024);
+}
+.aio-map .maplibregl-ctrl-group button:focus-visible {
+  box-shadow: 0 0 0 2px var(--acc, #60d3b2);
+}
+/* MapLibre's icons are dark-grey SVGs; inverted they read as --fg-1 on the dark buttons. */
+.aio-map .maplibregl-ctrl button .maplibregl-ctrl-icon,
+.aio-map .maplibregl-ctrl-attrib-button {
+  filter: invert(0.8);
+}
+.aio-map .maplibregl-ctrl button:disabled .maplibregl-ctrl-icon {
+  opacity: 0.35;
+}
+
+.aio-map .maplibregl-ctrl-scale {
+  background-color: color-mix(in srgb, var(--bg-0, #080a0d) 72%, transparent);
+  border-color: var(--fg-3, #5e646a);
+  color: var(--fg-1, #b9bec4);
+  font: 10px / 1.5 var(--f-mono, ui-monospace, monospace);
+}
+
+.aio-map .maplibregl-ctrl-attrib,
+.aio-map .maplibregl-ctrl-attrib.maplibregl-compact {
+  background-color: color-mix(in srgb, var(--bg-1, #0e1114) 85%, transparent);
+  color: var(--fg-2, #878d93);
+  font: 11px / 1.5 var(--f-ui, sans-serif);
+}
+.aio-map .maplibregl-ctrl-attrib.maplibregl-compact {
+  box-shadow: 0 0 0 1px var(--line, #24282d);
+}
+.aio-map .maplibregl-ctrl-attrib-button {
+  background-color: transparent;
+}
+.aio-map .maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-button {
+  background-color: transparent;
+}
+.aio-map .maplibregl-ctrl-attrib a {
+  color: var(--fg-1, #b9bec4);
+}
+
+.aio-map .maplibregl-popup-content {
+  background: var(--bg-1, #0e1114);
+  color: var(--fg-0, #eaedf1);
+}
+.aio-map .maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.aio-map .maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.aio-map .maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: var(--bg-1, #0e1114);
+}
+.aio-map .maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.aio-map .maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.aio-map .maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: var(--bg-1, #0e1114);
+}
+.aio-map .maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--bg-1, #0e1114);
+}
+.aio-map .maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--bg-1, #0e1114);
+}
+.aio-map .maplibregl-popup-close-button {
+  color: var(--fg-2, #878d93);
+}
+.aio-map .maplibregl-popup-close-button:hover {
+  background-color: var(--bg-3, #1b2024);
+}

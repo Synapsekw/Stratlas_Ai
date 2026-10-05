@@ -4,6 +4,7 @@
  * kept, after removing anything that looks like a key and cutting it to a short length. Main
  * process only.
  */
+import type { AiErrorCode } from '@aio/schema';
 import { APICallError, RetryError } from 'ai';
 
 export interface ErrorContext {
@@ -21,6 +22,21 @@ export interface DescribedError {
   /** For the log: error class, HTTP status, provider error type and the same sanitised text. */
   log: string;
   status?: number;
+  /** A provider error the app offers a fix for in place (the agent panel, Settings). */
+  code?: AiErrorCode;
+}
+
+/**
+ * The key is not scoped to a workspace, so the request needs the `anthropic-workspace-id` header:
+ * the 400 Anthropic answers for an organisation key without a workspace ID.
+ */
+export function isWorkspaceError(status: number | undefined, detail: string): boolean {
+  return (
+    status !== undefined &&
+    status >= 400 &&
+    status < 500 &&
+    /anthropic-workspace-id|not scoped to a workspace/i.test(detail)
+  );
 }
 
 const MAX_DETAIL = 400;
@@ -154,7 +170,12 @@ export function describeError(err: unknown, ctx: ErrorContext): DescribedError {
       else lead = label;
       body = detail ? `${lead}: ${stop(detail)}` : stop(lead);
     }
-    return { message: `${body} (HTTP ${status}) ${hint(status, detail)}`, log, status };
+    return {
+      message: `${body} (HTTP ${status}) ${hint(status, detail)}`,
+      log,
+      status,
+      ...(isWorkspaceError(status, detail) ? { code: 'anthropic-workspace' as const } : {}),
+    };
   }
   if (isNetworkError(e)) {
     return {

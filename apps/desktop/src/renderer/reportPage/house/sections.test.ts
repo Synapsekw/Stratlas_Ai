@@ -145,6 +145,8 @@ describe('charts and text', () => {
     );
     // the focus (dot and ring) plus one neighbour; the far issue is left out
     expect((svg.match(/<circle/g) ?? []).length).toBe(3);
+    // dark, like every map in the app
+    expect(svg).toContain('class="map loc"');
   });
 
   it('draws stockpile toe lines with their names', () => {

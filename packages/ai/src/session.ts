@@ -10,6 +10,7 @@
 import {
   CONVERSATION_SCHEMA,
   needsApproval,
+  type AiErrorCode,
   type AiPolicy,
   type AioBridge,
   type ChatMessage,
@@ -43,6 +44,18 @@ export type Availability =
   | { status: 'ready'; route: ModelRoute; cloud: boolean }
   | { status: 'disabled'; reason: DisabledReason; message: string };
 
+/**
+ * A failed reply the panel can offer a fix for in place (the provider error's code), with the
+ * message to send again once it is fixed.
+ */
+export interface AgentFix {
+  code: AiErrorCode;
+  /** The run that failed. */
+  runId: string;
+  /** The person's message of that run. */
+  text: string;
+}
+
 /** What will leave the machine with the next message, shown before the first cloud send (AI-6). */
 export interface SendPreview {
   text: string;
@@ -73,6 +86,8 @@ export interface SessionState {
   history: ConversationSummary[] | null;
   /** Why the last save failed (read-only package, disk), or null. */
   saveError: string | null;
+  /** The last reply failed with an error the panel can fix in place, or null. */
+  fix: AgentFix | null;
 }
 
 export interface SessionDeps {
@@ -133,6 +148,7 @@ export class AgentSession {
       preview: null,
       history: null,
       saveError: null,
+      fix: null,
     };
   }
 
@@ -251,6 +267,28 @@ export class AgentSession {
     await this.dispatch(p.text, p.context, p.image);
   }
 
+  /**
+   * Send the message of the failed run again, after its fix (for example the workspace ID) is in
+   * place. The failed exchange is replaced, so the conversation holds the message once.
+   */
+  async retry(): Promise<void> {
+    const fix = this.state.fix;
+    if (!fix || this.state.busy) return;
+    const index = this.state.turns.findIndex(
+      (t) => t.kind === 'assistant' && t.runId === fix.runId,
+    );
+    const before = index > 0 ? this.state.turns[index - 1] : undefined;
+    const start = before?.kind === 'user' ? index - 1 : index;
+    if (index >= 0) this.set({ turns: this.state.turns.filter((_, i) => i < start || i > index) });
+    this.set({ fix: null });
+    await this.send(fix.text);
+  }
+
+  /** Hide the in-place fix; the error stays in the conversation. */
+  dismissFix(): void {
+    if (this.state.fix) this.set({ fix: null });
+  }
+
   cancelPreview(): void {
     if (this.state.preview) this.set({ preview: null });
   }
@@ -293,7 +331,7 @@ export class AgentSession {
     };
     this.runId = runId;
     this.live.clear();
-    this.set({ turns: [...this.state.turns, user, reply], busy: true });
+    this.set({ turns: [...this.state.turns, user, reply], busy: true, fix: null });
     const messages: ChatMessage[] = [...history, { role: 'user', content: text }];
     const projectId = this.projectId();
     try {
@@ -361,6 +399,7 @@ export class AgentSession {
       usage: EMPTY_USAGE,
       preview: null,
       saveError: null,
+      fix: null,
     });
   }
 
@@ -431,6 +470,7 @@ export class AgentSession {
       usage: c.usage,
       preview: null,
       saveError: null,
+      fix: null,
     });
   }
 
@@ -547,7 +587,12 @@ export class AgentSession {
         this.finish(e.runId, 'done');
         break;
       case 'error':
-        if (turn.status === 'streaming') this.finish(e.runId, 'error', e.message);
+        if (turn.status !== 'streaming') break;
+        this.finish(e.runId, 'error', e.message);
+        if (e.code) {
+          const text = this.userTextBefore(e.runId);
+          if (text) this.set({ fix: { code: e.code, runId: e.runId, text } }, false);
+        }
         break;
     }
   }
@@ -660,6 +705,13 @@ export class AgentSession {
     }
     this.set({ steps, busy: this.runId !== null });
     this.saveSoon(true);
+  }
+
+  /** The person's message that started a run. */
+  private userTextBefore(runId: string): string | null {
+    const i = this.state.turns.findIndex((t) => t.kind === 'assistant' && t.runId === runId);
+    const user = i > 0 ? this.state.turns[i - 1] : undefined;
+    return user?.kind === 'user' ? user.text : null;
   }
 
   private reply(runId: string) {

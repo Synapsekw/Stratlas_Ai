@@ -378,10 +378,11 @@ figcaption {
 .maps.one {
   grid-template-columns: 1fr;
 }
+/* the locator is a map, and the app's maps are always dark (Mission dark tokens as hex) */
 .ip-loc {
   height: 69mm;
   border: 0.3mm solid var(--rule);
-  background: #ffffff;
+  background: #0e1114;
   overflow: hidden;
 }
 .ip-loc .map {
@@ -422,6 +423,22 @@ figcaption {
 }
 .map .north path {
   fill: var(--ink);
+}
+.map.loc {
+  background: #0e1114;
+}
+.map.loc .frame {
+  fill: #101317;
+  stroke: #383e43;
+}
+.map.loc .scale line {
+  stroke: #b9bec4;
+}
+.map.loc text {
+  fill: #b9bec4;
+}
+.map.loc .north path {
+  fill: #eaedf1;
 }
 .chartfig {
   margin-bottom: 4mm;

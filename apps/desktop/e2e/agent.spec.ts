@@ -59,8 +59,8 @@ async function cleanup(data: DataRoot) {
   await rm(data.base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 }
 
-async function start(data: DataRoot) {
-  const app = await launchApp(data, { STRATLAS_AI_TEST_PROVIDER: '1' });
+async function start(data: DataRoot, env: Record<string, string> = {}) {
+  const app = await launchApp(data, { STRATLAS_AI_TEST_PROVIDER: '1', ...env });
   open.add(app);
   const network = new NetworkGuard();
   await network.attach(app);
@@ -269,6 +269,82 @@ test('agent: Settings tests the connection and keeps the Anthropic workspace ID'
       ).anthropicWorkspaceId,
     ).toBe('wrkspc_01E2ETest');
     await shot(win, 'settings-anthropic-workspace');
+    await close(run.app, run.network);
+  } finally {
+    await cleanup(data);
+  }
+});
+
+test('agent: the Anthropic workspace error is fixed in the panel and the message is sent again', async () => {
+  test.setTimeout(120_000);
+  const data = await createDataRoot();
+  try {
+    await writeFile(join(data.projectDir, 'manifest.json'), JSON.stringify(agentManifest()));
+    // The scripted Anthropic stands in for a key that is not scoped to a workspace.
+    const run = await start(data, { STRATLAS_AI_TEST_SCRIPT: 'workspace-400' });
+    const { win } = run;
+    await win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: true }));
+    // Test connection reports the error with its code (Settings focuses the field on it).
+    const tested = await win.evaluate(() =>
+      window.aio.invoke('ai:testConnection', { provider: 'anthropic' }),
+    );
+    expect(tested).toMatchObject({ ok: false, status: 400, code: 'anthropic-workspace' });
+    expect(tested.message).toContain('This API key is not scoped to a workspace');
+    await openTiny(win);
+
+    await ask(win, 'Hello agent');
+    await win
+      .getByRole('dialog', { name: 'Send to Anthropic?' })
+      .getByRole('button', { name: 'Send' })
+      .click();
+    await expect(agent(win).locator('.ag-err')).toContainText(
+      'This API key is not scoped to a workspace, so this request must include the anthropic-workspace-id header',
+    );
+    await expect(agent(win).locator('.ag-err')).toContainText('(HTTP 400)');
+    const card = agent(win).getByRole('group', { name: 'Workspace ID needed' });
+    await expect(card).toBeVisible();
+    await expect(card).toContainText('This Anthropic API key is not tied to a workspace');
+    const field = card.getByRole('textbox', { name: 'Anthropic workspace ID' });
+    await expect(field).toBeFocused();
+    await expect(card.getByRole('button', { name: 'Open AI settings' })).toBeVisible();
+
+    // The same rule as Settings: a typo is refused in place.
+    await field.fill('not a workspace!');
+    await card.getByRole('button', { name: 'Test and retry' }).click();
+    await expect(card.getByRole('alert')).toContainText('A workspace ID has only letters');
+    await shot(win, 'agent-workspace-card');
+
+    // Saved to the same setting, tested, and the failed message goes again.
+    await field.fill('wrkspc_01E2EFix');
+    await card.getByRole('button', { name: 'Test and retry' }).click();
+    await expect(card).toBeHidden();
+    await expect(agent(win)).toContainText('Scripted reply to: Hello agent');
+    await expect(agent(win).locator('.ag-err')).toHaveCount(0);
+    await expect(agent(win).locator('.ag-msg.user', { hasText: 'Hello agent' })).toHaveCount(1);
+    expect(
+      (
+        JSON.parse(await readFile(join(data.userData, 'settings.json'), 'utf8')) as {
+          anthropicWorkspaceId?: string;
+        }
+      ).anthropicWorkspaceId,
+    ).toBe('wrkspc_01E2EFix');
+    await shot(win, 'agent-workspace-fixed');
+
+    // Without the ID again: "Open AI settings" lands on the field in Settings.
+    await win.locator('.nav-item', { hasText: 'Settings' }).click();
+    await win.locator('.set-nav button', { hasText: 'AI providers' }).click();
+    const settingsField = win.getByRole('textbox', { name: 'Anthropic workspace ID' });
+    await expect(settingsField).toHaveValue('wrkspc_01E2EFix');
+    await settingsField.fill('');
+    await settingsField.press('Enter');
+    await win.locator('.nav-item', { hasText: 'Scene' }).click();
+    await ask(win, 'Second message');
+    await expect(card).toBeVisible();
+    await card.getByRole('button', { name: 'Open AI settings' }).click();
+    await expect(win.locator('.set-page h1')).toHaveText('AI providers');
+    await expect(settingsField).toBeFocused();
+    await expect(win.getByTestId('workspace-needed')).toBeVisible();
+    await shot(win, 'agent-workspace-settings');
     await close(run.app, run.network);
   } finally {
     await cleanup(data);

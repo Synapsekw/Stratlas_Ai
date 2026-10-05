@@ -41,8 +41,13 @@ export const DEFAULT_SETTINGS: Settings = {
   updateUrl: '',
 };
 
+/** A Settings field to focus when Settings opens (the agent panel's "Open AI settings"). */
+export type SettingsFocus = 'anthropic-workspace';
+
 export interface ShellState {
   screen: Screen;
+  /** Focus this field when Settings opens; cleared once focused. */
+  settingsFocus: SettingsFocus | null;
   settings: Settings;
   settingsError: string | null;
   /** null until the first library:list answer. */
@@ -77,6 +82,9 @@ export interface ShellState {
 export interface ShellActions {
   init: () => Promise<void>;
   go: (screen: Screen) => void;
+  /** Open Settings (AI providers) and focus a field there. */
+  openSettings: (focus?: SettingsFocus) => void;
+  clearSettingsFocus: () => void;
   loadLibrary: () => Promise<void>;
   updateSettings: (patch: Partial<Settings>) => Promise<string | null>;
   toggleSidebar: () => Promise<void>;
@@ -119,6 +127,7 @@ export function createShellStore(
   };
   return createStore<Shell>()((set, get) => ({
     screen: 'projects',
+    settingsFocus: null,
     settings: DEFAULT_SETTINGS,
     settingsError: null,
     library: null,
@@ -147,6 +156,14 @@ export function createShellStore(
 
     go: (screen) => {
       set({ screen });
+    },
+
+    openSettings: (focus) => {
+      set({ screen: 'settings', settingsFocus: focus ?? null });
+    },
+
+    clearSettingsFocus: () => {
+      if (get().settingsFocus) set({ settingsFocus: null });
     },
 
     loadLibrary: async () => {

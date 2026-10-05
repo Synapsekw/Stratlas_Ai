@@ -1,5 +1,6 @@
 import type { AioBridge } from '@aio/schema';
 import { useEffect, useRef, useState } from 'react';
+import { MAP_SURFACE } from './ink';
 import type { PickerController } from './picker';
 
 export interface LocationPickerProps {
@@ -87,7 +88,12 @@ export function LocationPicker({ className, onPick, points, center, zoom }: Loca
   }, [points, status]);
 
   return (
-    <div className={className} style={{ position: 'relative', minHeight: 0 }}>
+    <div
+      className={['aio-map', className].filter(Boolean).join(' ')}
+      dir="ltr"
+      data-surface="dark"
+      style={{ ...MAP_SURFACE, position: 'relative', minHeight: 0 }}
+    >
       <div ref={ref} style={{ position: 'absolute', inset: 0 }} data-testid="location-picker" />
       {status !== 'ready' && (
         <div
@@ -100,7 +106,6 @@ export function LocationPicker({ className, onPick, points, center, zoom }: Loca
             padding: 16,
             textAlign: 'center',
             fontSize: 12,
-            color: 'var(--fg-2)',
           }}
         >
           {MESSAGES[status]}
