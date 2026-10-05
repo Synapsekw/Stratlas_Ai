@@ -224,8 +224,18 @@ export function evidenceKind(manifest: ProjectManifest, issue: Issue): EvidenceK
 /**
  * The split with the 3D view on one side and `kind` on the other: the 3D side stays where it is
  * (the evidence takes the non-3D side); without the 3D view in the split, 3D goes left.
+ *
+ * `compared`: the split was comparing two survey dates (one pane kind on both sides). The
+ * comparison gives way: the 3D view goes left on the latest date (no remembered dates), so the
+ * evidence never shows beside an older survey. Closing the evidence puts the comparison back.
  */
-export function splitWithEvidence(sides: SplitPref, kind: PaneKind): SplitPref {
+export function splitWithEvidence(sides: SplitPref, kind: PaneKind, compared = false): SplitPref {
+  if (compared) {
+    const next: SplitPref = { ...sides, left: '3d', right: kind };
+    delete next.leftCapture;
+    delete next.rightCapture;
+    return next;
+  }
   if (sides.left === '3d') return { ...sides, right: kind };
   if (sides.right === '3d') return { ...sides, left: kind };
   return { ...sides, left: '3d', right: kind };

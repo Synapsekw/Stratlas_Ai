@@ -250,6 +250,13 @@ describe('evidence beside the 3D view', () => {
       raster: 'o',
     });
   });
+  it('replaces a comparison of two dates with the 3D view on the latest date', () => {
+    const resolved = { left: '3d', right: 'map', leftCapture: 'a', rightCapture: 'b' } as const;
+    expect(splitWithEvidence(resolved, 'photo', true)).toEqual({ left: '3d', right: 'photo' });
+    expect(
+      splitWithEvidence({ left: 'raster', right: '3d', raster: 'o', rightCapture: 'b' }, 'video'),
+    ).toEqual({ left: 'video', right: '3d', raster: 'o', rightCapture: 'b' });
+  });
   it('brings the 3D view back to the left when the split had none', () => {
     expect(splitWithEvidence({ left: 'map', right: 'report' }, 'photo')).toEqual({
       left: '3d',

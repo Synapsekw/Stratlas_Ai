@@ -76,7 +76,9 @@ export function openEvidence(issueId: string): boolean {
   const restore =
     open?.projectId === project.id ? open.restore : { mode: sh.stageMode, split: saved };
   const sides = resolveSplit(saved, paneOptions(project.manifest.layers, 1));
-  stagePrefs.getState().update(project.id, { split: splitWithEvidence(sides, kind) });
+  // two survey dates side by side (compare): the evidence replaces the comparison
+  const compared = saved !== undefined && saved.left === saved.right;
+  stagePrefs.getState().update(project.id, { split: splitWithEvidence(sides, kind, compared) });
   evidence.setState({ open: { projectId: project.id, issueId, kind, index: 0, restore } });
   if (sh.stageMode !== 'split') sh.setStageMode('split');
   if (kind === 'video') {
