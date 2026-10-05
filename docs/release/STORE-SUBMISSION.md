@@ -1,100 +1,57 @@
-# Microsoft Store submission (MSIX)
+# Microsoft Store submission checklist
 
-Route: an MSIX package built by `pnpm -F @aio/desktop dist:win:store`. Microsoft signs Store packages during certification, so this channel needs no code-signing certificate. The offline installer (USB, NAS) is a separate channel and still needs an OV certificate.
+For the founder. Publishing is **deferred** (founder decision); everything below is ready so a submission takes an afternoon when the decision is made. Tick the boxes in the release issue.
 
-Partner Center labels change from time to time; if a label below differs slightly, look for the nearest match.
+What is already done in the repository:
 
-## 1. Reserve the product (5 minutes)
+- The product is reserved in Partner Center; its identity (`SynapseSolutions.Stratlas`, publisher `CN=93BC08FE-8EF9-44E5-AC18-4B57E9E7759A`) is in `packages/brand/brand.json`, so every MSIX build carries it. No variables needed.
+- `release.yml` builds the MSIX on every `v*` tag (artifact `release-windows`). It is unsigned on purpose: Microsoft signs Store packages during certification.
+- Tiles and logos at every scale are inside the package (`apps/desktop/build/appx/`); listing images, listing text and the privacy policy draft are in `docs/release/store-listing/`.
+- The package declares `runFullTrust`, the `.aio` file type and the `stratlas:` link.
 
-1. Go to **partner.microsoft.com/dashboard**, sign in with the Synapse Solutions developer account.
-2. **Apps and games**, then **New product**, then **MSIX or PWA app**.
-3. Reserve a name. "Stratlas" works while the name is temporary. The **package identity is created from the first reserved name and never changes**, even after you rename the app later (you can reserve more names and switch the display name), so if the final name is known, reserve that one instead.
+Partner Center labels change from time to time; if one below differs slightly, look for the nearest match.
 
-## 2. Copy the identity values to the build
+## 1. Before the first submission (once)
 
-1. Open the product, then **Product management**, then **Product identity**.
-2. Copy these three values into the build environment (or send them to the team; they are public identifiers, not secrets):
+- [ ] **Privacy policy online.** Fill in the brackets in `store-listing/privacy-policy.md` (date, address, support email) and publish it on synapse-solutions.ai, for example `/stratlas/privacy`. Partner Center rejects the submission without a working URL, because cloud AI can send data when the person turns it on.
+- [ ] **Support contact:** a support email or page on synapse-solutions.ai.
+- [ ] **Demo project approved for publication** (stream D3) and bundled: certification runs the app with no data of yours, and screenshots must not show client sites without permission.
+- [ ] **Screenshots:** 4 to 8 PNGs at 1920 x 1080 from the demo project (fused scene, video on the model, issue register, map, volumes). Use only demo data; no client logos or names.
+- [ ] Decide **markets** (all, or the GCC markets you sell in) and **price** (free with Synapse licensing, or a price).
 
-| Partner Center field                             | Build variable                 |
-| ------------------------------------------------ | ------------------------------ |
-| `Package/Identity/Name`                          | `STORE_IDENTITY_NAME`          |
-| `Package/Identity/Publisher` (starts with `CN=`) | `STORE_PUBLISHER`              |
-| `Package/Properties/PublisherDisplayName`        | `STORE_PUBLISHER_DISPLAY_NAME` |
+## 2. Get the package
 
-3. Build: `pnpm -F @aio/desktop dist:win:store`. Output: `apps/desktop/dist/*.msix` (or `.appx`).
+- [ ] Tag the release commit `v<version>` (or run **Actions, release, Run workflow**) and wait for the run to go green.
+- [ ] Download the `release-windows` artifact; take `Stratlas-<version>-win-x64-store.msix` and check its hash against `SHA256SUMS-windows.txt`.
+- [ ] Each submission needs a **higher version** than the last one (`apps/desktop/package.json`; the MSIX version is `<version>.0`).
+- [ ] Optional local check on a Windows machine with the Windows SDK: `appcert.exe test -appxpackagepath Stratlas-<version>-win-x64-store.msix -reportoutputpath report.xml` (Windows App Certification Kit). Fix every failure before uploading.
 
-## 3. Fill in the submission
+Local build instead of CI: `pnpm -F @aio/desktop dist:win:store`. If it stops with `spawn UNKNOWN`, point electron-builder at the Windows SDK first: `$env:ELECTRON_BUILDER_WINDOWS_KITS_PATH = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\x64"`.
 
-Start a submission from the product overview (**Start your submission**). Sections:
+## 3. Create the submission
 
-### Pricing and availability
+Partner Center, **Apps and games**, Stratlas, **Start your submission**.
 
-- **Markets:** all, or only the GCC markets you sell in.
-- **Visibility:** for the first release choose **Private audience** (only Microsoft accounts you list can see and install it) or **Hidden in the Store, available by direct link**. Make it public later.
-- **Pricing:** Free (licensing handled by Synapse), or a price.
+- [ ] **Pricing and availability:** markets; for the first release choose **Private audience** (only the Microsoft accounts you list) or **Hidden in the Store, available by direct link**; make it public later. Price.
+- [ ] **Properties:** category **Productivity**; privacy policy URL from step 1; website `https://synapse-solutions.ai`; support contact; system requirements from `store-listing/listing.md`.
+- [ ] **Age ratings:** IARC questionnaire. Answers: no violence, no user-generated content shared publicly, no in-app purchases, no location sharing, no personal data collected. Expected rating: Everyone / 3+.
+- [ ] **Packages:** upload the `.msix`. Partner Center checks the identity against the reservation; a mismatch means `brand.json` `store` was changed. Device family: **Windows 10/11 Desktop** only.
+- [ ] **Store listings, English (United States):** copy description, short description, what's new, features and search terms from `store-listing/listing.md`; upload screenshots; Store logos and display images from `store-listing/images/` (table in `listing.md`).
+- [ ] **Submission options, restricted capabilities:** paste the `runFullTrust` justification from `listing.md`.
+- [ ] **Notes for certification:** paste the text from `listing.md`.
+- [ ] **Submit to the Store.**
 
-### Properties
+## 4. Certification and after
 
-- **Category:** Productivity (or Business).
-- **Privacy policy URL: required.** The app can send data to AI providers when the person turns cloud AI on. Host a short policy on synapse-solutions.ai (draft below).
-- **Website / support contact:** synapse-solutions.ai support page or email.
-- **System requirements:** recommended hardware: 16 GB RAM, a DirectX 12 GPU with 4 GB VRAM; minimum: 8 GB RAM, integrated GPU.
+- [ ] Certification takes a few hours to three working days. A failure report names the policy; the usual causes are a missing privacy policy, third-party brands in screenshots, or an app that does not start without data (the demo project covers it).
+- [ ] After approval, install from the Store on a clean Windows machine (link from Partner Center for a private or hidden listing): it starts, opens the demo project, `.aio` files open with a double-click, Settings, About shows no "Install update from file" (the Store updates it).
+- [ ] Make the listing public when ready (Pricing and availability, Visibility).
 
-### Age ratings
+## Each later release
 
-Complete the IARC questionnaire: no violence, no user-generated public content, no purchases inside the app. Expected result: Everyone / 3+.
+- [ ] Bump the version, tag, download the new `.msix` from the `release` run.
+- [ ] Partner Center, **Update** the submission: upload the package, update "What's new", submit. Installed copies update through the Store.
 
-### Packages
+## Not needed for the Store
 
-- Upload the `.msix` from step 2. Partner Center checks that its identity matches the reserved product; a mismatch means the variables in step 2 were not set when building.
-- Device family: **Windows 10/11 Desktop** only.
-
-### Store listing (English)
-
-- **Description, short description, features:** use the draft below.
-- **Screenshots:** at least 1, up to 10, 1366 x 768 or larger (1920 x 1080 recommended). We supply them from the app (Al-Zour fusion, HCl inspection, DAMAC issues, Ring Road map, Masafi volumes). Use only screenshots your clients allow to be public, or the demo project.
-- **Store logos:** generated from `packages/brand` by the release tools.
-- **Search terms:** drone inspection, digital twin, point cloud, reality capture, asset integrity, offline GIS, LiDAR.
-
-### Submission options
-
-- **Restricted capabilities: `runFullTrust`.** Partner Center asks why. Paste:
-  > Stratlas is a desktop application built with Electron. It needs full trust to read large project folders chosen by the user (multi-gigabyte drone video, point clouds and 3D models on local disks and network shares), to store API keys in Windows Credential Manager, and to run its bundled processing tools. It makes no network requests unless the user turns on cloud AI or downloads a map pack.
-- **Notes for certification:** "The app works offline. To test, open the bundled demo project from the Projects screen. Cloud AI is off by default and needs the tester's own API key."
-
-## 4. Submit and wait
-
-- **Submit to the Store.** Certification usually takes a few hours to 3 business days.
-- If it fails, the report names the policy; the most common causes are a missing privacy policy, screenshots containing third-party brands, or the app not starting without data. The demo project avoids the last one.
-
-## 5. Updates
-
-Each new version: raise the version in `apps/desktop/package.json`, rebuild the MSIX, start a new submission, upload the package. The Store updates installed copies automatically.
-
-## Draft listing text
-
-**Short description (up to 100 characters):** Offline drone inspection workspace: video, 3D models, point clouds and maps in one view.
-
-**Description:**
-Stratlas brings everything a drone inspection or survey produces into one offline workspace. Open a project and see the 3D model, the point cloud, the orthomosaic and the street map together, play the drone video with the flight path in 3D, and watch each frame drape onto the asset from the drone's own position.
-
-Mark issues on photos, video frames, models and point clouds, grade them with your severity model, and see one issue across every view. Review stockpile volumes, road defects and facade findings, and export what your client needs.
-
-Stratlas runs fully offline, including street maps for the GCC. Optional AI assistants from Anthropic, OpenAI or Google work in every window with your own API key, and only when you turn them on.
-
-**Features:**
-
-- Fused 3D scene: models, point clouds, orthomosaics, offline maps
-- Drone video synced to its flight path and projected onto the model
-- Annotation suite with severity models across photos, video, 3D and maps
-- Offline street maps for Kuwait, the UAE and the GCC
-- Optional AI agents with your own keys, off by default
-
-## Draft privacy policy (publish on synapse-solutions.ai)
-
-Stratlas processes your project data on your computer. It does not collect personal data or usage statistics and makes no network requests by default. If you turn on cloud AI and add your own API key, the text and images you choose to send in an AI conversation go to the provider you selected (Anthropic, OpenAI or Google) under that provider's terms; Stratlas shows what will be sent before the first message in a project. API keys are stored in Windows Credential Manager on your computer. If you download a map pack, the app contacts the map data server you chose. Contact: (your support email).
-
-## Still needed for the full release
-
-- A **demo project** bundled with the Store build (non-client data) so certification and new users can try the app without project data. Action: choose a dataset we may publish, or we build a synthetic one.
-- An **OV code-signing certificate** for the offline installer channel.
+- No code-signing certificate: Microsoft signs the package. The certificate (Azure Trusted Signing or OV, `SECRETS.md`) is for the offline NSIS installer and the portable exe only.
