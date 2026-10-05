@@ -28,10 +28,21 @@ import { extractWindowJson, parseKitDataJs } from './kitdata';
 import { roundVec } from './math';
 import { CHROMIUM_CODECS, extractFrame, probeVideo, resizeImage, transcodeH264 } from './media';
 import { mergeImportedIssues, readSavedIssues } from './keep';
+import {
+  type PhotoTurn,
+  type QuarterTurns,
+  confidentMatch,
+  kitThumbTurn,
+  matchTurn,
+  orientationProbe,
+  turnImage,
+  turnIssueSightings,
+  turnedSize,
+} from './orientation';
 import { makeProxy } from './proxy';
 import { ISSUES_SCHEMA, validatePackage } from './package';
 import { ImportReport, formatBytes } from './report';
-import { PackageWriter } from './writer';
+import { PackageWriter, sha256 } from './writer';
 
 export interface ImportOptions {
   /** Source folder (read only). */
@@ -223,6 +234,49 @@ export async function importHcl(opts: ImportOptions): Promise<ImportResult> {
   layers.push(...cloudLayers, ...videoLayers);
 
   // Photos ----------------------------------------------------------------------------------------
+  // The kit made its 480 px POI thumbnails from the stored sensor pixels without applying the
+  // EXIF Orientation (the Elios 3 tags every photo "turn 180 deg"), so they are upside down
+  // while its 1280 px copies are right. The turn comes from the photos it has in both sizes.
+  const pairs = existsSync(src('photos'))
+    ? readdirSync(src('photos'))
+        .filter((f) => /\.jpg$/i.test(f) && existsSync(src('thumbs', f)))
+        .map((f) => ({ full: src('photos', f), thumb: src('thumbs', f) }))
+    : [];
+  const kitTurn = await kitThumbTurn(pairs);
+  const thumbTurn: QuarterTurns = kitTurn?.turn ?? 0;
+  if (pairs.length && !kitTurn)
+    rep.warn(
+      `Thumbnail orientation: the ${String(pairs.length)} photos the kit carries in both sizes do not agree on a turn; thumbnails used as delivered.`,
+    );
+  /** Photos an earlier import wrote another way up (shapes saved on them turn with them). */
+  const turnedSince = new Map<string, PhotoTurn>();
+  /**
+   * Write `rel` from `file`, turned `turn` quarter turns. When the package already holds that
+   * photo another way up (an import before the turn), note the turn for the saved sightings.
+   */
+  const placePhoto = async (id: string | null, file: string, rel: string, turn: QuarterTurns) => {
+    const bytes = turn ? await turnImage(file, turn) : null;
+    const dst = w.abs(rel);
+    if (id && existsSync(dst)) {
+      const old = readFileSync(dst);
+      const next = bytes ?? readFileSync(file);
+      if (sha256(old) !== sha256(next)) {
+        const m = matchTurn(await orientationProbe(old), await orientationProbe(next));
+        const was = imageSize(old);
+        const now = imageSize(next);
+        if (confidentMatch(m) && m.turn !== 0 && was && now)
+          turnedSince.set(id, {
+            turn: m.turn,
+            width: was.width,
+            height: was.height,
+            newWidth: now.width,
+            newHeight: now.height,
+          });
+      }
+    }
+    if (bytes) w.write(rel, bytes);
+    else await w.copy(file, rel);
+  };
   const photoItems: PhotoRef[] = [];
   const photoSizes = new Map<string, { width: number; height: number }>();
   /** `snap`: POI photos take the pose of the log sample the kit attached them to. */
@@ -243,11 +297,15 @@ export async function importHcl(opts: ImportOptions): Promise<ImportResult> {
       const scaleF = REVIEW_PX / Math.max(size.width, size.height);
       size.width = Math.round(size.width * scaleF);
       size.height = Math.round(size.height * scaleF);
+    } else if (best === thumb) {
+      await placePhoto(id, thumb, rel, thumbTurn);
+      [size.width, size.height] = turnedSize(size.width, size.height, thumbTurn);
+      if (thumbTurn) rep.count('Thumbnails turned upright (EXIF orientation the kit dropped)');
     } else {
-      await w.copy(best, rel);
+      await placePhoto(id, best, rel, 0);
     }
     const thumbRel = `photos/thumbs/${id}.jpg`;
-    if (existsSync(thumb)) await w.copy(thumb, thumbRel);
+    if (existsSync(thumb)) await placePhoto(null, thumb, thumbRel, thumbTurn);
     else await w.derive(thumbRel, [best], (out) => resizeImage(best, out, THUMB_PX, 4));
     photoSizes.set(id, size);
     if (best === thumb) rep.count('Photos only available as 480 px thumbnails');
@@ -326,9 +384,28 @@ export async function importHcl(opts: ImportOptions): Promise<ImportResult> {
     classCatalogues: [HCL_CATALOGUE],
   };
   // A re-run keeps issues people added or edited in the app (merged by id).
-  const merged = mergeImportedIssues(readSavedIssues(opts.out), issues);
+  let merged = mergeImportedIssues(readSavedIssues(opts.out), issues);
   const kept = merged.filter((i) => !issues.includes(i)).length;
   if (kept) rep.count('Issues kept from the app (added or edited there)', kept);
+  // Shapes drawn in the app on photos this run turned upright turn with them.
+  if (turnedSince.size) {
+    const turned = turnIssueSightings(
+      merged.filter((i) => !issues.includes(i)),
+      'photos',
+      turnedSince,
+    );
+    const byId = new Map(turned.issues.map((i) => [i.id, i]));
+    merged = merged.map((i) => byId.get(i.id) ?? i);
+    for (const c of turned.changes) {
+      const t = turnedSince.get(c.photo);
+      if (c.before.type !== 'mask' || !('path' in c.before.src) || !t) continue;
+      const mask = w.abs(c.before.src.path);
+      if (existsSync(mask)) w.write(c.before.src.path, await turnImage(mask, t.turn));
+    }
+    rep.count('Photos turned since the last import', turnedSince.size);
+    if (turned.changes.length)
+      rep.count('Saved image sightings turned with their photo', turned.changes.length);
+  }
   const valid = validatePackage(manifestInput, merged);
   w.writeJson('manifest.json', valid.manifest);
   w.writeJson('issues.json', { schema: ISSUES_SCHEMA, issues: valid.issues });
@@ -362,6 +439,9 @@ export async function importHcl(opts: ImportOptions): Promise<ImportResult> {
       : '- Video: MP4 clips copied as is (H.264 High, 960x540, 25 fps, plays in Chromium); a JPEG poster per clip at 1 s.',
     '- Point clouds: per-flight Elios 3 LiDAR (base64 in `data/cloudNNN.js`) rotated into the local frame, `kit-packed` layout: N x int16 xyz (mm, LE) then N x uint8 intensity.',
     '- Photos: every POI photo with an image (full 1280x960 copy where the package has one, else the 480x360 POI thumbnail) plus the 4 video frames used as finding evidence; pose = camera position and quaternion of the flight log at the POI time.',
+    kitTurn
+      ? `- Photo orientation: the kit's POI thumbnails are its full copies turned ${String(90 * kitTurn.turn)} deg (${String(kitTurn.agree)} of ${String(kitTurn.pairs)} photos it carries in both sizes): the kit made them from the stored sensor pixels without the EXIF Orientation (Elios 3: 3, turn 180 deg). ${kitTurn.turn ? 'Thumbnails (review copies and grid thumbnails) are turned upright so the pixels match the camera pose (image +Y up).' : 'Thumbnails are used as delivered.'}`
+      : '- Photo orientation: no photo in both sizes to check the thumbnails against; used as delivered.',
     '- Issues: F01 to F11 from the 3D report findings register, severity model "HCl lining" (1 to 5), a mesh sighting at each photo target and an image sighting at the centre of each finding photo.',
     `- Report: \`report/${basename(files.pdf.url)}\` and the findings CSV.`,
   ]);
