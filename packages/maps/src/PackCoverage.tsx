@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CoverageMap } from './coverageMap';
+import { MAP_SURFACE } from './ink';
 import type { Bbox, MapPack } from './packs';
-import { useDocumentTheme } from './theme';
 
 export interface PackCoverageProps {
   packs: readonly MapPack[];
@@ -35,7 +35,6 @@ export function PackCoverage({
   const ctl = useRef<CoverageMap | null>(null);
   const onDrawRef = useRef(onDraw);
   const [failed, setFailed] = useState(false);
-  const flavour = useDocumentTheme();
   const stateRef = useRef({ packs, highlight, draft, drawing });
 
   useEffect(() => {
@@ -51,7 +50,7 @@ export function PackCoverage({
     void import('./coverageMap')
       .then(({ createCoverageMap }) => {
         if (disposed) return;
-        const map = createCoverageMap(el, stateRef.current, flavour, (box) => {
+        const map = createCoverageMap(el, stateRef.current, (box) => {
           onDrawRef.current?.(box);
         });
         ctl.current = map;
@@ -70,7 +69,7 @@ export function PackCoverage({
       ctl.current?.dispose();
       ctl.current = null;
     };
-  }, [flavour]);
+  }, []);
 
   useEffect(() => {
     ctl.current?.update({ packs, highlight, draft, drawing });
@@ -82,9 +81,10 @@ export function PackCoverage({
 
   return (
     <div
-      className={className}
+      className={['aio-map', className].filter(Boolean).join(' ')}
       dir="ltr"
-      style={{ position: 'relative', minHeight: 0 }}
+      data-surface="dark"
+      style={{ ...MAP_SURFACE, position: 'relative', minHeight: 0 }}
       aria-label="Map pack coverage"
       data-testid="pack-coverage"
     >
@@ -97,7 +97,6 @@ export function PackCoverage({
             inset: 0,
             display: 'grid',
             placeItems: 'center',
-            color: 'var(--fg-3)',
             font: 'var(--t-12) var(--f-ui)',
           }}
         >

@@ -58,7 +58,7 @@ function mapFacts(win: Page) {
       (d) => '__aioMap' in d,
     ) as unknown as { __aioMap: MapLike } | undefined;
     const map = host?.__aioMap;
-    // a theme change restarts the map: the old one has no style until the new one replaces it
+    // a restarted map (flight paths toggled) has no style until the new one replaces it
     const style = map?.getStyle();
     if (!map || !style) return null;
     const ids = style.layers.map((l) => l.id);

@@ -50,6 +50,7 @@ export async function createGround(
   document.body.appendChild(host);
   const map = new MapLibreMap({
     container: host,
+    // Always the dark street style: the layer's `style` field (dark or light) is no longer read.
     style: buildStyle({ lang: 'en', maxZoom: Math.max(...packs.map((p) => p.maxZoom)) }),
     bounds: [
       [bbox[0], bbox[1]],

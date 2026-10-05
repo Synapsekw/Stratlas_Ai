@@ -1,4 +1,7 @@
 /* Stratlas Mission design tokens. Source: docs/design/DIRECTION.md (from the round 2 Mission reference build). */
+/* [data-surface='dark'] keeps an element dark in the light theme too: the street maps are always
+   dark, so everything drawn inside a map (controls, popups, status text) uses these values. */
+[data-surface='dark'],
 :root {
   color-scheme: dark;
   /* neutrals: near-black blue-grey, hue 250 */
@@ -113,7 +116,8 @@
   --shadow: oklch(0.3 0.02 250 / 0.18);
   --backdrop: oklch(0.3 0.01 250 / 0.3);
   --scrollbar: oklch(0.78 0.01 250);
-  --map-bg: oklch(0.93 0.008 240);
+  /* the street maps stay dark in every theme */
+  --map-bg: oklch(0.135 0.016 238);
   --danger-ink: oklch(0.5 0.18 25);
   --danger-line: oklch(0.58 0.2 25 / 0.4);
   --warn-line: oklch(0.7 0.15 85 / 0.5);

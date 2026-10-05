@@ -147,7 +147,7 @@ Every dataset can be annotated. An annotation marks an issue (or an observation)
 | MAP-1 | Vector street basemap from OpenStreetMap, rendered offline; GCC (Kuwait, UAE, Saudi Arabia, Qatar, Bahrain, Oman) to street level, world to overview zoom | M   |
 | MAP-2 | Basemap as a 2D map window and as the ground plane of the 3D scene                                                                                        | M   |
 | MAP-3 | Map pack manager: list installed packs, size, date; add a region by bounding box or country when online; import a pack file when offline                  | S   |
-| MAP-4 | Dark and light map styles matching the app theme; Arabic and English labels                                                                               | S   |
+| MAP-4 | One dark Mission map style in every app theme (founder, 2026-10-05; the light map style is retired); Arabic and English labels                            | S   |
 | MAP-5 | Project rasters (orthos, plot plans) as map layers                                                                                                        | M   |
 | MAP-6 | Optional satellite imagery packs only from sources whose licence allows offline redistribution                                                            | C   |
 

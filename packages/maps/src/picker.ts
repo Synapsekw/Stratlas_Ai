@@ -8,6 +8,7 @@ import {
   type GeoJSONSource,
 } from 'maplibre-gl';
 import { orderPacks, type MapPack } from './packs';
+import { MAP_INK } from './ink';
 import { installBasemap } from './runtime';
 import { buildStyle } from './style';
 
@@ -27,8 +28,8 @@ export interface PickerController {
   dispose(): void;
 }
 
-const ACC = '#60d3b2';
-const BG = '#080a0d';
+const ACC = MAP_INK.acc;
+const BG = MAP_INK.bg0;
 
 export function createLocationPicker(el: HTMLElement, o: PickerOptions): PickerController {
   installBasemap(o.packs);
@@ -88,7 +89,7 @@ export function createLocationPicker(el: HTMLElement, o: PickerOptions): PickerC
         'text-size': 11,
         'text-offset': [0, -1.4],
       },
-      paint: { 'text-color': '#eaedf1', 'text-halo-color': BG, 'text-halo-width': 1.5 },
+      paint: { 'text-color': MAP_INK.fg0, 'text-halo-color': BG, 'text-halo-width': 1.5 },
     });
   });
   map.on('click', (e) => {

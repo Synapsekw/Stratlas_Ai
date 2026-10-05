@@ -279,7 +279,8 @@ function StageToolbar({
   };
 
   return (
-    <div className="stbar" ref={barRef}>
+    // The tools sit on the stage (street map, imagery), which is dark in every theme.
+    <div className="stbar" ref={barRef} data-surface="dark">
       <div className="seg overlay-seg" role="group" aria-label="Stage view" data-fixed="">
         {MODES.map((m) => (
           <button
