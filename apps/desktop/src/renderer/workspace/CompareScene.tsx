@@ -2,11 +2,19 @@ import { installIssueOverlay, pinDisplay } from '@aio/annotate';
 import { CameraLink, SceneView, type ClientRectLike, type EngineStage } from '@aio/engine';
 import { setBudgetShare, splitBudget } from '@aio/pointcloud';
 import { useT } from '@aio/ui';
-import { scopedStore, workspace, type CaptureIndex, type StoreScope } from '@aio/workspace';
+import { useVolumetric } from '@aio/volumetric';
+import {
+  scopedStore,
+  useWorkspace,
+  workspace,
+  type CaptureIndex,
+  type StoreScope,
+} from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { FocusZone } from '../FocusZone';
 import { compareRuntime } from './compare';
 import { CursorReadout, useSceneCursor } from './SceneCursor';
+import { siteBasemapOn, useSiteBasemap, useSiteBasemapLayer } from './siteBasemap';
 import type { Side } from './splitModel';
 
 /** Layer kinds the second view leaves out: the video plays (and projects) in one view only. */
@@ -104,6 +112,14 @@ export function CompareScene({
       mirror(main, stage);
     });
   }, [stage, main]);
+
+  // the offline street map under the site, as in the main view (its pack lookup is the main's)
+  const project = useWorkspace((s) => s.project);
+  const hasVolumes = useVolumetric((s) => s.status === 'ready');
+  const streetMap = useSiteBasemap((s) =>
+    project ? siteBasemapOn(s.choices, project.id, hasVolumes) : false,
+  );
+  useSiteBasemapLayer(stage, project, streetMap, false);
 
   // the same issue pins as the main view
   useEffect(() => {

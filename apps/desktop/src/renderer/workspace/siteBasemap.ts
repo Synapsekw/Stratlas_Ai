@@ -133,12 +133,15 @@ function contentFloor(stage: EngineStage, manifest: ProjectManifest): number | n
 
 /**
  * Draw the street map ground in `stage` while `on`, for the open project. Placed just under the
- * lowest terrain so the yard and its ortho sit on top of it.
+ * lowest terrain so the yard and its ortho sit on top of it. `probe`: this view looks up which
+ * pack covers the site (the main view); a second view (comparing dates) passes false and reads
+ * the main view's answer, so opening it does not redraw the main view's street map.
  */
 export function useSiteBasemapLayer(
   stage: EngineStage | null,
   project: { id: string; manifest: ProjectManifest } | null,
   on: boolean,
+  probe = true,
 ): void {
   const wanted = !!project && wantsSiteBasemap(project.manifest);
   const projectId = project?.id ?? null;
@@ -146,6 +149,7 @@ export function useSiteBasemapLayer(
 
   // which projects can have it at all
   useEffect(() => {
+    if (!probe) return;
     siteBasemap.getState().setCovered(null);
     if (!wanted || !manifest) return;
     const bridge = (globalThis as { aio?: AioBridge }).aio;
@@ -162,7 +166,7 @@ export function useSiteBasemapLayer(
     return () => {
       live = false;
     };
-  }, [wanted, manifest]);
+  }, [wanted, manifest, probe]);
 
   const covered = useSiteBasemap((s) => s.covered);
   useEffect(() => {
