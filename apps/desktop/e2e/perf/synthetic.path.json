@@ -1,0 +1,13 @@
+{
+  "project": "e2e-tiny",
+  "card": "E2E tiny project",
+  "note": "Synthetic project (16 000 point COPC, a quad, a 4800 x 2400 ortho image): orbit the cloud from above, close over the building, low along the ground, back.",
+  "durationMs": 8000,
+  "keys": [
+    { "position": [20, 45, 30], "target": [20, 3, -20] },
+    { "position": [-25, 30, -20], "target": [20, 3, -20] },
+    { "position": [20, 18, -45], "target": [20, 3, -20] },
+    { "position": [45, 4, -10], "target": [20, 3, -20] },
+    { "position": [20, 45, 30], "target": [20, 3, -20] }
+  ]
+}
