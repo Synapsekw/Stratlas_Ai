@@ -5,6 +5,7 @@ import type { BufferGeometry, Vector2 } from 'three';
 import { PerspectiveCamera, Plane, Points, Scene, Vector3 } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPointcloudAdapter, registerPointcloudAdapters } from './adapter';
+import { pointSizePx, type PointMaterial } from './material';
 import { createPointcloudSettings } from './settings';
 import { pointcloudStats } from './stats';
 import type { CopcHierarchy, CopcSource } from './copc';
@@ -82,6 +83,44 @@ function fakeDecoder(points = 10) {
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
+
+/**
+ * Every drawn node: its on-screen point size in pixels (the shader's formula at the node's
+ * centre), its material, and its colour state (mode, elevation range, tint, class colours).
+ */
+function drawn(handle: SceneHandle) {
+  handle.scene.updateMatrixWorld(true);
+  const out: { key: string; px: number; material: PointMaterial; colour: string }[] = [];
+  handle.scene.traverse((o) => {
+    if (!(o instanceof Points)) return;
+    const m = o.material as PointMaterial;
+    const u = m.uniforms;
+    const c = (o.geometry as BufferGeometry).boundingSphere?.center.clone() ?? new Vector3();
+    const depth = -c.applyMatrix4(o.matrixWorld).applyMatrix4(handle.camera.matrixWorldInverse).z;
+    out.push({
+      key: String(o.userData.chunk),
+      px: pointSizePx(
+        u.uSize.value,
+        u.uPxPerM.value,
+        depth,
+        u.uMinPx.value,
+        u.uMaxPx.value,
+        (u as { uScale?: { value: number } }).uScale?.value ?? 1,
+      ),
+      material: m,
+      colour: JSON.stringify([
+        u.uMode.value,
+        u.uHeight.value.toArray(),
+        u.uTint.value.getHex(),
+        u.uClassColours.value.map((x) => x.getHex()),
+        u.uClassShown.value,
+      ]),
+    });
+  });
+  return out.sort((a, b) => a.key.localeCompare(b.key));
+}
+
+const index0 = { min: [0, 0, 0], max: [20, 10, 20] };
 
 const kitLayer = (id: string): CloudLayer => ({
   kind: 'pointcloud',
@@ -259,6 +298,56 @@ describe('pointcloud adapter', () => {
       'aio://project/p/clouds/c0.png',
       'aio://project/p/clouds/c-10.png',
     ]);
+  });
+
+  it('the size slider scales the on-screen size of kit and png points, not their colour', async () => {
+    const { handle, frame } = fakeHandle();
+    const d = fakeDecoder(1000);
+    const settings = createPointcloudSettings(null);
+    settings.getState().setEdl(false);
+    settings.getState().setColourMode('height');
+    const index = {
+      schema: 'aio.pngcloud/1',
+      bounds: { min: [0, 0, 0], max: [20, 10, 20] },
+      spacing: 0.5,
+      chunks: [{ file: 'clouds/c0.png', points: 1000, lod: 0, bounds: index0 }],
+    };
+    const adapter = createPointcloudAdapter({
+      decoder: () => d.decoder,
+      settings,
+      fetchJson: () => Promise.resolve(index),
+    });
+    handle.camera.lookAt(0, 0, 0);
+    handle.camera.updateMatrixWorld();
+    const url = (r: { path: string } | { hash: string }) =>
+      'path' in r ? `aio://project/p/${r.path}` : 'x';
+    await adapter.create(kitLayer('f101'), { scene: handle, url });
+    await adapter.create(
+      { ...kitLayer('pc'), format: 'png-packed', src: { path: 'clouds/pc.json' } },
+      { scene: handle, url },
+    );
+    frame();
+    d.finishAll();
+    await flush();
+    frame();
+    const at1 = drawn(handle);
+    expect(at1.map((n) => n.key)).toEqual(['f101#0', 'pc#clouds/c0.png']);
+    // about 110 m away a 2.5 cm kit point is far under a pixel: it draws at the 1 px floor
+    const [kit, png] = at1.map((n) => n.px);
+    expect(kit).toBe(1);
+    expect(png).toBeGreaterThan(2);
+    for (const scale of [0.25, 0.5, 2, 4]) {
+      settings.getState().setSizeScale(scale);
+      frame();
+      const now = drawn(handle);
+      now.forEach((n, i) => {
+        const was = at1[i];
+        // the size follows the slider, bounded below by one pixel
+        expect(n.px).toBeCloseTo(Math.max(1, (was?.px ?? 0) * scale), 5);
+        expect(n.material).toBe(was?.material);
+        expect(n.colour).toBe(was?.colour);
+      });
+    }
   });
 
   it('publishes whether the clouds carry RGB and their height range for the UI', async () => {
@@ -493,6 +582,38 @@ describe('COPC layers', () => {
     expect(rampRanges(handle)).toEqual([[2, 6]]);
     layer.dispose();
     expect(settings.getState().heightRange).toBeNull();
+  });
+
+  it('the size slider scales every node at its own depth size, sharing one uniform', async () => {
+    const nodes: CopcHierarchy['nodes'] = { '0-0-0-0': info(500, 1000) };
+    ['1-0-0-0', '1-1-0-0', '2-0-0-0'].forEach((k, i) => {
+      nodes[k] = info(500, 2000 + i);
+    });
+    // up close: 4x the depth size passes the 24 px ceiling, which grows with the slider too
+    const { handle, frame, settings } = await open({ 10: { nodes, pages: {} } }, [33, 40, 33]);
+    settings.getState().setColourMode('height');
+    for (let i = 0; i < 6; i++) {
+      frame();
+      await flush();
+    }
+    const at1 = drawn(handle);
+    expect(at1).toHaveLength(4);
+    // nodes draw with their depth's material: more than one size on screen
+    expect(new Set(at1.map((n) => n.material)).size).toBeGreaterThan(1);
+    for (const scale of [0.25, 4]) {
+      settings.getState().setSizeScale(scale);
+      frame();
+      const now = drawn(handle);
+      now.forEach((n, i) => {
+        const was = at1[i];
+        expect(n.key).toBe(was?.key);
+        expect(n.px).toBeCloseTo(Math.max(1, (was?.px ?? 0) * scale), 5);
+        expect(n.material).toBe(was?.material);
+        expect(n.colour).toBe(was?.colour);
+      });
+      // one scale uniform for every depth: a size change uploads nothing per node
+      expect(new Set(now.map((n) => n.material.uniforms.uScale)).size).toBe(1);
+    }
   });
 
   it('spreads a burst of decoded nodes over frames under the upload budget', async () => {

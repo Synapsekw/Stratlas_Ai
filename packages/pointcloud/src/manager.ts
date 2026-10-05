@@ -163,7 +163,6 @@ export class CloudManager {
   private readonly unsubscribers: (() => void)[] = [];
   private decoder: Decoder | null = null;
   private pxPerM = 800;
-  private sizeScale = 1;
   /** Automatic elevation range; recomputed when `heightsDirty`. */
   private heights: HeightStats | null = null;
   private heightsDirty = true;
@@ -299,7 +298,6 @@ export class CloudManager {
     const buf = r.getDrawingBufferSize(this.bufferSize);
     const pxPerM = buf.y / (2 * Math.tan((cam.fov * Math.PI) / 360));
     this.pxPerM = pxPerM;
-    this.sizeScale = s.sizeScale;
     const maxPx = s.maxPixels * r.getPixelRatio();
 
     // decoded nodes reach the GPU a frame's budget at a time (stream.ts)
@@ -338,13 +336,13 @@ export class CloudManager {
     for (const l of this.layers.values()) {
       const m = l.material;
       if (!m) continue;
-      m.uniforms.uSize.value = l.baseSize * s.sizeScale;
+      // octree depth materials share every uniform but uSize (their spacing, set once)
+      m.uniforms.uSize.value = l.baseSize;
+      m.uniforms.uScale.value = s.sizeScale;
       m.uniforms.uPxPerM.value = pxPerM;
       m.uniforms.uMaxPx.value = maxPx;
       m.uniforms.uMode.value = MODE_INDEX[s.colourMode];
       m.uniforms.uHeight.value.set(hMin, hMax);
-      const s0 = l.copc?.source.spacing ?? l.baseSize;
-      for (const [d, dm] of l.depthMaterials) dm.uniforms.uSize.value = (s0 / 2 ** d) * s.sizeScale;
     }
     if (this.edl) this.edl.strength = s.edlStrength;
 
@@ -494,14 +492,17 @@ export class CloudManager {
     }
   }
 
-  /** The layer's material at octree depth `d` (point size = root spacing / 2^d). */
+  /**
+   * The layer's material at octree depth `d` (world point size = root spacing / 2^d; the user's
+   * size scale is the shared uScale).
+   */
   private depthMaterial(l: CloudLayerState, base: PointMaterial, d: number): PointMaterial {
     let m = l.depthMaterials.get(d);
     if (!m) {
       m = base.clone();
       const s0 = l.copc?.source.spacing ?? l.baseSize;
       // every uniform shared with the base material but the size
-      m.uniforms = { ...base.uniforms, uSize: { value: (s0 / 2 ** d) * this.sizeScale } };
+      m.uniforms = { ...base.uniforms, uSize: { value: s0 / 2 ** d } };
       m.clippingPlanes = this.handle.clippingPlanes;
       l.depthMaterials.set(d, m);
     }

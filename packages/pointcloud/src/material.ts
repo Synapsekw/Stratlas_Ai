@@ -45,6 +45,7 @@ uniform float uSize;
 uniform float uPxPerM;
 uniform float uMinPx;
 uniform float uMaxPx;
+uniform float uScale;
 uniform float uMode;
 uniform vec2 uHeight;
 uniform vec3 uTint;
@@ -68,7 +69,8 @@ void main() {
   vec4 world = modelMatrix * vec4(position, 1.0);
   vec4 mvPosition = viewMatrix * world;
   gl_Position = projectionMatrix * mvPosition;
-  gl_PointSize = clamp(uSize * uPxPerM / max(0.01, -mvPosition.z), uMinPx, uMaxPx);
+  // the user's size scale multiplies the on-screen size after the clamp (see pointSizePx)
+  gl_PointSize = max(1.0, clamp(uSize * uPxPerM / max(0.01, -mvPosition.z), uMinPx, uMaxPx) * uScale);
 
 #ifdef HAS_RGB
   vec3 rgb = aRgb;
@@ -126,7 +128,7 @@ export interface PointMaterialOptions {
   hasIntensity: boolean;
   /** ASPRS class per point (COPC). */
   hasClass?: boolean;
-  /** World size of a point in metres before the user's size scale. */
+  /** World size of a point in metres (the user's size scale applies on screen, uScale). */
   baseSize: number;
   tint: string;
 }
@@ -137,6 +139,8 @@ export type PointMaterial = ShaderMaterial & {
     uPxPerM: { value: number };
     uMinPx: { value: number };
     uMaxPx: { value: number };
+    /** The user's point size scale, applied to the on-screen size. */
+    uScale: { value: number };
     uMode: { value: number };
     uHeight: { value: Vector2 };
     uTint: { value: Color };
@@ -145,6 +149,25 @@ export type PointMaterial = ShaderMaterial & {
   };
   userData: { baseSize: number };
 };
+
+/**
+ * On-screen point diameter in pixels, as the vertex shader computes it: the point's world size
+ * attenuated by its depth and clamped to [minPx, maxPx], then multiplied by the user's size scale
+ * (at least one pixel). Scaling after the clamp keeps the size slider effective where the
+ * attenuated size sits on the clamp: sub-pixel points far away (octree nodes are sized to their
+ * spacing, about a pixel) and large points up close.
+ */
+export function pointSizePx(
+  worldSize: number,
+  pxPerM: number,
+  depth: number,
+  minPx: number,
+  maxPx: number,
+  scale: number,
+): number {
+  const px = Math.min(maxPx, Math.max(minPx, (worldSize * pxPerM) / Math.max(0.01, depth)));
+  return Math.max(1, px * scale);
+}
 
 /** Linear-space class colours for the shader (the output pass converts to sRGB). */
 function classColours(): Color[] {
@@ -167,6 +190,7 @@ export function createPointMaterial(o: PointMaterialOptions): PointMaterial {
       uPxPerM: { value: 800 },
       uMinPx: { value: 1 },
       uMaxPx: { value: 24 },
+      uScale: { value: 1 },
       uMode: { value: 0 },
       uHeight: { value: new Vector2(0, 10) },
       uTint: { value: new Color(o.tint) },
