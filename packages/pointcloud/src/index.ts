@@ -29,6 +29,7 @@ export {
   COLOUR_MODES,
   DEFAULT_BUDGET,
   createPointcloudSettings,
+  effectiveBudget,
   pointcloudSettings,
   usePointcloudSettings,
   type ColourMode,

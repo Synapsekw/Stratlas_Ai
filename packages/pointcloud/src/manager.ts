@@ -35,7 +35,7 @@ import {
 } from './octree';
 import type { Decoder } from './pool';
 import type { DecodedChunk } from './protocol';
-import type { PointcloudSettings } from './settings';
+import { effectiveBudget, type PointcloudSettings } from './settings';
 import { pointcloudStats } from './stats';
 import { IntervalGate, LOD_INTERVAL_MS, STATS_INTERVAL_MS, UploadQueue } from './stream';
 
@@ -184,7 +184,7 @@ export class CloudManager {
     this.unsubscribers.push(
       settings.subscribe((s, prev) => {
         if (s.edl !== prev.edl) this.placeRoot();
-        if (s.budget !== prev.budget) this.dirty = true;
+        if (s.budget !== prev.budget || s.budgetCap !== prev.budgetCap) this.dirty = true;
         if (s.hiddenClasses !== prev.hiddenClasses) {
           for (const l of this.layers.values())
             if (l.material) applyHiddenClasses(l.material, s.hiddenClasses);
@@ -332,7 +332,7 @@ export class CloudManager {
         p.normal.z,
         p.constant,
       ]);
-      this.update([eye.x, eye.y, eye.z], s.budget * this.share, planes);
+      this.update([eye.x, eye.y, eye.z], effectiveBudget(s) * this.share, planes);
     } else if (moved) {
       // come back when the interval is up, even if the camera stops now
       this.handle.requestRender();

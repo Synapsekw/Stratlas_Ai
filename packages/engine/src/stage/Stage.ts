@@ -66,7 +66,8 @@ export interface StageOptions {
 }
 
 export function createDefaultRenderer(canvas: HTMLCanvasElement): WebGLRenderer {
-  const r = new WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  const antialias = engineConfig().quality.antialias !== false;
+  const r = new WebGLRenderer({ canvas, antialias, powerPreference: 'high-performance' });
   r.setPixelRatio(Math.min(window.devicePixelRatio || 1, engineConfig().quality.maxPixelRatio));
   return r;
 }
@@ -176,6 +177,7 @@ export class Stage implements EngineStage {
   private lastRenderMs = 0;
   private gpuAt = -Infinity;
   private gpuBytes = 0;
+  private lost = false;
   private _quality: StageQuality = { ...engineConfig().quality };
   private disposed = false;
   private contentCentre = new Vector3();
@@ -258,6 +260,8 @@ export class Stage implements EngineStage {
       },
     });
 
+    this.canvas.addEventListener('webglcontextlost', this.onContextLost);
+    this.canvas.addEventListener('webglcontextrestored', this.onContextRestored);
     this.canvas.addEventListener('pointerdown', this.onPointerDown);
     this.canvas.addEventListener('pointerup', this.onPointerUp);
     this.canvas.addEventListener('pointermove', this.onPointerMove);
@@ -563,6 +567,36 @@ export class Stage implements EngineStage {
     }
   }
 
+  /**
+   * Estimated GPU memory now (geometry, textures, render targets), bytes. Walks the scene, so
+   * callers poll it every few seconds, not every frame.
+   */
+  memoryEstimate(): number {
+    return estimateGpuBytes([this.scene]) + this.targetBytes();
+  }
+
+  /** True between a lost WebGL context and its restore (nothing draws meanwhile). */
+  get contextLost(): boolean {
+    return this.lost;
+  }
+
+  // three.js keeps the context restorable (it prevents the default) and re-uploads every
+  // buffer and texture from its CPU copy on restore; the stage redraws its derived targets.
+  private readonly onContextLost = () => {
+    if (this.disposed) return;
+    this.lost = true;
+    engineConfig().onGpuEvent?.({ type: 'context-lost' });
+  };
+
+  private readonly onContextRestored = () => {
+    if (this.disposed) return;
+    this.lost = false;
+    this.shadowDirty = true;
+    if (this.env.waterY !== null) this.maskDirty = true;
+    this.need = true;
+    engineConfig().onGpuEvent?.({ type: 'context-restored' });
+  };
+
   /** Frame statistics while the perf HUD is on (Ctrl+Shift+F); zeros otherwise. */
   perfStats(): PerfStats {
     const r = (this.renderer.info as Partial<WebGLRenderer['info']>).render;
@@ -579,12 +613,14 @@ export class Stage implements EngineStage {
     };
   }
 
-  /** Drawing buffer (colour, depth, 4x MSAA) and the sun's shadow map, bytes. */
+  /** Drawing buffer (colour, depth, 4x MSAA where on) and the sun's shadow map, bytes. */
   private targetBytes(): number {
     const pr = this.renderer.getPixelRatio();
     const px = this.width * pr * this.height * pr;
     const shadow = this.env.shadowMapSize ** 2 * 4;
-    return px * 8 * 5 + shadow;
+    const attrs = (this.renderer as Partial<WebGLRenderer>).getContext?.().getContextAttributes();
+    const msaa = attrs?.antialias === false ? 1 : 5;
+    return px * 8 * msaa + shadow;
   }
 
   get quality(): StageQuality {
@@ -1248,6 +1284,8 @@ export class Stage implements EngineStage {
     this.sync?.dispose();
     this.sync = null;
     window.removeEventListener('keydown', this.onKey);
+    this.canvas.removeEventListener('webglcontextlost', this.onContextLost);
+    this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored);
     this.canvas.removeEventListener('pointerdown', this.onPointerDown);
     this.canvas.removeEventListener('pointerup', this.onPointerUp);
     this.canvas.removeEventListener('pointermove', this.onPointerMove);

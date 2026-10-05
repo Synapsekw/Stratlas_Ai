@@ -164,6 +164,10 @@ export interface EngineStage extends SceneHandle {
   setPerfOverlay(on: boolean): void;
   /** What the perf HUD shows; frame times are only collected while it is on. */
   perfStats(): PerfStats;
+  /** Estimated GPU memory now, bytes (walks the scene: poll it every few seconds). */
+  memoryEstimate(): number;
+  /** True while the WebGL context is lost (GPU reset or out of memory), until it is restored. */
+  readonly contextLost: boolean;
   /** Pixel ratio cap, shadow and water detail of the graphics quality preset. */
   readonly quality: StageQuality;
   setQuality(q: Partial<StageQuality>): void;

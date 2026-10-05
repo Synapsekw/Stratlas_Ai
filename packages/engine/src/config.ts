@@ -13,6 +13,11 @@ export interface StageQuality {
   water: 'full' | 'simple';
   /** Frames per second the water animates at while nothing else redraws; 0 keeps it still. */
   waterFps: number;
+  /**
+   * 4x multisampling of the 3D view (default on). Off on integrated graphics, where the resolve
+   * costs a fifth of the frame and four times the colour memory. Read when a stage is created.
+   */
+  antialias?: boolean;
 }
 
 /** Words the engine shows on the stage (photo and panorama markers); keys of the app catalogue. */
@@ -28,6 +33,22 @@ export type EngineTextKey =
 
 export type EngineText = (key: EngineTextKey, vars?: Record<string, string | number>) => string;
 
+/**
+ * Memory limits the graphics preset sets: the largest texture edge a model or raster keeps (larger
+ * images are scaled down before upload) and how many fine ortho tiles stream around the view.
+ */
+export interface EngineMemory {
+  /** Largest texture edge, pixels (also capped by the GPU's own limit). */
+  maxTextureSize: number;
+  /** Fine tiles of a tiled ortho wanted around the view; a few more stay loaded. */
+  rasterTiles: number;
+}
+
+/** A stage lost its WebGL context (GPU reset or out of memory) or got it back. */
+export interface GpuEvent {
+  type: 'context-lost' | 'context-restored';
+}
+
 export interface EngineConfig {
   /** Turns a project asset into a fetchable URL. Default: aio://project/<id>/... */
   resolveUrl: (projectId: string, ref: AssetRef) => string;
@@ -39,6 +60,10 @@ export interface EngineConfig {
   quality: StageQuality;
   /** Stage words from the app's catalogue (`t` of @aio/ui); the default shows the keys. */
   text: EngineText;
+  /** Texture and tile limits for assets loaded from now on. */
+  memory: EngineMemory;
+  /** Told when a stage loses or regains its WebGL context. */
+  onGpuEvent: ((e: GpuEvent) => void) | null;
 }
 
 const config: EngineConfig = {
@@ -53,6 +78,8 @@ const config: EngineConfig = {
     waterFps: 30,
   },
   text: (key, vars) => (vars ? `${key} ${Object.values(vars).map(String).join(' ')}` : key),
+  memory: { maxTextureSize: 16384, rasterTiles: 9 },
+  onGpuEvent: null,
 };
 
 /** Configure the engine before mounting SceneView (dev harness, tests, app composition). */

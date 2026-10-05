@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  fitTextureSize,
   parseTileIndex,
   planTiles,
   quadPositions,
@@ -82,8 +83,24 @@ describe('planTiles', () => {
     expect(plan.drop).toContain('1/7/3');
   });
 
+  it('streams fewer tiles under a lower tile limit (Low graphics)', () => {
+    const plan = planTiles(index, [100, 0, -50], 60, new Set(['0/0/0', '0/1/0']), 4);
+    expect(plan.load.length).toBeGreaterThan(0);
+    expect(plan.load.length).toBeLessThanOrEqual(4);
+  });
+
   it('drops all fine tiles when zoomed out', () => {
     const plan = planTiles(index, [10, 0, -90], 5000, new Set(['0/0/0', '1/0/0']));
     expect(plan.drop).toEqual(['1/0/0']);
+  });
+});
+
+describe('fitTextureSize', () => {
+  it('scales the long edge down to the limit and keeps the aspect', () => {
+    expect(fitTextureSize(2048, 1024, 4096)).toBe(null);
+    expect(fitTextureSize(8192, 4096, 4096)).toEqual([4096, 2048]);
+    expect(fitTextureSize(3000, 9000, 2048)).toEqual([683, 2048]);
+    expect(fitTextureSize(16384, 16384, 16384)).toBe(null);
+    expect(fitTextureSize(100, 100, 0)).toBe(null);
   });
 });
