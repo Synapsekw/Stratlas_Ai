@@ -2,7 +2,9 @@
  * Flight paths, point cloud colour, issue pins and the timeline on the real projects (founder
  * reports: "I cannot turn off the flight paths on Al-Zour", "I can't find where to change point
  * cloud colorization to elevation", "DAMAC: issue labels are visible through the building", "the
- * timeline, does this make sense with no videos?", "turn off the anomaly tags with one click").
+ * timeline, does this make sense with no videos?", "turn off the anomaly tags with one click",
+ * "when I do a point cloud overlay, I'm not able to change the size of the point cloud", "point
+ * size doesn't change the size of the points, it changes the colour").
  * Runs where E:\Stratlas Data (or STRATLAS_HCL_DATA) holds the projects; each
  * project's tests skip without it. Read-only: nothing is written to the projects.
  */
@@ -149,6 +151,133 @@ async function pathsTest(win: Page, card: string, flights: number, groups = true
   expect((await rig(win)).drone).toBe(true);
 }
 
+interface NodeSize {
+  key: string;
+  layer: string;
+  px: number;
+  scale: number;
+  colour: string;
+}
+
+/**
+ * Every drawn cloud node, in the main scene or the EDL pass's own scene: its on-screen point
+ * size in pixels at its centre (the vertex shader's formula, `pointSizePx` in @aio/pointcloud)
+ * and its colour state (mode, elevation range, tint, class colours and flags).
+ */
+const cloudSizes = (win: Page) =>
+  win.evaluate(() => {
+    interface V3 {
+      clone(): V3;
+      applyMatrix4(m: unknown): V3;
+      z: number;
+    }
+    interface P {
+      isPoints?: boolean;
+      name: string;
+      userData: { layerId?: string; offscreen?: P[] };
+      matrixWorld: unknown;
+      geometry?: { boundingSphere: { center: V3 } | null };
+      material?: { uniforms?: Record<string, { value: unknown } | undefined> };
+      children: P[];
+      updateMatrixWorld(force: boolean): void;
+      getObjectByName(n: string): P | undefined;
+    }
+    const stage = (
+      window as unknown as {
+        __stratlas: { stage(): { scene: P; camera: { matrixWorldInverse: unknown } } | null };
+      }
+    ).__stratlas.stage();
+    if (!stage) return [];
+    const edl = stage.scene.getObjectByName('PointCloudEDLComposite');
+    const scenes = [stage.scene, ...(edl?.userData.offscreen ?? [])];
+    const out: NodeSize[] = [];
+    const visit = (o: P) => {
+      const u = o.material?.uniforms;
+      if (o.isPoints && o.userData.layerId && u?.uSize) {
+        const c = o.geometry?.boundingSphere?.center.clone();
+        const view = stage.camera.matrixWorldInverse;
+        const depth = c ? -c.applyMatrix4(o.matrixWorld).applyMatrix4(view).z : 1;
+        const n = (k: string) => Number(u[k]?.value ?? NaN);
+        const scale = u.uScale ? n('uScale') : 1;
+        const att = (n('uSize') * n('uPxPerM')) / Math.max(0.01, depth);
+        const px = Math.max(1, Math.min(n('uMaxPx'), Math.max(n('uMinPx'), att)) * scale);
+        const hex = (v: unknown) => (v as { getHex(): number }).getHex();
+        out.push({
+          key: o.name,
+          layer: o.userData.layerId,
+          px,
+          scale,
+          colour: JSON.stringify([
+            u.uMode?.value,
+            (u.uHeight?.value as { toArray(): number[] }).toArray(),
+            hex(u.uTint?.value),
+            (u.uClassColours?.value as unknown[]).map(hex),
+            u.uClassShown?.value,
+          ]),
+        });
+      }
+      for (const ch of o.children) visit(ch);
+    };
+    for (const sc of scenes) {
+      sc.updateMatrixWorld(true);
+      visit(sc);
+    }
+    return out;
+  });
+
+/**
+ * Moves the point size slider and checks every drawn node of every cloud: its on-screen size
+ * follows the slider (at least one pixel) and its colour does not change. `layers`: the cloud
+ * layers that must be drawn. Waits for streaming to settle first, so the node set holds still.
+ */
+async function sizeTest(win: Page, layers: readonly string[]) {
+  const panel = win.getByTestId('cloud-panel');
+  if (!(await panel.isVisible()))
+    await win.getByRole('button', { name: 'Point cloud', exact: true }).click();
+  const slider = panel.getByRole('slider', { name: 'Point size' });
+  await slider.fill('0');
+  await expect
+    .poll(async () => [...new Set((await cloudSizes(win)).map((n) => n.layer))].sort(), {
+      timeout: 60_000,
+    })
+    .toEqual([...layers].sort());
+  // streaming done: the node set no longer changes
+  await expect(panel.getByText(/points shown$/)).toBeVisible({ timeout: 90_000 });
+  await win.waitForTimeout(1000);
+  const base = new Map((await cloudSizes(win)).map((n) => [n.key, n]));
+  for (const [value, scale] of [
+    ['-2', 0.25],
+    ['1', 2],
+    ['2', 4],
+  ] as const) {
+    await slider.fill(value);
+    await expect(panel.getByText(`${scale.toFixed(2)}x`)).toBeVisible();
+    /** Nodes whose size does not follow the slider or whose colour changed; how many compared. */
+    const check = async () => {
+      const now = await cloudSizes(win);
+      const wrong: string[] = [];
+      let compared = 0;
+      for (const n of now) {
+        const was = base.get(n.key);
+        if (!was) continue;
+        compared++;
+        const want = Math.max(1, was.px * scale);
+        if (Math.abs(n.px - want) > 1e-3) wrong.push(`${n.key}: ${n.px} px, want ${want}`);
+        if (n.colour !== was.colour) wrong.push(`${n.key}: colour ${n.colour}, was ${was.colour}`);
+      }
+      // every cloud's points grow on screen with the slider, the ones under a pixel too
+      if (scale > 1)
+        for (const l of layers) {
+          const px = Math.min(...now.filter((n) => n.layer === l).map((n) => n.px));
+          if (px < scale) wrong.push(`${l}: ${px} px at ${scale}x`);
+        }
+      return { wrong: wrong.slice(0, 5), enough: compared >= layers.length };
+    };
+    await expect.poll(check).toEqual({ wrong: [], enough: true });
+  }
+  await slider.fill('0');
+}
+
 async function colourTest(win: Page, card: string, rgb: boolean) {
   await open(win, card);
   await win.getByRole('button', { name: 'Point cloud', exact: true }).click();
@@ -195,6 +324,26 @@ test.describe('Al-Zour', () => {
   });
   test('point cloud colour by elevation with a legend (png-packed, RGB)', async ({ win }) => {
     await colourTest(win, 'Al-Zour', true);
+  });
+  test('point size changes the size of COPC and png-packed points, not their colour', async ({
+    win,
+  }) => {
+    await open(win, 'Al-Zour');
+    // the thinned png-packed cloud is hidden by default: show it with the COPC one
+    await win.evaluate(() => {
+      const ws = (
+        window as unknown as {
+          __stratlas: {
+            workspace: { getState(): { setLayerVisible(id: string, v: boolean): void } };
+          };
+        }
+      ).__stratlas.workspace;
+      ws.getState().setLayerVisible('cloud', true);
+    });
+    // the opening overview, where the octree nodes draw under a pixel; RGB, then elevation
+    await sizeTest(win, ['cloud-full', 'cloud']);
+    await win.getByTestId('cloud-panel').getByRole('button', { name: 'Elevation' }).click();
+    await sizeTest(win, ['cloud-full', 'cloud']);
   });
 });
 
@@ -361,5 +510,28 @@ test.describe('HCl', () => {
     win,
   }) => {
     await colourTest(win, 'HCl', false);
+  });
+  test('point size changes the size of every kit-packed cloud, not its colour', async ({ win }) => {
+    await open(win, 'HCl');
+    const clouds = Array.from({ length: 10 }, (_, i) => `cloud-${101 + i}`);
+    await sizeTest(win, clouds);
+    // three times farther out the 2.5 cm points fall under a pixel: the slider still works
+    await win.evaluate(() => {
+      const st = (
+        window as unknown as {
+          __stratlas: {
+            stage(): {
+              saveView(): { position: number[]; target: number[] };
+              restoreView(v: unknown, animate: boolean): void;
+            } | null;
+          };
+        }
+      ).__stratlas.stage();
+      if (!st) return;
+      const { position, target } = st.saveView();
+      const far = position.map((x, i) => (target[i] ?? 0) + 3 * (x - (target[i] ?? 0)));
+      st.restoreView({ position: far, target }, false);
+    });
+    await sizeTest(win, clouds);
   });
 });
