@@ -1,7 +1,7 @@
 import type { LanguageModelV4Prompt } from '@ai-sdk/provider';
 import { describe, expect, it } from 'vitest';
 import { photoPlan } from './photo-frame';
-import { scriptedTurn } from './scripted';
+import { scriptedDirectives, scriptedTurn } from './scripted';
 import { fixtureIssue, fixtureManifest, fixtureWorkspace } from './test-fixtures';
 
 describe('photo frame plan', () => {
@@ -93,5 +93,34 @@ describe('scripted test model', () => {
         },
       ]),
     ).toMatchObject({ kind: 'text', text: expect.stringContaining('measure_distance') as string });
+  });
+
+  it('makes the tool calls a test writes into the message, one after another', () => {
+    const text =
+      'go #tool find_places {"query": "tank 3"} #tool fly_to {"target": {"kind": "place", "name": "tank 3"}}';
+    expect(scriptedDirectives(text)).toEqual([
+      { tool: 'find_places', input: { query: 'tank 3' } },
+      { tool: 'fly_to', input: { target: { kind: 'place', name: 'tank 3' } } },
+    ]);
+    const result = (name: string): LanguageModelV4Prompt[number] => ({
+      role: 'tool',
+      content: [
+        {
+          type: 'tool-result',
+          toolCallId: name,
+          toolName: name,
+          output: { type: 'json', value: { ok: true } },
+        },
+      ],
+    });
+    expect(scriptedTurn(user(text))).toMatchObject({ kind: 'tool', tool: 'find_places' });
+    expect(scriptedTurn([...user(text), result('find_places')])).toMatchObject({
+      kind: 'tool',
+      tool: 'fly_to',
+    });
+    expect(scriptedTurn([...user(text), result('find_places'), result('fly_to')])).toMatchObject({
+      kind: 'text',
+      text: expect.stringContaining('fly_to') as string,
+    });
   });
 });
