@@ -20,7 +20,7 @@
     "fixtures": "node tools/fixtures/build.mjs",
     "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test",
     "prepare": "lefthook install",
-    "icons": "node tools/release/icons.mjs",
+    "icons": "node tools/release/icons.mjs && node tools/release/store-assets.mjs",
     "license:check": "node tools/release/license-check.mjs"
   },
   "devDependencies": {

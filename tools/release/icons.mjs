@@ -4,49 +4,17 @@
 //   apps/desktop/build/icon.icns           macOS bundle (padded to the macOS icon grid)
 //   apps/desktop/build/icon.png            1024 px fallback
 //   apps/desktop/build/icons/<n>x<n>.png   loose PNG sizes
-//   apps/desktop/build/appx/*.png          Microsoft Store (MSIX) tile assets
-// The outputs are committed. Run `pnpm icons` after the brand icon changes.
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+// Microsoft Store tiles (apps/desktop/build/appx/) and listing images come from store-assets.mjs.
+// The outputs are committed. Run `pnpm icons` after the brand icon changes (it runs both).
+import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
+import { iconSource as source, render, root } from './icon-render.mjs';
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
-const source = join(root, 'packages/brand/icon.svg');
 const out = join(root, 'apps/desktop/build');
 
-/** Tile background for Store assets; matches the icon's own plate colour. */
-const TILE_BG = '#18202B';
 /** macOS icons sit on an 824 px plate inside a 1024 px canvas (Apple icon grid). */
 const MAC_PLATE = 824 / 1024;
-
-const svg = await readFile(source);
-
-/** Render the SVG at `size` px, optionally inset by `scale` on a transparent canvas. */
-async function render(size, scale = 1) {
-  const inner = Math.round(size * scale);
-  // Render at the target resolution (not a downscaled bitmap) so small sizes stay crisp.
-  const density = Math.max(1, (72 * inner) / 512);
-  const img = await sharp(svg, { density }).resize(inner, inner).png().toBuffer();
-  if (inner === size) return img;
-  const pad = Math.floor((size - inner) / 2);
-  return sharp({
-    create: { width: size, height: size, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
-  })
-    .composite([{ input: img, left: pad, top: pad }])
-    .png()
-    .toBuffer();
-}
-
-/** Icon centred on a solid tile of `w` x `h`, icon height `iconFraction` of the shorter side. */
-async function tile(w, h, iconFraction) {
-  const side = Math.round(Math.min(w, h) * iconFraction);
-  const icon = await render(side);
-  return sharp({ create: { width: w, height: h, channels: 4, background: TILE_BG } })
-    .composite([{ input: icon, left: Math.floor((w - side) / 2), top: Math.floor((h - side) / 2) }])
-    .png()
-    .toBuffer();
-}
 
 /** 32-bit BMP (DIB) entry for an ICO: BGRA bottom-up rows plus a 1-bit AND mask. */
 async function dib(png, size) {
@@ -148,10 +116,3 @@ await write('icon.png', await render(1024));
 for (const size of [16, 24, 32, 48, 64, 128, 256, 512, 1024]) {
   await write(`icons/${size}x${size}.png`, await render(size));
 }
-// Store assets (electron-builder picks these up from build/appx/).
-await write('appx/StoreLogo.png', await render(50));
-await write('appx/Square44x44Logo.png', await render(44));
-await write('appx/Square150x150Logo.png', await tile(150, 150, 0.66));
-await write('appx/Wide310x150Logo.png', await tile(310, 150, 0.66));
-await write('appx/LargeTile.png', await tile(310, 310, 0.66));
-await write('appx/SmallTile.png', await tile(71, 71, 0.66));
