@@ -1130,4 +1130,11 @@ export interface AioBridge {
    * empty string for files that do not come from disk. Optional: absent outside Electron.
    */
   pathForFile?(file: File): string;
+  /**
+   * Installed and free system memory, bytes (graphics tier detection, diagnostics). Synchronous;
+   * null where unknown. Optional: absent outside Electron.
+   */
+  systemMemory?(): { total: number; free: number } | null;
+  /** This renderer process's memory, bytes (diagnostics, the memory watch). */
+  processMemory?(): Promise<{ residentSet: number; private: number } | null>;
 }

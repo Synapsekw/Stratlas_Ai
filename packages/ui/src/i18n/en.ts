@@ -309,6 +309,26 @@ export const en = {
   'settings.graphics.waterSimple': 'Still',
   'settings.graphics.shadowSoftness': 'Shadow edges',
   'settings.graphics.shadowSoftnessHint': 'Softness of sun shadows, texels',
+  'settings.graphics.maxTexture': 'Largest texture',
+  'settings.graphics.maxTextureHint':
+    'Model and ortho images above this edge are scaled down, pixels',
+  'settings.graphics.pointCap': 'Point limit',
+  'settings.graphics.pointCapHint': 'Most points the point cloud panel can choose',
+  'settings.graphics.memoryLimit': 'Graphics memory',
+  'settings.graphics.memoryLimitHint':
+    'Estimate at which the app steps down a preset for the session',
+  'settings.graphics.memory': 'Installed memory: {size} GB',
+  'settings.graphics.limitMemory': 'Auto stays at {tier} or below with {size} GB of memory.',
+  'settings.graphics.limitTexture':
+    'Auto stays at Low: the graphics card keeps textures under 8192 px.',
+  'settings.graphics.pressure':
+    'Stepped down to {tier} for this session after graphics memory ran low. Choosing a preset here resets it.',
+  'graphics.pressure.title': 'Lighter graphics for now',
+  'graphics.pressure.memory':
+    'Graphics memory was running low, so the {tier} preset is in use for this session. Fewer points are drawn; nothing was lost.',
+  'graphics.pressure.contextLost':
+    'The graphics card reset. The view is back with the {tier} preset for this session; nothing was lost.',
+  'graphics.pressure.dismiss': 'Dismiss',
   'library.build': '{product} {version} · built {date}',
 
   // Dataset tree: eyes over all layers and over a group

@@ -1,13 +1,17 @@
 import { Icon } from '@aio/ui';
 import { useStore } from 'zustand';
+import { GraphicsNotice } from '../GraphicsNotice';
+import { useGraphics } from '../graphics';
 import { cancelExport, toasts } from './exports';
 
-/** Export progress toasts, bottom right. */
+/** Export progress toasts and the graphics memory notice, bottom right. */
 export function Toasts() {
   const list = useStore(toasts, (s) => s.toasts);
-  if (list.length === 0) return null;
+  const notice = useGraphics((s) => s.pressureReason !== null);
+  if (list.length === 0 && !notice) return null;
   return (
     <div className="toasts" role="status" aria-live="polite">
+      <GraphicsNotice />
       {list.map((t) => {
         const pct = t.total > 0 ? Math.round((t.done / t.total) * 100) : null;
         return (

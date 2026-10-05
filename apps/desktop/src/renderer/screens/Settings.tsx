@@ -87,7 +87,12 @@ function Graphics() {
   const detected = useGraphics((s) => s.detected);
   const override = useGraphics((s) => s.override);
   const tier = useGraphics((s) => s.tier);
+  const facts = useGraphics((s) => s.facts);
+  const limits = useGraphics((s) => s.limits);
+  const pressure = useGraphics((s) => s.pressure);
+  const pointCap = useGraphics((s) => s.pointCap);
   const p = GPU_TIERS[tier];
+  const memGb = facts.systemMemory ? String(Math.round(facts.systemMemory / 2 ** 30)) : null;
   const choices: { id: GpuTier | null; label: string; hint: string }[] = [
     {
       id: null,
@@ -158,10 +163,39 @@ function Graphics() {
           <span>Highest render resolution on high density screens</span>
           <span className="mono">{p.maxPixelRatio}x</span>
         </div>
+        <div className="opt">
+          <b>{t('settings.graphics.pointCap')}</b>
+          <span>{t('settings.graphics.pointCapHint')}</span>
+          <span className="mono">{millions(pointCap)}</span>
+        </div>
+        <div className="opt">
+          <b>{t('settings.graphics.maxTexture')}</b>
+          <span>{t('settings.graphics.maxTextureHint')}</span>
+          <span className="mono">{p.maxTextureSize}</span>
+        </div>
+        <div className="opt">
+          <b>{t('settings.graphics.memoryLimit')}</b>
+          <span>{t('settings.graphics.memoryLimitHint')}</span>
+          <span className="mono">{String(p.gpuBytes / 2 ** 30)} GB</span>
+        </div>
+        {pressure > 0 && (
+          <p className="help" data-testid="graphics-pressure">
+            {t('settings.graphics.pressure', { tier: p.label })}
+          </p>
+        )}
       </div>
       <div className="sblock">
         <h2>Graphics card</h2>
         <p className="help mono">{renderer ?? 'Not reported by the system'}</p>
+        {memGb && <p className="help">{t('settings.graphics.memory', { size: memGb })}</p>}
+        {limits.includes('memory') && memGb && (
+          <p className="help">
+            {t('settings.graphics.limitMemory', { tier: GPU_TIERS[detected].label, size: memGb })}
+          </p>
+        )}
+        {limits.includes('texture') && (
+          <p className="help">{t('settings.graphics.limitTexture')}</p>
+        )}
         <p className="help">Press Ctrl+Shift+F in the 3D view for frame rate and memory.</p>
       </div>
     </>

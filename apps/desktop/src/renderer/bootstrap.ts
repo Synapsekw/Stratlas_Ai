@@ -14,6 +14,7 @@ import { volumetric } from '@aio/volumetric';
 import { assetUrl, workspace, type OpenProject } from '@aio/workspace';
 import { registerAgentPlaces } from './agentPlaces';
 import { graphics } from './graphics';
+import { graphicsReport, memoryWatch } from './memoryWatch';
 import { shell } from './shell';
 import { COMPARE_GPU_BYTES, compareRuntime } from './workspace/compare';
 
@@ -58,9 +59,14 @@ export function bootstrap(): void {
     devTools: import.meta.env.DEV,
     // marker tooltips and lists speak the app's language
     text: (key, vars) => t(key, vars),
+    // a lost WebGL context steps the graphics tier down for the session (memoryWatch.ts)
+    onGpuEvent: (e) => {
+      memoryWatch().onGpuEvent(e);
+    },
   });
   // GPU tier: pixel ratio, shadows, point budget and EDL before the first stage exists
   graphics().getState().apply();
+  memoryWatch();
   registerEngineAdapters();
   registerPointcloudAdapters();
   registerVideoAdapters();
@@ -81,6 +87,8 @@ export function bootstrap(): void {
       stage: getActiveStage,
       volumetric,
       graphics,
+      /** Tier, detection facts and memory now (diagnostics, the performance tests). */
+      memory: graphicsReport,
       pointcloud: pointcloudSettings,
       /** The video rig of the live stage (calibration tests: logged pose, model view). */
       videoRig: () => {
