@@ -114,6 +114,17 @@ export const ReportBrandingSettings = z.object({
     .optional(),
 });
 
+/** A crash the app recorded locally (diagnostics), shown once as a notice. */
+export const CrashNotice = z.object({
+  /** `closed`: the app ended unexpectedly; `window`: the window stopped and was reloaded. */
+  kind: z.enum(['closed', 'window']),
+  /** Id of the crash report in userData `crash-reports/`. */
+  report: z.string(),
+  time: z.string(),
+  process: z.string(),
+  reason: z.string(),
+});
+
 /** An http(s) URL, or empty for "not set". */
 const OptionalUrl = z.union([z.literal(''), z.url({ protocol: /^https?$/ })]);
 
@@ -935,6 +946,37 @@ export const ipc = {
     request: z.object({ which: z.enum(['data', 'logs', 'userData']) }).strict(),
     response: Ok,
   },
+  /**
+   * Save a diagnostics bundle (zip: logs, versions, GPU, allow-listed settings, packs, recent jobs,
+   * crash reports) where the person chooses. With `problem`, it also holds `problem.md` (Report a
+   * problem). Nothing is uploaded. `path` is null when the save dialog was cancelled.
+   */
+  'app:exportDiagnostics': {
+    request: z
+      .object({
+        problem: z
+          .object({ what: z.string().max(8000), steps: z.string().max(8000).optional() })
+          .strict()
+          .optional(),
+        /** Graphics tier and WebGL renderer string, known to the renderer only. */
+        graphics: z
+          .object({
+            tier: z.string().max(20),
+            detected: z.string().max(20),
+            override: z.string().max(20).nullable(),
+            renderer: z.string().max(500).nullable(),
+          })
+          .strict()
+          .optional(),
+        /** Id of the project on screen, marked in the bundle's project list. */
+        openProject: z.string().max(200).optional(),
+      })
+      .strict(),
+    response: z.object({ path: z.string().nullable(), error: z.string().optional() }),
+  },
+  /** The "closed unexpectedly" notice left by a crash, if the person has not dismissed it. */
+  'app:crashNotice': { request: Empty, response: z.object({ notice: CrashNotice.nullable() }) },
+  'app:dismissCrashNotice': { request: Empty, response: Ok },
   /** Check an installer file: valid signature and a newer version than this app. */
   'update:verifyFile': {
     request: z.object({ path: z.string().min(1) }).strict(),
@@ -1079,6 +1121,8 @@ export const ipcEvents = {
     filesTotal: z.number().int().nonnegative(),
     current: z.string().optional(),
   }),
+  /** Help, Report a problem (app menu): open the Report a problem dialog. */
+  'app:reportProblem': z.object({}).strict(),
   /** A second launch (double-clicked `.aio`) handed its path to this instance. */
   'app:openPath': z.object({ path: z.string().min(1) }),
   /** Progress of an `export:run` job; `phase` is a short sentence for the toast. */
@@ -1106,6 +1150,7 @@ export type IpcEvent<E extends IpcEventName> = z.output<(typeof ipcEvents)[E]>;
 export type LibraryEntry = z.infer<typeof LibraryEntry>;
 export type Settings = z.infer<typeof Settings>;
 export type MapPackInfo = z.infer<typeof MapPackInfo>;
+export type CrashNotice = z.infer<typeof CrashNotice>;
 export type PackRegion = z.infer<typeof PackRegion>;
 export type PackJob = z.infer<typeof PackJob>;
 export type LicenseEntry = z.infer<typeof LicenseEntry>;

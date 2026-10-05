@@ -573,6 +573,32 @@ export const en = {
   'jobs.inspection.hfovDegHelp': 'The kit default is 70 degrees.',
   'jobs.inspection.out': 'Output folder',
 
+  // Diagnostics and support (Settings, About and updates; Help, Report a problem; crash notice)
+  'diag.title': 'Diagnostics and support',
+  'diag.text':
+    'A diagnostics bundle is a zip with the logs, versions, graphics card, settings without keys, map and pipeline packs, recent jobs and crash reports. It never holds project files, and nothing is sent anywhere: you choose where to save it.',
+  'diag.export': 'Export diagnostics',
+  'diag.report': 'Report a problem',
+  'diag.saving': 'Saving',
+  'diag.saved': 'Saved to {path}. Attach that file when you contact support.',
+  'diag.problem.title': 'Report a problem',
+  'diag.problem.intro':
+    'Describe what happened. Your words are saved with the diagnostics bundle as problem.md, in a zip you choose where to put. Nothing is uploaded or emailed.',
+  'diag.problem.what': 'What happened',
+  'diag.problem.whatHint': 'For example: the map stayed grey after I opened the project.',
+  'diag.problem.steps': 'Steps to make it happen again',
+  'diag.problem.stepsHint': '1. Open the project  2. Switch to Map  3. ...',
+  'diag.problem.save': 'Save report',
+  'diag.problem.cancel': 'Cancel',
+  'diag.problem.done': 'Done',
+  'diag.problem.needWhat': 'Write a sentence about what happened first.',
+  'diag.crash.closed': '{product} closed unexpectedly last time',
+  'diag.crash.window': 'The {product} window stopped unexpectedly and was reopened',
+  'diag.crash.text':
+    'A report was saved on this computer ({process}, {reason}). Saving it lets you send it to support; nothing is sent automatically.',
+  'diag.crash.save': 'Save a report',
+  'diag.crash.dismiss': 'Dismiss',
+
   // Road builder (road.build in the Jobs panel)
   'jobs.chooseFile': 'Choose',
   'jobs.road.centreline': 'Centreline',

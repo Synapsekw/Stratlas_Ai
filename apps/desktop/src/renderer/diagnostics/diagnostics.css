@@ -1,0 +1,64 @@
+/* Diagnostics and support (stream D5): crash notice, Report a problem form. */
+
+.crash-notice {
+  position: fixed;
+  inset-inline-end: 16px;
+  bottom: 16px;
+  z-index: 105;
+  width: min(380px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--bg-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-6);
+  box-shadow: 0 16px 40px oklch(0.08 0.01 250 / 0.45);
+  font-size: var(--t-12);
+  color: var(--fg-1);
+  animation: cmdk-in 180ms var(--ease-x);
+}
+.crash-notice-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-0);
+}
+.crash-notice-h svg {
+  color: var(--s3);
+  flex: none;
+}
+.crash-notice p {
+  margin: 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.crash-notice-f {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.diag-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--t-12);
+  color: var(--fg-2);
+}
+.dlg .diag-field textarea.input {
+  height: auto;
+  min-height: 84px;
+}
+.diag-flush {
+  margin: 0;
+}
+.diag-flush .mono,
+.diag-saved .mono {
+  overflow-wrap: anywhere;
+}
+@media (prefers-reduced-motion: reduce) {
+  .crash-notice {
+    animation: none;
+  }
+}

@@ -7,6 +7,7 @@ import { useMemo } from 'react';
 import { actionAllowed, allowedActions } from '../exports/exportModel';
 import { runExportAction } from '../exports/exports';
 import { builder } from '../builder/state';
+import { diagnostics } from '../diagnostics/state';
 import { legacyLayers } from '../legacy';
 import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
@@ -82,6 +83,9 @@ export function Palette() {
     action('sidebar', 'Toggle sidebar', 'sidebar', () => void s.toggleSidebar(), 'Ctrl B');
     action('add-folder', 'Add project folder', 'import', () => void s.addProjectFolder());
     action('open-package', 'Open a project package (.aio)', 'lock', () => void s.openPackageFile());
+    action('report-problem', t('diag.report'), 'bell', () => {
+      diagnostics.getState().openProblem();
+    });
     if (project && !pkg) {
       action('export-package', 'Export project package', 'download', () => {
         s.setExportFor(project.id);

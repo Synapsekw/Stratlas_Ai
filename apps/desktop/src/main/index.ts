@@ -57,7 +57,16 @@ import { validated, type Handler } from './ipc';
 import { findPack, JobRunner, JobStore, openTarget, safeJobEvent } from './jobs';
 import { createKeyVault } from './keys';
 import { addToLibrary, createLibraryStore, listLibrary } from './library';
-import { captureConsole, createLog, exportLogs } from './logs';
+import { captureConsole, exportLogs } from './logs';
+import { openProjectSizes } from './diagnostics/bundle';
+import { createCrashStore } from './diagnostics/crash';
+import {
+  createProcessLogs,
+  installCrashHandlers,
+  registerDiagnosticsIpc,
+  startCrashReporter,
+} from './diagnostics/electron';
+import { registerSecret } from './diagnostics/redact';
 import { embeddedPacks, findEmbedded, listWithEmbedded } from './packs/embed';
 import { httpSource } from './packs/extract';
 import { createPackManager } from './packs/manager';
@@ -93,10 +102,18 @@ if (userDataOverride) app.setPath('userData', userDataOverride);
 
 const dev = !app.isPackaged;
 
-// Main-process log in <userData>/logs (Settings, About, Export logs).
+// Main, renderer and utility process logs in <userData>/logs (Settings, About, Export logs).
 const logsDir = join(app.getPath('userData'), 'logs');
-const appLog = createLog(logsDir);
+const processLogs = createProcessLogs(logsDir);
+const appLog = processLogs.main;
 captureConsole(appLog);
+// Crash dumps and crash reports stay on this computer (Settings, About, Export diagnostics).
+startCrashReporter();
+const crashes = createCrashStore(join(app.getPath('userData'), 'crash-reports'), {
+  version: app.getVersion(),
+  electron: process.versions.electron,
+  platform: `${process.platform} ${release()} ${arch()}`,
+});
 const devUrl = process.env.ELECTRON_RENDERER_URL;
 
 // aio:// serves project files and map packs with range requests.
@@ -294,7 +311,12 @@ const providers = createProviderRegistry(
 
 const agent = createAgentRuntime(
   {
-    getKey: (provider) => keys.getKey(provider),
+    getKey: async (provider) => {
+      const key = await keys.getKey(provider);
+      // Keys never reach a log or a diagnostics bundle, whatever their shape.
+      registerSecret(key);
+      return key;
+    },
     // Cloud AI also needs the open package's permission (AI-2, default forbid).
     cloudAllowed: () => policy.cloudAllowed(settings.current().cloudAi),
     routes: () => settings.current().routes,
@@ -664,6 +686,25 @@ function registerIpc(): void {
     return error ? { ok: false, error } : { ok: true };
   });
 
+  registerDiagnosticsIpc({
+    handle,
+    crash: crashes,
+    logs: processLogs,
+    logsDir,
+    targetWindow,
+    sources: {
+      settings: () => settings.current(),
+      packs: () => packs.list(),
+      jobs: () => jobs.list(),
+      projects: (current) =>
+        openProjectSizes(
+          projectNames.keys(),
+          { root: (id) => registry.root(id), packageFile: (id) => registry.package(id)?.file },
+          current,
+        ),
+    },
+  });
+
   const STORE_UPDATES = 'This copy comes from the Microsoft Store, which installs its updates.';
   handle('update:verifyFile', ({ path }) =>
     process.windowsStore
@@ -691,7 +732,10 @@ function registerIpc(): void {
   );
   handle('update:downloadAndInstall', () => updates.downloadAndInstall());
 
-  handle('ai:setKey', ({ provider, key }) => keys.setKey(provider, key));
+  handle('ai:setKey', ({ provider, key }) => {
+    registerSecret(key);
+    return keys.setKey(provider, key);
+  });
   handle('ai:hasKey', async ({ provider }) => ({ present: await keys.hasKey(provider) }));
   handle('ai:testConnection', (req) => agent.testConnection(req));
   handle('ai:send', (req) => agent.send(req));
@@ -1025,6 +1069,16 @@ app.on('web-contents-created', (_e, contents) => {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
+  // Only the first instance tracks the run: a second launch just hands over its file and quits.
+  crashes.start({
+    uncleanNotice: app.isPackaged || process.env.STRATLAS_CRASH_NOTICE === '1',
+  });
+  installCrashHandlers({
+    crash: crashes,
+    logs: processLogs,
+    mainWindow: () => mainWindow,
+    smoke: process.env.STRATLAS_SMOKE === '1',
+  });
   app.on('second-instance', (_e, argv) => {
     const path = packagePathFromArgv(argv);
     if (path) {
@@ -1039,7 +1093,13 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(async () => {
     app.setAppUserModelId(brand.appId);
-    Menu.setApplicationMenu(buildMenu(dev));
+    Menu.setApplicationMenu(
+      buildMenu(dev, {
+        reportProblem: () => {
+          targetWindow()?.webContents.send('app:reportProblem', {});
+        },
+      }),
+    );
     hardenSession();
     const initial = await settings.get();
     nativeTheme.themeSource = initial.theme;

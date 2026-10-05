@@ -10,7 +10,9 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { bootstrap } from './bootstrap';
+import { captureRendererErrors } from './diagnostics/errors';
 
+captureRendererErrors();
 bootstrap();
 
 const root = document.getElementById('root');

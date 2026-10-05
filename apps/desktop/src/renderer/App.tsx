@@ -35,6 +35,8 @@ import { applyAppearance } from './theme';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
 import { BuilderLayer } from './builder/BuilderLayer';
 import { Lightbox } from './issueCard/Lightbox';
+import { CrashNotice } from './diagnostics/CrashNotice';
+import { ReportProblemDialog } from './diagnostics/ReportProblem';
 import { evidence, openEvidence, startEvidenceSplit } from './issueCard/evidence';
 import { startCardFocus } from './issueCard/state';
 
@@ -246,6 +248,8 @@ export function App() {
       <Toasts />
       <BuilderLayer />
       <Lightbox />
+      <ReportProblemDialog />
+      <CrashNotice />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { Icon, Switch, t } from '@aio/ui';
 import { useMemo, useState } from 'react';
 import { build, formatBuildTime } from '../../buildStamp';
 import { bridge, shell, useCall, useShell } from '../../shell';
+import { Diagnostics } from './Diagnostics';
 
 type Verified = IpcResponse<'update:verifyFile'>;
 
@@ -366,6 +367,7 @@ export function About() {
         )}
         {logError && <p className="prov-err">{logError}</p>}
       </div>
+      <Diagnostics />
       <div className="sblock">
         <h2>Updates</h2>
         {a?.store ? (
