@@ -15,9 +15,9 @@
   --line-strong: oklch(0.36 0.012 250);
   --fg-0: oklch(0.945 0.006 250);
   --fg-1: oklch(0.8 0.01 250);
-  --fg-2: oklch(0.64 0.012 250);
-  --fg-3: oklch(0.5 0.012 250);
-  --fg-4: oklch(0.4 0.012 250);
+  --fg-2: oklch(0.7 0.012 250);
+  --fg-3: oklch(0.62 0.012 250); /* lowest tone for text: 4.5:1 on --bg-3 (WCAG AA) */
+  --fg-4: oklch(0.4 0.012 250); /* decoration and disabled only, never text */
   /* one controlled accent: jade from the Stratlas mark */
   --acc: oklch(0.79 0.115 172);
   --acc-strong: oklch(0.86 0.12 172);
@@ -88,15 +88,15 @@
   --line-strong: oklch(0.76 0.01 250);
   --fg-0: oklch(0.2 0.012 250);
   --fg-1: oklch(0.34 0.012 250);
-  --fg-2: oklch(0.46 0.012 250);
-  --fg-3: oklch(0.56 0.01 250);
+  --fg-2: oklch(0.42 0.012 250);
+  --fg-3: oklch(0.49 0.01 250);
   --fg-4: oklch(0.68 0.008 250);
-  --acc: oklch(0.56 0.11 172);
-  --acc-strong: oklch(0.48 0.11 172);
+  --acc: oklch(0.5 0.11 172);
+  --acc-strong: oklch(0.43 0.11 172);
   --acc-ink: oklch(0.98 0.01 172);
-  --acc-a12: oklch(0.56 0.11 172 / 0.12);
-  --acc-a20: oklch(0.56 0.11 172 / 0.2);
-  --acc-a40: oklch(0.56 0.11 172 / 0.4);
+  --acc-a12: oklch(0.5 0.11 172 / 0.12);
+  --acc-a20: oklch(0.5 0.11 172 / 0.2);
+  --acc-a40: oklch(0.5 0.11 172 / 0.4);
   --s5: oklch(0.58 0.2 25);
   --s4: oklch(0.64 0.16 55);
   --s3: oklch(0.7 0.15 85);
@@ -106,7 +106,7 @@
   --s4-a: oklch(0.64 0.16 55 / 0.14);
   --s3-a: oklch(0.7 0.15 85 / 0.16);
   --s2-a: oklch(0.56 0.1 240 / 0.12);
-  --ok: oklch(0.56 0.12 155);
+  --ok: oklch(0.5 0.12 155);
   --warn: var(--s3);
   --danger: var(--s5);
   --ov: oklch(0.96 0.008 250);
@@ -122,4 +122,32 @@
   --danger-line: oklch(0.58 0.2 25 / 0.4);
   --warn-line: oklch(0.7 0.15 85 / 0.5);
   --sev-ink: oklch(0.15 0.02 250);
+}
+/* More contrast: <html data-contrast='more'> when the OS asks for it (prefers-contrast: more) or
+   Settings, Appearance, Increase contrast is on (theme.ts). Text tones move towards --fg-0 and
+   lines get stronger; the hierarchy stays, the faint steps go. */
+:root[data-contrast='more'],
+:root[data-contrast='more'] [data-surface='dark'] {
+  --fg-1: oklch(0.92 0.006 250);
+  --fg-2: oklch(0.86 0.008 250);
+  --fg-3: oklch(0.8 0.01 250);
+  --fg-4: oklch(0.66 0.012 250);
+  --line: oklch(0.5 0.012 250);
+  --line-soft: oklch(0.42 0.012 250);
+  --line-strong: oklch(0.66 0.012 250);
+  --acc-a20: oklch(0.79 0.115 172 / 0.32);
+  --ov-dim: oklch(0.96 0.008 250 / 0.8);
+  --scrim: oklch(0.1 0.01 250 / 0.92);
+}
+:root[data-theme='light'][data-contrast='more'] {
+  --fg-1: oklch(0.16 0.012 250);
+  --fg-2: oklch(0.24 0.012 250);
+  --fg-3: oklch(0.32 0.012 250);
+  --fg-4: oklch(0.46 0.012 250);
+  --line: oklch(0.55 0.01 250);
+  --line-soft: oklch(0.65 0.008 250);
+  --line-strong: oklch(0.4 0.012 250);
+  --acc: oklch(0.42 0.11 172);
+  --acc-strong: oklch(0.36 0.11 172);
+  --acc-a20: oklch(0.42 0.11 172 / 0.3);
 }

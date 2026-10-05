@@ -36,5 +36,6 @@ export { SharedAssets, type Lease, type SharedStats } from './adapters/shared';
 export type { SectionState } from './tools/section';
 export { DEFAULT_SECTION } from './tools/section';
 export { PALETTE } from './palette';
+export { reducedMotion } from './motion';
 export { solarPosition, skyDirection, utcOffsetHours, type SolarPosition } from './stage/solar';
 export { defaultEnvironment, defaultMode, defaultTime, siteLocation } from './stage/envDefaults';
