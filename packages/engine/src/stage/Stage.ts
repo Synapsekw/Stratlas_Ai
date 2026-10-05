@@ -79,6 +79,8 @@ const FLY_MS = 900;
  * the usual margin, so the asset fills the stage on first open.
  */
 const HOME_MARGIN = 1.05;
+/** The orbit stays above the horizon (a little below, to look along the ground). */
+const MAX_POLAR = Math.PI * 0.53;
 const CLICK_SLOP_PX = 5;
 
 interface Flight {
@@ -222,7 +224,7 @@ export class Stage implements EngineStage {
     this.controls = new OrbitControls(this.camera, this.canvas);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
-    this.controls.maxPolarAngle = Math.PI * 0.53;
+    this.controls.maxPolarAngle = MAX_POLAR;
     this.controls.addEventListener('change', () => {
       this.need = true;
     });
@@ -489,6 +491,7 @@ export class Stage implements EngineStage {
     }
     this.camera.position.fromArray(view.position);
     this.controls.target.fromArray(view.target);
+    this.allowPose(this.camera.position, this.controls.target);
     this.controls.update();
     this.need = true;
   }
@@ -835,6 +838,11 @@ export class Stage implements EngineStage {
     return box;
   }
 
+  contentBounds(): Box3 | null {
+    const box = this.contentBox();
+    return box.isEmpty() ? null : box;
+  }
+
   private contentSphere(): { center: Vector3; radius: number } | null {
     const box = this.contentBox();
     if (box.isEmpty()) return null;
@@ -893,7 +901,12 @@ export class Stage implements EngineStage {
       const sphere = this.contentSphere();
       if (sphere) pose = poseForPreset('iso', sphere, this.camera.fov, this.aspect, HOME_MARGIN);
     } else if (t.kind === 'point') {
-      pose = poseForPoint(new Vector3(...t.p), current, t.distance);
+      pose = poseForPoint(
+        new Vector3(...t.p),
+        current,
+        t.distance,
+        t.dir ? new Vector3(...t.dir) : undefined,
+      );
     } else {
       const hit =
         t.selection.kind === 'asset' ? this.findNode(t.selection.id, t.selection.layer) : null;
@@ -912,8 +925,19 @@ export class Stage implements EngineStage {
     store.consumeCamera(req.seq);
   }
 
+  /**
+   * Let the orbit reach a pose that looks up (a photo taken inside a tank, looking at the roof):
+   * the limit opens to that pose's angle until the next flight or restored view.
+   */
+  private allowPose(position: Vector3, target: Vector3) {
+    const d = position.clone().sub(target);
+    const polar = Math.acos(Math.min(1, Math.max(-1, d.y / Math.max(d.length(), 1e-9))));
+    this.controls.maxPolarAngle = Math.max(MAX_POLAR, Math.min(Math.PI, polar + 0.01));
+  }
+
   private fly(to: CameraPose) {
     const ms = prefersReducedMotion() ? 0 : FLY_MS;
+    this.allowPose(to.position, to.target);
     const from = { position: this.camera.position.clone(), target: this.controls.target.clone() };
     this.flight = {
       from,

@@ -335,6 +335,35 @@ describe('Stage', () => {
     stage.dispose();
   });
 
+  it('flies to a point from a requested direction and reports the content bounds', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true })); // reduced motion: no animation
+    const { stage, store, resize } = make();
+    resize(800, 600);
+    expect(stage.contentBounds()).toBeNull();
+    store.getState().openProject(project([meshLayer('plant')]));
+    await flush();
+    const box = stage.contentBounds();
+    expect(box?.min.toArray()).toEqual([-5, 0, -5]);
+    expect(box?.max.toArray()).toEqual([5, 10, 5]);
+    // straight down from 50 m above, then from the east at 20 m
+    store.getState().flyTo({ kind: 'point', p: [10, 0, -20], distance: 50, dir: [0, 2, 0] });
+    let v = stage.saveView();
+    expect(v.target).toEqual([10, 0, -20]);
+    expect(v.position[1]).toBeCloseTo(50);
+    expect(v.position[0]).toBeCloseTo(10);
+    store.getState().flyTo({ kind: 'point', p: [0, 0, 0], distance: 20, dir: [1, 0, 0] });
+    v = stage.saveView();
+    expect(v.position[0]).toBeCloseTo(20);
+    expect(v.position[2]).toBeCloseTo(0);
+    // looking up from below (a photo inside a tank): the orbit limit lets the pose stand
+    store.getState().flyTo({ kind: 'point', p: [0, 9, 0], distance: 5, dir: [0, -1, 0.3] });
+    stage.controls.update();
+    v = stage.saveView();
+    expect(v.position[1]).toBeLessThan(5);
+    expect(Math.hypot(v.position[0], v.position[1] - 9, v.position[2])).toBeCloseTo(5);
+    stage.dispose();
+  });
+
   it('keeps a selection camera request until its layer has loaded', async () => {
     const { stage, store, resize } = make();
     resize(800, 600);

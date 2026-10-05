@@ -71,10 +71,19 @@ export function frameBox(
   return { target, position: target.clone().addScaledVector(dir, d) };
 }
 
-/** Pose that looks at a point from the current direction at `distance` (or the current distance). */
-export function poseForPoint(point: Vector3, current: CameraPose, distance?: number): CameraPose {
+/**
+ * Pose that looks at a point from the current direction (or from `from`, a direction from the
+ * point to the camera) at `distance` (or the current distance).
+ */
+export function poseForPoint(
+  point: Vector3,
+  current: CameraPose,
+  distance?: number,
+  from?: Vector3,
+): CameraPose {
   const dir = current.position.clone().sub(current.target);
   const d = distance ?? dir.length();
+  if (from && from.lengthSq() > 1e-12) dir.copy(from);
   if (dir.lengthSq() < 1e-12) dir.set(1, 1, 1);
   dir.normalize();
   return { target: point.clone(), position: point.clone().addScaledVector(dir, d) };

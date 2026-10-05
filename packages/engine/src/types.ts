@@ -1,5 +1,6 @@
 import type { AssetRef, Layer, LayerKind } from '@aio/schema';
 import type {
+  Box3,
   Intersection,
   Mesh,
   Object3D,
@@ -150,6 +151,11 @@ export interface EngineStage extends SceneHandle {
   uiKeepOut(): ClientRectLike[];
   /** World points (issue pins) that callout plates must not cover. Returns an unsubscribe. */
   addLabelObstacles(provider: () => Iterable<Vector3>): () => void;
+  /**
+   * Bounds of the visible content in the local frame (what Home frames: models, clouds, without
+   * ground imagery or modelled terrain), or null while nothing has loaded.
+   */
+  contentBounds(): Box3 | null;
   /** The current view, to restore when the stage is created again. */
   saveView(): SavedView;
   /** Jump (or fly) to a saved view; the stage no longer frames content as it loads. */
