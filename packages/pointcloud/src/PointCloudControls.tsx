@@ -117,6 +117,7 @@ export function PointCloudControls({
         <span style={s.inline}>
           <input
             type="range"
+            aria-label="Point size"
             min={Math.log2(SIZE_RANGE[0])}
             max={Math.log2(SIZE_RANGE[1])}
             step={0.25}

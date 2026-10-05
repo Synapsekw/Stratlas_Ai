@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EdlPass, edlNeighbours } from './edl';
-import { FLIGHT_PALETTE, MODE_INDEX, createPointMaterial } from './material';
+import { FLIGHT_PALETTE, MODE_INDEX, createPointMaterial, pointSizePx } from './material';
 
 describe('createPointMaterial', () => {
   it('compiles only the attributes the cloud has and clips with the shared planes', () => {
@@ -42,6 +42,28 @@ describe('createPointMaterial', () => {
     expect(Object.values(MODE_INDEX).sort()).toEqual([0, 1, 2, 3, 4]);
     expect(FLIGHT_PALETTE[0]).toBe('#5ab0ff');
     expect(FLIGHT_PALETTE).toHaveLength(10);
+  });
+});
+
+describe('point size on screen', () => {
+  // a 2.5 cm kit point 60 m away at 1909 px per metre: 0.8 px, under the 1 px floor
+  const far = (scale: number) => pointSizePx(0.025, 1909, 60, 1, 48, scale);
+  // the same point 2 m away: 24 px, near the 48 px ceiling
+  const near = (scale: number) => pointSizePx(0.025, 1909, 2, 1, 48, scale);
+
+  it('scales the size after the pixel clamp, so the slider works at both ends', () => {
+    expect([0.25, 1, 2, 4].map(far)).toEqual([1, 1, 2, 4]);
+    expect(near(1)).toBeCloseTo(23.86, 2);
+    expect(near(4)).toBeCloseTo(4 * near(1), 6);
+    expect(near(0.25)).toBeCloseTo(near(1) / 4, 6);
+  });
+
+  it('is what the vertex shader computes, from a uniform shared by every depth material', () => {
+    const m = createPointMaterial({ hasRgb: true, hasIntensity: false, baseSize: 1, tint: '#fff' });
+    expect(m.uniforms.uScale.value).toBe(1);
+    expect(m.vertexShader).toContain(
+      'gl_PointSize = max(1.0, clamp(uSize * uPxPerM / max(0.01, -mvPosition.z), uMinPx, uMaxPx) * uScale);',
+    );
   });
 });
 
