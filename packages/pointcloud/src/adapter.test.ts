@@ -329,6 +329,8 @@ describe('pointcloud adapter', () => {
     frame();
     d.finishAll();
     await flush();
+    // one frame per decoded node: on a slow machine the 4 ms upload budget takes one per frame
+    frame();
     frame();
     const at1 = drawn(handle);
     expect(at1.map((n) => n.key)).toEqual(['f101#0', 'pc#clouds/c0.png']);
@@ -560,9 +562,16 @@ describe('COPC layers', () => {
     const { handle, frame, d } = await open({ 10: root }, [32, 80, 32], (off) =>
       off === 2000 ? Float32Array.from([30, 35, 40]) : ROOT_HEIGHTS,
     );
+    // A slow machine (a CI runner): attaching one node outlasts the frame's 4 ms upload budget,
+    // so the two decoded nodes land one per frame. Each frame attaches at least one node, so two
+    // frames after the decode attach both on any machine.
+    let t = 0;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => (t += 5));
     frame();
     await flush();
     frame();
+    frame();
+    clock.mockRestore();
     expect(d.jobs.length).toBe(2);
     const ranges = rampRanges(handle);
     expect(ranges.length).toBe(2);
