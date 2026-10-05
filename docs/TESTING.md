@@ -1,6 +1,6 @@
 # Testing Stratlas
 
-One document for every test round, one stage per milestone. Each stage lists what to click and what you should see. Each line describes current behaviour; passed stages are summarised, not repeated.
+Only what still needs testing. Each stage lists what to click and what you should see, and each line describes current behaviour. Stages you pass are removed; new stages are added when they are built.
 
 ## How to use this document
 
@@ -30,30 +30,15 @@ One document for every test round, one stage per milestone. Each stage lists wha
 
 ## Status
 
-| Stage               | What it covers                                                                                                                                                                                                   | Build it needs                                                                                                                | Status                                               |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| M1 to M4 (baseline) | The six projects, fusion scene, annotation, maps, AI, platform, reports and exports (packages and builder steps moved to M6)                                                                                     | The current installer (M6 build, 4 Oct 2026) or later                                                                         | Passed                                               |
-| M5                  | Fixes from the M4 feedback: Masafi, DAMAC, video, layers, cut-away, split, sky and water, report branding, AI keys                                                                                               | The M5 installer, built 4 Oct 2026 after the sky and water merge (commit `862c9df`) or later                                  | Not yet tested (skipped for now); AI lines passed    |
-| M6                  | Builder completion: pipelines from raw data, detection review, AI detection, report text and project report, video calibration, packages and map packs                                                           | The M6 installer, built 4 Oct 2026 from main at commit `4624bf2` or later, and pipeline pack 0.2.0 (see M6, Before you start) | In progress: founder testing; feedback fixed in M6.1 |
-| M6.1                | Your M6 feedback: point size, issue and photo opening, Media highlights, HCl flicker and nadir photos, dark maps, Al-Zour drone trace and photo icons, agent camera moves, Masafi piles and ramps, compare dates | The M6.1 installer, built 5 Oct 2026 from main at commit `c0fda90` or later                                                   | All nine fixes merged; not yet tested by the founder |
-| M7                  | Release hardening and distribution                                                                                                                                                                               | Not built yet                                                                                                                 | Planned                                              |
-| M8                  | Change detection and modelling                                                                                                                                                                                   | Not built yet                                                                                                                 | Planned                                              |
-| M9                  | Team features and release 1.0                                                                                                                                                                                    | Not built yet                                                                                                                 | Planned                                              |
-
-## Stage M1 to M4: baseline (passed)
-
-Passed: tested by the founder; the feedback was fixed in M5. 1st Ring Road passed exactly as written.
-
-- Projects and library: the six projects, map packs, **Ctrl+K**, **Ctrl+B**, **Original review**.
-- Fusion scenes on HCl and Al-Zour: 3D navigation, video and timeline, flight paths, point clouds, photos, panoramas, plot plans, drone-eye view, video calibration basics.
-- EBSM, DAMAC, Masafi (volumes, swipe, boundary edit) and 1st Ring Road (chainage ruler, defect polygons, PCI grid).
-- Annotation, issues at scale, maps, AI, platform settings, reports and exports.
-
-Building projects and customer packages were not tested yet; those steps are in M6 (P1 to P3, Import, X1).
+| Stage | What it covers                                                                                                                                                                                                   | Build it needs                                                                                                                | Status                                               |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| M5    | Fixes from the M4 feedback: Masafi, DAMAC, video, layers, cut-away, split, sky and water, report branding                                                                                                        | The M5 installer, built 4 Oct 2026 after the sky and water merge (commit `862c9df`) or later                                  | Not yet tested (skipped for now)                     |
+| M6    | Builder completion: pipelines from raw data, detection review, AI detection, report text and project report, video calibration, packages and map packs                                                           | The M6 installer, built 4 Oct 2026 from main at commit `4624bf2` or later, and pipeline pack 0.2.0 (see M6, Before you start) | In progress: founder testing; feedback fixed in M6.1 |
+| M6.1  | Your M6 feedback: point size, issue and photo opening, Media highlights, HCl flicker and nadir photos, dark maps, Al-Zour drone trace and photo icons, agent camera moves, Masafi piles and ramps, compare dates | The installer built 5 Oct 2026, 18:00, from main at commit `a8e7b43` or later                                                 | All nine fixes merged; not yet tested by the founder |
 
 ## Stage M5: your M4 feedback, fixed
 
-Build: the M5 installer, 4 Oct 2026, or later. Below is what changed after your feedback. The AI lines (Workspace ID, Test connection, agent errors) passed and are not repeated; the per-pile eye on Masafi is replaced by M6.1.
+Build: the M5 installer, 4 Oct 2026, or later. Below is what changed after your M4 feedback.
 
 ### Masafi
 
@@ -74,7 +59,7 @@ Build: the M5 installer, 4 Oct 2026, or later. Below is what changed after your 
 - [ ] Video window: drag it by the title bar; resize from edges and corners (keeps 16:9); double-click the title to reset; remembered per project.
 - [ ] Layers: an **eye at the top** shows or hides everything; one eye per group (Models, Point clouds, Maps, Video). Half-filled eye: some are hidden.
 - [ ] The tank is **not cut automatically** when the drone goes inside. Toolbar tool **Inside the asset**: **Off**, **Cut**, **Transparent** with an **Opacity** slider. Point clouds hide while a mode is on. Remembered per project.
-- [ ] **Split**: each side has a selector (3D view, Map, Video, Photos, Ortho and plans, Report: only what the project has). Try Video on the right, Photos on the left. The 3D view exists only once.
+- [ ] **Split**: each side has a selector (3D view, Map, Video, Photos, Ortho and plans, Report: only what the project has). Try Video on the right, Photos on the left. The 3D view appears on one side only (except Compare dates, M6.1).
 
 ### Al-Zour
 
@@ -305,18 +290,6 @@ Build: the M6.1 installer, 5 Oct 2026, from main at commit `c0fda90` or later. A
 
 - [ ] 1st Ring Road, open a defect: **Recorded** shows 2 Apr 2024 (the local day), not 1 Apr.
 - [ ] **Settings, Report branding**: type a company name, press **Enter**, then pick a logo straight away: the report keeps both.
-
-## Stage M7: release hardening and distribution (planned)
-
-Planned, steps added when built. Windows code signing (Azure Trusted Signing or a certificate) so SmartScreen stops warning, and a Microsoft Store submission with a demo project. A macOS build with notarisation. Offline auto-update. A crash and diagnostics bundle you can send in one click. An accessibility and keyboard pass over every screen. A performance budget checked on mid-range graphics cards, not only this PC. A user guide.
-
-## Stage M8: change and modelling (planned)
-
-Planned, steps added when built. Change detection between capture dates across every layer type: meshes, point clouds, orthos and issues. 3D models built from 2D drawings and plot plans, and from point clouds, AI-assisted (PRD BLD-11). Local ONNX detection that runs on this PC with no cloud AI (BLD-10).
-
-## Stage M9: team and 1.0 (planned)
-
-Planned, steps added when built. Optional team sync and project sharing. A multi-reviewer workflow: assign, comment, approve. An audit trail of who changed what. Release 1.0.
 
 ## Known limits
 
