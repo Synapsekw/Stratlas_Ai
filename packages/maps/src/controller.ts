@@ -160,6 +160,8 @@ export function createMapController(
   { packs, store, showFlights, packBase, draw, issues: issueDisplay }: MapControllerOptions,
 ): MapController {
   installBasemap(packs, packBase ? { packBase } : {});
+  const createdWithCamera = store.getState().lastCamera;
+  let projectOpened = false;
   const ordered = orderPacks(packs);
   const lang = document.documentElement.lang.startsWith('ar') ? 'ar' : 'en';
   const maxZoom = Math.max(6, ...packs.map((p) => p.maxZoom));
@@ -941,6 +943,10 @@ export function createMapController(
   // ----- project lifecycle -----
   async function openProject(s: Workspace): Promise<void> {
     clearProject();
+    // the camera request standing when the map was created; a later one (made while the style and
+    // the project load) is shown instead of the project's extent
+    const startCamera = projectOpened ? s.lastCamera : createdWithCamera;
+    projectOpened = true;
     const project = s.project;
     projectId = project?.id ?? null;
     proj = project ? frameProjection(project.manifest.crs, project.manifest.origin) : null;
@@ -963,6 +969,11 @@ export function createMapController(
     const issuePts = now.issues.map((i) => issueAnchor(i, proj)).filter((x): x is LonLat => !!x);
     const box = bboxOf([...rasterPts, ...flightPts, ...issuePts]);
     projectBox = box;
+    // a camera request made while the map was starting (the agent's fly_to) wins over the start view
+    if (now.lastCamera && now.lastCamera !== startCamera) {
+      followCamera(now);
+      return;
+    }
     if (box) {
       map.fitBounds(
         [

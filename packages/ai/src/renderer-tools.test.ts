@@ -145,13 +145,10 @@ describe('navigate tools', () => {
     expect(c.workspace.getState().selection).toEqual({ kind: 'issue', id: 'i1' });
   });
 
-  it('fly_to an issue asks the camera to go there', async () => {
+  it('fly_to an issue asks the camera to go to its location (the 3D view ignores issue selections)', async () => {
     const c = ctx();
     await runRendererTool('fly_to', { target: { kind: 'issue', id: 'D01' } }, c);
-    expect(c.workspace.getState().camera?.target).toEqual({
-      kind: 'selection',
-      selection: { kind: 'issue', id: 'i1' },
-    });
+    expect(c.workspace.getState().camera?.target).toMatchObject({ kind: 'point', p: [0, 70, 0] });
   });
 });
 

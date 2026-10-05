@@ -70,10 +70,48 @@ function lastToolResult(prompt: LanguageModelV4Prompt): { name: string; output: 
   return null;
 }
 
+/**
+ * Explicit tool calls written into a message for end-to-end tests: `#tool <name> <json input>`,
+ * any number in one message, made one after another (each after the previous result).
+ */
+export function scriptedDirectives(
+  text: string,
+): { tool: string; input: Record<string, unknown> }[] {
+  const out: { tool: string; input: Record<string, unknown> }[] = [];
+  for (const part of text.split('#tool ').slice(1)) {
+    const m = /^([a-z_]+)\s*([\s\S]*)$/.exec(part.trim());
+    if (!m?.[1]) continue;
+    let input: Record<string, unknown> = {};
+    try {
+      const body = m[2]?.trim() ?? '';
+      const parsed: unknown = JSON.parse(body === '' ? '{}' : body);
+      if (parsed && typeof parsed === 'object') input = parsed as Record<string, unknown>;
+    } catch {
+      // a malformed input reaches the tool as {} and fails its schema there
+    }
+    out.push({ tool: m[1], input });
+  }
+  return out;
+}
+
+/** Tool results since the newest user message. */
+function resultsSinceUser(prompt: LanguageModelV4Prompt): number {
+  let n = 0;
+  for (let i = prompt.length - 1; i >= 0; i--) {
+    const m = prompt[i];
+    if (m?.role === 'user') break;
+    if (m?.role === 'tool') n += m.content.filter((p) => p.type === 'tool-result').length;
+  }
+  return n;
+}
+
 /** What the script answers for a prompt. Exported for tests. */
 export function scriptedTurn(
   prompt: LanguageModelV4Prompt,
 ): { kind: 'text'; text: string } | { kind: 'tool'; tool: string; input: Record<string, unknown> } {
+  const directives = scriptedDirectives(lastUserText(prompt));
+  const next = directives[resultsSinceUser(prompt)];
+  if (next) return { kind: 'tool', tool: next.tool, input: next.input };
   const result = lastToolResult(prompt);
   if (result) return { kind: 'text', text: `Tool ${result.name} returned ${result.output}` };
   const text = lastUserText(prompt);

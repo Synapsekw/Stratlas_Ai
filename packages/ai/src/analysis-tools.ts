@@ -7,6 +7,7 @@ import type { Issue } from '@aio/schema';
 import { assetUrl } from '@aio/workspace';
 import { z } from 'zod';
 import { issuesCsv } from './exporting';
+import { targetPoint } from './places';
 import {
   define,
   issuePoint,
@@ -14,7 +15,6 @@ import {
   plural,
   project,
   severityRank,
-  targetPoint,
   ToolError,
   type RendererToolContext,
 } from './tool-kit';
@@ -206,9 +206,9 @@ define('compare_captures', async (input, ctx) => {
 
 // measure_distance and find_issues_near -------------------------------------------------------
 
-define('measure_distance', ({ from, to }, ctx) => {
-  const a = targetPoint(ctx, from);
-  const b = targetPoint(ctx, to);
+define('measure_distance', async ({ from, to }, ctx) => {
+  const a = await targetPoint(ctx, from);
+  const b = await targetPoint(ctx, to);
   const dx = b[0] - a[0];
   const dy = b[1] - a[1];
   const dz = b[2] - a[2];
@@ -225,8 +225,8 @@ define('measure_distance', ({ from, to }, ctx) => {
   };
 });
 
-define('find_issues_near', ({ target, radiusM, limit }, ctx) => {
-  const p = targetPoint(ctx, target);
+define('find_issues_near', async ({ target, radiusM, limit }, ctx) => {
+  const p = await targetPoint(ctx, target);
   let withoutLocation = 0;
   const hits: { issue: Issue; d: number }[] = [];
   for (const issue of ctx.workspace.getState().issues) {

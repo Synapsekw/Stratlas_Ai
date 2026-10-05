@@ -15,14 +15,14 @@ import {
 } from '@aio/schema';
 import { assetUrl, workspace, type Selection } from '@aio/workspace';
 import './analysis-tools';
+import './camera-tools';
 import { clipStartUtcMs, selectionLabel } from './context';
 import { parseFlight, passNear } from './geometry';
+import { targetPoint } from './places';
 import { capturePhoto, MAX_EDGE } from './photo-frame';
 import {
   appHooks,
-  assetPoint,
   assetRef,
-  cameraUndo,
   clip,
   clips,
   define,
@@ -33,7 +33,6 @@ import {
   round1,
   severityRank,
   issueRow,
-  targetPoint,
   ToolError,
   type RendererToolContext,
 } from './tool-kit';
@@ -73,7 +72,7 @@ define('list_clips', (_input, ctx) => {
 });
 
 define('find_clips_near', async ({ target, radiusM }, ctx) => {
-  const p = targetPoint(ctx, target);
+  const p = await targetPoint(ctx, target);
   const projectId = project(ctx).id;
   const all = clips(ctx);
   const found = await Promise.all(
@@ -201,37 +200,6 @@ define('play_clip', ({ clipId, fromSeconds }, ctx) => {
   };
 });
 
-define('fly_to', ({ target, distanceM }, ctx) => {
-  const ws = ctx.workspace.getState();
-  const undo = cameraUndo(ctx);
-  let label: string;
-  if (target.kind === 'point') {
-    ws.flyTo(
-      distanceM === undefined
-        ? { kind: 'point', p: target.p }
-        : { kind: 'point', p: target.p, distance: distanceM },
-    );
-    label = target.p.map((n) => n.toFixed(1)).join(', ');
-  } else if (target.kind === 'issue') {
-    const issue = findIssue(ctx, target.id);
-    ws.flyTo({ kind: 'selection', selection: { kind: 'issue', id: issue.id } });
-    label = issue.code;
-  } else {
-    const ref = assetRef(ctx, target.id);
-    if (!ref && !ctx.scene()?.scene.getObjectByName(target.id)) {
-      throw new ToolError(`No asset "${target.id}" in this project.`);
-    }
-    const selection: Selection = ref
-      ? { kind: 'asset', id: target.id, layer: ref.layer.id }
-      : { kind: 'asset', id: target.id };
-    ws.flyTo({ kind: 'selection', selection });
-    label = target.id;
-  }
-  return undo
-    ? { result: { flying: label }, summary: label, undo }
-    : { result: { flying: label }, summary: label };
-});
-
 define('select', (input, ctx) => {
   const ws = ctx.workspace.getState();
   const before = ws.selection;
@@ -293,10 +261,10 @@ function pointSighting(ctx: RendererToolContext, p: Vec3, layer?: string): Sight
 }
 
 /** Where the draft goes, and the class of the issue it was made from, if any. */
-function draftLocation(
+async function draftLocation(
   ctx: RendererToolContext,
   at: Target | undefined,
-): { sightings: Sighting[]; classId?: string } {
+): Promise<{ sightings: Sighting[]; classId?: string }> {
   const ws = ctx.workspace.getState();
   const target: Target | null =
     at ??
@@ -305,7 +273,7 @@ function draftLocation(
       : null);
   if (!target) {
     throw new ToolError(
-      'Say where the issue is: select an asset or issue, or give a point, then try again.',
+      'Say where the issue is: select an asset or issue, or give a place or a point, then try again.',
     );
   }
   if (target.kind === 'issue') {
@@ -314,23 +282,18 @@ function draftLocation(
     if (!first) throw new ToolError(`Issue ${src.code} has no location to copy.`);
     return { sightings: [first], classId: src.classId };
   }
-  if (target.kind === 'asset') {
-    return {
-      sightings: [
-        pointSighting(ctx, assetPoint(ctx, target.id), assetRef(ctx, target.id)?.layer.id),
-      ],
-    };
-  }
-  return { sightings: [pointSighting(ctx, target.p)] };
+  const p = await targetPoint(ctx, target);
+  const layer = target.kind === 'asset' ? assetRef(ctx, target.id)?.layer.id : undefined;
+  return { sightings: [pointSighting(ctx, p, layer)] };
 }
 
-define('create_issue_draft', (input, ctx) => {
+define('create_issue_draft', async (input, ctx) => {
   const m = project(ctx).manifest;
   const classes = m.classCatalogues.flatMap((c) => c.classes);
   if (classes.length === 0) {
     throw new ToolError('This project has no issue classes yet. Add a class catalogue first.');
   }
-  const { sightings, classId: inferred } = draftLocation(ctx, input.at);
+  const { sightings, classId: inferred } = await draftLocation(ctx, input.at);
   const classId = input.classId ?? inferred ?? (classes.length === 1 ? classes[0]?.id : undefined);
   const cls = classes.find((c) => c.id === classId || c.label === classId);
   if (!cls) {

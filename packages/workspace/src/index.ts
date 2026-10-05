@@ -22,7 +22,16 @@ export interface OpenProject {
 export interface CameraRequest {
   seq: number;
   target:
-    | { kind: 'point'; p: Vec3; distance?: number }
+    | {
+        kind: 'point';
+        p: Vec3;
+        distance?: number;
+        /**
+         * Direction from the point to the camera (local frame, any length). Absent: keep the
+         * current viewing direction.
+         */
+        dir?: Vec3;
+      }
     | { kind: 'selection'; selection: Selection }
     | { kind: 'home' };
 }

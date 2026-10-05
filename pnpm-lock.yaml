@@ -169,6 +169,9 @@ importers:
       '@aio/engine':
         specifier: workspace:*
         version: link:../engine
+      '@aio/geo':
+        specifier: workspace:*
+        version: link:../geo
       '@aio/schema':
         specifier: workspace:*
         version: link:../schema

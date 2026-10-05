@@ -19,6 +19,7 @@
     "@ai-sdk/openai": "4.0.83",
     "@ai-sdk/provider": "4.0.21",
     "@aio/engine": "workspace:*",
+    "@aio/geo": "workspace:*",
     "@aio/schema": "workspace:*",
     "@aio/workspace": "workspace:*",
     "ai": "7.0.127",

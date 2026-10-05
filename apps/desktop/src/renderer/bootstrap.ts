@@ -7,6 +7,7 @@ import { t } from '@aio/ui';
 import { loadFlight, registerVideoAdapters, videoRig } from '@aio/video';
 import { volumetric } from '@aio/volumetric';
 import { assetUrl, workspace, type OpenProject } from '@aio/workspace';
+import { registerAgentPlaces } from './agentPlaces';
 import { graphics } from './graphics';
 import { shell } from './shell';
 
@@ -65,6 +66,8 @@ export function bootstrap(): void {
       shell.getState().go('review');
     },
   });
+  // Stockpiles and road chainages for find_places and fly_to.
+  registerAgentPlaces();
   // Inspection hook for the end-to-end tests and DevTools (read the clock, the live scene).
   Object.assign(window, {
     __stratlas: {

@@ -67,4 +67,11 @@ export {
   type DetectSeverity,
 } from './detect';
 export { photoPlan } from './photo-frame';
+export {
+  parseCoordinate,
+  registerPlaceSource,
+  type Place,
+  type PlaceKind,
+  type PlaceSource,
+} from './places';
 export { SUGGESTIONS } from './suggestions';

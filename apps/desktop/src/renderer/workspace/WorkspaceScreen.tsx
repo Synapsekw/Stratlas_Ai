@@ -16,6 +16,7 @@ import { RoadSetupCard } from '../road/RoadSetup';
 import { useIsRoad } from '../road/useRoadMap';
 import { NoProject } from '../screens/NoProject';
 import { AgentFixCard } from './AgentFixCard';
+import { agentWindow } from './agentWindow';
 import { SelectionCard } from './SelectionCard';
 import { Stage } from './Stage';
 import { toggleTimeline, useTimelineShown } from './timelinePref';
@@ -193,7 +194,9 @@ function ContextPanel() {
 
 export function WorkspaceScreen() {
   const hasProject = useWorkspace((s) => s.project !== null);
-  const focused = useWorkspace((s) => s.focusedWindow);
+  const focusedWindow = useWorkspace((s) => s.focusedWindow);
+  const stageMode = useShell((s) => s.stageMode);
+  const focused = agentWindow(focusedWindow, stageMode);
   const rightCollapsed = useShell((s) => s.rightCollapsed);
   const pkg = useShell((s) => s.pkg);
   const road = useIsRoad();
@@ -232,7 +235,7 @@ export function WorkspaceScreen() {
             </p>
           ) : (
             <AgentPanel
-              window={focused ?? 'scene3d'}
+              window={focused}
               className="agent-host"
               renderFix={(controls) => <AgentFixCard {...controls} />}
             />

@@ -1,3 +1,4 @@
+import { registerAppHooks } from '@aio/ai';
 import {
   AnnotationToolbar,
   SightingPicker,
@@ -590,6 +591,18 @@ export function Stage() {
           shell.getState().go('media');
       }),
     [],
+  );
+
+  // The agent's camera tools: what the stage shows, and the 3D view for 3D-only moves.
+  useEffect(
+    () =>
+      registerAppHooks({
+        stageView: () => ({ show3d, showMap }),
+        show3d: () => {
+          if (!show3d) shell.getState().setStageMode('3d');
+        },
+      }),
+    [show3d, showMap],
   );
 
   // Leaving and returning to Scene keeps the camera, per project.

@@ -17,16 +17,73 @@ export interface ToolSpec {
 const SPATIAL: WindowKind[] = ['scene3d', 'map', 'pointcloud'];
 const TIMED: WindowKind[] = ['scene3d', 'map', 'video', 'pointcloud'];
 
-/** An asset, an issue or a point in the project local frame (metres, Y up, X east, Z south). */
+/**
+ * Where something is: a named place (fuzzy), an asset, an issue, a photo, panorama or clip (its
+ * camera), or a coordinate in WGS84, the project CRS or the local frame (metres, Y up, X east,
+ * Z south).
+ */
 export const Target = z.discriminatedUnion('kind', [
   z.object({
-    kind: z.literal('asset'),
-    id: z.string().min(1).describe('Asset tag, e.g. 20-T-0002'),
+    kind: z.literal('place'),
+    name: z
+      .string()
+      .min(1)
+      .describe(
+        'A name or id from find_places ("tank 3", "jetty", "asset:20-T-0003", "km 12.4") or a coordinate written as text ("29.07N 48.08E")',
+      ),
   }),
-  z.object({ kind: z.literal('issue'), id: z.string().min(1).describe('Issue id or code') }),
-  z.object({ kind: z.literal('point'), p: Vec3.describe('[x, y, z] in metres, local frame') }),
+  z.object({
+    kind: z.literal('asset'),
+    id: z.string().min(1).describe('Asset tag or name, e.g. 20-T-0002; matched fuzzily'),
+  }),
+  z.object({
+    kind: z.literal('issue'),
+    id: z.string().min(1).describe('Issue code or id, e.g. F05'),
+  }),
+  z.object({ kind: z.literal('photo'), id: z.string().min(1).describe('Photo id') }),
+  z.object({ kind: z.literal('pano'), id: z.string().min(1).describe('Panorama id') }),
+  z.object({
+    kind: z.literal('clip'),
+    id: z.string().min(1).optional().describe('Clip id or name; default the clip flying at `at`'),
+    at: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('Time: HH:MM or HH:MM:SS site time (as in clip names), or ISO 8601 UTC'),
+    atSeconds: z.number().nonnegative().optional().describe('Seconds into the clip'),
+  }),
+  z.object({
+    kind: z.literal('latlon'),
+    lat: z.number().min(-90).max(90),
+    lon: z.number().min(-180).max(180),
+    h: z.number().optional().describe('Height in the project datum; default the ground'),
+  }),
+  z.object({
+    kind: z.literal('en'),
+    e: z.number().describe('Easting in the project CRS'),
+    n: z.number().describe('Northing in the project CRS'),
+    h: z.number().optional().describe('Elevation in the project datum; default the ground'),
+  }),
+  z.object({
+    kind: z.literal('point'),
+    p: Vec3.describe('[x, y, z] in metres, local frame; only from a tool result, never guessed'),
+  }),
 ]);
 export type Target = z.infer<typeof Target>;
+
+const PlaceKindInput = z.enum([
+  'asset',
+  'group',
+  'layer',
+  'issue',
+  'photo',
+  'pano',
+  'clip',
+  'pile',
+  'chainage',
+]);
+export const ViewDirection = z.enum(['top', 'north', 'south', 'east', 'west', 'oblique']);
+export type ViewDirection = z.infer<typeof ViewDirection>;
 
 const Status = z.enum(['draft', 'reviewed', 'approved', 'closed']);
 const SelectionKind = z.enum(['asset', 'issue', 'clip', 'photo', 'layer', 'pano']);
@@ -77,12 +134,79 @@ export const toolInputs = {
       fromSeconds: z.number().nonnegative().optional(),
     })
     .strict(),
+  find_places: z
+    .object({
+      query: z
+        .string()
+        .max(200)
+        .default('')
+        .describe('Words to match: tag, name, area, issue code, photo id, "km 12.4"'),
+      kinds: z.array(PlaceKindInput).optional().describe('Only these kinds of place'),
+      near: Target.optional().describe('Sort by distance from this place'),
+      radiusM: z.number().positive().max(20000).optional().describe('With near: only this close'),
+      limit: z.number().int().positive().max(50).default(10),
+    })
+    .strict(),
   fly_to: z
     .object({
       target: Target,
-      distanceM: z.number().positive().max(10000).optional(),
+      view: ViewDirection.optional().describe(
+        'Side the camera looks from: top (straight down), north (camera north of the target), south, east, west, oblique (from the current side, 35 degrees down). Default: the current side; eye for photos, panoramas and clips',
+      ),
+      distanceM: z
+        .number()
+        .positive()
+        .max(20000)
+        .optional()
+        .describe('Camera distance from the target; default: fit the target'),
+      open3d: z
+        .boolean()
+        .optional()
+        .describe('Switch a Map-only stage to the 3D view; default false (the map pans)'),
     })
     .strict(),
+  set_view: z
+    .object({
+      view: z
+        .enum(['home', 'top', 'north', 'south', 'east', 'west', 'front', 'side', 'iso'])
+        .describe('home: the start view. front is from the south, side from the east'),
+      target: Target.optional().describe('Look at this place; default the whole site'),
+    })
+    .strict(),
+  orbit: z
+    .object({
+      yawDeg: z
+        .number()
+        .min(-360)
+        .max(360)
+        .default(0)
+        .describe('Turn around the target; positive turns the camera clockwise seen from above'),
+      pitchDeg: z
+        .number()
+        .min(-90)
+        .max(90)
+        .default(0)
+        .describe('Raise (positive) or lower the camera around the target'),
+      target: Target.optional().describe('Orbit around this place; default the current target'),
+    })
+    .strict(),
+  zoom: z
+    .object({
+      factor: z
+        .number()
+        .positive()
+        .max(100)
+        .optional()
+        .describe('Above 1 zooms in (2 halves the distance), below 1 zooms out'),
+      distanceM: z.number().positive().max(20000).optional().describe('Distance to the target'),
+    })
+    .strict()
+    .refine(
+      (v) => (v.factor === undefined) !== (v.distanceM === undefined),
+      'Give factor or distanceM',
+    ),
+  look_at: z.object({ target: Target }).strict(),
+  frame_all: z.object({}).strict(),
   // Providers need an object at the top of a tool schema, so no top-level union here.
   select: z
     .object({
@@ -212,13 +336,67 @@ const BUILT_IN: ToolSpec[] = [
     },
     true,
   ),
+  spec('find_places', {
+    description:
+      'Search what the camera can fly to: tagged assets and component groups (areas), layers, issues, photos, panoramas, clips, stockpiles and road chainage. Fuzzy and case-insensitive. Returns ids, names, kind, position (local, easting and northing, latitude and longitude) and size. Use it before fly_to when you do not have an exact id.',
+    scope: 'project',
+    risk: 'read',
+  }),
   spec(
     'fly_to',
     {
-      description: 'Fly the 3D camera to an asset, an issue or a point.',
+      description:
+        'Fly the camera to a place: a name or id from find_places, an asset, an issue, a photo, panorama or clip (to the camera that took it), or a coordinate (latitude and longitude, easting and northing). Frames the place, optionally from a side or at a distance. Works in the 3D view and on the map (the map pans). Returns where the camera is now.',
       scope: 'project',
       risk: 'navigate',
-      windows: [...SPATIAL, 'issues'],
+    },
+    true,
+  ),
+  spec(
+    'set_view',
+    {
+      description:
+        'Standard views: home, top (plan), north, south, east, west, front, side, iso; of the whole site or of a place.',
+      scope: 'project',
+      risk: 'navigate',
+    },
+    true,
+  ),
+  spec(
+    'orbit',
+    {
+      description:
+        'Turn the 3D camera around its target (or a place) by yaw and pitch degrees, keeping the distance.',
+      scope: 'project',
+      risk: 'navigate',
+    },
+    true,
+  ),
+  spec(
+    'zoom',
+    {
+      description:
+        'Move the camera closer to or further from its target: by a factor or to a distance in metres.',
+      scope: 'project',
+      risk: 'navigate',
+    },
+    true,
+  ),
+  spec(
+    'look_at',
+    {
+      description: 'Keep the camera where it is and turn it to look at a place.',
+      scope: 'project',
+      risk: 'navigate',
+    },
+    true,
+  ),
+  spec(
+    'frame_all',
+    {
+      description: 'Zoom out to show the whole site (everything visible).',
+      scope: 'project',
+      risk: 'navigate',
     },
     true,
   ),

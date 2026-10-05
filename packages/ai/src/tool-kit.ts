@@ -5,9 +5,8 @@
 import type { SceneHandle } from '@aio/engine';
 import type { Issue, Layer, Vec3, WindowKind } from '@aio/schema';
 import type { Workspace } from '@aio/workspace';
-import { Box3, Vector3 } from 'three';
 import type { StoreApi } from 'zustand/vanilla';
-import { getToolSpec, toolInputs, type Target, type ToolInput, type ToolName } from './tools';
+import { getToolSpec, toolInputs, type ToolInput, type ToolName } from './tools';
 
 export interface RendererToolContext {
   workspace: StoreApi<Workspace>;
@@ -39,6 +38,10 @@ export interface AppHooks {
   openReview?: (layerId: string) => void;
   /** A dedicated issue exporter (the exports stream). The tool falls back to CSV when absent. */
   exportIssues?: (issues: readonly Issue[], format: 'csv') => Promise<SaveResult>;
+  /** What the stage shows now: the 3D view, the map, or both (split). */
+  stageView?: () => { show3d: boolean; showMap: boolean };
+  /** Show the 3D view (a Map-only stage switches to 3D). */
+  show3d?: () => void;
 }
 
 export const appHooks: AppHooks = {};
@@ -180,29 +183,6 @@ export function assetRef(
   return null;
 }
 
-export function assetPoint(ctx: RendererToolContext, id: string): Vec3 {
-  const ref = assetRef(ctx, id);
-  const scene = ctx.scene();
-  if (!scene) {
-    throw new ToolError(
-      `Open the 3D view to locate asset "${id}", or give a point or an issue instead.`,
-    );
-  }
-  const obj = scene.scene.getObjectByName(ref?.node ?? id);
-  if (!obj) throw new ToolError(`No asset "${id}" in the 3D scene.`);
-  const c = new Box3().setFromObject(obj).getCenter(new Vector3());
-  return [c.x, c.y, c.z];
-}
-
-export function targetPoint(ctx: RendererToolContext, t: Target): Vec3 {
-  if (t.kind === 'point') return t.p;
-  if (t.kind === 'asset') return assetPoint(ctx, t.id);
-  const issue = findIssue(ctx, t.id);
-  const p = issuePoint(issue);
-  if (!p) throw new ToolError(`Issue ${issue.code} has no 3D location.`);
-  return p;
-}
-
 export function issueRow(i: Issue) {
   return {
     id: i.id,
@@ -218,17 +198,4 @@ export function issueRow(i: Issue) {
 
 export function severityRank(s: Issue['severity']): number {
   return s === 'uncertain' ? -1 : s;
-}
-
-export function cameraUndo(ctx: RendererToolContext): (() => void) | undefined {
-  const scene = ctx.scene();
-  if (!scene) return undefined;
-  const pos = scene.camera.position.clone();
-  const quat = scene.camera.quaternion.clone();
-  return () => {
-    scene.camera.position.copy(pos);
-    scene.camera.quaternion.copy(quat);
-    scene.camera.updateMatrixWorld();
-    scene.requestRender();
-  };
 }
