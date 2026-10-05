@@ -10,7 +10,7 @@ export {
   onActiveScene,
 } from './registry';
 export { SceneView, type SceneViewProps } from './SceneView';
-export { configureEngine, type EngineConfig } from './config';
+export { configureEngine, type EngineConfig, type EngineText, type EngineTextKey } from './config';
 export { registerEngineAdapters } from './adapters/register';
 export {
   createPhotosAdapter,

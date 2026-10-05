@@ -3,6 +3,7 @@ import { setFlightPoses } from '@aio/annotate';
 import { configureEngine, getActiveStage, registerEngineAdapters } from '@aio/engine';
 import { captureMap, registerMapAdapters } from '@aio/maps';
 import { pointcloudSettings, registerPointcloudAdapters } from '@aio/pointcloud';
+import { t } from '@aio/ui';
 import { loadFlight, registerVideoAdapters, videoRig } from '@aio/video';
 import { volumetric } from '@aio/volumetric';
 import { assetUrl, workspace, type OpenProject } from '@aio/workspace';
@@ -45,7 +46,12 @@ function shareFlightPoses(project: OpenProject | null) {
 export function bootstrap(): void {
   if (started) return;
   started = true;
-  configureEngine({ resolveUrl: assetUrl, devTools: import.meta.env.DEV });
+  configureEngine({
+    resolveUrl: assetUrl,
+    devTools: import.meta.env.DEV,
+    // marker tooltips and lists speak the app's language
+    text: (key, vars) => t(key, vars),
+  });
   // GPU tier: pixel ratio, shadows, point budget and EDL before the first stage exists
   graphics().getState().apply();
   registerEngineAdapters();

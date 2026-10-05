@@ -13,15 +13,13 @@ import {
   MeshBasicMaterial,
   Quaternion,
   Raycaster,
-  Sprite,
-  SpriteMaterial,
   Vector2,
   Vector3,
 } from 'three';
 import type { StoreApi } from 'zustand/vanilla';
 import { PALETTE } from '../palette';
 import type { LayerAdapter, LayerHandle } from '../types';
-import { MARKER_GLYPH, markerTexture } from './marker';
+import { MarkerLayer } from './markers';
 
 type PhotosLayer = Extract<Layer, { kind: 'photos' }>;
 export type PosedPhoto = PhotoRef & {
@@ -169,18 +167,19 @@ export function photoMatrix(p: PosedPhoto, depth: number, out = new Matrix4()): 
   );
 }
 
-/** Pin size as a share of the viewport height (sprites without size attenuation), as panoramas. */
-const PIN = 0.034;
-const PIN_HOVER = 0.042;
+/** Photos taken within this many metres of each other share one marker (one per place). */
+export const STATION_M = 1.5;
 const BASE = new Color(PALETTE.hover);
 const SELECTED = new Color(PALETTE.acc);
 
 /**
  * `photos` layers: every posed photo as a small camera frustum. One merged line draw for the
- * outlines and one instanced mesh for the image planes, which is also what clicks hit. Where the
- * frustums would be lost at the scale of the scene (a few photos over a site) every station gets
- * a pin with a stem to the ground, as panoramas do; photos with a position but no orientation
- * always get one. A click on a frustum or pin selects the photo in the workspace
+ * outlines and one instanced mesh for the image planes, which is also what clicks hit. Every place
+ * photos were taken from gets one marker (photos within STATION_M share it; icons that would
+ * overlap on screen merge with a count, see MarkerLayer); where the frustums would be lost at the
+ * scale of the scene (a few photos over a site) the places also get a stem to the ground. A click
+ * on a frustum or a single marker selects the photo in the workspace; a merged marker lists its
+ * photos
  * (`{ kind: 'photo', id, layer }`); the selected photo is drawn in the accent colour.
  */
 export function createPhotosAdapter(
@@ -254,39 +253,19 @@ export function createPhotosAdapter(
       planes.renderOrder = 4;
       group.add(ghost, lines, planes);
 
-      // pins: a marker per station (photos shot from one hover point) with a stem to the ground,
-      // drawn over everything at a fixed screen size, where frustums alone would be lost (a few
-      // photos over a site) and for photos with a position but no orientation
-      const stations = photoStations(located, depth);
-      const pinAll = needsPins(stations, depth);
-      const pinned = stations.filter(
-        (st) => pinAll || st.photos.some((i) => located[i]?.q === undefined),
-      );
-      const texOff = pinned.length ? markerTexture(MARKER_GLYPH.photo, false) : null;
-      const texOn = pinned.length ? markerTexture(MARKER_GLYPH.photo, true) : null;
-      const pins = pinned.map((st, i) => {
-        const pin = new Sprite(
-          new SpriteMaterial({
-            map: texOff,
-            color: texOff ? 0xffffff : PALETTE.hover,
-            depthTest: false,
-            depthWrite: false,
-            sizeAttenuation: false,
-            transparent: true,
-          }),
-        );
-        pin.position.set(...st.pos);
-        pin.scale.set(PIN, PIN, 1);
-        pin.renderOrder = 30;
-        pin.userData.pinIndex = i;
-        pin.name = `photo-pin:${located[st.photos[0] ?? 0]?.id ?? i}`;
-        return pin;
-      });
+      // markers: one icon per place (photos taken within STATION_M of each other), merged further
+      // on screen where icons would overlap, with a count; sparse sets get a stem to the ground
+      const stations = photoStations(located, STATION_M);
+      const stemmed = needsPins(photoStations(located, depth), depth)
+        ? stations
+        : stations.filter((st) => st.photos.some((i) => located[i]?.q === undefined));
       const stemGeo = new BufferGeometry();
       stemGeo.setAttribute(
         'position',
         new BufferAttribute(
-          new Float32Array(pinned.flatMap(({ pos: [x, y, z] }) => [x, y, z, x, Math.min(0, y), z])),
+          new Float32Array(
+            stemmed.flatMap(({ pos: [x, y, z] }) => [x, y, z, x, Math.min(0, y), z]),
+          ),
           3,
         ),
       );
@@ -294,25 +273,39 @@ export function createPhotosAdapter(
       const stemMat = new LineBasicMaterial({
         color: PALETTE.hover,
         transparent: true,
-        opacity: 0.35,
+        opacity: 0.3,
         depthWrite: false,
       });
       const stems = new LineSegments(stemGeo, stemMat);
+      stems.name = 'photo-stems';
       stems.renderOrder = 3;
-      if (pins.length) group.add(stems, ...pins);
+      if (stemmed.length) group.add(stems);
       scene.scene.add(group);
 
-      let hoveredPin = -1;
-      let selectedPin = -1;
-      const paintPin = (i: number) => {
-        const pin = pins[i];
-        if (!pin) return;
-        const on = i === hoveredPin || i === selectedPin;
-        pin.material.map = on ? texOn : texOff;
-        pin.material.color.set(texOff ? 0xffffff : on ? PALETTE.acc : PALETTE.hover);
-        const k = i === hoveredPin ? PIN_HOVER : PIN;
-        pin.scale.set(k, k, 1);
+      const selectedIds = new Set<number>();
+      const select = (i: number) => {
+        const p = located[i];
+        if (p) store.getState().select({ kind: 'photo', id: p.id, layer: layer.id });
       };
+      const markers = new MarkerLayer({
+        scene,
+        kind: 'photo',
+        sites: stations.map((st) => ({ pos: st.pos, members: st.photos })),
+        member: (i) => {
+          const p = located[i];
+          const full = p ? ctx.url(p.src) : undefined;
+          return {
+            id: p?.id ?? '',
+            takenAt: p?.takenAt,
+            full,
+            thumb: full?.startsWith('aio://project/')
+              ? full.replace(/^aio:\/\/project\//, 'aio://thumb/')
+              : undefined,
+          };
+        },
+        open: select,
+        selected: () => selectedIds,
+      });
 
       // selection highlight
       let selected = -1;
@@ -320,14 +313,9 @@ export function createPhotosAdapter(
         const s = store.getState().selection;
         const mine = s?.kind === 'photo' && (s.layer === undefined || s.layer === layer.id);
         const j = mine ? located.findIndex((p) => p.id === s.id) : -1;
-        const pin = j >= 0 ? pinned.findIndex((st) => st.photos.includes(j)) : -1;
-        if (pin !== selectedPin) {
-          const was = selectedPin;
-          selectedPin = pin;
-          paintPin(was);
-          paintPin(pin);
-          scene.requestRender();
-        }
+        selectedIds.clear();
+        if (j >= 0) selectedIds.add(j);
+        markers.refresh();
         const i = mine ? photos.findIndex((p) => p.id === s.id) : -1;
         if (i === selected) return;
         if (selected >= 0) planes.setColorAt(selected, BASE);
@@ -341,55 +329,11 @@ export function createPhotosAdapter(
         if (s.selection !== prev.selection) paint();
       });
 
-      // clicks: the nearest image plane in front of any other content
+      // clicks on a frustum: the nearest image plane in front of any other content (the markers
+      // claim their own clicks)
       const el = scene.renderer.domElement;
       const rc = new Raycaster();
       let down: { x: number; y: number } | null = null;
-      const ndc = (e: PointerEvent): [number, number] => {
-        const r = el.getBoundingClientRect();
-        return [
-          ((e.clientX - r.left) / r.width) * 2 - 1,
-          -((e.clientY - r.top) / r.height) * 2 + 1,
-        ];
-      };
-      /** Index of the pin under a pointer (pins draw over everything), or -1. */
-      const pickPin = (x: number, y: number): number => {
-        if (!pins.length || !group.visible) return -1;
-        rc.setFromCamera(new Vector2(x, y), scene.camera);
-        const i = rc.intersectObjects(pins, false)[0]?.object.userData.pinIndex as
-          number | undefined;
-        return i ?? -1;
-      };
-      let hoverRaf = 0;
-      let hoverEvent: PointerEvent | null = null;
-      const onMove = (e: PointerEvent) => {
-        if (!pins.length || e.pointerType !== 'mouse' || e.buttons !== 0) return;
-        hoverEvent = e;
-        if (hoverRaf) return;
-        // after the stage's own hover frame, so the pin cursor wins
-        hoverRaf = requestAnimationFrame(() => {
-          hoverRaf = 0;
-          const ev = hoverEvent;
-          if (!ev) return;
-          const i = pickPin(...ndc(ev));
-          if (i !== hoveredPin) {
-            const was = hoveredPin;
-            hoveredPin = i;
-            paintPin(was);
-            paintPin(i);
-            scene.requestRender();
-          }
-          if (i >= 0) el.style.cursor = 'pointer';
-        });
-      };
-      const onLeave = () => {
-        hoverEvent = null;
-        if (hoveredPin < 0) return;
-        const was = hoveredPin;
-        hoveredPin = -1;
-        paintPin(was);
-        scene.requestRender();
-      };
       const onDown = (e: PointerEvent) => {
         down = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
       };
@@ -398,13 +342,10 @@ export function createPhotosAdapter(
         down = null;
         if (!d || !group.visible || Math.hypot(e.clientX - d.x, e.clientY - d.y) > CLICK_SLOP_PX)
           return;
-        const [x, y] = ndc(e);
-        const station = pinned[pickPin(x, y)];
-        const first = station && located[station.photos[0] ?? -1];
-        if (first) {
-          store.getState().select({ kind: 'photo', id: first.id, layer: layer.id });
-          return;
-        }
+        if (markers.hits(e.clientX, e.clientY)) return;
+        const r = el.getBoundingClientRect();
+        const x = ((e.clientX - r.left) / r.width) * 2 - 1;
+        const y = -((e.clientY - r.top) / r.height) * 2 + 1;
         rc.setFromCamera(new Vector2(x, y), scene.camera);
         const hit = rc.intersectObject(planes, false)[0];
         if (hit?.instanceId === undefined) return;
@@ -416,26 +357,20 @@ export function createPhotosAdapter(
       };
       el.addEventListener('pointerdown', onDown);
       el.addEventListener('pointerup', onUp);
-      el.addEventListener('pointermove', onMove);
-      el.addEventListener('pointerleave', onLeave);
       scene.requestRender();
 
       return Promise.resolve({
         setVisible(visible: boolean) {
           group.visible = visible;
+          markers.setVisible(visible);
           scene.requestRender();
         },
         dispose() {
           unsub();
+          markers.dispose();
           el.removeEventListener('pointerdown', onDown);
           el.removeEventListener('pointerup', onUp);
-          el.removeEventListener('pointermove', onMove);
-          el.removeEventListener('pointerleave', onLeave);
-          cancelAnimationFrame(hoverRaf);
           scene.scene.remove(group);
-          for (const pin of pins) pin.material.dispose();
-          texOff?.dispose();
-          texOn?.dispose();
           stemGeo.dispose();
           stemMat.dispose();
           lineGeo.dispose();
