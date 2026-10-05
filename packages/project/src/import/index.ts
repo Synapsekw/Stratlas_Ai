@@ -6,6 +6,14 @@ export * from './image';
 export * from './package';
 export * from './writer';
 export * from './report';
+export * from './orientation';
+export {
+  reorientPhotos,
+  indexOriginals,
+  type ReorientOptions,
+  type ReorientPlan,
+  type PlannedTurn,
+} from './reorient';
 export { importHcl, type ImportOptions, type ImportResult } from './hcl';
 export {
   importAlzour,

@@ -21,7 +21,8 @@
     "import:ebsm": "jiti ../../tools/import/ebsm.mjs",
     "import:damac": "jiti ../../tools/import/damac.mjs",
     "import:masafi": "jiti ../../tools/import/masafi.mjs",
-    "import:ringroad": "jiti ../../tools/import/ringroad.mjs"
+    "import:ringroad": "jiti ../../tools/import/ringroad.mjs",
+    "reorient:photos": "jiti ../../tools/import/reorient-photos.mjs"
   },
   "dependencies": {
     "@aio/geo": "workspace:*",
