@@ -1258,6 +1258,9 @@ export class Stage implements EngineStage {
     this.measureTool.dispose();
     this.env.dispose();
     this.renderer.dispose();
+    // Geometry and textures shared with another stage (comparing dates) still hold this
+    // renderer's dispose listeners; losing the context frees its GPU copies now.
+    (this.renderer as Partial<WebGLRenderer>).forceContextLoss?.();
     this.canvas.remove();
     this.frameCbs.clear();
     this.providers.clear();

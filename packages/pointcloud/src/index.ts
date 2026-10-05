@@ -23,6 +23,7 @@ export {
   type PointcloudAdapterOptions,
 } from './adapter';
 export { pickPoint, type PointPick } from './pick';
+export { budgetShareOf, setBudgetShare, splitBudget } from './budgetShare';
 export {
   BUDGETS,
   COLOUR_MODES,

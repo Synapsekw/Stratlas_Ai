@@ -212,3 +212,13 @@ The house-format project report (`house-pdf`, BLD-8) is printed from `apps/deskt
 - `source` says where a version came from: `ai` (with `provider` and `model`), `template` (cloud AI off: statistics filled in, judgement left as `[bracketed]` prompts the report highlights) or `user`.
 - Written only through IPC `report:writeNarrative` (atomic replace with `.bak`); a `.aio` package carries the file and the app reads it in place, read only.
 - The AI draft sends the project statistics only (counts, labels, dates, severity scale, volumes and PCI figures; no photos, positions or notes) on the `report` route with `ai:draftText`, after the AI-6 preview of the exact instructions and request.
+
+## 13. Layers of a capture (comparing dates)
+
+The split compares two survey dates (two 3D views, maps or orthos, one capture each) in any project whose manifest lists two or more `captures` with layers of their own. Which layer shows which capture (`@aio/workspace` `captureIndex`, no schema change):
+
+1. Explicit lists first: volumetric projects take `volumes.json` `captures[].layers` (or the survey layers of section 10), keyed by `captureId`.
+2. Else a mesh, point cloud, raster, photo, panorama, video or vector layer belongs to the one capture whose id, or whose date, its id or name carries as a whole token (`2020-12-31`, `20201231`, `31 Dec 2020`, `December 31, 2020`, ...), or (meshes) whose survey key ends every tagged node (`P01_e1`).
+3. A layer that names no capture, or several, is common to every date (site models, plans, basemaps, legacy viewers).
+
+Layers of different dates whose names differ only by the date are counterparts (`Terrain 31 Dec 2020` and `Terrain 10 Jan 2021`): the view of one date shows its own counterpart where the layer tree shows any of them, a component selected on one date is outlined on the other (`P05_e2` on 10 Jan is `P05_e1` on 31 Dec), and the ortho pane keeps the same raster across dates. Builders that name layers by capture date (as `volumetric.build` does) get the comparison for free.

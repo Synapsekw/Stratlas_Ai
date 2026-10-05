@@ -1,6 +1,7 @@
 import type { AioBridge } from '@aio/schema';
-import { workspace } from '@aio/workspace';
+import { workspace, type Workspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
+import type { StoreApi } from 'zustand/vanilla';
 import { setActiveMap } from './capture';
 import { MAP_SURFACE } from './ink';
 import type { IssueColorBy, MapController } from './controller';
@@ -24,6 +25,15 @@ export interface MapViewProps {
   issueColorBy?: IssueColorBy;
   /** Show the 3D camera's view wedge (default true). */
   cameraWedge?: boolean;
+  /**
+   * The workspace the map follows (default: the app's). A map of one survey date passes a scoped
+   * view of it (`scopedStore`). Read when the map starts.
+   */
+  store?: StoreApi<Workspace>;
+  /** The map frame capture and the agent use this map (default true); a second map passes false. */
+  primary?: boolean;
+  /** Called with the controller once the map runs and with null when it goes (linked views). */
+  onController?: (controller: MapController | null) => void;
 }
 
 type Status = 'loading' | 'ready' | 'no-packs' | 'error';
@@ -51,8 +61,16 @@ export function MapView({
   issueFilter = null,
   issueColorBy = 'severity',
   cameraWedge = true,
+  store,
+  primary = true,
+  onController,
 }: MapViewProps) {
   const ref = useRef<HTMLDivElement>(null);
+  // read when the map starts; later changes do not restart it
+  const init = useRef({ store, primary, onController });
+  useEffect(() => {
+    init.current.onController = onController;
+  }, [onController]);
   const [status, setStatus] = useState<Status>('loading');
   // The controller reads the latest seam on each click.
   const drawRef = useRef<MapDrawSeam | null>(draw ?? null);
@@ -92,6 +110,8 @@ export function MapView({
     const life: { disposed: boolean; ctl: MapController | null; observer: ResizeObserver | null } =
       { disposed: false, ctl: null, observer: null };
     const gone = () => life.disposed;
+    // one object for the map's life; its onController follows the latest prop
+    const cfg = init.current;
     setStatus('loading');
     void (async () => {
       try {
@@ -106,14 +126,15 @@ export function MapView({
         if (gone()) return;
         const ctl = createMapController(el, {
           packs,
-          store: workspace,
+          store: cfg.store ?? workspace,
           showFlights,
           draw: () => drawRef.current,
           issues: () => issuesRef.current,
         });
         life.ctl = ctl;
         ctlRef.current = ctl;
-        setActiveMap(ctl);
+        if (cfg.primary) setActiveMap(ctl);
+        cfg.onController?.(ctl);
         setStarted((n) => n + 1);
         life.observer = new ResizeObserver(() => {
           ctl.resize();
@@ -128,7 +149,10 @@ export function MapView({
     return () => {
       life.disposed = true;
       ctlRef.current = null;
-      if (life.ctl) setActiveMap(null);
+      if (life.ctl) {
+        cfg.onController?.(null);
+        if (cfg.primary) setActiveMap(null);
+      }
       life.observer?.disconnect();
       life.ctl?.dispose();
     };

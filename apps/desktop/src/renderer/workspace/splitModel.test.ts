@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  blockedFor,
+  chooseCapture,
   chooseSide,
+  compareSplit,
   DEFAULT_SPLIT,
+  sideCapture,
+  sidesOf,
+  twinAllowed,
   levelFor,
   paneOptions,
   parsePyramid,
@@ -76,6 +82,114 @@ describe('what each side of the split shows', () => {
     });
     expect(parseSplitPref({ left: 'video', right: 'tv' })).toBeNull();
     expect(parseSplitPref('3d')).toBeNull();
+  });
+});
+
+describe('comparing two survey dates in the split', () => {
+  const dates = { captures: ['d1', 'd2', 'd3'] };
+  const masafi = [{ kind: 'mesh' }, { kind: 'raster' }] as const;
+  const options = paneOptions(masafi, 0);
+
+  it('puts the 3D view at most once per date: twice for two dates, never twice for one', () => {
+    expect(twinAllowed('3d', dates)).toBe(true);
+    expect(twinAllowed('map', dates)).toBe(true);
+    expect(twinAllowed('raster', dates)).toBe(true);
+    expect(twinAllowed('video', dates)).toBe(false);
+    expect(twinAllowed('3d', { captures: ['d1'] })).toBe(false);
+    expect(twinAllowed('3d', undefined)).toBe(false);
+    // the Low graphics tier runs one 3D view
+    expect(twinAllowed('3d', { ...dates, twin3d: false })).toBe(false);
+    expect(twinAllowed('map', { ...dates, twin3d: false })).toBe(true);
+  });
+
+  it('opens compare with the first date on the left and the last on the right', () => {
+    const s = compareSplit(DEFAULT_SPLIT, '3d', dates);
+    expect(s).toEqual({ left: '3d', right: '3d', leftCapture: 'd1', rightCapture: 'd3' });
+    expect(resolveSplit(s, options, dates)).toEqual(s);
+    expect(sidesOf(s, '3d')).toEqual(['left', 'right']);
+    expect(blockedFor(s, 'left', dates)).toBeNull();
+  });
+
+  it('defaults both dates when none is remembered, never the same date twice', () => {
+    expect(resolveSplit({ left: 'map', right: 'map' }, options, dates)).toMatchObject({
+      leftCapture: 'd1',
+      rightCapture: 'd3',
+    });
+    expect(
+      resolveSplit(
+        { left: '3d', right: '3d', leftCapture: 'd2', rightCapture: 'd2' },
+        options,
+        dates,
+      ),
+    ).toMatchObject({ leftCapture: 'd2', rightCapture: 'd1' });
+    // a split of two different panes shows the latest survey on both
+    expect(resolveSplit(undefined, options, dates)).toMatchObject({
+      left: '3d',
+      right: 'map',
+      leftCapture: 'd3',
+      rightCapture: 'd3',
+    });
+    // a date the project no longer has falls back
+    expect(
+      resolveSplit(
+        { left: '3d', right: '3d', leftCapture: 'gone', rightCapture: 'd2' },
+        options,
+        dates,
+      ),
+    ).toMatchObject({ leftCapture: 'd1', rightCapture: 'd2' });
+  });
+
+  it('turns two 3D views back into 3D and map without a second date or on the Low tier', () => {
+    const s = compareSplit(DEFAULT_SPLIT, '3d', dates);
+    expect(resolveSplit(s, options)).toMatchObject({ left: '3d', right: 'map' });
+    expect(resolveSplit(s, options, { ...dates, twin3d: false })).toMatchObject({
+      left: '3d',
+      right: 'map',
+    });
+    expect(blockedFor(s, 'left', { ...dates, twin3d: false })).toBe('3d');
+  });
+
+  it('picks a free date when a side takes the pane the other shows', () => {
+    const s = { left: '3d' as const, right: 'map' as const, leftCapture: 'd3', rightCapture: 'd3' };
+    expect(chooseSide(s, 'right', '3d', dates)).toMatchObject({
+      left: '3d',
+      right: '3d',
+      leftCapture: 'd3',
+      rightCapture: 'd1',
+    });
+    expect(chooseSide(s, 'right', '3d')).toBe(s);
+  });
+
+  it('swaps the dates when a side picks the date the other shows', () => {
+    const s = compareSplit(DEFAULT_SPLIT, 'map', dates);
+    expect(chooseCapture(s, 'left', 'd3', dates)).toMatchObject({
+      leftCapture: 'd3',
+      rightCapture: 'd1',
+    });
+    expect(chooseCapture(s, 'left', 'd2', dates)).toMatchObject({
+      leftCapture: 'd2',
+      rightCapture: 'd3',
+    });
+    expect(sideCapture({ left: '3d', right: 'map' }, 'left', dates)).toBe('d3');
+    expect(sideCapture({ left: '3d', right: 'map' }, 'left', undefined)).toBeUndefined();
+  });
+
+  it('remembers two dates, and the link, but not the same pane twice on one date', () => {
+    expect(
+      parseSplitPref({
+        left: '3d',
+        right: '3d',
+        leftCapture: 'd1',
+        rightCapture: 'd3',
+        unlinked: true,
+      }),
+    ).toEqual({ left: '3d', right: '3d', leftCapture: 'd1', rightCapture: 'd3', unlinked: true });
+    expect(
+      parseSplitPref({ left: '3d', right: '3d', leftCapture: 'd1', rightCapture: 'd1' }),
+    ).toBeNull();
+    expect(
+      parseSplitPref({ left: 'video', right: 'video', leftCapture: 'd1', rightCapture: 'd2' }),
+    ).toBeNull();
   });
 });
 

@@ -1,12 +1,26 @@
-import { useWorkspace, workspace } from '@aio/workspace';
+import { useWorkspace, workspace, type Workspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
+import type { StoreApi } from 'zustand/vanilla';
 import { engineConfig } from './config';
 import { FONT_UI, PALETTE } from './palette';
 import { setActiveScene } from './registry';
 import { Stage } from './stage/Stage';
+import type { EngineStage } from './types';
 
 export interface SceneViewProps {
   className?: string;
+  /**
+   * The workspace the stage follows (default: the app's). A view of one survey date passes a
+   * scoped view of it (`scopedStore`). Read once, when the stage is created.
+   */
+  store?: StoreApi<Workspace>;
+  /**
+   * Publish the stage as the active scene that tools, the agent and the annotation work on
+   * (default true). A second 3D view (comparing dates) passes false.
+   */
+  primary?: boolean;
+  /** Called with the stage once it exists and with null when it goes. */
+  onStage?: (stage: EngineStage | null) => void;
 }
 
 /**
@@ -24,20 +38,28 @@ function webglAvailable(): boolean {
   }
 }
 
-export function SceneView({ className }: SceneViewProps) {
+export function SceneView({ className, store, primary = true, onStage }: SceneViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const [error] = useState<string | null>(() => (webglAvailable() ? null : NO_WEBGL));
   const project = useWorkspace((s) => s.project);
+  // read at creation: changing them later does not recreate the stage
+  const init = useRef({ store, primary, onStage });
+  useEffect(() => {
+    init.current.onStage = onStage;
+  }, [onStage]);
 
   useEffect(() => {
     const el = host.current;
     if (!el || error) return;
+    // one object for the stage's life; its onStage follows the latest prop
+    const cfg = init.current;
+    const { store: source, primary: publish } = cfg;
     let stage: Stage;
     try {
       const cfg = engineConfig();
       stage = new Stage({
         container: el,
-        store: workspace,
+        store: source ?? workspace,
         resolveUrl: cfg.resolveUrl,
         devTools: cfg.devTools,
       });
@@ -45,9 +67,11 @@ export function SceneView({ className }: SceneViewProps) {
       console.error('3D view could not start', e);
       return;
     }
-    setActiveScene(stage);
+    if (publish) setActiveScene(stage);
+    cfg.onStage?.(stage);
     return () => {
-      setActiveScene(null);
+      cfg.onStage?.(null);
+      if (publish) setActiveScene(null);
       stage.dispose();
     };
   }, [error]);
@@ -56,7 +80,7 @@ export function SceneView({ className }: SceneViewProps) {
     <div
       ref={host}
       className={className}
-      data-scene-view=""
+      data-scene-view={primary ? '' : 'compare'}
       style={{
         position: 'relative',
         overflow: 'hidden',

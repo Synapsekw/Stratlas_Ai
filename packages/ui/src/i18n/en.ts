@@ -388,6 +388,18 @@ export const en = {
   'stage.pane.loading': 'Loading',
   'stage.pane.rasterError': 'The raster could not be shown ({error}).',
   'stage.pane.fit': 'Fit the whole raster',
+  'stage.compare.button': 'Compare dates',
+  'stage.compare.leave': 'Stop comparing dates',
+  'stage.compare.leftDate': 'Survey date on the left',
+  'stage.compare.rightDate': 'Survey date on the right',
+  'stage.compare.dateTip': 'The survey this side shows',
+  'stage.compare.link': 'Link the two views',
+  'stage.compare.unlink': 'Unlink the two views',
+  'stage.compare.secondView': 'Second 3D view',
+  'stage.compare.lowTierSwipe':
+    'Two 3D views need more graphics memory than the Low tier allows. Showing a swipe between the dates instead.',
+  'stage.compare.lowTierMaps':
+    'Two 3D views need more graphics memory than the Low tier allows. Showing the two dates on maps instead.',
 
   // Scene stage: floating video window
   'stage.video.window': 'Video {name}',

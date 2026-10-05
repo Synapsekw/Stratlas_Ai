@@ -56,7 +56,7 @@ export {
   type PyramidIndex,
   type PyramidTile,
 } from './pyramid';
-export type { IssueColorBy } from './controller';
+export type { IssueColorBy, MapController } from './controller';
 
 /**
  * Registers the `basemap` ground adapter with @aio/engine: the offline street style rendered once

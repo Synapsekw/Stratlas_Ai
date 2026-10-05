@@ -30,6 +30,9 @@ export {
 } from './adapters/panoMath';
 export type { ViewPreset, CameraPose } from './camera/cameraMath';
 export { fitDistance, poseForPreset, frameBox, headingDeg } from './camera/cameraMath';
+export { CameraLink, sameView, type LinkableStage } from './camera/cameraLink';
+export { meshTemplates } from './adapters/mesh';
+export { SharedAssets, type Lease, type SharedStats } from './adapters/shared';
 export type { SectionState } from './tools/section';
 export { DEFAULT_SECTION } from './tools/section';
 export { PALETTE } from './palette';

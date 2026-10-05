@@ -15,6 +15,7 @@ import type { CopcNodeInfo, CopcPage, CopcSource } from './copc';
 import type { LasLayout } from './copcDecode';
 import { copcChunkSeeds } from './copcLayer';
 import type { Bounds3, Quantisation } from './decode';
+import { budgetShareOf } from './budgetShare';
 import { EdlPass } from './edl';
 import { robustHeightRange, type HeightSample, type HeightStats } from './heights';
 import {
@@ -166,6 +167,8 @@ export class CloudManager {
   /** Automatic elevation range; recomputed when `heightsDirty`. */
   private heights: HeightStats | null = null;
   private heightsDirty = true;
+  /** This scene's share of the point budget (1 unless a second 3D view shares it). */
+  private share = 1;
 
   constructor(
     readonly handle: SceneHandle,
@@ -293,6 +296,12 @@ export class CloudManager {
   private frame(): void {
     const now = performance.now();
     const s = this.settings.getState();
+    // a second 3D view takes part of the budget (budgetShare.ts)
+    const share = budgetShareOf(this.handle);
+    if (share !== this.share) {
+      this.share = share;
+      this.dirty = true;
+    }
     const cam = this.handle.camera;
     const r = this.handle.renderer;
     const buf = r.getDrawingBufferSize(this.bufferSize);
@@ -323,7 +332,7 @@ export class CloudManager {
         p.normal.z,
         p.constant,
       ]);
-      this.update([eye.x, eye.y, eye.z], s.budget, planes);
+      this.update([eye.x, eye.y, eye.z], s.budget * this.share, planes);
     } else if (moved) {
       // come back when the interval is up, even if the camera stops now
       this.handle.requestRender();
