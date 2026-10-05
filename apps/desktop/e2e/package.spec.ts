@@ -230,8 +230,11 @@ test.describe('HCl as a customer package', () => {
         await win.locator('.nav-item', { hasText: 'Issues' }).first().click();
         await expect(win.getByText('F05', { exact: true }).first()).toBeVisible();
         await win.getByText('F05', { exact: true }).first().click();
-        const detail = win.getByTestId('issue-detail');
+        // the issue card: no edit form in a package
+        const detail = win.getByTestId('issue-card');
         await expect(detail).toBeVisible();
+        await expect(detail).toHaveAttribute('data-issue', /.+/);
+        await expect(detail.locator('.ic-edit')).toHaveCount(0);
         await expect(detail.getByText('Delete issue')).toHaveCount(0);
         await expect(detail.locator('input, textarea, select')).toHaveCount(0);
         await shot(win, 'n4-04-issues');

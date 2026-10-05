@@ -115,6 +115,10 @@ test('the Ring Road opens in the native road workspace with its map overlays', a
   await expect(win.getByLabel('Density legend')).toBeVisible();
   await win.keyboard.press('d');
 
+  // Picking the defect opened its card on the Selection tab; back to the list for the filters.
+  await expect(win.getByTestId('issue-card')).toBeVisible();
+  await win.getByRole('tab', { name: /^Defects/ }).click();
+
   // Filters: only High severity.
   await win
     .getByRole('group', { name: 'Severity' })
