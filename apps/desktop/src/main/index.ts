@@ -10,6 +10,7 @@ import {
   PACKAGE_EXTENSION,
   type IpcChannel,
   type IpcEvent,
+  type ReportBrandingSettings,
   type Settings,
 } from '@aio/schema';
 import { Entry } from '@napi-rs/keyring';
@@ -416,16 +417,22 @@ function registerIpc(): void {
   handle('branding:setLogo', async ({ path }) => {
     const r = await importLogo(path, brandingDir());
     if (!r.ok) return r;
-    const before = (await settings.get()).reportBranding;
-    const next = await settings.set({ reportBranding: { ...before, logo: r.file } });
+    let before: ReportBrandingSettings | undefined;
+    const next = await settings.update((s) => {
+      before = s.reportBranding;
+      return { reportBranding: { ...before, logo: r.file } };
+    });
     if (before?.logo !== r.file) await removeLogo(brandingDir(), before?.logo);
     return { ok: true as const, settings: next };
   });
   handle('branding:clearLogo', async () => {
-    const before = (await settings.get()).reportBranding;
-    const rest = { ...before };
-    delete rest.logo;
-    const next = await settings.set({ reportBranding: rest });
+    let before: ReportBrandingSettings | undefined;
+    const next = await settings.update((s) => {
+      before = s.reportBranding;
+      const rest = { ...before };
+      delete rest.logo;
+      return { reportBranding: rest };
+    });
     await removeLogo(brandingDir(), before?.logo);
     return next;
   });

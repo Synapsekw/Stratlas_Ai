@@ -49,6 +49,11 @@ export interface SettingsStore {
   get(): Promise<Settings>;
   /** Merge a partial update (undefined fields are ignored), validate and persist it. */
   set(patch: IpcRequest<'settings:set'>): Promise<Settings>;
+  /**
+   * Read-modify-write: `change` sees the settings after every earlier update has been written,
+   * so concurrent callers (a typed field and a logo pick) never drop each other's change.
+   */
+  update(change: (current: Settings) => IpcRequest<'settings:set'>): Promise<Settings>;
   /** Last known settings, for synchronous callers such as the AI runtime. */
   current(): Settings;
 }
@@ -70,15 +75,26 @@ export function createSettingsStore(file: string, defaults: Settings): SettingsS
     return cache;
   }
 
+  async function apply(patch: IpcRequest<'settings:set'>): Promise<Settings> {
+    const given = Object.entries(patch).filter(([, v]) => v !== undefined);
+    const next = Settings.parse({ ...(await load()), ...Object.fromEntries(given) });
+    await writeJsonAtomic(file, next);
+    cache = next;
+    return next;
+  }
+
+  // Updates run one at a time: each reads what the previous one wrote.
+  let queue: Promise<unknown> = Promise.resolve();
+  function serial(job: () => Promise<Settings>): Promise<Settings> {
+    const run = queue.then(job, job);
+    queue = run.catch(() => undefined);
+    return run;
+  }
+
   return {
     get: load,
-    async set(patch) {
-      const given = Object.entries(patch).filter(([, v]) => v !== undefined);
-      const next = Settings.parse({ ...(await load()), ...Object.fromEntries(given) });
-      await writeJsonAtomic(file, next);
-      cache = next;
-      return next;
-    },
+    set: (patch) => serial(() => apply(patch)),
+    update: (change) => serial(async () => apply(change(await load()))),
     current: () => cache ?? defaults,
   };
 }

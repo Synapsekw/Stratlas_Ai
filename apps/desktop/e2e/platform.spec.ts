@@ -225,9 +225,11 @@ test('about lists the version, folders and licences, and refuses an unsigned ins
   await writeFile(fake, 'MZ not really an installer');
   await answerOpenDialog(app, fake);
   await win.getByRole('button', { name: 'Choose installer' }).click();
-  await expect(win.getByTestId('update-verdict')).toContainText(/not signed|not valid/, {
-    timeout: 30_000,
-  });
+  // Installing from a file is Windows only (Authenticode); macOS points to the .dmg instead.
+  await expect(win.getByTestId('update-verdict')).toContainText(
+    process.platform === 'win32' ? /not signed|not valid/ : /open the new \.dmg/,
+    { timeout: 30_000 },
+  );
   await expect(win.getByRole('button', { name: 'Install and restart' })).toHaveCount(0);
 
   // The online check is off by default and needs an address before it can run.

@@ -113,6 +113,26 @@ describe('settings store', () => {
     expect(next).toEqual({ ...defaults, sidebarCollapsed: true });
   });
 
+  it('keeps both of two updates made at the same time', async () => {
+    const store = createSettingsStore(file, defaults);
+    await Promise.all([store.set({ theme: 'light' }), store.set({ sidebarCollapsed: true })]);
+    const again = createSettingsStore(file, defaults);
+    expect(await again.get()).toEqual({ ...defaults, theme: 'light', sidebarCollapsed: true });
+  });
+
+  it('updates from the latest settings, after any save still being written', async () => {
+    const store = createSettingsStore(file, defaults);
+    const name = store.set({ reportBranding: { companyName: 'Synapse Solutions' } });
+    const logo = store.update((s) => ({
+      reportBranding: { ...s.reportBranding, logo: 'logo-a1b2c3.png' },
+    }));
+    await Promise.all([name, logo]);
+    expect((await store.get()).reportBranding).toEqual({
+      companyName: 'Synapse Solutions',
+      logo: 'logo-a1b2c3.png',
+    });
+  });
+
   it('exposes a synchronous snapshot after the first read', async () => {
     const store = createSettingsStore(file, defaults);
     await store.set({ cloudAi: true });
