@@ -1,4 +1,4 @@
-import { Icon } from '@aio/ui';
+import { Icon, shortcut } from '@aio/ui';
 import { TextLayer, type PDFDocumentProxy, type RenderTask } from 'pdfjs-dist';
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { openPdf } from './pdf';
@@ -473,7 +473,7 @@ export function PdfViewer({ url, title }: PdfViewerProps) {
           <input
             ref={searchBox}
             aria-label="Search in the PDF"
-            placeholder="Search (Ctrl F)"
+            placeholder={`Search (${shortcut('Ctrl F')})`}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);

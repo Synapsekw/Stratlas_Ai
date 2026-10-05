@@ -11,7 +11,7 @@ import {
 } from '@aio/ai';
 import { brand } from '@aio/brand';
 import type { AiProvider, AiTask } from '@aio/schema';
-import { Icon, SevChip, Switch, t, useT, type IconName, type MessageKey } from '@aio/ui';
+import { Icon, SevChip, shortcut, Switch, t, useT, type IconName, type MessageKey } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useState } from 'react';
 import { setAuthorName, useAuthor } from '../author';
@@ -162,7 +162,9 @@ function Graphics() {
       <div className="sblock">
         <h2>Graphics card</h2>
         <p className="help mono">{renderer ?? 'Not reported by the system'}</p>
-        <p className="help">Press Ctrl+Shift+F in the 3D view for frame rate and memory.</p>
+        <p className="help">
+          Press {shortcut('Ctrl+Shift+F')} in the 3D view for frame rate and memory.
+        </p>
       </div>
     </>
   );

@@ -45,7 +45,8 @@ function onKeyDown(e: KeyboardEvent) {
   if (mod && key === 'k') {
     e.preventDefault();
     s.setPalette(!s.paletteOpen);
-  } else if (mod && e.altKey && key === 'b') {
+  } else if (mod && e.altKey && (key === 'b' || e.code === 'KeyB')) {
+    // e.code: on macOS Option turns the key into another character (Option+B is "∫").
     e.preventDefault();
     s.toggleRight();
   } else if (mod && key === 'b') {
@@ -111,6 +112,15 @@ function openPackagesHandedOver(): () => void {
   });
   return window.aio.on('app:openPath', ({ path }) => {
     void shell.getState().openProject(path);
+  });
+}
+
+/** Application menu items (macOS Settings…, Help, Search Commands…). Returns unsubscribe. */
+function followMenu(): () => void {
+  return window.aio.on('app:menu', ({ action }) => {
+    const s = shell.getState();
+    if (action === 'settings') s.go('settings');
+    else s.setPalette(true);
   });
 }
 
@@ -195,6 +205,7 @@ export function App() {
     });
     const stopEvidence = startEvidenceSplit();
     const stopOpenPath = openPackagesHandedOver();
+    const stopMenu = followMenu();
     const stopRoad = startRoadSync();
     // A road survey opens map first.
     const stopRoadMode = roadStore.subscribe((s, prev) => {
@@ -206,6 +217,7 @@ export function App() {
     });
     return () => {
       stopOpenPath();
+      stopMenu();
       stopJobReload();
       stopIssueReload();
       stopRoad();

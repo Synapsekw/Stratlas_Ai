@@ -19,7 +19,6 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
-  Menu,
   nativeImage,
   nativeTheme,
   protocol,
@@ -65,7 +64,8 @@ import { buildSource, findLatestBuild } from './packs/pmtiles';
 import { createOnlineUpdater, type UpdaterLike } from './update/online';
 import { probeWithPowerShell, verifyInstaller } from './update/verify';
 import { OFFSCREEN_SWITCHES, offscreenOrigin, windowMode } from './windowMode';
-import { buildMenu } from './menu';
+import { installMenu } from './menu';
+import { linkPathFromArgv, parseAppLink } from './appLink';
 import { popupAction } from './popup';
 import {
   createPackageJobs,
@@ -163,7 +163,8 @@ const brandingDir = () => join(app.getPath('userData'), 'branding');
 const thumbsDir = () => join(app.getPath('userData'), 'cache', 'thumbs');
 const policy = new ProjectPolicy(registry);
 // A `.aio` the app was started with (double-click); the renderer takes it once at start.
-let pendingOpenPath: string | null = packagePathFromArgv(process.argv);
+let pendingOpenPath: string | null =
+  packagePathFromArgv(process.argv) ?? linkPathFromArgv(process.argv, brand.urlScheme);
 // An isolated profile (tests, demos) gets its own vault service, so it never reads or writes the
 // person's real API keys.
 const keyService = process.env.STRATLAS_USER_DATA ? `${brand.appId}.isolated` : brand.appId;
@@ -898,6 +899,25 @@ app.on('open-file', (e, path) => {
   else pendingOpenPath = path;
 });
 
+// macOS hands `<urlScheme>://` links (Info.plist CFBundleURLTypes) to the app as an event.
+app.on('open-url', (e, url) => {
+  e.preventDefault();
+  const link = parseAppLink(url, brand.urlScheme);
+  if (!link) return;
+  if (!app.isReady()) {
+    if (link.kind === 'open') pendingOpenPath = link.path;
+    return;
+  }
+  if (!mainWindow) {
+    if (link.kind === 'open') pendingOpenPath = link.path;
+    mainWindow = createWindow();
+  } else if (link.kind === 'open') openPathInApp(link.path);
+  else {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
+
 /**
  * A plain window for a project file a legacy viewer opens in a new tab (its PDF report, a
  * photo). No preload, sandboxed, and it shows only aio:// content.
@@ -1026,7 +1046,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', (_e, argv) => {
-    const path = packagePathFromArgv(argv);
+    const path = packagePathFromArgv(argv) ?? linkPathFromArgv(argv, brand.urlScheme);
     if (path) {
       openPathInApp(path);
       return;
@@ -1039,7 +1059,10 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(async () => {
     app.setAppUserModelId(brand.appId);
-    Menu.setApplicationMenu(buildMenu(dev));
+    installMenu(dev, (action) => {
+      const parsed = ipcEvents['app:menu'].safeParse({ action });
+      if (parsed.success) mainWindow?.webContents.send('app:menu', parsed.data);
+    });
     hardenSession();
     const initial = await settings.get();
     nativeTheme.themeSource = initial.theme;

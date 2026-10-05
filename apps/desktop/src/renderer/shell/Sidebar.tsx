@@ -3,6 +3,7 @@ import {
   DatasetTree,
   formatDate,
   Icon,
+  shortcut,
   t,
   treeLayerIds,
   useT,
@@ -319,10 +320,10 @@ export function Sidebar() {
         >
           <Icon name="sidebar" />
           <span className="lbl">{t('nav.collapse')}</span>
-          <span className="count">Ctrl B</span>
+          <span className="count">{shortcut('Ctrl B')}</span>
           <span className="tip">
             {t(collapsed ? 'nav.expandSidebar' : 'nav.collapseSidebar')}{' '}
-            <span className="kbd">Ctrl B</span>
+            <span className="kbd">{shortcut('Ctrl B')}</span>
           </span>
         </button>
       </div>

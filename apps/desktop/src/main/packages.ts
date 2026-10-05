@@ -129,7 +129,8 @@ export class ProjectPolicy {
 export function packagePathFromArgv(argv: readonly string[]): string | null {
   for (let i = argv.length - 1; i >= 1; i--) {
     const a = argv[i];
-    if (a === undefined || a.startsWith('-')) continue;
+    // A `<scheme>://open?path=...aio` link is not a path (appLink.ts reads it).
+    if (a === undefined || a.startsWith('-') || a.includes('://')) continue;
     if (a.toLowerCase().endsWith(PACKAGE_EXTENSION)) return a;
   }
   return null;

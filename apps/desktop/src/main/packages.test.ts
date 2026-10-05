@@ -278,6 +278,7 @@ describe('packagePathFromArgv', () => {
     expect(packagePathFromArgv(['electron', '.', '--flag', 'x.AIO'])).toBe('x.AIO');
     expect(packagePathFromArgv(['electron', 'out/main/index.js'])).toBeNull();
     expect(packagePathFromArgv(['app', '--open=x.aio'])).toBeNull();
+    expect(packagePathFromArgv(['app', 'stratlas://open?path=C%3A%5Cx.aio'])).toBeNull();
   });
 });
 

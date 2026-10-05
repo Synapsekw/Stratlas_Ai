@@ -2,6 +2,7 @@
   "productName": "Stratlas",
   "appId": "ai.synapse-solutions.stratlas",
   "executableName": "Stratlas",
+  "urlScheme": "stratlas",
   "company": "Synapse Solutions",
   "temporary": true,
   "store": {

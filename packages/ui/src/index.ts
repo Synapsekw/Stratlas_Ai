@@ -15,6 +15,7 @@ export { Icon, ICONS, type IconName, type IconProps, type IconSize } from './ico
 export { Compass, type CompassProps } from './Compass';
 export { Kbd, SevChip, Switch, type SevChipProps, type SwitchProps } from './controls';
 export * from './format';
+export { isMacPlatform, shortcut } from './shortcut';
 export * from './coords';
 export * from './timeline/model';
 export { generateTicks, pickTickStep, type Tick, type TickStep } from './timeline/ticks';

@@ -14,4 +14,9 @@ describe('brand', () => {
     expect(brand.productName.length).toBeGreaterThan(0);
     expect(brand.appId).toMatch(/^[a-z0-9-]+(\.[a-z0-9-]+){2,}$/);
   });
+
+  it('has a lowercase URL scheme that is not the internal aio scheme', () => {
+    expect(brand.urlScheme).toMatch(/^[a-z][a-z0-9+.-]*$/);
+    expect(brand.urlScheme).not.toBe('aio');
+  });
 });
