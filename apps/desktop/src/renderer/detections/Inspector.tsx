@@ -10,7 +10,7 @@ import {
   type Detection,
 } from '@aio/annotate/detections';
 import type { Issue } from '@aio/schema';
-import { Icon, useT, type MessageKey } from '@aio/ui';
+import { Icon, useFocusTrap, useT, type MessageKey } from '@aio/ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 export const PROBLEM_KEY: Record<AcceptProblem, MessageKey> = {
@@ -96,9 +96,8 @@ function LinkPicker({
   const [q, setQ] = useState('');
   const [at, setAt] = useState(0);
   const input = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    input.current?.focus();
-  }, []);
+  const dlg = useRef<HTMLDivElement>(null);
+  useFocusTrap(dlg, true, { initial: () => input.current });
   const list = useMemo(() => {
     const needle = q.trim().toLowerCase();
     const all = linkCandidates(detection, issues);
@@ -109,7 +108,7 @@ function LinkPicker({
   }, [detection, issues, q]);
   const pick = list[Math.min(at, list.length - 1)];
   return (
-    <div className="det-link" role="dialog" aria-label={t('det.link.title')}>
+    <div ref={dlg} className="det-link" role="dialog" aria-label={t('det.link.title')}>
       <input
         ref={input}
         className="ann-input"

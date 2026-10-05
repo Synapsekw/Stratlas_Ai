@@ -11,7 +11,7 @@ export function NoProject({ view }: { view: string }) {
         <span className="le-ic">
           <Icon name="layers" size={20} />
         </span>
-        <h2>Open a project to see its {view.toLowerCase()}</h2>
+        <h1>Open a project to see its {view.toLowerCase()}</h1>
         <p className="muted">
           {view} works on one project at a time. Pick one from the library, or press{' '}
           <span className="kbd">Ctrl K</span> and type its name.

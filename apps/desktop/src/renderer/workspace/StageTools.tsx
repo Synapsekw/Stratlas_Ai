@@ -9,7 +9,15 @@ import {
 import { PinControls, pinDisplay, usePinDisplay } from '@aio/annotate';
 import { PointCloudControls } from '@aio/pointcloud';
 import type { Layer } from '@aio/schema';
-import { Icon, useT, type IconName } from '@aio/ui';
+import {
+  ariaKeys,
+  Icon,
+  shortcutHint,
+  useFocusTrap,
+  useT,
+  type IconName,
+  type ShortcutId,
+} from '@aio/ui';
 import { setCameraMode, videoRig, type CameraMode } from '@aio/video';
 import { useVolumetric } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
@@ -53,25 +61,28 @@ interface ToolProps {
   icon: IconName;
   label: string;
   keys?: string | undefined;
+  /** The registry shortcut (Settings, Keyboard) this tool also answers to; names its key. */
+  shortcut?: ShortcutId;
   pressed?: boolean;
   disabled?: boolean;
   onClick: () => void;
 }
 
 /** A square stage tool with a tooltip that names its shortcut. */
-export function Tool({ icon, label, keys, pressed, disabled, onClick }: ToolProps) {
+export function Tool({ icon, label, keys, shortcut, pressed, disabled, onClick }: ToolProps) {
+  const hint = shortcut ? shortcutHint(shortcut) : keys;
   return (
     <button
       type="button"
       className="tool"
       aria-pressed={pressed}
       aria-label={label}
-      aria-keyshortcuts={keys}
+      aria-keyshortcuts={shortcut ? ariaKeys(shortcut) : keys}
       disabled={disabled}
       onClick={onClick}
     >
       <Icon name={icon} />
-      <Tip label={label} keys={keys} />
+      <Tip label={label} keys={hint} />
     </button>
   );
 }
@@ -84,6 +95,7 @@ export function PopTool({
   icon,
   label,
   keys,
+  shortcut,
   pressed,
   disabled,
   wide,
@@ -94,6 +106,7 @@ export function PopTool({
   icon: IconName;
   label: string;
   keys?: string | undefined;
+  shortcut?: ShortcutId;
   pressed?: boolean;
   disabled?: boolean;
   wide?: boolean;
@@ -116,31 +129,36 @@ export function PopTool({
     [controlled],
   );
   const ref = useRef<HTMLDivElement>(null);
+  const pop = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!open) return;
     const away = (e: PointerEvent) => {
       if (!ref.current?.contains(e.target as Node)) setOpen(false);
     };
-    const esc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
     window.addEventListener('pointerdown', away);
-    window.addEventListener('keydown', esc);
     return () => {
       window.removeEventListener('pointerdown', away);
-      window.removeEventListener('keydown', esc);
     };
   }, [open, setOpen]);
+  // focus moves into the panel, Tab stays inside, Esc closes and focus returns to the tool
+  useFocusTrap(pop, open, {
+    onEscape: () => {
+      setOpen(false);
+    },
+    returnTo: () => button.current,
+  });
   return (
     <div className="pop-anchor" ref={ref}>
       <button
+        ref={button}
         type="button"
         className="tool"
         aria-pressed={pressed ?? open}
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-label={label}
-        aria-keyshortcuts={keys}
+        aria-keyshortcuts={shortcut ? ariaKeys(shortcut) : keys}
         disabled={disabled}
         onClick={() => {
           setOpen(!open);
@@ -148,10 +166,11 @@ export function PopTool({
       >
         <Icon name={icon} />
         <span className="caret" aria-hidden />
-        {!open && <Tip label={label} keys={keys} />}
+        {!open && <Tip label={label} keys={shortcut ? shortcutHint(shortcut) : keys} />}
       </button>
       {open && (
         <div
+          ref={pop}
           className={`stage-pop overlay-box${wide ? ' wide' : ''}`}
           role="dialog"
           aria-label={label}
@@ -179,7 +198,7 @@ export function ViewTools({ stage, map }: { stage: EngineStage | null; map: bool
       <Tool
         icon="maximize"
         label="Whole site"
-        keys="H"
+        shortcut="scene.home"
         onClick={() => {
           workspace.getState().flyTo({ kind: 'home' });
         }}
@@ -187,7 +206,7 @@ export function ViewTools({ stage, map }: { stage: EngineStage | null; map: bool
       <Tool
         icon="target"
         label="Fly to selection"
-        keys="F"
+        shortcut="scene.flySelection"
         disabled={!selection}
         onClick={() => {
           if (selection) workspace.getState().flyTo({ kind: 'selection', selection });
@@ -318,7 +337,7 @@ export function MeasureTools({ stage }: { stage: EngineStage | null }) {
       <Tool
         icon="select"
         label="Select"
-        keys="Esc"
+        shortcut="scene.escape"
         pressed={tool === 'select'}
         disabled={!stage}
         onClick={() => stage?.setTool('select')}
@@ -326,13 +345,18 @@ export function MeasureTools({ stage }: { stage: EngineStage | null }) {
       <Tool
         icon="ruler"
         label="Measure a distance"
-        keys="M"
+        shortcut="scene.measure"
         pressed={tool === 'measure'}
         disabled={!stage}
         onClick={() => stage?.setTool(tool === 'measure' ? 'select' : 'measure')}
       />
       {stage && (
-        <PopTool icon="section" label="Section plane" keys="X" pressed={stage.section.enabled}>
+        <PopTool
+          icon="section"
+          label="Section plane"
+          shortcut="scene.section"
+          pressed={stage.section.enabled}
+        >
           <SectionPanel stage={stage} />
         </PopTool>
       )}
@@ -427,7 +451,7 @@ export function PinToggle() {
     <Tool
       icon="pin"
       label={on ? t('stage.pins.hide') : t('stage.pins.show')}
-      keys="I"
+      shortcut="scene.pins"
       pressed={on}
       onClick={() => {
         pinDisplay.getState().togglePins();
@@ -445,7 +469,13 @@ export function DisplayTools({ stage, map }: { stage: EngineStage | null; map: b
     <>
       <PinToggle />
       {!map && (
-        <PopTool icon="tag" label="Labels" keys="L" pressed={labelMode !== 'off'} disabled={!stage}>
+        <PopTool
+          icon="tag"
+          label="Labels"
+          shortcut="scene.labels"
+          pressed={labelMode !== 'off'}
+          disabled={!stage}
+        >
           <div className="pop-form">
             <div className="seg pop-seg" role="group" aria-label="Component labels">
               {LABEL_MODES.map((m) => (
@@ -540,7 +570,13 @@ export function FlightPathTool() {
   const { mode } = m.pref;
   const current = PATH_MODES.find((p) => p.mode === mode);
   return (
-    <PopTool icon="path" label="Flight paths" keys="P" pressed={mode !== 'off'} wide>
+    <PopTool
+      icon="path"
+      label="Flight paths"
+      shortcut="scene.flightPaths"
+      pressed={mode !== 'off'}
+      wide
+    >
       <div className="pop-form" data-testid="path-panel">
         <span className="pop-title">Flight paths</span>
         <div className="seg pop-seg" role="group" aria-label="Flight paths">
@@ -576,7 +612,7 @@ export function TelemetryTool() {
     <Tool
       icon="telemetry"
       label={on ? t('stage.telemetry.hide') : t('stage.telemetry.show')}
-      keys="D"
+      shortcut="scene.telemetry"
       pressed={on}
       onClick={toggleTelemetry}
     />
@@ -605,7 +641,7 @@ export function VideoTools({ stage, map }: { stage: EngineStage | null; map: boo
       <Tool
         icon="video"
         label={showVideo ? 'Hide the video window' : 'Show the video window'}
-        keys="W"
+        shortcut="scene.video"
         pressed={showVideo}
         disabled={activeClip === null}
         onClick={() => {
@@ -655,7 +691,7 @@ export function AnnotateToggle() {
     <Tool
       icon="anno"
       label={on ? 'Close the annotation tools' : 'Annotate: pins, lines, areas, cloud regions'}
-      keys="A"
+      shortcut="scene.annotate"
       pressed={on}
       onClick={() => {
         shell.getState().setAnnotating(!on);

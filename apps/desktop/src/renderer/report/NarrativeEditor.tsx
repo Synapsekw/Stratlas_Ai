@@ -18,7 +18,7 @@ import {
   type RoadModel,
 } from '@aio/schema';
 import { brand } from '@aio/brand';
-import { Icon, t } from '@aio/ui';
+import { Icon, t, useFocusTrap } from '@aio/ui';
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { authorName } from '../author';
@@ -93,12 +93,12 @@ function useExtras(projectId: string | null) {
 function PreviewDialog({ preview, project }: { preview: Preview; project: string }) {
   const [always, setAlways] = useState(false);
   const send = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    send.current?.focus();
-  }, []);
+  const dlg = useRef<HTMLDivElement>(null);
+  useFocusTrap(dlg, true, { initial: () => send.current });
   return (
     <div className="dlg-scrim">
       <div
+        ref={dlg}
         className="dlg wide"
         role="dialog"
         aria-modal="true"

@@ -1,5 +1,5 @@
 import { PhotoViewer } from '@aio/annotate';
-import { Icon } from '@aio/ui';
+import { Icon, isShortcut, matchShortcut } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo } from 'react';
 import { isTyping } from '../keys';
@@ -181,7 +181,7 @@ export function RoadToolGroup() {
       <Tool
         icon="photo"
         label="Close-up of the selected defect"
-        keys="C"
+        shortcut="road.closeup"
         pressed={closeup}
         onClick={() => {
           setRoad({ closeup: !closeup });
@@ -193,7 +193,7 @@ export function RoadToolGroup() {
       <Tool
         icon="filter"
         label="PCI grid"
-        keys="P"
+        shortcut="road.pci"
         pressed={overlay === 'pci'}
         onClick={() => {
           setRoad({ overlay: overlay === 'pci' ? 'none' : 'pci' });
@@ -202,7 +202,7 @@ export function RoadToolGroup() {
       <Tool
         icon="raster"
         label="Defect density"
-        keys="D"
+        shortcut="road.density"
         pressed={overlay === 'density'}
         onClick={() => {
           setRoad({ overlay: overlay === 'density' ? 'none' : 'density' });
@@ -211,7 +211,7 @@ export function RoadToolGroup() {
       <Tool
         icon="ruler"
         label="Measure on the map"
-        keys="M"
+        shortcut="road.measure"
         pressed={measuring}
         onClick={() => {
           toggleMeasure();
@@ -494,17 +494,20 @@ export function useRoadKeys(active: boolean): void {
       if (el?.closest('.rr-list') && (k === 'arrowup' || k === 'arrowdown')) return;
       const s = roadStore.getState();
       const onMap = shell.getState().stageMode !== '3d';
-      if (k === 'p') setRoad({ overlay: s.overlay === 'pci' ? 'none' : 'pci' });
-      else if (k === 'c' && onMap) setRoad({ closeup: !s.closeup });
-      else if (k === 'd') setRoad({ overlay: s.overlay === 'density' ? 'none' : 'density' });
-      else if (k === 'm' && onMap) toggleMeasure();
-      else if (k === 'escape' && s.measure.mode) setRoad({ measure: { mode: null, vertices: [] } });
-      else if (k === 'backspace' && s.measure.mode)
+      const id = matchShortcut('road', e);
+      if (id === 'road.pci') setRoad({ overlay: s.overlay === 'pci' ? 'none' : 'pci' });
+      else if (id === 'road.closeup' && onMap) setRoad({ closeup: !s.closeup });
+      else if (id === 'road.density')
+        setRoad({ overlay: s.overlay === 'density' ? 'none' : 'density' });
+      else if (id === 'road.measure' && onMap) toggleMeasure();
+      else if (isShortcut('scene.escape', e) && s.measure.mode)
+        setRoad({ measure: { mode: null, vertices: [] } });
+      else if (isShortcut('scene.drawUndo', e) && s.measure.mode)
         setRoad({ measure: { mode: s.measure.mode, vertices: s.measure.vertices.slice(0, -1) } });
-      else if ((k === 'arrowright' || k === 'arrowleft') && rows.length) {
+      else if ((id === 'road.next' || id === 'road.prev') && rows.length) {
         const sel = workspace.getState().selection;
         const i = sel?.kind === 'issue' ? rows.findIndex((r) => r.id === sel.id) : -1;
-        const d = k === 'arrowright' ? 1 : -1;
+        const d = id === 'road.next' ? 1 : -1;
         const next = rows[i < 0 ? 0 : (i + d + rows.length) % rows.length];
         if (next) focusDefect(next);
       } else return;

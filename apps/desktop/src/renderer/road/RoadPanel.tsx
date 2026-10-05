@@ -445,7 +445,6 @@ export function RoadPanel() {
             type="button"
             role="tab"
             aria-selected={tab === t.id}
-            aria-pressed={tab === t.id}
             onClick={() => {
               setTab(t.id);
             }}

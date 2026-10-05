@@ -22,6 +22,17 @@ export { Timeline, RATES, type TimelineProps } from './timeline/Timeline';
 export * from './tree/model';
 export { DatasetTree, VisibilityEye, type DatasetTreeProps } from './tree/DatasetTree';
 export { rankCommands, scoreMatch, type Command } from './palette/rank';
+export * from './shortcuts';
+export { announce, announced, LiveAnnouncer, type Politeness } from './announce';
+export {
+  arrowFocus,
+  focusables,
+  focusLost,
+  keepFocusAlive,
+  trapFocus,
+  useFocusTrap,
+  type FocusTrapOptions,
+} from './focus';
 export {
   catalogueProblems,
   directionOf,

@@ -1,7 +1,10 @@
 /**
- * Keyboard-first review (BLD-5). One table from keys to commands, so the help, the handler and the
- * tests agree. Keys are ignored while typing in a field.
+ * Keyboard-first review (BLD-5). The keys live in the shortcut registry (@aio/ui, scope `review`),
+ * so the keyboard map in Settings, the handler and the tests agree. Keys are ignored while typing
+ * in a field.
  */
+import { matchShortcut, type KeyLike, type ShortcutId } from '@aio/ui';
+
 export type ReviewCommand =
   | { kind: 'next' }
   | { kind: 'prev' }
@@ -22,70 +25,40 @@ export type ReviewCommand =
   | { kind: 'undo' }
   | { kind: 'redo' };
 
-export interface KeyLike {
-  key: string;
-  ctrlKey: boolean;
-  metaKey: boolean;
-  shiftKey: boolean;
-  altKey: boolean;
-}
+export type { KeyLike };
 
-/** The command for a key press, or null. */
+/** Registry shortcut (Settings, Keyboard) to review command. */
+const COMMANDS: Partial<Record<ShortcutId, ReviewCommand>> = {
+  'review.next': { kind: 'next' },
+  'review.prev': { kind: 'prev' },
+  'review.nextSource': { kind: 'nextSource' },
+  'review.prevSource': { kind: 'prevSource' },
+  'review.accept': { kind: 'accept' },
+  'review.link': { kind: 'link' },
+  'review.reject': { kind: 'reject' },
+  'review.reopen': { kind: 'reopen' },
+  'review.delete': { kind: 'delete' },
+  'review.uncertain': { kind: 'uncertain' },
+  'review.classNext': { kind: 'class', step: 1 },
+  'review.classPrev': { kind: 'class', step: -1 },
+  'review.note': { kind: 'note' },
+  'review.select': { kind: 'tool', tool: 'select' },
+  'review.box': { kind: 'tool', tool: 'box' },
+  'review.rotbox': { kind: 'tool', tool: 'rotbox' },
+  'review.polygon': { kind: 'tool', tool: 'polygon' },
+  'review.point': { kind: 'tool', tool: 'point' },
+  'review.mask': { kind: 'mask' },
+  'review.fit': { kind: 'fit' },
+  'review.undo': { kind: 'undo' },
+  'review.redo': { kind: 'redo' },
+};
+
+/** The command for a key press, or null (keys from the shortcut registry, scope `review`). */
 export function reviewCommand(e: KeyLike): ReviewCommand | null {
-  const mod = e.ctrlKey || e.metaKey;
-  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-  if (mod) {
-    if (k === 'z' && !e.shiftKey) return { kind: 'undo' };
-    if (k === 'y' || (k === 'z' && e.shiftKey)) return { kind: 'redo' };
-    return null;
-  }
-  if (e.altKey) return null;
-  switch (k) {
-    case 'j':
-    case 'ArrowRight':
-    case 'ArrowDown':
-      return e.shiftKey ? { kind: 'nextSource' } : { kind: 'next' };
-    case 'k':
-    case 'ArrowLeft':
-    case 'ArrowUp':
-      return e.shiftKey ? { kind: 'prevSource' } : { kind: 'prev' };
-    case 'PageDown':
-      return { kind: 'nextSource' };
-    case 'PageUp':
-      return { kind: 'prevSource' };
-    case 'a':
-    case 'Enter':
-      return { kind: 'accept' };
-    case 'l':
-      return { kind: 'link' };
-    case 'x':
-      return { kind: 'reject' };
-    case 'r':
-      return e.shiftKey ? { kind: 'reopen' } : { kind: 'tool', tool: 'rotbox' };
-    case 'Delete':
-      return { kind: 'delete' };
-    case 'u':
-      return { kind: 'uncertain' };
-    case 'c':
-      return { kind: 'class', step: e.shiftKey ? -1 : 1 };
-    case 'n':
-      return { kind: 'note' };
-    case 'v':
-      return { kind: 'tool', tool: 'select' };
-    case 'b':
-      return { kind: 'tool', tool: 'box' };
-    case 'p':
-      return { kind: 'tool', tool: 'polygon' };
-    case 'o':
-      return { kind: 'tool', tool: 'point' };
-    case 'm':
-      return { kind: 'mask' };
-    case 'f':
-      return { kind: 'fit' };
-    default:
-      if (/^[0-9]$/.test(k)) return { kind: 'severity', value: Number(k) };
-      return null;
-  }
+  const id = matchShortcut('review', e);
+  if (id === null) return null;
+  if (id === 'review.severity') return { kind: 'severity', value: Number(e.key) };
+  return COMMANDS[id] ?? null;
 }
 
 /** True when a key press goes to a text field, not to the review. */

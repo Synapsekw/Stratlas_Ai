@@ -1,10 +1,13 @@
 import {
+  arrowFocus,
+  ariaKeys,
   buildDatasetTree,
   DatasetTree,
   formatDate,
   Icon,
   t,
   treeLayerIds,
+  useFocusTrap,
   useT,
   VisibilityEye,
   type IconName,
@@ -94,6 +97,15 @@ function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
       window.removeEventListener('pointerdown', close);
     };
   }, [open]);
+  const menu = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  // focus into the menu, Esc closes it and focus returns to the switcher
+  useFocusTrap(menu, open, {
+    onEscape: () => {
+      setOpen(false);
+    },
+    returnTo: () => button.current,
+  });
 
   const capture = manifest?.captures.at(-1);
   const meta = manifest
@@ -109,6 +121,7 @@ function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
   return (
     <div className="proj-wrap" ref={ref}>
       <button
+        ref={button}
         type="button"
         className="proj-switch"
         aria-expanded={open}
@@ -131,7 +144,15 @@ function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
         <span className="tip">{manifest?.name ?? 'Projects'}</span>
       </button>
       {open && (
-        <div className="proj-menu" role="menu">
+        <div
+          ref={menu}
+          className="proj-menu"
+          role="menu"
+          aria-label={t('titlebar.project')}
+          onKeyDown={(e) => {
+            if (menu.current && arrowFocus(menu.current, e.key)) e.preventDefault();
+          }}
+        >
           {(library ?? []).map((e) => (
             <button
               key={e.id}
@@ -149,7 +170,7 @@ function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
             </button>
           ))}
           {(library ?? []).length === 0 && <div className="pm-empty">The library is empty.</div>}
-          <div className="pm-sep" />
+          <div className="pm-sep" role="separator" />
           <button
             type="button"
             role="menuitem"
@@ -313,7 +334,7 @@ export function Sidebar() {
           onClick={() => {
             void shell.getState().toggleSidebar();
           }}
-          aria-keyshortcuts="Control+B"
+          aria-keyshortcuts={ariaKeys('global.sidebar')}
           aria-expanded={!collapsed}
           data-testid="sidebar-toggle"
         >

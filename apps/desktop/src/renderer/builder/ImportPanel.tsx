@@ -106,7 +106,7 @@ function HeightsCard({ p }: { p: HeightsPrompt }) {
   const abs = p.plan.takeoffAbsAlt;
   return (
     <section className="b-import" aria-label="Camera heights" data-testid="import-heights">
-      <header>
+      <header role="none">
         <Icon name="import" size={14} />
         Camera heights for {String(p.plan.files)} {p.plan.files === 1 ? 'file' : 'files'}
       </header>
@@ -237,7 +237,7 @@ function ImportStatus() {
     : {};
   return (
     <section className="b-import" aria-label="Import" data-testid="import-panel">
-      <header>
+      <header role="none">
         <Icon name="import" size={14} />
         {importing
           ? `Importing ${String(importing.done)} of ${String(importing.total)}`

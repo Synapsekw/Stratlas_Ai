@@ -213,7 +213,7 @@ export function SelectionCard() {
   return (
     <section className="ctx" aria-label="Selection">
       <div className="panel-h">
-        <h3>Selection</h3>
+        <h2>Selection</h2>
         <span className="sub">{card.kindLabel}</span>
         <div className="acts">
           <button

@@ -52,6 +52,7 @@ export function ReviewScreen() {
 
   return (
     <section className="screen review" aria-label="Original review">
+      <h1 className="sr-only">Original review</h1>
       <header className="review-h">
         <span className="rv-ic">
           <Icon name="history" size={16} />

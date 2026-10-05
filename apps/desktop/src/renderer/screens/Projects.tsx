@@ -245,7 +245,7 @@ function Workstation() {
   return (
     <aside className="home-side" aria-label="Workstation">
       <section className="hs-sec">
-        <h3 className="caps">Data folder</h3>
+        <h2 className="caps">Data folder</h2>
         <div className="hs-path mono">{dataRoot || 'Not set'}</div>
         <button
           type="button"
@@ -256,7 +256,7 @@ function Workstation() {
         </button>
       </section>
       <section className="hs-sec">
-        <h3 className="caps">
+        <h2 className="caps">
           Offline map packs
           <button
             type="button"
@@ -267,7 +267,7 @@ function Workstation() {
           >
             Manage
           </button>
-        </h3>
+        </h2>
         {packs === null && <div className="skel-line" />}
         {packs && !packs.ok && <p className="faint small">{packs.error}</p>}
         {packs?.ok && packs.value.length === 0 && (
@@ -285,7 +285,7 @@ function Workstation() {
           ))}
       </section>
       <section className="hs-sec">
-        <h3 className="caps">Keyboard</h3>
+        <h2 className="caps">Keyboard</h2>
         <div className="keys">
           <span>Search everything</span>
           <span className="kbd">Ctrl K</span>

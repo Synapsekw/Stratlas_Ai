@@ -570,7 +570,8 @@ export function JobsScreen() {
             }}
           />
         )}
-        <div className="jobs-list" role="list" aria-label="Jobs">
+        {/* a list only while it has jobs: an empty list role is announced as a broken list */}
+        <div className="jobs-list" {...(list.length > 0 && { role: 'list', 'aria-label': 'Jobs' })}>
           {active.length > 0 && <div className="jl-h caps">Running</div>}
           {active.map((j) => (
             <JobRow key={j.id} job={j} selected={j.id === job?.id} now={now} />

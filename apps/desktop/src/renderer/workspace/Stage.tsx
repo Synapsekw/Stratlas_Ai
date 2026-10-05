@@ -24,7 +24,16 @@ import {
   useClassificationLegend,
   useElevationRange,
 } from '@aio/pointcloud';
-import { Icon, localToProject, useT, type IconName } from '@aio/ui';
+import {
+  arrowFocus,
+  ariaKeys,
+  Icon,
+  isShortcut,
+  localToProject,
+  matchShortcut,
+  useT,
+  type IconName,
+} from '@aio/ui';
 import { setDroneTelemetry, setFlightPaths, videoRig } from '@aio/video';
 import { useVolumetric, VolumetricStage } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
@@ -247,7 +256,19 @@ function StageToolbar({
 
   return (
     // The tools sit on the stage (street map, imagery), which is dark in every theme.
-    <div className="stbar" ref={barRef} data-surface="dark">
+    <div
+      className="stbar"
+      ref={barRef}
+      data-surface="dark"
+      role="toolbar"
+      aria-label="Stage tools"
+      onKeyDown={(e) => {
+        // Left and Right move between the tools (Tab still visits each one)
+        if (e.target instanceof HTMLElement && e.target.closest('.stage-pop')) return;
+        const k = e.key === 'ArrowRight' ? 'ArrowDown' : e.key === 'ArrowLeft' ? 'ArrowUp' : null;
+        if (k && barRef.current && arrowFocus(barRef.current, k)) e.preventDefault();
+      }}
+    >
       <div className="seg overlay-seg" role="group" aria-label="Stage view" data-fixed="">
         {MODES.map((m) => (
           <button
@@ -317,7 +338,7 @@ function StageToolbar({
           className="tool"
           aria-pressed={!rightCollapsed}
           aria-label={rightCollapsed ? 'Show the right panel' : 'Hide the right panel'}
-          aria-keyshortcuts="Control+Alt+B"
+          aria-keyshortcuts={ariaKeys('global.rightPanel')}
           onClick={shell.getState().toggleRight}
         >
           <Icon name="sidebar" className="flip" />
@@ -344,9 +365,9 @@ function MapDrawTools({ draw }: { draw: MapDraw }) {
     if (!mode) return;
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e.target) || annotateUi.getState().pending) return;
-      if (e.key === 'Enter') finish();
-      else if (e.key === 'Backspace') undo();
-      else if (e.key === 'Escape') {
+      if (isShortcut('scene.drawFinish', e)) finish();
+      else if (isShortcut('scene.drawUndo', e)) undo();
+      else if (isShortcut('scene.escape', e)) {
         cancel();
         setMode(null);
       } else return;
@@ -671,23 +692,27 @@ export function Stage() {
       if (e.target instanceof HTMLElement && e.target.closest('.vwin')) return;
       const sh = shell.getState();
       const ws = workspace.getState();
-      const k = e.key.toLowerCase();
+      const k = matchShortcut('scene', e);
       const three = sh.stageMode !== 'map' ? engine : null;
-      if (k === '1' || k === '2' || k === '3') {
-        sh.setStageMode(k === '1' ? '3d' : k === '2' ? 'map' : 'split');
-      } else if (k === 'h') ws.flyTo({ kind: 'home' });
-      else if (k === 'f' && ws.selection) ws.flyTo({ kind: 'selection', selection: ws.selection });
-      else if (k === 'm' && three) three.setTool(three.tool === 'measure' ? 'select' : 'measure');
-      else if (k === 'x' && three) toggleSection(three);
-      else if (k === 'l' && three) sh.setLabelMode(nextLabelMode(sh.labelMode));
-      else if (k === 'a') sh.setAnnotating(!sh.annotating);
-      else if (k === 'w' && ws.activeClip) sh.setVideoHidden(!sh.videoHidden);
-      else if (k === 'p' && three && flightPathModel()) updateFlightPaths(togglePaths);
-      else if (k === 'd' && three && flightPathModel()) toggleTelemetry();
-      else if (k === 'i') pinDisplay.getState().togglePins();
-      else if (k === 't' && !isRoad) toggleTimeline(ws.project);
-      else if (k === 'c' && three && ws.activeClip) insideView(three);
-      else if (k === 'escape' && three && three.tool !== 'select') three.setTool('select');
+      if (k === 'scene.mode3d') sh.setStageMode('3d');
+      else if (k === 'scene.modeMap') sh.setStageMode('map');
+      else if (k === 'scene.modeSplit') sh.setStageMode('split');
+      else if (k === 'scene.home') ws.flyTo({ kind: 'home' });
+      else if (k === 'scene.flySelection' && ws.selection)
+        ws.flyTo({ kind: 'selection', selection: ws.selection });
+      else if (k === 'scene.measure' && three)
+        three.setTool(three.tool === 'measure' ? 'select' : 'measure');
+      else if (k === 'scene.section' && three) toggleSection(three);
+      else if (k === 'scene.labels' && three) sh.setLabelMode(nextLabelMode(sh.labelMode));
+      else if (k === 'scene.annotate') sh.setAnnotating(!sh.annotating);
+      else if (k === 'scene.video' && ws.activeClip) sh.setVideoHidden(!sh.videoHidden);
+      else if (k === 'scene.flightPaths' && three && flightPathModel())
+        updateFlightPaths(togglePaths);
+      else if (k === 'scene.telemetry' && three && flightPathModel()) toggleTelemetry();
+      else if (k === 'scene.pins') pinDisplay.getState().togglePins();
+      else if (k === 'scene.timeline' && !isRoad) toggleTimeline(ws.project);
+      else if (k === 'scene.inside' && three && ws.activeClip) insideView(three);
+      else if (k === 'scene.escape' && three && three.tool !== 'select') three.setTool('select');
       else return;
       e.preventDefault();
     };
@@ -789,7 +814,7 @@ export function Stage() {
             <Tool
               icon="x"
               label="Close the annotation tools"
-              keys="A"
+              shortcut="scene.annotate"
               onClick={() => {
                 shell.getState().setAnnotating(false);
               }}

@@ -1,4 +1,4 @@
-import { Icon } from '@aio/ui';
+import { Icon, matchShortcut } from '@aio/ui';
 import { TextLayer, type PDFDocumentProxy, type RenderTask } from 'pdfjs-dist';
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { openPdf } from './pdf';
@@ -341,27 +341,28 @@ export function PdfViewer({ url, title }: PdfViewerProps) {
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     const typing = (e.target as HTMLElement).tagName === 'INPUT';
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+    const id = matchShortcut('pdf', e);
+    if (id === 'pdf.find') {
       e.preventDefault();
       searchBox.current?.focus();
       searchBox.current?.select();
     } else if (typing) {
       return;
-    } else if (e.key === 'PageDown' || e.key === 'ArrowRight') {
+    } else if (id === 'pdf.next') {
       e.preventDefault();
       goTo(page + 1);
-    } else if (e.key === 'PageUp' || e.key === 'ArrowLeft') {
+    } else if (id === 'pdf.prev') {
       e.preventDefault();
       goTo(page - 1);
-    } else if (e.key === 'Home') {
+    } else if (id === 'pdf.first') {
       e.preventDefault();
       goTo(1);
-    } else if (e.key === 'End') {
+    } else if (id === 'pdf.last') {
       e.preventDefault();
       goTo(sizes.length);
-    } else if (e.key === '+' || e.key === '=') {
+    } else if (id === 'pdf.zoomIn') {
       setZoom(nextZoom(scale, 1));
-    } else if (e.key === '-') {
+    } else if (id === 'pdf.zoomOut') {
       setZoom(nextZoom(scale, -1));
     }
   };

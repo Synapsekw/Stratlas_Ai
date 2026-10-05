@@ -4,9 +4,9 @@ import {
   type IpcEvent,
   type PackagePlan,
 } from '@aio/schema';
-import { formatBytes, Icon, Switch, t } from '@aio/ui';
+import { formatBytes, Icon, Switch, t, useFocusTrap } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { EXPORT_CHOICES, groupLayers, toggleGroup, validatePassphrase } from '../packageModel';
 import { bridge, shell, useShell } from '../shell';
 
@@ -30,6 +30,8 @@ export function PackageExportDialog() {
 }
 
 function ExportForm({ projectId, name }: { projectId: string; name: string }) {
+  const dlg = useRef<HTMLDivElement>(null);
+  useFocusTrap(dlg, true);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [plan, setPlan] = useState<PackagePlan | null>(null);
   const [planError, setPlanError] = useState<string | null>(null);
@@ -123,6 +125,7 @@ function ExportForm({ projectId, name }: { projectId: string; name: string }) {
       }}
     >
       <div
+        ref={dlg}
         className="dlg wide"
         role="dialog"
         aria-modal="true"

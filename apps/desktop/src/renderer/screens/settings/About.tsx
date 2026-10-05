@@ -245,7 +245,8 @@ function Licences() {
         built. Map data © OpenStreetMap contributors (ODbL), basemap by Protomaps.
       </p>
       {list && !list.ok && <p className="prov-err">{list.error}</p>}
-      <div className="lic-scroll">
+      {/* scrolls on its own: focusable so the keyboard can scroll it */}
+      <div className="lic-scroll" tabIndex={0} role="region" aria-label="Third-party licences">
         <table className="tbl" data-testid="licences">
           <thead>
             <tr>

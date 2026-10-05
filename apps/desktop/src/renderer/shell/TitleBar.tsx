@@ -1,5 +1,5 @@
 import { brand } from '@aio/brand';
-import { formatDate, Icon, t, useT, type MessageKey } from '@aio/ui';
+import { ariaKeys, formatDate, Icon, t, useT, type MessageKey } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { Fragment } from 'react';
 import { cloudAiBlocked } from '../player';
@@ -77,7 +77,7 @@ export function TitleBar() {
         onClick={() => {
           shell.getState().setPalette(true);
         }}
-        aria-keyshortcuts="Control+K"
+        aria-keyshortcuts={ariaKeys('global.palette')}
       >
         <Icon name="search" size={14} />
         {t('titlebar.search')}

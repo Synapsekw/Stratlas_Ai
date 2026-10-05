@@ -1,6 +1,14 @@
 import { AgentPanel } from '@aio/ai';
 import { IssueRegister } from '@aio/annotate';
-import { buildTimelineModel, formatDate, Icon, neighbourClip, Timeline, useT } from '@aio/ui';
+import {
+  ariaKeys,
+  buildTimelineModel,
+  formatDate,
+  Icon,
+  neighbourClip,
+  Timeline,
+  useT,
+} from '@aio/ui';
 import { useVolumetric, VolumesPanel } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useMemo, useState } from 'react';
@@ -103,7 +111,7 @@ function TimelineBar() {
         type="button"
         className="tl-bar-btn"
         aria-label={t('timeline.show')}
-        aria-keyshortcuts="T"
+        aria-keyshortcuts={ariaKeys('scene.timeline')}
         title={`${t('timeline.show')} (T)`}
         onClick={() => {
           toggleTimeline(workspace.getState().project);
@@ -148,7 +156,6 @@ function ContextPanel() {
             type="button"
             role="tab"
             aria-selected={tab === 'volumes'}
-            aria-pressed={tab === 'volumes'}
             onClick={() => {
               setTab('volumes');
             }}
@@ -160,7 +167,6 @@ function ContextPanel() {
           type="button"
           role="tab"
           aria-selected={tab === 'selection'}
-          aria-pressed={tab === 'selection'}
           onClick={() => {
             setTab('selection');
           }}
@@ -171,7 +177,6 @@ function ContextPanel() {
           type="button"
           role="tab"
           aria-selected={tab === 'issues'}
-          aria-pressed={tab === 'issues'}
           onClick={() => {
             setTab('issues');
           }}
@@ -193,6 +198,7 @@ function ContextPanel() {
 }
 
 export function WorkspaceScreen() {
+  const t = useT();
   const hasProject = useWorkspace((s) => s.project !== null);
   const focusedWindow = useWorkspace((s) => s.focusedWindow);
   const stageMode = useShell((s) => s.stageMode);
@@ -210,6 +216,7 @@ export function WorkspaceScreen() {
       className={`screen ws${rightCollapsed ? ' right-off' : ''}${road ? ' road' : ''}${volumes ? ' ws-vol' : ''}`}
       aria-label="Scene"
     >
+      <h1 className="sr-only">{t('nav.scene')}</h1>
       <Stage />
       <div className="tl-wrap">
         {road ? <ChainageRuler /> : timeline ? <WorkspaceTimeline /> : <TimelineBar />}

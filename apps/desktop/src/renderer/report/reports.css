@@ -344,6 +344,8 @@
 }
 .xmenu-opt {
   display: flex;
+  width: 100%;
+  text-align: start;
   align-items: center;
   gap: 8px;
   padding: 8px;
@@ -351,6 +353,9 @@
   border-top: 1px solid var(--line-soft);
   color: var(--fg-2);
   font-size: var(--t-11);
+}
+.xmenu-opt input {
+  pointer-events: none;
 }
 .toasts {
   position: fixed;

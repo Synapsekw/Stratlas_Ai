@@ -154,12 +154,13 @@ export function ReportsScreen() {
 
   return (
     <FocusZone kind="report" className="screen reports" aria-label="Reports">
-      <aside className="rep-side">
+      <h1 className="sr-only">Reports</h1>
+      <aside className="rep-side" aria-label="Report files">
         <div className="panel-h">
-          <h3>
+          <h2>
             <Icon name="report" size={14} />
             Reports
-          </h3>
+          </h2>
           <span className="sub">{project.manifest.name}</span>
         </div>
         <div className="rep-side-in">

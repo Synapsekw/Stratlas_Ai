@@ -5,7 +5,7 @@
  * stays inside while it is open and returns to the photo that opened it.
  */
 import { PhotoViewer, type PhotoViewerHandle } from '@aio/annotate';
-import { Icon, useT } from '@aio/ui';
+import { Icon, matchShortcut, useFocusTrap, useT } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, type KeyboardEvent } from 'react';
 import { shell } from '../shell';
@@ -34,9 +34,11 @@ export function Lightbox() {
     if (state && (!project || !issue || photos.length === 0)) lightboxDispatch({ type: 'close' });
   }, [state, project, issue, photos.length]);
 
-  useEffect(() => {
-    if (open) dialog.current?.focus({ preventScroll: true });
-  }, [open]);
+  // the dialog takes focus and gives it back to the photo that opened it (Tab is handled below)
+  useFocusTrap(dialog, open && project !== null && issue !== undefined, {
+    cycle: false,
+    initial: () => dialog.current,
+  });
 
   if (!open || !project || !issue) return null;
   const index = Math.min(state.index, photos.length - 1);
@@ -48,17 +50,15 @@ export function Lightbox() {
     // the stage and app shortcuts stay out while the dialog is open
     e.stopPropagation();
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    const k = e.key;
-    if (k === 'Escape') lightboxDispatch({ type: 'close' });
-    else if (k === 'ArrowRight' || k === 'PageDown')
-      lightboxDispatch({ type: 'step', dir: 1, count });
-    else if (k === 'ArrowLeft' || k === 'PageUp')
-      lightboxDispatch({ type: 'step', dir: -1, count });
-    else if (k === 'f' || k === 'F' || k === '0') viewer.current?.fit();
-    else if (k === '+' || k === '=') viewer.current?.zoom(ZOOM);
-    else if (k === '-') viewer.current?.zoom(1 / ZOOM);
-    else if (k === 'm' || k === 'M') lightboxDispatch({ type: 'marks' });
-    else if (k === 'Tab') {
+    const id = matchShortcut('lightbox', e);
+    if (id === 'lightbox.close') lightboxDispatch({ type: 'close' });
+    else if (id === 'lightbox.next') lightboxDispatch({ type: 'step', dir: 1, count });
+    else if (id === 'lightbox.prev') lightboxDispatch({ type: 'step', dir: -1, count });
+    else if (id === 'lightbox.fit') viewer.current?.fit();
+    else if (id === 'lightbox.zoomIn') viewer.current?.zoom(ZOOM);
+    else if (id === 'lightbox.zoomOut') viewer.current?.zoom(1 / ZOOM);
+    else if (id === 'lightbox.marks') lightboxDispatch({ type: 'marks' });
+    else if (e.key === 'Tab') {
       // keep focus inside the dialog
       const focusables = [
         ...(dialog.current?.querySelectorAll<HTMLElement>(
@@ -97,7 +97,7 @@ export function Lightbox() {
         tabIndex={-1}
         onKeyDown={onKey}
       >
-        <header className="lb-h">
+        <header className="lb-h" role="none">
           <div className="lb-t">
             <b className="mono">{issue.code}</b>
             <span className="lb-title">{issue.title}</span>

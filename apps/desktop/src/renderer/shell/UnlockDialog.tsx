@@ -1,5 +1,5 @@
-import { Icon } from '@aio/ui';
-import { useState, type SyntheticEvent } from 'react';
+import { Icon, useFocusTrap } from '@aio/ui';
+import { useRef, useState, type SyntheticEvent } from 'react';
 import { shell, useShell } from '../shell';
 
 /** Passphrase prompt for an encrypted `.aio` package. */
@@ -7,6 +7,8 @@ export function UnlockDialog() {
   const unlock = useShell((s) => s.unlock);
   const opening = useShell((s) => s.opening);
   const [pass, setPass] = useState('');
+  const dlg = useRef<HTMLFormElement>(null);
+  useFocusTrap(dlg, unlock !== null);
   if (!unlock) return null;
   const name = unlock.path.split(/[\\/]/).pop() ?? unlock.path;
   const busy = opening === unlock.path;
@@ -29,6 +31,7 @@ export function UnlockDialog() {
       }}
     >
       <form
+        ref={dlg}
         className="dlg"
         role="dialog"
         aria-modal="true"

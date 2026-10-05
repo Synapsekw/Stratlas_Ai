@@ -1,5 +1,13 @@
 import { AnnotateStyles, issueSaver } from '@aio/annotate';
-import { buildTimelineModel } from '@aio/ui';
+import { PIPELINES } from '@aio/schema';
+import {
+  announce,
+  buildTimelineModel,
+  keepFocusAlive,
+  LiveAnnouncer,
+  matchShortcut,
+  t,
+} from '@aio/ui';
 import { getPlayer } from '@aio/video';
 import { volumetric, VolumetricStyles } from '@aio/volumetric';
 import { workspace } from '@aio/workspace';
@@ -23,6 +31,7 @@ import {
   finishedIssuesJob,
   finishedManifestJob,
   finishedProjectJob,
+  jobsEnded,
   mergeDiskIssues,
 } from './jobs';
 import { bridge, jobs, shell, useShell } from './shell';
@@ -31,7 +40,7 @@ import { Palette } from './shell/Palette';
 import { UnlockDialog } from './shell/UnlockDialog';
 import { Sidebar } from './shell/Sidebar';
 import { TitleBar } from './shell/TitleBar';
-import { applyAppearance } from './theme';
+import { applyAppearance, OS_QUERIES } from './theme';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
 import { BuilderLayer } from './builder/BuilderLayer';
 import { Lightbox } from './issueCard/Lightbox';
@@ -40,18 +49,22 @@ import { startCardFocus } from './issueCard/state';
 
 function onKeyDown(e: KeyboardEvent) {
   const s = shell.getState();
-  const mod = e.ctrlKey || e.metaKey;
-  const key = e.key.toLowerCase();
-  if (mod && key === 'k') {
+  const id = matchShortcut('global', e);
+  if (id === 'global.palette') {
     e.preventDefault();
     s.setPalette(!s.paletteOpen);
-  } else if (mod && e.altKey && key === 'b') {
+  } else if (id === 'global.rightPanel') {
     e.preventDefault();
     s.toggleRight();
-  } else if (mod && key === 'b') {
+  } else if (id === 'global.sidebar') {
     e.preventDefault();
     void s.toggleSidebar();
-  } else if (key === ' ' && !mod && s.screen === 'scene' && spaceIsPlayPause(e.target)) {
+  } else if (
+    id === 'global.playPause' &&
+    !e.defaultPrevented &&
+    s.screen === 'scene' &&
+    spaceIsPlayPause(e.target)
+  ) {
     const ws = workspace.getState();
     if (!ws.project) return;
     e.preventDefault();
@@ -144,6 +157,8 @@ export function App() {
   const collapsed = useShell((s) => s.settings.sidebarCollapsed);
   const theme = useShell((s) => s.settings.theme);
   const direction = useShell((s) => s.settings.direction);
+  const contrast = useShell((s) => s.settings.contrast);
+  const motion = useShell((s) => s.settings.motion);
   const screen = useShell((s) => s.screen);
 
   useEffect(() => {
@@ -174,8 +189,25 @@ export function App() {
         if (merged.unsaved) issueSaver.schedule(project.id, merged.issues);
       });
     });
+    // a job that ends is said aloud wherever the person is
+    const stopJobAnnounce = jobs.subscribe((s, prev) => {
+      for (const { job, ok } of jobsEnded(prev.jobs, s.jobs)) {
+        const title = PIPELINES.find((p) => p.name === job.pipeline)?.title ?? job.pipeline;
+        announce(
+          t(ok ? 'announce.jobDone' : 'announce.jobFailed', { job: title }),
+          ok ? 'polite' : 'assertive',
+        );
+      }
+    });
     void initAuthor(bridge);
     window.addEventListener('keydown', onKeyDown);
+    // a control that disappears hands focus to its neighbours, else to the screen heading
+    const stopFocus = keepFocusAlive(
+      document,
+      () =>
+        document.querySelector<HTMLElement>('main h1') ??
+        document.querySelector<HTMLElement>('main'),
+    );
     const stopPlayback = startPlaybackLoop(
       workspace,
       activeClipEnd,
@@ -211,6 +243,8 @@ export function App() {
       stopRoad();
       stopRoadMode();
       window.removeEventListener('keydown', onKeyDown);
+      stopFocus();
+      stopJobAnnounce();
       stopPlayback();
       stopContinue();
       stopCard();
@@ -220,16 +254,23 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const dark = window.matchMedia(OS_QUERIES.dark);
+    const more = window.matchMedia(OS_QUERIES.moreContrast);
+    const still = window.matchMedia(OS_QUERIES.reducedMotion);
     const apply = () => {
-      applyAppearance(document.documentElement, { theme, direction }, media.matches);
+      applyAppearance(
+        document.documentElement,
+        { theme, direction, contrast, motion },
+        dark.matches,
+        { moreContrast: more.matches, reducedMotion: still.matches },
+      );
     };
     apply();
-    media.addEventListener('change', apply);
+    for (const m of [dark, more, still]) m.addEventListener('change', apply);
     return () => {
-      media.removeEventListener('change', apply);
+      for (const m of [dark, more, still]) m.removeEventListener('change', apply);
     };
-  }, [theme, direction]);
+  }, [theme, direction, contrast, motion]);
 
   return (
     <div className="app" data-sb={collapsed ? 'collapsed' : 'expanded'} data-screen={screen}>
@@ -244,6 +285,7 @@ export function App() {
       <UnlockDialog />
       <PackageExportDialog />
       <Toasts />
+      <LiveAnnouncer />
       <BuilderLayer />
       <Lightbox />
     </div>

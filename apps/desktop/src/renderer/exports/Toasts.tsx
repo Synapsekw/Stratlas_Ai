@@ -2,10 +2,12 @@ import { Icon } from '@aio/ui';
 import { useStore } from 'zustand';
 import { cancelExport, toasts } from './exports';
 
-/** Export progress toasts, bottom right. */
+/**
+ * Export progress toasts, bottom right. The live region stays mounted so screen readers hear an
+ * export start (its title) and end (its message); the running progress text is not read out.
+ */
 export function Toasts() {
   const list = useStore(toasts, (s) => s.toasts);
-  if (list.length === 0) return null;
   return (
     <div className="toasts" role="status" aria-live="polite">
       {list.map((t) => {
@@ -44,7 +46,7 @@ export function Toasts() {
             </div>
             {t.state === 'running' ? (
               <>
-                <div className="toast-p">
+                <div className="toast-p" aria-hidden="true">
                   {t.phase}
                   {t.total > 1 && (
                     <span className="mono">
@@ -53,7 +55,7 @@ export function Toasts() {
                     </span>
                   )}
                 </div>
-                <div className={`toast-bar${pct === null ? ' busy' : ''}`}>
+                <div className={`toast-bar${pct === null ? ' busy' : ''}`} aria-hidden="true">
                   <i style={{ width: `${String(pct ?? 30)}%` }} />
                 </div>
               </>

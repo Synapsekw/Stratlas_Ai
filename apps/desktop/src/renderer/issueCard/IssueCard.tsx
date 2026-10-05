@@ -379,7 +379,7 @@ export function IssueCard({
       aria-label={t('card.label', { code: issue.code })}
     >
       <div className="panel-h ic-h">
-        <h3>{t('card.title')}</h3>
+        <h2>{t('card.title')}</h2>
         <span className="sub mono" data-testid="issue-card-pos">
           {at >= 0 ? t('card.position', { index: at + 1, total: ownOrder.length }) : ''}
         </span>
@@ -438,7 +438,7 @@ export function IssueCard({
           <i className="ic-bar" aria-hidden="true" />
           <div className="ic-t">
             <b className="mono">{issue.code}</b>
-            <h4>{issue.title}</h4>
+            <h3>{issue.title}</h3>
           </div>
         </div>
         <div className="ic-chips">
@@ -497,13 +497,13 @@ export function IssueCard({
         </dl>
         {facts.action && (
           <div className="ic-block">
-            <h5>{t('card.action')}</h5>
+            <h4>{t('card.action')}</h4>
             <p>{facts.action}</p>
           </div>
         )}
         {issue.note && (
           <div className="ic-block">
-            <h5>{t('card.note')}</h5>
+            <h4>{t('card.note')}</h4>
             <p className="ic-note">{issue.note}</p>
           </div>
         )}

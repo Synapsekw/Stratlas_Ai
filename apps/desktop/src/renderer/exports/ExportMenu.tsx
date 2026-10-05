@@ -1,5 +1,5 @@
-import { Icon } from '@aio/ui';
-import { useEffect, useRef, useState } from 'react';
+import { arrowFocus, Icon, useFocusTrap } from '@aio/ui';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useShell } from '../shell';
 import { allowedActions } from './exportModel';
 import { runExportAction } from './exports';
@@ -14,27 +14,36 @@ export function ExportMenu() {
   const [open, setOpen] = useState(false);
   const [legend, setLegend] = useState(true);
   const root = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const close = (e: PointerEvent) => {
       if (!root.current?.contains(e.target as Node)) setOpen(false);
     };
-    const esc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
     window.addEventListener('pointerdown', close);
-    window.addEventListener('keydown', esc);
     return () => {
       window.removeEventListener('pointerdown', close);
-      window.removeEventListener('keydown', esc);
     };
   }, [open]);
+  // the first item takes focus, Esc closes and focus returns to the Export button
+  useFocusTrap(list, open, {
+    onEscape: () => {
+      setOpen(false);
+    },
+    returnTo: () => button.current,
+  });
+  /** Up, Down, Home and End move between the items, as in any menu. */
+  const arrows = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (list.current && arrowFocus(list.current, e.key)) e.preventDefault();
+  };
 
   if (!actions.length) return null;
   return (
     <div className="xmenu" ref={root}>
       <button
+        ref={button}
         type="button"
         className="btn sm"
         aria-haspopup="menu"
@@ -47,7 +56,7 @@ export function ExportMenu() {
         Export
       </button>
       {open && (
-        <div className="xmenu-list" role="menu" aria-label="Export">
+        <div ref={list} className="xmenu-list" role="menu" aria-label="Export" onKeyDown={arrows}>
           {actions.map((a) => (
             <button
               key={a.id}
@@ -65,16 +74,18 @@ export function ExportMenu() {
             </button>
           ))}
           {actions.some((a) => a.id === 'snapshot') && (
-            <label className="xmenu-opt">
-              <input
-                type="checkbox"
-                checked={legend}
-                onChange={(e) => {
-                  setLegend(e.target.checked);
-                }}
-              />
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              aria-checked={legend}
+              className="xmenu-opt"
+              onClick={() => {
+                setLegend(!legend);
+              }}
+            >
+              <Icon name={legend ? 'check' : 'box'} size={14} />
               Legend on the 3D snapshot
-            </label>
+            </button>
           )}
         </div>
       )}
