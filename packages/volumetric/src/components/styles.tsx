@@ -116,6 +116,22 @@ const css = `
 .vol-legend .key { display: flex; align-items: center; gap: 6px; }
 .vol-legend .key i { width: 12px; height: 8px; border-radius: 1px; }
 .vol-legend .key i.line { height: 2px; background: #fff; }
+.vol-legend.live { pointer-events: auto; max-width: 240px; }
+.vol-legend.vol-hint { max-width: 300px; color: var(--fg-2); line-height: 1.45; font-size: var(--t-12); }
+.vol-elev { display: grid; gap: 6px; padding-bottom: 4px; }
+.vol-elev .ramp { width: 100%; height: 10px; }
+.vol-elev-note { color: var(--fg-3); }
+.vol-hs { display: inline-flex; align-items: center; gap: 4px; color: var(--fg-2); cursor: pointer; }
+.vol-hs input { margin: 0; accent-color: var(--acc); }
+.vol-ramps { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+.vol-ramps button { all: unset; box-sizing: border-box; height: 14px; border-radius: 2px; cursor: pointer; border: 1px solid oklch(0 0 0 / .4); }
+.vol-ramps button[aria-checked='true'] { outline: 2px solid var(--acc); outline-offset: 1px; }
+.vol-ramps button:focus-visible { outline: 2px solid var(--fg-0); outline-offset: 1px; }
+.vol-rng { display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 6px; color: var(--fg-2); }
+.vol-rng input { width: 100%; margin: 0; accent-color: var(--acc); }
+.vol-elev .btn { justify-self: start; }
+.vol-elev .btn[aria-pressed='true'] { color: var(--acc-strong); }
+.vol-eb-hint { max-width: 300px; line-height: 1.35; }
 .vol-swipe { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--ov); box-shadow: 0 0 0 1px oklch(0 0 0 / .35); cursor: ew-resize; touch-action: none; }
 .vol-swipe .knob { position: absolute; top: 50%; left: 50%; width: 28px; height: 28px; margin: -14px 0 0 -14px; border-radius: 50%; display: grid; place-items: center; background: var(--bg-1); color: var(--fg-0); border: 1px solid var(--line-strong); }
 .vol-swipe:focus-visible .knob { outline: 2px solid var(--acc); }

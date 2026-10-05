@@ -1,5 +1,5 @@
 import type { VolumeBaseId } from '@aio/schema';
-import { Icon } from '@aio/ui';
+import { Icon, t } from '@aio/ui';
 import { useMemo } from 'react';
 import { registerRows, sortRows, totals, type SortKey } from '../model/register';
 import { useVolumetric, volumetric } from '../store';
@@ -14,6 +14,9 @@ const BASE_HELP: Record<VolumeBaseId, string> = {
 };
 
 const short = (label: string) => label.replace(/ 20\d\d$/, '');
+
+const fmtDate = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
 function useBases() {
   return useVolumetric((s) => s.file?.bases ?? []);
@@ -80,9 +83,9 @@ function Register() {
   const base = useVolumetric((s) => s.base);
   const sort = useVolumetric((s) => s.sort);
   const selected = useVolumetric((s) => s.selected);
-  const hidden = useVolumetric((s) => s.hidden);
+  const shown = useVolumetric((s) => s.shown);
   const deadband = useVolumetric((s) => s.file?.deadbandM ?? 0.1);
-  const allShown = hidden.length === 0;
+  const allShown = piles.length > 0 && piles.every((p) => shown.includes(p.id));
   const rows = useMemo(
     () => sortRows(registerRows(piles, epoch, base), sort.key, sort.dir),
     [piles, epoch, base, sort],
@@ -125,8 +128,8 @@ function Register() {
                     type="button"
                     className="vol-eye"
                     aria-pressed={allShown}
-                    title={allShown ? 'Hide every pile in 3D' : 'Show every pile in 3D'}
-                    aria-label={allShown ? 'Hide every pile in 3D' : 'Show every pile in 3D'}
+                    title={allShown ? t('vol.eye.hideAll') : t('vol.eye.showAll')}
+                    aria-label={allShown ? t('vol.eye.hideAll') : t('vol.eye.showAll')}
                     data-testid="vol-eye-all"
                     onClick={() => {
                       volumetric.getState().setAllPilesVisible(!allShown);
@@ -167,18 +170,26 @@ function Register() {
                 <button
                   type="button"
                   className="vol-eye"
-                  aria-pressed={!hidden.includes(r.id)}
-                  title={hidden.includes(r.id) ? 'Show this pile in 3D' : 'Hide this pile in 3D'}
-                  aria-label={`${hidden.includes(r.id) ? 'Show' : 'Hide'} ${r.id} in 3D`}
+                  aria-pressed={shown.includes(r.id)}
+                  title={
+                    shown.includes(r.id)
+                      ? t('vol.eye.hide', { pile: r.id })
+                      : t('vol.eye.show', { pile: r.id })
+                  }
+                  aria-label={
+                    shown.includes(r.id)
+                      ? t('vol.eye.hide', { pile: r.id })
+                      : t('vol.eye.show', { pile: r.id })
+                  }
                   onClick={(e) => {
                     e.stopPropagation();
-                    volumetric.getState().setPileVisible(r.id, hidden.includes(r.id));
+                    volumetric.getState().setPileVisible(r.id, !shown.includes(r.id));
                   }}
                   onKeyDown={(e) => {
                     e.stopPropagation();
                   }}
                 >
-                  <Icon name={hidden.includes(r.id) ? 'eye-off' : 'eye'} size={14} />
+                  <Icon name={shown.includes(r.id) ? 'eye' : 'eye-off'} size={14} />
                 </button>
                 {r.id}
                 {r.edited && <span className="vol-ed" title="Boundary edited by hand" />}
@@ -200,8 +211,11 @@ function Register() {
           <tr>
             <td>
               {tot.piles}
-              {hidden.length > 0 && (
-                <small className="vol-hidden-n"> · {hidden.length} hidden</small>
+              {shown.length > 0 && (
+                <small className="vol-hidden-n" data-testid="vol-shown-n">
+                  {' · '}
+                  {t('vol.shown', { count: shown.length })}
+                </small>
               )}
             </td>
             <td>{f0(tot.fill)}</td>
@@ -382,6 +396,8 @@ function PileDetail({ id }: { id: string }) {
         ? ['vol-cut', 'Drawn down']
         : ['vol-fill', 'Built up'];
   const prof = s.pileProfile?.pile === id ? s.pileProfile.data : null;
+  const fcn = live ? live.volumes[s.base] : ep?.volumes[s.base];
+  const baseLabel = file.bases.find((b) => b.id === s.base)?.label ?? s.base;
 
   return (
     <div className="vol-detail" data-testid="vol-pile" data-pile={id}>
@@ -469,6 +485,29 @@ function PileDetail({ id }: { id: string }) {
               />
               <span>t/m³, applies to every pile</span>
             </div>
+            <dl className="vol-facts" data-testid="vol-measure">
+              <dt>
+                {t('vol.detail.fill')} / {t('vol.detail.cut')} / {t('vol.detail.net')}
+              </dt>
+              <dd>
+                <span className="vol-fill">{f0(fcn?.fill)}</span> /{' '}
+                <span className="vol-cut">{f0(fcn?.cut)}</span> / <b>{f0(fcn?.net)}</b> m³
+              </dd>
+              <dt>{t('vol.detail.measure')}</dt>
+              <dd>{t('vol.detail.onBase', { base: baseLabel.toLowerCase() })}</dd>
+              <dt>{t('vol.detail.lastEdit')}</dt>
+              <dd data-testid="vol-last-edit">
+                {edit
+                  ? t('vol.detail.editedOn', { date: fmtDate(edit.updatedAt) })
+                  : t('vol.detail.neverEdited')}
+              </dd>
+              {edit && (
+                <>
+                  <dt />
+                  <dd>{t('vol.detail.autoGave', { volume: f0(auto?.volumes[s.base].net) })}</dd>
+                </>
+              )}
+            </dl>
           </>
         ) : (
           <p className="vol-note">Not present on this date.</p>

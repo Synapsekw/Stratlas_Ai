@@ -17,7 +17,7 @@ import { assetUrl, workspace as appWorkspace, type Workspace } from '@aio/worksp
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { EditResponse } from './model/compute';
-import type { SectionProfile } from './model/dsm';
+import { isRampId, type RampId, type ReliefStyle, type SectionProfile } from './model/dsm';
 import { simplifyRing, type EN } from './model/edit';
 import { enToLocal, localToEN } from './model/frame';
 import { pileNode, surveyLayers, type SurveyLayers } from './model/layers';
@@ -41,6 +41,81 @@ export interface EditSession {
   resetToAuto: boolean;
   live: EditResponse | null;
   busy: boolean;
+}
+
+/** How the Elevation surface is coloured (remembered per project). */
+export interface ElevationStyle {
+  ramp: RampId;
+  /** Heights at the ends of the ramp, m; null: the 1st to 99th percentile of the surveys. */
+  range: [number, number] | null;
+  hillshade: boolean;
+}
+
+export const DEFAULT_ELEVATION: ElevationStyle = { ramp: 'turbo', range: null, hillshade: true };
+
+/** Display choices remembered per project on this machine. */
+export interface VolumePrefs {
+  /** Every pile's volume, toe line and callout drawn in 3D (else only the selected pile). */
+  showAll?: boolean;
+  elevation?: ElevationStyle;
+}
+
+/** Where the per-project choices are kept (localStorage in the app). */
+export interface VolumePrefStore {
+  read(projectId: string): VolumePrefs;
+  write(projectId: string, prefs: VolumePrefs): void;
+}
+
+/** Validated prefs from anything stored. */
+export function parseVolumePrefs(v: unknown): VolumePrefs {
+  if (!v || typeof v !== 'object') return {};
+  const raw = v as Record<string, unknown>;
+  const out: VolumePrefs = {};
+  if (typeof raw.showAll === 'boolean') out.showAll = raw.showAll;
+  const e = raw.elevation as Record<string, unknown> | undefined;
+  if (e && typeof e === 'object' && isRampId(e.ramp)) {
+    const r = e.range;
+    const range =
+      Array.isArray(r) &&
+      r.length === 2 &&
+      r.every((x) => typeof x === 'number' && Number.isFinite(x)) &&
+      (r[0] as number) < (r[1] as number)
+        ? ([r[0], r[1]] as [number, number])
+        : null;
+    out.elevation = { ramp: e.ramp, range, hillshade: e.hillshade !== false };
+  }
+  return out;
+}
+
+const PREFS_KEY = 'stratlas.volumePrefs';
+
+/** Per-project prefs in localStorage; nothing is kept where storage is not available. */
+export function localPrefStore(): VolumePrefStore {
+  const storage = (): Storage | null => {
+    try {
+      return typeof localStorage === 'undefined' ? null : localStorage;
+    } catch {
+      return null;
+    }
+  };
+  const all = (): Record<string, unknown> => {
+    try {
+      const v = JSON.parse(storage()?.getItem(PREFS_KEY) ?? '{}') as unknown;
+      return v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
+    } catch {
+      return {};
+    }
+  };
+  return {
+    read: (id) => parseVolumePrefs(all()[id]),
+    write: (id, prefs) => {
+      try {
+        storage()?.setItem(PREFS_KEY, JSON.stringify({ ...all(), [id]: prefs }));
+      } catch {
+        // storage full or unavailable: the choice lasts for this session
+      }
+    },
+  };
 }
 
 export interface SectionState {
@@ -69,8 +144,15 @@ export interface VolumetricState {
   body: BodyMode;
   density: number;
   selected: string | null;
-  /** Piles whose volume, toe line and callout are hidden in 3D (the selected pile still shows). */
-  hidden: string[];
+  /**
+   * Piles whose volume, toe line and callout are drawn in 3D besides the selected one. Empty by
+   * default: a pile shows when it is selected (clicked on the terrain, in the register or by the
+   * agent); the eyes in the register show some or all of them deliberately.
+   */
+  shown: string[];
+  elevation: ElevationStyle;
+  /** Heights of the surveys for the elevation ramp, once the worker has read the DSMs. */
+  relief: { auto: [number, number]; extent: [number, number] } | null;
   sort: { key: SortKey; dir: 'asc' | 'desc' };
   section: SectionState;
   edit: EditSession | null;
@@ -100,9 +182,14 @@ export interface VolumetricActions {
   setSort(key: SortKey): void;
   select(pile: string | null, opts?: { fly?: boolean }): void;
   setPileVisible(pile: string, visible: boolean): void;
+  /** Show or hide every pile; remembered for the project. */
   setAllPilesVisible(visible: boolean): void;
-  /** Drawn in 3D: not hidden, or the selected pile. */
+  /** Drawn in 3D: shown on purpose, or the selected pile. */
   isPileShown(pile: string): boolean;
+  /** Change the elevation colours; remembered for the project. */
+  setElevation(patch: Partial<ElevationStyle>): void;
+  /** The elevation colours with the range resolved (null until the heights are known). */
+  reliefStyle(): ReliefStyle | null;
   step(dir: 1 | -1): void;
   startSection(): void;
   addSectionPoint(p: EN): Promise<void>;
@@ -134,6 +221,8 @@ export interface VolumetricDeps {
   startService(init: WorkerInit): VolumeService;
   bridge(): AioBridge | null;
   now(): string;
+  /** Per-project display choices (none kept when absent). */
+  prefs?: VolumePrefStore;
 }
 
 const initial: VolumetricState = {
@@ -154,7 +243,9 @@ const initial: VolumetricState = {
   body: 'lift',
   density: 1.6,
   selected: null,
-  hidden: [],
+  shown: [],
+  elevation: DEFAULT_ELEVATION,
+  relief: null,
   sort: { key: 'id', dir: 'asc' },
   section: { mode: 'idle', points: [], profile: null, busy: false },
   edit: null,
@@ -215,13 +306,45 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
       return null;
     };
 
+    let applyingLayers = false;
     const showLayers = () => {
       const s = get();
       const w = ws();
       const shown = get().shownEpoch();
-      for (const [e, sl] of Object.entries(s.layers))
-        for (const id of sl.layers)
-          w.setLayerVisible(id, e === shown || (s.swipe && id === sl.terrain));
+      applyingLayers = true;
+      try {
+        for (const [e, sl] of Object.entries(s.layers))
+          for (const id of sl.layers)
+            w.setLayerVisible(id, e === shown || (s.swipe && id === sl.terrain));
+      } finally {
+        applyingLayers = false;
+      }
+    };
+
+    const savePrefs = (patch: VolumePrefs) => {
+      const id = get().projectId;
+      if (!id || !deps.prefs) return;
+      deps.prefs.write(id, { ...deps.prefs.read(id), ...patch });
+    };
+
+    /**
+     * A survey's layer switched on by hand (dataset tree, Layers): that survey becomes the one
+     * shown, so two dates never draw on top of each other outside the swipe.
+     */
+    const followLayers = (now: Record<string, true>, before: Record<string, true>) => {
+      const s = get();
+      if (applyingLayers || s.swipe || s.status !== 'ready') return;
+      const current = s.shownEpoch();
+      for (const [e, sl] of Object.entries(s.layers)) {
+        if (e === current) continue;
+        if (sl.layers.some((id) => before[id] && !now[id])) {
+          if (s.edit) {
+            showLayers();
+            set({ message: 'Save or cancel the boundary edit first' });
+          } else get().setEpoch(e);
+          return;
+        }
+      }
     };
 
     const refreshPile = () => {
@@ -246,6 +369,26 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
             set({ pileProfile: { pile, epoch, base, data } });
         },
         () => undefined,
+      );
+    };
+
+    /** The survey heights for the elevation ramp, read once when the colours are first wanted. */
+    let reliefAsked: VolumeService | null = null;
+    const ensureRelief = () => {
+      const svc = get().service;
+      if (!svc || reliefAsked === svc || get().relief) return;
+      reliefAsked = svc;
+      svc.grid().then(
+        (g) => {
+          if (get().service === svc)
+            set({
+              relief: { auto: [g.relief[0], g.relief[1]], extent: [g.extent[0], g.extent[1]] },
+            });
+        },
+        (e: unknown) => {
+          reliefAsked = null;
+          set({ message: e instanceof Error ? e.message : String(e) });
+        },
       );
     };
 
@@ -335,6 +478,8 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
             epochs,
             deadband: file.deadbandM,
           });
+          const prefs = deps.prefs?.read(project.id) ?? {};
+          const piles = applyEdits(file, edits);
           set({
             ...initial,
             readOnly: get().readOnly,
@@ -344,21 +489,26 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
             origin: project.manifest.origin,
             file,
             edits,
-            piles: applyEdits(file, edits),
+            piles,
             layers: surveyLayers(project.manifest.layers, file.captures),
             epoch: epochs.at(-1) ?? '',
             base: file.defaultBase,
             density: file.densityTPerM3,
+            shown: prefs.showAll ? piles.map((p) => p.id) : [],
+            elevation: prefs.elevation ?? DEFAULT_ELEVATION,
             service,
           });
           showLayers();
           unsubscribe = deps.workspace.subscribe((w, prev) => {
+            if (w.hidden !== prev.hidden) followLayers(w.hidden, prev.hidden);
             if (w.selection === prev.selection) return;
             const sel = w.selection;
             const pile = sel?.kind === 'asset' ? pileOfNode(get().piles, sel.id) : null;
             if (pile !== get().selected && !get().edit) {
               set({ selected: pile, pileProfile: null });
               refreshPile();
+              // picked on the terrain or by the agent: fly to the pile it reveals
+              if (pile && sel) ws().flyTo({ kind: 'selection', selection: sel });
             }
           });
         } catch (e) {
@@ -415,6 +565,7 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
           return;
         }
         set({ surface });
+        if (surface === 'elev') ensureRelief();
         showLayers();
       },
 
@@ -460,17 +611,44 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
       },
 
       setPileVisible(pile, visible) {
-        const hidden = get().hidden.filter((id) => id !== pile);
-        set({ hidden: visible ? hidden : [...hidden, pile] });
+        const s = get();
+        const others = s.shown.filter((id) => id !== pile);
+        const shown = visible ? [...others, pile] : others;
+        set({ shown });
+        // the "all" choice is what is remembered: it ends when one pile is hidden again
+        const all = s.piles.length > 0 && s.piles.every((p) => shown.includes(p.id));
+        savePrefs({ showAll: all });
       },
 
       setAllPilesVisible(visible) {
-        set({ hidden: visible ? [] : get().piles.map((p) => p.id) });
+        set({ shown: visible ? get().piles.map((p) => p.id) : [] });
+        savePrefs({ showAll: visible });
       },
 
       isPileShown(pile) {
         const s = get();
-        return pile === s.selected || !s.hidden.includes(pile);
+        return pile === s.selected || s.shown.includes(pile);
+      },
+
+      setElevation(patch) {
+        const elevation = { ...get().elevation, ...patch };
+        const r = elevation.range;
+        if (r && !(r[0] < r[1])) return;
+        set({ elevation });
+        ensureRelief();
+        savePrefs({ elevation });
+      },
+
+      reliefStyle() {
+        const s = get();
+        const range = s.elevation.range ?? s.relief?.auto;
+        if (!range) return null;
+        return {
+          ramp: s.elevation.ramp,
+          lo: range[0],
+          hi: range[1],
+          hillshade: s.elevation.hillshade,
+        };
       },
 
       step(dir) {
@@ -710,6 +888,7 @@ export const volumetric = createVolumetricStore({
   startService: startVolumeWorker,
   bridge: appBridge,
   now: () => new Date().toISOString(),
+  prefs: localPrefStore(),
 });
 
 export function useVolumetric<T>(selector: (s: Volumetric) => T): T {

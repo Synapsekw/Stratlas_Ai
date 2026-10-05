@@ -13,6 +13,7 @@ import { expect, launchApp, NetworkGuard } from './fixtures';
 
 const DATA = process.env.STRATLAS_MASAFI_DATA ?? 'E:\\Stratlas Data';
 const MASAFI = join(DATA, 'projects', 'masafi');
+const PACKS = join(DATA, 'packs');
 
 interface Fcn {
   fill: number;
@@ -41,6 +42,7 @@ interface Inspect {
       getState(): {
         status: string;
         selected: string | null;
+        elevation?: { ramp: string; hillshade: boolean };
         service: { recompute(id: string): Promise<Recomputed> } | null;
       };
     };
@@ -54,6 +56,10 @@ const test = base.extend<{ root: string; app: ElectronApplication; win: Page }>(
     await cp(MASAFI, join(dir, 'data', 'projects', 'masafi'), { recursive: true });
     // start from the delivered volumes: edits saved while testing the real project are left out
     await rm(join(dir, 'data', 'projects', 'masafi', 'edits'), { recursive: true, force: true });
+    // the installed street map pack that covers the yard, when this machine has it
+    if (existsSync(join(PACKS, 'kuwait.pmtiles')))
+      for (const f of ['kuwait.json', 'kuwait.pmtiles'])
+        await cp(join(PACKS, f), join(dir, 'data', 'packs', f));
     await use(dir);
     await rm(dir, { recursive: true, force: true });
   },
@@ -131,6 +137,60 @@ async function openMasafi(win: Page) {
     .toBe(true);
 }
 
+/** The pile's volume body, toe line or base outline is drawn in 3D. */
+const pileDrawn = (win: Page, id: string) =>
+  inspect(
+    win,
+    ({ w, a }) => w.__stratlas.stage()?.scene.getObjectByName(`vol:${a}`) !== undefined,
+    id,
+  );
+
+/** Every callout's text on the 3D stage. */
+const calloutText = (win: Page) =>
+  win.locator('[data-scene-view] .aio-stage-overlay').first().innerText();
+
+interface Projectable {
+  clone(): Projectable;
+  applyMatrix4(m: unknown): Projectable;
+  project(camera: unknown): { x: number; y: number };
+}
+
+/** Client coordinates of the middle of a scene node (a pile on the terrain). */
+async function pileOnScreen(win: Page, node: string): Promise<{ x: number; y: number }> {
+  const ndc = await inspect(
+    win,
+    ({ w, a }) => {
+      const stage = w.__stratlas.stage() as unknown as {
+        camera: unknown;
+        scene: { getObjectByName(n: string): unknown };
+      };
+      const root = stage.scene.getObjectByName(a) as
+        { traverse(cb: (o: unknown) => void): void } | undefined;
+      const found: { x: number; y: number }[] = [];
+      root?.traverse((o) => {
+        const m = o as {
+          isMesh?: boolean;
+          matrixWorld: unknown;
+          geometry?: {
+            boundingSphere: { center: Projectable } | null;
+            computeBoundingSphere(): void;
+          };
+        };
+        if (found.length || !m.isMesh || !m.geometry) return;
+        if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
+        const c = m.geometry.boundingSphere?.center;
+        if (c) found.push(c.clone().applyMatrix4(m.matrixWorld).project(stage.camera));
+      });
+      const p = found[0];
+      return p ? { x: p.x, y: p.y } : null;
+    },
+    node,
+  );
+  const box = await win.locator('[data-scene-view] canvas').boundingBox();
+  if (!ndc || !box) throw new Error(`${node} is not on screen`);
+  return { x: box.x + ((ndc.x + 1) / 2) * box.width, y: box.y + ((1 - ndc.y) / 2) * box.height };
+}
+
 const rowNet = (win: Page, pile: string) =>
   win.locator(`[data-testid="vol-register"] tbody tr[data-pile="${pile}"] td.net`);
 
@@ -181,6 +241,37 @@ test('Masafi register, recomputed volumes, 3D selection, surfaces and section', 
   expect(count).toBe(152);
   expect(worst).toBeLessThan(0.005);
 
+  // By default no pile is drawn in 3D: no bodies, toe lines or volume callouts; a hint says how.
+  await expect(win.getByTestId('vol-hint')).toBeVisible();
+  for (const id of ids) expect(await pileDrawn(win, id)).toBe(false);
+  expect(await calloutText(win)).not.toContain('m³');
+  // the survey's flat ortho is not drawn in 3D (its terrain carries the photo), the map has it
+  expect(
+    await inspect(
+      win,
+      ({ w }) => [
+        w.__stratlas.workspace.getState().isLayerVisible('ortho-2021-01-10'),
+        w.__stratlas.stage()?.scene.getObjectByName('layer:ortho-2021-01-10')?.visible,
+      ],
+      null,
+    ),
+  ).toEqual([true, false]);
+  // the offline street map lies under the yard
+  if (existsSync(join(PACKS, 'kuwait.pmtiles')))
+    await expect
+      .poll(
+        () =>
+          inspect(
+            win,
+            ({ w }) =>
+              w.__stratlas.stage()?.scene.getObjectByName('basemap:site-street-map')?.visible ??
+              false,
+            null,
+          ),
+        { timeout: 30_000 },
+      )
+      .toBe(true);
+
   // Selecting a pile selects its node in 3D, draws its body, base plate and toe line.
   await win.locator('[data-testid="vol-register"] tbody tr[data-pile="P02"]').click();
   await expect(win.getByTestId('vol-pile')).toHaveAttribute('data-pile', 'P02');
@@ -204,6 +295,31 @@ test('Masafi register, recomputed volumes, 3D selection, surfaces and section', 
       ),
     )
     .toBe(true);
+  // only that pile, with its measurement on the callout; the panel has fill, cut, net and edits
+  expect(await pileDrawn(win, 'P05')).toBe(false);
+  await expect.poll(() => calloutText(win)).toContain('11,379 m³ · 18,206 t');
+  await expect(win.getByTestId('vol-measure')).toContainText('11,384');
+  await expect(win.getByTestId('vol-last-edit')).toContainText('Never');
+
+  // Esc hides it again; a click on a pile on the terrain flies to it and reveals it.
+  await win.locator('[data-scene-view] canvas').hover();
+  await win.keyboard.press('Escape');
+  await expect.poll(() => pileDrawn(win, 'P02')).toBe(false);
+  expect(
+    await inspect(win, ({ w }) => w.__stratlas.volumetric.getState().selected, null),
+  ).toBeNull();
+  await win.locator('body').press('h'); // whole site
+  await win.waitForTimeout(1500);
+  const at = await pileOnScreen(win, 'P05_e2');
+  await win.mouse.click(at.x, at.y);
+  await expect
+    .poll(() => inspect(win, ({ w }) => w.__stratlas.volumetric.getState().selected, null))
+    .toBe('P05');
+  await expect.poll(() => pileDrawn(win, 'P05')).toBe(true);
+  await expect(win.getByTestId('vol-pile')).toHaveAttribute('data-pile', 'P05');
+  await win.getByRole('button', { name: 'All piles', exact: true }).click();
+  await expect.poll(() => pileDrawn(win, 'P05')).toBe(false);
+  await win.locator('[data-testid="vol-register"] tbody tr[data-pile="P02"]').click();
 
   // The other survey: its terrain shows, the other hides.
   await win.locator('.vol-dates button', { hasText: '31 Dec' }).click();
@@ -234,6 +350,35 @@ test('Masafi register, recomputed volumes, 3D selection, surfaces and section', 
       { timeout: 20_000 },
     )
     .toBe(true);
+  // its ramp, range (metres, auto from the surveys) and hillshade are chosen on the legend
+  const elev = win.getByTestId('vol-elev');
+  await expect(elev.getByRole('radio', { name: 'Turbo' })).toHaveAttribute('aria-checked', 'true');
+  await expect(elev.locator('.ends')).toContainText(' m');
+  const drapeKey = () =>
+    inspect(
+      win,
+      ({ w }) => {
+        const d = w.__stratlas.stage()?.scene.getObjectByName('drape:e2') as
+          { uuid: string } | undefined;
+        return d?.uuid ?? null;
+      },
+      null,
+    );
+  const first = await drapeKey();
+  await elev.getByRole('radio', { name: 'Viridis' }).click();
+  await expect.poll(drapeKey, { timeout: 20_000 }).not.toBe(first);
+  await expect(elev.getByRole('radio', { name: 'Viridis' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+  await elev.getByRole('checkbox', { name: 'Hillshade' }).uncheck();
+  await expect
+    .poll(() =>
+      inspect(win, ({ w }) => w.__stratlas.volumetric.getState().elevation?.hillshade, null),
+    )
+    .toBe(false);
+  await elev.getByRole('checkbox', { name: 'Hillshade' }).check();
+  await elev.getByRole('radio', { name: 'Turbo' }).click();
 
   // Cut and fill colours drape on the last survey.
   await surfaces.getByRole('button', { name: 'Cut / fill' }).click();
@@ -261,24 +406,19 @@ test('Masafi register, recomputed volumes, 3D selection, surfaces and section', 
   );
   await surfaces.getByRole('button', { name: 'Photo' }).click();
 
-  // Piles hide one by one or all at once: body, toe line and callout go; the selected one stays.
-  const pileDrawn = (id: string) =>
-    inspect(
-      win,
-      ({ w, a }) => w.__stratlas.stage()?.scene.getObjectByName(`vol:${a}`) !== undefined,
-      id,
-    );
-  await win.getByRole('button', { name: 'Hide P03 in 3D' }).click();
-  await expect.poll(() => pileDrawn('P03')).toBe(false);
-  await expect.poll(() => pileDrawn('P05')).toBe(true);
-  // with some hidden the one button shows every pile, then hides every pile, then shows them again
+  // Piles show on purpose one by one or all at once; hiding all goes back to none.
+  await expect.poll(() => pileDrawn(win, 'P05')).toBe(false);
+  await win.getByRole('button', { name: 'Show P03 in 3D' }).click();
+  await expect.poll(() => pileDrawn(win, 'P03')).toBe(true);
+  await expect.poll(() => pileDrawn(win, 'P05')).toBe(false);
+  await expect(win.getByTestId('vol-shown-n')).toContainText('1 shown in 3D');
+  // with some shown the one button shows every pile, then hides every pile
   await win.getByTestId('vol-eye-all').click();
-  await expect.poll(() => pileDrawn('P03')).toBe(true);
+  await expect.poll(() => pileDrawn(win, 'P05')).toBe(true);
+  await expect(win.getByTestId('vol-shown-n')).toContainText('19 shown in 3D');
   await win.getByTestId('vol-eye-all').click();
-  await expect.poll(() => pileDrawn('P05')).toBe(false);
-  await expect(win.locator('[data-testid="vol-register"] tfoot')).toContainText('19 hidden');
-  await win.getByTestId('vol-eye-all').click();
-  await expect.poll(() => pileDrawn('P05')).toBe(true);
+  await expect.poll(() => pileDrawn(win, 'P03')).toBe(false);
+  await expect.poll(() => pileDrawn(win, 'P05')).toBe(false);
 
   // Swipe shows both surveys.
   await win.locator('.vol-dates button', { hasText: 'Swipe' }).click();

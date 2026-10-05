@@ -39,6 +39,13 @@ project's `legacy/` folder. Public API: `src/index.ts`. Ownership and dependenci
 | `src/components/VolumesPanel.tsx`    | Right panel: inventory, sortable register (fill, cut, net, change) with CSV, cut and fill by pile, pile detail with the four bases, recomputed volume, long section   |
 | `src/components/VolumetricStage.tsx` | Over the 3D pane: boundary handles, swipe divider, section and edit bars, legend, notices; section picking and body clicks                                            |
 
+Display model: no pile is drawn in 3D until it is selected (clicked on the terrain, in the
+register or by the agent), which flies to it and draws its toe line, body and measurement
+callout; Esc or a click on empty ground hides it. The register eyes show piles on purpose, and
+"show all" plus the elevation colours (ramp, range, hillshade) are remembered per project
+(`localPrefStore`). In 3D a survey's flat ortho is hidden when its terrain mesh carries the
+photo, and the toe lines baked into the terrain models are hidden in favour of the overlay's.
+
 The app composes it: `App.tsx` loads the store when a project opens, `WorkspaceScreen` adds the
 Volumes tab, `Stage` mounts `VolumetricStage` and the Volumes toolbar group
 (`apps/desktop/src/renderer/workspace/VolumeTools.tsx`).
