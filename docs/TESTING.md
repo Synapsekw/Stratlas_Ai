@@ -1,6 +1,6 @@
 # Testing Stratlas
 
-One document for every test round, one stage per milestone. Each stage lists what to click and what you should see. Earlier stages still apply unless a line says a behaviour changed.
+One document for every test round, one stage per milestone. Each stage lists what to click and what you should see. Each line describes current behaviour; passed stages are summarised, not repeated.
 
 ## How to use this document
 
@@ -30,132 +30,35 @@ One document for every test round, one stage per milestone. Each stage lists wha
 
 ## Status
 
-| Stage               | What it covers                                                                                                                                         | Build it needs                                                                                                                | Status                                                                                    |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| M1 to M4 (baseline) | The six projects, fusion scene, annotation, maps, AI, platform, reports and exports, packages, builder basics                                          | The current installer (M6 build, 4 Oct 2026) or later                                                                         | Tested by the founder; the feedback was fixed in M5                                       |
-| M5                  | Fixes from the M4 feedback: Masafi, DAMAC, video, layers, cut-away, split, sky and water, report branding, AI keys                                     | The M5 installer, built 4 Oct 2026 after the sky and water merge (commit `862c9df`) or later                                  | Not yet tested by the founder                                                             |
-| M6                  | Builder completion: pipelines from raw data, detection review, AI detection, report text and project report, video calibration, packages and map packs | The M6 installer, built 4 Oct 2026 from main at commit `4624bf2` or later, and pipeline pack 0.2.0 (see M6, Before you start) | Everything merged (P1, P2, P3, R1, R2, R3, R4, A1, X1, X2); not yet tested by the founder |
-| M7                  | Release hardening and distribution                                                                                                                     | Not built yet                                                                                                                 | Planned                                                                                   |
-| M8                  | Change detection and modelling                                                                                                                         | Not built yet                                                                                                                 | Planned                                                                                   |
-| M9                  | Team features and release 1.0                                                                                                                          | Not built yet                                                                                                                 | Planned                                                                                   |
+| Stage               | What it covers                                                                                                                                                                                                   | Build it needs                                                                                                                | Status                                                     |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| M1 to M4 (baseline) | The six projects, fusion scene, annotation, maps, AI, platform, reports and exports (packages and builder steps moved to M6)                                                                                     | The current installer (M6 build, 4 Oct 2026) or later                                                                         | Passed                                                     |
+| M5                  | Fixes from the M4 feedback: Masafi, DAMAC, video, layers, cut-away, split, sky and water, report branding, AI keys                                                                                               | The M5 installer, built 4 Oct 2026 after the sky and water merge (commit `862c9df`) or later                                  | Not yet tested (skipped for now); AI lines passed          |
+| M6                  | Builder completion: pipelines from raw data, detection review, AI detection, report text and project report, video calibration, packages and map packs                                                           | The M6 installer, built 4 Oct 2026 from main at commit `4624bf2` or later, and pipeline pack 0.2.0 (see M6, Before you start) | In progress: founder testing; feedback being fixed in M6.1 |
+| M6.1                | Your M6 feedback: point size, issue and photo opening, Media highlights, HCl flicker and nadir photos, dark maps, Al-Zour drone trace and photo icons, agent camera moves, Masafi piles and ramps, compare dates | Not built yet                                                                                                                 | Fixes in progress, not built yet                           |
+| M7                  | Release hardening and distribution                                                                                                                                                                               | Not built yet                                                                                                                 | Planned                                                    |
+| M8                  | Change detection and modelling                                                                                                                                                                                   | Not built yet                                                                                                                 | Planned                                                    |
+| M9                  | Team features and release 1.0                                                                                                                                                                                    | Not built yet                                                                                                                 | Planned                                                    |
 
-## Stage M1 to M4: baseline
+## Stage M1 to M4: baseline (passed)
 
-Everything that was new in M1, M3 and M4 and still behaves the same. Lines that changed after your M4 feedback are in stage M5 and marked "Changed in M5" here.
+Passed: tested by the founder; the feedback was fixed in M5. 1st Ring Road passed exactly as written.
 
-### Projects and library
+- Projects and library: the six projects, map packs, **Ctrl+K**, **Ctrl+B**, **Original review**.
+- Fusion scenes on HCl and Al-Zour: 3D navigation, video and timeline, flight paths, point clouds, photos, panoramas, plot plans, drone-eye view, video calibration basics.
+- EBSM, DAMAC, Masafi (volumes, swipe, boundary edit) and 1st Ring Road (chainage ruler, defect polygons, PCI grid).
+- Annotation, issues at scale, maps, AI, platform settings, reports and exports.
 
-- [ ] **Projects** shows 6 projects with thumbnails, sizes and layer counts: HCl Tank 710-D-130335, KIPIC Al-Zour LNG terminal, EBSM flare stack, DAMAC Hills tower, Masafi stockpiles, 1st Ring Road.
-- [ ] The map packs list shows GCC, Kuwait and World.
-- [ ] **Ctrl+K** finds projects, layers, issues and actions. **Ctrl+B** collapses the sidebar.
-- [ ] Each imported project opens its **Original review** (the delivered HTML report) inside Stratlas, offline: sidebar **Original review** or Ctrl+K.
-
-### Fusion scene: HCl Tank 710-D-130335
-
-- [ ] 3D: orbit (left drag), pan (right drag), zoom (wheel). Toolbar: Top, North and Iso views, measure, section cut, labels (**L**: Off, Key, All).
-- [ ] Click a clip bar on the timeline or a clip under **Video** in the sidebar: the video window shows the live frame with altitude, speed, gimbal and heading. Changed in M5: one clip per flight, and a click plays from the clicked point.
-- [ ] **Space** plays and pauses; **J K L** and the arrow keys step and shuttle in the video window.
-- [ ] Inside the tank: **C** gives the inside view behind the drone. Changed in M5: the tank is no longer cut open automatically; use the **Inside the asset** tool.
-- [ ] Point cloud colour by **Elevation** (RGB is disabled: this LiDAR has intensity only).
-- [ ] **Issues**: select F05, the camera flies to it. Your 2 issues from the first test are still there (13 issues).
-- [ ] Photos: **Media** screen, or click a photo camera in 3D.
-
-### Fusion scene: KIPIC Al-Zour
-
-- [ ] The plant sits on the drone ortho at the shoreline.
-- [ ] Play **DJI_0665** (Flight 1, clip 3): the drone flies its path and its live frame drapes onto the tanks and ground.
-- [ ] **P** cycles flight paths: All, Active clip, Off. The drone and its frustum stay visible. The eye on a sidebar flight row hides that flight's path only.
-- [ ] Toolbar **Point cloud** button: show the cloud, colour by RGB, **Elevation**, Intensity, Flight or **Classification** (legend with classes you can hide); size, budget, EDL.
-- [ ] **Al-Zour full resolution (COPC, 841.7 M points)** is on: fly close to a tank or pipe rack, detail streams in (pipes, stairs). Expect about 55 to 60 fps.
-- [ ] Click a tank or building: asset tag and area. Labels (**L**) show area callouts.
-- [ ] Mavic Cine photo **pins** over the plant; click one to open the photo.
-- [ ] Drone-eye view (camera button) while playing: steady, no flicker.
-- [ ] Click a panorama marker: drag to look, scroll to zoom, **Esc** returns to 3D.
-- [ ] **Maps and rasters**: switch on Overall or Area plot plans; the red line art lines up with roads and tanks.
-- [ ] Play a clip, **Calibrate video**: time offset and field of view. Changed in M6: one 70.9 degree lens for every clip, plus orientation and position (see M6, A1).
-
-### The other four projects
-
-- [ ] **EBSM flare stack**: stack model with issue pins, 299 photos; Issues lists F01 to F78 and 53 uncertain areas (U codes). Open a photo from an issue: corrosion mask overlay with opacity slider.
-- [ ] **EBSM** original review: findings map, photo masks; downloads save through a Windows dialog.
-- [ ] **DAMAC Hills tower**: photo cameras around the tower; Issues has 656 defects (D codes) and 45 uncertain; RGB and thermal photo layers. Open a thermal photo with its overlay.
-- [ ] **DAMAC** 3D: issues show as **count badges** coloured by worst severity; click a badge to fly in; codes on hover. Changed in M5: only faces you can see.
-- [ ] Imported EBSM and DAMAC findings show as **Reviewed**, uncertain ones as **Draft**.
-- [ ] **Masafi stockpiles**: two terrains (31 Dec 2020, 10 Jan 2021) with photo texture and pile callouts (P03 10,237 m³).
-- [ ] **Masafi**, right panel **Volumes**: register of 19 piles with fill, cut, net and change. Switch the date and the base (Triangulated toe, Best-fit plane, Average toe, Lowest toe).
-- [ ] **Masafi**: click P02: red volume body, base plate, toe line; 11,379 m³ (10 Jan, triangulated toe), tonnage, footprint, height.
-- [ ] **Masafi**: **Swipe** between the two dates. Changed in M5: cut and fill colours are on the **Photo | Elevation | Cut / fill** switch.
-- [ ] **Masafi**: **Edit boundary**, drag a toe point, the volume recomputes; Save; reopen the project: the edit is kept. Export the register as CSV.
-- [ ] **1st Ring Road** opens map first with the **chainage ruler** (0 to 7.55 km, 250 m bars by severity, PCI strip). Click a bar to jump; drag to filter.
-- [ ] **1st Ring Road**: zoom in, defects as **polygons** on the 3.25 cm ortho, coloured by stage or type; **PCI grid** Low, Medium, High; click a sample unit for its deducts.
-- [ ] **1st Ring Road**: density heat map; filters by stage, type and chainage; search a defect code; open a defect: close-up with outline, previous and next.
-
-### Annotation
-
-- [ ] **A** turns on Annotate mode.
-- [ ] Video window or photo: **Box**, draw, pick class and severity: a new issue appears with a pin on the model.
-- [ ] Mesh tools: **Pin**, **Line**, **Area** on the model; **Cloud point** and **Cloud box** on a point cloud.
-- [ ] The issue is saved: close and reopen the project, it is still there.
-
-### Issues at scale
-
-- [ ] Layers popover: pins **All**, **Severity N and above**, **Off**; heat map option.
-- [ ] **Issues** on 1st Ring Road (2,115): instant search, group by severity, class or zone, bulk set status with undo.
-
-### Maps
-
-- [ ] **Map** shows the offline street map with issue markers; **Split** shows 3D and map together. Changed in M5: each side of the split has its own selector.
-- [ ] Al-Zour map: the plant, flight paths and the live footprint of the playing clip.
-- [ ] 1st Ring Road: 2,115 defects on the Kuwait map with Arabic labels.
-
-### AI (Cloud AI on and your own key)
-
-- [ ] **Settings, AI providers**: add a key (Anthropic, OpenAI or Google). It is stored in Windows Credential Manager, never in files.
-- [ ] Ask the agent "Which clips show F05?" or "Fly to the roof nozzles".
-- [ ] First message in a project shows a **preview** of exactly what will be sent; "Always allow for this project".
-- [ ] Close and reopen the project: the conversation resumes; export it as Markdown.
-- [ ] A write action ("draft an issue for the roof nozzle") waits for **Approve**, also after an app restart.
-- [ ] **Settings, Usage and cost**: tokens and estimated cost per project.
-- [ ] Tools: "compare the two Masafi surveys", "how many issues by zone", "find issues within 10 m of N5", "open the original review".
-
-### Platform
-
-- [ ] **Settings, Appearance**: Dark, Light, System. Check every screen in Light.
-- [ ] **Settings, Offline maps**: coverage map of installed packs; **Import pack file**; **Remove**. **Add a region** downloads from build.protomaps.com: only if you want a download.
-- [ ] **Settings, Graphics quality**: detected tier (this PC: Ultra); try High or Medium.
-- [ ] **Settings, About and updates**: version, folders, licences, **Export logs**.
-- [ ] **Ctrl+Shift+F**: performance overlay (fps, frame times, points, GPU memory).
-
-### Reports and exports
-
-- [ ] **Reports**: open the EBSM report (88 pages) and the DAMAC report (206 pages) inside the app: thumbnails, zoom, search.
-- [ ] **Issues, Export**: CSV, GeoJSON, COCO, kit JSON, masks ZIP. Each asks where to save and shows progress; the app stays responsive.
-- [ ] **3D snapshot** PNG with legend.
-- [ ] **Issue register PDF**: cover, charts, register, one page per issue with photo crop and 3D view (try HCl first: small).
-
-### Customer packages
-
-- [ ] Export HCl as a **package** (`.aio`), optionally with a passphrase; leave out the point clouds to keep it small.
-- [ ] Double-click the `.aio` (or Projects, Add): it opens in player mode: welcome screen, "Read-only package" chip, no annotation tools, cloud AI off.
-
-### Building projects (Release B basics)
-
-- [ ] Projects, **New project**: name, customer, type, coordinate system (UTM zone search), origin (map click or **Typed coordinate**), severity template, brand. The project opens empty.
-- [ ] Drag in a few drone photos with GPS: they appear as posed cameras.
-- [ ] Drag in a DJI video with its `.SRT`: a clip with its flight path appears and plays in sync.
-- [ ] Camera heights: in a project made from a typed origin, drag in DJI photos or a video with its `.SRT`. A **Camera heights** card asks for the take-off height (proposed from the model under the take-off point, or the origin height with a warning). After the import the panel says which altitude was used and with which number. A project made from a photo origin imports without asking (absolute altitude, offset 0).
-- [ ] Drag in a GLB, then **Georeference** it by clicking 3 point pairs; residuals show.
-- [ ] Drag in a small LAS or LAZ: a **Jobs** entry converts it (progress, log); the cloud appears when done.
+Building projects and customer packages were not tested yet; those steps are in M6 (P1 to P3, Import, X1).
 
 ## Stage M5: your M4 feedback, fixed
 
-Build: the M5 installer, 4 Oct 2026, or later. Below is what changed after your feedback.
+Build: the M5 installer, 4 Oct 2026, or later. Below is what changed after your feedback. The AI lines (Workspace ID, Test connection, agent errors) passed and are not repeated; the per-pile eye on Masafi is replaced by M6.1.
 
 ### Masafi
 
 - [ ] Toolbar: **Photo | Elevation | Cut / fill** switch, always visible. Elevation colours the terrain with its legend.
 - [ ] **Section** tool: click the first point, move the mouse: the camera stays still. Click the second point: the profile appears.
-- [ ] Pile register: an **eye** per pile hides its volume, toe line and m³ label in 3D. The eye in the header hides or shows every pile; the footer counts hidden piles. A selected pile always shows.
 - [ ] Your boundary edit on P08 (31 Dec) is still there.
 
 ### DAMAC
@@ -187,12 +90,6 @@ Build: the M5 installer, 4 Oct 2026, or later. Below is what changed after your 
 - [ ] **Settings, Report branding**: company name, logo (PNG, JPG, SVG), accent colour, cover preview.
 - [ ] Without branding, a generated issue register (Issues, Export, PDF) has no logo and says "Made with Stratlas". With branding, your logo and name. The delivered EBSM and DAMAC PDFs are unchanged (the e& in them is the client's own document).
 - [ ] EBSM, **Media**: opens at once and scrolls smoothly (thumbnails instead of 2560 px originals).
-
-### AI
-
-- [ ] Anthropic organisation key: **Settings, AI providers**, Anthropic, enter the **Workspace ID** (starts with `wrkspc_`, from the Claude Console), or use a key created inside a workspace.
-- [ ] **Test connection** next to each provider shows the exact answer or error.
-- [ ] Agent errors show the provider's own message (never the key).
 
 ## Stage M6: builder completion
 
@@ -295,6 +192,14 @@ The Al-Zour project already carries the A1 calibration: one 70.9 degree lens and
 - [ ] **Refine automatically** lines the frame up with the model by their edges; on Al-Zour it often says the edges do not agree clearly (see Known limits): use point pairs.
 - [ ] **Save calibration**, optionally "Use this orientation and position for all N clips of this flight": "Saved: offset ..., field of view ..., orientation ..., position ...". **Reset** goes back to the saved values.
 
+### Video, models and point clouds in Import
+
+Use the HCl sample project or a new empty one.
+
+- [ ] Drag in a DJI video with its `.SRT`: a clip with its flight path appears and plays in sync.
+- [ ] Drag in a GLB, then **Georeference** it by clicking 3 point pairs; residuals show.
+- [ ] Drag in a small LAS or LAZ: a **Jobs** entry converts it (progress, log); the cloud appears when done.
+
 ### Camera heights in Import
 
 - [ ] In a project made from a typed origin, import DJI photos or a video with its `.SRT` that logged relative altitude: the **Camera heights** card asks **Relative altitude + take-off height** (**Take-off height H (m)**, proposed from the model under the take-off point, or the origin height with a warning) or **Absolute altitude + datum offset** (**Offset (m)**, saved as the project's vertical datum).
@@ -302,9 +207,10 @@ The Al-Zour project already carries the A1 calibration: one 70.9 degree lens and
 
 ### X1 Packages and map packs
 
-- [ ] HCl, **Reports**, **Export package**: switch on **Include the map region for this site**, set **Detail up to zoom** and **Margin**. A line reads "From <pack>: N tiles, size" and the package size grows.
+- [ ] HCl, **Reports**, **Export package** (`.aio`): optionally set a passphrase; leave out the point clouds to keep it small. Switch on **Include the map region for this site**, set **Detail up to zoom** and **Margin**. A line reads "From <pack>: N tiles, size" and the package size grows.
 - [ ] Switch on **Allow the customer to extract an editable copy**. **Export**: "Package written."
-- [ ] Open the `.aio`: **Start exploring**, press **2** for the map: streets draw. **Settings, Offline maps** lists the region as **In open package**. Best check: on a PC or data folder without the Kuwait pack, the map still draws from the package.
+- [ ] Double-click the `.aio` (or Projects, Add): it opens in player mode: welcome screen, "Read-only package" chip, no annotation tools, cloud AI off.
+- [ ] **Start exploring**, press **2** for the map: streets draw. **Settings, Offline maps** lists the region as **In open package**. Best check: on a PC or data folder without the Kuwait pack, the map still draws from the package.
 - [ ] **Reports**, **Edit a copy**, **Extract to edit**: progress, then a new project opens with "Copy of <file>.aio" in the title bar and no "Read-only package" chip. Annotate the copy: the issue is saved in the new project; the `.aio` file is unchanged.
 - [ ] A package exported without the allow switch: "The sender did not allow editing this package ...".
 - [ ] Resumable download (only if you agree to a download from build.protomaps.com): **Settings, Offline maps**, **Add a region**, a small country, start, quit Stratlas mid-download. Reopen: **Interrupted**, "The download stopped at ... Resume continues from there ...". **Resume**: it finishes and the pack shows as downloaded.
@@ -321,6 +227,51 @@ Measured on this PC: the recorded Al-Zour fly-through holds 60 fps with a p95 fr
 ### End to end (the M6 exit)
 
 - [ ] One project of each type from the samples (inspection, volumetric, road): built, reviewed (inspection), report text saved, project report exported, and exported as a package that opens in the player.
+
+## Stage M6.1: your M6 feedback (in progress)
+
+Steps are final once these fixes are merged; the build is named in the status table.
+
+### Point clouds
+
+- [ ] HCl and Al-Zour, toolbar **Point cloud**, **Point size**: the points on screen really grow and shrink (at 2x at least 2 px, at 4x at least 4 px). The colours do not change.
+
+### Issues, photos and Media
+
+- [ ] Click an issue anywhere in the app: it opens in the side panel with its photo. Click the photo: it opens full size.
+- [ ] Click an annotation label in 3D: its photo opens in split screen next to the 3D view.
+- [ ] **Media**: photos that have annotations or findings are highlighted.
+
+### HCl
+
+- [ ] Rotate around the model: the base no longer flickers.
+- [ ] Open a nadir (straight-down) photo: it is the right way up.
+
+### Maps
+
+- [ ] Every street map in the app is dark: the **Map** screen, a map side of **Split** and the map under a 3D site.
+
+### Al-Zour
+
+- [ ] Play a clip and switch on the drone trace: a tactical trace of the flight with distance ticks and telemetry. Switch it off: it goes away.
+- [ ] Photos taken at one location show as one icon.
+- [ ] Photo and panorama icons are smaller and redesigned; a click still opens them.
+
+### AI agent
+
+- [ ] Ask the agent to move the camera (for example "look at the tank from the north"): the view moves.
+- [ ] Ask it to fly to a named place ("fly to the roof nozzles" on HCl) and to coordinates ("fly to 29.0769043, 48.0838033"): the camera flies there.
+
+### Masafi
+
+- [ ] Stack the orthos (both dates, or an ortho over the street map): edges and masks are clean.
+- [ ] The piles are hidden when the project opens. Click a pile in the **Volumes** register: the camera flies to it and shows its outline and measurements.
+- [ ] **Elevation**: pick another colour ramp; the terrain and its legend follow.
+- [ ] The 3D site sits on top of the street map, not under it.
+
+### Compare dates
+
+- [ ] Open a split view of two captures (two 3D models, or two orthos, for example the two Masafi dates): move the camera on one side, the other side follows.
 
 ## Stage M7: release hardening and distribution (planned)
 
@@ -351,6 +302,7 @@ Current limits only; each is removed from this list when fixed.
 
 - Issue labels hidden behind the building can lag the camera by about a tenth of a second while orbiting.
 - At night the point cloud keeps its daylight colours and takes no shadows.
+- Point size cannot go below 1 px, so shrinking has no visible effect where points are already 1 px (Al-Zour overview, HCl from far out). At the Al-Zour overview, larger points merge into a coarser mosaic rather than separate dots.
 - With the right panel open on a 1440 px screen, the Labels and layers buttons move into the **More** menu.
 - No Arabic translation yet; **Right to left** mirrors the panels only.
 
