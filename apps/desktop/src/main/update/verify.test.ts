@@ -59,6 +59,40 @@ describe('verifyInstaller', () => {
     expect(r).toMatchObject({ ok: false, error: matching(/Contoso/) });
   });
 
+  it('looks for the company in the CN or O only, not anywhere in the subject', async () => {
+    const r = await verifyInstaller(
+      'C:/d/Setup.exe',
+      deps({ signer: 'CN=Mallory, OU=Synapse Solutions fans, C=AE' }),
+    );
+    expect(r).toMatchObject({ ok: false, error: matching(/Mallory/) });
+  });
+
+  it('requires the exact identity from brand.json when one is configured', async () => {
+    const exact = { signingIdentity: 'Synapse Solutions FZ-LLC' };
+    expect(await verifyInstaller('C:/d/Setup.exe', deps({}, exact))).toMatchObject({ ok: true });
+    expect(
+      await verifyInstaller(
+        'C:/d/Setup.exe',
+        deps({ signer: 'CN=Synapse Solutions FZ-LLC Imitation, C=AE' }, exact),
+      ),
+    ).toMatchObject({ ok: false, error: matching(/not by Synapse Solutions FZ-LLC/) });
+    expect(
+      await verifyInstaller(
+        'C:/d/Setup.exe',
+        deps({ signer: 'CN=Build 7, O="Synapse Solutions FZ-LLC", C=AE' }, exact),
+      ),
+    ).toMatchObject({ ok: true });
+  });
+
+  it('requires the version the update feed announced', async () => {
+    expect(
+      await verifyInstaller('C:/d/Setup.exe', deps({}, { expectedVersion: '0.3.0' })),
+    ).toMatchObject({ ok: false, error: matching(/holds version 0.2.0, not 0.3.0/) });
+    expect(
+      await verifyInstaller('C:/d/Setup.exe', deps({}, { expectedVersion: '0.2.0' })),
+    ).toMatchObject({ ok: true });
+  });
+
   it('refuses the same or an older version', async () => {
     expect(
       await verifyInstaller('C:/d/Setup.exe', deps({ productVersion: '0.1.0' })),

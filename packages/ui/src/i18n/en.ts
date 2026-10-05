@@ -558,6 +558,9 @@ export const en = {
   'settings.about.licences': 'Third-party licences',
   'settings.about.installFromFile': 'Install update from file',
   'settings.about.checkOnline': 'Check for updates online',
+  'settings.about.previous': 'Previous version',
+  'settings.about.returnTo': 'Return to {version}',
+  'settings.about.whatsNew': "What's new in {version}",
   // Jobs: inspection pipeline form
   'jobs.inspection.detections': 'Detections',
   'jobs.inspection.detectionsHelp':

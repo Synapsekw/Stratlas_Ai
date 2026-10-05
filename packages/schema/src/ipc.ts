@@ -19,6 +19,7 @@ import { AiPolicy, EditPolicy, ExportKind, PackageInfo, PackageOrigin } from './
 import { BoundaryEditsFile, VolumesFile } from './volumes';
 import { DetectionsFile } from './detections';
 import { NarrativeFile, ReportContentsSettings } from './report';
+import { ReleaseNotes, UpdateStatus } from './update';
 
 const Empty = z.object({}).strict();
 
@@ -134,9 +135,12 @@ export const Settings = z.object({
    * Default false; the app still makes no request unless the person starts one.
    */
   offlineOnly: z.boolean().optional(),
-  /** Allow the "Check for updates" button (electron-updater, generic provider). Default false. */
+  /** Allow the "Check now" button for online updates (ADR 0003). Default false. */
   updateCheck: z.boolean().optional(),
-  /** Base URL of the update feed (`latest.yml` lives there). Empty when not set. */
+  /**
+   * Address of the update feed: the `stratlas-update.json` file itself, or the folder that holds
+   * it (ending in `/`). Empty when not set.
+   */
   updateUrl: OptionalUrl.optional(),
   /**
    * Anthropic workspace ID, sent as the `anthropic-workspace-id` header. Needed only with a key
@@ -942,16 +946,35 @@ export const ipc = {
   },
   /** Verify again, run the installer and quit. */
   'update:installFile': { request: z.object({ path: z.string().min(1) }).strict(), response: Ok },
-  /** Optional online check (electron-updater, generic provider); refused when offline-only. */
+  /** Optional online check of the update feed (ADR 0003); refused when offline-only. */
   'update:check': {
     request: Empty,
     response: z.discriminatedUnion('ok', [
-      z.object({ ok: z.literal(true), available: z.boolean(), version: z.string().optional() }),
+      z.object({
+        ok: z.literal(true),
+        available: z.boolean(),
+        version: z.string().optional(),
+        /** Release notes of the offered version (Markdown), when the feed carries them. */
+        notes: z.string().optional(),
+        /** Download size in bytes of this platform's installer. */
+        size: z.number().optional(),
+      }),
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
   },
-  /** Download the update found by `update:check`, then quit and install it. */
+  /**
+   * Download the update found by `update:check` (resumable, SHA-256 checked), verify it, keep a
+   * copy of this version for rollback, then quit and install it. Progress: `update:progress`.
+   */
   'update:downloadAndInstall': { request: Empty, response: Ok },
+  /** Release notes of the running version, bundled at build time. */
+  'update:notes': { request: Empty, response: ReleaseNotes },
+  /** Kept previous version and a pending first start (Settings, About and updates). */
+  'update:status': { request: Empty, response: UpdateStatus },
+  /** Return to the kept previous version: it replaces this one and starts. */
+  'update:rollback': { request: Empty, response: Ok },
+  /** The renderer has drawn its first screen; ends the first-start watch after an update. */
+  'app:rendererReady': { request: Empty, response: Ok },
   /** Start a pipeline job on a project folder, or resume a cancelled, failed or interrupted one. */
   'jobs:start': {
     request: JobStartRequest,
@@ -1081,6 +1104,12 @@ export const ipcEvents = {
   }),
   /** A second launch (double-clicked `.aio`) handed its path to this instance. */
   'app:openPath': z.object({ path: z.string().min(1) }),
+  /** Download progress of `update:downloadAndInstall`. */
+  'update:progress': z.object({
+    received: z.number().nonnegative(),
+    total: z.number().nonnegative(),
+    phase: z.enum(['download', 'verify', 'keep', 'install']),
+  }),
   /** Progress of an `export:run` job; `phase` is a short sentence for the toast. */
   'export:progress': z.object({
     jobId: z.string(),
