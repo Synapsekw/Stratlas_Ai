@@ -44,9 +44,49 @@ function groundUniforms(scene: SceneHandle): GroundUniforms | undefined {
   return (scene as Partial<{ groundUniforms(): GroundUniforms }>).groundUniforms?.();
 }
 
+/** Stacking slot of each raster layer: later layers draw over earlier ones at the same height. */
+const slots = new Map<string, number>();
+
+/** The raster layer's slot (stable for the session), so two layers on one plane never z-fight. */
+export function rasterSlot(layerId: string): number {
+  let s = slots.get(layerId);
+  if (s === undefined) {
+    s = slots.size;
+    slots.set(layerId, s);
+  }
+  return s;
+}
+
+/**
+ * How a raster quad is drawn: finer pyramid levels (`order`) and later layers (`slot`) are pulled
+ * towards the camera so they win the depth test on a shared plane; overlays (plans) blend, the
+ * photographic rasters cut their transparent (no data) pixels away.
+ */
+export function rasterDraw(
+  order: number,
+  slot: number,
+  overlay: boolean,
+): {
+  offsetFactor: number;
+  offsetUnits: number;
+  renderOrder: number;
+  transparent: boolean;
+  alphaTest: number;
+} {
+  return {
+    offsetFactor: -2 - order,
+    offsetUnits: -2 - order - slot * 6,
+    renderOrder: -4 + order + slot * 0.01,
+    transparent: overlay,
+    alphaTest: overlay ? 0 : 0.5,
+  };
+}
+
 /**
  * Plot plans are line art with alpha (transparent background): drawn with normal alpha blending
- * over the ortho, without writing depth. Photographic rasters (ortho, dsm) stay opaque.
+ * over the ortho, without writing depth. Photographic rasters (ortho, dsm) stay opaque where
+ * there is data and are cut away where the tile is transparent (no data), so their collar never
+ * draws as a frame around the site. `slot` separates layers lying on the same plane.
  */
 function quadMesh(
   c: Corners,
@@ -54,6 +94,7 @@ function quadMesh(
   ctx: AdapterContext,
   order: number,
   overlay = false,
+  slot = 0,
 ): Mesh {
   const g = new BufferGeometry();
   g.setAttribute('position', new BufferAttribute(quadPositions(c), 3));
@@ -70,21 +111,21 @@ function quadMesh(
   const m: MeshBasicMaterial | MeshLambertMaterial = ground
     ? groundImageryMaterial(tex, ground, { masked: true })
     : new MeshBasicMaterial({ map: tex, toneMapped: false });
+  const draw = rasterDraw(order, slot, overlay);
   m.side = DoubleSide;
   m.polygonOffset = true;
-  m.polygonOffsetFactor = -2 - order;
-  m.polygonOffsetUnits = -2 - order;
-  if (overlay) {
-    m.transparent = true;
-    m.depthWrite = false;
-  }
+  m.polygonOffsetFactor = draw.offsetFactor;
+  m.polygonOffsetUnits = draw.offsetUnits;
+  m.transparent = draw.transparent;
+  m.depthWrite = !draw.transparent;
+  m.alphaTest = draw.alphaTest;
   m.userData.aioKeepSide = true;
   m.clippingPlanes = ctx.scene.clippingPlanes;
   const mesh = new Mesh(g, m);
   mesh.receiveShadow = ground !== undefined;
   // imagery tells the land mask where the sea is
   if (ground) mesh.layers.enable(GROUND_LAYER);
-  mesh.renderOrder = -4 + order;
+  mesh.renderOrder = draw.renderOrder;
   mesh.matrixAutoUpdate = false;
   return mesh;
 }
@@ -171,6 +212,7 @@ async function imageRaster(layer: RasterLayer, ctx: AdapterContext): Promise<Lay
     ctx,
     layer.role === 'plan' ? 2 : 0,
     layer.role === 'plan',
+    rasterSlot(layer.id),
   );
   mesh.name = `layer:${layer.id}`;
   mesh.userData.aioRaster = true;
@@ -212,6 +254,7 @@ async function pyramidRaster(layer: RasterLayer, ctx: AdapterContext): Promise<L
   // decoded tiles waiting for their frame: one new tile (one texture upload) per frame
   const arrived: { key: string; mesh: Mesh }[] = [];
   const byZ = new Map(index.levels.map((l, i) => [l.z, { level: l, order: i }]));
+  const slot = rasterSlot(layer.id);
   let disposed = false;
   let tick = 0;
   const target = new Vector3();
@@ -260,6 +303,7 @@ async function pyramidRaster(layer: RasterLayer, ctx: AdapterContext): Promise<L
             ctx,
             layer.role === 'plan' ? info.order + 2 : info.order,
             layer.role === 'plan',
+            slot,
           );
           mesh.updateMatrixWorld(true);
           arrived.push({ key: k, mesh });
