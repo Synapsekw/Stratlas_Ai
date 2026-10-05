@@ -2,19 +2,25 @@ import { PhotoViewer, VideoAnnotator } from '@aio/annotate';
 import type { Layer, ReportFile } from '@aio/schema';
 import { Icon, useT, type IconName, type MessageKey } from '@aio/ui';
 import { VideoWindow } from '@aio/video';
-import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
+import { assetUrl, counterpart, useWorkspace, workspace, type CaptureIndex } from '@aio/workspace';
 import { useMemo } from 'react';
 import { FocusZone } from '../FocusZone';
 import { PdfViewer } from '../report/PdfViewer';
 import { useCall } from '../shell';
+import { captureLabel, useCaptureIndex, useSplitDates } from './compare';
 import { RasterView } from './RasterPane';
 import {
+  blockedFor,
+  chooseCapture,
   chooseSide,
   paneOptions,
+  PER_CAPTURE,
   resolveSplit,
-  takenBy,
+  sideCapture,
+  twinAllowed,
   type PaneKind,
   type Side,
+  type SplitDates,
   type SplitPref,
 } from './splitModel';
 import { stagePrefs, useStagePrefs } from './stagePrefs';
@@ -33,6 +39,10 @@ export interface SplitModel {
   sides: SplitPref;
   reports: ReportFile[];
   set(next: SplitPref): void;
+  /** The project's captures and their layers (null without a project). */
+  index: CaptureIndex | null;
+  /** Survey dates the split can compare (absent: fewer than two dated captures). */
+  dates?: SplitDates | undefined;
 }
 
 /** The open project's split: which panes it offers and what each side shows (remembered). */
@@ -42,26 +52,46 @@ export function useSplit(): SplitModel {
   const listed = useCall('report:list', { projectId: id ?? '' }, id);
   const reports = useMemo(() => (listed?.ok ? listed.value.files : []), [listed]);
   const saved = useStagePrefs((s) => (id ? s.byProject[id]?.split : undefined));
+  const index = useCaptureIndex();
+  const dates = useSplitDates(index);
   const options = useMemo(
     () => paneOptions(project?.manifest.layers ?? [], reports.length),
     [project, reports],
   );
-  const sides = useMemo(() => resolveSplit(saved, options), [saved, options]);
+  const sides = useMemo(() => resolveSplit(saved, options, dates), [saved, options, dates]);
   return {
     options,
     sides,
     reports,
+    index,
+    dates,
     set: (next) => {
       if (id) stagePrefs.getState().update(id, { split: next });
     },
   };
 }
 
-/** The small selector in a pane's corner: what this side of the split shows. */
+/** Both sides show one kind of pane, one survey date each. */
+export function isTwin(split: SplitModel): boolean {
+  return split.sides.left === split.sides.right && twinAllowed(split.sides.left, split.dates);
+}
+
+/** The survey date a side shows, when its pane is drawn per date and the project has two. */
+export function paneCapture(split: SplitModel, side: Side): string | undefined {
+  const kind = split.sides[side];
+  if (!split.dates || !PER_CAPTURE.includes(kind)) return undefined;
+  return sideCapture(split.sides, side, split.dates);
+}
+
+/** The small selector in a pane's corner: what this side of the split shows, and its date. */
 export function PaneChooser({ side, split }: { side: Side; split: SplitModel }) {
   const t = useT();
   const current = split.sides[side];
-  const taken = takenBy(split.sides, side);
+  const blocked = blockedFor(split.sides, side, split.dates);
+  const capture = paneCapture(split, side);
+  const index = split.index;
+  const twin = isTwin(split);
+  const linked = !split.sides.unlinked;
   return (
     <div className={`pane-chooser overlay-box side-${side}`} data-testid={`pane-chooser-${side}`}>
       <Icon name={PANE[current].icon} size={14} className="muted" />
@@ -70,15 +100,48 @@ export function PaneChooser({ side, split }: { side: Side; split: SplitModel }) 
         aria-label={t(side === 'left' ? 'stage.split.left' : 'stage.split.right')}
         value={current}
         onChange={(e) => {
-          split.set(chooseSide(split.sides, side, e.target.value as PaneKind));
+          split.set(chooseSide(split.sides, side, e.target.value as PaneKind, split.dates));
         }}
       >
         {split.options.map((k) => (
-          <option key={k} value={k} disabled={k === taken}>
+          <option key={k} value={k} disabled={k === blocked}>
             {t(PANE[k].label)}
           </option>
         ))}
       </select>
+      {capture !== undefined && index && split.dates && (
+        <select
+          className="input pane-date"
+          data-testid={`pane-date-${side}`}
+          aria-label={t(side === 'left' ? 'stage.compare.leftDate' : 'stage.compare.rightDate')}
+          title={t('stage.compare.dateTip')}
+          value={capture}
+          onChange={(e) => {
+            split.set(chooseCapture(split.sides, side, e.target.value, split.dates));
+          }}
+        >
+          {index.captures.map((c) => (
+            <option key={c.id} value={c.id}>
+              {captureLabel(index, c.id)}
+            </option>
+          ))}
+        </select>
+      )}
+      {twin && side === 'right' && (
+        <button
+          type="button"
+          className="btn icon sm ghost pane-link"
+          data-testid="compare-link"
+          aria-pressed={linked}
+          aria-label={t(linked ? 'stage.compare.unlink' : 'stage.compare.link')}
+          title={t(linked ? 'stage.compare.unlink' : 'stage.compare.link')}
+          onClick={() => {
+            split.set({ ...split.sides, ...(linked ? { unlinked: true } : { unlinked: false }) });
+          }}
+        >
+          <Icon name="link" size={14} />
+        </button>
+      )}
     </div>
   );
 }
@@ -154,13 +217,21 @@ function PhotoPane() {
   );
 }
 
-function RasterPane({ split }: { split: SplitModel }) {
+function RasterPane({ split, side }: { split: SplitModel; side: Side }) {
   const t = useT();
   const project = useWorkspace((s) => s.project);
+  const capture = paneCapture(split, side);
+  const index = split.index;
+  // with two dates, the side lists its date's rasters and the undated ones
   const rasters = (project?.manifest.layers ?? []).filter(
-    (l): l is RasterLayer => l.kind === 'raster',
+    (l): l is RasterLayer =>
+      l.kind === 'raster' &&
+      (!capture || index?.of[l.id] === undefined || index.of[l.id] === capture),
   );
-  const layer = rasters.find((l) => l.id === split.sides.raster) ?? rasters[0];
+  const chosen = split.sides.raster;
+  const mapped = chosen && capture && index ? counterpart(index, chosen, capture) : chosen;
+  const layer = rasters.find((l) => l.id === mapped) ?? rasters[0];
+  const twin = isTwin(split);
   if (!project || !layer) return null;
   return (
     <div className="pane-col">
@@ -182,7 +253,12 @@ function RasterPane({ split }: { split: SplitModel }) {
           </select>
         </div>
       )}
-      <RasterView key={layer.id} projectId={project.id} layer={layer} />
+      <RasterView
+        key={layer.id}
+        projectId={project.id}
+        layer={layer}
+        link={twin && !split.sides.unlinked ? side : null}
+      />
     </div>
   );
 }
@@ -246,7 +322,7 @@ export function SplitPane({ side, split }: { side: Side; split: SplitModel }) {
       ) : kind === 'photo' ? (
         <PhotoPane />
       ) : kind === 'raster' ? (
-        <RasterPane split={split} />
+        <RasterPane split={split} side={side} />
       ) : (
         <ReportPane split={split} />
       )}

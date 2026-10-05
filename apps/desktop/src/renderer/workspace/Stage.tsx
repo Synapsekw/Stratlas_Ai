@@ -9,7 +9,13 @@ import {
   type MapDraw,
 } from '@aio/annotate';
 import { getActiveScene, SceneView, type EngineStage } from '@aio/engine';
-import { MapView, type MapDrawMode, type MapDrawSeam, type MapIssueDisplay } from '@aio/maps';
+import {
+  MapView,
+  type MapController,
+  type MapDrawMode,
+  type MapDrawSeam,
+  type MapIssueDisplay,
+} from '@aio/maps';
 import {
   ClassificationLegend,
   ElevationLegend,
@@ -17,7 +23,7 @@ import {
   useClassificationLegend,
   useElevationRange,
 } from '@aio/pointcloud';
-import { crsLabel, formatEastNorth, Icon, localToProject, useT, type IconName } from '@aio/ui';
+import { Icon, localToProject, useT, type IconName } from '@aio/ui';
 import { setFlightPaths, videoRig } from '@aio/video';
 import { useVolumetric, VolumetricStage } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
@@ -28,7 +34,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type RefObject,
 } from 'react';
@@ -49,8 +54,12 @@ import { isTyping } from '../keys';
 import { shell, useShell } from '../shell';
 import type { StageMode } from '../store';
 import { FloatingVideo } from './FloatingVideo';
-import { PaneChooser, SplitPane, useSplit } from './SplitPanes';
-import { sideOf, type Side } from './splitModel';
+import { compareRuntime, linkMaps, primaryMap, primaryScene, useCompareNotice } from './compare';
+import { CompareButton, CompareMap, useVolumesFollowDate } from './CompareControls';
+import { CompareScene } from './CompareScene';
+import { CursorReadout, useSceneCursor } from './SceneCursor';
+import { paneCapture, PaneChooser, SplitPane, useSplit } from './SplitPanes';
+import { sideOf, sidesOf, type Side } from './splitModel';
 import { hiddenPathClips, togglePaths } from './flightPaths';
 import { flightPathModel, updateFlightPaths, useFlightPathModel } from './pathModel';
 import {
@@ -83,17 +92,6 @@ const MODES: { mode: StageMode; label: string; icon: IconName; keys: string }[] 
   { mode: 'map', label: 'Map', icon: 'map', keys: '2' },
   { mode: 'split', label: 'Split', icon: 'split', keys: '3' },
 ];
-
-function CursorReadout({ text }: { text: string | null }) {
-  const crs = useWorkspace((s) => (s.project ? crsLabel(s.project.manifest.crs) : ''));
-  return (
-    <div className="cursor-ro" aria-live="off">
-      {crs}
-      <br />
-      {text ?? 'Point at the scene for coordinates'}
-    </div>
-  );
-}
 
 /** The elevation ramp and its range in metres while the clouds are coloured by elevation. */
 function StageElevationLegend() {
@@ -135,43 +133,7 @@ function ScenePane({
   side?: Side | undefined;
   corner?: ReactNode;
 }) {
-  const [cursor, setCursor] = useState<string | null>(null);
-  const pending = useRef<{ x: number; y: number } | null>(null);
-  const raf = useRef<number | null>(null);
-
-  useEffect(
-    () => () => {
-      if (raf.current !== null) cancelAnimationFrame(raf.current);
-    },
-    [],
-  );
-
-  const onMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    pending.current = {
-      x: ((e.clientX - r.left) / r.width) * 2 - 1,
-      y: -(((e.clientY - r.top) / r.height) * 2 - 1),
-    };
-    if (raf.current !== null) return;
-    raf.current = requestAnimationFrame(() => {
-      raf.current = null;
-      const p = pending.current;
-      const h = getActiveScene();
-      const project = workspace.getState().project;
-      if (!p || !h || !project) return;
-      const hit = h.raycast(p.x, p.y);
-      if (!hit) {
-        setCursor(null);
-        return;
-      }
-      const [e2, n, el] = localToProject(project.manifest.origin, [
-        hit.point.x,
-        hit.point.y,
-        hit.point.z,
-      ]);
-      setCursor(`${formatEastNorth(e2, n)} · EL ${el.toFixed(1)} m`);
-    });
-  };
+  const { cursor, onMove, onLeave } = useSceneCursor(getActiveScene);
 
   return (
     <FocusZone
@@ -179,13 +141,12 @@ function ScenePane({
       className={`pane pane-3d${hidden ? ' is-hidden' : ''}`}
       data-side={side}
       onPointerMove={onMove}
-      onPointerLeave={() => {
-        setCursor(null);
-      }}
+      onPointerLeave={onLeave}
       aria-hidden={hidden}
     >
       <div className="fill">
-        <SceneView className="scene-fill" />
+        {/* one date at a time while the split shows dates (compare.ts) */}
+        <SceneView className="scene-fill" store={primaryScene} />
       </div>
       <CursorReadout text={cursor} />
       <StageElevationLegend />
@@ -203,12 +164,15 @@ function StageToolbar({
   mode: stageMode,
   tools,
   barRef,
+  compare,
 }: {
   stage: EngineStage | null;
   mode: StageMode;
   /** The panes the tools work on (a split may show neither the 3D view nor the map). */
   tools: StageMode;
   barRef: RefObject<HTMLDivElement | null>;
+  /** "Compare dates", beside the view modes (projects with two survey dates). */
+  compare?: ReactNode;
 }) {
   const mode = tools;
   const road = useRoad((s) => s.status === 'ready');
@@ -298,6 +262,7 @@ function StageToolbar({
           </button>
         ))}
       </div>
+      {compare}
       {groups
         .filter((g) => !hidden.includes(g))
         .map((g) => (
@@ -516,21 +481,77 @@ export function Stage() {
   const split = useSplit();
   const splitting = mode === 'split';
   const sides = split.sides;
-  const show3d = mode === '3d' || (splitting && sideOf(sides, '3d') !== undefined);
-  const showMap = mode === 'map' || (splitting && sideOf(sides, 'map') !== undefined);
+  // Comparing dates: the 3D view and the map at most once per date, so maybe on both sides.
+  const sides3d = splitting ? sidesOf(sides, '3d') : [];
+  const sidesMap = splitting ? sidesOf(sides, 'map') : [];
+  const show3d = mode === '3d' || sides3d.length > 0;
+  const showMap = mode === 'map' || sidesMap.length > 0;
   const videoPane = splitting && sideOf(sides, 'video') !== undefined;
   const photoSide = splitting && sideOf(sides, 'photo') !== undefined;
   const photoPane = useRef(photoSide);
   useEffect(() => {
     photoPane.current = photoSide;
   }, [photoSide]);
-  const at = (kind: '3d' | 'map') => (splitting ? sideOf(sides, kind) : undefined);
+  const at = (kind: '3d' | 'map') => (kind === '3d' ? sides3d[0] : sidesMap[0]);
   const chooser = (kind: '3d' | 'map') => {
     const side = at(kind);
     return side ? <PaneChooser side={side} split={split} /> : null;
   };
   const showVideo = activeClip !== null && !videoHidden && !videoPane;
   const engine = useEngineStage();
+  const index = split.index;
+  const linked = !sides.unlinked;
+  // the main 3D view and map show their side's date (null: as the layer tree says)
+  const side3d = sides3d[0];
+  const sideMap = sidesMap[0];
+  const sceneCapture = side3d ? paneCapture(split, side3d) : undefined;
+  const mapCapture = sideMap ? paneCapture(split, sideMap) : undefined;
+  useEffect(() => {
+    primaryScene.setScope(
+      sceneCapture && index ? { capture: sceneCapture, index, mode: 'hide', camera: true } : null,
+    );
+  }, [sceneCapture, index]);
+  useEffect(() => {
+    primaryMap.setScope(
+      mapCapture && index ? { capture: mapCapture, index, mode: 'hide', camera: true } : null,
+    );
+  }, [mapCapture, index]);
+  useEffect(
+    () => () => {
+      primaryScene.setScope(null);
+      primaryMap.setScope(null);
+    },
+    [],
+  );
+  useVolumesFollowDate(split, side3d, sceneCapture);
+  const second3d = sides3d[1];
+  const secondMap = sidesMap[1];
+  const secondCapture3d = second3d ? paneCapture(split, second3d) : undefined;
+  const secondCaptureMap = secondMap ? paneCapture(split, secondMap) : undefined;
+  // linked pan and zoom of two maps
+  const [maps, setMaps] = useState<[MapController | null, MapController | null]>([null, null]);
+  const onMainMap = useCallback((c: MapController | null) => {
+    setMaps((m) => [c, m[1]]);
+  }, []);
+  const onSecondMap = useCallback((c: MapController | null) => {
+    setMaps((m) => [m[0], c]);
+  }, []);
+  useEffect(() => {
+    compareRuntime.maps = maps;
+    const [a, b] = maps;
+    if (!a || !b || !linked || !secondMap) return;
+    return linkMaps(a.map, b.map);
+  }, [maps, linked, secondMap]);
+  const notice = useCompareNotice();
+  const keepOut = useCallback(() => {
+    const root = stageRef.current;
+    if (!root) return [];
+    return [
+      ...root.querySelectorAll(
+        '.stbar > :not(.stbar-sp), .stage-under > *, .vwin:not(.docked), .cursor-ro, .stage-pop, .elev-legend, .pane-chooser',
+      ),
+    ].map((e) => e.getBoundingClientRect());
+  }, []);
   const mapDraw = useMapDraw(mapLayer);
   const roadMap = useRoadMap();
   const roadSetup = useRoadSetupMap();
@@ -599,19 +620,11 @@ export function Stage() {
   // Callouts keep clear of the toolbars, the floating video window and the readouts.
   useEffect(() => {
     if (!engine) return;
-    engine.setLabelKeepOut(() => {
-      const root = stageRef.current;
-      if (!root) return [];
-      return [
-        ...root.querySelectorAll(
-          '.stbar > :not(.stbar-sp), .stage-under > *, .vwin:not(.docked), .cursor-ro, .stage-pop, .elev-legend, .pane-chooser',
-        ),
-      ].map((e) => e.getBoundingClientRect());
-    });
+    engine.setLabelKeepOut(keepOut);
     return () => {
       engine.setLabelKeepOut(null);
     };
-  }, [engine]);
+  }, [engine, keepOut]);
 
   // Leaving the map or the annotation tools stops a map drawing.
   const { setMode: setMapDrawMode } = mapDraw;
@@ -674,6 +687,30 @@ export function Stage() {
         dir="ltr"
       >
         <ScenePane hidden={!show3d} engine={engine} side={at('3d')} corner={chooser('3d')} />
+        {second3d && secondCapture3d && index && (
+          <CompareScene
+            key={projectId}
+            side={second3d}
+            capture={secondCapture3d}
+            index={index}
+            main={engine}
+            linked={linked}
+            corner={<PaneChooser side={second3d} split={split} />}
+            stageRef={stageRef}
+            keepOut={keepOut}
+          />
+        )}
+        {secondMap && secondCaptureMap && index && (
+          <CompareMap
+            key={projectId}
+            side={secondMap}
+            capture={secondCaptureMap}
+            index={index}
+            issues={mapIssues}
+            onController={onSecondMap}
+            corner={<PaneChooser side={secondMap} split={split} />}
+          />
+        )}
         {showMap && (
           <FocusZone kind="map" className="pane pane-map" data-side={at('map')}>
             <div className="fill">
@@ -681,6 +718,8 @@ export function Stage() {
                 className="scene-fill"
                 draw={seam}
                 issues={mapIssues}
+                store={primaryMap}
+                onController={onMainMap}
                 {...(roadMap
                   ? {
                       overlays: roadMap.overlays,
@@ -708,6 +747,7 @@ export function Stage() {
         mode={mode}
         tools={show3d ? (showMap ? 'split' : '3d') : 'map'}
         barRef={barRef}
+        compare={<CompareButton split={split} />}
       />
       <div className="stage-under">
         {annotating && (
@@ -726,6 +766,14 @@ export function Stage() {
         )}
         {roadMap && showMap && <MeasureBar />}
         {show3d && <StageStatus stage={engine} />}
+        {notice && (
+          <div className="stage-status" role="status">
+            <span className="ss-chip compare-notice" data-testid="compare-notice">
+              <Icon name="warn" size={14} />
+              <span>{notice}</span>
+            </span>
+          </div>
+        )}
       </div>
       <SightingPicker kinds={['map']} />
       {!docked && showVideo && (

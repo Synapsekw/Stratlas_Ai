@@ -2,6 +2,7 @@ import type { Layer } from '@aio/schema';
 import { Icon, useT } from '@aio/ui';
 import { assetUrl } from '@aio/workspace';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { fromLinked, placement, rasterLink, toLinked, type LinkedView } from './rasterLink';
 import {
   levelFor,
   parsePyramid,
@@ -29,6 +30,12 @@ interface Source {
 
 const ZOOM = 1.15;
 
+/** A shared view set by the other pane of this project (`link` is `<project>:<side>`). */
+function othersView(lv: LinkedView | null, link: string | null): lv is LinkedView {
+  if (!lv || !link || lv.by === link) return false;
+  return lv.by.slice(0, lv.by.lastIndexOf(':')) === link.slice(0, link.lastIndexOf(':'));
+}
+
 function fit(size: Source['size'], el: HTMLElement): View {
   const scale = Math.min(el.clientWidth / size.width, el.clientHeight / size.height) * 0.96;
   return {
@@ -42,15 +49,58 @@ function fit(size: Source['size'], el: HTMLElement): View {
  * A raster layer (ortho, plan) as a flat image to pan and zoom: wheel zooms at the pointer, drag
  * pans, double-click fits. Tile pyramids load the level that matches the zoom, only where seen.
  */
-export function RasterView({ projectId, layer }: { projectId: string; layer: RasterLayer }) {
+export function RasterView({
+  projectId,
+  layer,
+  link: side = null,
+}: {
+  projectId: string;
+  layer: RasterLayer;
+  /** Pan and zoom with the other ortho pane (two survey dates): this pane's id, or null. */
+  link?: string | null;
+}) {
   const t = useT();
+  // a view shared in another project is not this project's
+  const link = side ? `${projectId}:${side}` : null;
   const host = useRef<HTMLDivElement>(null);
   const [src, setSrc] = useState<Source | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<View | null>(null);
+  const [view, setViewState] = useState<View | null>(null);
   const [box, setBox] = useState({ width: 0, height: 0 });
   const drag = useRef<{ id: number; x: number; y: number; view: View } | null>(null);
   const url = useCallback((path: string) => assetUrl(projectId, { path }), [projectId]);
+  const place = useMemo(
+    () => (src ? placement(src.size, layer.corners) : null),
+    [src, layer.corners],
+  );
+  // a view the person made is shared with the linked pane; one taken from it is not sent back
+  const fromLink = useRef(false);
+  const setView = useCallback((next: View | null | ((v: View | null) => View | null)) => {
+    fromLink.current = false;
+    setViewState(next);
+  }, []);
+  useEffect(() => {
+    const el = host.current;
+    if (!link || !view || !place || fromLink.current || !el || el.clientWidth < 1) return;
+    // the pane's size now (the observed size may lag a layout change)
+    const size = { width: el.clientWidth, height: el.clientHeight };
+    rasterLink.setState({ view: toLinked(view, size, place, link) });
+  }, [link, view, place, box]);
+  useEffect(() => {
+    if (!link || !place) return;
+    const apply = (lv: LinkedView | null) => {
+      const el = host.current;
+      if (!othersView(lv, link) || !el || el.clientWidth < 1) return;
+      const next = fromLinked(lv, { width: el.clientWidth, height: el.clientHeight }, place);
+      if (!next) return;
+      fromLink.current = true;
+      setViewState(next);
+    };
+    apply(rasterLink.getState().view);
+    return rasterLink.subscribe((s) => {
+      apply(s.view);
+    });
+  }, [link, place]);
 
   // Read the tile index, or the single image's size.
   useEffect(() => {
@@ -109,8 +159,18 @@ export function RasterView({ projectId, layer }: { projectId: string; layer: Ras
   }, []);
   useEffect(() => {
     const el = host.current;
-    if (src && el && !view && el.clientWidth > 0) setView(fit(src.size, el));
-  }, [src, view, box]);
+    if (!src || !el || view || el.clientWidth < 1) return;
+    // a linked pane opens on the other pane's view
+    const lv = link && place ? rasterLink.getState().view : null;
+    const shared =
+      othersView(lv, link) && place
+        ? fromLinked(lv, { width: el.clientWidth, height: el.clientHeight }, place)
+        : null;
+    if (shared) {
+      fromLink.current = true;
+      setViewState(shared);
+    } else setView(fit(src.size, el));
+  }, [src, view, box, setView, link, place]);
 
   // Wheel zoom at the pointer (passive listeners cannot cancel the page scroll).
   useEffect(() => {
@@ -136,7 +196,7 @@ export function RasterView({ projectId, layer }: { projectId: string; layer: Ras
     return () => {
       el.removeEventListener('wheel', onWheel);
     };
-  }, []);
+  }, [setView]);
 
   const tiles = useMemo(() => {
     if (!src?.levels || !view) return [];

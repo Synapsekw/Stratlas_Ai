@@ -12,6 +12,104 @@ export interface SplitPref {
   raster?: string;
   /** The report file the Report pane shows (absent: the first). */
   report?: string;
+  /** Survey date (capture id) the left side shows, for panes drawn per date (3D, map, ortho). */
+  leftCapture?: string;
+  /** Survey date (capture id) the right side shows. */
+  rightCapture?: string;
+  /** Two panes of one kind move on their own (absent: linked camera, pan and zoom). */
+  unlinked?: boolean;
+}
+
+/**
+ * Panes that can show twice when they show two survey dates: one 3D view per date, one map or
+ * ortho per date. The video player, photos and the report stay single.
+ */
+export const PER_CAPTURE: readonly PaneKind[] = ['3d', 'map', 'raster'];
+
+/** The project's survey dates for the split (capture ids, oldest first). */
+export interface SplitDates {
+  captures: readonly string[];
+  /** Two 3D views may run (not on the Low graphics tier). Default true. */
+  twin3d?: boolean;
+}
+
+/** Whether both sides may show `kind`, one survey date each. */
+export function twinAllowed(kind: PaneKind, dates: SplitDates | undefined): boolean {
+  if (!dates || dates.captures.length < 2 || !PER_CAPTURE.includes(kind)) return false;
+  return kind !== '3d' || dates.twin3d !== false;
+}
+
+const captureKey = (side: Side) => (side === 'left' ? 'leftCapture' : 'rightCapture');
+
+/**
+ * The capture a side shows: the remembered one when the project has it, else the latest survey
+ * (the first one on the left of two panes of one kind, which compare the first and last dates).
+ */
+export function sideCapture(
+  pref: SplitPref,
+  side: Side,
+  dates: SplitDates | undefined,
+): string | undefined {
+  if (!dates || dates.captures.length === 0) return undefined;
+  const want = pref[captureKey(side)];
+  if (want && dates.captures.includes(want)) return want;
+  return side === 'left' && pref.left === pref.right ? dates.captures[0] : dates.captures.at(-1);
+}
+
+/** Both sides on their captures, never the same date twice on a pane shown twice. */
+function withCaptures(pref: SplitPref, dates: SplitDates | undefined): SplitPref {
+  if (!dates || dates.captures.length === 0) return pref;
+  const l = sideCapture(pref, 'left', dates);
+  let r = sideCapture(pref, 'right', dates);
+  if (pref.left === pref.right && l !== undefined && r === l)
+    r = dates.captures.find((c) => c !== l) ?? r;
+  return {
+    ...pref,
+    ...(l !== undefined ? { leftCapture: l } : {}),
+    ...(r !== undefined ? { rightCapture: r } : {}),
+  };
+}
+
+/** Compare two dates: `kind` on both sides, the first date on the left and the last on the right. */
+export function compareSplit(pref: SplitPref, kind: PaneKind, dates: SplitDates): SplitPref {
+  const first = dates.captures[0];
+  const last = dates.captures.at(-1);
+  return {
+    ...pref,
+    left: kind,
+    right: kind,
+    ...(first !== undefined ? { leftCapture: first } : {}),
+    ...(last !== undefined ? { rightCapture: last } : {}),
+  };
+}
+
+/** Show `capture` on `side`; when both sides show the same pane, the other side takes the old date. */
+export function chooseCapture(
+  pref: SplitPref,
+  side: Side,
+  capture: string,
+  dates?: SplitDates,
+): SplitPref {
+  const resolved = withCaptures(pref, dates);
+  const mine = captureKey(side);
+  const theirs = captureKey(side === 'left' ? 'right' : 'left');
+  const next: SplitPref = { ...resolved, [mine]: capture };
+  if (resolved.left === resolved.right && resolved[theirs] === capture) {
+    const old = resolved[mine];
+    if (old !== undefined) next[theirs] = old;
+  }
+  return next;
+}
+
+/** Every side that shows `kind` in split mode. */
+export function sidesOf(pref: SplitPref, kind: PaneKind): Side[] {
+  return (['left', 'right'] as const).filter((s) => pref[s] === kind);
+}
+
+/** The pane the other side shows when this side may not pick it too, else null. */
+export function blockedFor(pref: SplitPref, side: Side, dates?: SplitDates): PaneKind | null {
+  const other = takenBy(pref, side);
+  return twinAllowed(other, dates) ? null : other;
 }
 
 export const PANE_KINDS: readonly PaneKind[] = ['3d', 'map', 'video', 'photo', 'raster', 'report'];
@@ -41,23 +139,36 @@ export function paneOptions(layers: readonly Pick<Layer, 'kind'>[], reports: num
 
 /**
  * The sides to draw: the remembered choice where the project still offers it, else the default.
- * The two sides never show the same pane (one 3D stage, one video player): a clash keeps the left
- * and gives the right the first other option.
+ * The two sides show the same pane only to compare two survey dates (3D, map or ortho, one date
+ * each; `dates`); otherwise a clash keeps the left and gives the right the first other option
+ * (one video player, and the 3D view at most once per date).
  */
-export function resolveSplit(pref: SplitPref | undefined, options: readonly PaneKind[]): SplitPref {
+export function resolveSplit(
+  pref: SplitPref | undefined,
+  options: readonly PaneKind[],
+  dates?: SplitDates,
+): SplitPref {
   const want = pref ?? DEFAULT_SPLIT;
   const pick = (k: PaneKind, fallback: PaneKind) => (options.includes(k) ? k : fallback);
   const left = pick(want.left, DEFAULT_SPLIT.left);
   let right = pick(want.right, DEFAULT_SPLIT.right);
-  if (right === left) right = options.find((o) => o !== left) ?? right;
-  return { ...want, left, right };
+  if (right === left && !twinAllowed(left, dates)) right = options.find((o) => o !== left) ?? right;
+  return withCaptures({ ...want, left, right }, dates);
 }
 
-/** Put `kind` on `side`. A pane already on the other side is not offered (see `takenBy`). */
-export function chooseSide(pref: SplitPref, side: Side, kind: PaneKind): SplitPref {
+/**
+ * Put `kind` on `side`. A pane already on the other side is not offered (see `blockedFor`),
+ * except to show a second survey date: then this side takes a date the other does not show.
+ */
+export function chooseSide(
+  pref: SplitPref,
+  side: Side,
+  kind: PaneKind,
+  dates?: SplitDates,
+): SplitPref {
   const other = side === 'left' ? pref.right : pref.left;
-  if (kind === other) return pref;
-  return { ...pref, [side]: kind };
+  if (kind === other && !twinAllowed(kind, dates)) return pref;
+  return withCaptures({ ...pref, [side]: kind }, dates);
 }
 
 /** The pane the other side shows: disabled in this side's chooser. */
@@ -73,15 +184,32 @@ export function sideOf(pref: SplitPref, kind: PaneKind): Side | undefined {
 /** A remembered choice read back from storage, or null when it is not one. */
 export function parseSplitPref(v: unknown): SplitPref | null {
   if (!v || typeof v !== 'object') return null;
-  const { left, right, raster, report } = v as Record<string, unknown>;
+  const { left, right, raster, report, leftCapture, rightCapture, unlinked } = v as Record<
+    string,
+    unknown
+  >;
   const kind = (k: unknown): k is PaneKind =>
     typeof k === 'string' && PANE_KINDS.includes(k as PaneKind);
-  if (!kind(left) || !kind(right) || left === right) return null;
+  if (!kind(left) || !kind(right)) return null;
+  // the same pane twice only for two different survey dates
+  if (
+    left === right &&
+    !(
+      PER_CAPTURE.includes(left) &&
+      typeof leftCapture === 'string' &&
+      typeof rightCapture === 'string' &&
+      leftCapture !== rightCapture
+    )
+  )
+    return null;
   return {
     left,
     right,
     ...(typeof raster === 'string' ? { raster } : {}),
     ...(typeof report === 'string' ? { report } : {}),
+    ...(typeof leftCapture === 'string' ? { leftCapture } : {}),
+    ...(typeof rightCapture === 'string' ? { rightCapture } : {}),
+    ...(unlinked === true ? { unlinked: true } : {}),
   };
 }
 

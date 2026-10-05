@@ -1,6 +1,11 @@
 import { registerAppHooks, registerFrameSource } from '@aio/ai';
 import { setFlightPoses } from '@aio/annotate';
-import { configureEngine, getActiveStage, registerEngineAdapters } from '@aio/engine';
+import {
+  configureEngine,
+  getActiveStage,
+  meshTemplates,
+  registerEngineAdapters,
+} from '@aio/engine';
 import { captureMap, registerMapAdapters } from '@aio/maps';
 import { pointcloudSettings, registerPointcloudAdapters } from '@aio/pointcloud';
 import { loadFlight, registerVideoAdapters, videoRig } from '@aio/video';
@@ -8,6 +13,7 @@ import { volumetric } from '@aio/volumetric';
 import { assetUrl, workspace, type OpenProject } from '@aio/workspace';
 import { graphics } from './graphics';
 import { shell } from './shell';
+import { COMPARE_GPU_BYTES, compareRuntime } from './workspace/compare';
 
 let started = false;
 
@@ -72,6 +78,12 @@ export function bootstrap(): void {
         const stage = getActiveStage();
         return stage ? videoRig(stage) : null;
       },
+      /** Comparing dates: the second 3D view, the camera link, the maps, the shared models. */
+      compare: () => ({
+        ...compareRuntime,
+        models: meshTemplates.stats(),
+        gpuLimit: COMPARE_GPU_BYTES[graphics().getState().tier],
+      }),
     },
   });
   shareFlightPoses(workspace.getState().project);

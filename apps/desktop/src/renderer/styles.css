@@ -1045,6 +1045,25 @@ button.chip-status:hover {
 .pane-chooser select.input:hover {
   border-color: var(--line);
 }
+/* comparing dates: the survey date a side shows, beside what it shows */
+.pane-chooser select.pane-date {
+  font-family: var(--f-mono);
+  font-size: var(--t-12);
+  color: var(--fg-0);
+  padding-inline-start: 8px;
+  border-inline-start: 1px solid var(--line-soft);
+  border-radius: 0;
+}
+.pane-chooser .pane-link[aria-pressed='true'] {
+  color: var(--acc);
+}
+.pane-chooser .pane-link[aria-pressed='false'] {
+  color: var(--fg-3);
+}
+.compare-notice {
+  max-width: 520px;
+  white-space: normal;
+}
 /* in a split the status chips stay clear of the left pane's chooser */
 .stage[data-mode='split'] .stage-under {
   max-width: max(180px, calc(50% - 240px));
