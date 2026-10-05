@@ -1,6 +1,6 @@
 export { IssueRegister, SaveIndicator } from './components/IssueRegister';
 export { IssueDetail, openSighting } from './components/IssueDetail';
-export { PhotoViewer } from './components/PhotoViewer';
+export { PhotoViewer, type PhotoViewerHandle } from './components/PhotoViewer';
 export { VideoAnnotator } from './components/VideoAnnotator';
 export { AnnotationToolbar, useIssueOverlay } from './components/AnnotationToolbar';
 export { SightingPicker } from './components/SightingPicker';

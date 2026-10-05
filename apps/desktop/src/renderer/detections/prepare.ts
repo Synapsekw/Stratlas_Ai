@@ -94,16 +94,23 @@ export async function prepareItem(
 
 // ---- frame thumbnails for the contact sheet (one at a time, cached for the session) ----
 
-const frameThumbs = new Map<string, Promise<string>>();
+export type FrameImage = Awaited<ReturnType<typeof grabFrame>>;
+
+const frameThumbs = new Map<string, Promise<FrameImage>>();
 let chain: Promise<unknown> = Promise.resolve();
 
-export function frameThumb(url: string, t: number): Promise<string> {
+/** A small frame (320 px) and the video's own frame size, one grab at a time, cached. */
+export function frameImage(url: string, t: number): Promise<FrameImage> {
   const key = `${url}#${String(t)}`;
   let p = frameThumbs.get(key);
   if (!p) {
-    p = chain.then(() => grabFrame(url, t, 320)).then((f) => f.dataUrl);
+    p = chain.then(() => grabFrame(url, t, 320));
     chain = p.catch(() => undefined);
     frameThumbs.set(key, p);
   }
   return p;
+}
+
+export function frameThumb(url: string, t: number): Promise<string> {
+  return frameImage(url, t).then((f) => f.dataUrl);
 }

@@ -7,7 +7,7 @@
 import type { AssetRef } from '@aio/schema';
 import { Icon, type IconName } from '@aio/ui';
 import { assetUrl } from '@aio/workspace';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { bridge } from '../shell';
 import { createThumbQueue, type ThumbJob, type ThumbReply, type ThumbRequest } from './queue';
 
@@ -117,18 +117,21 @@ function watchNear(el: Element, cb: () => void): () => void {
 
 /**
  * One media tile picture. `thumb` false shows the image itself (already small, such as a video
- * poster), still loaded only near the view.
+ * poster), still loaded only near the view. `overlay` (marks drawn over the picture) mounts
+ * with the picture, so it costs nothing for tiles far from the view.
  */
 export function MediaThumb({
   projectId,
   asset,
   icon,
   thumb = true,
+  overlay,
 }: {
   projectId: string;
   asset: AssetRef | undefined;
   icon: IconName;
   thumb?: boolean;
+  overlay?: ReactNode;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const [near, setNear] = useState(false);
@@ -172,7 +175,10 @@ export function MediaThumb({
       {failed || !full ? (
         <Icon name={icon} size={20} />
       ) : near && src ? (
-        <img src={src} alt="" decoding="async" draggable={false} onError={onError} />
+        <>
+          <img src={src} alt="" decoding="async" draggable={false} onError={onError} />
+          {overlay}
+        </>
       ) : null}
     </div>
   );

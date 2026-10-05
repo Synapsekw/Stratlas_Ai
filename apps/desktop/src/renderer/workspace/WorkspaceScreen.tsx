@@ -1,9 +1,11 @@
 import { AgentPanel } from '@aio/ai';
-import { IssueDetail, IssueRegister } from '@aio/annotate';
+import { IssueRegister } from '@aio/annotate';
 import { buildTimelineModel, formatDate, Icon, neighbourClip, Timeline, useT } from '@aio/ui';
 import { useVolumetric, VolumesPanel } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useMemo, useState } from 'react';
+import { IssueCard } from '../issueCard/IssueCard';
+import { useCardFocusSeq } from '../issueCard/state';
 import { useMedia } from '../media';
 import { selectClip } from '../shell/Sidebar';
 import { cloudAiBlocked } from '../player';
@@ -124,6 +126,13 @@ function ContextPanel() {
   const count = useWorkspace((s) => s.issues.length);
   const volumes = useVolumetric((s) => s.status !== 'none' && s.status !== 'idle');
   const piles = useVolumetric((s) => s.piles.length);
+  // a newly picked issue (pin, marker, timeline mark, register row) opens its card
+  const focusSeq = useCardFocusSeq();
+  const [seenSeq, setSeenSeq] = useState(focusSeq);
+  if (seenSeq !== focusSeq) {
+    setSeenSeq(focusSeq);
+    setTab('selection');
+  }
   // volumetric projects open on their volumes
   const tab =
     chosen === 'volumes' && !volumes
@@ -174,7 +183,7 @@ function ContextPanel() {
       ) : tab === 'issues' ? (
         <IssueRegister className="ctx-fill" />
       ) : issueId ? (
-        <IssueDetail issueId={issueId} className="ctx-fill" />
+        <IssueCard issueId={issueId} place="scene" className="ctx-fill" />
       ) : (
         <SelectionCard />
       )}

@@ -5,6 +5,7 @@ import './styles.css';
 import './package.css';
 import './road/road.css';
 import './report/reports.css';
+import './issueCard/issueCard.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
