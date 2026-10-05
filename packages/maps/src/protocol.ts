@@ -26,7 +26,11 @@ export type MapProtocolHandler = (
   abort: AbortController,
 ) => Promise<GetResourceResponse<ArrayBuffer | object>>;
 
-const EMPTY = new ArrayBuffer(0);
+/**
+ * An empty response. A new buffer each time: MapLibre transfers (detaches) response buffers to its
+ * workers, so a shared one fails every later miss with a DataCloneError.
+ */
+const empty = (): { data: ArrayBuffer } => ({ data: new ArrayBuffer(0) });
 
 /**
  * Handler for the internal `aiomap://` protocol:
@@ -59,7 +63,7 @@ export function createMapProtocol(options: MapProtocolOptions): MapProtocolHandl
         const tile = await reader(p).getZxy(z, x, y, abort.signal);
         if (tile) return { data: tile.data };
       }
-      return { data: EMPTY };
+      return empty();
     }
 
     if (kind === 'glyphs') {
@@ -68,7 +72,7 @@ export function createMapProtocol(options: MapProtocolOptions): MapProtocolHandl
         const load = assets[`fonts/${stack.trim()}/${range}`];
         if (load) return { data: await load() };
       }
-      return { data: EMPTY };
+      return empty();
     }
 
     if (kind === 'sprites') {
