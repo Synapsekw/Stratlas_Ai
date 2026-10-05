@@ -31,6 +31,8 @@ These rules sit beside `@aio/schema` and are binding for every stream. They clar
 
 `aio://project/<project-id>/<relative path>` serves any file under the project folder with HTTP range support; `aio://packs/<id>.pmtiles` serves map packs.
 
+Photo files (review copies and their `thumbs/`) store their pixels the way the camera saw them: the original's EXIF Orientation applied, no Orientation tag left, so image +Y is the pose's up (section 3) for every reader (browser, PIL, the pipelines). Importers turn delivered copies that dropped the tag (the HCl kit's Elios 3 thumbnails, Orientation 3) and every image sighting on them (`@aio/project` `orientation.ts`); `pnpm reorient:photos` (packages/project) repairs an existing project against its camera originals, with a backup.
+
 `aio://thumb/<project-id>/<relative path>` serves a small thumbnail of an image for grids (Media): the project's own `<dir>/thumbs/<name>.jpg` beside the image (`photos/thumbs/p001.jpg` for `photos/p001.jpg`), else one cached in the app profile (userData `cache/thumbs/`, keyed by project location, path, size and date), else 404. On a 404 the renderer makes a 320 px thumbnail in a worker and stores it with IPC `thumbs:put`. Thumbnails are never written into a project folder.
 
 Reports Stratlas generates (issue register PDF) carry the person's own branding from Settings, Report branding (`Settings.reportBranding`; the logo is copied to userData `branding/` and served as `aio://branding/<file>`), or none. A manifest's `brand` (a client brand from an import or an older wizard) is kept but never used for reports. Delivered PDFs under `report/` are shown as delivered.
