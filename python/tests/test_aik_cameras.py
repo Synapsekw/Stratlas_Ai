@@ -137,7 +137,9 @@ def test_ground_for_an_estimated_origin_is_the_take_off_point():
         {"altitude": 70.0},
     ]
     assert C.takeoff_altitude(metas) == pytest.approx(41.95)
-    assert C.ground_altitude(metas) == pytest.approx((41.95, "take-off point (absolute minus relative altitude)"))
+    assert C.ground_altitude(metas) == pytest.approx(
+        (41.95, "take-off point (absolute minus relative altitude)")
+    )
     # without relative altitude only the lowest photo is known (a camera, not the ground)
     assert C.ground_altitude([{"altitude": 70.0}, {"altitude": 65.0}]) == (65.0, "lowest photo altitude")
     assert C.takeoff_altitude([{"altitude": 70.0}]) is None

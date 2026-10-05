@@ -1,8 +1,8 @@
-import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
+import sharp from 'sharp';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parseManifest, VolumesFile } from '@aio/schema';
 import { parseGlb } from './glb';
@@ -39,12 +39,19 @@ const inPile = (e: number, n: number) => e > 1001.5 && e < 1002.5 && n > 2001.5 
 const surface = (ep: 'e1' | 'e2', e: number, n: number) =>
   52 + (inPile(e, n) ? (ep === 'e1' ? 1 : 0.5) : 0);
 
+/** A small test image (JPEG or WebP by extension), made without ffmpeg so CI needs no binary. */
+function testImage(path: string, width: number, height: number): Promise<unknown> {
+  return sharp({ create: { width, height, channels: 3, background: { r: 90, g: 140, b: 200 } } })
+    .toFormat(path.endsWith('.webp') ? 'webp' : 'jpeg')
+    .toFile(path);
+}
+
 describe('Masafi stockpile import (synthetic kit build)', () => {
   let root = '';
   const src = (...p: string[]) => join(root, 'src', ...p);
   const out = () => join(root, 'out');
 
-  beforeAll(() => {
+  beforeAll(async () => {
     root = mkdtempSync(join(tmpdir(), 'aio-masafi-'));
     for (const d of ['data/piles', 'work', 'lib', 'overlays', 'tiles/e1/0', 'tiles/e1/1'])
       mkdirSync(src(d), { recursive: true });
@@ -158,9 +165,8 @@ describe('Masafi stockpile import (synthetic kit build)', () => {
       },
     };
     writeFileSync(src('data/site.js'), `window.VS_SITE=${JSON.stringify(site)};`);
-    const ff = (args: string[]) => execFileSync('ffmpeg', ['-loglevel', 'error', '-y', ...args]);
     const jpg = src('overlays/site_e2.jpg');
-    ff(['-f', 'lavfi', '-i', 'testsrc=size=64x64', '-frames:v', '1', jpg]);
+    await testImage(jpg, 64, 64);
     const b64 = readFileSync(jpg).toString('base64');
     for (const e of ['e1', 'e2'])
       writeFileSync(
@@ -168,7 +174,7 @@ describe('Masafi stockpile import (synthetic kit build)', () => {
         `window.VS_TEX=window.VS_TEX||{};window.VS_TEX["${e}"]="data:image/jpeg;base64,${b64}";`,
       );
     for (const t of ['tiles/e1/1/0_0.webp', 'tiles/e1/0/0_0.webp', 'tiles/e2/1/0_0.webp'])
-      ff(['-f', 'lavfi', '-i', 'testsrc=size=64x64', '-frames:v', '1', src(t)]);
+      await testImage(src(t), 64, 64);
     writeFileSync(src('data/config.js'), 'window.VS_CONFIG={};');
     writeFileSync(src('lib/three.min.js'), '// three');
     writeFileSync(

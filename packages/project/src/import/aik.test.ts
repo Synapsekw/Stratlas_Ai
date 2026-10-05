@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -11,6 +10,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
+import sharp from 'sharp';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Issue, parseManifest, validateIssueAgainstModel } from '@aio/schema';
 import { toWgs84 } from '@aio/geo';
@@ -39,6 +39,13 @@ const PNG = Buffer.from(
   'base64',
 );
 
+/** A small test image (JPEG or WebP by extension), made without ffmpeg so CI needs no binary. */
+function testImage(path: string, width: number, height: number): Promise<unknown> {
+  return sharp({ create: { width, height, channels: 3, background: { r: 90, g: 140, b: 200 } } })
+    .toFormat(path.endsWith('.webp') ? 'webp' : 'jpeg')
+    .toFile(path);
+}
+
 describe('importAik (synthetic kit offline build)', () => {
   let root = '';
   const src = () => join(root, 'src');
@@ -48,23 +55,13 @@ describe('importAik (synthetic kit offline build)', () => {
   const gps = (xn: number, ze: number) =>
     toWgs84([(base[0] ?? 0) + ze, (base[1] ?? 0) + xn, 0], epsg);
 
-  beforeAll(() => {
+  beforeAll(async () => {
     root = mkdtempSync(join(tmpdir(), 'aio-aik-'));
     for (const d of ['data', 'photos', 'thumbs', 'report', 'downloads', '_rebuild/job']) {
       mkdirSync(join(src(), d), { recursive: true });
     }
-    const ff = (args: string[]) => execFileSync('ffmpeg', ['-loglevel', 'error', '-y', ...args]);
-    for (const id of ['p001', 'p002', 'p003']) {
-      ff([
-        '-f',
-        'lavfi',
-        '-i',
-        'testsrc=size=160x120',
-        '-frames:v',
-        '1',
-        join(src(), `photos/${id}.jpg`),
-      ]);
-    }
+    for (const id of ['p001', 'p002', 'p003'])
+      await testImage(join(src(), `photos/${id}.jpg`), 160, 120);
     const masks = Buffer.concat([PNG, PNG, PNG]);
     const n = PNG.length;
     const data = (key: string, b: Buffer) => {
