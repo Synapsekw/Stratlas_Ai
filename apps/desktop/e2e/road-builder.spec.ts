@@ -97,15 +97,34 @@ function screenPoints(win: Page, line: [number, number][]) {
   }, line);
 }
 
-function renderedOn(win: Page, layer: string) {
+/** What the maps on the page show for `layer`: for the poll, and for the message when it fails. */
+interface MapProbe {
+  maps: number;
+  /** Features drawn on the first map that has the layer; -1 when no map has it. */
+  rendered: number;
+  perMap: { loaded: boolean; visible: boolean; overlays: string[] }[];
+}
+
+function probeMaps(win: Page, layer: string): Promise<MapProbe> {
   return win.evaluate((id) => {
-    const host = [...document.querySelectorAll('.pane-map div')].find(
+    const hosts = [...document.querySelectorAll('div')].filter(
       (d) => '__aioMap' in d,
-    ) as unknown as { __aioMap: MapLike } | undefined;
-    const map = host?.__aioMap;
-    const style = map?.getStyle();
-    if (!map || !style?.layers.some((l) => l.id === id)) return -1;
-    return map.queryRenderedFeatures({ layers: [id] }).length;
+    ) as unknown as (HTMLElement & {
+      __aioMap: MapLike;
+    })[];
+    let rendered = -1;
+    const perMap = hosts.map((h) => {
+      const map = h.__aioMap;
+      const layers = map.getStyle()?.layers ?? [];
+      if (rendered < 0 && layers.some((l) => l.id === id))
+        rendered = map.queryRenderedFeatures({ layers: [id] }).length;
+      return {
+        loaded: map.loaded(),
+        visible: h.getBoundingClientRect().width > 0,
+        overlays: layers.map((l) => l.id).filter((n) => n.startsWith('aio-ov-')),
+      };
+    });
+    return { maps: hosts.length, rendered, perMap };
   }, layer);
 }
 
@@ -124,6 +143,11 @@ test('a road survey from raw inputs: wizard, drawn centreline, road builder job,
   await network.attach(app);
   try {
     const win = await app.firstWindow();
+    const logs: string[] = [];
+    win.on('console', (m) => {
+      if (m.type() === 'error' || m.type() === 'warning') logs.push(`${m.type()}: ${m.text()}`);
+    });
+    win.on('pageerror', (e) => logs.push(`pageerror: ${e.message}`));
 
     // 1. The wizard: a road takes the ASTM D6433 road grading by default.
     await win.getByTestId('new-project').first().click();
@@ -244,9 +268,26 @@ test('a road survey from raw inputs: wizard, drawn centreline, road builder job,
     await expect(win.getByTestId('defect-count')).toHaveText('3 of 3 defects');
     await win.keyboard.press('p');
     await expect(win.getByLabel('PCI legend')).toBeVisible();
-    await expect
-      .poll(() => renderedOn(win, 'aio-ov-road-pci-fill'), { timeout: 30_000 })
-      .toBeGreaterThan(0);
+    // On a failure, say what the maps held and what the page logged (CI runners differ).
+    let probe: MapProbe | null = null;
+    try {
+      await expect
+        .poll(
+          async () => {
+            probe = await probeMaps(win, 'aio-ov-road-pci-fill');
+            return probe.rendered;
+          },
+          { timeout: 30_000 },
+        )
+        .toBeGreaterThan(0);
+    } catch (e) {
+      throw new Error(
+        [`PCI units not drawn. Maps: ${JSON.stringify(probe)}`, 'Page console:', ...logs].join(
+          '\n',
+        ),
+        { cause: e },
+      );
+    }
     await win.locator('.rr-row').first().click();
     await expect(win.getByRole('complementary', { name: 'Close-up' })).toBeVisible();
 

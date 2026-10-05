@@ -66,8 +66,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # The importers (and their tests) make thumbnails, textures and video proxies with ffmpeg.
-      - name: Install ffmpeg
+      - name: Install ffmpeg (Windows)
+        if: runner.os == 'Windows'
         uses: FedericoCarboni/setup-ffmpeg@v3
+      # That action has no Apple silicon build; Homebrew has ffmpeg bottles for the runners.
+      - name: Install ffmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
       # Electron fetches its binary lazily on first launch; parallel e2e workers would race.
       - name: Download Electron binary
         run: node node_modules/electron/install.js
