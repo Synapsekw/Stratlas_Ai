@@ -94,8 +94,10 @@ describe('pipeline params', () => {
 
 describe('job ids, records and events', () => {
   it('makes ids the Python runtime accepts', () => {
-    const id = newJobId('volumetric.process', new Date('2026-10-04T10:15:00Z'), () => 0.5);
-    expect(id).toMatch(/^20261004-\d{6}-volumetric-process-[0-9a-z]{4}$/);
+    // The stamp is the workstation's local time, so the instant is built in local time: an
+    // instant in UTC falls on another day east of UTC+13 (Kiritimati) or west of UTC-10.
+    const id = newJobId('volumetric.process', new Date(2026, 9, 4, 10, 15, 0), () => 0.5);
+    expect(id).toMatch(/^20261004-101500-volumetric-process-[0-9a-z]{4}$/);
     expect(id).toMatch(/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/);
   });
 
