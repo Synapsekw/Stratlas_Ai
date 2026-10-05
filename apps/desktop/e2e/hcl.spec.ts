@@ -5,7 +5,7 @@
  */
 import { test as base, type ElectronApplication, type Page } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
@@ -704,4 +704,147 @@ test('split screen: each side shows the pane chosen for it', async ({ app, win }
   await win.keyboard.press('1');
   await expect(win.getByTestId('pane-chooser-left')).toHaveCount(0);
   await expect(win.getByTestId('video-window')).toBeVisible();
+});
+
+interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+  clone(): Vec3;
+  set(x: number, y: number, z: number): Vec3;
+  distanceTo(v: Vec3): number;
+  project(camera: unknown): Vec3;
+}
+interface OrbitStage {
+  camera: { position: Vec3; lookAt(v: Vec3): void };
+  controls: { target: Vec3; enableDamping: boolean; update(): void };
+  renderer: { getContext(): WebGLRenderingContext };
+  renderNow(): void;
+}
+
+/**
+ * Founder: "On the HCl tank 3D model, the base is flickering constantly when we rotate." The
+ * plinth's top lies on y = 0, where the stage drew its ground plane: the two tied in the depth
+ * buffer and swapped with every small camera move. Orbit the tank, render each view twice a hair
+ * apart, and compare the plinth top between the two frames.
+ */
+test('the tank base stays still while the camera orbits', async ({ app, win }) => {
+  await openHcl(app, win);
+  // Only the model: point sprites move with any camera move and would drown the base out.
+  await win.evaluate(() => {
+    const ws = (window as unknown as StageInspect).__stratlas.workspace;
+    const s = ws.getState();
+    const hidden: Record<string, true> = { ...s.hidden };
+    for (const l of s.project?.manifest.layers ?? []) if (l.kind !== 'mesh') hidden[l.id] = true;
+    (ws as unknown as { setState(p: object): void }).setState({ hidden });
+  });
+
+  const result = await win.evaluate(() => {
+    const s = (
+      window as unknown as { __stratlas: { stage(): OrbitStage | null } }
+    ).__stratlas.stage();
+    if (!s) throw new Error('no stage');
+    const gl = s.renderer.getContext();
+    const W = gl.drawingBufferWidth;
+    const H = gl.drawingBufferHeight;
+    s.controls.enableDamping = false;
+    const target = s.controls.target.clone();
+    const home = s.camera.position.distanceTo(target);
+    const grab = () => {
+      const px = new Uint8Array(W * H * 4);
+      gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      return px;
+    };
+    const pose = (azDeg: number, elDeg: number, d: number) => {
+      const a = (azDeg * Math.PI) / 180;
+      const e = (elDeg * Math.PI) / 180;
+      s.camera.position.set(
+        target.x + d * Math.cos(e) * Math.cos(a),
+        target.y + d * Math.sin(e),
+        target.z + d * Math.cos(e) * Math.sin(a),
+      );
+      s.camera.lookAt(target);
+      s.controls.update();
+      s.renderNow(); // near/far and the ground settle on the first frame
+      s.renderNow();
+    };
+    // the plinth's top outside the shell (shell radius 2.06 m, plinth 2.45 m), at y = 0
+    const ring: Vec3[] = [];
+    for (let i = 0; i < 360; i++)
+      for (const r of [2.15, 2.22, 2.29, 2.36]) {
+        const t = (i / 360) * Math.PI * 2;
+        ring.push(target.clone().set(r * Math.cos(t), 0, r * Math.sin(t)));
+      }
+    const pixels = () => {
+      const out = new Set<number>();
+      for (const p of ring) {
+        const n = p.clone().project(s.camera);
+        if (Math.abs(n.x) >= 1 || Math.abs(n.y) >= 1 || n.z >= 1) continue;
+        out.add(Math.floor(((n.y + 1) / 2) * H) * W + Math.floor(((n.x + 1) / 2) * W));
+      }
+      return out;
+    };
+    const views: { az: number; el: number; d: number; changed: number; of: number }[] = [];
+    let worst = { frac: -1, a: new Uint8Array(0), b: new Uint8Array(0) };
+    for (const d of [home, home * 0.5])
+      for (const el of [3, 10, 25, 50])
+        for (let az = 0; az < 360; az += 30) {
+          pose(az, el, d);
+          const a = grab();
+          const at = pixels();
+          // a hair away: 0.03 degree round, 0.02 degree up, 0.05 % out
+          pose(az + 0.03, el + 0.02, d * 1.0005);
+          const b = grab();
+          let changed = 0;
+          for (const k of at) {
+            const i = k * 4;
+            const delta =
+              Math.abs((a[i] ?? 0) - (b[i] ?? 0)) +
+              Math.abs((a[i + 1] ?? 0) - (b[i + 1] ?? 0)) +
+              Math.abs((a[i + 2] ?? 0) - (b[i + 2] ?? 0));
+            if (delta > 48) changed++;
+          }
+          const frac = at.size ? changed / at.size : 0;
+          views.push({ az, el, d, changed, of: at.size });
+          if (frac > worst.frac) worst = { frac, a, b };
+        }
+    // the worst pair as images, for the record
+    const png = (px: Uint8Array) => {
+      const c = document.createElement('canvas');
+      c.width = W;
+      c.height = H;
+      const ctx = c.getContext('2d');
+      if (!ctx) return '';
+      const img = ctx.createImageData(W, H);
+      for (let y = 0; y < H; y++)
+        img.data.set(px.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);
+      ctx.putImageData(img, 0, 0);
+      return c.toDataURL('image/png');
+    };
+    return { views, worstA: png(worst.a), worstB: png(worst.b) };
+  });
+
+  // views that see the plinth top (low views from close by look over it)
+  const seen = result.views.filter((v) => v.of >= 50);
+  const fracs = seen.map((v) => v.changed / v.of);
+  const worst = Math.max(...fracs);
+  const mean = fracs.reduce((a, b) => a + b, 0) / fracs.length;
+  const flicker = fracs.filter((f) => f > 0.1).length;
+  process.stdout.write(
+    `HCl base, ${String(fracs.length)} of ${String(result.views.length)} views see the plinth top: ` +
+      `worst ${(worst * 100).toFixed(2)} %, mean ${(mean * 100).toFixed(2)} % of its pixels ` +
+      `changed; ${String(flicker)} views over 10 %\n`,
+  );
+  if (SHOTS)
+    for (const [k, url] of [
+      ['a', result.worstA],
+      ['b', result.worstB],
+    ] as const)
+      await writeFile(
+        join(SHOTS, `hcl-base-worst-${k}.png`),
+        Buffer.from(url.split(',')[1] ?? '', 'base64'),
+      );
+  // most views see the plinth top, and almost none of it changes a hair away
+  expect(seen.length).toBeGreaterThan(result.views.length * 0.6);
+  expect(worst).toBeLessThan(0.05);
 });
