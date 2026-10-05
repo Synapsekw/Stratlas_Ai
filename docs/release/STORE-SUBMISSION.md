@@ -52,7 +52,7 @@ Complete the IARC questionnaire: no violence, no user-generated public content, 
 ### Store listing (English)
 
 - **Description, short description, features:** use the draft below.
-- **Screenshots:** at least 1, up to 10, 1366 x 768 or larger (1920 x 1080 recommended). We supply them from the app (Al-Zour fusion, HCl inspection, DAMAC issues, Ring Road map, Masafi volumes). Use only screenshots your clients allow to be public, or the demo project.
+- **Screenshots:** at least 1, up to 10, 1366 x 768 or larger (1920 x 1080 recommended). We supply them from the app (Al-Zour fusion, HCl inspection, DAMAC issues, Ring Road map, Masafi volumes). Use only screenshots your clients allow to be public, or the demo project (`STRATLAS_E2E_SHOTS=<folder>` with `apps/desktop/e2e/first-start.spec.ts` saves the welcome and both demo projects).
 - **Store logos:** generated from `packages/brand` by the release tools.
 - **Search terms:** drone inspection, digital twin, point cloud, reality capture, asset integrity, offline GIS, LiDAR.
 
@@ -96,5 +96,4 @@ Stratlas processes your project data on your computer. It does not collect perso
 
 ## Still needed for the full release
 
-- A **demo project** bundled with the Store build (non-client data) so certification and new users can try the app without project data. Action: choose a dataset we may publish, or we build a synthetic one.
 - An **OV code-signing certificate** for the offline installer channel.

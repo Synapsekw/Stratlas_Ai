@@ -9,6 +9,17 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { appDir, writeEffectiveConfig } from './brand-config.mjs';
 
+// The demo project ships in every installer and the Store build (electron-builder extraResources):
+// rebuilt when missing, built with --quick or by another generator, then checked for client data.
+const demo = spawnSync(
+  process.execPath,
+  [fileURLToPath(new URL('../demo/ensure-demo.mjs', import.meta.url))],
+  {
+    stdio: 'inherit',
+  },
+);
+if (demo.status !== 0) process.exit(demo.status ?? 1);
+
 const { path } = writeEffectiveConfig();
 const cli = createRequire(import.meta.url).resolve('electron-builder/cli.js');
 const args = [cli, '--config', path, '--publish', 'never', ...process.argv.slice(2)];
