@@ -461,21 +461,22 @@ real.describe('Masafi', () => {
       await expect(win.getByTestId('pane-date-left').locator('option:checked')).toHaveText(
         '31 Dec 2020',
       );
-      // each view shows its survey's terrain and ortho; the second never loads the other date
+      // each view shows its survey's terrain; the second never loads the other date. Neither
+      // draws the flat ortho in 3D: the terrain mesh carries the same photo (the map shows it)
       await expect
         .poll(() => layerState(win, ids), { timeout: 60_000 })
         .toEqual({
           main: {
             'terrain-2020-12-31': 'shown',
             'terrain-2021-01-10': 'hidden',
-            'ortho-2020-12-31': 'shown',
+            'ortho-2020-12-31': 'hidden',
             'ortho-2021-01-10': 'hidden',
           },
           second: {
             'terrain-2020-12-31': 'absent',
             'terrain-2021-01-10': 'shown',
             'ortho-2020-12-31': 'absent',
-            'ortho-2021-01-10': 'shown',
+            'ortho-2021-01-10': 'hidden',
           },
         });
       // the volumes panel follows the left date

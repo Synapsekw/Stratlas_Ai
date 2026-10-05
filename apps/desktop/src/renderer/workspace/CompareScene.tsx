@@ -2,7 +2,7 @@ import { installIssueOverlay, pinDisplay } from '@aio/annotate';
 import { CameraLink, SceneView, type ClientRectLike, type EngineStage } from '@aio/engine';
 import { setBudgetShare, splitBudget } from '@aio/pointcloud';
 import { useT } from '@aio/ui';
-import { useVolumetric } from '@aio/volumetric';
+import { useVolumetric, volumetric } from '@aio/volumetric';
 import {
   scopedStore,
   useWorkspace,
@@ -120,6 +120,26 @@ export function CompareScene({
     project ? siteBasemapOn(s.choices, project.id, hasVolumes) : false,
   );
   useSiteBasemapLayer(stage, project, streetMap, false);
+
+  // as in the main view (volumetric scene controller): a survey's flat ortho is not drawn in 3D
+  // when the survey has a terrain mesh carrying the same photo (it would cut through the ground)
+  useEffect(() => {
+    if (!stage) return;
+    return stage.onFrame(() => {
+      const v = volumetric.getState();
+      if (v.status !== 'ready') return;
+      for (const sl of Object.values(v.layers)) {
+        if (!sl.terrain) continue;
+        for (const id of sl.layers) {
+          if (id === sl.terrain) continue;
+          const o = stage.scene.getObjectByName(`layer:${id}`);
+          if (o?.userData.aioRaster !== true || !o.visible) continue;
+          o.visible = false;
+          stage.requestRender();
+        }
+      }
+    });
+  }, [stage]);
 
   // the same issue pins as the main view
   useEffect(() => {
