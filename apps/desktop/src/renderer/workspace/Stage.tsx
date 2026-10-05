@@ -77,6 +77,7 @@ import {
   useCutawayState,
 } from './useCutaway';
 import { VolumeTools } from './VolumeTools';
+import { siteBasemapOn, useSiteBasemap, useSiteBasemapLayer } from './siteBasemap';
 
 const MODES: { mode: StageMode; label: string; icon: IconName; keys: string }[] = [
   { mode: '3d', label: '3D', icon: 'scene', keys: '1' },
@@ -558,6 +559,13 @@ export function Stage() {
   useCutaway(engine);
   // sky or studio, time of day and water, per project
   useStageEnvironment(engine);
+  // the offline street map under the site in 3D
+  const project = useWorkspace((s) => s.project);
+  const hasVolumes = useVolumetric((s) => s.status === 'ready');
+  const streetMap = useSiteBasemap((s) =>
+    project ? siteBasemapOn(s.choices, project.id, hasVolumes) : false,
+  );
+  useSiteBasemapLayer(engine, project, streetMap);
 
   // Flight paths: all, the active clip's flight only, or none, and single hidden flights.
   const paths = useFlightPathModel();
@@ -604,7 +612,7 @@ export function Stage() {
       if (!root) return [];
       return [
         ...root.querySelectorAll(
-          '.stbar > :not(.stbar-sp), .stage-under > *, .vwin:not(.docked), .cursor-ro, .stage-pop, .elev-legend, .pane-chooser',
+          '.stbar > :not(.stbar-sp), .stage-under > *, .vwin:not(.docked), .cursor-ro, .stage-pop, .elev-legend, .pane-chooser, .vol-legend',
         ),
       ].map((e) => e.getBoundingClientRect());
     });
