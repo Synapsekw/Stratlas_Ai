@@ -36,11 +36,10 @@ export interface MapViewProps {
   onController?: (controller: MapController | null) => void;
 }
 
-type Status = 'loading' | 'ready' | 'no-packs' | 'error';
+type Status = 'loading' | 'ready' | 'error';
 
 const MESSAGES: Record<Exclude<Status, 'ready'>, string> = {
   loading: 'Loading map',
-  'no-packs': 'No map packs installed. Add a pack in Settings, Maps.',
   error: 'The map could not start. See the log for details.',
 };
 
@@ -72,6 +71,7 @@ export function MapView({
     init.current.onController = onController;
   }, [onController]);
   const [status, setStatus] = useState<Status>('loading');
+  const [noPacks, setNoPacks] = useState(false);
   // The controller reads the latest seam on each click.
   const drawRef = useRef<MapDrawSeam | null>(draw ?? null);
   const ctlRef = useRef<MapController | null>(null);
@@ -117,10 +117,9 @@ export function MapView({
       try {
         const packs = await aio.invoke('packs:list', {});
         if (gone()) return;
-        if (!packs.length) {
-          setStatus('no-packs');
-          return;
-        }
+        // Without a pack the map still runs: the project's own rasters, overlays and issues draw
+        // on an empty background (a first start, the demo project).
+        setNoPacks(packs.length === 0);
         // MapLibre loads lazily so @aio/maps stays importable without a DOM or WebGL.
         const { createMapController } = await import('./controller');
         if (gone()) return;
@@ -181,6 +180,27 @@ export function MapView({
           }}
         >
           {MESSAGES[status]}
+        </div>
+      )}
+      {status === 'ready' && noPacks && (
+        <div
+          role="note"
+          data-testid="map-no-packs"
+          style={{
+            position: 'absolute',
+            bottom: 8,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            whiteSpace: 'nowrap',
+            padding: '4px 8px',
+            borderRadius: 4,
+            background: 'var(--scrim)',
+            color: 'var(--fg-2)',
+            font: 'var(--t-12) var(--f-ui)',
+            pointerEvents: 'none',
+          }}
+        >
+          No map pack installed: project layers only. Add a pack in Settings, Offline maps.
         </div>
       )}
     </div>

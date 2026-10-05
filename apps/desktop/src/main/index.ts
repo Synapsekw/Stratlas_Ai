@@ -35,7 +35,7 @@ import { join } from 'node:path';
 import licenses from 'virtual:licenses';
 import { createAiProjectStore, readAiPolicy } from './aiProjects';
 import { listConversations, loadConversation, saveConversation } from './conversations';
-import { demoProjectPaths } from './demo';
+import { demoLibraryPaths, demoOpenPath, demoRoot, findDemos, markDemoEntries } from './demo';
 import { createExportJobs } from './exports/jobs';
 import { printReport } from './exports/reportWindow';
 import { readNarrative, readPackageNarrative, writeNarrative } from './narrative';
@@ -159,6 +159,12 @@ const settings = createSettingsStore(
 const library = createLibraryStore(join(app.getPath('userData'), 'library.json'));
 /** The person's report logo (Settings, Report branding). */
 const brandingDir = () => join(app.getPath('userData'), 'branding');
+/** Working copies of the bundled demo projects (see demo.ts). */
+const demoCopyRoot = () => join(app.getPath('userData'), 'demo');
+const bundledDemos = () =>
+  findDemos(
+    demoRoot({ env: process.env, packaged: app.isPackaged, resourcesPath: process.resourcesPath }),
+  );
 /** Thumbnails the renderer generated for project images without their own (Media). */
 const thumbsDir = () => join(app.getPath('userData'), 'cache', 'thumbs');
 const policy = new ProjectPolicy(registry);
@@ -445,17 +451,38 @@ function registerIpc(): void {
 
   handle('library:list', async () => {
     const { dataRoot } = await settings.get();
-    const demos = await demoProjectPaths({
-      env: process.env,
-      packaged: app.isPackaged,
-      resourcesPath: process.resourcesPath,
+    const demos = await demoLibraryPaths(await bundledDemos(), demoCopyRoot());
+    const entries = await listLibrary({
+      dataRoot,
+      extraPaths: [...(await library.paths()), ...demos.map((d) => d.path)],
+      registry,
     });
-    return listLibrary({ dataRoot, extraPaths: [...(await library.paths()), ...demos], registry });
+    return markDemoEntries(entries, demos);
+  });
+  handle('app:setupStatus', async () => {
+    const { dataRoot } = await settings.get();
+    const [installed, found] = await Promise.all([
+      packs.list().catch(() => []),
+      findPack({ dataRoot, env: process.env }),
+    ]);
+    const { runtime } = found;
+    return {
+      dataRoot,
+      dataRootExists: existsSync(dataRoot),
+      mapPacks: installed.length,
+      pipeline: {
+        found: runtime.found,
+        ...(runtime.version ? { version: runtime.version } : {}),
+        ...(runtime.problem ? { problem: runtime.problem } : {}),
+      },
+    };
   });
   handle('library:add', ({ path }) => addToLibrary(path, library, registry));
 
   handle('project:open', async ({ path, passphrase }) => {
-    const r = await openProject(path, registry, passphrase);
+    // a bundled demo project opens as its working copy in userData (never written in resources)
+    const target = await demoOpenPath(path, await bundledDemos(), demoCopyRoot());
+    const r = await openProject(target, registry, passphrase);
     if (r.ok) {
       policy.opened(r.id);
       projectNames.set(r.id, r.manifest.name);
