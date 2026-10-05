@@ -40,9 +40,56 @@ const pyDir = join(repo, 'python');
 
 const say = (msg) => process.stdout.write(`${msg}\n`);
 
+/** A build step that failed; its message is shown as is. */
+export class BuildError extends Error {}
+
+/** Stop the build. Throws rather than exiting, so the temp folder is always cleaned up. */
 function fail(msg) {
-  process.stderr.write(`pipeline-pack: ${msg}\n`);
-  process.exit(1);
+  throw new BuildError(msg);
+}
+
+const TEMP_DIR = /^\.pipeline-pack-.+\.tmp-(\d+)$/;
+
+/** True while a process with this id runs (signal 0 only checks). */
+function processAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e?.code === 'EPERM';
+  }
+}
+
+/**
+ * Temp folders earlier builds left in the output folder (killed or crashed before cleaning up):
+ * those whose process no longer runs. A build still running elsewhere keeps its folder.
+ */
+export function staleTempDirs(names, alive = processAlive) {
+  return names.filter((n) => {
+    const m = TEMP_DIR.exec(n);
+    return m !== null && !alive(Number(m[1]));
+  });
+}
+
+/**
+ * Run `build(tmp)` in a fresh temp folder in `outRoot`, after removing stale ones, and remove the
+ * temp folder afterwards whatever happens (a successful build has renamed it into place).
+ */
+export async function withTempDir(outRoot, version, build, opts = {}) {
+  const { pid = process.pid, alive = processAlive, log = say } = opts;
+  mkdirSync(outRoot, { recursive: true });
+  for (const n of staleTempDirs(readdirSync(outRoot), alive)) {
+    log(`  removing ${n}, left by an earlier build that did not finish`);
+    rmSync(join(outRoot, n), { recursive: true, force: true });
+  }
+  const tmp = join(outRoot, `.pipeline-pack-${version}.tmp-${String(pid)}`);
+  rmSync(tmp, { recursive: true, force: true });
+  mkdirSync(tmp, { recursive: true });
+  try {
+    return await build(tmp);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
 }
 
 /** The aio_pipelines version from python/pyproject.toml. */
@@ -145,10 +192,7 @@ async function main() {
   }
   say(`  CPython ${CPYTHON} (${PBS_RELEASE}) verified`);
 
-  const tmp = join(outRoot, `.pipeline-pack-${version}.tmp-${process.pid}`);
-  rmSync(tmp, { recursive: true, force: true });
-  mkdirSync(tmp, { recursive: true });
-  try {
+  await withTempDir(outRoot, version, async (tmp) => {
     run('tar', ['-xzf', tgz, '-C', tmp]);
     const python = join(tmp, ...target.exe.split('/'));
     if (!existsSync(python)) fail(`the archive has no ${target.exe}`);
@@ -252,11 +296,14 @@ async function main() {
     say(
       `Done in ${Math.round((Date.now() - t0) / 1000)} s: ${Object.keys(files).length} files, ${(bytes / 2 ** 20).toFixed(0)} MB at ${dest}`,
     );
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
-  }
+  });
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename)) {
-  main().catch((e) => fail(e instanceof Error ? e.message : String(e)));
+  main().catch((e) => {
+    const msg =
+      e instanceof BuildError ? e.message : e instanceof Error ? (e.stack ?? e.message) : String(e);
+    process.stderr.write(`pipeline-pack: ${msg}\n`);
+    process.exitCode = 1;
+  });
 }
