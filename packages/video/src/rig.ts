@@ -35,6 +35,7 @@ import { acquirePlayer, releasePlayer, type ClipPlayer } from './player';
 import { interpolatePose } from './pose';
 import { Projector, type ProjectorOptions } from './projector';
 import { loadFlight, videoStore, type VideoLayer } from './runtime';
+import { DroneTrace, type TraceLabels } from './trace';
 
 export type CameraMode = 'free' | 'follow' | 'drone';
 
@@ -62,6 +63,13 @@ function controlsOf(h: SceneHandle): ControlsLike | null {
 
 /** The path choice per scene, kept when the rig is rebuilt (another project in the same scene). */
 const pathChoice = new WeakMap<SceneHandle, FlightPathOptions>();
+
+/** Drone telemetry choice per scene (on, labels), kept when the rig is rebuilt. */
+export interface DroneTelemetryOptions {
+  on?: boolean;
+  labels?: TraceLabels;
+}
+const telemetryChoice = new WeakMap<SceneHandle, DroneTelemetryOptions>();
 
 const PATH_START = new Color('#5ab0ff');
 const PATH_END = new Color('#ff5a5a');
@@ -136,6 +144,11 @@ function frustumRays(lens: LensModel): Vector3[] {
   return border.map(([x, y]) => new Vector3(...imageToRay(lens, x, y)));
 }
 
+/** Project height of the local y = 0 (manifest origin height; 0 without a project). */
+function originHeight(origin: readonly number[] | undefined): number {
+  return origin?.[2] ?? 0;
+}
+
 /** Steepest view counted as looking at the ground (about 14 degrees below the horizon). */
 const MIN_GROUND_SLOPE = 0.25;
 
@@ -166,6 +179,8 @@ export class VideoRig {
   private props: Object3D[] = [];
   private readonly frustum: LineSegments;
   private readonly beacon = beaconSprite();
+  /** The tactical trace of the active clip: trail, shadow, drop lines, ticks and HUD. */
+  readonly trace: DroneTrace;
   private frustumRays: Vector3[] = [];
   private activeId: string | null = null;
   private player: ClipPlayer | null = null;
@@ -234,7 +249,10 @@ export class VideoRig {
     this.frustum.renderOrder = 20;
     this.frustum.frustumCulled = false;
     this.frustum.visible = false;
-    this.group.add(this.drone, this.frustum);
+    this.trace = new DroneTrace(handle);
+    const tele = telemetryChoice.get(handle);
+    if (tele) this.setDroneTelemetry(tele);
+    this.group.add(this.drone, this.frustum, this.trace.group);
     if (this.beacon) this.group.add(this.beacon);
     handle.scene.add(this.group);
     this.offs.push(handle.onFrame(this.frame));
@@ -299,6 +317,35 @@ export class VideoRig {
     this.pathMode = o.mode;
     if (o.hiddenClips) this.hiddenPathClips = o.hiddenClips;
     this.handle.requestRender();
+  }
+
+  /** Drone telemetry (trace and HUD) on or off, and the HUD words. */
+  setDroneTelemetry(o: DroneTelemetryOptions) {
+    if (o.labels) this.trace.setLabels(o.labels);
+    if (o.on !== undefined) {
+      this.trace.setEnabled(o.on);
+      this.stylePaths();
+    }
+    this.handle.requestRender();
+  }
+
+  get droneTelemetry(): boolean {
+    return this.trace.isEnabled;
+  }
+
+  /**
+   * The active clip's flight path draws over everything, unless the telemetry trace is on: then
+   * the trace leads and the path falls back with the others.
+   */
+  private stylePaths() {
+    const lead = !this.trace.isEnabled;
+    for (const path of this.paths.values()) {
+      const m = path.line.material as LineBasicMaterial;
+      const on = this.activeId !== null && path.clips.has(this.activeId);
+      m.opacity = on ? (lead ? 1 : 0.45) : 0.3;
+      m.depthTest = !(on && lead);
+      path.line.renderOrder = on ? 6 : 5;
+    }
   }
 
   get flightPaths(): { mode: FlightPathMode; hiddenClips: ReadonlySet<string> } {
@@ -486,13 +533,8 @@ export class VideoRig {
       this.hold = null;
     }
     this.activeId = want;
-    for (const path of this.paths.values()) {
-      const m = path.line.material as LineBasicMaterial;
-      const on = want !== null && path.clips.has(want);
-      m.opacity = on ? 1 : 0.3;
-      m.depthTest = !on;
-      path.line.renderOrder = on ? 6 : 5;
-    }
+    this.stylePaths();
+    this.trace.invalidateGround();
     const entry = want ? this.clips.get(want) : undefined;
     if (!want || !entry?.flight) {
       this.projector.setEnabled(false);
@@ -554,6 +596,7 @@ export class VideoRig {
     }
     if (!entry || !flight || !this.player) {
       this.pose.valid = false;
+      this.trace.update(null);
       return;
     }
     const layerVisible = entry.visible && !s.hidden[entry.layer.id];
@@ -594,6 +637,25 @@ export class VideoRig {
       this.beacon.scale.setScalar(BEACON_SIZE * (1 + 0.35 * k));
       this.beacon.material.opacity = playing ? 0.95 - 0.45 * k : 0.8;
     }
+
+    // telemetry trace: the clip's stretch of the flight, flown part up to the playhead
+    if (layerVisible) {
+      const w = this.player.window;
+      const start = w.startMs - flight.startUtcMs;
+      const end = w.endMs > w.startMs ? w.endMs - flight.startUtcMs : flight.durationMs;
+      this.trace.update({
+        clipId: entry.layer.id,
+        samples: flight.samples,
+        clipStartMs: Math.max(0, start),
+        clipEndMs: Math.min(flight.durationMs, Math.max(start, end)),
+        flightMs,
+        offset: off ?? null,
+        orientation: this.orientationOverride ?? entry.layer.orientation ?? null,
+        pos: this.pose.pos,
+        originH: originHeight(s.project?.manifest.origin),
+        droneEye: drone,
+      });
+    } else this.trace.update(null);
 
     // frustum: border rays to a length that reads at this zoom, clipped at the ground plane
     this.updateFrustum(Math.min(400, Math.max(0.6, camDist * 0.12)));
@@ -675,6 +737,7 @@ export class VideoRig {
     this.beacon?.material.map?.dispose();
     this.beacon?.material.dispose();
     this.projector.dispose();
+    this.trace.dispose();
     this.handle.scene.remove(this.group);
     this.group.traverse((o) => {
       const m = o as Partial<Line>;
@@ -726,6 +789,15 @@ export function setCameraMode(handle: SceneHandle, mode: CameraMode): void {
 export function setFlightPaths(handle: SceneHandle, o: FlightPathOptions): void {
   pathChoice.set(handle, { ...pathChoice.get(handle), ...o });
   rigs.get(handle)?.setFlightPaths(o);
+}
+
+/**
+ * Drone telemetry for the UI: the tactical trace and HUD of the active clip, on or off, and the
+ * HUD words. Remembered for the scene, so a rig built later starts with it.
+ */
+export function setDroneTelemetry(handle: SceneHandle, o: DroneTelemetryOptions): void {
+  telemetryChoice.set(handle, { ...telemetryChoice.get(handle), ...o });
+  rigs.get(handle)?.setDroneTelemetry(o);
 }
 
 /** Projection opacity, vignette and on/off for the UI. */

@@ -110,6 +110,15 @@ export const ICONS = {
       <circle cx="16" cy="5.5" r="2" />
     </>
   ),
+  /** Drone telemetry: a flown track with distance ticks and a drop line to the ground. */
+  telemetry: (
+    <>
+      <path d="M2.5 13l4.5-4 4 2 5.5-6.5" />
+      <path d="M4.2 10l1.4 1.6M9.4 8.6l-.8 2" />
+      <path d="M16.5 4.5v12" strokeDasharray="1.6 1.6" />
+      <path d="M2.5 16.5h15" />
+    </>
+  ),
   /** Some of the layers shown: the eye with a half-filled pupil. */
   'eye-mixed': (
     <>

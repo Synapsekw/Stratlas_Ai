@@ -12,6 +12,7 @@ import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
 import { PATH_MODES, setPathMode, togglePaths } from '../workspace/flightPaths';
 import { updateFlightPaths } from '../workspace/pathModel';
+import { toggleTelemetry } from '../workspace/telemetryPref';
 import { toggleTimeline } from '../workspace/timelinePref';
 import { selectClip } from './Sidebar';
 
@@ -211,6 +212,15 @@ export function Palette() {
             updateFlightPaths(togglePaths);
           }),
           'P',
+        );
+        action(
+          'telemetry',
+          t('stage.telemetry.toggle'),
+          'telemetry',
+          scene(() => {
+            toggleTelemetry();
+          }),
+          'D',
         );
         for (const m of PATH_MODES)
           list.push({

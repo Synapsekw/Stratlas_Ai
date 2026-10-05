@@ -26,6 +26,7 @@ import { shell, useShell } from '../shell';
 import { PATH_MODES, setPathMode } from './flightPaths';
 import { updateFlightPaths, useFlightPathModel } from './pathModel';
 import { CutawayPanel } from './CutawayTool';
+import { toggleTelemetry, useTelemetryOn } from './telemetryPref';
 import { useCutawayPref } from './useCutaway';
 
 /** The live 3D stage (view presets, tools, section), re-rendering on tool and section changes. */
@@ -532,6 +533,22 @@ export function FlightPathTool() {
   );
 }
 
+/** Drone telemetry while a clip plays: flown track, distance ticks and the HUD (D). */
+export function TelemetryTool() {
+  const t = useT();
+  const on = useTelemetryOn();
+  if (!useFlightPathModel()) return null;
+  return (
+    <Tool
+      icon="telemetry"
+      label={on ? t('stage.telemetry.hide') : t('stage.telemetry.show')}
+      keys="D"
+      pressed={on}
+      onClick={toggleTelemetry}
+    />
+  );
+}
+
 /* ----------------------------------------------------------------------- video and camera */
 
 const CAMERA_MODES: { mode: CameraMode; label: string; icon: IconName }[] = [
@@ -562,6 +579,7 @@ export function VideoTools({ stage, map }: { stage: EngineStage | null; map: boo
         }}
       />
       {!map && <FlightPathTool />}
+      {!map && <TelemetryTool />}
       {!map &&
         CAMERA_MODES.map((m) => (
           <Tool
