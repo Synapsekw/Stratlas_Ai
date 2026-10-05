@@ -369,9 +369,16 @@ export class JobRunner {
         this.writeLog(job.id, { level: 'error', message: why });
         this.update(job.id, (j) => this.finish(j, 'failed', why), true);
       });
-      if (this.live.get(job.id) === live) this.live.delete(job.id);
-      log.end();
-      markClosed();
+      // Still running until job.log is closed, so a resume or a delete never meets an open file.
+      const done = () => {
+        if (this.live.get(job.id) === live) this.live.delete(job.id);
+        markClosed();
+      };
+      if (log.closed) done();
+      else {
+        log.once('close', done);
+        log.end();
+      }
     });
 
     client

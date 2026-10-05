@@ -17,12 +17,16 @@ beforeEach(async () => {
   project = join(base, 'project');
   await import('node:fs/promises').then((fs) => fs.mkdir(project));
 });
+const stores: JobStore[] = [];
 afterEach(async () => {
+  // A finished job's index write may still be in flight; removing the folder under it fails.
+  await Promise.all(stores.splice(0).map((s) => s.flush()));
   await rm(base, { recursive: true, force: true });
 });
 
 function setup(mode: string, opts: { pack?: boolean; grace?: number } = {}) {
   const store = new JobStore(join(base, 'jobs.json'));
+  stores.push(store);
   const events: JobEvent[] = [];
   const spawned: string[][] = [];
   const runner = new JobRunner({
