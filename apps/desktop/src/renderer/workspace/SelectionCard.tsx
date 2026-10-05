@@ -124,7 +124,8 @@ function describe(
         [
           'Taken',
           photo?.takenAt
-            ? `${formatDate(photo.takenAt)} · ${formatClock(Date.parse(photo.takenAt))} UTC`
+            ? // the day and the clock both in UTC, as labelled
+              `${formatDate(new Date(Date.parse(photo.takenAt)).toISOString())} · ${formatClock(Date.parse(photo.takenAt))} UTC`
             : 'Unknown',
         ],
       ],

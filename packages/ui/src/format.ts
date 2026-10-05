@@ -34,11 +34,30 @@ export function formatCompact(n: number): string {
   return String(Math.round(n));
 }
 
-/** "2023-02-21" or an ISO datetime -> "21 Feb 2023" (UTC date). Unparseable input is returned as is. */
+/** Minutes east of UTC written at the end of an ISO datetime ("+03:00", "-0430"), else null. */
+function writtenOffset(iso: string): number | null {
+  const m = /T[\d:.]+([+-])(\d{2}):?(\d{2})$/.exec(iso);
+  if (!m) return null;
+  const [, sign, h = '0', min = '0'] = m;
+  return (sign === '-' ? -1 : 1) * (Number(h) * 60 + Number(min));
+}
+
+/**
+ * "2023-02-21" or an ISO datetime -> "21 Feb 2023". The day is the one in the time zone the
+ * datetime was recorded in: "2024-04-02T00:00:00+03:00" is 2 Apr (not 1 Apr, its UTC day); a
+ * datetime in UTC ("Z") gives its UTC day, one without a zone the day as written (never the
+ * day of the computer's own zone). Unparseable input is returned as is.
+ */
 export function formatDate(iso: string): string {
-  const ms = Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso}T00:00:00Z` : iso);
+  const ms = Date.parse(
+    /^\d{4}-\d{2}-\d{2}$/.test(iso)
+      ? `${iso}T00:00:00Z`
+      : /^\d{4}-\d{2}-\d{2}T[\d:.]+$/.test(iso)
+        ? `${iso}Z`
+        : iso,
+  );
   if (Number.isNaN(ms)) return iso;
-  const d = new Date(ms);
+  const d = new Date(ms + (writtenOffset(iso) ?? 0) * 60_000);
   return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()] ?? ''} ${d.getUTCFullYear()}`;
 }
 
