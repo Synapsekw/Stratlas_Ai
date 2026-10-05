@@ -40,9 +40,9 @@ jobs:
       WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
       WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
       WIN_SIGN_COMMAND: ${{ vars.WIN_SIGN_COMMAND }}
-      AZURE_SIGN_ENDPOINT: ${{ vars.AZURE_SIGN_ENDPOINT }}
-      AZURE_SIGN_ACCOUNT: ${{ vars.AZURE_SIGN_ACCOUNT }}
-      AZURE_SIGN_PROFILE: ${{ vars.AZURE_SIGN_PROFILE }}
+      AZURE_SIGN_ENDPOINT: ${{ vars.AZURE_SIGN_ENDPOINT || secrets.AZURE_SIGN_ENDPOINT }}
+      AZURE_SIGN_ACCOUNT: ${{ vars.AZURE_SIGN_ACCOUNT || secrets.AZURE_SIGN_ACCOUNT }}
+      AZURE_SIGN_PROFILE: ${{ vars.AZURE_SIGN_PROFILE || secrets.AZURE_SIGN_PROFILE }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
@@ -51,10 +51,13 @@ jobs:
       STORE_PUBLISHER: ${{ vars.STORE_PUBLISHER }}
       STORE_PUBLISHER_DISPLAY_NAME: ${{ vars.STORE_PUBLISHER_DISPLAY_NAME }}
       # macOS: Developer ID Application certificate (.p12, base64) and notarisation API key.
-      CSC_LINK: ${{ matrix.os == 'macos-latest' && secrets.MAC_CSC_LINK || '' }}
-      CSC_KEY_PASSWORD: ${{ matrix.os == 'macos-latest' && secrets.MAC_CSC_KEY_PASSWORD || '' }}
+      CSC_LINK: ${{ matrix.os == 'macos-latest' && (secrets.MAC_CSC_LINK || secrets.CSC_LINK) || '' }}
+      CSC_KEY_PASSWORD: ${{ matrix.os == 'macos-latest' && (secrets.MAC_CSC_KEY_PASSWORD || secrets.CSC_KEY_PASSWORD) || '' }}
       APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
       APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - uses: actions/checkout@v5
 
@@ -75,6 +78,12 @@ jobs:
           path: ${{ steps.pnpm-store.outputs.path }}
           key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: pnpm-store-${{ runner.os }}-
+
+      # The universal macOS app needs native addons for arm64 and x64 (see release.yml).
+      - name: Install native addons for both macOS architectures
+        if: runner.os == 'macOS'
+        run: |
+          printf '%s\n' 'supportedArchitectures:' '  os: [current]' '  cpu: [arm64, x64]' >> pnpm-workspace.yaml
 
       - run: pnpm install --frozen-lockfile
 
@@ -103,7 +112,7 @@ jobs:
           name: installers-${{ runner.os }}
           path: |
             apps/desktop/dist/*.exe
-            apps/desktop/dist/*.appx
+            apps/desktop/dist/*.msix
             apps/desktop/dist/*.dmg
             apps/desktop/dist/*.zip
           retention-days: 14

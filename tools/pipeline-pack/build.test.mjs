@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { BuildError, staleTempDirs, withTempDir } from './build.mjs';
+import { BuildError, defaultOutRoot, staleTempDirs, withTempDir } from './build.mjs';
 
 let out;
 beforeEach(() => {
@@ -98,5 +98,18 @@ describe('pipeline pack temp folder', () => {
         () => false,
       ),
     ).toEqual(['.pipeline-pack-0.2.0.tmp-5']);
+  });
+});
+
+describe('defaultOutRoot', () => {
+  it('uses STRATLAS_DATA on every system', () => {
+    expect(defaultOutRoot('darwin', { STRATLAS_DATA: '/Volumes/Data' })).toBe(
+      join('/Volumes/Data', 'runtime'),
+    );
+  });
+
+  it('has a default only on the Windows workstation', () => {
+    expect(defaultOutRoot('win32', {})).toBe('E:/Stratlas Data/runtime');
+    expect(defaultOutRoot('darwin', {})).toBeNull();
   });
 });

@@ -3,17 +3,31 @@
 // Run from apps/desktop after `electron-vite build`; extra arguments go to electron-builder.
 //   node ../../tools/release/dist.mjs --win            NSIS installer + portable exe
 //   node ../../tools/release/dist.mjs --win appx       Microsoft Store package
-//   node ../../tools/release/dist.mjs --mac            dmg + zip
+//   node ../../tools/release/dist.mjs --mac            universal (arm64 + x64) dmg + zip
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { appDir, writeEffectiveConfig } from './brand-config.mjs';
+import { appDir, isStoreBuild, storeBuildEnv, writeEffectiveConfig } from './brand-config.mjs';
+import { MAC_NATIVE_HINT, missingMacNativePackages } from './mac-native.mjs';
 
-const { path } = writeEffectiveConfig();
-const cli = createRequire(import.meta.url).resolve('electron-builder/cli.js');
-const args = [cli, '--config', path, '--publish', 'never', ...process.argv.slice(2)];
+const builderArgs = process.argv.slice(2);
 // CI maps absent secrets to empty strings; electron-builder must see them as unset.
-const env = Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== ''));
+const presentEnv = Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== ''));
+// Microsoft signs Store packages; our certificate never touches the MSIX.
+const env = isStoreBuild(builderArgs) ? storeBuildEnv(presentEnv) : presentEnv;
+if (builderArgs.some((a) => a === '--mac' || a === '-m')) {
+  // The universal app must carry the keyring addon for both architectures.
+  const fromApp = createRequire(join(appDir, 'package.json'));
+  const missing = missingMacNativePackages((id) => fromApp.resolve(id));
+  if (missing.length) {
+    process.stderr.write(`dist: missing ${missing.join(', ')}.\n${MAC_NATIVE_HINT}\n`);
+    process.exit(1);
+  }
+}
+const { path } = writeEffectiveConfig(env);
+const cli = createRequire(import.meta.url).resolve('electron-builder/cli.js');
+const args = [cli, '--config', path, '--publish', 'never', ...builderArgs];
 // Without a certificate, never let electron-builder pick an arbitrary keychain identity.
 if (!env.CSC_LINK && !env.CSC_NAME) env.CSC_IDENTITY_AUTO_DISCOVERY = 'false';
 

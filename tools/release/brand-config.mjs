@@ -23,15 +23,20 @@ export const effectiveConfigPath = join(appDir, 'build/generated/electron-builde
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'));
 const has = (env, ...keys) => keys.every((k) => typeof env[k] === 'string' && env[k].length > 0);
 
-/** Windows signing mode, first match wins. */
-export function windowsSigning(env) {
-  if (has(env, 'WIN_CSC_LINK') || has(env, 'CSC_LINK')) {
-    // electron-builder reads WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD (or CSC_*) itself.
-    return { mode: 'pfx', win: {} };
-  }
-  if (has(env, 'AZURE_SIGN_ENDPOINT', 'AZURE_SIGN_ACCOUNT', 'AZURE_SIGN_PROFILE')) {
-    // Azure Artifact Signing; credentials come from AZURE_TENANT_ID / AZURE_CLIENT_ID /
-    // AZURE_CLIENT_SECRET in the environment.
+/**
+ * Windows signing mode, first match wins: Azure Trusted Signing, a .pfx, a cloud HSM command.
+ * `company` is the default Azure publisher name.
+ */
+export function windowsSigning(env, company = '') {
+  if (
+    has(env, 'AZURE_SIGN_ENDPOINT', 'AZURE_SIGN_ACCOUNT', 'AZURE_SIGN_PROFILE') &&
+    has(env, 'AZURE_TENANT_ID', 'AZURE_CLIENT_ID')
+  ) {
+    // Azure Trusted Signing (Artifact Signing). electron-builder installs the TrustedSigning
+    // PowerShell module and authenticates with AZURE_TENANT_ID / AZURE_CLIENT_ID plus
+    // AZURE_CLIENT_SECRET (or another azure-identity credential) from the environment.
+    // publisherName is required and must equal the certificate subject CN: the validated
+    // organisation name, which is the company unless WIN_PUBLISHER_NAME says otherwise.
     return {
       mode: 'azure',
       win: {
@@ -39,10 +44,14 @@ export function windowsSigning(env) {
           endpoint: env.AZURE_SIGN_ENDPOINT,
           codeSigningAccountName: env.AZURE_SIGN_ACCOUNT,
           certificateProfileName: env.AZURE_SIGN_PROFILE,
-          ...(env.WIN_PUBLISHER_NAME ? { publisherName: env.WIN_PUBLISHER_NAME } : {}),
+          publisherName: env.WIN_PUBLISHER_NAME ?? company,
         },
       },
     };
+  }
+  if (has(env, 'WIN_CSC_LINK') || has(env, 'CSC_LINK')) {
+    // electron-builder reads WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD (or CSC_*) itself.
+    return { mode: 'pfx', win: {} };
   }
   if (has(env, 'WIN_SIGN_COMMAND')) {
     // Cloud HSM (DigiCert KeyLocker, SSL.com eSigner, signtool with a KSP): run a command
@@ -53,6 +62,30 @@ export function windowsSigning(env) {
     };
   }
   return { mode: 'unsigned', win: {} };
+}
+
+/** Variables that switch Windows signing on; a Store build drops them (`storeBuildEnv`). */
+export const WINDOWS_SIGNING_VARS = [
+  'WIN_CSC_LINK',
+  'WIN_CSC_KEY_PASSWORD',
+  'CSC_LINK',
+  'CSC_KEY_PASSWORD',
+  'AZURE_SIGN_ENDPOINT',
+  'AZURE_SIGN_ACCOUNT',
+  'AZURE_SIGN_PROFILE',
+  'WIN_SIGN_COMMAND',
+];
+
+/**
+ * True when electron-builder arguments ask for a Microsoft Store package (`appx` / `msix`).
+ * Microsoft signs Store submissions; signing it ourselves would fail anyway, because the
+ * manifest publisher is the Partner Center CN, not our certificate's subject.
+ */
+export const isStoreBuild = (args) => args.some((a) => /^(appx|msix)$/i.test(a));
+
+/** The environment for a Store build: every Windows signing switch removed. */
+export function storeBuildEnv(env) {
+  return Object.fromEntries(Object.entries(env).filter(([k]) => !WINDOWS_SIGNING_VARS.includes(k)));
 }
 
 /** macOS signing identity and notarisation. */
@@ -90,6 +123,31 @@ export function storeIdentity(brand, env) {
   };
 }
 
+/**
+ * macOS document type and URL scheme. electron-builder writes `fileAssociations` as
+ * CFBundleDocumentTypes and `protocols` as CFBundleURLTypes; the exported UTI gives `.aio`
+ * files a kind and icon in Finder. The app handles `<urlScheme>://` in its `open-url` handler.
+ */
+export function macIntegration(brand) {
+  return {
+    protocols: [{ name: `${brand.productName} link`, schemes: [brand.urlScheme], role: 'Viewer' }],
+    extendInfo: {
+      UTExportedTypeDeclarations: [
+        {
+          UTTypeIdentifier: `${brand.appId}.package`,
+          UTTypeDescription: `${brand.productName} project package`,
+          UTTypeConformsTo: ['public.data'],
+          UTTypeIconFile: 'icon.icns',
+          UTTypeTagSpecification: {
+            'public.filename-extension': ['aio'],
+            'public.mime-type': ['application/vnd.aio-package+zip'],
+          },
+        },
+      ],
+    },
+  };
+}
+
 export function effectiveConfig(rawEnv = process.env, now = new Date()) {
   // CI maps absent secrets and variables to empty strings; treat those as unset.
   const env = Object.fromEntries(Object.entries(rawEnv).filter(([, v]) => v != null && v !== ''));
@@ -102,7 +160,8 @@ export function effectiveConfig(rawEnv = process.env, now = new Date()) {
   }
   const require = createRequire(import.meta.url);
   const electronVersion = readJson(require.resolve('electron/package.json')).version;
-  const win = windowsSigning(env);
+  const win = windowsSigning(env, brand.company);
+  const macOs = macIntegration(brand);
   const mac = macSigning(env);
   const store = storeIdentity(brand, env);
 
@@ -131,10 +190,13 @@ export function effectiveConfig(rawEnv = process.env, now = new Date()) {
         role: 'Viewer',
         mimeType: 'application/vnd.aio-package+zip',
         icon: 'icon',
+        // macOS: the app owns the type it exports (macIntegration).
+        rank: 'Owner',
       },
     ],
+    protocols: macOs.protocols,
     appx: store.appx,
-    mac: mac.mac,
+    mac: { ...mac.mac, extendInfo: macOs.extendInfo },
     dmg: { title: `${brand.productName} \${version}` },
   };
   return { config, summary: { win: win.mode, mac: mac.mode, storePlaceholder: store.placeholder } };
@@ -154,7 +216,13 @@ export function writeEffectiveConfig(env = process.env) {
   return { config, path: effectiveConfigPath };
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+if (
+  import.meta.url === pathToFileURL(process.argv[1] ?? '').href &&
+  process.argv.includes('--summary')
+) {
+  // Signing modes as JSON for CI steps (`{"win":"azure","mac":"ad-hoc",...}`); writes nothing.
+  process.stdout.write(`${JSON.stringify(effectiveConfig().summary)}\n`);
+} else if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const { config } = writeEffectiveConfig();
   if (process.argv.includes('--print'))
     process.stdout.write(`${JSON.stringify(config, null, 2)}\n`);
