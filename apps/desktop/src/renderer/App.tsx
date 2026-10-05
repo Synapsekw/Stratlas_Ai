@@ -34,6 +34,9 @@ import { TitleBar } from './shell/TitleBar';
 import { applyAppearance } from './theme';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
 import { BuilderLayer } from './builder/BuilderLayer';
+import { Lightbox } from './issueCard/Lightbox';
+import { evidence, openEvidence, startEvidenceSplit } from './issueCard/evidence';
+import { startCardFocus } from './issueCard/state';
 
 function onKeyDown(e: KeyboardEvent) {
   const s = shell.getState();
@@ -181,6 +184,16 @@ export function App() {
       videoDrivesClock,
     );
     const stopContinue = continueAcrossClips();
+    // a picked issue opens its card: the right panel unfolds if it was folded away
+    const stopCard = startCardFocus(workspace, ({ id, fromScene }) => {
+      const sh = shell.getState();
+      if (sh.rightCollapsed) sh.toggleRight();
+      // picked in 3D: its photo (or video frame) opens beside the 3D view; an open evidence
+      // pane follows the card to the next issue
+      const ev = evidence.getState();
+      if (sh.screen === 'scene' && ((fromScene && ev.enabled) || ev.open)) openEvidence(id);
+    });
+    const stopEvidence = startEvidenceSplit();
     const stopOpenPath = openPackagesHandedOver();
     const stopRoad = startRoadSync();
     // A road survey opens map first.
@@ -200,6 +213,8 @@ export function App() {
       window.removeEventListener('keydown', onKeyDown);
       stopPlayback();
       stopContinue();
+      stopCard();
+      stopEvidence();
       stopVolumes();
     };
   }, []);
@@ -230,6 +245,7 @@ export function App() {
       <PackageExportDialog />
       <Toasts />
       <BuilderLayer />
+      <Lightbox />
     </div>
   );
 }

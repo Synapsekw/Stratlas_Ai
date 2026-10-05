@@ -29,6 +29,8 @@ export interface SheetItem {
   accepted: number;
   rejected: number;
   outlines: SheetOutline[];
+  /** Issues already marked on the photo: how many, and the worst severity's colour. */
+  issues?: { count: number; color: string };
 }
 
 const MIN_TILE = 132;
@@ -205,6 +207,16 @@ export function ContactSheet({
                     </svg>
                   )}
                   {item.draft > 0 && <span className="det-badge mono">{item.draft}</span>}
+                  {item.issues && (
+                    <span
+                      className="m-fbadge mono det-issues"
+                      style={{ ['--c' as string]: item.issues.color }}
+                      title={t('det.sheet.issues', { count: item.issues.count })}
+                    >
+                      <i />
+                      {item.issues.count}
+                    </span>
+                  )}
                   {picked && <span className="det-pick" aria-hidden="true" />}
                 </div>
                 <span className="det-cap mono">

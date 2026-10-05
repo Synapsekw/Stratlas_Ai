@@ -35,6 +35,7 @@ import '../detections/detections.css';
 import { FocusZone } from '../FocusZone';
 import { useMedia } from '../media';
 import { bridge, shell, useCall } from '../shell';
+import { findingsIndex, photoKey, type PhotoFindings } from './mediaFindings';
 import { NoProject } from './NoProject';
 
 const FILTERS: QueueFilter[] = ['draft', 'all', 'accepted', 'rejected'];
@@ -48,6 +49,11 @@ const ERROR_KEY: Record<ReviewError, MessageKey> = {
 const UNKNOWN_COLOR = '#8a94a6';
 
 type PhotosLayer = Extract<Layer, { kind: 'photos' }>;
+
+/** A tile's issue marker: how many issues the photo already shows and the worst colour. */
+function issueMark(f: PhotoFindings | undefined): Pick<SheetItem, 'issues'> {
+  return f && f.issues > 0 ? { issues: { count: f.issues, color: f.color } } : {};
+}
 
 function sourceLabel(s: DetectionSource, layers: readonly Layer[]): string {
   if (s.kind === 'photo') return s.photo;
@@ -104,6 +110,12 @@ export function DetectionsScreen() {
     return c;
   }, [review.detections]);
 
+  // Issues already marked on each photo (the same index as the Media screen, issues only).
+  const issueMarks = useMemo(
+    () => (project ? findingsIndex(project.manifest, issues) : new Map<string, never>()),
+    [project, issues],
+  );
+
   // The sheet: every photo, then the video frames that have detections.
   const items = useMemo<SheetItem[]>(() => {
     const perSource = new Map(sourceCounts(review.detections).map((c) => [c.key, c]));
@@ -138,6 +150,7 @@ export function DetectionsScreen() {
           accepted: c?.accepted ?? 0,
           rejected: c?.rejected ?? 0,
           outlines: outlines.get(key) ?? [],
+          ...issueMark(issueMarks.get(photoKey(set.id, p.id))),
         });
       }
     }
@@ -162,7 +175,16 @@ export function DetectionsScreen() {
       });
     }
     return out;
-  }, [review.detections, review.filter, photoSets, layers, allPhotos, classById, projectId]);
+  }, [
+    review.detections,
+    review.filter,
+    photoSets,
+    layers,
+    allPhotos,
+    classById,
+    projectId,
+    issueMarks,
+  ]);
 
   // The editor follows the current detection; a tile without one opens on its own.
   const currentKey = current ? sourceKey(current.source) : null;

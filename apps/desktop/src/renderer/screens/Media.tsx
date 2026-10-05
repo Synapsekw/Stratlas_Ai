@@ -1,13 +1,25 @@
 import { PhotoViewer } from '@aio/annotate';
-import type { Layer } from '@aio/schema';
-import { formatClock, formatCount, formatDate, formatDuration, Icon } from '@aio/ui';
-import { useWorkspace, workspace } from '@aio/workspace';
+import type { AssetRef, Layer } from '@aio/schema';
+import { formatClock, formatCount, formatDate, formatDuration, Icon, useT } from '@aio/ui';
+import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { loadDetections, useDetections } from '../detections/store';
 import { FocusZone } from '../FocusZone';
+import { IssueCard } from '../issueCard/IssueCard';
+import { Mark } from '../issueCard/Marks';
 import { useMedia } from '../media';
 import { shell } from '../shell';
 import { selectClip } from '../shell/Sidebar';
+import { photoSize } from '../thumbs/photoSize';
 import { MediaThumb } from '../thumbs/Thumb';
+import {
+  findingsIndex,
+  orderPhotos,
+  photoKey,
+  shapesInPhoto,
+  type PhotoFindings,
+  type PhotoOrder,
+} from './mediaFindings';
 import { flightCards, flightOf, type FlightCard } from './mediaModel';
 import { NoProject } from './NoProject';
 
@@ -82,10 +94,98 @@ function FlightTile({
   );
 }
 
+/** The findings of a photo drawn over its thumbnail (object-fit cover), once its size is read. */
+function FindingsOverlay({
+  projectId,
+  asset,
+  findings,
+}: {
+  projectId: string;
+  asset: AssetRef;
+  findings: PhotoFindings;
+}) {
+  const [size, setSize] = useState<{ asset: AssetRef; wh: [number, number] | null } | null>(null);
+  useEffect(() => {
+    let url: string;
+    try {
+      url = assetUrl(projectId, asset);
+    } catch {
+      return;
+    }
+    let live = true;
+    void photoSize(url).then((wh) => {
+      if (live) setSize({ asset, wh });
+    });
+    return () => {
+      live = false;
+    };
+  }, [projectId, asset]);
+  const wh = size?.asset === asset ? size.wh : null;
+  if (!wh || findings.shapes.length === 0) return null;
+  const shapes = shapesInPhoto(findings.shapes, wh);
+  return (
+    <svg
+      className="m-marks"
+      viewBox={`0 0 ${String(wh[0])} ${String(wh[1])}`}
+      preserveAspectRatio="xMidYMid slice"
+      aria-hidden="true"
+    >
+      {shapes.map((sh, i) => (
+        <Mark
+          key={i}
+          geom={sh.geom}
+          color={sh.color}
+          pointR={Math.max(wh[0], wh[1]) / 30}
+          className={`mk${sh.draft ? ' draft' : ''}`}
+        />
+      ))}
+    </svg>
+  );
+}
+
+/** Count and worst severity of a photo's findings, in the tile corner. */
+function FindingsBadge({ findings }: { findings: PhotoFindings }) {
+  return (
+    <span
+      className="m-fbadge mono"
+      style={{ ['--c' as string]: findings.color }}
+      aria-hidden="true"
+    >
+      <i />
+      {findings.count}
+    </span>
+  );
+}
+
+/** Findings per photo of the open project: issues on photos and detections of the review. */
+function usePhotoFindings(projectId: string | null): ReadonlyMap<string, PhotoFindings> {
+  const project = useWorkspace((s) => s.project);
+  const issues = useWorkspace((s) => s.issues);
+  const detections = useDetections((s) => (s.projectId === projectId ? s.review.detections : null));
+  useEffect(() => {
+    if (projectId) void loadDetections(projectId);
+  }, [projectId]);
+  return useMemo(
+    () =>
+      project
+        ? findingsIndex(project.manifest, issues, detections ?? [])
+        : new Map<string, never>(),
+    [project, issues, detections],
+  );
+}
+
+/** The filter and order stay while the app runs. */
+let rememberedOnly = false;
+let rememberedOrder: PhotoOrder = 'file';
+
 export function MediaScreen() {
+  const t = useT();
   const project = useWorkspace((s) => s.project);
   const activeClip = useWorkspace((s) => s.activeClip);
   const selection = useWorkspace((s) => s.selection);
+  const findings = usePhotoFindings(project?.id ?? null);
+  const [onlyFindings, setOnlyFindings] = useState(rememberedOnly);
+  const [order, setOrder] = useState<PhotoOrder>(rememberedOrder);
   const { durations } = useMedia(project);
   const layers = useMemo(() => project?.manifest.layers ?? [], [project]);
   const flights = useMemo(() => flightCards(layers, durations), [layers, durations]);
@@ -99,6 +199,7 @@ export function MediaScreen() {
           photoId: selection.id,
         }
       : null;
+  const issueId = selection?.kind === 'issue' ? selection.id : null;
   const photoId = photo?.photoId;
   const photoRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -117,9 +218,13 @@ export function MediaScreen() {
     (l): l is Extract<Layer, { kind: 'panoramas' }> => l.kind === 'panoramas',
   );
   const empty = clips.length + photoSets.length + panoSets.length === 0;
+  const withFindings = photoSets.reduce(
+    (n, set) => n + set.items.filter((p) => findings.has(photoKey(set.id, p.id))).length,
+    0,
+  );
 
   return (
-    <section className={`screen media${photo ? ' with-viewer' : ''}`} aria-label="Media">
+    <section className={`screen media${photo || issueId ? ' with-viewer' : ''}`} aria-label="Media">
       <div className="media-main" ref={photoRef} data-thumb-root>
         <header className="page-h">
           <h1>Media</h1>
@@ -128,6 +233,47 @@ export function MediaScreen() {
             {formatCount(photoSets.reduce((n, l) => n + l.items.length, 0))} photos ·{' '}
             {formatCount(panoSets.reduce((n, l) => n + l.items.length, 0))} panoramas
           </p>
+          {photoSets.length > 0 && (
+            <div className="m-tools" role="group" aria-label={t('media.findings.tools')}>
+              <span
+                className={`m-fsum${withFindings > 0 ? ' on' : ''}`}
+                data-testid="media-findings-count"
+              >
+                <i />
+                {t('media.findings.summary', { count: withFindings })}
+              </span>
+              <button
+                type="button"
+                className="btn sm"
+                aria-pressed={onlyFindings}
+                data-testid="media-only-findings"
+                disabled={withFindings === 0 && !onlyFindings}
+                onClick={() => {
+                  rememberedOnly = !onlyFindings;
+                  setOnlyFindings(rememberedOnly);
+                }}
+              >
+                <Icon name="filter" size={14} />
+                {t('media.findings.only')}
+              </button>
+              <label className="m-order">
+                <span>{t('media.findings.sort')}</span>
+                <select
+                  className="input sm"
+                  value={order}
+                  data-testid="media-order"
+                  onChange={(e) => {
+                    rememberedOrder = e.target.value as PhotoOrder;
+                    setOrder(rememberedOrder);
+                  }}
+                >
+                  <option value="file">{t('media.findings.sort.file')}</option>
+                  <option value="severity">{t('media.findings.sort.severity')}</option>
+                  <option value="count">{t('media.findings.sort.count')}</option>
+                </select>
+              </label>
+            </div>
+          )}
         </header>
         {empty && (
           <div className="side-empty">
@@ -204,35 +350,67 @@ export function MediaScreen() {
             </div>
           </section>
         )}
-        {photoSets.map((set) => (
-          <section className="m-sec" key={set.id}>
-            <h2 className="caps">
-              {set.name} <span className="mono faint">{formatCount(set.items.length)}</span>
-            </h2>
-            <div className="m-grid">
-              {set.items.slice(0, PHOTO_LIMIT).map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  data-photo={p.id}
-                  className={`m-card sq${photo?.photoId === p.id && photo.layerId === set.id ? ' on' : ''}`}
-                  onClick={() => {
-                    workspace.getState().select({ kind: 'photo', id: p.id, layer: set.id });
-                  }}
-                  title={p.takenAt ? `${p.id} · ${formatDate(p.takenAt)}` : p.id}
-                >
-                  <MediaThumb projectId={project.id} asset={p.src} icon="photo" />
-                </button>
-              ))}
-            </div>
-            {set.items.length > PHOTO_LIMIT && (
-              <p className="faint small">
-                Showing the first {PHOTO_LIMIT} of {formatCount(set.items.length)}. Use Ctrl K to
-                find a photo by name.
-              </p>
-            )}
-          </section>
-        ))}
+        {photoSets.map((set) => {
+          const items = orderPhotos(set.items, set.id, findings, onlyFindings, order);
+          if (onlyFindings && items.length === 0) return null;
+          return (
+            <section className="m-sec" key={set.id}>
+              <h2 className="caps">
+                {set.name}{' '}
+                <span className="mono faint">
+                  {onlyFindings
+                    ? `${formatCount(items.length)} / ${formatCount(set.items.length)}`
+                    : formatCount(set.items.length)}
+                </span>
+              </h2>
+              <div className="m-grid">
+                {items.slice(0, PHOTO_LIMIT).map((p) => {
+                  const f = findings.get(photoKey(set.id, p.id));
+                  const on = photo?.photoId === p.id && photo.layerId === set.id;
+                  const when = p.takenAt ? ` · ${formatDate(p.takenAt)}` : '';
+                  const what = f
+                    ? ` · ${f.label ? t('media.findings.tile', { count: f.count, severity: f.label }) : t('media.findings.tileUngraded', { count: f.count })}`
+                    : '';
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      data-photo={p.id}
+                      data-findings={f ? f.count : undefined}
+                      className={`m-card sq${on ? ' on' : ''}${f ? ' has-f' : ''}`}
+                      style={f ? { ['--c' as string]: f.color } : undefined}
+                      onClick={() => {
+                        workspace.getState().select({ kind: 'photo', id: p.id, layer: set.id });
+                      }}
+                      title={`${p.id}${when}${what}`}
+                      aria-label={`${p.id}${what}`}
+                    >
+                      <MediaThumb
+                        projectId={project.id}
+                        asset={p.src}
+                        icon="photo"
+                        overlay={
+                          f ? (
+                            <FindingsOverlay projectId={project.id} asset={p.src} findings={f} />
+                          ) : undefined
+                        }
+                      />
+                      {f && <FindingsBadge findings={f} />}
+                    </button>
+                  );
+                })}
+              </div>
+              {items.length > PHOTO_LIMIT && (
+                <p className="faint small">
+                  {t('media.photoLimit', {
+                    limit: PHOTO_LIMIT,
+                    total: formatCount(items.length),
+                  })}
+                </p>
+              )}
+            </section>
+          );
+        })}
         {panoSets.map((set) => (
           <section className="m-sec" key={set.id}>
             <h2 className="caps">
@@ -260,6 +438,11 @@ export function MediaScreen() {
           </section>
         ))}
       </div>
+      {issueId && !photo && (
+        <aside className="media-viewer media-card" aria-label={t('card.title')}>
+          <IssueCard issueId={issueId} place="media" className="fill-col" />
+        </aside>
+      )}
       {photo && (
         <FocusZone kind="photo" className="media-viewer" aria-label="Photo">
           <div className="panel-h">

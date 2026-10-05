@@ -1,7 +1,8 @@
-import { IssueDetail } from '@aio/annotate';
 import { t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { IssueCard } from '../issueCard/IssueCard';
+import { useCardFocusSeq } from '../issueCard/state';
 import { exportAllowed } from '../player';
 import { bridge, useShell } from '../shell';
 import { defectsCsv, pciRating, type DefectRow, type DefectSort } from './model';
@@ -373,6 +374,7 @@ export function DefectList() {
       <DefectFilters rows={rows} />
       <div
         className="rr-list"
+        data-issue-list
         ref={box}
         role="listbox"
         aria-label="Defects"
@@ -399,11 +401,36 @@ export function DefectList() {
 
 type Tab = 'road' | 'defects' | 'selection';
 
+/** The selected defect's card; previous and next walk the filtered, sorted defect list. */
+function DefectCard({ issueId }: { issueId: string }) {
+  const rows = useFilteredDefects();
+  const order = useMemo(() => rows.map((r) => r.id), [rows]);
+  return (
+    <IssueCard
+      issueId={issueId}
+      place="road"
+      order={order}
+      onStep={(id) => {
+        const row = rows.find((r) => r.id === id);
+        if (row) focusDefect(row);
+      }}
+      className="ctx-fill"
+    />
+  );
+}
+
 /** The right panel of the road workspace: road summary, the defect list and the selection. */
 export function RoadPanel() {
   const issueId = useWorkspace((s) => (s.selection?.kind === 'issue' ? s.selection.id : null));
   const count = useRoad((s) => s.rows.length);
   const [tab, setTab] = useState<Tab>('defects');
+  // a defect picked on the map or in the list opens its card
+  const focusSeq = useCardFocusSeq();
+  const [seenSeq, setSeenSeq] = useState(focusSeq);
+  if (seenSeq !== focusSeq) {
+    setSeenSeq(focusSeq);
+    setTab('selection');
+  }
   const tabs: { id: Tab; label: string }[] = [
     { id: 'road', label: 'Road' },
     { id: 'defects', label: 'Defects' },
@@ -433,7 +460,7 @@ export function RoadPanel() {
         {tab === 'defects' && <DefectList />}
         {tab === 'selection' &&
           (issueId ? (
-            <IssueDetail issueId={issueId} className="ctx-fill" />
+            <DefectCard issueId={issueId} />
           ) : (
             <p className="rr-empty muted">Select a defect on the map or in the list.</p>
           ))}

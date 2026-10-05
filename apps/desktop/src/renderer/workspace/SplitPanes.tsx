@@ -5,6 +5,15 @@ import { VideoWindow } from '@aio/video';
 import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
 import { useMemo } from 'react';
 import { FocusZone } from '../FocusZone';
+import {
+  closeEvidence,
+  dropEvidence,
+  stepEvidence,
+  useEvidence,
+  type EvidenceOpen,
+} from '../issueCard/evidence';
+import { issueEvidence, photoEvidence } from '../issueCard/model';
+import { openLightbox } from '../issueCard/state';
 import { PdfViewer } from '../report/PdfViewer';
 import { useCall } from '../shell';
 import { RasterView } from './RasterPane';
@@ -70,6 +79,7 @@ export function PaneChooser({ side, split }: { side: Side; split: SplitModel }) 
         aria-label={t(side === 'left' ? 'stage.split.left' : 'stage.split.right')}
         value={current}
         onChange={(e) => {
+          dropEvidence();
           split.set(chooseSide(split.sides, side, e.target.value as PaneKind));
         }}
       >
@@ -97,8 +107,99 @@ function VideoPane() {
   );
 }
 
-/** The selected photo (picked in 3D, Media or an issue), else the first; steps through its set. */
+/**
+ * The photos of an issue picked in 3D, its boxes and masks drawn: previous and next step through
+ * the issue's photos, the x (or Esc) puts the stage back as it was.
+ */
+function EvidencePhotos({ open }: { open: EvidenceOpen }) {
+  const t = useT();
+  const project = useWorkspace((s) => s.project);
+  const issue = useWorkspace((s) => s.issues.find((i) => i.id === open.issueId));
+  const photos = useMemo(
+    () => (project && issue ? photoEvidence(issueEvidence(project.manifest, issue)) : []),
+    [project, issue],
+  );
+  const index = Math.min(open.index, photos.length - 1);
+  const ev = photos[index];
+  if (!issue || !ev) return <p className="pane-empty">{t('stage.pane.noPhoto')}</p>;
+  return (
+    <div className="pane-col" data-testid="evidence-photo" data-issue={issue.id}>
+      <div className="pane-bar">
+        <b className="mono">{issue.code}</b>
+        <button
+          type="button"
+          className="btn icon sm ghost"
+          aria-label={t('lightbox.prev')}
+          title={t('lightbox.prev')}
+          disabled={photos.length < 2}
+          onClick={() => {
+            stepEvidence(-1, photos.length);
+          }}
+        >
+          <Icon name="back" size={14} />
+        </button>
+        <span className="mono" data-testid="evidence-photo-id">
+          {ev.photo}
+        </span>
+        <span className="mono faint">
+          {t('stage.pane.photoCount', { n: index + 1, total: photos.length })}
+        </span>
+        <button
+          type="button"
+          className="btn icon sm ghost"
+          aria-label={t('lightbox.next')}
+          title={t('lightbox.next')}
+          disabled={photos.length < 2}
+          onClick={() => {
+            stepEvidence(1, photos.length);
+          }}
+        >
+          <Icon name="fwd" size={14} />
+        </button>
+        <span className="grow" />
+        <button
+          type="button"
+          className="btn icon sm ghost"
+          aria-label={t('evidence.full')}
+          title={t('evidence.full')}
+          onClick={() => {
+            openLightbox(issue.id, index);
+          }}
+        >
+          <Icon name="maximize" size={14} />
+        </button>
+        <button
+          type="button"
+          className="btn icon sm ghost"
+          aria-label={t('evidence.close')}
+          title={`${t('evidence.close')} (Esc)`}
+          data-testid="evidence-close"
+          onClick={() => {
+            closeEvidence();
+          }}
+        >
+          <Icon name="x" size={14} />
+        </button>
+      </div>
+      <PhotoViewer
+        key={ev.key}
+        layerId={ev.layer}
+        photoId={ev.photo}
+        projected={false}
+        className="fill-col"
+      />
+    </div>
+  );
+}
+
+/** The issue's photos while its evidence is open, else the selected photo. */
 function PhotoPane() {
+  const open = useEvidence((s) => (s.open?.kind === 'photo' ? s.open : null));
+  return open ? <EvidencePhotos open={open} /> : <SetPhotoPane />;
+}
+
+/** The selected photo (picked in 3D, Media or an issue), else the first; steps through its set. */
+function SetPhotoPane() {
   const t = useT();
   const layers = useWorkspace((s) => s.project?.manifest.layers);
   const selection = useWorkspace((s) => s.selection);
@@ -232,7 +333,9 @@ const ZONE: Record<Exclude<PaneKind, '3d' | 'map'>, 'video' | 'photo' | 'map' | 
 
 /** A split side that shows something other than the 3D view or the map. */
 export function SplitPane({ side, split }: { side: Side; split: SplitModel }) {
+  const t = useT();
   const kind = split.sides[side];
+  const videoEvidence = useEvidence((s) => s.open?.kind === 'video');
   if (kind === '3d' || kind === 'map') return null;
   return (
     <FocusZone
@@ -251,6 +354,20 @@ export function SplitPane({ side, split }: { side: Side; split: SplitModel }) {
         <ReportPane split={split} />
       )}
       <PaneChooser side={side} split={split} />
+      {kind === 'video' && videoEvidence && (
+        <button
+          type="button"
+          className="btn icon sm overlay-box pane-close"
+          aria-label={t('evidence.close')}
+          title={`${t('evidence.close')} (Esc)`}
+          data-testid="evidence-close"
+          onClick={() => {
+            closeEvidence();
+          }}
+        >
+          <Icon name="x" size={14} />
+        </button>
+      )}
     </FocusZone>
   );
 }
