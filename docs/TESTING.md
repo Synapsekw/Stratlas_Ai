@@ -30,15 +30,15 @@ One document for every test round, one stage per milestone. Each stage lists wha
 
 ## Status
 
-| Stage               | What it covers                                                                                                                                                                                                   | Build it needs                                                                                                                | Status                                                     |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| M1 to M4 (baseline) | The six projects, fusion scene, annotation, maps, AI, platform, reports and exports (packages and builder steps moved to M6)                                                                                     | The current installer (M6 build, 4 Oct 2026) or later                                                                         | Passed                                                     |
-| M5                  | Fixes from the M4 feedback: Masafi, DAMAC, video, layers, cut-away, split, sky and water, report branding, AI keys                                                                                               | The M5 installer, built 4 Oct 2026 after the sky and water merge (commit `862c9df`) or later                                  | Not yet tested (skipped for now); AI lines passed          |
-| M6                  | Builder completion: pipelines from raw data, detection review, AI detection, report text and project report, video calibration, packages and map packs                                                           | The M6 installer, built 4 Oct 2026 from main at commit `4624bf2` or later, and pipeline pack 0.2.0 (see M6, Before you start) | In progress: founder testing; feedback being fixed in M6.1 |
-| M6.1                | Your M6 feedback: point size, issue and photo opening, Media highlights, HCl flicker and nadir photos, dark maps, Al-Zour drone trace and photo icons, agent camera moves, Masafi piles and ramps, compare dates | Not built yet                                                                                                                 | Fixes in progress, not built yet                           |
-| M7                  | Release hardening and distribution                                                                                                                                                                               | Not built yet                                                                                                                 | Planned                                                    |
-| M8                  | Change detection and modelling                                                                                                                                                                                   | Not built yet                                                                                                                 | Planned                                                    |
-| M9                  | Team features and release 1.0                                                                                                                                                                                    | Not built yet                                                                                                                 | Planned                                                    |
+| Stage               | What it covers                                                                                                                                                                                                   | Build it needs                                                                                                                | Status                                               |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| M1 to M4 (baseline) | The six projects, fusion scene, annotation, maps, AI, platform, reports and exports (packages and builder steps moved to M6)                                                                                     | The current installer (M6 build, 4 Oct 2026) or later                                                                         | Passed                                               |
+| M5                  | Fixes from the M4 feedback: Masafi, DAMAC, video, layers, cut-away, split, sky and water, report branding, AI keys                                                                                               | The M5 installer, built 4 Oct 2026 after the sky and water merge (commit `862c9df`) or later                                  | Not yet tested (skipped for now); AI lines passed    |
+| M6                  | Builder completion: pipelines from raw data, detection review, AI detection, report text and project report, video calibration, packages and map packs                                                           | The M6 installer, built 4 Oct 2026 from main at commit `4624bf2` or later, and pipeline pack 0.2.0 (see M6, Before you start) | In progress: founder testing; feedback fixed in M6.1 |
+| M6.1                | Your M6 feedback: point size, issue and photo opening, Media highlights, HCl flicker and nadir photos, dark maps, Al-Zour drone trace and photo icons, agent camera moves, Masafi piles and ramps, compare dates | The M6.1 installer, built 5 Oct 2026 from main at commit `c0fda90` or later                                                   | All nine fixes merged; not yet tested by the founder |
+| M7                  | Release hardening and distribution                                                                                                                                                                               | Not built yet                                                                                                                 | Planned                                              |
+| M8                  | Change detection and modelling                                                                                                                                                                                   | Not built yet                                                                                                                 | Planned                                              |
+| M9                  | Team features and release 1.0                                                                                                                                                                                    | Not built yet                                                                                                                 | Planned                                              |
 
 ## Stage M1 to M4: baseline (passed)
 
@@ -228,50 +228,83 @@ Measured on this PC: the recorded Al-Zour fly-through holds 60 fps with a p95 fr
 
 - [ ] One project of each type from the samples (inspection, volumetric, road): built, reviewed (inspection), report text saved, project report exported, and exported as a package that opens in the player.
 
-## Stage M6.1: your M6 feedback (in progress)
+## Stage M6.1: your M6 feedback, fixed
 
-Steps are final once these fixes are merged; the build is named in the status table.
+Build: the M6.1 installer, 5 Oct 2026, from main at commit `c0fda90` or later. All nine fixes are merged.
 
 ### Point clouds
 
-- [ ] HCl and Al-Zour, toolbar **Point cloud**, **Point size**: the points on screen really grow and shrink (at 2x at least 2 px, at 4x at least 4 px). The colours do not change.
+- [ ] HCl and Al-Zour, toolbar **Point cloud**, **Point size**: 1x looks as before; at 2x the points are at least 2 px, at 4x at least 4 px. The colours do not change.
 
-### Issues, photos and Media
+### Issue card
 
-- [ ] Click an issue anywhere in the app: it opens in the side panel with its photo. Click the photo: it opens full size.
-- [ ] Click an annotation label in 3D: its photo opens in split screen next to the 3D view.
-- [ ] **Media**: photos that have annotations or findings are highlighted.
+- [ ] Pick an issue anywhere: a pin or code label in 3D, a count badge list, a map marker, a timeline mark, a row in **Issues**, a 1st Ring Road defect row, or **Ctrl+K**. The right panel unfolds if it is folded and shows the issue card.
+- [ ] The card shows code, title, severity, status, class, **Zone**, its place in the list ("N of M"), **Recommended action** and **Note**. The best photo is cropped around the defect with its box drawn; the other photos sit in a strip.
+- [ ] An issue seen in a video shows the frame with **Jump to m:ss**: the clip plays from there.
+- [ ] **Previous issue**, **Next issue** and **Fly to the issue** work. The edit form is folded under **Edit issue**; a read-only package has no **Edit issue**.
+- [ ] Click the photo: it opens full size over the app. **Fit**, wheel to zoom, drag to pan; **M** turns the markings off and on; Left and Right step through the issue's photos; **Open in Media**; **Esc** closes.
+
+### Evidence in split
+
+- [ ] HCl, pick an issue in the 3D view: the stage switches to **Split** with the issue's photo on the other side, and the 3D view flies to the issue. **Esc** or **×** restores the layout.
+- [ ] Switch off **Open evidence in split** on the card (on by default): picking in 3D now opens only the card.
+
+### Media
+
+- [ ] HCl, **Media**: a photo with findings has a count badge in its worst severity colour, a tinted border and the boxes drawn on the thumbnail. The bar reads "N photos with findings".
+- [ ] **Only with findings** hides the other photos. **Order**: **As captured**, **Worst first**, **Most findings first**.
 
 ### HCl
 
-- [ ] Rotate around the model: the base no longer flickers.
-- [ ] Open a nadir (straight-down) photo: it is the right way up.
+- [ ] Orbit around the tank: the concrete ring around the base does not flicker.
+- [ ] Every photo in **Media** and in the viewer is upright (they were turned 180 degrees, not only the straight-down ones). F13's box still sits on the blister.
 
 ### Maps
 
-- [ ] Every street map in the app is dark: the **Map** screen, a map side of **Split** and the map under a 3D site.
+- [ ] Every street map is dark, also in the light app theme: the **Map** view, a map side of **Split**, the ground under a 3D site, 1st Ring Road, the map pickers in **New project** and the road builder, **Settings, Offline maps**, and packages. Zoom buttons, scale and popups are dark too.
+- [ ] Delivered map rasters (orthos, plot plans) look as before.
 
-### Al-Zour
+### Drone telemetry (Al-Zour and HCl)
 
-- [ ] Play a clip and switch on the drone trace: a tactical trace of the flight with distance ticks and telemetry. Switch it off: it goes away.
-- [ ] Photos taken at one location show as one icon.
-- [ ] Photo and panorama icons are smaller and redesigned; a click still opens them.
+- [ ] Play or scrub a clip: the flown path is solid teal up to the playhead, the rest dashed. A shadow track on the ground with drop lines, and amber distance ticks ("250 m", "1.25 km") from START.
+- [ ] The HUD plate reads DIST, T+, AGL, EL, GS, HDG and GMB.
+- [ ] **D**, the toolbar button or **Ctrl+K** turns it off and on. On by default; remembered per project.
+
+### Photo and panorama markers
+
+- [ ] Al-Zour: the 12 photos show as 5 places, one of them with a "4". Photos within 1.5 m share one marker.
+- [ ] Markers that overlap on screen merge with a count and split as you zoom in; at most 36 icons per layer.
+- [ ] Hover a marker: the count and the time span. Click a merged marker: a small list with thumbnails.
+- [ ] Icons are smaller: a photo is a rounded square with a camera, a panorama a circle. A click still opens them.
 
 ### AI agent
 
-- [ ] Ask the agent to move the camera (for example "look at the tank from the north"): the view moves.
-- [ ] Ask it to fly to a named place ("fly to the roof nozzles" on HCl) and to coordinates ("fly to 29.0769043, 48.0838033"): the camera flies there.
+- [ ] In any window, also after clicking the video, ask the agent to move the camera. Al-Zour: "fly to tank 3", "show the jetty", "where the drone was at 13:25". HCl: "go to issue F05", "go to 29.0769043, 48.0838033". Anywhere: "top view", "orbit", "zoom in", "frame everything".
+- [ ] After each move the agent says where the camera is; **Undo** on the step in the panel goes back.
+- [ ] An ambiguous name: the agent lists the candidates and asks which one.
+- [ ] Only if you remove the Workspace ID to try it: the "not scoped to a workspace" error shows a **Workspace ID needed** card in the agent panel with **Anthropic workspace ID**, **Test and retry** (sends your last message again, once) and **Open AI settings**.
 
 ### Masafi
 
-- [ ] Stack the orthos (both dates, or an ortho over the street map): edges and masks are clean.
-- [ ] The piles are hidden when the project opens. Click a pile in the **Volumes** register: the camera flies to it and shows its outline and measurements.
-- [ ] **Elevation**: pick another colour ramp; the terrain and its legend follow.
-- [ ] The 3D site sits on top of the street map, not under it.
+- [ ] No frame around the orthos in 3D; the Al-Zour ortho and the 1st Ring Road edges are clean too.
+- [ ] One survey date at a time: turn on the other date's ortho or terrain and the view switches to that date.
+- [ ] The piles are hidden when the project opens, with the hint "Click a pile to see its outline and volume. Esc hides it."
+- [ ] Click a pile on the terrain or in **Volumes**: the camera flies to it and shows its outline, body and a callout like "11,379 m³ · 18,206 t · 11.3 m high". Hover a pile: only its name. **Esc** or a click on empty ground hides it.
+- [ ] The eye on a row keeps that pile visible; the eye at the top shows every pile (remembered per project). The pile's detail shows **Fill**, **Cut**, **Net**, the base and **Last edit**.
+- [ ] **Elevation**: **Colour ramp** Turbo (the default), Spectral, Viridis, Terrain, Inferno, Greyscale; **Low** and **High** sliders in metres and **Auto**; **Hillshade** (on by default). The legend reads in metres.
+- [ ] The street map lies under the site in 3D. **Layers and issue pins**, **Street map under the site** turns it off; on by default for stockpile projects.
 
-### Compare dates
+### Compare dates (Masafi)
 
-- [ ] Open a split view of two captures (two 3D models, or two orthos, for example the two Masafi dates): move the camera on one side, the other side follows.
+- [ ] **Compare dates** sits next to **3D**, **Map** and **Split**. From 3D or Split it opens two 3D views, from **Map** two maps: the first date on the left, the last on the right. Remembered per project; **Stop comparing dates** leaves it.
+- [ ] Each side has a date selector; picking the other side's date swaps the two. With **Link the two views** on, orbit, pan and zoom move both sides.
+- [ ] Click P05 on one side: P05 is outlined on both.
+- [ ] **Split** with **Ortho and plans** on both sides shows two orthos side by side.
+
+### Dates and report branding
+
+- [ ] 1st Ring Road, open a defect: **Recorded** shows 2 Apr 2024 (the local day), not 1 Apr.
+- [ ] **Settings, Report branding**: type a company name, press **Enter**, then pick a logo straight away: the report keeps both.
 
 ## Stage M7: release hardening and distribution (planned)
 
@@ -297,12 +330,14 @@ Current limits only; each is removed from this list when fixed.
 - No geoid model: camera heights are the drone's absolute or relative altitude plus the offset or take-off height you give; a project's vertical datum is one offset.
 - One take-off height per import batch: import flights that took off from different heights separately.
 - Al-Zour sea level (93.56 m) is marked indicative; adjust it in the sun popover if the waterline looks high. A few light surf patches near the west breakwater read as land and show as flat patches on the water.
+- Al-Zour clip DJI_0668 is 31.5 s long and DJI_0669 starts 60 s after it, so between them the video window shows "No footage at this time". That is correct.
 
 ### Viewer
 
 - Issue labels hidden behind the building can lag the camera by about a tenth of a second while orbiting.
 - At night the point cloud keeps its daylight colours and takes no shadows.
 - Point size cannot go below 1 px, so shrinking has no visible effect where points are already 1 px (Al-Zour overview, HCl from far out). At the Al-Zour overview, larger points merge into a coarser mosaic rather than separate dots.
+- **Compare dates**: measure, drawing, the AI agent, video and pile bodies work in the left (main) view only. On the **Low** graphics tier you get two maps or the swipe instead of two 3D views.
 - With the right panel open on a 1440 px screen, the Labels and layers buttons move into the **More** menu.
 - No Arabic translation yet; **Right to left** mirrors the panels only.
 
@@ -310,6 +345,7 @@ Current limits only; each is removed from this list when fixed.
 
 - Report branding is one setting for all projects (no per-project override yet).
 - Road project reports default to issue pages for all but the lowest level (a page per Ring Road defect would be over 2,000 pages); pick **Every graded issue** to print them all.
+- The street map under the Masafi site is soft up close (one 5 km image at about 2.4 m per pixel).
 
 ### Builder
 
