@@ -22,6 +22,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -288,11 +289,238 @@ export async function launchApp(
   });
 }
 
+// ---------------------------------------------------------------- M8: two dates and the change demo
+
+export const TWO_DATE_PROJECT_ID = 'e2e-two-dates';
+
+/** A small two-date project in the data root (see `twoDateProject`). */
+export interface TwoDateProject {
+  id: string;
+  dir: string;
+  /** Capture ids, earlier first. */
+  captures: [string, string];
+}
+
+/**
+ * Write `projects/e2e-two-dates/` into `dataRoot`: captures `c1` (2026-03-02) and `c2`
+ * (2026-04-13), a 1 m quad model per date (`quad-c1`; `quad-c2` moved 2 m east), a map vector
+ * layer per date (`site-c2` adds a track `TR-2`), and one issue per date at the same place
+ * (`c2` area grown from 0.4 to 0.6 m2). Every layer and issue names its capture.
+ */
+export async function createTwoDateProject(dataRoot: DataRoot): Promise<TwoDateProject> {
+  const id = TWO_DATE_PROJECT_ID;
+  const dir = join(dataRoot.root, 'projects', id);
+  await mkdir(join(dir, 'models'), { recursive: true });
+  await mkdir(join(dir, 'vectors'), { recursive: true });
+  await writeFile(join(dir, 'models', 'quad.glb'), tinyGlb());
+  const line = (coords: [number, number][], fid: string, name: string) => ({
+    type: 'Feature',
+    id: fid,
+    properties: { id: fid, name },
+    geometry: { type: 'LineString', coordinates: coords },
+  });
+  const track: [number, number][] = [
+    [51.0, 28.92],
+    [51.0005, 28.92],
+  ];
+  const spur: [number, number][] = [
+    [51.0005, 28.92],
+    [51.0005, 28.9205],
+  ];
+  await writeFile(
+    join(dir, 'vectors', 'site-c1.geojson'),
+    JSON.stringify({ type: 'FeatureCollection', features: [line(track, 'TR-1', 'Track')] }),
+  );
+  await writeFile(
+    join(dir, 'vectors', 'site-c2.geojson'),
+    JSON.stringify({
+      type: 'FeatureCollection',
+      features: [line(track, 'TR-1', 'Track'), line(spur, 'TR-2', 'New track')],
+    }),
+  );
+  const moved = [...IDENTITY];
+  moved[12] = 2;
+  const input: ProjectManifestInput = {
+    schema: SCHEMA_VERSION,
+    id,
+    name: 'E2E two dates',
+    customer: 'E2E',
+    site: 'Synthetic site, 2 dates',
+    crs: { epsg: 32639 },
+    origin: [500000, 3200000, 0],
+    captures: [
+      { id: 'c1', label: 'Survey 2 March 2026', date: '2026-03-02' },
+      { id: 'c2', label: 'Survey 13 April 2026', date: '2026-04-13' },
+    ],
+    layers: [
+      {
+        kind: 'mesh',
+        id: 'quad-c1',
+        name: 'Quad 2026-03-02',
+        capture: 'c1',
+        src: { path: 'models/quad.glb' },
+        transform: IDENTITY,
+      },
+      {
+        kind: 'mesh',
+        id: 'quad-c2',
+        name: 'Quad 2026-04-13',
+        capture: 'c2',
+        src: { path: 'models/quad.glb' },
+        transform: moved,
+      },
+      {
+        kind: 'vector',
+        id: 'site-c1',
+        name: 'Site 2026-03-02',
+        capture: 'c1',
+        src: { path: 'vectors/site-c1.geojson' },
+        format: 'geojson',
+      },
+      {
+        kind: 'vector',
+        id: 'site-c2',
+        name: 'Site 2026-04-13',
+        capture: 'c2',
+        src: { path: 'vectors/site-c2.geojson' },
+        format: 'geojson',
+      },
+    ],
+    severityModels: [],
+    classCatalogues: [],
+  };
+  await writeFile(
+    join(dir, 'manifest.json'),
+    JSON.stringify(ProjectManifest.parse(input), null, 2),
+  );
+  const issue = (capture: string, code: string, area: number, layer: string) => ({
+    id: `${capture}-${code.toLowerCase()}`,
+    code,
+    classId: 'damage',
+    severityModelId: 'none',
+    severity: 'uncertain',
+    status: 'reviewed',
+    title: 'Damage on the quad',
+    note: '',
+    author: 'E2E',
+    createdAt: `2026-0${capture === 'c1' ? '3-02' : '4-13'}T10:00:00.000Z`,
+    updatedAt: `2026-0${capture === 'c1' ? '3-02' : '4-13'}T10:00:00.000Z`,
+    sightings: [{ on: 'mesh', layer, geom: { type: 'spoint', p: [0.5, 0, -0.5], n: [0, 1, 0] } }],
+    measurements: [{ kind: 'area', value: area, unit: 'm2' }],
+    source: 'human',
+    capture,
+  });
+  await writeFile(
+    join(dir, 'issues.json'),
+    JSON.stringify(
+      {
+        schema: 'aio.issues/1',
+        issues: [issue('c1', 'F01', 0.4, 'quad-c1'), issue('c2', 'F11', 0.6, 'quad-c2')],
+      },
+      null,
+      2,
+    ),
+  );
+  return { id, dir, captures: ['c1', 'c2'] };
+}
+
+/**
+ * The bundled demo folder (`pnpm demo:build --quick`, or only `pnpm demo:change --quick` for the
+ * change demo), or STRATLAS_E2E_DEMO.
+ */
+export const DEMO_FOLDER = process.env.STRATLAS_E2E_DEMO ?? join(import.meta.dirname, '..', 'demo');
+/** The change and modelling demo (M8, tools/demo/build-change-demo.mjs). */
+export const CHANGE_DEMO = { id: 'demo-change-site', name: 'Demo change site (2 dates)' };
+
+export const hasChangeDemo = (): boolean =>
+  existsSync(join(DEMO_FOLDER, CHANGE_DEMO.id, 'truth.json'));
+
+/**
+ * `truth.json` of the change demo: every seeded change per layer type with counts and places
+ * (`changes.component`, `.surface`, `.cloud`, `.raster`, `.issue`, `.detection`, `.vector`,
+ * `.frame`), the modelling inputs (`modelling.drawing`, `modelling.scan`), the test detector
+ * (`detector`) and the markers it should find (`markers.photos`).
+ */
+export interface ChangeDemoTruth {
+  schema: 'aio.truth/1';
+  project: string;
+  captures: { from: string; to: string };
+  layers: Record<string, Record<string, string | number>>;
+  sources: Record<string, string>;
+  changes: Record<string, { verdicts?: Record<string, number> } & Record<string, unknown>>;
+  modelling: Record<string, Record<string, unknown>>;
+  detector: { model: string; card: string; sha256: string; classes: string[] };
+  markers: { photos: Record<string, Record<string, { marker: string; bbox: number[] }[]>> };
+  counts: {
+    layers: number;
+    issues: { d1: number; d2: number };
+    photos: { d1: number; d2: number };
+    videoFrames: number;
+  };
+}
+
+export function changeDemoTruth(): ChangeDemoTruth {
+  return JSON.parse(
+    readFileSync(join(DEMO_FOLDER, CHANGE_DEMO.id, 'truth.json'), 'utf8'),
+  ) as ChangeDemoTruth;
+}
+
+interface WorkspaceProbe {
+  __stratlas: {
+    workspace: { getState(): { project: { root: string; manifest: { id: string } } | null } };
+  };
+}
+
+/** The open project's id and folder, or nulls. */
+export async function openProject(win: Page): Promise<{ id: string | null; root: string | null }> {
+  return win.evaluate(() => {
+    const p = (window as unknown as WorkspaceProbe).__stratlas.workspace.getState().project;
+    return { id: p?.manifest.id ?? null, root: p?.root ?? null };
+  });
+}
+
+/**
+ * Open the change demo from the library of an app launched with STRATLAS_DEMO (the `demoProject`
+ * fixture does this). Returns the working copy's folder (userData `demo/demo-change-site`).
+ */
+export async function openChangeDemo(win: Page): Promise<{ root: string }> {
+  const card = win.getByTestId('project-card').filter({ hasText: CHANGE_DEMO.name });
+  if (
+    !(await card
+      .first()
+      .isVisible()
+      .catch(() => false))
+  )
+    await win.locator('.nav-item', { hasText: 'Projects' }).first().click();
+  await card.first().click();
+  await expect
+    .poll(async () => (await openProject(win)).id, { timeout: 60_000 })
+    .toBe(CHANGE_DEMO.id);
+  return { root: (await openProject(win)).root ?? '' };
+}
+
+/** What the `demoProject` fixture hands a test: the app with the change demo open. */
+export interface DemoProject {
+  app: ElectronApplication;
+  win: Page;
+  /** The working copy that is open (never the bundled folder). */
+  root: string;
+  truth: ChangeDemoTruth;
+  network: NetworkGuard;
+}
+
 interface Fixtures {
   dataRoot: DataRoot;
   network: NetworkGuard;
   app: ElectronApplication;
   win: Page;
+  /** A two-date project written into `dataRoot` before the app starts (list it before `win`). */
+  twoDateProject: TwoDateProject;
+  /**
+   * Its own app with the bundled demos (STRATLAS_DEMO) and the change demo open. Use it instead
+   * of `app` and `win`, not with them. Skips the test when the change demo is not built.
+   */
+  demoProject: DemoProject;
 }
 
 export const test = base.extend<Fixtures>({
@@ -332,5 +560,30 @@ export const test = base.extend<Fixtures>({
     const win = await app.firstWindow();
     await win.waitForLoadState('domcontentloaded');
     await use(win);
+  },
+
+  twoDateProject: async ({ dataRoot }, use) => {
+    await use(await createTwoDateProject(dataRoot));
+  },
+
+  demoProject: async ({ dataRoot }, use, testInfo) => {
+    testInfo.skip(
+      !hasChangeDemo(),
+      `no change demo in ${DEMO_FOLDER}: run pnpm demo:change --quick (or pnpm demo:build --quick)`,
+    );
+    const network = new NetworkGuard();
+    const app = await launchApp(dataRoot, { STRATLAS_DEMO: DEMO_FOLDER });
+    await network.attach(app);
+    let outbound: string[];
+    try {
+      const win = await app.firstWindow();
+      await win.waitForLoadState('domcontentloaded');
+      const { root } = await openChangeDemo(win);
+      await use({ app, win, root, truth: changeDemoTruth(), network });
+      outbound = await network.outbound();
+    } finally {
+      await app.close();
+    }
+    expect(outbound, 'the app made network requests').toEqual([]);
   },
 });

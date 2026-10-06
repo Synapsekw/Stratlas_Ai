@@ -11,6 +11,8 @@
 //   <out>/demo-tank-farm/           fusion: model, drone video with poses, ortho + DSM, point
 //                                   cloud, issues with photos, two stockpiles on two dates
 //   <out>/demo-access-road/         a road survey: ortho, centreline, defects, PCI units
+//   <out>/demo-change-site/         M8: a site on two dates with known changes, a DXF plan, a
+//                                   test detector and truth.json (build-change-demo.mjs)
 //
 // The 3D model is procedural (geometry.mjs, scene.mjs) and written as GLB; every image (video
 // frames, photos, orthos) is rendered from that same geometry by a small software rasteriser
@@ -37,6 +39,7 @@ import { ROAD, EXTENT as ROAD_EXTENT, buildRoad } from './road.mjs';
 import { EPOCHS, SITE, SUN, TANKS, YARD, yardHeight, yardMesh } from './scene.mjs';
 import { createWorld } from './world.mjs';
 import { generatorStamp } from './stamp.mjs';
+import { CHANGE_ID, buildChangeDemo } from './build-change-demo.mjs';
 import { writePhoto, writePngCloud, writePyramid } from './writers.mjs';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
@@ -496,6 +499,8 @@ async function main() {
   await rm(OUT, { recursive: true, force: true });
   await mkdir(OUT, { recursive: true });
   for (const p of [site, road]) await cp(p.root, join(OUT, p.manifest.id), { recursive: true });
+  // the change and modelling demo: a separate project with its own budget (founder decision 6)
+  await buildChangeDemo({ out: OUT, seed: SEED, quick: QUICK, log });
   const stamp = await treeHash(OUT);
   await writeFile(
     join(OUT, 'demo.json'),
@@ -506,7 +511,7 @@ async function main() {
       quick: QUICK,
       generator: generatorStamp(),
       primary: PRIMARY,
-      projects: [site.manifest.id, road.manifest.id],
+      projects: [site.manifest.id, road.manifest.id, CHANGE_ID],
       note: 'Synthetic demo data made by tools/demo/build-demo.mjs. No client data.',
     }),
   );
@@ -520,6 +525,12 @@ async function main() {
     { stdio: 'inherit' },
   );
   if (check.status !== 0) throw new Error('The demo failed the client data check.');
+  const change = spawnSync(
+    process.execPath,
+    [join(repo, 'tools', 'demo', 'check-change-demo.mjs'), OUT],
+    { stdio: 'inherit' },
+  );
+  if (change.status !== 0) throw new Error('The change demo failed its checks.');
 }
 
 /** Shaded relief of the DSM (heights in local metres), downsampled by `f`. */
