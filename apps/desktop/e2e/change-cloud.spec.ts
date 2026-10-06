@@ -1,45 +1,37 @@
 /**
- * Point cloud and 3D model change (M8 stream C3) end to end, on synthetic data only: a fictional
- * yard where, between 10 Jan and 10 Feb 2026, a pipe moves 0.6 m north, a box is added, a skid is
- * removed and the tank gets a 0.25 m dent (`python/scripts/change_fixture.py`).
+ * Point cloud and 3D model change (M8 stream C3) end to end, on synthetic data only.
  *
- * - The change cloud (`packages/pointcloud/test-data/change.copc.laz`, made by `change.cloud`) runs
- *   everywhere: colour mode Change from the point cloud panel, the moved pipe warm and the tank
- *   neutral in the drawn pixels, the threshold hiding unchanged points, the distance under the
- *   pointer.
- * - Running `change.cloud` and `change.mesh` in the pipeline pack needs the development venv
- *   (`uv sync` in python/) or STRATLAS_E2E_PYTHON; the cloud run also PDAL (AIO_PDAL or the
+ * - The change cloud of a small fixed yard (`packages/pointcloud/test-data/change.copc.laz`, made
+ *   by `change.cloud`) runs everywhere: colour mode Change from the point cloud panel, the moved
+ *   pipe warm and the tank neutral in the drawn pixels, the threshold hiding unchanged points, the
+ *   distance under the pointer.
+ * - The runs use the change demo (C8) and the places and verdicts of its `truth.json`: Run cloud
+ *   change and Run model change from the Changes panel. They need the development pipeline Python
+ *   (`uv sync` in python/, or STRATLAS_E2E_PYTHON); the cloud run also PDAL (AIO_PDAL or the
  *   development install). Skipped without them.
- *
- * Once stream C8's two-date demo lands, the runs switch to its tank farm (truth.json counts).
  */
 import { ProjectManifest, type ProjectManifestInput } from '@aio/schema';
-import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
-import { expect, launchApp, test, tinyManifest } from './fixtures';
+import {
+  expect,
+  hasPdal,
+  hasPipelinePython,
+  PDAL,
+  PIPELINE_ENV,
+  test,
+  tinyManifest,
+  VENV_PYTHON,
+} from './fixtures';
 
 const repo = join(import.meta.dirname, '..', '..', '..');
 const CHANGE_COPC = join(repo, 'packages', 'pointcloud', 'test-data', 'change.copc.laz');
-const FIXTURE_SCRIPT = join(repo, 'python', 'scripts', 'change_fixture.py');
-const venvPython =
-  process.env.STRATLAS_E2E_PYTHON ??
-  (process.platform === 'win32'
-    ? join(repo, 'python', '.venv', 'Scripts', 'python.exe')
-    : join(repo, 'python', '.venv', 'bin', 'python'));
-const hasPython = existsSync(venvPython);
-const pdal =
-  process.env.AIO_PDAL ??
-  (process.platform === 'win32' ? 'E:/Dev/tools/pdal/Library/bin/pdal.exe' : '/usr/bin/pdal');
-const hasPdal = existsSync(pdal);
 
 const CAPTURES = [
   { id: 'c1', label: 'January survey', date: '2026-01-10' },
   { id: 'c2', label: 'February survey', date: '2026-02-10' },
 ];
-const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
 /** Where to look (local frame, x east, y up, z south): the moved pipe and the tank. */
 const PIPE: [number, number, number] = [19, 1.9, -8.6];
@@ -63,9 +55,14 @@ interface Inspect {
       camera: { updateMatrixWorld(): void };
       controls: { target: { clone(): { set(x: number, y: number, z: number): Projectable } } };
     } | null;
-    pointcloud: { getState(): { setEdl(on: boolean): void; changeThreshold: number } };
+    pointcloud: {
+      getState(): { setEdl(on: boolean): void; changeThreshold: number; colourMode: string };
+    };
     workspace: {
-      getState(): { project: { manifest: { layers: { id: string; visible: boolean }[] } } | null };
+      getState(): {
+        project: { manifest: { layers: { id: string; visible: boolean }[] } } | null;
+        selection: { kind: string; id: string } | null;
+      };
     };
   };
 }
@@ -214,181 +211,145 @@ test.describe('a change cloud', () => {
   });
 });
 
-test.describe('change runs in the pipeline pack', () => {
-  test.skip(!hasPython, `no pipeline Python at ${venvPython} (uv sync in python/)`);
+test.describe('change runs on the change demo', () => {
+  test.use({ appEnv: PIPELINE_ENV });
+  test.skip(!hasPipelinePython(), `no pipeline Python at ${VENV_PYTHON} (uv sync in python/)`);
 
-  /** The synthetic yard of both dates, written by the fixture script. */
-  function makeYard(dir: string, copc: boolean) {
-    execFileSync(venvPython, [FIXTURE_SCRIPT, dir, ...(copc ? ['--copc'] : [])], {
-      env: { ...process.env, AIO_PDAL: pdal },
-      stdio: 'pipe',
-    });
+  interface Region {
+    id: string;
+    verdict: string;
+    bounds: { min: number[]; max: number[] };
   }
-
-  async function runJob(win: Page, pipeline: string, project: string, params: object) {
-    // the same request the cloud and model change producers make (change/producers/*.ts)
-    const r = await win.evaluate(
-      ({ pipeline, project, params }) =>
-        window.aio.invoke('jobs:start', {
-          pipeline: pipeline as 'change.cloud',
-          project,
-          params: params as Record<string, unknown>,
-        }),
-      { pipeline, project, params },
-    );
-    if (!r.ok) throw new Error(r.error);
-    const jobId = r.job.id;
-    await expect
-      .poll(
-        async () => {
-          const list = await win.evaluate(() => window.aio.invoke('jobs:list', {}));
-          const job = list.jobs.find((j) => j.id === jobId);
-          return job?.status === 'failed' ? `failed: ${job.error ?? ''}` : job?.status;
-        },
-        { timeout: 120_000 },
-      )
-      .toBe('done');
+  interface SetItem {
+    verdict: string;
+    at?: number[];
+    part?: string;
   }
 
   const layerShown = (win: Page, id: string) =>
     expect
-      .poll(() =>
-        win.evaluate(
-          (id) =>
-            (window as unknown as Inspect).__stratlas.workspace
-              .getState()
-              .project?.manifest.layers.some((l) => l.id === id) ?? false,
-          id,
-        ),
+      .poll(
+        () =>
+          win.evaluate(
+            (id) =>
+              (window as unknown as Inspect).__stratlas.workspace
+                .getState()
+                .project?.manifest.layers.some((l) => l.id === id) ?? false,
+            id,
+          ),
+        { timeout: 180_000 },
       )
       .toBe(true);
 
-  test('Run cloud change: a change cloud layer appears, coloured by its distances', async ({
-    dataRoot,
-    network,
-  }) => {
-    test.skip(!hasPdal, `no PDAL at ${pdal} (set AIO_PDAL)`);
-    test.setTimeout(180_000);
-    makeYard(dataRoot.projectDir, true);
-    await writeManifest(
-      dataRoot.projectDir,
-      CAPTURES.map((c) => ({
-        kind: 'pointcloud' as const,
-        id: `site-${c.date}`,
-        name: `Site ${c.date}`,
-        capture: c.id,
-        src: { path: `clouds/site-${c.date}.copc.laz` },
-        format: 'copc' as const,
-      })),
+  /** Changes tab, then the producer's Run button. */
+  async function runProducer(win: Page, id: string) {
+    await win.getByTestId('tab-changes').click();
+    const panel = win.getByTestId('change-panel');
+    await expect(panel).toBeVisible();
+    const run = panel.getByTestId(`change-producer-${id}`);
+    await expect(run).toBeEnabled();
+    await run.click();
+    return panel;
+  }
+
+  /** An item of the set with `verdict` whose place lies in the region's bounds (1 m margin). */
+  const found = (items: SetItem[], r: Region) =>
+    items.some(
+      (i) =>
+        i.verdict === r.verdict &&
+        i.at !== undefined &&
+        [0, 2].every(
+          (k) =>
+            (i.at?.[k] ?? NaN) >= (r.bounds.min[k] ?? 0) - 1 &&
+            (i.at?.[k] ?? NaN) <= (r.bounds.max[k] ?? 0) + 1,
+        ),
     );
-    const app = await launchApp(dataRoot, { STRATLAS_PIPELINE_PYTHON: venvPython, AIO_PDAL: pdal });
-    await network.attach(app);
-    try {
-      const win = await app.firstWindow();
-      await openYard(win);
-      await runJob(win, 'change.cloud', dataRoot.projectDir, {
-        layerFrom: 'site-2026-01-10',
-        layerTo: 'site-2026-02-10',
-        captures: { from: 'c1', to: 'c2' },
-        minDistM: 0.05,
-        maxDistM: 0.3,
-      });
-      // the open project reloads its manifest: the change cloud is a layer
-      await layerShown(win, 'c1-c2-cloud');
-      const set = JSON.parse(
-        await readFile(join(dataRoot.projectDir, 'change', 'c1-c2-cloud.json'), 'utf8'),
-      ) as { items: { verdict: string; at: number[] }[]; registration: { ok: boolean } };
-      expect(set.registration.ok).toBe(true);
-      const verdicts = set.items.map((i) => i.verdict).sort();
-      expect(verdicts).toEqual(['added', 'changed']);
-      await win.evaluate((view) => {
-        (window as unknown as Inspect).__stratlas.stage()?.restoreView(view, false);
-      }, VIEW);
-      await colourByChange(win);
-      await expect(win.locator('[data-component="change-legend"]')).toBeVisible({
-        timeout: 30_000,
-      });
-      await expect
-        .poll(async () => (await sample(win, PIPE)).warm, { timeout: 30_000 })
-        .toBeGreaterThan(3);
-      expect(await network.outbound()).toEqual([]);
-    } finally {
-      await app.close();
+
+  test('Run cloud change on the demo clouds: the added shelter and the removed container, coloured by change', async ({
+    demoProject,
+  }) => {
+    test.skip(!hasPdal(), `no PDAL at ${PDAL} (set AIO_PDAL)`);
+    test.setTimeout(300_000);
+    const { win, root, truth } = demoProject;
+    const { from, to } = truth.captures;
+    await runProducer(win, 'cloud');
+    // the open project reloads its manifest: the change cloud is a layer
+    await layerShown(win, `${from}-${to}-cloud`);
+    const set = JSON.parse(
+      await readFile(join(root, 'change', `${from}-${to}-cloud.json`), 'utf8'),
+    ) as { items: SetItem[]; registration: { ok: boolean; shiftM: number } };
+    expect(set.registration.ok).toBe(true);
+    expect(set.registration.shiftM).toBeLessThan(0.05);
+    const regions = (truth.changes.cloud as unknown as { regions: Region[] }).regions;
+    // the shelter appeared and the container went: both found where truth.json puts them
+    for (const id of ['S-01', 'C-01']) {
+      const r = regions.find((x) => x.id === id);
+      if (!r) throw new Error(`truth.json has no cloud region ${id}`);
+      expect(found(set.items, r), id).toBe(true);
     }
+    // the moved skid changed in its old place (its old and new places may join in one region)
+    const skid = regions.find((x) => x.id === 'SK-01 old place');
+    if (!skid) throw new Error('truth.json has no SK-01 region');
+    expect(found(set.items, skid)).toBe(true);
+    // the clouds are coloured by change at once, with the change legend
+    await expect
+      .poll(() =>
+        win.evaluate(
+          () => (window as unknown as Inspect).__stratlas.pointcloud.getState().colourMode,
+        ),
+      )
+      .toBe('change');
+    await expect(win.locator('[data-component="change-legend"]')).toBeVisible({
+      timeout: 30_000,
+    });
   });
 
-  test('Run model change: parts added, removed, moved and dented, and a deviation model', async ({
-    dataRoot,
-    network,
+  test('Run model change on the demo models: the parts truth.json lists, and a click selects the part', async ({
+    demoProject,
   }) => {
-    test.setTimeout(180_000);
-    makeYard(dataRoot.projectDir, false);
-    const tags = (date: 'e1' | 'e2', parts: string[]) =>
-      parts.map((p) => ({ node: `${p}_${date}`, tag: p }));
-    await writeManifest(dataRoot.projectDir, [
-      {
-        kind: 'mesh',
-        id: 'site-e1',
-        name: 'Site model 2026-01-10',
-        capture: 'c1',
-        src: { path: 'models/site-e1.glb' },
-        transform: IDENTITY,
-        tags: tags('e1', ['T-101', 'P-201', 'K-301']),
-      },
-      {
-        kind: 'mesh',
-        id: 'site-e2',
-        name: 'Site model 2026-02-10',
-        capture: 'c2',
-        src: { path: 'models/site-e2.glb' },
-        transform: IDENTITY,
-        tags: tags('e2', ['T-101', 'P-201', 'B-401']),
-      },
-    ]);
-    const app = await launchApp(dataRoot, { STRATLAS_PIPELINE_PYTHON: venvPython });
-    await network.attach(app);
-    try {
-      const win = await app.firstWindow();
-      await openYard(win);
-      await runJob(win, 'change.mesh', dataRoot.projectDir, {
-        layerFrom: 'site-e1',
-        layerTo: 'site-e2',
-        captures: { from: 'c1', to: 'c2' },
-        minDistM: 0.05,
-        maxDistM: 0.3,
-        samples: 20_000,
-      });
-      await layerShown(win, 'c1-c2-mesh');
-      const set = JSON.parse(
-        await readFile(join(dataRoot.projectDir, 'change', 'c1-c2-mesh.json'), 'utf8'),
-      ) as {
-        items: {
-          part: string;
-          verdict: string;
-          offsetM?: number[];
-          deviation?: { maxM: number };
-        }[];
-      };
-      const byPart = Object.fromEntries(set.items.map((i) => [i.part, i]));
-      expect(Object.fromEntries(set.items.map((i) => [i.part, i.verdict]))).toEqual({
-        'B-401': 'added',
-        'K-301': 'removed',
-        'P-201': 'moved',
-        'T-101': 'changed',
-      });
-      expect(byPart['P-201']?.offsetM?.[2]).toBeCloseTo(-0.6, 2);
-      expect(byPart['T-101']?.deviation?.maxM).toBeGreaterThan(0.2);
-      // the deviation model is a hidden layer of the later date until the person shows it
-      const manifest = JSON.parse(
-        await readFile(join(dataRoot.projectDir, 'manifest.json'), 'utf8'),
-      ) as { layers: { id: string; visible: boolean; capture?: string }[] };
-      expect(manifest.layers.find((l) => l.id === 'c1-c2-mesh')).toMatchObject({
-        visible: false,
-        capture: 'c2',
-      });
-      expect(await network.outbound()).toEqual([]);
-    } finally {
-      await app.close();
-    }
+    test.setTimeout(300_000);
+    const { win, root, truth } = demoProject;
+    const { from, to } = truth.captures;
+    const component = truth.changes.component as unknown as {
+      items: { part: string; verdict: string; offsetM?: number[] }[];
+      verdicts: Record<string, number>;
+    };
+    const panel = await runProducer(win, 'mesh');
+    await layerShown(win, `${from}-${to}-mesh`);
+    const rows = panel.locator('[data-testid="change-row"][data-kind="component"]');
+    await expect(rows).toHaveCount(
+      Object.values(component.verdicts).reduce((a, b) => a + b, 0),
+      { timeout: 60_000 },
+    );
+    const set = JSON.parse(
+      await readFile(join(root, 'change', `${from}-${to}-mesh.json`), 'utf8'),
+    ) as { items: (SetItem & { offsetM?: number[]; nodeTo?: string })[] };
+    expect(Object.fromEntries(set.items.map((i) => [i.part, i.verdict]))).toEqual(
+      Object.fromEntries(component.items.map((i) => [i.part, i.verdict])),
+    );
+    const moved = component.items.find((i) => i.verdict === 'moved');
+    const got = set.items.find((i) => i.part === moved?.part);
+    for (const k of [0, 2]) expect(got?.offsetM?.[k]).toBeCloseTo(moved?.offsetM?.[k] ?? NaN, 1);
+
+    // a click on the moved part selects it on the later date (both dates outline it)
+    await panel
+      .locator(`[data-testid="change-row"][data-id="component:${moved?.part ?? ''}"]`)
+      .click();
+    await expect
+      .poll(() =>
+        win.evaluate(
+          () => (window as unknown as Inspect).__stratlas.workspace.getState().selection,
+        ),
+      )
+      .toMatchObject({ kind: 'asset', id: got?.nodeTo });
+
+    // the deviation model is a hidden layer of the later date until the person shows it
+    const manifest = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as {
+      layers: { id: string; visible: boolean; capture?: string }[];
+    };
+    expect(manifest.layers.find((l) => l.id === `${from}-${to}-mesh`)).toMatchObject({
+      visible: false,
+      capture: to,
+    });
   });
 });
