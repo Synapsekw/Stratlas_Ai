@@ -206,6 +206,29 @@ describe('importRawFiles', () => {
     });
   });
 
+  it('hands a DXF plan to drawing.import and refuses a DWG with what to do', async () => {
+    const root = await project();
+    const dxf = join(dir, 'plot.dxf');
+    const dwg = join(dir, 'plot.dwg');
+    await writeFile(dxf, '0\nEOF\n');
+    await writeFile(dwg, new Uint8Array([1, 2, 3]));
+    const started: { method: string; params: Record<string, unknown> }[] = [];
+    const jobs: PipelineJobs = {
+      available: () => Promise.resolve(true),
+      start: (method, params) => {
+        started.push({ method, params });
+        return Promise.resolve({ jobId: 'job-d' });
+      },
+    };
+    const r = await importRawFiles(root, [dxf, dwg], deps({ jobs }));
+    expect(r.items).toHaveLength(2);
+    expect(r.items[0]).toMatchObject({ kind: 'drawing', status: 'queued', jobId: 'job-d' });
+    expect(r.items[1]).toMatchObject({ kind: 'drawing', status: 'skipped' });
+    expect(r.items[1]?.message).toMatch(/DXF/);
+    expect(started).toEqual([expect.objectContaining({ method: 'drawing.import' })]);
+    expect(started[0]?.params.src).toBe(dxf);
+  });
+
   it('imports a small GeoTIFF ortho as a placed image raster', async () => {
     const root = await project();
     const tif = join(dir, 'ortho.tif');

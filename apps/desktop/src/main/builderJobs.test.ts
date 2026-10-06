@@ -41,6 +41,23 @@ describe('builder conversions as pipeline jobs', () => {
     ]);
   });
 
+  it('starts drawing.import on a dropped DXF with its path only', async () => {
+    const { r, started } = runner();
+    await builderPipelineJobs(r).start('drawing.import', {
+      projectRoot: 'E:/data/projects/site',
+      src: 'D:/plans/plot.dxf',
+      epsg: 32631,
+      origin: [1, 2, 3],
+    });
+    expect(started).toEqual([
+      {
+        pipeline: 'drawing.import',
+        project: 'E:/data/projects/site',
+        params: { src: 'D:/plans/plot.dxf' },
+      },
+    ]);
+  });
+
   it('says when the pack is missing or cannot convert a file type yet', async () => {
     expect(await builderPipelineJobs(runner(false).r).available()).toBe(false);
     await expect(

@@ -119,6 +119,8 @@ const VIDEO = new Set(['.mp4', '.mov']);
 const MESH = new Set(['.glb', '.obj']);
 const RASTER = new Set(['.tif', '.tiff']);
 const CLOUD = new Set(['.las', '.laz', '.e57', '.ply']);
+/** DXF plot plans (M8): imported by the `drawing.import` pipeline into `drawings/`. */
+const DRAWING = new Set(['.dxf']);
 /** Codecs Chromium plays (sample entry fourcc). */
 const PLAYABLE = new Set(['avc1', 'avc3', 'hvc1', 'hev1', 'vp09', 'av01']);
 /** GeoTIFFs above this go to the pipeline pack (tiling), below it are drawn as one image. */
@@ -554,6 +556,15 @@ export async function importRawFiles(
         await job(file, 'pointcloud', 'pointcloud.toCopc', {
           out: `clouds/${slug(name.slice(0, -ext.length), 'cloud')}.copc.laz`,
         });
+      } else if (DRAWING.has(ext)) {
+        await job(file, 'drawing', 'drawing.import', {});
+      } else if (ext === '.dwg') {
+        items.push({
+          file: name,
+          kind: 'drawing',
+          status: 'skipped',
+          message: 'DWG is not supported. Save the drawing as DXF, then import it.',
+        });
       } else {
         items.push({
           file: name,
@@ -573,7 +584,9 @@ export async function importRawFiles(
               ? 'raster'
               : CLOUD.has(ext)
                 ? 'pointcloud'
-                : 'unknown';
+                : DRAWING.has(ext)
+                  ? 'drawing'
+                  : 'unknown';
       items.push({
         file: name,
         kind,
