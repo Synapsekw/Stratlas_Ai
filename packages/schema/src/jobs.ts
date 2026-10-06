@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { FrameRef, LonLatRing } from './change';
+import { Id, Vec3 } from './common';
+import { ProcModelId, ProcPartKind } from './procmodel';
 
 /**
  * Pipeline jobs (Release B). Main spawns the pipeline pack's Python (`python -m aio_pipelines`)
@@ -18,6 +21,14 @@ export const PipelineName = z.enum([
   'road.build',
   'system.selftest',
   'volumetric.build',
+  // M8 (pipeline pack 0.3.0)
+  'change.raster',
+  'change.surface',
+  'change.cloud',
+  'change.mesh',
+  'change.frames',
+  'drawing.import',
+  'model.fit_cloud',
 ]);
 export type PipelineName = z.infer<typeof PipelineName>;
 
@@ -70,6 +81,48 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
     title: 'Check the pipeline pack',
     description:
       'Loads every library the pipelines need; optionally waits to try cancel and resume.',
+  },
+  {
+    name: 'change.raster',
+    title: 'Imagery change',
+    description:
+      'Two orthos of the same area: co-registration check, illumination-robust difference, change heat map and polygons.',
+  },
+  {
+    name: 'change.surface',
+    title: 'Surface change',
+    description:
+      'Two DSMs or point clouds: DEM of difference, cut and fill regions with volumes, and the site total.',
+  },
+  {
+    name: 'change.cloud',
+    title: 'Point cloud change',
+    description:
+      'Cloud-to-cloud distance as a COPC with a Distance field, and change regions from the points that moved.',
+  },
+  {
+    name: 'change.mesh',
+    title: '3D model change',
+    description:
+      'Deviation of the later model from the earlier one, and tagged parts added, removed, moved or changed.',
+  },
+  {
+    name: 'change.frames',
+    title: 'Change in matched frames',
+    description:
+      'Frame and photo pairs of two dates aligned by features; changes become draft detections.',
+  },
+  {
+    name: 'drawing.import',
+    title: 'Drawing import (DXF)',
+    description:
+      'A DXF plot plan in its units, placed by control points: vector layers per layer group, a plan raster and height hints.',
+  },
+  {
+    name: 'model.fit_cloud',
+    title: 'Model from point cloud',
+    description:
+      'Ground removal, clustering and primitive fitting (tanks, boxes, buildings, pipes) into draft model parts.',
   },
 ];
 
@@ -247,6 +300,157 @@ export const RoadBuildParams = z
 
 export const SelfTestParams = z.object({ seconds: z.number().min(0).max(600).optional() }).strict();
 
+// ---------------------------------------------------------------- M8 change and modelling
+// Python resolves layers through the project manifest. Capture ids name the date pair of the
+// change set; when absent, the layers' own `capture` fields are used. Defaults are the founder's
+// change thresholds (`DEFAULT_CHANGE_THRESHOLDS`, 6 Oct 2026).
+
+/** The date pair of a change set, when the layers do not carry `capture`. */
+const CapturePair = z.object({ from: Id, to: Id }).strict();
+/** A box in the project local frame, metres. */
+const LocalBox = z.object({ min: Vec3, max: Vec3 }).strict();
+
+/** `change.raster` (python `aio_pipelines/change/raster.py`). */
+export const ChangeRasterParams = z
+  .object({
+    /** Capture ids of the earlier and later date. */
+    from: Id,
+    to: Id,
+    /** Ortho raster layers of each date. */
+    layerFrom: Id,
+    layerTo: Id,
+    method: z.enum(['gradient', 'ssim', 'rgb']),
+    /** Change score threshold, 0 to 1; default from the `conservative` preset. */
+    threshold: z.number().min(0).max(1).optional(),
+    minAreaM2: z.number().positive().max(1e6).optional(),
+    /** Refuse when the dates are shifted more than this (default 2 px). */
+    maxShiftPx: z.number().min(0).max(100).optional(),
+    /** Only inside this polygon (lon/lat). */
+    mask: LonLatRing.optional(),
+    /** Never inside these polygons (water, roads with traffic). */
+    ignore: z.array(LonLatRing).max(200).optional(),
+    /** Folder for the heat map, polygons and change set; default `change/<from>-<to>-raster`. */
+    out: ProjectPath.optional(),
+  })
+  .strict();
+
+const SurfaceInput = z.object({ layer: Id, kind: z.enum(['dsm', 'cloud']) }).strict();
+
+/** `change.surface` (python `aio_pipelines/change/surface.py`). */
+export const ChangeSurfaceParams = z
+  .object({
+    from: SurfaceInput,
+    to: SurfaceInput,
+    captures: CapturePair.optional(),
+    /** Grid cell, metres; default the coarser input's. */
+    cellM: z.number().min(0.01).max(100).optional(),
+    /** Default 0.10 m and 1 m2. */
+    minDepthM: z.number().positive().max(100).optional(),
+    minAreaM2: z.number().positive().max(1e6).optional(),
+    /** Areas to report volumes for (for example drawn boundaries). */
+    areas: z
+      .array(z.object({ id: Id, name: z.string().min(1).max(120), ring: LonLatRing }).strict())
+      .max(500)
+      .optional(),
+    out: ProjectPath.optional(),
+  })
+  .strict();
+
+/** `change.cloud` (python `aio_pipelines/change/cloud.py`). */
+export const ChangeCloudParams = z
+  .object({
+    layerFrom: Id,
+    layerTo: Id,
+    captures: CapturePair.optional(),
+    /** Significant change from (default 0.05 m). */
+    minDistM: z.number().positive().max(10).optional(),
+    /** "Far" class above (default 0.30 m). */
+    maxDistM: z.number().positive().max(100).optional(),
+    /** Signed distance along the local normal. */
+    signed: z.boolean().optional(),
+    /** Subsample spacing for the comparison, metres. */
+    spacingM: z.number().positive().max(10).optional(),
+    region: LocalBox.optional(),
+    out: ProjectPath.optional(),
+  })
+  .strict();
+
+/** `change.mesh` (python `aio_pipelines/change/mesh.py`). */
+export const ChangeMeshParams = z
+  .object({
+    layerFrom: Id,
+    layerTo: Id,
+    captures: CapturePair.optional(),
+    samples: z.number().int().min(1000).max(50_000_000).optional(),
+    /** A part has changed when its mean deviation is above this (default 0.05 m). */
+    minDistM: z.number().positive().max(10).optional(),
+    maxDistM: z.number().positive().max(100).optional(),
+    out: ProjectPath.optional(),
+  })
+  .strict();
+
+/** `change.frames` (python `aio_pipelines/change/frames.py`): explicit pairs, or a pose search. */
+export const ChangeFramesParams = z
+  .object({
+    pairs: z
+      .array(z.object({ a: FrameRef, b: FrameRef }).strict())
+      .min(1)
+      .max(5000)
+      .optional(),
+    from: Id.optional(),
+    to: Id.optional(),
+    maxPoseM: z.number().positive().max(1000).optional(),
+    maxAngleDeg: z.number().positive().max(180).optional(),
+    minAreaPx: z.number().int().min(1).optional(),
+    out: ProjectPath.optional(),
+  })
+  .strict()
+  .refine((p) => Boolean(p.pairs) || (Boolean(p.from) && Boolean(p.to)), {
+    message: 'Give the frame pairs, or the two dates to pair.',
+  });
+
+/** One control point: a drawing coordinate and where it lies on the map or in the model. */
+export const DrawingControlPoint = z
+  .object({
+    drawing: z.tuple([z.number(), z.number()]),
+    lonLat: z.tuple([z.number().min(-180).max(180), z.number().min(-90).max(90)]).optional(),
+    local: Vec3.optional(),
+  })
+  .strict()
+  .refine((c) => (c.lonLat === undefined) !== (c.local === undefined), {
+    message: 'A control point is placed on the map (lonLat) or in the model (local).',
+  });
+
+/** `drawing.import` (python `aio_pipelines/drawing/`). DXF only; DWG is not supported. */
+export const DrawingImportParams = z
+  .object({
+    /** The DXF file (absolute). Read only. */
+    src: z.string().min(1),
+    /** Drawing units when the file states none (a unitless file is refused without it). */
+    units: z.enum(['mm', 'cm', 'm', 'in', 'ft', 'us-ft']).optional(),
+    /** DXF layers to import; default all. */
+    layers: z.array(z.string().min(1)).max(1000).optional(),
+    control: z.array(DrawingControlPoint).min(2).max(50).optional(),
+    out: ProjectPath.optional(),
+  })
+  .strict();
+
+/** `model.fit_cloud` (python `aio_pipelines/modelfit/`). */
+export const ModelFitParams = z
+  .object({
+    /** Point cloud layer. */
+    layer: Id,
+    /** Only inside this box (local frame) or polygon (lon/lat). */
+    region: z.union([LocalBox, LonLatRing]).optional(),
+    kinds: z.array(ProcPartKind).min(1).optional(),
+    /** RANSAC inlier distance, metres. */
+    distM: z.number().positive().max(5).optional(),
+    minInliers: z.number().int().min(10).optional(),
+    /** Procedural model id to append the draft parts to; default a new model. */
+    model: ProcModelId.optional(),
+  })
+  .strict();
+
 const PARAMS = {
   'aik.cameras': AikCamerasParams,
   'aik.project': AikProjectParams,
@@ -257,6 +461,13 @@ const PARAMS = {
   'road.build': RoadBuildParams,
   'system.selftest': SelfTestParams,
   'volumetric.build': VolumetricBuildParams,
+  'change.raster': ChangeRasterParams,
+  'change.surface': ChangeSurfaceParams,
+  'change.cloud': ChangeCloudParams,
+  'change.mesh': ChangeMeshParams,
+  'change.frames': ChangeFramesParams,
+  'drawing.import': DrawingImportParams,
+  'model.fit_cloud': ModelFitParams,
 } as const satisfies Record<PipelineName, z.ZodType>;
 
 export function pipelineParams(name: PipelineName): z.ZodType<Record<string, unknown>> {

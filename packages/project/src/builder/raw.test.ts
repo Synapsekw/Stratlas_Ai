@@ -567,4 +567,21 @@ describe('updateLayers', () => {
       offsetMs: 144000,
     });
   });
+
+  it('sets and clears the capture of any layer, and refuses an unknown capture', async () => {
+    const root = await project();
+    await writeFile(join(dir, 'm.glb'), glb());
+    await importRawFiles(root, [join(dir, 'm.glb')], deps());
+    const m = await readManifest(root);
+    await writeManifestFile(root, {
+      ...m,
+      captures: [{ id: 'c1', label: 'First survey', date: '2026-01-10' }],
+    });
+    const set = await updateLayers(root, ['mesh-m'], { capture: 'c1' });
+    expect(set.manifest.layers.find((l) => l.id === 'mesh-m')).toMatchObject({ capture: 'c1' });
+    await expect(updateLayers(root, ['mesh-m'], { capture: 'c9' })).rejects.toThrow(/c9/);
+    const cleared = await updateLayers(root, ['mesh-m'], { capture: null });
+    const after = cleared.manifest.layers.find((l) => l.id === 'mesh-m');
+    expect(after && 'capture' in after).toBe(false);
+  });
 });

@@ -20,8 +20,26 @@ import { BoundaryEditsFile, VolumesFile } from './volumes';
 import { DetectionsFile } from './detections';
 import { NarrativeFile, ReportContentsSettings } from './report';
 import { ReleaseNotes, UpdateStatus } from './update';
+import { ChangeKind, ChangeSet, ChangeSetId, ChangeSetSummary, ChangeThresholds } from './change';
+import { ProcModel, ProcModelId, ProcModelSummary } from './procmodel';
+import {
+  DetectorModelId,
+  DetectorModelInfo,
+  InferenceItem,
+  InferenceRuntime,
+  InferenceSettings,
+} from './inference';
 
 const Empty = z.object({}).strict();
+
+/**
+ * Why an M8 request failed, for the renderer to act on: `not-implemented` (the channel exists but
+ * this build does not do it yet), `read-only` (a package or player mode).
+ */
+export const FailureCode = z.enum(['not-implemented', 'read-only']);
+const Failure = z.object({ ok: z.literal(false), error: z.string(), code: FailureCode.optional() });
+const OkOrFailure = z.discriminatedUnion('ok', [z.object({ ok: z.literal(true) }), Failure]);
+const ProjectId = z.string().min(1);
 
 /** A detection pass file name in `<project>/detections/` (`review.json`, `ai-<run>.json`). */
 export const DetectionPassName = z
@@ -93,6 +111,30 @@ export const LocalModelSettings = z.object({
   enabled: z.boolean(),
   baseUrl: z.url({ protocol: /^https?$/ }),
   model: z.string().min(1).max(200),
+  // ---- M8 (AI-9): the person's own server (Ollama, LM Studio, llama.cpp server); nothing bundled
+  /** Server kind found by discovery: Ollama's own API, or any OpenAI-compatible server. */
+  kind: z.enum(['ollama', 'openai-compatible']).optional(),
+  /** Context window of the model, tokens (bounds output and conversation trimming). */
+  contextTokens: z.number().int().min(512).max(10_000_000).optional(),
+  /** `compact`: a short tool list with short descriptions for small models. */
+  toolProfile: z.enum(['full', 'compact']).optional(),
+  /** What the capability probe measured (absent: not probed). */
+  capabilities: z.object({ tools: z.boolean(), vision: z.boolean() }).strict().optional(),
+  /** Request timeout, ms (first token included: model load can be slow). */
+  timeoutMs: z.number().int().min(1000).max(3_600_000).optional(),
+});
+
+/** One model a local server offers (`ai:localModels`). */
+export const LocalModelInfo = z.object({
+  id: z.string().min(1).max(200),
+  name: z.string().optional(),
+  sizeBytes: z.number().int().nonnegative().optional(),
+  contextTokens: z.number().int().positive().optional(),
+  /** Claimed by the server; `ai:localProbe` checks them. */
+  tools: z.boolean().optional(),
+  vision: z.boolean().optional(),
+  family: z.string().optional(),
+  quantization: z.string().optional(),
 });
 
 export const ModelRouteSchema = z.object({
@@ -191,6 +233,10 @@ export const Settings = z.object({
   reportBranding: ReportBrandingSettings.optional(),
   /** Sections of the house-format report and which issues get a page. Absent: everything. */
   reportContents: ReportContentsSettings.optional(),
+  /** Change thresholds (M8); absent: `DEFAULT_CHANGE_THRESHOLDS`. */
+  change: ChangeThresholds.optional(),
+  /** Local ONNX detection (M8): model folder, execution provider, memory cap. */
+  inference: InferenceSettings.optional(),
 });
 
 /** West, south, east, north in WGS84 degrees. */
@@ -564,7 +610,16 @@ export const ipc = {
     response: z.object({
       ready: z.boolean(),
       reason: z
-        .enum(['cloud-off', 'no-key', 'forbidden', 'no-provider', 'no-route', 'local-off'])
+        .enum([
+          'cloud-off',
+          'no-key',
+          'forbidden',
+          'no-provider',
+          'no-route',
+          'local-off',
+          /** M8: the local model cannot call tools; the agent answers in text only. */
+          'answer-only',
+        ])
         .optional(),
       message: z.string().optional(),
       route: ModelRouteSchema.optional(),
@@ -689,6 +744,8 @@ export const ipc = {
       alwaysAllow: z.boolean(),
       policy: AiPolicy,
       usage: z.array(ProviderUsage),
+      /** M8: the project allows plan images and drawings to go to a cloud model (default false). */
+      cloudDrawings: z.boolean().optional(),
     }),
   },
   /** "Always allow for this project" in the send preview (AI-6). */
@@ -1142,6 +1199,189 @@ export const ipc = {
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
   },
+
+  // ---------------------------------------------------------------- M8 change (C1)
+  /** Every change set of the project (`<project>/change/*.json`), newest first. */
+  'change:list': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        sets: z.array(ChangeSetSummary),
+        /** Files in change/ that are not valid change sets, left as they are. */
+        problems: z.array(z.object({ name: z.string(), error: z.string() })),
+        /** A package: reviews can be read but not saved. */
+        readOnly: z.boolean(),
+      }),
+      Failure,
+    ]),
+  },
+  'change:read': {
+    request: z.object({ projectId: ProjectId, id: ChangeSetId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), set: ChangeSet, readOnly: z.boolean() }),
+      Failure,
+    ]),
+  },
+  /** Replace `change/<id>.json` atomically with a `.bak`; refused for packages. */
+  'change:write': {
+    request: z.object({ projectId: ProjectId, set: ChangeSet }).strict(),
+    response: OkOrFailure,
+  },
+  /**
+   * Run the in-app producers (issues, detections, map vectors) for a date pair and write their
+   * change sets, merging earlier reviews by item id. Progress: `change:progress` with `jobId`.
+   */
+  'change:compute': {
+    request: z
+      .object({
+        jobId: z.string().min(1).max(64),
+        projectId: ProjectId,
+        from: z.string().min(1),
+        to: z.string().min(1),
+        kinds: z.array(ChangeKind).min(1),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), ids: z.array(ChangeSetId) }),
+      Failure,
+    ]),
+  },
+  'change:cancel': {
+    request: z.object({ jobId: z.string().min(1).max(64) }).strict(),
+    response: z.object({ ok: z.boolean() }),
+  },
+
+  // ---------------------------------------------------------------- M8 procedural models (C5)
+  'model:list': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), models: z.array(ProcModelSummary), readOnly: z.boolean() }),
+      Failure,
+    ]),
+  },
+  'model:read': {
+    request: z.object({ projectId: ProjectId, id: ProcModelId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), model: ProcModel, readOnly: z.boolean() }),
+      Failure,
+    ]),
+  },
+  /** Replace `models/<id>.procmodel.json` atomically with a `.bak`; refused for packages. */
+  'model:write': {
+    request: z.object({ projectId: ProjectId, model: ProcModel }).strict(),
+    response: OkOrFailure,
+  },
+  /**
+   * Mesh the accepted parts into `models/<id>.glb` (or every part into `models/draft-<id>.glb` for
+   * a preview) and add or update its mesh layer (`derived: { kind: 'model' }`).
+   */
+  'model:build': {
+    request: z
+      .object({ projectId: ProjectId, id: ProcModelId, draft: z.boolean().optional() })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), layer: z.string(), glb: z.string() }),
+      Failure,
+    ]),
+  },
+  /** Set the project policy `aiCloudDrawings` (manifest, backed up); refused for packages. */
+  'ai:setCloudDrawings': {
+    request: z.object({ projectId: ProjectId, allow: z.boolean() }).strict(),
+    response: OkOrFailure,
+  },
+
+  // ---------------------------------------------------------------- M8 local detection (C6)
+  /** Installed detector models and the onnxruntime execution provider. */
+  'inference:models': {
+    request: Empty,
+    response: z.object({ runtime: InferenceRuntime, models: z.array(DetectorModelInfo) }),
+  },
+  /**
+   * Copy a model folder or `model.onnx` with its `model.json` card into the models folder after a
+   * SHA-256 check, a layout probe and the person's licence acknowledgement.
+   */
+  'inference:importModel': {
+    request: z.object({ path: z.string().min(1), acceptLicence: z.boolean() }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), model: DetectorModelInfo }),
+      Failure,
+    ]),
+  },
+  'inference:removeModel': {
+    request: z.object({ id: DetectorModelId }).strict(),
+    response: OkOrFailure,
+  },
+  /**
+   * Run a detector on photos or frames; writes `detections/model-<run>.json` (draft, `source:
+   * 'model'`). Progress: `inference:progress` with `runId`; cancel keeps the finished items.
+   */
+  'inference:run': {
+    request: z
+      .object({
+        runId: z.string().min(1).max(64),
+        projectId: ProjectId,
+        model: DetectorModelId,
+        items: z.array(InferenceItem).min(1).max(100_000),
+        /** Model class name to project class id; unmapped classes keep the model's name as label. */
+        classMap: z.record(z.string(), z.string()),
+        minConfidence: z.number().min(0).max(1),
+        tile: z
+          .object({
+            size: z.number().int().min(64).max(8192),
+            overlap: z.number().int().min(0).max(4096),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), file: z.string(), count: z.number().int().nonnegative() }),
+      Failure,
+    ]),
+  },
+  'inference:cancel': {
+    request: z.object({ runId: z.string().min(1).max(64) }).strict(),
+    response: z.object({ ok: z.boolean() }),
+  },
+
+  // ---------------------------------------------------------------- M8 local agent (C7)
+  /** Find the models of a local server (loopback unless the person accepted the cloud warning). */
+  'ai:localModels': {
+    request: z.object({ baseUrl: z.url({ protocol: /^https?$/ }).optional() }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        server: z
+          .object({
+            kind: z.enum(['ollama', 'openai-compatible']),
+            version: z.string().optional(),
+          })
+          .optional(),
+        models: z.array(LocalModelInfo),
+      }),
+      Failure,
+    ]),
+  },
+  /** One tiny tool-call request (and an image request when vision is claimed), with latency. */
+  'ai:localProbe': {
+    request: z
+      .object({
+        model: z.string().min(1).max(200),
+        baseUrl: z.url({ protocol: /^https?$/ }).optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        tools: z.boolean(),
+        vision: z.boolean(),
+        contextTokens: z.number().int().positive().optional(),
+        latencyMs: z.number().nonnegative(),
+      }),
+      Failure,
+    ]),
+  },
 } as const satisfies Record<string, { request: z.ZodType; response: z.ZodType }>;
 
 /** Events pushed from main to the renderer. */
@@ -1212,6 +1452,21 @@ export const ipcEvents = {
     total: z.number().int().nonnegative(),
     file: z.string(),
   }),
+  /** Progress of a `change:compute` run (M8). */
+  'change:progress': z.object({
+    jobId: z.string(),
+    phase: z.string(),
+    done: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative(),
+  }),
+  /** Progress of an `inference:run` (M8): items done, detections found so far. */
+  'inference:progress': z.object({
+    runId: z.string(),
+    done: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative(),
+    found: z.number().int().nonnegative(),
+    current: z.string().optional(),
+  }),
 } as const satisfies Record<string, z.ZodType>;
 
 export type IpcChannel = keyof typeof ipc;
@@ -1230,6 +1485,8 @@ export type LicenseEntry = z.infer<typeof LicenseEntry>;
 export type ThemeSetting = Settings['theme'];
 export type ChatMessage = z.infer<typeof ChatMessage>;
 export type LocalModelSettings = z.infer<typeof LocalModelSettings>;
+export type LocalModelInfo = z.infer<typeof LocalModelInfo>;
+export type FailureCode = z.infer<typeof FailureCode>;
 export type ProviderUsage = z.infer<typeof ProviderUsage>;
 export type ProjectUsage = z.infer<typeof ProjectUsage>;
 export type PackagePlan = z.infer<typeof PackagePlan>;

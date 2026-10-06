@@ -125,6 +125,16 @@ export const Issue = z.object({
   sightings: z.array(Sighting).min(1),
   measurements: z.array(Measurement).optional(),
   source: z.enum(['human', 'agent', 'import']),
+  // ---- change across dates (M8); all optional ----
+  /** The capture (survey date) the issue was seen on; absent: from its sightings' layers. */
+  capture: Id.optional(),
+  /** The same defect on several dates shares a track id (written when a person confirms a match). */
+  track: Id.optional(),
+  /**
+   * The capture on which a person confirmed the defect gone. Change detection only proposes
+   * "resolved"; the status becomes `closed` with this field only after a person confirms.
+   */
+  resolvedIn: Id.optional(),
 });
 
 export type ImageGeom = z.infer<typeof ImageGeom>;

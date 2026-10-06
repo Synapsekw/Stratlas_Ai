@@ -107,7 +107,8 @@ function roundOrientation(o: CameraOrientation): CameraOrientation {
 
 /**
  * Apply an alignment to layers and save: a `transform` to mesh layers (georeference), `offsetMs`,
- * `lens`, `orientation` and `positionOffsetM` to video layers (calibration). Backs up and validates the manifest first.
+ * `lens`, `orientation` and `positionOffsetM` to video layers (calibration), or the `capture` (survey
+ * date) of any layer (`null` clears it). Backs up and validates the manifest first.
  */
 export async function updateLayers(
   root: string,
@@ -121,6 +122,14 @@ export async function updateLayers(
       throw new Error(`Layer "${id}" is not in this project.`);
   const layers = m.layers.map((l) => {
     if (!want.has(l.id)) return l;
+    if ('capture' in patch) {
+      if (patch.capture !== null && !m.captures.some((c) => c.id === patch.capture))
+        throw new Error(`Capture "${patch.capture}" is not in this project.`);
+      const next = { ...l };
+      if (patch.capture === null) delete next.capture;
+      else next.capture = patch.capture;
+      return next;
+    }
     if ('transform' in patch) {
       if (l.kind !== 'mesh')
         throw new Error(`"${l.name}" is not a model; only models take a transform.`);

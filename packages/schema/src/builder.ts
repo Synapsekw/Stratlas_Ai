@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { IsoDate, Mat4, Vec3 } from './common';
+import { Id, IsoDate, Mat4, Vec3 } from './common';
 import { CameraOrientation, LensModel } from './layers';
 import { ClassCatalogue, SeverityModel } from './severity';
 
@@ -128,7 +128,17 @@ export const NewProjectRequest = z
 export const ImportItem = z.object({
   /** File name as given. */
   file: z.string(),
-  kind: z.enum(['photo', 'video', 'telemetry', 'mesh', 'raster', 'pointcloud', 'unknown']),
+  /** `drawing` (M8): a DXF plot plan, imported by the `drawing.import` pipeline. */
+  kind: z.enum([
+    'photo',
+    'video',
+    'telemetry',
+    'mesh',
+    'raster',
+    'pointcloud',
+    'unknown',
+    'drawing',
+  ]),
   /**
    * `needs-pipeline`: the conversion runs in the pipeline pack (LAS/LAZ/E57 to COPC, large
    * GeoTIFF tiling), which is not installed; `queued`: handed to the pipeline pack as a job.
@@ -163,6 +173,8 @@ export const LayerPatch = z.union([
         p.positionOffsetM !== undefined,
       { message: 'Give offsetMs, lens, orientation or positionOffsetM' },
     ),
+  /** The capture (survey date) of any layer kind (M8); `null` clears it. */
+  z.object({ capture: Id.nullable() }).strict(),
 ]);
 
 export type ProjectType = z.infer<typeof ProjectType>;

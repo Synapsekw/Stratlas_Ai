@@ -34,6 +34,11 @@ export const ProjectManifest = z
      * imports use absolute altitude when it is set, else relative altitude plus a take-off height.
      */
     verticalDatum: VerticalDatum.optional(),
+    /**
+     * Project policy (M8): may the model builder's agent (`build` route) send plan images and
+     * drawings to a cloud model, after the send preview? Absent or false (default): local only.
+     */
+    aiCloudDrawings: z.boolean().optional(),
   })
   .superRefine(uniqueIds('layers'))
   .superRefine(uniqueIds('severityModels'))

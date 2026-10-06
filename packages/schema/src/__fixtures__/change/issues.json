@@ -1,0 +1,50 @@
+{
+  "schema": "aio.change/1",
+  "id": "c1-c2-issues",
+  "from": "c1",
+  "to": "c2",
+  "producer": "issues",
+  "createdAt": "2026-10-06T08:00:00Z",
+  "items": [
+    {
+      "kind": "issue",
+      "id": "issue:F03",
+      "verdict": "new",
+      "to": "i-f03",
+      "classId": "corrosion",
+      "at": [12.5, 3.2, -40.1],
+      "method": "mesh"
+    },
+    {
+      "kind": "issue",
+      "id": "issue:F01",
+      "verdict": "grown",
+      "from": "i-f01",
+      "to": "i-f01b",
+      "classId": "coating",
+      "size": { "from": 0.8, "to": 1.2, "unit": "m2" },
+      "review": {
+        "status": "confirmed",
+        "by": "reviewer",
+        "at": "2026-10-06T09:00:00Z",
+        "note": "Grown since the first survey."
+      }
+    },
+    {
+      "kind": "issue",
+      "id": "issue:F02",
+      "verdict": "resolved",
+      "from": "i-f02",
+      "classId": "coating"
+    },
+    {
+      "kind": "issue",
+      "id": "issue:F04",
+      "verdict": "not-seen",
+      "from": "i-f04",
+      "classId": "corrosion"
+    }
+  ],
+  "layers": [],
+  "stats": { "items": 4, "new": 1, "grown": 1, "resolved": 1, "not-seen": 1 }
+}

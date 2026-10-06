@@ -60,7 +60,56 @@ export const PanoRef = z.object({
   headingDeg: z.number().default(0),
 });
 
-const base = { id: Id, name: z.string().min(1), visible: z.boolean().default(true) };
+/**
+ * Provenance of a layer Stratlas computed from other layers (M8): a change heat map, change
+ * polygons, a cloud-to-cloud distance cloud or a deviation model (`change`), or a model built from
+ * a procedural model (`model`). Builds that do not know the field show the layer as an ordinary one.
+ */
+export const LayerDerived = z
+  .object({
+    kind: z.enum(['change', 'model']),
+    /** Capture ids of the earlier and later date (change layers). */
+    from: Id.optional(),
+    to: Id.optional(),
+    /** The change set (`change/<id>.json`) the layer belongs to. */
+    changeId: Id.optional(),
+    /** Pipeline job or in-app run that wrote it. */
+    runId: z.string().min(1).max(128).optional(),
+    /** Layers (or, for `model`, procedural models) it was computed from. */
+    source: z.array(Id).optional(),
+    /** A preview nobody accepted yet (model builder draft): left out of reports and packages. */
+    draft: z.boolean().optional(),
+  })
+  .strict();
+
+/**
+ * One float scalar per point carried by a point cloud as a LAS 1.4 extra-bytes dimension (M8:
+ * cloud-to-cloud distance, `dim: 'Distance'`, metres). `diverging` draws a symmetric ramp around 0.
+ */
+export const PointcloudScalar = z
+  .object({
+    dim: z.string().min(1).max(32),
+    label: z.string().min(1),
+    unit: z.string().max(16),
+    range: z
+      .tuple([z.number(), z.number()])
+      .refine((r) => r[0] <= r[1], { message: 'A scalar range is [min, max].' }),
+    diverging: z.boolean(),
+  })
+  .strict();
+
+const base = {
+  id: Id,
+  name: z.string().min(1),
+  visible: z.boolean().default(true),
+  /**
+   * The capture (survey date) the layer belongs to (M8). Wins over the naming rules of
+   * data-conventions section 13; absent means "work it out from the names".
+   */
+  capture: Id.optional(),
+  /** Set on layers Stratlas computed (change results, built models). */
+  derived: LayerDerived.optional(),
+};
 
 const Opacity = z.number().min(0).max(1);
 
@@ -110,6 +159,8 @@ export const Layer = z.discriminatedUnion('kind', [
     src: AssetRef,
     format: z.enum(['copc', 'potree2', 'kit-packed', 'png-packed']),
     pointCount: z.number().int().nonnegative().optional(),
+    /** An extra per-point scalar the viewer can colour by (M8 change: `Distance`). */
+    scalar: PointcloudScalar.optional(),
   }),
   z.object({
     kind: z.literal('basemap'),
@@ -169,5 +220,7 @@ export type FlightRef = z.infer<typeof FlightRef>;
 export type PhotoRef = z.infer<typeof PhotoRef>;
 export type PanoRef = z.infer<typeof PanoRef>;
 export type VectorStyle = z.infer<typeof VectorStyle>;
+export type LayerDerived = z.infer<typeof LayerDerived>;
+export type PointcloudScalar = z.infer<typeof PointcloudScalar>;
 export type Layer = z.infer<typeof Layer>;
 export type LayerKind = Layer['kind'];

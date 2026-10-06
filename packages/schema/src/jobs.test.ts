@@ -68,6 +68,13 @@ describe('pipeline params', () => {
       'inspection.run',
       'road.build',
       'system.selftest',
+      'change.raster',
+      'change.surface',
+      'change.cloud',
+      'change.mesh',
+      'change.frames',
+      'drawing.import',
+      'model.fit_cloud',
     ]);
     for (const p of PIPELINES) expect(p.title.length).toBeGreaterThan(3);
   });

@@ -14,3 +14,6 @@ export * from './ipc';
 export * from './jobs';
 export * from './detections';
 export * from './update';
+export * from './change';
+export * from './procmodel';
+export * from './inference';
