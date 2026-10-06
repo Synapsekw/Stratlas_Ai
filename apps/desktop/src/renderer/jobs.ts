@@ -470,6 +470,74 @@ export const FORMS: Record<PipelineName, Field[]> = {
       help: 'A wait step to try cancel and resume.',
     },
   ],
+  // M8: these run from the Changes panel and the Model builder, which fill every parameter; the
+  // forms here cover the flat parameters for a manual run.
+  'change.raster': [
+    { key: 'from', label: 'Earlier capture id', kind: 'text', required: true },
+    { key: 'to', label: 'Later capture id', kind: 'text', required: true },
+    { key: 'layerFrom', label: 'Earlier ortho layer id', kind: 'text', required: true },
+    { key: 'layerTo', label: 'Later ortho layer id', kind: 'text', required: true },
+    {
+      key: 'method',
+      label: 'Method',
+      kind: 'select',
+      required: true,
+      options: [
+        { value: 'gradient', label: 'Gradient (robust to light)' },
+        { value: 'ssim', label: 'Structural similarity' },
+        { value: 'rgb', label: 'Colour difference' },
+      ],
+    },
+    { key: 'minAreaM2', label: 'Smallest area (m²)', kind: 'number', placeholder: '1' },
+    { key: 'maxShiftPx', label: 'Largest shift (px)', kind: 'number', placeholder: '2' },
+  ],
+  'change.surface': [],
+  'change.cloud': [
+    { key: 'layerFrom', label: 'Earlier point cloud layer id', kind: 'text', required: true },
+    { key: 'layerTo', label: 'Later point cloud layer id', kind: 'text', required: true },
+    { key: 'minDistM', label: 'Significant from (m)', kind: 'number', placeholder: '0.05' },
+    { key: 'maxDistM', label: 'Far from (m)', kind: 'number', placeholder: '0.30' },
+  ],
+  'change.mesh': [
+    { key: 'layerFrom', label: 'Earlier model layer id', kind: 'text', required: true },
+    { key: 'layerTo', label: 'Later model layer id', kind: 'text', required: true },
+    { key: 'samples', label: 'Sample points', kind: 'number', placeholder: '1000000' },
+  ],
+  'change.frames': [
+    { key: 'from', label: 'Earlier capture id', kind: 'text', required: true },
+    { key: 'to', label: 'Later capture id', kind: 'text', required: true },
+    { key: 'maxPoseM', label: 'Largest camera distance (m)', kind: 'number', placeholder: '5' },
+    { key: 'maxAngleDeg', label: 'Largest view angle (°)', kind: 'number', placeholder: '10' },
+  ],
+  'drawing.import': [
+    {
+      key: 'src',
+      label: 'Drawing (DXF)',
+      kind: 'file',
+      required: true,
+      help: 'Read only. DWG is not supported: save as DXF first.',
+      filters: [{ name: 'DXF drawing', extensions: ['dxf'] }],
+    },
+    {
+      key: 'units',
+      label: 'Drawing units',
+      kind: 'select',
+      options: [
+        { value: '', label: 'As the file says' },
+        { value: 'mm', label: 'Millimetres' },
+        { value: 'cm', label: 'Centimetres' },
+        { value: 'm', label: 'Metres' },
+        { value: 'in', label: 'Inches' },
+        { value: 'ft', label: 'Feet' },
+        { value: 'us-ft', label: 'US survey feet' },
+      ],
+    },
+  ],
+  'model.fit_cloud': [
+    { key: 'layer', label: 'Point cloud layer id', kind: 'text', required: true },
+    { key: 'distM', label: 'Fit distance (m)', kind: 'number', placeholder: '0.05' },
+    { key: 'model', label: 'Add to model id', kind: 'text', placeholder: 'A new model' },
+  ],
 };
 
 /** Turn the form's text values into checked params, or say what is wrong. */

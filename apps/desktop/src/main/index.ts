@@ -48,6 +48,10 @@ import {
   photoGps,
 } from './builder';
 import { builderPipelineJobs } from './builderJobs';
+import { registerChangeIpc } from './change';
+import { registerInferenceIpc } from './inference';
+import { registerLocalModelsIpc } from './localModels';
+import { registerModelBuilderIpc } from './modelBuilder';
 import { importLogo, removeLogo } from './branding';
 import { putThumb } from './thumbs';
 import { nativeImageOps } from './images';
@@ -918,6 +922,12 @@ function registerIpc(): void {
       },
     });
   });
+
+  // M8: one module per stream (C1 change, C5 model builder, C6 local detection, C7 local agent).
+  registerChangeIpc({ handle });
+  registerModelBuilderIpc({ handle });
+  registerInferenceIpc({ handle });
+  registerLocalModelsIpc({ handle });
 }
 
 /** Hand a package path to the renderer (second launch, macOS open-file). */

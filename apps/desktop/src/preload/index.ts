@@ -86,6 +86,24 @@ const CHANNELS = {
   'builder:import': true,
   'builder:altitudePlan': true,
   'builder:updateLayers': true,
+  // M8
+  'change:list': true,
+  'change:read': true,
+  'change:write': true,
+  'change:compute': true,
+  'change:cancel': true,
+  'model:list': true,
+  'model:read': true,
+  'model:write': true,
+  'model:build': true,
+  'ai:setCloudDrawings': true,
+  'inference:models': true,
+  'inference:importModel': true,
+  'inference:removeModel': true,
+  'inference:run': true,
+  'inference:cancel': true,
+  'ai:localModels': true,
+  'ai:localProbe': true,
 } as const satisfies Record<IpcChannel, true>;
 
 const EVENTS = {
@@ -99,6 +117,8 @@ const EVENTS = {
   'packs:job': true,
   'jobs:event': true,
   'builder:progress': true,
+  'change:progress': true,
+  'inference:progress': true,
 } as const satisfies Record<IpcEventName, true>;
 
 const known = <K extends string>(table: Record<K, true>, key: string): key is K =>

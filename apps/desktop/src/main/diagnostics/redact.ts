@@ -181,7 +181,18 @@ export const SETTINGS_RULES = {
   sidebarCollapsed: 'keep',
   dataRoot: 'keep',
   routes: 'keep',
-  localModel: { fields: { enabled: 'keep', baseUrl: 'url', model: 'keep' } },
+  localModel: {
+    fields: {
+      enabled: 'keep',
+      baseUrl: 'url',
+      model: 'keep',
+      kind: 'keep',
+      contextTokens: 'keep',
+      toolProfile: 'keep',
+      capabilities: 'keep',
+      timeoutMs: 'keep',
+    },
+  },
   direction: 'keep',
   contrast: 'keep',
   motion: 'keep',
@@ -191,6 +202,8 @@ export const SETTINGS_RULES = {
   anthropicWorkspaceId: 'mask',
   reportBranding: { fields: { companyName: 'presence', accent: 'keep', logo: 'presence' } },
   reportContents: 'keep',
+  change: 'keep',
+  inference: 'keep',
 } as const satisfies Record<keyof Settings, Rule>;
 
 function safeUrl(value: unknown): unknown {
