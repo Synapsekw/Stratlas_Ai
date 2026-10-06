@@ -103,3 +103,8 @@
 .pane-x .change-legend {
   bottom: 12px;
 }
+/* in the 3D view and the map: above the view cube, the pointer readout and the attribution */
+.pane-3d .change-legend,
+.pane-map .change-legend {
+  bottom: 96px;
+}
