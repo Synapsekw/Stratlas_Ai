@@ -1,0 +1,91 @@
+/* Settings, AI providers, Local model (M8 C7). */
+.local-model .lm-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  margin-top: 10px;
+}
+.local-model .lm-row label {
+  display: grid;
+  gap: 4px;
+  font-size: var(--t-12);
+}
+.local-model .lm-note {
+  margin-top: 6px;
+  font-size: var(--t-12);
+}
+.local-model .notice.lm-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.local-model .lm-models {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.local-model .lm-model {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-4);
+  background: var(--bg-1);
+  color: var(--fg-1);
+  font-size: var(--t-12);
+  text-align: start;
+  cursor: pointer;
+}
+.local-model .lm-model:hover {
+  border-color: var(--line);
+}
+.local-model .lm-model[aria-pressed='true'] {
+  border-color: var(--accent, var(--line));
+  color: var(--fg-0);
+}
+.local-model .lm-id {
+  flex: 1 1 12ch;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.local-model .lm-badge {
+  padding: 1px 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  font-size: 11px;
+}
+.local-model .lm-in {
+  font-size: 11px;
+  color: var(--ok);
+}
+.local-model .lm-key {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.local-model .lm-key .input {
+  width: 18ch;
+}
+.local-model .lm-guide {
+  margin-top: 12px;
+  font-size: var(--t-12);
+  color: var(--fg-2);
+  line-height: 1.55;
+  max-width: 75ch;
+}
+.local-model .lm-guide summary {
+  cursor: pointer;
+  color: var(--fg-0);
+  font-weight: 500;
+}
+.local-model .lm-guide p,
+.local-model .lm-guide ul {
+  margin: 6px 0;
+}
