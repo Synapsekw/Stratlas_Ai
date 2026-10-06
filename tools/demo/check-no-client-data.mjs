@@ -20,6 +20,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { m8Text, truthCoords } from './check-m8.mjs';
 
 /** Words that must never appear (client names, assets, places of real projects). */
 export const FORBIDDEN = [
@@ -348,6 +349,8 @@ export function checkFolder(dir, o = {}) {
               for (const is of j.issues)
                 for (const s of is.sightings ?? [])
                   if (s.on === 'map' && s.geojson) geojson(s.geojson, `${rel} ${String(is.code)}`);
+            // M8: the places listed in a demo's truth.json
+            if (name === 'truth.json') for (const ll of truthCoords(j)) near(ll, rel);
           }
         }
         continue;
@@ -388,6 +391,12 @@ export function checkFolder(dir, o = {}) {
       }
       if (ext === '.tif' || ext === '.tiff') {
         findings.push(`${rel}: raw GeoTIFF in the demo (sources stay out of published projects)`);
+        continue;
+      }
+      // M8: DXF drawings and ONNX models (text fields only, see check-m8.mjs)
+      const m8 = m8Text(ext, buf);
+      if (m8 !== null) {
+        scanText(m8, `${rel} text`);
         continue;
       }
       if (!['.bin', '.laz', '.las', '.pmtiles', '.pdf'].includes(ext))
