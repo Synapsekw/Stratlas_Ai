@@ -4,7 +4,10 @@ import { APICallError } from 'ai';
 import { convertArrayToReadableStream, MockLanguageModelV4 } from 'ai/test';
 import { describe, expect, it, vi } from 'vitest';
 import { createAgentRuntime, MESSAGES, type AgentRuntime, type AgentRuntimeHost } from './main';
+import { systemPrompt } from './prompt';
 import { createProviderRegistry, type ModelProvider } from './providers';
+import { offlineRoutes } from './routes';
+import { COMPACT_TOOLS } from './tools';
 
 type AiEvent = IpcEvent<'ai:event'>;
 
@@ -499,5 +502,334 @@ describe('provider errors and the connection test', () => {
       model: 'gpt-6-luna',
     });
     expect(seen).toEqual(['gpt-6-luna']);
+  });
+});
+
+// ---------------------------------------------------------------- M8 local agent (C7)
+
+describe('the local agent on a small model (AI-9)', () => {
+  const BASE = 'http://127.0.0.1:11434/v1';
+  type Cfg = NonNullable<ReturnType<NonNullable<AgentRuntimeHost['localModel']>>>;
+
+  function localSetup(opts: {
+    cfg?: Partial<Cfg>;
+    steps?: LanguageModelV4StreamPart[][];
+    doStream?: MockLanguageModelV4['doStream'];
+    doGenerate?: MockLanguageModelV4['doGenerate'];
+    keys?: Partial<Record<AiProvider, string>>;
+    cloud?: boolean;
+  }) {
+    const model = new MockLanguageModelV4({
+      modelId: 'example-small',
+      doStream: opts.doStream ?? (opts.steps ?? []).map(stream),
+      ...(opts.doGenerate ? { doGenerate: opts.doGenerate } : {}),
+    });
+    const localKeys: (string | null)[] = [];
+    const local: ModelProvider = {
+      id: 'local',
+      label: 'Local model',
+      cloud: false,
+      needsKey: false,
+      optionalKey: true,
+      languageModel: (_m, key) => {
+        localKeys.push(key);
+        return model;
+      },
+    };
+    const cfg: Cfg = { enabled: true, baseUrl: BASE, model: 'example-small', ...opts.cfg };
+    const t = setup({
+      cloud: opts.cloud ?? false,
+      keys: opts.keys ?? {},
+      providers: [local],
+      host: { routes: () => offlineRoutes('example-small'), localModel: () => cfg },
+    });
+    return { ...t, model, localKeys };
+  }
+
+  it('answers in text only, with a notice, on a model without tool calling', async () => {
+    const t = localSetup({
+      cfg: { capabilities: { tools: false, vision: false } },
+      steps: [textStep('There are two layers.')],
+    });
+    expect(await t.runtime.status({})).toMatchObject({
+      ready: true,
+      reason: 'answer-only',
+      message: MESSAGES.answerOnly,
+      cloud: false,
+    });
+    await t.runtime.send(req({ messages: [{ role: 'user', content: 'Fly to the tank' }] }));
+    expect((await t.end('r1')).type).toBe('done');
+    const call = t.model.doStreamCalls[0];
+    expect(call?.tools ?? []).toEqual([]);
+    expect(JSON.stringify(call?.prompt)).toContain('cannot use the app');
+    expect(text(t.events)).toBe(`${MESSAGES.answerOnlyNotice}\n\nThere are two layers.`);
+    expect(t.events.some((e) => e.type === 'tool-call')).toBe(false);
+  });
+
+  it('gives the notice once per conversation', async () => {
+    const t = localSetup({
+      cfg: { capabilities: { tools: false, vision: false } },
+      steps: [textStep('Still text.')],
+    });
+    await t.runtime.send(
+      req({
+        messages: [
+          { role: 'user', content: 'Hello' },
+          { role: 'assistant', content: 'Hi' },
+          { role: 'user', content: 'Again' },
+        ],
+      }),
+    );
+    await t.end('r1');
+    expect(text(t.events)).toBe('Still text.');
+  });
+
+  it('falls back to answer-only when the server refuses tools', async () => {
+    let n = 0;
+    const t = localSetup({
+      doStream: () => {
+        n += 1;
+        if (n === 1) {
+          return Promise.reject(
+            new APICallError({
+              message: 'example-small does not support tools',
+              url: `${BASE}/chat/completions`,
+              requestBodyValues: {},
+              statusCode: 400,
+            }),
+          );
+        }
+        return Promise.resolve(stream(textStep('Text only.')));
+      },
+    });
+    await t.runtime.send(req());
+    expect((await t.end('r1')).type).toBe('done');
+    expect(t.model.doStreamCalls).toHaveLength(2);
+    expect((t.model.doStreamCalls[0]?.tools ?? []).length).toBeGreaterThan(0);
+    expect(t.model.doStreamCalls[1]?.tools ?? []).toEqual([]);
+    expect(text(t.events)).toBe(`${MESSAGES.answerOnlyNotice}\n\nText only.`);
+  });
+
+  it('offers the compact tools, a compact prompt, bounded output and no parallel calls', async () => {
+    const t = localSetup({
+      cfg: { toolProfile: 'compact', contextTokens: 8192 },
+      steps: [textStep('ok')],
+    });
+    await t.runtime.send(req());
+    await t.end('r1');
+    const call = t.model.doStreamCalls[0];
+    const names = (call?.tools ?? []).map((x) => x.name);
+    expect(names).toContain('fly_to');
+    expect(names).not.toContain('orbit');
+    const fly = call?.tools?.find((x) => x.name === 'fly_to');
+    expect(fly?.type === 'function' ? fly.description : '').toBe(COMPACT_TOOLS.fly_to);
+    expect(call?.maxOutputTokens).toBe(2048);
+    expect(call?.providerOptions).toMatchObject({ openai: { parallelToolCalls: false } });
+    const system = JSON.stringify(call?.prompt.filter((m) => m.role === 'system'));
+    expect(system).toContain('one tool at a time');
+    expect(system.length).toBeLessThan(systemPrompt('scene3d').length);
+  });
+
+  it('stops after six steps in the compact profile and says so', async () => {
+    const t = localSetup({
+      cfg: { toolProfile: 'compact' },
+      doStream: () => Promise.resolve(stream(toolStep(`c${Math.random()}`, 'list_layers', {}))),
+    });
+    const origEmit = t.events.push.bind(t.events);
+    t.events.push = (...items: AiEvent[]) => {
+      const n = origEmit(...items);
+      for (const e of items)
+        queueMicrotask(() => {
+          if (e.type === 'tool-call')
+            t.runtime.toolResult({ runId: 'r1', callId: e.callId, approved: true, result: [] });
+        });
+      return n;
+    };
+    await t.runtime.send(req());
+    expect((await t.end('r1')).type).toBe('done');
+    expect(t.model.doStreamCalls).toHaveLength(6);
+    expect(text(t.events)).toContain('I stopped after 6 steps.');
+  });
+
+  it('repairs a malformed tool call from a small model', async () => {
+    const broken: LanguageModelV4StreamPart[] = [
+      { type: 'stream-start', warnings: [] },
+      { type: 'tool-call', toolCallId: 'c1', toolName: 'set_view', input: "{'view': 'top',}" },
+      {
+        type: 'finish',
+        finishReason: { unified: 'tool-calls', raw: 'tool_calls' },
+        usage: usage(9, 9),
+      },
+    ];
+    const t = localSetup({ steps: [broken, textStep('Top view.')] });
+    const call = respond(t.runtime, t.next, { approved: true, result: { ok: true } });
+    await t.runtime.send(req());
+    expect(await call).toMatchObject({ name: 'set_view', input: { view: 'top' } });
+    expect((await t.end('r1')).type).toBe('done');
+  });
+
+  it('trims a long conversation into a summary and keeps the last turns', async () => {
+    const t = localSetup({ cfg: { contextTokens: 2048 }, steps: [textStep('ok')] });
+    const long = 'x'.repeat(5000);
+    await t.runtime.send(
+      req({
+        messages: [
+          { role: 'user', content: `Old question about the flare ${long}` },
+          { role: 'assistant', content: `Old answer ${long}` },
+          { role: 'user', content: 'What about tank 3?' },
+        ],
+      }),
+    );
+    await t.end('r1');
+    const prompt = t.model.doStreamCalls[0]?.prompt ?? [];
+    expect(prompt.filter((m) => m.role !== 'system')).toHaveLength(1);
+    const system = JSON.stringify(prompt.filter((m) => m.role === 'system'));
+    expect(system).toContain('Earlier in this conversation');
+    expect(system).toContain('Old question about the flare');
+    expect(JSON.stringify(prompt)).toContain('What about tank 3?');
+  });
+
+  it('needs vision for the vision route and detection', async () => {
+    const t = localSetup({ cfg: { capabilities: { tools: true, vision: false } } });
+    expect(await t.runtime.status({ task: 'vision' })).toMatchObject({
+      ready: false,
+      reason: 'no-route',
+      message: MESSAGES.noVision,
+      cloud: false,
+    });
+    expect(
+      await t.runtime.detect({
+        runId: 'd1',
+        projectId: 'p1',
+        classes: [{ id: 'rust', label: 'Rust' }],
+        images: [{ key: 'a', dataUrl: 'data:image/png;base64,AAAA', width: 8, height: 8 }],
+      }),
+    ).toEqual({ ok: false, error: MESSAGES.noVision });
+    expect(t.model.doGenerateCalls).toHaveLength(0);
+  });
+
+  it('runs detection and narrative on the local model at no cost', async () => {
+    const t = localSetup({
+      doGenerate: () =>
+        Promise.resolve({
+          content: [
+            {
+              type: 'text',
+              text: '{"images":[{"image":1,"detections":[{"class":"rust","box":[0.1,0.1,0.2,0.2],"confidence":0.8}]}]}',
+            },
+          ],
+          finishReason: { unified: 'stop', raw: 'stop' },
+          usage: usage(50, 20),
+          warnings: [],
+        }),
+    });
+    const r = await t.runtime.detect({
+      runId: 'd1',
+      projectId: 'p1',
+      classes: [{ id: 'rust', label: 'Rust' }],
+      images: [{ key: 'a', dataUrl: 'data:image/png;base64,AAAA', width: 8, height: 8 }],
+    });
+    expect(r).toMatchObject({ ok: true, provider: 'local', costUsd: 0 });
+    expect(r.ok && r.results[0]?.detections).toHaveLength(1);
+    const d = await t.runtime.draft({
+      runId: 'n1',
+      projectId: 'p1',
+      task: 'report',
+      system: 'Write.',
+      prompt: 'Summarise.',
+    });
+    expect(d).toMatchObject({ ok: true, provider: 'local' });
+  });
+
+  it('uses the optional server key from the vault and never logs it', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const secret = 'local-secret-key-0123';
+    const t = localSetup({
+      keys: { local: secret },
+      doStream: () =>
+        Promise.reject(
+          new APICallError({
+            message: `Unauthorized: Bearer ${secret}`,
+            url: `${BASE}/chat/completions`,
+            requestBodyValues: {},
+            statusCode: 401,
+          }),
+        ),
+    });
+    await t.runtime.send(req());
+    const end = await t.end('r1');
+    expect(t.localKeys).toEqual([secret]);
+    expect(t.getKey).toHaveBeenCalledWith('local');
+    expect(t.getKey).not.toHaveBeenCalledWith('anthropic');
+    expect(JSON.stringify(end)).not.toContain(secret);
+    expect(warn.mock.calls.map((c) => c.join(' ')).join('\n')).not.toContain(secret);
+    warn.mockRestore();
+  });
+
+  it('works without a key, and never calls a cloud provider when every route is local', async () => {
+    const t = localSetup({ cloud: true, steps: [textStep('Local.')] });
+    for (const task of ['chat', 'vision', 'report', 'extract', 'build'] as const) {
+      expect(await t.runtime.status({ task })).toMatchObject({ ready: true, cloud: false });
+    }
+    await t.runtime.send(req());
+    await t.end('r1');
+    expect(t.localKeys).toEqual([null]);
+    expect(t.chat.doStreamCalls).toHaveLength(0);
+    expect(t.vision.doStreamCalls).toHaveLength(0);
+    expect(t.seenKeys).toEqual([]);
+  });
+
+  it('says plainly when the local server is not running', async () => {
+    const t = localSetup({ doStream: () => Promise.reject(new TypeError('fetch failed')) });
+    await t.runtime.send(req());
+    expect(await t.end('r1')).toEqual({
+      type: 'error',
+      runId: 'r1',
+      message: MESSAGES.localDown('http://127.0.0.1:11434'),
+    });
+  });
+
+  /** A model that never answers until the request is aborted, like a model still loading. */
+  const hang: MockLanguageModelV4['doStream'] = ({ abortSignal }) =>
+    new Promise((_, reject) => {
+      abortSignal?.addEventListener('abort', () => {
+        reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+      });
+    });
+
+  it('times out a model that gives no first token in time', async () => {
+    const t = localSetup({ cfg: { timeoutMs: 1000 }, doStream: hang });
+    await t.runtime.send(req());
+    expect(await t.end('r1')).toEqual({
+      type: 'error',
+      runId: 'r1',
+      message: MESSAGES.localTimeout(1000),
+    });
+  });
+
+  it('stops at once when cancelled during a slow reply', async () => {
+    const t = localSetup({ doStream: hang });
+    await t.runtime.send(req());
+    await new Promise((r) => setTimeout(r, 20));
+    const at = Date.now();
+    t.runtime.cancel('r1');
+    expect(await t.end('r1')).toEqual({ type: 'error', runId: 'r1', message: MESSAGES.stopped });
+    expect(Date.now() - at).toBeLessThan(500);
+  });
+
+  it('does not time out while the person decides on a tool', async () => {
+    const t = localSetup({
+      cfg: { timeoutMs: 1000 },
+      steps: [
+        toolStep('c1', 'create_issue_draft', { title: 'Roof corrosion', severity: 3 }),
+        textStep('Drafted.'),
+      ],
+    });
+    await t.runtime.send(req());
+    const call = await t.next((e) => e.type === 'tool-call');
+    await new Promise((r) => setTimeout(r, 1300));
+    if (call.type !== 'tool-call') throw new Error('unreachable');
+    t.runtime.toolResult({ runId: 'r1', callId: call.callId, approved: true, result: {} });
+    expect((await t.end('r1')).type).toBe('done');
   });
 });
