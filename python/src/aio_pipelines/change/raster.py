@@ -13,13 +13,16 @@ Parameters as ``ChangeRasterParams`` in ``@aio/schema`` (``jobs.ts``). Steps:
             kept, ``.bak``), then the manifest: a heat map raster layer and a polygon layer, both
             ``derived`` and on the later date.
 
-The score (0 to 1) ignores what light does: the later ortho is scaled per channel to the earlier
-one (a gain over the shared area, so a tint or exposure change is gone); structure is compared on
-high-passed log brightness with a local SSIM-like term, which a shade or a cloud shadow (a slow
-multiplicative change) does not move; colour is compared as chromaticity, which shade does not
-change either. Methods: ``gradient`` (structure and colour, the default), ``ssim`` (scikit-image's
-structural similarity on normalised brightness, and colour) and ``rgb`` (plain colour distance,
-sensitive to light). Every region is a proposal (verdict ``changed``) a person confirms.
+The score (0 to 1) ignores what light does: the later ortho is matched per channel to the earlier
+one (a gain and an offset over the shared area, so a tint, exposure or haze change is gone);
+structure is compared on high-passed log brightness with a local SSIM-like term, which a shade or a
+cloud shadow (a slow multiplicative change) does not move, above a floor set by the noise measured
+between the dates (compression noise, larger in dark places); colour is compared as chromaticity,
+which shade does not change either. A region that only got darker or only lighter and kept its
+colour is a shadow that came or went and is left out. Methods: ``gradient`` (structure and colour,
+the default), ``ssim`` (scikit-image's structural similarity on normalised brightness, and colour)
+and ``rgb`` (plain colour distance, sensitive to light). Every region is a proposal (verdict
+``changed``) a person confirms.
 """
 
 from __future__ import annotations
