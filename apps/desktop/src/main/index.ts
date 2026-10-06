@@ -51,8 +51,8 @@ import {
 import { builderPipelineJobs } from './builderJobs';
 import { registerChangeIpc } from './change';
 import { registerInferenceIpc } from './inference';
-import { electronInference } from './inference/electron';
-import { registerLocalModelsIpc } from './localModels';
+import { electronInference, inferenceKnown, installedModels } from './inference/electron';
+import { registerLocalModelsIpc, type LocalServerSeen } from './localModels';
 import { readCloudDrawings, registerModelBuilderIpc } from './modelBuilder';
 import { importLogo, removeLogo } from './branding';
 import { putThumb } from './thumbs';
@@ -64,6 +64,7 @@ import { addToLibrary, createLibraryStore, listLibrary } from './library';
 import { captureConsole, exportLogs } from './logs';
 import { openProjectSizes } from './diagnostics/bundle';
 import { createCrashStore } from './diagnostics/crash';
+import { localAiSection, packageVersionOf } from './diagnostics/localAi';
 import {
   createProcessLogs,
   installCrashHandlers,
@@ -190,6 +191,8 @@ const bundledDemos = () =>
 /** Thumbnails the renderer generated for project images without their own (Media). */
 const thumbsDir = () => join(app.getPath('userData'), 'cache', 'thumbs');
 const policy = new ProjectPolicy(registry);
+/** The last local model server discovery reached in this run (kind and version, for diagnostics). */
+let localServerSeen: LocalServerSeen | null = null;
 // A `.aio` the app was started with (double-click); the renderer takes it once at start.
 let pendingOpenPath: string | null =
   packagePathFromArgv(process.argv) ?? linkPathFromArgv(process.argv, brand.urlScheme);
@@ -715,6 +718,14 @@ function registerIpc(): void {
       packs: () => packs.list(),
       jobs: () => jobs.list(),
       updates: () => updates.status(),
+      localAi: () =>
+        localAiSection({
+          settings: settings.current(),
+          runtime: inferenceKnown(),
+          packageVersion: packageVersionOf('onnxruntime-node'),
+          models: installedModels,
+          server: localServerSeen,
+        }),
       projects: (current) =>
         openProjectSizes(
           projectNames.keys(),
@@ -958,6 +969,9 @@ function registerIpc(): void {
     handle,
     localModel: () => settings.current().localModel,
     cloudAllowed: () => policy.cloudAllowed(settings.current().cloudAi),
+    remember: (server) => {
+      localServerSeen = server;
+    },
     getKey: async () => {
       const key = await keys.getKey('local');
       registerSecret(key);

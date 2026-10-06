@@ -35,6 +35,8 @@ export interface BundleSources {
   projects: () => Promise<OpenProjectInfo[]>;
   /** Update and rollback state (ADR 0003); absent in tests and tools. */
   updates?: () => Promise<UpdateStatus> | UpdateStatus;
+  /** Local detection runtime, detector model cards and local agent server (`localAi.ts`). */
+  localAi?: () => Promise<Record<string, unknown>> | Record<string, unknown>;
   now?: () => Date;
 }
 
@@ -197,6 +199,8 @@ What is inside
 - jobs.json        recent pipeline jobs: status, steps and errors (no parameters)
 - projects.json    ids and sizes of projects opened in this run (no project content)
 - updates.json     update and rollback state: running version, kept previous version, a pending first start, the last return
+- local-ai.json    local detection runtime (onnxruntime version, execution provider), installed detector model
+                   cards, and the local agent server kind and version (no address of another machine, no prompts)
 - errors.txt       the latest warnings and errors from every log
 - logs/            main, window (renderer) and export (utility) process logs
 - crash/           crash reports written on this computer, and a list of crash dumps (the dumps stay on this computer)
@@ -252,6 +256,7 @@ export async function collectBundle(
   add('projects.json', json(await attempt(src.projects)));
   const updates = src.updates;
   if (updates) add('updates.json', json(await attempt(() => updateSummary(updates))));
+  if (src.localAi) add('local-ai.json', json(await attempt(src.localAi)));
 
   const logNames = await readdir(src.logsDir).then(
     (all) => all.filter((n) => n.endsWith('.log')).sort(byLogAge),

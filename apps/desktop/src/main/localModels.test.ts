@@ -165,6 +165,40 @@ describe('local model IPC (C7)', () => {
     expect(logged).not.toContain(KEY);
   });
 
+  it('remembers the kind of server that answered, without its address', async () => {
+    const seen: unknown[] = [];
+    const { ipc } = setup({ remember: (s) => seen.push(s) });
+    await ipc.call('ai:localModels', { baseUrl: 'http://127.0.0.1:11434/v1' });
+    expect(seen).toEqual([]);
+    await ipc.call('ai:localModels', {});
+    await ipc.call('ai:localProbe', { model: 'example-a' });
+    expect(seen).toEqual([
+      { kind: 'openai-compatible', loopback: true, at: expect.any(String) as string },
+      { kind: 'openai-compatible', loopback: true, at: expect.any(String) as string },
+    ]);
+    expect(JSON.stringify(seen)).not.toContain('127.0.0.1');
+  });
+
+  it('remembers the version an Ollama server reports', async () => {
+    const seen: unknown[] = [];
+    const ollama = (input: string | URL | Request) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith('/api/version')) return Promise.resolve(json({ version: '0.12.3' }));
+      if (url.endsWith('/api/tags')) return Promise.resolve(json({ models: [{ name: 'qwen3' }] }));
+      if (url.endsWith('/api/show'))
+        return Promise.resolve(json({ capabilities: ['completion', 'tools'] }));
+      return Promise.reject(new TypeError('fetch failed'));
+    };
+    const { ipc } = setup({
+      fetch: ollama,
+      remember: (s) => seen.push(s),
+    });
+    expect(await ipc.call('ai:localModels', {})).toMatchObject({ ok: true });
+    expect(seen).toEqual([
+      { kind: 'ollama', version: '0.12.3', loopback: true, at: expect.any(String) as string },
+    ]);
+  });
+
   it('works without a key', async () => {
     const { ipc, server } = setup();
     await ipc.call('ai:localModels', {});

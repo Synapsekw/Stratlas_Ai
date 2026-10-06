@@ -24,6 +24,18 @@ export interface LocalModelsIpcDeps {
   getKey?: () => Promise<string | null>;
   /** Replaces the network for tests. */
   fetch?: typeof globalThis.fetch;
+  /** Told the server kind and version each time discovery reaches a server (diagnostics). */
+  remember?: (server: LocalServerSeen) => void;
+}
+
+/** The last server discovery reached in this run: its kind and version, never its address. */
+export interface LocalServerSeen {
+  kind: 'ollama' | 'openai-compatible';
+  /** Ollama reports its version; OpenAI-compatible servers do not. */
+  version?: string;
+  /** The server was on this machine. */
+  loopback: boolean;
+  at: string;
 }
 
 function remoteRefused(url: string): string {
@@ -51,10 +63,23 @@ export function registerLocalModelsIpc(deps: LocalModelsIpcDeps): void {
 
   const key = async () => (await deps.getKey?.()) ?? null;
 
+  /** Discovery, telling `remember` which kind of server answered (no address, no models). */
+  async function discover(url: string, k: string | null) {
+    const r = await discoverLocalModels({ baseUrl: url, key: k, fetch });
+    if (r.ok)
+      deps.remember?.({
+        kind: r.server.kind,
+        ...(r.server.version ? { version: r.server.version } : {}),
+        loopback: isLoopbackUrl(url),
+        at: new Date().toISOString(),
+      });
+    return r;
+  }
+
   handle('ai:localModels', async ({ baseUrl }) => {
     const a = address(baseUrl);
     if ('error' in a) return { ok: false, error: a.error };
-    return discoverLocalModels({ baseUrl: a.url, key: await key(), fetch });
+    return discover(a.url, await key());
   });
 
   handle('ai:localProbe', async ({ model, baseUrl }) => {
@@ -62,7 +87,7 @@ export function registerLocalModelsIpc(deps: LocalModelsIpcDeps): void {
     if ('error' in a) return { ok: false, error: a.error };
     const k = await key();
     // What the server claims (vision, context) decides whether the image request is worth it.
-    const listed = await discoverLocalModels({ baseUrl: a.url, key: k, fetch });
+    const listed = await discover(a.url, k);
     const info = listed.ok ? listed.models.find((m) => m.id === model) : undefined;
     const r = await probeLocalModel({
       model: localProvider({ baseUrl: a.url }, { fetch }).languageModel(model, k),
