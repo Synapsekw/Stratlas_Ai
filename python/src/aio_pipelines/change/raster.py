@@ -78,8 +78,9 @@ REGION_STYLE = {
 }
 INPUTS_CHANGED = "The orthos changed since this job started. Start the job again."
 LUMA = np.array([0.299, 0.587, 0.114], np.float32)
-#: The structure term's noise floor, in units of the noise measured between the two dates.
-NOISE_FLOOR = 4.0
+#: The structure term's noise floor, in units of the noise measured between the two dates: noise
+#: alone then scores about 1 / (1 + NOISE_FLOOR), 0.17, near half the sensitive preset's 0.3.
+NOISE_FLOOR = 5.0
 #: A region is light only when it kept its colour (three quarters of it below this colour score,
 #: a chromaticity step of 0.03) and its brightness moved one way by at least this (log, 2 %).
 LIGHT_COLOUR = 0.25
