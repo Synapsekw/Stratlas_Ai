@@ -1,4 +1,5 @@
 import type { Issue, IssueStatus } from '@aio/schema';
+import { shortcutHint } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import {
   useDeferredValue,
@@ -242,7 +243,9 @@ export function IssueRegister({ className }: { className?: string }) {
           .map((s) => s.code)
           .join(', ')}${r.skipped.length > 4 ? ', ...' : ''})`
       : '';
-    setNotice(`${what} ${r.changed} issue${r.changed === 1 ? '' : 's'}${skipped}. Ctrl+Z undoes.`);
+    setNotice(
+      `${what} ${r.changed} issue${r.changed === 1 ? '' : 's'}${skipped}. ${shortcutHint('issues.undo')} undoes.`,
+    );
   };
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -356,7 +359,7 @@ export function IssueRegister({ className }: { className?: string }) {
                 type="button"
                 className="ann-btn ghost"
                 disabled={!editor.canUndo}
-                title={editor.undoLabel ? `Undo ${editor.undoLabel} (Ctrl+Z)` : 'Undo (Ctrl+Z)'}
+                title={`Undo${editor.undoLabel ? ` ${editor.undoLabel}` : ''} (${shortcutHint('issues.undo')})`}
                 onClick={() => issueEditor.undo()}
               >
                 Undo
@@ -365,7 +368,7 @@ export function IssueRegister({ className }: { className?: string }) {
                 type="button"
                 className="ann-btn ghost"
                 disabled={!editor.canRedo}
-                title={editor.redoLabel ? `Redo ${editor.redoLabel} (Ctrl+Y)` : 'Redo (Ctrl+Y)'}
+                title={`Redo${editor.redoLabel ? ` ${editor.redoLabel}` : ''} (${shortcutHint('issues.redo')})`}
                 onClick={() => issueEditor.redo()}
               >
                 Redo
@@ -560,7 +563,9 @@ export function IssueRegister({ className }: { className?: string }) {
                   const r = issueEditor.mergeMany([...live]);
                   if (r.ok) {
                     setChecked(new Set([r.value.id]));
-                    setNotice(`Merged into ${r.value.code}. Ctrl+Z undoes.`);
+                    setNotice(
+                      `Merged into ${r.value.code}. ${shortcutHint('issues.undo')} undoes.`,
+                    );
                   } else setNotice(r.error);
                 }}
               >

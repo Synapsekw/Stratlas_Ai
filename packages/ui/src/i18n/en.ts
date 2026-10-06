@@ -109,7 +109,7 @@ export const en = {
   'vol.detail.editedOn': '{date}, by hand',
   'vol.detail.autoGave': 'automatic line gave {volume} m³',
   'vol.edit.hint':
-    'Drag a point to move it, drag a midpoint to add one. Delete removes the selected point, Ctrl+Z undoes, Enter saves.',
+    'Drag a point to move it, drag a midpoint to add one. Delete removes the selected point, {undo} undoes, Enter saves.',
   'vol.edit.start': 'Edit the toe line in 3D',
 
   // Timeline
@@ -135,8 +135,8 @@ export const en = {
   'det.filter.rejected': 'Rejected',
   'det.minConfidence': 'Confidence {pct}% and up',
   'det.minConfidenceLabel': 'Hide proposals under this confidence',
-  'det.undo': 'Undo review change (Ctrl Z)',
-  'det.redo': 'Redo review change (Ctrl Y)',
+  'det.undo': 'Undo review change ({keys})',
+  'det.redo': 'Redo review change ({keys})',
   'det.save.saved': 'Saved',
   'det.save.pending': 'Unsaved',
   'det.save.saving': 'Saving',
@@ -1238,7 +1238,7 @@ export const en = {
   'media.findings.tile_other': '{count} findings, worst {severity}',
   'media.findings.tileUngraded_one': '{count} finding',
   'media.findings.tileUngraded_other': '{count} findings',
-  'media.photoLimit': 'Showing the first {limit} of {total}. Use Ctrl K to find a photo by name.',
+  'media.photoLimit': 'Showing the first {limit} of {total}. Use {keys} to find a photo by name.',
   // User guide (F1): help panel and the "?" links
   'help.title': 'User guide',
   'help.open': 'User guide (F1)',

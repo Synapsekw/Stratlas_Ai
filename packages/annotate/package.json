@@ -16,6 +16,7 @@
     "@aio/geo": "workspace:*",
     "@aio/engine": "workspace:*",
     "@aio/video": "workspace:*",
+    "@aio/ui": "workspace:*",
     "@aio/workspace": "workspace:*",
     "three": "^0.186.1"
   }

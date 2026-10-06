@@ -20,7 +20,7 @@ import {
   type ReviewError,
 } from '@aio/annotate/detections';
 import type { Layer } from '@aio/schema';
-import { formatCount, Icon, useT, type MessageKey } from '@aio/ui';
+import { formatCount, Icon, shortcutHint, useT, type MessageKey } from '@aio/ui';
 import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { authorName } from '../author';
@@ -438,8 +438,8 @@ export function DetectionsScreen() {
         <button
           type="button"
           className="btn ghost icon sm"
-          aria-label={t('det.undo')}
-          title={t('det.undo')}
+          aria-label={t('det.undo', { keys: shortcutHint('review.undo') })}
+          title={t('det.undo', { keys: shortcutHint('review.undo') })}
           disabled={!canUndo(review)}
           onClick={() => {
             dispatch({ type: 'undo' });
@@ -450,8 +450,8 @@ export function DetectionsScreen() {
         <button
           type="button"
           className="btn ghost icon sm"
-          aria-label={t('det.redo')}
-          title={t('det.redo')}
+          aria-label={t('det.redo', { keys: shortcutHint('review.redo') })}
+          title={t('det.redo', { keys: shortcutHint('review.redo') })}
           disabled={!canRedo(review)}
           onClick={() => {
             dispatch({ type: 'redo' });

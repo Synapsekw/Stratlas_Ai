@@ -11,6 +11,7 @@ import {
 import { formatClock, formatCount } from '../format';
 import { t } from '../i18n';
 import { Icon } from '../icons/Icon';
+import { platformKeys } from '../shortcut';
 import type { TimelineModel } from './model';
 import { generateTicks, pickTickStep } from './ticks';
 
@@ -241,7 +242,7 @@ export function Timeline(props: TimelineProps) {
           <button
             type="button"
             aria-label="Zoom out"
-            title="Zoom out (Ctrl + wheel)"
+            title={`Zoom out (${platformKeys('Ctrl')} + wheel)`}
             onClick={() => {
               zoom(1.6, nowMs);
             }}
@@ -261,7 +262,7 @@ export function Timeline(props: TimelineProps) {
           <button
             type="button"
             aria-label="Zoom in"
-            title="Zoom in (Ctrl + wheel)"
+            title={`Zoom in (${platformKeys('Ctrl')} + wheel)`}
             onClick={() => {
               zoom(0.625, nowMs);
             }}

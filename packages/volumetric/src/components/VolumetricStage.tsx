@@ -1,5 +1,5 @@
 import type { EngineStage } from '@aio/engine';
-import { Icon, isShortcut, t } from '@aio/ui';
+import { Icon, isShortcut, shortcutHint, t } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import {
   useEffect,
@@ -252,7 +252,9 @@ function EditBar() {
         </span>
         <b data-testid="vol-edit-net">{edit.busy && !edit.live ? '·' : `${f0(v)} m³`}</b>
         <small>{note}</small>
-        <small className="vol-eb-hint">{t('vol.edit.hint')}</small>
+        <small className="vol-eb-hint">
+          {t('vol.edit.hint', { undo: shortcutHint('volumes.undo') })}
+        </small>
       </div>
       <div className="vol-eb-a">
         <button

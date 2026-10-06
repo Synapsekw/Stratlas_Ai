@@ -1,5 +1,5 @@
 import type { VolumeBaseId } from '@aio/schema';
-import { Icon, t } from '@aio/ui';
+import { Icon, shortcutHint, t } from '@aio/ui';
 import { useMemo } from 'react';
 import { registerRows, sortRows, totals, type SortKey } from '../model/register';
 import { useVolumetric, volumetric } from '../store';
@@ -530,7 +530,7 @@ function PileDetail({ id }: { id: string }) {
               <li>Drag a point to move it along the ground.</li>
               <li>Drag a small midpoint to add a point there.</li>
               <li>Click a point and press Delete, or right-click it, to remove it.</li>
-              <li>Undo with Ctrl+Z. Save when the line sits on the toe.</li>
+              <li>Undo with {shortcutHint('volumes.undo')}. Save when the line sits on the toe.</li>
             </ol>
             <p className="vol-note">
               An edited line fits every base to all of its points. The automatic line skips toe

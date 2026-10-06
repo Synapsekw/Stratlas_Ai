@@ -199,6 +199,9 @@ importers:
       '@aio/schema':
         specifier: workspace:*
         version: link:../schema
+      '@aio/ui':
+        specifier: workspace:*
+        version: link:../ui
       '@aio/video':
         specifier: workspace:*
         version: link:../video

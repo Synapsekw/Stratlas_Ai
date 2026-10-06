@@ -22,6 +22,9 @@
       "path": "../video"
     },
     {
+      "path": "../ui"
+    },
+    {
       "path": "../workspace"
     }
   ]

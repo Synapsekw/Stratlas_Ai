@@ -1,6 +1,14 @@
 import { PhotoViewer } from '@aio/annotate';
 import type { AssetRef, Layer } from '@aio/schema';
-import { formatClock, formatCount, formatDate, formatDuration, Icon, useT } from '@aio/ui';
+import {
+  formatClock,
+  formatCount,
+  formatDate,
+  formatDuration,
+  Icon,
+  shortcutHint,
+  useT,
+} from '@aio/ui';
 import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { loadDetections, useDetections } from '../detections/store';
@@ -405,6 +413,7 @@ export function MediaScreen() {
                   {t('media.photoLimit', {
                     limit: PHOTO_LIMIT,
                     total: formatCount(items.length),
+                    keys: shortcutHint('global.palette'),
                   })}
                 </p>
               )}
