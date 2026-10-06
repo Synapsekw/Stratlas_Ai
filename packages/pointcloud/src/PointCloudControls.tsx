@@ -89,6 +89,8 @@ export function PointCloudControls({
         <span style={s.label}>Colour by</span>
         <div style={s.seg}>
           {COLOUR_MODES.map((m) => {
+            // colouring by change is offered while a change cloud is loaded (cloud change)
+            if (m.id === 'change' && !counts.scalar && shown !== 'change') return null;
             const noRgb = m.id === 'rgb' && !hasRgb;
             const noClass = m.id === 'classification' && !hasClass && shown !== m.id;
             const off = noRgb || noClass;

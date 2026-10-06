@@ -2,6 +2,15 @@ import { useMemo } from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 
+/** The change field of the shown change clouds (cloud change, M8). */
+export interface ScalarSummary {
+  label: string;
+  unit: string;
+  /** The value that gets the full colour (the half range when diverging). */
+  range: number;
+  diverging: boolean;
+}
+
 export interface CloudCounts {
   /** Points on screen (visible layers). */
   loaded: number;
@@ -21,6 +30,8 @@ export interface CloudCounts {
   heightExtent?: readonly [number, number] | null;
   /** Points per ASPRS class among the loaded, visible points; null when no cloud has classes. */
   classes?: Readonly<Record<number, number>> | null;
+  /** The change field of the loaded, visible change clouds; null when none shows. */
+  scalar?: ScalarSummary | null;
 }
 
 interface StatsState {
@@ -34,6 +45,13 @@ interface StatsState {
 function sameRange(a: CloudCounts['heightRange'], b: CloudCounts['heightRange']): boolean {
   if (!a || !b) return a === b;
   return Math.abs(a[0] - b[0]) < 1e-3 && Math.abs(a[1] - b[1]) < 1e-3;
+}
+
+function sameScalar(a: CloudCounts['scalar'], b: CloudCounts['scalar']): boolean {
+  if (!a || !b) return (a ?? null) === (b ?? null);
+  return (
+    a.label === b.label && a.unit === b.unit && a.range === b.range && a.diverging === b.diverging
+  );
 }
 
 function sameClasses(a: CloudCounts['classes'], b: CloudCounts['classes']): boolean {
@@ -58,7 +76,8 @@ export const pointcloudStats = createStore<StatsState>()((set) => ({
         prev.rgb === c.rgb &&
         sameRange(prev.heightRange, c.heightRange) &&
         sameRange(prev.heightExtent ?? null, c.heightExtent ?? null) &&
-        sameClasses(prev.classes, c.classes)
+        sameClasses(prev.classes, c.classes) &&
+        sameScalar(prev.scalar, c.scalar)
       ) {
         return s;
       }
@@ -89,8 +108,17 @@ export function totalCounts(byScene: Map<object, CloudCounts>): CloudCounts {
     heightRange: null,
     heightExtent: null,
     classes: null,
+    scalar: null,
   };
   for (const c of byScene.values()) {
+    if (c.scalar)
+      out.scalar = out.scalar
+        ? {
+            ...out.scalar,
+            range: Math.max(out.scalar.range, c.scalar.range),
+            diverging: out.scalar.diverging || c.scalar.diverging,
+          }
+        : c.scalar;
     out.loaded += c.loaded;
     out.total += c.total;
     out.loading += c.loading;

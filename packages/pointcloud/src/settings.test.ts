@@ -100,4 +100,24 @@ describe('pointcloud settings', () => {
     storage.setItem('stratlas.pointcloud.settings', '{not json');
     expect(createPointcloudSettings(storage).getState().budget).toBe(DEFAULT_BUDGET);
   });
+
+  it('colours by change for the session only, with a threshold that never goes below zero', () => {
+    const storage = memory();
+    const a = createPointcloudSettings(storage);
+    expect(a.getState().changeThreshold).toBe(0);
+    expect(a.getState().changeRange).toBeNull();
+    a.getState().setColourMode('change');
+    a.getState().setChangeThreshold(0.12);
+    expect(a.getState().changeThreshold).toBe(0.12);
+    a.getState().setChangeThreshold(-1);
+    expect(a.getState().changeThreshold).toBe(0);
+    a.getState().setChangeRange(0.5);
+    expect(a.getState().changeRange).toBe(0.5);
+    a.getState().setChangeRange(0);
+    expect(a.getState().changeRange).toBeNull();
+    // a change colouring belongs to a change cloud: a new session starts from RGB
+    const b = createPointcloudSettings(storage).getState();
+    expect(b.colourMode).toBe('rgb');
+    expect(b.changeThreshold).toBe(0);
+  });
 });

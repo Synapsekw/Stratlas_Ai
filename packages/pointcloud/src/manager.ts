@@ -1,4 +1,5 @@
 import type { SceneHandle } from '@aio/engine';
+import type { PointcloudScalar } from '@aio/schema';
 import {
   BufferAttribute,
   BufferGeometry,
@@ -19,8 +20,10 @@ import { budgetShareOf } from './budgetShare';
 import { EdlPass } from './edl';
 import { robustHeightRange, type HeightSample, type HeightStats } from './heights';
 import {
+  DEFAULT_CHANGE_RANGE,
   FLIGHT_PALETTE,
   MODE_INDEX,
+  applyChangeUniforms,
   applyHiddenClasses,
   createPointMaterial,
   type PointMaterial,
@@ -36,7 +39,7 @@ import {
 import type { Decoder } from './pool';
 import type { DecodedChunk } from './protocol';
 import { effectiveBudget, type PointcloudSettings } from './settings';
-import { pointcloudStats } from './stats';
+import { pointcloudStats, type ScalarSummary } from './stats';
 import { IntervalGate, LOD_INTERVAL_MS, STATS_INTERVAL_MS, UploadQueue } from './stream';
 
 type V3 = readonly [number, number, number];
@@ -96,6 +99,10 @@ export interface CloudLayerState {
   hasRgb: boolean;
   hasIntensity: boolean;
   hasClass: boolean;
+  /** Its decoded chunks carry a scalar per point (change clouds). */
+  hasScalar: boolean;
+  /** What the layer says about that scalar (label, unit, range, diverging); null without one. */
+  scalar: PointcloudScalar | null;
   /** RGB expected from the format before any chunk is decoded (png-packed carries colour). */
   rgbHint: boolean;
   visible: boolean;
@@ -224,6 +231,7 @@ export class CloudManager {
     baseSize: number,
     rgbHint = false,
     copc: CopcLayerInfo | null = null,
+    scalar: PointcloudScalar | null = null,
   ) {
     const group = new Group();
     group.name = `pointcloud:${id}`;
@@ -241,6 +249,8 @@ export class CloudManager {
       hasRgb: false,
       hasIntensity: false,
       hasClass: false,
+      hasScalar: false,
+      scalar,
       rgbHint,
       visible: true,
       copc,
@@ -342,9 +352,19 @@ export class CloudManager {
 
     // one range for every node of every cloud: the user's, else the clouds' robust range
     const [hMin, hMax] = s.heightRange ?? this.heightRange() ?? [0, 10];
+    // colouring by change: clouds without the change field step aside while a change cloud shows
+    let changeShown = false;
+    if (s.colourMode === 'change')
+      for (const l of this.layers.values()) if (l.visible && l.hasScalar) changeShown = true;
     for (const l of this.layers.values()) {
       const m = l.material;
       if (!m) continue;
+      applyChangeUniforms(m, {
+        range: s.changeRange ?? scalarHalfRange(l.scalar),
+        threshold: s.changeThreshold,
+        diverging: l.scalar?.diverging ?? false,
+        hideNoScalar: changeShown,
+      });
       // octree depth materials share every uniform but uSize (their spacing, set once)
       m.uniforms.uSize.value = l.baseSize;
       m.uniforms.uScale.value = s.sizeScale;
@@ -597,7 +617,8 @@ export class CloudManager {
           d.position.byteLength +
           (d.rgb?.byteLength ?? 0) +
           (d.intensity?.byteLength ?? 0) +
-          (d.classification?.byteLength ?? 0);
+          (d.classification?.byteLength ?? 0) +
+          (d.scalar?.byteLength ?? 0);
         this.ready.push({ layer: l, chunk: c, data: d }, bytes, c.lod);
       })
       .catch((e: unknown) => {
@@ -632,20 +653,24 @@ export class CloudManager {
     if (d.rgb) geo.setAttribute('aRgb', new BufferAttribute(d.rgb, 3, true));
     if (d.intensity) geo.setAttribute('aIntensity', new BufferAttribute(d.intensity, 1, true));
     if (d.classification) geo.setAttribute('aClass', new BufferAttribute(d.classification, 1));
+    if (d.scalar) geo.setAttribute('aScalar', new BufferAttribute(d.scalar, 1));
     if (
       !l.material ||
       l.hasRgb !== !!d.rgb ||
       l.hasIntensity !== !!d.intensity ||
-      l.hasClass !== !!d.classification
+      l.hasClass !== !!d.classification ||
+      l.hasScalar !== !!d.scalar
     ) {
       l.hasRgb = !!d.rgb;
       l.hasIntensity = !!d.intensity;
       l.hasClass = !!d.classification;
+      l.hasScalar = !!d.scalar;
       this.disposeMaterials(l);
       l.material = createPointMaterial({
         hasRgb: l.hasRgb,
         hasIntensity: l.hasIntensity,
         hasClass: l.hasClass,
+        hasScalar: l.hasScalar,
         baseSize: l.baseSize,
         tint: l.tint,
       });
@@ -712,8 +737,10 @@ export class CloudManager {
     const loading = this.inflight + this.ready.size;
     let rgb = false;
     let classes: Record<number, number> | null = null;
+    let scalar: ScalarSummary | null = null;
     for (const l of this.layers.values()) {
       if (l.material ? l.hasRgb : l.rgbHint) rgb = true;
+      if (l.visible && l.hasScalar && l.loaded.size > 0) scalar = addScalar(scalar, l.scalar);
       if (l.copc) total += l.copc.source.pointCount;
       else for (const c of l.chunks) total += c.points;
       if (!l.visible) continue;
@@ -734,6 +761,7 @@ export class CloudManager {
       heightRange: this.heightRange(),
       heightExtent: this.heightStats()?.extent ?? null,
       classes,
+      scalar,
     });
   }
 
@@ -748,6 +776,23 @@ export class CloudManager {
     this.decoder?.dispose();
     pointcloudStats.getState().forget(this.handle);
   }
+}
+
+/** The change field summary with one more shown change cloud. */
+function addScalar(prev: ScalarSummary | null, meta: PointcloudScalar | null): ScalarSummary {
+  return {
+    label: prev?.label ?? meta?.label ?? 'Distance',
+    unit: prev?.unit ?? meta?.unit ?? 'm',
+    range: Math.max(prev?.range ?? 0, scalarHalfRange(meta)),
+    diverging: (prev?.diverging ?? false) || (meta?.diverging ?? false),
+  };
+}
+
+/** The distance a layer's scalar gets the full colour at: the larger end of its range. */
+export function scalarHalfRange(meta: PointcloudScalar | null): number {
+  if (!meta) return DEFAULT_CHANGE_RANGE;
+  const r = Math.max(Math.abs(meta.range[0]), Math.abs(meta.range[1]));
+  return r > 0 ? r : DEFAULT_CHANGE_RANGE;
 }
 
 function matricesClose(a: Matrix4, b: Matrix4): boolean {

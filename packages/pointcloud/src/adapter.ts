@@ -1,6 +1,8 @@
 import { getAdapter, registerAdapter, type LayerAdapter, type SceneHandle } from '@aio/engine';
+import type { PointcloudScalar } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import type { StoreApi } from 'zustand/vanilla';
+import { withScalar } from './copc';
 import { copcChunkSeeds } from './copcLayer';
 import { CloudManager, type ChunkSeed, type CopcLayerInfo } from './manager';
 import { pickPoint } from './pick';
@@ -22,6 +24,15 @@ export interface PointcloudAdapterOptions {
    */
   origin?: () => V3 | null;
 }
+
+/** A Distance field the layer does not describe: unsigned metres, full colour at 30 cm. */
+const DEFAULT_SCALAR: PointcloudScalar = {
+  dim: 'Distance',
+  label: 'Distance',
+  unit: 'm',
+  range: [0, 0.3],
+  diverging: false,
+};
 
 /** Base point size for kit (LiDAR, voxel-thinned to about 2 cm) clouds, metres. */
 export const KIT_BASE_SIZE = 0.025;
@@ -107,6 +118,7 @@ export function createPointcloudAdapter(
       let chunks: ChunkSeed[];
       let baseSize: number;
       let copc: CopcLayerInfo | null = null;
+      let scalar: PointcloudScalar | null = null;
       const url = ctx.url(layer.src);
       const handle = ctx.scene;
       if (layer.format === 'kit-packed') {
@@ -141,7 +153,16 @@ export function createPointcloudAdapter(
         try {
           const dec = m.getDecoder();
           if (!dec.copcSource || !dec.copcPage) throw new Error('This decoder cannot read COPC');
-          const source = await dec.copcSource(url);
+          // the change field (cloud change): the layer names it, else a Distance dimension
+          const dim = layer.scalar?.dim ?? 'Distance';
+          const sc = withScalar(await dec.copcSource(url), dim);
+          if (sc.error) {
+            const msg = `${layer.name}: ${sc.error}`;
+            console.warn(msg);
+            pointcloudStats.getState().addError(msg);
+          }
+          const source = sc.source;
+          if (source.layout.scalar) scalar = layer.scalar ?? { ...DEFAULT_SCALAR, dim };
           const epsg = projectEpsg();
           if (source.epsg !== undefined && epsg !== null && source.epsg !== epsg) {
             const msg = `${layer.name}: the cloud is in EPSG ${source.epsg}, the project in EPSG ${epsg}`;
@@ -165,7 +186,7 @@ export function createPointcloudAdapter(
       const rgbHint =
         layer.format === 'png-packed' ||
         (copc !== null && copc.source.layout.pointDataRecordFormat !== 6);
-      m.addLayer(layer.id, chunks, baseSize, rgbHint, copc);
+      m.addLayer(layer.id, chunks, baseSize, rgbHint, copc, scalar);
       if (!layer.visible) m.setVisible(layer.id, false);
       return {
         setVisible: (v) => {
