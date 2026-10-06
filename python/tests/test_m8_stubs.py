@@ -14,10 +14,9 @@ M8 = {
     "change.cloud": {"layerFrom": "a", "layerTo": "b"},
     "change.mesh": {"layerFrom": "a", "layerTo": "b"},
     "change.frames": {"from": "c1", "to": "c2"},
-    "model.fit_cloud": {"layer": "scan"},
 }
-# built in M8 stream C5 (tests in test_drawing.py), still part of the contract
-BUILT = ["drawing.import"]
+# built in M8 stream C5 (tests in test_drawing.py and test_modelfit.py), still part of the contract
+BUILT = ["drawing.import", "model.fit_cloud"]
 
 
 def test_every_m8_pipeline_is_listed():
