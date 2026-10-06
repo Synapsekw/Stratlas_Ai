@@ -16,7 +16,17 @@ from aio_pipelines.change.register import estimate_shift
 from aio_pipelines.pipelines import all_pipelines
 from aio_pipelines.runtime import Job, JobError
 from conftest import Recorder, run_job
-from imagery_synth import ground, noisy, ortho_project, paint, raster_params, shade, tint
+from imagery_synth import (
+    cloud_shadow,
+    compressed,
+    ground,
+    noisy,
+    ortho_project,
+    paint,
+    raster_params,
+    shade,
+    tint,
+)
 
 CELL = 0.25
 N = 640  # 160 m at 25 cm
@@ -133,6 +143,57 @@ def test_light_shade_and_tint_alone_give_no_region(tmp_path):
     cs = read_set(tmp_path)
     assert cs["items"] == []
     assert cs["stats"]["items"] == 0
+
+
+YARD = 400  # 100 m at 25 cm
+SKID = (0.85, 0.55, 0.15)
+
+
+def yard(later: bool) -> np.ndarray:
+    """A yard on one date, as a compressed ortho: a tank (its roof and hard shadow) and a pipe
+    (its shadow on the ground) that stay put, and a 3 m skid with its shadow that moves 15 m east.
+    The later date is warmer and has a cloud shadow over the pipe; the pipe stays lit, so its edge
+    with the shaded ground beside it vanishes (as on the change demo)."""
+    img = ground(YARD, YARD, 1)
+    img = paint(shade(img, 40, 40, 70, 0.45, soft=0.0), 70, 70, 50, (0.40, 0.45, 0.55))
+    img[196:200, 180:330] *= 0.45
+    if later:
+        img = cloud_shadow(img, 240, 260, 40, 70, 0.6)
+    img[200:204, 180:330] = (0.42, 0.45, 0.55)
+    c0 = 140 if later else 80
+    img[300:312, c0 + 12 : c0 + 15] *= 0.5
+    img = paint(img, 300, c0, 12, SKID)
+    if later:
+        img = tint(img)
+    return compressed(noisy(img, 102 if later else 101), 80)
+
+
+@pytest.mark.parametrize(
+    ("threshold", "min_area"),
+    [(0.5, 2.0), (0.4, 1.0), (0.3, 0.5)],
+    ids=["conservative", "balanced", "sensitive"],
+)
+def test_a_moved_skid_is_found_and_a_cloud_shadow_and_tank_shadow_are_not(tmp_path, threshold, min_area):
+    from shapely.geometry import Point, Polygon
+
+    ortho_project(tmp_path, yard(False), yard(True), CELL)
+    run_job(pipeline(), tmp_path, raster_params(threshold=threshold, minAreaM2=min_area))
+    items = read_set(tmp_path)["items"]
+    regions = [Polygon([(p[0], p[2]) for p in it["outlineLocal"]]) for it in items]
+
+    def at(row: float, col: float) -> Point:
+        return Point(-YARD * CELL / 2 + col * CELL, -YARD * CELL / 2 + row * CELL)
+
+    # the skid's old place and its new one, nothing else
+    assert len(items) == 2, [(it["areaM2"], it["at"]) for it in items]
+    for c0 in (80, 140):
+        assert sum(r.contains(at(306, c0 + 6)) for r in regions) == 1
+    for it in items:
+        # the skid (9 m2) and its shadow strip (2.25 m2)
+        assert it["areaM2"] == pytest.approx(11.25, rel=0.2)
+    cloud = at(240, 260).buffer(1).union(at(205, 255).buffer(1))  # the shadow and the lit pipe
+    tank = at(75, 75).buffer(1)
+    assert not any(r.intersects(cloud) or r.intersects(tank) for r in regions)
 
 
 def test_a_change_beside_shade_and_tint_is_still_found(tmp_path):
