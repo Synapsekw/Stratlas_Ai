@@ -105,6 +105,8 @@ jobs:
             apps/desktop/dist/*.blockmap
             apps/desktop/dist/latest*.yml
             apps/desktop/dist/SHA256SUMS-windows.txt
+            apps/desktop/dist/stratlas-update.json
+            apps/desktop/dist/*-user-guide.pdf
           retention-days: 30
           if-no-files-found: error
 
@@ -221,6 +223,7 @@ jobs:
             apps/desktop/dist/*.blockmap
             apps/desktop/dist/latest*.yml
             apps/desktop/dist/SHA256SUMS-macos.txt
+            apps/desktop/dist/stratlas-update.json
           retention-days: 30
           if-no-files-found: error
 
