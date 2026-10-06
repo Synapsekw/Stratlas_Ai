@@ -45,3 +45,4 @@ export {
   type DrawingInfo,
   type DrawingPlacement,
 } from './drawing';
+export { fitQuality, ModelBuilder, type ModelBuilderProps } from './ModelBuilder';
