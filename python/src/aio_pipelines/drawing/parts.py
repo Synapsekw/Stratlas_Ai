@@ -35,7 +35,9 @@ EL_RX = re.compile(r"(?<![A-Za-z])EL\.?\s*[=:]?\s*([+-]?\s?\d+(?:\.\d+)?)", re.I
 ROOF_RX = re.compile(r"\b(cone|conical|dome|domed)\b", re.I)
 
 TANK_LAYER = re.compile(r"tank|tk", re.I)
-BOX_LAYER = re.compile(r"skid|rack|container|box", re.I)
+BOX_LAYER = re.compile(r"skid|rack|container|box|equip", re.I)
+# a word that starts a label but is a key, not a tag ("EL 1.5", "DN300", "HT 2.5")
+NOT_A_TAG = ("EL", "DN", "HT")
 PIPE_LAYER = re.compile(r"pipe|line", re.I)
 
 
@@ -62,6 +64,11 @@ def classify_text(xz: tuple[float, float], text: str) -> TextNote:
     note = TextNote(xz, text)
     for line in text.split("\n"):
         s = line.strip()
+        # a tag that starts a label ("P-01 EL 1.5"): the tag, then the rest of the line
+        head, _, rest = s.partition(" ")
+        if rest and TAG_RX.match(head) and not head.upper().startswith(NOT_A_TAG):
+            note.tag = note.tag or head
+            s = rest.strip()
         m = DN_RX.search(s) or NB_RX.search(s)
         if m:
             note.diameter = float(m.group(1)) / 1000.0
@@ -290,16 +297,20 @@ def build_parts(
         parts.append(part)
 
     for e, line in pipes:
-        el = dia = None
-        best_el = best_d = NEAR_M + 1
+        el = dia = tag = None
+        best_el = best_d = best_tag = NEAR_M + 1
         for n in notes:
-            d = line.distance(Point(n.xz))
+            p = Point(n.xz)
+            d = line.distance(p)
             if d > NEAR_M:
                 continue
             if n.el is not None and d < best_el:
                 el, best_el = n.el, d
             if n.diameter is not None and n.diameter > 0 and d < best_d:
                 dia, best_d = n.diameter, d
+            # a tag beside the line, not one written inside a tank or a building it passes
+            if n.tag and d < best_tag and not any(s.geom.contains(p) for s in shapes):
+                tag, best_tag = n.tag, d
         y = base_y + el if el is not None else base_y + 1.0
         pts = np.array(line.coords)
         part = {
@@ -313,5 +324,7 @@ def build_parts(
             "confidence": 0.7 if dia is not None else 0.4,
             "origin": origin(e),
         }
+        if tag:
+            part["tag"] = tag
         parts.append(part)
     return parts, hints
