@@ -95,13 +95,15 @@ def _distance(target, points: np.ndarray) -> np.ndarray:
 
 
 def deviation_colours(d: np.ndarray, lo: float, hi: float) -> np.ndarray:
-    """RGBA uint8 per value: grey below ``lo``, amber half way to ``hi``, red from ``hi``."""
+    """Linear RGBA uint8 per value: grey below ``lo``, amber half way to ``hi``, red from ``hi``."""
     t = np.clip((np.abs(d) - lo) / max(hi - lo, 1e-6), 0, 1)[:, None]
     first = GREY + (AMBER - GREY) * np.clip(t * 2, 0, 1)
     second = AMBER + (RED - AMBER) * np.clip(t * 2 - 1, 0, 1)
     rgb = np.where(t <= 0.5, first, second)
     rgb[np.abs(d) < lo] = GREY
-    return np.column_stack([np.round(rgb).astype(np.uint8), np.full(len(d), 255, dtype=np.uint8)])
+    # glTF vertex colours are linear; the stops above are display (sRGB) colours
+    linear = np.power(rgb / 255.0, 2.2) * 255.0
+    return np.column_stack([np.round(linear).astype(np.uint8), np.full(len(d), 255, dtype=np.uint8)])
 
 
 class ChangeMesh:
