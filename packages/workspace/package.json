@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Renderer-side shared state: open project, project clock, selection, layer visibility, issues, focused window, camera requests.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./captures": "./src/captures.ts"
   },
   "scripts": {
     "test": "vitest run"

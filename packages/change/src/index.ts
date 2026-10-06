@@ -4,6 +4,7 @@
  * the Changes panel. Imagery, surface, point cloud, model and frame change (C2 to C4) plug in
  * through the producer registry below, so they never edit the panel.
  */
+export * from './core';
 export {
   changeProducers,
   registerChangeProducer,
