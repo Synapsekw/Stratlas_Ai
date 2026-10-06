@@ -2,8 +2,8 @@
 
 For every point of the later cloud, the distance to the earlier cloud (metres, data-conventions
 section 14): the nearest earlier point (SciPy KD-tree), refined to the distance from the local
-plane of its neighbours where they form one (so the sampling of the two surveys does not show as
-change), optionally signed along that plane's normal (up, or out of objects). Distances are capped
+plane of its neighbours where they form one, else less the local point spacing (so the sampling of
+the two surveys does not show as change), optionally signed along that plane's normal (up, or out of objects). Distances are capped
 at ``cap`` (beyond that nothing is near). The later cloud is written again as a COPC with the
 distance as a LAS 1.4 extra-bytes dimension ``Distance`` (float32, metres), added to the project as
 a derived point cloud layer with ``scalar`` metadata, and summarised as ``region`` items of a change
@@ -148,7 +148,10 @@ def c2c_distances(
             lateral = np.sqrt(np.maximum(np.einsum("fi,fi->f", rel, rel) - along**2, 0))
             spread = np.sqrt(np.einsum("fki,fki->fk", dq, dq)).mean(axis=1)
             planar = (curv < 0.05) & (lateral <= 2.5 * spread + 1e-9)
-            d[full] = np.where(planar, np.minimum(np.abs(along), d[full]), d[full])
+            # elsewhere (edges, corners, rough ground) the nearest point is up to a sampling step
+            # away even where nothing changed: take off the local spacing (about spread / 1.1)
+            rough = np.maximum(d[full] - spread / 1.1, 0)
+            d[full] = np.where(planar, np.minimum(np.abs(along), d[full]), rough)
             if signed and mass is not None:
                 # up for ground-like surfaces; out of objects (away from the nearby mass) for walls
                 up = np.abs(n[:, 2]) >= 0.3
