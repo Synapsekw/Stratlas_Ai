@@ -204,7 +204,10 @@ export function markerCard(onnx, name = 'Marker test detector') {
     description:
       'Finds the magenta survey markers of the synthetic demo. For tests and the demo only; it detects nothing real.',
     author: 'Stratlas',
-    minConfidence: 0.5,
+    // The score is marker pixels / 24 in a window. The demo's smallest marker (photos-d2 p02 M3)
+    // has 12 at 640 px with a Lanczos resize and 11 with the app's bilinear one: 0.50 or 0.46.
+    // 0.25 keeps it found whatever the resampler; the demo photos give no other detection.
+    minConfidence: 0.25,
   };
 }
 

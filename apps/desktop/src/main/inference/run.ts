@@ -90,6 +90,15 @@ export function probeWith(host: () => InferenceHost) {
   };
 }
 
+/** The pass of one photos layer during a run. */
+interface PassState {
+  name: string;
+  resumed: DetectionsFile | null;
+  done: Set<string>;
+  assessed: string[];
+  detections: Detection[];
+}
+
 export interface Runner {
   run(req: RunRequest): Promise<RunResponse>;
   cancel(runId: string): boolean;
@@ -134,50 +143,65 @@ export function createRunner(deps: RunDeps): Runner {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
 
-    const name = modelPassName(req.runId);
-    const previous = await deps.readPass(project.root, name);
-    const resumed = previous?.source === 'model' ? previous : null;
-    const done = new Set(resumed && Array.isArray(resumed.assessed) ? resumed.assessed : []);
-    const detections: Detection[] = [...(resumed?.detections ?? [])];
-    const assessed = [...done];
-    const startedAt = resumed?.run?.at ?? deps.now();
-    const singleLayer =
-      new Set(photos.map((p) => p.layer)).size === 1 ? photos[0]?.layer : undefined;
+    // One pass per photos layer: a pass names its photos by the file's `layer`, and photo ids
+    // repeat across layers (each date of a two-date project has its own p01, p02, ...).
+    const layerIds = [...new Set(photos.map((p) => p.layer))];
+    const several = layerIds.length > 1;
+    const passes = new Map(
+      await Promise.all(
+        layerIds.map(async (layer) => {
+          const name = modelPassName(several ? `${req.runId}-${layer}` : req.runId);
+          const previous = await deps.readPass(project.root, name);
+          const resumed = previous?.source === 'model' ? previous : null;
+          const done = new Set(resumed && Array.isArray(resumed.assessed) ? resumed.assessed : []);
+          const detections: Detection[] = [...(resumed?.detections ?? [])];
+          const assessed: string[] = [...done];
+          return [layer, { name, resumed, done, assessed, detections }] as [string, PassState];
+        }),
+      ),
+    );
+    const all = [...passes.values()];
+    const startedAt = all.find((p) => p.resumed?.run?.at)?.resumed?.run?.at ?? deps.now();
     const ac = new AbortController();
     active.set(req.runId, ac);
     const stopped = () => ac.signal.aborted;
 
-    const fileNow = (): DetectionsFile => ({
+    const fileOf = (layer: string, p: (typeof all)[number]): DetectionsFile => ({
       schema: 'aio.detections/1',
       source: 'model',
       producer: `${card.name} ${card.version}`,
-      createdAt: resumed?.createdAt ?? startedAt,
-      ...(singleLayer ? { layer: singleLayer } : {}),
-      assessed: [...assessed],
+      createdAt: p.resumed?.createdAt ?? startedAt,
+      layer,
+      assessed: [...p.assessed],
       run: {
         id: req.runId,
         at: startedAt,
         model: req.model,
-        images: assessed.length,
-        detections: detections.length,
+        images: p.assessed.length,
+        detections: p.detections.length,
         costUsd: 0,
       },
-      detections,
+      detections: p.detections,
     });
+    // a layer's pass is written once one of its photos is done (a run of one layer always)
+    const written = () => [...passes].filter(([, p]) => !several || p.assessed.length > 0);
     const save = async () => {
-      const w = await deps.writePass(project.root, name, fileNow());
-      if (!w.ok) throw new Error(w.error ?? `Could not save detections/${name}.`);
+      for (const [layer, p] of written()) {
+        const w = await deps.writePass(project.root, p.name, fileOf(layer, p));
+        if (!w.ok) throw new Error(w.error ?? `Could not save detections/${p.name}.`);
+      }
     };
+    const foundCount = () => all.reduce((n, p) => n + p.detections.length, 0);
 
-    const todo = photos.filter((p) => !done.has(p.photo));
+    const todo = photos.filter((p) => !passes.get(p.layer)?.done.has(p.photo));
     const total = photos.length;
-    let count = assessed.length;
+    let count = all.reduce((n, p) => n + p.assessed.length, 0);
     const report = (current?: string) => {
       deps.progress({
         runId: req.runId,
         done: count,
         total,
-        found: detections.length,
+        found: foundCount(),
         ...(current ? { current } : {}),
       });
     };
@@ -190,7 +214,8 @@ export function createRunner(deps: RunDeps): Runner {
         if (ac.signal.aborted) break;
         const layer = layers.get(it.layer);
         const photo = layer?.items.find((p) => p.id === it.photo);
-        if (!photo) continue;
+        const pass = passes.get(it.layer);
+        if (!photo || !pass) continue;
         const rel = 'path' in photo.src ? photo.src.path : `assets/sha256/${photo.src.hash}`;
         let img: DecodedImage;
         try {
@@ -214,7 +239,7 @@ export function createRunner(deps: RunDeps): Runner {
         boxes.forEach((b, k) => {
           const modelClass = card.classes[b.cls] ?? `class ${String(b.cls)}`;
           const mapped = req.classMap[modelClass];
-          detections.push({
+          pass.detections.push({
             id: detectionId(req.runId, it.layer, it.photo, k),
             photo: it.photo,
             class: mapped ?? modelClass,
@@ -233,7 +258,7 @@ export function createRunner(deps: RunDeps): Runner {
             createdAt: at,
           });
         });
-        assessed.push(it.photo);
+        pass.assessed.push(it.photo);
         count++;
         report(it.photo);
         if (++sinceSave >= SAVE_EVERY) {
@@ -252,12 +277,14 @@ export function createRunner(deps: RunDeps): Runner {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
     report();
+    const files = written().map(([, p]) => `detections/${p.name}`);
     if (failure)
       return {
         ok: false,
-        error: `${failure} The ${String(assessed.length)} photos done are kept in detections/${name}.`,
+        error: `${failure} The ${String(all.reduce((n, p) => n + p.assessed.length, 0))} photos done are kept in ${files.join(', ')}.`,
       };
-    return { ok: true, file: `detections/${name}`, count: detections.length };
+    // the first pass written (a run over several layers writes one per layer)
+    return { ok: true, file: files[0] ?? `detections/${all[0]?.name ?? ''}`, count: foundCount() };
   }
 
   return {

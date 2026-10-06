@@ -60,6 +60,13 @@ const manifest = {
       name: 'Photos',
       items: Object.keys(PHOTOS).map((id) => ({ id, src: { path: `photos/${id}.png` } })),
     },
+    // a later date: the same photo ids in another layer
+    {
+      kind: 'photos',
+      id: 'later',
+      name: 'Later photos',
+      items: ['p1', 'p2'].map((id) => ({ id, src: { path: `later/${id}.png` } })),
+    },
   ],
 } as unknown as ProjectManifest;
 
@@ -81,7 +88,7 @@ beforeEach(async () => {
           : { root, manifest },
       ),
     decode: async (_root, rel) => {
-      const id = rel.replace(/^photos\/|\.png$/g, '');
+      const id = rel.replace(/^(photos|later)\/|\.png$/g, '');
       decoded.push(id);
       // decoding takes a moment, as it does in the app
       await new Promise((r) => setTimeout(r, 20));
@@ -262,6 +269,42 @@ describe.skipIf(!ort)('runs', () => {
     });
     expect(decoded).toEqual(['p2', 'p3']);
     expect((await pass('model-r2.json')).assessed).toEqual(['p1', 'p2', 'p3']);
+  });
+
+  it('a run over two layers with the same photo ids writes one pass per layer', async () => {
+    const ipc = await installed();
+    const req = {
+      runId: 'r4',
+      projectId: 'p',
+      model: 'marker-test-detector-1.0.0',
+      items: [...items, { layer: 'later', photo: 'p1' }, { layer: 'later', photo: 'p2' }],
+      classMap: {},
+      minConfidence: 0.5,
+    };
+    // stop after the first photo of the later layer: its p1 is not the earlier p1
+    hook = (e) => {
+      if (e.done === 4) void ipc.call('inference:cancel', { runId: 'r4' });
+    };
+    expect(await ipc.call('inference:run', req)).toEqual({
+      ok: true,
+      file: 'detections/model-r4-photos.json',
+      count: 4,
+    });
+    hook = null;
+    decoded.length = 0;
+    expect(await ipc.call('inference:run', req)).toEqual({
+      ok: true,
+      file: 'detections/model-r4-photos.json',
+      count: 6,
+    });
+    expect(decoded).toEqual(['p2']);
+    const earlier = await pass('model-r4-photos.json');
+    const later = await pass('model-r4-later.json');
+    expect(earlier).toMatchObject({ layer: 'photos', assessed: ['p1', 'p2', 'p3'] });
+    expect(later).toMatchObject({ layer: 'later', assessed: ['p1', 'p2'], run: { id: 'r4' } });
+    expect(earlier.detections).toHaveLength(3);
+    expect(later.detections.map((d) => d.photo)).toEqual(['p1', 'p2', 'p2']);
+    expect(events.at(-1)).toEqual({ runId: 'r4', done: 5, total: 5, found: 6 });
   });
 
   it('refuses video frames, packages, unknown models and photos', async () => {
