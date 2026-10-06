@@ -241,13 +241,13 @@ describe('truth.json agrees with the files', () => {
 
 describe('the marker test detector on the demo photos', () => {
   /** Letterbox a photo into the 640 x 640 input (scale, grey padding below), as NCHW / 255. */
-  async function input(file) {
+  async function input(file, kernel) {
     const meta = await sharp(file).metadata();
     const k = 640 / Math.max(meta.width, meta.height);
     const w = Math.round(meta.width * k);
     const h = Math.round(meta.height * k);
     const rgb = await sharp(file)
-      .resize(w, h, { kernel: 'lanczos3' })
+      .resize(w, h, { kernel })
       .extend({ bottom: 640 - h, right: 640 - w, background: { r: 114, g: 114, b: 114 } })
       .removeAlpha()
       .raw()
@@ -258,37 +258,43 @@ describe('the marker test detector on the demo photos', () => {
     return { tensor: { dims: [1, 3, 640, 640], data: t }, k };
   }
 
-  it('finds every seeded marker in every photo, and nothing else', async () => {
-    const model = decodeOnnx(read(truth.detector.model));
-    let found = 0;
-    for (const d of ['d1', 'd2'])
-      for (const [photo, want] of Object.entries(truth.markers.photos[`photos-${d}`])) {
-        const { tensor, k } = await input(join(root, 'photos', d, `${photo}.jpg`));
-        const got = postprocessYoloV8(runOnnx(model, { images: tensor }).output0).map((x) =>
-          x.box.map((v) => v / k),
-        );
-        expect(got.length, `${d} ${photo}`).toBe(want.length);
-        for (const m of want) {
-          // the rule truth.json states: centre inside the marker box, box inside it widened by 3 px
-          const hit = got.find((g) => {
-            const cx = (g[0] + g[2]) / 2;
-            const cy = (g[1] + g[3]) / 2;
-            const [x0, y0, x1, y1] = m.bbox;
-            return (
-              cx >= x0 &&
-              cx <= x1 &&
-              cy >= y0 &&
-              cy <= y1 &&
-              g[0] >= x0 - 3 &&
-              g[1] >= y0 - 3 &&
-              g[2] <= x1 + 3 &&
-              g[3] <= y1 + 3
-            );
-          });
-          expect(hit, `${d} ${photo} ${m.marker}`).toBeTruthy();
-          found++;
+  // at the card's threshold, with a Lanczos resize and with a bilinear one (the app's)
+  it.each(['lanczos3', 'linear'])(
+    'finds every seeded marker in every photo, and nothing else (%s)',
+    async (kernel) => {
+      const model = decodeOnnx(read(truth.detector.model));
+      const { minConfidence } = readJson(truth.detector.card);
+      let found = 0;
+      for (const d of ['d1', 'd2'])
+        for (const [photo, want] of Object.entries(truth.markers.photos[`photos-${d}`])) {
+          const { tensor, k } = await input(join(root, 'photos', d, `${photo}.jpg`), kernel);
+          const got = postprocessYoloV8(runOnnx(model, { images: tensor }).output0, {
+            minConfidence,
+          }).map((x) => x.box.map((v) => v / k));
+          expect(got.length, `${d} ${photo}`).toBe(want.length);
+          for (const m of want) {
+            // the rule truth.json states: centre inside the marker box, box inside it widened by 3 px
+            const hit = got.find((g) => {
+              const cx = (g[0] + g[2]) / 2;
+              const cy = (g[1] + g[3]) / 2;
+              const [x0, y0, x1, y1] = m.bbox;
+              return (
+                cx >= x0 &&
+                cx <= x1 &&
+                cy >= y0 &&
+                cy <= y1 &&
+                g[0] >= x0 - 3 &&
+                g[1] >= y0 - 3 &&
+                g[2] <= x1 + 3 &&
+                g[3] <= y1 + 3
+              );
+            });
+            expect(hit, `${d} ${photo} ${m.marker}`).toBeTruthy();
+            found++;
+          }
         }
-      }
-    expect(found).toBe(truth.changes.detection.counts.d1 + truth.changes.detection.counts.d2);
-  }, 120_000);
+      expect(found).toBe(truth.changes.detection.counts.d1 + truth.changes.detection.counts.d2);
+    },
+    120_000,
+  );
 });
