@@ -13,7 +13,7 @@ If they do not match the build you installed, an older copy is still running: qu
 
 - **Maps are empty**: no map pack covers the site. Import a pack file or download a region in **Settings**, **Offline maps**. Orthos and plans of the project still show.
 - **A map download stopped**: open **Settings**, **Offline maps** and click **Resume**. If the workstation is offline-only, import a pack file instead.
-- **The agent says it is off**: switch on **Cloud AI** in **Settings**, **Privacy and cloud**, add a key in **AI providers**, then click **Check again**. With no network, use a local model.
+- **The agent says it is off**: switch on **Cloud AI** in **Settings**, **Privacy and cloud**, add a key in **AI providers**, then click **Check again**. With no network, use a local model (see [Set up a local model](20-local-model.md#if-it-does-not-answer)).
 - **"Workspace ID needed"**: see [Anthropic workspace ID](07-ai-agent.md#anthropic-workspace-id).
 - To make sure nothing goes out, switch on **Offline-only workstation** in **Settings**, **Privacy and cloud**. Map downloads and online update checks are then off.
 

@@ -2,7 +2,7 @@
 
 Click **Settings** at the bottom of the sidebar. The pages are grouped:
 
-- **Intelligence**: **AI providers**, **Usage and cost**, **Privacy and cloud** (see [AI agent](07-ai-agent.md)).
+- **Intelligence**: **AI providers**, **Usage and cost**, **Privacy and cloud** (see [AI agent](07-ai-agent.md)). **AI providers** also holds the **Local model** (see [Set up a local model](20-local-model.md)) and the **Detection models** (see [Local detection with ONNX models](19-local-detection.md)).
 - **Data**: **Data folder**, **Offline maps** (see [Maps](06-maps.md)), **Severity models**, **Report branding** (see [Reports](10-reports-and-exports.md#report-branding)).
 - **App**: **Graphics quality**, **Appearance**, **About and updates**.
 

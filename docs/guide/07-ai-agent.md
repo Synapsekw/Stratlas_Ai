@@ -27,7 +27,7 @@ If the agent stops with this error, it shows a **Workspace ID needed** card: ent
 
 ### A local model
 
-Under **Local model**, switch on **Use a local model** and enter the **Address** and the **Model** of an OpenAI-compatible server on this workstation (for example Ollama). Nothing goes to the cloud.
+Under **Local model**, switch on **Use a local model** and enter the **Address** and the **Model** of a server on this workstation (Ollama, LM Studio or a llama.cpp server). Nothing goes to the cloud. **Offline agent** runs every task on it. See [Set up a local model](20-local-model.md).
 
 ### Which model does what
 
@@ -42,6 +42,8 @@ Under **Local model**, switch on **Use a local model** and enter the **Address**
 | Build from drawings    | Drawings, clouds   |
 
 **Reset to defaults** puts the routes back.
+
+While the Model builder is open, the agent uses the **Build from drawings** route. Plan images and drawings go to a cloud model only when the project allows it. See [Allow cloud AI for drawings](18-model-builder.md#allow-cloud-ai-for-drawings).
 
 ## Switch cloud AI on
 

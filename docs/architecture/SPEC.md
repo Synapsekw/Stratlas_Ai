@@ -18,6 +18,8 @@
 │   IPC router (zod-validated contracts)                               │
 │ Utility process "data" (Node)                                        │
 │   library.sqlite · project.sqlite · importers · indexers · exports   │
+│ Utility process "inference" (Node, M8)                               │
+│   onnxruntime-node: local detection and mask assist                  │
 │ Renderer (React 19, sandboxed, contextIsolation, no Node)            │
 │   app shell + docking (dockview) · panels · stores (Zustand)         │
 │   Viewports: 3D · Map · Video · Photo · Point cloud · Report         │
@@ -197,7 +199,13 @@ The six existing jobs open two ways:
 
 - `python/aio_pipelines`: a versioned, separately signed pipeline pack. It is copied from the Asset Inspection Kit (cameras, project, records, report), the Volumetric Survey Kit (resample, process, package) and Kestrel backend modules (PotreeConverter import with RAM admission, volumes and surfaces, reportlab reports). Kestrel's OpenAPI-first discipline is kept by defining pipeline jobs as JSON-RPC methods with schemas in `packages/schema`.
 - Main spawns jobs, streams progress and logs to a Jobs panel, supports cancel and resume from per-step manifests.
-- Detection review uses the annotation suite. AI-assisted detection calls the routed vision model and writes draft issues. Local inference later runs ONNX through onnxruntime (no training, no AGPL code in customer builds).
+- Detection review uses the annotation suite. AI-assisted detection calls the routed vision model and writes draft issues. Local detection runs ONNX models through onnxruntime (no training, no AGPL code in customer builds).
+- Where the ONNX runtime runs (M8, BLD-10):
+  - `onnxruntime-node` runs in an Electron utility process, never in main or the renderer. The host is `apps/desktop/src/main/inference/` (`utility.ts`, `electron.ts`); the process entry `workerMain.ts` is built by electron-vite as `inferenceWorker` (`electron.vite.config.ts`, with `onnxruntime-node` external). It starts on first use, serves local detection and mask assist, and is started again after a crash without taking main down.
+  - Execution providers, in order: DirectML on Windows, CoreML on macOS, then CPU. When the preferred provider cannot load a model, the session falls back to CPU and reports the provider in use. Settings can force CPU.
+  - The native binaries (the binding, the onnxruntime and DirectML DLLs on Windows, the dylib on macOS) are unpacked from `app.asar` (`asarUnpack` in `electron-builder.yml`), and each installer keeps only its own platform's binaries. onnxruntime-node 1.30 ships a macOS binary for arm64 only, so Intel Macs have no local detection.
+  - Models stay in the person's models folder (`<userData>/models/detect/<id>/`, or `Settings.inference.modelsDir`; a pipeline pack may carry more in `<pack>/models/detect/`). Each folder holds `model.onnx` and its model card `model.json` (`aio.detector/1`, data-conventions section 16) with the SPDX licence and the SHA-256 of the model. No model ships with the app.
+  - Main decodes photos and passes pixels to the process; results are written as draft detection passes. Nothing leaves the machine.
 - Customer package export: ZIP64 store mode, optional AES, read-only player flag, AI policy forced to forbid unless the package allows it.
 
 ## 8. Quality, security and testing

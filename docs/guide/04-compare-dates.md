@@ -14,6 +14,14 @@ Projects surveyed more than once (for example a stockpile yard flown every month
 
 To stop, click **Stop comparing dates**. {product} remembers the comparison per project.
 
+## What changed
+
+While you compare, **Show changes** beside **Compare dates** lists what changed between the two dates and marks it on both views. See [Changes between two dates](14-changes.md).
+
+- Orthos and surfaces: [Imagery and surface change](15-imagery-and-surface-change.md).
+- Point clouds and 3D models: [Point cloud and 3D model change](16-cloud-and-model-change.md).
+- Video frames and photos of the same view: [Same view on another date](17-frames.md).
+
 > While you compare, the **?** next to **Stop comparing dates** opens this page.
 
 ## Two orthos side by side
@@ -21,6 +29,8 @@ To stop, click **Stop comparing dates**. {product} remembers the comparison per 
 1. Click **Split**.
 2. Set **Left side shows** and **Right side shows** to **Ortho and plans**.
 3. Pick a date on each side.
+
+With two maps or two orthos of different dates, a bar at the top of the views offers **Side by side**, **Swipe** and **Blend**. See [Swipe and blend two dates](15-imagery-and-surface-change.md#swipe-and-blend-two-dates).
 
 ## What works on which side
 
