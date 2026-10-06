@@ -32,6 +32,7 @@ import { SETTINGS_HELP } from '../help/store';
 import { About } from './settings/About';
 import { Appearance } from './settings/Appearance';
 import { Keyboard } from './settings/Keyboard';
+import { LocalModel } from './settings/LocalModel';
 import { MapPacks } from './settings/MapPacks';
 import { ProviderConnection } from './settings/ProviderConnection';
 import { ReportBranding } from './settings/ReportBranding';
@@ -495,76 +496,6 @@ function Routing() {
           })}
         </tbody>
       </table>
-    </div>
-  );
-}
-
-/** AI-9: an OpenAI-compatible model server on this machine (Ollama), off by default. */
-function LocalModel() {
-  const stored = useShell((s) => s.settings.localModel);
-  const cfg = stored ?? DEFAULT_LOCAL_MODEL;
-  const [baseUrl, setBaseUrl] = useState(cfg.baseUrl);
-  const [model, setModel] = useState(cfg.model);
-  const [error, setError] = useState<string | null>(null);
-  const save = async (patch: Partial<typeof cfg>) => {
-    const next = { ...cfg, ...patch };
-    const e = await shell.getState().updateSettings({ localModel: next });
-    setError(e ? 'Use an address such as http://localhost:11434/v1 and a model name.' : null);
-  };
-  return (
-    <div className="sblock">
-      <h2>
-        Local model <span className="sub">OpenAI-compatible, for example Ollama</span>
-      </h2>
-      <div className="opt">
-        <b>Use a local model</b>
-        <span>
-          Route a task to Local model below. While the address is on this machine nothing leaves
-          this workstation, so it works with cloud AI off and in projects that forbid cloud AI.
-        </span>
-        <Switch
-          checked={cfg.enabled}
-          label="Use a local model"
-          onChange={(v) => void save({ enabled: v })}
-        />
-      </div>
-      <div className="local-row">
-        <label>
-          <span className="faint">Address</span>
-          <input
-            className="input mono"
-            aria-label="Local model address"
-            value={baseUrl}
-            spellCheck={false}
-            onChange={(e) => {
-              setBaseUrl(e.target.value);
-            }}
-            onBlur={() => {
-              if (baseUrl.trim() !== cfg.baseUrl) void save({ baseUrl: baseUrl.trim() });
-            }}
-          />
-        </label>
-        <label>
-          <span className="faint">Model</span>
-          <input
-            className="input mono"
-            aria-label="Local model name"
-            value={model}
-            spellCheck={false}
-            onChange={(e) => {
-              setModel(e.target.value);
-            }}
-            onBlur={() => {
-              if (model.trim() && model.trim() !== cfg.model) void save({ model: model.trim() });
-            }}
-          />
-        </label>
-      </div>
-      {error && (
-        <p className="prov-err" role="alert">
-          {error}
-        </p>
-      )}
     </div>
   );
 }

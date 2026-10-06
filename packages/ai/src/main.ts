@@ -18,9 +18,11 @@ import type {
 } from '@aio/schema';
 import {
   generateText,
+  RetryError,
   stepCountIs,
   streamText,
   type JSONValue,
+  type LanguageModel,
   type LanguageModelUsage,
   type ModelMessage,
   type Tool,
@@ -33,17 +35,33 @@ import {
   detectUserText,
   parseDetectReply,
 } from './detect';
-import { describeError } from './errors';
+import { describeError, isNetworkError, type DescribedError } from './errors';
+import {
+  COMPACT_MAX_STEPS,
+  DEFAULT_LOCAL_TIMEOUT_MS,
+  isToolsUnsupported,
+  localGate,
+  outputBudget,
+  trimConversation,
+} from './local';
 import { estimateCostUsd } from './pricing';
-import { contextBlock, systemPrompt } from './prompt';
+import { contextBlock, summaryBlock, systemPrompt, type PromptProfile } from './prompt';
 import {
   createProviderRegistry,
   localProvider,
   type ModelProvider,
   type ProviderRegistry,
 } from './providers';
-import { defaultRoutes, missingKeyMessage, routeFor, TEST_MODELS, type ModelRoute } from './routes';
-import { riskOf, toolsForWindow } from './tools';
+import { createToolCallRepair } from './repair';
+import {
+  defaultRoutes,
+  missingKeyMessage,
+  routeFor,
+  serverRoot,
+  TEST_MODELS,
+  type ModelRoute,
+} from './routes';
+import { riskOf, toolsForWindow, type ToolProfile } from './tools';
 
 export { describeError, sanitize, type DescribedError } from './errors';
 export {
@@ -54,6 +72,12 @@ export {
   localProvider,
 } from './providers';
 export { createScriptedProvider } from './scripted';
+export {
+  discoverLocalModels,
+  probeLocalModel,
+  type DiscoverResult,
+  type ProbeResult,
+} from './local';
 export { addProviderUsage, totalUsage, type ProviderUsageRow } from './pricing';
 export type { BuiltInProviderOptions, ModelProvider, ProviderRegistry } from './providers';
 
@@ -115,8 +139,21 @@ export interface AgentRuntimeOptions {
 
 const MAX_STEPS = 8;
 
+const stepLimitAfter = (n: number) =>
+  `I stopped after ${String(n)} steps. Send another message to continue.`;
+
 /** Fixed texts. Provider errors are described by `describeError` in errors.ts. */
 export const MESSAGES = {
+  answerOnly:
+    "This local model cannot use the app's tools, so the agent answers in text only. Choose a model with tool calling in Settings, AI providers, to let it act.",
+  answerOnlyNotice:
+    "This local model cannot use the app's tools, so I can only answer in text. I cannot move the camera or change anything.",
+  noVision:
+    'The local model cannot read images. Choose a model with vision for Photo and frame vision in Settings, AI providers.',
+  localDown: (root: string) =>
+    `Cannot reach the local model server at ${root}. Start Ollama, LM Studio or the llama.cpp server, or check the address in Settings, AI providers.`,
+  localTimeout: (ms: number) =>
+    `The local model did not answer within ${String(Math.ceil(ms / 1000))} s. It may still be loading: try again, or allow more time in Settings, AI providers.`,
   cloudOff: 'Cloud AI is off. Turn it on in Settings, AI providers, to use the agent.',
   busy: 'The agent is already working on this message.',
   noProvider: 'This AI provider is not available. Choose another in Settings, AI providers.',
@@ -126,7 +163,7 @@ export const MESSAGES = {
     'The local model is off. Turn it on in Settings, AI providers, or route the agent to a cloud provider.',
   declined: 'The person declined this action. Do not try it again unless they ask.',
   stopped: 'Stopped.',
-  stepLimit: `I stopped after ${MAX_STEPS} steps. Send another message to continue.`,
+  stepLimit: stepLimitAfter(MAX_STEPS),
   failed: 'Something went wrong in the agent. Try again.',
   noTestModel: 'No model is set for this provider. Choose one in Settings, AI providers.',
 } as const;
@@ -147,8 +184,47 @@ interface Run {
 
 class Cancelled extends Error {}
 
+/**
+ * Silence watchdog for a local model: fires after `ms` without a stream part (the first token
+ * included: a model may be loading), paused while a tool waits for the person.
+ */
+function idleWatchdog(ms: number) {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let paused = 0;
+  let fired = false;
+  const arm = () => {
+    clearTimeout(timer);
+    if (paused > 0) return;
+    timer = setTimeout(() => {
+      fired = true;
+      controller.abort();
+    }, ms);
+  };
+  arm();
+  return {
+    signal: controller.signal,
+    fired: () => fired,
+    kick: arm,
+    pause: () => {
+      paused += 1;
+      clearTimeout(timer);
+    },
+    resume: () => {
+      paused = Math.max(0, paused - 1);
+      arm();
+    },
+    stop: () => {
+      paused = Number.POSITIVE_INFINITY;
+      clearTimeout(timer);
+    },
+  };
+}
+
+type Watchdog = ReturnType<typeof idleWatchdog>;
+
 type Check =
-  | { ok: true; route: ModelRoute; provider: ModelProvider }
+  | { ok: true; route: ModelRoute; provider: ModelProvider; answerOnly?: boolean }
   | {
       ok: false;
       reason: NonNullable<IpcResponse<'ai:status'>['reason']>;
@@ -185,14 +261,20 @@ export function createAgentRuntime(
     });
   }
 
-  function buildTools(runId: string, run: Run, window: WindowKind): ToolSet {
+  function buildTools(
+    runId: string,
+    run: Run,
+    window: WindowKind,
+    profile: ToolProfile = 'full',
+    watchdog?: Watchdog,
+  ): ToolSet {
     const set: ToolSet = {};
-    for (const spec of toolsForWindow(window)) {
+    for (const spec of toolsForWindow(window, profile)) {
       const name = spec.meta.name;
       const t: Tool<unknown, Outcome> = {
         description: spec.meta.description,
         inputSchema: spec.input,
-        execute: (input, { toolCallId }) => {
+        execute: async (input, { toolCallId }) => {
           const outcome = waitForRenderer(run, toolCallId);
           host.emit({
             type: 'tool-call',
@@ -202,7 +284,13 @@ export function createAgentRuntime(
             input,
             risk: riskOf(name),
           });
-          return outcome;
+          // The person may take their time to approve: that is not the model being slow.
+          watchdog?.pause();
+          try {
+            return await outcome;
+          } finally {
+            watchdog?.resume();
+          }
         },
         toModelOutput: ({ output }) => toModelOutput(output),
       };
@@ -254,7 +342,48 @@ export function createAgentRuntime(
         cloud,
       };
     }
+    // A local route is checked against what the capability probe found (AI-9).
+    if (route.provider === 'local') {
+      const gate = localGate(host.localModel?.(), task);
+      if (gate === 'no-vision') {
+        return { ok: false, reason: 'no-route', message: MESSAGES.noVision, route, cloud };
+      }
+      if (gate === 'answer-only') return { ok: true, route, provider, answerOnly: true };
+    }
     return { ok: true, route, provider };
+  }
+
+  /** The key a call uses: required for cloud providers, optional for a local server. Never logged. */
+  async function keyFor(provider: ModelProvider, id: AiProvider): Promise<string | null> {
+    return provider.needsKey || provider.optionalKey ? host.getKey(id) : null;
+  }
+
+  /** The local model settings when `route` runs on the local model. */
+  function localOf(route: ModelRoute): LocalModelSettings | undefined {
+    return route.provider === 'local' ? host.localModel?.() : undefined;
+  }
+
+  /** A provider failure for the person; a local server that is down gets its own message. */
+  function describeFailure(
+    e: unknown,
+    provider: ModelProvider,
+    route: ModelRoute,
+    key: string | null,
+  ): DescribedError {
+    const described = describeError(e, {
+      label: provider.label,
+      model: route.model,
+      secrets: [key],
+    });
+    const cause = RetryError.isInstance(e) ? e.lastError : e;
+    if (route.provider === 'local' && isNetworkError(cause)) {
+      const cfg = host.localModel?.();
+      return {
+        ...described,
+        message: MESSAGES.localDown(cfg ? serverRoot(cfg.baseUrl) : 'the address'),
+      };
+    }
+    return described;
   }
 
   async function execute(
@@ -262,69 +391,51 @@ export function createAgentRuntime(
     run: Run,
     route: ModelRoute,
     provider: ModelProvider,
+    answerOnlyAtStart: boolean,
   ) {
     const { runId } = req;
-    const label = provider.label;
-    const key = provider.needsKey ? await host.getKey(route.provider) : null;
+    const key = await keyFor(provider, route.provider);
     const model = provider.languageModel(route.model, key);
-    let steps = 0;
-    let lastFinish: string | undefined;
+    const local = localOf(route);
+    const watchdog = local ? idleWatchdog(local.timeoutMs ?? DEFAULT_LOCAL_TIMEOUT_MS) : undefined;
+    const firstReply = !req.messages.some((m) => m.role === 'assistant');
+    const progress = { steps: 0, lastFinish: undefined as string | undefined };
+    let answerOnly = answerOnlyAtStart;
     try {
-      const result = streamText({
-        model,
-        instructions: systemPrompt(req.window),
-        messages: toModelMessages(req),
-        tools: buildTools(runId, run, req.window),
-        stopWhen: stepCountIs(maxSteps),
-        abortSignal: run.controller.signal,
-        maxRetries: options.maxRetries ?? 2,
-        maxOutputTokens: 16_000,
-        // Errors arrive as stream parts and are logged below, sanitised; the SDK default would
-        // print the raw error to the console (and so to the log file).
-        onError: () => undefined,
-      });
-      for await (const part of result.stream) {
-        if (run.controller.signal.aborted) throw new Cancelled();
-        switch (part.type) {
-          case 'text-delta':
-            if (part.text) host.emit({ type: 'text', runId, delta: part.text });
-            break;
-          case 'finish-step':
-            steps += 1;
-            lastFinish = part.finishReason;
-            {
-              const event = usageEvent(runId, route, part.usage);
-              host.emit(event);
-              if (req.projectId && event.type === 'usage') {
-                host.recordUsage?.(req.projectId, {
-                  provider: route.provider,
-                  model: route.model,
-                  inputTokens: event.inputTokens,
-                  outputTokens: event.outputTokens,
-                  ...(event.costUsd !== undefined ? { costUsd: event.costUsd } : {}),
-                });
-              }
-            }
-            break;
-          case 'error':
-            throw part.error;
-          case 'abort':
-            throw new Cancelled();
-          default:
-            break;
+      for (;;) {
+        try {
+          if (answerOnly && firstReply) {
+            host.emit({ type: 'text', runId, delta: `${MESSAGES.answerOnlyNotice}\n\n` });
+          }
+          await streamOnce(req, run, route, model, { local, answerOnly, watchdog, progress });
+          break;
+        } catch (e) {
+          // A server that refuses tools before anything was said: answer in text only.
+          if (local && !answerOnly && progress.steps === 0 && isToolsUnsupported(e)) {
+            answerOnly = true;
+            watchdog?.kick();
+            continue;
+          }
+          throw e;
         }
       }
       if (run.controller.signal.aborted) throw new Cancelled();
-      if (steps >= maxSteps && lastFinish === 'tool-calls') {
-        host.emit({ type: 'text', runId, delta: `\n\n${MESSAGES.stepLimit}` });
-      }
       host.emit({ type: 'done', runId });
     } catch (e) {
+      if (watchdog?.fired() && !run.controller.signal.aborted) {
+        console.warn(`agent run timed out (${provider.label} ${route.model})`);
+        host.emit({
+          type: 'error',
+          runId,
+          message: MESSAGES.localTimeout(local?.timeoutMs ?? DEFAULT_LOCAL_TIMEOUT_MS),
+        });
+        return;
+      }
       if (e instanceof Cancelled || run.controller.signal.aborted) {
         host.emit({ type: 'error', runId, message: MESSAGES.stopped });
         return;
       }
-      const described = describeError(e, { label, model: route.model, secrets: [key] });
+      const described = describeFailure(e, provider, route, key);
       console.warn(`agent run failed: ${described.log}`);
       host.emit({
         type: 'error',
@@ -332,6 +443,101 @@ export function createAgentRuntime(
         message: described.message,
         ...(described.code ? { code: described.code } : {}),
       });
+    } finally {
+      watchdog?.stop();
+    }
+  }
+
+  /** One streamed agent run (all its steps). Throws on provider errors and cancel. */
+  async function streamOnce(
+    req: IpcRequest<'ai:send'>,
+    run: Run,
+    route: ModelRoute,
+    model: LanguageModel,
+    o: {
+      local: LocalModelSettings | undefined;
+      answerOnly: boolean;
+      watchdog: Watchdog | undefined;
+      progress: { steps: number; lastFinish: string | undefined };
+    },
+  ): Promise<void> {
+    const { runId } = req;
+    const { local, watchdog, progress } = o;
+    const toolProfile: ToolProfile = local?.toolProfile === 'compact' ? 'compact' : 'full';
+    const limit = toolProfile === 'compact' ? Math.min(COMPACT_MAX_STEPS, maxSteps) : maxSteps;
+    const promptProfile: PromptProfile = o.answerOnly
+      ? 'answer-only'
+      : toolProfile === 'compact'
+        ? 'compact'
+        : 'full';
+    // Small context windows: the newest turns, the older ones as a short summary.
+    const trimmed = local
+      ? trimConversation(req.messages, local.contextTokens)
+      : { messages: req.messages, summary: null };
+    const instructions = trimmed.summary
+      ? `${systemPrompt(req.window, promptProfile)}\n\n${summaryBlock(trimmed.summary)}`
+      : systemPrompt(req.window, promptProfile);
+    const signal = watchdog
+      ? AbortSignal.any([run.controller.signal, watchdog.signal])
+      : run.controller.signal;
+    const tools = o.answerOnly
+      ? undefined
+      : buildTools(runId, run, req.window, toolProfile, watchdog);
+    const result = streamText({
+      model,
+      instructions,
+      messages: toModelMessages({ ...req, messages: trimmed.messages }),
+      ...(tools ? { tools } : {}),
+      stopWhen: stepCountIs(limit),
+      abortSignal: signal,
+      maxRetries: options.maxRetries ?? 2,
+      maxOutputTokens: local ? outputBudget(local.contextTokens) : 16_000,
+      ...(local
+        ? {
+            // Small models: repair almost-JSON tool calls, and one call at a time.
+            repairToolCall: createToolCallRepair({ model, abortSignal: signal }),
+            ...(tools ? { providerOptions: { openai: { parallelToolCalls: false } } } : {}),
+          }
+        : {}),
+      // Errors arrive as stream parts and are logged below, sanitised; the SDK default would
+      // print the raw error to the console (and so to the log file).
+      onError: () => undefined,
+    });
+    for await (const part of result.stream) {
+      watchdog?.kick();
+      if (run.controller.signal.aborted) throw new Cancelled();
+      switch (part.type) {
+        case 'text-delta':
+          if (part.text) host.emit({ type: 'text', runId, delta: part.text });
+          break;
+        case 'finish-step':
+          progress.steps += 1;
+          progress.lastFinish = part.finishReason;
+          {
+            const event = usageEvent(runId, route, part.usage);
+            host.emit(event);
+            if (req.projectId && event.type === 'usage') {
+              host.recordUsage?.(req.projectId, {
+                provider: route.provider,
+                model: route.model,
+                inputTokens: event.inputTokens,
+                outputTokens: event.outputTokens,
+                ...(event.costUsd !== undefined ? { costUsd: event.costUsd } : {}),
+              });
+            }
+          }
+          break;
+        case 'error':
+          throw part.error;
+        case 'abort':
+          throw new Cancelled();
+        default:
+          break;
+      }
+    }
+    if (run.controller.signal.aborted) throw new Cancelled();
+    if (progress.steps >= limit && progress.lastFinish === 'tool-calls') {
+      host.emit({ type: 'text', runId, delta: `\n\n${stepLimitAfter(limit)}` });
     }
   }
 
@@ -341,7 +547,11 @@ export function createAgentRuntime(
     route: ModelRoute,
     provider: ModelProvider,
   ): Promise<IpcResponse<'ai:detect'>> {
-    const key = provider.needsKey ? await host.getKey(route.provider) : null;
+    const key = await keyFor(provider, route.provider);
+    const local = localOf(route);
+    const timeoutMs = local
+      ? Math.max(DETECT_TIMEOUT_MS, local.timeoutMs ?? DEFAULT_LOCAL_TIMEOUT_MS)
+      : DETECT_TIMEOUT_MS;
     const prompt = { classes: req.classes, severity: req.severity, hint: req.hint };
     const content: UserContent = [
       { type: 'text', text: detectUserText(req.images.length, req.hint) },
@@ -359,10 +569,7 @@ export function createAgentRuntime(
         messages: [{ role: 'user', content }],
         maxRetries: options.maxRetries ?? 2,
         maxOutputTokens: 8_000,
-        abortSignal: AbortSignal.any([
-          run.controller.signal,
-          AbortSignal.timeout(DETECT_TIMEOUT_MS),
-        ]),
+        abortSignal: AbortSignal.any([run.controller.signal, AbortSignal.timeout(timeoutMs)]),
       });
       const u = usageEvent(req.runId, route, result.usage);
       const usage = u.type === 'usage' ? u : null;
@@ -394,11 +601,7 @@ export function createAgentRuntime(
     } catch (e) {
       if (run.controller.signal.aborted)
         return { ok: false, error: MESSAGES.stopped, stopped: true };
-      const described = describeError(e, {
-        label: provider.label,
-        model: route.model,
-        secrets: [key],
-      });
+      const described = describeFailure(e, provider, route, key);
       console.warn(`detection request failed: ${described.log}`);
       return {
         ok: false,
@@ -418,7 +621,7 @@ export function createAgentRuntime(
         runs.delete(req.runId);
         return { ok: false, error: gate.message };
       }
-      void execute(req, run, gate.route, gate.provider).finally(() => {
+      void execute(req, run, gate.route, gate.provider, gate.answerOnly === true).finally(() => {
         runs.delete(req.runId);
       });
       return { ok: true };
@@ -440,6 +643,10 @@ export function createAgentRuntime(
       if (gate.ok) {
         return {
           ready: true,
+          // The agent can still answer, in text only: the panel shows why it cannot act.
+          ...(gate.answerOnly
+            ? { reason: 'answer-only' as const, message: MESSAGES.answerOnly }
+            : {}),
           route: { task: gate.route.task, provider: gate.route.provider, model: gate.route.model },
           cloud: gate.provider.cloud,
         };
@@ -473,7 +680,7 @@ export function createAgentRuntime(
       const model =
         routed?.model ?? (id === 'local' ? host.localModel?.()?.model : TEST_MODELS[id]);
       if (!model) return { ok: false, message: MESSAGES.noTestModel };
-      const key = provider.needsKey ? await host.getKey(id) : null;
+      const key = await keyFor(provider, id);
       if (provider.needsKey && !key) {
         return { ok: false, message: missingKeyMessage(provider.label), model };
       }
@@ -511,7 +718,7 @@ export function createAgentRuntime(
         const gate = await check(req.task, req.projectId);
         if (!gate.ok) return { ok: false, error: gate.message };
         const { route, provider } = gate;
-        const key = provider.needsKey ? await host.getKey(route.provider) : null;
+        const key = await keyFor(provider, route.provider);
         try {
           const result = await generateText({
             model: provider.languageModel(route.model, key),
@@ -534,11 +741,7 @@ export function createAgentRuntime(
           return { ok: true, text: result.text, provider: route.provider, model: route.model };
         } catch (e) {
           if (run.controller.signal.aborted) return { ok: false, error: MESSAGES.stopped };
-          const described = describeError(e, {
-            label: provider.label,
-            model: route.model,
-            secrets: [key],
-          });
+          const described = describeFailure(e, provider, route, key);
           console.warn(`draft failed: ${described.log}`);
           return { ok: false, error: described.message };
         }

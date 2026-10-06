@@ -927,7 +927,16 @@ function registerIpc(): void {
   registerChangeIpc({ handle });
   registerModelBuilderIpc({ handle });
   registerInferenceIpc({ handle });
-  registerLocalModelsIpc({ handle });
+  registerLocalModelsIpc({
+    handle,
+    localModel: () => settings.current().localModel,
+    cloudAllowed: () => policy.cloudAllowed(settings.current().cloudAi),
+    getKey: async () => {
+      const key = await keys.getKey('local');
+      registerSecret(key);
+      return key;
+    },
+  });
 }
 
 /** Hand a package path to the renderer (second launch, macOS open-file). */

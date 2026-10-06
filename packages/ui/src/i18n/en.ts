@@ -1253,6 +1253,77 @@ export const en = {
   'help.compare': 'Help on comparing dates',
   'det.sheet.issues_one': '{count} issue on this photo',
   'det.sheet.issues_other': '{count} issues on this photo',
+  // M8 C7: the local model in Settings, AI providers (the person's own server, nothing bundled)
+  'localAi.title': 'Local model',
+  'localAi.sub': 'Ollama, LM Studio or a llama.cpp server',
+  'localAi.use': 'Use a local model',
+  'localAi.useHint':
+    'Route a task to Local model below. While the address is on this machine nothing leaves this workstation, so it works with cloud AI off and in projects that forbid cloud AI.',
+  'localAi.address': 'Address',
+  'localAi.addressLabel': 'Local model address',
+  'localAi.model': 'Model',
+  'localAi.modelLabel': 'Local model name',
+  'localAi.saveError': 'Use an address such as http://localhost:11434/v1 and a model name.',
+  'localAi.find': 'Find models',
+  'localAi.finding': 'Looking',
+  'localAi.server.ollama': 'Ollama',
+  'localAi.server.openai': 'OpenAI-compatible server',
+  'localAi.found_one': '{server} at {address}: {count} model',
+  'localAi.found_other': '{server} at {address}: {count} models',
+  'localAi.models': 'Models on the server',
+  'localAi.choose': 'Use {model}',
+  'localAi.chosen': 'In use',
+  'localAi.badge.tools': 'Tools',
+  'localAi.badge.vision': 'Vision',
+  'localAi.badge.context': '{size} context',
+  'localAi.remoteWarn':
+    '{address} is on another machine. Requests to it leave this workstation, so they count as cloud AI.',
+  'localAi.remoteContinue': 'Look there anyway',
+  'localAi.cancel': 'Cancel',
+  'localAi.test': 'Test',
+  'localAi.testing': 'Testing',
+  'localAi.yes': 'yes',
+  'localAi.no': 'no',
+  'localAi.tested': 'Tools {tools}, vision {vision}. First answer in {seconds} s.',
+  'localAi.answerOnly': 'This model cannot call tools: the agent will answer in text only.',
+  'localAi.profile': 'Tool list',
+  'localAi.profileHint': 'Compact offers fewer tools with short descriptions, for small models.',
+  'localAi.profile.full': 'Full',
+  'localAi.profile.compact': 'Compact',
+  'localAi.wait': 'Wait for the first answer',
+  'localAi.waitHint':
+    'A model may need time to load, most of all on a computer without a graphics card.',
+  'localAi.wait.option': '{minutes} min',
+  'localAi.key': 'Server key',
+  'localAi.keyHint':
+    'Only for a server that asks for one, such as LM Studio or a secured llama.cpp server. Kept in the system vault, never in the settings file.',
+  'localAi.keyLabel': 'Local server key',
+  'localAi.keyPlaceholder': 'Optional',
+  'localAi.keySave': 'Save key',
+  'localAi.keyStored': 'Key stored',
+  'localAi.keyReplace': 'Replace key',
+  'localAi.keyShort': 'That key is too short. Paste the whole key.',
+  'localAi.keyFailed': 'The system vault did not accept the key.',
+  'localAi.offline': 'Offline agent',
+  'localAi.offlineHint':
+    'Routes agent chat, vision, report writing, extraction and building from drawings to the local model in one step. Turn it off to go back to the routes before.',
+  'localAi.offlineOn': 'Every task runs on {model}. Nothing leaves this machine.',
+  'localAi.offlineRemote': 'Every task runs on {model}, on another machine: data leaves this one.',
+  'localAi.guide.title': 'Set up a local model',
+  'localAi.guide.intro':
+    'No model comes with the app. Install one of these free servers yourself, then download a model with tool calling. A model that also has vision can look at photos.',
+  'localAi.guide.ollama':
+    'Ollama: install it from ollama.com, then download a model marked tools in its library with ollama pull and the model name. It listens on port 11434.',
+  'localAi.guide.lmstudio':
+    'LM Studio: install it from lmstudio.ai, download a model with tool use in its Discover tab, then start the server in its Developer tab. It listens on port 1234.',
+  'localAi.guide.llamacpp':
+    'llama.cpp server: start llama-server with a GGUF model and the --jinja option, which tool calling needs. It listens on port 8080.',
+  'localAi.guide.then':
+    'Then press Find models, choose the model and press Test. Turn on Offline agent to run every task on it.',
+  'localAi.guide.hardware':
+    'Small models answer more slowly and make more mistakes than cloud models. Without a graphics card an answer can take tens of seconds. Choose Compact for a model with a small context window.',
+  'localAi.guide.licence':
+    'You install the model, so its licence terms apply to you. Check them before you use it for work.',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

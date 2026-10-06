@@ -1,6 +1,13 @@
 import { ToolMeta, WindowKind } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { approvalFor, getToolSpec, TOOL_SPECS, toolsForWindow, undoable } from './tools';
+import {
+  approvalFor,
+  COMPACT_TOOLS,
+  getToolSpec,
+  TOOL_SPECS,
+  toolsForWindow,
+  undoable,
+} from './tools';
 
 describe('tool catalogue', () => {
   it('has valid metadata for every tool', () => {
@@ -118,5 +125,66 @@ describe('approval policy', () => {
       expect(undoable(n), n).toBe(true);
     }
     expect(undoable('list_issues')).toBe(false);
+  });
+});
+
+describe('compact tool profile (small local models)', () => {
+  const names = (w: WindowKind, p: 'full' | 'compact') =>
+    toolsForWindow(w, p).map((s) => s.meta.name);
+
+  it('offers a short list with short descriptions in every window', () => {
+    for (const w of WindowKind.options) {
+      const compact = toolsForWindow(w, 'compact');
+      expect(compact.length, w).toBeGreaterThan(3);
+      expect(compact.length, w).toBeLessThanOrEqual(14);
+      expect(compact.length, w).toBeLessThan(toolsForWindow(w, 'full').length);
+      for (const s of compact) {
+        expect(s.meta.description.length, s.meta.name).toBeLessThanOrEqual(100);
+        expect(s.meta.description, s.meta.name).not.toMatch(/[–—]/);
+        expect(COMPACT_TOOLS[s.meta.name], s.meta.name).toBe(s.meta.description);
+      }
+    }
+  });
+
+  it('keeps the camera, issue and layer tools in the 3D view', () => {
+    expect(names('scene3d', 'compact')).toEqual(
+      expect.arrayContaining([
+        'find_places',
+        'fly_to',
+        'set_view',
+        'list_issues',
+        'create_issue_draft',
+        'list_layers',
+        'set_layer_visible',
+      ]),
+    );
+  });
+
+  it('respects the windows a tool belongs to', () => {
+    expect(names('issues', 'compact')).not.toContain('set_layer_visible');
+    for (const w of WindowKind.options) {
+      const full = names(w, 'full');
+      for (const n of names(w, 'compact')) expect(full, `${w} ${n}`).toContain(n);
+    }
+  });
+
+  it('names the change and modelling tools, so they join once registered', () => {
+    for (const n of [
+      'compare_captures',
+      'list_changes',
+      'show_change',
+      'run_change_detection',
+      'propose_model_parts',
+      'fit_primitives',
+      'edit_model_part',
+      'build_model',
+    ]) {
+      expect(COMPACT_TOOLS[n], n).toBeDefined();
+    }
+  });
+
+  it('keeps the full list and descriptions by default', () => {
+    expect(toolsForWindow('scene3d')).toEqual(toolsForWindow('scene3d', 'full'));
+    expect(getToolSpec('fly_to')?.meta.description.length).toBeGreaterThan(100);
   });
 });
