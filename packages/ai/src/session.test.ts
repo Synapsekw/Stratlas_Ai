@@ -24,6 +24,8 @@ interface BridgeOpts {
   alwaysAllow?: boolean;
   cloud?: boolean;
   saved?: Conversation;
+  /** The ready route can only answer in text (a local model without tool calling). */
+  answerOnly?: string;
 }
 
 function fakeBridge(opts: BridgeOpts = {}) {
@@ -41,7 +43,9 @@ function fakeBridge(opts: BridgeOpts = {}) {
             cloud: true,
             route,
           }
-        : { ready: true, route, cloud: opts.cloud ?? true };
+        : opts.answerOnly
+          ? { ready: true, route, cloud: false, reason: 'answer-only', message: opts.answerOnly }
+          : { ready: true, route, cloud: opts.cloud ?? true };
   const bridge: AioBridge = {
     invoke: <C extends IpcChannel>(channel: C, req: IpcRequest<C>) => {
       calls.push({ channel, req });
@@ -152,6 +156,17 @@ describe('agent session availability', () => {
     expect(t.session.getState().availability).toMatchObject({
       status: 'ready',
       route: { model: 'gpt-5' },
+    });
+  });
+
+  it('stays ready with the reason when the local model can only answer in text', async () => {
+    const t = setup({ answerOnly: 'This local model cannot use the app tools.' });
+    await t.session.refresh();
+    expect(t.session.getState().availability).toEqual({
+      status: 'ready',
+      route: { task: 'chat', provider: 'openai', model: 'gpt-5' },
+      cloud: false,
+      notice: 'This local model cannot use the app tools.',
     });
   });
 

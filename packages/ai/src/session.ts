@@ -42,7 +42,13 @@ type DisabledReason = NonNullable<IpcResponse<'ai:status'>['reason']> | 'no-brid
 
 export type Availability =
   | { status: 'checking' }
-  | { status: 'ready'; route: ModelRoute; cloud: boolean }
+  | {
+      status: 'ready';
+      route: ModelRoute;
+      cloud: boolean;
+      /** Why the agent can only answer in text (a local model without tool calling). */
+      notice?: string;
+    }
   | { status: 'disabled'; reason: DisabledReason; message: string };
 
 /**
@@ -208,7 +214,14 @@ export class AgentSession {
       const status = await bridge.invoke('ai:status', projectId ? { projectId } : {});
       const availability: Availability =
         status.ready && status.route
-          ? { status: 'ready', route: status.route, cloud: status.cloud }
+          ? {
+              status: 'ready',
+              route: status.route,
+              cloud: status.cloud,
+              ...(status.reason === 'answer-only' && status.message
+                ? { notice: status.message }
+                : {}),
+            }
           : {
               status: 'disabled',
               reason: status.reason ?? 'no-provider',

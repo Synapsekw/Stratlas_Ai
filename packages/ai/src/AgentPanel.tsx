@@ -129,6 +129,7 @@ export function AgentPanel({ window: win, className, renderFix }: AgentPanelProp
   const projectTokens = project.inputTokens + project.outputTokens;
   const route = state.availability.status === 'ready' ? state.availability.route : null;
   const cloud = state.availability.status === 'ready' && state.availability.cloud;
+  const answerOnly = state.availability.status === 'ready' ? state.availability.notice : undefined;
   const openHistory = () => {
     setShowHistory((v) => !v);
     void session.listHistory();
@@ -255,6 +256,11 @@ export function AgentPanel({ window: win, className, renderFix }: AgentPanelProp
       </div>
 
       <footer className="ag-in">
+        {answerOnly && (
+          <div className="ag-note" role="status" data-testid="agent-answer-only">
+            {answerOnly}
+          </div>
+        )}
         {(notice ?? state.saveError) && (
           <div className="ag-note" role="status">
             {state.saveError ? `History is not saved: ${state.saveError}` : notice}
@@ -332,7 +338,9 @@ export function AgentPanel({ window: win, className, renderFix }: AgentPanelProp
         <div className="ag-row">
           <span>
             {route
-              ? `${modelLabel(route.model)} · ${cloud ? 'cloud' : 'on this machine'}`
+              ? route.provider === 'local'
+                ? `Agent: local (offline) · ${modelLabel(route.model)} on this machine`
+                : `${modelLabel(route.model)} · ${cloud ? 'cloud' : 'on this machine'}`
               : 'Agent off'}
           </span>
           <span className="sp" />
