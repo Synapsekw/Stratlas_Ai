@@ -64,19 +64,24 @@ export function pairByName<T extends Layer>(
   return null;
 }
 
-const isCloud = (l: Layer): l is CloudLayer => l.kind === 'pointcloud' && !l.derived;
+const isCloud = (l: Layer): l is CloudLayer => l.kind === 'pointcloud' && !l.derived && !l.scalar;
+/**
+ * COPC clouds, and `png-packed` viewer clouds, which the pipelines read from their
+ * `sources/<id>.las` (they say so when it is missing).
+ */
+const COMPARABLE: readonly string[] = ['copc', 'png-packed'];
 
-/** The COPC clouds of the two dates to compare, or what is missing. */
+/** The clouds of the two dates to compare, or what is missing. */
 export function cloudPair(ctx: ChangePairContext): { from: CloudLayer; to: CloudLayer } | string {
   const a = ctx.layersFrom.filter(isCloud);
   const b = ctx.layersTo.filter(isCloud);
   if (!a.length || !b.length) return 'Each date needs a point cloud of its own.';
-  const copcA = a.filter((l) => l.format === 'copc');
-  const copcB = b.filter((l) => l.format === 'copc');
-  if (!copcA.length || !copcB.length)
+  const okA = a.filter((l) => COMPARABLE.includes(l.format));
+  const okB = b.filter((l) => COMPARABLE.includes(l.format));
+  if (!okA.length || !okB.length)
     return 'Cloud change reads COPC clouds: convert the point clouds of both dates first.';
   return (
-    pairByName(copcA, copcB) ??
+    pairByName(okA, okB) ??
     'Several point clouds on a date: name them alike (with their dates) to compare them.'
   );
 }

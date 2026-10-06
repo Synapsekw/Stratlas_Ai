@@ -41,7 +41,13 @@ export const RASTER_PRESETS: Record<
 };
 
 const ORTHO_FORMATS: readonly string[] = ['kit-pyramid', 'image', 'cog'];
-const CLOUD_FORMATS: readonly string[] = ['kit-packed', 'copc'];
+/**
+ * A `kit-pyramid` DSM is a shaded relief for viewing: `change.surface` reads its heights from the
+ * `aio.grid/1` grid in `sources/` (and says so when there is none).
+ */
+const DSM_FORMATS: readonly string[] = ['cog', 'kit-pyramid'];
+/** `png-packed` clouds are read from their `sources/<id>.las`. */
+const CLOUD_FORMATS: readonly string[] = ['kit-packed', 'copc', 'png-packed'];
 
 /** Layers of one date only (a layer common to both dates is no comparison). */
 function own(mine: readonly Layer[], other: readonly Layer[]): Layer[] {
@@ -52,7 +58,7 @@ function own(mine: readonly Layer[], other: readonly Layer[]): Layer[] {
 const isOrtho = (l: Layer): l is RasterLayer =>
   l.kind === 'raster' && l.role === 'ortho' && ORTHO_FORMATS.includes(l.format);
 const isDsm = (l: Layer): l is RasterLayer =>
-  l.kind === 'raster' && l.role === 'dsm' && l.format === 'cog';
+  l.kind === 'raster' && l.role === 'dsm' && DSM_FORMATS.includes(l.format);
 const isCloud = (l: Layer): l is CloudLayer =>
   l.kind === 'pointcloud' && CLOUD_FORMATS.includes(l.format) && !l.scalar;
 

@@ -27,14 +27,15 @@ const raster = (id: string, role: 'ortho' | 'dsm', format = 'kit-pyramid'): Laye
     format,
     src: { path: `${id}.json` },
   }) as Layer;
-const cloud = (id: string): Layer => ({
-  kind: 'pointcloud',
-  id,
-  name: id,
-  visible: true,
-  format: 'copc',
-  src: { path: `${id}.laz` },
-});
+const cloud = (id: string, format = 'copc'): Layer =>
+  ({
+    kind: 'pointcloud',
+    id,
+    name: id,
+    visible: true,
+    format,
+    src: { path: `${id}.laz` },
+  }) as Layer;
 
 function pair(from: Layer[], to: Layer[], common: Layer[] = []): ChangePairContext {
   return {
@@ -121,6 +122,33 @@ describe('surface change producer', () => {
       to: { layer: 'p2', kind: 'cloud' },
     });
     expect(surfacePair(pair([raster('o1', 'ortho')], [cloud('p2')]))).toMatch(/DSM or a point/);
+  });
+
+  it('offers shaded-relief DSMs and viewer clouds, whose heights the pipeline reads from sources', () => {
+    const dsms = pair([raster('d1', 'dsm', 'kit-pyramid')], [raster('d2', 'dsm', 'kit-pyramid')]);
+    expect(surfacePair(dsms)).toEqual({
+      from: { layer: 'd1', kind: 'dsm' },
+      to: { layer: 'd2', kind: 'dsm' },
+    });
+    const clouds = pair([cloud('p1', 'png-packed')], [cloud('p2', 'png-packed')]);
+    expect(surfacePair(clouds)).toEqual({
+      from: { layer: 'p1', kind: 'cloud' },
+      to: { layer: 'p2', kind: 'cloud' },
+    });
+    expect(surfacePair(pair([raster('d1', 'dsm', 'pmtiles')], [cloud('p2')]))).toMatch(
+      /DSM or a point/,
+    );
+  });
+
+  it('leaves change layers and scalar clouds out', () => {
+    const heat = { ...raster('h', 'dsm', 'kit-pyramid'), derived: { kind: 'change' } } as Layer;
+    const scalar = {
+      ...cloud('s', 'png-packed'),
+      scalar: { dim: 'Distance', label: 'Distance', unit: 'm', range: [0, 0.3], diverging: false },
+    } as Layer;
+    expect(surfacePair(pair([raster('d1', 'dsm', 'cog')], [heat, scalar]))).toMatch(
+      /DSM or a point/,
+    );
   });
 
   it('passes the date pair and the surface thresholds', () => {

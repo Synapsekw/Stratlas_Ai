@@ -66,6 +66,31 @@ describe('the cloud pair of two dates', () => {
     const packed = cloud('k', 'Kit', { format: 'kit-packed' });
     expect(cloudPair(ctx([packed], [cloud('b', 'B')]))).toMatch(/COPC/);
   });
+
+  it('takes png-packed viewer clouds too (the pipelines read their sources/<id>.las)', () => {
+    const a = cloud('cloud-d1', 'Point cloud 2026-03-02', { format: 'png-packed' });
+    const b = cloud('cloud-d2', 'Point cloud 2026-04-13', { format: 'png-packed' });
+    expect(cloudPair(ctx([a], [b]))).toMatchObject({
+      from: { id: 'cloud-d1' },
+      to: { id: 'cloud-d2' },
+    });
+    const job = volumeJob(ctx([a], [b]), 'E:/projects/p');
+    if (typeof job === 'string') throw new Error(job);
+    expect(job.params).toMatchObject({ from: { layer: 'cloud-d1', kind: 'cloud' } });
+    const deps = {
+      projectRoot: () => 'E:/projects/p',
+      thresholds: () => DEFAULT_CHANGE_THRESHOLDS,
+      start: vi.fn(() => Promise.resolve({ jobId: 'job-1' })),
+    };
+    expect(cloudChangeProducer(deps).available(ctx([a], [b]))).toBe(true);
+  });
+
+  it('leaves clouds with a scalar (change results) out', () => {
+    const scalar = cloud('s', 'Scan', {
+      scalar: { dim: 'Distance', label: 'Distance', unit: 'm', range: [0, 0.3], diverging: false },
+    });
+    expect(cloudPair(ctx([cloud('a', 'Scan')], [scalar]))).toMatch(/point cloud/);
+  });
 });
 
 describe('the cloud change job', () => {
