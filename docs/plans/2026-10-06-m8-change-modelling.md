@@ -12,7 +12,7 @@
 - **A person decides.**
   - Change items, fitted model parts, ONNX detections and agent proposals all start as drafts.
   - Nothing changes an issue's status, severity or geometry until a person confirms it.
-  - "Resolved" never closes an issue on its own (founder decision 6).
+  - "Resolved" never closes an issue on its own (decision 3).
 - **Never modify delivered data in place.**
   - Change results are new files (`change/`, derived layers) and new layers with `derived` provenance.
   - Every writer backs up and swaps atomically (`.bak`). Packages stay read-only.
@@ -56,6 +56,25 @@
   - Change sets and procedural models travel in packages and are read-only there.
   - Nothing in player mode starts a computation.
 
+## Decisions (6 Oct 2026)
+
+The founder took the open decisions on 6 Oct 2026. Every "decision N" in this plan refers to this list.
+
+1. **Local AI agent.** Works with the person's own installed server (Ollama, LM Studio or a llama.cpp server), with a guided setup page. Nothing is bundled: no `llama-server` sidecar, no GGUF download, and no `bundled` server kind in `LocalModelSettings`.
+2. **Local detection.** onnxruntime ships inside the app as `onnxruntime-node` (not in the pipeline pack). No detector models ship: people import their own ONNX with a model card that carries its licence. MobileSAM is not shipped yet.
+3. **Issues across dates.** "Resolved" only proposes. A person confirms; only then does the status become `closed`, with `resolvedIn`. Never automatic.
+4. **Models from drawings (BLD-11 scope).** DXF only (no DWG). Parts are tanks and vessels, buildings (extrusions), boxes (skids, racks) and pipes. No IFC export in M8.
+5. **Cloud AI for drawings.** Local only until the founder says otherwise. The `build` route does not send plan images or drawings to a cloud model by default; the project policy flag `aiCloudDrawings` (manifest, default off, `ai:setCloudDrawings`) is the only way to allow it, and the send preview still applies.
+6. **Demo.** The change and modelling demo is a separate bundled synthetic project with its own size budget (about 25 MB or less). The 0.7.0 demo is not grown.
+7. **Change defaults** (`DEFAULT_CHANGE_THRESHOLDS` in `@aio/schema` `change.ts`, overridable in `Settings.change`):
+   - clouds: 5 cm significant, 30 cm far;
+   - surfaces: 10 cm depth, 1 m² minimum;
+   - orthos: conservative;
+   - "grown": area +20% or severity up one level;
+   - registration tolerance: 2 px or 5 cm.
+
+Still open (not blocking M8): the recommended local model(s) and the minimum hardware statement for the guide (C7 proposes, the founder approves), and which plans include change detection, model building and local detection (M10).
+
 ## Step 0: C0 contracts (serial, about 2 hours, integration lead)
 
 Before the fan-out, one agent writes every contract below in `packages/schema` (new files `change.ts`, `procmodel.ts`, `inference.ts`; additions to `layers.ts`, `annotation.ts`, `ipc.ts`, `jobs.ts`).
@@ -67,10 +86,33 @@ Alongside the contracts, C0 adds:
 - every new pipeline to `python/src/aio_pipelines/pipelines.py` as a stub step that raises `JobError("not implemented")`;
 - the change-set writer `python/src/aio_pipelines/change/changeset.py`, which C2, C3 and C4 share;
 - data-conventions sections 14 to 16 and the rows in `contract-changes.md`;
-- an empty `packages/change` and `packages/modelling` with their public API and a failing test;
+- an empty `packages/change` and `packages/modelling` with their public API and one passing test (a failing test would break `pnpm check`; C0 delivered the producer registry and `partNodeName`, and a mesher stub that throws);
 - `docs/architecture/SPEC.md` section 2 rows for the two new packages.
 
 Tag `contracts-m8` when green.
+
+### Ownership after C0 (written by C0, 6 Oct 2026)
+
+C0 created stub files so that every stream fills only its own modules. Each stream owns the stub files below in addition to its "Owns" list, and replaces the stubs (and their tests) as it builds.
+
+| Stream | Stub files C0 created that the stream now owns                                                                                                                                                                                                                                                                                 | One-line touches in shared files                                                                                           |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| C1     | `packages/change/**` (incl. `src/producers.ts`: `registerChangeProducer`, `changeProducers`, `ChangeProducer`; keep this API stable, C2 to C4 code against it), `apps/desktop/src/main/change.ts` and `change.test.ts`, `packages/schema/src/__fixtures__/change/*.json` (others add new files only)                           | the `registerChangeIpc({ handle })` line in `main/index.ts` (C1 may extend its deps object)                                |
+| C2     | `python/src/aio_pipelines/change/raster.py` (`ChangeRaster`), `change/surface.py` (`ChangeSurface`)                                                                                                                                                                                                                            | the `change.raster` and `change.surface` entries of `FORMS` in `apps/desktop/src/renderer/jobs.ts`                         |
+| C3     | `change/cloud.py` (`ChangeCloud`), `change/mesh.py` (`ChangeMesh`)                                                                                                                                                                                                                                                             | the `change.cloud` and `change.mesh` entries of `FORMS`                                                                    |
+| C4     | `change/frames.py` (`ChangeFrames`)                                                                                                                                                                                                                                                                                            | the `change.frames` entry of `FORMS`                                                                                       |
+| C5     | `packages/modelling/**` (`src/mesher.ts`: `meshProcModel`, `partNodeName`), `python/src/aio_pipelines/drawing/**` (`DrawingImport` in `pipeline.py`; `dxf.py` is new), `python/src/aio_pipelines/modelfit/**` (`ModelFitCloud` in `fit.py`), `apps/desktop/src/main/modelBuilder.ts` and its test (also `ai:setCloudDrawings`) | the `registerModelBuilderIpc` line in `main/index.ts`; the `drawing.import` and `model.fit_cloud` entries of `FORMS`       |
+| C6     | `apps/desktop/src/main/inference/index.ts` and `index.test.ts` (the IPC registration; `utility.ts`, `worker.ts` and the rest are new)                                                                                                                                                                                          | the `registerInferenceIpc` line in `main/index.ts`; `onnxruntime-node` in `apps/desktop/package.json` and `pnpm-lock.yaml` |
+| C7     | `apps/desktop/src/main/localModels.ts` and its test                                                                                                                                                                                                                                                                            | the `registerLocalModelsIpc` line in `main/index.ts`                                                                       |
+| C8     | none                                                                                                                                                                                                                                                                                                                           | none                                                                                                                       |
+
+Shared files stay with the integration lead after C0; a stream that needs a change there asks for it (and a schema change is a new row in `contract-changes.md`):
+
+- `packages/schema/**` (contracts), `apps/desktop/src/preload/index.ts` (allow-list), `apps/desktop/src/main/diagnostics/redact.ts` (settings allow-list).
+- `apps/desktop/src/main/notYet.ts` (`notYet`, `collectHandlers` test helper) and `python/src/aio_pipelines/stub.py` (`NotBuiltYet`): deleted by the integration lead once no stub uses them.
+- `python/src/aio_pipelines/pipelines.py`: already imports each stream's class from its own module, so no stream edits it.
+- `python/src/aio_pipelines/change/changeset.py`: the shared writer C2 to C4 call (`change_set`, `change_set_id`, `merge_reviews`, `dump_change_set` for staged outputs, `write_change_set` for direct writes with `.bak`).
+- `python/pyproject.toml` and `uv.lock` (pack 0.3.0): C5 adds `ezdxf`, the integration lead re-locks.
 
 ## Streams
 
@@ -201,7 +243,7 @@ Tag `contracts-m8` when green.
   - Change heat maps and polygons are drawn with a fixed legend (`changeStyle.ts`). In 3D the heat map drapes on the ground like an ortho.
 - The C1 panel shows **Run imagery change** and **Run surface change** when the pair has counterpart orthos or DSMs or clouds.
 
-**Contracts used:** `PipelineName` `change.raster` (`ChangeRasterParams`: `from`, `to`, `layerFrom`, `layerTo`, `method` `gradient|ssim|rgb`, `threshold?`, `minAreaM2?`, `maxShiftPx?`, `mask?`, `ignore?`, `out?`) and `change.surface` (`ChangeSurfaceParams`: `from` and `to` each `{ layer, kind: 'dsm'|'cloud' }`, `cellM?`, `minDepthM?`, `minAreaM2?`, `areas?`, `out?`); `Layer.derived?`; `aio.change/1` `region` items.
+**Contracts used:** `PipelineName` `change.raster` (`ChangeRasterParams`: `from`, `to`, `layerFrom`, `layerTo`, `method` `gradient|ssim|rgb`, `threshold?`, `minAreaM2?`, `maxShiftPx?`, `mask?`, `ignore?`, `out?`) and `change.surface` (`ChangeSurfaceParams`: `from` and `to` each `{ layer, kind: 'dsm'|'cloud' }`, `captures?` (`{ from, to }` capture ids, else the layers' `capture`), `cellM?`, `minDepthM?`, `minAreaM2?`, `areas?`, `out?`); `Layer.derived?`; `aio.change/1` `region` items; `ChangeThresholds`.
 
 **Tests:**
 
@@ -221,7 +263,7 @@ Tag `contracts-m8` when green.
 
 **Risks:**
 
-- Real orthos differ in exposure, season and moving vehicles, so false positives are likely. Ship conservative defaults (decision 5) and ignore masks, and label results "proposed".
+- Real orthos differ in exposure, season and moving vehicles, so false positives are likely. Ship conservative defaults (decision 7) and ignore masks, and label results "proposed".
 - Different ground sampling distance (GSD) and partial overlap between dates: compute on the overlap only and report coverage.
 - Memory on large GeoTIFFs: process in windows (rasterio windows), never whole.
 
@@ -264,7 +306,7 @@ Tag `contracts-m8` when green.
   - Diff tagged parts by node name with the survey key stripped (`captures.ts` rules): `added`, `removed`, `moved` (bounding-box centre offset), `changed` (mean deviation of that part above threshold).
   - These become `component` items; a click selects the part on both dates.
 
-**Contracts used:** `PipelineName` `change.cloud` (`ChangeCloudParams`: `layerFrom`, `layerTo`, `maxDistM?`, `signed?`, `spacingM?`, `region?`, `out?`) and `change.mesh` (`ChangeMeshParams`: `layerFrom`, `layerTo`, `samples?`, `maxDistM?`, `out?`); point cloud layer `scalar?` (`{ dim, label, unit, range, diverging }`); `Layer.derived?`; `component` and `region` items.
+**Contracts used:** `PipelineName` `change.cloud` (`ChangeCloudParams`: `layerFrom`, `layerTo`, `captures?`, `minDistM?` (significant, default 0.05 m), `maxDistM?` (far, default 0.30 m), `signed?`, `spacingM?`, `region?` (local box), `out?`) and `change.mesh` (`ChangeMeshParams`: `layerFrom`, `layerTo`, `captures?`, `samples?`, `minDistM?`, `maxDistM?`, `out?`); point cloud layer `scalar?` (`{ dim, label, unit, range, diverging }`); `Layer.derived?`; `component` and `region` items.
 
 **Tests:**
 
@@ -367,7 +409,7 @@ Tag `contracts-m8` when green.
   - Georeferences by two or more control points: picked in the app on the drawing and the map or model, or given as coordinates.
   - Writes a GeoJSON vector layer per chosen DXF layer group and a rendered raster plan (`role: 'plan'`, `format: 'image'`, `corners`) for tracing.
   - Text entities with numbers near closed shapes become height hints (`height=12.5`, `EL +12.500`).
-  - DWG is out of scope (decision 7). Raster or PDF plans continue to come in as `plan` rasters and are traced by hand or by the agent.
+  - DWG is out of scope (decision 4). Raster or PDF plans continue to come in as `plan` rasters and are traced by hand or by the agent.
 - **Point clouds in.**
   - `model.fit_cloud` on a cloud layer, inside an optional box or polygon region.
   - Steps: ground removal, Euclidean clustering, and per cluster a RANSAC choice among vertical cylinder (tank or vessel), box (building, skid, container), plane set (roof or walls into an extrusion footprint) and pipe run (cylinder chain along a skeleton), ranked by residual and inlier share.
@@ -383,7 +425,7 @@ Tag `contracts-m8` when green.
 - **Agent assistance** on the `build` route.
   - Tools: `propose_model_parts` (write, approval; from drawing text, plan raster or cloud statistics), `fit_primitives` (starts `model.fit_cloud`, approval), `edit_model_part` (write), `build_model` (write).
   - Every result is a draft part shown as a step.
-  - Sending a plan image to a cloud model goes through the consent preview and the project AI policy. A local model (C7) works for text-only drawings.
+  - Plan images and drawings never go to a cloud model unless the project policy `aiCloudDrawings` allows it (decision 5; default off), and then through the consent preview. A local model (C7) works for text-only drawings.
 
 **Contracts used:**
 
@@ -392,6 +434,7 @@ Tag `contracts-m8` when green.
 - `PipelineName` `drawing.import` (`DrawingImportParams`: `src`, `units?`, `layers?`, `control?` point pairs, `out?`) and `model.fit_cloud` (`ModelFitParams`: `layer`, `region?`, `kinds?`, `distM?`, `minInliers?`, `model?` id to append to)
 - IPC `model:list`, `model:read`, `model:write` (atomic, `.bak`, refused for packages), `model:build` (`{ projectId, id, draft? }` to `{ ok, layer, glb }`)
 - `ImportItem.kind` gains `drawing` (enum value used by the builder import list only)
+- `ProjectManifest.aiCloudDrawings?` and IPC `ai:setCloudDrawings` (`{ projectId, allow }`), stubbed in `modelBuilder.ts` (decision 5)
 
 **Tests:**
 
@@ -411,7 +454,7 @@ Tag `contracts-m8` when green.
 
 **Risks:**
 
-- Scope creep (full plant modelling): M8 targets massing and plant primitives only (decision 7). LOD3 and IFC export are later.
+- Scope creep (full plant modelling): M8 targets massing and plant primitives only (decision 4). LOD3 and IFC export are later.
 - Real DXFs: inconsistent units, blocks, 3D polylines, huge coordinates. Every refusal names the entity and the fix. Coordinates are shifted to the project origin in float64 before float32 meshes.
 - RANSAC tuning on real scans: parts carry residuals and stay drafts.
 
@@ -431,7 +474,7 @@ Tag `contracts-m8` when green.
 - `apps/desktop/src/main/maskAssist.ts` (moves its session into the same utility process; same `OrtLike` seam)
 - `apps/desktop/src/renderer/detections/AiDetectDialog.tsx`, which becomes the **Detect** dialog with Cloud vision or Local model
 - `apps/desktop/src/renderer/screens/settings/DetectionModels.tsx` (new), plus one mount line in `Settings.tsx`
-- `apps/desktop/package.json` and `electron-builder.yml` entries for `onnxruntime-node` (decision 3)
+- `apps/desktop/package.json` and `electron-builder.yml` entries for `onnxruntime-node` (decision 2)
 - `apps/desktop/e2e/detect-local.spec.ts`
 
 **Scope:**
@@ -443,13 +486,13 @@ Tag `contracts-m8` when green.
 - **Model cards.**
   - `model.onnx` plus `model.json` (`aio.detector/1`): name, version, layout (`yolo-v8` / `yolo-v5` / `detr` / `ssd` / `generic`), input size and normalisation, class names, SPDX licence, source, sha256.
   - **Import model** in Settings copies into userData after an sha256 check, a layout probe (one dummy inference, output shape check) and a licence acknowledgement.
-  - Models without a card or an allowed licence are refused for customer builds (licence gate, decision 4).
+  - Models without a card or an allowed licence are refused for customer builds (licence gate, decision 2).
 - **Run.**
   - On photos or video frames (same item picker as AI detect), with optional tiling for large photos (tile size, overlap, merge with NMS across tiles).
   - Confidence threshold; class mapping (model class to project catalogue class, remembered per project and model).
   - Progress, cancel, and resume by skipping done items.
   - Results go to `detections/model-<run>.json` (`source: 'model'`, `status: 'draft'`, `origin: { model, runId }`, `run`) and appear in the existing review. Nothing counts until accepted.
-- **Mask assist** (Outline) uses the same runtime and the model folder `models/sam/`. If the founder approves shipping MobileSAM (Apache-2.0), it ships in the pack (decision 4).
+- **Mask assist** (Outline) uses the same runtime and the model folder `models/sam/`. MobileSAM does not ship in M8 (decision 2): Outline stays available only with a SAM-class model the person installs, and the KNOWN-LIMITS line stays.
 
 **Contracts used:**
 
@@ -470,7 +513,7 @@ Tag `contracts-m8` when green.
   - Detections, Detect, Local model: on the demo photos, finds exactly the seeded marker patches (count and boxes within 4 px of `truth.json`); drafts appear; accept one.
   - A corrupt model gives an exact error; cancel mid-run keeps the done items.
   - Zero-network guard passes.
-- **pytest:** none (no Python runtime involved) unless decision 3 moves the runtime to the pack.
+- **pytest:** none (no Python runtime involved; decision 2 keeps the runtime in the app).
 
 **Risks:**
 
@@ -484,7 +527,6 @@ Tag `contracts-m8` when green.
 - [ ] Demo, **Detections**, **Detect**, **Local model**: the run shows progress with no cost. Draft boxes land on the marked patches. Accept two with the keyboard.
 - [ ] Turn off Wi-Fi and repeat: it still works.
 - [ ] Import a broken file: an exact error, and the app stays up.
-- [ ] (If MobileSAM ships) **Outline** in the review traces the object in a box.
 
 ### C7 Local AI agent
 
@@ -516,11 +558,11 @@ Tag `contracts-m8` when green.
   - The send-preview step is skipped for loopback (no data leaves the machine). A non-loopback "local" server keeps the cloud gates (existing rule).
 - **Optional local-server key**: some servers (LM Studio, a secured llama.cpp server) want a bearer key. It is stored in Windows Credential Manager or macOS Keychain under the `local` account (`AiProvider` already includes `local`), used when present, and never logged.
 - **Local vision for detection (R2)** and narrative (R3) through the existing `ai:detect` and `ai:draftText` with the local route, verified end to end with the fake server.
-- **If decision 1 chooses bundling:** a `llama-server` sidecar managed by main, with start, stop, health and GGUF files in the data root `runtime/models/`. Otherwise a guided "Set up a local model" page in the user guide (D8) and Settings.
+- **Guided setup (decision 1, nothing bundled):** a "Set up a local model" page in the user guide (D8) and Settings, for Ollama, LM Studio and the llama.cpp server.
 
 **Contracts used:**
 
-- `LocalModelSettings` gains optional `kind` (`ollama` | `openai-compatible` | `bundled`), `contextTokens`, `toolProfile` (`full` | `compact`), `capabilities` (`{ tools, vision }`), `timeoutMs`
+- `LocalModelSettings` gains optional `kind` (`ollama` | `openai-compatible`; no `bundled`, decision 1), `contextTokens`, `toolProfile` (`full` | `compact`), `capabilities` (`{ tools, vision }`), `timeoutMs`
 - IPC `ai:localModels` (`{ baseUrl? }` to `{ ok, server?, models[] } | { ok: false, error }`), `ai:localProbe` (`{ model }` to `{ ok, tools, vision, contextTokens?, latencyMs } | { ok: false, error }`)
 - `ai:status` reason gains `answer-only` (optional enum value; readers ignore unknown values)
 - `ai:setKey` and `ai:hasKey` accept `local` (already in the `AiProvider` enum)
@@ -542,9 +584,9 @@ Tag `contracts-m8` when green.
 
 **Risks:**
 
-- Small local models call tools badly. Mitigations: compact profile, repair, answer-only fallback, and an honest notice. The plan recommends a model class, not a guarantee (decision 2).
+- Small local models call tools badly. Mitigations: compact profile, repair, answer-only fallback, and an honest notice. The plan recommends a model class, not a guarantee (still open: the founder approves the recommended model).
 - Hardware: CPU-only 7B models answer in tens of seconds, so streaming and cancel are mandatory, and Settings shows measured latency.
-- Model weight licences (Llama community licence, Gemma terms, Qwen Apache-2.0) matter only if bundling (decision 1).
+- Model weight licences (Llama community licence, Gemma terms, Qwen Apache-2.0) are the concern of whoever installs the model, since nothing is bundled (decision 1); the guide names only models whose terms allow the use.
 
 **Founder test steps:**
 
@@ -571,19 +613,21 @@ Tag `contracts-m8` when green.
 
 - **Vitest / node:test:** the generator is deterministic (same seed, same hashes); `truth.json` agrees with the generated geometry (recomputed checks); the client-data check finds planted client-like strings in DXF text, ONNX `doc_string` and GLB extras.
 - **pytest:** `synth.py` generators produce the documented shapes.
-- **CI:** build the demo `--quick`, run the check, keep the size under budget (decision 9).
+- **CI:** build the demo `--quick`, run the check, keep the change demo under its budget (decision 6: about 25 MB or less).
 
 **Risks:**
 
-- Installer size growth from a second date (video, cloud, ortho). Mitigation: `--quick` resolution for CI, a size budget, and the change demo as a separate bundled project only if decision 9 allows.
+- Installer size growth from a second date (video, cloud, ortho). Mitigation (decision 6): the change and modelling demo is a separate bundled project with its own budget (about 25 MB or less), `--quick` resolution for CI, and the 0.7.0 demo is not grown.
 - Merge order: C8 depends on the M7 demo commit reaching `main`.
 
 **Founder test steps:**
 
-- [ ] The first-start welcome still opens the demo; the library shows "2 dates" on it.
+- [ ] The first-start welcome still opens the 0.7.0 demo, unchanged; the library also lists the change and modelling demo, with "2 dates" on it.
 - [ ] Nothing in the demo names a client, a real site or a real camera (the check report is in the build log).
 
 ## Contract changes (rows for `contract-changes.md`, written by C0 unless noted)
+
+C0 wrote these rows on 6 Oct 2026 with the exact shapes (see `contract-changes.md`). Beyond the table below, C0 added: `ChangeThresholds` with the decision 7 defaults and `Settings.change?`; `Settings.inference?` (`modelsDir`, `provider`, `memoryCapMb`); `ProjectManifest.aiCloudDrawings?`, `ai:project` `cloudDrawings?` and IPC `ai:setCloudDrawings` (decision 5); `captures?` on the surface, cloud and mesh params and `minDistM?` on cloud and mesh (Python cannot apply the app's naming rules, so the app may pass the date pair); `LayerDerived.draft?` for the model builder preview; `LocalModelInfo`; and an optional `code` (`not-implemented` | `read-only`) on M8 failures. The detection `source: 'model'` already existed. No `bundled` local server kind (decision 1).
 
 | Change                                                                                                                                                                                                                                                                                                                                                                                                  | Why                                                                                                                          | Streams           |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------- |
@@ -600,9 +644,9 @@ Tag `contracts-m8` when green.
 
 ## Synthetic test data
 
-No client data, ever: no client file, name, place, camera serial or path. The M7 generator (`tools/demo/build-demo.mjs`, merged to `integration/m7`, not yet to `main`) is extended. Everything is seeded and procedural, at the existing fictional desert location. Each demo writes `truth.json` with the exact expected results. What M8 needs:
+No client data, ever: no client file, name, place, camera serial or path. The M7 generator (`tools/demo/build-demo.mjs`, on `main` since 0.7.0) is extended with a second, separate demo project (decision 6). Everything is seeded and procedural, at the existing fictional desert location. Each demo writes `truth.json` with the exact expected results. What M8 needs:
 
-1. **A second capture date** for the fusion demo site, with every layer type present on both dates and seeded, known differences:
+1. **A second capture date** for the change demo site (a separate project, decision 6), with every layer type present on both dates and seeded, known differences:
    - **Ortho:** a new structure footprint, a removed object (container), a lighting-only or shadow-only region, and a slight overall tint shift. Neither of the last two may be flagged.
    - **DSM or terrain:** one pile grown by a known volume, a new excavation of known volume, and ±2 cm noise elsewhere.
    - **Point cloud:** one object moved by a known offset, one added, one removed, with realistic noise, occlusion and density differences between dates. Written as LAS so the pipeline makes COPC, and as numpy arrays for pytest.
@@ -620,7 +664,7 @@ No client data, ever: no client file, name, place, camera serial or path. The M7
 5. **A fake local LLM server** (owned by C7, not data): scripted replies including tool calls, malformed tool-call JSON, a model without tools, a vision reply, and a slow reply.
 6. **pytest generators** (`python/tests/synth.py`) for small rasters, clouds and meshes with known change, so pipeline tests never need the full demo.
 7. **The client-data check is extended** to DXF text and attributes, ONNX metadata, GLB extras and `truth.json`, and runs in CI on every artifact.
-8. **Size:** a `--quick` CI variant, and a bundled size budget (decision 9).
+8. **Size:** a `--quick` CI variant, and a bundled size budget for the change demo of about 25 MB or less (decision 6).
 
 ## Merge order
 
@@ -659,30 +703,9 @@ The integration lead merges when green, re-locks `uv.lock`, rebuilds the pipelin
   - The demo, end to end.
   - Client projects are used only on the founder's machine and never in the repo, CI or fixtures.
 
-## Founder decisions needed
+## Founder decisions (taken)
 
-1. **Local agent runtime.** M8 supports user-installed servers (Ollama, LM Studio, llama.cpp server) with a guided setup (recommended). The alternative is to bundle a `llama-server` sidecar and a default GGUF model (adds 4 to 8 GB of download, and model licence terms).
-2. **Recommended local model(s)** named in the guide and the minimum hardware statement (needs tool calling, ideally vision). Licence check: Qwen-family models are Apache-2.0; Llama and Gemma have their own terms.
-3. **Where onnxruntime ships.**
-   - In the app as `onnxruntime-node` (recommended: works without the pipeline pack, GPU through DirectML or CoreML, but makes the installer larger),
-   - or in the pipeline pack (keeps the installer small, but detection then needs the pack).
-4. **Which models ship.**
-   - Detectors: none in M8, importing your own ONNX with a licence card (recommended), or a permissively licensed architecture later. Ultralytics YOLO exports only with an Enterprise licence.
-   - Mask assist: whether to ship MobileSAM (Apache-2.0, about 40 MB), which removes the KNOWN-LIMITS line.
-5. **Change defaults** per project type. Proposed:
-   - clouds: 5 cm significant, 30 cm far;
-   - surfaces: 10 cm depth and 1 m² minimum;
-   - orthos: conservative;
-   - "grown": area +20% or severity up one level;
-   - registration tolerance: 2 px or 5 cm.
-6. **Issue lifecycle across dates.** "Resolved" only proposes: a person confirms, then the status becomes `closed` with `resolvedIn` (recommended). Never automatic.
-7. **BLD-11 scope.**
-   - Inputs: DXF plus georeferenced raster or PDF plans traced by hand or by the agent. DWG is excluded (needs the commercial ODA SDK).
-   - Parts: tanks and vessels, buildings (extrusions), boxes (skids, racks) and pipes.
-   - No IFC export in M8.
-8. **Cloud AI for modelling.** May plan images and drawings be sent to a cloud model on the `build` route (with consent preview and project policy), or local only?
-9. **Demo size.** Whether the bundled demo grows with the second date and modelling data (installer size), or the change demo becomes a separate bundled project with a size budget.
-10. **Plans and feature flags** (recorded for M10, not blocking): which plan includes change detection, model building and local detection (for example Pro Reviewer views change sets; Builder computes them).
+The ten questions of the 6 Oct draft were answered the same day; see "Decisions (6 Oct 2026)" near the top. Old numbering to new: 1 to 1, 2 still open, 3 and 4 to 2, 5 to 7, 6 to 3, 7 to 4, 8 to 5, 9 to 6, 10 still open (M10).
 
 ## Exit
 
