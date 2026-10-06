@@ -1,0 +1,272 @@
+name: release
+
+# Release builds: signed Windows installers and Store package, a notarised universal macOS app,
+# and the macOS pipeline packs. Runs on a version tag (v*) and on demand.
+#
+# Every signing step switches on only when its secrets exist. Without them the same jobs still
+# succeed and upload unsigned (Windows) or ad-hoc signed (macOS) test builds, so forks and a
+# repository without certificates stay green. Artifacts only: nothing is published (the Store
+# submission is manual, docs/release/STORE-SUBMISSION.md). Secret names: docs/release/SECRETS.md.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+
+jobs:
+  package-win:
+    name: package (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      # Azure Trusted Signing (preferred). Account values may be repository variables or secrets.
+      AZURE_SIGN_ENDPOINT: ${{ vars.AZURE_SIGN_ENDPOINT || secrets.AZURE_SIGN_ENDPOINT }}
+      AZURE_SIGN_ACCOUNT: ${{ vars.AZURE_SIGN_ACCOUNT || secrets.AZURE_SIGN_ACCOUNT }}
+      AZURE_SIGN_PROFILE: ${{ vars.AZURE_SIGN_PROFILE || secrets.AZURE_SIGN_PROFILE }}
+      WIN_PUBLISHER_NAME: ${{ vars.WIN_PUBLISHER_NAME }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      # Or an OV/EV certificate as a .pfx (base64), used when Azure is not configured.
+      WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+      WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+      # Or a cloud HSM command template (its client must be installed in a step of its own).
+      WIN_SIGN_COMMAND: ${{ vars.WIN_SIGN_COMMAND }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          # pnpm is enabled by corepack below; its store is cached explicitly.
+          package-manager-cache: false
+
+      - run: corepack enable
+
+      - name: Locate pnpm store
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Signing mode
+        id: mode
+        run: |
+          summary="$(node tools/release/brand-config.mjs --summary)"
+          echo "$summary"
+          echo "win=$(node -p 'JSON.parse(process.argv[1]).win' "$summary")" >> "$GITHUB_OUTPUT"
+
+      - name: Build NSIS installer and portable exe (bundle check and packaged smoke test included)
+        run: pnpm -F @aio/desktop dist:win
+
+      - name: Verify Authenticode signatures
+        if: steps.mode.outputs.win != 'unsigned'
+        shell: pwsh
+        run: |
+          $sigs = Get-ChildItem apps/desktop/dist/*.exe, apps/desktop/dist/win-unpacked/*.exe |
+            Get-AuthenticodeSignature
+          $sigs | Format-Table Status, @{ n = 'Signer'; e = { $_.SignerCertificate.Subject } }, Path -AutoSize
+          $bad = $sigs | Where-Object Status -ne 'Valid'
+          if ($bad) { throw "Not validly signed: $($bad.Path -join ', ')" }
+
+      - name: Build Microsoft Store package (unsigned; Microsoft signs Store submissions)
+        working-directory: apps/desktop
+        run: node ../../tools/release/dist.mjs --win appx
+
+      - name: Checksums
+        working-directory: apps/desktop/dist
+        run: sha256sum *.exe *.msix > SHA256SUMS-windows.txt && cat SHA256SUMS-windows.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: |
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.msix
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/latest*.yml
+            apps/desktop/dist/SHA256SUMS-windows.txt
+          retention-days: 30
+          if-no-files-found: error
+
+  package-mac:
+    name: package (macOS universal)
+    runs-on: macos-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      # Developer ID Application certificate (.p12, base64) and its password.
+      CSC_LINK: ${{ secrets.MAC_CSC_LINK || secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD || secrets.CSC_KEY_PASSWORD }}
+      # Notarisation with an Apple ID and app-specific password ...
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      # ... or with an App Store Connect API key (APPLE_API_KEY_P8 is written to a file below).
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - run: corepack enable
+
+      - name: Locate pnpm store
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-universal-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+
+      # A universal app carries native addons for arm64 and x64; pnpm installs only the host's
+      # optional platform packages unless told otherwise (tools/release/mac-native.mjs checks).
+      - name: Install native addons for both macOS architectures
+        run: |
+          printf '%s\n' 'supportedArchitectures:' '  os: [current]' '  cpu: [arm64, x64]' >> pnpm-workspace.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Write the App Store Connect API key
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          if [ -n "$APPLE_API_KEY_P8" ]; then
+            key="$RUNNER_TEMP/AuthKey.p8"
+            printf '%s' "$APPLE_API_KEY_P8" > "$key"
+            echo "APPLE_API_KEY=$key" >> "$GITHUB_ENV"
+          fi
+
+      - name: Signing mode
+        id: mode
+        run: |
+          summary="$(node tools/release/brand-config.mjs --summary)"
+          echo "$summary"
+          echo "mac=$(node -p 'JSON.parse(process.argv[1]).mac' "$summary")" >> "$GITHUB_OUTPUT"
+
+      - name: Build universal dmg and zip (bundle check and packaged smoke test included)
+        run: pnpm -F @aio/desktop dist:mac
+
+      - name: Check the universal app
+        working-directory: apps/desktop/dist
+        run: |
+          app="$(ls -d mac-universal/*.app | head -n 1)"
+          exe="$app/Contents/MacOS/$(defaults read "$PWD/$app/Contents/Info" CFBundleExecutable)"
+          archs="$(lipo -archs "$exe")"
+          echo "$exe: $archs"
+          case "$archs" in *x86_64*arm64*|*arm64*x86_64*) ;; *) echo "not universal"; exit 1 ;; esac
+          addons="$(find "$app" -name 'keyring.darwin-*.node' | wc -l | tr -d ' ')"
+          echo "keyring addons: $addons"
+          [ "$addons" -ge 2 ] || { echo "keyring addon missing for an architecture"; exit 1; }
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes' "$app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleDocumentTypes' "$app/Contents/Info.plist"
+
+      - name: Smoke test the Intel slice under Rosetta
+        working-directory: apps/desktop
+        run: |
+          if arch -x86_64 /usr/bin/true 2>/dev/null; then
+            SMOKE_ARCH=x86_64 node ../../tools/release/smoke-packaged.mjs
+          else
+            echo "::warning::Rosetta is not available on this runner; the Intel slice was not started."
+          fi
+
+      - name: Verify signature, notarisation and stapling
+        if: steps.mode.outputs.mac != 'ad-hoc'
+        working-directory: apps/desktop/dist
+        run: |
+          app="$(ls -d mac-universal/*.app | head -n 1)"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          if [ "${{ steps.mode.outputs.mac }}" = "signed+notarised" ]; then
+            spctl --assess --type execute --verbose "$app"
+            for dmg in *.dmg; do xcrun stapler validate "$dmg"; done
+          fi
+
+      - name: Checksums
+        working-directory: apps/desktop/dist
+        run: shasum -a 256 *.dmg *.zip > SHA256SUMS-macos.txt && cat SHA256SUMS-macos.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: |
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/latest*.yml
+            apps/desktop/dist/SHA256SUMS-macos.txt
+          retention-days: 30
+          if-no-files-found: error
+
+  pipeline-pack-mac:
+    name: pipeline pack (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            arch: macos-arm64
+          - os: macos-15-intel
+            arch: macos-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+
+      # python-build-standalone CPython plus the locked wheels; the script smoke-tests the pack.
+      - name: Build the pipeline pack
+        run: node tools/pipeline-pack/build.mjs --out "$RUNNER_TEMP/runtime"
+
+      # tar keeps the symlinks (bin/python3) and executable bits that a zip artifact would lose.
+      - name: Archive
+        working-directory: ${{ runner.temp }}/runtime
+        run: |
+          pack="$(ls -d pipeline-pack-* | head -n 1)"
+          tar -czf "$RUNNER_TEMP/$pack-${{ matrix.arch }}.tar.gz" "$pack"
+          shasum -a 256 "$RUNNER_TEMP/$pack-${{ matrix.arch }}.tar.gz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-pack-${{ matrix.arch }}
+          path: ${{ runner.temp }}/pipeline-pack-*.tar.gz
+          retention-days: 30
+          if-no-files-found: error

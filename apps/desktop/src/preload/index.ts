@@ -84,6 +84,7 @@ const EVENTS = {
   'ai:event': true,
   'package:progress': true,
   'app:openPath': true,
+  'app:menu': true,
   'export:progress': true,
   'packs:job': true,
   'jobs:event': true,

@@ -87,11 +87,16 @@ appx:
 # macOS: Developer ID signing with hardened runtime; notarisation is switched on by
 # brand-config when Apple credentials are present.
 mac:
+  # One universal app (Apple silicon and Intel). electron-builder packs an x64 and an arm64 app
+  # and merges them; every Mach-O file is lipo'd. The keyring addon ships one .node per arch in
+  # its own package (both installed in CI, see release.yml), so the same file sits in both apps:
+  # x64ArchFiles lets the merge keep it as is.
   target:
     - target: dmg
-      arch: [arm64, x64]
+      arch: [universal]
     - target: zip
-      arch: [arm64, x64]
+      arch: [universal]
+  x64ArchFiles: '**/node_modules/@napi-rs/keyring-darwin-*/**'
   icon: build/icon.icns
   category: public.app-category.productivity
   hardenedRuntime: true

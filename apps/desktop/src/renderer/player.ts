@@ -1,4 +1,5 @@
 import type { ExportKind, PackageInfo, ProjectManifest } from '@aio/schema';
+import { shortcut } from '@aio/ui';
 
 /** Cloud AI is off for this package whatever Settings say (AI-2, default forbid). */
 export function cloudAiBlocked(pkg: PackageInfo | null): boolean {
@@ -47,6 +48,6 @@ export function welcomeTips(manifest: ProjectManifest, issueCount: number): stri
   }
   if (photos > 0) tips.push(`Browse ${plural(photos, 'inspection photo')} in Media.`);
   if (count('legacy') > 0) tips.push('Open the original review delivered with the survey.');
-  tips.push('Press Ctrl K to search layers, issues and commands.');
+  tips.push(`Press ${shortcut('Ctrl K')} to search layers, issues and commands.`);
   return tips;
 }

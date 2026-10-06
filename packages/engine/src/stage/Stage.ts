@@ -1211,7 +1211,8 @@ export class Stage implements EngineStage {
   };
 
   private readonly onKey = (e: KeyboardEvent) => {
-    if (e.ctrlKey && e.shiftKey && (e.key === 'F' || e.key === 'f')) {
+    // Ctrl+Shift+F, Cmd+Shift+F on macOS
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'F' || e.key === 'f')) {
       e.preventDefault();
       this.setPerfOverlay(this.perfHold === null);
       return;

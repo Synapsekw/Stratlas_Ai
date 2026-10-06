@@ -1,4 +1,4 @@
-import { Icon } from '@aio/ui';
+import { Icon, shortcut } from '@aio/ui';
 import { shell, useShell } from '../shell';
 
 /** Shown by project views while no project is open. */
@@ -14,7 +14,7 @@ export function NoProject({ view }: { view: string }) {
         <h2>Open a project to see its {view.toLowerCase()}</h2>
         <p className="muted">
           {view} works on one project at a time. Pick one from the library, or press{' '}
-          <span className="kbd">Ctrl K</span> and type its name.
+          <span className="kbd">{shortcut('Ctrl K')}</span> and type its name.
         </p>
         {recent.length > 0 && (
           <div className="np-list">

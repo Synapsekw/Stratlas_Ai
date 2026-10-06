@@ -92,6 +92,15 @@ export async function withTempDir(outRoot, version, build, opts = {}) {
   }
 }
 
+/**
+ * Where packs go without --out: `<STRATLAS_DATA>/runtime`, else the Windows workstation's data
+ * drive. Other systems (a macOS CI runner) have no default and must say where.
+ */
+export function defaultOutRoot(platform, env) {
+  if (env.STRATLAS_DATA) return join(env.STRATLAS_DATA, 'runtime');
+  return platform === 'win32' ? 'E:/Stratlas Data/runtime' : null;
+}
+
 /** The aio_pipelines version from python/pyproject.toml. */
 export function packageVersion(toml) {
   const m = /^\[project\][\s\S]*?^version\s*=\s*"([^"]+)"/m.exec(toml);
@@ -166,9 +175,9 @@ async function main() {
   const platform = `${process.platform}-${process.arch}`;
   const target = TARGETS[platform];
   if (!target) fail(`no python-build-standalone target for ${platform}`);
-  const outRoot = resolve(
-    values.out ?? join(process.env.STRATLAS_DATA ?? 'E:/Stratlas Data', 'runtime'),
-  );
+  const out = values.out ?? defaultOutRoot(process.platform, process.env);
+  if (!out) fail('pass --out <folder> or set STRATLAS_DATA (no default data folder on this OS)');
+  const outRoot = resolve(out);
   const version = packageVersion(readFileSync(join(pyDir, 'pyproject.toml'), 'utf8'));
   const dest = join(outRoot, `pipeline-pack-${version}`);
   if (existsSync(dest) && !values.force) fail(`${dest} exists; pass --force to rebuild it`);

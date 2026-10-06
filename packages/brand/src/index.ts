@@ -6,6 +6,11 @@ export interface Brand {
   /** Reverse-DNS application id used by installers and the OS. */
   appId: string;
   executableName: string;
+  /**
+   * URL scheme the OS hands to the app (`<scheme>://open?path=...`, registered in the macOS
+   * Info.plist). Distinct from the internal `aio:` scheme, which only serves files inside the app.
+   */
+  urlScheme: string;
   company: string;
   /** True while the name is a working title. */
   temporary: boolean;

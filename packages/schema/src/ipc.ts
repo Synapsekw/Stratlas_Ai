@@ -1081,6 +1081,8 @@ export const ipcEvents = {
   }),
   /** A second launch (double-clicked `.aio`) handed its path to this instance. */
   'app:openPath': z.object({ path: z.string().min(1) }),
+  /** An application menu item the renderer carries out (macOS Settings…, Search Commands…). */
+  'app:menu': z.object({ action: z.enum(['settings', 'palette']) }),
   /** Progress of an `export:run` job; `phase` is a short sentence for the toast. */
   'export:progress': z.object({
     jobId: z.string(),

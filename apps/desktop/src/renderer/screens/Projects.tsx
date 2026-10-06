@@ -1,6 +1,6 @@
 import { brand } from '@aio/brand';
 import type { LibraryEntry } from '@aio/schema';
-import { formatBytes, formatCompact, formatDate, Icon, t, type IconName } from '@aio/ui';
+import { formatBytes, formatCompact, formatDate, Icon, shortcut, t, type IconName } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useMemo, useState } from 'react';
 import { builder } from '../builder/state';
@@ -288,9 +288,9 @@ function Workstation() {
         <h3 className="caps">Keyboard</h3>
         <div className="keys">
           <span>Search everything</span>
-          <span className="kbd">Ctrl K</span>
+          <span className="kbd">{shortcut('Ctrl K')}</span>
           <span>Collapse sidebar</span>
-          <span className="kbd">Ctrl B</span>
+          <span className="kbd">{shortcut('Ctrl B')}</span>
           <span>Play or pause</span>
           <span className="kbd">Space</span>
         </div>

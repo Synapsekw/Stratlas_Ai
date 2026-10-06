@@ -10,6 +10,7 @@ import { join } from 'node:path';
 
 const candidates = [
   'dist/win-unpacked/Stratlas.exe',
+  'dist/mac-universal/Stratlas.app/Contents/MacOS/Stratlas',
   'dist/mac-arm64/Stratlas.app/Contents/MacOS/Stratlas',
   'dist/mac/Stratlas.app/Contents/MacOS/Stratlas',
 ];
@@ -25,7 +26,11 @@ const env = {
   STRATLAS_USER_DATA: userData,
   STRATLAS_DATA: join(userData, 'data'),
 };
-const child = spawn(exe, [], { env, stdio: 'ignore' });
+// macOS: SMOKE_ARCH=x86_64 runs the Intel slice of a universal app under Rosetta.
+const arch = process.platform === 'darwin' ? process.env.SMOKE_ARCH : undefined;
+const child = arch
+  ? spawn('arch', [`-${arch}`, exe], { env, stdio: 'ignore' })
+  : spawn(exe, [], { env, stdio: 'ignore' });
 const limit = setTimeout(() => {
   console.error(
     `Smoke check failed: ${exe} did not finish loading within 60 s (crash dialog or hang).`,

@@ -38,11 +38,11 @@ Manual steps for a release candidate. Tick every box in the release issue. Comma
 - [ ] Apple Developer Program membership (organisation, D-U-N-S) and a Developer ID Application certificate; `CSC_LINK` and `CSC_KEY_PASSWORD` set.
 - [ ] App Store Connect API key: `APPLE_API_KEY` (path to `.p8`), `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`.
 - [ ] `pnpm -F @aio/desktop dist:mac` on a Mac; the log shows signing with the Developer ID identity and a notarisation success.
-- [ ] Verify each architecture:
+- [ ] Verify the universal app (`lipo -archs` on its executable lists `x86_64 arm64`):
   ```bash
-  codesign --verify --deep --strict --verbose=2 "apps/desktop/dist/mac-arm64/<Product>.app"
-  spctl --assess --type execute --verbose "apps/desktop/dist/mac-arm64/<Product>.app"
-  xcrun stapler validate "apps/desktop/dist/<Product>-<version>-mac-arm64.dmg"
+  codesign --verify --deep --strict --verbose=2 "apps/desktop/dist/mac-universal/<Product>.app"
+  spctl --assess --type execute --verbose "apps/desktop/dist/mac-universal/<Product>.app"
+  xcrun stapler validate "apps/desktop/dist/<Product>-<version>-mac-universal.dmg"
   ```
   `spctl` says `accepted, source=Notarized Developer ID`; the ticket is stapled (required so Gatekeeper passes offline).
 - [ ] Every bundled `.dylib`, `.node` and helper binary is signed (`codesign --verify` covers this with `--deep`).

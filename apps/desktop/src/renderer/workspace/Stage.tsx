@@ -24,7 +24,7 @@ import {
   useClassificationLegend,
   useElevationRange,
 } from '@aio/pointcloud';
-import { Icon, localToProject, useT, type IconName } from '@aio/ui';
+import { Icon, localToProject, shortcut, useT, type IconName } from '@aio/ui';
 import { setDroneTelemetry, setFlightPaths, videoRig } from '@aio/video';
 import { useVolumetric, VolumetricStage } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
@@ -322,7 +322,7 @@ function StageToolbar({
         >
           <Icon name="sidebar" className="flip" />
           <span className="tip tip-end">
-            Right panel <span className="kbd">Ctrl Alt B</span>
+            Right panel <span className="kbd">{shortcut('Ctrl Alt B')}</span>
           </span>
         </button>
       </div>
