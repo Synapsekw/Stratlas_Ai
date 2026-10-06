@@ -112,12 +112,12 @@ export function terrainHeight(x, z, date) {
 // ------------------------------------------------------------------ ground features
 
 /** Survey markers: magenta squares painted on the ground (the ONNX test detector finds them). */
-export const MARKER_SIZE = 0.8;
+export const MARKER_SIZE = 1.2;
 export const MARKERS = [
   { id: 'M1', x: -14, z: 9, dates: ['d1', 'd2'] },
   { id: 'M2', x: 21, z: 10, dates: ['d1'] },
   { id: 'M3', x: -38, z: -4, dates: ['d1', 'd2'] },
-  { id: 'M4', x: 2, z: 8, dates: ['d2'] },
+  { id: 'M4', x: 20, z: -2, dates: ['d2'] },
 ];
 /** sRGB of the marker paint (the detector's colour, onnx-test-model.mjs MARKER_RGB). */
 const MARKER = rgb(224, 32, 224);

@@ -94,11 +94,11 @@ const DOC =
   'Marker test detector: finds magenta survey markers by colour thresholds and pooling. ' +
   'Built from plain operators, no trained weights. Stratlas test fixture, synthetic data only.';
 
-function model(graph) {
+function model(graph, doc = DOC) {
   return Buffer.concat([
     vInt(1, 7), // ir_version
     vBytes(2, 'Stratlas test fixture'),
-    vBytes(6, DOC),
+    vBytes(6, doc),
     vMsg(7, graph),
     vMsg(8, vBytes(1, ''), vInt(2, 13)),
     vMsg(14, vBytes(1, 'licence'), vBytes(2, 'MIT')),
@@ -174,7 +174,7 @@ function graph(channels) {
     tensor('half', FLOAT, [], [0.5]),
     tensor('size', FLOAT, [], [SIZE]),
     tensor('area', FLOAT, [], [WIN * WIN]),
-    tensor('minpx', FLOAT, [], [64]),
+    tensor('minpx', FLOAT, [], [24]),
     tensor('shape_x', INT64, [4], [1, 1, 1, SIZE]),
     tensor('shape_y', INT64, [4], [1, 1, SIZE, 1]),
     tensor('shape_out', INT64, [3], [1, channels, GRID * GRID]),
@@ -208,9 +208,9 @@ export function markerCard(onnx, name = 'Marker test detector') {
   };
 }
 
-/** The detector and its card. */
-export function buildMarkerDetector() {
-  const onnx = model(graph(5));
+/** The detector and its card (`doc` replaces the model's doc string, for checker tests). */
+export function buildMarkerDetector({ doc } = {}) {
+  const onnx = model(graph(5), doc);
   return { onnx, card: markerCard(onnx) };
 }
 
