@@ -19,13 +19,18 @@ To update, run the newer installer over the old version. Your projects, settings
 
 ## First start
 
-{product} opens on **Projects**. With no projects yet, the screen says "No projects in the library yet" and lists three steps:
+{product} opens on **Projects**. On a first start the library holds only the two demo projects that come with the app, and a welcome offers **Open the demo project**: a fictional tank farm with a 3D model, a drone video on the model, a map, a point cloud, issues with photos and two stockpiles surveyed twice. **Demo access road** opens the road demo. Both are synthetic data; your changes to them stay on this computer.
 
-1. **Pick the data folder** where projects and offline map packs live. Click **Change data folder**.
-2. **Add a project**: copy its folder into `projects`, or click **Add project folder**.
-3. **Add maps**: in **Settings**, **Offline maps**, import a map pack file or download a region.
+Under **This workstation** the welcome says what is there and what is missing, and what each piece is for:
 
-![The Projects screen on first start](images/first-start.png)
+- **Data folder** where your own projects and offline map packs live. Click **Choose folder** to pick another one.
+- **Offline maps**: without a map pack, maps show each project's own orthomosaics and plans. Import a pack or download a region in **Settings**, **Offline maps**.
+- **Pipeline pack**: needed only to build projects from raw data.
+- **Network**: not needed.
+
+![The Projects screen on first start, with the demo projects](images/first-start.png)
+
+To add your own project, copy its folder into `projects` in the data folder, or click **Add project folder**.
 
 > The data folder is `Documents\{product} Data` unless you pick another. It holds `projects`, `packs` (offline maps) and `runtime` (the pipeline pack for building projects).
 
