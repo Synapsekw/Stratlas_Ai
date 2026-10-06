@@ -30,11 +30,11 @@ export interface ChangePanelProps {
   /** The project's captures, oldest first, with what the panel calls them. */
   captures: readonly { id: string; label: string }[];
   /** The pair to start on (the dates Compare dates shows). */
-  defaultPair?: { from: string; to: string } | null;
+  defaultPair?: { from: string; to: string } | null | undefined;
   /** What C2 to C4's producers need to know of the pair; null when unknown. */
   context: (pair: { from: string; to: string }) => ChangePairContext | null;
   actions: ChangeRowActions;
-  className?: string;
+  className?: string | undefined;
 }
 
 const KINDS: readonly ChangeKind[] = [

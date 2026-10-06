@@ -1,3 +1,4 @@
+import { changeStore, useChange } from '@aio/change';
 import { MapView, type MapController, type MapIssueDisplay } from '@aio/maps';
 import { Icon, useT } from '@aio/ui';
 import { useVolumetric, volumetric } from '@aio/volumetric';
@@ -9,6 +10,7 @@ import {
   type StoreScope,
 } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { openChangesTab, useChangeOverlays } from '../change';
 import { FocusZone } from '../FocusZone';
 import { HelpLink } from '../help/HelpPanel';
 import { useGraphics } from '../graphics';
@@ -29,6 +31,9 @@ export function CompareButton({ split }: { split: SplitModel }) {
   const tier = useGraphics((s) => s.tier);
   const volumes = useVolumetric((s) => s.status === 'ready');
   const index = split.index;
+  // "Show changes": change pins on the compared views (and on one view outside the comparison)
+  useChangeOverlays(split);
+  const showChanges = useChange((s) => s.show);
   if (!index || !canCompare(index)) return null;
   const twin = mode === 'split' && isTwin(split);
   const captures = index.captures.map((c) => c.id);
@@ -76,6 +81,26 @@ export function CompareButton({ split }: { split: SplitModel }) {
         <Icon name="history" />
         <span className="tip">{label}</span>
       </button>
+      {(twin || showChanges) && (
+        <button
+          type="button"
+          className="tool"
+          data-testid="compare-show-changes"
+          aria-pressed={showChanges}
+          aria-label={t(showChanges ? 'change.hide' : 'change.show')}
+          onClick={() => {
+            const on = !showChanges;
+            changeStore.getState().setShow(on);
+            if (on) {
+              openChangesTab();
+              if (shell.getState().rightCollapsed) shell.getState().toggleRight();
+            }
+          }}
+        >
+          <Icon name="flag" />
+          <span className="tip">{t(showChanges ? 'change.hide' : 'change.show')}</span>
+        </button>
+      )}
       {twin && <HelpLink topic={{ chapter: 'compare-dates' }} label={t('help.compare')} />}
     </div>
   );
