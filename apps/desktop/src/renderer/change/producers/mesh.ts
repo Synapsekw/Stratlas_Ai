@@ -8,7 +8,6 @@ import { type ChangeThresholds, type Layer } from '@aio/schema';
 import { pairByName, runJob, type ChangeJob, type ProducerDeps } from './cloud';
 
 type MeshLayer = Extract<Layer, { kind: 'mesh' }>;
-type MeshParams = ReturnType<typeof ChangeMeshParams.parse>;
 
 const isModel = (l: Layer): l is MeshLayer => l.kind === 'mesh' && !l.derived;
 
@@ -31,7 +30,7 @@ export function meshJob(
 ): ChangeJob | string {
   const pair = meshPair(ctx);
   if (typeof pair === 'string') return pair;
-  const params: MeshParams = {
+  const params: ChangeMeshParams = {
     layerFrom: pair.from.id,
     layerTo: pair.to.id,
     captures: { from: ctx.from, to: ctx.to },

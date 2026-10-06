@@ -409,6 +409,13 @@ export const ChangeFramesParams = z
     message: 'Give the frame pairs, or the two dates to pair.',
   });
 
+/** Parsed parameters of the M8 change pipelines (producers build them in the app). */
+export type ChangeRasterParams = z.infer<typeof ChangeRasterParams>;
+export type ChangeSurfaceParams = z.infer<typeof ChangeSurfaceParams>;
+export type ChangeCloudParams = z.infer<typeof ChangeCloudParams>;
+export type ChangeMeshParams = z.infer<typeof ChangeMeshParams>;
+export type ChangeFramesParams = z.infer<typeof ChangeFramesParams>;
+
 /** One control point: a drawing coordinate and where it lies on the map or in the model. */
 export const DrawingControlPoint = z
   .object({
