@@ -17,26 +17,38 @@ TILE = 128
 #: A tile needs this much high-passed texture (standard deviation of log brightness).
 MIN_TEXTURE = 0.01
 UPSAMPLE = 20
+#: A tile whose correlation is this poor (scikit-image's error, 0 good to 1 none) is left out.
+MAX_ERROR = 0.8
 
 
-def highpass(lum: np.ndarray, sigma: float = 2.0) -> np.ndarray:
-    """High-passed log brightness: shade and exposure (multiplicative) become a slow offset, removed."""
+def highpass(lum: np.ndarray, sigma: float = 2.0, log: bool = True) -> np.ndarray:
+    """High-passed log brightness: shade and exposure (multiplicative) become a slow offset, removed.
+
+    With ``log`` false the grid (heights) is high-passed as it is.
+    """
     from scipy import ndimage as ndi
 
-    log = np.log(np.clip(lum, 1e-3, None))
-    return log - ndi.gaussian_filter(log, sigma)
+    x = np.log(np.clip(lum, 1e-3, None)) if log else np.asarray(lum, np.float64)
+    return x - ndi.gaussian_filter(x, sigma)
 
 
-def estimate_shift(a: np.ndarray, b: np.ndarray, valid: np.ndarray, tile: int = TILE) -> dict[str, Any]:
+def estimate_shift(
+    a: np.ndarray,
+    b: np.ndarray,
+    valid: np.ndarray,
+    tile: int = TILE,
+    log: bool = True,
+    min_texture: float = MIN_TEXTURE,
+) -> dict[str, Any]:
     """The shift (rows, columns) that moves ``b`` onto ``a``, the median of textured tiles.
 
     ``a`` and ``b`` are brightness (or slope) grids of the same shape; ``valid`` marks cells both
-    dates cover. Returns ``dy``, ``dx``, ``px`` (length), ``tiles`` (tiles used) and ``spread``
+    dates cover; ``log`` false for heights. Returns ``dy``, ``dx``, ``px`` (length), ``tiles`` (tiles used) and ``spread``
     (median distance of the tile shifts from the result, a confidence measure).
     """
     from skimage.registration import phase_cross_correlation
 
-    ha, hb = highpass(a), highpass(b)
+    ha, hb = highpass(a, log=log), highpass(b, log=log)
     h, w = a.shape
     step = tile if min(h, w) >= 2 * tile else max(32, min(h, w) // 2)
     shifts: list[tuple[float, float]] = []
@@ -45,13 +57,13 @@ def estimate_shift(a: np.ndarray, b: np.ndarray, valid: np.ndarray, tile: int = 
             if not valid[r : r + step, c : c + step].all():
                 continue
             ta, tb = ha[r : r + step, c : c + step], hb[r : r + step, c : c + step]
-            if ta.std() < MIN_TEXTURE or tb.std() < MIN_TEXTURE:
+            if ta.std() < min_texture or tb.std() < min_texture:
                 continue
             win = np.outer(np.hanning(step), np.hanning(step))
-            s, _, _ = phase_cross_correlation(
+            s, error, _ = phase_cross_correlation(
                 ta * win, tb * win, upsample_factor=UPSAMPLE, normalization=None
             )
-            if abs(s[0]) < step / 3 and abs(s[1]) < step / 3:
+            if error < MAX_ERROR and abs(s[0]) < step / 3 and abs(s[1]) < step / 3:
                 shifts.append((float(s[0]), float(s[1])))
     if not shifts:
         return {"dy": 0.0, "dx": 0.0, "px": 0.0, "tiles": 0, "spread": 0.0}

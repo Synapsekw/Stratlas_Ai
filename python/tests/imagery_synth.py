@@ -192,8 +192,11 @@ def surface_grid(cell: float = 0.1):
 
 
 def terrain(X, Z) -> np.ndarray:
-    """A gently sloping yard, heights in metres above the project origin."""
-    return 1.0 + 0.01 * X - 0.004 * Z
+    """A gently sloping yard with a shed and a bund that stay put, heights above the project origin."""
+    y = 1.0 + 0.01 * X - 0.004 * Z
+    shed = (X >= 4) & (X <= 12) & (Z >= -25) & (Z <= -15)
+    bund = np.exp(-(((Z - 22) / 1.2) ** 2)) * ((X > -25) & (X < 0))
+    return y + 3.0 * shed + 1.0 * bund
 
 
 def cone(X, Z, cx: float, cz: float, volume: float, height: float) -> np.ndarray:
