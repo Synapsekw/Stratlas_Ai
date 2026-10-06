@@ -127,6 +127,21 @@ describe('ModelBuilder', () => {
     expect(onStatus).toHaveBeenLastCalledWith(['p1', 'p2'], 'accepted');
   });
 
+  it('reviews the selected part with its buttons; a list option holds no buttons', () => {
+    const onStatus = vi.fn();
+    const { el } = render({ selected: 'p1', onStatus });
+    expect(el.querySelectorAll('[role="option"] button')).toHaveLength(0);
+    const accept = el.querySelector<HTMLButtonElement>('button[aria-label="Accept T-101"]');
+    expect(accept).not.toBeNull();
+    expect(button(el, 'Make draft').disabled).toBe(true);
+    act(() => {
+      accept?.click();
+      button(el, 'Reject').click();
+    });
+    expect(onStatus).toHaveBeenNthCalledWith(1, ['p1'], 'accepted');
+    expect(onStatus).toHaveBeenNthCalledWith(2, ['p1'], 'rejected');
+  });
+
   it('edits a dimension of the selected part', () => {
     const onDimension = vi.fn();
     const { el } = render({ selected: 'p1', onDimension });

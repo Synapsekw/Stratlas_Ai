@@ -375,34 +375,6 @@ export function ModelBuilder(p: ModelBuilderProps) {
                         <small>{originText(x)}</small>
                       </span>
                       {q && <span className={`mb-q ${q.tone}`} title="Fit residual" />}
-                      {!p.readOnly && (
-                        <span className="mb-acts">
-                          <button
-                            type="button"
-                            className="btn ghost sm"
-                            aria-label={`Accept ${partNodeName(x)}`}
-                            disabled={locked || x.status === 'accepted'}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              p.onStatus([x.id], 'accepted');
-                            }}
-                          >
-                            Accept
-                          </button>
-                          <button
-                            type="button"
-                            className="btn ghost sm"
-                            aria-label={`Reject ${partNodeName(x)}`}
-                            disabled={locked || x.status === 'rejected'}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              p.onStatus([x.id], 'rejected');
-                            }}
-                          >
-                            Reject
-                          </button>
-                        </span>
-                      )}
                     </li>
                   );
                 })}
@@ -416,6 +388,31 @@ export function ModelBuilder(p: ModelBuilderProps) {
             <h3>
               {KIND_LABEL[selected.kind]} {partNodeName(selected)}
             </h3>
+            {/* the selected part's review (an option of the list holds no buttons of its own) */}
+            {!p.readOnly && (
+              <div className="mb-row mb-acts">
+                {(
+                  [
+                    ['accepted', 'Accept'],
+                    ['rejected', 'Reject'],
+                    ['draft', 'Make draft'],
+                  ] as const
+                ).map(([status, label]) => (
+                  <button
+                    key={status}
+                    type="button"
+                    className="btn ghost sm"
+                    aria-label={`${label} ${partNodeName(selected)}`}
+                    disabled={locked || selected.status === status}
+                    onClick={() => {
+                      p.onStatus([selected.id], status);
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="mb-grid">
               <TextField
                 key={`tag:${selected.id}:${selected.tag ?? ''}`}

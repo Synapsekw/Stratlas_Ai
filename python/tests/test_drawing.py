@@ -228,6 +228,23 @@ def test_without_control_points_drawing_metres_are_project_coordinates(project, 
     assert not any("project origin" in m["message"] for m in rec.of("log"))
 
 
+def test_equipment_rectangles_are_boxes_and_a_pipe_takes_the_tag_that_starts_its_label(project, tmp_path):
+    write_manifest(project)
+    d = Dxf()
+    box = d.lwpolyline("EQUIPMENT", [(0, 0), (6, 0), (6, 2.5), (0, 2.5)], closed=True)
+    d.text("HEIGHTS", (3, 1), "H=2.59", 0.3)
+    pipe = d.line("PIPES", (0, 10), (20, 10))
+    d.text("TAGS", (2, 10.6), "P-01 EL 1.5", 0.3)
+    res, _ = run_job(DrawingImport(), project, {"src": str(d.write(tmp_path / "plan.dxf"))})
+    _, parts = parts_of(project, last(res))
+    b = parts[f"dxf-{box}"]
+    assert b["kind"] == "box" and b["class"] == "skid"
+    assert b["size"] == pytest.approx([6, 2.59, 2.5], abs=1e-3) and b["yawDeg"] == 0
+    p = parts[f"dxf-{pipe}"]
+    assert p["kind"] == "pipe" and p["tag"] == "P-01"
+    assert all(pt[1] == pytest.approx(1.5) for pt in p["points"])
+
+
 def test_millimetre_file_is_scaled_and_placed_by_lonlat_control_points(project, tmp_path):
     write_manifest(project)
     d, h = plot_plan(scale=1000, insunits=4)
