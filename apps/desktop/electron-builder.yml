@@ -17,8 +17,15 @@ files:
   - '!out/**/*.map'
   - '!**/*.{test,spec}.{js,cjs,mjs,ts,tsx}'
   - '!**/{e2e,test,tests,__tests__}/**'
+  # onnxruntime-node (local detection, BLD-10) ships every platform's binaries: keep this one's
+  - '!**/node_modules/onnxruntime-node/bin/napi-v6/linux/**'
+  - '!**/node_modules/onnxruntime-node/script/**'
 
 asar: true
+# Native libraries load from disk, never from inside app.asar: the onnxruntime binding, its
+# onnxruntime and DirectML DLLs (Windows) and dylib (macOS). The inference utility process loads them.
+asarUnpack:
+  - '**/node_modules/onnxruntime-node/bin/**'
 compression: normal
 
 # Shipped next to app.asar (process.resourcesPath):
@@ -46,6 +53,9 @@ electronFuses:
 
 # Windows: offline NSIS installer and portable exe; `dist:win:store` builds the MSIX for the Store.
 win:
+  files:
+    - '!**/node_modules/onnxruntime-node/bin/napi-v6/darwin/**'
+    - '!**/node_modules/onnxruntime-node/bin/napi-v6/win32/arm64/**'
   target:
     - target: nsis
       arch: [x64]
@@ -96,7 +106,11 @@ mac:
       arch: [universal]
     - target: zip
       arch: [universal]
-  x64ArchFiles: '**/node_modules/@napi-rs/keyring-darwin-*/**'
+  # onnxruntime-node ships an arm64 binary only (Intel Macs run without local detection, Settings
+  # says so); the same file sits in both apps and is kept as is.
+  x64ArchFiles: '**/node_modules/{@napi-rs/keyring-darwin-*,onnxruntime-node/bin}/**'
+  files:
+    - '!**/node_modules/onnxruntime-node/bin/napi-v6/win32/**'
   icon: build/icon.icns
   category: public.app-category.productivity
   hardenedRuntime: true
