@@ -7,9 +7,9 @@ Only what still needs testing. Each stage lists what to click and what you shoul
 ### Install
 
 - Close Stratlas first. The installer refuses while it runs: "Stratlas is running. Close it and click Retry."
-- Run `E:\Dev\AIO Software\apps\desktop\dist\Stratlas-0.7.0-win-x64-setup.exe` and install over the previous version.
-- No install: `Stratlas-0.7.0-win-x64-portable.exe` in the same folder.
-- 0.7.0 contains every earlier fix, so stages M5, M6 and M6.1 are tested on it too.
+- Run `E:\Dev\AIO Software\apps\desktop\dist\Stratlas-0.8.0-win-x64-setup.exe` and install over the previous version.
+- No install: `Stratlas-0.8.0-win-x64-portable.exe` in the same folder.
+- 0.8.0 contains every earlier fix, so stages M5, M6 and M6.1 are tested on it too.
 - The build is unsigned. SmartScreen shows "Windows protected your PC": choose **More info**, then **Run anyway**.
 
 ### Check the build first
@@ -37,6 +37,7 @@ Only what still needs testing. Each stage lists what to click and what you shoul
 | M6    | Builder completion: pipelines from raw data, detection review, AI detection, report text and project report, video calibration, packages and map packs                                                           | The M6 installer, built 4 Oct 2026 from main at commit `4624bf2` or later, and pipeline pack 0.2.0 (see M6, Before you start) | In progress: founder testing; feedback fixed in M6.1 |
 | M6.1  | Your M6 feedback: point size, issue and photo opening, Media highlights, HCl flicker and nadir photos, dark maps, Al-Zour drone trace and photo icons, agent camera moves, Masafi piles and ramps, compare dates | The installer built 5 Oct 2026, 18:00, from main at commit `a8e7b43` or later                                                 | All nine fixes merged; not yet tested by the founder |
 | M7    | Signed builds and updates only (the rest of M7 passed on 6 Oct 2026)                                                                                                                                             | Needs the signing secrets in GitHub and a second version                                                                      | Waiting for signing                                  |
+| M8    | Change and modelling: changes between survey dates, imagery, surface, cloud and model change, same view on the other date, model builder, local detection, offline agent                                         | Version 0.8.0, built 7 Oct 2026 from main at commit `7faf945`, and pipeline pack 0.3.0 (see M8, Before you start)             | Built; not yet tested by the founder                 |
 
 ## Stage M5: your M4 feedback, fixed
 
@@ -301,3 +302,93 @@ The rest of M7 passed on 6 Oct 2026. These need the signing secrets in GitHub (`
 - [ ] Signed installer showing Synapse Solutions.
 - [ ] macOS dmg (Apple silicon and Intel), `.aio` double-click and `stratlas://` links.
 - [ ] The Store submission checklist (`docs/release/STORE-SUBMISSION.md`).
+
+## Stage M8: change and modelling
+
+Everything here runs offline on the new bundled demo **Demo change site (2 dates)**: a made-up site flown on 2 Mar 2026 and 13 Apr 2026, with known changes planted on purpose. Opening it makes a working copy, so the bundled demo is never changed.
+
+### Before you start
+
+- [ ] Install `Stratlas-0.8.0-win-x64-setup.exe`. **Settings, About and updates** shows version 0.8.0.
+- [ ] Copy the folder `E:\Dev\AIO Software\apps\desktop\dist\pipeline-pack-0.3.0` into `E:\Stratlas Data\runtime\`. **Jobs** then shows "Pipeline pack 0.3.0" at the top. The change, drawing and fitting jobs need it.
+- [ ] **Projects** shows three demo cards, one named **Demo change site (2 dates)**. The first-start welcome still opens the 0.7.0 demo.
+
+### The change demo
+
+- [ ] Open **Demo change site (2 dates)**: it has two survey dates. The later ortho shows a new shelter, a missing blue container, a moved yellow skid, a pit, a new track and a dark cloud shadow.
+- [ ] Play **Drone video 2026-04-13**: a short, low-resolution orbit that plays and seeks.
+
+### Changes panel
+
+- [ ] Click **Compare dates**: two 3D views, first date left, last date right.
+- [ ] Click **Show changes** (flag button next to Compare dates): the right panel opens on **Changes**, with Earlier and Later set to the two dates.
+- [ ] Click **Find changes**:
+  - issues: 1 New, 1 Grown, 1 Resolved, 3 Unchanged;
+  - detections: one row per place on the ground (1 new, 1 resolved, 2 unchanged);
+  - map layers: the fence reads "reshaped" and the track "added".
+- [ ] Click the **New** issue row: both views fly to it, its pin is ringed on both dates and shows faint on the earlier date.
+- [ ] Click the **Resolved** row, **Close as resolved**, **Yes, close it**: in **Issues** that issue is now closed. It was open before.
+- [ ] Click the added track row, then **Make issue**: a new draft issue appears in **Issues**, dated to the later survey, and the row says Confirmed.
+- [ ] Go to **Projects** and open the demo again: the **Changes** tab keeps your reviews.
+- [ ] Click a layer in **Datasets**. On its Selection card, set **Belongs to date...** to the other survey: while comparing, the layer moves to that date's view.
+- [ ] With cloud AI on, ask the agent "What changed between the two surveys?": it gives the same counts as the panel.
+
+### Imagery and surface change
+
+- [ ] In **Changes**, click **Run imagery change**. The job finishes in **Jobs**, and two layers appear: "Imagery change heat map ..." and "Imagery change areas". The new building and the removed container are outlined; the cloud shadow and the colour tint are not.
+- [ ] Click **Run surface change**: the grown stockpile shows fill, the new pit shows cut, with site totals. Blue is cut, red is fill; the legend reads in metres.
+- [ ] While comparing dates, open the compare bar from the stage toolbar (next to **Compare dates** and **Show changes**). **Swipe**: drag the divider across the site, earlier date left, later right. The arrow keys move it, and Shift+arrow moves it by 10%.
+- [ ] **Blend**: the slider fades the later date in. **Side by side** restores the normal split.
+- [ ] Pick the imagery heat map: its legend reads "Change score".
+
+### Point cloud and model change
+
+- [ ] In **Changes**, click **Run cloud change**: a layer "Cloud change ..." appears under Point clouds, and the clouds switch to **Colour by: Change** on their own. Moved and new objects are amber or red, the rest grey. The legend reads 0.00 m to 0.30 m.
+- [ ] Drag **Hide changes under** to about 0.10 m: the grey points disappear. Point at a red point: "Under the pointer: 0.xx m".
+- [ ] Click **Run volume change** in the legend: fill, cut and net volume appear in the legend.
+- [ ] Click **Run model change**: parts are listed as moved, added, removed and changed (the dented tank). Clicking a row outlines the part on both dates. Switch on the hidden layer "Model change ...": the dent is amber to red.
+
+### Same view on the other date
+
+- [ ] Press **3** for Split and choose **Frames** in the right pane: a frame from one date next to the same view from the other, with how far apart they are ("1.3 m, 2 degrees apart").
+- [ ] Play or drag the timeline: the other side stays on the same view.
+- [ ] **Swipe** with **Line up the ground** on: roads and edges match across the handle. **Blend** halfway: new structures appear faintly over the old ground.
+- [ ] In the video window title bar, click **Same view on the other date** (clock icon): the split opens with Frames on that clip.
+- [ ] In the split's **Photo** pane, click **Same view on the other date**: the matching photo from the other date shows beside it; **Next photo** keeps the pairing.
+- [ ] In **Changes**, click **Find changes in matched frames**, then open **Detections**: the changes show as draft boxes labelled "change" on the later photos.
+
+### Model builder (models from drawings and scans)
+
+- [ ] Press **Ctrl+K**, type "model", choose **Open the model builder**: the panel opens beside the 3D view.
+- [ ] **Import drawing (DXF)**, choose the unitless plot plan in the demo's `sources` folder, **Import**: "... Set the drawing units ... and import again."
+- [ ] Import the demo plot plan in metres: "The drawing is imported ..." and the plan lies on the ground.
+- [ ] **Place by points**, with two pairs typed or clicked:
+  - "960 1960" on the plan to "301665 2575038" on the site;
+  - "1040 2040" on the plan to "23.27346421, 1.0617853" on the site.
+    Then **Place the drawing**: the plan lies over the site.
+- [ ] **From drawing**: tanks with their tags, and buildings, appear as drafts with heights.
+- [ ] Select a tank, change **Height** and press Enter. Press **A** to accept it (or **Accept all drafts**), then **Build model**: "The model is built", and clicking tank **T-201** selects its tag.
+- [ ] Choose the modelling scan **Point cloud 2026-04-13**, then **From point cloud**: "N draft parts fitted", each showing "Fitted, x.x cm off".
+- [ ] Select one part, press **R** (rejected), accept the rest and **Build model**.
+- [ ] With cloud AI on, ask the agent to build one of the drawing's tanks (for example "Build tank T-202 from the drawing"): a draft step waits for **Approve**. With **Allow cloud AI for drawings** off (the default), the agent's result names no tags or sizes.
+
+### Local detection
+
+- [ ] **Settings, AI providers, Detection models**: "onnxruntime 1.30.0 on DirectML (graphics card)" (or CPU).
+- [ ] Tick the licence checkbox, **Import model**, and pick `model.json` in the demo's `sources\marker-detector` folder: "Imported Marker test detector." The card shows yolo-v8, 320 x 320, MIT.
+- [ ] Import a broken model (any text file renamed `model.onnx` next to a `model.json`): a red "The model could not be loaded: ..." and the app stays up.
+- [ ] In the demo, open **Detections**, choose **All photos**, select photos, then **Detect with AI**, **Local model**. It says "Runs on this computer ... Nothing leaves this computer. Free." Run it: "x of N photos checked", "Cost: free". Draft boxes sit on the magenta markers. Accept two with a number key, then **A**.
+- [ ] Turn Wi-Fi off and run it again: the same.
+- [ ] Start a run and press **Stop**: "Stopping after this photo", then **Stopped**. **Run the remaining N** finishes it.
+
+### Offline agent
+
+Install Ollama (or LM Studio) yourself and pull a model that supports tool calling.
+
+- [ ] **Settings, AI providers, Local model**, **Find models**: your server and its models, with badges (Tools, Vision, context, size). Click a model: "In use". **Test**: "Tools yes, vision ... First answer in N s."
+- [ ] Turn on **Offline agent**: "Every task runs on <model>. Nothing leaves this machine." The status line reads "Agent: local (offline) · <model> on this machine".
+- [ ] Turn Wi-Fi off, open the change demo and ask "Fly to tank T-201": the steps run, the camera moves, there is no send preview and the meter shows $0.00.
+- [ ] Choose a model without tool support and **Test**: "Tools no". Ask the agent to act: the panel says it can only answer in text, and shows no tool steps.
+- [ ] Ask something and press **Stop** at once: "Stopped."
+- [ ] Type a LAN address (for example `http://192.168.1.20:11434/v1`) and **Find models**: a warning that it is on another machine. With cloud AI off, it is refused.
+- [ ] Turn **Offline agent** off: your earlier AI routes come back.
