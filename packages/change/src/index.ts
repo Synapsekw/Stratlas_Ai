@@ -6,6 +6,23 @@
  */
 export * from './core';
 export {
+  ChangePanel,
+  ChangeStyles,
+  type ChangePanelProps,
+  type ChangeRowActions,
+} from './ChangePanel';
+export { changeMarkers, VERDICT_COLOR, type ChangeMarker, type MarkerInput } from './overlay';
+export {
+  changeStore,
+  createChangeStore,
+  setsOfPair,
+  useChange,
+  type ChangeRun,
+  type ChangeState,
+  type ChangeStore,
+  type SelectedItem,
+} from './store';
+export {
   changeProducers,
   registerChangeProducer,
   type ChangePairContext,
