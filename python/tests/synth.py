@@ -335,8 +335,10 @@ def write_geotiff(
     return Path(path)
 
 
-def write_las(path: Path, xyz: np.ndarray, epsg: int, scale: float = 0.001) -> Path:
-    """LAS 1.2, point format 0, coordinates in ``epsg`` (E, N, H), with a GeoTIFF key VLR."""
+def write_las(path: Path, xyz: np.ndarray, epsg: int, scale: float = 0.001, point_format: int = 0) -> Path:
+    """LAS 1.2, point format 0 (or 2, grey RGB), coordinates in ``epsg`` (E, N, H), with a GeoTIFF key VLR."""
+    if point_format not in (0, 2):
+        raise ValueError("point_format must be 0 or 2")
     xyz = np.asarray(xyz, dtype=np.float64)
     offset = np.floor(xyz.min(axis=0) / 100) * 100
     q = np.round((xyz - offset) / scale).astype("<i4")
@@ -361,8 +363,8 @@ def write_las(path: Path, xyz: np.ndarray, epsg: int, scale: float = 0.001) -> P
         header_size,
         header_size + len(vlr),
         1,
-        0,
-        20,
+        point_format,
+        20 if point_format == 0 else 26,
         len(q),
         len(q),
         0,
@@ -390,11 +392,14 @@ def write_las(path: Path, xyz: np.ndarray, epsg: int, scale: float = 0.001) -> P
             ("a", "i1"),
             ("u", "u1"),
             ("s", "<u2"),
+            *([("rgb", "<u2", 3)] if point_format == 2 else []),
         ],
     )
     rec["xyz"] = q
     rec["f"] = 9
     rec["c"] = 1
+    if point_format == 2:
+        rec["rgb"] = 32768
     Path(path).write_bytes(head + vlr + rec.tobytes())
     return Path(path)
 

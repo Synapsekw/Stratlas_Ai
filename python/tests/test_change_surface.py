@@ -87,6 +87,54 @@ def test_point_clouds_give_the_same_volumes_as_dsms(tmp_path, kinds):
     assert cut["volume"]["cutM3"] == pytest.approx(300, rel=0.03)
 
 
+@pytest.mark.parametrize("kinds", [("grid", "grid"), ("grid", "las"), ("las", "las"), ("dsm", "grid")])
+def test_height_grids_and_las_sources_of_viewing_layers_give_the_same_volumes(tmp_path, kinds):
+    # a shaded relief (kit-pyramid) with its aio.grid/1 heights, a png-packed cloud with its LAS
+    surface_project(tmp_path, kinds=kinds)
+    result, _ = run_job(pipeline(), tmp_path, surface_params(kinds))
+    assert result["status"] == "done"
+    cs = read_set(tmp_path)
+    [fill] = by_verdict(cs, "fill")
+    [cut] = by_verdict(cs, "cut")
+    assert fill["volume"]["fillM3"] == pytest.approx(1000, rel=0.02)
+    assert cut["volume"]["cutM3"] == pytest.approx(300, rel=0.03)
+    assert fill["volume"]["cutM3"] == 0 and str(fill["volume"]["cutM3"]) == "0.0"
+    assert cs["registration"]["ok"] is True
+
+
+def test_a_dsm_without_a_height_grid_is_refused_with_what_to_import(tmp_path):
+    surface_project(tmp_path, kinds=("grid", "grid"))
+    (tmp_path / "sources" / "surf-a.json").unlink()
+    with pytest.raises(JobError, match=r'"DSM c1 \(shaded relief\)" has no height grid .*GeoTIFF'):
+        run_job(pipeline(), tmp_path, surface_params(("grid", "grid")))
+
+
+def test_a_viewing_cloud_without_its_las_is_refused(tmp_path):
+    surface_project(tmp_path, kinds=("las", "las"))
+    (tmp_path / "sources" / "surf-b.las").unlink()
+    with pytest.raises(JobError, match=r'"Cloud c2" has no measured points \(sources/surf-b\.las\)'):
+        run_job(pipeline(), tmp_path, surface_params(("las", "las")))
+
+
+def test_a_height_grid_that_changed_since_the_job_started_is_refused(tmp_path):
+    import os
+
+    kinds = ("grid", "grid")
+    surface_project(tmp_path, kinds=kinds)
+    cancel = threading.Event()
+
+    def emit(method, params):
+        if method == "progress" and params.get("step") == "read" and params.get("state") == "done":
+            cancel.set()
+
+    with pytest.raises(Cancelled):
+        Job("j1", pipeline(), tmp_path, surface_params(kinds), emit, cancel).run()
+    p = tmp_path / "sources" / "surf-a.png"
+    os.utime(p, ns=(p.stat().st_atime_ns, p.stat().st_mtime_ns + 10_000_000))
+    with pytest.raises(JobError, match="changed since this job started"):
+        Job("j1", pipeline(), tmp_path, surface_params(kinds), Recorder(), threading.Event()).run()
+
+
 def test_areas_report_their_own_volumes(tmp_path):
     from rasterio.warp import transform
 

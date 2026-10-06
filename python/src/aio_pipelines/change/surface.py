@@ -3,10 +3,12 @@
 Parameters as ``ChangeSurfaceParams`` in ``@aio/schema`` (``jobs.ts``). Steps:
 
 1. read     both surfaces onto a common grid over the area both cover: a DSM (a ``cog`` raster
-            layer with role ``dsm``) resampled through GDAL, a point cloud (``kit-packed``, or
-            ``copc`` through PDAL) as the mean height of its points per cell with small gaps
-            closed (as ``volumetric/cloud.py`` grids a cloud). The cell is the coarser input's
-            (``cellM`` to choose);
+            layer with role ``dsm``, or another format with an ``aio.grid/1`` height grid in
+            ``sources/``, see ``sources.py``) resampled through GDAL, a point cloud
+            (``kit-packed``, ``copc`` through PDAL, or another format with its ``sources/<id>.las``)
+            as the mean height of its points per cell with small gaps closed (as
+            ``volumetric/cloud.py`` grids a cloud). The cell is the coarser input's (``cellM`` to
+            choose);
 2. register the dates must line up: a horizontal shift found on the shapes both dates share
             (2 cells at most) and the median height difference over unchanged ground (5 cm at
             most, founder default) are measured, and the run refused beyond them;
@@ -52,6 +54,7 @@ from .imagery import (
     write_pyramid,
 )
 from .register import estimate_shift, refusal
+from .sources import GridSource, cloud_source, grid_source
 
 PRODUCER = "change.surface"
 #: Founder defaults (``ChangeThresholds.surface`` and ``.registration``).
@@ -100,26 +103,37 @@ class Surface:
         self.kind = spec["kind"]
         self.name = str(self.layer.get("name") or self.layer.get("id"))
         self.origin = manifest.get("origin") or [0, 0, 0]
+        self.grid: GridSource | None = None
         if self.kind == "dsm":
             if self.layer.get("kind") != "raster" or self.layer.get("role") != "dsm":
                 raise JobError(f'The layer "{self.name}" is not a DSM.')
-            if self.layer.get("format") != "cog":
-                raise JobError(
-                    f'The DSM "{self.name}" is a {self.layer.get("format")}; surface change reads GeoTIFF DSMs.'
-                )
-            self.path = asset_path(project, self.layer)
-            self._dsm_footprint()
+            if self.layer.get("format") == "cog":
+                self.path = asset_path(project, self.layer)
+                self.files = [str(self.path)]
+                self._dsm_footprint()
+            else:
+                # a shaded relief for viewing: the heights are in its aio.grid/1 source
+                self.grid = grid_source(project, self.layer, manifest)
+                self.path = self.grid.image
+                self.files = self.grid.files
+                self._grid_footprint()
         else:
             if self.layer.get("kind") != "pointcloud":
                 raise JobError(f'The layer "{self.name}" is not a point cloud.')
-            fmt = self.layer.get("format")
-            if fmt not in ("kit-packed", "copc"):
-                raise JobError(
-                    f'The point cloud "{self.name}" is {fmt}; surface change reads kit-packed and COPC clouds.'
-                )
-            self.path = asset_path(project, self.layer)
+            if self.layer.get("format") in ("kit-packed", "copc"):
+                self.path = asset_path(project, self.layer)
+            else:
+                # packed for viewing: the points are in its LAS source
+                self.path = cloud_source(project, self.layer)
+            self.files = [str(self.path)]
             self.res = None  # known once the points are read
-        self.files = [str(self.path)]
+
+    def _grid_footprint(self) -> None:
+        assert self.grid is not None
+        left, bottom, right, top = self.grid.bounds
+        self.res = self.grid.res
+        o = self.origin
+        self.box = (left - o[0], o[1] - top, right - o[0], o[1] - bottom)
 
     def _dsm_footprint(self) -> None:
         import rasterio
@@ -152,10 +166,13 @@ class Surface:
         from ..runtime import atomic_write_json
         from ..volumetric.cloud import read_las_chunks
 
-        pdal = find_pdal()
-        if not pdal:
-            raise JobError(PDAL_MISSING)
-        las = ctx.stage(f"work/{self.layer['id']}.las")
+        if self.path.suffix.lower() == ".las":
+            las = self.path  # plain LAS (any point format) is read here, without PDAL
+        else:
+            pdal = find_pdal()
+            if not pdal:
+                raise JobError(PDAL_MISSING)
+            las = ctx.stage(f"work/{self.layer['id']}.las")
         if not las.exists():
             pipe = ctx.stage("work/pdal.json")
             atomic_write_json(
@@ -208,19 +225,37 @@ class Surface:
         dst_crs = project_crs(self.manifest)
         nodata = -3.0e38
         out = np.full((grid.rows, grid.cols), nodata, np.float32)
-        with rasterio.open(self.path) as ds:
-            src_crs = ds.crs or dst_crs
+        if self.grid is not None:
+            # aio.grid/1 heights are in the project CRS (grid_source checks the EPSG): the same
+            # resampling onto the comparison cells as a GeoTIFF's
+            src = self.grid.heights().astype(np.float32)
+            src[~np.isfinite(src)] = nodata
+            crs = dst_crs or f"EPSG:{self.grid.epsg or 3857}"
             reproject(
-                rasterio.band(ds, 1),
+                src,
                 out,
-                src_transform=ds.transform,
-                src_crs=src_crs,
-                src_nodata=ds.nodata,
+                src_transform=self.grid.transform(),
+                src_crs=crs,
+                src_nodata=nodata,
                 dst_transform=grid.crs_transform(self.origin),
-                dst_crs=dst_crs or src_crs,
+                dst_crs=crs,
                 dst_nodata=nodata,
                 resampling=Resampling.bilinear,
             )
+        else:
+            with rasterio.open(self.path) as ds:
+                src_crs = ds.crs or dst_crs
+                reproject(
+                    rasterio.band(ds, 1),
+                    out,
+                    src_transform=ds.transform,
+                    src_crs=src_crs,
+                    src_nodata=ds.nodata,
+                    dst_transform=grid.crs_transform(self.origin),
+                    dst_crs=dst_crs or src_crs,
+                    dst_nodata=nodata,
+                    resampling=Resampling.bilinear,
+                )
         h = out.astype(np.float64)
         h[(out <= nodata * 0.5) | ~np.isfinite(h)] = np.nan
         return h - float(self.origin[2])
@@ -294,7 +329,7 @@ def volumes(dod: np.ndarray, mask: np.ndarray, cell: float, floor: float = 0.0) 
     d = np.where(np.abs(d) >= floor, d, 0.0)
     a = cell * cell
     fill = float(d[d > 0].sum() * a)
-    cut = float(-d[d < 0].sum() * a)
+    cut = float(abs(d[d < 0].sum()) * a)  # abs: no "-0.0" when nothing was cut
     return {"cutM3": round(cut, 2), "fillM3": round(fill, 2), "netM3": round(fill - cut, 2)}
 
 
