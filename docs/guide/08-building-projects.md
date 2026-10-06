@@ -95,6 +95,8 @@ Needs cloud AI on and a key with a vision model (see [AI agent](07-ai-agent.md))
 
 Results arrive as **Waiting** detections ("Proposed by" the model, with a confidence). Nothing counts until you accept it.
 
+To find defects with a model on this computer instead, with nothing sent and no cost, pick **Local model** under **Detect with**. See [Local detection with ONNX models](19-local-detection.md).
+
 ## Calibrate video
 
 When the video does not sit on the model, calibrate it: **Ctrl K**, **Calibrate video: time offset and field of view**.
