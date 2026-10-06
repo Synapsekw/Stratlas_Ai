@@ -136,7 +136,8 @@ describe('compact tool profile (small local models)', () => {
     for (const w of WindowKind.options) {
       const compact = toolsForWindow(w, 'compact');
       expect(compact.length, w).toBeGreaterThan(3);
-      expect(compact.length, w).toBeLessThanOrEqual(14);
+      // 14 everyday tools plus the four change tools (C1), which every window offers
+      expect(compact.length, w).toBeLessThanOrEqual(18);
       expect(compact.length, w).toBeLessThan(toolsForWindow(w, 'full').length);
       for (const s of compact) {
         expect(s.meta.description.length, s.meta.name).toBeLessThanOrEqual(100);
@@ -180,6 +181,13 @@ describe('compact tool profile (small local models)', () => {
       'build_model',
     ]) {
       expect(COMPACT_TOOLS[n], n).toBeDefined();
+    }
+  });
+
+  it('offers the registered change tools (C1) by their real names', () => {
+    for (const n of ['compare_captures', 'list_changes', 'show_change', 'run_change_detection']) {
+      expect(getToolSpec(n), n).toBeDefined();
+      expect(names('scene3d', 'compact'), n).toContain(n);
     }
   });
 
