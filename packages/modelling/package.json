@@ -1,0 +1,18 @@
+{
+  "name": "@aio/modelling",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Procedural models from drawings and point clouds: validation, mesher, GLB writer, Model builder screen.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aio/schema": "workspace:*",
+    "@aio/ui": "workspace:*",
+    "react": "^19.3.0"
+  }
+}

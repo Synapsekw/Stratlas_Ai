@@ -41,6 +41,12 @@
       "path": "packages/project"
     },
     {
+      "path": "packages/change"
+    },
+    {
+      "path": "packages/modelling"
+    },
+    {
       "path": "apps/desktop"
     }
   ]

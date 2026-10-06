@@ -21,6 +21,8 @@
     { "path": "../../packages/ui" },
     { "path": "../../packages/volumetric" },
     { "path": "../../packages/project" },
-    { "path": "../../packages/geo" }
+    { "path": "../../packages/geo" },
+    { "path": "../../packages/change" },
+    { "path": "../../packages/modelling" }
   ]
 }

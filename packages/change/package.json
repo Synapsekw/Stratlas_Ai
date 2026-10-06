@@ -1,0 +1,20 @@
+{
+  "name": "@aio/change",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Change between capture dates: change sets, register, issue, detection and vector change, producer registry, Changes panel.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aio/schema": "workspace:*",
+    "@aio/ui": "workspace:*",
+    "@aio/workspace": "workspace:*",
+    "react": "^19.3.0",
+    "zustand": "^5.0.15"
+  }
+}

@@ -51,7 +51,7 @@ export default tseslint.config(
   {
     files: [
       'apps/desktop/src/renderer/**/*.{ts,tsx}',
-      'packages/{engine,pointcloud,maps,video,annotate,ui,volumetric}/src/**/*.{ts,tsx}',
+      'packages/{engine,pointcloud,maps,video,annotate,ui,volumetric,change,modelling}/src/**/*.{ts,tsx}',
     ],
     plugins: { 'react-hooks': reactHooks },
     languageOptions: { globals: { ...globals.browser } },

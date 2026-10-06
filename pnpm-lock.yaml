@@ -115,6 +115,9 @@ importers:
       '@aio/brand':
         specifier: workspace:*
         version: link:../../packages/brand
+      '@aio/change':
+        specifier: workspace:*
+        version: link:../../packages/change
       '@aio/engine':
         specifier: workspace:*
         version: link:../../packages/engine
@@ -124,6 +127,9 @@ importers:
       '@aio/maps':
         specifier: workspace:*
         version: link:../../packages/maps
+      '@aio/modelling':
+        specifier: workspace:*
+        version: link:../../packages/modelling
       '@aio/pointcloud':
         specifier: workspace:*
         version: link:../../packages/pointcloud
@@ -214,6 +220,24 @@ importers:
 
   packages/brand: {}
 
+  packages/change:
+    dependencies:
+      '@aio/schema':
+        specifier: workspace:*
+        version: link:../schema
+      '@aio/ui':
+        specifier: workspace:*
+        version: link:../ui
+      '@aio/workspace':
+        specifier: workspace:*
+        version: link:../workspace
+      react:
+        specifier: ^19.3.0
+        version: 19.3.0
+      zustand:
+        specifier: ^5.0.15
+        version: 5.0.15(@types/react@19.3.0)(react@19.3.0)
+
   packages/engine:
     dependencies:
       '@aio/geo':
@@ -268,6 +292,18 @@ importers:
       '@types/geojson':
         specifier: ^7946.0.16
         version: 7946.0.16
+
+  packages/modelling:
+    dependencies:
+      '@aio/schema':
+        specifier: workspace:*
+        version: link:../schema
+      '@aio/ui':
+        specifier: workspace:*
+        version: link:../ui
+      react:
+        specifier: ^19.3.0
+        version: 19.3.0
 
   packages/pointcloud:
     dependencies:
