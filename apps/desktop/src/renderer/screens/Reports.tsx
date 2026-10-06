@@ -1,6 +1,5 @@
-import { defaultIssuePages, houseKind } from '@aio/project/export';
+import { defaultIssuePages, HOUSE_SECTIONS, houseKind } from '@aio/project/export';
 import {
-  REPORT_SECTIONS,
   reportSectionOn,
   type IssuePagesRule,
   type IssueStatus,
@@ -55,7 +54,7 @@ function ProjectReport(props: {
       <p className="faint small rep-note">{t('reports.brandingHint')}</p>
       <fieldset className="rep-sections">
         <legend className="caps">{t('reports.house.sections')}</legend>
-        {REPORT_SECTIONS.map((id) => (
+        {HOUSE_SECTIONS.map((id) => (
           <label key={id} className="rep-check">
             <input
               type="checkbox"

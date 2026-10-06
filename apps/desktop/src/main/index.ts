@@ -59,6 +59,12 @@ import {
 } from './inference/electron';
 import { registerLocalModelsIpc, type LocalServerSeen } from './localModels';
 import { readCloudDrawings, registerModelBuilderIpc } from './modelBuilder';
+import { registerBlobsIpc } from './blobs';
+import { registerCollabIpc } from './collab';
+import { registerIdentityIpc } from './identity';
+import { registerJournalIpc } from './journal';
+import { registerSyncIpc } from './sync';
+import { registerTeamServerIpc } from './teamServer';
 import { importLogo, removeLogo } from './branding';
 import { putThumb } from './thumbs';
 import { RENDERER_PROBE, smokeProbe, writeSmokeReport } from './smoke';
@@ -988,6 +994,14 @@ function registerIpc(): void {
       return key;
     },
   });
+
+  // M9: one module per stream (T1 journal, T2 identity, T3 collab, T5 sync, T6 blobs, T7 server).
+  registerJournalIpc({ handle });
+  registerIdentityIpc({ handle });
+  registerCollabIpc({ handle });
+  registerSyncIpc({ handle });
+  registerBlobsIpc({ handle });
+  registerTeamServerIpc({ handle });
 }
 
 /** Hand a package path to the renderer (second launch, macOS open-file). */

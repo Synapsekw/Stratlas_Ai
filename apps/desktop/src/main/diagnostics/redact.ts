@@ -1,5 +1,5 @@
 import { isLoopbackUrl } from '@aio/ai/routes';
-import type { Settings } from '@aio/schema';
+import type { Settings, TeamSettings } from '@aio/schema';
 
 /**
  * Redaction for everything that leaves the app in a diagnostics bundle or lands in a log file.
@@ -220,6 +220,15 @@ export const SETTINGS_RULES = {
   reportContents: 'keep',
   change: 'keep',
   inference: { fields: { modelsDir: 'folder', provider: 'keep', memoryCapMb: 'keep' } },
+  // M9: sync preferences only. Device keys, server enrolment and invite codes live in the vault
+  // and never in settings; a field added to `team` stays out of bundles until listed here.
+  team: {
+    fields: {
+      autoSync: 'keep',
+      intervalMin: 'keep',
+      blobCacheGb: 'keep',
+    } satisfies Record<keyof TeamSettings, Rule>,
+  },
 } as const satisfies Record<keyof Settings, Rule>;
 
 function safeUrl(value: unknown): unknown {

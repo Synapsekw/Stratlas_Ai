@@ -48,6 +48,8 @@ const SUFFIX: Record<ExportFormat, string> = {
   'masks-zip': '-masks.zip',
   'report-pdf': '-issue-register.pdf',
   'house-pdf': '-report.pdf',
+  'audit-csv': '-audit.csv',
+  'audit-json': '-audit.json',
 };
 
 /** Save dialog filter per format. */
@@ -59,6 +61,8 @@ export const EXPORT_FILTERS: Record<ExportFormat, { name: string; extensions: st
   'masks-zip': { name: 'ZIP', extensions: ['zip'] },
   'report-pdf': { name: 'PDF', extensions: ['pdf'] },
   'house-pdf': { name: 'PDF', extensions: ['pdf'] },
+  'audit-csv': { name: 'CSV', extensions: ['csv'] },
+  'audit-json': { name: 'Signed audit JSON', extensions: ['json'] },
 };
 
 /** File name offered in the save dialog: the project name made file safe, plus the format. */
@@ -226,6 +230,9 @@ export async function runExport(
 ): Promise<ExportResult> {
   if (job.format === 'report-pdf' || job.format === 'house-pdf') {
     throw new Error('The PDF report is printed from a report window, not the export process.');
+  }
+  if (job.format === 'audit-csv' || job.format === 'audit-json') {
+    throw new Error('The audit trail is exported by the journal service (M9 T1), not here.');
   }
   const part = `${job.outPath}.part`;
   try {

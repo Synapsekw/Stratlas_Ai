@@ -397,6 +397,21 @@ function roadSummary(r: RoadModel): RoadSummary {
 }
 
 /** Everything the house-format report shows. Text has no em or en dashes. */
+/**
+ * The sections the house report prints, in order (Settings lists these). `ReportSectionId` also
+ * has `audit` and `approvals` (M9); they join this list when T1 and T3 print them.
+ */
+export const HOUSE_SECTIONS = [
+  'contents',
+  'summary',
+  'scope',
+  'site',
+  'statistics',
+  'register',
+  'issues',
+  'appendices',
+] as const satisfies readonly ReportSectionId[];
+
 export function houseReportModel(input: HouseInput): HouseModel {
   const m = input.manifest;
   const base = reportModel(input, {
@@ -406,18 +421,7 @@ export function houseReportModel(input: HouseInput): HouseModel {
   const kind = houseKind(m, input.issues, { volumes: input.volumes, road: input.road });
   const rule = input.contents?.issuePages ?? defaultIssuePages(kind);
   const issuePages = issuePageRows(m, input.issues, base.rows, rule);
-  const sections = (
-    [
-      'contents',
-      'summary',
-      'scope',
-      'site',
-      'statistics',
-      'register',
-      'issues',
-      'appendices',
-    ] as const
-  ).filter(
+  const sections = HOUSE_SECTIONS.filter(
     (id) => reportSectionOn(input.contents, id) && (id !== 'issues' || issuePages.length > 0),
   );
   const { layers, totals } = dataRows(m);

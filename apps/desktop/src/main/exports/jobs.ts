@@ -59,6 +59,10 @@ export function createExportJobs(deps: ExportDeps): ExportJobs {
   const running = new Map<string, AbortController>();
   return {
     async run(req) {
+      // M9 T1 fills the audit exports (journal `audit:export`); until then, say so before a dialog.
+      if (req.format === 'audit-csv' || req.format === 'audit-json') {
+        return { ok: false, error: 'The audit export is not available yet in this build.' };
+      }
       const refused = deps.refuse?.(req.projectId, req.format) ?? null;
       if (refused !== null) return { ok: false, error: refused };
       if (running.has(req.jobId)) return { ok: false, error: 'This export is already running.' };

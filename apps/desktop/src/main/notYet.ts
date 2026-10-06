@@ -5,7 +5,7 @@ import { validated, type Handler } from './ipc';
 export type Handle = <C extends IpcChannel>(channel: C, handler: Handler<C>) => void;
 
 /**
- * The answer of an M8 channel this build does not do yet (C0 stubs). Each stream replaces the
+ * The answer of a channel this build does not do yet (M8 C0 and M9 T0 stubs). Each stream replaces the
  * stubs of its own module; the renderer can tell the case apart by `code`.
  */
 export function notYet(what: string): { ok: false; error: string; code: 'not-implemented' } {

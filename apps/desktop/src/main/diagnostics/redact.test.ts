@@ -192,6 +192,19 @@ describe('redactSettings', () => {
     expect(redactSettings({ inference: { modelsDir: '' } }).inference).toEqual({ modelsDir: '' });
   });
 
+  it('gives the team sync preferences and nothing a later field might carry (M9)', () => {
+    const out = redactSettings({
+      team: { autoSync: true, intervalMin: 15, blobCacheGb: 50, inviteCode: 'K7-ABCD-1234' },
+    });
+    expect(out.team).toEqual({
+      autoSync: true,
+      intervalMin: 15,
+      blobCacheGb: 50,
+      _omitted: ['inviteCode'],
+    });
+    expect(JSON.stringify(out)).not.toContain('K7-ABCD');
+  });
+
   it('returns an empty object for something that is not settings', () => {
     expect(redactSettings(null)).toEqual({});
     expect(redactSettings('x')).toEqual({});
