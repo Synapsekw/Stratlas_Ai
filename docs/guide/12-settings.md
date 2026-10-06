@@ -56,67 +56,194 @@ Integrated graphics get **Low**; laptop graphics one step lower than the desktop
 
 ## Keyboard shortcuts
 
-### Everywhere
+The same list is in **Settings**, **Keyboard**. On a Mac, Ctrl is ⌘ (Command) and Alt is ⌥ (Option); {product} shows the Mac keys there and in its tool tips.
 
-| Keys       | Does                            |
-| ---------- | ------------------------------- |
-| F1         | Open or close this guide        |
-| Ctrl K     | Command palette: find anything  |
-| Ctrl B     | Fold or unfold the sidebar      |
-| Ctrl Alt B | Fold or unfold the right panel  |
-| Space      | Play or pause (Scene)           |
-| Esc        | Close a dialog, popover or tool |
+### Anywhere
 
-### Scene
+| Keys       | Does                                     |
+| ---------- | ---------------------------------------- |
+| Ctrl K     | Open or close the command search         |
+| Ctrl B     | Collapse or expand the sidebar           |
+| Ctrl Alt B | Collapse or expand the right panel       |
+| Space      | Play or pause the video and the timeline |
+| F1         | Open or close the user guide             |
 
-| Keys         | Does                             |
-| ------------ | -------------------------------- |
-| 1            | 3D view                          |
-| 2            | Map                              |
-| 3            | Split                            |
-| H            | Whole site                       |
-| F            | Fly to the selection             |
-| M            | Measure a distance               |
-| X            | Section plane                    |
-| L            | Labels: off, key, all            |
-| A            | Annotation tools                 |
-| I            | Issue pins off or on             |
-| P            | Flight paths                     |
-| D            | Drone telemetry                  |
-| T            | Timeline                         |
-| W            | Video window                     |
-| C            | View from inside the active clip |
-| Ctrl Shift F | Frame rate and memory overlay    |
+### Scene: 3D, map and split
+
+| Keys         | Does                                                      |
+| ------------ | --------------------------------------------------------- |
+| 1            | Show the 3D view                                          |
+| 2            | Show the map                                              |
+| 3            | Show 3D and map side by side                              |
+| H            | Whole site                                                |
+| F            | Fly to the selection                                      |
+| M            | Measure on or off                                         |
+| X            | Section on or off                                         |
+| L            | Next component label mode                                 |
+| A            | Annotation tools on or off                                |
+| W            | Show or hide the video window                             |
+| P            | Flight paths: all, active clip, off                       |
+| D            | Drone telemetry on or off                                 |
+| I            | Issue pins on or off                                      |
+| T            | Show or hide the timeline                                 |
+| C            | Inside the asset: view from the drone camera              |
+| Esc          | Stop the current tool, close the photo beside the 3D view |
+| Enter        | Finish the shape you are drawing                          |
+| Backspace    | Remove the last point you drew                            |
+| Ctrl Shift F | Frame rate and memory readout                             |
+
+### Road surveys
+
+| Keys | Does                              |
+| ---- | --------------------------------- |
+| P    | PCI grid on or off                |
+| D    | Defect density on or off          |
+| M    | Measure on the map                |
+| C    | Close-up of the defect on the map |
+| →    | Next defect in the list           |
+| ←    | Previous defect in the list       |
+
+### Editing a stockpile
+
+| Keys              | Does                              |
+| ----------------- | --------------------------------- |
+| Delete, Backspace | Delete the selected outline point |
+| Enter             | Save the outline                  |
+| Ctrl Z            | Undo the last outline change      |
+
+### Issue edits
+
+| Keys                 | Does                     |
+| -------------------- | ------------------------ |
+| Ctrl Z               | Undo the last issue edit |
+| Ctrl Y, Ctrl Shift Z | Redo the issue edit      |
+
+### Issue list
+
+| Keys  | Does                             |
+| ----- | -------------------------------- |
+| ↓, J  | Next issue                       |
+| ↑, K  | Previous issue                   |
+| Home  | First issue                      |
+| End   | Last issue                       |
+| Enter | Open the issue card              |
+| Space | Tick the issue for a bulk change |
+
+### Photo with marks
+
+| Keys | Does                   |
+| ---- | ---------------------- |
+| V    | Select tool            |
+| B    | Box tool               |
+| R    | Rotated box tool       |
+| P    | Polygon tool           |
+| O    | Point tool             |
+| F    | Fit to the window      |
+| +    | Zoom in                |
+| -    | Zoom out               |
+| M    | Mask overlay on or off |
+
+### Full-size photo
+
+| Keys         | Does              |
+| ------------ | ----------------- |
+| Esc          | Close             |
+| →, Page Down | Next photo        |
+| ←, Page Up   | Previous photo    |
+| F, 0         | Fit to the window |
+| +            | Zoom in           |
+| -            | Zoom out          |
+| M            | Marks on or off   |
 
 ### Video window
 
-| Keys       | Does                       |
-| ---------- | -------------------------- |
-| K or Space | Pause                      |
-| L          | Play; again for faster     |
-| J          | Slower, or back one second |
-| , and .    | One frame back or forward  |
+| Keys                               | Does                              |
+| ---------------------------------- | --------------------------------- |
+| ←, →, ↑, ↓                         | Move the window                   |
+| Shift ←, Shift →, Shift ↑, Shift ↓ | Move the window further           |
+| +                                  | Make the window larger            |
+| -                                  | Make the window smaller           |
+| Home                               | Put the window back in its corner |
 
-### Detections
+### Annotating video
 
-| Keys           | Does                        |
-| -------------- | --------------------------- |
-| J and K        | Next and previous detection |
-| A or Enter     | Accept                      |
-| L              | Link to an issue            |
-| X              | Reject                      |
-| U              | Uncertain                   |
-| 1 to 9         | Severity                    |
-| C              | Class                       |
-| N              | Note                        |
-| Ctrl Z, Ctrl Y | Undo, redo                  |
+| Keys | Does                        |
+| ---- | --------------------------- |
+| V    | Select tool                 |
+| B    | Box tool                    |
+| P    | Polygon tool                |
+| K    | Add a keyframe at this time |
+| I    | Mark where the event starts |
+| O    | Mark where the event ends   |
+| Esc  | Stop annotating the video   |
 
-### Photo viewer and full-size photos
+### Inside a 360 panorama
 
-| Keys        | Does                             |
-| ----------- | -------------------------------- |
-| Left, Right | Previous and next photo          |
-| F           | Fit                              |
-| Plus, Minus | Zoom                             |
-| M           | Markings off and on              |
-| B, R, P, O  | Box, rotated box, polygon, point |
+| Keys       | Does               |
+| ---------- | ------------------ |
+| ←, →, ↑, ↓ | Look around        |
+| +, -       | Zoom in or out     |
+| Esc        | Leave the panorama |
+
+### Detections review
+
+| Keys                                 | Does                      |
+| ------------------------------------ | ------------------------- |
+| J, →, ↓                              | Next detection            |
+| K, ←, ↑                              | Previous detection        |
+| Shift J, Shift →, Shift ↓, Page Down | Next photo or frame       |
+| Shift K, Shift ←, Shift ↑, Page Up   | Previous photo or frame   |
+| A, Enter                             | Accept                    |
+| L                                    | Link to an existing issue |
+| X                                    | Reject                    |
+| Shift R                              | Reopen                    |
+| Delete                               | Delete                    |
+| U                                    | Mark as uncertain         |
+| C                                    | Next class                |
+| Shift C                              | Previous class            |
+| N                                    | Write a note              |
+| 0, 1, 2, 3, 4, 5, 6, 7, 8, 9         | Set the severity          |
+| V                                    | Select tool               |
+| B                                    | Box tool                  |
+| R                                    | Rotated box tool          |
+| P                                    | Polygon tool              |
+| O                                    | Point tool                |
+| M                                    | Mask on or off            |
+| F                                    | Fit to the window         |
+| Ctrl Z                               | Undo                      |
+| Ctrl Y, Ctrl Shift Z                 | Redo                      |
+
+### PDF report
+
+| Keys         | Does               |
+| ------------ | ------------------ |
+| Page Down, → | Next page          |
+| Page Up, ←   | Previous page      |
+| Home         | First page         |
+| End          | Last page          |
+| +            | Zoom in            |
+| -            | Zoom out           |
+| Ctrl F       | Find in the report |
+
+### Command search
+
+| Keys  | Does                        |
+| ----- | --------------------------- |
+| ↑, ↓  | Move through the results    |
+| Enter | Run the highlighted command |
+| Esc   | Close                       |
+
+### Agent message box
+
+| Keys        | Does             |
+| ----------- | ---------------- |
+| Enter       | Send the message |
+| Shift Enter | New line         |
+| Esc         | Stop the reply   |
+
+### Dialogs and popovers
+
+| Keys           | Does                                          |
+| -------------- | --------------------------------------------- |
+| Esc            | Close                                         |
+| Tab, Shift Tab | Move between the controls; focus stays inside |
