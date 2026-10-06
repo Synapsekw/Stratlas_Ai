@@ -79,6 +79,8 @@ interface Progress {
   done: number;
   total: number;
   found: number;
+  /** Stop was pressed; the run ends after the photo in hand. */
+  stopping?: boolean;
   error?: string;
 }
 
@@ -215,15 +217,20 @@ export function LocalDetectDialog({
       const base = p ?? { done: 0, total: r.items.length, found: 0, phase: 'done' as Phase };
       if (!res.ok) return { ...base, phase: 'failed', error: res.error };
       if (!res.value.ok) return { ...base, phase: 'failed', error: res.value.error };
-      const stopped = base.phase === 'stopped' || base.done < base.total;
-      return { ...base, phase: stopped ? 'stopped' : 'done', found: res.value.count };
+      const stopped = base.stopping === true || base.done < base.total;
+      return {
+        ...base,
+        stopping: false,
+        phase: stopped ? 'stopped' : 'done',
+        found: res.value.count,
+      };
     });
   };
 
   const stop = () => {
     const id = run.current?.id;
     if (!id) return;
-    setProgress((p) => (p ? { ...p, phase: 'stopped' } : p));
+    setProgress((p) => (p ? { ...p, stopping: true } : p));
     void bridge.call('inference:cancel', { runId: id });
   };
 
@@ -464,8 +471,14 @@ export function LocalDetectDialog({
           {running ? (
             <>
               <span className="grow" />
-              <button type="button" className="btn" data-testid="det-local-stop" onClick={stop}>
-                {t('infer.dlg.stop')}
+              <button
+                type="button"
+                className="btn"
+                data-testid="det-local-stop"
+                disabled={progress.stopping === true}
+                onClick={stop}
+              >
+                {progress.stopping ? t('infer.dlg.stopping') : t('infer.dlg.stop')}
               </button>
             </>
           ) : progress ? (

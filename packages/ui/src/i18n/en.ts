@@ -1314,6 +1314,7 @@ export const en = {
   'infer.dlg.progress': '{done} of {total} photos checked, {found} proposals',
   'infer.dlg.cost': 'Cost: free, on this computer',
   'infer.dlg.stop': 'Stop',
+  'infer.dlg.stopping': 'Stopping after this photo',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */
