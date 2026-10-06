@@ -216,17 +216,26 @@ def change_mask(
         return m
     diff = ndi.gaussian_filter(np.sqrt(((a - b) ** 2).sum(axis=2)), 0.7)
     out = np.zeros_like(m)
-    sizes = ndi.sum(np.ones_like(labels), labels, index=np.arange(1, n + 1))
-    for i, size in enumerate(sizes, start=1):
-        if size < min_cells:
+    rows, cols = m.shape
+    pad = 8  # the refinement grows a region by 3 cells and closes by 2: room enough around it
+    for i, box in enumerate(ndi.find_objects(labels), start=1):
+        if box is None:
             continue
-        reg = labels == i
+        # each region in its own window, so a scene of many regions stays fast
+        win = (
+            slice(max(0, box[0].start - pad), min(rows, box[0].stop + pad)),
+            slice(max(0, box[1].start - pad), min(cols, box[1].stop + pad)),
+        )
+        reg = labels[win] == i
+        if reg.sum() < min_cells:
+            continue
+        d = diff[win]
         core = ndi.binary_erosion(reg, structure=disk, iterations=3)
         if core.sum() < 16:
             core = reg
-        level = 0.5 * float(np.median(diff[core]))
+        level = 0.5 * float(np.median(d[core]))
         grown = ndi.binary_dilation(reg, structure=disk, iterations=3)
-        fine = grown & (diff > level)
+        fine = grown & (d > level)
         fine = ndi.binary_opening(fine, structure=disk, iterations=1)
         fine = ndi.binary_fill_holes(ndi.binary_closing(fine, structure=disk, iterations=2))
         lab, k = ndi.label(fine)
@@ -236,7 +245,7 @@ def change_mask(
         over = ndi.sum(reg, lab, index=np.arange(1, k + 1))
         keep = lab == (int(np.argmax(over)) + 1)
         if keep.sum() >= min_cells:
-            out |= keep
+            out[win] |= keep
     return out
 
 
