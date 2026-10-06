@@ -1,9 +1,114 @@
 import { brand } from '@aio/brand';
-import type { IpcResponse } from '@aio/schema';
-import { Icon, Switch, t } from '@aio/ui';
-import { useMemo, useState } from 'react';
+import type { AioBridge, IpcEvent, IpcResponse } from '@aio/schema';
+import { formatBytes, formatDate, Icon, Switch, t } from '@aio/ui';
+import { useEffect, useMemo, useState } from 'react';
 import { build, formatBuildTime } from '../../buildStamp';
 import { bridge, shell, useCall, useShell } from '../../shell';
+import { ReleaseNotesView } from './ReleaseNotes';
+
+const PHASE: Record<IpcEvent<'update:progress'>['phase'], string> = {
+  download: 'Downloading',
+  verify: 'Checking the download and its signature',
+  keep: 'Keeping a copy of this version, so you can return to it',
+  install: 'Starting the installer',
+};
+
+/** Live progress of an online update (download, verify, keep a copy, install). */
+function useUpdateProgress(): IpcEvent<'update:progress'> | null {
+  const [p, setP] = useState<IpcEvent<'update:progress'> | null>(null);
+  useEffect(() => {
+    const aio = window.aio as AioBridge | undefined;
+    return aio?.on('update:progress', setP);
+  }, []);
+  return p;
+}
+
+/** The kept previous version (ADR 0003): return to it, or say why there is none. */
+function PreviousVersion() {
+  const [key, setKey] = useState(0);
+  const status = useCall('update:status', {}, key);
+  const [confirm, setConfirm] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const s = status?.ok ? status.value : null;
+  if (!s) return null;
+  const prev = s.previous;
+
+  const back = async () => {
+    const r = await bridge.call('update:rollback', {});
+    if (!r.ok) setError(r.error);
+    else if (!r.value.ok) setError(r.value.error ?? 'The previous version did not start.');
+    setKey((k) => k + 1);
+  };
+
+  return (
+    <div className="opt-card" data-testid="update-previous">
+      <div className="oc-head">
+        <div>
+          <b>{t('settings.about.previous')}</b>
+          <span>
+            {prev
+              ? `Version ${prev.version} is kept on this computer, ready to run. It was copied before the update to ${s.current}.`
+              : (s.rollbackUnavailable ??
+                'None kept yet. Before an update is installed, the app keeps a copy of the running version so you can return to it.')}
+          </span>
+        </div>
+        {prev && !confirm && (
+          <button
+            type="button"
+            className="btn sm"
+            onClick={() => {
+              setConfirm(true);
+            }}
+          >
+            <Icon name="refresh" size={14} />
+            {t('settings.about.returnTo', { version: prev.version })}
+          </button>
+        )}
+      </div>
+      {s.rolledBack && (
+        <p className="help" role="status">
+          Returned from {s.rolledBack.from} to {s.rolledBack.to} on {formatDate(s.rolledBack.at)}.
+        </p>
+      )}
+      {prev && confirm && (
+        <div className="notice warn" role="alert">
+          <Icon name="warn" size={14} />
+          <span>
+            Return to {prev.version}? The app closes, puts {prev.version} back in place of{' '}
+            {s.current} and starts it. Projects and settings stay as they are.
+          </span>
+          <button type="button" className="btn sm primary" onClick={() => void back()}>
+            Return now
+          </button>
+          <button
+            type="button"
+            className="btn sm ghost"
+            onClick={() => {
+              setConfirm(false);
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+      {error && <p className="prov-err">{error}</p>}
+    </div>
+  );
+}
+
+/** Release notes of the running version, bundled at build time. */
+function WhatsNew() {
+  const notes = useCall('update:notes', {});
+  if (!notes?.ok) return null;
+  return (
+    <div className="sblock">
+      <h2>{t('settings.about.whatsNew', { version: notes.value.version })}</h2>
+      <div className="notes-scroll">
+        <ReleaseNotesView markdown={notes.value.markdown} testId="release-notes" />
+      </div>
+    </div>
+  );
+}
 
 type Verified = IpcResponse<'update:verifyFile'>;
 
@@ -92,7 +197,8 @@ function UpdateFromFile() {
   );
 }
 
-function OnlineCheck() {
+function OnlineCheck({ mac }: { mac: boolean }) {
+  const progress = useUpdateProgress();
   const offlineOnly = useShell((s) => s.settings.offlineOnly === true);
   const enabled = useShell((s) => s.settings.updateCheck === true);
   const url = useShell((s) => s.settings.updateUrl ?? '');
@@ -100,7 +206,15 @@ function OnlineCheck() {
   const [state, setState] = useState<
     | { kind: 'idle' }
     | { kind: 'busy' }
-    | { kind: 'result'; available: boolean; version?: string | undefined }
+    | {
+        kind: 'result';
+        available: boolean;
+        version?: string | undefined;
+        notes?: string | undefined;
+        size?: number | undefined;
+      }
+    | { kind: 'installing' }
+    | { kind: 'opened' }
     | { kind: 'error'; error: string }
   >({ kind: 'idle' });
 
@@ -122,14 +236,22 @@ function OnlineCheck() {
     const r = await bridge.call('update:check', {});
     if (!r.ok) setState({ kind: 'error', error: r.error });
     else if (!r.value.ok) setState({ kind: 'error', error: r.value.error });
-    else setState({ kind: 'result', available: r.value.available, version: r.value.version });
+    else
+      setState({
+        kind: 'result',
+        available: r.value.available,
+        version: r.value.version,
+        notes: r.value.notes,
+        size: r.value.size,
+      });
   };
 
   const install = async () => {
-    setState({ kind: 'busy' });
+    setState({ kind: 'installing' });
     const r = await bridge.call('update:downloadAndInstall', {});
     if (!r.ok) setState({ kind: 'error', error: r.error });
     else if (!r.value.ok) setState({ kind: 'error', error: r.value.error ?? 'Download failed.' });
+    else if (mac) setState({ kind: 'opened' });
   };
 
   return (
@@ -170,7 +292,7 @@ function OnlineCheck() {
             <button
               type="button"
               className="btn sm"
-              disabled={!url || state.kind === 'busy'}
+              disabled={!url || state.kind === 'busy' || state.kind === 'installing'}
               onClick={() => void check()}
             >
               <Icon name="refresh" size={14} />
@@ -185,13 +307,38 @@ function OnlineCheck() {
                   </span>
                   <button type="button" className="btn sm primary" onClick={() => void install()}>
                     Download and install
+                    {state.size ? ` (${formatBytes(state.size)})` : ''}
                   </button>
                 </>
               ) : (
                 <span className="faint">This is the newest version.</span>
               ))}
+            {state.kind === 'installing' && (
+              <span className="faint" role="status" data-testid="update-progress">
+                {progress ? PHASE[progress.phase] : 'Starting the download'}
+                {progress?.phase === 'download' && progress.total > 0
+                  ? ` ${formatBytes(progress.received)} of ${formatBytes(progress.total)}`
+                  : ''}
+              </span>
+            )}
           </div>
-          {state.kind === 'error' && <p className="prov-err">{state.error}</p>}
+          {state.kind === 'result' && state.available && state.notes && (
+            <details className="oc-notes">
+              <summary>What is new in {state.version}</summary>
+              <ReleaseNotesView markdown={state.notes} />
+            </details>
+          )}
+          {state.kind === 'opened' && (
+            <p className="help" role="status">
+              The new version opened in Finder. Drag {brand.productName} to Applications and replace
+              the old one. A copy of this version is kept so you can return to it.
+            </p>
+          )}
+          {state.kind === 'error' && (
+            <p className="prov-err" data-testid="update-error">
+              {state.error}
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -375,10 +522,12 @@ export function About() {
         ) : (
           <>
             <UpdateFromFile />
-            <OnlineCheck />
+            <OnlineCheck mac={a?.platform.startsWith('darwin') === true} />
+            <PreviousVersion />
           </>
         )}
       </div>
+      <WhatsNew />
       <Licences />
     </>
   );

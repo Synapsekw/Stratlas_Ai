@@ -26,12 +26,11 @@ import {
   session,
   shell,
 } from 'electron';
-import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { stat } from 'node:fs/promises';
 import { arch, release, userInfo } from 'node:os';
 import { join } from 'node:path';
 import licenses from 'virtual:licenses';
+import releaseNotes from 'virtual:release-notes';
 import { createAiProjectStore, readAiPolicy } from './aiProjects';
 import { listConversations, loadConversation, saveConversation } from './conversations';
 import { demoProjectPaths } from './demo';
@@ -61,8 +60,8 @@ import { embeddedPacks, findEmbedded, listWithEmbedded } from './packs/embed';
 import { httpSource } from './packs/extract';
 import { createPackManager } from './packs/manager';
 import { buildSource, findLatestBuild } from './packs/pmtiles';
-import { createOnlineUpdater, type UpdaterLike } from './update/online';
-import { probeWithPowerShell, verifyInstaller } from './update/verify';
+import { restoreArgs } from './update/rollback';
+import { createUpdateService, runRestore } from './update/service';
 import { OFFSCREEN_SWITCHES, offscreenOrigin, windowMode } from './windowMode';
 import { installMenu } from './menu';
 import { linkPathFromArgv, parseAppLink } from './appLink';
@@ -192,7 +191,10 @@ function applyTheme(theme: Settings['theme']): void {
   }
 }
 
-function broadcast<E extends 'packs:job'>(event: E, payload: IpcEvent<E>): void {
+function broadcast<E extends 'packs:job' | 'update:progress'>(
+  event: E,
+  payload: IpcEvent<E>,
+): void {
   const parsed = ipcEvents[event].safeParse(payload);
   if (!parsed.success) return;
   for (const win of BrowserWindow.getAllWindows()) win.webContents.send(event, parsed.data);
@@ -217,35 +219,17 @@ const packs = createPackManager({
   latestBuild: (signal) => findLatestBuild(mapFetch, signal, planetBuilds),
 });
 
-const updates = createOnlineUpdater({
+// Updates (ADR 0003): from a file, or from the optional feed only when the person presses Check
+// now; a copy of this version is kept before any installer runs, for rollback.
+const updates = createUpdateService({
   settings: () => settings.current(),
-  currentVersion: app.getVersion(),
-  load: async () => {
-    // Loaded only when the person checks, so nothing update-related runs otherwise.
-    const mod = (await import('electron-updater')) as unknown as {
-      autoUpdater?: UpdaterLike;
-      default?: { autoUpdater: UpdaterLike };
-    };
-    const updater = mod.autoUpdater ?? mod.default?.autoUpdater;
-    if (!updater) throw new Error('The updater is not available in this build.');
-    return updater;
+  log: (level, line) => {
+    appLog.write(level, [line]);
   },
-});
-
-const fileExists = async (p: string) => {
-  try {
-    return (await stat(p)).isFile();
-  } catch {
-    return false;
-  }
-};
-
-const verifyDeps = () => ({
-  platform: process.platform,
-  currentVersion: app.getVersion(),
-  publisher: brand.company,
-  exists: fileExists,
-  probe: probeWithPowerShell,
+  progress: (p) => {
+    broadcast('update:progress', p);
+  },
+  notes: releaseNotes,
 });
 
 function targetWindow(): BrowserWindow | null {
@@ -665,32 +649,17 @@ function registerIpc(): void {
     return error ? { ok: false, error } : { ok: true };
   });
 
-  const STORE_UPDATES = 'This copy comes from the Microsoft Store, which installs its updates.';
-  handle('update:verifyFile', ({ path }) =>
-    process.windowsStore
-      ? { ok: false as const, error: STORE_UPDATES }
-      : verifyInstaller(path, verifyDeps()),
-  );
-  handle('update:installFile', async ({ path }) => {
-    if (process.windowsStore) return { ok: false, error: STORE_UPDATES };
-    const r = await verifyInstaller(path, verifyDeps());
-    if (!r.ok) return { ok: false, error: r.error };
-    try {
-      const child = spawn(path, [], { detached: true, stdio: 'ignore' });
-      child.unref();
-    } catch (e) {
-      return { ok: false, error: `The installer did not start: ${String(e)}` };
-    }
-    appLog.write('info', [`Installing update ${r.version} from ${path}; quitting.`]);
-    setTimeout(() => {
-      app.quit();
-    }, 300);
+  handle('update:verifyFile', ({ path }) => updates.verifyFile(path));
+  handle('update:installFile', ({ path }) => updates.installFile(path));
+  handle('update:check', () => updates.check());
+  handle('update:downloadAndInstall', () => updates.downloadAndInstall());
+  handle('update:notes', () => updates.notes());
+  handle('update:status', () => updates.status());
+  handle('update:rollback', () => updates.startRollback());
+  handle('app:rendererReady', async () => {
+    await updates.rendererReady();
     return { ok: true };
   });
-  handle('update:check', () =>
-    process.windowsStore ? { ok: false as const, error: STORE_UPDATES } : updates.check(),
-  );
-  handle('update:downloadAndInstall', () => updates.downloadAndInstall());
 
   handle('ai:setKey', ({ provider, key }) => keys.setKey(provider, key));
   handle('ai:hasKey', async ({ provider }) => ({ present: await keys.hasKey(provider) }));
@@ -1042,7 +1011,16 @@ app.on('web-contents-created', (_e, contents) => {
   });
 });
 
-if (!app.requestSingleInstanceLock()) {
+// Restore mode: a newer version started this kept copy to put it back as the installed version
+// (ADR 0003). It runs before the single-instance lock, which the newer version still holds.
+const restore = restoreArgs(process.argv);
+if (restore) {
+  void app.whenReady().then(() =>
+    runRestore(restore, (line) => {
+      appLog.write('info', [line]);
+    }),
+  );
+} else if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', (_e, argv) => {
@@ -1086,7 +1064,10 @@ if (!app.requestSingleInstanceLock()) {
     );
     registerIpc();
 
+    // After an update: count this start, or offer to return to the kept previous version.
+    if (await updates.startup()) return;
     mainWindow = createWindow();
+    updates.watchWindow(mainWindow);
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow();
     });
@@ -1102,7 +1083,7 @@ app.on('before-quit', (e) => {
   if (usageFlushed) return;
   e.preventDefault();
   usageFlushed = true;
-  const writes = Promise.allSettled([aiProjects.flush(), ...pendingWrites]);
+  const writes = Promise.allSettled([aiProjects.flush(), updates.beforeQuit(), ...pendingWrites]);
   const limit = new Promise((resolve) => setTimeout(resolve, 3000));
   void Promise.race([writes, limit]).finally(() => {
     app.quit();

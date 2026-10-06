@@ -81,6 +81,41 @@ function licenses(): Plugin {
 }
 
 /**
+ * `virtual:release-notes`: notes of this version from conventional commits since the previous
+ * release tag (tools/release/notes.mjs), shown in Settings, About and updates. Without git the
+ * notes say they are not available; the build never fails over them.
+ */
+function releaseNotes(): Plugin {
+  const id = 'virtual:release-notes';
+  return {
+    name: 'aio-release-notes',
+    resolveId: (source) => (source === id ? `\0${id}` : null),
+    load(loaded) {
+      if (loaded !== `\0${id}`) return null;
+      const version = (
+        JSON.parse(readFileSync(resolve(import.meta.dirname, 'package.json'), 'utf8')) as {
+          version: string;
+        }
+      ).version;
+      let notes = { version, markdown: '' };
+      try {
+        const out = execSync('node tools/release/notes.mjs --json', {
+          cwd: resolve(import.meta.dirname, '../..'),
+          encoding: 'utf8',
+          maxBuffer: 16 * 1024 * 1024,
+          stdio: ['ignore', 'pipe', 'ignore'],
+        });
+        const parsed = JSON.parse(out) as { version: string; markdown: string };
+        notes = { version: parsed.version, markdown: parsed.markdown };
+      } catch (e) {
+        this.warn(`Release notes unavailable: ${String(e)}`);
+      }
+      return `export default ${JSON.stringify(notes)};`;
+    },
+  };
+}
+
+/**
  * `__STRATLAS_BUILD__`: when and from which commit this bundle was built, shown in Settings,
  * About and on the Projects screen so a stale installed copy is obvious. Without git (a source
  * archive) the commit is "dev"; the build never fails over it.
@@ -105,7 +140,7 @@ function buildStamp(): { time: string; commit: string; version: string } {
 
 export default defineConfig({
   main: {
-    plugins: [licenses()],
+    plugins: [licenses(), releaseNotes()],
     build: {
       externalizeDeps: {
         exclude: ['@aio/schema', '@aio/brand', '@aio/ai', '@aio/project', '@aio/geo', '@aio/video'],
@@ -117,7 +152,8 @@ export default defineConfig({
           exportWorker: resolve(import.meta.dirname, 'src/main/exports/worker.ts'),
         },
         // Native addons load from node_modules at runtime so each platform gets its own binary.
-        external: ['electron', /^node:/, /^@napi-rs\/keyring/, 'electron-updater'],
+        // `original-fs` is Electron's fs without asar support (rollback copies app.asar as a file).
+        external: ['electron', 'original-fs', /^node:/, /^@napi-rs\/keyring/],
       },
     },
   },

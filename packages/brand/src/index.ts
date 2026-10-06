@@ -19,6 +19,11 @@ export interface Brand {
    * identity name was fixed when the name was first reserved and does not follow later renames.
    */
   store?: { identityName: string; publisher: string; publisherDisplayName: string };
+  /**
+   * Code-signing identity the app accepts for updates (ADR 0003). `windowsPublisher` is the exact
+   * CN (or O) of the Authenticode certificate; absent, the signer must name `company`.
+   */
+  signing?: { windowsPublisher?: string };
 }
 
 export const brand: Brand = raw;

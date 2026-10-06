@@ -1,6 +1,6 @@
 {
   "name": "@aio/desktop",
-  "version": "0.1.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "description": "Stratlas desktop app (Electron main, preload, renderer).",
@@ -18,7 +18,6 @@
   },
   "dependencies": {
     "@napi-rs/keyring": "^2.1.0",
-    "electron-updater": "6.8.9",
     "zod": "^4.6.5"
   },
   "devDependencies": {

@@ -13,3 +13,4 @@ export * from './builder';
 export * from './ipc';
 export * from './jobs';
 export * from './detections';
+export * from './update';

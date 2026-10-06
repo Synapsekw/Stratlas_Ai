@@ -16,6 +16,13 @@ export interface VerifyDeps {
   currentVersion: string;
   /** The signer subject must name this company (from @aio/brand). */
   publisher: string;
+  /**
+   * Exact signing identity from brand.json (`signing.windowsPublisher`), when configured: the
+   * certificate's CN or O must equal it. Without it, CN or O must contain `publisher`.
+   */
+  signingIdentity?: string | undefined;
+  /** The installer must hold exactly this version (an update the feed announced). */
+  expectedVersion?: string | undefined;
   exists: (path: string) => Promise<boolean>;
   probe: (path: string) => Promise<Probe>;
 }
@@ -40,6 +47,30 @@ export function compareVersions(a: string, b: string): number {
     if (d !== 0) return d;
   }
   return 0;
+}
+
+/** Attribute values of an X.500 subject (`CN=Name, O="Org, Inc", C=AE`), keys upper-case. */
+export function subjectParts(subject: string): Map<string, string> {
+  const out = new Map<string, string>();
+  const re = /\s*([A-Za-z.0-9]+)\s*=\s*("(?:[^"]|"")*"|[^,]*)\s*(?:,|$)/g;
+  for (const m of subject.matchAll(re)) {
+    const key = (m[1] ?? '').toUpperCase();
+    let value = (m[2] ?? '').trim();
+    if (value.startsWith('"')) value = value.slice(1, -1).replaceAll('""', '"');
+    if (!out.has(key)) out.set(key, value);
+  }
+  return out;
+}
+
+/** The certificate's common name or organisation is (or, without `exact`, contains) `expected`. */
+export function signerMatches(subject: string, expected: string, exact: boolean): boolean {
+  const want = expected.trim().toLowerCase();
+  if (!want) return false;
+  const parts = subjectParts(subject);
+  return ['CN', 'O'].some((k) => {
+    const v = parts.get(k)?.toLowerCase();
+    return v !== undefined && (exact ? v === want : v.includes(want));
+  });
 }
 
 /** "1.2.3.0" to "1.2.3": electron-builder writes a four-part file version. */
@@ -83,15 +114,21 @@ export async function verifyInstaller(path: string, d: VerifyDeps): Promise<Veri
       error: `The installer's signature is not valid (${probe.status}). It may have been changed after signing.`,
     };
   }
-  if (!probe.signer.toLowerCase().includes(d.publisher.toLowerCase())) {
+  if (!signerMatches(probe.signer, d.signingIdentity ?? d.publisher, Boolean(d.signingIdentity))) {
     return {
       ok: false,
-      error: `The installer is signed by "${probe.signer}", not by ${d.publisher}.`,
+      error: `The installer is signed by "${probe.signer}", not by ${d.signingIdentity ?? d.publisher}.`,
     };
   }
   const raw = probe.productVersion.trim() || probe.fileVersion.trim();
   if (!raw) return { ok: false, error: 'The installer does not say which version it holds.' };
   const version = threePart(raw);
+  if (d.expectedVersion !== undefined && compareVersions(version, d.expectedVersion) !== 0) {
+    return {
+      ok: false,
+      error: `The downloaded installer holds version ${version}, not ${d.expectedVersion} as the update feed says.`,
+    };
+  }
   const cmp = compareVersions(version, d.currentVersion);
   if (cmp === 0) {
     return { ok: false, error: `Version ${version} is already installed.` };

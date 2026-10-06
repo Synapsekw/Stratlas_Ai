@@ -157,7 +157,12 @@ export function App() {
   const screen = useShell((s) => s.screen);
 
   useEffect(() => {
-    void shell.getState().init();
+    // Settings and library are in: tell main the first screen is up (ends the first-start
+    // watch after an update, ADR 0003).
+    void shell
+      .getState()
+      .init()
+      .finally(() => void bridge.call('app:rendererReady', {}));
     void jobs.getState().init();
     // a finished conversion (point cloud to COPC) adds a layer: reload the open manifest
     const stopJobReload = jobs.subscribe((s, prev) => {
