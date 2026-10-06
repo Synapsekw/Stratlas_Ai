@@ -411,7 +411,8 @@ export function createModeller(deps: ModellerDeps): StoreApi<Modeller> {
     };
   });
 
-  // an import or fit started anywhere (the Jobs screen too) changes the project: show it
+  // an import or fit started anywhere (the Jobs screen too) adds drawings and parts: list them
+  // (the app reloads the manifest itself, MANIFEST_WRITERS in jobs.ts)
   const key = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
   jobs.subscribe((s, prev) => {
     const p = project();
@@ -424,7 +425,6 @@ export function createModeller(deps: ModellerDeps): StoreApi<Modeller> {
         prev.jobs.find((x) => x.id === j.id)?.status !== 'done',
     );
     if (!finished) return;
-    void reloadManifest();
     void store.getState().refresh();
   });
 

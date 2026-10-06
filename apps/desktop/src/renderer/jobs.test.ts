@@ -172,6 +172,15 @@ describe('finishedManifestJob', () => {
     expect(finishedManifestJob([frames], [framesDone], 'E:/p')).toBe(false);
     expect(finishedChangeJob([frames], [framesDone], 'E:/p')).toBe(true);
   });
+
+  it('reloads the manifest when a drawing import or a cloud fit of the project finishes', () => {
+    for (const pipeline of ['drawing.import', 'model.fit_cloud'] as const) {
+      const running = job({ id: 'm', pipeline, project: 'E:\\p', status: 'running' });
+      const done = { ...running, status: 'done' as const };
+      expect(finishedManifestJob([running], [done], 'E:/p'), pipeline).toBe(true);
+      expect(finishedChangeJob([running], [done], 'E:/p'), pipeline).toBe(false);
+    }
+  });
 });
 
 describe('road builder form', () => {

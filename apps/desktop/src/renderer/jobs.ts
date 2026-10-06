@@ -76,6 +76,9 @@ const MANIFEST_WRITERS: ReadonlySet<string> = new Set([
   'change.surface',
   'change.cloud',
   'change.mesh',
+  // M8 models: the drawing's plan and vector layers, fitted draft parts
+  'drawing.import',
+  'model.fit_cloud',
 ]);
 /** Pipelines that also write issues.json (and road.json): the open project reopens whole. */
 const PROJECT_WRITERS: ReadonlySet<string> = new Set(['road.build']);
