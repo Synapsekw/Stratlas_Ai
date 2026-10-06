@@ -95,9 +95,10 @@ test('a clean first start explains what is missing and opens the demo project', 
   await expect(row('pipeline')).toContainText('work without it');
   await expect(row('network')).toContainText('Not needed');
 
-  // both demo projects in the library, marked as demos
+  // the demo projects in the library, marked as demos: the 0.7.0 two and the M8 change demo
   const cards = win.getByTestId('project-card');
-  await expect(cards).toHaveCount(2);
+  await expect(cards).toHaveCount(3);
+  await expect(cards.filter({ hasText: '2 dates' })).toHaveCount(1);
   await expect(cards.first()).toContainText('Demo');
 
   await shot(win, 'first-start');
