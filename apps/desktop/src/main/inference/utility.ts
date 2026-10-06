@@ -41,11 +41,17 @@ export interface InferenceHost {
   }): Promise<ScoredBox[]>;
   close(path: string): Promise<void>;
   dispose(): void;
+  /**
+   * What is known without asking: whether the process runs now, and the last probe answer of
+   * this run (null before the first). Never starts the process (diagnostics read this).
+   */
+  known(): { running: boolean; probe: ProbeResult | null };
 }
 
 export function createInferenceHost(spawn: () => ChildLike): InferenceHost {
   let child: ChildLike | null = null;
   let next = 1;
+  let lastProbe: ProbeResult | null = null;
   const pending = new Map<number, { resolve(v: unknown): void; reject(e: Error): void }>();
 
   function ensure(): ChildLike {
@@ -90,7 +96,11 @@ export function createInferenceHost(spawn: () => ChildLike): InferenceHost {
   }
 
   return {
-    probe: (provider) => request('probe', { provider }),
+    probe: async (provider) => {
+      const r = await request<'probe', ProbeResult>('probe', { provider });
+      lastProbe = r;
+      return r;
+    },
     open: (path, provider) => request('open', { path, provider }),
     run: (session, feeds) => request('run', { session, feeds }),
     detect: (req) => request('detect', req),
@@ -104,6 +114,7 @@ export function createInferenceHost(spawn: () => ChildLike): InferenceHost {
       for (const p of pending.values()) p.reject(new Error('The detection process was closed.'));
       pending.clear();
     },
+    known: () => ({ running: child !== null, probe: lastProbe }),
   };
 }
 

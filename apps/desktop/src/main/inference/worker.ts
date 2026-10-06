@@ -56,6 +56,8 @@ export interface ProbeResult {
   available: boolean;
   provider?: Provider;
   version?: string;
+  /** Execution providers this onnxruntime build lists (`cpu`, `dml`, `coreml`, ...). */
+  backends?: string[];
   problem?: string;
 }
 
@@ -196,10 +198,12 @@ export function createWorkerCore(
     const o = await runtime();
     if (!o) return { available: false, problem: loadProblem };
     const version = o.env?.versions?.node ?? o.env?.versions?.common;
+    const listed = backends(o);
     return {
       available: true,
-      provider: preferredProvider(setting, platform, backends(o)),
+      provider: preferredProvider(setting, platform, listed),
       ...(version ? { version } : {}),
+      ...(listed.length > 0 ? { backends: listed } : {}),
     };
   }
 

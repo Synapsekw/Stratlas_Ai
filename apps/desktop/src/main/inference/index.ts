@@ -40,6 +40,7 @@ export function registerInferenceIpc({ handle, env }: InferenceIpcDeps): void {
           available: p.available,
           ...(p.provider ? { provider: p.provider } : {}),
           ...(p.version ? { version: p.version } : {}),
+          ...(p.backends?.length ? { backends: p.backends.slice(0, 32) } : {}),
           ...(p.problem ? { problem: p.problem } : {}),
         },
         models,

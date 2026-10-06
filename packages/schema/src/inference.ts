@@ -63,6 +63,8 @@ export const InferenceRuntime = z.object({
   /** `dml` DirectML (Windows), `coreml` (macOS) or `cpu`. */
   provider: z.enum(['dml', 'coreml', 'cpu']).optional(),
   version: z.string().optional(),
+  /** Execution providers this onnxruntime build lists (`cpu`, `dml`, `coreml`, ...). */
+  backends: z.array(z.string().min(1).max(40)).max(32).optional(),
   problem: z.string().optional(),
 });
 

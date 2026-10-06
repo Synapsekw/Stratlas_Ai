@@ -100,6 +100,7 @@ describe('utility process protocol (fake runtime)', () => {
       available: true,
       provider: 'dml',
       version: '9.9.9',
+      backends: ['cpu', 'dml'],
     });
     const a = await host.open('C:/m/model.onnx', 'auto');
     const b = await host.open('C:/m/model.onnx', 'auto');
@@ -110,6 +111,25 @@ describe('utility process protocol (fake runtime)', () => {
     expect(boxes).toEqual([
       { x0: 100, y0: 100, x1: 120, y1: 120, score: expect.any(Number) as number, cls: 0 },
     ]);
+  });
+
+  it('knows the last probe without starting the process', async () => {
+    let spawned = 0;
+    const host = createInferenceHost(() => {
+      spawned++;
+      return inProcessChild(createWorkerCore(() => Promise.resolve(fakeOrt().ort), 'win32'));
+    });
+    expect(host.known()).toEqual({ running: false, probe: null });
+    expect(spawned).toBe(0);
+    await host.probe('cpu');
+    expect(host.known()).toEqual({
+      running: true,
+      probe: { available: true, provider: 'cpu', version: '9.9.9', backends: ['cpu', 'dml'] },
+    });
+    host.dispose();
+    expect(host.known().running).toBe(false);
+    expect(host.known().probe?.version).toBe('9.9.9');
+    expect(spawned).toBe(1);
   });
 
   it('falls back to CPU when DirectML refuses the model', async () => {
