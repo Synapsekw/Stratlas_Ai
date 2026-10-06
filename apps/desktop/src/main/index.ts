@@ -925,7 +925,7 @@ function registerIpc(): void {
 
   // M8: one module per stream (C1 change, C5 model builder, C6 local detection, C7 local agent).
   registerChangeIpc({ handle });
-  registerModelBuilderIpc({ handle });
+  registerModelBuilderIpc({ handle, projects: registry });
   registerInferenceIpc({ handle });
   registerLocalModelsIpc({ handle });
 }
