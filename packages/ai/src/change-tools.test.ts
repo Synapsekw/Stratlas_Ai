@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runRendererTool, type RendererToolContext } from './renderer-tools';
+import { setChangeProducerRunner, type ChangeProducerRunner } from './change-tools';
 import { fixtureIssue, fixtureManifest, fixtureWorkspace } from './test-fixtures';
 import { approvalFor, getToolSpec, riskOf } from './tools';
 
@@ -151,5 +152,38 @@ describe('change tools', () => {
       }),
     );
     expect(r.result).toMatchObject({ written: ['c1-c2-issues'], total: 4 });
+  });
+
+  it('starts the app change pipelines through the app hook', async () => {
+    bridge();
+    await expect(
+      runRendererTool('run_change_detection', { pipelines: ['all'] }, ctx()),
+    ).rejects.toThrow(/desktop app/);
+    const runner = vi.fn<ChangeProducerRunner>(() =>
+      Promise.resolve([
+        { id: 'raster', label: 'Run imagery change', ok: true, jobId: 'j1' },
+        { id: 'cloud', label: 'Run cloud change', ok: false, error: 'No point clouds' },
+      ]),
+    );
+    setChangeProducerRunner(runner);
+    try {
+      const r = await runRendererTool(
+        'run_change_detection',
+        { pipelines: ['raster', 'cloud'] },
+        ctx(),
+      );
+      expect(runner).toHaveBeenCalledWith({
+        projectId: 'p1',
+        from: 'c1',
+        to: 'c2',
+        ids: ['raster', 'cloud'],
+      });
+      expect(r.result).toMatchObject({ pipelines: [{ id: 'raster', jobId: 'j1' }, { ok: false }] });
+      expect(r.summary).toMatch(/1 change jobs started/);
+      await runRendererTool('run_change_detection', { pipelines: ['all', 'raster'] }, ctx());
+      expect(runner).toHaveBeenLastCalledWith(expect.objectContaining({ ids: 'all' }));
+    } finally {
+      setChangeProducerRunner(null);
+    }
   });
 });

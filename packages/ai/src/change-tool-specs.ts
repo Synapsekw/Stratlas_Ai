@@ -38,6 +38,13 @@ export const changeToolInputs = {
         .min(1)
         .optional()
         .describe('What to compare in the app; default issues, detections and map layers'),
+      pipelines: z
+        .array(z.enum(['raster', 'surface', 'cloud', 'mesh', 'frames', 'all']))
+        .min(1)
+        .optional()
+        .describe(
+          'Also start these change pipelines (jobs): raster (imagery), surface (DSM volumes), cloud, mesh (3D model), frames (photos); all = every one the dates have data for',
+        ),
     })
     .strict(),
 } as const;
@@ -70,7 +77,7 @@ export const CHANGE_TOOL_SPECS: readonly ToolSpec[] = [
     meta: {
       name: 'run_change_detection',
       description:
-        'Compare issues, detections and map layers of two survey dates in the app and save the change sets for review. Writes files, so the app asks for approval first. Nothing changes an issue until a person confirms.',
+        'Compare issues, detections and map layers of two survey dates in the app and save the change sets for review; optionally start the change pipelines (imagery, surface, cloud, model, frames) as jobs. Writes files, so the app asks for approval first. Nothing changes an issue until a person confirms.',
       scope: 'project',
       risk: 'write',
     },

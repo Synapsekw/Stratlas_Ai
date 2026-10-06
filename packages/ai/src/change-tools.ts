@@ -25,6 +25,35 @@ function bridge(): AioBridge {
   return aio;
 }
 
+/** One change producer the app started (or could not) for `run_change_detection`. */
+export interface ChangeProducerRun {
+  id: string;
+  label: string;
+  ok: boolean;
+  jobId?: string;
+  /** Why it did not start (missing data, a refused job). */
+  error?: string;
+}
+
+/**
+ * The app's hook that runs its registered change producers (C2 to C4 pipelines) for a pair. Set by
+ * the desktop renderer at start, so this package needs neither React nor `@aio/change`.
+ */
+export type ChangeProducerRunner = (req: {
+  projectId: string;
+  from: string;
+  to: string;
+  /** Producer ids, or every producer the pair has data for. */
+  ids: readonly string[] | 'all';
+}) => Promise<ChangeProducerRun[]>;
+
+let producerRunner: ChangeProducerRunner | null = null;
+
+/** Install (or remove, with null) the app's change producer runner. */
+export function setChangeProducerRunner(runner: ChangeProducerRunner | null): void {
+  producerRunner = runner;
+}
+
 function pick(all: readonly CaptureRef[], ref: string | undefined, fallback: CaptureRef) {
   if (ref === undefined) return fallback;
   const q = ref.toLowerCase();
@@ -204,9 +233,32 @@ define('run_change_detection', async (input, ctx) => {
     kinds: input.kinds ?? ['issue', 'detection', 'vector'],
   });
   if (!r.ok) throw new ToolError(r.error);
+  let started: ChangeProducerRun[] | undefined;
+  if (input.pipelines) {
+    if (!producerRunner) throw new ToolError('The change pipelines run in the desktop app only.');
+    started = await producerRunner({
+      projectId: project(ctx).id,
+      from: pair.from.id,
+      to: pair.to.id,
+      ids: input.pipelines.includes('all') ? 'all' : input.pipelines,
+    });
+  }
   const sets = await changeSetsOf(ctx, pair.from.id, pair.to.id);
+  const jobs = started?.filter((s) => s.ok).length ?? 0;
   return {
-    result: { written: r.ids, ...changeSummary(sets) },
-    summary: verdictLine(sets),
+    result: {
+      written: r.ids,
+      ...changeSummary(sets),
+      ...(started
+        ? {
+            pipelines: started,
+            pipelineNote:
+              'Pipelines run as jobs; their changes join list_changes when the jobs finish.',
+          }
+        : {}),
+    },
+    summary: started
+      ? `${verdictLine(sets)}; ${String(jobs)} change jobs started`
+      : verdictLine(sets),
   };
 });

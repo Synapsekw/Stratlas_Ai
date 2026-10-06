@@ -4,11 +4,17 @@
  * lists them from the `@aio/change` registry and updates when it changes. A finished change run
  * reloads the manifest through `MANIFEST_WRITERS` (`jobs.ts`) and the change sets of the project.
  *
+ * The agent's `run_change_detection` runs the same producers through `setChangeProducerRunner`.
+ *
  * Player mode (a `.aio` package) never computes: the producers see no project folder there.
  */
+import { setChangeProducerRunner, type ChangeProducerRun } from '@aio/ai';
+import { changeProducers, layersOf, type ChangePairContext } from '@aio/change';
 import { DEFAULT_CHANGE_THRESHOLDS } from '@aio/schema';
-import { workspace } from '@aio/workspace';
+import { volumetric } from '@aio/volumetric';
+import { captureIndex, workspace } from '@aio/workspace';
 import { jobs, shell } from '../../shell';
+import { volumeHints } from '../../workspace/compare';
 import { registerCloudChangeProducers, type ChangeJob } from './cloud';
 import { ensureFramesProducer } from './frames';
 import { registerImageryProducers } from './raster';
@@ -26,6 +32,52 @@ export async function startChangeJob(
   if (error) return { error };
   const id = jobs.getState().selected;
   return id ? { jobId: id } : {};
+}
+
+/** The pair context of the open project, as the Changes panel builds it. */
+function pairContext(projectId: string, from: string, to: string): ChangePairContext | null {
+  const project = workspace.getState().project;
+  if (project?.id !== projectId) return null;
+  const index = captureIndex(project.manifest, volumeHints(volumetric.getState()));
+  return {
+    projectId,
+    manifest: project.manifest,
+    from,
+    to,
+    layersFrom: layersOf(index, project.manifest.layers, from),
+    layersTo: layersOf(index, project.manifest.layers, to),
+  };
+}
+
+/** Run registered producers for a pair (the agent's hook); `all` skips those without data. */
+export async function runChangeProducers(req: {
+  projectId: string;
+  from: string;
+  to: string;
+  ids: readonly string[] | 'all';
+}): Promise<ChangeProducerRun[]> {
+  const ctx = pairContext(req.projectId, req.from, req.to);
+  if (!ctx) return [];
+  const all = changeProducers();
+  const chosen = req.ids === 'all' ? all : all.filter((p) => req.ids.includes(p.id));
+  const out: ChangeProducerRun[] = [];
+  for (const id of req.ids === 'all' ? [] : req.ids)
+    if (!all.some((p) => p.id === id))
+      out.push({ id, label: id, ok: false, error: 'Not available in this app.' });
+  for (const p of chosen) {
+    const ok = p.available(ctx);
+    if (ok !== true) {
+      if (req.ids !== 'all') out.push({ id: p.id, label: p.label, ok: false, error: ok });
+      continue;
+    }
+    const r = await p.run(ctx);
+    out.push(
+      r.ok
+        ? { id: p.id, label: p.label, ok: true, ...(r.jobId ? { jobId: r.jobId } : {}) }
+        : { id: p.id, label: p.label, ok: false, error: r.error },
+    );
+  }
+  return out;
 }
 
 let registered = false;
@@ -57,4 +109,5 @@ export function registerAppChangeProducers(): void {
       return r.jobId ? { ok: true, jobId: r.jobId } : { ok: true };
     },
   });
+  setChangeProducerRunner(runChangeProducers);
 }

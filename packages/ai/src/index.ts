@@ -66,6 +66,11 @@ export {
   type DetectPromptInput,
   type DetectSeverity,
 } from './detect';
+export {
+  setChangeProducerRunner,
+  type ChangeProducerRun,
+  type ChangeProducerRunner,
+} from './change-tools';
 export { photoPlan } from './photo-frame';
 export {
   parseCoordinate,
