@@ -178,8 +178,24 @@ async function orbit(win: Page, selector: string, dx: number) {
   await win.mouse.down();
   await win.mouse.move(x + dx, y + dx / 4, { steps: 10 });
   await win.mouse.up();
-  // let the damped orbit settle
-  await win.waitForTimeout(1500);
+  // let the damped orbit settle: it glides one step per frame, for seconds on a software GPU
+  await settled(win);
+}
+
+/** Wait until neither camera moves any more. */
+async function settled(win: Page): Promise<void> {
+  const same = (a: View | null, b: View | null) => (a === null && b === null) || close(a, b);
+  await expect
+    .poll(
+      async () => {
+        const a = await views(win);
+        await win.waitForTimeout(400);
+        const b = await views(win);
+        return same(a.main, b.main) && same(a.second, b.second);
+      },
+      { timeout: 20_000 },
+    )
+    .toBe(true);
 }
 
 /* ----------------------------------------------------------------------- synthetic project */
@@ -596,8 +612,8 @@ real.describe('Masafi', () => {
       // link again: the left joins the view moved last
       await win.getByTestId('compare-link').click();
       await expect(win.getByTestId('compare-link')).toHaveAttribute('aria-pressed', 'true');
-      const joined = await views(win);
-      expect(close(joined.main, apart.second, 0.05)).toBe(true);
+      // the link is applied after the button repaints (an effect), a frame later on a slow GPU
+      await expect.poll(async () => close((await views(win)).main, apart.second, 0.05)).toBe(true);
 
       const two = await measure(app, win, 6000);
       const limit = await inspect(win, ({ w }) => w.__stratlas.compare().gpuLimit, null);

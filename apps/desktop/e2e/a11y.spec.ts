@@ -349,6 +349,20 @@ test.describe('a synthetic project', () => {
     // compare two dates in the split
     const compare = win.getByTestId('compare-dates');
     if (await compare.count()) {
+      // A software GPU (CI) is the Low tier, where Compare dates offers two maps by design; the
+      // audit covers the two 3D views, so pin Medium there (as compare.spec does).
+      await win.evaluate(() => {
+        const g = (
+          window as unknown as {
+            __stratlas: {
+              graphics(): { getState(): { tier: string; setOverride(t: string | null): void } };
+            };
+          }
+        ).__stratlas
+          .graphics()
+          .getState();
+        if (g.tier === 'low') g.setOverride('medium');
+      });
       await compare.click();
       await expect(win.locator('[data-scene-view] canvas')).toHaveCount(2);
       await expectAccessible(win, 'Scene, compare dates');

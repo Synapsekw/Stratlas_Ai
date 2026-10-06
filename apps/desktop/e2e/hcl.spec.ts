@@ -302,7 +302,15 @@ test('stage polish: one-row toolbar, label modes, annotate tools on demand, came
     steps: 8,
   });
   await win.mouse.up();
-  await win.waitForTimeout(1500);
+  // The orbit glides on (damping, one step per frame): on a slow software GPU it still moves
+  // after 1.5 s, so wait until the camera is at rest before taking the view to compare.
+  const still = async () => {
+    const a = await inspect(win, (w) => w.__stratlas.stage()?.saveView());
+    await win.waitForTimeout(400);
+    const b = await inspect(win, (w) => w.__stratlas.stage()?.saveView());
+    return a && b ? a.position.every((v, i) => Math.abs(v - (b.position[i] ?? 0)) < 0.01) : false;
+  };
+  await expect.poll(still, { timeout: 15_000 }).toBe(true);
   const before = await inspect(win, (w) => w.__stratlas.stage()?.saveView());
   await win.locator('.nav-item', { hasText: 'Issues' }).first().click();
   await win.locator('.nav-item', { hasText: 'Scene' }).first().click();

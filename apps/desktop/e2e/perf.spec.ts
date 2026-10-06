@@ -188,6 +188,12 @@ for (const id of ['alzour', 'hcl']) {
       !existsSync(join(DATA, 'projects', id, 'manifest.json')),
       `${id} project not found under ${DATA}`,
     );
+    // The workstation budget is for its hardware GPU; with every launch on SwiftShader
+    // (STRATLAS_E2E_SWGL=1) the software GPU budget below is the one that applies.
+    test.skip(
+      process.env.STRATLAS_E2E_SWGL === '1',
+      'workstation budget needs the hardware GPU (STRATLAS_E2E_SWGL=1 forces SwiftShader)',
+    );
     test(`a recorded fly-through holds p95 frame time under ${String(BUDGET_MS)} ms`, async ({
       win,
     }, testInfo) => {

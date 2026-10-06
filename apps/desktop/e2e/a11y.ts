@@ -31,8 +31,30 @@ export interface AuditOptions {
   include?: string;
 }
 
+/**
+ * Let colour and layout transitions finish (a theme or contrast switch fades over a few frames;
+ * on a software GPU frames are slow) so axe reads the colours that stay, not one in between.
+ * Endless animations (a spinner, a live dot) are left running.
+ */
+async function settleTransitions(win: Page): Promise<void> {
+  await win.evaluate(async () => {
+    const finite = document
+      .getAnimations()
+      .filter(
+        (a) => a.playState === 'running' && a.effect?.getComputedTiming().endTime !== Infinity,
+      );
+    await Promise.race([
+      Promise.all(finite.map((a) => a.finished.catch(() => undefined))),
+      new Promise((r) => setTimeout(r, 3000)),
+    ]);
+    // and one frame, so a transition that ended this frame is painted and styled
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  });
+}
+
 /** Violations as one line each, with up to three offending nodes. */
 export async function audit(win: Page, o: AuditOptions = {}): Promise<string[]> {
+  await settleTransitions(win);
   let axe = new AxeBuilder({ page: win }).setLegacyMode(true).withTags(AXE_TAGS);
   if (o.include) axe = axe.include(o.include);
   for (const a of AXE_ALLOW) if (a.exclude) axe = axe.exclude(a.exclude);

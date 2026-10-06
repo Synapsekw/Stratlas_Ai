@@ -254,6 +254,10 @@ test('photos without thumbnails get small ones made off the main thread and cach
     const win = await app.firstWindow();
     await win.waitForLoadState('domcontentloaded');
     await win.getByTestId('project-card').filter({ hasText: 'EBSM cold' }).first().click();
+    // Let the project (3D scene) settle first, as above: on a software GPU its first frames are
+    // long tasks of their own, and the probe measures the Media screen.
+    await expect(win.locator('.nav-item', { hasText: 'Media' }).first()).toBeVisible();
+    await win.waitForTimeout(4_000);
     await startProbe(win);
     await win.locator('.nav-item', { hasText: 'Media' }).first().click();
     const ms = (await waitForTiles(win)).tilesMs;
