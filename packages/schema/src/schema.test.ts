@@ -238,6 +238,12 @@ describe('ipc contracts', () => {
       'house-pdf': 'pdf',
     } as const;
     for (const format of EXPORT_FORMATS) {
+      // M9 audit exports fall under `files` (no new ExportKind for older players); their CSV and
+      // JSON names would read as issue exports, so they are checked by format, never by name.
+      if (format === 'audit-csv' || format === 'audit-json') {
+        expect(EXPORT_FORMAT_KIND[format]).toBe('files');
+        continue;
+      }
       expect(EXPORT_FORMAT_KIND[format]).toBe(exportKindForFile(`x.${ext[format]}`));
     }
   });

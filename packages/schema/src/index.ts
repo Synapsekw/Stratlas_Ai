@@ -17,3 +17,12 @@ export * from './update';
 export * from './change';
 export * from './procmodel';
 export * from './inference';
+// M9
+export * from './identity';
+export * from './journal';
+export * from './collab';
+export * from './exchange';
+export * from './blobs';
+export * from './sync';
+export * from './versions';
+export * from './entitlements';

@@ -29,14 +29,37 @@ import {
   InferenceRuntime,
   InferenceSettings,
 } from './inference';
+import { FetchPolicy, LayerBlobStatus } from './blobs';
+import {
+  ApprovalDecision,
+  CollabState,
+  CollabTarget,
+  CommentId,
+  PolicySetPayload,
+  SavedView,
+} from './collab';
+import { Sha256Hex } from './common';
+import { ExchangeKind, ExchangePreview, Heads } from './exchange';
+import { ActorId, DeviceId, Identity, Initials, Member, PersonName, Role } from './identity';
+import {
+  AuditEntry,
+  AuditExportFormat,
+  AuditFilter,
+  EditCommand,
+  OpId,
+  RecordRef,
+  VerifyReport,
+} from './journal';
+import { Conflict, QuarantineEntry, ServerInfo, SyncMode, TeamStatus } from './sync';
 
 const Empty = z.object({}).strict();
 
 /**
- * Why an M8 request failed, for the renderer to act on: `not-implemented` (the channel exists but
- * this build does not do it yet), `read-only` (a package or player mode).
+ * Why a request failed, for the renderer to act on: `not-implemented` (the channel exists but this
+ * build does not do it yet), `read-only` (a package or player mode), `forbidden` (M9: the role or
+ * the entitlement does not allow it), `offline-only` (M9: the workstation allows no network).
  */
-export const FailureCode = z.enum(['not-implemented', 'read-only']);
+export const FailureCode = z.enum(['not-implemented', 'read-only', 'forbidden', 'offline-only']);
 const Failure = z.object({ ok: z.literal(false), error: z.string(), code: FailureCode.optional() });
 const OkOrFailure = z.discriminatedUnion('ok', [z.object({ ok: z.literal(true) }), Failure]);
 const ProjectId = z.string().min(1);
@@ -89,6 +112,27 @@ export const LibraryEntry = z.object({
    * is the one the first-start welcome opens.
    */
   demo: z.object({ primary: z.boolean() }).optional(),
+  /** M9: a shared project's badge (mode, unread comments, conflicts, ops not yet sent). */
+  team: z
+    .object({
+      mode: SyncMode,
+      unread: z.number().int().nonnegative(),
+      conflicts: z.number().int().nonnegative(),
+      pending: z.number().int().nonnegative(),
+    })
+    .optional(),
+});
+
+/** Per-machine sync preferences (M9). Absent: no auto-sync, every 15 minutes, 50 GB of blobs. */
+export const TeamSettings = z.object({
+  autoSync: z.boolean().optional(),
+  intervalMin: z
+    .number()
+    .int()
+    .min(1)
+    .max(24 * 60)
+    .optional(),
+  blobCacheGb: z.number().min(1).max(100_000).optional(),
 });
 
 /** What a first start finds on this workstation, so the welcome can explain each missing piece. */
@@ -237,6 +281,8 @@ export const Settings = z.object({
   change: ChangeThresholds.optional(),
   /** Local ONNX detection (M8): model folder, execution provider, memory cap. */
   inference: InferenceSettings.optional(),
+  /** Sync preferences (M9). Never keys, tokens or invite codes: those live in the vault. */
+  team: TeamSettings.optional(),
 });
 
 /** West, south, east, north in WGS84 degrees. */
@@ -395,6 +441,9 @@ export const EXPORT_FORMATS = [
   'masks-zip',
   'report-pdf',
   'house-pdf',
+  // M9 (T1): the audit trail, under the existing package kind `files` (no new ExportKind)
+  'audit-csv',
+  'audit-json',
 ] as const;
 export const ExportFormat = z.enum(EXPORT_FORMATS);
 
@@ -410,6 +459,8 @@ export const EXPORT_FORMAT_KIND = {
   'masks-zip': 'masks',
   'report-pdf': 'report-pdf',
   'house-pdf': 'report-pdf',
+  'audit-csv': 'files',
+  'audit-json': 'files',
 } as const satisfies Record<z.infer<typeof ExportFormat>, ExportKind>;
 
 export const ReportFile = z.object({
@@ -474,7 +525,14 @@ export const ipc = {
     response: OpenResult,
   },
   'project:writeIssues': {
-    request: z.object({ projectId: z.string().min(1), issues: z.array(Issue) }).strict(),
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        issues: z.array(Issue),
+        /** M9: the editor's labelled commands since the last write, for readable history. */
+        commands: z.array(EditCommand).max(1000).optional(),
+      })
+      .strict(),
     response: z.object({ ok: z.boolean(), error: z.string().optional() }),
   },
   /**
@@ -1387,6 +1445,467 @@ export const ipc = {
       Failure,
     ]),
   },
+
+  // ---------------------------------------------------------------- M9 identity and members (T2)
+  /** This person's identity (moved once from the renderer's stored author) and device id. */
+  'identity:get': {
+    request: Empty,
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        identity: Identity,
+        /** Null until the device key is made (first need). */
+        device: DeviceId.nullable(),
+        /** The vault failed: ops are written unsigned and Verify says so. */
+        unsigned: z.boolean(),
+      }),
+      Failure,
+    ]),
+  },
+  /**
+   * Set name, initials or email. `migrateFrom` carries the old `stratlas.author` value on first
+   * start (once); main never reads renderer storage.
+   */
+  'identity:set': {
+    request: z
+      .object({
+        name: PersonName.optional(),
+        initials: Initials.optional(),
+        email: z.union([z.email().max(254), z.literal('')]).optional(),
+        migrateFrom: z.string().max(80).optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), identity: Identity }),
+      Failure,
+    ]),
+  },
+  /** Save this person's identity card (`.aioid`) through a save dialog. */
+  'identity:exportCard': {
+    request: Empty,
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), path: z.string().nullable() }),
+      Failure,
+    ]),
+  },
+  /** Read and check a card (signature, ids) without adding anyone. */
+  'identity:importCard': {
+    request: z.object({ path: z.string().min(1) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        actor: ActorId,
+        name: PersonName,
+        initials: Initials,
+        device: DeviceId,
+      }),
+      Failure,
+    ]),
+  },
+  'members:list': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        members: z.array(Member),
+        /** This person's role; absent when the project is not shared. */
+        me: Role.optional(),
+      }),
+      Failure,
+    ]),
+  },
+  /** Add a person from an identity card (owner only; the owner's device certifies the card). */
+  'members:add': {
+    request: z
+      .object({ projectId: ProjectId, card: z.string().min(1), role: Role, certify: z.boolean() })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), member: Member }),
+      Failure,
+    ]),
+  },
+  'members:setRole': {
+    request: z.object({ projectId: ProjectId, actor: ActorId, role: Role }).strict(),
+    response: OkOrFailure,
+  },
+  'members:remove': {
+    request: z.object({ projectId: ProjectId, actor: ActorId }).strict(),
+    response: OkOrFailure,
+  },
+  /** Ops by the device after its revocation are quarantined; earlier ones stay valid. */
+  'members:revokeDevice': {
+    request: z
+      .object({ projectId: ProjectId, device: DeviceId, reason: z.string().max(500).optional() })
+      .strict(),
+    response: OkOrFailure,
+  },
+
+  // ---------------------------------------------------------------- M9 journal and audit (T1)
+  /** History of one record, or the project's audit (filters), newest first. */
+  'journal:history': {
+    request: z
+      .object({
+        projectId: ProjectId,
+        filter: AuditFilter.optional(),
+        limit: z.number().int().min(1).max(5000).optional(),
+        cursor: z.string().max(4096).optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        entries: z.array(AuditEntry),
+        cursor: z.string().nullable(),
+        /** The journal is switched off for this private project (decision 8). */
+        off: z.boolean().optional(),
+      }),
+      Failure,
+    ]),
+  },
+  /** Verify chains, signatures, gaps, forks and redactions (in the data process). */
+  'journal:verify': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), report: VerifyReport }),
+      Failure,
+    ]),
+  },
+  /** Owner only: remove an op's payload (an `op.redact` op); the chain still verifies. */
+  'journal:redact': {
+    request: z
+      .object({ projectId: ProjectId, op: OpId, reason: z.string().max(500).optional() })
+      .strict(),
+    response: OkOrFailure,
+  },
+  /** CSV (UTF-8 with BOM) or signed JSON with the device keys and checkpoints, via a save dialog. */
+  'audit:export': {
+    request: z
+      .object({ projectId: ProjectId, format: AuditExportFormat, filter: AuditFilter.optional() })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        path: z.string().nullable(),
+        count: z.number().int().nonnegative(),
+      }),
+      Failure,
+    ]),
+  },
+
+  // ---------------------------------------------------------------- M9 review workflow (T3)
+  /** Comments, assignments, approvals and policy of the project or of one target. */
+  'collab:read': {
+    request: z.object({ projectId: ProjectId, target: CollabTarget.optional() }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), state: CollabState }),
+      Failure,
+    ]),
+  },
+  'collab:comment': {
+    request: z
+      .object({
+        projectId: ProjectId,
+        target: CollabTarget,
+        text: z.string().trim().min(1).max(10_000),
+        visibility: z.enum(['team', 'client']).optional(),
+        mentions: z.array(ActorId).max(50).optional(),
+        replyTo: CommentId.optional(),
+        view: SavedView.optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), id: CommentId }),
+      Failure,
+    ]),
+  },
+  'collab:editComment': {
+    request: z
+      .object({ projectId: ProjectId, id: CommentId, text: z.string().trim().min(1).max(10_000) })
+      .strict(),
+    response: OkOrFailure,
+  },
+  'collab:deleteComment': {
+    request: z.object({ projectId: ProjectId, id: CommentId }).strict(),
+    response: OkOrFailure,
+  },
+  'collab:assign': {
+    request: z
+      .object({
+        projectId: ProjectId,
+        target: CollabTarget,
+        assignee: ActorId.nullable(),
+        due: z.iso.date().optional(),
+        note: z.string().max(2000).optional(),
+      })
+      .strict(),
+    response: OkOrFailure,
+  },
+  /**
+   * Approve, request changes (a comment is required) or accept. Main computes the content hash;
+   * the agent has no route to this channel (decision 6).
+   */
+  'collab:approve': {
+    request: z
+      .object({
+        projectId: ProjectId,
+        target: CollabTarget,
+        decision: ApprovalDecision,
+        comment: z.string().max(10_000).optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        /** The approval completed the policy and the status op was written. */
+        approved: z.boolean(),
+      }),
+      Failure,
+    ]),
+  },
+  'collab:withdraw': {
+    request: z.object({ projectId: ProjectId, id: z.string().min(1).max(64) }).strict(),
+    response: OkOrFailure,
+  },
+  /** Change the team policy (owner only): approvals, verification level, package history. */
+  'collab:policy': {
+    request: z.object({ projectId: ProjectId, policy: PolicySetPayload }).strict(),
+    response: OkOrFailure,
+  },
+
+  // ---------------------------------------------------------------- M9 sharing and sync (T4, T5)
+  /** Share the project: exchange files only, a hub folder, or a team server. */
+  'team:share': {
+    request: z
+      .object({
+        projectId: ProjectId,
+        mode: SyncMode.exclude(['off']),
+        name: z.string().min(1).max(200).optional(),
+        hubPath: z.string().min(1).optional(),
+        serverId: z.string().min(1).max(64).optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), status: TeamStatus }),
+      Failure,
+    ]),
+  },
+  'team:status': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), status: TeamStatus }),
+      Failure,
+    ]),
+  },
+  /** Stop syncing this copy (the journal and the data stay). */
+  'team:leave': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: OkOrFailure,
+  },
+  /** Sync with the hub or server now; progress on `sync:progress`. */
+  'sync:now': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        pulled: z.number().int().nonnegative(),
+        pushed: z.number().int().nonnegative(),
+        conflicts: z.number().int().nonnegative(),
+      }),
+      Failure,
+    ]),
+  },
+  'sync:conflicts': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), conflicts: z.array(Conflict) }),
+      Failure,
+    ]),
+  },
+  /** Keep ours, take theirs or restore a value from history (a `conflict.resolve` op). */
+  'sync:resolve': {
+    request: z
+      .object({
+        projectId: ProjectId,
+        conflict: z.string().min(1).max(300),
+        choice: z.enum(['ours', 'theirs', 'restore']),
+        op: OpId.optional(),
+      })
+      .strict(),
+    response: OkOrFailure,
+  },
+  'sync:quarantine': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), entries: z.array(QuarantineEntry) }),
+      Failure,
+    ]),
+  },
+  /** Owner only: apply a quarantined op anyway (recorded as an op). */
+  'sync:release': {
+    request: z.object({ projectId: ProjectId, op: OpId }).strict(),
+    response: OkOrFailure,
+  },
+
+  // ---------------------------------------------------------------- M9 exchange files (T5)
+  /** What a patch or bundle for a peer (or since a date) would carry, before writing it. */
+  'exchange:plan': {
+    request: z
+      .object({
+        projectId: ProjectId,
+        kind: ExchangeKind.exclude(['reply']),
+        peer: DeviceId.optional(),
+        since: z.iso.datetime({ offset: true }).optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        ops: z.number().int().nonnegative(),
+        blobs: z.number().int().nonnegative(),
+        bytes: z.number().int().nonnegative(),
+        heads: Heads,
+      }),
+      Failure,
+    ]),
+  },
+  'exchange:export': {
+    request: z
+      .object({
+        jobId: z.string().min(1).max(64),
+        projectId: ProjectId,
+        kind: ExchangeKind.exclude(['reply']),
+        peer: DeviceId.optional(),
+        since: z.iso.datetime({ offset: true }).optional(),
+        passphrase: z.string().min(8).max(256).optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), path: z.string().nullable(), bytes: z.number().int() }),
+      Failure,
+    ]),
+  },
+  /** Read an `.aiosync` and say what applying it would do; nothing is written. */
+  'exchange:preview': {
+    request: z
+      .object({
+        projectId: ProjectId,
+        path: z.string().min(1),
+        passphrase: z.string().min(1).max(256).optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), preview: ExchangePreview }),
+      z.object({
+        ok: z.literal(false),
+        error: z.string(),
+        code: FailureCode.optional(),
+        needsPassphrase: z.boolean().optional(),
+      }),
+    ]),
+  },
+  /** Apply an exchange file atomically and idempotently (ops dedupe by id); progress on `exchange:progress`. */
+  'exchange:import': {
+    request: z
+      .object({
+        jobId: z.string().min(1).max(64),
+        projectId: ProjectId,
+        path: z.string().min(1),
+        passphrase: z.string().min(1).max(256).optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        applied: z.number().int().nonnegative(),
+        duplicates: z.number().int().nonnegative(),
+        held: z.number().int().nonnegative(),
+        conflicts: z.number().int().nonnegative(),
+      }),
+      Failure,
+    ]),
+  },
+  /** Player mode: save the client's comments and acceptance as a signed reply file. */
+  'exchange:reply': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), path: z.string().nullable() }),
+      Failure,
+    ]),
+  },
+
+  // ---------------------------------------------------------------- M9 binaries by content (T6)
+  'blobs:status': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        layers: z.array(LayerBlobStatus),
+        cache: z.object({
+          bytes: z.number().int().nonnegative(),
+          capBytes: z.number().int().nonnegative(),
+        }),
+      }),
+      Failure,
+    ]),
+  },
+  /** Download a layer's (or one blob's) files; progress on `blobs:progress`. */
+  'blobs:fetch': {
+    request: z
+      .object({
+        jobId: z.string().min(1).max(64),
+        projectId: ProjectId,
+        layer: z.string().min(1).optional(),
+        sha256: Sha256Hex.optional(),
+      })
+      .strict(),
+    response: OkOrFailure,
+  },
+  'blobs:cancel': {
+    request: z.object({ jobId: z.string().min(1).max(64) }).strict(),
+    response: z.object({ ok: z.boolean() }),
+  },
+  'blobs:policy': {
+    request: z
+      .object({ projectId: ProjectId, layer: z.string().min(1), policy: FetchPolicy })
+      .strict(),
+    response: OkOrFailure,
+  },
+  /** Hash and register the project's binaries (resumable, in the data process). */
+  'blobs:index': {
+    request: z.object({ jobId: z.string().min(1).max(64), projectId: ProjectId }).strict(),
+    response: OkOrFailure,
+  },
+
+  // ---------------------------------------------------------------- M9 team server (T7, preview)
+  /** Enrol this device with an invite code; the fingerprint must match the one the person accepted. */
+  'server:enrol': {
+    request: z
+      .object({
+        url: z.url({ protocol: /^https$/ }),
+        code: z.string().min(6).max(128),
+        fingerprint: Sha256Hex.optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), server: ServerInfo }),
+      z.object({
+        ok: z.literal(false),
+        error: z.string(),
+        code: FailureCode.optional(),
+        /** First contact: the certificate fingerprint to show and confirm before enrolling. */
+        fingerprint: Sha256Hex.optional(),
+      }),
+    ]),
+  },
+  'server:list': {
+    request: Empty,
+    response: z.object({ servers: z.array(ServerInfo) }),
+  },
+  /** Remove an enrolled server and its vault entry from this machine. */
+  'server:forget': {
+    request: z.object({ id: z.string().min(1).max(64) }).strict(),
+    response: OkOrFailure,
+  },
 } as const satisfies Record<string, { request: z.ZodType; response: z.ZodType }>;
 
 /** Events pushed from main to the renderer. */
@@ -1472,6 +1991,37 @@ export const ipcEvents = {
     found: z.number().int().nonnegative(),
     current: z.string().optional(),
   }),
+  /**
+   * M9: records of an open project changed under the renderer (merge, import, external edit): reload
+   * their projections, keeping selection and camera.
+   */
+  'journal:changed': z.object({
+    projectId: z.string(),
+    records: z.array(RecordRef),
+  }),
+  /** Progress of a hub or server sync (M9). */
+  'sync:progress': z.object({
+    projectId: z.string(),
+    phase: z.enum(['pull', 'merge', 'push', 'blobs', 'done', 'offline']),
+    done: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative(),
+  }),
+  /** Progress of an exchange file export or import (M9). */
+  'exchange:progress': z.object({
+    jobId: z.string(),
+    phase: z.string(),
+    done: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative(),
+  }),
+  /** Progress of a blob fetch or index job (M9), bytes. */
+  'blobs:progress': z.object({
+    jobId: z.string(),
+    projectId: z.string(),
+    layer: z.string().optional(),
+    done: z.number().nonnegative(),
+    total: z.number().nonnegative(),
+    state: z.enum(['running', 'done', 'failed', 'cancelled']),
+  }),
 } as const satisfies Record<string, z.ZodType>;
 
 export type IpcChannel = keyof typeof ipc;
@@ -1500,6 +2050,7 @@ export type PackageMapPackRequest = z.infer<typeof PackageMapPackRequest>;
 export type ExportFormat = z.infer<typeof ExportFormat>;
 export type ReportFile = z.infer<typeof ReportFile>;
 export type ReportBrandingSettings = z.infer<typeof ReportBrandingSettings>;
+export type TeamSettings = z.infer<typeof TeamSettings>;
 
 /** The typed bridge the preload exposes as window.aio. */
 export interface AioBridge {

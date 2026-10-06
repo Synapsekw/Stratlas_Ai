@@ -51,6 +51,9 @@ export const ReportSectionId = z.enum([
   'register',
   'issues',
   'appendices',
+  // M9: the change log per issue and the head hash (T1); the sign-off block (T3)
+  'audit',
+  'approvals',
 ]);
 export const REPORT_SECTIONS = ReportSectionId.options;
 

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Id, IsoTime, err, ok, type Result } from './common';
+import { PackageReplyPolicy } from './exchange';
 
 export const PACKAGE_SCHEMA = 'aio.package/1' as const;
 
@@ -67,6 +68,11 @@ export const PackageHeader = z.object({
       tips: z.array(z.string().min(1).max(200)).max(8).optional(),
     })
     .optional(),
+  // ---- M9; both optional, and older players strip them (this object is not strict) ----
+  /** The holder may send back comments and acceptance as a signed reply file (`.aiosync`). */
+  reply: PackageReplyPolicy.optional(),
+  /** History carried: the signed audit summary (customer default) or the full journal. */
+  journal: z.enum(['full', 'summary']).optional(),
 });
 
 /** What the renderer learns about an opened package. */
