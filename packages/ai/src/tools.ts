@@ -516,9 +516,49 @@ export function getToolSpec(name: string): ToolSpec | undefined {
   return BUILT_IN.find((s) => s.meta.name === name) ?? extra.get(name);
 }
 
-/** Tools offered to the agent bound to a window. */
-export function toolsForWindow(window: WindowKind): ToolSpec[] {
-  return allToolSpecs().filter((s) => !s.meta.windows || s.meta.windows.includes(window));
+/** `compact`: a short tool list with short descriptions, for small local models (AI-9). */
+export type ToolProfile = 'full' | 'compact';
+
+/**
+ * The compact profile: the most-used tools with descriptions short enough for a small context
+ * window. The change (C1) and modelling (C5) tools are named here and join once their packages
+ * register them; a name that is not registered is simply left out.
+ */
+export const COMPACT_TOOLS: Readonly<Record<string, string>> = {
+  find_places:
+    'Find a named place (asset, area, layer, issue, photo, clip). Returns ids for fly_to.',
+  fly_to: 'Move the camera to a place, asset, issue, photo, clip time or coordinate.',
+  set_view: 'Standard view: home, top, north, south, east or west.',
+  frame_all: 'Zoom out to show the whole site.',
+  select: 'Select an asset, issue, clip, photo or layer.',
+  list_layers: 'List the layers of the project.',
+  set_layer_visible: 'Show or hide a layer.',
+  list_issues: 'List issues, with optional filters.',
+  summarize_issues: 'Count issues by severity, status and class.',
+  create_issue_draft: 'Create a draft issue for a person to review.',
+  find_clips_near: 'Find video clips that pass near an asset, issue or point.',
+  set_time: 'Set the project time.',
+  play_clip: 'Play a video clip from a time.',
+  // C1 change tools
+  compare_captures: 'Compare two capture dates.',
+  list_changes: 'List the changes between two dates.',
+  show_change: 'Show one change in the view.',
+  run_change_detection: 'Start change detection between two dates.',
+  // C5 modelling tools (build route)
+  propose_model_parts: 'Propose model parts from a drawing or a point cloud.',
+  fit_primitives: 'Fit tanks, boxes and pipes to a point cloud.',
+  edit_model_part: 'Change one part of a model.',
+  build_model: 'Build the 3D model from its parts.',
+};
+
+/** Tools offered to the agent bound to a window, in the full or the compact profile. */
+export function toolsForWindow(window: WindowKind, profile: ToolProfile = 'full'): ToolSpec[] {
+  const here = allToolSpecs().filter((s) => !s.meta.windows || s.meta.windows.includes(window));
+  if (profile === 'full') return here;
+  return here.flatMap((s) => {
+    const description = COMPACT_TOOLS[s.meta.name];
+    return description ? [{ ...s, meta: { ...s.meta, description } }] : [];
+  });
 }
 
 export function riskOf(name: string): ToolRisk {
