@@ -118,7 +118,8 @@ function matches(layer: Layer, capture: Capture, epoch: string | undefined): boo
 }
 
 /**
- * Which layers show which capture: the explicit lists when given (volumetric projects), else a
+ * Which layers show which capture: a layer's own `capture` first (M8, set by the builder's survey
+ * date or "Belongs to date..."), then the explicit lists when given (volumetric projects), else a
  * layer belongs to the one capture whose id or date its id or name carries (or, for a mesh, whose
  * survey key ends its tagged node names). A layer that names no capture, or several, is common.
  */
@@ -135,6 +136,15 @@ export function captureIndex(
   for (const c of captures) layers[c.id] = [];
   const known = new Set(manifest.layers.map((l) => l.id));
   const explicit = new Set<string>();
+  // 1. the layer's own `capture` (M8) wins over everything else
+  const ids = new Set(captures.map((c) => c.id));
+  for (const l of manifest.layers) {
+    if (!l.capture || !ids.has(l.capture)) continue;
+    explicit.add(l.id);
+    of[l.id] = l.capture;
+    layers[l.capture]?.push(l.id);
+  }
+  // 2. the explicit lists of volumes.json
   for (const c of captures) {
     for (const id of hints.layers?.[c.id] ?? []) {
       if (!known.has(id) || explicit.has(id)) continue;
@@ -143,6 +153,7 @@ export function captureIndex(
       layers[c.id]?.push(id);
     }
   }
+  // 3. the dates or capture ids the names carry
   if (captures.length > 1) {
     for (const l of manifest.layers) {
       if (explicit.has(l.id) || !DATED_KINDS.has(l.kind)) continue;

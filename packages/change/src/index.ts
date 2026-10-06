@@ -4,6 +4,24 @@
  * the Changes panel. Imagery, surface, point cloud, model and frame change (C2 to C4) plug in
  * through the producer registry below, so they never edit the panel.
  */
+export * from './core';
+export {
+  ChangePanel,
+  ChangeStyles,
+  type ChangePanelProps,
+  type ChangeRowActions,
+} from './ChangePanel';
+export { changeMarkers, VERDICT_COLOR, type ChangeMarker, type MarkerInput } from './overlay';
+export {
+  changeStore,
+  createChangeStore,
+  setsOfPair,
+  useChange,
+  type ChangeRun,
+  type ChangeState,
+  type ChangeStore,
+  type SelectedItem,
+} from './store';
 export {
   changeProducers,
   registerChangeProducer,

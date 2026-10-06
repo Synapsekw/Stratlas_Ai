@@ -5,6 +5,7 @@
  */
 import { needsApproval, ToolMeta, Vec3, type ToolRisk, type WindowKind } from '@aio/schema';
 import { z } from 'zod';
+import { CHANGE_TOOL_SPECS } from './change-tool-specs';
 
 export interface ToolSpec {
   meta: ToolMeta;
@@ -451,7 +452,7 @@ const BUILT_IN: ToolSpec[] = [
   }),
   spec('compare_captures', {
     description:
-      'Compare two capture dates. For stockpile surveys: volume per pile and in total at each date and the change, from the survey volumes. Otherwise: issue counts at each date and the issues added between them.',
+      'Compare two capture dates. When the change sets of the dates are saved: counts of what changed per kind (issues, detections, map layers, regions, model parts, frames) and verdict (new, resolved, grown...), plus volumes for stockpile surveys. Otherwise for stockpile surveys: volume per pile and in total at each date and the change; else issue counts at each date and the issues added between them.',
     scope: 'project',
     risk: 'read',
   }),
@@ -491,6 +492,7 @@ const BUILT_IN: ToolSpec[] = [
     scope: 'app',
     risk: 'navigate',
   }),
+  ...CHANGE_TOOL_SPECS,
 ];
 
 const extra = new Map<string, ToolSpec>();

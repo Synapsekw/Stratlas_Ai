@@ -78,12 +78,52 @@ export function captureLabel(index: CaptureIndex, id: string | undefined): strin
   return c ? formatDate(c.date) : '';
 }
 
-/** The live comparison, for the inspection hook (tests, DevTools). */
+/** What "Show changes" draws on each view (ids and verdicts), for the inspection hook. */
+export interface ChangePins {
+  main: { id: string; verdict: string; ghost: boolean; selected: boolean }[];
+  second: { id: string; verdict: string; ghost: boolean; selected: boolean }[];
+  maps: [string[], string[]];
+}
+
+const runtimeListeners = new Set<() => void>();
+let secondStage: EngineStage | null = null;
+let liveMaps: [MapController | null, MapController | null] = [null, null];
+
+/**
+ * The live comparison, for the inspection hook (tests, DevTools) and the change overlays: setting
+ * the second view or the maps tells `onCompareRuntime` listeners.
+ */
 export const compareRuntime: {
   second: EngineStage | null;
   link: CameraLink | null;
   maps: [MapController | null, MapController | null];
-} = { second: null, link: null, maps: [null, null] };
+  changes: ChangePins;
+} = {
+  get second() {
+    return secondStage;
+  },
+  set second(s) {
+    secondStage = s;
+    for (const l of [...runtimeListeners]) l();
+  },
+  link: null,
+  get maps() {
+    return liveMaps;
+  },
+  set maps(m) {
+    liveMaps = m;
+    for (const l of [...runtimeListeners]) l();
+  },
+  changes: { main: [], second: [], maps: [[], []] },
+};
+
+/** Hear when the second 3D view or a map of the comparison comes or goes. */
+export function onCompareRuntime(listener: () => void): () => void {
+  runtimeListeners.add(listener);
+  return () => {
+    runtimeListeners.delete(listener);
+  };
+}
 
 /* ----------------------------------------------------------------------- notices */
 

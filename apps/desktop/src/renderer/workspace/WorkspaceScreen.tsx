@@ -10,8 +10,9 @@ import {
   useT,
 } from '@aio/ui';
 import { useVolumetric, VolumesPanel } from '@aio/volumetric';
-import { useWorkspace, workspace } from '@aio/workspace';
+import { canCompare, useWorkspace, workspace } from '@aio/workspace';
 import { useMemo, useState } from 'react';
+import { ChangesTab, useChangesTabSeq } from '../change';
 import { IssueCard } from '../issueCard/IssueCard';
 import { useCardFocusSeq } from '../issueCard/state';
 import { useMedia } from '../media';
@@ -24,6 +25,7 @@ import { RoadSetupCard } from '../road/RoadSetup';
 import { useIsRoad } from '../road/useRoadMap';
 import { NoProject } from '../screens/NoProject';
 import { AgentFixCard } from './AgentFixCard';
+import { useCaptureIndex } from './compare';
 import { agentWindow } from './agentWindow';
 import { SelectionCard } from './SelectionCard';
 import { Stage } from './Stage';
@@ -130,7 +132,7 @@ function TimelineBar() {
 
 /** Top of the right panel: the selection (issue detail for an issue) or the issue register. */
 function ContextPanel() {
-  const [chosen, setTab] = useState<'selection' | 'issues' | 'volumes' | null>(null);
+  const [chosen, setTab] = useState<'selection' | 'issues' | 'volumes' | 'changes' | null>(null);
   const issueId = useWorkspace((s) => (s.selection?.kind === 'issue' ? s.selection.id : null));
   const count = useWorkspace((s) => s.issues.length);
   const volumes = useVolumetric((s) => s.status !== 'none' && s.status !== 'idle');
@@ -142,12 +144,21 @@ function ContextPanel() {
     setSeenSeq(focusSeq);
     setTab('selection');
   }
+  // M8 C1: two survey dates offer the Changes tab; Show changes brings it to the front
+  const captureIx = useCaptureIndex();
+  const dated = captureIx !== null && canCompare(captureIx);
+  const changesSeq = useChangesTabSeq();
+  const [seenChanges, setSeenChanges] = useState(changesSeq);
+  if (seenChanges !== changesSeq) {
+    setSeenChanges(changesSeq);
+    setTab('changes');
+  }
   // volumetric projects open on their volumes
   const tab =
-    chosen === 'volumes' && !volumes
+    (chosen === 'volumes' && !volumes) || (chosen === 'changes' && !dated)
       ? 'selection'
       : (chosen ?? (volumes ? 'volumes' : 'selection'));
-  const tall = tab === 'issues' || tab === 'volumes' || issueId !== null;
+  const tall = tab === 'issues' || tab === 'volumes' || tab === 'changes' || issueId !== null;
   return (
     <div className={`ctx-wrap${tall ? ' tall' : ''}${tab === 'volumes' ? ' vol' : ''}`}>
       <div className="seg ctx-tabs" role="tablist" aria-label="Context">
@@ -183,9 +194,24 @@ function ContextPanel() {
         >
           Issues <span className="mono faint">{count}</span>
         </button>
+        {dated && (
+          <button
+            type="button"
+            role="tab"
+            data-testid="tab-changes"
+            aria-selected={tab === 'changes'}
+            onClick={() => {
+              setTab('changes');
+            }}
+          >
+            Changes
+          </button>
+        )}
       </div>
       {tab === 'volumes' ? (
         <VolumesPanel className="ctx-fill" />
+      ) : tab === 'changes' ? (
+        <ChangesTab className="ctx-fill" />
       ) : tab === 'issues' ? (
         <IssueRegister className="ctx-fill" />
       ) : issueId ? (

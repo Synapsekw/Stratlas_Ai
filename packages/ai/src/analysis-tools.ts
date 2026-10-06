@@ -6,6 +6,7 @@
 import type { Issue } from '@aio/schema';
 import { assetUrl } from '@aio/workspace';
 import { z } from 'zod';
+import { changeSetsOf, changeSummary, verdictLine } from './change-tools';
 import { issuesCsv } from './exporting';
 import { targetPoint } from './places';
 import {
@@ -189,6 +190,19 @@ define('compare_captures', async (input, ctx) => {
   const from = pickCapture(captures, input.from, first);
   const to = pickCapture(captures, input.to, last);
   const volumes = await loadVolumes(ctx);
+  // v2 (M8): the saved change sets of the pair, any kind, when there are any
+  const [early, late] = from.date <= to.date ? [from, to] : [to, from];
+  const sets = await changeSetsOf(ctx, early.id, late.id);
+  if (sets.length > 0) {
+    const r = {
+      kind: 'changes' as const,
+      from: { captureId: early.id, date: early.date },
+      to: { captureId: late.id, date: late.date },
+      ...changeSummary(sets),
+      ...(volumes ? { volumes: compareVolumes(volumes, early, late, input.base) } : {}),
+    };
+    return { result: r, summary: verdictLine(sets) };
+  }
   if (volumes) {
     const r = compareVolumes(volumes, from, to, input.base);
     const change = r.total?.change;

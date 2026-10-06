@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Change between capture dates: change sets, register, issue, detection and vector change, producer registry, Changes panel.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./core": "./src/core.ts"
   },
   "scripts": {
     "test": "vitest run"

@@ -255,3 +255,57 @@ describe('scoped store', () => {
     expect(s.getState().camera).toBeNull();
   });
 });
+
+describe('explicit layer dates (M8, Layer.capture)', () => {
+  /** A synthetic two-date site: the names say nothing, or the wrong thing, about the date. */
+  const site: ProjectManifest = {
+    ...masafi,
+    id: 'synthetic-site',
+    captures: [
+      { id: 'd1', label: 'First survey', date: '2026-03-01' },
+      { id: 'd2', label: 'Second survey', date: '2026-09-01' },
+    ],
+    layers: [
+      { ...ortho('ortho-a', 'Site ortho'), capture: 'd1' },
+      { ...ortho('ortho-b', 'Site ortho'), capture: 'd2' },
+      // the name says the first date, the explicit capture says the second
+      { ...mesh('model-x', 'Model 1 Mar 2026'), capture: 'd2' },
+      mesh('model-y', 'Model 1 Mar 2026'),
+      ortho('plan', 'Plot plan'),
+    ],
+  };
+
+  it('puts a layer on its explicit capture whatever its name says', () => {
+    const ix = captureIndex(site);
+    expect(ix.of['ortho-a']).toBe('d1');
+    expect(ix.of['ortho-b']).toBe('d2');
+    expect(ix.of['model-x']).toBe('d2');
+    // names still date the layers without an explicit capture
+    expect(ix.of['model-y']).toBe('d1');
+    expect(ix.of.plan).toBeUndefined();
+    expect(canCompare(ix)).toBe(true);
+    // same name on both dates: counterparts
+    expect(counterpart(ix, 'ortho-a', 'd2')).toBe('ortho-b');
+  });
+
+  it('wins over the explicit lists of volumes.json, and ignores an unknown capture', () => {
+    const ix = captureIndex(
+      {
+        ...site,
+        layers: [...site.layers, { ...ortho('stray', 'Stray ortho'), capture: 'gone' }],
+      },
+      { layers: { d1: ['ortho-b'] } },
+    );
+    expect(ix.of['ortho-b']).toBe('d2');
+    expect(ix.layers.d1).not.toContain('ortho-b');
+    // an id the manifest does not list falls back to the naming rules (common here)
+    expect(ix.of.stray).toBeUndefined();
+  });
+
+  it('dates a layer explicitly even with one capture', () => {
+    const first = site.captures[0];
+    if (!first) throw new Error('fixture');
+    const ix = captureIndex({ ...site, captures: [first] });
+    expect(ix.of['ortho-a']).toBe('d1');
+  });
+});

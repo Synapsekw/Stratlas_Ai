@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useShell } from '../shell';
 import { heightsLine, offsetFromTakeoff, promptChoice, type HeightsPrompt } from './heights';
 import { builder, useBuilder } from './state';
+import { ImportSurveyDate } from './SurveyDate';
 
 const STATUS: Record<ImportItem['status'], { icon: IconName; label: string }> = {
   imported: { icon: 'check', label: 'Imported' },
@@ -287,6 +288,7 @@ function ImportStatus() {
           {heights.text}
         </p>
       )}
+      {result && result.items.length > 0 && <ImportSurveyDate items={result.items} />}
       {result && result.items.length > 0 && (
         <ul>
           {result.items.map((it, i) => (

@@ -6,6 +6,7 @@ import {
 } from '@aio/ai/main';
 import { brand } from '@aio/brand';
 import {
+  ChangeThresholds,
   ipcEvents,
   PACKAGE_EXTENSION,
   type IpcChannel,
@@ -924,7 +925,15 @@ function registerIpc(): void {
   });
 
   // M8: one module per stream (C1 change, C5 model builder, C6 local detection, C7 local agent).
-  registerChangeIpc({ handle });
+  registerChangeIpc({
+    handle,
+    registry,
+    emit: (e) => {
+      const parsed = ipcEvents['change:progress'].safeParse(e);
+      if (parsed.success) targetWindow()?.webContents.send('change:progress', parsed.data);
+    },
+    thresholds: () => ChangeThresholds.parse(settings.current().change ?? {}),
+  });
   registerModelBuilderIpc({ handle });
   registerInferenceIpc({ handle });
   registerLocalModelsIpc({
