@@ -1,7 +1,9 @@
 import type { Layer } from '@aio/schema';
 import { Icon, useT } from '@aio/ui';
 import { assetUrl } from '@aio/workspace';
+import { isChangeHeatMap } from '@aio/maps';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ChangeLegend } from './MapSwipe';
 import { fromLinked, placement, rasterLink, toLinked, type LinkedView } from './rasterLink';
 import {
   levelFor,
@@ -296,6 +298,8 @@ export function RasterView({
           <Icon name="maximize" size={14} />
         </button>
       )}
+      {/* a change heat map (M8): its colours in metres or as a score */}
+      {isChangeHeatMap(layer) && <ChangeLegend layer={layer} />}
     </div>
   );
 }
