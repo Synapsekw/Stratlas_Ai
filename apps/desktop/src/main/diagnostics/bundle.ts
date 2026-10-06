@@ -1,5 +1,5 @@
 import { writeZip, type ZipMember } from '@aio/project/package';
-import type { JobRecord } from '@aio/schema';
+import type { JobRecord, UpdateStatus } from '@aio/schema';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { byLogAge } from '../logs';
@@ -33,6 +33,8 @@ export interface BundleSources {
   packs: () => Promise<unknown>;
   jobs: () => Promise<{ runtime: unknown; jobs: JobRecord[] }>;
   projects: () => Promise<OpenProjectInfo[]>;
+  /** Update and rollback state (ADR 0003); absent in tests and tools. */
+  updates?: () => Promise<UpdateStatus> | UpdateStatus;
   now?: () => Date;
 }
 
@@ -56,6 +58,15 @@ async function attempt<T>(fn: () => Promise<T> | T): Promise<T | { error: string
 }
 
 const json = (v: unknown) => `${JSON.stringify(redactValue(v), null, 2)}\n`;
+
+/** Update state without the kept copy's folder (a local path with the user name in it). */
+async function updateSummary(
+  read: () => Promise<UpdateStatus> | UpdateStatus,
+): Promise<Record<string, unknown>> {
+  const s = await read();
+  const { previous, ...rest } = s;
+  return { ...rest, ...(previous ? { previous: { version: previous.version } } : {}) };
+}
 
 /** A job without its parameters (paths and options the person typed) or artifacts. */
 export function summariseJob(j: JobRecord): Record<string, unknown> {
@@ -185,6 +196,7 @@ What is inside
 - packs.json       installed map packs and the pipeline pack
 - jobs.json        recent pipeline jobs: status, steps and errors (no parameters)
 - projects.json    ids and sizes of projects opened in this run (no project content)
+- updates.json     update and rollback state: running version, kept previous version, a pending first start, the last return
 - errors.txt       the latest warnings and errors from every log
 - logs/            main, window (renderer) and export (utility) process logs
 - crash/           crash reports written on this computer, and a list of crash dumps (the dumps stay on this computer)
@@ -238,6 +250,8 @@ export async function collectBundle(
     ),
   );
   add('projects.json', json(await attempt(src.projects)));
+  const updates = src.updates;
+  if (updates) add('updates.json', json(await attempt(() => updateSummary(updates))));
 
   const logNames = await readdir(src.logsDir).then(
     (all) => all.filter((n) => n.endsWith('.log')).sort(byLogAge),

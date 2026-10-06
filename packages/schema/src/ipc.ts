@@ -995,6 +995,19 @@ export const ipc = {
             detected: z.string().max(20),
             override: z.string().max(20).nullable(),
             renderer: z.string().max(500).nullable(),
+            /** The renderer's graphicsReport(): tier facts, limits and memory now (numbers, no paths). */
+            report: z
+              .record(
+                z.string().max(40),
+                z.union([
+                  z.string().max(500),
+                  z.number(),
+                  z.boolean(),
+                  z.null(),
+                  z.array(z.string().max(40)).max(20),
+                ]),
+              )
+              .optional(),
           })
           .strict()
           .optional(),

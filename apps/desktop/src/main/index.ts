@@ -708,6 +708,7 @@ function registerIpc(): void {
       settings: () => settings.current(),
       packs: () => packs.list(),
       jobs: () => jobs.list(),
+      updates: () => updates.status(),
       projects: (current) =>
         openProjectSizes(
           projectNames.keys(),

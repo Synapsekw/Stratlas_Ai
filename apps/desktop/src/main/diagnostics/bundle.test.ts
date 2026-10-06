@@ -159,6 +159,33 @@ describe('diagnostics bundle', () => {
     ]);
   });
 
+  it('carries the update state without local paths, and the graphics report', async () => {
+    const src = await sources();
+    src.updates = () => ({
+      current: '0.7.0',
+      previous: { version: '0.6.0', dir: 'C:\\Users\\someone\\AppData\\Roaming\\Stratlas\\kept' },
+      rolledBack: { from: '0.7.1', to: '0.7.0', at: '2026-10-05T09:00:00.000Z' },
+    });
+    const files = await collectBundle(src, {
+      graphics: {
+        tier: 'low',
+        detected: 'low',
+        override: null,
+        renderer: 'Intel UHD 620',
+        report: { pointCap: 2_000_000, pressure: 1, limits: ['memory'], contextLost: false },
+      },
+    });
+    const read = (n: string) => files.find((f) => f.name === n)?.text ?? '';
+    expect(JSON.parse(read('updates.json'))).toEqual({
+      current: '0.7.0',
+      previous: { version: '0.6.0' },
+      rolledBack: { from: '0.7.1', to: '0.7.0', at: '2026-10-05T09:00:00.000Z' },
+    });
+    expect(read('updates.json')).not.toContain('someone');
+    const system = JSON.parse(read('system.json')) as { graphics: { report: unknown } };
+    expect(system.graphics.report).toMatchObject({ pointCap: 2_000_000, limits: ['memory'] });
+  });
+
   it('still saves when a source fails', async () => {
     const src = await sources();
     src.packs = () => Promise.reject(new Error(`pack folder unreadable ${KEY}`));
