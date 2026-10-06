@@ -17,6 +17,7 @@ import { openLightbox } from '../issueCard/state';
 import { PdfViewer } from '../report/PdfViewer';
 import { useCall } from '../shell';
 import { captureLabel, useCaptureIndex, useSplitDates } from './compare';
+import { FramesPane, SameViewButton } from './FramesPane';
 import { RasterView } from './RasterPane';
 import {
   blockedFor,
@@ -41,6 +42,7 @@ const PANE: Record<PaneKind, { label: MessageKey; icon: IconName }> = {
   photo: { label: 'stage.pane.photo', icon: 'photo' },
   raster: { label: 'stage.pane.raster', icon: 'raster' },
   report: { label: 'stage.pane.report', icon: 'report' },
+  frames: { label: 'frames.pane', icon: 'history' },
 };
 
 export interface SplitModel {
@@ -64,8 +66,8 @@ export function useSplit(): SplitModel {
   const index = useCaptureIndex();
   const dates = useSplitDates(index);
   const options = useMemo(
-    () => paneOptions(project?.manifest.layers ?? [], reports.length),
-    [project, reports],
+    () => paneOptions(project?.manifest.layers ?? [], reports.length, dates?.captures.length),
+    [project, reports, dates],
   );
   const sides = useMemo(() => resolveSplit(saved, options, dates), [saved, options, dates]);
   return {
@@ -317,6 +319,7 @@ function SetPhotoPane() {
         >
           <Icon name="fwd" size={14} />
         </button>
+        <SameViewButton source={{ kind: 'photo', layer: set.id, photo: photo.id }} />
       </div>
       <PhotoViewer layerId={set.id} photoId={photo.id} className="fill-col" />
     </div>
@@ -410,6 +413,7 @@ const ZONE: Record<Exclude<PaneKind, '3d' | 'map'>, 'video' | 'photo' | 'map' | 
   photo: 'photo',
   raster: 'map',
   report: 'report',
+  frames: 'video',
 };
 
 /** A split side that shows something other than the 3D view or the map. */
@@ -431,6 +435,8 @@ export function SplitPane({ side, split }: { side: Side; split: SplitModel }) {
         <PhotoPane />
       ) : kind === 'raster' ? (
         <RasterPane split={split} side={side} />
+      ) : kind === 'frames' ? (
+        <FramesPane />
       ) : (
         <ReportPane split={split} />
       )}

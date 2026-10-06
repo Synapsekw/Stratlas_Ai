@@ -12,6 +12,7 @@ import {
   type RefObject,
 } from 'react';
 import { FocusZone } from '../FocusZone';
+import { SameViewButton } from './FramesPane';
 import { shell } from '../shell';
 import { stagePrefs, useStagePrefs } from './stagePrefs';
 import {
@@ -174,6 +175,7 @@ export function FloatingVideo({ layerId, docked, stageRef }: Props) {
           <b>{layer.name}</b>
           <span className="mono">{meta}</span>
           <div className="acts">
+            <SameViewButton source={{ kind: 'video', layer: layerId }} />
             <button
               type="button"
               className="btn icon sm ghost"
