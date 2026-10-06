@@ -372,7 +372,7 @@ export function CalibrateVideo({ layerId }: { layerId: string }) {
   if (!project || !clip || !lens || !trial)
     return (
       <section className="b-align" aria-label={t('calibrate.title')}>
-        <header>
+        <header role="none">
           <Icon name="video" size={14} />
           <b>{t('calibrate.title')}</b>
           <button
@@ -498,7 +498,7 @@ export function CalibrateVideo({ layerId }: { layerId: string }) {
     <>
       {overlay}
       <section className="b-align" aria-label={t('calibrate.title')} data-testid="calibrate-video">
-        <header>
+        <header role="none">
           <Icon name="video" size={14} />
           <b>{t('calibrate.title')}</b>
           <button

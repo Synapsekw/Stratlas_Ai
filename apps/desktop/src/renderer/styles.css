@@ -753,6 +753,7 @@ button.chip-status:hover {
   margin-bottom: 14px;
 }
 .lib-empty h2,
+.np h1,
 .np h2 {
   font-size: var(--t-16);
   font-weight: 600;
@@ -809,6 +810,7 @@ button.chip-status:hover {
 .hs-sec + .hs-sec {
   border-top: 1px solid var(--line-soft);
 }
+.hs-sec > h2,
 .hs-sec > h3 {
   color: var(--fg-3);
   display: flex;

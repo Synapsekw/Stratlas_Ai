@@ -105,8 +105,8 @@ describe('IssueRegister at scale', () => {
   it('sets the status of the checked issues in one step and undoes it', () => {
     workspace.getState().openProject({ id: 'big', root: 'r', manifest }, many(20));
     const ui = mount();
-    ui.click('input[aria-label="Select D0000"]');
-    ui.click('input[aria-label="Select D0003"]', { shiftKey: true });
+    ui.click('[data-tick="D0000"]');
+    ui.click('[data-tick="D0003"]', { shiftKey: true });
     expect(ui.el.textContent).toContain('4 selected');
     ui.change('Set status', 'reviewed');
     const status = (id: string) => workspace.getState().issues.find((i) => i.id === id)?.status;

@@ -166,6 +166,23 @@ export function mergeDiskIssues(
   return { issues, unsaved };
 }
 
+/**
+ * Jobs that finished or failed between two lists (both known before, so the first load of the
+ * job history says nothing), for the screen reader announcement.
+ */
+export function jobsEnded(
+  prev: readonly JobRecord[],
+  next: readonly JobRecord[],
+): { job: JobRecord; ok: boolean }[] {
+  return next
+    .filter((j) => {
+      if (j.status !== 'done' && j.status !== 'failed') return false;
+      const before = prev.find((p) => p.id === j.id);
+      return before !== undefined && before.status !== j.status;
+    })
+    .map((job) => ({ job, ok: job.status === 'done' }));
+}
+
 export function isActive(job: Pick<JobRecord, 'status'>): boolean {
   return job.status === 'starting' || job.status === 'running' || job.status === 'cancelling';
 }

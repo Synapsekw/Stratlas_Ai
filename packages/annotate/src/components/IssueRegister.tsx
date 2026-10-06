@@ -53,7 +53,8 @@ const isTyping = (t: EventTarget | null) =>
 function useUndoHotkeys() {
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || isTyping(e.target)) return;
+      // defaultPrevented: a stockpile outline being edited takes Ctrl+Z first (VolumetricStage)
+      if (!(e.ctrlKey || e.metaKey) || e.defaultPrevented || isTyping(e.target)) return;
       const k = e.key.toLowerCase();
       if (k === 'z' && !e.shiftKey) {
         if (issueEditor.undo()) e.preventDefault();
@@ -299,6 +300,7 @@ export function IssueRegister({ className }: { className?: string }) {
         data-id={i.id}
         role="option"
         aria-selected={i.id === selectedId}
+        aria-checked={readOnly ? undefined : on}
         className={`ann-row${i.status === 'draft' ? ' draft' : ''}${on ? ' checked' : ''}${readOnly ? ' ro' : ''}`}
         onClick={(e) => {
           if (!readOnly && (e.ctrlKey || e.metaKey)) {
@@ -308,17 +310,19 @@ export function IssueRegister({ className }: { className?: string }) {
           focusIssue(i);
         }}
       >
+        {/* a drawn tick, not a control: an option may not hold one. Screen readers hear the
+            row's aria-checked, and Space ticks the selected row. */}
         {!readOnly && (
-          <input
-            type="checkbox"
+          <span
             className="ann-tick"
-            aria-label={`Select ${i.code}`}
-            checked={on}
+            data-tick={i.code}
+            data-on={on}
+            aria-hidden="true"
+            title={`Select ${i.code}`}
             onClick={(e) => {
               e.stopPropagation();
               toggle(i.id, e);
             }}
-            onChange={() => undefined}
           />
         )}
         <span className="iid">{i.code}</span>

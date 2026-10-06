@@ -1,7 +1,7 @@
 // Browser-only: the imperative map behind MapView. Owns one MapLibre map, mirrors @aio/workspace
 // (project, issues, clock, active clip, selection, visibility) into overlay sources and writes
 // clicks back as selections.
-import { getActiveScene, onActiveScene, type SceneHandle } from '@aio/engine';
+import { getActiveScene, onActiveScene, reducedMotion, type SceneHandle } from '@aio/engine';
 import type { CameraOrientation, Issue, Layer, PoseSample, Vec3 } from '@aio/schema';
 import { assetUrl, type createWorkspace, type Workspace } from '@aio/workspace';
 import type { Feature, FeatureCollection } from 'geojson';
@@ -36,6 +36,9 @@ import { issueFeatures, issueShapeBounds, styleLayers, type MapOverlay } from '.
 import { MAP_INK } from './ink';
 import { installBasemap } from './runtime';
 import { buildStyle } from './style';
+
+/** A camera animation length, or 0 (jump) under reduced motion (OS or Settings). */
+const ms = (duration: number): number => (reducedMotion() ? 0 : duration);
 
 /**
  * A logged camera pose with the clip's calibration: orientation bias (Euler 'YXZ', degrees, in
@@ -1002,7 +1005,7 @@ export function createMapController(
             [projectBox[0], projectBox[1]],
             [projectBox[2], projectBox[3]],
           ],
-          { padding: 40, maxZoom: 17, duration: 500 },
+          { padding: 40, maxZoom: 17, duration: ms(500) },
         );
     } else if (t.kind === 'point') {
       const at = proj.toLonLat(t.p);
@@ -1012,7 +1015,7 @@ export function createMapController(
         const wantMpp = (d * 1.5) / Math.max(200, map.getCanvas().clientWidth);
         zoom = Math.log2((40_075_016.686 * Math.cos((at[1] * Math.PI) / 180)) / (512 * wantMpp));
       }
-      map.easeTo({ center: at, zoom: Math.min(22, Math.max(3, zoom)), duration: 500 });
+      map.easeTo({ center: at, zoom: Math.min(22, Math.max(3, zoom)), duration: ms(500) });
     } else if (t.selection.kind === 'issue') {
       const id = t.selection.id;
       const issue = s.issues.find((i) => i.id === id);
@@ -1032,12 +1035,12 @@ export function createMapController(
           [b[0] - dLon, b[1] - dLat],
           [b[2] + dLon, b[3] + dLat],
         ],
-        { padding: 60, maxZoom: 22, duration: 600 },
+        { padding: 60, maxZoom: 22, duration: ms(600) },
       );
       return;
     }
     const at = issueAnchor(issue, proj);
-    if (at) map.easeTo({ center: at, zoom: Math.max(map.getZoom(), 18), duration: 500 });
+    if (at) map.easeTo({ center: at, zoom: Math.max(map.getZoom(), 18), duration: ms(500) });
   }
 
   function focusSelection(s: Workspace): void {
@@ -1045,7 +1048,7 @@ export function createMapController(
     const id = s.selection.id;
     const issue = s.issues.find((i) => i.id === id);
     const at = issue ? issueAnchor(issue, proj) : null;
-    if (at && !map.getBounds().contains(at)) map.easeTo({ center: at, duration: 300 });
+    if (at && !map.getBounds().contains(at)) map.easeTo({ center: at, duration: ms(300) });
   }
 
   // ----- clicks -----
@@ -1076,7 +1079,7 @@ export function createMapController(
       const center = hit.geometry.coordinates as [number, number];
       const src = map.getSource<GeoJSONSource>(hit.source);
       void src?.getClusterExpansionZoom(props.cluster_id).then((zoom) => {
-        map.easeTo({ center, zoom: Math.min(zoom, 20), duration: 400 });
+        map.easeTo({ center, zoom: Math.min(zoom, 20), duration: ms(400) });
       });
     } else if (props?.issueId) {
       st.select({ kind: 'issue', id: props.issueId });

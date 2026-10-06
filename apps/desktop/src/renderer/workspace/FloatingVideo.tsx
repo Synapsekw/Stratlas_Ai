@@ -1,6 +1,6 @@
 import { VideoAnnotator } from '@aio/annotate';
 import { getActiveStage } from '@aio/engine';
-import { Icon, useT } from '@aio/ui';
+import { Icon, matchShortcut, useT } from '@aio/ui';
 import { VideoWindow } from '@aio/video';
 import { useWorkspace } from '@aio/workspace';
 import {
@@ -121,15 +121,17 @@ export function FloatingVideo({ layerId, docked, stageRef }: Props) {
 
   const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (docked || !stage || e.target !== e.currentTarget) return;
+    const id = matchShortcut('videoWindow', e);
     const d = e.shiftKey ? STRIDE : STEP;
     let next: VideoRect | null = null;
-    if (e.key === 'ArrowLeft') next = moveVideoRect(rect, -d, 0, stage);
-    else if (e.key === 'ArrowRight') next = moveVideoRect(rect, d, 0, stage);
-    else if (e.key === 'ArrowUp') next = moveVideoRect(rect, 0, -d, stage);
-    else if (e.key === 'ArrowDown') next = moveVideoRect(rect, 0, d, stage);
-    else if (e.key === '+' || e.key === '=') next = resizeVideoRect(rect, 'ne', d * 2, 0, stage);
-    else if (e.key === '-' || e.key === '_') next = resizeVideoRect(rect, 'ne', -d * 2, 0, stage);
-    else if (e.key === 'Home') save(null);
+    if (id === 'videoWindow.move' || id === 'videoWindow.moveFar') {
+      if (e.key === 'ArrowLeft') next = moveVideoRect(rect, -d, 0, stage);
+      else if (e.key === 'ArrowRight') next = moveVideoRect(rect, d, 0, stage);
+      else if (e.key === 'ArrowUp') next = moveVideoRect(rect, 0, -d, stage);
+      else next = moveVideoRect(rect, 0, d, stage);
+    } else if (id === 'videoWindow.grow') next = resizeVideoRect(rect, 'ne', d * 2, 0, stage);
+    else if (id === 'videoWindow.shrink') next = resizeVideoRect(rect, 'ne', -d * 2, 0, stage);
+    else if (id === 'videoWindow.reset') save(null);
     else return;
     e.preventDefault();
     e.stopPropagation();

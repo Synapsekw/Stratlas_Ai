@@ -15,7 +15,7 @@ export { Icon, ICONS, type IconName, type IconProps, type IconSize } from './ico
 export { Compass, type CompassProps } from './Compass';
 export { Kbd, SevChip, Switch, type SevChipProps, type SwitchProps } from './controls';
 export * from './format';
-export { isMacPlatform, shortcut } from './shortcut';
+export { isMacPlatform, platformKeys } from './shortcut';
 export * from './coords';
 export * from './timeline/model';
 export { generateTicks, pickTickStep, type Tick, type TickStep } from './timeline/ticks';
@@ -23,6 +23,17 @@ export { Timeline, RATES, type TimelineProps } from './timeline/Timeline';
 export * from './tree/model';
 export { DatasetTree, VisibilityEye, type DatasetTreeProps } from './tree/DatasetTree';
 export { rankCommands, scoreMatch, type Command } from './palette/rank';
+export * from './shortcuts';
+export { announce, announced, LiveAnnouncer, type Politeness } from './announce';
+export {
+  arrowFocus,
+  focusables,
+  focusLost,
+  keepFocusAlive,
+  trapFocus,
+  useFocusTrap,
+  type FocusTrapOptions,
+} from './focus';
 export {
   catalogueProblems,
   directionOf,

@@ -446,10 +446,10 @@ export function MediaScreen() {
       {photo && (
         <FocusZone kind="photo" className="media-viewer" aria-label="Photo">
           <div className="panel-h">
-            <h3>
+            <h2>
               <Icon name="photo" size={14} />
               {photo.photoId}
-            </h3>
+            </h2>
             <div className="acts">
               <button
                 type="button"

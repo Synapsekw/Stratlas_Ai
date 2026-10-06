@@ -9,6 +9,7 @@
  * On by default; the card has a switch to turn it off, remembered on this machine.
  */
 import { bestAnchor } from '@aio/annotate';
+import { isShortcut } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
@@ -125,7 +126,7 @@ const isTyping = (t: EventTarget | null) =>
  */
 export function startEvidenceSplit(): () => void {
   const onKey = (e: KeyboardEvent) => {
-    if (e.key !== 'Escape' || e.defaultPrevented || isTyping(e.target)) return;
+    if (!isShortcut('scene.escape', e) || e.defaultPrevented || isTyping(e.target)) return;
     if (!evidence.getState().open || lightbox.getState().state) return;
     if (shell.getState().screen !== 'scene') return;
     e.preventDefault();

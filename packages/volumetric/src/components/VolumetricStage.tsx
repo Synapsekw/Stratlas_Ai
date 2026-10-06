@@ -1,5 +1,5 @@
 import type { EngineStage } from '@aio/engine';
-import { Icon, t } from '@aio/ui';
+import { Icon, isShortcut, t } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import {
   useEffect,
@@ -118,17 +118,18 @@ function Handles({ scene, stage }: { scene: VolumetricScene; stage: EngineStage 
       const s = volumetric.getState();
       const ed = s.edit;
       if (!ed) return;
-      if ((e.key === 'Delete' || e.key === 'Backspace') && ed.sel >= 0) {
+      if (isShortcut('volumes.deletePoint', e) && ed.sel >= 0) {
         e.preventDefault();
         void s.deleteVertex(ed.sel);
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      } else if (isShortcut('volumes.undo', e)) {
         e.preventDefault();
         void s.undo();
       }
     };
-    window.addEventListener('keydown', onKey);
+    // capture: the outline's undo runs before the issue register's (it skips handled keys)
+    window.addEventListener('keydown', onKey, true);
     return () => {
-      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keydown', onKey, true);
     };
   }, [edit]);
 
@@ -625,11 +626,11 @@ export function VolumetricStage({ stage }: { stage: EngineStage | null }) {
       if (e.defaultPrevented || isTyping(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.target instanceof HTMLElement && e.target.closest('dialog, [role="dialog"]')) return;
       const s = volumetric.getState();
-      if (e.key === 'Escape') {
+      if (isShortcut('scene.escape', e)) {
         if (s.section.mode === 'picking') s.clearSection();
         else if (s.selected && !s.edit) s.select(null);
         else return;
-      } else if (e.key === 'Enter' && s.edit && (s.edit.dirty || s.edit.resetToAuto)) {
+      } else if (isShortcut('volumes.save', e) && s.edit && (s.edit.dirty || s.edit.resetToAuto)) {
         if (s.saving || s.edit.busy) return;
         if (e.target instanceof HTMLElement && e.target.closest('button, a, tr, [role="button"]'))
           return;

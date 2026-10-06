@@ -1,14 +1,14 @@
 import { Icon } from '@aio/ui';
 import { useStore } from 'zustand';
 import { GraphicsNotice } from '../GraphicsNotice';
-import { useGraphics } from '../graphics';
 import { cancelExport, toasts } from './exports';
 
-/** Export progress toasts and the graphics memory notice, bottom right. */
+/**
+ * Export progress toasts and the graphics memory notice, bottom right. The live region stays mounted so screen readers hear an
+ * export start (its title) and end (its message); the running progress text is not read out.
+ */
 export function Toasts() {
   const list = useStore(toasts, (s) => s.toasts);
-  const notice = useGraphics((s) => s.pressureReason !== null);
-  if (list.length === 0 && !notice) return null;
   return (
     <div className="toasts" role="status" aria-live="polite">
       <GraphicsNotice />
@@ -48,7 +48,7 @@ export function Toasts() {
             </div>
             {t.state === 'running' ? (
               <>
-                <div className="toast-p">
+                <div className="toast-p" aria-hidden="true">
                   {t.phase}
                   {t.total > 1 && (
                     <span className="mono">
@@ -57,7 +57,7 @@ export function Toasts() {
                     </span>
                   )}
                 </div>
-                <div className={`toast-bar${pct === null ? ' busy' : ''}`}>
+                <div className={`toast-bar${pct === null ? ' busy' : ''}`} aria-hidden="true">
                   <i style={{ width: `${String(pct ?? 30)}%` }} />
                 </div>
               </>

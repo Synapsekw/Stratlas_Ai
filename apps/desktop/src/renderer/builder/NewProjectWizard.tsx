@@ -1,8 +1,8 @@
 import { crsOption, fromWgs84, searchCrs, toWgs84, utmEpsgFor } from '@aio/geo';
 import { LocationPicker } from '@aio/maps';
 import type { SeverityTemplate, Vec3 } from '@aio/schema';
-import { Icon, t, type IconName } from '@aio/ui';
-import { useEffect, useMemo, useState } from 'react';
+import { Icon, t, useFocusTrap, type IconName } from '@aio/ui';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { bridge, jobs, shell } from '../shell';
 import {
   defaultTemplateFor,
@@ -61,6 +61,8 @@ export function NewProjectWizard() {
 }
 
 function Wizard() {
+  const dlg = useRef<HTMLDivElement>(null);
+  useFocusTrap(dlg, true);
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<Omit<WizardForm, 'origin'>>({
     name: '',
@@ -266,6 +268,7 @@ function Wizard() {
 
   return (
     <div
+      ref={dlg}
       className="b-scrim"
       role="dialog"
       aria-modal="true"
@@ -296,7 +299,7 @@ function Wizard() {
         <div className="b-body">
           {step === 0 && (
             <>
-              <header>
+              <header role="none">
                 <h3>What is the project?</h3>
                 <p>The name and client show in the library, reports and customer packages.</p>
               </header>
@@ -371,7 +374,7 @@ function Wizard() {
 
           {step === 1 && (
             <>
-              <header>
+              <header role="none">
                 <h3>Where is it?</h3>
                 <p>
                   Everything in the project lives in metres around one origin in a projected CRS.
@@ -515,7 +518,7 @@ function Wizard() {
 
           {step === 2 && (
             <>
-              <header>
+              <header role="none">
                 <h3>How are findings graded?</h3>
                 <p>
                   Start from a severity model already used in your projects. Classes come with it;
@@ -565,7 +568,7 @@ function Wizard() {
 
           {step === 3 && (
             <>
-              <header>
+              <header role="none">
                 <h3>Create the project</h3>
                 <p>
                   A project folder with its manifest and an empty issue register is created in the

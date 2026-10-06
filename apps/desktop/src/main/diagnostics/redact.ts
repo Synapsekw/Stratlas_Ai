@@ -183,6 +183,8 @@ export const SETTINGS_RULES = {
   routes: 'keep',
   localModel: { fields: { enabled: 'keep', baseUrl: 'url', model: 'keep' } },
   direction: 'keep',
+  contrast: 'keep',
+  motion: 'keep',
   offlineOnly: 'keep',
   updateCheck: 'keep',
   updateUrl: 'url',

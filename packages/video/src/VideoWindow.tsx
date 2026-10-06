@@ -185,6 +185,7 @@ export function VideoWindow({ layerId, className, children }: VideoWindowProps) 
       >
         <span style={chip} data-hud="clip">
           <span
+            role="img"
             aria-label={playing ? 'Recording time running' : 'Paused'}
             style={{
               display: 'inline-block',

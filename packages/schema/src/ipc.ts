@@ -161,6 +161,10 @@ export const Settings = z.object({
   localModel: LocalModelSettings.optional(),
   /** Layout direction of the UI (Arabic readiness). Default `ltr`. */
   direction: z.enum(['ltr', 'rtl']).optional(),
+  /** `more` always raises contrast; `system` (default) follows the OS (prefers-contrast). */
+  contrast: z.enum(['system', 'more']).optional(),
+  /** `reduce` always cuts motion (camera flights jump, no fades); `system` follows the OS. */
+  motion: z.enum(['system', 'reduce']).optional(),
   /**
    * Offline-only workstation: every online action (map pack download, update check) is disabled.
    * Default false; the app still makes no request unless the person starts one.

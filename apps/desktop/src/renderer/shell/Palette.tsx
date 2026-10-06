@@ -1,7 +1,7 @@
 import { pinDisplay } from '@aio/annotate';
 import { COLOUR_MODES, pointcloudSettings } from '@aio/pointcloud';
 import type { Layer } from '@aio/schema';
-import { CommandPalette, shortcut, t, type IconName, type PaletteCommand } from '@aio/ui';
+import { CommandPalette, t, type IconName, type PaletteCommand, shortcutHint } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useMemo } from 'react';
 import { actionAllowed, allowedActions } from '../exports/exportModel';
@@ -85,7 +85,7 @@ export function Palette() {
       'Toggle sidebar',
       'sidebar',
       () => void s.toggleSidebar(),
-      shortcut('Ctrl B'),
+      shortcutHint('global.sidebar'),
     );
     action('add-folder', 'Add project folder', 'import', () => void s.addProjectFolder());
     action('open-package', 'Open a project package (.aio)', 'lock', () => void s.openPackageFile());
@@ -144,7 +144,13 @@ export function Palette() {
           s.setStageMode('split');
         }),
       );
-      action('right', 'Toggle right panel', 'sidebar', s.toggleRight, shortcut('Ctrl Alt B'));
+      action(
+        'right',
+        'Toggle right panel',
+        'sidebar',
+        s.toggleRight,
+        shortcutHint('global.rightPanel'),
+      );
       action(
         'play',
         playing ? 'Pause' : 'Play',

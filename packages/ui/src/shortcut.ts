@@ -13,11 +13,12 @@ const MAC_MODIFIERS: Record<string, { order: number; symbol: string }> = {
 };
 
 /**
- * A shortcut label in the platform's own words. Written the Windows way ("Ctrl K",
- * "Ctrl Alt B", "Ctrl+Shift+F"); on macOS it becomes "⌘K", "⌥⌘B", "⇧⌘F", since every
+ * A key combo label in the platform's own words (`keyLabel` and `shortcutHint` in shortcuts.ts
+ * go through it, so the keyboard map does too). Written the Windows way ("Ctrl K", "Ctrl Alt B",
+ * "Ctrl+Shift+F"); on macOS it becomes "⌘K", "⌥⌘B", "⇧⌘F", since every
  * handler in the app accepts Cmd wherever it accepts Ctrl.
  */
-export function shortcut(combo: string, mac: boolean = isMacPlatform()): string {
+export function platformKeys(combo: string, mac: boolean = isMacPlatform()): string {
   if (!mac) return combo;
   const parts = combo.split(/[\s+]+/).filter(Boolean);
   const mods = parts

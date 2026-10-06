@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { isMacPlatform, shortcut } from './shortcut';
+import { isMacPlatform, platformKeys } from './shortcut';
 
-describe('shortcut', () => {
+describe('platformKeys', () => {
   it('keeps the Windows label as written', () => {
-    expect(shortcut('Ctrl K', false)).toBe('Ctrl K');
-    expect(shortcut('Ctrl+Shift+F', false)).toBe('Ctrl+Shift+F');
+    expect(platformKeys('Ctrl K', false)).toBe('Ctrl K');
+    expect(platformKeys('Ctrl+Shift+F', false)).toBe('Ctrl+Shift+F');
   });
 
   it('uses Apple symbols in Apple order on macOS', () => {
-    expect(shortcut('Ctrl K', true)).toBe('⌘K');
-    expect(shortcut('Ctrl Alt B', true)).toBe('⌥⌘B');
-    expect(shortcut('Ctrl+Shift+F', true)).toBe('⇧⌘F');
-    expect(shortcut('Ctrl F', true)).toBe('⌘F');
+    expect(platformKeys('Ctrl K', true)).toBe('⌘K');
+    expect(platformKeys('Ctrl Alt B', true)).toBe('⌥⌘B');
+    expect(platformKeys('Ctrl+Shift+F', true)).toBe('⇧⌘F');
+    expect(platformKeys('Ctrl F', true)).toBe('⌘F');
   });
 });
 

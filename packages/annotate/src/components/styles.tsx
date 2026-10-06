@@ -36,6 +36,9 @@ textarea.ann-input { height: auto; min-height: 56px; padding: 6px 8px; line-heig
 .ann-row .ann-tick { grid-row: span 2; }
 .ann-row.ro { grid-template-columns: 44px minmax(0, 1fr) auto; }
 .ann-tick { margin: 0; width: 13px; height: 13px; accent-color: var(--acc); cursor: pointer; opacity: .55; }
+span.ann-tick { display: inline-block; box-sizing: border-box; border: 1px solid var(--fg-3); border-radius: 2px; background: var(--bg-1); position: relative; }
+span.ann-tick[data-on='true'] { background: var(--acc); border-color: var(--acc); }
+span.ann-tick[data-on='true']::after { content: ''; position: absolute; left: 3.5px; top: 0.5px; width: 3px; height: 7px; border: solid var(--acc-ink); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
 .ann-row:hover .ann-tick, .ann-row.checked .ann-tick, .ann-bulk .ann-tick { opacity: 1; }
 .ann-row.checked { background: var(--acc-a12, var(--bg-2)); }
 .ann-group { display: flex; align-items: center; gap: 8px; width: 100%; height: 30px; box-sizing: border-box; padding: 0 12px; border: 0; border-bottom: 1px solid var(--line); background: var(--bg-2); color: var(--fg-1); font: 600 var(--t-11)/1 var(--f-ui); letter-spacing: .04em; text-transform: uppercase; cursor: pointer; text-align: left; }

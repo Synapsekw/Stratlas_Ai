@@ -14,12 +14,13 @@ export function IssuesScreen() {
   if (!hasProject) return <NoProject view="Issues" />;
   return (
     <FocusZone kind="issues" className="screen issues-screen" aria-label="Issues">
+      <h1 className="sr-only">{t('nav.issues')}</h1>
       <div className="iss-main">
         <div className="panel-h">
-          <h3>
+          <h2>
             <Icon name="issues" size={14} />
             Issue register
-          </h3>
+          </h2>
           <span className="sub mono">{count}</span>
           <span className="grow" />
           <ExportMenu />

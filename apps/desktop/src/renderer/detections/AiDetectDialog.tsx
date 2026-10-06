@@ -15,7 +15,7 @@ import {
   type DetectPromptInput,
 } from '@aio/ai';
 import type { Layer } from '@aio/schema';
-import { formatCount, Icon, useT } from '@aio/ui';
+import { formatCount, Icon, useFocusTrap, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { bridge, useCall, useShell } from '../shell';
@@ -102,6 +102,8 @@ export function AiDetectDialog({
   const [progress, setProgress] = useState<RunProgress | null>(null);
   const [retry, setRetry] = useState<DetectItem[] | null>(null);
   const runner = useRef<DetectRunner | null>(null);
+  const dlg = useRef<HTMLDivElement>(null);
+  useFocusTrap(dlg, true);
   const status = useCall('ai:status', { projectId, task: 'vision' }, projectId);
 
   const route = visionRoute(routes);
@@ -248,6 +250,7 @@ export function AiDetectDialog({
       }}
     >
       <div
+        ref={dlg}
         className="dlg wide det-ai"
         role="dialog"
         aria-modal="true"

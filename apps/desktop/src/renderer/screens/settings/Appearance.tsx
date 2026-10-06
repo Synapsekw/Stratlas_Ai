@@ -1,7 +1,8 @@
 import type { Settings } from '@aio/schema';
-import { t } from '@aio/ui';
+import { Switch, t } from '@aio/ui';
 import { useSyncExternalStore } from 'react';
 import { shell, useShell } from '../../shell';
+import { OS_QUERIES } from '../../theme';
 
 const THEMES: { value: Settings['theme']; label: 'dark' | 'light' | 'system' }[] = [
   { value: 'dark', label: 'dark' },
@@ -9,16 +10,16 @@ const THEMES: { value: Settings['theme']; label: 'dark' | 'light' | 'system' }[]
   { value: 'system', label: 'system' },
 ];
 
-function usePrefersDark(): boolean {
+function useMedia(query: string): boolean {
   return useSyncExternalStore(
     (cb) => {
-      const m = window.matchMedia('(prefers-color-scheme: dark)');
+      const m = window.matchMedia(query);
       m.addEventListener('change', cb);
       return () => {
         m.removeEventListener('change', cb);
       };
     },
-    () => window.matchMedia('(prefers-color-scheme: dark)').matches,
+    () => window.matchMedia(query).matches,
   );
 }
 
@@ -37,7 +38,12 @@ function Preview({ theme }: { theme: 'dark' | 'light' | 'system' }) {
 export function Appearance() {
   const theme = useShell((s) => s.settings.theme);
   const direction = useShell((s) => s.settings.direction ?? 'ltr');
-  const prefersDark = usePrefersDark();
+  const prefersDark = useMedia(OS_QUERIES.dark);
+  const osContrast = useMedia(OS_QUERIES.moreContrast);
+  const osMotion = useMedia(OS_QUERIES.reducedMotion);
+  const contrast = useShell((s) => s.settings.contrast ?? 'system');
+  const motion = useShell((s) => s.settings.motion ?? 'system');
+  const os = (on: boolean) => t(on ? 'settings.appearance.osOn' : 'settings.appearance.osOff');
   const set = (patch: Partial<Settings>) => void shell.getState().updateSettings(patch);
 
   return (
@@ -93,6 +99,31 @@ export function Appearance() {
           >
             {t('settings.appearance.rtl')}
           </button>
+        </div>
+      </div>
+      <div className="sblock" data-testid="access-settings">
+        <h2>{t('settings.appearance.access')}</h2>
+        <div className="opt">
+          <b>{t('settings.appearance.contrast')}</b>
+          <span>{t('settings.appearance.contrastHelp', { state: os(osContrast) })}</span>
+          <Switch
+            checked={contrast === 'more'}
+            label={t('settings.appearance.contrast')}
+            onChange={(on) => {
+              set({ contrast: on ? 'more' : 'system' });
+            }}
+          />
+        </div>
+        <div className="opt">
+          <b>{t('settings.appearance.motion')}</b>
+          <span>{t('settings.appearance.motionHelp', { state: os(osMotion) })}</span>
+          <Switch
+            checked={motion === 'reduce'}
+            label={t('settings.appearance.motion')}
+            onChange={(on) => {
+              set({ motion: on ? 'reduce' : 'system' });
+            }}
+          />
         </div>
       </div>
       <div className="sblock">

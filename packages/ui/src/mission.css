@@ -193,7 +193,8 @@ svg.i {
 .seg button:hover {
   color: var(--fg-0);
 }
-.seg button[aria-pressed='true'] {
+.seg button[aria-pressed='true'],
+.seg button[role='tab'][aria-selected='true'] {
   background: var(--bg-3);
   color: var(--fg-0);
 }
@@ -383,6 +384,7 @@ select.input option {
   flex: none;
   min-width: 0;
 }
+.panel-h h2,
 .panel-h h3 {
   font-size: var(--t-12);
   font-weight: 600;
@@ -1120,12 +1122,54 @@ select.input option {
     opacity: 0.35;
   }
 }
+/* Reduced motion: the OS setting, or Settings, Appearance, Reduce motion (<html data-motion>). */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     transition-duration: 1ms !important;
     animation: none !important;
+  }
+}
+:root[data-motion='reduce'] *,
+:root[data-motion='reduce'] *::before,
+:root[data-motion='reduce'] *::after {
+  transition-duration: 1ms !important;
+  animation: none !important;
+  scroll-behavior: auto !important;
+}
+/* Windows high contrast (forced colours): the system palette replaces backgrounds, so a state
+   shown only by a fill (a pressed tool, the current section, a selected row) gets an outline in
+   the system highlight colour, and focus stays visible. */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+  .seg button[aria-pressed='true'],
+  .tool[aria-pressed='true'],
+  [role='tab'][aria-selected='true'],
+  [role='option'][aria-selected='true'],
+  [role='radio'][aria-checked='true'],
+  [role='switch'][aria-checked='true'],
+  [aria-current='page'],
+  [aria-current='true'],
+  .cmdk-item[aria-selected='true'] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  .tool,
+  .seg,
+  .btn,
+  .input,
+  .stage-pop,
+  .overlay-box {
+    border: 1px solid CanvasText;
+  }
+  /* severity swatches carry their colour as information; the text beside them names it too */
+  .sev,
+  .lvl .sw {
+    forced-color-adjust: none;
   }
 }
 .titem.more {

@@ -54,6 +54,7 @@ import type { GroundUniforms } from './groundShading';
 import { skyDirection, solarPosition } from './solar';
 import { estimateGpuBytes, formatPerf, type PerfStats } from './perf';
 import { Highlighter } from './highlight';
+import { reducedMotion } from '../motion';
 
 export interface StageOptions {
   container: HTMLElement;
@@ -118,9 +119,6 @@ export function groupLabel(area: string): string {
   const words = area.replace(/[_-]+/g, ' ').trim().split(/\s+/);
   return words.map((w, i) => (i === 0 ? w : w.toLowerCase())).join(' ');
 }
-
-const prefersReducedMotion = () =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /**
  * The 3D stage behind SceneView: renderer, camera, controls, render on demand, layers from the
@@ -972,7 +970,7 @@ export class Stage implements EngineStage {
   }
 
   private fly(to: CameraPose) {
-    const ms = prefersReducedMotion() ? 0 : FLY_MS;
+    const ms = reducedMotion() ? 0 : FLY_MS;
     this.allowPose(to.position, to.target);
     const from = { position: this.camera.position.clone(), target: this.controls.target.clone() };
     this.flight = {

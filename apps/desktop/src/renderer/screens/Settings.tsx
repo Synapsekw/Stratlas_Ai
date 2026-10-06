@@ -11,7 +11,16 @@ import {
 } from '@aio/ai';
 import { brand } from '@aio/brand';
 import type { AiProvider, AiTask } from '@aio/schema';
-import { Icon, SevChip, shortcut, Switch, t, useT, type IconName, type MessageKey } from '@aio/ui';
+import {
+  Icon,
+  SevChip,
+  Switch,
+  t,
+  useT,
+  type IconName,
+  type MessageKey,
+  shortcutHint,
+} from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useState } from 'react';
 import { setAuthorName, useAuthor } from '../author';
@@ -20,6 +29,7 @@ import { cloudAiBlocked } from '../player';
 import { bridge, shell, useCall, useShell } from '../shell';
 import { About } from './settings/About';
 import { Appearance } from './settings/Appearance';
+import { Keyboard } from './settings/Keyboard';
 import { MapPacks } from './settings/MapPacks';
 import { ProviderConnection } from './settings/ProviderConnection';
 import { ReportBranding } from './settings/ReportBranding';
@@ -34,6 +44,7 @@ type Page =
   | 'branding'
   | 'graphics'
   | 'appearance'
+  | 'keyboard'
   | 'about';
 
 const PAGES: { page: Page; label: MessageKey; icon: IconName; group: MessageKey }[] = [
@@ -76,6 +87,7 @@ const PAGES: { page: Page; label: MessageKey; icon: IconName; group: MessageKey 
     icon: 'sun',
     group: 'settings.group.app',
   },
+  { page: 'keyboard', label: 'settings.page.keyboard', icon: 'key', group: 'settings.group.app' },
   { page: 'about', label: 'settings.page.about', icon: 'refresh', group: 'settings.group.app' },
 ];
 
@@ -197,7 +209,7 @@ function Graphics() {
           <p className="help">{t('settings.graphics.limitTexture')}</p>
         )}
         <p className="help">
-          Press {shortcut('Ctrl+Shift+F')} in the 3D view for frame rate and memory.
+          Press {shortcutHint('scene.perf')} in the 3D view for frame rate and memory.
         </p>
       </div>
     </>
@@ -877,6 +889,7 @@ const HEAD: Record<Page, { title: MessageKey; text: MessageKey }> = {
   branding: { title: 'settings.page.branding', text: 'settings.branding.text' },
   graphics: { title: 'settings.page.graphics', text: 'settings.graphics.text' },
   appearance: { title: 'settings.page.appearance', text: 'settings.appearance.text' },
+  keyboard: { title: 'settings.page.keyboard', text: 'settings.keyboard.text' },
   about: { title: 'settings.page.about', text: 'settings.about.text' },
 };
 
@@ -943,6 +956,7 @@ export function SettingsScreen() {
           {page === 'branding' && <ReportBranding />}
           {page === 'graphics' && <Graphics />}
           {page === 'appearance' && <Appearance />}
+          {page === 'keyboard' && <Keyboard />}
           {page === 'about' && <About />}
         </div>
       </div>

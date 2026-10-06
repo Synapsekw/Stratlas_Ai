@@ -163,7 +163,7 @@ export function AlignModel({ layerId }: { layerId: string }) {
   if (!project || !layer || !origin || epsg === null)
     return (
       <section className="b-align" aria-label="Georeference model">
-        <header>
+        <header role="none">
           <Icon name="target" size={14} />
           <b>Georeference model</b>
           <button
@@ -183,7 +183,7 @@ export function AlignModel({ layerId }: { layerId: string }) {
   const centre = lonLat([0, 0, 0]) ?? undefined;
   return (
     <section className="b-align" aria-label="Georeference model" data-testid="align-model">
-      <header>
+      <header role="none">
         <Icon name="target" size={14} />
         <b>Georeference model</b>
         <button

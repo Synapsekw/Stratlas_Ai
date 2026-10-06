@@ -20,4 +20,17 @@ describe('applyAppearance', () => {
     expect(html.dataset.theme).toBe('dark');
     expect(html.dir).toBe('ltr');
   });
+
+  it('sets more contrast and reduced motion from Settings or the OS, and clears them again', () => {
+    const html = { dataset: {} as Record<string, string | undefined>, dir: '' };
+    applyAppearance(html, { theme: 'dark', contrast: 'more', motion: 'reduce' }, true);
+    expect(html.dataset.contrast).toBe('more');
+    expect(html.dataset.motion).toBe('reduce');
+    applyAppearance(html, { theme: 'dark', contrast: 'system', motion: 'system' }, true);
+    expect('contrast' in html.dataset).toBe(false);
+    expect('motion' in html.dataset).toBe(false);
+    applyAppearance(html, { theme: 'dark' }, true, { moreContrast: true, reducedMotion: true });
+    expect(html.dataset.contrast).toBe('more');
+    expect(html.dataset.motion).toBe('reduce');
+  });
 });

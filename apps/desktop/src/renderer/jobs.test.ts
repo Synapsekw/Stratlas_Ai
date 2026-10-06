@@ -10,6 +10,7 @@ import {
   finishedManifestJob,
   finishedProjectJob,
   isActive,
+  jobsEnded,
   mergeDiskIssues,
 } from './jobs';
 
@@ -236,5 +237,22 @@ describe('inspection jobs', () => {
     ]);
     expect(r.unsaved).toBe(true);
     expect(mergeDiskIssues(disk, disk)).toEqual({ issues: disk, unsaved: false });
+  });
+});
+
+describe('jobsEnded', () => {
+  it('names the jobs that finished or failed since the last list, not the history', () => {
+    const before = [job({ id: 'a' }), job({ id: 'b' }), job({ id: 'c', status: 'done' })];
+    const after = [
+      job({ id: 'a', status: 'done' }),
+      job({ id: 'b', status: 'failed' }),
+      job({ id: 'c', status: 'done' }),
+      job({ id: 'd', status: 'done' }),
+    ];
+    expect(jobsEnded(before, after).map((e) => [e.job.id, e.ok])).toEqual([
+      ['a', true],
+      ['b', false],
+    ]);
+    expect(jobsEnded([], after)).toEqual([]);
   });
 });

@@ -189,7 +189,16 @@ export function AgentPanel({ window: win, className, renderFix }: AgentPanelProp
         </div>
       </header>
 
-      <div className="ag-log" ref={log} aria-live="polite">
+      {/* a log: new messages are read as they arrive; busy holds a streaming reply back until it
+          is complete, so it is read once and whole */}
+      <div
+        className="ag-log"
+        ref={log}
+        role="log"
+        aria-live="polite"
+        aria-busy={state.busy}
+        aria-label="Agent conversation"
+      >
         {showHistory ? (
           <History
             items={state.history}

@@ -1,5 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useFocusTrap } from '../focus';
 import { Icon, type IconName } from '../icons/Icon';
+import { matchShortcut } from '../shortcuts';
 import { rankCommands, type Command } from './rank';
 
 export interface PaletteCommand extends Command {
@@ -26,13 +28,9 @@ export function CommandPalette({ commands, onClose, placeholder }: CommandPalett
   );
   const index = Math.min(active, Math.max(results.length - 1, 0));
 
-  useEffect(() => {
-    inputRef.current?.focus();
-    const prev = document.activeElement as HTMLElement | null;
-    return () => {
-      prev?.focus();
-    };
-  }, []);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // focus starts in the search box, Tab stays inside, and goes back to the opener on close
+  useFocusTrap(dialogRef, true, { initial: () => inputRef.current, onEscape: onClose });
 
   useEffect(() => {
     listRef.current?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ block: 'nearest' });
@@ -45,16 +43,17 @@ export function CommandPalette({ commands, onClose, placeholder }: CommandPalett
   };
 
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === 'ArrowDown') {
+    const id = matchShortcut('palette', e.nativeEvent);
+    if (id === 'palette.move' && e.key === 'ArrowDown') {
       e.preventDefault();
       setActive((index + 1) % Math.max(results.length, 1));
-    } else if (e.key === 'ArrowUp') {
+    } else if (id === 'palette.move') {
       e.preventDefault();
       setActive((index - 1 + results.length) % Math.max(results.length, 1));
-    } else if (e.key === 'Enter') {
+    } else if (id === 'palette.run') {
       e.preventDefault();
       run(results[index]);
-    } else if (e.key === 'Escape') {
+    } else if (id === 'palette.close') {
       e.preventDefault();
       onClose();
     }
@@ -73,7 +72,13 @@ export function CommandPalette({ commands, onClose, placeholder }: CommandPalett
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="cmdk" role="dialog" aria-modal="true" aria-label="Command search">
+      <div
+        ref={dialogRef}
+        className="cmdk"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command search"
+      >
         <div className="cmdk-in">
           <Icon name="search" />
           <input

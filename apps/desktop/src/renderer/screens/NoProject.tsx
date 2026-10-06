@@ -1,4 +1,4 @@
-import { Icon, shortcut } from '@aio/ui';
+import { Icon, shortcutHint } from '@aio/ui';
 import { shell, useShell } from '../shell';
 
 /** Shown by project views while no project is open. */
@@ -11,10 +11,10 @@ export function NoProject({ view }: { view: string }) {
         <span className="le-ic">
           <Icon name="layers" size={20} />
         </span>
-        <h2>Open a project to see its {view.toLowerCase()}</h2>
+        <h1>Open a project to see its {view.toLowerCase()}</h1>
         <p className="muted">
           {view} works on one project at a time. Pick one from the library, or press{' '}
-          <span className="kbd">{shortcut('Ctrl K')}</span> and type its name.
+          <span className="kbd">{shortcutHint('global.palette')}</span> and type its name.
         </p>
         {recent.length > 0 && (
           <div className="np-list">
