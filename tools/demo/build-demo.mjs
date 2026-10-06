@@ -23,7 +23,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { availableParallelism, tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
@@ -92,9 +92,14 @@ const json = (v) => `${JSON.stringify(v, null, 2)}\n`;
 async function main() {
   requireFfmpeg();
   const python = pipelinePython();
-  const work = join(tmpdir(), `stratlas-demo-${String(process.pid)}`);
-  await rm(work, { recursive: true, force: true });
-  await mkdir(work, { recursive: true });
+  const scratch = join(tmpdir(), `stratlas-demo-${String(process.pid)}`);
+  await rm(scratch, { recursive: true, force: true });
+  await mkdir(scratch, { recursive: true });
+  // The pipelines resolve their input paths (Path.resolve): on Windows that expands 8.3 short
+  // names (the CI runner's TEMP is C:\Users\RUNNER~1\..., resolved to the full account name), on
+  // macOS it follows /var to /private/var. Work in the resolved form too, so tidy() recognises
+  // every path under it and strips it from the published job file.
+  const work = await realpath(scratch);
   const dataRoot = join(work, 'data');
   const [E, N] = geo
     .fromWgs84([LOCATION.lon, LOCATION.lat, 0], LOCATION.epsg)

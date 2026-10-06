@@ -9,7 +9,7 @@
  *
  * Everywhere (CI included): a synthetic project (the 16 000 point COPC fixture, a quad, a
  * 4800 x 2400 ortho image) on the software GPU (SwiftShader), which the app must detect as the Low
- * tier. Startup: launch to an interactive Projects screen within STRATLAS_STARTUP_MS (default
+ * tier; on macOS on the runner's own GPU instead (LOW_TIER_GPU below says why). Startup: launch to an interactive Projects screen within STRATLAS_STARTUP_MS (default
  * 15 s) and project click to the first stage frame within STRATLAS_FIRST_FRAME_MS (default 8 s).
  * Frames: the recorded path (e2e/perf/synthetic.path.json) at a p95 under STRATLAS_PERF_LOW_P95_MS
  * (default 250 ms: generous for a 2 vCPU runner rendering in software, but a 2x regression of the
@@ -315,15 +315,30 @@ interface SynthW {
   };
 }
 
-/** Launch on the software GPU against `root`; the caller closes it. */
+/**
+ * The GPU of the synthetic Low tier tests. SwiftShader, the software GPU Windows runners and
+ * Windows machines without a working driver fall back to, everywhere but macOS. On the macOS
+ * runner (Apple silicon VM) forced SwiftShader never drew a stage frame: in CI run 37488890228 the
+ * Projects screen was up 1.2 s after launch, then no draw call at all for 60 s after the project
+ * click, while the same synthetic COPC project draws its 16 000 points within seconds on the
+ * runner's own GPU (copc.spec.ts). A Mac always has a Metal GPU, so the low end there is an
+ * integrated or virtual GPU: the Apple Paravirtual device of the runner, which the app also puts
+ * on the Low tier (isIntegratedGpu), so the same Low tier limits and budgets are checked.
+ * STRATLAS_E2E_SWGL=1 still forces SwiftShader on every launch, macOS included.
+ */
+const MAC_OWN_GPU = process.platform === 'darwin';
+const LOW_TIER_GPU = MAC_OWN_GPU ? [] : SOFTWARE_GPU;
+const GPU_NAME = MAC_OWN_GPU ? "the runner's own GPU" : 'the software GPU';
+
+/** Launch on the Low tier GPU (LOW_TIER_GPU) against `root`; the caller closes it. */
 async function launchSoftware(root: DataRoot) {
   const network = new NetworkGuard();
-  const app = await launchApp(root, {}, SOFTWARE_GPU);
+  const app = await launchApp(root, {}, LOW_TIER_GPU);
   await network.attach(app);
   return { app, network };
 }
 
-base.describe('synthetic project on the software GPU (Low tier)', () => {
+base.describe(`synthetic project on ${GPU_NAME} (Low tier)`, () => {
   base.describe.configure({ mode: 'serial' });
   base.setTimeout(180_000);
 
@@ -341,16 +356,31 @@ base.describe('synthetic project on the software GPU (Low tier)', () => {
         const projects = Date.now() - t0;
         const t1 = Date.now();
         await card.first().click();
-        await expect
-          .poll(
-            () =>
-              win.evaluate(
-                () =>
-                  ((window as unknown as SynthW).__stratlas.stage()?.perfStats().calls ?? 0) > 0,
-              ),
-            { timeout: 60_000, intervals: [50] },
-          )
-          .toBe(true);
+        try {
+          await expect
+            .poll(
+              () =>
+                win.evaluate(
+                  () =>
+                    ((window as unknown as SynthW).__stratlas.stage()?.perfStats().calls ?? 0) > 0,
+                ),
+              { timeout: 60_000, intervals: [50] },
+            )
+            .toBe(true);
+        } catch (e) {
+          // say what the stage was drawing on, so a GPU that never draws is told from a slow one
+          const state = await win
+            .evaluate(async () => {
+              const w = (window as unknown as SynthW).__stratlas;
+              const m = await w.memory();
+              return `stage ${w.stage() ? 'up' : 'missing'}, tier ${m.tier}, ${m.renderer ?? 'no WebGL renderer'}`;
+            })
+            .catch((err: unknown) => `state unavailable: ${String(err)}`);
+          throw new Error(
+            `no stage frame within 60 s of the project click (Projects took ${String(projects)} ms): ${state}`,
+            { cause: e },
+          );
+        }
         const firstFrame = Date.now() - t1;
         await expect
           .poll(
@@ -426,7 +456,7 @@ base.describe('synthetic project on the software GPU (Low tier)', () => {
         const r = await fly(win, path);
         const mem = await win.evaluate(() => (window as unknown as SynthW).__stratlas.memory());
         const line =
-          `synthetic (software GPU): ${String(r.frames)} frames, ${r.fps.toFixed(1)} fps, ` +
+          `synthetic (${GPU_NAME}): ${String(r.frames)} frames, ${r.fps.toFixed(1)} fps, ` +
           `p50 ${r.p50.toFixed(1)} ms, p95 ${r.p95.toFixed(1)} ms, p99 ${r.p99.toFixed(1)} ms, ` +
           `GPU ~${((mem.gpuBytes ?? 0) / 2 ** 20).toFixed(0)} MB of ${(mem.gpuCap / 2 ** 20).toFixed(0)} MB, ` +
           `${r.tier} (${r.renderer ?? 'unknown GPU'})`;
@@ -434,7 +464,7 @@ base.describe('synthetic project on the software GPU (Low tier)', () => {
         await testInfo.attach('synthetic-perf.json', {
           body: JSON.stringify({ ...r, memory: mem, budgetMs: LOW_P95_MS }, null, 2),
         });
-        expect(r.tier, 'SwiftShader runs on the Low tier').toBe('low');
+        expect(r.tier, `${GPU_NAME} runs on the Low tier`).toBe('low');
         expect(await orthoWidth()).toBe(4096);
         expect(mem.gpuBytes ?? 0).toBeLessThan(mem.gpuCap);
         expect(mem.pressure).toBe(0);
