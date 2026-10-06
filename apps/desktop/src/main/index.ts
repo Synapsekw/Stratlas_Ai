@@ -53,7 +53,7 @@ import { registerChangeIpc } from './change';
 import { registerInferenceIpc } from './inference';
 import { electronInference } from './inference/electron';
 import { registerLocalModelsIpc } from './localModels';
-import { registerModelBuilderIpc } from './modelBuilder';
+import { readCloudDrawings, registerModelBuilderIpc } from './modelBuilder';
 import { importLogo, removeLogo } from './branding';
 import { putThumb } from './thumbs';
 import { nativeImageOps } from './images';
@@ -755,8 +755,12 @@ function registerIpc(): void {
   handle('ai:project', async ({ projectId }) => {
     const root = registry.root(projectId);
     if (root === undefined) return { alwaysAllow: false, policy: 'allow' as const, usage: [] };
-    const [state, policy] = await Promise.all([aiProjects.get(root), readAiPolicy(root)]);
-    return { ...state, policy };
+    const [state, policy, cloudDrawings] = await Promise.all([
+      aiProjects.get(root),
+      readAiPolicy(root),
+      readCloudDrawings(root),
+    ]);
+    return { ...state, policy, cloudDrawings };
   });
   handle('ai:setConsent', async ({ projectId, alwaysAllow }) => {
     const r = openRoot(projectId);
