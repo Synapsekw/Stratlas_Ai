@@ -80,6 +80,10 @@ INPUTS_CHANGED = "The orthos changed since this job started. Start the job again
 LUMA = np.array([0.299, 0.587, 0.114], np.float32)
 #: The structure term's noise floor, in units of the noise measured between the two dates.
 NOISE_FLOOR = 4.0
+#: A region is light only when it kept its colour (three quarters of it below this colour score,
+#: a chromaticity step of 0.03) and its brightness moved one way by at least this (log, 2 %).
+LIGHT_COLOUR = 0.25
+LIGHT_STEP = 0.02
 
 
 # ------------------------------------------------------------------------------------------ score
@@ -191,18 +195,48 @@ def change_score(
     return np.where(valid, s, np.nan).astype(np.float32), b
 
 
+def brightness_ratio(a: np.ndarray, b: np.ndarray, valid: np.ndarray) -> tuple[np.ndarray, float]:
+    """Log of ``b`` over ``a`` in brightness (lightly smoothed) and its noise (a robust spread)."""
+    from scipy import ndimage as ndi
+
+    la, lb = np.clip(a @ LUMA, 1e-3, None), np.clip(b @ LUMA, 1e-3, None)
+    q = ndi.gaussian_filter(np.log(lb) - np.log(la), 1.0)
+    if not valid.any():
+        return q, 0.0
+    v = q[valid]
+    return q, float(1.4826 * np.median(np.abs(v - np.median(v))))
+
+
+def lighting_only(q: np.ndarray, noise: float, colour: np.ndarray, reg: np.ndarray) -> bool:
+    """Whether a region is a change of light only: it got darker (or lighter) and kept its colour.
+
+    A shadow that comes or goes (a cloud, the sun lower or turned) darkens or lightens what it
+    falls on and keeps its colour; where it falls on ground next to a lit object it can even hide
+    the edge between them. Something new, gone or moved changes the colour, or the brightness both
+    ways (a stockpile's lit and shaded sides), so it is kept.
+    """
+    qq = q[reg]
+    step = max(3 * noise, LIGHT_STEP)
+    darker, lighter = float((qq < -step).mean()), float((qq > step).mean())
+    if max(darker, lighter) < 0.5 or min(darker, lighter) > 0.1 * max(darker, lighter):
+        return False
+    return float(np.percentile(colour[reg], 75)) < LIGHT_COLOUR
+
+
 def change_mask(
     a: np.ndarray,
     b: np.ndarray,
     score: np.ndarray,
     threshold: float,
     min_cells: int,
+    lighting: bool = True,
 ) -> np.ndarray:
     """The changed cells: threshold, clean-up, then each region's edge refined on the colour step.
 
     The score is smooth (it compares neighbourhoods), so its regions are a little too large; each
     region's edge is moved to where the plain colour difference falls to half its value inside
-    the region, which puts a painted square's edge back on its pixels.
+    the region, which puts a painted square's edge back on its pixels. With ``lighting``, a region
+    that is a change of light only (``lighting_only``) is left out.
     """
     from scipy import ndimage as ndi
 
@@ -214,6 +248,9 @@ def change_mask(
     labels, n = ndi.label(m)
     if n == 0:
         return m
+    if lighting:
+        q, noise = brightness_ratio(a, b, np.isfinite(score))
+        colour = colour_change(a, b)
     diff = ndi.gaussian_filter(np.sqrt(((a - b) ** 2).sum(axis=2)), 0.7)
     out = np.zeros_like(m)
     rows, cols = m.shape
@@ -228,6 +265,8 @@ def change_mask(
         )
         reg = labels[win] == i
         if reg.sum() < min_cells:
+            continue
+        if lighting and lighting_only(q[win], noise, colour[win], reg):
             continue
         d = diff[win]
         core = ndi.binary_erosion(reg, structure=disk, iterations=3)
@@ -415,7 +454,9 @@ class ChangeRaster:
             min_area = float(params.get("minAreaM2", DEFAULT_MIN_AREA_M2))
             min_cells = max(4, int(np.ceil(min_area / grid.cell**2)))
             ctx.progress(0.4, "Regions")
-            mask = change_mask(a, b, score, threshold, min_cells) & valid
+            # the rgb method is plain colour distance, light and all
+            lighting = params["method"] != "rgb"
+            mask = change_mask(a, b, score, threshold, min_cells, lighting) & valid
             polys = [p for p in polygons(mask, grid, simplify=grid.cell * 0.5) if p.area >= min_area]
             # stable ids: north to south, then west to east
             polys.sort(key=lambda p: (round(p.centroid.y / grid.cell), p.centroid.x))
