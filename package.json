@@ -12,7 +12,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc -b",
-    "test": "vitest run",
+    "test": "vitest run --retry=0",
     "test:watch": "vitest",
     "test:e2e": "pnpm -F @aio/desktop test:e2e",
     "dev": "pnpm -F @aio/desktop dev",

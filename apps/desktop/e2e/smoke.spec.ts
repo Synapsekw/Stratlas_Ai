@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { sampleManifest, writeProject } from '../src/main/testing';
+import { GPU_ARGS } from './fixtures';
 
 const ALLOWED = ['file:', 'aio:', 'devtools:', 'data:', 'blob:', 'chrome-extension:'];
 
@@ -10,7 +11,7 @@ test('the app starts, exposes the bridge and makes no network requests', async (
   // an isolated profile: the person's settings stay untouched and the window opens off-screen
   const base = await mkdtemp(join(tmpdir(), 'stratlas-e2e-'));
   const app = await electron.launch({
-    args: [join(import.meta.dirname, '../out/main/index.js')],
+    args: [...GPU_ARGS, join(import.meta.dirname, '../out/main/index.js')],
     env: { ...process.env, STRATLAS_USER_DATA: join(base, 'user') },
   });
   const outbound: string[] = [];
@@ -47,7 +48,7 @@ test('library, settings and aio:// work offline and the protocol refuses travers
   });
 
   const app = await electron.launch({
-    args: [join(import.meta.dirname, '../out/main/index.js')],
+    args: [...GPU_ARGS, join(import.meta.dirname, '../out/main/index.js')],
     env: { ...process.env, STRATLAS_USER_DATA: join(base, 'user'), STRATLAS_DATA: dataRoot },
   });
   const outbound: string[] = [];
@@ -104,7 +105,7 @@ test('isolated test profiles open windows off-screen without a taskbar button', 
   const { tmpdir } = await import('node:os');
   const base = await mkdtemp(join(tmpdir(), 'stratlas-offscreen-'));
   const app = await electron.launch({
-    args: [join(import.meta.dirname, '../out/main/index.js')],
+    args: [...GPU_ARGS, join(import.meta.dirname, '../out/main/index.js')],
     env: {
       ...process.env,
       STRATLAS_USER_DATA: join(base, 'user'),

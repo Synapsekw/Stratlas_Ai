@@ -41,6 +41,16 @@ export const ALLOWED_PROTOCOLS = [
 export const MAIN_ENTRY = join(import.meta.dirname, '../out/main/index.js');
 const GUARD = join(import.meta.dirname, 'network-guard.cjs');
 
+/**
+ * Chromium switches for every launch. STRATLAS_E2E_SWGL=1 draws with SwiftShader, the software
+ * GPU the CI runners fall back to, so a difference that depends on the GPU (the detected
+ * graphics tier, timing of a slow frame) shows up on a workstation as well.
+ */
+export const GPU_ARGS =
+  process.env.STRATLAS_E2E_SWGL === '1'
+    ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']
+    : [];
+
 export const TINY_PROJECT_ID = 'e2e-tiny';
 
 /** Chromium switches that force the software GPU (SwiftShader), which the app runs on Low. */
@@ -268,7 +278,7 @@ export async function launchApp(
 ): Promise<ElectronApplication> {
   return electron.launch({
     // `-r` preloads the guard before the app's main module (Playwright drops NODE_OPTIONS).
-    args: ['-r', GUARD, MAIN_ENTRY, ...extraArgs],
+    args: [...GPU_ARGS, '-r', GUARD, MAIN_ENTRY, ...extraArgs],
     env: {
       ...(process.env as Record<string, string>),
       STRATLAS_DATA: dataRoot.root,

@@ -3,12 +3,13 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { sampleIssue, sampleManifest, writeProject } from '../src/main/testing';
+import { GPU_ARGS } from './fixtures';
 
 const ALLOWED = ['file:', 'aio:', 'devtools:', 'data:', 'blob:', 'chrome-extension:'];
 
 async function launch(dataRoot: string, base: string) {
   const app = await electron.launch({
-    args: [join(import.meta.dirname, '../out/main/index.js')],
+    args: [...GPU_ARGS, join(import.meta.dirname, '../out/main/index.js')],
     env: { ...process.env, STRATLAS_USER_DATA: join(base, 'user'), STRATLAS_DATA: dataRoot },
   });
   const outbound: string[] = [];
@@ -75,9 +76,11 @@ test('open a project, drive the shell and keep the sidebar state', async () => {
 
     // Timeline: the first clip is active and the clock sits at its start.
     await expect(win.getByTestId('timecode')).toContainText('09:00:00');
+    // Pause once the clock has moved, however slowly this machine draws frames.
     await win.getByRole('button', { name: 'Play', exact: true }).click();
-    await win.waitForTimeout(400);
+    await expect(win.getByTestId('timecode')).not.toContainText('09:00:00.00');
     await win.getByRole('button', { name: 'Pause', exact: true }).click();
+    await expect(win.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
     await expect(win.getByTestId('timecode')).not.toContainText('09:00:00.00');
 
     // Ctrl+B collapses the sidebar and persists through settings.

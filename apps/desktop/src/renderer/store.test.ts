@@ -119,6 +119,26 @@ describe('shell store', () => {
     expect(s.getState().opening).toBeNull();
   });
 
+  it('keeps a screen picked while the project was still opening', async () => {
+    let answer: (v: unknown) => void = () => undefined;
+    const bridge: Bridge = {
+      call: (channel) =>
+        channel === 'project:open'
+          ? (new Promise((resolve) => {
+              answer = resolve;
+            }) as never)
+          : Promise.resolve({ ok: false, error: `no ${channel}` } as Res<never>),
+    };
+    const ws = createWorkspace();
+    const s = createShellStore(bridge, ws);
+    const opening = s.getState().openProject(entry.path);
+    s.getState().go('reports');
+    answer({ ok: true, value: { ok: true, id: 'hcl', root: entry.path, manifest, issues: [] } });
+    await opening;
+    expect(ws.getState().project?.id).toBe('hcl');
+    expect(s.getState().screen).toBe('reports');
+  });
+
   it('opens a project that only has an original review straight into the review', async () => {
     const legacyOnly: ProjectManifest = {
       ...manifest,

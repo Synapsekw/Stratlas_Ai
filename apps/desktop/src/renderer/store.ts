@@ -190,6 +190,8 @@ export function createShellStore(
     },
 
     openProject: async (path, passphrase) => {
+      // A screen picked while the project is still opening (a card, then Reports) is kept.
+      const from = get().screen;
       set({ opening: path, openError: null });
       const r = await bridge.call(
         'project:open',
@@ -217,7 +219,7 @@ export function createShellStore(
         // A project extracted from a package says where it came from.
         origin: pkg ? null : (r.value.origin ?? null),
         annotating: pkg ? false : get().annotating,
-        screen: player ? 'welcome' : landingScreen(manifest),
+        screen: get().screen !== from ? get().screen : player ? 'welcome' : landingScreen(manifest),
       });
       if (pkg) void get().loadLibrary();
     },
