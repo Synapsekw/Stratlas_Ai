@@ -1,7 +1,7 @@
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
-export type ColourMode = 'rgb' | 'intensity' | 'height' | 'flight' | 'classification';
+export type ColourMode = 'rgb' | 'intensity' | 'height' | 'flight' | 'classification' | 'change';
 
 /** Colour modes as the UI names them ('height' colours by elevation). */
 export const COLOUR_MODES: readonly { id: ColourMode; label: string; hint: string }[] = [
@@ -14,6 +14,11 @@ export const COLOUR_MODES: readonly { id: ColourMode; label: string; hint: strin
     hint: 'ASPRS class: ground, vegetation, buildings, water and more',
   },
   { id: 'flight', label: 'Flight', hint: 'One colour per capture flight' },
+  {
+    id: 'change',
+    label: 'Change',
+    hint: 'Distance to the earlier date: grey where nothing moved, red where it did',
+  },
 ];
 
 export const BUDGETS = [
@@ -45,6 +50,13 @@ export interface PointcloudSettingsState {
    * (1st to 99th percentile of their heights). Kept for the session only: it belongs to a site.
    */
   heightRange: readonly [number, number] | null;
+  /**
+   * Change colour mode: points of a change cloud closer than this to the earlier date are hidden,
+   * metres (0 shows every point). Kept for the session only.
+   */
+  changeThreshold: number;
+  /** Change colour mode: the distance that gets the full colour, metres; null follows the cloud. */
+  changeRange: number | null;
 }
 
 export interface PointcloudSettingsActions {
@@ -59,6 +71,10 @@ export interface PointcloudSettingsActions {
   showAllClasses(): void;
   /** Set the elevation ramp range by hand (ordered, at least 1 cm apart), or null for automatic. */
   setHeightRange(range: readonly [number, number] | null): void;
+  /** Hide change points closer than this, metres (0 or less shows them all). */
+  setChangeThreshold(metres: number): void;
+  /** Full colour from this distance, metres; null (or 0 or less) follows the cloud. */
+  setChangeRange(metres: number | null): void;
 }
 
 export type PointcloudSettings = PointcloudSettingsState & PointcloudSettingsActions;
@@ -73,6 +89,8 @@ const defaults: PointcloudSettingsState = {
   maxPixels: 24,
   hiddenClasses: [],
   heightRange: null,
+  changeThreshold: 0,
+  changeRange: null,
 };
 
 const isClass = (c: unknown): c is number =>
@@ -84,7 +102,8 @@ function restore(storage: Storage | null): Partial<PointcloudSettingsState> {
     if (!raw) return {};
     const v = JSON.parse(raw) as Record<string, unknown>;
     const out: Partial<PointcloudSettingsState> = {};
-    if (COLOUR_MODES.some((m) => m.id === v.colourMode))
+    // a change colouring belongs to a change cloud of this session
+    if (v.colourMode !== 'change' && COLOUR_MODES.some((m) => m.id === v.colourMode))
       out.colourMode = v.colourMode as ColourMode;
     if (typeof v.sizeScale === 'number') out.sizeScale = clampSize(v.sizeScale);
     if (typeof v.budget === 'number') out.budget = snapBudget(v.budget);
@@ -163,6 +182,12 @@ export function createPointcloudSettings(
     },
     setHeightRange: (r) => {
       set({ heightRange: r ? orderedRange(r) : null });
+    },
+    setChangeThreshold: (m) => {
+      set({ changeThreshold: Number.isFinite(m) && m > 0 ? m : 0 });
+    },
+    setChangeRange: (m) => {
+      set({ changeRange: m !== null && Number.isFinite(m) && m > 0 ? m : null });
     },
   }));
   store.subscribe((s) => {

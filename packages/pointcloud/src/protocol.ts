@@ -52,6 +52,8 @@ export interface DecodedChunk {
   bounds: Bounds3;
   /** A spread sample of the points' local heights (Y), metres, for the elevation range. */
   heights?: Float32Array;
+  /** One float per point to colour by in the change mode (COPC extra bytes). */
+  scalar?: Float32Array;
 }
 
 export type DecodeResult = DecodedChunk | { id: number; error: string };
@@ -167,6 +169,10 @@ export async function handleRequest(
           if (!arr) continue;
           result[key] = arr;
           transfer.push(arr.buffer as ArrayBuffer);
+        }
+        if (d.scalar) {
+          result.scalar = d.scalar;
+          transfer.push(d.scalar.buffer as ArrayBuffer);
         }
         return { result, transfer };
       }

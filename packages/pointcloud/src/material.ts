@@ -1,4 +1,5 @@
 import { Color, ShaderMaterial, Vector2 } from 'three';
+import { CHANGE_RAMP_GLSL } from './changeRamp';
 import { classColour } from './classes';
 import { ELEVATION_RAMP_GLSL } from './ramp';
 import type { ColourMode } from './settings';
@@ -23,7 +24,11 @@ export const MODE_INDEX: Record<ColourMode, number> = {
   height: 2,
   flight: 3,
   classification: 4,
+  change: 5,
 };
+
+/** The full-colour distance of a change cloud until its layer says otherwise (founder far, 30 cm). */
+export const DEFAULT_CHANGE_RANGE = 0.3;
 
 /** Class codes 0..31 have their own colour and show flag; higher codes share slot 31. */
 export const CLASS_SLOTS = 32;
@@ -41,6 +46,9 @@ attribute float aIntensity;
 #ifdef HAS_CLASS
 attribute float aClass;
 #endif
+#ifdef HAS_SCALAR
+attribute float aScalar;
+#endif
 uniform float uSize;
 uniform float uPxPerM;
 uniform float uMinPx;
@@ -51,9 +59,14 @@ uniform vec2 uHeight;
 uniform vec3 uTint;
 uniform vec3 uClassColours[${CLASS_SLOTS}];
 uniform float uClassShown[${CLASS_SLOTS}];
+uniform float uScalarRange;
+uniform float uThreshold;
+uniform float uDiverging;
+uniform float uHideNoScalar;
 varying vec3 vC;
 
 ${ELEVATION_RAMP_GLSL}
+${CHANGE_RAMP_GLSL}
 void main() {
 #ifdef HAS_CLASS
   int cls = int(min(aClass, ${CLASS_SLOTS - 1}.0) + 0.5);
@@ -62,6 +75,19 @@ void main() {
 #endif
   if (uClassShown[cls] < 0.5) {
     // hidden class: outside the clip volume, so nothing is rasterised
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    gl_PointSize = 0.0;
+    return;
+  }
+  bool changeMode = uMode > 4.5;
+#ifdef HAS_SCALAR
+  // change mode: points closer to the earlier date than the threshold are not drawn
+  bool hideChange = changeMode && abs(aScalar) < uThreshold;
+#else
+  // change mode: a cloud without the change field steps aside for the change clouds
+  bool hideChange = changeMode && uHideNoScalar > 0.5;
+#endif
+  if (hideChange) {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     gl_PointSize = 0.0;
     return;
@@ -98,9 +124,16 @@ void main() {
     vC = elevationRamp((world.y - uHeight.x) / max(1e-3, uHeight.y - uHeight.x));
   } else if (uMode < 3.5) {
     vC = uTint * (0.35 + inten * 0.65);
-  } else {
+  } else if (uMode < 4.5) {
     // class colour, shaded a little by brightness so structure still reads
     vC = uClassColours[cls] * (0.75 + 0.25 * inten);
+  } else {
+#ifdef HAS_SCALAR
+    vC = changeRamp(aScalar / max(uScalarRange, 1e-6), uDiverging);
+#else
+    // no change field: a dim grey, so the change clouds stand out
+    vC = vec3(0.18 + 0.12 * inten);
+#endif
   }
 
   #include <logdepthbuf_vertex>
@@ -128,6 +161,8 @@ export interface PointMaterialOptions {
   hasIntensity: boolean;
   /** ASPRS class per point (COPC). */
   hasClass?: boolean;
+  /** One float per point to colour by in the change mode (COPC extra bytes, `Distance`). */
+  hasScalar?: boolean;
   /** World size of a point in metres (the user's size scale applies on screen, uScale). */
   baseSize: number;
   tint: string;
@@ -146,9 +181,32 @@ export type PointMaterial = ShaderMaterial & {
     uTint: { value: Color };
     uClassColours: { value: Color[] };
     uClassShown: { value: number[] };
+    /** Change mode: the scalar that gets the full colour (half range when diverging). */
+    uScalarRange: { value: number };
+    /** Change mode: points whose |scalar| is below this are hidden. */
+    uThreshold: { value: number };
+    /** Change mode: 1 for a signed (blue, grey, red) ramp, 0 for grey to red. */
+    uDiverging: { value: number };
+    /** Change mode: 1 hides clouds without a scalar (a change cloud is shown). */
+    uHideNoScalar: { value: number };
   };
   userData: { baseSize: number };
 };
+
+/** The change-mode inputs of one layer's material. */
+export interface ChangeUniforms {
+  range: number;
+  threshold: number;
+  diverging: boolean;
+  hideNoScalar: boolean;
+}
+
+export function applyChangeUniforms(m: PointMaterial, c: ChangeUniforms): void {
+  m.uniforms.uScalarRange.value = c.range;
+  m.uniforms.uThreshold.value = c.threshold;
+  m.uniforms.uDiverging.value = c.diverging ? 1 : 0;
+  m.uniforms.uHideNoScalar.value = c.hideNoScalar ? 1 : 0;
+}
 
 /**
  * On-screen point diameter in pixels, as the vertex shader computes it: the point's world size
@@ -174,12 +232,13 @@ function classColours(): Color[] {
   return Array.from({ length: CLASS_SLOTS }, (_, c) => new Color(classColour(c)));
 }
 
-/** Point material: attenuated size with a pixel clamp, five colour modes, clipping planes. */
+/** Point material: attenuated size with a pixel clamp, six colour modes, clipping planes. */
 export function createPointMaterial(o: PointMaterialOptions): PointMaterial {
   const defines: Record<string, string> = {};
   if (o.hasRgb) defines.HAS_RGB = '';
   if (o.hasIntensity) defines.HAS_INTENSITY = '';
   if (o.hasClass) defines.HAS_CLASS = '';
+  if (o.hasScalar) defines.HAS_SCALAR = '';
   const m = new ShaderMaterial({
     defines,
     vertexShader,
@@ -196,6 +255,10 @@ export function createPointMaterial(o: PointMaterialOptions): PointMaterial {
       uTint: { value: new Color(o.tint) },
       uClassColours: { value: classColours() },
       uClassShown: { value: new Array<number>(CLASS_SLOTS).fill(1) },
+      uScalarRange: { value: DEFAULT_CHANGE_RANGE },
+      uThreshold: { value: 0 },
+      uDiverging: { value: 0 },
+      uHideNoScalar: { value: 0 },
     },
   }) as PointMaterial;
   m.userData.baseSize = o.baseSize;

@@ -7,6 +7,13 @@ import {
   type LasLayout,
   type LazPerfLike,
 } from './copcDecode';
+import {
+  EXTRA_BYTES_RECORD_ID,
+  EXTRA_BYTES_USER,
+  parseExtraBytes,
+  scalarField,
+  type ExtraBytesDim,
+} from './extraBytes';
 
 type V3 = readonly [number, number, number];
 
@@ -34,6 +41,8 @@ export interface CopcSource {
   /** Horizontal EPSG code read from the WKT, when it carries one. */
   epsg?: number;
   rootPage: CopcPage;
+  /** The extra-bytes dimensions after each base record (LAS 1.4), when the file has any. */
+  extraBytes?: ExtraBytesDim[];
 }
 
 export interface CopcHierarchy {
@@ -83,7 +92,26 @@ export async function readCopcSource(get: Getter): Promise<CopcSource> {
   };
   const epsg = epsgFromWkt(c.wkt);
   if (epsg !== undefined) src.epsg = epsg;
+  const eb = c.vlrs.find(
+    (v) => v.userId === EXTRA_BYTES_USER && v.recordId === EXTRA_BYTES_RECORD_ID,
+  );
+  if (eb && eb.contentLength > 0) {
+    src.extraBytes = parseExtraBytes(
+      await get(eb.contentOffset, eb.contentOffset + eb.contentLength),
+    );
+  }
   return src;
+}
+
+/**
+ * The source with the float dimension `dim` decoded with every point (`layout.scalar`), and the
+ * reason when the file carries it in a layout the viewer does not draw.
+ */
+export function withScalar(src: CopcSource, dim: string): { source: CopcSource; error?: string } {
+  const f = scalarField(src.extraBytes ?? [], src.layout, dim);
+  if (!f) return { source: src };
+  if ('error' in f) return { source: src, error: f.error };
+  return { source: { ...src, layout: { ...src.layout, scalar: f } } };
 }
 
 export async function readCopcPage(get: Getter, page: CopcPage): Promise<CopcHierarchy> {

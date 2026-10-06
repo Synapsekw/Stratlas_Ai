@@ -1487,6 +1487,14 @@ export const en = {
   'imgChange.earlier': 'Earlier',
   'imgChange.later': 'Later',
   'imgChange.legend': 'Legend: {name}',
+  // M8 C3: point cloud change (the change legend under the 3D view)
+  'cloudChange.volume.title': 'Volume change, same dates',
+  'cloudChange.volume.totals': 'Fill {fill} m³, cut {cut} m³, net {net} m³',
+  'cloudChange.volume.none': 'No volume change for these dates yet.',
+  'cloudChange.volume.run': 'Run volume change',
+  'cloudChange.volume.started': 'Volume change started. The totals show here when it finishes.',
+  'cloudChange.volume.package':
+    'Volume change is computed in the project folder, not in a package.',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

@@ -28,11 +28,14 @@ def test_every_m8_pipeline_is_listed():
         assert p.title and p.description
 
 
-@pytest.mark.parametrize("name", sorted(M8))
+#: The M8 pipelines still answering "not implemented" (each stream's own tests cover the rest).
+STUBS = sorted(n for n in M8 if isinstance(all_pipelines()[n], NotBuiltYet))
+
+
+@pytest.mark.skipif(not STUBS, reason="every M8 pipeline is built")
+@pytest.mark.parametrize("name", STUBS)
 def test_a_stub_fails_with_not_implemented_and_leaves_the_project_untouched(tmp_path, name):
     pipeline = all_pipelines()[name]
-    if not isinstance(pipeline, NotBuiltYet):
-        pytest.skip(f"{name} is built")
     with pytest.raises(JobError, match="not implemented"):
         run_job(pipeline, tmp_path, M8[name])
     job = json.loads((tmp_path / "jobs" / "j1" / "job.json").read_text("utf-8"))

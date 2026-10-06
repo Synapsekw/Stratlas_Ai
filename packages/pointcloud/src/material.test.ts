@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { EdlPass, edlNeighbours } from './edl';
-import { FLIGHT_PALETTE, MODE_INDEX, createPointMaterial, pointSizePx } from './material';
+import {
+  FLIGHT_PALETTE,
+  MODE_INDEX,
+  applyChangeUniforms,
+  createPointMaterial,
+  pointSizePx,
+} from './material';
 
 describe('createPointMaterial', () => {
   it('compiles only the attributes the cloud has and clips with the shared planes', () => {
@@ -39,9 +45,39 @@ describe('createPointMaterial', () => {
   });
 
   it('maps every colour mode and keeps the HCl flight palette', () => {
-    expect(Object.values(MODE_INDEX).sort()).toEqual([0, 1, 2, 3, 4]);
+    expect(Object.values(MODE_INDEX).sort()).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(MODE_INDEX.change).toBe(5);
     expect(FLIGHT_PALETTE[0]).toBe('#5ab0ff');
     expect(FLIGHT_PALETTE).toHaveLength(10);
+  });
+});
+
+describe('the change colour mode', () => {
+  const base = { hasRgb: false, hasIntensity: true, baseSize: 1, tint: '#000000' };
+
+  it('reads the scalar attribute only when the cloud has one', () => {
+    expect(createPointMaterial(base).defines).not.toHaveProperty('HAS_SCALAR');
+    const change = createPointMaterial({ ...base, hasScalar: true });
+    expect(change.defines).toHaveProperty('HAS_SCALAR', '');
+    expect(change.vertexShader).toContain('attribute float aScalar');
+    expect(change.vertexShader).toContain('changeRamp(');
+  });
+
+  it('starts with the founder far distance as range, nothing hidden and no divergence', () => {
+    const m = createPointMaterial({ ...base, hasScalar: true });
+    expect(m.uniforms.uScalarRange.value).toBe(0.3);
+    expect(m.uniforms.uThreshold.value).toBe(0);
+    expect(m.uniforms.uDiverging.value).toBe(0);
+    expect(m.uniforms.uHideNoScalar.value).toBe(0);
+  });
+
+  it('applies the change uniforms of a layer', () => {
+    const m = createPointMaterial({ ...base, hasScalar: true });
+    applyChangeUniforms(m, { range: 0.5, threshold: 0.1, diverging: true, hideNoScalar: true });
+    expect(m.uniforms.uScalarRange.value).toBe(0.5);
+    expect(m.uniforms.uThreshold.value).toBe(0.1);
+    expect(m.uniforms.uDiverging.value).toBe(1);
+    expect(m.uniforms.uHideNoScalar.value).toBe(1);
   });
 });
 

@@ -1,5 +1,5 @@
 import type { SceneHandle } from '@aio/engine';
-import { Matrix4, Ray, Vector3, type Plane, type Points } from 'three';
+import { Matrix4, Ray, Vector3, type BufferAttribute, type Plane, type Points } from 'three';
 import { getCloudManager } from './adapter';
 import { nearestProjected } from './pickMath';
 
@@ -12,6 +12,8 @@ export interface PointPick {
   /** Index of the point within its chunk. */
   index: number;
   object: Points;
+  /** The change cloud's value at the point (cloud change: distance, metres). */
+  scalar?: number;
 }
 
 const mvp = new Matrix4();
@@ -76,11 +78,14 @@ export function pickPoint(
   const pos = best.obj.geometry.getAttribute('position');
   const point = new Vector3(pos.getX(best.index), pos.getY(best.index), pos.getZ(best.index));
   point.applyMatrix4(best.obj.matrixWorld);
-  return {
+  const out: PointPick = {
     point,
     distance: point.distanceTo(origin),
     layerId: best.layerId,
     index: best.index,
     object: best.obj,
   };
+  const scalar = best.obj.geometry.getAttribute('aScalar') as BufferAttribute | undefined;
+  if (scalar) out.scalar = scalar.getX(best.index);
+  return out;
 }

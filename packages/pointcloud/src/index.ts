@@ -36,7 +36,18 @@ export {
   type PointcloudSettings,
 } from './settings';
 export { pointcloudStats, usePointcloudCounts, type CloudCounts } from './stats';
-export { FLIGHT_PALETTE, MODE_INDEX } from './material';
+export { DEFAULT_CHANGE_RANGE, FLIGHT_PALETTE, MODE_INDEX } from './material';
+export { CHANGE_STOPS, changeColour, changeGradient, isNeutral, isWarm } from './changeRamp';
+export {
+  ChangeLegend,
+  ChangeLegendView,
+  formatChange,
+  useScalarHover,
+  type ChangeLegendProps,
+  type ChangeLegendViewProps,
+} from './ChangeLegend';
+export { parseExtraBytes, scalarField, type ExtraBytesDim, type ScalarField } from './extraBytes';
+export type { ScalarSummary } from './stats';
 export {
   ClassificationLegend,
   useClassificationLegend,
@@ -48,6 +59,7 @@ export {
   rangeGetter,
   readCopcPage,
   readCopcSource,
+  withScalar,
   type CopcHierarchy,
   type CopcSource,
 } from './copc';

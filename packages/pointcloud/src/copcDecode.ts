@@ -1,4 +1,5 @@
 /** COPC node decoding: LAS point records to quantised local-frame arrays. Pure, worker side. */
+import { readScalar, type ScalarField } from './extraBytes';
 import { sampleHeights } from './heights';
 
 type V3 = readonly [number, number, number];
@@ -9,6 +10,8 @@ export interface LasLayout {
   pointDataRecordLength: number;
   scale: V3;
   offset: V3;
+  /** One float extra-bytes dimension decoded with every point (cloud change: `Distance`). */
+  scalar?: ScalarField;
 }
 
 export interface DecodedCopcNode {
@@ -25,6 +28,8 @@ export interface DecodedCopcNode {
   bounds: { min: [number, number, number]; max: [number, number, number] };
   /** A spread sample of the points' local heights (Y), unquantised. */
   heights: Float32Array;
+  /** The layout's scalar per point (non-finite values as 0). */
+  scalar?: Float32Array;
 }
 
 /** Byte offsets of the fields read here, per point data record format (LAS 1.4 R15). */
@@ -69,6 +74,8 @@ export function decodeLasRecords(
   const intensity16 = new Uint16Array(count);
   const classification = new Uint8Array(count);
   const rgb16 = f.rgb === null ? null : new Uint16Array(count * 3);
+  const sf = layout.scalar;
+  const scalar = sf ? new Float32Array(count) : null;
   const classes: Record<number, number> = {};
   const min: [number, number, number] = [Infinity, Infinity, Infinity];
   const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
@@ -99,6 +106,10 @@ export function decodeLasRecords(
     const c = v.getUint8(o + f.cls);
     classification[k] = c;
     classes[c] = (classes[c] ?? 0) + 1;
+    if (scalar && sf) {
+      const x = readScalar(v, o, sf);
+      scalar[k] = Number.isFinite(x) ? x : 0;
+    }
     if (rgb16 && f.rgb !== null) {
       for (let b = 0; b < 3; b++) {
         const x = v.getUint16(o + f.rgb + 2 * b, true);
@@ -124,6 +135,7 @@ export function decodeLasRecords(
     heights: sampleHeights(count, (k) => v.getInt32(k * len + 8, true) * sz + oz - origin[2]),
   };
   if (rgb16) out.rgb = to8(rgb16, cMax > 255);
+  if (scalar) out.scalar = scalar;
   return out;
 }
 
