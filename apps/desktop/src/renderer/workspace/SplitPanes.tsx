@@ -3,7 +3,7 @@ import type { Layer, ReportFile } from '@aio/schema';
 import { Icon, useT, type IconName, type MessageKey } from '@aio/ui';
 import { VideoWindow } from '@aio/video';
 import { assetUrl, counterpart, useWorkspace, workspace, type CaptureIndex } from '@aio/workspace';
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { FocusZone } from '../FocusZone';
 import {
   closeEvidence,
@@ -34,7 +34,28 @@ import {
 } from './splitModel';
 import { stagePrefs, useStagePrefs } from './stagePrefs';
 
-const PANE: Record<PaneKind, { label: MessageKey; icon: IconName }> = {
+/** The panes this file draws itself. */
+type BuiltInPane = '3d' | 'map' | 'video' | 'photo' | 'raster' | 'report';
+
+/**
+ * Mount point for panes of later streams (M8). To add one, a stream adds its kind to `PaneKind`,
+ * `PANE_KINDS` and `paneOptions` in splitModel.ts, and one entry here, e.g. C4:
+ * `frames: { label: 'stage.pane.frames', icon: 'video', zone: 'video', render: (p) => <FramesPane {...p} /> },`
+ * Nothing else in this file changes: the chooser, the focus zone and the pane body read it.
+ */
+export const EXTRA_PANES: Partial<
+  Record<
+    PaneKind,
+    {
+      label: MessageKey;
+      icon: IconName;
+      zone: 'video' | 'photo' | 'map' | 'report';
+      render: (p: { split: SplitModel; side: Side }) => ReactNode;
+    }
+  >
+> = {};
+
+const BUILT_IN: Record<BuiltInPane, { label: MessageKey; icon: IconName }> = {
   '3d': { label: 'stage.pane.3d', icon: 'scene' },
   map: { label: 'stage.pane.map', icon: 'map' },
   video: { label: 'stage.pane.video', icon: 'video' },
@@ -42,6 +63,13 @@ const PANE: Record<PaneKind, { label: MessageKey; icon: IconName }> = {
   raster: { label: 'stage.pane.raster', icon: 'raster' },
   report: { label: 'stage.pane.report', icon: 'report' },
 };
+
+function paneInfo(kind: PaneKind): { label: MessageKey; icon: IconName } {
+  return (
+    (BUILT_IN as Partial<Record<PaneKind, { label: MessageKey; icon: IconName }>>)[kind] ??
+    EXTRA_PANES[kind] ?? { label: 'stage.pane.3d', icon: 'scene' }
+  );
+}
 
 export interface SplitModel {
   options: PaneKind[];
@@ -108,7 +136,7 @@ export function PaneChooser({ side, split }: { side: Side; split: SplitModel }) 
       data-testid={`pane-chooser-${side}`}
       data-surface="dark"
     >
-      <Icon name={PANE[current].icon} size={14} className="muted" />
+      <Icon name={paneInfo(current).icon} size={14} className="muted" />
       <select
         className="input"
         aria-label={t(side === 'left' ? 'stage.split.left' : 'stage.split.right')}
@@ -120,7 +148,7 @@ export function PaneChooser({ side, split }: { side: Side; split: SplitModel }) 
       >
         {split.options.map((k) => (
           <option key={k} value={k} disabled={k === blocked}>
-            {t(PANE[k].label)}
+            {t(paneInfo(k).label)}
           </option>
         ))}
       </select>
@@ -405,7 +433,7 @@ function ReportPane({ split }: { split: SplitModel }) {
   );
 }
 
-const ZONE: Record<Exclude<PaneKind, '3d' | 'map'>, 'video' | 'photo' | 'map' | 'report'> = {
+const ZONE: Record<Exclude<BuiltInPane, '3d' | 'map'>, 'video' | 'photo' | 'map' | 'report'> = {
   video: 'video',
   photo: 'photo',
   raster: 'map',
@@ -418,14 +446,22 @@ export function SplitPane({ side, split }: { side: Side; split: SplitModel }) {
   const kind = split.sides[side];
   const videoEvidence = useEvidence((s) => s.open?.kind === 'video');
   if (kind === '3d' || kind === 'map') return null;
+  const extra = EXTRA_PANES[kind];
   return (
     <FocusZone
-      kind={ZONE[kind]}
+      kind={
+        extra
+          ? extra.zone
+          : ((ZONE as Partial<Record<PaneKind, 'video' | 'photo' | 'map' | 'report'>>)[kind] ??
+            'map')
+      }
       className={`pane pane-x pane-${kind}`}
       data-side={side}
       data-testid={`pane-${kind}`}
     >
-      {kind === 'video' ? (
+      {extra ? (
+        extra.render({ split, side })
+      ) : kind === 'video' ? (
         <VideoPane />
       ) : kind === 'photo' ? (
         <PhotoPane />

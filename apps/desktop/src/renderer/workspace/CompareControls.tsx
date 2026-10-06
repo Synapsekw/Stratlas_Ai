@@ -20,6 +20,13 @@ import { isTwin, type SplitModel } from './SplitPanes';
 import { chooseCapture, compareSplit, PER_CAPTURE, type PaneKind, type Side } from './splitModel';
 
 /**
+ * Mount point for tools of later streams beside Compare dates while two dates show (M8): C2 adds
+ * its Swipe and Blend control with one line in its own module, `COMPARE_TOOLS.push(SwipeTools)`,
+ * imported once from the renderer.
+ */
+export const COMPARE_TOOLS: ((p: { split: SplitModel }) => ReactNode)[] = [];
+
+/**
  * "Compare dates" beside the view modes: opens the split with the first survey date on the left
  * and the last on the right, as two 3D views (from 3D or the split) or two maps (from the map).
  * On the Low graphics tier one 3D view runs: the volumetric swipe, or two maps, with a notice.
@@ -101,6 +108,7 @@ export function CompareButton({ split }: { split: SplitModel }) {
           <span className="tip">{t(showChanges ? 'change.hide' : 'change.show')}</span>
         </button>
       )}
+      {twin && COMPARE_TOOLS.map((Tool, i) => <Tool key={i} split={split} />)}
       {twin && <HelpLink topic={{ chapter: 'compare-dates' }} label={t('help.compare')} />}
     </div>
   );
