@@ -1,6 +1,6 @@
 [project]
 name = "aio-pipelines"
-version = "0.2.0"
+version = "0.3.0"
 description = "Stratlas pipeline pack: data pipelines run by the desktop app over JSON-RPC 2.0 on stdio."
 requires-python = ">=3.13,<3.14"
 license = "MIT"
