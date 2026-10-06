@@ -13,8 +13,8 @@ Parameters as ``ChangeRasterParams`` in ``@aio/schema`` (``jobs.ts``). Steps:
             kept, ``.bak``), then the manifest: a heat map raster layer and a polygon layer, both
             ``derived`` and on the later date.
 
-The score (0 to 1) ignores what light does: both orthos are normalised per channel (mean and
-spread over the shared area, so a tint or exposure change is gone); structure is compared on
+The score (0 to 1) ignores what light does: the later ortho is scaled per channel to the earlier
+one (a gain over the shared area, so a tint or exposure change is gone); structure is compared on
 high-passed log brightness with a local SSIM-like term, which a shade or a cloud shadow (a slow
 multiplicative change) does not move; colour is compared as chromaticity, which shade does not
 change either. Methods: ``gradient`` (structure and colour, the default), ``ssim`` (scikit-image's
@@ -84,17 +84,19 @@ LUMA = np.array([0.299, 0.587, 0.114], np.float32)
 
 
 def normalise(a: np.ndarray, b: np.ndarray, valid: np.ndarray) -> np.ndarray:
-    """``b`` with each channel's level and spread matched to ``a`` over ``valid`` (robustly:
-    median and interquartile range, so a changed area does not tilt the match)."""
+    """``b`` with each channel scaled to ``a`` over ``valid`` (by the ratio of the medians, so a
+    changed area does not tilt the match).
+
+    Exposure and white balance multiply each channel (in linear light, and so in gamma-encoded
+    values too), so a gain is the right match: a level-and-spread match would add an offset that
+    shifts the colour of everything darker or lighter than the median, such as shadows.
+    """
     out = b.copy()
     if valid.sum() < 16:
         return out
     for k in range(3):
-        av, bv = a[..., k][valid], b[..., k][valid]
-        qa, qb = np.percentile(av, [25, 50, 75]), np.percentile(bv, [25, 50, 75])
-        sa, sb = float(qa[2] - qa[0]), float(qb[2] - qb[0])
-        g = sa / sb if sb > 1e-6 else 1.0
-        out[..., k] = (b[..., k] - float(qb[1])) * g + float(qa[1])
+        ma, mb = float(np.median(a[..., k][valid])), float(np.median(b[..., k][valid]))
+        out[..., k] = b[..., k] * (ma / mb if mb > 1e-6 else 1.0)
     return np.clip(out, 0, 1)
 
 
