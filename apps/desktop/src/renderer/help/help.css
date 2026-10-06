@@ -263,6 +263,10 @@
   text-underline-offset: 2px;
 }
 
+.guide a[role='link'] {
+  cursor: pointer;
+}
+
 .guide a:hover {
   text-decoration-thickness: 2px;
 }

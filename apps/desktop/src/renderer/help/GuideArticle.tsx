@@ -52,11 +52,32 @@ export function GuideArticle({ chapter, blocks, onNavigate, images, skipTitle, e
                 {inline(n.children)}
               </span>
             );
+          // A link inside this chapter can point at its heading; one into another chapter has no
+          // element on the page to name, so it is a link by role (an in-page href to a missing
+          // target is a broken skip link to screen readers, axe skip-link).
+          if (target.chapter === chapter && target.anchor)
+            return (
+              <a
+                key={i}
+                href={`#${anchorId(target.chapter, target.anchor)}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  onNavigate(target);
+                }}
+              >
+                {inline(n.children)}
+              </a>
+            );
           return (
             <a
               key={i}
-              href={`#${anchorId(target.chapter, target.anchor ?? '')}`}
-              onClick={(e) => {
+              role="link"
+              tabIndex={0}
+              onClick={() => {
+                onNavigate(target);
+              }}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return;
                 e.preventDefault();
                 onNavigate(target);
               }}
