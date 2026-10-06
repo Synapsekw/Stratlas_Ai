@@ -10,10 +10,10 @@ import { realOrt } from './fixtures/realOrt';
 
 const ort = realOrt();
 
-async function markerRun(): Promise<RunModel> {
+async function markerRun(provider = 'cpu'): Promise<RunModel> {
   if (!ort) throw new Error('no runtime');
   const session = await ort.InferenceSession.create(markerDetectorOnnx(), {
-    executionProviders: ['cpu'],
+    executionProviders: [provider],
   });
   return async ({ data, dims }) => {
     const out = await session.run({ images: new ort.Tensor('float32', data, dims) });
@@ -90,5 +90,37 @@ describe.skipIf(!ort)('the synthetic marker detector, run by onnxruntime', () =>
   it('finds nothing on a photo without patches', async () => {
     const run = await markerRun();
     expect(await detectImage(photo(320, 320, []), { card, minConfidence: 0.25 }, run)).toEqual([]);
+  });
+});
+
+const gpu = (ort?.listSupportedBackends?.() ?? [])
+  .map((b) => b.name)
+  .find(
+    (n) =>
+      (process.platform === 'win32' && n === 'dml') ||
+      (process.platform === 'darwin' && n === 'coreml'),
+  );
+
+describe.skipIf(!ort || !gpu)('the GPU provider against the CPU', () => {
+  it('finds the same boxes (within 1 px)', async () => {
+    const img = photo(320, 320, [
+      { cls: 'marker', box: [40, 50, 72, 82] },
+      { cls: 'cyan-marker', box: [200, 210, 230, 250] },
+    ]);
+    const cpu = await detectImage(img, { card, minConfidence: 0.5 }, await markerRun('cpu'));
+    let other;
+    try {
+      other = await detectImage(img, { card, minConfidence: 0.5 }, await markerRun(gpu));
+    } catch {
+      // no usable device on this machine (a remote session, a VM): nothing to compare
+      return;
+    }
+    expect(other.map((b) => b.cls)).toEqual(cpu.map((b) => b.cls));
+    other.forEach((b, i) => {
+      const c = cpu[i];
+      expect(
+        c && Math.max(...[b.x0 - c.x0, b.y0 - c.y0, b.x1 - c.x1, b.y1 - c.y1].map(Math.abs)),
+      ).toBeLessThanOrEqual(1);
+    });
   });
 });
