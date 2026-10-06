@@ -220,6 +220,8 @@ function dataRows(m: ProjectManifest): { layers: DataRow[]; totals: DataTotals }
   };
   const layers: DataRow[] = [];
   for (const l of m.layers) {
+    // a Model builder preview nobody accepted is no project data (M8)
+    if (l.derived?.draft) continue;
     let count: number | null = null;
     let role: string | null = null;
     switch (l.kind) {

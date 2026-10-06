@@ -99,6 +99,27 @@ describe('houseReportModel', () => {
     expect(f.issues.worst).toEqual([]);
   });
 
+  it('leaves draft model previews out of the project data', () => {
+    const m = sampleManifest();
+    const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    const mesh = (id: string, draft: boolean) => ({
+      kind: 'mesh' as const,
+      id,
+      name: id,
+      src: { path: `models/${id}.glb` },
+      transform: I,
+      derived: { kind: 'model' as const, source: ['site'], ...(draft ? { draft: true } : {}) },
+    });
+    const manifest = ProjectManifest.parse({
+      ...m,
+      layers: [...m.layers, mesh('model-draft-site', true), mesh('model-site', false)],
+    });
+    const h = houseReportModel({ manifest, issues: [], branding, now });
+    const names = h.layers.map((l) => l.name);
+    expect(names).toContain('model-site');
+    expect(names).not.toContain('model-draft-site');
+  });
+
   it('keeps issues without photos or positions', () => {
     const issues = sampleIssues().map((i) => ({ ...i, sightings: [] }));
     const h = houseReportModel({ manifest: sampleManifest(), issues, branding, now });

@@ -160,4 +160,36 @@ describe('planPackage', () => {
     const p = planPackage(manifest(), files, ['nope']);
     expect(p.excluded).toEqual([]);
   });
+
+  it('leaves draft model previews out and carries change sets, models and drawings', () => {
+    const m = manifest();
+    const draft = {
+      kind: 'mesh' as const,
+      id: 'model-draft-site',
+      name: 'Site model (draft)',
+      src: { path: 'models/draft-site.glb' },
+      transform: I,
+      visible: true,
+      derived: { kind: 'model' as const, source: ['site'], draft: true },
+    };
+    const built = { ...draft, id: 'model-site', src: { path: 'models/site.glb' } };
+    const withModels = ProjectManifest.parse({
+      ...m,
+      layers: [...m.layers, draft, { ...built, derived: { kind: 'model', source: ['site'] } }],
+    });
+    const extra: SourceFile[] = [
+      { path: 'models/draft-site.glb', size: 11 },
+      { path: 'models/site.glb', size: 12 },
+      { path: 'models/site.procmodel.json', size: 13 },
+      { path: 'drawings/plot.dxf', size: 14 },
+      { path: 'drawings/plot/placement.json', size: 15 },
+      { path: 'change/c1-c2-issues.json', size: 16 },
+    ];
+    const p = planPackage(withModels, [...files, ...extra], []);
+    expect(p.excluded).toEqual(['model-draft-site']);
+    expect(p.manifest.layers.map((l) => l.id)).not.toContain('model-draft-site');
+    expect(p.manifest.layers.map((l) => l.id)).toContain('model-site');
+    expect(paths(p)).not.toContain('models/draft-site.glb');
+    for (const f of extra.slice(1)) expect(paths(p)).toContain(f.path);
+  });
 });

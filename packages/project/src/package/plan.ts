@@ -108,7 +108,9 @@ function ownership(layer: Layer): { files: string[]; prefixes: string[] } {
 /**
  * Decide which files a package of `manifest` carries when the layers in `exclude` are left
  * out, and how many bytes each layer brings. A file shared by several layers (one flight file
- * for many clips) stays while any of them stays.
+ * for many clips) stays while any of them stays. Draft layers (`derived.draft`, a Model builder
+ * preview nobody accepted) are always left out; the rest of the project folder travels, so
+ * `change/`, `models/` and `drawings/` go with it.
  */
 export function planPackage(
   manifest: ProjectManifest,
@@ -116,7 +118,8 @@ export function planPackage(
   exclude: readonly string[],
 ): PackagePlanResult {
   const ids = new Set(manifest.layers.map((l) => l.id));
-  const excluded = [...new Set(exclude)].filter((id) => ids.has(id));
+  const drafts = manifest.layers.filter((l) => l.derived?.draft === true).map((l) => l.id);
+  const excluded = [...new Set([...exclude, ...drafts])].filter((id) => ids.has(id));
   const out = new Set(excluded);
 
   const owned = manifest.layers.map((l) => ({ layer: l, ...ownership(l) }));
