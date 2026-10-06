@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   clearSecrets,
   maskId,
+  OTHER_MACHINE,
   REDACTED,
   redactSettings,
   redactText,
+  redactUserPaths,
   redactValue,
   registerSecret,
 } from './redact';
@@ -78,6 +80,26 @@ describe('redactText', () => {
   });
 });
 
+describe('redactUserPaths', () => {
+  it('replaces the account name in Windows, macOS and Linux home folders', () => {
+    expect(redactUserPaths('at C:\\Users\\jane\\AppData\\x.node')).toBe(
+      'at C:\\Users\\[user]\\AppData\\x.node',
+    );
+    expect(redactUserPaths('"D:/Users/jane.doe/m"')).toBe('"D:/Users/[user]/m"');
+    expect(redactUserPaths('{"p":"C:\\\\Users\\\\jane\\\\m"}')).toBe(
+      '{"p":"C:\\\\Users\\\\[user]\\\\m"}',
+    );
+    expect(redactUserPaths('open /Users/jane/m and /home/joe/w')).toBe(
+      'open /Users/[user]/m and /home/[user]/w',
+    );
+  });
+
+  it('leaves other paths and text alone', () => {
+    const text = 'E:\\Stratlas Data\\models and /opt/models and https://host/home/page';
+    expect(redactUserPaths(text)).toBe(text);
+  });
+});
+
 describe('redactValue', () => {
   it('removes secrets nested in objects and arrays', () => {
     const value = {
@@ -136,6 +158,38 @@ describe('redactSettings', () => {
     expect(out.reportBranding).toEqual({ companyName: 'set', accent: '#112233', logo: 'set' });
     expect(out._omitted).toEqual(['anthropicApiKey', 'futureToken']);
     expect(text).not.toContain('Client Co');
+  });
+
+  it('hides a local model server on another machine, keeps one on this machine', () => {
+    const lm = (baseUrl: string) =>
+      (redactSettings({ localModel: { enabled: true, baseUrl, model: 'm' } }).localModel ?? {}) as {
+        baseUrl?: unknown;
+      };
+    expect(lm('http://localhost:11434/v1').baseUrl).toBe('http://localhost:11434/v1');
+    expect(lm('http://[::1]:1234/v1').baseUrl).toBe('http://[::1]:1234/v1');
+    expect(lm('http://192.168.1.20:11434/v1').baseUrl).toBe(OTHER_MACHINE);
+    expect(lm('https://user:pw@gpu.example.com/v1').baseUrl).toBe(OTHER_MACHINE);
+  });
+
+  it('gives the detection settings with the models folder by name only', () => {
+    const out = redactSettings({
+      inference: {
+        modelsDir: 'C:\\Users\\jane\\Documents\\Detectors',
+        provider: 'cpu',
+        memoryCapMb: 2048,
+        futureSecret: 'x',
+      },
+    });
+    expect(out.inference).toEqual({
+      modelsDir: 'Detectors',
+      provider: 'cpu',
+      memoryCapMb: 2048,
+      _omitted: ['futureSecret'],
+    });
+    expect(redactSettings({ inference: { modelsDir: '/home/jane/models/' } }).inference).toEqual({
+      modelsDir: 'models',
+    });
+    expect(redactSettings({ inference: { modelsDir: '' } }).inference).toEqual({ modelsDir: '' });
   });
 
   it('returns an empty object for something that is not settings', () => {

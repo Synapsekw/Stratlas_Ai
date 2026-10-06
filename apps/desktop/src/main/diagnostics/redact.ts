@@ -1,3 +1,4 @@
+import { isLoopbackUrl } from '@aio/ai/routes';
 import type { Settings } from '@aio/schema';
 
 /**
@@ -136,6 +137,17 @@ function redactPairs(text: string): string {
   return out + text.slice(from);
 }
 
+/** Home folders with the account name in them: `C:\Users\<name>`, `/Users/<name>`, `/home/<name>`. */
+const USER_HOME = /\b([A-Za-z]:[\\/]+(?:Users|Documents and Settings)[\\/]+)[^\\/\s"'<>|:*?]+/gi;
+const POSIX_HOME = /(^|[\s"'=(:])(\/(?:Users|home)\/)[^/\s"'<>|:*?]+/g;
+
+/** Replace the account name in home-folder paths with `[user]` (model cards, runtime errors). */
+export function redactUserPaths(text: string): string {
+  return text
+    .replace(USER_HOME, (_m, head: string) => `${head}[user]`)
+    .replace(POSIX_HOME, (_m, lead: string, head: string) => `${lead}${head}[user]`);
+}
+
 /**
  * Deep copy with secrets removed: values under secret-like keys become `[redacted]`, strings are
  * scrubbed with `redactText`. Cycles and very deep values are cut off.
@@ -169,6 +181,10 @@ type Rule =
   | 'mask'
   /** Scheme, host and path; no credentials, query or fragment. */
   | 'url'
+  /** As `url` for an address on this machine; another machine's address is hidden. */
+  | 'localUrl'
+  /** The last folder name of a path only (no drive, no user name). */
+  | 'folder'
   | { fields: Record<string, Rule> };
 
 /**
@@ -184,7 +200,7 @@ export const SETTINGS_RULES = {
   localModel: {
     fields: {
       enabled: 'keep',
-      baseUrl: 'url',
+      baseUrl: 'localUrl',
       model: 'keep',
       kind: 'keep',
       contextTokens: 'keep',
@@ -203,7 +219,7 @@ export const SETTINGS_RULES = {
   reportBranding: { fields: { companyName: 'presence', accent: 'keep', logo: 'presence' } },
   reportContents: 'keep',
   change: 'keep',
-  inference: 'keep',
+  inference: { fields: { modelsDir: 'folder', provider: 'keep', memoryCapMb: 'keep' } },
 } as const satisfies Record<keyof Settings, Rule>;
 
 function safeUrl(value: unknown): unknown {
@@ -216,12 +232,28 @@ function safeUrl(value: unknown): unknown {
   }
 }
 
+/** Shown instead of a local model server address on another machine. */
+export const OTHER_MACHINE = 'another machine (address hidden)';
+
+function localUrl(value: unknown): unknown {
+  if (typeof value !== 'string' || value === '') return value;
+  return isLoopbackUrl(value) ? safeUrl(value) : OTHER_MACHINE;
+}
+
+function lastFolder(value: unknown): unknown {
+  if (typeof value !== 'string' || value.trim() === '') return value;
+  const parts = value.split(/[\\/]+/).filter((p) => p !== '' && !/^[A-Za-z]:$/.test(p));
+  return redactText(parts.at(-1) ?? '');
+}
+
 function applyRule(rule: Rule, value: unknown): unknown {
   if (value === undefined) return undefined;
   if (rule === 'keep') return redactValue(value);
   if (rule === 'presence') return value === '' || value === null ? 'not set' : 'set';
   if (rule === 'mask') return typeof value === 'string' && value ? maskId(value) : value;
   if (rule === 'url') return safeUrl(value);
+  if (rule === 'localUrl') return localUrl(value);
+  if (rule === 'folder') return lastFolder(value);
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return REDACTED;
   return pick(rule.fields, value as Record<string, unknown>);
 }
