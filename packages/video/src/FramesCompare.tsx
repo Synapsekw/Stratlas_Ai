@@ -6,7 +6,6 @@ import {
   type KeyboardEvent,
   type PointerEvent,
   type ReactNode,
-  type RefObject,
 } from 'react';
 import { homographyCss, type Homography } from './pairing';
 
@@ -97,12 +96,11 @@ const emptyText: CSSProperties = {
   textAlign: 'center',
 };
 
-/** The size of an element, followed. */
-function useSize(): [RefObject<HTMLDivElement | null>, { w: number; h: number }] {
-  const ref = useRef<HTMLDivElement>(null);
+/** The size of an element, followed (a callback ref, so a box mounted later is measured too). */
+function useSize(): [(el: HTMLDivElement | null) => void, { w: number; h: number }] {
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   useEffect(() => {
-    const el = ref.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
     const read = () => {
       setSize((s) =>
@@ -117,8 +115,8 @@ function useSize(): [RefObject<HTMLDivElement | null>, { w: number; h: number }]
     return () => {
       ro.disconnect();
     };
-  }, []);
-  return [ref, size];
+  }, [el]);
+  return [setEl, size];
 }
 
 export function FramesCompare({

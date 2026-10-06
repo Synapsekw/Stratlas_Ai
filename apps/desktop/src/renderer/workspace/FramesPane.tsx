@@ -290,7 +290,7 @@ export function FramesPane() {
             <Icon name="back" size={14} />
           </button>
         )}
-        <span className="mono" data-testid="frames-a">
+        <span className="mono" data-testid="frames-a-label">
           {aText || aLayer.name}
         </span>
         {aSet && (
