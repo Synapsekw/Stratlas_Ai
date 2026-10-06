@@ -48,6 +48,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
+import { CloudChangeLegend } from '../change/producers/CloudChangeLegend';
 import { EnvironmentTool, useStageEnvironment } from '../environment/EnvironmentTool';
 import { FocusZone } from '../FocusZone';
 import {
@@ -165,6 +166,7 @@ function ScenePane({
       <StageElevationLegend />
       <VolumetricStage stage={engine} />
       <StageClassLegend />
+      <CloudChangeLegend />
       {corner}
     </FocusZone>
   );
