@@ -11,6 +11,7 @@
     "preview": "electron-vite preview",
     "test": "vitest run",
     "test:e2e": "electron-vite build && playwright test",
+    "guide:pdf": "electron-vite build && node ../../tools/guide/build-pdf.mjs",
     "dist:win": "electron-vite build && node ../../tools/release/dist.mjs --win",
     "dist:config": "node ../../tools/release/brand-config.mjs --print",
     "dist:win:store": "electron-vite build && node ../../tools/release/dist.mjs --win appx",

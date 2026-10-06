@@ -1,7 +1,7 @@
 import type { MenuItemConstructorOptions } from 'electron';
 
 /** Menu items the renderer carries out (the `app:menu` event). */
-export type MenuAction = 'settings' | 'palette' | 'reportProblem' | 'exportDiagnostics';
+export type MenuAction = 'settings' | 'palette' | 'guide' | 'reportProblem' | 'exportDiagnostics';
 
 export interface MenuOptions {
   platform: NodeJS.Platform;
@@ -42,6 +42,16 @@ export function menuTemplate(o: MenuOptions): Item[] {
   // Help on every platform. Windows and Linux windows drop the menu bar (removeMenu), so there the
   // same actions also live in the palette and Settings.
   const help: Item[] = [
+    {
+      label: 'User guide',
+      accelerator: 'F1',
+      // The renderer owns F1 (also where the menu bar is hidden); the menu only shows it.
+      registerAccelerator: false,
+      click: () => {
+        o.send('guide');
+      },
+    },
+    { type: 'separator' },
     {
       label: 'Report a problem…',
       click: () => {

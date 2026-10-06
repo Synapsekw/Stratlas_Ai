@@ -8,6 +8,7 @@ import { actionAllowed, allowedActions } from '../exports/exportModel';
 import { runExportAction } from '../exports/exports';
 import { builder } from '../builder/state';
 import { diagnostics } from '../diagnostics/state';
+import { help } from '../help/store';
 import { legacyLayers } from '../legacy';
 import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
@@ -80,6 +81,15 @@ export function Palette() {
     const action = (id: string, title: string, icon: IconName, run: () => void, hint?: string) => {
       list.push({ id, title, group: 'Actions', icon, run, ...(hint ? { hint } : {}) });
     };
+    action(
+      'help',
+      t('help.open'),
+      'search',
+      () => {
+        help.getState().openHelp();
+      },
+      shortcutHint('global.help'),
+    );
     action(
       'sidebar',
       'Toggle sidebar',

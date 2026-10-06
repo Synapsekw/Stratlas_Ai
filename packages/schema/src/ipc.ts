@@ -1174,9 +1174,9 @@ export const ipcEvents = {
   'app:reportProblem': z.object({}).strict(),
   /** A second launch (double-clicked `.aio`) handed its path to this instance. */
   'app:openPath': z.object({ path: z.string().min(1) }),
-  /** An application menu item the renderer carries out (Settings…, Search Commands…, Export diagnostics…). */
+  /** An application menu item the renderer carries out (Settings…, Search Commands…, User guide, Export diagnostics…). */
   'app:menu': z.object({
-    action: z.enum(['settings', 'palette', 'exportDiagnostics']),
+    action: z.enum(['settings', 'palette', 'guide', 'exportDiagnostics']),
   }),
   /** Download progress of `update:downloadAndInstall`. */
   'update:progress': z.object({

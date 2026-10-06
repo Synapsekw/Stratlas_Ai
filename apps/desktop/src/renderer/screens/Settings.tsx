@@ -27,6 +27,8 @@ import { setAuthorName, useAuthor } from '../author';
 import { GPU_TIERS, TIER_ORDER, graphics, useGraphics, type GpuTier } from '../graphics';
 import { cloudAiBlocked } from '../player';
 import { bridge, shell, useCall, useShell } from '../shell';
+import { HelpLink } from '../help/HelpPanel';
+import { SETTINGS_HELP } from '../help/store';
 import { About } from './settings/About';
 import { Appearance } from './settings/Appearance';
 import { Keyboard } from './settings/Keyboard';
@@ -927,6 +929,7 @@ export function SettingsScreen() {
               <h1>{t(HEAD[page].title)}</h1>
               <p>{t(HEAD[page].text, { product: brand.productName })}</p>
             </div>
+            {SETTINGS_HELP[page] && <HelpLink topic={SETTINGS_HELP[page]} />}
           </header>
           {error && (
             <p className="notice warn" role="status">

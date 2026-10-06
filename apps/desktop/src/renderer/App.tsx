@@ -41,6 +41,8 @@ import { UnlockDialog } from './shell/UnlockDialog';
 import { Sidebar } from './shell/Sidebar';
 import { TitleBar } from './shell/TitleBar';
 import { applyAppearance, OS_QUERIES } from './theme';
+import { HelpPanel } from './help/HelpPanel';
+import { help } from './help/store';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
 import { BuilderLayer } from './builder/BuilderLayer';
 import { Lightbox } from './issueCard/Lightbox';
@@ -54,7 +56,12 @@ import { startCardFocus } from './issueCard/state';
 function onKeyDown(e: KeyboardEvent) {
   const s = shell.getState();
   const id = matchShortcut('global', e);
-  if (id === 'global.palette') {
+  if (id === 'global.help') {
+    e.preventDefault();
+    const h = help.getState();
+    if (h.open) h.closeHelp();
+    else h.openHelp();
+  } else if (id === 'global.palette') {
     e.preventDefault();
     s.setPalette(!s.paletteOpen);
   } else if (id === 'global.rightPanel') {
@@ -136,6 +143,7 @@ function followMenu(): () => void {
   return window.aio.on('app:menu', ({ action }) => {
     const s = shell.getState();
     if (action === 'settings') s.go('settings');
+    else if (action === 'guide') help.getState().openHelp();
     else if (action === 'exportDiagnostics') void exportDiagnosticsFromMenu();
     else s.setPalette(true);
   });
@@ -321,6 +329,7 @@ export function App() {
       <Lightbox />
       <ReportProblemDialog />
       <CrashNotice />
+      <HelpPanel />
     </div>
   );
 }

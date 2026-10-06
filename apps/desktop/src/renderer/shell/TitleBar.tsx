@@ -5,6 +5,7 @@ import { Fragment } from 'react';
 import { cloudAiBlocked } from '../player';
 import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
+import { help } from '../help/store';
 
 const VIEW_LABEL: Record<Screen, MessageKey> = {
   projects: 'nav.projects',
@@ -82,6 +83,19 @@ export function TitleBar() {
         <Icon name="search" size={14} />
         {t('titlebar.search')}
         <span className="kbd">{shortcutHint('global.palette')}</span>
+      </button>
+      <button
+        className="help-btn"
+        type="button"
+        onClick={() => {
+          help.getState().openHelp();
+        }}
+        aria-keyshortcuts="F1"
+        aria-label={t('help.open')}
+        title={t('help.open')}
+        data-testid="help-open"
+      >
+        ?
       </button>
       <div className="tb-status">
         {pkg && (

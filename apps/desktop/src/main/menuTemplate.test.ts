@@ -58,18 +58,23 @@ describe('menuTemplate on macOS', () => {
     expect(send).toHaveBeenCalledWith('palette');
   });
 
-  it('offers Report a problem and Export diagnostics in Help', () => {
+  it('offers the user guide, Report a problem and Export diagnostics in Help', () => {
     const { menu, send } = mac();
     const help = sub(menu[5]);
     expect(names(help)).toEqual([
       'Search Commands…',
       'separator',
+      'User guide',
+      'separator',
       'Report a problem…',
       'Export diagnostics…',
     ]);
+    const guide = help.find((i) => i.label === 'User guide');
+    expect(guide).toMatchObject({ accelerator: 'F1', registerAccelerator: false });
+    press(guide);
     press(help.find((i) => i.label === 'Report a problem…'));
     press(help.find((i) => i.label === 'Export diagnostics…'));
-    expect(send.mock.calls).toEqual([['reportProblem'], ['exportDiagnostics']]);
+    expect(send.mock.calls).toEqual([['guide'], ['reportProblem'], ['exportDiagnostics']]);
   });
 
   it('keeps DevTools out of release builds', () => {

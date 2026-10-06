@@ -89,6 +89,7 @@ export const SHORTCUTS = [
     label: 'keys.global.rightPanel',
   },
   { id: 'global.playPause', scope: 'global', keys: ['Space'], label: 'keys.global.playPause' },
+  { id: 'global.help', scope: 'global', keys: ['F1'], label: 'keys.global.help' },
 
   // the 3D, map and split stage
   { id: 'scene.mode3d', scope: 'scene', keys: ['1'], label: 'keys.scene.mode3d' },
@@ -484,6 +485,7 @@ const NAMED: Record<string, readonly string[]> = {
   PageDown: ['PageDown'],
   Home: ['Home'],
   End: ['End'],
+  F1: ['F1'],
   Plus: ['+', '='],
   Minus: ['-', '_'],
 };
