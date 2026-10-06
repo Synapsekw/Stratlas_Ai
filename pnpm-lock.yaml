@@ -231,6 +231,9 @@ importers:
       '@aio/ui':
         specifier: workspace:*
         version: link:../ui
+      '@aio/video':
+        specifier: workspace:*
+        version: link:../video
       '@aio/workspace':
         specifier: workspace:*
         version: link:../workspace

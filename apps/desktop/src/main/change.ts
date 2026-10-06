@@ -19,13 +19,28 @@ import {
   type Vec3,
 } from '@aio/schema';
 import { captureIndex } from '@aio/workspace/captures';
-import { mkdir, readdir, readFile } from 'node:fs/promises';
+import { imageSize } from '@aio/project/image';
+import { mkdir, open, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { folderFiles, readDetectionPasses } from './detections';
 import { readJson, writeJsonAtomic } from './fsutil';
 import type { Handle } from './notYet';
 import { readIssues, readManifest, type ProjectRegistry } from './project';
 import { resolveInside } from './protocol/paths';
+
+/** Enough of a photo file for its size (JPEG frames come after the EXIF block). */
+const HEAD_BYTES = 256 * 1024;
+
+async function readHead(path: string, bytes: number): Promise<Uint8Array> {
+  const f = await open(path, 'r');
+  try {
+    const buf = new Uint8Array(bytes);
+    const { bytesRead } = await f.read(buf, 0, bytes, 0);
+    return buf.subarray(0, bytesRead);
+  } finally {
+    await f.close();
+  }
+}
 
 export interface Archive {
   entries: ReadonlyMap<string, unknown>;
@@ -232,6 +247,16 @@ export function registerChangeIpc(deps: ChangeIpcDeps): void {
           passes: async () => {
             const r = await readDetectionPasses(folderFiles(root), m, false);
             return r.ok ? r.files : [];
+          },
+          photoSize: async (_layer, photo) => {
+            const src = photo.src as { path?: unknown } | undefined;
+            if (typeof src?.path !== 'string') return null;
+            const p = await resolveInside(root, src.path.replace(/\\/g, '/'));
+            if (!p.ok) return null;
+            const size = imageSize(
+              await readHead(p.path, HEAD_BYTES).catch(() => new Uint8Array()),
+            );
+            return size ? ([size.width, size.height] as const) : null;
           },
           geojson: async (layer) => {
             if (!('path' in layer.src)) return null;

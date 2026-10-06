@@ -8,5 +8,10 @@
     "types": ["node"]
   },
   "include": ["src"],
-  "references": [{ "path": "../schema" }, { "path": "../ui" }, { "path": "../workspace" }]
+  "references": [
+    { "path": "../schema" },
+    { "path": "../ui" },
+    { "path": "../video" },
+    { "path": "../workspace" }
+  ]
 }

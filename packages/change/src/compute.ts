@@ -8,7 +8,7 @@ import type {
   ProjectManifest,
   Vec3,
 } from '@aio/schema';
-import { detectionChanges, type DetectionPass } from './detections';
+import { detectionChanges, photoDetectionLocator, type DetectionPass } from './detections';
 import { issueChanges } from './issues';
 import {
   changeSetId,
@@ -35,6 +35,14 @@ export interface ComputeSources {
   thresholds: ChangeThresholds;
   issues(): Promise<readonly Issue[]>;
   passes(): Promise<readonly DetectionPass[]>;
+  /**
+   * Width and height in pixels of a photo file (to place its detections on the ground); without
+   * it, detections count per class and zone only.
+   */
+  photoSize?(
+    layer: string,
+    photo: { id: string; src: unknown },
+  ): Promise<readonly [number, number] | null>;
   /** The GeoJSON of a vector layer (null when it cannot be read). */
   geojson(layer: VectorLayer): Promise<unknown>;
   /** The set already written under this id, if any. */
@@ -90,12 +98,22 @@ export async function computeInApp(
         thresholds: src.thresholds,
       });
     } else if (kind === 'detection') {
+      const passes = await src.passes();
       items = detectionChanges({
         manifest: src.manifest,
         index: src.index,
-        passes: await src.passes(),
+        passes,
         from,
         to,
+        ...(src.photoSize
+          ? {
+              locate: await photoDetectionLocator(
+                src.manifest,
+                passes,
+                (l, p) => src.photoSize?.(l, p) ?? Promise.resolve(null),
+              ),
+            }
+          : {}),
       });
     } else {
       items = [];

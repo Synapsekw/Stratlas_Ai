@@ -1,7 +1,7 @@
 import type { Detection, DetectionsFile } from '@aio/schema';
 import { captureIndex } from '@aio/workspace/captures';
 import { describe, expect, it } from 'vitest';
-import { detectionChanges } from './detections';
+import { detectionChanges, photoDetectionLocator } from './detections';
 import { SITE } from './testing';
 
 const det = (photo: string, cls: string, extra: Partial<Detection> = {}): Detection => ({
@@ -69,5 +69,46 @@ describe('detection change per class and zone', () => {
       passes: [{ name: 'first.json', file: pass('photos-d1', [det('photos-d1-0', 'coating')]) }],
     });
     expect(r.map((i) => i.verdict)).toEqual(['not-seen']);
+  });
+
+  it('joins detections of posed photos by the place on the ground they show', async () => {
+    const passes = [
+      {
+        name: 'first.json',
+        file: pass('photos-d1', [
+          det('photos-d1-0', 'marker', { id: 'a', bbox: [490, 490, 510, 510] }),
+          det('photos-d1-1', 'marker', { id: 'b', bbox: [495, 495, 505, 505] }),
+          det('photos-d1-1', 'marker', { id: 'c', component: 'T-101' }),
+        ]),
+      },
+      {
+        name: 'second.json',
+        file: pass('photos-d2', [
+          det('photos-d2-0', 'marker', { id: 'x', bbox: [500, 500, 520, 520] }),
+          det('photos-d2-2', 'marker', { id: 'y', bbox: [490, 490, 510, 510] }),
+          det('photos-d2-1', 'marker', { id: 'z', component: 'T-101' }),
+        ]),
+      },
+    ];
+    const sizes: string[] = [];
+    const locate = await photoDetectionLocator(SITE, passes, (layer, photo) => {
+      sizes.push(`${layer}/${photo.id}`);
+      return Promise.resolve([1000, 1000] as const);
+    });
+    const items = detectionChanges({ manifest: SITE, index, from: 'd1', to: 'd2', passes, locate });
+    expect(items.map((i) => [i.zone, i.verdict, i.method, i.at])).toEqual([
+      ['place at x 0 m, z 0 m', 'unchanged', 'place', [0.42, 0, 0.28]],
+      ['place at x 20 m, z 0 m', 'resolved', 'place', [20, 0, 0]],
+      ['place at x 40 m, z 0 m', 'new', 'place', [40, 0, 0]],
+      ['T-101', 'unchanged', 'zone', undefined],
+    ]);
+    // each photo's size is read once
+    expect(sizes.sort()).toEqual([
+      'photos-d1/photos-d1-0',
+      'photos-d1/photos-d1-1',
+      'photos-d2/photos-d2-0',
+      'photos-d2/photos-d2-1',
+      'photos-d2/photos-d2-2',
+    ]);
   });
 });

@@ -14,6 +14,7 @@
   "dependencies": {
     "@aio/schema": "workspace:*",
     "@aio/ui": "workspace:*",
+    "@aio/video": "workspace:*",
     "@aio/workspace": "workspace:*",
     "react": "^19.3.0",
     "zustand": "^5.0.15"
