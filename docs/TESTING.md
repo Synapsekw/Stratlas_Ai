@@ -36,7 +36,7 @@ Only what still needs testing. Each stage lists what to click and what you shoul
 | M5    | Fixes from the M4 feedback: Masafi, DAMAC, video, layers, cut-away, split, sky and water, report branding                                                                                                        | The M5 installer, built 4 Oct 2026 after the sky and water merge (commit `862c9df`) or later                                  | Not yet tested (skipped for now)                     |
 | M6    | Builder completion: pipelines from raw data, detection review, AI detection, report text and project report, video calibration, packages and map packs                                                           | The M6 installer, built 4 Oct 2026 from main at commit `4624bf2` or later, and pipeline pack 0.2.0 (see M6, Before you start) | In progress: founder testing; feedback fixed in M6.1 |
 | M6.1  | Your M6 feedback: point size, issue and photo opening, Media highlights, HCl flicker and nadir photos, dark maps, Al-Zour drone trace and photo icons, agent camera moves, Masafi piles and ramps, compare dates | The installer built 5 Oct 2026, 18:00, from main at commit `a8e7b43` or later                                                 | All nine fixes merged; not yet tested by the founder |
-| M7    | Release 0.7.0: version and updates, demo project and first start, diagnostics and crash reports, graphics tiers, accessibility and keyboard, user guide                                                          | Version 0.7.0, built 6 Oct 2026, 08:45, from main at commit `af820d6`                                                         | Built; not yet tested by the founder                 |
+| M7    | Signed builds and updates only (the rest of M7 passed on 6 Oct 2026)                                                                                                                                             | Needs the signing secrets in GitHub and a second version                                                                      | Waiting for signing                                  |
 
 ## Stage M5: your M4 feedback, fixed
 
@@ -293,56 +293,11 @@ Build: the M6.1 installer, 5 Oct 2026, from main at commit `c0fda90` or later. A
 - [ ] 1st Ring Road, open a defect: **Recorded** shows 2 Apr 2024 (the local day), not 1 Apr.
 - [ ] **Settings, Report branding**: type a company name, press **Enter**, then pick a logo straight away: the report keeps both.
 
-## Stage M7: release 0.7.0
+## Stage M7 (later): signed builds and updates
 
-Install `Stratlas-0.7.0-win-x64-setup.exe` over the previous version. Windows has no menu bar, so the Help items (User guide, Report a problem, Export diagnostics) are in **Ctrl+K** and in **Settings**.
+The rest of M7 passed on 6 Oct 2026. These need the signing secrets in GitHub (`docs/release/SECRETS.md`) and a second version, so they wait:
 
-### Version and updates
-
-- [ ] **Settings, About and updates** shows version 0.7.0 and "What's new in 0.7.0" (New, Fixed).
-- [ ] The **Previous version** card says no previous version is kept yet.
-
-### Demo project and first start
-
-- [ ] **Projects** lists the demo projects next to your own: **Demo tank farm** and **Demo access road**.
-- [ ] Open **Demo tank farm**: the model, the 24 s orbit video with its overlay on the model, the point cloud, and 6 issues with photos. Open an issue photo.
-- [ ] In the demo tank farm, switch between the two survey dates of the stockpiles.
-- [ ] Open **Demo access road**: the ortho and "14 of 14 defects".
-- [ ] First-start welcome: in **Settings, Data folder**, pick a new empty folder (for example `E:\Stratlas Test`). The app shows **Welcome to Stratlas**, lists what this PC is missing (data folder, map packs, pipeline pack, network) and offers **Open the demo project**. Switch the data folder back to `E:\Stratlas Data` afterwards.
-- [ ] With the empty data folder, the map still opens without a map pack; only the project's own layers are drawn.
-
-### Diagnostics and crash reports
-
-- [ ] **Settings, About and updates, Export diagnostics**: open the zip. It holds logs, graphics information and update state, and no API keys; the workspace ID is masked.
-- [ ] **Ctrl+K, Report a problem**: fill it in and save. The zip holds `problem.md` with your text.
-- [ ] End Stratlas in Task Manager, then start it: "Stratlas closed unexpectedly last time" with **Save a report** and **Dismiss**.
-
-### Graphics
-
-- [ ] **Settings, Graphics** shows the tier in use, installed memory and the limits for that tier.
-- [ ] If you have a laptop with integrated graphics (Intel Iris Xe, Radeon 680M): every project opens at Low without crashing.
-
-### Keyboard and accessibility
-
-- [ ] Keyboard only: **Tab** to the stage toolbar, **Left** and **Right** move between tools, **Enter** on Layers opens it with focus inside; **Tab** stays inside; **Esc** closes it and returns focus to the tool. The same for New project, **Ctrl+K** and Export.
-- [ ] **Settings, Keyboard**: type "measure"; the list filters.
-- [ ] **Settings, Appearance**: turn on **Increase contrast** and **Reduce motion**. Press **H** in the scene: the view jumps instead of flying.
-- [ ] Narrator (**Win+Ctrl+Enter**): the screen heading is read when you switch screens; a ticked issue row reads "checked"; a finished job is announced.
-- [ ] Windows high contrast: pressed tools show an outline.
-- [ ] Changes you may notice: the faintest text is brighter; **Shift** plus a letter no longer runs the plain-letter shortcut; **Space** on an issue row ticks it without playing the video.
-
-### User guide
-
-- [ ] **F1** (or **?** in the title bar): search "workspace id", press **Enter**: the guide opens at the Anthropic workspace ID section.
-- [ ] **Esc** clears the search; **Esc** again closes the guide.
-- [ ] **Settings, Graphics quality, ?**: the guide opens at Graphics quality.
-- [ ] Masafi, **Compare dates, ?**: the Compare dates chapter.
-- [ ] The guide's screenshots show the demo tank farm, and its keyboard chapter matches **Settings, Keyboard**.
-- [ ] The PDF `apps\desktop\dist\Stratlas-0.7.0-user-guide.pdf` opens and matches the in-app guide.
-
-### Later, once builds are signed
-
-These need the signing secrets in GitHub (`docs/release/SECRETS.md`) and a second version, so they wait:
-
-- Online update from 0.7.0 to a newer version, **Return to 0.7.0**, and the "did not start correctly" offer after a failed first start.
-- Signed installer showing Synapse Solutions; macOS dmg (Apple silicon and Intel), `.aio` double-click and `stratlas://` links; the Store submission checklist (`docs/release/STORE-SUBMISSION.md`).
+- [ ] Online update from 0.7.0 to a newer version, **Return to 0.7.0**, and the "did not start correctly" offer after a failed first start.
+- [ ] Signed installer showing Synapse Solutions.
+- [ ] macOS dmg (Apple silicon and Intel), `.aio` double-click and `stratlas://` links.
+- [ ] The Store submission checklist (`docs/release/STORE-SUBMISSION.md`).

@@ -10,7 +10,7 @@ import {
   shortcutHint,
 } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { builder } from '../builder/state';
 import { build, formatBuildTime } from '../buildStamp';
 import { shell, useCall, useShell } from '../shell';
@@ -334,6 +334,19 @@ export function ProjectsScreen() {
   const currentRoot = useWorkspace((s) => s.project?.root);
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<Sort>('recent');
+
+  // read the data folder again whenever the library is shown or the window comes back, so a
+  // project copied into it while Stratlas runs appears without a restart
+  useEffect(() => {
+    const reload = () => {
+      void shell.getState().loadLibrary();
+    };
+    reload();
+    window.addEventListener('focus', reload);
+    return () => {
+      window.removeEventListener('focus', reload);
+    };
+  }, []);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
