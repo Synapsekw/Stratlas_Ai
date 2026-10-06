@@ -9,7 +9,7 @@
  * The video window and the real-data popovers run on HCl where E:\Stratlas Data has it.
  */
 import { ProjectManifest, type ProjectManifestInput } from '@aio/schema';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { copyFile, mkdir, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -134,8 +134,8 @@ async function openProject(win: Page, name: string) {
  * A stage popover opened from its tool by keyboard: focus moves inside, Tab stays inside, Esc
  * closes it and focus is back on the tool. Audits the open popover.
  */
-async function popoverByKeyboard(win: Page, label: string) {
-  const tool = win.locator('.stbar').getByRole('button', { name: label, exact: true });
+async function popoverByKeyboard(win: Page, label: string, within?: Locator) {
+  const tool = (within ?? win.locator('.stbar')).getByRole('button', { name: label, exact: true });
   await tool.focus();
   await win.keyboard.press('Enter');
   const pop = win.getByRole('dialog', { name: label });
@@ -289,6 +289,7 @@ test.describe('a synthetic project', () => {
   });
 
   test('scene, stage tools and popovers, issue card, photo and every project screen', async ({
+    app,
     win,
   }) => {
     await openProject(win, 'E2E accessibility');
@@ -303,21 +304,64 @@ test.describe('a synthetic project', () => {
     await win.keyboard.press('ArrowLeft');
     await expect(bar.getByRole('button', { name: '3D' })).toBeFocused();
 
-    const opened: string[] = [];
-    for (const label of [
+    // Every stage popover, wherever the window width puts its tool: on the bar, or folded into
+    // More tools. How many fold depends on the window, and the window on the screen (the macOS
+    // runner's display is smaller than the default 1440 x 900, so the window opens narrower than
+    // on Windows), so the bar is walked first at the size the window got, then again at the
+    // smallest window the app allows, where tools fold on every platform.
+    const POPOVERS = [
       'View presets',
       'Layers and issue pins',
       'Point cloud',
       'Environment and time of day',
       'See inside the asset: cut or transparent',
-    ]) {
-      const tool = bar.getByRole('button', { name: label, exact: true });
-      if ((await tool.count()) === 0 || !(await tool.isEnabled())) continue;
-      await popoverByKeyboard(win, label);
-      opened.push(label);
+    ];
+    const opened = new Set<string>();
+    const walkBar = async () => {
+      for (const label of POPOVERS) {
+        const tool = bar.getByRole('button', { name: label, exact: true });
+        if ((await tool.count()) === 0 || !(await tool.isEnabled())) continue;
+        await popoverByKeyboard(win, label);
+        opened.add(label);
+      }
+    };
+    await walkBar();
+    const size = await app.evaluate(({ BrowserWindow }) => {
+      const w = BrowserWindow.getAllWindows()[0];
+      if (!w) return null;
+      const before = w.getContentSize();
+      const [minW = 0, minH = 0] = w.getMinimumSize();
+      w.setContentSize(minW, minH);
+      return before;
+    });
+    const more = bar.getByRole('button', { name: 'More tools', exact: true });
+    await expect(more, 'tools fold into More tools in the smallest window').toBeVisible();
+    await walkBar();
+    // the folded tools, from inside the More tools popover; Esc closes the inner popover first
+    const folded: string[] = [];
+    for (const label of POPOVERS) {
+      await more.focus();
+      await win.keyboard.press('Enter');
+      const menu = win.getByRole('dialog', { name: 'More tools' });
+      await expect(menu).toBeVisible();
+      const tool = menu.getByRole('button', { name: label, exact: true });
+      if ((await tool.count()) > 0 && (await tool.isEnabled())) {
+        await popoverByKeyboard(win, label, menu);
+        await expect(menu, `More tools stays open after closing ${label}`).toBeVisible();
+        folded.push(label);
+        opened.add(label);
+      }
+      await win.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
+      await expect(more).toBeFocused();
     }
-    // narrow windows fold some groups into More tools; the rest open from the bar
-    expect(opened.length, `popovers opened: ${opened.join(', ')}`).toBeGreaterThanOrEqual(3);
+    expect(folded.length, 'popovers opened from More tools').toBeGreaterThan(0);
+    expect([...opened].sort(), `popovers opened: ${[...opened].join(', ')}`).toEqual(
+      [...POPOVERS].sort(),
+    );
+    await app.evaluate(({ BrowserWindow }, s) => {
+      if (s) BrowserWindow.getAllWindows()[0]?.setContentSize(s[0] ?? 1440, s[1] ?? 900);
+    }, size);
 
     // the issue card from the register, its photo full size, and back
     await win.getByRole('tab', { name: /Issues/ }).click();
