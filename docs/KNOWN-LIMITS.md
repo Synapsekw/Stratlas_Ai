@@ -57,6 +57,10 @@ Current limits only; each is removed from this list when fixed.
 - Surface change reports a height offset between the dates under 5 cm but does not correct it.
 - A change heat map layer counts for both dates until it is given a survey date (**Belongs to date...**).
 - Nearest-neighbour distance overstates change on sparse clouds, and between clouds of very different density.
+- Surface change from a sparse point cloud (a few points per square metre) averages roof and wall points into ground cells at object edges: on the demo change site its volumes are up to a third off, against a few per cent from the height grids. Use a DSM when there is one.
+- On sparse clouds, cloud change misses small low changes (the demo's new excavation) and reports small extra regions where the later survey sees faces the earlier one did not.
+- Detections count per place on the ground only on posed photos and assume flat ground at the project origin height; on sloping sites one thing may count as two places.
+- A model part counts as changed when 1 m2 of its surface, or 1% of it, deviates by more than the threshold (5 cm); the 1 m2 rule is a working default.
 - A horizontal shift on flat ground is invisible to cloud change: the points still lie on the same plane.
 - A moved object shows as two cloud change regions (new where it is, gone where it was), not as one move.
 - The cloud registration check reads only a 40 m square at the centre of the overlap.
