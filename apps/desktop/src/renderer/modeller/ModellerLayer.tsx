@@ -298,7 +298,9 @@ function PlaceDrawing({ drawing, onDone }: { drawing: DrawingInfo; onDone: () =>
             <tr>
               <th>Drawing x, y</th>
               <th>Site x, z</th>
-              <th />
+              <th>
+                <span className="sr-only">Remove</span>
+              </th>
             </tr>
           </thead>
           <tbody>
