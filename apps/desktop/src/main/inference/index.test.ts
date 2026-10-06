@@ -143,6 +143,7 @@ describe('inference IPC', () => {
     const r = await ipcOf().call('inference:models', {});
     expect(r.runtime).toMatchObject({ available: true, provider: 'cpu' });
     expect(r.runtime.version).toMatch(/^\d+\.\d+/);
+    expect(r.runtime.backends).toContain('cpu');
     expect(r.models).toEqual([]);
   });
 });

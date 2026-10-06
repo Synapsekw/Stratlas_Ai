@@ -5,7 +5,7 @@
  * inference process serves detection and mask assist; it starts on first use.
  */
 import { brand } from '@aio/brand';
-import type { DetectionsFile, IpcEvent, Settings } from '@aio/schema';
+import type { DetectionsFile, DetectorModelInfo, IpcEvent, Settings } from '@aio/schema';
 import { DetectionsFile as DetectionsFileSchema } from '@aio/schema';
 import { app, nativeImage, utilityProcess } from 'electron';
 import { readFile } from 'node:fs/promises';
@@ -17,6 +17,7 @@ import type { ProjectRegistry } from '../project';
 import { readManifest } from '../project';
 import { resolveInside } from '../protocol/paths';
 import type { InferenceEnv } from './index';
+import { listModels } from './models';
 import { createInferenceHost, remoteOrt, type ChildLike, type InferenceHost } from './utility';
 import type { FromWorker, ToWorker } from './worker';
 
@@ -68,6 +69,19 @@ function spawnWorker(): ChildLike {
 export function inferenceHost(): InferenceHost {
   host ??= createInferenceHost(spawnWorker);
   return host;
+}
+
+let currentEnv: InferenceEnv | null = null;
+
+/** What the inference host knows, without starting it (null: not made in this run). */
+export function inferenceKnown(): ReturnType<InferenceHost['known']> | null {
+  return host?.known() ?? null;
+}
+
+/** The installed detector models (reads the model folders; never starts the runtime). */
+export async function installedModels(): Promise<DetectorModelInfo[]> {
+  if (!currentEnv) return [];
+  return (await listModels(await currentEnv.dirs())).map((m) => m.info);
 }
 
 /** onnxruntime for mask assist, running in the inference process (null when unavailable). */
@@ -170,5 +184,6 @@ export function electronInference(deps: ElectronInferenceDeps): { env: Inference
       utilityLog()?.write('info', [message]);
     },
   };
+  currentEnv = env;
   return { env };
 }

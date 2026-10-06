@@ -51,11 +51,17 @@ import {
 import { builderPipelineJobs } from './builderJobs';
 import { registerChangeIpc } from './change';
 import { registerInferenceIpc } from './inference';
-import { electronInference } from './inference/electron';
-import { registerLocalModelsIpc } from './localModels';
+import {
+  electronInference,
+  inferenceHost,
+  inferenceKnown,
+  installedModels,
+} from './inference/electron';
+import { registerLocalModelsIpc, type LocalServerSeen } from './localModels';
 import { readCloudDrawings, registerModelBuilderIpc } from './modelBuilder';
 import { importLogo, removeLogo } from './branding';
 import { putThumb } from './thumbs';
+import { RENDERER_PROBE, smokeProbe, writeSmokeReport } from './smoke';
 import { nativeImageOps } from './images';
 import { validated, type Handler } from './ipc';
 import { findPack, JobRunner, JobStore, openTarget, safeJobEvent } from './jobs';
@@ -64,6 +70,7 @@ import { addToLibrary, createLibraryStore, listLibrary } from './library';
 import { captureConsole, exportLogs } from './logs';
 import { openProjectSizes } from './diagnostics/bundle';
 import { createCrashStore } from './diagnostics/crash';
+import { localAiSection, packageVersionOf } from './diagnostics/localAi';
 import {
   createProcessLogs,
   installCrashHandlers,
@@ -190,6 +197,8 @@ const bundledDemos = () =>
 /** Thumbnails the renderer generated for project images without their own (Media). */
 const thumbsDir = () => join(app.getPath('userData'), 'cache', 'thumbs');
 const policy = new ProjectPolicy(registry);
+/** The last local model server discovery reached in this run (kind and version, for diagnostics). */
+let localServerSeen: LocalServerSeen | null = null;
 // A `.aio` the app was started with (double-click); the renderer takes it once at start.
 let pendingOpenPath: string | null =
   packagePathFromArgv(process.argv) ?? linkPathFromArgv(process.argv, brand.urlScheme);
@@ -715,6 +724,14 @@ function registerIpc(): void {
       packs: () => packs.list(),
       jobs: () => jobs.list(),
       updates: () => updates.status(),
+      localAi: () =>
+        localAiSection({
+          settings: settings.current(),
+          runtime: inferenceKnown(),
+          packageVersion: packageVersionOf('onnxruntime-node'),
+          models: installedModels,
+          server: localServerSeen,
+        }),
       projects: (current) =>
         openProjectSizes(
           projectNames.keys(),
@@ -958,6 +975,9 @@ function registerIpc(): void {
     handle,
     localModel: () => settings.current().localModel,
     cloudAllowed: () => policy.cloudAllowed(settings.current().cloudAi),
+    remember: (server) => {
+      localServerSeen = server;
+    },
     getKey: async () => {
       const key = await keys.getKey('local');
       registerSecret(key);
@@ -1073,7 +1093,9 @@ function createWindow(): BrowserWindow {
   if (process.env.STRATLAS_SMOKE === '1') {
     win.webContents.once('did-finish-load', () => {
       setTimeout(() => {
-        app.exit(0);
+        void smokeReport(win).finally(() => {
+          app.exit(0);
+        });
       }, 1500);
     });
     win.webContents.once('render-process-gone', () => {
@@ -1083,6 +1105,24 @@ function createWindow(): BrowserWindow {
   if (devUrl) void win.loadURL(devUrl);
   else void win.loadFile(join(import.meta.dirname, '../renderer/index.html'));
   return win;
+}
+
+/**
+ * Release smoke check with `STRATLAS_SMOKE_REPORT`: the local detection runtime's answer, asked
+ * from the window like Settings does, written for tools/release/smoke-packaged.mjs.
+ */
+async function smokeReport(win: BrowserWindow): Promise<void> {
+  const path = process.env.STRATLAS_SMOKE_REPORT;
+  if (!path) return;
+  const report = await smokeProbe({
+    fromRenderer: () => win.webContents.executeJavaScript(RENDERER_PROBE) as Promise<unknown>,
+    fromMain: async () => ({
+      runtime: await inferenceHost().probe(settings.current().inference?.provider ?? 'auto'),
+    }),
+  });
+  await writeSmokeReport(path, report).catch((e: unknown) => {
+    appLog.write('error', ['The smoke report could not be written', e]);
+  });
 }
 
 /** Offline by construction: the renderer may reach only the app, aio:// and the dev server. */

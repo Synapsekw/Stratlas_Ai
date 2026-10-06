@@ -186,6 +186,28 @@ describe('diagnostics bundle', () => {
     expect(system.graphics.report).toMatchObject({ pointCap: 2_000_000, limits: ['memory'] });
   });
 
+  it('carries the local AI section, scrubbed, and lists it in the README', async () => {
+    const src = await sources();
+    src.localAi = () => ({
+      onnxRuntime: { state: 'not started', packageVersion: '1.30.0' },
+      detectorModels: [],
+      localAgent: { enabled: false, kind: 'not found yet', note: `key ${KEY}` },
+    });
+    const files = await collectBundle(src);
+    const read = (n: string) => files.find((f) => f.name === n)?.text ?? '';
+    expect(JSON.parse(read('local-ai.json'))).toMatchObject({
+      onnxRuntime: { state: 'not started', packageVersion: '1.30.0' },
+      detectorModels: [],
+      localAgent: { enabled: false },
+    });
+    expect(read('local-ai.json')).not.toContain(KEY);
+    expect(read('README.txt')).toContain('local-ai.json');
+    // a failing section says why and the bundle still saves
+    src.localAi = () => Promise.reject(new Error('models folder unreadable'));
+    const again = await collectBundle(src);
+    expect(again.find((f) => f.name === 'local-ai.json')?.text).toContain('models folder');
+  });
+
   it('still saves when a source fails', async () => {
     const src = await sources();
     src.packs = () => Promise.reject(new Error(`pack folder unreadable ${KEY}`));

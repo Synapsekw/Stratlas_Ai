@@ -2,8 +2,11 @@
 /* eslint-disable no-console -- release script output */
 // Fails when the built main or preload bundle loads a package that the installed app does not
 // ship (build-time tools such as sharp). Run from apps/desktop after `electron-vite build`.
+// When a packaged app is in dist/, also requires onnxruntime-node's native files in
+// app.asar.unpacked (on Windows onnxruntime_binding.node, onnxruntime.dll and DirectML.dll).
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { findPackagedApp, missingOnnxFiles, onnxBinaryDir } from './onnx-probe.mjs';
 
 const FORBIDDEN = ['sharp', 'jiti', 'vitest', '@playwright/test', 'electron-builder'];
 const ROOTS = ['out/main', 'out/preload'];
@@ -39,3 +42,18 @@ if (problems.length) {
   process.exit(1);
 }
 console.log(`Bundle check passed (${ROOTS.join(', ')}).`);
+
+// After packaging (dist.mjs runs this after electron-builder): local detection's native files
+// must be unpacked next to app.asar, or the inference process cannot load onnxruntime.
+const app = findPackagedApp();
+if (app) {
+  const missing = missingOnnxFiles(app.resources, app.platform, app.arch);
+  if (missing.length) {
+    console.error('Bundle check failed: local detection would not load in the packaged app.');
+    for (const m of missing) console.error(`  missing ${join(app.resources, m)}`);
+    process.exit(1);
+  }
+  console.log(
+    `Bundle check passed: onnxruntime binaries unpacked in ${join(app.resources, onnxBinaryDir(app.platform, app.arch))}.`,
+  );
+}
