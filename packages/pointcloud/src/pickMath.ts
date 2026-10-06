@@ -9,7 +9,8 @@ export interface ProjectedHit {
 /**
  * Among `count` points (xyz triples), find the front-most one whose projection lies inside the
  * ellipse of NDC radii `rx`, `ry` around (`x`, `y`). `m` is a column-major 4x4 (model-view-projection).
- * `keep` can reject points (clipping planes); it receives the untransformed coordinates.
+ * `keep` can reject points (clipping planes, points the shader does not draw); it receives the
+ * untransformed coordinates and the point's index.
  */
 export function nearestProjected(
   positions: ArrayLike<number>,
@@ -19,7 +20,7 @@ export function nearestProjected(
   y: number,
   rx: number,
   ry: number,
-  keep?: (px: number, py: number, pz: number) => boolean,
+  keep?: (px: number, py: number, pz: number, index: number) => boolean,
 ): ProjectedHit | null {
   const e = (i: number) => m[i] ?? 0;
   const [m0, m1, m3, m4, m5, m7, m8, m9, m11, m12, m13, m15] = [
@@ -53,7 +54,7 @@ export function nearestProjected(
     const depth = (m2 * px + m6 * py + m10 * pz + m14) / w;
     if (depth < -1 || depth > 1) continue;
     if (best && depth >= best.depth) continue;
-    if (keep && !keep(px, py, pz)) continue;
+    if (keep && !keep(px, py, pz, i)) continue;
     best = { index: i, depth };
   }
   return best;

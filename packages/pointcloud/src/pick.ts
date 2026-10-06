@@ -1,6 +1,7 @@
 import type { SceneHandle } from '@aio/engine';
 import { Matrix4, Ray, Vector3, type BufferAttribute, type Plane, type Points } from 'three';
 import { getCloudManager } from './adapter';
+import { CLASS_SLOTS, MODE_INDEX, type PointMaterial } from './material';
 import { nearestProjected } from './pickMath';
 
 export interface PointPick {
@@ -20,8 +21,44 @@ const mvp = new Matrix4();
 const world = new Vector3();
 
 /**
+ * Which points of a chunk its material draws, as the vertex shader decides (material.ts): not
+ * those of a hidden class and, coloured by change, not those under the change threshold, and none
+ * of a cloud without the change field while a change cloud shows. `false` when no point is drawn,
+ * `undefined` when every point is.
+ */
+export function drawnPoints(obj: Points): ((index: number) => boolean) | false | undefined {
+  // a chunk drawn with another material (none in the app) shows every point
+  const material = obj.material as
+    | { uniforms?: Partial<PointMaterial['uniforms']>; defines?: Record<string, unknown> }
+    | undefined;
+  const u = material?.uniforms;
+  if (!u?.uMode || !u.uClassShown || !u.uThreshold || !u.uHideNoScalar) return undefined;
+  const defines = material?.defines ?? {};
+  const hasClass = 'HAS_CLASS' in defines;
+  const hasScalar = 'HAS_SCALAR' in defines;
+  const cls = obj.geometry.getAttribute('aClass') as BufferAttribute | undefined;
+  const scalar = obj.geometry.getAttribute('aScalar') as BufferAttribute | undefined;
+  const shown = u.uClassShown.value;
+  const change = u.uMode.value === MODE_INDEX.change;
+  if (change && !hasScalar && u.uHideNoScalar.value > 0.5) return false;
+  // without the class field every point is unclassified (1)
+  if (!hasClass && (shown[1] ?? 1) < 0.5) return false;
+  const byClass = hasClass && shown.some((v) => v < 0.5);
+  const threshold = change && hasScalar ? u.uThreshold.value : 0;
+  if (!byClass && threshold <= 0) return undefined;
+  return (i) => {
+    if (byClass) {
+      const c = Math.round(Math.min(cls?.getX(i) ?? 0, CLASS_SLOTS - 1));
+      if ((shown[c] ?? 1) < 0.5) return false;
+    }
+    return threshold <= 0 || Math.abs(scalar?.getX(i) ?? 0) >= threshold;
+  };
+}
+
+/**
  * Nearest visible point to normalised device coordinates within `radiusPx` CSS pixels:
- * the front-most point inside the radius, skipping points cut by the shared section planes.
+ * the front-most point inside the radius, skipping points cut by the shared section planes and
+ * points the material does not draw (a hidden class, under the change threshold).
  */
 export function pickPoint(
   handle: SceneHandle,
@@ -59,14 +96,20 @@ export function pickPoint(
         const along = Math.max(0, s.center.clone().sub(origin).dot(dir));
         if (ray.distanceToPoint(s.center) > s.radius + along * pxAngle * 2) continue;
       }
+      const drawn = drawnPoints(obj);
+      if (drawn === false) continue;
       mvp.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse).multiply(obj.matrixWorld);
       const m = obj.matrixWorld;
-      const keep = planes.length
-        ? (x: number, y: number, z: number) => {
-            world.set(x, y, z).applyMatrix4(m);
-            return planes.every((p) => p.distanceToPoint(world) >= 0);
-          }
-        : undefined;
+      // only points that are drawn: inside the section planes and shown by the material
+      const keep =
+        planes.length || drawn
+          ? (x: number, y: number, z: number, i: number) => {
+              if (drawn && !drawn(i)) return false;
+              if (!planes.length) return true;
+              world.set(x, y, z).applyMatrix4(m);
+              return planes.every((p) => p.distanceToPoint(world) >= 0);
+            }
+          : undefined;
       const pos = obj.geometry.getAttribute('position').array;
       const hit = nearestProjected(pos, pos.length / 3, mvp.elements, ndc.x, ndc.y, rx, ry, keep);
       if (hit && (!best || hit.depth < best.depth)) {
