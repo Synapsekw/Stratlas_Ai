@@ -7,9 +7,11 @@
  *
  * Scripted replies, by the newest user text:
  * - the probe ("Call the tool named ready") gets a call of `ready`;
- * - "fly to" gets a `fly_to` call with malformed JSON (single quotes, trailing comma), as small
- *   models write it, so the app's tool-call repair is exercised; after the tool result it answers
- *   in text;
+ * - "fly to" gets a `find_places` call with the words after "fly to", in malformed JSON (single
+ *   quotes, trailing comma) as small models write it, so the app's tool-call repair is exercised;
+ *   after its result a `fly_to` call with the id of the first place found; after that result it
+ *   answers in text (FLOWN);
+ * - "top view" gets a malformed `set_view` call;
  * - "slow" waits 60 s before the first token (the cancel test);
  * - an image gets "Red.", or the detection JSON for a detection request;
  * - anything else gets a fixed greeting.
@@ -38,6 +40,8 @@ export interface FakeRequest {
   tools?: string[];
   image?: boolean;
   authorization?: string;
+  /** The tool call the fake answered with, if any. */
+  call?: { tool: string; args: string };
 }
 
 export interface FakeLlm {
@@ -48,11 +52,11 @@ export interface FakeLlm {
 }
 
 export const GREETING = 'Hello from the local test model.';
-export const FLOWN = 'The camera is at Unit quad now.';
+export const FLOWN = 'The camera is there now.';
 export const DETECT_REPLY = {
   images: [
-    { image: 1, detections: [{ class: 'rust', box: [0.1, 0.1, 0.2, 0.2], confidence: 0.8 }] },
-    { image: 2, detections: [{ class: 'rust', box: [0.5, 0.5, 0.1, 0.1], confidence: 0.6 }] },
+    { image: 1, detections: [{ class: 'marker', box: [0.1, 0.1, 0.2, 0.2], confidence: 0.8 }] },
+    { image: 2, detections: [{ class: 'marker', box: [0.5, 0.5, 0.1, 0.1], confidence: 0.6 }] },
   ],
 };
 
@@ -63,6 +67,7 @@ interface ChatPart {
 interface ChatMessage {
   role: string;
   content: string | ChatPart[] | null;
+  tool_calls?: { function: { name: string } }[];
 }
 interface ChatBody {
   model: string;
@@ -117,8 +122,26 @@ function allText(messages: ChatMessage[]): string {
     .join('\n');
 }
 
+/** The id of the first place in the newest tool result (a `find_places` result). */
+function firstPlaceId(messages: ChatMessage[]): string | null {
+  const content = messages.at(-1)?.content;
+  const raw =
+    typeof content === 'string' ? content : (content ?? []).map((p) => p.text ?? '').join('');
+  return /"places":\s*\[\s*\{[^{}]*?"id":\s*"([^"]+)"/.exec(raw)?.[1] ?? null;
+}
+
+/** The tool the model called last (the assistant message before the tool results). */
+function lastToolCalled(messages: ChatMessage[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const name = messages[i]?.tool_calls?.at(-1)?.function.name;
+    if (name) return name;
+  }
+  return null;
+}
+
 function script(body: ChatBody): Reply {
-  const text = lastUserText(body.messages).toLowerCase();
+  const original = lastUserText(body.messages);
+  const text = original.toLowerCase();
   const last = body.messages.at(-1);
   if (hasImage(body.messages)) {
     return allText(body.messages).includes('<aio-detect>')
@@ -126,10 +149,16 @@ function script(body: ChatBody): Reply {
       : { text: 'Red.' };
   }
   if (body.tools?.length) {
-    if (last?.role === 'tool') return { text: FLOWN };
+    if (last?.role === 'tool') {
+      const id = lastToolCalled(body.messages) === 'find_places' && firstPlaceId(body.messages);
+      if (id)
+        return { tool: 'fly_to', args: JSON.stringify({ target: { kind: 'place', name: id } }) };
+      return { text: FLOWN };
+    }
     if (text.includes('tool named ready')) return { tool: 'ready', args: '{"ok":true}' };
     if (text.includes('fly to')) {
-      return { tool: 'fly_to', args: "{'target': {'kind': 'place', 'name': 'Unit quad'},}" };
+      const words = original.slice(text.indexOf('fly to') + 'fly to'.length).trim();
+      return { tool: 'find_places', args: `{'query': '${words}',}` };
     }
     if (text.includes('top view')) return { tool: 'set_view', args: "{'view': 'top',}" };
   }
@@ -278,6 +307,7 @@ export async function startFakeLlm(opts: FakeLlmOptions): Promise<FakeLlm> {
           return;
         }
         const reply = script(body);
+        if ('tool' in reply) record.call = { tool: reply.tool, args: reply.args };
         if (body.stream) sse(res, m.id, reply);
         else completion(res, m.id, reply);
         return;

@@ -1,26 +1,44 @@
 /**
  * The agent on the person's own local model server (M8 C7, AI-9), against the fake server in
- * fake-llm.ts on 127.0.0.1. Cloud AI stays off, and the zero-network guard lets through only the
- * fake's origin: any other request (a cloud provider above all) fails the test.
+ * fake-llm.ts on 127.0.0.1, on the change demo (C8, synthetic, no client data). Cloud AI stays
+ * off, and the zero-network guard lets through only the fake's origin: any other request (a cloud
+ * provider above all) fails the test. The demo opens as a working copy, so the bundled demo is
+ * never written.
  *
  * - Settings: Find models lists the fake's two models with badges; Test reports tools yes, vision
  *   no; the Offline agent preset routes every task to the local model.
- * - Agent: "top view" makes a malformed tool call that the app repairs; the camera moves; the
- *   meter shows no cost.
- * - A model without tool calling answers in text, with a notice, and no tool steps.
+ * - Agent: "Fly to tank T-201" makes a malformed find_places call that the app repairs, then
+ *   fly_to with the id it returned; the camera looks at the tank of truth.json; no send preview;
+ *   the meter shows no cost; the status line says the agent is local.
+ * - A model without tool calling answers in text, with the panel's answer-only notice and the
+ *   notice in the reply, and no tool steps.
  * - Cancel during a slow reply stops at once.
- * - Local vision detection on two photos gives draft proposals at no cost.
+ * - Local vision detection on two demo photos (one per date) gives draft proposals at no cost.
  */
+import { MESSAGES } from '@aio/ai/main';
 import type { ElectronApplication, Page } from '@playwright/test';
-import { rm } from 'node:fs/promises';
-import { DETECT_REPLY, GREETING, startFakeLlm, type FakeLlm } from './fake-llm';
-import { createDataRoot, expect, launchApp, NetworkGuard, test, type DataRoot } from './fixtures';
+import { readFile, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { DETECT_REPLY, FLOWN, GREETING, startFakeLlm, type FakeLlm } from './fake-llm';
+import {
+  changeDemoTruth,
+  createDataRoot,
+  DEMO_FOLDER,
+  expect,
+  hasChangeDemo,
+  launchApp,
+  NetworkGuard,
+  openChangeDemo,
+  openProject,
+  test,
+  type DataRoot,
+} from './fixtures';
 
 test.setTimeout(120_000);
+test.skip(!hasChangeDemo(), `no change demo in ${DEMO_FOLDER}: run pnpm demo:change --quick`);
 
-/** An 8 x 8 px red PNG. */
-const PNG =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR4nGO4IyKCFTEMLQkAmD9BAZzFjLYAAAAASUVORK5CYII=';
+/** The tank the founder asks for (truth.json `changes.component`, a drawing part). */
+const TANK = 'T-201';
 
 interface Run {
   data: DataRoot;
@@ -30,10 +48,14 @@ interface Run {
   network: NetworkGuard;
 }
 
+/** The app with the bundled demos, the fake's origin the only one the guard lets through. */
 async function start(models: Parameters<typeof startFakeLlm>[0]['models']): Promise<Run> {
   const fake = await startFakeLlm({ kind: 'ollama', models });
   const data = await createDataRoot();
-  const app = await launchApp(data, { AIO_NETWORK_GUARD_ALLOW: fake.origin });
+  const app = await launchApp(data, {
+    AIO_NETWORK_GUARD_ALLOW: fake.origin,
+    STRATLAS_DEMO: DEMO_FOLDER,
+  });
   const network = new NetworkGuard([fake.origin]);
   await network.attach(app);
   const win = await app.firstWindow();
@@ -76,10 +98,12 @@ async function setUp(run: Run, model: string) {
   return list;
 }
 
-async function openTiny(win: Page) {
-  await win.locator('.sb-nav .nav-item', { hasText: 'Projects' }).first().click();
-  await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
-  await expect(win.locator('.crumbs')).toContainText('E2E tiny project');
+async function offlineAgent(win: Page) {
+  await card(win).getByRole('switch', { name: 'Offline agent' }).click();
+  await expect(card(win).getByRole('switch', { name: 'Offline agent' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
 }
 
 async function ask(win: Page, text: string) {
@@ -89,22 +113,46 @@ async function ask(win: Page, text: string) {
   await box.press('Enter');
 }
 
-const cameraPosition = () =>
+const cameraView = () =>
   (
     window as unknown as {
-      __stratlas: { stage(): { saveView(): { position: number[] } } | null };
+      __stratlas: { stage(): { saveView(): { position: number[]; target: number[] } } | null };
     }
   ).__stratlas
     .stage()
-    ?.saveView()
-    .position.map((v) => Math.round(v * 100) / 100) ?? null;
+    ?.saveView() ?? null;
+
+/** Where the tank stands in the local frame (X east, Y up, Z south): its drawing part. */
+function tankCentre(): [number, number, number] {
+  const parts = changeDemoTruth().modelling.drawing?.parts as {
+    tag: string;
+    base: [number, number, number];
+    height: number;
+  }[];
+  const tank = parts.find((p) => p.tag === TANK);
+  if (!tank) throw new Error(`truth.json has no drawing part ${TANK}`);
+  return [tank.base[0], tank.base[1] + tank.height / 2, tank.base[2]];
+}
+
+/** Width and height of a baseline or progressive JPEG (its SOF segment). */
+function jpegSize(buf: Buffer): { width: number; height: number } {
+  let i = 2;
+  while (i < buf.length) {
+    const marker = buf[i + 1] ?? 0;
+    const len = buf.readUInt16BE(i + 2);
+    if (marker >= 0xc0 && marker <= 0xc2)
+      return { height: buf.readUInt16BE(i + 5), width: buf.readUInt16BE(i + 7) };
+    i += 2 + len;
+  }
+  throw new Error('not a JPEG with a SOF segment');
+}
 
 const MODELS = [
   { id: 'fake-tools', tools: true, vision: false, contextTokens: 8192 },
   { id: 'fake-text', tools: false, vision: false, contextTokens: 4096 },
 ];
 
-test('local agent: find, test, offline preset, a repaired tool call and no cost', async () => {
+test('local agent: find, test, offline preset, fly to a tank of the demo at no cost', async () => {
   const run = await start(MODELS);
   try {
     const { win, fake } = run;
@@ -114,11 +162,7 @@ test('local agent: find, test, offline preset, a repaired tool call and no cost'
     await expect(list.getByRole('button', { name: 'Use fake-text' })).not.toContainText('Tools');
     await expect(card(win).getByTestId('local-probe')).toContainText('Tools yes, vision no.');
 
-    await card(win).getByRole('switch', { name: 'Offline agent' }).click();
-    await expect(card(win).getByRole('switch', { name: 'Offline agent' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
+    await offlineAgent(win);
     await expect(card(win)).toContainText('Every task runs on fake-tools. Nothing leaves');
     const settings = await win.evaluate(() => window.aio.invoke('settings:get', {}));
     expect(settings.cloudAi).toBe(false);
@@ -137,19 +181,37 @@ test('local agent: find, test, offline preset, a repaired tool call and no cost'
       'build:local:fake-tools',
     ]);
 
-    await openTiny(win);
-    await expect(agent(win)).toContainText('on this machine');
-    await expect.poll(() => win.evaluate(cameraPosition)).not.toBeNull();
-    const before = await win.evaluate(cameraPosition);
-    await ask(win, 'Show me the top view');
+    await openChangeDemo(win);
+    await expect(agent(win)).toContainText('Agent: local (offline) · fake-tools on this machine');
+    await expect.poll(() => win.evaluate(cameraView)).not.toBeNull();
+    const before = await win.evaluate(cameraView);
+    const sentBefore = fake.requests.length;
+    await ask(win, `Fly to tank ${TANK}`);
     // No send preview: nothing leaves the machine.
     await expect(win.getByRole('dialog')).toHaveCount(0);
-    await expect(agent(win)).toContainText('The camera is at Unit quad now.');
-    await expect.poll(() => win.evaluate(cameraPosition)).not.toEqual(before);
+    await expect(agent(win)).toContainText(FLOWN);
+    // The camera looks at the tank (its centre, within a metre on the ground) from elsewhere.
+    const [tx, , tz] = tankCentre();
+    await expect
+      .poll(async () => {
+        const v = await win.evaluate(cameraView);
+        const [x = NaN, , z = NaN] = v?.target ?? [];
+        return Math.round(Math.hypot(x - tx, z - tz) * 100) / 100;
+      })
+      .toBeLessThan(1);
+    expect((await win.evaluate(cameraView))?.position).not.toEqual(before?.position);
     await expect(agent(win)).toContainText('$0.00');
 
-    const chats = fake.requests.filter((r) => r.path === '/v1/chat/completions');
-    expect(chats.some((r) => r.tools?.includes('set_view'))).toBe(true);
+    // find_places with the founder's words (malformed JSON, repaired), then fly_to with its id
+    const chats = fake.requests.slice(sentBefore).filter((r) => r.path === '/v1/chat/completions');
+    const calls = chats.flatMap((r) => (r.call ? [r.call] : []));
+    expect(calls.map((c) => c.tool)).toEqual(['find_places', 'fly_to']);
+    expect(calls[0]?.args).toBe(`{'query': 'tank ${TANK}',}`);
+    const target = (JSON.parse(calls[1]?.args ?? '{}') as { target?: { name?: string } }).target;
+    expect(target?.name).toContain(TANK);
+    expect(chats.every((r) => r.tools?.includes('find_places') && r.tools.includes('fly_to'))).toBe(
+      true,
+    );
     expect(chats.every((r) => r.model === 'fake-tools')).toBe(true);
     expect(await run.network.allowed()).not.toHaveLength(0);
     for (const url of await run.network.allowed()) expect(url.startsWith(fake.origin)).toBe(true);
@@ -165,20 +227,20 @@ test('local agent: a model without tool calling answers in text, and cancel stop
     await setUp(run, 'fake-text');
     await expect(card(win).getByTestId('local-probe')).toContainText('Tools no, vision no.');
     await expect(card(win)).toContainText('the agent will answer in text only');
-    await card(win).getByRole('switch', { name: 'Offline agent' }).click();
-    await expect(card(win).getByRole('switch', { name: 'Offline agent' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
+    await offlineAgent(win);
 
-    await openTiny(win);
+    await openChangeDemo(win);
+    await expect(agent(win)).toContainText('Agent: local (offline) · fake-text on this machine');
+    // the panel says why the agent cannot act, before anything is asked
+    await expect(agent(win).getByTestId('agent-answer-only')).toHaveText(MESSAGES.answerOnly);
     const sentBefore = fake.requests.length;
-    await ask(win, 'Show me the top view');
-    await expect(agent(win)).toContainText("This local model cannot use the app's tools");
+    await ask(win, `Fly to tank ${TANK}`);
+    // and the reply starts with the same in short
+    await expect(agent(win)).toContainText(MESSAGES.answerOnlyNotice);
     await expect(agent(win)).toContainText(GREETING);
     const chats = fake.requests.slice(sentBefore).filter((r) => r.path === '/v1/chat/completions');
     expect(chats.length).toBeGreaterThan(0);
-    expect(chats.every((r) => !r.tools)).toBe(true);
+    expect(chats.every((r) => !r.tools && !r.call)).toBe(true);
     const status = await win.evaluate(() => window.aio.invoke('ai:status', {}));
     expect(status).toMatchObject({ ready: true, reason: 'answer-only', cloud: false });
 
@@ -196,7 +258,7 @@ test('local agent: a model without tool calling answers in text, and cancel stop
   }
 });
 
-test('local agent: vision detection on two photos gives drafts at no cost', async () => {
+test('local agent: vision detection on two demo photos gives drafts at no cost', async () => {
   const run = await start([
     { id: 'fake-vision', tools: true, vision: true, contextTokens: 8192 },
     { id: 'fake-text', tools: false, vision: false, contextTokens: 4096 },
@@ -205,31 +267,41 @@ test('local agent: vision detection on two photos gives drafts at no cost', asyn
     const { win, fake } = run;
     await setUp(run, 'fake-vision');
     await expect(card(win).getByTestId('local-probe')).toContainText('Tools yes, vision yes.');
-    await card(win).getByRole('switch', { name: 'Offline agent' }).click();
-    await expect(card(win).getByRole('switch', { name: 'Offline agent' })).toHaveAttribute(
-      'aria-checked',
-      'true',
+    await offlineAgent(win);
+    const { root } = await openChangeDemo(win);
+    // the working copy's id, not truth.json's: the bundled demo holds that one
+    const projectId = (await openProject(win)).id ?? '';
+    // the first photo of each date, as the Detect dialog sends them
+    const truth = changeDemoTruth();
+    const photos = await Promise.all(
+      (['d1', 'd2'] as const).map(async (d) => {
+        const layer = String(truth.layers[d]?.photos);
+        const key = `photos/${d}/p01.jpg`;
+        const buf = await readFile(join(root, key));
+        return {
+          key: `${layer}/p01`,
+          dataUrl: `data:image/jpeg;base64,${buf.toString('base64')}`,
+          ...jpegSize(buf),
+        };
+      }),
     );
-    await openTiny(win);
     const r = await win.evaluate(
-      (png) =>
+      ({ projectId, images }) =>
         window.aio.invoke('ai:detect', {
           runId: 'detect-local',
-          projectId: 'e2e-tiny',
-          classes: [{ id: 'rust', label: 'Rust' }],
-          images: [
-            { key: 'photos/a.jpg', dataUrl: png, width: 8, height: 8 },
-            { key: 'photos/b.jpg', dataUrl: png, width: 8, height: 8 },
-          ],
+          projectId,
+          classes: [{ id: 'marker', label: 'Survey marker' }],
+          images,
         }),
-      PNG,
+      { projectId, images: photos },
     );
     expect(r).toMatchObject({ ok: true, provider: 'local', model: 'fake-vision', costUsd: 0 });
     if (!r.ok) throw new Error(r.error);
+    expect(r.results.map((x) => x.key)).toEqual(photos.map((p) => p.key));
     expect(r.results.map((x) => x.detections.length)).toEqual(
       DETECT_REPLY.images.map((i) => i.detections.length),
     );
-    expect(r.results[0]?.detections[0]).toMatchObject({ classId: 'rust' });
+    expect(r.results[0]?.detections[0]).toMatchObject({ classId: 'marker' });
     expect(fake.requests.some((x) => x.path === '/v1/chat/completions' && x.image)).toBe(true);
   } finally {
     await stop(run);
