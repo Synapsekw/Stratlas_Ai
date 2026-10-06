@@ -183,3 +183,23 @@ def test_a_layer_that_is_not_a_model_is_refused(tmp_path):
     (root / "manifest.json").write_text(json.dumps(m))
     with pytest.raises(JobError, match="not a 3D model"):
         run(root, {"layerFrom": "e1", "layerTo": "pc", "captures": {"from": "c1", "to": "c2"}})
+
+
+def test_a_small_dent_on_a_large_tank_is_a_change(tmp_path, monkeypatch):
+    # about 3 m2 dented by 5 cm or more: under 1% of a 400 m2 tank, still a change
+    import aio_pipelines.change.mesh as mesh
+
+    before = {"T1_e1": tank(0, 0, radius=5, height=8), "B1_e1": block(12, 0)}
+    after = {"T1_e2": tank(0, 0, radius=5, height=8, dent=0.075), "B1_e2": block(12, 0)}
+    root = project(tmp_path, before, after)
+    params = {"layerFrom": "e1", "layerTo": "e2", "samples": 5000}
+    monkeypatch.setattr(mesh, "CHANGED_AREA_M2", 1e9)
+    run(root, params)
+    verdicts = lambda: {  # noqa: E731
+        i["part"]: i["verdict"]
+        for i in json.loads((root / "change" / "c1-c2-mesh.json").read_text())["items"]
+    }
+    assert verdicts() == {"T1": "unchanged", "B1": "unchanged"}  # the 1% share alone misses it
+    monkeypatch.undo()
+    run(root, params, job_id="j2")
+    assert verdicts() == {"T1": "changed", "B1": "unchanged"}

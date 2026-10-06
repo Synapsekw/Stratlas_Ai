@@ -9,8 +9,8 @@ names the model builder gives, data-conventions section 15):
 - a part whose bounding box kept its size but whose centre moved more than ``minDistM`` is
   ``moved`` (``offsetM``);
 - else points sampled on the later part are measured to the earlier part (trimesh proximity with
-  rtree): ``changed`` when the mean deviation reaches ``minDistM`` or at least 1% of the part does
-  (a local dent), else ``unchanged``.
+  rtree): ``changed`` when the mean deviation reaches ``minDistM`` or at least 1% of the part, or
+  1 m2 of its surface, does (a local dent), else ``unchanged``.
 
 The registration check measures points sampled on the whole later model to the whole earlier one,
 and the median offset of the parts found on both dates (three or more): both must stay within 5 cm. A copy of the later model with the deviation as vertex colours
@@ -45,8 +45,10 @@ from .derived import (
 
 SUFFIX = re.compile(r"_([A-Za-z0-9]+)$")
 DEFAULT_SAMPLES = 50_000
-#: A part has changed when this share of it deviates by ``minDistM`` or more.
+#: A part has changed when this share of it deviates by ``minDistM`` or more,
 CHANGED_SHARE = 0.01
+#: or this much of its surface (m2) does: a local dent on a large part (a tank) is under 1%.
+CHANGED_AREA_M2 = 1.0
 GREY = np.array([156, 163, 175], dtype=np.float64)
 AMBER = np.array([245, 197, 66], dtype=np.float64)
 RED = np.array([226, 65, 43], dtype=np.float64)
@@ -309,11 +311,14 @@ class ChangeMesh:
             }
         n = int(np.clip(mb.area / 0.004, 500, 20_000))
         pts, _ = trimesh.sample.sample_surface(mb, n, seed=2)
-        d = np.concatenate([_distance(ma, pts), _distance(ma, np.asarray(mb.vertices))])
+        on_surface = _distance(ma, pts)
+        d = np.concatenate([on_surface, _distance(ma, np.asarray(mb.vertices))])
         mean, top = float(d.mean()), float(d.max())
         share = float((d >= lo_d).mean())
+        # the samples are spread by area, so their share is a share of the surface
+        area = float((on_surface >= lo_d).mean()) * float(mb.area)
         item["deviation"] = {"meanM": round(mean, 4), "maxM": round(top, 4)}
-        if mean >= lo_d or share >= CHANGED_SHARE:
+        if mean >= lo_d or share >= CHANGED_SHARE or area >= CHANGED_AREA_M2:
             return {
                 **item,
                 "verdict": "changed",
