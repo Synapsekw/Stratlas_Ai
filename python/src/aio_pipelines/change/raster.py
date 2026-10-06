@@ -91,20 +91,46 @@ LIGHT_STEP = 0.02
 
 
 def normalise(a: np.ndarray, b: np.ndarray, valid: np.ndarray) -> np.ndarray:
-    """``b`` with each channel scaled to ``a`` over ``valid`` (by the ratio of the medians, so a
-    changed area does not tilt the match).
+    """``b`` with each channel matched to ``a`` over ``valid``: a gain and an offset.
 
     Exposure and white balance multiply each channel (in linear light, and so in gamma-encoded
-    values too), so a gain is the right match: a level-and-spread match would add an offset that
-    shifts the colour of everything darker or lighter than the median, such as shadows.
+    values too) and haze adds a little, so the match is a straight line fitted to the two dates'
+    smoothed values (``_gain_offset``: robust, so a changed area does not tilt it). Matching the
+    level and spread of the values instead (median and interquartile range) let the spread of
+    fine texture, which compression treats differently on each date, set the gain, and shifted
+    the colour of everything darker or lighter than the median, such as shadows.
     """
     out = b.copy()
     if valid.sum() < 16:
         return out
+    from scipy import ndimage as ndi
+
     for k in range(3):
-        ma, mb = float(np.median(a[..., k][valid])), float(np.median(b[..., k][valid]))
-        out[..., k] = b[..., k] * (ma / mb if mb > 1e-6 else 1.0)
+        g, o = _gain_offset(
+            ndi.gaussian_filter(b[..., k], 2.0)[valid], ndi.gaussian_filter(a[..., k], 2.0)[valid]
+        )
+        out[..., k] = b[..., k] * g + o
     return np.clip(out, 0, 1)
+
+
+def _gain_offset(x: np.ndarray, y: np.ndarray) -> tuple[float, float]:
+    """``g, o`` with ``y ~ g x + o``: least squares, refitted twice without the cells more than
+    three robust spreads off (what changed); a plain gain (ratio of the medians) when the cells
+    span too little brightness to fit a slope, or the fit is implausible."""
+    x, y = np.asarray(x, np.float64), np.asarray(y, np.float64)
+    mx, my = float(np.median(x)), float(np.median(y))
+    gain = (my / mx if mx > 1e-6 else 1.0), 0.0
+    keep = np.ones(x.shape, bool)
+    for _ in range(3):
+        if keep.sum() < 16 or float(np.std(x[keep])) < 0.02:
+            return gain
+        g, o = np.polyfit(x[keep], y[keep], 1)
+        r = y - (g * x + o)
+        spread = 1.4826 * float(np.median(np.abs(r - np.median(r))))
+        keep = np.abs(r) < 3 * max(spread, 1e-3)
+    if not (np.isfinite(g) and 0.5 < g < 2 and abs(o) < 0.25):
+        return gain
+    return float(g), float(o)
 
 
 def _local_stats(x: np.ndarray, y: np.ndarray, sigma: float):
