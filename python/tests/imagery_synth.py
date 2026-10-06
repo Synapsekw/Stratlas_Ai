@@ -53,9 +53,33 @@ def shade(img: np.ndarray, r0: int, c0: int, size: int, factor: float = 0.6, sof
     return img * (1 - (1 - factor) * m)[..., None]
 
 
+def cloud_shadow(
+    img: np.ndarray, r: float, c: float, ry: float, rx: float, factor: float = 0.6
+) -> np.ndarray:
+    """Darken a soft-edged ellipse (centre row ``r``, column ``c``, radii in pixels), as a cloud's
+    shadow does: light only."""
+    rows, cols = np.mgrid[0 : img.shape[0], 0 : img.shape[1]]
+    e = ((rows - r) / ry) ** 2 + ((cols - c) / rx) ** 2
+    m = np.clip((1.3 - e) / 0.5, 0, 1)
+    m = m * m * (3 - 2 * m)
+    return img * (1 - (1 - factor) * m)[..., None]
+
+
 def tint(img: np.ndarray) -> np.ndarray:
     """A slight overall colour and exposure shift between flights."""
     return np.clip(img * np.array([1.04, 1.0, 0.95]) + 0.015, 0, 1)
+
+
+def compressed(img: np.ndarray, quality: int = 80) -> np.ndarray:
+    """``img`` through a lossy JPEG round trip, as an ortho's tiles often are: blocks, smoothed
+    fine texture and noise that differ between two flights of the same ground."""
+    from io import BytesIO
+
+    buf = BytesIO()
+    Image.fromarray(to_u8(img), "RGB").save(buf, "JPEG", quality=quality)
+    buf.seek(0)
+    with Image.open(buf) as im:
+        return np.asarray(im.convert("RGB"), np.float64) / 255.0
 
 
 def to_u8(img: np.ndarray) -> np.ndarray:

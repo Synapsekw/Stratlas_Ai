@@ -13,13 +13,16 @@ Parameters as ``ChangeRasterParams`` in ``@aio/schema`` (``jobs.ts``). Steps:
             kept, ``.bak``), then the manifest: a heat map raster layer and a polygon layer, both
             ``derived`` and on the later date.
 
-The score (0 to 1) ignores what light does: both orthos are normalised per channel (mean and
-spread over the shared area, so a tint or exposure change is gone); structure is compared on
-high-passed log brightness with a local SSIM-like term, which a shade or a cloud shadow (a slow
-multiplicative change) does not move; colour is compared as chromaticity, which shade does not
-change either. Methods: ``gradient`` (structure and colour, the default), ``ssim`` (scikit-image's
-structural similarity on normalised brightness, and colour) and ``rgb`` (plain colour distance,
-sensitive to light). Every region is a proposal (verdict ``changed``) a person confirms.
+The score (0 to 1) ignores what light does: the later ortho is matched per channel to the earlier
+one (a gain and an offset over the shared area, so a tint, exposure or haze change is gone);
+structure is compared on high-passed log brightness with a local SSIM-like term, which a shade or a
+cloud shadow (a slow multiplicative change) does not move, above a floor set by the noise measured
+between the dates (compression noise, larger in dark places); colour is compared as chromaticity,
+which shade does not change either. A region that only got darker or only lighter and kept its
+colour is a shadow that came or went and is left out. Methods: ``gradient`` (structure and colour,
+the default), ``ssim`` (scikit-image's structural similarity on normalised brightness, and colour)
+and ``rgb`` (plain colour distance, sensitive to light). Every region is a proposal (verdict
+``changed``) a person confirms.
 """
 
 from __future__ import annotations
@@ -78,24 +81,59 @@ REGION_STYLE = {
 }
 INPUTS_CHANGED = "The orthos changed since this job started. Start the job again."
 LUMA = np.array([0.299, 0.587, 0.114], np.float32)
+#: The structure term's noise floor, in units of the noise measured between the two dates: noise
+#: alone then scores about 1 / (1 + NOISE_FLOOR), 0.17, near half the sensitive preset's 0.3.
+NOISE_FLOOR = 5.0
+#: A region is light only when it kept its colour (three quarters of it below this colour score,
+#: a chromaticity step of 0.03) and its brightness moved one way by at least this (log, 2 %).
+LIGHT_COLOUR = 0.25
+LIGHT_STEP = 0.02
 
 
 # ------------------------------------------------------------------------------------------ score
 
 
 def normalise(a: np.ndarray, b: np.ndarray, valid: np.ndarray) -> np.ndarray:
-    """``b`` with each channel's level and spread matched to ``a`` over ``valid`` (robustly:
-    median and interquartile range, so a changed area does not tilt the match)."""
+    """``b`` with each channel matched to ``a`` over ``valid``: a gain and an offset.
+
+    Exposure and white balance multiply each channel (in linear light, and so in gamma-encoded
+    values too) and haze adds a little, so the match is a straight line fitted to the two dates'
+    smoothed values (``_gain_offset``: robust, so a changed area does not tilt it). Matching the
+    level and spread of the values instead (median and interquartile range) let the spread of
+    fine texture, which compression treats differently on each date, set the gain, and shifted
+    the colour of everything darker or lighter than the median, such as shadows.
+    """
     out = b.copy()
     if valid.sum() < 16:
         return out
+    from scipy import ndimage as ndi
+
     for k in range(3):
-        av, bv = a[..., k][valid], b[..., k][valid]
-        qa, qb = np.percentile(av, [25, 50, 75]), np.percentile(bv, [25, 50, 75])
-        sa, sb = float(qa[2] - qa[0]), float(qb[2] - qb[0])
-        g = sa / sb if sb > 1e-6 else 1.0
-        out[..., k] = (b[..., k] - float(qb[1])) * g + float(qa[1])
+        g, o = _gain_offset(
+            ndi.gaussian_filter(b[..., k], 2.0)[valid], ndi.gaussian_filter(a[..., k], 2.0)[valid]
+        )
+        out[..., k] = b[..., k] * g + o
     return np.clip(out, 0, 1)
+
+
+def _gain_offset(x: np.ndarray, y: np.ndarray) -> tuple[float, float]:
+    """``g, o`` with ``y ~ g x + o``: least squares, refitted twice without the cells more than
+    three robust spreads off (what changed); a plain gain (ratio of the medians) when the cells
+    span too little brightness to fit a slope, or the fit is implausible."""
+    x, y = np.asarray(x, np.float64), np.asarray(y, np.float64)
+    mx, my = float(np.median(x)), float(np.median(y))
+    gain = (my / mx if mx > 1e-6 else 1.0), 0.0
+    keep = np.ones(x.shape, bool)
+    for _ in range(3):
+        if keep.sum() < 16 or float(np.std(x[keep])) < 0.02:
+            return gain
+        g, o = np.polyfit(x[keep], y[keep], 1)
+        r = y - (g * x + o)
+        spread = 1.4826 * float(np.median(np.abs(r - np.median(r))))
+        keep = np.abs(r) < 3 * max(spread, 1e-3)
+    if not (np.isfinite(g) and 0.5 < g < 2 and abs(o) < 0.25):
+        return gain
+    return float(g), float(o)
 
 
 def _local_stats(x: np.ndarray, y: np.ndarray, sigma: float):
@@ -108,18 +146,35 @@ def _local_stats(x: np.ndarray, y: np.ndarray, sigma: float):
     return np.clip(vx, 0, None), np.clip(vy, 0, None), cxy
 
 
-def structure_change(la: np.ndarray, lb: np.ndarray, sigma: float = 2.0) -> np.ndarray:
+def structure_change(
+    la: np.ndarray, lb: np.ndarray, sigma: float = 2.0, valid: np.ndarray | None = None
+) -> np.ndarray:
     """0 where two brightness grids have the same local structure, 1 where it differs.
 
     Works on high-passed log brightness, so shade and exposure (multiplicative and slow) drop out;
     the SSIM-like term ``(2 cov + C) / (var_a + var_b + C)`` also sees texture appear or vanish.
+
+    ``C`` is the noise floor, per cell: texture finer than the noise and compression of the two
+    orthos must not count. In log brightness that noise grows as a place gets darker (its variance
+    goes as 1 / brightness, as for photon noise and for the compression of real orthos), so ``C``
+    is ``NOISE_FLOOR`` times the noise expected of the cell's brightness on both dates, its scale
+    measured from the scene: the median difference energy, which changed areas do not move. A
+    fraction of the scene's typical texture energy stays as a lower bound. Both are measured over
+    ``valid`` (default: everywhere).
     """
+    from scipy import ndimage as ndi
+
     from .register import highpass
 
     ha, hb = highpass(la, 1.5), highpass(lb, 1.5)
     va, vb, cab = _local_stats(ha, hb, sigma)
-    # the noise floor: a fraction of the typical texture energy of the scene
-    c = max(1e-5, 0.25 * float(np.median(va + vb)))
+    at = np.ones(la.shape, bool) if valid is None or not valid.any() else valid
+    # how much noise each cell's brightness brings on the two dates (up to a common scale)
+    dark = 1 / np.clip(ndi.gaussian_filter(la, sigma), 0.02, None)
+    dark += 1 / np.clip(ndi.gaussian_filter(lb, sigma), 0.02, None)
+    scale = float(np.median((ndi.gaussian_filter((ha - hb) ** 2, sigma) / dark)[at]))
+    texture = float(np.median((va + vb)[at]))
+    c = np.maximum(max(1e-5, 0.25 * texture), NOISE_FLOOR * scale * dark)
     sim = (2 * cab + c) / (va + vb + c)
     return np.clip(1 - sim, 0, 1)
 
@@ -153,7 +208,7 @@ def change_score(
 
     stats = valid if stats is None else stats
     la0, lb0 = a @ LUMA, b @ LUMA
-    struct = structure_change(la0, lb0)
+    struct = structure_change(la0, lb0, valid=stats)
     stable = stats & (struct < 0.3)
     b = normalise(a, b, stable if stable.sum() >= 0.1 * max(1, stats.sum()) else stats)
     la, lb = a @ LUMA, b @ LUMA
@@ -170,18 +225,48 @@ def change_score(
     return np.where(valid, s, np.nan).astype(np.float32), b
 
 
+def brightness_ratio(a: np.ndarray, b: np.ndarray, valid: np.ndarray) -> tuple[np.ndarray, float]:
+    """Log of ``b`` over ``a`` in brightness (lightly smoothed) and its noise (a robust spread)."""
+    from scipy import ndimage as ndi
+
+    la, lb = np.clip(a @ LUMA, 1e-3, None), np.clip(b @ LUMA, 1e-3, None)
+    q = ndi.gaussian_filter(np.log(lb) - np.log(la), 1.0)
+    if not valid.any():
+        return q, 0.0
+    v = q[valid]
+    return q, float(1.4826 * np.median(np.abs(v - np.median(v))))
+
+
+def lighting_only(q: np.ndarray, noise: float, colour: np.ndarray, reg: np.ndarray) -> bool:
+    """Whether a region is a change of light only: it got darker (or lighter) and kept its colour.
+
+    A shadow that comes or goes (a cloud, the sun lower or turned) darkens or lightens what it
+    falls on and keeps its colour; where it falls on ground next to a lit object it can even hide
+    the edge between them. Something new, gone or moved changes the colour, or the brightness both
+    ways (a stockpile's lit and shaded sides), so it is kept.
+    """
+    qq = q[reg]
+    step = max(3 * noise, LIGHT_STEP)
+    darker, lighter = float((qq < -step).mean()), float((qq > step).mean())
+    if max(darker, lighter) < 0.5 or min(darker, lighter) > 0.1 * max(darker, lighter):
+        return False
+    return float(np.percentile(colour[reg], 75)) < LIGHT_COLOUR
+
+
 def change_mask(
     a: np.ndarray,
     b: np.ndarray,
     score: np.ndarray,
     threshold: float,
     min_cells: int,
+    lighting: bool = True,
 ) -> np.ndarray:
     """The changed cells: threshold, clean-up, then each region's edge refined on the colour step.
 
     The score is smooth (it compares neighbourhoods), so its regions are a little too large; each
     region's edge is moved to where the plain colour difference falls to half its value inside
-    the region, which puts a painted square's edge back on its pixels.
+    the region, which puts a painted square's edge back on its pixels. With ``lighting``, a region
+    that is a change of light only (``lighting_only``) is left out.
     """
     from scipy import ndimage as ndi
 
@@ -193,19 +278,33 @@ def change_mask(
     labels, n = ndi.label(m)
     if n == 0:
         return m
+    if lighting:
+        q, noise = brightness_ratio(a, b, np.isfinite(score))
+        colour = colour_change(a, b)
     diff = ndi.gaussian_filter(np.sqrt(((a - b) ** 2).sum(axis=2)), 0.7)
     out = np.zeros_like(m)
-    sizes = ndi.sum(np.ones_like(labels), labels, index=np.arange(1, n + 1))
-    for i, size in enumerate(sizes, start=1):
-        if size < min_cells:
+    rows, cols = m.shape
+    pad = 8  # the refinement grows a region by 3 cells and closes by 2: room enough around it
+    for i, box in enumerate(ndi.find_objects(labels), start=1):
+        if box is None:
             continue
-        reg = labels == i
+        # each region in its own window, so a scene of many regions stays fast
+        win = (
+            slice(max(0, box[0].start - pad), min(rows, box[0].stop + pad)),
+            slice(max(0, box[1].start - pad), min(cols, box[1].stop + pad)),
+        )
+        reg = labels[win] == i
+        if reg.sum() < min_cells:
+            continue
+        if lighting and lighting_only(q[win], noise, colour[win], reg):
+            continue
+        d = diff[win]
         core = ndi.binary_erosion(reg, structure=disk, iterations=3)
         if core.sum() < 16:
             core = reg
-        level = 0.5 * float(np.median(diff[core]))
+        level = 0.5 * float(np.median(d[core]))
         grown = ndi.binary_dilation(reg, structure=disk, iterations=3)
-        fine = grown & (diff > level)
+        fine = grown & (d > level)
         fine = ndi.binary_opening(fine, structure=disk, iterations=1)
         fine = ndi.binary_fill_holes(ndi.binary_closing(fine, structure=disk, iterations=2))
         lab, k = ndi.label(fine)
@@ -215,7 +314,7 @@ def change_mask(
         over = ndi.sum(reg, lab, index=np.arange(1, k + 1))
         keep = lab == (int(np.argmax(over)) + 1)
         if keep.sum() >= min_cells:
-            out |= keep
+            out[win] |= keep
     return out
 
 
@@ -385,7 +484,9 @@ class ChangeRaster:
             min_area = float(params.get("minAreaM2", DEFAULT_MIN_AREA_M2))
             min_cells = max(4, int(np.ceil(min_area / grid.cell**2)))
             ctx.progress(0.4, "Regions")
-            mask = change_mask(a, b, score, threshold, min_cells) & valid
+            # the rgb method is plain colour distance, light and all
+            lighting = params["method"] != "rgb"
+            mask = change_mask(a, b, score, threshold, min_cells, lighting) & valid
             polys = [p for p in polygons(mask, grid, simplify=grid.cell * 0.5) if p.area >= min_area]
             # stable ids: north to south, then west to east
             polys.sort(key=lambda p: (round(p.centroid.y / grid.cell), p.centroid.x))
