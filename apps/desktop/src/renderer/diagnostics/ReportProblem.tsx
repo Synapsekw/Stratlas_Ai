@@ -1,5 +1,5 @@
-import { Icon, t } from '@aio/ui';
-import { useEffect, useState, type SyntheticEvent } from 'react';
+import { Icon, t, useFocusTrap } from '@aio/ui';
+import { useEffect, useRef, useState, type SyntheticEvent } from 'react';
 import { bridge } from '../shell';
 import './diagnostics.css';
 import { SavedPath } from './SavedPath';
@@ -25,6 +25,9 @@ export function ReportProblemDialog() {
       }),
     [],
   );
+
+  const dlg = useRef<HTMLFormElement>(null);
+  useFocusTrap(dlg, open);
 
   if (!open) return null;
 
@@ -63,6 +66,7 @@ export function ReportProblemDialog() {
       }}
     >
       <form
+        ref={dlg}
         className="dlg diag-problem"
         role="dialog"
         aria-modal="true"

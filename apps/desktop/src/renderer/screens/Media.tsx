@@ -305,9 +305,11 @@ export function MediaScreen() {
                   onOpen={() => {
                     setOpenFlight(f.id);
                     requestAnimationFrame(() => {
-                      document
-                        .getElementById('m-flight-clips')
-                        ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                      document.getElementById('m-flight-clips')?.scrollIntoView({
+                        block: 'nearest',
+                        behavior:
+                          document.documentElement.dataset.motion === 'reduce' ? 'auto' : 'smooth',
+                      });
                     });
                   }}
                 />

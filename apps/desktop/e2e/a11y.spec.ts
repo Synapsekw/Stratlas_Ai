@@ -229,6 +229,60 @@ test('the OS asking for more contrast and less motion is followed', async ({ win
   await expect(win.locator('html')).not.toHaveAttribute('data-motion', 'reduce');
 });
 
+/** Nothing inside `root` animates or transitions (reduced motion: the OS or Settings). */
+async function expectStill(root: ReturnType<Page['locator']>, where: string): Promise<void> {
+  const moving = await root.evaluate((el) =>
+    [el, ...Array.from(el.querySelectorAll('*'))].flatMap((n) => {
+      const s = getComputedStyle(n);
+      const slow = s.transitionDuration.split(',').some((d) => parseFloat(d) > 0.01);
+      return s.animationName !== 'none' || slow
+        ? [`${n.tagName}.${n.getAttribute('class') ?? ''}`]
+        : [];
+    }),
+  );
+  expect(moving, `${where}: moving parts under reduced motion`).toEqual([]);
+}
+
+test('user guide and report a problem keep focus inside and hold still', async ({ win }) => {
+  await expect(win.getByTestId('project-card').first()).toBeVisible();
+  await win.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(win.locator('html')).toHaveAttribute('data-motion', 'reduce');
+
+  // F1: the guide takes focus in its search box, keeps Tab inside, Esc hands focus back
+  const search = win.locator('.search-btn');
+  await search.focus();
+  await win.keyboard.press('F1');
+  const guide = win.getByRole('dialog', { name: 'User guide' });
+  await expect(guide).toBeVisible();
+  await expect(guide.getByRole('searchbox').or(guide.locator('input')).first()).toBeFocused();
+  for (let i = 0; i < 30; i++) await win.keyboard.press('Tab');
+  expect(await guide.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+  await expectAccessible(win, 'User guide');
+  await expectStill(guide, 'User guide');
+  await win.keyboard.press('Escape');
+  await expect(guide).toBeHidden();
+  await expect(search).toBeFocused();
+
+  // Settings, About and updates, Report a problem: the same rules for the form
+  await win.locator('.sb-foot .nav-item', { hasText: 'Settings' }).click();
+  await win.locator('.set-nav button', { hasText: 'About and updates' }).click();
+  const report = win.getByTestId('diagnostics').getByRole('button', { name: 'Report a problem' });
+  await report.focus();
+  await win.keyboard.press('Enter');
+  const form = win.getByRole('dialog', { name: 'Report a problem' });
+  await expect(form).toBeVisible();
+  await expect.poll(() => form.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+  for (let i = 0; i < 20; i++) await win.keyboard.press('Tab');
+  expect(await form.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+  await expectAccessible(win, 'Report a problem');
+  await expectStill(form, 'Report a problem');
+  await win.keyboard.press('Escape');
+  await expect(form).toBeHidden();
+  await expect(report).toBeFocused();
+  await expectStill(win.locator('.set-page'), 'Settings, About and updates');
+  await win.emulateMedia({ reducedMotion: 'no-preference' });
+});
+
 test.describe('a synthetic project', () => {
   test.beforeEach(async ({ dataRoot }) => {
     await richProject(dataRoot);

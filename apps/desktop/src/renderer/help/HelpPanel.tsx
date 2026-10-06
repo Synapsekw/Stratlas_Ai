@@ -3,7 +3,7 @@
  * settings and tools): the bundled chapters with a contents list and a search box. Offline.
  */
 import './help.css';
-import { Icon, t, useT } from '@aio/ui';
+import { Icon, t, useFocusTrap, useT } from '@aio/ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { anchorId, GuideArticle } from './GuideArticle';
 import { guideChapters } from './guide';
@@ -23,6 +23,9 @@ export function HelpPanel() {
   const body = useRef<HTMLDivElement>(null);
   const searchBox = useRef<HTMLInputElement>(null);
   const returnFocus = useRef<Element | null>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  // Tab stays inside the guide while it is open (Esc is handled below: it clears the search first).
+  useFocusTrap(panel, open, { initial: () => searchBox.current });
 
   const hits = useMemo(() => search(index, query), [index, query]);
   const chapter = chapters.find((c) => c.slug === current.chapter) ?? chapters[0];
@@ -96,7 +99,13 @@ export function HelpPanel() {
         if (e.target === e.currentTarget) close();
       }}
     >
-      <div className="help-panel" role="dialog" aria-modal="true" aria-label={t('help.title')}>
+      <div
+        ref={panel}
+        className="help-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('help.title')}
+      >
         <aside className="help-side">
           <div className="help-head">
             <b>{t('help.title')}</b>
