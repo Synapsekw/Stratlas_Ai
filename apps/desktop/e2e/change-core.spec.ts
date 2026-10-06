@@ -8,6 +8,7 @@
 import type { Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { expectAccessible } from './a11y';
 import { CHANGE_DEMO, expect, openChangeDemo, test } from './fixtures';
 
 interface Inspect {
@@ -82,6 +83,7 @@ test('the change demo: compare dates, find changes as truth.json says, review an
   await expect(panel.locator('[data-testid="change-row"][data-kind="issue"]')).toHaveCount(total);
   // 1 new, 1 resolved, 1 grown, the rest unchanged
   expect(await verdictCounts(panel, 'issue')).toEqual(issues.verdicts);
+  await expectAccessible(win, 'Changes panel', { include: '[data-testid="change-panel"]' });
   // the detection passes of both dates: the marker found again, gone and new
   expect(await verdictCounts(panel, 'detection')).toEqual(truth.changes.detection?.verdicts);
   // the map layers: the fence reshaped, the pad's surface changed, the new track added

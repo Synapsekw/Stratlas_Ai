@@ -50,7 +50,7 @@ const STATUSES: readonly ReviewStatus[] = ['open', 'confirmed', 'dismissed'];
 const css = `
 .chg-panel { display: flex; flex-direction: column; min-height: 0; height: 100%; background: var(--bg-1); color: var(--fg-1); font: 400 var(--t-13)/1.4 var(--f-ui); }
 .chg-h { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px; border-bottom: 1px solid var(--line); flex: none; }
-.chg-h h3 { margin: 0; font: 600 var(--t-12)/1 var(--f-ui); letter-spacing: .06em; text-transform: uppercase; color: var(--fg-2); }
+.chg-h h2 { margin: 0; font: 600 var(--t-12)/1 var(--f-ui); letter-spacing: .06em; text-transform: uppercase; color: var(--fg-2); }
 .chg-h .sub { font: 400 var(--t-11)/1 var(--f-mono); color: var(--fg-3); }
 .chg-h .acts { margin-left: auto; display: flex; gap: 4px; align-items: center; }
 .chg-bar { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--line-soft); align-items: center; flex: none; }
@@ -58,7 +58,8 @@ const css = `
 .chg-btn { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-4); background: var(--bg-2); color: var(--fg-1); font: 500 var(--t-12)/1 var(--f-ui); cursor: pointer; }
 .chg-btn:hover:not(:disabled) { background: var(--bg-3); border-color: var(--line-strong); }
 .chg-btn:disabled { opacity: .45; cursor: default; }
-.chg-btn.primary { background: var(--acc); border-color: var(--acc); color: var(--acc-ink); }
+.chg-btn.primary, .chg-btn.primary:hover:not(:disabled) { background: var(--acc); border-color: var(--acc); color: var(--acc-ink); }
+.chg-btn.primary:hover:not(:disabled) { filter: brightness(1.08); }
 .chg-btn.ghost { background: transparent; border-color: transparent; }
 .chg-btn:focus-visible, .chg-row:focus-visible, .chg-input:focus-visible { outline: 2px solid var(--acc); outline-offset: -2px; }
 .chg-input { height: 24px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-4); background: var(--bg-2); color: var(--fg-0); font: 400 var(--t-12)/1 var(--f-ui); min-width: 0; }
@@ -220,7 +221,7 @@ export function ChangePanel({
     <div className={`chg-panel ${className ?? ''}`} data-testid="change-panel">
       <ChangeStyles />
       <div className="chg-h">
-        <h3>{t('change.title')}</h3>
+        <h2>{t('change.title')}</h2>
         <span className="sub" data-testid="change-summary">
           {t('change.count', { count: all.length })} · {t('change.open', { count: open })}
         </span>

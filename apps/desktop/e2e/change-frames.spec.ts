@@ -6,6 +6,7 @@
  * frames" runs `change.frames` on the photo pairs (needs the development pipeline Python).
  */
 import type { Page } from '@playwright/test';
+import { expectAccessible } from './a11y';
 import {
   expect,
   hasPipelinePython,
@@ -164,6 +165,7 @@ test('a photo opens the same view of the other date, and blends', async ({ demoP
   expect(shown?.m).toBeCloseTo(p1.poseM, 0);
   expect(Math.abs((shown?.deg ?? 99) - p1.angleDeg)).toBeLessThanOrEqual(1);
   await expect(pane.locator('img[data-state="ready"]')).toHaveCount(2);
+  await expectAccessible(win, 'Frames pane', { include: '[data-testid="frames-pane"]' });
 
   // stepping through the earlier photos keeps the pairing
   await pane.getByRole('button', { name: 'Next photo' }).click();
