@@ -74,7 +74,8 @@ async function selectAllPhotos(win: Page, truth: Truth) {
   const photos = truth.counts.photos.d1 + truth.counts.photos.d2;
   const tiles = win.getByTestId('det-sheet').locator('.det-tile');
   await expect(tiles).toHaveCount(photos);
-  await tiles.first().click({ modifiers: ['Control'] });
+  // Cmd on macOS, where Ctrl click is the secondary click and fires no click event
+  await tiles.first().click({ modifiers: ['ControlOrMeta'] });
   await tiles.last().click({ modifiers: ['Shift'] });
   await expect(win.getByTestId('det-sheet').locator('.det-tile.picked')).toHaveCount(photos);
   await expect(win.getByTestId('det-ai-open')).toContainText(`Detect with AI (${photos} photos)`);

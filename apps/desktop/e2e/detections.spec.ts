@@ -123,7 +123,7 @@ test('detection review: AI drafts, reject and accept with the keyboard', async (
 
     // Pick four photos and ask the model.
     const tiles = sheet.locator('.det-tile');
-    for (let i = 0; i < 4; i++) await tiles.nth(i).click({ modifiers: ['Control'] });
+    for (let i = 0; i < 4; i++) await tiles.nth(i).click({ modifiers: ['ControlOrMeta'] });
     await win.getByTestId('det-ai-open').click();
     const dialog = win.getByTestId('det-ai-dialog');
     await expect(dialog).toBeVisible();
