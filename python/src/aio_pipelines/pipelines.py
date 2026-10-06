@@ -3,7 +3,14 @@
 from __future__ import annotations
 
 from .aik.pipelines import AikCameras, AikProject, AikRecords
+from .change.cloud import ChangeCloud
+from .change.frames import ChangeFrames
+from .change.mesh import ChangeMesh
+from .change.raster import ChangeRaster
+from .change.surface import ChangeSurface
+from .drawing.pipeline import DrawingImport
 from .inspection.pipeline import InspectionRun
+from .modelfit.fit import ModelFitCloud
 from .pointcloud import PointcloudToCopc
 from .road.pipeline import RoadBuild
 from .runtime import Pipeline
@@ -23,5 +30,13 @@ def all_pipelines() -> dict[str, Pipeline]:
         PointcloudToCopc(),
         RoadBuild(),
         SelfTest(),
+        # M8 (pipeline pack 0.3.0); each stream fills its own module
+        ChangeRaster(),
+        ChangeSurface(),
+        ChangeCloud(),
+        ChangeMesh(),
+        ChangeFrames(),
+        DrawingImport(),
+        ModelFitCloud(),
     ]
     return {p.name: p for p in items}
