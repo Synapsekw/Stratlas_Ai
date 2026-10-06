@@ -50,6 +50,7 @@ import {
 import { builderPipelineJobs } from './builderJobs';
 import { registerChangeIpc } from './change';
 import { registerInferenceIpc } from './inference';
+import { electronInference } from './inference/electron';
 import { registerLocalModelsIpc } from './localModels';
 import { registerModelBuilderIpc } from './modelBuilder';
 import { importLogo, removeLogo } from './branding';
@@ -926,7 +927,20 @@ function registerIpc(): void {
   // M8: one module per stream (C1 change, C5 model builder, C6 local detection, C7 local agent).
   registerChangeIpc({ handle });
   registerModelBuilderIpc({ handle });
-  registerInferenceIpc({ handle });
+  registerInferenceIpc({
+    handle,
+    ...electronInference({
+      registry,
+      settings: () => settings.current(),
+      packDir: async () =>
+        (await findPack({ dataRoot: settings.current().dataRoot, env: process.env })).pack?.dir ??
+        null,
+      send: (e) => {
+        const parsed = ipcEvents['inference:progress'].safeParse(e);
+        if (parsed.success) targetWindow()?.webContents.send('inference:progress', parsed.data);
+      },
+    }),
+  });
   registerLocalModelsIpc({ handle });
 }
 
