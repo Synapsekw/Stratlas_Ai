@@ -1,0 +1,17 @@
+{
+  "schema": "aio.device/1",
+  "id": "d_gzgb5golodphazartd4rmin6brx52pf22ht7hx5irk2vbomqgyca",
+  "alg": "ed25519",
+  "key": "xSYMwDJEJqfdjWTEEJIUMFY4zfWDg2D4u29C0cYSm1A",
+  "actor": "a_k7jjnlwiekmnw7rmq52c2m7zz6",
+  "name": "Rana Example",
+  "initials": "RE",
+  "label": "TEST-ONLY fixture device",
+  "app": {
+    "name": "test-app",
+    "version": "0.9.0"
+  },
+  "createdAt": "2026-10-01T05:00:00.000Z",
+  "certs": [],
+  "sig": "YDog-_Ufv1UNpIfu6wL4eHLZ8cLmaDBuRMGVPC44W9-h75tJDPH9nHuNBLhmPHoOqhKtkvksIQPVf10jv0-vCg"
+}

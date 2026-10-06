@@ -18,6 +18,7 @@
     "dev": "pnpm -F @aio/desktop dev",
     "build": "pnpm -F @aio/desktop build",
     "fixtures": "node tools/fixtures/build.mjs",
+    "fixtures:journal": "node packages/schema/src/__fixtures__/journal/generate.mjs",
     "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test",
     "prepare": "lefthook install",
     "icons": "node tools/release/icons.mjs && node tools/release/store-assets.mjs",

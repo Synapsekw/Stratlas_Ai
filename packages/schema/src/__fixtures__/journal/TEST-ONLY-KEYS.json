@@ -1,0 +1,43 @@
+{
+  "warning": "TEST-ONLY Ed25519 seeds for the golden journal fixtures. They are public in this repository: never trust them outside tests.",
+  "testOnly": true,
+  "team": "t_vm6cv3mws7bgecezd4hkxj6qqt",
+  "people": [
+    {
+      "name": "Rana Example",
+      "initials": "RE",
+      "email": "rana@example.com",
+      "role": "owner",
+      "actor": "a_k7jjnlwiekmnw7rmq52c2m7zz6",
+      "device": "d_gzgb5golodphazartd4rmin6brx52pf22ht7hx5irk2vbomqgyca",
+      "replica": "r_6fjgkqfxxoov7cyi",
+      "chain": "d_gzgb5golodphazartd4rmin6brx52pf22ht7hx5irk2vbomqgyca.r_6fjgkqfxxoov7cyi",
+      "publicKey": "xSYMwDJEJqfdjWTEEJIUMFY4zfWDg2D4u29C0cYSm1A",
+      "seed": "7466f8930987ea9099cfed858bf6af173852764f3532c7d3a2d9f0a25e4ec2bf"
+    },
+    {
+      "name": "Omar Sample",
+      "initials": "OS",
+      "email": "omar@example.com",
+      "role": "reviewer",
+      "actor": "a_pmnzqmvmfjvcgkb4d5o7o6hdmb",
+      "device": "d_jv6vdlu4mc6q5hs6acgy2gpomn2wfldildf6xfo7ghefgy2axrga",
+      "replica": "r_gxogqaexfvgkliye",
+      "chain": "d_jv6vdlu4mc6q5hs6acgy2gpomn2wfldildf6xfo7ghefgy2axrga.r_gxogqaexfvgkliye",
+      "publicKey": "bWHs2-AQDnWhCZHSk7pExogz1QLAR8gpdUtRKIYA1Po",
+      "seed": "5eaee99cee177df62302dd462a11a6047dab3494f4e2fbd3db70aceaead348f8"
+    },
+    {
+      "name": "Lina Test",
+      "initials": "LT",
+      "email": "lina@example.com",
+      "role": "reviewer",
+      "actor": "a_bobix5txojunidrzfs45cxbza2",
+      "device": "d_bxa5cl27bxeg7kkdslqwrjz7dwodhbin5nmxkbluiawkjfh43jvq",
+      "replica": "r_gkydxnreh365fsak",
+      "chain": "d_bxa5cl27bxeg7kkdslqwrjz7dwodhbin5nmxkbluiawkjfh43jvq.r_gkydxnreh365fsak",
+      "publicKey": "n0qcKKy1_QGE7xZPMGcgouDY7pvZjr2x8YxSwOZ1dKc",
+      "seed": "e2254aad1739f796586360c33f09d78400052abcccba23340d997672a55303b1"
+    }
+  ]
+}

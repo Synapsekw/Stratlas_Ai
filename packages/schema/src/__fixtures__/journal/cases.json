@@ -1,0 +1,112 @@
+{
+  "edited-payload": {
+    "description": "A letter of Lina's comment text changed in Notepad: the payload no longer hashes to \"ph\".",
+    "ok": false,
+    "expect": [
+      {
+        "code": "payload-hash",
+        "file": "journal/ops/d_bxa5cl27bxeg7kkdslqwrjz7dwodhbin5nmxkbluiawkjfh43jvq.r_gkydxnreh365fsak/000001.jsonl",
+        "line": 2,
+        "seq": 2
+      }
+    ]
+  },
+  "edited-line": {
+    "description": "The label of Rana's severity edit changed: the op fields no longer hash to its id.",
+    "ok": false,
+    "expect": [
+      {
+        "code": "hash-mismatch",
+        "file": "journal/ops/d_gzgb5golodphazartd4rmin6brx52pf22ht7hx5irk2vbomqgyca.r_6fjgkqfxxoov7cyi/000002.jsonl",
+        "line": 1,
+        "seq": 7
+      }
+    ]
+  },
+  "removed-line": {
+    "description": "Rana's third op (adding Omar) was deleted from segment 1.",
+    "ok": false,
+    "expect": [
+      {
+        "code": "chain-gap",
+        "file": "journal/ops/d_gzgb5golodphazartd4rmin6brx52pf22ht7hx5irk2vbomqgyca.r_6fjgkqfxxoov7cyi/000001.jsonl",
+        "line": 3,
+        "seq": 4
+      }
+    ]
+  },
+  "reordered": {
+    "description": "Omar's second and third ops swapped places in his segment.",
+    "ok": false,
+    "expect": [
+      {
+        "code": "order",
+        "file": "journal/ops/d_jv6vdlu4mc6q5hs6acgy2gpomn2wfldildf6xfo7ghefgy2axrga.r_gxogqaexfvgkliye/000001.jsonl",
+        "line": 2
+      }
+    ]
+  },
+  "truncated-tail": {
+    "description": "Omar's last op (his approval) was cut off; Rana's later op and the checkpoint reference it.",
+    "ok": false,
+    "expect": [
+      {
+        "code": "truncated",
+        "chain": "d_jv6vdlu4mc6q5hs6acgy2gpomn2wfldildf6xfo7ghefgy2axrga.r_gxogqaexfvgkliye",
+        "seq": 4
+      }
+    ]
+  },
+  "dropped-segment": {
+    "description": "Rana's first segment file is missing; segment 2 and the other chains reference its ops.",
+    "ok": false,
+    "expect": [
+      {
+        "code": "segment-missing",
+        "file": "journal/ops/d_gzgb5golodphazartd4rmin6brx52pf22ht7hx5irk2vbomqgyca.r_6fjgkqfxxoov7cyi/000001.jsonl",
+        "chain": "d_gzgb5golodphazartd4rmin6brx52pf22ht7hx5irk2vbomqgyca.r_6fjgkqfxxoov7cyi"
+      }
+    ]
+  },
+  "forked-chain": {
+    "description": "A copied folder kept writing Lina's chain: a second, validly signed op claims her seq 3.",
+    "ok": false,
+    "expect": [
+      {
+        "code": "fork",
+        "file": "journal/ops/d_bxa5cl27bxeg7kkdslqwrjz7dwodhbin5nmxkbluiawkjfh43jvq.r_gkydxnreh365fsak/000001.jsonl",
+        "line": 4,
+        "seq": 3
+      }
+    ]
+  },
+  "bad-signature": {
+    "description": "Omar's first op carries a signature made with Lina's key.",
+    "ok": false,
+    "expect": [
+      {
+        "code": "bad-signature",
+        "file": "journal/ops/d_jv6vdlu4mc6q5hs6acgy2gpomn2wfldildf6xfo7ghefgy2axrga.r_gxogqaexfvgkliye/000001.jsonl",
+        "line": 1,
+        "seq": 1
+      }
+    ]
+  },
+  "payload-stripped": {
+    "description": "The payload of Omar's first comment was removed and no redaction op names it.",
+    "ok": false,
+    "expect": [
+      {
+        "code": "payload-missing",
+        "file": "journal/ops/d_jv6vdlu4mc6q5hs6acgy2gpomn2wfldildf6xfo7ghefgy2axrga.r_gxogqaexfvgkliye/000001.jsonl",
+        "line": 1,
+        "seq": 1
+      }
+    ]
+  },
+  "redacted-payload": {
+    "description": "Legitimate redaction: Rana (owner) redacts Omar's first comment with an op.redact op; the payload is gone, the chain still verifies (counts.redacted = 1).",
+    "ok": true,
+    "expect": []
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "schema": "aio.checkpoint/1",
+  "chain": "d_gzgb5golodphazartd4rmin6brx52pf22ht7hx5irk2vbomqgyca.r_6fjgkqfxxoov7cyi",
+  "dev": "d_gzgb5golodphazartd4rmin6brx52pf22ht7hx5irk2vbomqgyca",
+  "act": "a_k7jjnlwiekmnw7rmq52c2m7zz6",
+  "hlc": "1790835360000.0000.d_gzgb5golodphazartd4rmin6brx52pf22ht7hx5irk2vbomqgyca",
+  "seq": 8,
+  "heads": {
+    "d_bxa5cl27bxeg7kkdslqwrjz7dwodhbin5nmxkbluiawkjfh43jvq.r_gkydxnreh365fsak": {
+      "seq": 3,
+      "id": "bd9b0221517b2e438ee32460c73c5f1f4f14eed89f8eb565201779c9250e2827"
+    },
+    "d_gzgb5golodphazartd4rmin6brx52pf22ht7hx5irk2vbomqgyca.r_6fjgkqfxxoov7cyi": {
+      "seq": 8,
+      "id": "f569668e85a8340ba5e1eda5b1a2c12f6bea8e0aca055c787c09425a368c62b2"
+    },
+    "d_jv6vdlu4mc6q5hs6acgy2gpomn2wfldildf6xfo7ghefgy2axrga.r_gxogqaexfvgkliye": {
+      "seq": 4,
+      "id": "f9c7ab69ddcd6b94dd8105a36b1d780a336796aedb447bf944a77f1c048c165d"
+    }
+  },
+  "count": 15,
+  "root": "b9ccf0e3454b05af95fc8ca90a84ce0a282f97b0eb2e1a7aa38a9f59bb19a221",
+  "id": "9f31bc96f6db4a243ce9fe98348f22b0cefa3557ba2d39d30b478a32b3c98e9d",
+  "sig": "XSkeqH_B1pn9oyoo3uBuo8EDkkAkisnIEl4e4XHhV4c0OZoxXgRDeNF29hrk0h33kBxL0BUc_tdlzhMyqaaDDQ"
+}
