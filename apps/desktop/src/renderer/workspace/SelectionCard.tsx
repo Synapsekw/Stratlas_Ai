@@ -16,6 +16,7 @@ import {
 import { interpolatePose } from '@aio/video';
 import { useWorkspace, workspace, type Selection } from '@aio/workspace';
 import { useEffect, type ReactNode } from 'react';
+import { LayerDatePicker } from '../change/SurveyDate';
 import { loadFlight, useMedia } from '../media';
 
 type VideoLayer = Extract<Layer, { kind: 'video' }>;
@@ -255,6 +256,7 @@ export function SelectionCard() {
           </div>
         </div>
         {card.chips && <div className="ent-chips">{card.chips}</div>}
+        <LayerDatePicker />
         <div className="mini-stats">
           <div>
             <div className="v">{clips}</div>

@@ -307,4 +307,26 @@ test('compare dates, show changes, review and make an issue', async ({ win, data
   await expect
     .poll(async () => (await ws(win)).issues.find((i) => i.code === 'F02')?.status)
     .toBe('closed');
+
+  // "Belongs to date...": a layer's explicit survey date, saved in the manifest
+  await win.evaluate(() => {
+    const w = window as unknown as {
+      __stratlas: { workspace: { getState(): { select(s: unknown): void } } };
+    };
+    w.__stratlas.workspace
+      .getState()
+      .select({ kind: 'layer', id: 'photos-d1', layer: 'photos-d1' });
+  });
+  await win.getByRole('tab', { name: 'Selection' }).click();
+  const picker = win.getByTestId('layer-survey-date').locator('select');
+  await expect(picker).toHaveValue('d1');
+  await picker.selectOption('d2');
+  await expect
+    .poll(async () => {
+      const m = JSON.parse(await readFile(join(dir, 'manifest.json'), 'utf8')) as {
+        layers: { id: string; capture?: string }[];
+      };
+      return m.layers.find((l) => l.id === 'photos-d1')?.capture;
+    })
+    .toBe('d2');
 });
