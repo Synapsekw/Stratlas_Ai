@@ -79,6 +79,7 @@ test('exports a diagnostics bundle without keys, tokens or project content', asy
     'packs.json',
     'jobs.json',
     'projects.json',
+    'local-ai.json',
     'errors.txt',
     'logs/main.log',
     'logs/renderer.log',
@@ -87,6 +88,15 @@ test('exports a diagnostics bundle without keys, tokens or project content', asy
     expect([...files.keys()], name).toContain(name);
   expect(files.has('problem.md')).toBe(false);
   expectNoSecrets(files);
+
+  const localAi = JSON.parse(files.get('local-ai.json') ?? '{}') as {
+    onnxRuntime?: { package?: string; packageVersion?: string; state?: string };
+    localAgent?: { enabled?: boolean; offlineAgent?: boolean };
+  };
+  expect(localAi.onnxRuntime?.package).toBe('onnxruntime-node');
+  expect(localAi.onnxRuntime?.packageVersion).toMatch(/^\d+\.\d+/);
+  expect(localAi.onnxRuntime?.state).toBeTruthy();
+  expect(localAi.localAgent?.offlineAgent).toBe(false);
 
   const system = JSON.parse(files.get('system.json') ?? '{}') as {
     app: { version: string };
