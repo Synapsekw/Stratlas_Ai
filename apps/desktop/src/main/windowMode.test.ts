@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { offscreenOrigin, windowMode } from './windowMode';
+import { offscreenOrigin, windowMode, windowSize } from './windowMode';
 
 describe('windowMode', () => {
   it('keeps a normal install on screen', () => {
@@ -30,5 +30,14 @@ describe('offscreenOrigin', () => {
     const o = offscreenOrigin(displays, 1440);
     expect(o.x + 1440).toBeLessThan(-1920);
     expect(o.y).toBe(0);
+  });
+});
+
+describe('windowSize', () => {
+  it('is 1440 x 900 unless set, and never under the 1100 x 700 minimum', () => {
+    expect(windowSize({})).toEqual({ width: 1440, height: 900 });
+    expect(windowSize({ STRATLAS_WINDOW_SIZE: '1100x700' })).toEqual({ width: 1100, height: 700 });
+    expect(windowSize({ STRATLAS_WINDOW_SIZE: '800x600' })).toEqual({ width: 1100, height: 700 });
+    expect(windowSize({ STRATLAS_WINDOW_SIZE: 'big' })).toEqual({ width: 1440, height: 900 });
   });
 });

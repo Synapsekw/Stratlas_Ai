@@ -13,6 +13,19 @@ export function windowMode(env: Record<string, string | undefined>): WindowMode 
   return env.STRATLAS_USER_DATA ? 'offscreen' : 'normal';
 }
 
+/**
+ * The main window's size: 1440 x 900, or STRATLAS_WINDOW_SIZE (`1100x700`) to try a small screen
+ * (the CI runners' screens give the main window its minimum, 1100 x 700). Never under the minimum.
+ */
+export function windowSize(env: Record<string, string | undefined>): {
+  width: number;
+  height: number;
+} {
+  const m = /^(\d+)x(\d+)$/.exec(env.STRATLAS_WINDOW_SIZE?.trim() ?? '');
+  if (!m) return { width: 1440, height: 900 };
+  return { width: Math.max(1100, Number(m[1])), height: Math.max(700, Number(m[2])) };
+}
+
 export interface Rect {
   x: number;
   y: number;

@@ -84,7 +84,7 @@ import { createPackManager } from './packs/manager';
 import { buildSource, findLatestBuild } from './packs/pmtiles';
 import { restoreArgs } from './update/rollback';
 import { createUpdateService, runRestore } from './update/service';
-import { OFFSCREEN_SWITCHES, offscreenOrigin, windowMode } from './windowMode';
+import { OFFSCREEN_SWITCHES, offscreenOrigin, windowMode, windowSize } from './windowMode';
 import { installMenu } from './menu';
 import { linkPathFromArgv, parseAppLink } from './appLink';
 import { popupAction } from './popup';
@@ -1059,15 +1059,15 @@ function openViewerWindow(url: string, title: string): void {
 }
 
 function createWindow(): BrowserWindow {
+  const size = windowSize(process.env);
   const win = new BrowserWindow({
-    width: 1440,
-    height: 900,
+    ...size,
     minWidth: 1100,
     minHeight: 700,
     title: brand.productName,
     backgroundColor: chrome().background,
     show: false,
-    ...placement(1440),
+    ...placement(size.width),
     titleBarStyle: 'hidden',
     ...(process.platform === 'win32'
       ? { titleBarOverlay: { color: chrome().overlay, symbolColor: chrome().symbols, height: 40 } }
