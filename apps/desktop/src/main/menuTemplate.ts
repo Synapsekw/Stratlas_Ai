@@ -1,7 +1,7 @@
 import type { MenuItemConstructorOptions } from 'electron';
 
 /** Menu items the renderer carries out (the `app:menu` event). */
-export type MenuAction = 'settings' | 'palette';
+export type MenuAction = 'settings' | 'palette' | 'reportProblem' | 'exportDiagnostics';
 
 export interface MenuOptions {
   platform: NodeJS.Platform;
@@ -39,6 +39,22 @@ export function menuTemplate(o: MenuOptions): Item[] {
       { role: 'togglefullscreen' },
     ],
   };
+  // Help on every platform. Windows and Linux windows drop the menu bar (removeMenu), so there the
+  // same actions also live in the palette and Settings.
+  const help: Item[] = [
+    {
+      label: 'Report a problem…',
+      click: () => {
+        o.send('reportProblem');
+      },
+    },
+    {
+      label: 'Export diagnostics…',
+      click: () => {
+        o.send('exportDiagnostics');
+      },
+    },
+  ];
   if (!isMac) {
     return [
       { label: 'File', submenu: [{ role: 'quit' }] },
@@ -56,6 +72,7 @@ export function menuTemplate(o: MenuOptions): Item[] {
       },
       view,
       { role: 'windowMenu' },
+      { role: 'help', submenu: help },
     ];
   }
   return [
@@ -111,6 +128,8 @@ export function menuTemplate(o: MenuOptions): Item[] {
             o.send('palette');
           },
         },
+        { type: 'separator' },
+        ...help,
       ],
     },
   ];

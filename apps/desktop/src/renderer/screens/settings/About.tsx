@@ -4,6 +4,7 @@ import { formatBytes, formatDate, Icon, Switch, t } from '@aio/ui';
 import { useEffect, useMemo, useState } from 'react';
 import { build, formatBuildTime } from '../../buildStamp';
 import { bridge, shell, useCall, useShell } from '../../shell';
+import { Diagnostics } from './Diagnostics';
 import { ReleaseNotesView } from './ReleaseNotes';
 
 const PHASE: Record<IpcEvent<'update:progress'>['phase'], string> = {
@@ -513,6 +514,7 @@ export function About() {
         )}
         {logError && <p className="prov-err">{logError}</p>}
       </div>
+      <Diagnostics />
       <div className="sblock">
         <h2>Updates</h2>
         {a?.store ? (

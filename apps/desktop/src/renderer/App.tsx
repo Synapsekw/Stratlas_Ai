@@ -1,5 +1,5 @@
 import { AnnotateStyles, issueSaver } from '@aio/annotate';
-import { buildTimelineModel } from '@aio/ui';
+import { buildTimelineModel, t } from '@aio/ui';
 import { getPlayer } from '@aio/video';
 import { volumetric, VolumetricStyles } from '@aio/volumetric';
 import { workspace } from '@aio/workspace';
@@ -35,6 +35,10 @@ import { applyAppearance } from './theme';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
 import { BuilderLayer } from './builder/BuilderLayer';
 import { Lightbox } from './issueCard/Lightbox';
+import { CrashNotice } from './diagnostics/CrashNotice';
+import { ReportProblemDialog } from './diagnostics/ReportProblem';
+import { saveDiagnostics } from './diagnostics/state';
+import { toasts } from './exports/exports';
 import { evidence, openEvidence, startEvidenceSplit } from './issueCard/evidence';
 import { startCardFocus } from './issueCard/state';
 
@@ -120,8 +124,19 @@ function followMenu(): () => void {
   return window.aio.on('app:menu', ({ action }) => {
     const s = shell.getState();
     if (action === 'settings') s.go('settings');
+    else if (action === 'exportDiagnostics') void exportDiagnosticsFromMenu();
     else s.setPalette(true);
   });
+}
+
+/** Help, Export diagnostics…: save the bundle and say where it went in a toast. */
+async function exportDiagnosticsFromMenu(): Promise<void> {
+  const r = await saveDiagnostics(bridge);
+  if (r.ok && !r.value) return; // save dialog cancelled
+  const id = `diagnostics-${String(Date.now())}`;
+  toasts.getState().start(id, t('diag.export'));
+  if (r.ok) toasts.getState().finish(id, 'done', r.value ?? '');
+  else toasts.getState().finish(id, 'error', r.error);
 }
 
 function Screen() {
@@ -263,6 +278,8 @@ export function App() {
       <Toasts />
       <BuilderLayer />
       <Lightbox />
+      <ReportProblemDialog />
+      <CrashNotice />
     </div>
   );
 }

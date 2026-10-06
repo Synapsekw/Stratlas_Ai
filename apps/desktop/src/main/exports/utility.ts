@@ -2,6 +2,7 @@ import { brand } from '@aio/brand';
 import { utilityProcess } from 'electron';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { utilityLog } from '../diagnostics/electron';
 import type { ExportJob, ExportProgress, ExportResult } from './run';
 import type { FromWorker, ToWorker } from './worker';
 
@@ -17,7 +18,12 @@ export function runInUtility(
   return new Promise((resolve, reject) => {
     const child = utilityProcess.fork(join(import.meta.dirname, 'exportWorker.js'), [], {
       serviceName: `${brand.productName} export`,
+      stdio: 'pipe',
     });
+    // The worker's console goes to utility.log (diagnostics).
+    const log = utilityLog();
+    child.stdout?.on('data', (b: Buffer) => log?.write('info', [b.toString('utf8').trimEnd()]));
+    child.stderr?.on('data', (b: Buffer) => log?.write('error', [b.toString('utf8').trimEnd()]));
     let settled = false;
     const finish = (fn: () => void) => {
       if (settled) return;

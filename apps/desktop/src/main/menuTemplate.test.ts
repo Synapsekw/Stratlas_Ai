@@ -58,6 +58,20 @@ describe('menuTemplate on macOS', () => {
     expect(send).toHaveBeenCalledWith('palette');
   });
 
+  it('offers Report a problem and Export diagnostics in Help', () => {
+    const { menu, send } = mac();
+    const help = sub(menu[5]);
+    expect(names(help)).toEqual([
+      'Search Commands…',
+      'separator',
+      'Report a problem…',
+      'Export diagnostics…',
+    ]);
+    press(help.find((i) => i.label === 'Report a problem…'));
+    press(help.find((i) => i.label === 'Export diagnostics…'));
+    expect(send.mock.calls).toEqual([['reportProblem'], ['exportDiagnostics']]);
+  });
+
   it('keeps DevTools out of release builds', () => {
     expect(names(sub(mac(false).menu[3]))).not.toContain('toggleDevTools');
     expect(names(sub(mac(true).menu[3]))).toContain('toggleDevTools');
@@ -72,7 +86,13 @@ describe('menuTemplate on Windows', () => {
       productName: 'Stratlas',
       send: () => undefined,
     });
-    expect(menu.map((m) => m.role ?? m.label)).toEqual(['File', 'Edit', 'View', 'windowMenu']);
+    expect(menu.map((m) => m.role ?? m.label)).toEqual([
+      'File',
+      'Edit',
+      'View',
+      'windowMenu',
+      'help',
+    ]);
     expect(names(sub(menu[0]))).toEqual(['quit']);
   });
 });
