@@ -51,11 +51,17 @@ import {
 import { builderPipelineJobs } from './builderJobs';
 import { registerChangeIpc } from './change';
 import { registerInferenceIpc } from './inference';
-import { electronInference, inferenceKnown, installedModels } from './inference/electron';
+import {
+  electronInference,
+  inferenceHost,
+  inferenceKnown,
+  installedModels,
+} from './inference/electron';
 import { registerLocalModelsIpc, type LocalServerSeen } from './localModels';
 import { readCloudDrawings, registerModelBuilderIpc } from './modelBuilder';
 import { importLogo, removeLogo } from './branding';
 import { putThumb } from './thumbs';
+import { RENDERER_PROBE, smokeProbe, writeSmokeReport } from './smoke';
 import { nativeImageOps } from './images';
 import { validated, type Handler } from './ipc';
 import { findPack, JobRunner, JobStore, openTarget, safeJobEvent } from './jobs';
@@ -1087,7 +1093,9 @@ function createWindow(): BrowserWindow {
   if (process.env.STRATLAS_SMOKE === '1') {
     win.webContents.once('did-finish-load', () => {
       setTimeout(() => {
-        app.exit(0);
+        void smokeReport(win).finally(() => {
+          app.exit(0);
+        });
       }, 1500);
     });
     win.webContents.once('render-process-gone', () => {
@@ -1097,6 +1105,24 @@ function createWindow(): BrowserWindow {
   if (devUrl) void win.loadURL(devUrl);
   else void win.loadFile(join(import.meta.dirname, '../renderer/index.html'));
   return win;
+}
+
+/**
+ * Release smoke check with `STRATLAS_SMOKE_REPORT`: the local detection runtime's answer, asked
+ * from the window like Settings does, written for tools/release/smoke-packaged.mjs.
+ */
+async function smokeReport(win: BrowserWindow): Promise<void> {
+  const path = process.env.STRATLAS_SMOKE_REPORT;
+  if (!path) return;
+  const report = await smokeProbe({
+    fromRenderer: () => win.webContents.executeJavaScript(RENDERER_PROBE) as Promise<unknown>,
+    fromMain: async () => ({
+      runtime: await inferenceHost().probe(settings.current().inference?.provider ?? 'auto'),
+    }),
+  });
+  await writeSmokeReport(path, report).catch((e: unknown) => {
+    appLog.write('error', ['The smoke report could not be written', e]);
+  });
 }
 
 /** Offline by construction: the renderer may reach only the app, aio:// and the dev server. */
