@@ -40,3 +40,53 @@ Current limits only; each is removed from this list when fixed.
 
 - Unsigned build: SmartScreen warns on install. No automatic updates: install over the previous version. Store submission waits for M7.
 - Old video files are kept in `projects\hcl\video.before-1080` and `projects\alzour\video.before-1080` (about 0.6 GB): delete them once you are happy with M5.
+
+## Change, modelling and local AI (M8)
+
+### Change between dates
+
+- Change is found only where both dates have data; outside the overlap nothing is reported.
+- Change on dates that are not registered is refused: more than 2 px (orthos, surfaces), 5 cm (point clouds) or a 5 cm height offset (surfaces) apart. Align the layers first; there is no setting in the app for a larger tolerance.
+- The change thresholds are the defaults (`Settings.change`); there is no Settings page for them yet.
+- Issues marked only on photos or frames (no 3D sighting) are not matched across dates, so they are never **Resolved** or **Grown**.
+- An issue is **Resolved** only when photos of the later date cover its place; other later layers do not count, so it shows **Not seen**.
+- **Make issue** is not offered on issue changes; **Confirm** links the two issues instead.
+- Imagery change does not read PMTiles orthos, and very large orthos are compared on a coarser cell.
+- Imagery change areas are always **Changed**: they are not split into added and removed.
+- Surface change from COPC point clouds (through PDAL) is untested on real data.
+- Surface change reports a height offset between the dates under 5 cm but does not correct it.
+- A change heat map layer counts for both dates until it is given a survey date (**Belongs to date...**).
+- Nearest-neighbour distance overstates change on sparse clouds, and between clouds of very different density.
+- A horizontal shift on flat ground is invisible to cloud change: the points still lie on the same plane.
+- A moved object shows as two cloud change regions (new where it is, gone where it was), not as one move.
+- The cloud registration check reads only a 40 m square at the centre of the overlap.
+- Model change samples 50,000 points of each model; on large models it is slow.
+- The cloud change distance under the pointer shows in the main 3D view only.
+- The Frames pane assumes flat ground: **Line up the ground** does not line up tall objects.
+- Video frames are not compared by **Find changes in matched frames** (`change.frames`): photos only.
+- While a clip plays, the Frames pane shows still frames of the other date, not a second video.
+- The video of the demo change site is small (384 x 216 pixels, 2 frames per second).
+
+### Models from drawings and point clouds
+
+- DXF only: no DWG. Save DWG drawings as DXF first.
+- Parts are edited by numbers only: no drag handles, no overlay of the fit residual on the cloud.
+- Straight pipes only; tank roofs are flat or cone.
+- Arcs in DXF polylines (bulges) are drawn straight, and block arrays bring in only their first copy.
+- Built models are not checked with a glTF validator.
+- Fitting parts to point clouds is untested on real scans.
+
+### Local detection
+
+- onnxruntime-node ships a macOS binary for Apple silicon (darwin arm64) only, so Intel Macs have no local detection.
+- Local detection checks photos only, not video frames.
+- The licence box is ticked before the model card is shown.
+- The memory the model runtime uses is not capped.
+
+### Local AI agent
+
+- Local model quality and speed depend on the person's hardware; without a graphics card an answer can take tens of seconds.
+- Vision support of a local model is guessed from its name.
+- Token counts for local models are estimates (characters divided by 4).
+- Ollama may serve a smaller context window than the model's maximum; pick **Compact** for small contexts.
+- Tested against a simulated server only; real Ollama, LM Studio and llama.cpp servers are not yet tested.
