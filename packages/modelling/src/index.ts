@@ -34,3 +34,14 @@ export {
   type ModelProblem,
   type PartPatch,
 } from './procmodel';
+export {
+  drawingsOf,
+  drawingToLocal,
+  findDrawing,
+  isDrawingPlan,
+  localToDrawing,
+  parsePlacement,
+  readDrawingParts,
+  type DrawingInfo,
+  type DrawingPlacement,
+} from './drawing';
