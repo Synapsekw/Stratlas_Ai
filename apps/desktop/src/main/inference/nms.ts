@@ -34,7 +34,7 @@ export interface NmsOptions {
   iou?: number;
   /**
    * Suppress a box lying (almost) wholly inside a better one of its class: a partial view of the
-   * same object, as tiles and sliding windows produce. Default 0.9.
+   * same object, as tiles and sliding windows produce. Default 0.8.
    */
   contain?: number;
   maxDetections?: number;
@@ -43,7 +43,7 @@ export interface NmsOptions {
 /** Greedy per-class non-maximum suppression; the kept boxes, best first. */
 export function nms(boxes: readonly ScoredBox[], opts: NmsOptions = {}): ScoredBox[] {
   const maxIou = opts.iou ?? 0.45;
-  const contain = opts.contain ?? 0.9;
+  const contain = opts.contain ?? 0.8;
   const max = opts.maxDetections ?? 300;
   const sorted = [...boxes].sort((a, b) => b.score - a.score);
   const kept: ScoredBox[] = [];
