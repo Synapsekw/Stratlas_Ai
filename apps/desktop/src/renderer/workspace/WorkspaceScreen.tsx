@@ -234,6 +234,10 @@ export function WorkspaceScreen() {
   const pkg = useShell((s) => s.pkg);
   // the agent answers on the build route while the Model builder is open (C5)
   const modellerOpen = useModeller((s) => s.open);
+  // the agent checks its route again when the AI settings change
+  const aiKey = useShell((s) =>
+    JSON.stringify([s.settings.cloudAi, s.settings.routes, s.settings.localModel]),
+  );
   const road = useIsRoad();
   const volumes = useVolumetric((s) => s.status === 'ready');
   const project = useWorkspace((s) => s.project);
@@ -273,6 +277,7 @@ export function WorkspaceScreen() {
             <AgentPanel
               window={focused}
               task={modellerOpen ? 'build' : undefined}
+              settingsKey={aiKey}
               className="agent-host"
               renderFix={(controls) => <AgentFixCard {...controls} />}
             />

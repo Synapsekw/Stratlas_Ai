@@ -96,6 +96,25 @@ describe('AgentPanel', () => {
     expect(el.querySelector('textarea')?.disabled).toBe(true);
   });
 
+  it('checks its route again when the AI settings change', async () => {
+    let current = bridge(false).b;
+    const b: AioBridge = {
+      invoke: (channel, req) => current.invoke(channel, req),
+      on: (event, listener) => current.on(event, listener),
+    };
+    const el = await render(b, { settingsKey: 'off' });
+    expect(el.textContent).toContain('Cloud AI is off');
+    // cloud AI turned on from the palette: no focus change, a new settings key
+    current = bridge(true).b;
+    await act(async () => {
+      root?.render(<AgentPanel window="scene3d" settingsKey="on" />);
+      await Promise.resolve();
+    });
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+    expect(el.textContent).not.toContain('Cloud AI is off');
+    expect(el.querySelector('textarea')?.disabled).toBe(false);
+  });
+
   it('shows the binding chip and three suggestions, and sends one', async () => {
     workspace.getState().openProject({ id: 'p1', root: 'E:/x', manifest: fixtureManifest() }, []);
     workspace.getState().select({ kind: 'asset', id: '20-T-0002' });

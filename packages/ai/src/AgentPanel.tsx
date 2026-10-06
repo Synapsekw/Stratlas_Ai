@@ -45,6 +45,11 @@ export interface AgentPanelProps {
   renderFix?: (controls: AgentFixControls) => ReactNode;
   /** The route the messages go to (`build` while the Model builder is open); default chat. */
   task?: AiTask | undefined;
+  /**
+   * Changes when the AI settings change (cloud switch, routes, local model): the panel checks its
+   * route again, as it does when the window gets the focus.
+   */
+  settingsKey?: string | undefined;
 }
 
 const CAPTURE_WINDOWS: readonly WindowKind[] = ['video', 'scene3d', 'pointcloud', 'photo', 'map'];
@@ -64,7 +69,13 @@ function providerName(provider: string): string {
  * the session and project meters. Sends through window.aio 'ai:send', executes renderer tools on
  * 'ai:event' tool calls. Owner: stream S9.
  */
-export function AgentPanel({ window: win, className, renderFix, task }: AgentPanelProps) {
+export function AgentPanel({
+  window: win,
+  className,
+  renderFix,
+  task,
+  settingsKey,
+}: AgentPanelProps) {
   const taskRef = useRef(task);
   useEffect(() => {
     taskRef.current = task;
@@ -102,6 +113,14 @@ export function AgentPanel({ window: win, className, renderFix, task }: AgentPan
       disconnect();
     };
   }, [session]);
+
+  // The AI settings changed (cloud AI turned on from the palette, a route): check again.
+  const seenKey = useRef(settingsKey);
+  useEffect(() => {
+    if (seenKey.current === settingsKey) return;
+    seenKey.current = settingsKey;
+    void session.refresh();
+  }, [session, settingsKey]);
 
   // A different project: a fresh conversation, its consent, policy and meter.
   useEffect(() => {
