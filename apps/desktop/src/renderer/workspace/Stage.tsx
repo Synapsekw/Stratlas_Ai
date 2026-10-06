@@ -69,6 +69,7 @@ import { FloatingVideo } from './FloatingVideo';
 import { compareRuntime, linkMaps, primaryMap, primaryScene, useCompareNotice } from './compare';
 import { CompareButton, CompareMap, useVolumesFollowDate } from './CompareControls';
 import { CompareScene } from './CompareScene';
+import { ChangeLegends } from './MapSwipe';
 import { CursorReadout, useSceneCursor } from './SceneCursor';
 import './m8Mounts';
 import { paneCapture, PaneChooser, SplitPane, useSplit } from './SplitPanes';
@@ -168,6 +169,7 @@ function ScenePane({
       <VolumetricStage stage={engine} />
       <StageClassLegend />
       <CloudChangeLegend />
+      <ChangeLegends />
       {corner}
     </FocusZone>
   );
@@ -794,6 +796,7 @@ export function Stage() {
               />
             </div>
             {roadMap && <RoadLegend />}
+            <ChangeLegends />
             {roadMap && <PciUnitCard />}
             {chooser('map')}
           </FocusZone>
