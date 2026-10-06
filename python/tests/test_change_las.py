@@ -60,8 +60,8 @@ def test_extra_bytes_descriptors_parse_from_the_vlr_payload():
     rec[2] = 9  # float
     rec[3] = 0b110  # min and max given
     rec[4 : 4 + 8] = b"Distance"
-    rec[64 + 24 : 64 + 32] = struct.pack("<d", -1.5)  # min
-    rec[64 + 48 : 64 + 56] = struct.pack("<d", 2.5)  # max
+    rec[64:72] = struct.pack("<d", -1.5)  # min (no_data 40, min 64, max 88, scale 112, offset 136)
+    rec[88:96] = struct.pack("<d", 2.5)  # max
     rec[160 : 160 + 11] = b"C2C metres."
     dims = parse_extra_bytes(bytes(rec))
     assert len(dims) == 1

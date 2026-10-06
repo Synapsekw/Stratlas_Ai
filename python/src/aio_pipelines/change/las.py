@@ -140,8 +140,8 @@ def parse_extra_bytes(payload: bytes) -> list[ExtraDim]:
         r = payload[i : i + EXTRA_BYTES_RECORD]
         data_type, options = r[2], r[3]
         name = _text(r[4:36])
-        lo = struct.unpack_from("<d", r, 88)[0] if options & 0b10 else None
-        hi = struct.unpack_from("<d", r, 112)[0] if options & 0b100 else None
+        lo = struct.unpack_from("<d", r, 64)[0] if options & 0b10 else None
+        hi = struct.unpack_from("<d", r, 88)[0] if options & 0b100 else None
         dims.append(ExtraDim(name, data_type, options, _text(r[160:192]), lo, hi))
     return dims
 
@@ -154,8 +154,8 @@ def _extra_record(d: ExtraDim) -> bytes:
     r[4 : 4 + len(name)] = name
     if d.min is not None and d.max is not None:
         options |= 0b110
-        struct.pack_into("<d", r, 88, float(d.min))
-        struct.pack_into("<d", r, 112, float(d.max))
+        struct.pack_into("<d", r, 64, float(d.min))
+        struct.pack_into("<d", r, 88, float(d.max))
     r[3] = options
     desc = d.description.encode("ascii", errors="replace")[:32]
     r[160 : 160 + len(desc)] = desc
