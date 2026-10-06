@@ -62,3 +62,8 @@
     animation: none;
   }
 }
+
+/* The form inside the dialog adds no box: header, body and footer stay the dialog's rows. */
+.diag-form {
+  display: contents;
+}
