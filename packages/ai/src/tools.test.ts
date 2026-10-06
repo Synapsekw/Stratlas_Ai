@@ -136,8 +136,9 @@ describe('compact tool profile (small local models)', () => {
     for (const w of WindowKind.options) {
       const compact = toolsForWindow(w, 'compact');
       expect(compact.length, w).toBeGreaterThan(3);
-      // 14 everyday tools plus the four change tools (C1), which every window offers
-      expect(compact.length, w).toBeLessThanOrEqual(18);
+      // 13 everyday tools, the four change tools (C1, every window) and the four modelling
+      // tools (C5: 3D view, map and point cloud)
+      expect(compact.length, w).toBeLessThanOrEqual(21);
       expect(compact.length, w).toBeLessThan(toolsForWindow(w, 'full').length);
       for (const s of compact) {
         expect(s.meta.description.length, s.meta.name).toBeLessThanOrEqual(100);
@@ -184,8 +185,17 @@ describe('compact tool profile (small local models)', () => {
     }
   });
 
-  it('offers the registered change tools (C1) by their real names', () => {
-    for (const n of ['compare_captures', 'list_changes', 'show_change', 'run_change_detection']) {
+  it('offers the registered change (C1) and modelling (C5) tools by their real names', () => {
+    for (const n of [
+      'compare_captures',
+      'list_changes',
+      'show_change',
+      'run_change_detection',
+      'propose_model_parts',
+      'fit_primitives',
+      'edit_model_part',
+      'build_model',
+    ]) {
       expect(getToolSpec(n), n).toBeDefined();
       expect(names('scene3d', 'compact'), n).toContain(n);
     }
