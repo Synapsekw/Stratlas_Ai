@@ -222,8 +222,15 @@ function PlaceDrawing({ drawing, onDone }: { drawing: DrawingInfo; onDone: () =>
       setSay({ text: 'Type easting northing, or latitude, longitude.', bad: true });
       return;
     }
+    // a point typed without a height sits on the project's base (local y 0), not at height 0 of
+    // the CRS, which is the origin's height below it
+    const withHeight =
+      typedSite
+        .trim()
+        .split(/[\s,;]+/)
+        .filter(Boolean).length === 3;
     setTypedSite('');
-    addSite([enh[0] - origin[0], enh[2] - origin[2], origin[1] - enh[1]]);
+    addSite([enh[0] - origin[0], withHeight ? enh[2] - origin[2] : 0, origin[1] - enh[1]]);
   };
 
   const place = () => {
