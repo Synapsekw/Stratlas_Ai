@@ -51,6 +51,7 @@ import {
 import { builderPipelineJobs } from './builderJobs';
 import { registerChangeIpc } from './change';
 import { registerInferenceIpc } from './inference';
+import { electronInference } from './inference/electron';
 import { registerLocalModelsIpc } from './localModels';
 import { registerModelBuilderIpc } from './modelBuilder';
 import { importLogo, removeLogo } from './branding';
@@ -935,7 +936,20 @@ function registerIpc(): void {
     thresholds: () => ChangeThresholds.parse(settings.current().change ?? {}),
   });
   registerModelBuilderIpc({ handle });
-  registerInferenceIpc({ handle });
+  registerInferenceIpc({
+    handle,
+    ...electronInference({
+      registry,
+      settings: () => settings.current(),
+      packDir: async () =>
+        (await findPack({ dataRoot: settings.current().dataRoot, env: process.env })).pack?.dir ??
+        null,
+      send: (e) => {
+        const parsed = ipcEvents['inference:progress'].safeParse(e);
+        if (parsed.success) targetWindow()?.webContents.send('inference:progress', parsed.data);
+      },
+    }),
+  });
   registerLocalModelsIpc({
     handle,
     localModel: () => settings.current().localModel,

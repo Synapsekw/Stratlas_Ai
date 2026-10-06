@@ -2,7 +2,8 @@
  * Mask assist (BLD-10, optional): a SAM-class model outlines the object in a box the reviewer
  * drew. No model ships with the app (licences): it is available only when the pipeline pack
  * carries one in `models/sam/` (`encoder.onnx`, `decoder.onnx`, optional `model.json` with a
- * `name`) and `onnxruntime-node` can be loaded. Everything else in the review works without it.
+ * `name`). onnxruntime-node ships with the app (M8) and runs in the inference utility process.
+ * Everything else in the review works without a mask model.
  *
  * The model is the usual SAM / MobileSAM ONNX export: the encoder takes a 1024 x 1024 normalised
  * RGB image (longest side scaled to 1024, padded right and bottom), the decoder takes the
@@ -79,16 +80,13 @@ export async function findSamModel(packDir: string | null): Promise<SamModel | n
   return { name, encoder, decoder };
 }
 
-/** onnxruntime-node when it is installed (it is not a dependency of the app by default). */
+/**
+ * onnxruntime for mask assist: sessions live in the inference utility process (BLD-10), the same
+ * process and runtime as local detection, so encoding a photo never blocks main.
+ */
 export async function loadOnnxRuntime(): Promise<OrtLike | null> {
-  const spec = 'onnxruntime-node';
-  try {
-    const mod = (await import(/* @vite-ignore */ spec)) as { default?: unknown } & Partial<OrtLike>;
-    const ort = (mod.InferenceSession ? mod : mod.default) as Partial<OrtLike> | undefined;
-    return ort?.InferenceSession && ort.Tensor ? (ort as OrtLike) : null;
-  } catch {
-    return null;
-  }
+  const { inferenceOrt } = await import('./inference/electron');
+  return inferenceOrt();
 }
 
 /** CHW float tensor data of the padded, normalised 1024 x 1024 encoder input. */

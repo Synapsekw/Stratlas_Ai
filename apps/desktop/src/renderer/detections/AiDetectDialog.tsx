@@ -1,7 +1,8 @@
 /**
- * AI-assisted detection (BLD-6): choose photos or video frames, see the route, the cost estimate
- * and exactly what will be sent (AI-6), then send in batches. Results land as draft detections
- * for the review; a provider error stops the run with the provider's own message.
+ * The Detect dialog. Cloud vision (BLD-6): choose photos or video frames, see the route, the cost
+ * estimate and exactly what will be sent (AI-6), then send in batches. Results land as draft
+ * detections for the review; a provider error stops the run with the provider's own message.
+ * Local model (BLD-10, `LocalDetect.tsx`): an imported ONNX detector on this computer.
  */
 import {
   DEFAULT_BATCH,
@@ -22,6 +23,7 @@ import { bridge, useCall, useShell } from '../shell';
 import { MediaThumb } from '../thumbs/Thumb';
 import { promptTaxonomy, sampleTimes, toDraftDetections, type DetectItem } from './convert';
 import { frameThumb, prepareItem } from './prepare';
+import { LocalDetectDialog, ModeSwitch, readMode, type DetectMode } from './LocalDetect';
 import { startDetectRun, type DetectRunner, type RunProgress } from './runner';
 import { detections, dispatch, noteAssessed } from './store';
 import { aiPassName } from '@aio/annotate/detections';
@@ -83,6 +85,7 @@ export function AiDetectDialog({
   onClose: () => void;
 }) {
   const t = useT();
+  const [mode, setMode] = useState<DetectMode>(readMode);
   const manifest = useWorkspace((s) => s.project?.manifest);
   const routes = useShell((s) => s.settings.routes);
   const clips = layers.filter((l): l is Extract<Layer, { kind: 'video' }> => l.kind === 'video');
@@ -230,6 +233,18 @@ export function AiDetectDialog({
     onClose();
   };
 
+  if (mode === 'local')
+    return (
+      <LocalDetectDialog
+        projectId={projectId}
+        selected={selected}
+        current={current}
+        unreviewed={unreviewed}
+        onMode={setMode}
+        onClose={onClose}
+      />
+    );
+
   const providerName =
     route && route.provider in PROVIDER_LABELS
       ? PROVIDER_LABELS[route.provider as keyof typeof PROVIDER_LABELS]
@@ -263,7 +278,7 @@ export function AiDetectDialog({
       >
         <div className="dlg-h">
           <Icon name="agent" size={16} />
-          <h2 id="det-ai-h">{t('det.ai.title')}</h2>
+          <h2 id="det-ai-h">{t('infer.dlg.title')}</h2>
           {route && (
             <span className="sub mono">
               {providerName} · {modelLabel(route.model)}
@@ -326,6 +341,10 @@ export function AiDetectDialog({
           </div>
         ) : (
           <div className="dlg-b">
+            <section className="dlg-sec">
+              <h3 className="caps">{t('infer.dlg.source')}</h3>
+              <ModeSwitch mode="cloud" onChange={setMode} />
+            </section>
             {noClasses && <p className="ann-error">{t('det.ai.noClasses')}</p>}
             {blocked && (
               <p className="ann-error" role="alert" data-testid="det-ai-blocked">
