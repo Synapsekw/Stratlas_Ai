@@ -566,6 +566,27 @@ describe('the local agent on a small model (AI-9)', () => {
     expect(t.events.some((e) => e.type === 'tool-call')).toBe(false);
   });
 
+  it('answers on the route the message names (the Model builder sends build)', async () => {
+    const t = localSetup({
+      cfg: { capabilities: { tools: false, vision: false } },
+      steps: [textStep('Built.'), textStep('A summary.')],
+    });
+    // build is a tool task: a model without tools answers in text only there too
+    await t.runtime.send(
+      req({ task: 'build', messages: [{ role: 'user', content: 'Build tank T-102' }] }),
+    );
+    expect((await t.end('r1')).type).toBe('done');
+    expect(text(t.events)).toBe(`${MESSAGES.answerOnlyNotice}\n\nBuilt.`);
+    // the report route needs no tools, so no notice there
+    const r = localSetup({
+      cfg: { capabilities: { tools: false, vision: false } },
+      steps: [textStep('A summary.')],
+    });
+    await r.runtime.send(req({ task: 'report', messages: [{ role: 'user', content: 'Sum up' }] }));
+    expect((await r.end('r1')).type).toBe('done');
+    expect(text(r.events)).toBe('A summary.');
+  });
+
   it('gives the notice once per conversation', async () => {
     const t = localSetup({
       cfg: { capabilities: { tools: false, vision: false } },

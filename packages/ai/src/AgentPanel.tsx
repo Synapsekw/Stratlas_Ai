@@ -1,4 +1,4 @@
-import type { AioBridge, ConversationSummary, WindowKind } from '@aio/schema';
+import type { AiTask, AioBridge, ConversationSummary, WindowKind } from '@aio/schema';
 import { useWorkspace } from '@aio/workspace';
 import {
   useEffect,
@@ -43,6 +43,8 @@ export interface AgentPanelProps {
    * example the Anthropic workspace ID. The app renders it, so it can use its settings and strings.
    */
   renderFix?: (controls: AgentFixControls) => ReactNode;
+  /** The route the messages go to (`build` while the Model builder is open); default chat. */
+  task?: AiTask | undefined;
 }
 
 const CAPTURE_WINDOWS: readonly WindowKind[] = ['video', 'scene3d', 'pointcloud', 'photo', 'map'];
@@ -62,13 +64,18 @@ function providerName(provider: string): string {
  * the session and project meters. Sends through window.aio 'ai:send', executes renderer tools on
  * 'ai:event' tool calls. Owner: stream S9.
  */
-export function AgentPanel({ window: win, className, renderFix }: AgentPanelProps) {
+export function AgentPanel({ window: win, className, renderFix, task }: AgentPanelProps) {
+  const taskRef = useRef(task);
+  useEffect(() => {
+    taskRef.current = task;
+  }, [task]);
   const [session] = useState(
     () =>
       new AgentSession({
         bridge: getBridge(),
         window: win,
         toolContext: () => defaultToolContext(win),
+        task: () => taskRef.current,
       }),
   );
   const state = useSyncExternalStore(session.subscribe, session.getState);

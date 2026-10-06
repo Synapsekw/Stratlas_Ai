@@ -12,6 +12,7 @@ import {
   needsApproval,
   type AiErrorCode,
   type AiPolicy,
+  type AiTask,
   type AioBridge,
   type ChatMessage,
   type Conversation,
@@ -105,6 +106,8 @@ export interface SessionDeps {
   now?: () => Date;
   /** Delay before a change is saved; important changes (waiting approvals, end of a reply) save at once. */
   saveDelayMs?: number;
+  /** The route the next message goes to (`build` while the Model builder is open); default chat. */
+  task?: () => AiTask | undefined;
 }
 
 export const SESSION_TEXT = {
@@ -351,6 +354,7 @@ export class AgentSession {
     this.set({ turns: [...this.state.turns, user, reply], busy: true, fix: null });
     const messages: ChatMessage[] = [...history, { role: 'user', content: text }];
     const projectId = this.projectId();
+    const task = this.deps.task?.();
     try {
       const res = await bridge.invoke('ai:send', {
         runId,
@@ -359,6 +363,7 @@ export class AgentSession {
         messages,
         ...(projectId ? { projectId } : {}),
         ...(image ? { image } : {}),
+        ...(task ? { task } : {}),
       });
       if (!res.ok) this.finish(runId, 'error', res.error ?? SESSION_TEXT.noResponse);
     } catch (e) {

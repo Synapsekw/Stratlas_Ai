@@ -255,8 +255,14 @@ Models made from drawings, point cloud fits, the agent or by hand (schema in `@a
   models/<id>.procmodel.json  aio.procmodel/1: parts (extrusion, cylinder, box, pipe, sphere), each draft, accepted or rejected
   models/<id>.glb             built from the accepted parts by the TypeScript mesher, one node per part
   models/draft-<id>.glb       preview of every part, shown as a draft layer (derived.draft), left out of reports
-  drawings/<name>.dxf         DXF plans copied in by drawing.import (DWG is not supported)
+  drawings/<stem>.dxf                    DXF plans copied in by drawing.import (DWG is not supported)
+  drawings/<stem>/plan.png               the drawing drawn as a plan raster (layer plan-<stem>)
+  drawings/<stem>/parts.procmodel.json   aio.procmodel/1: candidate parts found in the drawing (drafts)
+  drawings/<stem>/placement.json         aio.drawingplacement/1: where the drawing lies in the local frame
 ```
+
+- `placement.json` (`aio.drawingplacement/1`, read by `@aio/modelling` `parsePlacement`): `file` (the DXF), `units` and `unitM` (metres per drawing unit), `matrix` `[a, b, tx, c, d, tz]` so a drawing point `(dx, dy)` lies at `x = a*dx + b*dy + tx`, `z = c*dx + d*dy + tz`, at height `baseY`; optional `rmsM` (control point fit), `control` (the points used) and `provisional` (placed without control points). The Model builder's "Place the drawing" rewrites it; the pipeline writes the first one.
+- Layer ids are stable so a second import or build replaces rather than adds: `plan-<stem>` (the plan raster), `drawing-<stem>-<layer>` (one vector layer per DXF layer, its name slugged), `model-<id>` (the built model) and `model-draft-<id>` (the draft preview, `derived.draft`).
 
 - Coordinates are the project local frame in metres (x east, y up, z south); extrusion footprints are `[x, z]` pairs with a `baseY` and a `height`; cylinders stand on their `base` centre with a vertical axis.
 - `origin` says where a part came from: `fit` (`residualM`, `inliers`, `inlierShare?`), `drawing` (`file`, `layer`, `entity`), `agent` or `manual`.

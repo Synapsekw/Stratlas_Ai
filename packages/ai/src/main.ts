@@ -616,7 +616,7 @@ export function createAgentRuntime(
       if (runs.has(req.runId)) return { ok: false, error: MESSAGES.busy };
       const run: Run = { controller: new AbortController(), pending: new Map() };
       runs.set(req.runId, run);
-      const gate = await check(req.image ? 'vision' : 'chat', req.projectId);
+      const gate = await check(req.task ?? (req.image ? 'vision' : 'chat'), req.projectId);
       if (!gate.ok) {
         runs.delete(req.runId);
         return { ok: false, error: gate.message };

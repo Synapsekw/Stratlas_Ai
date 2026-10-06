@@ -578,6 +578,11 @@ export const ipc = {
         messages: z.array(ChatMessage).min(1),
         /** Optional image (data URL) such as the current video frame. */
         image: z.string().startsWith('data:image/').optional(),
+        /**
+         * M8: the route to answer on (the Model builder sends `build`); default `vision` with an
+         * image, else `chat`.
+         */
+        task: AiTask.optional(),
       })
       .strict(),
     response: z.object({ ok: z.boolean(), error: z.string().optional() }),

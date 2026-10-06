@@ -18,6 +18,7 @@ import { useCardFocusSeq } from '../issueCard/state';
 import { useMedia } from '../media';
 import { selectClip } from '../shell/Sidebar';
 import { cloudAiBlocked } from '../player';
+import { useModeller } from '../modeller';
 import { useShell } from '../shell';
 import { ChainageRuler } from '../road/ChainageRuler';
 import { RoadPanel } from '../road/RoadPanel';
@@ -231,6 +232,8 @@ export function WorkspaceScreen() {
   const focused = agentWindow(focusedWindow, stageMode);
   const rightCollapsed = useShell((s) => s.rightCollapsed);
   const pkg = useShell((s) => s.pkg);
+  // the agent answers on the build route while the Model builder is open (C5)
+  const modellerOpen = useModeller((s) => s.open);
   const road = useIsRoad();
   const volumes = useVolumetric((s) => s.status === 'ready');
   const project = useWorkspace((s) => s.project);
@@ -269,6 +272,7 @@ export function WorkspaceScreen() {
           ) : (
             <AgentPanel
               window={focused}
+              task={modellerOpen ? 'build' : undefined}
               className="agent-host"
               renderFix={(controls) => <AgentFixCard {...controls} />}
             />
