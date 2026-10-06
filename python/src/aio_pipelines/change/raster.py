@@ -78,6 +78,8 @@ REGION_STYLE = {
 }
 INPUTS_CHANGED = "The orthos changed since this job started. Start the job again."
 LUMA = np.array([0.299, 0.587, 0.114], np.float32)
+#: The structure term's noise floor, in units of the noise measured between the two dates.
+NOISE_FLOOR = 4.0
 
 
 # ------------------------------------------------------------------------------------------ score
@@ -110,18 +112,35 @@ def _local_stats(x: np.ndarray, y: np.ndarray, sigma: float):
     return np.clip(vx, 0, None), np.clip(vy, 0, None), cxy
 
 
-def structure_change(la: np.ndarray, lb: np.ndarray, sigma: float = 2.0) -> np.ndarray:
+def structure_change(
+    la: np.ndarray, lb: np.ndarray, sigma: float = 2.0, valid: np.ndarray | None = None
+) -> np.ndarray:
     """0 where two brightness grids have the same local structure, 1 where it differs.
 
     Works on high-passed log brightness, so shade and exposure (multiplicative and slow) drop out;
     the SSIM-like term ``(2 cov + C) / (var_a + var_b + C)`` also sees texture appear or vanish.
+
+    ``C`` is the noise floor, per cell: texture finer than the noise and compression of the two
+    orthos must not count. In log brightness that noise grows as a place gets darker (its variance
+    goes as 1 / brightness, as for photon noise and for the compression of real orthos), so ``C``
+    is ``NOISE_FLOOR`` times the noise expected of the cell's brightness on both dates, its scale
+    measured from the scene: the median difference energy, which changed areas do not move. A
+    fraction of the scene's typical texture energy stays as a lower bound. Both are measured over
+    ``valid`` (default: everywhere).
     """
+    from scipy import ndimage as ndi
+
     from .register import highpass
 
     ha, hb = highpass(la, 1.5), highpass(lb, 1.5)
     va, vb, cab = _local_stats(ha, hb, sigma)
-    # the noise floor: a fraction of the typical texture energy of the scene
-    c = max(1e-5, 0.25 * float(np.median(va + vb)))
+    at = np.ones(la.shape, bool) if valid is None or not valid.any() else valid
+    # how much noise each cell's brightness brings on the two dates (up to a common scale)
+    dark = 1 / np.clip(ndi.gaussian_filter(la, sigma), 0.02, None)
+    dark += 1 / np.clip(ndi.gaussian_filter(lb, sigma), 0.02, None)
+    scale = float(np.median((ndi.gaussian_filter((ha - hb) ** 2, sigma) / dark)[at]))
+    texture = float(np.median((va + vb)[at]))
+    c = np.maximum(max(1e-5, 0.25 * texture), NOISE_FLOOR * scale * dark)
     sim = (2 * cab + c) / (va + vb + c)
     return np.clip(1 - sim, 0, 1)
 
@@ -155,7 +174,7 @@ def change_score(
 
     stats = valid if stats is None else stats
     la0, lb0 = a @ LUMA, b @ LUMA
-    struct = structure_change(la0, lb0)
+    struct = structure_change(la0, lb0, valid=stats)
     stable = stats & (struct < 0.3)
     b = normalise(a, b, stable if stable.sum() >= 0.1 * max(1, stats.sum()) else stats)
     la, lb = a @ LUMA, b @ LUMA
