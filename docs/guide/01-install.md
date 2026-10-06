@@ -19,7 +19,7 @@ To update, run the newer installer over the old version. Your projects, settings
 
 ## First start
 
-{product} opens on **Projects**. On a first start the library holds only the two demo projects that come with the app, and a welcome offers **Open the demo project**: a fictional tank farm with a 3D model, a drone video on the model, a map, a point cloud, issues with photos and two stockpiles surveyed twice. **Demo access road** opens the road demo. Both are synthetic data; your changes to them stay on this computer.
+{product} opens on **Projects**. On a first start the library holds only the three demo projects that come with the app, and a welcome offers **Open the demo project**: a fictional tank farm with a 3D model, a drone video on the model, a map, a point cloud, issues with photos and two stockpiles surveyed twice. **Demo access road** opens the road demo. **Demo change site (2 dates)** is a small fictional site surveyed twice, for comparing dates and building models (see [Changes between two dates](14-changes.md)). All three are synthetic data; your changes to them stay on this computer.
 
 Under **This workstation** the welcome says what is there and what is missing, and what each piece is for:
 
