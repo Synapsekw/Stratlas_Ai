@@ -65,6 +65,53 @@ test('the change demo opens as a working copy with both dates and every layer', 
   expect(truth.changes.issue?.verdicts).toEqual({ grown: 1, new: 1, resolved: 1, unchanged: 3 });
 });
 
+test('the change demo videos (I_PCM H.264) decode in the app', async ({ demoProject }) => {
+  const { win, truth } = demoProject;
+  for (const d of ['d1', 'd2']) {
+    const r = await win.evaluate(async (src) => {
+      const v = document.createElement('video');
+      v.muted = true;
+      v.preload = 'auto';
+      v.src = src;
+      const ok = await new Promise<boolean>((res) => {
+        v.addEventListener(
+          'loadeddata',
+          () => {
+            res(true);
+          },
+          { once: true },
+        );
+        v.addEventListener(
+          'error',
+          () => {
+            res(false);
+          },
+          { once: true },
+        );
+        setTimeout(() => {
+          res(false);
+        }, 15_000);
+      });
+      v.currentTime = 3;
+      await new Promise((res) => {
+        v.addEventListener('seeked', res, { once: true });
+        setTimeout(res, 5_000);
+      });
+      return {
+        ok,
+        error: v.error?.message ?? null,
+        width: v.videoWidth,
+        height: v.videoHeight,
+        duration: v.duration,
+        at: v.currentTime,
+      };
+    }, `aio://project/${CHANGE_DEMO.id}/video/flight-${d}.mp4`);
+    expect(r, d).toMatchObject({ ok: true, error: null, at: 3 });
+    expect(r.width / r.height).toBeCloseTo(16 / 9, 1);
+    expect(r.duration).toBeCloseTo(truth.counts.videoFrames / 2, 0);
+  }
+});
+
 test('a two-date project opens with both captures', async ({ twoDateProject, win }) => {
   await win.locator('.nav-item', { hasText: 'Projects' }).first().click();
   await win.getByTestId('project-card').filter({ hasText: 'E2E two dates' }).first().click();
