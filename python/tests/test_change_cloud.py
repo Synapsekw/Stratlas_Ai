@@ -366,6 +366,80 @@ def test_the_job_writes_a_copc_with_a_distance_field_a_layer_and_a_change_set(tm
 
 
 @needs_pdal
+def test_viewing_clouds_are_read_from_their_las_sources_and_give_a_copc(tmp_path):
+    from synth import write_las as write_las12
+
+    rng = np.random.default_rng(21)
+    g = ground(rng, [(3, 3, 0.8)], extent=6, spacing=0.06)
+    before = g
+    after = np.vstack([g + rng.normal(0, 0.002, g.shape), cylinder(rng, 3, 3, spacing=0.06)])
+    layers = [
+        {
+            "kind": "pointcloud",
+            "id": lid,
+            "name": lid.title(),
+            "src": {"path": f"clouds/{lid}/index.json"},
+            "format": "png-packed",
+            "capture": cap,
+        }
+        for lid, cap in (("before", "c1"), ("after", "c2"))
+    ]
+    root = _project(tmp_path, layers)
+    (root / "sources").mkdir()
+    for lid, xyz in (("before", before), ("after", after)):
+        # LAS 1.2 point format 2, as stream C8's demo writes its sources
+        write_las12(
+            root / "sources" / f"{lid}.las", xyz + np.array([500000, 3200000, 0]), 32639, point_format=2
+        )
+
+    result, _ = _run(root, {"layerFrom": "before", "layerTo": "after"})
+    assert result["status"] == "done"
+    m = json.loads((root / "manifest.json").read_text())
+    layer = next(x for x in m["layers"] if x["id"] == "c1-c2-cloud")
+    assert layer["format"] == "copc" and layer["src"]["path"] == "change/c1-c2-cloud/distance.copc.laz"
+    assert 0.99 * len(after) < layer["pointCount"] <= len(after)
+    info = json.loads(
+        subprocess.run(
+            [PDAL, "info", "--schema", str(root / layer["src"]["path"])], check=True, capture_output=True
+        ).stdout
+    )
+    dims = {d["name"] for d in info["schema"]["dimensions"]}
+    assert {"Distance", "Red", "Green", "Blue"} <= dims
+    cs = validate_change_set(json.loads((root / "change" / "c1-c2-cloud.json").read_text()))
+    [added] = [i for i in cs["items"] if i["verdict"] == "added"]
+    assert added["at"][0] == pytest.approx(3, abs=0.25) and added["at"][2] == pytest.approx(-3, abs=0.25)
+    assert cs["stats"]["regions"] == 1 and cs["registration"]["ok"] is True
+
+    # the same as the cloud-to-cloud of the points in memory
+    o = np.array([500000, 3200000, 0])
+    ref = compare_tiled(
+        MemorySource(before + o),
+        MemorySource(after + o),
+        [(500000 - 6.0, 500000 + 6.0, 3200000 - 6.0, 3200000 + 6.0)],
+        cap=3.0,
+        min_dist=0.05,
+        cell=0.25,
+    )
+    assert cs["stats"]["changedPoints"] == pytest.approx(ref.changed, abs=5)
+
+
+def test_a_viewing_cloud_without_a_las_source_is_refused(tmp_path):
+    layers = [
+        {
+            "kind": "pointcloud",
+            "id": "a",
+            "name": "A",
+            "src": {"path": "a/index.json"},
+            "format": "png-packed",
+        },
+        {"kind": "pointcloud", "id": "b", "name": "B", "src": {"path": "b.copc.laz"}, "format": "copc"},
+    ]
+    root = _project(tmp_path, layers)
+    with pytest.raises(JobError, match=r'"A" is not a COPC cloud and has no LAS source \(sources/a\.las\)'):
+        _run(root, {"layerFrom": "a", "layerTo": "b", "captures": {"from": "c1", "to": "c2"}})
+
+
+@needs_pdal
 def test_dates_that_do_not_line_up_are_refused_before_the_work(tmp_path):
     rng = np.random.default_rng(4)
     a = plane(rng, 0, 8, 0, 8, spacing=0.06)

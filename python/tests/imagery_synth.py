@@ -273,6 +273,34 @@ def surface_project(project: Path, kinds=("dsm", "dsm"), pile=1000.0, pit=300.0,
                     "src": {"path": f"rasters/{lid}.tif"},
                 }
             )
+        elif kind == "grid":
+            write_grid(project, lid, Y, cell)
+            layers.append(
+                {
+                    "kind": "raster",
+                    "id": lid,
+                    "name": f"DSM {cap} (shaded relief)",
+                    "visible": True,
+                    "capture": cap,
+                    "role": "dsm",
+                    "format": "kit-pyramid",
+                    "src": {"path": f"rasters/{lid}/tiles.json"},
+                }
+            )
+        elif kind == "las":
+            n = write_source_las(project, lid, X, Z, Y, seed=21 if cap == "c1" else 22)
+            layers.append(
+                {
+                    "kind": "pointcloud",
+                    "id": lid,
+                    "name": f"Cloud {cap}",
+                    "visible": True,
+                    "capture": cap,
+                    "format": "png-packed",
+                    "src": {"path": f"clouds/{lid}/index.json"},
+                    "pointCount": n,
+                }
+            )
         else:
             n = write_kit_cloud(project / f"clouds/{lid}.bin", X, Z, Y, seed=21 if cap == "c1" else 22)
             layers.append(
@@ -291,9 +319,53 @@ def surface_project(project: Path, kinds=("dsm", "dsm"), pile=1000.0, pit=300.0,
     return project
 
 
+#: Layer kinds of ``surface_project`` to the ``kind`` of the job's inputs.
+SURFACE_KIND = {"dsm": "dsm", "grid": "dsm", "cloud": "cloud", "las": "cloud"}
+
+
 def surface_params(kinds=("dsm", "dsm"), **extra) -> dict[str, Any]:
     return {
-        "from": {"layer": "surf-a", "kind": kinds[0]},
-        "to": {"layer": "surf-b", "kind": kinds[1]},
+        "from": {"layer": "surf-a", "kind": SURFACE_KIND[kinds[0]]},
+        "to": {"layer": "surf-b", "kind": SURFACE_KIND[kinds[1]]},
         **extra,
     }
+
+
+def write_grid(
+    project: Path, lid: str, Y: np.ndarray, cell: float, offset: float = -10.0, scale: float = 0.001
+):
+    """Heights as an ``aio.grid/1`` 16-bit PNG and its JSON in ``sources/`` (as C8's demo writes them)."""
+    src = project / "sources"
+    src.mkdir(parents=True, exist_ok=True)
+    n = Y.shape[0]
+    values = np.clip(np.round((Y + ORIGIN[2] - offset) / scale), 1, 65535).astype(np.uint16)
+    Image.fromarray(values).save(src / f"{lid}.png")
+    grid = {
+        "schema": "aio.grid/1",
+        "kind": "dsm",
+        "layer": lid,
+        "epsg": EPSG,
+        "x0": ORIGIN[0] - SURFACE_SIZE / 2,
+        "y1": ORIGIN[1] + SURFACE_SIZE / 2,
+        "res": cell,
+        "width": n,
+        "height": n,
+        "file": f"{lid}.png",
+        "scale": scale,
+        "offset": offset,
+        "nodata": 0,
+    }
+    (src / f"{lid}.json").write_text(json.dumps(grid), "utf-8")
+
+
+def write_source_las(project: Path, lid: str, X, Z, Y, seed: int = 3) -> int:
+    """A height field as ``sources/<lid>.las`` (LAS 1.2, point format 2, project CRS E, N, H)."""
+    from synth import write_las
+
+    rng = np.random.default_rng(seed)
+    x = X.ravel() + rng.uniform(-0.02, 0.02, X.size)
+    z = Z.ravel() + rng.uniform(-0.02, 0.02, Z.size)
+    enh = np.column_stack([ORIGIN[0] + x, ORIGIN[1] - z, ORIGIN[2] + Y.ravel()])
+    (project / "sources").mkdir(parents=True, exist_ok=True)
+    write_las(project / "sources" / f"{lid}.las", enh, EPSG, point_format=2)
+    return len(enh)

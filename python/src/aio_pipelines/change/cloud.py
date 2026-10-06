@@ -11,7 +11,9 @@ set: points beyond ``minDistM`` gathered on a ground grid and joined by touching
 pass gives what is new, the reverse pass what has gone).
 
 Bounded memory: both clouds are read by PDAL (``readers.copc``, optional ``resolution``) one tile at
-a time, each with a margin of ``cap`` so the tiled result equals the untiled one. Tiles are kept in
+a time, each with a margin of ``cap`` so the tiled result equals the untiled one. A cloud layer
+packed for viewing (``png-packed``) is read from its ``sources/<id>.las`` instead (``readers.las``
+cropped to the tile, see ``sources.py``); the result is a COPC all the same. Tiles are kept in
 the job's staging folder, so a cancelled job resumes at the next tile. PDAL is found as in
 ``pointcloud.py`` (``AIO_PDAL``, the pack's ``tools/pdal``, the PATH).
 """
@@ -48,6 +50,7 @@ from .derived import (
     upsert_layer,
 )
 from .las import Las, read_las, write_las
+from .sources import cloud_source
 
 #: Founder defaults (``DEFAULT_CHANGE_THRESHOLDS``, 6 Oct 2026).
 SIGNIFICANT_M = 0.05
@@ -577,10 +580,22 @@ def _pdal(ctx: StepContext, args: list[str], what: str) -> str:
 
 
 class PdalSource:
-    """One COPC file read by PDAL a box at a time into a plain LAS 1.4 tile."""
+    """One COPC file (or a LAS/LAZ source) read by PDAL a box at a time into a plain LAS 1.4 tile.
+
+    A COPC file is read by its octree (``readers.copc`` with ``bounds``); a LAS or LAZ file is read
+    whole and cropped (``readers.las`` and ``filters.crop``), which suits the source clouds of
+    viewing layers (``sources/<id>.las``).
+    """
 
     def __init__(
-        self, ctx: StepContext, pdal: str, path: Path, name: str, pdrf: int, resolution: float | None
+        self,
+        ctx: StepContext,
+        pdal: str,
+        path: Path,
+        name: str,
+        pdrf: int,
+        resolution: float | None,
+        copc: bool = True,
     ):
         self.ctx, self.pdal, self.path, self.name, self.pdrf, self.resolution = (
             ctx,
@@ -590,6 +605,7 @@ class PdalSource:
             pdrf,
             resolution,
         )
+        self.copc = copc
         self.z: tuple[float, float] | None = None
 
     def read(self, box: Box) -> TileData:
@@ -598,15 +614,25 @@ class PdalSource:
         tmp = work / f"{self.name}.las"
         bounds = f"([{box[0]!r}, {box[1]!r}], [{box[2]!r}, {box[3]!r}]"
         bounds += f", [{self.z[0]!r}, {self.z[1]!r}])" if self.z else ")"
-        reader: dict[str, Any] = {"type": "readers.copc", "filename": str(self.path), "bounds": bounds}
-        if self.resolution:
-            reader["resolution"] = self.resolution
+        stages: list[dict[str, Any]]
+        if self.copc:
+            reader: dict[str, Any] = {"type": "readers.copc", "filename": str(self.path), "bounds": bounds}
+            if self.resolution:
+                reader["resolution"] = self.resolution
+            stages = [reader]
+        else:
+            stages = [
+                {"type": "readers.las", "filename": str(self.path)},
+                {"type": "filters.crop", "bounds": bounds},
+            ]
+            if self.resolution:
+                stages.append({"type": "filters.sample", "radius": self.resolution})
         pipe = work / f"{self.name}.json"
         pipe.write_text(
             json.dumps(
                 {
                     "pipeline": [
-                        reader,
+                        *stages,
                         {
                             "type": "writers.las",
                             "filename": str(tmp),
@@ -642,10 +668,27 @@ def _info(ctx: StepContext, pdal: str, path: Path) -> dict[str, Any]:
     }
 
 
+#: LAS 1.2 point formats to the LAS 1.4 format of the tiles that keeps their colour (and NIR).
+TILE_PDRF = {0: 6, 1: 6, 2: 7, 3: 7, 4: 6, 5: 7, 6: 6, 7: 7, 8: 8, 9: 6, 10: 8}
+
+
 def _pdrf(ctx: StepContext, pdal: str, path: Path) -> int:
     meta = json.loads(_pdal(ctx, [pdal, "info", "--metadata", str(path)], f"read {path.name}"))
     pdrf = int((meta.get("metadata") or {}).get("dataformat_id") or 6)
-    return pdrf if pdrf in (6, 7, 8) else 6
+    return TILE_PDRF.get(pdrf, 6)
+
+
+def _cloud_file(project: Path, layer: dict[str, Any]) -> Path:
+    """The COPC file of a cloud layer, else the LAS source of a cloud packed for viewing."""
+    if layer.get("format") == "copc":
+        return layer_file(project, layer)
+    name = layer.get("name") or layer.get("id")
+    return cloud_source(
+        project,
+        layer,
+        f'The layer "{name}" is not a COPC cloud and has no LAS source (sources/{layer.get("id")}.las); '
+        "convert it to COPC first.",
+    )
 
 
 # ---------------------------------------------------------------- the pipeline
@@ -730,21 +773,18 @@ class ChangeCloud:
             manifest = read_manifest(ctx.project)
             a = find_layer(manifest, params["layerFrom"], "pointcloud", "point cloud")
             b = find_layer(manifest, params["layerTo"], "pointcloud", "point cloud")
-            for layer in (a, b):
-                if layer.get("format") != "copc":
-                    raise JobError(
-                        f'The layer "{layer.get("name") or layer.get("id")}" is not a COPC cloud; convert it first.'
-                    )
             frm, to = capture_pair(params, a, b)
-            return {"manifest": manifest, "a": a, "b": b, "from": frm, "to": to}
+            files = [_cloud_file(ctx.project, layer) for layer in (a, b)]
+            return {"manifest": manifest, "a": a, "b": b, "from": frm, "to": to, "files": files}
 
         def sources(ctx: StepContext, prep: dict[str, Any]) -> tuple[PdalSource, PdalSource]:
             pdal = find_pdal()
             if not pdal:
                 raise JobError(PDAL_MISSING)
             res = params.get("spacingM")
-            sa = PdalSource(ctx, pdal, Path(prep["files"][0]), "from", int(prep["pdrf"][0]), res)
-            sb = PdalSource(ctx, pdal, Path(prep["files"][1]), "to", int(prep["pdrf"][1]), res)
+            copc = prep.get("copc") or [True, True]
+            sa = PdalSource(ctx, pdal, Path(prep["files"][0]), "from", int(prep["pdrf"][0]), res, copc[0])
+            sb = PdalSource(ctx, pdal, Path(prep["files"][1]), "to", int(prep["pdrf"][1]), res, copc[1])
             if prep.get("zRange"):
                 sa.z = sb.z = tuple(prep["zRange"])  # type: ignore[assignment]
             return sa, sb
@@ -754,7 +794,7 @@ class ChangeCloud:
             pdal = find_pdal()
             if not pdal:
                 raise JobError(PDAL_MISSING)
-            files = [layer_file(ctx.project, c["a"]), layer_file(ctx.project, c["b"])]
+            files = c["files"]
             infos = [_info(ctx, pdal, f) for f in files]
             pdrfs = [_pdrf(ctx, pdal, f) for f in files]
             ba, bb = infos[0]["bounds"], infos[1]["bounds"]
@@ -780,6 +820,7 @@ class ChangeCloud:
             prep = {
                 "files": [str(f) for f in files],
                 "pdrf": pdrfs,
+                "copc": [c["a"].get("format") == "copc", c["b"].get("format") == "copc"],
                 "zRange": z_range,
             }
             # registration on a sample at the centre of the overlap, before the long work
