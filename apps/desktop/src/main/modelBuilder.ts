@@ -7,7 +7,6 @@
  * (`derived: { kind: 'model', source: [id] }`), tagged by part so a click on a tank selects it.
  */
 import { checkProcModel, meshProcModel, summarise } from '@aio/modelling';
-import { readManifestFile, writeManifestFile } from '@aio/project/builder';
 import {
   PROCMODEL_DIR,
   ProcModel,
@@ -21,6 +20,15 @@ import { writeJsonAtomic } from './fsutil';
 import type { Handle } from './notYet';
 
 type MeshLayer = Extract<Layer, { kind: 'mesh' }>;
+
+/**
+ * The builder library loads on first use, as in builder.ts: a static import of it makes the main
+ * bundle come out empty (rolldown, vite 8).
+ */
+const lib = () => import('@aio/project/builder');
+const readManifestFile = async (root: string) => (await lib()).readManifestFile(root);
+const writeManifestFile = async (root: string, m: ProjectManifest) =>
+  (await lib()).writeManifestFile(root, m);
 
 /** The projects main has open: a folder (writable) or a package (read only). */
 export interface ModelProjects {
