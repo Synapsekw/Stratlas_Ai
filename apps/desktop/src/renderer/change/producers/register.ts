@@ -11,11 +11,12 @@
 import { setChangeProducerRunner, type ChangeProducerRun } from '@aio/ai';
 import { changeProducers, layersOf, type ChangePairContext } from '@aio/change';
 import { DEFAULT_CHANGE_THRESHOLDS } from '@aio/schema';
+import { pointcloudSettings } from '@aio/pointcloud';
 import { volumetric } from '@aio/volumetric';
 import { captureIndex, workspace } from '@aio/workspace';
 import { jobs, shell } from '../../shell';
 import { volumeHints } from '../../workspace/compare';
-import { registerCloudChangeProducers, type ChangeJob } from './cloud';
+import { cloudChangeFinished, registerCloudChangeProducers, type ChangeJob } from './cloud';
 import { ensureFramesProducer } from './frames';
 import { registerImageryProducers } from './raster';
 
@@ -110,4 +111,10 @@ export function registerAppChangeProducers(): void {
     },
   });
   setChangeProducerRunner(runChangeProducers);
+  // a finished cloud change colours the clouds by change at once (the layer comes with the reload)
+  jobs.subscribe((s, prev) => {
+    const root = projectRoot();
+    if (root && cloudChangeFinished(prev.jobs, s.jobs, root))
+      pointcloudSettings.getState().setColourMode('change');
+  });
 }

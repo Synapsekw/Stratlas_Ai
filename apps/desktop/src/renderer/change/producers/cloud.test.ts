@@ -3,12 +3,14 @@ import {
   ChangeSet,
   DEFAULT_CHANGE_THRESHOLDS,
   pipelineParams,
+  type JobRecord,
   type Layer,
   type ProjectManifest,
 } from '@aio/schema';
 import { describe, expect, it, vi } from 'vitest';
 import {
   changeCloudLayers,
+  cloudChangeFinished,
   cloudChangeProducer,
   cloudJob,
   cloudPair,
@@ -200,5 +202,22 @@ describe('change layers and finished jobs', () => {
       }),
     ];
     expect(changeCloudLayers(layers).map((l) => l.id)).toEqual(['ch']);
+  });
+
+  it('tells when a cloud change of the open project has just finished', () => {
+    const job = (id: string, pipeline: string, status: JobRecord['status']) =>
+      ({ id, pipeline, status, project: 'E:\\projects\\p\\' }) as unknown as JobRecord;
+    const before = [job('1', 'change.cloud', 'running'), job('2', 'change.mesh', 'running')];
+    const after = [job('1', 'change.cloud', 'done'), job('2', 'change.mesh', 'done')];
+    expect(cloudChangeFinished(before, after, 'e:/projects/p')).toBe(true);
+    expect(cloudChangeFinished(after, after, 'e:/projects/p')).toBe(false);
+    expect(cloudChangeFinished(before, after, 'e:/projects/other')).toBe(false);
+    expect(
+      cloudChangeFinished(
+        [job('2', 'change.mesh', 'running')],
+        [job('2', 'change.mesh', 'done')],
+        'e:/projects/p',
+      ),
+    ).toBe(false);
   });
 });

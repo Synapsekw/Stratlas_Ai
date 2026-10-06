@@ -12,7 +12,13 @@ import {
   type ChangeRunResult,
 } from '@aio/change';
 import type { ChangeCloudParams, ChangeSurfaceParams } from '@aio/schema';
-import { type ChangeSet, type ChangeThresholds, type Layer, type PipelineName } from '@aio/schema';
+import {
+  type ChangeSet,
+  type ChangeThresholds,
+  type JobRecord,
+  type Layer,
+  type PipelineName,
+} from '@aio/schema';
 import { meshChangeProducer } from './mesh';
 
 type CloudLayer = Extract<Layer, { kind: 'pointcloud' }>;
@@ -159,6 +165,23 @@ export function changeCloudLayers(layers: readonly Layer[]): CloudLayer[] {
   return layers.filter(
     (l): l is CloudLayer =>
       l.kind === 'pointcloud' && l.derived?.kind === 'change' && l.scalar !== undefined,
+  );
+}
+
+const folderKey = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+
+/** True when a `change.cloud` run of the project at `root` has just finished. */
+export function cloudChangeFinished(
+  prev: readonly JobRecord[],
+  next: readonly JobRecord[],
+  root: string,
+): boolean {
+  return next.some(
+    (j) =>
+      j.pipeline === 'change.cloud' &&
+      j.status === 'done' &&
+      folderKey(j.project) === folderKey(root) &&
+      prev.find((p) => p.id === j.id)?.status !== 'done',
   );
 }
 
