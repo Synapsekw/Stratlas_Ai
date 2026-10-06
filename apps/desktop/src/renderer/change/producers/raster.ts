@@ -3,9 +3,10 @@
  * **Run imagery change** starts `change.raster` on the pair's orthos, **Run surface change**
  * starts `change.surface` on their DSMs or point clouds. The thresholds come from Settings
  * (`Settings.change`, founder defaults otherwise). When the job finishes, the open project reloads
- * its manifest so the heat map and polygon layers appear.
+ * its manifest (`MANIFEST_WRITERS` in `jobs.ts`) so the heat map and polygon layers appear.
  *
- * `registerImageryProducers()` is called once by the Changes panel (stream C1); it is idempotent.
+ * `registerImageryProducers()` is called once at start (`registerAppChangeProducers`); it is
+ * idempotent.
  */
 import {
   registerChangeProducer,
@@ -18,7 +19,6 @@ import {
   type ChangeRasterParams,
   type ChangeSurfaceParams,
   type ChangeThresholds,
-  type JobRecord,
   type Layer,
   type PipelineName,
 } from '@aio/schema';
@@ -124,8 +124,6 @@ export interface ProducerDeps {
     project: string,
     params: Record<string, unknown>,
   ): Promise<{ jobId: string } | { error: string }>;
-  /** Called once with a started job's id: reload the manifest when it is done. */
-  follow(jobId: string): void;
 }
 
 async function runJob(
@@ -137,7 +135,6 @@ async function runJob(
   if (!root) return { ok: false, error: 'Open a project first.' };
   const r = await deps.start(pipeline, root, params);
   if ('error' in r) return { ok: false, error: r.error };
-  deps.follow(r.jobId);
   return { ok: true, jobId: r.jobId };
 }
 
@@ -174,62 +171,10 @@ export function imageryProducers(deps: ProducerDeps): ChangeProducer[] {
   ];
 }
 
-/** True once `jobId` is done in `next` and was not in `prev`. */
-export function jobDone(prev: readonly JobRecord[], next: readonly JobRecord[], jobId: string) {
-  const now = next.find((j) => j.id === jobId);
-  return now?.status === 'done' && prev.find((j) => j.id === jobId)?.status !== 'done';
-}
-
-/** The app's own wiring: the jobs store, Settings and the open project (loaded on first use). */
-function appDeps(): ProducerDeps {
-  const app = () => import('../../shell');
-  const ws = () => import('@aio/workspace');
-  let root: string | null = null;
-  let thresholds: ChangeThresholds | undefined;
-  // read synchronously by the producers: kept fresh from the stores
-  void Promise.all([app(), ws()]).then(([{ shell }, { workspace }]) => {
-    const sync = () => {
-      root = workspace.getState().project?.root ?? null;
-      thresholds = shell.getState().settings.change;
-    };
-    sync();
-    workspace.subscribe(sync);
-    shell.subscribe(sync);
-  });
-  return {
-    root: () => root,
-    thresholds: () => thresholds,
-    start: async (pipeline, project, params) => {
-      const { jobs } = await app();
-      const error = await jobs.getState().start({ pipeline, project, params });
-      if (error) return { error };
-      const id = jobs.getState().selected;
-      return id ? { jobId: id } : { error: 'The job did not start.' };
-    },
-    follow: (jobId) => {
-      void Promise.all([app(), ws()]).then(([{ jobs, bridge }, { workspace }]) => {
-        const stop = jobs.subscribe((s, prev) => {
-          const job = s.jobs.find((j) => j.id === jobId);
-          if (job && (job.status === 'failed' || job.status === 'cancelled')) stop();
-          if (!jobDone(prev.jobs, s.jobs, jobId)) return;
-          stop();
-          const project = workspace.getState().project;
-          if (!project) return;
-          void bridge.call('project:open', { path: project.root }).then((r) => {
-            const now = workspace.getState();
-            if (r.ok && r.value.ok && now.project?.id === project.id)
-              now.replaceManifest(r.value.manifest);
-          });
-        });
-      });
-    },
-  };
-}
-
 let registered: (() => void) | null = null;
 
 /** Offer imagery and surface change in the Changes panel (idempotent); returns the undo. */
-export function registerImageryProducers(deps: ProducerDeps = appDeps()): () => void {
+export function registerImageryProducers(deps: ProducerDeps): () => void {
   if (registered) return registered;
   const offs = imageryProducers(deps).map((p) => registerChangeProducer(p));
   registered = () => {

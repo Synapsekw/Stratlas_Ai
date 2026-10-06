@@ -71,6 +71,11 @@ const MANIFEST_WRITERS: ReadonlySet<string> = new Set([
   'pointcloud.to_copc',
   'volumetric.build',
   'road.build',
+  // M8 change: heat maps, change areas, change clouds and model deviation as derived layers
+  'change.raster',
+  'change.surface',
+  'change.cloud',
+  'change.mesh',
 ]);
 /** Pipelines that also write issues.json (and road.json): the open project reopens whole. */
 const PROJECT_WRITERS: ReadonlySet<string> = new Set(['road.build']);
@@ -115,6 +120,27 @@ export function finishedProjectJob(
   root: string,
 ): boolean {
   return justFinished(prev, next, root, PROJECT_WRITERS);
+}
+
+/** Pipelines that write change sets (`change/*.json`) when they finish (M8). */
+const CHANGE_WRITERS: ReadonlySet<string> = new Set([
+  'change.raster',
+  'change.surface',
+  'change.cloud',
+  'change.mesh',
+  'change.frames',
+]);
+
+/**
+ * True when a change pipeline of the project at `root` has just finished: the Changes panel
+ * should read the project's change sets again.
+ */
+export function finishedChangeJob(
+  prev: readonly JobRecord[],
+  next: readonly JobRecord[],
+  root: string,
+): boolean {
+  return justFinished(prev, next, root, CHANGE_WRITERS);
 }
 
 /** Pipelines that merge issues into the project's issues.json when they finish. */

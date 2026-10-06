@@ -19,9 +19,8 @@ import {
 import { assetUrl, canCompare, captureIndex, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from 'zustand';
-import { ensureFramesProducer } from '../change/producers/frames';
 import { dropEvidence } from '../issueCard/evidence';
-import { jobs, shell } from '../shell';
+import { shell } from '../shell';
 import { captureLabel, useCaptureIndex } from './compare';
 import {
   frameTime,
@@ -46,20 +45,6 @@ import { stagePrefs } from './stagePrefs';
 
 type VideoLayer = Extract<Layer, { kind: 'video' }>;
 type PhotoLayer = Extract<Layer, { kind: 'photos' }>;
-
-// "Find changes in matched frames" in the Changes panel (C1 lists registered producers)
-ensureFramesProducer({
-  root: (id) => {
-    const p = workspace.getState().project;
-    return p?.id === id ? p.root : undefined;
-  },
-  start: async (req) => {
-    const error = await jobs.getState().start(req);
-    if (error) return { ok: false, error };
-    const id = jobs.getState().selected;
-    return id ? { ok: true, jobId: id } : { ok: true };
-  },
-});
 
 /** Open the Frames pane on `source` (from the video window or a photo). */
 export function openSameView(source: FramesSource): void {

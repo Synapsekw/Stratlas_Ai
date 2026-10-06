@@ -3,14 +3,12 @@ import {
   ChangeRasterParams,
   ChangeSurfaceParams,
   ChangeThresholds,
-  type JobRecord,
   type Layer,
   type ProjectManifest,
 } from '@aio/schema';
 import { describe, expect, it, vi } from 'vitest';
 import {
   imageryProducers,
-  jobDone,
   orthoPair,
   rasterParams,
   registerImageryProducers,
@@ -54,7 +52,6 @@ function deps(over: Partial<ProducerDeps> = {}): ProducerDeps {
     root: () => 'C:/projects/site',
     thresholds: () => undefined,
     start: vi.fn(() => Promise.resolve({ jobId: 'job-1' })),
-    follow: vi.fn(),
     ...over,
   };
 }
@@ -92,10 +89,9 @@ describe('imagery change producer', () => {
     expect(rasterParams(ctx, p, sensitive)).toMatchObject({ threshold: 0.3, minAreaM2: 0.5 });
   });
 
-  it('starts the job in the open project and follows it', async () => {
+  it('starts the job in the open project', async () => {
     const start = vi.fn(() => Promise.resolve({ jobId: 'job-1' }));
-    const follow = vi.fn();
-    const [imagery] = imageryProducers(deps({ start, follow }));
+    const [imagery] = imageryProducers(deps({ start }));
     const ctx = pair([raster('o1', 'ortho')], [raster('o2', 'ortho')]);
     expect(imagery?.available(ctx)).toBe(true);
     expect(await imagery?.run(ctx)).toEqual({ ok: true, jobId: 'job-1' });
@@ -104,7 +100,6 @@ describe('imagery change producer', () => {
       'C:/projects/site',
       expect.objectContaining({ layerFrom: 'o1', layerTo: 'o2' }),
     );
-    expect(follow).toHaveBeenCalledWith('job-1');
   });
 
   it('says why it cannot run', async () => {
@@ -154,12 +149,5 @@ describe('registration with the Changes panel', () => {
     expect(changeProducers().find((p) => p.id === 'surface')?.label).toBe('Run surface change');
     off();
     expect(changeProducers().map((p) => p.id)).not.toContain('raster');
-  });
-
-  it('knows when a followed job is done', () => {
-    const job = (status: JobRecord['status']) => ({ id: 'j', status }) as JobRecord;
-    expect(jobDone([job('running')], [job('done')], 'j')).toBe(true);
-    expect(jobDone([job('done')], [job('done')], 'j')).toBe(false);
-    expect(jobDone([], [job('failed')], 'j')).toBe(false);
   });
 });

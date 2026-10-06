@@ -7,6 +7,7 @@ import {
   canResume,
   createJobsStore,
   finishedIssuesJob,
+  finishedChangeJob,
   finishedManifestJob,
   finishedProjectJob,
   isActive,
@@ -149,6 +150,27 @@ describe('finishedManifestJob', () => {
     const done = { ...running, status: 'done' as const };
     expect(finishedManifestJob([running], [done], 'E:/p')).toBe(true);
     expect(finishedProjectJob([running], [done], 'E:/p')).toBe(true);
+  });
+
+  it('reloads the manifest and the change sets when a change run of the project finishes', () => {
+    for (const pipeline of [
+      'change.raster',
+      'change.surface',
+      'change.cloud',
+      'change.mesh',
+    ] as const) {
+      const running = job({ id: 'x', pipeline, project: 'E:\\p\\', status: 'running' });
+      const done = { ...running, status: 'done' as const };
+      expect(finishedManifestJob([running], [done], 'e:/p'), pipeline).toBe(true);
+      expect(finishedChangeJob([running], [done], 'e:/p'), pipeline).toBe(true);
+      expect(finishedChangeJob([done], [done], 'e:/p'), pipeline).toBe(false);
+      expect(finishedProjectJob([running], [done], 'e:/p'), pipeline).toBe(false);
+    }
+    // matched frames write a change set and detections, no layer
+    const frames = job({ id: 'f', pipeline: 'change.frames', project: 'E:\\p', status: 'running' });
+    const framesDone = { ...frames, status: 'done' as const };
+    expect(finishedManifestJob([frames], [framesDone], 'E:/p')).toBe(false);
+    expect(finishedChangeJob([frames], [framesDone], 'E:/p')).toBe(true);
   });
 });
 

@@ -39,18 +39,37 @@ export interface ChangeProducer {
 }
 
 const producers = new Map<string, ChangeProducer>();
+const listeners = new Set<() => void>();
+/** The registered producers, a new array after each change (a stable snapshot for React). */
+let snapshot: readonly ChangeProducer[] = [];
+
+function changed(): void {
+  snapshot = [...producers.values()];
+  for (const listener of listeners) listener();
+}
 
 /** Register a producer; returns the function that removes it. A duplicate id is refused. */
 export function registerChangeProducer(producer: ChangeProducer): () => void {
   if (producers.has(producer.id))
     throw new Error(`A change producer "${producer.id}" is already registered.`);
   producers.set(producer.id, producer);
+  changed();
   return () => {
-    if (producers.get(producer.id) === producer) producers.delete(producer.id);
+    if (producers.get(producer.id) !== producer) return;
+    producers.delete(producer.id);
+    changed();
   };
 }
 
-/** Registered producers, in registration order. */
+/** Registered producers, in registration order (the same array until the registry changes). */
 export function changeProducers(): readonly ChangeProducer[] {
-  return [...producers.values()];
+  return snapshot;
+}
+
+/** Called each time a producer is registered or removed; returns the unsubscribe. */
+export function subscribeChangeProducers(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }

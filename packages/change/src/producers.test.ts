@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { changeProducers, registerChangeProducer, type ChangeProducer } from './index';
+import {
+  changeProducers,
+  registerChangeProducer,
+  subscribeChangeProducers,
+  type ChangeProducer,
+} from './index';
 
 const producer = (id: string): ChangeProducer => ({
   id,
@@ -19,5 +24,19 @@ describe('change producer registry', () => {
     expect(changeProducers().map((p) => p.id)).toEqual(['b']);
     offB();
     expect(changeProducers()).toEqual([]);
+  });
+
+  it('tells subscribers when the registry changes, with a new stable snapshot', () => {
+    const seen: string[][] = [];
+    const stop = subscribeChangeProducers(() => seen.push(changeProducers().map((p) => p.id)));
+    const before = changeProducers();
+    expect(changeProducers()).toBe(before);
+    const off = registerChangeProducer(producer('c'));
+    expect(changeProducers()).not.toBe(before);
+    off();
+    off();
+    stop();
+    registerChangeProducer(producer('d'))();
+    expect(seen).toEqual([['c'], []]);
   });
 });

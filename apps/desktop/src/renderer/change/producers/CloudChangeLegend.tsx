@@ -1,59 +1,22 @@
 /**
  * The change legend under a 3D view (M8 stream C3): the change ramp in metres, the threshold slider
  * and the distance under the pointer (`@aio/pointcloud` ChangeLegend), with the volume change of
- * the same dates read only from C2's `change.surface` set. Mounting it registers the cloud and
- * model change producers and reloads the manifest when a change run adds its layer.
+ * the same dates read only from C2's `change.surface` set. The cloud and model change producers
+ * are registered at start (`registerAppChangeProducers`).
  */
 import { ChangeLegend } from '@aio/pointcloud';
-import { DEFAULT_CHANGE_THRESHOLDS } from '@aio/schema';
 import { t } from '@aio/ui';
-import { useWorkspace, workspace } from '@aio/workspace';
+import { useWorkspace } from '@aio/workspace';
 import { useEffect, useState } from 'react';
-import { bridge, jobs, shell, useJobs, useShell } from '../../shell';
+import { bridge, useJobs, useShell } from '../../shell';
 import {
   changeCloudLayers,
-  finishedChangeJobs,
-  registerCloudChangeProducers,
   surfaceSetId,
   surfaceVolumes,
   volumeJob,
-  type ChangeJob,
-  type ProducerDeps,
   type VolumeChange,
 } from './cloud';
-
-/** Start a job through the Jobs store: its id, or why it did not start. */
-async function startJob(job: ChangeJob): Promise<{ jobId?: string } | { error: string }> {
-  const error = await jobs.getState().start(job);
-  if (error) return { error };
-  const id = jobs.getState().selected;
-  return id ? { jobId: id } : {};
-}
-
-const appDeps: ProducerDeps = {
-  // a package never computes (player mode is read only)
-  projectRoot: () => (shell.getState().pkg ? null : (workspace.getState().project?.root ?? null)),
-  thresholds: () => shell.getState().settings.change ?? DEFAULT_CHANGE_THRESHOLDS,
-  start: startJob,
-};
-
-let started = false;
-
-/** Once: register the producers and follow the change runs that add a layer. */
-export function startCloudChange(): void {
-  if (started) return;
-  started = true;
-  registerCloudChangeProducers(appDeps);
-  jobs.subscribe((s, prev) => {
-    const project = workspace.getState().project;
-    if (!project || !finishedChangeJobs(prev.jobs, s.jobs, project.root).length) return;
-    void bridge.call('project:open', { path: project.root }).then((r) => {
-      const ws = workspace.getState();
-      if (!r.ok || !r.value.ok || ws.project?.id !== project.id) return;
-      ws.replaceManifest(r.value.manifest);
-    });
-  });
-}
+import { startChangeJob as startJob } from './register';
 
 const m3 = (v: number) => v.toLocaleString('en-GB', { maximumFractionDigits: 1 });
 
@@ -142,9 +105,6 @@ function VolumeChangeRow() {
 
 /** Mounted beside the elevation and class legends of a 3D view. */
 export function CloudChangeLegend() {
-  useEffect(() => {
-    startCloudChange();
-  }, []);
   return (
     <ChangeLegend className="elev-legend class-legend overlay-box">
       <VolumeChangeRow />

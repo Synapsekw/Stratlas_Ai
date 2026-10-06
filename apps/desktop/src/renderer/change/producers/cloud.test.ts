@@ -3,7 +3,6 @@ import {
   ChangeSet,
   DEFAULT_CHANGE_THRESHOLDS,
   pipelineParams,
-  type JobRecord,
   type Layer,
   type ProjectManifest,
 } from '@aio/schema';
@@ -13,7 +12,6 @@ import {
   cloudChangeProducer,
   cloudJob,
   cloudPair,
-  finishedChangeJobs,
   registerCloudChangeProducers,
   surfaceSetId,
   surfaceVolumes,
@@ -202,20 +200,5 @@ describe('change layers and finished jobs', () => {
       }),
     ];
     expect(changeCloudLayers(layers).map((l) => l.id)).toEqual(['ch']);
-  });
-
-  const job = (id: string, pipeline: string, status: JobRecord['status']) =>
-    ({ id, pipeline, status, project: 'E:\\projects\\p\\' }) as unknown as JobRecord;
-
-  it('tells when a cloud or model change of the open project has just finished', () => {
-    const before = [job('1', 'change.cloud', 'running'), job('2', 'change.mesh', 'done')];
-    const after = [job('1', 'change.cloud', 'done'), job('2', 'change.mesh', 'done')];
-    expect(finishedChangeJobs(before, after, 'e:/projects/p')).toEqual(['change.cloud']);
-    expect(finishedChangeJobs(after, after, 'e:/projects/p')).toEqual([]);
-    expect(finishedChangeJobs(before, after, 'e:/projects/other')).toEqual([]);
-    const surface = [job('3', 'change.surface', 'done')];
-    expect(
-      finishedChangeJobs([job('3', 'change.surface', 'running')], surface, 'E:/projects/p'),
-    ).toEqual(['change.surface']);
   });
 });

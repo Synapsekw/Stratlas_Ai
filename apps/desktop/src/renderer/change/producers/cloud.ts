@@ -1,8 +1,9 @@
 /**
  * Point cloud change (M8 stream C3) in the Changes panel: the `change.cloud` pipeline for a date
- * pair, the volume change of the same clouds (C2's `change.surface` with cloud inputs, shown read
- * only beside the cloud), and the manifest reload when a cloud or model change finishes (it adds a
- * derived layer). Registered with the `@aio/change` producer registry; the panel never imports it.
+ * pair and the volume change of the same clouds (C2's `change.surface` with cloud inputs, shown
+ * read only beside the cloud). Registered with the `@aio/change` producer registry at start
+ * (`registerAppChangeProducers`); the panel never imports it. A finished run adds a derived layer,
+ * which the manifest reload of `MANIFEST_WRITERS` (`jobs.ts`) brings in.
  */
 import {
   registerChangeProducer,
@@ -11,19 +12,10 @@ import {
   type ChangeRunResult,
 } from '@aio/change';
 import type { ChangeCloudParams, ChangeSurfaceParams } from '@aio/schema';
-import {
-  type ChangeSet,
-  type ChangeThresholds,
-  type JobRecord,
-  type Layer,
-  type PipelineName,
-} from '@aio/schema';
+import { type ChangeSet, type ChangeThresholds, type Layer, type PipelineName } from '@aio/schema';
 import { meshChangeProducer } from './mesh';
 
 type CloudLayer = Extract<Layer, { kind: 'pointcloud' }>;
-// @aio/schema exports these parameter schemas as values only (proposed: export their types too)
-type CloudParams = ReturnType<typeof ChangeCloudParams.parse>;
-type SurfaceParams = ReturnType<typeof ChangeSurfaceParams.parse>;
 
 /** A job the producers ask the app to start (`jobs:start`). */
 export interface ChangeJob {
@@ -91,7 +83,7 @@ export function cloudJob(
 ): ChangeJob | string {
   const pair = cloudPair(ctx);
   if (typeof pair === 'string') return pair;
-  const params: CloudParams = {
+  const params: ChangeCloudParams = {
     layerFrom: pair.from.id,
     layerTo: pair.to.id,
     captures: { from: ctx.from, to: ctx.to },
@@ -105,7 +97,7 @@ export function cloudJob(
 export function volumeJob(ctx: ChangePairContext, project: string): ChangeJob | string {
   const pair = cloudPair(ctx);
   if (typeof pair === 'string') return pair;
-  const params: SurfaceParams = {
+  const params: ChangeSurfaceParams = {
     from: { layer: pair.from.id, kind: 'cloud' },
     to: { layer: pair.to.id, kind: 'cloud' },
     captures: { from: ctx.from, to: ctx.to },
@@ -168,32 +160,6 @@ export function changeCloudLayers(layers: readonly Layer[]): CloudLayer[] {
     (l): l is CloudLayer =>
       l.kind === 'pointcloud' && l.derived?.kind === 'change' && l.scalar !== undefined,
   );
-}
-
-/** Pipelines whose finished run adds a derived layer the open project should show. */
-export const CHANGE_LAYER_JOBS: ReadonlySet<string> = new Set([
-  'change.cloud',
-  'change.mesh',
-  'change.surface',
-]);
-
-const folderKey = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-
-/** The change pipelines of the project at `root` that finished between two job lists. */
-export function finishedChangeJobs(
-  prev: readonly JobRecord[],
-  next: readonly JobRecord[],
-  root: string,
-): string[] {
-  return next
-    .filter(
-      (j) =>
-        j.status === 'done' &&
-        CHANGE_LAYER_JOBS.has(j.pipeline) &&
-        folderKey(j.project) === folderKey(root) &&
-        prev.find((p) => p.id === j.id)?.status !== 'done',
-    )
-    .map((j) => j.pipeline);
 }
 
 // ---------------------------------------------------------------- volume change (C2, read only)

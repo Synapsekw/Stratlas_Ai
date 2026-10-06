@@ -1,8 +1,8 @@
 import type { ChangeItem, ChangeKind, ChangeVerdict } from '@aio/schema';
 import { useT, type MessageKey } from '@aio/ui';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { VERDICT_COLOR } from './overlay';
-import { changeProducers, type ChangePairContext } from './producers';
+import { changeProducers, subscribeChangeProducers, type ChangePairContext } from './producers';
 import { registerRows, verdictCounts, type RegisterRow, type ReviewStatus } from './register';
 import { changeStore, setsOfPair, useChange } from './store';
 
@@ -141,7 +141,6 @@ export function ChangePanel({
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [, setTick] = useState(0);
 
   // start on the dates Compare dates shows, else the first and last survey
   const first = captures[0]?.id;
@@ -179,14 +178,7 @@ export function ChangePanel({
   }
 
   // producers registered after mount (C2 to C4) show up
-  useEffect(() => {
-    const id = setInterval(() => {
-      setTick((n) => n + 1);
-    }, 2000);
-    return () => {
-      clearInterval(id);
-    };
-  }, []);
+  const producers = useSyncExternalStore(subscribeChangeProducers, changeProducers);
 
   if (captures.length < 2)
     return (
@@ -198,7 +190,6 @@ export function ChangePanel({
 
   const pair = s.pair;
   const ctx = pair ? context(pair) : null;
-  const producers = changeProducers();
   const label = (id: string) => captures.find((c) => c.id === id)?.label ?? id;
 
   const act = async (fn: () => Promise<string | null>, ok?: string) => {

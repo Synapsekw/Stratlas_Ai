@@ -25,6 +25,7 @@ export {
 export {
   changeProducers,
   registerChangeProducer,
+  subscribeChangeProducers,
   type ChangePairContext,
   type ChangeProducer,
   type ChangeRunResult,

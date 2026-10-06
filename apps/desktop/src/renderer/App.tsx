@@ -1,4 +1,5 @@
 import { AnnotateStyles, issueSaver } from '@aio/annotate';
+import { changeStore } from '@aio/change';
 import { PIPELINES } from '@aio/schema';
 import {
   announce,
@@ -28,6 +29,7 @@ import { roadStore, startRoadSync } from './road/store';
 import { Toasts } from './exports/Toasts';
 import { spaceIsPlayPause } from './keys';
 import {
+  finishedChangeJob,
   finishedIssuesJob,
   finishedManifestJob,
   finishedProjectJob,
@@ -51,6 +53,7 @@ import { ReportProblemDialog } from './diagnostics/ReportProblem';
 import { saveDiagnostics } from './diagnostics/state';
 import { toasts } from './exports/exports';
 import { evidence, openEvidence, startEvidenceSplit } from './issueCard/evidence';
+import { registerAppChangeProducers } from './change/producers/register';
 import { startCardFocus } from './issueCard/state';
 
 function onKeyDown(e: KeyboardEvent) {
@@ -201,6 +204,8 @@ export function App() {
       .init()
       .finally(() => void bridge.call('app:rendererReady', {}));
     void jobs.getState().init();
+    // the change producers of the Changes panel (C2 to C4), once
+    registerAppChangeProducers();
     // a finished conversion (point cloud to COPC) adds a layer: reload the open manifest
     const stopJobReload = jobs.subscribe((s, prev) => {
       const project = workspace.getState().project;
@@ -213,6 +218,12 @@ export function App() {
         if (whole) ws.openProject({ ...project, manifest: r.value.manifest }, r.value.issues);
         else ws.replaceManifest(r.value.manifest);
       });
+    });
+    // a change run wrote its change set: the Changes panel reads the project's sets again
+    const stopChangeReload = jobs.subscribe((s, prev) => {
+      const project = workspace.getState().project;
+      if (!project || !finishedChangeJob(prev.jobs, s.jobs, project.root)) return;
+      void changeStore.getState().load(project.id);
     });
     // the inspection pipeline merged issues.json on disk: take its issues, keep unsaved edits
     const stopIssueReload = jobs.subscribe((s, prev) => {
@@ -278,6 +289,7 @@ export function App() {
       stopOpenPath();
       stopMenu();
       stopJobReload();
+      stopChangeReload();
       stopIssueReload();
       stopRoad();
       stopRoadMode();
