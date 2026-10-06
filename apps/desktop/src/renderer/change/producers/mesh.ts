@@ -4,6 +4,7 @@
  */
 import type { ChangePairContext, ChangeProducer } from '@aio/change';
 import type { ChangeMeshParams } from '@aio/schema';
+import { t } from '@aio/ui';
 import { type ChangeThresholds, type Layer } from '@aio/schema';
 import { pairByName, runJob, type ChangeJob, type ProducerDeps } from './cloud';
 
@@ -43,7 +44,7 @@ export function meshJob(
 export function meshChangeProducer(deps: ProducerDeps): ChangeProducer {
   return {
     id: 'mesh',
-    label: 'Run model change',
+    label: t('change.run.model'),
     kinds: ['component'],
     available: (ctx) => {
       const pair = meshPair(ctx);

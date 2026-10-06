@@ -22,6 +22,7 @@ import {
   type Layer,
   type PipelineName,
 } from '@aio/schema';
+import { t } from '@aio/ui';
 import type { z } from 'zod';
 
 type RasterLayer = Extract<Layer, { kind: 'raster' }>;
@@ -142,7 +143,7 @@ export function imageryProducers(deps: ProducerDeps): ChangeProducer[] {
   return [
     {
       id: 'raster',
-      label: 'Run imagery change',
+      label: t('change.run.imagery'),
       kinds: ['region'],
       available: (ctx) => {
         const pair = orthoPair(ctx);
@@ -156,7 +157,7 @@ export function imageryProducers(deps: ProducerDeps): ChangeProducer[] {
     },
     {
       id: 'surface',
-      label: 'Run surface change',
+      label: t('change.run.surface'),
       kinds: ['region'],
       available: (ctx) => {
         const pair = surfacePair(ctx);

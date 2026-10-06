@@ -19,6 +19,7 @@ import {
   type Layer,
   type PipelineName,
 } from '@aio/schema';
+import { t } from '@aio/ui';
 import { meshChangeProducer } from './mesh';
 
 type CloudLayer = Extract<Layer, { kind: 'pointcloud' }>;
@@ -128,7 +129,7 @@ export async function runJob(
 export function cloudChangeProducer(deps: ProducerDeps): ChangeProducer {
   return {
     id: 'cloud',
-    label: 'Run cloud change',
+    label: t('change.run.cloud'),
     kinds: ['region'],
     available: (ctx) => {
       const pair = cloudPair(ctx);

@@ -1395,11 +1395,11 @@ export const en = {
   'change.openIssue': 'Open issue',
   'change.closeResolved': 'Close as resolved',
   'change.closeResolvedTip':
-    'The issue is closed on the later date. Only you can do this: Stratlas never closes an issue on its own.',
+    'The issue is closed on the later date. Only you can do this: the app never closes an issue on its own.',
   'change.closeResolvedAsk': 'Close {code} as resolved on {date}?',
   'change.closeResolvedYes': 'Yes, close it',
   'change.notSeenTip':
-    'The later survey did not look at this place, so Stratlas cannot tell if it is still there.',
+    'The later survey did not look at this place, so the app cannot tell if it is still there.',
   'change.issueMade': '{code} drafted on the later date',
   'change.closed': '{code} closed as resolved',
   'change.tracked': 'Tracked across both dates',
@@ -1510,7 +1510,8 @@ export const en = {
   'frames.score': '{metres} m, {degrees} degrees apart',
   'frames.noMatch': 'No view of {date} near this one.',
   'frames.noSource': 'Play a clip or pick a photo to see the same view on another date.',
-  'frames.noDate': 'This view has no survey date. Set it with Belongs to date in the layer menu.',
+  'frames.noDate':
+    'This view has no survey date. Select its layer and set Belongs to date on the Selection card.',
   'frames.oneDate': 'Comparing frames needs two survey dates.',
   'frames.noPose': 'This photo has no camera position, so it cannot be matched.',
   'frames.reading': 'Reading the flight logs',
@@ -1522,6 +1523,11 @@ export const en = {
   'frames.run.noPhotos': 'Both dates need photos with camera positions.',
   'frames.run.noPairs': 'No photos of the two dates show the same view.',
   'frames.run.noProject': 'Open the project on this computer first.',
+  // M8 integration: the change producers' actions in the Changes panel
+  'change.run.imagery': 'Run imagery change',
+  'change.run.surface': 'Run surface change',
+  'change.run.cloud': 'Run cloud change',
+  'change.run.model': 'Run model change',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */
