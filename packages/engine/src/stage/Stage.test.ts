@@ -12,7 +12,7 @@ import {
 } from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LayerAdapter, LayerHandle } from '../types';
-import { Stage } from './Stage';
+import { dampingFor, Stage } from './Stage';
 
 type ROCallback = (entries: { contentRect: { width: number; height: number } }[]) => void;
 const observers: ROCallback[] = [];
@@ -151,6 +151,18 @@ function taggedAdapter(): LayerAdapter {
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
+
+describe('dampingFor', () => {
+  it('glides for the same time at 60 fps and at 5 fps', () => {
+    expect(dampingFor(1000 / 60)).toBeCloseTo(0.08, 6);
+    // what is left after one second: 60 small steps or 5 large ones
+    const left = (dt: number, n: number) => Math.pow(1 - dampingFor(dt), n);
+    expect(left(200, 5)).toBeCloseTo(left(1000 / 60, 60), 6);
+    // a long stall (a hidden window) counts as a quarter second, never a jump to the end
+    expect(dampingFor(5000)).toBeCloseTo(dampingFor(250), 9);
+    expect(dampingFor(5000)).toBeLessThan(1);
+  });
+});
 
 describe('Stage', () => {
   let container: HTMLDivElement;

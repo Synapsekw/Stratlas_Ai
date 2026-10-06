@@ -84,6 +84,17 @@ const HOME_MARGIN = 1.05;
 /** The orbit stays above the horizon (a little below, to look along the ground). */
 const MAX_POLAR = Math.PI * 0.53;
 const CLICK_SLOP_PX = 5;
+/** Orbit glide: the share of the remaining motion taken per 60 Hz frame. */
+const DAMPING = 0.08;
+
+/**
+ * The damping factor for a frame of `dtMs`, so the glide lasts the same time at 60 fps and on a
+ * slow GPU (OrbitControls damps per update call; at 5 fps a fixed factor glides for 30 s).
+ */
+export function dampingFor(dtMs: number): number {
+  const frames = Math.min(Math.max(dtMs, 0), 250) / (1000 / 60);
+  return 1 - Math.pow(1 - DAMPING, frames);
+}
 
 interface Flight {
   from: CameraPose;
@@ -223,7 +234,7 @@ export class Stage implements EngineStage {
     this.camera.position.set(60, 45, 60);
     this.controls = new OrbitControls(this.camera, this.canvas);
     this.controls.enableDamping = true;
-    this.controls.dampingFactor = 0.08;
+    this.controls.dampingFactor = DAMPING;
     this.controls.maxPolarAngle = MAX_POLAR;
     this.controls.addEventListener('change', () => {
       this.need = true;
@@ -524,6 +535,7 @@ export class Stage implements EngineStage {
     const dt = this.lastNow ? now - this.lastNow : 16;
     this.lastNow = now;
     if (this.flight) this.stepFlight(now);
+    this.controls.dampingFactor = dampingFor(dt);
     if (this.controls.update()) this.need = true;
     // animated water and a pending sky light map draw at their own idle rate
     if (this.env.wantsFrame(now)) this.need = true;
