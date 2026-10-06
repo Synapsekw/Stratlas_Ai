@@ -97,7 +97,7 @@ jobs:
         run: uv sync --frozen
 
       # The bundled demo project (synthetic data, tools/demo): built at CI speed and checked for
-      # client data before anything is packaged; the first-start e2e opens it.
+      # client data before anything is packaged; the first-start and guide-shots e2e open it.
       - name: Demo project (build and client data check)
         run: pnpm demo:build --quick
 

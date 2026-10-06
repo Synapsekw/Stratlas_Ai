@@ -104,7 +104,13 @@ function WhatsNew() {
   return (
     <div className="sblock">
       <h2>{t('settings.about.whatsNew', { version: notes.value.version })}</h2>
-      <div className="notes-scroll">
+      {/* scrolls on its own: keyboard users reach it with Tab (axe scrollable-region-focusable) */}
+      <div
+        className="notes-scroll"
+        tabIndex={0}
+        role="region"
+        aria-label={t('settings.about.whatsNew', { version: notes.value.version })}
+      >
         <ReleaseNotesView markdown={notes.value.markdown} testId="release-notes" />
       </div>
     </div>

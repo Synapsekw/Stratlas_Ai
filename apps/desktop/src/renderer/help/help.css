@@ -256,13 +256,15 @@
   background: none;
 }
 
+/* Underlined: the accent alone is too close to the body text to mark a link (WCAG 1.4.1). */
 .guide a {
   color: var(--acc);
-  text-decoration: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .guide a:hover {
-  text-decoration: underline;
+  text-decoration-thickness: 2px;
 }
 
 .guide .guide-tip {
