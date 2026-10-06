@@ -191,6 +191,54 @@ def test_resume_with_a_changed_cloud_is_refused(tmp_path):
         run_job(ModelFitCloud(), tmp_path, {"layer": "scan"})
 
 
+def png_packed(tmp: Path, pts: np.ndarray, chunks: int = 2) -> None:
+    """Write `pts` as an aio.pngcloud/1 layer "scan" (packages/pointcloud/README.md), in chunks:
+    the first with bounds only, the others with an explicit quant."""
+    from PIL import Image
+
+    project(tmp, pts[:1], layer_format="png-packed")
+    (tmp / "clouds" / "scan.bin").unlink()
+    index = {"schema": "aio.pngcloud/1", "spacing": 0.2, "chunks": []}
+    for k, part in enumerate(np.array_split(pts, chunks)):
+        lo, hi = part.min(0), part.max(0)
+        if k == 0:
+            scale = (hi - lo) / 65535
+            entry: dict = {}
+        else:
+            scale = np.full(3, float((hi - lo).max()) / 65535)
+            entry = {"quant": {"offset": lo.tolist(), "scale": float(scale[0])}}
+        u = np.clip(np.round((part - lo) / scale), 0, 65535).astype(np.uint16)
+        n = len(part)
+        planes = [u[:, a] & 0xFF for a in range(3)], [u[:, a] >> 8 for a in range(3)]
+        stream = np.concatenate([np.concatenate([lo_b, hi_b]) for lo_b, hi_b in zip(*planes, strict=True)])
+        stream = np.concatenate([stream.astype(np.uint8), np.full(3 * n, 128, np.uint8)])
+        width = 256
+        height = -(-len(stream) // (3 * width))
+        px = np.zeros(width * height * 3, np.uint8)
+        px[: len(stream)] = stream
+        rel = f"clouds/scan/c{k:03d}.png"
+        (tmp / "clouds" / "scan").mkdir(parents=True, exist_ok=True)
+        Image.fromarray(px.reshape(height, width, 3), "RGB").save(tmp / rel)
+        bounds = {"min": lo.tolist(), "max": hi.tolist()}
+        index["chunks"].append({"file": rel, "points": n, "bounds": bounds, "lod": k, **entry})
+    (tmp / "clouds" / "scan" / "index.json").write_text(json.dumps(index), "utf-8")
+    manifest = json.loads((tmp / "manifest.json").read_text("utf-8"))
+    manifest["layers"][0]["src"] = {"path": "clouds/scan/index.json"}
+    (tmp / "manifest.json").write_text(json.dumps(manifest), "utf-8")
+
+
+def test_a_png_packed_cloud_fits_like_the_kit_packed_one(tmp_path):
+    rng = np.random.default_rng(1)
+    pts = scene(rng)
+    png_packed(tmp_path, pts)
+    run_job(ModelFitCloud(), tmp_path, {"layer": "scan"})
+    parts = parts_of(tmp_path)
+    assert sorted(p["kind"] for p in parts) == ["box", "cylinder", "pipe"]
+    tank = next(p for p in parts if p["kind"] == "cylinder")
+    assert abs(tank["radius"] - TANK["r"]) / TANK["r"] < 0.02
+    assert math.hypot(tank["base"][0] - TANK["c"][0], tank["base"][2] - TANK["c"][1]) < 0.05
+
+
 def test_refusals_name_the_layer_and_the_fix(tmp_path, monkeypatch):
     rng = np.random.default_rng(5)
     project(tmp_path, _ground(rng), layer_format="copc")

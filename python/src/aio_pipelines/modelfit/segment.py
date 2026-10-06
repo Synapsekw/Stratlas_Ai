@@ -15,7 +15,7 @@ import numpy as np
 
 from ..runtime import JobError, StepContext
 
-READABLE = ("copc", "kit-packed")
+READABLE = ("copc", "kit-packed", "png-packed")
 
 
 def voxel_thin(pts: np.ndarray, size: float) -> np.ndarray:
@@ -41,6 +41,50 @@ def read_kit_packed(path: Path) -> np.ndarray:
     return xyz
 
 
+def read_png_packed(project: Path, index_path: Path, check: Callable[[], None]) -> np.ndarray:
+    """An ``aio.pngcloud/1`` cloud (packages/pointcloud/README.md): every chunk's points, local frame.
+
+    Each chunk PNG carries a byte stream in the R, G, B bytes of its pixels: nine planes of N bytes
+    (x, y, z as uint16 low and high bytes, then r, g, b). Position = offset + scale * u per axis,
+    from the chunk's ``quant``, else from its bounds over 0..65535. The chunks are disjoint (each
+    level adds points), so all of them together are the cloud.
+    """
+    import json
+
+    from PIL import Image
+
+    from ..inspection.frame import asset_path
+
+    try:
+        index = json.loads(index_path.read_text("utf-8"))
+        chunks = list(index["chunks"])
+    except (ValueError, KeyError, TypeError) as e:
+        raise JobError(f"{index_path.name} is not a png-packed cloud index.") from e
+    parts = []
+    for c in chunks:
+        check()
+        path = asset_path(project, {"path": c["file"]})
+        if path is None or not path.is_file():
+            raise JobError(f"The cloud chunk {c['file']} is missing.")
+        n = int(c["points"])
+        with Image.open(path) as im:
+            stream = np.asarray(im.convert("RGB"), dtype=np.uint8).reshape(-1)
+        if len(stream) < 9 * n:
+            raise JobError(f"The cloud chunk {c['file']} is too small for its {n} points.")
+        planes = stream[: 9 * n].reshape(9, n).astype(np.uint32)
+        u = np.column_stack([planes[2 * a] | (planes[2 * a + 1] << 8) for a in range(3)]).astype(np.float64)
+        q = c.get("quant")
+        if isinstance(q, dict) and "offset" in q:
+            offset = np.asarray(q["offset"], dtype=np.float64)
+            scale = np.broadcast_to(np.asarray(q["scale"], dtype=np.float64), (3,))
+        else:
+            lo = np.asarray(c["bounds"]["min"], dtype=np.float64)
+            hi = np.asarray(c["bounds"]["max"], dtype=np.float64)
+            offset, scale = lo, (hi - lo) / 65535.0
+        parts.append(offset + u * scale)
+    return np.concatenate(parts) if parts else np.zeros((0, 3))
+
+
 def load_layer_points(ctx: StepContext, manifest: dict[str, Any], layer_id: str, voxel: float) -> np.ndarray:
     """The points of a point cloud layer in the local frame (x east, y up, z south), thinned."""
     layer = next((lay for lay in manifest.get("layers", []) if lay.get("id") == layer_id), None)
@@ -51,7 +95,8 @@ def load_layer_points(ctx: StepContext, manifest: dict[str, Any], layer_id: str,
     fmt = layer.get("format")
     if fmt not in READABLE:
         raise JobError(
-            f'"{layer.get("name", layer_id)}" is a {fmt} cloud; fitting reads COPC and kit-packed clouds. '
+            f'"{layer.get("name", layer_id)}" is a {fmt} cloud; fitting reads COPC, kit-packed and '
+            "png-packed clouds. "
             "Convert it to COPC first."
         )
     from ..inspection.frame import asset_path
@@ -61,6 +106,8 @@ def load_layer_points(ctx: StepContext, manifest: dict[str, Any], layer_id: str,
         raise JobError(f'The file of "{layer.get("name", layer_id)}" is missing.')
     if fmt == "kit-packed":
         return voxel_thin(read_kit_packed(path), voxel)
+    if fmt == "png-packed":
+        return voxel_thin(read_png_packed(ctx.project, path, ctx.check), voxel)
     # COPC: PDAL writes a plain LAS into the job folder, read here in chunks
     from ..pointcloud import PDAL_MISSING, _run, find_pdal
     from ..volumetric.cloud import read_las_chunks
