@@ -224,3 +224,59 @@ The split compares two survey dates (two 3D views, maps or orthos, one capture e
 3. A layer that names no capture, or several, is common to every date (site models, plans, basemaps, legacy viewers).
 
 Layers of different dates whose names differ only by the date are counterparts (`Terrain 31 Dec 2020` and `Terrain 10 Jan 2021`): the view of one date shows its own counterpart where the layer tree shows any of them, a component selected on one date is outlined on the other (`P05_e2` on 10 Jan is `P05_e1` on 31 Dec), and the ortho pane keeps the same raster across dates. Builders that name layers by capture date (as `volumetric.build` does) get the comparison for free.
+
+An explicit `capture` on a layer (M8, `Layer.capture`) wins over rules 1 to 3: the layer belongs to that capture whatever its name says. The builder's import step and the layer menu ("Belongs to date...") set it through `builder:updateLayers` with `{ capture }` (`null` clears it).
+
+## 14. Change sets (comparing dates, M8)
+
+Change between two captures is written as change sets: one file per date pair and producer (schema in `@aio/schema` `change.ts`; the pipeline writer is `python/src/aio_pipelines/change/changeset.py`, which round-trips the shared fixtures in `packages/schema/src/__fixtures__/change/`).
+
+```
+<project>/
+  change/<id>.json            aio.change/1, e.g. c1-c2-issues.json (in-app), c1-c2-raster.json (change.raster)
+  change/<id>.json.bak        the previous file, kept on every write
+  change/<id>/                derived files of a pipeline run: heat map pyramid, polygons GeoJSON, COPC, GLB
+```
+
+- `from` and `to` are capture ids (earlier, later). `producer` is `issues`, `detections` or `vectors` for the in-app comparisons, or the pipeline name.
+- `items[]` is a union by `kind` (`issue`, `detection`, `vector`, `region`, `component`, `frame`). Each kind allows its own verdicts (`CHANGE_VERDICTS`): issues `new`, `resolved`, `not-seen`, `grown`, `shrunk`, `worsened`, `improved`, `unchanged`; regions `added`, `removed`, `changed`, `cut`, `fill`; and so on.
+- Item ids are chosen by the producer and stay the same when the pair is computed again (`issue:F01`, `region:0007`), so `review` (`open`, `confirmed`, `dismissed`, `by`, `at`, `note?`, `issueId?`) is carried over by id on a recompute.
+- Every item is a proposal. "Resolved" never closes an issue: a person confirms, then the issue gets `status: 'closed'` and `resolvedIn: <to>` (founder decision 3). `not-seen` is used whenever the later date did not look at the place.
+- `registration` says how well the dates line up (`shiftPx`, `shiftM`, tolerance). Raster, cloud and mesh comparisons refuse to run beyond the tolerance (default 2 px or 5 cm, `ChangeThresholds`).
+- Layers written by a run carry `derived: { kind: 'change', from, to, changeId, runId, source }` and the later date's `capture`; the set lists them in `layers`.
+- Packages carry `change/` read-only; player mode never starts a comparison.
+
+## 15. Procedural models (BLD-11, M8)
+
+Models made from drawings, point cloud fits, the agent or by hand (schema in `@aio/schema` `procmodel.ts`):
+
+```
+<project>/
+  models/<id>.procmodel.json  aio.procmodel/1: parts (extrusion, cylinder, box, pipe, sphere), each draft, accepted or rejected
+  models/<id>.glb             built from the accepted parts by the TypeScript mesher, one node per part
+  models/draft-<id>.glb       preview of every part, shown as a draft layer (derived.draft), left out of reports
+  drawings/<name>.dxf         DXF plans copied in by drawing.import (DWG is not supported)
+```
+
+- Coordinates are the project local frame in metres (x east, y up, z south); extrusion footprints are `[x, z]` pairs with a `baseY` and a `height`; cylinders stand on their `base` centre with a vertical axis.
+- `origin` says where a part came from: `fit` (`residualM`, `inliers`, `inlierShare?`), `drawing` (`file`, `layer`, `entity`), `agent` or `manual`.
+- The GLB node of a part is named by its `tag`, else its `name`, else its `id` (`@aio/modelling` `partNodeName`), so issues, tags and part matching across dates (section 13) work on built models.
+- The built mesh layer carries `derived: { kind: 'model', source: [<model id>] }` and the model's `capture`.
+- The manifest flag `aiCloudDrawings` (default off) is the project policy for sending plan images and drawings to a cloud model from the model builder (founder decision 5).
+
+## 16. Detector models (BLD-10, M8)
+
+Local detection runs ONNX models with onnxruntime-node in an Electron utility process. No detector ships with the app; a person imports one (schema in `@aio/schema` `inference.ts`):
+
+```
+<userData>/models/detect/<id>/
+  model.onnx                  the network
+  model.json                  aio.detector/1 model card: name, version, layout, input, classes, licence (SPDX), source, sha256
+<project>/
+  detections/model-<run>.json aio.detections/1 pass, source "model", status "draft", origin { model, runId }, run
+```
+
+- `layout` is one of `yolo-v8`, `yolo-v5`, `detr`, `ssd`, `generic`; `input` gives the size, tensor order (`nchw` default), colour order and normalisation.
+- Import checks the SHA-256, probes the layout with one dummy inference and asks the person to acknowledge the licence. Models without a card or with a licence not allowed in customer builds are refused (no AGPL exports such as Ultralytics weights without an Enterprise licence).
+- `Settings.inference.modelsDir` moves the folder; empty means userData.
+- Results are drafts in the existing review (section 11): nothing counts until a person accepts it.
