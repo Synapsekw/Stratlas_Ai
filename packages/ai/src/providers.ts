@@ -10,7 +10,9 @@ import { createGoogle } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
 import type { LocalModelSettings } from '@aio/schema';
 import type { LanguageModel } from 'ai';
-import { PROVIDER_LABELS } from './routes';
+import { isLoopbackUrl, openAiBase, PROVIDER_LABELS } from './routes';
+
+export { isLoopbackUrl };
 
 export interface ModelProvider {
   /** Matches the `provider` of a model route. */
@@ -19,6 +21,11 @@ export interface ModelProvider {
   /** Sends data off the machine: refused while cloud AI is off. */
   cloud: boolean;
   needsKey: boolean;
+  /**
+   * A key is used when the vault has one, but none is needed (a local server that wants a bearer
+   * key: LM Studio, a secured llama.cpp server).
+   */
+  optionalKey?: boolean;
   /** Build the model. `key` is null only when `needsKey` is false. Never log the key. */
   languageModel(modelId: string, key: string | null): LanguageModel;
 }
@@ -77,34 +84,30 @@ export function builtInProviders(options: BuiltInProviderOptions = {}): ModelPro
   ];
 }
 
-/** True for localhost, 127.0.0.0/8 and ::1: requests to these never leave the machine. */
-export function isLoopbackUrl(url: string): boolean {
-  let host: string;
-  try {
-    host = new URL(url).hostname.toLowerCase();
-  } catch {
-    return false;
-  }
-  if (host === 'localhost' || host.endsWith('.localhost')) return true;
-  if (host === '[::1]' || host === '::1') return true;
-  return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
-}
-
 /**
  * The local model from Settings. An address on another machine sends data off this one, so it is
  * then treated as a cloud provider (refused while cloud AI is off or the project forbids it).
  */
-export function localProvider(cfg: Pick<LocalModelSettings, 'baseUrl'>): ModelProvider {
+export function localProvider(
+  cfg: Pick<LocalModelSettings, 'baseUrl'>,
+  options: Pick<BuiltInProviderOptions, 'fetch'> = {},
+): ModelProvider {
   return {
     id: 'local',
     label: PROVIDER_LABELS.local,
     cloud: !isLoopbackUrl(cfg.baseUrl),
     needsKey: false,
-    languageModel: (model) =>
-      createOpenAI({ baseURL: cfg.baseUrl, apiKey: 'local', name: 'local' }).chat(model),
+    optionalKey: true,
+    // OpenAI-compatible chat completions: Ollama, LM Studio and the llama.cpp server all serve them.
+    languageModel: (model, key) =>
+      createOpenAI({
+        baseURL: openAiBase(cfg.baseUrl),
+        apiKey: key ?? 'local',
+        name: 'local',
+        ...(options.fetch ? { fetch: options.fetch } : {}),
+      }).chat(model),
   };
 }
-
 export function createProviderRegistry(
   initial: readonly ModelProvider[] = builtInProviders(),
 ): ProviderRegistry {
