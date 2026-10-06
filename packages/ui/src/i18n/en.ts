@@ -1253,6 +1253,16 @@ export const en = {
   'help.compare': 'Help on comparing dates',
   'det.sheet.issues_one': '{count} issue on this photo',
   'det.sheet.issues_other': '{count} issues on this photo',
+  // M8 C2: imagery and surface change, swipe and blend of two dates
+  'imgChange.view': 'How to show the two dates',
+  'imgChange.side': 'Side by side',
+  'imgChange.swipe': 'Swipe',
+  'imgChange.blend': 'Blend',
+  'imgChange.divider': 'Swipe divider: earlier date on the left, later date on the right',
+  'imgChange.blendAmount': 'Blend from the earlier date to the later date',
+  'imgChange.earlier': 'Earlier',
+  'imgChange.later': 'Later',
+  'imgChange.legend': 'Legend: {name}',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

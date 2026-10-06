@@ -18,6 +18,7 @@ import { PdfViewer } from '../report/PdfViewer';
 import { useCall } from '../shell';
 import { captureLabel, useCaptureIndex, useSplitDates } from './compare';
 import { RasterView } from './RasterPane';
+import { CompareViewControls } from './MapSwipe';
 import {
   blockedFor,
   chooseCapture,
@@ -157,6 +158,7 @@ export function PaneChooser({ side, split }: { side: Side; split: SplitModel }) 
           <Icon name="link" size={14} />
         </button>
       )}
+      {twin && side === 'right' && <CompareViewControls split={split} />}
     </div>
   );
 }
