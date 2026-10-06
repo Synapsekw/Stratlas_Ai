@@ -45,6 +45,7 @@ import { HelpPanel } from './help/HelpPanel';
 import { help } from './help/store';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
 import { BuilderLayer } from './builder/BuilderLayer';
+import { ModellerLayer } from './modeller/ModellerLayer';
 import { Lightbox } from './issueCard/Lightbox';
 import { CrashNotice } from './diagnostics/CrashNotice';
 import { ReportProblemDialog } from './diagnostics/ReportProblem';
@@ -326,6 +327,7 @@ export function App() {
       <Toasts />
       <LiveAnnouncer />
       <BuilderLayer />
+      <ModellerLayer />
       <Lightbox />
       <ReportProblemDialog />
       <CrashNotice />

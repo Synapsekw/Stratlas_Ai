@@ -10,6 +10,7 @@ import { builder } from '../builder/state';
 import { diagnostics } from '../diagnostics/state';
 import { help } from '../help/store';
 import { legacyLayers } from '../legacy';
+import { openModelBuilder } from '../modeller/ModellerLayer';
 import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
 import { PATH_MODES, setPathMode, togglePaths } from '../workspace/flightPaths';
@@ -130,6 +131,7 @@ export function Palette() {
         s.go('scene');
         fn();
       };
+      action('model-builder', 'Open the model builder', 'plant', openModelBuilder);
       action(
         'mode:3d',
         'Show 3D view',

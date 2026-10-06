@@ -411,6 +411,23 @@ export function createModeller(deps: ModellerDeps): StoreApi<Modeller> {
     };
   });
 
+  // an import or fit started anywhere (the Jobs screen too) changes the project: show it
+  const key = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  jobs.subscribe((s, prev) => {
+    const p = project();
+    if (!p) return;
+    const finished = s.jobs.find(
+      (j) =>
+        j.status === 'done' &&
+        (j.pipeline === 'drawing.import' || j.pipeline === 'model.fit_cloud') &&
+        key(j.project) === key(p.root) &&
+        prev.jobs.find((x) => x.id === j.id)?.status !== 'done',
+    );
+    if (!finished) return;
+    void reloadManifest();
+    void store.getState().refresh();
+  });
+
   // a model belongs to its project
   workspace.subscribe((s, prev) => {
     if (s.project?.id === prev.project?.id) return;
