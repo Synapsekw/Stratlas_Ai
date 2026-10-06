@@ -14,7 +14,6 @@ M8 = {
     "change.surface": {"from": {"layer": "d1", "kind": "dsm"}, "to": {"layer": "d2", "kind": "dsm"}},
     "change.cloud": {"layerFrom": "a", "layerTo": "b"},
     "change.mesh": {"layerFrom": "a", "layerTo": "b"},
-    "change.frames": {"from": "c1", "to": "c2"},
     "drawing.import": {"src": "plot.dxf", "units": "m"},
     "model.fit_cloud": {"layer": "scan"},
 }

@@ -17,8 +17,8 @@ import { openLightbox } from '../issueCard/state';
 import { PdfViewer } from '../report/PdfViewer';
 import { useCall } from '../shell';
 import { captureLabel, useCaptureIndex, useSplitDates } from './compare';
+import { SameViewButton } from './FramesPane';
 import { RasterView } from './RasterPane';
-import { CompareViewControls } from './MapSwipe';
 import {
   blockedFor,
   chooseCapture,
@@ -93,8 +93,8 @@ export function useSplit(): SplitModel {
   const index = useCaptureIndex();
   const dates = useSplitDates(index);
   const options = useMemo(
-    () => paneOptions(project?.manifest.layers ?? [], reports.length),
-    [project, reports],
+    () => paneOptions(project?.manifest.layers ?? [], reports.length, dates?.captures.length),
+    [project, reports, dates],
   );
   const sides = useMemo(() => resolveSplit(saved, options, dates), [saved, options, dates]);
   return {
@@ -186,7 +186,6 @@ export function PaneChooser({ side, split }: { side: Side; split: SplitModel }) 
           <Icon name="link" size={14} />
         </button>
       )}
-      {twin && side === 'right' && <CompareViewControls split={split} />}
     </div>
   );
 }
@@ -347,6 +346,7 @@ function SetPhotoPane() {
         >
           <Icon name="fwd" size={14} />
         </button>
+        <SameViewButton source={{ kind: 'photo', layer: set.id, photo: photo.id }} />
       </div>
       <PhotoViewer layerId={set.id} photoId={photo.id} className="fill-col" />
     </div>

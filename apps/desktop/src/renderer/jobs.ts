@@ -507,8 +507,9 @@ export const FORMS: Record<PipelineName, Field[]> = {
   'change.frames': [
     { key: 'from', label: 'Earlier capture id', kind: 'text', required: true },
     { key: 'to', label: 'Later capture id', kind: 'text', required: true },
-    { key: 'maxPoseM', label: 'Largest camera distance (m)', kind: 'number', placeholder: '5' },
-    { key: 'maxAngleDeg', label: 'Largest view angle (°)', kind: 'number', placeholder: '10' },
+    { key: 'maxPoseM', label: 'Largest camera distance (m)', kind: 'number', placeholder: '10' },
+    { key: 'maxAngleDeg', label: 'Largest view angle (°)', kind: 'number', placeholder: '15' },
+    { key: 'minAreaPx', label: 'Smallest change (pixels)', kind: 'number', placeholder: '400' },
   ],
   'drawing.import': [
     {

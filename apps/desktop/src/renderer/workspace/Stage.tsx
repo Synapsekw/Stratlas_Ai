@@ -70,6 +70,7 @@ import { compareRuntime, linkMaps, primaryMap, primaryScene, useCompareNotice } 
 import { CompareButton, CompareMap, useVolumesFollowDate } from './CompareControls';
 import { CompareScene } from './CompareScene';
 import { CursorReadout, useSceneCursor } from './SceneCursor';
+import './m8Mounts';
 import { paneCapture, PaneChooser, SplitPane, useSplit } from './SplitPanes';
 import { sideOf, sidesOf, type Side } from './splitModel';
 import { hiddenPathClips, togglePaths } from './flightPaths';

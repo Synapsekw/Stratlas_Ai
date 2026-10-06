@@ -5,9 +5,9 @@
  * later one fades over the earlier with a slider. The two panes stay linked, so they line up.
  * Also the legends of the change heat maps on show (`ChangeLegends`, `ChangeLegend`).
  *
- * Self-contained: `CompareViewControls` is mounted by the right pane's chooser in `SplitPanes.tsx`
- * (one line, owned by C1) and works on the stage panes through attributes and CSS variables
- * (`mapSwipe.css`), so neither the stage nor the split model changes.
+ * Self-contained: `CompareViewControls` sits on C1's `COMPARE_TOOLS` mount point beside Compare
+ * dates (registered in `m8Mounts.tsx`) and works on the stage panes through attributes and CSS
+ * variables (`mapSwipe.css`), so neither the stage nor the split model changes.
  */
 import {
   blendOpacity,
@@ -109,7 +109,11 @@ export function CompareViewControls({ split }: { split: SplitModel }) {
   const anchor = useRef<HTMLSpanElement>(null);
   const [panes, setPanes] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => {
-    setPanes(anchor.current?.closest<HTMLElement>('.stage-panes') ?? null);
+    // the bar's anchor sits in the stage toolbar, beside the panes
+    setPanes(
+      anchor.current?.closest<HTMLElement>('.stage')?.querySelector<HTMLElement>('.stage-panes') ??
+        null,
+    );
   }, []);
   const on = canSwipe(split);
   return (
