@@ -121,8 +121,6 @@ function detailText(item: ChangeItem, t: ReturnType<typeof useT>): string {
       );
   } else if (item.kind === 'detection' && item.count) {
     parts.push(t('change.counts', { from: fmt(item.count.from), to: fmt(item.count.to) }));
-  } else if (item.kind === 'vector' && item.distanceM !== undefined) {
-    parts.push(t('change.distance', { d: fmt(item.distanceM) }));
   } else if (item.kind === 'region' && item.volume) {
     parts.push(`cut ${fmt(item.volume.cutM3)} m³, fill ${fmt(item.volume.fillM3)} m³`);
   }

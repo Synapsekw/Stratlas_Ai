@@ -21,12 +21,16 @@ export function useChangesTabSeq(): number {
   return useStore(changesTab, (s) => s.seq);
 }
 
-/** Keep the change sets of the open project loaded. */
+let loadedFor: unknown = undefined;
+
+/** Keep the change sets of the open project loaded (read again each time a project opens). */
 export function useChangeProject(): void {
-  const projectId = useWorkspace((s) => s.project?.id ?? null);
+  const project = useWorkspace((s) => s.project);
   useEffect(() => {
-    if (changeStore.getState().projectId !== projectId) void changeStore.getState().load(projectId);
-  }, [projectId]);
+    if (loadedFor === project) return;
+    loadedFor = project;
+    void changeStore.getState().load(project?.id ?? null);
+  }, [project]);
 }
 
 /** The two dates Compare dates shows, earlier first (null when not comparing). */
