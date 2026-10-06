@@ -15,6 +15,7 @@ import { engineConfig } from '../config';
 import type { LayerAdapter, LayerHandle, SceneHandle } from '../types';
 import { MASK_LAYER, maskTerrainMaterial, type GroundUniforms } from '../stage/groundShading';
 import { isMesh, layerMatrix, markNodes, mergeByMaterial } from './model';
+import { fitTextureSize } from './rasterMath';
 import { SharedAssets } from './shared';
 
 /** Extra hooks the engine's own stage offers; other SceneHandle implementations may lack them. */
@@ -134,8 +135,51 @@ export function buildTemplate(
   return { group, seaTop, terrain };
 }
 
+/** Textures of every material under `root`, each once. */
+function texturesOf(root: Object3D): Set<Texture> {
+  const out = new Set<Texture>();
+  root.traverse((o) => {
+    if (!isMesh(o)) return;
+    for (const m of Array.isArray(o.material) ? o.material : [o.material])
+      for (const v of Object.values(m)) if ((v as Texture | null)?.isTexture) out.add(v as Texture);
+  });
+  return out;
+}
+
+/**
+ * Scale textures with an edge above `max` down before their first upload (the graphics preset's
+ * texture limit: a 8192 px atlas is 350 MB of GPU memory with mips, 22 MB at 2048). Returns how
+ * many were scaled.
+ */
+export async function capTextures(root: Object3D, max: number): Promise<number> {
+  if (typeof createImageBitmap !== 'function') return 0;
+  let scaled = 0;
+  for (const tex of texturesOf(root)) {
+    const img = tex.image as (ImageBitmapSource & { width?: number; height?: number }) | null;
+    const fit = img ? fitTextureSize(img.width ?? 0, img.height ?? 0, max) : null;
+    if (!img || !fit) continue;
+    try {
+      const small = await createImageBitmap(img, {
+        resizeWidth: fit[0],
+        resizeHeight: fit[1],
+        resizeQuality: 'high',
+        premultiplyAlpha: 'none',
+        colorSpaceConversion: 'none',
+      });
+      if (img instanceof ImageBitmap) img.close();
+      tex.image = small;
+      tex.needsUpdate = true;
+      scaled++;
+    } catch {
+      // keep the full image; the GPU limit still applies
+    }
+  }
+  return scaled;
+}
+
 async function loadTemplate(url: string, transform: readonly number[]): Promise<MeshTemplate> {
   const gltf = await loader().loadAsync(url);
+  await capTextures(gltf.scene, engineConfig().memory.maxTextureSize);
   return buildTemplate(
     gltf.scene,
     transform,

@@ -129,6 +129,26 @@ const bridge: AioBridge = {
       return '';
     }
   },
+  // Graphics tier detection reads the installed memory before the first frame, so synchronously.
+  // STRATLAS_SYSTEM_MEMORY_GB pretends a smaller machine (low-end simulation, tests).
+  systemMemory: () => {
+    try {
+      const info = process.getSystemMemoryInfo(); // kilobytes
+      const simulated = Number(process.env.STRATLAS_SYSTEM_MEMORY_GB);
+      const total = simulated > 0 ? simulated * 2 ** 30 : info.total * 1024;
+      return { total, free: Math.min(total, info.free * 1024) };
+    } catch {
+      return null;
+    }
+  },
+  processMemory: async () => {
+    try {
+      const m = await process.getProcessMemoryInfo(); // kilobytes
+      return { residentSet: m.residentSet * 1024, private: m.private * 1024 };
+    } catch {
+      return null;
+    }
+  },
 };
 
 contextBridge.exposeInMainWorld('aio', bridge);

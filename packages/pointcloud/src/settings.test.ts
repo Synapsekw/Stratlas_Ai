@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUDGETS, DEFAULT_BUDGET, createPointcloudSettings } from './settings';
+import { BUDGETS, DEFAULT_BUDGET, createPointcloudSettings, effectiveBudget } from './settings';
 
 function memory(): Storage {
   const m = new Map<string, string>();
@@ -34,6 +34,20 @@ describe('pointcloud settings', () => {
     store.getState().setBudget(4_100_000);
     expect(BUDGETS).toContain(store.getState().budget);
     expect(store.getState().budget).toBe(4_000_000);
+  });
+
+  it('draws no more than the graphics cap, which is not remembered', () => {
+    const storage = memory();
+    const store = createPointcloudSettings(storage);
+    expect(store.getState().budgetCap).toBe(Infinity);
+    store.getState().setBudget(16_000_000);
+    store.getState().setBudgetCap(4_000_000);
+    expect(store.getState().budget).toBe(16_000_000);
+    expect(effectiveBudget(store.getState())).toBe(4_000_000);
+    store.getState().setBudgetCap(0);
+    expect(effectiveBudget(store.getState())).toBe(16_000_000);
+    store.getState().setBudgetCap(2_000_000);
+    expect(createPointcloudSettings(storage).getState().budgetCap).toBe(Infinity);
   });
 
   it('remembers choices in storage and restores them', () => {

@@ -82,19 +82,37 @@ export function tileUrl(pattern: string, z: number, x: number, y: number): strin
 /** A fine level streams in when the camera is closer than this many tile widths. */
 const ACTIVE_TILE_WIDTHS = 8;
 const WANT_MAX = 9;
-const KEEP_MAX = 12;
+/** Loaded tiles beyond the wanted ones that stay (hysteresis). */
+const KEEP_EXTRA = 3;
+
+/**
+ * The size an image is scaled to so neither edge exceeds `max` (aspect kept), or null when it
+ * already fits. Low graphics presets keep textures small; the GPU limit caps every preset.
+ */
+export function fitTextureSize(
+  width: number,
+  height: number,
+  max: number,
+): [number, number] | null {
+  if (!(max > 0) || (width <= max && height <= max)) return null;
+  const k = max / Math.max(width, height);
+  return [Math.max(1, Math.round(width * k)), Math.max(1, Math.round(height * k))];
+}
 
 /**
  * Which tiles to load and drop for the current view. Port of the Al-Zour artifact's `orthoTick`:
  * the coarsest level is always resident; each finer level streams its nearest tiles around the
- * orbit target (at most 9 wanted, 12 kept) and releases them with hysteresis.
+ * orbit target (at most `wantMax` wanted, 3 more kept; 9 and 12 by default) and releases them
+ * with hysteresis. The graphics preset lowers `wantMax` on integrated graphics.
  */
 export function planTiles(
   index: TileIndex,
   target: Vec3,
   distance: number,
   loaded: ReadonlySet<string>,
+  wantMax = WANT_MAX,
 ): { load: string[]; drop: string[] } {
+  const keepMax = wantMax + KEEP_EXTRA;
   const load: string[] = [];
   const keep = new Set<string>();
   const { corners } = index;
@@ -124,11 +142,11 @@ export function planTiles(
       }
     near.sort((a, b) => a.dd - b.dd);
     near.forEach(({ k, dd }, rank) => {
-      const want = dd < r + s * 0.5 && rank < WANT_MAX;
+      const want = dd < r + s * 0.5 && rank < wantMax;
       if (want) {
         keep.add(k);
         if (!loaded.has(k)) load.push(k);
-      } else if (loaded.has(k) && !(dd > r * 1.6 + s || rank >= KEEP_MAX)) {
+      } else if (loaded.has(k) && !(dd > r * 1.6 + s || rank >= keepMax)) {
         keep.add(k); // hysteresis: keep a loaded tile until it is clearly out of range
       }
     });

@@ -29,6 +29,11 @@ export interface PointcloudSettingsState {
   sizeScale: number;
   /** Global point budget across every cloud in the scene. */
   budget: number;
+  /**
+   * Most points the graphics preset allows whatever the budget says (memory limit of the tier,
+   * lowered under memory pressure); Infinity for none. Not remembered.
+   */
+  budgetCap: number;
   edl: boolean;
   edlStrength: number;
   /** Largest on-screen point, CSS pixels. */
@@ -46,6 +51,7 @@ export interface PointcloudSettingsActions {
   setColourMode(mode: ColourMode): void;
   setSizeScale(scale: number): void;
   setBudget(points: number): void;
+  setBudgetCap(points: number): void;
   setEdl(on: boolean): void;
   setEdlStrength(strength: number): void;
   /** Hide or show one class. */
@@ -61,6 +67,7 @@ const defaults: PointcloudSettingsState = {
   colourMode: 'rgb',
   sizeScale: 1,
   budget: DEFAULT_BUDGET,
+  budgetCap: Infinity,
   edl: true,
   edlStrength: 1,
   maxPixels: 24,
@@ -134,6 +141,9 @@ export function createPointcloudSettings(
     setBudget: (n) => {
       set({ budget: snapBudget(n) });
     },
+    setBudgetCap: (n) => {
+      set({ budgetCap: n > 0 ? n : Infinity });
+    },
     setEdl: (edl) => {
       set({ edl });
     },
@@ -173,6 +183,11 @@ export function createPointcloudSettings(
     }
   });
   return store;
+}
+
+/** The points actually drawn at most: the chosen budget within the graphics preset's cap. */
+export function effectiveBudget(s: Pick<PointcloudSettingsState, 'budget' | 'budgetCap'>): number {
+  return Math.min(s.budget, s.budgetCap);
 }
 
 /** The app-wide settings store shared by every scene and the controls. */

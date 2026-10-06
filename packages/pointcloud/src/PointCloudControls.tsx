@@ -68,6 +68,7 @@ export function PointCloudControls({
   const colourMode = useStore(store, (x) => x.colourMode);
   const sizeScale = useStore(store, (x) => x.sizeScale);
   const budget = useStore(store, (x) => x.budget);
+  const cap = useStore(store, (x) => x.budgetCap);
   const edl = useStore(store, (x) => x.edl);
   const counts = usePointcloudCounts();
   const st = store.getState();
@@ -132,13 +133,14 @@ export function PointCloudControls({
       <label style={s.row}>
         <span style={s.label}>Point budget</span>
         <select
-          value={budget}
+          value={Math.min(budget, cap)}
           onChange={(e) => {
             st.setBudget(Number(e.currentTarget.value));
           }}
         >
           {BUDGETS.map((b) => (
-            <option key={b} value={b}>
+            // above the graphics preset's memory limit: Settings, Graphics raises it
+            <option key={b} value={b} disabled={b > cap}>
               {millions(b)}
             </option>
           ))}

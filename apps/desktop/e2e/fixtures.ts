@@ -43,6 +43,9 @@ const GUARD = join(import.meta.dirname, 'network-guard.cjs');
 
 export const TINY_PROJECT_ID = 'e2e-tiny';
 
+/** Chromium switches that force the software GPU (SwiftShader), which the app runs on Low. */
+export const SOFTWARE_GPU = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
+
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
 /** Manifest of the synthetic project, validated against the frozen contract. */

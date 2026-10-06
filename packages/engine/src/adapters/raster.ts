@@ -12,6 +12,7 @@ import {
   TextureLoader,
   Vector3,
 } from 'three';
+import { engineConfig } from '../config';
 import { GROUND_LAYER, groundImageryMaterial, type GroundUniforms } from '../stage/groundShading';
 import type { AdapterContext, LayerAdapter, LayerHandle, SceneHandle } from '../types';
 import {
@@ -148,7 +149,7 @@ interface ImageDecoder {
 /** One shared decode worker (imageDecode.worker.ts), started on first use. */
 let decoder: ImageDecoder | null = null;
 
-function decodeInWorker(url: string): Promise<ImageBitmap> {
+function decodeInWorker(url: string, max: number): Promise<ImageBitmap> {
   if (!decoder) {
     const worker = new Worker(new URL('./imageDecode.worker.ts', import.meta.url), {
       type: 'module',
@@ -172,7 +173,7 @@ function decodeInWorker(url: string): Promise<ImageBitmap> {
   const id = d.next++;
   return new Promise<ImageBitmap>((resolve, reject) => {
     d.pending.set(id, { resolve, reject });
-    d.worker.postMessage({ id, url });
+    d.worker.postMessage({ id, url, max });
   });
 }
 
@@ -181,11 +182,11 @@ function decodeInWorker(url: string): Promise<ImageBitmap> {
  * an <img> texture is decoded synchronously inside the upload, 40 to 350 ms for a 2048 px ortho
  * tile, which stalls the frame that first draws it.
  */
-async function loadImage(url: string): Promise<Texture> {
+async function loadImage(url: string, max: number): Promise<Texture> {
   if (typeof Worker === 'undefined' || typeof createImageBitmap !== 'function')
     return new TextureLoader().loadAsync(url);
   // decoded flipped: an ImageBitmap ignores UNPACK_FLIP_Y
-  const bmp = await decodeInWorker(url);
+  const bmp = await decodeInWorker(url, max);
   const tex = new Texture(bmp);
   tex.flipY = false;
   tex.needsUpdate = true;
@@ -196,7 +197,9 @@ async function loadImage(url: string): Promise<Texture> {
 }
 
 async function loadTexture(url: string, ctx: AdapterContext): Promise<Texture> {
-  const tex = await loadImage(url);
+  // the graphics preset's texture limit, never above the GPU's own
+  const gpuMax = ctx.scene.renderer.capabilities.maxTextureSize || Infinity;
+  const tex = await loadImage(url, Math.min(engineConfig().memory.maxTextureSize, gpuMax));
   tex.colorSpace = SRGBColorSpace;
   tex.anisotropy = Math.min(8, ctx.scene.renderer.capabilities.getMaxAnisotropy());
   return tex;
@@ -275,7 +278,7 @@ async function pyramidRaster(layer: RasterLayer, ctx: AdapterContext): Promise<L
     if (!force && ++tick % 15) return;
     const [t, d] = viewTarget();
     const loaded = new Set(tiles.keys());
-    const plan = planTiles(index, [t.x, t.y, t.z], d, loaded);
+    const plan = planTiles(index, [t.x, t.y, t.z], d, loaded, engineConfig().memory.rasterTiles);
     for (const k of plan.drop) {
       const mesh = tiles.get(k);
       tiles.delete(k);
