@@ -56,6 +56,11 @@ export interface SettingsStore {
   update(change: (current: Settings) => IpcRequest<'settings:set'>): Promise<Settings>;
   /** Last known settings, for synchronous callers such as the AI runtime. */
   current(): Settings;
+  /**
+   * Resolves once every update asked for so far is written, so `current()` then reflects them:
+   * a check made right after a change (the agent's route after cloud AI is turned on) sees it.
+   */
+  settled(): Promise<void>;
 }
 
 /** Settings as JSON in `file` (userData/settings.json), validated against the frozen schema. */
@@ -96,5 +101,6 @@ export function createSettingsStore(file: string, defaults: Settings): SettingsS
     set: (patch) => serial(() => apply(patch)),
     update: (change) => serial(async () => apply(change(await load()))),
     current: () => cache ?? defaults,
+    settled: () => queue.then(() => undefined),
   };
 }

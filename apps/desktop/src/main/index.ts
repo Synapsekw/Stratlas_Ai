@@ -768,7 +768,11 @@ function registerIpc(): void {
     agent.cancel(runId);
     return { ok: true };
   });
-  handle('ai:status', (req) => agent.status(req));
+  // after any settings change still being written: the panel checks right after cloud AI turns on
+  handle('ai:status', async (req) => {
+    await settings.settled();
+    return agent.status(req);
+  });
   handle('ai:project', async ({ projectId }) => {
     const root = registry.root(projectId);
     if (root === undefined) return { alwaysAllow: false, policy: 'allow' as const, usage: [] };

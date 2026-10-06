@@ -220,9 +220,9 @@ test('the demo plot plan: units, a broken file, placed by control points, parts 
   await palette.getByRole('option', { name: /Turn cloud AI on/ }).click();
   const agent = win.getByRole('region', { name: 'Agent' });
   const message = agent.getByRole('textbox', { name: 'Message the agent' });
-  // the open panel checks its route on focus; an off-screen test window never gets focus
-  await agent.getByRole('button', { name: 'Check again' }).click();
+  // the open panel checks its route again by itself when the AI settings change: no Check again
   await expect(message).toBeEnabled({ timeout: 15_000 });
+  await expect(agent.getByRole('button', { name: 'Check again' })).toHaveCount(0);
   await message.fill(
     'Make the tank T-202 from the drawing #tool propose_model_parts {"from":"drawing","drawing":"plot-plan","tags":["T-202"]}',
   );

@@ -133,6 +133,15 @@ describe('settings store', () => {
     });
   });
 
+  it('settles after every update asked for so far, failed or not', async () => {
+    const store = createSettingsStore(file, defaults);
+    void store.set({ cloudAi: true });
+    await store.settled();
+    expect(store.current().cloudAi).toBe(true);
+    await expect(store.set({ theme: 'nope' as never })).rejects.toThrow();
+    await expect(store.settled()).resolves.toBeUndefined();
+  });
+
   it('exposes a synchronous snapshot after the first read', async () => {
     const store = createSettingsStore(file, defaults);
     await store.set({ cloudAi: true });
