@@ -509,7 +509,33 @@ export interface DemoProject {
   network: NetworkGuard;
 }
 
+/**
+ * The development pipeline runtime for specs that run pipeline jobs: the venv Python
+ * (`uv sync` in python/, or STRATLAS_E2E_PYTHON) and PDAL (AIO_PDAL, else the workstation's
+ * install). Pass `PIPELINE_ENV` as `appEnv` and skip with `hasPipelinePython` / `hasPdal`.
+ */
+const REPO = join(import.meta.dirname, '..', '..', '..');
+export const VENV_PYTHON =
+  process.env.STRATLAS_E2E_PYTHON ??
+  (process.platform === 'win32'
+    ? join(REPO, 'python', '.venv', 'Scripts', 'python.exe')
+    : join(REPO, 'python', '.venv', 'bin', 'python'));
+export const PDAL =
+  process.env.AIO_PDAL ??
+  (process.platform === 'win32' ? 'E:/Dev/tools/pdal/Library/bin/pdal.exe' : '/usr/bin/pdal');
+export const hasPipelinePython = (): boolean => existsSync(VENV_PYTHON);
+export const hasPdal = (): boolean => existsSync(PDAL);
+export const PIPELINE_ENV: Record<string, string> = {
+  STRATLAS_PIPELINE_PYTHON: VENV_PYTHON,
+  AIO_PDAL: PDAL,
+};
+
 interface Fixtures {
+  /**
+   * Extra environment of the app the `app` and `demoProject` fixtures launch, e.g.
+   * `test.use({ appEnv: PIPELINE_ENV })` for specs that run pipeline jobs.
+   */
+  appEnv: Record<string, string>;
   dataRoot: DataRoot;
   network: NetworkGuard;
   app: ElectronApplication;
@@ -524,6 +550,8 @@ interface Fixtures {
 }
 
 export const test = base.extend<Fixtures>({
+  appEnv: [{}, { option: true }],
+
   // eslint-disable-next-line no-empty-pattern -- Playwright requires the destructuring form.
   dataRoot: async ({}, use) => {
     const data = await createDataRoot();
@@ -536,8 +564,8 @@ export const test = base.extend<Fixtures>({
     await use(new NetworkGuard());
   },
 
-  app: async ({ dataRoot, network }, use, testInfo) => {
-    const app = await launchApp(dataRoot);
+  app: async ({ dataRoot, network, appEnv }, use, testInfo) => {
+    const app = await launchApp(dataRoot, appEnv);
     await network.attach(app);
     const tracing = app.context().tracing;
     await tracing.start({ screenshots: true, snapshots: true });
@@ -566,13 +594,13 @@ export const test = base.extend<Fixtures>({
     await use(await createTwoDateProject(dataRoot));
   },
 
-  demoProject: async ({ dataRoot }, use, testInfo) => {
+  demoProject: async ({ dataRoot, appEnv }, use, testInfo) => {
     testInfo.skip(
       !hasChangeDemo(),
       `no change demo in ${DEMO_FOLDER}: run pnpm demo:change --quick (or pnpm demo:build --quick)`,
     );
     const network = new NetworkGuard();
-    const app = await launchApp(dataRoot, { STRATLAS_DEMO: DEMO_FOLDER });
+    const app = await launchApp(dataRoot, { ...appEnv, STRATLAS_DEMO: DEMO_FOLDER });
     await network.attach(app);
     let outbound: string[];
     try {
