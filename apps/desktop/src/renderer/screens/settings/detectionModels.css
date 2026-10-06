@@ -1,0 +1,50 @@
+/* Settings, Detection models (BLD-10) and the local part of the Detect dialog. */
+.infer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.infer-models {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.infer-model {
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.infer-model p {
+  margin: 4px 0 0;
+}
+.infer-model-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.infer-model-h .grow,
+.infer-row .grow {
+  flex: 1;
+}
+.infer-chip {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--line-soft);
+}
+.infer-import {
+  margin-top: 12px;
+}
+.infer-classes {
+  display: grid;
+  grid-template-columns: minmax(120px, auto) 1fr;
+  gap: 6px 10px;
+  align-items: center;
+  margin-top: 6px;
+}
+.infer-num {
+  width: 72px;
+}

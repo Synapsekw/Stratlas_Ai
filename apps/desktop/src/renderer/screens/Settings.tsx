@@ -30,6 +30,7 @@ import { bridge, shell, useCall, useShell } from '../shell';
 import { HelpLink } from '../help/HelpPanel';
 import { SETTINGS_HELP } from '../help/store';
 import { About } from './settings/About';
+import { DetectionModels } from './settings/DetectionModels';
 import { Appearance } from './settings/Appearance';
 import { Keyboard } from './settings/Keyboard';
 import { MapPacks } from './settings/MapPacks';
@@ -951,6 +952,7 @@ export function SettingsScreen() {
               <Routing />
             </>
           )}
+          {page === 'ai' && <DetectionModels />}
           {page === 'usage' && <Usage />}
           {page === 'privacy' && <Privacy />}
           {page === 'data' && <DataFolder />}
