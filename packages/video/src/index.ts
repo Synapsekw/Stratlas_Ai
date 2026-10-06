@@ -138,3 +138,14 @@ export {
   type ViewPose,
   type ViewSource,
 } from './pairing';
+export {
+  FrameImage,
+  FramesCompare,
+  clamp01,
+  swipeAt,
+  swipeKey,
+  type FrameImageProps,
+  type FramesCompareLabels,
+  type FramesCompareProps,
+  type FramesMode,
+} from './FramesCompare';
