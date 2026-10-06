@@ -6,6 +6,7 @@
 import { needsApproval, ToolMeta, Vec3, type ToolRisk, type WindowKind } from '@aio/schema';
 import { z } from 'zod';
 import { CHANGE_TOOL_SPECS } from './change-tool-specs';
+import { MODELLING_TOOL_SPECS } from './modelling-tools';
 
 export interface ToolSpec {
   meta: ToolMeta;
@@ -575,3 +576,6 @@ export function approvalFor(name: string): boolean {
 export function undoable(name: string): boolean {
   return getToolSpec(name)?.undoable === true;
 }
+
+// M8 model builder tools (stream C5); executors in the desktop renderer (modeller/agentTools.ts)
+MODELLING_TOOL_SPECS.forEach(registerToolSpec);

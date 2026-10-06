@@ -935,7 +935,7 @@ function registerIpc(): void {
     },
     thresholds: () => ChangeThresholds.parse(settings.current().change ?? {}),
   });
-  registerModelBuilderIpc({ handle });
+  registerModelBuilderIpc({ handle, projects: registry });
   registerInferenceIpc({
     handle,
     ...electronInference({

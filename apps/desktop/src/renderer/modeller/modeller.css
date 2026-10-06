@@ -1,0 +1,231 @@
+/* Model builder panel (BLD-11), Mission tokens only. */
+.mb {
+  position: fixed;
+  top: calc(var(--tb-h) + 56px);
+  right: 16px;
+  z-index: 60;
+  width: 400px;
+  max-height: calc(100vh - var(--tb-h) - 120px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-6);
+  box-shadow: 0 16px 40px oklch(0.08 0.01 250 / 0.55);
+  font-size: var(--t-12);
+}
+.mb > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.mb > header b {
+  font-size: var(--t-13);
+}
+.mb > header select {
+  max-width: 160px;
+}
+.mb > header .btn {
+  margin-left: auto;
+}
+.mb-scroll {
+  overflow: auto;
+  min-height: 0;
+}
+.mb-sec {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  display: grid;
+  gap: 8px;
+}
+.mb-sec h3 {
+  margin: 0;
+  font-size: var(--t-12);
+  font-weight: 600;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.mb-count,
+.mb-hint {
+  color: var(--fg-2);
+  font-weight: 400;
+  line-height: 1.45;
+  margin: 0;
+}
+.mb-hint.bad,
+.mb-say.bad {
+  color: var(--s5);
+}
+.mb-say {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--fg-1);
+  line-height: 1.45;
+}
+.mb-say .btn {
+  margin-left: auto;
+}
+.mb-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.mb-row input,
+.mb-row select {
+  flex: 1 1 120px;
+  min-width: 0;
+}
+.mb-form {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-4, 6px);
+  background: var(--bg-2, var(--bg-1));
+}
+.mb-parts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  outline: none;
+}
+.mb-parts:focus-visible {
+  box-shadow: 0 0 0 2px var(--acc);
+  border-radius: var(--r-4, 6px);
+}
+.mb-parts li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border-radius: var(--r-4, 6px);
+  cursor: pointer;
+}
+.mb-parts li:hover {
+  background: var(--bg-2, oklch(0.25 0.01 250));
+}
+.mb-parts li[aria-selected='true'] {
+  background: oklch(from var(--acc) l c h / 0.16);
+}
+.mb-parts li[data-status='rejected'] .mb-name {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+.mb-name {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+}
+.mb-name small {
+  color: var(--fg-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mb-st {
+  font: 500 10px var(--f-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 99px;
+  border: 1px solid var(--line-strong);
+  color: var(--fg-2);
+}
+.mb-st.accepted {
+  color: var(--ok, #5cc28a);
+  border-color: currentColor;
+}
+.mb-st.draft {
+  color: var(--s3, #f0a030);
+  border-color: currentColor;
+}
+.mb-st.rejected {
+  color: var(--fg-3);
+}
+.mb-q {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+.mb-q.good {
+  background: var(--ok, #5cc28a);
+}
+.mb-q.fair {
+  background: var(--s3, #f0a030);
+}
+.mb-q.poor {
+  background: var(--s5, #e5484d);
+}
+.mb-acts {
+  display: flex;
+  gap: 2px;
+}
+.mb-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+}
+.mb-field {
+  display: grid;
+  grid-template-columns: 1fr 80px auto;
+  align-items: center;
+  gap: 6px;
+}
+.mb-field.wide {
+  grid-template-columns: 1fr 2fr;
+}
+.mb-field span {
+  color: var(--fg-2);
+}
+.mb-field em {
+  font-style: normal;
+  color: var(--fg-3);
+  min-width: 1ch;
+}
+.mb-check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.mb-check span {
+  display: grid;
+  gap: 2px;
+}
+.mb-check small {
+  color: var(--fg-2);
+  line-height: 1.4;
+}
+.mb-pairs {
+  width: 100%;
+  border-collapse: collapse;
+  font: 400 11px var(--f-mono);
+}
+.mb-pairs th {
+  font: 500 10px var(--f-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-3);
+  text-align: left;
+  padding: 4px;
+}
+.mb-pairs td {
+  padding: 4px;
+  border-top: 1px solid var(--line-soft);
+}
+.mb-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line-soft);
+}
