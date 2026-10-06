@@ -286,3 +286,4 @@ Local detection runs ONNX models with onnxruntime-node in an Electron utility pr
 - Import checks the SHA-256, probes the layout with one dummy inference and asks the person to acknowledge the licence. Models without a card or with a licence not allowed in customer builds are refused (no AGPL exports such as Ultralytics weights without an Enterprise licence).
 - `Settings.inference.modelsDir` moves the folder; empty means userData.
 - Results are drafts in the existing review (section 11): nothing counts until a person accepts it.
+- A run writes one pass per photos layer, each with its `layer`: `model-<run>.json` for a run over one layer, `model-<run>-<layer>.json` each for a run over several (photo ids repeat across the dates of a project).
