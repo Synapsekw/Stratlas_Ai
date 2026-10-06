@@ -7,6 +7,7 @@ import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'ele
 const CHANNELS = {
   'app:getInfo': true,
   'library:list': true,
+  'app:setupStatus': true,
   'library:add': true,
   'project:open': true,
   'project:writeIssues': true,

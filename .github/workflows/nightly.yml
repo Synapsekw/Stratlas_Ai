@@ -98,6 +98,24 @@ jobs:
             echo "APPLE_API_KEY=$key" >> "$GITHUB_ENV"
           fi
 
+      # dist builds the demo project (tools/demo/build-demo.mjs): ffmpeg for its video and the
+      # pipeline Python for its stockpile and road parts, then the client data check.
+      - name: Install ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        uses: FedericoCarboni/setup-ffmpeg@v3
+      - name: Install ffmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install ffmpeg-full
+          echo "$(brew --prefix ffmpeg-full)/bin" >> "$GITHUB_PATH"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+      - name: Pipeline runtime venv
+        working-directory: python
+        run: uv sync --frozen
+
       - name: Build installers
         run: pnpm -F @aio/desktop ${{ matrix.dist }}
 

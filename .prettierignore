@@ -12,3 +12,4 @@ dist-types
 .claude
 python
 apps/desktop/build/generated
+apps/desktop/demo

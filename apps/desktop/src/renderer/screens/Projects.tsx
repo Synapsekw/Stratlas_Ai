@@ -6,6 +6,7 @@ import { useMemo, useState } from 'react';
 import { builder } from '../builder/state';
 import { build, formatBuildTime } from '../buildStamp';
 import { shell, useCall, useShell } from '../shell';
+import { FirstStart, SetupChecklist } from './FirstStart';
 
 const LAYER_CHIPS: { key: string; icon: IconName; label: string }[] = [
   { key: 'mesh', icon: 'scene', label: 'Models' },
@@ -96,6 +97,8 @@ function ProjectCard({
               <Icon name={entry.package.encrypted ? 'key' : 'lock'} size={12} />
               {entry.package.encrypted ? 'Encrypted package' : 'Package'}
             </>
+          ) : entry.demo ? (
+            `Demo · ${KIND_LABEL[entry.kind]}`
           ) : (
             KIND_LABEL[entry.kind]
           )}
@@ -233,6 +236,8 @@ function EmptyLibrary({ dataRoot, error }: { dataRoot: string; error: string | n
             {error}
           </p>
         )}
+        <h3 className="caps le-setup">This workstation</h3>
+        <SetupChecklist />
       </div>
       <PackageDiagram sep={sep} />
     </div>
@@ -332,6 +337,9 @@ export function ProjectsScreen() {
 
   const total = (library ?? []).reduce((n, e) => n + (e.sizeBytes ?? 0), 0);
   const empty = library !== null && library.length === 0;
+  // only the bundled demo projects so far: the first-start welcome
+  const demos = (library ?? []).filter((e) => e.demo);
+  const firstStart = demos.length > 0 && demos.length === (library ?? []).length;
 
   return (
     <section className="screen home" aria-label="Projects">
@@ -433,6 +441,7 @@ export function ProjectsScreen() {
           </div>
         )}
         {empty && <EmptyLibrary dataRoot={dataRoot} error={libraryError} />}
+        {firstStart && <FirstStart demos={demos} />}
         {library !== null && !empty && (
           <>
             {libraryError && (

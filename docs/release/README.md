@@ -17,7 +17,7 @@ Output in `apps/desktop/dist/`:
 | `<Product>-<version>-win-x64-portable.exe` | Portable build, runs without installing                              |
 | `win-unpacked/`                            | The unpacked app, handy for quick checks                             |
 
-Region downloads (Settings, Offline maps) need no external tool: the app extracts PMTiles itself (`apps/desktop/src/main/packs/extract.ts`). The go-pmtiles CLI is only used by `tools/maps/build-packs.mjs` to build the starter packs and is not packaged. Demo projects in `apps/desktop/demo/<project>/` ship next to the app (`resources/demo/`) and appear in the library on first run.
+Region downloads (Settings, Offline maps) need no external tool: the app extracts PMTiles itself (`apps/desktop/src/main/packs/extract.ts`). The go-pmtiles CLI is only used by `tools/maps/build-packs.mjs` to build the starter packs and is not packaged. The demo projects (synthetic, no client data) ship next to the app (`resources/demo/`) and the first-start welcome opens them. `dist` builds them into `apps/desktop/demo/` with `tools/demo/build-demo.mjs` when they are missing or stale (needs ffmpeg with libx264 and the pipeline Python, `uv sync` in `python/`) and fails when `tools/demo/check-no-client-data.mjs` finds client names, places near a real project, camera metadata or build-machine paths. `pnpm demo:build` and `pnpm demo:check` run the two by hand.
 
 Without a certificate the build is unsigned. Windows SmartScreen then shows "Windows protected your PC": choose **More info**, then **Run anyway**. That is expected for test builds.
 

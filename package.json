@@ -21,7 +21,9 @@
     "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test",
     "prepare": "lefthook install",
     "icons": "node tools/release/icons.mjs && node tools/release/store-assets.mjs",
-    "license:check": "node tools/release/license-check.mjs"
+    "license:check": "node tools/release/license-check.mjs",
+    "demo:build": "node tools/demo/build-demo.mjs",
+    "demo:check": "node tools/demo/check-no-client-data.mjs"
   },
   "devDependencies": {
     "@commitlint/cli": "^20.0.0",

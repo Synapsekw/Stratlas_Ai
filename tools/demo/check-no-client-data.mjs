@@ -1,0 +1,440 @@
+#!/usr/bin/env node
+/* eslint-disable no-console -- check script output */
+// Fail when the demo (or any folder) carries client data. Run before every Store or release build
+// (tools/release/dist.mjs, CI) and by tools/demo/build-demo.mjs.
+//
+//   node tools/demo/check-no-client-data.mjs [folder] [--projects <dir>] [--radius-km 100]
+//                                            [--max-mb 150]
+//
+// Checks, file by file:
+//   - names: client, site and asset names (a built-in list plus the name, customer, site and
+//     brand of every project manifest under --projects, by default <STRATLAS_DATA or
+//     E:\Stratlas Data>\projects, read only), real camera file names (DJI_0123), the NAS;
+//   - places: manifest origins and GeoJSON coordinates within --radius-km of a real project
+//     origin (the built-in list plus the manifests found);
+//   - camera metadata: EXIF, GPS or XMP in JPEG, PNG and WebP, location atoms in MP4;
+//   - paths of the build machine (C:\Users\..., /home/...) in text files;
+//   - total size (--max-mb).
+// Binary payloads (compressed pixels, GLB buffers, kit grids in base64) are not scanned for words:
+// only their metadata, JSON chunks and text.
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { extname, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/** Words that must never appear (client names, assets, places of real projects). */
+export const FORBIDDEN = [
+  [/\bHCl\b/, 'HCl (client tank)'],
+  [/\bhcl\b/i, 'hcl'],
+  [/710-D-130335/i, 'tank tag 710-D-130335'],
+  [/\bEBSM\b/i, 'EBSM'],
+  [/\bDAMAC\b/i, 'DAMAC'],
+  [/\bMasafi\b/i, 'Masafi'],
+  [/\bKIPIC\b/i, 'KIPIC'],
+  [/\bAl[- _]?Zour\b/i, 'Al-Zour'],
+  [/\bEQUATE\b/, 'EQUATE'],
+  [/\bKOC\b/, 'KOC'],
+  [/\bKNPC\b/, 'KNPC'],
+  [/\bMPW\b/, 'MPW'],
+  [/Ministry of Public Works/i, 'Ministry of Public Works'],
+  [/\bRing ?Road\b/i, 'Ring Road'],
+  [/\bKuwait\b/i, 'Kuwait'],
+  [/\bDubai\b/i, 'Dubai'],
+  [/\bEtisalat\b/i, 'Etisalat'],
+  [/(^|[^A-Za-z0-9])e&([^A-Za-z0-9]|$)/, 'e&'],
+  [/\bElios\b/i, 'Elios (camera of a client survey)'],
+  [/\bDJI_\d{4}\b/, 'DJI camera file name'],
+  [/DanNas/i, 'NAS path'],
+];
+
+const MACHINE_PATH =
+  /([A-Za-z]:[\\/]+(Users|Dev|Stratlas)[\\/])|(\/(home|Users)\/[A-Za-z0-9._-]+\/)/;
+
+/** Real project origins (projected), kept even when the data folder is not on this machine. */
+export const KNOWN_SITES = [
+  { name: 'HCl tank', epsg: 32639, e: 216108, n: 3220019 },
+  { name: 'Al-Zour terminal', epsg: 32639, e: 245714, n: 3179542 },
+  { name: 'Masafi yard', epsg: 32639, e: 212624, n: 3201610 },
+  { name: 'EBSM flare', epsg: 32639, e: 221029, n: 3214462 },
+  { name: '1st Ring Road', epsg: 32638, e: 789217, n: 3252895 },
+  { name: 'DAMAC tower', epsg: 32640, e: 322872, n: 2768332 },
+];
+
+const TEXT = new Set([
+  '.json',
+  '.geojson',
+  '.js',
+  '.mjs',
+  '.csv',
+  '.txt',
+  '.md',
+  '.html',
+  '.htm',
+  '.xml',
+  '.svg',
+  '.prj',
+  '.yml',
+  '.yaml',
+  '.srt',
+]);
+
+// ------------------------------------------------------------------ coordinates
+
+/** UTM (WGS 84, EPSG 326zz north / 327zz south) to [lon, lat] degrees; null for other CRSs. */
+export function utmToLonLat(epsg, e, n) {
+  const north = epsg >= 32601 && epsg <= 32660;
+  const south = epsg >= 32701 && epsg <= 32760;
+  if (!north && !south) return null;
+  const zone = epsg % 100;
+  const a = 6378137;
+  const f = 1 / 298.257223563;
+  const e2 = f * (2 - f);
+  const ep2 = e2 / (1 - e2);
+  const k0 = 0.9996;
+  const x = e - 500000;
+  const y = south ? n - 10000000 : n;
+  const m = y / k0;
+  const mu = m / (a * (1 - e2 / 4 - (3 * e2 * e2) / 64 - (5 * e2 ** 3) / 256));
+  const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+  const phi1 =
+    mu +
+    ((3 * e1) / 2 - (27 * e1 ** 3) / 32) * Math.sin(2 * mu) +
+    ((21 * e1 * e1) / 16 - (55 * e1 ** 4) / 32) * Math.sin(4 * mu) +
+    ((151 * e1 ** 3) / 96) * Math.sin(6 * mu) +
+    ((1097 * e1 ** 4) / 512) * Math.sin(8 * mu);
+  const s1 = Math.sin(phi1);
+  const c1 = Math.cos(phi1);
+  const t1 = Math.tan(phi1);
+  const n1 = a / Math.sqrt(1 - e2 * s1 * s1);
+  const r1 = (a * (1 - e2)) / (1 - e2 * s1 * s1) ** 1.5;
+  const cc = ep2 * c1 * c1;
+  const tt = t1 * t1;
+  const d = x / (n1 * k0);
+  const lat =
+    phi1 -
+    ((n1 * t1) / r1) *
+      ((d * d) / 2 -
+        ((5 + 3 * tt + 10 * cc - 4 * cc * cc - 9 * ep2) * d ** 4) / 24 +
+        ((61 + 90 * tt + 298 * cc + 45 * tt * tt - 252 * ep2 - 3 * cc * cc) * d ** 6) / 720);
+  const lon =
+    (d -
+      ((1 + 2 * tt + cc) * d ** 3) / 6 +
+      ((5 - 2 * cc + 28 * tt - 3 * cc * cc + 8 * ep2 + 24 * tt * tt) * d ** 5) / 120) /
+    c1;
+  return [(zone - 1) * 6 - 180 + 3 + (lon * 180) / Math.PI, (lat * 180) / Math.PI];
+}
+
+/** Great-circle distance in km. */
+export function distanceKm([lon1, lat1], [lon2, lat2]) {
+  const r = Math.PI / 180;
+  const a =
+    Math.sin(((lat2 - lat1) * r) / 2) ** 2 +
+    Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(((lon2 - lon1) * r) / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+function crsEpsg(crs) {
+  return crs && typeof crs.epsg === 'number' ? crs.epsg : null;
+}
+
+/** Reference sites: the built-in list plus the origin of every manifest under `projectsDir`. */
+export function referenceSites(projectsDir) {
+  const sites = KNOWN_SITES.map((s) => ({ name: s.name, ll: utmToLonLat(s.epsg, s.e, s.n) }));
+  const names = [];
+  if (projectsDir && existsSync(projectsDir)) {
+    for (const d of readdirSync(projectsDir)) {
+      const f = join(projectsDir, d, 'manifest.json');
+      if (!existsSync(f)) continue;
+      let m;
+      try {
+        m = JSON.parse(readFileSync(f, 'utf8'));
+      } catch {
+        continue;
+      }
+      // a copy of the demo itself is not a reference
+      if (
+        d.startsWith('demo-') ||
+        String(m.id ?? '').startsWith('demo-') ||
+        String(m.customer ?? '').includes('(fictional)')
+      )
+        continue;
+      const epsg = crsEpsg(m.crs);
+      const ll =
+        epsg && Array.isArray(m.origin) ? utmToLonLat(epsg, m.origin[0], m.origin[1]) : null;
+      if (ll) sites.push({ name: `project ${d}`, ll });
+      for (const v of [m.name, m.customer, m.site, m.brand])
+        if (typeof v === 'string' && v.trim().length >= 3) names.push(v.trim());
+      if (d.length >= 3) names.push(d);
+    }
+  }
+  return { sites, names };
+}
+
+// ------------------------------------------------------------------ metadata of binaries
+
+/** Metadata segments of a JPEG: APP1..APP15 and COM payloads. */
+function jpegMeta(buf) {
+  const out = [];
+  if (buf[0] !== 0xff || buf[1] !== 0xd8) return out;
+  let p = 2;
+  while (p + 4 <= buf.length) {
+    if (buf[p] !== 0xff) break;
+    const marker = buf[p + 1];
+    if (marker === 0xda || marker === 0xd9) break;
+    const len = buf.readUInt16BE(p + 2);
+    if ((marker >= 0xe1 && marker <= 0xef) || marker === 0xfe)
+      out.push({ marker, data: buf.subarray(p + 4, p + 2 + len) });
+    p += 2 + len;
+  }
+  return out;
+}
+
+function pngMeta(buf) {
+  const out = [];
+  let p = 8;
+  while (p + 8 <= buf.length) {
+    const len = buf.readUInt32BE(p);
+    const type = buf.toString('latin1', p + 4, p + 8);
+    if (['tEXt', 'zTXt', 'iTXt', 'eXIf'].includes(type))
+      out.push({ type, data: buf.subarray(p + 8, p + 8 + len) });
+    p += 12 + len;
+  }
+  return out;
+}
+
+function webpMeta(buf) {
+  const out = [];
+  if (buf.toString('latin1', 0, 4) !== 'RIFF') return out;
+  let p = 12;
+  while (p + 8 <= buf.length) {
+    const type = buf.toString('latin1', p, p + 4);
+    const len = buf.readUInt32LE(p + 4);
+    if (type === 'EXIF' || type === 'XMP ')
+      out.push({ type, data: buf.subarray(p + 8, p + 8 + len) });
+    p += 8 + len + (len % 2);
+  }
+  return out;
+}
+
+/** The `moov` box of an MP4 (metadata: names, location atoms), or an empty buffer. */
+function mp4Moov(buf) {
+  let p = 0;
+  while (p + 8 <= buf.length) {
+    let size = buf.readUInt32BE(p);
+    const type = buf.toString('latin1', p + 4, p + 8);
+    if (size === 1) size = Number(buf.readBigUInt64BE(p + 8));
+    if (size < 8) break;
+    if (type === 'moov') return buf.subarray(p, p + size);
+    p += size;
+  }
+  return Buffer.alloc(0);
+}
+
+function glbJson(buf) {
+  if (buf.readUInt32LE(0) !== 0x46546c67) return '';
+  const len = buf.readUInt32LE(12);
+  return buf.toString('utf8', 20, 20 + len);
+}
+
+/** Readable text of a binary blob (runs of printable ASCII), for word checks. */
+const strings = (b) => (b.toString('latin1').match(/[\x20-\x7e]{3,}/g) ?? []).join('\n');
+
+/** Long base64 or hex runs (kit grids, data URLs) are payload, not words. */
+const stripPayload = (s) => s.replace(/[A-Za-z0-9+/=]{120,}/g, ' ');
+
+// ------------------------------------------------------------------ the check
+
+/**
+ * Check a folder. Returns { findings: string[], files, bytes, points }.
+ * @param {string} dir
+ * @param {{ projectsDir?: string, radiusKm?: number, maxMb?: number }} o
+ */
+export function checkFolder(dir, o = {}) {
+  const radiusKm = o.radiusKm ?? 100;
+  const { sites, names } = referenceSites(o.projectsDir);
+  const words = [
+    ...FORBIDDEN,
+    ...names.map((n) => [
+      new RegExp(
+        `(^|[^A-Za-z0-9])${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^A-Za-z0-9]|$)`,
+        'i',
+      ),
+      n,
+    ]),
+  ];
+  const findings = [];
+  let files = 0;
+  let bytes = 0;
+  let points = 0;
+  const reported = new Set();
+  const near = (ll, where) => {
+    points++;
+    for (const s of sites) {
+      if (!s.ll) continue;
+      const km = distanceKm(ll, s.ll);
+      const key = `${where.split(' feature ')[0]}|${s.name}`;
+      if (km < radiusKm && !reported.has(key) && reported.add(key))
+        findings.push(
+          `${where}: ${ll[1].toFixed(4)}, ${ll[0].toFixed(4)} is ${km.toFixed(1)} km from ${s.name}`,
+        );
+    }
+  };
+  const scanText = (text, where) => {
+    for (const [re, label] of words) {
+      const m = re.exec(text);
+      if (m) {
+        const at = Math.max(0, m.index - 30);
+        findings.push(
+          `${where}: "${label}" in "...${text.slice(at, m.index + m[0].length + 30).replace(/\s+/g, ' ')}..."`,
+        );
+      }
+    }
+    const mp = MACHINE_PATH.exec(text);
+    if (mp) findings.push(`${where}: a path of the build machine (${mp[0]})`);
+  };
+  const walkCoords = (g, where) => {
+    if (Array.isArray(g) && g.length >= 2 && typeof g[0] === 'number' && typeof g[1] === 'number') {
+      if (Math.abs(g[0]) <= 180 && Math.abs(g[1]) <= 90) near([g[0], g[1]], where);
+      return;
+    }
+    if (Array.isArray(g)) for (const x of g) walkCoords(x, where);
+  };
+  const geojson = (j, where) => {
+    const feats =
+      j.type === 'FeatureCollection' ? (j.features ?? []) : j.type === 'Feature' ? [j] : [];
+    let k = 0;
+    for (const f of feats)
+      if (f?.geometry) walkCoords(f.geometry.coordinates, `${where} feature ${String(k++)}`);
+    if (j.coordinates) walkCoords(j.coordinates, where);
+  };
+
+  const walk = (d) => {
+    for (const name of readdirSync(d).sort()) {
+      const p = join(d, name);
+      const st = statSync(p);
+      if (st.isDirectory()) {
+        walk(p);
+        continue;
+      }
+      files++;
+      bytes += st.size;
+      const rel = relative(dir, p).replace(/\\/g, '/');
+      scanText(rel, `file name ${rel}`);
+      const ext = extname(name).toLowerCase();
+      const buf = readFileSync(p);
+      if (TEXT.has(ext)) {
+        const text = buf.toString('utf8');
+        scanText(stripPayload(text), rel);
+        if (ext === '.json' || ext === '.geojson') {
+          let j;
+          try {
+            j = JSON.parse(text);
+          } catch {
+            findings.push(`${rel}: not valid JSON`);
+            continue;
+          }
+          if (j && typeof j === 'object') {
+            if (j.type === 'FeatureCollection' || j.type === 'Feature') geojson(j, rel);
+            if (name === 'manifest.json' && Array.isArray(j.origin)) {
+              const epsg = crsEpsg(j.crs);
+              const ll = epsg ? utmToLonLat(epsg, j.origin[0], j.origin[1]) : null;
+              if (ll) near(ll, `${rel} origin`);
+              else
+                findings.push(
+                  `${rel}: origin in a CRS this check cannot place (${JSON.stringify(j.crs)})`,
+                );
+            }
+            // map sightings and vector overlays inside issues keep GeoJSON in lon/lat
+            if (name === 'issues.json' && Array.isArray(j.issues))
+              for (const is of j.issues)
+                for (const s of is.sightings ?? [])
+                  if (s.on === 'map' && s.geojson) geojson(s.geojson, `${rel} ${String(is.code)}`);
+          }
+        }
+        continue;
+      }
+      if (ext === '.jpg' || ext === '.jpeg') {
+        for (const seg of jpegMeta(buf)) {
+          const head = seg.data.toString('latin1', 0, 40);
+          if (head.startsWith('Exif'))
+            findings.push(`${rel}: EXIF metadata (camera, GPS) in a demo photo`);
+          else if (head.includes('ns.adobe.com/xap'))
+            findings.push(`${rel}: XMP metadata in a demo photo`);
+          scanText(strings(seg.data), `${rel} metadata`);
+        }
+        continue;
+      }
+      if (ext === '.png') {
+        for (const c of pngMeta(buf)) {
+          if (c.type === 'eXIf') findings.push(`${rel}: EXIF metadata in a demo image`);
+          scanText(strings(c.data), `${rel} ${c.type}`);
+        }
+        continue;
+      }
+      if (ext === '.webp') {
+        for (const c of webpMeta(buf))
+          findings.push(`${rel}: ${c.type.trim()} metadata in a demo image`);
+        continue;
+      }
+      if (ext === '.mp4' || ext === '.mov' || ext === '.m4v') {
+        const moov = mp4Moov(buf);
+        if (moov.includes(Buffer.from([0xa9, 0x78, 0x79, 0x7a])))
+          findings.push(`${rel}: a location (©xyz) atom in the video`);
+        scanText(strings(moov), `${rel} metadata`);
+        continue;
+      }
+      if (ext === '.glb') {
+        scanText(glbJson(buf), `${rel} glTF JSON`);
+        continue;
+      }
+      if (ext === '.tif' || ext === '.tiff') {
+        findings.push(`${rel}: raw GeoTIFF in the demo (sources stay out of published projects)`);
+        continue;
+      }
+      if (!['.bin', '.laz', '.las', '.pmtiles', '.pdf'].includes(ext))
+        findings.push(`${rel}: file type ${ext || '(none)'} is not checked; add it to the check`);
+      else scanText(strings(buf.subarray(0, 4096)), `${rel} header`);
+    }
+  };
+  if (!existsSync(dir)) return { findings: [`${dir} does not exist`], files, bytes, points };
+  walk(dir);
+  if (o.maxMb && bytes > o.maxMb * 1e6)
+    findings.push(`total size ${(bytes / 1e6).toFixed(1)} MB is over ${o.maxMb} MB`);
+  if (points === 0)
+    findings.push('no coordinates found to check (a project needs a manifest origin)');
+  return { findings, files, bytes, points };
+}
+
+function cli() {
+  const argv = process.argv.slice(2);
+  const opt = (k) => {
+    const i = argv.indexOf(`--${k}`);
+    return i >= 0 ? argv[i + 1] : undefined;
+  };
+  const positional = argv.filter(
+    (a, i) => !a.startsWith('--') && !(i > 0 && argv[i - 1].startsWith('--')),
+  );
+  const repo = fileURLToPath(new URL('../..', import.meta.url));
+  const dir = resolve(positional[0] ?? join(repo, 'apps', 'desktop', 'demo'));
+  const data =
+    process.env.STRATLAS_DATA ?? (process.platform === 'win32' ? 'E:\\Stratlas Data' : '');
+  const projectsDir = opt('projects') ?? (data ? join(data, 'projects') : undefined);
+  const r = checkFolder(dir, {
+    projectsDir,
+    radiusKm: Number(opt('radius-km') ?? 100),
+    maxMb: Number(opt('max-mb') ?? 150),
+  });
+  const refs =
+    projectsDir && existsSync(projectsDir)
+      ? `, reference projects in ${projectsDir}`
+      : ', built-in reference sites only';
+  if (r.findings.length) {
+    console.error(`Client data check FAILED for ${dir} (${r.files} files${refs}):`);
+    for (const f of r.findings) console.error(`  - ${f}`);
+    process.exit(1);
+  }
+  console.log(
+    `Client data check passed: ${dir}, ${r.files} files, ${(r.bytes / 1e6).toFixed(1)} MB, ${r.points} coordinates${refs}.`,
+  );
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) cli();

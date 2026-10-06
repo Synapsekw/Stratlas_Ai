@@ -12,6 +12,18 @@ import { appDir, isStoreBuild, storeBuildEnv, writeEffectiveConfig } from './bra
 import { MAC_NATIVE_HINT, missingMacNativePackages } from './mac-native.mjs';
 
 const builderArgs = process.argv.slice(2);
+
+// The demo project ships in every installer and the Store build (electron-builder extraResources):
+// rebuilt when missing, built with --quick or by another generator, then checked for client data.
+const demo = spawnSync(
+  process.execPath,
+  [fileURLToPath(new URL('../demo/ensure-demo.mjs', import.meta.url))],
+  {
+    stdio: 'inherit',
+  },
+);
+if (demo.status !== 0) process.exit(demo.status ?? 1);
+
 // CI maps absent secrets to empty strings; electron-builder must see them as unset.
 const presentEnv = Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== ''));
 // Microsoft signs Store packages; our certificate never touches the MSIX.

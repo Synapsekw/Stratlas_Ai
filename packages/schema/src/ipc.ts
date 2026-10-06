@@ -66,6 +66,26 @@ export const LibraryEntry = z.object({
   layerCounts: z.record(z.string(), z.number().int().nonnegative()).optional(),
   /** Set when the entry is a single-file `.aio` package rather than a folder. */
   package: z.object({ encrypted: z.boolean(), readOnly: z.boolean() }).optional(),
+  /**
+   * Set on the demo projects that ship with the app (synthetic data, `resources/demo/`); `primary`
+   * is the one the first-start welcome opens.
+   */
+  demo: z.object({ primary: z.boolean() }).optional(),
+});
+
+/** What a first start finds on this workstation, so the welcome can explain each missing piece. */
+export const SetupStatus = z.object({
+  dataRoot: z.string(),
+  /** The data folder exists (it is created with the first project or pack). */
+  dataRootExists: z.boolean(),
+  /** Offline map packs installed. */
+  mapPacks: z.number().int().nonnegative(),
+  /** The pipeline pack that builds projects from raw data (Jobs). */
+  pipeline: z.object({
+    found: z.boolean(),
+    version: z.string().optional(),
+    problem: z.string().optional(),
+  }),
 });
 
 /** An OpenAI-compatible model server on this machine (for example Ollama). Off by default. */
@@ -377,6 +397,8 @@ export const ipc = {
     }),
   },
   'library:list': { request: Empty, response: z.array(LibraryEntry) },
+  /** Data folder, map packs and pipeline pack as found now (first-start welcome). */
+  'app:setupStatus': { request: Empty, response: SetupStatus },
   'library:add': {
     request: z.object({ path: z.string().min(1) }).strict(),
     response: z.discriminatedUnion('ok', [
@@ -1135,6 +1157,7 @@ export type IpcResponse<C extends IpcChannel> = z.output<(typeof ipc)[C]['respon
 export type IpcEventName = keyof typeof ipcEvents;
 export type IpcEvent<E extends IpcEventName> = z.output<(typeof ipcEvents)[E]>;
 export type LibraryEntry = z.infer<typeof LibraryEntry>;
+export type SetupStatus = z.infer<typeof SetupStatus>;
 export type Settings = z.infer<typeof Settings>;
 export type MapPackInfo = z.infer<typeof MapPackInfo>;
 export type PackRegion = z.infer<typeof PackRegion>;
