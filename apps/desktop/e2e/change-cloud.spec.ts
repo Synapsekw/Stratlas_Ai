@@ -98,15 +98,13 @@ async function sample(win: Page, at: [number, number, number]) {
         if (Math.max(r, g, b) - Math.min(r, g, b) < 30 && Math.max(r, g, b) >= 60) grey++;
       }
       const rect = s.renderer.domElement.getBoundingClientRect();
-      return {
-        warm,
-        grey,
-        of: n * n,
-        client: {
-          x: rect.left + ((ndc.x + 1) / 2) * rect.width,
-          y: rect.top + ((1 - ndc.y) / 2) * rect.height,
-        },
+      const client = {
+        x: rect.left + ((ndc.x + 1) / 2) * rect.width,
+        y: rect.top + ((1 - ndc.y) / 2) * rect.height,
       };
+      // the pointer reaches the canvas there, not a legend or panel drawn over the view
+      const free = document.elementFromPoint(client.x, client.y) === s.renderer.domElement;
+      return { warm, grey, of: n * n, client, free };
     },
     [at, 6] as const,
   );
@@ -196,13 +194,24 @@ test.describe('a change cloud', () => {
     expect((await sample(win, TANK)).grey).toBe(0);
     expect((await sample(win, PIPE)).warm).toBeGreaterThan(3);
 
-    // the distance under the pointer
+    // the distance under the pointer. At the smallest window (1100 x 700, the size the CI
+    // runners' small screens give) the change legend in the bottom right of the 3D view covers
+    // the pipe as VIEW frames it, so look straight at the pipe first: the middle of the view.
+    await win.evaluate(
+      ({ position, target }) => {
+        (window as unknown as Inspect).__stratlas.stage()?.restoreView({ position, target }, false);
+      },
+      { position: [PIPE[0], PIPE[1] + 27, PIPE[2] + 27], target: [...PIPE] },
+    );
+    await expect.poll(async () => (await sample(win, PIPE)).warm).toBeGreaterThan(3);
     const pipe = await sample(win, PIPE);
+    expect(pipe.free, 'the pipe is not under a legend or panel').toBe(true);
     await win.mouse.move(pipe.client.x, pipe.client.y);
     const hover = legend.getByTestId('change-hover');
     await expect(hover).toContainText('Under the pointer', { timeout: 10_000 });
     const metres = Number(/([\d.]+) m/.exec((await hover.textContent()) ?? '')?.[1]);
-    expect(metres).toBeGreaterThan(0.1);
+    // the pointer reads a drawn point only: none under the 10 cm threshold
+    expect(metres).toBeGreaterThanOrEqual(0.1);
     // nothing to read on the volumes yet (C2's change.surface has not run)
     await expect(win.getByTestId('cloud-volume-change')).toContainText(
       'No volume change for these dates yet.',
