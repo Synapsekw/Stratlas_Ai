@@ -1528,6 +1528,28 @@ export const en = {
   'change.run.surface': 'Run surface change',
   'change.run.cloud': 'Run cloud change',
   'change.run.model': 'Run model change',
+  // M9 T6: files on this computer (binaries by content)
+  'blobs.title': 'Files on this computer',
+  'blobs.files': 'Files',
+  'blobs.close': 'Close',
+  'blobs.summary_one': '{count} layer is not on this computer',
+  'blobs.summary_other': '{count} layers are not on this computer',
+  'blobs.notHere': 'Not on this computer ({size})',
+  'blobs.downloading': 'Downloading {done} of {total}',
+  'blobs.partial': 'Paused at {done} of {total}',
+  'blobs.streaming': 'Streaming from the shared folder',
+  'blobs.stale': 'Changed since it was shared',
+  'blobs.present': 'On this computer',
+  'blobs.progress': 'Download of {name}',
+  'blobs.download': 'Download',
+  'blobs.resume': 'Resume',
+  'blobs.cancel': 'Cancel',
+  'blobs.policy': 'Get files',
+  'blobs.policy.always': 'Always',
+  'blobs.policy.on-open': 'When the project opens',
+  'blobs.policy.on-demand': 'Only when I download',
+  'blobs.policy.stream': 'Stream from shared folder',
+  'blobs.cache': 'Download cache: {used} of {cap}',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */
