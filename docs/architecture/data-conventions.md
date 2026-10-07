@@ -25,6 +25,8 @@ These rules sit beside `@aio/schema` and are binding for every stream. They clar
   panoramas/
   report/                PDF report and exports
   legacy/                the original offline viewer, copied unchanged (legacy layer `entry`)
+  journal/               M9: signed history of every change (section 17); older builds ignore it
+  team.json              M9: only when the project is shared (section 19)
 ```
 
 `<dataRoot>` defaults to `E:\Stratlas Data` on the development machine (`STRATLAS_DATA` env var overrides; Settings `dataRoot` in the app). Map packs live in `<dataRoot>/packs/<id>.pmtiles` with `<id>.json` (`MapPackInfo`).
@@ -287,3 +289,82 @@ Local detection runs ONNX models with onnxruntime-node in an Electron utility pr
 - `Settings.inference.modelsDir` moves the folder; empty means userData.
 - Results are drafts in the existing review (section 11): nothing counts until a person accepts it.
 - A run writes one pass per photos layer, each with its `layer`: `model-<run>.json` for a run over one layer, `model-<run>-<layer>.json` each for a run over several (photo ids repeat across the dates of a project).
+
+## 17. Journal and audit trail (M9)
+
+Every change to a folder project is an op in a signed, hash-chained, per-device journal (schema in `@aio/schema` `journal.ts` and `identity.ts`; code in `@aio/journal`; ADR 0005). Older builds ignore every path below; `team.json` exists only for shared projects (section 19).
+
+```
+<project>/
+  journal/devices/<deviceId>.json          aio.device/1: public key, actor, name, initials, app, certs; self-signed
+  journal/ops/<chainId>/000001.jsonl       aio.op/1, one op per line; a new segment at 4 MB or 10,000 ops
+  journal/checkpoints/<ms>.<counter>.<chainId>.json   aio.checkpoint/1: heads of every chain, count, Merkle root; signed
+<userData>/
+  identity.json                            aio.identity/1: actor, name, initials, email?
+  team/projects.json                       aio.team-config/1: per project folder path, replica id, sync mode, hub path, server, fetch policies, peer heads, journal on or off
+  journal-cache/<key>/                     projection snapshot, clocks, blob index, conflicts (rebuildable, never the truth)
+```
+
+- **Ids.** Actor `a_` plus 26 base32 letters (128 random bits), permanent. Device `d_` plus the base32 SHA-256 of the raw Ed25519 public key (52 letters). Replica `r_` plus 16 letters, one per project folder path in userData, so a copied or moved folder starts a new chain. Chain `<deviceId>.<replicaId>`. Base32 is RFC 4648, lower case, no padding (safe as Windows file names).
+- **Clock.** `hlc` is `<ms 13 digits>.<counter 4 digits>.<deviceId>`; readings compare as strings. Last-writer decisions use it, never wall time alone. A remote reading 5 minutes ahead raises a notice; 24 hours ahead holds the op in the inbox.
+- **Op fields.** `v` (1), `id`, `chain`, `dev`, `act`, `seq` (from 1), `hlc`, `prev` (id of `seq - 1`, null for seq 1; the first op of a segment links to the last op of the previous one), `deps?` (heads of the other chains this device had seen), `kind`, `target` (`{ rec, id, in? }`), `base?` (content hash of the record before), `ph`, `payload?`, `via?` (`agent`, `pipeline`, `import` or `external`), `label?` (the editor's command label), `sig?`.
+- **Hashes.** SHA-256, lower-case hex, over RFC 8785 canonical JSON (JCS). `ph` = hash of the payload. `id` = hash of the op without `id`, `payload` and `sig` (so it covers `ph`). Verification works on the raw parsed JSON of each line, never on a parser's output; op schemas keep unknown keys so a newer op still hashes the same in an older reader.
+- **Signatures.** Ed25519 through `node:crypto` over the UTF-8 text `<domain>\n<hash>`, base64url without padding (86 characters); keys are raw 32-byte public keys in base64url (43). Domains: `aio.op/1` (over `id`), `aio.checkpoint/1`, `aio.device/1` and `aio.cert/1` (over the hash of the record without `sig`), `aio.idcard/1`, `aio.exchange/1`, `aio.receipt/1`, `aio.request/1`. An op without `sig` is "unsigned" (the vault failed): still chained, and Verify says so.
+- **Kinds.** Issues `issue.create|patch|delete|restore|sighting.add|sighting.remove|status|merge|recode`; collaboration (section 18); other records `change.review`, `detection.review`, `procmodel.part`, `manifest.entry`, `boundary.edit`, `narrative.version`; `blob.add` (section 20); team `member.add|role|remove|link`, `device.revoke`, `policy.set`, `project.share`; events `package.export`, `exchange.import`, `conflict.resolve`, `record.external`, `checkpoint`; the journal `journal.off|on`, `op.redact`. Readers accept any dotted lower-case kind and record kind: an unknown one is kept, verified and shown as "unknown change". `OP_PAYLOADS` and `OP_PERMISSION` give each known kind its payload schema and the permission it needs.
+- **Writes.** Main appends the op and fsyncs, then writes the state file atomically (`writeJsonAtomic`, `.bak`). On open, a state file whose hash equals the `base` of the last op gets that op re-applied (crash recovery); any other difference becomes `record.external` ("changed outside Stratlas"). Pipelines: content hashes before and after a job give ops with `via.pipeline`, signed by the device of the person who started it. Packages are read-only: their journal is read and verified, never appended.
+- **Redaction.** An owner's `op.redact` (or `comment.redact` with its `ops`) names the ops whose payload is removed from every copy; `ph` stays, so the chain still verifies, and the audit shows "redacted by X on date". A payload missing without such an op is a Verify problem.
+- **Verify** names each problem with file and line (`VerifyCode`): `parse`, `hash-mismatch` (an edited line), `payload-hash` (an edited payload), `payload-missing`, `chain-gap` (a removed line), `order`, `truncated` (a tail cut off that `deps` or a checkpoint references), `segment-missing`, `fork` (two ops with one chain and seq: a copied folder kept writing), `bad-signature`, `unsigned`, `unknown-device`, `revoked-device`, `checkpoint-mismatch`, `clock-ahead`. The project still opens and works.
+- **Checkpoints** every 500 ops and at every exchange or sync: the heads of every chain, the op count and a Merkle root (leaf SHA-256 of `<chain> <seq> <id>`, heads sorted by chain, node SHA-256 of the two child hex strings, an odd node carried up). The file name drops the device from the clock reading to keep deep project paths under Windows limits.
+- **Decision 8.** The journal is on for every folder project (`JournalPolicy` defaults); a private project may switch it off with a recorded `journal.off`, a team project may not.
+- **Golden fixtures** in `packages/schema/src/__fixtures__/journal/` (`pnpm fixtures:journal`, deterministic): `valid/` (three fictional devices with TEST-ONLY keys in `TEST-ONLY-KEYS.json`), `tampered/<case>/` and `cases.json` (the problem Verify must name for each case). Prettier never touches them.
+- **Exports.** `audit-csv` (UTF-8 with BOM) and `audit-json` (signed, with every device key and the checkpoints, checked by `tools/audit-verify/verify.mjs`) fall under the package export kind `files`, checked by format (their names would read as issue exports). Reports print the audit head (root, count, verified) in the footer.
+
+## 18. Collaboration ops and projections (M9)
+
+Assignments, comments, approvals, members and sign-offs exist only as journal ops and their projection (`@aio/schema` `collab.ts`, `@aio/collab`). M9 adds no field to `Issue` (an 0.8 build strips unknown keys on save), nor to `ChangeReview`, `Detection`, `BoundaryEdit`, `ProcPart` or `NarrativeFile` (strict: an 0.8 build would refuse the file); a test pins their 0.8 keys. The free-text author fields keep receiving the display name.
+
+- **Targets** `{ kind, id, in? }`: `issue`, `change-item` (`in`: change set id), `change-set`, `detection-pass`, `part` (`in`: model id), `model`, `report`, `project`.
+- **Comments** (`comment.add|edit|delete|redact`): id `cm_` plus 16 base32 letters, markdown-lite text up to 10,000 characters (links shown as text, never fetched; RTL and Arabic allowed), `visibility` `team` (default) or `client`, `mentions` (actor ids), optional saved view (camera, time, capture, layer), `replyTo`. Edits are versions by the author; deletes are tombstones; redaction by an owner.
+- **Assignment** (`assign.set`): target, assignee (null clears), optional due date and note. Last writer wins; two different concurrent assignees are a conflict.
+- **Approvals** (`approval.add|withdraw`): id `ap_` plus 16 letters, `decision` `approve`, `changes-requested` (a comment is required) or `accept` (a client's acceptance: recorded, never a status change), and `contentHash`, the target's material content when signed. An approval counts only while that hash still matches.
+- **Policy** (`policy.set`, owner only; `TeamPolicy`): `approval` (`required` 1 to 5, default 1; `fourEyes` default on; `closeBy` default `owner`; `viewersMayComment` default off; `clientAcceptance` default `record`; `materialFields` default class, severity, sightings, measurements, status), `minVerification` (default `self`), `packageHistory` (default `summary`). A project without a policy keeps 0.8's free status stepping.
+- **Status.** `approved` is reached when `required` distinct eligible approvals exist (owner or reviewer; with four-eyes, not the issue's creator); the approver whose approval completed it writes the status op. A material edit after approval voids the approvals and returns the status to `reviewed`, with an op. Batch sign-offs use the same approvals on a change set, a detection pass, a model or the report (bound to the content hash of the report's inputs).
+- **Roles** (`Role`, `PERMISSIONS`, `OP_PERMISSION`): owner, reviewer, viewer, client. In file and hub mode an op beyond the actor's role at its clock reading is quarantined on import (kept, not applied, listed); the server refuses it with 403. The agent may comment and list work, never approve.
+- **Projection** (`CollabState`, `collab:read`) is rebuilt from the journal; it is never stored as truth.
+
+## 19. Exchange files and hub folders (M9)
+
+Moving ops and blobs between copies with no server (`@aio/schema` `exchange.ts` and `sync.ts`, `@aio/sync`). Transport settings are per machine (drive letters and server addresses differ), so they live in userData `team/projects.json`, never in the project.
+
+```
+<project>/team.json             aio.team/1: teamProjectId (t_ + 26 base32), name, createdAt, createdBy (shared projects only)
+<name>.aiosync                  ZIP64, store mode, optional AES-256 (passphrase)
+  aio-exchange.json             aio.exchange/1 header, signed by the sender's device
+  journal/devices/<deviceId>.json
+  journal/ops/<chainId>/<from>-<to>.jsonl    six-digit seqs, inclusive
+  blobs/<aa>/<sha256>           bundles only
+<hub>/aio-hub.json              aio.hub/1 (brand-neutral name, like aio-package.json)
+  projects/<teamProjectId>/devices/<deviceId>.json
+  projects/<teamProjectId>/ops/<chainId>/<from>-<to>.jsonl
+  projects/<teamProjectId>/blobs/<aa>/<sha256>
+  projects/<teamProjectId>/presence/<deviceId>.json   aio.presence/1, a heartbeat; ignored after 2 minutes
+<name>.aioid                    aio.idcard/1 identity card (section 17), self-signed
+```
+
+- **Kinds.** `patch` (ops since the recipient's known heads, remembered per peer, or since a date), `bundle` (plus the blobs the recipient lacks), `reply` (from a customer package in the free player: comment and acceptance ops only, signed by a client device key made on the spot, valid only when the package header's `reply` allows it).
+- **Header** (`ExchangeHeader`): `id` (`x_` plus 16 letters; a second import says "already applied"), `kind`, `teamProjectId`, `createdAt`, `from` (actor, device, name, app), `to?`, `since` (heads, a date, or all), `chains` (range and member per chain), `heads`, `blobs`, `counts`, `package?` (a reply: the package it answers), `encrypted`, `sig`.
+- **Import** previews first (`ExchangePreview`: signature, sender, ops by kind, new and already-held ops, expected conflicts, blobs and size), then applies atomically and idempotently (ops dedupe by id). Ops after a gap are held ("needs changes from <device> up to #N"). Member names outside the layout above (`..`, absolute paths, drive letters, backslashes, links, duplicates, declared sizes beyond the file) are refused with an exact error (`@aio/sync` `isSafeMemberName`).
+- **Hubs.** Each device writes only its own files that never change (temp name, then rename), so no lock is needed and cloud-drive clients never make conflicted copies of them; any found are ingested and reported. Auto-sync runs on open, after saves (10 s debounce), every `Settings.team.intervalMin` minutes when `autoSync` is on, and on focus. An unreachable hub never stops local work.
+- **Packages.** `PackageHeader.reply?` (`{ teamProjectId, ownerKey, comments, acceptance }`) and `journal?` (`full` or `summary`); an 0.8 player strips both. Customer packages carry the signed audit summary by default (decision 8). Extract to edit keeps `teamProjectId` and starts a new replica.
+- **Folders opened in place on a share** (any project, shared or not): writers compare the hash they last read before writing, merge through the rules when the file changed ("F03 was changed by <name>; merged"), and hold a lease file (`<file>.lock`, exclusive create, heartbeat, taken over after 2 minutes of silence).
+- **Team server** (`aio.sync/1`, preview): the same ops and blobs over HTTPS (`SYNC_ROUTES`), every request signed by the device key (RFC 9421, no bearer tokens), the certificate fingerprint pinned at enrolment, receipts (`aio.receipt/1`) countersigning accepted ops.
+
+## 20. Binaries by content (M9)
+
+Large files are known by their SHA-256 so a copy can open before they arrive (`@aio/schema` `blobs.ts`, `@aio/sync/blobs`).
+
+- **Registration.** Every binary a writer produces (import, build, pipeline) is a `blob.add` op: `{ sha256, size, path, role: source | derived, layer? }`; `path` stays the project-relative path layers use (`AssetRef` already allows `{ hash }`). An existing project is indexed once when first shared, by a resumable job in the data process, cached by path, size and mtime.
+- **Fetch policy per layer and machine** (`FetchPolicy`): `always` (posters, small rasters, vectors), `on-open` (photo review copies), `on-demand` (any file over 200 MB: video, COPC, PMTiles, GLB), `stream` (read from the hub path on a LAN through `aio://`, no copy). Defaults: `@aio/sync` `defaultFetchPolicy`.
+- **Missing is a normal state** (`BlobState`: present, missing, partial, stale, streaming). `aio://` answers a 404 with the header `x-aio-blob: missing <sha256> <size>`; the layer shows "Not on this computer (12.4 GB). Download", and no adapter throws.
+- **Where blobs live**: `blobs/<aa>/<sha256>` in a hub, a server store and a bundle; downloaded copies for a working copy in userData `blobs/` (size cap `Settings.team.blobCacheGb`; only blobs also held by the hub or server are evicted).
+- **Transfers.** Hub: copy to a temp name, rename, verify the hash. Server: HTTP Range in 8 MB parts, resumable, verified. Equal hashes are stored once per hub or server. Whole-file hashing only in M9.
