@@ -385,6 +385,8 @@ class InspectionRun:
             linked = json.loads(links_path.read_text("utf-8")) if links_path.exists() else []
             issues_path = ctx.out("issues.json")
             current: list[dict[str, Any]] = []
+            # the document as read: keys this pipeline does not know are written back as they were
+            issues_doc: dict[str, Any] = {}
             if issues_path.exists():
                 try:
                     doc = json.loads(issues_path.read_text("utf-8"))
@@ -392,7 +394,8 @@ class InspectionRun:
                     raise JobError(
                         f"issues.json cannot be read ({e}); fix or restore it, then resume."
                     ) from e
-                current = list(doc.get("issues") or [])
+                issues_doc = doc if isinstance(doc, dict) else {}
+                current = list(issues_doc.get("issues") or [])
             map_path = ctx.out(f"{out_dir}/issues-map.json")
             old_map = json.loads(map_path.read_text("utf-8")) if map_path.exists() else None
             issues, new_map, counts = merge(current, old_map, props, now_iso(), linked)
@@ -414,7 +417,9 @@ class InspectionRun:
             atomic_write_json(map_path, new_map)
             if issues_path.exists():
                 shutil.copyfile(issues_path, issues_path.with_name("issues.json.bak"))
-            atomic_write_json(issues_path, {"schema": ISSUES_SCHEMA, "issues": issues}, indent=2)
+            atomic_write_json(
+                issues_path, {**issues_doc, "schema": ISSUES_SCHEMA, "issues": issues}, indent=2
+            )
             ctx.artifact("issues.json")
             ctx.log(
                 f"Issues: {counts['new']} new, {counts['updated']} updated, {counts['unchanged']} unchanged, "
