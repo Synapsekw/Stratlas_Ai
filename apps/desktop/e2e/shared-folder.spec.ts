@@ -20,7 +20,7 @@ import {
 import { editIssue, openTeamProject, registerOf, setSeverity, setTitle } from './team';
 
 /** One person: their own app and userData; `project` is the shared folder. */
-type Person = Reviewer;
+type Person = Pick<Reviewer, 'name' | 'app' | 'win' | 'dataRoot' | 'project'>;
 
 interface SharedFolder {
   a: Person;

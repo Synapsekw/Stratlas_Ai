@@ -198,7 +198,9 @@ export async function bothOnHub({ a, b, hub, out }: TwoReviewers): Promise<void>
 }
 
 /** The issue register of a reviewer, on the Issues screen. */
-export async function registerOf(r: Reviewer): Promise<ReturnType<Page['getByTestId']>> {
+export async function registerOf(
+  r: Pick<Reviewer, 'win'>,
+): Promise<ReturnType<Page['getByTestId']>> {
   await r.win.locator('.sb-nav .nav-item', { hasText: 'Issues' }).click();
   return r.win.getByTestId('issue-register');
 }

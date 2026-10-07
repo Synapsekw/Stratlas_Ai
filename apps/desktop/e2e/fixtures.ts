@@ -622,7 +622,7 @@ export const TEAM_PROJECT_ID = 'e2e-team';
 export const TEAM_PROJECT_NAME = 'E2E team project';
 
 /**
- * A small project two reviewers share: one mesh, a severity model with three levels and two
+ * A small project two reviewers share: one mesh, a severity model with four levels and two
  * issues (F01 and F02, severity 2). Each reviewer gets their own copy, as from a USB stick.
  */
 export async function writeTeamProject(dataRoot: string): Promise<string> {
@@ -640,6 +640,7 @@ export async function writeTeamProject(dataRoot: string): Promise<string> {
           { value: 1, label: 'Minor', color: '#fad34b', criteria: 'Monitor' },
           { value: 2, label: 'Moderate', color: '#f08c3c', criteria: 'Plan' },
           { value: 3, label: 'Severe', color: '#ee3f4b', criteria: 'Act' },
+          { value: 4, label: 'Critical', color: '#9b1c31', criteria: 'Act now' },
         ],
       },
     ],
