@@ -1,0 +1,202 @@
+{
+  "$comment": "Native components of pipeline pack 0.4.0 (M10 G1), one pinned recipe each, built by build-native.mjs for Windows x64 and macOS arm64 (decision 8; Intel Macs keep the other pipelines). `cmake` are the options each build passes; `require` are the values the native licence gate then reads back from the build's CMakeCache.txt; `includes` are the third-party parts compiled into a component (for the notices). `status`: required (the build fails without it), deferred (recipe not built in this pack, with the reason).",
+  "schema": "aio.native-components/1",
+  "vcpkg": {
+    "repository": "https://github.com/microsoft/vcpkg",
+    "baseline": "127402f1c75bb3d5ff6bce04b285faa4930a5aca",
+    "date": "2026-08-22",
+    "why": "The baseline of COLMAP 4.2.1's own vcpkg-configuration.json, the set its CI builds with"
+  },
+  "targets": {
+    "win32-x64": {
+      "triplet": "x64-windows-stratlas",
+      "hostTriplet": "x64-windows-release",
+      "wheelTag": "win_amd64"
+    },
+    "darwin-arm64": {
+      "triplet": "arm64-osx-stratlas",
+      "hostTriplet": "arm64-osx-release",
+      "wheelTag": "macosx_14_0_arm64",
+      "deploymentTarget": "14.0"
+    }
+  },
+  "python": "3.13",
+  "components": [
+    {
+      "name": "colmap",
+      "version": "4.2.1",
+      "spdx": "BSD-3-Clause",
+      "source": "https://github.com/colmap/colmap",
+      "tag": "4.2.1",
+      "commit": "bd1fcf654d2dd8fefa1466999c190a246f83f4b9",
+      "status": "required",
+      "manifest": "colmap/vcpkg.json",
+      "patches": ["colmap/patches/0001-cholmod-optional.patch"],
+      "cmake": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CUDA_ENABLED": "OFF",
+        "HIP_ENABLED": "OFF",
+        "GUI_ENABLED": "OFF",
+        "OPENGL_ENABLED": "OFF",
+        "CGAL_ENABLED": "OFF",
+        "LSD_ENABLED": "OFF",
+        "DOWNLOAD_ENABLED": "OFF",
+        "ONNX_ENABLED": "OFF",
+        "CASPAR_ENABLED": "OFF",
+        "MVS_ENABLED": "ON",
+        "CHOLMOD_ENABLED": "OFF",
+        "TESTS_ENABLED": "OFF",
+        "BENCHMARK_ENABLED": "OFF",
+        "CCACHE_ENABLED": "OFF",
+        "UNINSTALL_ENABLED": "OFF",
+        "IPO_ENABLED": "OFF"
+      },
+      "require": {
+        "CUDA_ENABLED": "OFF",
+        "HIP_ENABLED": "OFF",
+        "GUI_ENABLED": "OFF",
+        "OPENGL_ENABLED": "OFF",
+        "CGAL_ENABLED": "OFF",
+        "LSD_ENABLED": "OFF",
+        "DOWNLOAD_ENABLED": "OFF",
+        "ONNX_ENABLED": "OFF",
+        "CHOLMOD_ENABLED": "OFF"
+      },
+      "outputs": ["wheels/pycolmap-4.2.1-*.whl"],
+      "includes": [
+        {
+          "name": "pycolmap",
+          "spdx": "BSD-3-Clause",
+          "note": "Python bindings, built from the same tree as a cp313 wheel"
+        },
+        {
+          "name": "PoseLib",
+          "version": "fa7280fee27f97aff31ae7f98bab7f583fac7d08",
+          "spdx": "BSD-3-Clause",
+          "source": "https://github.com/PoseLib/PoseLib",
+          "note": "FetchContent, pinned by SHA-256 in COLMAP's src/thirdparty/CMakeLists.txt"
+        },
+        {
+          "name": "faiss",
+          "version": "1.14.1",
+          "spdx": "MIT",
+          "source": "https://github.com/facebookresearch/faiss",
+          "note": "FetchContent, pinned by SHA-256; CPU only, no MKL"
+        },
+        {
+          "name": "VLFeat (SIFT)",
+          "spdx": "BSD-2-Clause",
+          "source": "https://github.com/vlfeat/vlfeat",
+          "note": "Vendored in COLMAP; SIFT's patent expired in March 2020"
+        },
+        {
+          "name": "PoissonRecon",
+          "spdx": "MIT",
+          "source": "https://github.com/mkazhdan/PoissonRecon",
+          "note": "Vendored in COLMAP, compiled without CHOLMOD"
+        },
+        {
+          "name": "pybind11",
+          "version": "3.0.4",
+          "spdx": "BSD-3-Clause",
+          "source": "https://github.com/pybind/pybind11",
+          "note": "Headers compiled into pycolmap"
+        }
+      ],
+      "excluded": "LSD (AGPL-3.0, LSD_ENABLED=OFF), SiftGPU (non-commercial, needs OpenGL or CUDA, both OFF), CGAL (GPL-3.0, CGAL_ENABLED=OFF), CHOLMOD and SPQR (GPL, CHOLMOD_ENABLED=OFF with our patch and ceres without suitesparse), curl and OpenSSL (DOWNLOAD_ENABLED=OFF), Qt (GUI_ENABLED=OFF), ONNX Runtime and learned features (ONNX_ENABLED=OFF)"
+    },
+    {
+      "name": "opencv-python-headless",
+      "version": "5.0.0.93",
+      "spdx": "Apache-2.0",
+      "source": "https://github.com/opencv/opencv-python",
+      "tag": "93",
+      "commit": "b83046cda41133f1bf2e73e99dba16a1248f103a",
+      "status": "required",
+      "env": {
+        "ENABLE_HEADLESS": "1",
+        "ENABLE_CONTRIB": "0",
+        "ENABLE_JAVA": "0"
+      },
+      "cmake": {
+        "WITH_FFMPEG": "OFF",
+        "WITH_GSTREAMER": "OFF",
+        "WITH_MSMF": "OFF",
+        "WITH_AVFOUNDATION": "OFF",
+        "BUILD_opencv_videoio": "OFF",
+        "BUILD_opencv_gapi": "OFF",
+        "BUILD_opencv_dnn": "OFF",
+        "OPENCV_ENABLE_NONFREE": "OFF",
+        "WITH_IPP": "OFF",
+        "WITH_ITT": "OFF",
+        "WITH_LAPACK": "OFF",
+        "WITH_EIGEN": "OFF",
+        "WITH_PROTOBUF": "OFF",
+        "WITH_JASPER": "OFF",
+        "WITH_VA": "OFF",
+        "WITH_OPENVINO": "OFF"
+      },
+      "require": {
+        "WITH_FFMPEG": "OFF",
+        "WITH_GSTREAMER": "OFF",
+        "BUILD_opencv_videoio": "OFF",
+        "OPENCV_ENABLE_NONFREE": "OFF",
+        "WITH_IPP": "OFF"
+      },
+      "outputs": ["wheels/opencv_python_headless-*.whl"],
+      "includes": [
+        {
+          "name": "libjpeg-turbo",
+          "spdx": "IJG AND BSD-3-Clause AND Zlib",
+          "note": "OpenCV 3rdparty, static"
+        },
+        { "name": "libpng", "spdx": "libpng-2.0", "note": "OpenCV 3rdparty, static" },
+        { "name": "libtiff", "spdx": "libtiff", "note": "OpenCV 3rdparty, static" },
+        { "name": "libwebp", "spdx": "BSD-3-Clause", "note": "OpenCV 3rdparty, static" },
+        { "name": "OpenJPEG", "spdx": "BSD-2-Clause", "note": "OpenCV 3rdparty, static" },
+        { "name": "OpenEXR", "spdx": "BSD-3-Clause", "note": "OpenCV 3rdparty, static" },
+        { "name": "zlib-ng", "spdx": "Zlib", "note": "OpenCV 3rdparty, static" },
+        {
+          "name": "carotene",
+          "spdx": "BSD-3-Clause",
+          "note": "OpenCV 3rdparty (Arm NEON), static"
+        },
+        { "name": "KleidiCV", "spdx": "Apache-2.0", "note": "OpenCV 3rdparty (arm64), static" },
+        { "name": "quirc", "spdx": "ISC", "note": "OpenCV 3rdparty (QR codes), static" }
+      ],
+      "excluded": "FFmpeg and GStreamer (videoio off: the PyPI wheels bundle LGPL and, on macOS arm64, GPL codecs), Intel IPP-ICV (Intel Simplified Software License), the non-free modules, DNN, G-API"
+    },
+    {
+      "name": "pdal",
+      "version": "2.10.1",
+      "spdx": "BSD-3-Clause AND MIT AND Apache-2.0",
+      "source": "https://github.com/PDAL/PDAL",
+      "status": "required",
+      "manifest": "pdal/vcpkg.json",
+      "outputs": ["tools/pdal/bin/pdal*"],
+      "note": "The PDAL command-line tool into <pack>/tools/pdal, which aio_pipelines/pointcloud.py looks for; no plugins, PROJ without network"
+    },
+    {
+      "name": "texrecon",
+      "version": "c5a4d0c9a434553533c6e39d426e349fcfa5f48d",
+      "spdx": "BSD-3-Clause",
+      "source": "https://github.com/OpenDroneMap/mvs-texturing",
+      "status": "deferred",
+      "why": "mvs-texturing needs MVE's libraries built first (ODM's superbuild supplies them; upstream MVE builds with Makefiles and has no Windows build) and fetches mapMAP and rayint (a branch, not a pinned commit) at configure time. G3's texturing spike decides between texrecon and our own texturing (xatlas and Pillow, plan section Meshing and texturing) before this recipe is built; mapMAP (BSD-3-Clause, dset Zlib) and rayint (BSD-3-Clause) are allowed."
+    },
+    {
+      "name": "mve",
+      "spdx": "BSD-3-Clause",
+      "source": "https://github.com/simonfuhrmann/mve",
+      "status": "deferred",
+      "why": "dmrecon, scene2pset and fssrecon are one of G3's CPU dense options; G3's spike chooses between MVE and OpenCV StereoSGBM (already in this pack). Built here only if the spike picks MVE."
+    },
+    {
+      "name": "opensfm",
+      "spdx": "BSD-2-Clause",
+      "source": "https://github.com/mapillary/OpenSfM",
+      "status": "deferred",
+      "why": "Only for G2's spike against COLMAP; shipped only if the spike picks it (its fpdf2, opencv-python and OpenMVS exporter dependencies would be removed)."
+    }
+  ]
+}

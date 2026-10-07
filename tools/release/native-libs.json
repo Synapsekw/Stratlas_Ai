@@ -203,9 +203,10 @@
     },
     {
       "name": "gklib",
-      "version": "2025-07-06",
+      "version": "2023-03-27",
       "spdx": "Apache-2.0",
-      "components": ["colmap"]
+      "components": ["colmap"],
+      "reviewed": "COLMAP overlay port (cmake/vcpkg/ports): the registry version crashes METIS on Windows"
     },
     {
       "name": "glog",
@@ -284,9 +285,10 @@
     },
     {
       "name": "metis",
-      "version": "2025-07-04",
+      "version": "2022-07-27",
       "spdx": "Apache-2.0",
-      "components": ["colmap"]
+      "components": ["colmap"],
+      "reviewed": "COLMAP overlay port (cmake/vcpkg/ports): the registry version crashes in METIS_PartGraphKway on Windows"
     },
     {
       "name": "minizip-ng",
