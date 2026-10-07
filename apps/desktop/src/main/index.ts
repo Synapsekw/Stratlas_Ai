@@ -88,7 +88,7 @@ import { startSync } from './sync/electron';
 import { registerTeamServerIpc, teamServers } from './teamServer';
 import { registerGlobeIpc } from './globe';
 import { registerRasterPacksIpc } from './packs/raster';
-import { registerPhotogrammetryIpc } from './photogrammetry';
+import { nodePhotoSystem, registerPhotogrammetryIpc } from './photogrammetry';
 import { registerTilesetsIpc } from './tilesets';
 import { createTestVault, useTestVault } from './testVault';
 import { importLogo, removeLogo } from './branding';
@@ -1168,7 +1168,18 @@ function registerIpc(): void {
   registerTeamServerIpc({ handle, servers });
 
   // M10: one module per stream (G4 photogrammetry, G6 globe, G7 tilesets and raster packs).
-  registerPhotogrammetryIpc({ handle });
+  registerPhotogrammetryIpc({
+    handle,
+    projects: registry,
+    system: nodePhotoSystem({
+      gpuInfo: () => app.getGPUInfo('basic'),
+      dataRoot: () => settings.current().dataRoot,
+      packVersion: async () =>
+        (await findPack({ dataRoot: settings.current().dataRoot, env: process.env, app: packApp }))
+          .pack?.version ?? null,
+    }),
+    trash: (p) => shell.trashItem(p),
+  });
   registerGlobeIpc({ handle });
   registerTilesetsIpc({ handle });
   registerRasterPacksIpc({ handle });
