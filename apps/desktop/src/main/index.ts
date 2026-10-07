@@ -93,7 +93,7 @@ import { registerTilesetsIpc } from './tilesets';
 import { createTestVault, useTestVault } from './testVault';
 import { importLogo, removeLogo } from './branding';
 import { putThumb } from './thumbs';
-import { RENDERER_PROBE, smokeProbe, writeSmokeReport } from './smoke';
+import { CSP_PROBE, RENDERER_PROBE, smokeProbe, writeSmokeReport } from './smoke';
 import { nativeImageOps } from './images';
 import { validated, type Handler } from './ipc';
 import { findPack, JobRunner, JobStore, openTarget, safeJobEvent } from './jobs';
@@ -136,6 +136,7 @@ import { createMaskAssist, loadOnnxRuntime } from './maskAssist';
 import { resolveInside } from './protocol/paths';
 import { writeCentreline } from './centreline';
 import { createAioHandler } from './protocol/handler';
+import { APP_CSP } from './csp';
 import { cspForUrl } from './protocol/legacy';
 import { saveFile } from './saveFile';
 import { createSettingsStore, defaultDataRoot, defaultSettings } from './settings';
@@ -201,18 +202,6 @@ protocol.registerSchemesAsPrivileged([
     },
   },
 ]);
-
-const CSP = [
-  "default-src 'self' aio:",
-  // WebAssembly compile only (Meshopt GLB decoder), no JavaScript eval
-  "script-src 'self' 'wasm-unsafe-eval'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' aio: data: blob:",
-  "media-src 'self' aio: blob:",
-  "connect-src 'self' aio: data: blob:",
-  "worker-src 'self' blob:",
-  "font-src 'self' data:",
-].join('; ');
 
 const registry = new ProjectRegistry();
 const settings = createSettingsStore(
@@ -1303,6 +1292,7 @@ async function smokeReport(win: BrowserWindow): Promise<void> {
   const path = process.env.STRATLAS_SMOKE_REPORT;
   if (!path) return;
   const report = await smokeProbe({
+    csp: () => win.webContents.executeJavaScript(CSP_PROBE) as Promise<unknown>,
     fromRenderer: () => win.webContents.executeJavaScript(RENDERER_PROBE) as Promise<unknown>,
     fromMain: async () => ({
       runtime: await inferenceHost().probe(settings.current().inference?.provider ?? 'auto'),
@@ -1323,7 +1313,9 @@ function isAllowedRendererUrl(url: string): boolean {
 function hardenSession(): void {
   const ses = session.defaultSession;
   ses.webRequest.onHeadersReceived((details, callback) => {
-    const csp = cspForUrl(details.url, CSP);
+    // Dev (http) and any response that has headers; built pages under file:// carry the same
+    // policy as a <meta> tag instead (csp.ts).
+    const csp = cspForUrl(details.url, APP_CSP);
     if (csp === null) {
       callback({});
       return;

@@ -1,5 +1,6 @@
 // The house-format project report page (BLD-8). Main loads it in an offscreen window, polls
 // `window.__report` for progress, and prints it with printToPDF once `state` is `ready`.
+import '../../zodJitless';
 import '@aio/ui/fonts.css';
 import './house.css';
 import { brand } from '@aio/brand';
