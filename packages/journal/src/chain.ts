@@ -84,7 +84,7 @@ export function createChainWriter(opts: {
         kind: draft.kind,
         target: draft.target,
         ...(draft.base ? { base: draft.base } : {}),
-        ...(extra.via ? { via: extra.via } : {}),
+        ...((extra.via ?? draft.via) ? { via: extra.via ?? draft.via } : {}),
         ...(draft.label ? { label: draft.label } : {}),
       };
       const op = sealOp(unsealed, draft.payload, opts.signer ?? undefined);

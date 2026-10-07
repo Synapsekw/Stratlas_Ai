@@ -1,4 +1,4 @@
-import type { EditCommand, OpKind, RecordRef } from '@aio/schema';
+import type { EditCommand, OpKind, RecordRef, Via } from '@aio/schema';
 import { canonicalJson } from './canonical';
 import { contentHash } from './hash';
 
@@ -19,6 +19,8 @@ export interface DraftOp {
   /** Content hash of the target record before the op. */
   base?: string;
   label?: string;
+  /** How the change came about, when not by hand (an agent tool call, from the editor). */
+  via?: Via;
 }
 
 export interface FieldPatch {
@@ -61,14 +63,17 @@ export function diffFields(before: Obj | null, after: Obj | null, skip: string[]
 
 const empty = (p: FieldPatch) => !p.set && !p.unset;
 
-/** Label of the last editor command that names `id`. */
-function labelFor(id: string, commands: readonly EditCommand[] | undefined): string | undefined {
-  if (!commands) return undefined;
+/** Label and `via` of the last editor command that names `id`. */
+function tagFor(
+  id: string,
+  commands: readonly EditCommand[] | undefined,
+): { label?: string; via?: Via } {
+  if (!commands) return {};
   for (let i = commands.length - 1; i >= 0; i--) {
     const c = commands[i];
-    if (c?.ids.includes(id)) return c.label;
+    if (c?.ids.includes(id)) return { label: c.label, ...(c.via ? { via: c.via } : {}) };
   }
-  return undefined;
+  return {};
 }
 
 // ---------------------------------------------------------------- issues
@@ -88,8 +93,7 @@ export function diffIssues(
   for (const issue of after) {
     const id = String(issue.id);
     const target = { rec: 'issue', id };
-    const label = labelFor(id, commands);
-    const lab = label ? { label } : {};
+    const lab = tagFor(id, commands);
     const prev = old.get(id);
     if (!prev) {
       ops.push({ kind: 'issue.create', target, payload: { record: issue }, ...lab });
@@ -142,13 +146,12 @@ export function diffIssues(
   for (const prev of before) {
     const id = String(prev.id);
     if (now.has(id)) continue;
-    const label = labelFor(id, commands);
     ops.push({
       kind: 'issue.delete',
       target: { rec: 'issue', id },
       base: contentHash(prev),
       payload: {},
-      ...(label ? { label } : {}),
+      ...tagFor(id, commands),
     });
   }
   return ops;
@@ -336,12 +339,11 @@ export function diffRecordFile(
     seen.add(k);
     const prev = old.get(k);
     if (prev && same(prev.value, u.value)) continue;
-    const label = labelFor(u.target.id, commands);
-    ops.push(unitOp(spec, u.target, prev?.value ?? null, u.value, label));
+    ops.push(unitOp(spec, u.target, prev?.value ?? null, u.value, tagFor(u.target.id, commands)));
   }
   for (const u of bu) {
     if (seen.has(key(u.target))) continue;
-    ops.push(unitOp(spec, u.target, u.value, null, labelFor(u.target.id, commands)));
+    ops.push(unitOp(spec, u.target, u.value, null, tagFor(u.target.id, commands)));
   }
   return ops;
 }
@@ -351,10 +353,9 @@ function unitOp(
   target: RecordRef,
   before: Obj | null,
   after: Obj | null,
-  label: string | undefined,
+  lab: { label?: string; via?: Via },
 ): DraftOp {
   const b = before ? { base: contentHash(before) } : {};
-  const lab = label ? { label } : {};
   if (spec.record) {
     const record = after ?? { removed: true };
     return {
