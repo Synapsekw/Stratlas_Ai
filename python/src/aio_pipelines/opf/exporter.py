@@ -5,7 +5,8 @@ and ``out`` (an absolute folder, chosen in a save dialog; empty, new, or an earl
 export, which is overwritten).
 
 The run is read from its files (data-conventions section 21): ``run.json``, the sparse model
-``sparse/`` (COLMAP text or binary, in the project CRS) and ``gcp.json`` when there is one. The
+``sparse/`` (COLMAP text in the grid frame of ``sparse/frame.json``, photos found through
+``sparse/photos.json``; ``read_run_model``) and ``gcp.json`` when there is one. The
 OPF project is written with pyopf (Apache-2.0, core only) into the job's staging, read back with
 pyopf as the check, then copied into ``out``:
 
@@ -73,8 +74,12 @@ def _time(value: Any) -> datetime | None:
     return t if t.tzinfo else None
 
 
-def _photo_lookup(project: Path, run: dict[str, Any], manifest: dict[str, Any]):
+def _photo_lookup(
+    project: Path, run: dict[str, Any], manifest: dict[str, Any], listing: dict[str, Any] | None = None
+):
     """name -> (absolute file or None, photos-layer item or None) for the run's images."""
+    listed = (listing or {}).get("photos") or {}
+    image_root = (listing or {}).get("imageRoot")
     source = (run.get("photos") or {}).get("source") or {}
     folders = [Path(f) for f in source.get("folders") or [] if isinstance(f, str)]
     items: dict[str, dict[str, Any]] = {}
@@ -96,6 +101,11 @@ def _photo_lookup(project: Path, run: dict[str, Any], manifest: dict[str, Any]):
                 items.setdefault(Path(p).name, it)
 
     def find(name: str) -> tuple[Path | None, dict[str, Any] | None]:
+        rel = (listed.get(name) or {}).get("name")
+        if isinstance(rel, str) and rel and not items:
+            cand = Path(image_root) / rel if image_root else Path(rel)
+            if cand.is_absolute() and cand.is_file():
+                return cand.resolve(), None
         for f in folders:
             cand = f / name
             if cand.is_file():
@@ -109,6 +119,30 @@ def _photo_lookup(project: Path, run: dict[str, Any], manifest: dict[str, Any]):
         return None, None
 
     return find
+
+
+def read_run_model(sparse: Path, crs) -> tuple[colmap.Model, np.ndarray, dict[str, Any]]:
+    """The run's sparse model, the shift from its coordinates to the project CRS and its photo list.
+
+    A run of ``photo.align``, ``photo.georef`` or ``opf.import`` is in the grid frame of
+    ``sparse/frame.json`` (project CRS minus its ``origin``), named by photo keys (``%20`` for a
+    space) with ``photos.json`` saying where each photo is. A model folder without ``frame.json``
+    is in the project CRS itself."""
+    from ..photo.align import decode_name, read_frame, read_photo_list
+    from ..photo.crs import crs_of
+
+    model = colmap.read_model(sparse)
+    if not (sparse / "frame.json").is_file():
+        return model, np.zeros(3), {}
+    frame = read_frame(sparse)
+    if not same_crs(crs_of(frame["crs"]), crs):
+        raise JobError(
+            "The run was aligned in another coordinate system than the project's; align it in the "
+            "project's coordinate system to export it."
+        )
+    for im in model.images.values():
+        im.name = decode_name(im.name)
+    return model, np.asarray(frame["origin"], dtype=np.float64), read_photo_list(sparse)
 
 
 class OpfExport:
@@ -183,11 +217,11 @@ def _build(ctx: StepContext, run_id: str) -> dict[str, Any]:
     definition = crs_definition(manifest)
     swap = north_first(crs)
     origin = np.asarray(manifest.get("origin") or [0, 0, 0], dtype=np.float64)
-    model = colmap.read_model(run_dir / "sparse")
+    model, shift, listing = read_run_model(run_dir / "sparse", crs)
     if not model.images:
         raise JobError(f"The run {run_id} has no registered photos to export.")
     notes: list[str] = []
-    find = _photo_lookup(ctx.project, run, manifest)
+    find = _photo_lookup(ctx.project, run, manifest, listing)
     groups = {str(g.get("id")): g for g in run.get("cameras") or [] if isinstance(g, dict)}
     fallback_time = _time(run.get("createdAt")) or datetime.now(UTC)
 
@@ -292,7 +326,7 @@ def _build(ctx: StepContext, run_id: str) -> dict[str, Any]:
         r_opf, centre = colmap_to_opf(im.qvec, im.tvec)
         cal_cams.append(
             CalibratedCamera(
-                Uid64(int=cid), Uid64(int=im.camera_id), np.array(opk_angles(r_opf)), centre - origin
+                Uid64(int=cid), Uid64(int=im.camera_id), np.array(opk_angles(r_opf)), centre + shift - origin
             )
         )
         for key in (im.name, Path(im.name).name, (item or {}).get("id")):
@@ -384,7 +418,7 @@ def _build(ctx: StepContext, run_id: str) -> dict[str, Any]:
             xyz, rgb = xyz[keep], rgb[keep]
             notes.append(f"{MAX_TRACKS:,} of the {len(model.xyz):,} tie points are written.")
         node = Node()
-        node.position = (xyz - origin).astype(np.float32)
+        node.position = (xyz + shift - origin).astype(np.float32)
         node.color = np.column_stack([rgb, np.full(len(rgb), 255, dtype=np.uint8)]).astype(np.uint8)
         node.matrix = ZUP_TO_GLTF.copy()
         pcl = GlTFPointCloud()

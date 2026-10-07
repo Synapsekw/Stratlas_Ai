@@ -187,7 +187,27 @@ def test_colmap_binary_and_text_models_read_the_same(tmp_path):
 
 
 def _sparse(project: Path, run: str) -> colmap.Model:
-    return colmap.read_model(project / "photogrammetry" / run / "sparse")
+    """The run's model in the project CRS (``frame.json``'s origin added back), names decoded."""
+    from rasterio.crs import CRS
+
+    from aio_pipelines.opf.exporter import read_run_model
+
+    model, shift, _ = read_run_model(project / "photogrammetry" / run / "sparse", CRS.from_epsg(32639))
+    for im in model.images.values():  # x = R (X - shift) + t
+        im.tvec = list(np.asarray(im.tvec) - quat_wxyz_to_matrix(im.qvec) @ shift)
+    model.xyz = model.xyz + shift
+    return model
+
+
+def test_a_run_is_written_in_the_grid_frame_of_frame_json(tmp_path):
+    proj = opf_synth.make_project(tmp_path / "p")
+    opf_synth.make_run(proj, tmp_path / "photos")
+    sparse = proj / "photogrammetry" / RUN / "sparse"
+    frame = json.loads((sparse / "frame.json").read_text("utf-8"))
+    assert frame["schema"] == "aio.photo-frame/1" and frame["origin"] == list(opf_synth.ORIGIN)
+    raw = colmap.read_model(sparse)
+    assert np.abs(raw.xyz).max() < 1000  # small numbers: the grid frame, not UTM
+    assert np.allclose(_sparse(proj, RUN).xyz, raw.xyz + np.array(opf_synth.ORIGIN))
 
 
 def test_export_a_run_and_import_it_into_a_new_project(tmp_path, monkeypatch):
@@ -242,6 +262,47 @@ def test_export_a_run_and_import_it_into_a_new_project(tmp_path, monkeypatch):
     assert run["status"] == "aligned" and run["photos"]["registered"] == 6
     kinds = sorted((layer["kind"], layer.get("role")) for layer in _manifest(dest)["layers"])
     assert kinds == [("photos", None), ("raster", "dsm"), ("raster", "ortho")]
+
+
+def test_a_legacy_run_in_the_project_crs_exports_the_same_cameras(tmp_path):
+    """A model folder without frame.json (an older import) is in the project CRS itself."""
+    cams = {}
+    for name, legacy in (("grid", False), ("legacy", True)):
+        src = opf_synth.make_project(tmp_path / name)
+        opf_synth.make_run(src, tmp_path / f"photos-{name}", legacy=legacy)
+        out = tmp_path / f"export-{name}"
+        run_job(OpfExport(), src, {"run": RUN, "out": str(out)})
+        doc = json.loads((out / "calibration" / "calibrated_cameras.json").read_text("utf-8"))
+        cams[name] = sorted((c["id"], tuple(c["position"])) for c in doc["cameras"])
+    assert len(cams["grid"]) == 6
+    for (ia, pa), (ib, pb) in zip(cams["grid"], cams["legacy"], strict=True):
+        assert ia == ib and np.allclose(pa, pb, atol=1e-6)
+
+
+def test_an_imported_opf_run_goes_through_photo_products(tmp_path, monkeypatch):
+    from aio_pipelines.photo.products import PhotoProducts
+
+    _no_pdal(monkeypatch)
+    opf = opf_synth.write_opf(tmp_path / "opf", with_outputs=False)
+    proj = opf_synth.make_project(tmp_path / "proj")
+    commit, _ = _import(proj, {"src": str(opf)})
+    run = commit["run"]
+    sparse = proj / "photogrammetry" / run / "sparse"
+    assert json.loads((sparse / "frame.json").read_text("utf-8"))["schema"] == "aio.photo-frame/1"
+    listing = json.loads((sparse / "photos.json").read_text("utf-8"))
+    assert listing["schema"] == "aio.photo-list/1" and len(listing["photos"]) == 6
+    for rec in listing["photos"].values():
+        assert (Path(listing["imageRoot"]) / rec["name"]).is_file()
+    res, _ = run_job(PhotoProducts(), proj, {"run": run, "products": ["dsm"], "preset": "fast"}, job_id="p1")
+    assert res["status"] == "done"
+    layers = {layer["id"] for layer in _manifest(proj)["layers"]}
+    assert f"{run}-dsm" in layers
+    import rasterio
+
+    with rasterio.open(proj / "photogrammetry" / run / "dsm.tif") as ds:
+        b = ds.bounds  # in the project CRS, over the site (tie points 0..80 E, 0..60 N of the origin)
+        assert ds.crs.to_epsg() == 32639
+        assert 500000 - 5 < b.left < b.right < 500000 + 85 and 3200000 - 5 < b.bottom < b.top < 3200000 + 65
 
 
 def test_re_export_overwrites_an_earlier_export_but_not_other_folders(tmp_path):

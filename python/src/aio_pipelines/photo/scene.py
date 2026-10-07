@@ -1,19 +1,23 @@
 """What ``photo.products`` reads from an aligned run: cameras, poses, sparse points and the photos.
 
-The run's sparse model (``photogrammetry/<run>/sparse/``, written by ``photo.align`` and
-``photo.georef``) is a COLMAP model, text (``cameras.txt``, ``images.txt``, ``points3D.txt``) or
-binary (``.bin``). Its world frame is the project CRS (easting, northing, height in metres), less
-an optional offset the run states as ``sparseOffset`` ``[E, N, H]`` in ``run.json`` (default
-none): large UTM numbers are fine in COLMAP's doubles, but an offset keeps them small.
+The run's sparse model (``photogrammetry/<run>/sparse/``, written by ``photo.align``,
+``photo.georef`` and ``opf.import``) is read the way ``photo.align`` writes it
+(``align.read_sparse``): COLMAP text in the run's **grid frame**, the project CRS minus the
+``origin`` of ``sparse/frame.json`` (x east, y north, z up, metres), image names being photo keys
+(``%20`` for a space, ``%25`` for a percent sign). ``Run.offset`` is that origin: model plus
+offset is the project CRS. A model folder without ``frame.json`` (made by hand or by an older
+import) is read as COLMAP text or binary in the project CRS itself, offset zero.
 
 Conventions are COLMAP's: ``x_cam = R(q) X + t``, the camera looks along +z, image x right and y
 down, and pixel coordinates put the centre of the top-left pixel at (0.5, 0.5), so a camera scales
 with its image exactly (``Camera.scaled``). Lens models: SIMPLE_PINHOLE, PINHOLE, SIMPLE_RADIAL,
 RADIAL, OPENCV and FULL_OPENCV.
 
-Photos are found by the image name of the model: an absolute path, else relative to each folder of
-the run's photo source (``{"folders": [...]}``), else relative to the photos layer's files
-(``{"layer": id}``), else relative to the project. They are only ever read.
+Photos are found by their key: a photos layer run (``{"layer": id}``) reads the layer photo of
+that id where the manifest says; otherwise ``sparse/photos.json`` gives the file as ``imageRoot``
+plus the photo's ``name``. Failing that, the key is tried as an absolute path, relative to each
+folder of the run's photo source (``{"folders": [...]}``), to the photos layer's files and to the
+project. Photos are only ever read.
 """
 
 from __future__ import annotations
@@ -441,19 +445,54 @@ def _photo_roots(project: Path, doc: dict[str, Any], manifest: dict[str, Any]) -
     return roots
 
 
-def resolve_photos(project: Path, doc: dict[str, Any], manifest: dict[str, Any], views: list[View]) -> None:
+def _listed_photos(
+    project: Path, doc: dict[str, Any], manifest: dict[str, Any], listing: dict[str, Any] | None
+) -> dict[str, list[Path]]:
+    """Candidate files per photo key from the run's photos layer and ``sparse/photos.json``."""
+    out: dict[str, list[Path]] = {}
+    layer = (((doc.get("photos") or {}).get("source")) or {}).get("layer")
+    if isinstance(layer, str):
+        for lay in manifest.get("layers") or []:
+            if isinstance(lay, dict) and lay.get("id") == layer and lay.get("kind") == "photos":
+                for item in lay.get("items") or []:
+                    ref = (item or {}).get("src") or {}
+                    rel = ref.get("path") or (f"assets/sha256/{ref['hash']}" if ref.get("hash") else None)
+                    if isinstance(rel, str) and item.get("id") is not None:
+                        out.setdefault(str(item["id"]), []).append(safe_project_path(project, rel))
+    if listing:
+        root = listing.get("imageRoot")
+        for key, rec in (listing.get("photos") or {}).items():
+            name = (rec or {}).get("name")
+            if not (isinstance(name, str) and name):
+                continue
+            if isinstance(root, str) and root:
+                out.setdefault(str(key), []).append(Path(root) / name)
+            elif Path(name).is_absolute():  # photos on several drives: each by its full path
+                out.setdefault(str(key), []).append(Path(name))
+    return out
+
+
+def resolve_photos(
+    project: Path,
+    doc: dict[str, Any],
+    manifest: dict[str, Any],
+    views: list[View],
+    listing: dict[str, Any] | None = None,
+) -> None:
     """Set ``view.path`` for every view; refuse with the first photo that cannot be found."""
     roots = _photo_roots(project, doc, manifest)
+    listed = _listed_photos(project, doc, manifest, listing)
     missing: list[str] = []
     for v in views:
         name = v.name.replace("\\", "/")
-        cands = [Path(name)] if Path(name).is_absolute() else [r / name for r in roots]
+        cands = list(listed.get(v.name, []))
         # "<folder index>/<name>" when the run has several folders
         head, _, tail = name.partition("/")
         if head.isdigit() and tail:
             folders = ((doc.get("photos") or {}).get("source") or {}).get("folders") or []
             if int(head) < len(folders):
-                cands.insert(0, Path(folders[int(head)]) / tail)
+                cands.append(Path(folders[int(head)]) / tail)
+        cands += [Path(name)] if Path(name).is_absolute() else [r / name for r in roots]
         v.path = next((c for c in cands if c.is_file()), None)
         if v.path is None:
             missing.append(v.name)
@@ -464,21 +503,64 @@ def resolve_photos(project: Path, doc: dict[str, Any], manifest: dict[str, Any],
         )
 
 
+def from_aligned(model) -> SparseModel:
+    """``photo.model.SparseModel`` (what ``align.read_sparse`` returns) as the views and points
+    the products read; tracks from the model's observations (empty when it has none)."""
+    cams = {
+        cid: Camera(c.model, int(c.width), int(c.height), tuple(float(p) for p in c.params))
+        for cid, c in model.cameras.items()
+    }
+    views = []
+    for iid in sorted(model.images):
+        im = model.images[iid]
+        if im.camera_id not in cams:
+            raise JobError(f"Image {im.name} uses camera {im.camera_id}, which the model does not have.")
+        views.append(View(int(iid), im.name, cams[im.camera_id], im.R.copy(), im.t.copy()))
+    img_ids, pts, _ = model.observations()
+    n = len(model.point_ids)
+    tracks: list[list[int]] = [[] for _ in range(n)]
+    if len(pts):
+        pairs = np.unique(np.stack([pts, img_ids], axis=1), axis=0)  # by point, then image
+        cuts = np.searchsorted(pairs[:, 0], np.arange(n + 1))
+        tracks = [pairs[cuts[i] : cuts[i + 1], 1].tolist() for i in range(n)]
+    return SparseModel(
+        views,
+        np.asarray(model.xyz, dtype=np.float64).reshape(-1, 3),
+        np.asarray(model.rgb, dtype=np.uint8).reshape(-1, 3),
+        tracks if any(tracks) else [],
+    )
+
+
 def load_run(project: Path, run_id: str) -> Run:
+    from .align import read_photo_list, read_sparse
+
     rdir = safe_project_path(project, f"photogrammetry/{run_id}")
     if not rdir.is_dir():
         raise JobError(f'The project has no run "{run_id}".')
     doc = read_json(rdir / "run.json", f'The run "{run_id}"')
     manifest = read_json(safe_project_path(project, "manifest.json"), "The project manifest")
-    model = read_model(rdir / "sparse")
+    sparse = rdir / "sparse"
+    listing = None
+    crs = doc.get("crs") or manifest.get("crs") or {}
+    if (sparse / "frame.json").is_file():
+        aligned, frame = read_sparse(sparse)
+        model = from_aligned(aligned)
+        off = [float(v) for v in frame["origin"]]
+        crs = frame.get("crs") or crs
+        listing = read_photo_list(sparse)
+    else:  # a COLMAP model in the project CRS itself
+        model = read_model(sparse)
+        off = [0.0, 0.0, 0.0]
     if len(model.views) < 2:
         raise JobError("The run registered fewer than two photos; there is nothing to match.")
-    off = doc.get("sparseOffset") or [0, 0, 0]
-    if not (isinstance(off, list) and len(off) == 3 and all(isinstance(v, int | float) for v in off)):
-        raise JobError('The run\'s "sparseOffset" is not three numbers.')
-    crs = doc.get("crs") or manifest.get("crs") or {}
     epsg = crs.get("epsg") if isinstance(crs.get("epsg"), int) else None
-    resolve_photos(project, doc, manifest, model.views)
+    m_crs = manifest.get("crs") or {}
+    if epsg and isinstance(m_crs.get("epsg"), int) and m_crs["epsg"] != epsg:
+        raise JobError(
+            f"The run is in EPSG:{epsg} and the project in EPSG:{m_crs['epsg']}; align the photos in the "
+            "project's coordinate system to make products."
+        )
+    resolve_photos(project, doc, manifest, model.views, listing)
     return Run(run_id, rdir, doc, model, np.array(off, dtype=np.float64), epsg, manifest)
 
 

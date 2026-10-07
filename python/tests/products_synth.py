@@ -2,7 +2,8 @@
 
 Stream G8's ``photo_synth.py`` renders the full M10 scene; this one is deliberately small and fast
 so the products can be checked against truth in every test run, without waiting for G2's
-alignment: the sparse model is written straight from the known cameras (COLMAP text format).
+alignment: the sparse model is written straight from the known cameras, the way ``photo.align``
+writes a run (``sparse/`` in the grid frame with ``frame.json`` and ``photos.json``).
 
 The scene (fictional desert site, EPSG:32639, project origin at its centre):
 
@@ -31,7 +32,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from aio_pipelines.photo.scene import Camera, SparseModel, View, write_text_model
+from aio_pipelines.photo.scene import Camera, SparseModel, View
 
 EPSG = 32639
 ORIGIN = (412000.0, 3245000.0, 20.0)
@@ -248,13 +249,49 @@ def sparse_points(scene: Scene, n: int = 2500, seed: int = 5) -> SparseModel:
     return SparseModel(scene.views, p, c, tracks)
 
 
+def aligned_model(model: SparseModel, origin: np.ndarray):
+    """The scene's model as ``photo.align`` keeps it (``photo.model.SparseModel``), shifted into
+    the grid frame (minus ``origin``), each track an observation at the point's projection."""
+    from aio_pipelines.photo.model import Camera as MCamera
+    from aio_pipelines.photo.model import Image as MImage
+    from aio_pipelines.photo.model import SparseModel as MModel
+
+    out = MModel()
+    cams: dict = {}
+    for v in model.views:
+        if v.camera not in cams:
+            cid = len(cams) + 1
+            cams[v.camera] = cid
+            out.cameras[cid] = MCamera(
+                cid, v.camera.model, v.camera.width, v.camera.height, list(v.camera.params)
+            )
+    obs: dict[int, list[tuple[float, float, int]]] = {v.id: [] for v in model.views}
+    by_id = {v.id: v for v in model.views}
+    for i, track in enumerate(model.tracks):
+        for vid in track:
+            x, y, _ = by_id[vid].project(model.points[i][None])
+            obs[vid].append((float(x[0]), float(y[0]), i + 1))
+    for v in model.views:
+        o = np.array(obs[v.id], dtype=np.float64).reshape(-1, 3)
+        out.images[v.id] = MImage(
+            v.id, v.name, cams[v.camera], v.r, v.t + v.r @ origin, o[:, :2], o[:, 2].astype(np.int64)
+        )
+    out.set_points(np.arange(1, len(model.points) + 1), model.points - origin, model.colours, None)
+    return out
+
+
 def write_project(
     root: Path,
     scene: Scene,
     run: str = "20261007-0915",
-    sparse_offset: tuple[float, float, float] | None = None,
+    frame_origin: tuple[float, float, float] | None = None,
 ) -> Path:
-    """A project folder with photos, a manifest and an aligned run (``run.json`` and ``sparse/``)."""
+    """A project folder with photos, a manifest and an aligned run as ``photo.align`` writes it:
+    ``run.json`` and ``sparse/`` in the grid frame (project CRS minus ``frame_origin``, the
+    manifest origin by default) with ``frame.json`` and ``photos.json``."""
+    from aio_pipelines.photo import crs as C
+    from aio_pipelines.photo.align import LIST_SCHEMA, write_sparse
+
     photos = root / "photos-in"
     photos.mkdir(parents=True, exist_ok=True)
     for v, img in zip(scene.views, scene.images, strict=True):
@@ -274,11 +311,18 @@ def write_project(
     (root / "manifest.json").write_text(json.dumps(manifest, indent=2), "utf-8")
     rdir = root / "photogrammetry" / run
     model = sparse_points(scene)
-    if sparse_offset is not None:
-        off = np.array(sparse_offset)
-        views = [View(v.id, v.name, v.camera, v.r, v.t + v.r @ off) for v in model.views]
-        model = SparseModel(views, model.points - off, model.colours, model.tracks)
-    write_text_model(rdir / "sparse", model)
+    origin = np.array(frame_origin if frame_origin is not None else ORIGIN, dtype=np.float64)
+    grid = C.GridFrame(C.crs_of(EPSG), tuple(float(v) for v in origin))
+    lon, lat, _ = grid.to_geodetic([[0.0, 0.0, 0.0]])
+    enu = C.EnuFrame(float(lon[0]), float(lat[0]), float(origin[2]))
+    heights = {"source": "orthometric", "geoid": "none", "note": "Synthetic."}
+    write_sparse(rdir / "sparse", aligned_model(model, origin), grid, enu, heights)
+    listing = {
+        v.name: {"name": v.name, "width": v.camera.width, "height": v.camera.height} for v in model.views
+    }
+    (rdir / "sparse" / "photos.json").write_text(
+        json.dumps({"schema": LIST_SCHEMA, "imageRoot": str(photos), "photos": listing}), "utf-8"
+    )
     doc = {
         "schema": "aio.photo-run/1",
         "id": run,
@@ -308,8 +352,6 @@ def write_project(
         "outputs": {"layers": [], "tilesets": [], "files": []},
         "versions": {"pack": "0.4.0"},
     }
-    if sparse_offset is not None:
-        doc["sparseOffset"] = list(sparse_offset)
     (rdir / "run.json").write_text(json.dumps(doc, indent=1), "utf-8")
     return root
 
