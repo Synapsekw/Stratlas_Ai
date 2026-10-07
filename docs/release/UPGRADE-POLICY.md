@@ -40,6 +40,7 @@ An audit of every reader (7 Oct 2026) found that only the manifest, the package 
 | `report/narrative.json`                    | `main/narrative.ts`, `NarrativeEditor.tsx`         | refused with the update message                             | No (fixed in M9)   |
 | `detections/*.json`                        | `main/detections.ts`, `main/inference/electron.ts` | refused with the update message                             | No (fixed in M9)   |
 | `updates/journal.json` (userData)          | `main/update/rollback.ts`                          | refused with the update message                             | No (fixed in M9)   |
+| `launch.json` (userData)                   | `main/launchSettings.ts`                           | shown (defaults); a change gets the update message          | No                 |
 | `library.json` (userData, `aio.library/1`) | `main/library.ts`                                  | refused with the update message; a file without an id is /1 | No (fixed in M9)   |
 | `issues.json`                              | `main/project.ts`                                  | project does not open; message says "invalid"               | No                 |
 | `volumes.json`, `edits/boundaries.json`    | `main/boundaries.ts`                               | error                                                       | No in practice     |

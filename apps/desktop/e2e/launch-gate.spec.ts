@@ -202,15 +202,19 @@ test.describe('with QUADRION_SHOW_GATE=1', () => {
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-checked', 'false');
     await expect
-      .poll(() => win.evaluate(() => window.aio.invoke('settings:get', {})))
-      .toMatchObject({ launchScreen: false });
+      .poll(() => win.evaluate(() => window.aio.invoke('launch:get', {})))
+      .toMatchObject({ ok: true, settings: { show: false } });
+    // its own file: settings.json keeps exactly the keys a 0.9 build reads
+    expect(await win.evaluate(() => window.aio.invoke('settings:get', {}))).not.toHaveProperty(
+      'launchScreen',
+    );
 
     await reload(win);
     await expect(projectsHeading(win)).toBeVisible();
     await expect(gate(win)).toHaveCount(0);
 
     // switched back on outside this window: this start already went to the app, the next shows it
-    await win.evaluate(() => window.aio.invoke('settings:set', { launchScreen: true }));
+    await win.evaluate(() => window.aio.invoke('launch:set', { show: true }));
     await reload(win);
     await expect(projectsHeading(win)).toBeVisible();
     await expect(gate(win)).toHaveCount(0);
@@ -220,7 +224,7 @@ test.describe('with QUADRION_SHOW_GATE=1', () => {
     await reload(win);
     await expect(gate(win)).toBeVisible();
     // switched off outside this window: gone as soon as main answers
-    await win.evaluate(() => window.aio.invoke('settings:set', { launchScreen: false }));
+    await win.evaluate(() => window.aio.invoke('launch:set', { show: false }));
     await reload(win);
     await expect(gate(win)).toHaveCount(0, { timeout: 2000 });
     await expect(projectsHeading(win)).toBeVisible();

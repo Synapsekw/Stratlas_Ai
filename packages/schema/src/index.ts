@@ -26,3 +26,4 @@ export * from './blobs';
 export * from './sync';
 export * from './versions';
 export * from './entitlements';
+export * from './launch';

@@ -75,6 +75,11 @@ import {
   registerIdentityIpc,
 } from './identity';
 import {
+  createLaunchSettingsStore,
+  launchSettingsPath,
+  registerLaunchSettingsIpc,
+} from './launchSettings';
+import {
   collabIdentity,
   collabMembers,
   collabOps,
@@ -1135,6 +1140,12 @@ function registerIpc(): void {
       return key;
     },
   });
+
+  // The launch screen preference: userData launch.json, not a settings.json field (launchSettings.ts).
+  registerLaunchSettingsIpc(
+    handle,
+    createLaunchSettingsStore(launchSettingsPath(app.getPath('userData'))),
+  );
 
   // M9: one module per stream (T1 journal, T2 identity, T3 collab, T5 sync, T6 blobs, T7 server).
   registerJournalIpc({ handle, journal, exportAudit });

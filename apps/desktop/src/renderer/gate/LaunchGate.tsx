@@ -167,9 +167,9 @@ function Gate({ onGone }: { onGone: () => void }) {
   // Main has the record of the switch; the local hint only spares the next start a dark frame.
   useEffect(() => {
     let live = true;
-    void bridge.call('settings:get', {}).then((r) => {
-      if (!live || !r.ok) return;
-      const on = gateWanted(r.value);
+    void bridge.call('launch:get', {}).then((r) => {
+      if (!live || !r.ok || !r.value.ok) return;
+      const on = gateWanted(r.value.settings);
       writeLaunchHint(localStore(), on);
       if (!on) gone();
     });
@@ -489,10 +489,10 @@ export function LaunchGate() {
   }, []);
   useEffect(() => {
     if (start.shown || start.mode === 'skip') return;
-    // Left out by the local copy of the switch: keep that copy true to the settings file (switched
-    // back on outside this window), so the next start shows it again.
-    void bridge.call('settings:get', {}).then((r) => {
-      if (r.ok) writeLaunchHint(localStore(), gateWanted(r.value));
+    // Left out by the local copy of the switch: keep that copy true to launch.json (switched back
+    // on outside this window), so the next start shows it again.
+    void bridge.call('launch:get', {}).then((r) => {
+      if (r.ok && r.value.ok) writeLaunchHint(localStore(), gateWanted(r.value.settings));
     });
   }, [start]);
   return up ? <Gate onGone={done} /> : null;

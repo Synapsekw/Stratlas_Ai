@@ -1,4 +1,10 @@
-import type { Identity, LaunchGateMode, Settings } from '@aio/schema';
+import {
+  launchScreenShown,
+  type Identity,
+  type LaunchGateMode,
+  type LaunchSettings,
+  type Settings,
+} from '@aio/schema';
 
 /**
  * The launch screen's decisions, kept apart from the component so they are tested on their own:
@@ -6,9 +12,10 @@ import type { Identity, LaunchGateMode, Settings } from '@aio/schema';
  */
 
 /**
- * A copy of `Settings.launchScreen` in this profile's local storage, read before the first frame:
- * with the screen switched off, the next start shows nothing at all instead of a dark frame until
- * main answers `settings:get`. The settings file stays the record; this only mirrors it.
+ * A copy of the launch preference (userData `launch.json`, read with `launch:get`) in this
+ * profile's local storage, read before the first frame: with the screen switched off, the next
+ * start shows nothing at all instead of a dark frame until main answers. The file stays the
+ * record; this only mirrors it.
  */
 export const LAUNCH_HINT_KEY = 'quadrion.launchScreen';
 
@@ -33,7 +40,7 @@ export function writeLaunchHint(storage: Pick<Storage, 'setItem'> | null, on: bo
   try {
     storage?.setItem(LAUNCH_HINT_KEY, on ? '1' : '0');
   } catch {
-    // private storage off: the next start reads the settings instead
+    // private storage off: the next start asks main instead
   }
 }
 
@@ -42,9 +49,9 @@ export function gateAtStart(mode: LaunchGateMode, hint: string | null): boolean 
   return mode !== 'skip' && hint !== '0';
 }
 
-/** Keep it once main has answered: only `launchScreen: false` turns it off (absent: shown). */
-export function gateWanted(settings: Pick<Settings, 'launchScreen'>): boolean {
-  return settings.launchScreen !== false;
+/** Keep it once main has answered: only `show: false` turns it off (no file, or absent: shown). */
+export function gateWanted(settings: Pick<LaunchSettings, 'show'>): boolean {
+  return launchScreenShown(settings);
 }
 
 /**

@@ -41,6 +41,7 @@ import {
 import { Sha256Hex } from './common';
 import { ExchangeKind, ExchangePreview, Heads, TeamProjectId } from './exchange';
 import { ActorId, DeviceId, Identity, Initials, Member, PersonName, Role } from './identity';
+import { LaunchSettings } from './launch';
 import {
   AuditEntry,
   AuditExportFormat,
@@ -284,11 +285,6 @@ export const Settings = z.object({
   inference: InferenceSettings.optional(),
   /** Sync preferences (M9). Never keys, tokens or invite codes: those live in the vault. */
   team: TeamSettings.optional(),
-  /**
-   * Show the launch screen (the welcome with Enter) when the app starts. Absent: shown, so a
-   * settings file written before the launch screen existed keeps it.
-   */
-  launchScreen: z.boolean().optional(),
 });
 
 /** West, south, east, north in WGS84 degrees. */
@@ -1448,6 +1444,24 @@ export const ipc = {
         contextTokens: z.number().int().positive().optional(),
         latencyMs: z.number().nonnegative(),
       }),
+      Failure,
+    ]),
+  },
+
+  // ---------------------------------------------------------------- launch screen
+  /** The launch screen preference, userData `launch.json` (missing file: the defaults, shown). */
+  'launch:get': {
+    request: Empty,
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), settings: LaunchSettings }),
+      Failure,
+    ]),
+  },
+  /** Settings, Appearance, Show launch screen. Answers the file as written. */
+  'launch:set': {
+    request: z.object({ show: z.boolean() }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), settings: LaunchSettings }),
       Failure,
     ]),
   },
