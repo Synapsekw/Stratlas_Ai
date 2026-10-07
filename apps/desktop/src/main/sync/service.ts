@@ -304,11 +304,28 @@ export function createSyncService(d: SyncServiceDeps) {
       const server = await d.serverTransport(cfg.serverId, team.teamProjectId);
       await ownRecord(ctx);
       const devices = await store.devices(ctx.root);
+      // a project this device shared is new to the server (404) until a push carries its
+      // `project.share`: nothing to pull yet, and the first push sends everything
+      const sharedHere = (await store.ops(ctx.root)).some(
+        (o) =>
+          o.kind === 'project.share' &&
+          o.dev === ctx.device &&
+          (o.payload as { teamProjectId?: unknown } | undefined)?.teamProjectId ===
+            team.teamProjectId,
+      );
+      const newHere = (e: unknown) =>
+        sharedHere && (e as { code?: unknown } | null)?.code === 'not-found';
       const pulled: Op[] = [];
       let cursor: string | null = null;
       const since = await store.heads(ctx.root);
       for (let page = 0; page < 10_000; page++) {
-        const r: PullPage = await server.pullOps(since, cursor);
+        let r: PullPage;
+        try {
+          r = await server.pullOps(since, cursor);
+        } catch (e) {
+          if (page === 0 && newHere(e)) break;
+          throw e;
+        }
         pulled.push(...r.ops);
         cursor = r.cursor;
         if (!r.more || !cursor) break;
@@ -317,7 +334,10 @@ export function createSyncService(d: SyncServiceDeps) {
       progress('merge', 0, good.length);
       const { plan, conflicts } = await ingest(ctx, good);
       progress('push');
-      const remote = await server.heads();
+      const remote = await server.heads().catch((e: unknown) => {
+        if (newHere(e)) return {};
+        throw e;
+      });
       const local = await store.ops(ctx.root);
       const pushed = await server.pushOps(opsSince(local, remote));
       // people the server granted join the team when an owner syncs
