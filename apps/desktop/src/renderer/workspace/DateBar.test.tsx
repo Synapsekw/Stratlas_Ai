@@ -52,6 +52,14 @@ describe('DateBar', () => {
     expect(timeline.getState().focus).toBe('sep');
     expect(q('calendar')).toBeNull();
   });
+  it('opens a labelled dialog, as the opener announces', () => {
+    render();
+    expect(q('date-bar-open')?.getAttribute('aria-haspopup')).toBe('dialog');
+    act(() => q('date-bar-open')?.click());
+    const dialog = host.querySelector('.dbar-pop [role="dialog"]');
+    expect(dialog).toBe(q('calendar'));
+    expect(dialog?.getAttribute('aria-label')).toBeTruthy();
+  });
   it('keeps the calendar day focused, and Escape closes it and returns focus', async () => {
     render();
     const opener = q('date-bar-open');
