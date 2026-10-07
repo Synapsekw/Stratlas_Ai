@@ -549,12 +549,18 @@ export function createJournalService(deps: JournalServiceDeps) {
     return serial(st, async () => {
       // something else changed the file since we last saw it: record that first
       const outside = await reconcile(st, [rel], { external: { found: 'open' } });
-      emit(root, outside);
+      // compare-before-write (shared folders): said only after a saved write, since a renderer that
+      // reloads on it mid-write would make main take its stale save as current
+      const saved = async () => {
+        const r = await write();
+        if (r.ok) emit(root, outside);
+        return r;
+      };
       const beforeText = await snapText(st, rel);
       const before = st.meta.files[rel] === undefined ? null : parse(beforeText);
       const drafts = diffRecordFile(rel, before, after, commands);
       if (drafts.length === 0) {
-        const r = await write();
+        const r = await saved();
         if (r.ok) await settle(st, rel);
         return r;
       }
@@ -570,7 +576,7 @@ export function createJournalService(deps: JournalServiceDeps) {
       await deps.afterAppend?.(rel);
       let r: R;
       try {
-        r = await write();
+        r = await saved();
       } catch (e) {
         r = { ok: false, error: String(e) } as R;
       }
