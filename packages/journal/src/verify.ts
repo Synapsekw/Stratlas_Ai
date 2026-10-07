@@ -335,8 +335,23 @@ export function verifyLoaded(j: LoadedJournal, opts: VerifyOptions = {}): Verify
       });
       continue;
     }
-    const heads = cp.raw.heads as Record<string, ChainHead>;
-    for (const [chain, h] of Object.entries(heads)) {
+    const heads = cp.raw.heads as Record<string, unknown>;
+    const wellFormed = Object.values(heads).every(
+      (h) =>
+        h !== null &&
+        typeof h === 'object' &&
+        typeof (h as ChainHead).id === 'string' &&
+        Number.isInteger((h as ChainHead).seq),
+    );
+    if (!wellFormed) {
+      add({
+        code: 'checkpoint-mismatch',
+        file: cp.file,
+        message: 'This checkpoint lists a chain head that is not valid.',
+      });
+      continue;
+    }
+    for (const [chain, h] of Object.entries(heads as Record<string, ChainHead>)) {
       const ops = byChain.get(chain);
       const there = ops?.find((o) => o.seq === h.seq);
       if (there && there.id !== h.id) {

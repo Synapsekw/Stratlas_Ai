@@ -1,4 +1,16 @@
 export { canonicalJson } from './canonical';
+export { createChainWriter, type AppendedOp, type ChainTail, type ChainWriter } from './chain';
+export {
+  diffFields,
+  diffIssues,
+  diffRecordFile,
+  externalOp,
+  isJournaledFile,
+  JOURNALED_DIRS,
+  sightingHash,
+  type DraftOp,
+  type FieldPatch,
+} from './diff';
 export {
   base32,
   contentHash,
