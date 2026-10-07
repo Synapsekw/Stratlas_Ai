@@ -141,14 +141,14 @@ export function predictions(
  * The photos to mark a point in: those it is predicted in (sorted by the predicted distance to the
  * image centre, where lens distortion is least), then photos already marked without a prediction.
  */
-export function photosFor(
+export function photosFor<P extends MarkerPhoto>(
   p: GcpPoint,
   preds: readonly GcpPrediction[],
-  photos: readonly MarkerPhoto[],
-): { photo: MarkerPhoto; prediction: GcpPrediction | null }[] {
+  photos: readonly P[],
+): { photo: P; prediction: GcpPrediction | null }[] {
   const byId = new Map(photos.map((ph) => [ph.id, ph]));
   const seen = new Set<string>();
-  const out: { photo: MarkerPhoto; prediction: GcpPrediction | null; d: number }[] = [];
+  const out: { photo: P; prediction: GcpPrediction | null; d: number }[] = [];
   for (const pr of preds) {
     const ph = byId.get(pr.photo);
     if (!ph || seen.has(ph.id)) continue;
