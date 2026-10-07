@@ -2,10 +2,12 @@
  * 3D Tiles in the site view (M10 G7): a synthetic mesh in the tiny project becomes a tileset with
  * the `tiles.mesh` pipeline (development pipeline Python), and the site view streams it through
  * 3DTilesRendererJS: tiles load, the tileset is picked by the stage's raycaster, and the cutaway's
- * section planes cut it. Zero network, as every test (the fixture asserts it).
+ * section planes cut it. The same tiles, copied out as another program's export, come back in
+ * through **Import 3D Tiles** (palette): checked, copied into `tiles/<id>/`, placed by their own
+ * ECEF root and streamed. Zero network, as every test (the fixture asserts it).
  */
-import type { Page } from '@playwright/test';
-import { writeFile } from 'node:fs/promises';
+import type { ElectronApplication, Page } from '@playwright/test';
+import { cp, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, hasPipelinePython, PIPELINE_ENV, test } from './fixtures';
 
@@ -95,15 +97,23 @@ interface Probe {
   };
 }
 
-/** Loaded tiles of the tileset group (0 while none). */
-const loadedTiles = (win: Page) =>
+/** Loaded tiles of a tileset group (0 while none). */
+const loadedTiles = (win: Page, id = 'site-tiles') =>
   win.evaluate(
-    () =>
-      (window as unknown as Probe).__stratlas.stage()?.scene.getObjectByName('tileset:site-tiles')
-        ?.children.length ?? 0,
+    (name) =>
+      (window as unknown as Probe).__stratlas.stage()?.scene.getObjectByName(name)?.children
+        .length ?? 0,
+    `tileset:${id}`,
   );
 
-test('a mesh becomes 3D Tiles that stream, pick and cut in the site view', async ({
+async function answerOpenDialog(app: ElectronApplication, path: string): Promise<void> {
+  await app.evaluate(({ dialog }, p) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [p] });
+  }, path);
+}
+
+test('a mesh becomes 3D Tiles that stream, pick and cut in the site view, and import back', async ({
+  app,
   win,
   dataRoot,
 }) => {
@@ -173,4 +183,42 @@ test('a mesh becomes 3D Tiles that stream, pick and cut in the site view', async
   });
   expect(cut.shared).toBeGreaterThan(0);
   expect(cut.planes).toBeGreaterThan(0);
+
+  // Import 3D Tiles: the tiles copied out as another program's export come back in
+  const exported = join(dataRoot.base, 'Bentley export');
+  await cp(join(dataRoot.projectDir, 'tiles', 'site-tiles'), exported, { recursive: true });
+  await answerOpenDialog(app, join(exported, 'tileset.json'));
+  await win.keyboard.press('Control+K');
+  await expect(win.getByRole('dialog', { name: 'Command search' })).toBeVisible();
+  await win.keyboard.type('Import 3D Tiles');
+  await win.keyboard.press('Enter');
+  const card = win.getByTestId('tileset-import');
+  await expect(card.getByRole('textbox', { name: 'Tileset name' })).toHaveValue('Bentley export');
+  await card.getByRole('textbox', { name: 'Credit line' }).fill('E2E export');
+  await card.getByRole('button', { name: 'Import' }).click();
+  await expect(card).toContainText('Imported Bentley export');
+  await expect(card.getByRole('status')).toContainText('placed by its own georeference');
+  expect((await readdir(join(dataRoot.projectDir, 'tiles'))).sort()).toEqual([
+    'Bentley-export',
+    'site-tiles',
+  ]);
+  const after = (await win.evaluate(async () => {
+    const w = window as unknown as Probe & {
+      __stratlas: { workspace: { getState(): { project: { id: string } | null } } };
+    };
+    const id = w.__stratlas.workspace.getState().project?.id;
+    return w.aio.invoke('tilesets:list', { projectId: id });
+  })) as { ok: boolean; file: { entries: Record<string, unknown>[] } };
+  expect(after.file.entries[1]).toEqual({
+    id: 'Bentley-export',
+    name: 'Bentley export',
+    kind: 'imported',
+    src: 'tiles/Bentley-export/tileset.json',
+    visible: true,
+    attribution: 'E2E export',
+  });
+  // placed by its own ECEF root, it streams in the site view beside the original
+  await expect
+    .poll(() => loadedTiles(win, 'Bentley-export'), { timeout: 60_000 })
+    .toBeGreaterThan(0);
 });

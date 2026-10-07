@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { PhotoProcessLayer } from '../photogrammetry/PhotoProcessLayer';
 import { useShell } from '../shell';
 import { heightsLine, offsetFromTakeoff, promptChoice, type HeightsPrompt } from './heights';
+import { TilesetImportCard } from './ImportTileset';
 import { builder, useBuilder } from './state';
 import { ImportSurveyDate } from './SurveyDate';
 
@@ -83,6 +84,7 @@ export function ImportLayer() {
         </div>
       )}
       <ImportStatus />
+      <TilesetImportCard />
       <PhotoProcessLayer />
     </>
   );

@@ -6,6 +6,7 @@ import { useWorkspace, workspace } from '@aio/workspace';
 import { useMemo } from 'react';
 import { actionAllowed, allowedActions } from '../exports/exportModel';
 import { runExportAction } from '../exports/exports';
+import { pickTileset } from '../builder/ImportTileset';
 import { builder } from '../builder/state';
 import { diagnostics } from '../diagnostics/state';
 import { help } from '../help/store';
@@ -296,6 +297,22 @@ export function Palette() {
           icon: 'import',
           keywords: ['photos', 'video', 'srt', 'glb', 'obj', 'geotiff', 'las', 'laz', 'add data'],
           run: () => void builder.getState().pickAndImport(),
+        });
+        list.push({
+          id: 'builder:import-tiles',
+          title: 'Import 3D Tiles from another program',
+          group: 'Actions',
+          icon: 'import',
+          keywords: [
+            '3d tiles',
+            'tileset',
+            'tileset.json',
+            'bentley',
+            'pix4d',
+            'dji terra',
+            'mesh',
+          ],
+          run: () => void pickTileset(),
         });
         const meshes = layers.filter((l) => l.kind === 'mesh');
         if (meshes[0]) {
