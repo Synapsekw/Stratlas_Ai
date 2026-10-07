@@ -87,9 +87,11 @@ export function createTimelineStore(
       }
       const pref = s.byProject[projectId] ?? {};
       const focus = initialFocus(index, pref.focus);
+      // Claim the project before touching visibility so the subscription below
+      // writes the new project's pref, never the previous project's.
+      set({ projectId, index, focus });
       const change = openChange(index, ws.getState().hidden, focus, pref);
       ws.getState().applyVisibility(change.show, change.hide);
-      set({ projectId, index, focus });
     },
 
     focusSurvey: (capture) => {
@@ -133,7 +135,11 @@ export function createTimelineStore(
 
   // Visibility changes from anywhere (sidebar, palette, tools) update the saved pref.
   ws.subscribe((s, p) => {
-    if (s.hidden !== p.hidden) persist(store, storage, s.hidden);
+    // Opening or closing a project resets `hidden` before the timeline re-attaches:
+    // only persist while the store still describes the open project.
+    if (s.hidden !== p.hidden && s.project?.id === store.getState().projectId) {
+      persist(store, storage, s.hidden);
+    }
   });
 
   return store;

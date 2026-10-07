@@ -168,4 +168,34 @@ describe('timeline store', () => {
     tl.getState().attach('q', captureIndex({ captures: [], layers: [] }));
     expect(tl.getState().focus).toBeNull();
   });
+
+  it('does not overwrite a project pref when another project opens or the project closes', () => {
+    const { ws, tl, storage, index } = setup();
+    tl.getState().attach('p', index);
+    tl.getState().focusSurvey('oct');
+    const saved = storage.getItem(TIMELINE_KEY);
+
+    ws.getState().openProject({ id: 'other', root: '/o', manifest: { ...manifest, id: 'other' } });
+    expect(storage.getItem(TIMELINE_KEY)).toBe(saved);
+    ws.getState().closeProject();
+    expect(storage.getItem(TIMELINE_KEY)).toBe(saved);
+    tl.getState().attach(null, null); // what useTimelineSync does after a close
+
+    ws.getState().openProject({ id: 'p', root: '/p', manifest });
+    tl.getState().attach('p', captureIndex(manifest));
+    expect(tl.getState().focus).toBe('oct');
+    expect(ws.getState().hidden['model-nov']).toBe(true);
+    expect(ws.getState().hidden['model-oct']).toBeUndefined();
+  });
+
+  it('writes the new project pref, not the old one, when attach switches projects', () => {
+    const { ws, tl, storage, index } = setup();
+    tl.getState().attach('p', index);
+    ws.getState().openProject({ id: 'q', root: '/q', manifest: { ...manifest, id: 'q' } });
+    tl.getState().attach('q', captureIndex({ ...manifest }));
+    const saved = JSON.parse(storage.getItem(TIMELINE_KEY) ?? '{}') as Record<string, DatePref>;
+    expect(saved.q?.focus).toBe('nov');
+    expect(saved.p?.focus).toBe('nov');
+    expect(saved.p?.extras ?? []).toEqual([]);
+  });
 });
