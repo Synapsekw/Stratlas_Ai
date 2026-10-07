@@ -45,6 +45,8 @@ import { TitleBar } from './shell/TitleBar';
 import { applyAppearance, OS_QUERIES } from './theme';
 import { HelpPanel } from './help/HelpPanel';
 import { help } from './help/store';
+import { isTypingTarget } from './workspace/DateBar';
+import { timeline } from './workspace/timeline';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
 import { BuilderLayer } from './builder/BuilderLayer';
 import { ModellerLayer } from './modeller/ModellerLayer';
@@ -77,6 +79,13 @@ function onKeyDown(e: KeyboardEvent) {
   } else if (id === 'global.sidebar') {
     e.preventDefault();
     void s.toggleSidebar();
+  } else if (
+    (id === 'global.prevSurvey' || id === 'global.nextSurvey') &&
+    s.screen === 'scene' &&
+    !isTypingTarget(e.target)
+  ) {
+    e.preventDefault();
+    timeline.getState().step(id === 'global.prevSurvey' ? -1 : 1);
   } else if (
     id === 'global.playPause' &&
     !e.defaultPrevented &&

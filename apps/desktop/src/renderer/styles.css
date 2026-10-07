@@ -900,12 +900,54 @@ button.chip-status:hover {
 /* ---------- workspace ---------- */
 .ws {
   grid-template-columns: minmax(0, 1fr) var(--rp-w);
-  grid-template-rows: minmax(0, 1fr) auto;
-  grid-template-areas: 'stage right' 'tl right';
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: 'dbar right' 'stage right' 'tl right';
   transition: grid-template-columns 240ms var(--ease-x);
 }
 .ws.right-off {
   grid-template-columns: minmax(0, 1fr) 0px;
+}
+.dbar {
+  grid-area: dbar;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-1);
+  min-height: 34px;
+}
+.dbar:empty {
+  display: none;
+}
+.dbar-date {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px;
+  border-radius: var(--r-4);
+  font-weight: 600;
+  cursor: pointer;
+}
+.dbar-date:hover,
+.dbar-date[aria-expanded='true'] {
+  background: var(--bg-3);
+}
+.dbar-date:focus-visible {
+  outline: 2px solid var(--acc);
+}
+.dbar-count {
+  color: var(--fg-3);
+  font-size: var(--t-12);
+  margin-inline-start: 4px;
+}
+.dbar-pop {
+  position: absolute;
+  top: calc(100% + 4px);
+  inset-inline-start: 8px;
+  z-index: 40;
 }
 .stage {
   grid-area: stage;

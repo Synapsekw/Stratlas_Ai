@@ -68,6 +68,8 @@ The same list is in **Settings**, **Keyboard**. On a Mac, Ctrl is ⌘ (Command) 
 | Ctrl B     | Collapse or expand the sidebar           |
 | Ctrl Alt B | Collapse or expand the right panel       |
 | Space      | Play or pause the video and the timeline |
+| Alt ←      | Go to the previous survey date           |
+| Alt →      | Go to the next survey date               |
 | F1         | Open or close the user guide             |
 
 ### Scene: 3D, map and split

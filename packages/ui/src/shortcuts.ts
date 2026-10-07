@@ -89,6 +89,13 @@ export const SHORTCUTS = [
     label: 'keys.global.rightPanel',
   },
   { id: 'global.playPause', scope: 'global', keys: ['Space'], label: 'keys.global.playPause' },
+  { id: 'global.prevSurvey', scope: 'global', keys: ['Alt+Left'], label: 'keys.global.prevSurvey' },
+  {
+    id: 'global.nextSurvey',
+    scope: 'global',
+    keys: ['Alt+Right'],
+    label: 'keys.global.nextSurvey',
+  },
   { id: 'global.help', scope: 'global', keys: ['F1'], label: 'keys.global.help' },
 
   // the 3D, map and split stage

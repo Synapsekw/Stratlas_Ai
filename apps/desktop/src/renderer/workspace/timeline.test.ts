@@ -1,51 +1,10 @@
-import type { Issue, Layer, ProjectManifest } from '@aio/schema';
+import type { Issue, ProjectManifest } from '@aio/schema';
 import { captureIndex, createWorkspace, type DatePref } from '@aio/workspace';
 import { describe, expect, it } from 'vitest';
+import { threeDates } from './__fixtures__/threeDates';
 import { TIMELINE_KEY, createTimelineStore } from './timeline';
 
-const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
-const mesh = (id: string, capture?: string): Layer => ({
-  kind: 'mesh',
-  id,
-  name: id,
-  visible: true,
-  capture,
-  src: { path: `models/${id}.glb` },
-  transform: I,
-});
-const video = (id: string, capture: string): Layer =>
-  ({
-    kind: 'video',
-    id,
-    name: id,
-    visible: true,
-    capture,
-    src: { path: `video/${id}.mp4` },
-    flight: { startUtcMs: 0 },
-    offsetMs: 0,
-  }) as unknown as Layer;
-
-const manifest = {
-  schema: 'aio.project/1',
-  id: 'p',
-  name: 'P',
-  crs: { epsg: 32640 },
-  origin: [0, 0, 0],
-  captures: [
-    { id: 'sep', label: 'Sep', date: '2024-09-04' },
-    { id: 'oct', label: 'Oct', date: '2024-10-02' },
-    { id: 'nov', label: 'Nov', date: '2024-11-06' },
-  ],
-  layers: [
-    mesh('model-sep', 'sep'),
-    mesh('model-oct', 'oct'),
-    mesh('model-nov', 'nov'),
-    video('clip-sep', 'sep'),
-    video('clip-oct', 'oct'),
-    video('clip-nov', 'nov'),
-    mesh('site'),
-  ],
-} as unknown as ProjectManifest;
+const manifest = threeDates;
 
 class MemoryStorage {
   data = new Map<string, string>();
