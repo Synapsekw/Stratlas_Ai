@@ -4,8 +4,29 @@
     {
       "name": "design-preview",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8765", "--directory", "docs/design"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8765",
+        "--directory",
+        "docs/design"
+      ],
       "port": 8765
+    },
+    {
+      "name": "brand-preview",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8767", "--directory", "docs/brand"],
+      "port": 8767
+    },
+    {
+      "name": "review-board",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "tools/review-board/server.mjs"
+      ],
+      "port": 4178,
+      "url": "http://127.0.0.1:4178"
     }
   ]
 }

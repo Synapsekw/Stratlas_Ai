@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Naming Round 3</title>
+<link rel="icon" href="assets/almagest/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Arabic:wght@500&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme:dark;
+  --bg-0:oklch(0.145 0.008 250);--bg-1:oklch(0.175 0.009 250);--bg-2:oklch(0.205 0.010 250);--bg-3:oklch(0.240 0.011 250);
+  --ground:#0b0f14;--paper:#f4f6f8;
+  --line:oklch(0.275 0.011 250);--line-soft:oklch(0.225 0.010 250);--line-strong:oklch(0.360 0.012 250);
+  --fg-0:oklch(0.945 0.006 250);--fg-1:oklch(0.800 0.010 250);--fg-2:oklch(0.640 0.012 250);--fg-3:oklch(0.500 0.012 250);
+  --acc:oklch(0.790 0.115 172);--acc-ink:oklch(0.200 0.030 172);--acc-a12:oklch(0.790 0.115 172 / .12);
+  --s5:oklch(0.660 0.190 25);--s4:oklch(0.740 0.155 55);--s3:oklch(0.840 0.140 92);--ok:oklch(0.780 0.110 155);
+  --f-ui:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;--f-mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){
+  color-scheme:light;--bg-0:oklch(0.930 0.006 250);--bg-1:oklch(0.975 0.004 250);--bg-2:oklch(0.950 0.005 250);--bg-3:oklch(0.910 0.007 250);
+  --line:oklch(0.860 0.008 250);--line-soft:oklch(0.900 0.006 250);--line-strong:oklch(0.760 0.010 250);
+  --fg-0:oklch(0.200 0.010 250);--fg-1:oklch(0.330 0.012 250);--fg-2:oklch(0.460 0.012 250);--fg-3:oklch(0.560 0.012 250);
+  --acc:oklch(0.520 0.100 172);--acc-ink:#fff;--acc-a12:oklch(0.520 0.100 172 / .12);
+}}
+:root[data-theme="light"]{
+  color-scheme:light;--bg-0:oklch(0.930 0.006 250);--bg-1:oklch(0.975 0.004 250);--bg-2:oklch(0.950 0.005 250);--bg-3:oklch(0.910 0.007 250);
+  --line:oklch(0.860 0.008 250);--line-soft:oklch(0.900 0.006 250);--line-strong:oklch(0.760 0.010 250);
+  --fg-0:oklch(0.200 0.010 250);--fg-1:oklch(0.330 0.012 250);--fg-2:oklch(0.460 0.012 250);--fg-3:oklch(0.560 0.012 250);
+  --acc:oklch(0.520 0.100 172);--acc-ink:#fff;--acc-a12:oklch(0.520 0.100 172 / .12);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg-0);color:var(--fg-1);font:14px/1.55 var(--f-ui);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:var(--acc)}
+.wrap{max-width:1240px;margin:0 auto;padding:0 32px}
+@media (max-width:640px){.wrap{padding:0 16px}}
+header.top{border-bottom:1px solid var(--line);background:var(--bg-1)}
+header.top .wrap{display:flex;align-items:center;gap:16px;height:52px}
+.eyebrow{font:500 11px/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--fg-3)}
+h1{font-size:34px;line-height:1.15;font-weight:600;color:var(--fg-0);letter-spacing:-.015em;margin:14px 0 12px;text-wrap:balance}
+h2{font-size:22px;font-weight:600;color:var(--fg-0);margin:0 0 6px;letter-spacing:-.01em}
+h3{font-size:16px;font-weight:600;color:var(--fg-0);margin:0 0 8px}
+h4{font:500 11px/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--fg-3);margin:22px 0 10px}
+p{margin:0 0 10px;max-width:78ch}
+section{padding:44px 0;border-bottom:1px solid var(--line-soft)}
+.lede{font-size:16px;color:var(--fg-1);max-width:72ch}
+.note{font-size:12px;color:var(--fg-2)}
+.mono{font-family:var(--f-mono)}
+.chip{display:inline-flex;align-items:center;gap:6px;font:500 11px/1 var(--f-mono);letter-spacing:.04em;padding:4px 7px;border:1px solid var(--line);border-radius:2px;color:var(--fg-1);white-space:nowrap}
+.chip.ok{border-color:color-mix(in oklab,var(--ok) 50%,transparent);color:var(--ok)}
+.chip.warn{border-color:color-mix(in oklab,var(--s3) 50%,transparent);color:var(--s3)}
+.chip.bad{border-color:color-mix(in oklab,var(--s5) 50%,transparent);color:var(--s5)}
+.chip.acc{border-color:var(--acc);color:var(--acc)}
+nav.toc{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px}
+nav.toc a{color:var(--fg-2);text-decoration:none}
+nav.toc a:hover{color:var(--fg-0)}
+.rec{display:grid;grid-template-columns:200px 1fr;gap:28px;padding:24px;border:1px solid var(--acc);background:var(--acc-a12);border-radius:6px;margin-top:22px}
+.rec img{width:200px;height:200px;display:block}
+@media (max-width:760px){.rec{grid-template-columns:1fr}.rec img{width:120px;height:120px}}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:20px}
+@media (max-width:900px){.cards{grid-template-columns:1fr}}
+.card{border:1px solid var(--line);background:var(--bg-1);border-radius:6px;padding:18px}
+.card .head{display:flex;gap:14px;align-items:center;margin-bottom:12px}
+.card .head img{width:64px;height:64px}
+.card .rank{font:500 11px/1 var(--f-mono);color:var(--fg-3)}
+.card .name{font-size:20px;font-weight:600;color:var(--fg-0)}
+.card .ar{font-family:"IBM Plex Sans Arabic","Segoe UI",sans-serif;color:var(--fg-2);font-size:15px}
+dl.kv{display:grid;grid-template-columns:110px 1fr;gap:6px 12px;margin:0;font-size:13px}
+dl.kv dt{color:var(--fg-3)}
+dl.kv dd{margin:0;color:var(--fg-1)}
+.fin{padding:52px 0;border-bottom:1px solid var(--line)}
+.fin-head{display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+.fin-head .lock{background:var(--ground);border:1px solid var(--line);border-radius:6px;padding:4px 10px}
+.fin-head .lock img{display:block;height:84px;max-width:100%}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media (max-width:900px){.grid2{grid-template-columns:1fr}}
+.marks{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+@media (max-width:700px){.marks{grid-template-columns:repeat(2,1fr)}}
+.marks figure{margin:0;padding:18px 12px 10px;display:flex;flex-direction:column;align-items:center;gap:8px}
+.marks figure img{width:100%;max-width:120px;aspect-ratio:1}
+.marks figcaption{font:400 11px/1.3 var(--f-mono);color:inherit;opacity:.7;text-align:center}
+.g-dark{background:var(--ground);color:#c9d0d8}.g-light{background:var(--paper);color:#4a525c}.g-white{background:#fff;color:#4a525c}.g-black{background:#000;color:#aab}
+.lockups{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+@media (max-width:700px){.lockups{grid-template-columns:1fr}}
+.lockups div{padding:14px;display:flex;align-items:center;justify-content:center;min-height:120px}
+.lockups img{max-width:100%;height:auto;max-height:110px}
+.iconset{display:flex;flex-wrap:wrap;align-items:flex-end;gap:18px;padding:18px;background:var(--ground);border:1px solid var(--line);border-radius:6px;color:#9aa3ad}
+.iconset figure{margin:0;display:flex;flex-direction:column;align-items:center;gap:6px;font:400 10px/1 var(--f-mono)}
+.iconset img{image-rendering:auto;display:block}
+.tests img{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:4px;background:var(--bg-2)}
+.shots{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+@media (max-width:800px){.shots{grid-template-columns:1fr}}
+.shots figure{margin:0}
+.shots img{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:4px}
+.shots figcaption{font-size:12px;color:var(--fg-2);margin-top:6px}
+.shots .tall{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.verdict{border-left:2px solid var(--acc);padding:4px 0 4px 16px;margin-top:22px}
+.verdict ul{margin:6px 0 0;padding-left:18px}
+.verdict li{margin:3px 0}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:6px;margin-top:14px}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line-soft);text-align:left;vertical-align:top}
+th{font:500 11px/1.2 var(--f-mono);letter-spacing:.04em;text-transform:uppercase;color:var(--fg-3);background:var(--bg-1);position:sticky;top:0;white-space:nowrap;cursor:pointer}
+td.n{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+td.name{color:var(--fg-0);font-weight:500;white-space:nowrap}
+tr.fin-row td{background:var(--acc-a12)}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.filters button{font:500 12px/1 var(--f-ui);padding:6px 10px;border:1px solid var(--line);border-radius:4px;background:var(--bg-1);color:var(--fg-1);cursor:pointer}
+.filters button[aria-pressed="true"]{border-color:var(--acc);color:var(--acc)}
+.bar{display:inline-block;height:6px;background:var(--acc);border-radius:1px;vertical-align:middle}
+.expect{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+@media (max-width:800px){.expect{grid-template-columns:1fr}}
+.expect div{border:1px solid var(--line);border-radius:6px;padding:12px 14px;background:var(--bg-1)}
+.expect b{color:var(--fg-0)}
+.compare img{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:6px}
+ol.src{columns:2;font-size:12px;color:var(--fg-2);padding-left:18px}
+@media (max-width:800px){ol.src{columns:1}}
+ol.src li{break-inside:avoid;margin:2px 0}
+footer{padding:28px 0 48px;font-size:12px;color:var(--fg-3)}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <img src="assets/almagest/favicon.svg" width="22" height="22" alt="">
+  <span class="eyebrow">Synapse Solutions · Brand · Round 3</span>
+  <span class="chip" style="margin-left:auto">5 Oct 2026</span>
+</div></header>
+
+<main>
+<section><div class="wrap">
+  <div class="eyebrow">Naming and identity, round 3</div>
+  <h1>A strong name in the Palantir and Lattice spirit</h1>
+  <p class="lede">The founder asked for a name with the weight of Palantir or Lattice, drawn from Greek myth and other strong single words, for the offline desktop command center now called Stratlas. 62 names were screened. Six made the shortlist and three went to full identity work: <b>Almagest</b>, <b>Ziggurat</b> and <b>Akkad</b>.</p>
+  <p class="note">This is a quick screen, not legal clearance. Collisions were checked with web searches on 5 Oct 2026. Domain status comes from live RDAP queries to the .com, .ai and .io registries. The public trademark registers (WIPO, USPTO, EUIPO and the mirrors) need JavaScript or refused automated access, so trademark evidence is from web results only. A trademark attorney must clear the pick in classes 9 and 42 in Kuwait, the UAE, KSA, the EU and the US before anything is bought or printed.</p>
+  <nav class="toc" style="margin-top:18px">
+    <a href="#rec">Recommendation</a><a href="#finalists">Finalists</a><a href="#almagest">Almagest</a><a href="#ziggurat">Ziggurat</a><a href="#akkad">Akkad</a><a href="#distinct">Distinctness</a><a href="#shortlist">Shortlist</a><a href="#longlist">Longlist</a><a href="#expected">Names you might expect</a><a href="#method">Method and sources</a>
+  </nav>
+
+  <div class="rec" id="rec">
+    <img src="assets/almagest/png/icon-512.png" alt="Almagest app icon: a quadrant with a sight line and an accent point">
+    <div>
+      <div class="eyebrow" style="color:var(--acc)">Recommendation</div>
+      <h2 style="margin-top:8px">Almagest, with the Quadrant mark</h2>
+      <p><b>Almagest</b> is the name Arab astronomers gave Ptolemy's great catalogue of the sky: <i>al-Majisṭī</i>, "the greatest". It is a Greek work carried by Arabic, so it fits a Kuwait company selling to GCC government and industry. It means what the product does: it brings every observation of a place into one ordered, authoritative record. It sounds large and serious, like Palantir. It has the cleanest collision screen of the three finalists.</p>
+      <p>The <b>Quadrant</b> mark is the graduated quadrant used to measure the height of stars, with a sight line and the sighted point. It also reads as a sensor sweep with one contact, which is the operating-picture idea. It is distinct from Palantir, Anduril, Esri, DJI and Pix4D.</p>
+      <p class="note"><b>Before committing:</b> get counsel to clear the name against Almagest Space Corporation (satellite data relay, US). Secure <span class="mono">getalmagest.com</span> or <span class="mono">almagestapp.com</span>, plus <span class="mono">.ae</span>, <span class="mono">.sa</span> and <span class="mono">.com.kw</span>, and test pronunciation with five Arabic and five English speakers. The bare <span class="mono">almagest.com</span>, <span class="mono">.ai</span> and <span class="mono">.io</span> are all registered. If the founder wants a shorter, harder name, Akkad is the alternative, but it has more store clutter and a thinner story.</p>
+    </div>
+  </div>
+</div></section>
+
+<section id="finalists"><div class="wrap">
+  <h2>Three finalists, ranked</h2>
+  <p>Each finalist has a primary and an alternate mark, monochrome, dark and light versions, a hand-built wordmark, an app icon set (16 to 1024 px) and a favicon. Each was also tested at small sizes and in seven product contexts.</p>
+  <div class="cards">
+    <div class="card">
+      <div class="head"><img src="assets/almagest/png/icon-128.png" alt=""><div><div class="rank">1 · RECOMMENDED</div><div class="name">Almagest</div><div class="ar" dir="rtl">المجسطي</div></div></div>
+      <p>Ptolemy's catalogue of the sky, named in Arabic: the one authoritative record of everything observed.</p>
+      <dl class="kv"><dt>Collision</dt><dd><span class="chip ok">LOW to MEDIUM</span> Almagest Space (satellite data relay); old open-source and CMS tools. No app-store or class 9 geospatial use found.</dd><dt>Domains</dt><dd>.com, .ai and .io taken. getalmagest.com, almagestapp.com, almagesthq.com and usealmagest.com are free.</dd><dt>Key risk</dt><dd>Three syllables; some will say "al-MAG-est". Sounds scholarly unless the brand stays hard-edged.</dd></dl>
+    </div>
+    <div class="card">
+      <div class="head"><img src="assets/ziggurat/png/icon-128.png" alt=""><div><div class="rank">2</div><div class="name">Ziggurat</div><div class="ar" dir="rtl">زقورة</div></div></div>
+      <p>The stepped temple-observatory of Mesopotamia: layers built tier on tier, with a watch on the sky at the top.</p>
+      <dl class="kv"><dt>Collision</dt><dd><span class="chip warn">MEDIUM</span> "Ziggurat" and "Ziggurat 2" games on the Microsoft Store and Xbox, an iOS game and a typeface. No software or geospatial use.</dd><dt>Domains</dt><dd>.com, .ai and .io taken. getziggurat.com, zigguratapp.com and ziggurathq.com are free.</dd><dt>Key risk</dt><dd>A common noun with a playful "zig". The games share the Store namespace.</dd></dl>
+    </div>
+    <div class="card">
+      <div class="head"><img src="assets/akkad/png/icon-128.png" alt=""><div><div class="rank">3</div><div class="name">Akkad</div><div class="ar" dir="rtl">أكّاد</div></div></div>
+      <p>The first empire, the cradle of written record. In Arabic, <i>akkada</i> means "confirmed".</p>
+      <dl class="kv"><dt>Collision</dt><dd><span class="chip warn">MEDIUM</span> Several small App Store apps called Akkad (education, inventory, pest control), Akkad Technology (hospital and learning systems) and Akkadian Labs. No geospatial or drone use.</dd><dt>Domains</dt><dd>.com, .ai, .io, getakkad and akkadhq are taken. akkadapp.com, useakkad.com and akkadsystems.com are free.</dd><dt>Key risk</dt><dd>Also a known Arab surname, and <i>akādu</i> reads as "I almost". Thin "seeing" story.</dd></dl>
+    </div>
+  </div>
+</div></section>
+
+<!-- ============ ALMAGEST ============ -->
+<section class="fin" id="almagest"><div class="wrap">
+  <div class="fin-head">
+    <div><div class="eyebrow">Finalist 1 · recommended</div><h2 style="font-size:28px;margin-top:8px">Almagest</h2></div>
+    <div class="lock" style="margin-left:auto"><img src="assets/almagest/svg/lockup-primary-dark-arabic.svg" alt="Almagest lockup"></div>
+  </div>
+  <div class="grid2" style="margin-top:20px">
+    <div>
+      <h4>Story</h4>
+      <p>Ptolemy compiled the <i>Mathēmatikē Syntaxis</i>, the catalogue of 1,022 stars and the model that predicted their motion, around 150 AD. Arab scholars translated it and called it <i>al-Majisṭī</i>, "the greatest". Europe took the Arabic name as Almagest. For this product it means one authoritative record, built from many observations, that tells you exactly where everything is.</p>
+      <p>Arabic and GCC: المجسطي is known to educated Arabic speakers, it starts with the Arabic article, and it has no hard sounds. No unfortunate reading was found.</p>
+    </div>
+    <div>
+      <h4>Checks</h4>
+      <dl class="kv">
+        <dt>Software</dt><dd>Almagest Space Corp. (US, satellite data relay with E-band links, founded 2022): adjacent to earth-observation data, not desktop software. Almagest open-source media database (Princeton, 2004); Almagest Technologies (HK, headless CMS, unfunded); old DVD and codec utilities.</dd>
+        <dt>Defence and geo</dt><dd>None found under the name.</dd>
+        <dt>Trademarks</dt><dd>No class 9 or 42 mark found in web results; registers not machine-readable. Clear Almagest Space first.</dd>
+        <dt>Stores</dt><dd>No "Almagest" app on the Microsoft Store or the Mac App Store found.</dd>
+        <dt>Domains</dt><dd><span class="mono">almagest.com / .ai / .io</span> registered. Free: <span class="mono">getalmagest.com, almagestapp.com, almagesthq.com, usealmagest.com, almagestsystems.com</span>.</dd>
+        <dt>Handles</dt><dd>github.com/almagest exists (an individual). Others not checked.</dd>
+      </dl>
+    </div>
+  </div>
+
+  <h4>Symbols: primary "Quadrant" and alternate "Bearing"</h4>
+  <div class="marks">
+    <figure class="g-dark"><img src="assets/almagest/svg/symbol-primary-dark.svg" alt=""><figcaption>Quadrant · dark</figcaption></figure>
+    <figure class="g-light"><img src="assets/almagest/svg/symbol-primary-light.svg" alt=""><figcaption>Quadrant · light</figcaption></figure>
+    <figure class="g-white"><img src="assets/almagest/svg/symbol-primary-mono-black.svg" alt=""><figcaption>Quadrant · mono</figcaption></figure>
+    <figure class="g-black"><img src="assets/almagest/svg/symbol-primary-mono-white.svg" alt=""><figcaption>Quadrant · mono reversed</figcaption></figure>
+    <figure class="g-dark"><img src="assets/almagest/svg/symbol-alt-dark.svg" alt=""><figcaption>Bearing · dark</figcaption></figure>
+    <figure class="g-light"><img src="assets/almagest/svg/symbol-alt-light.svg" alt=""><figcaption>Bearing · light</figcaption></figure>
+    <figure class="g-white"><img src="assets/almagest/svg/symbol-alt-mono-black.svg" alt=""><figcaption>Bearing · mono</figcaption></figure>
+    <figure class="g-black"><img src="assets/almagest/svg/symbol-alt-mono-white.svg" alt=""><figcaption>Bearing · mono reversed</figcaption></figure>
+  </div>
+  <p class="note" style="margin-top:8px">Bearing (two sight lines meeting at the sighted point) was the first primary. Next to Anduril's silhouette it read as the same A-form at 16 px, so it moved to alternate and Quadrant took its place.</p>
+
+  <h4>Lockups and wordmark</h4>
+  <div class="lockups">
+    <div class="g-dark"><img src="assets/almagest/svg/lockup-primary-dark.svg" alt=""></div>
+    <div class="g-light"><img src="assets/almagest/svg/lockup-primary-light.svg" alt=""></div>
+    <div class="g-white"><img src="assets/almagest/svg/lockup-primary-mono-black.svg" alt=""></div>
+    <div class="g-dark"><img src="assets/almagest/svg/lockup-alt-dark-arabic.svg" alt=""></div>
+  </div>
+
+  <h4>App icon set and favicon (real PNGs, shown at 1x)</h4>
+  <div class="iconset">
+    <figure><img src="assets/almagest/png/icon-16.png" width="16" height="16" alt="">16</figure>
+    <figure><img src="assets/almagest/png/icon-24.png" width="24" height="24" alt="">24</figure>
+    <figure><img src="assets/almagest/png/icon-32.png" width="32" height="32" alt="">32</figure>
+    <figure><img src="assets/almagest/png/icon-48.png" width="48" height="48" alt="">48</figure>
+    <figure><img src="assets/almagest/png/icon-64.png" width="64" height="64" alt="">64</figure>
+    <figure><img src="assets/almagest/png/icon-128.png" width="128" height="128" alt="">128</figure>
+    <figure><img src="assets/almagest/png/icon-256.png" width="256" height="256" alt="">256</figure>
+    <figure><img src="assets/almagest/png/icon-light-256.png" width="128" height="128" alt="">light tile</figure>
+    <figure><img src="assets/almagest/favicon-32.png" width="32" height="32" alt="">favicon</figure>
+  </div>
+  <p class="note" style="margin-top:8px">512 and 1024 px are in <span class="mono">assets/almagest/png/</span>. Sizes 16 to 32 px use a hinted cut: heavier strokes, no ticks, full-bleed tile. <span class="mono">favicon.ico</span> holds 16, 32 and 48 px.</p>
+
+  <h4>Visual checks</h4>
+  <div class="grid2 tests">
+    <figure style="margin:0"><img src="assets/almagest/tests/pixels-16-24-32.png" alt=""><figcaption class="note">Real 16, 24 and 32 px renders, enlarged 8x, on dark and light.</figcaption></figure>
+    <figure style="margin:0"><img src="assets/almagest/tests/silhouette.png" alt=""><figcaption class="note">Silhouette and squint (blur) test, primary then alternate.</figcaption></figure>
+  </div>
+  <figure style="margin:16px 0 0" class="tests"><img src="assets/almagest/tests/grounds.png" alt=""><figcaption class="note">Contrast on #0b0f14, the Mission panel colour, slate, mid grey (mono), paper and white.</figcaption></figure>
+
+  <h4>In context</h4>
+  <div class="shots">
+    <figure><img src="assets/almagest/mockups/taskbar.png" alt=""><figcaption>Windows taskbar and Start menu: the 24 px taskbar icon and the pinned entry</figcaption></figure>
+    <figure><img src="assets/almagest/mockups/store.png" alt=""><figcaption>Microsoft Store listing and its tile sizes</figcaption></figure>
+    <figure><img src="assets/almagest/mockups/dock.png" alt=""><figcaption>macOS dock and menu bar</figcaption></figure>
+    <figure><img src="assets/almagest/mockups/splash.png" alt=""><figcaption>Splash and first start</figcaption></figure>
+    <figure style="grid-column:1/-1"><img src="assets/almagest/mockups/titlebar.png" alt=""><figcaption>App title bar with Mission tokens: sidebar expanded (252 px, wordmark) and collapsed (52 px rail, symbol)</figcaption></figure>
+    <figure><img src="assets/almagest/mockups/hero.png" alt=""><figcaption>Website hero, dark</figcaption></figure>
+    <figure><img src="assets/almagest/mockups/report.png" alt=""><figcaption>Report cover (synthetic data)</figcaption></figure>
+  </div>
+
+  <div class="verdict">
+    <h3>Verdict: first. The best name; the mark is good, not yet great</h3>
+    <ul>
+      <li><b>Strengths:</b> the strongest story of the round; it is native to both Greek and Arabic; it has the cleanest screen; and the mark is distinct from every reference brand.</li>
+      <li><b>Weakness:</b> three syllables and the stress is not obvious ("AL-ma-jest" is right). Put it in the onboarding line and the deck.</li>
+      <li><b>Weakness:</b> it can sound academic. Keep the brand hard-edged (the chamfered wordmark, the mono telemetry type) so it reads as a system, not a library.</li>
+      <li><b>Weakness:</b> at 16 px the Quadrant reads as "sector with a dot". It is legible but not as instant as Ziggurat's tiers.</li>
+      <li><b>Risk:</b> Almagest Space works in space-data infrastructure. The classes probably differ, but counsel must check.</li>
+    </ul>
+  </div>
+</div></section>
+
+<!-- ============ ZIGGURAT ============ -->
+<section class="fin" id="ziggurat"><div class="wrap">
+  <div class="fin-head">
+    <div><div class="eyebrow">Finalist 2</div><h2 style="font-size:28px;margin-top:8px">Ziggurat</h2></div>
+    <div class="lock" style="margin-left:auto"><img src="assets/ziggurat/svg/lockup-primary-dark-arabic.svg" alt="Ziggurat lockup"></div>
+  </div>
+  <div class="grid2" style="margin-top:20px">
+    <div>
+      <h4>Story</h4>
+      <p>Mesopotamian ziggurats were built as terraces, each tier on the one below, and the priests watched and recorded the sky from the top. The name carries the layered idea the founder already chose in round 2 (the R5 layered mark), and it is regional heritage: زقورة is a familiar word in Iraq and across the Gulf.</p>
+      <p>Arabic and GCC: easy to say, with no unfortunate reading. Ancient-temple imagery is neutral in a heritage register; it is not a deity.</p>
+    </div>
+    <div>
+      <h4>Checks</h4>
+      <dl class="kv">
+        <dt>Software</dt><dd>Ziggurat (AI equities assistant, Berkeley): closed. Square's "Ziggurat" iOS app architecture (an engineering blog term). Hoefler&amp;Co "Ziggurat" typeface.</dd>
+        <dt>Defence and geo</dt><dd>None found.</dd>
+        <dt>Trademarks</dt><dd>Web results show none in classes 9 and 42 for software. The games (Milkstone Studios) probably hold class 9 for games.</dd>
+        <dt>Stores</dt><dd><b>Conflict:</b> "Ziggurat" and "Ziggurat 2" games on the Microsoft Store and Xbox; a ZiGGURAT game on the iOS App Store.</dd>
+        <dt>Domains</dt><dd><span class="mono">ziggurat.com / .ai / .io</span> registered. Free: <span class="mono">getziggurat.com, zigguratapp.com, ziggurathq.com</span>.</dd>
+        <dt>Handles</dt><dd>github.com/ziggurat exists. Others not checked.</dd>
+      </dl>
+    </div>
+  </div>
+  <h4>Symbols: primary "Tiers" and alternate "Stair Z"</h4>
+  <div class="marks">
+    <figure class="g-dark"><img src="assets/ziggurat/svg/symbol-primary-dark.svg" alt=""><figcaption>Tiers · dark</figcaption></figure>
+    <figure class="g-light"><img src="assets/ziggurat/svg/symbol-primary-light.svg" alt=""><figcaption>Tiers · light</figcaption></figure>
+    <figure class="g-white"><img src="assets/ziggurat/svg/symbol-primary-mono-black.svg" alt=""><figcaption>Tiers · mono</figcaption></figure>
+    <figure class="g-black"><img src="assets/ziggurat/svg/symbol-primary-mono-white.svg" alt=""><figcaption>Tiers · mono reversed</figcaption></figure>
+    <figure class="g-dark"><img src="assets/ziggurat/svg/symbol-alt-dark.svg" alt=""><figcaption>Stair Z · dark</figcaption></figure>
+    <figure class="g-light"><img src="assets/ziggurat/svg/symbol-alt-light.svg" alt=""><figcaption>Stair Z · light</figcaption></figure>
+    <figure class="g-white"><img src="assets/ziggurat/svg/symbol-alt-mono-black.svg" alt=""><figcaption>Stair Z · mono</figcaption></figure>
+    <figure class="g-black"><img src="assets/ziggurat/svg/symbol-alt-mono-white.svg" alt=""><figcaption>Stair Z · mono reversed</figcaption></figure>
+  </div>
+  <h4>Lockups and wordmark</h4>
+  <div class="lockups">
+    <div class="g-dark"><img src="assets/ziggurat/svg/lockup-primary-dark.svg" alt=""></div>
+    <div class="g-light"><img src="assets/ziggurat/svg/lockup-primary-light.svg" alt=""></div>
+    <div class="g-white"><img src="assets/ziggurat/svg/lockup-primary-mono-black.svg" alt=""></div>
+    <div class="g-dark"><img src="assets/ziggurat/svg/lockup-alt-dark-arabic.svg" alt=""></div>
+  </div>
+  <h4>App icon set and favicon (real PNGs, shown at 1x)</h4>
+  <div class="iconset">
+    <figure><img src="assets/ziggurat/png/icon-16.png" width="16" height="16" alt="">16</figure>
+    <figure><img src="assets/ziggurat/png/icon-24.png" width="24" height="24" alt="">24</figure>
+    <figure><img src="assets/ziggurat/png/icon-32.png" width="32" height="32" alt="">32</figure>
+    <figure><img src="assets/ziggurat/png/icon-48.png" width="48" height="48" alt="">48</figure>
+    <figure><img src="assets/ziggurat/png/icon-64.png" width="64" height="64" alt="">64</figure>
+    <figure><img src="assets/ziggurat/png/icon-128.png" width="128" height="128" alt="">128</figure>
+    <figure><img src="assets/ziggurat/png/icon-256.png" width="256" height="256" alt="">256</figure>
+    <figure><img src="assets/ziggurat/png/icon-light-256.png" width="128" height="128" alt="">light tile</figure>
+    <figure><img src="assets/ziggurat/favicon-32.png" width="32" height="32" alt="">favicon</figure>
+  </div>
+  <h4>Visual checks</h4>
+  <div class="grid2 tests">
+    <figure style="margin:0"><img src="assets/ziggurat/tests/pixels-16-24-32.png" alt=""><figcaption class="note">Real 16, 24 and 32 px renders, enlarged 8x.</figcaption></figure>
+    <figure style="margin:0"><img src="assets/ziggurat/tests/silhouette.png" alt=""><figcaption class="note">Silhouette and squint test.</figcaption></figure>
+  </div>
+  <figure style="margin:16px 0 0" class="tests"><img src="assets/ziggurat/tests/grounds.png" alt=""><figcaption class="note">Contrast across six grounds.</figcaption></figure>
+  <h4>In context</h4>
+  <div class="shots">
+    <figure><img src="assets/ziggurat/mockups/taskbar.png" alt=""><figcaption>Windows taskbar and Start</figcaption></figure>
+    <figure><img src="assets/ziggurat/mockups/store.png" alt=""><figcaption>Microsoft Store listing</figcaption></figure>
+    <figure><img src="assets/ziggurat/mockups/dock.png" alt=""><figcaption>macOS dock</figcaption></figure>
+    <figure><img src="assets/ziggurat/mockups/splash.png" alt=""><figcaption>Splash</figcaption></figure>
+    <figure style="grid-column:1/-1"><img src="assets/ziggurat/mockups/titlebar.png" alt=""><figcaption>Title bar, expanded and collapsed</figcaption></figure>
+    <figure><img src="assets/ziggurat/mockups/hero.png" alt=""><figcaption>Website hero</figcaption></figure>
+    <figure><img src="assets/ziggurat/mockups/report.png" alt=""><figcaption>Report cover</figcaption></figure>
+  </div>
+  <div class="verdict">
+    <h3>Verdict: second. The best mark; the name is weaker</h3>
+    <ul>
+      <li><b>Strengths:</b> it is the clearest icon at 16 px in this round. It continues the layered idea the founder already picked, and it is regional and easy in Arabic.</li>
+      <li><b>Weakness:</b> "Ziggurat" is a dictionary noun with a light, playful first syllable. It has less menace than Palantir or Anduril.</li>
+      <li><b>Weakness:</b> the Tiers mark can read as a podium, a stacked bar chart or a generic pyramid, and stepped pyramids are common in logos.</li>
+      <li><b>Risk:</b> the same-name games on the Microsoft Store and Xbox. Store search will mix them, and the publisher may hold class 9 rights.</li>
+    </ul>
+  </div>
+</div></section>
+
+<!-- ============ AKKAD ============ -->
+<section class="fin" id="akkad"><div class="wrap">
+  <div class="fin-head">
+    <div><div class="eyebrow">Finalist 3</div><h2 style="font-size:28px;margin-top:8px">Akkad</h2></div>
+    <div class="lock" style="margin-left:auto"><img src="assets/akkad/svg/lockup-primary-dark-arabic.svg" alt="Akkad lockup"></div>
+  </div>
+  <div class="grid2" style="margin-top:20px">
+    <div>
+      <h4>Story</h4>
+      <p>Akkad was the first empire, about 2300 BC, and its scribes made cuneiform the written record of a whole region. The name is two hard syllables, the closest in sound to Palantir and Anduril. In Arabic, أكّد (<i>akkada</i>) means "he confirmed" or "verified", which suits inspection findings that have to stand up.</p>
+      <p>Arabic and GCC: easy to say. It is also a known Arab surname, and أكاد without the shadda reads as "I almost", which is harmless but should be tested.</p>
+    </div>
+    <div>
+      <h4>Checks</h4>
+      <dl class="kv">
+        <dt>Software</dt><dd>Akkad Technology Co. (hospital and learning systems); Akkad Consultants; Akkadian Labs (collaboration software); AKKAD TECHNOLOGY LTD (UK, dissolved 2019).</dd>
+        <dt>Defence and geo</dt><dd>None found.</dd>
+        <dt>Trademarks</dt><dd>Only SALON AKKAD (retail) was seen in web results.</dd>
+        <dt>Stores</dt><dd><b>Clutter:</b> Akkad (education, iPad), Akkad Inventory Management and Akkad Pest Control on the App Store. None on the Microsoft Store found.</dd>
+        <dt>Domains</dt><dd><span class="mono">akkad.com / .ai / .io</span>, getakkad.com and akkadhq.com are registered. Free: <span class="mono">akkadapp.com, useakkad.com, akkadsystems.com</span>.</dd>
+        <dt>Handles</dt><dd>github.com/akkad exists. Others not checked.</dd>
+      </dl>
+    </div>
+  </div>
+  <h4>Symbols: primary "Stylus K" and alternate "Triangulate"</h4>
+  <div class="marks">
+    <figure class="g-dark"><img src="assets/akkad/svg/symbol-primary-dark.svg" alt=""><figcaption>Stylus K · dark</figcaption></figure>
+    <figure class="g-light"><img src="assets/akkad/svg/symbol-primary-light.svg" alt=""><figcaption>Stylus K · light</figcaption></figure>
+    <figure class="g-white"><img src="assets/akkad/svg/symbol-primary-mono-black.svg" alt=""><figcaption>Stylus K · mono</figcaption></figure>
+    <figure class="g-black"><img src="assets/akkad/svg/symbol-primary-mono-white.svg" alt=""><figcaption>Stylus K · mono reversed</figcaption></figure>
+    <figure class="g-dark"><img src="assets/akkad/svg/symbol-alt-dark.svg" alt=""><figcaption>Triangulate · dark</figcaption></figure>
+    <figure class="g-light"><img src="assets/akkad/svg/symbol-alt-light.svg" alt=""><figcaption>Triangulate · light</figcaption></figure>
+    <figure class="g-white"><img src="assets/akkad/svg/symbol-alt-mono-black.svg" alt=""><figcaption>Triangulate · mono</figcaption></figure>
+    <figure class="g-black"><img src="assets/akkad/svg/symbol-alt-mono-white.svg" alt=""><figcaption>Triangulate · mono reversed</figcaption></figure>
+  </div>
+  <h4>Lockups and wordmark</h4>
+  <div class="lockups">
+    <div class="g-dark"><img src="assets/akkad/svg/lockup-primary-dark.svg" alt=""></div>
+    <div class="g-light"><img src="assets/akkad/svg/lockup-primary-light.svg" alt=""></div>
+    <div class="g-white"><img src="assets/akkad/svg/lockup-primary-mono-black.svg" alt=""></div>
+    <div class="g-dark"><img src="assets/akkad/svg/lockup-alt-dark-arabic.svg" alt=""></div>
+  </div>
+  <h4>App icon set and favicon (real PNGs, shown at 1x)</h4>
+  <div class="iconset">
+    <figure><img src="assets/akkad/png/icon-16.png" width="16" height="16" alt="">16</figure>
+    <figure><img src="assets/akkad/png/icon-24.png" width="24" height="24" alt="">24</figure>
+    <figure><img src="assets/akkad/png/icon-32.png" width="32" height="32" alt="">32</figure>
+    <figure><img src="assets/akkad/png/icon-48.png" width="48" height="48" alt="">48</figure>
+    <figure><img src="assets/akkad/png/icon-64.png" width="64" height="64" alt="">64</figure>
+    <figure><img src="assets/akkad/png/icon-128.png" width="128" height="128" alt="">128</figure>
+    <figure><img src="assets/akkad/png/icon-256.png" width="256" height="256" alt="">256</figure>
+    <figure><img src="assets/akkad/png/icon-light-256.png" width="128" height="128" alt="">light tile</figure>
+    <figure><img src="assets/akkad/favicon-32.png" width="32" height="32" alt="">favicon</figure>
+  </div>
+  <h4>Visual checks</h4>
+  <div class="grid2 tests">
+    <figure style="margin:0"><img src="assets/akkad/tests/pixels-16-24-32.png" alt=""><figcaption class="note">Real 16, 24 and 32 px renders, enlarged 8x.</figcaption></figure>
+    <figure style="margin:0"><img src="assets/akkad/tests/silhouette.png" alt=""><figcaption class="note">Silhouette and squint test.</figcaption></figure>
+  </div>
+  <figure style="margin:16px 0 0" class="tests"><img src="assets/akkad/tests/grounds.png" alt=""><figcaption class="note">Contrast across six grounds.</figcaption></figure>
+  <h4>In context</h4>
+  <div class="shots">
+    <figure><img src="assets/akkad/mockups/taskbar.png" alt=""><figcaption>Windows taskbar and Start</figcaption></figure>
+    <figure><img src="assets/akkad/mockups/store.png" alt=""><figcaption>Microsoft Store listing</figcaption></figure>
+    <figure><img src="assets/akkad/mockups/dock.png" alt=""><figcaption>macOS dock</figcaption></figure>
+    <figure><img src="assets/akkad/mockups/splash.png" alt=""><figcaption>Splash</figcaption></figure>
+    <figure style="grid-column:1/-1"><img src="assets/akkad/mockups/titlebar.png" alt=""><figcaption>Title bar, expanded and collapsed</figcaption></figure>
+    <figure><img src="assets/akkad/mockups/hero.png" alt=""><figcaption>Website hero</figcaption></figure>
+    <figure><img src="assets/akkad/mockups/report.png" alt=""><figcaption>Report cover</figcaption></figure>
+  </div>
+  <div class="verdict">
+    <h3>Verdict: third. The strongest sound; the thinnest fit</h3>
+    <ul>
+      <li><b>Strengths:</b> short, hard and memorable, the closest to Palantir in feel. The Stylus K monogram is bold and reads at 16 px. The Arabic "confirmed" reading is a gift for an inspection product.</li>
+      <li><b>Weakness:</b> the story is about record and empire, not seeing or places. It needs more explaining than Almagest.</li>
+      <li><b>Weakness:</b> the alternate Triangulate mark reads as three arrows converging, like a "collapse" UI icon. It is the weakest mark in the round.</li>
+      <li><b>Risk:</b> crowded with small Arab-market apps on the App Store; the "empire" connotation may not suit government buyers; and it is a surname.</li>
+    </ul>
+  </div>
+</div></section>
+
+<section id="distinct"><div class="wrap">
+  <h2>Distinctness against reference brands</h2>
+  <p>The three primary symbols at 96, 32 and 16 px beside rough, neutral silhouettes of the brands the product will be compared with. The silhouettes are deliberately crude approximations drawn for this test, not those companies' artwork.</p>
+  <div class="compare"><img src="assets/compare.png" alt="Finalist symbols beside rough silhouettes of Palantir, Anduril, Esri, DJI and Pix4D"></div>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Reference</th><th>What their mark is</th><th>Almagest Quadrant</th><th>Ziggurat Tiers</th><th>Akkad Stylus K</th></tr></thead>
+    <tbody>
+      <tr><td class="name">Palantir</td><td>A ring above a curved base (the seeing stone). Product names: Gotham, Foundry, Apollo, AIP.</td><td>Distinct. It has an arc but no ring; it is a sector with a sight line.</td><td>Distinct</td><td>Distinct</td></tr>
+      <tr><td class="name">Anduril / Lattice</td><td>An angular A-form emblem and a wide-tracked wordmark. Product names: Lattice, Arsenal.</td><td>Distinct. The <b>Bearing</b> alternate is too close (an A-form) and should not be used as primary.</td><td>Distinct</td><td>Distinct, though the wide-tracked caps wordmark sits in the same family.</td></tr>
+      <tr><td class="name">Esri</td><td>A globe with sweeping arcs (ArcGIS).</td><td>Different: a quarter circle with straight edges.</td><td>Distinct</td><td>Distinct</td></tr>
+      <tr><td class="name">DJI</td><td>A heavy lowercase wordmark. Products: Terra, FlightHub.</td><td>Distinct</td><td>Distinct</td><td>Distinct</td></tr>
+      <tr><td class="name">Pix4D</td><td>A wordmark with pixel blocks; product names start with PIX4D.</td><td>Distinct</td><td>Some kinship: rectilinear blocks</td><td>Distinct</td></tr>
+    </tbody></table></div>
+</div></section>
+
+<section id="shortlist"><div class="wrap">
+  <h2>Shortlist of six</h2>
+  <p>These names passed the Arabic screen and had no conflict in drones, geospatial, defence, oil and gas, or AI operations software. Three went forward.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Name</th><th>Idea</th><th>Why it stayed</th><th>Why it stopped (or not)</th><th>Score /25</th></tr></thead>
+    <tbody>
+      <tr class="fin-row"><td class="name">Almagest</td><td>Ptolemy's catalogue of the sky, named in Arabic</td><td>Best story, native to Greek and Arabic, cleanest screen</td><td><b>Finalist 1</b></td><td class="n">21</td></tr>
+      <tr class="fin-row"><td class="name">Ziggurat</td><td>Stepped temple-observatory</td><td>Layers plus a watch on the sky; regional; best icon</td><td><b>Finalist 2</b>: Store games share the name</td><td class="n">19</td></tr>
+      <tr class="fin-row"><td class="name">Akkad</td><td>First empire; Arabic "confirmed"</td><td>Short, hard, Palantir-like sound</td><td><b>Finalist 3</b>: small app clutter, thin fit</td><td class="n">18</td></tr>
+      <tr><td class="name">Seshat</td><td>Egyptian goddess of records and of stretching the cord to lay out buildings</td><td>Exact fit: recording and measuring</td><td>Soft sound; open-source <i>audio annotation</i> tool and a web3 firm use the name</td><td class="n">16</td></tr>
+      <tr><td class="name">Orrery</td><td>Clockwork model of the sky; everything moving in sync</td><td>Good metaphor for the fused scene and timeline</td><td>Weak sound (two r's); many Orrery apps on the Mac App Store; every fallback domain taken</td><td class="n">14</td></tr>
+      <tr><td class="name">Nabu</td><td>Mesopotamian god of scribes, keeper of the Tablet of Destinies</td><td>Short; record-keeper</td><td>Shares a root with <i>nabī</i> (prophet), a religious-adjacent risk; Nabu customs AI; reads as "Naboo"; all domains taken</td><td class="n">14</td></tr>
+    </tbody></table></div>
+</div></section>
+
+<section id="longlist"><div class="wrap">
+  <h2>Longlist: 62 names screened</h2>
+  <p>Scores run from 1 to 5 on five axes. <b>S</b> is strength and memorability, <b>F</b> is fit to the product, <b>C</b> is collision safety (5 means clean), <b>D</b> is domain options and <b>A</b> is Arabic and GCC fit. "Known" means the conflict is common industry knowledge and was not searched again. Domain codes come from RDAP: <span class="mono">T</span> means registered and <span class="mono">f</span> means free, in this order: .com, .ai, .io, get-.com, -hq.com, -app.com. Click a column header to sort. A hard conflict (a collision in our field, or a bad Arabic reading) drops a name whatever its total.</p>
+  <div class="filters" role="group" aria-label="Filter by verdict">
+    <button data-f="all" aria-pressed="true">All</button><button data-f="Finalist">Finalists</button><button data-f="Shortlist">Shortlist</button><button data-f="collision">Dropped: collision</button><button data-f="Arabic">Dropped: Arabic or GCC</button><button data-f="weak">Dropped: weak</button>
+  </div>
+  <div class="tablewrap" style="max-height:720px"><table id="ll">
+    <thead><tr><th data-k="name">Name</th><th data-k="src">Source</th><th data-k="idea">Idea</th><th data-k="ar">Arabic and GCC</th><th data-k="coll">Collision evidence</th><th data-k="dom">Domains</th><th data-k="s">S</th><th data-k="f">F</th><th data-k="c">C</th><th data-k="d">D</th><th data-k="a">A</th><th data-k="t">Total</th><th data-k="v">Verdict</th></tr></thead>
+    <tbody></tbody>
+  </table></div>
+</div></section>
+
+<section id="expected"><div class="wrap">
+  <h2>Names the founder might expect, and why they are out</h2>
+  <div class="expect">
+    <div><b>Argus / Panoptes</b>: the hundred-eyed watchman is the perfect myth, but ARGUS (Altus Group) is the standard valuation software in commercial real estate, one of our segments. ARGUS-IS is a DARPA/BAE wide-area drone surveillance system, and there are Argus counter-drone products. Panoptes is the Zooniverse platform, has P sounds and suggests surveillance (the panopticon).</div>
+    <div><b>Aegis</b>: the Lockheed Martin Aegis Combat System, now AI-enabled against drones, plus counter-UAS products named Aegis. Unownable in defence and sensing.</div>
+    <div><b>Atlas</b>: MongoDB Atlas, AtlasAI (a geospatial AI platform), an ATLAS counter-UAS classifier and many drone products. "Atlas" was already crowded in round 1.</div>
+    <div><b>Athena</b>: Athena AI sells geospatial terrain-analysis software to the US Marine Corps, a direct overlap. Also Amazon Athena.</div>
+    <div><b>Kairos</b>: Kairos Aerospace (now Insight M) runs aerial methane surveys for oil and gas. Same buyers, same sky.</div>
+    <div><b>Talos, Telos, Hermes, Kratos</b>: Cisco Talos (threat intelligence), Telos Corp. (cyber and defence), Elbit's Hermes drones and Kratos Defense (drones). All known.</div>
+    <div><b>Theia, Helios, Hyperion, Iris, Eos, Metis</b>: Eclipse Theia, Oracle Hyperion, Iris Automation (drone detect-and-avoid), Eos Positioning (GNSS for GIS) and the Metis blockchain. Helios is used by too many companies to own.</div>
+    <div><b>Pharos, Ouranos, Archytas, Koios</b>: Pharos AI (a drone defence system), the Ouranos fixed-wing drone, the ARCHYTAS ISR drone and the Koios VTOL ISR drone. Greek myth names are taken by drone makers.</div>
+    <div><b>Tethys</b>: a lovely story (the Tethys Ocean laid down the Gulf's oil source rocks), but Tethys Oil AB produces oil in Oman.</div>
+    <div><b>Palantir-style Tolkien names</b> (Istari, Orthanc, Mithril): Palantir and Anduril already took Tolkien. A third would look derivative and invite the Tolkien Estate.</div>
+    <div><b>Arges</b> (the Cyclops "Bright", who forged Zeus's thunderbolt): written أرجس it reads as "most impure" (<i>rijs</i>). It also sounds like Argus, and an Arges business app exists.</div>
+    <div><b>Sharur, Obelisk, Nadir</b>: Sharur (Ninurta's flying, scouting mace, a perfect drone myth) reads شرور, "evils". Obelisk echoes Iblis. Nadir means "lowest point" in English.</div>
+  </div>
+</div></section>
+
+<section id="method"><div class="wrap">
+  <h2>Method and limits</h2>
+  <div class="grid2">
+    <div>
+      <h4>What was done</h4>
+      <p>We generated 62 names from Greek and Mesopotamian myth, Egyptian and Arabian legend, Norse and Tolkien sources, and strong real or coined words, avoiding names already used in rounds 1 and 2. Each name was screened for Arabic meaning, pronunciation (Arabic has no p or v) and religious or unfortunate readings. Each survivor was searched against software, defence, geospatial, drone, AI and oil and gas companies, and against the Microsoft Store and the Mac App Store. Domains were checked live with RDAP (Verisign for .com, Identity Digital for .ai and .io).</p>
+      <p>Marks were drawn by hand as SVG on a 64-unit grid. Wordmarks use a custom chamfered monoline alphabet on a 10-unit cap height, so they are outlined paths and need no font. PNGs were rendered with sharp and mockups with headless Chromium (Playwright). Every image on this page was looked at during review, and two marks were redrawn as a result: Almagest's A-form and Akkad's wedges.</p>
+    </div>
+    <div>
+      <h4>Limits and next steps</h4>
+      <p>No trademark register could be queried directly; WIPO, USPTO, EUIPO and the Justia and uspto.report mirrors refused automated access. The social handles beyond GitHub, and the .ae, .sa and .com.kw domains, were not checked. Nothing was registered, bought or submitted.</p>
+      <p>Next steps: (1) the founder picks one; (2) counsel runs a full clearance in classes 9 and 42 in KW, AE, SA, EU and US; (3) secure the fallback .com, the .ae and .sa, and the handles; (4) run a pronunciation test with ten people; (5) then update <span class="mono">packages/brand</span>. That package was not touched in this round.</p>
+      <h4>Files</h4>
+      <p class="note mono">assets/&lt;name&gt;/svg/ (symbol, lockup and wordmark in dark, light and mono; app icon masters) · png/icon-16 to 1024 · favicon.svg/.ico/-16/-32 · tests/ · mockups/ · build/ (generator scripts: marks.mjs, build.mjs, mockups.mjs) · rdap-results.txt</p>
+    </div>
+  </div>
+  <h4>Sources (web, 5 Oct 2026)</h4>
+  <ol class="src">
+    <li><a href="https://pitchbook.com/profiles/company/594130-78">Almagest Space (PitchBook)</a></li>
+    <li><a href="https://www.cni.org/topics/repositories/almagest-open-source-software-a-teaching-tool-for-the-scholarly-community">Almagest open-source database (CNI)</a></li>
+    <li><a href="https://tracxn.com/d/companies/almagest-technologies/__lgaJUUDda2_n8PpN8YzKoJr5h_sfVn8Z981gPcqs8y8">Almagest Technologies (Tracxn)</a></li>
+    <li><a href="https://www.crunchbase.com/organization/ziggurat">Ziggurat (Crunchbase)</a></li>
+    <li><a href="https://www.xbox.com/en-US/games/store/ziggurat/c4fdjj0tc3bz">Ziggurat game (Microsoft Store / Xbox)</a></li>
+    <li><a href="https://developer.squareup.com/blog/ziggurat-ios-app-architecture/">Ziggurat iOS architecture (Square)</a></li>
+    <li><a href="https://apps.apple.com/us/app/akkad/id6744653120">Akkad education app (App Store)</a></li>
+    <li><a href="https://apps.apple.com/us/app/akkad-inventory-management/id6751473660">Akkad Inventory Management (App Store)</a></li>
+    <li><a href="https://www.facebook.com/AkkadTech/">Akkad Technology Co.</a></li>
+    <li><a href="https://www.wwt.com/partner/akkadian-labs-llc/overview">Akkadian Labs</a></li>
+    <li><a href="https://www.altusgroup.com/solutions/argus-developer/">ARGUS (Altus Group)</a></li>
+    <li><a href="https://en.wikipedia.org/wiki/ARGUS-IS">ARGUS-IS (Wikipedia)</a></li>
+    <li><a href="https://argus-interception.com/en/">ARGUS Interception C-UAS</a></li>
+    <li><a href="https://thedefensepost.com/2026/01/27/aegis-weapon-system-guide/">Aegis weapon system</a></li>
+    <li><a href="https://bitnibblr.com/portfolio/drone-defence/">Aegis counter-UAS</a></li>
+    <li><a href="https://www.defenseadvancement.com/news/geospatial-software-for-u-s-marine-corps-warfighting-laboratory/">Athena AI geospatial (USMC)</a></li>
+    <li><a href="https://www.atlasai.co/">AtlasAI</a></li>
+    <li><a href="https://www.dcvc.com/news-insights/kairos-aerospace-raises-52-million-series-d-to-reduce-methane-emissions/">Kairos Aerospace</a></li>
+    <li><a href="https://pharosai.systems/">Pharos AI defence platform</a></li>
+    <li><a href="https://www.cbinsights.com/company/pharos-platforms">Pharos Platforms</a></li>
+    <li><a href="https://greekreporter.com/2019/09/05/first-greek-made-drone-ready-to-take-to-the-skies/">Ouranos drone</a></li>
+    <li><a href="https://www.c4isrnet.com/unmanned/uas/2023/11/16/greek-drone-maker-nears-first-surveillance-drone-sale-to-athens/">ARCHYTAS drone</a></li>
+    <li><a href="https://uk.linkedin.com/posts/callen-lenz_fia22-uav-innovation-activity-6952648775639171072-1yG_">Koios VTOL UAV (Callen-Lenz)</a></li>
+    <li><a href="https://www.tethysoil.com/en/production-update-october-2024/">Tethys Oil (Oman)</a></li>
+    <li><a href="https://en.wikipedia.org/wiki/THeMIS">THeMIS UGV</a></li>
+    <li><a href="https://www.trademarkelite.com/trademark/trademark-detail/99266753/PHANES-RESEARCH">PHANES RESEARCH filing (drone software)</a></li>
+    <li><a href="https://www.crunchbase.com/organization/astraea-inc">Astraea EarthAI</a></li>
+    <li><a href="https://newsletter.semianalysis.com/p/lynceus-inline-real-time-ai-based">Lynceus AI</a></li>
+    <li><a href="https://betalist.com/startups/theoros">Theōros AI annotation</a></li>
+    <li><a href="https://www.linkedin.com/company/zarqa">Zarqa LLM (SingularityNET)</a></li>
+    <li><a href="https://www.crunchbase.com/organization/lamassu-btc">Lamassu Bitcoin ATMs</a></li>
+    <li><a href="https://www.iwcf.org/directory-members/listing/lamassu-oil-services-company-ltd/">Lamassu Oil Services</a></li>
+    <li><a href="https://ran.nisaba-technologies.com/">Nisaba Technologies</a></li>
+    <li><a href="https://www.battlepolicy.com/saker-scout/">Saker Scout drone</a></li>
+    <li><a href="https://horus.nu/">Horus mobile mapping</a></li>
+    <li><a href="https://horus.global/en/about/">Horus Smart Detections</a></li>
+    <li><a href="https://www.dioptra.ai/about">Dioptra AI</a></li>
+    <li><a href="https://www.draper.com/media-center/featured-stories/detail/25405/hemera">Hemera LiDAR software (Draper)</a></li>
+    <li><a href="https://aethon.com/">Aethon robotics</a></li>
+    <li><a href="https://keraunos.co/EN/index.php/en/">Keraunos lightning intelligence</a></li>
+    <li><a href="https://www.crunchbase.com/organization/eratos">Eratos data platform</a></li>
+    <li><a href="https://akros.com/">Akros geospatial</a></li>
+    <li><a href="https://kastra.ai/">Kastra AI</a></li>
+    <li><a href="https://www.gartner.com/reviews/product/castellan-platform">Castellan platform</a></li>
+    <li><a href="https://www.crunchbase.com/organization/graticule">Graticule mapping software</a></li>
+    <li><a href="https://apps.apple.com/us/app/arges-pro/id1524786295">Arges Pro (App Store)</a></li>
+    <li><a href="https://www.geekwire.com/2018/orrery-ai-aims-turn-streams-data-secret-weapon-strategic-investment/">Orrery.ai</a></li>
+    <li><a href="https://www.crunchbase.com/organization/nabu">Nabu customs AI</a></li>
+    <li><a href="https://github.com/bootphon/seshat">Seshat annotation (GitHub)</a></li>
+    <li><a href="https://www.crunchbase.com/organization/koios-intelligence">Koios Intelligence</a></li>
+    <li><a href="https://home.ephor.ai/">Ephor</a></li>
+    <li><a href="https://www.crunchbase.com/organization/dodona-analytics">Dodona Analytics</a></li>
+    <li><a href="https://www.crunchbase.com/organization/lelantos">Lelantos gas sensors</a></li>
+    <li><a href="https://www.sec.gov/Archives/edgar/data/1321655/000132165525000022/pltr-20241231.htm">Palantir 10-K (products)</a></li>
+    <li><a href="https://research.contrary.com/company/anduril">Anduril (Lattice, Arsenal)</a></li>
+    <li><a href="https://www.pix4d.com/software-guide">Pix4D software suite</a></li>
+  </ol>
+</div></section>
+</main>
+<footer><div class="wrap">Synapse Solutions · Round 3 naming board · quick screen, not legal clearance · no client data or names used; all imagery is synthetic.</div></footer>
+
+<script>
+const LL = [
+// name, source, idea, arabic/gcc, collision, domains (com ai io get hq app), S F C D A, verdict
+["Almagest","Greek, via Arabic","Ptolemy's catalogue of the sky, 'the greatest'","المجسطي; Arabic article; easy","Almagest Space (satellite data relay); old OSS media DB; HK CMS. No store apps","TTTfff",4,5,4,3,5,"Finalist"],
+["Ziggurat","Mesopotamia","Stepped temple-observatory: layers with a watch on the sky","زقورة; familiar; easy","Ziggurat games on Microsoft Store/Xbox and iOS; typeface; closed trading AI","TTTfff",4,4,3,3,5,"Finalist"],
+["Akkad","Mesopotamia","First empire and written record; Arabic akkada = confirmed","Positive reading; also a surname; أكاد = 'I almost'","Small App Store apps (education, inventory, pest control); Akkad Technology; Akkadian Labs","TTTTTf",5,3,3,3,4,"Finalist"],
+["Seshat","Egypt","Goddess of records and measuring (stretching the cord)","سيشات; easy","Seshat audio-annotation OSS; Seshat Labs (web3); Donoma Seshat (encryption)","TTTTfT",3,4,3,2,4,"Shortlist"],
+["Orrery","Classical device","Clockwork model of the sky in sync","Double r; unknown word","Orrery.ai (satellite data, inactive); several Orrery apps on Mac App Store","TTTTTT",3,4,3,1,3,"Shortlist"],
+["Nabu","Mesopotamia","God of scribes; keeper of the Tablet of Destinies","Root shared with nabī (prophet): religious-adjacent","Nabu customs AI (France); Nabu Casa (Home Assistant); 'Naboo'","TTTTTT",3,4,3,1,3,"Shortlist"],
+["Argus","Greek","Hundred-eyed watchman","Fine","ARGUS (Altus) real-estate valuation software; ARGUS-IS drone surveillance; Argus C-UAS","TTTTTT",5,5,1,1,4,"Dropped: collision"],
+["Panoptes","Greek","'All-seeing'","P sounds; panopticon reading","Zooniverse Panoptes platform (known)","TTTTff",3,4,2,1,2,"Dropped: collision"],
+["Theia","Greek","Titaness of sight","Fine","Eclipse Theia IDE; Theia Scientific (known)","TTTTTT",3,4,1,1,4,"Dropped: collision"],
+["Helios","Greek","Sun that sees all","Fine","Too many software users of the name (known)","TTTTTT",4,3,1,1,4,"Dropped: collision"],
+["Hyperion","Greek","Titan of heavenly light","P becomes B","Oracle Hyperion (known)","TTTTTT",4,3,1,1,2,"Dropped: collision"],
+["Metis","Greek","Cunning intelligence, counsel","Fine","Metis Ethereum L2; Metis Technology Solutions (known)","TTTTTT",3,4,1,1,4,"Dropped: collision"],
+["Pallas","Greek","Athena's epithet","P becomes B","Crowded small tech (known)","TTTTTT",3,3,2,1,2,"Dropped: collision"],
+["Aegis","Greek","Shield of Zeus and Athena","Fine","Lockheed Martin Aegis Combat System; Aegis C-UAS","TTTTTT",5,3,1,1,4,"Dropped: collision"],
+["Kairos","Greek","The decisive moment","Fine","Kairos Aerospace / Insight M: aerial methane surveys for oil & gas","TTTTTT",4,3,1,1,4,"Dropped: collision"],
+["Telos","Greek","Purpose, end","Fine","Telos Corporation, cyber and defence (known)","TTTTTT",4,2,1,1,4,"Dropped: collision"],
+["Atlas","Greek","Titan holding the sky","Fine","MongoDB Atlas; AtlasAI geospatial; ATLAS C-UAS classifier; drones","TTTTTT",5,4,1,1,4,"Dropped: collision"],
+["Iris","Greek","Messenger, rainbow","Fine","Iris Automation drone detect-and-avoid (known)","TTTTTT",3,3,1,1,4,"Dropped: collision"],
+["Hermes","Greek","Messenger of the gods","Fine","Elbit Hermes UAV family; Hermès (known)","TTTTTT",4,3,1,1,4,"Dropped: collision"],
+["Mnemosyne","Greek","Memory","Unpronounceable cluster","Not searched","TTTTff",2,4,3,2,1,"Dropped: weak"],
+["Ouranos","Greek","The sky itself","Fine","Ouranos fixed-wing drone (Greece); Ouranos Technologies","TTTfff",4,4,1,3,4,"Dropped: collision"],
+["Talos","Greek","Bronze guardian circling Crete","Fine","Cisco Talos threat intelligence (known)","TTTTTT",5,4,1,1,4,"Dropped: collision"],
+["Athena","Greek","Wisdom and strategy","Fine","Athena AI geospatial software for USMC; Amazon Athena","TTTTTT",5,4,1,1,4,"Dropped: collision"],
+["Lynceus","Greek","Argonaut who saw through the earth","Hard for everyone","Lynceus AI (manufacturing inspection AI)","TTTfff",2,5,1,3,2,"Dropped: collision"],
+["Pharos","Greek","Lighthouse of Alexandria","Strong: فاروس","Pharos AI drone defence; Pharos Platforms geospatial API","TTTTTT",4,4,1,1,5,"Dropped: collision"],
+["Phanes","Greek","God who brings things to light","Echoes fanous (lantern)","PHANES RESEARCH USPTO filing covers drone software and sensors","TTTTfT",3,4,1,2,4,"Dropped: collision"],
+["Astraea","Greek","Star maiden","Fine","Astraea Inc. EarthAI geospatial platform","TTTTTT",3,3,1,1,4,"Dropped: collision"],
+["Tethys","Greek","Sea titaness; Tethys Ocean made Gulf oil source rocks","Fine","Tethys Oil AB produces in Oman","TTTffT",3,4,1,2,4,"Dropped: collision"],
+["Themis","Greek","Order and law","Fine","Milrem THeMIS UGV (defence robot); NASA THEMIS","TTTTTT",4,2,1,1,4,"Dropped: collision"],
+["Arges","Greek","Cyclops 'Bright', forged the thunderbolt","أرجس reads 'most impure' (rijs)","Arges Pro app (App Store); Arges Global AI/RPA; sounds like Argus","TTTfff",4,3,3,3,1,"Dropped: Arabic"],
+["Aletheia","Greek","Truth as unconcealment","Long","Many AI products use it","TTTTTT",3,4,1,1,3,"Dropped: collision"],
+["Eos","Greek","Dawn","Fine","Eos Positioning Systems, GNSS for GIS (known)","TTTTTT",3,2,1,1,4,"Dropped: collision"],
+["Kosmos","Greek","Order, the world","Fine","Kosmos Energy, oil & gas (known)","TTTTTT",4,3,1,1,4,"Dropped: collision"],
+["Koios","Greek","Titan of intellect and the celestial axis","Fine","Koios VTOL ISR UAV (Callen-Lenz); Koios Medical AI","TTTTfT",3,4,1,2,4,"Dropped: collision"],
+["Lelantos","Greek","Titan of the unseen","Fine","Lelantos gas sensors for IoT monitoring; small software firms","TTTfff",3,3,2,3,4,"Dropped: collision"],
+["Ephor","Greek","Overseer","Fine","Ephor AI (London); ephor.ai; AI-agent org project","TTTfff",3,4,1,3,3,"Dropped: collision"],
+["Dioptra","Greek","Ancient surveying instrument","P mid-word","Dioptra AI (Icertis); Dioptra Geomatics survey firm","TTTTfT",3,5,1,2,2,"Dropped: collision"],
+["Hemera","Greek","Day","Fine","Hemera LiDAR detection software (Draper)","TTTTff",3,3,1,2,4,"Dropped: collision"],
+["Dodona","Greek","Oldest oracle","Fine","Dodona Analytics (AI analytics)","TTTfff",3,3,2,3,4,"Dropped: collision"],
+["Archytas","Greek","Built the first flying machine","Fine","ARCHYTAS VTOL ISR drone (Greece)","TTTfff",3,5,1,3,4,"Dropped: collision"],
+["Aethon","Greek","'Blazing', horse of Helios","Fine","Aethon robotics (ST Engineering); Aethon Aerial LiDAR","TTTTTT",3,3,1,1,4,"Dropped: collision"],
+["Keraunos","Greek","Zeus's thunderbolt","Fine","Keraunos lightning intelligence for oil & gas","TTTfff",4,2,1,3,4,"Dropped: collision"],
+["Eratos","Greek","From Eratosthenes, who measured the earth","Fine","Eratos spatial data platform (Australia)","TTTfff",3,5,1,3,4,"Dropped: collision"],
+["Lamassu","Assyria","Winged guardian of the gate","Fine","Lamassu Oil Services; Lamassu Bitcoin ATMs","TTTfff",4,4,1,3,4,"Dropped: collision"],
+["Nisaba","Sumer","Goddess of writing and measure","nisba / nisab: fine","Nisaba Technologies (AI vessel detection)","TTTTfT",3,4,1,2,4,"Dropped: collision"],
+["Zarqa","Arabian legend","Zarqa al-Yamama saw riders three days away","Native, excellent","Zarqa neuro-symbolic LLM (SingularityNET)","TTTfff",4,5,1,3,5,"Dropped: collision"],
+["Anqa","Arabian myth","Legendary bird","Native","Sounds like TAI Anka UAV (known)","TTTfTT",4,3,1,2,4,"Dropped: collision"],
+["Sharur","Sumer","Ninurta's mace that flew, scouted and reported back","Reads شرور, 'evils'","Not searched","Tfffff",4,5,3,4,1,"Dropped: Arabic"],
+["Horus","Egypt","Falcon god, the all-seeing eye","Eye-of-Horus occult reading","Horus mobile-mapping software; Horus drone inspection; HORUS geo-intel","TTTTTT",4,4,1,1,3,"Dropped: collision"],
+["Saker","Arabic saqr","Falcon","Native but overused","Saker Scout AI drone (Ukraine)","TTTTfT",4,3,1,2,4,"Dropped: collision"],
+["Huginn","Norse","Odin's raven, 'thought'","Fine","Huginn open-source agent automation (known)","TTTTfT",3,5,1,2,3,"Dropped: collision"],
+["Heimdall","Norse","Watchman of the gods","Fine","Heimdal Security (known)","TTTTfT",4,4,1,2,3,"Dropped: collision"],
+["Istari / Orthanc","Tolkien","Wizards / the tower","Fine","Derivative of Palantir and Anduril; Tolkien Estate","TTTfff",3,3,1,3,3,"Dropped: weak"],
+["Arcturus","Star","Guardian of the bear","Arabic star tradition","Arcturus UAV, now AeroVironment (known)","?TTTTf",4,3,1,1,4,"Dropped: collision"],
+["Nadir","Arabic-rooted","Straight-down drone view","Arabic 'rare'; English 'lowest point'","Crowded (known)","TTTTfT",3,3,2,2,3,"Dropped: weak"],
+["Gnomon","Greek","Shadow pin of the sundial","Silent G","Gnomon VFX school (known)","TTTTfT",2,4,2,2,2,"Dropped: weak"],
+["Obelisk","Word","Marker monolith","'ublisk' echoes Iblis","Obelisk Software (consultancy); crypto miners","TTTTTT",3,3,3,1,1,"Dropped: Arabic"],
+["Castellan","Word","Keeper of the castle","Fine","Castellan (Riskonnect) resilience software; CastellanAI security","TTTTff",4,4,1,2,4,"Dropped: collision"],
+["Graticule","Word","The grid on a map","Fine","Graticule mapping software (UK, since 1991)","TTTfff",2,5,1,3,4,"Dropped: collision"],
+["Kastra","Coined (castra / qasr)","Fort","Fine","Kastra AI-agent authorisation","TTTfff",4,3,1,3,4,"Dropped: collision"],
+["Akros","Greek","Summit","Fine","Akros geospatial (Reveal platform)","TTTTf?",4,3,1,2,4,"Dropped: collision"],
+["Stoa","Greek","Colonnade; school of thought","Fine","Crowded (known)","TTTTTT",3,2,2,1,4,"Dropped: weak"],
+];
+const tb = document.querySelector('#ll tbody');
+const rows = LL.map(r => ({name:r[0],src:r[1],idea:r[2],ar:r[3],coll:r[4],dom:r[5],s:r[6],f:r[7],c:r[8],d:r[9],a:r[10],t:r[6]+r[7]+r[8]+r[9]+r[10],v:r[11]}));
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function chip(v){ if(v==='Finalist') return '<span class="chip acc">FINALIST</span>'; if(v==='Shortlist') return '<span class="chip ok">SHORTLIST</span>'; if(/Arabic/.test(v)) return '<span class="chip warn">'+esc(v)+'</span>'; if(/collision/.test(v)) return '<span class="chip bad">'+esc(v)+'</span>'; return '<span class="chip">'+esc(v)+'</span>'; }
+let filter = 'all', sortK = 't', sortDir = -1;
+function render(){
+  const list = rows.filter(r => filter==='all' || r.v.includes(filter)).sort((a,b) => { const x=a[sortK], y=b[sortK]; return (typeof x==='number' ? x-y : String(x).localeCompare(String(y))) * sortDir; });
+  tb.innerHTML = list.map(r => `<tr class="${r.v==='Finalist'?'fin-row':''}"><td class="name">${esc(r.name)}</td><td>${esc(r.src)}</td><td>${esc(r.idea)}</td><td>${esc(r.ar)}</td><td>${esc(r.coll)}</td><td class="mono" style="white-space:nowrap">${esc(r.dom)}</td><td class="n">${r.s}</td><td class="n">${r.f}</td><td class="n">${r.c}</td><td class="n">${r.d}</td><td class="n">${r.a}</td><td class="n"><span class="bar" style="width:${r.t*2}px"></span> ${r.t}</td><td>${chip(r.v)}</td></tr>`).join('');
+}
+document.querySelectorAll('.filters button').forEach(b => b.addEventListener('click', () => { filter = b.dataset.f; document.querySelectorAll('.filters button').forEach(x => x.setAttribute('aria-pressed', x===b)); render(); }));
+document.querySelectorAll('#ll th').forEach(th => th.addEventListener('click', () => { const k = th.dataset.k; sortDir = (sortK===k) ? -sortDir : (['s','f','c','d','a','t'].includes(k) ? -1 : 1); sortK = k; render(); }));
+render();
+</script>
+</body>
+</html>

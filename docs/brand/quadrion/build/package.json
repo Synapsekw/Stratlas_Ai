@@ -1,0 +1,9 @@
+{
+  "name": "quadrion-brand-build",
+  "private": true,
+  "description": "Build scripts for the Quadrion AI identity (docs/brand/quadrion). Not part of the app workspace.",
+  "type": "module",
+  "devDependencies": {
+    "opentype.js": "1.3.4"
+  }
+}
