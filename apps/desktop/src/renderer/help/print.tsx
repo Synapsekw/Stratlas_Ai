@@ -1,6 +1,7 @@
 // The printed user guide (guide.html): every chapter of the bundled guide on A4, with a cover
 // and contents. tools/guide/build-pdf.mjs loads it in a hidden window, waits for
 // `window.__guide.state === 'ready'` and prints it with printToPDF, like the house report.
+import '../zodJitless';
 import '@aio/ui/fonts.css';
 import '@aio/ui/tokens.css';
 import './help.css';

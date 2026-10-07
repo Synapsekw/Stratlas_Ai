@@ -6,6 +6,7 @@ import { cp, readFile, stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join, normalize, resolve } from 'node:path';
 import type { Plugin } from 'vite';
+import { APP_CSP, cspMetaTag, inlineScripts } from './src/main/csp';
 import { licenseEntries } from './src/main/licenses';
 
 // Workspace packages ship TypeScript source, so they are bundled, never externalized.
@@ -49,6 +50,40 @@ function pdfjsAssets(): Plugin {
           await cp(from, join(outDir, 'pdfjs', d), { recursive: true });
         }
       }
+    },
+  };
+}
+
+/**
+ * Built pages load from file://, where main's CSP response header never applies, so every
+ * renderer HTML entry (index, report, house, guide) gets the app policy as a `<meta>` tag, first
+ * in `<head>`, from the same constant main sends as the header in dev (src/main/csp.ts). A meta
+ * policy cannot carry `frame-ancestors`, `report-uri` or `sandbox`; those stay header-only.
+ * The policy allows no inline script, so a built page with one fails the build here.
+ * Build only: in dev the pages come over http from the dev server and main's header applies.
+ */
+function cspMeta(): Plugin {
+  return {
+    name: 'aio-csp-meta',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, ctx) {
+        const inline = inlineScripts(html);
+        if (inline.length) {
+          throw new Error(
+            `${ctx.filename}: inline <script> the app CSP blocks (script-src has no 'unsafe-inline'):\n${inline.join('\n')}`,
+          );
+        }
+        if (/http-equiv\s*=\s*["']?content-security-policy/i.test(html)) {
+          throw new Error(`${ctx.filename}: has its own CSP meta; the policy comes from csp.ts`);
+        }
+        // after `<meta charset>` (which stays first), before every script and stylesheet
+        const m = /<meta\s+charset[^>]*>/i.exec(html) ?? /<head(\s[^>]*)?>/i.exec(html);
+        if (!m) throw new Error(`${ctx.filename}: no <head> for the CSP meta`);
+        const at = m.index + m[0].length;
+        return `${html.slice(0, at)}\n    ${cspMetaTag(APP_CSP)}${html.slice(at)}`;
+      },
     },
   };
 }
@@ -171,7 +206,7 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(import.meta.dirname, 'src/renderer'),
-    plugins: [react(), pdfjsAssets()],
+    plugins: [react(), pdfjsAssets(), cspMeta()],
     define: { __STRATLAS_BUILD__: JSON.stringify(buildStamp()) },
     resolve: { noExternal: bundled },
     build: {

@@ -4,7 +4,8 @@
  * local detection runtime the way Settings does (`inference:models` from the window, through the
  * preload bridge, main and the inference utility process) and writes the answer there. The
  * release script checks the answer: onnxruntime must load from the unpacked app and report a
- * version and its execution providers.
+ * version and its execution providers. It also asks the window to `eval`, which the app policy
+ * (csp.ts, a `<meta>` in the built page) must refuse.
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
@@ -18,6 +19,8 @@ export interface SmokeReport {
   /** `renderer`: through the window like Settings; `main`: the window call failed, main asked. */
   via: 'renderer' | 'main';
   rendererError?: string;
+  /** The window's policy and what `eval('1')` did there (`CSP_PROBE`), or why it did not answer. */
+  csp?: unknown;
 }
 
 export interface SmokeProbeDeps {
@@ -25,6 +28,8 @@ export interface SmokeProbeDeps {
   fromRenderer: () => Promise<unknown>;
   /** The same answer from main, when the window call itself fails. */
   fromMain: () => Promise<unknown>;
+  /** `CSP_PROBE` run in the window. */
+  csp?: () => Promise<unknown>;
   timeoutMs?: number;
 }
 
@@ -45,10 +50,19 @@ function within<T>(ms: number, p: Promise<T>, what: string): Promise<T> {
 /** Ask for the runtime; never throws (a failure is part of the report). */
 export async function smokeProbe(deps: SmokeProbeDeps): Promise<SmokeReport> {
   const ms = deps.timeoutMs ?? SMOKE_PROBE_MS;
+  let csp: { csp?: unknown } = {};
+  if (deps.csp) {
+    try {
+      csp = { csp: await within(ms, deps.csp(), 'The CSP probe') };
+    } catch (e) {
+      csp = { csp: { error: text(e) } };
+    }
+  }
   try {
     return {
       inference: await within(ms, deps.fromRenderer(), 'inference:models from the window'),
       via: 'renderer',
+      ...csp,
     };
   } catch (e) {
     const rendererError = text(e);
@@ -57,9 +71,10 @@ export async function smokeProbe(deps: SmokeProbeDeps): Promise<SmokeReport> {
         inference: await within(ms, deps.fromMain(), 'The inference process'),
         via: 'main',
         rendererError,
+        ...csp,
       };
     } catch (e2) {
-      return { inference: { error: text(e2) }, via: 'main', rendererError };
+      return { inference: { error: text(e2) }, via: 'main', rendererError, ...csp };
     }
   }
 }
@@ -72,3 +87,14 @@ export async function writeSmokeReport(path: string, report: SmokeReport): Promi
 
 /** The script that asks for the runtime from the window (the preload bridge is `window.aio`). */
 export const RENDERER_PROBE = "window.aio.invoke('inference:models', {})";
+
+/**
+ * Run in the window like page code (`executeJavaScript`, not DevTools evaluation, which is exempt
+ * from the eval policy): the policy the page carries and what `eval('1')` does under it.
+ */
+export const CSP_PROBE = `(() => {
+  const meta = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+  let result = 'allowed';
+  try { eval('1'); } catch (e) { result = e.name + ': ' + e.message; }
+  return { url: location.href, meta: meta ? meta.getAttribute('content') : null, eval: result };
+})()`;

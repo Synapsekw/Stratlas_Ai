@@ -1,5 +1,6 @@
 // The issue register report page. Main loads it in an offscreen window, waits for
 // `window.__report.state === 'ready'`, then prints it with printToPDF.
+import '../zodJitless';
 import '@aio/ui/fonts.css';
 import './report.css';
 import { brand } from '@aio/brand';

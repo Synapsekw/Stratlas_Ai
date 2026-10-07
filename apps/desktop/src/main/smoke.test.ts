@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { RENDERER_PROBE, smokeProbe, writeSmokeReport } from './smoke';
+import { CSP_PROBE, RENDERER_PROBE, smokeProbe, writeSmokeReport } from './smoke';
 
 const answer = { runtime: { available: true, provider: 'cpu', version: '1.30.0' }, models: [] };
 
@@ -34,6 +34,38 @@ describe('packaged smoke report', () => {
     expect(r.via).toBe('main');
     expect(r.rendererError).toContain('did not answer within');
     expect(r.inference).toEqual({ error: expect.stringContaining('did not answer') as string });
+  });
+
+  it('adds the CSP probe answer, or why it failed', async () => {
+    const csp = { url: 'file:///index.html', meta: "script-src 'self'", eval: 'EvalError: x' };
+    const r = await smokeProbe({
+      csp: () => Promise.resolve(csp),
+      fromRenderer: () => Promise.resolve(answer),
+      fromMain: () => Promise.reject(new Error('not used')),
+    });
+    expect(r).toEqual({ inference: answer, via: 'renderer', csp });
+    const failed = await smokeProbe({
+      csp: () => Promise.reject(new Error('Script failed to execute')),
+      fromRenderer: () => Promise.reject(new Error('no bridge')),
+      fromMain: () => Promise.resolve(answer),
+    });
+    expect(failed.csp).toEqual({ error: 'Script failed to execute' });
+    expect(failed.via).toBe('main');
+  });
+
+  it('probes eval in the page without DevTools evaluation', () => {
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval -- the probe's own text
+    const run = new Function(`return ${CSP_PROBE};`) as () => unknown;
+    const doc = { querySelector: () => ({ getAttribute: () => 'policy' }) };
+    const g = globalThis as Record<string, unknown>;
+    g.document = doc;
+    g.location = { href: 'file:///x/index.html' };
+    try {
+      expect(run()).toEqual({ url: 'file:///x/index.html', meta: 'policy', eval: 'allowed' });
+    } finally {
+      delete g.document;
+      delete g.location;
+    }
   });
 
   it('writes the report as JSON, creating the folder', async () => {
