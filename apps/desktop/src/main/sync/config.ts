@@ -26,6 +26,8 @@ export interface TeamConfigStore {
   update(root: string, patch: TeamConfigPatch): Promise<ProjectTeamConfig>;
   /** Folders currently synced through a hub. */
   all(): Promise<ProjectTeamConfig[]>;
+  /** The entry of a folder, or undefined: never writes (a private project leaves no trace). */
+  peek(root: string): Promise<ProjectTeamConfig | undefined>;
 }
 
 export function createTeamConfigStore(file: string): TeamConfigStore {
@@ -92,5 +94,6 @@ export function createTeamConfigStore(file: string): TeamConfigStore {
         return next;
       }),
     all: () => serial(load),
+    peek: (root) => serial(async () => find(await load(), root)),
   };
 }

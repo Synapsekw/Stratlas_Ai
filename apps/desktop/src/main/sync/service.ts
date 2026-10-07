@@ -76,6 +76,8 @@ export class SyncError extends Error {
   override name = 'SyncError';
 }
 
+const OFF: TeamStatus = { mode: 'off', pending: 0, conflicts: 0, quarantined: 0, unread: 0 };
+
 const offlineMessage =
   'The shared folder cannot be reached. Your work is kept on this computer and syncs when the folder is back.';
 
@@ -426,6 +428,11 @@ export function createSyncService(d: SyncServiceDeps) {
 
     async status(projectId: string) {
       try {
+        // a private project: answer without a device key, a replica or any write
+        const root = d.isPackage(projectId) ? undefined : d.projectRoot(projectId);
+        if (!root || !(await readTeam(root)) || !(await config.peek(root))) {
+          return { ok: true as const, status: OFF };
+        }
         const ctx = await ctxFor(projectId);
         active.add(projectId);
         return { ok: true as const, status: await status(ctx) };

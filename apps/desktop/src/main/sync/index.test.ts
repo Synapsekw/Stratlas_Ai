@@ -129,6 +129,9 @@ describe('sync IPC', () => {
       status: { mode: 'off', pending: 0, conflicts: 0 },
     });
     await expect(readFile(join(dir, 'team.json'))).rejects.toThrow();
+    // no replica, no device key, nothing in userData for a private project
+    await expect(readFile(join(a.userData, 'team', 'projects.json'))).rejects.toThrow();
+    await expect(readFile(join(a.userData, 'journal-cache'))).rejects.toThrow();
   });
 
   it('refuses to share a read-only package', async () => {
