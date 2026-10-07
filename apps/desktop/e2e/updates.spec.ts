@@ -40,23 +40,23 @@ test('checks the update feed on a local server only when asked, and verifies the
   const requests: string[] = [];
   const server = createServer((req, res) => {
     requests.push(req.url ?? '');
-    if (req.url === '/stratlas/stratlas-update.json') {
+    if (req.url === '/quadrion/stratlas-update.json') {
       res.setHeader('content-type', 'application/json');
       res.end(
         JSON.stringify({
           schema: 'aio.update-feed/1',
           version: '999.0.0',
-          notes: '# Stratlas 999.0.0\n\n## New\n\n- A feature from the feed\n',
+          notes: '# Quadrion AI 999.0.0\n\n## New\n\n- A feature from the feed\n',
           files: {
             'win-x64': {
-              url: 'Stratlas-999.0.0-win-x64-setup.exe',
+              url: 'QuadrionAI-999.0.0-win-x64-setup.exe',
               sha256,
               size: installer.length,
             },
           },
         }),
       );
-    } else if (req.url === '/stratlas/Stratlas-999.0.0-win-x64-setup.exe') {
+    } else if (req.url === '/quadrion/QuadrionAI-999.0.0-win-x64-setup.exe') {
       res.end(installer);
     } else {
       res.statusCode = 404;
@@ -77,7 +77,7 @@ test('checks the update feed on a local server only when asked, and verifies the
 
     await win.getByRole('switch', { name: 'Check for updates online' }).click();
     const address = win.getByLabel('Update address');
-    await address.fill(`${origin}/stratlas/`);
+    await address.fill(`${origin}/quadrion/`);
     await address.blur();
     await win.getByRole('button', { name: 'Check now' }).click();
 
@@ -91,14 +91,14 @@ test('checks the update feed on a local server only when asked, and verifies the
         timeout: 30_000,
       });
       expect(requests).toEqual([
-        '/stratlas/stratlas-update.json',
-        '/stratlas/Stratlas-999.0.0-win-x64-setup.exe',
+        '/quadrion/stratlas-update.json',
+        '/quadrion/QuadrionAI-999.0.0-win-x64-setup.exe',
       ]);
       const kept = join(dataRoot.userData, 'updates', 'downloads');
-      expect(await readFile(join(kept, 'Stratlas-999.0.0-win-x64-setup.exe'))).toEqual(installer);
+      expect(await readFile(join(kept, 'QuadrionAI-999.0.0-win-x64-setup.exe'))).toEqual(installer);
     } else {
       await expect(win.getByTestId('update-error')).toContainText('no installer for this computer');
-      expect(requests).toEqual(['/stratlas/stratlas-update.json']);
+      expect(requests).toEqual(['/quadrion/stratlas-update.json']);
     }
     expect(await network.outbound()).toEqual([]);
     expect((await network.allowed()).every((u) => u.startsWith(origin))).toBe(true);
@@ -131,13 +131,13 @@ test('a first start after an update ends its watch once the window is ready', as
         from: '0.6.0',
         to: running,
         startedAt: '2026-10-05T10:00:00.000Z',
-        appRoot: join(dataRoot.base, 'Programs', 'Stratlas'),
+        appRoot: join(dataRoot.base, 'Programs', 'Quadrion AI'),
         launches: 0,
         failures: 0,
         cleanExit: true,
         declined: false,
       },
-      previous: { version: '0.6.0', dir: join(dir, 'previous', '0.6.0'), exe: 'Stratlas.exe' },
+      previous: { version: '0.6.0', dir: join(dir, 'previous', '0.6.0'), exe: 'QuadrionAI.exe' },
     }),
   );
   const network = new NetworkGuard();

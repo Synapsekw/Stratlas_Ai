@@ -828,7 +828,7 @@ function registerIpc(): void {
     const win = targetWindow();
     const options = {
       title: 'Export logs',
-      defaultPath: join(app.getPath('downloads'), `${brand.productName}-logs-${day}.txt`),
+      defaultPath: join(app.getPath('downloads'), `${brand.executableName}-logs-${day}.txt`),
       filters: [{ name: 'Text', extensions: ['txt'] }],
     };
     const r = win

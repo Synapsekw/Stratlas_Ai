@@ -209,7 +209,7 @@ test('about lists the version, folders and licences, and refuses an unsigned ins
   // The build stamp tells a stale copy apart: on the Projects screen and in About.
   await win.locator('.nav-item', { hasText: 'Projects' }).click();
   await expect(win.getByTestId('build-stamp')).toHaveText(
-    /^\S+ \d+\.\d+\.\d+ · built \d{1,2} [A-Z][a-z]{2} \d{2}:\d{2}$/,
+    /^\S+(?: \S+)* \d+\.\d+\.\d+ · built \d{1,2} [A-Z][a-z]{2} \d{2}:\d{2}$/,
   );
   await openSettings(win, 'About and updates');
   await expect(win.getByTestId('about-build')).toHaveText(
