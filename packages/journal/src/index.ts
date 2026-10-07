@@ -20,3 +20,4 @@ export {
   type SigningDomain,
 } from './sign';
 export { verifyJournal, type JournalFiles } from './verify';
+export * from './members';
