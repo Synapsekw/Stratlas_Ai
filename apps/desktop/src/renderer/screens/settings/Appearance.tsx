@@ -1,10 +1,40 @@
 import { brand } from '@aio/brand';
 import type { Settings } from '@aio/schema';
 import { Switch, t } from '@aio/ui';
-import { useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { gateWanted, localStore, writeLaunchHint } from '../../gate/model';
-import { shell, useShell } from '../../shell';
+import { bridge, shell, useShell } from '../../shell';
 import { OS_QUERIES } from '../../theme';
+
+/**
+ * Show launch screen: userData `launch.json` through main (`launch:get`, `launch:set`), not a
+ * Settings field. Null until main answers. Each change also updates the local copy the next
+ * start reads before main answers (gate/model.ts).
+ */
+function useLaunchScreen(): [boolean | null, (on: boolean) => void] {
+  const [on, setOn] = useState<boolean | null>(null);
+  useEffect(() => {
+    let live = true;
+    void bridge.call('launch:get', {}).then((r) => {
+      if (live && r.ok && r.value.ok) setOn(gateWanted(r.value.settings));
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  const change = (next: boolean) => {
+    const before = on;
+    setOn(next);
+    writeLaunchHint(localStore(), next);
+    void bridge.call('launch:set', { show: next }).then((r) => {
+      if (r.ok && r.value.ok) return;
+      // not saved: show and remember what is on disk
+      setOn(before);
+      if (before !== null) writeLaunchHint(localStore(), before);
+    });
+  };
+  return [on, change];
+}
 
 const THEMES: { value: Settings['theme']; label: 'dark' | 'light' | 'system' }[] = [
   { value: 'dark', label: 'dark' },
@@ -45,7 +75,7 @@ export function Appearance() {
   const osMotion = useMedia(OS_QUERIES.reducedMotion);
   const contrast = useShell((s) => s.settings.contrast ?? 'system');
   const motion = useShell((s) => s.settings.motion ?? 'system');
-  const launchScreen = useShell((s) => gateWanted(s.settings));
+  const [launchScreen, setLaunchScreen] = useLaunchScreen();
   const os = (on: boolean) => t(on ? 'settings.appearance.osOn' : 'settings.appearance.osOff');
   const set = (patch: Partial<Settings>) => void shell.getState().updateSettings(patch);
 
@@ -135,13 +165,10 @@ export function Appearance() {
           <b>{t('settings.appearance.launchShow')}</b>
           <span>{t('settings.appearance.launchHelp', { product: brand.productName })}</span>
           <Switch
-            checked={launchScreen}
+            checked={launchScreen ?? true}
+            disabled={launchScreen === null}
             label={t('settings.appearance.launchShow')}
-            onChange={(on) => {
-              // the next start reads this copy before main answers (gate/model.ts)
-              writeLaunchHint(localStore(), on);
-              set({ launchScreen: on });
-            }}
+            onChange={setLaunchScreen}
           />
         </div>
       </div>

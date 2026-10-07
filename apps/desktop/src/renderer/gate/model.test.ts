@@ -45,11 +45,11 @@ describe('whether the launch screen shows', () => {
     expect(gateAtStart('auto', null)).toBe(true);
     expect(gateAtStart('auto', '1')).toBe(true);
     expect(gateWanted({})).toBe(true);
-    expect(gateWanted({ launchScreen: true })).toBe(true);
+    expect(gateWanted({ show: true })).toBe(true);
   });
 
   it('stays away when Settings switch it off', () => {
-    expect(gateWanted({ launchScreen: false })).toBe(false);
+    expect(gateWanted({ show: false })).toBe(false);
     // the mirrored switch spares the next start even the first frame
     expect(gateAtStart('auto', '0')).toBe(false);
   });

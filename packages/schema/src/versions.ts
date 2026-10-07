@@ -159,6 +159,14 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     where: 'models/detect/*/model.json',
     since: '0.8',
   },
+  // the launch screen preference, beside settings.json rather than in it (launch.ts)
+  {
+    family: 'aio.launch-settings',
+    version: 1,
+    home: 'userData',
+    where: 'launch.json',
+    since: '0.10',
+  },
   { family: 'aio.update-feed', version: 1, home: 'server', where: 'update feed', since: '0.7' },
   { family: 'aio.demo', version: 1, home: 'app', where: 'demo/demo.json', since: '0.7' },
   {
@@ -196,7 +204,7 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     version: 1,
     home: 'project',
     where: 'orientation.json',
-    since: '0.9',
+    since: '0.10',
   },
   { family: 'aio.identity', version: 1, home: 'userData', where: 'identity.json', since: '0.9' },
   {

@@ -107,6 +107,8 @@ const CHANNELS = {
   'ai:localModels': true,
   'ai:localProbe': true,
   // M9
+  'launch:get': true,
+  'launch:set': true,
   'identity:get': true,
   'identity:set': true,
   'identity:exportCard': true,
