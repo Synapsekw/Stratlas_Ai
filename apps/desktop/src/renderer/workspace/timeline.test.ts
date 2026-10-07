@@ -198,4 +198,42 @@ describe('timeline store', () => {
     expect(saved.p?.focus).toBe('nov');
     expect(saved.p?.extras ?? []).toEqual([]);
   });
+
+  it('reopening the same project re-applies its saved pref and keeps it unchanged', () => {
+    const { ws, tl, storage, index } = setup();
+    tl.getState().attach('p', index);
+    tl.getState().focusSurvey('oct');
+    const saved = storage.getItem(TIMELINE_KEY);
+
+    // Projects screen: the same project is opened again with a freshly read manifest and the
+    // workspace screen never re-rendered with a null project in between.
+    const fresh = { ...manifest } as ProjectManifest;
+    ws.getState().openProject({ id: 'p', root: '/p', manifest: fresh });
+    expect(Object.keys(ws.getState().hidden)).toEqual([]);
+    expect(storage.getItem(TIMELINE_KEY)).toBe(saved);
+    tl.getState().attach('p', captureIndex(fresh));
+
+    expect(tl.getState().focus).toBe('oct');
+    expect(ws.getState().hidden['model-nov']).toBe(true);
+    expect(ws.getState().hidden['model-sep']).toBe(true);
+    expect(ws.getState().hidden['model-oct']).toBeUndefined();
+    expect(storage.getItem(TIMELINE_KEY)).toBe(saved);
+  });
+
+  it('replaceManifest while open keeps focus and visibility untouched', () => {
+    const { ws, tl, storage, index } = setup();
+    tl.getState().attach('p', index);
+    tl.getState().focusSurvey('oct');
+    ws.getState().setLayerVisible('model-sep', true);
+    const hidden = ws.getState().hidden;
+    const saved = storage.getItem(TIMELINE_KEY);
+
+    const next = { ...manifest } as ProjectManifest;
+    ws.getState().replaceManifest(next);
+    tl.getState().attach('p', captureIndex(next));
+
+    expect(tl.getState().focus).toBe('oct');
+    expect(ws.getState().hidden).toEqual(hidden);
+    expect(storage.getItem(TIMELINE_KEY)).toBe(saved);
+  });
 });
