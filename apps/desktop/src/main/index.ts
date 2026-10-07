@@ -72,7 +72,9 @@ import {
   profileVaultService,
   registerIdentityIpc,
 } from './identity';
-import { registerJournalIpc } from './journal';
+import { createJournalService, registerJournalIpc } from './journal';
+import { createLocalIdentity } from './journalIdentity';
+import { createAuditExport } from './exports/audit';
 import { registerSyncIpc } from './sync';
 import { registerTeamServerIpc } from './teamServer';
 import { importLogo, removeLogo } from './branding';
@@ -249,6 +251,21 @@ const identityService = createIdentityService({
     }),
   app: { name: brand.productName, version: app.getVersion() },
 });
+// M9 T1: every project write appends a signed op to this device's journal chain first.
+const journal = createJournalService({
+  userData: app.getPath('userData'),
+  projects: registry,
+  identity: createLocalIdentity({
+    userData: app.getPath('userData'),
+    osUser: () => osUser().user,
+    entry: (account) => new Entry(keyService, account),
+    app: { name: brand.productName, version: app.getVersion() },
+  }),
+  emitChanged: (e) => {
+    const parsed = ipcEvents['journal:changed'].safeParse(e);
+    if (parsed.success) targetWindow()?.webContents.send('journal:changed', parsed.data);
+  },
+});
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -409,10 +426,32 @@ async function chooseSavePath(
   return r.canceled || !r.filePath ? null : r.filePath;
 }
 
+// `audit:export` and the Exports screen's audit formats (CSV, or JSON with the whole journal).
+const exportAudit = createAuditExport({
+  journal,
+  projectName: (id) => projectNames.get(id),
+  app: { name: brand.productName, version: app.getVersion() },
+  choose: async (defaultName, format) => {
+    const win = targetWindow();
+    const options = {
+      title: 'Export audit',
+      defaultPath: join(app.getPath('documents'), defaultName),
+      filters:
+        format === 'audit-csv'
+          ? [{ name: 'Audit (CSV)', extensions: ['csv'] }]
+          : [{ name: 'Audit (JSON)', extensions: ['json'] }],
+    };
+    const r = win
+      ? await dialog.showSaveDialog(win, options)
+      : await dialog.showSaveDialog(options);
+    return r.canceled || !r.filePath ? null : r.filePath;
+  },
+});
 const exportJobs = createExportJobs({
   projectRoot: (id) => registry.root(id),
   // Package export limits (APP-5): the header's allow-list, checked before the save dialog.
   refuse: (id, format) => exportFormatRefusal(registry.package(id)?.header, format),
+  audit: (projectId, format) => exportAudit({ projectId, format }),
   // A package is read in place: its manifest and issues are staged in a temp folder for the job.
   stage: async (id) => {
     const pkg = registry.package(id);
@@ -434,6 +473,10 @@ const exportJobs = createExportJobs({
       devTools: dev,
       branding: current.reportBranding,
       contents: current.reportContents,
+      audit:
+        args.kind === 'house'
+          ? await journal.reportAudit(args.projectId, args.issueIds).catch(() => null)
+          : null,
     });
   },
   emit: emitExportProgress,
@@ -451,11 +494,12 @@ const jobs = new JobRunner({
     }
     const win = mainWindow ?? BrowserWindow.getAllWindows()[0];
     if (win && !win.isDestroyed()) win.webContents.send('jobs:event', safe);
+    void journal.jobEvent(safe);
   },
 });
 
 function handle<C extends IpcChannel>(channel: C, handler: Handler<C>): void {
-  const run = validated(channel, handler);
+  const run = validated(channel, journal.wrap(channel, handler));
   ipcMain.handle(channel, (_e, req: unknown) => run(req));
 }
 
@@ -1033,7 +1077,7 @@ function registerIpc(): void {
   });
 
   // M9: one module per stream (T1 journal, T2 identity, T3 collab, T5 sync, T6 blobs, T7 server).
-  registerJournalIpc({ handle });
+  registerJournalIpc({ handle, journal, exportAudit });
   registerIdentityIpc({ handle, service: identityService });
   registerCollabIpc({ handle });
   registerSyncIpc({ handle });

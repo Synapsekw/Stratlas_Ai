@@ -131,6 +131,16 @@ dl {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* M9: the audit head on every page */
+.pg-fa {
+  font-family: var(--f-mono);
+  white-space: nowrap;
+}
+code.audit-root {
+  font-family: var(--f-mono);
+  font-size: 7pt;
+  word-break: break-all;
+}
 .pg-n {
   font-family: var(--f-mono);
   font-weight: 600;

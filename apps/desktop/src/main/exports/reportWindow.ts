@@ -1,3 +1,4 @@
+import type { AuditSummary } from '@aio/project/export';
 import type { ReportBrandingSettings, ReportContentsSettings } from '@aio/schema';
 import { BrowserWindow } from 'electron';
 import { rename, rm, stat, writeFile } from 'node:fs/promises';
@@ -36,6 +37,8 @@ export interface ReportWindowOptions {
   branding?: ReportBrandingSettings | undefined;
   /** Sections of the house report from Settings; absent for every section. */
   contents?: ReportContentsSettings | undefined;
+  /** M9: the audit head and change log the house report prints (from the journal). */
+  audit?: AuditSummary | null | undefined;
 }
 
 /**
@@ -46,11 +49,13 @@ export function reportQuery(
   args: { projectId: string; issueIds?: string[] | undefined },
   branding: ReportBrandingSettings | undefined,
   contents?: ReportContentsSettings,
+  audit?: AuditSummary | null,
 ): Record<string, string> {
   const query: Record<string, string> = { project: args.projectId };
   if (args.issueIds) query.ids = args.issueIds.join(',');
   if (branding && Object.keys(branding).length > 0) query.branding = JSON.stringify(branding);
   if (contents && Object.keys(contents).length > 0) query.contents = JSON.stringify(contents);
+  if (audit) query.audit = JSON.stringify(audit);
   return query;
 }
 
@@ -92,7 +97,12 @@ export async function printReport(
   const cancelled = () => signal.aborted;
   const house = args.kind === 'house';
   const page = REPORT_PAGES[house ? 'house' : 'register'];
-  const query = reportQuery(args, opts.branding, house ? opts.contents : undefined);
+  const query = reportQuery(
+    args,
+    opts.branding,
+    house ? opts.contents : undefined,
+    house ? opts.audit : undefined,
+  );
   try {
     if (opts.devUrl) {
       const url = new URL(page, opts.devUrl.endsWith('/') ? opts.devUrl : `${opts.devUrl}/`);

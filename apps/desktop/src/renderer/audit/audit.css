@@ -1,0 +1,226 @@
+/* M9 audit trail: the History panel (issue detail) and the Audit trail screen (Reports viewer). */
+
+.aud-history {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.aud-h {
+  margin: 0;
+  font-size: var(--t-11);
+  font-weight: 600;
+  color: var(--fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.aud-quiet {
+  margin: 0;
+  font-size: var(--t-11);
+  color: var(--fg-3);
+}
+.aud-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.aud-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-block: 7px;
+  border-top: 1px solid var(--line-soft);
+  min-width: 0;
+}
+.aud-row:first-child {
+  border-top: 0;
+}
+.aud-row-h {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.aud-label {
+  font-size: var(--t-12);
+  font-weight: 600;
+  color: var(--fg-0);
+  overflow-wrap: anywhere;
+}
+.aud-record {
+  font-size: var(--t-11);
+  color: var(--acc);
+}
+.aud-meta {
+  font-size: var(--t-11);
+  color: var(--fg-3);
+  overflow-wrap: anywhere;
+}
+.aud-badge {
+  font-size: var(--t-10, 10px);
+  line-height: 1.6;
+  padding-inline: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--warn-line);
+  color: var(--fg-1, var(--fg-0));
+  white-space: nowrap;
+}
+.aud-badge.bad-signature,
+.aud-badge.quarantined {
+  border-color: var(--danger-line);
+  color: var(--danger-ink);
+}
+.aud-changes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: var(--t-11);
+  color: var(--fg-2, var(--fg-0));
+}
+.aud-changes li {
+  overflow-wrap: anywhere;
+}
+.aud-field {
+  color: var(--fg-3);
+}
+.aud-before {
+  text-decoration: line-through;
+  text-decoration-color: var(--fg-3);
+  color: var(--fg-3);
+}
+.aud-after {
+  color: var(--fg-0);
+}
+.aud-redacted {
+  margin: 0;
+  font-size: var(--t-11);
+  font-style: italic;
+  color: var(--fg-3);
+}
+.aud-acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* the screen */
+.aud-screen {
+  flex: 1;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+.aud-body {
+  overflow: auto;
+  padding: 12px 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.aud-lead {
+  margin: 0;
+}
+.aud-status:empty {
+  display: none;
+}
+.aud-saved {
+  margin: 0;
+  font-size: var(--t-12);
+  color: var(--fg-0);
+  overflow-wrap: anywhere;
+}
+.aud-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+  margin: 0;
+  padding: 8px 0 0;
+  border: 0;
+  border-top: 1px solid var(--line-soft);
+}
+.aud-filters legend {
+  padding: 0;
+  margin-bottom: 4px;
+}
+.aud-filters label,
+.aud-field-l {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: var(--t-11);
+  color: var(--fg-3);
+  min-width: 0;
+}
+.aud-filters .input {
+  min-width: 9rem;
+}
+.aud-more {
+  align-self: flex-start;
+}
+.aud-verify {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.aud-verify.bad {
+  border-color: var(--danger-line);
+}
+.aud-verify p {
+  margin: 0;
+}
+.aud-verify-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--t-12);
+  font-weight: 600;
+  color: var(--fg-0);
+}
+.aud-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  font-size: var(--t-11);
+}
+.aud-counts div {
+  display: flex;
+  gap: 6px;
+}
+.aud-counts dt {
+  color: var(--fg-3);
+}
+.aud-counts dd {
+  margin: 0;
+  color: var(--fg-0);
+}
+.aud-problems {
+  margin: 0;
+  padding-inline-start: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--t-12);
+  color: var(--fg-0);
+}
+.aud-problems li {
+  overflow-wrap: anywhere;
+}
+.aud-code {
+  font-size: var(--t-11);
+  color: var(--danger-ink);
+}
+.aud-detail {
+  display: block;
+  font-size: var(--t-11);
+}

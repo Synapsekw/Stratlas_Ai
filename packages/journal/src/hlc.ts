@@ -24,10 +24,10 @@ export function compareHlc(a: string, b: string): number {
 
 /**
  * A device's clock: `tick()` for a local event, `receive()` for a remote reading. Never goes back,
- * whatever the wall clock does. T1 adds the persisted last reading and the skew notices.
+ * whatever the wall clock does. `start` is the last reading this device wrote (its chain's head).
  */
-export function createClock(device: string, now: () => number = Date.now) {
-  let last: HlcParts = { ms: 0, counter: 0, device };
+export function createClock(device: string, now: () => number = Date.now, start?: string) {
+  let last: HlcParts = start ? { ...parseHlc(start), device } : { ms: 0, counter: 0, device };
   const set = (ms: number, counter: number): string => {
     // the counter has four digits: past 9999 the reading moves on by a millisecond
     last = counter > 9999 ? { ms: ms + 1, counter: 0, device } : { ms, counter, device };

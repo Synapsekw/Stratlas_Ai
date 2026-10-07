@@ -69,6 +69,45 @@ describe('createIssueSaver', () => {
     expect(saver.status.state).toBe('saved');
   });
 
+  it('carries the editor commands queued since the last write, then starts again', async () => {
+    const write = vi.fn(() => Promise.resolve({ ok: true }));
+    const saver = createIssueSaver({ write, delayMs: 100 });
+    const a = [{ id: 'a' }] as never[];
+    const b = [{ id: 'b' }] as never[];
+    saver.schedule('p', a, { label: 'F01 severity 3 to 4', ids: ['i1'] });
+    saver.schedule('p', b, { label: 'F01 to reviewed', ids: ['i1'] });
+    await saver.flush();
+    // one write per command, each with the list as it stood after it
+    expect(write.mock.calls).toEqual([
+      ['p', a, [{ label: 'F01 severity 3 to 4', ids: ['i1'] }]],
+      ['p', b, [{ label: 'F01 to reviewed', ids: ['i1'] }]],
+    ]);
+    saver.schedule('p', []);
+    await saver.flush();
+    expect(write).toHaveBeenLastCalledWith('p', []);
+    saver.schedule('p', [], { label: 'Edit F01', ids: ['i1'] });
+    saver.schedule('q', []);
+    await saver.flush();
+    expect(write).toHaveBeenLastCalledWith('q', []);
+  });
+
+  it('merges a long burst of commands and still writes the newest list after a refusal', async () => {
+    const write = vi.fn((_p: string, _i: unknown[], c?: unknown[]) =>
+      Promise.resolve(c?.length === 1 ? { ok: false, error: 'refused' } : { ok: true }),
+    );
+    const saver = createIssueSaver({ write, delayMs: 100 });
+    for (let i = 0; i < 25; i++) {
+      saver.schedule('p', [{ id: String(i) }] as never[], { label: `C${String(i)}`, ids: ['i1'] });
+    }
+    await saver.flush();
+    const calls = write.mock.calls;
+    expect(calls[calls.length - 1]?.[1]).toEqual([{ id: '24' }]);
+    const labels = calls.flatMap((c) => (c[2] ?? []) as { label: string }[]).map((x) => x.label);
+    expect(labels).toContain('C24');
+    expect(calls.length).toBeLessThanOrEqual(21);
+    expect(saver.status.state).toBe('saved');
+  });
+
   it('flushes immediately', async () => {
     const write = vi.fn(() => Promise.resolve({ ok: true }));
     const saver = createIssueSaver({ write, delayMs: 10_000 });

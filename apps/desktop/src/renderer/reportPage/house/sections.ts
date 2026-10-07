@@ -74,7 +74,18 @@ function headerBrand(b: ReportBranding): string {
 export function frameHtml(ctx: HouseContext): string {
   const b = ctx.h.base.branding;
   const left = b.name ? txt(b.name) : b.credit ? txt(b.credit) : '';
-  return `<header class="pg-h">${headerBrand(b)}<span class="pg-t">${txt(kickerOf(ctx.h))} · ${txt(ctx.h.base.title)}</span><span class="pg-s">${txt(tk('house.state', { date: ctx.h.base.date }))}</span></header><div class="pg-b"></div><footer class="pg-f"><span class="pg-fl">${left}</span><span class="pg-fc">${txt(disclaimerOf(ctx.h))}</span><span class="pg-n"></span></footer>`;
+  return `<header class="pg-h">${headerBrand(b)}<span class="pg-t">${txt(kickerOf(ctx.h))} · ${txt(ctx.h.base.title)}</span><span class="pg-s">${txt(tk('house.state', { date: ctx.h.base.date }))}</span></header><div class="pg-b"></div><footer class="pg-f"><span class="pg-fl">${left}</span><span class="pg-fc">${txt(disclaimerOf(ctx.h))}</span>${auditFooter(ctx.h)}<span class="pg-n"></span></footer>`;
+}
+
+/** M9: the audit head on every page (short hash, count, verified), when the project has one. */
+export function auditFooter(h: HouseModel): string {
+  if (!h.audit) return '';
+  const line = tk('audit.report.footer', {
+    head: h.audit.root.slice(0, 16),
+    count: num(h.audit.count),
+    verified: tk(h.audit.verified ? 'audit.report.footer.yes' : 'audit.report.footer.no'),
+  });
+  return `<span class="pg-fa">${txt(line)}</span>`;
 }
 
 /* ------------------------------------------------------------------------------------ cover */
@@ -781,6 +792,50 @@ export function layoutAppendices(
 }
 
 const firstLine = (s: string) => s.split('\n')[0] ?? '';
+
+/* ------------------------------------------------------------------------------- audit (M9) */
+
+/** The audit section: the head in full, count and verified, then the changes per issue. */
+export function layoutAudit(p: Pager, ctx: HouseContext, n: string): void {
+  const a = ctx.h.audit;
+  if (!a) return;
+  heading(p, `${n} · ${tk('audit.report.kicker')}`, tk('house.sec.audit'));
+  p.add(el(`<p class="nar">${txt(tk('audit.report.intro'))}</p>`));
+  p.table(
+    tableMaker('grid audit-head', [
+      tk('audit.report.head'),
+      tk('audit.report.count'),
+      tk('audit.report.verified'),
+    ]),
+    [
+      row([
+        `<code class="audit-root">${esc(a.root)}</code>`,
+        esc(num(a.count)),
+        txt(tk(a.verified ? 'audit.report.yes' : 'audit.report.no')),
+      ]),
+    ],
+  );
+  subheading(p, tk('audit.report.changes'));
+  if (a.rows.length === 0) {
+    p.add(el(`<p class="caption">${txt(tk('audit.report.none'))}</p>`));
+    return;
+  }
+  const byCode = [...a.rows].sort((x, y) =>
+    x.code === y.code ? (x.at < y.at ? 1 : -1) : x.code < y.code ? -1 : 1,
+  );
+  p.table(
+    tableMaker('grid audit', [
+      tk('audit.report.col.code'),
+      tk('audit.report.col.when'),
+      tk('audit.report.col.who'),
+      tk('audit.report.col.change'),
+    ]),
+    byCode.map((r) => row([`<b>${esc(r.code)}</b>`, esc(r.at), txt(r.who), txt(r.change)])),
+  );
+  if (a.more > 0) {
+    p.add(el(`<p class="caption">${txt(tk('audit.report.more', { n: num(a.more) }))}</p>`));
+  }
+}
 
 /** Section titles for the contents. */
 export const sectionTitle = (id: ReportSectionId): string => tk(`house.sec.${id}`);

@@ -47,6 +47,11 @@ export interface ExportDeps {
     signal: AbortSignal,
   ) => Promise<ExportResult>;
   emit: (event: IpcEvent<'export:progress'>) => void;
+  /** M9 T1: `audit-csv` and `audit-json` through the journal's audit export. */
+  audit?: (
+    projectId: string,
+    format: 'audit-csv' | 'audit-json',
+  ) => Promise<IpcResponse<'export:run'>>;
 }
 
 export interface ExportJobs {
@@ -59,12 +64,14 @@ export function createExportJobs(deps: ExportDeps): ExportJobs {
   const running = new Map<string, AbortController>();
   return {
     async run(req) {
-      // M9 T1 fills the audit exports (journal `audit:export`); until then, say so before a dialog.
-      if (req.format === 'audit-csv' || req.format === 'audit-json') {
-        return { ok: false, error: 'The audit export is not available yet in this build.' };
-      }
       const refused = deps.refuse?.(req.projectId, req.format) ?? null;
       if (refused !== null) return { ok: false, error: refused };
+      // M9 T1: the audit formats come from the journal (checked by format, never by file name).
+      if (req.format === 'audit-csv' || req.format === 'audit-json') {
+        return deps.audit
+          ? await deps.audit(req.projectId, req.format)
+          : { ok: false, error: 'The audit export is not available in this build.' };
+      }
       if (running.has(req.jobId)) return { ok: false, error: 'This export is already running.' };
       let root = deps.projectRoot(req.projectId);
       let staged: StagedRoot | undefined;

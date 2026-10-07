@@ -17,6 +17,7 @@ import {
 } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { openAuditTrail } from '../audit/auditView';
 import { legacyLayers } from '../legacy';
 import { useMedia } from '../media';
 import { isActive } from '../jobs';
@@ -183,6 +184,20 @@ function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
             <Icon name="projects" size={14} />
             <span className="pm-n">All projects</span>
           </button>
+          {manifest && (
+            <button
+              type="button"
+              role="menuitem"
+              data-testid="menu-audit-trail"
+              onClick={() => {
+                setOpen(false);
+                openAuditTrail();
+              }}
+            >
+              <Icon name="history" size={14} />
+              <span className="pm-n">{t('audit.title')}</span>
+            </button>
+          )}
           {manifest && (
             <button
               type="button"
