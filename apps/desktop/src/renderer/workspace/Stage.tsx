@@ -102,6 +102,7 @@ import {
 } from './useCutaway';
 import { VolumeTools } from './VolumeTools';
 import { siteBasemapOn, useSiteBasemap, useSiteBasemapLayer } from './siteBasemap';
+import { useSiteTiles } from './siteTiles';
 
 const MODES: { mode: StageMode; label: string; icon: IconName; keys: string }[] = [
   { mode: '3d', label: '3D', icon: 'scene', keys: '1' },
@@ -625,6 +626,8 @@ export function Stage() {
     project ? siteBasemapOn(s.choices, project.id, hasVolumes) : false,
   );
   useSiteBasemapLayer(engine, project, streetMap);
+  // M10 G7: 3D Tiles, terrain and imagery around the site, the Satellite map
+  useSiteTiles(engine, project, maps[0]);
 
   // Flight paths: all, the active clip's flight only, or none, and single hidden flights.
   const paths = useFlightPathModel();

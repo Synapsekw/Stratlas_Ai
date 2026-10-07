@@ -1181,8 +1181,16 @@ function registerIpc(): void {
     dataRoot: async () => (await settings.get()).dataRoot,
     settingsFile: join(app.getPath('userData'), 'globe.json'),
   });
-  registerTilesetsIpc({ handle });
-  registerRasterPacksIpc({ handle });
+  registerTilesetsIpc({
+    handle,
+    projectRoot: (id) => registry.root(id),
+    projectPackage: (id) => registry.package(id)?.archive,
+  });
+  registerRasterPacksIpc({
+    handle,
+    dataRoot: () => settings.current().dataRoot,
+    startJob: (req) => jobs.start(req),
+  });
 }
 
 /** Hand a package path to the renderer (second launch, macOS open-file). */

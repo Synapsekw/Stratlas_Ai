@@ -10,6 +10,7 @@ import pytest
 
 from aio_pipelines.pipelines import all_pipelines
 from aio_pipelines.runtime import JobError
+from aio_pipelines.stub import NotBuiltYet
 from conftest import run_job
 
 M10 = {
@@ -49,7 +50,11 @@ def test_every_m10_pipeline_is_listed():
         assert p.title and p.description
 
 
-@pytest.mark.parametrize("name", sorted(M10))
+#: The M10 pipelines still stubbed (each stream's real pipeline has its own tests).
+STUBS = sorted(n for n in M10 if isinstance(all_pipelines()[n], NotBuiltYet))
+
+
+@pytest.mark.parametrize("name", STUBS)
 def test_a_stub_fails_with_not_implemented_and_leaves_the_project_untouched(tmp_path, name):
     pipeline = all_pipelines()[name]
     with pytest.raises(JobError, match="not implemented"):

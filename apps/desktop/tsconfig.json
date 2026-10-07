@@ -28,6 +28,7 @@
     { "path": "../../packages/journal" },
     { "path": "../../packages/merge" },
     { "path": "../../packages/collab" },
-    { "path": "../../packages/sync" }
+    { "path": "../../packages/sync" },
+    { "path": "../../packages/tiles" }
   ]
 }

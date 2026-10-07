@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import type { BlobLookup } from '../blobs';
 import { LOGO_NAME } from '../branding';
+import { rasterPackFile } from '../packs/raster';
 import { findThumb } from '../thumbs';
 import { LEGACY_CSP, isLegacyDocument, prepareLegacyHtml } from './legacy';
 import { mimeFor } from './mime';
@@ -255,6 +256,9 @@ export function createAioHandler(roots: AioRoots): (req: Request) => Promise<Res
     }
 
     if (url.host === 'packs') {
+      // M10 G7: imagery and terrain packs, `aio://packs/{imagery,terrain}/<id>.pmtiles`
+      const raster = rasterPackFile(roots.packsDir(), segments);
+      if (raster) return serveFile(raster, req);
       const [name, ...rest] = segments;
       const m = name === undefined || rest.length > 0 ? null : PACK.exec(name);
       if (!m?.[1] || name === undefined) return status(404);
