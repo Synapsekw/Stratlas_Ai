@@ -1,0 +1,20 @@
+{
+  "schema": "aio.conversation/1",
+  "id": "c-compat",
+  "title": "Which tanks need work?",
+  "window": "scene3d",
+  "createdAt": "2026-03-02T09:00:00.000Z",
+  "updatedAt": "2026-03-09T15:30:00.000Z",
+  "turns": [
+    { "kind": "user", "id": "u1", "text": "Which tanks need work?", "chips": [], "frame": false },
+    {
+      "kind": "assistant",
+      "id": "a1",
+      "runId": "run-1",
+      "parts": [{ "type": "text", "text": "Tank 1 and tank 2." }],
+      "status": "done"
+    }
+  ],
+  "steps": {},
+  "usage": { "inputTokens": 120, "outputTokens": 12, "costUsd": 0, "costKnown": true }
+}
