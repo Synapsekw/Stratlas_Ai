@@ -19,6 +19,7 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
+  chmodSync,
   cpSync,
   createReadStream,
   existsSync,
@@ -278,6 +279,10 @@ async function main() {
         ...native.wheels,
       ]);
       if (native.tools) cpSync(native.tools, join(tmp, 'tools'), { recursive: true });
+      // A CI artifact (zip) loses the executable bit: restore it on the tools' programs.
+      if (process.platform !== 'win32')
+        for (const f of walk(join(tmp, 'tools')))
+          if (/[\\/]bin[\\/][^\\/]+$/.test(f) || f.endsWith('.dylib')) chmodSync(f, 0o755);
       mkdirSync(join(tmp, 'tools'), { recursive: true });
       writeFileSync(
         join(tmp, 'tools', 'native-manifest.json'),

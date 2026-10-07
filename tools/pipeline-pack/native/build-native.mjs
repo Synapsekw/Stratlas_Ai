@@ -15,7 +15,7 @@
 //                                   build), ports (version, licence, linkage), file hashes
 //   pack-sources-<version>.tar.zst  with --sources: the sources, patches and vcpkg downloads
 //
-// Needs git, CMake 3.28 or later, a C++17 compiler (Visual Studio 2022 on Windows; Xcode and
+// Needs git, CMake 3.28 or later, a C++17 compiler (Visual Studio 2022 or later on Windows; Xcode and
 // Ninja, and libomp from Homebrew, on macOS) and Python 3.13 with pip. vcpkg is cloned at the
 // pinned baseline into <work>/vcpkg unless --vcpkg is given; set VCPKG_BINARY_SOURCES for a
 // binary cache (CI uses a files cache in the GitHub Actions cache). Cold builds take 1 to 2 hours.
@@ -78,7 +78,8 @@ export function colmapConfigure(c, ctx) {
     ctx.src,
     '-B',
     ctx.build,
-    ...(ctx.platform === 'win32' ? ['-G', 'Visual Studio 17 2022', '-A', 'x64'] : ['-G', 'Ninja']),
+    // Windows: CMake's default generator, the newest Visual Studio on the machine.
+    ...(ctx.platform === 'win32' ? ['-A', 'x64'] : ['-G', 'Ninja']),
     `-DCMAKE_TOOLCHAIN_FILE=${ctx.vcpkgRoot}/scripts/buildsystems/vcpkg.cmake`,
     `-DVCPKG_TARGET_TRIPLET=${ctx.triplet}`,
     `-DVCPKG_HOST_TRIPLET=${ctx.hostTriplet}`,

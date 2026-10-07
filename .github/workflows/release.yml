@@ -1,7 +1,7 @@
 name: release
 
 # Release builds: signed Windows installers and Store package, a notarised universal macOS app,
-# and the macOS pipeline packs. Runs on a version tag (v*) and on demand.
+# and the pipeline packs (Windows x64, macOS arm64 and Intel). Runs on a version tag (v*) and on demand.
 #
 # Every signing step switches on only when its secrets exist. Without them the same jobs still
 # succeed and upload unsigned (Windows) or ad-hoc signed (macOS) test builds, so forks and a
@@ -181,6 +181,10 @@ jobs:
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: pnpm -F @aio/desktop dist:win
 
+      # M10 decision 6: at most 15 MB over the 0.9.0 installers (CesiumJS and 3DTilesRendererJS).
+      - name: Installer size budget
+        run: node tools/release/budgets.mjs --installers apps/desktop/dist
+
       # Every exe in the installers and the unpacked app must pass `signtool verify /pa`, carry a
       # timestamp, and name the publisher: subject CN equal to WIN_PUBLISHER_NAME (default
       # signing.windowsPublisher in brand.json, else the company), and acceptable to the app's own
@@ -313,6 +317,10 @@ jobs:
       - name: Build universal dmg and zip (bundle check and packaged smoke test included)
         run: pnpm -F @aio/desktop dist:mac
 
+      # M10 decision 6 (no 0.9.0 macOS baseline yet: the sizes are reported, not enforced).
+      - name: Installer size budget
+        run: node tools/release/budgets.mjs --installers apps/desktop/dist
+
       - name: Check the universal app
         working-directory: apps/desktop/dist
         run: |
@@ -364,18 +372,33 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-  pipeline-pack-mac:
+  # M10 G1: the native components of the pack (COLMAP and pycolmap, OpenCV, PDAL), built from the
+  # pinned recipe with the native licence gate; cached, so a release rebuilds only a changed recipe.
+  pack-native:
+    uses: ./.github/workflows/pack-native.yml
+
+  # Pipeline pack 0.4.0: Windows x64 and macOS arm64 with photogrammetry (the pack-native output),
+  # Intel macOS without it (decision 8). Every pack passes the native licence gate with --strict
+  # (an approval still pending in licence-exceptions.json fails the release) and the size budget
+  # of decision 6 (tools/release/budgets.mjs).
+  pipeline-pack:
     name: pipeline pack (${{ matrix.arch }})
+    needs: pack-native
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - os: windows-2025
+            arch: win-x64
+            native: win32-x64
+          - os: macos-15
             arch: macos-arm64
+            native: darwin-arm64
           - os: macos-15-intel
             arch: macos-x64
+            native: ''
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash
@@ -392,21 +415,36 @@ jobs:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
 
-      # python-build-standalone CPython plus the locked wheels; the script smoke-tests the pack.
+      - uses: actions/download-artifact@v4
+        if: matrix.native != ''
+        with:
+          name: pack-native-${{ matrix.native }}
+          path: pack-native
+
+      # python-build-standalone CPython plus the locked wheels (and our native wheels and tools);
+      # the script smoke-tests the pack, runs the native licence gate and checks the size budget.
       - name: Build the pipeline pack
-        run: node tools/pipeline-pack/build.mjs --out "$RUNNER_TEMP/runtime"
+        run: |
+          native=()
+          if [ -n "${{ matrix.native }}" ]; then native=(--native pack-native); fi
+          node tools/pipeline-pack/build.mjs --out runtime --strict "${native[@]}"
 
       # tar keeps the symlinks (bin/python3) and executable bits that a zip artifact would lose.
       - name: Archive
-        working-directory: ${{ runner.temp }}/runtime
+        working-directory: runtime
         run: |
           pack="$(ls -d pipeline-pack-* | head -n 1)"
-          tar -czf "$RUNNER_TEMP/$pack-${{ matrix.arch }}.tar.gz" "$pack"
-          shasum -a 256 "$RUNNER_TEMP/$pack-${{ matrix.arch }}.tar.gz"
+          tar -czf "../$pack-${{ matrix.arch }}.tar.gz" "$pack"
+          if command -v sha256sum >/dev/null; then sha256sum "../$pack-${{ matrix.arch }}.tar.gz"; else shasum -a 256 "../$pack-${{ matrix.arch }}.tar.gz"; fi
+
+      - name: Size budget (decision 6)
+        run: |
+          pack="$(ls -d runtime/pipeline-pack-* | head -n 1)"
+          node tools/release/budgets.mjs --pack "$pack" --archive "$(ls pipeline-pack-*-${{ matrix.arch }}.tar.gz)"
 
       - uses: actions/upload-artifact@v4
         with:
           name: pipeline-pack-${{ matrix.arch }}
-          path: ${{ runner.temp }}/pipeline-pack-*.tar.gz
+          path: pipeline-pack-*.tar.gz
           retention-days: 30
           if-no-files-found: error

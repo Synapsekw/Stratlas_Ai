@@ -187,8 +187,16 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
+  # M10 G1: our COLMAP/pycolmap, OpenCV and PDAL builds with the native licence gate
+  # (.github/workflows/pack-native.yml). Rebuilt only when tools/pipeline-pack/native changes.
+  pack-native:
+    uses: ./.github/workflows/pack-native.yml
+
   python:
     name: pipelines (${{ matrix.os }})
+    # The tests run against our own pycolmap and OpenCV wheels, never the PyPI ones (GPL CHOLMOD,
+    # FFmpeg): pack-native builds them.
+    needs: pack-native
     strategy:
       fail-fast: false
       matrix:
@@ -201,12 +209,25 @@ jobs:
         working-directory: python
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
       - name: Sync the locked environment (CPython 3.13)
         run: uv sync --frozen
+      - uses: actions/download-artifact@v4
+        with:
+          name: pack-native-${{ runner.os == 'Windows' && 'win32-x64' || 'darwin-arm64' }}
+          path: pack-native
+      - name: Our pycolmap and OpenCV wheels into the venv (outside uv.lock, as in the pack)
+        run: uv pip install --no-deps ../pack-native/wheels/*.whl
+      # Every DLL, dylib and executable of the pack's Python environment, with the wheels above.
+      - name: Native licence gate on the pack's Python environment
+        run: node ../tools/release/native-licences.mjs --scan .venv
       - name: Ruff lint
         run: uv run --frozen ruff check .
       - name: Ruff format
@@ -240,6 +261,9 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Allow-list for shipped code, no GPL/AGPL anywhere
         run: pnpm license:check
+      # M10 G1: the data sources of decision 4 (and pack metadata, once packs are built here).
+      - name: Data licences (imagery and terrain sources)
+        run: node tools/release/data-licences.mjs
 
   # M9 T7: the Team Server (preview) on a real Postgres. Linux only; no image is built or pushed.
   team-server:
