@@ -126,7 +126,8 @@ Design and failure handling: [ADR 0003](../architecture/adr/0003-updates-and-rol
 
 `.github/workflows/ci.yml`, on every push to `main` and every pull request:
 
-- **check** on `windows-latest` and `macos-latest`: install (pnpm store cached), `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm test`, `pnpm -F @aio/desktop build`, `pnpm test:e2e`. On failure the Playwright output (traces included) is uploaded as `playwright-<os>`.
+- **check** on `windows-latest` and `macos-latest`: install (pnpm store cached), `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm test`.
+- **e2e** on `windows-latest` and `macos-latest`, in two shards each (`playwright test --shard=1/2` and `2/2`, one worker, no retries, a flaky test fails), beside **check**: install, `pnpm -F @aio/desktop build`, the pipeline venv and the demo project, then the shard. On failure the Playwright output (traces included) is uploaded as `playwright-<os>-shard<n>`.
 - **licence check** on Ubuntu: `pnpm license:check`. Production dependencies of every workspace package must be MIT, MIT-0, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0, MPL-2.0, 0BSD, CC0-1.0, BlueOak-1.0.0 or Unlicense; no dependency at all may be GPL or AGPL.
 
 `.github/workflows/nightly.yml` (02:00 UTC and on demand) builds the installers on Windows and macOS and uploads them as `installers-<os>`.
