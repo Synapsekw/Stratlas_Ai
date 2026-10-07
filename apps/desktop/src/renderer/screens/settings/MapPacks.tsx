@@ -10,6 +10,7 @@ import type { MapPackInfo, PackJob } from '@aio/schema';
 import { formatBytes, formatDate, Icon, t } from '@aio/ui';
 import { useEffect, useMemo, useState } from 'react';
 import { bridge, useShell } from '../../shell';
+import { RasterPacks } from './RasterPacks';
 
 const ZOOMS: { z: number; hint: string }[] = [
   { z: 6, hint: 'country overview' },
@@ -588,6 +589,9 @@ export function MapPacks() {
           </table>
         )}
       </div>
+
+      {/* M10 G7: imagery and terrain packs */}
+      <RasterPacks />
     </>
   );
 }

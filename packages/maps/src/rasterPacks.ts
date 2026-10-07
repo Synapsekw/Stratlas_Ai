@@ -8,6 +8,7 @@ import type {
   RasterSourceSpecification,
   RequestParameters,
 } from 'maplibre-gl';
+import { FetchSource, PMTiles } from 'pmtiles';
 import { orderPacks } from './packs';
 import type { TileReader } from './protocol';
 
@@ -194,10 +195,7 @@ let installed: Promise<void> | null = null;
 /** Register `aioraster://` with MapLibre once (browser only), reading `aio://packs/`. */
 export function installRasterProtocol(packBase = 'aio://packs/'): Promise<void> {
   installed ??= (async () => {
-    const [{ addProtocol }, { FetchSource, PMTiles }] = await Promise.all([
-      import('maplibre-gl'),
-      import('pmtiles'),
-    ]);
+    const { addProtocol } = await import('maplibre-gl');
     const handler = createRasterProtocol(
       (kind, id) => new PMTiles(new FetchSource(`${packBase}${kind}/${id}.pmtiles`)),
     );

@@ -157,6 +157,9 @@ importers:
       '@aio/schema':
         specifier: workspace:*
         version: link:../../packages/schema
+      '@aio/tiles':
+        specifier: workspace:*
+        version: link:../../packages/tiles
       '@aio/ui':
         specifier: workspace:*
         version: link:../../packages/ui
