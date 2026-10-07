@@ -189,6 +189,20 @@ export function routeSuite(name: string, makeStore: () => Promise<Store>) {
       expect(page.ops).toEqual([comment]);
     });
 
+    it('syncs an approval from one reviewer to the others', async () => {
+      const approval = O.next('approval.add', issue, {
+        id: 'ap_aaaaaaaaaaaaaaaa',
+        target,
+        decision: 'approve',
+        contentHash: 'c'.repeat(64),
+      });
+      expect((await transportFor(omar).pushOps([approval])).accepted).toEqual([approval.id]);
+      const heads = await transportFor(rana).heads();
+      expect(heads[omar.chain]).toEqual({ seq: 2, id: approval.id });
+      const page = await transportFor(sami).pullOps({ [rana.chain]: { seq: 6, id: '' } });
+      expect(page.ops.map((o) => o.kind)).toEqual(['comment.add', 'approval.add']);
+    });
+
     it("refuses a viewer's write and a client's issue patch with 403", async () => {
       const viewerEdit = S.next('issue.patch', issue, { set: { severity: 4 } });
       const v = await transportFor(sami).pushOps([viewerEdit]);
