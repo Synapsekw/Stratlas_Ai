@@ -184,6 +184,7 @@ export async function startLoopbackServer(
     },
     async close() {
       await app.close();
+      await store.close();
       rmSync(blobDir, { recursive: true, force: true });
     },
   };
