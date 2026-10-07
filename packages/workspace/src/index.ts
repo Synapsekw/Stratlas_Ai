@@ -246,3 +246,6 @@ export {
   visibleIn,
 } from './timeline';
 export type { DatePref, VisibilityChange } from './timeline';
+
+export { DATE_COLOURS, dateTags } from './dateTags';
+export type { DateTag } from './dateTags';

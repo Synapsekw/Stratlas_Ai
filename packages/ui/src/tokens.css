@@ -25,6 +25,15 @@
   --acc-a12: oklch(0.79 0.115 172 / 0.12);
   --acc-a20: oklch(0.79 0.115 172 / 0.2);
   --acc-a40: oklch(0.79 0.115 172 / 0.4);
+  /* survey date palette: eight colours, mid lightness for small swatches and bars */
+  --date-1: oklch(0.68 0.14 250);
+  --date-2: oklch(0.72 0.14 160);
+  --date-3: oklch(0.74 0.15 75);
+  --date-4: oklch(0.66 0.17 25);
+  --date-5: oklch(0.66 0.15 300);
+  --date-6: oklch(0.72 0.12 200);
+  --date-7: oklch(0.7 0.15 120);
+  --date-8: oklch(0.68 0.15 350);
   /* semantic severity, client scale 1..5 */
   --s5: oklch(0.66 0.19 25);
   --s4: oklch(0.74 0.155 55);
