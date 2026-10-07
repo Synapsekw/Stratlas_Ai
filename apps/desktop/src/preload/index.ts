@@ -153,6 +153,27 @@ const CHANNELS = {
   'server:list': true,
   'server:check': true,
   'server:forget': true,
+  // M10
+  'photo:probe': true,
+  'photo:estimate': true,
+  'photo:runs': true,
+  'photo:readRun': true,
+  'photo:readGcp': true,
+  'photo:writeGcp': true,
+  'photo:applyPoses': true,
+  'photo:cleanWork': true,
+  'globe:sites': true,
+  'globe:packs': true,
+  'globe:getSettings': true,
+  'globe:setSettings': true,
+  'tilesets:list': true,
+  'tilesets:write': true,
+  'imageryPacks:list': true,
+  'imageryPacks:import': true,
+  'imageryPacks:remove': true,
+  'terrainPacks:list': true,
+  'terrainPacks:import': true,
+  'terrainPacks:remove': true,
 } as const satisfies Record<IpcChannel, true>;
 
 const EVENTS = {

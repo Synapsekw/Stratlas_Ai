@@ -16,6 +16,22 @@ export const AssetRef = z.union([
   z.object({ path: z.string().min(1) }).strict(),
 ]);
 
+/**
+ * A path inside the project folder: relative, no `..`, no drive letter. (Defined with the job
+ * parameters until M10, which uses it in project files too.)
+ */
+export const ProjectPath = z
+  .string()
+  .min(1)
+  .max(260)
+  .refine(
+    (p) => {
+      const n = p.replace(/\\/g, '/');
+      return !n.startsWith('/') && !/^[A-Za-z]:/.test(n) && !n.split('/').includes('..');
+    },
+    { message: 'Output paths must stay inside the project folder.' },
+  );
+
 // ---- M9 primitives shared by the journal, identity, collaboration, exchange and sync contracts ----
 
 /** Lower-case hex SHA-256 (64 characters): op ids, payload and content hashes, blob ids. */

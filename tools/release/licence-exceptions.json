@@ -1,0 +1,38 @@
+{
+  "policy": "Permissive only (M10 decision 1, founder 7 Oct 2026: go with the recommendations). Apache-2.0, MIT, BSD-2/3-Clause, ISC, Zlib, BSL-1.0 and similar are allowed. MPL-2.0 only for the items named here; LGPL only as an unmodified, separately replaceable shared library named here, never linked statically; never GPL, AGPL, SSPL or non-commercial. G1 owns this file and extends the gate to native libraries (native-libs.json) and data packs.",
+  "mpl": [
+    {
+      "name": "certifi",
+      "ecosystem": "python",
+      "licence": "MPL-2.0",
+      "use": "Mozilla CA bundle in the pipeline pack (through rasterio), unmodified",
+      "approved": "2026-10-07"
+    },
+    {
+      "name": "eigen",
+      "ecosystem": "native",
+      "licence": "MPL-2.0",
+      "use": "Linear algebra headers compiled into COLMAP, Ceres and mvs-texturing (G1), unmodified, EIGEN_MPL2_ONLY",
+      "approved": "2026-10-07"
+    }
+  ],
+  "lgplShared": [
+    {
+      "name": "geos",
+      "ecosystem": "native",
+      "licence": "LGPL-2.1-only",
+      "use": "Shared library inside the shapely and rasterio wheels (and PDAL from G1), unmodified and replaceable",
+      "approved": "2026-10-07"
+    }
+  ],
+  "elections": [
+    {
+      "name": "dompurify",
+      "ecosystem": "npm",
+      "licence": "(MPL-2.0 OR Apache-2.0)",
+      "elected": "Apache-2.0",
+      "use": "Inside CesiumJS (G6)",
+      "approved": "2026-10-07"
+    }
+  ]
+}

@@ -569,6 +569,48 @@ export const FORMS: Record<PipelineName, Field[]> = {
     { key: 'distM', label: 'Fit distance (m)', kind: 'number', placeholder: '0.05' },
     { key: 'model', label: 'Add to model id', kind: 'text', placeholder: 'A new model' },
   ],
+  // M10 (G0): photo.align and photo.products start from the Builder's Process photos wizard (G4),
+  // and the raster packs from Settings, Map packs (G7), which fill every parameter; the forms here
+  // cover the flat parameters for a manual run. G3 owns the photo.* entries, G5 the opf.* entries.
+  'photo.align': [],
+  'photo.georef': [
+    { key: 'run', label: 'Run id', kind: 'text', required: true },
+    {
+      key: 'useGnss',
+      label: 'Use GNSS positions',
+      kind: 'select',
+      boolean: true,
+      options: [
+        { value: '', label: 'Yes (default)' },
+        { value: 'false', label: 'No, control points only' },
+      ],
+    },
+  ],
+  'photo.products': [],
+  'opf.import': [
+    {
+      key: 'src',
+      label: 'OPF project',
+      kind: 'file',
+      required: true,
+      help: 'Read only. Files outside the project folder are refused.',
+      filters: [{ name: 'OPF project', extensions: ['opf', 'json'] }],
+    },
+    {
+      key: 'photosRoot',
+      label: 'Photos folder',
+      kind: 'folder',
+      help: 'When the paths do not resolve.',
+    },
+  ],
+  'opf.export': [
+    { key: 'run', label: 'Run id', kind: 'text', required: true },
+    { key: 'out', label: 'Export to folder', kind: 'folder', required: true },
+  ],
+  'tiles.mesh': [{ key: 'layer', label: 'Mesh layer id', kind: 'text', required: true }],
+  'tiles.cloud': [{ key: 'layer', label: 'Point cloud layer id', kind: 'text', required: true }],
+  'packs.imagery': [],
+  'packs.terrain': [],
 };
 
 /** Turn the form's text values into checked params, or say what is wrong. */

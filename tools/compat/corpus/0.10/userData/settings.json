@@ -1,0 +1,13 @@
+{
+  "cloudAi": false,
+  "theme": "dark",
+  "sidebarCollapsed": false,
+  "dataRoot": "C:/Users/Example/Documents/Stratlas Data",
+  "routes": [],
+  "direction": "ltr",
+  "offlineOnly": true,
+  "updateCheck": false,
+  "updateUrl": "",
+  "reportBranding": { "companyName": "Example Surveys" },
+  "reportContents": { "sections": { "appendices": false }, "issuePages": "above-lowest" }
+}
