@@ -5,13 +5,15 @@
  * the zero-network guard of the fixtures runs on every test.
  */
 import { utmToWgs84 } from '@aio/geo';
+import { enuToEcefMatrix } from '@aio/globe';
+import type { GlobeInspection } from '@aio/globe/view';
 import { pmtilesOf, solidPng, syntheticPackMeta, terrariumPng } from '@aio/globe/testing';
 import { ProjectManifest, SCHEMA_VERSION, type ProjectManifestInput } from '@aio/schema';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expect, test, type DataRoot } from './fixtures';
+import { expect, test, tinyGlb, type DataRoot } from './fixtures';
 
 /** The app's CSP as main sets it (src/main/index.ts `CSP`), read from the source. */
 function appCsp(): string {
@@ -21,25 +23,11 @@ function appCsp(): string {
 }
 
 /** What the Globe shows (`GlobeController.inspect()` through the hook on its element). */
-interface Inspection {
-  tilesLoaded: boolean;
-  frame: number;
-  imagery: string[];
-  imageryTiles: number;
-  terrain: string[];
-  terrainTiles: number;
-  sites: string[];
-  issuePins: string[];
-  credits: string[];
-  cameraHeight: number;
-  flying: boolean;
-}
-
 const inspect = (win: Page) =>
   win.evaluate(() => {
     const el = document.querySelector('[data-testid="globe-canvas"]');
     const c = (el as { __aioGlobe?: { inspect(): unknown } } | null)?.__aioGlobe;
-    return (c?.inspect() ?? null) as Inspection | null;
+    return (c?.inspect() ?? null) as GlobeInspection | null;
   });
 
 const memMiB = (app: ElectronApplication) =>
@@ -357,4 +345,73 @@ test('an issue pin opens the issue in the site view', async ({ win }) => {
   await card.getByRole('button', { name: 'Open issue' }).click();
   await expect(win.locator('.app')).toHaveAttribute('data-screen', 'scene');
   await expect(win.getByTestId('issue-card')).toContainText('F01');
+});
+
+/**
+ * A 2 km square of the 1 m test quad as a 3D Tiles 1.1 tileset in project A (glTF content, an
+ * east-north-up root transform at the site origin, scaled), the shape `tiles.mesh` writes.
+ */
+async function writeQuadTileset(dataRoot: DataRoot): Promise<void> {
+  const dir = join(dataRoot.root, 'projects', SITE_A.id, 'tiles', 'quad');
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, 'quad.glb'), tinyGlb());
+  const m = enuToEcefMatrix(A_LON, A_LAT, SITE_A.origin[2]);
+  const S = 2000;
+  const col = (i: number) => m.slice(i * 4, i * 4 + 3);
+  const [e, n, u] = [col(0), col(1), col(2)];
+  const origin = col(3).map((v, i) => v - 1000 * (e[i] ?? 0) - 1000 * (n[i] ?? 0));
+  const transform = [
+    ...e.map((v) => v * S),
+    0,
+    ...n.map((v) => v * S),
+    0,
+    ...u.map((v) => v * S),
+    0,
+    ...origin,
+    1,
+  ];
+  await writeFile(
+    join(dir, 'tileset.json'),
+    JSON.stringify({
+      asset: { version: '1.1' },
+      geometricError: 100,
+      root: {
+        transform,
+        boundingVolume: { box: [0.5, 0.5, 0, 0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.01] },
+        geometricError: 0,
+        refine: 'REPLACE',
+        content: { uri: 'quad.glb' },
+      },
+    }),
+  );
+}
+
+test('the tilesets of a project draw on the Globe', async ({ win, dataRoot }) => {
+  await writeQuadTileset(dataRoot);
+  await openGlobe(win);
+  await flyToSite(win, SITE_A.name);
+  const sample = () =>
+    win.evaluate(() => {
+      const el = document.querySelector('[data-testid="globe-canvas"]');
+      const c = (el as { __aioGlobe?: { samplePixel(x: number, y: number): Promise<number[]> } })
+        .__aioGlobe;
+      return c?.samplePixel(0.35, 0.75);
+    });
+  const ground = await sample();
+  // G7's tilesets:list is not in this build yet: give the Globe the entry it would answer
+  await win.evaluate((id) => {
+    const el = document.querySelector('[data-testid="globe-canvas"]');
+    const c = (el as { __aioGlobe?: { setTilesets: (...a: unknown[]) => Promise<void> } })
+      .__aioGlobe;
+    return c?.setTilesets(id, { crs: { epsg: 32639 }, origin: [0, 0, 0], heightOffset: 0 }, [
+      { id: 'quad', src: 'tiles/quad/tileset.json', visible: true },
+    ]);
+  }, SITE_A.id);
+  await expect
+    .poll(async () => (await inspect(win))?.tilesets, { timeout: 20_000 })
+    .toEqual([{ id: 'quad', ready: true }]);
+  // the white quad now covers the ground under the camera
+  const quad = await sample();
+  expect(ground?.slice(0, 3).every((v) => v > 215)).toBe(false);
+  expect(quad?.slice(0, 3).every((v) => v > 215)).toBe(true);
 });

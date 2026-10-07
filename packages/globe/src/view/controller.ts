@@ -10,11 +10,13 @@ import {
   Cartographic,
   Color,
   HeadingPitchRange,
+  Matrix4,
   Math as CMath,
   Rectangle,
 } from '@cesium/core';
 import type { ImageryLayer } from '@cesium/engine';
 import {
+  Cesium3DTileset,
   CustomDataSource,
   EllipsoidTerrainProvider,
   Entity,
@@ -26,10 +28,17 @@ import {
   VerticalOrigin,
   type CesiumWidget,
 } from '@cesium/engine';
-import type { GlobeSite, RasterPackInfo } from '@aio/schema';
+import type { GlobeSite, RasterPackInfo, TilesetEntry } from '@aio/schema';
 import { FetchSource, type Source } from 'pmtiles';
 import { siteToGlobe, type GlobeCamera, type SiteCamera } from '../camera';
-import { ecefToGeodetic, enuBasis, localToEcef, type SiteGeoref } from '../geodesy';
+import {
+  ecefToGeodetic,
+  enuBasis,
+  localToEcef,
+  localToEcefMatrix,
+  type SiteGeoref,
+} from '../geodesy';
+import { OFFLINE_CESIUM } from '../offline';
 import { creditLines } from '../credits';
 import type { IssuePin } from '../sites';
 import { NO_GEOID, type Geoid } from '../terrarium';
@@ -112,6 +121,8 @@ export interface GlobeInspection {
   terrain: string[];
   terrainTiles: number;
   sites: string[];
+  /** Project tilesets on the Globe and whether their root content is drawn. */
+  tilesets: { id: string; ready: boolean }[];
   issuePins: string[];
   credits: string[];
   /** Camera height above the ellipsoid, metres. */
@@ -129,6 +140,8 @@ export class GlobeController {
   private readonly issues = new CustomDataSource('issues');
   private readonly handler: ScreenSpaceEventHandler;
   private credits: string[] = [];
+  private tilesets: { id: string; tileset: Cesium3DTileset }[] = [];
+  private tilesetGeneration = 0;
 
   private constructor(
     readonly widget: CesiumWidget,
@@ -288,6 +301,51 @@ export class GlobeController {
     this.scene.requestRender();
   }
 
+  /**
+   * The open project's 3D Tiles (`tilesets.json`, data-conventions section 22), read from the
+   * project over `aio://project/<id>/<src>`. Ours are written in ECEF; an imported tileset's
+   * `transform` places it in the project frame, which the site's frame takes to ECEF.
+   */
+  async setTilesets(
+    projectId: string,
+    georef: SiteGeoref,
+    entries: readonly Pick<TilesetEntry, 'id' | 'src' | 'visible' | 'transform'>[],
+  ): Promise<void> {
+    const generation = ++this.tilesetGeneration;
+    for (const t of this.tilesets) this.scene.primitives.remove(t.tileset);
+    this.tilesets = [];
+    const frame = Matrix4.fromArray(localToEcefMatrix(georef));
+    for (const e of entries) {
+      if (!e.visible) continue;
+      const path = e.src.split('/').map(encodeURIComponent).join('/');
+      try {
+        const tileset = await Cesium3DTileset.fromUrl(
+          `aio://project/${encodeURIComponent(projectId)}/${path}`,
+          {
+            maximumScreenSpaceError: this.o.tier === 'low' ? 32 : 16,
+            cacheBytes: OFFLINE_CESIUM.tileCacheBytes,
+            maximumCacheOverflowBytes: OFFLINE_CESIUM.tileCacheBytes / 2,
+          },
+        );
+        if (generation !== this.tilesetGeneration || this.widget.isDestroyed()) {
+          tileset.destroy();
+          return;
+        }
+        if (e.transform)
+          tileset.modelMatrix = Matrix4.multiply(
+            frame,
+            Matrix4.fromArray(e.transform),
+            new Matrix4(),
+          );
+        this.scene.primitives.add(tileset);
+        this.tilesets.push({ id: e.id, tileset });
+      } catch (err) {
+        console.warn(`The Globe could not load tileset ${e.id}:`, err);
+      }
+    }
+    this.scene.requestRender();
+  }
+
   /** The whole Earth, or a box around the given sites. */
   flyHome(bounds: readonly [number, number, number, number] | null): void {
     const rect = bounds
@@ -360,6 +418,11 @@ export class GlobeController {
       terrain: this.terrainIds,
       terrainTiles: this.terrainDecoded?.() ?? 0,
       sites: this.sites.entities.values.map((e) => e.id.slice(SITE_PREFIX.length)),
+      tilesets: this.tilesets.map(({ id, tileset }) => ({
+        id,
+        ready:
+          tileset.tilesLoaded && (tileset.root as { contentReady?: boolean }).contentReady === true,
+      })),
       issuePins: this.issues.entities.values.map((e) => e.id.slice(ISSUE_PREFIX.length)),
       credits: this.credits,
       cameraHeight: scene.camera.positionCartographic.height,

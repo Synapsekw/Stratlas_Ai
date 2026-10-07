@@ -9,7 +9,12 @@ import {
   type GlobeCamera,
   type SiteGeoref,
 } from '@aio/globe';
-import { GlobeView, type GlobeController, type GlobePick } from '@aio/globe/view';
+import {
+  GlobeView,
+  type GlobeController,
+  type GlobePick,
+  type GlobeTilesets,
+} from '@aio/globe/view';
 import {
   defaultGlobeSettings,
   type GlobeSettings,
@@ -88,6 +93,27 @@ export default function GlobeScreen() {
     () => selectPacks(loaded?.terrain ?? [], prefs.terrain ?? 'auto'),
     [loaded, prefs.terrain],
   );
+  const [tilesets, setTilesets] = useState<GlobeTilesets | null>(null);
+  useEffect(() => {
+    let live = true;
+    if (!project) return;
+    // the open project's 3D Tiles (G7's `tilesets:list`; none until it answers)
+    void bridge.call('tilesets:list', { projectId: project.id }).then((r) => {
+      if (!live) return;
+      setTilesets(
+        r.ok && r.value.ok
+          ? {
+              projectId: project.id,
+              georef: georefOf(project.manifest),
+              entries: r.value.file.entries,
+            }
+          : null,
+      );
+    });
+    return () => {
+      live = false;
+    };
+  }, [project]);
   const pins = useMemo(() => {
     if (!project || prefs.showIssues === false) return null;
     return {
@@ -146,6 +172,7 @@ export default function GlobeScreen() {
         terrain={terrain}
         exaggeration={prefs.terrainExaggeration ?? 1}
         issuePins={pins}
+        tilesets={tilesets && tilesets.projectId === project?.id ? tilesets : null}
         start={start}
         reducedMotion={reducedMotion}
         onPick={setPick}

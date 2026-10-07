@@ -1,5 +1,5 @@
 import '@cesium/engine/Source/Widget/CesiumWidget.css';
-import type { GlobeSite, RasterPackInfo } from '@aio/schema';
+import type { GlobeSite, RasterPackInfo, TilesetEntry } from '@aio/schema';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { GlobeCamera } from '../camera';
 import type { SiteGeoref } from '../geodesy';
@@ -13,6 +13,12 @@ export interface GlobeIssuePins {
   pins: readonly IssuePin[];
 }
 
+export interface GlobeTilesets {
+  projectId: string;
+  georef: SiteGeoref;
+  entries: readonly TilesetEntry[];
+}
+
 export interface GlobeViewProps {
   /** Where the app serves its copy of Cesium's workers and assets (`<renderer>/cesium/`). */
   baseUrl: string;
@@ -22,6 +28,8 @@ export interface GlobeViewProps {
   terrain: readonly RasterPackInfo[];
   exaggeration: number;
   issuePins: GlobeIssuePins | null;
+  /** The open project's 3D Tiles (`tilesets.json`). */
+  tilesets: GlobeTilesets | null;
   /** Where to start: a remembered camera, a site to fly to, or every site. */
   start: { camera: GlobeCamera } | { site: readonly [number, number] } | null;
   reducedMotion: () => boolean;
@@ -32,6 +40,8 @@ export interface GlobeViewProps {
   /** The camera when the Globe closes, to come back to the same view. */
   onClose?: (camera: GlobeCamera) => void;
 }
+
+const NOWHERE: SiteGeoref = { crs: { epsg: 4326 }, origin: [0, 0, 0], heightOffset: 0 };
 
 /**
  * The Globe in a React element. The CesiumWidget is built once per mount and destroyed with its
@@ -100,8 +110,14 @@ export function GlobeView(props: GlobeViewProps) {
     const ip = props.issuePins;
     if (!ctl) return;
     if (ip) ctl.setIssuePins(ip.projectId, ip.georef, ip.pins);
-    else ctl.setIssuePins('', { crs: { epsg: 4326 }, origin: [0, 0, 0], heightOffset: 0 }, []);
+    else ctl.setIssuePins('', NOWHERE, []);
   }, [ctl, props.issuePins]);
+
+  useEffect(() => {
+    const ts = props.tilesets;
+    if (!ctl) return;
+    void ctl.setTilesets(ts?.projectId ?? '', ts?.georef ?? NOWHERE, ts?.entries ?? []);
+  }, [ctl, props.tilesets]);
 
   return <div ref={ref} className="aio-globe" data-testid="globe-canvas" />;
 }
