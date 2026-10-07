@@ -9,8 +9,8 @@
  *   its files are left exactly as they were.
  *
  * The project's images, models and clouds come from the synthetic demo (build it with
- * `pnpm demo:build --quick`; skipped when it is missing). When the journal (T1) lands, the edit
- * also creates `journal/`; the second check below turns on then.
+ * `pnpm demo:build --quick`; skipped when it is missing). The first edit also starts the journal
+ * (`journal/`, signed ops and this device's record).
  */
 import { test as base, type ElectronApplication, type Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
@@ -177,10 +177,43 @@ test('a project written by 0.8 is edited here and still opens in 0.8', async ({ 
   });
 });
 
-test.fixme('the first edit in this build starts the journal (turns on with T1)', async ({
+test('the first edit in this build starts the journal, signed by this device', async ({
+  win,
   data,
 }) => {
+  await nav(win, 'Projects');
+  await win.getByTestId('project-card').filter({ hasText: NAME }).first().click();
+  await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible({ timeout: 60_000 });
+  // opening alone takes the 0.8 files as the baseline: no journal yet
+  expect(existsSync(join(data.projectDir, 'journal'))).toBe(false);
+
+  await nav(win, 'Issues');
+  await win.getByRole('listbox', { name: 'Issues' }).getByRole('option').first().click();
+  const card = win.getByTestId('issue-card').first();
+  await card.getByText('Edit issue', { exact: true }).click();
+  const title = card.getByTestId('issue-edit').getByLabel('Title');
+  await title.fill('Journal starts here');
+  await title.press('Enter');
+
+  const opsDir = join(data.projectDir, 'journal', 'ops');
+  await expect.poll(() => existsSync(opsDir), { timeout: 15_000 }).toBe(true);
   expect((await stat(join(data.projectDir, 'journal'))).isDirectory()).toBe(true);
+  const [chain] = await readdir(opsDir);
+  if (!chain) throw new Error('no chain');
+  const text = await readFile(join(opsDir, chain, '000001.jsonl'), 'utf8');
+  const ops = text
+    .trim()
+    .split('\n')
+    .map((l) => JSON.parse(l) as { kind: string; sig?: string; payload?: unknown });
+  expect(
+    ops.some(
+      (o) => o.kind === 'issue.patch' && JSON.stringify(o.payload).includes('Journal starts here'),
+    ),
+  ).toBe(true);
+  expect(ops.every((o) => typeof o.sig === 'string')).toBe(true);
+  // this device's public record is beside the chain; its key stayed in the test vault
+  const device = chain.split('.')[0] ?? '';
+  expect(existsSync(join(data.projectDir, 'journal', 'devices', `${device}.json`))).toBe(true);
 });
 
 test('a project saved by a newer Stratlas is refused and left unchanged', async ({ win, data }) => {
