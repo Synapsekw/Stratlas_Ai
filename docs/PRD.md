@@ -37,7 +37,7 @@ The product is one installed, offline-first desktop application that opens, fuse
 
 ### Non-goals (for now)
 
-- Photogrammetry or LiDAR processing from raw images or scans (Pix4D, Metashape, DJI Terra stay upstream).
+- LiDAR processing from raw scans (registration, trajectory and SLAM processing stay upstream). Changed 7 Oct 2026 (M10 decision 10, founder: go with the recommendations): photogrammetry from drone images moved into scope (section 9.1); it was listed here with LiDAR as "Photogrammetry or LiDAR processing from raw images or scans (Pix4D, Metashape, DJI Terra stay upstream)".
 - Flight planning or drone control.
 - A cloud SaaS or multi-tenant server. Optional sync can come later.
 - Mobile apps.
@@ -218,6 +218,26 @@ Every dataset can be annotated. An annotation marks an issue (or an observation)
 | BLD-9  | Export a customer package: read-only player plus data, optionally encrypted, optionally size-limited                                                                                                                                                                                                       | M   |
 | BLD-10 | Local detection inference (exported ONNX models through onnxruntime; SAM-class assist for masks) as an offline alternative to cloud vision. Model training is out of scope until a later release; Ultralytics is AGPL-3.0, so customer builds run ONNX exports only unless an Enterprise licence is bought | C   |
 | BLD-11 | Model building from drawings and point clouds (agent-assisted procedural modelling)                                                                                                                                                                                                                        | C   |
+
+### 9.1 Photogrammetry and the Globe (M10)
+
+Added 7 Oct 2026 (M10 decisions 1 to 12, founder: go with the recommendations; plan `docs/plans/2026-10-07-m10-globe-and-photogrammetry.md`). Offline, on an ordinary workstation (no GPU required), from permissively licensed parts only; Windows x64 and macOS arm64.
+
+| ID    | Requirement                                                                                                                                                                                                                                                               | P   |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- |
+| PHO-1 | Process a folder of drone photos (or an existing photos layer) from the Builder: a wizard with the CRS, a quality preset (Fast, Standard, High), the products, a per-machine estimate of time, disk and memory, and a hardware check; runs as resumable, cancellable jobs | M   |
+| PHO-2 | Alignment: EXIF and DJI XMP (GPS, altitudes, gimbal, RTK flags and accuracy), PPK positions from a CSV, feature matching and structure from motion on the CPU, camera self-calibration, georeferencing with GNSS priors; every rejected photo named with its reason       | M   |
+| PHO-3 | Ground control: import GCP files (CSV, TXT, Pix4D and ODM formats) with an EPSG code; control and check points; marking with predicted positions and draft target detections a person confirms; bundle adjustment with the control points                                 | M   |
+| PHO-4 | Accuracy report: residuals per control and check point, RMSE horizontal and vertical per role, reprojection error, camera residuals to GNSS, GSD and overlap; checkpoints never enter the adjustment and the report says so; in the app, as a PDF and in the house report | M   |
+| PHO-5 | Dense point cloud as COPC in the project CRS, ground classified                                                                                                                                                                                                           | M   |
+| PHO-6 | Surface models (DSM and DTM as COG and a hillshade layer) and an orthomosaic (COG and a map layer) that the volume, change and map tools use directly                                                                                                                     | M   |
+| PHO-7 | Textured mesh: a decimated GLB for the site view and the full mesh as 3D Tiles                                                                                                                                                                                            | S   |
+| PHO-8 | OPF interchange: import an OPF project (Pix4D and other writers) and export a processing run as OPF; refined camera poses are offered and applied by a person, with a backup                                                                                              | S   |
+| GLB-1 | A Globe view (CesiumJS) with every library project on the Earth, offline, with no account, token or request                                                                                                                                                               | M   |
+| GLB-2 | Offline imagery and terrain packs: Natural Earth II in the app, world and region packs from licence-clean sources, and the customer's own imagery imported under its own licence; each pack's licence and attribution shown wherever its data shows                       | M   |
+| GLB-3 | A project on the Globe: its orthos, meshes and point clouds (3D Tiles), survey footprints by date and issues as pins                                                                                                                                                      | S   |
+| GLB-4 | Hand-over between the Globe and the site view at the same camera, both ways; the Globe has a geodesic read-out only and no editing tools                                                                                                                                  | S   |
+| GLB-5 | 3D Tiles, terrain and imagery in the site view, with every site tool (picking, issues, measuring, cutaway) working on them; 3D Tiles from other software imported and placed                                                                                              | S   |
 
 ## 10. Success metrics
 
