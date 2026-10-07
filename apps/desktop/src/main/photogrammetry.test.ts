@@ -238,7 +238,15 @@ describe('estimate', () => {
         count: 60,
         noGps: 1,
         groups: [
-          { label: 'Stratlas Synthetic SYN-20', widthPx: 1600, heightPx: 1200, photos: 58 },
+          {
+            label: 'Stratlas Synthetic SYN-20',
+            make: 'Stratlas Synthetic',
+            model: 'SYN-20',
+            focalMm: 8.8,
+            widthPx: 1600,
+            heightPx: 1200,
+            photos: 58,
+          },
           { label: 'Unknown camera', photos: 2 },
         ],
       }),
@@ -247,8 +255,19 @@ describe('estimate', () => {
       HW,
     );
     const notes = e.notes?.join('\n') ?? '';
-    expect(notes).toContain('Camera group: Stratlas Synthetic SYN-20, 1600 × 1200 (58 photos).');
-    expect(notes).toContain('Camera group: Unknown camera (2 photos).');
+    expect(e.cameras).toEqual([
+      {
+        id: 'cam1',
+        make: 'Stratlas Synthetic',
+        model: 'SYN-20',
+        widthPx: 1600,
+        heightPx: 1200,
+        focalMm: 8.8,
+        photos: 58,
+      },
+    ]);
+    expect(notes).not.toContain('SYN-20');
+    expect(notes).toContain('Camera group: Unknown camera (2 photos), frame size not readable.');
     expect(notes).toContain('Mixed cameras');
     expect(notes).toContain('1 photo has no GPS position');
   });
@@ -340,7 +359,14 @@ describe('photo files', () => {
     expect(set.count).toBe(3);
     expect(set.megapixels).toBeCloseTo(1.92, 5);
     expect(set.groups).toEqual([
-      { label: 'Stratlas Synthetic SYN-20', widthPx: 1600, heightPx: 1200, photos: 3 },
+      {
+        label: 'Stratlas Synthetic SYN-20',
+        make: 'Stratlas Synthetic',
+        model: 'SYN-20',
+        widthPx: 1600,
+        heightPx: 1200,
+        photos: 3,
+      },
     ]);
     expect(set.noGps).toBe(1);
     expect(set.centre?.lat).toBeCloseTo(29.07, 5);
@@ -459,9 +485,10 @@ describe('photo IPC', () => {
     if (!layer.ok) return;
     expect(layer.estimate.minutes[0]).toBeGreaterThan(0);
     expect(layer.estimate.notes?.[0]).toBe('The photos are in UTM zone 39N (EPSG:32639).');
-    expect(layer.estimate.notes).toContain(
-      'Camera group: Stratlas Synthetic SYN-20, 1600 × 1200 (3 photos).',
-    );
+    expect(layer.estimate.suggestedEpsg).toBe(32639);
+    expect(layer.estimate.cameras).toMatchObject([
+      { make: 'Stratlas Synthetic', model: 'SYN-20', widthPx: 1600, heightPx: 1200, photos: 3 },
+    ]);
     const folder = await ipc.call('photo:estimate', {
       photos: { folders: [join(root, 'photos')] },
       preset: 'fast',

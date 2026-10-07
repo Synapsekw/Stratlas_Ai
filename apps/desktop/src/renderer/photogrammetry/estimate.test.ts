@@ -1,12 +1,15 @@
 import type { HardwareProbe } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
+  cameraGroups,
+  cameraLabel,
   defaultProducts,
   diskShort,
   formatBytes,
   formatMinutes,
   newRunId,
   splitNotes,
+  suggestedEpsg,
 } from './estimate';
 import { gpuLine, machineLine, processingLine } from './hardware';
 
@@ -94,5 +97,42 @@ describe('hardware words', () => {
     expect(machineLine(probe())).toBe(
       'Synthetic CPU, 8 cores, 32.0 GB memory, 512 GB free on the data drive',
     );
+  });
+});
+
+describe('camera groups and the photos zone', () => {
+  const base = { minutes: [1, 2] as [number, number], diskBytes: 0, memoryBytes: 0 };
+
+  it('lists the estimate cameras, then groups only a note names', () => {
+    const e = {
+      ...base,
+      cameras: [
+        {
+          id: 'cam1',
+          make: 'Stratlas Synthetic',
+          model: 'SYN-20',
+          widthPx: 1600,
+          heightPx: 1200,
+          focalMm: 8.8,
+          photos: 58,
+        },
+        { id: 'cam2', widthPx: 640, heightPx: 480, photos: 1 },
+      ],
+      notes: ['Camera group: Unknown camera (2 photos), frame size not readable.'],
+    };
+    expect(cameraLabel(e.cameras[1] ?? e.cameras[0])).toBe('Unknown camera, 640 × 480 (1 photo)');
+    expect(cameraGroups(e)).toEqual([
+      'Stratlas Synthetic SYN-20, 1600 × 1200, 8.8 mm (58 photos)',
+      'Unknown camera, 640 × 480 (1 photo)',
+      'Unknown camera (2 photos), frame size not readable',
+    ]);
+  });
+
+  it('takes the suggested EPSG, else the zone note', () => {
+    expect(suggestedEpsg({ ...base, suggestedEpsg: 32639 })).toBe(32639);
+    expect(
+      suggestedEpsg({ ...base, notes: ['The photos are in UTM zone 40N (EPSG:32640).'] }),
+    ).toBe(32640);
+    expect(suggestedEpsg(base)).toBeNull();
   });
 });

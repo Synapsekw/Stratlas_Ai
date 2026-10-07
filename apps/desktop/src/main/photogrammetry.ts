@@ -21,6 +21,7 @@ import {
   type Layer,
   type Quat,
   type Vec3,
+  type PhotoCameraGroup,
   type PhotoEstimate,
   type PhotoPreset,
   type PhotoProduct,
@@ -246,7 +247,15 @@ export interface PhotoSet {
   /** Bytes of all photos (measured or extrapolated). */
   bytes: number;
   /** Camera groups: one per camera body, lens and frame size. */
-  groups: { label: string; widthPx?: number; heightPx?: number; photos: number }[];
+  groups: {
+    label: string;
+    make?: string;
+    model?: string;
+    focalMm?: number;
+    widthPx?: number;
+    heightPx?: number;
+    photos: number;
+  }[];
   /** True when only a sample of the photos was read. */
   sampled: boolean;
   /** Centre of the photos' GPS positions, when any had one. */
@@ -335,16 +344,36 @@ export function estimateRun(
     notes.push(
       `${String(photos.noGps)} ${photos.noGps === 1 ? 'photo has' : 'photos have'} no GPS position; they are placed by matching only.`,
     );
-  for (const g of photos.groups.slice(0, 8))
-    notes.push(
-      `Camera group: ${g.label}${g.widthPx && g.heightPx ? `, ${String(g.widthPx)} × ${String(g.heightPx)}` : ''} (${photos.sampled ? 'about ' : ''}${String(g.photos)} ${g.photos === 1 ? 'photo' : 'photos'}).`,
-    );
+  // camera groups go out as cameras; a group without a frame size (no EXIF) stays a note
+  const cameras: PhotoCameraGroup[] = [];
+  for (const g of photos.groups) {
+    if (g.widthPx && g.heightPx && cameras.length < 100)
+      cameras.push({
+        id: `cam${String(cameras.length + 1)}`,
+        ...(g.make ? { make: g.make } : {}),
+        ...(g.model ? { model: g.model } : {}),
+        widthPx: g.widthPx,
+        heightPx: g.heightPx,
+        ...(g.focalMm ? { focalMm: g.focalMm } : {}),
+        photos: g.photos,
+      });
+    else
+      notes.push(
+        `Camera group: ${g.label} (${photos.sampled ? 'about ' : ''}${String(g.photos)} ${g.photos === 1 ? 'photo' : 'photos'}), frame size not readable.`,
+      );
+  }
   if (photos.groups.length > 1)
     notes.push(
       'Mixed cameras: each camera is calibrated on its own, which needs more overlap per camera.',
     );
   notes.push('Times are a range: scene content and a warm laptop can make a run slower.');
-  return { minutes, diskBytes, memoryBytes, notes: notes.slice(0, 20) };
+  return {
+    minutes,
+    diskBytes,
+    memoryBytes,
+    notes: notes.slice(0, 20),
+    ...(cameras.length ? { cameras } : {}),
+  };
 }
 
 /** Photo files the pipelines read (JPEG and TIFF); DNG and video are not processed. */
@@ -427,9 +456,13 @@ export async function readPhotoSet(files: readonly string[]): Promise<PhotoSet> 
       }
     }
     const camera = [meta.make, meta.model].filter(Boolean).join(' ').trim() || 'Unknown camera';
-    const key = `${camera}|${String(meta.width ?? '')}x${String(meta.height ?? '')}`;
+    const focal = meta.focalMm ? Math.round(meta.focalMm * 100) / 100 : undefined;
+    const key = `${camera}|${String(meta.width ?? '')}x${String(meta.height ?? '')}|${String(focal ?? '')}`;
     const g = groups.get(key) ?? {
       label: camera,
+      ...(meta.make?.trim() ? { make: meta.make.trim().slice(0, 120) } : {}),
+      ...(meta.model?.trim() ? { model: meta.model.trim().slice(0, 120) } : {}),
+      ...(focal ? { focalMm: focal } : {}),
       ...(meta.width ? { widthPx: meta.width } : {}),
       ...(meta.height ? { heightPx: meta.height } : {}),
       photos: 0,
@@ -920,6 +953,7 @@ export function registerPhotogrammetryIpc({
       const zone = epsg % 100;
       const note = `The photos are in UTM zone ${String(zone)}${epsg < 32700 ? 'N' : 'S'} (EPSG:${String(epsg)}).`;
       estimate.notes = [note, ...(estimate.notes ?? [])].slice(0, 20);
+      estimate.suggestedEpsg = epsg;
     }
     return { ok: true, estimate };
   });
