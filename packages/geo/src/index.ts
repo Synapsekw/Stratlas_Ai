@@ -109,3 +109,4 @@ export * from './crs';
 export * from './similarity';
 export * from './camera';
 export * from './altitude';
+export * from './flight';

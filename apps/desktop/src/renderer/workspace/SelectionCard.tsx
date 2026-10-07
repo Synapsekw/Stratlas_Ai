@@ -1,4 +1,5 @@
-import type { Issue, Layer, ProjectManifest, Vec3 } from '@aio/schema';
+import { looksEstimated } from '@aio/geo';
+import type { Issue, Layer, PoseSample, ProjectManifest, Vec3 } from '@aio/schema';
 import {
   crsLabel,
   formatClock,
@@ -20,6 +21,21 @@ import { LayerDatePicker } from '../change/SurveyDate';
 import { loadFlight, useMedia } from '../media';
 
 type VideoLayer = Extract<Layer, { kind: 'video' }>;
+
+/** Shown on clips whose camera direction was estimated at import (no gimbal angles). */
+const ESTIMATED_HINT =
+  'Camera direction estimated from the flight path (no gimbal data in this SRT). Calibrate in Align.';
+
+const estimatedLogs = new WeakMap<readonly PoseSample[], boolean>();
+/** The log's camera orientation was estimated, once per log (the card redraws with the clock). */
+function isEstimated(samples: readonly PoseSample[]): boolean {
+  let v = estimatedLogs.get(samples);
+  if (v === undefined) {
+    v = looksEstimated(samples);
+    estimatedLogs.set(samples, v);
+  }
+  return v;
+}
 
 const KIND: Record<Layer['kind'], { label: string; icon: IconName }> = {
   mesh: { label: 'Model', icon: 'scene' },
@@ -110,6 +126,9 @@ function describe(
         ['Starts', `${formatDate(new Date(start).toISOString())} · ${formatClock(start)} UTC`],
         ['Length', dur !== undefined ? formatDuration(dur) : 'Reading video'],
         ['Drone', pose ? 'Position at the playhead' : 'No flight log loaded'],
+        ...(samples && !v.orientation && isEstimated(samples)
+          ? ([['Camera', ESTIMATED_HINT]] as [string, ReactNode][])
+          : []),
       ],
     };
   }

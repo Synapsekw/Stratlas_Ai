@@ -1,3 +1,4 @@
+import { normaliseSamples } from '@aio/geo';
 import type { Layer, PoseSample } from '@aio/schema';
 import { assetUrl, type OpenProject } from '@aio/workspace';
 import { useEffect, useSyncExternalStore } from 'react';
@@ -87,7 +88,7 @@ export function loadFlight(project: OpenProject, layer: VideoLayer): void {
     .then((json: unknown) => {
       const samples = (json as { samples?: unknown }).samples;
       if (state.projectId === project.id && isSamples(samples)) {
-        emit({ flights: { ...state.flights, [layer.id]: samples } });
+        emit({ flights: { ...state.flights, [layer.id]: normaliseSamples(samples) } });
       }
     })
     .catch(() => {

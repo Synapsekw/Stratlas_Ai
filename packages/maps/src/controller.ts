@@ -2,6 +2,7 @@
 // (project, issues, clock, active clip, selection, visibility) into overlay sources and writes
 // clicks back as selections.
 import { getActiveScene, onActiveScene, reducedMotion, type SceneHandle } from '@aio/engine';
+import { normaliseSamples } from '@aio/geo';
 import type { CameraOrientation, Issue, Layer, PoseSample, Vec3 } from '@aio/schema';
 import { assetUrl, type createWorkspace, type Workspace } from '@aio/workspace';
 import type { Feature, FeatureCollection } from 'geojson';
@@ -145,10 +146,11 @@ function fc(features: Feature[]): Collection {
   return { type: 'FeatureCollection', features };
 }
 
+/** Pose samples of a flight file, smoothed like every other reader (`normaliseSamples`). */
 function parsePoses(json: unknown): PoseSample[] {
   const samples = (json as { samples?: unknown } | null)?.samples;
   if (!Array.isArray(samples)) return [];
-  return samples.filter(
+  const valid = samples.filter(
     (s): s is PoseSample =>
       typeof s === 'object' &&
       s !== null &&
@@ -156,6 +158,7 @@ function parsePoses(json: unknown): PoseSample[] {
       Array.isArray((s as PoseSample).pos) &&
       Array.isArray((s as PoseSample).q),
   );
+  return normaliseSamples(valid);
 }
 
 export function createMapController(

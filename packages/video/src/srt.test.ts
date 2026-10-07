@@ -165,6 +165,39 @@ describe('srtToFlight', () => {
     expect(r.warnings.join(' ')).toMatch(/gimbal/i);
   });
 
+  it('interpolates a 5 Hz GPS fix across 60 fps frames and faces the travel from the start', () => {
+    // 4 s at 60 fps, the fix moves ~1.1 m east every 12 frames after a 1 s hover
+    const blocks: string[] = [];
+    const ts = (ms: number) =>
+      `00:00:${String(Math.floor(ms / 1000)).padStart(2, '0')},${String(ms % 1000).padStart(3, '0')}`;
+    for (let i = 0; i < 240; i++) {
+      const a = Math.round((i * 1000) / 60);
+      const b = Math.round(((i + 1) * 1000) / 60);
+      const fix = Math.max(0, Math.floor(i / 12) - 5);
+      const lon = (47.98378 + fix * 0.0000114).toFixed(7);
+      blocks.push(
+        `${String(i + 1)}\n${ts(a)} --> ${ts(b)}\nFrameCnt: ${String(i + 1)}\n2023-12-25 11:35:42.772\n[focal_len: 24.00] [latitude: 29.38445] [longitude: ${lon}] [rel_alt: 50.000 abs_alt: 60.000]\n`,
+      );
+    }
+    const r = srtToFlight(parseDjiSrt(blocks.join('\n')), {
+      epsg: 32639,
+      origin,
+      utcOffsetMin: 180,
+      aspect: 16 / 9,
+    });
+    const s = r.doc.samples;
+    expect(s).toHaveLength(240);
+    let maxStep = 0;
+    for (let i = 1; i < s.length; i++)
+      maxStep = Math.max(maxStep, Math.abs((s[i]?.pos[0] ?? 0) - (s[i - 1]?.pos[0] ?? 0)));
+    // no metre jumps: the fixes are spread over their frames
+    expect(maxStep).toBeLessThan(0.2);
+    // the first frame (still hovering) already looks east, not north
+    const fwd = rot(s[0]?.q ?? [0, 0, 0, 1], [0, 0, -1]);
+    expect(fwd[0]).toBeGreaterThan(0.8);
+    expect(r.orientation).toBe('estimated');
+  });
+
   it('uses gimbal angles when the SRT has them, corrected to grid north', () => {
     const frames = parseDjiSrt(ENTERPRISE);
     const o = fromWgs84([55.2708, 25.2048, 0], 32640);

@@ -1,9 +1,11 @@
 import {
   cameraQuatFromGimbal,
+  estimateHeadings,
   fromWgs84,
   gridConvergenceDeg,
   lensFromFocal35,
   projectHeight,
+  smoothHeldPositions,
   summariseSources,
   takeoffAbsAltitude,
   type HeightRule,
@@ -174,31 +176,13 @@ function clockToUtcMs(clock: string, offsetMin: number): number {
   return Date.UTC(y, mo - 1, d, h, mi, s, f) - offsetMin * 60_000;
 }
 
-/** Heading (deg, clockwise from grid north) of the horizontal track around each sample. */
-function trackHeadings(pos: readonly Vec3[], t: readonly number[], windowMs = 1000): number[] {
-  const out: number[] = [];
-  let last = 0;
-  let lo = 0;
-  let hi = 0;
-  for (let i = 0; i < pos.length; i++) {
-    const ti = t[i] ?? 0;
-    while ((t[lo] ?? 0) < ti - windowMs) lo++;
-    while (hi + 1 < pos.length && (t[hi + 1] ?? 0) <= ti + windowMs) hi++;
-    const a = pos[lo] ?? [0, 0, 0];
-    const b = pos[hi] ?? [0, 0, 0];
-    const de = b[0] - a[0];
-    const dn = -(b[2] - a[2]);
-    if (Math.hypot(de, dn) > 0.3) last = (Math.atan2(de, dn) * 180) / Math.PI;
-    out.push(last);
-  }
-  return out;
-}
-
 /**
  * Convert parsed SRT frames into an `aio.flight/1` document in the project local frame: one sample
  * per frame at its subtitle start time (frame accurate), positions from latitude and longitude,
  * heights from the relative or reported altitude, camera orientation from the gimbal angles
  * (true north corrected to grid north) or, without them, the track heading and a fixed pitch.
+ * A GPS fix repeated over several frames is interpolated to the next one (`smoothHeldPositions`);
+ * the estimated heading is backfilled before the first movement and smoothed (`estimateHeadings`).
  */
 export function srtToFlight(frames: readonly SrtFrame[], o: SrtFlightOptions): SrtFlight {
   const warnings: string[] = [];
@@ -240,36 +224,44 @@ export function srtToFlight(frames: readonly SrtFrame[], o: SrtFlightOptions): S
     warnings.push(
       `${String(count('none'))} frames have no altitude; they are placed at the take-off height.`,
     );
-  const pos: Vec3[] = usable.map((f, i) => {
+  const local: Vec3[] = usable.map((f, i) => {
     const p = fromWgs84([f.lon, f.lat, heights[i]?.h ?? rule.takeoffH], o.epsg);
     return [p[0] - o.origin[0], p[2] - o.origin[2], 0 - (p[1] - o.origin[1])];
   });
-  const t = usable.map((f) => Math.round(f.startMs - t0));
+  // one sample per subtitle time (a repeated start time keeps the first frame)
+  const kept: number[] = [];
+  let lastT = -1;
+  usable.forEach((f, i) => {
+    const ti = Math.round(f.startMs - t0);
+    if (ti <= lastT) return;
+    lastT = ti;
+    kept.push(i);
+  });
+  const t = kept.map((i) => Math.round((usable[i]?.startMs ?? t0) - t0));
+  const raw = kept.map((i) => local[i] ?? ([0, 0, 0] as Vec3));
+  // consumer aircraft repeat a GPS fix for a dozen frames: interpolate between the fixes
+  const pos = smoothHeldPositions(t, raw) ?? raw;
   const conv = gridConvergenceDeg(first.lon, first.lat, o.epsg);
   const gimbal = usable.every((f) => f.gimbal !== undefined);
   const pitch = o.defaultPitchDeg ?? -30;
-  const headings = gimbal ? [] : trackHeadings(pos, t);
+  const headings = gimbal ? [] : (estimateHeadings(t, pos) ?? []);
   if (!gimbal)
     warnings.push(
       `No gimbal angles in the SRT: the camera heading follows the flight track and the pitch is set to ${String(pitch)} degrees. Calibrate the clip in Align.`,
     );
   const r = (v: number, d: number) => Math.round(v * 10 ** d) / 10 ** d;
-  const samples: PoseSample[] = [];
-  let lastT = -1;
-  usable.forEach((f, i) => {
-    const ti = t[i] ?? 0;
-    if (ti <= lastT) return;
-    lastT = ti;
+  const samples: PoseSample[] = kept.map((fi, k) => {
+    const f = usable[fi] as SrtFrame;
     const q = f.gimbal
       ? cameraQuatFromGimbal(f.gimbal.yaw - conv, f.gimbal.pitch, f.gimbal.roll)
-      : cameraQuatFromGimbal(headings[i] ?? 0, pitch, 0);
-    const p = pos[i] ?? [0, 0, 0];
-    samples.push({
-      t: ti,
+      : cameraQuatFromGimbal(headings[k] ?? 0, pitch, 0);
+    const p = pos[k] ?? [0, 0, 0];
+    return {
+      t: t[k] ?? 0,
       pos: [r(p[0], 4), r(p[1], 4), r(p[2], 4)],
       q: [r(q[0], 7), r(q[1], 7), r(q[2], 7), r(q[3], 7)],
       ...(f.gimbal ? { gimbal: f.gimbal } : {}),
-    });
+    };
   });
   const focal = usable.find((f) => f.focal35 !== undefined)?.focal35;
   let lens = o.lens;
