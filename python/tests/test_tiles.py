@@ -382,3 +382,23 @@ def test_tiles_cloud_needs_a_point_cloud_layer(cloud_project):
         m["layers"].append({"id": "m", "kind": "mesh", "src": {"path": "x.glb"}})
         (project / "manifest.json").write_text(json.dumps(m), "utf-8")
         run_job(TilesCloud(), project, {"layer": "m"})
+
+
+def test_a_cancelled_tiling_resumes_to_a_valid_tileset(mesh_project):
+    from aio_pipelines.runtime import Job
+    from conftest import Recorder
+
+    project, _ = mesh_project
+    params = {"layer": "mesh-1", "maxTrianglesPerTile": 5000}
+    cancel = threading.Event()
+
+    def emit(method, msg):
+        if method == "progress" and msg.get("step") == "read" and msg.get("state") == "done":
+            cancel.set()
+
+    with pytest.raises(Cancelled):
+        Job("j1", TilesMesh(), project, params, emit, cancel).run()
+    assert not (project / "tilesets.json").exists()
+    out = Job("j1", TilesMesh(), project, params, Recorder(), threading.Event()).run()
+    assert out["status"] == "done"
+    assert check_tileset(project / "tiles" / "mesh-1-tiles") == []

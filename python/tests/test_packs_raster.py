@@ -394,3 +394,27 @@ def test_lonlat_to_tile_matches_the_slippy_map_scheme():
     assert lonlat_to_tile(0, 0, 1) == (1, 1)
     assert lonlat_to_tile(-179.9, 85, 2) == (0, 0)
     assert lonlat_to_tile(47.97, 29.37, 10) == (648, 424)
+
+
+def test_a_cancelled_pack_build_resumes_to_a_complete_pack(tmp_path):
+    from aio_pipelines.runtime import Job
+    from conftest import Recorder
+
+    src = write_imagery(tmp_path / "ortho.tif")
+    params = imagery_params(tmp_path, src)
+    cancel = threading.Event()
+
+    def emit(method, msg):
+        if method == "progress" and msg.get("step") == "scan" and msg.get("state") == "done":
+            cancel.set()
+
+    with pytest.raises(Cancelled):
+        Job("j1", ImageryPack(), tmp_path, params, emit, cancel).run()
+    dest = tmp_path / "data" / "packs" / "imagery"
+    assert not (dest / "site-imagery.json").exists()
+    rec = Recorder()
+    out = Job("j1", ImageryPack(), tmp_path, params, rec, threading.Event()).run()
+    assert out["status"] == "done"
+    assert [m["step"] for m in rec.of("progress") if m.get("state") == "skipped"] == ["scan"]
+    with PMTilesReader(dest / "site-imagery.pmtiles") as r:
+        assert len(r.tiles()) > 10
