@@ -2,7 +2,9 @@ import {
   arrowFocus,
   ariaKeys,
   buildDatasetTree,
+  buildDateTree,
   DatasetTree,
+  DateTree,
   formatDate,
   Icon,
   t,
@@ -15,7 +17,7 @@ import {
   type TreeItem,
   shortcutHint,
 } from '@aio/ui';
-import { useWorkspace, workspace } from '@aio/workspace';
+import { dateTags, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { openAuditTrail } from '../audit/auditView';
 import { builder } from '../builder/state';
@@ -24,8 +26,10 @@ import { useMedia } from '../media';
 import { isActive } from '../jobs';
 import { shell, useJobs, useShell } from '../shell';
 import type { Screen } from '../store';
+import { useCaptureIndex } from '../workspace/compare';
 import { flightPathShown, toggleFlightPath } from '../workspace/flightPaths';
 import { updateFlightPaths, useFlightPathModel } from '../workspace/pathModel';
+import { timeline, useTimeline } from '../workspace/timeline';
 
 interface NavDef {
   screen: Screen;
@@ -232,6 +236,21 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     () => (project ? buildDatasetTree(project.manifest, issues, durations) : []),
     [project, issues, durations],
   );
+  const t = useT();
+  const index = useCaptureIndex();
+  const focus = useTimeline((s) => s.focus);
+  const datesOn = !collapsed && index !== null && index.captures.length > 0;
+  const tags = useMemo(() => (index ? dateTags(index.captures) : {}), [index]);
+  const folders = useMemo(
+    () =>
+      project && index && datesOn
+        ? buildDateTree(project.manifest, issues, durations, index, {
+            every: t('tree.dates.every'),
+            dateLabel: (c) => formatDate(c.date),
+          })
+        : [],
+    [project, index, datesOn, issues, durations, t],
+  );
   if (!project) return null;
 
   const selectedId =
@@ -250,6 +269,23 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     }
     if (it.layerKind === 'video') selectClip(it.layerId);
     else workspace.getState().select({ kind: 'layer', id: it.layerId, layer: it.layerId });
+  };
+
+  const onToggleVisible = (id: string, visible: boolean) => {
+    workspace.getState().setLayerVisible(id, visible);
+  };
+
+  const flightPath = paths
+    ? {
+        shown: (id: string) => flightPathShown(paths.pref, id, paths.activeFlight),
+        onToggle: (id: string) => {
+          updateFlightPaths((p, m) => toggleFlightPath(p, id, m.flights, m.activeFlight));
+        },
+      }
+    : undefined;
+
+  const onLayerSettings = () => {
+    shell.getState().openCloudPanel();
   };
 
   return (
@@ -282,34 +318,40 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           />
         </span>
       </div>
-      <DatasetTree
-        groups={groups}
-        hidden={hidden}
-        selectedId={selectedId}
-        activeClip={activeClip}
-        collapsed={collapsed}
-        onToggleVisible={(id, visible) => {
-          workspace.getState().setLayerVisible(id, visible);
-        }}
-        onSetVisible={setVisible}
-        flightPath={
-          paths
-            ? {
-                shown: (id) => flightPathShown(paths.pref, id, paths.activeFlight),
-                onToggle: (id) => {
-                  updateFlightPaths((p, m) => toggleFlightPath(p, id, m.flights, m.activeFlight));
-                },
-              }
-            : undefined
-        }
-        onLayerSettings={() => {
-          shell.getState().openCloudPanel();
-        }}
-        onSelect={onSelect}
-        onRailGroup={() => {
-          void shell.getState().toggleSidebar();
-        }}
-      />
+      {datesOn ? (
+        <DateTree
+          folders={folders}
+          tags={tags}
+          focus={focus}
+          onFocus={(id) => {
+            timeline.getState().focusSurvey(id);
+          }}
+          hidden={hidden}
+          selectedId={selectedId}
+          activeClip={activeClip}
+          onToggleVisible={onToggleVisible}
+          onSetVisible={setVisible}
+          onSelect={onSelect}
+          flightPath={flightPath}
+          onLayerSettings={onLayerSettings}
+        />
+      ) : (
+        <DatasetTree
+          groups={groups}
+          hidden={hidden}
+          selectedId={selectedId}
+          activeClip={activeClip}
+          collapsed={collapsed}
+          onToggleVisible={onToggleVisible}
+          onSetVisible={setVisible}
+          flightPath={flightPath}
+          onLayerSettings={onLayerSettings}
+          onSelect={onSelect}
+          onRailGroup={() => {
+            void shell.getState().toggleSidebar();
+          }}
+        />
+      )}
     </div>
   );
 }
