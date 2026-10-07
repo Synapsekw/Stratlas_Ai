@@ -6,7 +6,7 @@ The full licence texts ship with the software: the app lists every package with 
 
 ## Desktop app and Team Server (npm)
 
-138 packages: MIT (98), ISC (12), Apache-2.0 (10), BSD-3-Clause (9), BSD-2-Clause (3), OFL-1.1 (3), (AFL-2.1 OR BSD-3-Clause) (1), (MIT OR Apache-2.0) (1), (MIT OR CC0-1.0) (1).
+141 packages: MIT (101), ISC (12), Apache-2.0 (10), BSD-3-Clause (9), BSD-2-Clause (3), OFL-1.1 (3), (AFL-2.1 OR BSD-3-Clause) (1), (MIT OR Apache-2.0) (1), (MIT OR CC0-1.0) (1).
 
 | Package                               | Version      | Licence                   |
 | ------------------------------------- | ------------ | ------------------------- |
@@ -35,6 +35,9 @@ The full licence texts ship with the software: the app lists every package with 
 | @maplibre/mlt                         | 1.3.0        | (MIT OR Apache-2.0)       |
 | @maplibre/vt-pbf                      | 4.3.2        | MIT                       |
 | @napi-rs/keyring                      | 2.1.0        | MIT                       |
+| @napi-rs/keyring-darwin-arm64         | 2.1.0        | MIT                       |
+| @napi-rs/keyring-darwin-x64           | 2.1.0        | MIT                       |
+| @napi-rs/keyring-win32-arm64-msvc     | 2.1.0        | MIT                       |
 | @napi-rs/keyring-win32-x64-msvc       | 2.1.0        | MIT                       |
 | @pinojs/redact                        | 0.4.0        | MIT                       |
 | @protomaps/basemaps                   | 5.7.2        | BSD-3-Clause              |

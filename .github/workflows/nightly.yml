@@ -199,7 +199,7 @@ jobs:
         run: uv sync --frozen
 
       - name: Journal and merge budgets (STRATLAS_BUDGETS)
-        run: pnpm exec vitest run --retry=0 tools/release/budgets.test.mjs packages/merge/src/bench.test.ts
+        run: pnpm exec vitest run --retry=0 tools/release/budgets.test.mjs packages/merge/src/bench.test.ts packages/journal/src/perf.test.ts
 
       - name: Fuzzing of every reader (STRATLAS_FUZZ_RUNS)
         run: pnpm exec vitest run --retry=0 tools/compat/fuzz.test.mjs packages/sync/src/exchange

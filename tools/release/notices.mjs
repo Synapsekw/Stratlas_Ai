@@ -38,13 +38,42 @@ export function jsEntries(report) {
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** Native builds for the platforms the app ships on; pnpm installs only this machine's one. */
+const PLATFORM_BUILD = /-(win32|darwin)-(x64|arm64)(-[a-z]+)?$/;
+
+/**
+ * Adds the Windows and macOS builds of each native package that ships (for example
+ * `@napi-rs/keyring-darwin-arm64` when the list was made on Windows), from the lockfile's package
+ * keys, with the licence of the build that is installed here.
+ */
+export function withPlatformBuilds(entries, lockText) {
+  const names = new Set(entries.map((e) => e.name));
+  const out = [...entries];
+  for (const e of entries) {
+    const m = PLATFORM_BUILD.exec(e.name);
+    if (!m) continue;
+    const base = e.name.slice(0, m.index);
+    for (const [, name, version] of lockText.matchAll(/^ {2}'?(@?[^@'\s]+)@([^'():\s]+)'?:/gm)) {
+      if (names.has(name) || !name.startsWith(`${base}-`)) continue;
+      if (!PLATFORM_BUILD.test(name) || name.slice(0, PLATFORM_BUILD.exec(name).index) !== base)
+        continue;
+      names.add(name);
+      out.push({ ...e, name, version });
+    }
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export function jsInventory() {
   const out = execSync('pnpm licenses list --json --prod -r', {
     cwd: repo,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
   });
-  return jsEntries(JSON.parse(out));
+  return withPlatformBuilds(
+    jsEntries(JSON.parse(out)),
+    readFileSync(join(repo, 'pnpm-lock.yaml'), 'utf8'),
+  );
 }
 
 /** Python run in the pack's environment: the runtime tree of aio-pipelines with licences. */

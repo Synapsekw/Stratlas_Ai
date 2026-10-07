@@ -1,6 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { NOTICES, jsEntries, jsInventory, pythonLicense, render } from './notices.mjs';
+import {
+  NOTICES,
+  jsEntries,
+  jsInventory,
+  pythonLicense,
+  render,
+  withPlatformBuilds,
+} from './notices.mjs';
 
 describe('licence inventory', () => {
   it('leaves workspace packages out and sorts by name', () => {
@@ -37,6 +44,24 @@ describe('licence inventory', () => {
     expect(md).toContain('1 packages: MIT (1).');
     expect(md).toContain('| a\\|b | 1 | MIT |');
     expect(md).toContain('| numpy | 2 | BSD-3-Clause |');
+  });
+
+  it('adds the Windows and macOS builds of a native package from the lockfile', () => {
+    const lock = [
+      "  '@napi-rs/keyring-darwin-arm64@2.1.0':",
+      "  '@napi-rs/keyring-darwin-x64@2.1.0':",
+      "  '@napi-rs/keyring-linux-x64-gnu@2.1.0':",
+      "  '@napi-rs/keyring-win32-x64-msvc@2.1.0':",
+    ].join('\n');
+    const entries = withPlatformBuilds(
+      [{ name: '@napi-rs/keyring-win32-x64-msvc', version: '2.1.0', license: 'MIT', homepage: '' }],
+      lock,
+    );
+    expect(entries.map((e) => [e.name, e.license])).toEqual([
+      ['@napi-rs/keyring-darwin-arm64', 'MIT'],
+      ['@napi-rs/keyring-darwin-x64', 'MIT'],
+      ['@napi-rs/keyring-win32-x64-msvc', 'MIT'],
+    ]);
   });
 
   it('lists every npm package that ships (regenerate with node tools/release/notices.mjs)', () => {
