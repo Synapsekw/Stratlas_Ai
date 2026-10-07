@@ -63,10 +63,10 @@ export function createTimelineStore(
   ws: StoreApi<Workspace> = appWorkspace,
   storage: Storage | null = browserStorage(),
 ): StoreApi<TimelineState> {
-  // `openProject` swaps the workspace's `issues` array and `closeProject` resets it, while
-  // `replaceManifest` leaves it alone: its identity tells a fresh open (visibility was reset
-  // from the manifest) from a manifest edit while the project stays open.
-  let attachedOpen: unknown;
+  // `openProject` bumps the workspace's `openSeq` (visibility is reset from the manifest);
+  // `replaceManifest` and issue edits do not. Comparing it tells a fresh open from a manifest
+  // edit while the project stays open.
+  let attachedSeq = -1;
   const store = createStore<TimelineState>()((set, get) => ({
     projectId: null,
     index: null,
@@ -75,9 +75,9 @@ export function createTimelineStore(
 
     attach: (projectId, index) => {
       const s = get();
-      const fresh = ws.getState().issues !== attachedOpen;
+      const fresh = ws.getState().openSeq !== attachedSeq;
       if (!fresh && s.projectId === projectId && s.index === index) return;
-      attachedOpen = ws.getState().issues;
+      attachedSeq = ws.getState().openSeq;
       if (!projectId || !index || index.captures.length === 0) {
         set({ projectId, index, focus: null });
         return;
@@ -146,7 +146,7 @@ export function createTimelineStore(
     // project's pref is ever written.
     if (
       s.hidden !== p.hidden &&
-      s.issues === p.issues &&
+      s.openSeq === p.openSeq &&
       s.project?.id === store.getState().projectId
     ) {
       persist(store, storage, s.hidden);

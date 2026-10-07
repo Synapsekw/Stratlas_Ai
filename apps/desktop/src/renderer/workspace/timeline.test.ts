@@ -1,4 +1,4 @@
-import type { Layer, ProjectManifest } from '@aio/schema';
+import type { Issue, Layer, ProjectManifest } from '@aio/schema';
 import { captureIndex, createWorkspace, type DatePref } from '@aio/workspace';
 import { describe, expect, it } from 'vitest';
 import { TIMELINE_KEY, createTimelineStore } from './timeline';
@@ -228,6 +228,24 @@ describe('timeline store', () => {
     const hidden = ws.getState().hidden;
     const saved = storage.getItem(TIMELINE_KEY);
 
+    const next = { ...manifest } as ProjectManifest;
+    ws.getState().replaceManifest(next);
+    tl.getState().attach('p', captureIndex(next));
+
+    expect(tl.getState().focus).toBe('oct');
+    expect(ws.getState().hidden).toEqual(hidden);
+    expect(storage.getItem(TIMELINE_KEY)).toBe(saved);
+  });
+
+  it('an issue edit before replaceManifest does not make the next attach a fresh open', () => {
+    const { ws, tl, storage, index } = setup();
+    tl.getState().attach('p', index);
+    tl.getState().focusSurvey('oct');
+    ws.getState().setLayerVisible('model-sep', true);
+    const hidden = ws.getState().hidden;
+    const saved = storage.getItem(TIMELINE_KEY);
+
+    ws.getState().upsertIssue({ id: 'i1' } as unknown as Issue);
     const next = { ...manifest } as ProjectManifest;
     ws.getState().replaceManifest(next);
     tl.getState().attach('p', captureIndex(next));

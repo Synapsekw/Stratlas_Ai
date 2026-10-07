@@ -38,6 +38,12 @@ export interface CameraRequest {
 
 export interface WorkspaceState {
   project: OpenProject | null;
+  /**
+   * Counts `openProject` calls (never reset, not even by `closeProject`). A change means the
+   * project was opened afresh and visibility was reset from its manifest; `replaceManifest`
+   * and issue edits leave it alone.
+   */
+  openSeq: number;
   issues: Issue[];
   /** Project clock, UTC milliseconds. */
   nowMs: number;
@@ -84,6 +90,7 @@ export type Workspace = WorkspaceState & WorkspaceActions;
 
 const initial: WorkspaceState = {
   project: null,
+  openSeq: 0,
   issues: [],
   nowMs: 0,
   playing: false,
@@ -104,6 +111,7 @@ export function createWorkspace(): StoreApi<Workspace> {
       const firstClip = project.manifest.layers.find((l) => l.kind === 'video');
       set({
         ...initial,
+        openSeq: get().openSeq + 1,
         project,
         issues,
         activeClip: firstClip?.id ?? null,
@@ -132,7 +140,7 @@ export function createWorkspace(): StoreApi<Workspace> {
       });
     },
     closeProject: () => {
-      set(initial);
+      set({ ...initial, openSeq: get().openSeq });
     },
     setTime: (nowMs) => {
       set({ nowMs });
