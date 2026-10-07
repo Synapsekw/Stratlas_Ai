@@ -162,6 +162,15 @@ describe('pinned TLS', () => {
     await expect(caOnly.request('GET', '/v1/health')).rejects.toMatchObject({
       code: 'fingerprint',
     });
+    const noPin = createHttpClient({
+      baseUrl: origin,
+      fingerprint: null,
+      trustCaOnChange: true,
+      signer,
+    });
+    await expect(noPin.request('GET', '/v1/health')).rejects.toMatchObject({
+      code: 'fingerprint',
+    });
     expect(seen.length).toBe(before);
   });
 

@@ -112,8 +112,11 @@ interface Pinned {
   fingerprint: string;
 }
 
-/** Open a TLS connection and check the certificate before anything is sent. */
-function connectPinned(url: URL, pin: PinOptions): Promise<Pinned> {
+/**
+ * Open a TLS connection and check the certificate before anything is sent. `probe`: accept any
+ * certificate only to read its fingerprint (nothing is ever sent on a probe).
+ */
+function connectPinned(url: URL, pin: PinOptions, probe = false): Promise<Pinned> {
   const host = socketHost(url.hostname);
   const port = Number(url.port || 443);
   const timeoutMs = pin.timeoutMs ?? 15_000;
@@ -141,7 +144,7 @@ function connectPinned(url: URL, pin: PinOptions): Promise<Pinned> {
       const fingerprint = raw ? certFingerprint(raw) : '';
       const pinned = pin.fingerprint !== null && fingerprint === pin.fingerprint;
       const trustedChange = pin.trustCaOnChange === true && socket.authorized;
-      if (pin.fingerprint !== null && !pinned && !trustedChange) {
+      if (!probe && !pinned && !trustedChange) {
         socket.destroy();
         reject(
           new TeamServerError(
@@ -163,8 +166,8 @@ export async function probeFingerprint(address: string, timeoutMs = 15_000): Pro
   if (url.protocol !== 'https:') {
     throw new TeamServerError('insecure', 'This address has no certificate to check (http).');
   }
-  const { socket, fingerprint } = await connectPinned(url, { fingerprint: null, timeoutMs });
-  socket.end();
+  const { socket, fingerprint } = await connectPinned(url, { fingerprint: null, timeoutMs }, true);
+  socket.destroy();
   return fingerprint;
 }
 
