@@ -154,7 +154,8 @@ export function createIssueEditor(opts: IssueEditorOptions): IssueEditor {
     const sel = store.getState().selection;
     if (sel?.kind === 'issue' && c.after[sel.id] === null) s.select(null);
     const pid = store.getState().project?.id;
-    if (saver && pid) saver.schedule(pid, store.getState().issues);
+    if (saver && pid)
+      saver.schedule(pid, store.getState().issues, { label: c.label, ids: Object.keys(c.after) });
   }
 
   function commit(label: string, after: Record<string, Issue | null>): Result<null> {
@@ -391,7 +392,8 @@ export function createIssueEditor(opts: IssueEditorOptions): IssueEditor {
       if (readOnly()) return false;
       const c = history.undo();
       if (!c) return false;
-      write(c);
+      // the journal records undo as a new change (history is never rewritten)
+      write({ ...c, label: `Undo ${c.label}` });
       emit();
       return true;
     },
@@ -399,7 +401,8 @@ export function createIssueEditor(opts: IssueEditorOptions): IssueEditor {
       if (readOnly()) return false;
       const c = history.redo();
       if (!c) return false;
-      write(c);
+      // the journal records undo as a new change (history is never rewritten)
+      write({ ...c, label: `Redo ${c.label}` });
       emit();
       return true;
     },

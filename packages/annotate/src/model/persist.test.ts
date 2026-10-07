@@ -69,6 +69,29 @@ describe('createIssueSaver', () => {
     expect(saver.status.state).toBe('saved');
   });
 
+  it('carries the editor commands queued since the last write, then starts again', async () => {
+    const write = vi.fn(() => Promise.resolve({ ok: true }));
+    const saver = createIssueSaver({ write, delayMs: 100 });
+    saver.schedule('p', [], { label: 'F01 severity 3 to 4', ids: ['i1'] });
+    saver.schedule('p', [], { label: 'F01 to reviewed', ids: ['i1'] });
+    await saver.flush();
+    expect(write).toHaveBeenLastCalledWith(
+      'p',
+      [],
+      [
+        { label: 'F01 severity 3 to 4', ids: ['i1'] },
+        { label: 'F01 to reviewed', ids: ['i1'] },
+      ],
+    );
+    saver.schedule('p', []);
+    await saver.flush();
+    expect(write).toHaveBeenLastCalledWith('p', []);
+    saver.schedule('p', [], { label: 'Edit F01', ids: ['i1'] });
+    saver.schedule('q', []);
+    await saver.flush();
+    expect(write).toHaveBeenLastCalledWith('q', []);
+  });
+
   it('flushes immediately', async () => {
     const write = vi.fn(() => Promise.resolve({ ok: true }));
     const saver = createIssueSaver({ write, delayMs: 10_000 });

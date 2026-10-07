@@ -1,4 +1,4 @@
-import type { AioBridge, Issue } from '@aio/schema';
+import type { AioBridge, EditCommand, Issue } from '@aio/schema';
 
 export type SaveStateName = 'saved' | 'pending' | 'saving' | 'error';
 
@@ -12,12 +12,21 @@ export interface SaveState {
 export type WriteIssues = (
   projectId: string,
   issues: Issue[],
+  /** M9: the editor's labelled commands since the last write (readable history). */
+  commands?: EditCommand[],
 ) => Promise<{ ok: boolean; error?: string | undefined }>;
+
+/** The contract's limits on `commands` (`project:writeIssues`). */
+const MAX_COMMANDS = 1000;
+const MAX_IDS = 10_000;
 
 export interface IssueSaver {
   readonly status: SaveState;
-  /** Queue the full issue list of a project for a debounced write. */
-  schedule(projectId: string, issues: Issue[]): void;
+  /**
+   * Queue the full issue list of a project for a debounced write. `command` (the editor's label
+   * and the ids it touched) travels with the write, so the journal reads "F01 to reviewed".
+   */
+  schedule(projectId: string, issues: Issue[], command?: EditCommand): void;
   /** Write any queued change now. */
   flush(): Promise<void>;
   subscribe(listener: (s: SaveState) => void): () => void;
@@ -32,7 +41,7 @@ export interface IssueSaver {
 export function createIssueSaver(opts: { write: WriteIssues; delayMs?: number }): IssueSaver {
   const delay = opts.delayMs ?? 600;
   let status: SaveState = { state: 'saved' };
-  let queued: { projectId: string; issues: Issue[] } | null = null;
+  let queued: { projectId: string; issues: Issue[]; commands: EditCommand[] } | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let running: Promise<void> | null = null;
   const listeners = new Set<(s: SaveState) => void>();
@@ -62,7 +71,9 @@ export function createIssueSaver(opts: { write: WriteIssues; delayMs?: number })
     set({ ...status, state: 'saving' });
     running = (async () => {
       try {
-        const r = await opts.write(job.projectId, job.issues);
+        const r = await (job.commands.length
+          ? opts.write(job.projectId, job.issues, job.commands)
+          : opts.write(job.projectId, job.issues));
         if (r.ok) set({ state: 'saved', savedAt: Date.now() });
         else set({ state: 'error', error: r.error ?? 'Issues could not be saved' });
       } catch (e) {
@@ -81,8 +92,12 @@ export function createIssueSaver(opts: { write: WriteIssues; delayMs?: number })
     get status() {
       return status;
     },
-    schedule(projectId, issues) {
-      queued = { projectId, issues };
+    schedule(projectId, issues, command) {
+      const carried = queued?.projectId === projectId ? queued.commands : [];
+      const commands = command
+        ? [...carried, { ...command, ids: command.ids.slice(0, MAX_IDS) }].slice(-MAX_COMMANDS)
+        : carried;
+      queued = { projectId, issues, commands };
       if (running) return;
       if (status.state !== 'pending') set({ ...status, state: 'pending' });
       arm();
@@ -111,8 +126,12 @@ export function createIssueSaver(opts: { write: WriteIssues; delayMs?: number })
 }
 
 /** The renderer's IPC writer: `project:writeIssues` through `window.aio`. */
-export const ipcWriteIssues: WriteIssues = async (projectId, issues) => {
+export const ipcWriteIssues: WriteIssues = async (projectId, issues, commands) => {
   const bridge = (globalThis as { aio?: AioBridge }).aio;
   if (!bridge) return { ok: false, error: 'Not running in the desktop app; issues are not saved' };
-  return bridge.invoke('project:writeIssues', { projectId, issues });
+  return bridge.invoke('project:writeIssues', {
+    projectId,
+    issues,
+    ...(commands?.length ? { commands } : {}),
+  });
 };
