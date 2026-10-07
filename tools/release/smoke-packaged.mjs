@@ -12,11 +12,16 @@
 // Content Security Policy: the packaged window loads from file://, where main's CSP header never
 // applies; the report says what policy the page carries (its <meta>) and what eval('1') did
 // there. The policy must be the app's and eval must be refused (csp-probe.mjs).
+//
+// The Globe (M10): the app opens it from its window and waits for its first tiles; CesiumJS's
+// workers and its WebAssembly decoders load from inside app.asar over file://, which only the
+// packaged app does. No worker or wasm failure, page error or CSP violation (globe-probe.mjs).
 import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cspProbeProblem } from './csp-probe.mjs';
+import { describeGlobe, globeProbeProblem } from './globe-probe.mjs';
 import {
   describeOnnx,
   findPackagedApp,
@@ -57,14 +62,15 @@ const env = {
 const child = arch
   ? spawn('arch', [`-${arch}`, exe], { env, stdio: 'ignore' })
   : spawn(exe, [], { env, stdio: 'ignore' });
-// The UI load plus the runtime probe (the app waits at most 30 s for it).
+// The UI load, the runtime probe (the app waits at most 30 s for it) and the Globe (at most 60 s).
+const LIMIT_S = 150;
 const limit = setTimeout(() => {
   console.error(
-    `Smoke check failed: ${exe} did not finish loading within 90 s (crash dialog or hang).`,
+    `Smoke check failed: ${exe} did not finish loading within ${LIMIT_S} s (crash dialog or hang).`,
   );
   child.kill();
   process.exit(1);
-}, 90_000);
+}, LIMIT_S * 1000);
 
 function readReport() {
   if (!existsSync(reportPath)) return null;
@@ -90,6 +96,9 @@ child.on('exit', (code) => {
   const csp = cspProbeProblem(report);
   if (csp === null) console.log(`Smoke check: the window refuses eval (${report.csp.eval}).`);
   else problems.push(`content security policy: ${csp}`);
+  const globe = globeProbeProblem(report);
+  if (globe === null) console.log(`Smoke check: ${describeGlobe(report)}.`);
+  else problems.push(`globe: ${globe}`);
   if (problems.length) {
     console.error('Smoke check failed:');
     for (const p of problems) console.error(`  ${p}`);
