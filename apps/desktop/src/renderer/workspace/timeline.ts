@@ -1,5 +1,6 @@
 import {
   captureSelection,
+  clockInClip,
   followLayer,
   initialFocus,
   openChange,
@@ -15,6 +16,7 @@ import {
 import { useEffect } from 'react';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import { getMedia } from '../media';
 import { useCaptureIndex } from './compare';
 import { browserStorage } from './stagePrefs';
 
@@ -59,10 +61,31 @@ function persist(
   }
 }
 
+/** Clip length in ms from the video metadata, when known. */
+export type ClipDuration = (layerId: string) => number | undefined;
+
+const mediaDuration: ClipDuration = (id) => getMedia().durations[id];
+
 export function createTimelineStore(
   ws: StoreApi<Workspace> = appWorkspace,
   storage: Storage | null = browserStorage(),
+  durationOf: ClipDuration = mediaDuration,
 ): StoreApi<TimelineState> {
+  /** Play `next` instead of the active clip, the clock moved into it the way a date jump keeps it. */
+  const moveClip = (next: string | null) => {
+    const w = ws.getState();
+    const prev = w.activeClip;
+    if (next === prev) return;
+    w.setActiveClip(next);
+    const layers = w.project?.manifest.layers ?? [];
+    const video = (id: string | null) => {
+      const l = id ? layers.find((x) => x.id === id) : undefined;
+      return l?.kind === 'video' ? l : undefined;
+    };
+    const to = video(next);
+    if (to) w.setTime(clockInClip(video(prev), to, w.nowMs, durationOf(to.id)));
+  };
+
   // `openProject` bumps the workspace's `openSeq` (visibility is reset from the manifest);
   // `replaceManifest` and issue edits do not. Comparing it tells a fresh open from a manifest
   // edit while the project stays open.
@@ -98,6 +121,13 @@ export function createTimelineStore(
       set({ projectId, index, focus });
       const change = openChange(index, ws.getState().hidden, focus, pref);
       ws.getState().applyVisibility(change.show, change.hide);
+      // the project opened on its first clip: play the focused date's footage instead
+      const clip = ws.getState().activeClip;
+      const from = clip ? index.of[clip] : undefined;
+      if (clip && focus && from && from !== focus) {
+        const next = followLayer(index, ws.getState().project?.manifest.layers ?? [], clip, focus);
+        if (next) moveClip(next);
+      }
     },
 
     focusSurvey: (capture) => {
@@ -117,7 +147,7 @@ export function createTimelineStore(
       const clip = w.activeClip;
       if (clip && prev && index.of[clip] === prev) {
         const layers = w.project?.manifest.layers ?? [];
-        w.setActiveClip(followLayer(index, layers, clip, capture) ?? null);
+        moveClip(followLayer(index, layers, clip, capture) ?? null);
       }
       const sel = w.selection;
       if (sel?.layer && prev && index.of[sel.layer] === prev) {

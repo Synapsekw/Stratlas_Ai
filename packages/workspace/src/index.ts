@@ -1,6 +1,7 @@
 import type { AssetRef, Issue, ProjectManifest, Vec3, WindowKind } from '@aio/schema';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import { clipStartMs } from './timeline';
 
 export type SelectionKind = 'asset' | 'issue' | 'clip' | 'photo' | 'layer' | 'pano';
 
@@ -115,7 +116,7 @@ export function createWorkspace(): StoreApi<Workspace> {
         project,
         issues,
         activeClip: firstClip?.id ?? null,
-        nowMs: firstClip?.kind === 'video' ? firstClip.flight.startUtcMs + firstClip.offsetMs : 0,
+        nowMs: firstClip?.kind === 'video' ? clipStartMs(firstClip) : 0,
         hidden: Object.fromEntries(
           project.manifest.layers.filter((l) => !l.visible).map((l) => [l.id, true as const]),
         ),
@@ -129,9 +130,7 @@ export function createWorkspace(): StoreApi<Workspace> {
       const clip = activeClip ? null : manifest.layers.find((l) => l.kind === 'video');
       set({
         project: { ...project, manifest },
-        ...(clip?.kind === 'video'
-          ? { activeClip: clip.id, nowMs: clip.flight.startUtcMs + clip.offsetMs }
-          : {}),
+        ...(clip?.kind === 'video' ? { activeClip: clip.id, nowMs: clipStartMs(clip) } : {}),
         ...(added.length
           ? {
               hidden: { ...hidden, ...Object.fromEntries(added.map((l) => [l.id, true as const])) },
@@ -243,6 +242,8 @@ export {
 } from './captures';
 
 export {
+  clipStartMs,
+  clockInClip,
   extrasOf,
   followLayer,
   initialFocus,
@@ -253,7 +254,7 @@ export {
   swapChange,
   visibleIn,
 } from './timeline';
-export type { DatePref, VisibilityChange } from './timeline';
+export type { ClipTiming, DatePref, VisibilityChange } from './timeline';
 
 export { DATE_COLOURS, dateTags } from './dateTags';
 export type { DateTag } from './dateTags';

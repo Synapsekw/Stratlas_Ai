@@ -28,15 +28,30 @@ class MemoryStorage {
   }
 }
 
-function setup(saved?: unknown) {
+function setup(
+  saved?: unknown,
+  m: ProjectManifest = manifest,
+  durations: Record<string, number> = {},
+) {
   const ws = createWorkspace();
   const storage = new MemoryStorage();
   if (saved) storage.setItem(TIMELINE_KEY, JSON.stringify(saved));
-  ws.getState().openProject({ id: 'p', root: '/p', manifest });
-  const tl = createTimelineStore(ws, storage);
-  const index = captureIndex(manifest);
+  ws.getState().openProject({ id: 'p', root: '/p', manifest: m });
+  const tl = createTimelineStore(ws, storage, (id) => durations[id]);
+  const index = captureIndex(m);
   return { ws, tl, storage, index };
 }
+
+/** The three-date fixture with each date's clip flown on its own day. */
+const START = { sep: 1_000_000, oct: 2_000_000, nov: 3_000_000 } as const;
+const timed = {
+  ...manifest,
+  layers: manifest.layers.map((l) =>
+    l.kind === 'video' && l.capture
+      ? { ...l, flight: { ...l.flight, startUtcMs: START[l.capture as keyof typeof START] } }
+      : l,
+  ),
+} as ProjectManifest;
 
 describe('timeline store', () => {
   it('attach focuses the latest date and hides other dates', () => {
@@ -212,5 +227,50 @@ describe('timeline store', () => {
     expect(tl.getState().focus).toBe('oct');
     expect(ws.getState().hidden).toEqual(hidden);
     expect(storage.getItem(TIMELINE_KEY)).toBe(saved);
+  });
+
+  it('a fresh attach moves the video off a hidden date onto the focused one, at its start', () => {
+    const { ws, tl, index } = setup(undefined, timed);
+    // openProject picks the manifest's first clip, the oldest date
+    expect(ws.getState().activeClip).toBe('clip-sep');
+    tl.getState().attach('p', index);
+    expect(ws.getState().activeClip).toBe('clip-nov');
+    expect(ws.getState().nowMs).toBe(START.nov);
+  });
+
+  it('a fresh attach on a saved focus plays that date', () => {
+    const { ws, tl, index } = setup({ p: { focus: 'oct' } }, timed);
+    tl.getState().attach('p', index);
+    expect(ws.getState().activeClip).toBe('clip-oct');
+    expect(ws.getState().nowMs).toBe(START.oct);
+  });
+
+  it('a fresh attach leaves the video alone when the focused date has none', () => {
+    const noNovClip = {
+      ...timed,
+      layers: timed.layers.filter((l) => l.id !== 'clip-nov'),
+    } as ProjectManifest;
+    const { ws, tl, index } = setup(undefined, noNovClip);
+    tl.getState().attach('p', index);
+    expect(ws.getState().activeClip).toBe('clip-sep');
+    expect(ws.getState().nowMs).toBe(START.sep);
+  });
+
+  it('focusSurvey moves the clock into the new clip at the same offset', () => {
+    const { ws, tl, index } = setup(undefined, timed);
+    tl.getState().attach('p', index);
+    ws.getState().setTime(START.nov + 5_000);
+    tl.getState().focusSurvey('oct');
+    expect(ws.getState().activeClip).toBe('clip-oct');
+    expect(ws.getState().nowMs).toBe(START.oct + 5_000);
+  });
+
+  it('focusSurvey clamps the offset into a shorter clip', () => {
+    const { ws, tl, index } = setup(undefined, timed, { 'clip-oct': 3_000 });
+    tl.getState().attach('p', index);
+    ws.getState().setTime(START.nov + 5_000);
+    tl.getState().focusSurvey('oct');
+    expect(ws.getState().activeClip).toBe('clip-oct');
+    expect(ws.getState().nowMs).toBe(START.oct + 3_000);
   });
 });

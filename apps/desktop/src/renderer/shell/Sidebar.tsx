@@ -17,7 +17,7 @@ import {
   type TreeItem,
   shortcutHint,
 } from '@aio/ui';
-import { dateTags, useWorkspace, workspace } from '@aio/workspace';
+import { clipStartMs, dateTags, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { openAuditTrail } from '../audit/auditView';
 import { builder } from '../builder/state';
@@ -82,7 +82,7 @@ export function selectClip(layerId: string) {
   ws.select({ kind: 'clip', id: layerId, layer: layerId });
   ws.setActiveClip(layerId);
   if (layer?.kind === 'video') {
-    const start = layer.flight.startUtcMs + layer.offsetMs;
+    const start = clipStartMs(layer);
     if (ws.nowMs < start) ws.setTime(start);
   }
 }

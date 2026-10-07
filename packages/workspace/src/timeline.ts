@@ -135,3 +135,31 @@ export function layerDate(
   const capture = index.of[layerId];
   return index.captures.find((c) => c.id === capture)?.date;
 }
+
+/** What the clock needs of a video clip. */
+export interface ClipTiming {
+  flight: { startUtcMs: number };
+  offsetMs: number;
+}
+
+/** Project clock at a clip's first frame: its flight start plus the calibration offset. */
+export function clipStartMs(clip: ClipTiming): number {
+  return clip.flight.startUtcMs + clip.offsetMs;
+}
+
+/**
+ * The clock when playback moves from `prev` to `next` (a date jump): the playhead's offset into
+ * `prev` carried into `next`, clamped into `next` when its length is known; `next`'s start without
+ * an old clip or with the playhead before it.
+ */
+export function clockInClip(
+  prev: ClipTiming | undefined,
+  next: ClipTiming,
+  nowMs: number,
+  nextDurationMs?: number,
+): number {
+  const start = clipStartMs(next);
+  if (!prev) return start;
+  const offset = Math.max(0, nowMs - clipStartMs(prev));
+  return start + (nextDurationMs === undefined ? offset : Math.min(offset, nextDurationMs));
+}

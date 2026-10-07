@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { captureIndex } from './captures';
 import { createWorkspace } from './index';
 import {
+  clipStartMs,
+  clockInClip,
   extrasOf,
   followLayer,
   initialFocus,
@@ -211,5 +213,27 @@ describe('applyVisibility', () => {
     ws.subscribe(() => (updates += 1));
     ws.getState().applyVisibility([], []);
     expect(updates).toBe(0);
+  });
+});
+
+describe('clipStartMs, clockInClip', () => {
+  const clip = (startUtcMs: number, offsetMs = 0) => ({ flight: { startUtcMs }, offsetMs });
+
+  it('starts a clip at its flight start plus the calibration offset', () => {
+    expect(clipStartMs(clip(10_000, -500))).toBe(9_500);
+  });
+
+  it('keeps the playhead offset from the old clip in the new one', () => {
+    expect(clockInClip(clip(10_000), clip(50_000), 14_000)).toBe(54_000);
+  });
+
+  it('clamps the offset into the new clip when its length is known', () => {
+    expect(clockInClip(clip(10_000), clip(50_000), 14_000, 3_000)).toBe(53_000);
+    expect(clockInClip(clip(10_000), clip(50_000), 14_000, undefined)).toBe(54_000);
+  });
+
+  it('starts the new clip at its start without an old clip or before the old start', () => {
+    expect(clockInClip(undefined, clip(50_000, 200), 14_000)).toBe(50_200);
+    expect(clockInClip(clip(10_000), clip(50_000), 2_000)).toBe(50_000);
   });
 });
