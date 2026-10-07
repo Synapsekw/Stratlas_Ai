@@ -233,8 +233,9 @@ export function counterpart(
 
 /**
  * Visibility of the layers in a view of one capture: common layers as the layer tree says; a
- * layer of another date hidden; a layer of this date shown when any date's layer of its slot is
- * shown (the volumetric workspace shows one survey at a time through the same switches).
+ * layer of another date hidden; a layer of this date shown when any date's layer of its slot, or
+ * any shown layer whose counterpart on this date it is, is shown (the workspace shows one survey
+ * at a time through the same switches: the focused date's, or the volumes' survey).
  */
 export function captureHidden(
   index: CaptureIndex,
@@ -243,9 +244,14 @@ export function captureHidden(
   hidden: Readonly<Record<string, true>>,
 ): Record<string, true> {
   const shownSlots = new Set<string>();
+  // names that differ by more than the date give different slots; counterpart still pairs them
+  const shownTwins = new Set<string>();
   for (const l of layers) {
     const s = index.slot[l.id];
-    if (s && index.of[l.id] && !hidden[l.id]) shownSlots.add(s);
+    if (!s || !index.of[l.id] || hidden[l.id]) continue;
+    shownSlots.add(s);
+    const twin = counterpart(index, l.id, capture);
+    if (twin) shownTwins.add(twin);
   }
   const out: Record<string, true> = {};
   for (const l of layers) {
@@ -255,7 +261,7 @@ export function captureHidden(
       continue;
     }
     const s = index.slot[l.id];
-    if (c !== capture || !s || !shownSlots.has(s)) out[l.id] = true;
+    if (c !== capture || !s || !(shownSlots.has(s) || shownTwins.has(l.id))) out[l.id] = true;
   }
   return out;
 }
