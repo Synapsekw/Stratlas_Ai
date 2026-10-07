@@ -23,7 +23,6 @@ import {
 } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useState } from 'react';
-import { setAuthorName, useAuthor } from '../author';
 import { GPU_TIERS, TIER_ORDER, graphics, useGraphics, type GpuTier } from '../graphics';
 import { cloudAiBlocked } from '../player';
 import { bridge, shell, useCall, useShell } from '../shell';
@@ -31,6 +30,7 @@ import { HelpLink } from '../help/HelpPanel';
 import { SETTINGS_HELP } from '../help/store';
 import { About } from './settings/About';
 import { DetectionModels } from './settings/DetectionModels';
+import { IdentitySettings } from './settings/Identity';
 import { Appearance } from './settings/Appearance';
 import { Keyboard } from './settings/Keyboard';
 import { LocalModel } from './settings/LocalModel';
@@ -42,6 +42,7 @@ type Page =
   | 'ai'
   | 'usage'
   | 'privacy'
+  | 'identity'
   | 'data'
   | 'maps'
   | 'severity'
@@ -65,6 +66,7 @@ const PAGES: { page: Page; label: MessageKey; icon: IconName; group: MessageKey 
     icon: 'shield',
     group: 'settings.group.intelligence',
   },
+  { page: 'identity', label: 'identity.page', icon: 'key', group: 'settings.group.data' },
   { page: 'data', label: 'settings.page.data', icon: 'layers', group: 'settings.group.data' },
   { page: 'maps', label: 'settings.page.maps', icon: 'map', group: 'settings.group.data' },
   {
@@ -646,37 +648,10 @@ function OfflineOnly() {
   );
 }
 
-function AuthorName() {
-  const { override, osUser } = useAuthor();
-  const [value, setValue] = useState(override);
-  return (
-    <div className="sblock">
-      <h2>Your name on issues</h2>
-      <p className="help">
-        New issues and their audit trail carry this name.
-        {osUser ? ` Leave it empty to use your account name, ${osUser}.` : ''}
-      </p>
-      <input
-        className="input"
-        aria-label="Your name on issues"
-        style={{ width: '100%', maxWidth: 320 }}
-        value={value}
-        placeholder={osUser || 'Your name'}
-        maxLength={80}
-        onChange={(e) => {
-          setValue(e.target.value);
-          setAuthorName(e.target.value);
-        }}
-      />
-    </div>
-  );
-}
-
 function DataFolder() {
   const dataRoot = useShell((s) => s.settings.dataRoot);
   return (
     <>
-      <AuthorName />
       <div className="sblock">
         <h2>Data folder</h2>
         <p className="help">
@@ -817,6 +792,7 @@ const HEAD: Record<Page, { title: MessageKey; text: MessageKey }> = {
   ai: { title: 'settings.page.ai', text: 'settings.ai.text' },
   usage: { title: 'settings.page.usage', text: 'settings.usage.text' },
   privacy: { title: 'settings.page.privacy', text: 'settings.privacy.text' },
+  identity: { title: 'identity.page', text: 'identity.page.text' },
   data: { title: 'settings.page.data', text: 'settings.data.text' },
   maps: { title: 'settings.page.maps', text: 'settings.maps.text' },
   severity: { title: 'settings.page.severity', text: 'settings.severity.text' },
@@ -886,6 +862,7 @@ export function SettingsScreen() {
           {page === 'ai' && <DetectionModels />}
           {page === 'usage' && <Usage />}
           {page === 'privacy' && <Privacy />}
+          {page === 'identity' && <IdentitySettings />}
           {page === 'data' && <DataFolder />}
           {page === 'maps' && <MapPacks />}
           {page === 'severity' && <Severity />}
