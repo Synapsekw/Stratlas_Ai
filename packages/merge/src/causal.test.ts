@@ -1,3 +1,4 @@
+import type { Op } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { indexOps } from './causal';
 import { TeamSim } from './testing/generator';
@@ -33,6 +34,20 @@ describe('indexOps', () => {
     const h = idx.held.find((x) => x.op === a2.id);
     expect(h?.missing).toEqual([{ chain: a1.chain, op: a1.id, seq: 1 }]);
     expect(indexOps([a1, a2, b1]).held).toEqual([]);
+  });
+
+  it('skips lines that are not ops instead of failing', () => {
+    const sim = new TeamSim({ people: 1 });
+    const good = sim.write(0, 'issue.patch', t, { set: { note: 'a' } });
+    const bad = [
+      null,
+      { ...good, id: 'x' },
+      { ...good, id: 'f'.repeat(64), hlc: 'soon' },
+      { ...good, id: 'e'.repeat(64), target: undefined },
+      { ...good, id: 'd'.repeat(64), seq: 2, prev: null },
+    ] as unknown as Op[];
+    const idx = indexOps([...bad, good]);
+    expect(idx.nodes.map((n) => n.op.id)).toEqual([good.id]);
   });
 
   it('gives the same index whatever the arrival order', () => {

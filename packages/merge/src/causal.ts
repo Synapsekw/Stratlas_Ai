@@ -39,6 +39,36 @@ export function compareOps(a: Op, b: Op): number {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
+const HLC = /^\d{13}\.\d{4}\.(d_[a-z2-7]{52})$/;
+const HEX64 = /^[0-9a-f]{64}$/;
+
+/** The fields the engine relies on, as `Op` checks them (ids, chain, clock, seq, target). */
+export function wellFormed(op: unknown): op is Op {
+  if (op === null || typeof op !== 'object') return false;
+  const o = op as Record<string, unknown>;
+  const t = o.target as Record<string, unknown> | null | undefined;
+  return (
+    typeof o.id === 'string' &&
+    HEX64.test(o.id) &&
+    typeof o.dev === 'string' &&
+    typeof o.act === 'string' &&
+    typeof o.kind === 'string' &&
+    typeof o.chain === 'string' &&
+    o.chain.startsWith(`${o.dev}.`) &&
+    typeof o.hlc === 'string' &&
+    HLC.exec(o.hlc)?.[1] === o.dev &&
+    typeof o.seq === 'number' &&
+    Number.isInteger(o.seq) &&
+    o.seq >= 1 &&
+    (o.seq === 1 ? o.prev === null : typeof o.prev === 'string') &&
+    (o.deps === undefined || (typeof o.deps === 'object' && o.deps !== null)) &&
+    typeof t === 'object' &&
+    t !== null &&
+    typeof t.rec === 'string' &&
+    typeof t.id === 'string'
+  );
+}
+
 /**
  * Two lines with one id but different bytes (a tampered copy): keep the one that hashes, else the
  * smallest canonical text, so every copy keeps the same one whatever order they arrived in.
@@ -63,6 +93,8 @@ function pickDuplicate(a: Op, b: Op): Op {
 export function indexOps(ops: readonly Op[]): OpIndex {
   const unique = new Map<string, Op>();
   for (const op of ops) {
+    // a line that is not an op (Verify names it with its file and line) never applies
+    if (!wellFormed(op)) continue;
     const seen = unique.get(op.id);
     unique.set(op.id, seen ? pickDuplicate(seen, op) : op);
   }
