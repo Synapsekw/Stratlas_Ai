@@ -284,6 +284,11 @@ export const Settings = z.object({
   inference: InferenceSettings.optional(),
   /** Sync preferences (M9). Never keys, tokens or invite codes: those live in the vault. */
   team: TeamSettings.optional(),
+  /**
+   * Show the launch screen (the welcome with Enter) when the app starts. Absent: shown, so a
+   * settings file written before the launch screen existed keeps it.
+   */
+  launchScreen: z.boolean().optional(),
 });
 
 /** West, south, east, north in WGS84 degrees. */
@@ -2181,4 +2186,13 @@ export interface AioBridge {
   systemMemory?(): { total: number; free: number } | null;
   /** This renderer process's memory, bytes (diagnostics, the memory watch). */
   processMemory?(): Promise<{ residentSet: number; private: number } | null>;
+  /**
+   * Whether this run may show the launch screen, read before the first frame: `skip` for an
+   * automated run (QUADRION_E2E=1 without QUADRION_SHOW_GATE=1, or QUADRION_SHOW_GATE=0), else
+   * `auto` (then `Settings.launchScreen` decides). Optional: absent outside Electron means `auto`.
+   */
+  launchGate?(): LaunchGateMode;
 }
+
+/** See `AioBridge.launchGate`. */
+export type LaunchGateMode = 'auto' | 'skip';
