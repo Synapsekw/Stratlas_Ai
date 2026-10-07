@@ -31,6 +31,7 @@ import { agentWindow } from './agentWindow';
 import { LayerPlaceholder } from './LayerPlaceholder';
 import { SelectionCard } from './SelectionCard';
 import { Stage } from './Stage';
+import { useTimelineSync } from './timeline';
 import { toggleTimeline, useTimelineShown } from './timelinePref';
 
 function WorkspaceTimeline() {
@@ -226,6 +227,7 @@ function ContextPanel() {
 }
 
 export function WorkspaceScreen() {
+  useTimelineSync();
   const t = useT();
   const hasProject = useWorkspace((s) => s.project !== null);
   const focusedWindow = useWorkspace((s) => s.focusedWindow);
