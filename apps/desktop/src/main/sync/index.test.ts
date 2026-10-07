@@ -15,7 +15,8 @@ import { collectHandlers } from '../notYet';
 import { createTeamConfigStore } from './config';
 import { createTeamEngine } from './engine';
 import { registerSyncIpc } from './index';
-import { createSyncService, safeJoin } from './service';
+import { createSyncService, safeJoin, type ServerTransport } from './service';
+import type { Heads, Op } from '@aio/schema';
 
 let base: string;
 beforeEach(async () => {
@@ -61,7 +62,12 @@ const editIssue = async (dir: string, id: string, patch: Partial<Issue>) => {
  * One "machine": its own userData, vault and identity, with a project open as `p`, and the real
  * M9 stack (M9 integration): T2's identity service, T1's journal service, T4's merge engine.
  */
-async function machine(name: string, initials: string, root: string, opts: { pkg?: boolean } = {}) {
+async function machine(
+  name: string,
+  initials: string,
+  root: string,
+  opts: { pkg?: boolean; server?: ServerTransport } = {},
+) {
   const userData = join(base, `user-${initials}`);
   await mkdir(userData, { recursive: true });
   await writeFile(
@@ -115,6 +121,7 @@ async function machine(name: string, initials: string, root: string, opts: { pkg
       events.push({ event: 'sync:notice', payload: { projectId, notices } }),
   });
   let saveTo: string | null = null;
+  const server = opts.server;
   const service = createSyncService({
     userData,
     projectRoot,
@@ -131,6 +138,7 @@ async function machine(name: string, initials: string, root: string, opts: { pkg
       events.push({ event, payload });
     },
     saveDialog: () => Promise.resolve(saveTo),
+    ...(server ? { serverTransport: () => Promise.resolve(server) } : {}),
   });
   const ipc = collectHandlers((handle) => {
     registerSyncIpc({ handle, service, engine, projectRoot, isPackage });
@@ -409,6 +417,63 @@ describe('hub folder sync between two copies', () => {
     expect(await b.ipc.call('team:leave', { projectId: 'p' })).toEqual({ ok: true });
     expect(await b.ipc.call('sync:now', { projectId: 'p' })).toMatchObject({ ok: false });
     expect(await readIssues(bDir)).toHaveLength(2);
+  });
+});
+
+/** A team server that holds a project only once a push carries its `project.share` (as T7's). */
+function fakeServer() {
+  const ops: Op[] = [];
+  const missing = () =>
+    Object.assign(new Error('This server holds no such project.'), { code: 'not-found' });
+  const held = () => ops.some((o) => o.kind === 'project.share');
+  const transport: ServerTransport = {
+    heads() {
+      if (!held()) return Promise.reject(missing());
+      const heads: Heads = {};
+      for (const o of ops) {
+        if ((heads[o.chain]?.seq ?? 0) < o.seq) heads[o.chain] = { seq: o.seq, id: o.id };
+      }
+      return Promise.resolve(heads);
+    },
+    pullOps(since) {
+      if (!held()) return Promise.reject(missing());
+      const ops_ = ops.filter((o) => o.seq > (since[o.chain]?.seq ?? 0));
+      return Promise.resolve({ ops: ops_, cursor: null, more: false });
+    },
+    pushOps(pushed) {
+      if (!held() && !pushed.some((o) => o.kind === 'project.share')) {
+        return Promise.reject(missing());
+      }
+      const fresh = pushed.filter((o) => !ops.some((x) => x.id === o.id));
+      ops.push(...fresh);
+      return Promise.resolve({
+        accepted: fresh.map((o) => o.id),
+        duplicates: [],
+        refused: [],
+        receipts: [],
+      });
+    },
+    members: () => Promise.resolve([]),
+  };
+  return { ops, transport };
+}
+
+describe('team server sync', () => {
+  it('shares a new project to a server that does not hold it yet: the first push creates it', async () => {
+    const server = fakeServer();
+    const root = join(base, 'a');
+    await writeProject(root, [issue('i1', 'F01')]);
+    const a = await machine('Rana Example', 'RE', root, { server: server.transport });
+    const shared = await a.ipc.call('team:share', {
+      projectId: 'p',
+      mode: 'server',
+      serverId: 's_test',
+    });
+    expect(shared).toMatchObject({ ok: true, status: { mode: 'server' } });
+    expect(server.ops.map((o) => o.kind)).toContain('project.share');
+    expect(server.ops.map((o) => o.kind)).toContain('member.add');
+    const again = await a.ipc.call('sync:now', { projectId: 'p' });
+    expect(again).toMatchObject({ ok: true, pulled: 0, pushed: 0 });
   });
 });
 

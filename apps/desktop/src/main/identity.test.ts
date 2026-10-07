@@ -150,6 +150,20 @@ describe('identity file', () => {
     expect((await store.set({ email: '' })).email).toBeUndefined();
   });
 
+  it('makes one identity when the first reads and a change arrive together', async () => {
+    const store = createIdentityStore(file(), { osUser: () => 'rana' });
+    // first start: the journal, the renderer and the person's own change all ask at once
+    const [a, set, b] = await Promise.all([
+      store.get(),
+      store.set({ name: 'Omar Sample' }),
+      store.get(),
+    ]);
+    expect(set.name).toBe('Omar Sample');
+    expect(new Set([a.actor, set.actor, b.actor]).size).toBe(1);
+    const again = createIdentityStore(file(), { osUser: () => 'rana' });
+    expect(await again.get()).toMatchObject({ actor: set.actor, name: 'Omar Sample' });
+  });
+
   it('never overwrites a damaged identity file', async () => {
     await writeFile(file(), '{ not json');
     const store = createIdentityStore(file(), { osUser: () => 'rana' });

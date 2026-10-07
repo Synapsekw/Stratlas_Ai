@@ -57,6 +57,11 @@ export function startSync(o: {
     },
     ...(o.derivedStatuses ? { derivedStatuses: o.derivedStatuses } : {}),
   });
+  // History and the Audit trail mark the ops the merge engine holds in quarantine
+  o.journal.setQuarantined(async (root) => {
+    const q = await engine.quarantine(root);
+    return new Set(q.ok ? q.entries.map((e) => e.op) : []);
+  });
   const service = createSyncService({
     userData,
     projectRoot: (id) => o.registry.root(id),

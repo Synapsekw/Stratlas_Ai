@@ -1,15 +1,18 @@
 /**
- * M9 T5: exchange files between two reviewers, as over an air gap: Rana exports a patch, Omar
- * (a plain copy of the project, not shared yet) previews it, applies it and so joins the team
- * project; importing it again says it is already applied. An encrypted file asks for its
- * passphrase first.
+ * M9 T5: exchange files between two reviewers, as over an air gap: Rana shares, adds Omar from his
+ * identity card as a reviewer and exports a patch; Omar (a plain copy of the project, not shared
+ * yet) previews it, applies it and so joins the team project; importing it again says it is
+ * already applied. His own patch back counts on Rana's copy (he is a member, nothing is held in
+ * quarantine). An encrypted file asks for its passphrase first.
  */
-import { readdir } from 'node:fs/promises';
+import { mkdir, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expect, twoReviewersTest as test, type Reviewer } from './fixtures';
+import { expect, TEAM_PROJECT_ID, twoReviewersTest as test, type Reviewer } from './fixtures';
 import {
+  addMember,
   answerOpenDialog,
   answerSaveDialog,
+  invoke,
   openTeamProject,
   registerOf,
   setTitle,
@@ -53,13 +56,14 @@ async function openImport(
   return dlg;
 }
 
-test('a patch goes across by file: preview, apply, join, and a second import is already applied', async ({
+test('a patch goes across by file: preview, apply, join, a second import is already applied, and one comes back', async ({
   twoReviewers,
 }) => {
   test.setTimeout(180_000);
   const { a, b, out } = twoReviewers;
   await openTeamProject(a.win);
   await shareWithExchangeFiles(a.win);
+  await addMember(a, b, join(out, 'cards'));
   await setTitle(a.win, 'F01', 'Cracked weld');
   const file = await exportPatch(a, out);
 
@@ -80,6 +84,26 @@ test('a patch goes across by file: preview, apply, join, and a second import is 
   const again = await openImport(b, file);
   await expect(again.getByTestId('exchange-already')).toBeVisible();
   await expect(again.getByTestId('exchange-apply')).toBeDisabled();
+  await again.getByRole('button', { name: 'Close', exact: true }).last().click();
+  await expect(again).toHaveCount(0);
+  expect(await invoke(b.win, 'members:list', { projectId: TEAM_PROJECT_ID })).toMatchObject({
+    ok: true,
+    me: 'reviewer',
+  });
+
+  // Omar's change goes back: he is a member, so it counts on Rana's copy
+  await setTitle(b.win, 'F02', 'Weld spatter');
+  const back = join(out, 'back');
+  await mkdir(back);
+  const reply = await exportPatch(b, back);
+  const dlgA = await openImport(a, reply);
+  await expect(dlgA.getByTestId('exchange-from')).toHaveText('Omar Sample (OS)');
+  await dlgA.getByTestId('exchange-apply').click();
+  await expect(dlgA.getByTestId('exchange-applied')).toBeVisible({ timeout: 30_000 });
+  await dlgA.getByRole('button', { name: 'Close', exact: true }).last().click();
+  await expect(await registerOf(a)).toContainText('Weld spatter');
+  const status = await invoke(a.win, 'team:status', { projectId: TEAM_PROJECT_ID });
+  expect(status).toMatchObject({ ok: true, status: { quarantined: 0, conflicts: 0 } });
 });
 
 test('an encrypted exchange file asks for its passphrase before the preview', async ({

@@ -367,7 +367,7 @@ function TeamStatusView({ projectId }: { projectId: string }) {
           {t('team.status.conflictsNote', { count: status.conflicts })}
         </p>
       )}
-      {syncError && status.mode === 'hub' && (
+      {syncError && (status.mode === 'hub' || status.mode === 'server') && (
         <p className="notice danger" role="alert" data-testid="sync-error">
           <Icon name="offline" size={14} />
           {syncError}

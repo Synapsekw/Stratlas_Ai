@@ -622,7 +622,7 @@ export const TEAM_PROJECT_ID = 'e2e-team';
 export const TEAM_PROJECT_NAME = 'E2E team project';
 
 /**
- * A small project two reviewers share: one mesh, a severity model with three levels and two
+ * A small project two reviewers share: one mesh, a severity model with four levels and two
  * issues (F01 and F02, severity 2). Each reviewer gets their own copy, as from a USB stick.
  */
 export async function writeTeamProject(dataRoot: string): Promise<string> {
@@ -640,6 +640,7 @@ export async function writeTeamProject(dataRoot: string): Promise<string> {
           { value: 1, label: 'Minor', color: '#fad34b', criteria: 'Monitor' },
           { value: 2, label: 'Moderate', color: '#f08c3c', criteria: 'Plan' },
           { value: 3, label: 'Severe', color: '#ee3f4b', criteria: 'Act' },
+          { value: 4, label: 'Critical', color: '#9b1c31', criteria: 'Act now' },
         ],
       },
     ],
@@ -678,14 +679,19 @@ export async function writeTeamProject(dataRoot: string): Promise<string> {
   return dir;
 }
 
-/** One reviewer: their own app, userData (identity), data root and project copy. */
+/** One reviewer: their own app, profile (identity and device key), data root and project copy. */
 export interface Reviewer {
   name: string;
+  initials: string;
   app: ElectronApplication;
   win: Page;
   dataRoot: DataRoot;
+  /** The profile's userData (`<dataRoot.userData>/profiles/<profile>`). */
+  userData: string;
   /** Their copy of the team project. */
   project: string;
+  /** Their zero-network guard. */
+  network: NetworkGuard;
 }
 
 export interface TwoReviewers {
@@ -695,33 +701,57 @@ export interface TwoReviewers {
   b: Reviewer;
   /** An empty folder both can reach: the "NAS" hub. */
   hub: string;
-  /** Where exchange files are saved. */
+  /** Where exchange files and identity cards are saved. */
   out: string;
 }
 
-async function launchReviewer(name: string, initials: string, actor: string): Promise<Reviewer> {
-  const dataRoot = await createDataRoot();
-  const project = await writeTeamProject(dataRoot.root);
-  await writeFile(
-    join(dataRoot.userData, 'identity.json'),
-    JSON.stringify({
-      schema: 'aio.identity/1',
-      actor,
-      name,
-      initials,
-      createdAt: '2026-10-07T08:00:00.000Z',
-    }),
-  );
-  const app = await launchApp(dataRoot);
-  const win = await app.firstWindow();
-  await win.waitForLoadState('domcontentloaded');
-  return { name, app, win, dataRoot, project };
+/** Options of `launchReviewer`: extra environment and the loopback origins the guard lets through. */
+export interface ReviewerOptions {
+  env?: Record<string, string>;
+  allow?: readonly string[];
 }
 
 /**
- * Two instances of the app side by side, each with its own userData (so its own identity and
- * device) and its own copy of the team project, plus one temp hub folder. Windows stay off-screen
- * like every other launch; both pass the zero-network guard.
+ * One person on their own isolated profile (`--profile=<profile>`, T2: own userData, own device
+ * key in the TEST-ONLY vault file), named through `identity:set` as the Settings screen does, with
+ * their own copy of the team project. The window is reloaded so the renderer reads the name.
+ */
+export async function launchReviewer(
+  profile: string,
+  name: string,
+  initials: string,
+  opts: ReviewerOptions = {},
+): Promise<Reviewer> {
+  const dataRoot = await createDataRoot();
+  const project = await writeTeamProject(dataRoot.root);
+  const app = await launchApp(dataRoot, opts.env ?? {}, [`--profile=${profile}`]);
+  const network = new NetworkGuard(opts.allow ?? []);
+  await network.attach(app);
+  const win = await app.firstWindow();
+  await win.waitForLoadState('domcontentloaded');
+  const set = await win.evaluate((patch) => window.aio.invoke('identity:set', patch), {
+    name,
+    initials,
+  });
+  if (!set.ok) throw new Error(`identity:set failed: ${set.error}`);
+  await win.reload();
+  await win.waitForLoadState('domcontentloaded');
+  const userData = join(dataRoot.userData, 'profiles', profile);
+  return { name, initials, app, win, dataRoot, userData, project, network };
+}
+
+/** Close a reviewer's app and remove their folders (a screenshot first when the test failed). */
+export async function closeReviewer(r: Reviewer, failed: boolean, shot?: string): Promise<void> {
+  if (failed && shot) await r.win.screenshot({ path: shot }).catch(() => undefined);
+  await r.app.close().catch(() => undefined);
+  await rm(r.dataRoot.base, { recursive: true, force: true }).catch(() => undefined);
+}
+
+/**
+ * Two instances of the app side by side, each on its own profile (so its own identity and device
+ * key) with its own copy of the team project, plus one temp hub folder. Neither is a member of
+ * the other's team until a spec adds them (`addMember` in team.ts). Windows stay off-screen like
+ * every other launch; both pass the zero-network guard.
  */
 export const twoReviewersTest = test.extend<{ twoReviewers: TwoReviewers }>({
   // eslint-disable-next-line no-empty-pattern -- Playwright requires the destructuring form.
@@ -731,24 +761,17 @@ export const twoReviewersTest = test.extend<{ twoReviewers: TwoReviewers }>({
     const out = join(shared, 'out');
     await mkdir(hub, { recursive: true });
     await mkdir(out, { recursive: true });
-    const a = await launchReviewer('Rana Example', 'RE', 'a_ranaexampleaaaaaaaaaaaaaaa');
-    const b = await launchReviewer('Omar Sample', 'OS', 'a_omarsampleaaaaaaaaaaaaaaaa');
-    const guards = [new NetworkGuard(), new NetworkGuard()] as const;
-    await guards[0].attach(a.app);
-    await guards[1].attach(b.app);
+    const a = await launchReviewer('rana', 'Rana Example', 'RE');
+    const b = await launchReviewer('omar', 'Omar Sample', 'OS');
+    const guards = [a.network, b.network] as const;
     const outbound: string[] = [];
     try {
       await use({ a, b, hub, out });
       for (const g of guards) outbound.push(...(await g.outbound()));
     } finally {
+      const failed = testInfo.status !== testInfo.expectedStatus;
       for (const r of [a, b]) {
-        if (testInfo.status !== testInfo.expectedStatus) {
-          await r.win
-            .screenshot({ path: testInfo.outputPath(`${r.name.split(' ')[0] ?? 'app'}.png`) })
-            .catch(() => undefined);
-        }
-        await r.app.close().catch(() => undefined);
-        await rm(r.dataRoot.base, { recursive: true, force: true }).catch(() => undefined);
+        await closeReviewer(r, failed, testInfo.outputPath(`${r.name.split(' ')[0] ?? 'app'}.png`));
       }
       await rm(shared, { recursive: true, force: true }).catch(() => undefined);
     }

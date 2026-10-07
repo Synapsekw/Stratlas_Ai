@@ -95,6 +95,14 @@ const FALLBACK_NAME = 'Reviewer';
 export function createIdentityStore(file: string, deps: IdentityStoreDeps) {
   const now = deps.now ?? (() => new Date());
   let cached: Identity | null = null;
+  // One read-or-make and one change at a time: on first start the journal, the renderer and the
+  // person's own change ask together, and each would otherwise make an identity of its own.
+  let queue: Promise<unknown> = Promise.resolve();
+  function serial<T>(run: () => Promise<T>): Promise<T> {
+    const next = queue.then(run, run);
+    queue = next.catch(() => undefined);
+    return next;
+  }
 
   function osName(): string | null {
     const parsed = PersonName.safeParse(deps.osUser() ?? '');
@@ -148,57 +156,65 @@ export function createIdentityStore(file: string, deps: IdentityStoreDeps) {
 
   return {
     /** This person, made on first call from the OS account when there is no file yet. */
-    async get(): Promise<Identity> {
-      const have = await load();
-      if (have) return have;
-      if (await exists()) {
-        // A damaged file is never overwritten: the actor id in it may be in project journals.
-        throw new Error(`Your identity file could not be read (${file}).`);
-      }
-      const os = osName();
-      return save(fresh(os ?? FALLBACK_NAME, os ? 'os-account' : 'new'));
+    get(): Promise<Identity> {
+      if (cached) return Promise.resolve(cached);
+      return serial(async () => {
+        const have = await load();
+        if (have) return have;
+        if (await exists()) {
+          // A damaged file is never overwritten: the actor id in it may be in project journals.
+          throw new Error(`Your identity file could not be read (${file}).`);
+        }
+        const os = osName();
+        return save(fresh(os ?? FALLBACK_NAME, os ? 'os-account' : 'new'));
+      });
     },
 
-    async set(patch: IpcRequest<'identity:set'>): Promise<Identity> {
-      const migrate = PersonName.safeParse(patch.migrateFrom ?? '');
-      let current = await load();
-      if (!current) {
-        if (await exists()) throw new Error(`Your identity file could not be read (${file}).`);
-        if (migrate.success) {
-          current = await save(fresh(migrate.data, 'author-setting'));
-        } else {
-          const os = osName();
-          current = fresh(os ?? FALLBACK_NAME, os ? 'os-account' : 'new');
-        }
-      } else if (
-        migrate.success &&
-        current.migratedFrom !== 'author-setting' &&
-        current.name === (osName() ?? FALLBACK_NAME)
-      ) {
-        // the identity was made from the OS account before the old setting arrived: take it once
-        current = {
-          ...current,
-          name: migrate.data,
-          initials: deriveInitials(migrate.data),
-          migratedFrom: 'author-setting',
-        };
-      }
-      const next: Identity = { ...current };
-      if (patch.name !== undefined && patch.name !== current.name) {
-        next.name = patch.name;
-        // initials follow the name until the person sets their own
-        if (patch.initials === undefined && current.initials === deriveInitials(current.name)) {
-          next.initials = deriveInitials(patch.name);
-        }
-      }
-      if (patch.initials !== undefined) next.initials = patch.initials;
-      if (patch.email !== undefined) {
-        if (patch.email === '') delete next.email;
-        else next.email = patch.email;
-      }
-      return save(Identity.parse(next));
+    set(patch: IpcRequest<'identity:set'>): Promise<Identity> {
+      return serial(() => change(patch));
     },
   };
+
+  /** `set`, one at a time (see `serial`). */
+  async function change(patch: IpcRequest<'identity:set'>): Promise<Identity> {
+    const migrate = PersonName.safeParse(patch.migrateFrom ?? '');
+    let current = await load();
+    if (!current) {
+      if (await exists()) throw new Error(`Your identity file could not be read (${file}).`);
+      if (migrate.success) {
+        current = await save(fresh(migrate.data, 'author-setting'));
+      } else {
+        const os = osName();
+        current = fresh(os ?? FALLBACK_NAME, os ? 'os-account' : 'new');
+      }
+    } else if (
+      migrate.success &&
+      current.migratedFrom !== 'author-setting' &&
+      current.name === (osName() ?? FALLBACK_NAME)
+    ) {
+      // the identity was made from the OS account before the old setting arrived: take it once
+      current = {
+        ...current,
+        name: migrate.data,
+        initials: deriveInitials(migrate.data),
+        migratedFrom: 'author-setting',
+      };
+    }
+    const next: Identity = { ...current };
+    if (patch.name !== undefined && patch.name !== current.name) {
+      next.name = patch.name;
+      // initials follow the name until the person sets their own
+      if (patch.initials === undefined && current.initials === deriveInitials(current.name)) {
+        next.initials = deriveInitials(patch.name);
+      }
+    }
+    if (patch.initials !== undefined) next.initials = patch.initials;
+    if (patch.email !== undefined) {
+      if (patch.email === '') delete next.email;
+      else next.email = patch.email;
+    }
+    return save(Identity.parse(next));
+  }
 }
 
 export type IdentityStore = ReturnType<typeof createIdentityStore>;

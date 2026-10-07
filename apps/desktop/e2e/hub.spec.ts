@@ -1,30 +1,12 @@
 /**
  * M9 T5: two reviewers share one project through a hub folder (a temp folder standing in for the
- * NAS). Each instance has its own userData, identity and device. No network: the guard of each
+ * NAS). Each instance has its own profile, identity and device key; Rana shares and adds Omar from
+ * his identity card as a reviewer, so his changes count on her copy. No network: the guard of each
  * app must stay empty.
  */
-import { copyFile, readdir, rename } from 'node:fs/promises';
-import { join } from 'node:path';
-import { expect, twoReviewersTest as test, type TwoReviewers } from './fixtures';
-import {
-  openTeamProject,
-  registerOf,
-  setSeverity,
-  setTitle,
-  shareThroughHub,
-  syncNow,
-} from './team';
-
-/** Rana shares through the hub; Omar's copy gets the team file and joins the same project. */
-async function bothOnHub({ a, b, hub }: TwoReviewers): Promise<void> {
-  await openTeamProject(a.win);
-  await shareThroughHub(a.win, hub);
-  // Omar copies the shared project's team file with his copy of the folder
-  await copyFile(join(a.project, 'team.json'), join(b.project, 'team.json'));
-  await openTeamProject(b.win);
-  await shareThroughHub(b.win, hub);
-  expect(await readdir(join(hub))).toContain('aio-hub.json');
-}
+import { readdir, rename } from 'node:fs/promises';
+import { expect, twoReviewersTest as test } from './fixtures';
+import { bothOnHub, registerOf, setSeverity, setTitle, syncNow } from './team';
 
 test('an edit travels through the hub, and one made while it is away syncs later', async ({
   twoReviewers,
@@ -32,6 +14,7 @@ test('an edit travels through the hub, and one made while it is away syncs later
   test.setTimeout(180_000);
   const { a, b, hub } = twoReviewers;
   await bothOnHub(twoReviewers);
+  expect(await readdir(hub)).toContain('aio-hub.json');
 
   // Rana edits, syncs; Omar syncs and sees it
   await setTitle(a.win, 'F01', 'Corroded bolt');
