@@ -15,6 +15,11 @@ missing, so CI and a pack without the tool still produce the product (and say wh
 ``run_tool`` runs one cancellably: output to files (a full pipe would block the child), stdin
 closed, no console window, and on cancel the whole process tree is killed (``taskkill /T`` on
 Windows), so no orphan keeps running after the job stops.
+
+Memory: ``AIO_PHOTO_MEMORY_MB`` is the one memory cap of the photo jobs (the app sets it from
+Settings). ``photo.products`` plans within it (``memory_budget``; without it 40 % of the physical
+memory) and ``photo.align`` stops a COLMAP stage above it (``colmap_io.memory_limit``; without it
+75 % of the memory and 90 % of what is free).
 """
 
 from __future__ import annotations
@@ -139,15 +144,31 @@ def total_memory() -> int:
         return 0
 
 
+MEMORY_ENV = "AIO_PHOTO_MEMORY_MB"
+
+
+def memory_cap() -> int | None:
+    """The photo jobs' memory cap in bytes from ``AIO_PHOTO_MEMORY_MB`` (at least 64 MB), or None
+    when it is not set (or not a number).
+
+    One setting for every photo job: the app sets it from Settings. ``photo.products`` plans its
+    clusters within it (``memory_budget``) and ``photo.align``'s memory guard stops a COLMAP stage
+    that goes above it (``colmap_io.memory_limit``)."""
+    env = os.environ.get(MEMORY_ENV)
+    if not env:
+        return None
+    try:
+        return max(64, int(float(env))) * 1024 * 1024
+    except ValueError:
+        return None
+
+
 def memory_budget() -> int:
     """Bytes the heavy stages may hold at once: ``AIO_PHOTO_MEMORY_MB`` when set (the app passes
     the cap from Settings), else 40% of physical memory, at least 512 MB."""
-    env = os.environ.get("AIO_PHOTO_MEMORY_MB")
-    if env:
-        try:
-            return max(64, int(float(env))) * 1024 * 1024
-        except ValueError:
-            pass
+    cap = memory_cap()
+    if cap:
+        return cap
     total = total_memory() or 8 * GB
     return max(512 * 1024 * 1024, int(total * 0.4))
 

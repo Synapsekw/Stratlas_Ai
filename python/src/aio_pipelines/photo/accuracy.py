@@ -8,6 +8,10 @@ Honest by construction:
   always false, and ``report`` refuses to write anything else;
 - a run without ground control says that its absolute accuracy is only the GNSS accuracy.
 
+Every listed point says ``usedInAdjustment``: true for a control point that constrained the
+adjustment, false for checkpoints, for control points left out as outliers, and for every point of
+a GNSS-only alignment (disabled points are not measured and not listed).
+
 Residuals are ``measured - surveyed`` in the run's grid frame (project CRS easting, northing and
 height, metres), where *measured* is the point triangulated from its confirmed marks through the
 adjusted cameras. RMSE horizontal is ``sqrt(mean(dx^2 + dy^2))``, vertical ``sqrt(mean(dz^2))``.
@@ -140,7 +144,7 @@ def report(inp: ReportInput) -> dict[str, Any]:
                 "dzM": round(float(p.d[2]), 4),
                 "reprojPx": round(float(max(p.reproj_px, 0.0)), 3),
                 "marks": int(p.marks),
-                **({} if p.used or p.role == "check" else {"usedInAdjustment": False}),
+                "usedInAdjustment": bool(p.used and p.role == "control"),
             }
             for p in inp.points
         ],
