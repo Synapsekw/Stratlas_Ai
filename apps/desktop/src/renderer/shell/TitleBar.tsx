@@ -19,6 +19,7 @@ const VIEW_LABEL: Record<Screen, MessageKey> = {
   reports: 'nav.reports',
   jobs: 'nav.jobs',
   settings: 'nav.settings',
+  globe: 'globe.nav',
 };
 
 /** The Stratlas mark: four stacked strata, the top one in jade. */

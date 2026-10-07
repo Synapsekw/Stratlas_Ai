@@ -6,7 +6,9 @@ export {
   BANNED_CESIUM_PACKAGES,
   CESIUM_BASE_PATH,
   OFFLINE_CESIUM,
+  OFFLINE_HOST,
   ONLINE_GLOBE_HOSTS,
+  offlineSource,
   onlineHostsIn,
 } from './offline';
 export { BUNDLED_CREDIT, creditLines } from './credits';

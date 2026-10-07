@@ -33,6 +33,7 @@
     "@aio/change": "workspace:*",
     "@aio/engine": "workspace:*",
     "@aio/geo": "workspace:*",
+    "@aio/globe": "workspace:*",
     "@aio/maps": "workspace:*",
     "@aio/modelling": "workspace:*",
     "@aio/pointcloud": "workspace:*",

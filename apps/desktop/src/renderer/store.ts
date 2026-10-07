@@ -25,7 +25,8 @@ export type Screen =
   | 'detections'
   | 'reports'
   | 'jobs'
-  | 'settings';
+  | 'settings'
+  | 'globe';
 export type StageMode = '3d' | 'map' | 'split';
 
 /** Used until main answers settings:get. Offline first: cloud AI is off. */

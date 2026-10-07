@@ -22,6 +22,7 @@
     { "path": "../../packages/volumetric" },
     { "path": "../../packages/project" },
     { "path": "../../packages/geo" },
+    { "path": "../../packages/globe" },
     { "path": "../../packages/change" },
     { "path": "../../packages/modelling" },
     { "path": "../../packages/journal" },

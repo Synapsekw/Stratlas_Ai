@@ -2073,6 +2073,8 @@ export const en = {
     '{to} was {from}. Another issue made apart has that code, so it is now {to}.',
   'syncNotice.delivered': 'Packages already sent with the old code: {packages}.',
   'syncNotice.dismiss': 'Dismiss',
+  // M10 G6: the Globe
+  'globe.nav': 'Globe',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */
