@@ -1,0 +1,16 @@
+{
+  "name": "@aio/tiles",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "3D Tiles in the site view (M10 G7): the 3DTilesRendererJS adapter for the engine, tileset helpers, budgets per graphics tier.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aio/schema": "workspace:*"
+  }
+}

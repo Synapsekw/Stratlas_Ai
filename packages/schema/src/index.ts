@@ -26,3 +26,7 @@ export * from './blobs';
 export * from './sync';
 export * from './versions';
 export * from './entitlements';
+// M10
+export * from './photogrammetry';
+export * from './tilesets';
+export * from './globe';

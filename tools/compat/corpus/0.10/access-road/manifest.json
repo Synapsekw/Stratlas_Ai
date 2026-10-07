@@ -1,0 +1,143 @@
+{
+  "schema": "aio.project/1",
+  "id": "demo-access-road",
+  "name": "Demo access road",
+  "customer": "Demo customer (fictional)",
+  "site": "Fictional desert access road (synthetic demo data)",
+  "crs": { "epsg": 32631 },
+  "origin": [318342, 2586475, 382],
+  "captures": [],
+  "layers": [
+    {
+      "kind": "raster",
+      "id": "ortho",
+      "name": "Orthomosaic (4.00 cm)",
+      "visible": true,
+      "src": { "path": "rasters/ortho/tiles.json" },
+      "role": "ortho",
+      "format": "kit-pyramid",
+      "corners": { "tl": [-166, 0, -34], "tr": [489.36, 0, -34], "bl": [-166, 0, 293.68] }
+    },
+    {
+      "kind": "photos",
+      "id": "closeups",
+      "name": "Defect close-ups",
+      "visible": true,
+      "items": [
+        { "id": "f0000", "src": { "path": "photos/closeups/f0000.webp" } },
+        { "id": "f0001", "src": { "path": "photos/closeups/f0001.webp" } },
+        { "id": "f0002", "src": { "path": "photos/closeups/f0002.webp" } },
+        { "id": "f0003", "src": { "path": "photos/closeups/f0003.webp" } },
+        { "id": "f0004", "src": { "path": "photos/closeups/f0004.webp" } },
+        { "id": "f0005", "src": { "path": "photos/closeups/f0005.webp" } },
+        { "id": "f0006", "src": { "path": "photos/closeups/f0006.webp" } },
+        { "id": "f0007", "src": { "path": "photos/closeups/f0007.webp" } },
+        { "id": "f0008", "src": { "path": "photos/closeups/f0008.webp" } },
+        { "id": "f0009", "src": { "path": "photos/closeups/f0009.webp" } },
+        { "id": "f0010", "src": { "path": "photos/closeups/f0010.webp" } },
+        { "id": "f0011", "src": { "path": "photos/closeups/f0011.webp" } },
+        { "id": "f0012", "src": { "path": "photos/closeups/f0012.webp" } },
+        { "id": "f0013", "src": { "path": "photos/closeups/f0013.webp" } }
+      ]
+    }
+  ],
+  "severityModels": [
+    {
+      "id": "road-astm-d6433",
+      "name": "Road distress (ASTM D6433)",
+      "levels": [
+        {
+          "value": 1,
+          "label": "Low",
+          "color": "#fad34b",
+          "criteria": "Delivered stage Few. Low severity per ASTM D6433 (screening grade from the ortho, crack width and depth not measured).",
+          "action": "Monitor"
+        },
+        {
+          "value": 2,
+          "label": "Medium",
+          "color": "#ff7a2d",
+          "criteria": "Delivered stage Intermediate. Medium severity per ASTM D6433 (screening grade from the ortho).",
+          "action": "Plan maintenance"
+        },
+        {
+          "value": 3,
+          "label": "High",
+          "color": "#ee3f4b",
+          "criteria": "Delivered stage Extensive. High severity per ASTM D6433 (screening grade from the ortho).",
+          "action": "Plan repair"
+        }
+      ]
+    }
+  ],
+  "classCatalogues": [
+    {
+      "id": "road-distress",
+      "name": "Asphalt road distress",
+      "assetType": "road",
+      "classes": [
+        {
+          "id": "longitudinal-cracking",
+          "label": "Longitudinal cracking",
+          "color": "#3fa9f5",
+          "severityModel": "road-astm-d6433"
+        },
+        {
+          "id": "transverse-cracking",
+          "label": "Transverse cracking",
+          "color": "#b68ef8",
+          "severityModel": "road-astm-d6433"
+        },
+        {
+          "id": "bleeding",
+          "label": "Bleeding",
+          "color": "#ff7a2d",
+          "severityModel": "road-astm-d6433"
+        },
+        {
+          "id": "raveling",
+          "label": "Raveling",
+          "color": "#2ec4b6",
+          "severityModel": "road-astm-d6433"
+        },
+        {
+          "id": "block-cracking",
+          "label": "Block cracking",
+          "color": "#fad34b",
+          "severityModel": "road-astm-d6433"
+        },
+        {
+          "id": "alligator-cracking",
+          "label": "Alligator cracking",
+          "color": "#ee3f4b",
+          "severityModel": "road-astm-d6433"
+        },
+        {
+          "id": "patching",
+          "label": "Patching",
+          "color": "#9be15d",
+          "severityModel": "road-astm-d6433"
+        },
+        {
+          "id": "potholes",
+          "label": "Potholes",
+          "color": "#ff4fa3",
+          "severityModel": "road-astm-d6433"
+        },
+        {
+          "id": "rutting",
+          "label": "Rutting",
+          "color": "#ffffff",
+          "severityModel": "road-astm-d6433"
+        },
+        {
+          "id": "edge-cracking",
+          "label": "Edge cracking",
+          "color": "#c9a36b",
+          "severityModel": "road-astm-d6433"
+        }
+      ]
+    }
+  ],
+  "type": "road"
+}
