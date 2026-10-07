@@ -1,4 +1,12 @@
-import type { CameraOrientation, DirectionKey, Layer, PoseSample, Quat, Vec3 } from '@aio/schema';
+import type {
+  CameraOrientation,
+  DirectionKey,
+  Layer,
+  OrientationFile,
+  PoseSample,
+  Quat,
+  Vec3,
+} from '@aio/schema';
 import { cameraQuatFromGimbal } from './camera';
 import { estimateHeadings } from './flight';
 
@@ -41,23 +49,31 @@ export interface ClipCamera {
 }
 
 /**
- * The clip camera of a video layer. `flightStartUtcMs` is the start of the flight file the
- * samples come from (the layer's own `flight.startUtcMs` unless the file says otherwise);
- * `keys` replaces the layer's keyframes (an unsaved draft), `null` drops them.
+ * The clip camera of a video layer with its direction keyframes (`clipKeys` of the project's
+ * `orientation.json`, or an unsaved draft; none: the logged direction). `flightStartUtcMs` is the
+ * start of the flight file the samples come from (the layer's own `flight.startUtcMs` unless the
+ * file says otherwise).
  */
 export function clipCamera(
-  layer: Pick<VideoLayer, 'flight' | 'offsetMs' | 'orientation' | 'positionOffsetM'> & {
-    directionKeys?: readonly DirectionKey[] | undefined;
-  },
-  flightStartUtcMs: number = layer.flight.startUtcMs,
+  layer: Pick<VideoLayer, 'flight' | 'offsetMs' | 'orientation' | 'positionOffsetM'>,
   keys?: readonly DirectionKey[] | null,
+  flightStartUtcMs: number = layer.flight.startUtcMs,
 ): ClipCamera {
   return {
     videoStartMs: layer.flight.startUtcMs + layer.offsetMs - flightStartUtcMs,
     orientation: layer.orientation,
     positionOffsetM: layer.positionOffsetM,
-    directionKeys: keys === undefined ? layer.directionKeys : keys,
+    directionKeys: keys ?? null,
   };
+}
+
+/** A clip's saved direction keyframes in `orientation.json`, or null. */
+export function clipKeys(
+  file: OrientationFile | null | undefined,
+  layerId: string,
+): readonly DirectionKey[] | null {
+  const keys = file?.clips[layerId]?.keys;
+  return keys?.length ? keys : null;
 }
 
 // ------------------------------------------------------------------ quaternions

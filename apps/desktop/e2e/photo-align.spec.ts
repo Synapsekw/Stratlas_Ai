@@ -13,6 +13,7 @@ import { importRawFiles, NO_PIPELINE } from '@aio/project/builder';
 import { withExif } from '@aio/project/builder/testing';
 import { ProjectManifest, SCHEMA_VERSION, type ProjectManifestInput } from '@aio/schema';
 import type { Page } from '@playwright/test';
+import { existsSync } from 'node:fs';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
@@ -163,13 +164,24 @@ const test = base.extend<{ dataRoot: DataRoot }>({
 
 test.setTimeout(180_000);
 
+/** The photos of the manifest with their corrections from orientation.json. */
 const photos = async (data: DataRoot): Promise<PhotoItem[]> => {
-  const m = JSON.parse(
-    await readFile(join(data.root, 'projects', ID, 'manifest.json'), 'utf8'),
-  ) as {
-    layers: { kind: string; items?: PhotoItem[] }[];
+  const dir = join(data.root, 'projects', ID);
+  const m = JSON.parse(await readFile(join(dir, 'manifest.json'), 'utf8')) as {
+    layers: { kind: string; id: string; items?: PhotoItem[] }[];
   };
-  return m.layers.find((l) => l.kind === 'photos')?.items ?? [];
+  const set = m.layers.find((l) => l.kind === 'photos');
+  const o = existsSync(join(dir, 'orientation.json'))
+    ? (JSON.parse(await readFile(join(dir, 'orientation.json'), 'utf8')) as {
+        photos: Record<string, Record<string, PhotoItem['correction']> | undefined>;
+      })
+    : null;
+  return (set?.items ?? []).map((p) => {
+    // the manifest's photo records never carry a correction
+    expect(p).not.toHaveProperty('correction');
+    const c = set ? o?.photos[set.id]?.[p.id] : undefined;
+    return c ? { ...p, correction: c } : p;
+  });
 };
 
 /** Page position of the photo cluster on the map, once drawn. */

@@ -1,5 +1,5 @@
-import { correctedPhoto, looksEstimated } from '@aio/geo';
-import type { Issue, Layer, PoseSample, ProjectManifest, Vec3 } from '@aio/schema';
+import { clipKeys, correctedPhoto, looksEstimated, photoCorrection } from '@aio/geo';
+import type { Issue, Layer, OrientationFile, PoseSample, ProjectManifest, Vec3 } from '@aio/schema';
 import {
   crsLabel,
   formatClock,
@@ -28,8 +28,12 @@ const ESTIMATED_HINT =
   'Camera direction estimated from the flight path (no gimbal data in this SRT). Fix it with Align camera to map, or right-click the drone.';
 
 /** The clip's camera row: where its direction comes from, and the way to set it. */
-function cameraRow(v: VideoLayer, estimated: boolean): [string, ReactNode][] {
-  const keys = v.directionKeys?.length ?? 0;
+function cameraRow(
+  v: VideoLayer,
+  estimated: boolean,
+  orientation: OrientationFile | null,
+): [string, ReactNode][] {
+  const keys = clipKeys(orientation, v.id)?.length ?? 0;
   if (!keys && !estimated) return [];
   return [
     [
@@ -107,6 +111,7 @@ function describe(
   nowMs: number,
   durations: Record<string, number>,
   flights: ReturnType<typeof useMedia>['flights'],
+  orientation: OrientationFile | null,
 ): CardModel {
   const layer = m.layers.find((l) => l.id === (sel?.layer ?? sel?.id));
   if (sel?.kind === 'issue') {
@@ -156,13 +161,15 @@ function describe(
         ['Starts', `${formatDate(new Date(start).toISOString())} · ${formatClock(start)} UTC`],
         ['Length', dur !== undefined ? formatDuration(dur) : 'Reading video'],
         ['Drone', pose ? 'Position at the playhead' : 'No flight log loaded'],
-        ...cameraRow(v, !!samples && !v.orientation && isEstimated(samples)),
+        ...cameraRow(v, !!samples && !v.orientation && isEstimated(samples), orientation),
       ],
     };
   }
   if (sel?.kind === 'photo' && layer?.kind === 'photos') {
     const found = layer.items.find((p) => p.id === sel.id);
-    const photo = found ? correctedPhoto(found) : undefined;
+    const photo = found
+      ? correctedPhoto(found, photoCorrection(orientation, layer.id, found.id))
+      : undefined;
     return {
       kindLabel: 'Photo',
       icon: 'photo',
@@ -240,6 +247,7 @@ export function SelectionCard() {
   const selection = useWorkspace((s) => s.selection);
   const issues = useWorkspace((s) => s.issues);
   const nowMs = useWorkspace((s) => (s.selection?.kind === 'clip' ? s.nowMs : 0));
+  const orientation = useWorkspace((s) => s.orientation);
   const { durations, flights } = useMedia(project);
   useEffect(() => {
     if (!project || selection?.kind !== 'clip') return;
@@ -249,7 +257,7 @@ export function SelectionCard() {
   if (!project) return null;
   const m = project.manifest;
 
-  const card = describe(selection, m, issues, nowMs, durations, flights);
+  const card = describe(selection, m, issues, nowMs, durations, flights, orientation);
   const clips = m.layers.filter((l) => l.kind === 'video').length;
   const open = issues.filter((i) => i.status !== 'closed');
   const photos = m.layers.reduce((n, l) => n + (l.kind === 'photos' ? l.items.length : 0), 0);

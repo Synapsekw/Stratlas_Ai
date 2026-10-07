@@ -8,6 +8,7 @@ import { alignCamera, photoAlign, useAlign, usePhotoAlign } from './alignSession
 import { AlignModel } from './AlignModel';
 import { CalibrateVideo } from './CalibrateVideo';
 import { DroneMenu } from './DroneMenu';
+import { loadOrientation } from './orientationFile';
 import { PhotoMenu } from './PhotoMenu';
 import { EmptyProjectHint, ImportLayer } from './ImportPanel';
 import { NewProjectWizard } from './NewProjectWizard';
@@ -49,6 +50,8 @@ export function BuilderLayer() {
     alignCamera.getState().dismissNotice();
     photoAlign.getState().cancel();
     photoAlign.getState().dismissNotice();
+    // the project's hand-set camera directions (orientation.json)
+    void loadOrientation();
   }, [projectId]);
   // aligning the camera belongs to the scene
   useEffect(() => {

@@ -13,7 +13,7 @@ import { useVolumetric, VolumesPanel } from '@aio/volumetric';
 import { canCompare, useWorkspace, workspace } from '@aio/workspace';
 import { useMemo, useState } from 'react';
 import { ChangesTab, useChangesTabSeq } from '../change';
-import { jumpToKeyframe, moveKeyframe } from '../builder/alignSession';
+import { jumpToKeyframe, moveKeyframe, timelineKeys } from '../builder/alignSession';
 import { IssueCard } from '../issueCard/IssueCard';
 import { useCardFocusSeq } from '../issueCard/state';
 import { useMedia } from '../media';
@@ -43,13 +43,19 @@ function WorkspaceTimeline() {
   const activeClip = useWorkspace((s) => s.activeClip);
   const selection = useWorkspace((s) => s.selection);
   const directionDraft = useWorkspace((s) => s.directionDraft);
+  const orientation = useWorkspace((s) => s.orientation);
   const { durations } = useMedia(project);
   const model = useMemo(
     () =>
       project
-        ? buildTimelineModel(project.manifest, issues, durations, directionDraft)
+        ? buildTimelineModel(
+            project.manifest,
+            issues,
+            durations,
+            timelineKeys(orientation, directionDraft),
+          )
         : { clips: [], groups: [], issues: [], photos: [], captures: [], range: null },
-    [project, issues, durations, directionDraft],
+    [project, issues, durations, orientation, directionDraft],
   );
   const capture = project?.manifest.captures.at(-1);
 

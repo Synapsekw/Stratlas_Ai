@@ -1,3 +1,4 @@
+import { clipKeys, photoCorrection } from '@aio/geo';
 import type { Layer } from '@aio/schema';
 import { Icon, useT } from '@aio/ui';
 import {
@@ -164,6 +165,7 @@ export function FramesPane() {
   }, [layers, chosen, selection, activeClip, index, other]);
   const { source, aLayer, aCapture, bCapture } = pick;
   const flights = useFlights(project?.id ?? null, pick.clips);
+  const orientation = useWorkspace((s) => s.orientation);
 
   const follow = useMemo(
     () =>
@@ -196,7 +198,7 @@ export function FramesPane() {
         nowMs,
       );
       aTime = frameTime(Math.min(vMax, Math.max(0, raw)));
-      poseA = calibratedVideoPose(aLayer, flight, aTime);
+      poseA = calibratedVideoPose(aLayer, flight, aTime, clipKeys(orientation, aLayer.id));
       aText = t('frames.atTime', { time: aTime.toFixed(1) });
     }
   } else if (aLayer.kind === 'photos' && source.kind === 'photo') {
@@ -204,7 +206,7 @@ export function FramesPane() {
     const item = aLayer.items.find((p) => p.id === source.photo);
     if (item) {
       aUrl = assetUrl(project.id, item.src);
-      poseA = photoPose(item);
+      poseA = photoPose(item, photoCorrection(orientation, aLayer.id, item.id));
       aText = item.id;
     }
   }

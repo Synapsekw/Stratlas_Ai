@@ -19,22 +19,23 @@ type Axis = 'yaw' | 'pitch' | 'roll';
 
 const AXES: {
   key: Axis;
-  label: 'direction.heading' | 'direction.pitch' | 'direction.roll';
+  label: 'align.direction.heading' | 'align.direction.pitch' | 'align.direction.roll';
   min: number;
   max: number;
 }[] = [
-  { key: 'yaw', label: 'direction.heading', min: 0, max: 360 },
-  { key: 'pitch', label: 'direction.pitch', min: -90, max: 30 },
-  { key: 'roll', label: 'direction.roll', min: -45, max: 45 },
+  { key: 'yaw', label: 'align.direction.heading', min: 0, max: 360 },
+  { key: 'pitch', label: 'align.direction.pitch', min: -90, max: 30 },
+  { key: 'roll', label: 'align.direction.roll', min: -45, max: 45 },
 ];
 
 const FILLS: {
   value: DirectionFill;
-  label: 'direction.fill.smooth' | 'direction.fill.track' | 'direction.fill.lookAt';
+  label:
+    'align.direction.fill.smooth' | 'align.direction.fill.track' | 'align.direction.fill.lookAt';
 }[] = [
-  { value: 'smooth', label: 'direction.fill.smooth' },
-  { value: 'track', label: 'direction.fill.track' },
-  { value: 'lookAt', label: 'direction.fill.lookAt' },
+  { value: 'smooth', label: 'align.direction.fill.smooth' },
+  { value: 'track', label: 'align.direction.fill.track' },
+  { value: 'lookAt', label: 'align.direction.fill.lookAt' },
 ];
 
 /** Degrees the camera turns per pixel of a drag in 3D. */
@@ -90,7 +91,7 @@ export function AlignCamera() {
     return clipPoseAt(
       samples,
       nowMs - clip.flight.startUtcMs,
-      clipCamera(clip, undefined, preview.length ? preview : null),
+      clipCamera(clip, preview.length ? preview : null),
     );
   }, [clip, samples, nowMs, preview]);
   // every render: the direction shown, from the store's own rule (a turn not set yet wins)
@@ -314,32 +315,32 @@ export function AlignCamera() {
   const segKey = keys[seg];
   const fillLabel =
     keys.length < 2
-      ? t('direction.fillOnly')
+      ? t('align.direction.fillOnly')
       : clipMs < (keys[0]?.t ?? 0)
-        ? t('direction.fillBefore')
-        : t('direction.fillAfter', { n: seg + 1 });
+        ? t('align.direction.fillBefore')
+        : t('align.direction.fillAfter', { n: seg + 1 });
 
   const bar = (
     <div
       className="align-bar"
       role="dialog"
-      aria-label={t('direction.title')}
+      aria-label={t('align.direction.title')}
       data-testid="align-bar"
       style={at ? { left: at.x, top: at.y } : { right: 16, top: 120 }}
     >
       <header>
         <Icon name="droneeye" size={14} />
-        <b>{t('direction.title')}</b>
+        <b>{t('align.direction.title')}</b>
         <span className="faint">{clip.name}</span>
       </header>
       <p className="say" data-testid="align-status">
         {keys.length
           ? onKey >= 0
-            ? t('direction.onKey', { n: onKey + 1 })
-            : t('direction.offKey')
-          : t('direction.none')}{' '}
+            ? t('align.direction.onKey', { n: onKey + 1 })
+            : t('align.direction.offKey')
+          : t('align.direction.none')}{' '}
         <span className="faint mono">
-          {formatClipMs(clipMs)} · {t('direction.count', { count: keys.length })}
+          {formatClipMs(clipMs)} · {t('align.direction.count', { count: keys.length })}
         </span>
       </p>
       <div className="acts">
@@ -353,13 +354,13 @@ export function AlignCamera() {
           data-testid="align-set-key"
         >
           <Icon name="point" size={12} />
-          {t('direction.set')}
+          {t('align.direction.set')}
         </button>
         <button
           type="button"
           className="btn sm icon"
-          aria-label={t('direction.prev')}
-          title={t('direction.prev')}
+          aria-label={t('align.direction.prev')}
+          title={t('align.direction.prev')}
           disabled={!keys.some((k) => k.t < clipMs - 20)}
           onClick={() => {
             alignCamera.getState().jump(-1);
@@ -371,8 +372,8 @@ export function AlignCamera() {
         <button
           type="button"
           className="btn sm icon"
-          aria-label={t('direction.next')}
-          title={t('direction.next')}
+          aria-label={t('align.direction.next')}
+          title={t('align.direction.next')}
           disabled={!keys.some((k) => k.t > clipMs + 20)}
           onClick={() => {
             alignCamera.getState().jump(1);
@@ -391,20 +392,20 @@ export function AlignCamera() {
             data-testid="align-delete"
           >
             <Icon name="x" size={12} />
-            {t('direction.delete')}
+            {t('align.direction.delete')}
           </button>
         )}
         {keys.length === 0 && (
           <button
             type="button"
             className="btn sm"
-            title={t('direction.firstLastTip')}
+            title={t('align.direction.firstLastTip')}
             onClick={() => {
               alignCamera.getState().firstLast();
             }}
             data-testid="align-first-last"
           >
-            {t('direction.firstLast')}
+            {t('align.direction.firstLast')}
           </button>
         )}
       </div>
@@ -433,20 +434,20 @@ export function AlignCamera() {
                 alignCamera.getState().fill('lookAt');
               }}
             >
-              {t('direction.pickTarget')}
+              {t('align.direction.pickTarget')}
             </button>
           )}
         </label>
       )}
       <label className="row">
-        <span className="faint">{t('direction.frame')}</span>
+        <span className="faint">{t('align.direction.frame')}</span>
         <input
           type="range"
           min={0}
           max={1}
           step={0.05}
           value={opacity}
-          aria-label={t('direction.frameOpacity')}
+          aria-label={t('align.direction.frameOpacity')}
           onChange={(e) => {
             alignCamera.getState().setOpacity(Number(e.target.value));
           }}
@@ -460,7 +461,7 @@ export function AlignCamera() {
         }}
         data-testid="align-exact"
       >
-        <summary>{t('direction.exact')}</summary>
+        <summary>{t('align.direction.exact')}</summary>
         {AXES.map(({ key, label, min, max }) => {
           const v = dir ? dir[key] : 0;
           const shown = key === 'yaw' ? r1(v) % 360 : r1(v);
@@ -473,7 +474,7 @@ export function AlignCamera() {
                 max={max}
                 step={0.1}
                 value={Math.min(max, Math.max(min, shown))}
-                aria-label={t('direction.slider', { axis: t(label) })}
+                aria-label={t('align.direction.slider', { axis: t(label) })}
                 onPointerDown={() => {
                   alignCamera.getState().gesture(true);
                 }}
@@ -489,7 +490,7 @@ export function AlignCamera() {
                 type="number"
                 step={0.1}
                 value={shown}
-                aria-label={t('direction.input', { axis: t(label) })}
+                aria-label={t('align.direction.input', { axis: t(label) })}
                 onChange={(e) => {
                   const n = Number(e.target.value);
                   if (e.target.value !== '' && Number.isFinite(n))
@@ -500,22 +501,22 @@ export function AlignCamera() {
             </div>
           );
         })}
-        <p className="faint">{t('direction.absolute')}</p>
+        <p className="faint">{t('align.direction.absolute')}</p>
       </details>
       {say && <p className={`say ${say.tone ?? ''}`}>{say.text}</p>}
-      <p className="faint tip">{t('direction.handleTip')}</p>
+      <p className="faint tip">{t('align.direction.handleTip')}</p>
       <div className="acts end">
         <button
           type="button"
           className="btn sm ghost"
-          title={t('direction.undoTip')}
+          title={t('align.direction.undoTip')}
           onClick={() => {
             alignCamera.getState().undo();
           }}
           data-testid="align-undo"
         >
           <Icon name="undo" size={12} />
-          {t('direction.undo')}
+          {t('align.direction.undo')}
         </button>
         <button
           type="button"
@@ -526,7 +527,7 @@ export function AlignCamera() {
           }}
           data-testid="align-cancel"
         >
-          {t('direction.cancel')}
+          {t('align.direction.cancel')}
         </button>
         <button
           type="button"
@@ -535,7 +536,7 @@ export function AlignCamera() {
           data-testid="align-done"
         >
           <Icon name="check" size={12} />
-          {t('direction.done')}
+          {t('align.direction.done')}
         </button>
       </div>
     </div>

@@ -1,10 +1,11 @@
-import type { DirectionKey, PoseSample, Quat, Vec3 } from '@aio/schema';
+import type { DirectionKey, OrientationFile, PoseSample, Quat, Vec3 } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { cameraQuatFromGimbal } from './camera';
 import {
   aimAt,
   biasedQuat,
   clipCamera,
+  clipKeys,
   clipPoseAt,
   directionAt,
   directionContext,
@@ -180,10 +181,7 @@ describe('clipPoseAt', () => {
   });
 
   it('with keyframes: absolute, the bias left out, the position offset kept, clip time used', () => {
-    const cam = clipCamera({
-      ...layer,
-      directionKeys: [key(0, 100), key(4000, 140)],
-    });
+    const cam = clipCamera(layer, [key(0, 100), key(4000, 140)]);
     expect(cam.videoStartMs).toBe(2000);
     // flight time 4000 is clip time 2000: half way
     const p = clipPoseAt(samples, 4000, cam);
@@ -193,11 +191,17 @@ describe('clipPoseAt', () => {
     expect(p.log.pos).toEqual([20, 40, 0]);
   });
 
-  it('a draft replaces the saved keyframes, null drops them', () => {
-    const saved = { ...layer, directionKeys: [key(0, 100)] };
-    expectDir(clipPoseAt(samples, 0, clipCamera(saved, undefined, [key(0, 200)])).q, 200, -30);
-    expect(clipPoseAt(samples, 0, clipCamera(saved, undefined, null)).source).toBe('log');
+  it('takes the keyframes from orientation.json; none or empty is the log', () => {
+    const file: OrientationFile = {
+      schema: 'aio.orientation/1',
+      clips: { c1: { keys: [key(0, 200)] }, c2: { keys: [] } },
+      photos: {},
+    };
+    expectDir(clipPoseAt(samples, 0, clipCamera(layer, clipKeys(file, 'c1'))).q, 200, -30);
+    expect(clipKeys(file, 'c2')).toBeNull();
+    expect(clipKeys(null, 'c1')).toBeNull();
+    expect(clipPoseAt(samples, 0, clipCamera(layer, null)).source).toBe('log');
     // another flight file start shifts video time 0
-    expect(clipCamera(layer, 999_000).videoStartMs).toBe(3000);
+    expect(clipCamera(layer, null, 999_000).videoStartMs).toBe(3000);
   });
 });

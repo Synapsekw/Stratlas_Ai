@@ -32,23 +32,23 @@ const DRAG_DEG_PX = 0.15;
 type Axis = 'yaw' | 'pitch' | 'roll';
 const AXES: {
   key: Axis;
-  label: 'direction.heading' | 'direction.pitch' | 'direction.roll';
+  label: 'align.direction.heading' | 'align.direction.pitch' | 'align.direction.roll';
   min: number;
   max: number;
 }[] = [
-  { key: 'yaw', label: 'direction.heading', min: 0, max: 360 },
-  { key: 'pitch', label: 'direction.pitch', min: -90, max: 30 },
-  { key: 'roll', label: 'direction.roll', min: -45, max: 45 },
+  { key: 'yaw', label: 'align.direction.heading', min: 0, max: 360 },
+  { key: 'pitch', label: 'align.direction.pitch', min: -90, max: 30 },
+  { key: 'roll', label: 'align.direction.roll', min: -45, max: 45 },
 ];
 /** Offset fields: east (+x), north (-z), up (+y). */
 const OFFSET: {
-  label: 'photoAlign.east' | 'photoAlign.north' | 'photoAlign.up';
+  label: 'align.photoAlign.east' | 'align.photoAlign.north' | 'align.photoAlign.up';
   index: 0 | 1 | 2;
   sign: 1 | -1;
 }[] = [
-  { label: 'photoAlign.east', index: 0, sign: 1 },
-  { label: 'photoAlign.north', index: 2, sign: -1 },
-  { label: 'photoAlign.up', index: 1, sign: 1 },
+  { label: 'align.photoAlign.east', index: 0, sign: 1 },
+  { label: 'align.photoAlign.north', index: 2, sign: -1 },
+  { label: 'align.photoAlign.up', index: 1, sign: 1 },
 ];
 
 function useScene(): SceneHandle | null {
@@ -400,24 +400,24 @@ export function AlignPhoto() {
     <div
       className="align-bar"
       role="dialog"
-      aria-label={t('photoAlign.title')}
+      aria-label={t('align.photoAlign.title')}
       data-testid="photo-align-bar"
       style={at ? { left: at.x, top: at.y } : { right: 16, top: 120 }}
     >
       <header>
         <Icon name="photo" size={14} />
-        <b>{t('photoAlign.title')}</b>
+        <b>{t('align.photoAlign.title')}</b>
         <span className="faint">{photo.id}</span>
       </header>
       <label className="row">
-        <span className="faint">{t('direction.frame')}</span>
+        <span className="faint">{t('align.direction.frame')}</span>
         <input
           type="range"
           min={0}
           max={1}
           step={0.05}
           value={opacity}
-          aria-label={t('direction.frameOpacity')}
+          aria-label={t('align.direction.frameOpacity')}
           onChange={(e) => {
             photoAlign.getState().setOpacity(Number(e.target.value));
           }}
@@ -430,7 +430,7 @@ export function AlignPhoto() {
         }}
         data-testid="photo-align-exact"
       >
-        <summary>{t('direction.exact')}</summary>
+        <summary>{t('align.direction.exact')}</summary>
         {AXES.map(({ key, label, min, max }) => {
           const v = dir ? dir[key] : 0;
           const shown = key === 'yaw' ? r1(v) % 360 : r1(v);
@@ -443,7 +443,7 @@ export function AlignPhoto() {
                 max={max}
                 step={0.1}
                 value={Math.min(max, Math.max(min, shown))}
-                aria-label={t('direction.slider', { axis: t(label) })}
+                aria-label={t('align.direction.slider', { axis: t(label) })}
                 onPointerDown={() => {
                   photoAlign.getState().gesture(true);
                 }}
@@ -459,7 +459,7 @@ export function AlignPhoto() {
                 type="number"
                 step={0.1}
                 value={shown}
-                aria-label={t('direction.input', { axis: t(label) })}
+                aria-label={t('align.direction.input', { axis: t(label) })}
                 onChange={(e) => {
                   const n = Number(e.target.value);
                   if (e.target.value !== '' && Number.isFinite(n))
@@ -470,7 +470,7 @@ export function AlignPhoto() {
             </div>
           );
         })}
-        <span className="faint">{t('photoAlign.offset')}</span>
+        <span className="faint">{t('align.photoAlign.offset')}</span>
         <div className="row">
           {OFFSET.map(({ label, index, sign }) => (
             <label key={label} className="row">
@@ -480,7 +480,7 @@ export function AlignPhoto() {
                 type="number"
                 step={0.1}
                 value={Math.round(sign * offset[index] * 100) / 100}
-                aria-label={t('direction.input', { axis: t(label) })}
+                aria-label={t('align.direction.input', { axis: t(label) })}
                 onChange={(e) => {
                   const n = Number(e.target.value);
                   if (e.target.value === '' || !Number.isFinite(n) || Math.abs(n) > 500) return;
@@ -499,7 +499,7 @@ export function AlignPhoto() {
             photoAlign.getState().reset();
           }}
         >
-          {t('photoAlign.reset')}
+          {t('align.photoAlign.reset')}
         </button>
       </details>
       {say && <p className={`say ${say.tone ?? ''}`}>{say.text}</p>}
@@ -507,13 +507,13 @@ export function AlignPhoto() {
         <button
           type="button"
           className="btn sm ghost"
-          title={t('direction.undoTip')}
+          title={t('align.direction.undoTip')}
           onClick={() => {
             photoAlign.getState().undo();
           }}
         >
           <Icon name="undo" size={12} />
-          {t('direction.undo')}
+          {t('align.direction.undo')}
         </button>
         <button
           type="button"
@@ -524,7 +524,7 @@ export function AlignPhoto() {
           }}
           data-testid="photo-align-cancel"
         >
-          {t('direction.cancel')}
+          {t('align.direction.cancel')}
         </button>
         <button
           type="button"
@@ -534,7 +534,7 @@ export function AlignPhoto() {
           data-testid="photo-align-done"
         >
           <Icon name="check" size={12} />
-          {t('direction.done')}
+          {t('align.direction.done')}
         </button>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import type { PhotoRef } from '@aio/schema';
+import type { OrientationFile, PhotoRef } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { cameraQuatFromGimbal } from './camera';
 import { directionFromQuat } from './direction';
@@ -7,6 +7,7 @@ import {
   correctionTo,
   correctQuat,
   isNoCorrection,
+  photoCorrection,
   sameFlightPhotos,
 } from './photo';
 
@@ -22,9 +23,13 @@ const photo = (id: string, extra: Partial<PhotoRef> = {}): PhotoRef => ({
 
 describe('photo corrections', () => {
   it('turn heading, pitch and roll in the grid frame and move the camera', () => {
-    const p = correctedPhoto(
-      photo('a', { correction: { yawDeg: -12, pitchDeg: 5, rollDeg: 2, offsetM: [1, -2, 3] } }),
-    );
+    const file: OrientationFile = {
+      schema: 'aio.orientation/1',
+      clips: {},
+      photos: { set: { a: { yawDeg: -12, pitchDeg: 5, rollDeg: 2, offsetM: [1, -2, 3] } } },
+    };
+    const p = correctedPhoto(photo('a'), photoCorrection(file, 'set', 'a'));
+    expect(photoCorrection(file, 'set', 'b')).toBeUndefined();
     const d = directionFromQuat(p.q ?? [0, 0, 0, 1]);
     expect(gap(d.yaw, 78)).toBeLessThan(1e-6);
     expect(d.pitch).toBeCloseTo(-40, 6);
@@ -34,9 +39,8 @@ describe('photo corrections', () => {
 
   it('leave a photo without a correction as it is', () => {
     const p = photo('a');
-    expect(correctedPhoto(p)).toBe(p);
-    const zero = { ...p, correction: { yawDeg: 0, pitchDeg: 0, rollDeg: 0 } };
-    expect(correctedPhoto(zero)).toBe(zero);
+    expect(correctedPhoto(p, undefined)).toBe(p);
+    expect(correctedPhoto(p, { yawDeg: 0, pitchDeg: 0, rollDeg: 0 })).toBe(p);
     expect(isNoCorrection(undefined)).toBe(true);
   });
 

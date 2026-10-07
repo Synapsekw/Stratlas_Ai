@@ -1,5 +1,5 @@
 import { getActiveScene, onActiveScene, type SceneHandle } from '@aio/engine';
-import { clipCamera, clipPoseAt, localToProject, toWgs84 } from '@aio/geo';
+import { clipCamera, clipKeys, clipPoseAt, localToProject, toWgs84 } from '@aio/geo';
 import { frameProjection, getActiveMap, onActiveMap, type MapController } from '@aio/maps';
 import type { Layer } from '@aio/schema';
 import { arrowFocus, Icon, useFocusTrap, useT, type IconName } from '@aio/ui';
@@ -71,7 +71,7 @@ function positionText(layerId: string): string | null {
   const p = clipPoseAt(
     samples,
     workspace.getState().nowMs - clip.flight.startUtcMs,
-    clipCamera(clip),
+    clipCamera(clip, clipKeys(workspace.getState().orientation, clip.id)),
   ).pos;
   const e = localToProject(p, project.manifest.origin);
   const [lon, lat, h] = toWgs84(e, project.manifest.crs.epsg);
@@ -101,6 +101,7 @@ export function DroneMenu() {
   const playing = useWorkspace((s) => s.playing);
   const session = useAlign((s) => s.session);
   const footprint = useAlign((s) => s.footprint);
+  const orientation = useWorkspace((s) => s.orientation);
   const [menu, setMenuState] = useState<MenuAt | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const setMenu = useCallback((m: MenuAt | null) => {
@@ -226,7 +227,7 @@ export function DroneMenu() {
   if (!menu || !project) return null;
   const clip = videos().find((c) => c.id === menu.layerId);
   if (!clip) return null;
-  const keys = clip.directionKeys ?? [];
+  const keys = clipKeys(orientation, clip.id) ?? [];
   const aligning = session?.layerId === clip.id;
   const droneEye = scene ? videoRig(scene).cameraMode === 'drone' : false;
   const readOnly = !!pkg;
@@ -266,7 +267,7 @@ export function DroneMenu() {
       ref={list}
       className="dmenu"
       role="menu"
-      aria-label={t('droneMenu.label', { clip: clip.name })}
+      aria-label={t('align.droneMenu.label', { clip: clip.name })}
       style={{ left, top, width: W }}
       data-testid="drone-menu"
       onKeyDown={(e: KeyboardEvent<HTMLDivElement>) => {
@@ -281,7 +282,7 @@ export function DroneMenu() {
         item(
           'align',
           'droneeye',
-          t('droneMenu.align'),
+          t('align.droneMenu.align'),
           () => {
             alignCamera.getState().start(clip.id);
           },
@@ -289,18 +290,23 @@ export function DroneMenu() {
         )}
       {!readOnly &&
         (aligning || keys.length > 0) &&
-        item('set-key', 'point', t('droneMenu.setKey'), () => {
+        item('set-key', 'point', t('align.droneMenu.setKey'), () => {
           alignCamera.getState().start(clip.id);
           alignCamera.getState().setKey();
         })}
       {scene &&
-        item('drone-eye', 'camera', droneEye ? t('droneMenu.leaveEye') : t('droneMenu.eye'), () => {
-          setCameraMode(scene, droneEye ? 'free' : 'drone');
-        })}
+        item(
+          'drone-eye',
+          'camera',
+          droneEye ? t('align.droneMenu.leaveEye') : t('align.droneMenu.eye'),
+          () => {
+            setCameraMode(scene, droneEye ? 'free' : 'drone');
+          },
+        )}
       {item(
         'play',
         playing ? 'pause' : 'play',
-        playing ? t('droneMenu.pause') : t('droneMenu.play'),
+        playing ? t('align.droneMenu.pause') : t('align.droneMenu.play'),
         () => {
           const w = workspace.getState();
           if (w.activeClip !== clip.id) w.setActiveClip(clip.id);
@@ -311,7 +317,7 @@ export function DroneMenu() {
       {item(
         'footprint',
         footprint ? 'eye-off' : 'eye',
-        footprint ? t('droneMenu.hideFootprint') : t('droneMenu.showFootprint'),
+        footprint ? t('align.droneMenu.hideFootprint') : t('align.droneMenu.showFootprint'),
         () => {
           alignCamera.getState().setFootprint(!footprint);
         },
@@ -321,7 +327,9 @@ export function DroneMenu() {
         item(
           'clear',
           'x',
-          confirmClear ? t('droneMenu.clearConfirm', { count: keys.length }) : t('droneMenu.clear'),
+          confirmClear
+            ? t('align.droneMenu.clearConfirm', { count: keys.length })
+            : t('align.droneMenu.clear'),
           () => {
             if (!confirmClear) {
               setConfirmClear(true);
@@ -332,7 +340,7 @@ export function DroneMenu() {
           },
           { keepOpen: true },
         )}
-      {item('copy', 'copy', t('droneMenu.copy'), () => {
+      {item('copy', 'copy', t('align.droneMenu.copy'), () => {
         const text = positionText(clip.id);
         if (text) void copyText(text);
       })}

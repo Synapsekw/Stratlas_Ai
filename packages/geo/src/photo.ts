@@ -1,4 +1,4 @@
-import type { PhotoCorrection, PhotoRef, Quat, Vec3 } from '@aio/schema';
+import type { OrientationFile, PhotoCorrection, PhotoRef, Quat, Vec3 } from '@aio/schema';
 import { cameraQuatFromGimbal } from './camera';
 import { directionFromQuat, type CameraDirection } from './direction';
 
@@ -39,8 +39,20 @@ export function correctPos(pos: Vec3, c: PhotoCorrection | null | undefined): Ve
   return o ? [pos[0] + o[0], pos[1] + o[1], pos[2] + o[2]] : pos;
 }
 
-/** The photo as every view draws it: its pose with its correction (the same object without). */
-export function correctedPhoto<T extends PhotoRef>(p: T, c = p.correction): T {
+/** A photo's saved correction in `orientation.json`, or undefined. */
+export function photoCorrection(
+  file: OrientationFile | null | undefined,
+  layerId: string,
+  photoId: string,
+): PhotoCorrection | undefined {
+  return file?.photos[layerId]?.[photoId];
+}
+
+/**
+ * The photo as every view draws it: its pose with its correction (`photoCorrection`; the same
+ * object without one).
+ */
+export function correctedPhoto<T extends PhotoRef>(p: T, c: PhotoCorrection | null | undefined): T {
   if (isNoCorrection(c)) return p;
   return {
     ...p,

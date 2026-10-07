@@ -299,16 +299,25 @@ describe('VideoRig drone-eye', () => {
       lens: { model: 'pinhole' as const, hfovDeg: 80, aspect: 2 },
       offsetMs: 0,
       orientation: { yawDeg: 30, pitchDeg: 0, rollDeg: 0 },
-      directionKeys: [
-        { t: 0, yaw: 90, pitch: -30, roll: 0, fill: 'smooth' },
-        { t: 1000, yaw: 130, pitch: -30, roll: 0, fill: 'smooth' },
-      ],
     };
     const store = createWorkspace();
     store.getState().openProject({
       id: 'p',
       root: 'x',
       manifest: { layers: [layer] } as unknown as ProjectManifest,
+    });
+    // the saved keyframes, from the project's orientation.json
+    store.getState().setOrientation({
+      schema: 'aio.orientation/1',
+      clips: {
+        [layer.id]: {
+          keys: [
+            { t: 0, yaw: 90, pitch: -30, roll: 0, fill: 'smooth' },
+            { t: 1000, yaw: 130, pitch: -30, roll: 0, fill: 'smooth' },
+          ],
+        },
+      },
+      photos: {},
     });
     configureVideo({ store, resolveUrl: (_p, ref) => ('path' in ref ? ref.path : ref.hash) });
     const frames: (() => void)[] = [];

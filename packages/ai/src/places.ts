@@ -9,6 +9,7 @@
 import { siteLocation } from '@aio/engine';
 import {
   clipCamera,
+  clipKeys,
   clipPoseAt,
   fromWgs84,
   localToProject,
@@ -712,7 +713,8 @@ async function droneEye(ctx: RendererToolContext, l: VideoLayer, utcMs: number):
   const samples = flight?.samples;
   if (!samples?.length) throw new ToolError(`The flight of clip ${l.name} could not be read.`);
   // the camera as every view draws it: direction keyframes, else the log with its bias
-  const p = clipPoseAt(samples, utcMs - l.flight.startUtcMs, clipCamera(l));
+  const keys = clipKeys(ctx.workspace.getState().orientation, l.id);
+  const p = clipPoseAt(samples, utcMs - l.flight.startUtcMs, clipCamera(l, keys));
   return { pos: p.pos, q: p.q };
 }
 

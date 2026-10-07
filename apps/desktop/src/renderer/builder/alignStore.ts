@@ -1,4 +1,10 @@
-import { clipCamera, clipPoseAt, directionFromQuat, type CameraDirection } from '@aio/geo';
+import {
+  clipCamera,
+  clipKeys,
+  clipPoseAt,
+  directionFromQuat,
+  type CameraDirection,
+} from '@aio/geo';
 import type { DirectionFill, DirectionKey, Layer, PoseSample, Vec3 } from '@aio/schema';
 import { t } from '@aio/ui';
 import type { Workspace } from '@aio/workspace';
@@ -91,7 +97,7 @@ export type AlignStore = AlignState & AlignActions;
 
 export interface AlignDeps {
   workspace: StoreApi<Workspace>;
-  /** Save a clip's keyframes (`null` clears); an error text or null. */
+  /** Save a clip's keyframes to orientation.json (`null` clears); an error text or null. */
   save(layerId: string, keys: DirectionKey[] | null): Promise<string | null>;
   /** The clip's (normalised) flight samples, once loaded. */
   flight(layerId: string): readonly PoseSample[] | null;
@@ -119,6 +125,8 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
       return l?.kind === 'video' ? l : null;
     };
     const nowClipMs = (clip: VideoLayer) => clipTimeMs(clip, ws.getState().nowMs);
+    /** The clip's saved keyframes (orientation.json). */
+    const savedKeys = (id: string) => clipKeys(ws.getState().orientation, id) ?? [];
     const durationOf = (clip: VideoLayer): number => {
       const d = deps.duration(clip.id);
       if (d !== null && d > 0) return d;
@@ -133,7 +141,7 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
       const p = clipPoseAt(
         samples,
         clip.offsetMs + ms,
-        clipCamera(clip, undefined, keys.length ? keys : null),
+        clipCamera(clip, keys.length ? keys : null),
       );
       return directionFromQuat(p.q);
     };
@@ -175,7 +183,7 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
           if (ms < 0 || ms > durationOf(clip)) w.setTime(projectTimeMs(clip, 0));
         }
         deps.showBoth();
-        const keys = [...(clip.directionKeys ?? [])];
+        const keys = [...savedKeys(layerId)];
         set({
           session: {
             layerId,
@@ -186,7 +194,7 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
             picking: false,
             exact: false,
           },
-          say: { text: t('direction.help') },
+          say: { text: t('align.direction.help') },
         });
         // a turn not set as a keyframe goes when the playhead leaves it
         unwatch = ws.subscribe((now, prev) => {
@@ -197,7 +205,7 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
           if (Math.abs(clipTimeMs(c, now.nowMs) - cur.trial.t) > ON_KEY_MS) {
             const at = formatClipMs(cur.trial.t);
             patch({ trial: null });
-            set({ say: { text: t('direction.say.dropped', { time: at }), tone: 'bad' } });
+            set({ say: { text: t('align.direction.say.dropped', { time: at }), tone: 'bad' } });
           }
         });
       },
@@ -246,7 +254,7 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
         const seg = s.keys[segmentKey(s.keys, ms)];
         const keys = withKey(s.keys, keyFrom(ms, dir, seg));
         patch({ keys, trial: null, history: push(s) });
-        set({ say: { text: t('direction.say.set', { time: formatClipMs(ms) }) } });
+        set({ say: { text: t('align.direction.say.set', { time: formatClipMs(ms) }) } });
       },
 
       deleteKey: () => {
@@ -256,7 +264,7 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
         const i = keyAt(s.keys, nowClipMs(clip));
         if (i < 0) return;
         patch({ keys: s.keys.filter((_, j) => j !== i), history: push(s), trial: null });
-        set({ say: { text: t('direction.say.deleted') } });
+        set({ say: { text: t('align.direction.say.deleted') } });
       },
 
       jump: (step) => {
@@ -283,7 +291,7 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
         const keys = end > 0 ? [keyFrom(0, a), keyFrom(end, b)] : [keyFrom(0, a)];
         patch({ keys, trial: null, history: push(s) });
         ws.getState().setTime(projectTimeMs(clip, 0));
-        set({ say: { text: t('direction.say.firstLast') } });
+        set({ say: { text: t('align.direction.say.firstLast') } });
       },
 
       fill: (f) => {
@@ -294,7 +302,7 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
         if (i < 0) return;
         if (f === 'lookAt') {
           patch({ picking: true });
-          set({ say: { text: t('direction.say.pick'), tone: 'armed' } });
+          set({ say: { text: t('align.direction.say.pick'), tone: 'armed' } });
           return;
         }
         patch({ keys: setFill(s.keys, i, f), history: push(s), picking: false });
@@ -306,7 +314,7 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
         if (!s || !clip) return;
         if (!target) {
           patch({ picking: false });
-          set({ say: { text: t('direction.say.noPick'), tone: 'bad' } });
+          set({ say: { text: t('align.direction.say.noPick'), tone: 'bad' } });
           return;
         }
         const i = segmentKey(s.keys, nowClipMs(clip));
@@ -315,10 +323,10 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
         const pos = clipPoseAt(
           deps.flight(clip.id) ?? [],
           ws.getState().nowMs - clip.flight.startUtcMs,
-          clipCamera(clip),
+          clipCamera(clip, savedKeys(clip.id)),
         ).pos;
         const d = Math.hypot(target[0] - pos[0], target[1] - pos[1], target[2] - pos[2]);
-        set({ say: { text: t('direction.targetSet', { distance: `${d.toFixed(0)} m` }) } });
+        set({ say: { text: t('align.direction.targetSet', { distance: `${d.toFixed(0)} m` }) } });
       },
 
       moveKey: (layerId, index, clipMs) => {
@@ -349,9 +357,9 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
         const prev = s.history[s.history.length - 1];
         if (prev) {
           patch({ keys: prev, history: s.history.slice(0, -1), trial: null });
-          set({ say: { text: t('direction.say.undone') } });
+          set({ say: { text: t('align.direction.say.undone') } });
         } else if (s.trial) patch({ trial: null });
-        else set({ say: { text: t('direction.say.nothingToUndo') } });
+        else set({ say: { text: t('align.direction.say.nothingToUndo') } });
       },
 
       done: async () => {
@@ -370,8 +378,8 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
         set({
           notice: {
             text: keys.length
-              ? t('direction.say.saved', { count: keys.length })
-              : t('direction.say.cleared'),
+              ? t('align.direction.say.saved', { count: keys.length })
+              : t('align.direction.say.cleared'),
             action: {
               kind: 'undo',
               layerId: s.layerId,
@@ -388,7 +396,7 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
 
       clear: async (layerId) => {
         const clip = clipOf(layerId);
-        const before = clip?.directionKeys ?? [];
+        const before = [...savedKeys(layerId)];
         if (!clip || !before.length) return;
         if (get().session?.layerId === layerId) end();
         const err = await deps.save(layerId, null);
@@ -396,7 +404,7 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
           notice: err
             ? { text: err, action: null }
             : {
-                text: t('direction.say.cleared'),
+                text: t('align.direction.say.cleared'),
                 action: { kind: 'undo', layerId, keys: before },
               },
         });
@@ -405,15 +413,18 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
       applyNotice: async () => {
         const a = get().notice?.action;
         if (!a) return;
-        const clip = clipOf(a.layerId);
-        const now = clip?.directionKeys?.length ? clip.directionKeys : null;
+        const saved = savedKeys(a.layerId);
+        const now = saved.length ? [...saved] : null;
         if (get().session?.layerId === a.layerId) end();
         const err = await deps.save(a.layerId, a.keys);
         set({
           notice: err
             ? { text: err, action: null }
             : {
-                text: a.kind === 'undo' ? t('direction.say.undone') : t('direction.say.redone'),
+                text:
+                  a.kind === 'undo'
+                    ? t('align.direction.say.undone')
+                    : t('align.direction.say.redone'),
                 action: {
                   kind: a.kind === 'undo' ? 'redo' : 'undo',
                   layerId: a.layerId,

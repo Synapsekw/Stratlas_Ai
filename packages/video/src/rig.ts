@@ -4,7 +4,7 @@ import {
   type LayerHandle,
   type SceneHandle,
 } from '@aio/engine';
-import { clipCamera, clipPoseAt } from '@aio/geo';
+import { clipCamera, clipKeys, clipPoseAt } from '@aio/geo';
 import type { CameraOrientation, LensModel, Quat, Vec3 } from '@aio/schema';
 import {
   Box3,
@@ -291,7 +291,8 @@ export class VideoRig {
           s.nowMs !== p.nowMs ||
           s.activeClip !== p.activeClip ||
           s.hidden !== p.hidden ||
-          s.directionDraft !== p.directionDraft
+          s.directionDraft !== p.directionDraft ||
+          s.orientation !== p.orientation
         )
           handle.requestRender();
       }),
@@ -664,10 +665,14 @@ export class VideoRig {
     const layerVisible = entry.visible && !s.hidden[entry.layer.id];
     const flightMs = s.nowMs - flight.startUtcMs;
     const off = this.positionOverride ?? entry.layer.positionOffsetM;
-    const draft = s.directionDraft?.layerId === entry.layer.id ? s.directionDraft.keys : undefined;
-    // one rule for every reader: keyframes when the clip has any, else the log with its bias
+    // one rule for every reader: keyframes (an unsaved draft first, else orientation.json) when
+    // the clip has any, else the log with its bias
+    const keys =
+      s.directionDraft?.layerId === entry.layer.id
+        ? s.directionDraft.keys
+        : clipKeys(s.orientation, entry.layer.id);
     const p = clipPoseAt(flight.samples, flightMs, {
-      ...clipCamera(entry.layer, flight.startUtcMs, draft),
+      ...clipCamera(entry.layer, keys, flight.startUtcMs),
       orientation: this.orientationOverride ?? entry.layer.orientation,
       positionOffsetM: off,
     });

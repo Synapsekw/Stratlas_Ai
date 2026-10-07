@@ -1,4 +1,4 @@
-import { correctedPhoto } from '@aio/geo';
+import { correctedPhoto, photoCorrection } from '@aio/geo';
 import type { ImageGeom, Sighting } from '@aio/schema';
 import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
 import {
@@ -105,7 +105,10 @@ export function PhotoViewer({
   const layer = project?.manifest.layers.find((l) => l.id === layerId);
   const found = layer?.kind === 'photos' ? layer.items.find((p) => p.id === photoId) : undefined;
   // the photo's camera with its hand correction (Align photo to map)
-  const photo = found ? correctedPhoto(found) : undefined;
+  const orientation = useWorkspace((s) => s.orientation);
+  const photo = found
+    ? correctedPhoto(found, photoCorrection(orientation, layerId, found.id))
+    : undefined;
   const url = project && photo ? assetUrl(project.id, photo.src) : null;
   const natural = loaded?.url === url ? loaded.size : null;
   const failed = loaded !== null && loaded.url === url && loaded.size === null;

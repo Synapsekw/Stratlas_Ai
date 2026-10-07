@@ -1,7 +1,8 @@
-import { cameraQuatFromGimbal, correctedPhoto, directionFromQuat } from '@aio/geo';
+import { cameraQuatFromGimbal, correctedPhoto, directionFromQuat, photoCorrection } from '@aio/geo';
 import type { PhotoCorrection, PhotoRef, ProjectManifest } from '@aio/schema';
 import { createWorkspace } from '@aio/workspace';
 import { describe, expect, it, vi } from 'vitest';
+import { withPhotoFixes } from './orientationEdit';
 import { createPhotoAlignStore } from './photoAlignStore';
 
 const at = (min: number) => new Date(Date.UTC(2026, 0, 5, 7, min)).toISOString();
@@ -24,33 +25,17 @@ function setup() {
     } as unknown as ProjectManifest,
   });
   const saves: Record<string, PhotoCorrection | null>[] = [];
-  const save = vi.fn((_l: string, fixes: Record<string, PhotoCorrection | null>) => {
+  const save = vi.fn((l: string, fixes: Record<string, PhotoCorrection | null>) => {
     saves.push(fixes);
-    const p = ws.getState().project;
-    if (p) {
-      const layers = p.manifest.layers.map((l) =>
-        l.kind === 'photos'
-          ? {
-              ...l,
-              items: l.items.map((it) => {
-                if (!(it.id in fixes)) return it;
-                const c = fixes[it.id];
-                const n = { ...it };
-                if (c) n.correction = c;
-                else delete n.correction;
-                return n;
-              }),
-            }
-          : l,
-      );
-      ws.getState().replaceManifest({ ...p.manifest, layers });
-    }
+    // corrections live in orientation.json, held by the workspace
+    ws.getState().setOrientation(withPhotoFixes(ws.getState().orientation, l, fixes));
     return Promise.resolve(null);
   });
   const store = createPhotoAlignStore({ workspace: ws, save, showBoth: () => undefined });
   const item = (id: string) => {
     const l = ws.getState().project?.manifest.layers[0];
-    return l?.kind === 'photos' ? l.items.find((p) => p.id === id) : undefined;
+    const p = l?.kind === 'photos' ? l.items.find((x) => x.id === id) : undefined;
+    return p ? { ...p, correction: photoCorrection(ws.getState().orientation, 'photos', id) } : p;
   };
   return { ws, store, saves, item };
 }
@@ -72,7 +57,7 @@ describe('align photo to map', () => {
     // the saved photo draws turned; its pose on disk is the imported one
     const p2 = item('p2');
     expect(p2?.q).toEqual(cameraQuatFromGimbal(90, -45, 0));
-    const drawn = p2 ? correctedPhoto(p2) : undefined;
+    const drawn = p2 ? correctedPhoto(p2, p2.correction) : undefined;
     expect(directionFromQuat(drawn?.q ?? [0, 0, 0, 1]).yaw).toBeCloseTo(80, 4);
     // the other photos of the flight (not p4, an hour later) can take the same correction
     expect(a().notice?.flight?.ids).toEqual(['p1', 'p3']);

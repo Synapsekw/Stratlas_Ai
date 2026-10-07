@@ -1,4 +1,3 @@
-import { correctedPhoto } from '@aio/geo';
 import type { Layer, PhotoRef } from '@aio/schema';
 import { workspace as appWorkspace, type Workspace } from '@aio/workspace';
 import {
@@ -32,18 +31,16 @@ export type PosedPhoto = PhotoRef & {
 const DEG = Math.PI / 180;
 const CLICK_SLOP_PX = 5;
 
-/** Photos with a camera pose (with their hand correction); the others cannot be drawn in 3D. */
+/** Photos with a camera pose; the others cannot be drawn in 3D. */
 export function posedPhotos(items: readonly PhotoRef[]): PosedPhoto[] {
-  return items
-    .filter((p): p is PosedPhoto => p.pos !== undefined && p.q !== undefined)
-    .map((p) => correctedPhoto(p));
+  return items.filter((p): p is PosedPhoto => p.pos !== undefined && p.q !== undefined);
 }
 
 /** Photos with a place in the scene: posed ones, and ones with a position but no orientation. */
 export type LocatedPhoto = PhotoRef & { pos: [number, number, number] };
 
 export function locatedPhotos(items: readonly PhotoRef[]): LocatedPhoto[] {
-  return items.filter((p): p is LocatedPhoto => p.pos !== undefined).map((p) => correctedPhoto(p));
+  return items.filter((p): p is LocatedPhoto => p.pos !== undefined);
 }
 
 type Vec3 = readonly [number, number, number];

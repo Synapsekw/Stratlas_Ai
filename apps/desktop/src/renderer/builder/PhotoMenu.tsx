@@ -1,5 +1,5 @@
 import { getActiveScene, onActiveScene, type SceneHandle } from '@aio/engine';
-import { correctedPhoto, localToProject, toWgs84 } from '@aio/geo';
+import { correctedPhoto, localToProject, photoCorrection, toWgs84 } from '@aio/geo';
 import { getActiveMap, onActiveMap, type MapController } from '@aio/maps';
 import type { Layer, PhotoRef } from '@aio/schema';
 import { arrowFocus, Icon, useFocusTrap, useT, type IconName } from '@aio/ui';
@@ -90,8 +90,8 @@ function openPhoto(layerId: string, photoId: string) {
 }
 
 /** Put the 3D camera where the photo was taken, looking as it looked. */
-function lookThrough(h: SceneHandle, p: PhotoRef) {
-  const c = correctedPhoto(p);
+function lookThrough(h: SceneHandle, layerId: string, p: PhotoRef) {
+  const c = correctedPhoto(p, photoCorrection(workspace.getState().orientation, layerId, p.id));
   if (!c.pos || !c.q) return;
   const lens = p.lens ?? DEFAULT_PHOTO_LENS;
   const cam = h.camera;
@@ -108,9 +108,9 @@ function lookThrough(h: SceneHandle, p: PhotoRef) {
   h.requestRender();
 }
 
-function positionText(p: PhotoRef): string | null {
+function positionText(layerId: string, p: PhotoRef): string | null {
   const project = workspace.getState().project;
-  const c = correctedPhoto(p);
+  const c = correctedPhoto(p, photoCorrection(workspace.getState().orientation, layerId, p.id));
   if (!project || !c.pos || !('epsg' in project.manifest.crs)) return null;
   const [lon, lat, h] = toWgs84(
     localToProject(c.pos, project.manifest.origin),
@@ -131,6 +131,7 @@ export function PhotoMenu() {
   const map = useMap();
   const project = useWorkspace((s) => s.project);
   const footprint = usePhotoAlign((s) => s.footprint);
+  const orientation = useWorkspace((s) => s.orientation);
   const [menu, setMenuState] = useState<MenuAt | null>(null);
   const list = useRef<HTMLDivElement>(null);
   const setMenu = useCallback((m: MenuAt | null) => {
@@ -264,12 +265,14 @@ export function PhotoMenu() {
         ref={list}
         className="dmenu"
         role="menu"
-        aria-label={t('photoMenu.list', { count: menu.photoIds.length })}
+        aria-label={t('align.photoMenu.list', { count: menu.photoIds.length })}
         style={style}
         data-testid="photo-menu-list"
         onKeyDown={keys}
       >
-        <div className="dmenu-h faint">{t('photoMenu.list', { count: menu.photoIds.length })}</div>
+        <div className="dmenu-h faint">
+          {t('align.photoMenu.list', { count: menu.photoIds.length })}
+        </div>
         <div className="dmenu-scroll">
           {menu.photoIds.map((id) => (
             <button
@@ -322,7 +325,7 @@ export function PhotoMenu() {
       ref={list}
       className="dmenu"
       role="menu"
-      aria-label={t('photoMenu.label', { photo: photo.id })}
+      aria-label={t('align.photoMenu.label', { photo: photo.id })}
       style={style}
       data-testid="photo-menu"
       onKeyDown={keys}
@@ -335,44 +338,44 @@ export function PhotoMenu() {
         item(
           'align',
           'target',
-          t('photoMenu.align'),
+          t('align.photoMenu.align'),
           () => {
             photoAlign.getState().start(set.id, photo.id);
           },
           { primary: true, disabled: !posed },
         )}
-      {item('open', 'photo', t('photoMenu.open'), () => {
+      {item('open', 'photo', t('align.photoMenu.open'), () => {
         openPhoto(set.id, photo.id);
       })}
       {scene &&
         item(
           'eye',
           'camera',
-          t('photoMenu.eye'),
+          t('align.photoMenu.eye'),
           () => {
-            lookThrough(scene, photo);
+            lookThrough(scene, set.id, photo);
           },
           { disabled: !posed },
         )}
       {item(
         'footprint',
         footprint ? 'eye-off' : 'eye',
-        footprint ? t('photoMenu.hideFootprint') : t('photoMenu.showFootprint'),
+        footprint ? t('align.photoMenu.hideFootprint') : t('align.photoMenu.showFootprint'),
         () => {
           photoAlign.getState().setFootprint(!footprint);
         },
       )}
       {!readOnly &&
-        photo.correction &&
-        item('reset', 'undo', t('photoMenu.reset'), () => {
+        photoCorrection(orientation, set.id, photo.id) &&
+        item('reset', 'undo', t('align.photoMenu.reset'), () => {
           void photoAlign.getState().resetSaved(set.id, photo.id);
         })}
       {item(
         'copy',
         'copy',
-        t('photoMenu.copy'),
+        t('align.photoMenu.copy'),
         () => {
-          const text = positionText(photo);
+          const text = positionText(set.id, photo);
           if (text)
             void navigator.clipboard.writeText(text).catch((e: unknown) => {
               console.warn('Copy position failed', e);

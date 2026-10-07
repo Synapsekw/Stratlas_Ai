@@ -3,12 +3,14 @@
  * Kuwait (EPSG 32639): one 10 s clip whose flight log has no gimbal angles (the camera direction
  * is estimated from the track), a map pack over the site. Right-click the drone on the map, Align
  * camera to map, set a keyframe at 2 s looking 30 degrees and one at 8 s looking 90 degrees, Done:
- * the 3D camera at 5 s looks 60 degrees, the manifest holds the keyframes, Undo and Redo work, the
+ * the 3D camera at 5 s looks 60 degrees, orientation.json holds the keyframes (the manifest stays as
+ * it was), Undo and Redo work, the
  * keyframes survive a reload, a right-click on the flight path jumps the playhead there, and
  * Clear direction keyframes (with confirm) can be undone.
  */
 import { cameraQuatFromGimbal, fromWgs84 } from '@aio/geo';
 import { ProjectManifest, SCHEMA_VERSION, type ProjectManifestInput } from '@aio/schema';
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -30,7 +32,7 @@ interface Probe {
       getState(): {
         nowMs: number;
         setTime(ms: number): void;
-        project: { manifest: { layers: { id: string; directionKeys?: unknown[] }[] } } | null;
+        project: { manifest: { layers: { id: string }[] } } | null;
       };
     };
     videoRig(): {
@@ -200,12 +202,23 @@ async function dronePoint(win: Page): Promise<{ x: number; y: number }> {
   });
 }
 
+/** The clip's keyframes in orientation.json (aio.orientation/1), or null. */
 const savedKeys = async (data: DataRoot) => {
-  const m = JSON.parse(
-    await readFile(join(data.root, 'projects', ID, 'manifest.json'), 'utf8'),
-  ) as { layers: { id: string; directionKeys?: { t: number; yaw: number }[] }[] };
-  return m.layers.find((l) => l.id === 'clip-1')?.directionKeys ?? null;
+  const file = join(data.root, 'projects', ID, 'orientation.json');
+  if (!existsSync(file)) return null;
+  const o = JSON.parse(await readFile(file, 'utf8')) as {
+    schema: string;
+    clips: Record<string, { keys: { t: number; yaw: number }[] } | undefined>;
+  };
+  expect(o.schema).toBe('aio.orientation/1');
+  return o.clips['clip-1']?.keys ?? null;
 };
+
+/** The manifest's video layer, which the keyframes never change. */
+const manifestClip = async (data: DataRoot) =>
+  JSON.parse(await readFile(join(data.root, 'projects', ID, 'manifest.json'), 'utf8')) as {
+    layers: Record<string, unknown>[];
+  };
 
 async function setKeyAt(win: Page, ms: number, yaw: number) {
   await win.evaluate(
@@ -222,6 +235,7 @@ test('right-click the drone, align the camera to the map with two keyframes', as
   win,
   dataRoot,
 }) => {
+  const manifestBefore = await manifestClip(dataRoot);
   await win.getByTestId('project-card').filter({ hasText: NAME }).first().click();
   await expect(win.locator('.stage')).toHaveAttribute('data-mode', 'split');
   // the estimate looks east (the track) at 5 s
@@ -252,7 +266,8 @@ test('right-click the drone, align the camera to the map with two keyframes', as
   await expect(bar).toBeHidden();
   await expect(win.getByTestId('direction-notice-text')).toHaveText('Saved 2 keyframes.');
 
-  // saved: the manifest has the track, the 3D camera turns half way at 5 s
+  // saved: orientation.json has the track (the manifest is unchanged), the 3D camera turns half way
+  expect(await manifestClip(dataRoot)).toEqual(manifestBefore);
   await expect
     .poll(() => savedKeys(dataRoot))
     .toMatchObject([

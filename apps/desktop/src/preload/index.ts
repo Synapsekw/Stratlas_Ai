@@ -153,6 +153,8 @@ const CHANNELS = {
   'server:list': true,
   'server:check': true,
   'server:forget': true,
+  'orientation:read': true,
+  'orientation:write': true,
 } as const satisfies Record<IpcChannel, true>;
 
 const EVENTS = {

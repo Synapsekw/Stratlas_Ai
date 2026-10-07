@@ -4,6 +4,7 @@ import { createWorkspace } from '@aio/workspace';
 import { describe, expect, it, vi } from 'vitest';
 import { createAlignStore } from './alignStore';
 import { drapeMesh } from './directionDrape';
+import { withClipKeys } from './orientationEdit';
 import {
   keyAt,
   moveKey,
@@ -45,26 +46,17 @@ const key = (t: number, yaw: number, extra: Partial<DirectionKey> = {}): Directi
 
 function setup(keys?: DirectionKey[]) {
   const ws = createWorkspace();
-  const layer = keys ? { ...clip, directionKeys: keys } : clip;
   ws.getState().openProject({
     id: 'p',
     root: 'x',
-    manifest: { layers: [layer] } as unknown as ProjectManifest,
+    manifest: { layers: [clip] } as unknown as ProjectManifest,
   });
+  // the saved keyframes live in orientation.json, held by the workspace
+  if (keys) ws.getState().setOrientation(withClipKeys(null, 'clip-1', keys));
   const saved: (DirectionKey[] | null)[] = [];
-  const save = vi.fn((_id: string, k: DirectionKey[] | null) => {
+  const save = vi.fn((id: string, k: DirectionKey[] | null) => {
     saved.push(k);
-    const p = ws.getState().project;
-    if (p) {
-      const layers = p.manifest.layers.map((l) => {
-        if (l.id !== 'clip-1' || l.kind !== 'video') return l;
-        const n = { ...l };
-        if (k) n.directionKeys = k;
-        else delete n.directionKeys;
-        return n;
-      });
-      ws.getState().replaceManifest({ ...p.manifest, layers });
-    }
+    ws.getState().setOrientation(withClipKeys(ws.getState().orientation, id, k));
     return Promise.resolve(null);
   });
   const showBoth = vi.fn();

@@ -4,6 +4,7 @@ import {
   correctQuat,
   directionFromQuat,
   isNoCorrection,
+  photoCorrection,
   sameFlightPhotos,
   type CameraDirection,
 } from '@aio/geo';
@@ -90,6 +91,9 @@ export function createPhotoAlignStore(deps: PhotoAlignDeps): StoreApi<PhotoAlign
     };
     const photoOf = (layerId: string, photoId: string): PhotoRef | null =>
       setOf(layerId)?.items.find((p) => p.id === photoId) ?? null;
+    /** A photo's saved correction (orientation.json), or null. */
+    const savedOf = (layerId: string, photoId: string): PhotoCorrection | null =>
+      photoCorrection(ws.getState().orientation, layerId, photoId) ?? null;
     const patch = (p: Partial<PhotoSession>) => {
       const s = get().session;
       if (s) set({ session: { ...s, ...p } });
@@ -126,12 +130,12 @@ export function createPhotoAlignStore(deps: PhotoAlignDeps): StoreApi<PhotoAlign
           session: {
             layerId,
             photoId,
-            original: p.correction ?? null,
-            corr: p.correction ?? ZERO,
+            original: savedOf(layerId, photoId),
+            corr: savedOf(layerId, photoId) ?? ZERO,
             history: [],
             exact: false,
           },
-          say: { text: t('photoAlign.help') },
+          say: { text: t('align.photoAlign.help') },
         });
       },
 
@@ -189,7 +193,7 @@ export function createPhotoAlignStore(deps: PhotoAlignDeps): StoreApi<PhotoAlign
         }
         const prev = s.history[s.history.length - 1];
         if (!prev) {
-          set({ say: { text: t('direction.say.nothingToUndo') } });
+          set({ say: { text: t('align.direction.say.nothingToUndo') } });
           return;
         }
         patch({ corr: prev, history: s.history.slice(0, -1) });
@@ -222,7 +226,7 @@ export function createPhotoAlignStore(deps: PhotoAlignDeps): StoreApi<PhotoAlign
         const others = next ? flightOthers(s.layerId, p) : [];
         set({
           notice: {
-            text: next ? t('photoAlign.saved') : t('photoAlign.cleared'),
+            text: next ? t('align.photoAlign.saved') : t('align.photoAlign.cleared'),
             action: { kind: 'undo', layerId: s.layerId, fixes: { [s.photoId]: s.original } },
             flight: next && others.length ? { layerId: s.layerId, ids: others, corr: next } : null,
           },
@@ -236,15 +240,15 @@ export function createPhotoAlignStore(deps: PhotoAlignDeps): StoreApi<PhotoAlign
 
       resetSaved: async (layerId, photoId) => {
         const p = photoOf(layerId, photoId);
-        if (!p?.correction) return;
-        const before = p.correction;
+        const before = p ? savedOf(layerId, photoId) : null;
+        if (!before) return;
         if (get().session?.photoId === photoId) end();
         const err = await deps.save(layerId, { [photoId]: null });
         set({
           notice: err
             ? { text: err, action: null, flight: null }
             : {
-                text: t('photoAlign.cleared'),
+                text: t('align.photoAlign.cleared'),
                 action: { kind: 'undo', layerId, fixes: { [photoId]: before } },
                 flight: null,
               },
@@ -255,7 +259,7 @@ export function createPhotoAlignStore(deps: PhotoAlignDeps): StoreApi<PhotoAlign
         const a = get().notice?.action;
         if (!a) return;
         const now: Fixes = {};
-        for (const id of Object.keys(a.fixes)) now[id] = photoOf(a.layerId, id)?.correction ?? null;
+        for (const id of Object.keys(a.fixes)) now[id] = savedOf(a.layerId, id);
         const s = get().session;
         if (s?.layerId === a.layerId && s.photoId in a.fixes) end();
         const err = await deps.save(a.layerId, a.fixes);
@@ -263,7 +267,10 @@ export function createPhotoAlignStore(deps: PhotoAlignDeps): StoreApi<PhotoAlign
           notice: err
             ? { text: err, action: null, flight: null }
             : {
-                text: a.kind === 'undo' ? t('direction.say.undone') : t('direction.say.redone'),
+                text:
+                  a.kind === 'undo'
+                    ? t('align.direction.say.undone')
+                    : t('align.direction.say.redone'),
                 action: {
                   kind: a.kind === 'undo' ? 'redo' : 'undo',
                   layerId: a.layerId,
@@ -280,7 +287,7 @@ export function createPhotoAlignStore(deps: PhotoAlignDeps): StoreApi<PhotoAlign
         const before: Fixes = {};
         const fixes: Fixes = {};
         for (const id of f.ids) {
-          before[id] = photoOf(f.layerId, id)?.correction ?? null;
+          before[id] = savedOf(f.layerId, id);
           fixes[id] = f.corr;
         }
         const err = await deps.save(f.layerId, fixes);
@@ -288,7 +295,7 @@ export function createPhotoAlignStore(deps: PhotoAlignDeps): StoreApi<PhotoAlign
           notice: err
             ? { text: err, action: null, flight: null }
             : {
-                text: t('photoAlign.appliedFlight', { count: f.ids.length }),
+                text: t('align.photoAlign.appliedFlight', { count: f.ids.length }),
                 action: { kind: 'undo', layerId: f.layerId, fixes: before },
                 flight: null,
               },

@@ -1,4 +1,12 @@
-import type { AssetRef, DirectionKey, Issue, ProjectManifest, Vec3, WindowKind } from '@aio/schema';
+import type {
+  AssetRef,
+  DirectionKey,
+  Issue,
+  OrientationFile,
+  ProjectManifest,
+  Vec3,
+  WindowKind,
+} from '@aio/schema';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
@@ -56,6 +64,11 @@ export interface WorkspaceState {
    * the 3D view and the map draw that clip's camera from them instead of the saved ones.
    */
   directionDraft: DirectionDraft | null;
+  /**
+   * The open project's `orientation.json` (camera directions set by hand: video direction
+   * keyframes, photo corrections), or null when it has none (or it is still loading).
+   */
+  orientation: OrientationFile | null;
 }
 
 /** Unsaved direction keyframes of a clip (an empty list shows the logged direction). */
@@ -89,6 +102,8 @@ export interface WorkspaceActions {
   consumeCamera(seq: number): void;
   /** Show a clip's camera from unsaved direction keyframes, or `null` for the saved ones. */
   setDirectionDraft(draft: DirectionDraft | null): void;
+  /** The project's orientation file after it loaded or was saved. */
+  setOrientation(file: OrientationFile | null): void;
 }
 
 export type Workspace = WorkspaceState & WorkspaceActions;
@@ -106,6 +121,7 @@ const initial: WorkspaceState = {
   camera: null,
   lastCamera: null,
   directionDraft: null,
+  orientation: null,
 };
 
 export function createWorkspace(): StoreApi<Workspace> {
@@ -206,6 +222,9 @@ export function createWorkspace(): StoreApi<Workspace> {
     },
     setDirectionDraft: (directionDraft) => {
       set({ directionDraft });
+    },
+    setOrientation: (orientation) => {
+      set({ orientation });
     },
   }));
 }

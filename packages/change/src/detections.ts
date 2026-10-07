@@ -3,6 +3,7 @@ import type {
   Detection,
   DetectionsFile,
   Layer,
+  PhotoCorrection,
   ProjectManifest,
   Vec3,
 } from '@aio/schema';
@@ -48,6 +49,8 @@ export async function photoDetectionLocator(
   manifest: Pick<ProjectManifest, 'layers'>,
   passes: readonly DetectionPass[],
   size: (layer: string, photo: PhotoItem) => Promise<readonly [number, number] | null>,
+  /** A photo's hand correction (orientation.json), if the caller has them. */
+  correction?: (layer: string, photo: string) => PhotoCorrection | undefined,
 ): Promise<(d: Detection, layer: string) => Vec3 | null> {
   const photos = new Map<string, PhotoItem>();
   for (const l of manifest.layers)
@@ -66,7 +69,7 @@ export async function photoDetectionLocator(
     }
   return (d, layer) => {
     const raw = d.photo ? photos.get(`${layer}/${d.photo}`) : undefined;
-    const item = raw ? correctedPhoto(raw) : undefined;
+    const item = raw ? correctedPhoto(raw, correction?.(layer, raw.id)) : undefined;
     if (!item?.pos || !item.q || !item.lens || d.frame) return null;
     const space = d.space ?? 'preview';
     const wh: readonly [number, number] | null | undefined =

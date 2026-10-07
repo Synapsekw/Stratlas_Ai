@@ -1,5 +1,13 @@
 import { clipCamera, clipPoseAt, correctedPhoto } from '@aio/geo';
-import type { FrameRef, Layer, LensModel, Quat, Vec3 } from '@aio/schema';
+import type {
+  DirectionKey,
+  FrameRef,
+  Layer,
+  LensModel,
+  PhotoCorrection,
+  Quat,
+  Vec3,
+} from '@aio/schema';
 import { clockForVideoTime } from './clock';
 import type { Flight } from './flight';
 import { imageToRay, rayToImage } from './lens';
@@ -102,21 +110,33 @@ export function videoTimeS(layer: VideoLayer, flight: Flight, tMs: number): numb
 
 /**
  * The calibrated camera of video second `v`: the logged position plus the clip's offset; the
- * direction from its keyframes, else the logged orientation turned by its bias (`clipPoseAt`).
+ * direction from its keyframes (`clipKeys` of orientation.json) when given, else the logged
+ * orientation turned by its bias (`clipPoseAt`).
  */
-export function calibratedVideoPose(layer: VideoLayer, flight: Flight, v: number): ViewPose {
+export function calibratedVideoPose(
+  layer: VideoLayer,
+  flight: Flight,
+  v: number,
+  keys?: readonly DirectionKey[] | null,
+): ViewPose {
   const p = clipPoseAt(
     flight.samples,
     flightTimeMs(layer, flight, v),
-    clipCamera(layer, flight.startUtcMs),
+    clipCamera(layer, keys, flight.startUtcMs),
   );
   return { pos: p.pos, q: p.q, lens: layer.lens };
 }
 
-/** A photo's camera, or null when the photo has no position or orientation. */
-export function photoPose(item: PhotoLayer['items'][number]): ViewPose | null {
+/**
+ * A photo's camera (with its hand correction from orientation.json when given), or null when the
+ * photo has no position or orientation.
+ */
+export function photoPose(
+  item: PhotoLayer['items'][number],
+  correction?: PhotoCorrection | null,
+): ViewPose | null {
   if (!item.pos || !item.q) return null;
-  const p = correctedPhoto(item);
+  const p = correctedPhoto(item, correction);
   return { pos: p.pos ?? item.pos, q: p.q ?? item.q, lens: item.lens ?? DEFAULT_PHOTO_LENS };
 }
 

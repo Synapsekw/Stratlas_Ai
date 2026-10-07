@@ -130,8 +130,8 @@ export function buildTimelineModel(
   manifest: ProjectManifest,
   issues: readonly Issue[],
   durations: Readonly<Record<string, number>>,
-  /** Unsaved direction keyframes of one clip (Set camera direction), shown instead of its own. */
-  draft?: { layerId: string; keys: readonly { t: number }[] } | null,
+  /** Camera direction keyframes (clip time, ms) by video layer id, drawn on the clip bars. */
+  directionKeys?: Readonly<Record<string, readonly { t: number }[]>>,
 ): TimelineModel {
   const clips: ClipBar[] = [];
   const photos: PhotoMark[] = [];
@@ -140,7 +140,7 @@ export function buildTimelineModel(
     const bars = g.clips.map((layer) => {
       const startMs = layer.flight.startUtcMs + layer.offsetMs;
       const known = durations[layer.id];
-      const keys = draft?.layerId === layer.id ? draft.keys : layer.directionKeys;
+      const keys = directionKeys?.[layer.id];
       return {
         layerId: layer.id,
         name: layer.name,

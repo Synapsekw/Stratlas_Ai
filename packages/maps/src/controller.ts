@@ -2,7 +2,7 @@
 // (project, issues, clock, active clip, selection, visibility) into overlay sources and writes
 // clicks back as selections.
 import { getActiveScene, onActiveScene, reducedMotion, type SceneHandle } from '@aio/engine';
-import { clipCamera, clipPoseAt, correctedPhoto, normaliseSamples } from '@aio/geo';
+import { clipCamera, clipKeys, clipPoseAt, normaliseSamples } from '@aio/geo';
 import type { Issue, Layer, PoseSample, Vec3 } from '@aio/schema';
 import { assetUrl, type createWorkspace, type Workspace } from '@aio/workspace';
 import type { Feature, FeatureCollection } from 'geojson';
@@ -35,6 +35,13 @@ import { bboxOf, orderPacks, type MapPack } from './packs';
 import { pyramidView, type PyramidIndex } from './pyramid';
 import { issueFeatures, issueShapeBounds, styleLayers, type MapOverlay } from './vector';
 import { MAP_INK } from './ink';
+import {
+  addPhotoPins,
+  PHOTO_PIN_LAYERS,
+  PHOTO_SOURCE,
+  photoPinData,
+  photoPoints,
+} from './photoPins';
 import { installBasemap } from './runtime';
 import { buildStyle } from './style';
 
@@ -81,8 +88,6 @@ const SRC = {
   shapes: 'aio-issue-shapes',
   view: 'aio-view3d',
   draw: 'aio-draw',
-  /** Where photos were taken (corrected), clustered. */
-  photos: 'aio-photos',
 };
 
 export interface MapControllerOptions {
@@ -184,16 +189,9 @@ export function createMapController(
 
   function addOverlayLayers(): void {
     for (const id of Object.values(SRC)) {
-      if (id === SRC.issues || id === SRC.issuesFar || id === SRC.photos) continue;
+      if (id === SRC.issues || id === SRC.issuesFar) continue;
       map.addSource(id, { type: 'geojson', data: EMPTY });
     }
-    map.addSource(SRC.photos, {
-      type: 'geojson',
-      data: EMPTY,
-      cluster: true,
-      clusterRadius: 32,
-      clusterMaxZoom: 20,
-    });
     // Issues cluster on the GPU side of MapLibre: badges carry the count and the worst rank.
     // Issues with a polygon map sighting cluster only until their shapes show (SHAPE_ZOOM).
     for (const [id, maxZoom] of [
@@ -269,44 +267,7 @@ export function createMapController(
       },
     });
     // Photo pins (clustered), under the issues.
-    map.addLayer({
-      id: 'aio-photos-cluster',
-      type: 'circle',
-      source: SRC.photos,
-      filter: ['has', 'point_count'],
-      paint: {
-        'circle-radius': ['step', ['get', 'point_count'], 9, 10, 11, 50, 14],
-        'circle-color': INK.bg0,
-        'circle-stroke-color': INK.fg1,
-        'circle-stroke-width': 1.5,
-      },
-    });
-    map.addLayer({
-      id: 'aio-photos-count',
-      type: 'symbol',
-      source: SRC.photos,
-      filter: ['has', 'point_count'],
-      layout: {
-        'text-field': ['get', 'point_count_abbreviated'],
-        'text-font': ['Noto Sans Medium'],
-        'text-size': 10,
-        'text-allow-overlap': true,
-        'text-ignore-placement': true,
-      },
-      paint: { 'text-color': INK.fg0 },
-    });
-    map.addLayer({
-      id: 'aio-photos-pt',
-      type: 'circle',
-      source: SRC.photos,
-      filter: ['!', ['has', 'point_count']],
-      paint: {
-        'circle-radius': ['case', ['get', 'selected'], 6, 4.5],
-        'circle-color': ['case', ['get', 'selected'], INK.accStrong, INK.bg0],
-        'circle-stroke-color': INK.fg1,
-        'circle-stroke-width': 1.5,
-      },
-    });
+    addPhotoPins(map);
     // Heat map above the rasters and overlays, under every marker.
     map.addLayer({
       id: 'aio-issues-heat',
@@ -724,9 +685,12 @@ export function createMapController(
     }
     // the camera as every view draws it: direction keyframes (an unsaved draft first), else the
     // log turned by the clip's calibration
-    const draft = s.directionDraft?.layerId === f.layer.id ? s.directionDraft.keys : undefined;
+    const keys =
+      s.directionDraft?.layerId === f.layer.id
+        ? s.directionDraft.keys
+        : clipKeys(s.orientation, f.layer.id);
     const flightMs = s.nowMs - f.layer.flight.startUtcMs;
-    const cam = clipPoseAt(f.samples, flightMs, clipCamera(f.layer, undefined, draft));
+    const cam = clipPoseAt(f.samples, flightMs, clipCamera(f.layer, keys));
     const pose: PoseSample = { t: flightMs, pos: cam.log.pos, q: cam.log.q };
     const height = Math.max(1, pose.pos[1]);
     const biased: PoseSample = { t: flightMs, pos: cam.pos, q: cam.q };
@@ -771,27 +735,7 @@ export function createMapController(
 
   // ----- photos -----
   function renderPhotos(s: Workspace): void {
-    const p = proj;
-    if (!p || !map.getSource(SRC.photos)) return;
-    const sel = s.selection?.kind === 'photo' ? s.selection : null;
-    const features: Feature[] = [];
-    for (const l of s.project?.manifest.layers ?? []) {
-      if (l.kind !== 'photos' || s.hidden[l.id]) continue;
-      for (const item of l.items) {
-        const c = correctedPhoto(item);
-        if (!c.pos) continue;
-        features.push({
-          type: 'Feature',
-          properties: {
-            photoLayer: l.id,
-            photoId: item.id,
-            selected: sel?.id === item.id && (sel.layer === undefined || sel.layer === l.id),
-          },
-          geometry: { type: 'Point', coordinates: p.toLonLat(c.pos) },
-        });
-      }
-    }
-    setData(SRC.photos, fc(features));
+    if (proj && map.getSource(PHOTO_SOURCE)) setData(PHOTO_SOURCE, photoPinData(s, proj));
   }
 
   // ----- issues -----
@@ -1052,14 +996,7 @@ export function createMapController(
     renderIssues(now);
     applyVisibility(now);
     const issuePts = now.issues.map((i) => issueAnchor(i, proj)).filter((x): x is LonLat => !!x);
-    const photoPts = layers.flatMap((l) =>
-      l.kind === 'photos'
-        ? l.items.flatMap((it) => {
-            const c = correctedPhoto(it);
-            return c.pos && proj ? [proj.toLonLat(c.pos)] : [];
-          })
-        : [],
-    );
+    const photoPts = photoPoints(now, proj);
     const box = bboxOf([...rasterPts, ...flightPts, ...issuePts, ...photoPts]);
     projectBox = box;
     // a camera request made while the map was starting (the agent's fly_to) wins over the start view
@@ -1067,10 +1004,6 @@ export function createMapController(
       followCamera(now);
       return;
     }
-    // an edit saved to the same layers (calibration, camera direction) keeps the view
-    const fitKey = `${id}|${layers.map((l) => l.id).join(',')}`;
-    if (fitKey === fittedKey) return;
-    fittedKey = fitKey;
     if (box) {
       map.fitBounds(
         [
@@ -1083,9 +1016,6 @@ export function createMapController(
       map.jumpTo({ center: proj.toLonLat([0, 0, 0]), zoom: 15 });
     }
   }
-
-  /** The project and layers the view was last fitted to. */
-  let fittedKey: string | null = null;
 
   /** What the project covers (rasters, flights, issues, photos), for the home view. */
   let projectBox: ReturnType<typeof bboxOf> = null;
@@ -1166,8 +1096,7 @@ export function createMapController(
       layers: ISSUE_LAYERS.concat(
         'aio-drone-point',
         'aio-flights-line',
-        'aio-photos-pt',
-        'aio-photos-cluster',
+        ...PHOTO_PIN_LAYERS,
       ).filter((l) => map.getLayer(l)),
     })[0];
     const props = hit?.properties as
@@ -1289,7 +1218,12 @@ export function createMapController(
           return;
         }
         if (s.issues !== last.issues || s.selection !== last.selection) renderIssues(s);
-        if (s.selection !== last.selection || s.hidden !== last.hidden) renderPhotos(s);
+        if (
+          s.selection !== last.selection ||
+          s.hidden !== last.hidden ||
+          s.orientation !== last.orientation
+        )
+          renderPhotos(s);
         if (
           s.activeClip !== last.activeClip ||
           s.selection !== last.selection ||
@@ -1303,7 +1237,8 @@ export function createMapController(
           s.nowMs !== last.nowMs ||
           s.activeClip !== last.activeClip ||
           s.hidden !== last.hidden ||
-          s.directionDraft !== last.directionDraft
+          s.directionDraft !== last.directionDraft ||
+          s.orientation !== last.orientation
         ) {
           if (!frame)
             frame = requestAnimationFrame(() => {

@@ -10,7 +10,7 @@ export function AlignNotice() {
     <div className="toast" data-testid="direction-notice">
       <div className="toast-h">
         <Icon name="droneeye" size={14} />
-        <b>{t('direction.notice')}</b>
+        <b>{t('align.direction.notice')}</b>
         <span className="toast-grow" />
         {notice.action && (
           <button
@@ -20,7 +20,7 @@ export function AlignNotice() {
             data-testid={`direction-${notice.action.kind}`}
           >
             <Icon name="undo" size={12} />
-            {notice.action.kind === 'undo' ? t('direction.undo') : t('direction.redo')}
+            {notice.action.kind === 'undo' ? t('align.direction.undo') : t('align.direction.redo')}
           </button>
         )}
         <button

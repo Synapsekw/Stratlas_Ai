@@ -13,7 +13,7 @@ export function PhotoAlignNotice() {
     <div className="toast" data-testid="photo-align-notice">
       <div className="toast-h">
         <Icon name="photo" size={14} />
-        <b>{t('photoAlign.notice')}</b>
+        <b>{t('align.photoAlign.notice')}</b>
         <span className="toast-grow" />
         {notice.action && (
           <button
@@ -23,7 +23,7 @@ export function PhotoAlignNotice() {
             data-testid={`photo-align-${notice.action.kind}`}
           >
             <Icon name="undo" size={12} />
-            {notice.action.kind === 'undo' ? t('direction.undo') : t('direction.redo')}
+            {notice.action.kind === 'undo' ? t('align.direction.undo') : t('align.direction.redo')}
           </button>
         )}
         <button
@@ -47,7 +47,7 @@ export function PhotoAlignNotice() {
           onClick={() => void photoAlign.getState().applyToFlight()}
           data-testid="photo-align-flight"
         >
-          {t('photoAlign.applyFlight', { count: notice.flight.ids.length })}
+          {t('align.photoAlign.applyFlight', { count: notice.flight.ids.length })}
         </button>
       )}
     </div>
