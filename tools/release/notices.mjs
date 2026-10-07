@@ -116,6 +116,7 @@ print(json.dumps(sorted(seen.values(), key=lambda x: x["name"].lower())))
 /** One short licence name from Python metadata: the SPDX expression, a classifier or the text. */
 export function pythonLicense(d) {
   if (d.expression) return d.expression;
+  if (d.name && PYTHON_READ[d.name]) return PYTHON_READ[d.name];
   const first = (d.license ?? '').split('\n')[0].trim();
   const named =
     first && first.length <= 60 && !/^copyright/i.test(first) && !first.includes(':')
@@ -126,6 +127,14 @@ export function pythonLicense(d) {
   if (!name) return first ? `${first.slice(0, 57)}...` : 'see package';
   return SPDX[name] ?? name;
 }
+
+/**
+ * Distributions whose metadata names no licence we can read, as their licence file states it:
+ * python-dateutil says only "Dual License" (code since 2017 Apache-2.0, older code BSD-3-Clause).
+ */
+const PYTHON_READ = {
+  'python-dateutil': 'Apache-2.0 AND BSD-3-Clause',
+};
 
 /** Common free-text licence names to their SPDX id. */
 const SPDX = {

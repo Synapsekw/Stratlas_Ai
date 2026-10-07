@@ -180,30 +180,42 @@ The full licence texts ship with the software: the app lists every package with 
 
 ## Pipeline pack (Python)
 
-20 packages: BSD-3-Clause (7), MIT (6), BSD (classifier) (2), Apache-2.0 OR BSD-2-Clause (1), BSD-2-Clause (1), BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 (1), MIT-CMU (1), MPL-2.0 (1). The pack also bundles CPython (PSF licence) from python-build-standalone, and rasterio's wheel bundles GDAL (MIT) and its dependencies.
+32 packages: MIT (13), BSD-3-Clause (7), BSD (classifier) (2), BSD-2-Clause (2), Apache-2.0 (1), Apache-2.0 AND BSD-3-Clause (1), Apache-2.0 OR BSD-2-Clause (1), BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 (1), MIT OR AFL-2.1 (1), MIT-CMU (1), MPL-2.0 (1), PSF-2.0 (1). The pack also bundles CPython (PSF licence) from python-build-standalone, and rasterio's wheel bundles GDAL (MIT) and its dependencies.
 
-| Package      | Version   | Licence                                            |
-| ------------ | --------- | -------------------------------------------------- |
-| affine       | 3.0.1     | BSD-3-Clause                                       |
-| attrs        | 26.1.0    | MIT                                                |
-| certifi      | 2026.7.22 | MPL-2.0                                            |
-| click        | 8.5.0     | BSD-3-Clause                                       |
-| ImageIO      | 2.38.0    | BSD-2-Clause                                       |
-| lazy-loader  | 0.6       | BSD-3-Clause                                       |
-| networkx     | 3.7       | BSD-3-Clause                                       |
-| numpy        | 2.5.3     | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 |
-| packaging    | 26.3      | Apache-2.0 OR BSD-2-Clause                         |
-| pillow       | 12.3.0    | MIT-CMU                                            |
-| pyparsing    | 3.3.3     | MIT                                                |
-| pyshp        | 3.1.6     | MIT                                                |
-| PyYAML       | 6.0.3     | MIT                                                |
-| rasterio     | 1.5.2     | BSD-3-Clause                                       |
-| rtree        | 1.4.1     | MIT                                                |
-| scikit-image | 0.26.0    | BSD (classifier)                                   |
-| scipy        | 1.18.1    | BSD (classifier)                                   |
-| shapely      | 2.1.2     | BSD-3-Clause                                       |
-| tifffile     | 2026.9.20 | BSD-3-Clause                                       |
-| trimesh      | 5.1.1     | MIT                                                |
+| Package           | Version     | Licence                                            |
+| ----------------- | ----------- | -------------------------------------------------- |
+| affine            | 3.0.1       | BSD-3-Clause                                       |
+| attrs             | 26.1.0      | MIT                                                |
+| certifi           | 2026.7.22   | MPL-2.0                                            |
+| click             | 8.5.0       | BSD-3-Clause                                       |
+| dataclasses-json  | 0.6.7       | MIT                                                |
+| Deprecated        | 3.0.0       | MIT                                                |
+| ImageIO           | 2.38.0      | BSD-2-Clause                                       |
+| lazy-loader       | 0.6         | BSD-3-Clause                                       |
+| marshmallow       | 3.26.2      | MIT                                                |
+| mypy_extensions   | 1.1.0       | MIT                                                |
+| networkx          | 3.7         | BSD-3-Clause                                       |
+| numpy             | 2.5.3       | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 |
+| packaging         | 26.3        | Apache-2.0 OR BSD-2-Clause                         |
+| pillow            | 12.3.0      | MIT-CMU                                            |
+| pygltflib         | 1.16.5      | MIT                                                |
+| pyopf             | 1.4.1       | Apache-2.0                                         |
+| pyparsing         | 3.3.3       | MIT                                                |
+| pyshp             | 3.1.6       | MIT                                                |
+| python-dateutil   | 2.9.0.post0 | Apache-2.0 AND BSD-3-Clause                        |
+| PyYAML            | 6.0.3       | MIT                                                |
+| rasterio          | 1.5.2       | BSD-3-Clause                                       |
+| rtree             | 1.4.1       | MIT                                                |
+| scikit-image      | 0.26.0      | BSD (classifier)                                   |
+| scipy             | 1.18.1      | BSD (classifier)                                   |
+| shapely           | 2.1.2       | BSD-3-Clause                                       |
+| simplejson        | 4.2.0       | MIT OR AFL-2.1                                     |
+| six               | 1.17.0      | MIT                                                |
+| tifffile          | 2026.9.20   | BSD-3-Clause                                       |
+| trimesh           | 5.1.1       | MIT                                                |
+| typing-inspect    | 0.9.0       | MIT                                                |
+| typing_extensions | 4.16.0      | PSF-2.0                                            |
+| wrapt             | 2.5.0       | BSD-2-Clause                                       |
 
 ## Pipeline pack native libraries
 

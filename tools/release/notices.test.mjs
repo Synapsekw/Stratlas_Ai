@@ -36,6 +36,9 @@ describe('licence inventory', () => {
       }),
     ).toBe('BSD (classifier)');
     expect(pythonLicense({ license: '' })).toBe('see package');
+    expect(pythonLicense({ name: 'python-dateutil', license: 'Dual License' })).toBe(
+      'Apache-2.0 AND BSD-3-Clause',
+    );
   });
 
   it('renders both sections with counts', () => {
