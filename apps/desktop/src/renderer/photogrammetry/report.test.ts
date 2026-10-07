@@ -36,7 +36,7 @@ describe('accuracy report tables', () => {
     expect(formatResidual(-0.0004)).toBe('0.0 cm');
     expect(formatResidual(-0.016)).toBe('-1.6 cm');
     expect(formatResidual(1.02)).toBe('1.02 m');
-    expect(formatResidual(Number.NaN)).toBe('–');
+    expect(formatResidual(Number.NaN)).toBe('not known');
   });
 
   it('lists every point, control first, numbers in order, with the outlier flagged', () => {

@@ -80,7 +80,7 @@ export function AccuracyReportView({
                     ? 'Within'
                     : r.verdict === 'over'
                       ? 'Over the target'
-                      : '–'}
+                      : 'No target'}
                 </td>
               </tr>
             ))}

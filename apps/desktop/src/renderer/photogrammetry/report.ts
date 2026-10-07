@@ -3,6 +3,7 @@
  * residuals and warnings. Honest by construction: every point is listed, checkpoints are measured
  * and never adjusted, and nothing is rounded to zero.
  */
+import { CHECK_TARGET_GSD } from '@aio/project/export';
 import type { AccuracyReport, GcpRole } from '@aio/schema';
 
 export interface PointRow {
@@ -22,7 +23,7 @@ export interface PointRow {
 
 /** Centimetres with one decimal below a metre, metres above: "1.4 cm", "-0.8 cm", "1.02 m". */
 export function formatResidual(m: number): string {
-  if (!Number.isFinite(m)) return '–';
+  if (!Number.isFinite(m)) return 'not known';
   const a = Math.abs(m);
   if (a >= 1) return `${m.toFixed(2)} m`;
   const cm = m * 100;
@@ -68,9 +69,6 @@ export interface RmseRow {
   verdict: 'within' | 'over' | null;
 }
 
-/** Plan targets for checkpoints: horizontal under 1.5 GSD, vertical under 2.5 GSD. */
-const CHECK_TARGET = { h: 1.5, v: 2.5 };
-
 export function rmseRows(r: AccuracyReport): RmseRow[] {
   const out: RmseRow[] = [];
   const gsdM = r.gsdCm ? r.gsdCm / 100 : null;
@@ -79,7 +77,8 @@ export function rmseRows(r: AccuracyReport): RmseRow[] {
     if (!x) continue;
     const verdict =
       role === 'check' && gsdM
-        ? x.horizontalM <= CHECK_TARGET.h * gsdM && x.verticalM <= CHECK_TARGET.v * gsdM
+        ? x.horizontalM <= CHECK_TARGET_GSD.horizontal * gsdM &&
+          x.verticalM <= CHECK_TARGET_GSD.vertical * gsdM
           ? 'within'
           : 'over'
         : null;

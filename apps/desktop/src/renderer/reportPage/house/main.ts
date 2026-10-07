@@ -5,20 +5,28 @@ import '@aio/ui/fonts.css';
 import './house.css';
 import { brand } from '@aio/brand';
 import {
+  HOUSE_SECTIONS,
   houseReportModel,
   issueAction,
   narrativeFacts,
+  processingSummary,
   resolveReportBranding,
   type AuditSummary,
   type HouseModel,
+  type ProcessingSummary,
 } from '@aio/project/export';
 import {
+  AccuracyReport,
   BoundaryEditsFile,
   currentNarrative,
   Issue,
   NarrativeFile,
   parseManifest,
   parseRoadModel,
+  PHOTO_RUN_FILES,
+  PhotoRun,
+  photoRunDir,
+  PhotoRunId,
   ReportContentsSettings,
   VolumesFile,
   type NarrativeSectionId,
@@ -26,6 +34,7 @@ import {
   type ProjectManifest,
   type ReportSectionId,
 } from '@aio/schema';
+import { t } from '@aio/ui';
 import { assetUrl } from '@aio/workspace';
 import { z } from 'zod';
 import { longDate, templateNarrative } from '../../report/narrativeTemplate';
@@ -44,6 +53,7 @@ import {
   kickerOf,
   layoutAppendices,
   layoutAudit,
+  layoutProcessing,
   layoutRegister,
   layoutScope,
   layoutSite,
@@ -169,6 +179,26 @@ async function run(): Promise<void> {
   } catch {
     contents = undefined;
   }
+  // M10: the accuracy of the processing run main named (the latest finished one)
+  let processing: ProcessingSummary | null = null;
+  const runId = PhotoRunId.safeParse(params.get('processing'));
+  if (runId.success) {
+    const base = photoRunDir(runId.data);
+    const [accRaw, runRaw] = await Promise.all([
+      optional(projectId, `${base}/${PHOTO_RUN_FILES.accuracy}`),
+      optional(projectId, `${base}/${PHOTO_RUN_FILES.run}`),
+    ]);
+    const acc = parsed(AccuracyReport, accRaw, PHOTO_RUN_FILES.accuracy);
+    if (acc) processing = processingSummary(acc, parsed(PhotoRun, runRaw, 'run.json'), manifest);
+  }
+  // the run's accuracy report PDF: the processing section alone, behind its own cover
+  const only = params.get('only') === 'processing';
+  if (only) {
+    if (!processing) throw new Error('This project has no processing run with an accuracy report.');
+    contents = {
+      sections: Object.fromEntries(HOUSE_SECTIONS.map((id) => [id, id === 'processing'])),
+    };
+  }
   const h: HouseModel = houseReportModel({
     manifest,
     issues,
@@ -178,8 +208,9 @@ async function run(): Promise<void> {
     edits: parsed(BoundaryEditsFile, editsRaw, 'edits/boundaries.json'),
     road: road?.ok ? road.value : null,
     audit,
+    processing,
   });
-  document.title = `${h.base.title} report`;
+  document.title = only ? `${h.base.title} accuracy report` : `${h.base.title} report`;
   const template = templateNarrative(narrativeFacts(h), { todo: false });
   const text = Object.fromEntries(
     (['summary', 'method', 'findings'] as const).map((id: NarrativeSectionId) => [
@@ -201,7 +232,13 @@ async function run(): Promise<void> {
   set({ phase: 'Loading the 3D model', done: 0, total: h.issuePages.length });
   let snap: Snapshotter | null = null;
   try {
-    snap = await createSnapshotter(projectId, manifest, { width: 760, height: 560, quality: 0.78 });
+    // the accuracy report draws no 3D view
+    if (!only)
+      snap = await createSnapshotter(projectId, manifest, {
+        width: 760,
+        height: 560,
+        quality: 0.78,
+      });
   } catch (e) {
     console.warn('Report: no 3D views', e);
   }
@@ -229,6 +266,7 @@ async function run(): Promise<void> {
     text,
     images: { overview, ...(thumbnail ? { thumbnail } : {}) },
     product: brand.productName,
+    ...(only ? { only: { kicker: t('house.proc.cover') } } : {}),
   };
   lap('model', t1);
 
@@ -368,6 +406,12 @@ async function run(): Promise<void> {
         timings.issuePhotos = Math.round(photoMs / 100) / 10;
         timings.issueViews = Math.round(viewMs / 100) / 10;
         lap('issues', t3);
+        break;
+      }
+      case 'processing': {
+        const n = numbered(id);
+        pager.start(id);
+        layoutProcessing(pager, ctx, n);
         break;
       }
       case 'audit': {

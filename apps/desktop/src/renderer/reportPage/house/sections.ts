@@ -43,7 +43,12 @@ export interface HouseContext {
   text: Record<NarrativeSectionId, string>;
   images: HouseImages;
   product: string;
+  /** A report of one section (the run's accuracy report PDF): its name in the frame and cover. */
+  only?: { kicker: string };
 }
+
+/** What the frame and the cover call the report. */
+const reportKicker = (ctx: HouseContext): string => ctx.only?.kicker ?? kickerOf(ctx.h);
 
 export const kickerOf = (h: HouseModel): string => tk(`house.kicker.${h.kind}`);
 export const disclaimerOf = (h: HouseModel): string => tk(`house.disclaimer.${h.kind}`);
@@ -74,7 +79,7 @@ function headerBrand(b: ReportBranding): string {
 export function frameHtml(ctx: HouseContext): string {
   const b = ctx.h.base.branding;
   const left = b.name ? txt(b.name) : b.credit ? txt(b.credit) : '';
-  return `<header class="pg-h">${headerBrand(b)}<span class="pg-t">${txt(kickerOf(ctx.h))} · ${txt(ctx.h.base.title)}</span><span class="pg-s">${txt(tk('house.state', { date: ctx.h.base.date }))}</span></header><div class="pg-b"></div><footer class="pg-f"><span class="pg-fl">${left}</span><span class="pg-fc">${txt(disclaimerOf(ctx.h))}</span>${auditFooter(ctx.h)}<span class="pg-n"></span></footer>`;
+  return `<header class="pg-h">${headerBrand(b)}<span class="pg-t">${txt(reportKicker(ctx))} · ${txt(ctx.h.base.title)}</span><span class="pg-s">${txt(tk('house.state', { date: ctx.h.base.date }))}</span></header><div class="pg-b"></div><footer class="pg-f"><span class="pg-fl">${left}</span><span class="pg-fc">${txt(disclaimerOf(ctx.h))}</span>${auditFooter(ctx.h)}<span class="pg-n"></span></footer>`;
 }
 
 /** M9: the audit head on every page (short hash, count, verified), when the project has one. */
@@ -101,14 +106,18 @@ export function coverHtml(ctx: HouseContext): string {
         ? longDate(first.date)
         : `${longDate(first.date)} ${tk('house.and')} ${longDate(last.date)}`
       : '';
-  const counts = [
-    h.base.total > 0 || h.kind === 'inspection'
-      ? tk('house.n.issues', { count: h.base.total, n: num(h.base.total) })
-      : '',
-    h.totals.photos > 0
-      ? tk('house.n.photos', { count: h.totals.photos, n: num(h.totals.photos) })
-      : '',
-  ].filter(Boolean);
+  const counts = (
+    ctx.only
+      ? []
+      : [
+          h.base.total > 0 || h.kind === 'inspection'
+            ? tk('house.n.issues', { count: h.base.total, n: num(h.base.total) })
+            : '',
+          h.totals.photos > 0
+            ? tk('house.n.photos', { count: h.totals.photos, n: num(h.totals.photos) })
+            : '',
+        ]
+  ).filter(Boolean);
   const mark = b.logo
     ? `<div class="cv-mark"><span class="cv-logo"><img src="${esc(logoUrl(b.logo))}" alt=""></span></div>`
     : b.name
@@ -124,7 +133,7 @@ export function coverHtml(ctx: HouseContext): string {
   return `${bg}<div class="cv-shade"></div><div class="cv-in${mark ? '' : ' solo'}">${mark}<div class="cv-text">
   <div class="cv-kicker">${txt(tk('house.cover.status'))}</div>
   <h1>${txt(h.base.title)}</h1>
-  <div class="cv-sub">${txt(kickerOf(h))}</div>
+  <div class="cv-sub">${txt(reportKicker(ctx))}</div>
   ${who ? `<div class="cv-line">${who}</div>` : ''}
   <div class="cv-line">${[captured ? txt(tk('house.cover.captured', { date: captured })) : '', txt(tk('house.cover.issued', { date: longDate(h.base.date) }))].filter(Boolean).join(' · ')}</div>
   ${counts.length ? `<div class="cv-line">${txt(counts.join(' · '))}</div>` : ''}
@@ -834,6 +843,151 @@ export function layoutAudit(p: Pager, ctx: HouseContext, n: string): void {
   );
   if (a.more > 0) {
     p.add(el(`<p class="caption">${txt(tk('audit.report.more', { n: num(a.more) }))}</p>`));
+  }
+}
+
+/* ------------------------------------------------------------------------- processing (M10) */
+
+/** A residual: centimetres with one decimal below a metre, metres above; never "-0.0 cm". */
+export function residual(m: number): string {
+  if (!Number.isFinite(m)) return tk('house.proc.na');
+  if (Math.abs(m) >= 1) return `${m.toFixed(2)} m`;
+  const cm = (m * 100).toFixed(1);
+  return `${cm === '-0.0' ? '0.0' : cm} cm`;
+}
+
+/** The overlap map: each photo's ground footprint drawn faintly, darker where more overlap. */
+export function overlapSvg(feet: readonly { x: number; z: number; r: number }[]): string {
+  if (!feet.length) return '';
+  const minX = Math.min(...feet.map((f) => f.x - f.r));
+  const maxX = Math.max(...feet.map((f) => f.x + f.r));
+  const minZ = Math.min(...feet.map((f) => f.z - f.r));
+  const maxZ = Math.max(...feet.map((f) => f.z + f.r));
+  const w = Math.max(1, maxX - minX);
+  const h = Math.max(1, maxZ - minZ);
+  const r2 = (v: number) => String(Math.round(v * 100) / 100);
+  const circles = feet
+    .map((f) => `<circle cx="${r2(f.x)}" cy="${r2(f.z)}" r="${r2(f.r)}"/>`)
+    .join('');
+  return `<svg class="overlap" viewBox="${r2(minX)} ${r2(minZ)} ${r2(w)} ${r2(h)}" width="${String(HALF)}" height="${String(Math.round((HALF * h) / w))}" role="img" aria-label="${txt(tk('house.proc.overlap'))}"><g fill="var(--acc)" fill-opacity="0.08">${circles}</g></svg>`;
+}
+
+/**
+ * The processing section (M10): what the accuracy rests on, RMSE by role against the plan's
+ * targets, every control and check point's residuals, camera residuals, warnings and the overlap
+ * map. The same pages make the run's accuracy report PDF (`photo-report-pdf`).
+ */
+export function layoutProcessing(p: Pager, ctx: HouseContext, n: string): void {
+  const s = ctx.h.processing;
+  if (!s) return;
+  heading(p, `${n} · ${tk('house.proc.kicker')}`, tk('house.sec.processing'));
+  const facts = {
+    run: s.run,
+    date: longDate(s.createdAt.slice(0, 10)),
+    registered: num(s.images.registered),
+    total: num(s.images.total),
+  };
+  p.add(el(`<p class="nar">${txt(tk(`house.proc.intro.${s.basis}`, facts))}</p>`));
+  const items = [
+    {
+      value: `${num(s.images.registered)} / ${num(s.images.total)}`,
+      label: tk('house.proc.kpi.photos'),
+    },
+    { value: `${s.meanReprojPx.toFixed(2)} px`, label: tk('house.proc.kpi.reproj') },
+  ];
+  if (s.gsdCm !== null)
+    items.push({ value: `${s.gsdCm.toFixed(1)} cm`, label: tk('house.proc.kpi.gsd') });
+  const check = s.rmse.find((r) => r.role === 'check');
+  if (check) items.push({ value: residual(check.horizontalM), label: tk('house.proc.kpi.check') });
+  p.add(tiles(items));
+  if (s.rmse.length) {
+    subheading(p, tk('house.proc.rmse'));
+    p.table(
+      tableMaker('grid proc-rmse', [
+        tk('house.proc.col.points'),
+        tk('house.proc.col.n'),
+        tk('house.proc.col.h'),
+        tk('house.proc.col.v'),
+        tk('house.proc.col.target'),
+      ]),
+      s.rmse.map((r) =>
+        row([
+          txt(tk(`house.proc.role.${r.role}`)),
+          esc(num(r.n)),
+          esc(residual(r.horizontalM)),
+          esc(residual(r.verticalM)),
+          txt(
+            r.verdict && r.targetHorizontalM !== null && r.targetVerticalM !== null
+              ? tk(r.verdict === 'within' ? 'house.proc.within' : 'house.proc.over', {
+                  h: residual(r.targetHorizontalM),
+                  v: residual(r.targetVerticalM),
+                })
+              : tk('house.proc.noTarget'),
+          ),
+        ]),
+      ),
+    );
+  }
+  if (s.points.length) {
+    subheading(p, tk('house.proc.points'));
+    p.table(
+      tableMaker('grid proc-points', [
+        tk('house.proc.col.point'),
+        tk('house.proc.col.role'),
+        tk('house.proc.col.dx'),
+        tk('house.proc.col.dy'),
+        tk('house.proc.col.dz'),
+        tk('house.proc.col.horiz'),
+        tk('house.proc.col.reproj'),
+        tk('house.proc.col.marks'),
+      ]),
+      s.points.map((x) =>
+        row(
+          [
+            `<b>${esc(x.id)}</b>`,
+            txt(
+              tk(
+                x.role === 'control' && x.usedInAdjustment === false
+                  ? 'house.proc.short.left'
+                  : `house.proc.short.${x.role}`,
+              ),
+            ),
+            esc(residual(x.dxM)),
+            esc(residual(x.dyM)),
+            esc(residual(x.dzM)),
+            esc(residual(x.horizontalM)),
+            esc(`${x.reprojPx.toFixed(2)} px`),
+            esc(num(x.marks)),
+          ],
+          x.flagged ? 'flag' : '',
+        ),
+      ),
+    );
+  }
+  if (s.cameraResiduals) {
+    const c = s.cameraResiduals;
+    p.add(
+      el(
+        `<p class="caption">${txt(
+          tk('house.proc.cameras', {
+            median: residual(c.medianM),
+            max: residual(c.maxM),
+            h: residual(c.rmseHorizontalM),
+            v: residual(c.rmseVerticalM),
+          }),
+        )}</p>`,
+      ),
+    );
+  }
+  if (s.warnings.length) {
+    subheading(p, tk('house.proc.warnings'));
+    for (const w of s.warnings) p.add(el(`<p class="nar warnline">${txt(w)}</p>`));
+  }
+  const map = overlapSvg(s.footprints);
+  if (map) {
+    subheading(p, tk('house.proc.overlapTitle'));
+    p.add(el(`<figure class="chartfig">${map}</figure>`));
+    p.add(el(`<p class="caption">${txt(tk('house.proc.overlap'))}</p>`));
   }
 }
 

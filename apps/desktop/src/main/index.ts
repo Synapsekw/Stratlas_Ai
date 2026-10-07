@@ -88,7 +88,12 @@ import { startSync } from './sync/electron';
 import { registerTeamServerIpc, teamServers } from './teamServer';
 import { globeProjectReader, registerGlobeIpc } from './globe';
 import { registerRasterPacksIpc } from './packs/raster';
-import { nodePhotoSystem, photoJobEnv, registerPhotogrammetryIpc } from './photogrammetry';
+import {
+  latestAccuracyRun,
+  nodePhotoSystem,
+  photoJobEnv,
+  registerPhotogrammetryIpc,
+} from './photogrammetry';
 import { registerTilesetsIpc } from './tilesets';
 import { createTestVault, useTestVault } from './testVault';
 import { importLogo, removeLogo } from './branding';
@@ -506,8 +511,12 @@ const exportJobs = createExportJobs({
           : null,
       signoff:
         args.kind === 'house' ? await houseSignOff(args.projectId, args.issueIds) : undefined,
+      // M10: the latest finished processing run (house section, accuracy report PDF)
+      processingRun:
+        args.kind === 'register' ? null : await latestAccuracyRun(registry, args.projectId),
     });
   },
+  processingRun: (projectId) => latestAccuracyRun(registry, projectId),
   emit: emitExportProgress,
 });
 

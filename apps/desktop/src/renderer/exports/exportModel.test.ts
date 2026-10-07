@@ -35,6 +35,7 @@ describe('export actions', () => {
       'masks-zip',
       'report-pdf',
       'house-pdf',
+      'photo-report-pdf',
       'snapshot',
     ]);
   });
@@ -61,6 +62,9 @@ describe('export actions', () => {
       '12 mask files saved to C:/x/m.zip',
     );
     expect(doneMessage('snapshot', { path: 'C:/x/v.png' })).toBe('Saved to C:/x/v.png');
+    expect(doneMessage('photo-report-pdf', { path: 'C:/x/a.pdf', count: 3 })).toBe(
+      'Saved to C:/x/a.pdf',
+    );
   });
 });
 

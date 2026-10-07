@@ -34,19 +34,24 @@ export interface ExportDeps {
     progress: (p: ExportProgress) => void,
     signal: AbortSignal,
   ) => Promise<ExportResult>;
-  /** Render and print the issue register report (`report-pdf`) or the house report (`house-pdf`). */
+  /**
+   * Render and print the issue register report (`report-pdf`), the house report (`house-pdf`)
+   * or the latest processing run's accuracy report (`photo-report-pdf`, M10).
+   */
   printReport: (
     args: {
       projectId: string;
       root: string;
       outPath: string;
       issueIds?: string[] | undefined;
-      kind: 'register' | 'house';
+      kind: 'register' | 'house' | 'processing';
     },
     progress: (p: ExportProgress) => void,
     signal: AbortSignal,
   ) => Promise<ExportResult>;
   emit: (event: IpcEvent<'export:progress'>) => void;
+  /** M10: the project's latest finished processing run with an accuracy report, or null. */
+  processingRun?: (projectId: string) => Promise<string | null>;
   /** M9 T1: `audit-csv` and `audit-json` through the journal's audit export. */
   audit?: (
     projectId: string,
@@ -104,6 +109,15 @@ export function createExportJobs(deps: ExportDeps): ExportJobs {
     req: IpcRequest<'export:run'>,
     root: string,
   ): Promise<IpcResponse<'export:run'>> {
+    if (
+      req.format === 'photo-report-pdf' &&
+      ((await deps.processingRun?.(req.projectId)) ?? null) === null
+    )
+      return {
+        ok: false,
+        error:
+          'This project has no finished processing run with an accuracy report. Process photos first.',
+      };
     const name = defaultExportName(await deps.projectName(root), req.format);
     const outPath = await deps.chooseSavePath(
       join(deps.downloadsDir, name),
@@ -117,14 +131,21 @@ export function createExportJobs(deps: ExportDeps): ExportJobs {
     };
     try {
       const r =
-        req.format === 'report-pdf' || req.format === 'house-pdf'
+        req.format === 'report-pdf' ||
+        req.format === 'house-pdf' ||
+        req.format === 'photo-report-pdf'
           ? await deps.printReport(
               {
                 projectId: req.projectId,
                 root,
                 outPath,
                 issueIds: req.issueIds,
-                kind: req.format === 'house-pdf' ? 'house' : 'register',
+                kind:
+                  req.format === 'house-pdf'
+                    ? 'house'
+                    : req.format === 'photo-report-pdf'
+                      ? 'processing'
+                      : 'register',
               },
               progress,
               ac.signal,
