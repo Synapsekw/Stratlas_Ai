@@ -1,8 +1,13 @@
 name: nightly installers
 
 # Builds installers for Windows (NSIS, portable, Store MSIX) and macOS (dmg, zip).
-# Signing and notarisation switch on only when the matching secrets exist; without them the
-# artifacts are unsigned test builds. See docs/release/README.md for every variable.
+#
+# The nightly NEVER signs or notarises, even when signing secrets exist: it reads none of them,
+# and STRATLAS_NO_SIGNING=1 makes tools/release/brand-config.mjs drop any signing variable that
+# might still reach it. Reason: a cloud HSM plan has a yearly signature quota (DigiCert KeyLocker:
+# 1,000 a year; one Windows build uses 5), which a nightly would spend in a few months. Only
+# release.yml, for a v* tag, signs. The artifacts are unsigned (Windows) or ad-hoc signed (macOS)
+# test builds. See docs/release/SECRETS.md.
 
 on:
   schedule:
@@ -18,6 +23,8 @@ permissions:
 
 env:
   COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+  # Never sign here (see the top of this file). Do not add signing secrets to this workflow.
+  STRATLAS_NO_SIGNING: '1'
 
 jobs:
   installers:
@@ -36,28 +43,11 @@ jobs:
       run:
         shell: bash
     env:
-      # Windows: .pfx (base64 or path), or Azure Artifact Signing, or a cloud HSM command.
-      WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-      WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-      WIN_SIGN_COMMAND: ${{ vars.WIN_SIGN_COMMAND }}
-      AZURE_SIGN_ENDPOINT: ${{ vars.AZURE_SIGN_ENDPOINT || secrets.AZURE_SIGN_ENDPOINT }}
-      AZURE_SIGN_ACCOUNT: ${{ vars.AZURE_SIGN_ACCOUNT || secrets.AZURE_SIGN_ACCOUNT }}
-      AZURE_SIGN_PROFILE: ${{ vars.AZURE_SIGN_PROFILE || secrets.AZURE_SIGN_PROFILE }}
-      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-      # Microsoft Store identity from Partner Center.
+      # No signing secrets or variables (Windows or macOS) on purpose: see the top of this file.
+      # Microsoft Store identity from Partner Center (public values, not signing).
       STORE_IDENTITY_NAME: ${{ vars.STORE_IDENTITY_NAME }}
       STORE_PUBLISHER: ${{ vars.STORE_PUBLISHER }}
       STORE_PUBLISHER_DISPLAY_NAME: ${{ vars.STORE_PUBLISHER_DISPLAY_NAME }}
-      # macOS: Developer ID Application certificate (.p12, base64) and notarisation API key.
-      CSC_LINK: ${{ matrix.os == 'macos-latest' && (secrets.MAC_CSC_LINK || secrets.CSC_LINK) || '' }}
-      CSC_KEY_PASSWORD: ${{ matrix.os == 'macos-latest' && (secrets.MAC_CSC_KEY_PASSWORD || secrets.CSC_KEY_PASSWORD) || '' }}
-      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - uses: actions/checkout@v5
 
@@ -87,16 +77,13 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Write the App Store Connect API key
-        if: runner.os == 'macOS'
-        env:
-          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+      # Fails the nightly if anything would sign, so a later edit cannot spend the quota unnoticed.
+      - name: Check that nothing signs
         run: |
-          if [ -n "$APPLE_API_KEY_P8" ]; then
-            key="$RUNNER_TEMP/AuthKey.p8"
-            printf '%s' "$APPLE_API_KEY_P8" > "$key"
-            echo "APPLE_API_KEY=$key" >> "$GITHUB_ENV"
-          fi
+          summary="$(node tools/release/brand-config.mjs --summary)"
+          echo "$summary"
+          node tools/release/brand-config.mjs --route
+          node -e 'const s = JSON.parse(process.argv[1]); if (s.win !== "unsigned" || s.mac !== "ad-hoc") { console.error("nightly must not sign"); process.exit(1); }' "$summary"
 
       # dist builds the demo project (tools/demo/build-demo.mjs): ffmpeg for its video and the
       # pipeline Python for its stockpile and road parts, then the client data check.

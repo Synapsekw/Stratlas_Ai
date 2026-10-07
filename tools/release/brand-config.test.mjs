@@ -1,10 +1,13 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+  baseConfigPath,
   effectiveConfig,
   isStoreBuild,
   macIntegration,
   macSigning,
   storeBuildEnv,
+  windowsPublisher,
   windowsSigning,
 } from './brand-config.mjs';
 
@@ -62,7 +65,17 @@ describe('Store builds', () => {
   });
 
   it('drop every Windows signing switch, so the MSIX stays unsigned', () => {
-    const env = storeBuildEnv({ ...azure, WIN_CSC_LINK: 'x', WIN_SIGN_COMMAND: 'y', PATH: '/bin' });
+    const env = storeBuildEnv({
+      ...azure,
+      WIN_CSC_LINK: 'x',
+      WIN_SIGN_COMMAND: 'y',
+      SM_HOST: 'h',
+      SM_API_KEY: 'k',
+      SM_CLIENT_CERT_FILE: 'c.p12',
+      SM_CLIENT_CERT_PASSWORD: 'p',
+      SM_CODE_SIGNING_CERT_SHA1_HASH: 'a'.repeat(40),
+      PATH: '/bin',
+    });
     expect(windowsSigning(env).mode).toBe('unsigned');
     expect(env.PATH).toBe('/bin');
   });
@@ -125,7 +138,12 @@ describe('macIntegration', () => {
 describe('effectiveConfig', () => {
   it('carries the Store identity, the .aio association and the URL scheme', () => {
     const { config, summary } = effectiveConfig({}, new Date('2026-10-05'));
-    expect(summary).toEqual({ win: 'unsigned', mac: 'ad-hoc', storePlaceholder: false });
+    expect(summary).toEqual({
+      win: 'unsigned',
+      mac: 'ad-hoc',
+      storePlaceholder: false,
+      winPublisher: 'Synapse Solutions',
+    });
     expect(config.appx.identityName).toBe('SynapseSolutions.Stratlas');
     expect(config.appx.publisher).toMatch(/^CN=/);
     expect(config.fileAssociations.map((f) => f.ext)).toEqual(['aio', 'aiosync', 'aioid']);
@@ -138,5 +156,49 @@ describe('effectiveConfig', () => {
     const { summary } = effectiveConfig({ WIN_CSC_LINK: '', CSC_LINK: '', APPLE_ID: '' });
     expect(summary.win).toBe('unsigned');
     expect(summary.mac).toBe('ad-hoc');
+  });
+
+  it('signs nothing with STRATLAS_NO_SIGNING=1, whatever secrets exist', () => {
+    const env = {
+      STRATLAS_NO_SIGNING: '1',
+      WIN_CSC_LINK: 'pfx',
+      CSC_LINK: 'p12',
+      APPLE_ID: 'dev@example.com',
+      APPLE_APP_SPECIFIC_PASSWORD: 'pw',
+      APPLE_TEAM_ID: 'TEAM123456',
+    };
+    const { config, summary } = effectiveConfig(env);
+    expect(summary.win).toBe('unsigned');
+    expect(summary.mac).toBe('ad-hoc');
+    expect(config.win).toEqual({});
+  });
+
+  it('reports WIN_PUBLISHER_NAME as the publisher to check', () => {
+    const { summary } = effectiveConfig({ WIN_PUBLISHER_NAME: 'Synapse Solutions Company W.L.L.' });
+    expect(summary.winPublisher).toBe('Synapse Solutions Company W.L.L.');
+  });
+});
+
+describe('windowsPublisher', () => {
+  const brand = { company: 'Synapse Solutions' };
+  it('prefers WIN_PUBLISHER_NAME, then signing.windowsPublisher, then the company', () => {
+    expect(
+      windowsPublisher(
+        { WIN_PUBLISHER_NAME: 'A' },
+        { ...brand, signing: { windowsPublisher: 'B' } },
+      ),
+    ).toBe('A');
+    expect(windowsPublisher({}, { ...brand, signing: { windowsPublisher: 'B' } })).toBe('B');
+    expect(windowsPublisher({}, brand)).toBe('Synapse Solutions');
+  });
+});
+
+describe('the signing hash setting in electron-builder.yml', () => {
+  const yml = readFileSync(baseConfigPath, 'utf8');
+  it('signs with SHA-256 only, one signature per file', () => {
+    expect(yml).toMatch(/^\s+signingHashAlgorithms: \[sha256\]$/m);
+  });
+  it('signs only .exe files (no signExts), so DLLs and .node addons are not re-signed', () => {
+    expect(yml).not.toMatch(/^\s*signExts:/m);
   });
 });

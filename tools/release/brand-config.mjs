@@ -10,6 +10,8 @@
 // the yml. Renaming the product means editing packages/brand/brand.json only.
 //
 // Usage: node tools/release/brand-config.mjs [--print]
+//        node tools/release/brand-config.mjs --summary   signing modes as JSON, writes nothing
+//        node tools/release/brand-config.mjs --route     the Windows signing route, writes nothing
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, relative } from 'node:path';
@@ -23,9 +25,46 @@ export const effectiveConfigPath = join(appDir, 'build/generated/electron-builde
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'));
 const has = (env, ...keys) => keys.every((k) => typeof env[k] === 'string' && env[k].length > 0);
 
+/** Absolute path of the electron-builder sign hook (electron-builder rejects relative hooks). */
+const signHook = join(root, 'tools/release/win-sign.mjs');
+
 /**
- * Windows signing mode, first match wins: Azure Trusted Signing, a .pfx, a cloud HSM command.
- * `company` is the default Azure publisher name.
+ * Variables of each Windows signing route. A build uses exactly one route: `windowsRouteEnv`
+ * removes the variables of the others before electron-builder runs, so it cannot, for example,
+ * also import a .pfx from WIN_CSC_LINK while the KeyLocker hook signs.
+ */
+export const WINDOWS_ROUTE_VARS = {
+  azure: ['AZURE_SIGN_ENDPOINT', 'AZURE_SIGN_ACCOUNT', 'AZURE_SIGN_PROFILE'],
+  keylocker: [
+    'SM_HOST',
+    'SM_API_KEY',
+    'SM_CLIENT_CERT_FILE',
+    'SM_CLIENT_CERT_FILE_B64',
+    'SM_CLIENT_CERT_PASSWORD',
+    'SM_CODE_SIGNING_CERT_SHA1_HASH',
+  ],
+  pfx: ['WIN_CSC_LINK', 'WIN_CSC_KEY_PASSWORD', 'CSC_LINK', 'CSC_KEY_PASSWORD'],
+  command: ['WIN_SIGN_COMMAND'],
+};
+
+/** What each route is, for logs. Never includes a value. */
+export const WINDOWS_ROUTE_LABELS = {
+  azure: 'Azure Artifact Signing (electron-builder azureSignOptions)',
+  keylocker:
+    'DigiCert KeyLocker (signtool /sha1 through the DigiCert KSP, tools/release/win-sign.mjs)',
+  pfx: 'certificate file (.pfx from WIN_CSC_LINK)',
+  command: 'custom WIN_SIGN_COMMAND (tools/release/win-sign.mjs)',
+  unsigned: 'none: unsigned test build',
+};
+
+/** True when DigiCert KeyLocker credentials are complete (the client certificate as a file or base64). */
+const hasKeyLocker = (env) =>
+  has(env, 'SM_HOST', 'SM_API_KEY', 'SM_CLIENT_CERT_PASSWORD', 'SM_CODE_SIGNING_CERT_SHA1_HASH') &&
+  (has(env, 'SM_CLIENT_CERT_FILE') || has(env, 'SM_CLIENT_CERT_FILE_B64'));
+
+/**
+ * Windows signing route, first match wins: Azure Artifact Signing, DigiCert KeyLocker, a .pfx,
+ * a custom cloud HSM command. `company` is the default Azure publisher name.
  */
 export function windowsSigning(env, company = '') {
   if (
@@ -49,32 +88,93 @@ export function windowsSigning(env, company = '') {
       },
     };
   }
+  if (hasKeyLocker(env)) {
+    // DigiCert KeyLocker: release.yml installs the KeyLocker tools, writes the client certificate
+    // to a temporary .p12 (SM_CLIENT_CERT_FILE) and syncs the certificate into the user store;
+    // the hook then runs signtool /sha1 <SM_CODE_SIGNING_CERT_SHA1_HASH> through DigiCert's KSP.
+    return { mode: 'keylocker', win: { signtoolOptions: { sign: signHook } } };
+  }
   if (has(env, 'WIN_CSC_LINK') || has(env, 'CSC_LINK')) {
     // electron-builder reads WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD (or CSC_*) itself.
     return { mode: 'pfx', win: {} };
   }
   if (has(env, 'WIN_SIGN_COMMAND')) {
-    // Cloud HSM (DigiCert KeyLocker, SSL.com eSigner, signtool with a KSP): run a command
-    // template per file. Absolute path: electron-builder rejects relative hooks outside apps/desktop.
-    return {
-      mode: 'command',
-      win: { signtoolOptions: { sign: join(root, 'tools/release/win-sign.mjs') } },
-    };
+    // Any other cloud HSM (SSL.com eSigner CodeSignTool, smctl sign, ...): a command template
+    // run per file by the hook.
+    return { mode: 'command', win: { signtoolOptions: { sign: signHook } } };
   }
   return { mode: 'unsigned', win: {} };
 }
 
+/** One log line naming the Windows route; safe to print (names only, no values). */
+export const describeWindowsRoute = (mode) =>
+  `Windows signing route: ${mode} (${WINDOWS_ROUTE_LABELS[mode] ?? 'unknown'})`;
+
 /** Variables that switch Windows signing on; a Store build drops them (`storeBuildEnv`). */
-export const WINDOWS_SIGNING_VARS = [
-  'WIN_CSC_LINK',
-  'WIN_CSC_KEY_PASSWORD',
+export const WINDOWS_SIGNING_VARS = Object.values(WINDOWS_ROUTE_VARS).flat();
+
+/** Variables that switch macOS signing or notarisation on. */
+export const MAC_SIGNING_VARS = [
   'CSC_LINK',
   'CSC_KEY_PASSWORD',
-  'AZURE_SIGN_ENDPOINT',
-  'AZURE_SIGN_ACCOUNT',
-  'AZURE_SIGN_PROFILE',
-  'WIN_SIGN_COMMAND',
+  'CSC_NAME',
+  'MAC_CSC_LINK',
+  'MAC_CSC_KEY_PASSWORD',
+  'APPLE_ID',
+  'APPLE_APP_SPECIFIC_PASSWORD',
+  'APPLE_TEAM_ID',
+  'APPLE_API_KEY',
+  'APPLE_API_KEY_ID',
+  'APPLE_API_ISSUER',
+  'APPLE_KEYCHAIN_PROFILE',
 ];
+
+const without = (env, keys) =>
+  Object.fromEntries(Object.entries(env).filter(([k]) => !keys.includes(k)));
+
+/**
+ * STRATLAS_NO_SIGNING=1 turns every signing route off, whatever secrets the environment holds.
+ * nightly.yml always sets it, and release.yml sets it for any run that is not a `v*` tag: a cloud
+ * HSM plan has a yearly signature quota (DigiCert KeyLocker: 1,000), and only releases may use it.
+ */
+export const signingDisabled = (env) =>
+  env.STRATLAS_NO_SIGNING === '1' || env.STRATLAS_NO_SIGNING === 'true';
+
+/** The environment with every Windows and macOS signing switch and credential removed. */
+export function unsignedBuildEnv(env) {
+  return without(env, [
+    ...WINDOWS_SIGNING_VARS,
+    ...MAC_SIGNING_VARS,
+    'AZURE_TENANT_ID',
+    'AZURE_CLIENT_ID',
+    'AZURE_CLIENT_SECRET',
+  ]);
+}
+
+/** The environment with the variables of every Windows route except `mode` removed. */
+export function windowsRouteEnv(env, mode) {
+  const others = Object.entries(WINDOWS_ROUTE_VARS)
+    .filter(([route]) => route !== mode)
+    .flatMap(([, keys]) => keys);
+  return without(env, others);
+}
+
+/** True when electron-builder arguments build for Windows. */
+export const isWindowsBuild = (args) =>
+  args.some((a) => a === '--win' || a === '-w' || a === '--windows');
+
+/**
+ * The environment electron-builder sees: empty values dropped (CI maps absent secrets to ''),
+ * everything removed when signing is disabled, nothing for a Store package, and for a Windows
+ * build only the variables of the one route that `windowsSigning` picks.
+ */
+export function builderEnv(rawEnv, builderArgs) {
+  let env = Object.fromEntries(Object.entries(rawEnv).filter(([, v]) => v != null && v !== ''));
+  if (signingDisabled(env)) env = unsignedBuildEnv(env);
+  if (isStoreBuild(builderArgs)) return storeBuildEnv(env);
+  if (isWindowsBuild(builderArgs)) env = windowsRouteEnv(env, windowsSigning(env).mode);
+  return env;
+}
 
 /**
  * True when electron-builder arguments ask for a Microsoft Store package (`appx` / `msix`).
@@ -171,7 +271,10 @@ export function macIntegration(brand) {
 
 export function effectiveConfig(rawEnv = process.env, now = new Date()) {
   // CI maps absent secrets and variables to empty strings; treat those as unset.
-  const env = Object.fromEntries(Object.entries(rawEnv).filter(([, v]) => v != null && v !== ''));
+  const present = Object.fromEntries(
+    Object.entries(rawEnv).filter(([, v]) => v != null && v !== ''),
+  );
+  const env = signingDisabled(present) ? unsignedBuildEnv(present) : present;
   const brand = readJson(join(root, 'packages/brand/brand.json'));
   const base = readFileSync(baseConfigPath, 'utf8');
   if (base.includes(brand.productName)) {
@@ -240,7 +343,22 @@ export function effectiveConfig(rawEnv = process.env, now = new Date()) {
     mac: { ...mac.mac, extendInfo: macOs.extendInfo },
     dmg: { title: `${brand.productName} \${version}` },
   };
-  return { config, summary: { win: win.mode, mac: mac.mode, storePlaceholder: store.placeholder } };
+  const summary = {
+    win: win.mode,
+    mac: mac.mode,
+    storePlaceholder: store.placeholder,
+    // The certificate subject CN the release checks every signed exe against (release.yml).
+    winPublisher: windowsPublisher(env, brand),
+  };
+  return { config, summary };
+}
+
+/**
+ * The publisher a signed Windows build must carry: WIN_PUBLISHER_NAME (the certificate subject
+ * CN), else `signing.windowsPublisher` from brand.json, else the company.
+ */
+export function windowsPublisher(env, brand) {
+  return env.WIN_PUBLISHER_NAME || brand.signing?.windowsPublisher || brand.company;
 }
 
 export function writeEffectiveConfig(env = process.env) {
@@ -249,7 +367,8 @@ export function writeEffectiveConfig(env = process.env) {
   writeFileSync(effectiveConfigPath, `${JSON.stringify(config, null, 2)}\n`);
   const log = (line) => process.stdout.write(`[brand-config] ${line}\n`);
   log(`${config.productName} ${config.appId}, Electron ${config.electronVersion}`);
-  log(`Windows signing: ${summary.win}; macOS: ${summary.mac}`);
+  log(describeWindowsRoute(summary.win));
+  log(`macOS signing: ${summary.mac}`);
   if (summary.storePlaceholder) {
     log('Store identity: placeholders (set STORE_IDENTITY_NAME and STORE_PUBLISHER to submit)');
   }
@@ -263,6 +382,12 @@ if (
 ) {
   // Signing modes as JSON for CI steps (`{"win":"azure","mac":"ad-hoc",...}`); writes nothing.
   process.stdout.write(`${JSON.stringify(effectiveConfig().summary)}\n`);
+} else if (
+  import.meta.url === pathToFileURL(process.argv[1] ?? '').href &&
+  process.argv.includes('--route')
+) {
+  // Dry run of the route choice: names the Windows route this environment would use, no values.
+  process.stdout.write(`${describeWindowsRoute(effectiveConfig().summary.win)}\n`);
 } else if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const { config } = writeEffectiveConfig();
   if (process.argv.includes('--print'))

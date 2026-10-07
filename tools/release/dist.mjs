@@ -8,7 +8,14 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { appDir, isStoreBuild, storeBuildEnv, writeEffectiveConfig } from './brand-config.mjs';
+import {
+  appDir,
+  builderEnv,
+  isStoreBuild,
+  isWindowsBuild,
+  windowsSigning,
+  writeEffectiveConfig,
+} from './brand-config.mjs';
 import { MAC_NATIVE_HINT, missingMacNativePackages } from './mac-native.mjs';
 
 const builderArgs = process.argv.slice(2);
@@ -24,10 +31,18 @@ const demo = spawnSync(
 );
 if (demo.status !== 0) process.exit(demo.status ?? 1);
 
-// CI maps absent secrets to empty strings; electron-builder must see them as unset.
-const presentEnv = Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== ''));
-// Microsoft signs Store packages; our certificate never touches the MSIX.
-const env = isStoreBuild(builderArgs) ? storeBuildEnv(presentEnv) : presentEnv;
+// Empty CI values dropped; with STRATLAS_NO_SIGNING=1 no signing variable at all; for the Store
+// package none either (Microsoft signs it); for a Windows build only the chosen route's variables.
+const env = builderEnv(process.env, builderArgs);
+// release.yml passes the route its "Signing mode" step reported: the build must use that one.
+const expected = process.env.EXPECTED_WIN_SIGNING;
+if (expected && isWindowsBuild(builderArgs) && !isStoreBuild(builderArgs)) {
+  const actual = windowsSigning(env).mode;
+  if (actual !== expected) {
+    process.stderr.write(`dist: Windows signing route is ${actual}, expected ${expected}.\n`);
+    process.exit(1);
+  }
+}
 if (builderArgs.some((a) => a === '--mac' || a === '-m')) {
   // The universal app must carry the keyring addon for both architectures.
   const fromApp = createRequire(join(appDir, 'package.json'));

@@ -7,6 +7,11 @@ name: release
 # succeed and upload unsigned (Windows) or ad-hoc signed (macOS) test builds, so forks and a
 # repository without certificates stay green. Artifacts only: nothing is published (the Store
 # submission is manual, docs/release/STORE-SUBMISSION.md). Secret names: docs/release/SECRETS.md.
+#
+# Only a real release signs: a run for a `v*` tag (pushed, or "Run workflow" with the tag
+# chosen). Any other run, such as "Run workflow" on a branch, sets STRATLAS_NO_SIGNING and builds
+# unsigned, because a cloud HSM plan has a yearly signature quota (DigiCert KeyLocker: 1,000; a
+# release uses 5, SECRETS.md). nightly.yml never signs.
 
 on:
   push:
@@ -22,6 +27,9 @@ permissions:
 
 env:
   COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+  # '1' unless this run builds a v* tag: tools/release/brand-config.mjs then drops every signing
+  # variable (Windows and macOS) before electron-builder runs.
+  STRATLAS_NO_SIGNING: ${{ !(github.ref_type == 'tag' && startsWith(github.ref_name, 'v')) && '1' || '0' }}
 
 jobs:
   package-win:
@@ -31,19 +39,15 @@ jobs:
     defaults:
       run:
         shell: bash
+    # Routes, first match wins (windowsSigning in tools/release/brand-config.mjs): Azure Artifact
+    # Signing, DigiCert KeyLocker, a .pfx, a custom WIN_SIGN_COMMAND. Exactly one is used: the
+    # build drops the variables of the others, and the "Signing mode" step logs which one.
+    # Only public settings live here. Signing secrets go to the steps that need them (route choice,
+    # KeyLocker set-up, build), never to `pnpm install`, whose package scripts would see them.
     env:
-      # Azure Trusted Signing (preferred). Account values may be repository variables or secrets.
-      AZURE_SIGN_ENDPOINT: ${{ vars.AZURE_SIGN_ENDPOINT || secrets.AZURE_SIGN_ENDPOINT }}
-      AZURE_SIGN_ACCOUNT: ${{ vars.AZURE_SIGN_ACCOUNT || secrets.AZURE_SIGN_ACCOUNT }}
-      AZURE_SIGN_PROFILE: ${{ vars.AZURE_SIGN_PROFILE || secrets.AZURE_SIGN_PROFILE }}
+      # Certificate subject CN; every signed exe is checked against it after the build.
       WIN_PUBLISHER_NAME: ${{ vars.WIN_PUBLISHER_NAME }}
-      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-      # Or an OV/EV certificate as a .pfx (base64), used when Azure is not configured.
-      WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-      WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-      # Or a cloud HSM command template (its client must be installed in a step of its own).
+      # A custom cloud HSM command template (for example SSL.com eSigner, SECRETS.md).
       WIN_SIGN_COMMAND: ${{ vars.WIN_SIGN_COMMAND }}
     steps:
       - uses: actions/checkout@v5
@@ -68,25 +72,154 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Picks the route from which values exist and prints it (names only, never values).
       - name: Signing mode
         id: mode
+        env:
+          # Route A: Azure Artifact Signing. Account values may be repository variables or secrets.
+          AZURE_SIGN_ENDPOINT: ${{ vars.AZURE_SIGN_ENDPOINT || secrets.AZURE_SIGN_ENDPOINT }}
+          AZURE_SIGN_ACCOUNT: ${{ vars.AZURE_SIGN_ACCOUNT || secrets.AZURE_SIGN_ACCOUNT }}
+          AZURE_SIGN_PROFILE: ${{ vars.AZURE_SIGN_PROFILE || secrets.AZURE_SIGN_PROFILE }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          # Route B: DigiCert KeyLocker.
+          SM_HOST: ${{ secrets.SM_HOST }}
+          SM_API_KEY: ${{ secrets.SM_API_KEY }}
+          SM_CLIENT_CERT_FILE_B64: ${{ secrets.SM_CLIENT_CERT_FILE_B64 }}
+          SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
+          SM_CODE_SIGNING_CERT_SHA1_HASH: ${{ secrets.SM_CODE_SIGNING_CERT_SHA1_HASH }}
+          # Route C: a certificate file (.pfx, base64).
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
         run: |
           summary="$(node tools/release/brand-config.mjs --summary)"
           echo "$summary"
-          echo "win=$(node -p 'JSON.parse(process.argv[1]).win' "$summary")" >> "$GITHUB_OUTPUT"
+          win="$(node -p 'JSON.parse(process.argv[1]).win' "$summary")"
+          node tools/release/brand-config.mjs --route
+          if [ "$STRATLAS_NO_SIGNING" = "1" ]; then
+            echo "Not a v* tag: signing is off for this run (STRATLAS_NO_SIGNING)."
+          fi
+          echo "win=$win" >> "$GITHUB_OUTPUT"
+          echo "publisher=$(node -p 'JSON.parse(process.argv[1]).winPublisher' "$summary")" >> "$GITHUB_OUTPUT"
 
-      - name: Build NSIS installer and portable exe (bundle check and packaged smoke test included)
-        run: pnpm -F @aio/desktop dist:win
-
-      - name: Verify Authenticode signatures
+      # signtool.exe from the Windows SDK on the runner, for KeyLocker signing and the check below.
+      - name: Locate signtool
         if: steps.mode.outputs.win != 'unsigned'
         shell: pwsh
         run: |
-          $sigs = Get-ChildItem apps/desktop/dist/*.exe, apps/desktop/dist/win-unpacked/*.exe |
-            Get-AuthenticodeSignature
-          $sigs | Format-Table Status, @{ n = 'Signer'; e = { $_.SignerCertificate.Subject } }, Path -AutoSize
-          $bad = $sigs | Where-Object Status -ne 'Valid'
-          if ($bad) { throw "Not validly signed: $($bad.Path -join ', ')" }
+          $sdk = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' -ErrorAction SilentlyContinue |
+            Sort-Object { try { [version]$_.Directory.Parent.Name } catch { [version]'0.0' } } |
+            Select-Object -Last 1
+          $kit = Get-Item 'C:\Program Files (x86)\Windows Kits\10\App Certification Kit\signtool.exe' -ErrorAction SilentlyContinue
+          $signtool = if ($sdk) { $sdk.FullName } elseif ($kit) { $kit.FullName } else { throw 'signtool.exe not found' }
+          Write-Host "signtool: $signtool"
+          "SIGNTOOL_PATH=$signtool" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      # Route B, DigiCert KeyLocker, as DigiCert documents it for GitHub Actions:
+      # https://docs.digicert.com/en/digicert-keylocker/ci-cd-integrations-and-deployment-pipelines/scripts/github/scripts-for-signing-using-ksp-library-on-github.html
+      # (client certificate decoded to a .p12, KeyLocker tools msi, `smctl windows ksp list`,
+      # `smctl windows certsync`; signing is `signtool sign /sha1 <thumbprint> ...`, see
+      # tools/release/win-sign.mjs). Tool set-up and KSP:
+      # https://knowledge.digicert.com/tutorials/configure-keylocker-for-microsoft-signtool
+      # Nothing here prints a secret; the normalised thumbprint is masked as well.
+      - name: Set up DigiCert KeyLocker
+        if: steps.mode.outputs.win == 'keylocker'
+        shell: pwsh
+        env:
+          SM_HOST: ${{ secrets.SM_HOST }}
+          SM_API_KEY: ${{ secrets.SM_API_KEY }}
+          SM_CLIENT_CERT_FILE_B64: ${{ secrets.SM_CLIENT_CERT_FILE_B64 }}
+          SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
+          SM_CODE_SIGNING_CERT_SHA1_HASH: ${{ secrets.SM_CODE_SIGNING_CERT_SHA1_HASH }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $thumbprint = ($env:SM_CODE_SIGNING_CERT_SHA1_HASH -replace '[\s:]', '').ToUpperInvariant()
+          Write-Host "::add-mask::$thumbprint"
+          if ($thumbprint -notmatch '^[0-9A-F]{40}$') { throw 'SM_CODE_SIGNING_CERT_SHA1_HASH is not a 40-character SHA-1 thumbprint' }
+
+          # The client certificate, decoded into the runner's temp folder; removed by the last step.
+          $p12 = Join-Path $env:RUNNER_TEMP 'keylocker-client.p12'
+          [IO.File]::WriteAllBytes($p12, [Convert]::FromBase64String(($env:SM_CLIENT_CERT_FILE_B64 -replace '\s', '')))
+          "SM_CLIENT_CERT_FILE=$p12" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $env:SM_CLIENT_CERT_FILE = $p12
+
+          # KeyLocker client tools (smctl and the DigiCert KSP).
+          $msi = Join-Path $env:RUNNER_TEMP 'Keylockertools-windows-x64.msi'
+          Invoke-WebRequest -UseBasicParsing -OutFile $msi -Headers @{ 'x-api-key' = $env:SM_API_KEY } `
+            -Uri 'https://one.digicert.com/signingmanager/api-ui/v1/releases/Keylockertools-windows-x64.msi/download'
+          $install = Start-Process msiexec.exe -ArgumentList '/i', "`"$msi`"", '/quiet', '/qn' -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "KeyLocker tools install failed (msiexec $($install.ExitCode))" }
+          $smctl = Get-ChildItem 'C:\Program Files\DigiCert' -Recurse -Filter smctl.exe | Select-Object -First 1
+          if (-not $smctl) { throw 'smctl.exe not found after installing the KeyLocker tools' }
+          $smctl.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+          # The KSP must be registered and the certificate synced into the user store.
+          & $smctl.FullName windows ksp list
+          if ($LASTEXITCODE -ne 0) { throw "smctl windows ksp list failed ($LASTEXITCODE)" }
+          & $smctl.FullName windows certsync
+          if ($LASTEXITCODE -ne 0) { throw "smctl windows certsync failed ($LASTEXITCODE)" }
+          $cert = Get-ChildItem Cert:\CurrentUser\My, Cert:\LocalMachine\My | Where-Object Thumbprint -eq $thumbprint | Select-Object -First 1
+          if (-not $cert) { throw 'The code-signing certificate (SM_CODE_SIGNING_CERT_SHA1_HASH) is not in the store after certsync' }
+          Write-Host "Code-signing certificate: $($cert.Subject), valid until $($cert.NotAfter.ToString('yyyy-MM-dd'))"
+
+      - name: Build NSIS installer and portable exe (bundle check and packaged smoke test included)
+        env:
+          # The route "Signing mode" reported; dist.mjs fails if the build would pick another.
+          EXPECTED_WIN_SIGNING: ${{ steps.mode.outputs.win }}
+          WIN_SIGN_LOG: ${{ runner.temp }}/win-sign.log
+          AZURE_SIGN_ENDPOINT: ${{ vars.AZURE_SIGN_ENDPOINT || secrets.AZURE_SIGN_ENDPOINT }}
+          AZURE_SIGN_ACCOUNT: ${{ vars.AZURE_SIGN_ACCOUNT || secrets.AZURE_SIGN_ACCOUNT }}
+          AZURE_SIGN_PROFILE: ${{ vars.AZURE_SIGN_PROFILE || secrets.AZURE_SIGN_PROFILE }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          # KeyLocker: the KSP reads these; SM_CLIENT_CERT_FILE comes from the set-up step.
+          SM_HOST: ${{ secrets.SM_HOST }}
+          SM_API_KEY: ${{ secrets.SM_API_KEY }}
+          SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
+          SM_CODE_SIGNING_CERT_SHA1_HASH: ${{ secrets.SM_CODE_SIGNING_CERT_SHA1_HASH }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: pnpm -F @aio/desktop dist:win
+
+      # Every exe in the installers and the unpacked app must pass `signtool verify /pa`, carry a
+      # timestamp, and name the publisher: subject CN equal to WIN_PUBLISHER_NAME (default
+      # signing.windowsPublisher in brand.json, else the company), and acceptable to the app's own
+      # update check (ADR 0003). Any failure fails the release.
+      - name: Verify Authenticode signatures and publisher
+        if: steps.mode.outputs.win != 'unsigned'
+        shell: pwsh
+        env:
+          EXPECTED_PUBLISHER: ${{ steps.mode.outputs.publisher }}
+        run: |
+          $brand = Get-Content packages/brand/brand.json -Raw | ConvertFrom-Json
+          $pinned = if ($brand.signing) { $brand.signing.windowsPublisher } else { $null }
+          $files = @(Get-ChildItem apps/desktop/dist/*.exe) + @(Get-ChildItem apps/desktop/dist/win-unpacked -Recurse -Filter *.exe)
+          $problems = @()
+          foreach ($file in $files) {
+            & $env:SIGNTOOL_PATH verify /pa /q $file.FullName
+            if ($LASTEXITCODE -ne 0) { $problems += "$($file.Name): signtool verify /pa failed"; continue }
+            $sig = Get-AuthenticodeSignature -LiteralPath $file.FullName
+            $cn = $sig.SignerCertificate.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
+            $o = if ($sig.SignerCertificate.Subject -match '(?:^|,\s*)O="?([^",]+)') { $Matches[1] } else { '' }
+            Write-Host ("{0,-8} {1}  {2}" -f $sig.Status, $cn, $file.FullName)
+            if ($sig.Status -ne 'Valid') { $problems += "$($file.Name): status $($sig.Status)" }
+            if (-not $sig.TimeStamperCertificate) { $problems += "$($file.Name): no timestamp" }
+            if ($cn -cne $env:EXPECTED_PUBLISHER) { $problems += "$($file.Name): signer CN '$cn' is not WIN_PUBLISHER_NAME '$($env:EXPECTED_PUBLISHER)'" }
+            if ($pinned -and $cn -cne $pinned -and $o -cne $pinned) { $problems += "$($file.Name): signer is not signing.windowsPublisher '$pinned' (brand.json); the app would refuse this update" }
+            if (-not $pinned -and -not $cn.Contains($brand.company) -and -not $o.Contains($brand.company)) { $problems += "$($file.Name): signer CN/O does not name '$($brand.company)'; the app would refuse this update" }
+          }
+          $calls = if (Test-Path "$env:RUNNER_TEMP/win-sign.log") { @(Get-Content "$env:RUNNER_TEMP/win-sign.log").Count } else { 'n/a (signed by electron-builder itself)' }
+          "Windows signing: $($files.Count) exe files signed and verified; sign hook calls: $calls" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          if ($files.Count -eq 0) { throw 'No exe files found to verify' }
+          if ($problems) { $problems | ForEach-Object { Write-Host "::error::$_" }; throw "$($problems.Count) signature problem(s)" }
+
+      # Never leave the decoded client certificate on the runner, whatever happened above.
+      - name: Remove the KeyLocker client certificate
+        if: always()
+        shell: pwsh
+        run: |
+          $p12 = Join-Path $env:RUNNER_TEMP 'keylocker-client.p12'
+          if (Test-Path -LiteralPath $p12) { Remove-Item -LiteralPath $p12 -Force; Write-Host 'Removed the KeyLocker client certificate.' }
 
       - name: Build Microsoft Store package (unsigned; Microsoft signs Store submissions)
         working-directory: apps/desktop
@@ -157,6 +290,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Write the App Store Connect API key
+        if: env.STRATLAS_NO_SIGNING != '1'
         env:
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
         run: |
@@ -171,6 +305,9 @@ jobs:
         run: |
           summary="$(node tools/release/brand-config.mjs --summary)"
           echo "$summary"
+          if [ "$STRATLAS_NO_SIGNING" = "1" ]; then
+            echo "Not a v* tag: signing is off for this run (STRATLAS_NO_SIGNING)."
+          fi
           echo "mac=$(node -p 'JSON.parse(process.argv[1]).mac' "$summary")" >> "$GITHUB_OUTPUT"
 
       - name: Build universal dmg and zip (bundle check and packaged smoke test included)
