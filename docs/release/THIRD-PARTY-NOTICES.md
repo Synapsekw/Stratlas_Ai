@@ -6,7 +6,7 @@ The full licence texts ship with the software: the app lists every package with 
 
 ## Desktop app and Team Server (npm)
 
-141 packages: MIT (101), ISC (12), Apache-2.0 (10), BSD-3-Clause (9), BSD-2-Clause (3), OFL-1.1 (3), (AFL-2.1 OR BSD-3-Clause) (1), (MIT OR Apache-2.0) (1), (MIT OR CC0-1.0) (1).
+142 packages: MIT (101), ISC (12), Apache-2.0 (11), BSD-3-Clause (9), BSD-2-Clause (3), OFL-1.1 (3), (AFL-2.1 OR BSD-3-Clause) (1), (MIT OR Apache-2.0) (1), (MIT OR CC0-1.0) (1).
 
 | Package                               | Version      | Licence                   |
 | ------------------------------------- | ------------ | ------------------------- |
@@ -29,7 +29,7 @@ The full licence texts ship with the software: the app lists every package with 
 | @mapbox/point-geometry                | 1.1.0        | ISC                       |
 | @mapbox/tiny-sdf                      | 2.2.0        | BSD-2-Clause              |
 | @mapbox/unitbezier                    | 1.0.0        | BSD-2-Clause              |
-| @mapbox/vector-tile                   | 3.0.0        | BSD-3-Clause              |
+| @mapbox/vector-tile                   | 2.0.5, 3.0.0 | BSD-3-Clause              |
 | @maplibre/geojson-vt                  | 6.1.1        | ISC                       |
 | @maplibre/maplibre-gl-style-spec      | 26.4.4       | ISC                       |
 | @maplibre/mlt                         | 1.3.0        | (MIT OR Apache-2.0)       |
@@ -46,6 +46,7 @@ The full licence texts ship with the software: the app lists every package with 
 | @types/react                          | 19.3.0       | MIT                       |
 | @vercel/oidc                          | 3.2.0        | Apache-2.0                |
 | @workflow/serde                       | 4.1.0        | Apache-2.0                |
+| 3d-tiles-renderer                     | 0.5.3        | Apache-2.0                |
 | abstract-logging                      | 2.0.1        | MIT                       |
 | adm-zip                               | 0.6.1        | MIT                       |
 | ai                                    | 7.0.127      | Apache-2.0                |
@@ -98,7 +99,7 @@ The full licence texts ship with the software: the app lists every package with 
 | on-exit-leak-free                     | 2.1.2        | MIT                       |
 | onnxruntime-common                    | 1.30.0       | MIT                       |
 | onnxruntime-node                      | 1.30.0       | MIT                       |
-| pbf                                   | 5.1.2        | BSD-3-Clause              |
+| pbf                                   | 4.0.2, 5.1.2 | BSD-3-Clause              |
 | pg                                    | 8.23.1       | MIT                       |
 | pg-cloudflare                         | 1.4.1        | MIT                       |
 | pg-connection-string                  | 2.14.1       | MIT                       |
