@@ -193,6 +193,59 @@ class PointTiles:
         return json.loads(p.read_text("utf-8")) if p.is_file() else {"points": 0, "bounds": None}
 
 
+def write_las_tiles(path: Path, store: PointTiles, shift: np.ndarray, scale: float = 0.001) -> int:
+    """The fused cloud as one LAS 1.4 file (point format 7: colour, classification 1), written
+    tile by tile (only one tile in memory); ``shift`` takes model to project CRS coordinates."""
+    import struct
+    from datetime import UTC, datetime
+
+    info = store.info()
+    if not info.get("bounds"):
+        raise ValueError("The cloud is empty.")
+    lo = np.floor(np.asarray(info["bounds"][0]) + shift)
+    rec = np.dtype(
+        [("xyz", "<i4", 3), ("i", "<u2"), ("ret", "u1"), ("flags", "u1"), ("cls", "u1"), ("user", "u1"),
+         ("angle", "<i2"), ("src", "<u2"), ("t", "<f8"), ("rgb", "<u2", 3)]
+    )  # fmt: skip
+    assert rec.itemsize == 36
+    n = 0
+    mins, maxs = np.full(3, np.inf), np.full(3, -np.inf)
+    tmp = path.with_name(f".{path.name}.tmp")
+    with open(tmp, "wb") as f:
+        f.write(b"\0" * 375)
+        for _, part in store.fused():
+            xyz = part["xyz"] + shift
+            if not len(xyz):
+                continue
+            r = np.zeros(len(xyz), rec)
+            r["xyz"] = np.round((xyz - lo) / scale).astype("<i4")
+            r["ret"], r["cls"] = 0x11, 1
+            r["rgb"] = part["rgb"].astype("<u2") * 257
+            f.write(r.tobytes())
+            real = r["xyz"] * scale + lo
+            mins, maxs = np.minimum(mins, real.min(0)), np.maximum(maxs, real.max(0))
+            n += len(xyz)
+        now = datetime.now(UTC)
+        h = bytearray(375)
+        h[0:4] = b"LASF"
+        struct.pack_into("<H", h, 6, 0x10)
+        h[24], h[25] = 1, 4
+        h[26:34] = b"Stratlas"
+        h[58:72] = b"photo.products"
+        struct.pack_into("<HHHII", h, 90, now.timetuple().tm_yday, now.year, 375, 375, 0)
+        h[104] = 7
+        struct.pack_into("<H", h, 105, 36)
+        struct.pack_into("<3d", h, 131, scale, scale, scale)
+        struct.pack_into("<3d", h, 155, *lo)
+        struct.pack_into("<6d", h, 179, maxs[0], mins[0], maxs[1], mins[1], maxs[2], mins[2])
+        struct.pack_into("<Q", h, 247, n)
+        struct.pack_into("<Q", h, 255, n)  # all first returns
+        f.seek(0)
+        f.write(bytes(h))
+    tmp.replace(path)
+    return n
+
+
 def voxel_mean(
     xyz: np.ndarray, rgb: np.ndarray, nrm: np.ndarray, voxel: float
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:

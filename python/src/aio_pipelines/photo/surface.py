@@ -339,11 +339,13 @@ def read_grid(path: Path, out_shape: tuple[int, int] | None = None) -> np.ndarra
     return np.where(np.ma.getmaskarray(a), np.nan, a.astype(np.float64))
 
 
-def coarse_shape(spec: GridSpec, cell: float, max_cells: int) -> tuple[int, int, float]:
+def coarse_spec(spec: GridSpec, cell: float, max_cells: int) -> GridSpec:
+    """A coarser grid over the same ground (cells of at least ``cell``, at most ``max_cells``)."""
     f = max(1.0, cell / spec.res)
     while (spec.width / f) * (spec.height / f) > max_cells:
         f *= 1.25
-    return max(1, round(spec.height / f)), max(1, round(spec.width / f)), spec.res * f
+    w, h = max(1, round(spec.width / f)), max(1, round(spec.height / f))
+    return GridSpec(spec.x0, spec.y1, spec.res * spec.width / w, w, h)
 
 
 def dtm_grid(
@@ -354,17 +356,30 @@ def dtm_grid(
     epsg: int | None,
     budget: int,
     check: Callable[[], None],
+    ground_tif: Path | None = None,
 ) -> dict[str, Any]:
-    """The SMRF DTM on a coarse grid (cell of 1 m or the DSM's, within the memory budget), then
-    written at the DSM's cell size: ground cells keep the DSM height, others the interpolation."""
+    """The DTM, found on a coarse grid (1 m cells or the DSM's, within the memory budget) and
+    written at the DSM's cell size: cells within 0.5 m of the ground keep the DSM's height, the
+    rest the ground interpolated beneath. The ground comes from PDAL's SMRF when ``ground_tif``
+    (its ground points gridded on the coarse grid, ``pdal_dtm_pipeline``) is given, else from
+    our own filter on the minimum-height grid."""
     from rasterio.windows import Window
-
-    h, w, cell = coarse_shape(spec, max(1.0, spec.res), max(10_000, budget // 64))
-    dsm_c = read_grid(dsm_path, (h, w))
-    zmin_c = read_grid(zmin_path, (h, w))
-    dtm_c = dtm_from(dsm_c, zmin_c, cell, check=check)
-    ground_cells = int(np.sum(np.isfinite(dsm_c) & (np.abs(dsm_c - dtm_c) < 0.25)))
     from scipy import ndimage
+
+    coarse = dtm_coarse(spec, budget)
+    shape = (coarse.height, coarse.width)
+    cell = coarse.res
+    dsm_c = read_grid(dsm_path, shape)
+    if ground_tif is not None:
+        engine = "pdal-smrf"
+        ground_c = read_grid_on(ground_tif, coarse, epsg)
+        if not np.isfinite(ground_c).any():
+            raise JobError("PDAL found no ground points; the DTM cannot be made.")
+        dtm_c = harmonic_fill(ground_c)
+    else:
+        engine = "smrf-grid"
+        dtm_c = dtm_from(dsm_c, read_grid(zmin_path, shape), cell, check=check)
+    ground_cells = int(np.sum(np.isfinite(dsm_c) & (np.abs(dsm_c - dtm_c) < 0.25)))
 
     with write_tif(out, spec, epsg, 1, "float32", NODATA) as ds:
         for c0, r0, ww, hh in spec.windows():
@@ -382,7 +397,32 @@ def dtm_grid(
             ds.write(
                 np.where(np.isfinite(dtm), dtm, NODATA).astype(np.float32), 1, window=Window(c0, r0, ww, hh)
             )
-    return {"engine": "smrf-grid", "cell": round(cell, 4), "groundCells": ground_cells}
+    return {"engine": engine, "cell": round(cell, 4), "groundCells": ground_cells}
+
+
+def dtm_coarse(spec: GridSpec, budget: int) -> GridSpec:
+    """The coarse grid the ground is found on (shared by both engines)."""
+    return coarse_spec(spec, max(1.0, spec.res), max(10_000, budget // 64))
+
+
+def read_grid_on(path: Path, spec: GridSpec, epsg: int | None) -> np.ndarray:
+    """A height GeoTIFF resampled onto ``spec`` (NaN where it has no data)."""
+    import rasterio
+    from rasterio.warp import Resampling, reproject
+
+    out = np.full((spec.height, spec.width), np.nan, np.float32)
+    with rasterio.open(path) as src:
+        crs = src.crs or (f"EPSG:{epsg}" if epsg else None)
+        reproject(
+            rasterio.band(src, 1),
+            out,
+            src_nodata=src.nodata,
+            dst_transform=spec.transform(),
+            dst_crs=crs,
+            dst_nodata=np.nan,
+            resampling=Resampling.bilinear,
+        )
+    return out.astype(np.float64)
 
 
 def read_window(path: Path, c0: int, r0: int, w: int, h: int, band: int = 1) -> np.ndarray:
@@ -398,7 +438,8 @@ def read_window(path: Path, c0: int, r0: int, w: int, h: int, band: int = 1) -> 
 
 
 def pdal_dtm_pipeline(las: Path, out: Path, spec: GridSpec, epsg: int | None) -> dict[str, Any]:
-    """The PDAL pipeline for the DTM: SMRF ground points gridded at the DSM's cells."""
+    """The PDAL pipeline for the DTM: SMRF ground points gridded on ``spec``, the coarse grid of
+    ``dtm_coarse`` (PDAL holds its raster in memory, so it stays small)."""
     x0, y0, x1, y1 = spec.bounds
     return {
         "pipeline": [
@@ -423,42 +464,6 @@ def pdal_dtm_pipeline(las: Path, out: Path, spec: GridSpec, epsg: int | None) ->
             },
         ]
     }
-
-
-def finish_pdal_dtm(
-    dsm_path: Path, ground_tif: Path, spec: GridSpec, out: Path, epsg: int | None, check
-) -> dict:
-    """Ground grid from PDAL to the DTM: aligned to the DSM grid, holes interpolated beneath."""
-    import rasterio
-    from rasterio.warp import Resampling, reproject
-    from rasterio.windows import Window
-
-    with rasterio.open(ground_tif) as src:
-        g = src.read(1, masked=True)
-        gt = src.transform
-    ground = np.full((spec.height, spec.width), np.nan, np.float32)
-    reproject(
-        np.where(np.ma.getmaskarray(g), np.nan, g).astype(np.float32),
-        ground,
-        src_transform=gt,
-        dst_transform=spec.transform(),
-        src_crs=f"EPSG:{epsg}" if epsg else None,
-        dst_crs=f"EPSG:{epsg}" if epsg else None,
-        src_nodata=np.nan,
-        dst_nodata=np.nan,
-        resampling=Resampling.bilinear,
-    )
-    check()
-    dtm = push_pull(ground.astype(np.float64))
-    dsm = read_grid(dsm_path)
-    dtm[~np.isfinite(dsm)] = np.nan
-    with write_tif(out, spec, epsg, 1, "float32", NODATA) as ds:
-        ds.write(
-            np.where(np.isfinite(dtm), dtm, NODATA).astype(np.float32),
-            1,
-            window=Window(0, 0, spec.width, spec.height),
-        )
-    return {"engine": "pdal-smrf", "groundCells": int(np.isfinite(ground).sum())}
 
 
 # ------------------------------------------------------------------------- viewing and measuring
@@ -492,8 +497,14 @@ def shade(z: np.ndarray, res: float, lo: float, hi: float) -> np.ndarray:
     return out
 
 
-def height_range(path: Path) -> tuple[float, float]:
-    z = read_grid(path, None)
+def height_range(path: Path, side: int = 2048) -> tuple[float, float]:
+    """The 1st and 99th percentile heights, from a read of at most ``side`` cells a side."""
+    import rasterio
+
+    with rasterio.open(path) as ds:
+        f = max(1.0, max(ds.width, ds.height) / side)
+        shape = (max(1, round(ds.height / f)), max(1, round(ds.width / f)))
+    z = read_grid(path, shape if f > 1 else None)
     ok = z[np.isfinite(z)]
     if not ok.size:
         raise JobError("The surface has no heights; the photos may not overlap enough.")
@@ -524,7 +535,7 @@ def write_height_grid(
     spec: GridSpec,
     epsg: int | None,
     kind: str = "dsm",
-    max_side: int = 8192,
+    max_side: int = 4096,
 ) -> list[Path]:
     """``sources/<id>.json`` and ``<id>.png``: the heights as an ``aio.grid/1`` 16-bit grid."""
     from PIL import Image

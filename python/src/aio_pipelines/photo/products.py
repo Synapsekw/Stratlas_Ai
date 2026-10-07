@@ -498,9 +498,9 @@ class PhotoProducts:
         return {"points": info["points"], "voxel": voxel, "bounds": info["bounds"], "source": "dense"}
 
     def _cloud(self, ctx: StepContext) -> dict[str, Any]:
-        from ..change.las import write_las
         from ..pointcloud import _run as pdal_run
         from ..pointcloud import find_pdal
+        from .fuse import write_las_tiles
 
         run = self._run(ctx)
         pdal = find_pdal()
@@ -510,10 +510,7 @@ class PhotoProducts:
         work = self._work(ctx)
         las = work / "cloud.las"
         if not las.exists():
-            parts = list(store.fused())
-            xyz = np.concatenate([p["xyz"] for _, p in parts]) + run.offset
-            rgb = np.concatenate([p["rgb"] for _, p in parts]).astype(np.uint16) * 257
-            write_las(las, xyz, pdrf=7, rgb=rgb, classification=np.ones(len(xyz), np.uint8))
+            write_las_tiles(las, store, run.offset)
         staged = ctx.stage(f"clouds/{run.id}.copc.laz")
         epsg = run.epsg
         pipe = {
@@ -634,7 +631,7 @@ class PhotoProducts:
     def _dtm(self, ctx: StepContext) -> dict[str, Any]:
         from ..pointcloud import _run as pdal_run
         from ..pointcloud import find_pdal
-        from .surface import GridSpec, dtm_grid, finish_pdal_dtm, pdal_dtm_pipeline
+        from .surface import GridSpec, dtm_coarse, dtm_grid, pdal_dtm_pipeline
 
         run = self._run(ctx)
         spec = GridSpec(**ctx.outputs("dsm")["spec"])
@@ -645,22 +642,16 @@ class PhotoProducts:
             pdal = find_pdal()
             las = work / "cloud.las"
             tmp = raw.with_suffix(".tmp.tif")
+            budget = native.memory_budget()
+            ground = None
             if pdal and las.exists():
                 ground = work / "ground-pdal.tif"
                 pj = work / "dtm-pipeline.json"
-                atomic_write_json(pj, pdal_dtm_pipeline(las, ground, spec, run.epsg))
+                atomic_write_json(pj, pdal_dtm_pipeline(las, ground, dtm_coarse(spec, budget), run.epsg))
                 pdal_run(ctx, [pdal, "pipeline", str(pj)], "Classify the ground with PDAL")
-                engine = finish_pdal_dtm(work / "dsm-raw.tif", ground, spec, tmp, run.epsg, ctx.check)
-            else:
-                engine = dtm_grid(
-                    work / "dsm-raw.tif",
-                    work / "zmin-raw.tif",
-                    spec,
-                    tmp,
-                    run.epsg,
-                    native.memory_budget(),
-                    ctx.check,
-                )
+            engine = dtm_grid(
+                work / "dsm-raw.tif", work / "zmin-raw.tif", spec, tmp, run.epsg, budget, ctx.check, ground
+            )
             tmp.replace(raw)
             ctx.log(f"DTM: ground found by {engine['engine']}.")
         out = {"engine": engine.get("engine", "reused"), **engine}
@@ -700,7 +691,7 @@ class PhotoProducts:
         return {"spec": spec.__dict__, "layer": lid, "pyramid": pyr, **info}
 
     def _mesh(self, ctx: StepContext) -> dict[str, Any]:
-        from .mesh import mesh_25d, poisson_fft, poisson_tool
+        from .mesh import cluster, mesh_25d, poisson_fft, poisson_tool, write_ply_chunks
         from .native import find_tool
         from .surface import GridSpec
 
@@ -722,17 +713,30 @@ class PhotoProducts:
             mesh = mesh_25d(work / "dsm-raw.tif", dspec, origin, full_tri)
         else:
             store = self._tiles_store(ctx)
-            parts = list(store.fused())
-            pts = np.concatenate([p["xyz"] for _, p in parts]) + run.offset - origin
-            nrm = np.concatenate([p["normal"] for _, p in parts]).astype(np.float64)
-            cols = np.concatenate([p["rgb"] for _, p in parts])
+            count = int(store.info().get("points") or 0)
+            shift = run.offset - origin
+            # a sample of the cloud in memory (the FFT solver's grid holds no more detail anyway)
+            stride = max(1, count // 5_000_000)
+            parts = [
+                (p["xyz"][::stride] + shift, p["normal"][::stride].astype(np.float64))
+                for _, p in store.fused()
+            ]
+            pts = np.concatenate([a for a, _ in parts])
+            nrm = np.concatenate([b for _, b in parts])
+            del parts
             if tool is not None:
                 engine = "poissonrecon"
                 depth = 11 if s["preset"] == "standard" else 12
-                mesh = poisson_tool(ctx, work / "poisson", pts, nrm, depth, cols)
+                src = work / "poisson" / "dense.ply"
+                write_ply_chunks(
+                    src, ((p["xyz"] + shift, p["normal"], p["rgb"]) for _, p in store.fused()), count
+                )
+                mesh = poisson_tool(ctx, work / "poisson", pts, nrm, depth, None, src, count)
             else:
                 engine = "poisson-fft"
                 mesh = poisson_fft(pts, nrm, native.memory_budget() // 2, check=ctx.check)
+            if mesh.triangles > full_tri:
+                mesh = cluster(mesh, full_tri)
         if not mesh.triangles:
             raise JobError("The mesh came out empty; the cloud may be too sparse.")
         tmp = dst.with_name(".mesh-full.tmp.npz")

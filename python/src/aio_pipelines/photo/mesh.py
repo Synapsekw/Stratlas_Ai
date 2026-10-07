@@ -259,6 +259,33 @@ def write_ply_points(
         f.write(rec.tobytes())
 
 
+def write_ply_chunks(path: Path, chunks, count: int) -> int:
+    """Oriented, coloured points as a binary PLY, chunk by chunk (``(pts, normals, colours)``);
+    ``count`` must be the total, as the header comes first. Returns the points written."""
+    header = [
+        "ply",
+        "format binary_little_endian 1.0",
+        f"element vertex {count}",
+        *(f"property float {a}" for a in ("x", "y", "z", "nx", "ny", "nz")),
+        *(f"property uchar {c}" for c in ("red", "green", "blue")),
+        "end_header",
+    ]
+    dt = np.dtype([("p", "<f4", 3), ("n", "<f4", 3), ("c", "u1", 3)])
+    written = 0
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(("\n".join(header) + "\n").encode("ascii"))
+        for pts, nrm, cols in chunks:
+            take = min(len(pts), count - written)
+            rec = np.zeros(take, dt)
+            rec["p"], rec["n"], rec["c"] = pts[:take], nrm[:take], cols[:take]
+            f.write(rec.tobytes())
+            written += take
+    if written != count:
+        raise JobError(f"The dense cloud changed while it was written ({written} of {count} points).")
+    return written
+
+
 _PLY_TYPES = {
     "char": "i1", "int8": "i1", "uchar": "u1", "uint8": "u1", "short": "<i2", "int16": "<i2",
     "ushort": "<u2", "uint16": "<u2", "int": "<i4", "int32": "<i4", "uint": "<u4", "uint32": "<u4",
@@ -333,13 +360,20 @@ def poisson_tool(
     normals: np.ndarray,
     depth: int,
     colours: np.ndarray | None = None,
+    src: Path | None = None,
+    count: int | None = None,
 ) -> Mesh:
-    """Screened Poisson with the native tools; ``pts`` in the local frame."""
+    """Screened Poisson with the native tools; ``pts`` in the local frame. With ``src`` (a PLY
+    already written, ``write_ply_chunks``, of ``count`` points) ``pts`` is only a sample of the
+    cloud, used when the mesh has to be trimmed without SurfaceTrimmer."""
     exe = find_tool("PoissonRecon")
     if exe is None:
         raise JobError("PoissonRecon is not in this pipeline pack.")
-    src, raw, out = work / "dense.ply", work / "poisson.ply", work / "poisson-trimmed.ply"
-    write_ply_points(src, pts, normals, colours)
+    raw, out = work / "poisson.ply", work / "poisson-trimmed.ply"
+    if src is None:
+        src = work / "dense.ply"
+        write_ply_points(src, pts, normals, colours)
+    n = count or len(pts)
     args = [
         exe,
         "--in",
@@ -354,7 +388,7 @@ def poisson_tool(
     ]
     if colours is not None:
         args.append("--colors")
-    run_tool(ctx, args, "Poisson meshing", work, expected_s=max(30.0, len(pts) / 2e5), progress=(0.0, 0.8))
+    run_tool(ctx, args, "Poisson meshing", work, expected_s=max(30.0, n / 2e5), progress=(0.0, 0.8))
     trimmer = find_tool("SurfaceTrimmer")
     if trimmer is not None:
         run_tool(

@@ -276,3 +276,24 @@ def test_voxel_means_and_tiles(tmp_path):
     assert info["points"] == 2 and info["tiles"] == 2
     box = store.fused_in(-1, -1, 1, 1)
     assert len(box["xyz"]) == 1 and math.isclose(float(box["xyz"][0, 0]), 0.015)
+
+
+def test_the_cloud_is_written_as_las_tile_by_tile(tmp_path):
+    from aio_pipelines.change.las import read_las
+    from aio_pipelines.photo.fuse import write_las_tiles
+
+    rng = np.random.default_rng(3)
+    xyz = rng.uniform([0, 0, 0], [30, 20, 5], (5000, 3))
+    rgb = rng.integers(0, 256, (5000, 3)).astype(np.uint8)
+    store = PointTiles(tmp_path / "cloud", 8.0)
+    store.add("a", xyz, rgb, np.tile([0, 0, 1], (5000, 1)).astype(np.float32))
+    info = store.merge(0.001)
+    shift = np.array([412000.0, 3245000.0, 20.0])
+    n = write_las_tiles(tmp_path / "c.las", store, shift)
+    las = read_las(tmp_path / "c.las")
+    assert n == las.count == info["points"] == 5000 and las.pdrf == 7
+    # written in the tiles' order, at millimetre resolution
+    want = np.concatenate([p["xyz"] for _, p in store.fused()]) + shift
+    assert np.abs(las.xyz - want).max() <= 0.0005 + 1e-9
+    assert set(np.unique(las.field("Classification"))) == {1}
+    assert las.field("Red").max() > 255  # 16-bit colour

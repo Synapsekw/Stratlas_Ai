@@ -281,6 +281,61 @@ def test_running_again_replaces_the_runs_own_layers():
     assert idx["metresPerPx"][-1] == pytest.approx(0.30, abs=0.001)
 
 
+# ------------------------------------------------------------------------------- meshing engines
+
+FAKE_POISSON = r"""
+import sys, numpy as np
+sys.path.insert(0, {src!r})
+from pathlib import Path
+from scipy.spatial import Delaunay
+from aio_pipelines.photo.mesh import Mesh
+from aio_pipelines.photo.texture import write_ply_mesh
+args = sys.argv[1:]
+data = Path(args[args.index("--in") + 1]).read_bytes()
+head, body = data.split(b"end_header\n", 1)
+n = int([l for l in head.decode().splitlines() if l.startswith("element vertex")][0].split()[2])
+rec = np.frombuffer(body, dtype=[("p", "<f4", 3), ("n", "<f4", 3), ("c", "u1", 3)], count=n)
+p = rec["p"].astype(float)[:: max(1, n // 20000)]
+write_ply_mesh(Path(args[args.index("--out") + 1]), Mesh(p, Delaunay(p[:, :2]).simplices))
+"""
+
+
+def test_with_poissonrecon_the_dense_cloud_is_meshed_and_textured_from_the_photos(tmp_path, monkeypatch):
+    import aio_pipelines
+
+    src = str(Path(aio_pipelines.__file__).parents[1])
+    monkeypatch.setenv(
+        "AIO_POISSONRECON",
+        str(ps.fake_tool(tmp_path, "PoissonRecon", FAKE_POISSON.replace("{src!r}", repr(src)))),
+    )
+    monkeypatch.setenv("AIO_SURFACETRIMMER", str(tmp_path / "none.exe"))
+    root = ps.project("poisson")
+    res, _ = run_job(
+        PhotoProducts(), root, _params(preset="standard", products=["mesh"], meshTriangles=10_000)
+    )
+    assert res["outputs"]["mesh"]["engine"] == "poissonrecon"
+    assert res["outputs"]["texture"]["engine"] == "views" and res["outputs"]["texture"]["triangles"] <= 10_000
+    work = next((root / "photogrammetry" / RUN / "work" / "products").iterdir())
+    head = (work / "poisson" / "dense.ply").read_bytes()[:400].decode("ascii", errors="replace")
+    assert f"element vertex {res['outputs']['fuse']['points']}" in head
+
+
+def test_oblique_runs_without_poissonrecon_use_the_built_in_solver(monkeypatch):
+    import aio_pipelines.photo.mesh as mesh_mod
+
+    monkeypatch.setattr(mesh_mod, "nadir_share", lambda views, limit_deg=20.0: 0.0)
+    monkeypatch.setenv("AIO_POISSONRECON", "")
+    monkeypatch.setattr(native, "find_tool", lambda name: None)
+    monkeypatch.setenv("AIO_PHOTO_MEMORY_MB", "512")
+    root = ps.project("fft")
+    res, _ = run_job(
+        PhotoProducts(), root, _params(preset="standard", products=["mesh"], meshTriangles=20_000)
+    )
+    assert res["outputs"]["mesh"]["engine"] == "poisson-fft" and res["outputs"]["mesh"]["triangles"] > 1000
+    doc = json.loads((root / "photogrammetry" / RUN / "run.json").read_text("utf-8"))
+    assert any("built-in Poisson solver" in w for w in doc["warnings"])
+
+
 # ------------------------------------------------------------------------------- tiles (G7) hand-over
 
 
