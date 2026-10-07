@@ -43,6 +43,13 @@ const MESSAGES: Record<Exclude<Status, 'ready'>, string> = {
   error: 'The map could not start. See the log for details.',
 };
 
+/**
+ * MapLibre loads lazily so @aio/maps stays importable without a DOM or WebGL. Module level on
+ * purpose: Vite's preload keeps the loader closure in a stylesheet's load listener for good, and a
+ * closure made inside a map's start would keep that map (and its detached DOM) alive with it.
+ */
+const loadController = () => import('./controller');
+
 function bridge(): AioBridge | undefined {
   return (globalThis as { aio?: AioBridge }).aio;
 }
@@ -120,8 +127,7 @@ export function MapView({
         // Without a pack the map still runs: the project's own rasters, overlays and issues draw
         // on an empty background (a first start, the demo project).
         setNoPacks(packs.length === 0);
-        // MapLibre loads lazily so @aio/maps stays importable without a DOM or WebGL.
-        const { createMapController } = await import('./controller');
+        const { createMapController } = await loadController();
         if (gone()) return;
         const ctl = createMapController(el, {
           packs,

@@ -573,6 +573,14 @@ export function Stage() {
     if (!a || !b || !linked || !secondMap) return;
     return linkMaps(a.map, b.map);
   }, [maps, linked, secondMap]);
+  // The maps report null as they go, but after the stage itself (setMaps on an unmounted
+  // component): without this the module-level slots kept the last, disposed map and its DOM.
+  useEffect(
+    () => () => {
+      compareRuntime.maps = [null, null];
+    },
+    [],
+  );
   const notice = useCompareNotice();
   const keepOut = useCallback(() => {
     const root = stageRef.current;

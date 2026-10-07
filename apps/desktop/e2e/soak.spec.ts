@@ -4,9 +4,14 @@
  * median of the last cycles may exceed the median of the first measured cycles by at most 10 %
  * (plus a small absolute allowance for noise) for: the main process heap, the renderer heap,
  * the working set of all app processes, and the main process's active handles and requests.
+ * The renderer allowance is small on purpose: T8 found 6 MB of renderer heap kept per project
+ * switch (34 MB to 516 MB over 80 cycles: each closed 3D view and its renderer stayed alive, and
+ * with them the closed workspace's DOM and maps), which this must catch; fixed, it stays near
+ * 40 MB.
  *
  * Nightly, not per merge: runs with STRATLAS_SOAK=1. STRATLAS_SOAK_CYCLES sets the number of
- * open cycles (default 200, the checklist number). Needs the demo (`pnpm demo:build --quick`).
+ * open cycles (default 80, the T8 repro; the 1.0 checklist run sets 200). Needs the demo
+ * (`pnpm demo:build --quick`).
  * A JSON report of every sample goes to the test output folder (soak.json).
  */
 import { test as base, type ElectronApplication, type Page } from '@playwright/test';
@@ -17,7 +22,7 @@ import { join } from 'node:path';
 import { expect, launchApp, NetworkGuard } from './fixtures';
 
 const DEMO = process.env.STRATLAS_E2E_DEMO ?? join(import.meta.dirname, '..', 'demo');
-const CYCLES = Number(process.env.STRATLAS_SOAK_CYCLES ?? 200);
+const CYCLES = Number(process.env.STRATLAS_SOAK_CYCLES ?? 80);
 const PROJECTS = ['Demo tank farm', 'Demo access road', 'Demo change site (2 dates)'];
 /** Cycles before the baseline: caches, shaders and the demo working copies fill up first. */
 const WARMUP = Math.max(5, Math.round(CYCLES * 0.25));
@@ -145,7 +150,7 @@ test(`${String(CYCLES)} open cycles across the demos keep memory and handles fla
   const last = samples.slice(-WINDOW);
   const checks: [keyof Omit<Sample, 'cycle' | 'byType'>, number][] = [
     ['mainHeap', 8 * MB],
-    ['rendererHeap', 16 * MB],
+    ['rendererHeap', 4 * MB],
     ['workingSet', 64 * MB],
     ['handles', 5],
   ];

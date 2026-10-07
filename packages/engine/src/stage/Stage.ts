@@ -54,6 +54,7 @@ import type { GroundUniforms } from './groundShading';
 import { skyDirection, solarPosition } from './solar';
 import { estimateGpuBytes, formatPerf, type PerfStats } from './perf';
 import { Highlighter } from './highlight';
+import { moduleTextures } from './sharedTextures';
 import { reducedMotion } from '../motion';
 
 export interface StageOptions {
@@ -140,6 +141,8 @@ export class Stage implements EngineStage {
   readonly camera = new PerspectiveCamera(40, 1, 0.1, 20000);
   readonly renderer: WebGLRenderer;
   readonly controls: OrbitControls;
+  /** Where OrbitControls hung its keydown listener: the canvas's root node when it connected. */
+  private readonly controlsRoot: Node;
   readonly clippingPlanes: Plane[] = [];
   readonly canvas: HTMLCanvasElement;
 
@@ -233,6 +236,7 @@ export class Stage implements EngineStage {
 
     this.camera.position.set(60, 45, 60);
     this.controls = new OrbitControls(this.camera, this.canvas);
+    this.controlsRoot = this.canvas.getRootNode();
     this.controls.enableDamping = true;
     this.controls.dampingFactor = DAMPING;
     this.controls.maxPolarAngle = MAX_POLAR;
@@ -1285,9 +1289,28 @@ export class Stage implements EngineStage {
     for (const cb of this.stateCbs) cb();
   }
 
+  /**
+   * OrbitControls takes its keydown listener off `canvas.getRootNode()` when it is disposed. React
+   * detaches the view before its effects clean up, so by then that is the detached subtree, not the
+   * document the listener was added to: the listener stayed, and with it this stage, its renderer
+   * and the whole detached workspace DOM (the maps and their WebGL contexts), one set per project
+   * opened (T8 soak, 6 MB of renderer heap per project switch). Dispose against the root it used.
+   */
+  private disposeControls(): void {
+    const root = this.controlsRoot;
+    Object.defineProperty(this.canvas, 'getRootNode', { value: () => root, configurable: true });
+    try {
+      this.controls.dispose();
+    } finally {
+      Reflect.deleteProperty(this.canvas, 'getRootNode');
+    }
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    // read before the scene is torn down: the renderer's uniforms name them
+    const shared = moduleTextures(this.renderer, this.scene);
     cancelAnimationFrame(this.raf);
     if (this.hoverRaf) cancelAnimationFrame(this.hoverRaf);
     this.ro.disconnect();
@@ -1301,12 +1324,14 @@ export class Stage implements EngineStage {
     this.canvas.removeEventListener('pointerup', this.onPointerUp);
     this.canvas.removeEventListener('pointermove', this.onPointerMove);
     this.canvas.removeEventListener('pointerleave', this.onPointerLeave);
-    this.controls.dispose();
+    this.disposeControls();
     this.overlay.dispose();
     this.highlight.dispose();
     this.measureTool.dispose();
     this.env.dispose();
     this.renderer.dispose();
+    // three's module-level textures would keep this renderer (and its canvas) alive otherwise
+    for (const t of shared) t.dispose();
     // Geometry and textures shared with another stage (comparing dates) still hold this
     // renderer's dispose listeners; losing the context frees its GPU copies now.
     (this.renderer as Partial<WebGLRenderer>).forceContextLoss?.();
