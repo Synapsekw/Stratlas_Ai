@@ -114,7 +114,18 @@ test('a legacy viewer runs offline in the review, with its shims and no network'
     await app.evaluate(({ dialog }, path) => {
       dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath: path });
     }, target);
-    await frame.locator('#save').click();
+    // The review is an out-of-process frame (aio:// in a file:// window). The browser routes mouse
+    // input into it only once it holds the frame's hit-test region, a moment after the frame is
+    // laid out and scripted (longer on a software GPU). Until then a click goes to the window
+    // around it, on the <iframe> element, and Playwright still reports it done (CI run
+    // 37637799812, macOS: '#saved' stayed 'idle'). So hover first, until the hover lands in the
+    // frame (moving the pointer changes nothing), and click only then.
+    const save = frame.locator('#save');
+    await expect(async () => {
+      await save.hover();
+      expect(await save.evaluate((b) => b.matches(':hover'))).toBe(true);
+    }).toPass();
+    await save.click();
     await expect(frame.locator('#saved')).toHaveText('saved');
     expect(await readFile(target, 'utf8')).toBe('pile,volume\nP01,12.5\n');
 
