@@ -6,6 +6,7 @@ import { focusIssue, issueEditor, useAnnotateReadOnly, useIssueEditorState } fro
 import { sightingAnchor, severityColor } from '../tools/mesh';
 import { projectMsFromVideo } from '../video/track';
 import { SeverityBadge, kindLabel, sevStyle, sightingLabel, useTaxonomy } from './common';
+import { IssueHistory } from './historySlot';
 import { AnnotateStyles } from './styles';
 
 /** Jump the views to one sighting: open the photo, seek the clip, or fly to the 3D point. */
@@ -79,7 +80,6 @@ export function IssueDetail({
   const next = nextStatus(issue.status);
   const prev = previousStatus(issue.status);
   const others = issues.filter((i) => i.id !== issue.id);
-  const audit = issueEditor.audit(issue.id);
   const severities: Issue['severity'][] = [
     ...(model?.levels.map((l) => l.value) ?? []),
     ...(model?.uncertain ? (['uncertain'] as const) : []),
@@ -305,18 +305,7 @@ export function IssueDetail({
           </div>
         )}
 
-        {audit.length > 0 && (
-          <>
-            <div className="ann-faint">History this session</div>
-            <ol className="ann-audit">
-              {audit.map((a, i) => (
-                <li key={i}>
-                  {a.at.slice(11, 19)} {a.author}: {a.action}
-                </li>
-              ))}
-            </ol>
-          </>
-        )}
+        <IssueHistory projectId={project?.id ?? ''} issueId={issue.id} />
         {!readOnly && (
           <div>
             <button

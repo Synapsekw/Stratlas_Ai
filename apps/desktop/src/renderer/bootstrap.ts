@@ -1,5 +1,5 @@
 import { registerAppHooks, registerFrameSource } from '@aio/ai';
-import { setFlightPoses } from '@aio/annotate';
+import { registerIssueHistory, setFlightPoses } from '@aio/annotate';
 import {
   configureEngine,
   getActiveStage,
@@ -13,6 +13,7 @@ import { loadFlight, registerVideoAdapters, videoRig } from '@aio/video';
 import { volumetric } from '@aio/volumetric';
 import { assetUrl, workspace, type OpenProject } from '@aio/workspace';
 import { registerAgentPlaces } from './agentPlaces';
+import { IssueHistoryPanel } from './audit/HistoryPanel';
 import { graphics } from './graphics';
 import { graphicsReport, memoryWatch } from './memoryWatch';
 import { shell } from './shell';
@@ -80,6 +81,8 @@ export function bootstrap(): void {
   });
   // Stockpiles and road chainages for find_places and fly_to.
   registerAgentPlaces();
+  // The issue detail's History reads the project journal (M9).
+  registerIssueHistory(IssueHistoryPanel);
   // Inspection hook for the end-to-end tests and DevTools (read the clock, the live scene).
   Object.assign(window, {
     __stratlas: {

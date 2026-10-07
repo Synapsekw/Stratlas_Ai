@@ -13,6 +13,8 @@ import { useState } from 'react';
 import { FocusZone } from '../FocusZone';
 import { actionAllowed } from '../exports/exportModel';
 import { runExportAction } from '../exports/exports';
+import { AuditScreen } from '../audit/AuditScreen';
+import { closeAuditTrail, openAuditTrail, useAuditOpen } from '../audit/auditView';
 import { NarrativeEditor } from '../report/NarrativeEditor';
 import { PdfViewer } from '../report/PdfViewer';
 import { ExtractPackage } from '../shell/ExtractPackage';
@@ -145,6 +147,7 @@ export function ReportsScreen() {
   const listed = useCall('report:list', { projectId: project?.id ?? '' }, project?.id ?? null);
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [textOpen, setTextOpen] = useState(false);
+  const auditOpen = useAuditOpen();
   if (!project) return <NoProject view="Reports" />;
   const files = listed === null ? null : listed.ok ? listed.value.files : [];
   const selected = picked[project.id] ?? files?.[0]?.path ?? null;
@@ -179,9 +182,27 @@ export function ReportsScreen() {
               houseKind(project.manifest, issues, roadOpen ? { road: true } : {}),
             )}
             onText={() => {
+              closeAuditTrail();
               setTextOpen(true);
             }}
           />
+          <section className="sblock" data-testid="audit-trail-section">
+            <h2>{t('audit.title')}</h2>
+            <p className="muted rep-note">{t('audit.reports.text')}</p>
+            <button
+              type="button"
+              className="btn"
+              aria-pressed={auditOpen}
+              data-testid="open-audit-trail"
+              onClick={() => {
+                setTextOpen(false);
+                openAuditTrail();
+              }}
+            >
+              <Icon name="history" size={14} />
+              {t('audit.open')}
+            </button>
+          </section>
           <section className="sblock">
             <h2>
               Issue register <span className="sub">{issues.length} issues</span>
@@ -279,7 +300,9 @@ export function ReportsScreen() {
         </div>
       </aside>
       <section className="rep-view" aria-label="Report viewer">
-        {textOpen ? (
+        {auditOpen ? (
+          <AuditScreen key={project.id} projectId={project.id} onClose={closeAuditTrail} />
+        ) : textOpen ? (
           <NarrativeEditor
             key={project.id}
             onClose={() => {

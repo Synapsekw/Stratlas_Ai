@@ -1,5 +1,10 @@
 export { IssueRegister, SaveIndicator } from './components/IssueRegister';
 export { IssueDetail, openSighting } from './components/IssueDetail';
+export {
+  IssueHistory,
+  registerIssueHistory,
+  type IssueHistoryProps,
+} from './components/historySlot';
 export { PhotoViewer, type PhotoViewerHandle } from './components/PhotoViewer';
 export { VideoAnnotator } from './components/VideoAnnotator';
 export { AnnotationToolbar, useIssueOverlay } from './components/AnnotationToolbar';
