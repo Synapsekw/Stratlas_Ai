@@ -22,15 +22,38 @@ import { browserStorage } from './stagePrefs';
 
 export const TIMELINE_KEY = 'stratlas.timeline';
 
+/**
+ * A stockpile project's volumes (the volumetric store), which own its survey layers: the date bar
+ * asks them to show a survey and mirrors the survey they show.
+ */
+export interface VolumeDates {
+  projectId: string;
+  /** The survey key of a capture, when the volumes have it. */
+  epochOf(capture: string): string | undefined;
+  /** The survey key the volumes show now. */
+  epoch(): string;
+  /** Show a survey; the volumes switch its layers, or refuse (mid boundary edit). */
+  setEpoch(epoch: string): void;
+}
+
+/** Who shows and hides the survey layers of the open project. */
+export type DateOwner = 'timeline' | 'volumetric';
+
 export interface TimelineState {
   projectId: string | null;
   index: CaptureIndex | null;
   focus: string | null;
   byProject: Record<string, DatePref>;
+  /** 'volumetric' while the open project's volumes are loaded with their surveys. */
+  owner: DateOwner;
   /** Called whenever the open project or its capture index changes. */
   attach(projectId: string | null, index: CaptureIndex | null): void;
   focusSurvey(capture: string): void;
   step(dir: -1 | 1): void;
+  /** The open project's volumes took over its survey layers (null: they let go). */
+  setVolumes(volumes: VolumeDates | null): void;
+  /** The volumes show `capture`: focus it without touching visibility. */
+  mirrorFocus(capture: string): void;
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -80,11 +103,17 @@ function persist(
   storage: Storage | null,
   hidden: Readonly<Record<string, true>>,
 ): void {
-  const { projectId, index, focus, byProject } = store.getState();
+  const { projectId, index, focus, byProject, owner } = store.getState();
   if (!projectId || !index || index.captures.length === 0) return;
   // a stale index (another project open, not yet attached) never writes the wrong project
   if (ws.getState().project?.id !== projectId) return;
-  const pref = snapshotPref(index, hidden, focus, byProject[projectId]?.remembered ?? {});
+  // the volumes own the layers: only the date is saved, never hides they made
+  const pref: DatePref =
+    owner === 'volumetric'
+      ? focus
+        ? { focus }
+        : {}
+      : snapshotPref(index, hidden, focus, byProject[projectId]?.remembered ?? {});
   const next = { ...byProject, [projectId]: pref };
   store.setState({ byProject: next });
   try {
@@ -119,6 +148,20 @@ export function createTimelineStore(
     if (to) w.setTime(clockInClip(video(prev), to, w.nowMs, durationOf(to.id)));
   };
 
+  /** The active clip of the date left behind, played on `next` instead. */
+  const followClip = (index: CaptureIndex, prev: string | null, next: string) => {
+    const w = ws.getState();
+    const clip = w.activeClip;
+    if (clip && prev && index.of[clip] === prev) {
+      const layers = w.project?.manifest.layers ?? [];
+      moveClip(followLayer(index, layers, clip, next) ?? null);
+    }
+  };
+
+  let volumes: VolumeDates | null = null;
+  const ownerOf = (projectId: string | null): DateOwner =>
+    volumes?.projectId === projectId ? 'volumetric' : 'timeline';
+
   // `openProject` bumps the workspace's `openSeq` (visibility is reset from the manifest);
   // `replaceManifest` and issue edits do not. Comparing it tells a fresh open from a manifest
   // edit while the project stays open.
@@ -128,14 +171,16 @@ export function createTimelineStore(
     index: null,
     focus: null,
     byProject: load(storage),
+    owner: 'timeline',
 
     attach: (projectId, index) => {
       const s = get();
       const fresh = ws.getState().openSeq !== attachedSeq;
       if (!fresh && s.projectId === projectId && s.index === index) return;
       attachedSeq = ws.getState().openSeq;
+      const owner = ownerOf(projectId);
       if (!projectId || !index || index.captures.length === 0) {
-        set({ projectId, index, focus: null });
+        set({ projectId, index, focus: null, owner });
         return;
       }
       if (!fresh && s.projectId === projectId && s.index) {
@@ -144,16 +189,24 @@ export function createTimelineStore(
           s.focus && index.captures.some((c) => c.id === s.focus)
             ? s.focus
             : initialFocus(index, undefined);
-        set({ index, focus });
+        set({ index, focus, owner });
         return;
       }
       const pref = s.byProject[projectId] ?? {};
-      const focus = initialFocus(index, pref.focus);
-      // Claim the project before touching visibility so the subscription below
-      // writes the new project's pref, never the previous project's.
-      set({ projectId, index, focus });
-      const change = openChange(index, ws.getState().hidden, focus, pref);
-      ws.getState().applyVisibility(change.show, change.hide);
+      const vol = owner === 'volumetric' ? volumes : null;
+      if (vol) {
+        // the volumes already show their survey: focus it and leave the layers to them
+        const shown = index.captures.find((c) => vol.epochOf(c.id) === vol.epoch());
+        set({ projectId, index, owner, focus: shown?.id ?? initialFocus(index, pref.focus) });
+      } else {
+        // Claim the project before touching visibility so the subscription below
+        // writes the new project's pref, never the previous project's.
+        const opened = initialFocus(index, pref.focus);
+        set({ projectId, index, focus: opened, owner });
+        const change = openChange(index, ws.getState().hidden, opened, pref);
+        ws.getState().applyVisibility(change.show, change.hide);
+      }
+      const focus = get().focus;
       // the project opened on its first clip: play the focused date's footage instead
       const clip = ws.getState().activeClip;
       const from = clip ? index.of[clip] : undefined;
@@ -169,6 +222,15 @@ export function createTimelineStore(
       if (!index.captures.some((c) => c.id === capture)) return;
       const w = ws.getState();
       if (w.project?.id !== projectId) return;
+      const vol = get().owner === 'volumetric' ? volumes : null;
+      if (vol) {
+        // the volumes switch the layers (or refuse mid edit); the survey they show comes back
+        // through mirrorFocus. A date the volumes do not have only moves the focus.
+        const epoch = vol.epochOf(capture);
+        if (epoch) vol.setEpoch(epoch);
+        if (!epoch || vol.epoch() === epoch) get().mirrorFocus(capture);
+        return;
+      }
       const { change, remembered } = swapChange(
         index,
         w.hidden,
@@ -178,11 +240,7 @@ export function createTimelineStore(
       );
       w.applyVisibility(change.show, change.hide);
 
-      const clip = w.activeClip;
-      if (clip && prev && index.of[clip] === prev) {
-        const layers = w.project.manifest.layers;
-        moveClip(followLayer(index, layers, clip, capture) ?? null);
-      }
+      followClip(index, prev, capture);
       const sel = w.selection;
       if (sel?.layer && prev && index.of[sel.layer] === prev) {
         w.select(sel.kind === 'asset' ? captureSelection(index, capture, sel) : null);
@@ -200,6 +258,25 @@ export function createTimelineStore(
       if (!index) return;
       const next = stepCapture(index, focus, dir);
       if (next) get().focusSurvey(next);
+    },
+
+    setVolumes: (next) => {
+      volumes = next;
+      const owner = ownerOf(get().projectId);
+      if (owner === get().owner) return;
+      set({ owner });
+      // from now on only the date is saved for this project
+      if (owner === 'volumetric') persist(store, ws, storage, ws.getState().hidden);
+    },
+
+    mirrorFocus: (capture) => {
+      const { index, focus: prev, projectId, owner } = get();
+      if (owner !== 'volumetric' || !index || !projectId || capture === prev) return;
+      if (!index.captures.some((c) => c.id === capture)) return;
+      if (ws.getState().project?.id !== projectId) return;
+      followClip(index, prev, capture);
+      set({ focus: capture });
+      persist(store, ws, storage, ws.getState().hidden);
     },
   }));
 

@@ -47,6 +47,7 @@ import { HelpPanel } from './help/HelpPanel';
 import { help } from './help/store';
 import { isTypingTarget } from './workspace/DateBar';
 import { timeline, useTimelineSync } from './workspace/timeline';
+import { useVolumeDates } from './workspace/volumeDates';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
 import { BuilderLayer } from './builder/BuilderLayer';
 import { ModellerLayer } from './modeller/ModellerLayer';
@@ -216,6 +217,8 @@ export function App() {
   const screen = useShell((s) => s.screen);
   // the date bar follows the open project whichever screen shows
   useTimelineSync();
+  // stockpile projects: the volumes own the survey layers, the date bar mirrors them
+  useVolumeDates();
 
   useEffect(() => {
     // Settings and library are in: tell main the first screen is up (ends the first-start

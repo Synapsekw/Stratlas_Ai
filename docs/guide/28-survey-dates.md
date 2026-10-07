@@ -20,6 +20,8 @@ When you move to another date, that date's layers come on and the previous date'
 
 If a video clip is playing when you move to another date, it switches to the matching clip of the new date.
 
+In stockpile projects the Volumes date buttons and the date bar move together.
+
 ## Which date am I looking at?
 
 Each date has a colour. It appears on the folder, in the date bar, on the calendar, in the header of the floating video and of the split video and photo panes (and on the date pickers in the split panes), and in a small chip at the top of the 3D view or map whenever more than one date is on screen. The chip is hidden while the split view is open. The panorama overlay shows the survey date as YYYY-MM-DD.

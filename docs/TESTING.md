@@ -517,5 +517,6 @@ Survey dates become folders in the sidebar, with a date bar and calendar above t
 - [ ] The floating video, the split video and photo pane headers and the split pane date pickers show the clip's or set's date.
 - [ ] The panorama overlay shows the survey date as YYYY-MM-DD.
 - [ ] Playing a clip from the viewed date, switch dates: the matching clip of the new date plays.
-- [ ] Open the compare split: the left side follows the date bar, the right side keeps its own date.
+- [ ] Open the compare split: the first date is on the left and the last on the right. Step the date bar: the left side follows it, the right side keeps its own date.
+- [ ] In stockpile projects (Masafi) the Volumes date buttons and the date bar move together: pick a date in either, step away and back, and that survey's terrain still shows.
 - [ ] Close and reopen the project: the same date is viewed, with the same layers on.
