@@ -142,7 +142,7 @@ export function useRasterPacks<T>(selector: (s: RasterState) => T): T {
 
 let listening = false;
 /** Refresh packs and tilesets when a pack or tiles job finishes (once per window). */
-function listenForJobs(): void {
+export function listenForJobs(): void {
   const bridge = aio();
   if (listening || !bridge) return;
   listening = true;
@@ -276,18 +276,31 @@ export function useSatelliteMap(map: MapController | null): void {
     let off: (() => void) | null = null;
     let live = true;
     const ml = map.map;
-    const apply = () => {
-      if (!live || !ml.isStyleLoaded()) return;
-      off?.();
-      off = applyRasterPacks(ml, { imagery, terrain, satellite, hillshade });
+    // Add the packs once the style takes sources (MapLibre refuses while it loads), and again
+    // after a new style replaced them.
+    const attempt = () => {
+      if (!live || off) return;
+      try {
+        off = applyRasterPacks(ml, { imagery, terrain, satellite, hillshade });
+      } catch {
+        return; // not ready yet: the next style event tries again
+      }
+      ml.off('styledata', attempt);
+    };
+    const restyled = () => {
+      off = null;
+      ml.on('styledata', attempt);
+      attempt();
     };
     void installRasterProtocol().then(() => {
       if (!live) return;
-      if (ml.isStyleLoaded()) apply();
-      else ml.once('load', apply);
+      ml.on('style.load', restyled);
+      restyled();
     });
     return () => {
       live = false;
+      ml.off('styledata', attempt);
+      ml.off('style.load', restyled);
       try {
         off?.();
       } catch {

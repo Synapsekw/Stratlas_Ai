@@ -8,7 +8,7 @@ import type { RasterPackInfo, TerrainDatum } from '@aio/schema';
 import { formatBytes, formatDate, Icon, t } from '@aio/ui';
 import { useEffect, useState } from 'react';
 import { bridge } from '../../shell';
-import { rasterPacks, useRasterPacks } from '../../workspace/siteTiles';
+import { listenForJobs, rasterPacks, useRasterPacks } from '../../workspace/siteTiles';
 
 type Kind = 'imagery' | 'terrain';
 
@@ -37,7 +37,7 @@ function ImportForm({
 }: {
   draft: Draft;
   setDraft: (d: Draft | null) => void;
-  onDone: (message: string) => void;
+  onDone: (message: string, jobId: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +66,7 @@ function ImportForm({
     else if (!r.value.ok) setError(r.value.error);
     else {
       setDraft(null);
-      onDone(t('g7.packs.building', { name: base.label }));
+      onDone(t('g7.packs.building', { name: base.label }), r.value.jobId);
     }
   };
 
@@ -261,9 +261,26 @@ export function RasterPacks() {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
+  const [jobId, setJobId] = useState<string | null>(null);
+
   useEffect(() => {
+    listenForJobs();
     rasterPacks.getState().refresh();
   }, []);
+
+  // the import's job: its end clears the note (the list refreshes), a failure shows why
+  useEffect(() => {
+    const aio = window.aio as typeof window.aio | undefined;
+    if (!jobId || !aio) return;
+    return aio.on('jobs:event', (e) => {
+      if (e.type !== 'update' || e.job.id !== jobId) return;
+      if (e.job.status === 'done') setNote(null);
+      if (e.job.status === 'failed' || e.job.status === 'cancelled') {
+        setNote(null);
+        setError(e.job.error ?? t('g7.packs.failed'));
+      }
+    });
+  }, [jobId]);
 
   const pick = async (kind: Kind) => {
     const r = await bridge.call('dialog:openFile', {
@@ -328,8 +345,9 @@ export function RasterPacks() {
         <ImportForm
           draft={draft}
           setDraft={setDraft}
-          onDone={(m) => {
+          onDone={(m, id) => {
             setNote(m);
+            setJobId(id);
           }}
         />
       )}

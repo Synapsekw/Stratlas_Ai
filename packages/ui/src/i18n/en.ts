@@ -2095,6 +2095,7 @@ export const en = {
   'g7.packs.cancel': 'Cancel',
   'g7.packs.building':
     'Building {name} in the pipeline pack. It appears here when the job in Jobs is done.',
+  'g7.packs.failed': 'The pack was not built. See the job in Jobs for why.',
   'g7.packs.colPack': 'Pack',
   'g7.packs.colZoom': 'Zoom',
   'g7.packs.colSize': 'Size',
