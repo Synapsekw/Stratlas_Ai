@@ -160,3 +160,39 @@ Current limits only; each is removed from this list when fixed.
 - Files are not kept apart per project on the server, and clients cannot download shared packages from it yet.
 - The app shows no live server status. Connecting needs the credential store: without it this computer has no device key.
 - A server certificate renewed by a CA the computer trusts is not accepted on its own yet: forget the server and connect again with a new invite code.
+
+## Photogrammetry, Globe and 3D Tiles (M10)
+
+### Processing photos
+
+- Processing runs on the CPU only (no GPU acceleration in this release), so dense matching is slower than GPU products. Windows x64 and Apple silicon Macs only; Intel Macs and Windows on Arm cannot process photos.
+- The photo pipelines need pipeline pack 0.4.0 with its native tools (COLMAP, PDAL, PoissonRecon). The pack's COLMAP and OpenCV builds are proven in CI only.
+- Large flights need memory: aligning about 1,000 photos with the global mapper peaked at about 13 GB. Plan on 300 photos per run on a 16 GB laptop.
+- Matching uses the photos' GPS positions; photos without GPS can only be matched exhaustively in small sets (no vocabulary tree).
+- Heights from the drone's GNSS follow its altitude datum unless a geoid grid is installed (no EGM2008 or EGM96 grid ships yet); use ground control for absolute heights.
+- No automatic target detection: every ground control mark is placed or confirmed by a person.
+- Fisheye and spherical cameras are not supported; oblique close-range sets are untested.
+- Texturing drapes the orthophoto or projects one photo per face: there is no seam-levelled texturing (`texrecon` is deferred). The Fast preset is weak on buildings and has no true-ortho on tall structures.
+- No LiDAR processing from raw scans.
+
+### OPF
+
+- Import reads cameras, calibration, control points, the sparse cloud and products, but no meshes. Uncalibrated photos bring their positions only.
+- Export writes the sparse model, not the dense cloud. Tested against the specification's examples and our own exports, not yet against Pix4D itself.
+- Vertical CRS heights are taken as they are, without conversion.
+
+### Globe
+
+- The Globe is for overview and navigation: no editing tools, only a distance and area read-out on the ellipsoid.
+- No geoid grid ships, so terrain heights on the Globe are not corrected to the geoid.
+- Processed orthophotos do not show on the Globe yet, sites have no footprints and there is no date filter.
+- The in-app agent cannot open or move the Globe yet.
+
+### Imagery, terrain and 3D Tiles
+
+- No world imagery or terrain ships in the installer and there are no pack downloads yet: imagery and terrain come from packs you build or import.
+- The bundled region imagery is 10 m (Sentinel-2 class), not sub-metre, unless you import your own.
+- Customer-licensed imagery stays out of packages; ticking it into a package is not built yet.
+- 3D Tiles are written as uncompressed glTF (no Draco, KTX2 or Meshopt), and are not checked by the official validator.
+- Converting a point cloud to 3D Tiles holds the whole cloud in memory; compressed COPC input needs PDAL.
+- A tileset has no visibility toggle in the layer list, and an issue placed on a tileset may not resolve after the project is reopened.
