@@ -46,6 +46,17 @@ export const en = {
   'titlebar.copyOfTip':
     'Extracted from the package {file} (exported {exported}) on {extracted}. Changes here stay in this project; the package is unchanged.',
 
+  // Launch screen (renderer gate/): before the workspace on every start
+  'gate.region': 'Open {product}',
+  'gate.welcomeBack': 'Welcome back,',
+  'gate.welcome': 'Welcome',
+  'gate.setName': 'Set your name in Settings, Identity and team.',
+  'gate.thisComputer': 'this computer',
+  'gate.enter': 'Enter',
+  'gate.local': 'stays on this machine',
+  'gate.cloudOn': 'cloud AI on',
+  'gate.skip': 'Skip intro',
+
   // Packages: extract to edit, map regions
   'package.extract.title': 'Edit a copy',
   'package.extract.text':
@@ -516,6 +527,10 @@ export const en = {
     'The camera jumps instead of flying, and panels appear without fades. Off follows Windows (animation effects), now {state}.',
   'settings.appearance.osOn': 'on',
   'settings.appearance.osOff': 'off',
+  'settings.appearance.launch': 'Launch screen',
+  'settings.appearance.launchShow': 'Show launch screen',
+  'settings.appearance.launchHelp':
+    'A short welcome with your name each time {product} starts. Press Enter or click Enter to go to your projects.',
 
   // Keyboard map
   'settings.page.keyboard': 'Keyboard',

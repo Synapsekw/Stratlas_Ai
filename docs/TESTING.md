@@ -41,6 +41,7 @@ Only what still needs testing. Each stage lists what to click and what you shoul
 | M8    | Change and modelling: changes between survey dates, imagery, surface, cloud and model change, same view on the other date, model builder, local detection, offline agent                                         | Version 0.8.0, built 7 Oct 2026 from main at commit `7faf945`, and pipeline pack 0.3.0 (see M8, Before you start)             | Built; not yet tested by the founder                 |
 | M9    | Team and audit: identity and roles, exchange files, shared folder, conflicts, review workflow, history and audit trail, large files on demand, team server (preview)                                             | Version 0.9.0, built 7 Oct 2026, 11:17, from main at commit `6300be4` or later                                                | Built; not yet tested by the founder                 |
 | R     | The rename to Quadrion AI: name, icon, title bar, installer, settings carried over from Stratlas                                                                                                                 | The installer built from the rename branch (QuadrionAI-0.9.0-win-x64-setup.exe)                                               | Built; not yet tested by the founder                 |
+| L     | The launch screen: welcome with your name, Enter, Esc, the Settings switch                                                                                                                                       | An installer built from the launch-screen branch (after the rename), or later                                                 | Built; not yet tested by the founder                 |
 
 ## Stage M5: your M4 feedback, fixed
 
@@ -534,3 +535,19 @@ Survey dates become folders in the sidebar, with a date bar and calendar above t
 - [ ] Open the compare split: the first date is on the left and the last on the right. Step the date bar: the left side follows it, the right side keeps its own date.
 - [ ] In stockpile projects (Masafi) the Volumes date buttons and the date bar move together: pick a date in either, step away and back, and that survey's terrain still shows.
 - [ ] Close and reopen the project: the same date is viewed, with the same layers on.
+
+## Stage L: the launch screen
+
+Each start now shows a short launch screen before your projects (the design you approved on 7 Oct 2026, Split layout). Use an installer built from the launch-screen branch.
+
+- [ ] Start the app: no white flash; the launch screen fills the window. Top left, the date and a running clock. Top right, **Skip intro** while the intro plays.
+- [ ] The intro takes about a second: the four plates drop in, the top one turns mint, QUADRION AI appears behind a scan line, then "Four dimensions. One view.", then the welcome comes into focus.
+- [ ] Left: the mark beside the QUADRION AI wordmark (never above it), the tagline under the wordmark. A thin line, then on the right "WELCOME BACK,", your name (the one in **Settings**, **Identity and team**), your company from **Settings**, **Report branding** (if set) and "this computer", the mint **Enter** button with ↵, and "Offline · stays on this machine" ("cloud AI on" when cloud AI is on).
+- [ ] Move the mouse: the points under it light up mint, and the plates lean toward the pointer, the top one most. Leave the mouse still for 4 seconds: everything drifts back to the centre.
+- [ ] Press **Enter** at once, during the intro: the launch screen fades back and **Projects** is there straight away. The app shortcuts (**Ctrl K**) work right after.
+- [ ] Start again and press **Esc**: the intro jumps to its end. Click **Enter** with the mouse: same as the key.
+- [ ] Start again and press **Tab**: a focus ring on **Enter** (none before you press Tab).
+- [ ] Zoom in (**Ctrl +** a few times) until the window is narrow: the welcome moves under the logo, centred; the mark stays beside the wordmark. **Ctrl 0** resets.
+- [ ] **Settings**, **Appearance**, switch off **Show launch screen**, then restart: the app opens straight on **Projects**. Switch it back on: the next start shows it again.
+- [ ] Windows **Settings**, **Accessibility**, **Visual effects**, **Animation effects** off (or **Settings**, **Appearance**, **Reduce motion** in the app), restart: the launch screen appears at once and stays still.
+- [ ] Minimise the window while the launch screen shows: Task Manager shows Quadrion AI using next to no CPU.

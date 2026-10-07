@@ -229,6 +229,7 @@ export const SETTINGS_RULES = {
       blobCacheGb: 'keep',
     } satisfies Record<keyof TeamSettings, Rule>,
   },
+  launchScreen: 'keep',
 } as const satisfies Record<keyof Settings, Rule>;
 
 function safeUrl(value: unknown): unknown {

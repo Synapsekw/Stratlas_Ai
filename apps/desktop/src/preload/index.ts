@@ -1,6 +1,7 @@
 import { envVar } from '@aio/brand/env';
 import type { AioBridge, IpcChannel, IpcEventName } from '@aio/schema';
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
+import { launchGateMode } from './launchGate';
 
 // Only the declared channels exist; main validates every request against @aio/schema. The lists
 // are type-checked against the contract so a new channel cannot be forgotten here. (No runtime
@@ -240,6 +241,8 @@ const bridge: AioBridge = {
       return null;
     }
   },
+  // The launch screen decides before its first frame, so synchronously from the environment.
+  launchGate: () => launchGateMode(process.env),
   processMemory: async () => {
     try {
       const m = await process.getProcessMemoryInfo(); // kilobytes
