@@ -6,7 +6,7 @@ import { collectHandlers } from '../notYet';
 import { registerSyncIpc } from './index';
 import { interimDevice, interimEngine } from './interim';
 import { createJournalStore } from './journalStore';
-import { createSyncService } from './service';
+import { createSyncService, safeJoin } from './service';
 
 let base: string;
 beforeEach(async () => {
@@ -368,5 +368,22 @@ describe('exchange files between two copies', () => {
     expect(await b.ipc.call('team:status', { projectId: 'p' })).toMatchObject({
       status: { mode: 'exchange', name: 'Pipe rack review' },
     });
+  });
+});
+
+describe('bundle file paths', () => {
+  it('keeps blob paths inside the project', () => {
+    const root = join(base, 'p');
+    expect(safeJoin(root, 'photos/a.jpg')).toBe(join(root, 'photos', 'a.jpg'));
+    for (const bad of [
+      '../x',
+      'photos/../../x',
+      '/etc/passwd',
+      'C:/Windows/x',
+      '',
+      'a' + String.fromCharCode(0) + 'b',
+    ]) {
+      expect(safeJoin(root, bad)).toBeNull();
+    }
   });
 });
