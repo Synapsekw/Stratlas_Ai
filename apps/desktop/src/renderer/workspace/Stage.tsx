@@ -564,7 +564,7 @@ export function Stage() {
   // the left side follows the date bar's focused survey (only panes drawn per date)
   const focus = useTimeline((s) => s.focus);
   useEffect(() => {
-    if (!splitting || !focus || !PER_CAPTURE.includes(sides.left)) return;
+    if (!splitting || !focus || !split.dates || !PER_CAPTURE.includes(sides.left)) return;
     if (paneCapture(split, 'left') === focus) return;
     split.set(chooseCapture(split.sides, 'left', focus, split.dates));
   }, [focus, splitting]); // eslint-disable-line react-hooks/exhaustive-deps -- follow focus changes only

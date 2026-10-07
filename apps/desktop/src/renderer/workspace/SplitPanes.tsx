@@ -212,11 +212,19 @@ type PhotoLayer = Extract<Layer, { kind: 'photos' }>;
 function VideoPane() {
   const t = useT();
   const clip = useWorkspace((s) => s.activeClip);
+  const dated = useTimeline((s) => (clip ? s.index?.of[clip] !== undefined : false));
   if (!clip) return <p className="pane-empty">{t('stage.pane.noClip')}</p>;
   return (
-    <VideoWindow layerId={clip} className="scene-fill">
-      <VideoAnnotator key={clip} layerId={clip} />
-    </VideoWindow>
+    <div className="pane-col">
+      {dated && (
+        <div className="pane-bar">
+          <DateBadge layerId={clip} />
+        </div>
+      )}
+      <VideoWindow layerId={clip} className="fill-col">
+        <VideoAnnotator key={clip} layerId={clip} />
+      </VideoWindow>
+    </div>
   );
 }
 
