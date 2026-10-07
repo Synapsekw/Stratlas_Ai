@@ -120,7 +120,9 @@ describe('camera groups and the photos zone', () => {
       ],
       notes: ['Camera group: Unknown camera (2 photos), frame size not readable.'],
     };
-    expect(cameraLabel(e.cameras[1] ?? e.cameras[0])).toBe('Unknown camera, 640 × 480 (1 photo)');
+    expect(cameraLabel({ id: 'cam2', widthPx: 640, heightPx: 480, photos: 1 })).toBe(
+      'Unknown camera, 640 × 480 (1 photo)',
+    );
     expect(cameraGroups(e)).toEqual([
       'Stratlas Synthetic SYN-20, 1600 × 1200, 8.8 mm (58 photos)',
       'Unknown camera, 640 × 480 (1 photo)',
