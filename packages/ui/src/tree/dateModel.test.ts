@@ -10,7 +10,9 @@ const captures: Capture[] = [
   { id: 'c', label: 'Survey C', date: '2024-11-06' },
 ];
 const manifest: ProjectManifest = { ...base, captures };
-const of = { [base.layers[0].id]: 'a', [base.layers[1].id]: 'c' };
+// Extract layer IDs - mockManifest always provides at least 2 layers
+const layerIds = base.layers.map((l) => l.id);
+const of = { [layerIds[0]]: 'a', [layerIds[1]]: 'c' };
 const labels = { every: 'Every date', dateLabel: (c: Capture) => c.date };
 
 describe('buildDateTree', () => {
@@ -20,8 +22,8 @@ describe('buildDateTree', () => {
     expect(folders.map((f) => f.id)).toEqual([EVERY_DATE, 'c', 'b', 'a']);
   });
   it('places each dated layer in its date folder only', () => {
-    expect(folders.find((f) => f.id === 'a')?.layerIds).toEqual([base.layers[0].id]);
-    expect(folders.find((f) => f.id === EVERY_DATE)?.layerIds).not.toContain(base.layers[0].id);
+    expect(folders.find((f) => f.id === 'a')?.layerIds).toEqual([layerIds[0]]);
+    expect(folders.find((f) => f.id === EVERY_DATE)?.layerIds).not.toContain(layerIds[0]);
   });
   it('keeps an empty date folder with no groups', () => {
     const b = folders.find((f) => f.id === 'b');
@@ -41,7 +43,7 @@ describe('buildDateTree', () => {
   });
   it('drops Every date when it would be empty', () => {
     const only = { ...manifest, layers: [base.layers[0]] };
-    const f = buildDateTree(only, [], {}, { captures, of: { [base.layers[0].id]: 'a' } }, labels);
+    const f = buildDateTree(only, [], {}, { captures, of: { [layerIds[0]]: 'a' } }, labels);
     expect(f[0]?.id).toBe('c');
   });
 });
