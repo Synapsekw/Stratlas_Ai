@@ -38,7 +38,7 @@ import {
   PolicySetPayload,
   SavedView,
 } from './collab';
-import { Sha256Hex } from './common';
+import { Id, Sha256Hex } from './common';
 import { ExchangeKind, ExchangePreview, Heads, TeamProjectId } from './exchange';
 import { ActorId, DeviceId, Identity, Initials, Member, PersonName, Role } from './identity';
 import {
@@ -52,6 +52,27 @@ import {
   Via,
 } from './journal';
 import { Conflict, QuarantineEntry, ServerInfo, SyncMode, TeamStatus } from './sync';
+import {
+  AccuracyReport,
+  GcpFile,
+  HardwareProbe,
+  PhotoEstimate,
+  PhotoPreset,
+  PhotoProduct,
+  PhotoRun,
+  PhotoRunId,
+  PhotoRunSummary,
+  PhotoSource,
+} from './photogrammetry';
+import {
+  GlobeSettings,
+  GlobeSite,
+  ImageryImportRequest,
+  RasterPackId,
+  RasterPackInfo,
+  TerrainImportRequest,
+} from './globe';
+import { TilesetsFile } from './tilesets';
 
 const Empty = z.object({}).strict();
 
@@ -1987,6 +2008,176 @@ export const ipc = {
   /** Remove an enrolled server and its vault entry from this machine. */
   'server:forget': {
     request: z.object({ id: z.string().min(1).max(64) }).strict(),
+    response: OkOrFailure,
+  },
+
+  // ---------------------------------------------------------------- M10 photogrammetry (G4)
+  // Runs live in `<project>/photogrammetry/<run>/` (data-conventions section 21). The jobs
+  // themselves start through `jobs:start` (`photo.align`, `photo.georef`, `photo.products`).
+  /** CPU, memory, free disk, GPUs and whether processing can run on this computer (cached). */
+  'photo:probe': {
+    request: Empty,
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), probe: HardwareProbe }),
+      Failure,
+    ]),
+  },
+  /** Time, disk and memory a run would need here, before it starts. */
+  'photo:estimate': {
+    request: z
+      .object({
+        projectId: ProjectId.optional(),
+        photos: PhotoSource,
+        preset: PhotoPreset,
+        products: z.array(PhotoProduct),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), estimate: PhotoEstimate }),
+      Failure,
+    ]),
+  },
+  /** The project's runs, newest first. */
+  'photo:runs': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), runs: z.array(PhotoRunSummary) }),
+      Failure,
+    ]),
+  },
+  /** One run's `run.json` and its accuracy report when there is one. */
+  'photo:readRun': {
+    request: z.object({ projectId: ProjectId, run: PhotoRunId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), run: PhotoRun, accuracy: AccuracyReport.nullable() }),
+      Failure,
+    ]),
+  },
+  /** A run's `gcp.json`; null when no points were imported yet. */
+  'photo:readGcp': {
+    request: z.object({ projectId: ProjectId, run: PhotoRunId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), gcp: GcpFile.nullable() }),
+      Failure,
+    ]),
+  },
+  /** Write `gcp.json` atomically with a `.bak`; refused (`read-only`) for packages. */
+  'photo:writeGcp': {
+    request: z.object({ projectId: ProjectId, run: PhotoRunId, gcp: GcpFile }).strict(),
+    response: OkOrFailure,
+  },
+  /**
+   * **Use refined poses**: with `apply: false`, how far each camera of the photos layer would move;
+   * with `apply: true`, swap in the run's refined cameras (`cameras.json` kept as `.bak`).
+   */
+  'photo:applyPoses': {
+    request: z
+      .object({ projectId: ProjectId, run: PhotoRunId, layer: Id, apply: z.boolean() })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        cameras: z.number().int().nonnegative(),
+        medianMoveM: z.number().nonnegative(),
+        maxMoveM: z.number().nonnegative(),
+        applied: z.boolean(),
+      }),
+      Failure,
+    ]),
+  },
+  /** Move a run's `work/` folder to the recycle bin (never its outputs); asks first in the UI. */
+  'photo:cleanWork': {
+    request: z.object({ projectId: ProjectId, run: PhotoRunId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), freedBytes: z.number().int().nonnegative() }),
+      Failure,
+    ]),
+  },
+
+  // ---------------------------------------------------------------- M10 Globe (G6)
+  /** Every library project as a site on the Earth (computed in the data process). */
+  'globe:sites': {
+    request: Empty,
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), sites: z.array(GlobeSite) }),
+      Failure,
+    ]),
+  },
+  /** The installed imagery and terrain packs, for the Globe's Imagery and Terrain menus. */
+  'globe:packs': {
+    request: Empty,
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        imagery: z.array(RasterPackInfo),
+        terrain: z.array(RasterPackInfo),
+      }),
+      Failure,
+    ]),
+  },
+  /** userData `globe.json`; the defaults when there is none. */
+  'globe:getSettings': {
+    request: Empty,
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), settings: GlobeSettings }),
+      Failure,
+    ]),
+  },
+  'globe:setSettings': {
+    request: z.object({ settings: GlobeSettings }).strict(),
+    response: OkOrFailure,
+  },
+
+  // ---------------------------------------------------------------- M10 3D Tiles and raster packs (G7)
+  /** The project's `tilesets.json`; an empty list when there is none. */
+  'tilesets:list': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), file: TilesetsFile }),
+      Failure,
+    ]),
+  },
+  /** Write `tilesets.json` atomically with a `.bak`; refused (`read-only`) for packages. */
+  'tilesets:write': {
+    request: z.object({ projectId: ProjectId, file: TilesetsFile }).strict(),
+    response: OkOrFailure,
+  },
+  'imageryPacks:list': {
+    request: Empty,
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), packs: z.array(RasterPackInfo) }),
+      Failure,
+    ]),
+  },
+  /** **Import imagery**: starts a `packs.imagery` job. */
+  'imageryPacks:import': {
+    request: ImageryImportRequest,
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), jobId: JobId }),
+      Failure,
+    ]),
+  },
+  'imageryPacks:remove': {
+    request: z.object({ id: RasterPackId }).strict(),
+    response: OkOrFailure,
+  },
+  'terrainPacks:list': {
+    request: Empty,
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), packs: z.array(RasterPackInfo) }),
+      Failure,
+    ]),
+  },
+  /** **Import terrain**: starts a `packs.terrain` job. */
+  'terrainPacks:import': {
+    request: TerrainImportRequest,
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), jobId: JobId }),
+      Failure,
+    ]),
+  },
+  'terrainPacks:remove': {
+    request: z.object({ id: RasterPackId }).strict(),
     response: OkOrFailure,
   },
 } as const satisfies Record<string, { request: z.ZodType; response: z.ZodType }>;

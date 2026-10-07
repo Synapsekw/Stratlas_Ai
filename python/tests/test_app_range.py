@@ -22,8 +22,9 @@ def test_app_range_is_readable_by_the_app():
     assert all(COMPARATOR.match(p) for p in parts), APP_RANGE
 
 
-def test_app_range_covers_0_9_and_1_x_but_not_0_8():
-    assert APP_RANGE == ">=0.9.0 <2.0.0"
+def test_app_range_covers_0_10_and_1_x_but_not_0_9():
+    # Pack 0.4.0 (M10) runs pipelines an 0.9 app does not know; decision 11 ships M10 as 1.1.0.
+    assert APP_RANGE == ">=0.10.0 <2.0.0"
 
 
 def test_version_flag_reports_the_range():

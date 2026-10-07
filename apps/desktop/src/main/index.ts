@@ -86,6 +86,10 @@ import { registerSyncIpc } from './sync';
 import { createTeamConfigStore } from './sync/config';
 import { startSync } from './sync/electron';
 import { registerTeamServerIpc, teamServers } from './teamServer';
+import { registerGlobeIpc } from './globe';
+import { registerRasterPacksIpc } from './packs/raster';
+import { registerPhotogrammetryIpc } from './photogrammetry';
+import { registerTilesetsIpc } from './tilesets';
 import { createTestVault, useTestVault } from './testVault';
 import { importLogo, removeLogo } from './branding';
 import { putThumb } from './thumbs';
@@ -1162,6 +1166,12 @@ function registerIpc(): void {
   });
   registerBlobsIpc({ handle, service: blobs });
   registerTeamServerIpc({ handle, servers });
+
+  // M10: one module per stream (G4 photogrammetry, G6 globe, G7 tilesets and raster packs).
+  registerPhotogrammetryIpc({ handle });
+  registerGlobeIpc({ handle });
+  registerTilesetsIpc({ handle });
+  registerRasterPacksIpc({ handle });
 }
 
 /** Hand a package path to the renderer (second launch, macOS open-file). */
