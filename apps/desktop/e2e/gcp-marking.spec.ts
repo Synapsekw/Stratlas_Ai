@@ -4,12 +4,16 @@
  * **Adjust**, and read the accuracy report: checkpoints measured, never adjusted, the planted bad
  * point (GCP6) flagged. Saves are atomic with a `.bak`.
  *
- * Runs on the e2e stand-in pipelines (`e2e/photo-fake`) until streams G2 and G3 land;
- * `STRATLAS_E2E_PHOTO_REAL=1` runs it on the real ones. Synthetic photos only; zero network.
+ * A run read from a flight folder outside the project marks the same way, its photos read
+ * through main (`photo:readPhoto`).
+ *
+ * Runs on the e2e stand-in pipelines (`e2e/photo-fake`): the app's side of processing. The real
+ * pipelines run in `photo-real.spec.ts` where this machine has their tools. Synthetic photos only;
+ * zero network.
  */
 import type { Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, test as base, VENV_PYTHON } from './fixtures';
@@ -18,6 +22,7 @@ import {
   expectedPixel,
   GCPS,
   openPhotoSite,
+  openWizard,
   photoFixtures,
   runId,
   startRun,
@@ -42,7 +47,8 @@ async function ringOffset(win: Page, point: (typeof GCPS)[number]): Promise<numb
   return Math.hypot(x - want[0], y - want[1]);
 }
 
-test('import GCPs, mark them with the keyboard, adjust and read an honest report', async ({
+test('import GCPs, mark them with the keyboard, adjust, read an honest report and export it', async ({
+  app,
   win,
   photoSite,
 }) => {
@@ -118,4 +124,93 @@ test('import GCPs, mark them with the keyboard, adjust and read an honest report
   );
   await expect(report).toContainText('Checkpoints are measured only');
   await expectAccessible(win, 'accuracy report', { include: '[data-testid="photo-run"]' });
+
+  // Export, Processing accuracy report (PDF): the latest run's report through the save dialog
+  const out = join(photoSite.dir, '..', '..', 'out');
+  await mkdir(out, { recursive: true });
+  await app.evaluate(
+    ({ dialog }, folder) => {
+      dialog.showSaveDialog = (...args: unknown[]) => {
+        const opts = (args.length > 1 ? args[1] : args[0]) as { defaultPath?: string };
+        const name = String(opts.defaultPath).split(/[\\/]/).pop() ?? 'export';
+        return Promise.resolve({ canceled: false, filePath: `${folder}/${name}` });
+      };
+    },
+    out.replace(/\\/g, '/'),
+  );
+  await panel.getByRole('button', { name: 'Close' }).click();
+  await win.locator('.sb-nav .nav-item', { hasText: 'Issues' }).click();
+  await win.getByRole('button', { name: 'Export', exact: true }).click();
+  await win.getByRole('menuitem', { name: /Processing accuracy report/ }).click();
+  await expect(win.getByTestId('export-toast-message').last()).toContainText('Saved to', {
+    timeout: 120_000,
+  });
+  const pdf = await readFile(join(out, 'E2E-photo-site-accuracy-report.pdf'));
+  expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+  expect(pdf.length).toBeGreaterThan(10_000);
+});
+
+test('a flight in a folder outside the project: the marker reads its photos through main', async ({
+  app,
+  win,
+  photoSite,
+}) => {
+  test.setTimeout(240_000);
+  // the founder's flights live outside the project, in folders with spaces in their names
+  const flight = join(photoSite.dir, '..', '..', 'flight one');
+  await mkdir(join(flight, '100MEDIA'), { recursive: true });
+  for (const c of CAMERAS)
+    await copyFile(join(photoSite.dir, 'photos', c.file), join(flight, '100MEDIA', c.file));
+  await openPhotoSite(win);
+  const wizard = await openWizard(win);
+  await wizard.getByRole('button', { name: /Folders of photos/ }).click();
+  await app.evaluate(({ dialog }, folder) => {
+    const orig = dialog.showOpenDialog.bind(dialog);
+    (dialog as { showOpenDialog: unknown }).showOpenDialog = () => {
+      (dialog as { showOpenDialog: unknown }).showOpenDialog = orig;
+      return Promise.resolve({ canceled: false, filePaths: [folder] });
+    };
+  }, flight);
+  await wizard.getByRole('button', { name: 'Add a folder' }).click();
+  await expect(wizard.getByRole('list', { name: 'Chosen folders' })).toContainText('flight one');
+  const next = wizard.getByRole('button', { name: 'Next' });
+  await next.click();
+  await expect(wizard.getByTestId('photo-groups')).toContainText('Stratlas Synthetic SYN-20');
+  await next.click();
+  await next.click();
+  await wizard.getByText('I have ground control points').click();
+  await next.click();
+  await expect(wizard.getByTestId('photo-estimate')).toBeVisible({ timeout: 60_000 });
+  await wizard.getByTestId('photo-start').click();
+  const panel = win.getByTestId('photo-run');
+  const run = await runId(win);
+  await expect(panel.getByRole('region', { name: 'Next steps' })).toBeVisible({ timeout: 60_000 });
+
+  await panel.getByRole('tab', { name: 'Ground control' }).click();
+  const importer = panel.getByTestId('gcp-import');
+  await importer.getByTestId('gcp-file').setInputFiles(photoSite.csv);
+  await importer.getByTestId('gcp-save').click();
+  const table = panel.getByTestId('gcp-table');
+  const point = GCPS[0];
+  if (!point) throw new Error('no GCP');
+  await table.getByRole('button', { name: `Mark ${point.id}` }).click();
+  const marker = panel.getByTestId('gcp-marker');
+  // the photo comes from the flight folder (photo:readPhoto), not from the project
+  const img = marker.getByRole('img', { name: /^Photo IMG_/ });
+  await expect(img).toHaveAttribute('src', /^blob:/, { timeout: 20_000 });
+  await expect.poll(() => img.evaluate((e) => (e as HTMLImageElement).naturalWidth)).toBe(800);
+  await expect(marker.getByTestId('marker-loupe')).toBeVisible();
+  for (let n = 1; n <= 3; n++) {
+    expect(await ringOffset(win, point)).toBeLessThan(10);
+    await win.keyboard.press('Enter');
+    await expect(marker.getByTestId('marker-count')).toContainText(`${String(n)} of 3`);
+  }
+  await win.keyboard.press('Escape');
+  // marks are keyed by the photo's path below the flight folder, as photo.align keys them
+  const saved = JSON.parse(
+    await readFile(join(photoSite.dir, 'photogrammetry', run, 'gcp.json'), 'utf8'),
+  ) as { points: { id: string; marks: { photo: string }[] }[] };
+  const marks = saved.points.find((p) => p.id === point.id)?.marks ?? [];
+  expect(marks).toHaveLength(3);
+  for (const m of marks) expect(m.photo).toMatch(/^100MEDIA\/IMG_\d{4}\.JPG$/);
 });

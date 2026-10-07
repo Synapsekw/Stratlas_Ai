@@ -181,19 +181,67 @@ class FakeAlign(_align.PhotoAlign):
             folder = _run_dir(ctx, run)
             count = ctx.outputs("inspect").get("count", 0)
             layer = _photos_layer(ctx, params["photos"])
+            # cameras-sfm.json in G2's shape (align.py cameras_sfm): keyed by the layer's photo id
+            size = (1600, 1200)
+            run_doc = _read(folder / "run.json")
+            cam = (run_doc.get("cameras") or [{}])[0]
+            size = (cam.get("widthPx") or size[0], cam.get("heightPx") or size[1])
             refined = []
-            for it in (layer or {}).get("items") or []:
+            keyed: list[tuple[str, dict[str, Any]]] = []
+            if layer:
+                keyed = [(it["id"], it) for it in layer.get("items") or []]
+            else:
+                # a folder run is keyed by the path below its folder; the stand-in "aligns" a photo
+                # by taking the pose of the project's layer photo with the same file name
+                by_name = {
+                    Path(it["src"]["path"]).name.lower(): it
+                    for lay in _manifest(ctx).get("layers") or []
+                    if lay.get("kind") == "photos"
+                    for it in lay.get("items") or []
+                    if "path" in it.get("src", {})
+                }
+                for folder_ in params["photos"].get("folders", []):
+                    for p in sorted(Path(folder_).rglob("*")):
+                        if p.suffix.lower() in (".jpg", ".jpeg") and p.name.lower() in by_name:
+                            keyed.append((p.relative_to(folder_).as_posix(), by_name[p.name.lower()]))
+            for key, it in keyed:
                 if not it.get("pos"):
                     continue
                 x, y, z = it["pos"]
+                lens = it.get("lens") or {}
                 refined.append(
                     {
-                        "id": it["id"],
+                        "photo": key,
                         "pos": [x + 0.05, y - 0.02, z + 0.03],
-                        **({"q": it["q"]} if "q" in it else {}),
+                        "q": it.get("q") or [-0.7071068, 0.0, 0.0, 0.7071068],
+                        "lens": {
+                            "model": "pinhole",
+                            "hfovDeg": lens.get("hfovDeg", 70.0),
+                            "aspect": round(size[0] / size[1], 6),
+                        },
+                        "camera": "cam1",
                     }
                 )
-            atomic_write_json(folder / "cameras-sfm.json", {"cameras": refined})
+            manifest = _manifest(ctx)
+            atomic_write_json(
+                folder / "cameras-sfm.json",
+                {
+                    "run": run,
+                    "crs": params.get("crs") or manifest["crs"],
+                    "origin": manifest["origin"],
+                    "frame": "local (data-conventions section 1: x east, y up, z south)",
+                    "calibration": [
+                        {
+                            "id": "cam1",
+                            "model": "OPENCV",
+                            "width": size[0],
+                            "height": size[1],
+                            "params": [size[0] * 0.714, size[0] * 0.714, size[0] / 2, size[1] / 2],
+                        }
+                    ],
+                    "cameras": refined,
+                },
+            )
             atomic_write_json(folder / "report" / "align.json", {"registered": count, "rejected": []})
             (folder / "sparse").mkdir(parents=True, exist_ok=True)
             atomic_write_bytes(folder / "sparse" / "README.txt", b"e2e fake sparse model\n")
