@@ -144,6 +144,53 @@ describe('first start of the new version', () => {
   });
 });
 
+describe('a journal saved by a newer version', () => {
+  const message =
+    'updates/journal.json was saved by a newer version of Stratlas (aio.update-journal/2). Update the app to open it. The file was not changed.';
+
+  it('is never written over, and the kept copies it names stay', async () => {
+    const file = join(updates, 'journal.json');
+    const kept = join(updates, 'previous', '0.9.0', 'Stratlas.exe');
+    await mkdir(join(updates, 'previous', '0.9.0'), { recursive: true });
+    await writeFile(kept, 'exe 0.9.0');
+    const newer = `${JSON.stringify(
+      {
+        schema: 'aio.update-journal/2',
+        pending: { from: '0.9.0', to: '0.7.0', launches: 1 },
+        kept: [{ version: '0.9.0' }],
+      },
+      null,
+      2,
+    )}\n`;
+    await writeFile(file, newer);
+    const lines: string[] = [];
+    const r = createRollback({
+      dir: updates,
+      current: '0.7.0',
+      install: { appRoot, exe: 'Stratlas.exe' },
+      fs,
+      log: (l) => lines.push(l),
+    });
+    expect(await r.startup()).toEqual({ kind: 'normal' });
+    expect(await r.markReady()).toBe(false);
+    await r.markCleanExit();
+    expect(await r.markFailure('no ready')).toBe(false);
+    await r.decline();
+    await r.recordRollback('0.9.0');
+    await expect(r.keepCurrent('1.0.0')).rejects.toThrow(message);
+    expect(await r.status()).toEqual({ current: '0.7.0' });
+    expect(lines).toContain(message);
+    expect(await readFile(file, 'utf8')).toBe(newer);
+    expect(existsSync(kept)).toBe(true);
+    expect(existsSync(join(updates, 'previous', '0.7.0'))).toBe(false);
+  });
+
+  it('leaves a current journal working as before', async () => {
+    await rollbackFor('0.7.0').keepCurrent('0.8.0');
+    expect((await rollbackFor('0.8.0').read()).pending).toMatchObject({ to: '0.8.0' });
+  });
+});
+
 describe('restoring the kept version', () => {
   it('replaces the installed folder with two renames and records the rollback', async () => {
     const kept = await rollbackFor('0.7.0').keepCurrent('0.8.0');

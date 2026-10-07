@@ -265,6 +265,8 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     where: 'backup .jsonl (team server CLI)',
     since: '0.9',
   },
+  // library.json had no schema id before 0.9; files without one read as /1.
+  { family: 'aio.library', version: 1, home: 'userData', where: 'library.json', since: '0.9' },
 ];
 
 /**

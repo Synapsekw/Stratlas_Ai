@@ -1,6 +1,7 @@
 import type { UpdateStatus } from '@aio/schema';
 import { basename, dirname, isAbsolute, join, relative } from 'node:path';
 import { z } from 'zod';
+import { newerThanThisBuild, parseJsonText } from '../newer';
 
 /**
  * Rollback after an update (ADR 0003).
@@ -132,9 +133,24 @@ export function createRollback(d: RollbackDeps) {
     }
   }
 
+  /** The update message when the journal on disk was saved by a newer build, else null. */
+  async function newerJournal(): Promise<string | null> {
+    let text: string;
+    try {
+      text = await d.fs.readFile(journalPath, 'utf8');
+    } catch {
+      return null;
+    }
+    return newerThanThisBuild(parseJsonText(text), 'aio.update-journal', 'updates/journal.json');
+  }
+
   async function read(): Promise<Journal> {
     try {
-      const parsed = Journal.safeParse(JSON.parse(await d.fs.readFile(journalPath, 'utf8')));
+      const raw: unknown = JSON.parse(await d.fs.readFile(journalPath, 'utf8'));
+      // A newer build's journal is read as empty here and never written over (see write).
+      if (newerThanThisBuild(raw, 'aio.update-journal', 'updates/journal.json'))
+        return { schema: JOURNAL_SCHEMA };
+      const parsed = Journal.safeParse(raw);
       if (parsed.success) return parsed.data;
       log('The update journal is not valid; starting a new one.');
     } catch {
@@ -143,8 +159,16 @@ export function createRollback(d: RollbackDeps) {
     return { schema: JOURNAL_SCHEMA };
   }
 
-  /** Write-then-rename, so a cut-off write never leaves half a journal. */
+  /**
+   * Write-then-rename, so a cut-off write never leaves half a journal. A journal saved by a newer
+   * build is left as it is (UPGRADE-POLICY rule 3): the write is skipped and logged.
+   */
   async function write(j: Journal): Promise<void> {
+    const newer = await newerJournal();
+    if (newer) {
+      log(newer);
+      return;
+    }
     await d.fs.mkdir(d.dir, { recursive: true });
     const tmp = `${journalPath}.tmp`;
     await d.fs.writeFile(tmp, `${JSON.stringify(j, null, 2)}\n`);
@@ -175,6 +199,8 @@ export function createRollback(d: RollbackDeps) {
      */
     async keepCurrent(to: string): Promise<{ exe: string; dir: string }> {
       if ('unavailable' in d.install) throw new Error(d.install.unavailable);
+      const newer = await newerJournal();
+      if (newer) throw new Error(newer);
       const { appRoot, exe } = d.install;
       const dir = join(previousRoot, d.current);
       if (!(await exists(join(dir, exe)))) {
@@ -208,6 +234,12 @@ export function createRollback(d: RollbackDeps) {
 
     /** Decide at startup, before any window: count this start and say what to do. */
     async startup(): Promise<StartupDecision> {
+      // A newer build's journal names kept copies this build must not remove: change nothing.
+      const newer = await newerJournal();
+      if (newer) {
+        log(newer);
+        return { kind: 'normal' };
+      }
       const j = await read();
       const p = j.pending;
       if (!p) {

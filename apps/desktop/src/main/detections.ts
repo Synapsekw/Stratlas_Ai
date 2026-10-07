@@ -10,6 +10,7 @@ import { DetectionsFile, type IpcResponse, type ProjectManifest } from '@aio/sch
 import { open, mkdir, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { writeJsonAtomic } from './fsutil';
+import { newerOnDisk, newerThanThisBuild } from './newer';
 import { resolveInside } from './protocol/paths';
 
 export const DETECTIONS_DIR = 'detections';
@@ -155,6 +156,11 @@ export async function readDetectionPasses(
       problems.push({ name, error: `not JSON: ${String(e).slice(0, 200)}` });
       continue;
     }
+    const newer = newerThanThisBuild(raw, 'aio.detections', `${DETECTIONS_DIR}/${name}`);
+    if (newer) {
+      problems.push({ name, error: newer });
+      continue;
+    }
     if ((raw as { schema?: unknown } | null)?.schema !== 'aio.detections/1') {
       problems.push({
         name,
@@ -210,6 +216,8 @@ export async function writeDetectionPass(
 ): Promise<{ ok: boolean; error?: string }> {
   const dir = join(root, DETECTIONS_DIR);
   const target = join(dir, name);
+  const newer = await newerOnDisk(target, 'aio.detections', `${DETECTIONS_DIR}/${name}`);
+  if (newer) return { ok: false, error: newer };
   try {
     await mkdir(dir, { recursive: true });
     await writeJsonAtomic(target, file, { backup: true });

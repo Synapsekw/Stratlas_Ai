@@ -7,6 +7,7 @@ import { NarrativeFile, type IpcResponse } from '@aio/schema';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { readJson, writeJsonAtomic } from './fsutil';
+import { newerOnDisk, newerThanThisBuild } from './newer';
 
 export const NARRATIVE_PATH = 'report/narrative.json';
 
@@ -31,6 +32,8 @@ export async function readNarrative(root: string): Promise<IpcResponse<'report:r
     return { ok: false, error: `Could not read the report text: ${why(e)}` };
   }
   if (raw === undefined) return { ok: true, file: null, readOnly: false };
+  const newer = newerThanThisBuild(raw, 'aio.narrative', NARRATIVE_PATH);
+  if (newer) return { ok: false, error: newer };
   const parsed = NarrativeFile.safeParse(raw);
   return parsed.success
     ? { ok: true, file: parsed.data, readOnly: false }
@@ -44,9 +47,10 @@ export async function readPackageNarrative(archive: {
 }): Promise<IpcResponse<'report:readNarrative'>> {
   if (!archive.entries.has(NARRATIVE_PATH)) return { ok: true, file: null, readOnly: true };
   try {
-    const parsed = NarrativeFile.safeParse(
-      JSON.parse((await archive.read(NARRATIVE_PATH)).toString('utf8')),
-    );
+    const raw: unknown = JSON.parse((await archive.read(NARRATIVE_PATH)).toString('utf8'));
+    const newer = newerThanThisBuild(raw, 'aio.narrative', NARRATIVE_PATH);
+    if (newer) return { ok: false, error: newer };
+    const parsed = NarrativeFile.safeParse(raw);
     return parsed.success
       ? { ok: true, file: parsed.data, readOnly: true }
       : { ok: false, error: invalid(parsed.error) };
@@ -59,6 +63,8 @@ export async function writeNarrative(
   root: string,
   file: NarrativeFile,
 ): Promise<IpcResponse<'report:writeNarrative'>> {
+  const newer = await newerOnDisk(join(root, NARRATIVE_PATH), 'aio.narrative', NARRATIVE_PATH);
+  if (newer) return { ok: false, error: newer };
   try {
     await mkdir(join(root, 'report'), { recursive: true });
     await writeJsonAtomic(join(root, NARRATIVE_PATH), file, { backup: true });

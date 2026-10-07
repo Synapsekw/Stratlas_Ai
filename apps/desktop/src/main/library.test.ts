@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -124,6 +124,37 @@ describe('library store and addToLibrary', () => {
     expect(r.ok).toBe(false);
     expect(!r.ok && r.error).toMatch(/manifest\.json/);
     expect(await store.paths()).toEqual([]);
+  });
+
+  it('reads a list without a schema id (0.8 and earlier) and saves it as aio.library/1', async () => {
+    const file = join(base, 'library.json');
+    const old = await writeProject(join(base, 'old'));
+    await writeFile(file, JSON.stringify({ paths: [old] }));
+    const store = createLibraryStore(file);
+    expect(await store.paths()).toEqual([old]);
+    const dir = await writeProject(join(base, 'mine'));
+    expect((await addToLibrary(dir, store, new ProjectRegistry())).ok).toBe(true);
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({
+      schema: 'aio.library/1',
+      paths: [old, dir],
+    });
+    expect(await createLibraryStore(file).paths()).toEqual([old, dir]);
+  });
+
+  it('refuses a list saved by a newer version and never saves over it', async () => {
+    const file = join(base, 'library.json');
+    const newer = `${JSON.stringify({ schema: 'aio.library/2', folders: [{ path: 'x' }] })}\n`;
+    await writeFile(file, newer);
+    const store = createLibraryStore(file);
+    expect(await store.paths()).toEqual([]);
+    const dir = await writeProject(join(base, 'mine'));
+    expect(await addToLibrary(dir, store, new ProjectRegistry())).toEqual({
+      ok: false,
+      error:
+        'library.json was saved by a newer version of Stratlas (aio.library/2). Update the app to open it. The file was not changed.',
+    });
+    await expect(store.add(dir)).rejects.toThrow(/newer version of Stratlas/);
+    expect(await readFile(file, 'utf8')).toBe(newer);
   });
 
   it('refuses a missing folder', async () => {

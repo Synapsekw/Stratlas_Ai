@@ -135,6 +135,29 @@ describe('detection passes (detections/*.json)', () => {
     expect(await readFile(join(base, 'detections', 'kit.json'), 'utf8')).toContain('p001.jpg');
   });
 
+  it('refuses a pass saved by a newer version and never writes over it', async () => {
+    await project();
+    const newer = `${JSON.stringify({ ...ai, schema: 'aio.detections/2', extra: true }, null, 2)}\n`;
+    const file = join(base, 'detections', 'newer.json');
+    await writeFile(file, newer);
+    const message =
+      'detections/newer.json was saved by a newer version of Stratlas (aio.detections/2). Update the app to open it. The file was not changed.';
+    const r = await readDetectionPasses(folderFiles(base), manifest, false);
+    if (!r.ok) throw new Error(r.error);
+    // the current pass still reads
+    expect(r.files.map((f) => f.name)).toEqual(['ai-run.json']);
+    expect(r.problems.find((p) => p.name === 'newer.json')).toEqual({
+      name: 'newer.json',
+      error: message,
+    });
+    expect(await writeDetectionPass(base, 'newer.json', ai as unknown as DetectionsFile)).toEqual({
+      ok: false,
+      error: message,
+    });
+    expect(await readFile(file, 'utf8')).toBe(newer);
+    await expect(readFile(`${file}.bak`)).rejects.toThrow();
+  });
+
   it('reads a package read only, sizes from its members', async () => {
     const members = new Map<string, Buffer>([
       ['detections/ai-run.json', Buffer.from(JSON.stringify(ai))],

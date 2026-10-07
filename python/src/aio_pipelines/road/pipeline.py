@@ -689,9 +689,12 @@ def merge_issues(ctx: StepContext, built: list[dict[str, Any]]) -> int:
     everything people added or edited is kept (``mergeImportedIssues`` of the importers)."""
     path = ctx.out("issues.json")
     saved: list[dict[str, Any]] = []
+    # the document as read: keys this pipeline does not know are written back as they were
+    doc: dict[str, Any] = {}
     if path.exists():
         try:
-            doc = json.loads(path.read_text("utf-8"))
+            raw = json.loads(path.read_text("utf-8"))
+            doc = raw if isinstance(raw, dict) else {}
             saved = [i for i in doc.get("issues", []) if isinstance(i, dict) and isinstance(i.get("id"), str)]
         except (OSError, json.JSONDecodeError) as e:
             raise JobError(f"issues.json could not be read, so it is left as it is: {e}") from e
@@ -709,7 +712,7 @@ def merge_issues(ctx: StepContext, built: list[dict[str, Any]]) -> int:
     kept += sum(1 for i in built if i["id"] in by_id and not _untouched_import(by_id[i["id"]]))
     if path.exists():
         shutil.copyfile(path, path.with_name("issues.json.bak"))
-    atomic_write_json(path, {"schema": "aio.issues/1", "issues": out}, indent=None)
+    atomic_write_json(path, {**doc, "schema": "aio.issues/1", "issues": out}, indent=None)
     ctx.artifact("issues.json")
     return kept
 

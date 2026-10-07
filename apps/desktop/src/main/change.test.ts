@@ -194,6 +194,37 @@ describe('change IPC', () => {
     expect(await readFile(join(root, 'change', 'broken.json'), 'utf8')).toBe('{nope');
   });
 
+  it('refuses a change set saved by a newer version and never writes over it', async () => {
+    const h = ipc();
+    const args = { projectId: 'p', from: 'd1', to: 'd2', kinds: ['issue' as const] };
+    await h.call('change:compute', { jobId: 'j1', ...args });
+    const file = join(root, 'change', 'd1-d2-issues.json');
+    // the current file still reads
+    const current = await h.call('change:read', { projectId: 'p', id: 'd1-d2-issues' });
+    expect(current).toMatchObject({ ok: true, set: { schema: 'aio.change/1' } });
+    if (!current.ok) throw new Error(current.error);
+    const newer = `${JSON.stringify({ ...current.set, schema: 'aio.change/2', extra: 1 })}\n`;
+    await writeFile(file, newer);
+    const message =
+      'change/d1-d2-issues.json was saved by a newer version of Stratlas (aio.change/2). Update the app to open it. The file was not changed.';
+    expect(await h.call('change:read', { projectId: 'p', id: 'd1-d2-issues' })).toEqual({
+      ok: false,
+      error: message,
+    });
+    const list = await h.call('change:list', { projectId: 'p' });
+    expect(list.ok && list.problems).toEqual([{ name: 'd1-d2-issues.json', error: message }]);
+    // neither a save nor a recompute of the same pair replaces it
+    expect(await h.call('change:write', { projectId: 'p', set: current.set })).toEqual({
+      ok: false,
+      error: message,
+    });
+    expect(await h.call('change:compute', { jobId: 'j2', ...args })).toEqual({
+      ok: false,
+      error: message,
+    });
+    expect(await readFile(file, 'utf8')).toBe(newer);
+  });
+
   it('reads a package in place and refuses to write or compute in it', async () => {
     const set = {
       schema: 'aio.change/1',

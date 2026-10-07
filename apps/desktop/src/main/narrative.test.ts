@@ -42,6 +42,25 @@ describe('report narrative store', () => {
     expect(r.ok).toBe(false);
   });
 
+  it('refuses a narrative saved by a newer version and never saves over it', async () => {
+    const one = addNarrativeVersion(null, 'summary', version('First'));
+    await writeNarrative(root, one);
+    expect(await readNarrative(root)).toEqual({ ok: true, file: one, readOnly: false });
+    const newer = `${JSON.stringify({ ...one, schema: 'aio.narrative/2', more: [] }, null, 1)}\n`;
+    await writeFile(join(root, NARRATIVE_PATH), newer);
+    const message =
+      'report/narrative.json was saved by a newer version of Stratlas (aio.narrative/2). Update the app to open it. The file was not changed.';
+    expect(await readNarrative(root)).toEqual({ ok: false, error: message });
+    const two = addNarrativeVersion(one, 'summary', version('Second'));
+    expect(await writeNarrative(root, two)).toEqual({ ok: false, error: message });
+    expect(await readFile(join(root, NARRATIVE_PATH), 'utf8')).toBe(newer);
+    const archive = {
+      entries: new Map([[NARRATIVE_PATH, {}]]),
+      read: () => Promise.resolve(Buffer.from(newer)),
+    };
+    expect(await readPackageNarrative(archive)).toEqual({ ok: false, error: message });
+  });
+
   it('reads a package narrative read only', async () => {
     const file = addNarrativeVersion(null, 'method', version('Method'));
     const entries = new Map([[NARRATIVE_PATH, {}]]);

@@ -105,17 +105,13 @@ def test_inspection_run_keeps_unknown_keys_on_issues_it_does_not_own(project):
     assert (project / "manifest.json").read_bytes() == manifest_before
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="inspection.run rewrites issues.json as {schema, issues}: unknown top-level keys of the "
-    "issues document are dropped (pipeline.py commit step)",
-)
 def test_inspection_run_keeps_unknown_top_level_keys_of_issues_json(project):
     inspection_project(project)
     write_issues(project, issues_of(project), **{FUTURE_KEY: FUTURE})
     run_job(InspectionRun(), project, {})
     doc = json.loads((project / "issues.json").read_text("utf-8"))
     assert exact(doc.get(FUTURE_KEY)) == exact(FUTURE)
+    assert list(doc) == ["schema", "issues", FUTURE_KEY]  # in the place it was written
 
 
 # ---------------------------------------------------------------- road.build
@@ -179,17 +175,13 @@ def test_road_build_keeps_unknown_keys_on_issues_layers_and_the_manifest(tmp_pat
     assert exact(road_cat[FUTURE_KEY]) == exact(FUTURE)  # ... and kept the unknown key
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="road.build rewrites issues.json as {schema, issues}: unknown top-level keys of the "
-    "issues document are dropped (merge_issues in road/pipeline.py)",
-)
 def test_road_build_keeps_unknown_top_level_keys_of_issues_json(tmp_path, project):
     inputs = road_project(tmp_path, project)
     write_issues(project, [], **{FUTURE_KEY: FUTURE})
     run_job(RoadBuild(), project, {"centreline": inputs["centreline"], "defects": inputs["defects"]})
     doc = json.loads((project / "issues.json").read_text("utf-8"))
     assert exact(doc.get(FUTURE_KEY)) == exact(FUTURE)
+    assert list(doc) == ["schema", "issues", FUTURE_KEY]  # in the place it was written
 
 
 # ---------------------------------------------------------------- journal/ and team.json
