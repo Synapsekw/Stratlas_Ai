@@ -293,23 +293,29 @@ test('right-click the drone, align the camera to the map with two keyframes', as
 
   // right-click on the flight path: the playhead jumps there and the menu opens
   await win.keyboard.press('Escape');
-  // once the map shows the path there
+  // a point of the path well behind the drone (at 9.5 s it is 45 m east looking east, its heading
+  // arrow and footprint ahead of it), once the map shows the path there
+  const PATH_MS = 3_000;
+  await win.evaluate((t) => {
+    (window as unknown as Probe).__stratlas.workspace.getState().setTime(t);
+  }, START + 9500);
   let onPath = { x: 0, y: 0 };
   await expect
     .poll(
       async () => {
-        onPath = await mapPoint(win, truth(9000));
+        onPath = await mapPoint(win, truth(PATH_MS));
         return win.evaluate((p) => {
           const el = [...document.querySelectorAll('*')].find((e) => '__aioMap' in e) as MapEl;
           const r = el.__aioMap.getContainer().getBoundingClientRect();
           const x = p.x - r.left;
           const y = p.y - r.top;
-          return el.__aioMap
+          const ids = el.__aioMap
             .queryRenderedFeatures([
-              [x - 4, y - 4],
-              [x + 4, y + 4],
+              [x - 6, y - 6],
+              [x + 6, y + 6],
             ])
-            .some((f) => f.layer.id === 'aio-flights-line');
+            .map((f) => f.layer.id);
+          return ids.includes('aio-flights-line') && !ids.some((i) => i.startsWith('aio-drone'));
         }, onPath);
       },
       { timeout: 30_000 },
@@ -320,7 +326,8 @@ test('right-click the drone, align the camera to the map with two keyframes', as
   const now = await win.evaluate(
     () => (window as unknown as Probe).__stratlas.workspace.getState().nowMs,
   );
-  expect(Math.abs(now - (START + 9000))).toBeLessThan(1500);
+  // within the few metres a click on a line can miss by (6 m/s)
+  expect(Math.abs(now - (START + PATH_MS))).toBeLessThan(2500);
   await win.keyboard.press('Escape');
   await expect(win.getByTestId('drone-menu')).toBeHidden();
 
