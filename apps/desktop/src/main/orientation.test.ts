@@ -41,7 +41,7 @@ describe('orientation.json store', () => {
     await writeFile(join(root, ORIENTATION_PATH), newer);
     const r = await readOrientation(root);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toMatch(/newer version of Stratlas/);
+    if (!r.ok) expect(r.error).toMatch(/newer version of Quadrion AI/);
     expect((await writeOrientation(root, file(30))).ok).toBe(false);
     expect(await readFile(join(root, ORIENTATION_PATH), 'utf8')).toBe(newer);
   });
