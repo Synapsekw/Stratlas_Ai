@@ -615,3 +615,143 @@ export const test = base.extend<Fixtures>({
     expect(outbound, 'the app made network requests').toEqual([]);
   },
 });
+
+// ---------------------------------------------------------------- M9 T5: two reviewers
+
+export const TEAM_PROJECT_ID = 'e2e-team';
+export const TEAM_PROJECT_NAME = 'E2E team project';
+
+/**
+ * A small project two reviewers share: one mesh, a severity model with three levels and two
+ * issues (F01 and F02, severity 2). Each reviewer gets their own copy, as from a USB stick.
+ */
+export async function writeTeamProject(dataRoot: string): Promise<string> {
+  const dir = join(dataRoot, 'projects', TEAM_PROJECT_ID);
+  await mkdir(join(dir, 'models'), { recursive: true });
+  const manifest = ProjectManifest.parse({
+    ...tinyManifest(),
+    id: TEAM_PROJECT_ID,
+    name: TEAM_PROJECT_NAME,
+    severityModels: [
+      {
+        id: 'sev',
+        name: 'Severity',
+        levels: [
+          { value: 1, label: 'Minor', color: '#fad34b', criteria: 'Monitor' },
+          { value: 2, label: 'Moderate', color: '#f08c3c', criteria: 'Plan' },
+          { value: 3, label: 'Severe', color: '#ee3f4b', criteria: 'Act' },
+        ],
+      },
+    ],
+    classCatalogues: [
+      {
+        id: 'cat',
+        name: 'Classes',
+        assetType: 'facade',
+        classes: [{ id: 'crack', label: 'Crack', color: '#ee3f4b', severityModel: 'sev' }],
+      },
+    ],
+  });
+  const issue = (code: string) => ({
+    id: code.toLowerCase(),
+    code,
+    classId: 'crack',
+    severityModelId: 'sev',
+    severity: 2,
+    status: 'draft',
+    title: `Crack ${code}`,
+    note: '',
+    author: 'Rana Example',
+    createdAt: '2026-10-01T08:00:00.000Z',
+    updatedAt: '2026-10-01T08:00:00.000Z',
+    source: 'human',
+    sightings: [
+      { on: 'mesh', layer: 'quad', geom: { type: 'spoint', p: [0.5, 0, -0.5], n: [0, 1, 0] } },
+    ],
+  });
+  await writeFile(join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2));
+  await writeFile(join(dir, 'models', 'quad.glb'), tinyGlb());
+  await writeFile(
+    join(dir, 'issues.json'),
+    JSON.stringify({ schema: 'aio.issues/1', issues: [issue('F01'), issue('F02')] }, null, 2),
+  );
+  return dir;
+}
+
+/** One reviewer: their own app, userData (identity), data root and project copy. */
+export interface Reviewer {
+  name: string;
+  app: ElectronApplication;
+  win: Page;
+  dataRoot: DataRoot;
+  /** Their copy of the team project. */
+  project: string;
+}
+
+export interface TwoReviewers {
+  /** Rana Example. */
+  a: Reviewer;
+  /** Omar Sample. */
+  b: Reviewer;
+  /** An empty folder both can reach: the "NAS" hub. */
+  hub: string;
+  /** Where exchange files are saved. */
+  out: string;
+}
+
+async function launchReviewer(name: string, initials: string, actor: string): Promise<Reviewer> {
+  const dataRoot = await createDataRoot();
+  const project = await writeTeamProject(dataRoot.root);
+  await writeFile(
+    join(dataRoot.userData, 'identity.json'),
+    JSON.stringify({
+      schema: 'aio.identity/1',
+      actor,
+      name,
+      initials,
+      createdAt: '2026-10-07T08:00:00.000Z',
+    }),
+  );
+  const app = await launchApp(dataRoot);
+  const win = await app.firstWindow();
+  await win.waitForLoadState('domcontentloaded');
+  return { name, app, win, dataRoot, project };
+}
+
+/**
+ * Two instances of the app side by side, each with its own userData (so its own identity and
+ * device) and its own copy of the team project, plus one temp hub folder. Windows stay off-screen
+ * like every other launch; both pass the zero-network guard.
+ */
+export const twoReviewersTest = test.extend<{ twoReviewers: TwoReviewers }>({
+  // eslint-disable-next-line no-empty-pattern -- Playwright requires the destructuring form.
+  twoReviewers: async ({}, use, testInfo) => {
+    const shared = await mkdtemp(join(tmpdir(), 'aio-e2e-team-'));
+    const hub = join(shared, 'hub');
+    const out = join(shared, 'out');
+    await mkdir(hub, { recursive: true });
+    await mkdir(out, { recursive: true });
+    const a = await launchReviewer('Rana Example', 'RE', 'a_ranaexampleaaaaaaaaaaaaaaa');
+    const b = await launchReviewer('Omar Sample', 'OS', 'a_omarsampleaaaaaaaaaaaaaaaa');
+    const guards = [new NetworkGuard(), new NetworkGuard()] as const;
+    await guards[0].attach(a.app);
+    await guards[1].attach(b.app);
+    const outbound: string[] = [];
+    try {
+      await use({ a, b, hub, out });
+      for (const g of guards) outbound.push(...(await g.outbound()));
+    } finally {
+      for (const r of [a, b]) {
+        if (testInfo.status !== testInfo.expectedStatus) {
+          await r.win
+            .screenshot({ path: testInfo.outputPath(`${r.name.split(' ')[0] ?? 'app'}.png`) })
+            .catch(() => undefined);
+        }
+        await r.app.close().catch(() => undefined);
+        await rm(r.dataRoot.base, { recursive: true, force: true }).catch(() => undefined);
+      }
+      await rm(shared, { recursive: true, force: true }).catch(() => undefined);
+    }
+    expect(outbound, 'the apps made network requests').toEqual([]);
+  },
+});
