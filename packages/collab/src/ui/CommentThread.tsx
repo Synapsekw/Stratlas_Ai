@@ -5,7 +5,7 @@ import {
   type CommentVisibility,
 } from '@aio/schema';
 import { useT } from '@aio/ui';
-import { useMemo, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { hlcTime } from '../ids';
 import { mentionCandidates } from '../mentions';
 import { renderLite } from '../text';
@@ -73,6 +73,15 @@ function Composer({
   const t = useT();
   const c = useCollab();
   const [text, setText] = useState('');
+  const box = useRef<HTMLTextAreaElement>(null);
+  // after picking a person, typing goes on at the end of the text
+  const [caretToEnd, setCaretToEnd] = useState(false);
+  useEffect(() => {
+    if (!caretToEnd || !box.current) return;
+    setCaretToEnd(false);
+    box.current.focus();
+    box.current.setSelectionRange(text.length, text.length);
+  }, [caretToEnd, text]);
   const [picked, setPicked] = useState<string[]>([]);
   const [attach, setAttach] = useState(false);
   const [visibility, setVisibility] = useState<CommentVisibility>('team');
@@ -120,6 +129,7 @@ function Composer({
   return (
     <div className="clb" data-testid="comment-composer">
       <textarea
+        ref={box}
         className="clb-input"
         dir="auto"
         aria-label={replyTo ? t('collab.comment.reply') : t('collab.comment.write')}
@@ -143,6 +153,7 @@ function Composer({
                   `${text.slice(0, text.length - hint.query.length)}${p.name.split(' ')[0] ?? p.name} `,
                 );
                 setPicked([...new Set([...picked, p.actor])]);
+                setCaretToEnd(true);
               }}
             >
               <Initials person={p} /> {p.name}
