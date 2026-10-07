@@ -130,9 +130,58 @@ describe('compare-before-write', () => {
     for (let v = 1; v <= 5; v++) await writeJsonSeen(file, { v }, { backup: true }, seen);
     expect(await readJson(file)).toEqual({ v: 5 });
     expect(await readJson(`${file}.bak`)).toEqual({ v: 4 });
+    // the outside write is the same size as the last own one ('{"v":"other"}' and '{\n  "v": 5\n}\n')
+    const own = seen.expect(file);
     await writeFile(file, '{"v":"other"}');
+    expect((await stat(file)).size).toBe(own?.size);
     await expect(writeJsonSeen(file, { v: 6 }, {}, seen)).rejects.toThrow(
       'Reload to see their changes; your edit was not saved.',
+    );
+  });
+
+  it('refuses an outside write in the same clock tick as its own, at the same size', async () => {
+    // Windows stamps files from a clock that moves in ticks of 1 to 16 ms: an outside save right
+    // after this app's own write can carry the very same time, to the fraction of a millisecond.
+    // Pin both writes to one (non-whole-second) time so that case runs on every machine.
+    const tick = new Date(Math.floor(Date.now() / 1000) * 1000 - 60_000 + 437);
+    await writeFile(file, '{"v":0}');
+    await readJsonSeen(file, seen);
+    await writeJsonSeen(file, { v: 5 }, {}, seen);
+    await utimes(file, tick, tick);
+    await readJsonSeen(file, seen); // the own write, as stamped at that tick
+    const own = seen.expect(file);
+    expect(own?.mtimeMs).not.toBe(Math.round((own?.mtimeMs ?? 0) / 1000) * 1000);
+    await writeFile(file, '{"v":"other"}');
+    await utimes(file, tick, tick);
+    const now = await stat(file);
+    expect({ mtimeMs: now.mtimeMs, size: now.size }).toEqual({
+      mtimeMs: own?.mtimeMs,
+      size: own?.size,
+    });
+    await expect(writeJsonSeen(file, { v: 6 }, {}, seen)).rejects.toBeInstanceOf(
+      ChangedOnDiskError,
+    );
+    expect(await readFile(file, 'utf8')).toBe('{"v":"other"}');
+  });
+
+  it('compares a large file by its bytes while its time is recent', async () => {
+    const big = (c: string) => `${JSON.stringify({ v: c.repeat(5 * 1024 * 1024) }, null, 2)}\n`;
+    await writeFile(file, big('a'));
+    await readJsonSeen(file, seen);
+    // a touch only: the same bytes at a new, recent time are no change
+    const recent = new Date(Date.now() - 300);
+    await utimes(file, recent, recent);
+    await writeJsonSeen(file, { v: 'b'.repeat(5 * 1024 * 1024) }, {}, seen);
+    // an outside save of the same size in the same (recent) tick as that write
+    const tick = new Date(Math.floor(Date.now() / 1000) * 1000 + 437);
+    await utimes(file, tick, tick);
+    await readJsonSeen(file, seen);
+    const own = seen.expect(file);
+    await writeFile(file, big('c'));
+    await utimes(file, tick, tick);
+    expect((await stat(file)).mtimeMs).toBe(own?.mtimeMs);
+    await expect(writeJsonSeen(file, { v: 'd' }, {}, seen)).rejects.toBeInstanceOf(
+      ChangedOnDiskError,
     );
   });
 

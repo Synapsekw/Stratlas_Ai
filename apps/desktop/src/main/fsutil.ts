@@ -86,19 +86,30 @@ async function statOf(file: string): Promise<DiskVersion | null> {
   }
 }
 
+/** Files up to this size are always compared by their bytes (project records are a few kB). */
+const HASH_ALWAYS_BYTES = 4 * 1024 * 1024;
+/** A modification time this close to now may be shared by a save racing this one. */
+const SETTLED_MS = 2000;
+
 /**
- * Is the file still as `expect` says? Cheap first: a different size is a change, the same size and
- * time is none. The hash decides when the time differs at the same size (a touch, a sync client
- * writing the same bytes) and when the time is in whole seconds (FAT and some network shares keep
- * 1 to 2 s, so two writes in one tick look alike).
+ * Is the file still as `expect` says? A different size is a change. At the same size, the hash
+ * decides whenever it is known: the time alone cannot, because two writes in one clock tick carry
+ * the same time (Windows stamps files from a clock moving in 1 to 16 ms steps; FAT and some
+ * network shares keep whole seconds), and a touch or a sync client writing the same bytes moves the
+ * time without a change. Only a large file (over `HASH_ALWAYS_BYTES`, not read twice per write)
+ * trusts an equal time, when it is not in whole seconds and is older than `SETTLED_MS`: a save
+ * racing this one would have to have landed in that very tick. Without a hash, the time decides.
  */
 async function unchanged(file: string, expect: ExpectedVersion): Promise<boolean> {
   const now = await statOf(file);
   if (now === null || expect === null) return now === expect;
   if (now.size !== expect.size) return false;
-  const coarse = now.mtimeMs % 1000 === 0;
-  if (now.mtimeMs === expect.mtimeMs && !coarse) return true;
   if (expect.hash === undefined) return now.mtimeMs === expect.mtimeMs;
+  const settled =
+    now.mtimeMs === expect.mtimeMs &&
+    now.mtimeMs % 1000 !== 0 &&
+    Date.now() - now.mtimeMs > SETTLED_MS;
+  if (settled && now.size > HASH_ALWAYS_BYTES) return true;
   try {
     return sha256(await readFile(file)) === expect.hash;
   } catch (e) {
