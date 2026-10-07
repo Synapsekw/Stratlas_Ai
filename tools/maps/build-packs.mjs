@@ -48,7 +48,7 @@ const ASSETS_BASE = 'https://raw.githubusercontent.com/protomaps/basemaps-assets
 const log = (msg) => process.stdout.write(`[maps] ${msg}\n`);
 
 async function getJson(url) {
-  const res = await fetch(url, { headers: { 'user-agent': 'stratlas-build-packs' } });
+  const res = await fetch(url, { headers: { 'user-agent': 'quadrion-build-packs' } });
   if (!res.ok) throw new Error(`GET ${url} -> ${res.status}`);
   return res.json();
 }
@@ -56,7 +56,7 @@ async function getJson(url) {
 async function download(url, dest, attempts = 5) {
   for (let i = 1; ; i++) {
     try {
-      const res = await fetch(url, { headers: { 'user-agent': 'stratlas-build-packs' } });
+      const res = await fetch(url, { headers: { 'user-agent': 'quadrion-build-packs' } });
       if (!res.ok) throw new Error(`GET ${url} -> ${res.status}`);
       const body = Buffer.from(await res.arrayBuffer());
       mkdirSync(dirname(dest), { recursive: true });

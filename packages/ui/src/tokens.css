@@ -1,4 +1,4 @@
-/* Stratlas Mission design tokens. Source: docs/design/DIRECTION.md (from the round 2 Mission reference build). */
+/* Quadrion AI Mission design tokens. Source: docs/design/DIRECTION.md (from the round 2 Mission reference build). */
 /* [data-surface='dark'] keeps an element dark in the light theme too: the street maps are always
    dark, so everything drawn inside a map (controls, popups, status text) uses these values. */
 [data-surface='dark'],
@@ -18,7 +18,7 @@
   --fg-2: oklch(0.7 0.012 250);
   --fg-3: oklch(0.62 0.012 250); /* lowest tone for text: 4.5:1 on --bg-3 (WCAG AA) */
   --fg-4: oklch(0.4 0.012 250); /* decoration and disabled only, never text */
-  /* one controlled accent: jade from the Stratlas mark */
+  /* one controlled accent: mint, the lit top plate of the Quadrion AI mark */
   --acc: oklch(0.79 0.115 172);
   --acc-strong: oklch(0.86 0.12 172);
   --acc-ink: oklch(0.2 0.03 172);

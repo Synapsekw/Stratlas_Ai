@@ -138,7 +138,7 @@ export function writeOnnx(g: OnnxGraph): Uint8Array {
   ];
   return concat([
     int(1, 8),
-    str(2, g.producer ?? 'stratlas-test-fixture'),
+    str(2, g.producer ?? 'quadrion-test-fixture'),
     str(3, '1'),
     ...(g.doc ? [str(6, g.doc)] : []),
     msg(7, graph),

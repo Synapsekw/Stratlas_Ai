@@ -129,7 +129,7 @@ describe('per-project AI store', () => {
     const store = createAiProjectStore(file, { writeDelayMs: 0 });
     expect(await store.get('E:/P')).toEqual({ alwaysAllow: false, usage: [] });
     await expect(store.setConsent('E:/P', 'Plant', true)).rejects.toThrow(
-      'ai-projects.json was saved by a newer version of Stratlas (aio.ai-projects/2). Update the app to open it. The file was not changed.',
+      'ai-projects.json was saved by a newer version of Quadrion AI (aio.ai-projects/2). Update the app to open it. The file was not changed.',
     );
     store.addUsage('E:/P', 'Plant', { provider: 'local', inputTokens: 5, outputTokens: 1 });
     await new Promise((r) => setTimeout(r, 5));

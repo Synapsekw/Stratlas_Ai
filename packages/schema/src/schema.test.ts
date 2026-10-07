@@ -96,7 +96,7 @@ describe('parseManifest', () => {
     expect(r).toEqual({
       ok: false,
       error:
-        'Project was saved by a newer Stratlas (schema aio.project/2). Update the app to open it.',
+        'Project was saved by a newer version of Quadrion AI (schema aio.project/2). Update the app to open it.',
     });
   });
 
@@ -263,7 +263,7 @@ describe('ipc contracts', () => {
       direction: 'rtl',
       offlineOnly: true,
       updateCheck: false,
-      updateUrl: 'https://updates.example.com/stratlas/',
+      updateUrl: 'https://updates.example.com/quadrion/',
     };
     expect(Settings.safeParse(next).success).toBe(true);
     expect(Settings.safeParse({ ...old, direction: 'up' }).success).toBe(false);

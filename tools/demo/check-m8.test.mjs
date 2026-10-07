@@ -40,7 +40,7 @@ async function project(file, content) {
 const glb = (extras) => {
   const p = new Part('T-1', 'T-1', 'Area');
   box(p, [0, 0.5, 0], [1, 1, 1], [0.5, 0.5, 0.5]);
-  const b = writeGlb([p], { root: 'Root', generator: 'Stratlas demo builder' });
+  const b = writeGlb([p], { root: 'Root', generator: 'Quadrion AI demo builder' });
   if (!extras) return b;
   // put extras into the JSON chunk the way an exporter would
   const len = b.readUInt32LE(12);

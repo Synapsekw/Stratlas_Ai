@@ -43,7 +43,7 @@ async function showDefaults(win: Page, data: DataRoot): Promise<void> {
   const user = userInfo().username;
   const swaps: [string, string][] = [
     [data.root, 'C:\\Users\\you\\Documents\\Stratlas Data'],
-    [data.userData, 'C:\\Users\\you\\AppData\\Roaming\\Stratlas'],
+    [data.userData, 'C:\\Users\\you\\AppData\\Roaming\\Quadrion AI'],
     [`account name, ${user}.`, 'account name, you.'],
   ];
   await win.evaluate(

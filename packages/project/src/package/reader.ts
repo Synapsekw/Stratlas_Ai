@@ -222,7 +222,7 @@ export async function openZip(file: string): Promise<ZipArchive> {
       extras.aes.strength === 3;
     if (!stored && !aesStored) {
       throw new ZipError(
-        `${file}: member ${name} is compressed or uses an unsupported encryption. Packages must be written by Stratlas (store mode, AES-256).`,
+        `${file}: member ${name} is compressed or uses an unsupported encryption. Packages must be written by Quadrion AI (store mode, AES-256).`,
       );
     }
     entries.set(name, {

@@ -3,7 +3,7 @@
   "version": "0.9.0",
   "private": true,
   "type": "module",
-  "description": "Stratlas desktop app (Electron main, preload, renderer).",
+  "description": "Quadrion AI desktop app (Electron main, preload, renderer).",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",

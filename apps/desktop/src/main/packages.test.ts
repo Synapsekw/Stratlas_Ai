@@ -274,11 +274,13 @@ describe('package plan cache', () => {
 
 describe('packagePathFromArgv', () => {
   it('finds the double-clicked package among Electron arguments', () => {
-    expect(packagePathFromArgv(['C:/app/Stratlas.exe', 'D:/jobs/HCl.aio'])).toBe('D:/jobs/HCl.aio');
+    expect(packagePathFromArgv(['C:/app/QuadrionAI.exe', 'D:/jobs/HCl.aio'])).toBe(
+      'D:/jobs/HCl.aio',
+    );
     expect(packagePathFromArgv(['electron', '.', '--flag', 'x.AIO'])).toBe('x.AIO');
     expect(packagePathFromArgv(['electron', 'out/main/index.js'])).toBeNull();
     expect(packagePathFromArgv(['app', '--open=x.aio'])).toBeNull();
-    expect(packagePathFromArgv(['app', 'stratlas://open?path=C%3A%5Cx.aio'])).toBeNull();
+    expect(packagePathFromArgv(['app', 'quadrion://open?path=C%3A%5Cx.aio'])).toBeNull();
   });
 });
 

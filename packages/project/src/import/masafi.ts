@@ -680,7 +680,7 @@ function terrainGlb(
   const root = nodes[0];
   if (root) root.children = nodes.slice(1).map((_, i) => i + 1);
   return encodeGlb({
-    generator: 'Stratlas import (Volumetric Survey Kit terrain)',
+    generator: 'Quadrion AI import (Volumetric Survey Kit terrain)',
     nodes,
     scene: [0],
     meshes,

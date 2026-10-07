@@ -25,7 +25,7 @@ const model = (over: Partial<DetectorModelInfo['card']> = {}): DetectorModelInfo
     input: { width: 320, height: 320 },
     classes: ['marker', 'cyan-marker'],
     licence: 'MIT',
-    source: 'Stratlas test fixture',
+    source: 'Quadrion AI test fixture',
     sha256: SHA,
     author: 'Jane Person',
     description: 'Trained on C:\\Users\\jane\\photos',
@@ -52,7 +52,7 @@ function sources(over: Partial<LocalAiSources> = {}): LocalAiSources {
       },
       inference: {
         provider: 'auto',
-        modelsDir: 'C:\\Users\\jane\\Stratlas models',
+        modelsDir: 'C:\\Users\\jane\\Quadrion AI models',
         memoryCapMb: 4096,
       },
     },
@@ -211,7 +211,7 @@ describe('local AI diagnostics: the section', () => {
   it('puts runtime, cards and agent together; the models folder by name only', async () => {
     const r = await localAiSection(sources());
     expect(Object.keys(r)).toEqual(['onnxRuntime', 'detectorModels', 'modelsFolder', 'localAgent']);
-    expect(r.modelsFolder).toBe('Stratlas models');
+    expect(r.modelsFolder).toBe('Quadrion AI models');
     expect(r.detectorModels).toHaveLength(1);
     expect(JSON.stringify(r)).not.toContain('jane');
   });

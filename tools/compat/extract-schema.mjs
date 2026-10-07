@@ -81,7 +81,7 @@ export async function extractSchema(version, outDir) {
  * `node_modules` (a system temp folder would not).
  */
 export function scratchDir(name) {
-  return join(repoRoot, 'node_modules', '.cache', 'stratlas-compat', name);
+  return join(repoRoot, 'node_modules', '.cache', 'quadrion-compat', name);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

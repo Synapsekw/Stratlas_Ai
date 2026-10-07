@@ -1,6 +1,6 @@
 /**
  * The "saved by a newer version" guard of the main-process readers and writers
- * (docs/release/UPGRADE-POLICY.md, rule 3): a file written by a newer Stratlas is refused with the
+ * (docs/release/UPGRADE-POLICY.md, rule 3): a file written by a newer version is refused with the
  * update message, and nothing here ever writes over one.
  */
 import { brand } from '@aio/brand';

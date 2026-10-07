@@ -99,7 +99,7 @@ const json = (v) => `${JSON.stringify(v, null, 2)}\n`;
 async function main() {
   requireFfmpeg();
   const python = pipelinePython();
-  const scratch = join(tmpdir(), `stratlas-demo-${String(process.pid)}`);
+  const scratch = join(tmpdir(), `quadrion-demo-${String(process.pid)}`);
   await rm(scratch, { recursive: true, force: true });
   await mkdir(scratch, { recursive: true });
   // The pipelines resolve their input paths (Path.resolve): on Windows that expands 8.3 short
@@ -275,7 +275,7 @@ async function main() {
   await mkdir(join(site.root, 'models'), { recursive: true });
   await writeFile(
     join(site.root, 'models', 'tank-farm.glb'),
-    writeGlb(parts, { root: 'DemoTankFarm', generator: 'Stratlas demo builder' }),
+    writeGlb(parts, { root: 'DemoTankFarm', generator: 'Quadrion AI demo builder' }),
   );
   layers.push({
     kind: 'mesh',

@@ -163,7 +163,7 @@ test.describe('@realdata HCl', () => {
       const cover = flat(all.text.get(1));
       expect(cover).toContain('hcltank710-d-130335');
       expect(cover).toContain('visualinspectionreport');
-      expect(cover).toContain('madewithstratlas');
+      expect(cover).toContain('madewithquadrionai');
       expect(text).not.toMatch(CLIENT_BRAND);
       for (const heading of [
         'contents',
@@ -257,7 +257,7 @@ test.describe('@realdata DAMAC', () => {
       expect(doc.count).toBeLessThanOrEqual(760);
       expect(flat(doc.text.get(1))).toContain('damachillsresidentialtower');
       expect(flat(doc.text.get(1))).toContain('701issues');
-      expect(flat(doc.text.get(1))).toContain('madewithstratlas');
+      expect(flat(doc.text.get(1))).toContain('madewithquadrionai');
       expect(flat(doc.text.get(2))).toContain('contents');
       expect(flat(doc.text.get(3))).toContain('executivesummary');
       expect(flat(doc.text.get(7))).toContain('findingsregister');

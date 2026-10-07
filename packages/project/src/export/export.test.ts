@@ -144,7 +144,7 @@ describe('issuesKitAssessment', () => {
 describe('reportModel', () => {
   it('counts by severity, class and zone and orders the register worst first', () => {
     const r = reportModel(ctx(), {
-      branding: resolveReportBranding(undefined, 'Stratlas'),
+      branding: resolveReportBranding(undefined, 'Quadrion AI'),
       now: new Date('2026-10-04T08:00:00Z'),
     });
     expect(r.title).toBe('Sample site');
@@ -170,15 +170,15 @@ describe('reportModel', () => {
 
 describe('report branding', () => {
   it('is neutral by default: no company, no logo, a small product credit', () => {
-    const b = resolveReportBranding(undefined, 'Stratlas');
-    expect(b).toEqual({ name: null, logo: null, accent: null, credit: 'Made with Stratlas' });
-    expect(resolveReportBranding({ companyName: '   ' }, 'Stratlas').name).toBeNull();
+    const b = resolveReportBranding(undefined, 'Quadrion AI');
+    expect(b).toEqual({ name: null, logo: null, accent: null, credit: 'Made with Quadrion AI' });
+    expect(resolveReportBranding({ companyName: '   ' }, 'Quadrion AI').name).toBeNull();
   });
 
   it("uses the person's own company name, logo and accent", () => {
     const b = resolveReportBranding(
       { companyName: ' Synapse Solutions ', logo: 'logo-abc123.png', accent: '#2266aa' },
-      'Stratlas',
+      'Quadrion AI',
     );
     expect(b).toEqual({
       name: 'Synapse Solutions',
@@ -186,7 +186,7 @@ describe('report branding', () => {
       accent: '#2266aa',
       credit: null,
     });
-    expect(resolveReportBranding({ logo: 'logo-abc123.svg' }, 'Stratlas').credit).toBeNull();
+    expect(resolveReportBranding({ logo: 'logo-abc123.svg' }, 'Quadrion AI').credit).toBeNull();
   });
 
   it("never takes the project's imported client brand or customer", () => {
@@ -194,19 +194,19 @@ describe('report branding', () => {
     const manifest = { ...c.manifest, brand: 'eand', customer: 'e& UAE' };
     const r = reportModel(
       { ...c, manifest },
-      { branding: resolveReportBranding(undefined, 'Stratlas'), now: new Date('2026-10-04') },
+      { branding: resolveReportBranding(undefined, 'Quadrion AI'), now: new Date('2026-10-04') },
     );
     expect(r.branding.name).toBeNull();
     expect(r.branding.logo).toBeNull();
     expect(reportFooter(r)).toBe(
-      'Sample site  |  Issue register 2026-10-04  |  Made with Stratlas',
+      'Sample site  |  Issue register 2026-10-04  |  Made with Quadrion AI',
     );
     expect(reportFooter(r)).not.toMatch(/eand|e&/);
   });
 
   it('puts the company first in the footer when set', () => {
     const r = reportModel(ctx(), {
-      branding: resolveReportBranding({ companyName: 'Synapse' }, 'Stratlas'),
+      branding: resolveReportBranding({ companyName: 'Synapse' }, 'Quadrion AI'),
       now: new Date('2026-10-04'),
     });
     expect(reportFooter(r)).toBe('Synapse  |  Sample site  |  Issue register 2026-10-04');

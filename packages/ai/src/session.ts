@@ -501,7 +501,7 @@ export class AgentSession {
     const bridge = this.deps.bridge;
     if (!bridge) return { path: null, error: SESSION_TEXT.noBridge };
     const project = this.deps.toolContext().workspace.getState().project;
-    const name = project?.manifest.name ?? 'Stratlas';
+    const name = project?.manifest.name ?? 'Quadrion AI';
     const c = this.toConversation();
     const md = conversationMarkdown(c, name);
     const stamp = c.createdAt.slice(0, 16).replace(/[:T]/g, '-');

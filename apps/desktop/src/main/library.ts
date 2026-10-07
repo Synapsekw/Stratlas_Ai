@@ -1,3 +1,4 @@
+import { brand } from '@aio/brand';
 import { detectPackageKind, type PackageKind } from '@aio/project';
 import { openPackage, openZip } from '@aio/project/package';
 import {
@@ -241,7 +242,7 @@ async function buildEntry(dir: string, registry: ProjectRegistry): Promise<Built
   if (kind === null) {
     return {
       ok: false,
-      error: `${dir} is not a Stratlas project or a known kit export. Pick the folder that holds manifest.json.`,
+      error: `${dir} is not a ${brand.productName} project or a known kit export. Pick the folder that holds manifest.json.`,
     };
   }
   if (kind !== 'native') {

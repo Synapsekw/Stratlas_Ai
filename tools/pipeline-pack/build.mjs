@@ -133,7 +133,7 @@ async function download(url, dest) {
   say(`  downloading ${url}`);
   const res = await fetch(url, {
     redirect: 'follow',
-    headers: { 'User-Agent': 'stratlas-pipeline-pack' },
+    headers: { 'User-Agent': 'quadrion-pipeline-pack' },
   });
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());

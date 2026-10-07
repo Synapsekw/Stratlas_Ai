@@ -91,17 +91,17 @@ describe('a file saved by a newer build', () => {
       const r = current.readVersioned(raw, {
         family: fam.family,
         schema: fam.pick(current),
-        appName: 'Stratlas',
+        appName: 'Quadrion AI',
         what: rel(p),
       });
       expect(r.ok).toBe(false);
       if (!r.ok) {
         expect(r.reason).toBe('newer');
         expect(r.error).toBe(
-          `${rel(p)} was saved by a newer version of Stratlas (${fam.family}/2). Update the app to open it. The file was not changed.`,
+          `${rel(p)} was saved by a newer version of Quadrion AI (${fam.family}/2). Update the app to open it. The file was not changed.`,
         );
       }
-      expect(current.newerRefusal(raw, 'Stratlas')).toMatch(/newer version of Stratlas/);
+      expect(current.newerRefusal(raw, 'Quadrion AI')).toMatch(/newer version of Quadrion AI/);
       expect(JSON.stringify(raw)).toBe(before);
     });
   }
@@ -116,7 +116,7 @@ describe('a file saved by a newer build', () => {
       current.parseRoadModel(road),
     ]) {
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.error).toMatch(/newer Stratlas/);
+      if (!r.ok) expect(r.error).toMatch(/newer version of Quadrion AI/);
     }
   });
 });

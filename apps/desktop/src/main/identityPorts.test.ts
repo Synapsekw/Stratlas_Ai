@@ -21,7 +21,7 @@ import { createJournalService, type JournalService } from './journal';
 import type { KeyEntry } from './keys';
 import { createTestVault, TEST_VAULT_FILE, useTestVault } from './testVault';
 
-const APP = { name: 'Stratlas', version: '0.9.0' };
+const APP = { name: 'Quadrion AI', version: '0.9.0' };
 
 let dir: string;
 beforeEach(async () => {

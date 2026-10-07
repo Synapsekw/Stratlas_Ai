@@ -59,7 +59,7 @@ export function parseManifest(json: unknown): Result<ProjectManifest> {
     version.startsWith('aio.project/')
   ) {
     return err(
-      `Project was saved by a newer Stratlas (schema ${version}). Update the app to open it.`,
+      `Project was saved by a newer version of Quadrion AI (schema ${version}). Update the app to open it.`,
     );
   }
   const r = ProjectManifest.safeParse(json);

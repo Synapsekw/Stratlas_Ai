@@ -118,7 +118,9 @@ export function parseRoadModel(json: unknown): Result<RoadModel> {
   if (typeof json !== 'object' || json === null) return err('Road model is not a JSON object.');
   const version = (json as { schema?: unknown }).schema;
   if (typeof version === 'string' && version !== ROAD_SCHEMA && version.startsWith('aio.road/'))
-    return err(`Road model was saved by a newer Stratlas (schema ${version}). Update the app.`);
+    return err(
+      `Road model was saved by a newer version of Quadrion AI (schema ${version}). Update the app.`,
+    );
   const r = RoadModel.safeParse(json);
   if (r.success) return ok(r.data);
   const first = r.error.issues[0];
