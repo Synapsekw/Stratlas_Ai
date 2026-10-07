@@ -211,6 +211,13 @@ class Runner {
   }
 }
 
+/** Remove earlier wheels of one project from an output folder (a rebuild replaces them). */
+function removeWheels(dir, prefix) {
+  if (!existsSync(dir)) return;
+  for (const f of readdirSync(dir))
+    if (f.startsWith(prefix) && f.endsWith('.whl')) rmSync(join(dir, f), { force: true });
+}
+
 /** Clone a pinned tag and check that it is the pinned commit. */
 function fetchSource(r, c, src) {
   rmSync(src, { recursive: true, force: true });
@@ -295,6 +302,7 @@ async function buildColmap(r, c, ctx) {
     { env: ctx.platform === 'darwin' ? { MACOSX_DEPLOYMENT_TARGET: ctx.deploymentTarget } : {} },
   );
   const wheelsOut = join(ctx.out, 'wheels');
+  if (!r.plan) removeWheels(wheelsOut, 'pycolmap-');
   for (const w of r.plan
     ? ['pycolmap-4.2.1.whl']
     : readdirSync(raw).filter((f) => f.endsWith('.whl'))) {
@@ -336,6 +344,7 @@ async function buildOpencv(r, c, ctx) {
     const cache = [...walk(join(src, '_skbuild'))].find((p) => basename(p) === 'CMakeCache.txt');
     if (!cache) throw new Error('opencv-python left no CMakeCache.txt under _skbuild');
     cmake = pick(parseCMakeCache(readFileSync(cache, 'utf8')), Object.keys(c.cmake));
+    removeWheels(join(ctx.out, 'wheels'), 'opencv_python_headless-');
     mkdirSync(join(ctx.out, 'wheels'), { recursive: true });
     for (const w of readdirSync(raw).filter((f) => f.startsWith('opencv') && f.endsWith('.whl')))
       cpSync(join(raw, w), join(ctx.out, 'wheels', w));

@@ -29,7 +29,9 @@ jobs:
         include:
           - os: windows-2025
             target: win32-x64
-          - os: macos-15
+          # macOS 14, as COLMAP's own wheels: Homebrew's libomp (bundled into pycolmap) is then
+          # built for macOS 14, the oldest macOS the pack supports, not for the runner's newer one.
+          - os: macos-14
             target: darwin-arm64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 240
