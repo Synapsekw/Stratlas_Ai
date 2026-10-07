@@ -1,4 +1,5 @@
 import type { Op } from '@aio/schema';
+import type { KeyObject } from 'node:crypto';
 import { opId, payloadHash } from './hash';
 import type { Signer } from './sign';
 import { verifySignature } from './sign';
@@ -24,7 +25,10 @@ export interface OpCheck {
   signature: boolean | null;
 }
 
-export function checkOp(raw: Record<string, unknown>, publicKey?: string): OpCheck {
+export function checkOp(
+  raw: Record<string, unknown>,
+  publicKey?: string | KeyObject | null,
+): OpCheck {
   const id = typeof raw.id === 'string' && opId(raw) === raw.id;
   const payload = 'payload' in raw ? payloadHash(raw.payload) === raw.ph : null;
   const signature =

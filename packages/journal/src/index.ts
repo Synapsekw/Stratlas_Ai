@@ -14,9 +14,20 @@ export { readSegment, writeSegmentLine, type SegmentLine } from './segment';
 export {
   signerFromKey,
   signerFromSeed,
+  publicKeyObject,
   signingMessage,
   verifySignature,
   type Signer,
   type SigningDomain,
 } from './sign';
-export { verifyJournal, type JournalFiles } from './verify';
+export {
+  checkCheckpoint,
+  checkDeviceRecord,
+  merkleRoot,
+  sealCheckpoint,
+  sealDeviceRecord,
+  type ChainHead,
+  type CheckpointCheck,
+} from './checkpoint';
+export { loadJournal, type JournalFiles, type LoadedJournal } from './load';
+export { verifyJournal, verifyLoaded, type VerifyOptions } from './verify';

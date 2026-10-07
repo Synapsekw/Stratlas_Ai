@@ -46,19 +46,30 @@ export function signerFromSeed(seedHex: string): Signer {
   return signerFromKey(createPrivateKey({ key: der, format: 'der', type: 'pkcs8' }));
 }
 
-/** Check an Ed25519 signature over `<domain>\n<hash>` with a raw base64url public key. */
+/** A public key object from a raw base64url Ed25519 key (cache it when checking many ops). */
+export function publicKeyObject(publicKey: string): KeyObject | null {
+  try {
+    return createPublicKey({
+      key: Buffer.concat([SPKI_ED25519, Buffer.from(publicKey, 'base64url')]),
+      format: 'der',
+      type: 'spki',
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** Check an Ed25519 signature over `<domain>
+<hash>` with a raw base64url public key. */
 export function verifySignature(
-  publicKey: string,
+  publicKey: string | KeyObject,
   domain: SigningDomain,
   hash: string,
   signature: string,
 ): boolean {
   try {
-    const key = createPublicKey({
-      key: Buffer.concat([SPKI_ED25519, Buffer.from(publicKey, 'base64url')]),
-      format: 'der',
-      type: 'spki',
-    });
+    const key = typeof publicKey === 'string' ? publicKeyObject(publicKey) : publicKey;
+    if (!key) return false;
     return verify(null, signingMessage(domain, hash), key, Buffer.from(signature, 'base64url'));
   } catch {
     return false;
