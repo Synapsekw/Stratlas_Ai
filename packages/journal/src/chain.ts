@@ -8,7 +8,7 @@ import {
 import type { DraftOp } from './diff';
 import { createClock } from './hlc';
 import { sealOp, type UnsealedOp } from './op';
-import { writeSegmentLine } from './segment';
+import { readSegment, writeSegmentLine } from './segment';
 import type { Signer } from './sign';
 
 /** Where a chain stands: its head and its open segment. */
@@ -113,4 +113,41 @@ export function createChainWriter(opts: {
       return { op, line, segment };
     },
   };
+}
+
+/**
+ * The tail of a chain from the text of its last segment (the only file read when a project
+ * opens): head seq, id and clock, the segment's size, and ops since the last checkpoint op.
+ * Null when the segment has no readable op.
+ */
+export function tailOf(segment: number, text: string): ChainTail | null {
+  const lines = readSegment(text);
+  let since = 0;
+  let checkpointSeen = false;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const l = lines[i];
+    if (!l?.ok) continue;
+    if (l.raw.kind === 'checkpoint') {
+      checkpointSeen = true;
+      break;
+    }
+    since += 1;
+  }
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const l = lines[i];
+    if (!l?.ok) continue;
+    const { seq, id, hlc } = l.raw;
+    if (typeof seq !== 'number' || typeof id !== 'string' || typeof hlc !== 'string') continue;
+    return {
+      seq,
+      id,
+      hlc,
+      segment,
+      segmentBytes: Buffer.byteLength(text, 'utf8'),
+      segmentOps: lines.length,
+      // without a checkpoint in this segment, count from its start (a checkpoint comes sooner)
+      sinceCheckpoint: checkpointSeen ? since : lines.length,
+    };
+  }
+  return null;
 }

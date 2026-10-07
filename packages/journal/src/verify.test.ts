@@ -1,24 +1,11 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { loadJournalFiles } from './fixtureFiles';
 import { verifyJournal } from './verify';
 
 const fixtures = fileURLToPath(new URL('../../schema/src/__fixtures__/journal/', import.meta.url));
-
-/** Every file under `<root>/journal`, keyed by its project-relative path with forward slashes. */
-export function loadJournalFiles(root: string): Map<string, string> {
-  const out = new Map<string, string>();
-  const walk = (dir: string) => {
-    for (const name of readdirSync(dir)) {
-      const p = join(dir, name);
-      if (statSync(p).isDirectory()) walk(p);
-      else out.set(relative(root, p).split('\\').join('/'), readFileSync(p, 'utf8'));
-    }
-  };
-  walk(join(root, 'journal'));
-  return out;
-}
 
 interface Expected {
   code: string;

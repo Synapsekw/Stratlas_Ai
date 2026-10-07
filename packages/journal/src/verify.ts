@@ -18,6 +18,11 @@ export interface VerifyOptions {
   now?: Date;
   /** Ops the merge engine holds in quarantine (counted, not problems). */
   quarantined?: ReadonlySet<string>;
+  /**
+   * Op signatures already checked elsewhere (worker threads, `verifyJournalParallel`), by op id.
+   * Ops not in the map are checked here.
+   */
+  signatures?: ReadonlyMap<string, boolean>;
 }
 
 /** One op as Verify saw it, in chain order. */
@@ -128,7 +133,11 @@ export function verifyLoaded(j: LoadedJournal, opts: VerifyOptions = {}): Verify
             message: `Chain ${short(c.chain)} has no device record with its public key.`,
           });
         }
-        const check = checkOp(raw, keys.get(dev) ?? null);
+        const known = opts.signatures?.get(id);
+        const check =
+          known === undefined
+            ? checkOp(raw, keys.get(dev) ?? null)
+            : { ...checkOp(raw, null), signature: keys.get(dev) ? known : null };
         if (!check.id) {
           add({
             ...at,
