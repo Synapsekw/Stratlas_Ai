@@ -1,0 +1,16 @@
+# Build context of apps/team-server/Dockerfile (the repository root): what the server build needs.
+# Every workspace package.json stays, so the frozen lockfile still matches the workspace.
+**/node_modules
+**/dist
+**/out
+**/dist-types
+**/test-results
+.git
+python
+docs
+tools
+apps/desktop/*
+!apps/desktop/package.json
+**/__fixtures__/*.key
+*.aio
+*.aiosync

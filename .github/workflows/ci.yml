@@ -166,3 +166,64 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Allow-list for shipped code, no GPL/AGPL anywhere
         run: pnpm license:check
+
+  # M9 T7: the Team Server (preview) on a real Postgres. Linux only; no image is built or pushed.
+  team-server:
+    name: team server (postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: aio
+          POSTGRES_PASSWORD: aio-ci-only
+          POSTGRES_DB: aio
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aio -d aio"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgres://aio:aio-ci-only@localhost:5432/aio
+      PGPASSWORD: aio-ci-only
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          # pnpm is enabled by corepack below; its store is cached explicitly.
+          package-manager-cache: false
+      - run: corepack enable
+      - name: Locate pnpm store
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+      # Scripts are not needed for the server (skips the Electron download).
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Server suite on Postgres (every route, append-only tables, backup and restore)
+        run: pnpm -F @aio/team-server test
+      - name: Bundle, migrate an empty database, backup and restore drill
+        working-directory: apps/team-server
+        run: |
+          pnpm build
+          export AIO_DATA_DIR="$RUNNER_TEMP/aio-data" AIO_HOST=127.0.0.1
+          node dist/main.mjs migrate
+          node dist/main.mjs create-team --name "CI drill (synthetic)"
+          node dist/main.mjs invite --role reviewer
+          node dist/main.mjs backup --out "$RUNNER_TEMP/backup.jsonl"
+          psql -h localhost -U aio -d aio -c 'CREATE DATABASE aio_restore'
+          DATABASE_URL=postgres://aio:aio-ci-only@localhost:5432/aio_restore \
+            node dist/main.mjs restore --in "$RUNNER_TEMP/backup.jsonl"
+          psql -h localhost -U aio -d aio_restore -tAc "SELECT value FROM meta WHERE key = 'name'" \
+            | grep -qx "CI drill (synthetic)"
+      - name: Server licences (no GPL or AGPL in what the image ships)
+        run: |
+          pnpm licenses list --prod --json --filter @aio/team-server > "$RUNNER_TEMP/licences.json"
+          node apps/team-server/scripts/licences.mjs "$RUNNER_TEMP/licences.json"
