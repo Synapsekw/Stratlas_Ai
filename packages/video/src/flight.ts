@@ -1,3 +1,4 @@
+import { normaliseSamples } from '@aio/geo';
 import { LensModel, PoseSample, type Quat } from '@aio/schema';
 
 /** A parsed `aio.flight/1` pose file (docs/architecture/data-conventions.md section 3). */
@@ -38,9 +39,11 @@ function normaliseQuat(q: Quat, index: number): Quat {
 
 /**
  * Validates and parses an `aio.flight/1` document (object or JSON text). Throws an Error whose
- * message names the offending field or sample.
+ * message names the offending field or sample. Stair-stepped positions and an estimated heading
+ * are smoothed as they load (`normaliseFlight` in @aio/geo) unless `raw` is set; the file on disk
+ * is never changed.
  */
-export function parseFlight(input: unknown): Flight {
+export function parseFlight(input: unknown, opts: { raw?: boolean } = {}): Flight {
   let json = input;
   if (typeof input === 'string') {
     try {
@@ -78,7 +81,7 @@ export function parseFlight(input: unknown): Flight {
     schema: 'aio.flight/1',
     startUtcMs: start,
     lens: lens.data,
-    samples,
+    samples: opts.raw ? samples : normaliseSamples(samples),
     durationMs: last ? last.t : 0,
   };
 }

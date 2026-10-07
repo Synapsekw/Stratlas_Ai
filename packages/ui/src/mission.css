@@ -804,6 +804,23 @@ select.input option {
 .tree-h .caps {
   color: var(--fg-3);
 }
+/* add data to the open project: the importer's file picker */
+.tree-h .tree-add {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding-inline: 6px;
+  border-radius: var(--r-2);
+  color: var(--fg-2);
+  font-size: var(--t-12);
+  white-space: nowrap;
+}
+.tree-h .tree-add:hover,
+.tree-h .tree-add:focus-visible {
+  color: var(--fg-0);
+  background: var(--bg-3);
+}
 .tgroup-btn {
   display: flex;
   align-items: center;

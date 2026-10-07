@@ -6,6 +6,7 @@ import {
 } from '@aio/engine';
 import type { CameraOrientation, LensModel, Quat, Vec3 } from '@aio/schema';
 import {
+  Box3,
   BufferAttribute,
   BufferGeometry,
   CanvasTexture,
@@ -174,6 +175,7 @@ export class VideoRig {
   readonly group = new Group();
   private readonly clips = new Map<string, ClipEntry>();
   private readonly paths = new Map<Flight, FlightPath>();
+  private readonly flightBoxes = new WeakMap<Flight, Box3>();
   private readonly drone = new Group();
   private gimbal: Object3D | null = null;
   private props: Object3D[] = [];
@@ -256,6 +258,8 @@ export class VideoRig {
     if (this.beacon) this.group.add(this.beacon);
     handle.scene.add(this.group);
     this.offs.push(handle.onFrame(this.frame));
+    // the flights frame the view while there is no model or cloud (a video-first project)
+    this.offs.push(handle.addContentBounds(() => this.flightBounds()));
     this.offs.push(
       videoStore().subscribe((s, p) => {
         if (s.activeClip !== p.activeClip) this.syncActive();
@@ -267,6 +271,23 @@ export class VideoRig {
 
   get size(): number {
     return this.clips.size;
+  }
+
+  /** What the visible clips' flight paths cover (with their position offsets), or null. */
+  flightBounds(): Box3 | null {
+    const box = new Box3();
+    for (const { flight, layer, visible } of this.clips.values()) {
+      if (!flight || !visible) continue;
+      let b = this.flightBoxes.get(flight);
+      if (!b) {
+        b = new Box3();
+        for (const s of flight.samples) b.expandByPoint(new Vector3(...s.pos));
+        this.flightBoxes.set(flight, b);
+      }
+      const off = layer.positionOffsetM;
+      box.union(off ? b.clone().translate(new Vector3(...off)) : b);
+    }
+    return box.isEmpty() ? null : box;
   }
 
   async addLayer(layer: VideoLayer, ctx: AdapterContext): Promise<void> {

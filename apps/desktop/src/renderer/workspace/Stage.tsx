@@ -101,7 +101,12 @@ import {
   useCutawayState,
 } from './useCutaway';
 import { VolumeTools } from './VolumeTools';
-import { siteBasemapOn, useSiteBasemap, useSiteBasemapLayer } from './siteBasemap';
+import {
+  siteBasemapDefault,
+  siteBasemapOn,
+  useSiteBasemap,
+  useSiteBasemapLayer,
+} from './siteBasemap';
 
 const MODES: { mode: StageMode; label: string; icon: IconName; keys: string }[] = [
   { mode: '3d', label: '3D', icon: 'scene', keys: '1' },
@@ -622,7 +627,9 @@ export function Stage() {
   const project = useWorkspace((s) => s.project);
   const hasVolumes = useVolumetric((s) => s.status === 'ready');
   const streetMap = useSiteBasemap((s) =>
-    project ? siteBasemapOn(s.choices, project.id, hasVolumes) : false,
+    project
+      ? siteBasemapOn(s.choices, project.id, siteBasemapDefault(project.manifest, hasVolumes))
+      : false,
   );
   useSiteBasemapLayer(engine, project, streetMap);
 

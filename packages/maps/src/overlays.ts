@@ -91,6 +91,21 @@ export function footprint(
   });
 }
 
+/**
+ * A short line on the ground from under the camera along its horizontal view direction (the
+ * heading arrow of the drone marker), or null when it looks straight down.
+ */
+export function headingLine(pose: PoseSample, lengthM: number): [Vec3, Vec3] | null {
+  const f = new Vector3(0, 0, -1).applyQuaternion(new Quaternion(...pose.q));
+  const h = Math.hypot(f.x, f.z);
+  if (h < 1e-3) return null;
+  const [x, , z] = pose.pos;
+  return [
+    [x, 0, z],
+    [x + (f.x / h) * lengthM, 0, z + (f.z / h) * lengthM],
+  ];
+}
+
 function centroid(points: readonly (readonly number[])[]): number[] | null {
   if (!points.length) return null;
   const n = points[0]?.length ?? 0;

@@ -37,7 +37,13 @@ import { updateFlightPaths, useFlightPathModel } from './pathModel';
 import { CutawayPanel } from './CutawayTool';
 import { toggleTelemetry, useTelemetryOn } from './telemetryPref';
 import { useCutawayPref } from './useCutaway';
-import { siteBasemap, siteBasemapOn, useSiteBasemap, wantsSiteBasemap } from './siteBasemap';
+import {
+  siteBasemap,
+  siteBasemapDefault,
+  siteBasemapOn,
+  useSiteBasemap,
+  wantsSiteBasemap,
+} from './siteBasemap';
 
 /** The live 3D stage (view presets, tools, section), re-rendering on tool and section changes. */
 export function useEngineStage(): EngineStage | null {
@@ -416,8 +422,11 @@ function StreetMapRow() {
   const wanted = useWorkspace((s) => (s.project ? wantsSiteBasemap(s.project.manifest) : false));
   const volumes = useVolumetric((s) => s.status === 'ready');
   const covered = useSiteBasemap((s) => s.covered);
+  const defaultOn = useWorkspace((s) =>
+    s.project ? siteBasemapDefault(s.project.manifest, volumes) : false,
+  );
   const on = useSiteBasemap((s) =>
-    projectId ? siteBasemapOn(s.choices, projectId, volumes) : false,
+    projectId ? siteBasemapOn(s.choices, projectId, defaultOn) : false,
   );
   if (!projectId || !wanted) return null;
   return (

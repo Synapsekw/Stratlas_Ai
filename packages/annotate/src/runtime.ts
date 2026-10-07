@@ -1,4 +1,5 @@
 import { getActiveScene } from '@aio/engine';
+import { normaliseSamples } from '@aio/geo';
 import type { Issue, Layer, PoseSample, Sighting, Vec2 } from '@aio/schema';
 import { assetUrl, workspace } from '@aio/workspace';
 import { useSyncExternalStore } from 'react';
@@ -36,8 +37,9 @@ export async function loadFlightPoses(
     if (!res.ok) return null;
     const json = (await res.json()) as { samples?: PoseSample[] };
     if (!Array.isArray(json.samples)) return null;
-    flights.set(layer.id, json.samples);
-    return json.samples;
+    const samples = normaliseSamples(json.samples);
+    flights.set(layer.id, samples);
+    return samples;
   } catch {
     return null;
   }

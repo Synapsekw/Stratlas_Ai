@@ -332,6 +332,8 @@ export const en = {
   'library.build': '{product} {version} · built {date}',
 
   // Dataset tree: eyes over all layers and over a group
+  'tree.addData': 'Add data',
+  'tree.addData.tip': 'Import photos, video with its SRT, models, orthos or point clouds',
   'tree.eye.all': 'All layers',
   'tree.eye.hideAll': 'Hide all layers',
   'tree.eye.showAll': 'Show all layers',

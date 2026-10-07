@@ -2,7 +2,14 @@ import type { Issue, PoseSample } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { frameProjection } from './geo';
 import type { SeverityModel } from '@aio/schema';
-import { footprint, issueAnchor, poseAt, rasterQuad, severityRankColors } from './overlays';
+import {
+  footprint,
+  headingLine,
+  issueAnchor,
+  poseAt,
+  rasterQuad,
+  severityRankColors,
+} from './overlays';
 import { issueFeatures as featuresOf } from './vector';
 
 const TANK_UTM: [number, number] = [245747.13, 3179641.87];
@@ -68,6 +75,25 @@ describe('footprint', () => {
       { maxRange: 1000 },
     );
     for (const p of fp) expect(Math.hypot(p[0], p[2])).toBeLessThanOrEqual(1000.0001);
+  });
+});
+
+describe('headingLine', () => {
+  it('points from under the drone along the camera heading', () => {
+    // heading east (yaw -90 deg about +Y), pitched down
+    const yaw = -Math.PI / 4;
+    const line = headingLine(
+      { t: 0, pos: [10, 50, 20], q: [0, Math.sin(yaw), 0, Math.cos(yaw)] },
+      30,
+    );
+    expect(line?.[0]).toEqual([10, 0, 20]);
+    expect(line?.[1][0]).toBeCloseTo(40, 6);
+    expect(line?.[1][2]).toBeCloseTo(20, 6);
+  });
+
+  it('has no direction looking straight down', () => {
+    const s = Math.SQRT1_2;
+    expect(headingLine({ t: 0, pos: [0, 50, 0], q: [-s, 0, 0, s] }, 30)).toBeNull();
   });
 });
 

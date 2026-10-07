@@ -50,6 +50,7 @@ function handle(canvas: HTMLCanvasElement): SceneHandle {
     addRaycastProvider: () => () => undefined,
     clippingPlanes: [] as Plane[],
     addRaycastTarget: () => () => undefined,
+    addContentBounds: () => () => undefined,
     addProjectionReceiver: () => () => undefined,
   };
 }

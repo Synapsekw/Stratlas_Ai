@@ -63,6 +63,7 @@ function fakeHandle() {
     addRaycastProvider: () => () => undefined,
     clippingPlanes: [],
     addRaycastTarget: () => () => undefined,
+    addContentBounds: () => () => undefined,
     addProjectionReceiver: () => () => undefined,
   } satisfies SceneHandle;
   return { handle, frames };

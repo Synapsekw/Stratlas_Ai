@@ -1,3 +1,4 @@
+import { normaliseSamples } from '@aio/geo';
 import { PoseSample, type Vec3 } from '@aio/schema';
 import { z } from 'zod';
 
@@ -8,9 +9,10 @@ const FlightFile = z.object({
 });
 export type FlightFile = z.infer<typeof FlightFile>;
 
+/** A flight file's samples, smoothed like every other reader (`normaliseSamples`), or null. */
 export function parseFlight(json: unknown): FlightFile | null {
   const r = FlightFile.safeParse(json);
-  return r.success ? r.data : null;
+  return r.success ? { ...r.data, samples: normaliseSamples(r.data.samples) } : null;
 }
 
 export interface Pass {

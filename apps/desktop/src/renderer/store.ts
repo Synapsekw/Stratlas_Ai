@@ -14,6 +14,7 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import { createBridge, type Bridge } from './bridge';
 import { landingScreen } from './legacy';
 import { isPlayer } from './player';
+import { videoFirst } from './stageDefault';
 
 export type Screen =
   | 'projects'
@@ -58,6 +59,11 @@ export interface ShellState {
   openError: string | null;
   paletteOpen: boolean;
   stageMode: StageMode;
+  /**
+   * The stage mode was chosen by opening a video-first project (3D and map side by side), not by
+   * the person: the next project that is not video-first goes back to the 3D view.
+   */
+  stageAuto: boolean;
   rightCollapsed: boolean;
   videoDocked: boolean;
   videoHidden: boolean;
@@ -136,6 +142,7 @@ export function createShellStore(
     openError: null,
     paletteOpen: false,
     stageMode: '3d',
+    stageAuto: false,
     rightCollapsed: false,
     videoDocked: false,
     videoHidden: false,
@@ -212,7 +219,12 @@ export function createShellStore(
       // Every package is opened in place and never written: no annotation, no issue edits.
       setReadOnly(pkg !== null);
       workspace.getState().openProject({ id, root, manifest }, issues);
+      // drone video first, nothing 3D yet: the flights on the map beside the 3D view
+      const first = videoFirst(manifest);
+      const { stageAuto, stageMode } = get();
       set({
+        stageMode: first ? 'split' : stageAuto ? '3d' : stageMode,
+        stageAuto: first,
         opening: null,
         unlock: null,
         pkg,
@@ -284,7 +296,7 @@ export function createShellStore(
       set({ paletteOpen });
     },
     setStageMode: (stageMode) => {
-      set({ stageMode });
+      set({ stageMode, stageAuto: false });
     },
     toggleRight: () => {
       set({ rightCollapsed: !get().rightCollapsed });

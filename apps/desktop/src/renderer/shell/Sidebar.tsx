@@ -18,6 +18,7 @@ import {
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { openAuditTrail } from '../audit/auditView';
+import { builder } from '../builder/state';
 import { legacyLayers } from '../legacy';
 import { useMedia } from '../media';
 import { isActive } from '../jobs';
@@ -225,6 +226,8 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   const activeClip = useWorkspace((s) => s.activeClip);
   const { durations } = useMedia(project);
   const paths = useFlightPathModel();
+  // a package is read-only: nothing is imported into it
+  const readOnly = useShell((s) => s.pkg !== null);
   const groups = useMemo(
     () => (project ? buildDatasetTree(project.manifest, issues, durations) : []),
     [project, issues, durations],
@@ -255,6 +258,18 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
         <span className="caps">Datasets</span>
         <span className="tree-h-end">
           <span className="mono faint">{project.manifest.layers.length}</span>
+          {!readOnly && (
+            <button
+              type="button"
+              className="tree-add"
+              data-testid="add-data"
+              title={t('tree.addData.tip')}
+              onClick={() => void builder.getState().pickAndImport()}
+            >
+              <Icon name="import" size={14} />
+              {t('tree.addData')}
+            </button>
+          )}
           <VisibilityEye
             layerIds={treeLayerIds(groups)}
             hidden={hidden}

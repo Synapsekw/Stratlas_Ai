@@ -52,6 +52,7 @@ function setup() {
     addRaycastProvider: () => () => undefined,
     clippingPlanes: [] as Plane[],
     addRaycastTarget: () => () => undefined,
+    addContentBounds: () => () => undefined,
     addProjectionReceiver: () => () => undefined,
   };
   return { host, canvas, overlay, camera, h, frames };

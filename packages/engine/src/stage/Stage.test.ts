@@ -2,6 +2,7 @@
 import type { Layer, ProjectManifest } from '@aio/schema';
 import { createWorkspace, type OpenProject } from '@aio/workspace';
 import {
+  Box3,
   BoxGeometry,
   DataTexture,
   Group,
@@ -374,6 +375,31 @@ describe('Stage', () => {
     v = stage.saveView();
     expect(v.position[1]).toBeLessThan(5);
     expect(Math.hypot(v.position[0], v.position[1] - 9, v.position[2])).toBeCloseTo(5);
+    stage.dispose();
+  });
+
+  it('frames flights and photos while no model is shown, then the model', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true }));
+    const { stage, store, resize } = make();
+    resize(800, 600);
+    store.getState().openProject(project([]));
+    await flush();
+    expect(stage.contentBounds()).toBeNull();
+    // a video-first project: the flight path frames the view (never pickable)
+    const flight = new Box3(new Vector3(200, 40, -300), new Vector3(600, 60, 100));
+    const off = stage.addContentBounds(() => flight);
+    expect(stage.contentBounds()?.max.toArray()).toEqual([600, 60, 100]);
+    const v = stage.saveView();
+    expect(v.target[0]).toBeCloseTo(400, 0);
+    expect(v.target[2]).toBeCloseTo(-100, 0);
+    // Home flies there too
+    stage.setViewPreset('home');
+    expect(stage.saveView().target[0]).toBeCloseTo(400, 0);
+    // a model arriving later frames the view again, on its own
+    store.getState().openProject(project([meshLayer('plant')]));
+    await flush();
+    expect(stage.contentBounds()?.max.toArray()).toEqual([5, 10, 5]);
+    off();
     stage.dispose();
   });
 

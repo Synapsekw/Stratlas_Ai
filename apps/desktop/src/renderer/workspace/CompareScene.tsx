@@ -14,7 +14,12 @@ import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } 
 import { FocusZone } from '../FocusZone';
 import { compareRuntime } from './compare';
 import { CursorReadout, useSceneCursor } from './SceneCursor';
-import { siteBasemapOn, useSiteBasemap, useSiteBasemapLayer } from './siteBasemap';
+import {
+  siteBasemapDefault,
+  siteBasemapOn,
+  useSiteBasemap,
+  useSiteBasemapLayer,
+} from './siteBasemap';
 import type { Side } from './splitModel';
 
 /** Layer kinds the second view leaves out: the video plays (and projects) in one view only. */
@@ -117,7 +122,9 @@ export function CompareScene({
   const project = useWorkspace((s) => s.project);
   const hasVolumes = useVolumetric((s) => s.status === 'ready');
   const streetMap = useSiteBasemap((s) =>
-    project ? siteBasemapOn(s.choices, project.id, hasVolumes) : false,
+    project
+      ? siteBasemapOn(s.choices, project.id, siteBasemapDefault(project.manifest, hasVolumes))
+      : false,
   );
   useSiteBasemapLayer(stage, project, streetMap, false);
 
