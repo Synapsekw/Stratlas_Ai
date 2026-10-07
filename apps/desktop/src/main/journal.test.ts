@@ -317,6 +317,28 @@ describe('journal service', () => {
     });
   });
 
+  it('records the in-app change comparison as its run, so a review after it is not outside', async () => {
+    const { root, userData } = setup();
+    const s = service(root, userData);
+    await s.open({ path: root });
+    const set = {
+      schema: 'aio.change/1',
+      id: 'c1-c2',
+      items: [{ id: 'it1', kind: 'vector', verdict: 'added' }],
+    };
+    const compute = s.journal.wrap('change:compute', () => {
+      mkdirSync(join(root, 'change'), { recursive: true });
+      writeFileSync(join(root, 'change', 'c1-c2.json'), JSON.stringify(set));
+      return Promise.resolve({ ok: true as const, ids: ['c1-c2'] });
+    });
+    await compute({ jobId: 'cmp-1', projectId: 'p', from: 'c1', to: 'c2', kinds: ['vector'] });
+    const h = await s.journal.history({ projectId: 'p' });
+    if (!h.ok) throw new Error(h.error);
+    expect(h.entries.length).toBeGreaterThan(0);
+    expect(h.entries.every((e) => e.how === 'pipeline')).toBe(true);
+    expect(s.changed).toEqual([]);
+  });
+
   it('switches off for a private project with the switch recorded, never for a team project', async () => {
     const { root, userData } = setup();
     const s = service(root, userData);

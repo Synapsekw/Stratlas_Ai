@@ -731,6 +731,33 @@ export function createJournalService(deps: JournalServiceDeps) {
         return r;
       };
     }
+    if (channel === 'change:compute') {
+      // change sets made by the in-app comparison: recorded as that run's work right away, so
+      // the next review of an item is not taken for a change made outside the app
+      return async (req) => {
+        const r = await handler(req);
+        const { projectId, jobId } = req as IpcRequest<'change:compute'>;
+        const root = deps.projects.root(projectId);
+        const done = r as IpcResponse<'change:compute'>;
+        if (done.ok && root !== undefined && !deps.projects.package(projectId)) {
+          try {
+            const st = await load(root);
+            if (st.meta.journal === 'on') {
+              await serial(st, () =>
+                reconcile(
+                  st,
+                  done.ids.map((id) => `change/${id}.json`),
+                  { pipeline: { name: 'change', jobId } },
+                ),
+              );
+            }
+          } catch (e) {
+            console.warn(`Journal: could not record the change sets of ${jobId} (${String(e)}).`);
+          }
+        }
+        return r;
+      };
+    }
     if (channel === 'project:open') {
       return async (req) => {
         const r = (await handler(req)) as IpcResponse<'project:open'>;
