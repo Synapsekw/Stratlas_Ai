@@ -21,7 +21,7 @@ export async function syncNow(
   projectId: string,
 ): Promise<{ pulled: number; pushed: number } | null> {
   const ui = teamUi.getState();
-  ui.setSyncing(true);
+  ui.setSyncing(true, null);
   const r = await bridge.call('sync:now', { projectId });
   const error = !r.ok ? r.error : !r.value.ok ? r.value.error : null;
   teamUi.getState().setSyncing(false, error);

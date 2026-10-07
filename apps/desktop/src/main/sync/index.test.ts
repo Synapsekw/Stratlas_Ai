@@ -21,6 +21,7 @@ interface Issue {
   code: string;
   title: string;
   severity: number;
+  updatedAt?: string;
 }
 const issue = (id: string, code: string, severity = 1): Issue => ({
   id,
@@ -209,8 +210,13 @@ describe('hub folder sync between two copies', () => {
 
   it('concurrent edits of one field give a conflict in both copies; other fields merge', async () => {
     const { a, b, aDir, bDir } = await pair();
-    await editIssue(aDir, 'i1', { severity: 3 });
-    await editIssue(bDir, 'i1', { severity: 4, title: 'Omar title' });
+    // both edits also move updatedAt: bookkeeping, never a conflict of its own
+    await editIssue(aDir, 'i1', { severity: 3, updatedAt: '2026-10-07T09:00:00.000Z' });
+    await editIssue(bDir, 'i1', {
+      severity: 4,
+      title: 'Omar title',
+      updatedAt: '2026-10-07T09:01:00.000Z',
+    });
     await a.ipc.call('sync:now', { projectId: 'p' });
     expect(await b.ipc.call('sync:now', { projectId: 'p' })).toMatchObject({
       ok: true,

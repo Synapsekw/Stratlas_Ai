@@ -163,6 +163,9 @@ interface Stamp {
 }
 type Clocks = Record<string, Record<string, Stamp>>;
 
+/** Issue fields that change with every edit: last writer wins, never a conflict. */
+const QUIET_FIELDS = new Set(['updatedAt']);
+
 const same = (a: unknown, b: unknown) => canonicalJson(a ?? null) === canonicalJson(b ?? null);
 
 /** Shared by the interim journal and merge: one writer of this copy's chain. */
@@ -398,6 +401,11 @@ export function interimEngine(o: { store: JournalStore; device: DevicePort }): I
           // our write came after seeing theirs: ours stands
           const oursOp = byId.get(s.op);
           if (oursOp && knows(oursOp, stamp)) continue;
+          // bookkeeping fields follow the last writer quietly; they are never a person's choice
+          if (QUIET_FIELDS.has(field)) {
+            if (op.hlc > s.hlc) take();
+            continue;
+          }
           if (same(s.value, value)) {
             if (op.hlc > s.hlc) row[field] = stamp;
             continue;

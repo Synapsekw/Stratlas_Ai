@@ -26,9 +26,21 @@ export function startSync(o: {
   const userData = app.getPath('userData');
   const appStamp = { name: brand.productName, version: app.getVersion() };
   const store = createJournalStore();
+  // A test profile (STRATLAS_USER_DATA) keeps its device key in memory for the run: two test
+  // instances on one machine are two devices, and nothing piles up in the OS vault.
+  let testKey: string | null = null;
+  const memoryEntry = {
+    getPassword: () => testKey,
+    setPassword: (v: string) => {
+      testKey = v;
+    },
+  };
   const device = interimDevice({
     userData,
-    vault: () => new Entry(o.keyService, INTERIM_DEVICE_ACCOUNT),
+    vault: () =>
+      process.env.STRATLAS_USER_DATA
+        ? memoryEntry
+        : new Entry(o.keyService, INTERIM_DEVICE_ACCOUNT),
     app: appStamp,
   });
   const engine = interimEngine({ store, device });
