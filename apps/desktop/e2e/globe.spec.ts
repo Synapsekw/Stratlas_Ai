@@ -10,18 +10,14 @@ import type { GlobeInspection } from '@aio/globe/view';
 import { pmtilesOf, solidPng, syntheticPackMeta, terrariumPng } from '@aio/globe/testing';
 import { ProjectManifest, SCHEMA_VERSION, type ProjectManifestInput } from '@aio/schema';
 import type { ElectronApplication, Page } from '@playwright/test';
-import { readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { APP_CSP, metaPolicy } from '../src/main/csp';
 import { expectAccessible } from './a11y';
 import { expect, test, tinyGlb, type DataRoot } from './fixtures';
 
-/** The app's CSP as main sets it (src/main/index.ts `CSP`), read from the source. */
-function appCsp(): string {
-  const src = readFileSync(join(import.meta.dirname, '../src/main/index.ts'), 'utf8');
-  const block = /const CSP = \[([\s\S]*?)\]\.join/.exec(src)?.[1] ?? '';
-  return [...block.matchAll(/"([^"]+)"/g)].map((m) => m[1]).join('; ');
-}
+/** The app's CSP as the build writes it into the page's `<meta>` (src/main/csp.ts). */
+const appCsp = (): string => metaPolicy(APP_CSP);
 
 /** What the Globe shows (`GlobeController.inspect()` through the hook on its element). */
 const inspect = (win: Page) =>
@@ -172,25 +168,20 @@ test('spike: the Globe renders offline under the app CSP', async ({ app, win, ne
   });
   win.on('pageerror', (e) => problems.push(String(e)));
   await expect(win.locator('.sb-nav .nav-item', { hasText: 'Globe' })).toBeVisible();
-  const probe = await win.evaluate((policy) => {
-    const tryEval = () => {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-implied-eval -- probes the CSP
-        (new Function('return 1') as () => number)();
-        return 'allowed';
-      } catch {
-        return 'refused';
-      }
+  // The built page carries the app policy as a <meta> (the window loads from file://, where
+  // main's response-header CSP does not reach), so the Globe runs under it; eval refused there is
+  // csp.spec's. Every violation while the Globe starts is a problem.
+  const meta = await win.evaluate(() => {
+    const w = window as unknown as {
+      __workers: string[];
+      __violations: string[];
+      Worker: typeof Worker;
     };
-    const before = tryEval();
-    // Enforce the app CSP on this page as a meta policy (the window loads from file://, where
-    // main's response-header CSP does not reach), so the Globe runs under it.
-    const meta = document.createElement('meta');
-    meta.httpEquiv = 'Content-Security-Policy';
-    meta.content = policy;
-    document.head.prepend(meta);
-    const w = window as unknown as { __workers: string[]; Worker: typeof Worker };
     w.__workers = [];
+    w.__violations = [];
+    document.addEventListener('securitypolicyviolation', (e) => {
+      w.__violations.push(`${e.effectiveDirective} ${e.blockedURI}`);
+    });
     const W = w.Worker;
     w.Worker = class extends W {
       constructor(u: string | URL, o?: WorkerOptions) {
@@ -198,26 +189,34 @@ test('spike: the Globe renders offline under the app CSP', async ({ app, win, ne
         w.__workers.push(String(u));
       }
     };
-    return { before, after: tryEval() };
-  }, appCsp());
-  // the probe's own refused eval is the one CSP report expected
-  problems.length = 0;
+    return (
+      document
+        .querySelector('meta[http-equiv="Content-Security-Policy"]')
+        ?.getAttribute('content') ?? null
+    );
+  });
+  expect(meta).toBe(appCsp());
   const mem0 = await memMiB(app);
   const t0 = Date.now();
   await openGlobe(win);
   await expect.poll(async () => (await inspect(win))?.tilesLoaded, { timeout: 30_000 }).toBe(true);
   const ready = Date.now() - t0;
   const mem1 = await memMiB(app);
-  const workers = await win.evaluate(() =>
-    (window as unknown as { __workers: string[] }).__workers.map((u) => u.replace(/^.*\//, '')),
-  );
+  const seen = await win.evaluate(() => {
+    const w = window as unknown as { __workers: string[]; __violations: string[] };
+    return { workers: w.__workers, violations: w.__violations };
+  });
+  const workers = seen.workers.map((u) => u.replace(/^.*\//, ''));
   // eslint-disable-next-line no-console -- spike measurements, kept for the report
   console.log(
-    `globe: eval ${probe.before} without the meta CSP, ${probe.after} with it; ready in ${String(ready)} ms; working set ${String(mem0)} -> ${String(mem1)} MiB; workers ${workers.join(', ')}`,
+    `globe: ready in ${String(ready)} ms under the meta CSP; working set ${String(mem0)} -> ${String(mem1)} MiB; workers ${workers.join(', ')}`,
   );
-  expect(probe.after).toBe('refused');
-  expect(workers.length).toBeGreaterThan(0);
-  expect(workers.every((u) => !u.startsWith('blob:'))).toBe(true);
+  expect(seen.workers.length).toBeGreaterThan(0);
+  // Cesium's workers are same-origin module files next to the page, never blob: URLs
+  expect(seen.workers.every((u) => u.startsWith('file:') && u.includes('/cesium/Workers/'))).toBe(
+    true,
+  );
+  expect(seen.violations).toEqual([]);
   expect(problems).toEqual([]);
   expect(await network.outbound()).toEqual([]);
 });
