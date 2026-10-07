@@ -151,6 +151,11 @@ test('a photo opens the same view of the other date, and blends', async ({ demoP
   const photos = pairs(truth, 'photos');
   const [p1, p2] = photos;
   if (!p1 || !p2) throw new Error('truth.json has fewer than two photo pairs');
+  // projects open on their latest survey date (timeline T1): step back to the earlier one first
+  const dateBar = win.getByTestId('date-bar-open');
+  const latest = (await dateBar.textContent()) ?? '';
+  await win.keyboard.press('Alt+ArrowLeft');
+  await expect(dateBar).not.toHaveText(latest);
   // the photo pane on the left, then "Same view on the other date"
   await win.keyboard.press('3');
   await win.getByTestId('pane-chooser-left').locator('select').first().selectOption('photo');
