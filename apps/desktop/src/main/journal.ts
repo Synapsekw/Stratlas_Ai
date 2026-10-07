@@ -105,8 +105,8 @@ export interface MergedText {
 /** One step of several journal actions on a project, run after every earlier step. */
 export interface JournalTx {
   root: string;
-  /** This copy's chain (`<device>.<replica>`). */
-  chain: string;
+  /** This copy's chain (`<device>.<replica>`), made on first need. */
+  chain(): Promise<string>;
   append(drafts: readonly DraftOp[], via?: Via): Promise<Op[]>;
   /** Ops of other copies, appended to their own chains (planned by the caller: no gaps). */
   ingest(ops: readonly Op[]): Promise<number>;
@@ -999,10 +999,11 @@ export function createJournalService(deps: JournalServiceDeps) {
     if (files.length > 0) await saveMeta(st);
   }
 
-  function tx(st: ProjectState, w: ChainWriter): JournalTx {
+  function tx(st: ProjectState): JournalTx {
     return {
       root: st.root,
-      chain: w.chain,
+      // made on first need: a read-only step (conflicts, quarantine) leaves a private folder alone
+      chain: async () => (await writerFor(st)).w.chain,
       append: (drafts, via) => appendOps(st, drafts, via),
       ingest: (ops) => ingestOps(st, ops),
       writeMerged: (files) => writeMergedFiles(st, files),
@@ -1016,10 +1017,7 @@ export function createJournalService(deps: JournalServiceDeps) {
    */
   async function locked<T>(root: string, fn: (t: JournalTx) => Promise<T>): Promise<T> {
     const st = await load(root);
-    return serial(st, async () => {
-      const { w } = await writerFor(st);
-      return fn(tx(st, w));
-    });
+    return serial(st, () => fn(tx(st)));
   }
 
   return {
@@ -1045,7 +1043,7 @@ export function createJournalService(deps: JournalServiceDeps) {
       emit(st.root, touched);
     },
     /** This copy's chain id, made on first need (the device record is published with it). */
-    chainOf: (root: string) => locked(root, (t) => Promise.resolve(t.chain)),
+    chainOf: (root: string) => locked(root, (t) => t.chain()),
     /** Remove the payloads of these ops from their segments (`comment.redact` already appended). */
     redactPayloads: (root: string, opIds: readonly string[]) =>
       locked(root, async () => {

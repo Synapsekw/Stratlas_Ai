@@ -161,7 +161,8 @@ export function createTeamEngine(d: TeamEngineDeps): TeamEngine {
       return d.journal.locked(ctx.root, async (t) => {
         const added = await t.ingest(ops);
         const p = added > 0 ? await refreshIn(ctx.projectId, t) : null;
-        const records = added > 0 ? targetsOf(ops.filter((o) => o.chain !== t.chain)) : [];
+        const mine = await t.chain();
+        const records = added > 0 ? targetsOf(ops.filter((o) => o.chain !== mine)) : [];
         return { records, conflicts: p?.conflicts.length ?? (await counts(ctx.root)).conflicts };
       });
     },
