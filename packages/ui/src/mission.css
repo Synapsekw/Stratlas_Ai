@@ -1059,7 +1059,7 @@ select.input option {
   white-space: nowrap;
 }
 .dfolder .dsub {
-  color: var(--fg-3);
+  color: var(--fg-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1076,7 +1076,8 @@ select.input option {
   border: 1px solid var(--fg-3);
 }
 .dfolder.empty .dname {
-  color: var(--fg-3);
+  color: var(--fg-2);
+  font-style: italic;
 }
 .don {
   font-size: 11px;
@@ -1089,7 +1090,7 @@ select.input option {
 .dempty {
   margin: 2px 0 6px 28px;
   font-size: var(--t-12);
-  color: var(--fg-3);
+  color: var(--fg-2);
 }
 .tree-nested {
   padding-inline-start: 14px;
