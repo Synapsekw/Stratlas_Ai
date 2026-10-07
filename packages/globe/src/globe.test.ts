@@ -1,6 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { BANNED_CESIUM_IMPORTS, OFFLINE_CESIUM, creditLines, onlineHostsIn } from './index';
+import {
+  BANNED_CESIUM_IMPORTS,
+  OFFLINE_CESIUM,
+  ONLINE_GLOBE_HOSTS,
+  creditLines,
+  onlineHostsIn,
+} from './index';
 
 const repoFile = (p: string) => readFileSync(new URL(`../../../${p}`, import.meta.url), 'utf8');
 
@@ -19,6 +25,11 @@ describe('@aio/globe public API (G0)', () => {
     const eslint = repoFile('eslint.config.js');
     for (const name of BANNED_CESIUM_IMPORTS) expect(eslint, name).toContain(`'${name}'`);
     expect(eslint).toContain("'@cesium/widgets'");
+  });
+
+  it('the bundle check refuses every online host listed here', () => {
+    const check = repoFile('tools/release/check-bundle.mjs');
+    for (const host of ONLINE_GLOBE_HOSTS) expect(check, host).toContain(`'${host}'`);
   });
 
   it('credits the bundled imagery and every pack once', () => {
