@@ -4,7 +4,7 @@
 // (tools/release/dist.mjs, CI) and by tools/demo/build-demo.mjs.
 //
 //   node tools/demo/check-no-client-data.mjs [folder] [--projects <dir>] [--radius-km 100]
-//                                            [--max-mb 150]
+//                                            [--max-mb 150] [--fixtures]
 //
 // Checks, file by file:
 //   - names: client, site and asset names (a built-in list plus the name, customer, site and
@@ -12,7 +12,13 @@
 //     E:\Stratlas Data>\projects, read only), real camera file names (DJI_0123), the NAS;
 //   - places: manifest origins and GeoJSON coordinates within --radius-km of a real project
 //     origin (the built-in list plus the manifests found);
-//   - camera metadata: EXIF, GPS or XMP in JPEG, PNG and WebP, location atoms in MP4;
+//   - camera metadata: EXIF, GPS or XMP in JPEG, PNG and WebP, location atoms in MP4; a JPEG of
+//     the synthetic camera (M10, python/tests/photo_synth.py) may carry EXIF and XMP, but no
+//     serial number, no personal name and GPS only at a fictional site (check-m10.mjs);
+//   - M10 placement: OPF geolocations, 3D Tiles transforms, raster pack metadata and PMTiles
+//     bounds, PPK and gcp_list positions, and (with --fixtures, for test fixture folders)
+//     GeoTIFF tags and tie points: near no real site, and camera, control and tile positions
+//     inside a fictional site;
 //   - paths of the build machine (C:\Users\..., /home/...) in text files;
 //   - total size (--max-mb).
 // Binary payloads (compressed pixels, GLB buffers, kit grids in base64) are not scanned for words:
@@ -20,6 +26,23 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  csvLonLats,
+  ecefToLonLat,
+  exifInfo,
+  fictionalSite,
+  gcpListPoints,
+  geotiffInfo,
+  isOpf,
+  isTileset,
+  opfGeolocations,
+  pmtilesInfo,
+  rasterPackFindings,
+  smallBboxCentre,
+  tileFeatureTable,
+  tilesetLonLat,
+  xmpInfo,
+} from './check-m10.mjs';
 import { m8Text, truthCoords } from './check-m8.mjs';
 
 /** Words that must never appear (client names, assets, places of real projects). */
@@ -79,6 +102,10 @@ const TEXT = new Set([
   // M9: journal segments (one op per line) and identity cards
   '.jsonl',
   '.aioid',
+  // M10: OPF projects (JSON), glTF JSON, checksum lists
+  '.opf',
+  '.gltf',
+  '.sha256',
 ]);
 
 // ------------------------------------------------------------------ coordinates
@@ -250,7 +277,9 @@ const stripPayload = (s) => s.replace(/[A-Za-z0-9+/=]{120,}/g, ' ');
 /**
  * Check a folder. Returns { findings: string[], files, bytes, points }.
  * @param {string} dir
- * @param {{ projectsDir?: string, radiusKm?: number, maxMb?: number }} o
+ * @param {{ projectsDir?: string, radiusKm?: number, maxMb?: number, fixtures?: boolean }} o
+ *   `fixtures`: a test fixture folder, where GeoTIFFs are allowed (and checked) and no manifest
+ *   is required.
  */
 export function checkFolder(dir, o = {}) {
   const radiusKm = o.radiusKm ?? 100;
@@ -282,6 +311,19 @@ export function checkFolder(dir, o = {}) {
         );
     }
   };
+  /** Camera, control and tile positions must lie in a fictional site (one finding per file). */
+  const outside = new Set();
+  const placed = (ll, where, what) => {
+    near(ll, where);
+    const file = where.split(' ')[0];
+    if (!fictionalSite(ll) && !outside.has(file) && outside.add(file))
+      findings.push(
+        `${where}: ${what} at ${ll[1].toFixed(4)}, ${ll[0].toFixed(4)} is outside the fictional sites`,
+      );
+  };
+  /** [lon, lat] of a projected (UTM) or geographic (x = lon, y = lat) coordinate, or null. */
+  const lonLatOf = (epsg, x, y) =>
+    epsg === 4326 || epsg === 4979 ? [x, y] : utmToLonLat(epsg, x, y);
   const scanText = (text, where) => {
     for (const [re, label] of words) {
       const m = re.exec(text);
@@ -354,17 +396,61 @@ export function checkFolder(dir, o = {}) {
                   if (s.on === 'map' && s.geojson) geojson(s.geojson, `${rel} ${String(is.code)}`);
             // M8: the places listed in a demo's truth.json
             if (name === 'truth.json') for (const ll of truthCoords(j)) near(ll, rel);
+            // M10: OPF geolocations (EPSG:4326 lists latitude first), 3D Tiles, raster packs
+            if (isOpf(j))
+              for (const g of opfGeolocations(j)) {
+                const ll =
+                  g.epsg === 4326 || g.epsg === 4979
+                    ? [g.coords[1], g.coords[0]]
+                    : utmToLonLat(g.epsg, g.coords[0], g.coords[1]);
+                if (ll) placed(ll, `${rel} OPF geolocation`, 'a position');
+              }
+            if (isTileset(j)) {
+              const ll = tilesetLonLat(j);
+              if (ll) placed(ll, `${rel} tileset`, 'the tileset');
+            }
+            if (j.schema === 'aio.raster-pack/1') {
+              findings.push(...rasterPackFindings(j, rel));
+              const c = smallBboxCentre(j.bbox);
+              if (c) near(c, `${rel} bbox`);
+            }
+          }
+        }
+        // M10: PPK positions (lat and lon columns) and ODM gcp_list.txt (the CRS on line one)
+        if (ext === '.csv')
+          for (const ll of csvLonLats(text)) placed(ll, `${rel} row`, 'a position');
+        if (ext === '.txt') {
+          const g = gcpListPoints(text);
+          for (const [x, y] of g?.pts ?? []) {
+            const ll = lonLatOf(g.epsg, x, y);
+            if (ll) placed(ll, `${rel} point`, 'a control point');
           }
         }
         continue;
       }
       if (ext === '.jpg' || ext === '.jpeg') {
-        for (const seg of jpegMeta(buf)) {
+        const segs = jpegMeta(buf);
+        // the synthetic camera (M10) may carry EXIF and XMP, checked field by field
+        const synthetic = segs.some(
+          (seg) => seg.data.toString('latin1', 0, 4) === 'Exif' && exifInfo(seg.data).synthetic,
+        );
+        const camera = (info, kind) => {
+          for (const s of info.serials)
+            findings.push(`${rel}: a camera serial number in ${kind} (${s})`);
+          for (const n of info.names) findings.push(`${rel}: a personal name in ${kind} (${n})`);
+          if (info.lonLat) placed(info.lonLat, `${rel} ${kind} GPS`, 'the camera');
+        };
+        for (const seg of segs) {
           const head = seg.data.toString('latin1', 0, 40);
-          if (head.startsWith('Exif'))
-            findings.push(`${rel}: EXIF metadata (camera, GPS) in a demo photo`);
-          else if (head.includes('ns.adobe.com/xap'))
-            findings.push(`${rel}: XMP metadata in a demo photo`);
+          if (head.startsWith('Exif')) {
+            const info = exifInfo(seg.data);
+            if (info.synthetic) camera(info, 'EXIF');
+            else findings.push(`${rel}: EXIF metadata (camera, GPS) in a demo photo`);
+          } else if (head.includes('ns.adobe.com/xap')) {
+            const info = xmpInfo(seg.data.toString('utf8'));
+            if (info.synthetic || synthetic) camera(info, 'XMP');
+            else findings.push(`${rel}: XMP metadata in a demo photo`);
+          }
           scanText(strings(seg.data), `${rel} metadata`);
         }
         continue;
@@ -393,8 +479,33 @@ export function checkFolder(dir, o = {}) {
         continue;
       }
       if (ext === '.tif' || ext === '.tiff') {
-        findings.push(`${rel}: raw GeoTIFF in the demo (sources stay out of published projects)`);
+        if (!o.fixtures) {
+          findings.push(`${rel}: raw GeoTIFF in the demo (sources stay out of published projects)`);
+          continue;
+        }
+        const g = geotiffInfo(buf);
+        for (const t of g.texts) scanText(t, `${rel} tags`);
+        const ll = g.epsg && g.xy ? lonLatOf(g.epsg, g.xy[0], g.xy[1]) : null;
+        if (ll) placed(ll, `${rel} GeoTIFF`, 'the raster');
+        else findings.push(`${rel}: a GeoTIFF this check cannot place (EPSG ${String(g.epsg)})`);
         continue;
+      }
+      // M10: legacy 3D Tiles content keeps a JSON feature table (RTC_CENTER in ECEF)
+      if (['.b3dm', '.pnts', '.i3dm', '.cmpt', '.subtree'].includes(ext)) {
+        const c = tileFeatureTable(buf)?.RTC_CENTER;
+        if (Array.isArray(c) && c.length === 3 && Math.hypot(...c) > 6e6)
+          placed(ecefToLonLat(c), `${rel} RTC_CENTER`, 'the tile');
+        scanText(strings(buf.subarray(0, 65536)), `${rel} header`);
+        continue;
+      }
+      // M10: a PMTiles archive's metadata (gzip) and bounds
+      if (ext === '.pmtiles') {
+        const pm = pmtilesInfo(buf);
+        if (pm) {
+          scanText(stripPayload(pm.meta), `${rel} metadata`);
+          const c = smallBboxCentre(pm.bbox);
+          if (c) near(c, `${rel} bounds`);
+        }
       }
       // M8: DXF drawings and ONNX models (text fields only, see check-m8.mjs)
       const m8 = m8Text(ext, buf);
@@ -411,7 +522,7 @@ export function checkFolder(dir, o = {}) {
   walk(dir);
   if (o.maxMb && bytes > o.maxMb * 1e6)
     findings.push(`total size ${(bytes / 1e6).toFixed(1)} MB is over ${o.maxMb} MB`);
-  if (points === 0)
+  if (points === 0 && !o.fixtures)
     findings.push('no coordinates found to check (a project needs a manifest origin)');
   return { findings, files, bytes, points };
 }
@@ -434,6 +545,7 @@ function cli() {
     projectsDir,
     radiusKm: Number(opt('radius-km') ?? 100),
     maxMb: Number(opt('max-mb') ?? 150),
+    fixtures: argv.includes('--fixtures'),
   });
   const refs =
     projectsDir && existsSync(projectsDir)

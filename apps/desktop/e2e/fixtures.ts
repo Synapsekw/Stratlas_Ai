@@ -27,6 +27,13 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  createGlobeLibrary,
+  createPhotoProject,
+  hasPhotoDemo,
+  type GlobeLibrary,
+  type PhotoProject,
+} from './m10Fixtures';
+import {
   assertNotRealData,
   copyRealProjects,
   REAL_DATA_ROOT,
@@ -591,6 +598,20 @@ interface Fixtures {
    * of `app` and `win`, not with them. Skips the test when the change demo is not built.
    */
   demoProject: DemoProject;
+  /**
+   * M10: the photo processing demo copied into `dataRoot` as a writable project
+   * (`projects/demo-photo-processing/`: photos layer, survey GCP files, the precomputed alignment
+   * run, hidden truth tilesets, truth.json). List it before `win`. Skips the test when the demo
+   * is not built (`pnpm demo:build --quick`, or `node tools/demo/photo-demo.mjs`).
+   */
+  photoProject: PhotoProject;
+  /**
+   * M10: six synthetic sites around the Earth (one in a local grid the Globe cannot place) with
+   * issues, captures and tilesets, plus imagery packs (`synthetic-world`, `synthetic-site-a`)
+   * and a Terrarium terrain pack with a benchmark height, written into `dataRoot` before the app
+   * starts (list it before `win`). Synthetic only (`m10Fixtures.ts`).
+   */
+  globeLibrary: GlobeLibrary;
 }
 
 export const test = base.extend<Fixtures>({
@@ -636,6 +657,18 @@ export const test = base.extend<Fixtures>({
 
   twoDateProject: async ({ dataRoot }, use) => {
     await use(await createTwoDateProject(dataRoot));
+  },
+
+  photoProject: async ({ dataRoot }, use, testInfo) => {
+    testInfo.skip(
+      !hasPhotoDemo(DEMO_FOLDER),
+      `no photo demo in ${DEMO_FOLDER}: run pnpm demo:build --quick (or node tools/demo/photo-demo.mjs)`,
+    );
+    await use(await createPhotoProject(dataRoot.root, DEMO_FOLDER));
+  },
+
+  globeLibrary: async ({ dataRoot }, use) => {
+    await use(await createGlobeLibrary(dataRoot.root, tinyGlb()));
   },
 
   demoProject: async ({ dataRoot, appEnv }, use, testInfo) => {
