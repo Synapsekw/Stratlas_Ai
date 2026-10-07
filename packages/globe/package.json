@@ -1,0 +1,16 @@
+{
+  "name": "@aio/globe",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The Globe (M10 G6): CesiumJS offline setup, library sites on the Earth, imagery and terrain pack providers, credits.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aio/schema": "workspace:*"
+  }
+}
