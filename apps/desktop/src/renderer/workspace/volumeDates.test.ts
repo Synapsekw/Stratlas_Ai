@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { threeDates } from './__fixtures__/threeDates';
 import { volumeHints } from './compare';
 import { createTimelineStore, TIMELINE_KEY } from './timeline';
-import { connectVolumeDates } from './volumeDates';
+import { connectVolumeDates, type SplitState } from './volumeDates';
 
 const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 const terrain = (id: string, capture: string, epoch: string): Layer => ({
@@ -124,6 +124,24 @@ class MemoryStorage {
   }
 }
 
+/** A compare split the test opens and closes. */
+function testSplit() {
+  let open = false;
+  const listeners = new Set<() => void>();
+  const split: SplitState = {
+    isOpen: () => open,
+    onChange: (l) => {
+      listeners.add(l);
+      return () => listeners.delete(l);
+    },
+  };
+  const set = (on: boolean) => {
+    open = on;
+    for (const l of listeners) l();
+  };
+  return { split, set };
+}
+
 async function setup() {
   const ws = createWorkspace();
   const storage = new MemoryStorage();
@@ -138,7 +156,8 @@ async function setup() {
     now: () => '2026-10-08T00:00:00.000Z',
   };
   const v = createVolumetricStore(deps);
-  const off = connectVolumeDates(v, tl, ws);
+  const compare = testSplit();
+  const off = connectVolumeDates(v, tl, ws, compare.split);
   // what the app does on open: the timeline attaches, the volumes load
   ws.getState().openProject({ id: 'm', root: '/m', manifest: stockpile });
   tl.getState().attach('m', captureIndex(stockpile));
@@ -146,7 +165,7 @@ async function setup() {
   tl.getState().attach('m', captureIndex(stockpile, volumeHints(v.getState())));
   const saved = () =>
     (JSON.parse(storage.getItem(TIMELINE_KEY) ?? '{}') as Record<string, DatePref>).m;
-  return { ws, tl, v, off, saved };
+  return { ws, tl, v, off, saved, compare };
 }
 
 describe('date bar and stockpile volumes', () => {
@@ -220,5 +239,15 @@ describe('date bar and stockpile volumes', () => {
     tl.getState().focusSurvey('oct');
     expect(ws.getState().hidden['model-nov']).toBe(true);
     expect(ws.getState().hidden['model-oct']).toBeUndefined();
+  });
+
+  it('the compare split keeps the date bar while the volumes follow a pane, then mirrors them', async () => {
+    const { tl, v, compare } = await setup();
+    compare.set(true);
+    // the 3D pane of the split shows 31 Dec: the volumes follow it (useVolumesFollowDate)
+    v.getState().setEpoch('e1');
+    expect(tl.getState().focus).toBe('s2');
+    compare.set(false);
+    expect(tl.getState().focus).toBe('s1');
   });
 });
