@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Id, IsoDate, Mat4, Vec3 } from './common';
-import { CameraOrientation, LensModel } from './layers';
+import { CameraOrientation, DirectionKeys, LensModel } from './layers';
 import { ClassCatalogue, SeverityModel } from './severity';
 
 /** What a project is for; picks defaults in the builder and the landing screen. */
@@ -153,7 +153,8 @@ export const ImportItem = z.object({
 
 /**
  * Patch for `builder:updateLayers`: a mesh georeference, or a video calibration (time offset,
- * lens, orientation bias, position offset; `null` clears a bias).
+ * lens, orientation bias, position offset, camera direction keyframes; `null` clears a bias or
+ * the keyframes).
  */
 export const LayerPatch = z.union([
   z.object({ transform: Mat4 }).strict(),
@@ -163,6 +164,7 @@ export const LayerPatch = z.union([
       lens: LensModel.optional(),
       orientation: CameraOrientation.nullable().optional(),
       positionOffsetM: Vec3.nullable().optional(),
+      directionKeys: DirectionKeys.nullable().optional(),
     })
     .strict()
     .refine(
@@ -170,8 +172,9 @@ export const LayerPatch = z.union([
         p.offsetMs !== undefined ||
         p.lens !== undefined ||
         p.orientation !== undefined ||
-        p.positionOffsetM !== undefined,
-      { message: 'Give offsetMs, lens, orientation or positionOffsetM' },
+        p.positionOffsetM !== undefined ||
+        p.directionKeys !== undefined,
+      { message: 'Give offsetMs, lens, orientation, positionOffsetM or directionKeys' },
     ),
   /** The capture (survey date) of any layer kind (M8); `null` clears it. */
   z.object({ capture: Id.nullable() }).strict(),

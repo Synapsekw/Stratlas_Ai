@@ -110,3 +110,4 @@ export * from './similarity';
 export * from './camera';
 export * from './altitude';
 export * from './flight';
+export * from './direction';

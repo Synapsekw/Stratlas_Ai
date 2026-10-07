@@ -1,6 +1,7 @@
 import {
   parseManifest,
   type CameraOrientation,
+  type DirectionKey,
   type LayerPatch,
   type NewProjectRequest,
   type ProjectManifest,
@@ -106,9 +107,31 @@ function roundOrientation(o: CameraOrientation): CameraOrientation {
 }
 
 /**
+ * Direction keyframes as saved: time to the millisecond, angles to a thousandth of a degree, yaw
+ * in [0, 360), targets to the millimetre; one keyframe per millisecond (the later one wins).
+ */
+function roundDirectionKeys(keys: readonly DirectionKey[]): DirectionKey[] {
+  const r = (v: number, d = 3) => Math.round(v * 10 ** d) / 10 ** d;
+  const byT = new Map<number, DirectionKey>();
+  for (const k of keys) {
+    const t = Math.round(k.t);
+    byT.set(t, {
+      t,
+      yaw: r(((k.yaw % 360) + 360) % 360),
+      pitch: r(k.pitch),
+      roll: r(k.roll),
+      fill: k.fill,
+      ...(k.target ? { target: k.target.map((v) => r(v)) as Vec3 } : {}),
+    });
+  }
+  return [...byT.values()].sort((a, b) => a.t - b.t);
+}
+
+/**
  * Apply an alignment to layers and save: a `transform` to mesh layers (georeference), `offsetMs`,
- * `lens`, `orientation` and `positionOffsetM` to video layers (calibration), or the `capture` (survey
- * date) of any layer (`null` clears it). Backs up and validates the manifest first.
+ * `lens`, `orientation`, `positionOffsetM` and `directionKeys` to video layers (calibration and
+ * camera direction), or the `capture` (survey date) of any layer (`null` clears it). Backs up and
+ * validates the manifest first.
  */
 export async function updateLayers(
   root: string,
@@ -145,9 +168,15 @@ export async function updateLayers(
       ...(patch.positionOffsetM
         ? { positionOffsetM: patch.positionOffsetM.map((v) => Math.round(v * 1000) / 1000) as Vec3 }
         : {}),
+      ...(patch.directionKeys?.length
+        ? { directionKeys: roundDirectionKeys(patch.directionKeys) }
+        : {}),
     };
     if (patch.orientation === null) delete next.orientation;
     if (patch.positionOffsetM === null) delete next.positionOffsetM;
+    // no keyframes left: the clip goes back to its logged direction
+    if (patch.directionKeys === null || patch.directionKeys?.length === 0)
+      delete next.directionKeys;
     return next;
   });
   const manifest: ProjectManifest = { ...m, layers };

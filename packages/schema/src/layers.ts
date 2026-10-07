@@ -28,6 +28,50 @@ export const CameraOrientation = z.object({
   rollDeg: z.number().min(-180).max(180),
 });
 
+/**
+ * How the camera turns between a direction keyframe and the next one (and, on the first and last
+ * keyframe, before and after them):
+ * - `smooth`: shortest-arc turn from this keyframe's direction to the next one's;
+ * - `track`: keep this keyframe's heading offset from the flight track (the offset eases to the
+ *   next keyframe's), pitch and roll eased;
+ * - `lookAt`: aim at `target` from where the drone is (orbits, point-of-interest shots), blending
+ *   in and out over half a second at the keyframes.
+ */
+export const DIRECTION_FILLS = ['smooth', 'track', 'lookAt'] as const;
+export const DirectionFill = z.enum(DIRECTION_FILLS);
+
+/**
+ * One camera direction keyframe of a video clip (set by hand where the flight log has no gimbal
+ * angles). `t` is clip time (milliseconds of video, so the keyframe stays on its frame when the
+ * time offset changes); `yaw` is the heading clockwise from grid north, `pitch` is up positive
+ * (negative looks down), `roll` drops the image's right side, all degrees in the project grid
+ * frame (as `cameraQuatFromGimbal`). Keyframes are absolute: they replace the logged orientation
+ * and its calibration bias. `fill` is kept as text so a later build's fill (Phase 2 "measured")
+ * still reads here; a fill this build does not know turns smoothly.
+ */
+export const DirectionKey = z
+  .object({
+    t: z.number().nonnegative(),
+    yaw: z.number().min(-360).max(360),
+    pitch: z.number().min(-90).max(90),
+    roll: z.number().min(-180).max(180),
+    fill: z.string().min(1).max(32),
+    /** What a `lookAt` keyframe aims at, local frame (x east, y up, z south), metres. */
+    target: Vec3.optional(),
+  })
+  .refine((k) => k.fill !== 'lookAt' || k.target !== undefined, {
+    message: 'A look-at keyframe needs a target',
+    path: ['target'],
+  });
+
+/** A clip's direction keyframes, in time order (at most one per millisecond). */
+export const DirectionKeys = z
+  .array(DirectionKey)
+  .max(1000)
+  .refine((ks) => ks.every((k, i) => i === 0 || k.t > (ks[i - 1]?.t ?? -1)), {
+    message: 'Direction keyframes must be in time order, one per time',
+  });
+
 /** One drone pose. `t` is milliseconds since flight start; position in the project local frame. */
 export const PoseSample = z.object({
   t: z.number().nonnegative(),
@@ -193,6 +237,12 @@ export const Layer = z.discriminatedUnion('kind', [
      * bias; none means zero.
      */
     positionOffsetM: Vec3.optional(),
+    /**
+     * Camera direction keyframes set by hand ("Set camera direction"). With at least one, the
+     * camera orientation comes from them, not from the flight log or `orientation`; the flight
+     * file is never rewritten. Absent or empty: the logged orientation with its bias.
+     */
+    directionKeys: DirectionKeys.optional(),
     poster: AssetRef.optional(),
   }),
   z.object({ kind: z.literal('photos'), ...base, items: z.array(PhotoRef) }),
@@ -215,6 +265,8 @@ export const Layer = z.discriminatedUnion('kind', [
 
 export type LensModel = z.infer<typeof LensModel>;
 export type CameraOrientation = z.infer<typeof CameraOrientation>;
+export type DirectionFill = z.infer<typeof DirectionFill>;
+export type DirectionKey = z.infer<typeof DirectionKey>;
 export type PoseSample = z.infer<typeof PoseSample>;
 export type FlightRef = z.infer<typeof FlightRef>;
 export type PhotoRef = z.infer<typeof PhotoRef>;

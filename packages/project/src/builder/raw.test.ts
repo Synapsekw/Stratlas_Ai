@@ -591,6 +591,44 @@ describe('updateLayers', () => {
     });
   });
 
+  it('saves camera direction keyframes rounded and in order, and clears them', async () => {
+    const root = await project();
+    const m = await readManifest(root);
+    const clip = {
+      kind: 'video' as const,
+      id: 'clip-a',
+      name: 'Clip A',
+      visible: true,
+      src: { path: 'video/a.mp4' },
+      flight: { src: { path: 'flights/a.json' }, startUtcMs: 1676974958000 },
+      lens: { model: 'pinhole' as const, hfovDeg: 72.2, aspect: 1.8972 },
+      offsetMs: 0,
+      orientation: { yawDeg: 1, pitchDeg: 0, rollDeg: 0 },
+    };
+    await writeManifestFile(root, { ...m, layers: [...m.layers, clip] });
+    const r = await updateLayers(root, ['clip-a'], {
+      directionKeys: [
+        { t: 1000.4, yaw: -10.12345, pitch: -30, roll: 0, fill: 'smooth' },
+        { t: 9000, yaw: 370 - 360, pitch: -45.5, roll: 1, fill: 'lookAt', target: [1.23456, 0, 2] },
+      ],
+    });
+    const saved = r.manifest.layers.find((l) => l.id === 'clip-a');
+    expect(saved).toMatchObject({
+      orientation: { yawDeg: 1 },
+      directionKeys: [
+        { t: 1000, yaw: 349.877, pitch: -30, roll: 0, fill: 'smooth' },
+        { t: 9000, yaw: 10, pitch: -45.5, roll: 1, fill: 'lookAt', target: [1.235, 0, 2] },
+      ],
+    });
+    expect((await readManifest(root)).layers.find((l) => l.id === 'clip-a')).toMatchObject({
+      directionKeys: [{ t: 1000 }, { t: 9000 }],
+    });
+    const cleared = await updateLayers(root, ['clip-a'], { directionKeys: null });
+    const after = cleared.manifest.layers.find((l) => l.id === 'clip-a');
+    expect(after && 'directionKeys' in after).toBe(false);
+    expect(after).toMatchObject({ orientation: { yawDeg: 1 } });
+  });
+
   it('sets and clears the capture of any layer, and refuses an unknown capture', async () => {
     const root = await project();
     await writeFile(join(dir, 'm.glb'), glb());
