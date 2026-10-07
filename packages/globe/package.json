@@ -9,6 +9,9 @@
     "./view": "./src/view/index.ts",
     "./testing": "./src/testing/synthetic.ts"
   },
+  "sideEffects": [
+    "*.css"
+  ],
   "scripts": {
     "test": "vitest run"
   },

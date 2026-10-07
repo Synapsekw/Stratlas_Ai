@@ -72,10 +72,9 @@ export function onlineHostsIn(text: string): string[] {
 export const OFFLINE_HOST = 'offline.invalid';
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const ONLINE_HOST_RE = new RegExp(
-  `(?:[a-z0-9-]+\\.)*(?:${ONLINE_GLOBE_HOSTS.map(escape).join('|')})`,
-  'gi',
-);
+/** Built on first use, so the renderer's Globe chunk (which never rewrites code) leaves it out. */
+const onlineHostRe = () =>
+  new RegExp(`(?:[a-z0-9-]+\\.)*(?:${ONLINE_GLOBE_HOSTS.map(escape).join('|')})`, 'gi');
 
 /**
  * CesiumJS source with every online host (and its subdomains: `api.cesium.com`,
@@ -84,5 +83,5 @@ const ONLINE_HOST_RE = new RegExp(
  * never use cannot name a real server, and the bundle check finds no online host in the build.
  */
 export function offlineSource(code: string): string {
-  return code.replace(ONLINE_HOST_RE, OFFLINE_HOST);
+  return code.replace(onlineHostRe(), OFFLINE_HOST);
 }
