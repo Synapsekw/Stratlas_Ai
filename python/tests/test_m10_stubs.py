@@ -41,6 +41,10 @@ M10 = {
 }
 
 
+#: Pipelines their stream has built (they fail with their own errors, tested in their own tests).
+BUILT = {"opf.import", "opf.export"}
+
+
 def test_every_m10_pipeline_is_listed():
     names = set(all_pipelines())
     assert set(M10) <= names
@@ -49,7 +53,7 @@ def test_every_m10_pipeline_is_listed():
         assert p.title and p.description
 
 
-@pytest.mark.parametrize("name", sorted(M10))
+@pytest.mark.parametrize("name", sorted(set(M10) - BUILT))
 def test_a_stub_fails_with_not_implemented_and_leaves_the_project_untouched(tmp_path, name):
     pipeline = all_pipelines()[name]
     with pytest.raises(JobError, match="not implemented"):
