@@ -2095,6 +2095,10 @@ export const en = {
   'globe.flyTo': 'Fly to',
   'globe.openSite': 'Open site here',
   'globe.credits': 'Imagery and terrain credits',
+  'globe.measure': 'Measure on the ellipsoid',
+  'globe.measureHint': 'Click points on the ground. Measuring and editing are in the site view.',
+  'globe.distance': 'Distance on the ellipsoid: {value}',
+  'globe.area': 'area: {value}',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

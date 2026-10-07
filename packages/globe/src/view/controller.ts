@@ -64,6 +64,8 @@ export interface GlobeControllerOptions {
   onPick: (pick: GlobePick | null) => void;
   /** The credit lines of what is drawn (Natural Earth II, then each pack once). */
   onCredits?: (lines: string[]) => void;
+  /** The measuring points (longitude, latitude), whenever they change. */
+  onMeasure?: (points: [number, number][]) => void;
   /** Geoid undulation for EGM terrain packs; none bundled yet. */
   geoid?: Geoid;
 }
@@ -138,6 +140,9 @@ export class GlobeController {
   private terrainDecoded: (() => number) | null = null;
   private readonly sites = new CustomDataSource('sites');
   private readonly issues = new CustomDataSource('issues');
+  private readonly measure = new CustomDataSource('measure');
+  private measuring = false;
+  private measured: [number, number][] = [];
   private readonly handler: ScreenSpaceEventHandler;
   private credits: string[] = [];
   private tilesets: { id: string; tileset: Cesium3DTileset }[] = [];
@@ -160,6 +165,7 @@ export class GlobeController {
     });
     void widget.dataSources.add(this.sites);
     void widget.dataSources.add(this.issues);
+    void widget.dataSources.add(this.measure);
     // a render error stops CesiumJS's render loop: say so in the log (diagnostics, tests)
     widget.scene.renderError.addEventListener((_scene: unknown, error: unknown) => {
       console.error('The Globe stopped drawing:', error);
@@ -183,6 +189,10 @@ export class GlobeController {
   }
 
   private pick(position: Cartesian2): void {
+    if (this.measuring) {
+      this.addMeasurePoint(position);
+      return;
+    }
     const hit = this.scene.pick(position) as { id?: unknown } | undefined;
     const id = hit?.id;
     // a cluster: zoom to its sites
@@ -238,6 +248,56 @@ export class GlobeController {
     }
     this.credits = creditLines([...imagery, ...(useTerrain ? terrain : [])]);
     this.o.onCredits?.(this.credits);
+    this.scene.requestRender();
+  }
+
+  /**
+   * The geodesic read-out (decision 3, the Globe's only tool): while on, clicks put points on the
+   * ground instead of picking; the caller words the distance and area "on the ellipsoid".
+   */
+  setMeasuring(on: boolean): void {
+    this.measuring = on;
+    if (!on) {
+      this.measured = [];
+      this.drawMeasure();
+    }
+  }
+
+  private addMeasurePoint(position: Cartesian2): void {
+    const ray = this.scene.camera.getPickRay(position);
+    const hit = ray
+      ? (this.scene.globe.pick(ray, this.scene) ?? this.scene.camera.pickEllipsoid(position))
+      : undefined;
+    if (!hit) return;
+    const c = Cartographic.fromCartesian(hit);
+    this.measured = [...this.measured, [CMath.toDegrees(c.longitude), CMath.toDegrees(c.latitude)]];
+    this.drawMeasure();
+  }
+
+  private drawMeasure(): void {
+    const pts = this.measured;
+    this.measure.entities.removeAll();
+    const ring = pts.length >= 3 ? [...pts, pts[0] ?? [0, 0]] : pts;
+    if (ring.length >= 2)
+      this.measure.entities.add({
+        polyline: {
+          positions: Cartesian3.fromDegreesArray(ring.flat()),
+          clampToGround: true,
+          width: 3,
+          material: Color.fromCssColorString('#ffd43b'),
+        },
+      });
+    for (const [lon, lat] of pts)
+      this.measure.entities.add({
+        position: Cartesian3.fromDegrees(lon, lat),
+        point: {
+          pixelSize: 8,
+          color: Color.fromCssColorString('#ffd43b'),
+          heightReference: HeightReference.CLAMP_TO_GROUND,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        },
+      });
+    this.o.onMeasure?.(pts.map((p) => [p[0], p[1]]));
     this.scene.requestRender();
   }
 

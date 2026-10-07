@@ -415,3 +415,56 @@ test('the tilesets of a project draw on the Globe', async ({ win, dataRoot }) =>
   expect(ground?.slice(0, 3).every((v) => v > 215)).toBe(false);
   expect(quad?.slice(0, 3).every((v) => v > 215)).toBe(true);
 });
+
+test('the only tool is a distance and area read-out on the ellipsoid', async ({ win }) => {
+  await openGlobe(win);
+  await flyToSite(win, SITE_A.name);
+  await win.getByRole('button', { name: 'Measure on the ellipsoid' }).click();
+  const readout = win.getByTestId('globe-readout');
+  await expect(readout).toContainText('Click points on the ground');
+  const box = await win.getByTestId('globe-canvas').boundingBox();
+  const at = (fx: number, fy: number) =>
+    win.mouse.click(
+      (box?.x ?? 0) + (box?.width ?? 0) * fx,
+      (box?.y ?? 0) + (box?.height ?? 0) * fy,
+    );
+  await at(0.35, 0.7);
+  await at(0.65, 0.7);
+  await expect(readout).toContainText(/Distance on the ellipsoid: \d+ m/);
+  await at(0.5, 0.85);
+  await expect(readout).toContainText(/area: [\d.]+ (m²|ha)/);
+  // picking is off while measuring: no card opened
+  await expect(win.getByTestId('globe-card')).toHaveCount(0);
+});
+
+test('closing the Globe gives its WebGL context back', async ({ app, win }) => {
+  const gpuMiB = () =>
+    app.evaluate(({ app: a }) =>
+      Math.round(
+        a
+          .getAppMetrics()
+          .filter((m) => m.type === 'GPU')
+          .reduce((s, m) => s + m.memory.workingSetSize, 0) / 1024,
+      ),
+    );
+  const before = await gpuMiB();
+  const seen: number[] = [];
+  for (let i = 0; i < 2; i++) {
+    await openGlobe(win);
+    await flyToSite(win, SITE_A.name);
+    seen.push(await gpuMiB());
+    await win.evaluate(() => {
+      const el = document.querySelector('[data-testid="globe-canvas"] canvas');
+      (window as unknown as { __globeCanvas?: Element | null }).__globeCanvas = el;
+    });
+    await win.locator('.sb-nav .nav-item', { hasText: 'Projects' }).click();
+    await expect(win.getByTestId('globe-canvas')).toHaveCount(0);
+    const lost = await win.evaluate(() => {
+      const c = (window as unknown as { __globeCanvas?: HTMLCanvasElement }).__globeCanvas;
+      return c?.getContext('webgl2')?.isContextLost() ?? null;
+    });
+    expect(lost).toBe(true);
+  }
+  // eslint-disable-next-line no-console -- the GPU process working set, for the report
+  console.log(`globe GPU process: ${String(before)} MiB, open ${seen.join(', ')} MiB`);
+});

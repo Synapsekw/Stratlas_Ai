@@ -34,6 +34,9 @@ export interface GlobeViewProps {
   start: { camera: GlobeCamera } | { site: readonly [number, number] } | null;
   reducedMotion: () => boolean;
   onPick: (pick: GlobePick | null) => void;
+  /** The geodesic read-out is on: clicks put points instead of picking. */
+  measuring: boolean;
+  onMeasure?: (points: [number, number][]) => void;
   /** The credit lines of what is drawn, whenever they change. */
   onCredits?: (lines: string[]) => void;
   onReady?: (c: GlobeController) => void;
@@ -71,6 +74,9 @@ export function GlobeView(props: GlobeViewProps) {
       },
       onCredits: (lines) => {
         latest.current.onCredits?.(lines);
+      },
+      onMeasure: (points) => {
+        latest.current.onMeasure?.(points);
       },
     }).then((c) => {
       if (!live) {
@@ -113,6 +119,9 @@ export function GlobeView(props: GlobeViewProps) {
     else ctl.setIssuePins('', NOWHERE, []);
   }, [ctl, props.issuePins]);
 
+  useEffect(() => {
+    ctl?.setMeasuring(props.measuring);
+  }, [ctl, props.measuring]);
   useEffect(() => {
     const ts = props.tilesets;
     if (!ctl) return;

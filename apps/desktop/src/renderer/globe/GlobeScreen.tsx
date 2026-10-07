@@ -1,9 +1,13 @@
 import { reducedMotion } from '@aio/engine';
 import {
   creditLines,
+  formatArea,
+  formatLength,
   globeToSite,
   issuePins,
   lastCapture,
+  pathLength,
+  polygonArea,
   selectPacks,
   sortSites,
   type GlobeCamera,
@@ -83,6 +87,8 @@ export default function GlobeScreen() {
   const [pick, setPick] = useState<GlobePick | null>(null);
   const [ctl, setCtl] = useState<GlobeController | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [measuring, setMeasuring] = useState(false);
+  const [measured, setMeasured] = useState<[number, number][]>([]);
   const prefs = settings ?? loaded?.settings ?? defaultGlobeSettings();
 
   const imagery = useMemo(
@@ -177,6 +183,8 @@ export default function GlobeScreen() {
         reducedMotion={reducedMotion}
         onPick={setPick}
         onCredits={setCredits}
+        measuring={measuring}
+        onMeasure={setMeasured}
         onReady={setCtl}
         onClose={(c) => {
           lastCamera = c;
@@ -247,6 +255,31 @@ export default function GlobeScreen() {
           </select>
         </label>
         {tier === 'low' && <p className="globe-note">{t('globe.lowTier')}</p>}
+        <div className="globe-measure">
+          <button
+            type="button"
+            className={`btn sm${measuring ? '' : ' ghost'}`}
+            aria-pressed={measuring}
+            onClick={() => {
+              setMeasuring(!measuring);
+              setPick(null);
+            }}
+          >
+            {t('globe.measure')}
+          </button>
+          {measuring && (
+            <p className="globe-readout" data-testid="globe-readout" aria-live="polite">
+              {measured.length < 2
+                ? t('globe.measureHint')
+                : [
+                    t('globe.distance', { value: formatLength(pathLength(measured)) }),
+                    ...(measured.length >= 3
+                      ? [t('globe.area', { value: formatArea(polygonArea(measured)) })]
+                      : []),
+                  ].join(' · ')}
+            </p>
+          )}
+        </div>
         <label className="globe-check">
           <input
             type="checkbox"
