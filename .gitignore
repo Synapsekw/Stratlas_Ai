@@ -27,3 +27,6 @@ fixtures/data/
 Thumbs.db
 dist-types/
 .claude/worktrees/
+
+# founder review board answers (tools/review-board)
+.review-board/

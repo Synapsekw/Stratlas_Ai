@@ -1,0 +1,1006 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Review board</title>
+    <style>
+      :root {
+        --bg: #f6f7f8;
+        --panel: #ffffff;
+        --ink: #1b2229;
+        --muted: #5d6873;
+        --faint: #8b959e;
+        --line: #e2e6ea;
+        --line-strong: #cfd5db;
+        --accent: #0f766e;
+        --accent-soft: #e3f3f1;
+        --pass: #15803d;
+        --pass-soft: #e5f4ea;
+        --fail: #b91c1c;
+        --fail-soft: #fbe9e9;
+        --skip: #a16207;
+        --skip-soft: #fbf2df;
+        --decided: #1d4ed8;
+        --decided-soft: #e6edfd;
+        --code: #eef1f4;
+        --shadow: 0 1px 2px rgb(16 24 32 / 6%), 0 4px 16px rgb(16 24 32 / 6%);
+        color-scheme: light;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #111518;
+          --panel: #181d21;
+          --ink: #e6eaee;
+          --muted: #a3adb6;
+          --faint: #77828c;
+          --line: #262d33;
+          --line-strong: #343c43;
+          --accent: #2dd4bf;
+          --accent-soft: #13332f;
+          --pass: #4ade80;
+          --pass-soft: #14301f;
+          --fail: #f87171;
+          --fail-soft: #3a1a1a;
+          --skip: #fbbf24;
+          --skip-soft: #33290f;
+          --decided: #93b4fd;
+          --decided-soft: #1a2442;
+          --code: #222a30;
+          --shadow: 0 1px 2px rgb(0 0 0 / 40%);
+          color-scheme: dark;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+      body {
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          14px/1.5 'Segoe UI',
+          system-ui,
+          -apple-system,
+          Roboto,
+          sans-serif;
+      }
+      button,
+      textarea,
+      input {
+        font: inherit;
+        color: inherit;
+      }
+      code {
+        background: var(--code);
+        padding: 0 4px;
+        border-radius: 4px;
+        font:
+          12.5px/1.4 Consolas,
+          'Cascadia Mono',
+          ui-monospace,
+          monospace;
+        overflow-wrap: anywhere;
+      }
+      .top {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px 20px;
+        padding: 10px 20px;
+        background: var(--panel);
+        border-bottom: 1px solid var(--line);
+      }
+      .brand {
+        font-weight: 650;
+        letter-spacing: 0.01em;
+      }
+      .brand small {
+        display: block;
+        font-weight: 400;
+        color: var(--faint);
+        font-size: 11.5px;
+      }
+      .tabs {
+        display: flex;
+        gap: 4px;
+        background: var(--bg);
+        padding: 3px;
+        border-radius: 8px;
+      }
+      .tab {
+        border: 0;
+        background: none;
+        padding: 5px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        color: var(--muted);
+      }
+      .tab[aria-selected='true'] {
+        background: var(--panel);
+        color: var(--ink);
+        box-shadow: var(--shadow);
+        font-weight: 600;
+      }
+      .progress {
+        display: flex;
+        gap: 14px;
+        font-variant-numeric: tabular-nums;
+        color: var(--muted);
+        font-size: 13px;
+        margin-left: auto;
+      }
+      .progress b {
+        font-weight: 650;
+      }
+      .dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 5px;
+        vertical-align: 1px;
+      }
+      .primary {
+        border: 0;
+        background: var(--accent);
+        color: #fff;
+        padding: 7px 16px;
+        border-radius: 7px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      @media (prefers-color-scheme: dark) {
+        .primary {
+          color: #06201d;
+        }
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr);
+        align-items: start;
+      }
+      nav {
+        position: sticky;
+        top: 57px;
+        height: calc(100vh - 57px);
+        overflow: auto;
+        padding: 14px 12px 40px;
+        border-right: 1px solid var(--line);
+      }
+      .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 12px;
+      }
+      .chip {
+        border: 1px solid var(--line-strong);
+        background: var(--panel);
+        border-radius: 999px;
+        padding: 2px 10px;
+        font-size: 12.5px;
+        cursor: pointer;
+        color: var(--muted);
+      }
+      .chip[aria-pressed='true'] {
+        background: var(--accent-soft);
+        border-color: var(--accent);
+        color: var(--ink);
+      }
+      .search {
+        width: 100%;
+        padding: 6px 10px;
+        border: 1px solid var(--line-strong);
+        border-radius: 7px;
+        background: var(--panel);
+        margin-bottom: 10px;
+      }
+      .navsec {
+        display: block;
+        width: 100%;
+        text-align: left;
+        border: 0;
+        background: none;
+        padding: 7px 8px;
+        border-radius: 7px;
+        cursor: pointer;
+      }
+      .navsec:hover {
+        background: var(--panel);
+      }
+      .navsec .t {
+        display: block;
+        font-size: 13px;
+        line-height: 1.35;
+      }
+      .navsec .n {
+        font-size: 11.5px;
+        color: var(--faint);
+        font-variant-numeric: tabular-nums;
+      }
+      .bar {
+        display: flex;
+        height: 4px;
+        border-radius: 2px;
+        overflow: hidden;
+        background: var(--line);
+        margin-top: 4px;
+      }
+      .bar span {
+        display: block;
+      }
+      main {
+        padding: 20px 28px 120px;
+        max-width: 1060px;
+      }
+      .section {
+        margin-bottom: 36px;
+      }
+      .section > h2 {
+        font-size: 20px;
+        margin: 0 0 6px;
+        text-wrap: balance;
+      }
+      .section h3 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        margin: 22px 0 8px;
+      }
+      .prose {
+        color: var(--muted);
+        max-width: 75ch;
+      }
+      .prose p {
+        margin: 6px 0;
+      }
+      .prose ul,
+      .prose ol {
+        margin: 6px 0;
+        padding-left: 20px;
+      }
+      .note {
+        margin: 10px 0 4px;
+      }
+      .note textarea {
+        min-height: 38px;
+      }
+      .item {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 6px 16px;
+        padding: 10px 12px 10px 14px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-left: 3px solid var(--line-strong);
+        border-radius: 8px;
+        margin: 6px 0;
+      }
+      .item[data-status='pass'],
+      .item[data-status='ok'] {
+        border-left-color: var(--pass);
+      }
+      .item[data-status='fail'],
+      .item[data-status='question'] {
+        border-left-color: var(--fail);
+        background: linear-gradient(90deg, var(--fail-soft), var(--panel) 40%);
+      }
+      .item[data-status='skip'] {
+        border-left-color: var(--skip);
+      }
+      .item[data-status='done'] {
+        border-left-color: var(--pass);
+      }
+      .item[data-status='stuck'] {
+        border-left-color: var(--fail);
+        background: linear-gradient(90deg, var(--fail-soft), var(--panel) 40%);
+      }
+      .item[data-status='later'] {
+        border-left-color: var(--skip);
+      }
+      .item[data-status='decided'] {
+        border-left-color: var(--decided);
+      }
+      .item .text {
+        min-width: 0;
+      }
+      .item .text ul {
+        margin: 4px 0 0;
+        padding-left: 18px;
+        color: var(--muted);
+      }
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 14px;
+        margin-top: 4px;
+        font-size: 12.5px;
+        color: var(--muted);
+      }
+      .meta span b {
+        font-weight: 600;
+        color: var(--faint);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-right: 4px;
+      }
+      .pill {
+        display: inline-block;
+        padding: 0 7px;
+        border-radius: 999px;
+        font-size: 11.5px;
+        font-weight: 600;
+        background: var(--code);
+      }
+      .pill.Done {
+        background: var(--pass-soft);
+        color: var(--pass);
+      }
+      .pill.Blocked {
+        background: var(--fail-soft);
+        color: var(--fail);
+      }
+      .pill.Partly {
+        background: var(--skip-soft);
+        color: var(--skip);
+      }
+      .seg {
+        display: flex;
+        gap: 4px;
+        align-self: start;
+      }
+      .seg button {
+        border: 1px solid var(--line-strong);
+        background: var(--panel);
+        border-radius: 7px;
+        padding: 3px 10px;
+        font-size: 12.5px;
+        cursor: pointer;
+        white-space: nowrap;
+        color: var(--muted);
+      }
+      .seg button:hover {
+        border-color: var(--muted);
+      }
+      .seg button[aria-pressed='true'][data-v='done'],
+      .seg button[aria-pressed='true'][data-v='pass'],
+      .seg button[aria-pressed='true'][data-v='ok'] {
+        background: var(--pass-soft);
+        border-color: var(--pass);
+        color: var(--pass);
+        font-weight: 600;
+      }
+      .seg button[aria-pressed='true'][data-v='stuck'],
+      .seg button[aria-pressed='true'][data-v='fail'],
+      .seg button[aria-pressed='true'][data-v='question'] {
+        background: var(--fail-soft);
+        border-color: var(--fail);
+        color: var(--fail);
+        font-weight: 600;
+      }
+      .seg button[aria-pressed='true'][data-v='later'],
+      .seg button[aria-pressed='true'][data-v='skip'] {
+        background: var(--skip-soft);
+        border-color: var(--skip);
+        color: var(--skip);
+        font-weight: 600;
+      }
+      .seg button[aria-pressed='true'][data-v='decided'] {
+        background: var(--decided-soft);
+        border-color: var(--decided);
+        color: var(--decided);
+        font-weight: 600;
+      }
+      .seg .cbtn[data-has='true'] {
+        color: var(--accent);
+        border-color: var(--accent);
+      }
+      .comment {
+        grid-column: 1 / -1;
+        display: none;
+      }
+      .item.open .comment {
+        display: block;
+      }
+      textarea {
+        width: 100%;
+        min-height: 64px;
+        resize: vertical;
+        padding: 8px 10px;
+        border: 1px solid var(--line-strong);
+        border-radius: 7px;
+        background: var(--bg);
+        line-height: 1.45;
+      }
+      textarea:focus,
+      .search:focus {
+        outline: 2px solid var(--accent);
+        outline-offset: -1px;
+      }
+      .shots {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 6px;
+        align-items: center;
+      }
+      .shots img {
+        height: 72px;
+        border-radius: 6px;
+        border: 1px solid var(--line);
+        cursor: zoom-in;
+      }
+      .shots label {
+        font-size: 12.5px;
+        color: var(--muted);
+        cursor: pointer;
+        text-decoration: underline;
+      }
+      .shots .hint {
+        font-size: 12px;
+        color: var(--faint);
+      }
+      .shots .x {
+        border: 0;
+        background: none;
+        color: var(--faint);
+        cursor: pointer;
+        font-size: 12px;
+      }
+      .saved {
+        font-size: 12px;
+        color: var(--faint);
+        min-width: 70px;
+      }
+      dialog {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--panel);
+        color: var(--ink);
+        max-width: 480px;
+        width: calc(100% - 32px);
+        padding: 22px 24px;
+        box-shadow: var(--shadow);
+      }
+      dialog::backdrop {
+        background: rgb(0 0 0 / 35%);
+      }
+      dialog h2 {
+        margin: 0 0 8px;
+        font-size: 18px;
+      }
+      dialog .row {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 18px;
+      }
+      .ghost {
+        border: 1px solid var(--line-strong);
+        background: none;
+        padding: 7px 14px;
+        border-radius: 7px;
+        cursor: pointer;
+      }
+      .counts {
+        font-variant-numeric: tabular-nums;
+        margin: 10px 0;
+        padding-left: 18px;
+      }
+      .zoom {
+        position: fixed;
+        inset: 0;
+        background: rgb(0 0 0 / 80%);
+        display: grid;
+        place-items: center;
+        z-index: 20;
+        cursor: zoom-out;
+      }
+      .zoom img {
+        max-width: 94vw;
+        max-height: 94vh;
+      }
+      .empty {
+        color: var(--faint);
+        padding: 40px 0;
+      }
+      @media (max-width: 820px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        nav {
+          position: static;
+          height: auto;
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+        main {
+          padding: 16px;
+        }
+        .item {
+          grid-template-columns: 1fr;
+        }
+        .progress {
+          margin-left: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">Review board<small id="lastsub">Not submitted yet</small></div>
+      <div class="tabs" role="tablist" id="tabs"></div>
+      <div class="progress" id="progress"></div>
+      <span class="saved" id="saved"></span>
+      <button class="primary" id="submit">Submit</button>
+    </header>
+    <div class="layout">
+      <nav>
+        <input class="search" id="search" type="search" placeholder="Find a line" />
+        <div class="filters" id="filters"></div>
+        <div id="navlist"></div>
+      </nav>
+      <main id="main"><p class="empty">Loading…</p></main>
+    </div>
+    <dialog id="confirm">
+      <h2>Submit your review?</h2>
+      <p>Claude reads what you marked and wrote. You can keep working and submit again later.</p>
+      <ul class="counts" id="confirmcounts"></ul>
+      <div class="row">
+        <button class="ghost" id="cancel">Keep working</button>
+        <button class="primary" id="go">Submit</button>
+      </div>
+    </dialog>
+    <dialog id="done">
+      <h2>Submitted</h2>
+      <p id="donetext"></p>
+      <div class="row"><button class="primary" id="ok">Done</button></div>
+    </dialog>
+    <script>
+      const STATUS = {
+        testing: [
+          ['pass', 'Works'],
+          ['fail', 'Does not work'],
+          ['skip', 'Skip'],
+        ],
+        checklist: [
+          ['ok', 'Agree'],
+          ['question', 'Question or change'],
+          ['decided', 'Decided'],
+        ],
+        setup: [
+          ['done', 'Done'],
+          ['stuck', 'Stuck or question'],
+          ['later', 'Not now'],
+        ],
+      };
+      const COLOR = {
+        pass: 'var(--pass)',
+        ok: 'var(--pass)',
+        fail: 'var(--fail)',
+        question: 'var(--fail)',
+        skip: 'var(--skip)',
+        decided: 'var(--decided)',
+        done: 'var(--pass)',
+        stuck: 'var(--fail)',
+        later: 'var(--skip)',
+      };
+      const FILTERS = {
+        testing: [
+          ['all', 'All'],
+          ['none', 'Not marked'],
+          ['fail', 'Does not work'],
+          ['commented', 'Commented'],
+        ],
+        checklist: [
+          ['all', 'All'],
+          ['founder', 'Needs me'],
+          ['none', 'Not marked'],
+          ['commented', 'Commented'],
+        ],
+        setup: [
+          ['all', 'All'],
+          ['none', 'Not done'],
+          ['fail', 'Stuck'],
+          ['commented', 'Commented'],
+        ],
+      };
+      let docs = [];
+      let state = { items: {}, submissions: [] };
+      let docIdx = 0;
+      let filter = 'all';
+      let query = '';
+      try {
+        docIdx = Number(localStorage.getItem('rb.doc') ?? 0) || 0;
+      } catch {}
+
+      const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+      function md(s) {
+        const parts = s.split(/(`[^`]*`)/g);
+        return parts
+          .map((p) => {
+            if (/^`[^`]*`$/.test(p)) return `<code>${esc(p.slice(1, -1))}</code>`;
+            return esc(p)
+              .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<u title="$2">$1</u>')
+              .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+              .replace(/(^|[\s(])_([^_]+)_(?=[\s).,;:]|$)/g, '$1<em>$2</em>');
+          })
+          .join('');
+      }
+      const r = (id) => state.items[id] ?? {};
+      const doc = () => docs[docIdx];
+      const allItems = (d) => d.sections.flatMap((s) => s.groups.flatMap((g) => g.items));
+      const isFounder = (i) =>
+        i.kind === 'row' &&
+        (/^B\d/.test(i.fields['#'] ?? '') || /(^|\W)F(\W|$)/.test(i.fields.Owner ?? '')) &&
+        (i.fields.Status ?? '') !== 'Done';
+
+      function matches(item) {
+        const rec = r(item.id);
+        if (query && !item.plain.toLowerCase().includes(query) && !(rec.comment ?? '').toLowerCase().includes(query))
+          return false;
+        if (filter === 'none') return item.counted && !rec.status;
+        if (filter === 'fail') return ['fail', 'question', 'stuck'].includes(rec.status);
+        if (filter === 'commented') return !!(rec.comment?.trim() || rec.attachments?.length);
+        if (filter === 'founder') return isFounder(item);
+        return true;
+      }
+
+      function counts(items) {
+        const c = { none: 0 };
+        for (const i of items) {
+          if (!i.counted) continue;
+          const s = r(i.id).status;
+          if (s) c[s] = (c[s] ?? 0) + 1;
+          else c.none++;
+        }
+        return c;
+      }
+
+      function renderTop() {
+        const tabs = document.getElementById('tabs');
+        tabs.innerHTML = '';
+        docs.forEach((d, k) => {
+          const b = document.createElement('button');
+          b.className = 'tab';
+          b.role = 'tab';
+          b.textContent = d.title;
+          b.setAttribute('aria-selected', String(k === docIdx));
+          b.onclick = () => {
+            docIdx = k;
+            filter = 'all';
+            try {
+              localStorage.setItem('rb.doc', String(k));
+            } catch {}
+            render();
+          };
+          tabs.append(b);
+        });
+        const d = doc();
+        const c = counts(allItems(d));
+        const total = allItems(d).filter((i) => i.counted).length;
+        document.getElementById('progress').innerHTML =
+          STATUS[d.kind].map(([v, w]) => `<span><i class="dot" style="background:${COLOR[v]}"></i>${w} <b>${c[v] ?? 0}</b></span>`).join('') +
+          `<span>Not marked <b>${c.none}</b> of ${total}</span>`;
+        const subs = state.submissions ?? [];
+        document.getElementById('lastsub').textContent = subs.length
+          ? `Last submitted ${new Date(subs[subs.length - 1]).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}`
+          : 'Not submitted yet';
+      }
+
+      function renderNav() {
+        const d = doc();
+        const f = document.getElementById('filters');
+        f.innerHTML = '';
+        for (const [v, w] of FILTERS[d.kind]) {
+          const b = document.createElement('button');
+          b.className = 'chip';
+          b.textContent = w;
+          b.setAttribute('aria-pressed', String(filter === v));
+          b.onclick = () => {
+            filter = v;
+            render();
+          };
+          f.append(b);
+        }
+        const list = document.getElementById('navlist');
+        list.innerHTML = '';
+        for (const s of d.sections) {
+          const items = s.groups.flatMap((g) => g.items);
+          const counted = items.filter((i) => i.counted);
+          if (!counted.length && !s.groups.some((g) => g.blocks.length)) continue;
+          const c = counts(items);
+          const b = document.createElement('button');
+          b.className = 'navsec';
+          const segs = STATUS[d.kind]
+            .map(([v]) => (c[v] ? `<span style="width:${(100 * c[v]) / counted.length}%;background:${COLOR[v]}"></span>` : ''))
+            .join('');
+          b.innerHTML = `<span class="t">${md(s.title)}</span>${
+            counted.length ? `<span class="n">${counted.length - c.none} of ${counted.length} marked</span><div class="bar">${segs}</div>` : ''
+          }`;
+          b.onclick = () => document.getElementById(`sec-${s.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          list.append(b);
+        }
+      }
+
+      function renderMain() {
+        const d = doc();
+        const main = document.getElementById('main');
+        main.innerHTML = '';
+        let shown = 0;
+        for (const s of d.sections) {
+          const sec = document.createElement('section');
+          sec.className = 'section';
+          sec.id = `sec-${s.id}`;
+          const filtering = filter !== 'all' || query;
+          let body = '';
+          let any = false;
+          for (const g of s.groups) {
+            let gb = '';
+            let gAny = false;
+            for (const b of g.blocks) {
+              if (b.type === 'item') {
+                const item = g.items.find((i) => i.id === b.id);
+                if (!item || !matches(item)) continue;
+                gAny = true;
+                gb += `<div data-item="${esc(item.id)}"></div>`;
+              } else if (!filtering) {
+                gAny = true;
+                if (b.type === 'p') gb += `<div class="prose"><p>${md(b.md)}</p></div>`;
+                else if (b.type === 'pre') gb += `<pre class="prose"><code>${esc(b.text)}</code></pre>`;
+                else {
+                  const tag = b.type;
+                  gb += `<div class="prose"><${tag}>${b.items
+                    .map((li) => `<li>${md(li.md)}${li.sub.length ? `<ul>${li.sub.map((x) => `<li>${md(x)}</li>`).join('')}</ul>` : ''}</li>`)
+                    .join('')}</${tag}></div>`;
+                }
+              }
+            }
+            if (gAny) {
+              any = true;
+              body += (g.title ? `<h3>${md(g.title)}</h3>` : '') + gb;
+            }
+          }
+          if (!any) continue;
+          shown++;
+          sec.innerHTML = `<h2>${md(s.title)}</h2>${body}`;
+          main.append(sec);
+          if (!filtering && s.groups.some((g) => g.items.some((i) => i.counted))) sec.querySelector('h2').after(noteBox(s));
+          for (const slot of sec.querySelectorAll('[data-item]')) {
+            const item = s.groups.flatMap((g) => g.items).find((i) => i.id === slot.dataset.item);
+            slot.replaceWith(itemCard(item, d.kind));
+          }
+        }
+        if (!shown) main.innerHTML = '<p class="empty">Nothing matches this filter.</p>';
+      }
+
+      function noteBox(s) {
+        const wrap = document.createElement('div');
+        wrap.className = 'note';
+        const ta = document.createElement('textarea');
+        ta.placeholder = 'Notes on this whole section (optional)';
+        ta.value = r(s.noteId).comment ?? '';
+        ta.oninput = () => save(s.noteId, { comment: ta.value }, true);
+        wrap.append(ta);
+        return wrap;
+      }
+
+      function itemCard(item, kind) {
+        const rec = r(item.id);
+        const el = document.createElement('div');
+        el.className = 'item';
+        if (rec.status) el.dataset.status = rec.status;
+        const hasComment = !!(rec.comment?.trim() || rec.attachments?.length);
+        if (hasComment) el.classList.add('open');
+
+        const text = document.createElement('div');
+        text.className = 'text';
+        let html = md(item.md);
+        if (item.sub?.length) html += `<ul>${item.sub.map((x) => `<li>${md(x)}</li>`).join('')}</ul>`;
+        if (item.kind === 'row') {
+          const skip = new Set([item.header[0], item.header[0] === '#' ? item.header[1] : null]);
+          const meta = item.header
+            .filter((h) => !skip.has(h) && item.fields[h])
+            .map((h) =>
+              h === 'Status'
+                ? `<span><b>${esc(h)}</b><i class="pill ${esc(item.fields[h])}">${md(item.fields[h])}</i></span>`
+                : `<span><b>${esc(h)}</b>${md(item.fields[h])}</span>`,
+            )
+            .join('');
+          if (meta) html += `<div class="meta">${meta}</div>`;
+        }
+        text.innerHTML = html;
+
+        const seg = document.createElement('div');
+        seg.className = 'seg';
+        for (const [v, w] of item.counted ? STATUS[kind] : []) {
+          const b = document.createElement('button');
+          b.dataset.v = v;
+          b.textContent = w;
+          b.setAttribute('aria-pressed', String(rec.status === v));
+          b.onclick = () => {
+            const next = r(item.id).status === v ? '' : v;
+            save(item.id, { status: next });
+            el.dataset.status = next;
+            for (const o of seg.querySelectorAll('[data-v]')) o.setAttribute('aria-pressed', String(o.dataset.v === next));
+            if (['fail', 'question', 'stuck'].includes(next) && !el.classList.contains('open')) {
+              el.classList.add('open');
+              el.querySelector('textarea').focus();
+            }
+            renderTop();
+            renderNav();
+          };
+          seg.append(b);
+        }
+        const cb = document.createElement('button');
+        cb.className = 'cbtn';
+        cb.textContent = 'Comment';
+        cb.dataset.has = String(hasComment);
+        cb.onclick = () => {
+          el.classList.toggle('open');
+          if (el.classList.contains('open')) el.querySelector('textarea').focus();
+        };
+        seg.append(cb);
+
+        const box = document.createElement('div');
+        box.className = 'comment';
+        const ta = document.createElement('textarea');
+        ta.placeholder =
+          kind === 'checklist' && isFounder(item)
+            ? 'Your decision or answer'
+            : kind === 'setup'
+              ? 'Your question, or where you got stuck. Paste a screenshot here (Ctrl+V).'
+              : 'What you did, what you saw and what you expected. Paste a screenshot here (Ctrl+V).';
+        ta.value = rec.comment ?? '';
+        ta.oninput = () => {
+          save(item.id, { comment: ta.value }, true);
+          cb.dataset.has = String(!!(ta.value.trim() || r(item.id).attachments?.length));
+        };
+        ta.onpaste = (e) => {
+          const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith('image/'));
+          if (files.length) {
+            e.preventDefault();
+            files.forEach((f) => attach(item.id, f, shots));
+          }
+        };
+        const shots = document.createElement('div');
+        shots.className = 'shots';
+        box.append(ta, shots);
+        renderShots(item.id, shots);
+        box.ondragover = (e) => e.preventDefault();
+        box.ondrop = (e) => {
+          e.preventDefault();
+          [...e.dataTransfer.files].filter((f) => f.type.startsWith('image/')).forEach((f) => attach(item.id, f, shots));
+        };
+        el.append(text, seg, box);
+        return el;
+      }
+
+      function renderShots(id, wrap) {
+        wrap.innerHTML = '';
+        for (const name of r(id).attachments ?? []) {
+          const img = document.createElement('img');
+          img.src = `/attachments/${encodeURIComponent(name)}`;
+          img.alt = 'Screenshot';
+          img.onclick = () => {
+            const z = document.createElement('div');
+            z.className = 'zoom';
+            z.innerHTML = `<img src="${img.src}" alt="Screenshot">`;
+            z.onclick = () => z.remove();
+            document.body.append(z);
+          };
+          const x = document.createElement('button');
+          x.className = 'x';
+          x.textContent = 'Remove';
+          x.onclick = () => {
+            save(id, { attachments: (r(id).attachments ?? []).filter((a) => a !== name) });
+            renderShots(id, wrap);
+          };
+          wrap.append(img, x);
+        }
+        const label = document.createElement('label');
+        label.textContent = 'Add screenshot';
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.hidden = true;
+        input.onchange = () => [...input.files].forEach((f) => attach(id, f, wrap));
+        label.append(input);
+        const hint = document.createElement('span');
+        hint.className = 'hint';
+        hint.textContent = 'or paste or drop an image';
+        wrap.append(label, hint);
+      }
+
+      async function attach(id, file, wrap) {
+        const res = await fetch(`/api/attach?item=${encodeURIComponent(id)}`, {
+          method: 'POST',
+          headers: { 'content-type': file.type },
+          body: file,
+        });
+        const { name } = await res.json();
+        await save(id, { attachments: [...(r(id).attachments ?? []), name] });
+        renderShots(id, wrap);
+      }
+
+      const timers = new Map();
+      function save(id, patch, debounce = false) {
+        state.items[id] = { ...r(id), ...patch };
+        const put = async () => {
+          setSaved('Saving…');
+          try {
+            const res = await fetch(`/api/item/${encodeURIComponent(id)}`, {
+              method: 'PUT',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify(patch.comment !== undefined && debounce ? { comment: r(id).comment } : patch),
+            });
+            if (!res.ok) throw new Error();
+            setSaved('Saved');
+          } catch {
+            setSaved('Not saved: is the board server running?');
+          }
+        };
+        clearTimeout(timers.get(id));
+        if (debounce) timers.set(id, setTimeout(put, 500));
+        else return put();
+      }
+      function setSaved(t) {
+        document.getElementById('saved').textContent = t;
+      }
+
+      function render() {
+        renderTop();
+        renderNav();
+        renderMain();
+      }
+
+      document.getElementById('search').oninput = (e) => {
+        query = e.target.value.trim().toLowerCase();
+        renderMain();
+      };
+      document.getElementById('submit').onclick = () => {
+        const lis = docs
+          .map((d) => {
+            const c = counts(allItems(d));
+            return `<li><strong>${esc(d.title)}</strong>: ${STATUS[d.kind]
+              .map(([v, w]) => `${w.toLowerCase()} ${c[v] ?? 0}`)
+              .join(', ')}, not marked ${c.none}</li>`;
+          })
+          .join('');
+        const comments = Object.values(state.items).filter((x) => x.comment?.trim()).length;
+        document.getElementById('confirmcounts').innerHTML = lis + `<li>${comments} comments</li>`;
+        document.getElementById('confirm').showModal();
+      };
+      document.getElementById('cancel').onclick = () => document.getElementById('confirm').close();
+      document.getElementById('go').onclick = async () => {
+        document.getElementById('confirm').close();
+        for (const t of timers.values()) clearTimeout(t);
+        const res = await fetch('/api/submit', { method: 'POST' });
+        const out = await res.json();
+        state.submissions = [...(state.submissions ?? []), out.at];
+        renderTop();
+        document.getElementById('donetext').textContent =
+          'Claude can read it now. Tell Claude in chat that you submitted. Your marks stay here, so you can carry on and submit again.';
+        document.getElementById('done').showModal();
+      };
+      document.getElementById('ok').onclick = () => document.getElementById('done').close();
+
+      (async () => {
+        [docs, state] = await Promise.all([fetch('/api/docs').then((x) => x.json()), fetch('/api/state').then((x) => x.json())]);
+        state.items ??= {};
+        if (!docs[docIdx]) docIdx = 0;
+        render();
+      })();
+    </script>
+  </body>
+</html>
