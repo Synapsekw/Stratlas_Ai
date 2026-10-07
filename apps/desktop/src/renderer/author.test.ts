@@ -3,6 +3,9 @@ import type { Identity, IpcChannel } from '@aio/schema';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Bridge } from './bridge';
 
+// The annotation runtime is heavy to import again for every fresh module state.
+vi.mock('@aio/annotate', () => ({ setAnnotationAuthor: () => undefined }));
+
 const base: Identity = {
   schema: 'aio.identity/1',
   actor: `a_${'a'.repeat(26)}`,
