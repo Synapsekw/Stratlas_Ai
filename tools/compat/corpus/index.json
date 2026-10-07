@@ -1,0 +1,135 @@
+{
+  "generatedBy": "tools/compat/build-corpus.mjs",
+  "builds": {
+    "0.9": {
+      "commit": "working tree",
+      "files": [
+        "access-road/issues.json",
+        "access-road/manifest.json",
+        "access-road/road.json",
+        "change-site/change/d1--d2.json",
+        "change-site/detections/markers-d1.json",
+        "change-site/issues.json",
+        "change-site/manifest.json",
+        "change-site/models/detect/marker-detector/model.json",
+        "change-site/models/site.procmodel.json",
+        "tank-farm/aio-package.json",
+        "tank-farm/edits/boundaries.json",
+        "tank-farm/issues.json",
+        "tank-farm/manifest.json",
+        "tank-farm/package-origin.json",
+        "tank-farm/report/narrative.json",
+        "tank-farm/volumes.json",
+        "userData/conversations/c-compat.json",
+        "userData/settings.json"
+      ],
+      "dropped": {}
+    },
+    "0.8": {
+      "commit": "7faf945",
+      "files": [
+        "access-road/issues.json",
+        "access-road/manifest.json",
+        "access-road/road.json",
+        "change-site/change/d1--d2.json",
+        "change-site/detections/markers-d1.json",
+        "change-site/issues.json",
+        "change-site/manifest.json",
+        "change-site/models/detect/marker-detector/model.json",
+        "change-site/models/site.procmodel.json",
+        "tank-farm/aio-package.json",
+        "tank-farm/edits/boundaries.json",
+        "tank-farm/issues.json",
+        "tank-farm/manifest.json",
+        "tank-farm/package-origin.json",
+        "tank-farm/report/narrative.json",
+        "tank-farm/volumes.json",
+        "userData/conversations/c-compat.json",
+        "userData/settings.json"
+      ],
+      "dropped": {}
+    },
+    "0.7": {
+      "commit": "af820d6",
+      "files": [
+        "access-road/issues.json",
+        "access-road/manifest.json",
+        "access-road/road.json",
+        "change-site/detections/markers-d1.json",
+        "change-site/issues.json",
+        "change-site/manifest.json",
+        "tank-farm/aio-package.json",
+        "tank-farm/edits/boundaries.json",
+        "tank-farm/issues.json",
+        "tank-farm/manifest.json",
+        "tank-farm/package-origin.json",
+        "tank-farm/report/narrative.json",
+        "tank-farm/volumes.json",
+        "userData/conversations/c-compat.json",
+        "userData/settings.json"
+      ],
+      "dropped": {}
+    },
+    "0.6": {
+      "commit": "eafae4a",
+      "files": [
+        "access-road/issues.json",
+        "access-road/manifest.json",
+        "access-road/road.json",
+        "change-site/detections/markers-d1.json",
+        "change-site/issues.json",
+        "change-site/manifest.json",
+        "tank-farm/aio-package.json",
+        "tank-farm/edits/boundaries.json",
+        "tank-farm/issues.json",
+        "tank-farm/manifest.json",
+        "tank-farm/package-origin.json",
+        "tank-farm/report/narrative.json",
+        "tank-farm/volumes.json",
+        "userData/conversations/c-compat.json",
+        "userData/settings.json"
+      ],
+      "dropped": {}
+    },
+    "0.5": {
+      "commit": "8847687",
+      "files": [
+        "access-road/issues.json",
+        "access-road/manifest.json",
+        "access-road/road.json",
+        "change-site/issues.json",
+        "change-site/manifest.json",
+        "tank-farm/aio-package.json",
+        "tank-farm/edits/boundaries.json",
+        "tank-farm/issues.json",
+        "tank-farm/manifest.json",
+        "tank-farm/volumes.json",
+        "userData/conversations/c-compat.json",
+        "userData/settings.json"
+      ],
+      "dropped": {
+        "access-road/road.json": ["pci.units.0 (Too small: expected array to have >=1 items) x10"]
+      }
+    },
+    "0.4": {
+      "commit": "a8bf0c5",
+      "files": [
+        "access-road/issues.json",
+        "access-road/manifest.json",
+        "access-road/road.json",
+        "change-site/issues.json",
+        "change-site/manifest.json",
+        "tank-farm/aio-package.json",
+        "tank-farm/edits/boundaries.json",
+        "tank-farm/issues.json",
+        "tank-farm/manifest.json",
+        "tank-farm/volumes.json",
+        "userData/conversations/c-compat.json",
+        "userData/settings.json"
+      ],
+      "dropped": {
+        "access-road/road.json": ["pci.units.0 (Too small: expected array to have >=1 items) x10"]
+      }
+    }
+  }
+}

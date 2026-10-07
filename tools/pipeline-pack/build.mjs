@@ -291,6 +291,7 @@ async function main() {
       schema: 'aio.pipeline-pack/1',
       version,
       protocol: ver.protocol,
+      appRange: ver.appRange,
       python: { version: CPYTHON, build: PBS_RELEASE, executable: target.exe },
       platform,
       createdAt: new Date().toISOString(),

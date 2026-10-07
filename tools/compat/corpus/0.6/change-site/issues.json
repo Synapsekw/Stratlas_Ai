@@ -1,0 +1,273 @@
+{
+  "schema": "aio.issues/1",
+  "issues": [
+    {
+      "id": "d1-f01",
+      "code": "F01",
+      "classId": "corrosion",
+      "severityModelId": "general-inspection",
+      "severity": 2,
+      "status": "reviewed",
+      "title": "Corrosion on the T-201 shell",
+      "note": "Seen on Survey 2 March 2026.",
+      "author": "Demo inspector",
+      "createdAt": "2026-03-02T11:00:00.000Z",
+      "updatedAt": "2026-03-02T11:00:00.000Z",
+      "sightings": [
+        {
+          "on": "mesh",
+          "layer": "model-d1",
+          "geom": { "type": "spoint", "p": [-24.808, 3, -12.12], "n": [0.199, 0, 0.98] }
+        },
+        {
+          "on": "image",
+          "layer": "photos-d1",
+          "photo": "p03",
+          "geom": { "type": "box", "x": 81, "y": 99, "w": 27, "h": 23 }
+        }
+      ],
+      "measurements": [{ "kind": "area", "value": 0.6, "unit": "m2" }],
+      "source": "human"
+    },
+    {
+      "id": "d1-f02",
+      "code": "F02",
+      "classId": "damage",
+      "severityModelId": "general-inspection",
+      "severity": 1,
+      "status": "reviewed",
+      "title": "Coating damage on T-203",
+      "note": "Seen on Survey 2 March 2026.",
+      "author": "Demo inspector",
+      "createdAt": "2026-03-02T11:01:00.000Z",
+      "updatedAt": "2026-03-02T11:01:00.000Z",
+      "sightings": [
+        {
+          "on": "mesh",
+          "layer": "model-d1",
+          "geom": { "type": "spoint", "p": [11.576, 2.5, -18.323], "n": [0.394, 0, 0.919] }
+        },
+        {
+          "on": "image",
+          "layer": "photos-d1",
+          "photo": "p05",
+          "geom": { "type": "box", "x": 485, "y": 358, "w": 54, "h": 51 }
+        }
+      ],
+      "measurements": [{ "kind": "area", "value": 0.4, "unit": "m2" }],
+      "source": "human"
+    },
+    {
+      "id": "d1-f03",
+      "code": "F03",
+      "classId": "damage",
+      "severityModelId": "general-inspection",
+      "severity": 2,
+      "status": "reviewed",
+      "title": "Spalling on the south wall of B-01",
+      "note": "Seen on Survey 2 March 2026.",
+      "author": "Demo inspector",
+      "createdAt": "2026-03-02T11:02:00.000Z",
+      "updatedAt": "2026-03-02T11:02:00.000Z",
+      "sightings": [
+        {
+          "on": "mesh",
+          "layer": "model-d1",
+          "geom": { "type": "spoint", "p": [-26.5, 2, 28], "n": [0, 0, 1] }
+        }
+      ],
+      "measurements": [{ "kind": "area", "value": 0.8, "unit": "m2" }],
+      "source": "human"
+    },
+    {
+      "id": "d1-f04",
+      "code": "F04",
+      "classId": "corrosion",
+      "severityModelId": "general-inspection",
+      "severity": 1,
+      "status": "reviewed",
+      "title": "Corrosion on pipe P-01",
+      "note": "Seen on Survey 2 March 2026.",
+      "author": "Demo inspector",
+      "createdAt": "2026-03-02T11:03:00.000Z",
+      "updatedAt": "2026-03-02T11:03:00.000Z",
+      "sightings": [
+        {
+          "on": "mesh",
+          "layer": "model-d1",
+          "geom": { "type": "spoint", "p": [4.2, 1.776, -5.883], "n": [0, 0.921, 0.389] }
+        },
+        {
+          "on": "image",
+          "layer": "photos-d1",
+          "photo": "p06",
+          "geom": { "type": "box", "x": 485, "y": 64, "w": 19, "h": 15 }
+        }
+      ],
+      "measurements": [{ "kind": "area", "value": 0.15, "unit": "m2" }],
+      "source": "human"
+    },
+    {
+      "id": "d1-f05",
+      "code": "F05",
+      "classId": "other",
+      "severityModelId": "general-inspection",
+      "severity": 1,
+      "status": "reviewed",
+      "title": "Oil stain by container C-02",
+      "note": "Seen on Survey 2 March 2026.",
+      "author": "Demo inspector",
+      "createdAt": "2026-03-02T11:04:00.000Z",
+      "updatedAt": "2026-03-02T11:04:00.000Z",
+      "sightings": [
+        {
+          "on": "mesh",
+          "layer": "model-d1",
+          "geom": { "type": "spoint", "p": [12, 0.01, 25], "n": [0, 1, 0] }
+        },
+        {
+          "on": "image",
+          "layer": "photos-d1",
+          "photo": "p03",
+          "geom": { "type": "box", "x": 821, "y": 486, "w": 60, "h": 32 }
+        }
+      ],
+      "measurements": [{ "kind": "area", "value": 1, "unit": "m2" }],
+      "source": "human"
+    },
+    {
+      "id": "d2-f11",
+      "code": "F11",
+      "classId": "corrosion",
+      "severityModelId": "general-inspection",
+      "severity": 2,
+      "status": "reviewed",
+      "title": "Corrosion on the T-201 shell",
+      "note": "Seen on Survey 13 April 2026.",
+      "author": "Demo inspector",
+      "createdAt": "2026-04-13T11:05:00.000Z",
+      "updatedAt": "2026-04-13T11:05:00.000Z",
+      "sightings": [
+        {
+          "on": "mesh",
+          "layer": "model-d2",
+          "geom": { "type": "spoint", "p": [-24.808, 3, -12.12], "n": [0.199, 0, 0.98] }
+        },
+        {
+          "on": "image",
+          "layer": "photos-d2",
+          "photo": "p03",
+          "geom": { "type": "box", "x": 72, "y": 91, "w": 27, "h": 24 }
+        }
+      ],
+      "measurements": [{ "kind": "area", "value": 0.6, "unit": "m2" }],
+      "source": "human"
+    },
+    {
+      "id": "d2-f13",
+      "code": "F13",
+      "classId": "damage",
+      "severityModelId": "general-inspection",
+      "severity": 2,
+      "status": "reviewed",
+      "title": "Spalling on the south wall of B-01",
+      "note": "Seen on Survey 13 April 2026.",
+      "author": "Demo inspector",
+      "createdAt": "2026-04-13T11:06:00.000Z",
+      "updatedAt": "2026-04-13T11:06:00.000Z",
+      "sightings": [
+        {
+          "on": "mesh",
+          "layer": "model-d2",
+          "geom": { "type": "spoint", "p": [-26.5, 2, 28], "n": [0, 0, 1] }
+        }
+      ],
+      "measurements": [{ "kind": "area", "value": 1.2, "unit": "m2" }],
+      "source": "human"
+    },
+    {
+      "id": "d2-f14",
+      "code": "F14",
+      "classId": "corrosion",
+      "severityModelId": "general-inspection",
+      "severity": 1,
+      "status": "reviewed",
+      "title": "Corrosion on pipe P-01",
+      "note": "Seen on Survey 13 April 2026.",
+      "author": "Demo inspector",
+      "createdAt": "2026-04-13T11:07:00.000Z",
+      "updatedAt": "2026-04-13T11:07:00.000Z",
+      "sightings": [
+        {
+          "on": "mesh",
+          "layer": "model-d2",
+          "geom": { "type": "spoint", "p": [4.2, 1.776, -5.883], "n": [0, 0.921, 0.389] }
+        },
+        {
+          "on": "image",
+          "layer": "photos-d2",
+          "photo": "p06",
+          "geom": { "type": "box", "x": 492, "y": 41, "w": 20, "h": 15 }
+        }
+      ],
+      "measurements": [{ "kind": "area", "value": 0.15, "unit": "m2" }],
+      "source": "human"
+    },
+    {
+      "id": "d2-f15",
+      "code": "F15",
+      "classId": "other",
+      "severityModelId": "general-inspection",
+      "severity": 1,
+      "status": "reviewed",
+      "title": "Oil stain by container C-02",
+      "note": "Seen on Survey 13 April 2026.",
+      "author": "Demo inspector",
+      "createdAt": "2026-04-13T11:08:00.000Z",
+      "updatedAt": "2026-04-13T11:08:00.000Z",
+      "sightings": [
+        {
+          "on": "mesh",
+          "layer": "model-d2",
+          "geom": { "type": "spoint", "p": [12, 0.01, 25], "n": [0, 1, 0] }
+        },
+        {
+          "on": "image",
+          "layer": "photos-d2",
+          "photo": "p03",
+          "geom": { "type": "box", "x": 814, "y": 477, "w": 59, "h": 32 }
+        }
+      ],
+      "measurements": [{ "kind": "area", "value": 1, "unit": "m2" }],
+      "source": "human"
+    },
+    {
+      "id": "d2-f16",
+      "code": "F16",
+      "classId": "damage",
+      "severityModelId": "general-inspection",
+      "severity": 2,
+      "status": "reviewed",
+      "title": "Dent in the T-202 shell",
+      "note": "Seen on Survey 13 April 2026.",
+      "author": "Demo inspector",
+      "createdAt": "2026-04-13T11:09:00.000Z",
+      "updatedAt": "2026-04-13T11:09:00.000Z",
+      "sightings": [
+        {
+          "on": "mesh",
+          "layer": "model-d2",
+          "geom": { "type": "spoint", "p": [-9.433, 3, -15.367], "n": [-0.296, 0, 0.955] }
+        },
+        {
+          "on": "image",
+          "layer": "photos-d2",
+          "photo": "p04",
+          "geom": { "type": "box", "x": 488, "y": 327, "w": 106, "h": 105 }
+        }
+      ],
+      "measurements": [{ "kind": "area", "value": 4.52, "unit": "m2" }],
+      "source": "human"
+    }
+  ]
+}

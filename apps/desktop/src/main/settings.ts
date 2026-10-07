@@ -1,5 +1,5 @@
 import { defaultRoutes } from '@aio/ai/routes';
-import { Settings, type IpcRequest } from '@aio/schema';
+import { ReportSectionId, Settings, type IpcRequest } from '@aio/schema';
 import { join } from 'node:path';
 import { readJson, writeJsonAtomic } from './fsutil';
 
@@ -32,10 +32,77 @@ export function defaultSettings(dataRoot: string): Settings {
   };
 }
 
+/**
+ * House report sections an 0.8 build knows. 0.8 reads `reportContents` with a strict schema over
+ * these ids only, so one later id (`audit`, `approvals`) would make it drop every report choice.
+ * Later sections are kept in `reportSectionsExtra` on disk instead, which 0.8 ignores
+ * (`docs/release/UPGRADE-POLICY.md`, settings).
+ */
+export const REPORT_SECTIONS_08 = [
+  'contents',
+  'summary',
+  'scope',
+  'site',
+  'statistics',
+  'register',
+  'issues',
+  'appendices',
+] as const;
+
+/** On-disk key for report sections an 0.8 build does not know (not part of `Settings`). */
+const EXTRA = 'reportSectionsExtra';
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+const known08 = (id: string) => (REPORT_SECTIONS_08 as readonly string[]).includes(id);
+
+/** On/off values of `reportSectionsExtra`; anything else is dropped. */
+function extraSections(raw: unknown): Record<string, boolean> {
+  if (!isRecord(raw)) return {};
+  return Object.fromEntries(
+    Object.entries(raw).filter((e): e is [string, boolean] => typeof e[1] === 'boolean'),
+  );
+}
+
+/** Fold `reportSectionsExtra` back into `reportContents.sections` (sections this build knows). */
+function fromDisk(stored: Record<string, unknown>): Record<string, unknown> {
+  const extra = extraSections(stored[EXTRA]);
+  const ours = Object.entries(extra).filter(([id]) => ReportSectionId.safeParse(id).success);
+  if (ours.length === 0) return stored;
+  const contents = isRecord(stored.reportContents) ? stored.reportContents : {};
+  const sections = isRecord(contents.sections) ? contents.sections : {};
+  return {
+    ...stored,
+    reportContents: { ...contents, sections: { ...Object.fromEntries(ours), ...sections } },
+  };
+}
+
+/**
+ * The file to write: sections 0.8 does not know move from `reportContents` to
+ * `reportSectionsExtra`, together with any a newer build left there that this one does not know.
+ */
+function toDisk(settings: Settings, keep: Record<string, boolean>): Record<string, unknown> {
+  const { reportContents, ...rest } = settings;
+  const out: Record<string, unknown> = { ...rest };
+  const extra: Record<string, boolean> = Object.fromEntries(
+    Object.entries(keep).filter(([id]) => !ReportSectionId.safeParse(id).success),
+  );
+  if (reportContents) {
+    const { sections, ...contents } = reportContents;
+    const old = Object.entries(sections ?? {}).filter(([id]) => known08(id));
+    for (const [id, on] of Object.entries(sections ?? {})) if (!known08(id)) extra[id] = on;
+    out.reportContents =
+      old.length > 0 ? { ...contents, sections: Object.fromEntries(old) } : contents;
+  }
+  if (Object.keys(extra).length > 0) out[EXTRA] = extra;
+  return out;
+}
+
 /** Keep every stored field that is still valid; anything else falls back to its default. */
 function merge(defaults: Settings, raw: unknown): Settings {
   if (typeof raw !== 'object' || raw === null) return defaults;
-  const stored = raw as Record<string, unknown>;
+  const stored = fromDisk(raw as Record<string, unknown>);
   const out: Record<string, unknown> = { ...defaults };
   for (const [key, field] of Object.entries(Settings.shape)) {
     if (!(key in stored)) continue;
@@ -66,6 +133,8 @@ export interface SettingsStore {
 /** Settings as JSON in `file` (userData/settings.json), validated against the frozen schema. */
 export function createSettingsStore(file: string, defaults: Settings): SettingsStore {
   let cache: Settings | undefined;
+  /** `reportSectionsExtra` as read, so sections of a newer build survive this one's saves. */
+  let keep: Record<string, boolean> = {};
 
   async function load(): Promise<Settings> {
     if (cache) return cache;
@@ -76,6 +145,7 @@ export function createSettingsStore(file: string, defaults: Settings): SettingsS
       console.warn(`Settings file ${file} is unreadable, using defaults: ${String(e)}`);
       raw = undefined;
     }
+    keep = isRecord(raw) ? extraSections(raw[EXTRA]) : {};
     cache = merge(defaults, raw);
     return cache;
   }
@@ -83,7 +153,7 @@ export function createSettingsStore(file: string, defaults: Settings): SettingsS
   async function apply(patch: IpcRequest<'settings:set'>): Promise<Settings> {
     const given = Object.entries(patch).filter(([, v]) => v !== undefined);
     const next = Settings.parse({ ...(await load()), ...Object.fromEntries(given) });
-    await writeJsonAtomic(file, next);
+    await writeJsonAtomic(file, toDisk(next, keep));
     cache = next;
     return next;
   }

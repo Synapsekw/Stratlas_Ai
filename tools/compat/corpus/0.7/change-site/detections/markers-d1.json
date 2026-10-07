@@ -1,0 +1,91 @@
+{
+  "schema": "aio.detections/1",
+  "source": "human",
+  "producer": "Demo inspector",
+  "createdAt": "2026-03-02T12:00:00.000Z",
+  "layer": "photos-d1",
+  "assessed": "all",
+  "detections": [
+    {
+      "id": "M1-p01",
+      "photo": "p01",
+      "class": "marker",
+      "severity": 1,
+      "note": "Survey marker M1",
+      "status": "accepted",
+      "bbox": [421, 492, 449, 509]
+    },
+    {
+      "id": "M2-p01",
+      "photo": "p01",
+      "class": "marker",
+      "severity": 1,
+      "note": "Survey marker M2",
+      "status": "accepted",
+      "bbox": [771, 346, 793, 356]
+    },
+    {
+      "id": "M1-p02",
+      "photo": "p02",
+      "class": "marker",
+      "severity": 1,
+      "note": "Survey marker M1",
+      "status": "accepted",
+      "bbox": [533, 303, 552, 311]
+    },
+    {
+      "id": "M2-p02",
+      "photo": "p02",
+      "class": "marker",
+      "severity": 1,
+      "note": "Survey marker M2",
+      "status": "accepted",
+      "bbox": [168, 435, 195, 449]
+    },
+    {
+      "id": "M3-p02",
+      "photo": "p02",
+      "class": "marker",
+      "severity": 1,
+      "note": "Survey marker M3",
+      "status": "accepted",
+      "bbox": [788, 273, 806, 279]
+    },
+    {
+      "id": "M1-p03",
+      "photo": "p03",
+      "class": "marker",
+      "severity": 1,
+      "note": "Survey marker M1",
+      "status": "accepted",
+      "bbox": [139, 279, 176, 291]
+    },
+    {
+      "id": "M2-p03",
+      "photo": "p03",
+      "class": "marker",
+      "severity": 1,
+      "note": "Survey marker M2",
+      "status": "accepted",
+      "bbox": [922, 288, 962, 300]
+    },
+    {
+      "id": "M1-p06",
+      "photo": "p06",
+      "class": "marker",
+      "severity": 1,
+      "note": "Survey marker M1",
+      "status": "accepted",
+      "bbox": [133, 53, 158, 61]
+    },
+    {
+      "id": "M2-p06",
+      "photo": "p06",
+      "class": "marker",
+      "severity": 1,
+      "note": "Survey marker M2",
+      "status": "accepted",
+      "bbox": [246, 306, 294, 333]
+    }
+  ]
+}

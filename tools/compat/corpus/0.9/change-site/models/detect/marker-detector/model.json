@@ -1,0 +1,14 @@
+{
+  "schema": "aio.detector/1",
+  "name": "Marker test detector",
+  "version": "1.0.0",
+  "layout": "yolo-v8",
+  "input": { "width": 640, "height": 640, "tensor": "nchw", "color": "rgb", "scale": 255 },
+  "classes": ["marker"],
+  "licence": "MIT",
+  "source": "Stratlas test fixture (built from plain operators, no trained weights)",
+  "sha256": "273a3ce791d51bbececb74f7c1676210099246b3730667028fa40fe99607177d",
+  "description": "Finds the magenta survey markers of the synthetic demo. For tests and the demo only; it detects nothing real.",
+  "author": "Stratlas",
+  "minConfidence": 0.25
+}

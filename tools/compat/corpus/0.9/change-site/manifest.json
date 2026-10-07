@@ -1,0 +1,362 @@
+{
+  "schema": "aio.project/1",
+  "id": "demo-change-site",
+  "name": "Demo change site (2 dates)",
+  "customer": "Demo customer (fictional)",
+  "site": "Fictional desert site, 2 survey dates (synthetic demo data)",
+  "crs": { "epsg": 32631 },
+  "origin": [301705, 2575078, 392],
+  "captures": [
+    { "id": "d1", "label": "Survey 2 March 2026", "date": "2026-03-02" },
+    { "id": "d2", "label": "Survey 13 April 2026", "date": "2026-04-13" }
+  ],
+  "layers": [
+    {
+      "kind": "mesh",
+      "id": "model-d1",
+      "name": "Site model 2026-03-02",
+      "visible": false,
+      "capture": "d1",
+      "src": { "path": "models/model-d1.glb" },
+      "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+      "tags": [
+        { "node": "T-201", "tag": "T-201", "area": "Tank area" },
+        { "node": "T-202", "tag": "T-202", "area": "Tank area" },
+        { "node": "T-203", "tag": "T-203", "area": "Tank area" },
+        { "node": "B-01", "tag": "B-01", "area": "Buildings" },
+        { "node": "C-01", "tag": "C-01", "area": "Yard" },
+        { "node": "C-02", "tag": "C-02", "area": "Yard" },
+        { "node": "SK-01", "tag": "SK-01", "area": "Yard" },
+        { "node": "P-01", "tag": "P-01", "area": "Pipes" },
+        { "node": "GND-01", "tag": "GND-01", "area": "Yard" }
+      ]
+    },
+    {
+      "kind": "raster",
+      "id": "ortho-d1",
+      "name": "Orthomosaic 2026-03-02",
+      "visible": false,
+      "capture": "d1",
+      "src": { "path": "rasters/ortho-d1/tiles.json" },
+      "role": "ortho",
+      "format": "kit-pyramid",
+      "corners": { "tl": [-48, 0.02, -48], "tr": [48, 0.02, -48], "bl": [-48, 0.02, 48] }
+    },
+    {
+      "kind": "raster",
+      "id": "dsm-d1",
+      "name": "DSM 2026-03-02 (shaded relief)",
+      "visible": false,
+      "capture": "d1",
+      "src": { "path": "rasters/dsm-d1/tiles.json" },
+      "role": "dsm",
+      "format": "kit-pyramid",
+      "corners": { "tl": [-48, 0.03, -48], "tr": [48, 0.03, -48], "bl": [-48, 0.03, 48] }
+    },
+    {
+      "kind": "pointcloud",
+      "id": "cloud-d1",
+      "name": "Point cloud 2026-03-02",
+      "visible": false,
+      "capture": "d1",
+      "src": { "path": "clouds/cloud-d1/index.json" },
+      "format": "png-packed",
+      "pointCount": 34895
+    },
+    {
+      "kind": "photos",
+      "id": "photos-d1",
+      "name": "Photos 2026-03-02",
+      "visible": true,
+      "capture": "d1",
+      "items": [
+        {
+          "id": "p01",
+          "src": { "path": "photos/d1/p01.jpg" },
+          "takenAt": "2026-03-02T09:40:00.000Z",
+          "pos": [-40, 30, 46],
+          "q": [-0.212319, -0.341164, -0.079402, 0.912263],
+          "lens": { "model": "pinhole", "hfovDeg": 60, "aspect": 1.3333 }
+        },
+        {
+          "id": "p02",
+          "src": { "path": "photos/d1/p02.jpg" },
+          "takenAt": "2026-03-02T09:42:00.000Z",
+          "pos": [44, 28, -40],
+          "q": [-0.0883, 0.892465, 0.199607, 0.3948],
+          "lens": { "model": "pinhole", "hfovDeg": 60, "aspect": 1.3333 }
+        },
+        {
+          "id": "p03",
+          "src": { "path": "photos/d1/p03.jpg" },
+          "takenAt": "2026-03-02T09:44:00.000Z",
+          "pos": [2, 16, 46],
+          "q": [-0.256668, 0, 0, 0.9665],
+          "lens": { "model": "pinhole", "hfovDeg": 60, "aspect": 1.3333 }
+        },
+        {
+          "id": "p04",
+          "src": { "path": "photos/d1/p04.jpg" },
+          "takenAt": "2026-03-02T09:46:00.000Z",
+          "pos": [-14, 9, 6],
+          "q": [-0.135784, -0.093094, -0.012817, 0.986272],
+          "lens": { "model": "pinhole", "hfovDeg": 60, "aspect": 1.3333 }
+        },
+        {
+          "id": "p05",
+          "src": { "path": "photos/d1/p05.jpg" },
+          "takenAt": "2026-03-02T09:48:00.000Z",
+          "pos": [17, 7, -6],
+          "q": [-0.157191, 0.203075, 0.033048, 0.965898],
+          "lens": { "model": "pinhole", "hfovDeg": 60, "aspect": 1.3333 }
+        },
+        {
+          "id": "p06",
+          "src": { "path": "photos/d1/p06.jpg" },
+          "takenAt": "2026-03-02T09:50:00.000Z",
+          "pos": [46, 14, 14],
+          "q": [-0.250793, 0.502363, 0.154998, 0.812841],
+          "lens": { "model": "pinhole", "hfovDeg": 60, "aspect": 1.3333 }
+        }
+      ]
+    },
+    {
+      "kind": "video",
+      "id": "flight-d1",
+      "name": "Drone video 2026-03-02",
+      "visible": false,
+      "capture": "d1",
+      "src": { "path": "video/flight-d1.mp4" },
+      "flight": { "src": { "path": "flights/flight-d1.json" }, "startUtcMs": 1772443200000 },
+      "lens": { "model": "pinhole", "hfovDeg": 70, "aspect": 1.7778 },
+      "offsetMs": 0,
+      "poster": { "path": "posters/flight-d1.jpg" }
+    },
+    {
+      "kind": "vector",
+      "id": "site-d1",
+      "name": "Site features 2026-03-02",
+      "visible": true,
+      "capture": "d1",
+      "src": { "path": "vectors/site-d1.geojson" },
+      "format": "geojson",
+      "style": {
+        "line": { "color": "#d9822b", "width": 2 },
+        "fill": { "color": "#9aa5b1", "opacity": 0.25 },
+        "label": { "field": "name" }
+      }
+    },
+    {
+      "kind": "mesh",
+      "id": "model-d2",
+      "name": "Site model 2026-04-13",
+      "visible": true,
+      "capture": "d2",
+      "src": { "path": "models/model-d2.glb" },
+      "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+      "tags": [
+        { "node": "T-201", "tag": "T-201", "area": "Tank area" },
+        { "node": "T-202", "tag": "T-202", "area": "Tank area" },
+        { "node": "T-203", "tag": "T-203", "area": "Tank area" },
+        { "node": "B-01", "tag": "B-01", "area": "Buildings" },
+        { "node": "C-02", "tag": "C-02", "area": "Yard" },
+        { "node": "SK-01", "tag": "SK-01", "area": "Yard" },
+        { "node": "S-01", "tag": "S-01", "area": "Yard" },
+        { "node": "P-01", "tag": "P-01", "area": "Pipes" },
+        { "node": "GND-01", "tag": "GND-01", "area": "Yard" }
+      ]
+    },
+    {
+      "kind": "raster",
+      "id": "ortho-d2",
+      "name": "Orthomosaic 2026-04-13",
+      "visible": true,
+      "capture": "d2",
+      "src": { "path": "rasters/ortho-d2/tiles.json" },
+      "role": "ortho",
+      "format": "kit-pyramid",
+      "corners": { "tl": [-48, 0.02, -48], "tr": [48, 0.02, -48], "bl": [-48, 0.02, 48] }
+    },
+    {
+      "kind": "raster",
+      "id": "dsm-d2",
+      "name": "DSM 2026-04-13 (shaded relief)",
+      "visible": false,
+      "capture": "d2",
+      "src": { "path": "rasters/dsm-d2/tiles.json" },
+      "role": "dsm",
+      "format": "kit-pyramid",
+      "corners": { "tl": [-48, 0.03, -48], "tr": [48, 0.03, -48], "bl": [-48, 0.03, 48] }
+    },
+    {
+      "kind": "pointcloud",
+      "id": "cloud-d2",
+      "name": "Point cloud 2026-04-13",
+      "visible": false,
+      "capture": "d2",
+      "src": { "path": "clouds/cloud-d2/index.json" },
+      "format": "png-packed",
+      "pointCount": 47601
+    },
+    {
+      "kind": "photos",
+      "id": "photos-d2",
+      "name": "Photos 2026-04-13",
+      "visible": true,
+      "capture": "d2",
+      "items": [
+        {
+          "id": "p01",
+          "src": { "path": "photos/d2/p01.jpg" },
+          "takenAt": "2026-04-13T09:40:00.000Z",
+          "pos": [-40.356, 30.19, 46.045],
+          "q": [-0.213553, -0.342019, -0.080123, 0.911591],
+          "lens": { "model": "pinhole", "hfovDeg": 60, "aspect": 1.3333 }
+        },
+        {
+          "id": "p02",
+          "src": { "path": "photos/d2/p02.jpg" },
+          "takenAt": "2026-04-13T09:42:00.000Z",
+          "pos": [44.159, 28.106, -39.709],
+          "q": [-0.088736, 0.891464, 0.199168, 0.397178],
+          "lens": { "model": "pinhole", "hfovDeg": 60, "aspect": 1.3333 }
+        },
+        {
+          "id": "p03",
+          "src": { "path": "photos/d2/p03.jpg" },
+          "takenAt": "2026-04-13T09:44:00.000Z",
+          "pos": [2.076, 15.992, 46.009],
+          "q": [-0.260674, -0.002853, -0.00077, 0.965422],
+          "lens": { "model": "pinhole", "hfovDeg": 60, "aspect": 1.3333 }
+        },
+        {
+          "id": "p04",
+          "src": { "path": "photos/d2/p04.jpg" },
+          "takenAt": "2026-04-13T09:46:00.000Z",
+          "pos": [-14.225, 8.734, 5.527],
+          "q": [-0.132205, -0.095212, -0.012759, 0.986556],
+          "lens": { "model": "pinhole", "hfovDeg": 60, "aspect": 1.3333 }
+        },
+        {
+          "id": "p05",
+          "src": { "path": "photos/d2/p05.jpg" },
+          "takenAt": "2026-04-13T09:48:00.000Z",
+          "pos": [16.896, 7.166, -6.404],
+          "q": [-0.174971, 0.195962, 0.03556, 0.96422],
+          "lens": { "model": "pinhole", "hfovDeg": 60, "aspect": 1.3333 }
+        },
+        {
+          "id": "p06",
+          "src": { "path": "photos/d2/p06.jpg" },
+          "takenAt": "2026-04-13T09:50:00.000Z",
+          "pos": [45.647, 14.137, 13.612],
+          "q": [-0.261084, 0.505185, 0.163615, 0.806135],
+          "lens": { "model": "pinhole", "hfovDeg": 60, "aspect": 1.3333 }
+        }
+      ]
+    },
+    {
+      "kind": "video",
+      "id": "flight-d2",
+      "name": "Drone video 2026-04-13",
+      "visible": true,
+      "capture": "d2",
+      "src": { "path": "video/flight-d2.mp4" },
+      "flight": { "src": { "path": "flights/flight-d2.json" }, "startUtcMs": 1776072000000 },
+      "lens": { "model": "pinhole", "hfovDeg": 70, "aspect": 1.7778 },
+      "offsetMs": 0,
+      "poster": { "path": "posters/flight-d2.jpg" }
+    },
+    {
+      "kind": "vector",
+      "id": "site-d2",
+      "name": "Site features 2026-04-13",
+      "visible": true,
+      "capture": "d2",
+      "src": { "path": "vectors/site-d2.geojson" },
+      "format": "geojson",
+      "style": {
+        "line": { "color": "#d9822b", "width": 2 },
+        "fill": { "color": "#9aa5b1", "opacity": 0.25 },
+        "label": { "field": "name" }
+      }
+    },
+    {
+      "kind": "raster",
+      "id": "plan",
+      "name": "Plot plan",
+      "visible": false,
+      "src": { "path": "rasters/plot-plan.png" },
+      "role": "plan",
+      "format": "image",
+      "corners": { "tl": [-48, 0.04, -48], "tr": [48, 0.04, -48], "bl": [-48, 0.04, 48] }
+    }
+  ],
+  "severityModels": [
+    {
+      "id": "general-inspection",
+      "name": "General inspection",
+      "levels": [
+        {
+          "value": 1,
+          "label": "Minor",
+          "color": "#78b3d6",
+          "criteria": "Cosmetic or early stage. Monitor."
+        },
+        {
+          "value": 2,
+          "label": "Moderate",
+          "color": "#ebc751",
+          "criteria": "Visible deterioration. Plan maintenance."
+        },
+        {
+          "value": 3,
+          "label": "Severe",
+          "color": "#f05653",
+          "criteria": "Loss of function or safety risk. Act now."
+        }
+      ],
+      "uncertain": { "label": "Uncertain", "color": "#878d93" }
+    }
+  ],
+  "classCatalogues": [
+    {
+      "id": "general-inspection-classes",
+      "name": "General inspection classes",
+      "assetType": "asset",
+      "classes": [
+        {
+          "id": "corrosion",
+          "label": "Corrosion",
+          "color": "#f48d3c",
+          "severityModel": "general-inspection"
+        },
+        {
+          "id": "crack",
+          "label": "Crack",
+          "color": "#f05653",
+          "severityModel": "general-inspection"
+        },
+        {
+          "id": "damage",
+          "label": "Damage",
+          "color": "#ebc751",
+          "severityModel": "general-inspection"
+        },
+        {
+          "id": "other",
+          "label": "Other",
+          "color": "#95a0ab",
+          "severityModel": "general-inspection"
+        },
+        {
+          "id": "marker",
+          "label": "Survey marker",
+          "color": "#e020e0",
+          "severityModel": "general-inspection"
+        }
+      ]
+    }
+  ],
+  "type": "fusion"
+}

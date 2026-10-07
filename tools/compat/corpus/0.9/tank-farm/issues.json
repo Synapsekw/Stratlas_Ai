@@ -1,0 +1,318 @@
+{
+  "schema": "aio.issues/1",
+  "issues": [
+    {
+      "id": "demo-f01",
+      "code": "F01",
+      "classId": "corrosion",
+      "severityModelId": "general-inspection",
+      "severity": 2,
+      "status": "reviewed",
+      "title": "Corrosion on shell course 1 beside the outlet nozzle",
+      "note": "Rust patch about 0.9 m across with streaks running down the shell. Coating broken through. Clean back, check wall thickness with UT, recoat.",
+      "author": "Demo inspector",
+      "createdAt": "2026-04-13T10:00:00.000Z",
+      "updatedAt": "2026-04-13T10:00:00.000Z",
+      "sightings": [
+        {
+          "on": "image",
+          "layer": "photos",
+          "photo": "d01",
+          "geom": { "type": "box", "x": 648, "y": 308, "w": 297, "h": 564 }
+        },
+        {
+          "on": "mesh",
+          "layer": "model",
+          "geom": { "type": "spoint", "p": [-11.762, 1.65, 2.717], "n": [0.249, 0, 0.969] }
+        },
+        {
+          "on": "video",
+          "layer": "flight-01",
+          "track": [
+            { "t": 3, "geom": { "type": "box", "x": 650, "y": 481, "w": 16, "h": 43 } },
+            { "t": 3.5, "geom": { "type": "box", "x": 639, "y": 483, "w": 17, "h": 43 } },
+            { "t": 4, "geom": { "type": "box", "x": 629, "y": 483, "w": 17, "h": 43 } },
+            { "t": 4.5, "geom": { "type": "box", "x": 622, "y": 481, "w": 18, "h": 43 } },
+            { "t": 5, "geom": { "type": "box", "x": 614, "y": 476, "w": 19, "h": 42 } },
+            { "t": 5.5, "geom": { "type": "box", "x": 606, "y": 472, "w": 20, "h": 42 } },
+            { "t": 6, "geom": { "type": "box", "x": 595, "y": 469, "w": 21, "h": 42 } },
+            { "t": 6.5, "geom": { "type": "box", "x": 583, "y": 470, "w": 21, "h": 41 } },
+            { "t": 7, "geom": { "type": "box", "x": 568, "y": 471, "w": 22, "h": 41 } },
+            { "t": 7.5, "geom": { "type": "box", "x": 554, "y": 471, "w": 23, "h": 40 } },
+            { "t": 8, "geom": { "type": "box", "x": 541, "y": 468, "w": 23, "h": 40 } },
+            { "t": 8.5, "geom": { "type": "box", "x": 530, "y": 463, "w": 24, "h": 39 } },
+            { "t": 9, "geom": { "type": "box", "x": 522, "y": 456, "w": 25, "h": 39 } },
+            { "t": 9.5, "geom": { "type": "box", "x": 515, "y": 451, "w": 25, "h": 38 } },
+            { "t": 10, "geom": { "type": "box", "x": 509, "y": 448, "w": 25, "h": 38 } },
+            { "t": 10.5, "geom": { "type": "box", "x": 501, "y": 447, "w": 26, "h": 38 } },
+            { "t": 11, "geom": { "type": "box", "x": 491, "y": 446, "w": 26, "h": 37 } },
+            { "t": 11.5, "geom": { "type": "box", "x": 480, "y": 442, "w": 26, "h": 37 } },
+            { "t": 12, "geom": { "type": "box", "x": 467, "y": 436, "w": 26, "h": 36 } },
+            { "t": 12.5, "geom": { "type": "box", "x": 456, "y": 428, "w": 27, "h": 36 } },
+            { "t": 13, "geom": { "type": "box", "x": 446, "y": 421, "w": 27, "h": 35 } },
+            { "t": 13.5, "geom": { "type": "box", "x": 440, "y": 417, "w": 27, "h": 35 } },
+            { "t": 14, "geom": { "type": "box", "x": 436, "y": 414, "w": 26, "h": 34 } },
+            { "t": 14.5, "geom": { "type": "box", "x": 434, "y": 412, "w": 26, "h": 34 } },
+            { "t": 15, "geom": { "type": "box", "x": 432, "y": 409, "w": 26, "h": 34 } },
+            { "t": 15.5, "geom": { "type": "box", "x": 428, "y": 402, "w": 26, "h": 34 } },
+            { "t": 16, "geom": { "type": "box", "x": 422, "y": 393, "w": 25, "h": 35 } },
+            { "t": 16.5, "geom": { "type": "box", "x": 415, "y": 384, "w": 25, "h": 35 } },
+            { "t": 17, "geom": { "type": "box", "x": 407, "y": 377, "w": 25, "h": 35 } },
+            { "t": 17.5, "geom": { "type": "box", "x": 400, "y": 373, "w": 25, "h": 36 } },
+            { "t": 18, "geom": { "type": "box", "x": 396, "y": 370, "w": 24, "h": 36 } },
+            { "t": 18.5, "geom": { "type": "box", "x": 395, "y": 367, "w": 24, "h": 36 } },
+            { "t": 19, "geom": { "type": "box", "x": 397, "y": 361, "w": 23, "h": 36 } },
+            { "t": 19.5, "geom": { "type": "box", "x": 400, "y": 352, "w": 23, "h": 36 } },
+            { "t": 20, "geom": { "type": "box", "x": 402, "y": 343, "w": 23, "h": 37 } },
+            { "t": 20.5, "geom": { "type": "box", "x": 403, "y": 335, "w": 22, "h": 37 } },
+            { "t": 21, "geom": { "type": "box", "x": 402, "y": 330, "w": 22, "h": 37 } },
+            { "t": 21.5, "geom": { "type": "box", "x": 401, "y": 327, "w": 21, "h": 37 } },
+            { "t": 22, "geom": { "type": "box", "x": 399, "y": 323, "w": 21, "h": 37 } },
+            { "t": 22.5, "geom": { "type": "box", "x": 398, "y": 319, "w": 20, "h": 37 } },
+            { "t": 23, "geom": { "type": "box", "x": 400, "y": 311, "w": 20, "h": 37 } },
+            { "t": 23.5, "geom": { "type": "box", "x": 405, "y": 302, "w": 20, "h": 37 } }
+          ]
+        }
+      ],
+      "source": "human"
+    },
+    {
+      "id": "demo-f02",
+      "code": "F02",
+      "classId": "corrosion",
+      "severityModelId": "general-inspection",
+      "severity": 1,
+      "status": "draft",
+      "title": "Rust staining below the roof edge",
+      "note": "Streaks from the wind girder down course 4. Surface staining only, no section loss seen. Monitor at the next inspection.",
+      "author": "Demo inspector",
+      "createdAt": "2026-04-13T10:01:00.000Z",
+      "updatedAt": "2026-04-13T10:01:00.000Z",
+      "sightings": [
+        {
+          "on": "image",
+          "layer": "photos",
+          "photo": "d02",
+          "geom": { "type": "box", "x": 500, "y": 375, "w": 571, "h": 438 }
+        },
+        {
+          "on": "mesh",
+          "layer": "model",
+          "geom": { "type": "spoint", "p": [-9.914, 11.4, -14.019], "n": [0.454, 0, -0.891] }
+        }
+      ],
+      "source": "human"
+    },
+    {
+      "id": "demo-f03",
+      "code": "F03",
+      "classId": "crack",
+      "severityModelId": "general-inspection",
+      "severity": 2,
+      "status": "approved",
+      "title": "Diagonal crack in the north bund wall",
+      "note": "Crack about 2 m long through the full wall height on the inside face. Bund must hold the tank contents: seal and monitor for movement.",
+      "author": "Demo inspector",
+      "createdAt": "2026-04-13T10:02:00.000Z",
+      "updatedAt": "2026-04-13T10:02:00.000Z",
+      "sightings": [
+        {
+          "on": "image",
+          "layer": "photos",
+          "photo": "d03",
+          "geom": { "type": "box", "x": 506, "y": 460, "w": 570, "h": 285 }
+        },
+        {
+          "on": "mesh",
+          "layer": "model",
+          "geom": { "type": "spoint", "p": [-6, 0.55, -23.8], "n": [0, 0, 1] }
+        },
+        {
+          "on": "video",
+          "layer": "flight-01",
+          "track": [
+            { "t": 0, "geom": { "type": "box", "x": 404, "y": 337, "w": 34, "h": 35 } },
+            { "t": 0.5, "geom": { "type": "box", "x": 411, "y": 333, "w": 34, "h": 34 } },
+            { "t": 1, "geom": { "type": "box", "x": 417, "y": 326, "w": 34, "h": 33 } },
+            { "t": 1.5, "geom": { "type": "box", "x": 421, "y": 319, "w": 35, "h": 33 } },
+            { "t": 2, "geom": { "type": "box", "x": 423, "y": 313, "w": 35, "h": 32 } },
+            { "t": 2.5, "geom": { "type": "box", "x": 425, "y": 310, "w": 36, "h": 32 } },
+            { "t": 3, "geom": { "type": "box", "x": 428, "y": 309, "w": 36, "h": 31 } },
+            { "t": 3.5, "geom": { "type": "box", "x": 433, "y": 309, "w": 37, "h": 31 } },
+            { "t": 4, "geom": { "type": "box", "x": 441, "y": 306, "w": 37, "h": 30 } },
+            { "t": 4.5, "geom": { "type": "box", "x": 452, "y": 302, "w": 37, "h": 29 } },
+            { "t": 5, "geom": { "type": "box", "x": 464, "y": 295, "w": 38, "h": 29 } },
+            { "t": 5.5, "geom": { "type": "box", "x": 475, "y": 289, "w": 38, "h": 28 } },
+            { "t": 6, "geom": { "type": "box", "x": 485, "y": 286, "w": 38, "h": 27 } },
+            { "t": 6.5, "geom": { "type": "box", "x": 492, "y": 285, "w": 38, "h": 27 } },
+            { "t": 7, "geom": { "type": "box", "x": 499, "y": 285, "w": 38, "h": 26 } },
+            { "t": 7.5, "geom": { "type": "box", "x": 505, "y": 285, "w": 39, "h": 25 } },
+            { "t": 8, "geom": { "type": "box", "x": 513, "y": 282, "w": 39, "h": 25 } },
+            { "t": 8.5, "geom": { "type": "box", "x": 523, "y": 277, "w": 39, "h": 24 } }
+          ]
+        }
+      ],
+      "measurements": [{ "kind": "distance", "value": 1.9, "unit": "m" }],
+      "source": "human"
+    },
+    {
+      "id": "demo-f04",
+      "code": "F04",
+      "classId": "corrosion",
+      "severityModelId": "general-inspection",
+      "severity": 3,
+      "status": "reviewed",
+      "title": "Heavy corrosion at a rack column base",
+      "note": "Pitting and flaking at the base of the south column of bent 4 where water collects. Possible section loss: measure and repair before the next load change.",
+      "author": "Demo inspector",
+      "createdAt": "2026-04-13T10:03:00.000Z",
+      "updatedAt": "2026-04-13T10:03:00.000Z",
+      "sightings": [
+        {
+          "on": "image",
+          "layer": "photos",
+          "photo": "d04",
+          "geom": { "type": "box", "x": 669, "y": 371, "w": 258, "h": 449 }
+        },
+        {
+          "on": "mesh",
+          "layer": "model",
+          "geom": { "type": "spoint", "p": [-12, 0.65, 21.651], "n": [0, 0, 1] }
+        },
+        {
+          "on": "video",
+          "layer": "flight-01",
+          "track": [
+            { "t": 15, "geom": { "type": "box", "x": 185, "y": 681, "w": 25, "h": 29 } },
+            { "t": 15.5, "geom": { "type": "box", "x": 164, "y": 663, "w": 24, "h": 29 } },
+            { "t": 16, "geom": { "type": "box", "x": 143, "y": 643, "w": 23, "h": 29 } },
+            { "t": 16.5, "geom": { "type": "box", "x": 121, "y": 624, "w": 23, "h": 29 } }
+          ]
+        }
+      ],
+      "source": "human"
+    },
+    {
+      "id": "demo-f05",
+      "code": "F05",
+      "classId": "damage",
+      "severityModelId": "general-inspection",
+      "severity": 2,
+      "status": "draft",
+      "title": "Insulation jacket torn open on line 101",
+      "note": "Aluminium jacket split and the insulation exposed on the pipe rack. Water ingress risk (corrosion under insulation). Replace the jacket section.",
+      "author": "Demo inspector",
+      "createdAt": "2026-04-13T10:04:00.000Z",
+      "updatedAt": "2026-04-13T10:04:00.000Z",
+      "sightings": [
+        {
+          "on": "image",
+          "layer": "photos",
+          "photo": "d05",
+          "geom": { "type": "box", "x": 601, "y": 432, "w": 398, "h": 365 }
+        },
+        {
+          "on": "mesh",
+          "layer": "model",
+          "geom": { "type": "spoint", "p": [7.44, 5.71, 19.2], "n": [0, 1, 0] }
+        },
+        {
+          "on": "video",
+          "layer": "flight-01",
+          "track": [
+            { "t": 0, "geom": { "type": "box", "x": 1122, "y": 360, "w": 21, "h": 19 } },
+            { "t": 0.5, "geom": { "type": "box", "x": 1129, "y": 367, "w": 21, "h": 19 } },
+            { "t": 1, "geom": { "type": "box", "x": 1134, "y": 372, "w": 22, "h": 20 } },
+            { "t": 1.5, "geom": { "type": "box", "x": 1137, "y": 377, "w": 23, "h": 20 } },
+            { "t": 2, "geom": { "type": "box", "x": 1136, "y": 383, "w": 24, "h": 20 } },
+            { "t": 2.5, "geom": { "type": "box", "x": 1135, "y": 392, "w": 25, "h": 20 } },
+            { "t": 3, "geom": { "type": "box", "x": 1135, "y": 404, "w": 26, "h": 20 } },
+            { "t": 3.5, "geom": { "type": "box", "x": 1136, "y": 416, "w": 27, "h": 20 } },
+            { "t": 4, "geom": { "type": "box", "x": 1140, "y": 427, "w": 28, "h": 21 } },
+            { "t": 4.5, "geom": { "type": "box", "x": 1145, "y": 436, "w": 29, "h": 21 } },
+            { "t": 5, "geom": { "type": "box", "x": 1148, "y": 444, "w": 30, "h": 21 } },
+            { "t": 5.5, "geom": { "type": "box", "x": 1149, "y": 454, "w": 31, "h": 21 } },
+            { "t": 6, "geom": { "type": "box", "x": 1145, "y": 466, "w": 32, "h": 21 } },
+            { "t": 6.5, "geom": { "type": "box", "x": 1137, "y": 482, "w": 33, "h": 21 } },
+            { "t": 7, "geom": { "type": "box", "x": 1124, "y": 499, "w": 34, "h": 21 } },
+            { "t": 7.5, "geom": { "type": "box", "x": 1109, "y": 515, "w": 35, "h": 21 } },
+            { "t": 8, "geom": { "type": "box", "x": 1093, "y": 529, "w": 36, "h": 21 } },
+            { "t": 8.5, "geom": { "type": "box", "x": 1078, "y": 540, "w": 37, "h": 21 } },
+            { "t": 9, "geom": { "type": "box", "x": 1064, "y": 550, "w": 38, "h": 21 } },
+            { "t": 9.5, "geom": { "type": "box", "x": 1049, "y": 562, "w": 39, "h": 21 } },
+            { "t": 10, "geom": { "type": "box", "x": 1033, "y": 576, "w": 39, "h": 21 } },
+            { "t": 10.5, "geom": { "type": "box", "x": 1012, "y": 592, "w": 40, "h": 21 } },
+            { "t": 11, "geom": { "type": "box", "x": 987, "y": 606, "w": 40, "h": 20 } },
+            { "t": 11.5, "geom": { "type": "box", "x": 955, "y": 617, "w": 40, "h": 20 } },
+            { "t": 12, "geom": { "type": "box", "x": 920, "y": 624, "w": 40, "h": 20 } },
+            { "t": 12.5, "geom": { "type": "box", "x": 882, "y": 629, "w": 39, "h": 22 } },
+            { "t": 13, "geom": { "type": "box", "x": 844, "y": 634, "w": 38, "h": 23 } },
+            { "t": 13.5, "geom": { "type": "box", "x": 806, "y": 642, "w": 38, "h": 24 } },
+            { "t": 14, "geom": { "type": "box", "x": 767, "y": 651, "w": 38, "h": 25 } },
+            { "t": 14.5, "geom": { "type": "box", "x": 729, "y": 660, "w": 40, "h": 27 } },
+            { "t": 15, "geom": { "type": "box", "x": 690, "y": 665, "w": 41, "h": 28 } },
+            { "t": 15.5, "geom": { "type": "box", "x": 648, "y": 666, "w": 41, "h": 29 } },
+            { "t": 16, "geom": { "type": "box", "x": 605, "y": 662, "w": 42, "h": 29 } },
+            { "t": 16.5, "geom": { "type": "box", "x": 559, "y": 657, "w": 42, "h": 30 } },
+            { "t": 17, "geom": { "type": "box", "x": 514, "y": 652, "w": 43, "h": 31 } },
+            { "t": 17.5, "geom": { "type": "box", "x": 469, "y": 650, "w": 43, "h": 31 } },
+            { "t": 18, "geom": { "type": "box", "x": 427, "y": 647, "w": 43, "h": 32 } },
+            { "t": 18.5, "geom": { "type": "box", "x": 389, "y": 643, "w": 42, "h": 32 } },
+            { "t": 19, "geom": { "type": "box", "x": 354, "y": 635, "w": 41, "h": 32 } },
+            { "t": 19.5, "geom": { "type": "box", "x": 324, "y": 624, "w": 40, "h": 32 } },
+            { "t": 20, "geom": { "type": "box", "x": 295, "y": 612, "w": 39, "h": 32 } },
+            { "t": 20.5, "geom": { "type": "box", "x": 267, "y": 601, "w": 38, "h": 32 } },
+            { "t": 21, "geom": { "type": "box", "x": 238, "y": 592, "w": 37, "h": 32 } },
+            { "t": 21.5, "geom": { "type": "box", "x": 210, "y": 586, "w": 35, "h": 32 } },
+            { "t": 22, "geom": { "type": "box", "x": 183, "y": 579, "w": 34, "h": 32 } },
+            { "t": 22.5, "geom": { "type": "box", "x": 159, "y": 570, "w": 33, "h": 32 } },
+            { "t": 23, "geom": { "type": "box", "x": 140, "y": 556, "w": 31, "h": 32 } },
+            { "t": 23.5, "geom": { "type": "box", "x": 126, "y": 541, "w": 30, "h": 32 } }
+          ]
+        }
+      ],
+      "source": "human"
+    },
+    {
+      "id": "demo-f06",
+      "code": "F06",
+      "classId": "damage",
+      "severityModelId": "general-inspection",
+      "severity": 1,
+      "status": "closed",
+      "title": "Coating breakdown on T-102 shell course 2",
+      "note": "Paint flaking in small patches down to the grey primer. No rust yet. Touch up at the next maintenance window.",
+      "author": "Demo inspector",
+      "createdAt": "2026-04-13T10:05:00.000Z",
+      "updatedAt": "2026-04-13T10:05:00.000Z",
+      "sightings": [
+        {
+          "on": "image",
+          "layer": "photos",
+          "photo": "d06",
+          "geom": { "type": "box", "x": 500, "y": 373, "w": 570, "h": 441 }
+        },
+        {
+          "on": "mesh",
+          "layer": "model",
+          "geom": { "type": "spoint", "p": [8.654, 4.4, -10.724], "n": [-0.891, 0, -0.454] }
+        },
+        {
+          "on": "video",
+          "layer": "flight-01",
+          "track": [
+            { "t": 0, "geom": { "type": "box", "x": 675, "y": 255, "w": 23, "h": 35 } },
+            { "t": 0.5, "geom": { "type": "box", "x": 683, "y": 255, "w": 23, "h": 35 } },
+            { "t": 1, "geom": { "type": "box", "x": 690, "y": 252, "w": 22, "h": 36 } },
+            { "t": 1.5, "geom": { "type": "box", "x": 695, "y": 248, "w": 22, "h": 36 } },
+            { "t": 2, "geom": { "type": "box", "x": 698, "y": 246, "w": 21, "h": 36 } },
+            { "t": 2.5, "geom": { "type": "box", "x": 701, "y": 247, "w": 20, "h": 36 } },
+            { "t": 3, "geom": { "type": "box", "x": 705, "y": 250, "w": 20, "h": 37 } },
+            { "t": 3.5, "geom": { "type": "box", "x": 711, "y": 254, "w": 19, "h": 37 } }
+          ]
+        }
+      ],
+      "source": "human"
+    }
+  ]
+}

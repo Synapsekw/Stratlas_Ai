@@ -14,3 +14,7 @@ except PackageNotFoundError:  # running from a source checkout without an instal
     __version__ = "0.0.0+src"
 
 PROTOCOL = "aio.pipelines/1"
+
+# App versions this pack works with (M9). The app refuses a pack outside the range; the syntax is
+# read by `appRangeAllows` in packages/schema/src/versions.ts (space-separated >=, >, <=, <, =).
+APP_RANGE = ">=0.9.0 <2.0.0"

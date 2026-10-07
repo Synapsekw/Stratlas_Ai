@@ -4,7 +4,7 @@ Requests from the app:
     jobs.run        {jobId, name, project, params}  -> {jobId, status: "done", outputs}
     cancel          {jobId}                         -> {ok}
     pipelines.list  {}                              -> [{name, title, description}]
-    version         {}                              -> {version, protocol, python}
+    version         {}                              -> {version, protocol, python, appRange}
     shutdown        {}                              -> {ok}, then the process exits
 Notifications to the app (no id): progress, log, artifact, error; each carries jobId.
 
@@ -20,7 +20,7 @@ import platform
 import threading
 from typing import Any, TextIO
 
-from . import PROTOCOL, __version__
+from . import APP_RANGE, PROTOCOL, __version__
 from .runtime import Cancelled, Job, JobError, Pipeline
 
 PARSE_ERROR = -32700
@@ -125,7 +125,12 @@ class Server:
 
     # methods
     def _version(self, rid, params):
-        return {"version": __version__, "protocol": PROTOCOL, "python": platform.python_version()}
+        return {
+            "version": __version__,
+            "protocol": PROTOCOL,
+            "python": platform.python_version(),
+            "appRange": APP_RANGE,
+        }
 
     def _list(self, rid, params):
         return [
