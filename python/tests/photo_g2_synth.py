@@ -473,22 +473,33 @@ def _texture(rng, size=2048, metres=400.0):
     return (np.clip(rgb, 0, 1) * 255).astype(np.uint8), metres / size
 
 
+_RAYS: dict[tuple, np.ndarray] = {}
+
+
+def _camera_rays(camera: Camera, ss: int) -> np.ndarray:
+    """Undistorted rays of every (supersampled) pixel; the same for every photo of a camera."""
+    from aio_pipelines.photo.model import undistort_pixels
+
+    key = (camera.model, camera.width, camera.height, tuple(camera.params), ss)
+    if key not in _RAYS:
+        xs = (np.arange(camera.width * ss) + 0.5) / ss
+        ys = (np.arange(camera.height * ss) + 0.5) / ss
+        gx, gy = np.meshgrid(xs, ys)
+        norm = undistort_pixels(camera, np.stack([gx.ravel(), gy.ravel()], axis=1), iterations=12)
+        _RAYS.clear()
+        _RAYS[key] = np.column_stack([norm, np.ones(len(norm))])
+    return _RAYS[key]
+
+
 def render_view(
     camera: Camera, rot: np.ndarray, centre: np.ndarray, tex: np.ndarray, m_per_px: float, ss: int = 2
 ):
     """Render the textured height field from one camera (inverse mapping with height iteration)."""
-    from aio_pipelines.photo.model import undistort_pixels
-
     w, h = camera.width, camera.height
-    xs = (np.arange(w * ss) + 0.5) / ss
-    ys = (np.arange(h * ss) + 0.5) / ss
-    gx, gy = np.meshgrid(xs, ys)
-    uv = np.stack([gx.ravel(), gy.ravel()], axis=1)
-    norm = undistort_pixels(camera, uv)
-    rays_cam = np.column_stack([norm, np.ones(len(norm))])
+    rays_cam = _camera_rays(camera, ss)
     rays = rays_cam @ rot  # camera to world: R^T d
     zw = np.zeros(len(rays))
-    for _ in range(12):  # fixed point: intersect with z = ground(x, y)
+    for _ in range(7):  # fixed point: intersect with z = ground(x, y)
         t = (zw - centre[2]) / rays[:, 2]
         px = centre[0] + t * rays[:, 0]
         py = centre[1] + t * rays[:, 1]
@@ -512,10 +523,12 @@ def render_view(
     return np.clip(img, 0, 255).astype(np.uint8)
 
 
-def render_nadir_set(scene: SceneTruth, folder: Path, seed: int = 5, rtk: bool = False) -> list[Path]:
+def render_nadir_set(
+    scene: SceneTruth, folder: Path, seed: int = 5, rtk: bool = False, texture=(4096, 200.0)
+) -> list[Path]:
     """Rendered JPEGs of the scene with EXIF and XMP; ``truth.json`` beside them."""
     rng = np.random.default_rng(seed)
-    tex, mpp = _texture(rng)
+    tex, mpp = _texture(rng, *texture)
     lon, lat, h = scene.lonlat_h(scene.gnss)
     paths = []
     focal35 = 36.0 * scene.camera.params[0] / scene.camera.width
