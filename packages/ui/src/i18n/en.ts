@@ -2058,6 +2058,21 @@ export const en = {
   'diskChanged.reloading': 'Reloading',
   'diskChanged.dismiss': 'Dismiss',
   'diskChanged.failed': 'Reload did not work: {error}',
+  // M9 integration: sync notices (clock ahead, renumbered codes)
+  'syncNotice.clockTitle': 'Clock ahead',
+  'syncNotice.recodeTitle': 'Issue code changed',
+  'syncNotice.clockAhead':
+    'The clock of {who} is {ahead} ahead of this computer. Their changes still apply; check the date and time on that computer.',
+  'syncNotice.clockHold':
+    'The clock of {who} is {ahead} ahead of this computer. Their changes wait in Quarantined until an owner applies them or the clock is fixed.',
+  'syncNotice.minutes_one': '{count} minute',
+  'syncNotice.minutes_other': '{count} minutes',
+  'syncNotice.hours_one': '{count} hour',
+  'syncNotice.hours_other': '{count} hours',
+  'syncNotice.recode':
+    '{to} was {from}. Another issue made apart has that code, so it is now {to}.',
+  'syncNotice.delivered': 'Packages already sent with the old code: {packages}.',
+  'syncNotice.dismiss': 'Dismiss',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */
