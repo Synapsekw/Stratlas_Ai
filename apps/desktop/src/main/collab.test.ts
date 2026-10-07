@@ -371,7 +371,7 @@ describe('report sign-off', () => {
   });
 });
 
-describe('interim journal', () => {
+describe('the test journal fake', () => {
   it('writes chained aio.op/1 lines with rising clocks and deps on other chains', async () => {
     await journal.append(root, RANA, {
       kind: 'project.share',
