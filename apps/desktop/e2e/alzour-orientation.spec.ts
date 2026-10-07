@@ -1,7 +1,8 @@
 /**
  * Al-Zour guided orientation calibration on a copy of the real project, outside the CI suite
- * (client data never enters git). Needs:
- *   STRATLAS_A1_DATA=<data root holding projects/alzour, a copy: the test saves into it>
+ * (client data never enters git). The copy is made by realData.ts (@realdata) and deleted after
+ * the run; with `"save": true` the saved manifest is copied to STRATLAS_A1_OUT as
+ * `alzour-manifest-<tag>.json`, for the founder to review and apply by hand. Needs:
  *   STRATLAS_A1_PLAN=<plan.json>  STRATLAS_A1_OUT=<folder for screenshots>
  *
  * The plan names a clip, a frame time with point pairs to fit (normalised frame point and the
@@ -15,16 +16,16 @@
  * printed and must drop (by half for a clip with no saved orientation or position; a clip that
  * already has one must stay close to it).
  */
-import { _electron as electron, expect, test, type Locator, type Page } from '@playwright/test';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { expect, test, type Locator, type Page } from '@playwright/test';
+import { copyFile, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { MAIN_ENTRY } from './fixtures';
+import { realProject } from './fixtures';
+import { hasRealProject, missingRealProject } from './realData';
 
-const DATA = process.env.STRATLAS_A1_DATA ?? '';
 const PLAN = process.env.STRATLAS_A1_PLAN ?? '';
 const OUT = process.env.STRATLAS_A1_OUT ?? '';
-test.skip(!DATA || !PLAN || !OUT, 'Al-Zour orientation: set STRATLAS_A1_DATA, _PLAN and _OUT');
+test.skip(!PLAN || !OUT, 'Al-Zour orientation: set STRATLAS_A1_PLAN and STRATLAS_A1_OUT');
+test.skip(!hasRealProject('alzour'), missingRealProject('alzour'));
 test.setTimeout(600_000);
 
 interface Pair {
@@ -173,21 +174,12 @@ async function rowErrors(panel: Locator, from = 0): Promise<number[]> {
 
 const rms = (v: number[]) => Math.sqrt(v.reduce((m, x) => m + x * x, 0) / Math.max(1, v.length));
 
-test('guided orientation calibration of an Al-Zour clip', async () => {
+test('@realdata guided orientation calibration of an Al-Zour clip', async () => {
   const plan = JSON.parse(await readFile(PLAN, 'utf8')) as Plan;
   const tag = plan.tag ?? 'guided';
-  const user = await mkdtemp(join(tmpdir(), 'aio-a1-alzour-'));
-  const app = await electron.launch({
-    args: [MAIN_ENTRY],
-    env: {
-      ...(process.env as Record<string, string>),
-      STRATLAS_DATA: DATA,
-      STRATLAS_USER_DATA: user,
-    },
-  });
+  const run = await realProject('alzour', { prefix: 'aio-a1-alzour-' });
   try {
-    const win = await app.firstWindow();
-    await win.waitForLoadState('domcontentloaded');
+    const { win } = run;
     await win.getByTestId('project-card').filter({ hasText: 'Al-Zour' }).first().click();
     await expect(win.locator('[data-scene-view] canvas')).toBeVisible({ timeout: 60_000 });
     await win.keyboard.press('Control+b');
@@ -277,8 +269,12 @@ test('guided orientation calibration of an Al-Zour clip', async () => {
     await setClipTime(win, plan.clip, plan.fit.t);
     await win.waitForTimeout(4000);
     await tankRimShot(win, join(OUT, `orient-${tag}-after.png`));
+    if (plan.save)
+      await copyFile(
+        join(run.data.projectDir, 'manifest.json'),
+        join(OUT, `alzour-manifest-${tag}.json`),
+      );
   } finally {
-    await app.close();
-    await rm(user, { recursive: true, force: true });
+    await run.close();
   }
 });

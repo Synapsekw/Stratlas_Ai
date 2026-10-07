@@ -4,10 +4,11 @@ import type { Issue, LensModel, Quat, Vec3 } from '@aio/schema';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { cp, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { expect, launchApp, test } from './fixtures';
+import { copyRealData, hasRealProject, missingRealProject, realProjectDir } from './realData';
 
 /**
  * The inspection pipeline (Asset Inspection Kit) run from the Jobs panel against the real pipeline
@@ -21,7 +22,8 @@ const venvPython =
     ? join(repo, 'python', '.venv', 'Scripts', 'python.exe')
     : join(repo, 'python', '.venv', 'bin', 'python'));
 const hasPython = existsSync(venvPython);
-const HCL = (process.env.STRATLAS_HCL ?? 'E:/Stratlas Data/projects/hcl').replace(/\\/g, '/');
+/** The real HCl project, only read (realData.ts); the test runs on a copy. */
+const HCL = realProjectDir('hcl').replace(/\\/g, '/');
 
 // ---------------------------------------------------------------- camera maths (app lens.ts)
 
@@ -605,11 +607,11 @@ test.describe('inspection pipeline', () => {
     }
   });
 
-  test('on a copy of HCl: detections on the tank photos become issues on the tank where they are', async ({
+  test('@realdata on a copy of HCl: detections on the tank photos become issues on the tank where they are', async ({
     dataRoot,
     network,
   }) => {
-    test.skip(!existsSync(join(HCL, 'manifest.json')), `no HCl project at ${HCL}`);
+    test.skip(!hasRealProject('hcl'), missingRealProject('hcl'));
     test.setTimeout(300_000);
     // a temporary copy: the manifest without the 3.7 GB of video, the tank model, photos, issues
     const root = join(dataRoot.root, 'projects', 'hcl');
@@ -622,8 +624,9 @@ test.describe('inspection pipeline', () => {
     await mkdir(root, { recursive: true });
     await writeFile(join(root, 'manifest.json'), JSON.stringify(m, null, 2));
     await writeFile(join(root, 'issues.json'), realIssues);
-    await cp(join(HCL, 'models'), join(root, 'models'), { recursive: true });
-    await cp(join(HCL, 'photos'), join(root, 'photos'), { recursive: true });
+    // real copies, never links: the Python pipeline writes beside them, outside the app's guard
+    for (const d of ['models', 'photos'])
+      await copyRealData(['projects', 'hcl', d], join(root, d), { link: false });
     const before = (JSON.parse(realIssues.toString('utf8')) as { issues: Issue[] }).issues;
 
     const app = await launchApp(dataRoot, { STRATLAS_PIPELINE_PYTHON: venvPython });

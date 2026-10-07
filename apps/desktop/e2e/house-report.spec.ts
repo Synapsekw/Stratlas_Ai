@@ -2,19 +2,22 @@
  * The house-format project report (BLD-8) and its narrative (BLD-7), end to end on temp copies of
  * the real HCl tank (13 issues) and DAMAC tower (701 issues) projects. The scripted AI model
  * stands in for the cloud (STRATLAS_AI_TEST_PROVIDER, isolated profile): no network at all.
- * Runs only where the projects exist (E:\Stratlas Data or STRATLAS_REAL_DATA); the real data is
+ * Runs only where the real data holds the projects (realData.ts, @realdata); the real data is
  * read, copied and never written.
  */
 import type { ElectronApplication, Page } from '@playwright/test';
-import { existsSync } from 'node:fs';
-import { copyFile, cp, mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, launchApp, NetworkGuard, test, type DataRoot } from './fixtures';
 import { pdfText } from './pdf';
+import {
+  copyRealProjects,
+  hasRealProject,
+  missingRealProject,
+  type RealDataCopy,
+} from './realData';
 
-const DATA = process.env.STRATLAS_REAL_DATA ?? 'E:\\Stratlas Data';
-const has = (id: string) => existsSync(join(DATA, 'projects', id, 'manifest.json'));
+const has = hasRealProject;
 
 /** Text without spaces, lower case: the report spaces out its capitals. */
 const flat = (s: string | undefined) => (s ?? '').replace(/\s+/g, '').toLowerCase();
@@ -26,20 +29,20 @@ const CLIENT_BRAND = /\be&|\beand\b|etisalat/i;
  * A temp data root with a copy of a real project: what the report reads (manifest, issues,
  * thumbnail, models, photos, report), never the videos, clouds or the original viewer.
  */
-async function copyProject(id: string): Promise<DataRoot> {
-  const base = await mkdtemp(join(tmpdir(), `aio-house-${id}-`));
-  const root = join(base, 'data');
-  const dir = join(root, 'projects', id);
-  const src = join(DATA, 'projects', id);
-  await mkdir(dir, { recursive: true });
-  await mkdir(join(base, 'user'), { recursive: true });
-  for (const f of ['manifest.json', 'issues.json', 'thumbnail.jpg']) {
-    if (existsSync(join(src, f))) await copyFile(join(src, f), join(dir, f));
-  }
-  for (const d of ['models', 'photos', 'report']) {
-    if (existsSync(join(src, d))) await cp(join(src, d), join(dir, d), { recursive: true });
-  }
-  return { base, root, userData: join(base, 'user'), projectId: id, projectDir: dir };
+const COPIED = new Set([
+  'manifest.json',
+  'issues.json',
+  'thumbnail.jpg',
+  'models',
+  'photos',
+  'report',
+]);
+
+async function copyProject(id: string): Promise<RealDataCopy> {
+  return copyRealProjects([id], {
+    prefix: `aio-house-${id}-`,
+    include: (rel) => COPIED.has(rel.split('/')[0] ?? ''),
+  });
 }
 
 async function start(data: DataRoot) {
@@ -90,8 +93,8 @@ const narrative = async (dir: string) =>
     parts: Record<string, { versions: { text: string; source: string }[] }>;
   };
 
-test.describe('HCl', () => {
-  test.skip(!has('hcl'), `HCl project not found under ${DATA}`);
+test.describe('@realdata HCl', () => {
+  test.skip(!has('hcl'), missingRealProject('hcl'));
 
   test('narrative from the template and the AI, versioned; the report in the house format', async () => {
     test.setTimeout(300_000);
@@ -208,13 +211,13 @@ test.describe('HCl', () => {
       expect(await network.outbound()).toEqual([]);
     } finally {
       await app.close();
-      await rm(data.base, { recursive: true, force: true });
+      await data.dispose();
     }
   });
 });
 
-test.describe('DAMAC', () => {
-  test.skip(!has('damac'), `DAMAC project not found under ${DATA}`);
+test.describe('@realdata DAMAC', () => {
+  test.skip(!has('damac'), missingRealProject('damac'));
 
   test('701 issues: progress, cancel, the app stays usable, and the report finishes', async () => {
     test.setTimeout(900_000);
@@ -263,7 +266,7 @@ test.describe('DAMAC', () => {
       expect(await network.outbound()).toEqual([]);
     } finally {
       await app.close();
-      await rm(data.base, { recursive: true, force: true });
+      await data.dispose();
     }
   });
 });

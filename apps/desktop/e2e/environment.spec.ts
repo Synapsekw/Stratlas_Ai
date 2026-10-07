@@ -2,17 +2,11 @@
  * Stage environment on the real Al-Zour project (founder: "the water and shadows and the sky; we
  * should be able to pull a slider to choose the time of day"): the project opens under a sky
  * with the sea drawn, and the time-of-day slider moves the sun. Skipped where the project is
- * absent. Read-only: nothing is written to the project (choices live in the throwaway profile).
+ * absent. Runs on a temporary copy of the project (realData.ts, @realdata).
  */
-import { test as base, type ElectronApplication, type Page } from '@playwright/test';
-import { existsSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { expect, launchApp, NetworkGuard } from './fixtures';
-
-const DATA = process.env.STRATLAS_HCL_DATA ?? 'E:\\Stratlas Data';
-const has = (id: string) => existsSync(join(DATA, 'projects', id, 'manifest.json'));
+import type { Page } from '@playwright/test';
+import { expect, realDataTest } from './fixtures';
+import { hasRealProject, missingRealProject } from './realData';
 
 interface Env {
   mode: string;
@@ -25,36 +19,7 @@ interface Inspect {
   __stratlas: { stage(): { environment: Env } | null };
 }
 
-const test = base.extend<{ app: ElectronApplication; win: Page }>({
-  // eslint-disable-next-line no-empty-pattern -- Playwright requires the destructuring form.
-  app: async ({}, use) => {
-    const tmp = await mkdtemp(join(tmpdir(), 'aio-env-'));
-    const network = new NetworkGuard();
-    const app = await launchApp({
-      base: tmp,
-      root: DATA,
-      userData: join(tmp, 'user'),
-      projectId: '',
-      projectDir: '',
-    });
-    await network.attach(app);
-    try {
-      await use(app);
-      expect(await network.outbound(), 'the app made network requests').toEqual([]);
-    } finally {
-      await app.close();
-      await rm(tmp, { recursive: true, force: true });
-    }
-  },
-  win: async ({ app }, use) => {
-    const win = await app.firstWindow();
-    await win.waitForLoadState('domcontentloaded');
-    await app.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 900);
-    });
-    await use(win);
-  },
-});
+const test = realDataTest(['alzour'], { size: [1440, 900] });
 
 test.setTimeout(180_000);
 
@@ -69,8 +34,8 @@ async function openPanel(win: Page) {
   await expect(win.getByTestId('env-panel')).toBeVisible();
 }
 
-test.describe('alzour', () => {
-  test.skip(!has('alzour'), `alzour project not found under ${DATA}`);
+test.describe('@realdata alzour', () => {
+  test.skip(!hasRealProject('alzour'), missingRealProject('alzour'));
 
   test('opens under a sky with the sea, and the time slider moves the sun', async ({ win }) => {
     await win.getByTestId('project-card').filter({ hasText: 'Al-Zour' }).first().click();

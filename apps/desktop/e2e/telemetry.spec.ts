@@ -1,51 +1,19 @@
 /**
  * Drone telemetry and photo markers on the real fusion projects (Al-Zour, HCl, DAMAC): the
  * tactical trace of the playing clip (flown trail, distance ticks, HUD, D to turn it off and on,
- * remembered per project) and one photo marker per place with a count. Runs only where the
- * projects are (STRATLAS_DATA, default E:\Stratlas Data); skipped elsewhere. Read-only.
- * STRATLAS_SHOTS=<folder> saves screenshots (telemetry-*.png, icons-*.png).
+ * remembered per project) and one photo marker per place with a count. Runs only where the real
+ * data holds the projects (realData.ts); skipped elsewhere. Each test runs on a temporary copy of
+ * its project (@realdata). STRATLAS_SHOTS=<folder> saves screenshots (telemetry-*.png, icons-*.png).
  */
-import { test as base, type ElectronApplication, type Page } from '@playwright/test';
-import { existsSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import type { Page } from '@playwright/test';
 import { join } from 'node:path';
-import { expect, launchApp, NetworkGuard } from './fixtures';
+import { expect, realDataTest } from './fixtures';
+import { hasRealProject } from './realData';
 
-const DATA = process.env.STRATLAS_DATA ?? 'E:\\Stratlas Data';
 const SHOTS = process.env.STRATLAS_SHOTS;
-const has = (id: string) => existsSync(join(DATA, 'projects', id, 'manifest.json'));
+const has = hasRealProject;
 
-const test = base.extend<{ app: ElectronApplication; win: Page }>({
-  // eslint-disable-next-line no-empty-pattern -- Playwright requires the destructuring form.
-  app: async ({}, use) => {
-    const tmp = await mkdtemp(join(tmpdir(), 'aio-telemetry-'));
-    const network = new NetworkGuard();
-    const app = await launchApp({
-      base: tmp,
-      root: DATA,
-      userData: join(tmp, 'user'),
-      projectId: '',
-      projectDir: '',
-    });
-    await network.attach(app);
-    try {
-      await use(app);
-      expect(await network.outbound(), 'the app made network requests').toEqual([]);
-    } finally {
-      await app.close();
-      await rm(tmp, { recursive: true, force: true });
-    }
-  },
-  win: async ({ app }, use) => {
-    const win = await app.firstWindow();
-    await win.waitForLoadState('domcontentloaded');
-    await app.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 900);
-    });
-    await use(win);
-  },
-});
+const test = realDataTest([], { size: [1440, 900] });
 
 test.setTimeout(240_000);
 
@@ -259,8 +227,9 @@ async function telemetryFollowsTheClip(win: Page, clip: string, at: number, labe
   await expect(hud).toBeVisible();
 }
 
-test.describe('alzour', () => {
+test.describe('@realdata alzour', () => {
   test.skip(!has('alzour'), 'Al-Zour not found');
+  test.use({ realProjects: ['alzour'] });
 
   test('telemetry trace follows the playing clip and turns off and on', async ({ win }) => {
     await open(win, 'Al-Zour');
@@ -335,8 +304,9 @@ const frameTimes = (win: Page, ms: number) =>
     ms,
   );
 
-test.describe('alzour playback perf', () => {
+test.describe('@realdata alzour playback perf', () => {
   test.skip(!has('alzour') || !process.env.STRATLAS_TRACE_PERF, 'set STRATLAS_TRACE_PERF=1');
+  test.use({ realProjects: ['alzour'] });
   test('frame time while a clip plays over the plant, telemetry on and off', async ({ win }) => {
     await open(win, 'Al-Zour');
     await frameTrail(win, 'clip-DJI_0684', 150, 200, 1.1);
@@ -367,8 +337,9 @@ test.describe('alzour playback perf', () => {
   });
 });
 
-test.describe('hcl', () => {
+test.describe('@realdata hcl', () => {
   test.skip(!has('hcl'), 'HCl not found');
+  test.use({ realProjects: ['hcl'] });
 
   test('telemetry inside the tank, photo places merged with counts', async ({ win }) => {
     await open(win, 'HCl');
@@ -391,8 +362,9 @@ test.describe('hcl', () => {
   });
 });
 
-test.describe('damac', () => {
+test.describe('@realdata damac', () => {
   test.skip(!has('damac'), 'DAMAC not found');
+  test.use({ realProjects: ['damac'] });
 
   test('1,182 photos draw as merged places', async ({ win }) => {
     await open(win, 'DAMAC');

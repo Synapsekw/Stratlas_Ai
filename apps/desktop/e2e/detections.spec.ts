@@ -2,7 +2,8 @@
  * Detection review (BLD-5) and AI-assisted detection (BLD-6) end to end, on a temporary copy of
  * twelve EBSM flare photos with the project's own severity model and classes. The scripted test
  * model (STRATLAS_AI_TEST_PROVIDER, isolated profile) answers the detection requests: no network.
- * The real project is only read. Skipped where the EBSM project is not on this machine.
+ * The real project is only read, through realData.ts (@realdata). Skipped where the EBSM project
+ * is not on this machine.
  *
  * Covers: the AI-6 preview and estimate before sending, results landing as waiting detections with
  * model, prompt version and confidence, reject and accept with the keyboard, the accepted one
@@ -11,34 +12,28 @@
  */
 import type { ElectronApplication, Page } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
-import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, launchApp, NetworkGuard, test } from './fixtures';
+import {
+  copyRealProjects,
+  hasRealProject,
+  missingRealProject,
+  onlyPaths,
+  realProjectDir,
+  type RealDataCopy,
+} from './realData';
 
-const DATA = process.env.STRATLAS_EBSM_DATA ?? 'E:/Stratlas Data';
-const EBSM = join(DATA, 'projects', 'ebsm');
+const EBSM = realProjectDir('ebsm');
 const SHOTS = process.env.STRATLAS_E2E_SHOTS;
 const PHOTOS = 12;
 
-test.skip(!existsSync(join(EBSM, 'manifest.json')), `EBSM project not found at ${EBSM}`);
+test.skip(!hasRealProject('ebsm'), missingRealProject('ebsm'));
 
-interface Copy {
-  base: string;
-  root: string;
-  userData: string;
-  projectDir: string;
-}
+type Copy = RealDataCopy;
 
 /** `<tmp>/data/projects/ebsm-review/`: the first photos, the severity model and classes, no issues. */
 async function copyEbsm(): Promise<Copy> {
-  const base = await mkdtemp(join(tmpdir(), 'aio-det-'));
-  const root = join(base, 'data');
-  const userData = join(base, 'user');
-  const projectDir = join(root, 'projects', 'ebsm-review');
-  await mkdir(join(projectDir, 'photos'), { recursive: true });
-  await mkdir(join(root, 'packs'), { recursive: true });
-  await mkdir(userData, { recursive: true });
   const manifest = JSON.parse(readFileSync(join(EBSM, 'manifest.json'), 'utf8')) as {
     id: string;
     name: string;
@@ -46,34 +41,26 @@ async function copyEbsm(): Promise<Copy> {
   };
   const photos = manifest.layers.find((l) => l.kind === 'photos');
   const items = (photos?.items ?? []).slice(0, PHOTOS);
-  for (const p of items) {
-    await copyFile(join(EBSM, p.src.path), join(projectDir, p.src.path));
-  }
-  const copy = {
-    ...manifest,
-    id: 'ebsm-review',
-    name: 'EBSM review copy',
-    layers: photos ? [{ ...photos, items }] : [],
-  };
-  await writeFile(join(projectDir, 'manifest.json'), JSON.stringify(copy, null, 2));
+  const copy = await copyRealProjects(['ebsm'], {
+    prefix: 'aio-det-',
+    rename: { ebsm: 'ebsm-review' },
+    include: onlyPaths(['manifest.json', ...items.map((p) => p.src.path)]),
+    manifest: (m) => ({
+      ...m,
+      id: 'ebsm-review',
+      name: 'EBSM review copy',
+      layers: photos ? [{ ...photos, items }] : [],
+    }),
+  });
   await writeFile(
-    join(projectDir, 'issues.json'),
+    join(copy.projectDir, 'issues.json'),
     JSON.stringify({ schema: 'aio.issues/1', issues: [] }),
   );
-  return { base, root, userData, projectDir };
+  return copy;
 }
 
 async function start(c: Copy) {
-  const app = await launchApp(
-    {
-      base: c.base,
-      root: c.root,
-      userData: c.userData,
-      projectId: 'ebsm-review',
-      projectDir: c.projectDir,
-    },
-    { STRATLAS_AI_TEST_PROVIDER: '1' },
-  );
+  const app = await launchApp(c, { STRATLAS_AI_TEST_PROVIDER: '1' });
   const network = new NetworkGuard();
   await network.attach(app);
   const win = await app.firstWindow();
@@ -104,7 +91,7 @@ const issueCount = () =>
     }
   ).__stratlas.workspace.getState().issues.length;
 
-test('detection review: AI drafts, reject and accept with the keyboard', async () => {
+test('@realdata detection review: AI drafts, reject and accept with the keyboard', async () => {
   test.setTimeout(180_000);
   const c = await copyEbsm();
   let opened: ElectronApplication | null = null;
@@ -265,6 +252,6 @@ test('detection review: AI drafts, reject and accept with the keyboard', async (
     opened = null;
   } finally {
     await opened?.close().catch(() => undefined);
-    await rm(c.base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    await c.dispose();
   }
 });

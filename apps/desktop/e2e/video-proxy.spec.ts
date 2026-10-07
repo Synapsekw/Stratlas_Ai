@@ -4,19 +4,19 @@
  * 60 s pieces, so flight 101 plays across the old 60 s boundary without stopping, and the
  * evidence frame of finding F10 (cut by the kit from the old piece `video-104-05` at 4.0 s) is what
  * the joined clip `video-104` shows at that photo's time. Al-Zour: same clips, same timing, now
- * 1920 px wide. Read-only: nothing in the projects is written.
+ * 1920 px wide. The app runs on a temporary copy of each project (realData.ts, @realdata); the
+ * real folders are only read for the expected frames.
  */
-import { test as base, type ElectronApplication, type Page, type TestInfo } from '@playwright/test';
+import type { Page, TestInfo } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
-import { expect, launchApp, NetworkGuard } from './fixtures';
+import { expect, realDataTest } from './fixtures';
+import { realProjectDir } from './realData';
 
-const DATA = process.env.STRATLAS_HCL_DATA ?? 'E:\\Stratlas Data';
-const HCL = join(DATA, 'projects', 'hcl');
-const ALZOUR = join(DATA, 'projects', 'alzour');
+const HCL = realProjectDir('hcl');
+const ALZOUR = realProjectDir('alzour');
 
 interface Layer {
   id: string;
@@ -55,33 +55,7 @@ interface Inspect {
   };
 }
 
-const test = base.extend<{ app: ElectronApplication; win: Page }>({
-  // eslint-disable-next-line no-empty-pattern -- Playwright requires the destructuring form.
-  app: async ({}, use) => {
-    const dir = await mkdtemp(join(tmpdir(), 'aio-proxy-'));
-    const network = new NetworkGuard();
-    const app = await launchApp({
-      base: dir,
-      root: DATA,
-      userData: join(dir, 'user'),
-      projectId: 'hcl',
-      projectDir: HCL,
-    });
-    await network.attach(app);
-    try {
-      await use(app);
-      expect(await network.outbound(), 'the app made network requests').toEqual([]);
-    } finally {
-      await app.close();
-      await rm(dir, { recursive: true, force: true });
-    }
-  },
-  win: async ({ app }, use) => {
-    const win = await app.firstWindow();
-    await win.waitForLoadState('domcontentloaded');
-    await use(win);
-  },
-});
+const test = realDataTest([]);
 
 test.setTimeout(180_000);
 
@@ -233,11 +207,12 @@ const watched = (win: Page) =>
     () => (window as unknown as { __proxyWatch: { stops: number; clips: string[] } }).__proxyWatch,
   );
 
-test.describe('HCl joined flight clips', () => {
+test.describe('@realdata HCl joined flight clips', () => {
   test.skip(
     !hclLayers.some((l) => l.id === 'video-101'),
     `HCl at ${HCL} has no joined clip video-101`,
   );
+  test.use({ realProjects: ['hcl'] });
 
   test('a click on a whole-flight bar plays from the clicked point', async ({ win }) => {
     await open(win, 'HCl');
@@ -306,11 +281,12 @@ test.describe('HCl joined flight clips', () => {
   });
 });
 
-test.describe('Al-Zour 1920 px clips', () => {
+test.describe('@realdata Al-Zour 1920 px clips', () => {
   test.skip(
     !existsSync(join(ALZOUR, 'posters.before-1080', 'DJI_0666.jpg')),
     `Al-Zour at ${ALZOUR} has no 1920 px proxies`,
   );
+  test.use({ realProjects: ['alzour'] });
 
   test('DJI_0666 plays at 1920 px and shows the old clip frame at 1 s', async ({
     win,

@@ -4,6 +4,15 @@ import { defineConfig } from '@playwright/test';
 // never in Windows Credential Manager or the macOS Keychain (main/testVault.ts, M9 integration).
 process.env.STRATLAS_TEST_VAULT = '1';
 
+// Every app an e2e test starts refuses any write under the founder's real client data
+// (STRATLAS_REAL_DATA_ROOT, default E:\Stratlas Data; main/realDataGuard.ts), also when a spec
+// launches it without the fixtures. Real projects are only ever opened as temporary copies
+// (e2e/realData.ts), and every test that uses them carries @realdata in its title, so a run
+// without the real data is:
+//   playwright test --grep-invert @realdata
+// With STRATLAS_REAL_DATA_ROOT set to an empty folder, the @realdata tests skip.
+process.env.STRATLAS_E2E = '1';
+
 export default defineConfig({
   testDir: './e2e',
   // One worker, locally and on CI: several Electron windows with WebGL compete for the GPU. On the

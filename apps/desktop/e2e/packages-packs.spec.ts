@@ -8,16 +8,23 @@
  *    restart, against a planet build served from 127.0.0.1 (the only origin the zero-network
  *    guard lets through, explicitly).
  *
- * Test 1 needs E:\Stratlas Data\projects\hcl and packs\kuwait.pmtiles (or STRATLAS_HCL_DATA) and
- * is skipped elsewhere; it only reads them. Set STRATLAS_SHOTS to keep screenshots.
+ * Test 1 needs the real projects/hcl and packs/kuwait.pmtiles (realData.ts, @realdata) and is
+ * skipped elsewhere; it only reads them. Set STRATLAS_SHOTS to keep screenshots.
  */
 import type { ElectronApplication, Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
-import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { noise, pmtilesArchive, rangeServer, tilesOver } from '../src/main/testing';
 import { expect, launchApp, NetworkGuard, test, type DataRoot } from './fixtures';
+import {
+  copyRealData,
+  hasRealData,
+  hasRealProject,
+  missingRealProject,
+  realProjectDir,
+} from './realData';
 
 const SHOTS = process.env.STRATLAS_SHOTS;
 const shot = async (win: Page, name: string) => {
@@ -25,9 +32,7 @@ const shot = async (win: Page, name: string) => {
 };
 const fwd = (p: string) => p.replace(/\\/g, '/');
 
-const DATA = process.env.STRATLAS_HCL_DATA ?? 'E:\\Stratlas Data';
-const HCL = join(DATA, 'projects', 'hcl');
-const KUWAIT = join(DATA, 'packs', 'kuwait.pmtiles');
+const HCL = realProjectDir('hcl');
 
 interface StratlasWindow {
   __stratlas: {
@@ -113,18 +118,17 @@ async function hclCopy(root: string): Promise<void> {
   };
   manifest.layers = manifest.layers.filter((l) => l.kind === 'mesh' || l.kind === 'photos');
   await writeFile(join(dest, 'manifest.json'), JSON.stringify(manifest, null, 2));
-  for (const f of ['issues.json', 'thumbnail.jpg']) await cp(join(HCL, f), join(dest, f));
-  for (const d of ['models', 'photos']) await cp(join(HCL, d), join(dest, d), { recursive: true });
+  for (const f of ['issues.json', 'thumbnail.jpg'])
+    await copyRealData(['projects', 'hcl', f], join(dest, f));
+  for (const d of ['models', 'photos']) await copyRealData(['projects', 'hcl', d], join(dest, d));
   await mkdir(join(root, 'packs'), { recursive: true });
-  await cp(KUWAIT, join(root, 'packs', 'kuwait.pmtiles'));
-  await cp(join(DATA, 'packs', 'kuwait.json'), join(root, 'packs', 'kuwait.json'));
+  for (const f of ['kuwait.pmtiles', 'kuwait.json'])
+    await copyRealData(['packs', f], join(root, 'packs', f));
 }
 
-test.describe('HCl with an embedded map region', () => {
-  test.skip(
-    !existsSync(join(HCL, 'manifest.json')) || !existsSync(KUWAIT),
-    `HCl or the Kuwait pack not found under ${DATA}`,
-  );
+test.describe('@realdata HCl with an embedded map region', () => {
+  test.skip(!hasRealProject('hcl'), missingRealProject('hcl'));
+  test.skip(!hasRealData('packs', 'kuwait.pmtiles'), 'the Kuwait map pack is not in the real data');
   test.setTimeout(420_000);
 
   test('the player draws the basemap from the package, then a copy is extracted and annotated', async () => {

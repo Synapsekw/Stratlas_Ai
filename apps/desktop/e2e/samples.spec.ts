@@ -1,16 +1,16 @@
 /**
  * The builder sample datasets end to end (outside the CI suite): each sample folder in
- * STRATLAS_SAMPLES (`E:/Stratlas Data/samples`, written by python/scripts/make_samples.py) is
- * built into a new project in a temporary data root the way its README says, its pipeline runs
- * from the Jobs panel, and the result is checked against the numbers in its `sample.json`. The
- * samples are only read.
+ * STRATLAS_SAMPLES (`<real data root>/samples`, written by python/scripts/make_samples.py from
+ * client projects, so @realdata) is built into a new project in a temporary data root the way its
+ * README says, its pipeline runs from the Jobs panel, and the result is checked against the
+ * numbers in its `sample.json`. The samples are only read.
  *
  * The pipelines run in the development venv, or in a pipeline pack with STRATLAS_E2E_PACK
- * (e.g. `E:/Stratlas Data/runtime/pipeline-pack-0.2.0`). The inspection sample takes the HCl
- * severity model from the HCl project's manifest (STRATLAS_HCL, read only), as the wizard offers
- * it on a machine that has that project in its library.
+ * (e.g. `<real data root>/runtime/pipeline-pack-0.2.0`). The inspection sample takes the HCl
+ * severity model from the real HCl project's manifest (realData.ts, read only), as the wizard
+ * offers it on a machine that has that project in its library.
  *
- *   STRATLAS_SAMPLES="E:/Stratlas Data/samples" npx playwright test samples --workers=1
+ *   STRATLAS_SAMPLES="<real data root>/samples" npx playwright test samples --workers=1
  */
 import type { Issue, Quat, Vec3 } from '@aio/schema';
 import type { ElectronApplication, Page } from '@playwright/test';
@@ -18,10 +18,11 @@ import { existsSync } from 'node:fs';
 import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, launchApp, test } from './fixtures';
+import { realProjectDir } from './realData';
 
 const SAMPLES = process.env.STRATLAS_SAMPLES ?? '';
 const PACK = process.env.STRATLAS_E2E_PACK ?? '';
-const HCL = (process.env.STRATLAS_HCL ?? 'E:/Stratlas Data/projects/hcl').replace(/\\/g, '/');
+const HCL = realProjectDir('hcl').replace(/\\/g, '/');
 const repo = join(import.meta.dirname, '..', '..', '..');
 const venvPython =
   process.env.STRATLAS_E2E_PYTHON ??
@@ -114,7 +115,7 @@ interface HclSample {
   findings: Record<string, { class: string; severity: number; points: Vec3[] }>;
 }
 
-test('inspection-hcl-mini: photos and model imported, the AI pass placed on the tank', async ({
+test('@realdata inspection-hcl-mini: photos and model imported, the AI pass placed on the tank', async ({
   dataRoot,
   network,
 }) => {
@@ -293,7 +294,7 @@ interface MasafiSample {
   }[];
 }
 
-test('volumetric-masafi-mini: two survey dates, the delivered pile volumes', async ({
+test('@realdata volumetric-masafi-mini: two survey dates, the delivered pile volumes', async ({
   dataRoot,
   network,
 }) => {
@@ -373,7 +374,7 @@ interface RoadSample {
   deliveredUnits: { cells: [number, number][]; pci: Record<string, number> }[];
 }
 
-test('road-ringroad-mini: ortho, centreline and defects; the delivered PCI of every grid unit', async ({
+test('@realdata road-ringroad-mini: ortho, centreline and defects; the delivered PCI of every grid unit', async ({
   dataRoot,
   network,
 }) => {

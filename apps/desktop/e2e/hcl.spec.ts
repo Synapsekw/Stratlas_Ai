@@ -1,22 +1,21 @@
 /**
  * End to end on the real HCl tank project (1 mesh, 10 point clouds, one clip per flight, saved
- * issues). Runs only on machines that hold the project at E:\Stratlas Data\projects\hcl (or
- * under STRATLAS_HCL_DATA); skipped elsewhere. Read-only: it never edits the project.
+ * issues). Runs only where the real data holds projects/hcl (realData.ts); skipped elsewhere.
+ * Each test runs on a temporary copy of the project (@realdata).
  */
-import { test as base, type ElectronApplication, type Page } from '@playwright/test';
-import { existsSync, readFileSync } from 'node:fs';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import type { ElectronApplication, Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
-import { expect, launchApp, NetworkGuard } from './fixtures';
-
-const DATA = process.env.STRATLAS_HCL_DATA ?? 'E:\\Stratlas Data';
-const HCL = join(DATA, 'projects', 'hcl');
+import { expect, realDataTest } from './fixtures';
+import { hasRealProject, missingRealProject, realProjectDir } from './realData';
 
 /** Issues saved in the real project: 11 imported plus any the founder added while testing. */
 function savedIssueCount(): number {
-  const file = JSON.parse(readFileSync(join(HCL, 'issues.json'), 'utf8')) as { issues: unknown[] };
+  const file = JSON.parse(readFileSync(join(realProjectDir('hcl'), 'issues.json'), 'utf8')) as {
+    issues: unknown[];
+  };
   return file.issues.length;
 }
 
@@ -34,35 +33,9 @@ interface Inspect {
   };
 }
 
-const test = base.extend<{ app: ElectronApplication; win: Page }>({
-  // eslint-disable-next-line no-empty-pattern -- Playwright requires the destructuring form.
-  app: async ({}, use) => {
-    const base = await mkdtemp(join(tmpdir(), 'aio-hcl-'));
-    const network = new NetworkGuard();
-    const app = await launchApp({
-      base,
-      root: DATA,
-      userData: join(base, 'user'),
-      projectId: 'hcl',
-      projectDir: HCL,
-    });
-    await network.attach(app);
-    try {
-      await use(app);
-      expect(await network.outbound(), 'the app made network requests').toEqual([]);
-    } finally {
-      await app.close();
-      await rm(base, { recursive: true, force: true });
-    }
-  },
-  win: async ({ app }, use) => {
-    const win = await app.firstWindow();
-    await win.waitForLoadState('domcontentloaded');
-    await use(win);
-  },
-});
+const test = realDataTest(['hcl']);
 
-test.skip(!existsSync(join(HCL, 'manifest.json')), `HCl project not found at ${HCL}`);
+test.skip(!hasRealProject('hcl'), missingRealProject('hcl'));
 test.setTimeout(180_000);
 
 const clock = (win: Page) =>
@@ -109,7 +82,7 @@ async function playFlight101(win: Page, frac: number) {
   await win.keyboard.press('Enter');
 }
 
-test('HCl opens with a drawn 3D scene, plays a clip and lists its saved issues', async ({
+test('@realdata HCl opens with a drawn 3D scene, plays a clip and lists its saved issues', async ({
   win,
 }) => {
   const errors: string[] = [];
@@ -245,7 +218,7 @@ const toolbarRows = (win: Page) =>
     return new Set(mids).size;
   });
 
-test('stage polish: one-row toolbar, label modes, annotate tools on demand, camera memory', async ({
+test('@realdata stage polish: one-row toolbar, label modes, annotate tools on demand, camera memory', async ({
   app,
   win,
 }) => {
@@ -357,7 +330,7 @@ const tankMaterials = (win: Page) =>
       .map((m) => ({ transparent: m.transparent, opacity: m.opacity, depthWrite: m.depthWrite }));
   });
 
-test('the tank is cut or made transparent only by hand; photos and flights reach Media', async ({
+test('@realdata the tank is cut or made transparent only by hand; photos and flights reach Media', async ({
   app,
   win,
 }) => {
@@ -464,7 +437,7 @@ const boxOf = async (win: Page, testId: string): Promise<Box> => {
   return b;
 };
 
-test('the video window moves, resizes with its aspect ratio and remembers its place', async ({
+test('@realdata the video window moves, resizes with its aspect ratio and remembers its place', async ({
   app,
   win,
 }) => {
@@ -592,7 +565,7 @@ const layerState = (win: Page) =>
     };
   });
 
-test('the eye over all layers and the group eyes switch many layers at once', async ({
+test('@realdata the eye over all layers and the group eyes switch many layers at once', async ({
   app,
   win,
 }) => {
@@ -632,7 +605,7 @@ test('the eye over all layers and the group eyes switch many layers at once', as
   await expect.poll(async () => (await layerState(win)).hidden).toBe(0);
 });
 
-test('split screen: each side shows the pane chosen for it', async ({ app, win }) => {
+test('@realdata split screen: each side shows the pane chosen for it', async ({ app, win }) => {
   await openHcl(app, win);
   await win.keyboard.press('3');
   const left = win.getByTestId('pane-chooser-left').locator('select');
@@ -736,7 +709,7 @@ interface OrbitStage {
  * buffer and swapped with every small camera move. Orbit the tank, render each view twice a hair
  * apart, and compare the plinth top between the two frames.
  */
-test('the tank base stays still while the camera orbits', async ({ app, win }) => {
+test('@realdata the tank base stays still while the camera orbits', async ({ app, win }) => {
   await openHcl(app, win);
   // Only the model: point sprites move with any camera move and would drown the base out.
   await win.evaluate(() => {

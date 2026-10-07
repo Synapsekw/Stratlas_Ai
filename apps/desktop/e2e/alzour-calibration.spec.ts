@@ -7,16 +7,21 @@
  * calibration view. With `"save": false` (default) it only takes the screenshots (model only,
  * video only, overlay) and fits; with `"save": true` it saves the fitted lens to the clips of the
  * same frame size through the app (manifest.json.bak is written first, the manifest validated).
+ *
+ * It runs on a temporary copy of the real project (realData.ts, @realdata), never on the project
+ * itself: with `"save": true` the saved manifest is copied to STRATLAS_B2_OUT as
+ * `alzour-manifest-<tag>.json`, for the founder to review and apply by hand.
  */
-import { _electron as electron, expect, test, type Page } from '@playwright/test';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { expect, test, type Page } from '@playwright/test';
+import { copyFile, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { MAIN_ENTRY } from './fixtures';
+import { realProject } from './fixtures';
+import { hasRealProject, missingRealProject } from './realData';
 
 const PLAN = process.env.STRATLAS_B2_ALZOUR ?? '';
 const OUT = process.env.STRATLAS_B2_OUT ?? '';
 test.skip(!PLAN || !OUT, 'Al-Zour calibration: set STRATLAS_B2_ALZOUR and STRATLAS_B2_OUT');
+test.skip(!hasRealProject('alzour'), missingRealProject('alzour'));
 test.setTimeout(600_000);
 
 interface ClipPlan {
@@ -80,21 +85,12 @@ async function setClipTime(win: Page, clip: string, t: number) {
   );
 }
 
-test('calibrate the Al-Zour clips against the plant model', async () => {
+test('@realdata calibrate the Al-Zour clips against the plant model', async () => {
   const plan = JSON.parse(await readFile(PLAN, 'utf8')) as Plan;
   const tag = plan.tag ?? 'run';
-  const user = await mkdtemp(join(tmpdir(), 'aio-b2-alzour-'));
-  const app = await electron.launch({
-    args: [MAIN_ENTRY],
-    env: {
-      ...(process.env as Record<string, string>),
-      STRATLAS_DATA: 'E:/Stratlas Data',
-      STRATLAS_USER_DATA: user,
-    },
-  });
+  const run = await realProject('alzour', { prefix: 'aio-b2-alzour-' });
   try {
-    const win = await app.firstWindow();
-    await win.waitForLoadState('domcontentloaded');
+    const { win } = run;
     await win.getByTestId('project-card').filter({ hasText: 'Al-Zour' }).first().click();
     await expect(win.locator('[data-scene-view] canvas')).toBeVisible({ timeout: 60_000 });
     await win.keyboard.press('Control+b');
@@ -166,8 +162,12 @@ test('calibrate the Al-Zour clips against the plant model', async () => {
       }
       await panel.getByRole('button', { name: 'Close' }).click();
     }
+    if (plan.save)
+      await copyFile(
+        join(run.data.projectDir, 'manifest.json'),
+        join(OUT, `alzour-manifest-${tag}.json`),
+      );
   } finally {
-    await app.close();
-    await rm(user, { recursive: true, force: true });
+    await run.close();
   }
 });
