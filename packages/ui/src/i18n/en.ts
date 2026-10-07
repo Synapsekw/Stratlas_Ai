@@ -1688,6 +1688,26 @@ export const en = {
   'audit.redact.confirm': 'Redact entry',
   'audit.redact.cancel': 'Cancel',
   'audit.reports.text': 'Who changed what, when and how. Verify the history and export it.',
+  // M9 T1: the house report's audit section and footer
+  'house.sec.audit': 'Audit trail',
+  'audit.report.kicker': 'History',
+  'audit.report.intro':
+    'Every change to this project is recorded in a signed history. The audit head below identifies that history at the time of this report: a later change to the history gives a different head.',
+  'audit.report.head': 'Audit head',
+  'audit.report.count': 'Entries',
+  'audit.report.verified': 'Verified',
+  'audit.report.yes': 'Yes, the history is intact',
+  'audit.report.no': 'No, Verify found problems',
+  'audit.report.changes': 'Changes per issue',
+  'audit.report.none': 'No issue has been changed since the history started.',
+  'audit.report.more': '{n} earlier changes are not listed. Export the audit for all of them.',
+  'audit.report.col.when': 'When (UTC)',
+  'audit.report.col.code': 'Issue',
+  'audit.report.col.who': 'Who',
+  'audit.report.col.change': 'Change',
+  'audit.report.footer': 'Audit head {head}, {count} entries, {verified}',
+  'audit.report.footer.yes': 'verified',
+  'audit.report.footer.no': 'not verified',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

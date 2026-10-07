@@ -8,6 +8,7 @@ import {
   issueAction,
   narrativeFacts,
   resolveReportBranding,
+  type AuditSummary,
   type HouseModel,
 } from '@aio/project/export';
 import {
@@ -41,6 +42,7 @@ import {
   issuePageHtml,
   kickerOf,
   layoutAppendices,
+  layoutAudit,
   layoutRegister,
   layoutScope,
   layoutSite,
@@ -149,6 +151,14 @@ async function run(): Promise<void> {
     brandingFromQuery(params.get('branding')),
     brand.productName,
   );
+  // M9: the audit head and change log main read from the journal (absent: no journal)
+  let audit: AuditSummary | null;
+  try {
+    const raw = params.get('audit');
+    audit = raw ? (JSON.parse(raw) as AuditSummary) : null;
+  } catch {
+    audit = null;
+  }
   let contents: ReportContentsSettings | undefined;
   try {
     const raw = params.get('contents');
@@ -164,6 +174,7 @@ async function run(): Promise<void> {
     volumes: parsed(VolumesFile, volumesRaw, 'volumes.json'),
     edits: parsed(BoundaryEditsFile, editsRaw, 'edits/boundaries.json'),
     road: road?.ok ? road.value : null,
+    audit,
   });
   document.title = `${h.base.title} report`;
   const template = templateNarrative(narrativeFacts(h), { todo: false });
@@ -354,6 +365,12 @@ async function run(): Promise<void> {
         timings.issuePhotos = Math.round(photoMs / 100) / 10;
         timings.issueViews = Math.round(viewMs / 100) / 10;
         lap('issues', t3);
+        break;
+      }
+      case 'audit': {
+        const n = numbered(id);
+        pager.start(id);
+        layoutAudit(pager, ctx, n);
         break;
       }
       case 'appendices': {

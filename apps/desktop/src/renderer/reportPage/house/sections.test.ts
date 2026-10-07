@@ -8,7 +8,15 @@ import {
 import { ProjectManifest } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { isFlat, locatorMap, niceStep, pileMap } from './charts';
-import { coverHtml, issuePageHtml, metres, narrativeHtml, type HouseContext } from './sections';
+import {
+  auditFooter,
+  coverHtml,
+  frameHtml,
+  issuePageHtml,
+  metres,
+  narrativeHtml,
+  type HouseContext,
+} from './sections';
 
 const manifest = ProjectManifest.parse({
   schema: 'aio.project/1',
@@ -175,5 +183,37 @@ describe('charts and text', () => {
     );
     expect(metres(0.035)).toBe('0.04 m');
     expect(metres(76.94)).toBe('76.9 m');
+  });
+});
+
+describe('audit trail (M9)', () => {
+  const audit = {
+    root: 'ab'.repeat(32),
+    count: 42,
+    verified: true,
+    rows: [{ code: 'F01', at: '2026-10-07 09:00', who: 'Rana Example', change: 'F01 to reviewed' }],
+    more: 0,
+  };
+  const withAudit = (a: typeof audit | null) =>
+    houseReportModel({
+      manifest,
+      issues: [],
+      branding: resolveReportBranding(undefined, 'Stratlas'),
+      audit: a,
+    });
+
+  it('prints the audit section only for a project with a journal', () => {
+    expect(withAudit(audit).sections).toContain('audit');
+    expect(withAudit(null).sections).not.toContain('audit');
+  });
+
+  it('puts the audit head, count and verified in every page footer', () => {
+    const h = withAudit(audit);
+    expect(auditFooter(h)).toContain('abababababababab');
+    expect(auditFooter(h)).toContain('42 entries, verified');
+    expect(auditFooter({ ...h, audit: { ...audit, verified: false } })).toContain('not verified');
+    expect(auditFooter(withAudit(null))).toBe('');
+    const frame = frameHtml({ ...ctx(), h });
+    expect(frame).toContain('pg-fa');
   });
 });

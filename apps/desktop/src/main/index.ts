@@ -436,6 +436,10 @@ const exportJobs = createExportJobs({
       devTools: dev,
       branding: current.reportBranding,
       contents: current.reportContents,
+      audit:
+        args.kind === 'house'
+          ? await journal.reportAudit(args.projectId, args.issueIds).catch(() => null)
+          : null,
     });
   },
   emit: emitExportProgress,

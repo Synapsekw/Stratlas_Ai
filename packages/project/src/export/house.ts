@@ -30,6 +30,24 @@ export interface HouseInput extends ExportContext {
   edits?: BoundaryEditsFile | null | undefined;
   road?: RoadModel | null | undefined;
   now?: Date;
+  /** M9: the audit head and the change log per issue, from the project journal. */
+  audit?: AuditSummary | null | undefined;
+}
+
+/**
+ * What a report prints of the audit trail (M9 T1): the audit head (Merkle root over every chain's
+ * head), the entry count and whether Verify found the history intact, plus the changes per issue
+ * (newest first, capped by the caller). A later rewrite of history contradicts reports already
+ * delivered.
+ */
+export interface AuditSummary {
+  root: string;
+  count: number;
+  verified: boolean;
+  /** One row per change of an issue the report covers. */
+  rows: { code: string; at: string; who: string; change: string }[];
+  /** Changes left out by the cap. */
+  more: number;
 }
 
 /** A layer of the project as the report lists it under site and data. */
@@ -144,6 +162,8 @@ export interface HouseModel {
   road: RoadSummary | null;
   /** Issue positions for the findings map (local frame). */
   plan: PlanPoint[];
+  /** M9: the audit head and change log; null for a project without a journal. */
+  audit: AuditSummary | null;
 }
 
 /** What kind of report to print: the builder type, else what the project holds. */
@@ -398,8 +418,8 @@ function roadSummary(r: RoadModel): RoadSummary {
 
 /** Everything the house-format report shows. Text has no em or en dashes. */
 /**
- * The sections the house report prints, in order (Settings lists these). `ReportSectionId` also
- * has `audit` and `approvals` (M9); they join this list when T1 and T3 print them.
+ * The sections the house report prints, in order (Settings lists these). `audit` (M9 T1) prints
+ * only for a project with a journal; `approvals` joins when T3 prints it.
  */
 export const HOUSE_SECTIONS = [
   'contents',
@@ -409,6 +429,7 @@ export const HOUSE_SECTIONS = [
   'statistics',
   'register',
   'issues',
+  'audit',
   'appendices',
 ] as const satisfies readonly ReportSectionId[];
 
@@ -422,7 +443,10 @@ export function houseReportModel(input: HouseInput): HouseModel {
   const rule = input.contents?.issuePages ?? defaultIssuePages(kind);
   const issuePages = issuePageRows(m, input.issues, base.rows, rule);
   const sections = HOUSE_SECTIONS.filter(
-    (id) => reportSectionOn(input.contents, id) && (id !== 'issues' || issuePages.length > 0),
+    (id) =>
+      reportSectionOn(input.contents, id) &&
+      (id !== 'issues' || issuePages.length > 0) &&
+      (id !== 'audit' || Boolean(input.audit)),
   );
   const { layers, totals } = dataRows(m);
   const plan: PlanPoint[] = [];
@@ -460,6 +484,7 @@ export function houseReportModel(input: HouseInput): HouseModel {
     volumes: input.volumes ? volumeSummary(input.volumes, input.edits ?? null) : null,
     road: input.road ? roadSummary(input.road) : null,
     plan,
+    audit: input.audit ?? null,
   };
 }
 

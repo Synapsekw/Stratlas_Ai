@@ -61,6 +61,7 @@ import {
 } from '@aio/schema';
 import { z } from 'zod';
 import type { Handler } from './ipc';
+import type { AuditSummary } from '@aio/project/export';
 import type { JournalIdentity } from './journalIdentity';
 import { type Handle } from './notYet';
 import { ISSUES_SCHEMA } from './project';
@@ -831,6 +832,50 @@ export function createJournalService(deps: JournalServiceDeps) {
     });
   }
 
+  /**
+   * What a house report prints of the audit trail: the head, the count, whether Verify found the
+   * history intact, and the latest changes of the report's issues (up to `cap` rows).
+   */
+  async function reportAudit(
+    projectId: string,
+    issueIds?: readonly string[],
+    cap = 300,
+  ): Promise<AuditSummary | null> {
+    const root = deps.projects.root(projectId);
+    if (root === undefined || deps.projects.package(projectId)) return null;
+    const v = await verify(projectId);
+    if (!v.ok || !v.report.head) return null;
+    const all = (await entries(projectId)) ?? [];
+    const codes = new Map<string, string>();
+    const issues = parse(await readText(join(root, 'issues.json')));
+    if (
+      issues &&
+      typeof issues === 'object' &&
+      Array.isArray((issues as { issues?: unknown }).issues)
+    ) {
+      for (const i of (issues as { issues: { id?: unknown; code?: unknown }[] }).issues) {
+        if (typeof i.id === 'string' && typeof i.code === 'string') codes.set(i.id, i.code);
+      }
+    }
+    const wanted = issueIds ? new Set(issueIds) : null;
+    const issueRows = all.filter(
+      (e) => e.target.rec === 'issue' && (!wanted || wanted.has(e.target.id)),
+    );
+    const rows = issueRows.slice(0, cap).map((e) => ({
+      code: codes.get(e.target.id) ?? e.target.id,
+      at: `${e.at.slice(0, 10)} ${e.at.slice(11, 16)}`,
+      who: e.actor.name ?? e.actor.initials ?? 'Unknown author',
+      change: e.label ?? describeChange(e),
+    }));
+    return {
+      root: v.report.head.root,
+      count: v.report.head.count,
+      verified: v.report.ok,
+      rows,
+      more: Math.max(0, issueRows.length - rows.length),
+    };
+  }
+
   /** A signed checkpoint now (exports and syncs), so what leaves the machine is anchored. */
   async function checkpointNow(projectId: string): Promise<void> {
     const root = deps.projects.root(projectId);
@@ -852,6 +897,7 @@ export function createJournalService(deps: JournalServiceDeps) {
     redact,
     setJournal,
     checkpointNow,
+    reportAudit,
     entries,
     files: filesOf,
     /** For tests: the replica and switch of a folder. */
@@ -874,3 +920,12 @@ export function registerJournalIpc({ handle, journal, exportAudit }: JournalIpcD
 }
 
 export type { AuditFilter };
+
+/** A short line for a change without an editor label ("severity 3 to 4"). */
+function describeChange(e: AuditEntry): string {
+  const show = (v: unknown) =>
+    v === undefined ? 'none' : typeof v === 'string' ? v : JSON.stringify(v).slice(0, 40);
+  const parts = (e.changes ?? []).map((c) => `${c.field} ${show(c.before)} to ${show(c.after)}`);
+  const what = e.kind.replace(/^issue\./, '').replace(/\./g, ' ');
+  return parts.length ? parts.join(', ') : what;
+}
