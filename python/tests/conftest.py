@@ -14,6 +14,7 @@ from PIL import Image
 from PIL.TiffImagePlugin import IFDRational
 
 from aio_pipelines.runtime import Job
+from photo_synth import photo_mini, photo_set, photo_set_factory, photo_set_rtk  # noqa: F401  (M10 fixtures)
 
 RE = 6378137.0
 
