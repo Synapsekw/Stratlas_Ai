@@ -460,9 +460,24 @@ importers:
 
   packages/tiles:
     dependencies:
+      3d-tiles-renderer:
+        specifier: 0.5.3
+        version: 0.5.3(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(three@0.186.1)
+      '@aio/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@aio/geo':
+        specifier: workspace:*
+        version: link:../geo
       '@aio/schema':
         specifier: workspace:*
         version: link:../schema
+      pmtiles:
+        specifier: ^4.5.0
+        version: 4.5.0
+      three:
+        specifier: ^0.186.1
+        version: 0.186.1
 
   packages/ui:
     dependencies:
@@ -534,6 +549,29 @@ importers:
         version: link:../schema
 
 packages:
+
+  3d-tiles-renderer@0.5.3:
+    resolution: {integrity: sha512-i2TEtsboVa7C5pCpNKO3ctAopK0NlIReRb/CJKpvXDrwjWYL1M2oaKRZddvGDHE5udx7OyGN04glotqNruQYmQ==}
+    peerDependencies:
+      '@babylonjs/core': '>=8.0.0'
+      '@babylonjs/loaders': '>=8.0.0'
+      '@react-three/fiber': ^8.17.9 || ^9.0.0
+      react: ^18.3.1 || ^19.0.0
+      react-dom: ^18.3.1 || ^19.0.0
+      three: '>=0.167.0'
+    peerDependenciesMeta:
+      '@babylonjs/core':
+        optional: true
+      '@babylonjs/loaders':
+        optional: true
+      '@react-three/fiber':
+        optional: true
+      react:
+        optional: true
+      react-dom:
+        optional: true
+      three:
+        optional: true
 
   '@ai-sdk/anthropic@4.0.71':
     resolution: {integrity: sha512-wiv3jhUH0RrvGzSolJMZfZ2cI9As45LhwYmcAoWvNivXjC7wzJ4W/Udq9/u7EGnGsT8lpmFKEKBrMXVeUO97Dg==}
@@ -1282,6 +1320,9 @@ packages:
 
   '@mapbox/unitbezier@1.0.0':
     resolution: {integrity: sha512-fqd515fjBmANKGGsQ286E2Wvj/XvDFpGzwJxq4CI6jMQue6Oy04uCKp+JWKF00xRTmk6cEu1jPJ9p3xqH8YWqQ==}
+
+  '@mapbox/vector-tile@2.0.5':
+    resolution: {integrity: sha512-pXj8m7KTsqZt+1jsE0xIpGvqTSbblfkuEJL/NJmNePMtEwxO8V3XMDo9WMSfDeqHvCtBI9Lmt4mGcGR10zecmw==}
 
   '@mapbox/vector-tile@3.0.0':
     resolution: {integrity: sha512-Qf10S1uIHMk20ri/IVBnpS+esUEkVaR5Hftmz88jTInrpmWgPGJfPe3LVjjlE77trLx8tH6qjTG7uWH9hIq/0Q==}
@@ -3124,6 +3165,10 @@ packages:
     resolution: {integrity: sha512-ojmeN0qd+y0jszEtoY48r0Peq5dwMEkIlCOu6Q5f41lfkswXuKtYrhgoTpLnyIcHm24Uhqx+5Tqm2InSwLhE6Q==}
     engines: {node: '>=8'}
 
+  pbf@4.0.2:
+    resolution: {integrity: sha512-J0ajxARhZfpUEebxYs1vhMGMuLSXtBe1e+fFPDrf2uA2hgo+UshKfNUWOz92HJNz6/NFEXseQPddnHkTreWRqg==}
+    hasBin: true
+
   pbf@5.1.2:
     resolution: {integrity: sha512-mnvGdvOrIvJOBGUEdGkrVXjN8E/VkIJCkf2eS1DH2yv82ORUlLttmDt0rWY38yYZmVwciZwBUvHM20qxBZf40w==}
     hasBin: true
@@ -3916,6 +3961,16 @@ packages:
 
 snapshots:
 
+  3d-tiles-renderer@0.5.3(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(three@0.186.1):
+    dependencies:
+      '@mapbox/vector-tile': 2.0.5
+      pbf: 4.0.2
+      pmtiles: 4.5.0
+    optionalDependencies:
+      react: 19.3.0
+      react-dom: 19.3.0(react@19.3.0)
+      three: 0.186.1
+
   '@ai-sdk/anthropic@4.0.71(zod@4.6.5)':
     dependencies:
       '@ai-sdk/provider': 4.0.21
@@ -4658,6 +4713,12 @@ snapshots:
   '@mapbox/tiny-sdf@2.2.0': {}
 
   '@mapbox/unitbezier@1.0.0': {}
+
+  '@mapbox/vector-tile@2.0.5':
+    dependencies:
+      '@mapbox/point-geometry': 1.1.0
+      '@types/geojson': 7946.0.16
+      pbf: 4.0.2
 
   '@mapbox/vector-tile@3.0.0':
     dependencies:
@@ -6534,6 +6595,10 @@ snapshots:
   path-is-absolute@1.0.1: {}
 
   path-key@3.1.1: {}
+
+  pbf@4.0.2:
+    dependencies:
+      resolve-protobuf-schema: 2.1.0
 
   pbf@5.1.2:
     dependencies:
