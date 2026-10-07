@@ -849,6 +849,8 @@ export function createMapController(
   }
 
   // ----- hover tooltip over issues and overlays -----
+  /** The hover redraw waiting for the next frame (cancelled on dispose). */
+  let hoverRaf = 0;
   const tip = new Popup({
     closeButton: false,
     closeOnClick: false,
@@ -1114,7 +1116,9 @@ export function createMapController(
         if (!drawing()) map.getCanvas().style.cursor = '';
       });
     }
-    let hoverRaf = 0;
+    cleanups.push(() => {
+      if (hoverRaf) cancelAnimationFrame(hoverRaf);
+    });
     map.on('mousemove', (e) => {
       if (drawing()) return;
       if (hoverRaf) cancelAnimationFrame(hoverRaf);
@@ -1250,11 +1254,20 @@ export function createMapController(
       applyWedge();
     },
     dispose: () => {
+      if (disposed) return;
       disposed = true;
+      ready = false;
       if (pyrTimer) clearTimeout(pyrTimer);
       tip.remove();
-      for (const c of cleanups) c();
+      for (const c of cleanups.splice(0)) c();
       map.remove();
+      // The container may outlive the map (a detached tree a listener still holds): drop the test
+      // hook so it does not keep the map, its style and its WebGL context alive.
+      Reflect.deleteProperty(el, '__aioMap');
+      flights.clear();
+      mounted.clear();
+      pyramids.length = 0;
+      pyrTiles.clear();
     },
   };
 }
