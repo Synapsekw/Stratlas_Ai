@@ -248,6 +248,34 @@ describe('importRawFiles', () => {
     expect(started[0]?.params.src).toBe(dxf);
   });
 
+  it('hands an OPF project to opf.import', async () => {
+    const root = await project();
+    const opf = join(dir, 'project.opf');
+    await writeFile(opf, '{"format":"application/opf-project+json","version":"1.0","items":[]}');
+    const started: { method: string; params: Record<string, unknown> }[] = [];
+    const jobs: PipelineJobs = {
+      available: () => Promise.resolve(true),
+      start: (method, params) => {
+        started.push({ method, params });
+        return Promise.resolve({ jobId: 'job-o' });
+      },
+    };
+    const r = await importRawFiles(root, [opf], deps({ jobs }));
+    expect(r.items).toEqual([
+      expect.objectContaining({
+        file: 'project.opf',
+        kind: 'opf',
+        status: 'queued',
+        jobId: 'job-o',
+      }),
+    ]);
+    expect(started).toEqual([expect.objectContaining({ method: 'opf.import' })]);
+    expect(started[0]?.params.src).toBe(opf);
+    // without the pack: what to do, kind still opf
+    const none = await importRawFiles(root, [opf], deps());
+    expect(none.items[0]).toMatchObject({ kind: 'opf', status: 'needs-pipeline' });
+  });
+
   it('imports a small GeoTIFF ortho as a placed image raster', async () => {
     const root = await project();
     const tif = join(dir, 'ortho.tif');
