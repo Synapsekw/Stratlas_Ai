@@ -79,6 +79,8 @@ const MANIFEST_WRITERS: ReadonlySet<string> = new Set([
   // M8 models: the drawing's plan and vector layers, fitted draft parts
   'drawing.import',
   'model.fit_cloud',
+  // M10 OPF: a photos layer, point clouds and rasters from an OPF project
+  'opf.import',
 ]);
 /** Pipelines that also write issues.json (and road.json): the open project reopens whole. */
 const PROJECT_WRITERS: ReadonlySet<string> = new Set(['road.build']);
@@ -619,19 +621,32 @@ export const FORMS: Record<PipelineName, Field[]> = {
       label: 'OPF project',
       kind: 'file',
       required: true,
-      help: 'Read only. Files outside the project folder are refused.',
+      help: 'The .opf file (Pix4D or any OPF 1.x project). Read only; files outside its folder are refused.',
       filters: [{ name: 'OPF project', extensions: ['opf', 'json'] }],
     },
     {
       key: 'photosRoot',
       label: 'Photos folder',
       kind: 'folder',
-      help: 'When the paths do not resolve.',
+      help: 'Where the photos are when the OPF names them by absolute paths or they moved. Read only.',
     },
   ],
   'opf.export': [
-    { key: 'run', label: 'Run id', kind: 'text', required: true },
-    { key: 'out', label: 'Export to folder', kind: 'folder', required: true },
+    {
+      key: 'run',
+      label: 'Run id',
+      kind: 'text',
+      required: true,
+      placeholder: '20261007-0915',
+      help: 'A processing run of this project (its folder under photogrammetry).',
+    },
+    {
+      key: 'out',
+      label: 'Export to folder',
+      kind: 'folder',
+      required: true,
+      help: 'An empty folder, or an earlier Stratlas OPF export, which is replaced.',
+    },
   ],
   'tiles.mesh': [{ key: 'layer', label: 'Mesh layer id', kind: 'text', required: true }],
   'tiles.cloud': [{ key: 'layer', label: 'Point cloud layer id', kind: 'text', required: true }],

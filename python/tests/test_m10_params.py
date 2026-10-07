@@ -1,17 +1,13 @@
-"""M10 pipelines named by the contract (G0) answer with a clear job error until they are built.
+"""Every M10 pipeline named by the contract (G0) checks its parameters the way the zod schema does.
 
 The smallest parameters below are the ones ``packages/schema/src/m10.test.ts`` parses with zod, so
 the names and the required ones agree on both sides of the JSON-RPC boundary.
 """
 
-import json
-
 import pytest
 
 from aio_pipelines.pipelines import all_pipelines
 from aio_pipelines.runtime import JobError
-from aio_pipelines.stub import NotBuiltYet
-from conftest import run_job
 
 M10 = {
     "photo.align": {"photos": {"layer": "photos"}, "preset": "standard"},
@@ -50,30 +46,13 @@ def test_every_m10_pipeline_is_listed():
         assert p.title and p.description
 
 
-#: The M10 pipelines still stubbed (each stream's real pipeline has its own tests).
-STUBS = sorted(n for n in M10 if isinstance(all_pipelines()[n], NotBuiltYet))
-
-
-@pytest.mark.parametrize("name", STUBS)
-def test_a_stub_fails_with_not_implemented_and_leaves_the_project_untouched(tmp_path, name):
-    pipeline = all_pipelines()[name]
-    if not isinstance(pipeline, NotBuiltYet):
-        pytest.skip(f"{name} is built (its own tests cover it)")
-    with pytest.raises(JobError, match="not implemented"):
-        run_job(pipeline, tmp_path, M10[name])
-    job = json.loads((tmp_path / "jobs" / "j1" / "job.json").read_text("utf-8"))
-    assert job["status"] == "failed"
-    assert "not implemented" in job["error"]
-    assert sorted(p.name for p in tmp_path.iterdir()) == ["jobs"]
-
-
 @pytest.mark.parametrize("name", sorted(M10))
-def test_a_stub_refuses_unknown_parameters(name):
+def test_a_pipeline_refuses_unknown_parameters(name):
     with pytest.raises(JobError, match="does not take: bogus"):
         all_pipelines()[name].validate({**M10[name], "bogus": 1})
 
 
-def test_a_stub_checks_required_names_and_fixed_choices():
+def test_a_pipeline_checks_required_names_and_fixed_choices():
     pipes = all_pipelines()
     with pytest.raises(JobError, match="needs: preset"):
         pipes["photo.align"].validate({"photos": {"layer": "p"}})
