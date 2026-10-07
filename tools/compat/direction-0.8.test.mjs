@@ -15,15 +15,16 @@ const here = fileURLToPath(new URL('.', import.meta.url));
 const corpus = join(here, 'corpus');
 const index = JSON.parse(readFileSync(join(corpus, 'index.json'), 'utf8'));
 
-/** A 0.9 corpus manifest with a video layer, if there is one. */
-function manifestWithVideo() {
+/** A 0.9 corpus manifest with a layer of this kind, if there is one. */
+function manifestWith(kind) {
   for (const p of index.builds['0.9'].files) {
     if (!p.endsWith('manifest.json')) continue;
     const m = JSON.parse(readFileSync(join(corpus, '0.9', p), 'utf8'));
-    if (m.layers.some((l) => l.kind === 'video')) return m;
+    if (m.layers.some((l) => l.kind === kind && (kind !== 'photos' || l.items.length))) return m;
   }
   return null;
 }
+const manifestWithVideo = () => manifestWith('video');
 
 const keys = [
   { t: 0, yaw: 90, pitch: -30, roll: 0, fill: 'smooth' },
@@ -57,5 +58,17 @@ describe('direction keyframes and older builds', () => {
     const after = value.layers.find((l) => l.id === v.id);
     expect(after.directionKeys).toBeUndefined();
     expect(after.offsetMs).toBe(v.offsetMs);
+  });
+
+  it('an 0.8 build opens a manifest with a photo correction and only leaves it out', () => {
+    const m = structuredClone(manifestWith('photos'));
+    expect(m).not.toBeNull();
+    const set = m.layers.find((l) => l.kind === 'photos' && l.items.length);
+    set.items[0].correction = { yawDeg: -4, pitchDeg: 1, rollDeg: 0, offsetM: [0, -2, 0] };
+    const now = current.parseManifest(m);
+    expect(now.ok).toBe(true);
+    const { value, removed } = downgrade(v08.ProjectManifest, m);
+    expect(removed).toEqual([]);
+    expect(value.layers.find((l) => l.id === set.id).items[0].correction).toBeUndefined();
   });
 });

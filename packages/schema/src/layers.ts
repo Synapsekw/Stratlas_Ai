@@ -88,6 +88,19 @@ export const AssetTag = z.object({
   area: z.string().optional(),
 });
 
+/**
+ * A hand correction of a photo's camera ("Align photo to map") against the pose it was imported
+ * with (`pos` and `q` from GPS and the EXIF/XMP gimbal angles): degrees added to its heading
+ * (clockwise from grid north), pitch (up positive) and roll in the project grid frame, and metres
+ * added to its position (local frame). The image, its EXIF and the imported pose stay unchanged.
+ */
+export const PhotoCorrection = z.object({
+  yawDeg: z.number().min(-180).max(180),
+  pitchDeg: z.number().min(-90).max(90),
+  rollDeg: z.number().min(-180).max(180),
+  offsetM: Vec3.optional(),
+});
+
 export const PhotoRef = z.object({
   id: Id,
   src: AssetRef,
@@ -95,6 +108,8 @@ export const PhotoRef = z.object({
   pos: Vec3.optional(),
   q: Quat.optional(),
   lens: LensModel.optional(),
+  /** Set by hand (Align photo to map); every view draws the photo with it. */
+  correction: PhotoCorrection.optional(),
 });
 
 export const PanoRef = z.object({
@@ -270,6 +285,7 @@ export type DirectionKey = z.infer<typeof DirectionKey>;
 export type PoseSample = z.infer<typeof PoseSample>;
 export type FlightRef = z.infer<typeof FlightRef>;
 export type PhotoRef = z.infer<typeof PhotoRef>;
+export type PhotoCorrection = z.infer<typeof PhotoCorrection>;
 export type PanoRef = z.infer<typeof PanoRef>;
 export type VectorStyle = z.infer<typeof VectorStyle>;
 export type LayerDerived = z.infer<typeof LayerDerived>;

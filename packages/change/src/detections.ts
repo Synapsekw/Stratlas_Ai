@@ -6,7 +6,7 @@ import type {
   ProjectManifest,
   Vec3,
 } from '@aio/schema';
-import { groundPoint } from '@aio/video/ground';
+import { correctedPhoto, groundPoint } from '@aio/video/ground';
 import type { DateIndex } from './pairs';
 
 /**
@@ -65,7 +65,8 @@ export async function photoDetectionLocator(
       sizes.set(key, await size(layer, item).catch(() => null));
     }
   return (d, layer) => {
-    const item = d.photo ? photos.get(`${layer}/${d.photo}`) : undefined;
+    const raw = d.photo ? photos.get(`${layer}/${d.photo}`) : undefined;
+    const item = raw ? correctedPhoto(raw) : undefined;
     if (!item?.pos || !item.q || !item.lens || d.frame) return null;
     const space = d.space ?? 'preview';
     const wh: readonly [number, number] | null | undefined =

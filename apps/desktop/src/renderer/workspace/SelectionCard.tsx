@@ -1,4 +1,4 @@
-import { looksEstimated } from '@aio/geo';
+import { correctedPhoto, looksEstimated } from '@aio/geo';
 import type { Issue, Layer, PoseSample, ProjectManifest, Vec3 } from '@aio/schema';
 import {
   crsLabel,
@@ -161,7 +161,8 @@ function describe(
     };
   }
   if (sel?.kind === 'photo' && layer?.kind === 'photos') {
-    const photo = layer.items.find((p) => p.id === sel.id);
+    const found = layer.items.find((p) => p.id === sel.id);
+    const photo = found ? correctedPhoto(found) : undefined;
     return {
       kindLabel: 'Photo',
       icon: 'photo',

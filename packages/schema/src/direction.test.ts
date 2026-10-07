@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LayerPatch } from './builder';
-import { DirectionKey, DirectionKeys, Layer } from './layers';
+import { DirectionKey, DirectionKeys, Layer, PhotoRef } from './layers';
 
 const clip = {
   kind: 'video',
@@ -67,5 +67,27 @@ describe('direction keyframes on a video layer', () => {
     expect(p({ directionKeys: null })).toBe(true);
     expect(p({ directionKeys: [key(0, { fill: 'lookAt' })] })).toBe(false);
     expect(p({ directionKeys: [key(5), key(1)] })).toBe(false);
+  });
+});
+
+describe('photo corrections', () => {
+  const photo = { id: 'p1', src: { path: 'photos/p1.jpg' }, pos: [0, 40, 0], q: [0, 0, 0, 1] };
+
+  it('are optional on a photo and keep heading, pitch, roll and an offset', () => {
+    expect(PhotoRef.safeParse(photo).success).toBe(true);
+    const c = { yawDeg: -4.5, pitchDeg: 2, rollDeg: 0.5, offsetM: [0, -3, 1] };
+    const r = PhotoRef.safeParse({ ...photo, correction: c });
+    expect(r.success && r.data.correction).toEqual(c);
+    expect(PhotoRef.safeParse({ ...photo, correction: { ...c, yawDeg: 200 } }).success).toBe(false);
+    expect(PhotoRef.safeParse({ ...photo, correction: { yawDeg: 1 } }).success).toBe(false);
+  });
+
+  it('are saved through builder:updateLayers by photo id, null clears one', () => {
+    const p = (patch: unknown) => LayerPatch.safeParse(patch).success;
+    expect(p({ photoCorrections: { p1: { yawDeg: 3, pitchDeg: 0, rollDeg: 0 }, p2: null } })).toBe(
+      true,
+    );
+    expect(p({ photoCorrections: {} })).toBe(false);
+    expect(p({ photoCorrections: { p1: { yawDeg: 3 } } })).toBe(false);
   });
 });

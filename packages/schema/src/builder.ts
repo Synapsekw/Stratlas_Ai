@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Id, IsoDate, Mat4, Vec3 } from './common';
-import { CameraOrientation, DirectionKeys, LensModel } from './layers';
+import { CameraOrientation, DirectionKeys, LensModel, PhotoCorrection } from './layers';
 import { ClassCatalogue, SeverityModel } from './severity';
 
 /** What a project is for; picks defaults in the builder and the landing screen. */
@@ -178,6 +178,13 @@ export const LayerPatch = z.union([
     ),
   /** The capture (survey date) of any layer kind (M8); `null` clears it. */
   z.object({ capture: Id.nullable() }).strict(),
+  /** Photo corrections of a photo set by photo id (Align photo to map); `null` clears one. */
+  z
+    .object({ photoCorrections: z.record(Id, PhotoCorrection.nullable()) })
+    .strict()
+    .refine((p) => Object.keys(p.photoCorrections).length > 0, {
+      message: 'Give at least one photo correction',
+    }),
 ]);
 
 export type ProjectType = z.infer<typeof ProjectType>;

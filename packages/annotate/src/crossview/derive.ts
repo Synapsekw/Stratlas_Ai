@@ -1,4 +1,4 @@
-import { clipCamera, clipPoseAt } from '@aio/geo';
+import { clipCamera, clipPoseAt, correctedPhoto } from '@aio/geo';
 import type { Layer, PoseSample, Vec2 } from '@aio/schema';
 import type { DeriveSightings } from '../model/editor';
 import { backProject, geomCenter, type RaySurface } from './backproject';
@@ -23,7 +23,8 @@ export function createDeriver(src: DeriverSources): DeriveSightings {
     if (!scene) return [];
     const layer = src.layers().find((l) => l.id === sighting.layer);
     if (sighting.on === 'image' && layer?.kind === 'photos') {
-      const photo = layer.items.find((p) => p.id === sighting.photo);
+      const found = layer.items.find((p) => p.id === sighting.photo);
+      const photo = found ? correctedPhoto(found) : undefined;
       const size = src.imageSize(layer.id, sighting.photo);
       const px = geomCenter(sighting.geom);
       if (!photo?.pos || !photo.q || !photo.lens || !size || !px) return [];

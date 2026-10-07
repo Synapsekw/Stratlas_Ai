@@ -591,6 +591,44 @@ describe('updateLayers', () => {
     });
   });
 
+  it('saves photo corrections by photo id without touching the imported pose', async () => {
+    const root = await project();
+    const m = await readManifest(root);
+    const set = {
+      kind: 'photos' as const,
+      id: 'photos',
+      name: 'Photos',
+      visible: true,
+      items: [
+        {
+          id: 'p1',
+          src: { path: 'photos/p1.jpg' },
+          pos: [1, 40, 2] as [number, number, number],
+          q: [0, 0, 0, 1] as [number, number, number, number],
+        },
+        { id: 'p2', src: { path: 'photos/p2.jpg' } },
+      ],
+    };
+    await writeManifestFile(root, { ...m, layers: [...m.layers, set] });
+    const r = await updateLayers(root, ['photos'], {
+      photoCorrections: {
+        p1: { yawDeg: 4.12345, pitchDeg: -1, rollDeg: 0, offsetM: [0, 0.0001, 0] },
+      },
+    });
+    const saved = r.manifest.layers.find((l) => l.id === 'photos');
+    expect(saved?.kind === 'photos' && saved.items[0]).toEqual({
+      ...set.items[0],
+      correction: { yawDeg: 4.123, pitchDeg: -1, rollDeg: 0 },
+    });
+    expect(saved?.kind === 'photos' && saved.items[1]).toEqual(set.items[1]);
+    const cleared = await updateLayers(root, ['photos'], { photoCorrections: { p1: null } });
+    const after = cleared.manifest.layers.find((l) => l.id === 'photos');
+    expect(after?.kind === 'photos' && after.items[0]).toEqual(set.items[0]);
+    await expect(
+      updateLayers(root, ['photos'], { photoCorrections: { nope: null } }),
+    ).rejects.toThrow(/nope/);
+  });
+
   it('saves camera direction keyframes rounded and in order, and clears them', async () => {
     const root = await project();
     const m = await readManifest(root);

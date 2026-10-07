@@ -1,4 +1,4 @@
-import { clipCamera, clipPoseAt } from '@aio/geo';
+import { clipCamera, clipPoseAt, correctedPhoto } from '@aio/geo';
 import type { FrameRef, Layer, LensModel, Quat, Vec3 } from '@aio/schema';
 import { clockForVideoTime } from './clock';
 import type { Flight } from './flight';
@@ -116,7 +116,8 @@ export function calibratedVideoPose(layer: VideoLayer, flight: Flight, v: number
 /** A photo's camera, or null when the photo has no position or orientation. */
 export function photoPose(item: PhotoLayer['items'][number]): ViewPose | null {
   if (!item.pos || !item.q) return null;
-  return { pos: item.pos, q: item.q, lens: item.lens ?? DEFAULT_PHOTO_LENS };
+  const p = correctedPhoto(item);
+  return { pos: p.pos ?? item.pos, q: p.q ?? item.q, lens: item.lens ?? DEFAULT_PHOTO_LENS };
 }
 
 /* ------------------------------------------------------------------ ground footprints */

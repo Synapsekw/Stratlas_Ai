@@ -153,6 +153,32 @@ export async function updateLayers(
       else next.capture = patch.capture;
       return next;
     }
+    if ('photoCorrections' in patch) {
+      if (l.kind !== 'photos')
+        throw new Error(`"${l.name}" is not a photo set; photo corrections belong to photos.`);
+      const fixes = patch.photoCorrections;
+      for (const id of Object.keys(fixes))
+        if (!l.items.some((p) => p.id === id))
+          throw new Error(`Photo "${id}" is not in "${l.name}".`);
+      const r = (v: number) => Math.round(v * 1000) / 1000;
+      const items = l.items.map((p) => {
+        if (!(p.id in fixes)) return p;
+        const c = fixes[p.id];
+        const next = { ...p };
+        if (!c) delete next.correction;
+        else
+          next.correction = {
+            yawDeg: r(c.yawDeg),
+            pitchDeg: r(c.pitchDeg),
+            rollDeg: r(c.rollDeg),
+            ...(c.offsetM?.some((v) => Math.abs(v) >= 5e-4)
+              ? { offsetM: c.offsetM.map(r) as Vec3 }
+              : {}),
+          };
+        return next;
+      });
+      return { ...l, items };
+    }
     if ('transform' in patch) {
       if (l.kind !== 'mesh')
         throw new Error(`"${l.name}" is not a model; only models take a transform.`);
