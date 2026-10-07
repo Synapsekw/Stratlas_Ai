@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { AssetRef, HexColor, Id, IsoTime, Mat4, Quat, Vec3 } from './common';
-import { DirectionKeys, PhotoCorrection } from './direction';
 
 export const LensModel = z.discriminatedUnion('model', [
   z.object({
@@ -52,8 +51,6 @@ export const PhotoRef = z.object({
   pos: Vec3.optional(),
   q: Quat.optional(),
   lens: LensModel.optional(),
-  /** Set by hand (Align photo to map); every view draws the photo with it. */
-  correction: PhotoCorrection.optional(),
 });
 
 export const PanoRef = z.object({
@@ -196,12 +193,6 @@ export const Layer = z.discriminatedUnion('kind', [
      * bias; none means zero.
      */
     positionOffsetM: Vec3.optional(),
-    /**
-     * Camera direction keyframes set by hand ("Set camera direction"). With at least one, the
-     * camera orientation comes from them, not from the flight log or `orientation`; the flight
-     * file is never rewritten. Absent or empty: the logged orientation with its bias.
-     */
-    directionKeys: DirectionKeys.optional(),
     poster: AssetRef.optional(),
   }),
   z.object({ kind: z.literal('photos'), ...base, items: z.array(PhotoRef) }),

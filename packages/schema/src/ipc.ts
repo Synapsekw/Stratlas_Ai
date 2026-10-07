@@ -19,6 +19,7 @@ import { AiPolicy, EditPolicy, ExportKind, PackageInfo, PackageOrigin } from './
 import { BoundaryEditsFile, VolumesFile } from './volumes';
 import { DetectionsFile } from './detections';
 import { NarrativeFile, ReportContentsSettings } from './report';
+import { OrientationFile } from './orientation';
 import { ReleaseNotes, UpdateStatus } from './update';
 import { ChangeKind, ChangeSet, ChangeSetId, ChangeSetSummary, ChangeThresholds } from './change';
 import { ProcModel, ProcModelId, ProcModelSummary } from './procmodel';
@@ -1988,6 +1989,22 @@ export const ipc = {
   'server:forget': {
     request: z.object({ id: z.string().min(1).max(64) }).strict(),
     response: OkOrFailure,
+  },
+  /**
+   * The open project's `orientation.json` (`aio.orientation/1`: video direction keyframes and
+   * photo corrections set by hand): null when none was saved; `readOnly` for a package.
+   */
+  'orientation:read': {
+    request: z.object({ projectId: z.string().min(1) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), file: OrientationFile.nullable(), readOnly: z.boolean() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /** Replace `orientation.json` atomically (journalled, a `.bak` of the previous file). */
+  'orientation:write': {
+    request: z.object({ projectId: z.string().min(1), file: OrientationFile }).strict(),
+    response: z.object({ ok: z.boolean(), error: z.string().optional() }),
   },
 } as const satisfies Record<string, { request: z.ZodType; response: z.ZodType }>;
 

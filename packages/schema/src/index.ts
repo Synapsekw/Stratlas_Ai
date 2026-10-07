@@ -1,6 +1,5 @@
 export * from './common';
 export * from './layers';
-export * from './direction';
 export * from './severity';
 export * from './annotation';
 export * from './manifest';
@@ -27,3 +26,5 @@ export * from './blobs';
 export * from './sync';
 export * from './versions';
 export * from './entitlements';
+// Video direction keyframes and photo corrections (orientation.json, proposal)
+export * from './orientation';

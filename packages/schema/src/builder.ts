@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { Id, IsoDate, Mat4, Vec3 } from './common';
-import { DirectionKeys, PhotoCorrection } from './direction';
 import { CameraOrientation, LensModel } from './layers';
 import { ClassCatalogue, SeverityModel } from './severity';
 
@@ -154,8 +153,7 @@ export const ImportItem = z.object({
 
 /**
  * Patch for `builder:updateLayers`: a mesh georeference, or a video calibration (time offset,
- * lens, orientation bias, position offset, camera direction keyframes; `null` clears a bias or
- * the keyframes).
+ * lens, orientation bias, position offset; `null` clears a bias).
  */
 export const LayerPatch = z.union([
   z.object({ transform: Mat4 }).strict(),
@@ -165,7 +163,6 @@ export const LayerPatch = z.union([
       lens: LensModel.optional(),
       orientation: CameraOrientation.nullable().optional(),
       positionOffsetM: Vec3.nullable().optional(),
-      directionKeys: DirectionKeys.nullable().optional(),
     })
     .strict()
     .refine(
@@ -173,19 +170,11 @@ export const LayerPatch = z.union([
         p.offsetMs !== undefined ||
         p.lens !== undefined ||
         p.orientation !== undefined ||
-        p.positionOffsetM !== undefined ||
-        p.directionKeys !== undefined,
-      { message: 'Give offsetMs, lens, orientation, positionOffsetM or directionKeys' },
+        p.positionOffsetM !== undefined,
+      { message: 'Give offsetMs, lens, orientation or positionOffsetM' },
     ),
   /** The capture (survey date) of any layer kind (M8); `null` clears it. */
   z.object({ capture: Id.nullable() }).strict(),
-  /** Photo corrections of a photo set by photo id (Align photo to map); `null` clears one. */
-  z
-    .object({ photoCorrections: z.record(Id, PhotoCorrection.nullable()) })
-    .strict()
-    .refine((p) => Object.keys(p.photoCorrections).length > 0, {
-      message: 'Give at least one photo correction',
-    }),
 ]);
 
 export type ProjectType = z.infer<typeof ProjectType>;
