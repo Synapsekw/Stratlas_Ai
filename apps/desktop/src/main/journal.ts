@@ -57,6 +57,7 @@ import {
 } from '@aio/journal';
 import {
   checkpointFileName,
+  ipc,
   JOURNAL_CHECKPOINTS_DIR,
   JOURNAL_DEVICES_DIR,
   JOURNAL_DIR,
@@ -182,6 +183,39 @@ const WRITERS: Partial<
   }),
 };
 
+/**
+ * Channels that only read a project. Every other channel naming a `projectId` waits for the
+ * folder's open check (recovery, outside edits) before its handler runs, so nothing it writes is
+ * taken into the first baseline or recorded as changed outside the app.
+ */
+const READS: ReadonlySet<IpcChannel> = new Set<IpcChannel>([
+  'project:readVolumes',
+  'detections:read',
+  'detections:maskAssistStatus',
+  'report:list',
+  'report:readNarrative',
+  'change:list',
+  'change:read',
+  'model:list',
+  'model:read',
+  'ai:project',
+  'ai:status',
+  'members:list',
+  'collab:read',
+  'team:status',
+  'sync:conflicts',
+  'sync:quarantine',
+  'blobs:status',
+  'thumbs:put',
+]);
+
+/** Does a request schema of the contract have a `projectId` (an object, or any union member)? */
+function namesProject(schema: unknown): boolean {
+  const s = schema as { shape?: Record<string, unknown>; options?: unknown[] } | undefined;
+  if (s?.shape && 'projectId' in s.shape) return true;
+  return Array.isArray(s?.options) && s.options.some(namesProject);
+}
+
 const Meta = z.object({
   schema: z.literal('aio.journal-cache/1'),
   root: z.string(),
@@ -209,7 +243,6 @@ interface ProjectState {
   others: Record<string, string>;
   /** Heads last written into an op's `deps`. */
   depsSent: string;
-  queue: Promise<unknown>;
   entries: { stamp: string; list: AuditEntry[] } | null;
   /** The open segment of this device's chain (kept open: an append is one write and a sync). */
   handle: { file: string; fh: FileHandle } | null;
@@ -324,11 +357,16 @@ export type JournalService = ReturnType<typeof createJournalService>;
 export function createJournalService(deps: JournalServiceDeps) {
   const store = deps.store ?? createJournalStore();
   const states = new Map<string, Promise<ProjectState>>();
+  /** Per folder: the last journal step queued (`serial`). */
+  const queues = new Map<string, Promise<unknown>>();
+  /** Per folder: its open check while it runs (`opened`). */
+  const openChecks = new Map<string, Promise<void>>();
   const projectIds = new Map<string, string>();
   const jobs = new Map<string, { root: string; pipeline: string }>();
   const cacheRoot = join(deps.userData, 'journal-cache');
 
-  async function load(root: string): Promise<ProjectState> {
+  /** The journal state of a folder, read once. */
+  function load(root: string): Promise<ProjectState> {
     const key = keyOf(root);
     let st = states.get(key);
     if (!st) {
@@ -361,7 +399,6 @@ export function createJournalService(deps: JournalServiceDeps) {
           writer: null,
           others: {},
           depsSent: '',
-          queue: Promise.resolve(),
           entries: null,
           handle: null,
         };
@@ -369,6 +406,11 @@ export function createJournalService(deps: JournalServiceDeps) {
         return state;
       })();
       states.set(key, st);
+      // a folder that could not be read is tried again next time
+      const made = st;
+      made.catch(() => {
+        if (states.get(key) === made) states.delete(key);
+      });
     }
     return st;
   }
@@ -377,11 +419,19 @@ export function createJournalService(deps: JournalServiceDeps) {
     await writeAtomic(join(st.dir, 'meta.json'), `${JSON.stringify(st.meta, null, 2)}\n`);
   }
 
+  /** Run `fn` after every earlier journal step of the folder `key`. */
+  function serialKey<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const run = (queues.get(key) ?? Promise.resolve()).then(fn, fn);
+    queues.set(
+      key,
+      run.catch(() => undefined),
+    );
+    return run;
+  }
+
   /** Run `fn` after every earlier journal step of the same project. */
   function serial<T>(st: ProjectState, fn: () => Promise<T>): Promise<T> {
-    const run = st.queue.then(fn, fn);
-    st.queue = run.catch(() => undefined);
-    return run;
+    return serialKey(keyOf(st.root), fn);
   }
 
   async function writerFor(st: ProjectState): Promise<{ w: ChainWriter; id: JournalIdentity }> {
@@ -609,16 +659,52 @@ export function createJournalService(deps: JournalServiceDeps) {
     if (projectId && records.length) deps.emitChanged?.({ projectId, records });
   }
 
-  /** A folder project opened: recover, then record what changed outside the app. */
-  async function opened(projectId: string, root: string): Promise<void> {
-    projectIds.set(keyOf(root), projectId);
-    const st = await load(root);
-    if (st.meta.journal === 'off') return;
-    const touched = await serial(st, async () => {
+  /**
+   * A folder project opened: recover a half-done write, then record what changed outside the app.
+   * It runs after the project is shown (the first look at a folder copies a baseline of every
+   * record file, and the replica id is looked up in userData), as the folder's next journal step:
+   * queued before the open answers, so recovery and outside edits come before any later write.
+   * Never rejects: the journal never blocks opening a project.
+   */
+  function opened(projectId: string, root: string): Promise<void> {
+    const key = keyOf(root);
+    projectIds.set(key, projectId);
+    const check = serialKey(key, async () => {
+      const st = await load(root);
+      if (st.meta.journal === 'off') return [];
       await recover(st);
       return reconcile(st, null, { external: { found: 'open' } });
+    }).then(
+      (touched) => {
+        emit(root, touched);
+      },
+      (e: unknown) => {
+        console.warn(`Journal: could not check ${root} on open (${String(e)}).`);
+      },
+    );
+    openChecks.set(key, check);
+    void check.then(() => {
+      if (openChecks.get(key) === check) openChecks.delete(key);
     });
-    emit(root, touched);
+    return check;
+  }
+
+  /** Wait for the open check of the folder a request names (`projectId`), if one is running. */
+  async function afterOpenCheck(req: unknown): Promise<void> {
+    const id = (req as { projectId?: unknown } | null)?.projectId;
+    if (typeof id !== 'string' || openChecks.size === 0) return;
+    const root = deps.projects.root(id);
+    if (root !== undefined) await openChecks.get(keyOf(root));
+  }
+
+  /** Close a folder's kept segment after its pending steps (an append in flight finishes first). */
+  async function release(st: Promise<ProjectState>): Promise<void> {
+    try {
+      const s = await st;
+      await serial(s, () => closeHandle(s));
+    } catch {
+      // a folder that could not be read has nothing open
+    }
   }
 
   /** A write through a channel whose result is known: ops, then the handler's write. */
@@ -694,6 +780,15 @@ export function createJournalService(deps: JournalServiceDeps) {
 
   /** Wrap a channel's handler (main's `handle` does this for every channel). */
   function wrap<C extends IpcChannel>(channel: C, handler: Handler<C>): Handler<C> {
+    const journaled = journalHandler(channel, handler);
+    if (READS.has(channel) || !namesProject(ipc[channel].request)) return journaled;
+    return async (req) => {
+      await afterOpenCheck(req);
+      return journaled(req);
+    };
+  }
+
+  function journalHandler<C extends IpcChannel>(channel: C, handler: Handler<C>): Handler<C> {
     const writer = WRITERS[channel] as
       | ((req: IpcRequest<C>) => {
           projectId: string;
@@ -762,12 +857,11 @@ export function createJournalService(deps: JournalServiceDeps) {
       return async (req) => {
         const r = (await handler(req)) as IpcResponse<'project:open'>;
         if (r.ok && !r.package) {
-          try {
-            await opened(r.id, r.root);
-          } catch (e) {
-            // the journal never blocks opening a project
-            console.warn(`Journal: could not check ${r.root} on open (${String(e)}).`);
-          }
+          // shown first: the open check runs after, and writes to the folder wait for it
+          void opened(r.id, r.root);
+          // one project is open at a time: the segments kept open for the others are closed
+          const key = keyOf(r.root);
+          for (const [k, st] of states) if (k !== key) void release(st);
         }
         return r as IpcResponse<C>;
       };
@@ -1110,13 +1204,14 @@ export function createJournalService(deps: JournalServiceDeps) {
         st.entries = null;
         return removed;
       }),
-    /** Close the kept segment of a folder (project closed, app quitting). */
+    /** Close the kept segment of a folder (project closed), after its pending steps. */
     close: async (root: string) => {
       const st = states.get(keyOf(root));
-      if (st) await closeHandle(await st);
+      if (st) await release(st);
     },
+    /** Close every kept segment (app quitting, tests), after the pending steps of each folder. */
     closeAll: async () => {
-      for (const st of states.values()) await closeHandle(await st);
+      await Promise.all([...states.values()].map(release));
     },
     wrap,
     opened,

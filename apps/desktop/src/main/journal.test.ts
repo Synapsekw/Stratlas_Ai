@@ -1,5 +1,13 @@
 import { generateKeyPairSync } from 'node:crypto';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  mkdirSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { signerFromKey, verifyJournal } from '@aio/journal';
@@ -13,6 +21,7 @@ import {
   readJournalFiles,
   registerJournalIpc,
   type JournalIdentity,
+  type JournalService,
 } from './journal';
 import { collectHandlers } from './notYet';
 
@@ -27,7 +36,10 @@ const identity: JournalIdentity = {
 };
 
 const dirs: string[] = [];
-afterEach(() => {
+/** Every service a test made: their kept segments are closed after it (no handle left to GC). */
+const journals: JournalService[] = [];
+afterEach(async () => {
+  await Promise.all(journals.splice(0).map((j) => j.closeAll()));
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 function tmp(name: string) {
@@ -69,18 +81,24 @@ function setup(opts: { afterAppend?: (rel: string) => void; userData?: string } 
 function service(
   root: string,
   userData: string,
-  extra: { afterAppend?: (rel: string) => void } = {},
+  extra: {
+    afterAppend?: (rel: string) => void;
+    replicaOf?: (root: string) => Promise<string>;
+    identity?: () => Promise<JournalIdentity>;
+  } = {},
 ) {
   const changed: unknown[] = [];
   const pkg = new Set<string>();
   const journal = createJournalService({
     userData,
     projects: { root: (id) => (id === 'p' ? root : undefined), package: (id) => pkg.has(id) },
-    identity: () => Promise.resolve(identity),
+    identity: extra.identity ?? (() => Promise.resolve(identity)),
     emitChanged: (e) => changed.push(e),
     now: () => Date.UTC(2026, 9, 7, 9, 0, 0),
     ...(extra.afterAppend ? { afterAppend: extra.afterAppend } : {}),
+    ...(extra.replicaOf ? { replicaOf: extra.replicaOf } : {}),
   });
+  journals.push(journal);
   const writeIssues = journal.wrap('project:writeIssues', async ({ issues }) => {
     await writeJsonAtomic(
       join(root, 'issues.json'),
@@ -89,7 +107,8 @@ function service(
     );
     return { ok: true };
   });
-  const open = journal.wrap('project:open', () =>
+  /** `project:open` as main wraps it: it answers before the journal's open check. */
+  const openNow = journal.wrap('project:open', () =>
     Promise.resolve({
       ok: true as const,
       id: 'p',
@@ -98,7 +117,22 @@ function service(
       issues: [],
     }),
   );
-  return { journal, changed, writeIssues, open, pkg };
+  /** Open, then wait for the open check (recovery, outside edits). */
+  const open = async (req: { path: string }) => {
+    const r = await openNow(req);
+    await journal.flush(root);
+    return r;
+  };
+  return { journal, changed, writeIssues, open, openNow, pkg };
+}
+
+/** A promise released by the test. */
+function held<T>() {
+  let release!: (v: T) => void;
+  const promise = new Promise<T>((r) => {
+    release = r;
+  });
+  return { promise, release };
 }
 
 const issuesOnDisk = (root: string) =>
@@ -392,11 +426,173 @@ describe('journal service', () => {
     expect(readdirSync(root)).not.toContain('journal');
   });
 
+  it('answers an open before any journal work: no replica, baseline copy or device key on the way', async () => {
+    // a small private project opened on a cold first start (CI run 37575692965: the project card
+    // stayed on "Opening" while the journal took its first look at the folder)
+    const { root, userData } = setup();
+    const gate = held<string>();
+    const order: string[] = [];
+    let replicaAsked = false;
+    const s = service(root, userData, {
+      replicaOf: () => {
+        replicaAsked = true;
+        return gate.promise;
+      },
+      identity: () => {
+        order.push('device key asked');
+        return Promise.resolve(identity);
+      },
+    });
+    const cache = join(userData, 'journal-cache');
+    // the replica lookup never answers until released: an open that waited for it would not answer
+    const answered = await Promise.race([
+      (async () => {
+        await s.openNow({ path: root });
+        return 'answered';
+      })(),
+      new Promise<string>((r) => {
+        setTimeout(() => {
+          r('blocked');
+        }, 2000);
+      }),
+    ]);
+    expect(answered).toBe('answered');
+    order.push('open answered');
+    expect(existsSync(cache)).toBe(false);
+
+    gate.release('r_abcdefghijklmnop');
+    await s.journal.flush(root);
+    order.push('open check done');
+    // the first look took the baseline after the project was shown, and never needed the vault
+    expect(replicaAsked).toBe(true);
+    expect(readdirSync(cache)).toHaveLength(1);
+    expect(order).toEqual(['open answered', 'open check done']);
+    expect(s.changed).toEqual([]);
+  });
+
+  it('holds a write made during the open check until outside edits are recorded', async () => {
+    const { root, userData } = setup();
+    const first = service(root, userData);
+    await first.open({ path: root });
+    await first.writeIssues({ projectId: 'p', issues: [{ ...f01, severity: 4 }] });
+    await first.journal.closeAll();
+    writeFileSync(
+      join(root, 'issues.json'),
+      JSON.stringify({ schema: 'aio.issues/1', issues: [{ ...f01, severity: 1 }] }),
+    );
+
+    const gate = held<string>();
+    const s = service(root, userData, { replicaOf: () => gate.promise });
+    await s.openNow({ path: root });
+    let saved = false;
+    const write = (async () => {
+      const r = await s.writeIssues({ projectId: 'p', issues: [{ ...f01, severity: 2 }] });
+      saved = true;
+      return r;
+    })();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(saved).toBe(false);
+    expect(issuesOnDisk(root)[0]?.severity).toBe(1);
+
+    gate.release((await first.journal.meta(root)).replicaId);
+    expect(await write).toEqual({ ok: true });
+    const h = await s.journal.history({ projectId: 'p' });
+    if (!h.ok) throw new Error(h.error);
+    expect(h.entries.map((e) => [e.how, e.changes?.[0]?.before, e.changes?.[0]?.after])).toEqual([
+      ['hand', 1, 2],
+      ['external', 4, 1],
+      ['hand', 3, 4],
+    ]);
+  });
+
+  it('holds a write made during the open check until a crashed write is finished', async () => {
+    const { root, userData } = setup();
+    const crashing = service(root, userData, {
+      afterAppend: () => {
+        throw new Error('power cut');
+      },
+    });
+    await crashing.open({ path: root });
+    await expect(
+      crashing.writeIssues({ projectId: 'p', issues: [{ ...f01, severity: 5 }] }),
+    ).rejects.toThrow('power cut');
+    await crashing.journal.closeAll();
+
+    const gate = held<string>();
+    const s = service(root, userData, { replicaOf: () => gate.promise });
+    await s.openNow({ path: root });
+    const write = s.writeIssues({ projectId: 'p', issues: [{ ...f01, severity: 2 }] });
+    gate.release((await crashing.journal.meta(root)).replicaId);
+    expect(await write).toEqual({ ok: true });
+    expect(issuesOnDisk(root)[0]?.severity).toBe(2);
+    const h = await s.journal.history({ projectId: 'p' });
+    if (!h.ok) throw new Error(h.error);
+    // the crashed write was finished first: the new one changes its result, not the old file
+    expect(h.entries.map((e) => [e.changes?.[0]?.before, e.changes?.[0]?.after])).toEqual([
+      [5, 2],
+      [3, 5],
+    ]);
+  });
+
+  it('runs a comparison started during the first open check after it, as its own run', async () => {
+    const { root, userData } = setup();
+    const gate = held<string>();
+    const s = service(root, userData, { replicaOf: () => gate.promise });
+    await s.openNow({ path: root });
+    const ran: string[] = [];
+    const compute = s.journal.wrap('change:compute', () => {
+      ran.push('compute');
+      mkdirSync(join(root, 'change'), { recursive: true });
+      writeFileSync(
+        join(root, 'change', 'c1-c2.json'),
+        JSON.stringify({ schema: 'aio.change/1', id: 'c1-c2', items: [] }),
+      );
+      return Promise.resolve({ ok: true as const, ids: ['c1-c2'] });
+    });
+    const done = compute({ jobId: 'cmp-1', projectId: 'p', from: 'c1', to: 'c2', kinds: [] });
+    await new Promise((r) => setTimeout(r, 50));
+    // not taken into the first baseline: the handler waits for it
+    expect(ran).toEqual([]);
+    gate.release('r_abcdefghijklmnop');
+    await done;
+    const h = await s.journal.history({ projectId: 'p' });
+    if (!h.ok) throw new Error(h.error);
+    expect(h.entries.map((e) => e.how)).toEqual(['pipeline']);
+  });
+
   it('leaves channels that are not writers untouched', () => {
     const { root, userData } = setup();
     const s = service(root, userData);
     const h: Handler<IpcChannel> = () => ({}) as never;
     expect(s.journal.wrap('app:getInfo', h as Handler<'app:getInfo'>)).toBe(h);
+  });
+
+  it('holds project writers for the open check, never the reads a shown project makes', () => {
+    const { root, userData } = setup();
+    const s = service(root, userData);
+    const h: Handler<IpcChannel> = () => ({}) as never;
+    const waits = (c: IpcChannel) => s.journal.wrap(c, h) !== h;
+    // what the renderer asks right after an open: never held up by the journal
+    const reads: IpcChannel[] = [
+      'collab:read',
+      'members:list',
+      'sync:conflicts',
+      'sync:quarantine',
+      'team:status',
+      'project:readVolumes',
+      'change:list',
+      'report:list',
+      'blobs:status',
+      'ai:project',
+    ];
+    expect(reads.filter(waits)).toEqual([]);
+    const writers: IpcChannel[] = [
+      'project:writeCentreline',
+      'builder:updateLayers',
+      'change:compute',
+      'model:build',
+    ];
+    expect(writers.filter(waits)).toEqual(writers);
   });
 });
 
