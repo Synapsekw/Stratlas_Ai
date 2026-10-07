@@ -12,6 +12,7 @@ import {
   opencvEnv,
   parseCMakeCache,
   pick,
+  poissonConfigure,
   pycolmapSettings,
   targetFor,
   vcpkgConfiguration,
@@ -197,6 +198,41 @@ describe('OpenCV', () => {
     ])
       expect(env.CMAKE_ARGS).toContain(flag);
     for (const [k, v] of Object.entries(c.require)) expect(c.cmake[k], k).toBe(v);
+  });
+});
+
+describe('PoissonRecon (for G3)', () => {
+  const c = byName.poissonrecon;
+
+  it('is pinned by commit (no upstream tags) and installs where photo/native.py looks', () => {
+    expect(c).toMatchObject({
+      status: 'required',
+      commit: '262b0f539d404057d1f36e1adc07fc9388678899',
+    });
+    expect(c.tag).toBeUndefined();
+    expect(c.outputs).toEqual([
+      'tools/poissonrecon/bin/PoissonRecon*',
+      'tools/poissonrecon/bin/SurfaceTrimmer*',
+    ]);
+  });
+
+  it('builds both tools from upstream sources with the vendored image libraries as C', () => {
+    const text = readFileSync(join(NATIVE_DIR, 'poissonrecon', 'CMakeLists.txt'), 'utf8');
+    expect(text).toMatch(/foreach\(tool PoissonRecon SurfaceTrimmer\)/);
+    expect(text).toMatch(/foreach\(lib ZLIB PNG JPEG\)/);
+    expect(text).toMatch(/PROPERTIES LANGUAGE C\)/);
+    expect(text).toMatch(/install\(TARGETS PoissonRecon SurfaceTrimmer RUNTIME DESTINATION bin\)/);
+    const mac = poissonConfigure({
+      platform: 'darwin',
+      src: 's',
+      build: 'b',
+      deploymentTarget: '14.0',
+      libomp: '/opt/homebrew/opt/libomp',
+    });
+    expect(mac).toEqual(
+      expect.arrayContaining(['-DPOISSONRECON_SOURCE=s', '-DOpenMP_ROOT=/opt/homebrew/opt/libomp']),
+    );
+    expect(poissonConfigure({ platform: 'win32', src: 's', build: 'b' })).toContain('-A');
   });
 });
 

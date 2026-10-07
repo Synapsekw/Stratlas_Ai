@@ -221,17 +221,23 @@ function removeWheels(dir, prefix) {
 /** Clone a pinned tag and check that it is the pinned commit. */
 function fetchSource(r, c, src) {
   rmSync(src, { recursive: true, force: true });
-  r.run('git', [
-    '-c',
-    'core.autocrlf=false',
-    'clone',
-    '--depth',
-    '1',
-    '--branch',
-    c.tag,
-    c.source,
-    src,
-  ]);
+  if (c.tag)
+    r.run('git', [
+      '-c',
+      'core.autocrlf=false',
+      'clone',
+      '--depth',
+      '1',
+      '--branch',
+      c.tag,
+      c.source,
+      src,
+    ]);
+  else {
+    // No release tag upstream: the pinned commit.
+    r.run('git', ['-c', 'core.autocrlf=false', 'clone', '--filter=blob:none', c.source, src]);
+    r.run('git', ['-C', src, '-c', 'advice.detachedHead=false', 'checkout', c.commit]);
+  }
   if (!r.plan) {
     const head = r.run('git', ['-C', src, 'rev-parse', 'HEAD'], { capture: true }).trim();
     if (head !== c.commit)
@@ -399,7 +405,63 @@ async function buildPdal(r, c, ctx) {
   return { cmake: {}, ports: r.plan ? [] : installedPorts(installed, ctx.triplet), sources: [] };
 }
 
-const BUILDERS = { colmap: buildColmap, 'opencv-python-headless': buildOpencv, pdal: buildPdal };
+/** The configure command for our PoissonRecon CMake project (poissonrecon/CMakeLists.txt). */
+export function poissonConfigure(ctx) {
+  const args = [
+    '-S',
+    join(NATIVE_DIR, 'poissonrecon').split('\\').join('/'),
+    '-B',
+    ctx.build,
+    ...(ctx.platform === 'win32' ? ['-A', 'x64'] : ['-G', 'Ninja']),
+    `-DPOISSONRECON_SOURCE=${ctx.src}`,
+    '-DCMAKE_BUILD_TYPE=Release',
+  ];
+  if (ctx.platform === 'darwin') {
+    args.push(
+      '-DCMAKE_OSX_ARCHITECTURES=arm64',
+      `-DCMAKE_OSX_DEPLOYMENT_TARGET=${ctx.deploymentTarget}`,
+    );
+    if (ctx.libomp) args.push(`-DOpenMP_ROOT=${ctx.libomp}`);
+  }
+  return args;
+}
+
+async function buildPoissonRecon(r, c, ctx) {
+  const src = join(ctx.work, 'src', 'poissonrecon');
+  const build = join(ctx.work, 'build', 'poissonrecon');
+  const dest = join(ctx.out, 'tools', 'poissonrecon');
+  fetchSource(r, c, src);
+  rmSync(build, { recursive: true, force: true });
+  rmSync(dest, { recursive: true, force: true });
+  r.run('cmake', poissonConfigure({ ...ctx, src, build }));
+  r.run('cmake', ['--build', build, '--config', 'Release', '--parallel']);
+  r.run('cmake', ['--install', build, '--config', 'Release', '--prefix', dest]);
+  if (ctx.platform === 'darwin' && !r.plan) {
+    // Homebrew's libomp goes beside the tools, which then load it from there.
+    mkdirSync(join(dest, 'lib'), { recursive: true });
+    cpSync(join(ctx.libomp, 'lib', 'libomp.dylib'), join(dest, 'lib', 'libomp.dylib'), {
+      dereference: true,
+    });
+    r.run('install_name_tool', ['-id', '@rpath/libomp.dylib', join(dest, 'lib', 'libomp.dylib')]);
+    r.run('codesign', ['--force', '--sign', '-', join(dest, 'lib', 'libomp.dylib')]);
+    for (const tool of ['PoissonRecon', 'SurfaceTrimmer']) {
+      const exe = join(dest, 'bin', tool);
+      const deps = r.run('otool', ['-L', exe], { capture: true });
+      const old = /^\s*(\S*libomp\.dylib)/m.exec(deps)?.[1];
+      if (old)
+        r.run('install_name_tool', ['-change', old, '@executable_path/../lib/libomp.dylib', exe]);
+      r.run('codesign', ['--force', '--sign', '-', exe]);
+    }
+  }
+  return { cmake: {}, ports: [], sources: [src] };
+}
+
+const BUILDERS = {
+  colmap: buildColmap,
+  'opencv-python-headless': buildOpencv,
+  pdal: buildPdal,
+  poissonrecon: buildPoissonRecon,
+};
 
 async function main() {
   const { values } = parseArgs({

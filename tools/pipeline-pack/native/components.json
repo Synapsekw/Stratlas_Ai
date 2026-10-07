@@ -177,12 +177,40 @@
       "note": "The PDAL command-line tool into <pack>/tools/pdal, which aio_pipelines/pointcloud.py looks for; no plugins, PROJ without network"
     },
     {
+      "name": "poissonrecon",
+      "version": "8.76",
+      "spdx": "MIT AND Zlib AND Libpng AND IJG",
+      "source": "https://github.com/mkazhdan/PoissonRecon",
+      "commit": "262b0f539d404057d1f36e1adc07fc9388678899",
+      "status": "required",
+      "cmakeProject": "poissonrecon",
+      "outputs": ["tools/poissonrecon/bin/PoissonRecon*", "tools/poissonrecon/bin/SurfaceTrimmer*"],
+      "note": "PoissonRecon and SurfaceTrimmer for photo/mesh.py (G3), found at <pack>/tools/poissonrecon or AIO_POISSONRECON and AIO_SURFACETRIMMER. Built by our CMake project (poissonrecon/CMakeLists.txt) from upstream's sources; no version tags after V8, so pinned by commit (Version 8.76, 29 Apr 2026).",
+      "includes": [
+        {
+          "name": "zlib",
+          "spdx": "Zlib",
+          "note": "Vendored in PoissonRecon, static"
+        },
+        {
+          "name": "libpng",
+          "spdx": "Libpng",
+          "note": "Vendored in PoissonRecon, static"
+        },
+        {
+          "name": "IJG JPEG",
+          "spdx": "IJG",
+          "note": "Vendored in PoissonRecon, static"
+        }
+      ]
+    },
+    {
       "name": "texrecon",
       "version": "c5a4d0c9a434553533c6e39d426e349fcfa5f48d",
       "spdx": "BSD-3-Clause",
       "source": "https://github.com/OpenDroneMap/mvs-texturing",
       "status": "deferred",
-      "why": "mvs-texturing needs MVE's libraries built first (ODM's superbuild supplies them; upstream MVE builds with Makefiles and has no Windows build) and fetches mapMAP and rayint (a branch, not a pinned commit) at configure time. G3's texturing spike decides between texrecon and our own texturing (xatlas and Pillow, plan section Meshing and texturing) before this recipe is built; mapMAP (BSD-3-Clause, dset Zlib) and rayint (BSD-3-Clause) are allowed."
+      "why": "Recipe only (G3's photo/texture.py has the full recipe and falls back to its own texturing): mvs-texturing with RESEARCH=OFF (no research-only gco), Eigen from vcpkg eigen3 with EIGEN_MPL2_ONLY instead of the Eigen 3.3.2 tarball its elibs/CMakeLists.txt downloads, TBB, libpng, libjpeg-turbo and libtiff from vcpkg, mapMAP at fa526e0 (BSD-3-Clause, dset Zlib) and rayint (BSD-3-Clause; fetched from the `cuda` branch, to be pinned by commit). Not built in this round: it needs MVE's libraries built first (ODM's superbuild supplies them; upstream MVE builds with Makefiles and has no Windows build). Install into <pack>/tools/texrecon (AIO_TEXRECON)."
     },
     {
       "name": "mve",

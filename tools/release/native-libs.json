@@ -857,10 +857,10 @@
     },
     {
       "name": "libomp",
-      "version": "LLVM (pycolmap macOS)",
+      "version": "LLVM (Homebrew; pycolmap and PoissonRecon on macOS)",
       "spdx": "Apache-2.0 WITH LLVM-exception",
       "source": "https://openmp.llvm.org/",
-      "files": ["**/.dylibs/libomp*.dylib"],
+      "files": ["**/.dylibs/libomp*.dylib", "tools/poissonrecon/lib/libomp*.dylib"],
       "linkage": "shared"
     },
     {
@@ -876,6 +876,20 @@
       ],
       "linkage": "shared",
       "note": "Our vcpkg build (tools/pipeline-pack/native/pdal); its dependencies are linked statically and listed under ports"
+    },
+    {
+      "name": "poissonrecon",
+      "version": "8.76 (our build)",
+      "spdx": "MIT AND Zlib AND Libpng AND IJG",
+      "source": "https://github.com/mkazhdan/PoissonRecon",
+      "files": [
+        "tools/poissonrecon/bin/PoissonRecon",
+        "tools/poissonrecon/bin/PoissonRecon.exe",
+        "tools/poissonrecon/bin/SurfaceTrimmer",
+        "tools/poissonrecon/bin/SurfaceTrimmer.exe"
+      ],
+      "linkage": "executable",
+      "note": "Our build (tools/pipeline-pack/native/poissonrecon) with its vendored zlib, libpng and IJG JPEG linked statically"
     }
   ]
 }

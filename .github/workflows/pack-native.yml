@@ -127,6 +127,9 @@ jobs:
           "$exe" --version
           "$exe" --drivers | grep -E 'writers.copc|filters.smrf|writers.gdal'
 
+      - name: PoissonRecon and SurfaceTrimmer reconstruct a sphere
+        run: '"$PROBE_PY" tools/pipeline-pack/native/smoke_poissonrecon.py "$NATIVE_OUT/tools/poissonrecon/bin" "$RUNNER_TEMP/poisson"'
+
       - uses: actions/upload-artifact@v4
         with:
           name: pack-native-${{ matrix.target }}

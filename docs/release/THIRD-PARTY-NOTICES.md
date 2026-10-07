@@ -185,61 +185,62 @@ Generated from `tools/release/native-libs.json` and `tools/pipeline-pack/native/
 
 ### Inside the Python wheels and CPython
 
-51 libraries: MIT (14), BSD-3-Clause (5), BSD-2-Clause (3), Zlib (3), Apache-2.0 (2), GPL-3.0-or-later WITH GCC-exception-3.1 (2), LGPL-2.1-or-later (2), MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later (2), 0BSD (1), Apache-2.0 WITH LLVM-exception (1), blessing (1), BSD-3-Clause AND GPL-3.0-or-later WITH GCC-exception-3.1 (1), BSD-3-Clause AND MIT AND Apache-2.0 (1), BSD-3-Clause OR GPL-2.0-only (1), curl (1), FTL OR GPL-2.0-or-later (1), IJG AND BSD-3-Clause AND Zlib (1), LGPL-2.1-only (1), libpng-2.0 (1), libtiff (1), LicenseRef-Microsoft-VC-Redist (1), PostgreSQL (1), PSF-2.0 (1), Qhull (1), TCL (1), X11 (1).
+52 libraries: MIT (14), BSD-3-Clause (5), BSD-2-Clause (3), Zlib (3), Apache-2.0 (2), GPL-3.0-or-later WITH GCC-exception-3.1 (2), LGPL-2.1-or-later (2), MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later (2), 0BSD (1), Apache-2.0 WITH LLVM-exception (1), blessing (1), BSD-3-Clause AND GPL-3.0-or-later WITH GCC-exception-3.1 (1), BSD-3-Clause AND MIT AND Apache-2.0 (1), BSD-3-Clause OR GPL-2.0-only (1), curl (1), FTL OR GPL-2.0-or-later (1), IJG AND BSD-3-Clause AND Zlib (1), LGPL-2.1-only (1), libpng-2.0 (1), libtiff (1), LicenseRef-Microsoft-VC-Redist (1), MIT AND Zlib AND Libpng AND IJG (1), PostgreSQL (1), PSF-2.0 (1), Qhull (1), TCL (1), X11 (1).
 
-| Package         | Version                                    | Licence                                                  |
-| --------------- | ------------------------------------------ | -------------------------------------------------------- |
-| blosc           | 1.21 (rasterio macOS)                      | BSD-3-Clause                                             |
-| brotli          | 1.x (Pillow macOS)                         | MIT                                                      |
-| cpython         | 3.13 (python-build-standalone)             | PSF-2.0                                                  |
-| curl            | 8.x (rasterio)                             | curl                                                     |
-| expat           | 2.x (rasterio)                             | MIT                                                      |
-| freetype        | 2.14 (Pillow macOS)                        | FTL OR GPL-2.0-or-later                                  |
-| freexl          | 2.0 (rasterio Windows)                     | MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later         |
-| gdal            | 3.12 (rasterio 1.5)                        | MIT                                                      |
-| geos            | 3.13 (shapely), 3.14 (rasterio)            | LGPL-2.1-only                                            |
-| giflib          | 5.2 (rasterio)                             | MIT                                                      |
-| harfbuzz        | 11.x (Pillow macOS)                        | MIT                                                      |
-| hdf5            | 1.14 (rasterio)                            | BSD-3-Clause                                             |
-| json-c          | 0.18 (rasterio)                            | MIT                                                      |
-| lcms2           | 2.x (Pillow macOS)                         | MIT                                                      |
-| lerc            | 4.0 (rasterio)                             | Apache-2.0                                               |
-| libaec          | 1.1 (rasterio)                             | BSD-2-Clause                                             |
-| libavif         | 1.4 (Pillow macOS)                         | BSD-2-Clause                                             |
-| libdeflate      | 1.x (rasterio macOS)                       | MIT                                                      |
-| libffi          | 3.4 (python-build-standalone)              | MIT                                                      |
-| libgcc_s        | GCC (numpy and scipy macOS wheels)         | GPL-3.0-or-later WITH GCC-exception-3.1                  |
-| libgeotiff      | 1.7 (rasterio)                             | MIT                                                      |
-| libgfortran     | GCC (numpy and scipy macOS wheels)         | GPL-3.0-or-later WITH GCC-exception-3.1                  |
-| libiconv        | 1.17 (rasterio Windows)                    | LGPL-2.1-or-later                                        |
-| libjpeg-turbo   | 3.x (rasterio, Pillow)                     | IJG AND BSD-3-Clause AND Zlib                            |
-| liblzma         | 5.x (rasterio, Pillow)                     | 0BSD                                                     |
-| libomp          | LLVM (pycolmap macOS)                      | Apache-2.0 WITH LLVM-exception                           |
-| libpng          | 1.6 (rasterio, Pillow)                     | libpng-2.0                                               |
-| libpq           | 17 (rasterio Windows)                      | PostgreSQL                                               |
-| libquadmath     | GCC (numpy and scipy macOS wheels)         | LGPL-2.1-or-later                                        |
-| libspatialindex | 2.1 (rtree)                                | MIT                                                      |
-| libspatialite   | 5.1 (rasterio Windows)                     | MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later         |
-| libtiff         | 4.7 (rasterio, Pillow)                     | libtiff                                                  |
-| libwebp         | 1.x (rasterio, Pillow)                     | BSD-3-Clause                                             |
-| libxcb          | 1.x (Pillow macOS)                         | X11                                                      |
-| libxml2         | 2.x (rasterio)                             | MIT                                                      |
-| minizip-ng      | 4.x (rasterio)                             | Zlib                                                     |
-| msvc-runtime    | 14.x                                       | LicenseRef-Microsoft-VC-Redist                           |
-| netcdf          | 4.9 (rasterio)                             | BSD-3-Clause                                             |
-| nghttp2         | 1.x (rasterio macOS)                       | MIT                                                      |
-| openjpeg        | 2.5 (rasterio, Pillow)                     | BSD-2-Clause                                             |
-| openssl         | 3.x (CPython, rasterio)                    | Apache-2.0                                               |
-| pcre2           | 10.x (rasterio)                            | BSD-3-Clause                                             |
-| pdal            | 2.10.1 (our build)                         | BSD-3-Clause AND MIT AND Apache-2.0                      |
-| proj            | 9.7 (rasterio 1.5)                         | MIT                                                      |
-| qhull           | 8.0 (rasterio Windows)                     | Qhull                                                    |
-| scipy-openblas  | 0.3.31 (scipy), 0.3.34 (numpy)             | BSD-3-Clause AND GPL-3.0-or-later WITH GCC-exception-3.1 |
-| sqlite          | 3.x (CPython, rasterio)                    | blessing                                                 |
-| tcl-tk          | 8.6 (python-build-standalone)              | TCL                                                      |
-| tinyxml2        | 10.x (rasterio Windows)                    | Zlib                                                     |
-| zlib            | 1.3 (CPython, rasterio; zlib-ng in Pillow) | Zlib                                                     |
-| zstd            | 1.5 (rasterio)                             | BSD-3-Clause OR GPL-2.0-only                             |
+| Package         | Version                                             | Licence                                                  |
+| --------------- | --------------------------------------------------- | -------------------------------------------------------- |
+| blosc           | 1.21 (rasterio macOS)                               | BSD-3-Clause                                             |
+| brotli          | 1.x (Pillow macOS)                                  | MIT                                                      |
+| cpython         | 3.13 (python-build-standalone)                      | PSF-2.0                                                  |
+| curl            | 8.x (rasterio)                                      | curl                                                     |
+| expat           | 2.x (rasterio)                                      | MIT                                                      |
+| freetype        | 2.14 (Pillow macOS)                                 | FTL OR GPL-2.0-or-later                                  |
+| freexl          | 2.0 (rasterio Windows)                              | MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later         |
+| gdal            | 3.12 (rasterio 1.5)                                 | MIT                                                      |
+| geos            | 3.13 (shapely), 3.14 (rasterio)                     | LGPL-2.1-only                                            |
+| giflib          | 5.2 (rasterio)                                      | MIT                                                      |
+| harfbuzz        | 11.x (Pillow macOS)                                 | MIT                                                      |
+| hdf5            | 1.14 (rasterio)                                     | BSD-3-Clause                                             |
+| json-c          | 0.18 (rasterio)                                     | MIT                                                      |
+| lcms2           | 2.x (Pillow macOS)                                  | MIT                                                      |
+| lerc            | 4.0 (rasterio)                                      | Apache-2.0                                               |
+| libaec          | 1.1 (rasterio)                                      | BSD-2-Clause                                             |
+| libavif         | 1.4 (Pillow macOS)                                  | BSD-2-Clause                                             |
+| libdeflate      | 1.x (rasterio macOS)                                | MIT                                                      |
+| libffi          | 3.4 (python-build-standalone)                       | MIT                                                      |
+| libgcc_s        | GCC (numpy and scipy macOS wheels)                  | GPL-3.0-or-later WITH GCC-exception-3.1                  |
+| libgeotiff      | 1.7 (rasterio)                                      | MIT                                                      |
+| libgfortran     | GCC (numpy and scipy macOS wheels)                  | GPL-3.0-or-later WITH GCC-exception-3.1                  |
+| libiconv        | 1.17 (rasterio Windows)                             | LGPL-2.1-or-later                                        |
+| libjpeg-turbo   | 3.x (rasterio, Pillow)                              | IJG AND BSD-3-Clause AND Zlib                            |
+| liblzma         | 5.x (rasterio, Pillow)                              | 0BSD                                                     |
+| libomp          | LLVM (Homebrew; pycolmap and PoissonRecon on macOS) | Apache-2.0 WITH LLVM-exception                           |
+| libpng          | 1.6 (rasterio, Pillow)                              | libpng-2.0                                               |
+| libpq           | 17 (rasterio Windows)                               | PostgreSQL                                               |
+| libquadmath     | GCC (numpy and scipy macOS wheels)                  | LGPL-2.1-or-later                                        |
+| libspatialindex | 2.1 (rtree)                                         | MIT                                                      |
+| libspatialite   | 5.1 (rasterio Windows)                              | MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later         |
+| libtiff         | 4.7 (rasterio, Pillow)                              | libtiff                                                  |
+| libwebp         | 1.x (rasterio, Pillow)                              | BSD-3-Clause                                             |
+| libxcb          | 1.x (Pillow macOS)                                  | X11                                                      |
+| libxml2         | 2.x (rasterio)                                      | MIT                                                      |
+| minizip-ng      | 4.x (rasterio)                                      | Zlib                                                     |
+| msvc-runtime    | 14.x                                                | LicenseRef-Microsoft-VC-Redist                           |
+| netcdf          | 4.9 (rasterio)                                      | BSD-3-Clause                                             |
+| nghttp2         | 1.x (rasterio macOS)                                | MIT                                                      |
+| openjpeg        | 2.5 (rasterio, Pillow)                              | BSD-2-Clause                                             |
+| openssl         | 3.x (CPython, rasterio)                             | Apache-2.0                                               |
+| pcre2           | 10.x (rasterio)                                     | BSD-3-Clause                                             |
+| pdal            | 2.10.1 (our build)                                  | BSD-3-Clause AND MIT AND Apache-2.0                      |
+| poissonrecon    | 8.76 (our build)                                    | MIT AND Zlib AND Libpng AND IJG                          |
+| proj            | 9.7 (rasterio 1.5)                                  | MIT                                                      |
+| qhull           | 8.0 (rasterio Windows)                              | Qhull                                                    |
+| scipy-openblas  | 0.3.31 (scipy), 0.3.34 (numpy)                      | BSD-3-Clause AND GPL-3.0-or-later WITH GCC-exception-3.1 |
+| sqlite          | 3.x (CPython, rasterio)                             | blessing                                                 |
+| tcl-tk          | 8.6 (python-build-standalone)                       | TCL                                                      |
+| tinyxml2        | 10.x (rasterio Windows)                             | Zlib                                                     |
+| zlib            | 1.3 (CPython, rasterio; zlib-ng in Pillow)          | Zlib                                                     |
+| zstd            | 1.5 (rasterio)                                      | BSD-3-Clause OR GPL-2.0-only                             |
 
 ### Our native builds (Windows x64 and macOS arm64)
 
@@ -266,6 +267,10 @@ COLMAP without CHOLMOD, LSD, CGAL, SiftGPU, CUDA or downloads; OpenCV without FF
 | KleidiCV (in opencv-python-headless)      |                                          | Apache-2.0                          |
 | quirc (in opencv-python-headless)         |                                          | ISC                                 |
 | pdal                                      | 2.10.1                                   | BSD-3-Clause AND MIT AND Apache-2.0 |
+| poissonrecon                              | 8.76                                     | MIT AND Zlib AND Libpng AND IJG     |
+| zlib (in poissonrecon)                    |                                          | Zlib                                |
+| libpng (in poissonrecon)                  |                                          | Libpng                              |
+| IJG JPEG (in poissonrecon)                |                                          | IJG                                 |
 
 ### vcpkg ports compiled into our native builds
 
