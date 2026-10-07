@@ -825,7 +825,7 @@ Shared files stay with the integration lead after G0; a stream that needs a chan
 
 - **pytest:** the generator is deterministic (same seed, same image hashes on the same platform; truth identical everywhere); cameras in `truth.json` reproject GCP targets onto the rendered target centres within 0.25 px; EXIF and XMP read back through G2's reader.
 - **node:test:** the client-data check finds a planted real-looking camera serial, a coordinate outside the fictional site and a personal name in XMP.
-- **CI:** the photo demo `--quick` builds under its budget (decision 6 of M8 style: about 60 MB or less bundled, or not bundled and generated on demand; see below).
+- **CI:** the photo demo `--quick` builds under its budget (decision 6 of M8 style: about 60 MB or less bundled, or not bundled and generated on demand; see below). Integration (8 Oct 2026): the quick set made a 51 MB demo, over the installer budget of decision 6, so the bundled demo is the mini set (13 photos at 960 x 720, about 9 MB on disk, 5.6 MB compressed, budget 12 MB); the quick set stays for development and CI (`--photo-set quick`).
 
 **Risks:**
 
@@ -867,7 +867,7 @@ No client data: no client file, name, place, camera serial or path. Everything i
 6. **`truth.json`:** camera intrinsics and poses, target world positions and their pixel positions per image, the true height grid (DSM and DTM), the true mesh as GLB, the stockpile volume, and the expected registration list (which photos must be rejected and why).
 7. **OPF fixtures:** the synthetic run exported by pyopf, plus a small hand-written OPF from the specification's examples (CC-BY-4.0, attributed in the fixture's README).
 8. **Packs and tilesets:** a synthetic imagery GeoTIFF and its PMTiles pack (procedural colours, licence "CC0 test fixture"), a synthetic DEM and its terrain pack with a benchmark height, and the demo's mesh and cloud tilesets.
-9. **The photo demo project** (bundled or generated on first use, decided by size): photos (quick set), GCP CSV, a precomputed alignment, so UI tests and the founder can mark GCPs without waiting for alignment.
+9. **The photo demo project** (bundled or generated on first use, decided by size): photos (the mini set when bundled, see the CI line above), GCP CSV, a precomputed alignment, so UI tests and the founder can mark GCPs without waiting for alignment.
 10. **The client-data check** runs on all of it in CI.
 
 ## Merge order
