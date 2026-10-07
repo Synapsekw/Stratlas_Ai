@@ -36,6 +36,13 @@ function render(focusId: string | null, onPick = vi.fn(), onClose = vi.fn()) {
   return { onPick, onClose };
 }
 
+function press(key: string) {
+  act(() => {
+    q('calendar')?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+  });
+}
+const active = () => document.activeElement?.getAttribute('data-date');
+
 describe('Calendar', () => {
   it('opens on the focused month and skips months without surveys', () => {
     render('sep');
@@ -66,12 +73,63 @@ describe('Calendar', () => {
     });
     expect(onClose).toHaveBeenCalled();
   });
-  it('arrow keys move between days and Enter picks a survey day', () => {
+  it('focuses the current survey day on mount', () => {
+    render('sep');
+    expect(document.activeElement?.getAttribute('data-date')).toBe('2024-09-04');
+    expect(q('cal-month')?.textContent).toBe('September 2024');
+  });
+  it('Enter picks a survey day', () => {
     const { onPick } = render('sep');
-    q('cal-day-2024-09-04')?.focus();
-    act(() => {
-      q('calendar')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    });
+    press('Enter');
     expect(onPick).toHaveBeenCalledWith('sep');
+  });
+  it('arrows move onto days without a survey, and Enter there does nothing', () => {
+    const { onPick } = render('sep');
+    press('ArrowRight');
+    expect(active()).toBe('2024-09-05');
+    expect(q('cal-blank-2024-09-05')?.getAttribute('aria-disabled')).toBe('true');
+    press('Enter');
+    expect(onPick).not.toHaveBeenCalled();
+    press('ArrowDown');
+    expect(active()).toBe('2024-09-12');
+    press('ArrowLeft');
+    press('ArrowUp');
+    expect(active()).toBe('2024-09-04');
+  });
+  it('keeps one tab stop that follows focus', () => {
+    render('sep');
+    const stops = () => host.querySelectorAll('.cal-day[tabindex="0"]');
+    expect(stops()).toHaveLength(1);
+    press('ArrowRight');
+    expect(stops()).toHaveLength(1);
+    expect(stops()[0]?.getAttribute('data-date')).toBe('2024-09-05');
+  });
+  it('arrows cross a month boundary and keep focus inside the calendar', () => {
+    const { onClose } = render('nov');
+    for (let i = 0; i < 6; i += 1) press('ArrowLeft'); // 6 Nov back to 31 Oct
+    expect(active()).toBe('2024-10-31');
+    expect(q('cal-month')?.textContent).toBe('October 2024');
+    expect(q('calendar')?.contains(document.activeElement)).toBe(true);
+    press('Escape');
+    expect(onClose).toHaveBeenCalled();
+  });
+  it('Page Down and Page Up step survey months, skipping October, and clamp', () => {
+    render('sep');
+    press('PageUp');
+    expect(q('cal-month')?.textContent).toBe('September 2024');
+    press('PageDown');
+    expect(q('cal-month')?.textContent).toBe('November 2024');
+    expect(active()).toBe('2024-11-06');
+    press('PageDown');
+    expect(q('cal-month')?.textContent).toBe('November 2024');
+    press('PageUp');
+    expect(q('cal-month')?.textContent).toBe('September 2024');
+    expect(q('calendar')?.contains(document.activeElement)).toBe(true);
+  });
+  it('labels days with a pluralised layer count', () => {
+    render('sep');
+    expect(q('cal-day-2024-09-04')?.getAttribute('aria-label')).toBe(
+      '4 Sep 2024, survey, 6 layers',
+    );
   });
 });

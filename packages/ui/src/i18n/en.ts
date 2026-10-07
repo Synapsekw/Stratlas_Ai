@@ -2089,9 +2089,22 @@ export const en = {
   'calendar.label': 'Survey calendar',
   'calendar.prev': 'Previous month with a survey',
   'calendar.next': 'Next month with a survey',
-  'calendar.day': '{date}, survey, {count} layers',
+  'calendar.day_one': '{date}, survey, {count} layer',
+  'calendar.day_other': '{date}, survey, {count} layers',
   'calendar.pick': 'Surveys on {date}',
   'calendar.weekdays': 'Mo Tu We Th Fr Sa Su',
+  'calendar.month.1': 'January',
+  'calendar.month.2': 'February',
+  'calendar.month.3': 'March',
+  'calendar.month.4': 'April',
+  'calendar.month.5': 'May',
+  'calendar.month.6': 'June',
+  'calendar.month.7': 'July',
+  'calendar.month.8': 'August',
+  'calendar.month.9': 'September',
+  'calendar.month.10': 'October',
+  'calendar.month.11': 'November',
+  'calendar.month.12': 'December',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

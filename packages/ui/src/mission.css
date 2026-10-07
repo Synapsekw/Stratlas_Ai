@@ -1328,6 +1328,12 @@ select.input option {
   font-weight: 600;
   cursor: pointer;
 }
+.cal-day.none {
+  background: none;
+  color: var(--fg-3);
+  font-weight: 400;
+  cursor: default;
+}
 .cal-day.current {
   box-shadow:
     0 0 0 2px var(--bg-2),

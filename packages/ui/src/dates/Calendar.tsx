@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useT } from '../i18n';
 import { Icon } from '../icons/Icon';
 import { monthGrid, stepMonth, surveyMonths } from './calendarModel';
@@ -11,20 +11,20 @@ export interface CalendarDay {
   count: number;
 }
 
-const MONTHS = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-];
+const MONTH_KEYS = [
+  'calendar.month.1',
+  'calendar.month.2',
+  'calendar.month.3',
+  'calendar.month.4',
+  'calendar.month.5',
+  'calendar.month.6',
+  'calendar.month.7',
+  'calendar.month.8',
+  'calendar.month.9',
+  'calendar.month.10',
+  'calendar.month.11',
+  'calendar.month.12',
+] as const;
 
 const ARROW_STEP: Record<string, number> = {
   ArrowLeft: -1,
@@ -50,8 +50,26 @@ export function Calendar(props: {
   const months = useMemo(() => surveyMonths(days.map((d) => d.date)), [days]);
   const focusDate = days.find((d) => d.id === focusId)?.date ?? days.at(-1)?.date ?? '';
   const [month, setMonth] = useState(focusDate.slice(0, 7) || (months.at(-1) ?? ''));
+  const [active, setActive] = useState(focusDate);
   const [choice, setChoice] = useState<string | null>(null);
   const [y, m] = month.split('-').map(Number) as [number, number];
+  // The one tab stop: the active day when it is on show, else the month's first survey day.
+  const firstSurvey = [...byDate.keys()].sort().find((d) => d.startsWith(month));
+  const tabDate = active.startsWith(month) ? active : (firstSurvey ?? `${month}-01`);
+  // Focus is applied after render, once the target day exists in the displayed month.
+  const pendingFocus = useRef<string | null>(focusDate || null);
+  useEffect(() => {
+    const date = pendingFocus.current;
+    if (!date) return;
+    pendingFocus.current = null;
+    root.current?.querySelector<HTMLElement>(`[data-date="${date}"]`)?.focus();
+  });
+
+  const goTo = (date: string) => {
+    pendingFocus.current = date;
+    setActive(date);
+    setMonth(date.slice(0, 7));
+  };
 
   const pickDate = (date: string) => {
     const on = byDate.get(date) ?? [];
@@ -69,11 +87,15 @@ export function Calendar(props: {
     }
     if (e.key === 'PageUp' || e.key === 'PageDown') {
       e.preventDefault();
-      setMonth(stepMonth(months, month, e.key === 'PageUp' ? -1 : 1));
+      const to = stepMonth(months, month, e.key === 'PageUp' ? -1 : 1);
+      if (to === month) return;
+      goTo([...byDate.keys()].sort().find((d) => d.startsWith(to)) ?? `${to}-01`);
       return;
     }
     if (!date) return;
     if (e.key === 'Enter' || e.key === ' ') {
+      // A focused button handles Enter and Space natively as a click.
+      if (e.target instanceof HTMLButtonElement) return;
       e.preventDefault();
       pickDate(date);
       return;
@@ -83,11 +105,7 @@ export function Calendar(props: {
     e.preventDefault();
     const next = new Date(`${date}T00:00:00Z`);
     next.setUTCDate(next.getUTCDate() + delta);
-    const iso = next.toISOString().slice(0, 10);
-    if (iso.slice(0, 7) !== month) setMonth(iso.slice(0, 7));
-    requestAnimationFrame(() =>
-      root.current?.querySelector<HTMLElement>(`[data-date="${iso}"]`)?.focus(),
-    );
+    goTo(next.toISOString().slice(0, 10));
   };
 
   return (
@@ -112,7 +130,7 @@ export function Calendar(props: {
           <Icon name="back" size={14} />
         </button>
         <span className="cal-month" data-testid="cal-month" aria-live="polite">
-          {MONTHS[m - 1]} {y}
+          {t(MONTH_KEYS[m - 1] ?? 'calendar.month.1')} {y}
         </span>
         <button
           type="button"
@@ -141,26 +159,29 @@ export function Calendar(props: {
               const on = byDate.get(date) ?? [];
               const first = on[0];
               const day = Number(date.slice(8));
-              if (!first)
-                return (
-                  <span key={c} className="cal-cell" role="gridcell">
-                    {day}
-                  </span>
-                );
               const current = on.some((d) => d.id === focusId);
               return (
                 <span key={c} role="gridcell" className="cal-cell">
                   <button
                     type="button"
-                    className={`cal-day${current ? ' current' : ''}`}
-                    data-testid={`cal-day-${date}`}
+                    className={`cal-day${first ? '' : ' none'}${current ? ' current' : ''}`}
+                    data-testid={first ? `cal-day-${date}` : `cal-blank-${date}`}
                     data-date={date}
-                    style={{ background: first.colour }}
-                    aria-label={t('calendar.day', {
-                      date: first.label,
-                      count: on.reduce((n, d) => n + d.count, 0),
-                    })}
+                    tabIndex={date === tabDate ? 0 : -1}
+                    style={first ? { background: first.colour } : undefined}
+                    aria-disabled={first ? undefined : true}
+                    aria-label={
+                      first
+                        ? t('calendar.day', {
+                            date: first.label,
+                            count: on.reduce((n, d) => n + d.count, 0),
+                          })
+                        : undefined
+                    }
                     aria-current={current ? 'date' : undefined}
+                    onFocus={() => {
+                      setActive(date);
+                    }}
                     onClick={() => {
                       pickDate(date);
                     }}
@@ -178,7 +199,7 @@ export function Calendar(props: {
         <div
           className="cal-choices"
           role="listbox"
-          aria-label={t('calendar.pick', { date: choice })}
+          aria-label={t('calendar.pick', { date: byDate.get(choice)?.[0]?.label ?? choice })}
         >
           {(byDate.get(choice) ?? []).map((d) => (
             <button
