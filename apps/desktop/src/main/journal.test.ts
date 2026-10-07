@@ -167,6 +167,34 @@ describe('journal service', () => {
     expect(v.report.counts.signed).toBe(3);
   });
 
+  it('marks the ops the merge engine holds in quarantine, in a shared folder only', async () => {
+    const { root, userData } = setup();
+    const { journal, writeIssues, open } = service(root, userData);
+    await open({ path: root });
+    await writeIssues({ projectId: 'p', issues: [{ ...f01, severity: 4 }] });
+    const held = new Set<string>();
+    const asked: string[] = [];
+    journal.setQuarantined((r) => {
+      asked.push(r);
+      return Promise.resolve(held);
+    });
+    const first = await journal.history({ projectId: 'p' });
+    if (!first.ok) throw new Error(first.error);
+    const op = first.entries[0]?.op ?? '';
+    expect(first.entries[0]?.state).toBe('ok');
+    // a private folder never asks the engine
+    expect(asked).toEqual([]);
+
+    writeFileSync(join(root, 'team.json'), JSON.stringify({ schema: 'aio.team/1' }));
+    held.add(op);
+    await writeIssues({ projectId: 'p', issues: [{ ...f01, severity: 5 }] });
+    const shared = await journal.history({ projectId: 'p' });
+    if (!shared.ok) throw new Error(shared.error);
+    expect(shared.entries.find((e) => e.op === op)?.state).toBe('quarantined');
+    expect(shared.entries[0]?.state).toBe('ok');
+    expect(asked).toEqual([root]);
+  });
+
   it('keeps the history after a restart, and an agent edit says so', async () => {
     const { root, userData } = setup();
     const first = service(root, userData);

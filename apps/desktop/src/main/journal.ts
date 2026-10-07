@@ -134,6 +134,12 @@ export interface JournalServiceDeps {
   now?: () => number;
   /** Test hook: runs after the ops are appended and before the state write (crash tests). */
   afterAppend?: (rel: string) => Promise<void> | void;
+  /**
+   * The op ids T4's merge engine holds in quarantine in a shared folder, so History and the Audit
+   * trail show them as quarantined. Set later with `setQuarantined` when the engine is made after
+   * the journal.
+   */
+  quarantined?: (root: string) => Promise<ReadonlySet<string>>;
 }
 
 /** Writers whose result is known from the request: ops first, then the write. */
@@ -796,13 +802,20 @@ export function createJournalService(deps: JournalServiceDeps) {
     return { root, files: await readJournalFiles(root) };
   }
 
+  let quarantinedOf = deps.quarantined;
+
   async function entries(projectId: string): Promise<AuditEntry[] | null> {
     const f = await filesOf(projectId);
     if (!f) return null;
     const st = await load(f.root);
     const stamp = textHash([...f.files].map(([p, t]) => `${p}:${String(t.length)}`).join('|'));
     if (st.entries?.stamp === stamp) return st.entries.list;
-    const list = auditEntries(loadJournal(f.files));
+    // held ops of a shared folder (a release appends an op, so the stamp changes with it)
+    const held =
+      quarantinedOf && (await readText(join(f.root, 'team.json'))) !== null
+        ? await quarantinedOf(f.root).catch(() => undefined)
+        : undefined;
+    const list = auditEntries(loadJournal(f.files), held ? { quarantined: held } : {});
     st.entries = { stamp, list };
     return list;
   }
@@ -1024,6 +1037,10 @@ export function createJournalService(deps: JournalServiceDeps) {
     /** The journal reader shared with sync. */
     store,
     locked,
+    /** Where History and the Audit trail learn which ops are quarantined (the merge engine). */
+    setQuarantined(fn: (root: string) => Promise<ReadonlySet<string>>) {
+      quarantinedOf = fn;
+    },
     /** Append event ops by this person and device (team, review, sync, binaries). */
     append: (root: string, drafts: readonly DraftOp[], via?: Via) =>
       locked(root, (t) => t.append(drafts, via)),
