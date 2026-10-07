@@ -256,6 +256,23 @@ def test_a_region_limits_the_products():
     assert doc["region"] == ring
 
 
+def test_a_missing_photo_is_named_before_any_work():
+    root = ps.project("missing")
+    (root / "photos-in" / "IMG_0007.jpg").unlink()
+    with pytest.raises(JobError, match=r"IMG_0007\.jpg cannot be found where the run says"):
+        run_job(PhotoProducts(), root, _params(preset="fast"))
+    assert not (root / "photogrammetry" / RUN / "work").exists()
+
+
+def test_tiles_alone_make_the_full_mesh_but_no_mesh_layer():
+    root = ps.project("tiles-only")
+    res, _ = run_job(PhotoProducts(), root, _params(preset="fast", products=["tiles"]))
+    assert (root / "photogrammetry" / RUN / "mesh" / "full.glb").is_file()
+    assert not (root / "models").exists()
+    assert json.loads((root / "manifest.json").read_text("utf-8"))["layers"] == []
+    assert res["outputs"]["texture"]["engine"] == "views"  # no ortho to drape
+
+
 def test_a_layer_of_the_same_id_the_run_did_not_make_is_refused():
     root = ps.project("foreign")
     m = json.loads((root / "manifest.json").read_text("utf-8"))

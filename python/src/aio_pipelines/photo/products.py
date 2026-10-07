@@ -780,16 +780,20 @@ class PhotoProducts:
             data, info = texture_views(mesh, views, origin, gains, check=ctx.check)
             return data, "views", info
 
-        glb, engine, info = make(site, "site")
-        atomic_write_bytes(ctx.stage(f"models/{run.id}-mesh.glb"), glb)
-        ctx.progress(0.6, "Site-view mesh written")
-        out = {"engine": engine, "triangles": site.triangles, "fullTriangles": full.triangles, **info}
-        if "tiles" in ctx.params["products"]:
-            if site is full:
-                atomic_write_bytes(ctx.stage(f"photogrammetry/{run.id}/mesh/full.glb"), glb)
-            else:
-                data, _, _ = make(full, "full")
-                atomic_write_bytes(ctx.stage(f"photogrammetry/{run.id}/mesh/full.glb"), data)
+        want = ctx.params["products"]
+        glb = b""
+        out: dict[str, Any] = {"fullTriangles": full.triangles}
+        if "mesh" in want:
+            glb, engine, info = make(site, "site")
+            atomic_write_bytes(ctx.stage(f"models/{run.id}-mesh.glb"), glb)
+            ctx.progress(0.6, "Site-view mesh written")
+            out.update({"engine": engine, "triangles": site.triangles, **info})
+        if "tiles" in want:
+            # the full mesh for tiles.mesh (the site-view one when it is already whole)
+            if not (glb and site is full):
+                glb, engine, _ = make(full, "full")
+                out.setdefault("engine", engine)
+            atomic_write_bytes(ctx.stage(f"photogrammetry/{run.id}/mesh/full.glb"), glb)
         return out
 
     def _commit(self, ctx: StepContext) -> dict[str, Any]:
