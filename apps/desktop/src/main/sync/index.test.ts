@@ -10,7 +10,7 @@ import {
   type IdentityService,
 } from '../identity';
 import { devicePort, journalIdentity, teamJournal } from '../identityPorts';
-import { createJournalService } from '../journal';
+import { createJournalService, type JournalService } from '../journal';
 import { collectHandlers } from '../notYet';
 import { createTeamConfigStore } from './config';
 import { createTeamEngine } from './engine';
@@ -22,7 +22,10 @@ let base: string;
 beforeEach(async () => {
   base = await mkdtemp(join(tmpdir(), 'aio-sync-'));
 });
+/** Journal services a test made: their kept segments are closed after it. */
+const journals: JournalService[] = [];
 afterEach(async () => {
+  await Promise.all(journals.splice(0).map((j) => j.closeAll()));
   await rm(base, { recursive: true, force: true });
 });
 
@@ -94,6 +97,7 @@ async function machine(
     identity: () => journalIdentity(identity, app)(),
     replicaOf: async (r) => (await config.get(r)).replicaId,
   });
+  journals.push(journal);
   identity = createIdentityService({
     store: createIdentityStore(join(userData, 'identity.json'), { osUser: () => name }),
     keys: createDeviceKeys('svc', (service, account) => ({

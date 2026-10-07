@@ -17,7 +17,7 @@ import {
   journalIdentity,
   teamJournal,
 } from './identityPorts';
-import { createJournalService } from './journal';
+import { createJournalService, type JournalService } from './journal';
 import type { KeyEntry } from './keys';
 import { createTestVault, TEST_VAULT_FILE, useTestVault } from './testVault';
 
@@ -27,7 +27,10 @@ let dir: string;
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'aio-ports-'));
 });
+/** Journal services a test made: their kept segments are closed after it. */
+const journals: JournalService[] = [];
 afterEach(async () => {
+  await Promise.all(journals.splice(0).map((j) => j.closeAll()));
   await rm(dir, { recursive: true, force: true });
 });
 
@@ -60,6 +63,7 @@ function profileStack(profile: string | null, vault: ReturnType<typeof recording
     projects: { root: () => project, package: () => undefined },
     identity: () => journalIdentity(identity, APP)(),
   });
+  journals.push(journal);
   identity = createIdentityService({
     store: createIdentityStore(join(userData, 'identity.json'), {
       osUser: () => profile ?? 'Rana Example',

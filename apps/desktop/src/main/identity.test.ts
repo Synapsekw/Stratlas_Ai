@@ -18,7 +18,7 @@ import {
   type TeamJournal,
 } from './identity';
 import { journalIdentity, teamJournal } from './identityPorts';
-import { createJournalService } from './journal';
+import { createJournalService, type JournalService } from './journal';
 import type { KeyEntry } from './keys';
 import { collectHandlers } from './notYet';
 import { createJournalStore } from './sync/journalStore';
@@ -34,6 +34,7 @@ function journalOn(
     projects: { root: () => root(), package: () => undefined },
     identity: () => journalIdentity(service(), APP)(),
   });
+  journals.push(journal);
   return teamJournal(() => journal);
 }
 
@@ -69,7 +70,10 @@ let dir: string;
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'aio-identity-'));
 });
+/** Journal services a test made: their kept segments are closed after it. */
+const journals: JournalService[] = [];
 afterEach(async () => {
+  await Promise.all(journals.splice(0).map((j) => j.closeAll()));
   await rm(dir, { recursive: true, force: true });
 });
 
