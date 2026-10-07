@@ -115,6 +115,10 @@ describe('macIntegration', () => {
     const [uti] = m.extendInfo.UTExportedTypeDeclarations;
     expect(uti.UTTypeIdentifier).toBe('ai.example.stratlas.package');
     expect(uti.UTTypeTagSpecification['public.filename-extension']).toEqual(['aio']);
+    const exts = m.extendInfo.UTExportedTypeDeclarations.map(
+      (u) => u.UTTypeTagSpecification['public.filename-extension'][0],
+    );
+    expect(exts).toEqual(['aio', 'aiosync', 'aioid']);
   });
 });
 
@@ -124,9 +128,9 @@ describe('effectiveConfig', () => {
     expect(summary).toEqual({ win: 'unsigned', mac: 'ad-hoc', storePlaceholder: false });
     expect(config.appx.identityName).toBe('SynapseSolutions.Stratlas');
     expect(config.appx.publisher).toMatch(/^CN=/);
-    expect(config.fileAssociations.map((f) => f.ext)).toEqual(['aio']);
+    expect(config.fileAssociations.map((f) => f.ext)).toEqual(['aio', 'aiosync', 'aioid']);
     expect(config.protocols[0].schemes).toEqual(['stratlas']);
-    expect(config.mac.extendInfo.UTExportedTypeDeclarations).toHaveLength(1);
+    expect(config.mac.extendInfo.UTExportedTypeDeclarations).toHaveLength(3);
     expect(config.copyright).toBe('Copyright 2026 Synapse Solutions');
   });
 
