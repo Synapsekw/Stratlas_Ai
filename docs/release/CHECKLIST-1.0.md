@@ -19,7 +19,8 @@ These need the founder before release candidate 1 (RC1). Each has a default the 
 | B5  | Cosign key for the Team Server image (decision 13)                                                                                      | Team Server preview | Image unsigned, preview only                                                                 | Blocked |
 | B6  | External penetration test of the Team Server, booked with a date (decision 14)                                                          | Leaving preview     | `HostingModel.server` stays `preview`; the security note says so                             | Blocked |
 | B7  | Arabic scope for 1.0 (decision 11): confirm "Arabic text and right-to-left panels, full Arabic interface after 1.0", or name the tender | RC1                 | Arabic text in comments, names and reports, RTL panels; no Arabic UI                         | Blocked |
-| B8  | Dates for B2 to B6, and sign-off of ADRs 0004 to 0006 and of the support policy draft                                                   | RC1                 | Drafts as written                                                                            | Blocked |
+| B8  | Dates for B2 to B6, and sign-off of ADRs 0005 and 0006 and of the support policy draft                                                  | RC1                 | Drafts as written                                                                            | Blocked |
+| B9  | Sign-off of ADR 0004 (sync architecture: file-first sharing, team server as a preview)                                                  | M9                  | Accepted 7 Oct 2026 (founder)                                                                | Done    |
 
 ## Stability
 
@@ -54,7 +55,7 @@ These need the founder before release candidate 1 (RC1). Each has a default the 
 | Security and data-handling note for procurement                               | T8          | Partly | [SECURITY-AND-DATA.md](SECURITY-AND-DATA.md), draft; final pass in part 2          |
 | 1.0 release notes                                                             | T8          | Partly | [RELEASE-NOTES-1.0.md](RELEASE-NOTES-1.0.md), draft                                |
 | `SUPPORT.md`                                                                  | T8, F       | Partly | [SUPPORT.md](SUPPORT.md), draft for founder sign-off (B8)                          |
-| KNOWN-LIMITS refreshed; PRD statuses; SPEC and ADRs 0004 to 0006 accepted     | IL, F       | Open   |                                                                                    |
+| KNOWN-LIMITS refreshed; PRD statuses; SPEC and ADRs 0004 to 0006 accepted     | IL, F       | Open   | ADR 0004 accepted 7 Oct 2026 (B9); 0005 and 0006 are drafts                        |
 | Licence inventory                                                             | T8          | Done   | [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), `node tools/release/notices.mjs` |
 
 ## Signing

@@ -1,6 +1,6 @@
 # ADR 0004: Sync architecture
 
-- Status: **Draft, awaiting founder sign-off** (7 Oct 2026). Written at M9 T0 with the recommended defaults of the M9 plan's founder decisions 1, 2, 3, 7 and 15; the founder may override them.
+- Status: **Accepted, 7 Oct 2026 (founder)**: "SYNC DESIGN IS GOOD GO AHEAD". Written at M9 T0 with the recommended defaults of the M9 plan's founder decisions 1, 2, 3, 7 and 15; the founder may override them.
 - Deciders: founder; integration lead (M9)
 - Plan: `docs/plans/2026-10-07-m9-team-and-1.0.md`, "Sync architectures" and "Design"
 
