@@ -1,3 +1,4 @@
+import type { GlobeSite } from '@aio/schema';
 import { describe, expect, it, vi } from 'vitest';
 import { issuesCsv } from './exporting';
 import { runRendererTool, type RendererToolContext } from './renderer-tools';
@@ -257,5 +258,64 @@ describe('open_original_review', () => {
     await expect(
       runRendererTool('open_original_review', {}, ctx({ app: { openReview: vi.fn() } })),
     ).rejects.toThrow('no original review');
+  });
+});
+
+describe('list_sites and show_on_globe', () => {
+  const site = (projectId: string, name: string, lonLat: [number, number]): GlobeSite => ({
+    projectId,
+    name,
+    lonLat,
+    captures: [{ id: 'c1', label: 'Survey 1', date: '2026-06-01' }],
+    issues: { open: 2, bySeverity: { '3': 2 } },
+    tilesets: [{ id: 't', name: 'Site mesh', kind: 'mesh' }],
+  });
+  const sites = [
+    site('tank-farm', 'North tank farm', [51.123456789, 25.5]),
+    site('pier', 'Pier', [50, 26]),
+  ];
+  const listSites = () => Promise.resolve(sites);
+
+  it('lists the library sites without an open project', async () => {
+    const r = await runRendererTool('list_sites', {}, ctx({ app: { listSites } }));
+    expect(r.summary).toBe('2 sites');
+    expect((r.result as { sites: unknown[] }).sites[0]).toEqual({
+      projectId: 'tank-farm',
+      name: 'North tank farm',
+      lon: 51.123457,
+      lat: 25.5,
+      surveys: ['2026-06-01'],
+      openIssues: 2,
+      bySeverity: { '3': 2 },
+      tilesets: ['Site mesh'],
+    });
+  });
+
+  it('flies to a site by id or name, else the open project, else the library', async () => {
+    const showOnGlobe = vi.fn();
+    const app = { listSites, showOnGlobe };
+    expect((await runRendererTool('show_on_globe', { site: 'pier' }, ctx({ app }))).summary).toBe(
+      'Pier',
+    );
+    expect(showOnGlobe).toHaveBeenLastCalledWith('pier');
+    await runRendererTool('show_on_globe', { site: 'NORTH TANK FARM' }, ctx({ app }));
+    expect(showOnGlobe).toHaveBeenLastCalledWith('tank-farm');
+    const ws = fixtureWorkspace();
+    ws.getState().openProject({ id: 'tank-farm', root: 'E:/x', manifest: fixtureManifest() }, []);
+    await runRendererTool('show_on_globe', {}, ctx({ app }, ws));
+    expect(showOnGlobe).toHaveBeenLastCalledWith('tank-farm');
+    const r = await runRendererTool('show_on_globe', {}, ctx({ app }));
+    expect(showOnGlobe).toHaveBeenLastCalledWith(null);
+    expect(r.result).toEqual({ shown: 'library', sites: 2 });
+    await expect(
+      runRendererTool('show_on_globe', { site: 'nowhere' }, ctx({ app })),
+    ).rejects.toThrow(
+      'No site "nowhere" on the Globe. Choose a project id from list_sites: tank-farm, pier.',
+    );
+  });
+
+  it('says the Globe is in the desktop app when the hooks are missing', async () => {
+    await expect(runRendererTool('list_sites', {}, ctx())).rejects.toThrow('desktop app');
+    await expect(runRendererTool('show_on_globe', {}, ctx())).rejects.toThrow('desktop app');
   });
 });

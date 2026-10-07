@@ -3,7 +3,7 @@
  * locations, targets). Executors live in renderer-tools.ts and analysis-tools.ts.
  */
 import type { SceneHandle } from '@aio/engine';
-import type { Issue, Layer, Vec3, WindowKind } from '@aio/schema';
+import type { GlobeSite, Issue, Layer, Vec3, WindowKind } from '@aio/schema';
 import type { Workspace } from '@aio/workspace';
 import type { StoreApi } from 'zustand/vanilla';
 import { getToolSpec, toolInputs, type ToolInput, type ToolName } from './tools';
@@ -42,6 +42,10 @@ export interface AppHooks {
   stageView?: () => { show3d: boolean; showMap: boolean };
   /** Show the 3D view (a Map-only stage switches to 3D). */
   show3d?: () => void;
+  /** The library's sites on the Globe (`globe:sites`). */
+  listSites?: () => Promise<GlobeSite[]>;
+  /** Open the Globe and fly to a site (a project id), or over the whole library (null). */
+  showOnGlobe?: (projectId: string | null) => void;
 }
 
 export const appHooks: AppHooks = {};

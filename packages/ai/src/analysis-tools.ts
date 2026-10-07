@@ -3,7 +3,7 @@
  * zone and class, export issues and open the original review. Read tools only look at the
  * workspace and project files; export_issues writes a file (approval first).
  */
-import type { Issue } from '@aio/schema';
+import type { GlobeSite, Issue } from '@aio/schema';
 import { assetUrl } from '@aio/workspace';
 import { z } from 'zod';
 import { changeSetsOf, changeSummary, verdictLine } from './change-tools';
@@ -379,4 +379,63 @@ define('open_original_review', ({ layerId }, ctx) => {
   if (!open) throw new ToolError('The original review can only be opened in the desktop app.');
   open(layer.id);
   return { result: { opened: layer.id, name: layer.name }, summary: layer.name };
+});
+
+// list_sites and show_on_globe (M10 Globe): the library on the Earth, no open project needed
+
+async function librarySites(ctx: RendererToolContext): Promise<GlobeSite[]> {
+  const list = ctx.app?.listSites;
+  if (!list) throw new ToolError('The Globe is only in the desktop app.');
+  return list();
+}
+
+define('list_sites', async (_input, ctx) => {
+  const sites = await librarySites(ctx);
+  const open = ctx.workspace.getState().project?.id ?? null;
+  return {
+    result: {
+      sites: sites.map((s) => ({
+        projectId: s.projectId,
+        name: s.name,
+        lon: Math.round(s.lonLat[0] * 1e6) / 1e6,
+        lat: Math.round(s.lonLat[1] * 1e6) / 1e6,
+        surveys: s.captures.map((c) => c.date),
+        openIssues: s.issues.open,
+        bySeverity: s.issues.bySeverity,
+        tilesets: s.tilesets.map((t) => t.name),
+        ...(s.projectId === open ? { open: true } : {}),
+      })),
+    },
+    summary: plural(sites.length, 'site'),
+  };
+});
+
+define('show_on_globe', async ({ site }, ctx) => {
+  const show = ctx.app?.showOnGlobe;
+  if (!show) throw new ToolError('The Globe is only in the desktop app.');
+  const sites = await librarySites(ctx);
+  let target: GlobeSite | undefined;
+  if (site) {
+    const want = site.trim().toLowerCase();
+    target =
+      sites.find((s) => s.projectId.toLowerCase() === want) ??
+      sites.find((s) => s.name.toLowerCase() === want);
+    if (!target)
+      throw new ToolError(
+        `No site "${site}" on the Globe. Choose a project id from list_sites: ${sites
+          .slice(0, 20)
+          .map((s) => s.projectId)
+          .join(', ')}.`,
+      );
+  } else {
+    const open = ctx.workspace.getState().project?.id;
+    target = sites.find((s) => s.projectId === open);
+  }
+  show(target?.projectId ?? null);
+  return {
+    result: target
+      ? { shown: target.projectId, name: target.name, lonLat: target.lonLat }
+      : { shown: 'library', sites: sites.length },
+    summary: target ? target.name : 'Globe',
+  };
 });
