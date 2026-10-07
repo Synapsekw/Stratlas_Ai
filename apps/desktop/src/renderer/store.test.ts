@@ -246,4 +246,41 @@ describe('shell store', () => {
     s.getState().setCloudPanel(false);
     expect(s.getState().cloudPanelOpen).toBe(false);
   });
+  it('opens a video-first project with the 3D view and the map side by side', async () => {
+    const clip = {
+      kind: 'video',
+      id: 'clip-1',
+      name: 'Clip 1',
+      visible: true,
+      src: { path: 'video/clip-1.mp4' },
+      flight: { src: { path: 'flights/clip-1.json' }, startUtcMs: 0 },
+      lens: { model: 'pinhole', hfovDeg: 70, aspect: 1.7778 },
+      offsetMs: 0,
+    } as const;
+    const videoOnly = { ...manifest, id: 'site', layers: [clip] } as ProjectManifest;
+    let open = videoOnly;
+    const { bridge } = fakeBridge({
+      'project:open': () => ({
+        ok: true,
+        id: open.id,
+        root: entry.path,
+        manifest: open,
+        issues: [],
+      }),
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    await s.getState().openProject(entry.path);
+    expect(s.getState().stageMode).toBe('split');
+    // a project with nothing placed (no video) goes back to the 3D view it was chosen for
+    open = manifest;
+    await s.getState().openProject(entry.path);
+    expect(s.getState().stageMode).toBe('3d');
+    // a mode the person picks stays
+    open = videoOnly;
+    await s.getState().openProject(entry.path);
+    s.getState().setStageMode('map');
+    open = manifest;
+    await s.getState().openProject(entry.path);
+    expect(s.getState().stageMode).toBe('map');
+  });
 });

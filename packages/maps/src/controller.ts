@@ -24,6 +24,7 @@ import { frameProjection, type FrameProjection } from './geo';
 import {
   ALL_ISSUES,
   footprint,
+  headingLine,
   issueAnchor,
   poseAt,
   rasterQuad,
@@ -258,6 +259,17 @@ export function createMapController(
       filter: ['==', ['geometry-type'], 'Polygon'],
       layout: { visibility: showFlights ? 'visible' : 'none' },
       paint: { 'fill-color': INK.acc, 'fill-opacity': 0.18, 'fill-outline-color': INK.acc },
+    });
+    map.addLayer({
+      id: 'aio-drone-heading',
+      type: 'line',
+      source: SRC.drone,
+      filter: ['==', ['geometry-type'], 'LineString'],
+      layout: {
+        'line-cap': 'round',
+        visibility: showFlights ? 'visible' : 'none',
+      },
+      paint: { 'line-color': INK.accStrong, 'line-width': 3 },
     });
     map.addLayer({
       id: 'aio-drone-point',
@@ -689,17 +701,28 @@ export function createMapController(
       return;
     }
     const height = Math.max(1, pose.pos[1]);
-    const ring = footprint(
-      withBias(pose, f.layer.orientation, f.layer.positionOffsetM),
-      f.layer.lens,
-      {
-        maxRange: Math.min(3000, height * 8),
-      },
-    ).map((v) => (proj ? proj.toLonLat(v) : [0, 0]));
+    const biased = withBias(pose, f.layer.orientation, f.layer.positionOffsetM);
+    const ring = footprint(biased, f.layer.lens, {
+      maxRange: Math.min(3000, height * 8),
+    }).map((v) => (proj ? proj.toLonLat(v) : [0, 0]));
     const first = ring[0];
+    // which way the camera looks: an arrow from the drone, longer as it flies higher
+    const head = headingLine(biased, Math.min(80, Math.max(12, height * 0.6)));
     setData(
       SRC.drone,
       fc([
+        ...(head
+          ? [
+              {
+                type: 'Feature' as const,
+                properties: {},
+                geometry: {
+                  type: 'LineString' as const,
+                  coordinates: head.map((v) => (proj ? proj.toLonLat(v) : [0, 0])),
+                },
+              },
+            ]
+          : []),
         ...(first
           ? [
               {
