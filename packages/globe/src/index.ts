@@ -1,6 +1,7 @@
-// @aio/globe (M10 stream G6): the Globe view on CesiumJS. G0 holds the offline rules and the
-// credits; G6 adds GlobeView, the Cesium setup, imagery and terrain providers, sites, pins,
-// tilesets and the camera hand-off to the site view.
+// @aio/globe (M10 stream G6): the Globe view on CesiumJS. This entry holds what needs no CesiumJS
+// (offline rules, credits, tile and terrain maths, the project frame to ECEF, the camera
+// hand-off, sites and issue pins); `@aio/globe/view` holds the CesiumJS view, imported only from
+// the renderer's lazily loaded Globe chunk.
 export {
   BANNED_CESIUM_IMPORTS,
   BANNED_CESIUM_PACKAGES,
@@ -12,3 +13,61 @@ export {
   onlineHostsIn,
 } from './offline';
 export { BUNDLED_CREDIT, creditLines } from './credits';
+export {
+  MERCATOR_MAX_LAT,
+  imageryLayerOrder,
+  lonLatToTileXY,
+  orderRasterPacks,
+  packAt,
+  packCovers,
+  rasterPackUrl,
+  selectPacks,
+  tileBounds,
+  type BBox,
+  type PackExtent,
+} from './tiles';
+export {
+  NO_GEOID,
+  decodeTerrarium,
+  encodeTerrarium,
+  geoidFor,
+  gridGeoid,
+  heightFromTiles,
+  heightmapFor,
+  sampleGrid,
+  terrainZoom,
+  terrariumHeight,
+  tilesForRect,
+  type Geoid,
+  type HeightGrid,
+  type TileKey,
+} from './terrarium';
+export {
+  applyMatrix,
+  canPlace,
+  ecefToGeodetic,
+  ecefToLocal,
+  enuBasis,
+  enuToEcefMatrix,
+  geodeticToEcef,
+  localToEcef,
+  localToEcefMatrix,
+  projectToLonLat,
+  type SiteGeoref,
+} from './geodesy';
+export {
+  globeToSite,
+  headingPitch,
+  siteToGlobe,
+  type GlobeCamera,
+  type SiteCamera,
+} from './camera';
+export {
+  issuePins,
+  lastCapture,
+  severityColour,
+  sightingAnchor,
+  sitesBounds,
+  sortSites,
+  type IssuePin,
+} from './sites';

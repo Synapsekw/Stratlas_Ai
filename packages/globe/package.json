@@ -17,6 +17,7 @@
     "@cesium/core": "0.1.0",
     "@cesium/engine": "26.4.0",
     "pmtiles": "^4.5.0",
+    "proj4": "^2.22.0",
     "react": "^19.3.0"
   }
 }

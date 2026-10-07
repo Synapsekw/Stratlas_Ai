@@ -352,6 +352,9 @@ importers:
       pmtiles:
         specifier: ^4.5.0
         version: 4.5.0
+      proj4:
+        specifier: ^2.22.0
+        version: 2.22.0
       react:
         specifier: ^19.3.0
         version: 19.3.0
