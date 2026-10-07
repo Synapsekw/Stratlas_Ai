@@ -557,7 +557,6 @@ def write_sparse(
     atomic_write_json(
         folder / "frame.json",
         {
-            "schema": "aio.photo-frame/1",
             "frame": "grid",
             "axes": "x east, y north, z up (project CRS grid), metres from origin",
             "crs": C.crs_record(grid.crs),
@@ -1122,7 +1121,6 @@ class PhotoAlign:
             )
         )
         align = {
-            "schema": "aio.photo-align/1",
             "run": state["id"],
             "createdAt": now_iso(),
             "engine": state.get("versions", {}),
@@ -1243,7 +1241,6 @@ def cameras_sfm(grid_model: SparseModel, state: dict[str, Any], info: dict[str, 
             }
         )
     return {
-        "schema": "aio.photo-cameras/1",
         "run": state["id"],
         "crs": state["crs"],
         "origin": state["frames"]["origin"],
@@ -1272,7 +1269,7 @@ def photos_record(metas: list[PhotoMeta], info: dict[str, Any], H: np.ndarray, g
         if m.has_gps and not np.isnan(H[i]) and sig:
             rec["gnss"] = {"lon": m.lon, "lat": m.lat, "h": float(H[i]), "sigmaH": sig[0], "sigmaV": sig[1]}
         out[m.key] = rec
-    return {"schema": "aio.photo-list/1", "imageRoot": info["imageRoot"], "photos": out}
+    return {"imageRoot": info["imageRoot"], "photos": out}
 
 
 def measure_points(model: SparseModel, gcp: dict[str, Any], enu: C.EnuFrame, grid: C.GridFrame, cam_res):
