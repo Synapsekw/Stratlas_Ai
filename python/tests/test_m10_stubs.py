@@ -10,6 +10,7 @@ import pytest
 
 from aio_pipelines.pipelines import all_pipelines
 from aio_pipelines.runtime import JobError
+from aio_pipelines.stub import NotBuiltYet
 from conftest import run_job
 
 M10 = {
@@ -52,6 +53,8 @@ def test_every_m10_pipeline_is_listed():
 @pytest.mark.parametrize("name", sorted(M10))
 def test_a_stub_fails_with_not_implemented_and_leaves_the_project_untouched(tmp_path, name):
     pipeline = all_pipelines()[name]
+    if not isinstance(pipeline, NotBuiltYet):
+        pytest.skip(f"{name} is built (its own tests cover it)")
     with pytest.raises(JobError, match="not implemented"):
         run_job(pipeline, tmp_path, M10[name])
     job = json.loads((tmp_path / "jobs" / "j1" / "job.json").read_text("utf-8"))
