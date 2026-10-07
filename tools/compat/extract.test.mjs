@@ -1,6 +1,6 @@
-// The committed `schema-0.8/` is exactly what extract-schema.mjs makes from the 0.8.0 commit (when
-// the clone has that history; CI's shallow checkout skips the comparison), and the downgrade keeps
-// to its rule: only unknown keys and refused array elements go.
+// The committed `schema-0.8/` and `schema-0.9/` are exactly what extract-schema.mjs makes from the
+// 0.8.0 and 0.9.0 commits (when the clone has that history; CI's shallow checkout skips the
+// comparison), and the downgrade keeps to its rule: only unknown keys and refused array elements go.
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,8 +9,6 @@ import { z } from 'zod';
 import { downgrade } from './downgrade.mjs';
 import { extractSchema, hasCommit, scratchDir, toModule } from './extract-schema.mjs';
 import { milestone } from './milestones.mjs';
-
-const committed = fileURLToPath(new URL('./schema-0.8', import.meta.url));
 
 describe('extract-schema', () => {
   it('strips types and gives relative imports an .mjs extension', () => {
@@ -23,20 +21,23 @@ describe('extract-schema', () => {
     expect(js).not.toMatch(/type A|: z\.ZodString/);
   });
 
-  it.skipIf(!hasCommit(milestone('0.8').commit))(
-    'matches a fresh extraction of the 0.8 commit',
-    async () => {
-      const fresh = scratchDir('schema-0.8-check');
-      const names = await extractSchema('0.8', fresh);
-      expect(names).toEqual(readdirSync(committed).sort());
-      for (const n of names) {
-        expect(readFileSync(join(fresh, n), 'utf8'), n).toBe(
-          readFileSync(join(committed, n), 'utf8'),
-        );
-      }
-    },
-    60_000,
-  );
+  for (const version of ['0.8', '0.9']) {
+    const committed = fileURLToPath(new URL(`./schema-${version}`, import.meta.url));
+    it.skipIf(!hasCommit(milestone(version).commit))(
+      `matches a fresh extraction of the ${version} commit`,
+      async () => {
+        const fresh = scratchDir(`schema-${version}-check`);
+        const names = await extractSchema(version, fresh);
+        expect(names).toEqual(readdirSync(committed).sort());
+        for (const n of names) {
+          expect(readFileSync(join(fresh, n), 'utf8'), n).toBe(
+            readFileSync(join(committed, n), 'utf8'),
+          );
+        }
+      },
+      60_000,
+    );
+  }
 });
 
 describe('downgrade', () => {

@@ -59,6 +59,12 @@
       "path": "packages/sync"
     },
     {
+      "path": "packages/globe"
+    },
+    {
+      "path": "packages/tiles"
+    },
+    {
       "path": "apps/team-server"
     },
     {

@@ -29,7 +29,7 @@ describe('version registry', () => {
     for (const e of SCHEMA_REGISTRY) {
       expect(e.family).toMatch(/^aio\.[a-z][a-z0-9-]*$/);
       expect(e.version).toBe(1);
-      expect(e.since).toMatch(/^0\.[4-9]$/);
+      expect(e.since).toMatch(/^0\.([4-9]|1\d)$/);
     }
   });
 
