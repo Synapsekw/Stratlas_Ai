@@ -29,7 +29,8 @@ git worktree add ../stratlas-wt/s3-engine -b stream/s3-engine
 ```
 
 - A stream owns its package(s) and may not edit another stream's package. Ask the integration lead instead.
-- Merge to `main` only when `pnpm check` is green in the worktree.
+- Nobody edits the main checkout directly; every change, docs included, starts in its own worktree.
+- Merge to `main` one branch at a time: rebase on the latest `main`, get `pnpm check` green in the worktree, then fast-forward. `CLAUDE.md` has the full steps and the merge lock.
 - Contracts in `@aio/schema` are frozen (`contracts-v1`). A change needs an entry in `docs/architecture/contract-changes.md` and the integration lead's sign-off before merge.
 
 ## Tests
