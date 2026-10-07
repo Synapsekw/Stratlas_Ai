@@ -43,8 +43,11 @@ export const BUDGETS = Object.freeze({
    */
   installer: Object.freeze({
     growthOver090Bytes: 15 * 1024 * 1024,
-    // Stratlas-0.9.0-win-x64-setup.exe as built for the 0.9.0 release (7 Oct 2026).
-    baseline090: Object.freeze({ 'win-x64-setup.exe': 187_894_920 }),
+    // The Windows installers as built for the 0.9.0 release (7 Oct 2026).
+    baseline090: Object.freeze({
+      'win-x64-setup.exe': 187_894_920,
+      'win-x64-portable.exe': 176_679_186,
+    }),
   }),
 });
 

@@ -769,10 +769,10 @@
     },
     {
       "name": "zlib",
-      "version": "1.3 (rasterio; zlib-ng in Pillow)",
+      "version": "1.3 (CPython, rasterio; zlib-ng in Pillow)",
       "spdx": "Zlib",
       "source": "https://zlib.net/",
-      "files": ["**/*.libs/zlib*.dll", "**/.dylibs/libz.*dylib"],
+      "files": ["python/DLLs/zlib*.dll", "**/*.libs/zlib*.dll", "**/.dylibs/libz.*dylib"],
       "linkage": "shared"
     },
     {
