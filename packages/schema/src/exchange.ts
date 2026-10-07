@@ -133,6 +133,8 @@ export const HUB_PATHS = {
   ops: (team: string, chain: string) => `projects/${team}/ops/${chain}`,
   blobs: (team: string) => `projects/${team}/blobs`,
   presence: (team: string, device: string) => `projects/${team}/presence/${device}.json`,
+  /** M9 integration: the team project's `team.json` copy on the hub (`aio.team/1`). */
+  team: (team: string) => `projects/${team}/team.json`,
 } as const;
 
 /** `presence/<device>.json`: a heartbeat; advisory only. */
@@ -165,3 +167,34 @@ export type ExchangePreview = z.infer<typeof ExchangePreview>;
 export type HubFile = z.infer<typeof HubFile>;
 export type Presence = z.infer<typeof Presence>;
 export type PackageReplyPolicy = z.infer<typeof PackageReplyPolicy>;
+
+// ---------------------------------------------------------------- M9 integration (T5)
+
+/**
+ * Exchange files are store-mode ZIP archives under 2 GB (no ZIP64, no WinZip AES): larger sets of
+ * files go through a hub or a USB copy of the project.
+ */
+export const EXCHANGE_MAX_BYTES = 2 * 1024 * 1024 * 1024;
+
+export const EXCHANGE_ENVELOPE_SCHEMA = 'aio.exchange-enc/1' as const;
+
+/**
+ * The first line of a passphrase-encrypted `.aiosync` (decision 9): scrypt parameters, salt,
+ * nonce prefix and chunk size. AES-256-GCM chunks follow (STREAM construction: chunk nonce =
+ * 7-byte prefix, 4-byte big-endian chunk number, 1 on the last chunk else 0; the header line is the
+ * additional data of every chunk). Nothing else of the file shows from outside.
+ */
+export const ExchangeEnvelope = z.looseObject({
+  schema: z.literal(EXCHANGE_ENVELOPE_SCHEMA),
+  kdf: z.literal('scrypt'),
+  cipher: z.literal('aes-256-gcm'),
+  N: z.number().int().positive(),
+  r: z.number().int().positive(),
+  p: z.number().int().positive(),
+  /** base64url. */
+  salt: z.string().min(1).max(200),
+  /** base64url, 7 bytes. */
+  nonce: z.string().min(1).max(200),
+  chunk: z.number().int().positive(),
+});
+export type ExchangeEnvelope = z.infer<typeof ExchangeEnvelope>;

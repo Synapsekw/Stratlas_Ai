@@ -32,6 +32,30 @@ async function writePack(version: string, opts: { python?: boolean; manifest?: u
 }
 
 describe('findPack', () => {
+  it('refuses a pack whose app range leaves this app out, and uses one that fits', async () => {
+    const base = {
+      schema: 'aio.pipeline-pack/1',
+      protocol: 'aio.pipelines/1',
+      python: { version: '3.13.7', build: '20260924', executable: 'python/python.exe' },
+      platform: 'win32-x64',
+      createdAt: '2026-10-04T10:00:00Z',
+      pipelines: [],
+      files: {},
+    };
+    await writePack('2.0.0', {
+      manifest: { ...base, version: '2.0.0', appRange: '>=2.0.0 <3.0.0' },
+    });
+    const app = { version: '0.9.0', name: 'Stratlas' };
+    const refused = await findPack({ dataRoot: root, env: {}, app });
+    expect(refused.pack).toBeNull();
+    expect(refused.runtime.problem).toContain('works with Stratlas >=2.0.0 <3.0.0');
+    const fits = await writePack('1.0.0', {
+      manifest: { ...base, version: '1.0.0', appRange: '>=0.9.0 <2.0.0' },
+    });
+    const r = await findPack({ dataRoot: root, env: {}, app });
+    expect(r.runtime).toEqual({ found: true, version: '1.0.0', dir: fits });
+  });
+
   it('says where it looked when there is no pack', async () => {
     const r = await findPack({ dataRoot: root, env: {} });
     expect(r.pack).toBeNull();

@@ -418,3 +418,30 @@ export function randomHistory(opts: RandomHistoryOptions): { sim: TeamSim; ops: 
   if (opts.settle ?? true) sim.syncAll();
   return { sim, ops: sim.all() };
 }
+
+/**
+ * Share the simulated project as T2 does: person 0 shares (`project.share`) and adds themself as
+ * the first owner with their own device, then adds the others with their device keys. Team checks
+ * need signatures, so build the sim with `sign: true`.
+ */
+export function shareTeam(
+  sim: TeamSim,
+  roles: readonly ('owner' | 'reviewer' | 'viewer' | 'client')[],
+): void {
+  sim.write(0, 'project.share', { rec: 'project', id: 't' }, { teamProjectId: 't', name: 'Site' });
+  roles.forEach((role, i) => {
+    const p = sim.person(i);
+    sim.write(
+      0,
+      'member.add',
+      { rec: 'member', id: p.actor },
+      {
+        actor: p.actor,
+        name: p.name,
+        initials: p.initials,
+        role: i === 0 ? 'owner' : role,
+        devices: [{ id: p.device, key: p.signer.publicKey }],
+      },
+    );
+  });
+}

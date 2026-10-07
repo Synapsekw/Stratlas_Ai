@@ -222,6 +222,49 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     where: 'receipts (team server)',
     since: '0.9',
   },
+  { family: 'aio.audit', version: 1, home: 'exchange', where: 'audit-json export', since: '0.9' },
+  {
+    family: 'aio.journal-cache',
+    version: 1,
+    home: 'userData',
+    where: 'journal-cache/*/meta.json',
+    since: '0.9',
+  },
+  {
+    family: 'aio.team-servers',
+    version: 1,
+    home: 'userData',
+    where: 'team/servers.json',
+    since: '0.9',
+  },
+  {
+    family: 'aio.blob-cache',
+    version: 1,
+    home: 'userData',
+    where: 'blobs/ cache index',
+    since: '0.9',
+  },
+  {
+    family: 'aio.exchange-enc',
+    version: 1,
+    home: 'exchange',
+    where: 'encrypted *.aiosync header line',
+    since: '0.9',
+  },
+  {
+    family: 'aio.server-audit',
+    version: 1,
+    home: 'server',
+    where: 'export-audit folder (team server CLI)',
+    since: '0.9',
+  },
+  {
+    family: 'aio.server-backup',
+    version: 1,
+    home: 'server',
+    where: 'backup .jsonl (team server CLI)',
+    since: '0.9',
+  },
 ];
 
 /**
@@ -234,6 +277,7 @@ export const NOT_FILE_SCHEMAS: readonly string[] = [
   'aio.sync/1',
   'aio.cert/1',
   'aio.request/1',
+  'aio.invite/1',
   'aio.truth/1',
   'aio.video-calibration-patch/1',
 ];

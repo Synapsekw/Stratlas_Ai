@@ -267,6 +267,11 @@ export const OP_ID_EXCLUDES = ['id', 'payload', 'sig'] as const;
 export const PatchPayload = z.object({
   set: z.record(z.string(), z.unknown()).optional(),
   unset: z.array(z.string()).optional(),
+  /**
+   * M9 integration: the values the fields had before (History shows "severity 1 to 3" without
+   * replaying the chain). Informational only: merging never reads it.
+   */
+  was: z.record(z.string(), z.unknown()).optional(),
 });
 /** `issue.create`, `issue.restore`: the whole record (an `Issue`, kept as JSON). */
 export const RecordPayload = z.object({ record: z.record(z.string(), z.unknown()) });
@@ -566,6 +571,27 @@ export const VerifyReport = z.object({
 
 /** Audit exports (journal `audit:export`, package exports of kind `files`). */
 export const AuditExportFormat = z.enum(['audit-csv', 'audit-json']);
+
+export const AUDIT_FILE_SCHEMA = 'aio.audit/1' as const;
+
+/**
+ * The signed audit export (`audit-json`, `aio.audit/1`): the entries shown, the Verify report and
+ * every file of the project's `journal/` folder as text (device records, segments, checkpoints),
+ * so `tools/audit-verify/verify.mjs` re-checks it with no app. Readers keep unknown keys.
+ */
+export const AuditFile = z.looseObject({
+  schema: z.literal(AUDIT_FILE_SCHEMA),
+  app: z.object({ name: z.string(), version: z.string() }),
+  project: z.object({ name: z.string() }),
+  exportedAt: IsoTime,
+  filter: AuditFilter.optional(),
+  head: z.object({ root: Sha256Hex, count: z.number().int().nonnegative() }).nullable(),
+  verify: VerifyReport.nullable(),
+  entries: z.array(AuditEntry),
+  /** Project-relative path (`journal/...`) to the file's text. */
+  journal: z.record(z.string(), z.string()),
+});
+export type AuditFile = z.infer<typeof AuditFile>;
 
 export type OpId = z.infer<typeof OpId>;
 export type ReplicaId = z.infer<typeof ReplicaId>;

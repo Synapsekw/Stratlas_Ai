@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createInbox, type Inbox } from './index';
-import { issueRecord, TeamSim } from './testing/generator';
+import { issueRecord, shareTeam, TeamSim } from './testing/generator';
 
 const AT = '2026-10-07T08:00:00.000Z';
 const f02 = { rec: 'issue', id: 'i_f02' };
@@ -84,27 +84,10 @@ describe('createInbox', () => {
   });
 
   it('writes recodes so a renumbered code sticks, and lets only an owner release', async () => {
-    const sim = new TeamSim({ people: 2 });
+    const sim = new TeamSim({ people: 2, sign: true });
     const rana = sim.person(0);
     const omar = sim.person(1);
-    sim.write(
-      0,
-      'project.share',
-      { rec: 'project', id: 't' },
-      { teamProjectId: 't', name: 'Site' },
-    );
-    sim.write(
-      0,
-      'member.add',
-      { rec: 'member', id: omar.actor },
-      {
-        actor: omar.actor,
-        name: omar.name,
-        initials: omar.initials,
-        role: 'reviewer',
-        devices: [{ id: omar.device }],
-      },
-    );
+    shareTeam(sim, ['owner', 'reviewer']);
     sim.syncAll();
     sim.write(
       0,

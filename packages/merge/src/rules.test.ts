@@ -1,7 +1,7 @@
 import type { Op } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { project, resolveDrafts, releaseDraft, writeDrafts, type OpDraft } from './index';
-import { issueRecord, sighting, sightingHash, TeamSim } from './testing/generator';
+import { issueRecord, shareTeam, sighting, sightingHash, TeamSim } from './testing/generator';
 
 const AT = '2026-10-07T08:00:00.000Z';
 const f = (id = 'i_f02') => ({ rec: 'issue', id });
@@ -343,38 +343,9 @@ describe('collaboration', () => {
 
 describe('quarantine', () => {
   function team() {
-    const sim = new TeamSim({ people: 3 });
-    const [rana, omar, lina] = [0, 1, 2].map((i) => sim.person(i));
-    sim.write(
-      0,
-      'project.share',
-      { rec: 'project', id: 't' },
-      { teamProjectId: 't', name: 'Site' },
-    );
-    sim.write(
-      0,
-      'member.add',
-      { rec: 'member', id: omar?.actor ?? '' },
-      {
-        actor: omar?.actor,
-        name: omar?.name,
-        initials: omar?.initials,
-        role: 'reviewer',
-        devices: [{ id: omar?.device }],
-      },
-    );
-    sim.write(
-      0,
-      'member.add',
-      { rec: 'member', id: lina?.actor ?? '' },
-      {
-        actor: lina?.actor,
-        name: lina?.name,
-        initials: lina?.initials,
-        role: 'viewer',
-        devices: [{ id: lina?.device }],
-      },
-    );
+    const sim = new TeamSim({ people: 3, sign: true });
+    const [rana] = [0].map((i) => sim.person(i));
+    shareTeam(sim, ['owner', 'reviewer', 'viewer']);
     sim.write(0, 'issue.create', f(), {
       record: issueRecord('i_f02', 'F02', rana?.name ?? '', AT),
     });

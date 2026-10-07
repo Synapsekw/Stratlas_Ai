@@ -589,6 +589,8 @@ export const PipelinePackManifest = z.object({
   platform: z.string(),
   createdAt: z.string(),
   pipelines: z.array(z.object({ name: z.string(), title: z.string() })),
+  /** M9 T8: the app versions the pack works with (`>=0.9.0 <2.0.0`); absent in older packs. */
+  appRange: z.string().min(1).max(100).optional(),
   files: z.record(
     z.string(),
     z.object({ size: z.number().int().nonnegative(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }),

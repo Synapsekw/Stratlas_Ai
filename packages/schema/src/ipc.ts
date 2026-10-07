@@ -39,7 +39,7 @@ import {
   SavedView,
 } from './collab';
 import { Sha256Hex } from './common';
-import { ExchangeKind, ExchangePreview, Heads } from './exchange';
+import { ExchangeKind, ExchangePreview, Heads, TeamProjectId } from './exchange';
 import { ActorId, DeviceId, Identity, Initials, Member, PersonName, Role } from './identity';
 import {
   AuditEntry,
@@ -49,6 +49,7 @@ import {
   OpId,
   RecordRef,
   VerifyReport,
+  Via,
 } from './journal';
 import { Conflict, QuarantineEntry, ServerInfo, SyncMode, TeamStatus } from './sync';
 
@@ -1577,6 +1578,16 @@ export const ipc = {
       .strict(),
     response: OkOrFailure,
   },
+  /**
+   * M9 integration (decision 8): switch the journal of a private project off or on; the switch is
+   * recorded (`journal.off`, `journal.on`). A team project keeps its journal on.
+   */
+  'journal:setEnabled': {
+    request: z
+      .object({ projectId: ProjectId, on: z.boolean(), reason: z.string().max(500).optional() })
+      .strict(),
+    response: OkOrFailure,
+  },
   /** CSV (UTF-8 with BOM) or signed JSON with the device keys and checkpoints, via a save dialog. */
   'audit:export': {
     request: z
@@ -1611,6 +1622,8 @@ export const ipc = {
         mentions: z.array(ActorId).max(50).optional(),
         replyTo: CommentId.optional(),
         view: SavedView.optional(),
+        /** M9 integration: how the comment was made (the agent's tool call); main stamps it. */
+        via: Via.optional(),
       })
       .strict(),
     response: z.discriminatedUnion('ok', [
@@ -1628,6 +1641,16 @@ export const ipc = {
     request: z.object({ projectId: ProjectId, id: CommentId }).strict(),
     response: OkOrFailure,
   },
+  /** M9 integration, owner only: remove the text of a comment from every copy (`comment.redact`). */
+  'collab:redactComment': {
+    request: z
+      .object({ projectId: ProjectId, id: CommentId, reason: z.string().max(500).optional() })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), removed: z.number().int().nonnegative() }),
+      Failure,
+    ]),
+  },
   'collab:assign': {
     request: z
       .object({
@@ -1636,6 +1659,8 @@ export const ipc = {
         assignee: ActorId.nullable(),
         due: z.iso.date().optional(),
         note: z.string().max(2000).optional(),
+        /** M9 integration: how the assignment was made (the agent's tool call). */
+        via: Via.optional(),
       })
       .strict(),
     response: OkOrFailure,
@@ -1682,10 +1707,23 @@ export const ipc = {
         name: z.string().min(1).max(200).optional(),
         hubPath: z.string().min(1).optional(),
         serverId: z.string().min(1).max(64).optional(),
+        /** M9 integration: join this team project found on the hub or server instead of a new one. */
+        teamProjectId: TeamProjectId.optional(),
       })
       .strict(),
     response: z.discriminatedUnion('ok', [
       z.object({ ok: z.literal(true), status: TeamStatus }),
+      Failure,
+    ]),
+  },
+  /** M9 integration: the team projects a hub folder holds (to join one). */
+  'team:hubProjects': {
+    request: z.object({ hubPath: z.string().min(1) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        projects: z.array(z.object({ teamProjectId: TeamProjectId, name: z.string() })),
+      }),
       Failure,
     ]),
   },
@@ -1727,8 +1765,10 @@ export const ipc = {
       .object({
         projectId: ProjectId,
         conflict: z.string().min(1).max(300),
-        choice: z.enum(['ours', 'theirs', 'restore']),
+        choice: z.enum(['ours', 'theirs', 'restore', 'edit']),
         op: OpId.optional(),
+        /** M9 integration: the value typed with choice `edit`. */
+        value: z.unknown().optional(),
       })
       .strict(),
     response: OkOrFailure,
@@ -1747,6 +1787,26 @@ export const ipc = {
   },
 
   // ---------------------------------------------------------------- M9 exchange files (T5)
+  /** M9 integration: the other devices of the team project, for "Export changes for ...". */
+  'exchange:peers': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        peers: z.array(
+          z.object({
+            device: DeviceId,
+            actor: ActorId,
+            name: PersonName,
+            initials: Initials,
+            /** What this copy last sent them or received from them. */
+            heads: Heads.optional(),
+          }),
+        ),
+      }),
+      Failure,
+    ]),
+  },
   /** What a patch or bundle for a peer (or since a date) would carry, before writing it. */
   'exchange:plan': {
     request: z
@@ -1875,6 +1935,21 @@ export const ipc = {
     request: z.object({ jobId: z.string().min(1).max(64), projectId: ProjectId }).strict(),
     response: OkOrFailure,
   },
+  /**
+   * M9 integration: free cache space. Only blobs held elsewhere (hub or server) and not used by an
+   * open project are removed; `targetBytes` absent frees down to the cap.
+   */
+  'blobs:free': {
+    request: z.object({ targetBytes: z.number().int().nonnegative().optional() }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        removed: z.number().int().nonnegative(),
+        freed: z.number().int().nonnegative(),
+      }),
+      Failure,
+    ]),
+  },
 
   // ---------------------------------------------------------------- M9 team server (T7, preview)
   /** Enrol this device with an invite code; the fingerprint must match the one the person accepted. */
@@ -1900,6 +1975,14 @@ export const ipc = {
   'server:list': {
     request: Empty,
     response: z.object({ servers: z.array(ServerInfo) }),
+  },
+  /** M9 integration: is an enrolled server reachable now (health with a signed request). */
+  'server:check': {
+    request: z.object({ id: z.string().min(1).max(64) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), server: ServerInfo }),
+      Failure,
+    ]),
   },
   /** Remove an enrolled server and its vault entry from this machine. */
   'server:forget': {
@@ -2021,6 +2104,36 @@ export const ipcEvents = {
     done: z.number().nonnegative(),
     total: z.number().nonnegative(),
     state: z.enum(['running', 'done', 'failed', 'cancelled']),
+    /** M9 integration: why a fetch failed, in a sentence. */
+    error: z.string().optional(),
+  }),
+  /**
+   * M9 integration: notices after a sync or import: a device whose clock is ahead (5 minutes: a
+   * notice; 24 hours: its ops wait in quarantine), and issue codes renumbered because two copies
+   * made the same code apart.
+   */
+  'sync:notice': z.object({
+    projectId: z.string(),
+    notices: z.array(
+      z.discriminatedUnion('kind', [
+        z.object({
+          kind: z.literal('clock-ahead'),
+          device: DeviceId,
+          actor: ActorId,
+          name: z.string().optional(),
+          aheadMs: z.number().nonnegative(),
+          level: z.enum(['notice', 'hold']),
+        }),
+        z.object({
+          kind: z.literal('recode'),
+          issue: z.string(),
+          from: z.string(),
+          to: z.string(),
+          /** Packages already delivered with the old code (so the person can reissue). */
+          delivered: z.array(z.string()).optional(),
+        }),
+      ]),
+    ),
   }),
 } as const satisfies Record<string, z.ZodType>;
 

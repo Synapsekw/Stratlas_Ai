@@ -117,11 +117,13 @@ const CHANNELS = {
   'journal:history': true,
   'journal:verify': true,
   'journal:redact': true,
+  'journal:setEnabled': true,
   'audit:export': true,
   'collab:read': true,
   'collab:comment': true,
   'collab:editComment': true,
   'collab:deleteComment': true,
+  'collab:redactComment': true,
   'collab:assign': true,
   'collab:approve': true,
   'collab:withdraw': true,
@@ -134,6 +136,8 @@ const CHANNELS = {
   'sync:resolve': true,
   'sync:quarantine': true,
   'sync:release': true,
+  'team:hubProjects': true,
+  'exchange:peers': true,
   'exchange:plan': true,
   'exchange:export': true,
   'exchange:preview': true,
@@ -144,8 +148,10 @@ const CHANNELS = {
   'blobs:cancel': true,
   'blobs:policy': true,
   'blobs:index': true,
+  'blobs:free': true,
   'server:enrol': true,
   'server:list': true,
+  'server:check': true,
   'server:forget': true,
 } as const satisfies Record<IpcChannel, true>;
 
@@ -167,6 +173,7 @@ const EVENTS = {
   'sync:progress': true,
   'exchange:progress': true,
   'blobs:progress': true,
+  'sync:notice': true,
 } as const satisfies Record<IpcEventName, true>;
 
 const known = <K extends string>(table: Record<K, true>, key: string): key is K =>

@@ -8,7 +8,9 @@ import {
   DeviceId,
   DeviceRecord,
   IdentityCard,
+  Initials,
   Member,
+  PersonName,
   Role,
 } from './identity';
 import { ChainId, Op, OpId, RecordRef, ReplicaId, Seq } from './journal';
@@ -213,6 +215,17 @@ export const TeamStatus = z.object({
   unread: z.number().int().nonnegative(),
   /** Hub or server not reachable: work continues locally. */
   reachable: z.boolean().optional(),
+  /** M9 integration: people with this project open recently (hub presence; advisory). */
+  online: z
+    .array(
+      z.object({
+        actor: ActorId,
+        name: PersonName,
+        initials: Initials,
+        at: IsoTime,
+      }),
+    )
+    .optional(),
 });
 
 /** One enrolled team server on this machine (server:list). Credentials stay in the vault. */
@@ -224,6 +237,9 @@ export const ServerInfo = z.object({
   version: z.string().optional(),
   enrolledAt: IsoTime,
   role: Role.optional(),
+  /** M9 integration: the last `server:check` reached the server (absent: never checked). */
+  reachable: z.boolean().optional(),
+  checkedAt: IsoTime.optional(),
 });
 
 export type SyncMode = z.infer<typeof SyncMode>;

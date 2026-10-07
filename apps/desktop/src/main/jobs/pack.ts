@@ -1,4 +1,4 @@
-import { PipelinePackManifest, type RuntimeInfo } from '@aio/schema';
+import { packRangeRefusal, PipelinePackManifest, type RuntimeInfo } from '@aio/schema';
 import { access, readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { readJson } from '../fsutil';
@@ -37,7 +37,16 @@ export function compareVersions(a: string, b: string): number {
   return (pa ?? '').localeCompare(pb ?? '');
 }
 
-async function readPack(dir: string): Promise<PackInfo | null> {
+/** The app reading packs: a pack whose `appRange` leaves it out is refused (M9 T8). */
+export interface PackApp {
+  version: string;
+  name?: string;
+}
+
+async function readPack(
+  dir: string,
+  appInfo?: PackApp,
+): Promise<PackInfo | { refused: string } | null> {
   let raw: unknown;
   try {
     raw = await readJson(join(dir, 'manifest.json'));
@@ -46,6 +55,10 @@ async function readPack(dir: string): Promise<PackInfo | null> {
   }
   const m = PipelinePackManifest.safeParse(raw);
   if (!m.success) return null;
+  if (appInfo) {
+    const refused = packRangeRefusal(m.data.appRange, appInfo.version, appInfo.name);
+    if (refused) return { refused };
+  }
   const python = join(dir, ...m.data.python.executable.split('/'));
   if (!(await exists(python))) return null;
   return { dir, version: m.data.version, python, manifest: m.data };
@@ -60,6 +73,8 @@ async function readPack(dir: string): Promise<PackInfo | null> {
 export async function findPack(o: {
   dataRoot: string;
   env: Record<string, string | undefined>;
+  /** This app: packs declaring an `appRange` without it are refused with a clear message. */
+  app?: PackApp;
 }): Promise<{ pack: PackInfo | null; runtime: RuntimeInfo }> {
   const devPython = o.env.STRATLAS_PIPELINE_PYTHON;
   if (devPython) {
@@ -77,7 +92,10 @@ export async function findPack(o: {
   }
   const single = o.env.STRATLAS_PIPELINE_PACK;
   if (single) {
-    const pack = await readPack(single);
+    const pack = await readPack(single, o.app);
+    if (pack && 'refused' in pack) {
+      return { pack: null, runtime: { found: false, problem: pack.refused } };
+    }
     return pack
       ? { pack, runtime: { found: true, version: pack.version, dir: pack.dir } }
       : {
@@ -96,10 +114,16 @@ export async function findPack(o: {
     .map((n) => ({ n, m: PACK_DIR.exec(n) }))
     .filter((x): x is { n: string; m: RegExpExecArray } => x.m !== null)
     .sort((a, b) => compareVersions(b.m[1] ?? '', a.m[1] ?? ''));
+  let refused: string | null = null;
   for (const c of candidates) {
-    const pack = await readPack(join(runtimeDir, c.n));
+    const pack = await readPack(join(runtimeDir, c.n), o.app);
+    if (pack && 'refused' in pack) {
+      refused ??= pack.refused;
+      continue;
+    }
     if (pack) return { pack, runtime: { found: true, version: pack.version, dir: pack.dir } };
   }
+  if (refused) return { pack: null, runtime: { found: false, problem: refused } };
   return {
     pack: null,
     runtime: {

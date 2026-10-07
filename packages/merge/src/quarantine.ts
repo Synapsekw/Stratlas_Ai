@@ -1,11 +1,17 @@
-import { checkOp, parseHlc } from '@aio/journal';
+import {
+  checkOp,
+  emptyTeam,
+  isShared,
+  judgeOp,
+  parseHlc,
+  permissionFor as opPermission,
+  permits,
+  type RefusalCode as TeamRefusalCode,
+  type TeamState,
+} from '@aio/journal';
 import {
   CLOCK_AHEAD_HOLD_MS,
   CLOCK_AHEAD_NOTICE_MS,
-  DEFAULT_TEAM_POLICY,
-  isKnownOpKind,
-  OP_PERMISSION,
-  PERMISSIONS,
   type Permission,
   type QuarantineEntry,
   type RefusalCode,
@@ -13,7 +19,6 @@ import {
   type TeamPolicy,
 } from '@aio/schema';
 import type { OpIndex, OpNode } from './causal';
-import { OWNER_ONLY_MANIFEST_FIELDS } from './rules';
 
 /** Why an op is refused, from verification done elsewhere (Verify, the importer, the server). */
 export interface Refusal {
@@ -81,55 +86,33 @@ const MESSAGES: Record<RefusalCode, string> = {
   'clock-ahead': 'The clock of the device was more than a day ahead.',
 };
 
-/** Whether a role may use a permission under a team policy. */
+/** Whether a role may use a permission under a team policy (T2's table, `@aio/schema`). */
 export function roleAllows(role: Role, perm: Permission, policy: TeamPolicy): boolean {
-  const rule: { roles: readonly Role[]; policy?: { switch: string; adds: Role } } =
-    PERMISSIONS[perm];
-  if (rule.roles.includes(role)) return true;
-  if (rule.policy?.adds !== role) return false;
-  if (rule.policy.switch === 'viewersMayComment') return policy.approval.viewersMayComment;
-  if (rule.policy.switch === 'closeBy') return policy.approval.closeBy === 'owner-or-reviewer';
-  return false;
+  return permits(role, perm, policy);
+}
+
+/** The permission an op needs at its clock reading; null when none (T2's `permissionFor`). */
+export function permissionFor(node: OpNode): Permission | null {
+  return opPermission(node.op.kind, node.op.payload);
 }
 
 const obj = (v: unknown): Record<string, unknown> =>
   v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 
-/** The permission an op needs at its clock reading; null when none (events about itself). */
-export function permissionFor(node: OpNode): Permission | null {
-  const { kind } = node.op;
-  const payload = obj(node.op.payload);
-  if (kind === 'record.external') return 'patch' in payload ? 'edit' : null;
-  if (!isKnownOpKind(kind)) return null;
-  if (kind === 'manifest.entry') {
-    const touched = [
-      ...Object.keys(obj(payload.set)),
-      ...(Array.isArray(payload.unset) ? payload.unset.map(String) : []),
-    ];
-    if (touched.some((f) => (OWNER_ONLY_MANIFEST_FIELDS as readonly string[]).includes(f))) {
-      return 'builder.georef';
-    }
-  }
-  if (kind === 'issue.status') {
-    const pair = `${String(payload.from)}>${String(payload.to)}`;
-    if (pair === 'approved>closed' || pair === 'closed>approved') return 'close-approved';
-  }
-  if (kind === 'comment.add' && payload.visibility === 'client') return 'comment.client';
-  if (kind === 'approval.add' && payload.decision === 'accept') return 'accept';
-  return OP_PERMISSION[kind];
-}
-
-function mergePolicy(base: TeamPolicy, patch: Record<string, unknown>): TeamPolicy {
-  const approval = { ...base.approval, ...obj(patch.approval) };
-  const out: TeamPolicy = { ...base, approval };
-  if (typeof patch.minVerification === 'string') {
-    out.minVerification = patch.minVerification as TeamPolicy['minVerification'];
-  }
-  if (patch.packageHistory === 'summary' || patch.packageHistory === 'full') {
-    out.packageHistory = patch.packageHistory;
-  }
-  return out;
-}
+/** T2's refusal codes as the quarantine list names them (`QuarantineEntry.reason`). */
+const TEAM_REFUSALS: Record<TeamRefusalCode, RefusalCode> = {
+  'not-member': 'non-member',
+  'unknown-device': 'non-member',
+  role: 'role',
+  verification: 'role',
+  'last-owner': 'role',
+  'bad-certificate': 'role',
+  'revoked-device': 'revoked',
+  unsigned: 'signature',
+  'bad-signature': 'signature',
+  edited: 'hash',
+  invalid: 'schema',
+};
 
 /**
  * Decide which ops apply. Ops that fail verification, come from a revoked device or a
@@ -141,11 +124,9 @@ function mergePolicy(base: TeamPolicy, patch: Record<string, unknown>): TeamPoli
  * with the same ops reaches the same membership and the same verdicts.
  */
 export function gate(index: OpIndex, opts: GateOptions = {}): Gate {
-  const st = { shared: false };
+  // the team as T2 replays it (members, devices, roles, policy), judged op by op in clock order
+  let team: TeamState = emptyTeam();
   let teamProjectId: string | undefined;
-  const members = new Map<string, MemberView>();
-  const revoked = new Map<string, string>();
-  let policy: TeamPolicy = DEFAULT_TEAM_POLICY;
   const commentAuthors = new Map<string, string>();
   const approvalAuthors = new Map<string, string>();
   const applied: OpNode[] = [];
@@ -153,7 +134,10 @@ export function gate(index: OpIndex, opts: GateOptions = {}): Gate {
   const releases = new Set<string>();
   const clock = new Map<string, ClockNotice>();
 
-  const roleOf = (actor: string): Role | undefined => members.get(actor)?.role;
+  const roleOf = (actor: string): Role | undefined => {
+    const m = team.members.get(actor);
+    return m && !m.removed ? m.role : undefined;
+  };
 
   const refuse = (node: OpNode): Refusal | null => {
     const { op } = node;
@@ -176,10 +160,6 @@ export function gate(index: OpIndex, opts: GateOptions = {}): Gate {
         if (level === 'hold') return { reason: 'clock-ahead', message: MESSAGES['clock-ahead'] };
       }
     }
-    const revokedAt = revoked.get(op.dev);
-    if (revokedAt !== undefined && op.hlc > revokedAt) {
-      return { reason: 'revoked', message: MESSAGES.revoked };
-    }
     const payload = obj(op.payload);
     // rules that hold with or without a team
     if (op.kind === 'comment.edit') {
@@ -190,7 +170,11 @@ export function gate(index: OpIndex, opts: GateOptions = {}): Gate {
     }
     if (op.kind === 'comment.delete') {
       const author = commentAuthors.get(String(payload.id));
-      if (author !== undefined && author !== op.act && !(st.shared && roleOf(op.act) === 'owner')) {
+      if (
+        author !== undefined &&
+        author !== op.act &&
+        !(isShared(team) && roleOf(op.act) === 'owner')
+      ) {
         return { reason: 'role', message: 'Only the author or an owner deletes a comment.' };
       }
     }
@@ -203,52 +187,26 @@ export function gate(index: OpIndex, opts: GateOptions = {}): Gate {
     if (op.kind === 'approval.add' && op.via && 'agent' in op.via) {
       return { reason: 'role', message: 'The agent never approves. Only a person does.' };
     }
-    if (op.kind === 'project.share' && !st.shared) return null;
-    if (!st.shared) return null;
-    const perm = permissionFor(node);
-    if (perm === null) return null;
-    const role = roleOf(op.act);
-    if (role === undefined) return { reason: 'non-member', message: MESSAGES['non-member'] };
-    if (!roleAllows(role, perm, policy)) {
-      return { reason: 'role', message: `A ${role} may not make this change.` };
+    // members, devices, revocations and roles: T2's one check (`canApply`), shared with the server
+    const step = judgeOp(team, op, op);
+    if (!step.verdict.ok) {
+      return { reason: TEAM_REFUSALS[step.verdict.code], message: step.verdict.reason };
     }
+    pending = step.state;
     return null;
   };
+  let pending: TeamState | null = null;
 
   const applyTeam = (node: OpNode): void => {
     const { op } = node;
     const p = obj(op.payload);
+    if (pending) team = pending;
+    pending = null;
     switch (op.kind) {
       case 'project.share':
-        if (!st.shared) {
-          st.shared = true;
-          teamProjectId = typeof p.teamProjectId === 'string' ? p.teamProjectId : undefined;
-          if (!members.has(op.act)) members.set(op.act, { actor: op.act, role: 'owner' });
+        if (teamProjectId === undefined && typeof p.teamProjectId === 'string') {
+          teamProjectId = p.teamProjectId;
         }
-        break;
-      case 'member.add':
-        if (typeof p.actor === 'string' && typeof p.role === 'string') {
-          members.set(p.actor, {
-            actor: p.actor,
-            role: p.role as Role,
-            ...(typeof p.name === 'string' ? { name: p.name } : {}),
-            ...(typeof p.initials === 'string' ? { initials: p.initials } : {}),
-          });
-        }
-        break;
-      case 'member.role': {
-        const m = typeof p.actor === 'string' ? members.get(p.actor) : undefined;
-        if (m && typeof p.role === 'string') members.set(m.actor, { ...m, role: p.role as Role });
-        break;
-      }
-      case 'member.remove':
-        if (typeof p.actor === 'string') members.delete(p.actor);
-        break;
-      case 'device.revoke':
-        if (typeof p.device === 'string' && !revoked.has(p.device)) revoked.set(p.device, op.hlc);
-        break;
-      case 'policy.set':
-        policy = mergePolicy(policy, p);
         break;
       case 'comment.add':
         if (typeof p.id === 'string' && !commentAuthors.has(p.id)) commentAuthors.set(p.id, op.act);
@@ -260,7 +218,7 @@ export function gate(index: OpIndex, opts: GateOptions = {}): Gate {
         break;
       case 'conflict.resolve': {
         const c = typeof p.conflict === 'string' ? p.conflict : '';
-        const owner = !st.shared || roleOf(op.act) === 'owner';
+        const owner = !isShared(team) || roleOf(op.act) === 'owner';
         if (c.startsWith(RELEASE_PREFIX) && p.choice !== 'ours' && owner) {
           releases.add(c.slice(RELEASE_PREFIX.length));
         }
@@ -273,8 +231,10 @@ export function gate(index: OpIndex, opts: GateOptions = {}): Gate {
 
   for (const node of index.nodes) {
     if (node.vc === null) continue;
+    pending = null;
     const r = refuse(node);
     if (r) {
+      pending = null;
       quarantined.set(node.op.id, { node, reason: r.reason, message: r.message });
       continue;
     }
@@ -307,13 +267,26 @@ export function gate(index: OpIndex, opts: GateOptions = {}): Gate {
       reason,
       message,
     })),
-    team: {
-      shared: st.shared,
-      ...(teamProjectId !== undefined ? { teamProjectId } : {}),
-      members,
-      revoked,
-      policy: st.shared ? policy : null,
-    },
+    team: teamView(team, teamProjectId),
     clock: [...clock.values()].sort((a, b) => (a.device < b.device ? -1 : 1)),
+  };
+}
+
+/** The merge engine's view of T2's team: members by actor, revocations, the policy when shared. */
+function teamView(team: TeamState, teamProjectId: string | undefined): TeamView {
+  const members = new Map<string, MemberView>();
+  for (const m of team.members.values()) {
+    if (m.removed) continue;
+    members.set(m.actor, { actor: m.actor, role: m.role, name: m.name, initials: m.initials });
+  }
+  const revoked = new Map<string, string>();
+  for (const [id, d] of team.devices) if (d.revokedAt !== undefined) revoked.set(id, d.revokedAt);
+  const shared = isShared(team);
+  return {
+    shared,
+    ...(teamProjectId !== undefined ? { teamProjectId } : {}),
+    members,
+    revoked,
+    policy: shared ? team.policy : null,
   };
 }

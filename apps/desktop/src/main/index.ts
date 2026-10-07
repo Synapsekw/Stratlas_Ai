@@ -242,6 +242,8 @@ const keyService = profileVaultService(
   profile,
 );
 const keys = createKeyVault(keyService, (service, account) => new Entry(service, account));
+/** The app as pipeline packs see it: a pack declaring an app range without this version is refused. */
+const packApp = { version: app.getVersion(), name: brand.productName };
 // This person and this device (M9 T2): the journal service (T1) signs with `identityService.deviceKey()`.
 const identityService = createIdentityService({
   store: createIdentityStore(identityPath(app.getPath('userData')), {
@@ -498,7 +500,8 @@ const exportJobs = createExportJobs({
 const jobStore = new JobStore(join(app.getPath('userData'), 'jobs.json'));
 const jobs = new JobRunner({
   store: jobStore,
-  findPack: () => findPack({ dataRoot: settings.current().dataRoot, env: process.env }),
+  findPack: () =>
+    findPack({ dataRoot: settings.current().dataRoot, env: process.env, app: packApp }),
   emit: (event) => {
     const safe = safeJobEvent(event);
     if (!safe) {
@@ -585,7 +588,7 @@ function registerIpc(): void {
     const { dataRoot } = await settings.get();
     const [installed, found] = await Promise.all([
       packs.list().catch(() => []),
-      findPack({ dataRoot, env: process.env }),
+      findPack({ dataRoot, env: process.env, app: packApp }),
     ]);
     const { runtime } = found;
     return {
@@ -707,8 +710,8 @@ function registerIpc(): void {
   });
   const maskAssist = createMaskAssist({
     packDir: async () =>
-      (await findPack({ dataRoot: settings.current().dataRoot, env: process.env })).pack?.dir ??
-      null,
+      (await findPack({ dataRoot: settings.current().dataRoot, env: process.env, app: packApp }))
+        .pack?.dir ?? null,
     loadRuntime: loadOnnxRuntime,
     decode: (path, maxSide) => {
       const img = nativeImage.createFromPath(path);
@@ -1067,8 +1070,8 @@ function registerIpc(): void {
       registry,
       settings: () => settings.current(),
       packDir: async () =>
-        (await findPack({ dataRoot: settings.current().dataRoot, env: process.env })).pack?.dir ??
-        null,
+        (await findPack({ dataRoot: settings.current().dataRoot, env: process.env, app: packApp }))
+          .pack?.dir ?? null,
       send: (e) => {
         const parsed = ipcEvents['inference:progress'].safeParse(e);
         if (parsed.success) targetWindow()?.webContents.send('inference:progress', parsed.data);

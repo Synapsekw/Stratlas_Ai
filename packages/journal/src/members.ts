@@ -2,14 +2,16 @@ import {
   AccountLink,
   DEFAULT_TEAM_POLICY,
   DeviceRevokePayload,
+  GEOREF_FIELDS,
   isKnownOpKind,
   MemberAddPayload,
   MemberRemovePayload,
   MemberRolePayload,
   Op,
   OP_PERMISSION,
-  PERMISSIONS,
+  permits,
   PolicySetPayload,
+  roleRefusal,
   verifiedAtLeast,
   type DeviceCert,
   type Member,
@@ -136,69 +138,38 @@ export function uniqueInitials(initials: string, taken: Iterable<string>): strin
 
 // ---------------------------------------------------------------- permissions
 
-/** The permission an op kind needs; a kind from a newer version needs edit rights. */
-export function permissionFor(kind: string): Permission | null {
-  return isKnownOpKind(kind) ? OP_PERMISSION[kind] : 'edit';
-}
+export { GEOREF_FIELDS, permits, roleRefusal, rolesFor } from '@aio/schema';
 
-/** The roles that hold a permission under a team policy (the policy switches add one role). */
-export function rolesFor(permission: Permission, policy: TeamPolicy): Role[] {
-  const rule: { roles: readonly Role[]; policy?: { switch: string; adds: Role } } =
-    PERMISSIONS[permission];
-  const roles = [...rule.roles];
-  const extra = rule.policy;
-  if (extra) {
-    const on =
-      extra.switch === 'viewersMayComment'
-        ? policy.approval.viewersMayComment
-        : policy.approval.closeBy === 'owner-or-reviewer';
-    if (on && !roles.includes(extra.adds)) roles.push(extra.adds);
+const asObj = (v: unknown): Record<string, unknown> =>
+  v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+
+/**
+ * The permission an op needs. The kind decides, refined by the payload where the plan's roles
+ * table does: a manifest change of the coordinate system, origin or datum is `builder.georef`; a
+ * status step out of or back to approved is `close-approved`; a client-visible comment is
+ * `comment.client`; a client acceptance is `accept`. A kind from a newer version needs edit
+ * rights. Null: no permission needed (events about the op's own chain).
+ */
+export function permissionFor(kind: string, payload?: unknown): Permission | null {
+  const p = asObj(payload);
+  if (kind === 'record.external') return 'patch' in p ? 'edit' : null;
+  if (!isKnownOpKind(kind)) return 'edit';
+  if (kind === 'manifest.entry') {
+    const touched = [
+      ...Object.keys(asObj(p.set)),
+      ...(Array.isArray(p.unset) ? p.unset.map(String) : []),
+    ];
+    if (touched.some((f) => (GEOREF_FIELDS as readonly string[]).includes(f))) {
+      return 'builder.georef';
+    }
   }
-  return roles;
-}
-
-export function permits(role: Role, permission: Permission, policy: TeamPolicy): boolean {
-  return rolesFor(permission, policy).includes(role);
-}
-
-const ARTICLES: Record<Role, string> = {
-  owner: 'an owner',
-  reviewer: 'a reviewer',
-  viewer: 'a viewer',
-  client: 'a client',
-};
-
-const ACTIONS: Record<Permission, string> = {
-  read: 'open the project',
-  'comment.team': 'comment for the team',
-  'comment.client': 'comment for the client',
-  accept: 'record client acceptance',
-  edit: 'edit',
-  assign: 'assign work',
-  approve: 'approve',
-  'close-approved': 'close or reopen an approved issue',
-  'builder.edit': 'change layers, imports and pipelines',
-  'builder.georef': 'change the coordinate system, origin or datum',
-  admin: 'change members, roles, devices and the team policy',
-  'export.package': 'export a customer package',
-  'export.audit': 'export the audit',
-  verify: 'verify the history',
-};
-
-function listOr(items: string[]): string {
-  if (items.length <= 1) return items[0] ?? 'nobody';
-  return `${items.slice(0, -1).join(', ')} or ${items[items.length - 1] ?? ''}`;
-}
-
-/** "Omar Sample is a viewer in this project. Only an owner or a reviewer can edit." */
-export function roleRefusal(
-  name: string,
-  role: Role,
-  permission: Permission,
-  policy: TeamPolicy,
-): string {
-  const who = listOr(rolesFor(permission, policy).map((r) => ARTICLES[r]));
-  return `${name} is ${ARTICLES[role]} in this project. Only ${who} can ${ACTIONS[permission]}.`;
+  if (kind === 'issue.status') {
+    const pair = `${String(p.from)}>${String(p.to)}`;
+    if (pair === 'approved>closed' || pair === 'closed>approved') return 'close-approved';
+  }
+  if (kind === 'comment.add' && p.visibility === 'client') return 'comment.client';
+  if (kind === 'approval.add' && p.decision === 'accept') return 'accept';
+  return OP_PERMISSION[kind];
 }
 
 function refuse(code: RefusalCode, reason: string): Verdict {
@@ -256,7 +227,7 @@ export function canApply(op: Op, state: TeamState, check?: OpCheck): Verdict {
       );
     }
   }
-  const permission = permissionFor(op.kind);
+  const permission = permissionFor(op.kind, op.payload);
   if (permission === null) return { ok: true };
   if (
     member.role !== 'owner' &&
@@ -480,6 +451,42 @@ function bootstrap(op: Op, raw: Record<string, unknown>): Verdict {
   return { ok: true };
 }
 
+/** Team ops: they change the members, devices or policy when they apply. */
+export function isTeamKind(kind: string): boolean {
+  return TEAM_KINDS.has(kind);
+}
+
+/**
+ * One step of the replay: the verdict on `op` against the team as it is, and the team after it
+ * (unchanged unless a team op applied). The merge engine's quarantine gate walks ops with it in
+ * the same clock order, so desktop, merge and server judge every op the same way.
+ */
+export function judgeOp(
+  state: TeamState,
+  op: Op,
+  raw: Record<string, unknown>,
+): { verdict: Verdict; state: TeamState } {
+  const team = TEAM_KINDS.has(op.kind);
+  let verdict: Verdict;
+  if (!isShared(state)) {
+    verdict = op.kind === 'member.add' ? bootstrap(op, raw) : { ok: true };
+    if (verdict.ok && team && op.kind !== 'member.add') {
+      verdict = refuse(
+        'not-member',
+        'This project is not shared yet, so it has no team to change.',
+      );
+    }
+  } else {
+    verdict = canApply(op, state, checkOp(raw, state.devices.get(op.dev)?.key));
+  }
+  if (verdict.ok && team) {
+    const next = applyTeamOp(state, op);
+    if ('members' in next) return { verdict, state: next };
+    return { verdict: next, state };
+  }
+  return { verdict, state };
+}
+
 export interface TeamReplay {
   shared: boolean;
   state: TeamState;
@@ -522,24 +529,9 @@ export function replayTeam(
   const verdicts = new Map<string, Verdict>();
   const quarantined: TeamReplay['quarantined'] = [];
   for (const { op, raw } of ops) {
-    const team = TEAM_KINDS.has(op.kind);
-    let verdict: Verdict;
-    if (!isShared(state)) {
-      verdict = op.kind === 'member.add' ? bootstrap(op, raw) : { ok: true };
-      if (verdict.ok && team && op.kind !== 'member.add') {
-        verdict = refuse(
-          'not-member',
-          'This project is not shared yet, so it has no team to change.',
-        );
-      }
-    } else {
-      verdict = canApply(op, state, checkOp(raw, state.devices.get(op.dev)?.key));
-    }
-    if (verdict.ok && team) {
-      const next = applyTeamOp(state, op);
-      if ('members' in next) state = next;
-      else verdict = next;
-    }
+    const step = judgeOp(state, op, raw);
+    const verdict = step.verdict;
+    state = step.state;
     verdicts.set(op.id, verdict);
     if (!verdict.ok) {
       quarantined.push({

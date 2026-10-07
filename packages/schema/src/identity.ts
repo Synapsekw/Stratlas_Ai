@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { TeamPolicy } from './collab';
 import { IsoTime, PublicKeyB64, SignatureB64 } from './common';
 
 /**
@@ -151,6 +152,10 @@ export const Member = z.object({
   /** HLC of the `member.add` op. */
   addedAt: z.string(),
   account: AccountLink.optional(),
+  /** M9 integration: where the membership comes from (the journal, or a team server's grant). */
+  source: z.enum(['journal', 'server']).optional(),
+  /** M9 integration: the owner whose certificate verified this member (`verification: owner`). */
+  certifiedBy: ActorId.optional(),
 });
 
 /** What a role check is about (the roles table of the M9 plan). */
@@ -201,6 +206,72 @@ export const PERMISSIONS = {
     policy?: { switch: 'viewersMayComment' | 'closeBy'; adds: z.infer<typeof Role> };
   }
 >;
+
+// ---- role checks (M9 integration: here so the renderer can gate with them) ----
+
+/** Manifest fields only an owner changes (coordinate system, origin, vertical datum). */
+export const GEOREF_FIELDS = ['crs', 'origin', 'verticalDatum'] as const;
+
+/** The roles that hold a permission under a team policy (the policy switches add one role). */
+export function rolesFor(permission: Permission, policy: TeamPolicy): Role[] {
+  const rule: { roles: readonly Role[]; policy?: { switch: string; adds: Role } } =
+    PERMISSIONS[permission];
+  const roles = [...rule.roles];
+  const extra = rule.policy;
+  if (extra) {
+    const on =
+      extra.switch === 'viewersMayComment'
+        ? policy.approval.viewersMayComment
+        : policy.approval.closeBy === 'owner-or-reviewer';
+    if (on && !roles.includes(extra.adds)) roles.push(extra.adds);
+  }
+  return roles;
+}
+
+/** Whether a role holds a permission under a team policy. */
+export function permits(role: Role, permission: Permission, policy: TeamPolicy): boolean {
+  return rolesFor(permission, policy).includes(role);
+}
+
+const ROLE_ARTICLES: Record<Role, string> = {
+  owner: 'an owner',
+  reviewer: 'a reviewer',
+  viewer: 'a viewer',
+  client: 'a client',
+};
+
+const PERMISSION_ACTIONS: Record<Permission, string> = {
+  read: 'open the project',
+  'comment.team': 'comment for the team',
+  'comment.client': 'comment for the client',
+  accept: 'record client acceptance',
+  edit: 'edit',
+  assign: 'assign work',
+  approve: 'approve',
+  'close-approved': 'close or reopen an approved issue',
+  'builder.edit': 'change layers, imports and pipelines',
+  'builder.georef': 'change the coordinate system, origin or datum',
+  admin: 'change members, roles, devices and the team policy',
+  'export.package': 'export a customer package',
+  'export.audit': 'export the audit',
+  verify: 'verify the history',
+};
+
+function listOr(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? 'nobody';
+  return `${items.slice(0, -1).join(', ')} or ${items[items.length - 1] ?? ''}`;
+}
+
+/** "Omar Sample is a viewer in this project. Only an owner or a reviewer can edit." */
+export function roleRefusal(
+  name: string,
+  role: Role,
+  permission: Permission,
+  policy: TeamPolicy,
+): string {
+  const who = listOr(rolesFor(permission, policy).map((r) => ROLE_ARTICLES[r]));
+  return `${name} is ${ROLE_ARTICLES[role]} in this project. Only ${who} can ${PERMISSION_ACTIONS[permission]}.`;
+}
 
 // ---- op payloads of the team kinds (`member.*`, `device.revoke`) ----
 
