@@ -27,9 +27,13 @@ These rules sit beside `@aio/schema` and are binding for every stream. They clar
   legacy/                the original offline viewer, copied unchanged (legacy layer `entry`)
   journal/               M9: signed history of every change (section 17); older builds ignore it
   team.json              M9: only when the project is shared (section 19)
+  photogrammetry/<run>/  M10: processing runs (section 21); older builds ignore it
+  tilesets.json          M10: 3D Tiles of the project (section 22), tiles in tiles/<id>/
 ```
 
-`<dataRoot>` defaults to `E:\Stratlas Data` on the development machine (`STRATLAS_DATA` env var overrides; Settings `dataRoot` in the app). End-to-end tests never use the real data root as the app's data root: they run on temporary copies made by `apps/desktop/e2e/realData.ts`, and an app started by a test (`STRATLAS_E2E=1`) refuses every write under `STRATLAS_REAL_DATA_ROOT` (default `E:\Stratlas Data`); see CONTRIBUTING.md, "End to end on real client data". Map packs live in `<dataRoot>/packs/<id>.pmtiles` with `<id>.json` (`MapPackInfo`).
+`<dataRoot>` defaults to `E:\Stratlas Data` on the development machine (`STRATLAS_DATA` env var overrides; Settings `dataRoot` in the app). End-to-end tests never use the real data root as the app's data root: they run on temporary copies made by `apps/desktop/e2e/realData.ts`, and an app started by a test (`STRATLAS_E2E=1`) refuses every write under `STRATLAS_REAL_DATA_ROOT` (default `E:\Stratlas Data`); see CONTRIBUTING.md, "End to end on real client data". Map packs live in `<dataRoot>/packs/<id>.pmtiles` with `<id>.json` (`MapPackInfo`); imagery and terrain packs (M10) in `packs/imagery/` and `packs/terrain/` (section 23).
+
+**Layers of a kind this build does not know** (0.10 and later, M10 G0): a manifest from a newer 1.x build that added a layer kind opens; such a layer (an object with a string `kind` this build does not know, an `id` and a `name`) is set aside (`parseManifestTolerant`, `unknownLayersOf`), never drawn, and carried over unchanged, after the known layers, every time this build saves the manifest (`keepUnknownLayers` in `writeManifestFile`). A new layer that would take its id is refused. 0.9 and older refuse such a manifest outright, which is why M10 itself adds no layer kind, raster format or derived kind. Packages made by 0.10 leave such layers out.
 
 `aio://project/<project-id>/<relative path>` serves any file under the project folder with HTTP range support; `aio://packs/<id>.pmtiles` serves map packs.
 
@@ -396,3 +400,69 @@ Large files are known by their SHA-256 so a copy can open before they arrive (`@
 - **Missing is a normal state** (`BlobState`: `present`, `missing`, `partial`, `stale`, `streaming`). For a project file that is not in the folder, `aio://` serves the downloaded copy, a stream from the hub when the policy is `stream`, or a 404 with the header `x-aio-blob: missing <sha256> <size>` (exposed to the page through `Access-Control-Expose-Headers`). The layer shows "Not on this computer (12.4 GB)" with **Download**.
 - **Where blobs live.** `blobs/<aa>/<sha256>` (`blobPath`) in a hub (`projects/<teamProjectId>/blobs/`), an exchange bundle and a server store. On this computer, in userData `blobs/`: `<aa>/<sha256>` (verified copies), `partial/<sha256>.part` (kept to resume), `quarantine/<sha256>.<time>` (files that failed their hash), `verified.json` (verification stamps) and `policies.json`. Equal files of several layers or projects are stored once. The cache cap is `Settings.team.blobCacheGb` (default 50 GB). Nothing is deleted on its own: freeing space removes only blobs the hub or server also holds and that no open project uses.
 - **Transfers.** Resumable from the byte offset of a partial download; verified by hash on arrival; a mismatch is moved to quarantine and fetched again; a file changed since it was verified shows "Changed since it was shared". Hub: copy under a temp name, rename, verify. Server: HTTP Range in 8 MB parts (`BLOB_PART_BYTES`). Bundle import copies the registered blobs the archive holds. Whole-file hashing only in M9.
+
+## 21. Photogrammetry runs, ground control and accuracy (M10)
+
+A folder of drone photos becomes ordinary layers through three pipeline jobs (`photo.align`, `photo.georef`, `photo.products`; `@aio/schema` `photogrammetry.ts`). Nothing in the manifest changes shape: outputs are `mesh` (GLB), `pointcloud` (`copc`) and `raster` (`kit-pyramid`, `role` `ortho` or `dsm`) layers with a `capture`, and their provenance lives in the run folder, which 0.9 and older never read.
+
+```
+<project>/photogrammetry/<run>/
+  run.json               aio.photo-run/1: photos, camera groups, CRS, heights, preset, stages, outputs, accuracy summary, versions, hardware
+  gcp.json               aio.gcp/1: control and check points with their marks (written by the app, .bak on every write)
+  report/accuracy.json   aio.photo-accuracy/1: residuals per point, RMSE per role, camera residuals, warnings
+  report/align.json      alignment report (registered and rejected photos, reprojection error); stream G2's shape
+  report/products.json   products report (GSD, coverage, density, timings, memory peak); stream G3's shape
+  sparse/                the sparse model (COLMAP)
+  work/                  intermediates; the only part **Delete run's work files** removes (to the recycle bin)
+  dsm.tif, dtm.tif, ortho.tif   COG copies of the surfaces and the orthomosaic
+```
+
+- **Run ids** are file-name safe (`PhotoRunId`, for example `20261007-0915`), the folder name under `photogrammetry/`. A run lists every layer, tileset and file it made in `outputs`, so **Re-run products** and package export know what belongs to it. Every path in a run file is project-relative (`ProjectPath`: no `..`, no drive letter).
+- **Photos are read, never written.** EXIF and XMP are read in place; a folder run references the photos where they are. **Use refined poses** writes the photos layer's `cameras.json` from the run's `cameras-sfm.json` (same camera format), keeping the old one as `.bak`, after a preview of how far each camera moves.
+- **Heights** (`PhotoHeights`): where the run's heights came from (`ellipsoidal`, `orthometric`, `relative` or `gcp`), the PROJ geoid grid used (`egm96`, `egm2008`) and the manifest's `verticalDatum.absAltOffsetM` when applied. Every run states it.
+- **Ground control** (`gcp.json`): points with `role` `control` or `check`, `xyz` in the file's `crs`, a stated accuracy (1 sigma, metres) and marks per photo (`px` in original image pixels, x right and y down; `by` `person`, `detector` or `import`; `state` `draft`, `confirmed` or `skipped`). A detector's or a prediction's mark is a draft until a person confirms it. `predicted` holds where the current cameras put the point in each photo with a search radius. A disabled point is kept, never deleted.
+- **Accuracy is honest:** checkpoints are measured, never used in the adjustment; `checkpointsInAdjustment` is always `false` and the report lists every residual.
+- **Forward compatibility:** these files keep keys a later 1.x build adds (`looseObject`), so a save by 0.10 never drops them. Each family is in `versions.ts` (`since: '0.10'`).
+- **Packages** (integration follow-up X1) carry `run.json`, `gcp.json` and `report/`, never `work/`.
+
+## 22. Tilesets (M10)
+
+Large meshes and clouds stream as standard 3D Tiles 1.1 (glTF content) in `<project>/tiles/<id>/`, listed in `<project>/tilesets.json` (`aio.tilesets/1`, `@aio/schema` `tilesets.ts`), which older builds ignore. No layer kind is added.
+
+```json
+{
+  "schema": "aio.tilesets/1",
+  "entries": [
+    {
+      "id": "mesh-full",
+      "name": "Processed mesh",
+      "kind": "mesh",
+      "src": "tiles/mesh-full/tileset.json",
+      "from": "run1-mesh",
+      "run": "20261007-0915",
+      "capture": "c2",
+      "visible": true
+    }
+  ]
+}
+```
+
+- `kind`: `mesh` (`tiles.mesh`), `points` (`tiles.cloud`), `terrain`, or `imported` (3D Tiles from other software, placed by the person, `confirmedAt` and an optional `attribution`).
+- Our tilesets are written in ECEF with a root transform computed per vertex through the project CRS in float64 (never a UTM-as-metres shortcut), so the site view and the Globe agree within 2 cm. `transform` (column-major 4x4) is an extra placement into the project frame for imported tilesets.
+- Written by the app with `tilesets:write` (atomic, `.bak`, refused for packages). Ids are unique and file-name safe; `src` stays inside the project.
+
+## 23. Imagery and terrain packs (M10)
+
+Raster packs share one format across MapLibre, the site view (3DTilesRendererJS) and the Globe (CesiumJS), and live in their own folders of the data folder, which the street-map pack manager and older builds never scan:
+
+```
+<dataRoot>/packs/imagery/<id>.pmtiles   raster tiles, WebP (or PNG, JPEG), 256 or 512 px, Web Mercator
+<dataRoot>/packs/imagery/<id>.json      aio.raster-pack/1 metadata
+<dataRoot>/packs/terrain/<id>.pmtiles   Terrarium-encoded heights, lossless WebP or PNG
+<dataRoot>/packs/terrain/<id>.json      aio.raster-pack/1 metadata
+```
+
+- **Metadata** (`RasterPackMeta`): `id`, `kind` (`imagery` or `terrain`), `label`, `bbox`, `minZoom`, `maxZoom`, `tileSize`, `format`, `licence` (SPDX id, `public-domain` or the customer's words), `attribution`, `provenance` (the data source), `customerLicence`, `builtAt`. Terrain packs also name `encoding: 'terrarium'` and `verticalDatum` (`egm2008` for Copernicus GLO-30, `egm96` for NASADEM, or `ellipsoid`); the Globe adds the geoid separation to get ellipsoidal heights. The street-map `MapPackInfo` is unchanged; `RasterPackInfo` is the list item of `imageryPacks:list` and `terrainPacks:list` (with `source`, how the pack arrived, in the same words as street packs).
+- **Licences** (decision 4): only sources whose licence allows offline redistribution are packed by us (Natural Earth, NASA Blue Marble, Landsat, Copernicus Sentinel-2 Global Mosaics, ESA WorldCover 2020 and 2021, Copernicus DEM, NASADEM). Never Cesium ion, Bing, Google, Esri, Mapbox or EOX cloudless 2018 to 2025. The attribution shows in the Globe, the map and every export that contains the data.
+- **Customer imagery** (decision 12): **Import imagery** marks the pack `customerLicence: true`, "customer licence, not for redistribution"; it never travels in a `.aio` package unless the person ticks it.
+- **Globe preferences** are their own userData file, `globe.json` (`aio.globe-settings/1`: imagery and terrain choice, terrain exaggeration, issue pins, terrain and imagery around the site), not a `Settings` field, so settings saved by 0.10 stay exactly what 0.9 reads.
