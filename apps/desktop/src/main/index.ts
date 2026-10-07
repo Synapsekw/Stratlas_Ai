@@ -64,6 +64,7 @@ import { registerCollabIpc } from './collab';
 import { registerIdentityIpc } from './identity';
 import { registerJournalIpc } from './journal';
 import { registerSyncIpc } from './sync';
+import { startSync } from './sync/electron';
 import { registerTeamServerIpc } from './teamServer';
 import { importLogo, removeLogo } from './branding';
 import { putThumb } from './thumbs';
@@ -999,7 +1000,7 @@ function registerIpc(): void {
   registerJournalIpc({ handle });
   registerIdentityIpc({ handle });
   registerCollabIpc({ handle });
-  registerSyncIpc({ handle });
+  registerSyncIpc({ handle, service: startSync({ registry, settings, keyService }) });
   registerBlobsIpc({ handle });
   registerTeamServerIpc({ handle });
 }
