@@ -159,6 +159,7 @@ export class Stage implements EngineStage {
   private readonly targets = new Map<Object3D, string>();
   private readonly receivers = new Set<Mesh>();
   private readonly providers = new Set<RaycastProvider>();
+  private readonly boundsProviders = new Set<() => Box3 | null>();
   private readonly frameCbs = new Set<(dtMs: number) => void>();
   private readonly holders = new Map<symbol, string>();
   private readonly stateCbs = new Set<() => void>();
@@ -340,6 +341,14 @@ export class Stage implements EngineStage {
       if (this.highlight.hovered && this.isUnder(this.highlight.hovered, object))
         this.highlight.set('hover', null);
       this.contentChanged();
+    };
+  }
+
+  addContentBounds(bounds: () => Box3 | null): () => void {
+    this.boundsProviders.add(bounds);
+    this.contentChanged();
+    return () => {
+      if (this.boundsProviders.delete(bounds) && !this.disposed) this.contentChanged();
     };
   }
 
@@ -834,7 +843,12 @@ export class Stage implements EngineStage {
     const box = this.contentBox();
     let terrain = false;
     for (const [root] of this.targets) {
-      if (root.userData.aioRaster === true && visibleChain(root)) terrain = true;
+      // ground imagery, and a drape that stands in for the ground (the street map), replace it
+      if (
+        (root.userData.aioRaster === true || root.userData.aioGround === true) &&
+        visibleChain(root)
+      )
+        terrain = true;
       else
         root.traverse((o) => {
           if (!terrain && o.userData.type === 'terrain' && visibleChain(o)) terrain = true;
@@ -879,11 +893,21 @@ export class Stage implements EngineStage {
     const tmp = new Box3();
     for (const [root] of this.targets) {
       if (!visibleChain(root)) continue;
-      if (root.userData.aioRaster === true) continue; // ground imagery does not drive framing
+      // ground imagery does not drive framing
+      if (root.userData.aioRaster === true || root.userData.aioGround === true) continue;
       expandWithoutTerrain(root, box, tmp);
     }
+    // no model or cloud yet: what the flights and photos cover (a video-first project)
     if (box.isEmpty()) {
-      for (const [root] of this.targets) if (visibleChain(root)) box.union(tmp.setFromObject(root));
+      for (const bounds of this.boundsProviders) {
+        const b = bounds();
+        if (b && !b.isEmpty()) box.union(b);
+      }
+    }
+    if (box.isEmpty()) {
+      for (const [root] of this.targets)
+        if (visibleChain(root) && root.userData.aioGround !== true)
+          box.union(tmp.setFromObject(root));
     }
     return box;
   }

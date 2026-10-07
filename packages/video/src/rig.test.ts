@@ -46,6 +46,7 @@ function handle(frames: ((dtMs: number) => void)[] = []): SceneHandle {
     addRaycastProvider: () => () => undefined,
     clippingPlanes: [],
     addRaycastTarget: () => () => undefined,
+    addContentBounds: () => () => undefined,
     addProjectionReceiver: () => () => undefined,
   };
 }

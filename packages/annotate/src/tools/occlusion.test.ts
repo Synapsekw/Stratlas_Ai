@@ -157,6 +157,7 @@ describe('createOcclusion', () => {
       addRaycastProvider: () => () => undefined,
       clippingPlanes: [],
       addRaycastTarget: () => () => undefined,
+      addContentBounds: () => () => undefined,
       addProjectionReceiver: () => () => undefined,
     };
   }

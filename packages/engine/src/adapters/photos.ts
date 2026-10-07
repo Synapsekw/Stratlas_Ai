@@ -1,6 +1,7 @@
 import type { Layer, PhotoRef } from '@aio/schema';
 import { workspace as appWorkspace, type Workspace } from '@aio/workspace';
 import {
+  Box3,
   BufferAttribute,
   BufferGeometry,
   Color,
@@ -357,6 +358,11 @@ export function createPhotosAdapter(
       };
       el.addEventListener('pointerdown', onDown);
       el.addEventListener('pointerup', onUp);
+      // where the photos were taken frames the view while there is no model or cloud
+      const placed = new Box3().setFromPoints(located.map((p) => new Vector3(...p.pos)));
+      const unbound = scene.addContentBounds(() =>
+        group.visible && !placed.isEmpty() ? placed : null,
+      );
       scene.requestRender();
 
       return Promise.resolve({
@@ -367,6 +373,7 @@ export function createPhotosAdapter(
         },
         dispose() {
           unsub();
+          unbound();
           markers.dispose();
           el.removeEventListener('pointerdown', onDown);
           el.removeEventListener('pointerup', onUp);

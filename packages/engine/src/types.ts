@@ -87,8 +87,19 @@ export interface SceneHandle {
    * mutates it in place; three.js recompiles when its length changes.
    */
   readonly clippingPlanes: Plane[];
-  /** Register content for `raycast` and "fit all" (mesh roots, raster quads, clouds). */
+  /**
+   * Register content for `raycast` and "fit all" (mesh roots, raster quads, clouds). A root with
+   * `userData.aioGround` stands in for the ground (the street map drape): it hides the plain
+   * ground while visible and never drives framing.
+   */
   addRaycastTarget(object: Object3D, layerId: string): () => void;
+  /**
+   * Register content that frames the view without being pickable (flight paths, photo places):
+   * auto-fit as layers load and Home use it when no model or point cloud is visible. `bounds` is
+   * read whenever the stage frames, in the local frame; null while hidden or empty. Returns an
+   * unsubscribe function.
+   */
+  addContentBounds(bounds: () => Box3 | null): () => void;
   /** Register a mesh that should receive projected video. */
   addProjectionReceiver(mesh: Mesh): () => void;
 }
@@ -153,7 +164,8 @@ export interface EngineStage extends SceneHandle {
   addLabelObstacles(provider: () => Iterable<Vector3>): () => void;
   /**
    * Bounds of the visible content in the local frame (what Home frames: models, clouds, without
-   * ground imagery or modelled terrain), or null while nothing has loaded.
+   * ground imagery or modelled terrain; without those, flights and photos), or null while nothing
+   * has loaded.
    */
   contentBounds(): Box3 | null;
   /** The current view, to restore when the stage is created again. */
