@@ -139,7 +139,6 @@ Current limits only; each is removed from this list when fixed.
 - **Export changes** offers all changes or changes since a date (from midnight on this computer); there is no "since what I last sent to this person" choice yet. The other copy skips what it already has.
 - Encryption is by passphrase only (scrypt, AES-256-GCM); encryption to the recipients' keys comes after 1.0. Hashing and scrypt run in the main process.
 - Reply files from the free player (client comments and acceptance from a customer package) are not written yet.
-- A copy joins a team project by importing one of its exchange files; there is no picker to join a team project straight from a shared folder.
 - Cloud-drive folders (OneDrive, Dropbox) as a hub: files the client keeps online only (files on demand) delay reads until they are downloaded; a read slower than 20 seconds counts as "Folder offline" and the next sync tries again.
 - Automatic sync runs every 15 minutes and when the window gets focus; it does not run right after each save, and the interval has no Settings page yet.
 - The library shows no team badge (mode, unread, conflicts) on a shared project.

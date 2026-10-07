@@ -65,6 +65,8 @@ Someone else shared the project. To join:
 
 The title bar now shows **Exchange files**. To sync through the same shared folder, click **Use a shared folder** in the **Team** dialog, enter the same path and click **Share**.
 
+With a shared folder you can also join without an exchange file: open your copy of the project, click **Share**, choose **Shared folder** and enter the folder's path. **Team project in this folder** lists the team projects the folder holds; pick the one to join instead of **A new team project**, then click **Share**. Your changes count for the others once the owner has added you as a member.
+
 ## Work with a shared folder
 
 - {product} syncs when you click **Sync now**, and, with automatic sync on, every 15 minutes and when you come back to the window.
