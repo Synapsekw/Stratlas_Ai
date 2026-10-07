@@ -64,7 +64,7 @@ import { registerCollabIpc } from './collab';
 import { registerIdentityIpc } from './identity';
 import { registerJournalIpc } from './journal';
 import { registerSyncIpc } from './sync';
-import { registerTeamServerIpc } from './teamServer';
+import { interimDeviceSource, registerTeamServerIpc } from './teamServer';
 import { importLogo, removeLogo } from './branding';
 import { putThumb } from './thumbs';
 import { RENDERER_PROBE, smokeProbe, writeSmokeReport } from './smoke';
@@ -1001,7 +1001,17 @@ function registerIpc(): void {
   registerCollabIpc({ handle });
   registerSyncIpc({ handle });
   registerBlobsIpc({ handle });
-  registerTeamServerIpc({ handle });
+  registerTeamServerIpc({
+    handle,
+    userData: () => app.getPath('userData'),
+    offlineOnly: () => settings.current().offlineOnly === true,
+    // T7 interim device key; at integration T2's device source replaces it
+    device: interimDeviceSource({
+      userData: () => app.getPath('userData'),
+      vault: (account) => new Entry(keyService, account),
+      app: { name: brand.productName, version: app.getVersion() },
+    }),
+  });
 }
 
 /** Hand a package path to the renderer (second launch, macOS open-file). */

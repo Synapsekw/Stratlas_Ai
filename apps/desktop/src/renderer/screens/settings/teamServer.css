@@ -1,0 +1,92 @@
+/* Settings, Data, Team server (M9 T7, preview). */
+.team-server .ts-preview {
+  margin-inline-start: 8px;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  color: var(--fg-1);
+  font-size: var(--t-11, 11px);
+  font-weight: 500;
+  vertical-align: middle;
+}
+.team-server .ts-note {
+  margin-top: 6px;
+  font-size: var(--t-12);
+}
+.team-server .notice.ts-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.team-server .ts-h {
+  margin: 14px 0 4px;
+  font-size: var(--t-12);
+  font-weight: 600;
+}
+.team-server .ts-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: var(--t-12);
+}
+.team-server .ts-server {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-4);
+  background: var(--bg-1);
+}
+.team-server .ts-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.team-server .ts-what {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.team-server .ts-fp {
+  font-size: var(--t-11, 11px);
+}
+.team-server .ts-form {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+.team-server .ts-form label {
+  display: grid;
+  gap: 4px;
+  font-size: var(--t-12);
+}
+@media (max-width: 900px) {
+  .team-server .ts-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.team-server .ts-confirm {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  font-size: var(--t-12);
+}
+.team-server .ts-fingerprint {
+  margin: 0;
+  font-size: var(--t-13, 13px);
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+}
+.team-server .ts-actions {
+  display: flex;
+  gap: 8px;
+}

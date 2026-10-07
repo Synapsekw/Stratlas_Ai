@@ -37,6 +37,7 @@ import { LocalModel } from './settings/LocalModel';
 import { MapPacks } from './settings/MapPacks';
 import { ProviderConnection } from './settings/ProviderConnection';
 import { ReportBranding } from './settings/ReportBranding';
+import { TeamServer } from './settings/TeamServer';
 
 type Page =
   | 'ai'
@@ -887,6 +888,7 @@ export function SettingsScreen() {
           {page === 'usage' && <Usage />}
           {page === 'privacy' && <Privacy />}
           {page === 'data' && <DataFolder />}
+          {page === 'data' && <TeamServer />}
           {page === 'maps' && <MapPacks />}
           {page === 'severity' && <Severity />}
           {page === 'branding' && <ReportBranding />}

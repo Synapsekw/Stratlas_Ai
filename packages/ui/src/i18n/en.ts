@@ -1528,6 +1528,43 @@ export const en = {
   'change.run.surface': 'Run surface change',
   'change.run.cloud': 'Run cloud change',
   'change.run.model': 'Run model change',
+  // M9 T7: Settings, Data, Team server (preview)
+  'teamServer.title': 'Team server',
+  'teamServer.preview': 'Preview',
+  'teamServer.sub': 'Share projects through your own server',
+  'teamServer.intro':
+    'Your IT team runs the server on your premises and gives you its address and an invite code. Nothing goes to Synapse. Alone or offline, you need no server.',
+  'teamServer.list': 'Team servers on this computer',
+  'teamServer.none': 'No team server is connected on this computer.',
+  'teamServer.status': 'Enrolled as {role}, server version {version}',
+  'teamServer.statusNoVersion': 'Enrolled as {role}',
+  'teamServer.since': 'since {date}',
+  'teamServer.fingerprintShort': 'Certificate {fingerprint}',
+  'teamServer.forget': 'Forget',
+  'teamServer.forgetLabel': 'Forget {name}',
+  'teamServer.forgotten':
+    '{name} is no longer connected on this computer. Your projects stay as they are.',
+  'teamServer.connect': 'Connect to a team server',
+  'teamServer.address': 'Server address',
+  'teamServer.addressLabel': 'Team server address',
+  'teamServer.code': 'Invite code',
+  'teamServer.codeLabel': 'Invite code',
+  'teamServer.next': 'Connect',
+  'teamServer.contacting': 'Contacting the server',
+  'teamServer.check': 'Check the certificate',
+  'teamServer.checkText':
+    'Compare this fingerprint with the one your IT team gave you. Connect only if every group matches.',
+  'teamServer.fingerprint': 'Certificate fingerprint',
+  'teamServer.trust': 'They match, connect',
+  'teamServer.cancel': 'Cancel',
+  'teamServer.connected': 'Connected to {name}.',
+  'teamServer.offline':
+    'Offline only is on, so this computer makes no network connections. Turn it off in Privacy to connect to a team server.',
+  'teamServer.address.https': 'A team server address starts with https://.',
+  'teamServer.role.owner': 'owner',
+  'teamServer.role.reviewer': 'reviewer',
+  'teamServer.role.viewer': 'viewer',
+  'teamServer.role.client': 'client',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */
