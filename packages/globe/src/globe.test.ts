@@ -5,6 +5,7 @@ import {
   OFFLINE_CESIUM,
   ONLINE_GLOBE_HOSTS,
   creditLines,
+  offlineSource,
   onlineHostsIn,
 } from './index';
 
@@ -30,6 +31,23 @@ describe('@aio/globe public API (G0)', () => {
   it('the bundle check refuses every online host listed here', () => {
     const check = repoFile('tools/release/check-bundle.mjs');
     for (const host of ONLINE_GLOBE_HOSTS) expect(check, host).toContain(`'${host}'`);
+  });
+
+  it('rewrites every online host and its subdomains to a name that never resolves', () => {
+    const src = [
+      'const s = new Resource({ url: "https://api.cesium.com/" });',
+      'const b = "https://dev.virtualearth.net/REST/v1/Imagery";',
+      'const g = "https://tile.googleapis.com/v1/";',
+      'const e = "//services.arcgisonline.com/ArcGIS/rest";',
+      'const m = "https://api.mapbox.com/styles/v1/";',
+      'const keep = "aio://packs/imagery/world.pmtiles";',
+    ].join('\n');
+    const out = offlineSource(src);
+    expect(onlineHostsIn(out)).toEqual([]);
+    expect(out).toContain('"https://offline.invalid/"');
+    expect(out).toContain('"//offline.invalid/ArcGIS/rest"');
+    expect(out).toContain('aio://packs/imagery/world.pmtiles');
+    expect(offlineSource('const x = 1;')).toBe('const x = 1;');
   });
 
   it('credits the bundled imagery and every pack once', () => {

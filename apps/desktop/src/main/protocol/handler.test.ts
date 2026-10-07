@@ -25,6 +25,9 @@ beforeAll(async () => {
   await writeFile(join(base, 'secret.txt'), 'secret');
   await mkdir(join(base, 'packs'));
   await writeFile(join(base, 'packs', 'gcc.pmtiles'), 'PMTiles');
+  await mkdir(join(base, 'packs', 'imagery'));
+  await writeFile(join(base, 'packs', 'imagery', 'site.pmtiles'), 'RasterPM');
+  await writeFile(join(base, 'packs', 'imagery', 'site.json'), '{}');
 });
 
 afterAll(async () => {
@@ -99,6 +102,15 @@ describe('aio:// handler', () => {
     expect(res.status).toBe(206);
     expect(res.headers.get('content-type')).toBe('application/vnd.pmtiles');
     expect(await res.text()).toBe('PM');
+  });
+
+  it('serves imagery and terrain packs from their folders (M10 G7)', async () => {
+    const res = await get('aio://packs/imagery/site.pmtiles', { Range: 'bytes=0-5' });
+    expect(res.status).toBe(206);
+    expect(await res.text()).toBe('Raster');
+    expect((await get('aio://packs/imagery/site.json')).status).toBe(404);
+    expect((await get('aio://packs/terrain/site.pmtiles')).status).toBe(404);
+    expect((await get('aio://packs/other/site.pmtiles')).status).toBe(404);
   });
 
   it('refuses pack names that are not plain ids', async () => {

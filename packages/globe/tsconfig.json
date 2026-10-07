@@ -8,5 +8,5 @@
     "types": ["node"]
   },
   "include": ["src"],
-  "references": [{ "path": "../schema" }]
+  "references": [{ "path": "../schema" }, { "path": "../geo" }]
 }

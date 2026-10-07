@@ -37,6 +37,7 @@ const REVIEW: NavDef = { screen: 'review', label: 'nav.review', icon: 'history' 
 
 const NAV: NavDef[] = [
   { screen: 'projects', label: 'nav.projects', icon: 'projects' },
+  { screen: 'globe', label: 'globe.nav', icon: 'globe' },
   { screen: 'scene', label: 'nav.scene', icon: 'scene' },
   { screen: 'issues', label: 'nav.issues', icon: 'issues' },
   { screen: 'media', label: 'nav.media', icon: 'media' },

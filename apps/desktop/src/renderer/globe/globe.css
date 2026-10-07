@@ -1,0 +1,138 @@
+/* The Globe screen (M10 G6): the CesiumWidget fills the screen; our chrome floats over it. */
+.globe-screen {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #000;
+}
+.globe-screen .aio-globe {
+  position: absolute;
+  inset: 0;
+}
+/* Cesium's own credit line: we show credits in our footer, keep only its logo container quiet */
+.globe-screen .cesium-widget-credits {
+  display: none;
+}
+.globe-panel {
+  position: absolute;
+  top: var(--s3);
+  inset-inline-start: var(--s3);
+  width: 260px;
+  max-height: calc(100% - 2 * var(--s3) - 36px);
+  overflow: auto;
+  padding: var(--s3);
+  border-radius: var(--r-6);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  color: var(--fg-0);
+  font-size: var(--t-13);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+.globe-title {
+  margin: 0;
+  font-size: var(--t-16);
+}
+.globe-sites {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.globe-site {
+  width: 100%;
+  text-align: start;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s2);
+  border-radius: var(--r-4);
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.globe-site:hover,
+.globe-site[aria-current='true'] {
+  background: var(--bg-2);
+  border-color: var(--line);
+}
+.globe-site .name {
+  font-weight: 600;
+}
+.globe-site .meta,
+.globe-card .meta,
+.globe-note,
+.globe-empty {
+  color: var(--fg-2);
+  font-size: var(--t-12);
+  margin: 0;
+}
+.globe-error {
+  color: var(--danger-ink);
+  margin: 0;
+}
+.globe-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.globe-field > span {
+  color: var(--fg-2);
+  font-size: var(--t-12);
+}
+.globe-check {
+  display: flex;
+  gap: var(--s2);
+  align-items: center;
+}
+.globe-card {
+  position: absolute;
+  top: var(--s3);
+  inset-inline-end: var(--s3);
+  width: 280px;
+  padding: var(--s3);
+  border-radius: var(--r-6);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  color: var(--fg-0);
+}
+.globe-card h2 {
+  margin: 0 0 var(--s1);
+  font-size: var(--t-14);
+}
+.globe-card .actions {
+  display: flex;
+  gap: var(--s2);
+  justify-content: flex-end;
+  margin-top: var(--s3);
+}
+.globe-credits {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 4px var(--s3);
+  background: rgb(0 0 0 / 0.55);
+  color: #e8e8e8;
+  font-size: var(--t-11);
+}
+
+.globe-measure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  align-items: flex-start;
+}
+.globe-readout {
+  margin: 0;
+  font-size: var(--t-12);
+  color: var(--fg-1);
+}

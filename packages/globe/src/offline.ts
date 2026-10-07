@@ -67,3 +67,21 @@ export const OFFLINE_CESIUM = {
 export function onlineHostsIn(text: string): string[] {
   return ONLINE_GLOBE_HOSTS.filter((h) => text.includes(h));
 }
+
+/** Where a rewritten online host points: a reserved name that never resolves (RFC 2606). */
+export const OFFLINE_HOST = 'offline.invalid';
+
+const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** Built on first use, so the renderer's Globe chunk (which never rewrites code) leaves it out. */
+const onlineHostRe = () =>
+  new RegExp(`(?:[a-z0-9-]+\\.)*(?:${ONLINE_GLOBE_HOSTS.map(escape).join('|')})`, 'gi');
+
+/**
+ * CesiumJS source with every online host (and its subdomains: `api.cesium.com`,
+ * `dev.virtualearth.net`, `tile.googleapis.com`) rewritten to {@link OFFLINE_HOST}. The renderer
+ * build runs it over the bundled Cesium modules (`electron.vite.config.ts`), so a default URL we
+ * never use cannot name a real server, and the bundle check finds no online host in the build.
+ */
+export function offlineSource(code: string): string {
+  return code.replace(onlineHostRe(), OFFLINE_HOST);
+}

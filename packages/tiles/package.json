@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "3D Tiles in the site view (M10 G7): the 3DTilesRendererJS adapter for the engine, tileset helpers, budgets per graphics tier.",
+  "description": "3D Tiles in the site view (M10 G7): the 3DTilesRendererJS adapter for the engine, terrain and imagery around the site, raster pack providers shared with the map and the Globe, budgets per graphics tier.",
   "exports": {
     ".": "./src/index.ts"
   },
@@ -11,6 +11,11 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@aio/schema": "workspace:*"
+    "3d-tiles-renderer": "0.5.3",
+    "@aio/engine": "workspace:*",
+    "@aio/geo": "workspace:*",
+    "@aio/schema": "workspace:*",
+    "pmtiles": "^4.5.0",
+    "three": "^0.186.1"
   }
 }

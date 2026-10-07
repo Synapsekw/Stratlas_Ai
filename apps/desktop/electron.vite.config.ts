@@ -5,7 +5,8 @@ import { readFileSync } from 'node:fs';
 import { cp, readFile, stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join, normalize, resolve } from 'node:path';
-import type { Plugin } from 'vite';
+import { minify, type Plugin } from 'vite';
+import { offlineSource } from '../../packages/globe/src/offline';
 import { APP_CSP, cspMetaTag, inlineScripts } from './src/main/csp';
 import { licenseEntries } from './src/main/licenses';
 
@@ -84,6 +85,101 @@ function cspMeta(): Plugin {
         const at = m.index + m[0].length;
         return `${html.slice(0, at)}\n    ${cspMetaTag(APP_CSP)}${html.slice(at)}`;
       },
+    },
+  };
+}
+
+/**
+ * CesiumJS runtime files the Globe loads by URL (M10 G6): web workers, WebAssembly decoders and
+ * the assets the offline globe needs, copied into the renderer build as `cesium/` (served from
+ * `'self'`, `CESIUM_BASE_URL`) and served from the package in dev. Left out on purpose: the Bing,
+ * Google and ion credit logos (trademarks of online services we never use), the moon, water and
+ * lens-flare textures (provenance not stated; the Globe turns those effects off), the Google
+ * Earth Enterprise parser, and what the Globe never loads (KMZ zip worker, Gaussian splats, Maki
+ * icons).
+ */
+const cesiumRoot = join(
+  dirname(createRequire(import.meta.url).resolve('@cesium/engine/package.json')),
+  'Build',
+);
+const CESIUM_COPY = [
+  'Workers',
+  'ThirdParty/draco_decoder.wasm',
+  'ThirdParty/basis_transcoder.wasm',
+  'Assets/approximateTerrainHeights.json',
+  'Assets/IAU2006_XYS',
+  'Assets/Images/cesium_credit.png',
+  'Assets/Textures/NaturalEarthII',
+  'Assets/Textures/SkyBox',
+];
+const cesiumAllowed = (rel: string) =>
+  CESIUM_COPY.some((c) => rel === c || rel.startsWith(`${c}/`));
+
+function cesiumAssets(): Plugin {
+  let outDir = '';
+  return {
+    name: 'aio-cesium-assets',
+    configResolved(config) {
+      outDir = config.build.outDir;
+    },
+    configureServer(server) {
+      server.middlewares.use('/cesium/', (req, res, next) => {
+        const rel = normalize(decodeURIComponent((req.url ?? '').split('?')[0] ?? ''))
+          .replace(/^[\\/]+/, '')
+          .replace(/\\/g, '/');
+        const file = join(cesiumRoot, rel);
+        if (!file.startsWith(cesiumRoot) || !cesiumAllowed(rel)) {
+          next();
+          return;
+        }
+        if (rel.endsWith('.js')) res.setHeader('Content-Type', 'text/javascript');
+        if (rel.endsWith('.wasm')) res.setHeader('Content-Type', 'application/wasm');
+        void readFile(file).then(
+          (buf) => res.end(buf),
+          () => {
+            next();
+          },
+        );
+      });
+    },
+    async closeBundle() {
+      for (const rel of CESIUM_COPY) {
+        const from = join(cesiumRoot, rel);
+        if (await stat(from).catch(() => null)) {
+          await cp(from, join(outDir, 'cesium', rel), { recursive: true });
+        }
+      }
+    },
+  };
+}
+
+/**
+ * The Globe is offline by construction (decision 3): CesiumJS's sources name the online services
+ * it can use (ion, Bing, Google, Esri, Mapbox) as default URLs. Our code never constructs those
+ * providers (the lint rule), and this rewrites every such host in the bundled Cesium modules to
+ * `offline.invalid` (RFC 2606, never resolves; `@aio/globe` `offlineSource`), so even an
+ * unexpected default cannot name a real server; `tools/release/check-bundle.mjs` then proves no
+ * online map host is in the build.
+ */
+function cesiumOffline(): Plugin {
+  return {
+    name: 'aio-cesium-offline',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!/[\\/]@cesium[\\/]/.test(id) || !/\.m?js$/.test(id.split('?')[0] ?? '')) return null;
+      const out = offlineSource(code);
+      return out === code ? null : { code: out, map: null };
+    },
+    // The renderer build is not minified (readable stacks in crash reports); CesiumJS is, as it
+    // would be from its own package, to keep the installer growth within decision 6's budget.
+    async renderChunk(code, chunk) {
+      if (!chunk.moduleIds.some((id) => /[\\/]@cesium[\\/]/.test(id))) return null;
+      const out = await minify(chunk.fileName, code, { compress: true, mangle: true });
+      if (out.errors.length > 0) {
+        this.warn(`CesiumJS chunk not minified: ${out.errors.map((e) => e.message).join('; ')}`);
+        return null;
+      }
+      return { code: out.code, map: null };
     },
   };
 }
@@ -178,7 +274,15 @@ export default defineConfig({
     plugins: [licenses(), releaseNotes()],
     build: {
       externalizeDeps: {
-        exclude: ['@aio/schema', '@aio/brand', '@aio/ai', '@aio/project', '@aio/geo', '@aio/video'],
+        exclude: [
+          '@aio/schema',
+          '@aio/brand',
+          '@aio/ai',
+          '@aio/project',
+          '@aio/geo',
+          '@aio/globe',
+          '@aio/video',
+        ],
       },
       rollupOptions: {
         input: {
@@ -206,7 +310,7 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(import.meta.dirname, 'src/renderer'),
-    plugins: [react(), pdfjsAssets(), cspMeta()],
+    plugins: [react(), pdfjsAssets(), cesiumAssets(), cesiumOffline(), cspMeta()],
     define: { __STRATLAS_BUILD__: JSON.stringify(buildStamp()) },
     resolve: { noExternal: bundled },
     build: {

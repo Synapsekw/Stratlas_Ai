@@ -12,7 +12,7 @@ import {
 import { getPlayer } from '@aio/video';
 import { volumetric, VolumetricStyles } from '@aio/volumetric';
 import { workspace } from '@aio/workspace';
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { getMedia } from './media';
 import { nextClipInFlight, startPlaybackLoop } from './playback';
 import { IssuesScreen } from './screens/Issues';
@@ -59,6 +59,9 @@ import { toasts } from './exports/exports';
 import { evidence, openEvidence, startEvidenceSplit } from './issueCard/evidence';
 import { registerAppChangeProducers } from './change/producers/register';
 import { startCardFocus } from './issueCard/state';
+
+/** The Globe (M10 G6) is its own chunk: CesiumJS loads only when the Globe opens. */
+const GlobeScreen = lazy(() => import('./globe/GlobeScreen'));
 
 function onKeyDown(e: KeyboardEvent) {
   const s = shell.getState();
@@ -192,6 +195,12 @@ function Screen() {
       return <ReportsScreen />;
     case 'jobs':
       return <JobsScreen />;
+    case 'globe':
+      return (
+        <Suspense fallback={null}>
+          <GlobeScreen />
+        </Suspense>
+      );
     case 'settings':
       return <SettingsScreen />;
   }

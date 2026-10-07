@@ -14,6 +14,9 @@
 //   node tools/maps/build-packs.mjs --build=20261003 pin a planet build
 //   node tools/maps/build-packs.mjs --tool-only     only fetch the pmtiles CLI (a build tool here;
 //                                                   the app extracts regions itself)
+//   node tools/maps/build-packs.mjs --imagery|--terrain|--estimate ...
+//                                                   imagery and terrain packs from downloaded
+//                                                   open sources (M10 G7, raster-packs.mjs)
 //
 // Env: STRATLAS_DATA overrides the data root (default E:\Stratlas Data).
 
@@ -31,6 +34,7 @@ import { writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ASSET_FONTSTACKS, ASSET_GLYPH_RANGES, ASSET_SPRITES, PACKS } from './packs.config.mjs';
+import { rasterPackMode } from './raster-packs.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, '..', '..');
@@ -175,6 +179,7 @@ async function main() {
   const names = argv.filter((a) => !a.startsWith('--'));
   const pinned = argv.find((a) => a.startsWith('--build='))?.slice(8);
 
+  if (rasterPackMode({ argv, repo, dataRoot, log })) return;
   if (flags.has('--tool-only')) {
     log(`pmtiles CLI: ${await ensurePmtiles()}`);
     return;

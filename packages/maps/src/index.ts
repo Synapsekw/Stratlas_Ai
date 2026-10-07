@@ -64,6 +64,8 @@ export type { IssueColorBy, MapController } from './controller';
 // M8 C2: swipe and blend of two dates, the look of change results
 export * from './swipe';
 export * from './changeStyle';
+// M10 G7: imagery and terrain packs on the map (Satellite, hillshade)
+export * from './rasterPacks';
 
 /**
  * Registers the `basemap` ground adapter with @aio/engine: the offline street style rendered once
