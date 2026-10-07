@@ -1,8 +1,10 @@
 import type { ZipArchive } from '@aio/project/package';
+import { MISSING_BLOB_HEADER, missingBlobHeader } from '@aio/schema';
 import { createReadStream } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
+import type { BlobLookup } from '../blobs';
 import { LOGO_NAME } from '../branding';
 import { findThumb } from '../thumbs';
 import { LEGACY_CSP, isLegacyDocument, prepareLegacyHtml } from './legacy';
@@ -23,6 +25,11 @@ export interface AioRoots {
   brandingDir?(): string;
   /** A map pack carried inside an open package (`packs/<id>.pmtiles`), served in place. */
   embeddedPack?(id: string): { archive: ZipArchive; member: string } | undefined;
+  /**
+   * A project file that is not in the folder but known by content (M9 T6): the downloaded copy,
+   * a stream from the shared folder, or missing (a 404 with `x-aio-blob: missing <sha256> <size>`).
+   */
+  blob?(id: string, rel: string): Promise<BlobLookup | null>;
 }
 
 const PACK = /^([a-z0-9-]+)\.pmtiles$/;
@@ -45,6 +52,18 @@ function decodeSegments(pathname: string): string[] | null {
   } catch {
     return null;
   }
+}
+
+/** A file this computer lacks: a normal state, so layers show "Not on this computer". */
+function missingBlob(sha256: string, size: number): Response {
+  return new Response('Not on this computer', {
+    status: 404,
+    headers: {
+      ...COMMON,
+      [MISSING_BLOB_HEADER]: missingBlobHeader(sha256, size),
+      'Access-Control-Expose-Headers': MISSING_BLOB_HEADER,
+    },
+  });
 }
 
 /**
@@ -197,7 +216,16 @@ export function createAioHandler(roots: AioRoots): (req: Request) => Promise<Res
       const root = roots.projectRoot(id);
       if (root === undefined) return status(404);
       const resolved = await resolveInside(root, rest.join('/'));
-      if (!resolved.ok) return status(resolved.status);
+      if (!resolved.ok) {
+        // M9 T6: a file known by content may be downloaded, streamed from the hub, or missing
+        const blob =
+          resolved.status === 404 && roots.blob
+            ? await roots.blob(id, rest.join('/')).catch(() => null)
+            : null;
+        if (blob?.kind === 'file') return serveFile(blob.path, req);
+        if (blob?.kind === 'missing') return missingBlob(blob.sha256, blob.size);
+        return status(resolved.status);
+      }
       if (isLegacyDocument(rest)) {
         return serveLegacyDocument(() => readFile(resolved.path, 'utf8'), id, req);
       }

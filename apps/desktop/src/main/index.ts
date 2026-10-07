@@ -59,7 +59,7 @@ import {
 } from './inference/electron';
 import { registerLocalModelsIpc, type LocalServerSeen } from './localModels';
 import { readCloudDrawings, registerModelBuilderIpc } from './modelBuilder';
-import { registerBlobsIpc } from './blobs';
+import { createBlobService, registerBlobsIpc } from './blobs';
 import { registerCollabIpc } from './collab';
 import {
   createDeviceKeys,
@@ -218,6 +218,15 @@ const bundledDemos = () =>
   );
 /** Thumbnails the renderer generated for project images without their own (Media). */
 const thumbsDir = () => join(app.getPath('userData'), 'cache', 'thumbs');
+/** M9 T6: binaries by content (`blobs:*`, and files this computer lacks on `aio://`). */
+const blobs = createBlobService({
+  userData: app.getPath('userData'),
+  projectRoot: (id) => registry.root(id),
+  capBytes: () => (settings.current().team?.blobCacheGb ?? 50) * 1024 ** 3,
+  emit: (e) => {
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.send('blobs:progress', e);
+  },
+});
 const policy = new ProjectPolicy(registry);
 /** The last local model server discovery reached in this run (kind and version, for diagnostics). */
 let localServerSeen: LocalServerSeen | null = null;
@@ -1081,7 +1090,7 @@ function registerIpc(): void {
   registerIdentityIpc({ handle, service: identityService });
   registerCollabIpc({ handle });
   registerSyncIpc({ handle });
-  registerBlobsIpc({ handle });
+  registerBlobsIpc({ handle, service: blobs });
   registerTeamServerIpc({ handle });
 }
 
@@ -1332,6 +1341,7 @@ if (restore) {
         thumbsDir,
         brandingDir,
         embeddedPack: (id) => findEmbedded(id, registry.openPackages()),
+        blob: (id, rel) => blobs.lookup(id, rel),
       }),
     );
     registerIpc();
