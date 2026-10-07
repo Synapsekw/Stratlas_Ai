@@ -1,4 +1,5 @@
 import {
+  agentToolNames,
   builtInProviders,
   createAgentRuntime,
   createProviderRegistry,
@@ -998,7 +999,12 @@ function registerIpc(): void {
   // M9: one module per stream (T1 journal, T2 identity, T3 collab, T5 sync, T6 blobs, T7 server).
   registerJournalIpc({ handle });
   registerIdentityIpc({ handle });
-  registerCollabIpc({ handle });
+  registerCollabIpc({
+    handle,
+    projects: registry,
+    userData: app.getPath('userData'),
+    agentTools: agentToolNames,
+  });
   registerSyncIpc({ handle });
   registerBlobsIpc({ handle });
   registerTeamServerIpc({ handle });

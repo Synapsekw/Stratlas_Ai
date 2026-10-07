@@ -32,8 +32,11 @@ export interface CollabOp {
 }
 
 export interface ProjectOptions {
-  /** The target's current material hash; null when the target is gone or unreadable. */
-  materialHashOf?: (target: CollabTarget) => string | null;
+  /**
+   * The target's current material hash under the projected policy (null: no team policy); null
+   * when the target is gone or unreadable.
+   */
+  materialHashOf?: (target: CollabTarget, policy: TeamPolicy | null) => string | null;
   /** Owners may delete others' comments, redact and set the policy. */
   isOwner?: (actor: string) => boolean;
 }
@@ -211,7 +214,7 @@ export function projectCollab(ops: readonly CollabOp[], opts: ProjectOptions = {
   const hashes = new Map<string, string | null>();
   const hashOf = (t: CollabTarget) => {
     const k = targetKey(t);
-    if (!hashes.has(k)) hashes.set(k, opts.materialHashOf?.(t) ?? null);
+    if (!hashes.has(k)) hashes.set(k, opts.materialHashOf?.(t, policy) ?? null);
     return hashes.get(k) ?? null;
   };
   for (const a of approvals.values()) a.current = hashOf(a.target) === a.contentHash;
