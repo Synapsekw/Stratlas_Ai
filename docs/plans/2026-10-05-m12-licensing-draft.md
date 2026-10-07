@@ -1,6 +1,6 @@
-# M11 Licensing and subscriptions (draft)
+# M12 Licensing and subscriptions (draft)
 
-> Draft, 5 Oct 2026. The founder placed this milestone **last**, after M10 (moved from M10 to M11 on 7 Oct 2026). Nothing here is built before then. Pricing research: `docs/business/2026-10-05-competitors-and-pricing.md`.
+> Draft, 5 Oct 2026. The founder placed this milestone **last**, after M11 (moved from M10 to M11 on 7 Oct 2026, then to M12 on 7 Oct 2026 when surveying became M11). Nothing here is built before then. Pricing research: `docs/business/2026-10-05-competitors-and-pricing.md`.
 
 **Goal:** sell Stratlas as a subscription from the Microsoft Store and from our own landing page, with one licence system, while the app keeps working offline.
 
