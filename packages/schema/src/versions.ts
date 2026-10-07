@@ -267,6 +267,43 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
   },
   // library.json had no schema id before 0.9; files without one read as /1.
   { family: 'aio.library', version: 1, home: 'userData', where: 'library.json', since: '0.9' },
+  // M10: every new file lives beside the manifest or in a new folder, so 0.9 never reads it.
+  {
+    family: 'aio.photo-run',
+    version: 1,
+    home: 'project',
+    where: 'photogrammetry/<run>/run.json',
+    since: '0.10',
+  },
+  {
+    family: 'aio.gcp',
+    version: 1,
+    home: 'project',
+    where: 'photogrammetry/<run>/gcp.json',
+    since: '0.10',
+  },
+  {
+    family: 'aio.photo-accuracy',
+    version: 1,
+    home: 'project',
+    where: 'photogrammetry/<run>/report/accuracy.json',
+    since: '0.10',
+  },
+  { family: 'aio.tilesets', version: 1, home: 'project', where: 'tilesets.json', since: '0.10' },
+  {
+    family: 'aio.raster-pack',
+    version: 1,
+    home: 'userData',
+    where: 'packs/imagery/*.json and packs/terrain/*.json (data folder)',
+    since: '0.10',
+  },
+  {
+    family: 'aio.globe-settings',
+    version: 1,
+    home: 'userData',
+    where: 'globe.json',
+    since: '0.10',
+  },
 ];
 
 /**

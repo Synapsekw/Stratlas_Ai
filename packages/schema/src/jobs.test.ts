@@ -75,6 +75,15 @@ describe('pipeline params', () => {
       'change.frames',
       'drawing.import',
       'model.fit_cloud',
+      'photo.align',
+      'photo.georef',
+      'photo.products',
+      'opf.import',
+      'opf.export',
+      'tiles.mesh',
+      'tiles.cloud',
+      'packs.imagery',
+      'packs.terrain',
     ]);
     for (const p of PIPELINES) expect(p.title.length).toBeGreaterThan(3);
   });

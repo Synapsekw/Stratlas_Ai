@@ -43,6 +43,39 @@ if (problems.length) {
 }
 console.log(`Bundle check passed (${ROOTS.join(', ')}).`);
 
+// M10 decision 3: the Globe stays offline. No built renderer file (the Globe's chunk and the
+// copied Cesium assets in out/renderer/cesium included) may name an online imagery, terrain or
+// geocoder host (the list of packages/globe/src/offline.ts `ONLINE_GLOBE_HOSTS`).
+const ONLINE_GLOBE_HOSTS = [
+  'cesium.com',
+  'virtualearth.net',
+  'googleapis.com',
+  'arcgisonline.com',
+  'mapbox.com',
+];
+const RENDERER = 'out/renderer';
+const TEXT = /\.(c?m?js|html|json|css)$/;
+function rendererFiles(dir) {
+  return readdirSync(dir).flatMap((n) => {
+    const p = join(dir, n);
+    if (statSync(p).isDirectory()) return rendererFiles(p);
+    return TEXT.test(p) ? [p] : [];
+  });
+}
+const named = [];
+for (const file of rendererFiles(RENDERER)) {
+  const text = readFileSync(file, 'utf8');
+  for (const host of ONLINE_GLOBE_HOSTS) if (text.includes(host)) named.push(`${file}: ${host}`);
+}
+if (named.length) {
+  console.error(
+    'Bundle check failed: the renderer names an online map host (the Globe is offline).',
+  );
+  for (const n of named) console.error(`  ${n}`);
+  process.exit(1);
+}
+console.log(`Bundle check passed: no online map host in ${RENDERER}.`);
+
 // After packaging (dist.mjs runs this after electron-builder): local detection's native files
 // must be unpacked next to app.asar, or the inference process cannot load onnxruntime.
 const app = findPackagedApp();
