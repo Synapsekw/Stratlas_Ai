@@ -10,6 +10,7 @@ import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import { readJson, writeJsonAtomic } from './fsutil';
+import { newerThanThisBuild } from './newer';
 
 const Entry = z.object({
   name: z.string(),
@@ -59,14 +60,19 @@ export function createAiProjectStore(
 ): AiProjectStore {
   const now = opts.now ?? (() => new Date());
   let cache: Record<string, Entry> | null = null;
+  /** Set when the file was saved by a newer build: it is then never written (UPGRADE-POLICY). */
+  let refused: string | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let writing: Promise<void> = Promise.resolve();
 
   async function load(): Promise<Record<string, Entry>> {
     if (cache) return cache;
     try {
-      const r = File.safeParse(await readJson(file));
-      cache = r.success ? r.data.projects : {};
+      const raw = await readJson(file);
+      refused = newerThanThisBuild(raw, 'aio.ai-projects', 'ai-projects.json');
+      if (refused) console.warn(refused);
+      const r = File.safeParse(raw);
+      cache = r.success && !refused ? r.data.projects : {};
     } catch {
       cache = {};
     }
@@ -74,6 +80,7 @@ export function createAiProjectStore(
   }
 
   function write(): Promise<void> {
+    if (refused) return writing;
     const projects = cache ?? {};
     writing = writing.then(() =>
       writeJsonAtomic(file, { schema: 'aio.ai-projects/1', projects }).catch((e: unknown) => {
@@ -105,6 +112,7 @@ export function createAiProjectStore(
     },
     async setConsent(root, name, alwaysAllow) {
       const all = await load();
+      if (refused) throw new Error(refused);
       const key = projectKey(root);
       all[key] = {
         ...(all[key] ?? blank(name)),
@@ -116,6 +124,7 @@ export function createAiProjectStore(
     },
     addUsage(root, name, usage) {
       void load().then((all) => {
+        if (refused) return;
         const key = projectKey(root);
         const prev = all[key] ?? blank(name);
         all[key] = {

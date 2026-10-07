@@ -24,6 +24,7 @@ import { mkdir, open, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { folderFiles, readDetectionPasses } from './detections';
 import { readJson, writeJsonAtomic } from './fsutil';
+import { newerOnDisk, newerThanThisBuild } from './newer';
 import type { Handle } from './notYet';
 import { readIssues, readManifest, type ProjectRegistry } from './project';
 import { resolveInside } from './protocol/paths';
@@ -74,13 +75,19 @@ function invalid(e: { issues: { path: PropertyKey[]; message: string }[] }): str
 
 const isSetName = (n: string) => n.toLowerCase().endsWith('.json') && !n.startsWith('.');
 
-function parseSet(name: string, text: string): { set: ChangeSet } | { error: string } {
+/** A change set file; `newer` when a newer build saved it (the error is then the whole message). */
+function parseSet(
+  name: string,
+  text: string,
+): { set: ChangeSet } | { error: string; newer?: true } {
   let raw: unknown;
   try {
     raw = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
   } catch (e) {
     return { error: `not JSON: ${String(e).slice(0, 200)}` };
   }
+  const newer = newerThanThisBuild(raw, 'aio.change', `${CHANGE_DIR}/${name}`);
+  if (newer) return { error: newer, newer: true };
   const parsed = ChangeSet.safeParse(raw);
   if (!parsed.success) return { error: invalid(parsed.error) };
   if (`${parsed.data.id}.json` !== name)
@@ -151,9 +158,8 @@ export async function readChangeSet(
   }
   if (text === null) return { ok: false, error: `There is no change set "${id}" in this project.` };
   const r = parseSet(name, text);
-  return 'set' in r
-    ? { ok: true, set: r.set, readOnly: !('root' in src) }
-    : { ok: false, error: `change/${name} is ${r.error}` };
+  if ('set' in r) return { ok: true, set: r.set, readOnly: !('root' in src) };
+  return { ok: false, error: r.newer ? r.error : `change/${name} is ${r.error}` };
 }
 
 export async function writeChangeSet(
@@ -161,9 +167,12 @@ export async function writeChangeSet(
   input: ChangeSetInput,
 ): Promise<IpcResponse<'change:write'>> {
   const set = ChangeSet.parse(input);
+  const target = join(root, CHANGE_DIR, `${set.id}.json`);
+  const newer = await newerOnDisk(target, 'aio.change', `${CHANGE_DIR}/${set.id}.json`);
+  if (newer) return { ok: false, error: newer };
   try {
     await mkdir(join(root, CHANGE_DIR), { recursive: true });
-    await writeJsonAtomic(join(root, CHANGE_DIR, `${set.id}.json`), set, { backup: true });
+    await writeJsonAtomic(target, set, { backup: true });
     return { ok: true };
   } catch (e) {
     return { ok: false, error: `The change review was not saved: ${why(e)}` };

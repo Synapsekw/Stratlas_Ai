@@ -122,6 +122,22 @@ describe('per-project AI store', () => {
     ]);
   });
 
+  it('refuses a file saved by a newer version and never writes over it', async () => {
+    const file = join(dir, 'ai-projects.json');
+    const newer = `${JSON.stringify({ schema: 'aio.ai-projects/2', projects: {}, extra: 1 })}\n`;
+    await writeFile(file, newer);
+    const store = createAiProjectStore(file, { writeDelayMs: 0 });
+    expect(await store.get('E:/P')).toEqual({ alwaysAllow: false, usage: [] });
+    await expect(store.setConsent('E:/P', 'Plant', true)).rejects.toThrow(
+      'ai-projects.json was saved by a newer version of Stratlas (aio.ai-projects/2). Update the app to open it. The file was not changed.',
+    );
+    store.addUsage('E:/P', 'Plant', { provider: 'local', inputTokens: 5, outputTokens: 1 });
+    await new Promise((r) => setTimeout(r, 5));
+    await store.flush();
+    expect(await store.list()).toEqual([]);
+    expect(await readFile(file, 'utf8')).toBe(newer);
+  });
+
   it('treats folders that differ only in case as one project on Windows', () => {
     expect(projectKey('E:\\Data\\P', 'win32')).toBe(projectKey('e:\\data\\p', 'win32'));
   });

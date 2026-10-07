@@ -11,6 +11,7 @@ import { readdir, stat } from 'node:fs/promises';
 import { basename, join, relative, resolve } from 'node:path';
 import { z } from 'zod';
 import { readJson, writeJsonAtomic } from './fsutil';
+import { newerThanThisBuild } from './newer';
 import { readManifest, type ProjectRegistry } from './project';
 
 /** Folders the person added by hand, kept in userData/library.json. */
@@ -19,27 +20,45 @@ export interface LibraryStore {
   add(path: string): Promise<void>;
 }
 
-const LibraryFile = z.object({ paths: z.array(z.string()) });
+/**
+ * `aio.library/1` since 0.9; files from 0.8 and earlier have no schema id and read the same. 0.8
+ * keeps reading the list (it ignores the id). A newer list is refused, never saved over.
+ */
+export const LIBRARY_SCHEMA = 'aio.library/1';
+const LibraryFile = z.object({
+  schema: z.literal(LIBRARY_SCHEMA).optional(),
+  paths: z.array(z.string()),
+});
 
 const sameKey = (p: string) =>
   process.platform === 'win32' ? resolve(p).toLowerCase() : resolve(p);
 
 export function createLibraryStore(file: string): LibraryStore {
-  async function paths(): Promise<string[]> {
+  async function load(): Promise<{ paths: string[]; newer: string | null }> {
     try {
-      const r = LibraryFile.safeParse(await readJson(file));
-      return r.success ? r.data.paths : [];
+      const raw = await readJson(file);
+      const newer = newerThanThisBuild(raw, 'aio.library', 'library.json');
+      if (newer) {
+        console.warn(newer);
+        return { paths: [], newer };
+      }
+      const r = LibraryFile.safeParse(raw);
+      return { paths: r.success ? r.data.paths : [], newer: null };
     } catch (e) {
       console.warn(`Library file ${file} is unreadable, ignoring it: ${String(e)}`);
-      return [];
+      return { paths: [], newer: null };
     }
   }
   return {
-    paths,
+    paths: async () => (await load()).paths,
     async add(path) {
-      const current = await paths();
-      if (current.some((p) => sameKey(p) === sameKey(path))) return;
-      await writeJsonAtomic(file, { paths: [...current, resolve(path)] });
+      const current = await load();
+      if (current.newer) throw new Error(current.newer);
+      if (current.paths.some((p) => sameKey(p) === sameKey(path))) return;
+      await writeJsonAtomic(file, {
+        schema: LIBRARY_SCHEMA,
+        paths: [...current.paths, resolve(path)],
+      });
     },
   };
 }
@@ -296,7 +315,11 @@ export async function addToLibrary(
   }
   const r = await buildEntry(dir, registry);
   if (!r.ok) return r;
-  await store.add(dir);
+  try {
+    await store.add(dir);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
   return r;
 }
 
