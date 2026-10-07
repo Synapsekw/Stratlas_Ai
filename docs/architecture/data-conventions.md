@@ -59,6 +59,7 @@ A video layer's `flight.src` points to a JSON file:
 - `q` is the **camera** orientation as a three.js quaternion: the camera looks along its local `-Z` with `+Y` up in the image. Gimbal angles are already folded in.
 - Video time `v` (seconds) maps to project time `startUtcMs + offsetMs + v * 1000`, with `offsetMs` from the video layer.
 - Calibration on the video layer (BLD-3, optional): the camera that took the frame is at `pos + positionOffsetM` (local frame, metres) with orientation `q * Ry(yawDeg) * Rx(pitchDeg) * Rz(rollDeg)` from `orientation` (camera-frame bias, three.js Euler `YXZ`). Projection, frustum, drone-eye view, map footprint and video sightings all use the calibrated pose; the pose file stays as logged.
+- Camera direction keyframes set by hand ("Align camera to map") live in `orientation.json` (section 21), not in the flight file or the manifest. **The one pose rule** (`clipPoseAt` in `@aio/geo`, used by the 3D rig, the map, sightings, frame pairing, the AI tools and the tools themselves): position = normalised log + `positionOffsetM`; orientation = the clip's keyframes when it has at least one (absolute: the logged orientation **and** the calibration bias `orientation` do not apply), else the logged orientation (gimbal angles or the importer's estimate) turned by `orientation`. Calibrate video therefore still composes with gimbal clips; on a clip with keyframes only its position offset, lens and time offset matter.
 - Optional `heights` (`FlightHeights`): the rule the sample heights came from (section 3a), `{ "source": "absolute" | "relative" | "none" | "mixed", "absOffsetM": 100, "takeoffH": 100 }` (`mixed`: some samples fell back to the other altitude). A file without it predates the record; an importer that rewrites the file compares the two to rebase calibration.
 
 ## 3a. Camera elevation (drone altitudes to project heights)
@@ -396,3 +397,29 @@ Large files are known by their SHA-256 so a copy can open before they arrive (`@
 - **Missing is a normal state** (`BlobState`: `present`, `missing`, `partial`, `stale`, `streaming`). For a project file that is not in the folder, `aio://` serves the downloaded copy, a stream from the hub when the policy is `stream`, or a 404 with the header `x-aio-blob: missing <sha256> <size>` (exposed to the page through `Access-Control-Expose-Headers`). The layer shows "Not on this computer (12.4 GB)" with **Download**.
 - **Where blobs live.** `blobs/<aa>/<sha256>` (`blobPath`) in a hub (`projects/<teamProjectId>/blobs/`), an exchange bundle and a server store. On this computer, in userData `blobs/`: `<aa>/<sha256>` (verified copies), `partial/<sha256>.part` (kept to resume), `quarantine/<sha256>.<time>` (files that failed their hash), `verified.json` (verification stamps) and `policies.json`. Equal files of several layers or projects are stored once. The cache cap is `Settings.team.blobCacheGb` (default 50 GB). Nothing is deleted on its own: freeing space removes only blobs the hub or server also holds and that no open project uses.
 - **Transfers.** Resumable from the byte offset of a partial download; verified by hash on arrival; a mismatch is moved to quarantine and fetched again; a file changed since it was verified shows "Changed since it was shared". Hub: copy under a temp name, rename, verify. Server: HTTP Range in 8 MB parts (`BLOB_PART_BYTES`). Bundle import copies the registered blobs the archive holds. Whole-file hashing only in M9.
+
+## 21. Hand-set camera directions (`orientation.json`, PROPOSAL)
+
+`<project>/orientation.json`, `aio.orientation/1` (`packages/schema/src/orientation.ts`), written by "Align camera to map" and "Align photo to map". Under review at merge (owner: integration lead).
+
+```json
+{
+  "schema": "aio.orientation/1",
+  "updatedAt": "2026-10-07T12:00:00Z",
+  "clips": {
+    "<video layer id>": {
+      "keys": [{ "t": 2000, "yaw": 30, "pitch": -30, "roll": 0, "fill": "smooth" }]
+    }
+  },
+  "photos": {
+    "<photo set id>": {
+      "<photo id>": { "yawDeg": -4.5, "pitchDeg": 1, "rollDeg": 0, "offsetM": [0, -2, 0] }
+    }
+  }
+}
+```
+
+- **Clips.** Direction keyframes in time order, one per millisecond. `t` is **clip time** (ms of video), so a keyframe stays on its frame when the layer's `offsetMs` changes. `yaw` clockwise from grid north, `pitch` up positive, `roll` dropping the image's right side, degrees in the grid frame (as `cameraQuatFromGimbal`). `fill` says how the camera turns to the next keyframe: `smooth` (shortest-arc slerp), `track` (keep the keyframe's heading offset from the smoothed track heading, the offset interpolated to the next keyframe's, pitch and roll eased), `lookAt` (aim at `target`, local frame, from the calibrated position, roll 0, blending in and out over 0.5 s or half the segment). Before the first and after the last keyframe that keyframe's fill holds. `fill` is text: a fill a build does not know turns smoothly. Section 3 has the pose rule.
+- **Photos.** One correction per photo against the pose it was imported with (the photo record's `pos` and `q`, from GPS and EXIF/XMP gimbal angles): degrees added to its heading, pitch and roll in the grid frame and metres added to its position. Every view draws a photo through `correctedPhoto(photo, photoCorrection(file, setId, photoId))`. "The same correction for the rest of the flight" goes to the photos of the set taken without a gap over 20 minutes (`sameFlightPhotos`).
+- **Never changed by it:** the manifest, the video layers, the photo records, the flight files, the images and their EXIF. Entries for layers or photos the project no longer has are kept and ignored.
+- **Writes.** `orientation:write` (whole file, atomic, `.bak` of the previous one). It is a journalled writer: each save is recorded before the write as a `record.external` op on `orientation.json` (a dedicated op kind needs the journal schema owner). A newer file (`aio.orientation/2`) is refused on read and never written over; a package's file is read in place and never written. Older builds (0.8, 0.9) do not read the file at all.
