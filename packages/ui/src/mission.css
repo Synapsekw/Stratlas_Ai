@@ -748,6 +748,26 @@ select.input option {
   background: var(--s1);
   cursor: pointer;
 }
+/* camera direction keyframes on a clip bar */
+.trk .kf {
+  position: absolute;
+  top: 9px;
+  width: 8px;
+  height: 8px;
+  margin-inline-start: -4px;
+  transform: rotate(45deg);
+  padding: 0;
+  border: 0;
+  background: var(--warn);
+  box-shadow: 0 0 0 1px var(--bg-1);
+  cursor: ew-resize;
+  z-index: 1;
+}
+.trk .kf:hover,
+.trk .kf:focus-visible {
+  outline: 1.5px solid var(--fg-0);
+  outline-offset: 1px;
+}
 .trk .dia:hover,
 .trk .dia.sel {
   outline: 1.5px solid var(--fg-0);

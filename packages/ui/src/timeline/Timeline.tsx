@@ -30,6 +30,10 @@ export interface TimelineProps {
   /** A clip was chosen; `atMs` is the clicked time when a pointer clicked its bar or flight bar. */
   onClip: (layerId: string, atMs?: number) => void;
   onIssue?: (issueId: string) => void;
+  /** A camera direction keyframe diamond was clicked (index into the clip's keyframes). */
+  onKeyframe?: (layerId: string, index: number) => void;
+  /** A keyframe diamond is dragged to project time `tMs` (`end` once released). */
+  onKeyframeMove?: (layerId: string, index: number, tMs: number, phase: 'move' | 'end') => void;
   onStep: (dir: 1 | -1) => void;
   /** Right-aligned context line, e.g. capture date and time base. */
   context?: ReactNode;
@@ -59,6 +63,8 @@ function tickLabel(t: number, major: number): string {
 export function Timeline(props: TimelineProps) {
   const { model, nowMs, playing, rate, activeClip, selectedIssue } = props;
   const { onSeek, onTogglePlay, onRate, onClip, onIssue, onStep } = props;
+  const { onKeyframe, onKeyframeMove } = props;
+  const kfDrag = useRef<{ x: number; moved: boolean } | null>(null);
   const tracksRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(800);
   const hasTime = model.range !== null;
@@ -427,6 +433,44 @@ export function Timeline(props: TimelineProps) {
                         {c.name}
                       </span>
                     )}
+                    {c.keys?.map((k, i) => (
+                      <button
+                        key={`${String(i)}-${String(k)}`}
+                        type="button"
+                        data-hit
+                        className="kf"
+                        style={{ left: `${x(k)}%` }}
+                        title={`Camera direction keyframe ${String(i + 1)} of ${c.name}`}
+                        aria-label={`Camera direction keyframe ${String(i + 1)} of ${c.name}`}
+                        data-testid="timeline-direction-key"
+                        onPointerDown={(e) => {
+                          if (e.button !== 0) return;
+                          e.stopPropagation();
+                          e.currentTarget.setPointerCapture(e.pointerId);
+                          kfDrag.current = { x: e.clientX, moved: false };
+                        }}
+                        onPointerMove={(e) => {
+                          const d = kfDrag.current;
+                          if (!d || !onKeyframeMove) return;
+                          if (!d.moved && Math.abs(e.clientX - d.x) < 3) return;
+                          d.moved = true;
+                          onKeyframeMove(c.layerId, i, timeAt(e.clientX), 'move');
+                        }}
+                        onPointerUp={(e) => {
+                          const d = kfDrag.current;
+                          kfDrag.current = null;
+                          if (!d) return;
+                          if (d.moved) onKeyframeMove?.(c.layerId, i, timeAt(e.clientX), 'end');
+                          else onKeyframe?.(c.layerId, i);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onKeyframe?.(c.layerId, i);
+                          }
+                        }}
+                      />
+                    ))}
                   </span>
                 );
               })}

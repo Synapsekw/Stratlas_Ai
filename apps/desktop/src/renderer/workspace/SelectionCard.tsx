@@ -17,6 +17,7 @@ import {
 import { interpolatePose } from '@aio/video';
 import { useWorkspace, workspace, type Selection } from '@aio/workspace';
 import { useEffect, type ReactNode } from 'react';
+import { alignCamera } from '../builder/alignSession';
 import { LayerDatePicker } from '../change/SurveyDate';
 import { loadFlight, useMedia } from '../media';
 
@@ -24,7 +25,36 @@ type VideoLayer = Extract<Layer, { kind: 'video' }>;
 
 /** Shown on clips whose camera direction was estimated at import (no gimbal angles). */
 const ESTIMATED_HINT =
-  'Camera direction estimated from the flight path (no gimbal data in this SRT). Calibrate in Align.';
+  'Camera direction estimated from the flight path (no gimbal data in this SRT). Fix it with Align camera to map, or right-click the drone.';
+
+/** The clip's camera row: where its direction comes from, and the way to set it. */
+function cameraRow(v: VideoLayer, estimated: boolean): [string, ReactNode][] {
+  const keys = v.directionKeys?.length ?? 0;
+  if (!keys && !estimated) return [];
+  return [
+    [
+      'Camera',
+      <span className="cam-row">
+        <span>
+          {keys
+            ? `Set by hand: ${String(keys)} direction keyframe${keys === 1 ? '' : 's'}`
+            : ESTIMATED_HINT}
+        </span>
+        <button
+          type="button"
+          className="btn sm"
+          onClick={() => {
+            alignCamera.getState().start(v.id);
+          }}
+          data-testid="card-align-camera"
+        >
+          <Icon name="droneeye" size={12} />
+          Align camera to map
+        </button>
+      </span>,
+    ],
+  ];
+}
 
 const estimatedLogs = new WeakMap<readonly PoseSample[], boolean>();
 /** The log's camera orientation was estimated, once per log (the card redraws with the clock). */
@@ -126,9 +156,7 @@ function describe(
         ['Starts', `${formatDate(new Date(start).toISOString())} · ${formatClock(start)} UTC`],
         ['Length', dur !== undefined ? formatDuration(dur) : 'Reading video'],
         ['Drone', pose ? 'Position at the playhead' : 'No flight log loaded'],
-        ...(samples && !v.orientation && isEstimated(samples)
-          ? ([['Camera', ESTIMATED_HINT]] as [string, ReactNode][])
-          : []),
+        ...cameraRow(v, !!samples && !v.orientation && isEstimated(samples)),
       ],
     };
   }

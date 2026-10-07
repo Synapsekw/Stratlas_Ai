@@ -212,6 +212,8 @@ export class VideoRig {
   private readonly pose = { pos: new Vector3(), q: new Quaternion(), valid: false };
   projectionOn = true;
   pathsOn = true;
+  /** The view frustum of the drone is drawn (the "view footprint" switch). */
+  frustumOn = true;
   /** Flight path display; independent of the clips, so hiding paths keeps the drone and video. */
   private pathMode: FlightPathMode = 'all';
   private hiddenPathClips: ReadonlySet<string> = new Set();
@@ -254,6 +256,7 @@ export class VideoRig {
         depthTest: false,
       }),
     );
+    this.frustum.name = 'DroneFrustum';
     this.frustum.renderOrder = 20;
     this.frustum.frustumCulled = false;
     this.frustum.visible = false;
@@ -725,7 +728,7 @@ export class VideoRig {
     // frustum: border rays to a length that reads at this zoom, clipped at the ground plane
     const len = Math.min(400, Math.max(0.6, camDist * 0.12));
     this.updateFrustum(len);
-    this.frustum.visible = layerVisible && !drone;
+    this.frustum.visible = this.frustumOn && layerVisible && !drone;
     this.updateFramePlane(len, layerVisible && !drone && covered);
 
     // projector
