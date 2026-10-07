@@ -23,6 +23,7 @@ export { Timeline, RATES, type TimelineProps } from './timeline/Timeline';
 export * from './tree/model';
 export * from './tree/dateModel';
 export { DatasetTree, VisibilityEye, type DatasetTreeProps } from './tree/DatasetTree';
+export { DateTree, type DateTreeProps } from './tree/DateTree';
 export { rankCommands, scoreMatch, type Command } from './palette/rank';
 export * from './shortcuts';
 export { announce, announced, LiveAnnouncer, type Politeness } from './announce';

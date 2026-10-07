@@ -1013,6 +1013,88 @@ select.input option {
   flex: none;
 }
 
+.dfolder-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px 2px 2px;
+  border-radius: var(--r-4);
+}
+.dfolder.focused > .dfolder-row {
+  background: color-mix(in oklch, var(--dtag, var(--acc)) 18%, transparent);
+  box-shadow: inset 3px 0 0 var(--dtag, var(--acc));
+}
+.dfolder .dchev {
+  all: unset;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 22px;
+  cursor: pointer;
+  color: var(--fg-2);
+}
+.dfolder[aria-expanded='true'] > .dfolder-row .chev {
+  transform: rotate(90deg);
+}
+.dfolder .dname {
+  all: unset;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: var(--t-12);
+  color: var(--fg-0);
+}
+.dfolder .dname:focus-visible,
+.dfolder .dchev:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+.dfolder.focused .dlbl {
+  font-weight: 600;
+}
+.dfolder .dlbl {
+  white-space: nowrap;
+}
+.dfolder .dsub {
+  color: var(--fg-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dtag {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+  background: var(--dtag);
+}
+.dtag.every {
+  background: transparent;
+  border: 1px solid var(--fg-3);
+}
+.dfolder.empty .dname {
+  color: var(--fg-3);
+}
+.don {
+  font-size: 11px;
+  color: var(--fg-2);
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--bg-3);
+  white-space: nowrap;
+}
+.dempty {
+  margin: 2px 0 6px 28px;
+  font-size: var(--t-12);
+  color: var(--fg-3);
+}
+.tree-nested {
+  padding-left: 14px;
+}
+
 /* ---------- command palette ---------- */
 .cmdk-scrim {
   position: fixed;
