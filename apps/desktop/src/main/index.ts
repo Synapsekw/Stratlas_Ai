@@ -61,7 +61,17 @@ import { registerLocalModelsIpc, type LocalServerSeen } from './localModels';
 import { readCloudDrawings, registerModelBuilderIpc } from './modelBuilder';
 import { registerBlobsIpc } from './blobs';
 import { registerCollabIpc } from './collab';
-import { registerIdentityIpc } from './identity';
+import {
+  createDeviceKeys,
+  createFileTeamJournal,
+  createIdentityService,
+  createIdentityStore,
+  identityPath,
+  profileFromArgv,
+  profileUserData,
+  profileVaultService,
+  registerIdentityIpc,
+} from './identity';
 import { registerJournalIpc } from './journal';
 import { registerSyncIpc } from './sync';
 import { registerTeamServerIpc } from './teamServer';
@@ -114,9 +124,13 @@ import { cspForUrl } from './protocol/legacy';
 import { saveFile } from './saveFile';
 import { createSettingsStore, defaultDataRoot, defaultSettings } from './settings';
 
+// --profile=<name>: a second person on one PC (tests, training), with its own userData folder
+// (and with it the single-instance lock) and its own vault service (identity.ts).
+const profile = profileFromArgv(process.argv);
 // Tests and side-by-side dev runs can isolate their profile (and with it the single-instance lock).
 const userDataOverride = process.env.STRATLAS_USER_DATA;
 if (userDataOverride) app.setPath('userData', userDataOverride);
+if (profile) app.setPath('userData', profileUserData(app.getPath('userData'), profile));
 
 const dev = !app.isPackaged;
 
@@ -210,8 +224,31 @@ let pendingOpenPath: string | null =
   packagePathFromArgv(process.argv) ?? linkPathFromArgv(process.argv, brand.urlScheme);
 // An isolated profile (tests, demos) gets its own vault service, so it never reads or writes the
 // person's real API keys.
-const keyService = process.env.STRATLAS_USER_DATA ? `${brand.appId}.isolated` : brand.appId;
+const keyService = profileVaultService(
+  process.env.STRATLAS_USER_DATA ? `${brand.appId}.isolated` : brand.appId,
+  profile,
+);
 const keys = createKeyVault(keyService, (service, account) => new Entry(service, account));
+// This person and this device (M9 T2): the journal service (T1) signs with `identityService.deviceKey()`.
+const identityService = createIdentityService({
+  store: createIdentityStore(identityPath(app.getPath('userData')), {
+    osUser: () => osUser().user,
+  }),
+  keys: createDeviceKeys(
+    keyService,
+    (service, account) => new Entry(service, account),
+    registerSecret,
+  ),
+  journal: createFileTeamJournal(),
+  projectRoot: (id) => registry.root(id),
+  isPackage: (id) => registry.package(id) !== undefined,
+  chooseCardPath: (name) =>
+    chooseSavePath(join(app.getPath('downloads'), name), {
+      name: 'Identity card',
+      extensions: ['aioid'],
+    }),
+  app: { name: brand.productName, version: app.getVersion() },
+});
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -997,7 +1034,7 @@ function registerIpc(): void {
 
   // M9: one module per stream (T1 journal, T2 identity, T3 collab, T5 sync, T6 blobs, T7 server).
   registerJournalIpc({ handle });
-  registerIdentityIpc({ handle });
+  registerIdentityIpc({ handle, service: identityService });
   registerCollabIpc({ handle });
   registerSyncIpc({ handle });
   registerBlobsIpc({ handle });
