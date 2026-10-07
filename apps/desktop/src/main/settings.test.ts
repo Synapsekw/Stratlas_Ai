@@ -22,8 +22,17 @@ describe('defaultDataRoot', () => {
     );
   });
 
-  it('falls back to Documents/Stratlas Data', () => {
-    expect(defaultDataRoot({ ...base, env: {} })).toBe(join(base.documents, 'Stratlas Data'));
+  it('still reads the legacy STRATLAS_DATA variable', () => {
+    expect(defaultDataRoot({ ...base, env: { STRATLAS_DATA: 'D:\\Old' } })).toBe('D:\\Old');
+  });
+
+  it('falls back to Documents/Quadrion AI Data for a new install', () => {
+    expect(defaultDataRoot({ ...base, env: {} })).toBe(join(base.documents, 'Quadrion AI Data'));
+  });
+
+  it('keeps using Documents/Stratlas Data from before the rename when it exists', () => {
+    const legacy = join(base.documents, 'Stratlas Data');
+    expect(defaultDataRoot({ ...base, env: {}, exists: (p) => p === legacy })).toBe(legacy);
   });
 
   it('ignores E:\\ on other platforms', () => {
@@ -32,9 +41,9 @@ describe('defaultDataRoot', () => {
         platform: 'darwin',
         documents: '/Users/me/Documents',
         env: {},
-        exists: () => true,
+        exists: (p) => p === 'E:\\Stratlas Data',
       }),
-    ).toBe(join('/Users/me/Documents', 'Stratlas Data'));
+    ).toBe(join('/Users/me/Documents', 'Quadrion AI Data'));
   });
 });
 

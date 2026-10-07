@@ -7,7 +7,7 @@ import {
   createProviderRegistry,
   createScriptedProvider,
 } from '@aio/ai/main';
-import { brand } from '@aio/brand';
+import { brand, urlSchemes } from '@aio/brand';
 import {
   ChangeThresholds,
   ipcEvents,
@@ -138,6 +138,7 @@ import { cspForUrl } from './protocol/legacy';
 import { saveFile } from './saveFile';
 import { createSettingsStore, defaultDataRoot, defaultSettings } from './settings';
 import { installRealDataGuard } from './realDataGuard';
+import { migrateLegacyUserData } from './userDataMigration';
 
 // An app started by an e2e test (QUADRION_E2E=1) refuses every write under the founder's real data
 // root (QUADRION_REAL_DATA_ROOT, default E:\Stratlas Data), before anything else runs.
@@ -149,6 +150,20 @@ const profile = profileFromArgv(process.argv);
 // Tests and side-by-side dev runs can isolate their profile (and with it the single-instance lock).
 const userDataOverride = process.env.QUADRION_USER_DATA;
 if (userDataOverride) app.setPath('userData', userDataOverride);
+// Since the rename the folder is ...\Quadrion AI: the old ...\Stratlas folder is copied over once,
+// before anything reads it (userDataMigration.ts). Never stops the start.
+const userDataMigration = (() => {
+  try {
+    return migrateLegacyUserData({
+      userData: app.getPath('userData'),
+      appData: app.getPath('appData'),
+      packaged: app.isPackaged,
+      overridden: Boolean(userDataOverride),
+    });
+  } catch (e) {
+    return { kind: 'error' as const, error: String(e) };
+  }
+})();
 if (profile) app.setPath('userData', profileUserData(app.getPath('userData'), profile));
 
 const dev = !app.isPackaged;
@@ -158,6 +173,12 @@ const logsDir = join(app.getPath('userData'), 'logs');
 const processLogs = createProcessLogs(logsDir);
 const appLog = processLogs.main;
 captureConsole(appLog);
+if (userDataMigration.kind === 'copied')
+  console.warn(
+    `Settings folder copied from ${userDataMigration.from} (${userDataMigration.copied.join(', ')}${userDataMigration.failed.length ? `; not copied: ${userDataMigration.failed.join(', ')}` : ''}).`,
+  );
+else if (userDataMigration.kind === 'error')
+  console.warn(`Settings folder copy failed: ${userDataMigration.error}`);
 // Crash dumps and crash reports stay on this computer (Settings, About, Export diagnostics).
 startCrashReporter();
 const crashes = createCrashStore(join(app.getPath('userData'), 'crash-reports'), {
@@ -256,7 +277,7 @@ const policy = new ProjectPolicy(registry);
 let localServerSeen: LocalServerSeen | null = null;
 // A `.aio` the app was started with (double-click); the renderer takes it once at start.
 let pendingOpenPath: string | null =
-  packagePathFromArgv(process.argv) ?? linkPathFromArgv(process.argv, brand.urlScheme);
+  packagePathFromArgv(process.argv) ?? linkPathFromArgv(process.argv, urlSchemes);
 // An isolated profile (tests, demos) gets its own vault service, so it never reads or writes the
 // person's real API keys.
 const keyService = profileVaultService(
@@ -1186,10 +1207,11 @@ app.on('open-file', (e, path) => {
   else pendingOpenPath = path;
 });
 
-// macOS hands `<urlScheme>://` links (Info.plist CFBundleURLTypes) to the app as an event.
+// macOS hands `<urlScheme>://` links (Info.plist CFBundleURLTypes) to the app as an event; the
+// legacy `stratlas://` scheme from before the rename is registered and handled too.
 app.on('open-url', (e, url) => {
   e.preventDefault();
-  const link = parseAppLink(url, brand.urlScheme);
+  const link = parseAppLink(url, urlSchemes);
   if (!link) return;
   if (!app.isReady()) {
     if (link.kind === 'open') pendingOpenPath = link.path;
@@ -1372,7 +1394,7 @@ if (restore) {
     smoke: process.env.QUADRION_SMOKE === '1',
   });
   app.on('second-instance', (_e, argv) => {
-    const path = packagePathFromArgv(argv) ?? linkPathFromArgv(argv, brand.urlScheme);
+    const path = packagePathFromArgv(argv) ?? linkPathFromArgv(argv, urlSchemes);
     if (path) {
       openPathInApp(path);
       return;

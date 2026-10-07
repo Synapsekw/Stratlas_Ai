@@ -1,21 +1,33 @@
 import { defaultRoutes } from '@aio/ai/routes';
+import { brand, envVar } from '@aio/brand';
 import { ReportSectionId, Settings, type IpcRequest } from '@aio/schema';
 import { join } from 'node:path';
 import { readJson, writeJsonAtomic } from './fsutil';
 
+/** The founder's workstation data drive (kept as it was named before the rename). */
 const DEV_DATA_ROOT = 'E:\\Stratlas Data';
+/** The data folder in Documents for new installs: `Quadrion AI Data`. */
+export const DATA_FOLDER = `${brand.productName} Data`;
+/** The data folder in Documents before the rename (7 Oct 2026), still used where it exists. */
+export const LEGACY_DATA_FOLDER = 'Stratlas Data';
 
-/** Where projects and map packs live unless the person picks another folder in Settings. */
+/**
+ * Where projects and map packs live unless the person picks another folder in Settings:
+ * QUADRION_DATA, the workstation's `E:\Stratlas Data`, an existing `Documents\Stratlas Data` from
+ * before the rename, else `Documents\Quadrion AI Data`.
+ */
 export function defaultDataRoot(o: {
   env: Record<string, string | undefined>;
   platform: string;
   documents: string;
   exists: (p: string) => boolean;
 }): string {
-  const fromEnv = o.env.QUADRION_DATA;
+  const fromEnv = envVar(o.env, 'DATA');
   if (fromEnv) return fromEnv;
   if (o.platform === 'win32' && o.exists(DEV_DATA_ROOT)) return DEV_DATA_ROOT;
-  return join(o.documents, 'Stratlas Data');
+  const legacy = join(o.documents, LEGACY_DATA_FOLDER);
+  if (o.exists(legacy)) return legacy;
+  return join(o.documents, DATA_FOLDER);
 }
 
 export function defaultSettings(dataRoot: string): Settings {

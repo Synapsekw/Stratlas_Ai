@@ -19,6 +19,8 @@ export const SYMBOL = {
   ],
   /** Stroke width of the cuts between plates at regular sizes (the 16 to 32 px cut is wider). */
   cutWidth: 5,
+  /** The small-size cut (brand kit icon-small.svg): wider gaps for the symbol at 32 px and less. */
+  smallCutWidth: 7.5,
 } as const;
 
 /** Outlined wordmark (Archivo Expanded Bold): QUADRION, then AI. */
