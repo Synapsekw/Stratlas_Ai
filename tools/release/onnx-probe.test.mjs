@@ -15,15 +15,15 @@ const lister = (files) => (dir) => files[dir] ?? null;
 
 describe('findPackagedApp', () => {
   it('finds the Windows app, then the Mac ones, else nothing', () => {
-    expect(findPackagedApp((p) => p === 'dist/win-unpacked/Stratlas.exe')).toMatchObject({
+    expect(findPackagedApp((p) => p === 'dist/win-unpacked/QuadrionAI.exe')).toMatchObject({
       resources: RES,
       platform: 'win32',
       arch: 'x64',
     });
     expect(
-      findPackagedApp((p) => p === 'dist/mac-universal/Stratlas.app/Contents/MacOS/Stratlas'),
+      findPackagedApp((p) => p === 'dist/mac-universal/Quadrion AI.app/Contents/MacOS/Quadrion AI'),
     ).toMatchObject({
-      resources: 'dist/mac-universal/Stratlas.app/Contents/Resources',
+      resources: 'dist/mac-universal/Quadrion AI.app/Contents/Resources',
       platform: 'darwin',
       arch: 'arm64',
     });
@@ -63,7 +63,7 @@ describe('missingOnnxFiles', () => {
   });
 
   it('accepts any versioned dylib on the Mac', () => {
-    const res = 'dist/mac/Stratlas.app/Contents/Resources';
+    const res = 'dist/mac/Quadrion AI.app/Contents/Resources';
     const dir = join(res, onnxBinaryDir('darwin', 'arm64'));
     expect(
       missingOnnxFiles(

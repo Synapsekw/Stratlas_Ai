@@ -2,20 +2,31 @@
 // app.asar.unpacked (electron-builder asarUnpack; native libraries never load from inside app.asar),
 // and the running app must load the runtime and report a version and its execution providers.
 // Used by check-bundle.mjs (files) and smoke-packaged.mjs (files and the app's answer).
-import { existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-/** The unpacked apps electron-builder leaves in dist/, per platform (paths from apps/desktop). */
+const brand = JSON.parse(
+  readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '../../packages/brand/brand.json'),
+    'utf8',
+  ),
+);
+
+/**
+ * The unpacked apps electron-builder leaves in dist/, per platform (paths from apps/desktop):
+ * `<executableName>.exe` on Windows, `<productName>.app` on macOS.
+ */
 export const PACKAGED_APPS = [
   {
-    exe: 'dist/win-unpacked/Stratlas.exe',
+    exe: `dist/win-unpacked/${brand.executableName}.exe`,
     resources: 'dist/win-unpacked/resources',
     platform: 'win32',
     arch: 'x64',
   },
   ...['mac-universal', 'mac-arm64', 'mac'].map((d) => ({
-    exe: `dist/${d}/Stratlas.app/Contents/MacOS/Stratlas`,
-    resources: `dist/${d}/Stratlas.app/Contents/Resources`,
+    exe: `dist/${d}/${brand.productName}.app/Contents/MacOS/${brand.productName}`,
+    resources: `dist/${d}/${brand.productName}.app/Contents/Resources`,
     platform: 'darwin',
     // onnxruntime-node ships an arm64 binary only; universal apps carry it in both slices
     arch: 'arm64',

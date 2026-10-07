@@ -229,11 +229,18 @@ export function storeIdentity(brand, env) {
 /**
  * macOS document type and URL scheme. electron-builder writes `fileAssociations` as
  * CFBundleDocumentTypes and `protocols` as CFBundleURLTypes; the exported UTI gives `.aio`
- * files a kind and icon in Finder. The app handles `<urlScheme>://` in its `open-url` handler.
+ * files a kind and icon in Finder. The app handles `<urlScheme>://` in its `open-url` handler,
+ * and the legacy schemes (`stratlas://`, from before the rename) the same way.
  */
 export function macIntegration(brand) {
   return {
-    protocols: [{ name: `${brand.productName} link`, schemes: [brand.urlScheme], role: 'Viewer' }],
+    protocols: [
+      {
+        name: `${brand.productName} link`,
+        schemes: [brand.urlScheme, ...(brand.legacyUrlSchemes ?? [])],
+        role: 'Viewer',
+      },
+    ],
     extendInfo: {
       UTExportedTypeDeclarations: [
         {
@@ -272,6 +279,14 @@ export function macIntegration(brand) {
   };
 }
 
+/**
+ * An electron-builder artifact name: `<executableName>-${version}-<os>-${arch}<suffix>`. The
+ * executable name has no spaces, so file names stay easy to script and to put in a URL.
+ */
+export function artifactName(brand, os, suffix) {
+  return `${brand.executableName}-\${version}-${os}-\${arch}${suffix}`;
+}
+
 export function effectiveConfig(rawEnv = process.env, now = new Date()) {
   // CI maps absent secrets and variables to empty strings; treat those as unset.
   const present = Object.fromEntries(
@@ -305,7 +320,14 @@ export function effectiveConfig(rawEnv = process.env, now = new Date()) {
       author: { name: brand.company },
     },
     win: win.win,
-    nsis: { shortcutName: brand.productName, uninstallDisplayName: brand.productName },
+    // Installer and archive names carry the executable name (no spaces), e.g.
+    // QuadrionAI-1.0.0-win-x64-setup.exe; the install folder and shortcuts use productName.
+    nsis: {
+      shortcutName: brand.productName,
+      uninstallDisplayName: brand.productName,
+      artifactName: artifactName(brand, 'win', '-setup.${ext}'),
+    },
+    portable: { artifactName: artifactName(brand, 'win', '-portable.${ext}') },
     // Project packages open in the app (NSIS registry entries, MSIX uap:FileTypeAssociation,
     // macOS document type). The only `.aio` association: electron-builder.yml declares none.
     // A package is never written, so the app is its viewer.
@@ -342,9 +364,16 @@ export function effectiveConfig(rawEnv = process.env, now = new Date()) {
       },
     ],
     protocols: macOs.protocols,
-    appx: store.appx,
-    mac: { ...mac.mac, extendInfo: macOs.extendInfo },
-    dmg: { title: `${brand.productName} \${version}` },
+    appx: { ...store.appx, artifactName: artifactName(brand, 'win', '-store.msix') },
+    mac: {
+      ...mac.mac,
+      extendInfo: macOs.extendInfo,
+      artifactName: artifactName(brand, 'mac', '.${ext}'),
+    },
+    dmg: {
+      title: `${brand.productName} \${version}`,
+      artifactName: artifactName(brand, 'mac', '.${ext}'),
+    },
   };
   const summary = {
     win: win.mode,

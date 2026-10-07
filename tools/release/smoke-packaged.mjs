@@ -38,7 +38,7 @@ if (missing.length) {
   );
 }
 
-const userData = mkdtempSync(join(tmpdir(), 'stratlas-smoke-'));
+const userData = mkdtempSync(join(tmpdir(), 'quadrion-smoke-'));
 const reportPath = join(userData, 'smoke-report.json');
 const env = {
   ...process.env,

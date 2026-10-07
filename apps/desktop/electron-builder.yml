@@ -83,16 +83,12 @@ nsis:
   include: build/installer.nsh
   installerIcon: build/icon.ico
   uninstallerIcon: build/icon.ico
-  artifactName: ${productName}-${version}-win-${arch}-setup.${ext}
-
-portable:
-  artifactName: ${productName}-${version}-win-${arch}-portable.${ext}
+  # artifactName (all targets): tools/release/brand-config.mjs, from the executable name.
 
 # Microsoft Store (MSIX). Identity values come from STORE_* env vars (docs/release/README.md).
 # Microsoft re-signs Store submissions, so this package does not need our certificate.
 appx:
   # MSIX format; Partner Center takes .msix and .appx alike.
-  artifactName: ${productName}-${version}-win-${arch}-store.msix
   capabilities: [runFullTrust]
   backgroundColor: '#11161C'
   showNameOnTiles: true
@@ -124,7 +120,3 @@ mac:
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   notarize: false
-  artifactName: ${productName}-${version}-mac-${arch}.${ext}
-
-dmg:
-  artifactName: ${productName}-${version}-mac-${arch}.${ext}
