@@ -1,7 +1,7 @@
 /** Steps shared by the M9 sharing specs (hub folder and exchange files), done through the UI. */
-import type { IpcChannel, IpcRequest, IpcResponse } from '@aio/schema';
+import type { IpcChannel, IpcRequest, IpcResponse, Issue } from '@aio/schema';
 import type { ElectronApplication, Page } from '@playwright/test';
-import { copyFile, mkdir, readFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   expect,
@@ -77,6 +77,33 @@ export async function editIssue(win: Page, code: string): Promise<ReturnType<Pag
     await card.locator('summary', { hasText: 'Edit issue' }).click();
   }
   return card;
+}
+
+/**
+ * Open an issue's card on the 3D screen (selected through the workspace) with its edit form open;
+ * returns its review panel (comments, assignment, approvals).
+ */
+export async function openIssue(win: Page, id: string): Promise<ReturnType<Page['getByTestId']>> {
+  await win.locator('.sb-nav .nav-item', { hasText: 'Scene' }).first().click();
+  await win.evaluate((issue) => {
+    (
+      window as unknown as {
+        __stratlas: {
+          workspace: { getState(): { select(s: { kind: string; id: string }): void } };
+        };
+      }
+    ).__stratlas.workspace
+      .getState()
+      .select({ kind: 'issue', id: issue });
+  }, id);
+  const card = win.getByTestId('issue-card');
+  await expect(card).toBeVisible();
+  const edit = card.locator('details.ic-edit');
+  if (!(await edit.evaluate((d) => (d as HTMLDetailsElement).open)))
+    await edit.locator('summary').click();
+  const panel = card.getByTestId('issue-collab');
+  await expect(panel).toBeVisible();
+  return panel;
 }
 
 /** Wait until the issue editor has written issues.json. */
@@ -195,6 +222,34 @@ export async function bothOnHub({ a, b, hub, out }: TwoReviewers): Promise<void>
   await shareThroughHub(b.win, hub);
   const members = await invoke(b.win, 'members:list', { projectId: TEAM_PROJECT_ID });
   expect(members, 'Omar sees himself as a reviewer').toMatchObject({ ok: true, me: 'reviewer' });
+}
+
+/** F03 made by Omar and F05 made by Rana, both reviewed: the same file in both copies. */
+export async function writeReviewIssues(project: string): Promise<void> {
+  const issue = (code: string, author: string, x: number): Issue => ({
+    id: `i_${code.toLowerCase()}`,
+    code,
+    classId: 'crack',
+    severityModelId: 'sev',
+    severity: 2,
+    status: 'reviewed',
+    title: `Crack ${code}`,
+    note: '',
+    author,
+    createdAt: '2026-10-07T08:00:00.000Z',
+    updatedAt: '2026-10-07T08:00:00.000Z',
+    source: 'human',
+    sightings: [
+      { on: 'mesh', layer: 'quad', geom: { type: 'spoint', p: [x, 0, -0.5], n: [0, 1, 0] } },
+    ],
+  });
+  await writeFile(
+    join(project, 'issues.json'),
+    JSON.stringify({
+      schema: 'aio.issues/1',
+      issues: [issue('F03', 'Omar Sample', 0.3), issue('F05', 'Rana Example', 0.7)],
+    }),
+  );
 }
 
 /** The issue register of a reviewer, on the Issues screen. */
