@@ -7,15 +7,26 @@ import {
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { z } from 'zod';
-import { readJson, writeJsonAtomic } from './fsutil';
+import {
+  isChangedOnDisk,
+  readJson,
+  readJsonSeen,
+  seenFiles,
+  writeJsonSeen,
+  type SeenFiles,
+} from './fsutil';
 
 type Read<T> = { ok: true; value: T | null } | { ok: false; error: string };
 
 /** Read and validate a JSON file of the project; null when it does not exist. */
-async function readValid<S extends z.ZodType>(file: string, schema: S): Promise<Read<z.output<S>>> {
+async function readValid<S extends z.ZodType>(
+  file: string,
+  schema: S,
+  seen?: SeenFiles,
+): Promise<Read<z.output<S>>> {
   let raw: unknown;
   try {
-    raw = await readJson(file);
+    raw = await (seen ? readJsonSeen(file, seen) : readJson(file));
   } catch (e) {
     return { ok: false, error: `Could not read ${file}: ${String(e)}` };
   }
@@ -33,7 +44,12 @@ async function readValid<S extends z.ZodType>(file: string, schema: S): Promise<
 export async function readVolumes(root: string): Promise<IpcResponse<'project:readVolumes'>> {
   const volumes = await readValid(join(root, 'volumes.json'), VolumesFile);
   if (!volumes.ok) return volumes;
-  const edits = await readValid(join(root, 'edits', 'boundaries.json'), BoundaryEditsFile);
+  // the edits the person sees: remembered, so a save compares with them first (shared folders)
+  const edits = await readValid(
+    join(root, 'edits', 'boundaries.json'),
+    BoundaryEditsFile,
+    seenFiles,
+  );
   if (!edits.ok) return edits;
   return { ok: true, volumes: volumes.value, edits: edits.value };
 }
@@ -95,8 +111,12 @@ export async function writeBoundaries(
   const dir = join(root, 'edits');
   try {
     await mkdir(dir, { recursive: true });
-    await writeJsonAtomic(join(dir, 'boundaries.json'), file, { backup: true });
+    await writeJsonSeen(join(dir, 'boundaries.json'), file, {
+      backup: true,
+      name: 'edits/boundaries.json',
+    });
   } catch (e) {
+    if (isChangedOnDisk(e)) return { ok: false, error: e.message };
     return { ok: false, error: `Could not save ${join(dir, 'boundaries.json')}: ${String(e)}` };
   }
   return { ok: true };

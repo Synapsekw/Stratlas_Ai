@@ -13,7 +13,14 @@ import {
 import { stat } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { z } from 'zod';
-import { readJson, writeJsonAtomic } from './fsutil';
+import {
+  isChangedOnDisk,
+  readJson,
+  readJsonSeen,
+  seenFiles,
+  writeJsonSeen,
+  type SeenFiles,
+} from './fsutil';
 
 export const ISSUES_SCHEMA = 'aio.issues/1';
 const IssuesFile = z.object({ schema: z.literal(ISSUES_SCHEMA), issues: z.array(Issue) });
@@ -93,9 +100,13 @@ export class ProjectRegistry {
 
 type Loaded<T> = { ok: true; value: T } | { ok: false; error: string };
 
-async function loadJsonFile(file: string, what: string): Promise<Loaded<unknown>> {
+async function loadJsonFile(
+  file: string,
+  what: string,
+  seen?: SeenFiles,
+): Promise<Loaded<unknown>> {
   try {
-    return { ok: true, value: await readJson(file) };
+    return { ok: true, value: await (seen ? readJsonSeen(file, seen) : readJson(file)) };
   } catch (e) {
     if (e instanceof SyntaxError) {
       return {
@@ -123,10 +134,13 @@ export async function readManifest(root: string): Promise<Loaded<ProjectManifest
   return parsed;
 }
 
-/** Read `<root>/issues.json`; a missing file means no issues yet. */
-export async function readIssues(root: string): Promise<Loaded<Issue[]>> {
+/**
+ * Read `<root>/issues.json`; a missing file means no issues yet. With `seen` (the read the
+ * person sees, `project:open`), what was read is remembered so the next save compares first.
+ */
+export async function readIssues(root: string, seen?: SeenFiles): Promise<Loaded<Issue[]>> {
   const file = join(root, 'issues.json');
-  const raw = await loadJsonFile(file, 'issues.json (issues.json.bak)');
+  const raw = await loadJsonFile(file, 'issues.json (issues.json.bak)', seen);
   if (!raw.ok) return raw;
   if (raw.value === undefined) return { ok: true, value: [] };
   const parsed = IssuesFile.safeParse(raw.value);
@@ -207,7 +221,7 @@ export async function openProject(
   }
   const manifest = await readManifest(root);
   if (!manifest.ok) return manifest;
-  const issues = await readIssues(root);
+  const issues = await readIssues(root, seenFiles);
   if (!issues.ok) return issues;
   const id = registry.register(root);
   const origin = await readOrigin(root);
@@ -250,7 +264,10 @@ export async function writeProjectIssues(
   return writeIssues(root, issues);
 }
 
-/** Validate issues against the project's severity models, then replace issues.json atomically. */
+/**
+ * Validate issues against the project's severity models, then replace issues.json atomically,
+ * unless it changed on disk since the project was opened or last saved here (shared folders).
+ */
 export async function writeIssues(
   root: string,
   issues: Issue[],
@@ -270,12 +287,13 @@ export async function writeIssues(
     if (!r.ok) return { ok: false, error: r.error };
   }
   try {
-    await writeJsonAtomic(
+    await writeJsonSeen(
       join(root, 'issues.json'),
       { schema: ISSUES_SCHEMA, issues },
       { backup: true },
     );
   } catch (e) {
+    if (isChangedOnDisk(e)) return { ok: false, error: e.message };
     return { ok: false, error: `Could not save ${join(root, 'issues.json')}: ${String(e)}` };
   }
   return { ok: true };
