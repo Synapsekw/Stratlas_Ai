@@ -70,6 +70,8 @@ export interface WorkspaceActions {
   setLayerVisible(layerId: string, visible: boolean): void;
   /** Show or hide many layers in one update (the master and group eyes of the layer tree). */
   setLayersVisible(layerIds: readonly string[], visible: boolean): void;
+  /** Show and hide layers in one update (date jumps). No-op when both lists are empty. */
+  applyVisibility(show: readonly string[], hide: readonly string[]): void;
   isLayerVisible(layerId: string): boolean;
   upsertIssue(issue: Issue): void;
   removeIssue(issueId: string): void;
@@ -171,6 +173,13 @@ export function createWorkspace(): StoreApi<Workspace> {
         Object.keys(hidden).some((id) => !before[id]);
       if (changed) set({ hidden });
     },
+    applyVisibility: (show, hide) => {
+      if (show.length === 0 && hide.length === 0) return;
+      const hidden = { ...get().hidden };
+      for (const id of show) Reflect.deleteProperty(hidden, id);
+      for (const id of hide) hidden[id] = true;
+      set({ hidden });
+    },
     isLayerVisible: (layerId) => !get().hidden[layerId],
     upsertIssue: (issue) => {
       const issues = get().issues.filter((i) => i.id !== issue.id);
@@ -224,3 +233,16 @@ export {
   type ScopedStore,
   type StoreScope,
 } from './captures';
+
+export {
+  extrasOf,
+  followLayer,
+  initialFocus,
+  layerDate,
+  openChange,
+  snapshotPref,
+  stepCapture,
+  swapChange,
+  visibleIn,
+} from './timeline';
+export type { DatePref, VisibilityChange } from './timeline';
