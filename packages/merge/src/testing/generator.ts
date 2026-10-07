@@ -342,10 +342,13 @@ export function randomHistory(opts: RandomHistoryOptions): { sim: TeamSim; ops: 
         sim.write(who, 'issue.status', target, { from: 'draft', to });
       } else if (roll < 0.61) {
         sim.write(who, 'issue.delete', target, {});
-      } else if (roll < 0.63) {
+      } else if (roll < 0.62) {
         sim.write(who, 'issue.restore', target, {
           record: issueRecord(issue, 'F01', me.name, at, { title: 'Restored' }),
         });
+      } else if (roll < 0.64) {
+        const into = mine.find((x) => x !== issue);
+        if (into !== undefined) sim.write(who, 'issue.merge', target, { into });
       } else if (roll < 0.7) {
         counter += 1;
         const id = id16('cm_', counter);
