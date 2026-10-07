@@ -3,10 +3,10 @@
 // The photo processing demo (M10, stream G8): a bundled synthetic project to process drone photos
 // in, made from the synthetic photogrammetry set (python/tests/photo_synth.py). It holds:
 //
-//   photos layer `photos`      the quick set (1600 x 1200, DJI-style EXIF and XMP of the
-//                              synthetic camera, standard GNSS geotags with an altitude datum
-//                              offset the manifest's verticalDatum corrects), imported the way
-//                              the builder imports photos; the corrupt photo stays out
+//   photos layer `photos`      the photo set (DJI-style EXIF and XMP of the synthetic camera,
+//                              standard GNSS geotags with an altitude datum offset the
+//                              manifest's verticalDatum corrects), imported the way the builder
+//                              imports photos; the corrupt photo stays out
 //   survey/gcp.csv             5 control points and 4 checkpoints (id, x, y, z, role; EPSG:32639)
 //   survey/gcp-blunder.csv     the same plus GCP6, stated 1 m off
 //   photogrammetry/<run>/      a precomputed GNSS-only alignment (run.json, gcp.json with the
@@ -16,14 +16,25 @@
 //   tiles/ + tilesets.json     the expected surface (true mesh and cloud) as 3D Tiles, hidden
 //   truth.json                 the generator's truth (poses, targets, volumes)
 //
-//   node tools/demo/photo-demo.mjs [--out apps/desktop/demo] [--quick] [--python <python>]
-//                                  [--cache <render cache>] [--set <an existing photo set>]
+// Two photo sets (PHOTO_SETS):
+//   mini   (default, the bundled demo) 14 photos at 960 x 720: a 3 x 3 block of nadir photos over
+//          the middle of the site and the five bad ones; 13 in the layer. GCP5, CHK1 and CHK2 are
+//          in view (GCP2 only in the photo without GPS); the other points of the survey file lie
+//          outside the block. About 9 MB, so the installer stays within M10 decision 6.
+//   quick  (development and CI only, never bundled) 63 photos at 1600 x 1200 with the oblique
+//          ring and every point in view; about 51 MB. tools/demo/ensure-demo.mjs rebuilds a demo
+//          made from it before a release.
+//
+//   node tools/demo/photo-demo.mjs [--out apps/desktop/demo] [--photo-set mini|quick] [--quick]
+//                                  [--python <python>] [--cache <render cache>]
+//                                  [--set <an existing photo set>]
 //
 // build-demo.mjs calls buildPhotoDemo() for the full demo set; run alone, this script adds (or
-// replaces) <out>/demo-photo-processing/ and lists it in <out>/demo.json. Renders are cached by
-// seed and generator hash (default: python/.pytest_cache/d/photo-synth, shared with pytest; or
-// STRATLAS_PHOTO_SYNTH_CACHE). --quick is accepted for symmetry with the other demos: the content
-// is the same (the quick set is the demo set).
+// replaces) <out>/demo-photo-processing/ and lists it in <out>/demo.json. The set is
+// --photo-set, else STRATLAS_PHOTO_DEMO_SET, else mini (with --set: the set that folder holds).
+// Renders are cached by seed, size and generator hash (default: python/.pytest_cache/d/photo-synth,
+// shared with pytest; or STRATLAS_PHOTO_SYNTH_CACHE). --quick is accepted for symmetry with the
+// other demos: the content is the same.
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, rmdir, writeFile } from 'node:fs/promises';
@@ -38,8 +49,20 @@ export const PHOTO_ID = 'demo-photo-processing';
 export const PHOTO_NAME = 'Photo processing demo';
 /** The precomputed run's id (a run folder under photogrammetry/). */
 export const PHOTO_RUN = '20260314-1000';
-/** Bundled size budget of the photo demo (plan G8: about 60 MB or less). */
-export const PHOTO_BUDGET_MB = 60;
+/**
+ * The photo sets the demo can be made from (python/tests/photo_synth.py) and the size budget of
+ * each on disk. The bundled demo is the mini set: M10 decision 6 allows the installer 15 MB over
+ * 0.9.0 for everything M10 adds (CesiumJS about 4 MB compressed, 3DTilesRendererJS), and JPEG
+ * photos do not compress. The quick set is for development and CI only.
+ */
+export const PHOTO_SETS = Object.freeze({
+  mini: Object.freeze({ synthArgs: ['--mini'], budgetMb: 12, bundled: true }),
+  quick: Object.freeze({ synthArgs: [], budgetMb: 60, bundled: false }),
+});
+/** The set of the bundled demo (and the default). */
+export const PHOTO_SET_DEFAULT = 'mini';
+/** A ground point needs this many registered photos of the layer to be marked and checked. */
+const MIN_VIEWS = 2;
 /** Drone altitudes of the standard geotags are this far below the ellipsoid (photo_synth.py). */
 const ALT_OFFSET_M = 21.7;
 
@@ -72,15 +95,31 @@ export function pipelinePython(given) {
   throw new Error(`No pipeline Python at ${venv}. Run "uv sync" in python/ or pass --python.`);
 }
 
-/** Generate the synthetic photo set (quick, standard geotags) into `dir`. */
-export function generatePhotoSet(dir, { python, cache, log = () => undefined } = {}) {
-  const args = [join(repo, 'python', 'tests', 'photo_synth.py'), '--out', dir];
+/** The photo set to build: the one asked for, else STRATLAS_PHOTO_DEMO_SET, else mini. */
+export function photoSetName(given) {
+  const name = given ?? process.env.STRATLAS_PHOTO_DEMO_SET ?? PHOTO_SET_DEFAULT;
+  if (!Object.hasOwn(PHOTO_SETS, name))
+    throw new Error(`Unknown photo set "${name}" (${Object.keys(PHOTO_SETS).join(' or ')}).`);
+  return name;
+}
+
+/** Generate a synthetic photo set (mini or quick, standard geotags) into `dir`. */
+export function generatePhotoSet(
+  dir,
+  { photoSet = PHOTO_SET_DEFAULT, python, cache, log = () => undefined } = {},
+) {
+  const args = [
+    join(repo, 'python', 'tests', 'photo_synth.py'),
+    '--out',
+    dir,
+    ...PHOTO_SETS[photoSet].synthArgs,
+  ];
   const c =
     cache ??
     process.env.STRATLAS_PHOTO_SYNTH_CACHE ??
     join(repo, 'python', '.pytest_cache', 'd', 'photo-synth');
   args.push('--cache', c);
-  log(`photo set: rendering (cache ${relative(repo, c) || c})`);
+  log(`photo set ${photoSet}: rendering (cache ${relative(repo, c) || c})`);
   const r = spawnSync(pipelinePython(python), args, {
     stdio: 'inherit',
     env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
@@ -123,17 +162,28 @@ export function precomputedRun(schema, { truth, alignment, ids, capture, gcpCsv 
     ),
     verticalM: round(Math.sqrt(rows.reduce((s, r) => s + r[2] ** 2, 0) / rows.length)),
   });
-  const roleOf = new Map(gcpCsv.map((p) => [p.id, p.role]));
-  const res = (role) =>
-    Object.entries(alignment.residuals)
-      .filter(([id]) => roleOf.get(id) === role)
-      .map(([, r]) => r);
-  const warning = {
-    code: 'few-marks',
-    message:
-      'No marks yet: these residuals are the GNSS-only alignment. Mark the points, then adjust.',
-  };
   const registered = alignment.registered.filter((n) => ids.has(n));
+  // a point in fewer than MIN_VIEWS registered photos of the layer cannot be marked or checked:
+  // it stays in the GCP file (the survey has it) but has no residual in the report
+  const registeredSet = new Set(registered);
+  const views = (id) =>
+    (alignment.predictions[id] ?? []).filter((q) => registeredSet.has(q.photo)).length;
+  const seen = gcpCsv.filter((p) => views(p.id) >= MIN_VIEWS && alignment.residuals[p.id]);
+  const unseen = gcpCsv.filter((p) => !seen.includes(p));
+  const res = (role) => seen.filter((p) => p.role === role).map((p) => alignment.residuals[p.id]);
+  const rmseOf = (role) => (res(role).length ? { [role]: rmse(res(role)) } : {});
+  const warnings = [
+    {
+      code: 'few-marks',
+      message:
+        'No marks yet: these residuals are the GNSS-only alignment. Mark the points, then adjust.',
+    },
+    ...unseen.map((p) => ({
+      code: 'few-marks',
+      point: p.id,
+      message: `${p.id} is in fewer than ${String(MIN_VIEWS)} photos of this flight: it cannot be marked or checked.`,
+    })),
+  ];
   const rejected = alignment.rejected
     .filter((r) => ids.has(r.name))
     .map((r) => ({ name: idOf(r.name), reason: r.reason }));
@@ -186,11 +236,11 @@ export function precomputedRun(schema, { truth, alignment, ids, capture, gcpCsv 
       ),
     },
     accuracy: {
-      control: rmse(res('control')),
-      check: rmse(res('check')),
+      ...rmseOf('control'),
+      ...rmseOf('check'),
       meanReprojPx: alignment.meanReprojPx,
       gsdCm: alignment.gsdCm,
-      warnings: 1,
+      warnings: warnings.length,
     },
     versions: { pack: '0.4.0', generator: 'photo_synth/1 (precomputed)' },
     warnings: [
@@ -222,14 +272,14 @@ export function precomputedRun(schema, { truth, alignment, ids, capture, gcpCsv 
     gsdCm: alignment.gsdCm,
     images: { total: ids.size, registered: registered.length },
     meanReprojPx: alignment.meanReprojPx,
-    points: gcpCsv.map((p) => {
+    points: seen.map((p) => {
       const r = alignment.residuals[p.id];
       return { id: p.id, role: p.role, dxM: r[0], dyM: r[1], dzM: r[2], reprojPx: 0, marks: 0 };
     }),
-    rmse: { control: rmse(res('control')), check: rmse(res('check')) },
+    rmse: { ...rmseOf('control'), ...rmseOf('check') },
     cameraResiduals: alignment.cameraResiduals,
     checkpointsInAdjustment: false,
-    warnings: [warning],
+    warnings,
   });
   return { run, gcp, accuracy };
 }
@@ -246,17 +296,22 @@ export function readGcpCsv(text) {
 }
 
 /**
- * Build the photo demo into `<out>/demo-photo-processing/`. Returns { root, truth, bytes }.
- * @param {{ out: string, quick?: boolean, log?: (m: string) => void, python?: string, cache?: string, set?: string }} o
- *   `set`: an existing photo set folder (skips generating one).
+ * Build the photo demo into `<out>/demo-photo-processing/`. Returns { root, truth, bytes,
+ * photoSet }.
+ * @param {{ out: string, quick?: boolean, log?: (m: string) => void, python?: string, cache?: string, set?: string, photoSet?: 'mini' | 'quick' }} o
+ *   `set`: an existing photo set folder (skips generating one; the set it holds wins).
+ *   `photoSet`: see photoSetName().
  */
-export async function buildPhotoDemo({ out, log, python, cache, set }) {
+export async function buildPhotoDemo({ out, log, python, cache, set, photoSet: asked }) {
   log ??= () => undefined;
   const { schema, builder } = await libs();
   const work = await mkdtemp(join(tmpdir(), 'stratlas-photo-demo-'));
   try {
-    const setDir = set ?? generatePhotoSet(join(work, 'set'), { python, cache, log });
+    const setDir =
+      set ??
+      generatePhotoSet(join(work, 'set'), { photoSet: photoSetName(asked), python, cache, log });
     const truth = JSON.parse(await readFile(join(setDir, 'truth.json'), 'utf8'));
+    const photoSet = photoSetName(truth.generator?.set);
     const alignment = JSON.parse(
       await readFile(join(setDir, 'alignment', 'alignment.json'), 'utf8'),
     );
@@ -373,12 +428,15 @@ export async function buildPhotoDemo({ out, log, python, cache, set }) {
     await mkdir(out, { recursive: true });
     await cp(root, dest, { recursive: true });
     const bytes = await treeSize(dest);
-    log(`photo demo written: ${(bytes / 1e6).toFixed(1)} MB`);
-    if (bytes > PHOTO_BUDGET_MB * 1e6)
+    const { budgetMb } = PHOTO_SETS[photoSet];
+    log(
+      `photo demo written (${photoSet} set, ${String(ids.size)} photos): ${(bytes / 1e6).toFixed(1)} MB`,
+    );
+    if (bytes > budgetMb * 1e6)
       throw new Error(
-        `The photo demo is ${(bytes / 1e6).toFixed(1)} MB, over its ${PHOTO_BUDGET_MB} MB budget.`,
+        `The photo demo (${photoSet} set) is ${(bytes / 1e6).toFixed(1)} MB, over its ${String(budgetMb)} MB budget.`,
       );
-    return { root: dest, truth, bytes };
+    return { root: dest, truth, bytes, photoSet };
   } finally {
     await rm(work, { recursive: true, force: true });
   }
@@ -396,13 +454,14 @@ async function cli() {
   const quick = argv.includes('--quick');
   const t0 = Date.now();
   const log = (m) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1).padStart(6)} s] ${m}`);
-  await buildPhotoDemo({
+  const { photoSet } = await buildPhotoDemo({
     out,
     quick,
     log,
     python: opt('python'),
     cache: opt('cache'),
     set: opt('set'),
+    photoSet: opt('photo-set'),
   });
   const infoFile = join(out, 'demo.json');
   let info = null;
@@ -420,6 +479,7 @@ async function cli() {
       ...(info ?? {}),
       build,
       quick: Boolean(info?.quick) || quick,
+      photoSet,
       generator: info?.generator ?? 'partial',
       primary: info?.primary ?? PHOTO_ID,
       projects,

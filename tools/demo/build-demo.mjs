@@ -5,6 +5,7 @@
 //
 //   node tools/demo/build-demo.mjs [--out apps/desktop/demo] [--seed 20261005] [--quick]
 //                                  [--python <pipeline python>] [--keep-work]
+//                                  [--photo-set mini|quick]
 //
 // Output (git-ignored, bundled by electron-builder `extraResources`, see electron-builder.yml):
 //   <out>/demo.json                 which project the welcome opens, and the build stamp
@@ -14,7 +15,9 @@
 //   <out>/demo-change-site/         M8: a site on two dates with known changes, a DXF plan, a
 //                                   test detector and truth.json (build-change-demo.mjs)
 //   <out>/demo-photo-processing/    M10: drone photos of a synthetic site with GCPs, a
-//                                   precomputed alignment and truth.json (photo-demo.mjs)
+//                                   precomputed alignment and truth.json (photo-demo.mjs; the
+//                                   mini set unless --photo-set or STRATLAS_PHOTO_DEMO_SET says
+//                                   quick, which is for development only and never released)
 //
 // The 3D model is procedural (geometry.mjs, scene.mjs) and written as GLB; every image (video
 // frames, photos, orthos) is rendered from that same geometry by a small software rasteriser
@@ -505,7 +508,13 @@ async function main() {
   // the change and modelling demo: a separate project with its own budget (founder decision 6)
   await buildChangeDemo({ out: OUT, seed: SEED, quick: QUICK, log });
   // M10: the photo processing demo (synthetic photogrammetry set, its own seed and budget)
-  await buildPhotoDemo({ out: OUT, quick: QUICK, log, python });
+  const photo = await buildPhotoDemo({
+    out: OUT,
+    quick: QUICK,
+    log,
+    python,
+    photoSet: opt('photo-set'),
+  });
   const stamp = await treeHash(OUT);
   await writeFile(
     join(OUT, 'demo.json'),
@@ -514,6 +523,7 @@ async function main() {
       build: stamp,
       seed: SEED,
       quick: QUICK,
+      photoSet: photo.photoSet,
       generator: generatorStamp(),
       primary: PRIMARY,
       projects: [site.manifest.id, road.manifest.id, CHANGE_ID, PHOTO_ID],
