@@ -1,0 +1,44 @@
+{
+  "schema": "aio.procmodel/1",
+  "id": "site",
+  "name": "Site model",
+  "createdAt": "2026-03-02T09:00:00.000Z",
+  "updatedAt": "2026-03-09T15:30:00.000Z",
+  "capture": "d1",
+  "sources": [{ "kind": "drawing", "ref": "drawings/plan/plan.dxf" }],
+  "parts": [
+    {
+      "kind": "cylinder",
+      "id": "tank-1",
+      "name": "Tank 1",
+      "status": "accepted",
+      "origin": { "by": "drawing", "file": "plan.dxf", "layer": "TANKS", "entity": "1F" },
+      "base": [10, 0, 5],
+      "radius": 6,
+      "height": 9,
+      "roof": "cone",
+      "roofHeight": 1.2
+    },
+    {
+      "kind": "box",
+      "id": "shed",
+      "status": "draft",
+      "confidence": 0.6,
+      "origin": { "by": "fit", "residualM": 0.05, "inliers": 1200, "inlierShare": 0.8 },
+      "base": [30, 0, 4],
+      "size": [6, 3, 4],
+      "yawDeg": 15
+    },
+    {
+      "kind": "pipe",
+      "id": "line-1",
+      "status": "accepted",
+      "origin": { "by": "manual", "author": "Rana Example" },
+      "points": [
+        [0, 1, 0],
+        [20, 1, 0]
+      ],
+      "diameter": 0.3
+    }
+  ]
+}

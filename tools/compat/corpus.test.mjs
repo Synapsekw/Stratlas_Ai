@@ -1,8 +1,8 @@
 // The 1.x upgrade policy, proved on the compatibility corpus (tools/compat/corpus, built by
 // build-corpus.mjs from each milestone's own schema):
-// - every file written by 0.4 to 0.9 opens in this build with nothing lost;
-// - every file this build writes parses with the 0.8 schema with nothing lost (an 0.8 build on
-//   the same machine still opens it);
+// - every file written by 0.4 to 0.10 opens in this build with nothing lost;
+// - every file this build writes parses with the 0.9 and the 0.8 schema with nothing lost (an 0.9
+//   or 0.8 build on the same machine still opens it);
 // - every reader refuses a `/2` file with the "newer version" message and changes nothing.
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import * as current from '../../packages/schema/src/index.ts';
 import * as v08 from './schema-0.8/index.mjs';
+import * as v09 from './schema-0.9/index.mjs';
 import { familyOf } from './families.mjs';
 import { MILESTONES } from './milestones.mjs';
 
@@ -17,6 +18,8 @@ const here = fileURLToPath(new URL('.', import.meta.url));
 const corpus = join(here, 'corpus');
 const index = JSON.parse(readFileSync(join(corpus, 'index.json'), 'utf8'));
 const versions = readdirSync(corpus).filter((n) => /^\d+\.\d+$/.test(n));
+/** This build (build-corpus.mjs `CURRENT`): corpus/<CURRENT> is what it writes. */
+const CURRENT = '0.10';
 
 const load = (version, p) => JSON.parse(readFileSync(join(corpus, version, p), 'utf8'));
 const rel = (p) => p.slice(p.indexOf('/') + 1);
@@ -37,8 +40,8 @@ function lost(before, after, path = '') {
 }
 
 describe('compatibility corpus', () => {
-  it('has a build for every milestone from 0.4 and the current 0.9', () => {
-    expect(versions.sort()).toEqual([...MILESTONES.map((m) => m.version), '0.9'].sort());
+  it('has a build for every milestone from 0.4 and the current 0.10', () => {
+    expect(versions.sort()).toEqual([...MILESTONES.map((m) => m.version), CURRENT].sort());
     for (const v of versions) {
       for (const p of index.builds[v].files) expect(existsSync(join(corpus, v, p))).toBe(true);
     }
@@ -65,28 +68,33 @@ describe('compatibility corpus', () => {
   }
 });
 
-describe('this build writes files an 0.8 build reads', () => {
-  for (const p of index.builds['0.9'].files) {
-    it(`${p} parses with the 0.8 schema with nothing lost`, () => {
-      const raw = load('0.9', p);
-      const schema = familyOf(rel(p))?.pick(v08);
-      expect(schema, `0.8 has no schema for ${p}`).toBeTruthy();
-      const r = schema.safeParse(raw);
-      expect(r.success, r.success ? '' : r.error.message).toBe(true);
-      expect(lost(raw, r.data)).toEqual([]);
-    });
-  }
-});
+for (const [older, schemas] of [
+  ['0.9', v09],
+  ['0.8', v08],
+]) {
+  describe(`this build writes files an ${older} build reads`, () => {
+    for (const p of index.builds[CURRENT].files) {
+      it(`${p} parses with the ${older} schema with nothing lost`, () => {
+        const raw = load(CURRENT, p);
+        const schema = familyOf(rel(p))?.pick(schemas);
+        expect(schema, `${older} has no schema for ${p}`).toBeTruthy();
+        const r = schema.safeParse(raw);
+        expect(r.success, r.success ? '' : r.error.message).toBe(true);
+        expect(lost(raw, r.data)).toEqual([]);
+      });
+    }
+  });
+}
 
 describe('a file saved by a newer build', () => {
-  const versioned = index.builds['0.9'].files.filter((p) =>
+  const versioned = index.builds[CURRENT].files.filter((p) =>
     familyOf(rel(p))?.family.startsWith('aio.'),
   );
 
   for (const p of versioned) {
     it(`${p} as /2 is refused with the update message and left unchanged`, () => {
       const fam = familyOf(rel(p));
-      const raw = { ...load('0.9', p), schema: `${fam.family}/2` };
+      const raw = { ...load(CURRENT, p), schema: `${fam.family}/2` };
       const before = JSON.stringify(raw);
       const r = current.readVersioned(raw, {
         family: fam.family,
@@ -107,9 +115,9 @@ describe('a file saved by a newer build', () => {
   }
 
   it('is refused by the readers that already check (manifest, package header, road)', () => {
-    const manifest = { ...load('0.9', 'tank-farm/manifest.json'), schema: 'aio.project/2' };
-    const header = { ...load('0.9', 'tank-farm/aio-package.json'), schema: 'aio.package/2' };
-    const road = { ...load('0.9', 'access-road/road.json'), schema: 'aio.road/2' };
+    const manifest = { ...load(CURRENT, 'tank-farm/manifest.json'), schema: 'aio.project/2' };
+    const header = { ...load(CURRENT, 'tank-farm/aio-package.json'), schema: 'aio.package/2' };
+    const road = { ...load(CURRENT, 'access-road/road.json'), schema: 'aio.road/2' };
     for (const r of [
       current.parseManifest(manifest),
       current.parsePackageHeader(header),

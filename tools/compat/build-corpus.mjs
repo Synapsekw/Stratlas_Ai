@@ -3,12 +3,12 @@
 // Build the compatibility corpus: synthetic projects as each milestone build would have written
 // them, from that build's own schema (extracted from the git history).
 //
-//   node tools/compat/build-corpus.mjs                    rebuild 0.4 to 0.8 from corpus/0.9
-//   node tools/compat/build-corpus.mjs --from-demo [dir]  first rebuild corpus/0.9 from the demo
+//   node tools/compat/build-corpus.mjs                    rebuild 0.4 to 0.9 from corpus/0.10
+//   node tools/compat/build-corpus.mjs --from-demo [dir]  first rebuild corpus/0.10 from the demo
 //                                                         (default apps/desktop/demo; build it
 //                                                         with `pnpm demo:build --quick`)
 //
-// corpus/0.9/ is what the current build writes for the sample (its schema's parse output);
+// corpus/0.10/ is what the current build writes for the sample (its schema's parse output);
 // corpus/0.x/ is that content parsed by the 0.x schema, dropping only what 0.x cannot hold
 // (downgrade.mjs). corpus/index.json lists every file and what each build dropped. Needs the git
 // history; CI only reads the committed corpus.
@@ -37,7 +37,7 @@ import { MILESTONES } from './milestones.mjs';
 import { sampleFromDemo } from './sample.mjs';
 
 export const CORPUS = join(repoRoot, 'tools', 'compat', 'corpus');
-export const CURRENT = '0.9';
+export const CURRENT = '0.10';
 
 const argv = process.argv.slice(2);
 const fromDemo = argv.includes('--from-demo');
@@ -75,7 +75,7 @@ async function loadSchema(name, write) {
   return import(pathToFileURL(join(dir, 'index.mjs')).href);
 }
 
-/** Corpus files of one build: `<project>/<rel>` to JSON, in 0.9 form. */
+/** Corpus files of one build: `<project>/<rel>` to JSON, in the current form. */
 function readTree(version) {
   const root = join(CORPUS, version);
   return new Map(listJson(root).map((p) => [p, JSON.parse(readFileSync(join(root, p), 'utf8'))]));
