@@ -1,5 +1,56 @@
 {
-  "policy": "Permissive only (M10 decision 1, founder 7 Oct 2026: go with the recommendations). Apache-2.0, MIT, BSD-2/3-Clause, ISC, Zlib, BSL-1.0 and similar are allowed. MPL-2.0 only for the items named here; LGPL only as an unmodified, separately replaceable shared library named here, never linked statically; never GPL, AGPL, SSPL or non-commercial. G1 owns this file and extends the gate to native libraries (native-libs.json) and data packs.",
+  "policy": "Permissive only (M10 decision 1, founder 7 Oct 2026: go with the recommendations). Apache-2.0, MIT, BSD-2/3-Clause, ISC, Zlib, BSL-1.0 and similar are allowed. MPL-2.0 only for the items named here; LGPL only as an unmodified, separately replaceable shared library named here, never linked statically; never GPL, AGPL, SSPL or non-commercial. One file read by the npm gate (license-check.mjs), the Python gate (python/tests/test_licences.py) and the native gate (native-licences.mjs, with native-libs.json). An entry whose `approved` is `pending` was found by the native gate in what the pack already ships and waits for the founder: CI passes with a warning, the release build (--strict) fails until it is approved or removed.",
+  "allowed": {
+    "$comment": "SPDX ids allowed in everything we ship. `spdx` applies to npm, Python and native code; `native` adds the permissive licences of C libraries (libpng, libtiff, SQLite's blessing and similar), checked by native-licences.mjs only; `data` is what imagery and terrain packs we distribute may carry (data-licences.mjs: never non-commercial, share-alike or no-derivatives).",
+    "spdx": [
+      "MIT",
+      "MIT-0",
+      "MIT-CMU",
+      "ISC",
+      "BSD-2-Clause",
+      "BSD-3-Clause",
+      "Apache-2.0",
+      "0BSD",
+      "CC0-1.0",
+      "BlueOak-1.0.0",
+      "Unlicense",
+      "Zlib",
+      "BSL-1.0",
+      "OFL-1.1",
+      "Python-2.0",
+      "PSF-2.0"
+    ],
+    "native": [
+      "BSD-3-Clause-Open-MPI",
+      "BSD-2-Clause-Views",
+      "libpng-2.0",
+      "Libpng",
+      "libtiff",
+      "blessing",
+      "curl",
+      "IJG",
+      "bzip2-1.0.6",
+      "X11",
+      "HPND",
+      "FTL",
+      "TCL",
+      "PostgreSQL",
+      "Unicode-3.0",
+      "Qhull",
+      "JasPer-2.0",
+      "LLVM-exception"
+    ],
+    "data": [
+      "public-domain",
+      "CC0-1.0",
+      "PDDL-1.0",
+      "CC-BY-4.0",
+      "CC-BY-3.0",
+      "ODC-By-1.0",
+      "LicenseRef-Copernicus-Sentinel",
+      "LicenseRef-Copernicus-DEM"
+    ]
+  },
   "mpl": [
     {
       "name": "certifi",
@@ -11,8 +62,9 @@
     {
       "name": "eigen",
       "ecosystem": "native",
+      "aliases": ["eigen3"],
       "licence": "MPL-2.0",
-      "use": "Linear algebra headers compiled into COLMAP, Ceres and mvs-texturing (G1), unmodified, EIGEN_MPL2_ONLY",
+      "use": "Linear algebra headers compiled into COLMAP, Ceres and PDAL (G1), unmodified, EIGEN_MPL2_ONLY",
       "approved": "2026-10-07"
     }
   ],
@@ -21,8 +73,55 @@
       "name": "geos",
       "ecosystem": "native",
       "licence": "LGPL-2.1-only",
-      "use": "Shared library inside the shapely and rasterio wheels (and PDAL from G1), unmodified and replaceable",
+      "use": "Shared library inside the shapely and rasterio wheels, unmodified and replaceable",
       "approved": "2026-10-07"
+    },
+    {
+      "name": "libiconv",
+      "ecosystem": "native",
+      "licence": "LGPL-2.1-or-later",
+      "use": "GNU libiconv as a shared library (iconv-2.dll) inside the rasterio Windows wheel, already in pipeline packs 0.2 and 0.3; unmodified and replaceable. Found by the G1 native gate.",
+      "approved": "pending"
+    },
+    {
+      "name": "libspatialite",
+      "ecosystem": "native",
+      "licence": "MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later",
+      "elected": "LGPL-2.1-or-later",
+      "use": "SpatiaLite as a shared library (spatialite.dll) inside the rasterio Windows wheel, already in pipeline packs 0.2 and 0.3; unmodified and replaceable. Found by the G1 native gate.",
+      "approved": "pending"
+    },
+    {
+      "name": "freexl",
+      "ecosystem": "native",
+      "licence": "MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later",
+      "elected": "LGPL-2.1-or-later",
+      "use": "FreeXL as a shared library (freexl-1.dll) inside the rasterio Windows wheel, already in pipeline packs 0.2 and 0.3; unmodified and replaceable. Found by the G1 native gate.",
+      "approved": "pending"
+    },
+    {
+      "name": "libquadmath",
+      "ecosystem": "native",
+      "licence": "LGPL-2.1-or-later",
+      "use": "GCC quad-precision maths as a shared library (.dylibs/libquadmath) inside the numpy and scipy macOS wheels, already in pipeline packs 0.2 and 0.3; unmodified and replaceable. Found by the G1 native gate.",
+      "approved": "pending"
+    }
+  ],
+  "runtimes": [
+    {
+      "$comment": "Compiler runtimes that come with the wheels and CPython. Not open source licences in the allow-list, but runtimes their licences let any program ship.",
+      "name": "gcc-runtime",
+      "ecosystem": "native",
+      "licence": "GPL-3.0-or-later WITH GCC-exception-3.1",
+      "use": "libgfortran and libgcc_s as shared libraries in the numpy and scipy macOS wheels, and libgfortran linked into their OpenBLAS DLLs on Windows (scipy-openblas, GCC 10.3), already in pipeline packs 0.2 and 0.3. The GCC Runtime Library Exception lets the code compiled with them ship under any licence. Found by the G1 native gate.",
+      "approved": "pending"
+    },
+    {
+      "name": "msvc-runtime",
+      "ecosystem": "native",
+      "licence": "LicenseRef-Microsoft-VC-Redist",
+      "use": "Microsoft Visual C++ runtime DLLs (vcruntime140, msvcp140, vcomp140 and their siblings) that CPython and the Windows wheels ship, redistributable under the Visual Studio licence terms, unmodified. Already in pipeline packs 0.2 and 0.3.",
+      "approved": "pending"
     }
   ],
   "elections": [

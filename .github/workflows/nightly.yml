@@ -106,6 +106,10 @@ jobs:
       - name: Build installers
         run: pnpm -F @aio/desktop ${{ matrix.dist }}
 
+      # M10 decision 6: at most 15 MB over the 0.9.0 installers (CesiumJS and 3DTilesRendererJS).
+      - name: Installer size budget
+        run: node tools/release/budgets.mjs --installers apps/desktop/dist
+
       - name: Build Microsoft Store package
         if: runner.os == 'Windows'
         # Unsigned is expected: Microsoft signs Store submissions.
@@ -122,6 +126,50 @@ jobs:
             apps/desktop/dist/*.zip
           retention-days: 14
           if-no-files-found: error
+
+  # M10 G1: the native components (rebuilt only when their recipe changed) and the full pipeline
+  # pack with photogrammetry for both platforms: smoke test, native licence gate (pending
+  # approvals warn here; release.yml fails on them) and the size budget of decision 6.
+  pack-native:
+    uses: ./.github/workflows/pack-native.yml
+
+  pipeline-pack:
+    name: pipeline pack (${{ matrix.native }})
+    needs: pack-native
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            native: win32-x64
+          - os: macos-15
+            native: darwin-arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+      - uses: actions/download-artifact@v4
+        with:
+          name: pack-native-${{ matrix.native }}
+          path: pack-native
+      - name: Build the pipeline pack with the native tools
+        run: node tools/pipeline-pack/build.mjs --out runtime --native pack-native
+      - name: Size budget (decision 6)
+        run: |
+          pack="$(ls -d runtime/pipeline-pack-* | head -n 1)"
+          tar -czf pack.tar.gz -C runtime "$(basename "$pack")"
+          node tools/release/budgets.mjs --pack "$pack" --archive pack.tar.gz
 
   # The 1.0 checklist's stability and performance checks that are too slow for every merge: the
   # journal and merge budgets enforced, long fuzzing of every reader, kill-during-write with many

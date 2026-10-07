@@ -4,14 +4,23 @@
 // file's size and SHA-256 (the pack is signed file by file in CI and verified by the app later).
 //
 //   node tools/pipeline-pack/build.mjs [--out "E:/Stratlas Data/runtime"] [--force]
+//        [--native <build-native output>] [--strict]
 //
-// Output: <out>/pipeline-pack-<version>/{python/, manifest.json}, built in a temp folder next to
+// --native (M10 G1) adds the photogrammetry tools built by native/build-native.mjs (in CI the
+// pack-native artifact): our pycolmap and OpenCV wheels into the pack's Python and the PDAL tool
+// into tools/. Windows x64 and macOS arm64 only; the Intel Mac pack is built without it
+// (decision 8). Every pack then passes the native licence gate (tools/release/native-licences.mjs;
+// --strict also fails on approvals still pending, for releases) and the size budget of decision 6.
+//
+// Output: <out>/pipeline-pack-<version>/{python/, tools/, manifest.json}, built in a temp folder next to
 // it and renamed into place when complete. The app finds the newest pack in
 // <data folder>/runtime/. Builds for the host platform (Windows x64, macOS arm64 or x64).
 // Online: downloads CPython once into <out>/.cache and wheels through uv's cache.
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
+  chmodSync,
+  cpSync,
   createReadStream,
   existsSync,
   mkdirSync,
@@ -24,6 +33,9 @@ import {
 } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { packBudgetProblems } from '../release/budgets.mjs';
+import { runGate } from '../release/native-licences.mjs';
+import { nativePlan, PROBE, probeProblems } from './native/pack-step.mjs';
 
 export const PBS_RELEASE = '20260924';
 export const CPYTHON = '3.13.15';
@@ -170,6 +182,8 @@ async function main() {
       out: { type: 'string' },
       force: { type: 'boolean', default: false },
       'keep-tests': { type: 'boolean', default: false },
+      native: { type: 'string' },
+      strict: { type: 'boolean', default: false },
     },
   });
   const platform = `${process.platform}-${process.arch}`;
@@ -251,6 +265,33 @@ async function main() {
     ]);
     rmSync(reqs, { force: true });
 
+    // 2b. Photogrammetry tools (M10 G1): our licence-clean pycolmap and OpenCV wheels (never the
+    // PyPI ones: GPL CHOLMOD, FFmpeg) and the PDAL tool, where aio_pipelines looks for it.
+    const native = values.native ? nativePlan(resolve(values.native), platform) : null;
+    if (native) {
+      run('uv', [
+        'pip',
+        'install',
+        '--python',
+        python,
+        '--break-system-packages',
+        '--no-deps',
+        ...native.wheels,
+      ]);
+      if (native.tools) cpSync(native.tools, join(tmp, 'tools'), { recursive: true });
+      // A CI artifact (zip) loses the executable bit: restore it on the tools' programs.
+      if (process.platform !== 'win32')
+        for (const f of walk(join(tmp, 'tools')))
+          if (/[\\/]bin[\\/][^\\/]+$/.test(f) || f.endsWith('.dylib')) chmodSync(f, 0o755);
+      mkdirSync(join(tmp, 'tools'), { recursive: true });
+      writeFileSync(
+        join(tmp, 'tools', 'native-manifest.json'),
+        `${JSON.stringify(native.manifest, null, 1)}\n`,
+      );
+    } else {
+      say('  no --native: this pack has no photogrammetry tools');
+    }
+
     // 3. Trim what the pack never runs, then precompile so a signed, read-only pack never writes .pyc
     const lib =
       process.platform === 'win32'
@@ -280,6 +321,25 @@ async function main() {
       { capture: true },
     ).trim();
     say(`  ${pipelines.length} pipelines; GDAL ${libs}`);
+    if (native) {
+      const probe = JSON.parse(run(python, ['-I', '-c', PROBE], { capture: true }));
+      const bad = probeProblems(probe);
+      if (bad.length > 0) fail(`native tools: ${bad.join('; ')}`);
+      const exe = process.platform === 'win32' ? 'pdal.exe' : 'pdal';
+      const pdal = run(join(tmp, 'tools', 'pdal', 'bin', exe), ['--version'], { capture: true });
+      say(
+        `  pycolmap ${probe.pycolmap} (${probe.colmapBuild}); OpenCV ${probe.opencv}; ${pdal.trim().split('\n')[0]}`,
+      );
+    }
+
+    // 4b. Native licence gate over every DLL, dylib and executable of the pack (M10 G1)
+    const gate = runGate({ scan: [tmp] });
+    for (const p of gate.pending)
+      say(`  warning: licence exception "${p}" waits for founder approval`);
+    if (gate.problems.length > 0) fail(`native licence gate:\n  ${gate.problems.join('\n  ')}`);
+    if (values.strict && gate.pending.length > 0)
+      fail(`native licence gate (--strict): approval pending for ${gate.pending.join(', ')}`);
+    say(`  native licence gate: ${gate.files} native files checked`);
 
     // 5. Manifest with every file's size and hash
     const files = {};
@@ -300,9 +360,13 @@ async function main() {
     };
     writeFileSync(join(tmp, 'manifest.json'), `${JSON.stringify(manifest, null, 1)}\n`);
 
+    // 6. Size budget of decision 6 (the archive's budget is checked where it is made, in CI)
+    const bytes = Object.values(files).reduce((a, f) => a + f.size, 0);
+    const over = packBudgetProblems({ unpackedBytes: bytes });
+    if (over.length > 0) fail(over.join('; '));
+
     rmSync(dest, { recursive: true, force: true });
     renameSync(tmp, dest);
-    const bytes = Object.values(files).reduce((a, f) => a + f.size, 0);
     say(
       `Done in ${Math.round((Date.now() - t0) / 1000)} s: ${Object.keys(files).length} files, ${(bytes / 2 ** 20).toFixed(0)} MB at ${dest}`,
     );
