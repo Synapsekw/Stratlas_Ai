@@ -32,12 +32,14 @@ import {
   projectCollab,
   refOfTarget,
   reportMaterial,
+  signOffBlock,
   sortOps,
   stateOfTarget,
   visibleTo,
   type ApproveRefusal,
   type CollabOp,
   type IssueLike,
+  type SignOffBlock,
 } from '@aio/collab';
 import { base32, contentHash, createClock, readSegment, sealOp, sha256Hex } from '@aio/journal';
 import {
@@ -850,6 +852,29 @@ export function createCollabService(deps: CollabDeps) {
       return { ok: true };
     },
 
+    /**
+     * The house report's sign-off block (section `approvals`): null when the project is not
+     * shared, so a private project's report prints as in 0.8.
+     */
+    async signOff(
+      projectId: string,
+      issueIds?: readonly string[],
+      today: () => string = () => new Date().toISOString().slice(0, 10),
+    ): Promise<SignOffBlock | null> {
+      const l = await load(projectId);
+      if (!l?.state.policy) return null;
+      const ids = issueIds ?? l.materials.issues().map((i) => i.id);
+      return signOffBlock(l.state, {
+        projectId,
+        issueIds: ids,
+        who: (a) => {
+          const m = l.members.find((x) => x.actor === a) ?? (l.me?.actor === a ? l.me : null);
+          return m ? { name: m.name, initials: m.initials } : { name: a, initials: '?' };
+        },
+        prepared: l.me ? { actor: l.me.actor, date: today() } : null,
+      });
+    },
+
     async policy(req: IpcRequest<'collab:policy'>): Promise<IpcResponse<'collab:policy'>> {
       const l = await writable(req.projectId);
       if (isFail(l)) return l;
@@ -867,6 +892,20 @@ export function createCollabService(deps: CollabDeps) {
 }
 
 export type CollabService = ReturnType<typeof createCollabService>;
+
+let current: CollabService | null = null;
+
+/**
+ * The sign-off block of a project as the house report's query carries it (JSON), or undefined
+ * when the project is not shared or collab is not registered.
+ */
+export async function houseSignOff(
+  projectId: string,
+  issueIds?: readonly string[],
+): Promise<string | undefined> {
+  const block = await current?.signOff(projectId, issueIds).catch(() => null);
+  return block ? JSON.stringify(block) : undefined;
+}
 
 // ---------------------------------------------------------------- IPC
 
@@ -891,6 +930,7 @@ export function registerCollabIpc(deps: CollabIpcDeps): CollabService {
     identity: deps.identity ?? createStubIdentity({ userData: deps.userData }),
     members: deps.members ?? createStubMembers(),
   });
+  current = service;
   handle('collab:read', (req) => service.read(req));
   handle('collab:comment', (req) => service.comment(req));
   handle('collab:editComment', (req) => service.editComment(req));

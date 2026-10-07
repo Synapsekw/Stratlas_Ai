@@ -61,7 +61,7 @@ import {
 import { registerLocalModelsIpc, type LocalServerSeen } from './localModels';
 import { readCloudDrawings, registerModelBuilderIpc } from './modelBuilder';
 import { registerBlobsIpc } from './blobs';
-import { registerCollabIpc } from './collab';
+import { houseSignOff, registerCollabIpc } from './collab';
 import { registerIdentityIpc } from './identity';
 import { registerJournalIpc } from './journal';
 import { registerSyncIpc } from './sync';
@@ -398,6 +398,8 @@ const exportJobs = createExportJobs({
       devTools: dev,
       branding: current.reportBranding,
       contents: current.reportContents,
+      signoff:
+        args.kind === 'house' ? await houseSignOff(args.projectId, args.issueIds) : undefined,
     });
   },
   emit: emitExportProgress,

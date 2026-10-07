@@ -31,6 +31,7 @@ describe('houseReportModel', () => {
       'statistics',
       'register',
       'issues',
+      'approvals',
       'appendices',
     ]);
     // the uncertain issue is listed in an appendix, not given a page

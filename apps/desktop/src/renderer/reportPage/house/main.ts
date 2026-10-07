@@ -51,6 +51,7 @@ import {
   type HouseContext,
   type IssueImages,
 } from './sections';
+import { layoutApprovals, parseSignOff } from '../../team/houseApprovals';
 
 interface PageState {
   state: 'loading' | 'ready' | 'error';
@@ -143,6 +144,7 @@ async function run(): Promise<void> {
     optional(projectId, 'road.json'),
   ]);
   const narrative = parsed(NarrativeFile, narrativeRaw, 'report/narrative.json');
+  const signoff = parseSignOff(params.get('signoff'));
   const road = roadRaw === null ? null : parseRoadModel(roadRaw);
   // Branding is the person's own (Settings, Report branding), never the project's client brand.
   const branding = resolveReportBranding(
@@ -354,6 +356,13 @@ async function run(): Promise<void> {
         timings.issuePhotos = Math.round(photoMs / 100) / 10;
         timings.issueViews = Math.round(viewMs / 100) / 10;
         lap('issues', t3);
+        break;
+      }
+      case 'approvals': {
+        if (!signoff) break; // not shared: printed as in 0.8
+        const n = numbered(id);
+        pager.start(id);
+        layoutApprovals(pager, `${n} · ${kickerOf(h)}`, signoff);
         break;
       }
       case 'appendices': {

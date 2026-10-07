@@ -36,6 +36,8 @@ export interface ReportWindowOptions {
   branding?: ReportBrandingSettings | undefined;
   /** Sections of the house report from Settings; absent for every section. */
   contents?: ReportContentsSettings | undefined;
+  /** House report: the sign-off block (JSON) for section `approvals` (M9 T3). */
+  signoff?: string | undefined;
 }
 
 /**
@@ -93,6 +95,7 @@ export async function printReport(
   const house = args.kind === 'house';
   const page = REPORT_PAGES[house ? 'house' : 'register'];
   const query = reportQuery(args, opts.branding, house ? opts.contents : undefined);
+  if (house && opts.signoff) query.signoff = opts.signoff;
   try {
     if (opts.devUrl) {
       const url = new URL(page, opts.devUrl.endsWith('/') ? opts.devUrl : `${opts.devUrl}/`);

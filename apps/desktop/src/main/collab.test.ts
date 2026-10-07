@@ -349,6 +349,34 @@ describe('collab service: a shared project', () => {
   });
 });
 
+describe('report sign-off', () => {
+  it('is null for a project that is not shared', async () => {
+    expect(await service().signOff('p1')).toBeNull();
+  });
+
+  it('lists who reviewed and approved the report, bound to its inputs', async () => {
+    await share();
+    const s = service();
+    me = OMAR;
+    await s.approve({ projectId: 'p1', target: F05, decision: 'approve' });
+    me = LINA;
+    await s.approve({ projectId: 'p1', target: { kind: 'report', id: 'p1' }, decision: 'approve' });
+    me = RANA;
+    const b = await s.signOff('p1', undefined, () => '2026-10-07');
+    expect(b?.prepared).toMatchObject({ name: 'Rana Example', initials: 'RE', date: '2026-10-07' });
+    expect(b?.reviewed.map((p) => p.initials)).toEqual(['OS']);
+    expect(b?.approved.map((p) => p.initials)).toEqual(['LT']);
+    expect(b?.findings).toEqual({ approved: 1, total: 2 });
+    await writeIssues([
+      issue('i_f03', 'F03', 'Omar Sample', { severity: 4 }),
+      issue('i_f05', 'F05', 'Rana Example'),
+    ]);
+    const after = await s.signOff('p1');
+    expect(after?.approved).toEqual([]);
+    expect(after?.outOfDate.map((p) => p.initials)).toEqual(['LT']);
+  });
+});
+
 describe('interim journal', () => {
   it('writes chained aio.op/1 lines with rising clocks and deps on other chains', async () => {
     await journal.append(root, RANA, {
