@@ -273,4 +273,40 @@ describe('timeline store', () => {
     expect(ws.getState().activeClip).toBe('clip-oct');
     expect(ws.getState().nowMs).toBe(START.oct + 3_000);
   });
+
+  it('focusSurvey does nothing while the workspace shows another project', () => {
+    const { ws, tl, storage, index } = setup();
+    tl.getState().attach('p', index);
+    const saved = storage.getItem(TIMELINE_KEY);
+    // another project opened, the timeline not yet re-attached
+    ws.getState().openProject({ id: 'q', root: '/q', manifest: { ...manifest, id: 'q' } });
+    const hidden = ws.getState().hidden;
+    tl.getState().focusSurvey('oct');
+    expect(tl.getState().focus).toBe('nov');
+    expect(ws.getState().hidden).toBe(hidden);
+    expect(storage.getItem(TIMELINE_KEY)).toBe(saved);
+  });
+
+  it('reads a corrupted saved entry without throwing and keeps the good fields', () => {
+    const { ws, tl, index } = setup({
+      p: { focus: 7, remembered: { oct: 'model-oct', nov: 5, sep: ['model-sep', 3] }, extras: 'x' },
+      q: 'nonsense',
+    });
+    expect(() => {
+      tl.getState().attach('p', index);
+    }).not.toThrow();
+    expect(tl.getState().focus).toBe('nov');
+    expect(tl.getState().byProject.q).toBeUndefined();
+    tl.getState().focusSurvey('oct');
+    tl.getState().focusSurvey('nov');
+    // the malformed remembered entry for oct was dropped: oct's model shows when focused
+    tl.getState().focusSurvey('oct');
+    expect(ws.getState().hidden['model-oct']).toBeUndefined();
+  });
+
+  it('keeps a well-formed saved entry as it is', () => {
+    const pref = { focus: 'oct', remembered: { oct: ['model-oct'] }, extras: ['model-sep'] };
+    const { tl } = setup({ p: pref });
+    expect(tl.getState().byProject.p).toEqual(pref);
+  });
 });

@@ -33,11 +33,41 @@ export interface TimelineState {
   step(dir: -1 | 1): void;
 }
 
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+const strings = (v: unknown): string[] | undefined =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : undefined;
+
+/** A saved pref with every malformed field dropped, or null when it is not a pref at all. */
+function coercePref(v: unknown): DatePref | null {
+  if (!isRecord(v)) return null;
+  const pref: DatePref = {};
+  if (typeof v.focus === 'string') pref.focus = v.focus;
+  if (isRecord(v.remembered)) {
+    const remembered: Record<string, string[]> = {};
+    for (const [capture, ids] of Object.entries(v.remembered)) {
+      const list = strings(ids);
+      if (list) remembered[capture] = list;
+    }
+    pref.remembered = remembered;
+  }
+  const extras = strings(v.extras);
+  if (extras) pref.extras = extras;
+  return pref;
+}
+
 function load(storage: Storage | null): Record<string, DatePref> {
   try {
     const raw = storage?.getItem(TIMELINE_KEY);
     const parsed: unknown = raw ? JSON.parse(raw) : {};
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, DatePref>) : {};
+    const out: Record<string, DatePref> = {};
+    if (!isRecord(parsed)) return out;
+    for (const [id, v] of Object.entries(parsed)) {
+      const pref = coercePref(v);
+      if (pref) out[id] = pref;
+    }
+    return out;
   } catch {
     return {};
   }
@@ -46,11 +76,14 @@ function load(storage: Storage | null): Record<string, DatePref> {
 /** Snapshots the open project's pref from the current visibility and writes it through to storage. */
 function persist(
   store: StoreApi<TimelineState>,
+  ws: StoreApi<Workspace>,
   storage: Storage | null,
   hidden: Readonly<Record<string, true>>,
 ): void {
   const { projectId, index, focus, byProject } = store.getState();
   if (!projectId || !index || index.captures.length === 0) return;
+  // a stale index (another project open, not yet attached) never writes the wrong project
+  if (ws.getState().project?.id !== projectId) return;
   const pref = snapshotPref(index, hidden, focus, byProject[projectId]?.remembered ?? {});
   const next = { ...byProject, [projectId]: pref };
   store.setState({ byProject: next });
@@ -135,6 +168,7 @@ export function createTimelineStore(
       if (!index || !projectId || capture === prev) return;
       if (!index.captures.some((c) => c.id === capture)) return;
       const w = ws.getState();
+      if (w.project?.id !== projectId) return;
       const { change, remembered } = swapChange(
         index,
         w.hidden,
@@ -146,7 +180,7 @@ export function createTimelineStore(
 
       const clip = w.activeClip;
       if (clip && prev && index.of[clip] === prev) {
-        const layers = w.project?.manifest.layers ?? [];
+        const layers = w.project.manifest.layers;
         moveClip(followLayer(index, layers, clip, capture) ?? null);
       }
       const sel = w.selection;
@@ -158,7 +192,7 @@ export function createTimelineStore(
         focus: capture,
         byProject: { ...byProject, [projectId]: { ...byProject[projectId], remembered } },
       });
-      persist(store, storage, ws.getState().hidden);
+      persist(store, ws, storage, ws.getState().hidden);
     },
 
     step: (dir) => {
@@ -179,7 +213,7 @@ export function createTimelineStore(
       s.openSeq === p.openSeq &&
       s.project?.id === store.getState().projectId
     ) {
-      persist(store, storage, s.hidden);
+      persist(store, ws, storage, s.hidden);
     }
   });
 
@@ -192,11 +226,12 @@ export function useTimeline<T>(selector: (s: TimelineState) => T): T {
   return useStore(timeline, selector);
 }
 
-/** Keeps the timeline attached to the open project. Mount once in the workspace screen. */
+/** Keeps the timeline attached to the open project. Mount once, in the app. */
 export function useTimelineSync(): void {
   const projectId = useWorkspace((s) => s.project?.id ?? null);
+  const openSeq = useWorkspace((s) => s.openSeq);
   const index = useCaptureIndex();
   useEffect(() => {
     timeline.getState().attach(projectId, index);
-  }, [projectId, index]);
+  }, [projectId, index, openSeq]);
 }

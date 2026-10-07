@@ -46,7 +46,7 @@ import { applyAppearance, OS_QUERIES } from './theme';
 import { HelpPanel } from './help/HelpPanel';
 import { help } from './help/store';
 import { isTypingTarget } from './workspace/DateBar';
-import { timeline } from './workspace/timeline';
+import { timeline, useTimelineSync } from './workspace/timeline';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
 import { BuilderLayer } from './builder/BuilderLayer';
 import { ModellerLayer } from './modeller/ModellerLayer';
@@ -81,6 +81,7 @@ function onKeyDown(e: KeyboardEvent) {
     void s.toggleSidebar();
   } else if (
     (id === 'global.prevSurvey' || id === 'global.nextSurvey') &&
+    !e.defaultPrevented &&
     s.screen === 'scene' &&
     !isTypingTarget(e.target)
   ) {
@@ -213,6 +214,8 @@ export function App() {
   const contrast = useShell((s) => s.settings.contrast);
   const motion = useShell((s) => s.settings.motion);
   const screen = useShell((s) => s.screen);
+  // the date bar follows the open project whichever screen shows
+  useTimelineSync();
 
   useEffect(() => {
     // Settings and library are in: tell main the first screen is up (ends the first-start

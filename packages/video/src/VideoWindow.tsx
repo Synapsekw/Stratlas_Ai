@@ -105,7 +105,8 @@ export function VideoWindow({ layerId, className, children }: VideoWindowProps) 
   }, [layerId, layer]);
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (!player) return;
+    // modified keys are app shortcuts (Alt+Left / Alt+Right step the survey date), not the player's
+    if (!player || e.altKey || e.ctrlKey || e.metaKey) return;
     const s = videoStore().getState();
     const k = e.key.toLowerCase();
     if (k === 'k' || k === ' ') {
