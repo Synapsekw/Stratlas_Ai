@@ -38,7 +38,6 @@
       "Unicode-3.0",
       "Qhull",
       "JasPer-2.0",
-      "SMLNJ",
       "LLVM-exception"
     ]
   },
