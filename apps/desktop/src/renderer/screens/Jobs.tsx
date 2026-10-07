@@ -9,6 +9,7 @@ import { Icon, t, type IconName } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { buildParams, canResume, FORMS, isActive, type Field, type JobDraft } from '../jobs';
+import { PhotoRuns } from '../photogrammetry/PhotoRuns';
 import { bridge, jobs, useJobs } from '../shell';
 
 const STATUS: Record<JobRecord['status'], { label: string; tone: string }> = {
@@ -587,6 +588,7 @@ export function JobsScreen() {
             </div>
           )}
         </div>
+        <PhotoRuns selected={job} />
       </aside>
       {job ? (
         <Detail job={job} now={now} />

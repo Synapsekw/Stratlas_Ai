@@ -2,6 +2,7 @@ import type { AioBridge, ImportItem } from '@aio/schema';
 import { Icon, type IconName } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useState } from 'react';
+import { PhotoProcessLayer } from '../photogrammetry/PhotoProcessLayer';
 import { useShell } from '../shell';
 import { heightsLine, offsetFromTakeoff, promptChoice, type HeightsPrompt } from './heights';
 import { builder, useBuilder } from './state';
@@ -82,6 +83,7 @@ export function ImportLayer() {
         </div>
       )}
       <ImportStatus />
+      <PhotoProcessLayer />
     </>
   );
 }
