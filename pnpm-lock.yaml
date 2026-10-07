@@ -429,6 +429,9 @@ importers:
 
   packages/sync:
     dependencies:
+      '@aio/journal':
+        specifier: workspace:*
+        version: link:../journal
       '@aio/schema':
         specifier: workspace:*
         version: link:../schema

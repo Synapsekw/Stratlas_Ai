@@ -1,14 +1,12 @@
 /**
  * Hub folders (M9 T5): a shared folder where each device writes only its own files that never
- * change (op chunks and blobs, temp name then rename), plus advisory presence. T0 holds the
- * layout; T5 implements the hub transport, presence and cloud-drive conflict copies.
+ * change (op chunks and blobs, temp name then rename), plus advisory presence. Copes with a slow
+ * share (every call has a time limit) and one that goes away mid-write (temp files are never read
+ * and are swept by their writer later).
  */
-import { HUB_FILE, HUB_PATHS, PRESENCE_TTL_MS, type Presence } from '@aio/schema';
+import { HUB_FILE, HUB_PATHS } from '@aio/schema';
 
 export { HUB_FILE, HUB_PATHS };
-
-/** Is a presence file still current ("Rana has F03 open")? */
-export function presenceFresh(p: Pick<Presence, 'at'>, nowMs: number): boolean {
-  const at = Date.parse(p.at);
-  return Number.isFinite(at) && nowMs - at <= PRESENCE_TTL_MS;
-}
+export { presenceFresh } from './presence';
+export { HubUnreachable, nodeHubFs, withTimeouts, type HubFs } from './fs';
+export { createHubTransport, type HubOptions, type HubPull, type HubTransport } from './transport';

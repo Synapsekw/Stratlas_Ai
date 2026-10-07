@@ -77,6 +77,7 @@ import { createJournalService, registerJournalIpc } from './journal';
 import { createLocalIdentity } from './journalIdentity';
 import { createAuditExport } from './exports/audit';
 import { registerSyncIpc } from './sync';
+import { startSync } from './sync/electron';
 import { registerTeamServerIpc } from './teamServer';
 import { importLogo, removeLogo } from './branding';
 import { putThumb } from './thumbs';
@@ -1097,7 +1098,7 @@ function registerIpc(): void {
     userData: app.getPath('userData'),
     agentTools: agentToolNames,
   });
-  registerSyncIpc({ handle });
+  registerSyncIpc({ handle, service: startSync({ registry, settings, keyService }) });
   registerBlobsIpc({ handle, service: blobs });
   registerTeamServerIpc({ handle });
 }

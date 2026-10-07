@@ -143,6 +143,27 @@ export function macIntegration(brand) {
             'public.mime-type': ['application/vnd.aio-package+zip'],
           },
         },
+        // M9: exchange files (changes between copies) and identity cards
+        {
+          UTTypeIdentifier: `${brand.appId}.exchange`,
+          UTTypeDescription: `${brand.productName} exchange file`,
+          UTTypeConformsTo: ['public.data'],
+          UTTypeIconFile: 'icon.icns',
+          UTTypeTagSpecification: {
+            'public.filename-extension': ['aiosync'],
+            'public.mime-type': ['application/vnd.aio-exchange+zip'],
+          },
+        },
+        {
+          UTTypeIdentifier: `${brand.appId}.idcard`,
+          UTTypeDescription: `${brand.productName} identity card`,
+          UTTypeConformsTo: ['public.json'],
+          UTTypeIconFile: 'icon.icns',
+          UTTypeTagSpecification: {
+            'public.filename-extension': ['aioid'],
+            'public.mime-type': ['application/vnd.aio-idcard+json'],
+          },
+        },
       ],
     },
   };
@@ -191,6 +212,26 @@ export function effectiveConfig(rawEnv = process.env, now = new Date()) {
         mimeType: 'application/vnd.aio-package+zip',
         icon: 'icon',
         // macOS: the app owns the type it exports (macIntegration).
+        rank: 'Owner',
+      },
+      // M9: an exchange file (.aiosync) is previewed, then applied to an open project
+      {
+        ext: 'aiosync',
+        name: `${brand.executableName}.Exchange`,
+        description: `${brand.productName} exchange file`,
+        role: 'Editor',
+        mimeType: 'application/vnd.aio-exchange+zip',
+        icon: 'icon',
+        rank: 'Owner',
+      },
+      // M9: an identity card (.aioid) adds a person to a team project
+      {
+        ext: 'aioid',
+        name: `${brand.executableName}.IdentityCard`,
+        description: `${brand.productName} identity card`,
+        role: 'Viewer',
+        mimeType: 'application/vnd.aio-idcard+json',
+        icon: 'icon',
         rank: 'Owner',
       },
     ],

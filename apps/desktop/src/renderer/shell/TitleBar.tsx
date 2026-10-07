@@ -6,6 +6,7 @@ import { cloudAiBlocked } from '../player';
 import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
 import { help } from '../help/store';
+import { SyncStatus } from '../team/SyncStatus';
 
 const VIEW_LABEL: Record<Screen, MessageKey> = {
   projects: 'nav.projects',
@@ -124,6 +125,7 @@ export function TitleBar() {
             {t('titlebar.copyOf', { file: origin.package })}
           </span>
         )}
+        <SyncStatus />
         <span className="chip-status" title={t('titlebar.offlineTip')}>
           <Icon name="offline" size={14} />
           {t('titlebar.offline')}
