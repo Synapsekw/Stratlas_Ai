@@ -9,6 +9,7 @@ import {
   ecefToLocal,
   enuToEcefMatrix,
   geodeticToEcef,
+  geoidShift,
   localToEcef,
   localToEcefMatrix,
   projectToLonLat,
@@ -287,5 +288,20 @@ describe('sites and issue pins', () => {
         ],
       }),
     ).toBe('2026-03-04');
+  });
+});
+
+describe('tilesets with project heights as ellipsoidal (G7 extras)', () => {
+  const extras = { aio: { heights: 'project-heights-as-ellipsoidal', originLonLat: [53.5, 29.3] } };
+  it('lifts them by the geoid separation at the site, along the vertical', () => {
+    const shift = geoidShift(extras, () => -21.5);
+    expect(Math.hypot(...(shift ?? [0, 0, 0]))).toBeCloseTo(21.5, 9);
+    const up = geodeticToEcef(53.5, 29.3, 1);
+    const at = geodeticToEcef(53.5, 29.3, 0);
+    const dz = up[2] - at[2];
+    expect((shift?.[2] ?? 0) / dz).toBeCloseTo(-21.5, 6);
+    expect(geoidShift(extras, () => 0)).toBeNull();
+    expect(geoidShift({ aio: { heights: 'ellipsoidal' } }, () => 5)).toBeNull();
+    expect(geoidShift(undefined, () => 5)).toBeNull();
   });
 });

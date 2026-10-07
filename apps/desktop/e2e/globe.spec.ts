@@ -101,58 +101,40 @@ test.beforeEach(async ({ dataRoot }) => {
   await writeGlobeProject(dataRoot, SITE_B, []);
 });
 
-/** The packs as `RasterPackInfo` and their bytes (base64), for `GlobeController.setPacks`. */
-function syntheticPacks() {
-  const imagery = pmtilesOf({
-    bbox: PACK_BBOX,
-    minZoom: 0,
-    maxZoom: 14,
-    tile: solidPng(256, MAGENTA),
-    tileType: 'png',
-  });
-  const terrain = pmtilesOf({
-    bbox: PACK_BBOX,
-    minZoom: 0,
-    maxZoom: 12,
-    tile: terrariumPng(256, BENCHMARK_M),
-    tileType: 'png',
-  });
-  const info = (m: ReturnType<typeof syntheticPackMeta>, bytes: Buffer) => ({
-    ...m,
-    sizeBytes: bytes.length,
-  });
-  return {
-    imagery: info(syntheticPackMeta('syn-imagery', 'imagery', PACK_BBOX, 0, 14), imagery),
-    terrain: info(syntheticPackMeta('syn-terrain', 'terrain', PACK_BBOX, 0, 12), terrain),
-    bytes: { 'syn-imagery': imagery.toString('base64'), 'syn-terrain': terrain.toString('base64') },
-  };
-}
-
 /**
- * Give the open Globe the synthetic packs, read from memory (the app reads installed packs from
- * `aio://packs/<kind>/<id>.pmtiles`; here the bytes come from the test).
+ * Install synthetic imagery and terrain packs in the data folder (`packs/{imagery,terrain}/`,
+ * `aio.raster-pack/1` beside the archive), as **Import imagery** or a pack download leaves them:
+ * the Globe lists them with `globe:packs` and reads them over `aio://packs/<kind>/<id>.pmtiles`.
  */
-async function usePacks(win: Page) {
-  const packs = syntheticPacks();
-  await win.evaluate((p) => {
-    const el = document.querySelector('[data-testid="globe-canvas"]');
-    const c = (el as { __aioGlobe?: { setPacks: (...a: unknown[]) => void } } | null)?.__aioGlobe;
-    if (!c) throw new Error('no Globe');
-    const buffers: Record<string, ArrayBuffer> = {};
-    for (const [id, b64] of Object.entries(p.bytes)) {
-      const bin = atob(b64);
-      const u8 = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-      buffers[id] = u8.buffer;
-    }
-    c.setPacks([p.imagery], [p.terrain], (pack: { id: string }) => ({
-      getKey: () => `memory:${pack.id}`,
-      getBytes: (offset: number, length: number) =>
-        Promise.resolve({
-          data: (buffers[pack.id] ?? new ArrayBuffer(0)).slice(offset, offset + length),
-        }),
-    }));
-  }, packs);
+async function installSyntheticPacks(dataRoot: DataRoot): Promise<void> {
+  const packs = [
+    {
+      meta: syntheticPackMeta('syn-imagery', 'imagery', PACK_BBOX, 0, 14),
+      bytes: pmtilesOf({
+        bbox: PACK_BBOX,
+        minZoom: 0,
+        maxZoom: 14,
+        tile: solidPng(256, MAGENTA),
+        tileType: 'png',
+      }),
+    },
+    {
+      meta: syntheticPackMeta('syn-terrain', 'terrain', PACK_BBOX, 0, 12),
+      bytes: pmtilesOf({
+        bbox: PACK_BBOX,
+        minZoom: 0,
+        maxZoom: 12,
+        tile: terrariumPng(256, BENCHMARK_M),
+        tileType: 'png',
+      }),
+    },
+  ];
+  for (const { meta, bytes } of packs) {
+    const dir = join(dataRoot.root, 'packs', meta.kind);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, `${meta.id}.json`), JSON.stringify(meta));
+    await writeFile(join(dir, `${meta.id}.pmtiles`), bytes);
+  }
 }
 
 async function openGlobe(win: Page) {
@@ -240,7 +222,11 @@ test('spike: the Globe renders offline under the app CSP', async ({ app, win, ne
   expect(await network.outbound()).toEqual([]);
 });
 
-test('every library project is a site; packs draw with their credits', async ({ win }) => {
+test('every library project is a site; packs draw with their credits', async ({
+  win,
+  dataRoot,
+}) => {
+  await installSyntheticPacks(dataRoot);
   await openGlobe(win);
   const list = win.getByTestId('globe-sites');
   await expect(list.getByRole('button')).toHaveCount(3); // A, B and the tiny e2e project
@@ -248,7 +234,9 @@ test('every library project is a site; packs draw with their credits', async ({ 
   await expect(list).toContainText(SITE_B.name);
   await expect(list).toContainText('1 open issue');
   await expectAccessible(win, 'Globe');
-  await usePacks(win);
+  await expect(win.locator('.globe-field select').first()).toContainText(
+    'Synthetic imagery (syn-imagery)',
+  );
   await flyToSite(win, SITE_A.name);
   await expect
     .poll(

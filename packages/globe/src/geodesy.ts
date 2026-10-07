@@ -146,3 +146,22 @@ export function applyMatrix(m: readonly number[], p: Vec3): Vec3 {
     at(2) * p[0] + at(6) * p[1] + at(10) * p[2] + at(14),
   ];
 }
+
+/**
+ * Tilesets written by `tiles.mesh` and `tiles.cloud` take project heights as ellipsoidal heights
+ * (`extras.aio.heights`, G7): the Globe lifts them by the geoid separation at the site, the one
+ * vertical shift G7 leaves to it. Null when there is nothing to shift.
+ */
+export function geoidShift(
+  extras: unknown,
+  geoid: (lon: number, lat: number) => number,
+): Vec3 | null {
+  const aio = (extras as { aio?: { heights?: unknown; originLonLat?: unknown } } | undefined)?.aio;
+  const ll = aio?.originLonLat;
+  if (aio?.heights !== 'project-heights-as-ellipsoidal' || !Array.isArray(ll)) return null;
+  const [lon, lat] = ll as [number, number];
+  const n = geoid(lon, lat);
+  if (!Number.isFinite(n) || n === 0) return null;
+  const { u } = enuBasis(lon, lat);
+  return [u[0] * n, u[1] * n, u[2] * n];
+}

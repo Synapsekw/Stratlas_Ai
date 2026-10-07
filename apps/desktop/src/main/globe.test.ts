@@ -9,7 +9,6 @@ import {
   globeSites,
   originLonLat,
   registerGlobeIpc,
-  scanRasterPacks,
   type GlobeProject,
 } from './globe';
 import { collectHandlers } from './notYet';
@@ -151,28 +150,25 @@ describe('raster packs and Globe settings', () => {
     builtAt: '2026-10-07T00:00:00.000Z',
   });
 
-  it('lists packs with metadata and an archive, and nothing else', async () => {
+  it("lists the installed packs through G7's raster pack lister", async () => {
     const img = join(dir, 'packs', 'imagery');
-    const ter = join(dir, 'packs', 'terrain');
     await mkdir(img, { recursive: true });
-    await mkdir(ter, { recursive: true });
     await writeFile(join(img, 'gcc.json'), JSON.stringify(meta('gcc', 'imagery')));
     await writeFile(join(img, 'gcc.pmtiles'), Buffer.alloc(1234));
-    await writeFile(join(img, 'orphan.json'), JSON.stringify(meta('orphan', 'imagery')));
-    await writeFile(join(img, 'wrong.json'), JSON.stringify(meta('other', 'imagery')));
-    await writeFile(join(img, 'bad.json'), '{');
-    await writeFile(join(ter, 'dem.json'), JSON.stringify(meta('dem', 'terrain')));
-    await writeFile(join(ter, 'dem.pmtiles'), Buffer.alloc(10));
-    const imagery = await scanRasterPacks(dir, 'imagery');
-    expect(imagery.map((p) => [p.id, p.sizeBytes, p.attribution])).toEqual([
-      ['gcc', 1234, 'Synthetic test pack'],
-    ]);
-    expect((await scanRasterPacks(dir, 'terrain'))[0]).toMatchObject({
-      id: 'dem',
-      encoding: 'terrarium',
-      verticalDatum: 'egm2008',
+    const ipc = collectHandlers((handle) => {
+      registerGlobeIpc({
+        handle,
+        library: () => Promise.resolve([]),
+        readProject: () => Promise.resolve(null),
+        dataRoot: () => Promise.resolve(dir),
+        settingsFile: join(dir, 'globe.json'),
+      });
     });
-    expect(await scanRasterPacks(join(dir, 'none'), 'imagery')).toEqual([]);
+    expect(await ipc.call('globe:packs', {})).toMatchObject({
+      ok: true,
+      imagery: [{ id: 'gcc', sizeBytes: 1234, attribution: 'Synthetic test pack' }],
+      terrain: [],
+    });
   });
 
   it('answers every channel: sites, packs, and settings saved in globe.json', async () => {

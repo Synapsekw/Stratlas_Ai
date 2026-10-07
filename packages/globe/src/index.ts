@@ -50,6 +50,7 @@ export {
   enuBasis,
   enuToEcefMatrix,
   geodeticToEcef,
+  geoidShift,
   localToEcef,
   localToEcefMatrix,
   projectToLonLat,

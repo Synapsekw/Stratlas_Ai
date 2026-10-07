@@ -8,21 +8,19 @@
 import { projectToLonLat } from '@aio/globe';
 import {
   GlobeSettings,
-  RASTER_PACK_DIRS,
-  RasterPackInfo,
-  RasterPackMeta,
   TilesetsFile,
   defaultGlobeSettings,
   type GlobeSite,
   type Issue,
   type LibraryEntry,
   type ProjectManifest,
+  type RasterPackInfo,
   type RasterPackKind,
 } from '@aio/schema';
-import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { readJson, writeJsonAtomic } from './fsutil';
 import type { Handle } from './notYet';
+import { listRasterPacks } from './packs/raster';
 import { readIssues, readManifest, type ProjectRegistry } from './project';
 
 /** A library project's records, read for the Globe; null when it cannot be read. */
@@ -42,7 +40,7 @@ export interface GlobeIpcDeps {
   dataRoot: () => Promise<string>;
   /** userData `globe.json`. */
   settingsFile: string;
-  /** The raster packs of a kind; defaults to reading their metadata from the data folder. */
+  /** The raster packs of a kind; defaults to G7's `listRasterPacks` over the data folder. */
   rasterPacks?: (kind: RasterPackKind) => Promise<RasterPackInfo[]>;
 }
 
@@ -120,34 +118,6 @@ export async function readTilesets(root: string): Promise<TilesetsFile | null> {
   return parsed.success ? parsed.data : null;
 }
 
-/**
- * The raster packs of a kind in `<data>/packs/<kind>/`: each `<id>.json` (`aio.raster-pack/1`)
- * beside its `<id>.pmtiles`. Unreadable or mismatched metadata is skipped.
- */
-export async function scanRasterPacks(
-  dataRoot: string,
-  kind: RasterPackKind,
-): Promise<RasterPackInfo[]> {
-  const dir = join(dataRoot, RASTER_PACK_DIRS[kind]);
-  let names: string[];
-  try {
-    names = (await readdir(dir)).filter((n) => n.toLowerCase().endsWith('.json')).sort();
-  } catch {
-    return [];
-  }
-  const out: RasterPackInfo[] = [];
-  for (const name of names) {
-    const meta = RasterPackMeta.safeParse(await readJson(join(dir, name)).catch(() => undefined));
-    if (!meta.success || meta.data.kind !== kind || `${meta.data.id}.json` !== name) continue;
-    const size = await stat(join(dir, `${meta.data.id}.pmtiles`)).catch(() => null);
-    if (!size?.isFile()) continue;
-    // the list item drops what only the file has (`schema`, newer fields)
-    const info = RasterPackInfo.safeParse({ ...meta.data, sizeBytes: size.size });
-    if (info.success) out.push(info.data);
-  }
-  return out;
-}
-
 /** userData `globe.json`, or the defaults (missing or not readable). */
 export async function readGlobeSettings(file: string): Promise<GlobeSettings> {
   const parsed = GlobeSettings.safeParse(await readJson(file).catch(() => undefined));
@@ -158,7 +128,7 @@ export function registerGlobeIpc(deps: GlobeIpcDeps): void {
   const { handle } = deps;
   const packs =
     deps.rasterPacks ??
-    (async (kind: RasterPackKind) => scanRasterPacks(await deps.dataRoot(), kind));
+    (async (kind: RasterPackKind) => listRasterPacks(await deps.dataRoot(), kind));
 
   handle('globe:sites', async () => {
     try {

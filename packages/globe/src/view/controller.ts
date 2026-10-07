@@ -34,6 +34,7 @@ import { siteToGlobe, type GlobeCamera, type SiteCamera } from '../camera';
 import {
   ecefToGeodetic,
   enuBasis,
+  geoidShift,
   localToEcef,
   localToEcefMatrix,
   type SiteGeoref,
@@ -395,6 +396,13 @@ export class GlobeController {
           tileset.modelMatrix = Matrix4.multiply(
             frame,
             Matrix4.fromArray(e.transform),
+            new Matrix4(),
+          );
+        const shift = geoidShift(tileset.extras, this.o.geoid ?? NO_GEOID);
+        if (shift)
+          tileset.modelMatrix = Matrix4.multiply(
+            Matrix4.fromTranslation(new Cartesian3(...shift)),
+            tileset.modelMatrix,
             new Matrix4(),
           );
         this.scene.primitives.add(tileset);
