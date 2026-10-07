@@ -72,7 +72,7 @@ import {
   RasterPackInfo,
   TerrainImportRequest,
 } from './globe';
-import { TilesetsFile } from './tilesets';
+import { TilesetEntry, TilesetsFile } from './tilesets';
 
 const Empty = z.object({}).strict();
 
@@ -466,6 +466,8 @@ export const EXPORT_FORMATS = [
   // M9 (T1): the audit trail, under the existing package kind `files` (no new ExportKind)
   'audit-csv',
   'audit-json',
+  // M10 (G4): a photogrammetry run's accuracy report, under the existing kind `report-pdf`
+  'photo-report-pdf',
 ] as const;
 export const ExportFormat = z.enum(EXPORT_FORMATS);
 
@@ -483,6 +485,7 @@ export const EXPORT_FORMAT_KIND = {
   'house-pdf': 'report-pdf',
   'audit-csv': 'files',
   'audit-json': 'files',
+  'photo-report-pdf': 'report-pdf',
 } as const satisfies Record<z.infer<typeof ExportFormat>, ExportKind>;
 
 export const ReportFile = z.object({
@@ -2085,6 +2088,25 @@ export const ipc = {
       Failure,
     ]),
   },
+  /**
+   * One source photo of a run, for marking ground control when the photos are read in place
+   * (`PhotoSource.folders`, outside the project). Read-only, and only below the run's recorded photo
+   * folders: `photo` is the key of `sparse/photos.json` (or a photos layer photo id); any other path
+   * is refused (`not-found`).
+   */
+  'photo:readPhoto': {
+    request: z
+      .object({ projectId: ProjectId, run: PhotoRunId, photo: z.string().min(1).max(1024) })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        mime: z.enum(['image/jpeg', 'image/png', 'image/tiff']),
+        data: z.instanceof(Uint8Array),
+      }),
+      Failure,
+    ]),
+  },
   /** Move a run's `work/` folder to the recycle bin (never its outputs); asks first in the UI. */
   'photo:cleanWork': {
     request: z.object({ projectId: ProjectId, run: PhotoRunId }).strict(),
@@ -2141,6 +2163,26 @@ export const ipc = {
   'tilesets:write': {
     request: z.object({ projectId: ProjectId, file: TilesetsFile }).strict(),
     response: OkOrFailure,
+  },
+  /**
+   * **Import 3D Tiles**: copy a 3D Tiles 1.0/1.1 tileset from another program (its root
+   * `tileset.json` and every file below that folder) into `tiles/<id>/` and list it as `imported`
+   * (not visible until its placement is confirmed). Refused (`read-only`) for packages.
+   */
+  'tilesets:import': {
+    request: z
+      .object({
+        projectId: ProjectId,
+        /** The root `tileset.json` on disk. */
+        path: z.string().min(1).max(1024),
+        name: z.string().min(1).max(200).optional(),
+        attribution: z.string().max(500).optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), entry: TilesetEntry }),
+      Failure,
+    ]),
   },
   'imageryPacks:list': {
     request: Empty,

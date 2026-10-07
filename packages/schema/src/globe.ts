@@ -110,6 +110,8 @@ export const TerrainImportRequest = z
     attribution: z.string().min(1).max(500),
     provenance: z.string().max(300).optional(),
     verticalDatum: TerrainDatum,
+    /** Customer-licensed elevation (decision 12): kept out of packages unless ticked. */
+    customerLicence: z.boolean().optional(),
   })
   .strict();
 

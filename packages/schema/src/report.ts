@@ -54,6 +54,8 @@ export const ReportSectionId = z.enum([
   // M9: the change log per issue and the head hash (T1); the sign-off block (T3)
   'audit',
   'approvals',
+  // M10 (G4): photogrammetry accuracy (summary, GCP and checkpoint table, overlap map)
+  'processing',
 ]);
 export const REPORT_SECTIONS = ReportSectionId.options;
 

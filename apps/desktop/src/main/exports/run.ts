@@ -50,6 +50,7 @@ const SUFFIX: Record<ExportFormat, string> = {
   'house-pdf': '-report.pdf',
   'audit-csv': '-audit.csv',
   'audit-json': '-audit.json',
+  'photo-report-pdf': '-accuracy-report.pdf',
 };
 
 /** Save dialog filter per format. */
@@ -63,6 +64,7 @@ export const EXPORT_FILTERS: Record<ExportFormat, { name: string; extensions: st
   'house-pdf': { name: 'PDF', extensions: ['pdf'] },
   'audit-csv': { name: 'CSV', extensions: ['csv'] },
   'audit-json': { name: 'Signed audit JSON', extensions: ['json'] },
+  'photo-report-pdf': { name: 'PDF', extensions: ['pdf'] },
 };
 
 /** File name offered in the save dialog: the project name made file safe, plus the format. */

@@ -94,6 +94,7 @@ function fakeScene() {
       return () => targets.delete(o);
     },
     addProjectionReceiver: () => () => undefined,
+    addContentBounds: () => () => undefined,
   };
   return { scene, frames, targets };
 }

@@ -289,6 +289,42 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     where: 'photogrammetry/<run>/report/accuracy.json',
     since: '0.10',
   },
+  // M10 integration: the other files of a run, written by the pack (G2 alignment, G3 products).
+  {
+    family: 'aio.photo-align',
+    version: 1,
+    home: 'project',
+    where: 'photogrammetry/<run>/report/align.json',
+    since: '0.10',
+  },
+  {
+    family: 'aio.photo-cameras',
+    version: 1,
+    home: 'project',
+    where: 'photogrammetry/<run>/cameras-sfm.json',
+    since: '0.10',
+  },
+  {
+    family: 'aio.photo-frame',
+    version: 1,
+    home: 'project',
+    where: 'photogrammetry/<run>/sparse/frame.json',
+    since: '0.10',
+  },
+  {
+    family: 'aio.photo-list',
+    version: 1,
+    home: 'project',
+    where: 'photogrammetry/<run>/sparse/photos.json',
+    since: '0.10',
+  },
+  {
+    family: 'aio.photo-products',
+    version: 1,
+    home: 'project',
+    where: 'photogrammetry/<run>/report/products.json',
+    since: '0.10',
+  },
   { family: 'aio.tilesets', version: 1, home: 'project', where: 'tilesets.json', since: '0.10' },
   {
     family: 'aio.raster-pack',

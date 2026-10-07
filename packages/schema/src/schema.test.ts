@@ -236,6 +236,7 @@ describe('ipc contracts', () => {
       'masks-zip': 'zip',
       'report-pdf': 'pdf',
       'house-pdf': 'pdf',
+      'photo-report-pdf': 'pdf',
     } as const;
     for (const format of EXPORT_FORMATS) {
       // M9 audit exports fall under `files` (no new ExportKind for older players); their CSV and

@@ -129,6 +129,12 @@ describe('M10 additive rule: no layer kind, raster format, derived kind or recor
         'aio.gcp',
         'aio.globe-settings',
         'aio.photo-accuracy',
+        // integration: the other files of a run
+        'aio.photo-align',
+        'aio.photo-cameras',
+        'aio.photo-frame',
+        'aio.photo-list',
+        'aio.photo-products',
         'aio.photo-run',
         'aio.raster-pack',
         'aio.tilesets',

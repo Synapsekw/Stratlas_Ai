@@ -138,6 +138,8 @@ export const ImportItem = z.object({
     'pointcloud',
     'unknown',
     'drawing',
+    // M10 (G5): an OPF project (`project.opf`), imported by the `opf.import` pipeline
+    'opf',
   ]),
   /**
    * `needs-pipeline`: the conversion runs in the pipeline pack (LAS/LAZ/E57 to COPC, large

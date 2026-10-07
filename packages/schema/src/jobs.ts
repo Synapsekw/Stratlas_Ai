@@ -650,6 +650,8 @@ export const TerrainPackParams = z
   .object({
     ...rasterPackParams,
     verticalDatum: TerrainDatum,
+    /** As on imagery; optional here, absent means not customer-licensed (0.10 integration). */
+    customerLicence: z.boolean().optional(),
     format: z.enum(['webp', 'png']).optional(),
   })
   .strict();

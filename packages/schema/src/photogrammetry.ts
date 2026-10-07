@@ -29,6 +29,8 @@ export const PHOTO_RUN_FILES = {
   accuracy: 'report/accuracy.json',
   align: 'report/align.json',
   products: 'report/products.json',
+  /** Refined camera poses for **Use refined poses** (`aio.photo-cameras/1`, written by G2). */
+  camerasSfm: 'cameras-sfm.json',
   sparse: 'sparse/',
   work: 'work/',
 } as const;
@@ -162,6 +164,10 @@ export const PhotoEstimate = z.object({
   memoryBytes: z.number().int().nonnegative(),
   /** Plain-words notes ("Standard on 16 GB: images at half size"). */
   notes: z.array(z.string().max(300)).max(20).optional(),
+  /** Camera groups read from the EXIF sample (the wizard's camera step). */
+  cameras: z.array(PhotoCameraGroup).max(100).optional(),
+  /** The UTM zone of the photos' GNSS positions, offered when the project CRS is far from them. */
+  suggestedEpsg: z.number().int().positive().optional(),
 });
 
 /**
@@ -273,6 +279,11 @@ export const AccuracyPoint = z.looseObject({
   dzM: z.number(),
   reprojPx: z.number().nonnegative(),
   marks: z.number().int().nonnegative(),
+  /**
+   * Whether the point constrained the adjustment (a control point not left out as an outlier).
+   * Checkpoints are always false; absent in reports written before the integration.
+   */
+  usedInAdjustment: z.boolean().optional(),
 });
 
 export const AccuracyWarning = z.looseObject({
@@ -323,6 +334,48 @@ export const AccuracyReport = z.looseObject({
   warnings: z.array(AccuracyWarning).max(1000),
 });
 
+/** One lens calibration of the sparse model (COLMAP camera model and its parameters). */
+export const PhotoCalibration = z.looseObject({
+  id: z.string().min(1).max(64),
+  model: z.string().min(1).max(40),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  params: z.array(z.number()).max(32),
+});
+
+/** A refined camera in `cameras-sfm.json`: the photo key, its position and rotation. */
+export const PhotoSfmCamera = z.looseObject({
+  /** Photo key: the photos layer's photo id, or the file path below the run's image root. */
+  photo: z.string().min(1).max(1024),
+  /** Camera centre in the project's local frame (data-conventions section 1: x east, y up, z south). */
+  pos: Vec3,
+  /** three.js quaternion `[x, y, z, w]`, local frame, the camera looking down its -z. */
+  q: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+  lens: z.looseObject({
+    model: z.string().min(1).max(40),
+    hfovDeg: z.number().positive().max(360),
+    aspect: z.number().positive(),
+  }),
+  /** Id of the lens in `calibration`. */
+  camera: z.string().min(1).max(64).optional(),
+});
+
+/**
+ * `<project>/photogrammetry/<run>/cameras-sfm.json` (`aio.photo-cameras/1`), written by
+ * `photo.align` and `photo.georef`: the refined poses **Use refined poses** applies to the photos
+ * layer (with a `.bak`).
+ */
+export const PhotoCamerasFile = z.looseObject({
+  schema: z.literal('aio.photo-cameras/1'),
+  run: PhotoRunId,
+  crs: Crs,
+  /** The manifest origin the local frame is measured from (easting, northing, height). */
+  origin: Vec3,
+  frame: z.string().max(200).optional(),
+  calibration: z.array(PhotoCalibration).max(100),
+  cameras: z.array(PhotoSfmCamera).max(100_000),
+});
+
 /** A run in the runs list (`photo:runs`). */
 export const PhotoRunSummary = z.object({
   id: PhotoRunId,
@@ -353,3 +406,6 @@ export type GcpPoint = z.infer<typeof GcpPoint>;
 export type GcpFile = z.infer<typeof GcpFile>;
 export type AccuracyReport = z.infer<typeof AccuracyReport>;
 export type PhotoRunSummary = z.infer<typeof PhotoRunSummary>;
+export type PhotoCalibration = z.infer<typeof PhotoCalibration>;
+export type PhotoSfmCamera = z.infer<typeof PhotoSfmCamera>;
+export type PhotoCamerasFile = z.infer<typeof PhotoCamerasFile>;
