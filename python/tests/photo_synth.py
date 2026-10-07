@@ -65,6 +65,7 @@ from PIL import Image
 from PIL.TiffImagePlugin import IFDRational
 
 GENERATOR = "photo_synth/1"
+RENDER_END = "# " + "=" * 69 + " end of the rendered part"
 DEFAULT_SEED = 20261007
 JPEG_QUALITY = 90
 
@@ -1327,6 +1328,56 @@ def plan_shots(scene: Scene, seed: int = DEFAULT_SEED, flight: FlightPlan = FLIG
     return shots
 
 
+def _render_job(args) -> tuple[str, bytes]:
+    seed, size, shot, cache = args
+    if cache is not None:
+        p = Path(cache) / f"{shot.name}.jpg"
+        if p.exists():
+            return shot.name, p.read_bytes()
+    scene = Scene(seed, variant=shot.scene_seed_offset)
+    cam = camera_for(size)
+    ss = 2 if size != "full" else 1
+    img = render(scene, cam, shot, ss=ss)
+    idx = int(shot.name[4:8])
+    gain = 1 + 0.03 * float(np.random.default_rng(seed * 1000 + idx).normal())
+    u8 = finish(img, cam, seed * 1000 + idx, gain)
+    if shot.blur_px:
+        blurred = motion_blur(u8, round(shot.blur_px * cam.width / CAMERA.width))
+        u8 = np.clip(np.round(blurred), 0, 255).astype(np.uint8)
+    data = jpeg_bytes(u8)
+    if cache is not None:
+        p = Path(cache) / f"{shot.name}.jpg"
+        tmp = p.with_suffix(f".{os.getpid()}.tmp")
+        tmp.write_bytes(data)
+        os.replace(tmp, p)
+    return shot.name, data
+
+
+def camera_for(size: str) -> Camera:
+    if size == "full":
+        return CAMERA
+    if size == "quick":
+        return CAMERA.scaled(QUICK_WIDTH)
+    if size == "mini":
+        return CAMERA.scaled(MINI_WIDTH)
+    raise ValueError(size)
+
+
+MINI_NADIR = tuple(f"SYN_{k:04d}.JPG" for k in (13, 14, 15, 23, 24, 25, 33, 34, 35))
+
+
+def mini_shots(scene: Scene, seed: int) -> list[Shot]:
+    """The mini set: nine nadir photos over the middle of the site (a 3 x 3 block of the grid,
+    with GCP5, CHK1 and CHK2 in view) and the five bad images, at 960 x 720. Same names and poses
+    as in the quick set."""
+    return [s for s in plan_shots(scene, seed) if s.name in MINI_NADIR or s.kind not in ("nadir", "oblique")]
+
+
+# Everything above decides the pixels of a photo (scene, camera, flight, rendering): the render
+# cache key hashes it. Below: metadata, truth and side files, written fresh on every run.
+# ===================================================================== end of the rendered part
+
+
 # --------------------------------------------------------------------------------------- metadata
 
 
@@ -1573,6 +1624,15 @@ def build_truth(
     )
     lon0, lat0 = utm_to_lonlat(SITE.epsg, SITE.origin[0], SITE.origin[1])
     gsd = cam.gsd_cm(FLIGHT.altitude_agl)
+    # a known ground height (the take-off point) for terrain packs made from the true DTM
+    blon, blat = utm_to_lonlat(SITE.epsg, takeoff[0], takeoff[1])
+    benchmark = {
+        "name": "take-off point",
+        "xyz": [_r(v, 4) for v in takeoff],
+        "lonLat": [round(blon, 9), round(blat, 9)],
+        "heightM": _r(takeoff[2], 4),
+        "datum": "ellipsoid (WGS 84)",
+    }
     return {
         "schema": "aio.photo-truth/1",
         "generator": {"name": GENERATOR, "seed": seed, "set": size, "variant": variant.name},
@@ -1581,7 +1641,8 @@ def build_truth(
             "crs": {"epsg": SITE.epsg},
             "heights": "ellipsoidal (WGS 84)",
             "origin": list(SITE.origin),
-            "originLonLat": [round(lon0, 9), round(lat0, 9)],
+            "lonLat": [round(lon0, 9), round(lat0, 9)],
+            "benchmark": benchmark,
             "localFrame": "x east, y north, z up; metres from origin in the projected grid",
         },
         "conventions": {
@@ -1653,10 +1714,20 @@ def build_truth(
         "grids": {
             "dsm": "truth/dsm.tif",
             "dtm": "truth/dtm.tif",
+            "ortho": "truth/ortho.tif",
             "resolutionM": GRID_RES,
             "bounds": list(GRID_BOUNDS),
+            "note": "cell centres; heights ellipsoidal; bounds local west, south, east, north",
         },
-        "mesh": {"file": "truth/mesh.glb", "frame": "glTF: Y up; X east, Y up, Z south, metres from origin"},
+        "mesh": {
+            "file": "truth/mesh.glb",
+            "frame": "glTF: Y up; X east, Y up, Z south, metres from origin (projected grid offsets)",
+        },
+        "tiles": {
+            "truth-mesh": "tiles/truth-mesh/tileset.json",
+            "truth-cloud": "tiles/truth-cloud/tileset.json",
+            "frame": "3D Tiles 1.1: east-north-up at the origin, every vertex through geodetic and ECEF",
+        },
         "files": {
             "photos": "photos/",
             "gcp": "gcp.csv",
@@ -1664,6 +1735,8 @@ def build_truth(
             "gcpList": "gcp_list.txt",
             "ppk": "ppk.csv",
             "hashes": "images.sha256",
+            "alignment": "alignment/alignment.json",
+            "sparse": "alignment/sparse/",
         },
     }
 
@@ -1741,58 +1814,371 @@ def write_mesh(scene: Scene, path: Path) -> None:
     path.write_bytes(truth_mesh(scene).export(file_type="glb"))
 
 
+def top_colour(scene: Scene, x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """Colour of the top surface seen from straight above, lit by the sun (no shadows)."""
+    z = scene.ground(x, y)
+    col = scene.ground_albedo(x, y)
+    zt = z.copy()
+    for o in scene.objects:
+        top = o.top(x, y)
+        m = np.nonzero(top > zt)[0]
+        if m.size:
+            p = np.stack([x[m], y[m], top[m]], axis=1)
+            col[m] = o.albedo(p, np.tile([0.0, 0.0, 1.0], (m.size, 1)))
+            zt[m] = top[m]
+    _, gx, gy = scene.ground(x, y, grad=True)
+    on_ground = zt <= z
+    n = np.stack([np.where(on_ground, -gx, 0), np.where(on_ground, -gy, 0), np.ones_like(x)], axis=1)
+    n /= np.linalg.norm(n, axis=1)[:, None]
+    return np.clip(col * (0.36 + 0.72 * np.maximum(n @ SUN, 0))[:, None], 0, 1)
+
+
+def write_ortho(scene: Scene, path: Path) -> None:
+    """The true orthophoto (top colours at the truth grids' cells), an RGB GeoTIFF."""
+    import rasterio
+    from rasterio.transform import from_origin
+
+    x0, y0, x1, y1 = GRID_BOUNDS
+    n = round((x1 - x0) / GRID_RES)
+    X, Y = np.meshgrid(x0 + (np.arange(n) + 0.5) * GRID_RES, y1 - (np.arange(n) + 0.5) * GRID_RES)
+    rgb = (top_colour(scene, X.ravel(), Y.ravel()) * 255).round().astype(np.uint8).reshape(n, n, 3)
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=n,
+        width=n,
+        count=3,
+        dtype="uint8",
+        crs=f"EPSG:{SITE.epsg}",
+        transform=from_origin(SITE.origin[0] + x0, SITE.origin[1] + y1, GRID_RES, GRID_RES),
+        compress="deflate",
+        photometric="RGB",
+    ) as d:
+        d.write(np.moveaxis(rgb, 2, 0))
+
+
+# ------------------------------------------------------------------------ ECEF and 3D Tiles
+
+_E2 = _F * (2 - _F)
+
+
+def utm_to_lonlat_np(epsg: int, e: np.ndarray, n: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """``utm_to_lonlat`` for arrays (radians out)."""
+    zone, south = _zone(epsg)
+    xi = (n - (10000000.0 if south else 0.0)) / (_K0 * _AA)
+    eta = (e - 500000.0) / (_K0 * _AA)
+    xp, ep = xi.copy(), eta.copy()
+    for j, b in enumerate(_BETA, 1):
+        xp -= b * np.sin(2 * j * xi) * np.cosh(2 * j * eta)
+        ep -= b * np.cos(2 * j * xi) * np.sinh(2 * j * eta)
+    chi = np.arcsin(np.sin(xp) / np.cosh(ep))
+    lat = chi + sum(d * np.sin(2 * j * chi) for j, d in enumerate(_DELTA, 1))
+    lon = math.radians(zone * 6 - 183) + np.arctan2(np.sinh(ep), np.cos(xp))
+    return lon, lat
+
+
+def ecef(lon: np.ndarray, lat: np.ndarray, h: np.ndarray) -> np.ndarray:
+    """Geodetic (radians, ellipsoidal metres) to ECEF metres, (n, 3)."""
+    nn = _A / np.sqrt(1 - _E2 * np.sin(lat) ** 2)
+    return np.stack(
+        [
+            (nn + h) * np.cos(lat) * np.cos(lon),
+            (nn + h) * np.cos(lat) * np.sin(lon),
+            (nn * (1 - _E2) + h) * np.sin(lat),
+        ],
+        axis=1,
+    )
+
+
+def enu_frame(site: Site = SITE) -> tuple[np.ndarray, np.ndarray]:
+    """The east-north-up frame at the site origin: (rows east, north, up; origin in ECEF)."""
+    lon, lat = utm_to_lonlat_np(site.epsg, np.array([site.origin[0]]), np.array([site.origin[1]]))
+    o = ecef(lon, lat, np.array([site.origin[2]]))[0]
+    sl, cl, sp, cp = math.sin(lon[0]), math.cos(lon[0]), math.sin(lat[0]), math.cos(lat[0])
+    rows = np.array([[-sl, cl, 0.0], [-sp * cl, -sp * sl, cp], [cp * cl, cp * sl, sp]])
+    return rows, o
+
+
+def local_to_enu(p_local: np.ndarray, site: Site = SITE) -> np.ndarray:
+    """Local grid offsets (x east, y north, z up from the origin, in the projected CRS) to true
+    east-north-up metres at the origin, per point through geodetic coordinates and ECEF (never a
+    UTM-as-metres shortcut: the grid's scale and convergence are a few centimetres per 100 m)."""
+    p = np.asarray(p_local, dtype=np.float64)
+    lon, lat = utm_to_lonlat_np(site.epsg, p[:, 0] + site.origin[0], p[:, 1] + site.origin[1])
+    xyz = ecef(lon, lat, p[:, 2] + site.origin[2])
+    rows, o = enu_frame(site)
+    return (xyz - o) @ rows.T
+
+
+def _tileset(content: str, enu: np.ndarray) -> dict[str, Any]:
+    rows, o = enu_frame()
+    m = np.eye(4)
+    m[:3, :3] = rows.T  # columns: east, north, up in ECEF
+    m[:3, 3] = o
+    lo, hi = enu.min(axis=0), enu.max(axis=0)
+    c, h = (lo + hi) / 2, (hi - lo) / 2 + 0.01
+    return {
+        "asset": {"version": "1.1", "generator": GENERATOR},
+        "geometricError": 100,
+        "root": {
+            # east-north-up at the site origin; content is glTF (Y up), so X east, Y up, Z south
+            "transform": [_r(v, 12) for v in m.T.ravel()],
+            "boundingVolume": {"box": [_r(v, 4) for v in (*c, h[0], 0, 0, 0, h[1], 0, 0, 0, h[2])]},
+            "geometricError": 0,
+            "refine": "REPLACE",
+            "content": {"uri": content},
+        },
+    }
+
+
+def write_tiles(scene: Scene, out: Path) -> dict[str, str]:
+    """3D Tiles 1.1 of the true surface: ``truth-mesh`` (the truth mesh with vertex colours) and
+    ``truth-cloud`` (points every 0.5 m on the top surface), each one tile in east-north-up at the
+    origin with every vertex converted through the CRS. Returns {id: tileset path}."""
+    import trimesh
+
+    mesh = truth_mesh(scene)
+    v = mesh.vertices
+    local = np.stack([v[:, 0], -v[:, 2], v[:, 1]], axis=1)
+    enu = local_to_enu(local)
+    col = top_colour(scene, local[:, 0], local[:, 1])
+    mesh.vertices = np.stack([enu[:, 0], enu[:, 2], -enu[:, 1]], axis=1)
+    mesh.visual = trimesh.visual.ColorVisuals(mesh, vertex_colors=(col * 255).round().astype(np.uint8))
+    step = 0.5
+    x0, y0, x1, y1 = GRID_BOUNDS
+    X, Y = np.meshgrid(np.arange(x0 + step / 2, x1, step), np.arange(y0 + step / 2, y1, step))
+    x, y = X.ravel(), Y.ravel()
+    pts_local = np.stack([x, y, scene.dsm(x, y)], axis=1)
+    pts = local_to_enu(pts_local)
+    cloud = trimesh.PointCloud(
+        np.stack([pts[:, 0], pts[:, 2], -pts[:, 1]], axis=1),
+        colors=(top_colour(scene, x, y) * 255).round().astype(np.uint8),
+    )
+    made = {}
+    for tid, geom, enu_pts, name in (
+        ("truth-mesh", mesh, enu, "mesh.glb"),
+        ("truth-cloud", cloud, pts, "cloud.glb"),
+    ):
+        d = out / tid
+        d.mkdir(parents=True, exist_ok=True)
+        (d / name).write_bytes(geom.export(file_type="glb"))
+        (d / "tileset.json").write_text(json.dumps(_tileset(name, enu_pts), indent=2) + "\n", encoding="utf8")
+        made[tid] = f"{tid}/tileset.json"
+    return made
+
+
+# ---------------------------------------------------------------- precomputed alignment (the demo)
+
+# A GNSS-only alignment is off from the truth by a small similarity (the flight's GNSS bias). The
+# demo's precomputed alignment applies this one, so predicted GCP marks land near the targets, not
+# on them, as they do after a real ``photo.align``; marking and ``photo.georef`` close the gap.
+ALIGN_SHIFT = (1.1, -0.7, 0.9)
+ALIGN_ROT_DEG = 0.015
+ALIGN_SCALE = 1.0003
+
+
+def _similarity() -> tuple[float, np.ndarray, np.ndarray]:
+    a = math.radians(ALIGN_ROT_DEG)
+    rot = np.array([[math.cos(a), -math.sin(a), 0.0], [math.sin(a), math.cos(a), 0.0], [0.0, 0.0, 1.0]])
+    return ALIGN_SCALE, rot, np.array(ALIGN_SHIFT)
+
+
+def aligned(p_local) -> np.ndarray:
+    """Where the precomputed (GNSS-only) alignment puts local points."""
+    s, rot, t = _similarity()
+    return s * (np.atleast_2d(np.asarray(p_local, dtype=np.float64)) @ rot.T) + t
+
+
+def _project_rc(cam: Camera, centre: np.ndarray, rot: np.ndarray, p: np.ndarray) -> np.ndarray:
+    xc = (np.atleast_2d(p) - centre) @ rot.T
+    with np.errstate(divide="ignore", invalid="ignore"):
+        x, y = xc[:, 0] / xc[:, 2], xc[:, 1] / xc[:, 2]
+        xd, yd = cam.distort(x, y)
+    uv = np.stack([cam.fx * xd + cam.cx, cam.fy * yd + cam.cy], axis=1)
+    uv[(xc[:, 2] <= 0) | (x * x + y * y > 1.1 * cam.r2_max())] = np.nan
+    return uv
+
+
+def _quat(rot: np.ndarray) -> tuple[float, float, float, float]:
+    """Hamilton quaternion (w, x, y, z) of a rotation matrix, w >= 0."""
+    m = rot
+    tr = m[0, 0] + m[1, 1] + m[2, 2]
+    if tr > 0:
+        s = math.sqrt(tr + 1.0) * 2
+        q = (0.25 * s, (m[2, 1] - m[1, 2]) / s, (m[0, 2] - m[2, 0]) / s, (m[1, 0] - m[0, 1]) / s)
+    elif m[0, 0] > m[1, 1] and m[0, 0] > m[2, 2]:
+        s = math.sqrt(1.0 + m[0, 0] - m[1, 1] - m[2, 2]) * 2
+        q = ((m[2, 1] - m[1, 2]) / s, 0.25 * s, (m[0, 1] + m[1, 0]) / s, (m[0, 2] + m[2, 0]) / s)
+    elif m[1, 1] > m[2, 2]:
+        s = math.sqrt(1.0 + m[1, 1] - m[0, 0] - m[2, 2]) * 2
+        q = ((m[0, 2] - m[2, 0]) / s, (m[0, 1] + m[1, 0]) / s, 0.25 * s, (m[1, 2] + m[2, 1]) / s)
+    else:
+        s = math.sqrt(1.0 + m[2, 2] - m[0, 0] - m[1, 1]) * 2
+        q = ((m[1, 0] - m[0, 1]) / s, (m[0, 2] + m[2, 0]) / s, (m[1, 2] + m[2, 1]) / s, 0.25 * s)
+    return q if q[0] >= 0 else (-q[0], -q[1], -q[2], -q[3])
+
+
+def write_alignment(
+    scene: Scene,
+    cam: Camera,
+    shots: list[Shot],
+    truth: dict[str, Any],
+    out: Path,
+    seed: int,
+    n_points: int = 4000,
+) -> dict[str, Any]:
+    """The demo's precomputed ``photo.align``: ``alignment.json`` (aligned cameras, GCP predictions
+    per photo, the GNSS-only residual of every target, rejected photos) and ``sparse/`` (a COLMAP
+    text model: one FULL_OPENCV camera, the registered images and points on the true surface seen
+    in at least three photos, with 0.3 px observation noise). Coordinates are the local frame of
+    the truth (x east, y north, z up from the site origin, metres in EPSG:32639 and ellipsoidal
+    heights), after the alignment's similarity."""
+    rng = np.random.default_rng(seed + 23)
+    s, rot, t = _similarity()
+    by_name = {p["name"]: p for p in truth["photos"]}
+    registered = [sh for sh in shots if sh.kind in ("nadir", "oblique", "no-gps")]
+    cams = [(sh, aligned(sh.centre)[0], sh.rotation @ rot.T) for sh in registered]
+    gsd = cam.gsd_cm(FLIGHT.altitude_agl) / 100
+    radius = round(3 * float(np.linalg.norm(t)) / gsd, 1)
+    predictions: dict[str, list[dict[str, Any]]] = {}
+    residuals: dict[str, list[float]] = {}
+    for tg in truth["targets"]:
+        if tg["role"] == "blunder":
+            continue
+        stated = np.array(world_to_local(tg["stated"]))
+        true = np.array(tg["local"])
+        residuals[tg["id"]] = [_r(v, 4) for v in (aligned(true)[0] - true)]
+        seen = {o["photo"] for o in tg["observations"]}
+        preds = []
+        for sh, c, r in cams:
+            if sh.name not in seen:
+                continue
+            uv = _project_rc(cam, c, r, stated)[0]
+            if np.isfinite(uv).all() and 0 <= uv[0] <= cam.width and 0 <= uv[1] <= cam.height:
+                preds.append({"photo": sh.name, "px": [_r(uv[0], 2), _r(uv[1], 2)], "radiusPx": radius})
+        predictions[tg["id"]] = preds
+    # camera residuals to their geotags (GNSS only: the bias shows here, honestly)
+    res = []
+    for sh, c, _ in cams:
+        g = by_name[sh.name]["geotag"]
+        if "lat" not in g:
+            continue
+        e, n = lonlat_to_utm(SITE.epsg, g["lon"], g["lat"])
+        w = local_to_world(c)
+        res.append(
+            [w[0] - e, w[1] - n, w[2] - (g["absoluteAltitude"] - truth["geotags"]["absoluteAltitudeOffsetM"])]
+        )
+    res = np.array(res)
+    rh = np.hypot(res[:, 0], res[:, 1])
+    # sparse points on the true surface, with tracks
+    x = rng.uniform(-90, 90, n_points * 2)
+    y = rng.uniform(-90, 90, n_points * 2)
+    pts = np.stack([x, y, scene.dsm(x, y)], axis=1)
+    tracks: list[list[tuple[int, float, float]]] = [[] for _ in range(len(pts))]
+    for k, (sh, _, _) in enumerate(cams):
+        uv, z = project(cam, sh, pts)
+        inside = np.isfinite(uv).all(axis=1) & (uv[:, 0] > 1) & (uv[:, 0] < cam.width - 1)
+        inside &= (uv[:, 1] > 1) & (uv[:, 1] < cam.height - 1)
+        idx = np.nonzero(inside)[0]
+        if not idx.size:
+            continue
+        dvec = pts[idx] - sh.centre
+        dist = np.linalg.norm(dvec, axis=1)
+        tt, _, _ = scene.trace(sh.centre, dvec / dist[:, None])
+        ok = idx[np.abs(tt - dist) < 0.02]
+        noise = rng.normal(0, 0.3, (len(ok), 2))
+        for j, i in enumerate(ok):
+            tracks[i].append((k, uv[i, 0] + noise[j, 0], uv[i, 1] + noise[j, 1]))
+    keep = [i for i in range(len(pts)) if len(tracks[i]) >= 3][:n_points]
+    colours = top_colour(scene, pts[keep, 0], pts[keep, 1])
+    sparse = out / "sparse"
+    sparse.mkdir(parents=True, exist_ok=True)
+    c = cam
+    (sparse / "cameras.txt").write_text(
+        "# Camera list with one line of data per camera:\n"
+        "#   CAMERA_ID, MODEL, WIDTH, HEIGHT, PARAMS[]\n"
+        f"1 FULL_OPENCV {c.width} {c.height} {c.fx:.6f} {c.fy:.6f} {c.cx:.6f} {c.cy:.6f} "
+        f"{c.k1} {c.k2} {c.p1} {c.p2} {c.k3} 0 0 0\n",
+        encoding="utf8",
+    )
+    obs_of_image: list[list[tuple[float, float, int]]] = [[] for _ in cams]
+    point_lines = []
+    for pid, i in enumerate(keep, 1):
+        track = []
+        for k, u, v in tracks[i]:
+            obs_of_image[k].append((u, v, pid))
+            track.append(f"{k + 1} {len(obs_of_image[k]) - 1}")
+        p = aligned(pts[i])[0]
+        rgb = (colours[pid - 1] * 255).round().astype(int)
+        point_lines.append(
+            f"{pid} {p[0]:.4f} {p[1]:.4f} {p[2]:.4f} {rgb[0]} {rgb[1]} {rgb[2]} 0.30 {' '.join(track)}"
+        )
+    noise_px = np.hypot(*rng.normal(0, 0.3, (2, 4000)))
+    (sparse / "points3D.txt").write_text(
+        "# 3D point list with one line of data per point:\n"
+        "#   POINT3D_ID, X, Y, Z, R, G, B, ERROR, TRACK[] as (IMAGE_ID, POINT2D_IDX)\n"
+        + "\n".join(point_lines)
+        + "\n",
+        encoding="utf8",
+    )
+    image_lines = []
+    for k, (sh, cc, r) in enumerate(cams):
+        q = _quat(r)
+        tv = -r @ cc
+        image_lines.append(
+            f"{k + 1} {q[0]:.9f} {q[1]:.9f} {q[2]:.9f} {q[3]:.9f} {tv[0]:.6f} {tv[1]:.6f} {tv[2]:.6f} 1 {sh.name}"
+        )
+        image_lines.append(" ".join(f"{u:.2f} {v:.2f} {pid}" for u, v, pid in obs_of_image[k]))
+    (sparse / "images.txt").write_text(
+        "# Image list with two lines of data per image:\n"
+        "#   IMAGE_ID, QW, QX, QY, QZ, TX, TY, TZ, CAMERA_ID, NAME\n"
+        "#   POINTS2D[] as (X, Y, POINT3D_ID)\n" + "\n".join(image_lines) + "\n",
+        encoding="utf8",
+    )
+    al = {
+        "schema": "aio.photo-synth-alignment/1",
+        "note": "Precomputed GNSS-only alignment of the synthetic set: the truth moved by a small "
+        "similarity (the flight's GNSS bias), for UI tests and the demo. Not a pipeline output.",
+        "frame": "local: x east, y north, z up, metres from the site origin (EPSG:32639, ellipsoidal heights)",
+        "similarity": {"scale": ALIGN_SCALE, "rotationDeg": ALIGN_ROT_DEG, "shiftM": list(ALIGN_SHIFT)},
+        "registered": [sh.name for sh, _, _ in cams],
+        "rejected": [
+            {"name": sh.name, "reason": sh.reason}
+            for sh in shots
+            if sh.expect == "reject" and sh.kind != "corrupt"
+        ],
+        "meanReprojPx": _r(float(noise_px.mean()), 3),
+        "gsdCm": truth["gsdCm"],
+        "cameras": [
+            {
+                "name": sh.name,
+                "centre": [_r(v, 4) for v in local_to_world(cc)],
+                "rotation": [[_r(v, 9) for v in row] for row in r],
+            }
+            for sh, cc, r in cams
+        ],
+        "cameraResiduals": {
+            "medianM": _r(float(np.median(np.hypot(rh, res[:, 2]))), 3),
+            "maxM": _r(float(np.hypot(rh, res[:, 2]).max()), 3),
+            "rmseHorizontalM": _r(float(np.sqrt((rh**2).mean())), 3),
+            "rmseVerticalM": _r(float(np.sqrt((res[:, 2] ** 2).mean())), 3),
+        },
+        "residuals": residuals,
+        "predictions": predictions,
+        "sparse": {"folder": "sparse/", "points": len(keep), "images": len(cams)},
+    }
+    (out / "alignment.json").write_text(json.dumps(al, indent=2) + "\n", encoding="utf8")
+    return al
+
+
 # ---------------------------------------------------------------------------------- generator
 
 
 def source_hash() -> str:
     """Hash of this generator's source: cached renders of another version are not reused."""
     text = Path(__file__).read_bytes().replace(b"\r\n", b"\n")
-    return hashlib.sha256(text).hexdigest()[:16]
-
-
-def _render_job(args) -> tuple[str, bytes]:
-    seed, size, shot, cache = args
-    if cache is not None:
-        p = Path(cache) / f"{shot.name}.jpg"
-        if p.exists():
-            return shot.name, p.read_bytes()
-    scene = Scene(seed, variant=shot.scene_seed_offset)
-    cam = camera_for(size)
-    ss = 2 if size != "full" else 1
-    img = render(scene, cam, shot, ss=ss)
-    idx = int(shot.name[4:8])
-    gain = 1 + 0.03 * float(np.random.default_rng(seed * 1000 + idx).normal())
-    u8 = finish(img, cam, seed * 1000 + idx, gain)
-    if shot.blur_px:
-        blurred = motion_blur(u8, round(shot.blur_px * cam.width / CAMERA.width))
-        u8 = np.clip(np.round(blurred), 0, 255).astype(np.uint8)
-    data = jpeg_bytes(u8)
-    if cache is not None:
-        p = Path(cache) / f"{shot.name}.jpg"
-        tmp = p.with_suffix(f".{os.getpid()}.tmp")
-        tmp.write_bytes(data)
-        os.replace(tmp, p)
-    return shot.name, data
-
-
-def camera_for(size: str) -> Camera:
-    if size == "full":
-        return CAMERA
-    if size == "quick":
-        return CAMERA.scaled(QUICK_WIDTH)
-    if size == "mini":
-        return CAMERA.scaled(MINI_WIDTH)
-    raise ValueError(size)
-
-
-MINI_NADIR = tuple(f"SYN_{k:04d}.JPG" for k in (13, 14, 15, 23, 24, 25, 33, 34, 35))
-
-
-def mini_shots(scene: Scene, seed: int) -> list[Shot]:
-    """The mini set: nine nadir photos over the middle of the site (a 3 x 3 block of the grid,
-    with GCP5, CHK1 and CHK2 in view) and the five bad images, at 960 x 720. Same names and poses
-    as in the quick set."""
-    return [s for s in plan_shots(scene, seed) if s.name in MINI_NADIR or s.kind not in ("nadir", "oblique")]
+    return hashlib.sha256(text.split(RENDER_END.encode())[0]).hexdigest()[:16]
 
 
 def generate(
@@ -1845,6 +2231,10 @@ def generate(
     write_side_files(out, truth, seed)
     write_grids(scene, out / "truth")
     write_mesh(scene, out / "truth" / "mesh.glb")
+    write_ortho(scene, out / "truth" / "ortho.tif")
+    log("writing the tiles and the precomputed alignment")
+    write_tiles(scene, out / "tiles")
+    write_alignment(scene, cam, shots, truth, out / "alignment", seed)
     (out / "truth.json").write_text(json.dumps(truth, indent=2) + "\n", encoding="utf8")
     log(f"photo set written to {out}")
     return truth

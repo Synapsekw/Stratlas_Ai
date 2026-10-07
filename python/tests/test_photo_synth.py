@@ -291,3 +291,100 @@ def test_true_surfaces_and_mesh(mini):
     lo, hi = mesh.bounds
     assert lo[0] == pytest.approx(-100) and hi[0] == pytest.approx(100)
     assert hi[1] > 9.5  # Y up: the tank top
+
+
+def test_tiles_are_placed_per_vertex_through_ecef(mini):
+    """A point of the truth, through the tileset's root transform, lands where PROJ puts it in ECEF
+    (within a millimetre; a UTM-as-metres shortcut would be centimetres off at 100 m)."""
+    ts = json.loads((mini.root / "tiles" / "truth-mesh" / "tileset.json").read_text(encoding="utf8"))
+    m = np.array(ts["root"]["transform"]).reshape(4, 4).T
+    local = np.array([[90.0, -80.0, 3.0], [-75.0, 60.0, 0.5], [0.0, 0.0, 0.0]])
+    enu = ps.local_to_enu(local)
+    got = (m @ np.c_[enu, np.ones(len(enu))].T).T[:, :3]
+    w = np.array([ps.local_to_world(p) for p in local])
+    x, y, z = proj_transform(f"EPSG:{ps.SITE.epsg}", "EPSG:4978", w[:, 0], w[:, 1], w[:, 2])
+    assert np.abs(got - np.c_[x, y, z]).max() < 1e-3
+    # the shortcut is visibly worse: grid offsets taken as east-north-up metres
+    assert np.abs(enu[0] - local[0]).max() > 0.03
+    cloud = json.loads((mini.root / "tiles" / "truth-cloud" / "tileset.json").read_text(encoding="utf8"))
+    assert cloud["root"]["content"]["uri"] == "cloud.glb" and ts["asset"]["version"] == "1.1"
+
+
+def _colmap(folder):
+    cams = [ln.split() for ln in (folder / "cameras.txt").read_text().splitlines() if not ln.startswith("#")]
+    lines = [ln for ln in (folder / "images.txt").read_text().splitlines() if not ln.startswith("#")]
+    images = {}
+    for head, obs in zip(lines[0::2], lines[1::2], strict=True):
+        h = head.split()
+        o = np.array(obs.split(), dtype=float).reshape(-1, 3) if obs.strip() else np.zeros((0, 3))
+        images[int(h[0])] = {
+            "q": np.array(h[1:5], float),
+            "t": np.array(h[5:8], float),
+            "name": h[9],
+            "obs": o,
+        }
+    points = {}
+    for ln in (folder / "points3D.txt").read_text().splitlines():
+        if ln.startswith("#"):
+            continue
+        v = ln.split()
+        points[int(v[0])] = {"xyz": np.array(v[1:4], float), "track": np.array(v[8:], int).reshape(-1, 2)}
+    return cams, images, points
+
+
+def _rot(q):
+    w, x, y, z = q
+    return np.array(
+        [
+            [1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+            [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+            [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)],
+        ]
+    )
+
+
+def test_precomputed_alignment_and_its_sparse_model(mini):
+    al = json.loads((mini.root / "alignment" / "alignment.json").read_text(encoding="utf8"))
+    names = {p["name"]: p for p in mini.truth["photos"]}
+    assert all(names[n]["kind"] in ("nadir", "oblique", "no-gps") for n in al["registered"])
+    assert {r["name"] for r in al["rejected"]} == {
+        p["name"] for p in mini.truth["photos"] if p["kind"] in ("blurred", "duplicate", "outlier")
+    }
+    # predictions sit near, not on, the targets: within their radius of the true marks
+    near = 0
+    for tid, preds in al["predictions"].items():
+        true = {o["photo"]: o["px"] for o in mini.target(tid)["observations"]}
+        for p in preds:
+            d = math.dist(p["px"], true[p["photo"]])
+            assert 2 < d < p["radiusPx"]
+            near += 1
+    assert near >= 15
+    assert np.allclose(al["residuals"]["CHK1"], [1.1, -0.7, 0.9], atol=0.05)
+    # the COLMAP model reprojects its own observations (0.3 px noise)
+    cams, images, points = _colmap(mini.root / "alignment" / "sparse")
+    cam = cams[0]
+    assert cam[1] == "FULL_OPENCV" and len(cam) == 16
+    fx, fy, cx, cy, k1, k2, p1, p2, k3 = map(float, cam[4:13])
+    c = ps.Camera(int(cam[2]), int(cam[3]), fx, fy, cx, cy, k1, k2, p1, p2, k3, 8.8, 13.2, 9.9)
+    assert len(images) == len(al["registered"]) and len(points) >= 1000
+    errs = []
+    for pid, p in list(points.items())[:300]:
+        assert len(p["track"]) >= 3
+        for img_id, k in p["track"]:
+            im = images[img_id]
+            u, v, ref = im["obs"][k]
+            assert int(ref) == pid
+            xc = _rot(im["q"]) @ p["xyz"] + im["t"]
+            xd, yd = c.distort(xc[0] / xc[2], xc[1] / xc[2])
+            errs.append(math.hypot(fx * xd + cx - u, fy * yd + cy - v))
+    assert np.mean(errs) < 0.6 and max(errs) < 2.0
+
+
+def test_true_ortho_shows_the_targets(mini):
+    with rasterio.open(mini.root / "truth" / "ortho.tif") as d:
+        assert d.count == 3 and d.crs.to_epsg() == 32639
+        rgb = d.read()
+        t = mini.target("CHK1")["xyz"]
+        r, c = d.index(t[0] + 0.25, t[1] + 0.25)  # the north-east quadrant: white
+        r2, c2 = d.index(t[0] - 0.25, t[1] + 0.25)  # the north-west quadrant: black
+    assert rgb[:, r, c].mean() > 180 and rgb[:, r2, c2].mean() < 40
