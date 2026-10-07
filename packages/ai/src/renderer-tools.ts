@@ -16,6 +16,7 @@ import {
 import { assetUrl, workspace, type Selection } from '@aio/workspace';
 import './analysis-tools';
 import './camera-tools';
+import './collab-tools';
 import { clipStartUtcMs, selectionLabel } from './context';
 import { parseFlight, passNear } from './geometry';
 import { targetPoint } from './places';

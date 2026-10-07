@@ -6,6 +6,7 @@
 import { needsApproval, ToolMeta, Vec3, type ToolRisk, type WindowKind } from '@aio/schema';
 import { z } from 'zod';
 import { CHANGE_TOOL_SPECS } from './change-tool-specs';
+import { COLLAB_TOOL_SPECS } from './collab-tool-specs';
 import { MODELLING_TOOL_SPECS } from './modelling-tools';
 
 export interface ToolSpec {
@@ -494,6 +495,7 @@ const BUILT_IN: ToolSpec[] = [
     risk: 'navigate',
   }),
   ...CHANGE_TOOL_SPECS,
+  ...COLLAB_TOOL_SPECS,
 ];
 
 const extra = new Map<string, ToolSpec>();
