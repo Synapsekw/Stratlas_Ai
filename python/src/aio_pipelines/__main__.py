@@ -7,7 +7,7 @@ import json
 import os
 import sys
 
-from . import PROTOCOL, __version__
+from . import APP_RANGE, PROTOCOL, __version__
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -15,7 +15,7 @@ def main(argv: list[str] | None = None) -> int:
     from .pipelines import all_pipelines
 
     if "--version" in args:
-        print(json.dumps({"version": __version__, "protocol": PROTOCOL}))
+        print(json.dumps({"version": __version__, "protocol": PROTOCOL, "appRange": APP_RANGE}))
         return 0
     if "--list" in args:
         print(json.dumps([{"name": p.name, "title": p.title} for p in all_pipelines().values()]))
