@@ -402,6 +402,23 @@ Each has a recommendation; "decision N" in this plan refers to this list. Decisi
 11. **Version line.** M10 develops on `main` as 0.10.0, as the one-minor-per-milestone rule says. 1.0.0 is still waiting for the founder blockers in `docs/release/CHECKLIST-1.0.md`. Recommended: cut `release/1.0` from the M9 line so 1.0 ships without M10, and ship M10 as 1.1.0 at its exit; the contracts do not depend on the number. If 1.0 has not shipped by M10's exit, the founder chooses between 1.0 with M10 or 1.0 then 1.1.
 12. **Customer imagery in packages.** Recommended: imported customer imagery never travels in a `.aio` package by default; the builder can tick it per pack, with a reminder of the provider's licence.
 
+## Decisions (7 Oct 2026, founder: go with the recommendations)
+
+On 7 Oct 2026 the founder said "go with the recommendations". Every decision above is taken as recommended; G0 carries them as written here.
+
+1. **Licence policy:** "permissive only" as defined in "Licence policy and inventory": Apache-2.0, MIT, BSD, ISC and similar, public-domain and CC-BY data with attribution; never GPL, AGPL, SSPL, non-commercial or LGPL-static; LGPL only as the shared GEOS library that already ships; MPL-2.0 only by name with approval: Eigen headers (unavoidable: every candidate pipeline needs them), and certifi, which the pack already ships; DOMPurify inside CesiumJS is taken under its Apache-2.0 option. Add Zlib (pako in CesiumJS, mapMAP's `dset`) and BSL-1.0 (Boost) to the allow-lists.
+2. **"Use your own ODM" adapter:** not in M10; revisit after founder testing. No `odm:*` channel, no `Settings.odm`, no `main/odm.ts`.
+3. **Cesium architecture:** (c), CesiumJS Globe for overview and navigation only, plus 3D Tiles and terrain in the three.js site view through 3DTilesRendererJS; no editing or measuring tools in the Globe beyond a geodesic read-out (ADR 0007).
+4. **Imagery and terrain sources:** ship Natural Earth II in the app; offer a world pack and GCC and Kuwait region packs built from Copernicus Sentinel-2 Global Mosaics or ESA WorldCover 2021 composites, with Copernicus GLO-30 terrain; no EOX cloudless 2018 to 2025 without an EOX commercial licence; no ion, Bing, Google, Esri or Mapbox. Commercial high resolution (Vantor, Airbus, Planet) is bought by the customer and imported, never resold by us. The Copernicus DEM no-liability sentence goes into our EULA.
+5. **GPU requirement:** no GPU required. The CPU path is the product. A CUDA build of COLMAP for the High preset is an optional "GPU accelerator" download for Windows with NVIDIA, built only after a patch keeps SiftGPU out and the founder accepts the NVIDIA CUDA runtime's redistribution terms. The CUDA build is deferred to M10.1 unless G3 shows the CPU High preset is unusable.
+6. **Pack and installer size:** pipeline pack 0.4.0 at most 1.1 GB unpacked and 450 MB compressed per platform; installer growth for CesiumJS and 3DTilesRendererJS at most 15 MB over the 0.9.0 installer; imagery and terrain packs are separate downloads. If the pack exceeds its budget, split a "photogrammetry" component pack rather than grow the base.
+7. **Plans (M11):** photo processing in the **Builder** plan, unlimited photos, no per-job credits; the Globe in every plan including the free player; region imagery packs included in paid plans; a separate "Processing" add-on only if support costs require it later.
+8. **Platforms:** photogrammetry on Windows x64 and macOS arm64 only; Intel Macs keep the other pipelines; Windows on Arm not supported in M10.
+9. **Real-data founder test:** one nadir mapping flight with GCPs and checkpoints and one oblique inspection flight, both used only on the founder's machine; the founder names which flights later, before G2's spike.
+10. **PRD change:** photogrammetry from images moves into scope (PHO-1 to PHO-8); LiDAR processing from raw scans stays a non-goal. Done in G0 (`docs/PRD.md`, non-goals and section 9.1).
+11. **Version line:** M10 develops on `main` as 0.10.0. Cut `release/1.0` from the M9 line so 1.0 ships without M10, and ship M10 as 1.1.0 at its exit; the contracts do not depend on the number. If 1.0 has not shipped by M10's exit, the founder chooses between 1.0 with M10 or 1.0 then 1.1.
+12. **Customer imagery in packages:** imported customer imagery never travels in a `.aio` package by default; the builder can tick it per pack, with a reminder of the provider's licence (`RasterPackMeta.customerLicence`, the package option lands with the integration follow-up X1).
+
 ## Step 0: G0 contracts (serial, about 3 hours, integration lead)
 
 Before the fan-out, one agent writes every contract below in `packages/schema`:
