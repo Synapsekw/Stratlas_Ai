@@ -1,6 +1,8 @@
+import { brand } from '@aio/brand';
 import type { Settings } from '@aio/schema';
 import { Switch, t } from '@aio/ui';
 import { useSyncExternalStore } from 'react';
+import { gateWanted, localStore, writeLaunchHint } from '../../gate/model';
 import { shell, useShell } from '../../shell';
 import { OS_QUERIES } from '../../theme';
 
@@ -43,6 +45,7 @@ export function Appearance() {
   const osMotion = useMedia(OS_QUERIES.reducedMotion);
   const contrast = useShell((s) => s.settings.contrast ?? 'system');
   const motion = useShell((s) => s.settings.motion ?? 'system');
+  const launchScreen = useShell((s) => gateWanted(s.settings));
   const os = (on: boolean) => t(on ? 'settings.appearance.osOn' : 'settings.appearance.osOff');
   const set = (patch: Partial<Settings>) => void shell.getState().updateSettings(patch);
 
@@ -122,6 +125,22 @@ export function Appearance() {
             label={t('settings.appearance.motion')}
             onChange={(on) => {
               set({ motion: on ? 'reduce' : 'system' });
+            }}
+          />
+        </div>
+      </div>
+      <div className="sblock" data-testid="launch-settings">
+        <h2>{t('settings.appearance.launch')}</h2>
+        <div className="opt">
+          <b>{t('settings.appearance.launchShow')}</b>
+          <span>{t('settings.appearance.launchHelp', { product: brand.productName })}</span>
+          <Switch
+            checked={launchScreen}
+            label={t('settings.appearance.launchShow')}
+            onChange={(on) => {
+              // the next start reads this copy before main answers (gate/model.ts)
+              writeLaunchHint(localStore(), on);
+              set({ launchScreen: on });
             }}
           />
         </div>

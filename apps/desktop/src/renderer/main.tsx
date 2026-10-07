@@ -11,6 +11,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { bootstrap } from './bootstrap';
 import { captureRendererErrors } from './diagnostics/errors';
+import { LaunchGate } from './gate/LaunchGate';
 
 captureRendererErrors();
 bootstrap();
@@ -20,5 +21,7 @@ if (!root) throw new Error('Missing #root element');
 createRoot(root).render(
   <StrictMode>
     <App />
+    {/* the launch screen lies over the app shell, which is already mounted underneath */}
+    <LaunchGate />
   </StrictMode>,
 );
