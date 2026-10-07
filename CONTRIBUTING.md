@@ -48,3 +48,4 @@ Some specs run on the founder's real projects. They must never write into them:
 - Every test that uses real data has `@realdata` in its title (test or describe). The run without real data is `npx playwright test --grep-invert @realdata`; with `QUADRION_REAL_DATA_ROOT` set to an empty folder the `@realdata` tests skip.
 - `src/e2eRealData.test.ts` (part of `pnpm check`) fails on a literal real data path in `e2e/`, on the old per-spec data variables, on an `electron.launch` without its own `QUADRION_DATA` or next to the gate, and on a real-data spec without `@realdata`.
 - Agent runs keep their windows off-screen through the fixtures (an isolated `QUADRION_USER_DATA` profile) and run with `--workers=1`.
+- The launch screen never shows in an e2e run (`QUADRION_E2E=1`), so specs land straight in the app. `QUADRION_SHOW_GATE=1` brings it back (only `e2e/launch-gate.spec.ts` does); `QUADRION_SHOW_GATE=0` skips it in any run.
