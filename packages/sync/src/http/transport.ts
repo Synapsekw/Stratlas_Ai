@@ -46,6 +46,14 @@ const json = (body: unknown) => ({
   headers: { 'content-type': 'application/json' },
 });
 
+function safeJson(body: Buffer): unknown {
+  try {
+    return JSON.parse(body.toString('utf8'));
+  } catch {
+    return undefined;
+  }
+}
+
 function parse<T>(schema: { parse(v: unknown): T }, body: Buffer): T {
   try {
     return schema.parse(JSON.parse(body.toString('utf8')));
@@ -115,8 +123,13 @@ export function createHttpTransport({
       const out: PushResult = { accepted: [], duplicates: [], refused: [], receipts: [] };
       for (let i = 0; i < ops.length; i += PUSH_BATCH) {
         const batch = ops.slice(i, i + PUSH_BATCH);
-        const res = await ok('POST', routePath('ops', project), 'Sending changes', { ops: batch });
-        const r = parse(PushOpsResponse, res.body);
+        const res = await client.request('POST', routePath('ops', project), json({ ops: batch }));
+        // a 403 still lists each refused op (role, membership, revocation)
+        const refused =
+          res.status === 403 ? PushOpsResponse.safeParse(safeJson(res.body)).data : undefined;
+        if (!refused && (res.status < 200 || res.status >= 300))
+          throw errorFor(res, 'Sending changes');
+        const r = refused ?? parse(PushOpsResponse, res.body);
         out.accepted.push(...r.accepted);
         out.duplicates.push(...r.duplicates);
         out.refused.push(...r.refused);

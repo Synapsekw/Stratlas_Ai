@@ -32,7 +32,7 @@ describe('request signatures (RFC 9421)', () => {
     const signer = signerFromSeed(vector.seed);
     const headers = signRequest(signer, vector.request, {
       now: vector.nowMs,
-      nonce: vector.headers['x-aio-nonce'],
+      nonce: vector.headers['x-aio-nonce'] ?? '',
     });
     expect(headers).toEqual(vector.headers);
     expect(
