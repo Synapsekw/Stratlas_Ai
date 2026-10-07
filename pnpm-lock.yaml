@@ -332,6 +332,12 @@ importers:
         specifier: ^2.22.0
         version: 2.22.0
 
+  packages/globe:
+    dependencies:
+      '@aio/schema':
+        specifier: workspace:*
+        version: link:../schema
+
   packages/journal:
     dependencies:
       '@aio/schema':
@@ -448,6 +454,12 @@ importers:
       '@aio/journal':
         specifier: workspace:*
         version: link:../journal
+      '@aio/schema':
+        specifier: workspace:*
+        version: link:../schema
+
+  packages/tiles:
+    dependencies:
       '@aio/schema':
         specifier: workspace:*
         version: link:../schema
