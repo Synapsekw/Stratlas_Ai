@@ -4,16 +4,8 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  createCollabService,
-  createInterimJournal,
-  createStubIdentity,
-  createStubMembers,
-  initialsOf,
-  registerCollabIpc,
-  type CollabJournal,
-  type Me,
-} from './collab';
+import { createCollabService, registerCollabIpc, type CollabJournal, type Me } from './collab';
+import { createFakeJournal, createFakeMembers } from './collab.fakes';
 import { collectHandlers } from './notYet';
 
 const RANA: Me = { actor: `a_${'r'.repeat(26)}`, name: 'Rana Example', initials: 'RE' };
@@ -56,7 +48,7 @@ const service = () =>
     },
     journal,
     identity: { me: () => Promise.resolve(me) },
-    members: createStubMembers(),
+    members: createFakeMembers(),
   });
 
 async function writeIssues(list: object[]) {
@@ -108,7 +100,7 @@ beforeEach(async () => {
   userData = join(base, 'user');
   await mkdir(root, { recursive: true });
   await mkdir(userData, { recursive: true });
-  journal = createInterimJournal({ userData });
+  journal = createFakeJournal({ userData });
   me = RANA;
   packaged = false;
   await writeIssues([issue('i_f03', 'F03', 'Omar Sample'), issue('i_f05', 'F05', 'Rana Example')]);
@@ -228,7 +220,9 @@ describe('collab service: a shared project', () => {
       registerCollabIpc({
         handle: () => undefined,
         projects: { root: () => root, package: () => undefined },
-        userData,
+        journal,
+        identity: { me: () => Promise.resolve(RANA) },
+        members: createFakeMembers(),
         agentTools: () => ['list_my_work', 'approve_issue'],
       }),
     ).toThrow(/never approve/);
@@ -409,23 +403,6 @@ describe('interim journal', () => {
   });
 });
 
-describe('stub identity', () => {
-  it('reads identity.json, else a stable local person named after the OS account', async () => {
-    const idn = createStubIdentity({ userData, osName: () => 'rana.example' });
-    const a = await idn.me();
-    expect(a?.actor).toMatch(/^a_[a-z2-7]{26}$/);
-    expect(a?.actor).toBe((await idn.me())?.actor);
-    expect(a?.initials).toBe('R');
-    await writeFile(
-      join(userData, 'identity.json'),
-      JSON.stringify({ schema: 'aio.identity/1', ...OMAR, createdAt: '2026-10-07T08:00:00.000Z' }),
-    );
-    expect(await idn.me()).toEqual(OMAR);
-    expect(initialsOf('Omar Sample')).toBe('OS');
-    expect(initialsOf('سارة مثال')).toBe('سم');
-  });
-});
-
 describe('collab IPC', () => {
   it('validates requests and responses like main does', async () => {
     await share();
@@ -433,9 +410,9 @@ describe('collab IPC', () => {
       registerCollabIpc({
         handle,
         projects: { root: () => root, package: () => undefined },
-        userData,
         journal,
         identity: { me: () => Promise.resolve(OMAR) },
+        members: createFakeMembers(),
         agentTools: () => ['list_my_work', 'add_comment', 'request_approval', 'show_thread'],
       });
     });
@@ -447,6 +424,7 @@ describe('collab IPC', () => {
       'collab:editComment',
       'collab:policy',
       'collab:read',
+      'collab:redactComment',
       'collab:withdraw',
     ]);
     expect(

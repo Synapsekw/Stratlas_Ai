@@ -69,6 +69,45 @@ export function useAnnotateReadOnly(): boolean {
   return useStore(readOnlyStore, (s) => s.readOnly);
 }
 
+/**
+ * M9 integration: who the names on issues are. Issue chips and the register show initials (the
+ * team's, else derived from the name) with the name as tooltip; under a team approval policy the
+ * status buttons leave approving to the Approvals panel.
+ */
+export interface AnnotationPeople {
+  /** Display name to initials (members of the open project and this person). */
+  initials: Readonly<Record<string, string>>;
+  /** The open project has a team approval policy: approving goes through approvals. */
+  teamPolicy: boolean;
+}
+
+const peopleStore = createStore<AnnotationPeople>()(() => ({ initials: {}, teamPolicy: false }));
+
+export function setAnnotationPeople(people: AnnotationPeople): void {
+  peopleStore.setState(people);
+}
+
+/** Initials from a name: first letters of the first and last words (any script), up to 2. */
+export function initialsFromName(name: string): string {
+  const words = name
+    .trim()
+    .split(/[\s._-]+/u)
+    .map((w) => /\p{L}/u.exec(w)?.[0] ?? '')
+    .filter(Boolean);
+  const picked = words.length > 1 ? [words[0], words[words.length - 1]] : words.slice(0, 1);
+  return picked.join('').toLocaleUpperCase() || '?';
+}
+
+/** The initials shown for an author name. */
+export function useAuthorInitials(): (name: string) => string {
+  const map = useStore(peopleStore, (s) => s.initials);
+  return (name: string) => map[name] ?? initialsFromName(name);
+}
+
+export function useTeamPolicy(): boolean {
+  return useStore(peopleStore, (s) => s.teamPolicy);
+}
+
 let author = 'user';
 /** Name written into new issues and the audit trail (the shell sets it from Settings). */
 export function setAnnotationAuthor(name: string): void {

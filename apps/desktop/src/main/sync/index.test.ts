@@ -2,10 +2,19 @@ import { cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/pro
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { projectCacheKey } from '@aio/sync/blobs';
+import {
+  createDeviceKeys,
+  createIdentityService,
+  createIdentityStore,
+  type IdentityService,
+} from '../identity';
+import { devicePort, journalIdentity, teamJournal } from '../identityPorts';
+import { createJournalService } from '../journal';
 import { collectHandlers } from '../notYet';
+import { createTeamConfigStore } from './config';
+import { createTeamEngine } from './engine';
 import { registerSyncIpc } from './index';
-import { interimDevice, interimEngine } from './interim';
-import { createJournalStore } from './journalStore';
 import { createSyncService, safeJoin } from './service';
 
 let base: string;
@@ -48,7 +57,10 @@ const editIssue = async (dir: string, id: string, patch: Partial<Issue>) => {
   );
 };
 
-/** One "machine": its own userData, vault and identity, with a project open as `p`. */
+/**
+ * One "machine": its own userData, vault and identity, with a project open as `p`, and the real
+ * M9 stack (M9 integration): T2's identity service, T1's journal service, T4's merge engine.
+ */
 async function machine(name: string, initials: string, root: string, opts: { pkg?: boolean } = {}) {
   const userData = join(base, `user-${initials}`);
   await mkdir(userData, { recursive: true });
@@ -64,27 +76,56 @@ async function machine(name: string, initials: string, root: string, opts: { pkg
   );
   const secrets = new Map<string, string>();
   const app = { name: 'test-app', version: '0.9.0' };
-  const device = interimDevice({
+  const projectRoot = (id: string) => (id === 'p' && !opts.pkg ? root : undefined);
+  const isPackage = () => opts.pkg ?? false;
+  const config = createTeamConfigStore(join(userData, 'team', 'projects.json'));
+  const cards: string[] = [];
+  // eslint-disable-next-line prefer-const -- the journal signs with the identity made below
+  let identity: IdentityService;
+  const journal = createJournalService({
     userData,
-    vault: () => ({
-      getPassword: () => secrets.get('k') ?? null,
-      setPassword: (v: string) => void secrets.set('k', v),
-    }),
+    projects: { root: projectRoot, package: (id) => (isPackage() ? id : undefined) },
+    identity: () => journalIdentity(identity, app)(),
+    replicaOf: async (r) => (await config.get(r)).replicaId,
+  });
+  identity = createIdentityService({
+    store: createIdentityStore(join(userData, 'identity.json'), { osUser: () => name }),
+    keys: createDeviceKeys('svc', (service, account) => ({
+      getPassword: () => secrets.get(`${service}/${account}`) ?? null,
+      setPassword: (v: string) => void secrets.set(`${service}/${account}`, v),
+    })),
+    journal: teamJournal(() => journal),
+    projectRoot,
+    isPackage,
+    chooseCardPath: (defaultName) => {
+      const path = join(userData, defaultName);
+      cards.push(path);
+      return Promise.resolve(path);
+    },
     app,
   });
-  const store = createJournalStore();
-  const engine = interimEngine({ store, device });
+  const device = devicePort(identity, app);
   const events: { event: string; payload: unknown }[] = [];
+  const engine = createTeamEngine({
+    journal,
+    device,
+    changed: (projectId, records) =>
+      events.push({ event: 'journal:changed', payload: { projectId, records } }),
+    notice: (projectId, notices) =>
+      events.push({ event: 'sync:notice', payload: { projectId, notices } }),
+  });
   let saveTo: string | null = null;
   const service = createSyncService({
     userData,
-    projectRoot: (id) => (id === 'p' && !opts.pkg ? root : undefined),
-    isPackage: () => opts.pkg ?? false,
+    projectRoot,
+    isPackage,
     teamSettings: () => Promise.resolve(undefined),
     device,
     journal: engine.journal,
     merge: engine.merge,
-    store,
+    store: journal.store,
+    cacheKey: (r) => projectCacheKey(r),
+    shareAsOwner: (projectId) => identity.shareAsOwner(projectId),
     app,
     emit: (event: string, payload: unknown) => {
       events.push({ event, payload });
@@ -92,9 +133,39 @@ async function machine(name: string, initials: string, root: string, opts: { pkg
     saveDialog: () => Promise.resolve(saveTo),
   });
   const ipc = collectHandlers((handle) => {
-    registerSyncIpc({ handle, service });
+    registerSyncIpc({ handle, service, engine, projectRoot, isPackage });
   });
-  return { ipc, root, userData, events, saveAs: (p: string | null) => (saveTo = p), device };
+  /** This person's identity card (a file in their userData). */
+  const card = async () => {
+    const r = await identity.exportCard();
+    if (!r.ok || !r.path) throw new Error('no card');
+    return r.path;
+  };
+  return {
+    ipc,
+    root,
+    userData,
+    events,
+    saveAs: (p: string | null) => (saveTo = p),
+    device,
+    identity,
+    journal,
+    card,
+  };
+}
+
+/** An owner adds a person from their identity card as a reviewer (T2). */
+async function addMember(
+  owner: Awaited<ReturnType<typeof machine>>,
+  person: Awaited<ReturnType<typeof machine>>,
+) {
+  const added = await owner.identity.add({
+    projectId: 'p',
+    card: await person.card(),
+    role: 'reviewer',
+    certify: true,
+  });
+  expect(added).toMatchObject({ ok: true });
 }
 
 describe('sync IPC', () => {
@@ -103,6 +174,7 @@ describe('sync IPC', () => {
     expect(a.ipc.channels()).toEqual([
       'exchange:export',
       'exchange:import',
+      'exchange:peers',
       'exchange:plan',
       'exchange:preview',
       'exchange:reply',
@@ -111,12 +183,15 @@ describe('sync IPC', () => {
       'sync:quarantine',
       'sync:release',
       'sync:resolve',
+      'team:hubProjects',
       'team:leave',
       'team:share',
       'team:status',
     ]);
-    expect(await a.ipc.call('sync:conflicts', { projectId: 'p' })).toMatchObject({
-      code: 'not-implemented',
+    // a project that is not open has no conflicts and nothing quarantined
+    expect(await a.ipc.call('sync:conflicts', { projectId: 'nope' })).toEqual({
+      ok: true,
+      conflicts: [],
     });
   });
 
@@ -167,6 +242,9 @@ describe('hub folder sync between two copies', () => {
     const bDir = join(base, 'b');
     await cp(aDir, bDir, { recursive: true });
     const b = await machine('Omar Sample', 'OS', bDir);
+    // Rana adds Omar from his identity card (T2), so his changes count on her copy
+    await addMember(a, b);
+    expect(await a.ipc.call('sync:now', { projectId: 'p' })).toMatchObject({ ok: true });
     expect(
       await b.ipc.call('team:share', { projectId: 'p', mode: 'hub', hubPath: hub }),
     ).toMatchObject({
@@ -240,11 +318,85 @@ describe('hub folder sync between two copies', () => {
     }
   });
 
+  it('Keep mine resolves a conflict on both copies after the next sync', async () => {
+    const { a, b, aDir, bDir } = await pair();
+    await editIssue(aDir, 'i1', { severity: 3 });
+    await editIssue(bDir, 'i1', { severity: 4 });
+    await a.ipc.call('sync:now', { projectId: 'p' });
+    await b.ipc.call('sync:now', { projectId: 'p' });
+    await a.ipc.call('sync:now', { projectId: 'p' });
+    const listed = await a.ipc.call('sync:conflicts', { projectId: 'p' });
+    if (!listed.ok) throw new Error(listed.error);
+    expect(listed.conflicts.map((c) => c.field)).toEqual(['severity']);
+    const c = listed.conflicts[0];
+    if (!c) return;
+    expect(
+      await a.ipc.call('sync:resolve', { projectId: 'p', conflict: c.id, choice: 'ours' }),
+    ).toEqual({
+      ok: true,
+    });
+    await a.ipc.call('sync:now', { projectId: 'p' });
+    await b.ipc.call('sync:now', { projectId: 'p' });
+    expect((await readIssues(aDir)).find((i) => i.id === 'i1')?.severity).toBe(3);
+    expect((await readIssues(bDir)).find((i) => i.id === 'i1')?.severity).toBe(3);
+    for (const m of [a, b]) {
+      expect(await m.ipc.call('sync:conflicts', { projectId: 'p' })).toEqual({
+        ok: true,
+        conflicts: [],
+      });
+    }
+  });
+
+  it('Verify accepts the chains imported from the other copy', async () => {
+    const { a, b, aDir, bDir } = await pair();
+    await editIssue(aDir, 'i1', { severity: 4 });
+    await editIssue(bDir, 'i2', { severity: 3 });
+    await a.ipc.call('sync:now', { projectId: 'p' });
+    await b.ipc.call('sync:now', { projectId: 'p' });
+    await a.ipc.call('sync:now', { projectId: 'p' });
+    for (const m of [a, b]) {
+      const v = await m.journal.verify('p');
+      if (!v.ok) throw new Error(v.error);
+      expect(v.report.problems).toEqual([]);
+      expect(v.report.ok).toBe(true);
+      expect(v.report.chains.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
   it('leaving stops syncing this copy and keeps the data', async () => {
     const { b, bDir } = await pair();
     expect(await b.ipc.call('team:leave', { projectId: 'p' })).toEqual({ ok: true });
     expect(await b.ipc.call('sync:now', { projectId: 'p' })).toMatchObject({ ok: false });
     expect(await readIssues(bDir)).toHaveLength(2);
+  });
+});
+
+describe('roles across copies', () => {
+  it("a non-member's edits are quarantined at the owner, who can apply them anyway", async () => {
+    const hub = join(base, 'hub');
+    await mkdir(hub);
+    const aDir = join(base, 'a');
+    await writeProject(aDir, [issue('i1', 'F01')]);
+    const a = await machine('Rana Example', 'RE', aDir);
+    await a.ipc.call('team:share', { projectId: 'p', mode: 'hub', hubPath: hub });
+    const bDir = join(base, 'b');
+    await cp(aDir, bDir, { recursive: true });
+    const b = await machine('Omar Sample', 'OS', bDir);
+    await b.ipc.call('team:share', { projectId: 'p', mode: 'hub', hubPath: hub });
+    await editIssue(bDir, 'i1', { severity: 5 });
+    await b.ipc.call('sync:now', { projectId: 'p' });
+    await a.ipc.call('sync:now', { projectId: 'p' });
+    expect((await readIssues(aDir))[0]?.severity).toBe(1);
+    const q = await a.ipc.call('sync:quarantine', { projectId: 'p' });
+    if (!q.ok) throw new Error(q.error);
+    expect(q.entries.map((e) => e.reason)).toContain('non-member');
+    const held = q.entries.find((e) => e.kind === 'issue.patch');
+    if (!held) throw new Error('nothing held');
+    expect(await a.ipc.call('team:status', { projectId: 'p' })).toMatchObject({
+      status: { quarantined: q.entries.length },
+    });
+    expect(await a.ipc.call('sync:release', { projectId: 'p', op: held.op })).toEqual({ ok: true });
+    expect((await readIssues(aDir))[0]?.severity).toBe(5);
   });
 });
 
@@ -257,6 +409,7 @@ describe('exchange files between two copies', () => {
     const bDir = join(base, 'b');
     await cp(aDir, bDir, { recursive: true });
     const b = await machine('Omar Sample', 'OS', bDir);
+    await addMember(a, b);
     return { a, b, aDir, bDir };
   }
 

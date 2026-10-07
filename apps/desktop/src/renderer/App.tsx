@@ -1,4 +1,4 @@
-import { AnnotateStyles, issueSaver } from '@aio/annotate';
+import { AnnotateStyles, issueSaver, setAnnotationPeople } from '@aio/annotate';
 import { changeStore } from '@aio/change';
 import { PIPELINES } from '@aio/schema';
 import {
@@ -52,6 +52,9 @@ import { Lightbox } from './issueCard/Lightbox';
 import { CrashNotice } from './diagnostics/CrashNotice';
 import { ReportProblemDialog } from './diagnostics/ReportProblem';
 import { saveDiagnostics } from './diagnostics/state';
+import { collabStore, loadCollab } from '@aio/collab/ui';
+import { followJournalChanges } from './team/reload';
+import { teamUi } from './team/store';
 import { toasts } from './exports/exports';
 import { evidence, openEvidence, startEvidenceSplit } from './issueCard/evidence';
 import { registerAppChangeProducers } from './change/producers/register';
@@ -131,14 +134,19 @@ function continueAcrossClips(): () => void {
 
 /**
  * A `.aio` the app was started with (double-click), and any handed over later by a second
- * launch, opens in this window. Returns an unsubscribe function.
+ * launch, opens in this window. A `.aiosync` exchange file opens the import dialog with its path
+ * (over the open project). Returns an unsubscribe function.
  */
 function openPackagesHandedOver(): () => void {
+  const open = (path: string) => {
+    if (path.toLowerCase().endsWith('.aiosync')) teamUi.getState().open('import', path);
+    else void shell.getState().openProject(path);
+  };
   void bridge.call('app:takeOpenPath', {}).then((r) => {
-    if (r.ok && r.value.path) void shell.getState().openProject(r.value.path);
+    if (r.ok && r.value.path) open(r.value.path);
   });
   return window.aio.on('app:openPath', ({ path }) => {
-    void shell.getState().openProject(path);
+    open(path);
   });
 }
 
@@ -277,6 +285,30 @@ export function App() {
     const stopEvidence = startEvidenceSplit();
     const stopOpenPath = openPackagesHandedOver();
     const stopMenu = followMenu();
+    // M9: merges, imports and outside edits reload the records, keeping selection and camera
+    const stopJournal = followJournalChanges();
+    // My work's Conflicts and Quarantined lines open the Team dialog (the Conflicts inbox)
+    collabStore.setState({
+      openConflicts: () => {
+        teamUi.getState().open('team');
+      },
+    });
+    // issue chips and the register show the team's initials (T2); a team policy hides Approve
+    const people = () => {
+      const s = collabStore.getState();
+      const initials: Record<string, string> = {};
+      for (const p of [...s.members, ...(s.me ? [s.me] : [])]) initials[p.name] = p.initials;
+      setAnnotationPeople({ initials, teamPolicy: s.state.policy !== null });
+    };
+    people();
+    const stopCollab = collabStore.subscribe(people);
+    const stopProject = workspace.subscribe((s, prev) => {
+      if (s.project && s.project.id !== prev.project?.id) void loadCollab(s.project.id);
+    });
+    const stopPeople = () => {
+      stopCollab();
+      stopProject();
+    };
     const stopRoad = startRoadSync();
     // A road survey opens map first.
     const stopRoadMode = roadStore.subscribe((s, prev) => {
@@ -289,6 +321,8 @@ export function App() {
     return () => {
       stopOpenPath();
       stopMenu();
+      stopJournal();
+      stopPeople();
       stopJobReload();
       stopChangeReload();
       stopIssueReload();

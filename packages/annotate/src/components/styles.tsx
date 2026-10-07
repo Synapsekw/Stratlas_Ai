@@ -65,6 +65,7 @@ span.ann-tick[data-on='true']::after { content: ''; position: absolute; left: 3.
 .ann-sev.unc i { background: repeating-linear-gradient(-45deg, var(--sev) 0 1.5px, transparent 1.5px 3px); }
 .ann-tag { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border: 1px solid var(--line); border-radius: 3px; font-size: var(--t-11); color: var(--fg-2); white-space: nowrap; }
 .ann-tag.acc { border-color: var(--acc-a40); color: var(--acc); }
+.ann-ini { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 18px; padding: 0 4px; border-radius: 9px; background: var(--bg-3, rgba(127,127,127,.15)); font-size: var(--t-11); font-weight: 600; color: var(--fg-2); white-space: nowrap; }
 .ann-pins { display: flex; flex-direction: column; gap: 8px; min-width: 220px; }
 .ann-pins .ann-faint { margin: 0; line-height: 1.4; max-width: 260px; }
 .ann-check { display: inline-flex; align-items: center; gap: 8px; font-size: var(--t-12); color: var(--fg-1); cursor: pointer; }

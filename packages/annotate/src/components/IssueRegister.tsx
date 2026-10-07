@@ -29,7 +29,13 @@ import {
   type IssueGroupKey,
   type RegisterRow,
 } from '../model/register';
-import { focusIssue, issueEditor, useAnnotateReadOnly, useIssueEditorState } from '../runtime';
+import {
+  focusIssue,
+  issueEditor,
+  useAnnotateReadOnly,
+  useAuthorInitials,
+  useIssueEditorState,
+} from '../runtime';
 import { severityColor } from '../tools/mesh';
 import { SeverityBadge, kindLabel, sevStyle, useTaxonomy } from './common';
 import { AnnotateStyles } from './styles';
@@ -134,6 +140,7 @@ export function IssueRegister({ className }: { className?: string }) {
   const { classById, modelById, classes } = useTaxonomy();
   const editor = useIssueEditorState();
   const readOnly = useAnnotateReadOnly();
+  const initialsOf = useAuthorInitials();
   const [text, setText] = useState('');
   const query = useDeferredValue(text);
   const [sev, setSev] = useState<Severity | null>(null);
@@ -335,7 +342,10 @@ export function IssueRegister({ className }: { className?: string }) {
         <SeverityBadge model={modelById.get(i.severityModelId)} severity={i.severity} />
         <span className="im">
           {label(i.classId)} · {issueDatasets(i).map(kindLabel).join(', ')} ·{' '}
-          <span className="st">{i.status}</span>
+          <span className="st">{i.status}</span> ·{' '}
+          <span className="ann-ini" title={i.author} data-testid="issue-initials">
+            {initialsOf(i.author)}
+          </span>
         </span>
       </div>
     );

@@ -1,6 +1,8 @@
 import type {
   AioBridge,
   CollabState,
+  Conflict,
+  QuarantineEntry,
   IpcChannel,
   IpcRequest,
   IpcResponse,
@@ -29,6 +31,11 @@ export interface CollabStoreState {
   error: string | null;
   /** The Issues "Mine" filter. */
   mine: boolean;
+  /** M9 integration: open conflicts and quarantined changes (T4 inbox), for My work. */
+  conflicts: Conflict[];
+  quarantined: QuarantineEntry[];
+  /** Opens the Team dialog with the Conflicts inbox (the desktop sets it). */
+  openConflicts: (() => void) | null;
 }
 
 const EMPTY: CollabState = { comments: [], assignments: [], approvals: [], policy: null };
@@ -41,6 +48,9 @@ export const collabStore = createStore<CollabStoreState>()(() => ({
   loaded: false,
   error: null,
   mine: false,
+  conflicts: [],
+  quarantined: [],
+  openConflicts: null,
 }));
 
 export function useCollabStore<T>(selector: (s: CollabStoreState) => T): T {
@@ -68,10 +78,12 @@ export function loadCollab(projectId: string): Promise<void> {
         if (e.projectId === collabStore.getState().projectId) void loadCollab(e.projectId);
       });
     }
-    const [read, who, members] = await Promise.all([
+    const [read, who, members, conflicts, quarantined] = await Promise.all([
       aio.invoke('collab:read', { projectId }),
       aio.invoke('identity:get', {}).catch(() => null),
       aio.invoke('members:list', { projectId }).catch(() => null),
+      aio.invoke('sync:conflicts', { projectId }).catch(() => null),
+      aio.invoke('sync:quarantine', { projectId }).catch(() => null),
     ]);
     const list: Person[] = members?.ok
       ? members.members.map((m) => ({
@@ -97,6 +109,8 @@ export function loadCollab(projectId: string): Promise<void> {
       members: list,
       loaded: true,
       mine: s.projectId === projectId ? s.mine : false,
+      conflicts: conflicts?.ok ? conflicts.conflicts : [],
+      quarantined: quarantined?.ok ? quarantined.entries : [],
     }));
   })().finally(() => inflight.delete(projectId));
   inflight.set(projectId, run);
@@ -149,5 +163,7 @@ export function resetCollabStore(): void {
     loaded: false,
     error: null,
     mine: false,
+    conflicts: [],
+    quarantined: [],
   });
 }

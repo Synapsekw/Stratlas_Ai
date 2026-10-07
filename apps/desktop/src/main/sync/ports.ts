@@ -2,10 +2,8 @@ import type { Signer } from '@aio/journal';
 import type { DeviceRecord, Op, RecordRef } from '@aio/schema';
 
 /**
- * What sync needs from the streams that build alongside it. Each port has an interim
- * implementation in `interim.ts` so exchange and hub sync work end to end in this branch; at
- * integration the integration lead passes the real ones to `registerSyncIpc` (see the T5 report:
- * T2 for `DevicePort`, T1 for `JournalPort`, T4 for `MergePort`).
+ * What sync needs from the other streams: T2's identity (`DevicePort`, `identityPorts.ts`), T1's
+ * journal service and T4's merge engine (`JournalPort`, `MergePort`, `engine.ts`).
  */
 
 /** One open folder project as sync sees it. */
@@ -38,21 +36,22 @@ export interface DevicePort {
 /** T1: the journal of a project. */
 export interface JournalPort {
   /**
-   * Make sure every saved change is in the journal before ops are sent or merged. T1 journals each
-   * write as it happens, so its version only waits for pending appends.
+   * Make sure every saved change is in the journal before ops are sent or merged: pending appends
+   * finish, and a change made to the files outside the app is recorded first.
    */
   flush(ctx: ProjectCtx): Promise<void>;
   /** Append an event op to this copy's chain (`project.share`, `exchange.import`). */
   record(ctx: ProjectCtx, kind: string, target: RecordRef, payload: unknown): Promise<Op | null>;
+  /**
+   * Ops from another copy (planned: no gaps): appended to their own chains by T1, then projected
+   * into the state files by T4, as one journal step. Returns the records that changed (for
+   * `journal:changed`) and the open conflicts.
+   */
+  ingest(ctx: ProjectCtx, ops: readonly Op[]): Promise<{ records: RecordRef[]; conflicts: number }>;
 }
 
 /** T4: the merge engine. */
 export interface MergePort {
-  /**
-   * Ops were just added to the journal from another copy: project them into the state files,
-   * returning the records that changed (for `journal:changed`) and the open conflicts.
-   */
-  apply(ctx: ProjectCtx, ops: readonly Op[]): Promise<{ records: RecordRef[]; conflicts: number }>;
   /** Open conflicts and quarantined ops (status and Library badge). */
   counts(ctx: ProjectCtx): Promise<{ conflicts: number; quarantined: number }>;
 }

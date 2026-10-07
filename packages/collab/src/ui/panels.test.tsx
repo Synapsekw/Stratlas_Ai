@@ -43,6 +43,8 @@ function installBridge() {
     invoke: (channel: string, req: unknown) => {
       calls.push({ channel, req });
       if (channel === 'collab:read') return Promise.resolve({ ok: true, state });
+      if (channel === 'sync:conflicts') return Promise.resolve({ ok: true, conflicts: [] });
+      if (channel === 'sync:quarantine') return Promise.resolve({ ok: true, entries: [] });
       if (channel === 'identity:get')
         return Promise.resolve({
           ok: true,

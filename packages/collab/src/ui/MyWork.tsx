@@ -111,7 +111,61 @@ export function MyWork({ onOpen }: { onOpen?: () => void }) {
       {section(t('collab.work.awaiting'), work.awaiting, (i) => (
         <b>{label(i.target)}</b>
       ))}
+      <InboxSection
+        title={t('collab.work.conflicts')}
+        testId="my-work-conflicts"
+        lines={c.conflicts.map((x) => ({
+          key: x.id,
+          label: `${x.target.rec === 'issue' ? label({ kind: 'issue', id: x.target.id }) : x.target.id} ${x.field}`,
+        }))}
+        onOpen={() => {
+          collabStore.getState().openConflicts?.();
+          onOpen?.();
+        }}
+      />
+      <InboxSection
+        title={t('collab.work.quarantined')}
+        testId="my-work-quarantined"
+        lines={c.quarantined.map((q) => ({
+          key: q.op,
+          label: `${q.target.rec === 'issue' ? label({ kind: 'issue', id: q.target.id }) : q.target.id}: ${q.message}`,
+        }))}
+        onOpen={() => {
+          collabStore.getState().openConflicts?.();
+          onOpen?.();
+        }}
+      />
     </div>
+  );
+}
+
+/** Conflicts or quarantined changes in My work: each line opens the Conflicts inbox. */
+function InboxSection(props: {
+  title: string;
+  testId: string;
+  lines: { key: string; label: string }[];
+  onOpen: () => void;
+}) {
+  const t = useT();
+  return (
+    <section data-testid={props.testId}>
+      <h4>
+        {props.title} ({props.lines.length})
+      </h4>
+      {props.lines.length === 0 ? (
+        <p className="clb-faint">{t('collab.work.empty')}</p>
+      ) : (
+        <ul>
+          {props.lines.map((l) => (
+            <li key={l.key}>
+              <button type="button" onClick={props.onOpen}>
+                <b dir="auto">{l.label}</b>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

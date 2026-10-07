@@ -16,9 +16,23 @@
  *
  * Packages are read-only: their journal is never appended. Decision 8: the journal is on by
  * default; a private project may switch it off (the switch is recorded), a team project may not.
+ *
+ * M9 integration: this service is the only writer of `journal/`. Identity (T2), the review
+ * workflow (T3), the merge inbox (T4), sync and exchange (T5) and binaries (T6) append through
+ * `append`; ops from other copies arrive through `ingest`; merged state files are written with
+ * `writeMerged`; `locked` runs a sequence of them as one step per project.
  */
 import { createHash } from 'node:crypto';
-import { mkdir, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+  type FileHandle,
+} from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import {
   auditEntries,
@@ -39,6 +53,7 @@ import {
   type ChainWriter,
   type DraftOp,
   type JournalFiles,
+  type Signer,
 } from '@aio/journal';
 import {
   checkpointFileName,
@@ -55,6 +70,7 @@ import {
   type IpcResponse,
   type JobEvent,
   type JobRecord,
+  type Op,
   type RecordRef,
   type VerifyReport,
   type Via,
@@ -62,11 +78,42 @@ import {
 import { z } from 'zod';
 import type { Handler } from './ipc';
 import type { AuditSummary } from '@aio/project/export';
-import type { JournalIdentity } from './journalIdentity';
+import { projectCacheKey } from '@aio/sync/blobs';
+import { writeJsonAtomic } from './fsutil';
 import { type Handle } from './notYet';
 import { ISSUES_SCHEMA } from './project';
+import { createJournalStore, type JournalStore } from './sync/journalStore';
 
-export type { JournalIdentity } from './journalIdentity';
+/** Who signs the journal on this machine: T2's identity service (`identityPorts.ts`). */
+export interface JournalIdentity {
+  actor: string;
+  name: string;
+  initials: string;
+  /** This device: its id and raw public key (base64url). */
+  device: { id: string; publicKey: string };
+  /** Null when the vault is not available: ops are written unsigned. */
+  signer: Signer | null;
+  app: { name: string; version: string };
+}
+
+/** A merged state file (project-relative path, `writeJsonAtomic` text). */
+export interface MergedText {
+  path: string;
+  text: string;
+}
+
+/** One step of several journal actions on a project, run after every earlier step. */
+export interface JournalTx {
+  root: string;
+  /** This copy's chain (`<device>.<replica>`). */
+  chain: string;
+  append(drafts: readonly DraftOp[], via?: Via): Promise<Op[]>;
+  /** Ops of other copies, appended to their own chains (planned by the caller: no gaps). */
+  ingest(ops: readonly Op[]): Promise<number>;
+  /** Write merged state files: atomic with `.bak`, taken as the new known state (no ops). */
+  writeMerged(files: readonly MergedText[]): Promise<void>;
+  read(rel: string): Promise<string | null>;
+}
 
 /** The registry slice the journal needs: project ids to folders, packages refused. */
 export interface JournalProjects {
@@ -78,6 +125,10 @@ export interface JournalServiceDeps {
   userData: string;
   projects: JournalProjects;
   identity: () => Promise<JournalIdentity>;
+  /** The replica id of a folder (`team/projects.json`, T5); absent: kept in the cache meta. */
+  replicaOf?: (root: string) => Promise<string>;
+  /** The journal reader shared with sync (one cache of segments). */
+  store?: JournalStore;
   /** `journal:changed` to the renderer. */
   emitChanged?: (e: { projectId: string; records: RecordRef[] }) => void;
   now?: () => number;
@@ -154,13 +205,13 @@ interface ProjectState {
   depsSent: string;
   queue: Promise<unknown>;
   entries: { stamp: string; list: AuditEntry[] } | null;
+  /** The open segment of this device's chain (kept open: an append is one write and a sync). */
+  handle: { file: string; fh: FileHandle } | null;
 }
 
 const textHash = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
-const keyOf = (root: string) => {
-  const r = resolve(root);
-  return textHash(process.platform === 'win32' ? r.toLowerCase() : r).slice(0, 24);
-};
+/** The folder's key in `journal-cache/` (shared with sync and binaries: one folder per project). */
+const keyOf = (root: string) => projectCacheKey(resolve(root));
 const parse = (text: string | null): unknown => {
   if (text === null) return null;
   try {
@@ -186,16 +237,30 @@ async function writeAtomic(file: string, text: string): Promise<void> {
   await rename(tmp, file);
 }
 
-/** Append lines to a segment and fsync before returning. */
-async function appendDurable(file: string, text: string): Promise<void> {
-  await mkdir(dirname(file), { recursive: true });
-  const fh = await open(file, 'a');
-  try {
-    await fh.writeFile(text, 'utf8');
-    await fh.sync();
-  } finally {
-    await fh.close();
+/**
+ * Append lines to this device's segment and fsync before returning. The segment stays open
+ * between appends (opening it each time costs more than the 5 ms budget, T8 finding 4); a new
+ * segment, a redaction or closing the project closes it.
+ */
+async function appendDurable(st: ProjectState, file: string, text: string): Promise<void> {
+  if (st.handle?.file !== file) {
+    await closeHandle(st);
+    await mkdir(dirname(file), { recursive: true });
+    st.handle = { file, fh: await open(file, 'a') };
   }
+  try {
+    await st.handle.fh.write(text, null, 'utf8');
+    await st.handle.fh.sync();
+  } catch (e) {
+    await closeHandle(st);
+    throw e;
+  }
+}
+
+async function closeHandle(st: ProjectState): Promise<void> {
+  const h = st.handle;
+  st.handle = null;
+  await h?.fh.close().catch(() => undefined);
 }
 
 /** Every journaled record file of a project folder (project-relative, forward slashes). */
@@ -251,6 +316,7 @@ const targetsOf = (ops: readonly DraftOp[]) => {
 export type JournalService = ReturnType<typeof createJournalService>;
 
 export function createJournalService(deps: JournalServiceDeps) {
+  const store = deps.store ?? createJournalStore();
   const states = new Map<string, Promise<ProjectState>>();
   const projectIds = new Map<string, string>();
   const jobs = new Map<string, { root: string; pipeline: string }>();
@@ -275,7 +341,13 @@ export function createJournalService(deps: JournalServiceDeps) {
                 journal: 'on',
                 files: {},
               };
-        const fresh = !ok.success;
+        let fresh = !ok.success;
+        // one replica id per folder, from team/projects.json (a copied folder starts a new chain)
+        const replica = deps.replicaOf ? await deps.replicaOf(root) : undefined;
+        if (replica !== undefined && replica !== meta.replicaId) {
+          meta.replicaId = replica;
+          fresh = true;
+        }
         const state: ProjectState = {
           root: resolve(root),
           dir,
@@ -285,6 +357,7 @@ export function createJournalService(deps: JournalServiceDeps) {
           depsSent: '',
           queue: Promise.resolve(),
           entries: null,
+          handle: null,
         };
         if (fresh) await saveMeta(state);
         return state;
@@ -387,10 +460,15 @@ export function createJournalService(deps: JournalServiceDeps) {
     drafts: readonly DraftOp[],
     via?: Via,
   ): Promise<string[]> {
+    return (await appendOps(st, drafts, via)).map((o) => o.id);
+  }
+
+  /** Seal and append ops (fsync). Returns the ops as written. */
+  async function appendOps(st: ProjectState, drafts: readonly DraftOp[], via?: Via): Promise<Op[]> {
     if (drafts.length === 0) return [];
     const { w, id } = await writerFor(st);
     const bySegment = new Map<number, string>();
-    const ids: string[] = [];
+    const ids: Op[] = [];
     for (const d of drafts) {
       const depsKey = JSON.stringify(st.others);
       const sendDeps = depsKey !== st.depsSent && Object.keys(st.others).length > 0;
@@ -400,10 +478,10 @@ export function createJournalService(deps: JournalServiceDeps) {
       });
       if (sendDeps) st.depsSent = depsKey;
       bySegment.set(r.segment, (bySegment.get(r.segment) ?? '') + r.line);
-      ids.push(r.op.id);
+      ids.push(r.op);
     }
     for (const [n, text] of bySegment) {
-      await appendDurable(join(st.root, JOURNAL_OPS_DIR, w.chain, segmentFileName(n)), text);
+      await appendDurable(st, join(st.root, JOURNAL_OPS_DIR, w.chain, segmentFileName(n)), text);
     }
     st.entries = null;
     if (w.checkpointDue()) await checkpoint(st, w, id);
@@ -449,6 +527,7 @@ export function createJournalService(deps: JournalServiceDeps) {
       payload: { file, root: cp.root, count: cp.count },
     });
     await appendDurable(
+      st,
       join(st.root, JOURNAL_OPS_DIR, w.chain, segmentFileName(r.segment)),
       r.line,
     );
@@ -781,6 +860,7 @@ export function createJournalService(deps: JournalServiceDeps) {
           },
         },
       ]);
+      await closeHandle(st);
       const file = join(f.root, ...hit.file.split('/'));
       const text = await readText(file);
       const stripped = text === null ? null : stripPayload(text, req.op);
@@ -888,7 +968,108 @@ export function createJournalService(deps: JournalServiceDeps) {
     });
   }
 
+  /** Ops of other copies to their own chains (never this device's chain). */
+  async function ingestOps(st: ProjectState, ops: readonly Op[]): Promise<number> {
+    const { w } = await writerFor(st);
+    const foreign = ops.filter((o) => o.chain !== w.chain);
+    if (foreign.length === 0) return 0;
+    await store.append(st.root, foreign);
+    // the clock moves past what arrived; the next own op names the new heads in `deps`
+    for (const o of foreign) w.observe(o.hlc);
+    await readOthers(st, w);
+    st.entries = null;
+    return foreign.length;
+  }
+
+  /** Merged state written by the merge engine: atomic with `.bak`, the new known state. */
+  async function writeMergedFiles(st: ProjectState, files: readonly MergedText[]) {
+    for (const f of files) {
+      const file = join(st.root, ...f.path.split('/'));
+      await mkdir(dirname(file), { recursive: true });
+      // `writeJsonAtomic` writes `JSON.stringify(data, null, 2)` and a newline: the merge's text
+      await writeJsonAtomic(file, JSON.parse(f.text) as unknown, { backup: true });
+      await snapshot(st, f.path, await readText(file));
+    }
+    if (files.length > 0) await saveMeta(st);
+  }
+
+  function tx(st: ProjectState, w: ChainWriter): JournalTx {
+    return {
+      root: st.root,
+      chain: w.chain,
+      append: (drafts, via) => appendOps(st, drafts, via),
+      ingest: (ops) => ingestOps(st, ops),
+      writeMerged: (files) => writeMergedFiles(st, files),
+      read: (rel) => readText(join(st.root, ...rel.split('/'))),
+    };
+  }
+
+  /**
+   * Run `fn` as one step of the project's journal (after every earlier step, before any later
+   * one): sync and the merge inbox ingest, project and write without a save in between.
+   */
+  async function locked<T>(root: string, fn: (t: JournalTx) => Promise<T>): Promise<T> {
+    const st = await load(root);
+    return serial(st, async () => {
+      const { w } = await writerFor(st);
+      return fn(tx(st, w));
+    });
+  }
+
   return {
+    /** The journal reader shared with sync. */
+    store,
+    locked,
+    /** Append event ops by this person and device (team, review, sync, binaries). */
+    append: (root: string, drafts: readonly DraftOp[], via?: Via) =>
+      locked(root, (t) => t.append(drafts, via)),
+    /** Wait for every pending journal step of a folder. */
+    flush: async (root: string) => {
+      const st = await load(root);
+      await serial(st, () => Promise.resolve());
+    },
+    /**
+     * Before ops leave the machine (sync, exchange): record what changed in the files since the
+     * journal last saw them (`record.external`, found at sync), so nothing is sent without it.
+     */
+    catchUp: async (root: string) => {
+      const st = await load(root);
+      if (st.meta.journal === 'off') return;
+      const touched = await serial(st, () => reconcile(st, null, { external: { found: 'sync' } }));
+      emit(st.root, touched);
+    },
+    /** This copy's chain id, made on first need (the device record is published with it). */
+    chainOf: (root: string) => locked(root, (t) => Promise.resolve(t.chain)),
+    /** Remove the payloads of these ops from their segments (`comment.redact` already appended). */
+    redactPayloads: (root: string, opIds: readonly string[]) =>
+      locked(root, async () => {
+        const st = await load(root);
+        await closeHandle(st);
+        let removed = 0;
+        for (const [rel, text] of await readJournalFiles(st.root)) {
+          if (!rel.endsWith('.jsonl')) continue;
+          let next = text;
+          for (const id of opIds) {
+            if (!next.includes(id)) continue;
+            const stripped = stripPayload(next, id);
+            if (stripped !== null && stripped !== next) {
+              next = stripped;
+              removed++;
+            }
+          }
+          if (next !== text) await writeAtomic(join(st.root, ...rel.split('/')), next);
+        }
+        st.entries = null;
+        return removed;
+      }),
+    /** Close the kept segment of a folder (project closed, app quitting). */
+    close: async (root: string) => {
+      const st = states.get(keyOf(root));
+      if (st) await closeHandle(await st);
+    },
+    closeAll: async () => {
+      for (const st of states.values()) await closeHandle(await st);
+    },
     wrap,
     opened,
     jobEvent,

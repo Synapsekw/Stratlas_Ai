@@ -17,15 +17,11 @@ import {
   deriveInitials,
   deviceIdFromKey,
   randomId,
-  readSegment,
   replayTeam,
   roleRefusal,
   sealOp,
-  sha256Hex,
   signerFromKey,
   verifySignature,
-  writeSegmentLine,
-  base32,
   type Signer,
   type TeamReplay,
 } from '@aio/journal';
@@ -38,11 +34,7 @@ import {
   IDENTITY_SCHEMA,
   Identity,
   IdentityCard,
-  JOURNAL_DEVICES_DIR,
-  JOURNAL_OPS_DIR,
   PersonName,
-  SEGMENT_MAX_OPS,
-  segmentFileName,
   type AppStamp,
   type DeviceRecord,
   type IpcRequest,
@@ -52,8 +44,8 @@ import {
   type Role,
 } from '@aio/schema';
 import { createPrivateKey, generateKeyPairSync, type KeyObject } from 'node:crypto';
-import { mkdir, open, readdir, readFile, stat } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { readFile, stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import { readJson, writeJsonAtomic } from './fsutil';
 import type { KeyEntry } from './keys';
 import type { Handle } from './notYet';
@@ -367,10 +359,7 @@ export interface TeamEntry {
   payload: unknown;
 }
 
-/**
- * What identity needs of the project journal. T1's journal service provides it at integration;
- * `createFileTeamJournal` is the interim writer that keeps the same files and rules.
- */
+/** What identity needs of the project journal: T1's journal service (`teamJournal`). */
 export interface TeamJournal {
   /** Every op of the project, raw JSON (verification works on raw lines). */
   ops(root: string): Promise<Record<string, unknown>[]>;
@@ -378,102 +367,6 @@ export interface TeamJournal {
   append(root: string, actor: string, key: DeviceKey, entry: TeamEntry): Promise<Op>;
   /** Write this device's public record into `journal/devices/` when it is missing. */
   publishDevice(root: string, record: DeviceRecord): Promise<void>;
-}
-
-async function listDir(dir: string): Promise<string[]> {
-  try {
-    return (await readdir(dir)).sort();
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Interim journal writer (until T1's service is wired): appends to this device's own chain
- * `journal/ops/<device>.<replica>/NNNNNN.jsonl`. The replica id is derived from the device and
- * the folder path, so a copied or moved folder starts a new chain instead of forking one.
- */
-export function createFileTeamJournal(now: () => number = Date.now): TeamJournal {
-  async function readAll(root: string) {
-    const out: { chain: string; file: string; raw: Record<string, unknown> }[] = [];
-    const opsDir = join(root, JOURNAL_OPS_DIR);
-    for (const chain of await listDir(opsDir)) {
-      for (const file of await listDir(join(opsDir, chain))) {
-        if (!file.endsWith('.jsonl')) continue;
-        const text = await readFile(join(opsDir, chain, file), 'utf8');
-        for (const line of readSegment(text)) {
-          if (line.ok) out.push({ chain, file, raw: line.raw });
-        }
-      }
-    }
-    return out;
-  }
-
-  return {
-    async ops(root) {
-      return (await readAll(root)).map((l) => l.raw);
-    },
-
-    async append(root, actor, key, entry) {
-      const device = key.signer.device;
-      const replica = `r_${base32(Buffer.from(sha256Hex(`${device}\n${resolve(root).toLowerCase()}`), 'hex')).slice(0, 16)}`;
-      const chain = `${device}.${replica}`;
-      const all = await readAll(root);
-      const mine = all.filter((l) => l.chain === chain);
-      const segments = [...new Set(mine.map((l) => l.file))].sort();
-      const lastFile = segments[segments.length - 1];
-      const last = mine[mine.length - 1]?.raw;
-      const clock = createClock(device, now);
-      const newest = all
-        .map((l) => l.raw.hlc)
-        .filter((h): h is string => typeof h === 'string')
-        .sort(compareHlc)
-        .pop();
-      if (newest) clock.receive(newest);
-      const seq = typeof last?.seq === 'number' ? last.seq + 1 : 1;
-      const op = sealOp(
-        {
-          v: 1,
-          chain,
-          dev: device,
-          act: actor,
-          seq,
-          hlc: clock.tick(),
-          prev: typeof last?.id === 'string' ? last.id : null,
-          kind: entry.kind,
-          target: entry.target,
-        },
-        entry.payload,
-        key.stored ? key.signer : undefined,
-      );
-      const count = lastFile ? mine.filter((l) => l.file === lastFile).length : 0;
-      const file =
-        !lastFile || count >= SEGMENT_MAX_OPS ? segmentFileName(segments.length + 1) : lastFile;
-      const dir = join(root, JOURNAL_OPS_DIR, chain);
-      await mkdir(dir, { recursive: true });
-      const handle = await open(join(dir, file), 'a');
-      try {
-        await handle.writeFile(writeSegmentLine(op), 'utf8');
-        await handle.sync();
-      } finally {
-        await handle.close();
-      }
-      return op;
-    },
-
-    async publishDevice(root, record) {
-      const dir = join(root, JOURNAL_DEVICES_DIR);
-      const path = join(dir, `${record.id}.json`);
-      try {
-        await stat(path);
-        return;
-      } catch {
-        /* missing: write it */
-      }
-      await mkdir(dir, { recursive: true });
-      await writeJsonAtomic(path, record);
-    },
-  };
 }
 
 /** The public record of this device, self-signed (`aio.device/1`). */
@@ -648,6 +541,86 @@ export function createIdentityService(deps: IdentityServiceDeps) {
     /** For T1's journal service: who writes and with which key. */
     identity: () => deps.store.get(),
     deviceKey: () => deps.keys.get(),
+
+    /**
+     * Sharing (T5): the person who shares becomes the first owner, with this device, unless the
+     * project already has a team. Idempotent.
+     */
+    async shareAsOwner(projectId: string): Promise<{ ok: true } | Failure> {
+      const where = folder(projectId);
+      if ('ok' in where) return where;
+      const { ops, replay } = await team(where.root);
+      if (replay.shared) return { ok: true };
+      const identity = await deps.store.get();
+      const key = signingKey();
+      if ('ok' in key) return key;
+      return write(
+        where.root,
+        identity,
+        key,
+        {
+          kind: 'member.add',
+          target: { rec: 'member', id: identity.actor },
+          payload: {
+            actor: identity.actor,
+            name: identity.name,
+            initials: identity.initials,
+            ...(identity.email ? { email: identity.email } : {}),
+            role: 'owner',
+            devices: [{ id: key.signer.device, key: key.signer.publicKey }],
+          },
+        },
+        ops,
+      );
+    },
+
+    /**
+     * Team server (T7): add people the server granted (enrolled devices) who are not members yet.
+     * Owner only; each is one `member.add` with the role the server gave.
+     */
+    async addGranted(
+      projectId: string,
+      granted: readonly {
+        actor: string;
+        name: string;
+        initials: string;
+        role: Role;
+        devices: readonly { id: string; key: string }[];
+      }[],
+    ): Promise<{ ok: true; added: number } | Failure> {
+      const where = folder(projectId);
+      if ('ok' in where) return where;
+      let { ops, replay } = await team(where.root);
+      if (!replay.shared) return { ok: true, added: 0 };
+      const identity = await deps.store.get();
+      if (memberOf(replay, identity.actor)?.role !== 'owner') return { ok: true, added: 0 };
+      const key = signingKey();
+      if ('ok' in key) return key;
+      let added = 0;
+      for (const g of granted) {
+        if (memberOf(replay, g.actor) || g.devices.length === 0) continue;
+        const r = await write(
+          where.root,
+          identity,
+          key,
+          {
+            kind: 'member.add',
+            target: { rec: 'member', id: g.actor },
+            payload: {
+              actor: g.actor,
+              name: g.name,
+              initials: g.initials,
+              role: g.role,
+              devices: g.devices.map((d) => ({ id: d.id, key: d.key })),
+            },
+          },
+          ops,
+        );
+        if (r.ok) added++;
+        ({ ops, replay } = await team(where.root));
+      }
+      return { ok: true, added };
+    },
 
     async get(): Promise<IpcResponse<'identity:get'>> {
       const identity = await deps.store.get();

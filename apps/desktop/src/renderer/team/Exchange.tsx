@@ -239,6 +239,17 @@ export function ExchangeImportDialog({ projectId }: { projectId: string }) {
     else setError(r.value.error);
   };
 
+  // a double-clicked `.aiosync` (argv, open-file, second launch) comes with its path
+  const handed = useTeamUi((s) => s.importPath);
+  useEffect(() => {
+    if (!handed) return;
+    const id = setTimeout(() => void preview(handed), 0);
+    return () => {
+      clearTimeout(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per handed path
+  }, [handed]);
+
   const pick = async () => {
     const r = await bridge.call('dialog:openFile', {
       title: t('team.import.title'),

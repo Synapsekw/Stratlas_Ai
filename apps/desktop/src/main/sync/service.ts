@@ -11,7 +11,10 @@ import {
   type Heads,
   type IpcEvent,
   type IpcRequest,
+  type Member,
   type Op,
+  type PullPage,
+  type PushResult,
   type TeamSettings,
   type TeamStatus,
 } from '@aio/schema';
@@ -38,6 +41,22 @@ import type { DevicePort, JournalPort, MergePort, ProjectCtx } from './ports';
 
 type Emitted = 'sync:progress' | 'exchange:progress' | 'journal:changed';
 
+/** T7's HTTP transport as sync uses it (`teamServers().transport`). */
+export interface ServerTransport {
+  heads(): Promise<Heads>;
+  pushOps(ops: readonly Op[]): Promise<PushResult>;
+  pullOps(since: Heads, cursor?: string | null): Promise<PullPage>;
+  members(): Promise<Member[]>;
+}
+
+/** T6: binaries of a project around sync and exchange files. */
+export interface BlobHooks {
+  /** The file of a registered blob on this computer: in the project, or in the download cache. */
+  file(projectId: string, sha256: string, rel: string): Promise<string | null>;
+  /** Ops or files arrived: index again and fetch what the policies say. */
+  changed(projectId: string): Promise<void>;
+}
+
 export interface SyncServiceDeps {
   userData: string;
   /** Folder of an open folder project; undefined for packages and unknown ids. */
@@ -49,6 +68,16 @@ export interface SyncServiceDeps {
   journal: JournalPort;
   merge: MergePort;
   store?: JournalStore;
+  /** The project's folder in `journal-cache/` (one per project, shared with T1 and T6). */
+  cacheKey?: (root: string) => string;
+  /** T2: the person who shares a project becomes its first owner (a signed `member.add`). */
+  shareAsOwner?: (projectId: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** T7: the sync transport of a server-mode project; absent: server mode is not available. */
+  serverTransport?: (serverId: string, teamProjectId: string) => Promise<ServerTransport>;
+  /** T7: people the server granted, added as members by an owner. */
+  addGranted?: (projectId: string, members: readonly Member[]) => Promise<unknown>;
+  /** T6: what to do after ops or files arrived (index again, take in bundle files). */
+  blobs?: BlobHooks;
   emit<E extends Emitted>(event: E, payload: IpcEvent<E>): void;
   /** Ask where to save an exchange file; null when cancelled. */
   saveDialog(defaultName: string): Promise<string | null>;
@@ -87,6 +116,7 @@ const offlineMessage =
  */
 export function createSyncService(d: SyncServiceDeps) {
   const store = d.store ?? createJournalStore();
+  const cacheKey = d.cacheKey ?? ((root: string) => root);
   const config: TeamConfigStore = createTeamConfigStore(join(d.userData, 'team', 'projects.json'));
   const now = d.now ?? (() => new Date());
   const inflight = new Map<string, Promise<SyncResult>>();
@@ -111,7 +141,7 @@ export function createSyncService(d: SyncServiceDeps) {
       replicaId: cfg.replicaId,
       chain: `${signer.device}.${cfg.replicaId}`,
       device: signer.device,
-      cacheDir: join(d.userData, 'journal-cache', cfg.replicaId),
+      cacheDir: join(d.userData, 'journal-cache', cacheKey(root)),
     };
   }
 
@@ -175,11 +205,12 @@ export function createSyncService(d: SyncServiceDeps) {
       ...state.held,
       ...incoming,
     ]);
-    await store.append(ctx.root, plan.apply);
+    // T1 appends them to their chains and T4 merges them, as one journal step
+    const merged = plan.apply.length > 0 ? await d.journal.ingest(ctx, plan.apply) : null;
     await saveState(ctx, { ...state, held: plan.held });
-    const merged = plan.apply.length > 0 ? await d.merge.apply(ctx, plan.apply) : null;
     if (merged && merged.records.length > 0) {
       d.emit('journal:changed', { projectId: ctx.projectId, records: merged.records });
+      await d.blobs?.changed(ctx.projectId);
     }
     const counts = merged ? { conflicts: merged.conflicts } : await d.merge.counts(ctx);
     return { plan, conflicts: counts.conflicts };
@@ -252,6 +283,67 @@ export function createSyncService(d: SyncServiceDeps) {
     }
   }
 
+  /**
+   * Server mode (T7): pull every page since the heads this copy holds, merge, push what the server
+   * lacks. The server checks chains, signatures and roles (403 lists each refused op). Unreachable:
+   * work continues locally and syncs later.
+   */
+  async function runServerSync(ctx: ProjectCtx): Promise<SyncResult> {
+    const cfg = await config.get(ctx.root);
+    const team = await readTeam(ctx.root);
+    if (cfg.mode !== 'server' || !cfg.serverId || !team || !d.serverTransport) {
+      throw new SyncError('This project does not sync through a team server.');
+    }
+    const progress = (phase: IpcEvent<'sync:progress'>['phase'], done = 0, total = 0) => {
+      d.emit('sync:progress', { projectId: ctx.projectId, phase, done, total });
+    };
+    progress('pull');
+    await d.journal.flush(ctx);
+    const state = await loadState(ctx);
+    try {
+      const server = await d.serverTransport(cfg.serverId, team.teamProjectId);
+      await ownRecord(ctx);
+      const devices = await store.devices(ctx.root);
+      const pulled: Op[] = [];
+      let cursor: string | null = null;
+      const since = await store.heads(ctx.root);
+      for (let page = 0; page < 10_000; page++) {
+        const r: PullPage = await server.pullOps(since, cursor);
+        pulled.push(...r.ops);
+        cursor = r.cursor;
+        if (!r.more || !cursor) break;
+      }
+      const { good } = verified(pulled, devices);
+      progress('merge', 0, good.length);
+      const { plan, conflicts } = await ingest(ctx, good);
+      progress('push');
+      const remote = await server.heads();
+      const local = await store.ops(ctx.root);
+      const pushed = await server.pushOps(opsSince(local, remote));
+      // people the server granted join the team when an owner syncs
+      await d.addGranted?.(ctx.projectId, await server.members().catch(() => [])).catch(() => 0);
+      await saveState(ctx, { ...(await loadState(ctx)), reachable: true });
+      await config.update(ctx.root, { lastSync: now().toISOString() });
+      progress('done', plan.apply.length, plan.apply.length);
+      if (pushed.refused.length > 0 && pushed.accepted.length === 0 && plan.apply.length === 0) {
+        throw new SyncError(
+          pushed.refused[0]?.message ?? 'The team server refused the changes of this copy.',
+        );
+      }
+      return { pulled: plan.apply.length, pushed: pushed.accepted.length, conflicts };
+    } catch (e) {
+      const code = (e as { code?: unknown }).code;
+      if (code === 'unreachable' || code === 'timeout') {
+        await saveState(ctx, { ...state, reachable: false });
+        progress('offline');
+        throw new SyncError(
+          'The team server cannot be reached. Your work is kept on this computer and syncs when the server is back.',
+        );
+      }
+      throw e;
+    }
+  }
+
   async function status(ctx: ProjectCtx): Promise<TeamStatus> {
     const cfg = await config.get(ctx.root);
     const team = await readTeam(ctx.root);
@@ -271,10 +363,25 @@ export function createSyncService(d: SyncServiceDeps) {
       conflicts: counts.conflicts,
       quarantined: counts.quarantined,
       unread: 0,
-      ...(cfg.mode === 'hub' && state.reachable !== undefined
+      ...((cfg.mode === 'hub' || cfg.mode === 'server') && state.reachable !== undefined
         ? { reachable: state.reachable }
         : {}),
+      ...(cfg.mode === 'hub' && cfg.hubPath && team
+        ? { online: await online(ctx, cfg.hubPath, team.teamProjectId) }
+        : {}),
     };
+  }
+
+  /** Who else had the project open in the last two minutes (hub presence; advisory). */
+  async function online(ctx: ProjectCtx, hubPath: string, team: string) {
+    try {
+      const fresh = now().getTime() - 2 * 60_000;
+      return (await hubFor(ctx, hubPath, team).presence())
+        .filter((p) => p.device !== ctx.device && Date.parse(p.at) >= fresh)
+        .map((p) => ({ actor: p.actor, name: p.name, initials: p.initials, at: p.at }));
+    } catch {
+      return [];
+    }
   }
 
   const fail = (e: unknown): Fail => {
@@ -347,7 +454,10 @@ export function createSyncService(d: SyncServiceDeps) {
       const ctx = await ctxFor(projectId);
       let run = inflight.get(ctx.root);
       if (!run) {
-        run = runHubSync(ctx).finally(() => inflight.delete(ctx.root));
+        const cfg = await config.get(ctx.root);
+        run = (cfg.mode === 'server' ? runServerSync(ctx) : runHubSync(ctx)).finally(() =>
+          inflight.delete(ctx.root),
+        );
         inflight.set(ctx.root, run);
       }
       return { ok: true as const, ...(await run) };
@@ -363,19 +473,29 @@ export function createSyncService(d: SyncServiceDeps) {
     active,
 
     async share(req: IpcRequest<'team:share'>) {
-      if (req.mode === 'server') {
+      if (req.mode === 'server' && !d.serverTransport) {
         return {
           ok: false as const,
-          error: 'Team server sharing is not available yet in this build.',
+          error: 'Team server sharing is not available in this build.',
           code: 'not-implemented' as const,
         };
       }
       try {
         const ctx = await ctxFor(req.projectId);
         if (req.mode === 'hub' && !req.hubPath) throw new SyncError('Choose a shared folder.');
+        if (req.mode === 'server' && !req.serverId) throw new SyncError('Choose a team server.');
         const me = await d.device.me();
         let team = await readTeam(ctx.root);
         await d.journal.flush(ctx);
+        if (!team && req.teamProjectId && req.mode === 'hub' && req.hubPath) {
+          // join a team project the hub already holds: its team.json, then the first sync
+          const found = (await hubFor(ctx, req.hubPath, req.teamProjectId).projects()).find(
+            (t) => t.teamProjectId === req.teamProjectId,
+          );
+          if (!found) throw new SyncError('This team project is not in the shared folder.');
+          team = found;
+          await writeJsonAtomic(join(ctx.root, TEAM_FILE), team);
+        }
         if (!team) {
           team = {
             schema: TEAM_SCHEMA,
@@ -394,6 +514,9 @@ export function createSyncService(d: SyncServiceDeps) {
               name: team.name,
             },
           );
+          // T2: the person who shares is the first owner (signed, with this device)
+          const owner = await d.shareAsOwner?.(req.projectId);
+          if (owner && !owner.ok) throw new SyncError(owner.error);
         }
         await ownRecord(ctx);
         if (req.mode === 'hub' && req.hubPath) {
@@ -413,6 +536,16 @@ export function createSyncService(d: SyncServiceDeps) {
           });
           active.add(req.projectId);
           await syncNow(req.projectId);
+        } else if (req.mode === 'server' && req.serverId) {
+          await config.update(ctx.root, {
+            mode: 'server',
+            teamProjectId: team.teamProjectId,
+            serverId: req.serverId,
+            hubPath: undefined,
+          });
+          active.add(req.projectId);
+          const first = await syncNow(req.projectId);
+          if (!first.ok) throw new SyncError(first.error);
         } else {
           await config.update(ctx.root, {
             mode: 'exchange',
@@ -454,12 +587,55 @@ export function createSyncService(d: SyncServiceDeps) {
 
     syncNow,
 
+    /** The other devices of the team project, with what this copy last exchanged with them. */
+    async peers(projectId: string) {
+      try {
+        const ctx = await ctxFor(projectId);
+        const cfg = await config.get(ctx.root);
+        const peers = (await store.devices(ctx.root))
+          .filter((r) => r.id !== ctx.device)
+          .map((r) => ({
+            device: r.id,
+            actor: r.actor,
+            name: r.name,
+            initials: r.initials,
+            ...(cfg.peers[r.id] ? { heads: cfg.peers[r.id] } : {}),
+          }));
+        return { ok: true as const, peers };
+      } catch (e) {
+        return fail(e);
+      }
+    },
+
+    /** The team projects a hub folder holds (to join one from a second copy). */
+    async hubProjects(hubPath: string) {
+      try {
+        const hub = createHubTransport({
+          root: hubPath,
+          team: '',
+          device: 'd_',
+          ...(d.hubFs ? { fs: d.hubFs } : {}),
+          ...(d.hubTimeoutMs ? { timeoutMs: d.hubTimeoutMs } : {}),
+        });
+        if (!(await hub.check())) return { ok: true as const, projects: [] };
+        const projects = (await hub.projects()).map((t) => ({
+          teamProjectId: t.teamProjectId,
+          name: t.name,
+        }));
+        return { ok: true as const, projects };
+      } catch (e) {
+        if (e instanceof HubUnreachable)
+          return { ok: false as const, error: `The shared folder cannot be reached: ${hubPath}` };
+        return fail(e);
+      }
+    },
+
     /** Should the scheduler sync this project now (hub mode, auto-sync on, interval passed)? */
     async due(projectId: string, force = false): Promise<boolean> {
       const root = d.projectRoot(projectId);
       if (!root || d.isPackage(projectId)) return false;
       const cfg = await config.get(root);
-      if (cfg.mode !== 'hub') return false;
+      if (cfg.mode !== 'hub' && cfg.mode !== 'server') return false;
       const prefs = await d.teamSettings();
       if (!prefs?.autoSync) return false;
       if (force) return true;
@@ -617,6 +793,7 @@ export function createSyncService(d: SyncServiceDeps) {
           });
         }
         const { plan: done, conflicts } = await ingest(ctx, opened.ops);
+        if (blobs > 0) await d.blobs?.changed(ctx.projectId);
         const fresh = new Set(opened.ops.map((o) => o.id));
         const applied = done.apply.filter((o) => fresh.has(o.id)).length;
         const state = await loadState(ctx);
@@ -688,7 +865,10 @@ export function createSyncService(d: SyncServiceDeps) {
     const blobs: BundleBlob[] = [];
     if (req.kind === 'bundle') {
       for (const [sha, path] of blobPathsOf(ops)) {
-        const file = safeJoin(ctx.root, path);
+        // T6: in the project folder, or in the download cache of a working copy
+        const file = d.blobs
+          ? await d.blobs.file(ctx.projectId, sha, path)
+          : safeJoin(ctx.root, path);
         const s = file ? await stat(file).catch(() => null) : null;
         if (file && s?.isFile()) blobs.push({ sha256: sha, size: s.size, file });
       }

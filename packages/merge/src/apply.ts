@@ -69,10 +69,10 @@ export function applyIssues(
     problems.push(
       `Issue ${String(value.code ?? value.id)}: ${r.error.issues[0]?.message ?? 'not valid'}`,
     );
-    if (fallback) {
-      const f = Issue.safeParse(fallback);
-      if (f.success) out.push(f.data);
-    }
+    // never drop a record: the previous version when it is valid; when the file already held a
+    // record this build cannot validate, the merged one as it is (unknown fields stay)
+    const f = fallback ? Issue.safeParse(fallback) : null;
+    out.push((f?.success ? f.data : value) as Issue);
   };
   for (const item of raw) {
     const issue = obj(item);

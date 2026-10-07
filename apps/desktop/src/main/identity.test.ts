@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   checkCard,
   createDeviceKeys,
-  createFileTeamJournal,
   createIdentityService,
   createIdentityStore,
   makeCard,
@@ -15,9 +14,32 @@ import {
   profileUserData,
   profileVaultService,
   registerIdentityIpc,
+  type IdentityService,
+  type TeamJournal,
 } from './identity';
+import { journalIdentity, teamJournal } from './identityPorts';
+import { createJournalService } from './journal';
 import type { KeyEntry } from './keys';
 import { collectHandlers } from './notYet';
+import { createJournalStore } from './sync/journalStore';
+
+/** T1's journal service for one person's machine: the only writer of `journal/` (M9 integration). */
+function journalOn(
+  userData: string,
+  root: () => string,
+  service: () => IdentityService,
+): TeamJournal {
+  const journal = createJournalService({
+    userData,
+    projects: { root: () => root(), package: () => undefined },
+    identity: () => journalIdentity(service(), APP)(),
+  });
+  return teamJournal(() => journal);
+}
+
+/** Every op of a project folder, as read back from disk. */
+const opsIn = async (root: string) =>
+  (await createJournalStore().ops(root)) as unknown as Record<string, unknown>[];
 
 const APP = { name: 'Stratlas', version: '0.9.0' };
 const AT = new Date('2026-10-07T10:00:00.000Z');
@@ -222,10 +244,17 @@ function personAt(root: string, name: string, opts: { packages?: string[] } = {}
   const keys = createDeviceKeys('svc', vault.entry);
   const store = createIdentityStore(join(dir, `${name}.json`), { osUser: () => name });
   const saved: string[] = [];
-  const service = createIdentityService({
+  // eslint-disable-next-line prefer-const -- the journal signs with the service made below
+  let service: IdentityService;
+  const journal = journalOn(
+    join(dir, `${name}-userData`),
+    () => root,
+    () => service,
+  );
+  service = createIdentityService({
     store,
     keys,
-    journal: createFileTeamJournal(),
+    journal,
     projectRoot: (id) => (id === 'p' ? root : undefined),
     isPackage: (id) => (opts.packages ?? []).includes(id),
     chooseCardPath: (defaultName) => {
@@ -304,8 +333,7 @@ describe('identity IPC', () => {
     expect(omarList.ok && omarList.me).toBe('reviewer');
 
     // every op written is chained and signed, and the device record is public
-    const journal = createFileTeamJournal();
-    const ops = await journal.ops(project);
+    const ops = await opsIn(project);
     expect(ops.map((o) => o.kind)).toEqual(['member.add', 'member.add']);
     expect(ops.map((o) => o.seq)).toEqual([1, 2]);
     expect(ops[1]?.prev).toBe(ops[0]?.id);
@@ -374,7 +402,7 @@ describe('identity IPC', () => {
     list = await rana.ipc.call('members:list', { projectId: 'p' });
     expect(list.ok && list.members.map((m) => m.name)).toEqual(['Rana Example']);
     // the journal holds no refused op: refusals are checked before writing
-    expect((await createFileTeamJournal().ops(project)).length).toBe(5);
+    expect((await opsIn(project)).length).toBe(5);
   });
 
   it('refuses changes in a package and an own card, and lists nothing there', async () => {
@@ -414,10 +442,17 @@ describe('identity IPC', () => {
   it('refuses team changes when the vault cannot keep the device key', async () => {
     const store = createIdentityStore(join(dir, 'x.json'), { osUser: () => 'Rana Example' });
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const service = createIdentityService({
+    // eslint-disable-next-line prefer-const -- the journal signs with the service made below
+    let service: IdentityService;
+    const journal = journalOn(
+      join(dir, 'x-userData'),
+      () => dir,
+      () => service,
+    );
+    service = createIdentityService({
       store,
       keys: createDeviceKeys('svc', brokenVault),
-      journal: createFileTeamJournal(),
+      journal,
       projectRoot: () => dir,
       isPackage: () => false,
       chooseCardPath: () => Promise.resolve(join(dir, 'card.aioid')),

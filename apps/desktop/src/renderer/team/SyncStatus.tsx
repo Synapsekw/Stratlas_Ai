@@ -1,8 +1,6 @@
 import { Icon, t, useT } from '@aio/ui';
-import { issueSaver } from '@aio/annotate';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useState } from 'react';
-import { mergeDiskIssues } from '../jobs';
 import { bridge, useShell } from '../shell';
 import { ExchangeExportDialog, ExchangeImportDialog } from './Exchange';
 import { TeamDialog } from './Share';
@@ -27,16 +25,6 @@ export async function syncNow(
   teamUi.getState().setSyncing(false, error);
   await refreshTeamStatus(projectId);
   return r.ok && r.value.ok ? { pulled: r.value.pulled, pushed: r.value.pushed } : null;
-}
-
-/** Records changed on disk under the open project (a merge or an import): take the new issues. */
-async function reloadIssues(root: string, projectId: string): Promise<void> {
-  const r = await bridge.call('project:open', { path: root });
-  const ws = workspace.getState();
-  if (!r.ok || !r.value.ok || ws.project?.id !== projectId) return;
-  const merged = mergeDiskIssues(ws.issues, r.value.issues);
-  workspace.setState({ issues: merged.issues });
-  if (merged.unsaved) issueSaver.schedule(projectId, merged.issues);
 }
 
 /**
@@ -75,26 +63,17 @@ export function SyncStatus() {
     };
   }, [projectId]);
 
-  // a merge or import changed records of the open project: show them
+  // a sync ended: refresh the chip (records reload on journal:changed, team/reload.ts)
   useEffect(() => {
     if (!projectId || !root) return;
-    const offChanged = window.aio.on('journal:changed', (e) => {
-      if (e.projectId === projectId && e.records.some((r) => r.rec === 'issue')) {
-        void reloadIssues(root, projectId);
-      }
-    });
-    const offProgress = window.aio.on('sync:progress', (e) => {
+    return window.aio.on('sync:progress', (e) => {
       if (e.projectId !== projectId) return;
       if (e.phase === 'done' || e.phase === 'offline') void refreshTeamStatus(projectId);
     });
-    return () => {
-      offChanged();
-      offProgress();
-    };
   }, [projectId, root]);
 
   // auto-sync: 10 s after the last saved change, when the person turned it on
-  const autoHub = status?.mode === 'hub' && team?.autoSync === true;
+  const autoHub = (status?.mode === 'hub' || status?.mode === 'server') && team?.autoSync === true;
   useEffect(() => {
     if (!autoHub || !projectId) return;
     const id = setTimeout(() => void syncNow(projectId), 10_000);
@@ -105,7 +84,8 @@ export function SyncStatus() {
 
   if (!projectId) return null;
   const mode = status?.mode ?? 'off';
-  const offline = mode === 'hub' && (status?.reachable === false || syncError !== null);
+  const synced = mode === 'hub' || mode === 'server';
+  const offline = synced && (status?.reachable === false || syncError !== null);
   const ago = agoMinutes(status?.lastSync, now);
   const label =
     mode === 'off'
@@ -145,7 +125,7 @@ export function SyncStatus() {
         }}
       >
         <Icon
-          name={mode === 'off' ? 'link' : offline ? 'offline' : mode === 'hub' ? 'refresh' : 'send'}
+          name={mode === 'off' ? 'link' : offline ? 'offline' : synced ? 'refresh' : 'send'}
           size={14}
         />
         <span>{label}</span>
@@ -157,6 +137,15 @@ export function SyncStatus() {
         {status && status.conflicts > 0 && (
           <span className="team-badge warn" data-testid="sync-conflicts">
             {t('team.chip.conflicts', { count: status.conflicts })}
+          </span>
+        )}
+        {status?.online && status.online.length > 0 && (
+          <span
+            className="team-badge"
+            data-testid="sync-online"
+            title={status.online.map((p) => p.name).join(', ')}
+          >
+            {status.online.map((p) => p.initials).join(' ')}
           </span>
         )}
       </button>

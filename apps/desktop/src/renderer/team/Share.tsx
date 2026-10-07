@@ -1,12 +1,15 @@
 import { formatDate, Icon, Switch, t, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useState } from 'react';
+import type { ServerInfo } from '@aio/schema';
+import { useEffect, useState } from 'react';
 import { bridge, shell, useShell } from '../shell';
+import { Members } from './Members';
 import { Modal } from './Modal';
+import { TeamConflicts } from './TeamConflicts';
 import { refreshTeamStatus, syncNow } from './SyncStatus';
 import { teamUi, useTeamUi } from './store';
 
-type Mode = 'exchange' | 'hub';
+type Mode = 'exchange' | 'hub' | 'server';
 
 /**
  * The Team dialog: "Make this a team project" for a private project (exchange files or a shared
@@ -27,6 +30,16 @@ function ShareForm({ projectId, initial = 'exchange' }: { projectId: string; ini
   const [name, setName] = useState(status?.name ?? projectName);
   const [mode, setMode] = useState<Mode>(initial);
   const [hubPath, setHubPath] = useState('');
+  // T7 (preview): the team servers enrolled on this computer (Settings, Data folder)
+  const [servers, setServers] = useState<ServerInfo[]>([]);
+  const [serverId, setServerId] = useState('');
+  useEffect(() => {
+    void bridge.call('server:list', {}).then((r) => {
+      if (!r.ok) return;
+      setServers(r.value.servers);
+      setServerId((s) => s || (r.value.servers[0]?.id ?? ''));
+    });
+  }, []);
   const [autoSync, setAutoSync] = useState(team?.autoSync ?? true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +63,7 @@ function ShareForm({ projectId, initial = 'exchange' }: { projectId: string; ini
       mode,
       ...(name.trim() ? { name: name.trim() } : {}),
       ...(mode === 'hub' ? { hubPath: hubPath.trim() } : {}),
+      ...(mode === 'server' && serverId ? { serverId } : {}),
     });
     setBusy(false);
     if (!r.ok) setError(r.error);
@@ -115,14 +129,43 @@ function ShareForm({ projectId, initial = 'exchange' }: { projectId: string; ini
           title={t('team.share.hub')}
           help={t('team.share.hubHelp')}
         />
-        <label className="team-mode off">
-          <input type="radio" name="team-mode" disabled />
-          <span>
-            <b>{t('team.share.server')}</b>
-            <small>{t('team.share.serverHelp')}</small>
-          </span>
-        </label>
+        {servers.length > 0 ? (
+          <ModeChoice
+            value="server"
+            checked={mode === 'server'}
+            onPick={setMode}
+            title={t('team.share.server')}
+            help={t('team.share.serverReady')}
+          />
+        ) : (
+          <label className="team-mode off">
+            <input type="radio" name="team-mode" disabled />
+            <span>
+              <b>{t('team.share.server')}</b>
+              <small>{t('team.share.serverHelp')}</small>
+            </span>
+          </label>
+        )}
       </fieldset>
+      {mode === 'server' && (
+        <label className="team-field">
+          <span>{t('team.share.serverPick')}</span>
+          <select
+            className="input"
+            value={serverId}
+            data-testid="share-server"
+            onChange={(e) => {
+              setServerId(e.target.value);
+            }}
+          >
+            {servers.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {mode === 'hub' && (
         <section className="team-hub">
           <label className="team-field">
@@ -298,7 +341,7 @@ function TeamStatusView({ projectId }: { projectId: string }) {
         </p>
       )}
       <div className="team-actions">
-        {status.mode === 'hub' && (
+        {(status.mode === 'hub' || status.mode === 'server') && (
           <button
             type="button"
             className="btn primary"
@@ -349,6 +392,8 @@ function TeamStatusView({ projectId }: { projectId: string }) {
           </button>
         )}
       </div>
+      <TeamConflicts projectId={projectId} />
+      <Members projectId={projectId} projectName={status.name ?? ''} />
     </Modal>
   );
 }

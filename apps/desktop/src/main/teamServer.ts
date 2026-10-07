@@ -9,19 +9,10 @@
  * `teamServers(...)` is also what the sync module (T5) uses for a server-mode project:
  * `transport(serverId, teamProjectId)` is an `HttpTransport` pinned to the accepted certificate.
  */
-import { generateKeyPairSync, createPrivateKey } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
-import { contentHash, randomId, signerFromKey, type Signer } from '@aio/journal';
-import {
-  DeviceCert,
-  Identity,
-  IDENTITY_FILE,
-  ServerInfo,
-  type AppStamp,
-  type DeviceRecord,
-} from '@aio/schema';
+import type { Signer } from '@aio/journal';
+import { DeviceCert, ServerInfo, type DeviceRecord } from '@aio/schema';
 import {
   createHttpClient,
   createHttpTransport,
@@ -42,7 +33,7 @@ export interface DeviceIdentity {
   record: DeviceRecord;
 }
 
-/** Gives the device identity; null when there is none (no vault). T2's identity plugs in here. */
+/** Gives the device identity; null when there is none (no vault): T2's `deviceSource`. */
 export type DeviceSource = () => Promise<DeviceIdentity | null>;
 
 export const SERVERS_FILE = join('team', 'servers.json');
@@ -149,6 +140,40 @@ export function teamServers(deps: TeamServerDeps) {
       }
     },
 
+    /** Is the server reachable now: its health, over a request signed by this device. */
+    async check(id: string) {
+      const server = read().find((s) => s.id === id);
+      if (!server)
+        return { ok: false as const, error: 'This server is not connected on this computer.' };
+      const checkedAt = now().toISOString();
+      if (deps.offlineOnly()) {
+        return {
+          ok: true as const,
+          server: { ...publicInfo(server), reachable: false, checkedAt },
+        };
+      }
+      const device = await deps.device();
+      if (!device) return { ok: false as const, error: 'This computer has no device key.' };
+      try {
+        const health = await serverHealth(
+          createHttpClient({
+            baseUrl: server.url,
+            fingerprint: server.fingerprint,
+            signer: device.signer,
+          }),
+        );
+        return {
+          ok: true as const,
+          server: { ...publicInfo(server), version: health.version, reachable: true, checkedAt },
+        };
+      } catch {
+        return {
+          ok: true as const,
+          server: { ...publicInfo(server), reachable: false, checkedAt },
+        };
+      }
+    },
+
     async forget(id: string) {
       const servers = read();
       if (!servers.some((s) => s.id === id))
@@ -177,133 +202,39 @@ export function teamServers(deps: TeamServerDeps) {
   };
 }
 
+export type TeamServers = ReturnType<typeof teamServers>;
+
 export interface TeamServerIpcDeps extends Partial<TeamServerDeps> {
   handle: Handle;
+  /** The servers main already made (shared with sync); else made from the deps. */
+  servers?: TeamServers;
 }
 
-export function registerTeamServerIpc({ handle, ...deps }: TeamServerIpcDeps): void {
-  if (!deps.userData || !deps.offlineOnly || !deps.device) {
+export function registerTeamServerIpc({
+  handle,
+  servers: given,
+  ...deps
+}: TeamServerIpcDeps): void {
+  const servers =
+    given ??
+    (deps.userData && deps.offlineOnly && deps.device
+      ? teamServers({
+          userData: deps.userData,
+          offlineOnly: deps.offlineOnly,
+          device: deps.device,
+          ...(deps.now ? { now: deps.now } : {}),
+        })
+      : null);
+  if (!servers) {
     // not wired (tests of other modules): the T0 behaviour
     handle('server:enrol', () => notYet('The team server (preview)'));
     handle('server:list', () => ({ servers: [] }));
+    handle('server:check', () => notYet('The team server (preview)'));
     handle('server:forget', () => notYet('The team server (preview)'));
     return;
   }
-  const servers = teamServers({
-    userData: deps.userData,
-    offlineOnly: deps.offlineOnly,
-    device: deps.device,
-    ...(deps.now ? { now: deps.now } : {}),
-  });
   handle('server:enrol', (req) => servers.enrol(req));
   handle('server:list', () => ({ servers: servers.list() }));
+  handle('server:check', (req) => servers.check(req.id));
   handle('server:forget', (req) => servers.forget(req.id));
-}
-
-// ---- interim device key (until T2's identity provides the device key) ----
-
-/** Vault account of the interim key. T2's `device-signing` replaces it at integration. */
-export const INTERIM_DEVICE_ACCOUNT = 'team-server-device';
-
-/** The slice of `@napi-rs/keyring` Entry used here (injectable for tests). */
-export interface VaultEntry {
-  setPassword(password: string): void;
-  getPassword(): string | null;
-}
-
-const VaultValue = z.object({
-  pkcs8: z.string().min(1),
-  actor: z.string().regex(/^a_[a-z2-7]{26}$/),
-});
-
-/** Initials from a name: first letters of the first and last words (any script), at most 3. */
-export function initialsOf(name: string): string {
-  const words = name
-    .trim()
-    .split(/[\s._-]+/)
-    .map((w) => /\p{L}/u.exec(w)?.[0] ?? '')
-    .filter(Boolean);
-  const letters = words.length > 1 ? [words[0], words[words.length - 1]] : words.slice(0, 1);
-  const out = letters.join('').toUpperCase().slice(0, 3);
-  return out || 'U';
-}
-
-/**
- * INTERIM (T7, until T2 lands): a device key of its own in the vault (account
- * `team-server-device`, service as the AI keys: `.isolated` in test runs), and the person's name
- * from T2's `identity.json` when it exists, else the OS account. At integration, pass T2's device
- * source to `registerTeamServerIpc` and delete this.
- */
-export function interimDeviceSource(opts: {
-  userData: () => string;
-  vault: (account: string) => VaultEntry;
-  app: AppStamp;
-  /**
-   * Test profiles only (`STRATLAS_USER_DATA`): when the vault cannot be used (a CI keychain),
-   * keep a key for this run in memory instead of giving no device.
-   */
-  sessionKeyWithoutVault?: boolean;
-}): DeviceSource {
-  let cached: DeviceIdentity | null = null;
-  return () => {
-    if (cached) return Promise.resolve(cached);
-    let stored: z.infer<typeof VaultValue>;
-    try {
-      const entry = opts.vault(INTERIM_DEVICE_ACCOUNT);
-      const existing = VaultValue.safeParse(JSON.parse(entry.getPassword() ?? 'null'));
-      if (existing.success) stored = existing.data;
-      else {
-        const pkcs8 = generateKeyPairSync('ed25519')
-          .privateKey.export({ format: 'der', type: 'pkcs8' })
-          .toString('base64');
-        stored = { pkcs8, actor: randomId('a_', 26) };
-        entry.setPassword(JSON.stringify(stored));
-      }
-    } catch (e) {
-      console.warn(
-        `Team server: the vault is not available (${e instanceof Error ? e.name : 'error'}).`,
-      );
-      if (!opts.sessionKeyWithoutVault) return Promise.resolve(null);
-      const pkcs8 = generateKeyPairSync('ed25519')
-        .privateKey.export({ format: 'der', type: 'pkcs8' })
-        .toString('base64');
-      stored = { pkcs8, actor: randomId('a_', 26) };
-    }
-    const signer = signerFromKey(
-      createPrivateKey({ key: Buffer.from(stored.pkcs8, 'base64'), format: 'der', type: 'pkcs8' }),
-    );
-    let who = { actor: stored.actor, name: osName(), initials: '' };
-    try {
-      const id = Identity.safeParse(
-        JSON.parse(readFileSync(join(opts.userData(), IDENTITY_FILE), 'utf8')),
-      );
-      if (id.success)
-        who = { actor: id.data.actor, name: id.data.name, initials: id.data.initials };
-    } catch {
-      // no identity file yet (T2): the OS account name
-    }
-    const rec = {
-      schema: 'aio.device/1' as const,
-      id: signer.device,
-      alg: 'ed25519' as const,
-      key: signer.publicKey,
-      actor: who.actor,
-      name: who.name,
-      initials: who.initials || initialsOf(who.name),
-      app: opts.app,
-      createdAt: new Date().toISOString(),
-      certs: [],
-    };
-    cached = { signer, record: { ...rec, sig: signer.sign('aio.device/1', contentHash(rec)) } };
-    return Promise.resolve(cached);
-  };
-}
-
-function osName(): string {
-  try {
-    const n = userInfo().username.trim().slice(0, 80);
-    return n || 'Reviewer';
-  } catch {
-    return 'Reviewer';
-  }
 }

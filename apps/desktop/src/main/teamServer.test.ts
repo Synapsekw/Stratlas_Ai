@@ -1,21 +1,16 @@
 import { X509Certificate } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:https';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { contentHash, verifySignature } from '@aio/journal';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createDeviceKeys, createIdentityService, createIdentityStore } from './identity';
+import { deviceSource } from './identityPorts';
+import type { KeyEntry } from './keys';
 import { collectHandlers } from './notYet';
-import {
-  initialsOf,
-  interimDeviceSource,
-  registerTeamServerIpc,
-  SERVERS_FILE,
-  teamServers,
-  type VaultEntry,
-} from './teamServer';
+import { registerTeamServerIpc, SERVERS_FILE, teamServers } from './teamServer';
 
 const fixtures = fileURLToPath(
   new URL('../../../../packages/sync/src/http/__fixtures__/', import.meta.url),
@@ -26,13 +21,31 @@ const fingerprint = new X509Certificate(cert).fingerprint256.replace(/:/g, '').t
 
 function memoryVault() {
   const values = new Map<string, string>();
-  const vault = (account: string): VaultEntry => ({
-    getPassword: () => values.get(account) ?? null,
+  const vault = (service: string, account: string): KeyEntry => ({
+    getPassword: () => values.get(`${service}/${account}`) ?? null,
     setPassword: (v) => {
-      values.set(account, v);
+      values.set(`${service}/${account}`, v);
     },
   });
   return { values, vault };
+}
+
+/** T2's identity service as the device source (one device key per profile, M9 integration). */
+function identityDevice(userData: string, vault: ReturnType<typeof memoryVault>['vault']) {
+  const service = createIdentityService({
+    store: createIdentityStore(join(userData, 'identity.json'), { osUser: () => 'Rana Example' }),
+    keys: createDeviceKeys('svc', vault),
+    journal: {
+      ops: () => Promise.resolve([]),
+      append: () => Promise.reject(new Error('not used')),
+      publishDevice: () => Promise.resolve(),
+    },
+    projectRoot: () => undefined,
+    isPackage: () => false,
+    chooseCardPath: () => Promise.resolve(null),
+    app: { name: 'Stratlas', version: '0.9.0' },
+  });
+  return deviceSource(service, { name: 'Stratlas', version: '0.9.0' });
 }
 
 /** A stand-in team server: health and enrolment, recording what it was sent. */
@@ -97,11 +110,7 @@ describe('team server client (main)', () => {
   const setup = (offline = false) => {
     const userData = mkdtempSync(join(tmpdir(), 'aio-ts-'));
     const { vault, values } = memoryVault();
-    const device = interimDeviceSource({
-      userData: () => userData,
-      vault,
-      app: { name: 'Stratlas', version: '0.9.0' },
-    });
+    const device = identityDevice(userData, vault);
     const ipc = collectHandlers((handle) => {
       registerTeamServerIpc({
         handle,
@@ -198,78 +207,5 @@ describe('team server client (main)', () => {
     await expect(servers.transport('srv_other', 't_vm6cv3mws7bgecezd4hkxj6qqt')).rejects.toThrow(
       /not connected/,
     );
-  });
-});
-
-describe('interim device key', () => {
-  it('lives in the vault, signs its own record and is stable', async () => {
-    const userData = mkdtempSync(join(tmpdir(), 'aio-ts-'));
-    const { vault, values } = memoryVault();
-    const source = () =>
-      interimDeviceSource({
-        userData: () => userData,
-        vault,
-        app: { name: 'Stratlas', version: '0.9.0' },
-      });
-    const a = await source()();
-    const b = await source()();
-    expect(a?.record.id).toBe(b?.record.id);
-    expect(values.size).toBe(1);
-    const rec = a?.record;
-    if (!rec) throw new Error('no device');
-    const { sig, ...signed } = rec;
-    expect(verifySignature(rec.key, 'aio.device/1', contentHash(signed), sig)).toBe(true);
-    expect(existsSync(join(userData, 'team'))).toBe(false);
-  });
-
-  it("takes the person's name from identity.json when T2 wrote one", async () => {
-    const userData = mkdtempSync(join(tmpdir(), 'aio-ts-'));
-    writeFileSync(
-      join(userData, 'identity.json'),
-      JSON.stringify({
-        schema: 'aio.identity/1',
-        actor: 'a_k7jjnlwiekmnw7rmq52c2m7zz6',
-        name: 'Rana Example',
-        initials: 'RE',
-        createdAt: '2026-10-01T08:00:00.000Z',
-      }),
-    );
-    const d = await interimDeviceSource({
-      userData: () => userData,
-      vault: memoryVault().vault,
-      app: { name: 'Stratlas', version: '0.9.0' },
-    })();
-    expect(d?.record).toMatchObject({
-      actor: 'a_k7jjnlwiekmnw7rmq52c2m7zz6',
-      name: 'Rana Example',
-      initials: 'RE',
-    });
-  });
-
-  it('gives no device when the vault fails', async () => {
-    const d = await interimDeviceSource({
-      userData: () => tmpdir(),
-      vault: () => {
-        throw new Error('no vault');
-      },
-      app: { name: 'Stratlas', version: '0.9.0' },
-    })();
-    expect(d).toBeNull();
-    const session = await interimDeviceSource({
-      userData: () => tmpdir(),
-      vault: () => {
-        throw new Error('no vault');
-      },
-      app: { name: 'Stratlas', version: '0.9.0' },
-      sessionKeyWithoutVault: true,
-    })();
-    expect(session?.record.id).toMatch(/^d_/);
-  });
-
-  it('derives initials in any script', () => {
-    expect(initialsOf('Rana Example')).toBe('RE');
-    expect(initialsOf('omar.sample')).toBe('OS');
-    expect(initialsOf('رنا مثال')).toBe('رم');
-    expect(initialsOf('42')).toBe('U');
   });
 });

@@ -16,6 +16,7 @@ export {
   personOf,
   resetCollabStore,
   useCollab,
+  useCollabStore,
   type Person,
 } from './store';
 export { captureView, flyToView } from './view';

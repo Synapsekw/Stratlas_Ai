@@ -1876,6 +1876,8 @@ export const en = {
   'collab.work.assigned': 'Assigned to me',
   'collab.work.mentions': 'Mentions',
   'collab.work.awaiting': 'Awaiting my approval',
+  'collab.work.conflicts': 'Conflicts',
+  'collab.work.quarantined': 'Quarantined',
   'collab.work.empty': 'Nothing here.',
   'collab.work.noIdentity': 'Set your name in Settings to see your work.',
   'collab.work.target': '{kind} {id}',
@@ -1924,7 +1926,11 @@ export const en = {
   'team.share.hubHelp':
     'A folder on a NAS or network share that every copy can reach. Each computer writes only its own files.',
   'team.share.server': 'Team server',
-  'team.share.serverHelp': 'Comes in a later version.',
+  'team.share.serverHelp':
+    'Connect a team server first: Settings, Data folder, Team server (preview).',
+  'team.share.serverReady':
+    "Changes go through your team server (preview). The server checks each person's role.",
+  'team.share.serverPick': 'Team server',
   'team.share.hubPath': 'Path of the shared folder',
   'team.share.choose': 'Choose folder',
   'team.share.autoSync': 'Sync automatically every {minutes} minutes',

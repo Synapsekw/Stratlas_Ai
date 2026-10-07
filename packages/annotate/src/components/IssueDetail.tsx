@@ -3,7 +3,14 @@ import type { Issue, Layer, Sighting } from '@aio/schema';
 import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
 import { useState } from 'react';
 import { nextStatus, previousStatus } from '../model/ops';
-import { focusIssue, issueEditor, useAnnotateReadOnly, useIssueEditorState } from '../runtime';
+import {
+  focusIssue,
+  issueEditor,
+  useAnnotateReadOnly,
+  useAuthorInitials,
+  useIssueEditorState,
+  useTeamPolicy,
+} from '../runtime';
 import { sightingAnchor, severityColor } from '../tools/mesh';
 import { projectMsFromVideo } from '../video/track';
 import { SeverityBadge, kindLabel, sevStyle, sightingLabel, useTaxonomy } from './common';
@@ -65,6 +72,8 @@ export function IssueDetail({
   const { classes, classById, modelById } = useTaxonomy();
   const { lastError } = useIssueEditorState();
   const readOnly = useAnnotateReadOnly();
+  const initialsOf = useAuthorInitials();
+  const teamPolicy = useTeamPolicy();
   const [linkTarget, setLinkTarget] = useState('');
 
   if (!issue) {
@@ -120,7 +129,11 @@ export function IssueDetail({
             </span>
             {issue.source !== 'human' && <span className="ann-tag">{issue.source}</span>}
             <span className="ann-faint" style={{ marginLeft: 'auto' }}>
-              by {issue.author} · {issue.updatedAt.slice(0, 16).replace('T', ' ')}
+              by{' '}
+              <span className="ann-ini" title={issue.author} data-testid="issue-detail-initials">
+                {initialsOf(issue.author)}
+              </span>{' '}
+              · {issue.updatedAt.slice(0, 16).replace('T', ' ')}
             </span>
           </div>
         )}
@@ -195,7 +208,8 @@ export function IssueDetail({
                     Back to {prev}
                   </button>
                 )}
-                {next && (
+                {/* under a team policy approving goes through the Approvals panel (decision 6) */}
+                {next && !(teamPolicy && next === 'approved') && (
                   <button
                     type="button"
                     className="ann-btn primary"

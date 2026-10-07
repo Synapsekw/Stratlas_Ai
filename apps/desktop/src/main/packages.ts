@@ -131,10 +131,15 @@ export function packagePathFromArgv(argv: readonly string[]): string | null {
     const a = argv[i];
     // A `<scheme>://open?path=...aio` link is not a path (appLink.ts reads it).
     if (a === undefined || a.startsWith('-') || a.includes('://')) continue;
-    if (a.toLowerCase().endsWith(PACKAGE_EXTENSION)) return a;
+    const lower = a.toLowerCase();
+    // M9: a double-clicked exchange file opens the import dialog with its path (renderer)
+    if (lower.endsWith(PACKAGE_EXTENSION) || lower.endsWith(EXCHANGE_FILE_EXTENSION)) return a;
   }
   return null;
 }
+
+/** M9 T5: `.aiosync` exchange files, handed to the renderer like packages. */
+export const EXCHANGE_FILE_EXTENSION = '.aiosync';
 
 /** File scans kept for a short while, so toggling layers in the export dialog stays quick. */
 export function createPlanCache(ttlMs = 60_000) {

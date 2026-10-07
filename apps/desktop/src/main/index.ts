@@ -64,7 +64,6 @@ import { createBlobService, registerBlobsIpc } from './blobs';
 import { houseSignOff, registerCollabIpc } from './collab';
 import {
   createDeviceKeys,
-  createFileTeamJournal,
   createIdentityService,
   createIdentityStore,
   identityPath,
@@ -73,12 +72,21 @@ import {
   profileVaultService,
   registerIdentityIpc,
 } from './identity';
+import {
+  collabIdentity,
+  collabMembers,
+  collabOps,
+  deviceSource,
+  journalIdentity,
+  teamJournal,
+} from './identityPorts';
 import { createJournalService, registerJournalIpc } from './journal';
-import { createLocalIdentity } from './journalIdentity';
 import { createAuditExport } from './exports/audit';
 import { registerSyncIpc } from './sync';
+import { createTeamConfigStore } from './sync/config';
 import { startSync } from './sync/electron';
-import { interimDeviceSource, registerTeamServerIpc } from './teamServer';
+import { registerTeamServerIpc, teamServers } from './teamServer';
+import { createTestVault, useTestVault } from './testVault';
 import { importLogo, removeLogo } from './branding';
 import { putThumb } from './thumbs';
 import { RENDERER_PROBE, smokeProbe, writeSmokeReport } from './smoke';
@@ -228,6 +236,13 @@ const blobs = createBlobService({
   emit: (e) => {
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send('blobs:progress', e);
   },
+  // registered binaries are `blob.add` ops of this device's journal chain (T1)
+  register: async (_projectId, root, refs) => {
+    await journal.append(
+      root,
+      refs.map((r) => ({ kind: 'blob.add', target: { rec: 'blob', id: r.sha256 }, payload: r })),
+    );
+  },
 });
 const policy = new ProjectPolicy(registry);
 /** The last local model server discovery reached in this run (kind and version, for diagnostics). */
@@ -244,17 +259,20 @@ const keyService = profileVaultService(
 const keys = createKeyVault(keyService, (service, account) => new Entry(service, account));
 /** The app as pipeline packs see it: a pack declaring an app range without this version is refused. */
 const packApp = { version: app.getVersion(), name: brand.productName };
-// This person and this device (M9 T2): the journal service (T1) signs with `identityService.deviceKey()`.
+const appStamp = { name: brand.productName, version: app.getVersion() };
+// One device key per profile (M9 integration): T2's identity service, vault account
+// `device-signing` under the profile's service. Automated runs on an isolated profile keep it in
+// a TEST-ONLY file in their throwaway userData instead of the OS vault (testVault.ts).
+const deviceVault = useTestVault(process.env)
+  ? createTestVault(app.getPath('userData'))
+  : (service: string, account: string) => new Entry(service, account);
 const identityService = createIdentityService({
   store: createIdentityStore(identityPath(app.getPath('userData')), {
     osUser: () => osUser().user,
   }),
-  keys: createDeviceKeys(
-    keyService,
-    (service, account) => new Entry(service, account),
-    registerSecret,
-  ),
-  journal: createFileTeamJournal(),
+  keys: createDeviceKeys(keyService, deviceVault, registerSecret),
+  // T2's team ops go through T1's journal service, the only writer of `journal/`
+  journal: teamJournal(() => journal),
   projectRoot: (id) => registry.root(id),
   isPackage: (id) => registry.package(id) !== undefined,
   chooseCardPath: (name) =>
@@ -264,16 +282,14 @@ const identityService = createIdentityService({
     }),
   app: { name: brand.productName, version: app.getVersion() },
 });
+/** userData `team/projects.json`: per folder, the replica id and sharing setup (T5). */
+const teamConfig = createTeamConfigStore(join(app.getPath('userData'), 'team', 'projects.json'));
 // M9 T1: every project write appends a signed op to this device's journal chain first.
 const journal = createJournalService({
   userData: app.getPath('userData'),
   projects: registry,
-  identity: createLocalIdentity({
-    userData: app.getPath('userData'),
-    osUser: () => osUser().user,
-    entry: (account) => new Entry(keyService, account),
-    app: { name: brand.productName, version: app.getVersion() },
-  }),
+  identity: journalIdentity(identityService, appStamp),
+  replicaOf: async (root) => (await teamConfig.get(root)).replicaId,
   emitChanged: (e) => {
     const parsed = ipcEvents['journal:changed'].safeParse(e);
     if (parsed.success) targetWindow()?.webContents.send('journal:changed', parsed.data);
@@ -1095,26 +1111,52 @@ function registerIpc(): void {
   // M9: one module per stream (T1 journal, T2 identity, T3 collab, T5 sync, T6 blobs, T7 server).
   registerJournalIpc({ handle, journal, exportAudit });
   registerIdentityIpc({ handle, service: identityService });
-  registerCollabIpc({
+  const collab = registerCollabIpc({
     handle,
     projects: registry,
-    userData: app.getPath('userData'),
     agentTools: agentToolNames,
+    journal: {
+      read: (root) => collabOps(journal, root),
+      append: async (root, _me, draft) => {
+        const [op] = await journal.append(
+          root,
+          [{ ...draft, payload: draft.payload as Record<string, unknown> }],
+          draft.via,
+        );
+        if (!op) throw new Error('The change was not written.');
+        return { id: op.id, hlc: op.hlc };
+      },
+      redactPayloads: (root, ids) => journal.redactPayloads(root, ids),
+    },
+    identity: collabIdentity(identityService),
+    members: collabMembers(),
   });
-  registerSyncIpc({ handle, service: startSync({ registry, settings, keyService }) });
-  registerBlobsIpc({ handle, service: blobs });
-  registerTeamServerIpc({
-    handle,
+  const servers = teamServers({
     userData: () => app.getPath('userData'),
     offlineOnly: () => settings.current().offlineOnly === true,
-    // T7 interim device key; at integration T2's device source replaces it
-    device: interimDeviceSource({
-      userData: () => app.getPath('userData'),
-      vault: (account) => new Entry(keyService, account),
-      app: { name: brand.productName, version: app.getVersion() },
-      sessionKeyWithoutVault: Boolean(process.env.STRATLAS_USER_DATA),
+    // the same device key as the journal (T2), never a key of its own
+    device: deviceSource(identityService, appStamp, {
+      sessionKeyWithoutVault: useTestVault(process.env),
     }),
   });
+  const sync = startSync({
+    registry,
+    settings,
+    journal,
+    identity: identityService,
+    blobs,
+    serverTransport: (serverId, teamProjectId) => servers.transport(serverId, teamProjectId),
+    derivedStatuses: (projectId) => collab.derivedStatuses(projectId),
+  });
+  registerSyncIpc({
+    handle,
+    service: sync.service,
+    engine: sync.engine,
+    projectRoot: (id) => registry.root(id),
+    isPackage: (id) => registry.package(id) !== undefined,
+  });
+  registerBlobsIpc({ handle, service: blobs });
+  registerTeamServerIpc({ handle, servers });
 }
 
 /** Hand a package path to the renderer (second launch, macOS open-file). */
@@ -1398,6 +1440,8 @@ app.on('before-quit', (e) => {
 // Running pipelines stop with the app; their jobs show as interrupted and resume later.
 app.on('will-quit', () => {
   jobs.shutdownSync();
+  // the journal keeps each chain's segment open between appends (T8 finding 4)
+  void journal.closeAll();
 });
 
 app.on('window-all-closed', () => {
