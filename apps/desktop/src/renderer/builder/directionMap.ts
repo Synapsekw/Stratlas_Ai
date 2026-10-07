@@ -19,8 +19,8 @@ export interface DirectionMapState {
   /** Its heading, pitch and roll. */
   dir: CameraDirection | null;
   lens: LensModel;
-  /** The frame to drape (the clip's player), when it has a picture. */
-  video: HTMLVideoElement | null;
+  /** The picture to drape (a video frame, a photo) and its size, when it has one. */
+  frame: { source: CanvasImageSource; width: number; height: number } | null;
   opacity: number;
   /** A look-at target to mark, local frame. */
   target: Vec3 | null;
@@ -285,9 +285,9 @@ export class DirectionMapOverlay {
     }
     handle?.setData({ type: 'FeatureCollection', features });
 
-    const v = s.video;
+    const v = s.frame;
     const mesh =
-      pose && v && v.readyState >= 2 && v.videoWidth
+      pose && v && v.width > 0 && v.height > 0
         ? drapeMesh(pose, s.lens, (p) => this.proj.toLonLat(p))
         : null;
     if (!mesh || !v) {
@@ -295,14 +295,14 @@ export class DirectionMapOverlay {
       return;
     }
     // a small copy of the frame: the drape draws it once per grid triangle
-    const k = Math.min(1, FRAME_PX / Math.max(v.videoWidth, v.videoHeight));
-    const fw = Math.max(1, Math.round(v.videoWidth * k));
-    const fh = Math.max(1, Math.round(v.videoHeight * k));
+    const k = Math.min(1, FRAME_PX / Math.max(v.width, v.height));
+    const fw = Math.max(1, Math.round(v.width * k));
+    const fh = Math.max(1, Math.round(v.height * k));
     if (this.frame.width !== fw || this.frame.height !== fh) {
       this.frame.width = fw;
       this.frame.height = fh;
     }
-    this.frame.getContext('2d')?.drawImage(v, 0, 0, fw, fh);
+    this.frame.getContext('2d')?.drawImage(v.source, 0, 0, fw, fh);
     if (this.canvas.width !== mesh.width || this.canvas.height !== mesh.height) {
       this.canvas.width = mesh.width;
       this.canvas.height = mesh.height;

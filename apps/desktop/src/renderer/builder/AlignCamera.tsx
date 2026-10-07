@@ -172,7 +172,10 @@ export function AlignCamera() {
       pose: pose ? { pos: pose.pos, q: pose.q } : null,
       dir,
       lens: clip.lens,
-      video: v,
+      frame:
+        v && v.readyState >= 2 && v.videoWidth
+          ? { source: v, width: v.videoWidth, height: v.videoHeight }
+          : null,
       opacity,
       target: keys[segmentKey(keys, clipMs)]?.target ?? null,
       picking: session?.picking ?? false,

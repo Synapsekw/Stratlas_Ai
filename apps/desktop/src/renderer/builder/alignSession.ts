@@ -3,6 +3,7 @@ import { useStore } from 'zustand';
 import { getMedia, loadFlight } from '../media';
 import { shell } from '../shell';
 import { createAlignStore, type AlignStore } from './alignStore';
+import { createPhotoAlignStore, type PhotoAlignStore } from './photoAlignStore';
 import { builder } from './state';
 
 /** "Align camera to map": the app's session store (keyframes being edited, notices). */
@@ -25,6 +26,29 @@ export const alignCamera = createAlignStore({
 
 export function useAlign<T>(selector: (s: AlignStore) => T): T {
   return useStore(alignCamera, selector);
+}
+
+/** "Align photo to map": the photo being aligned and the notices after a save. */
+export const photoAlign = createPhotoAlignStore({
+  workspace,
+  save: (layerId, fixes) => builder.getState().saveLayers([layerId], { photoCorrections: fixes }),
+  showBoth: () => {
+    const s = shell.getState();
+    if (s.screen !== 'scene') s.go('scene');
+    if (s.stageMode !== 'split') s.setStageMode('split');
+  },
+});
+
+// one alignment at a time: starting one cancels the other
+alignCamera.subscribe((s, p) => {
+  if (s.session && !p.session) photoAlign.getState().cancel();
+});
+photoAlign.subscribe((s, p) => {
+  if (s.session && !p.session) alignCamera.getState().cancel();
+});
+
+export function usePhotoAlign<T>(selector: (s: PhotoAlignStore) => T): T {
+  return useStore(photoAlign, selector);
 }
 
 const videoOf = (layerId: string) => {

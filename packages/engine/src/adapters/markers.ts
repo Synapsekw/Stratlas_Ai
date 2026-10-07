@@ -245,6 +245,15 @@ export class MarkerLayer {
     });
   }
 
+  /** The members of this layer's icon under a pointer (a merged icon: all of them), or null. */
+  membersAt(clientX: number, clientY: number): number[] | null {
+    if (!this.visible) return null;
+    this.layout();
+    const { x, y } = this.canvasXY(clientX, clientY);
+    const c = this.clusters[this.hitAt(x, y)];
+    return c ? this.membersOf(c) : null;
+  }
+
   private click(e: PointerEvent): boolean {
     if (!this.visible) return false;
     for (const p of this.peers()) p.layout();

@@ -10,7 +10,7 @@ import { createPortal } from 'react-dom';
 import { getMedia, loadFlight } from '../media';
 import { useShell } from '../shell';
 import { alignCamera, useAlign } from './alignSession';
-import { clipAtFlightTime, nearestSampleMs, rigHit } from './droneHits';
+import { claimEvent, clipAtFlightTime, nearestSampleMs, rigHit } from './droneHits';
 
 type VideoLayer = Extract<Layer, { kind: 'video' }>;
 
@@ -130,6 +130,7 @@ export function DroneMenu() {
       const hit = rigHit(scene, pane, e.clientX, e.clientY);
       if (!hit) return;
       e.preventDefault();
+      claimEvent(e);
       let layerId = workspace.getState().activeClip;
       if (hit.kind === 'path') {
         const flight = videoRig(scene).flightOf(hit.layerId);
@@ -183,6 +184,7 @@ export function DroneMenu() {
       }
       if (!layerId) return;
       e.originalEvent.preventDefault();
+      claimEvent(e.originalEvent);
       setMenu({ x: e.originalEvent.clientX, y: e.originalEvent.clientY, layerId });
     };
     m.on('mousedown', md);

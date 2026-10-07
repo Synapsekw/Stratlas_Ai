@@ -3,10 +3,12 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useShell } from '../shell';
 import { AlignCamera } from './AlignCamera';
-import { alignCamera, useAlign } from './alignSession';
+import { AlignPhoto } from './AlignPhoto';
+import { alignCamera, photoAlign, useAlign, usePhotoAlign } from './alignSession';
 import { AlignModel } from './AlignModel';
 import { CalibrateVideo } from './CalibrateVideo';
 import { DroneMenu } from './DroneMenu';
+import { PhotoMenu } from './PhotoMenu';
 import { EmptyProjectHint, ImportLayer } from './ImportPanel';
 import { NewProjectWizard } from './NewProjectWizard';
 import { builder, useBuilder } from './state';
@@ -38,16 +40,22 @@ export function BuilderLayer() {
   const projectId = useWorkspace((s) => s.project?.id ?? null);
   const pane = usePane();
   const aligning = useAlign((s) => s.session !== null);
+  const aligningPhoto = usePhotoAlign((s) => s.session !== null);
 
   // a tool belongs to its project
   useEffect(() => {
     builder.getState().stopAlign();
     alignCamera.getState().cancel();
     alignCamera.getState().dismissNotice();
+    photoAlign.getState().cancel();
+    photoAlign.getState().dismissNotice();
   }, [projectId]);
   // aligning the camera belongs to the scene
   useEffect(() => {
-    if (screen !== 'scene') alignCamera.getState().cancel();
+    if (screen !== 'scene') {
+      alignCamera.getState().cancel();
+      photoAlign.getState().cancel();
+    }
   }, [screen]);
 
   return (
@@ -62,7 +70,9 @@ export function BuilderLayer() {
         <CalibrateVideo key={align.layerId} layerId={align.layerId} />
       )}
       {screen === 'scene' && projectId && <DroneMenu />}
+      {screen === 'scene' && projectId && <PhotoMenu />}
       {screen === 'scene' && aligning && <AlignCamera />}
+      {screen === 'scene' && aligningPhoto && <AlignPhoto />}
     </>
   );
 }

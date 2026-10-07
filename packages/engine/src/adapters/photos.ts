@@ -315,6 +315,12 @@ export function createPhotosAdapter(
         selected: () => selectedIds,
       });
 
+      // the photos under a pointer on a marker (right-click menus): a merged marker lists them all
+      group.userData.photoIdsAt = (x: number, y: number): string[] | null =>
+        group.visible
+          ? (markers.membersAt(x, y)?.flatMap((i) => (located[i] ? [located[i].id] : [])) ?? null)
+          : null;
+
       // selection highlight
       let selected = -1;
       const paint = () => {

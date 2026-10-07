@@ -55,9 +55,15 @@ export function rigHit(h: SceneHandle, pane: HTMLElement, x: number, y: number):
   return null;
 }
 
-/** The frame plane under client point (x, y), if the cursor is on it. */
-export function frameHit(h: SceneHandle, pane: HTMLElement, x: number, y: number): boolean {
-  const plane = h.scene.getObjectByName('DirectionFrame');
+/** The frame plane (by name) under client point (x, y), if the cursor is on it. */
+export function frameHit(
+  h: SceneHandle,
+  pane: HTMLElement,
+  x: number,
+  y: number,
+  name = 'DirectionFrame',
+): boolean {
+  const plane = h.scene.getObjectByName(name);
   if (!plane || !shown(plane)) return false;
   return paneRay(h, pane, x, y).intersectObject(plane, false).length > 0;
 }
@@ -109,4 +115,16 @@ export function clipAtFlightTime(
     }
   }
   return best;
+}
+
+/**
+ * Right-clicks a menu has taken (the drone menu first, then the photo menu). The map and the
+ * orbit controls prevent the default of every right-click, so that cannot tell.
+ */
+const claimedEvents = new WeakSet<Event>();
+export function claimEvent(e: Event): void {
+  claimedEvents.add(e);
+}
+export function isClaimed(e: Event): boolean {
+  return claimedEvents.has(e);
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { LayerPatch } from './builder';
-import { DirectionKey, DirectionKeys, Layer, PhotoRef } from './layers';
+import { DirectionKey, DirectionKeys } from './direction';
+import { Layer, PhotoRef } from './layers';
 
 const clip = {
   kind: 'video',

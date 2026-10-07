@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Id, IsoDate, Mat4, Vec3 } from './common';
-import { CameraOrientation, DirectionKeys, LensModel, PhotoCorrection } from './layers';
+import { DirectionKeys, PhotoCorrection } from './direction';
+import { CameraOrientation, LensModel } from './layers';
 import { ClassCatalogue, SeverityModel } from './severity';
 
 /** What a project is for; picks defaults in the builder and the landing screen. */
