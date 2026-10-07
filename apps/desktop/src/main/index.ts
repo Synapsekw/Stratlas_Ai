@@ -86,7 +86,7 @@ import { registerSyncIpc } from './sync';
 import { createTeamConfigStore } from './sync/config';
 import { startSync } from './sync/electron';
 import { registerTeamServerIpc, teamServers } from './teamServer';
-import { registerGlobeIpc } from './globe';
+import { globeProjectReader, registerGlobeIpc } from './globe';
 import { registerRasterPacksIpc } from './packs/raster';
 import { registerPhotogrammetryIpc } from './photogrammetry';
 import { registerTilesetsIpc } from './tilesets';
@@ -1169,7 +1169,18 @@ function registerIpc(): void {
 
   // M10: one module per stream (G4 photogrammetry, G6 globe, G7 tilesets and raster packs).
   registerPhotogrammetryIpc({ handle });
-  registerGlobeIpc({ handle });
+  registerGlobeIpc({
+    handle,
+    library: async () => {
+      const { dataRoot } = await settings.get();
+      const demos = await demoLibraryPaths(await bundledDemos(), demoCopyRoot());
+      const extraPaths = [...(await library.paths()), ...demos.map((d) => d.path)];
+      return listLibrary({ dataRoot, extraPaths, registry });
+    },
+    readProject: globeProjectReader(registry),
+    dataRoot: async () => (await settings.get()).dataRoot,
+    settingsFile: join(app.getPath('userData'), 'globe.json'),
+  });
   registerTilesetsIpc({ handle });
   registerRasterPacksIpc({ handle });
 }

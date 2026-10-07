@@ -239,7 +239,15 @@ export default defineConfig({
     plugins: [licenses(), releaseNotes()],
     build: {
       externalizeDeps: {
-        exclude: ['@aio/schema', '@aio/brand', '@aio/ai', '@aio/project', '@aio/geo', '@aio/video'],
+        exclude: [
+          '@aio/schema',
+          '@aio/brand',
+          '@aio/ai',
+          '@aio/project',
+          '@aio/geo',
+          '@aio/globe',
+          '@aio/video',
+        ],
       },
       rollupOptions: {
         input: {
