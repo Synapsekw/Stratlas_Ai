@@ -15,7 +15,13 @@ import numpy as np
 import pytest
 
 from aio_pipelines.photo import crs as C
-from aio_pipelines.photo.align import PhotoAlign, choose_pairs, read_sparse, three_quaternion
+from aio_pipelines.photo.align import (
+    PhotoAlign,
+    choose_pairs,
+    feature_threads,
+    read_sparse,
+    three_quaternion,
+)
 from aio_pipelines.photo.colmap_io import ColmapEngine, EngineJob, licence_problem
 from aio_pipelines.photo.exif import read_photo
 from aio_pipelines.photo.model import qvec_to_rotmat
@@ -265,6 +271,16 @@ def test_oblique_views_pair_by_where_they_look(tmp_path):
     s = {tuple(sorted(p)) for p in pairs}
     assert ("a.jpg", "b.jpg") not in s  # same target, facing each other across the site
     assert ("c.jpg", "e.jpg") in s  # 150 m apart, looking the same way at ground 150 m apart
+
+
+def test_feature_threads_fit_the_memory_of_a_laptop(monkeypatch):
+    monkeypatch.setattr(os, "cpu_count", lambda: 24)
+    info = {"groups": [{"width": 5472, "height": 3648}], "maxImageSize": 2736}
+    laptop = feature_threads(info, 16 * 10**9)
+    assert 3 <= laptop <= 8
+    assert feature_threads(info, 64 * 10**9) == 24
+    assert feature_threads({**info, "maxImageSize": 1368}, 16 * 10**9) > laptop
+    assert feature_threads(info, 0) == 24
 
 
 def test_three_quaternion_of_a_nadir_camera_looks_down():

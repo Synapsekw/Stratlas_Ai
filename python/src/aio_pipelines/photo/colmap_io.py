@@ -403,7 +403,9 @@ def _op_features(pc, req: dict[str, Any], out: _Out) -> dict[str, Any]:
     by_group: dict[int, list[str]] = {}
     for im in todo:
         by_group.setdefault(im["group"], []).append(im["name"])
-    batch = max(4, min(32, total // 40 or 4))
+    # batches big enough to keep every core busy (COLMAP extracts the photos of a call in
+    # parallel), small enough for progress and resume: about 20 calls per run
+    batch = max(2 * (os.cpu_count() or 8), total // 20)
     for gid, names in by_group.items():
         ro = pc.ImageReaderOptions()
         ro.existing_camera_id = cam_of_group[gid]

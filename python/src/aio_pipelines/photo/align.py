@@ -248,6 +248,24 @@ def layer_meta(meta: PhotoMeta, item: dict[str, Any], manifest: dict[str, Any]) 
         meta.focal35 = 18.0 / math.tan(math.radians(float(lens["hfovDeg"])) / 2)
 
 
+#: Measured on a 20 MP flight at 2736 px (COLMAP 4.2 CPU SIFT): about 1.4 GB per extraction
+#: thread, most of it the decoded full-size photo and the SIFT pyramid.
+GB_PER_THREAD_AT_2736 = 1.4
+
+
+def feature_threads(info: dict[str, Any], memory_bytes: int, share: float = 0.6) -> int:
+    """Feature threads that fit in ``share`` of the memory (a 16 GB laptop must not swap)."""
+    cores = os.cpu_count() or 4
+    if memory_bytes <= 0:
+        return cores
+    groups = info.get("groups") or [{"width": 4000, "height": 3000}]
+    full = max(g["width"] * g["height"] for g in groups)
+    size = int(info.get("maxImageSize") or 2736)
+    per = 0.25 * full / 20e6 + (GB_PER_THREAD_AT_2736 - 0.25) * (size / 2736) ** 2
+    fit = int(share * memory_bytes / 1e9 / max(per, 0.05))
+    return max(1, min(cores, fit))
+
+
 def initial_params(meta: PhotoMeta) -> list[float]:
     """OPENCV start calibration: focal from the 35 mm equivalent, else 1.2 x the long side."""
     w, h = meta.width, meta.height
@@ -448,6 +466,10 @@ def choose_pairs(
             target = xyz[:, :2].copy()
             look = np.zeros((len(idx), 2))
             reach = agl.copy()  # distance along the view to the ground
+            # views lower than 50 degrees below the horizon see facades and sides: two of them
+            # facing each other share little; steeper views (a -65 degree mapping flight whose
+            # lines alternate direction) still share most of their ground
+            shallow = np.array([metas[i].pitch is not None and -50 < metas[i].pitch < -5 for i in idx])
             for k, i in enumerate(idx):
                 m = metas[i]
                 if m.pitch is not None and m.yaw is not None and -80 < m.pitch < -5:
@@ -465,8 +487,8 @@ def choose_pairs(
                 for c in cand:
                     if c == k:
                         continue
-                    if np.any(look[k]) and np.any(look[c]) and float(look[k] @ look[c]) < -0.2:
-                        continue  # facing each other across the site: little in common
+                    if shallow[k] and shallow[c] and float(look[k] @ look[c]) < -0.2:
+                        continue  # low views facing each other across the site: little in common
                     add(int(idx[k]), int(idx[c]))
             how = "gps"
             # photos without GPS: their sequence neighbours on a wider window
@@ -707,6 +729,7 @@ class PhotoAlign:
             groups=[EngineGroup(**g) for g in info["groups"]],
             max_image_size=int(info["maxImageSize"]),
             max_features=int(info["maxFeatures"]),
+            threads=feature_threads(info, hardware_probe(ctx.project)["memoryBytes"]),
             seed=0,
             check=ctx.check,
             log=lambda msg: ctx.log(msg),
