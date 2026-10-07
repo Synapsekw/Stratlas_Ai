@@ -76,6 +76,9 @@ const TEXT = new Set([
   '.yml',
   '.yaml',
   '.srt',
+  // M9: journal segments (one op per line) and identity cards
+  '.jsonl',
+  '.aioid',
 ]);
 
 // ------------------------------------------------------------------ coordinates
