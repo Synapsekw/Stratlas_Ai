@@ -60,6 +60,7 @@ function ImportForm({
         : await bridge.call('terrainPacks:import', {
             ...base,
             verticalDatum: draft.verticalDatum,
+            customerLicence: draft.customerLicence,
           });
     setBusy(false);
     if (!r.ok) setError(r.error);
@@ -96,22 +97,7 @@ function ImportForm({
         {field('label', t('g7.packs.name'), t('g7.packs.nameHint'))}
         {field('licence', t('g7.packs.licence'), t('g7.packs.licenceHint'))}
         {field('attribution', t('g7.packs.attribution'), t('g7.packs.attributionHint'))}
-        {draft.kind === 'imagery' ? (
-          <>
-            <span className="ar-l" />
-            <label className="ann-check">
-              <input
-                type="checkbox"
-                checked={draft.customerLicence}
-                onChange={(e) => {
-                  setDraft({ ...draft, customerLicence: e.target.checked });
-                }}
-              />
-              {t('g7.packs.customer')}
-            </label>
-            <span />
-          </>
-        ) : (
+        {draft.kind === 'terrain' && (
           <>
             <span className="ar-l">{t('g7.packs.datum')}</span>
             <select
@@ -131,6 +117,18 @@ function ImportForm({
             <span />
           </>
         )}
+        <span className="ar-l" />
+        <label className="ann-check">
+          <input
+            type="checkbox"
+            checked={draft.customerLicence}
+            onChange={(e) => {
+              setDraft({ ...draft, customerLicence: e.target.checked });
+            }}
+          />
+          {t('g7.packs.customer')}
+        </label>
+        <span />
       </div>
       {error && (
         <p className="prov-err" role="alert">
@@ -300,7 +298,8 @@ export function RasterPacks() {
       label: stem,
       licence: '',
       attribution: '',
-      customerLicence: kind === 'imagery',
+      // what the person imports is theirs (a bought image, a LiDAR DTM) until they untick it
+      customerLicence: true,
       verticalDatum: 'egm2008',
     });
   };

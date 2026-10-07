@@ -6,8 +6,8 @@
  * - List: every `<id>.json` that parses as `RasterPackMeta` of the folder's kind and has its
  *   `<id>.pmtiles` beside it. A half-built pack (`.<id>.pmtiles.building`) is not listed.
  * - Import: starts a `packs.imagery` or `packs.terrain` job in the pipeline pack, writing into the
- *   folder (`dest`); its job folder is `<data>/packs/.jobs`. Customer imagery is marked
- *   `customerLicence` (decision 12).
+ *   folder (`dest`); its job folder is `<data>/packs/.jobs`. Customer imagery and terrain are
+ *   marked `customerLicence` (decision 12; optional on terrain, absent means not the customer's).
  * - Remove: deletes both files.
  * - `aio://packs/imagery/<id>.pmtiles` and `aio://packs/terrain/<id>.pmtiles` serve the archives
  *   to MapLibre, the site view and the Globe (`rasterPackFile`, used by the protocol handler).
@@ -165,7 +165,7 @@ export function registerRasterPacksIpc({ handle, dataRoot, startJob }: RasterPac
       licence: req.licence,
       attribution: req.attribution,
       ...(req.provenance ? { provenance: req.provenance } : {}),
-      ...('customerLicence' in req ? { customerLicence: req.customerLicence } : {}),
+      ...(typeof req.customerLicence === 'boolean' ? { customerLicence: req.customerLicence } : {}),
       ...('verticalDatum' in req ? { verticalDatum: req.verticalDatum } : {}),
     };
     const r = await startJob({ pipeline: PIPELINE[kind], project: work, params });

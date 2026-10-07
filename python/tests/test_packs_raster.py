@@ -386,8 +386,20 @@ def test_terrain_params_are_checked(tmp_path):
         p.validate({**base, "verticalDatum": "msl"})
     with pytest.raises(JobError, match="format must be one of"):
         p.validate({**base, "format": "jpeg"})
-    with pytest.raises(JobError, match="does not take: customerLicence"):
-        p.validate({**base, "customerLicence": True})
+    assert p.validate({**base, "customerLicence": True})["customerLicence"] is True
+    with pytest.raises(JobError, match="customerLicence must be true or false"):
+        p.validate({**base, "customerLicence": "yes"})
+
+
+def test_a_customer_terrain_pack_is_marked_in_its_metadata_and_archive(tmp_path):
+    src = write_dem(tmp_path / "dem.tif")
+    params = {**terrain_params(tmp_path, src), "customerLicence": True, "maxZoom": 13}
+    run_job(TerrainPack(), tmp_path, params)
+    dest = tmp_path / "data" / "packs" / "terrain"
+    meta = json.loads((dest / "site-dem.json").read_text("utf-8"))
+    assert meta["customerLicence"] is True
+    with PMTilesReader(dest / "site-dem.pmtiles") as r:
+        assert r.metadata()["aio"]["customerLicence"] is True
 
 
 def test_lonlat_to_tile_matches_the_slippy_map_scheme():

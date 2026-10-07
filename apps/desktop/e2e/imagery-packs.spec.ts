@@ -2,12 +2,13 @@
  * Imagery and terrain packs (M10 G7): Settings, Map packs, Import imagery builds a pack from a
  * synthetic GeoTIFF (written here with the development pipeline Python's rasterio, red at the
  * tiny project's site) through `packs.imagery`; the pack lists with its licence and customer
- * mark, and the project's Map shows it under the streets (Satellite) with its attribution.
+ * mark, and the project's Map shows it under the streets (Satellite) with its attribution. A DEM
+ * imports as a terrain pack with its datum and the customer licence mark.
  * Zero network, as every test (the fixture asserts it).
  */
 import type { ElectronApplication, Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { readdir } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } from './fixtures';
 
@@ -158,4 +159,50 @@ test('imports a GeoTIFF as an imagery pack and shows it on the Satellite map', a
   expect(centre).not.toBeNull();
   const red = (centre?.px ?? []).filter(([r = 0, g = 0, b = 0]) => r > 150 && g < 90 && b < 90);
   expect(red.length, JSON.stringify(centre)).toBeGreaterThanOrEqual(3);
+});
+
+/** A 300 m DEM (a plane at 140 m and up) in UTM 39N around the same origin. */
+function writeDem(path: string): void {
+  const script = [
+    'import sys, numpy as np, rasterio',
+    'from rasterio.transform import from_origin',
+    'a = (140 + np.add.outer(np.arange(60), np.arange(60)) * 0.1).astype(np.float32)',
+    "with rasterio.open(sys.argv[1], 'w', driver='GTiff', width=60, height=60, count=1,",
+    "    dtype='float32', crs='EPSG:32639', transform=from_origin(499850, 3200150, 5, 5)) as d:",
+    '    d.write(a, 1)',
+  ].join('\n');
+  execFileSync(VENV_PYTHON, ['-c', script, path], { stdio: 'pipe' });
+}
+
+test('imports a DEM as a customer-licensed terrain pack', async ({ app, win, dataRoot }) => {
+  test.skip(!hasPipelinePython(), 'no development pipeline Python (python/.venv)');
+  const tif = join(dataRoot.base, 'site-lidar.tif');
+  writeDem(tif);
+
+  await openSettings(win, 'Offline maps');
+  const section = win.getByTestId('raster-packs');
+  await answerOpenDialog(app, tif);
+  await section.getByRole('button', { name: 'Import terrain' }).click();
+  const form = win.getByTestId('raster-import');
+  await expect(form).toContainText('site-lidar.tif');
+  await form.getByRole('textbox', { name: 'Licence' }).fill('Survey Co licence');
+  await form.getByRole('textbox', { name: 'Attribution' }).fill('E2E synthetic DTM');
+  await form.getByRole('combobox', { name: 'Heights measured from' }).selectOption('ellipsoid');
+  // what the person imports is theirs until they untick it, terrain as imagery
+  await expect(form.getByRole('checkbox')).toBeChecked();
+  await form.getByRole('button', { name: 'Build the pack' }).click();
+
+  const row = win.getByTestId('raster-pack-site-lidar');
+  await expect(row).toBeVisible({ timeout: 120_000 });
+  await expect(row).toContainText('Survey Co licence');
+  await expect(row).toContainText('ELLIPSOID');
+  await expect(row).toContainText('Customer licence');
+  const meta = JSON.parse(
+    await readFile(join(dataRoot.root, 'packs', 'terrain', 'site-lidar.json'), 'utf8'),
+  ) as { customerLicence: boolean; verticalDatum: string; encoding: string };
+  expect(meta).toMatchObject({
+    customerLicence: true,
+    verticalDatum: 'ellipsoid',
+    encoding: 'terrarium',
+  });
 });
