@@ -1,42 +1,107 @@
 import '@cesium/engine/Source/Widget/CesiumWidget.css';
-import type { CesiumWidget } from '@cesium/engine';
-import { useEffect, useRef } from 'react';
-import {
-  configureCesiumBase,
-  createOfflineWidget,
-  naturalEarthLayer,
-  type GlobeTier,
-} from './setup';
+import type { GlobeSite, RasterPackInfo } from '@aio/schema';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { GlobeCamera } from '../camera';
+import type { SiteGeoref } from '../geodesy';
+import { sitesBounds, type IssuePin } from '../sites';
+import { GlobeController, type GlobePick } from './controller';
+import type { GlobeTier } from './setup';
+
+export interface GlobeIssuePins {
+  projectId: string;
+  georef: SiteGeoref;
+  pins: readonly IssuePin[];
+}
 
 export interface GlobeViewProps {
   /** Where the app serves its copy of Cesium's workers and assets (`<renderer>/cesium/`). */
   baseUrl: string;
   tier: GlobeTier;
-  onReady?: (widget: CesiumWidget) => void;
+  sites: readonly GlobeSite[];
+  imagery: readonly RasterPackInfo[];
+  terrain: readonly RasterPackInfo[];
+  exaggeration: number;
+  issuePins: GlobeIssuePins | null;
+  /** Where to start: a remembered camera, a site to fly to, or every site. */
+  start: { camera: GlobeCamera } | { site: readonly [number, number] } | null;
+  reducedMotion: () => boolean;
+  onPick: (pick: GlobePick | null) => void;
+  /** The credit lines of what is drawn, whenever they change. */
+  onCredits?: (lines: string[]) => void;
+  onReady?: (c: GlobeController) => void;
+  /** The camera when the Globe closes, to come back to the same view. */
+  onClose?: (camera: GlobeCamera) => void;
 }
 
-/** The CesiumWidget in a React element; destroyed (with its WebGL context) on unmount. */
-export function GlobeView({ baseUrl, tier, onReady }: GlobeViewProps) {
+/**
+ * The Globe in a React element. The CesiumWidget is built once per mount and destroyed with its
+ * WebGL context on unmount; props update the scene in place.
+ */
+export function GlobeView(props: GlobeViewProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const [ctl, setCtl] = useState<GlobeController | null>(null);
+  const latest = useRef(props);
+  useLayoutEffect(() => {
+    latest.current = props;
+  });
+
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     let live = true;
-    let widget: CesiumWidget | undefined;
-    configureCesiumBase(baseUrl);
-    void naturalEarthLayer().then((baseLayer) => {
-      if (!live) return;
-      widget = createOfflineWidget(el, { tier, baseLayer });
-      Object.assign(el, { __aioGlobe: widget });
-      onReady?.(widget);
+    let made: GlobeController | undefined;
+    const p = latest.current;
+    void GlobeController.create({
+      container: el,
+      baseUrl: p.baseUrl,
+      tier: p.tier,
+      reducedMotion: () => latest.current.reducedMotion(),
+      onPick: (pick) => {
+        latest.current.onPick(pick);
+      },
+      onCredits: (lines) => {
+        latest.current.onCredits?.(lines);
+      },
+    }).then((c) => {
+      if (!live) {
+        c.destroy();
+        return;
+      }
+      made = c;
+      Object.assign(el, { __aioGlobe: c });
+      setCtl(c);
+      const start = latest.current.start;
+      if (start && 'camera' in start) c.setCamera(start.camera);
+      else if (start && 'site' in start) void c.flyToSite(start.site);
+      else c.flyHome(sitesBounds(latest.current.sites));
+      latest.current.onReady?.(c);
     });
     return () => {
       live = false;
       Reflect.deleteProperty(el, '__aioGlobe');
-      widget?.destroy();
+      if (made) {
+        latest.current.onClose?.(made.camera());
+        made.destroy();
+      }
     };
-    // the widget is built once per mount; the tier is read at creation
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseUrl]);
+    // the widget is built once per mount; the tier and base URL are read at creation
+  }, []);
+
+  useEffect(() => {
+    ctl?.setSites(props.sites);
+  }, [ctl, props.sites]);
+  useEffect(() => {
+    ctl?.setPacks(props.imagery, props.terrain);
+  }, [ctl, props.imagery, props.terrain]);
+  useEffect(() => {
+    ctl?.setExaggeration(props.exaggeration);
+  }, [ctl, props.exaggeration]);
+  useEffect(() => {
+    const ip = props.issuePins;
+    if (!ctl) return;
+    if (ip) ctl.setIssuePins(ip.projectId, ip.georef, ip.pins);
+    else ctl.setIssuePins('', { crs: { epsg: 4326 }, origin: [0, 0, 0], heightOffset: 0 }, []);
+  }, [ctl, props.issuePins]);
+
   return <div ref={ref} className="aio-globe" data-testid="globe-canvas" />;
 }

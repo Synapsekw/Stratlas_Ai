@@ -1,6 +1,20 @@
-// @aio/globe/view: the Cesium side of the Globe. Import it only from a lazily loaded chunk
-// (the renderer's globe screen): it pulls in CesiumJS.
-export { GlobeView, type GlobeViewProps } from './GlobeView';
+// @aio/globe/view: the CesiumJS side of the Globe. Import it only from a lazily loaded chunk (the
+// renderer's Globe screen): it pulls in CesiumJS.
+export { GlobeView, type GlobeIssuePins, type GlobeViewProps } from './GlobeView';
+export {
+  GlobeController,
+  packSource,
+  type GlobeControllerOptions,
+  type GlobeInspection,
+  type GlobePick,
+  type SourceFor,
+} from './controller';
+export {
+  PmtilesImageryProvider,
+  packCredit,
+  packTerrainProvider,
+  type PackTerrainOptions,
+} from './providers';
 export {
   configureCesiumBase,
   createOfflineWidget,

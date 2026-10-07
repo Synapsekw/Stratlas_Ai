@@ -2075,6 +2075,26 @@ export const en = {
   'syncNotice.dismiss': 'Dismiss',
   // M10 G6: the Globe
   'globe.nav': 'Globe',
+  'globe.sites': 'Sites on the globe',
+  'globe.noSites':
+    'No project can be placed on the globe yet. Projects need a coordinate system Stratlas knows.',
+  'globe.noCapture': 'No capture',
+  'globe.openIssues_one': '{count} open issue',
+  'globe.openIssues_other': '{count} open issues',
+  'globe.tilesets_one': '{count} tileset',
+  'globe.tilesets_other': '{count} tilesets',
+  'globe.imagery': 'Imagery',
+  'globe.imageryAuto': 'Best available',
+  'globe.terrain': 'Terrain',
+  'globe.terrainAuto': 'Best available',
+  'globe.terrainOff': 'Off (smooth Earth)',
+  'globe.lowTier': 'Terrain is off on the Low graphics preset.',
+  'globe.showIssues': 'Show issues of the open project',
+  'globe.issueMeta': 'Severity {severity} · {status}',
+  'globe.openIssue': 'Open issue',
+  'globe.flyTo': 'Fly to',
+  'globe.openSite': 'Open site here',
+  'globe.credits': 'Imagery and terrain credits',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

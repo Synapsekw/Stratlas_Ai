@@ -6,7 +6,8 @@
   "description": "The Globe (M10 G6): CesiumJS offline setup, library sites on the Earth, imagery and terrain pack providers, credits.",
   "exports": {
     ".": "./src/index.ts",
-    "./view": "./src/view/index.ts"
+    "./view": "./src/view/index.ts",
+    "./testing": "./src/testing/synthetic.ts"
   },
   "scripts": {
     "test": "vitest run"

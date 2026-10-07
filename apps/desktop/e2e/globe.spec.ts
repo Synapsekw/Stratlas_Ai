@@ -1,7 +1,17 @@
+/**
+ * The Globe (M10 G6): CesiumJS offline under the app CSP, every library project as a site,
+ * imagery and terrain from synthetic packs with their credits, the hand-off to the site view and
+ * back, issue pins, and the WebGL context given back when the Globe closes. Synthetic data only;
+ * the zero-network guard of the fixtures runs on every test.
+ */
+import { utmToWgs84 } from '@aio/geo';
+import { pmtilesOf, solidPng, syntheticPackMeta, terrariumPng } from '@aio/globe/testing';
+import { ProjectManifest, SCHEMA_VERSION, type ProjectManifestInput } from '@aio/schema';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expect, test } from './fixtures';
+import { expect, test, type DataRoot } from './fixtures';
 
 /** The app's CSP as main sets it (src/main/index.ts `CSP`), read from the source. */
 function appCsp(): string {
@@ -10,32 +20,177 @@ function appCsp(): string {
   return [...block.matchAll(/"([^"]+)"/g)].map((m) => m[1]).join('; ');
 }
 
-/** The Globe's CesiumWidget, through the inspection hook on its element. */
-async function globeState(win: Page) {
-  return win.evaluate(() => {
-    const el = document.querySelector('[data-testid="globe-canvas"]');
-    const w = (el as { __aioGlobe?: Record<string, never> } | null)?.__aioGlobe as
-      | {
-          scene: {
-            globe: { tilesLoaded: boolean };
-            imageryLayers: { length: number };
-            frameState: { frameNumber: number };
-          };
-        }
-      | undefined;
-    if (!w) return null;
-    return {
-      tilesLoaded: w.scene.globe.tilesLoaded,
-      layers: w.scene.imageryLayers.length,
-      frame: w.scene.frameState.frameNumber,
-    };
-  });
+/** What the Globe shows (`GlobeController.inspect()` through the hook on its element). */
+interface Inspection {
+  tilesLoaded: boolean;
+  frame: number;
+  imagery: string[];
+  imageryTiles: number;
+  terrain: string[];
+  terrainTiles: number;
+  sites: string[];
+  issuePins: string[];
+  credits: string[];
+  cameraHeight: number;
+  flying: boolean;
 }
+
+const inspect = (win: Page) =>
+  win.evaluate(() => {
+    const el = document.querySelector('[data-testid="globe-canvas"]');
+    const c = (el as { __aioGlobe?: { inspect(): unknown } } | null)?.__aioGlobe;
+    return (c?.inspect() ?? null) as Inspection | null;
+  });
 
 const memMiB = (app: ElectronApplication) =>
   app.evaluate(({ app: a }) =>
     Math.round(a.getAppMetrics().reduce((s, m) => s + m.memory.workingSetSize, 0) / 1024),
   );
+
+// ---------------------------------------------------------------- synthetic library and packs
+
+/** Site A sits over the synthetic packs; site B elsewhere in the Gulf (UTM 39N, fictional). */
+const SITE_A = { id: 'globe-a', name: 'Globe site A', origin: [745_000, 3_245_000, 12] as const };
+const SITE_B = { id: 'globe-b', name: 'Globe site B', origin: [300_000, 2_800_000, 5] as const };
+const [A_LON, A_LAT] = utmToWgs84(SITE_A.origin[0], SITE_A.origin[1], 39);
+/** About 15 km around site A. */
+const PACK_BBOX = [A_LON - 0.15, A_LAT - 0.15, A_LON + 0.15, A_LAT + 0.15] as const;
+const BENCHMARK_M = 123.45;
+const MAGENTA = [255, 0, 200, 255] as const;
+
+async function writeGlobeProject(
+  dataRoot: DataRoot,
+  site: { id: string; name: string; origin: readonly [number, number, number] },
+  issues: unknown[],
+): Promise<void> {
+  const dir = join(dataRoot.root, 'projects', site.id);
+  await mkdir(dir, { recursive: true });
+  const input: ProjectManifestInput = {
+    schema: SCHEMA_VERSION,
+    id: site.id,
+    name: site.name,
+    crs: { epsg: 32639 },
+    origin: [...site.origin],
+    captures: [{ id: 'c1', label: 'Survey 1 June 2026', date: '2026-06-01' }],
+    layers: [],
+    severityModels: [
+      {
+        id: 'sev',
+        name: 'Severity',
+        levels: [
+          { value: 1, label: 'Minor', color: '#2f9e44', criteria: 'Minor' },
+          { value: 3, label: 'Major', color: '#e03131', criteria: 'Major' },
+        ],
+      },
+    ],
+    classCatalogues: [],
+  };
+  await writeFile(join(dir, 'manifest.json'), JSON.stringify(ProjectManifest.parse(input)));
+  await writeFile(join(dir, 'issues.json'), JSON.stringify({ schema: 'aio.issues/1', issues }));
+}
+
+const majorIssue = {
+  id: 'globe-i1',
+  code: 'F01',
+  classId: 'damage',
+  severityModelId: 'sev',
+  severity: 3,
+  status: 'reviewed',
+  title: 'Corrosion on the tank',
+  note: '',
+  author: 'E2E',
+  createdAt: '2026-06-01T10:00:00.000Z',
+  updatedAt: '2026-06-01T10:00:00.000Z',
+  sightings: [
+    { on: 'mesh', layer: 'm', geom: { type: 'spoint', p: [250, 2, -200], n: [0, 1, 0] } },
+  ],
+  source: 'human',
+};
+
+test.beforeEach(async ({ dataRoot }) => {
+  await writeGlobeProject(dataRoot, SITE_A, [majorIssue]);
+  await writeGlobeProject(dataRoot, SITE_B, []);
+});
+
+/** The packs as `RasterPackInfo` and their bytes (base64), for `GlobeController.setPacks`. */
+function syntheticPacks() {
+  const imagery = pmtilesOf({
+    bbox: PACK_BBOX,
+    minZoom: 0,
+    maxZoom: 14,
+    tile: solidPng(256, MAGENTA),
+    tileType: 'png',
+  });
+  const terrain = pmtilesOf({
+    bbox: PACK_BBOX,
+    minZoom: 0,
+    maxZoom: 12,
+    tile: terrariumPng(256, BENCHMARK_M),
+    tileType: 'png',
+  });
+  const info = (m: ReturnType<typeof syntheticPackMeta>, bytes: Buffer) => ({
+    ...m,
+    sizeBytes: bytes.length,
+  });
+  return {
+    imagery: info(syntheticPackMeta('syn-imagery', 'imagery', PACK_BBOX, 0, 14), imagery),
+    terrain: info(syntheticPackMeta('syn-terrain', 'terrain', PACK_BBOX, 0, 12), terrain),
+    bytes: { 'syn-imagery': imagery.toString('base64'), 'syn-terrain': terrain.toString('base64') },
+  };
+}
+
+/**
+ * Give the open Globe the synthetic packs, read from memory (the app reads installed packs from
+ * `aio://packs/<kind>/<id>.pmtiles`; here the bytes come from the test).
+ */
+async function usePacks(win: Page) {
+  const packs = syntheticPacks();
+  await win.evaluate((p) => {
+    const el = document.querySelector('[data-testid="globe-canvas"]');
+    const c = (el as { __aioGlobe?: { setPacks: (...a: unknown[]) => void } } | null)?.__aioGlobe;
+    if (!c) throw new Error('no Globe');
+    const buffers: Record<string, ArrayBuffer> = {};
+    for (const [id, b64] of Object.entries(p.bytes)) {
+      const bin = atob(b64);
+      const u8 = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      buffers[id] = u8.buffer;
+    }
+    c.setPacks([p.imagery], [p.terrain], (pack: { id: string }) => ({
+      getKey: () => `memory:${pack.id}`,
+      getBytes: (offset: number, length: number) =>
+        Promise.resolve({
+          data: (buffers[pack.id] ?? new ArrayBuffer(0)).slice(offset, offset + length),
+        }),
+    }));
+  }, packs);
+}
+
+async function openGlobe(win: Page) {
+  await win.locator('.sb-nav .nav-item', { hasText: 'Globe' }).click();
+  await expect(win.getByTestId('globe-canvas').locator('canvas')).toBeVisible();
+  await expect.poll(async () => (await inspect(win))?.sites.length ?? 0).toBeGreaterThan(0);
+}
+
+/** Pick a site in the list and wait for the flight to end over it. */
+async function flyToSite(win: Page, name: string) {
+  await win
+    .getByTestId('globe-sites')
+    .getByRole('button', { name: new RegExp(name) })
+    .click();
+  await expect(win.getByTestId('globe-card')).toContainText(name);
+  await expect
+    .poll(
+      async () => {
+        const s = await inspect(win);
+        return s !== null && !s.flying && s.cameraHeight < 5000;
+      },
+      { timeout: 15_000 },
+    )
+    .toBe(true);
+}
+
+// ---------------------------------------------------------------- tests
 
 test('spike: the Globe renders offline under the app CSP', async ({ app, win, network }) => {
   const problems: string[] = [];
@@ -45,18 +200,18 @@ test('spike: the Globe renders offline under the app CSP', async ({ app, win, ne
       problems.push(text);
   });
   win.on('pageerror', (e) => problems.push(String(e)));
-  await expect(win.getByRole('button', { name: 'Globe' })).toBeVisible();
-  await win.waitForTimeout(3000);
+  await expect(win.locator('.sb-nav .nav-item', { hasText: 'Globe' })).toBeVisible();
   const probe = await win.evaluate((policy) => {
-    const before = (() => {
+    const tryEval = () => {
       try {
         // eslint-disable-next-line @typescript-eslint/no-implied-eval -- probes the CSP
         (new Function('return 1') as () => number)();
-        return 'eval allowed';
+        return 'allowed';
       } catch {
-        return 'eval refused';
+        return 'refused';
       }
-    })();
+    };
+    const before = tryEval();
     // Enforce the app CSP on this page as a meta policy (the window loads from file://, where
     // main's response-header CSP does not reach), so the Globe runs under it.
     const meta = document.createElement('meta');
@@ -72,39 +227,134 @@ test('spike: the Globe renders offline under the app CSP', async ({ app, win, ne
         w.__workers.push(String(u));
       }
     };
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-implied-eval -- probes the CSP
-      (new Function('return 1') as () => number)();
-      return `${before}; with the meta CSP: eval allowed`;
-    } catch {
-      return `${before}; with the meta CSP: eval refused`;
-    }
+    return { before, after: tryEval() };
   }, appCsp());
-  // the probe's own eval refusal is the one CSP report expected
+  // the probe's own refused eval is the one CSP report expected
   problems.length = 0;
   const mem0 = await memMiB(app);
   const t0 = Date.now();
-  await win.getByRole('button', { name: 'Globe' }).click();
-  await expect(win.getByTestId('globe-canvas').locator('canvas')).toBeVisible();
-  await expect
-    .poll(async () => (await globeState(win))?.tilesLoaded, { timeout: 30_000 })
-    .toBe(true);
+  await openGlobe(win);
+  await expect.poll(async () => (await inspect(win))?.tilesLoaded, { timeout: 30_000 }).toBe(true);
   const ready = Date.now() - t0;
   const mem1 = await memMiB(app);
   const workers = await win.evaluate(() =>
     (window as unknown as { __workers: string[] }).__workers.map((u) => u.replace(/^.*\//, '')),
   );
-  const state = await globeState(win);
-  await win.locator('.sb-nav .nav-item', { hasText: 'Projects' }).click();
-  await win.waitForTimeout(3000);
-  const mem2 = await memMiB(app);
-  // eslint-disable-next-line no-console -- spike measurement
+  // eslint-disable-next-line no-console -- spike measurements, kept for the report
   console.log(
-    `globe spike: ${probe}; ready in ${String(ready)} ms; working set ${String(mem0)} MiB, Globe open ${String(mem1)} MiB, closed ${String(mem2)} MiB; workers ${workers.join(', ')}`,
-    state,
+    `globe: eval ${probe.before} without the meta CSP, ${probe.after} with it; ready in ${String(ready)} ms; working set ${String(mem0)} -> ${String(mem1)} MiB; workers ${workers.join(', ')}`,
   );
-  expect(probe).toContain('with the meta CSP: eval refused');
+  expect(probe.after).toBe('refused');
   expect(workers.length).toBeGreaterThan(0);
+  expect(workers.every((u) => !u.startsWith('blob:'))).toBe(true);
   expect(problems).toEqual([]);
   expect(await network.outbound()).toEqual([]);
+});
+
+test('every library project is a site; packs draw with their credits', async ({ win }) => {
+  await openGlobe(win);
+  const list = win.getByTestId('globe-sites');
+  await expect(list.getByRole('button')).toHaveCount(3); // A, B and the tiny e2e project
+  await expect(list).toContainText(SITE_A.name);
+  await expect(list).toContainText(SITE_B.name);
+  await expect(list).toContainText('1 open issue');
+  await usePacks(win);
+  await flyToSite(win, SITE_A.name);
+  await expect
+    .poll(
+      async () => {
+        const s = await inspect(win);
+        return s !== null && s.tilesLoaded && s.imageryTiles > 0;
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true);
+  // the pack's flat magenta is drawn below the site pin, in the middle of the view
+  const px = await win.evaluate(() => {
+    const el = document.querySelector('[data-testid="globe-canvas"]');
+    const c = (el as { __aioGlobe?: { samplePixel(x: number, y: number): Promise<number[]> } })
+      .__aioGlobe;
+    return c?.samplePixel(0.35, 0.75);
+  });
+  expect(px?.[0]).toBeGreaterThan(150);
+  expect(px?.[1]).toBeLessThan(100);
+  expect(px?.[2]).toBeGreaterThan(110);
+  const credits = win.getByTestId('globe-credits');
+  await expect(credits).toContainText('Natural Earth II');
+  await expect(credits).toContainText('Synthetic imagery test pack');
+  const state = await inspect(win);
+  if (state?.terrain.length) {
+    // Medium tier and up: the benchmark height of the terrain pack (ellipsoidal heights)
+    await expect(credits).toContainText('Synthetic terrain test pack');
+    await expect
+      .poll(
+        () =>
+          win.evaluate(
+            ([lon, lat]) => {
+              const el = document.querySelector('[data-testid="globe-canvas"]');
+              const c = (el as { __aioGlobe?: { terrainHeight(lon: number, lat: number): number } })
+                .__aioGlobe;
+              return c?.terrainHeight(lon, lat) ?? null;
+            },
+            [A_LON, A_LAT] as const,
+          ),
+        { timeout: 30_000 },
+      )
+      .toBeCloseTo(BENCHMARK_M, 0);
+  } else {
+    // Low tier (software GPU): terrain stays off, and the panel says so
+    await expect(win.getByText('Terrain is off on the Low graphics preset.')).toBeVisible();
+  }
+});
+
+test('Open site here hands over to the site view; the Globe comes back to the same view', async ({
+  win,
+}) => {
+  await openGlobe(win);
+  await flyToSite(win, SITE_A.name);
+  const camera = () =>
+    win.evaluate(() => {
+      const el = document.querySelector('[data-testid="globe-canvas"]');
+      return (el as { __aioGlobe?: { camera(): { position: number[] } } }).__aioGlobe?.camera();
+    });
+  const before = await camera();
+  await win.getByTestId('globe-card').getByRole('button', { name: 'Open site here' }).click();
+  await expect(win.locator('.app')).toHaveAttribute('data-screen', 'scene');
+  await expect(win.locator('.crumbs')).toContainText(SITE_A.name);
+  // the Globe released its WebGL context when it closed
+  await expect(win.getByTestId('globe-canvas')).toHaveCount(0);
+  await win.locator('.sb-nav .nav-item', { hasText: 'Globe' }).click();
+  await expect.poll(async () => (await inspect(win))?.sites.length ?? 0).toBeGreaterThan(0);
+  const after = await camera();
+  const moved = Math.hypot(
+    ...(after?.position ?? [0, 0, 0]).map((v, i) => v - (before?.position[i] ?? 0)),
+  );
+  expect(moved).toBeLessThan(1);
+});
+
+test('an issue pin opens the issue in the site view', async ({ win }) => {
+  await openGlobe(win);
+  await flyToSite(win, SITE_A.name);
+  await win.getByTestId('globe-card').getByRole('button', { name: 'Open site here' }).click();
+  await expect(win.locator('.app')).toHaveAttribute('data-screen', 'scene');
+  // with the project open, its issues are pins on the Globe
+  await win.locator('.sb-nav .nav-item', { hasText: 'Globe' }).click();
+  await expect.poll(async () => (await inspect(win))?.issuePins.length ?? 0).toBe(1);
+  const pin = (await inspect(win))?.issuePins[0] ?? '';
+  const pinAt = () =>
+    win.evaluate((id) => {
+      const el = document.querySelector('[data-testid="globe-canvas"]');
+      const c = (el as { __aioGlobe?: { pinPosition(id: string): [number, number] | null } })
+        .__aioGlobe;
+      return c?.pinPosition(`issue:${id}`) ?? null;
+    }, pin);
+  await expect.poll(async () => (await pinAt()) !== null).toBe(true);
+  const [x, y] = (await pinAt()) ?? [0, 0];
+  const box = await win.getByTestId('globe-canvas').boundingBox();
+  await win.mouse.click((box?.x ?? 0) + x, (box?.y ?? 0) + y);
+  const card = win.getByTestId('globe-card');
+  await expect(card).toContainText('F01 Corrosion on the tank');
+  await card.getByRole('button', { name: 'Open issue' }).click();
+  await expect(win.locator('.app')).toHaveAttribute('data-screen', 'scene');
+  await expect(win.getByTestId('issue-card')).toContainText('F01');
 });
