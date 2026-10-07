@@ -170,6 +170,40 @@ describe('a view of one capture', () => {
     });
   });
 
+  it('shows its own layer while its counterpart is shown, even when the names differ', () => {
+    // Al-Zour's synthetic resurvey: the clouds' names differ by more than the date, so their
+    // slots differ, yet each is the other's counterpart (the only cloud of its date). The project
+    // opens on the latest date, which hides the 21 Feb cloud in the workspace.
+    const cloud = (id: string, name: string): Layer => ({
+      kind: 'pointcloud',
+      id,
+      name,
+      visible: true,
+      format: 'png-packed',
+      src: { path: `clouds/${id}/index.json` },
+    });
+    const m: ProjectManifest = {
+      ...alzour2,
+      layers: [
+        ...alzour2.layers,
+        cloud('cloud', 'Photogrammetry point cloud, 21 Feb 2023 (1.2 % thinning)'),
+        cloud('cloud-2023-08-30', 'Photogrammetry point cloud, 30 Aug 2023'),
+      ],
+    };
+    const two = captureIndex(m);
+    const feb = 'survey-2023-02-21';
+    const aug = 'survey-2023-08-30';
+    expect(two.slot.cloud).not.toBe(two.slot['cloud-2023-08-30']);
+    expect(counterpart(two, 'cloud-2023-08-30', feb)).toBe('cloud');
+    const opened = { ortho: true, cloud: true } as const;
+    expect(captureHidden(two, feb, m.layers, opened).cloud).toBeUndefined();
+    expect(captureHidden(two, aug, m.layers, opened)['cloud-2023-08-30']).toBeUndefined();
+    // the focused date's cloud switched off is off in both views
+    const off = { ...opened, 'cloud-2023-08-30': true } as const;
+    expect(captureHidden(two, feb, m.layers, off).cloud).toBe(true);
+    expect(captureHidden(two, aug, m.layers, off)['cloud-2023-08-30']).toBe(true);
+  });
+
   it('maps a pile picked on one date to the same pile on the other', () => {
     const sel = { kind: 'asset' as const, id: 'P01_e2', layer: 'terrain-2021-01-10' };
     expect(captureSelection(ix, e1, sel)).toEqual({
