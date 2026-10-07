@@ -1033,6 +1033,89 @@ select.input option {
   flex: none;
 }
 
+.dfolder-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px 2px 2px;
+  border-radius: var(--r-4);
+}
+.dfolder.focused > .dfolder-row {
+  background: color-mix(in oklch, var(--dtag, var(--acc)) 18%, transparent);
+  box-shadow: inset 3px 0 0 var(--dtag, var(--acc));
+}
+.dfolder .dchev {
+  all: unset;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 22px;
+  cursor: pointer;
+  color: var(--fg-2);
+}
+.dfolder[aria-expanded='true'] > .dfolder-row .chev {
+  transform: rotate(90deg);
+}
+.dfolder .dname {
+  all: unset;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: var(--t-12);
+  color: var(--fg-0);
+}
+.dfolder .dname:focus-visible,
+.dfolder .dchev:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+.dfolder.focused .dlbl {
+  font-weight: 600;
+}
+.dfolder .dlbl {
+  white-space: nowrap;
+}
+.dfolder .dsub {
+  color: var(--fg-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dtag {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+  background: var(--dtag);
+}
+.dtag.every {
+  background: transparent;
+  border: 1px solid var(--fg-3);
+}
+.dfolder.empty .dname {
+  color: var(--fg-2);
+  font-style: italic;
+}
+.don {
+  font-size: 11px;
+  color: var(--fg-2);
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--bg-3);
+  white-space: nowrap;
+}
+.dempty {
+  margin: 2px 0 6px 28px;
+  font-size: var(--t-12);
+  color: var(--fg-2);
+}
+.tree-nested {
+  padding-inline-start: 14px;
+}
+
 /* ---------- command palette ---------- */
 .cmdk-scrim {
   position: fixed;
@@ -1217,4 +1300,101 @@ select.input option {
 .titem.more:hover {
   color: var(--acc);
   background: none;
+}
+
+.cal {
+  width: 260px;
+  padding: 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+}
+.cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.cal-month {
+  font-weight: 600;
+  font-size: var(--t-12);
+}
+.cal-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+.cal-wd span {
+  font-size: 11px;
+  color: var(--fg-3);
+  text-align: center;
+  padding: 2px 0;
+}
+.cal-cell {
+  height: 30px;
+  display: grid;
+  place-items: center;
+  font-size: var(--t-12);
+  color: var(--fg-3);
+}
+.cal-day {
+  all: unset;
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: oklch(0.2 0 0);
+  font-weight: 600;
+  cursor: pointer;
+}
+.cal-day.none {
+  background: none;
+  color: var(--fg-3);
+  font-weight: 400;
+  cursor: default;
+}
+.cal-day.current {
+  box-shadow:
+    0 0 0 2px var(--bg-2),
+    0 0 0 4px var(--fg-0);
+}
+.cal-day:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+.cal-multi {
+  position: absolute;
+  top: -4px;
+  inset-inline-end: -6px;
+  font-size: 10px;
+  min-width: 14px;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--fg-0);
+  color: var(--bg-0);
+  display: grid;
+  place-items: center;
+}
+.cal-choices {
+  display: grid;
+  gap: 2px;
+  margin-top: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+.cal-choices button {
+  all: unset;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: var(--r-4);
+  cursor: pointer;
+  font-size: var(--t-12);
+}
+.cal-choices button:hover,
+.cal-choices button:focus-visible {
+  background: var(--bg-3);
 }

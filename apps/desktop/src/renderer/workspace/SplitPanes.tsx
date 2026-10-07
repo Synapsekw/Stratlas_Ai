@@ -2,7 +2,14 @@ import { PhotoViewer, VideoAnnotator } from '@aio/annotate';
 import type { Layer, ReportFile } from '@aio/schema';
 import { Icon, useT, type IconName, type MessageKey } from '@aio/ui';
 import { VideoWindow } from '@aio/video';
-import { assetUrl, counterpart, useWorkspace, workspace, type CaptureIndex } from '@aio/workspace';
+import {
+  assetUrl,
+  counterpart,
+  dateTags,
+  useWorkspace,
+  workspace,
+  type CaptureIndex,
+} from '@aio/workspace';
 import { useMemo, type ReactNode } from 'react';
 import { FocusZone } from '../FocusZone';
 import {
@@ -17,6 +24,7 @@ import { openLightbox } from '../issueCard/state';
 import { PdfViewer } from '../report/PdfViewer';
 import { useCall } from '../shell';
 import { captureLabel, useCaptureIndex, useSplitDates } from './compare';
+import { DateBadge, pickPhotoSet } from './DatesOnScreen';
 import { SameViewButton } from './FramesPane';
 import { RasterView } from './RasterPane';
 import {
@@ -34,6 +42,7 @@ import {
   type SplitPref,
 } from './splitModel';
 import { stagePrefs, useStagePrefs } from './stagePrefs';
+import { useTimeline } from './timeline';
 
 /** The panes this file draws itself. */
 type BuiltInPane = '3d' | 'map' | 'video' | 'photo' | 'raster' | 'report';
@@ -154,22 +163,29 @@ export function PaneChooser({ side, split }: { side: Side; split: SplitModel }) 
         ))}
       </select>
       {capture !== undefined && index && split.dates && (
-        <select
-          className="input pane-date"
-          data-testid={`pane-date-${side}`}
-          aria-label={t(side === 'left' ? 'stage.compare.leftDate' : 'stage.compare.rightDate')}
-          title={t('stage.compare.dateTip')}
-          value={capture}
-          onChange={(e) => {
-            split.set(chooseCapture(split.sides, side, e.target.value, split.dates));
-          }}
-        >
-          {index.captures.map((c) => (
-            <option key={c.id} value={c.id}>
-              {captureLabel(index, c.id)}
-            </option>
-          ))}
-        </select>
+        <>
+          <span
+            className="dtag"
+            style={{ background: dateTags(index.captures)[capture]?.colour }}
+            aria-hidden="true"
+          />
+          <select
+            className="input pane-date"
+            data-testid={`pane-date-${side}`}
+            aria-label={t(side === 'left' ? 'stage.compare.leftDate' : 'stage.compare.rightDate')}
+            title={t('stage.compare.dateTip')}
+            value={capture}
+            onChange={(e) => {
+              split.set(chooseCapture(split.sides, side, e.target.value, split.dates));
+            }}
+          >
+            {index.captures.map((c) => (
+              <option key={c.id} value={c.id}>
+                {captureLabel(index, c.id)}
+              </option>
+            ))}
+          </select>
+        </>
       )}
       {twin && side === 'right' && (
         <button
@@ -196,11 +212,19 @@ type PhotoLayer = Extract<Layer, { kind: 'photos' }>;
 function VideoPane() {
   const t = useT();
   const clip = useWorkspace((s) => s.activeClip);
+  const dated = useTimeline((s) => (clip ? s.index?.of[clip] !== undefined : false));
   if (!clip) return <p className="pane-empty">{t('stage.pane.noClip')}</p>;
   return (
-    <VideoWindow layerId={clip} className="scene-fill">
-      <VideoAnnotator key={clip} layerId={clip} />
-    </VideoWindow>
+    <div className="pane-col">
+      {dated && (
+        <div className="pane-bar">
+          <DateBadge layerId={clip} />
+        </div>
+      )}
+      <VideoWindow layerId={clip} className="fill-col">
+        <VideoAnnotator key={clip} layerId={clip} />
+      </VideoWindow>
+    </div>
   );
 }
 
@@ -305,7 +329,10 @@ function SetPhotoPane() {
     selection?.kind === 'photo'
       ? sets.find((s) => s.id === selection.layer && s.items.some((p) => p.id === selection.id))
       : undefined;
-  const set = picked ?? sets.find((s) => s.items.length > 0);
+  const hidden = useWorkspace((s) => s.hidden);
+  const timelineIndex = useTimeline((s) => s.index);
+  const focus = useTimeline((s) => s.focus);
+  const set = picked ?? pickPhotoSet(sets, hidden, timelineIndex, focus);
   if (!set) return <p className="pane-empty">{t('stage.pane.noPhoto')}</p>;
   const index = Math.max(
     0,
@@ -320,6 +347,7 @@ function SetPhotoPane() {
   return (
     <div className="pane-col">
       <div className="pane-bar">
+        <DateBadge layerId={set.id} />
         <button
           type="button"
           className="btn icon sm ghost"

@@ -298,13 +298,15 @@ fixtures(
         second: { site: 'shown', 'model-2026-01-01': 'shown', 'model-2026-06-01': 'absent' },
       });
 
-    // leaving the comparison: one 3D view, every date as the layer tree says
+    // leaving the comparison: one 3D view, every date as the layer tree says. The project opened
+    // on its latest date (June), which hides the January model, and the comparison did not change
+    // that, so only the June model is shown.
     await pinTwoViewTier(win);
     await win.getByTestId('compare-dates').click();
     await expect(win.locator('[data-scene-view] canvas')).toHaveCount(1);
     await expect
       .poll(() => layerState(win, ids))
-      .toMatchObject({ main: { 'model-2026-01-01': 'shown', 'model-2026-06-01': 'shown' } });
+      .toMatchObject({ main: { 'model-2026-01-01': 'hidden', 'model-2026-06-01': 'shown' } });
     // the shared models of the second view are released
     await expect
       .poll(() => inspect(win, ({ w }) => w.__stratlas.compare().models.held, null))

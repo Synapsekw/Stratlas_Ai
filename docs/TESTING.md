@@ -500,3 +500,37 @@ The product name, icon and logo changed; nothing else. Use the installer built f
 - [ ] **Help, User guide**: the install chapter names `QuadrionAI-<version>-win-x64-setup.exe`.
 - [ ] A generated issue register without branding says "Made with Quadrion AI".
 - [ ] Your data folder is still `E:\Stratlas Data`.
+
+## Stage Timeline T1: survey dates
+
+Survey dates become folders in the sidebar, with a date bar and calendar above the views.
+
+### Before you start
+
+- Open a real project with at least two survey dates (Masafi has several). The automated tests use a project called **E2E three dates**, which only exists inside the tests.
+
+### Date folders
+
+- [ ] **Datasets** shows **Every date** first (if the project has undated layers), then one folder per date, newest first: the newest is highlighted and open, the others closed.
+- [ ] Click an older date's **name**: it opens and highlights, the others close, and the views show that date's data.
+- [ ] Click only the **arrow** of a third date: it opens without switching. Switch one of its layers on: the folder shows "1 on" when closed.
+- [ ] Switch dates again: the layer from the third date stays on.
+- [ ] Hide one layer of the viewed date, switch away and back: it is still hidden.
+- [ ] A project with a single survey date still shows its date folder and the date bar (without arrows). A project with no survey dates shows the old list grouped by type and no date bar.
+
+### Date bar and calendar
+
+- [ ] The bar shows the viewed date, its colour and "n of N surveys". The arrows step through dates; they are absent on a one-date project.
+- [ ] **Alt+Left** / **Alt+Right** step dates on the workspace screen; typing in a comment box does not.
+- [ ] Click the date: the calendar opens on that month, survey days are coloured, other days are shown but can't be selected, the month arrows and **Page Up** / **Page Down** skip months without a survey, the arrow keys move day by day, **Enter** picks the day, and **Escape** closes it and returns focus to the bar.
+- [ ] Ctrl+K, type "survey": **Go to previous survey**, **Go to next survey** and one "Go to survey ..." command per date are listed. Picking one jumps to that date.
+
+### Viewers
+
+- [ ] With two dates' models on, a chip at the top of the 3D view (and the map) lists both dates in their colours. It is hidden while the split view is open.
+- [ ] The floating video, the split video and photo pane headers and the split pane date pickers show the clip's or set's date.
+- [ ] The panorama overlay shows the survey date as YYYY-MM-DD.
+- [ ] Playing a clip from the viewed date, switch dates: the matching clip of the new date plays.
+- [ ] Open the compare split: the first date is on the left and the last on the right. Step the date bar: the left side follows it, the right side keeps its own date.
+- [ ] In stockpile projects (Masafi) the Volumes date buttons and the date bar move together: pick a date in either, step away and back, and that survey's terrain still shows.
+- [ ] Close and reopen the project: the same date is viewed, with the same layers on.

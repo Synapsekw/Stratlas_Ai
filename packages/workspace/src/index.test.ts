@@ -1,4 +1,4 @@
-import type { ProjectManifest } from '@aio/schema';
+import type { Issue, ProjectManifest } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { assetUrl, createWorkspace } from './index';
 
@@ -42,6 +42,23 @@ describe('workspace store', () => {
     expect(s.nowMs).toBe(1_700_000_000_250);
     expect(s.isLayerVisible('tank')).toBe(false);
     expect(s.isLayerVisible('f110')).toBe(true);
+  });
+
+  it('counts opens in openSeq, not manifest replacements, issue edits or closes', () => {
+    const ws = createWorkspace();
+    expect(ws.getState().openSeq).toBe(0);
+    ws.getState().openProject({ id: 'hcl', root: 'E:/x', manifest });
+    expect(ws.getState().openSeq).toBe(1);
+    ws.getState().replaceManifest({ ...manifest });
+    ws.getState().upsertIssue({ id: 'i1' } as unknown as Issue);
+    ws.getState().removeIssue('i1');
+    expect(ws.getState().openSeq).toBe(1);
+    ws.getState().closeProject();
+    expect(ws.getState().openSeq).toBe(1);
+    ws.getState().openProject({ id: 'hcl', root: 'E:/x', manifest });
+    expect(ws.getState().openSeq).toBe(2);
+    ws.getState().openProject({ id: 'hcl', root: 'E:/x', manifest });
+    expect(ws.getState().openSeq).toBe(3);
   });
 
   it('toggles layer visibility', () => {

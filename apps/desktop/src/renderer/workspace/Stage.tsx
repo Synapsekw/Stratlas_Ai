@@ -73,7 +73,17 @@ import { ChangeLegends } from './MapSwipe';
 import { CursorReadout, useSceneCursor } from './SceneCursor';
 import './m8Mounts';
 import { paneCapture, PaneChooser, SplitPane, useSplit } from './SplitPanes';
-import { sideOf, sidesOf, type Side } from './splitModel';
+import {
+  chooseCapture,
+  followsFocus,
+  PER_CAPTURE,
+  sideOf,
+  sidesOf,
+  type FocusFollow,
+  type Side,
+} from './splitModel';
+import { DatesOnScreen } from './DatesOnScreen';
+import { useTimeline } from './timeline';
 import { hiddenPathClips, togglePaths } from './flightPaths';
 import { telemetryLabels, toggleTelemetry, useTelemetryOn } from './telemetryPref';
 import { flightPathModel, updateFlightPaths, useFlightPathModel } from './pathModel';
@@ -559,6 +569,17 @@ export function Stage() {
     },
     [],
   );
+  // the left side follows the date bar's focused survey (only panes drawn per date) when the
+  // date changes with the split open; opening the split keeps its first-left, last-right dates
+  const focus = useTimeline((s) => s.focus);
+  const lastFocus = useRef<FocusFollow>({ projectId, focus, splitting });
+  useEffect(() => {
+    const prev = lastFocus.current;
+    lastFocus.current = { projectId, focus, splitting };
+    if (!followsFocus(prev, lastFocus.current) || !focus || !split.dates) return;
+    if (!PER_CAPTURE.includes(sides.left) || paneCapture(split, 'left') === focus) return;
+    split.set(chooseCapture(split.sides, 'left', focus, split.dates));
+  }, [projectId, focus, splitting]); // eslint-disable-line react-hooks/exhaustive-deps -- follow focus changes only
   useVolumesFollowDate(split, side3d, sceneCapture);
   const second3d = sides3d[1];
   const secondMap = sidesMap[1];
@@ -854,6 +875,9 @@ export function Stage() {
           </div>
         )}
       </div>
+      {!splitting && (
+        <DatesOnScreen kinds={['mesh', 'pointcloud', 'raster', 'vector', 'panoramas']} />
+      )}
       <SightingPicker kinds={['map']} />
       {!docked && showVideo && (
         <FloatingVideo layerId={activeClip} docked={false} stageRef={stageRef} />

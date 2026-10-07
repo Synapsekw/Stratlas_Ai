@@ -45,7 +45,7 @@ function parse(raw: string | null | undefined): Record<string, StagePref> {
   }
 }
 
-function browserStorage(): Storage | null {
+export function browserStorage(): Storage | null {
   try {
     return typeof localStorage === 'undefined' ? null : localStorage;
   } catch {

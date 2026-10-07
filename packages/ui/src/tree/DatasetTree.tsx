@@ -37,6 +37,8 @@ export interface DatasetTreeProps {
   onLayerSettings?: ((item: TreeItem) => void) | undefined;
   /** Groups open at first; defaults to models, maps, video and annotations. */
   defaultOpen?: readonly TreeGroupKind[] | undefined;
+  /** Rendered inside a date folder: the root is a group, not a second tree. */
+  nested?: boolean | undefined;
 }
 
 const DEFAULT_OPEN: TreeGroupKind[] = ['models', 'maps', 'video', 'annotations'];
@@ -210,7 +212,11 @@ export function DatasetTree(props: DatasetTreeProps) {
   };
 
   return (
-    <div className="tree" role="tree" aria-label="Datasets">
+    <div
+      className={props.nested ? 'tree tree-nested' : 'tree'}
+      role={props.nested ? 'group' : 'tree'}
+      aria-label={props.nested ? undefined : 'Datasets'}
+    >
       {groups.map((g) => {
         const expanded = !collapsed && isOpen(g.kind);
         const all = showAll[g.kind] === true || g.items.length <= ROW_LIMIT + 1;

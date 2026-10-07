@@ -468,6 +468,89 @@ export async function createTwoDateProject(dataRoot: DataRoot): Promise<TwoDateP
   return { id, dir, captures: ['c1', 'c2'] };
 }
 
+export const THREE_DATE_PROJECT_ID = 'e2e-three-dates';
+
+/**
+ * Write `projects/e2e-three-dates/` into `dataRoot`: three surveys (4 Sep, 2 Oct and 6 Nov 2024;
+ * captures `sep`, `oct`, `nov`), a model (`quad-<id>`) and a site outline (`site-<id>`) per date,
+ * and one undated layer (`design`). Meshes and vectors only, no media files.
+ */
+export async function createThreeDateProject(dataRoot: DataRoot): Promise<{ id: string }> {
+  const id = THREE_DATE_PROJECT_ID;
+  const dir = join(dataRoot.root, 'projects', id);
+  await mkdir(join(dir, 'models'), { recursive: true });
+  await mkdir(join(dir, 'vectors'), { recursive: true });
+  await writeFile(join(dir, 'models', 'quad.glb'), tinyGlb());
+  const outline = JSON.stringify({
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        id: 'B',
+        properties: { id: 'B', name: 'Boundary' },
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [51.0, 28.92],
+            [51.0005, 28.92],
+          ],
+        },
+      },
+    ],
+  });
+  const dates = [
+    { id: 'sep', date: '2024-09-04' },
+    { id: 'oct', date: '2024-10-02' },
+    { id: 'nov', date: '2024-11-06' },
+  ];
+  for (const d of dates) await writeFile(join(dir, 'vectors', `site-${d.id}.geojson`), outline);
+  await writeFile(join(dir, 'vectors', 'design.geojson'), outline);
+  const input: ProjectManifestInput = {
+    schema: SCHEMA_VERSION,
+    id,
+    name: 'E2E three dates',
+    customer: 'E2E',
+    site: 'Synthetic site, 3 dates',
+    crs: { epsg: 32639 },
+    origin: [500000, 3200000, 0],
+    captures: dates.map((d) => ({ id: d.id, label: `Survey ${d.date}`, date: d.date })),
+    layers: [
+      ...dates.flatMap((d) => [
+        {
+          kind: 'mesh' as const,
+          id: `quad-${d.id}`,
+          name: `Quad ${d.date}`,
+          capture: d.id,
+          src: { path: 'models/quad.glb' },
+          transform: IDENTITY,
+        },
+        {
+          kind: 'vector' as const,
+          id: `site-${d.id}`,
+          name: `Site ${d.date}`,
+          capture: d.id,
+          src: { path: `vectors/site-${d.id}.geojson` },
+          format: 'geojson' as const,
+        },
+      ]),
+      {
+        kind: 'vector' as const,
+        id: 'design',
+        name: 'Design outline',
+        src: { path: 'vectors/design.geojson' },
+        format: 'geojson' as const,
+      },
+    ],
+    severityModels: [],
+    classCatalogues: [],
+  };
+  await writeFile(
+    join(dir, 'manifest.json'),
+    JSON.stringify(ProjectManifest.parse(input), null, 2),
+  );
+  return { id };
+}
+
 /**
  * The bundled demo folder (`pnpm demo:build --quick`, or only `pnpm demo:change --quick` for the
  * change demo), or QUADRION_E2E_DEMO.
@@ -586,6 +669,8 @@ interface Fixtures {
   win: Page;
   /** A two-date project written into `dataRoot` before the app starts (list it before `win`). */
   twoDateProject: TwoDateProject;
+  /** A three-date project (`e2e-three-dates`) written into `dataRoot` before the app starts. */
+  threeDateProject: { id: string };
   /**
    * Its own app with the bundled demos (QUADRION_DEMO) and the change demo open. Use it instead
    * of `app` and `win`, not with them. Skips the test when the change demo is not built.
@@ -636,6 +721,10 @@ export const test = base.extend<Fixtures>({
 
   twoDateProject: async ({ dataRoot }, use) => {
     await use(await createTwoDateProject(dataRoot));
+  },
+
+  threeDateProject: async ({ dataRoot }, use) => {
+    await use(await createThreeDateProject(dataRoot));
   },
 
   demoProject: async ({ dataRoot, appEnv }, use, testInfo) => {

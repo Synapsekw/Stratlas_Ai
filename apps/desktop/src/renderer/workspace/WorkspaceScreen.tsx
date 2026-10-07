@@ -29,6 +29,7 @@ import { NoProject } from '../screens/NoProject';
 import { AgentFixCard } from './AgentFixCard';
 import { useCaptureIndex } from './compare';
 import { agentWindow } from './agentWindow';
+import { DateBar } from './DateBar';
 import { LayerPlaceholder } from './LayerPlaceholder';
 import { SelectionCard } from './SelectionCard';
 import { Stage } from './Stage';
@@ -265,6 +266,7 @@ export function WorkspaceScreen() {
       aria-label="Scene"
     >
       <h1 className="sr-only">{t('nav.scene')}</h1>
+      <DateBar />
       <Stage />
       <LayerPlaceholder />
       <div className="tl-wrap">
