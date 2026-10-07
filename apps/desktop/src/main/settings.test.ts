@@ -2,7 +2,12 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createSettingsStore, defaultDataRoot, defaultSettings } from './settings';
+import {
+  REPORT_SECTIONS_08,
+  createSettingsStore,
+  defaultDataRoot,
+  defaultSettings,
+} from './settings';
 
 describe('defaultDataRoot', () => {
   const base = { platform: 'win32', documents: 'C:\\Users\\me\\Documents', exists: () => false };
@@ -146,5 +151,69 @@ describe('settings store', () => {
     const store = createSettingsStore(file, defaults);
     await store.set({ cloudAi: true });
     expect(store.current().cloudAi).toBe(true);
+  });
+  // 0.8 reads `reportContents` with a strict schema over its eight section ids, so a section added
+  // later (`audit`, `approvals`) would make an 0.8 build on the same machine drop every report
+  // choice. The file keeps the later sections in `reportSectionsExtra`, which 0.8 ignores.
+  describe('report sections an 0.8 build does not know', () => {
+    it('are written outside reportContents and read back in', async () => {
+      const store = createSettingsStore(file, defaults);
+      const sections = { register: false, audit: false, approvals: true } as const;
+      const next = await store.set({ reportContents: { sections, issuePages: 'none' } });
+      expect(next.reportContents).toEqual({ sections, issuePages: 'none' });
+      const disk = JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>;
+      expect(disk.reportContents).toEqual({ sections: { register: false }, issuePages: 'none' });
+      expect(disk.reportSectionsExtra).toEqual({ audit: false, approvals: true });
+      expect(await createSettingsStore(file, defaults).get()).toEqual(next);
+    });
+
+    it('leave reportContents without sections when only later ones are set', async () => {
+      const store = createSettingsStore(file, defaults);
+      await store.set({ reportContents: { sections: { audit: false } } });
+      const disk = JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>;
+      expect(disk.reportContents).toEqual({});
+      expect(disk.reportSectionsExtra).toEqual({ audit: false });
+    });
+
+    it('move a later section out of reportContents on the next save', async () => {
+      await writeFile(
+        file,
+        JSON.stringify({ ...defaults, reportContents: { sections: { audit: false } } }),
+      );
+      const store = createSettingsStore(file, defaults);
+      expect((await store.get()).reportContents).toEqual({ sections: { audit: false } });
+      await store.set({ theme: 'light' });
+      const disk = JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>;
+      expect(disk.reportContents).toEqual({});
+      expect(disk.reportSectionsExtra).toEqual({ audit: false });
+    });
+
+    it('keep sections from a newer build, and drop values that are not on or off', async () => {
+      await writeFile(
+        file,
+        JSON.stringify({
+          ...defaults,
+          reportSectionsExtra: { audit: false, signoffs2: true, approvals: 'yes' },
+        }),
+      );
+      const store = createSettingsStore(file, defaults);
+      expect((await store.get()).reportContents).toEqual({ sections: { audit: false } });
+      await store.set({ theme: 'light' });
+      const disk = JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>;
+      expect(disk.reportSectionsExtra).toEqual({ audit: false, signoffs2: true });
+    });
+
+    it('lists exactly the sections 0.8 knows', () => {
+      expect(REPORT_SECTIONS_08).toEqual([
+        'contents',
+        'summary',
+        'scope',
+        'site',
+        'statistics',
+        'register',
+        'issues',
+        'appendices',
+      ]);
+    });
   });
 });
