@@ -21,6 +21,7 @@ export * from './timeline/model';
 export { generateTicks, pickTickStep, type Tick, type TickStep } from './timeline/ticks';
 export { Timeline, RATES, type TimelineProps } from './timeline/Timeline';
 export * from './tree/model';
+export * from './tree/dateModel';
 export { DatasetTree, VisibilityEye, type DatasetTreeProps } from './tree/DatasetTree';
 export { rankCommands, scoreMatch, type Command } from './palette/rank';
 export * from './shortcuts';
