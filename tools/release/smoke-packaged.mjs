@@ -8,10 +8,15 @@
 // STRATLAS_SMOKE_REPORT the app asks for the runtime from its window (inference:models, as
 // Settings does) before it exits and writes the answer there: the runtime must load, report a
 // version and offer the CPU provider. Not required on an Intel Mac (arm64 binary only).
+//
+// Content Security Policy: the packaged window loads from file://, where main's CSP header never
+// applies; the report says what policy the page carries (its <meta>) and what eval('1') did
+// there. The policy must be the app's and eval must be refused (csp-probe.mjs).
 import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { cspProbeProblem } from './csp-probe.mjs';
 import {
   describeOnnx,
   findPackagedApp,
@@ -82,6 +87,9 @@ child.on('exit', (code) => {
   if (onnx === null) console.log(`Smoke check: ${describeOnnx(report)}.`);
   else if (onnxNeeded) problems.push(`local detection: ${onnx}`);
   else console.log(`Smoke check: local detection not checked on this architecture (${onnx})`);
+  const csp = cspProbeProblem(report);
+  if (csp === null) console.log(`Smoke check: the window refuses eval (${report.csp.eval}).`);
+  else problems.push(`content security policy: ${csp}`);
   if (problems.length) {
     console.error('Smoke check failed:');
     for (const p of problems) console.error(`  ${p}`);
