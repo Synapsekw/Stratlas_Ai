@@ -14,7 +14,7 @@ import {
   SRGBColorSpace,
 } from 'three';
 import { frameProjection } from './geo';
-import { groundCorners, siteBbox } from './ground';
+import { extentBbox, groundCorners, siteBbox, type GroundExtent } from './ground';
 import { installBasemap } from './runtime';
 import { buildStyle } from './style';
 
@@ -32,9 +32,15 @@ function waitIdle(map: MapLibreMap, timeoutMs = 20_000): Promise<void> {
   });
 }
 
+export interface GroundOptions {
+  /** The local rectangle to cover; default a 5 km square around the origin. */
+  extent?: GroundExtent;
+}
+
 export async function createGround(
   layer: Extract<Layer, { kind: 'basemap' }>,
   ctx: AdapterContext,
+  opts: GroundOptions = {},
 ): Promise<LayerHandle> {
   const project = workspace.getState().project;
   const proj = project ? frameProjection(project.manifest.crs, project.manifest.origin) : null;
@@ -44,7 +50,7 @@ export async function createGround(
   if (!packs.length) throw new Error('No map packs installed');
   installBasemap(packs);
 
-  const bbox = siteBbox(proj, HALF_SIZE_M);
+  const bbox = opts.extent ? extentBbox(proj, opts.extent) : siteBbox(proj, HALF_SIZE_M);
   const host = document.createElement('div');
   host.style.cssText = `position:fixed;left:-${SIZE_PX * 2}px;top:0;width:${SIZE_PX}px;height:${SIZE_PX}px;pointer-events:none`;
   document.body.appendChild(host);

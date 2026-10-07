@@ -1,4 +1,6 @@
-import { getAdapter, registerAdapter } from '@aio/engine';
+import { getAdapter, registerAdapter, type AdapterContext, type LayerHandle } from '@aio/engine';
+import type { Layer } from '@aio/schema';
+import type { GroundExtent } from './ground';
 
 export { MapView, type MapViewProps } from './MapView';
 export { captureMap } from './capture';
@@ -26,11 +28,13 @@ export {
   type Bbox,
   type MapPack,
 } from './packs';
+export { extentBbox, siteBbox, type GroundExtent } from './ground';
 export { frameProjection, lonLatToUtm, utmToLonLat, type FrameProjection } from './geo';
 export { buildStyle, BASEMAP_SOURCE, MAP_PROTOCOL } from './style';
 export {
   ALL_ISSUES,
   footprint,
+  headingLine,
   issueAnchor,
   poseAt,
   rasterQuad,
@@ -75,4 +79,17 @@ export function registerMapAdapters(): void {
       return createGround(layer, ctx);
     },
   });
+}
+
+/**
+ * The street map ground over a chosen rectangle of the local frame (the 3D street map under a
+ * site, sized to what the project covers), without a manifest layer. MapLibre loads lazily.
+ */
+export async function createStreetGround(
+  layer: Extract<Layer, { kind: 'basemap' }>,
+  ctx: AdapterContext,
+  extent: GroundExtent,
+): Promise<LayerHandle> {
+  const { createGround } = await import('./groundRender');
+  return createGround(layer, ctx, { extent });
 }
