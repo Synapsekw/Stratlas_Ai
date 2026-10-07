@@ -6,7 +6,7 @@ The full licence texts ship with the software: the app lists every package with 
 
 ## Desktop app and Team Server (npm)
 
-125 packages: MIT (86), ISC (11), Apache-2.0 (10), BSD-3-Clause (9), BSD-2-Clause (3), OFL-1.1 (3), (AFL-2.1 OR BSD-3-Clause) (1), (MIT OR Apache-2.0) (1), (MIT OR CC0-1.0) (1).
+138 packages: MIT (98), ISC (12), Apache-2.0 (10), BSD-3-Clause (9), BSD-2-Clause (3), OFL-1.1 (3), (AFL-2.1 OR BSD-3-Clause) (1), (MIT OR Apache-2.0) (1), (MIT OR CC0-1.0) (1).
 
 | Package                               | Version      | Licence                   |
 | ------------------------------------- | ------------ | ------------------------- |
@@ -96,10 +96,22 @@ The full licence texts ship with the software: the app lists every package with 
 | onnxruntime-common                    | 1.30.0       | MIT                       |
 | onnxruntime-node                      | 1.30.0       | MIT                       |
 | pbf                                   | 5.1.2        | BSD-3-Clause              |
+| pg                                    | 8.23.1       | MIT                       |
+| pg-cloudflare                         | 1.4.1        | MIT                       |
+| pg-connection-string                  | 2.14.1       | MIT                       |
+| pg-int8                               | 1.0.1        | ISC                       |
+| pg-pool                               | 3.14.0       | MIT                       |
+| pg-protocol                           | 1.16.1       | MIT                       |
+| pg-types                              | 2.2.0        | MIT                       |
+| pgpass                                | 1.0.5        | MIT                       |
 | pino                                  | 10.4.0       | MIT                       |
 | pino-abstract-transport               | 3.0.0        | MIT                       |
 | pino-std-serializers                  | 7.1.0        | MIT                       |
 | pmtiles                               | 4.5.0        | BSD-3-Clause              |
+| postgres-array                        | 2.0.0        | MIT                       |
+| postgres-bytea                        | 1.0.1        | MIT                       |
+| postgres-date                         | 1.0.7        | MIT                       |
+| postgres-interval                     | 1.2.0        | MIT                       |
 | potpack                               | 2.1.0        | ISC                       |
 | process-warning                       | 4.0.1, 5.1.0 | MIT                       |
 | proj4                                 | 2.22.0       | MIT                       |
@@ -133,6 +145,7 @@ The full licence texts ship with the software: the app lists every package with 
 | webidl-conversions                    | 3.0.1        | BSD-2-Clause              |
 | whatwg-url                            | 5.0.0        | MIT                       |
 | wkt-parser                            | 1.5.6        | MIT                       |
+| xtend                                 | 4.0.2        | MIT                       |
 | zod                                   | 4.6.5        | MIT                       |
 | zustand                               | 5.0.15       | MIT                       |
 
