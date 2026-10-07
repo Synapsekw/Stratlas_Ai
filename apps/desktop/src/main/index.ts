@@ -78,7 +78,7 @@ import { createLocalIdentity } from './journalIdentity';
 import { createAuditExport } from './exports/audit';
 import { registerSyncIpc } from './sync';
 import { startSync } from './sync/electron';
-import { registerTeamServerIpc } from './teamServer';
+import { interimDeviceSource, registerTeamServerIpc } from './teamServer';
 import { importLogo, removeLogo } from './branding';
 import { putThumb } from './thumbs';
 import { RENDERER_PROBE, smokeProbe, writeSmokeReport } from './smoke';
@@ -1100,7 +1100,18 @@ function registerIpc(): void {
   });
   registerSyncIpc({ handle, service: startSync({ registry, settings, keyService }) });
   registerBlobsIpc({ handle, service: blobs });
-  registerTeamServerIpc({ handle });
+  registerTeamServerIpc({
+    handle,
+    userData: () => app.getPath('userData'),
+    offlineOnly: () => settings.current().offlineOnly === true,
+    // T7 interim device key; at integration T2's device source replaces it
+    device: interimDeviceSource({
+      userData: () => app.getPath('userData'),
+      vault: (account) => new Entry(keyService, account),
+      app: { name: brand.productName, version: app.getVersion() },
+      sessionKeyWithoutVault: Boolean(process.env.STRATLAS_USER_DATA),
+    }),
+  });
 }
 
 /** Hand a package path to the renderer (second launch, macOS open-file). */

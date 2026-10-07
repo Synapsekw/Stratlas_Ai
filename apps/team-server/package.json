@@ -8,10 +8,17 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "build": "vite build --config vitest.config.ts",
     "test": "vitest run"
   },
   "dependencies": {
+    "@aio/journal": "workspace:*",
     "@aio/schema": "workspace:*",
-    "fastify": "^5.12.5"
+    "fastify": "^5.12.5",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@aio/sync": "workspace:*",
+    "@types/pg": "^8.23.1"
   }
 }

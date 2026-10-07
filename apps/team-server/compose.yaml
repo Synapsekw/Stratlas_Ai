@@ -1,0 +1,67 @@
+# Team Server (preview): an example for customer IT, with docs/server/README.md.
+# The server and Postgres 16 run on your own machine; nothing goes to Synapse.
+# Before the first start:
+#   1. put the server certificate and key in ./tls/server.crt and ./tls/server.key
+#      (readable by user 65532: `sudo chown 65532 tls/server.key && chmod 600 tls/server.key`);
+#   2. write DB_PASSWORD=<a long random password> into ./.env;
+#   3. docker compose up -d
+#   4. docker compose exec server /nodejs/bin/node /app/dist/main.mjs create-team --name "Your team"
+# No MinIO and no PostGIS: blobs live in the `data` volume.
+
+name: aio-team-server
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: aio
+      POSTGRES_USER: aio
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+    volumes:
+      - db:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U aio -d aio']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
+
+  server:
+    # the signed image when one is published; until then, built from this repository
+    image: aio-team-server:0.1.0
+    build:
+      context: ../..
+      dockerfile: apps/team-server/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://aio:${DB_PASSWORD:?Set DB_PASSWORD in .env}@db:5432/aio
+      AIO_SERVER_NAME: Team server
+      AIO_TLS_CERT_FILE: /run/secrets/tls_cert
+      AIO_TLS_KEY_FILE: /run/secrets/tls_key
+    secrets:
+      - tls_cert
+      - tls_key
+    ports:
+      - '8443:8443'
+    volumes:
+      - data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+secrets:
+  tls_cert:
+    file: ./tls/server.crt
+  tls_key:
+    file: ./tls/server.key
+
+volumes:
+  db: {}
+  data: {}
