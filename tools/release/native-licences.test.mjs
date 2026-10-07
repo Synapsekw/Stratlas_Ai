@@ -100,6 +100,7 @@ describe('vcpkg SBOMs', () => {
       licence: 'Zlib',
     });
     expect(readSbom(sbom('gdal', '3.12.4', 'NOASSERTION')).licence).toBeNull();
+    expect(readSbom(sbom('clapack', '3.2.1', 'LicenseRef-vcpkg-null')).licence).toBeNull();
   });
 
   it('tells shared from static ports by their installed files', () => {

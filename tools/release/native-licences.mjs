@@ -236,7 +236,8 @@ export function distOwners(root) {
 export function readSbom(doc) {
   const pkgs = doc.packages ?? [];
   const port = pkgs.find((p) => p.SPDXID === 'SPDXRef-port') ?? pkgs[0] ?? {};
-  const known = (l) => (l && !/^(NOASSERTION|NONE)$/.test(l) ? l : null);
+  // vcpkg writes LicenseRef-vcpkg-null for a port whose manifest names no licence.
+  const known = (l) => (l && !/^(NOASSERTION|NONE|LicenseRef-vcpkg-null)$/.test(l) ? l : null);
   return {
     name: port.name,
     version: String(port.versionInfo ?? '').split('#')[0],
