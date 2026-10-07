@@ -268,6 +268,8 @@ def write_project(
         "origin": list(ORIGIN),
         "captures": [{"id": "c1", "date": "2026-10-07", "label": "7 Oct 2026"}],
         "layers": [],
+        "severityModels": [],
+        "classCatalogues": [],
     }
     (root / "manifest.json").write_text(json.dumps(manifest, indent=2), "utf-8")
     rdir = root / "photogrammetry" / run
