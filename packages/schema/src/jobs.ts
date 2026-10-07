@@ -1,7 +1,11 @@
 import { z } from 'zod';
 import { FrameRef, LonLatRing } from './change';
-import { Id, Vec3 } from './common';
+import { Id, ProjectPath, Vec3 } from './common';
+import { RasterPackId, TerrainDatum } from './globe';
+import { Crs } from './manifest';
+import { PhotoPreset, PhotoProduct, PhotoRunId, PhotoSource } from './photogrammetry';
 import { ProcModelId, ProcPartKind } from './procmodel';
+import { TilesetId } from './tilesets';
 
 /**
  * Pipeline jobs (Release B). Main spawns the pipeline pack's Python (`python -m aio_pipelines`)
@@ -29,6 +33,16 @@ export const PipelineName = z.enum([
   'change.frames',
   'drawing.import',
   'model.fit_cloud',
+  // M10 (pipeline pack 0.4.0)
+  'photo.align',
+  'photo.georef',
+  'photo.products',
+  'opf.import',
+  'opf.export',
+  'tiles.mesh',
+  'tiles.cloud',
+  'packs.imagery',
+  'packs.terrain',
 ]);
 export type PipelineName = z.infer<typeof PipelineName>;
 
@@ -124,20 +138,61 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
     description:
       'Ground removal, clustering and primitive fitting (tanks, boxes, buildings, pipes) into draft model parts.',
   },
+  {
+    name: 'photo.align',
+    title: 'Align photos',
+    description:
+      'Drone photos to calibrated cameras and a sparse model: EXIF and RTK tags, matching, structure from motion and GNSS georeferencing.',
+  },
+  {
+    name: 'photo.georef',
+    title: 'Adjust with ground control',
+    description:
+      'Bundle adjustment with marked control points; checkpoints measured only; the accuracy report.',
+  },
+  {
+    name: 'photo.products',
+    title: 'Create products from photos',
+    description:
+      'Dense cloud (COPC), DSM and DTM, orthomosaic and textured mesh from an aligned run, as new layers.',
+  },
+  {
+    name: 'opf.import',
+    title: 'OPF import',
+    description:
+      'An Open Photogrammetry Format project: calibrated cameras, control points and its outputs as layers.',
+  },
+  {
+    name: 'opf.export',
+    title: 'OPF export',
+    description:
+      'A processing run as an OPF project: cameras, calibration, control points, CRS and the sparse cloud.',
+  },
+  {
+    name: 'tiles.mesh',
+    title: 'Mesh to 3D Tiles',
+    description:
+      'A large mesh to a 3D Tiles 1.1 tileset placed through the project CRS, for the site view and the Globe.',
+  },
+  {
+    name: 'tiles.cloud',
+    title: 'Point cloud to 3D Tiles',
+    description:
+      'A COPC point cloud to a 3D Tiles points tileset following its hierarchy, for the Globe.',
+  },
+  {
+    name: 'packs.imagery',
+    title: 'Imagery pack',
+    description:
+      'GeoTIFF or COG imagery to an offline raster pack (PMTiles, WebP, Web Mercator) with its licence and attribution.',
+  },
+  {
+    name: 'packs.terrain',
+    title: 'Terrain pack',
+    description:
+      'A DEM to an offline terrain pack (Terrarium tiles in PMTiles) with its vertical datum, licence and attribution.',
+  },
 ];
-
-/** A path inside the project folder: relative, no `..`, no drive letter. */
-export const ProjectPath = z
-  .string()
-  .min(1)
-  .max(260)
-  .refine(
-    (p) => {
-      const n = p.replace(/\\/g, '/');
-      return !n.startsWith('/') && !/^[A-Za-z]:/.test(n) && !n.split('/').includes('..');
-    },
-    { message: 'Output paths must stay inside the project folder.' },
-  );
 
 const Latitude = z.number().min(-90).max(90);
 const Longitude = z.number().min(-180).max(180);
@@ -458,6 +513,157 @@ export const ModelFitParams = z
   })
   .strict();
 
+// ---------------------------------------------------------------- M10 photogrammetry, OPF, tiles, packs
+// Python stubs in `python/src/aio_pipelines/{photo,opf,tiles,packs}/` take the same parameter
+// names (G0); each stream fills its own module. Paths named "absolute" are read in place, never
+// written; outputs stay inside the project (`ProjectPath`), except raster packs, which go to the
+// data folder's `packs/imagery/` or `packs/terrain/` (`dest`, chosen by main).
+
+const MAX_PATH = 1024;
+
+/** `photo.align` (python `aio_pipelines/photo/align.py`, G2). */
+export const PhotoAlignParams = z
+  .object({
+    photos: PhotoSource,
+    /** Run id; default a new one from the date (`20261007-1015`). */
+    run: PhotoRunId.optional(),
+    preset: PhotoPreset,
+    matching: z.enum(['auto', 'gps', 'sequential', 'exhaustive']).optional(),
+    mapper: z.enum(['auto', 'global', 'incremental']).optional(),
+    /** How GNSS positions weigh: `auto` reads the RTK flag of each photo. */
+    gnss: z.enum(['auto', 'rtk', 'standard', 'ignore']).optional(),
+    /** PPK positions (`image, lat, lon, h, sh, sv` CSV, absolute path), replacing EXIF ones. */
+    ppk: z.string().min(1).max(MAX_PATH).optional(),
+    /** Default the project CRS (manifest `crs`). */
+    crs: Crs.optional(),
+    /** Longest image side for features, pixels; default from the preset. */
+    maxImageSize: z.number().int().min(320).max(20_000).optional(),
+  })
+  .strict();
+
+/** `photo.georef` (python `aio_pipelines/photo/georef.py`, G2). */
+export const PhotoGeorefParams = z
+  .object({
+    run: PhotoRunId,
+    /** Default `photogrammetry/<run>/gcp.json`. */
+    gcp: ProjectPath.optional(),
+    /** Keep GNSS position priors in the adjustment (default true). */
+    useGnss: z.boolean().optional(),
+  })
+  .strict();
+
+/** `photo.products` (python `aio_pipelines/photo/products.py`, G3). Existing layer kinds only. */
+export const PhotoProductsParams = z
+  .object({
+    run: PhotoRunId,
+    products: z.array(PhotoProduct).min(1),
+    /** Default the run's preset. */
+    preset: PhotoPreset.optional(),
+    /** `cuda` only with the GPU accelerator (decision 5: M10.1 at the earliest). */
+    dense: z.enum(['auto', 'cpu', 'cuda']).optional(),
+    /** Ortho ground sample distance, cm; default the median GSD of the photos. */
+    gsdCm: z.number().min(0.1).max(1000).optional(),
+    region: LonLatRing.optional(),
+    /** Survey date set on every new layer (a manifest capture id). */
+    capture: Id.optional(),
+    /** Triangle budget of the site-view GLB (default 2 M). */
+    meshTriangles: z.number().int().min(10_000).max(50_000_000).optional(),
+  })
+  .strict();
+
+/** `opf.import` (python `aio_pipelines/opf/importer.py`, G5). */
+export const OpfImportParams = z
+  .object({
+    /** The `.opf` project file (absolute). Read only; files outside its folder are refused. */
+    src: z.string().min(1).max(MAX_PATH),
+    /** Outputs to bring in as layers when present; default all. */
+    products: z.array(z.enum(['cloud', 'ortho', 'dsm', 'mesh'])).optional(),
+    /** Where the photos are when the OPF's own paths do not resolve (absolute). */
+    photosRoot: z.string().min(1).max(MAX_PATH).optional(),
+  })
+  .strict();
+
+/** `opf.export` (python `aio_pipelines/opf/exporter.py`, G5). */
+export const OpfExportParams = z
+  .object({
+    run: PhotoRunId,
+    /** Folder to write the OPF project into (absolute, chosen in a save dialog). */
+    out: z.string().min(1).max(MAX_PATH),
+  })
+  .strict();
+
+/** `tiles.mesh` (python `aio_pipelines/tiles/mesh.py`, G7): a mesh layer or a run's full mesh. */
+export const TilesMeshParams = z
+  .object({
+    layer: Id.optional(),
+    /** A GLB or OBJ inside the project (a run's full-resolution mesh). */
+    src: ProjectPath.optional(),
+    id: TilesetId.optional(),
+    name: z.string().min(1).max(200).optional(),
+    run: PhotoRunId.optional(),
+    compression: z.enum(['meshopt', 'draco', 'none']).optional(),
+    maxTrianglesPerTile: z.number().int().min(1000).max(5_000_000).optional(),
+    textureMaxPx: z.number().int().min(64).max(16_384).optional(),
+  })
+  .strict()
+  .refine((p) => (p.layer === undefined) !== (p.src === undefined), {
+    message: 'Give a mesh layer or a mesh file, not both.',
+  });
+
+/** `tiles.cloud` (python `aio_pipelines/tiles/cloud.py`, G7): a COPC layer to 3D Tiles points. */
+export const TilesCloudParams = z
+  .object({
+    layer: Id,
+    id: TilesetId.optional(),
+    name: z.string().min(1).max(200).optional(),
+    maxPointsPerTile: z.number().int().min(1000).max(5_000_000).optional(),
+  })
+  .strict();
+
+const rasterPackParams = {
+  /** GeoTIFF or COG files, or folders of them (absolute). Read only. */
+  src: z.array(z.string().min(1).max(MAX_PATH)).min(1).max(10_000),
+  /** `<data>/packs/imagery` or `<data>/packs/terrain` (absolute, set by main). */
+  dest: z.string().min(1).max(MAX_PATH),
+  id: RasterPackId,
+  label: z.string().min(1).max(120),
+  licence: z.string().min(1).max(200),
+  attribution: z.string().min(1).max(500),
+  provenance: z.string().max(300).optional(),
+  minZoom: z.number().int().min(0).max(22).optional(),
+  maxZoom: z.number().int().min(0).max(22).optional(),
+};
+
+/** `packs.imagery` (python `aio_pipelines/packs/imagery.py`, G7). */
+export const ImageryPackParams = z
+  .object({
+    ...rasterPackParams,
+    customerLicence: z.boolean(),
+    format: z.enum(['webp', 'png', 'jpeg']).optional(),
+    quality: z.number().int().min(1).max(100).optional(),
+    tileSize: z.union([z.literal(256), z.literal(512)]).optional(),
+  })
+  .strict();
+
+/** `packs.terrain` (python `aio_pipelines/packs/terrain.py`, G7). Terrarium encoding. */
+export const TerrainPackParams = z
+  .object({
+    ...rasterPackParams,
+    verticalDatum: TerrainDatum,
+    format: z.enum(['webp', 'png']).optional(),
+  })
+  .strict();
+
+export type PhotoAlignParams = z.infer<typeof PhotoAlignParams>;
+export type PhotoGeorefParams = z.infer<typeof PhotoGeorefParams>;
+export type PhotoProductsParams = z.infer<typeof PhotoProductsParams>;
+export type OpfImportParams = z.infer<typeof OpfImportParams>;
+export type OpfExportParams = z.infer<typeof OpfExportParams>;
+export type TilesMeshParams = z.infer<typeof TilesMeshParams>;
+export type TilesCloudParams = z.infer<typeof TilesCloudParams>;
+export type ImageryPackParams = z.infer<typeof ImageryPackParams>;
+export type TerrainPackParams = z.infer<typeof TerrainPackParams>;
+
 const PARAMS = {
   'aik.cameras': AikCamerasParams,
   'aik.project': AikProjectParams,
@@ -475,6 +681,15 @@ const PARAMS = {
   'change.frames': ChangeFramesParams,
   'drawing.import': DrawingImportParams,
   'model.fit_cloud': ModelFitParams,
+  'photo.align': PhotoAlignParams,
+  'photo.georef': PhotoGeorefParams,
+  'photo.products': PhotoProductsParams,
+  'opf.import': OpfImportParams,
+  'opf.export': OpfExportParams,
+  'tiles.mesh': TilesMeshParams,
+  'tiles.cloud': TilesCloudParams,
+  'packs.imagery': ImageryPackParams,
+  'packs.terrain': TerrainPackParams,
 } as const satisfies Record<PipelineName, z.ZodType>;
 
 export function pipelineParams(name: PipelineName): z.ZodType<Record<string, unknown>> {

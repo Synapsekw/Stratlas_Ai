@@ -101,6 +101,25 @@ describe('createProject', () => {
   });
 });
 
+describe('writeManifestFile (M10 G0)', () => {
+  it('keeps a layer of a kind from a newer Stratlas when this build saves the project', async () => {
+    const root = await project();
+    const file = join(root, 'manifest.json');
+    const newer = { kind: 'gaussian-splat', id: 'splat-1', name: 'Splat', later: { x: [1, 'ü'] } };
+    const raw = JSON.parse(await readFile(file, 'utf8')) as { layers: unknown[] };
+    await writeFile(file, JSON.stringify({ ...raw, layers: [...raw.layers, newer] }));
+
+    const m = await readManifest(root);
+    expect(m.layers.map((l) => l.id)).not.toContain('splat-1');
+    await writeManifestFile(root, { ...m, name: 'Renamed here' });
+
+    const saved = JSON.parse(await readFile(file, 'utf8')) as { name: string; layers: unknown[] };
+    expect(saved.name).toBe('Renamed here');
+    expect(saved.layers.at(-1)).toEqual(newer);
+    expect(JSON.parse(await readFile(`${file}.bak`, 'utf8'))).toMatchObject({ name: 'EBSM flare' });
+  });
+});
+
 describe('importRawFiles', () => {
   it('imports GPS photos with poses, a GLB and captures, and backs up the manifest', async () => {
     const root = await project();

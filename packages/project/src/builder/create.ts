@@ -1,4 +1,5 @@
 import {
+  keepUnknownLayers,
   parseManifest,
   type CameraOrientation,
   type LayerPatch,
@@ -59,19 +60,29 @@ export async function readManifestFile(root: string): Promise<ProjectManifest> {
 
 /**
  * Validate with `parseManifest`, keep the previous file as `manifest.json.bak`, then replace
- * `manifest.json` atomically. Returns the backup path ('' for a new project).
+ * `manifest.json` atomically. Layers of kinds this build does not know (written by a newer
+ * Stratlas) are carried over from the previous file unchanged (`keepUnknownLayers`, M10). Returns
+ * the backup path ('' for a new project).
  */
 export async function writeManifestFile(root: string, manifest: ProjectManifest): Promise<string> {
   const parsed = parseManifest(manifest);
   if (!parsed.ok) throw new Error(parsed.error);
   const file = join(root, 'manifest.json');
   let backup = '';
+  let previous: unknown;
   if (await exists(file)) {
+    try {
+      previous = JSON.parse(await readFile(file, 'utf8')) as unknown;
+    } catch {
+      previous = undefined;
+    }
     backup = `${file}.bak`;
     await copyFile(file, backup);
   }
+  const kept = keepUnknownLayers(previous, parsed.value);
+  if (!kept.ok) throw new Error(kept.error);
   const tmp = `${file}.partial`;
-  await writeFile(tmp, `${JSON.stringify(parsed.value, null, 2)}\n`);
+  await writeFile(tmp, `${JSON.stringify(kept.value, null, 2)}\n`);
   await rename(tmp, file);
   return backup;
 }
