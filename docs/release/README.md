@@ -54,15 +54,16 @@ Every switch is an environment variable. With none set, builds are unsigned (Win
 
 ### Windows (offline NSIS installer and portable exe)
 
-First match wins:
+First match wins, and only that route's variables reach electron-builder (`builderEnv` in `brand-config.mjs`):
 
-| Mode                  | Variables                                                                                                                                                                              | Notes                                                                                                                             |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Azure Trusted Signing | `AZURE_SIGN_ENDPOINT`, `AZURE_SIGN_ACCOUNT`, `AZURE_SIGN_PROFILE`, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` (+ `AZURE_CLIENT_SECRET`); publisher `WIN_PUBLISHER_NAME`, default the company | Preferred when the identity validates; eligibility for a GCC entity is uncertain (PRD section 11)                                 |
-| `.pfx` file           | `WIN_CSC_LINK` (path, https URL or base64), `WIN_CSC_KEY_PASSWORD`                                                                                                                     | Only for certificates that are allowed to live in a file                                                                          |
-| Cloud HSM command     | `WIN_SIGN_COMMAND`: a command template with `{file}`, run once per binary by `tools/release/win-sign.mjs`                                                                              | DigiCert KeyLocker (`smctl sign ... --input {file}`), SSL.com eSigner (`CodeSignTool sign ... -input_file_path={file} -override`) |
+| Mode                   | Variables                                                                                                                                                                              | Notes                                                                                                          |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Azure Artifact Signing | `AZURE_SIGN_ENDPOINT`, `AZURE_SIGN_ACCOUNT`, `AZURE_SIGN_PROFILE`, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` (+ `AZURE_CLIENT_SECRET`); publisher `WIN_PUBLISHER_NAME`, default the company | Not available to a Kuwaiti company today; kept for an eligible subsidiary                                      |
+| DigiCert KeyLocker     | `SM_HOST`, `SM_API_KEY`, `SM_CLIENT_CERT_FILE_B64` (or `SM_CLIENT_CERT_FILE`), `SM_CLIENT_CERT_PASSWORD`, `SM_CODE_SIGNING_CERT_SHA1_HASH`                                             | Our route: `tools/release/win-sign.mjs` runs `signtool /sha1` through DigiCert's KSP; `release.yml` sets it up |
+| `.pfx` file            | `WIN_CSC_LINK` (path, https URL or base64), `WIN_CSC_KEY_PASSWORD`                                                                                                                     | Only for certificates that are allowed to live in a file                                                       |
+| Cloud HSM command      | `WIN_SIGN_COMMAND`: a command template with `{file}`, run once per binary by `tools/release/win-sign.mjs`                                                                              | Any other cloud HSM, for example SSL.com eSigner (`CodeSignTool.bat sign ... -input_file_path={file}`)         |
 
-OV certificates issued since June 2023 must live in hardware (a cloud HSM), so the expected path is the cloud HSM command. The command must timestamp (RFC 3161, SHA-256) and exit non-zero on failure.
+OV certificates issued since June 2023 must live in hardware (a cloud HSM). A command must timestamp (RFC 3161, SHA-256) and exit non-zero on failure. `STRATLAS_NO_SIGNING=1` turns every route off (Windows and macOS). A release signs 5 files once each (SHA-256 only, `.exe` files only); see `SECRETS.md` for the quota.
 
 ### Microsoft Store (MSIX)
 
@@ -130,17 +131,17 @@ Design and failure handling: [ADR 0003](../architecture/adr/0003-updates-and-rol
 - **e2e** on `windows-latest` and `macos-latest`, in two shards each (`playwright test --shard=1/2` and `2/2`, one worker, no retries, a flaky test fails), beside **check**: install, `pnpm -F @aio/desktop build`, the pipeline venv and the demo project, then the shard. On failure the Playwright output (traces included) is uploaded as `playwright-<os>-shard<n>`.
 - **licence check** on Ubuntu: `pnpm license:check`. Production dependencies of every workspace package must be MIT, MIT-0, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0, MPL-2.0, 0BSD, CC0-1.0, BlueOak-1.0.0 or Unlicense; no dependency at all may be GPL or AGPL.
 
-`.github/workflows/nightly.yml` (02:00 UTC and on demand) builds the installers on Windows and macOS and uploads them as `installers-<os>`.
+`.github/workflows/nightly.yml` (02:00 UTC and on demand) builds the installers on Windows and macOS and uploads them as `installers-<os>`. It never signs: it reads no signing secret, sets `STRATLAS_NO_SIGNING=1`, and fails if the signing mode is anything but unsigned / ad-hoc.
 
 `.github/workflows/release.yml` (tag `v*` and on demand) is the release build:
 
-- **package (Windows):** signed NSIS installer and portable exe (`dist:win`, bundle check and packaged smoke test included), Authenticode check of every exe when signing is on, the Store `.msix`, SHA-256 sums; artifact `release-windows`.
+- **package (Windows):** signed NSIS installer and portable exe (`dist:win`, bundle check and packaged smoke test included), the DigiCert KeyLocker set-up on that route, `signtool verify /pa`, timestamp and publisher (`WIN_PUBLISHER_NAME`) checks of every exe when signing is on, the Store `.msix`, SHA-256 sums; artifact `release-windows`.
 - **package (macOS universal):** universal dmg and zip, `lipo` and keyring-addon checks, the Info.plist URL and document types printed, a Rosetta smoke test of the Intel slice, `codesign` / `spctl` / `stapler` checks when signed and notarised, SHA-256 sums; artifact `release-macos`.
 - **pipeline pack** on `macos-latest` (arm64) and `macos-15-intel` (x64): `tools/pipeline-pack/build.mjs`, archived as `.tar.gz` (keeps symlinks and permissions); artifacts `pipeline-pack-macos-<arch>`.
 
-Nothing is published. Both workflows read the same optional secrets and variables, listed with how to create them in `SECRETS.md`; with none set they produce unsigned (Windows) or ad-hoc signed (macOS) builds and stay green.
+Nothing is published. Only `release.yml` reads the signing secrets and variables, listed with how to create them in `SECRETS.md`, and it signs only for a `v*` tag; any other run, and a run with none set, produces unsigned (Windows) or ad-hoc signed (macOS) builds and stays green.
 
-A cloud HSM command usually needs its own client installed on the runner (for example DigiCert `smctl`); add that step when the certificate exists.
+A custom cloud HSM command (`WIN_SIGN_COMMAND`) needs its own client installed on the runner by a step of its own (SSL.com CodeSignTool, `SECRETS.md`); the DigiCert KeyLocker route installs its tools itself.
 
 ## End-to-end tests
 

@@ -145,7 +145,7 @@ Microsoft renamed Trusted Signing to **Artifact Signing**. It is the cheapest op
 
 **Fallback: SSL.com OV with eSigner** if DigiCert's validation stalls or the price is a problem. Same route C; only the command and credentials differ.
 
-**About signature counts.** Every file inside the installer that we sign counts as one signature (the app exe, helper exes, the uninstaller, the installer and the portable exe). Check: we estimate 10 to 20 signatures per Windows build and will measure the real number on the first signed run. Our nightly workflow currently signs too whenever the secrets exist, which would use several hundred signatures a month. **We will limit signing to release builds** before adding the secrets, so 1,000 a year covers about one release a week.
+**About signature counts.** Every file inside the installer that we sign counts as one signature (the app exe, helper exes, the uninstaller, the installer and the portable exe). Done: one release build signs 5 files, once each (SHA-256 only); the count is in [SECRETS.md](SECRETS.md), and each release run reports the real number in its summary. Done: **signing is limited to release builds** (a `v*` tag); the nightly and every other run never sign, even with the secrets added. So 1,000 a year covers about 200 release runs.
 
 ### You need
 
@@ -191,7 +191,7 @@ DigiCert's names for these screens are in its guide ([DigiCert GitHub guide](htt
 
   The text is now on your clipboard; paste it straight into GitHub (next step), not into chat.
 
-- [ ] Add these in GitHub, **Settings, Secrets and variables, Actions** (section 8). These names are the ones DigiCert's GitHub guide uses; we will add the matching install step to `release.yml` and list them in `SECRETS.md`:
+- [ ] Add these in GitHub, **Settings, Secrets and variables, Actions** (section 8). These names are the ones DigiCert's GitHub guide uses; `release.yml` reads them (the install step is in) and `SECRETS.md` lists them:
 
   | Name                             | Kind     | Value                                                                                                  |
   | -------------------------------- | -------- | ------------------------------------------------------------------------------------------------------ |
@@ -202,7 +202,7 @@ DigiCert's names for these screens are in its guide ([DigiCert GitHub guide](htt
   | `SM_CODE_SIGNING_CERT_SHA1_HASH` | secret   | The SHA-1 thumbprint                                                                                   |
   | `WIN_PUBLISHER_NAME`             | variable | The certificate subject CN, exactly, for example `Synapse Solutions Company W.L.L.`                    |
 
-- [ ] Leave `WIN_SIGN_COMMAND` to us. We set it once the install step is in, because route C only switches on when it exists.
+- [ ] Leave `WIN_SIGN_COMMAND` unset. Done on our side: the KeyLocker secrets above switch signing on by themselves, without it.
 - [ ] Delete the downloaded `.p12` from your Downloads folder once it is in GitHub and the password manager.
 
 ### Fallback steps (SSL.com eSigner), only if DigiCert fails
@@ -211,7 +211,7 @@ DigiCert's names for these screens are in its guide ([DigiCert GitHub guide](htt
 - [ ] Complete validation as above (same documents; SSL.com quotes 3 to 5 days and also needs the requester's photo ID when a company is under 3 years old, [SSL.com validation guide](https://www.ssl.com/guide/d-u-n-s-numbers-and-business-listings-for-code-signing-certificate-validation/)).
 - [ ] Enrol the certificate in eSigner. When it shows the QR code, also copy the **secret code** (the TOTP secret) into the password manager. Without it, unattended signing is impossible.
 - [ ] Subscribe to the **100 signings a month** eSigner plan (check our real usage after the first release; downgrade if lower).
-- [ ] Add as secrets: `ES_USERNAME`, `ES_PASSWORD`, `ES_CREDENTIAL_ID`, `ES_TOTP_SECRET`; and the variable `WIN_PUBLISHER_NAME`. Check: we will confirm these four names with you when we write the step; they follow SSL.com's action inputs.
+- [ ] Add as secrets: `ES_USERNAME`, `ES_PASSWORD`, `ES_CREDENTIAL_ID`, `ES_TOTP_SECRET`; and the variable `WIN_PUBLISHER_NAME`. Done: these four names and the signing command are in [SECRETS.md](SECRETS.md); we add the CodeSignTool install step if you switch.
 
 ### What to send back
 
@@ -223,7 +223,7 @@ DigiCert's names for these screens are in its guide ([DigiCert GitHub guide](htt
 - **Phone number not listed anywhere.** The commonest delay. Add the number to the D-U-N-S record and to a Google Business Profile, or get an opinion letter.
 - **Legal name differs** between the order and the commercial registration (for example missing "W.L.L."). Correct the order; do not argue with the validator.
 - **Publisher mismatch after signing.** If `WIN_PUBLISHER_NAME` does not equal the certificate CN letter for letter, our update check and the build's signature step fail. Copy the CN, do not retype it.
-- **Quota used up.** KeyLocker stops signing at 1,000 a year. We will report usage after each release.
+- **Quota used up.** KeyLocker stops signing at 1,000 a year. Done: each release run reports the signatures it used in its summary (5 per release).
 - **SmartScreen still warns** on the first releases. That is expected with OV and EV alike; it fades as people install.
 
 ---
