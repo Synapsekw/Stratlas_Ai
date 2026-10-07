@@ -4,7 +4,7 @@
  * Masafi (two real surveys) and Al-Zour (one survey plus a synthetic second date) run where the
  * projects are present, copied to a temporary data root through realData.ts (@realdata; nothing
  * is written under the real data).
- * Screenshots go to STRATLAS_SHOTS when set. Run with --workers=1: the fps numbers mean nothing
+ * Screenshots go to QUADRION_SHOTS when set. Run with --workers=1: the fps numbers mean nothing
  * with other GPU work running.
  */
 import { test as base, type ElectronApplication, type Page, type TestInfo } from '@playwright/test';
@@ -22,7 +22,7 @@ import {
 import { copyRealData, hasRealData, missingRealProject, realProjectDir } from './realData';
 
 const ALZOUR = realProjectDir('alzour');
-const SHOTS = process.env.STRATLAS_SHOTS;
+const SHOTS = process.env.QUADRION_SHOTS;
 
 type V3 = [number, number, number];
 interface View {

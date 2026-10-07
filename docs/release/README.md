@@ -63,7 +63,7 @@ First match wins, and only that route's variables reach electron-builder (`build
 | `.pfx` file            | `WIN_CSC_LINK` (path, https URL or base64), `WIN_CSC_KEY_PASSWORD`                                                                                                                     | Only for certificates that are allowed to live in a file                                                       |
 | Cloud HSM command      | `WIN_SIGN_COMMAND`: a command template with `{file}`, run once per binary by `tools/release/win-sign.mjs`                                                                              | Any other cloud HSM, for example SSL.com eSigner (`CodeSignTool.bat sign ... -input_file_path={file}`)         |
 
-OV certificates issued since June 2023 must live in hardware (a cloud HSM). A command must timestamp (RFC 3161, SHA-256) and exit non-zero on failure. `STRATLAS_NO_SIGNING=1` turns every route off (Windows and macOS). A release signs 5 files once each (SHA-256 only, `.exe` files only); see `SECRETS.md` for the quota.
+OV certificates issued since June 2023 must live in hardware (a cloud HSM). A command must timestamp (RFC 3161, SHA-256) and exit non-zero on failure. `QUADRION_NO_SIGNING=1` turns every route off (Windows and macOS). A release signs 5 files once each (SHA-256 only, `.exe` files only); see `SECRETS.md` for the quota.
 
 ### Microsoft Store (MSIX)
 
@@ -131,7 +131,7 @@ Design and failure handling: [ADR 0003](../architecture/adr/0003-updates-and-rol
 - **e2e** on `windows-latest` and `macos-latest`, in two shards each (`playwright test --shard=1/2` and `2/2`, one worker, no retries, a flaky test fails), beside **check**: install, `pnpm -F @aio/desktop build`, the pipeline venv and the demo project, then the shard. On failure the Playwright output (traces included) is uploaded as `playwright-<os>-shard<n>`.
 - **licence check** on Ubuntu: `pnpm license:check`. Production dependencies of every workspace package must be MIT, MIT-0, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0, MPL-2.0, 0BSD, CC0-1.0, BlueOak-1.0.0 or Unlicense; no dependency at all may be GPL or AGPL.
 
-`.github/workflows/nightly.yml` (02:00 UTC and on demand) builds the installers on Windows and macOS and uploads them as `installers-<os>`. It never signs: it reads no signing secret, sets `STRATLAS_NO_SIGNING=1`, and fails if the signing mode is anything but unsigned / ad-hoc.
+`.github/workflows/nightly.yml` (02:00 UTC and on demand) builds the installers on Windows and macOS and uploads them as `installers-<os>`. It never signs: it reads no signing secret, sets `QUADRION_NO_SIGNING=1`, and fails if the signing mode is anything but unsigned / ad-hoc.
 
 `.github/workflows/release.yml` (tag `v*` and on demand) is the release build:
 
@@ -151,12 +151,12 @@ Specs live in `apps/desktop/e2e/`. Import `test` and `expect` from `./fixtures`,
 import { expect, test } from './fixtures';
 
 test('opens the tiny project', async ({ win, dataRoot }) => {
-  // dataRoot.root is STRATLAS_DATA; dataRoot.projectId is the synthetic project
+  // dataRoot.root is QUADRION_DATA; dataRoot.projectId is the synthetic project
 });
 ```
 
 - `dataRoot`: a temporary data root with `projects/e2e-tiny/` (schema-valid `manifest.json`, a 1 x 1 m quad `models/quad.glb`, empty `issues.json`).
-- `app`, `win`: the built app launched with `STRATLAS_DATA` pointing at `dataRoot`, with a Playwright trace saved on failure.
+- `app`, `win`: the built app launched with `QUADRION_DATA` pointing at `dataRoot`, with a Playwright trace saved on failure.
 - `network`: the zero-network guard. Renderer requests outside `file:`, `aio:`, `data:`, `blob:`, `devtools:` are aborted and recorded; in the main process `network-guard.cjs` (preloaded with `-r`) blocks Node `http`, `https`, `net`, `tls` and `fetch`, and the fixture blocks Electron `net`. Every test that uses `app` or `win` fails if anything was recorded. A test that provokes a request on purpose calls `network.drain()`.
 
 Electron downloads its binary lazily on first launch. After a fresh install run `node node_modules/electron/install.js` once (CI does) so parallel e2e workers do not race the download.

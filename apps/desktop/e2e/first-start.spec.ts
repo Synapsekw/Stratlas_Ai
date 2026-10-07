@@ -4,7 +4,7 @@
  * project, as a working copy in the profile, never writing the bundled folder or the data folder.
  *
  * Uses the demo built by `node tools/demo/build-demo.mjs` (`--quick` is enough) in
- * apps/desktop/demo, or STRATLAS_E2E_DEMO; skipped when there is none (CI builds it first).
+ * apps/desktop/demo, or QUADRION_E2E_DEMO; skipped when there is none (CI builds it first).
  */
 import { test as base, type ElectronApplication, type Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
@@ -13,9 +13,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, launchApp, NetworkGuard } from './fixtures';
 
-const DEMO = process.env.STRATLAS_E2E_DEMO ?? join(import.meta.dirname, '..', 'demo');
+const DEMO = process.env.QUADRION_E2E_DEMO ?? join(import.meta.dirname, '..', 'demo');
 /** Optional folder for screenshots of the welcome and both demo projects (user guide, Store). */
-const SHOTS = process.env.STRATLAS_E2E_SHOTS;
+const SHOTS = process.env.QUADRION_E2E_SHOTS;
 const shot = async (win: Page, name: string) => {
   if (!SHOTS) return;
   await win.waitForTimeout(2500);
@@ -53,7 +53,7 @@ const test = base.extend<{ base: string; app: ElectronApplication; win: Page }>(
         projectDir: '',
       },
       // no pipeline pack: neither a development Python nor a pack folder
-      { STRATLAS_DEMO: DEMO, STRATLAS_PIPELINE_PYTHON: '', STRATLAS_PIPELINE_PACK: '' },
+      { QUADRION_DEMO: DEMO, QUADRION_PIPELINE_PYTHON: '', QUADRION_PIPELINE_PACK: '' },
     );
     await network.attach(app);
     try {

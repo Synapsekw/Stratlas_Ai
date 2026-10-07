@@ -158,9 +158,9 @@ describe('effectiveConfig', () => {
     expect(summary.mac).toBe('ad-hoc');
   });
 
-  it('signs nothing with STRATLAS_NO_SIGNING=1, whatever secrets exist', () => {
+  it('signs nothing with QUADRION_NO_SIGNING=1, whatever secrets exist', () => {
     const env = {
-      STRATLAS_NO_SIGNING: '1',
+      QUADRION_NO_SIGNING: '1',
       WIN_CSC_LINK: 'pfx',
       CSC_LINK: 'p12',
       APPLE_ID: 'dev@example.com',
@@ -171,6 +171,11 @@ describe('effectiveConfig', () => {
     expect(summary.win).toBe('unsigned');
     expect(summary.mac).toBe('ad-hoc');
     expect(config.win).toEqual({});
+  });
+
+  it('still honours the legacy STRATLAS_NO_SIGNING=1', () => {
+    const { summary } = effectiveConfig({ STRATLAS_NO_SIGNING: '1', WIN_CSC_LINK: 'pfx' });
+    expect(summary.win).toBe('unsigned');
   });
 
   it('reports WIN_PUBLISHER_NAME as the publisher to check', () => {

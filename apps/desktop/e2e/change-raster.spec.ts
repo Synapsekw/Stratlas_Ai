@@ -3,7 +3,7 @@
  * Run surface change from the Changes panel, checked against the demo's `truth.json` (the changes
  * the orthos show, the lighting-only cloud shadow and tint that must not count, the cut and fill
  * regions of the DSM height grids and their volumes). The pipelines run as jobs with the
- * development Python (`uv sync` in python/, or STRATLAS_E2E_PYTHON); skipped without it. Then
+ * development Python (`uv sync` in python/, or QUADRION_E2E_PYTHON); skipped without it. Then
  * Compare dates with two orthos and with two maps: Swipe drags the divider, Blend fades between
  * the dates, and the heat map shows its legend.
  */

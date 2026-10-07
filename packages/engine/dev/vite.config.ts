@@ -8,7 +8,10 @@ import { defineConfig } from 'vite';
  */
 export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),
-  publicDir: process.env.STRATLAS_ASSETS ?? 'E:/Dev/AIO Software/docs/design/assets',
+  publicDir:
+    process.env.QUADRION_ASSETS ??
+    process.env.STRATLAS_ASSETS ??
+    'E:/Dev/AIO Software/docs/design/assets',
   plugins: [react()],
   server: { port: 5181, strictPort: true },
 });

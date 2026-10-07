@@ -2,7 +2,7 @@
 // is mutated (truncated, bytes flipped, values swapped for the wrong type, keys removed, hostile
 // keys, deep nesting, a BOM) and fed to the reader that opens it in the app. Every reader must
 // answer (ok or a plain error) and never throw, hang or write. Seeded, so a failure reproduces:
-// STRATLAS_FUZZ_SEED picks the seed, STRATLAS_FUZZ_RUNS the cases per file (default 25; nightly
+// QUADRION_FUZZ_SEED picks the seed, QUADRION_FUZZ_RUNS the cases per file (default 25; nightly
 // runs more). fast-check is not a dependency yet (see docs/release/CHECKLIST-1.0.md).
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdir, readFile } from 'node:fs/promises';
@@ -19,10 +19,11 @@ import { readNarrative } from '../../apps/desktop/src/main/narrative.ts';
 import { readIssues, readManifest } from '../../apps/desktop/src/main/project.ts';
 import { familyOf } from './families.mjs';
 import { prng } from './prng.mjs';
+import { envVar } from '../../packages/brand/src/env.ts';
 
 const corpus = fileURLToPath(new URL('./corpus/0.9', import.meta.url));
-const SEED = Number(process.env.STRATLAS_FUZZ_SEED ?? 20261007);
-const RUNS = Number(process.env.STRATLAS_FUZZ_RUNS ?? 25);
+const SEED = Number(envVar(process.env, 'FUZZ_SEED') ?? 20261007);
+const RUNS = Number(envVar(process.env, 'FUZZ_RUNS') ?? 25);
 
 const HOSTILE = [
   null,

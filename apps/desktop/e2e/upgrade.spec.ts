@@ -22,7 +22,7 @@ import { expect, launchApp, NetworkGuard, type DataRoot } from './fixtures';
 
 const REPO = join(import.meta.dirname, '..', '..', '..');
 const COMPAT = join(REPO, 'tools', 'compat');
-const DEMO = process.env.STRATLAS_E2E_DEMO ?? join(import.meta.dirname, '..', 'demo');
+const DEMO = process.env.QUADRION_E2E_DEMO ?? join(import.meta.dirname, '..', 'demo');
 const PROJECT = 'compat-tank-farm';
 const NAME = 'Demo tank farm';
 

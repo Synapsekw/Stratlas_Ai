@@ -12,8 +12,8 @@ import {
 describe('defaultDataRoot', () => {
   const base = { platform: 'win32', documents: 'C:\\Users\\me\\Documents', exists: () => false };
 
-  it('prefers the STRATLAS_DATA environment variable', () => {
-    expect(defaultDataRoot({ ...base, env: { STRATLAS_DATA: 'D:\\Data' } })).toBe('D:\\Data');
+  it('prefers the QUADRION_DATA environment variable', () => {
+    expect(defaultDataRoot({ ...base, env: { QUADRION_DATA: 'D:\\Data' } })).toBe('D:\\Data');
   });
 
   it('uses E:\\Stratlas Data on Windows when it exists', () => {

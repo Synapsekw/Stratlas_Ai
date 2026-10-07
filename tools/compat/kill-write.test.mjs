@@ -3,8 +3,8 @@
 // write can leave its temp file behind; nothing reads it (counted only).
 //
 // The `.bak` is copied to a temp file and renamed over (M9 integration, T8 finding 2), so it is
-// whole after a kill too; that check runs on every merge, and longer with STRATLAS_KILL_BAK=1
-// (more rounds with STRATLAS_KILL_ROUNDS). The journal appender is killed mid-append as well: only
+// whole after a kill too; that check runs on every merge, and longer with QUADRION_KILL_BAK=1
+// (more rounds with QUADRION_KILL_ROUNDS). The journal appender is killed mid-append as well: only
 // the last line of the segment may be torn, every earlier op stays whole and chained.
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -13,10 +13,11 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 import { killDuringWrite } from './kill-harness.mjs';
 import { prng } from './prng.mjs';
+import { envVar } from '../../packages/brand/src/env.ts';
 
 const writer = fileURLToPath(new URL('./kill-writer.mjs', import.meta.url));
 const journalWriter = fileURLToPath(new URL('./kill-journal-writer.mjs', import.meta.url));
-const ROUNDS = Number(process.env.STRATLAS_KILL_ROUNDS ?? 12);
+const ROUNDS = Number(envVar(process.env, 'KILL_ROUNDS') ?? 12);
 
 function wholeDocument(file) {
   const doc = JSON.parse(readFileSync(file, 'utf8'));

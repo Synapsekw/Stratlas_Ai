@@ -12,7 +12,7 @@ export function defaultDataRoot(o: {
   documents: string;
   exists: (p: string) => boolean;
 }): string {
-  const fromEnv = o.env.STRATLAS_DATA;
+  const fromEnv = o.env.QUADRION_DATA;
   if (fromEnv) return fromEnv;
   if (o.platform === 'win32' && o.exists(DEV_DATA_ROOT)) return DEV_DATA_ROOT;
   return join(o.documents, 'Stratlas Data');

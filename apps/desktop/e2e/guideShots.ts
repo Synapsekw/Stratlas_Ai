@@ -9,8 +9,8 @@
 import type { Page } from '@playwright/test';
 import { join } from 'node:path';
 
-/** The demo build (`pnpm demo:build`, `--quick` is enough), or STRATLAS_E2E_DEMO. */
-export const DEMO_DIR = process.env.STRATLAS_E2E_DEMO ?? join(import.meta.dirname, '..', 'demo');
+/** The demo build (`pnpm demo:build`, `--quick` is enough), or QUADRION_E2E_DEMO. */
+export const DEMO_DIR = process.env.QUADRION_E2E_DEMO ?? join(import.meta.dirname, '..', 'demo');
 
 /** The project the shots open. */
 export const SHOT_PROJECT = { id: 'demo-tank-farm', name: 'Demo tank farm' };

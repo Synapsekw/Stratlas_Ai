@@ -16,6 +16,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { envVar } from '../../packages/brand/src/env.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
 export const appDir = join(root, 'apps/desktop');
@@ -133,12 +134,14 @@ const without = (env, keys) =>
   Object.fromEntries(Object.entries(env).filter(([k]) => !keys.includes(k)));
 
 /**
- * STRATLAS_NO_SIGNING=1 turns every signing route off, whatever secrets the environment holds.
+ * QUADRION_NO_SIGNING=1 (or the legacy STRATLAS_NO_SIGNING=1) turns every signing route off, whatever secrets the environment holds.
  * nightly.yml always sets it, and release.yml sets it for any run that is not a `v*` tag: a cloud
  * HSM plan has a yearly signature quota (DigiCert KeyLocker: 1,000), and only releases may use it.
  */
-export const signingDisabled = (env) =>
-  env.STRATLAS_NO_SIGNING === '1' || env.STRATLAS_NO_SIGNING === 'true';
+export const signingDisabled = (env) => {
+  const v = envVar(env, 'NO_SIGNING');
+  return v === '1' || v === 'true';
+};
 
 /** The environment with every Windows and macOS signing switch and credential removed. */
 export function unsignedBuildEnv(env) {

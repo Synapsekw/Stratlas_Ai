@@ -1,7 +1,7 @@
 /**
  * Detection review (BLD-5) and AI-assisted detection (BLD-6) end to end, on a temporary copy of
  * twelve EBSM flare photos with the project's own severity model and classes. The scripted test
- * model (STRATLAS_AI_TEST_PROVIDER, isolated profile) answers the detection requests: no network.
+ * model (QUADRION_AI_TEST_PROVIDER, isolated profile) answers the detection requests: no network.
  * The real project is only read, through realData.ts (@realdata). Skipped where the EBSM project
  * is not on this machine.
  *
@@ -25,7 +25,7 @@ import {
 } from './realData';
 
 const EBSM = realProjectDir('ebsm');
-const SHOTS = process.env.STRATLAS_E2E_SHOTS;
+const SHOTS = process.env.QUADRION_E2E_SHOTS;
 const PHOTOS = 12;
 
 test.skip(!hasRealProject('ebsm'), missingRealProject('ebsm'));
@@ -60,7 +60,7 @@ async function copyEbsm(): Promise<Copy> {
 }
 
 async function start(c: Copy) {
-  const app = await launchApp(c, { STRATLAS_AI_TEST_PROVIDER: '1' });
+  const app = await launchApp(c, { QUADRION_AI_TEST_PROVIDER: '1' });
   const network = new NetworkGuard();
   await network.attach(app);
   const win = await app.firstWindow();

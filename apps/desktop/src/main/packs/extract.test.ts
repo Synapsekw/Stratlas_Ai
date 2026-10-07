@@ -207,7 +207,7 @@ describe('downloads over HTTP ranges', () => {
 });
 
 const KUWAIT_PACK = join(
-  process.env.STRATLAS_DATA ?? 'E:\\Stratlas Data',
+  process.env.QUADRION_DATA ?? 'E:\\Stratlas Data',
   'packs',
   'kuwait.pmtiles',
 );

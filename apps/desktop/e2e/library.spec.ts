@@ -20,7 +20,7 @@ test('the synthetic data root holds a valid native project', async ({ dataRoot }
   expect(issues).toEqual({ schema: 'aio.issues/1', issues: [] });
 });
 
-test('the library lists the synthetic project from STRATLAS_DATA', async ({ win, dataRoot }) => {
+test('the library lists the synthetic project from QUADRION_DATA', async ({ win, dataRoot }) => {
   const entries = await win.evaluate(() => window.aio.invoke('library:list', {}));
   const entry = entries.find((e) => e.id === dataRoot.projectId);
   expect(entry).toMatchObject({ id: dataRoot.projectId, name: 'E2E tiny project', kind: 'native' });

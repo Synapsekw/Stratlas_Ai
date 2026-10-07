@@ -93,7 +93,7 @@ pnpm import:damac    # Asset Inspection Kit offline build, DAMAC tower facade (E
 pnpm import:masafi   # E:\Stratlas Data\sources\masafi -> E:\Stratlas Data\projects\masafi
 
 pnpm import:ringroad # E:\Stratlas Data\sources\ringroad -> E:\Stratlas Data\projects\ringroad
-# options: --src <folder> --out <folder>; STRATLAS_DATA overrides the data root
+# options: --src <folder> --out <folder>; QUADRION_DATA overrides the data root
 ```
 
 Requirements: `ffmpeg` and `ffprobe` on `PATH` (or `FFMPEG` / `FFPROBE`) for posters, review copies

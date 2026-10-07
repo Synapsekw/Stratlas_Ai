@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /* eslint-disable no-console -- release script output */
 // Launches the packaged app (dist/win-unpacked) with an isolated, off-screen profile and
-// STRATLAS_SMOKE=1: it must load its UI and exit 0 within the time limit. A crash dialog keeps
+// QUADRION_SMOKE=1: it must load its UI and exit 0 within the time limit. A crash dialog keeps
 // the process alive, so a timeout is a failure too. Run from apps/desktop after packaging.
 //
 // Local detection (BLD-10): onnxruntime-node's binaries must be in app.asar.unpacked, and with
-// STRATLAS_SMOKE_REPORT the app asks for the runtime from its window (inference:models, as
+// QUADRION_SMOKE_REPORT the app asks for the runtime from its window (inference:models, as
 // Settings does) before it exits and writes the answer there: the runtime must load, report a
 // version and offer the CPU provider. Not required on an Intel Mac (arm64 binary only).
 import { spawn } from 'node:child_process';
@@ -42,12 +42,12 @@ const userData = mkdtempSync(join(tmpdir(), 'stratlas-smoke-'));
 const reportPath = join(userData, 'smoke-report.json');
 const env = {
   ...process.env,
-  STRATLAS_SMOKE: '1',
-  STRATLAS_SMOKE_REPORT: reportPath,
-  STRATLAS_USER_DATA: userData,
+  QUADRION_SMOKE: '1',
+  QUADRION_SMOKE_REPORT: reportPath,
+  QUADRION_USER_DATA: userData,
   // a device key made by the smoke run stays in its throwaway userData, not the OS vault
-  STRATLAS_TEST_VAULT: '1',
-  STRATLAS_DATA: join(userData, 'data'),
+  QUADRION_TEST_VAULT: '1',
+  QUADRION_DATA: join(userData, 'data'),
 };
 const child = arch
   ? spawn('arch', [`-${arch}`, exe], { env, stdio: 'ignore' })

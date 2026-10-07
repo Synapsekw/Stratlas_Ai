@@ -1,5 +1,5 @@
 /**
- * The agent end to end with the scripted test model (STRATLAS_AI_TEST_PROVIDER, isolated profile
+ * The agent end to end with the scripted test model (QUADRION_AI_TEST_PROVIDER, isolated profile
  * only): the send preview before the first cloud send (AI-6), conversation history saved in the
  * project and resumed (AI-8), an approval that survives a restart, Markdown export, the per-project
  * cost meter (AI-7) and the package AI policy. Zero network throughout.
@@ -18,7 +18,7 @@ import {
   type DataRoot,
 } from './fixtures';
 
-const SHOTS = process.env.STRATLAS_E2E_SHOTS;
+const SHOTS = process.env.QUADRION_E2E_SHOTS;
 
 /** The tiny project with an issue class, so the agent can draft issues in it. */
 function agentManifest(extra: Record<string, unknown> = {}) {
@@ -60,7 +60,7 @@ async function cleanup(data: DataRoot) {
 }
 
 async function start(data: DataRoot, env: Record<string, string> = {}) {
-  const app = await launchApp(data, { STRATLAS_AI_TEST_PROVIDER: '1', ...env });
+  const app = await launchApp(data, { QUADRION_AI_TEST_PROVIDER: '1', ...env });
   open.add(app);
   const network = new NetworkGuard();
   await network.attach(app);
@@ -281,7 +281,7 @@ test('agent: the Anthropic workspace error is fixed in the panel and the message
   try {
     await writeFile(join(data.projectDir, 'manifest.json'), JSON.stringify(agentManifest()));
     // The scripted Anthropic stands in for a key that is not scoped to a workspace.
-    const run = await start(data, { STRATLAS_AI_TEST_SCRIPT: 'workspace-400' });
+    const run = await start(data, { QUADRION_AI_TEST_SCRIPT: 'workspace-400' });
     const { win } = run;
     await win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: true }));
     // Test connection reports the error with its code (Settings focuses the field on it).

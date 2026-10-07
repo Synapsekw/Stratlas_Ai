@@ -1,8 +1,8 @@
 /**
  * A low-end machine, simulated: every real project opened on the software GPU (SwiftShader, which
  * the app detects as integrated graphics and runs on the Low tier), optionally with a smaller
- * reported memory (STRATLAS_SYSTEM_MEMORY_GB, default 8) and a JavaScript heap cap
- * (STRATLAS_LOWEND_HEAP_MB). Each project opens, streams for a while and orbits; the renderer must
+ * reported memory (QUADRION_SYSTEM_MEMORY_GB, default 8) and a JavaScript heap cap
+ * (QUADRION_LOWEND_HEAP_MB). Each project opens, streams for a while and orbits; the renderer must
  * not crash, the tier must be Low, and graphics memory must stay within the tier's limit (or the
  * memory pressure path must have stepped down). Prints and attaches the numbers. Outside CI only
  * (needs the real projects; skipped where absent). Each project runs on a temporary copy of it
@@ -14,9 +14,9 @@ import { join } from 'node:path';
 import { expect, realDataTest, SOFTWARE_GPU } from './fixtures';
 import { hasRealProject, missingRealProject, realProjectDir } from './realData';
 
-const SHOTS = process.env.STRATLAS_SHOTS;
-const MEMORY_GB = process.env.STRATLAS_SYSTEM_MEMORY_GB ?? '8';
-const HEAP_MB = process.env.STRATLAS_LOWEND_HEAP_MB;
+const SHOTS = process.env.QUADRION_SHOTS;
+const MEMORY_GB = process.env.QUADRION_SYSTEM_MEMORY_GB ?? '8';
+const HEAP_MB = process.env.QUADRION_LOWEND_HEAP_MB;
 
 interface Report {
   renderer: string | null;
@@ -54,7 +54,7 @@ const lowEndArgs = [...SOFTWARE_GPU];
 if (HEAP_MB) lowEndArgs.push(`--js-flags=--max-old-space-size=${HEAP_MB}`);
 
 const test = realDataTest([], {
-  env: { STRATLAS_SYSTEM_MEMORY_GB: MEMORY_GB },
+  env: { QUADRION_SYSTEM_MEMORY_GB: MEMORY_GB },
   args: lowEndArgs,
   size: [1440, 900],
 }).extend<{ crashed: { value: boolean } }>({

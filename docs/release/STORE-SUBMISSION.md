@@ -16,7 +16,7 @@ Partner Center labels change from time to time; if one below differs slightly, l
 - [ ] **Privacy policy online.** Fill in the brackets in `store-listing/privacy-policy.md` (date, address, support email) and publish it on synapse-solutions.ai, for example `/stratlas/privacy`. Partner Center rejects the submission without a working URL, because cloud AI can send data when the person turns it on.
 - [ ] **Support contact:** a support email or page on synapse-solutions.ai.
 - [ ] **Demo project approved for publication** (stream D3) and bundled: certification runs the app with no data of yours, and screenshots must not show client sites without permission.
-- [ ] **Screenshots:** 4 to 8 PNGs at 1920 x 1080 from the demo project (fused scene, video on the model, issue register, map, volumes). Use only demo data; no client logos or names. `STRATLAS_E2E_SHOTS=<folder>` with `apps/desktop/e2e/first-start.spec.ts` saves the welcome and both demo projects.
+- [ ] **Screenshots:** 4 to 8 PNGs at 1920 x 1080 from the demo project (fused scene, video on the model, issue register, map, volumes). Use only demo data; no client logos or names. `QUADRION_E2E_SHOTS=<folder>` with `apps/desktop/e2e/first-start.spec.ts` saves the welcome and both demo projects.
 - [ ] Decide **markets** (all, or the GCC markets you sell in) and **price** (free with Synapse licensing, or a price).
 
 ## 2. Get the package

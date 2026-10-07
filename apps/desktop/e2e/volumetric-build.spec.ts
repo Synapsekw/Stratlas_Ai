@@ -4,7 +4,7 @@
  * new project wizard, the Volumetric Survey Kit run as a `volumetric.build` job in the Jobs
  * panel, and the project opening in the native volumetric workspace (register, recomputed
  * volumes, pile selection). Needs the development Python with aio_pipelines (`uv sync` in
- * python/) or STRATLAS_E2E_PYTHON; skipped without it.
+ * python/) or QUADRION_E2E_PYTHON; skipped without it.
  */
 import type { ElectronApplication, Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
@@ -15,7 +15,7 @@ import { expect, launchApp, test } from './fixtures';
 
 const repo = join(import.meta.dirname, '..', '..', '..');
 const venvPython =
-  process.env.STRATLAS_E2E_PYTHON ??
+  process.env.QUADRION_E2E_PYTHON ??
   (process.platform === 'win32'
     ? join(repo, 'python', '.venv', 'Scripts', 'python.exe')
     : join(repo, 'python', '.venv', 'bin', 'python'));
@@ -101,7 +101,7 @@ test('a volumetric project from two raw survey dates: wizard, Jobs panel, volume
   execFileSync(venvPython, ['-c', `import os; os.makedirs(r'${raw}', exist_ok=True)`]);
   execFileSync(venvPython, ['-c', MAKE_SURVEYS, raw]);
 
-  const app = await launchApp(dataRoot, { STRATLAS_PIPELINE_PYTHON: venvPython });
+  const app = await launchApp(dataRoot, { QUADRION_PIPELINE_PYTHON: venvPython });
   await network.attach(app);
   try {
     const win = await app.firstWindow();

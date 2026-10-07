@@ -133,7 +133,7 @@ const EVENT_MS = 150;
 
 /** A download rate cap the e2e suite sets to watch progress, cancel and resume. */
 function testRate(): number | undefined {
-  const n = Number(process.env.STRATLAS_E2E_BLOB_RATE);
+  const n = Number(process.env.QUADRION_E2E_BLOB_RATE);
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 

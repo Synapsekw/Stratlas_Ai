@@ -31,7 +31,7 @@ const demo = spawnSync(
 );
 if (demo.status !== 0) process.exit(demo.status ?? 1);
 
-// Empty CI values dropped; with STRATLAS_NO_SIGNING=1 no signing variable at all; for the Store
+// Empty CI values dropped; with QUADRION_NO_SIGNING=1 no signing variable at all; for the Store
 // package none either (Microsoft signs it); for a Windows build only the chosen route's variables.
 const env = builderEnv(process.env, builderArgs);
 // release.yml passes the route its "Signing mode" step reported: the build must use that one.

@@ -192,7 +192,7 @@ async function check(file: string, expect: ExpectedVersion | undefined, name?: s
 }
 
 /**
- * The e2e real-data guard's check (`realDataGuard.ts` installs it when STRATLAS_E2E=1), reached
+ * The e2e real-data guard's check (`realDataGuard.ts` installs it when QUADRION_E2E=1), reached
  * through a global so this module keeps importing only node: modules (tools/compat runs it bare).
  */
 function guardWrite(file: string, op: string): void {

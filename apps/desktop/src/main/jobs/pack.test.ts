@@ -78,7 +78,7 @@ describe('findPack', () => {
     const py = join(root, 'venv', 'python.exe');
     await mkdir(join(root, 'venv'), { recursive: true });
     await writeFile(py, '');
-    const r = await findPack({ dataRoot: root, env: { STRATLAS_PIPELINE_PYTHON: py } });
+    const r = await findPack({ dataRoot: root, env: { QUADRION_PIPELINE_PYTHON: py } });
     expect(r.runtime).toMatchObject({ found: true, version: 'dev' });
     expect(r.pack?.python).toBe(py);
   });

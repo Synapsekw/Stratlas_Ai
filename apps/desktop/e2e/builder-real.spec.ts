@@ -1,12 +1,12 @@
 /**
  * Builder walkthrough on real (client) data, outside the CI suite: runs only when
- * STRATLAS_B2_RAW points at a folder with `ebsm/` (raw EBSM photos with EXIF GPS) and
- * `ebsm-glb/EBSM-Flare-model.glb`, and STRATLAS_B2_OUT at a folder for screenshots. The data root
- * is a temporary copy (STRATLAS_B2_DATA, holding `packs/`); nothing is written to the real one:
+ * QUADRION_B2_RAW points at a folder with `ebsm/` (raw EBSM photos with EXIF GPS) and
+ * `ebsm-glb/EBSM-Flare-model.glb`, and QUADRION_B2_OUT at a folder for screenshots. The data root
+ * is a temporary copy (QUADRION_B2_DATA, holding `packs/`); nothing is written to the real one:
  * launchApp refuses the real data root. The library's projects, whose severity models the wizard
  * offers, are copies of the real projects' manifests (realData.ts, @realdata).
  *
- *   STRATLAS_B2_RAW=... STRATLAS_B2_DATA=... STRATLAS_B2_OUT=... npx playwright test builder-real
+ *   QUADRION_B2_RAW=... QUADRION_B2_DATA=... QUADRION_B2_OUT=... npx playwright test builder-real
  */
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
@@ -16,11 +16,11 @@ import { fromWgs84 } from '@aio/geo';
 import { launchApp, type DataRoot } from './fixtures';
 import { copyRealProjects, hasRealProject, onlyPaths } from './realData';
 
-const RAW = process.env.STRATLAS_B2_RAW ?? '';
-const DATA = process.env.STRATLAS_B2_DATA ?? '';
-const OUT = process.env.STRATLAS_B2_OUT ?? '';
+const RAW = process.env.QUADRION_B2_RAW ?? '';
+const DATA = process.env.QUADRION_B2_DATA ?? '';
+const OUT = process.env.QUADRION_B2_OUT ?? '';
 
-test.skip(!RAW || !DATA || !OUT, 'real-data walkthrough: set STRATLAS_B2_RAW, _DATA and _OUT');
+test.skip(!RAW || !DATA || !OUT, 'real-data walkthrough: set QUADRION_B2_RAW, _DATA and _OUT');
 test.setTimeout(300_000);
 
 /** Make the next native open dialog return these files (Electron main process). */
@@ -137,7 +137,7 @@ function expectedTransform(origin: [number, number, number]): number[] {
 /** Real projects whose manifests (severity models) the library offers the wizard. */
 const LIBRARY = ['alzour', 'damac', 'ebsm', 'hcl', 'masafi', 'ringroad'];
 
-/** The data root STRATLAS_B2_DATA with a throwaway profile. */
+/** The data root QUADRION_B2_DATA with a throwaway profile. */
 const dataRoot = (user: string): DataRoot => ({
   base: user,
   root: DATA,

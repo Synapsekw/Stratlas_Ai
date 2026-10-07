@@ -1,11 +1,11 @@
 /**
  * Screenshots for the user guide, one per entry of GUIDE_SHOTS (guideShots.ts), taken in an
  * off-screen window at 1280 x 800 with only the bundled demo projects (synthetic, tools/demo) in
- * the library. Every run checks that each shot can be reached; with STRATLAS_GUIDE_SHOTS=1 the
+ * the library. Every run checks that each shot can be reached; with QUADRION_GUIDE_SHOTS=1 the
  * PNGs are written to docs/guide/images (else into the test output folder), where the in-app
  * help and the PDF guide pick them up. Skipped when the demo is not built (CI builds it first).
  *
- *   STRATLAS_GUIDE_SHOTS=1 pnpm -F @aio/desktop exec playwright test guide-shots --workers=1
+ *   QUADRION_GUIDE_SHOTS=1 pnpm -F @aio/desktop exec playwright test guide-shots --workers=1
  */
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
@@ -20,7 +20,7 @@ const WIDTH = 1280;
 const HEIGHT = 800;
 
 /**
- * An empty data folder, so the library holds only the demo projects (from STRATLAS_DEMO); not
+ * An empty data folder, so the library holds only the demo projects (from QUADRION_DEMO); not
  * created at all for a first start.
  */
 async function dataRoot(create: boolean): Promise<DataRoot> {
@@ -70,7 +70,7 @@ for (const shot of GUIDE_SHOTS) {
   // eslint-disable-next-line no-empty-pattern -- Playwright requires the destructuring form.
   test(`guide screenshot ${shot.id} (${shot.chapter})`, async ({}, testInfo) => {
     const data = await dataRoot(shot.id !== 'first-start');
-    const app = await launchApp(data, { STRATLAS_DEMO: DEMO_DIR });
+    const app = await launchApp(data, { QUADRION_DEMO: DEMO_DIR });
     const network = new NetworkGuard();
     try {
       await network.attach(app);
@@ -92,7 +92,7 @@ for (const shot of GUIDE_SHOTS) {
       await win.addStyleTag({ content: '[data-testid="build-stamp"]{visibility:hidden}' });
       await win.waitForTimeout(1200);
       await showDefaults(win, data);
-      const dir = process.env.STRATLAS_GUIDE_SHOTS === '1' ? IMAGES : testInfo.outputPath();
+      const dir = process.env.QUADRION_GUIDE_SHOTS === '1' ? IMAGES : testInfo.outputPath();
       await mkdir(dir, { recursive: true });
       await win.screenshot({
         path: join(dir, `${shot.id}.png`),

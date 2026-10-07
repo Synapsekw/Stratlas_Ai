@@ -41,6 +41,7 @@ import { createWorld } from './world.mjs';
 import { generatorStamp } from './stamp.mjs';
 import { CHANGE_ID, buildChangeDemo } from './build-change-demo.mjs';
 import { writePhoto, writePngCloud, writePyramid } from './writers.mjs';
+import { envVar } from '../../packages/brand/src/env.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 const argv = process.argv.slice(2);
@@ -72,7 +73,10 @@ const builder = await jiti.import(join(repo, 'packages', 'project', 'src', 'buil
 const geo = await jiti.import(join(repo, 'packages', 'geo', 'src', 'index.ts'));
 
 function pipelinePython() {
-  const given = opt('python', process.env.STRATLAS_DEMO_PYTHON ?? process.env.STRATLAS_E2E_PYTHON);
+  const given = opt(
+    'python',
+    envVar(process.env, 'DEMO_PYTHON') ?? envVar(process.env, 'E2E_PYTHON'),
+  );
   if (given) return given;
   const venv =
     process.platform === 'win32'

@@ -45,11 +45,11 @@ describe('demoProjectPaths', () => {
     ]);
   });
 
-  it('takes STRATLAS_DEMO in development and nothing otherwise', async () => {
+  it('takes QUADRION_DEMO in development and nothing otherwise', async () => {
     await project(join(base, 'x', 'site'));
     expect(
       await demoProjectPaths({
-        env: { STRATLAS_DEMO: join(base, 'x') },
+        env: { QUADRION_DEMO: join(base, 'x') },
         packaged: false,
         resourcesPath: '/none',
       }),

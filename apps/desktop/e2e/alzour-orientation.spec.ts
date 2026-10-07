@@ -1,9 +1,9 @@
 /**
  * Al-Zour guided orientation calibration on a copy of the real project, outside the CI suite
  * (client data never enters git). The copy is made by realData.ts (@realdata) and deleted after
- * the run; with `"save": true` the saved manifest is copied to STRATLAS_A1_OUT as
+ * the run; with `"save": true` the saved manifest is copied to QUADRION_A1_OUT as
  * `alzour-manifest-<tag>.json`, for the founder to review and apply by hand. Needs:
- *   STRATLAS_A1_PLAN=<plan.json>  STRATLAS_A1_OUT=<folder for screenshots>
+ *   QUADRION_A1_PLAN=<plan.json>  QUADRION_A1_OUT=<folder for screenshots>
  *
  * The plan names a clip, a frame time with point pairs to fit (normalised frame point and the
  * feature's E N H, typed into the panel) and a second frame time with held-out pairs:
@@ -22,9 +22,9 @@ import { join } from 'node:path';
 import { realProject } from './fixtures';
 import { hasRealProject, missingRealProject } from './realData';
 
-const PLAN = process.env.STRATLAS_A1_PLAN ?? '';
-const OUT = process.env.STRATLAS_A1_OUT ?? '';
-test.skip(!PLAN || !OUT, 'Al-Zour orientation: set STRATLAS_A1_PLAN and STRATLAS_A1_OUT');
+const PLAN = process.env.QUADRION_A1_PLAN ?? '';
+const OUT = process.env.QUADRION_A1_OUT ?? '';
+test.skip(!PLAN || !OUT, 'Al-Zour orientation: set QUADRION_A1_PLAN and QUADRION_A1_OUT');
 test.skip(!hasRealProject('alzour'), missingRealProject('alzour'));
 test.setTimeout(600_000);
 

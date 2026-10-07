@@ -87,13 +87,13 @@ describe('exactly one route reaches electron-builder', () => {
     expect(env.CSC_LINK).toBe('p12');
   });
 
-  it('drops everything with STRATLAS_NO_SIGNING=1', () => {
+  it('drops everything with QUADRION_NO_SIGNING=1', () => {
     const env = builderEnv(
-      { STRATLAS_NO_SIGNING: '1', ...azure, ...keylocker, ...pfx, ...command, CSC_LINK: 'p12' },
+      { QUADRION_NO_SIGNING: '1', ...azure, ...keylocker, ...pfx, ...command, CSC_LINK: 'p12' },
       ['--win'],
     );
     expect(windowsSigning(env).mode).toBe('unsigned');
-    expect(Object.keys(env)).toEqual(['STRATLAS_NO_SIGNING']);
+    expect(Object.keys(env)).toEqual(['QUADRION_NO_SIGNING']);
     expect(unsignedBuildEnv({ APPLE_ID: 'a', PATH: '/bin' })).toEqual({ PATH: '/bin' });
   });
 
@@ -150,7 +150,7 @@ describe('sign hook (dry run)', () => {
   });
 
   it('prints the route from the command line without signing', () => {
-    const env = { ...process.env, ...keylocker, STRATLAS_NO_SIGNING: '' };
+    const env = { ...process.env, ...keylocker, QUADRION_NO_SIGNING: '' };
     const out = execFileSync(process.execPath, [join(here, 'win-sign.mjs'), '--dry-run', 'a.exe'], {
       env,
       encoding: 'utf8',
@@ -159,7 +159,7 @@ describe('sign hook (dry run)', () => {
       'keylocker: signtool sign /sha1 *** /tr http://timestamp.digicert.com /td SHA256 /fd SHA256 a.exe',
     );
     const route = execFileSync(process.execPath, [join(here, 'brand-config.mjs'), '--route'], {
-      env: { ...env, STRATLAS_NO_SIGNING: '1' },
+      env: { ...env, QUADRION_NO_SIGNING: '1' },
       encoding: 'utf8',
     });
     expect(route).toMatch(/^Windows signing route: unsigned/);
@@ -174,7 +174,7 @@ describe('workflows', () => {
   it('the nightly reads no signing secret and turns signing off', () => {
     const nightly = read('nightly.yml');
     expect(nightly).not.toMatch(signingSecret);
-    expect(nightly).toMatch(/^ {2}STRATLAS_NO_SIGNING: '1'$/m);
+    expect(nightly).toMatch(/^ {2}QUADRION_NO_SIGNING: '1'$/m);
   });
 
   it('CI reads no signing secret', () => {
@@ -184,7 +184,7 @@ describe('workflows', () => {
   it('the release signs only for a v* tag and removes the KeyLocker certificate in an always() step', () => {
     const release = read('release.yml');
     expect(release).toContain(
-      "STRATLAS_NO_SIGNING: ${{ !(github.ref_type == 'tag' && startsWith(github.ref_name, 'v')) && '1' || '0' }}",
+      "QUADRION_NO_SIGNING: ${{ !(github.ref_type == 'tag' && startsWith(github.ref_name, 'v')) && '1' || '0' }}",
     );
     expect(release).toMatch(/Remove the KeyLocker client certificate\n\s+if: always\(\)/);
     expect(release).toContain('signtool verify');

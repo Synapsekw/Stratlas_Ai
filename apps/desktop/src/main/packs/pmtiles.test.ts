@@ -46,7 +46,7 @@ describe('findLatestBuild', () => {
         new Response(url.endsWith('.json') ? JSON.stringify([{ key: '20261003.pmtiles' }]) : null),
       );
     };
-    const where = buildSource({ STRATLAS_PACK_SOURCE: 'http://127.0.0.1:4100/' });
+    const where = buildSource({ QUADRION_PACK_SOURCE: 'http://127.0.0.1:4100/' });
     expect(await findLatestBuild(fetchFn, new AbortController().signal, where)).toBe('20261003');
     expect(asked).toEqual([
       'http://127.0.0.1:4100/builds.json',
@@ -66,11 +66,11 @@ describe('buildSource', () => {
       index: 'https://build-metadata.protomaps.dev/builds.json',
       base: 'https://build.protomaps.com/',
     });
-    expect(buildSource({ STRATLAS_PACK_SOURCE: 'http://127.0.0.1:4100/builds' })).toEqual({
+    expect(buildSource({ QUADRION_PACK_SOURCE: 'http://127.0.0.1:4100/builds' })).toEqual({
       index: 'http://127.0.0.1:4100/builds/builds.json',
       base: 'http://127.0.0.1:4100/builds/',
     });
-    expect(buildSource({ STRATLAS_PACK_SOURCE: 'file:///etc' }).base).toBe(
+    expect(buildSource({ QUADRION_PACK_SOURCE: 'file:///etc' }).base).toBe(
       'https://build.protomaps.com/',
     );
   });

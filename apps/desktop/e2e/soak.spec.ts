@@ -9,7 +9,7 @@
  * with them the closed workspace's DOM and maps), which this must catch; fixed, it stays near
  * 40 MB.
  *
- * Nightly, not per merge: runs with STRATLAS_SOAK=1. STRATLAS_SOAK_CYCLES sets the number of
+ * Nightly, not per merge: runs with QUADRION_SOAK=1. QUADRION_SOAK_CYCLES sets the number of
  * open cycles (default 80, the T8 repro; the 1.0 checklist run sets 200). Needs the demo
  * (`pnpm demo:build --quick`).
  * A JSON report of every sample goes to the test output folder (soak.json).
@@ -21,8 +21,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, launchApp, NetworkGuard } from './fixtures';
 
-const DEMO = process.env.STRATLAS_E2E_DEMO ?? join(import.meta.dirname, '..', 'demo');
-const CYCLES = Number(process.env.STRATLAS_SOAK_CYCLES ?? 80);
+const DEMO = process.env.QUADRION_E2E_DEMO ?? join(import.meta.dirname, '..', 'demo');
+const CYCLES = Number(process.env.QUADRION_SOAK_CYCLES ?? 80);
 const PROJECTS = ['Demo tank farm', 'Demo access road', 'Demo change site (2 dates)'];
 /** Cycles before the baseline: caches, shaders and the demo working copies fill up first. */
 const WARMUP = Math.max(5, Math.round(CYCLES * 0.25));
@@ -53,7 +53,7 @@ const test = base.extend<{ app: ElectronApplication; win: Page }>({
         projectId: '',
         projectDir: '',
       },
-      { STRATLAS_DEMO: DEMO },
+      { QUADRION_DEMO: DEMO },
       ['--js-flags=--expose-gc', '--enable-precise-memory-info'],
     );
     await network.attach(app);
@@ -72,7 +72,7 @@ const test = base.extend<{ app: ElectronApplication; win: Page }>({
   },
 });
 
-test.skip(process.env.STRATLAS_SOAK !== '1', 'nightly soak: set STRATLAS_SOAK=1');
+test.skip(process.env.QUADRION_SOAK !== '1', 'nightly soak: set QUADRION_SOAK=1');
 test.skip(!existsSync(join(DEMO, 'demo.json')), `no demo in ${DEMO}: pnpm demo:build --quick`);
 
 const median = (xs: number[]): number => {

@@ -1,7 +1,7 @@
 /**
  * The one gate to the founder's real client data for the e2e suite.
  *
- * The real data root is STRATLAS_REAL_DATA_ROOT, else `E:\Stratlas Data` (the founder's
+ * The real data root is QUADRION_REAL_DATA_ROOT, else `E:\Stratlas Data` (the founder's
  * workstation). This file is the only e2e file that may name it (`src/e2eRealData.test.ts`
  * fails otherwise). A spec reads from it only through the helpers below, and the app is only ever
  * launched on a temporary COPY of a real project:
@@ -9,7 +9,7 @@
  * - `copyRealProjects(ids)` copies `projects/<id>/` (and named map packs) into a fresh temp data
  *   root; `dispose()` deletes it. Files of 1 MB or more that the app only reads (photos, models,
  *   clouds, videos, tiles) are hard-linked instead of copied when the temp folder is on the same
- *   drive as the real data (set STRATLAS_E2E_COPY_DIR to such a folder for fast copies); records
+ *   drive as the real data (set QUADRION_E2E_COPY_DIR to such a folder for fast copies); records
  *   the app writes (JSON, journal, CSV, text) are always real copies. Under the app's e2e guard a
  *   write in place to a hard-linked file is refused (`src/main/realDataGuard.ts`).
  * - `realProject(...)` and `realDataTest(...)` in fixtures.ts copy, launch the app on the copy and
@@ -19,8 +19,9 @@
  *
  * Every test that uses real data carries `@realdata` in its title (`REALDATA`), so a run without
  * it is `playwright test --grep-invert @realdata`. With no real data on the machine (CI, or
- * STRATLAS_REAL_DATA_ROOT set to an empty folder) those tests skip.
+ * QUADRION_REAL_DATA_ROOT set to an empty folder) those tests skip.
  */
+import { envVar } from '@aio/brand/env';
 import { existsSync, statSync } from 'node:fs';
 import { copyFile, link, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -30,14 +31,14 @@ import type { DataRoot } from './fixtures';
 /** The tag every real-data test carries in its title (describe or test). */
 export const REALDATA = '@realdata';
 
-/** An environment variable, unless unset or empty. */
+/** QUADRION_<name> (else the legacy STRATLAS_<name>), unless unset or empty. */
 const fromEnv = (name: string): string | undefined => {
-  const v = process.env[name];
+  const v = envVar(process.env, name);
   return v === undefined || v === '' ? undefined : v;
 };
 
 /** The founder's real data root. Read-only for tests. */
-export const REAL_DATA_ROOT = resolve(fromEnv('STRATLAS_REAL_DATA_ROOT') ?? 'E:\\Stratlas Data');
+export const REAL_DATA_ROOT = resolve(fromEnv('REAL_DATA_ROOT') ?? 'E:\\Stratlas Data');
 
 /** A path inside the real data root, for reading only. */
 export function realDataPath(...segments: string[]): string {
@@ -61,12 +62,12 @@ export function hasRealProject(id: string): boolean {
 
 /** The skip reason for a missing real project. */
 export function missingRealProject(id: string): string {
-  return `real project ${id} not found under ${REAL_DATA_ROOT} (STRATLAS_REAL_DATA_ROOT)`;
+  return `real project ${id} not found under ${REAL_DATA_ROOT} (QUADRION_REAL_DATA_ROOT)`;
 }
 
 const fold = (p: string) => (process.platform === 'win32' ? p.toLowerCase() : p);
 
-/** The founder's folder stays off limits also when STRATLAS_REAL_DATA_ROOT names another. */
+/** The founder's folder stays off limits also when QUADRION_REAL_DATA_ROOT names another. */
 const PROTECTED =
   process.platform === 'win32' ? [REAL_DATA_ROOT, resolve('E:\\Stratlas Data')] : [REAL_DATA_ROOT];
 
@@ -125,9 +126,9 @@ export function onlyPaths(paths: Iterable<string>): (rel: string) => boolean {
   return (rel) => keep.has(rel);
 }
 
-/** Where copies go: STRATLAS_E2E_COPY_DIR, else the system temp folder. */
+/** Where copies go: QUADRION_E2E_COPY_DIR, else the system temp folder. */
 function copyParent(): string {
-  return fromEnv('STRATLAS_E2E_COPY_DIR') ?? tmpdir();
+  return fromEnv('E2E_COPY_DIR') ?? tmpdir();
 }
 
 /** How a copy was made, for the test log. */
@@ -224,7 +225,7 @@ export async function copyRealProjects(
   opts: RealCopyOptions = {},
 ): Promise<RealDataCopy> {
   const parent = copyParent();
-  assertNotRealData(parent, 'STRATLAS_E2E_COPY_DIR');
+  assertNotRealData(parent, 'QUADRION_E2E_COPY_DIR');
   const base = await mkdtemp(join(parent, opts.prefix ?? 'aio-real-'));
   const root = join(base, 'data');
   const userData = join(base, 'user');

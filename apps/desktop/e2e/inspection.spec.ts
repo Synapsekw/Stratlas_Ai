@@ -13,11 +13,11 @@ import { copyRealData, hasRealProject, missingRealProject, realProjectDir } from
 /**
  * The inspection pipeline (Asset Inspection Kit) run from the Jobs panel against the real pipeline
  * runtime: on a project built in the app from raw photos and a model, and on a temporary copy of
- * the HCl project. Needs the development venv (`uv sync` in python/) or STRATLAS_E2E_PYTHON.
+ * the HCl project. Needs the development venv (`uv sync` in python/) or QUADRION_E2E_PYTHON.
  */
 const repo = join(import.meta.dirname, '..', '..', '..');
 const venvPython =
-  process.env.STRATLAS_E2E_PYTHON ??
+  process.env.QUADRION_E2E_PYTHON ??
   (process.platform === 'win32'
     ? join(repo, 'python', '.venv', 'Scripts', 'python.exe')
     : join(repo, 'python', '.venv', 'bin', 'python'));
@@ -333,7 +333,7 @@ test.describe('inspection pipeline', () => {
     network,
   }) => {
     test.setTimeout(240_000);
-    const app = await launchApp(dataRoot, { STRATLAS_PIPELINE_PYTHON: venvPython });
+    const app = await launchApp(dataRoot, { QUADRION_PIPELINE_PYTHON: venvPython });
     await network.attach(app);
     try {
       const win = await app.firstWindow();
@@ -472,7 +472,7 @@ test.describe('inspection pipeline', () => {
     network,
   }) => {
     test.setTimeout(240_000);
-    const app = await launchApp(dataRoot, { STRATLAS_PIPELINE_PYTHON: venvPython });
+    const app = await launchApp(dataRoot, { QUADRION_PIPELINE_PYTHON: venvPython });
     await network.attach(app);
     try {
       const win = await app.firstWindow();
@@ -629,7 +629,7 @@ test.describe('inspection pipeline', () => {
       await copyRealData(['projects', 'hcl', d], join(root, d), { link: false });
     const before = (JSON.parse(realIssues.toString('utf8')) as { issues: Issue[] }).issues;
 
-    const app = await launchApp(dataRoot, { STRATLAS_PIPELINE_PYTHON: venvPython });
+    const app = await launchApp(dataRoot, { QUADRION_PIPELINE_PYTHON: venvPython });
     await network.attach(app);
     try {
       const win = await app.firstWindow();

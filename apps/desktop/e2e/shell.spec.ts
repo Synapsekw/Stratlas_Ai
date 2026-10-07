@@ -10,7 +10,7 @@ const ALLOWED = ['file:', 'aio:', 'devtools:', 'data:', 'blob:', 'chrome-extensi
 async function launch(dataRoot: string, base: string) {
   const app = await electron.launch({
     args: [...GPU_ARGS, join(import.meta.dirname, '../out/main/index.js')],
-    env: { ...process.env, STRATLAS_USER_DATA: join(base, 'user'), STRATLAS_DATA: dataRoot },
+    env: { ...process.env, QUADRION_USER_DATA: join(base, 'user'), QUADRION_DATA: dataRoot },
   });
   const outbound: string[] = [];
   app.context().on('request', (req) => {

@@ -56,14 +56,14 @@ export async function findLatestBuild(
 }
 
 /**
- * Where planet builds come from: Protomaps, or `STRATLAS_PACK_SOURCE` (a mirror base URL ending
+ * Where planet builds come from: Protomaps, or `QUADRION_PACK_SOURCE` (a mirror base URL ending
  * in `/` that serves `builds.json` and `<YYYYMMDD>.pmtiles`, used by the e2e tests on 127.0.0.1).
  */
 export function buildSource(env: Record<string, string | undefined>): {
   index: string;
   base: string;
 } {
-  const mirror = env.STRATLAS_PACK_SOURCE;
+  const mirror = env.QUADRION_PACK_SOURCE;
   if (mirror && /^https?:\/\//.test(mirror)) {
     const base = mirror.endsWith('/') ? mirror : `${mirror}/`;
     return { index: `${base}builds.json`, base };

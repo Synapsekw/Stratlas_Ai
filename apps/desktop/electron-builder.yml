@@ -94,7 +94,7 @@ appx:
   # MSIX format; Partner Center takes .msix and .appx alike.
   artifactName: ${productName}-${version}-win-${arch}-store.msix
   capabilities: [runFullTrust]
-  backgroundColor: '#18202B'
+  backgroundColor: '#11161C'
   showNameOnTiles: true
   languages: [en-US]
   minVersion: 10.0.17763.0

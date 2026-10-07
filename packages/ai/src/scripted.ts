@@ -2,8 +2,8 @@
  * A scripted language model for end-to-end tests and offline demos. It never touches the network:
  * it reads the newest user message, answers with a fixed text or one tool call picked by keyword,
  * and after a tool result it reports what the tool returned. The desktop app registers it only
- * when an isolated test profile asks for it (STRATLAS_AI_TEST_PROVIDER with STRATLAS_USER_DATA);
- * STRATLAS_AI_TEST_SCRIPT=workspace-400 makes its Anthropic answer the workspace 400 until Settings
+ * when an isolated test profile asks for it (QUADRION_AI_TEST_PROVIDER with QUADRION_USER_DATA);
+ * QUADRION_AI_TEST_SCRIPT=workspace-400 makes its Anthropic answer the workspace 400 until Settings
  * has a workspace ID.
  */
 import {

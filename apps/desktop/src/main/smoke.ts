@@ -1,6 +1,6 @@
 /**
- * The packaged-app smoke report (tools/release/smoke-packaged.mjs). With `STRATLAS_SMOKE=1` the
- * app exits once its UI loaded; when `STRATLAS_SMOKE_REPORT` names a file it first asks for the
+ * The packaged-app smoke report (tools/release/smoke-packaged.mjs). With `QUADRION_SMOKE=1` the
+ * app exits once its UI loaded; when `QUADRION_SMOKE_REPORT` names a file it first asks for the
  * local detection runtime the way Settings does (`inference:models` from the window, through the
  * preload bridge, main and the inference utility process) and writes the answer there. The
  * release script checks the answer: onnxruntime must load from the unpacked app and report a

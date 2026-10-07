@@ -10,6 +10,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BUDGET_MB, CHANGE_ID } from './build-change-demo.mjs';
 import { checkFolder } from './check-no-client-data.mjs';
+import { envVar } from '../../packages/brand/src/env.ts';
 
 function size(dir) {
   let n = 0;
@@ -70,7 +71,7 @@ function cli() {
   const arg = resolve(process.argv[2] ?? join(repo, 'apps', 'desktop', 'demo'));
   const root = existsSync(join(arg, 'manifest.json')) ? arg : join(arg, CHANGE_ID);
   const data =
-    process.env.STRATLAS_DATA ?? (process.platform === 'win32' ? 'E:\\Stratlas Data' : '');
+    envVar(process.env, 'DATA') ?? (process.platform === 'win32' ? 'E:\\Stratlas Data' : '');
   const r = checkChangeDemo(root, { projectsDir: data ? join(data, 'projects') : undefined });
   if (r.findings.length) {
     console.error(`Change demo check FAILED for ${root}:`);

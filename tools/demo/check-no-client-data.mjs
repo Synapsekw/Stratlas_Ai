@@ -8,7 +8,7 @@
 //
 // Checks, file by file:
 //   - names: client, site and asset names (a built-in list plus the name, customer, site and
-//     brand of every project manifest under --projects, by default <STRATLAS_DATA or
+//     brand of every project manifest under --projects, by default <QUADRION_DATA or
 //     E:\Stratlas Data>\projects, read only), real camera file names (DJI_0123), the NAS;
 //   - places: manifest origins and GeoJSON coordinates within --radius-km of a real project
 //     origin (the built-in list plus the manifests found);
@@ -21,6 +21,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { m8Text, truthCoords } from './check-m8.mjs';
+import { envVar } from '../../packages/brand/src/env.ts';
 
 /** Words that must never appear (client names, assets, places of real projects). */
 export const FORBIDDEN = [
@@ -428,7 +429,7 @@ function cli() {
   const repo = fileURLToPath(new URL('../..', import.meta.url));
   const dir = resolve(positional[0] ?? join(repo, 'apps', 'desktop', 'demo'));
   const data =
-    process.env.STRATLAS_DATA ?? (process.platform === 'win32' ? 'E:\\Stratlas Data' : '');
+    envVar(process.env, 'DATA') ?? (process.platform === 'win32' ? 'E:\\Stratlas Data' : '');
   const projectsDir = opt('projects') ?? (data ? join(data, 'projects') : undefined);
   const r = checkFolder(dir, {
     projectsDir,

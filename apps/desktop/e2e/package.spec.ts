@@ -5,7 +5,7 @@
  *
  * The HCl test needs the real HCl project (realData.ts, @realdata) and is skipped elsewhere; it
  * exports from a temporary copy of the project and writes the package to a temp folder.
- * Set STRATLAS_SHOTS to a folder to keep screenshots of each step.
+ * Set QUADRION_SHOTS to a folder to keep screenshots of each step.
  */
 import type { ElectronApplication, Page } from '@playwright/test';
 import { mkdir, mkdtemp, open, rm, stat } from 'node:fs/promises';
@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { expect, launchApp, NetworkGuard, test, type DataRoot } from './fixtures';
 import { copyRealProjects, hasRealProject, missingRealProject, realProjectDir } from './realData';
 
-const SHOTS = process.env.STRATLAS_SHOTS;
+const SHOTS = process.env.QUADRION_SHOTS;
 const shot = async (win: Page, name: string) => {
   if (SHOTS) await win.screenshot({ path: join(SHOTS, `${name}.png`) });
 };

@@ -15,8 +15,8 @@ test('the app starts, exposes the bridge and makes no network requests', async (
     args: [...GPU_ARGS, join(import.meta.dirname, '../out/main/index.js')],
     env: {
       ...process.env,
-      STRATLAS_USER_DATA: join(base, 'user'),
-      STRATLAS_DATA: join(base, 'data'),
+      QUADRION_USER_DATA: join(base, 'user'),
+      QUADRION_DATA: join(base, 'data'),
     },
   });
   const outbound: string[] = [];
@@ -54,7 +54,7 @@ test('library, settings and aio:// work offline and the protocol refuses travers
 
   const app = await electron.launch({
     args: [...GPU_ARGS, join(import.meta.dirname, '../out/main/index.js')],
-    env: { ...process.env, STRATLAS_USER_DATA: join(base, 'user'), STRATLAS_DATA: dataRoot },
+    env: { ...process.env, QUADRION_USER_DATA: join(base, 'user'), QUADRION_DATA: dataRoot },
   });
   const outbound: string[] = [];
   app.context().on('request', (req) => {
@@ -113,8 +113,8 @@ test('isolated test profiles open windows off-screen without a taskbar button', 
     args: [...GPU_ARGS, join(import.meta.dirname, '../out/main/index.js')],
     env: {
       ...process.env,
-      STRATLAS_USER_DATA: join(base, 'user'),
-      STRATLAS_DATA: join(base, 'data'),
+      QUADRION_USER_DATA: join(base, 'user'),
+      QUADRION_DATA: join(base, 'data'),
     },
   });
   const win = await app.firstWindow();

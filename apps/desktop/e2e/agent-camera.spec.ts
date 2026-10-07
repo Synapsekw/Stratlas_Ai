@@ -54,7 +54,7 @@ async function open(id: string, name: string, packs: string[] = []): Promise<Run
     prefix: `aio-agent-${id}-`,
     packs,
     include: agentCopy,
-    env: { STRATLAS_AI_TEST_PROVIDER: '1' },
+    env: { QUADRION_AI_TEST_PROVIDER: '1' },
   });
   try {
     const { win } = run;

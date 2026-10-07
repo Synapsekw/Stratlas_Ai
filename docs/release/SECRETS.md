@@ -1,6 +1,6 @@
 # Signing secrets for CI
 
-Only `.github/workflows/release.yml` signs, and only for a `v*` tag (pushed, or **Run workflow** with the tag chosen under "Use workflow from"). Every other run, `release.yml` on a branch included, and every run of `nightly.yml` and `ci.yml`, builds unsigned (Windows) or ad-hoc signed (macOS), whatever secrets exist: the nightly reads none of them, and `STRATLAS_NO_SIGNING=1` makes `tools/release/brand-config.mjs` drop any signing variable before electron-builder runs. The reason is the signature quota below.
+Only `.github/workflows/release.yml` signs, and only for a `v*` tag (pushed, or **Run workflow** with the tag chosen under "Use workflow from"). Every other run, `release.yml` on a branch included, and every run of `nightly.yml` and `ci.yml`, builds unsigned (Windows) or ad-hoc signed (macOS), whatever secrets exist: the nightly reads none of them, and `QUADRION_NO_SIGNING=1` makes `tools/release/brand-config.mjs` drop any signing variable before electron-builder runs. The reason is the signature quota below.
 
 Every secret is optional: without them the jobs still pass and upload unsigned or ad-hoc signed test builds. Values never go in the repository or in chat; add them in GitHub, **Settings, Secrets and variables, Actions** ([founder setup guide, section 8](FOUNDER-SETUP-GUIDE.md#8-adding-secrets-and-variables-to-github)).
 
