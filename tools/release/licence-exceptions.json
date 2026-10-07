@@ -1,7 +1,7 @@
 {
   "policy": "Permissive only (M10 decision 1, founder 7 Oct 2026: go with the recommendations). Apache-2.0, MIT, BSD-2/3-Clause, ISC, Zlib, BSL-1.0 and similar are allowed. MPL-2.0 only for the items named here; LGPL only as an unmodified, separately replaceable shared library named here, never linked statically; never GPL, AGPL, SSPL or non-commercial. One file read by the npm gate (license-check.mjs), the Python gate (python/tests/test_licences.py) and the native gate (native-licences.mjs, with native-libs.json). An entry whose `approved` is `pending` was found by the native gate in what the pack already ships and waits for the founder: CI passes with a warning, the release build (--strict) fails until it is approved or removed.",
   "allowed": {
-    "$comment": "SPDX ids allowed in everything we ship. `spdx` applies to npm, Python and native code; `native` adds the permissive licences of C libraries (libpng, libtiff, SQLite's blessing and similar), checked by native-licences.mjs only.",
+    "$comment": "SPDX ids allowed in everything we ship. `spdx` applies to npm, Python and native code; `native` adds the permissive licences of C libraries (libpng, libtiff, SQLite's blessing and similar), checked by native-licences.mjs only; `data` is what imagery and terrain packs we distribute may carry (data-licences.mjs: never non-commercial, share-alike or no-derivatives).",
     "spdx": [
       "MIT",
       "MIT-0",
@@ -39,6 +39,16 @@
       "Qhull",
       "JasPer-2.0",
       "LLVM-exception"
+    ],
+    "data": [
+      "public-domain",
+      "CC0-1.0",
+      "PDDL-1.0",
+      "CC-BY-4.0",
+      "CC-BY-3.0",
+      "ODC-By-1.0",
+      "LicenseRef-Copernicus-Sentinel",
+      "LicenseRef-Copernicus-DEM"
     ]
   },
   "mpl": [

@@ -1,0 +1,61 @@
+{
+  "$comment": "Map and imagery data Stratlas distributes or ships (M10 decision 4), the data inventory behind docs/release/THIRD-PARTY-NOTICES.md. Imagery and terrain sources are checked by data-licences.mjs like the pack metadata built from them; street maps (vector PMTiles, MapPackInfo) predate M10 and are listed for the inventory only. Packs a customer imports under their own licence are never listed here and never redistributed by us.",
+  "schema": "aio.data-sources/1",
+  "sources": [
+    {
+      "name": "Natural Earth II",
+      "kind": "imagery",
+      "use": "Low-resolution world imagery shipped inside the app for the Globe (G6)",
+      "licence": "public-domain",
+      "attribution": "Natural Earth",
+      "provenance": "Natural Earth II raster, naturalearthdata.com",
+      "source": "https://www.naturalearthdata.com/about/terms-of-use/"
+    },
+    {
+      "name": "NASA Blue Marble",
+      "kind": "imagery",
+      "use": "World imagery pack option (G7)",
+      "licence": "public-domain",
+      "attribution": "NASA Earth Observatory",
+      "provenance": "NASA Blue Marble Next Generation",
+      "source": "https://earthobservatory.nasa.gov/image-use-policy"
+    },
+    {
+      "name": "Copernicus Sentinel-2 Global Mosaics",
+      "kind": "imagery",
+      "use": "World and GCC and Kuwait region imagery packs (G7)",
+      "licence": "LicenseRef-Copernicus-Sentinel",
+      "attribution": "Contains modified Copernicus Sentinel data, processed by ESA",
+      "provenance": "Copernicus Sentinel-2 Global Mosaics, Copernicus Data Space Ecosystem",
+      "source": "https://sentinels.copernicus.eu/documents/247904/690755/Sentinel_Data_Legal_Notice"
+    },
+    {
+      "name": "ESA WorldCover 2021",
+      "kind": "imagery",
+      "use": "Alternative cloud-free composite for region packs (G7)",
+      "licence": "CC-BY-4.0",
+      "attribution": "© ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium",
+      "provenance": "ESA WorldCover 2021 Sentinel-2 RGBNIR composite",
+      "source": "https://esa-worldcover.org/en/data-access"
+    },
+    {
+      "name": "Copernicus DEM GLO-30",
+      "kind": "terrain",
+      "use": "World and region terrain packs (G7)",
+      "licence": "LicenseRef-Copernicus-DEM",
+      "attribution": "© DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved",
+      "provenance": "Copernicus DEM GLO-30, Copernicus Data Space Ecosystem",
+      "source": "https://spacedata.copernicus.eu/collections/copernicus-digital-elevation-model",
+      "note": "The licence's no-liability sentence goes into the Stratlas EULA (decision 4)."
+    },
+    {
+      "name": "OpenStreetMap through Protomaps",
+      "kind": "street",
+      "use": "Street map packs (PMTiles, before M10), built by tools/maps/build-packs.mjs",
+      "licence": "ODbL-1.0",
+      "attribution": "© OpenStreetMap contributors, Protomaps",
+      "provenance": "Protomaps daily planet build",
+      "source": "https://www.openstreetmap.org/copyright"
+    }
+  ]
+}
