@@ -20,4 +20,16 @@ describe('calendar model', () => {
     expect(stepMonth(m, '2024-11', -1)).toBe('2024-09');
     expect(stepMonth(m, '2025-02', 1)).toBe('2025-02');
   });
+  it('steps from a month without surveys to the nearest survey month in that direction', () => {
+    const m = ['2024-09', '2024-11', '2025-02'];
+    expect(stepMonth(m, '2025-01', -1)).toBe('2024-11');
+    expect(stepMonth(m, '2025-01', 1)).toBe('2025-02');
+    expect(stepMonth(m, '2024-10', -1)).toBe('2024-09');
+    expect(stepMonth(m, '2024-10', 1)).toBe('2024-11');
+  });
+  it('falls back to the nearest end when nothing lies in that direction', () => {
+    const m = ['2024-09', '2024-11', '2025-02'];
+    expect(stepMonth(m, '2024-06', -1)).toBe('2024-09');
+    expect(stepMonth(m, '2025-06', 1)).toBe('2025-02');
+  });
 });

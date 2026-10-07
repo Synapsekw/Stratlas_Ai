@@ -106,6 +106,15 @@
   --acc-a12: oklch(0.5 0.11 172 / 0.12);
   --acc-a20: oklch(0.5 0.11 172 / 0.2);
   --acc-a40: oklch(0.5 0.11 172 / 0.4);
+  /* survey date palette: same mid-lightness values as dark, they sit beside text */
+  --date-1: oklch(0.68 0.14 250);
+  --date-2: oklch(0.72 0.14 160);
+  --date-3: oklch(0.74 0.15 75);
+  --date-4: oklch(0.66 0.17 25);
+  --date-5: oklch(0.66 0.15 300);
+  --date-6: oklch(0.72 0.12 200);
+  --date-7: oklch(0.7 0.15 120);
+  --date-8: oklch(0.68 0.15 350);
   --s5: oklch(0.58 0.2 25);
   --s4: oklch(0.64 0.16 55);
   --s3: oklch(0.7 0.15 85);

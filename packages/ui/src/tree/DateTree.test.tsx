@@ -114,6 +114,19 @@ describe('DateTree', () => {
     expect(onFocus).toHaveBeenCalledWith('oct');
   });
 
+  it('re-opens a collapsed focused date when its name is clicked', () => {
+    const { onFocus } = render('nov', {});
+    act(() => {
+      host.querySelector<HTMLButtonElement>('[data-testid="date-folder-nov"] .dchev')?.click();
+    });
+    expect(q('date-folder-nov')?.getAttribute('aria-expanded')).toBe('false');
+    act(() => {
+      (q('date-name-nov') as HTMLButtonElement).click();
+    });
+    expect(q('date-folder-nov')?.getAttribute('aria-expanded')).toBe('true');
+    expect(onFocus).toHaveBeenCalledWith('nov');
+  });
+
   it('collapses other dates when focus changes', () => {
     const { root, props } = render('nov', {});
     act(() => {

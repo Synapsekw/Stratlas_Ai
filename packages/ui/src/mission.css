@@ -1092,7 +1092,7 @@ select.input option {
   color: var(--fg-3);
 }
 .tree-nested {
-  padding-left: 14px;
+  padding-inline-start: 14px;
 }
 
 /* ---------- command palette ---------- */
@@ -1346,7 +1346,7 @@ select.input option {
 .cal-multi {
   position: absolute;
   top: -4px;
-  right: -6px;
+  inset-inline-end: -6px;
   font-size: 10px;
   min-width: 14px;
   height: 14px;

@@ -66,8 +66,11 @@ export function DateTree(props: DateTreeProps) {
                 aria-current={focused ? 'date' : undefined}
                 title={f.capture ? t('tree.dates.focus', { date: f.label }) : undefined}
                 onClick={() => {
-                  if (f.capture) onFocus(f.capture.id);
-                  else toggle();
+                  if (f.capture) {
+                    // Focusing an already-focused date changes nothing, so re-open it here.
+                    if (focused) setOpen((o) => ({ ...o, [f.id]: true }));
+                    onFocus(f.capture.id);
+                  } else toggle();
                 }}
               >
                 <span className={tag ? 'dtag' : 'dtag every'} aria-hidden="true" />

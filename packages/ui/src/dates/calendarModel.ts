@@ -16,8 +16,10 @@ export function surveyMonths(dates: readonly string[]): string[] {
   return [...new Set(dates.map((d) => d.slice(0, 7)))].sort();
 }
 
+/** The survey month a step lands on. From a month without surveys it goes to the nearest survey month in `dir`. */
 export function stepMonth(months: readonly string[], current: string, dir: -1 | 1): string {
   const at = months.indexOf(current);
-  if (at < 0) return months.at(dir < 0 ? 0 : -1) ?? current;
-  return months[Math.min(months.length - 1, Math.max(0, at + dir))] ?? current;
+  if (at >= 0) return months[Math.min(months.length - 1, Math.max(0, at + dir))] ?? current;
+  const next = dir < 0 ? months.findLast((m) => m < current) : months.find((m) => m > current);
+  return next ?? months.at(dir < 0 ? 0 : -1) ?? current;
 }

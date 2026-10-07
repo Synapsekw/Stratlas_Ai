@@ -196,29 +196,29 @@ export function Palette() {
           'survey-prev',
           t('palette.prevSurvey'),
           'history',
-          () => {
+          scene(() => {
             tl.step(-1);
-          },
+          }),
           shortcutHint('global.prevSurvey'),
         );
         action(
           'survey-next',
           t('palette.nextSurvey'),
           'history',
-          () => {
+          scene(() => {
             tl.step(1);
-          },
+          }),
           shortcutHint('global.nextSurvey'),
         );
       }
       for (const c of surveys?.captures ?? []) {
         action(
           `survey-${c.id}`,
-          `${t('palette.chooseSurvey')} ${formatDate(c.date)}`,
+          t('palette.surveyOn', { date: formatDate(c.date) }),
           'history',
-          () => {
+          scene(() => {
             tl.focusSurvey(c.id);
-          },
+          }),
         );
       }
       const layers = project.manifest.layers;

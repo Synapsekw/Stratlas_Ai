@@ -2095,7 +2095,7 @@ export const en = {
   'datebar.count': '{n} of {total} surveys',
   'palette.prevSurvey': 'Go to previous survey',
   'palette.nextSurvey': 'Go to next survey',
-  'palette.chooseSurvey': 'Go to survey date…',
+  'palette.surveyOn': 'Go to survey {date}',
   'calendar.label': 'Survey calendar',
   'calendar.prev': 'Previous month with a survey',
   'calendar.next': 'Next month with a survey',
