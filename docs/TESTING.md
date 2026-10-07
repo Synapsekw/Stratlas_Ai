@@ -7,9 +7,9 @@ Only what still needs testing. Each stage lists what to click and what you shoul
 ### Install
 
 - Close Stratlas first. The installer refuses while it runs: "Stratlas is running. Close it and click Retry."
-- Run `E:\Dev\AIO Software\apps\desktop\dist\Stratlas-0.8.0-win-x64-setup.exe` and install over the previous version.
-- No install: `Stratlas-0.8.0-win-x64-portable.exe` in the same folder.
-- 0.8.0 contains every earlier fix, so stages M5, M6 and M6.1 are tested on it too.
+- Run `E:\Dev\AIO Software\apps\desktop\dist\Stratlas-0.9.0-win-x64-setup.exe` and install over the previous version.
+- No install: `Stratlas-0.9.0-win-x64-portable.exe` in the same folder.
+- 0.9.0 contains every earlier fix, so all stages below are tested on it too.
 - The build is unsigned. SmartScreen shows "Windows protected your PC": choose **More info**, then **Run anyway**.
 
 ### Check the build first
@@ -38,6 +38,7 @@ Only what still needs testing. Each stage lists what to click and what you shoul
 | M6.1  | Your M6 feedback: point size, issue and photo opening, Media highlights, HCl flicker and nadir photos, dark maps, Al-Zour drone trace and photo icons, agent camera moves, Masafi piles and ramps, compare dates | The installer built 5 Oct 2026, 18:00, from main at commit `a8e7b43` or later                                                 | All nine fixes merged; not yet tested by the founder |
 | M7    | Signed builds and updates only (the rest of M7 passed on 6 Oct 2026)                                                                                                                                             | Needs the signing secrets in GitHub and a second version                                                                      | Waiting for signing                                  |
 | M8    | Change and modelling: changes between survey dates, imagery, surface, cloud and model change, same view on the other date, model builder, local detection, offline agent                                         | Version 0.8.0, built 7 Oct 2026 from main at commit `7faf945`, and pipeline pack 0.3.0 (see M8, Before you start)             | Built; not yet tested by the founder                 |
+| M9    | Team and audit: identity and roles, exchange files, shared folder, conflicts, review workflow, history and audit trail, large files on demand, team server (preview)                                             | Version 0.9.0, built 7 Oct 2026 from main at commit `91770f2`                                                                 | Built; not yet tested by the founder                 |
 
 ## Stage M5: your M4 feedback, fixed
 
@@ -309,7 +310,7 @@ Everything here runs offline on the new bundled demo **Demo change site (2 dates
 
 ### Before you start
 
-- [ ] Install `Stratlas-0.8.0-win-x64-setup.exe`. **Settings, About and updates** shows version 0.8.0.
+- [ ] Install `Stratlas-0.9.0-win-x64-setup.exe`. **Settings, About and updates** shows version 0.8.0.
 - [ ] Copy the folder `E:\Dev\AIO Software\apps\desktop\dist\pipeline-pack-0.3.0` into `E:\Stratlas Data\runtime\`. **Jobs** then shows "Pipeline pack 0.3.0" at the top. The change, drawing and fitting jobs need it.
 - [ ] **Projects** shows three demo cards, one named **Demo change site (2 dates)**. The first-start welcome still opens the 0.7.0 demo.
 
@@ -392,3 +393,96 @@ Install Ollama (or LM Studio) yourself and pull a model that supports tool calli
 - [ ] Ask something and press **Stop** at once: "Stopped."
 - [ ] Type a LAN address (for example `http://192.168.1.20:11434/v1`) and **Find models**: a warning that it is on another machine. With cloud AI off, it is refused.
 - [ ] Turn **Offline agent** off: your earlier AI routes come back.
+
+## Stage M9: team and audit
+
+M9 adds a signed history of every change, identities and roles, a review workflow, and sharing between copies by exchange files, a shared folder, or a team server (preview). A project you never share works exactly as before.
+
+**Two people on one PC.** Most steps need two people. Run a second copy as "Omar" with `Stratlas.exe --profile=reviewer-b`, started from the install folder (`%LOCALAPPDATA%\Programs\Stratlas`) in a terminal. Each copy needs its own copy of the project: copy the demo tank farm folder to two places, for example `E:\Team test\rana` and `E:\Team test\omar`. **Use the demo or a copy, never your client projects.**
+
+### Before you start
+
+- [ ] Install `Stratlas-0.9.0-win-x64-setup.exe`. **Settings, About and updates** shows version 0.9.0.
+- [ ] Open one of your own projects (not shared): it looks and works as before, with **Share** in the title bar and no new cards.
+
+### Identity and team
+
+- [ ] **Settings, Identity and team**: your name (from the old "Your name on issues", or your Windows name) and initials made from it.
+- [ ] Set **Initials** to `DR`, press Enter: no error. Type `X1Y`, Enter: "Initials are 1 to 3 letters, optionally followed by one digit."
+- [ ] In Omar's copy, set **Your name** to `Omar Sample`: the initials become `OS`. Click **Export identity card** and save it: "Saved to ...\Omar Sample.aioid".
+- [ ] In your copy, open your test project, click **Share** in the title bar, choose **Exchange files**, **Share**: Share adds you as Owner.
+- [ ] **Settings, Identity and team**, **Add from card**, pick Omar's card: a panel "Omar Sample OS", **Add as** Reviewer, **Certify this card** ticked. Click **Add Omar Sample**: the members table shows you as Owner (you) and Omar as Reviewer, "Certified by you". Members also show in the Team dialog (title bar chip).
+- [ ] Change Omar's role to **Viewer**, then back to **Reviewer**. There is no role select on your own row.
+- [ ] Windows **Credential Manager**, Generic credentials: one Stratlas entry with `device-signing` per profile. **Export diagnostics**: the bundle has no key.
+
+### Exchange files (USB or email)
+
+- [ ] In your copy, change F01's title and press Enter. Open the title bar chip (Team dialog), **Export changes**: "Changes only" and a line such as "2 changes · 1 KB". **Export**, save: "Saved …aiosync".
+- [ ] In Omar's copy, **Share**, **Import exchange file**, **Choose file**: From "<your name> (DR)", "Signed by their device", the new changes listed, and "Applying it makes this project part of the team project…". **Apply**: "Applied … changes", F01's new title in Issues.
+- [ ] Import the same file again: "Already applied. Nothing in this file is new." and **Apply** greyed out.
+- [ ] Export again with **Encrypt with a passphrase** (at least 8 characters, twice). In Omar's copy, import it: you are asked for the passphrase; a wrong one says "The passphrase does not open this exchange file."
+- [ ] Double-click an `.aiosync` file in Explorer: Stratlas opens its import dialog.
+
+### Shared folder
+
+- [ ] Make a folder, for example `E:\Team test\hub` (or a NAS path). In your copy, open the chip, **Use a shared folder**, enter the path, keep automatic sync on, **Share**: "Synced just now", and `aio-hub.json` appears in the folder.
+- [ ] In Omar's copy, **Share**, **Shared folder**, the same path, then choose the **Team project in this folder**: it joins with no exchange file.
+- [ ] Change F02's severity in your copy, **Sync now**: "Synced: 0 received, 1 sent." In Omar's copy, **Sync now**: "1 received" and F02's new severity.
+- [ ] Rename the hub folder away. Edit an issue, **Sync now**: the chip turns amber, "The shared folder cannot be reached…", "1 to send", and your work is kept. Rename it back, **Sync now**: the change is sent.
+- [ ] Watch Resource Monitor (Network) during a sync: no network connections from Stratlas.
+- [ ] **Stop syncing this copy**: the chip goes back to **Share**; your data and history stay.
+
+### Conflicts
+
+- [ ] Rename the hub away. Set F01's severity to 3 in your copy and 1 in Omar's. Rename it back and sync both, then sync yours again: both chips show "1 conflict". The Team dialog shows the Conflicts inbox: "F01 severity", your value and Omar's, with names and times.
+- [ ] **Keep mine**, sync both: both copies show 3, the conflict is gone, and History lists the values.
+- [ ] On another conflict, **Edit**, type a value, **Save**: it shows on both copies after sync. **Earlier values**, **Restore**: the older value on both.
+- [ ] While apart, each of you makes a new issue, then sync: one gets the next code and a notice says the code changed (for example "F10 was F09 ..."). **OK** clears it.
+- [ ] You delete an issue while Omar edits it, then sync: the issue is kept, with "You deleted ... while Omar Sample changed it. It was kept." **Delete again** removes it on both.
+- [ ] Before Omar is added from his card, his changes show in your copy under **Quarantined** with **Apply anyway** (owners only).
+- [ ] **Issues, My work** lists Conflicts and Quarantined changes.
+
+### Review workflow
+
+- [ ] In your copy, select F03, **Edit issue**, under Review **Assign**: Omar Sample (OS), due Friday, **Save**: "Assigned to Omar Sample", "Due Fri …". Issue chips and the register show initials.
+- [ ] In the comment box type `@Om`, pick **Omar Sample**, type "please check the weld", tick **Attach view**, **Comment**: the comment shows "Go to the view".
+- [ ] Open an issue you made, **Approvals**, **Approve**: "Another reviewer must approve this. You made it or last changed it." The status row has no Approve button in a team project.
+- [ ] Sync. In Omar's copy, **Issues, My work**: F03 under Assigned to me, Mentions and Awaiting my approval. Click the mention: the camera flies to your view. **Mine** lists only F03.
+- [ ] Omar approves your issue in **Approvals**: "Approved. The status is now Approved."
+- [ ] Change that issue's severity in your copy and sync: the status goes back to Reviewed and the Approvals tab says "Approval out of date".
+- [ ] **Reports**, export the project report PDF: a "Sign-off and approvals" page with prepared, reviewed and approved by, names, initials and dates.
+- [ ] With cloud AI on, ask the agent "What is assigned to Omar?": it lists F03. Ask "Approve F03": it says only a person approves, and offers to request approval.
+
+### History and audit trail
+
+- [ ] Open F01, **Edit**: **History** lists each change with who, when, how ("By hand", "Synced from Omar Sample", "Change pipeline"), and before and after values. **Restore** an older value.
+- [ ] **Reports, Open audit trail** (or the project menu in the sidebar): filter by person and by F01. **Verify**: "The history is intact. Every entry is signed."
+- [ ] **Export audit (CSV)** and open it in Excel: names and any Arabic text intact.
+- [ ] In the test copy, open `journal\ops\<folder>\000001.jsonl` in Notepad, change one letter, save. **Verify**: it names the file and line that was edited, and the project still opens and edits.
+- [ ] With the app closed, change a severity in the copy's `issues.json` in Notepad, then reopen: History shows "Changed outside Stratlas".
+- [ ] Export the project report PDF: every page footer reads "Audit head <16 characters>, N entries, verified", and an **Audit trail** section lists the changes.
+
+### Large files on demand
+
+- [ ] In Omar's copy (joined through the shared folder), if a layer's file is only in the hub folder, a card at the bottom left says "1 layer is not on this computer" with its size. **Download**: progress; **Cancel**: "Paused at ..."; **Resume**: the layer appears.
+- [ ] **Files**, set a video layer to **Stream from shared folder**: "Streaming from the shared folder", and it plays.
+
+### Shared project folder
+
+- [ ] Open the same project folder in both copies at once. Save a change in one, then a change in the other: the second save is refused with a notice and **Reload**. Nothing is overwritten.
+
+### Older and newer versions
+
+- [ ] Open a test copy edited in 0.9 with 0.8.0: it opens, with the 0.9 edits.
+- [ ] In a test copy, change `"schema": "aio.project/1"` in `manifest.json` to `aio.project/2` and open it: "Project was saved by a newer Stratlas ... Update the app to open it.", and the file is unchanged.
+- [ ] Switch between projects twenty or thirty times, then open **Task Manager**: Stratlas's memory stays about level (it no longer grows by several MB with every switch).
+
+### Team server (preview, optional, needs Docker)
+
+Follow `docs/server/README.md` on a Linux machine or Docker Desktop. Then:
+
+- [ ] **Settings, Data folder, Team server** shows a **Preview** label and "No team server is connected on this computer."
+- [ ] Enter `https://<host>:8443` and the owner invite code, **Connect**: **Check the certificate** shows the fingerprint in groups of four. It matches the server's; **They match, connect**: "Connected to ...", "Enrolled as owner".
+- [ ] Reusing the same code says "This invite code is not valid. It may be mistyped, used or expired."
+- [ ] **Share** offers **Team server** once enrolled. Omar enrols with a reviewer code and sees the project after sync. A viewer's edits are refused.
+- [ ] Stop the server: Stratlas keeps working, and sync says "The team server cannot be reached…".
