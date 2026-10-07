@@ -1528,6 +1528,39 @@ export const en = {
   'change.run.surface': 'Run surface change',
   'change.run.cloud': 'Run cloud change',
   'change.run.model': 'Run model change',
+  // M9 T4: the Conflicts inbox and quarantined changes
+  'conflicts.title': 'Conflicts',
+  'conflicts.empty': 'No conflicts. Changes from others merged cleanly.',
+  'conflicts.heading': '{record} {field}',
+  'conflicts.you': 'You',
+  'conflicts.side': '{name}, {when}',
+  'conflicts.inProject': 'In the project now',
+  'conflicts.none': '(none)',
+  'conflicts.keepMine': 'Keep mine',
+  'conflicts.keepThis': 'Keep this',
+  'conflicts.keepTheirs': 'Keep theirs',
+  'conflicts.edit': 'Edit',
+  'conflicts.editLabel': 'New value for {record} {field}',
+  'conflicts.save': 'Save',
+  'conflicts.cancel': 'Cancel',
+  'conflicts.history': 'Earlier values',
+  'conflicts.restore': 'Restore',
+  'conflicts.deleted': '{name} deleted {record} while {other} changed it. It was kept.',
+  'conflicts.deleteAgain': 'Delete again',
+  'conflicts.keepIt': 'Keep it',
+  'conflicts.merged':
+    '{name} merged {record} into another issue while {other} changed it. It was kept.',
+  'conflicts.mergeAgain': 'Merge again',
+  'conflicts.recoded':
+    '{record} was {from}. Another issue made apart has that code, so it is now {to}.',
+  'conflicts.ok': 'OK',
+  'conflicts.failed': 'This was not saved: {error}',
+  'conflicts.quarantine': 'Quarantined changes',
+  'conflicts.quarantineHelp':
+    'Kept but not applied. An owner can apply one anyway, and the decision is recorded.',
+  'conflicts.quarantineItem': '{kind} on {record} by {name}, {when}',
+  'conflicts.apply': 'Apply anyway',
+  'conflicts.ownerOnly': 'Only an owner can apply these.',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */
