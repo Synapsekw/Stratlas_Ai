@@ -75,6 +75,9 @@ PRESETS = {
     "high": (1.0, 12288),
 }
 MIN_REGISTERED_GLOBAL = 0.95
+#: GNSS priors at most this accurate (one sigma, metres) refine the model in a bundle adjustment;
+#: less accurate ones only place it (similarity).
+GNSS_ADJUST_SIGMA_M = 0.5
 MAX_EXHAUSTIVE = 400
 STAGES = ("inspect", "features", "match", "sfm", "georef", "report", "commit")
 
@@ -992,20 +995,31 @@ class PhotoAlign:
                 i = keys.get(im.name)
                 if i is not None and located[i] and not np.isnan(sig[i, 0]):
                     priors[iid] = B.CameraPrior(gnss_enu[i], float(sig[i, 0]), float(sig[i, 1]))
-            pts = B.select_points(model, per_image=300)
-            res = B.bundle_adjust(
-                model,
-                pts,
-                priors=priors,
-                check=ctx.check,
-                progress=lambda f: ctx.progress(0.9 * f, "Adjusting"),
+            # GNSS priors sharpen the model only when they are precise (RTK, PPK); metre-level
+            # positions cannot improve what the engine's own adjustment found, and adjusting a
+            # subset of a large block against them costs more than it brings (measured on a
+            # 1,000-photo flight: median reprojection 0.88 px before, 1.07 px after)
+            precise = (
+                bool(priors) and float(np.median([p.sigma_h for p in priors.values()])) <= GNSS_ADJUST_SIGMA_M
             )
-            B.refine_all_points(model)
-            stats = {
-                "iterations": res.iterations,
-                "tiePoints": len(pts),
-                "seconds": round(res.seconds, 1),
-            }
+            if precise:
+                pts = B.select_points(model, per_image=300)
+                res = B.bundle_adjust(
+                    model,
+                    pts,
+                    priors=priors,
+                    check=ctx.check,
+                    progress=lambda f: ctx.progress(0.9 * f, "Adjusting"),
+                )
+                B.refine_all_points(model)
+                stats = {
+                    "adjusted": True,
+                    "iterations": res.iterations,
+                    "tiePoints": len(pts),
+                    "seconds": round(res.seconds, 1),
+                }
+            else:
+                stats = {"adjusted": False}
         w = nadir_only_warning(model)
         if w:
             warnings.append(w)
