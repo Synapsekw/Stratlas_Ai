@@ -1,10 +1,10 @@
-# Security and data handling (Stratlas 1.0)
+# Security and data handling (Quadrion AI 1.0)
 
 A short note for procurement and IT security reviews. Draft of 7 Oct 2026, to be checked against the final build before release (1.0 checklist). Questions: [security contact address].
 
 ## In one paragraph
 
-Stratlas is a desktop application for Windows and macOS. Projects stay on the customer's own drives, network shares or Team Server. Stratlas needs no account and sends nothing to Synapse Solutions: no telemetry, no analytics, no crash upload. It connects to a network only after a person's action, and only to the service that action names. Sharing between team members uses the customer's own shared folder, USB transfer files or a Team Server the customer runs on its premises. Every change is recorded in a tamper-evident history signed with a key that never leaves the computer's credential store.
+Quadrion AI is a desktop application for Windows and macOS. Projects stay on the customer's own drives, network shares or Team Server. Quadrion AI needs no account and sends nothing to Synapse Solutions: no telemetry, no analytics, no crash upload. It connects to a network only after a person's action, and only to the service that action names. Sharing between team members uses the customer's own shared folder, USB transfer files or a Team Server the customer runs on its premises. Every change is recorded in a tamper-evident history signed with a key that never leaves the computer's credential store.
 
 ## Where data lives
 
@@ -48,7 +48,7 @@ Verify (in the app) checks the whole history and names exactly what is wrong: an
 ## People, devices and roles
 
 - Each person has a name and initials; each computer has its own signing key. A name is self-asserted and shown as "unverified" until the project owner certifies it (decision 5).
-- Roles: owner, reviewer, viewer and client. On a Team Server the server enforces them. In a shared folder or with transfer files, roles are recorded and tamper-evident but cannot be enforced against someone who edits files by hand; the history shows such edits as "changed outside Stratlas".
+- Roles: owner, reviewer, viewer and client. On a Team Server the server enforces them. In a shared folder or with transfer files, roles are recorded and tamper-evident but cannot be enforced against someone who edits files by hand; the history shows such edits as "changed outside Quadrion AI".
 - Approvals are always a person's: the built-in AI assistant can comment and list work but can never approve.
 - A lost or retired computer's key is revoked by the owner; later changes signed by it are refused.
 

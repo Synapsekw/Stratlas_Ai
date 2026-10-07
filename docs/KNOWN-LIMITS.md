@@ -1,6 +1,6 @@
 # Known limits
 
-What Stratlas does not do yet, or does differently on purpose. Testing steps are in [TESTING.md](TESTING.md).
+What Quadrion AI does not do yet, or does differently on purpose. Testing steps are in [TESTING.md](TESTING.md).
 
 Current limits only; each is removed from this list when fixed.
 
@@ -112,7 +112,7 @@ Current limits only; each is removed from this list when fixed.
 
 ### Identity and members
 
-- The Credential Manager entry of the device key is named after the app id (service `ai.synapse-solutions.stratlas...`, account `device-signing`), not "Stratlas device key".
+- The Credential Manager entry of the device key is named after the app id (service `ai.synapse-solutions.stratlas...`, account `device-signing`), not "Quadrion AI device key" (the app id still ends in `stratlas`, so entries made before the rename keep working).
 - Identities are self-asserted by default ("Unverified"); an owner certifies a card after checking it with the person. There are no accounts until M10.
 - One device key per profile and computer: a lost computer means revoking its device and adding the person's new one. History before the revocation stays valid.
 
@@ -127,7 +127,7 @@ Current limits only; each is removed from this list when fixed.
 
 ### Merging and conflicts
 
-- Roles in exchange-file and shared-folder mode are tamper-evident, not enforced: a change beyond a person's role is held in quarantine on every other copy, but anyone with write access to the folder can still edit its files (seen as "Changed outside Stratlas" in History). Only the team server enforces roles.
+- Roles in exchange-file and shared-folder mode are tamper-evident, not enforced: a change beyond a person's role is held in quarantine on every other copy, but anyone with write access to the folder can still edit its files (seen as "Changed outside Quadrion AI" in History). Only the team server enforces roles.
 - Detections without ids (passes made before M9) merge per pass: the last writer of the whole pass wins.
 - Manifest entries (layers, captures) are merged in the history but not yet written back to `manifest.json`.
 - Two issues made from one change item on two copies are not offered for merging; merge them by hand in the issue register.

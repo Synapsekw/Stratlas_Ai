@@ -8,7 +8,7 @@
 
 ## The direction in one paragraph
 
-Stratlas looks and behaves like an operations picture, in the school of Palantir Gotham and Anduril Lattice, applied to drone reality capture. The fused 3D and map stage is the hero. Drones are tracked entities with a telemetry label stack (altitude, speed, gimbal, timecode). Assets and issues carry precise callouts with leader lines. A context panel on the right changes with the selection: asset, issue, clip or photo. A timeline with tracks runs along the bottom. The tone is serious, calm and defence-grade, never neon or gamer.
+Quadrion AI looks and behaves like an operations picture, in the school of Palantir Gotham and Anduril Lattice, applied to drone reality capture. The fused 3D and map stage is the hero. Drones are tracked entities with a telemetry label stack (altitude, speed, gimbal, timecode). Assets and issues carry precise callouts with leader lines. A context panel on the right changes with the selection: asset, issue, clip or photo. A timeline with tracks runs along the bottom. The tone is serious, calm and defence-grade, never neon or gamer.
 
 ## Fixed elements
 

@@ -4,7 +4,7 @@ Paste into Partner Center, **Store listings, English (United States)**. Limits a
 
 ## Product name
 
-Stratlas
+Quadrion AI
 
 ## Short description (Windows 10/11, up to 100 characters)
 
@@ -12,18 +12,18 @@ Offline drone inspection workspace: video, 3D models, point clouds and maps in o
 
 ## Description (up to 10,000 characters)
 
-Stratlas brings everything a drone inspection or survey produces into one workspace that runs on your own computer. Open a project and see the 3D model, the point cloud, the orthomosaic and the street map together. Play the drone video with its flight path in 3D and watch each frame drape onto the asset from the drone's own position.
+Quadrion AI brings everything a drone inspection or survey produces into one workspace that runs on your own computer. Open a project and see the 3D model, the point cloud, the orthomosaic and the street map together. Play the drone video with its flight path in 3D and watch each frame drape onto the asset from the drone's own position.
 
 Mark issues on photos, video frames, models and point clouds, grade them with your severity model, and follow one issue across every view. Review stockpile volumes, road defects and facade findings, then export the report, register or package your client needs.
 
 Built for the field and the office:
 
 - Works fully offline. Street maps for the GCC are included; more regions can be added when you choose to download them.
-- Your data stays where you keep it: local disks, external drives and network shares. Stratlas collects no usage statistics and sends nothing by itself.
-- Optional AI assistants from Anthropic, OpenAI or Google, with your own API key, only when you turn them on. Stratlas shows what will be sent before the first message.
+- Your data stays where you keep it: local disks, external drives and network shares. Quadrion AI collects no usage statistics and sends nothing by itself.
+- Optional AI assistants from Anthropic, OpenAI or Google, with your own API key, only when you turn them on. Quadrion AI shows what will be sent before the first message.
 - Share read-only project packages (.aio) that open with a double-click.
 
-Stratlas is made by Synapse Solutions for inspection, survey and asset integrity teams.
+Quadrion AI is made by Synapse Solutions for inspection, survey and asset integrity teams.
 
 ## What's new in this version (up to 1,500 characters)
 
@@ -49,7 +49,7 @@ drone inspection, digital twin, point cloud, reality capture, asset integrity, o
 ## Additional information
 
 - **Category:** Productivity (subcategory none), or Business.
-- **Privacy policy URL:** the published copy of `privacy-policy.md`, for example `https://synapse-solutions.ai/stratlas/privacy`.
+- **Privacy policy URL:** the published copy of `privacy-policy.md`, for example `https://synapse-solutions.ai/quadrion/privacy`.
 - **Website:** `https://synapse-solutions.ai`
 - **Support contact:** the support email or page on synapse-solutions.ai.
 - **Copyright and trademark info:** Copyright Synapse Solutions.
@@ -73,4 +73,4 @@ The app works offline. To test it, open the demo project from the Projects scree
 
 ## runFullTrust justification
 
-Stratlas is a desktop application built with Electron. It needs full trust to read large project folders chosen by the user (multi-gigabyte drone video, point clouds and 3D models on local disks and network shares), to store API keys in Windows Credential Manager, and to run its bundled processing tools. It makes no network requests unless the user turns on cloud AI, checks for updates or downloads a map region.
+Quadrion AI is a desktop application built with Electron. It needs full trust to read large project folders chosen by the user (multi-gigabyte drone video, point clouds and 3D models on local disks and network shares), to store API keys in Windows Credential Manager, and to run its bundled processing tools. It makes no network requests unless the user turns on cloud AI, checks for updates or downloads a map region.

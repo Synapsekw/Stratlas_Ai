@@ -1,4 +1,4 @@
-# Contributing to Stratlas
+# Contributing to Quadrion AI
 
 ## Setup
 
@@ -15,8 +15,9 @@ Node 24 and pnpm 10 are required. Hooks (lefthook) run lint-staged on commit and
 - TypeScript strict everywhere; no `any`, no non-null assertions.
 - Every package exposes its public API from `src/index.ts` and depends only on the packages listed in `docs/architecture/SPEC.md` section 2.
 - Renderer code never imports `electron` or `node:*`; it talks to main through `window.aio` (typed by `@aio/schema` `ipc`).
-- The product name lives only in `@aio/brand`.
-- Client data never enters git. Fixtures live in git-ignored `fixtures/data/`; full projects live in `E:\Stratlas Data\` (or the path in Settings).
+- The product name lives only in `@aio/brand` (Quadrion AI; Stratlas until 7 Oct 2026).
+- Environment variables are `QUADRION_*`. The old `STRATLAS_*` names still work as a fallback (`@aio/brand` `envVar` / `aliasLegacyEnv`), but new code and docs use `QUADRION_*`.
+- Client data never enters git. Fixtures live in git-ignored `fixtures/data/`; full projects live in `E:\Stratlas Data\` on the founder's workstation (or the path in Settings; new installs default to `Documents\Quadrion AI Data`).
 - No em or en dashes in user-facing text.
 - Conventional commits: `feat(scope): ...`, `fix(scope): ...`, `chore: ...`.
 
@@ -25,7 +26,7 @@ Node 24 and pnpm 10 are required. Hooks (lefthook) run lint-staged on commit and
 Parallel work follows SPEC section 9. Each stream works in its own worktree and branch:
 
 ```bash
-git worktree add ../stratlas-wt/s3-engine -b stream/s3-engine
+git worktree add ../quadrion-wt/s3-engine -b stream/s3-engine
 ```
 
 - A stream owns its package(s) and may not edit another stream's package. Ask the integration lead instead.

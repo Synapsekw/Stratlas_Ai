@@ -2,7 +2,7 @@
 
 |           |                                                                                                                                                                                      |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Product   | **Stratlas** (temporary working name and R5 placeholder mark, decided 2026-10-03; final name and logo come later, see `docs/brand/`)                                                 |
+| Product   | **Quadrion AI** (final name and mark, 2026-10-07; working name Stratlas until then; identity kit in `docs/brand/quadrion/kit/`)                                                      |
 | Owner     | Synapse Solutions                                                                                                                                                                    |
 | Status    | Approved v1.1 (2026-10-03)                                                                                                                                                           |
 | Changes   | v1.1: annotation suite and severity models added to Release A (section 6.4); Kestrel stays a separate app, code may be copied from it; YOLO training out of scope; shell is Electron |
