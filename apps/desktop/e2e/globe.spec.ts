@@ -13,6 +13,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { expectAccessible } from './a11y';
 import { expect, test, tinyGlb, type DataRoot } from './fixtures';
 
 /** The app's CSP as main sets it (src/main/index.ts `CSP`), read from the source. */
@@ -246,6 +247,7 @@ test('every library project is a site; packs draw with their credits', async ({ 
   await expect(list).toContainText(SITE_A.name);
   await expect(list).toContainText(SITE_B.name);
   await expect(list).toContainText('1 open issue');
+  await expectAccessible(win, 'Globe');
   await usePacks(win);
   await flyToSite(win, SITE_A.name);
   await expect
@@ -339,6 +341,23 @@ test('an issue pin opens the issue in the site view', async ({ win }) => {
   await expect.poll(async () => (await pinAt()) !== null).toBe(true);
   const [x, y] = (await pinAt()) ?? [0, 0];
   const box = await win.getByTestId('globe-canvas').boundingBox();
+  // the pin is drawn (its severity red) before it is clicked: billboard images load a frame late
+  await expect
+    .poll(
+      () =>
+        win.evaluate(
+          ([fx, fy]) => {
+            const el = document.querySelector('[data-testid="globe-canvas"]');
+            const c = (
+              el as { __aioGlobe?: { samplePixel(x: number, y: number): Promise<number[]> } }
+            ).__aioGlobe;
+            return c?.samplePixel(fx, fy).then((p) => (p[0] ?? 0) > 180 && (p[1] ?? 255) < 110);
+          },
+          [x / (box?.width ?? 1), y / (box?.height ?? 1)] as const,
+        ),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
   await win.mouse.click((box?.x ?? 0) + x, (box?.y ?? 0) + y);
   const card = win.getByTestId('globe-card');
   await expect(card).toContainText('F01 Corrosion on the tank');
