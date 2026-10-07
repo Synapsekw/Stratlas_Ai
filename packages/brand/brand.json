@@ -1,10 +1,12 @@
 {
-  "productName": "Stratlas",
+  "productName": "Quadrion AI",
   "appId": "ai.synapse-solutions.stratlas",
-  "executableName": "Stratlas",
-  "urlScheme": "stratlas",
+  "executableName": "QuadrionAI",
+  "urlScheme": "quadrion",
+  "legacyUrlSchemes": ["stratlas"],
+  "tagline": "Four dimensions. One view.",
   "company": "Synapse Solutions",
-  "temporary": true,
+  "temporary": false,
   "store": {
     "identityName": "SynapseSolutions.Stratlas",
     "publisher": "CN=93BC08FE-8EF9-44E5-AC18-4B57E9E7759A",

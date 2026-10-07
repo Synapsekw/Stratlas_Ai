@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Single source of product identity: name, app id, icons. Temporary name Stratlas.",
+  "description": "Single source of product identity: name, app id, icons, marks and the environment variable prefix.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./env": "./src/env.ts"
   },
   "scripts": {
     "test": "vitest run"
