@@ -126,6 +126,7 @@ export const issueEditor: IssueEditor = createIssueEditor({
     scene: () => getActiveScene(),
     flight: getFlightPoses,
     imageSize: (layer, photo) => sizes.get(sizeKey(layer, photo)) ?? null,
+    orientation: () => workspace.getState().orientation,
   }),
 });
 

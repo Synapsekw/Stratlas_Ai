@@ -30,3 +30,5 @@ export * from './entitlements';
 export * from './photogrammetry';
 export * from './tilesets';
 export * from './globe';
+// Video direction keyframes and photo corrections (orientation.json, proposal)
+export * from './orientation';

@@ -63,6 +63,7 @@ A video layer's `flight.src` points to a JSON file:
 - `q` is the **camera** orientation as a three.js quaternion: the camera looks along its local `-Z` with `+Y` up in the image. Gimbal angles are already folded in.
 - Video time `v` (seconds) maps to project time `startUtcMs + offsetMs + v * 1000`, with `offsetMs` from the video layer.
 - Calibration on the video layer (BLD-3, optional): the camera that took the frame is at `pos + positionOffsetM` (local frame, metres) with orientation `q * Ry(yawDeg) * Rx(pitchDeg) * Rz(rollDeg)` from `orientation` (camera-frame bias, three.js Euler `YXZ`). Projection, frustum, drone-eye view, map footprint and video sightings all use the calibrated pose; the pose file stays as logged.
+- Camera direction keyframes set by hand ("Align camera to map") live in `orientation.json` (section 21), not in the flight file or the manifest. **The one pose rule** (`clipPoseAt` in `@aio/geo`, used by the 3D rig, the map, sightings, frame pairing, the AI tools and the tools themselves): position = normalised log + `positionOffsetM`; orientation = the clip's keyframes when it has at least one (absolute: the logged orientation **and** the calibration bias `orientation` do not apply), else the logged orientation (gimbal angles or the importer's estimate) turned by `orientation`. Calibrate video therefore still composes with gimbal clips; on a clip with keyframes only its position offset, lens and time offset matter.
 - Optional `heights` (`FlightHeights`): the rule the sample heights came from (section 3a), `{ "source": "absolute" | "relative" | "none" | "mixed", "absOffsetM": 100, "takeoffH": 100 }` (`mixed`: some samples fell back to the other altitude). A file without it predates the record; an importer that rewrites the file compares the two to rebase calibration.
 
 ## 3a. Camera elevation (drone altitudes to project heights)
@@ -466,3 +467,29 @@ Raster packs share one format across MapLibre, the site view (3DTilesRendererJS)
 - **Licences** (decision 4): only sources whose licence allows offline redistribution are packed by us (Natural Earth, NASA Blue Marble, Landsat, Copernicus Sentinel-2 Global Mosaics, ESA WorldCover 2020 and 2021, Copernicus DEM, NASADEM). Never Cesium ion, Bing, Google, Esri, Mapbox or EOX cloudless 2018 to 2025. The attribution shows in the Globe, the map and every export that contains the data.
 - **Customer imagery** (decision 12): **Import imagery** marks the pack `customerLicence: true`, "customer licence, not for redistribution"; it never travels in a `.aio` package unless the person ticks it.
 - **Globe preferences** are their own userData file, `globe.json` (`aio.globe-settings/1`: imagery and terrain choice, terrain exaggeration, issue pins, terrain and imagery around the site), not a `Settings` field, so settings saved by 0.10 stay exactly what 0.9 reads.
+
+## 24. Hand-set camera directions (`orientation.json`, PROPOSAL)
+
+`<project>/orientation.json`, `aio.orientation/1` (`packages/schema/src/orientation.ts`), written by "Align camera to map" and "Align photo to map". Under review at merge (owner: integration lead).
+
+```json
+{
+  "schema": "aio.orientation/1",
+  "updatedAt": "2026-10-07T12:00:00Z",
+  "clips": {
+    "<video layer id>": {
+      "keys": [{ "t": 2000, "yaw": 30, "pitch": -30, "roll": 0, "fill": "smooth" }]
+    }
+  },
+  "photos": {
+    "<photo set id>": {
+      "<photo id>": { "yawDeg": -4.5, "pitchDeg": 1, "rollDeg": 0, "offsetM": [0, -2, 0] }
+    }
+  }
+}
+```
+
+- **Clips.** Direction keyframes in time order, one per millisecond. `t` is **clip time** (ms of video), so a keyframe stays on its frame when the layer's `offsetMs` changes. `yaw` clockwise from grid north, `pitch` up positive, `roll` dropping the image's right side, degrees in the grid frame (as `cameraQuatFromGimbal`). `fill` says how the camera turns to the next keyframe: `smooth` (shortest-arc slerp), `track` (keep the keyframe's heading offset from the smoothed track heading, the offset interpolated to the next keyframe's, pitch and roll eased), `lookAt` (aim at `target`, local frame, from the calibrated position, roll 0, blending in and out over 0.5 s or half the segment). Before the first and after the last keyframe that keyframe's fill holds. `fill` is text: a fill a build does not know turns smoothly. Section 3 has the pose rule.
+- **Photos.** One correction per photo against the pose it was imported with (the photo record's `pos` and `q`, from GPS and EXIF/XMP gimbal angles): degrees added to its heading, pitch and roll in the grid frame and metres added to its position. Every view draws a photo through `correctedPhoto(photo, photoCorrection(file, setId, photoId))`. "The same correction for the rest of the flight" goes to the photos of the set taken without a gap over 20 minutes (`sameFlightPhotos`).
+- **Never changed by it:** the manifest, the video layers, the photo records, the flight files, the images and their EXIF. Entries for layers or photos the project no longer has are kept and ignored.
+- **Writes.** `orientation:write` (whole file, atomic, `.bak` of the previous one). It is a journalled writer: each save is recorded before the write as a `record.external` op on `orientation.json` (a dedicated op kind needs the journal schema owner). A newer file (`aio.orientation/2`) is refused on read and never written over; a package's file is read in place and never written. Older builds (0.8, 0.9) do not read the file at all.

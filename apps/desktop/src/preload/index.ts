@@ -174,6 +174,8 @@ const CHANNELS = {
   'terrainPacks:list': true,
   'terrainPacks:import': true,
   'terrainPacks:remove': true,
+  'orientation:read': true,
+  'orientation:write': true,
 } as const satisfies Record<IpcChannel, true>;
 
 const EVENTS = {

@@ -182,6 +182,12 @@ const WRITERS: Partial<
     rel: 'report/narrative.json',
     after: r.file,
   }),
+  // hand-set camera directions: one record.external op per save until a kind is agreed
+  'orientation:write': (r: IpcRequest<'orientation:write'>) => ({
+    projectId: r.projectId,
+    rel: 'orientation.json',
+    after: r.file,
+  }),
 };
 
 /**
@@ -195,6 +201,7 @@ const READS: ReadonlySet<IpcChannel> = new Set<IpcChannel>([
   'detections:maskAssistStatus',
   'report:list',
   'report:readNarrative',
+  'orientation:read',
   'change:list',
   'change:read',
   'model:list',

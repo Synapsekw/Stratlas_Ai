@@ -18,6 +18,7 @@ import { graphics } from './graphics';
 import { graphicsReport, memoryWatch } from './memoryWatch';
 import { shell } from './shell';
 import { COMPARE_GPU_BYTES, compareRuntime } from './workspace/compare';
+import { registerCorrectedPhotos } from './builder/photoPoses';
 
 let started = false;
 
@@ -68,6 +69,8 @@ export function bootstrap(): void {
   // GPU tier: pixel ratio, shadows, point budget and EDL before the first stage exists
   graphics().getState().apply();
   memoryWatch();
+  // photos drawn with their hand corrections (orientation.json): before the engine's own
+  registerCorrectedPhotos();
   registerEngineAdapters();
   registerPointcloudAdapters();
   registerVideoAdapters();

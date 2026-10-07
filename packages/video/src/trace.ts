@@ -1,5 +1,5 @@
 import { isEngineStage, type ClientRectLike, type SceneHandle } from '@aio/engine';
-import type { CameraOrientation, PoseSample, Vec3 } from '@aio/schema';
+import type { CameraOrientation, PoseSample, Quat, Vec3 } from '@aio/schema';
 import { Group, Vector3, type InterleavedBufferAttribute, type PerspectiveCamera } from 'three';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
@@ -57,6 +57,8 @@ export interface TraceFrame {
   flightMs: number;
   offset: Vec3 | null;
   orientation: CameraOrientation | null;
+  /** Camera orientation in use now (direction keyframes or the calibrated log). */
+  q?: Quat | null;
   /** Calibrated camera position now. */
   pos: Vector3;
   originH: number;
@@ -698,6 +700,7 @@ export class DroneTrace {
       profile: p,
       offset: f.offset,
       orientation: f.orientation,
+      q: f.q ?? null,
       groundY,
       originH: f.originH,
     });

@@ -39,6 +39,7 @@ import { demoLibraryPaths, demoOpenPath, demoRoot, findDemos, markDemoEntries } 
 import { createExportJobs } from './exports/jobs';
 import { printReport } from './exports/reportWindow';
 import { readNarrative, readPackageNarrative, writeNarrative } from './narrative';
+import { readOrientation, readPackageOrientation, writeOrientation } from './orientation';
 import { listReports } from './exports/reports';
 import { runInUtility } from './exports/utility';
 import {
@@ -989,6 +990,22 @@ function registerIpc(): void {
       };
     const r = openRoot(projectId);
     return 'error' in r ? { ok: false, error: r.error } : writeNarrative(r.root, file);
+  });
+  handle('orientation:read', ({ projectId }) => {
+    const root = registry.root(projectId);
+    if (root !== undefined) return readOrientation(root);
+    const pkg = registry.package(projectId);
+    if (pkg) return readPackageOrientation(pkg.archive);
+    return { ok: false, error: `Project "${projectId}" is not open.` };
+  });
+  handle('orientation:write', ({ projectId, file }) => {
+    if (registry.package(projectId))
+      return {
+        ok: false,
+        error: 'This project is a read-only package. Its camera directions cannot be changed.',
+      };
+    const r = openRoot(projectId);
+    return 'error' in r ? { ok: false, error: r.error } : writeOrientation(r.root, file);
   });
   handle('ai:draftText', (req) => agent.draft(req));
   handle('report:list', async ({ projectId }) => {

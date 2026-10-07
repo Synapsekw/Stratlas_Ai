@@ -191,6 +191,13 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     since: '0.9',
   },
   { family: 'aio.team', version: 1, home: 'project', where: 'team.json', since: '0.9' },
+  {
+    family: 'aio.orientation',
+    version: 1,
+    home: 'project',
+    where: 'orientation.json',
+    since: '0.9',
+  },
   { family: 'aio.identity', version: 1, home: 'userData', where: 'identity.json', since: '0.9' },
   {
     family: 'aio.team-config',

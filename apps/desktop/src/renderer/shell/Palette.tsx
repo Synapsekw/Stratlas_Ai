@@ -6,6 +6,7 @@ import { useWorkspace, workspace } from '@aio/workspace';
 import { useMemo } from 'react';
 import { actionAllowed, allowedActions } from '../exports/exportModel';
 import { runExportAction } from '../exports/exports';
+import { alignCamera } from '../builder/alignSession';
 import { builder } from '../builder/state';
 import { diagnostics } from '../diagnostics/state';
 import { help } from '../help/store';
@@ -323,6 +324,16 @@ export function Palette() {
             keywords: ['align', 'lens', 'fov', 'offset', 'sync', 'calibration'],
             run: () => {
               builder.getState().startAlign({ kind: 'video', layerId: clip.id });
+            },
+          });
+          list.push({
+            id: 'builder:align-camera',
+            title: 'Align camera to map: set where the video camera looks',
+            group: 'Actions',
+            icon: 'droneeye',
+            keywords: ['camera direction', 'heading', 'yaw', 'keyframe', 'gimbal', 'orientation'],
+            run: () => {
+              alignCamera.getState().start(clip.id);
             },
           });
         }

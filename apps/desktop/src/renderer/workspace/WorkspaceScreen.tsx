@@ -13,6 +13,7 @@ import { useVolumetric, VolumesPanel } from '@aio/volumetric';
 import { canCompare, useWorkspace, workspace } from '@aio/workspace';
 import { useMemo, useState } from 'react';
 import { ChangesTab, useChangesTabSeq } from '../change';
+import { jumpToKeyframe, moveKeyframe, timelineKeys } from '../builder/alignSession';
 import { IssueCard } from '../issueCard/IssueCard';
 import { useCardFocusSeq } from '../issueCard/state';
 import { useMedia } from '../media';
@@ -41,13 +42,20 @@ function WorkspaceTimeline() {
   const rate = useWorkspace((s) => s.rate);
   const activeClip = useWorkspace((s) => s.activeClip);
   const selection = useWorkspace((s) => s.selection);
+  const directionDraft = useWorkspace((s) => s.directionDraft);
+  const orientation = useWorkspace((s) => s.orientation);
   const { durations } = useMedia(project);
   const model = useMemo(
     () =>
       project
-        ? buildTimelineModel(project.manifest, issues, durations)
+        ? buildTimelineModel(
+            project.manifest,
+            issues,
+            durations,
+            timelineKeys(orientation, directionDraft),
+          )
         : { clips: [], groups: [], issues: [], photos: [], captures: [], range: null },
-    [project, issues, durations],
+    [project, issues, durations, orientation, directionDraft],
   );
   const capture = project?.manifest.captures.at(-1);
 
@@ -67,6 +75,12 @@ function WorkspaceTimeline() {
       }}
       onSeek={(t) => {
         workspace.getState().setTime(t);
+      }}
+      onKeyframe={(layerId, index) => {
+        jumpToKeyframe(layerId, index);
+      }}
+      onKeyframeMove={(layerId, index, tMs, phase) => {
+        moveKeyframe(layerId, index, tMs, phase);
       }}
       onTogglePlay={() => {
         const ws = workspace.getState();
