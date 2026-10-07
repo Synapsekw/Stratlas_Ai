@@ -80,6 +80,25 @@ def test_bundle_adjustment_with_rtk_priors_lands_cameras_on_truth(tmp_path):
     assert res.reprojection_px < 0.6 and m.mean_reprojection_error() < 0.6
 
 
+def test_point_refinement_in_blocks_matches_one_pass(tmp_path):
+    _, m = _aligned(tmp_path, rows=3, cols=4, points=1500)
+    a, b = m.copy(), m.copy()
+    B.refine_all_points(a, block=10**9)
+    B.refine_all_points(b, block=97)  # many small blocks, split on point boundaries
+    assert np.allclose(a.xyz, b.xyz, atol=1e-9) and np.allclose(a.error, b.error, atol=1e-9)
+
+
+def test_the_adjustment_works_on_a_bounded_number_of_observations(tmp_path):
+    _, m = _aligned(tmp_path, rows=4, cols=5, points=3000)
+    img, pts, _ = m.observations()
+    everything = B.select_points(m, per_image=10**6, max_observations=10**9)
+    capped = B.select_points(m, per_image=10**6, max_observations=2000)
+    obs = np.bincount(pts, minlength=len(m.point_ids))
+    assert obs[everything].sum() > 2000
+    assert 2000 <= obs[capped].sum() < 2000 + obs.max()
+    assert B.MAX_BA_OBSERVATIONS <= 500_000  # about half a gigabyte of working arrays
+
+
 def test_bundle_adjustment_needs_a_datum(tmp_path):
     _, m = _aligned(tmp_path, rows=3, cols=3, points=300)
     with pytest.raises(JobError, match="GNSS positions or at least three control points"):

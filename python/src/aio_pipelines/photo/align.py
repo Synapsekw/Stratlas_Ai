@@ -506,20 +506,25 @@ def combine_models(models: list[SparseModel]) -> SparseModel:
     for m in models:
         for cid, cam in m.cameras.items():
             out.cameras.setdefault(cid, cam)
-        remap = {}
-        for pid in m.point_ids.tolist():
-            remap[pid] = next_id
-            ids.append(next_id)
-            next_id += 1
+        order = np.argsort(m.point_ids, kind="stable")
+        sorted_ids = m.point_ids[order]
+        new_ids = np.arange(next_id, next_id + len(m.point_ids), dtype=np.int64)
+        ids.append(new_ids)
+        next_id += len(m.point_ids)
         xyz.append(m.xyz)
         rgb.append(m.rgb)
         err.append(m.error)
         for iid, im in m.images.items():
-            p = np.array([remap.get(int(v), -1) if v >= 0 else -1 for v in im.point3D_ids], np.int64)
-            im.point3D_ids = p
+            old = im.point3D_ids
+            if len(sorted_ids) == 0:
+                im.point3D_ids = np.full(len(old), -1, np.int64)
+            else:
+                pos = np.clip(np.searchsorted(sorted_ids, old), 0, len(sorted_ids) - 1)
+                hit = (old >= 0) & (sorted_ids[pos] == old)
+                im.point3D_ids = np.where(hit, new_ids[order[pos]], -1).astype(np.int64)
             out.images[iid] = im
     if ids:
-        out.set_points(ids, np.concatenate(xyz), np.concatenate(rgb), np.concatenate(err))
+        out.set_points(np.concatenate(ids), np.concatenate(xyz), np.concatenate(rgb), np.concatenate(err))
     return out
 
 

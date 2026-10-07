@@ -19,6 +19,7 @@ memory on a laptop.
 
 from __future__ import annotations
 
+import itertools
 import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -152,12 +153,11 @@ def triangulate(
 
 def _per_obs_cameras(model: SparseModel, img_ids: np.ndarray):
     ids = sorted(model.images)
-    pos = {iid: k for k, iid in enumerate(ids)}
     R_all = np.array([model.images[i].R for i in ids])
     C_all = np.array([model.images[i].centre for i in ids])
     cam_canon = {cid: c.canonical() for cid, c in model.cameras.items()}
     canon_all = np.array([cam_canon[model.images[i].camera_id] for i in ids])
-    k = np.array([pos[int(i)] for i in img_ids], np.int64)
+    k = np.searchsorted(np.array(ids, np.int64), np.asarray(img_ids, np.int64))
     return canon_all[k], R_all[k], C_all[k]
 
 
@@ -258,30 +258,50 @@ class AdjustResult:
     seconds: float = 0.0
 
 
+#: Observations the georeferencing adjustment works on at most: about 0.5 GB of working arrays,
+#: whatever the size of the flight (a 1,000-photo oblique flight has about 10 million).
+MAX_BA_OBSERVATIONS = 400_000
+#: Observations per block when every tie point is refined again (bounded memory).
+REFINE_BLOCK = 250_000
+
+
 def select_points(
-    model: SparseModel, per_image: int = 150, min_track: int = 3, max_error_px: float = 4.0
+    model: SparseModel,
+    per_image: int = 150,
+    min_track: int = 3,
+    max_error_px: float = 4.0,
+    max_observations: int = MAX_BA_OBSERVATIONS,
 ) -> np.ndarray:
-    """Indices of well-observed tie points, about ``per_image`` per photo (long tracks first)."""
+    """Indices of well-observed tie points, about ``per_image`` per photo (long tracks first),
+    with at most ``max_observations`` observations in all."""
     img, pts, _ = model.observations()
     if len(pts) == 0:
         return np.zeros(0, np.int64)
-    tl = np.bincount(pts, minlength=len(model.point_ids))
+    n = len(model.point_ids)
+    tl = np.bincount(pts, minlength=n)
     good = (tl >= min_track) & (model.error <= max_error_px if len(model.error) else True)
     if not good.any():
         good = tl >= 2
     order = np.argsort(-tl, kind="stable")
     order = order[good[order]]
-    by_point: dict[int, list[int]] = {}
-    for i, p in zip(img.tolist(), pts.tolist(), strict=True):
-        by_point.setdefault(p, []).append(i)
-    need = {iid: per_image for iid in model.images}
+    ids = np.array(sorted(model.images), np.int64)
+    img_idx = np.searchsorted(ids, img)
+    by = np.argsort(pts, kind="stable")
+    img_s = img_idx[by]
+    pts_s = pts[by]
+    starts = np.searchsorted(pts_s, np.arange(n), "left")
+    ends = np.searchsorted(pts_s, np.arange(n), "right")
+    need = np.full(len(ids), per_image, np.int64)
     chosen = []
+    total = 0
     for p in order.tolist():
-        ims = by_point.get(p, ())
-        if any(need.get(i, 0) > 0 for i in ims):
+        ims = img_s[starts[p] : ends[p]]
+        if (need[ims] > 0).any():
             chosen.append(p)
-            for i in ims:
-                need[i] = need.get(i, 0) - 1
+            need[ims] -= 1
+            total += len(ims)
+            if total >= max_observations or need.max() <= 0:
+                break
     return np.array(sorted(chosen), np.int64)
 
 
@@ -700,17 +720,35 @@ def bundle_adjust(
     return out
 
 
-def refine_all_points(model: SparseModel, iterations: int = 5) -> None:
-    """Every tie point again through the adjusted cameras; refreshes ``model.error``."""
+def refine_all_points(model: SparseModel, iterations: int = 5, block: int = REFINE_BLOCK) -> None:
+    """Every tie point again through the adjusted cameras, in blocks of about ``block``
+    observations (bounded memory on large flights); refreshes ``model.error``."""
     img, pts, xy = model.observations()
     if len(pts) == 0:
         return
-    model.xyz = refine_points(model, model.xyz, pts, img, xy, iterations=iterations)
-    canon, R, C = _per_obs_cameras(model, img)
-    uv, _ = project_canonical(canon, R, C, model.xyz[pts])
-    e = np.linalg.norm(uv - xy, axis=1)
-    cnt = np.bincount(pts, minlength=len(model.point_ids))
-    model.error = np.bincount(pts, e, minlength=len(model.point_ids)) / np.maximum(cnt, 1)
+    n = len(model.point_ids)
+    by = np.argsort(pts, kind="stable")
+    img, pts, xy = img[by], pts[by], xy[by]
+    err_sum = np.zeros(n)
+    # block boundaries on point boundaries
+    bounds = [0]
+    while bounds[-1] < len(pts):
+        end = min(bounds[-1] + block, len(pts))
+        if end < len(pts):
+            end = int(np.searchsorted(pts, pts[end - 1], "right"))
+        bounds.append(end)
+    xyz = model.xyz.copy()
+    for s0, s1 in itertools.pairwise(bounds):
+        p = pts[s0:s1]
+        uniq, local = np.unique(p, return_inverse=True)
+        X = refine_points(model, xyz[uniq], local, img[s0:s1], xy[s0:s1], iterations=iterations)
+        xyz[uniq] = X
+        canon, R, C = _per_obs_cameras(model, img[s0:s1])
+        uv, _ = project_canonical(canon, R, C, X[local])
+        err_sum += np.bincount(p, np.linalg.norm(uv - xy[s0:s1], axis=1), minlength=n)
+    model.xyz = xyz
+    cnt = np.bincount(pts, minlength=n)
+    model.error = err_sum / np.maximum(cnt, 1)
 
 
 def supported(model: SparseModel) -> bool:
