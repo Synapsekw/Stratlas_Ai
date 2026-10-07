@@ -6,7 +6,9 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ACTORS, F05, hlc } from '../testing';
 import {
+  collabStore,
   IssueCollab,
+  loadCollab,
   MineFilter,
   resetCollabStore,
   useMineIssueIds,
@@ -251,5 +253,47 @@ describe('Mine filter', () => {
     expect(el.querySelector('[data-testid="my-work"]')?.textContent).toMatch(
       /Assigned to me \(1\)F05/,
     );
+  });
+});
+
+describe('loadCollab', () => {
+  it('a read asked for while an older one runs sees what changed after the older one began', async () => {
+    await mount(<span />);
+    const approval = {
+      id: 'ap_aaaaaaaaaaaaaaaa',
+      target: F05,
+      by: omar,
+      decision: 'approve' as const,
+      contentHash: HASH,
+      at: hlc(1),
+      withdrawn: false,
+      current: true,
+    };
+    // the first read answers the state as it was when it was asked, and only when let go
+    let letGo: () => void = () => undefined;
+    const gate = new Promise<void>((r) => {
+      letGo = r;
+    });
+    const aio = (
+      globalThis as unknown as { aio: { invoke: (c: string, r: unknown) => Promise<unknown> } }
+    ).aio;
+    const invoke = aio.invoke;
+    let reads = 0;
+    aio.invoke = async (channel, req) => {
+      if (channel !== 'collab:read') return invoke(channel, req);
+      reads += 1;
+      const asked = state;
+      if (reads === 1) await gate;
+      return { ok: true, state: asked };
+    };
+    const first = loadCollab('p1');
+    state = { ...state, policy: shared(), approvals: [approval] };
+    const second = loadCollab('p1');
+    const third = loadCollab('p1');
+    letGo();
+    await Promise.all([first, second, third]);
+    expect(collabStore.getState().state.approvals).toEqual([approval]);
+    // the asks made meanwhile share one more read
+    expect(reads).toBe(2);
   });
 });

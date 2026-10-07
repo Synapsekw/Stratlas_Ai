@@ -5,6 +5,7 @@
  * open panels stay as they are: the project is not reopened.
  */
 import { changeStore } from '@aio/change';
+import { loadCollab } from '@aio/collab/ui';
 import { issueSaver } from '@aio/annotate';
 import type { RecordRef } from '@aio/schema';
 import { workspace } from '@aio/workspace';
@@ -20,6 +21,11 @@ export async function reloadRecords(
   const project = workspace.getState().project;
   if (project?.id !== projectId) return;
   const r = await bridge.call('project:open', { path: project.root });
+  // The approvals are read again before the issues are shown. An issue the merge approved,
+  // shown beside the approvals read before the merge, looks voided, and the issue panel would
+  // send it back to reviewed (IssueCollab). project:open answers before the journal's open
+  // check, the approvals' reads queue behind it: the issues come first unless awaited.
+  await loadCollab(projectId);
   const now = workspace.getState();
   if (!r.ok || !r.value.ok || now.project?.id !== projectId) return;
   const merged = mergeDiskIssues(now.issues, r.value.issues);

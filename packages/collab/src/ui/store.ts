@@ -62,12 +62,32 @@ export function bridge(): AioBridge | null {
 }
 
 const inflight = new Map<string, Promise<void>>();
+/** Per project: the one read queued after the running one (`loadCollab`). */
+const queued = new Map<string, Promise<void>>();
 let listening = false;
 
-/** Read the collaboration state, this person and the members of a project. */
+/**
+ * Read the collaboration state, this person and the members of a project. Every caller asks
+ * after something changed (a write, a merge, a save), and a read already running may have
+ * started before that change: it is then followed by one more read, shared by every caller that
+ * asks meanwhile. The promise settles once the store holds a state read after the call.
+ */
 export function loadCollab(projectId: string): Promise<void> {
   const running = inflight.get(projectId);
-  if (running) return running;
+  if (!running) return readCollab(projectId);
+  let next = queued.get(projectId);
+  if (!next) {
+    const again = () => {
+      queued.delete(projectId);
+      return loadCollab(projectId);
+    };
+    next = running.then(again, again);
+    queued.set(projectId, next);
+  }
+  return next;
+}
+
+function readCollab(projectId: string): Promise<void> {
   const run = (async () => {
     const aio = bridge();
     if (!aio) return;
@@ -155,6 +175,7 @@ export function personOf(s: Pick<CollabStoreState, 'members' | 'me'>, actor: str
 /** Test helper: back to an empty store. */
 export function resetCollabStore(): void {
   inflight.clear();
+  queued.clear();
   collabStore.setState({
     projectId: null,
     state: EMPTY,
