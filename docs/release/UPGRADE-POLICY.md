@@ -4,7 +4,7 @@ How Stratlas 1.x treats files written by older and newer versions, and how it pr
 
 ## The rules
 
-1. **Every `/1` file stays readable by every 1.x build.** All file schemas are at version 1 in 1.0 (the registry lists 42 families). A file written by 0.4 or later opens in 1.0 with nothing lost.
+1. **Every `/1` file stays readable by every 1.x build.** All file schemas are at version 1 in 1.0 (the registry lists 49 families). A file written by 0.4 or later opens in 1.0 with nothing lost.
 2. **New data goes into new files, never into existing records** (M9 global constraint). Fields are only ever added as optional, and never inside `Issue`, `ChangeReview`, `Detection`, `BoundaryEdit`, `ProcPart` or `NarrativeFile`, so an older build keeps reading what a newer one writes.
 3. **A file from a newer build is refused, never rewritten.** The message names the file and says what to do: "issues.json was saved by a newer version of Stratlas (aio.issues/2). Update the app to open it. The file was not changed."
 4. **A future `/2` comes with**:
@@ -29,31 +29,31 @@ How Stratlas 1.x treats files written by older and newer versions, and how it pr
 
 It never throws, whatever the JSON (fuzzed in `tools/compat/fuzz.test.mjs`). `newerRefusal(raw, appName)` is the one-line form for readers that keep their own parse.
 
-## Reader wiring (integration follow-up)
+## Reader wiring
 
-An audit of every reader (7 Oct 2026) found that only the manifest, the package header and `road.json` say "newer". The others treat a newer file as invalid or missing, and some then write over it. Each needs one line before its own parse: `const newer = newerRefusal(raw, brand.productName); if (newer) return { ok: false, error: newer };`, and the writer must not run after a refused read.
+An audit of every reader (7 Oct 2026) found that only the manifest, the package header and `road.json` said "newer"; the others treated a newer file as invalid or missing, and six of them could then write over it. The M9 integration closed that: those six refuse a newer file before their own parse, through `apps/desktop/src/main/newer.ts` (`newerThanThisBuild` on the parsed file, `newerOnDisk` before a write replaces one), and their writers never run after a refused read.
 
-| File                                        | Reader                                             | Today, on a `/2` file                                      | Risk of overwrite                                                |
-| ------------------------------------------- | -------------------------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------- |
-| `ai-projects.json` (userData)               | `main/aiProjects.ts`                               | read as empty                                              | **Yes**: the next consent or usage update rewrites it, no `.bak` |
-| `change/*.json`                             | `main/change.ts`                                   | listed as a problem; compute treats it as absent           | **Yes**: recomputing the same pair writes the same id            |
-| `report/narrative.json`                     | `main/narrative.ts`, `NarrativeEditor.tsx`         | error shown, editor still offers Save                      | **Yes**: Save replaces it                                        |
-| `detections/*.json`                         | `main/detections.ts`, `main/inference/electron.ts` | listed as "a kit list or COCO file"; hidden from inference | **Yes**: a new box or a resumed run writes over it               |
-| `updates/journal.json` (userData)           | `main/update/rollback.ts`                          | logged and started again                                   | **Yes**, most likely right after a rollback                      |
-| `library.json` (userData, no version field) | `main/library.ts`                                  | read as an empty list                                      | **Yes**: the next add saves the list without the old entries     |
-| `issues.json`                               | `main/project.ts`                                  | project does not open; message says "invalid"              | No                                                               |
-| `volumes.json`, `edits/boundaries.json`     | `main/boundaries.ts`                               | error                                                      | No in practice                                                   |
-| `models/*.procmodel.json`                   | `main/modelBuilder.ts`                             | left out of the list silently                              | Low                                                              |
-| `package-origin.json`                       | `main/project.ts`                                  | ignored                                                    | No                                                               |
-| `conversations/*.json`                      | `main/conversations.ts`                            | left out of the list                                       | Unlikely                                                         |
-| pipeline pack `manifest.json`               | `main/jobs/pack.ts`                                | "runtime not found"                                        | No                                                               |
-| `models/detect/*/model.json`                | `main/inference/models.ts`                         | model left out                                             | No                                                               |
-| `drawings/*/placement.json`                 | `packages/modelling/src/drawing.ts`                | throws, advice is "import the drawing again"               | Through the advice                                               |
-| tiles, flight poses, panoramas              | `packages/engine`, `packages/video`                | throws or defaults                                         | No (read only)                                                   |
+| File                                       | Reader                                             | On a `/2` file now                                          | Risk of overwrite  |
+| ------------------------------------------ | -------------------------------------------------- | ----------------------------------------------------------- | ------------------ |
+| `ai-projects.json` (userData)              | `main/aiProjects.ts`                               | refused with the update message                             | No (fixed in M9)   |
+| `change/*.json`                            | `main/change.ts`                                   | refused with the update message                             | No (fixed in M9)   |
+| `report/narrative.json`                    | `main/narrative.ts`, `NarrativeEditor.tsx`         | refused with the update message                             | No (fixed in M9)   |
+| `detections/*.json`                        | `main/detections.ts`, `main/inference/electron.ts` | refused with the update message                             | No (fixed in M9)   |
+| `updates/journal.json` (userData)          | `main/update/rollback.ts`                          | refused with the update message                             | No (fixed in M9)   |
+| `library.json` (userData, `aio.library/1`) | `main/library.ts`                                  | refused with the update message; a file without an id is /1 | No (fixed in M9)   |
+| `issues.json`                              | `main/project.ts`                                  | project does not open; message says "invalid"               | No                 |
+| `volumes.json`, `edits/boundaries.json`    | `main/boundaries.ts`                               | error                                                       | No in practice     |
+| `models/*.procmodel.json`                  | `main/modelBuilder.ts`                             | left out of the list silently                               | Low                |
+| `package-origin.json`                      | `main/project.ts`                                  | ignored                                                     | No                 |
+| `conversations/*.json`                     | `main/conversations.ts`                            | left out of the list                                        | Unlikely           |
+| pipeline pack `manifest.json`              | `main/jobs/pack.ts`                                | "runtime not found"                                         | No                 |
+| `models/detect/*/model.json`               | `main/inference/models.ts`                         | model left out                                              | No                 |
+| `drawings/*/placement.json`                | `packages/modelling/src/drawing.ts`                | throws, advice is "import the drawing again"                | Through the advice |
+| tiles, flight poses, panoramas             | `packages/engine`, `packages/video`                | throws or defaults                                          | No (read only)     |
 
-`library.json` should gain a schema id when it next changes shape (`aio.library/1`), so a newer list is refused rather than read as empty.
+The M9 files (journal, identity, team, exchange, hub) are read with unknown keys kept and unknown op kinds accepted, so a 1.x file of a later minor version still reads.
 
-A single `.bak` protects only the first overwrite: the second save copies the app's own file over it.
+A single `.bak` protects only the first overwrite: the second save copies the app's own file over it. Since the M9 integration the `.bak` is copied to a temp file and renamed, so a crash during a save never leaves a torn `.bak`.
 
 ## Settings and downgrade
 

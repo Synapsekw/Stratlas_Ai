@@ -94,3 +94,70 @@ Current limits only; each is removed from this list when fixed.
 - Token counts for local models are estimates (characters divided by 4).
 - Ollama may serve a smaller context window than the model's maximum; pick **Compact** for small contexts.
 - Tested against a simulated server only; real Ollama, LM Studio and llama.cpp servers are not yet tested.
+
+## Team, history and sync (M9)
+
+### History and audit
+
+- History shows only inside **Edit issue** on the issue card; packages opened in the player show no History, and change items, detections and model parts have no History tab yet (their changes are in the **Audit trail**).
+- **Restore** in History puts back issue fields only, and the entry it writes reads "Edit F01" rather than "Restore".
+- Edits made outside the app (an older build, a hand edit in Notepad) are found at the next write of that file or the next open of the project, not the moment they happen.
+- The journal cache (userData `journal-cache/`) keeps a snapshot of every journaled file, so those JSON files take about twice their size on disk.
+- When the credential store (Windows Credential Manager, macOS Keychain) cannot be used, changes are recorded without a signature. **Verify** says so, and in a shared project the other copies hold those changes in quarantine until an owner applies them anyway.
+- Signed checkpoints are written every 500 changes and at each audit export, not yet at every sync or exchange file.
+- Fork detection is proven on the golden fixtures only; a copied folder that kept writing in an unusual way may be reported as a gap or an order problem rather than a fork.
+- The history of a private project cannot be switched off from the app yet (`journal:setEnabled` exists, with no button).
+- Notes saved in the four legacy viewers (through their own storage shim) are not journaled.
+- Customer packages do not yet carry the signed audit summary, and the package export has no **Include full history** choice (`PackageHeader.journal` is in the contract only). Packages carry no member list.
+
+### Identity and members
+
+- The Credential Manager entry of the device key is named after the app id (service `ai.synapse-solutions.stratlas...`, account `device-signing`), not "Stratlas device key".
+- Identities are self-asserted by default ("Unverified"); an owner certifies a card after checking it with the person. There are no accounts until M10.
+- One device key per profile and computer: a lost computer means revoking its device and adding the person's new one. History before the revocation stays valid.
+
+### Review workflow
+
+- The review area (assign, comments, approvals) is inside **Edit issue** on the issue card, and on change items in the Changes panel. Detections, model parts and the register have no review columns yet, and there are no bulk approvals.
+- Approvals need a shared project; a private project keeps the status buttons as in 0.8.
+- A local edit that makes an approval out of date returns the issue to **Reviewed** while the issue is open in **Edit issue**; after a merge the status is set from the approvals at once.
+- The status after a merge is not checked again against the order of statuses (`canTransition`).
+- No email or push notifications: **My work** is in the app only.
+- No real-time co-editing: people see each other's changes after a sync, not as they type.
+
+### Merging and conflicts
+
+- Roles in exchange-file and shared-folder mode are tamper-evident, not enforced: a change beyond a person's role is held in quarantine on every other copy, but anyone with write access to the folder can still edit its files (seen as "Changed outside Stratlas" in History). Only the team server enforces roles.
+- Detections without ids (passes made before M9) merge per pass: the last writer of the whole pass wins.
+- Manifest entries (layers, captures) are merged in the history but not yet written back to `manifest.json`.
+- Two issues made from one change item on two copies are not offered for merging; merge them by hand in the issue register.
+- The merge runs in the main process, not in the data process or a worker; 10,000 incoming changes on a 5,000-issue project take about a second.
+
+### Exchange files and shared folders
+
+- Exchange files are limited to 2 GB (store-mode ZIP, no ZIP64). Send changes only and move large files through a shared folder or a USB copy of the project.
+- **Export changes** offers all changes or changes since a date (from midnight on this computer); there is no "since what I last sent to this person" choice yet. The other copy skips what it already has.
+- Encryption is by passphrase only (scrypt, AES-256-GCM); encryption to the recipients' keys comes after 1.0. Hashing and scrypt run in the main process.
+- Reply files from the free player (client comments and acceptance from a customer package) are not written yet.
+- A copy joins a team project by importing one of its exchange files; there is no picker to join a team project straight from a shared folder.
+- Cloud-drive folders (OneDrive, Dropbox) as a hub: files the client keeps online only (files on demand) delay reads until they are downloaded; a read slower than 20 seconds counts as "Folder offline" and the next sync tries again.
+- Automatic sync runs every 15 minutes and when the window gets focus; it does not run right after each save, and the interval has no Settings page yet.
+- The library shows no team badge (mode, unread, conflicts) on a shared project.
+- Compare-before-write is a check, then a rename: a save that lands between the two can still be replaced, there is no lease file, and the edit refused with "... was changed by someone else since you opened it" is lost when you click **Reload**.
+- `.aio` packages keep their existing encryption (WinZip AES, PBKDF2-SHA1 with 1,000 rounds); exchange files use scrypt.
+
+### Large files
+
+- Hashing of project files runs in the main process (paced to 100 MB/s), not in a worker; indexing a 20 GB folder during playback has not been measured yet.
+- The download cache cap (50 GB by default) has no Settings page, and there is no **Free space** button yet.
+- Potree 2 clouds and kit image pyramids register only their entry file.
+- A layer whose file is not on this computer can still log "could not be loaded" in the developer console; the layer itself shows the "Not on this computer" card.
+
+### Team server (preview)
+
+- A preview: not covered by the 1.0 support policy, and no external security test yet.
+- No S3-compatible blob store (files stay on the server's disk), no web interface (command line only), one server process per database.
+- The Postgres store is tested in CI only, not run on the development workstation.
+- Files are not kept apart per project on the server, and clients cannot download shared packages from it yet.
+- The app shows no live server status. Connecting needs the credential store: without it this computer has no device key.
+- A server certificate renewed by a CA the computer trusts is not accepted on its own yet: forget the server and connect again with a new invite code.

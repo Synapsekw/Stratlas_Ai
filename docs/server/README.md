@@ -61,7 +61,7 @@ docker compose exec server /nodejs/bin/node /app/dist/main.mjs invite --role vie
   person to a project in the app; from then on, the project's own member list decides.
 - `--days 1` to `--days 90` changes how long the code is valid.
 
-The person opens **Settings**, **Data**, **Team server**, enters the server address
+The person opens **Settings**, **Data folder**, **Team server**, enters the server address
 (`https://team.example.com:8443`) and the code, checks the fingerprint with you and accepts it.
 
 ## Keep it safe
@@ -69,8 +69,9 @@ The person opens **Settings**, **Data**, **Team server**, enters the server addr
 - **Every request is signed** by the person's device key (RFC 9421 HTTP message signatures,
   Ed25519). There are no passwords and no bearer tokens to steal. A replayed or altered request
   is refused.
-- **The certificate is pinned.** The app refuses a server whose certificate changed, unless the
-  new certificate is issued by a CA the computer trusts (a corporate CA renewing it).
+- **The certificate is pinned.** The app refuses a server whose certificate changed. In this
+  preview that includes a certificate your corporate CA renewed: after a renewal, each person
+  forgets the server in the app and connects again with a new invite code.
 - **TLS is required** except on the server's own machine. Behind a reverse proxy that ends TLS,
   set `AIO_BEHIND_TLS_PROXY=1`, `AIO_PUBLIC_URL=https://team.example.com` and
   `AIO_TLS_FINGERPRINT` (the SHA-256 of the proxy's certificate) instead of the certificate files.
@@ -147,9 +148,17 @@ the app's **Verify** reads the same files, and its result matches `verify`.
 - No S3-compatible blob store yet: project files are on the server's disk (the `data` volume).
 - No web interface: the command line above is the admin interface.
 - One server process per database (no cluster).
-- Clients do not download shared packages from the server yet; they reply with reply files.
-- Two people syncing through the server needs the app's server mode for a project (share a
-  project with **Server** mode), which arrives with the sync streams of this release.
+- Clients do not download shared packages from the server yet, and the free player does not
+  write reply files yet.
+- Project files are not kept apart per project on the server's disk.
+- The app shows no live server status.
+- A certificate renewed by a trusted CA is not accepted on its own yet (see "Keep it safe").
+
+To share a project through the server, its owner opens it in the app, clicks **Share** in the
+title bar and picks **Team server**. Each other person needs a copy of the project that belongs
+to the team project: they import one exchange file from the owner, then in the **Team** dialog
+click **Use a shared folder**, pick **Team server** and click **Share**. See the user guide
+chapter "Team server (preview)".
 
 ## Licences
 
