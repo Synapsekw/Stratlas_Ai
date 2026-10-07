@@ -3,6 +3,7 @@ import type { Layer, ProjectManifest } from '@aio/schema';
 import { createWorkspace, type OpenProject } from '@aio/workspace';
 import {
   BoxGeometry,
+  DataTexture,
   Group,
   Mesh,
   MeshStandardMaterial,
@@ -563,5 +564,45 @@ describe('Stage', () => {
     expect(container.querySelector('canvas')).toBeNull();
     store.getState().openProject(project([meshLayer('plant')]));
     expect(stage.projectId).toBe('');
+  });
+  // T8 soak: a renderer leaked per project opened, and with it the detached workspace DOM.
+  it('takes the orbit controls key listener off the document after the view was detached', () => {
+    const add = vi.spyOn(document, 'addEventListener');
+    const remove = vi.spyOn(document, 'removeEventListener');
+    const { stage } = make();
+    // the spies sit on EventTarget.prototype: keep the calls made on the document itself
+    const onDocument = (spy: typeof add) =>
+      spy.mock.calls.filter((_, i) => spy.mock.contexts[i] === document);
+    const added = onDocument(add).find(([type, , opts]) => type === 'keydown' && opts);
+    expect(added).toBeDefined();
+    // (connecting took it off once, in case it was there)
+    remove.mockClear();
+    // React detaches the view before its effects clean up
+    container.remove();
+    stage.dispose();
+    expect(onDocument(remove)).toContainEqual(['keydown', added?.[1], { capture: true }]);
+    expect(Object.hasOwn(stage.canvas, 'getRootNode')).toBe(false);
+    add.mockRestore();
+    remove.mockRestore();
+  });
+
+  it("disposes three's module-level textures it drew with, so they let go of its renderer", () => {
+    const lut = new DataTexture(new Uint8Array(4), 1, 1);
+    const listener = vi.fn();
+    lut.addEventListener('dispose', listener); // as WebGLTextures does for each renderer
+    const { renderer } = fakeRenderer();
+    const uniforms = { dfgLUT: { value: lut } };
+    Object.assign(renderer, {
+      properties: { has: () => true, get: () => ({ uniforms }) },
+    });
+    const stage = new Stage({
+      container,
+      store: createWorkspace(),
+      resolveUrl: (_id, ref) => ('path' in ref ? ref.path : ref.hash),
+      createRenderer: () => renderer,
+    });
+    expect(listener).not.toHaveBeenCalled();
+    stage.dispose();
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 });
