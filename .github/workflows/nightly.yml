@@ -135,3 +135,91 @@ jobs:
             apps/desktop/dist/*.zip
           retention-days: 14
           if-no-files-found: error
+
+  # The 1.0 checklist's stability and performance checks that are too slow for every merge: the
+  # journal and merge budgets enforced, long fuzzing of every reader, kill-during-write with many
+  # rounds (journal appends and the .bak included), and the renderer soak across the demos.
+  stability:
+    name: stability (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      STRATLAS_BUDGETS: '1'
+      STRATLAS_FUZZ_RUNS: '2000'
+      STRATLAS_KILL_BAK: '1'
+      STRATLAS_KILL_ROUNDS: '150'
+      STRATLAS_SOAK: '1'
+      STRATLAS_SOAK_CYCLES: '200'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - run: corepack enable
+
+      - name: Locate pnpm store
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Download Electron binary
+        run: node node_modules/electron/install.js
+
+      - name: Install ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        uses: FedericoCarboni/setup-ffmpeg@v3
+      - name: Install ffmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install ffmpeg-full
+          echo "$(brew --prefix ffmpeg-full)/bin" >> "$GITHUB_PATH"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+      - name: Pipeline runtime venv
+        working-directory: python
+        run: uv sync --frozen
+
+      - name: Journal and merge budgets (STRATLAS_BUDGETS)
+        run: pnpm exec vitest run --retry=0 tools/release/budgets.test.mjs packages/merge/src/bench.test.ts
+
+      - name: Fuzzing of every reader (STRATLAS_FUZZ_RUNS)
+        run: pnpm exec vitest run --retry=0 tools/compat/fuzz.test.mjs packages/sync/src/exchange
+
+      - name: Kill during writes and journal appends (STRATLAS_KILL_BAK, STRATLAS_KILL_ROUNDS)
+        run: pnpm exec vitest run --retry=0 tools/compat/kill-write.test.mjs
+
+      - run: pnpm -F @aio/desktop build
+
+      - name: Demo projects for the soak
+        run: pnpm demo:build --quick
+
+      - name: Renderer soak across the demos (STRATLAS_SOAK, STRATLAS_SOAK_CYCLES)
+        working-directory: apps/desktop
+        run: pnpm exec playwright test e2e/soak.spec.ts --workers=1
+
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stability-${{ matrix.os }}
+          path: apps/desktop/test-results
+          retention-days: 7
