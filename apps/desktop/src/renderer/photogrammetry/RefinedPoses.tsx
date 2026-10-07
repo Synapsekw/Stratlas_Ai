@@ -25,25 +25,26 @@ export function RefinedPoses({ run, data }: { run: string; data: PhotoRun | null
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  // the project's id, not its manifest: applying reloads the manifest
+  const projectId = project?.id;
 
   useEffect(() => {
-    if (!project || !layer) return;
+    if (!projectId || !layer) return;
     let live = true;
-    void bridge
-      .call('photo:applyPoses', { projectId: project.id, run, layer, apply: false })
-      .then((r) => {
-        if (!live) return;
-        if (!r.ok) setError(r.error);
-        else if (!r.value.ok) setError(r.value.error);
-        else {
-          setError(null);
-          setPreview(r.value);
-        }
-      });
+    void bridge.call('photo:applyPoses', { projectId, run, layer, apply: false }).then((r) => {
+      if (!live) return;
+      if (!r.ok) setError(r.error);
+      else if (!r.value.ok) setError(r.value.error);
+      else {
+        setError(null);
+        const next = r.value;
+        setPreview((p) => (p?.applied ? p : next));
+      }
+    });
     return () => {
       live = false;
     };
-  }, [project, run, layer]);
+  }, [projectId, run, layer]);
 
   if (!project) return null;
   if (!layer)

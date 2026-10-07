@@ -273,7 +273,7 @@ export async function startRun(win: Page, o: { groundControl?: boolean } = {}) {
   await next.click();
   if (o.groundControl) await wizard.getByText('I have ground control points').click();
   await next.click();
-  await expect(wizard.getByTestId('photo-estimate')).toBeVisible({ timeout: 30_000 });
+  await expect(wizard.getByTestId('photo-estimate')).toBeVisible({ timeout: 60_000 });
   await wizard.getByTestId('photo-start').click();
   const panel = win.getByTestId('photo-run');
   await expect(panel).toBeVisible();

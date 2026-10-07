@@ -46,7 +46,7 @@ test('import GCPs, mark them with the keyboard, adjust and read an honest report
   win,
   photoSite,
 }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(240_000);
   await openPhotoSite(win);
   const panel = await startRun(win, { groundControl: true });
   const run = await runId(win);

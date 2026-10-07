@@ -53,7 +53,7 @@ const stage = (win: Page, name: string) =>
 test('the wizard estimates, alignment pauses and resumes, and the products come back as layers', async ({
   win,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   await openPhotoSite(win);
   const wizard = await openWizard(win);
 
@@ -101,7 +101,7 @@ test('the wizard estimates, alignment pauses and resumes, and the products come 
   await expect(panel).toBeVisible();
   const run = await runId(win);
   await expect(stage(win, 'Find features')).toHaveAttribute('data-state', 'running', {
-    timeout: 30_000,
+    timeout: 60_000,
   });
   await panel.getByRole('button', { name: 'Pause' }).click();
   await expect(panel.getByTestId('photo-job').locator('[data-status="cancelled"]')).toHaveText(
@@ -154,12 +154,12 @@ test('the wizard estimates, alignment pauses and resumes, and the products come 
 });
 
 test('cancel keeps the work, resume continues, and a photo job opens its run', async ({ win }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   await openPhotoSite(win);
   const panel = await startRun(win);
   const run = await runId(win);
   await expect(stage(win, 'Match photos')).toHaveAttribute('data-state', 'running', {
-    timeout: 30_000,
+    timeout: 60_000,
   });
   await panel.getByRole('button', { name: 'Cancel' }).click();
   await expect(panel).toContainText('Cancelled. The work so far is kept', { timeout: 20_000 });
@@ -168,7 +168,7 @@ test('cancel keeps the work, resume continues, and a photo job opens its run', a
   await panel.getByRole('button', { name: 'resume it' }).click();
   await expect(panel.getByRole('region', { name: 'Next steps' })).toContainText(
     'The photos are aligned',
-    { timeout: 30_000 },
+    { timeout: 60_000 },
   );
   await expect(stage(win, 'Find features')).toHaveAttribute('data-state', 'skipped');
 

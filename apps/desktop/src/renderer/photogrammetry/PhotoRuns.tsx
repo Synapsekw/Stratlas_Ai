@@ -41,10 +41,11 @@ export function PhotoRuns({ selected }: { selected?: JobRecord | undefined }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [asking, setAsking] = useState<string | null>(null);
 
+  const projectId = project?.id;
   useEffect(() => {
-    if (!project) return;
+    if (!projectId) return;
     let live = true;
-    void bridge.call('photo:runs', { projectId: project.id }).then((r) => {
+    void bridge.call('photo:runs', { projectId }).then((r) => {
       if (!live) return;
       if (!r.ok) setError(r.error);
       else if (!r.value.ok) setError(r.value.error);
@@ -56,7 +57,7 @@ export function PhotoRuns({ selected }: { selected?: JobRecord | undefined }) {
     return () => {
       live = false;
     };
-  }, [project, version, jobsKey]);
+  }, [projectId, version, jobsKey]);
 
   if (!project) return null;
   const selectedRun =

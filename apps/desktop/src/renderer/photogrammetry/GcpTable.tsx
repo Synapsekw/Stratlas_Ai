@@ -38,10 +38,11 @@ export function GcpPanel({ run, data }: { run: string; data: PhotoRun | null }) 
     (j) => j.pipeline === 'photo.georef',
   );
 
+  const projectId = project?.id;
   useEffect(() => {
-    if (!project) return;
+    if (!projectId) return;
     let live = true;
-    void bridge.call('photo:readGcp', { projectId: project.id, run }).then((r) => {
+    void bridge.call('photo:readGcp', { projectId, run }).then((r) => {
       if (!live) return;
       setLoaded(true);
       if (!r.ok) setError(r.error);
@@ -51,7 +52,7 @@ export function GcpPanel({ run, data }: { run: string; data: PhotoRun | null }) 
     return () => {
       live = false;
     };
-  }, [project, run]);
+  }, [projectId, run]);
 
   if (!project) return null;
 
