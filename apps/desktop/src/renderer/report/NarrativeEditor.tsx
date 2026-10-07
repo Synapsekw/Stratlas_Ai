@@ -22,6 +22,7 @@ import { Icon, t, useFocusTrap } from '@aio/ui';
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { authorName } from '../author';
+import { reportIfChangedOnDisk, useDiskChanged } from '../diskChanged';
 import { bridge } from '../shell';
 import {
   changedParts,
@@ -181,6 +182,9 @@ export function NarrativeEditor({ onClose }: { onClose: () => void }) {
   const [note, setNote] = useState<{ kind: 'info' | 'error'; text: string } | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const run = useRef<string | null>(null);
+  // Reload after a save refused on a shared folder reads the text again
+  const reloads = useDiskChanged((s) => s.reloads);
+  const loadKey = projectId === null ? null : `${projectId}#${String(reloads)}`;
 
   const facts: NarrativeFacts | null = useMemo(() => {
     if (!project || !extras) return null;
@@ -197,7 +201,7 @@ export function NarrativeEditor({ onClose }: { onClose: () => void }) {
   }, [project, issues, extras]);
 
   useEffect(() => {
-    if (!projectId || !facts || loaded === projectId) return;
+    if (!projectId || !facts || loaded === loadKey) return;
     let live = true;
     void bridge.call('report:readNarrative', { projectId }).then((r) => {
       if (!live) return;
@@ -210,12 +214,12 @@ export function NarrativeEditor({ onClose }: { onClose: () => void }) {
         setReadOnly(res.readOnly);
         setDrafts(editorTexts(res.file, templateNarrative(facts, { todo: false })));
       }
-      setLoaded(projectId);
+      setLoaded(loadKey);
     });
     return () => {
       live = false;
     };
-  }, [projectId, facts, loaded]);
+  }, [projectId, facts, loaded, loadKey]);
 
   // stop a running draft when the editor closes
   useEffect(
@@ -239,6 +243,7 @@ export function NarrativeEditor({ onClose }: { onClose: () => void }) {
     const res = r.ok ? r.value : { ok: false, error: r.error };
     if (!res.ok) {
       setNote({ kind: 'error', text: res.error ?? '' });
+      reportIfChangedOnDisk(res.error);
       return false;
     }
     setFile(next);

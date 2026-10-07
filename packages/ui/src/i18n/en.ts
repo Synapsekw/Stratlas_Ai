@@ -2050,6 +2050,12 @@ export const en = {
   'teamServer.role.reviewer': 'reviewer',
   'teamServer.role.viewer': 'viewer',
   'teamServer.role.client': 'client',
+  // M9 integration: compare-before-write
+  'diskChanged.title': 'Not saved',
+  'diskChanged.reload': 'Reload',
+  'diskChanged.reloading': 'Reloading',
+  'diskChanged.dismiss': 'Dismiss',
+  'diskChanged.failed': 'Reload did not work: {error}',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

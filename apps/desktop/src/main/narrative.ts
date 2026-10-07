@@ -6,7 +6,7 @@
 import { NarrativeFile, type IpcResponse } from '@aio/schema';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { readJson, writeJsonAtomic } from './fsutil';
+import { isChangedOnDisk, readJsonSeen, writeJsonSeen } from './fsutil';
 import { newerOnDisk, newerThanThisBuild } from './newer';
 
 export const NARRATIVE_PATH = 'report/narrative.json';
@@ -27,7 +27,8 @@ function why(e: unknown): string {
 export async function readNarrative(root: string): Promise<IpcResponse<'report:readNarrative'>> {
   let raw: unknown;
   try {
-    raw = await readJson(join(root, NARRATIVE_PATH));
+    // remembered, so a save compares with what the person saw first (shared folders)
+    raw = await readJsonSeen(join(root, NARRATIVE_PATH));
   } catch (e) {
     return { ok: false, error: `Could not read the report text: ${why(e)}` };
   }
@@ -67,9 +68,10 @@ export async function writeNarrative(
   if (newer) return { ok: false, error: newer };
   try {
     await mkdir(join(root, 'report'), { recursive: true });
-    await writeJsonAtomic(join(root, NARRATIVE_PATH), file, { backup: true });
+    await writeJsonSeen(join(root, NARRATIVE_PATH), file, { backup: true, name: NARRATIVE_PATH });
     return { ok: true };
   } catch (e) {
+    if (isChangedOnDisk(e)) return { ok: false, error: e.message };
     return { ok: false, error: `The report text was not saved: ${why(e)}` };
   }
 }

@@ -23,11 +23,26 @@ import { imageSize } from '@aio/project/image';
 import { mkdir, open, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { folderFiles, readDetectionPasses } from './detections';
-import { readJson, writeJsonAtomic } from './fsutil';
+import {
+  isChangedOnDisk,
+  readBytesSeen,
+  readJson,
+  seenFiles,
+  writeJsonAtomic,
+  writeJsonSeen,
+  type SeenFiles,
+} from './fsutil';
 import { newerOnDisk, newerThanThisBuild } from './newer';
 import type { Handle } from './notYet';
 import { readIssues, readManifest, type ProjectRegistry } from './project';
 import { resolveInside } from './protocol/paths';
+
+/** A folder file's text, remembered in `seen` (compare-before-write); ENOENT when missing. */
+async function readSeen(path: string, seen: SeenFiles): Promise<string> {
+  const buf = await readBytesSeen(path, seen);
+  if (buf === null) throw Object.assign(new Error(`${path} not found`), { code: 'ENOENT' });
+  return buf.toString('utf8');
+}
 
 /** Enough of a photo file for its size (JPEG frames come after the EXIF block). */
 const HEAD_BYTES = 256 * 1024;
@@ -98,6 +113,7 @@ function parseSet(
 /** Every change set of a project folder or package, newest first. */
 export async function listChangeSets(
   src: { root: string } | { archive: Archive },
+  seen?: SeenFiles,
 ): Promise<IpcResponse<'change:list'>> {
   const files: { name: string; read: () => Promise<string> }[] = [];
   if ('root' in src) {
@@ -109,8 +125,10 @@ export async function listChangeSets(
       if ((e as NodeJS.ErrnoException).code !== 'ENOENT')
         return { ok: false, error: `Could not read the change sets: ${why(e)}` };
     }
-    for (const name of names)
-      files.push({ name, read: () => readFile(join(src.root, CHANGE_DIR, name), 'utf8') });
+    for (const name of names) {
+      const path = join(src.root, CHANGE_DIR, name);
+      files.push({ name, read: () => (seen ? readSeen(path, seen) : readFile(path, 'utf8')) });
+    }
   } else {
     for (const key of src.archive.entries.keys()) {
       if (!key.startsWith(`${CHANGE_DIR}/`)) continue;
@@ -140,12 +158,14 @@ export async function listChangeSets(
 export async function readChangeSet(
   src: { root: string } | { archive: Archive },
   id: string,
+  seen?: SeenFiles,
 ): Promise<IpcResponse<'change:read'>> {
   const name = `${id}.json`;
   let text: string | null;
   try {
     if ('root' in src) {
-      text = await readFile(join(src.root, CHANGE_DIR, name), 'utf8').catch((e: unknown) => {
+      const path = join(src.root, CHANGE_DIR, name);
+      text = await (seen ? readSeen(path, seen) : readFile(path, 'utf8')).catch((e: unknown) => {
         if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
         throw e;
       });
@@ -162,19 +182,26 @@ export async function readChangeSet(
   return { ok: false, error: r.newer ? r.error : `change/${name} is ${r.error}` };
 }
 
+/**
+ * Write a change set. With `seen` (a review the person saved), the write compares with what was
+ * last read or written here first and is refused when someone else changed the file meanwhile.
+ */
 export async function writeChangeSet(
   root: string,
   input: ChangeSetInput,
+  seen?: SeenFiles,
 ): Promise<IpcResponse<'change:write'>> {
   const set = ChangeSet.parse(input);
-  const target = join(root, CHANGE_DIR, `${set.id}.json`);
-  const newer = await newerOnDisk(target, 'aio.change', `${CHANGE_DIR}/${set.id}.json`);
+  const file = join(root, CHANGE_DIR, `${set.id}.json`);
+  const newer = await newerOnDisk(file, 'aio.change', `${CHANGE_DIR}/${set.id}.json`);
   if (newer) return { ok: false, error: newer };
   try {
     await mkdir(join(root, CHANGE_DIR), { recursive: true });
-    await writeJsonAtomic(target, set, { backup: true });
+    if (seen) await writeJsonSeen(file, set, { backup: true, name: `change/${set.id}.json` }, seen);
+    else await writeJsonAtomic(file, set, { backup: true });
     return { ok: true };
   } catch (e) {
+    if (isChangedOnDisk(e)) return { ok: false, error: e.message };
     return { ok: false, error: `The change review was not saved: ${why(e)}` };
   }
 }
@@ -215,16 +242,16 @@ export function registerChangeIpc(deps: ChangeIpcDeps): void {
 
   handle('change:list', ({ projectId }) => {
     const src = source(projectId);
-    return src ? listChangeSets(src) : notOpen(projectId);
+    return src ? listChangeSets(src, seenFiles) : notOpen(projectId);
   });
   handle('change:read', ({ projectId, id }) => {
     const src = source(projectId);
-    return src ? readChangeSet(src, id) : notOpen(projectId);
+    return src ? readChangeSet(src, id, seenFiles) : notOpen(projectId);
   });
   handle('change:write', ({ projectId, set }) => {
     if (registry.package(projectId)) return { ok: false, error: READ_ONLY, code: 'read-only' };
     const root = registry.root(projectId);
-    return root === undefined ? notOpen(projectId) : writeChangeSet(root, set);
+    return root === undefined ? notOpen(projectId) : writeChangeSet(root, set, seenFiles);
   });
   handle('change:compute', async ({ jobId, projectId, from, to, kinds }) => {
     if (registry.package(projectId))
@@ -254,7 +281,7 @@ export function registerChangeIpc(deps: ChangeIpcDeps): void {
             return r.value;
           },
           passes: async () => {
-            const r = await readDetectionPasses(folderFiles(root), m, false);
+            const r = await readDetectionPasses(folderFiles(root, null), m, false);
             return r.ok ? r.files : [];
           },
           photoSize: async (_layer, photo) => {

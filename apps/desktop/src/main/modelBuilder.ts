@@ -16,7 +16,7 @@ import {
 } from '@aio/schema';
 import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { writeJsonAtomic } from './fsutil';
+import { isChangedOnDisk, readBytesSeen, writeJsonSeen } from './fsutil';
 import type { Handle } from './notYet';
 
 type MeshLayer = Extract<Layer, { kind: 'mesh' }>;
@@ -162,7 +162,10 @@ export function registerModelBuilderIpc({
           return [];
         }
       },
-      read: (rel: string) => readFile(join(root, ...rel.split('/')), 'utf8').catch(() => null),
+      // remembered, so a save compares with the model the person saw first (shared folders)
+      read: async (rel: string) =>
+        (await readBytesSeen(join(root, ...rel.split('/'))).catch(() => null))?.toString('utf8') ??
+        null,
     };
   }
 
@@ -196,9 +199,15 @@ export function registerModelBuilderIpc({
     const root = projects.root(projectId);
     if (root === undefined) return notOpen(projectId);
     await mkdir(join(root, PROCMODEL_DIR), { recursive: true });
-    await writeJsonAtomic(join(root, PROCMODEL_DIR, `${model.id}${SUFFIX}`), model, {
-      backup: true,
-    });
+    try {
+      await writeJsonSeen(join(root, PROCMODEL_DIR, `${model.id}${SUFFIX}`), model, {
+        backup: true,
+        name: modelFile(model.id),
+      });
+    } catch (e) {
+      if (isChangedOnDisk(e)) return { ok: false, error: e.message };
+      throw e;
+    }
     return { ok: true };
   });
 

@@ -9,7 +9,7 @@
 import { DetectionsFile, type IpcResponse, type ProjectManifest } from '@aio/schema';
 import { open, mkdir, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { writeJsonAtomic } from './fsutil';
+import { isChangedOnDisk, readBytesSeen, seenFiles, writeJsonSeen, type SeenFiles } from './fsutil';
 import { newerOnDisk, newerThanThisBuild } from './newer';
 import { resolveInside } from './protocol/paths';
 
@@ -29,7 +29,11 @@ export interface ProjectFiles {
   head(rel: string, bytes: number): Promise<Buffer | null>;
 }
 
-export function folderFiles(root: string): ProjectFiles {
+/**
+ * A project folder's files. The pass files read through it are remembered in `seen` (the review
+ * the person sees; a save compares with them first); null for reads the person does not see.
+ */
+export function folderFiles(root: string, seen: SeenFiles | null = seenFiles): ProjectFiles {
   const inside = async (rel: string) => {
     const r = await resolveInside(root, rel);
     return r.ok ? r.path : null;
@@ -45,7 +49,12 @@ export function folderFiles(root: string): ProjectFiles {
     },
     read: async (rel) => {
       const p = await inside(rel);
-      return p ? readFile(p).catch(() => null) : null;
+      if (!p) return null;
+      const pass =
+        seen &&
+        rel.startsWith(`${DETECTIONS_DIR}/`) &&
+        !rel.slice(DETECTIONS_DIR.length + 1).includes('/');
+      return (pass ? readBytesSeen(p, seen) : readFile(p)).catch(() => null);
     },
     head: async (rel, bytes) => {
       const p = await inside(rel);
@@ -220,8 +229,9 @@ export async function writeDetectionPass(
   if (newer) return { ok: false, error: newer };
   try {
     await mkdir(dir, { recursive: true });
-    await writeJsonAtomic(target, file, { backup: true });
+    await writeJsonSeen(target, file, { backup: true, name: `${DETECTIONS_DIR}/${name}` });
   } catch (e) {
+    if (isChangedOnDisk(e)) return { ok: false, error: e.message };
     return { ok: false, error: `Could not save ${target}: ${String(e)}` };
   }
   return { ok: true };

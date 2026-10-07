@@ -147,4 +147,33 @@ describe('writeIssues', () => {
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/other/);
   });
+
+  it('refuses to replace issues.json someone else saved since the project was opened', async () => {
+    const dir = await writeProject(join(base, 'shared'), sampleManifest(), {
+      'issues.json': JSON.stringify({ schema: 'aio.issues/1', issues: [sampleIssue()] }),
+    });
+    const opened = await openProject(dir, new ProjectRegistry());
+    if (!opened.ok) throw new Error(opened.error);
+    // our own saves follow each other
+    expect(await writeIssues(dir, [sampleIssue({ title: 'Mine 1' })])).toEqual({ ok: true });
+    expect(await writeIssues(dir, [sampleIssue({ title: 'Mine 2' })])).toEqual({ ok: true });
+    // another app on the shared folder saves
+    const theirs = JSON.stringify({
+      schema: 'aio.issues/1',
+      issues: [sampleIssue({ title: 'Theirs' })],
+    });
+    await writeFile(join(dir, 'issues.json'), theirs);
+    const r = await writeIssues(dir, [sampleIssue({ title: 'Mine 3' })]);
+    expect(r).toEqual({
+      ok: false,
+      error:
+        'issues.json was changed by someone else since you opened it. Reload to see their changes; your edit was not saved.',
+    });
+    expect(await readFile(join(dir, 'issues.json'), 'utf8')).toBe(theirs);
+    // reloading (opening again) takes their version as the one seen
+    const again = await openProject(dir, new ProjectRegistry());
+    if (!again.ok) throw new Error(again.error);
+    expect(again.issues[0]?.title).toBe('Theirs');
+    expect(await writeIssues(dir, [sampleIssue({ title: 'Mine 4' })])).toEqual({ ok: true });
+  });
 });

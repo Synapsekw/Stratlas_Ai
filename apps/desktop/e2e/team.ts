@@ -54,7 +54,7 @@ export async function closeTeamDialog(win: Page): Promise<void> {
 }
 
 /** Select an issue in the register and open its editor on the issue card. */
-async function editIssue(win: Page, code: string): Promise<ReturnType<Page['getByTestId']>> {
+export async function editIssue(win: Page, code: string): Promise<ReturnType<Page['getByTestId']>> {
   await win.locator('.sb-nav .nav-item', { hasText: 'Issues' }).click();
   await win
     .getByTestId('issue-register')
