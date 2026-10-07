@@ -238,3 +238,78 @@ export function stateFiles(
   if (p.narrative.length > 0) files.add(NARRATIVE_PATH);
   return [...files].sort();
 }
+
+/** A state file the merge changed: write `text` through the journal service (atomic, `.bak`). */
+export interface MergedFile {
+  path: string;
+  text: string;
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+function applyOne(
+  path: string,
+  json: unknown,
+  p: Pick<Projection, 'issues' | 'subRecords' | 'boundaries' | 'narrative'>,
+): Applied<unknown> | null {
+  if (path === 'issues.json') return applyIssues(json, p);
+  if (path === BOUNDARIES_PATH) {
+    const r = json === null ? null : BoundaryEditsFile.safeParse(json);
+    return r === null || r.success ? applyBoundaries(r?.data ?? null, p) : null;
+  }
+  if (path === NARRATIVE_PATH) {
+    const r = json === null ? null : NarrativeFile.safeParse(json);
+    return r === null || r.success ? applyNarrative(r?.data ?? null, p) : null;
+  }
+  if (json === null) return null;
+  if (path.startsWith(`${CHANGE_DIR}/`)) {
+    const r = ChangeSet.safeParse(json);
+    return r.success ? applyChangeSet(r.data, p) : null;
+  }
+  if (path.startsWith(`${DETECTIONS_DIR}/`)) {
+    const r = DetectionsFile.safeParse(json);
+    return r.success ? applyDetections(path.slice(DETECTIONS_DIR.length + 1), r.data, p) : null;
+  }
+  if (path.startsWith(`${PROCMODEL_DIR}/`)) {
+    const r = ProcModel.safeParse(json);
+    return r.success ? applyProcModel(r.data, p) : null;
+  }
+  return null;
+}
+
+/**
+ * Every state file the projection decides, merged: reads each through `read` (project-relative,
+ * null when absent) and returns those whose text changes. Files that are missing or no longer
+ * parse are reported in `problems` and left alone (a change set, pass or model is never made from
+ * ops alone).
+ */
+export async function mergeStateFiles(
+  p: Pick<Projection, 'issues' | 'subRecords' | 'boundaries' | 'narrative'>,
+  read: (path: string) => Promise<string | null>,
+): Promise<{ files: MergedFile[]; problems: string[] }> {
+  const files: MergedFile[] = [];
+  const problems: string[] = [];
+  for (const path of stateFiles(p)) {
+    const before = await read(path);
+    const json = before === null ? null : parseJson(before);
+    const out = json === undefined ? null : applyOne(path, json, p);
+    if (!out) {
+      problems.push(
+        json === null
+          ? `${path} is not in this project, so the merged changes to it wait until it is.`
+          : `${path} is not valid, so the merged changes were not written to it.`,
+      );
+      continue;
+    }
+    problems.push(...out.problems);
+    const text = stateFileText(out.value);
+    if (text !== before) files.push({ path, text });
+  }
+  return { files, problems };
+}

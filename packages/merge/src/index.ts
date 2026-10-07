@@ -7,10 +7,12 @@ export {
   applyProcModel,
   BOUNDARIES_PATH,
   ISSUES_SCHEMA,
+  mergeStateFiles,
   NARRATIVE_PATH,
   stateFiles,
   stateFileText,
   type Applied,
+  type MergedFile,
 } from './apply';
 export { compareOps, indexOps, type HeldOp, type OpIndex, type OpNode } from './causal';
 export {
@@ -23,6 +25,7 @@ export {
   type OpDraft,
   type Side,
 } from './conflicts';
+export { createInbox, type Inbox, type InboxDeps } from './inbox';
 export { lww, type Stamped } from './lww';
 export { project, type ProjectOptions, type Projection } from './project';
 export {

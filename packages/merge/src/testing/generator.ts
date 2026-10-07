@@ -133,7 +133,7 @@ export class TeamSim {
   write(
     who: number,
     kind: string,
-    target: { rec: string; id: string; in?: string },
+    target: Op['target'],
     payload: unknown,
     extra: { label?: string; via?: Op['via'] } = {},
   ): Op {
