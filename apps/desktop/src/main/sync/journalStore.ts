@@ -13,6 +13,7 @@ import {
   type Heads,
 } from '@aio/schema';
 import { deviceRecordValid } from '@aio/sync/exchange';
+import { assertWritable } from '../realDataGuard';
 
 /**
  * The project journal as sync sees it: every chain's ops, read from `journal/ops/<chain>/`
@@ -99,6 +100,7 @@ export function createJournalStore(): JournalStore {
 
   /** Replace a segment with old lines plus new ones: temp file, fsync, rename. */
   async function writeSegment(file: string, before: string, lines: string): Promise<void> {
+    assertWritable(file, 'journal append');
     const tmp = `${file}.${randomBytes(4).toString('hex')}.tmp`;
     const fh = await open(tmp, 'w');
     try {
@@ -192,6 +194,7 @@ export function createJournalStore(): JournalStore {
           () => false,
         );
         if (exists) continue;
+        assertWritable(file, 'journal device record');
         const tmp = `${file}.${randomBytes(4).toString('hex')}.tmp`;
         const fh = await open(tmp, 'wx');
         try {
