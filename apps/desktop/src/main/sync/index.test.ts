@@ -1,4 +1,4 @@
-import { cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -207,6 +207,21 @@ describe('sync IPC', () => {
     // no replica, no device key, nothing in userData for a private project
     await expect(readFile(join(a.userData, 'team', 'projects.json'))).rejects.toThrow();
     await expect(readFile(join(a.userData, 'journal-cache'))).rejects.toThrow();
+  });
+
+  it('reading the conflicts and quarantine of a private project writes nothing to it', async () => {
+    const dir = join(base, 'quiet');
+    await writeProject(dir, [issue('i1', 'F01')]);
+    const a = await machine('Rana Example', 'RE', dir);
+    expect(await a.ipc.call('sync:conflicts', { projectId: 'p' })).toEqual({
+      ok: true,
+      conflicts: [],
+    });
+    expect(await a.ipc.call('sync:quarantine', { projectId: 'p' })).toEqual({
+      ok: true,
+      entries: [],
+    });
+    await expect(stat(join(dir, 'journal'))).rejects.toThrow();
   });
 
   it('refuses to share a read-only package', async () => {
