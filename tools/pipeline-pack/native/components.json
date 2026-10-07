@@ -1,6 +1,6 @@
 {
   "$comment": "Native components of pipeline pack 0.4.0 (M10 G1), one pinned recipe each, built by build-native.mjs for Windows x64 and macOS arm64 (decision 8; Intel Macs keep the other pipelines). `cmake` are the options each build passes; `require` are the values the native licence gate then reads back from the build's CMakeCache.txt; `includes` are the third-party parts compiled into a component (for the notices). `status`: required (the build fails without it), deferred (recipe not built in this pack, with the reason).",
-  "schema": "aio.native-components/1",
+  "schema": "native-components/1",
   "vcpkg": {
     "repository": "https://github.com/microsoft/vcpkg",
     "baseline": "127402f1c75bb3d5ff6bce04b285faa4930a5aca",

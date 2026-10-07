@@ -457,7 +457,7 @@ async function main() {
   };
 
   const manifest = {
-    schema: 'aio.native-manifest/1',
+    schema: 'native-manifest/1',
     platform: target.key,
     triplet: target.triplet,
     createdAt: new Date().toISOString(),

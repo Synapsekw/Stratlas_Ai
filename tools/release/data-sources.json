@@ -1,6 +1,6 @@
 {
   "$comment": "Map and imagery data Stratlas distributes or ships (M10 decision 4), the data inventory behind docs/release/THIRD-PARTY-NOTICES.md. Imagery and terrain sources are checked by data-licences.mjs like the pack metadata built from them; street maps (vector PMTiles, MapPackInfo) predate M10 and are listed for the inventory only. Packs a customer imports under their own licence are never listed here and never redistributed by us.",
-  "schema": "aio.data-sources/1",
+  "schema": "data-sources/1",
   "sources": [
     {
       "name": "Natural Earth II",

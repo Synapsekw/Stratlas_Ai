@@ -13,7 +13,7 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 const output = (platform, wheels) => {
   writeFileSync(
     join(dir, 'native-manifest.json'),
-    JSON.stringify({ schema: 'aio.native-manifest/1', platform }),
+    JSON.stringify({ schema: 'native-manifest/1', platform }),
   );
   mkdirSync(join(dir, 'wheels'));
   for (const w of wheels) writeFileSync(join(dir, 'wheels', w), 'zip');

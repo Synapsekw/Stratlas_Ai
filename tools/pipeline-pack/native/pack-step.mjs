@@ -13,8 +13,8 @@ export function nativePlan(native, platform) {
   if (!existsSync(manifestPath))
     throw new Error(`${native} has no native-manifest.json (run native/build-native.mjs)`);
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-  if (manifest.schema !== 'aio.native-manifest/1')
-    throw new Error(`${manifestPath} is not an aio.native-manifest/1 file`);
+  if (manifest.schema !== 'native-manifest/1')
+    throw new Error(`${manifestPath} is not a native-manifest/1 file`);
   if (manifest.platform !== platform)
     throw new Error(
       `${native} was built for ${String(manifest.platform)}, this pack is ${platform}`,

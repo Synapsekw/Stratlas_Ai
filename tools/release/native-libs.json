@@ -1,6 +1,6 @@
 {
   "$comment": "Native inventory of the pipeline pack (M10 G1), read by tools/release/native-licences.mjs and notices.mjs. `libs`: every DLL, dylib, shared object and executable the pack ships that is not a Python distribution's own extension module, matched by path globs relative to the scanned folder (** is any number of folders, case is ignored). `ports`: every vcpkg port our native builds use (tools/pipeline-pack/native), checked against the SBOMs vcpkg writes; a new port or version fails the gate until this file says what it is. `forbiddenPorts` and `forbiddenFiles` (regular expressions on file names) fail the gate whatever the rows say. Licences are judged by licence-policy.mjs against licence-exceptions.json; `exception` names a `runtimes` entry there, and an LGPL row must be a shared library named in `lgplShared`.",
-  "schema": "aio.native-libs/1",
+  "schema": "native-libs/1",
   "forbiddenPorts": [
     {
       "name": "suitesparse-cholmod",
