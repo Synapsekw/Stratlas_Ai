@@ -5,6 +5,7 @@ import {
   chooseSide,
   compareSplit,
   DEFAULT_SPLIT,
+  followsFocus,
   sideCapture,
   sidesOf,
   twinAllowed,
@@ -239,5 +240,33 @@ describe('the raster pane', () => {
       8,
     );
     expect(tilePath(coarse, 3, 1)).toBe('rasters/o/0/3_1.webp');
+  });
+});
+
+describe('followsFocus', () => {
+  const at = (focus: string | null, splitting: boolean, projectId: string | null = 'p') => ({
+    projectId,
+    focus,
+    splitting,
+  });
+
+  it('keeps the split defaults when the split opens on the focused date', () => {
+    expect(followsFocus(at('nov', false), at('nov', true))).toBe(false);
+  });
+
+  it('follows a date bar change while the split stays open', () => {
+    expect(followsFocus(at('nov', true), at('oct', true))).toBe(true);
+  });
+
+  it('ignores changes with the split closed, or closing it', () => {
+    expect(followsFocus(at('nov', false), at('oct', false))).toBe(false);
+    expect(followsFocus(at('nov', true), at('oct', false))).toBe(false);
+    expect(followsFocus(at('nov', true), at('nov', true))).toBe(false);
+  });
+
+  it('ignores the first focus of a project and a switch to another project', () => {
+    expect(followsFocus(at(null, true), at('nov', true))).toBe(false);
+    expect(followsFocus(at('nov', true), at(null, true))).toBe(false);
+    expect(followsFocus(at('nov', true, 'p'), at('oct', true, 'q'))).toBe(false);
   });
 });

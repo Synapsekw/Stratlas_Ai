@@ -101,6 +101,29 @@ export function chooseCapture(
   return next;
 }
 
+/** What the left side's date following looks at: the open project, the date bar, the split. */
+export interface FocusFollow {
+  projectId: string | null;
+  focus: string | null;
+  splitting: boolean;
+}
+
+/**
+ * Whether the left side moves to the date bar's survey: only when the focus changes while the
+ * split stays open on the same project. Opening the split keeps its own dates (first left, last
+ * right), and a project's first focus is not a change.
+ */
+export function followsFocus(prev: FocusFollow, next: FocusFollow): boolean {
+  return (
+    prev.splitting &&
+    next.splitting &&
+    prev.projectId === next.projectId &&
+    prev.focus !== null &&
+    next.focus !== null &&
+    next.focus !== prev.focus
+  );
+}
+
 /** Every side that shows `kind` in split mode. */
 export function sidesOf(pref: SplitPref, kind: PaneKind): Side[] {
   return (['left', 'right'] as const).filter((s) => pref[s] === kind);
