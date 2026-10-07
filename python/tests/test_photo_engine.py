@@ -44,6 +44,11 @@ def test_colmap_aligns_rendered_photos(project, tmp_path):
     assert align["images"]["registered"] >= 0.98 * 12 and align["meanReprojPx"] < 1.0
     model, _ = read_sparse(project / "photogrammetry/r1/sparse")
     assert len(model.images) == align["images"]["registered"]
+    # memory budget: every engine stage of the synthetic set stays well inside a 16 GB laptop
+    run = json.loads((project / "photogrammetry/r1/run.json").read_text("utf-8"))
+    peaks = {s["name"]: s.get("memoryPeakBytes", 0) for s in run["stages"]}
+    assert peaks["features"] > 0
+    assert max(peaks.values()) < 2.5 * 2**30, peaks
 
 
 def _photo_folders(root: Path) -> list[Path]:

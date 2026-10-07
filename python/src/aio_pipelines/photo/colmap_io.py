@@ -74,7 +74,12 @@ class EngineJob:
     groups: list[EngineGroup]
     max_image_size: int = 1600
     max_features: int = 8192
+    #: SIFT's first octave: -1 doubles the image first (fine detail on small images, four times
+    #: the memory); 0 for images of 1600 px and more.
+    first_octave: int = 0
     threads: int = -1
+    #: Stop the stage when the engine's memory passes this (0: no limit).
+    memory_limit_bytes: int = 0
     seed: int = 0
     check: Callable[[], None] = field(default=lambda: None)
     log: Callable[[str], None] = field(default=lambda m: None)
@@ -95,6 +100,158 @@ class SfmEngine(Protocol):
     def match(self, job: EngineJob, pairs: list[tuple[str, str]], progress: Progress) -> dict[str, Any]: ...
 
     def map(self, job: EngineJob, mapper: str, progress: Progress) -> dict[str, Any]: ...
+
+
+# ------------------------------------------------------------------------------- memory
+
+
+def memory_status() -> tuple[int, int]:
+    """Total and available physical memory of this computer, bytes (0, 0 when unknown)."""
+    try:
+        if os.name == "nt":
+            import ctypes
+
+            class MS(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong),
+                    ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+
+            ms = MS()
+            ms.dwLength = ctypes.sizeof(MS)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(ms))
+            return int(ms.ullTotalPhys), int(ms.ullAvailPhys)
+        total = int(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES"))
+        if sys.platform == "darwin":
+            out = subprocess.run(["vm_stat"], capture_output=True, text=True, timeout=5).stdout
+            page = int(re.search(r"page size of (\d+)", out).group(1)) if "page size" in out else 4096
+            pages = sum(
+                int(m.group(1)) for m in re.finditer(r"Pages (?:free|inactive|speculative):\s+(\d+)", out)
+            )
+            return total, pages * page
+        return total, int(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_AVPHYS_PAGES"))
+    except Exception:
+        return 0, 0
+
+
+def memory_limit(total: int, available: int) -> int:
+    """The most an engine stage may use: 75 % of the memory at most, and no more than 90 % of
+    what is free when the stage starts (other programs keep theirs)."""
+    if total <= 0:
+        return 0
+    lim = int(0.75 * total)
+    if available > 0:
+        lim = min(lim, int(0.9 * available))
+    return max(lim, 512 * 2**20)
+
+
+def process_memory(pid: int) -> int:
+    """Resident memory of a process, bytes (0 when unknown)."""
+    try:
+        if os.name == "nt":
+            import ctypes
+            from ctypes import wintypes
+
+            class PMC(ctypes.Structure):
+                _fields_ = [
+                    ("cb", wintypes.DWORD),
+                    ("PageFaultCount", wintypes.DWORD),
+                    ("PeakWorkingSetSize", ctypes.c_size_t),
+                    ("WorkingSetSize", ctypes.c_size_t),
+                    ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                    ("PagefileUsage", ctypes.c_size_t),
+                    ("PeakPagefileUsage", ctypes.c_size_t),
+                ]
+
+            k32 = ctypes.WinDLL("kernel32")
+            psapi = ctypes.WinDLL("psapi")
+            k32.OpenProcess.restype = wintypes.HANDLE
+            psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(PMC), wintypes.DWORD]
+            h = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+            if not h:
+                return 0
+            try:
+                pmc = PMC()
+                pmc.cb = ctypes.sizeof(PMC)
+                if psapi.GetProcessMemoryInfo(h, ctypes.byref(pmc), pmc.cb):
+                    return int(pmc.WorkingSetSize)
+                return 0
+            finally:
+                k32.CloseHandle(h)
+        out = subprocess.run(["ps", "-o", "rss=", "-p", str(pid)], capture_output=True, text=True, timeout=5)
+        return int(out.stdout.strip() or 0) * 1024
+    except Exception:
+        return 0
+
+
+def process_tree(pid: int) -> list[int]:
+    """A process and all its descendants (a Windows venv ``python.exe`` is a launcher whose child
+    does the work)."""
+    pairs: list[tuple[int, int]] = []
+    try:
+        if os.name == "nt":
+            import ctypes
+            from ctypes import wintypes
+
+            class PE(ctypes.Structure):
+                _fields_ = [
+                    ("dwSize", wintypes.DWORD),
+                    ("cntUsage", wintypes.DWORD),
+                    ("th32ProcessID", wintypes.DWORD),
+                    ("th32DefaultHeapID", ctypes.c_size_t),
+                    ("th32ModuleID", wintypes.DWORD),
+                    ("cntThreads", wintypes.DWORD),
+                    ("th32ParentProcessID", wintypes.DWORD),
+                    ("pcPriClassBase", ctypes.c_long),
+                    ("dwFlags", wintypes.DWORD),
+                    ("szExeFile", ctypes.c_char * 260),
+                ]
+
+            k32 = ctypes.WinDLL("kernel32")
+            k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+            snap = k32.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
+            if snap in (None, wintypes.HANDLE(-1).value):
+                return [pid]
+            try:
+                pe = PE()
+                pe.dwSize = ctypes.sizeof(PE)
+                ok = k32.Process32First(snap, ctypes.byref(pe))
+                while ok:
+                    pairs.append((int(pe.th32ProcessID), int(pe.th32ParentProcessID)))
+                    ok = k32.Process32Next(snap, ctypes.byref(pe))
+            finally:
+                k32.CloseHandle(snap)
+        else:
+            out = subprocess.run(["ps", "-A", "-o", "pid=,ppid="], capture_output=True, text=True, timeout=5)
+            for line in out.stdout.splitlines():
+                a, b = line.split()
+                pairs.append((int(a), int(b)))
+    except Exception:
+        return [pid]
+    tree = [pid]
+    k = 0
+    while k < len(tree):
+        tree += [c for c, parent in pairs if parent == tree[k] and c not in tree]
+        k += 1
+    return tree
+
+
+def tree_memory(pid: int) -> int:
+    return sum(process_memory(p) for p in process_tree(pid))
+
+
+class MemoryExceeded(JobError):
+    """An engine stage passed the memory limit and was stopped."""
 
 
 # ------------------------------------------------------------------------------- parent side
@@ -138,6 +295,8 @@ class ColmapEngine:
             pos = 0
             result: dict[str, Any] | None = None
             error: str | None = None
+            seen_peak = 0
+            last_mem = 0.0
             try:
                 while True:
                     done = proc.poll() is not None
@@ -146,6 +305,18 @@ class ColmapEngine:
                     except Cancelled:
                         kill(proc)
                         raise
+                    if job.memory_limit_bytes and not done and time.monotonic() - last_mem >= 0.5:
+                        last_mem = time.monotonic()
+                        used = tree_memory(proc.pid)
+                        seen_peak = max(seen_peak, used)
+                        if used > job.memory_limit_bytes:
+                            kill(proc)
+                            job.memory_peak[stage] = used
+                            raise MemoryExceeded(
+                                f"Alignment stopped during {stage}: COLMAP needed more than "
+                                f"{job.memory_limit_bytes / 1e9:.1f} GB of memory, the limit for this computer "
+                                "now. Choose a lower preset, process fewer photos at a time, or close other programs."
+                            )
                     with open(prog, encoding="utf-8") as f:
                         f.seek(pos)
                         chunk = f.read()
@@ -165,7 +336,7 @@ class ColmapEngine:
                         if "error" in msg:
                             error = str(msg["error"])
                         if "memoryPeakBytes" in msg:
-                            job.memory_peak[stage] = int(msg["memoryPeakBytes"])
+                            job.memory_peak[stage] = max(int(msg["memoryPeakBytes"]), seen_peak)
                     if done:
                         break
                     time.sleep(0.1)
@@ -187,6 +358,7 @@ class ColmapEngine:
             "imageRoot": str(job.image_root),
             "maxImageSize": job.max_image_size,
             "maxFeatures": job.max_features,
+            "firstOctave": job.first_octave,
             "threads": job.threads,
             "seed": job.seed,
         }
@@ -397,6 +569,7 @@ def _op_features(pc, req: dict[str, Any], out: _Out) -> dict[str, Any]:
     opts.num_threads = int(req["threads"])
     opts.use_gpu = False
     opts.sift.max_num_features = int(req["maxFeatures"])
+    opts.sift.first_octave = int(req.get("firstOctave", 0))
     total = len(images)
     done = total - len(todo)
     out.send(progress=done / max(total, 1), message=f"{done} of {total} photos")
@@ -543,6 +716,15 @@ def worker_main(argv: list[str]) -> int:
     out = _Out()
     try:
         req = json.loads(Path(argv[0]).read_text("utf-8"))
+        if req.get("op") == "probe-alloc":  # memory guard probe: grow in steps, then wait
+            hold = []
+            for _ in range(int(req.get("steps", 20))):
+                hold.append(bytearray(int(req.get("stepBytes", 100 * 2**20))))
+                out.send(progress=0.5, message=f"{len(hold)} steps")
+                time.sleep(0.3)
+            time.sleep(float(req.get("seconds", 30)))
+            out.send(result={"held": len(hold)})
+            return 0
         if req.get("op") == "probe-sleep":  # liveness probe: progress, then a long wait (cancel tests)
             for k in range(int(req.get("seconds", 60)) * 10):
                 if k % 5 == 0:

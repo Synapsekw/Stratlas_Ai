@@ -54,7 +54,15 @@ from . import accuracy as A
 from . import bundle as B
 from . import crs as C
 from . import gcp as G
-from .colmap_io import EngineGroup, EngineImage, EngineJob, SfmEngine, load_engine
+from .colmap_io import (
+    EngineGroup,
+    EngineImage,
+    EngineJob,
+    SfmEngine,
+    load_engine,
+    memory_limit,
+    memory_status,
+)
 from .exif import PhotoMeta, apply_ppk, inspect_photos, list_folder_photos, read_photo, read_ppk
 from .model import SparseModel, rotmat_to_qvec
 
@@ -90,32 +98,7 @@ def read_manifest(project: Path) -> dict[str, Any]:
 
 def hardware_probe(project: Path) -> dict[str, Any]:
     """What this computer is (``HardwareProbe``), as far as the pack can tell without the app."""
-    mem = 0
-    try:
-        if os.name == "nt":
-            import ctypes
-
-            class MS(ctypes.Structure):
-                _fields_ = [
-                    ("dwLength", ctypes.c_ulong),
-                    ("dwMemoryLoad", ctypes.c_ulong),
-                    ("ullTotalPhys", ctypes.c_ulonglong),
-                    ("ullAvailPhys", ctypes.c_ulonglong),
-                    ("ullTotalPageFile", ctypes.c_ulonglong),
-                    ("ullAvailPageFile", ctypes.c_ulonglong),
-                    ("ullTotalVirtual", ctypes.c_ulonglong),
-                    ("ullAvailVirtual", ctypes.c_ulonglong),
-                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
-                ]
-
-            ms = MS()
-            ms.dwLength = ctypes.sizeof(MS)
-            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(ms))
-            mem = int(ms.ullTotalPhys)
-        else:
-            mem = int(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES"))
-    except Exception:
-        mem = 0
+    mem = memory_status()[0]
     machine = platform.machine().lower()
     arch = {"amd64": "x64", "x86_64": "x64", "arm64": "arm64", "aarch64": "arm64"}.get(
         machine, machine or "unknown"
@@ -248,22 +231,34 @@ def layer_meta(meta: PhotoMeta, item: dict[str, Any], manifest: dict[str, Any]) 
         meta.focal35 = 18.0 / math.tan(math.radians(float(lens["hfovDeg"])) / 2)
 
 
-#: Measured on a 20 MP flight at 2736 px (COLMAP 4.2 CPU SIFT): about 1.4 GB per extraction
-#: thread, most of it the decoded full-size photo and the SIFT pyramid.
-GB_PER_THREAD_AT_2736 = 1.4
+#: Measured on a 20 MP flight (COLMAP 4.2 CPU SIFT, first octave 0): about 0.5 GB plus 0.3 GB per
+#: extraction thread at 2736 px, growing with the square of the image size (1.4 GB per thread at
+#: full size). SIFT's first octave -1 (doubling the image first) quadruples it: 1.4 GB per thread
+#: at 2736 px, which is how 24 threads once took 33 GB.
+FEATURE_BASE_GB = 0.5
+FEATURE_GB_PER_THREAD_AT_2736 = 0.3
+#: Extraction is limited by decoding and disk beyond this many threads (16 threads were no faster
+#: than 4 on the measured flight).
+MAX_FEATURE_THREADS = 8
+#: Feature extraction stays within this, whatever the machine (a 16 GB laptop runs other things).
+FEATURE_BUDGET_GB = 4.0
 
 
-def feature_threads(info: dict[str, Any], memory_bytes: int, share: float = 0.6) -> int:
-    """Feature threads that fit in ``share`` of the memory (a 16 GB laptop must not swap)."""
+def first_octave(max_image_size: int) -> int:
+    """SIFT's first octave: -1 (upsample) only for small images, where fine detail needs it."""
+    return -1 if max_image_size < 1600 else 0
+
+
+def feature_threads(info: dict[str, Any], memory_limit_bytes: int) -> int:
+    """Feature threads whose memory fits in ``FEATURE_BUDGET_GB`` and half the stage limit."""
     cores = os.cpu_count() or 4
-    if memory_bytes <= 0:
-        return cores
-    groups = info.get("groups") or [{"width": 4000, "height": 3000}]
-    full = max(g["width"] * g["height"] for g in groups)
     size = int(info.get("maxImageSize") or 2736)
-    per = 0.25 * full / 20e6 + (GB_PER_THREAD_AT_2736 - 0.25) * (size / 2736) ** 2
-    fit = int(share * memory_bytes / 1e9 / max(per, 0.05))
-    return max(1, min(cores, fit))
+    per = FEATURE_GB_PER_THREAD_AT_2736 * (size / 2736) ** 2 * (4 if first_octave(size) < 0 else 1)
+    budget = FEATURE_BUDGET_GB
+    if memory_limit_bytes > 0:
+        budget = min(budget, 0.5 * memory_limit_bytes / 1e9)
+    fit = int((budget - FEATURE_BASE_GB) / max(per, 0.02))
+    return max(1, min(cores, MAX_FEATURE_THREADS, fit))
 
 
 def initial_params(meta: PhotoMeta) -> list[float]:
@@ -722,6 +717,7 @@ class PhotoAlign:
 
     def _engine_job(self, ctx: StepContext, metas: list[PhotoMeta]) -> EngineJob:
         info = json.loads(ctx.stage("work/photos.json").read_text("utf-8"))
+        limit = memory_limit(*memory_status())
         return EngineJob(
             work=ctx.stage("work/engine/.keep").parent,
             image_root=Path(info["imageRoot"]),
@@ -729,7 +725,9 @@ class PhotoAlign:
             groups=[EngineGroup(**g) for g in info["groups"]],
             max_image_size=int(info["maxImageSize"]),
             max_features=int(info["maxFeatures"]),
-            threads=feature_threads(info, hardware_probe(ctx.project)["memoryBytes"]),
+            threads=feature_threads(info, limit),
+            first_octave=first_octave(int(info["maxImageSize"])),
+            memory_limit_bytes=limit,
             seed=0,
             check=ctx.check,
             log=lambda msg: ctx.log(msg),

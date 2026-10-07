@@ -16,13 +16,25 @@ import pytest
 
 from aio_pipelines.photo import crs as C
 from aio_pipelines.photo.align import (
+    FEATURE_BASE_GB,
+    FEATURE_BUDGET_GB,
+    FEATURE_GB_PER_THREAD_AT_2736,
+    MAX_FEATURE_THREADS,
     PhotoAlign,
     choose_pairs,
     feature_threads,
+    first_octave,
     read_sparse,
     three_quaternion,
 )
-from aio_pipelines.photo.colmap_io import ColmapEngine, EngineJob, licence_problem
+from aio_pipelines.photo.colmap_io import (
+    ColmapEngine,
+    EngineJob,
+    MemoryExceeded,
+    licence_problem,
+    memory_limit,
+    memory_status,
+)
 from aio_pipelines.photo.exif import read_photo
 from aio_pipelines.photo.model import qvec_to_rotmat
 from aio_pipelines.runtime import INPUTS_CHANGED, Cancelled, JobError
@@ -273,14 +285,47 @@ def test_oblique_views_pair_by_where_they_look(tmp_path):
     assert ("c.jpg", "e.jpg") in s  # 150 m apart, looking the same way at ground 150 m apart
 
 
-def test_feature_threads_fit_the_memory_of_a_laptop(monkeypatch):
+def test_feature_extraction_stays_within_a_few_gigabytes(monkeypatch):
     monkeypatch.setattr(os, "cpu_count", lambda: 24)
     info = {"groups": [{"width": 5472, "height": 3648}], "maxImageSize": 2736}
-    laptop = feature_threads(info, 16 * 10**9)
-    assert 3 <= laptop <= 8
-    assert feature_threads(info, 64 * 10**9) == 24
-    assert feature_threads({**info, "maxImageSize": 1368}, 16 * 10**9) > laptop
-    assert feature_threads(info, 0) == 24
+
+    def peak_gb(threads, size):  # the measured model (20 MP flight, COLMAP 4.2 CPU SIFT)
+        octave = 4 if first_octave(size) < 0 else 1
+        return FEATURE_BASE_GB + threads * FEATURE_GB_PER_THREAD_AT_2736 * (size / 2736) ** 2 * octave
+
+    for size in (1368, 2736, 5472):
+        for total in (8, 16, 64):
+            limit = memory_limit(total * 10**9, total * 10**9)
+            t = feature_threads({**info, "maxImageSize": size}, limit)
+            assert 1 <= t <= MAX_FEATURE_THREADS
+            assert peak_gb(t, size) <= max(FEATURE_BUDGET_GB, peak_gb(1, size)) + 1e-9
+            assert peak_gb(t, size) <= 0.5 * limit / 1e9 or t == 1
+    # a busy machine with 3 GB free gets fewer threads than an idle one
+    assert feature_threads(info, memory_limit(64 * 10**9, 3 * 10**9)) < feature_threads(info, 0)
+    # SIFT upsampling (first octave -1) only for small images: it quadruples the memory
+    assert first_octave(2736) == 0 and first_octave(1024) == -1
+
+
+def test_the_memory_limit_is_at_most_three_quarters_and_respects_free_memory():
+    gb = 10**9
+    assert memory_limit(64 * gb, 60 * gb) == 48 * gb
+    assert memory_limit(64 * gb, 10 * gb) == 9 * gb
+    assert memory_limit(0, 0) == 0
+    total, avail = memory_status()
+    assert total > 0 and 0 < avail <= total
+
+
+def test_the_memory_guard_stops_a_stage_before_it_takes_the_computer(tmp_path):
+    eng = ColmapEngine(python=sys.executable)
+    limit = 400 * 2**20
+    job = EngineJob(work=tmp_path / "w", image_root=tmp_path, images=[], groups=[], memory_limit_bytes=limit)
+    t0 = time.monotonic()
+    with pytest.raises(MemoryExceeded, match=r"needed more than 0.4 GB"):
+        eng._run(
+            job, "probe-alloc", {"steps": 30, "stepBytes": 50 * 2**20}, lambda f, m=None: None, "features"
+        )
+    assert time.monotonic() - t0 < 30
+    assert limit < job.memory_peak["features"] < limit + 300 * 2**20
 
 
 def test_three_quaternion_of_a_nadir_camera_looks_down():
