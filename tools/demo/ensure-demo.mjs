@@ -27,7 +27,9 @@ const why = !info
       ? 'built by another version of tools/demo'
       : !existsSync(join(out, 'demo-change-site', 'manifest.json'))
         ? 'the change demo is missing'
-        : null;
+        : !existsSync(join(out, 'demo-photo-processing', 'manifest.json'))
+          ? 'the photo demo is missing'
+          : null;
 const run = (script, args = []) =>
   spawnSync(process.execPath, [join(here, script), ...args], { stdio: 'inherit' }).status ?? 1;
 
