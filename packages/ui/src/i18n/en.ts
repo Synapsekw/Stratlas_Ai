@@ -1931,6 +1931,8 @@ export const en = {
   'team.share.serverReady':
     "Changes go through your team server (preview). The server checks each person's role.",
   'team.share.serverPick': 'Team server',
+  'team.share.join.hub': 'Team project in this folder',
+  'team.share.join.new': 'A new team project',
   'team.share.hubPath': 'Path of the shared folder',
   'team.share.choose': 'Choose folder',
   'team.share.autoSync': 'Sync automatically every {minutes} minutes',

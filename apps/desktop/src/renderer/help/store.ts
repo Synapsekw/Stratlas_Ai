@@ -39,6 +39,7 @@ export const SETTINGS_HELP: Record<string, HelpTopic> = {
   usage: { chapter: 'ai-agent', anchor: 'what-is-sent-and-when' },
   privacy: { chapter: 'ai-agent', anchor: 'what-is-sent-and-when' },
   data: { chapter: 'settings', anchor: 'data-folder' },
+  identity: { chapter: 'identity-and-team' },
   maps: { chapter: 'maps', anchor: 'offline-map-packs' },
   severity: { chapter: 'annotation-and-issues', anchor: 'severity-models' },
   branding: { chapter: 'reports-and-exports', anchor: 'report-branding' },

@@ -32,6 +32,24 @@ function ShareForm({ projectId, initial = 'exchange' }: { projectId: string; ini
   const [hubPath, setHubPath] = useState('');
   // T7 (preview): the team servers enrolled on this computer (Settings, Data folder)
   const [servers, setServers] = useState<ServerInfo[]>([]);
+  // team projects the chosen shared folder already holds: join one instead of making a new one
+  const [onHub, setOnHub] = useState<{ teamProjectId: string; name: string }[]>([]);
+  const [join, setJoin] = useState('');
+  useEffect(() => {
+    let live = true;
+    const path = hubPath.trim();
+    if (mode !== 'hub' || !path) return;
+    const id = setTimeout(() => {
+      void bridge.call('team:hubProjects', { hubPath: path }).then((r) => {
+        if (!live) return;
+        setOnHub(r.ok && r.value.ok ? r.value.projects : []);
+      });
+    }, 300);
+    return () => {
+      live = false;
+      clearTimeout(id);
+    };
+  }, [mode, hubPath]);
   const [serverId, setServerId] = useState('');
   useEffect(() => {
     void bridge.call('server:list', {}).then((r) => {
@@ -63,6 +81,7 @@ function ShareForm({ projectId, initial = 'exchange' }: { projectId: string; ini
       mode,
       ...(name.trim() ? { name: name.trim() } : {}),
       ...(mode === 'hub' ? { hubPath: hubPath.trim() } : {}),
+      ...(mode === 'hub' && join ? { teamProjectId: join } : {}),
       ...(mode === 'server' && serverId ? { serverId } : {}),
     });
     setBusy(false);
@@ -195,6 +214,26 @@ function ShareForm({ projectId, initial = 'exchange' }: { projectId: string; ini
               </button>
             </span>
           </label>
+          {onHub.length > 0 && (
+            <label className="team-field">
+              <span>{t('team.share.join.hub')}</span>
+              <select
+                className="input"
+                value={join}
+                data-testid="share-hub-join"
+                onChange={(e) => {
+                  setJoin(e.target.value);
+                }}
+              >
+                <option value="">{t('team.share.join.new')}</option>
+                {onHub.map((p) => (
+                  <option key={p.teamProjectId} value={p.teamProjectId}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <div className="pkg-row">
             <span>{t('team.share.autoSync', { minutes })}</span>
             <Switch

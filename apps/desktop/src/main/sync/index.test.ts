@@ -378,6 +378,32 @@ describe('hub folder sync between two copies', () => {
     }
   });
 
+  it('a copy without team.json lists the hub projects and joins one', async () => {
+    const hub = join(base, 'hub');
+    await mkdir(hub);
+    const aDir = join(base, 'a');
+    await writeProject(aDir, [issue('i1', 'F01')]);
+    const bDir = join(base, 'b');
+    await cp(aDir, bDir, { recursive: true });
+    const a = await machine('Rana Example', 'RE', aDir);
+    await a.ipc.call('team:share', { projectId: 'p', mode: 'hub', hubPath: hub });
+    const b = await machine('Omar Sample', 'OS', bDir);
+    const listed = await b.ipc.call('team:hubProjects', { hubPath: hub });
+    if (!listed.ok) throw new Error(listed.error);
+    expect(listed.projects.map((p) => p.name)).toEqual(['Pipe rack review']);
+    const joined = await b.ipc.call('team:share', {
+      projectId: 'p',
+      mode: 'hub',
+      hubPath: hub,
+      teamProjectId: listed.projects[0]?.teamProjectId ?? '',
+    });
+    expect(joined).toMatchObject({ ok: true, status: { mode: 'hub', name: 'Pipe rack review' } });
+    const team = JSON.parse(await readFile(join(bDir, 'team.json'), 'utf8')) as {
+      teamProjectId: string;
+    };
+    expect(team.teamProjectId).toBe(listed.projects[0]?.teamProjectId);
+  });
+
   it('leaving stops syncing this copy and keeps the data', async () => {
     const { b, bDir } = await pair();
     expect(await b.ipc.call('team:leave', { projectId: 'p' })).toEqual({ ok: true });
