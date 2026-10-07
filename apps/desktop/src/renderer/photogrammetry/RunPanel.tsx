@@ -97,7 +97,7 @@ export function RunPanel({ run, tab }: { run: string; tab: RunTab }) {
       }}
     >
       <div className="ph-panel" data-testid="photo-run">
-        <header className="ph-head">
+        <header className="ph-head" role="none">
           <div>
             <h2>Photo run {run}</h2>
             <p className="small faint">

@@ -54,6 +54,8 @@ export function formatMinutes([lo, hi]: readonly [number, number]): string {
   const [a, ua] = unit(lo);
   const [b, ub] = unit(hi);
   const r = (n: number) => (n >= 10 ? String(Math.round(n)) : String(Math.round(n * 2) / 2));
+  if (hi < 1) return 'Under a minute';
+  if (ua === ub && r(a) === r(b)) return `About ${r(b)} ${ub}`;
   if (ua === ub) return `About ${r(a)} to ${r(b)} ${ub}`;
   return `About ${r(a)} ${ua} to ${r(b)} ${ub}`;
 }

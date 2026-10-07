@@ -31,6 +31,8 @@ describe('estimate words', () => {
     expect(formatMinutes([600, 1200])).toBe('About 10 to 20 h');
     expect(formatMinutes([3000, 6000])).toBe('About 2 to 4 days');
     expect(formatMinutes([0, 0])).toMatch(/nothing to process/);
+    expect(formatMinutes([1, 1])).toBe('About 1 min');
+    expect(formatMinutes([0.2, 0.6])).toBe('Under a minute');
   });
 
   it('formats bytes', () => {

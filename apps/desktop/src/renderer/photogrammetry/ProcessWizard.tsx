@@ -376,7 +376,6 @@ export function ProcessWizard() {
                             type="button"
                             role="option"
                             aria-selected={epsg === code}
-                            aria-pressed={epsg === code}
                             onClick={() => {
                               setEpsg(code);
                             }}

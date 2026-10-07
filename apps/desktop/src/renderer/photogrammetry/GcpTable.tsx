@@ -307,7 +307,7 @@ function GcpImport({
 
   return (
     <div className="ph-import" data-testid="gcp-import">
-      <header>
+      <header role="none">
         <h3>{replacing ? 'Import ground control again' : 'Import ground control'}</h3>
         <p className="small faint">
           A CSV or TXT of point ids and coordinates (Pix4D and ODM lists too). Check the columns and
@@ -410,7 +410,6 @@ function GcpImport({
                         type="button"
                         role="option"
                         aria-selected={code === epsg}
-                        aria-pressed={code === epsg}
                         onClick={() => {
                           setEpsg(code);
                         }}

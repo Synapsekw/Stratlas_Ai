@@ -51,7 +51,6 @@ export function GcpMarker({
   const [loadedSize, setLoadedSize] = useState<{ id: string; size: [number, number] } | null>(null);
   const [saving, setSaving] = useState(false);
   const viewer = useRef<HTMLDivElement>(null);
-  const scroller = useRef<HTMLDivElement>(null);
   const keyRef = useRef<(e: KeyboardEvent) => void>(() => undefined);
   // a native listener: the dialog's own Esc (closing the panel) must not see the marker's keys
   useEffect(() => {
@@ -112,7 +111,7 @@ export function GcpMarker({
   // keep the prediction (or the mark) in view when the photo or the zoom changes
   const target = mark?.px ?? current?.prediction?.px ?? null;
   useEffect(() => {
-    const el = scroller.current;
+    const el = viewer.current;
     if (!el || !current || !target) return;
     const s = el.scrollWidth / current.photo.size[0];
     el.scrollLeft = target[0] * s - el.clientWidth / 2;
@@ -235,92 +234,94 @@ export function GcpMarker({
       </aside>
 
       <div className="ph-mk-main">
-        <div
-          ref={viewer}
-          className="ph-mk-viewer"
-          tabIndex={0}
-          role="group"
-          aria-label={`Photo ${current?.photo.name ?? ''} of ${point.id}. Enter confirms, S skips, N and P change photo, plus and minus zoom.`}
-          aria-keyshortcuts="Enter C S N P ArrowRight ArrowLeft + - Escape"
-          data-testid="marker-viewer"
-        >
-          {current ? (
-            <div ref={scroller} className="ph-mk-scroll">
-              <div
-                className="ph-mk-img"
-                style={{ width: `${String((ZOOMS[zoom] ?? 1) * 100)}%` }}
-                onClick={(e) => {
-                  const r = e.currentTarget.getBoundingClientRect();
-                  const px: [number, number] = [
-                    ((e.clientX - r.left) / r.width) * size[0],
-                    ((e.clientY - r.top) / r.height) * size[1],
-                  ];
-                  void act({ kind: 'place', photo: current.photo.id, px }, false);
-                }}
-              >
-                <img
-                  src={current.photo.url}
-                  alt={`Photo ${current.photo.name}`}
-                  draggable={false}
-                  onLoad={(e) => {
-                    setLoadedSize({
-                      id: current.photo.id,
-                      size: [e.currentTarget.naturalWidth, e.currentTarget.naturalHeight],
-                    });
-                  }}
-                />
-                <svg
-                  className="ph-mk-over"
-                  viewBox={`0 0 ${String(size[0])} ${String(size[1])}`}
-                  preserveAspectRatio="none"
-                  aria-hidden="true"
-                >
-                  {ring && (
-                    <circle
-                      data-testid="prediction-ring"
-                      data-px={`${ring.px[0].toFixed(1)},${ring.px[1].toFixed(1)}`}
-                      cx={ring.px[0]}
-                      cy={ring.px[1]}
-                      r={Math.max(ring.radiusPx, size[0] / 200)}
-                      className="ring"
-                    />
-                  )}
-                  {mark && mark.state !== 'skipped' && (
-                    <g className={`mk ${mark.state}`} data-testid="marker-mark">
-                      <circle cx={mark.px[0]} cy={mark.px[1]} r={size[0] / 160} />
-                      <line
-                        x1={mark.px[0] - size[0] / 80}
-                        x2={mark.px[0] + size[0] / 80}
-                        y1={mark.px[1]}
-                        y2={mark.px[1]}
-                      />
-                      <line
-                        x1={mark.px[0]}
-                        x2={mark.px[0]}
-                        y1={mark.px[1] - size[0] / 80}
-                        y2={mark.px[1] + size[0] / 80}
-                      />
-                    </g>
-                  )}
-                </svg>
-              </div>
-              {loupeAt && natural && (
+        <div className="ph-mk-viewer">
+          <div
+            ref={viewer}
+            className="ph-mk-scroll"
+            tabIndex={0}
+            role="group"
+            aria-label={`Photo ${current?.photo.name ?? ''} of ${point.id}. Enter confirms, S skips, N and P change photo, plus and minus zoom.`}
+            aria-keyshortcuts="Enter C S N P ArrowRight ArrowLeft + - Escape"
+            data-testid="marker-viewer"
+          >
+            {current ? (
+              <>
                 <div
-                  className="ph-loupe"
-                  aria-hidden="true"
-                  style={{
-                    backgroundImage: `url("${current.photo.url}")`,
-                    backgroundSize: `${String(LOUPE * 100)}% auto`,
-                    backgroundPosition: `${pct(loupeAt[0], size[0])} ${pct(loupeAt[1], size[1])}`,
+                  className="ph-mk-img"
+                  style={{ width: `${String((ZOOMS[zoom] ?? 1) * 100)}%` }}
+                  onClick={(e) => {
+                    const r = e.currentTarget.getBoundingClientRect();
+                    const px: [number, number] = [
+                      ((e.clientX - r.left) / r.width) * size[0],
+                      ((e.clientY - r.top) / r.height) * size[1],
+                    ];
+                    void act({ kind: 'place', photo: current.photo.id, px }, false);
                   }}
                 >
-                  <i />
+                  <img
+                    src={current.photo.url}
+                    alt={`Photo ${current.photo.name}`}
+                    draggable={false}
+                    onLoad={(e) => {
+                      setLoadedSize({
+                        id: current.photo.id,
+                        size: [e.currentTarget.naturalWidth, e.currentTarget.naturalHeight],
+                      });
+                    }}
+                  />
+                  <svg
+                    className="ph-mk-over"
+                    viewBox={`0 0 ${String(size[0])} ${String(size[1])}`}
+                    preserveAspectRatio="none"
+                    aria-hidden="true"
+                  >
+                    {ring && (
+                      <circle
+                        data-testid="prediction-ring"
+                        data-px={`${ring.px[0].toFixed(1)},${ring.px[1].toFixed(1)}`}
+                        cx={ring.px[0]}
+                        cy={ring.px[1]}
+                        r={Math.max(ring.radiusPx, size[0] / 200)}
+                        className="ring"
+                      />
+                    )}
+                    {mark && mark.state !== 'skipped' && (
+                      <g className={`mk ${mark.state}`} data-testid="marker-mark">
+                        <circle cx={mark.px[0]} cy={mark.px[1]} r={size[0] / 160} />
+                        <line
+                          x1={mark.px[0] - size[0] / 80}
+                          x2={mark.px[0] + size[0] / 80}
+                          y1={mark.px[1]}
+                          y2={mark.px[1]}
+                        />
+                        <line
+                          x1={mark.px[0]}
+                          x2={mark.px[0]}
+                          y1={mark.px[1] - size[0] / 80}
+                          y2={mark.px[1] + size[0] / 80}
+                        />
+                      </g>
+                    )}
+                  </svg>
                 </div>
-              )}
-            </div>
-          ) : (
-            <p className="faint small">No photo to show.</p>
-          )}
+                {loupeAt && natural && (
+                  <div
+                    className="ph-loupe"
+                    aria-hidden="true"
+                    style={{
+                      backgroundImage: `url("${current.photo.url}")`,
+                      backgroundSize: `${String(LOUPE * 100)}% auto`,
+                      backgroundPosition: `${pct(loupeAt[0], size[0])} ${pct(loupeAt[1], size[1])}`,
+                    }}
+                  >
+                    <i />
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="faint small">No photo to show.</p>
+            )}
+          </div>
         </div>
         <div className="ph-mk-bar">
           <span className="small faint">

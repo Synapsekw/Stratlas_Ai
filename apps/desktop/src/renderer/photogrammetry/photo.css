@@ -373,9 +373,9 @@
   background: var(--bg-0);
   overflow: hidden;
 }
-.ph-mk-viewer:focus-visible {
+.ph-mk-scroll:focus-visible {
   outline: 2px solid var(--acc);
-  outline-offset: 1px;
+  outline-offset: -2px;
 }
 .ph-mk-scroll {
   position: absolute;
@@ -523,4 +523,11 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+}
+
+/* CRS lists are listboxes: the chosen option is aria-selected (aria-pressed is not allowed) */
+.ph-sheet .b-list button[aria-selected='true'],
+.ph-import .b-list button[aria-selected='true'] {
+  background: var(--acc-a12);
+  color: var(--fg-0);
 }
