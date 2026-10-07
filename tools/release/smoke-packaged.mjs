@@ -45,6 +45,8 @@ const env = {
   STRATLAS_SMOKE: '1',
   STRATLAS_SMOKE_REPORT: reportPath,
   STRATLAS_USER_DATA: userData,
+  // a device key made by the smoke run stays in its throwaway userData, not the OS vault
+  STRATLAS_TEST_VAULT: '1',
   STRATLAS_DATA: join(userData, 'data'),
 };
 const child = arch

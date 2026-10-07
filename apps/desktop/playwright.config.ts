@@ -1,5 +1,9 @@
 import { defineConfig } from '@playwright/test';
 
+// Every app an e2e test starts keeps its device key in a TEST-ONLY file of its throwaway userData,
+// never in Windows Credential Manager or the macOS Keychain (main/testVault.ts, M9 integration).
+process.env.STRATLAS_TEST_VAULT = '1';
+
 export default defineConfig({
   testDir: './e2e',
   // One worker, locally and on CI: several Electron windows with WebGL compete for the GPU. On the
