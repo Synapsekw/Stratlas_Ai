@@ -140,7 +140,11 @@ export function diffIssues(
       });
     }
     const patch = diffFields(prev, issue, ['sightings', 'status']);
-    if (!empty(patch))
+    // `updatedAt` alone rides along with a status or sighting op; it is bookkeeping, not a change
+    const onlyStamp =
+      Object.keys(patch.set ?? {}).every((k) => k === 'updatedAt') && !patch.unset?.length;
+    const others = ops.some((o) => o.target.id === id);
+    if (!empty(patch) && !(onlyStamp && others))
       ops.push({ kind: 'issue.patch', target, base, payload: { ...patch }, ...lab });
   }
   for (const prev of before) {
