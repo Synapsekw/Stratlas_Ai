@@ -1,0 +1,151 @@
+/* M9 T5: the sync chip in the title bar and the team dialogs. */
+
+.team-chip {
+  cursor: pointer;
+  background: transparent;
+  max-width: 260px;
+}
+.team-chip > span:first-of-type {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.team-chip.offline {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+.team-chip.syncing svg {
+  animation: team-spin 1.2s linear infinite;
+}
+@keyframes team-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .team-chip.syncing svg {
+    animation: none;
+  }
+}
+.team-badge {
+  padding: 0 5px;
+  border-radius: var(--r-4);
+  background: var(--bg-3);
+  color: var(--fg-1);
+  font-size: 11px;
+}
+.team-badge.warn {
+  background: var(--warn);
+  color: var(--bg-0);
+}
+
+.team-dlg .team-intro,
+.team-dlg .team-join {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: var(--t-12);
+  line-height: 1.55;
+}
+.team-dlg .team-join {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.team-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--t-12);
+  color: var(--fg-2);
+}
+.team-path {
+  display: flex;
+  gap: 8px;
+}
+.team-path .input {
+  flex: 1;
+  min-width: 0;
+}
+.team-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.team-modes legend {
+  margin-bottom: 6px;
+}
+.team-mode {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-4);
+  cursor: pointer;
+}
+.team-mode.off {
+  opacity: 0.55;
+  cursor: default;
+}
+.team-mode input[type='radio'] {
+  margin-top: 3px;
+}
+.team-mode > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+.team-mode small {
+  color: var(--fg-2);
+  font-size: var(--t-12);
+}
+.team-mode input[type='date'] {
+  width: 160px;
+}
+.team-hub {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.team-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px 16px;
+  margin: 0;
+}
+.team-facts dt {
+  color: var(--fg-3);
+  font-size: 11px;
+}
+.team-facts dd {
+  margin: 2px 0 0;
+  color: var(--fg-0);
+}
+.team-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.team-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.team-kinds {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.team-kinds li {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--t-12);
+  color: var(--fg-1);
+}
