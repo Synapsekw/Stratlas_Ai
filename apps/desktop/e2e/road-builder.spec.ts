@@ -1,10 +1,11 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { copyFile, readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pmtilesFile } from '../src/main/testing';
 import { expect, launchApp, test } from './fixtures';
+import { copyRealData, hasRealData } from './realData';
 
 /**
  * A road survey built in the app from raw inputs: the wizard (type Road), the ortho imported,
@@ -19,8 +20,6 @@ const venvPython =
     ? join(repo, 'python', '.venv', 'Scripts', 'python.exe')
     : join(repo, 'python', '.venv', 'bin', 'python'));
 const FIXTURE = join(import.meta.dirname, 'road-fixture.py');
-/** The world overview pack of the development machine, copied (read only) when it is there. */
-const WORLD = 'E:/Stratlas Data/packs/world.pmtiles';
 
 interface Fixture {
   centre: [number, number];
@@ -31,9 +30,10 @@ interface Fixture {
 
 async function providePack(root: string): Promise<void> {
   const packs = join(root, 'packs');
-  if (existsSync(WORLD)) {
-    await copyFile(WORLD, join(packs, 'world.pmtiles'));
-    await copyFile(WORLD.replace(/\.pmtiles$/, '.json'), join(packs, 'world.json'));
+  // the world overview map pack of the development machine, copied (read only) when it is there
+  if (hasRealData('packs', 'world.pmtiles')) {
+    for (const f of ['world.pmtiles', 'world.json'])
+      await copyRealData(['packs', f], join(packs, f));
     return;
   }
   const data = pmtilesFile({ maxZoom: 14, bbox: [47.9, 29.3, 48.1, 29.45] });

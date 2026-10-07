@@ -2,13 +2,13 @@
  * Comparing two survey dates in the split: two 3D views (one stage each, one capture each), two
  * maps or two orthos, with linked views and selection. A synthetic two-date project always runs;
  * Masafi (two real surveys) and Al-Zour (one survey plus a synthetic second date) run where the
- * projects are present, copied to a temporary data root (nothing is written under the real data).
+ * projects are present, copied to a temporary data root through realData.ts (@realdata; nothing
+ * is written under the real data).
  * Screenshots go to STRATLAS_SHOTS when set. Run with --workers=1: the fps numbers mean nothing
  * with other GPU work running.
  */
 import { test as base, type ElectronApplication, type Page, type TestInfo } from '@playwright/test';
-import { existsSync } from 'node:fs';
-import { copyFile, cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -19,11 +19,9 @@ import {
   tinyGlb,
   tinyManifest,
 } from './fixtures';
+import { copyRealData, hasRealData, missingRealProject, realProjectDir } from './realData';
 
-const DATA = process.env.STRATLAS_COMPARE_DATA ?? 'E:\\Stratlas Data';
-const MASAFI = join(DATA, 'projects', 'masafi');
-const ALZOUR = join(DATA, 'projects', 'alzour');
-const WORLD_PACK = join(DATA, 'packs', 'world.pmtiles');
+const ALZOUR = realProjectDir('alzour');
 const SHOTS = process.env.STRATLAS_SHOTS;
 
 type V3 = [number, number, number];
@@ -329,10 +327,8 @@ const real = base.extend<{ root: Root; app: ElectronApplication; win: Page }>({
     await mkdir(join(data, 'projects'), { recursive: true });
     await mkdir(join(data, 'packs'), { recursive: true });
     // the world pack: the maps start (dark basemap), the orthos draw over it
-    if (existsSync(WORLD_PACK)) {
-      await copyFile(WORLD_PACK, join(data, 'packs', 'world.pmtiles'));
-      await copyFile(WORLD_PACK.replace(/\.pmtiles$/, '.json'), join(data, 'packs', 'world.json'));
-    }
+    for (const f of ['world.pmtiles', 'world.json'])
+      await copyRealData(['packs', f], join(data, 'packs', f));
     await use({ dir, data });
     await rm(dir, { recursive: true, force: true });
   },
@@ -457,15 +453,17 @@ async function report(testInfo: TestInfo, name: string, data: unknown) {
   if (SHOTS) await writeFile(join(SHOTS, `compare-${name}.json`), text);
 }
 
-real.describe('Masafi', () => {
-  real.skip(!existsSync(join(MASAFI, 'volumes.json')), `Masafi project not found at ${MASAFI}`);
+real.describe('@realdata Masafi', () => {
+  real.skip(!hasRealData('projects', 'masafi', 'volumes.json'), missingRealProject('masafi'));
   real.setTimeout(300_000);
 
   real(
     'two 3D views of the two surveys, linked camera and pile selection',
     async ({ app, win, root }, testInfo) => {
-      await cp(MASAFI, join(root.data, 'projects', 'masafi'), { recursive: true });
-      await rm(join(root.data, 'projects', 'masafi', 'edits'), { recursive: true, force: true });
+      // without the edits saved while testing the real project
+      await copyRealData(['projects', 'masafi'], join(root.data, 'projects', 'masafi'), {
+        include: (rel) => rel !== 'edits',
+      });
       const errors: string[] = [];
       win.on('pageerror', (e) => errors.push(e.message));
       await win.reload();
@@ -718,8 +716,8 @@ real.describe('Masafi', () => {
   );
 });
 
-real.describe('Al-Zour with a synthetic second survey', () => {
-  real.skip(!existsSync(join(ALZOUR, 'manifest.json')), `Al-Zour project not found at ${ALZOUR}`);
+real.describe('@realdata Al-Zour with a synthetic second survey', () => {
+  real.skip(!hasRealData('projects', 'alzour', 'manifest.json'), missingRealProject('alzour'));
   real.setTimeout(300_000);
 
   real(
@@ -729,12 +727,11 @@ real.describe('Al-Zour with a synthetic second survey', () => {
       const dst = join(root.data, 'projects', 'alzour-dates');
       await mkdir(dst, { recursive: true });
       for (const d of ['models', 'rasters/ortho', 'clouds/alzour'])
-        await cp(join(ALZOUR, d), join(dst, d), { recursive: true });
-      const src = JSON.parse(
-        await import('node:fs/promises').then((f) =>
-          f.readFile(join(ALZOUR, 'manifest.json'), 'utf8'),
-        ),
-      ) as { layers: { id: string; name: string; kind: string }[]; [k: string]: unknown };
+        await copyRealData(['projects', 'alzour', ...d.split('/')], join(dst, d));
+      const src = JSON.parse(await readFile(join(ALZOUR, 'manifest.json'), 'utf8')) as {
+        layers: { id: string; name: string; kind: string }[];
+        [k: string]: unknown;
+      };
       const keep = (id: string) => src.layers.find((l) => l.id === id);
       const plant = keep('plant');
       const ortho = keep('ortho');

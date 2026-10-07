@@ -1,16 +1,14 @@
 /**
  * Profiling companion of perf.spec.ts (local investigation only): flies the same recorded path
  * with a Chrome performance trace (CDP), per-frame WebGL upload counters and long animation frame
- * attribution, and writes them to STRATLAS_TRACE_DIR. Skipped unless that variable is set.
+ * attribution, and writes them to STRATLAS_TRACE_DIR. Skipped unless that variable is set. Runs on
+ * a temporary copy of the real project (realData.ts, @realdata).
  */
-import { test as base, type ElectronApplication, type Page } from '@playwright/test';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { expect, launchApp } from './fixtures';
+import { expect, realDataTest } from './fixtures';
+import { hasRealProject, missingRealProject } from './realData';
 
-const DATA = process.env.STRATLAS_HCL_DATA ?? 'E:\\Stratlas Data';
 const OUT = process.env.STRATLAS_TRACE_DIR ?? '';
 const ID = process.env.STRATLAS_TRACE_PROJECT ?? 'alzour';
 const CPU = process.env.STRATLAS_TRACE_CPU !== '0';
@@ -26,39 +24,13 @@ interface CameraPath {
   keys: View[];
 }
 
-const test = base.extend<{ app: ElectronApplication; win: Page }>({
-  // eslint-disable-next-line no-empty-pattern -- Playwright requires the destructuring form.
-  app: async ({}, use) => {
-    const tmp = await mkdtemp(join(tmpdir(), 'aio-perf-'));
-    const app = await launchApp({
-      base: tmp,
-      root: DATA,
-      userData: join(tmp, 'user'),
-      projectId: '',
-      projectDir: '',
-    });
-    try {
-      await use(app);
-    } finally {
-      await app.close();
-      await rm(tmp, { recursive: true, force: true });
-    }
-  },
-  win: async ({ app }, use) => {
-    const win = await app.firstWindow();
-    await win.waitForLoadState('domcontentloaded');
-    await app.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 900);
-    });
-    await use(win);
-  },
-});
+const test = realDataTest([ID], { size: [1440, 900] });
 
 test.setTimeout(300_000);
 test.skip(!OUT, 'STRATLAS_TRACE_DIR not set');
-test.skip(!existsSync(join(DATA, 'projects', ID, 'manifest.json')), `${ID} not found`);
+test.skip(!hasRealProject(ID), missingRealProject(ID));
 
-test(`trace the ${ID} fly-through`, async ({ win }) => {
+test(`@realdata trace the ${ID} fly-through`, async ({ win }) => {
   const path = JSON.parse(
     readFileSync(join(import.meta.dirname, 'perf', `${ID}.path.json`), 'utf8'),
   ) as CameraPath;

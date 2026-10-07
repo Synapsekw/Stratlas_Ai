@@ -26,6 +26,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import {
+  assertNotRealData,
+  copyRealProjects,
+  REAL_DATA_ROOT,
+  REALDATA,
+  type RealCopyOptions,
+  type RealDataCopy,
+} from './realData';
 
 export { expect };
 
@@ -270,23 +278,59 @@ export class NetworkGuard {
   }
 }
 
-/** Launch the built app against `dataRoot` with the main-process network guard preloaded. */
+/** Writes the app's real-data guard refused so far (`src/main/realDataGuard.ts`). */
+export async function realDataRefusals(app: ElectronApplication): Promise<string[]> {
+  return app.evaluate(
+    () =>
+      (
+        globalThis as { __stratlasRealDataRefusals?: string[] }
+      ).__stratlasRealDataRefusals?.slice() ?? [],
+  );
+}
+
+/**
+ * Launch the built app against `dataRoot` with the main-process network guard preloaded.
+ *
+ * Refuses a data root (or profile) inside the founder's real data (`realData.ts`): real projects
+ * are copied first (`copyRealProjects`, `realProject`). The app runs with STRATLAS_E2E=1, so its
+ * own guard refuses any write under STRATLAS_REAL_DATA_ROOT; `app.close()` then throws when it
+ * refused one, failing the test even if the app swallowed the error.
+ */
 export async function launchApp(
   dataRoot: DataRoot,
   env: Record<string, string> = {},
   /** Arguments after the app entry, e.g. a double-clicked `.aio` path. */
   extraArgs: string[] = [],
 ): Promise<ElectronApplication> {
-  return electron.launch({
+  assertNotRealData(env.STRATLAS_DATA ?? dataRoot.root, 'The e2e data root');
+  assertNotRealData(env.STRATLAS_USER_DATA ?? dataRoot.userData, 'The e2e profile');
+  const app = await electron.launch({
     // `-r` preloads the guard before the app's main module (Playwright drops NODE_OPTIONS).
     args: [...GPU_ARGS, '-r', GUARD, MAIN_ENTRY, ...extraArgs],
     env: {
       ...(process.env as Record<string, string>),
+      STRATLAS_E2E: '1',
+      STRATLAS_REAL_DATA_ROOT: REAL_DATA_ROOT,
       STRATLAS_DATA: dataRoot.root,
       STRATLAS_USER_DATA: dataRoot.userData,
       ...env,
     },
   });
+  const close = app.close.bind(app);
+  app.close = async () => {
+    const refused = await realDataRefusals(app).catch(() => []);
+    await close();
+    // fails the running test even where a spec ignores errors of close()
+    if (refused.length > 0)
+      try {
+        expect.soft(refused, 'the app tried to write into the real data').toEqual([]);
+      } catch {
+        // not inside a test: the throw below says it
+      }
+    if (refused.length > 0)
+      throw new Error(`The app tried to write into the real data:\n${refused.join('\n')}`);
+  };
+  return app;
 }
 
 // ---------------------------------------------------------------- M8: two dates and the change demo
@@ -778,3 +822,149 @@ export const twoReviewersTest = test.extend<{ twoReviewers: TwoReviewers }>({
     expect(outbound, 'the apps made network requests').toEqual([]);
   },
 });
+
+// ---------------------------------------------------------------- real client data (@realdata)
+
+/** How `realProject` and `realDataTest` copy the real projects and start the app on the copy. */
+export interface RealLaunchOptions extends RealCopyOptions {
+  /** Extra environment of the app. */
+  env?: Record<string, string>;
+  /** Arguments after the app entry. */
+  args?: string[];
+  /** Content size of the main window, e.g. `[1600, 960]`. */
+  size?: [number, number];
+}
+
+/** The app started on a temporary copy of real projects (`realProject`). */
+export interface RealProject {
+  app: ElectronApplication;
+  win: Page;
+  /** The copy the app runs on. */
+  data: RealDataCopy;
+  network: NetworkGuard;
+  /** Check zero network, close the app (failing on a refused real-data write), delete the copy. */
+  close(): Promise<void>;
+}
+
+/** Throw unless the running test carries `@realdata` in its title (or a describe's). */
+function requireRealDataTag(titlePath: readonly string[]): void {
+  if (!titlePath.some((t) => t.includes(REALDATA)))
+    throw new Error(
+      `"${titlePath.join(' > ')}" uses real client data: put ${REALDATA} in its title (realData.ts)`,
+    );
+}
+
+async function sizeWindow(app: ElectronApplication, size: [number, number] | undefined) {
+  if (size)
+    await app.evaluate(({ BrowserWindow }, [w, h]) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(w, h);
+    }, size);
+}
+
+/**
+ * The one way a spec runs the app on real client data: copy the real projects `ids` (and
+ * `opts.packs`) to a temp data root (`copyRealProjects`), launch the app on the copy with the
+ * zero-network guard, and on `close()` delete the copy. The real folder is never the app's data
+ * root. Skip on `hasRealProject` first; tag the test `@realdata`.
+ */
+export async function realProject(
+  ids: string | readonly string[],
+  opts: RealLaunchOptions = {},
+): Promise<RealProject> {
+  requireRealDataTag(base.info().titlePath);
+  const data = await copyRealProjects(typeof ids === 'string' ? [ids] : ids, opts);
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchApp(data, opts.env ?? {}, opts.args ?? []);
+    const network = new NetworkGuard();
+    await network.attach(app);
+    const win = await app.firstWindow();
+    await win.waitForLoadState('domcontentloaded');
+    await sizeWindow(app, opts.size);
+    const running = app;
+    return {
+      app: running,
+      win,
+      data,
+      network,
+      close: async () => {
+        let outbound: string[];
+        try {
+          outbound = await network.outbound();
+        } finally {
+          try {
+            await running.close();
+          } finally {
+            await data.dispose();
+          }
+        }
+        expect(outbound, 'the app made network requests').toEqual([]);
+      },
+    };
+  } catch (e) {
+    await app?.close().catch(() => undefined);
+    await data.dispose();
+    throw e;
+  }
+}
+
+interface RealFixtures {
+  /** The real projects to copy; `test.use({ realProjects: ['hcl'] })` narrows it per describe. */
+  realProjects: string[];
+  /** The temp data root with the copies (deleted after the test). */
+  realData: RealDataCopy;
+  network: NetworkGuard;
+  app: ElectronApplication;
+  win: Page;
+}
+
+/**
+ * A test whose `app` and `win` run on a fresh copy of the real projects `ids` (see `realProject`),
+ * with the zero-network guard and a trace on failure. Skip with `hasRealProject` in the spec.
+ */
+export function realDataTest(ids: readonly string[], opts: RealLaunchOptions = {}) {
+  return base.extend<RealFixtures>({
+    realProjects: [[...ids], { option: true }],
+
+    realData: async ({ realProjects }, use, testInfo) => {
+      requireRealDataTag(testInfo.titlePath);
+      const data = await copyRealProjects(realProjects, opts);
+      try {
+        await use(data);
+      } finally {
+        await data.dispose();
+      }
+    },
+
+    // eslint-disable-next-line no-empty-pattern -- Playwright requires the destructuring form.
+    network: async ({}, use) => {
+      await use(new NetworkGuard());
+    },
+
+    app: async ({ realData, network }, use, testInfo) => {
+      const app = await launchApp(realData, opts.env ?? {}, opts.args ?? []);
+      await network.attach(app);
+      const tracing = app.context().tracing;
+      await tracing.start({ screenshots: true, snapshots: true });
+      let outbound: string[] = [];
+      try {
+        await use(app);
+        outbound = await network.outbound();
+      } finally {
+        const failed = testInfo.status !== testInfo.expectedStatus || outbound.length > 0;
+        await tracing
+          .stop(failed ? { path: testInfo.outputPath('trace.zip') } : {})
+          .catch(() => undefined);
+        await app.close();
+      }
+      expect(outbound, 'the app made network requests').toEqual([]);
+    },
+
+    win: async ({ app }, use) => {
+      const win = await app.firstWindow();
+      await win.waitForLoadState('domcontentloaded');
+      await sizeWindow(app, opts.size);
+      await use(win);
+    },
+  });
+}

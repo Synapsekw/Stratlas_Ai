@@ -8,11 +8,16 @@ import { GPU_ARGS } from './fixtures';
 const ALLOWED = ['file:', 'aio:', 'devtools:', 'data:', 'blob:', 'chrome-extension:'];
 
 test('the app starts, exposes the bridge and makes no network requests', async () => {
-  // an isolated profile: the person's settings stay untouched and the window opens off-screen
+  // an isolated profile: the person's settings stay untouched and the window opens off-screen;
+  // an empty data root: without one the app would list the developer's real data folder
   const base = await mkdtemp(join(tmpdir(), 'stratlas-e2e-'));
   const app = await electron.launch({
     args: [...GPU_ARGS, join(import.meta.dirname, '../out/main/index.js')],
-    env: { ...process.env, STRATLAS_USER_DATA: join(base, 'user') },
+    env: {
+      ...process.env,
+      STRATLAS_USER_DATA: join(base, 'user'),
+      STRATLAS_DATA: join(base, 'data'),
+    },
   });
   const outbound: string[] = [];
   app.context().on('request', (req) => {

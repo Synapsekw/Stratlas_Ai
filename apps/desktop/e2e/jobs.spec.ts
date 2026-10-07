@@ -55,7 +55,7 @@ test('without a pipeline pack the Jobs panel says where it looked', async ({ win
 });
 
 /**
- * An installed runtime folder (`<data folder>/runtime`, e.g. `E:/Stratlas Data/runtime`), only read:
+ * An installed runtime folder (`<data folder>/runtime`, e.g. the real data root's), only read:
  * the app must pick its newest pack, list every pipeline of the schema in it and pass the selftest.
  */
 const RUNTIME = process.env.STRATLAS_E2E_RUNTIME ?? '';
@@ -63,7 +63,7 @@ const RUNTIME = process.env.STRATLAS_E2E_RUNTIME ?? '';
 test.describe('with an installed runtime folder', () => {
   test.skip(
     !RUNTIME,
-    'set STRATLAS_E2E_RUNTIME to a data folder runtime, e.g. E:/Stratlas Data/runtime',
+    'set STRATLAS_E2E_RUNTIME to a data folder runtime, e.g. <real data root>/runtime',
   );
 
   test('the app picks the newest pipeline pack, which lists every pipeline and passes its selftest', async ({

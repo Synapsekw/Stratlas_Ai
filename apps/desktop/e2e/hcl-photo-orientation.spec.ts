@@ -1,20 +1,18 @@
 /**
  * HCl photos the right way up (founder report: the photos looking straight down were upside
- * down). Works on a temporary copy of the real HCl project without its video; runs only where the
- * project exists at E:\Stratlas Data\projects\hcl (or under STRATLAS_HCL_DATA). The camera
+ * down). Works on a temporary copy of the real HCl project without its video (realData.ts,
+ * @realdata); runs only where the real data holds projects/hcl. The camera
  * originals on the NAS (STRATLAS_HCL_ORIGINALS) are only read, and only for the issue box check.
  *
  * "Right way up" is measured against the scene: the project's LiDAR clouds rendered from the
  * photo's own pose (image +Y up) must agree with the photo as shown better than with the photo
  * turned half way round.
  */
-import { test as base, type ElectronApplication, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { copyFile, cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { basename, extname, join } from 'node:path';
 import sharp from 'sharp';
-import { expect, launchApp, NetworkGuard } from './fixtures';
+import { expect, realDataTest } from './fixtures';
 import {
   grayOf,
   loadKitClouds,
@@ -24,9 +22,8 @@ import {
   type Quat,
   type Vec3,
 } from './orientation';
+import { hasRealProject, missingRealProject } from './realData';
 
-const DATA = process.env.STRATLAS_HCL_DATA ?? 'E:/Stratlas Data';
-const HCL = join(DATA, 'projects', 'hcl');
 const ORIGINALS =
   process.env.STRATLAS_HCL_ORIGINALS ??
   '//DanNas/Work Data/Asset Inspections/Oil and Gas/Hydrochloric Acid Tank';
@@ -44,50 +41,24 @@ interface Manifest {
   layers: { kind: string; id: string; items?: PhotoItem[] }[];
 }
 
-const test = base.extend<{ projectDir: string; app: ElectronApplication; win: Page }>({
-  // eslint-disable-next-line no-empty-pattern -- Playwright requires the destructuring form.
-  projectDir: async ({}, use) => {
-    const tmp = await mkdtemp(join(tmpdir(), 'aio-hcl-orient-'));
-    const dir = join(tmp, 'data', 'projects', 'hcl');
-    await mkdir(dir, { recursive: true });
-    for (const d of ['photos', 'models', 'clouds', 'flights'])
-      await cp(join(HCL, d), join(dir, d), { recursive: true });
-    await copyFile(join(HCL, 'issues.json'), join(dir, 'issues.json'));
-    const m = JSON.parse(readFileSync(join(HCL, 'manifest.json'), 'utf8')) as Manifest;
-    m.layers = m.layers.filter((l) => l.kind !== 'video');
-    await writeFile(join(dir, 'manifest.json'), JSON.stringify(m, null, 2));
-    await use(dir);
-    await rm(tmp, { recursive: true, force: true });
+/** What the copy keeps of the project: no video. */
+const KEPT = new Set(['photos', 'models', 'clouds', 'flights', 'issues.json', 'manifest.json']);
+
+const test = realDataTest(['hcl'], {
+  prefix: 'aio-hcl-orient-',
+  include: (rel) => KEPT.has(rel.split('/')[0] ?? ''),
+  manifest: (m) => {
+    const manifest = m as unknown as Manifest;
+    return { ...m, layers: manifest.layers.filter((l) => l.kind !== 'video') };
   },
-  app: async ({ projectDir }, use) => {
-    const base = join(projectDir, '..', '..', '..');
-    const network = new NetworkGuard();
-    const app = await launchApp({
-      base,
-      root: join(base, 'data'),
-      userData: join(base, 'user'),
-      projectId: 'hcl',
-      projectDir,
-    });
-    await network.attach(app);
-    try {
-      await use(app);
-      expect(await network.outbound(), 'the app made network requests').toEqual([]);
-    } finally {
-      await app.close();
-    }
-  },
-  win: async ({ app }, use) => {
-    const win = await app.firstWindow();
-    await win.waitForLoadState('domcontentloaded');
-    await app.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 900);
-    });
-    await use(win);
+  size: [1440, 900],
+}).extend<{ projectDir: string }>({
+  projectDir: async ({ realData }, use) => {
+    await use(realData.projectDir);
   },
 });
 
-test.skip(!existsSync(join(HCL, 'manifest.json')), `HCl project not found at ${HCL}`);
+test.skip(!hasRealProject('hcl'), missingRealProject('hcl'));
 test.setTimeout(180_000);
 
 function photoItem(projectDir: string, id: string): PhotoItem {
@@ -128,7 +99,7 @@ async function shot(win: Page, name: string) {
   if (SHOTS) await win.screenshot({ path: join(SHOTS, `${name}.png`) });
 }
 
-test('a photo looking straight down shows the right way up in Media and the viewer', async ({
+test('@realdata a photo looking straight down shows the right way up in Media and the viewer', async ({
   projectDir,
   win,
 }) => {
@@ -184,7 +155,7 @@ function originals(): Map<string, string> {
   return out;
 }
 
-test('an issue box drawn on a photo covers the same defect as on the camera original', async ({
+test('@realdata an issue box drawn on a photo covers the same defect as on the camera original', async ({
   projectDir,
   win,
 }) => {

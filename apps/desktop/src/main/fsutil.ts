@@ -191,6 +191,16 @@ async function check(file: string, expect: ExpectedVersion | undefined, name?: s
   if (!(await unchanged(file, expect))) throw new ChangedOnDiskError(file, name);
 }
 
+/**
+ * The e2e real-data guard's check (`realDataGuard.ts` installs it when STRATLAS_E2E=1), reached
+ * through a global so this module keeps importing only node: modules (tools/compat runs it bare).
+ */
+function guardWrite(file: string, op: string): void {
+  (
+    globalThis as { __stratlasAssertWritable?: (p: string, op: string) => void }
+  ).__stratlasAssertWritable?.(file, op);
+}
+
 let writes = 0;
 /** A temp name next to `file`, unique per write: two writes in one millisecond stay apart. */
 const tempName = (file: string) => {
@@ -228,6 +238,8 @@ export async function writeJsonVersion(
   opts: WriteOptions = {},
 ): Promise<DiskVersion> {
   const text = `${JSON.stringify(data, null, 2)}\n`;
+  // under the e2e guard, never into the founder's real data (realDataGuard.ts)
+  guardWrite(file, 'writeJsonAtomic');
   // refuse before anything is touched (the .bak included)
   await check(file, opts.expect, opts.name);
   if (opts.backup) {

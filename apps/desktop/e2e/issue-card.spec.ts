@@ -4,50 +4,19 @@
  * size and Esc closes it; picking it in 3D also opens its photo beside the 3D view (split), and
  * Esc puts the layout back; Media marks the photos with findings and filters to them.
  *
- * Runs only where the projects exist under E:\Stratlas Data (or STRATLAS_DATA_ROOT); skipped
- * elsewhere. Read-only for the projects: settings and thumbnails go to a throwaway profile.
- * Screenshots go to STRATLAS_SHOTS when it is set.
+ * Runs only where the real data holds the projects (realData.ts); skipped elsewhere. Each test
+ * runs on a temporary copy of its project (@realdata). Screenshots go to STRATLAS_SHOTS when it
+ * is set.
  */
-import { test as base, type ElectronApplication, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, launchApp, NetworkGuard } from './fixtures';
+import { expect, realDataTest } from './fixtures';
+import { hasRealProject, missingRealProject, realProjectDir } from './realData';
 
-const DATA = process.env.STRATLAS_DATA_ROOT ?? 'E:/Stratlas Data';
 const SHOTS = process.env.STRATLAS_SHOTS;
 
-const test = base.extend<{ app: ElectronApplication; win: Page }>({
-  // eslint-disable-next-line no-empty-pattern -- Playwright requires the destructuring form.
-  app: async ({}, use) => {
-    const tmp = await mkdtemp(join(tmpdir(), 'aio-card-'));
-    const network = new NetworkGuard();
-    const app = await launchApp({
-      base: tmp,
-      root: DATA,
-      userData: join(tmp, 'user'),
-      projectId: 'hcl',
-      projectDir: join(DATA, 'projects', 'hcl'),
-    });
-    await network.attach(app);
-    try {
-      await use(app);
-      expect(await network.outbound(), 'the app made network requests').toEqual([]);
-    } finally {
-      await app.close();
-      await rm(tmp, { recursive: true, force: true });
-    }
-  },
-  win: async ({ app }, use) => {
-    const win = await app.firstWindow();
-    await win.waitForLoadState('domcontentloaded');
-    await app.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setContentSize(1600, 960);
-    });
-    await use(win);
-  },
-});
+const test = realDataTest([], { size: [1600, 960] });
 
 test.setTimeout(240_000);
 
@@ -172,148 +141,152 @@ for (const p of [
   { id: 'hcl', name: 'HCl', label: true },
   { id: 'damac', name: 'DAMAC', label: false },
 ]) {
-  const dir = join(DATA, 'projects', p.id);
+  const dir = realProjectDir(p.id);
   const count = existsSync(join(dir, 'issues.json'))
     ? (JSON.parse(readFileSync(join(dir, 'issues.json'), 'utf8')) as { issues: unknown[] }).issues
         .length
     : 0;
 
-  test(`${p.name}: a picked issue opens its card, its photo full size, and beside the 3D view`, async ({
-    win,
-  }) => {
-    test.skip(!existsSync(join(dir, 'manifest.json')), `${p.name} not found at ${dir}`);
-    const errors: string[] = [];
-    win.on('pageerror', (e) => errors.push(e.message));
+  test.describe(`@realdata ${p.name}`, () => {
+    test.skip(!hasRealProject(p.id), missingRealProject(p.id));
+    test.use({ realProjects: [p.id] });
 
-    await openProject(win, p.name, count);
-    await expect(win.locator('.stage')).toHaveAttribute('data-mode', '3d');
-    // fold the right panel away: picking an issue brings it back
-    await win.keyboard.press('Control+Alt+b');
-    await expect(win.locator('.ws.right-off')).toHaveCount(1);
-    await waitForPins(win);
+    test(`${p.name}: a picked issue opens its card, its photo full size, and beside the 3D view`, async ({
+      win,
+    }) => {
+      const errors: string[] = [];
+      win.on('pageerror', (e) => errors.push(e.message));
 
-    let picked: string;
-    if (p.label) {
-      // HCl: click an issue's code label (the view is uncrowded: every pin has its code)
-      const label = win.locator('.ann-pin-labels > div[data-kind="code"]:visible').first();
-      await expect(label).toBeVisible();
-      const code = (await label.textContent())?.trim() ?? '';
-      const lb = await label.boundingBox();
-      if (!lb) throw new Error('no label box');
-      await win.mouse.move(lb.x + lb.width / 2, lb.y + lb.height / 2, { steps: 4 });
-      await win.mouse.click(lb.x + lb.width / 2, lb.y + lb.height / 2);
-      picked = await win.evaluate(
-        (c) =>
-          (window as unknown as Inspect).__stratlas.workspace
-            .getState()
-            .issues.find((i) => i.code === c)?.id ?? '',
-        code,
-      );
-    } else {
-      picked = await pickInScene(win);
-    }
-    expect(picked).not.toBe('');
-    await expect
-      .poll(() =>
-        win.evaluate(
-          () => (window as unknown as Inspect).__stratlas.workspace.getState().selection,
-        ),
-      )
-      .toEqual({ kind: 'issue', id: picked });
+      await openProject(win, p.name, count);
+      await expect(win.locator('.stage')).toHaveAttribute('data-mode', '3d');
+      // fold the right panel away: picking an issue brings it back
+      await win.keyboard.press('Control+Alt+b');
+      await expect(win.locator('.ws.right-off')).toHaveCount(1);
+      await waitForPins(win);
 
-    // the card, with the issue's photo
-    await expect(win.locator('.ws.right-off')).toHaveCount(0);
-    const card = win.getByTestId('issue-card');
-    await expect(card).toBeVisible();
-    await expect(card).toHaveAttribute('data-issue', picked);
-    const photo = card.getByTestId('issue-card-photo');
-    await expect(photo).toBeVisible();
-    await expect(photo.locator('svg image').first()).toBeAttached({ timeout: 20_000 });
+      let picked: string;
+      if (p.label) {
+        // HCl: click an issue's code label (the view is uncrowded: every pin has its code)
+        const label = win.locator('.ann-pin-labels > div[data-kind="code"]:visible').first();
+        await expect(label).toBeVisible();
+        const code = (await label.textContent())?.trim() ?? '';
+        const lb = await label.boundingBox();
+        if (!lb) throw new Error('no label box');
+        await win.mouse.move(lb.x + lb.width / 2, lb.y + lb.height / 2, { steps: 4 });
+        await win.mouse.click(lb.x + lb.width / 2, lb.y + lb.height / 2);
+        picked = await win.evaluate(
+          (c) =>
+            (window as unknown as Inspect).__stratlas.workspace
+              .getState()
+              .issues.find((i) => i.code === c)?.id ?? '',
+          code,
+        );
+      } else {
+        picked = await pickInScene(win);
+      }
+      expect(picked).not.toBe('');
+      await expect
+        .poll(() =>
+          win.evaluate(
+            () => (window as unknown as Inspect).__stratlas.workspace.getState().selection,
+          ),
+        )
+        .toEqual({ kind: 'issue', id: picked });
 
-    // ... and beside the 3D view: split, the photos pane shows the issue's photo
-    await expect.poll(() => stageMode(win)).toBe('split');
-    const evidence = win.getByTestId('evidence-photo');
-    await expect(evidence).toBeVisible();
-    await expect(evidence).toHaveAttribute('data-issue', picked);
-    await expect(win.locator('.pane-3d[data-side="left"]')).toBeVisible();
-    await expect(win.getByTestId('photo-viewer').first()).toBeVisible();
-    await win.waitForTimeout(1_500);
-    await shot(win, `issue-card-${p.id}-split`);
+      // the card, with the issue's photo
+      await expect(win.locator('.ws.right-off')).toHaveCount(0);
+      const card = win.getByTestId('issue-card');
+      await expect(card).toBeVisible();
+      await expect(card).toHaveAttribute('data-issue', picked);
+      const photo = card.getByTestId('issue-card-photo');
+      await expect(photo).toBeVisible();
+      await expect(photo.locator('svg image').first()).toBeAttached({ timeout: 20_000 });
 
-    // the card's photo opens full size, Esc closes it (the split stays)
-    await photo.click();
-    const lightbox = win.getByTestId('lightbox');
-    await expect(lightbox).toBeVisible();
-    await expect(lightbox.getByTestId('photo-viewer')).toBeVisible();
-    await expect(lightbox.locator('img.ann-img').first()).toBeVisible({ timeout: 20_000 });
-    await win.waitForTimeout(800);
-    await shot(win, `issue-card-${p.id}-lightbox`);
-    // markings off and on
-    await lightbox.getByTestId('lightbox-marks').click();
-    await expect(lightbox.getByTestId('lightbox-marks')).toHaveAttribute('aria-pressed', 'false');
-    await win.keyboard.press('m');
-    await expect(lightbox.getByTestId('lightbox-marks')).toHaveAttribute('aria-pressed', 'true');
-    await win.keyboard.press('Escape');
-    await expect(lightbox).toHaveCount(0);
-    expect(await stageMode(win)).toBe('split');
-    // focus went back to the photo that opened it
-    await expect(photo).toBeFocused();
+      // ... and beside the 3D view: split, the photos pane shows the issue's photo
+      await expect.poll(() => stageMode(win)).toBe('split');
+      const evidence = win.getByTestId('evidence-photo');
+      await expect(evidence).toBeVisible();
+      await expect(evidence).toHaveAttribute('data-issue', picked);
+      await expect(win.locator('.pane-3d[data-side="left"]')).toBeVisible();
+      await expect(win.getByTestId('photo-viewer').first()).toBeVisible();
+      await win.waitForTimeout(1_500);
+      await shot(win, `issue-card-${p.id}-split`);
 
-    // Esc closes the evidence: the 3D view alone again, as before
-    await win.locator('[data-scene-view] canvas').hover();
-    await win.keyboard.press('Escape');
-    await expect.poll(() => stageMode(win)).toBe('3d');
-    await expect(card).toBeVisible();
-    await shot(win, `issue-card-${p.id}-card`);
+      // the card's photo opens full size, Esc closes it (the split stays)
+      await photo.click();
+      const lightbox = win.getByTestId('lightbox');
+      await expect(lightbox).toBeVisible();
+      await expect(lightbox.getByTestId('photo-viewer')).toBeVisible();
+      await expect(lightbox.locator('img.ann-img').first()).toBeVisible({ timeout: 20_000 });
+      await win.waitForTimeout(800);
+      await shot(win, `issue-card-${p.id}-lightbox`);
+      // markings off and on
+      await lightbox.getByTestId('lightbox-marks').click();
+      await expect(lightbox.getByTestId('lightbox-marks')).toHaveAttribute('aria-pressed', 'false');
+      await win.keyboard.press('m');
+      await expect(lightbox.getByTestId('lightbox-marks')).toHaveAttribute('aria-pressed', 'true');
+      await win.keyboard.press('Escape');
+      await expect(lightbox).toHaveCount(0);
+      expect(await stageMode(win)).toBe('split');
+      // focus went back to the photo that opened it
+      await expect(photo).toBeFocused();
 
-    // the card's next button walks to another issue
-    await card.getByRole('button', { name: 'Next issue' }).click();
-    await expect(card).not.toHaveAttribute('data-issue', picked);
+      // Esc closes the evidence: the 3D view alone again, as before
+      await win.locator('[data-scene-view] canvas').hover();
+      await win.keyboard.press('Escape');
+      await expect.poll(() => stageMode(win)).toBe('3d');
+      await expect(card).toBeVisible();
+      await shot(win, `issue-card-${p.id}-card`);
 
-    // with the switch off, a pick in 3D only opens the card
-    await card.getByRole('switch', { name: 'Open evidence in split' }).click();
-    await win.evaluate(() => {
-      (window as unknown as Inspect).__stratlas.workspace.getState().select(null);
+      // the card's next button walks to another issue
+      await card.getByRole('button', { name: 'Next issue' }).click();
+      await expect(card).not.toHaveAttribute('data-issue', picked);
+
+      // with the switch off, a pick in 3D only opens the card
+      await card.getByRole('switch', { name: 'Open evidence in split' }).click();
+      await win.evaluate(() => {
+        (window as unknown as Inspect).__stratlas.workspace.getState().select(null);
+      });
+      await pickInScene(win);
+      await expect(win.getByTestId('issue-card')).toBeVisible();
+      await win.waitForTimeout(500);
+      expect(await stageMode(win)).toBe('3d');
+
+      // Media: photos with findings are marked, and the filter keeps only them
+      await win.evaluate(() => {
+        (window as unknown as Inspect).__stratlas.workspace.getState().select(null);
+      });
+      await win.locator('.nav-item', { hasText: 'Media' }).first().click();
+      const withF = win.locator('.media .m-card.has-f');
+      await withF.first().scrollIntoViewIfNeeded({ timeout: 30_000 });
+      await expect(withF.first()).toBeVisible({ timeout: 30_000 });
+      await expect(withF.first().locator('.m-fbadge')).toBeVisible();
+      await expect(win.getByTestId('media-findings-count')).toContainText('with findings');
+      await expect(withF.first().locator('.m-marks').first()).toBeAttached({ timeout: 30_000 });
+      await win.waitForTimeout(1_000);
+      await shot(win, `media-findings-${p.id}`);
+      const all = await win.locator('.media .m-card.sq').count();
+      await win.getByTestId('media-only-findings').click();
+      await expect(win.getByTestId('media-only-findings')).toHaveAttribute('aria-pressed', 'true');
+      await expect
+        .poll(async () => {
+          const shown = await win.locator('.media .m-card.sq').count();
+          const marked = await win.locator('.media .m-card.sq.has-f').count();
+          return shown > 0 && shown === marked;
+        })
+        .toBe(true);
+      if (p.id === 'hcl') expect(await win.locator('.media .m-card.sq').count()).toBeLessThan(all);
+      await win.getByTestId('media-order').selectOption('severity');
+      await withF.first().scrollIntoViewIfNeeded();
+      await win.waitForTimeout(1_500);
+      await shot(win, `media-findings-${p.id}-filtered`);
+      // a tile opens its photo with the issues drawn; a box in it opens that issue's card
+      await withF.first().click();
+      await expect(win.getByTestId('photo-viewer')).toBeVisible();
+      await win.waitForTimeout(1_000);
+      await shot(win, `media-findings-${p.id}-photo`);
+
+      expect(errors).toEqual([]);
     });
-    await pickInScene(win);
-    await expect(win.getByTestId('issue-card')).toBeVisible();
-    await win.waitForTimeout(500);
-    expect(await stageMode(win)).toBe('3d');
-
-    // Media: photos with findings are marked, and the filter keeps only them
-    await win.evaluate(() => {
-      (window as unknown as Inspect).__stratlas.workspace.getState().select(null);
-    });
-    await win.locator('.nav-item', { hasText: 'Media' }).first().click();
-    const withF = win.locator('.media .m-card.has-f');
-    await withF.first().scrollIntoViewIfNeeded({ timeout: 30_000 });
-    await expect(withF.first()).toBeVisible({ timeout: 30_000 });
-    await expect(withF.first().locator('.m-fbadge')).toBeVisible();
-    await expect(win.getByTestId('media-findings-count')).toContainText('with findings');
-    await expect(withF.first().locator('.m-marks').first()).toBeAttached({ timeout: 30_000 });
-    await win.waitForTimeout(1_000);
-    await shot(win, `media-findings-${p.id}`);
-    const all = await win.locator('.media .m-card.sq').count();
-    await win.getByTestId('media-only-findings').click();
-    await expect(win.getByTestId('media-only-findings')).toHaveAttribute('aria-pressed', 'true');
-    await expect
-      .poll(async () => {
-        const shown = await win.locator('.media .m-card.sq').count();
-        const marked = await win.locator('.media .m-card.sq.has-f').count();
-        return shown > 0 && shown === marked;
-      })
-      .toBe(true);
-    if (p.id === 'hcl') expect(await win.locator('.media .m-card.sq').count()).toBeLessThan(all);
-    await win.getByTestId('media-order').selectOption('severity');
-    await withF.first().scrollIntoViewIfNeeded();
-    await win.waitForTimeout(1_500);
-    await shot(win, `media-findings-${p.id}-filtered`);
-    // a tile opens its photo with the issues drawn; a box in it opens that issue's card
-    await withF.first().click();
-    await expect(win.getByTestId('photo-viewer')).toBeVisible();
-    await win.waitForTimeout(1_000);
-    await shot(win, `media-findings-${p.id}-photo`);
-
-    expect(errors).toEqual([]);
   });
 }

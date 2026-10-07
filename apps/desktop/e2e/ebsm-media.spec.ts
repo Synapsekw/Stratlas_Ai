@@ -1,52 +1,28 @@
 /**
  * The Media screen on the real EBSM flare project (299 photos of 2560 px). Runs only where the
- * project exists at E:\Stratlas Data\projects\ebsm (or under STRATLAS_EBSM_DATA); skipped
- * elsewhere. Read-only for the project: generated thumbnails go to the throwaway profile.
+ * real data holds projects/ebsm (realData.ts); skipped elsewhere. Each test runs on a temporary
+ * copy of the project (@realdata); generated thumbnails go to the throwaway profile.
  */
-import { test as base, type ElectronApplication, type Page } from '@playwright/test';
-import { existsSync, readFileSync } from 'node:fs';
-import { copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import type { ElectronApplication, Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expect, launchApp, NetworkGuard } from './fixtures';
+import { expect, launchApp, NetworkGuard, realDataTest } from './fixtures';
+import {
+  copyRealProjects,
+  hasRealProject,
+  missingRealProject,
+  onlyPaths,
+  realProjectDir,
+} from './realData';
 
-const DATA = process.env.STRATLAS_EBSM_DATA ?? 'E:/Stratlas Data';
-const EBSM = join(DATA, 'projects', 'ebsm');
+const EBSM = realProjectDir('ebsm');
 /** Media must answer input within this many ms of opening (first run, cold thumbnail cache). */
 const BUDGET_MS = Number(process.env.STRATLAS_MEDIA_BUDGET_MS ?? 3_000);
 
-const test = base.extend<{ app: ElectronApplication; win: Page }>({
-  // eslint-disable-next-line no-empty-pattern -- Playwright requires the destructuring form.
-  app: async ({}, use) => {
-    const tmp = await mkdtemp(join(tmpdir(), 'aio-ebsm-'));
-    const network = new NetworkGuard();
-    const app = await launchApp({
-      base: tmp,
-      root: DATA,
-      userData: join(tmp, 'user'),
-      projectId: 'ebsm',
-      projectDir: EBSM,
-    });
-    await network.attach(app);
-    try {
-      await use(app);
-      expect(await network.outbound(), 'the app made network requests').toEqual([]);
-    } finally {
-      await app.close();
-      await rm(tmp, { recursive: true, force: true });
-    }
-  },
-  win: async ({ app }, use) => {
-    const win = await app.firstWindow();
-    await win.waitForLoadState('domcontentloaded');
-    await app.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 900);
-    });
-    await use(win);
-  },
-});
+const test = realDataTest(['ebsm'], { size: [1440, 900] });
 
-test.skip(!existsSync(join(EBSM, 'manifest.json')), `EBSM project not found at ${EBSM}`);
+test.skip(!hasRealProject('ebsm'), missingRealProject('ebsm'));
 test.setTimeout(180_000);
 
 interface Probe {
@@ -165,7 +141,10 @@ async function inputLatency(win: Page): Promise<number> {
   return Date.now() - t0;
 }
 
-test('EBSM Media opens fast, shows small thumbnails and stays responsive', async ({ app, win }) => {
+test('@realdata EBSM Media opens fast, shows small thumbnails and stays responsive', async ({
+  app,
+  win,
+}) => {
   await win.getByTestId('project-card').filter({ hasText: 'EBSM' }).first().click();
   await expect(win.locator('.nav-item', { hasText: 'Media' }).first()).toBeVisible();
   // Let the project (3D scene) settle before measuring the Media screen itself.
@@ -223,29 +202,27 @@ async function tree(dir: string): Promise<string[]> {
   return out.sort();
 }
 
-test('photos without thumbnails get small ones made off the main thread and cached', async () => {
+test('@realdata photos without thumbnails get small ones made off the main thread and cached', async () => {
   // A copy of some EBSM photos without the project's thumbs/ folder (temp data root).
-  const tmp = await mkdtemp(join(tmpdir(), 'aio-ebsm-cold-'));
-  const root = join(tmp, 'data');
-  const dir = join(root, 'projects', 'ebsm-cold');
-  await mkdir(join(dir, 'photos'), { recursive: true });
   const src = JSON.parse(readFileSync(join(EBSM, 'manifest.json'), 'utf8')) as {
     layers: { kind: string; items?: { src: { path: string } }[] }[];
   } & Record<string, unknown>;
   const photos = src.layers.find((l) => l.kind === 'photos');
   const items = (photos?.items ?? []).slice(0, COLD_PHOTOS);
-  for (const it of items) await copyFile(join(EBSM, it.src.path), join(dir, it.src.path));
-  const manifest = {
-    ...src,
-    id: 'ebsm-cold',
-    name: 'EBSM cold thumbnails',
-    layers: [{ ...photos, items }],
-  };
-  await writeFile(join(dir, 'manifest.json'), JSON.stringify(manifest));
+  const data = await copyRealProjects(['ebsm'], {
+    rename: { ebsm: 'ebsm-cold' },
+    include: onlyPaths(['manifest.json', ...items.map((it) => it.src.path)]),
+    manifest: (m) => ({
+      ...m,
+      id: 'ebsm-cold',
+      name: 'EBSM cold thumbnails',
+      layers: [{ ...photos, items }],
+    }),
+  });
+  const dir = data.projectDir;
+  const userData = data.userData;
   await writeFile(join(dir, 'issues.json'), JSON.stringify({ schema: 'aio.issues/1', issues: [] }));
   const before = await tree(dir);
-  const userData = join(tmp, 'user');
-  const data = { base: tmp, root, userData, projectId: 'ebsm-cold', projectDir: dir };
 
   const open = async () => {
     const network = new NetworkGuard();
@@ -290,6 +267,6 @@ test('photos without thumbnails get small ones made off the main thread and cach
     expect(warm.srcs.slice(0, 8).every((s) => s.startsWith('aio://thumb/'))).toBe(true);
     expect(warm.probe.maxNaturalWidth).toBeLessThanOrEqual(320);
   } finally {
-    await rm(tmp, { recursive: true, force: true });
+    await data.dispose();
   }
 });

@@ -5,7 +5,7 @@
  * flies a recorded camera path (e2e/perf/<project>.path.json) with the perf HUD on and asserts the
  * 95th percentile frame time stays under the budget for this machine: STRATLAS_PERF_P95_MS,
  * default 20 ms (no more than 5 % of frames miss a 60 Hz refresh by more than a few ms). Skipped
- * where the projects are absent. Read-only.
+ * where the projects are absent; each runs on a temporary copy (realData.ts, @realdata).
  *
  * Everywhere (CI included): a synthetic project (the 16 000 point COPC fixture, a quad, a
  * 4800 x 2400 ortho image) on the software GPU (SwiftShader), which the app must detect as the Low
@@ -20,10 +20,9 @@
  * Run with --workers=1: the numbers mean nothing with other GPU work running.
  */
 import { ProjectManifest, type ProjectManifestInput } from '@aio/schema';
-import { test as base, type ElectronApplication, type Page } from '@playwright/test';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { test as base, type Page } from '@playwright/test';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { copyFile, mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import {
@@ -31,12 +30,13 @@ import {
   expect,
   launchApp,
   NetworkGuard,
+  realDataTest,
   SOFTWARE_GPU,
   tinyManifest,
   type DataRoot,
 } from './fixtures';
+import { hasRealProject, missingRealProject } from './realData';
 
-const DATA = process.env.STRATLAS_HCL_DATA ?? 'E:\\Stratlas Data';
 const BUDGET_MS = Number(process.env.STRATLAS_PERF_P95_MS ?? 20);
 const SHOTS = process.env.STRATLAS_SHOTS;
 
@@ -67,36 +67,8 @@ interface Flight {
   tier: string;
 }
 
-const test = base.extend<{ app: ElectronApplication; win: Page }>({
-  // eslint-disable-next-line no-empty-pattern -- Playwright requires the destructuring form.
-  app: async ({}, use) => {
-    const tmp = await mkdtemp(join(tmpdir(), 'aio-perf-'));
-    const network = new NetworkGuard();
-    const app = await launchApp({
-      base: tmp,
-      root: DATA,
-      userData: join(tmp, 'user'),
-      projectId: '',
-      projectDir: '',
-    });
-    await network.attach(app);
-    try {
-      await use(app);
-      expect(await network.outbound(), 'the app made network requests').toEqual([]);
-    } finally {
-      await app.close();
-      await rm(tmp, { recursive: true, force: true });
-    }
-  },
-  win: async ({ app }, use) => {
-    const win = await app.firstWindow();
-    await win.waitForLoadState('domcontentloaded');
-    await app.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 900);
-    });
-    await use(win);
-  },
-});
+/** The real projects run on a temporary copy (realData.ts, @realdata). */
+const test = realDataTest([], { size: [1440, 900] });
 
 test.setTimeout(240_000);
 
@@ -183,11 +155,9 @@ interface CountsW {
 }
 
 for (const id of ['alzour', 'hcl']) {
-  test.describe(id, () => {
-    test.skip(
-      !existsSync(join(DATA, 'projects', id, 'manifest.json')),
-      `${id} project not found under ${DATA}`,
-    );
+  test.describe(`@realdata ${id}`, () => {
+    test.skip(!hasRealProject(id), missingRealProject(id));
+    test.use({ realProjects: [id] });
     // The workstation budget is for its hardware GPU; with every launch on SwiftShader
     // (STRATLAS_E2E_SWGL=1) the software GPU budget below is the one that applies.
     test.skip(

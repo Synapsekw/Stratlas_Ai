@@ -5,18 +5,14 @@
  * timeline, does this make sense with no videos?", "turn off the anomaly tags with one click",
  * "when I do a point cloud overlay, I'm not able to change the size of the point cloud", "point
  * size doesn't change the size of the points, it changes the colour").
- * Runs where E:\Stratlas Data (or STRATLAS_HCL_DATA) holds the projects; each
- * project's tests skip without it. Read-only: nothing is written to the projects.
+ * Runs where the real data holds the projects (realData.ts); each project's tests skip without it
+ * and run on a temporary copy of it (@realdata).
  */
-import { test as base, type ElectronApplication, type Page } from '@playwright/test';
-import { existsSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { expect, launchApp, NetworkGuard } from './fixtures';
+import type { Page } from '@playwright/test';
+import { expect, realDataTest } from './fixtures';
+import { hasRealProject, missingRealProject } from './realData';
 
-const DATA = process.env.STRATLAS_HCL_DATA ?? 'E:\\Stratlas Data';
-const has = (id: string) => existsSync(join(DATA, 'projects', id, 'manifest.json'));
+const has = hasRealProject;
 
 interface Obj {
   name: string;
@@ -35,36 +31,7 @@ interface Inspect {
   };
 }
 
-const test = base.extend<{ app: ElectronApplication; win: Page }>({
-  // eslint-disable-next-line no-empty-pattern -- Playwright requires the destructuring form.
-  app: async ({}, use) => {
-    const tmp = await mkdtemp(join(tmpdir(), 'aio-display-'));
-    const network = new NetworkGuard();
-    const app = await launchApp({
-      base: tmp,
-      root: DATA,
-      userData: join(tmp, 'user'),
-      projectId: '',
-      projectDir: '',
-    });
-    await network.attach(app);
-    try {
-      await use(app);
-      expect(await network.outbound(), 'the app made network requests').toEqual([]);
-    } finally {
-      await app.close();
-      await rm(tmp, { recursive: true, force: true });
-    }
-  },
-  win: async ({ app }, use) => {
-    const win = await app.firstWindow();
-    await win.waitForLoadState('domcontentloaded');
-    await app.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 900);
-    });
-    await use(win);
-  },
-});
+const test = realDataTest([], { size: [1440, 900] });
 
 test.setTimeout(180_000);
 
@@ -317,8 +284,9 @@ async function colourTest(win: Page, card: string, rgb: boolean) {
   await expect(panel).toBeVisible();
 }
 
-test.describe('Al-Zour', () => {
-  test.skip(!has('alzour'), `Al-Zour project not found under ${DATA}`);
+test.describe('@realdata Al-Zour', () => {
+  test.skip(!has('alzour'), missingRealProject('alzour'));
+  test.use({ realProjects: ['alzour'] });
   test('flight paths: all, active clip only, off, P, and per flight', async ({ win }) => {
     await pathsTest(win, 'Al-Zour', 5);
   });
@@ -418,8 +386,9 @@ async function openDamac(win: Page) {
 /** Focus the 3D view so single-key shortcuts reach the stage. */
 const focusStage = (win: Page) => win.locator('[data-scene-view] canvas').focus();
 
-test.describe('DAMAC', () => {
-  test.skip(!has('damac'), `DAMAC project not found under ${DATA}`);
+test.describe('@realdata DAMAC', () => {
+  test.skip(!has('damac'), missingRealProject('damac'));
+  test.use({ realProjects: ['damac'] });
 
   test('pins behind the tower are hidden and left out of the badges', async ({ win }) => {
     await openDamac(win);
@@ -496,8 +465,9 @@ test.describe('DAMAC', () => {
   });
 });
 
-test.describe('HCl', () => {
-  test.skip(!has('hcl'), `HCl project not found under ${DATA}`);
+test.describe('@realdata HCl', () => {
+  test.skip(!has('hcl'), missingRealProject('hcl'));
+  test.use({ realProjects: ['hcl'] });
   test('with clips the timeline shows as before', async ({ win }) => {
     await open(win, 'HCl');
     await expect(win.locator('.tl-wrap [aria-label="Timeline"]')).toBeVisible();

@@ -80,6 +80,7 @@ import type { Handler } from './ipc';
 import type { AuditSummary } from '@aio/project/export';
 import { projectCacheKey } from '@aio/sync/blobs';
 import { writeJsonAtomic } from './fsutil';
+import { assertWritable } from './realDataGuard';
 import { type Handle } from './notYet';
 import { ISSUES_SCHEMA } from './project';
 import { createJournalStore, type JournalStore } from './sync/journalStore';
@@ -237,6 +238,7 @@ async function readText(file: string): Promise<string | null> {
 }
 
 async function writeAtomic(file: string, text: string): Promise<void> {
+  assertWritable(file, 'journal write');
   await mkdir(dirname(file), { recursive: true });
   const tmp = `${file}.${String(process.pid)}.${String(Date.now())}.tmp`;
   await writeFile(tmp, text, 'utf8');
@@ -249,6 +251,7 @@ async function writeAtomic(file: string, text: string): Promise<void> {
  * segment, a redaction or closing the project closes it.
  */
 async function appendDurable(st: ProjectState, file: string, text: string): Promise<void> {
+  assertWritable(file, 'journal append', { inPlace: true });
   if (st.handle?.file !== file) {
     await closeHandle(st);
     await mkdir(dirname(file), { recursive: true });

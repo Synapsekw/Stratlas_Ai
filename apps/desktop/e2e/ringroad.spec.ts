@@ -1,47 +1,15 @@
 /**
  * End to end on the real 1st Ring Road project (2,115 defects, kit-pyramid ortho, road.json).
- * Runs only on machines that hold the project at E:\Stratlas Data\projects\ringroad (or under
- * STRATLAS_RINGROAD_DATA); skipped elsewhere. Read-only: it never edits the project.
+ * Runs only where the real data holds projects/ringroad (realData.ts); skipped elsewhere. Each
+ * test runs on a temporary copy of the project (@realdata).
  */
-import { test as base, type ElectronApplication, type Page } from '@playwright/test';
-import { existsSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { expect, launchApp, NetworkGuard } from './fixtures';
+import type { Page } from '@playwright/test';
+import { expect, realDataTest } from './fixtures';
+import { hasRealData, missingRealProject } from './realData';
 
-const DATA = process.env.STRATLAS_RINGROAD_DATA ?? 'E:\\Stratlas Data';
-const RR = join(DATA, 'projects', 'ringroad');
+const test = realDataTest(['ringroad']);
 
-const test = base.extend<{ app: ElectronApplication; win: Page }>({
-  // eslint-disable-next-line no-empty-pattern -- Playwright requires the destructuring form.
-  app: async ({}, use) => {
-    const base = await mkdtemp(join(tmpdir(), 'aio-rr-'));
-    const network = new NetworkGuard();
-    const app = await launchApp({
-      base,
-      root: DATA,
-      userData: join(base, 'user'),
-      projectId: 'ringroad',
-      projectDir: RR,
-    });
-    await network.attach(app);
-    try {
-      await use(app);
-      expect(await network.outbound(), 'the app made network requests').toEqual([]);
-    } finally {
-      await app.close();
-      await rm(base, { recursive: true, force: true });
-    }
-  },
-  win: async ({ app }, use) => {
-    const win = await app.firstWindow();
-    await win.waitForLoadState('domcontentloaded');
-    await use(win);
-  },
-});
-
-test.skip(!existsSync(join(RR, 'road.json')), `Ring Road project not found at ${RR}`);
+test.skip(!hasRealData('projects', 'ringroad', 'road.json'), missingRealProject('ringroad'));
 test.setTimeout(180_000);
 
 interface MapLike {
@@ -75,7 +43,9 @@ function mapFacts(win: Page) {
   });
 }
 
-test('the Ring Road opens in the native road workspace with its map overlays', async ({ win }) => {
+test('@realdata the Ring Road opens in the native road workspace with its map overlays', async ({
+  win,
+}) => {
   await win.getByTestId('project-card').filter({ hasText: 'Ring Road' }).first().click();
 
   // Map first, the chainage ruler in place of the timeline, every defect listed.

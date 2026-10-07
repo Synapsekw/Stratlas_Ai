@@ -135,6 +135,11 @@ import { createAioHandler } from './protocol/handler';
 import { cspForUrl } from './protocol/legacy';
 import { saveFile } from './saveFile';
 import { createSettingsStore, defaultDataRoot, defaultSettings } from './settings';
+import { installRealDataGuard } from './realDataGuard';
+
+// An app started by an e2e test (STRATLAS_E2E=1) refuses every write under the founder's real data
+// root (STRATLAS_REAL_DATA_ROOT, default E:\Stratlas Data), before anything else runs.
+installRealDataGuard(process.env);
 
 // --profile=<name>: a second person on one PC (tests, training), with its own userData folder
 // (and with it the single-instance lock) and its own vault service (identity.ts).

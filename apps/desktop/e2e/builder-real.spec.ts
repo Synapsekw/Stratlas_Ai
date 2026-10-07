@@ -2,22 +2,19 @@
  * Builder walkthrough on real (client) data, outside the CI suite: runs only when
  * STRATLAS_B2_RAW points at a folder with `ebsm/` (raw EBSM photos with EXIF GPS) and
  * `ebsm-glb/EBSM-Flare-model.glb`, and STRATLAS_B2_OUT at a folder for screenshots. The data root
- * is a temporary copy (STRATLAS_B2_DATA, holding `packs/`); nothing is written to the real one.
+ * is a temporary copy (STRATLAS_B2_DATA, holding `packs/`); nothing is written to the real one:
+ * launchApp refuses the real data root. The library's projects, whose severity models the wizard
+ * offers, are copies of the real projects' manifests (realData.ts, @realdata).
  *
  *   STRATLAS_B2_RAW=... STRATLAS_B2_DATA=... STRATLAS_B2_OUT=... npx playwright test builder-real
  */
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fromWgs84 } from '@aio/geo';
-import { MAIN_ENTRY } from './fixtures';
+import { launchApp, type DataRoot } from './fixtures';
+import { copyRealProjects, hasRealProject, onlyPaths } from './realData';
 
 const RAW = process.env.STRATLAS_B2_RAW ?? '';
 const DATA = process.env.STRATLAS_B2_DATA ?? '';
@@ -112,7 +109,7 @@ function pickSpread<T extends { p: [number, number, number] }>(hits: T[], n: num
   return out;
 }
 
-/** The kit's georeference of the EBSM model (E:/Stratlas Data/projects/ebsm). */
+/** The kit's georeference of the EBSM model (the real projects/ebsm). */
 const KIT_ORIGIN: [number, number, number] = [221029.443, 3214461.958, 31.7];
 const KIT_T = [
   0.024999398714205534, 0, -0.999687466193274, 0, 0, 1, 0, 0, 0.999687466193274, 0,
@@ -137,20 +134,25 @@ function expectedTransform(origin: [number, number, number]): number[] {
   return t;
 }
 
-const REAL_PROJECTS = ['alzour', 'damac', 'ebsm', 'hcl', 'masafi', 'ringroad'].map(
-  (p) => `E:/Stratlas Data/projects/${p}`,
-);
+/** Real projects whose manifests (severity models) the library offers the wizard. */
+const LIBRARY = ['alzour', 'damac', 'ebsm', 'hcl', 'masafi', 'ringroad'];
 
-test('new project from raw EBSM photos and the GLB: create, import, align, annotate', async () => {
+/** The data root STRATLAS_B2_DATA with a throwaway profile. */
+const dataRoot = (user: string): DataRoot => ({
+  base: user,
+  root: DATA,
+  userData: user,
+  projectId: '',
+  projectDir: '',
+});
+
+test('@realdata new project from raw EBSM photos and the GLB: create, import, align, annotate', async () => {
   const user = await mkdtemp(join(tmpdir(), 'aio-b2-user-'));
-  const app = await electron.launch({
-    args: [MAIN_ENTRY],
-    env: {
-      ...(process.env as Record<string, string>),
-      STRATLAS_DATA: DATA,
-      STRATLAS_USER_DATA: user,
-    },
+  const library = await copyRealProjects(LIBRARY, {
+    prefix: 'aio-b2-library-',
+    include: onlyPaths(['manifest.json']),
   });
+  const app = await launchApp(dataRoot(user));
   try {
     await app.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(1600, 960);
@@ -158,9 +160,12 @@ test('new project from raw EBSM photos and the GLB: create, import, align, annot
     const win = await app.firstWindow();
     await win.waitForLoadState('domcontentloaded');
 
-    // the library's projects (read only) offer their severity models to the wizard
-    for (const p of REAL_PROJECTS)
-      await win.evaluate((path) => window.aio.invoke('library:add', { path }), p);
+    // the library's projects (copies) offer their severity models to the wizard
+    for (const id of LIBRARY.filter(hasRealProject))
+      await win.evaluate(
+        (path) => window.aio.invoke('library:add', { path }),
+        library.projectDirOf(id),
+      );
     await win.reload();
 
     // 1. wizard
@@ -315,20 +320,14 @@ test('new project from raw EBSM photos and the GLB: create, import, align, annot
   } finally {
     await app.close();
     await rm(user, { recursive: true, force: true });
+    await library.dispose();
   }
 });
 
-test('raw DJI video with its SRT imports as a placed clip and opens in calibration', async () => {
+test('@realdata raw DJI video with its SRT imports as a placed clip and opens in calibration', async () => {
   const mp4 = join(RAW, 'dji', 'DJI_0498.MP4');
   const user = await mkdtemp(join(tmpdir(), 'aio-b2-user-'));
-  const app = await electron.launch({
-    args: [MAIN_ENTRY],
-    env: {
-      ...(process.env as Record<string, string>),
-      STRATLAS_DATA: DATA,
-      STRATLAS_USER_DATA: user,
-    },
-  });
+  const app = await launchApp(dataRoot(user));
   try {
     await app.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(1600, 960);

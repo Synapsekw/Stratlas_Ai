@@ -1,19 +1,17 @@
 /**
  * End to end on the real Masafi stockpile project (19 piles, two surveys): the native volumetric
- * workspace. Runs only where the project is present at E:\Stratlas Data\projects\masafi (or under
- * STRATLAS_MASAFI_DATA); skipped elsewhere. The project is copied to a temporary data root, so the
- * boundary edit written here never touches the real data.
+ * workspace. Runs only where the real data holds projects/masafi (realData.ts); skipped elsewhere.
+ * The project is copied to a temporary data root (@realdata), so the boundary edit written here
+ * never touches the real data.
  */
-import { test as base, type ElectronApplication, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
-import { cp, mkdtemp, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expect, launchApp, NetworkGuard } from './fixtures';
+import { expect, realDataTest } from './fixtures';
+import { hasRealData, missingRealProject, realProjectDir } from './realData';
 
-const DATA = process.env.STRATLAS_MASAFI_DATA ?? 'E:\\Stratlas Data';
-const MASAFI = join(DATA, 'projects', 'masafi');
-const PACKS = join(DATA, 'packs');
+const MASAFI = realProjectDir('masafi');
 
 interface Fcn {
   fill: number;
@@ -49,48 +47,15 @@ interface Inspect {
   };
 }
 
-const test = base.extend<{ root: string; app: ElectronApplication; win: Page }>({
-  // eslint-disable-next-line no-empty-pattern -- Playwright requires the destructuring form.
-  root: async ({}, use) => {
-    const dir = await mkdtemp(join(tmpdir(), 'aio-masafi-'));
-    await cp(MASAFI, join(dir, 'data', 'projects', 'masafi'), { recursive: true });
-    // start from the delivered volumes: edits saved while testing the real project are left out
-    await rm(join(dir, 'data', 'projects', 'masafi', 'edits'), { recursive: true, force: true });
-    // the installed street map pack that covers the yard, when this machine has it
-    if (existsSync(join(PACKS, 'kuwait.pmtiles')))
-      for (const f of ['kuwait.json', 'kuwait.pmtiles'])
-        await cp(join(PACKS, f), join(dir, 'data', 'packs', f));
-    await use(dir);
-    await rm(dir, { recursive: true, force: true });
-  },
-  app: async ({ root }, use) => {
-    const network = new NetworkGuard();
-    const app = await launchApp({
-      base: root,
-      root: join(root, 'data'),
-      userData: join(root, 'user'),
-      projectId: 'masafi',
-      projectDir: join(root, 'data', 'projects', 'masafi'),
-    });
-    await network.attach(app);
-    try {
-      await use(app);
-      expect(await network.outbound(), 'the app made network requests').toEqual([]);
-    } finally {
-      await app.close();
-    }
-  },
-  win: async ({ app }, use) => {
-    await app.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setContentSize(1600, 960);
-    });
-    const win = await app.firstWindow();
-    await win.waitForLoadState('domcontentloaded');
-    await use(win);
-  },
+const test = realDataTest(['masafi'], {
+  // start from the delivered volumes: edits saved while testing the real project are left out
+  include: (rel) => rel !== 'edits',
+  // the installed street map pack that covers the yard, when this machine has it
+  packs: ['kuwait'],
+  size: [1600, 960],
 });
 
-test.skip(!existsSync(join(MASAFI, 'volumes.json')), `Masafi project not found at ${MASAFI}`);
+test.skip(!hasRealData('projects', 'masafi', 'volumes.json'), missingRealProject('masafi'));
 test.setTimeout(180_000);
 
 /**
@@ -194,7 +159,9 @@ async function pileOnScreen(win: Page, node: string): Promise<{ x: number; y: nu
 const rowNet = (win: Page, pile: string) =>
   win.locator(`[data-testid="vol-register"] tbody tr[data-pile="${pile}"] td.net`);
 
-test('Masafi register, recomputed volumes, 3D selection, surfaces and section', async ({ win }) => {
+test('@realdata Masafi register, recomputed volumes, 3D selection, surfaces and section', async ({
+  win,
+}) => {
   const errors: string[] = [];
   win.on('pageerror', (e) => errors.push(e.message));
   win.on('console', (m) => {
@@ -257,7 +224,7 @@ test('Masafi register, recomputed volumes, 3D selection, surfaces and section', 
     ),
   ).toEqual([true, false]);
   // the offline street map lies under the yard
-  if (existsSync(join(PACKS, 'kuwait.pmtiles')))
+  if (hasRealData('packs', 'kuwait.pmtiles'))
     await expect
       .poll(
         () =>
@@ -469,10 +436,10 @@ test('Masafi register, recomputed volumes, 3D selection, surfaces and section', 
   expect(errors).toEqual([]);
 });
 
-test('Masafi boundary edit in 3D is recomputed, saved to the project, and exported', async ({
+test('@realdata Masafi boundary edit in 3D is recomputed, saved to the project, and exported', async ({
   app,
   win,
-  root,
+  realData,
 }) => {
   const realBefore = boundariesOf(MASAFI);
   await openMasafi(win);
@@ -493,7 +460,7 @@ test('Masafi boundary edit in 3D is recomputed, saved to the project, and export
   await expect(win.getByTestId('vol-editbar')).toHaveCount(0);
 
   const file = JSON.parse(
-    await readFile(join(root, 'data', 'projects', 'masafi', 'edits', 'boundaries.json'), 'utf8'),
+    await readFile(join(realData.projectDir, 'edits', 'boundaries.json'), 'utf8'),
   ) as {
     schema: string;
     edits: { pile: string; epoch: string; ring: number[][]; volumes: { tin: Fcn } }[];
@@ -510,7 +477,7 @@ test('Masafi boundary edit in 3D is recomputed, saved to the project, and export
   await win.getByRole('button', { name: 'All piles', exact: true }).click();
   await expect(rowNet(win, 'P02')).toHaveText(Math.round(net).toLocaleString('en-US'));
   await expect(win.locator('tr[data-pile="P02"] .vol-ed')).toHaveCount(1);
-  const target = join(root, 'register.csv');
+  const target = join(realData.base, 'register.csv');
   await app.evaluate(({ dialog }, path) => {
     dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath: path });
   }, target);

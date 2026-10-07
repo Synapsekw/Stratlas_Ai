@@ -6,12 +6,12 @@
  *
  * Runs on synthetic projects (CI): the tiny project plus a two-date project with a point cloud,
  * a photo and an issue on it, and a package of the tiny project opened in player mode.
- * The video window and the real-data popovers run on HCl where E:\Stratlas Data has it.
+ * The video window and the real-data popovers run on a copy of HCl where the real data has it
+ * (realData.ts, @realdata).
  */
 import { ProjectManifest, type ProjectManifestInput } from '@aio/schema';
 import type { Locator, Page } from '@playwright/test';
 import { copyFile, mkdir, stat, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { expectAccessible, expectFocusMeaningful, focusInfo } from './a11y';
@@ -19,11 +19,13 @@ import {
   expect,
   launchApp,
   NetworkGuard,
+  realProject,
   test,
   tinyGlb,
   tinyManifest,
   type DataRoot,
 } from './fixtures';
+import { hasRealProject, missingRealProject } from './realData';
 
 test.setTimeout(240_000);
 
@@ -510,29 +512,14 @@ test('focus never falls into the page when the control that had it goes away', a
   expect((await focusInfo(win)).tag).not.toBe('body');
 });
 
-const DATA = process.env.STRATLAS_HCL_DATA ?? 'E:\\Stratlas Data';
-const HCL = join(DATA, 'projects', 'hcl');
-
-test.describe('HCl (real data, local only)', () => {
-  test.skip(!existsSync(join(HCL, 'manifest.json')), `HCl project not found at ${HCL}`);
+test.describe('@realdata HCl (real data, local only)', () => {
+  test.skip(!hasRealProject('hcl'), missingRealProject('hcl'));
 
   test('video window, inside the asset, point cloud and issue card', async () => {
-    const data: DataRoot = {
-      base: join(DATA, '..'),
-      root: DATA,
-      userData: join(
-        process.env.TEMP ?? process.env.TMPDIR ?? '.',
-        `aio-a11y-${String(Date.now())}`,
-      ),
-      projectId: 'hcl',
-      projectDir: HCL,
-    };
-    const network = new NetworkGuard();
-    const app = await launchApp(data);
+    // a temporary copy of the project (realData.ts), deleted at close
+    const run = await realProject('hcl');
+    const { win, network } = run;
     try {
-      await network.attach(app);
-      const win = await app.firstWindow();
-      await win.waitForLoadState('domcontentloaded');
       await win.getByTestId('project-card').filter({ hasText: /HCl/i }).first().click();
       await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible({
         timeout: 60_000,
@@ -556,7 +543,7 @@ test.describe('HCl (real data, local only)', () => {
       await expectAccessible(win, 'HCl, issue card');
       expect(await network.outbound()).toEqual([]);
     } finally {
-      await app.close();
+      await run.close();
     }
   });
 });

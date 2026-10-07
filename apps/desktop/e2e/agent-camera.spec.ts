@@ -2,15 +2,16 @@
  * The agent drives the camera on the real HCl tank and Al-Zour plant (scripted test model, no
  * network): named places, issues, photos, coordinates, the drone at a time, standard views, orbit
  * and zoom, from a focused video window, on a Map-only stage (the map pans; 3D-only moves open the
- * 3D view) and in split view. The projects are copied into a temporary data root
- * (copied, agentProjects.ts); skipped on machines without them.
+ * 3D view) and in split view. The projects are copied into a temporary data root (realData.ts,
+ * @realdata): manifest, issues, models, rasters, flights, photos, panoramas, posters and the smaller
+ * point clouds; not the videos, not clouds of 150 MB or more. Skipped on machines without them.
  */
 import { toWgs84 } from '@aio/geo';
-import type { ElectronApplication, Page } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import type { Page } from '@playwright/test';
+import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { copiedDataRoot, hasRealProject, realProject, type ProjectCopy } from './agentProjects';
-import { expect, launchApp, NetworkGuard, test } from './fixtures';
+import { expect, realProject as runRealProject, test, type RealProject } from './fixtures';
+import { hasRealProject, realProjectDir as realProject } from './realData';
 
 test.setTimeout(240_000);
 
@@ -35,39 +36,40 @@ interface Hook {
   };
 }
 
-interface Run {
-  data: ProjectCopy;
-  app: ElectronApplication;
-  win: Page;
-  network: NetworkGuard;
+type Run = RealProject;
+
+/** Left out of the copies: the videos, the AI folder, earlier versions, backups, huge clouds. */
+const SKIPPED_DIRS = new Set(['video', 'ai']);
+const MAX_FILE = 150 * 1024 * 1024;
+
+function agentCopy(rel: string, id: string): boolean {
+  const top = rel.split('/')[0] ?? '';
+  if (SKIPPED_DIRS.has(top) || top.includes('.before') || rel.endsWith('.bak')) return false;
+  const s = statSync(join(realProject(id), rel));
+  return s.isDirectory() || s.size < MAX_FILE;
 }
 
 async function open(id: string, name: string, packs: string[] = []): Promise<Run> {
-  const data = await copiedDataRoot(id, packs);
-  const app = await launchApp(data, { STRATLAS_AI_TEST_PROVIDER: '1' });
+  const run = await runRealProject(id, {
+    prefix: `aio-agent-${id}-`,
+    packs,
+    include: agentCopy,
+    env: { STRATLAS_AI_TEST_PROVIDER: '1' },
+  });
   try {
-    const network = new NetworkGuard();
-    await network.attach(app);
-    const win = await app.firstWindow();
-    await win.waitForLoadState('domcontentloaded');
+    const { win } = run;
     await win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: true }));
     await win.getByTestId('project-card').filter({ hasText: name }).click();
     await expect(win.locator('.crumbs')).toContainText(name);
-    return { data, app, win, network };
+    return run;
   } catch (e) {
-    await app.close().catch(() => undefined);
-    await data.dispose();
+    await run.close().catch(() => undefined);
     throw e;
   }
 }
 
 async function close(run: Run) {
-  try {
-    expect(await run.network.outbound(), 'the app made network requests').toEqual([]);
-  } finally {
-    await run.app.close().catch(() => undefined);
-    await run.data.dispose();
-  }
+  await run.close();
 }
 
 const agent = (win: Page) => win.getByRole('region', { name: 'Agent' });
@@ -175,7 +177,7 @@ async function pressKey(win: Page, key: string) {
   await win.keyboard.press(key);
 }
 
-test.describe('agent camera on HCl', () => {
+test.describe('@realdata agent camera on HCl', () => {
   test.skip(!hasRealProject('hcl'), 'HCl project not found');
 
   test('issue, named nozzle from the video window, photo eye and undo', async () => {
@@ -241,7 +243,7 @@ test.describe('agent camera on HCl', () => {
   });
 });
 
-test.describe('agent camera on Al-Zour', () => {
+test.describe('@realdata agent camera on Al-Zour', () => {
   test.skip(!hasRealProject('alzour'), 'Al-Zour project not found');
 
   test('tank, jetty, coordinates, drone time, views, map and split', async () => {

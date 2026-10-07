@@ -3,16 +3,16 @@
  * a customer does (double-click: the path arrives as an argument) on a machine with an empty
  * data folder, in player mode, with the zero-network guard on both runs.
  *
- * The HCl test needs the real project at E:\Stratlas Data\projects\hcl (or STRATLAS_HCL_DATA)
- * and is skipped elsewhere; it only reads the project and writes the package to a temp folder.
+ * The HCl test needs the real HCl project (realData.ts, @realdata) and is skipped elsewhere; it
+ * exports from a temporary copy of the project and writes the package to a temp folder.
  * Set STRATLAS_SHOTS to a folder to keep screenshots of each step.
  */
 import type { ElectronApplication, Page } from '@playwright/test';
-import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, open, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, launchApp, NetworkGuard, test, type DataRoot } from './fixtures';
+import { copyRealProjects, hasRealProject, missingRealProject, realProjectDir } from './realData';
 
 const SHOTS = process.env.STRATLAS_SHOTS;
 const shot = async (win: Page, name: string) => {
@@ -113,23 +113,17 @@ test('an encrypted package of the tiny project opens with its passphrase in play
   }
 });
 
-const DATA = process.env.STRATLAS_HCL_DATA ?? 'E:\\Stratlas Data';
-const HCL = join(DATA, 'projects', 'hcl');
+const HCL = realProjectDir('hcl');
 
-test.describe('HCl as a customer package', () => {
-  test.skip(!existsSync(join(HCL, 'manifest.json')), `HCl project not found at ${HCL}`);
+test.describe('@realdata HCl as a customer package', () => {
+  test.skip(!hasRealProject('hcl'), missingRealProject('hcl'));
   test.setTimeout(420_000);
 
   test('exports, opens read-only from the ZIP, streams and seeks video, never writes or calls out', async () => {
     const base = await mkdtemp(join(tmpdir(), 'aio-pkg-hcl-'));
     const file = join(base, 'HCl customer.aio');
-    const builder: DataRoot = {
-      base,
-      root: DATA,
-      userData: join(base, 'builder-user'),
-      projectId: 'hcl',
-      projectDir: HCL,
-    };
+    // the builder exports from a temporary copy of the real project
+    const builder = await copyRealProjects(['hcl'], { prefix: 'aio-pkg-hcl-builder-' });
     const issuesBefore = (await stat(join(HCL, 'issues.json'))).mtimeMs;
     try {
       // 1. The builder exports HCl without its raw point clouds.
@@ -290,6 +284,7 @@ test.describe('HCl as a customer package', () => {
       expect((await stat(join(HCL, 'issues.json'))).mtimeMs).toBe(issuesBefore);
     } finally {
       await rm(base, { recursive: true, force: true });
+      await builder.dispose();
     }
   });
 });
