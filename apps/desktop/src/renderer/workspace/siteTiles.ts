@@ -110,14 +110,25 @@ export const rasterPacks = createStore<RasterState>()((set, get) => ({
       bridge.invoke('imageryPacks:list', {}).catch(() => null),
       bridge.invoke('terrainPacks:list', {}).catch(() => null),
     ]).then(([i, t]) => {
+      const cur = get();
       set({
-        imagery: i?.ok ? i.packs : [],
-        terrain: t?.ok ? t.packs : [],
-        rev: get().rev + 1,
+        imagery: unchanged(cur.imagery, i?.ok ? i.packs : []),
+        terrain: unchanged(cur.terrain, t?.ok ? t.packs : []),
+        rev: cur.rev + 1,
       });
     });
   },
 }));
+
+/**
+ * The listed packs, keeping the current array when nothing changed: the map and the 3D
+ * surroundings rebuild on a new array, and a refresh (opening a project, any finished tiles job)
+ * would otherwise remove the Satellite layers and add them again, blanking the imagery while the
+ * new source loads.
+ */
+export function unchanged(cur: RasterPackInfo[], next: RasterPackInfo[]): RasterPackInfo[] {
+  return JSON.stringify(cur) === JSON.stringify(next) ? cur : next;
+}
 
 async function saveAroundSite(p: RasterPrefs): Promise<void> {
   const bridge = aio();

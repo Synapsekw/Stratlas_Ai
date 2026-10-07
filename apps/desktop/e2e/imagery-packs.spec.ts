@@ -45,7 +45,7 @@ interface MapProbe {
   once(ev: string, cb: () => void): void;
   triggerRepaint(): void;
   getCanvas(): HTMLCanvasElement;
-  areTilesLoaded(): boolean;
+  getZoom(): number;
 }
 
 /** The main map of the open project (MapLibre), or null before it runs. */
@@ -106,7 +106,10 @@ test('imports a GeoTIFF as an imagery pack and shows it on the Satellite map', a
     .toBe('E2E synthetic imagery');
   expect((await mainMap(win))?.layers).toContain('g7-raster-imagery-site-ortho-layer');
 
-  // and its tiles draw: the centre of the map at the site is red
+  // and its tiles draw: the centre of the map at the site is red. The source was added a moment
+  // ago and has requested no tiles yet, so `areTilesLoaded()` (which only looks at tiles already
+  // requested) is true at once; wait for `idle` after the move instead: every source loaded, its
+  // tiles for this view loaded and drawn, no transition running.
   const centre = await win.evaluate(async () => {
     const host = [...document.querySelectorAll('.pane-map div')].find((d) => '__aioMap' in d) as
       { __aioMap: MapProbe } | undefined;
@@ -116,41 +119,43 @@ test('imports a GeoTIFF as an imagery pack and shows it on the Satellite map', a
       window as unknown as { aio: { invoke(c: string, r: unknown): Promise<unknown> } }
     ).aio.invoke('imageryPacks:list', {})) as { packs: { bbox: number[] }[] };
     const [w = 0, s = 0, e = 0, n = 0] = packs.packs[0]?.bbox ?? [];
+    const idle = new Promise<void>((resolve) => {
+      map.once('idle', resolve);
+    });
     map.jumpTo({ center: [(w + e) / 2, (s + n) / 2], zoom: 15 });
-    const settled = () =>
-      new Promise<void>((resolve) => {
-        const check = () => {
-          if (map.areTilesLoaded()) resolve();
-          else setTimeout(check, 100);
-        };
-        check();
-      });
-    await settled();
-    // a few points around the site (its centre carries the project's own markers)
-    return new Promise<number[][]>((resolve) => {
+    await idle;
+    // a few points around the site (its centre carries the project's own markers), read in a
+    // render event, while the frame is still in the drawing buffer
+    return new Promise<{ px: number[][]; zoom: number; tiles: string[] }>((resolve) => {
       map.once('render', () => {
         const canvas = map.getCanvas();
         const gl = canvas.getContext('webgl2') ?? canvas.getContext('webgl');
         const dpr = canvas.width / canvas.clientWidth;
-        const out: number[][] = [];
+        const px: number[][] = [];
         for (const [dx, dy] of [
           [40, 30],
           [-40, 30],
           [40, -30],
           [-40, -30],
         ] as const) {
-          const px = new Uint8Array(4);
+          const out = new Uint8Array(4);
           const x = Math.round((canvas.clientWidth / 2 + dx) * dpr);
           const y = Math.round((canvas.clientHeight / 2 + dy) * dpr);
-          gl?.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
-          out.push([...px]);
+          gl?.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, out);
+          px.push([...out]);
         }
-        resolve(out);
+        // for the failure message: the imagery source's tiles and their states
+        const caches = (map as unknown as { style?: { sourceCaches?: Record<string, unknown> } })
+          .style?.sourceCaches;
+        const cache = caches?.['g7-raster-imagery-site-ortho'] as
+          { _tiles?: Record<string, { state: string; tileID: { key: string } }> } | undefined;
+        const tiles = Object.values(cache?._tiles ?? {}).map((t) => `${t.tileID.key}:${t.state}`);
+        resolve({ px, zoom: map.getZoom(), tiles });
       });
       map.triggerRepaint();
     });
   });
   expect(centre).not.toBeNull();
-  const red = (centre ?? []).filter(([r = 0, g = 0, b = 0]) => r > 150 && g < 90 && b < 90);
+  const red = (centre?.px ?? []).filter(([r = 0, g = 0, b = 0]) => r > 150 && g < 90 && b < 90);
   expect(red.length, JSON.stringify(centre)).toBeGreaterThanOrEqual(3);
 });
