@@ -245,6 +245,19 @@ COLMAP's PatchMatch stereo is CUDA-only, and CI and most of our customers' lapto
 
 Starting assumption: `dmrecon` for Standard and High on CPU, SGM if the spike shows it matches `dmrecon` on nadir data at a fraction of the time, and option 4 for Fast. Other permissive dense methods found (ACMM, ACMMP, ACMH, MIT; PatchmatchNet, MIT) are CUDA or PyTorch GPU methods.
 
+**G3 spike result (7 Oct 2026): SGM, option 2.** Measured on G3's own synthetic nadir scene (known poses, known surface; G8's set was not ready), depth maps against the true depth, two partners per photo, the same rectification and back-projection for both matchers:
+
+| Matcher                                | Photos     | Matching time per pair | Within 3 x GSD of truth | Filled | Median error     |
+| -------------------------------------- | ---------- | ---------------------- | ----------------------- | ------ | ---------------- |
+| Our census SGM, numpy (8 paths)        | 480 x 360  | about 1 s              | 99.6%                   | 91%    | 5 cm (GSD 9)     |
+| OpenCV `StereoSGBM` 3-way (spike venv) | 480 x 360  | under 0.1 s            | 98.2%                   | 88%    | 5 cm             |
+| Our census SGM, numpy                  | 1280 x 960 | 17 s (1.9 GB peak)     | 99.4%                   | 93%    | 1.8 cm (GSD 3.4) |
+| OpenCV `StereoSGBM` 3-way              | 1280 x 960 | 0.06 s                 | 99.1%                   | 87%    | 1.5 cm           |
+
+- `dmrecon` was not measured: there is no MVE build yet (G1), and G3 could not fetch and build MVE in its worktree. It was not needed to decide: SGM already meets the dense-cloud target with a wide margin on nadir data, needs no native build beyond the OpenCV G1 builds anyway, and is our own code to maintain; MVE is in maintenance only. `dense.py` keeps the matcher behind an interface, so `dmrecon` can be added if the founder's oblique flight shows SGM is weak there (the plan's risk).
+- **Production needs the pack's own OpenCV build (G1):** at Standard (20 MP photos matched at 5 MP) OpenCV takes about a second per pair, so 500 photos match in roughly 15 to 30 minutes on 8 cores; the numpy matcher is two orders of magnitude slower and is the fallback for CI and small runs (the report and `run.json` warn when it ran).
+- End to end on the same scene (High, 16 photos, CPU, numpy matcher, about a minute): dense cloud 99% within 3 x GSD, DSM RMSE 3 cm (target under 27 cm), stockpile volume +1.2% (target 2%), ortho targets within 7 cm (target 18 cm), mesh 95th percentile 6 cm (target 36 cm). Meshing: PoissonRecon (MIT) and FSSR were not compared (no binaries yet); nadir runs without PoissonRecon use the 2.5D mesh, others a built-in FFT Poisson on a coarse grid.
+
 ### Meshing and texturing
 
 - **Screened Poisson** through COLMAP's vendored PoissonRecon (MIT), on the fused cloud with normals; trimmed by point density; then `fast-simplification` (MIT) to a site-view GLB within the engine's budget (2 M triangles by default) with Meshopt compression as today's GLBs.

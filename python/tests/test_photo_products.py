@@ -117,7 +117,7 @@ def test_run_json_lists_what_the_run_made(processed):
 def test_the_products_report(processed):
     root, _, _ = processed
     r = json.loads((root / "photogrammetry" / RUN / "report" / "products.json").read_text("utf-8"))
-    assert r["schema"] == "aio.photo-products/1" and r["run"] == RUN and r["preset"] == "high"
+    assert r["run"] == RUN and r["preset"] == "high"
     assert r["gsdCm"]["photos"] == pytest.approx(ps.GSD * 100, rel=0.05)
     assert r["gsdCm"]["dsm"] == pytest.approx(2 * r["gsdCm"]["ortho"])
     assert r["engines"]["dense"] in ("sgm-numpy", "sgm-opencv") and r["engines"]["ground"] == "smrf-grid"

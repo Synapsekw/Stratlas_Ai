@@ -586,7 +586,33 @@ export const FORMS: Record<PipelineName, Field[]> = {
       ],
     },
   ],
-  'photo.products': [],
+  // G3: the products list itself comes from the wizard (a form field cannot send a list of one).
+  'photo.products': [
+    { key: 'run', label: 'Run id', kind: 'text', required: true, placeholder: '20261007-0915' },
+    {
+      key: 'preset',
+      label: 'Quality',
+      kind: 'select',
+      options: [
+        { value: '', label: "The run's own" },
+        { value: 'fast', label: 'Fast (no dense matching)' },
+        { value: 'standard', label: 'Standard (half-size photos)' },
+        { value: 'high', label: 'High (full-size photos)' },
+      ],
+    },
+    {
+      key: 'dense',
+      label: 'Dense matching',
+      kind: 'select',
+      options: [
+        { value: '', label: 'Automatic' },
+        { value: 'cpu', label: 'Processor (CPU)' },
+      ],
+    },
+    { key: 'gsdCm', label: 'Ortho pixel (cm)', kind: 'number', placeholder: 'From the photos' },
+    { key: 'capture', label: 'Survey date (capture id)', kind: 'text', placeholder: 'Optional' },
+    { key: 'meshTriangles', label: 'Mesh triangles', kind: 'number', placeholder: '2000000' },
+  ],
   'opf.import': [
     {
       key: 'src',

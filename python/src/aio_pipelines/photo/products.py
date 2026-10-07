@@ -962,8 +962,8 @@ class PhotoProducts:
             warnings.append(
                 "The mesh was made by the built-in Poisson solver on a coarse grid; PoissonRecon is not in this pack."
             )
+        # no schema id yet: the integration lead registers one in versions.ts (G3's report)
         return {
-            "schema": "aio.photo-products/1",
             "run": run.id,
             "createdAt": now_iso(),
             "preset": s["preset"],
