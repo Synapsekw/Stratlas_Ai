@@ -443,15 +443,20 @@ class SparseModel:
         ):
             n = len(CAMERA_MODELS[str(model)])
             m.cameras[int(cid)] = Camera(int(cid), str(model), int(size[0]), int(size[1]), params[:n])
+        # read each array once: every ``z[key]`` decompresses the whole array again, and a slice
+        # of it keeps that whole copy alive (one per photo: tens of gigabytes on a large flight)
+        xys, p3d = z["xys"], z["p3d"]
         off = 0
         for iid, name, cam, R, t, cnt in zip(
             z["img_ids"], z["img_names"], z["img_cams"], z["img_R"], z["img_t"], z["img_counts"], strict=True
         ):
+            cnt = int(cnt)
             m.images[int(iid)] = Image(
-                int(iid), str(name), int(cam), R, t, z["xys"][off : off + cnt], z["p3d"][off : off + cnt]
+                int(iid), str(name), int(cam), R, t, xys[off : off + cnt].copy(), p3d[off : off + cnt].copy()
             )
-            off += int(cnt)
+            off += cnt
         m.set_points(z["point_ids"], z["xyz"], z["rgb"], z["error"])
+        z.close()
         return m
 
     @staticmethod

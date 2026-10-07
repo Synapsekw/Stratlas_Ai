@@ -70,6 +70,18 @@ def test_text_and_npz_files_round_trip(tmp_path):
     assert m3.mean_reprojection_error() == pytest.approx(m.mean_reprojection_error(), abs=2e-3)
 
 
+def test_a_loaded_model_holds_one_copy_of_its_observations(tmp_path):
+    # a slice of the file's whole array per photo kept every photo's copy alive: 75 GB on a
+    # 1,000-photo flight
+    _, m, _ = _scene_model(tmp_path)
+    m.save_npz(tmp_path / "model.npz")
+    loaded = SparseModel.load(tmp_path / "model.npz")
+    total = sum(len(im.xys) for im in loaded.images.values())
+    for im in loaded.images.values():
+        for arr in (im.xys, im.point3D_ids):
+            assert arr.base is None or arr.base.size == arr.size < total
+
+
 def test_similarity_transform_keeps_the_reprojection_error(tmp_path):
     _, m, _ = _scene_model(tmp_path)
     before = m.mean_reprojection_error()
