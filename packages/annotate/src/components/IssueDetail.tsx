@@ -1,3 +1,4 @@
+import { IssueCollab } from '@aio/collab/ui';
 import type { Issue, Layer, Sighting } from '@aio/schema';
 import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
 import { useState } from 'react';
@@ -305,6 +306,7 @@ export function IssueDetail({
           </div>
         )}
 
+        <IssueCollab issueId={issue.id} editor={issueEditor} readOnly={readOnly} />
         <IssueHistory projectId={project?.id ?? ''} issueId={issue.id} />
         {!readOnly && (
           <div>

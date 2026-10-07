@@ -1,3 +1,4 @@
+import { SignOff } from '@aio/collab/ui';
 import { defaultIssuePages, HOUSE_SECTIONS, houseKind } from '@aio/project/export';
 import {
   reportSectionOn,
@@ -203,6 +204,7 @@ export function ReportsScreen() {
               {t('audit.open')}
             </button>
           </section>
+          <SignOff readOnly={Boolean(pkg)} />
           <section className="sblock">
             <h2>
               Issue register <span className="sub">{issues.length} issues</span>

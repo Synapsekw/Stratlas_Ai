@@ -1,4 +1,5 @@
 import {
+  agentToolNames,
   builtInProviders,
   createAgentRuntime,
   createProviderRegistry,
@@ -60,7 +61,7 @@ import {
 import { registerLocalModelsIpc, type LocalServerSeen } from './localModels';
 import { readCloudDrawings, registerModelBuilderIpc } from './modelBuilder';
 import { createBlobService, registerBlobsIpc } from './blobs';
-import { registerCollabIpc } from './collab';
+import { houseSignOff, registerCollabIpc } from './collab';
 import {
   createDeviceKeys,
   createFileTeamJournal,
@@ -486,6 +487,8 @@ const exportJobs = createExportJobs({
         args.kind === 'house'
           ? await journal.reportAudit(args.projectId, args.issueIds).catch(() => null)
           : null,
+      signoff:
+        args.kind === 'house' ? await houseSignOff(args.projectId, args.issueIds) : undefined,
     });
   },
   emit: emitExportProgress,
@@ -1088,7 +1091,12 @@ function registerIpc(): void {
   // M9: one module per stream (T1 journal, T2 identity, T3 collab, T5 sync, T6 blobs, T7 server).
   registerJournalIpc({ handle, journal, exportAudit });
   registerIdentityIpc({ handle, service: identityService });
-  registerCollabIpc({ handle });
+  registerCollabIpc({
+    handle,
+    projects: registry,
+    userData: app.getPath('userData'),
+    agentTools: agentToolNames,
+  });
   registerSyncIpc({ handle });
   registerBlobsIpc({ handle, service: blobs });
   registerTeamServerIpc({ handle });

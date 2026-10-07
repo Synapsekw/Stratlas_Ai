@@ -39,6 +39,8 @@ export interface ReportWindowOptions {
   contents?: ReportContentsSettings | undefined;
   /** M9: the audit head and change log the house report prints (from the journal). */
   audit?: AuditSummary | null | undefined;
+  /** House report: the sign-off block (JSON) for section `approvals` (M9 T3). */
+  signoff?: string | undefined;
 }
 
 /**
@@ -103,6 +105,7 @@ export async function printReport(
     house ? opts.contents : undefined,
     house ? opts.audit : undefined,
   );
+  if (house && opts.signoff) query.signoff = opts.signoff;
   try {
     if (opts.devUrl) {
       const url = new URL(page, opts.devUrl.endsWith('/') ? opts.devUrl : `${opts.devUrl}/`);

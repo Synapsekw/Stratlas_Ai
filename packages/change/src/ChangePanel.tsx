@@ -1,3 +1,4 @@
+import { ChangeCollab } from '@aio/collab/ui';
 import type { ChangeItem, ChangeKind, ChangeVerdict } from '@aio/schema';
 import { useT, type MessageKey } from '@aio/ui';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
@@ -633,6 +634,7 @@ export function ChangePanel({
                       </div>
                     </>
                   )}
+                  <ChangeCollab setId={row.setId} itemId={item.id} readOnly={s.readOnly} />
                 </div>
               )}
             </div>

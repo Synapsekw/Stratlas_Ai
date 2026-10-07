@@ -61,7 +61,7 @@ import {
   TEST_MODELS,
   type ModelRoute,
 } from './routes';
-import { riskOf, toolsForWindow, type ToolProfile } from './tools';
+import { allToolSpecs, riskOf, toolsForWindow, type ToolProfile } from './tools';
 
 export { describeError, sanitize, type DescribedError } from './errors';
 export {
@@ -79,6 +79,9 @@ export {
   type ProbeResult,
 } from './local';
 export { addProviderUsage, totalUsage, type ProviderUsageRow } from './pricing';
+
+/** Every tool the agent can be offered; main checks that none of them approves (M9 decision 6). */
+export const agentToolNames = (): string[] => allToolSpecs().map((s) => s.meta.name);
 export type { BuiltInProviderOptions, ModelProvider, ProviderRegistry } from './providers';
 
 /** What the agent runtime needs from the Electron main process. */

@@ -1,3 +1,4 @@
+import { MineFilter, useMineIssueIds } from '@aio/collab/ui';
 import type { Issue, IssueStatus } from '@aio/schema';
 import { shortcutHint } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
@@ -139,6 +140,7 @@ export function IssueRegister({ className }: { className?: string }) {
   const [classId, setClassId] = useState('');
   const [status, setStatus] = useState<IssueStatus | ''>('');
   const [dataset, setDataset] = useState<DatasetKind | ''>('');
+  const mine = useMineIssueIds();
   const [sort, setSort] = useState<IssueSortKey>('code');
   const [dir, setDir] = useState<'asc' | 'desc'>('asc');
   const [groupBy, setGroupBy] = useState<IssueGroupKey>('none');
@@ -165,7 +167,7 @@ export function IssueRegister({ className }: { className?: string }) {
     () =>
       sortIssues(
         search(
-          filterIssues(issues, {
+          filterIssues(mine ? issues.filter((i) => mine.has(i.id)) : issues, {
             ...(sev !== null ? { severities: [sev] } : {}),
             ...(classId ? { classIds: [classId] } : {}),
             ...(status ? { statuses: [status] } : {}),
@@ -176,7 +178,7 @@ export function IssueRegister({ className }: { className?: string }) {
         sort,
         dir,
       ),
-    [issues, search, query, sev, classId, status, dataset, sort, dir],
+    [issues, mine, search, query, sev, classId, status, dataset, sort, dir],
   );
   const groups = useMemo(
     () => groupIssues(shown, groupBy, (id) => classById.get(id)?.label ?? id),
@@ -460,6 +462,7 @@ export function IssueRegister({ className }: { className?: string }) {
             </option>
           ))}
         </select>
+        <MineFilter />
         <select
           className="ann-select"
           aria-label="Sort"

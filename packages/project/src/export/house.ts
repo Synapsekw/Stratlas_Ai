@@ -429,6 +429,7 @@ export const HOUSE_SECTIONS = [
   'statistics',
   'register',
   'issues',
+  'approvals',
   'audit',
   'appendices',
 ] as const satisfies readonly ReportSectionId[];
