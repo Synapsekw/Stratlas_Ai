@@ -1,0 +1,18 @@
+{
+  "note": "TEST-ONLY. One signed aio.sync/1 request (RFC 9421, Ed25519 over aio.request/1 and the SHA-256 of the signature base). The seed is Rana Example's fixture seed from packages/schema/src/__fixtures__/journal/TEST-ONLY-KEYS.json. The client signer and the team server verifier are both pinned to it.",
+  "seed": "7466f8930987ea9099cfed858bf6af173852764f3532c7d3a2d9f0a25e4ec2bf",
+  "nowMs": 1790835360000,
+  "request": {
+    "method": "POST",
+    "url": "https://team.example.com/v1/projects/t_vm6cv3mws7bgecezd4hkxj6qqt/ops",
+    "body": "{\"ops\":[]}"
+  },
+  "base": "\"@method\": POST\n\"@target-uri\": https://team.example.com/v1/projects/t_vm6cv3mws7bgecezd4hkxj6qqt/ops\n\"content-digest\": sha-256=:svDv/Bo3zsyImG6TOByiTAF+W3oojqFKlGKum0xGbww=:\n\"x-aio-device\": d_gzgb5golodphazartd4rmin6brx52pf22ht7hx5irk2vbomqgyca\n\"x-aio-nonce\": AAAAAAAAAAAAAAAAAAAAAA\n\"@signature-params\": (\"@method\" \"@target-uri\" \"content-digest\" \"x-aio-device\" \"x-aio-nonce\");created=1790835360;keyid=\"d_gzgb5golodphazartd4rmin6brx52pf22ht7hx5irk2vbomqgyca\";alg=\"ed25519\"",
+  "headers": {
+    "content-digest": "sha-256=:svDv/Bo3zsyImG6TOByiTAF+W3oojqFKlGKum0xGbww=:",
+    "x-aio-device": "d_gzgb5golodphazartd4rmin6brx52pf22ht7hx5irk2vbomqgyca",
+    "x-aio-nonce": "AAAAAAAAAAAAAAAAAAAAAA",
+    "signature-input": "aio=(\"@method\" \"@target-uri\" \"content-digest\" \"x-aio-device\" \"x-aio-nonce\");created=1790835360;keyid=\"d_gzgb5golodphazartd4rmin6brx52pf22ht7hx5irk2vbomqgyca\";alg=\"ed25519\"",
+    "signature": "aio=:XEH6nx9ELZ71YGcnHVMdWHPYxGwM+hJZFMO21ESHlKNR/KoPYnLO+vfOfm4BoX54sV5UZdaPJYAgxYclkQseCA==:"
+  }
+}

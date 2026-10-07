@@ -1,20 +1,40 @@
 /**
- * The team server client (`aio.sync/1` over HTTPS, M9 T7): per-device signed requests (RFC 9421,
- * Ed25519), a pinned certificate fingerprint, no bearer tokens. T0 holds the route builder; T7
- * implements the transport.
+ * The team server client (`aio.sync/1` over HTTPS, M9 T7, preview): per-device signed requests
+ * (RFC 9421, Ed25519), a pinned certificate fingerprint, no bearer tokens, and `HttpTransport`,
+ * the server as a `SyncTransport`.
  */
 import { SYNC_PROTOCOL, SYNC_ROUTES } from '@aio/schema';
 
 export { SYNC_PROTOCOL, SYNC_ROUTES };
-
-/** A route of `aio.sync/1` with its parameters filled in (`/v1/projects/t_.../heads`). */
-export function routePath(
-  route: keyof typeof SYNC_ROUTES,
-  params: Partial<Record<'id' | 'sha256', string>> = {},
-): string {
-  return SYNC_ROUTES[route].replace(/:(id|sha256)/g, (_, name: 'id' | 'sha256') => {
-    const v = params[name];
-    if (v === undefined) throw new Error(`Missing route parameter ${name}`);
-    return encodeURIComponent(v);
-  });
-}
+export { routePath } from './routes';
+export {
+  certFingerprint,
+  createHttpClient,
+  errorFor,
+  isLoopbackHost,
+  probeFingerprint,
+  serverOrigin,
+  TeamServerError,
+  type HttpClient,
+  type HttpClientOptions,
+  type TeamServerErrorCode,
+} from './client';
+export {
+  contentDigest,
+  newNonce,
+  signatureBase,
+  signatureBaseHash,
+  signatureParams,
+  signRequest,
+  SIGNATURE_LABEL,
+  type SignedParts,
+} from './signature';
+export { chainKey, decodeSince, encodeSince, SINCE_MAX_LENGTH } from './since';
+export { CLIENT_PROTOCOL, enrolDevice, serverHealth } from './server';
+export {
+  BLOB_PART_BYTES,
+  createHttpTransport,
+  PUSH_BATCH,
+  type HttpTransport,
+  type HttpTransportOptions,
+} from './transport';
