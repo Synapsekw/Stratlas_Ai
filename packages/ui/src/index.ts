@@ -20,6 +20,8 @@ export * from './coords';
 export * from './timeline/model';
 export { generateTicks, pickTickStep, type Tick, type TickStep } from './timeline/ticks';
 export { Timeline, RATES, type TimelineProps } from './timeline/Timeline';
+export * from './dates/calendarModel';
+export { Calendar, type CalendarDay } from './dates/Calendar';
 export * from './tree/model';
 export * from './tree/dateModel';
 export { DatasetTree, VisibilityEye, type DatasetTreeProps } from './tree/DatasetTree';

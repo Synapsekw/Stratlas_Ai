@@ -2086,6 +2086,12 @@ export const en = {
     '{to} was {from}. Another issue made apart has that code, so it is now {to}.',
   'syncNotice.delivered': 'Packages already sent with the old code: {packages}.',
   'syncNotice.dismiss': 'Dismiss',
+  'calendar.label': 'Survey calendar',
+  'calendar.prev': 'Previous month with a survey',
+  'calendar.next': 'Next month with a survey',
+  'calendar.day': '{date}, survey, {count} layers',
+  'calendar.pick': 'Surveys on {date}',
+  'calendar.weekdays': 'Mo Tu We Th Fr Sa Su',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */
