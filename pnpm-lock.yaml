@@ -220,6 +220,9 @@ importers:
 
   packages/annotate:
     dependencies:
+      '@aio/collab':
+        specifier: workspace:*
+        version: link:../collab
       '@aio/engine':
         specifier: workspace:*
         version: link:../engine
@@ -246,6 +249,9 @@ importers:
 
   packages/change:
     dependencies:
+      '@aio/collab':
+        specifier: workspace:*
+        version: link:../collab
       '@aio/schema':
         specifier: workspace:*
         version: link:../schema
@@ -267,9 +273,24 @@ importers:
 
   packages/collab:
     dependencies:
+      '@aio/engine':
+        specifier: workspace:*
+        version: link:../engine
       '@aio/schema':
         specifier: workspace:*
         version: link:../schema
+      '@aio/ui':
+        specifier: workspace:*
+        version: link:../ui
+      '@aio/workspace':
+        specifier: workspace:*
+        version: link:../workspace
+      react:
+        specifier: ^19.3.0
+        version: 19.3.0
+      zustand:
+        specifier: ^5.0.15
+        version: 5.0.15(@types/react@19.3.0)(react@19.3.0)
 
   packages/engine:
     dependencies:

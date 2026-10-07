@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@aio/collab": "workspace:*",
     "@aio/schema": "workspace:*",
     "@aio/geo": "workspace:*",
     "@aio/engine": "workspace:*",
