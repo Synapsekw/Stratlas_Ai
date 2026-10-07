@@ -1430,7 +1430,14 @@ app.on('before-quit', (e) => {
   if (usageFlushed) return;
   e.preventDefault();
   usageFlushed = true;
-  const writes = Promise.allSettled([aiProjects.flush(), updates.beforeQuit(), ...pendingWrites]);
+  const writes = Promise.allSettled([
+    aiProjects.flush(),
+    updates.beforeQuit(),
+    ...pendingWrites,
+    // the journal keeps each chain's segment open between appends (T8 finding 4): closed here,
+    // after each folder's pending journal steps, rather than left to the exit
+    journal.closeAll(),
+  ]);
   const limit = new Promise((resolve) => setTimeout(resolve, 3000));
   void Promise.race([writes, limit]).finally(() => {
     app.quit();
