@@ -24,13 +24,18 @@ afterEach(async () => {
   await rm(base, { recursive: true, force: true });
 });
 
-function setup(mode: string, opts: { pack?: boolean; grace?: number } = {}) {
+function setup(
+  mode: string,
+  opts: { pack?: boolean; grace?: number; jobEnv?: (j: JobRecord) => Record<string, string> } = {},
+) {
   const store = new JobStore(join(base, 'jobs.json'));
   stores.push(store);
   const events: JobEvent[] = [];
   const spawned: string[][] = [];
+  const envs: NodeJS.ProcessEnv[] = [];
   const runner = new JobRunner({
     store,
+    ...(opts.jobEnv ? { jobEnv: opts.jobEnv } : {}),
     emit: (e) => events.push(e),
     cancelGraceMs: opts.grace ?? 2000,
     findPack: () =>
@@ -44,13 +49,14 @@ function setup(mode: string, opts: { pack?: boolean; grace?: number } = {}) {
       ),
     spawn: (_cmd, args, options) => {
       spawned.push(args);
+      envs.push(options.env ?? {});
       return spawn(process.execPath, [FAKE], {
         ...options,
         env: { ...options.env, FAKE_MODE: mode },
       });
     },
   });
-  return { store, runner, events, spawned };
+  return { store, runner, events, spawned, envs };
 }
 
 function finished(runner: JobRunner, id: string, closed = true): Promise<JobRecord> {
@@ -147,6 +153,17 @@ describe('JobRunner', () => {
     const job = await finished(runner, r.job.id);
     expect(job.status).toBe('failed');
     expect(job.error).toMatch(/exit code 3.*Fatal Python error: boom/);
+  });
+
+  it('adds the job environment (the photo memory cap) to the runtime', async () => {
+    const { runner, envs } = setup('ok', {
+      jobEnv: (j) => (j.pipeline === 'system.selftest' ? { AIO_PHOTO_MEMORY_MB: '1234' } : {}),
+    });
+    const r = await runner.start({ ...START, project });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    await finished(runner, r.job.id);
+    expect(envs[0]?.AIO_PHOTO_MEMORY_MB).toBe('1234');
   });
 
   it('refuses bad params, a missing project and a missing pack before spawning', async () => {

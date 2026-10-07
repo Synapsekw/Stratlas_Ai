@@ -3,10 +3,14 @@ import { describe, expect, it } from 'vitest';
 import {
   adjustProblems,
   applyMark,
+  clickToPixel,
   gcpLocal,
   gcpLonLat,
+  loupeBackground,
   photosFor,
   predictions,
+  readCamerasFile,
+  sfmPhotos,
   step,
   withPoint,
   type MarkerPhoto,
@@ -153,6 +157,96 @@ describe('predictions', () => {
   });
 
   it('steps through a list and wraps', () => {
+    expect(step(1, 3, 1)).toBe(2);
+  });
+});
+
+describe('pixel convention (COLMAP: top-left corner is 0, 0; pixel i has its centre at i + 0.5)', () => {
+  // a 1600 x 1200 photo shown 800 x 600 CSS pixels at (100, 50) on screen
+  const rect = { left: 100, top: 50, width: 800, height: 600 };
+  const size: [number, number] = [1600, 1200];
+
+  it('turns a click into continuous original-image pixels', () => {
+    expect(clickToPixel([100, 50], rect, size)).toEqual([0, 0]); // the image's top-left corner
+    expect(clickToPixel([500, 350], rect, size)).toEqual([800, 600]); // the image centre
+    expect(clickToPixel([900, 650], rect, size)).toEqual([1600, 1200]); // bottom-right corner
+    // the middle of the first original pixel (half a screen pixel, at half scale) is 0.5, 0.5
+    expect(clickToPixel([100.25, 50.25], rect, size)).toEqual([0.5, 0.5]);
+    // outside the photo: held at its edge
+    expect(clickToPixel([90, 700], rect, size)).toEqual([0, 1200]);
+  });
+
+  it('draws a mark where it was clicked and predicts a nadir point at width / 2, height / 2', () => {
+    // the overlay's viewBox is the original size, so a mark at px draws at px / size of the photo
+    const px = clickToPixel([300.5, 200.5], rect, size);
+    expect([
+      (px[0] / size[0]) * rect.width + rect.left,
+      (px[1] / size[1]) * rect.height + rect.top,
+    ]).toEqual([300.5, 200.5]);
+    // COLMAP's principal point of an ideal camera is the image centre (cx = width / 2), which is
+    // where G2 (gcp.py predictions) and G8 (truth.json) put a point straight below the camera
+    const p = point({ xyz: [500000, 3200000, 0] });
+    const frame = { epsg: 32639, origin: [500000, 3200000, 0] as [number, number, number] };
+    const [pred] = predictions(p, gcpLocal(p, 32639, frame), [
+      {
+        id: 'n',
+        size,
+        pos: [0, 60, 0],
+        q: NADIR,
+        lens: { model: 'pinhole', hfovDeg: 70, aspect: 4 / 3 },
+      },
+    ]);
+    expect(pred?.px[0]).toBeCloseTo(800, 9);
+    expect(pred?.px[1]).toBeCloseTo(600, 9);
+  });
+
+  it('puts the target under the loupe centre at any position', () => {
+    // 140 px loupe at 4x: the photo is 560 x 420 px; the centre pixel sits at 70, 70
+    expect(loupeBackground([800, 600], size, 140, 4)).toEqual({
+      size: '560px 420px',
+      position: '-210px -140px',
+    });
+    // the top-left corner: the photo starts at the loupe centre
+    expect(loupeBackground([0, 0], size, 140, 4).position).toBe('70px 70px');
+    expect(loupeBackground([1600, 1200], size, 140, 4).position).toBe('-490px -350px');
+  });
+});
+
+describe('refined cameras of the run', () => {
+  const file = {
+    run: '20261007-0915',
+    crs: { epsg: 32639 },
+    origin: [500100, 3200050, 2] as [number, number, number],
+    calibration: [{ id: 'cam1', model: 'OPENCV', width: 1600, height: 1200, params: [1, 2, 3, 4] }],
+    cameras: [
+      {
+        photo: '100MEDIA/DJI_0001.JPG',
+        pos: [0, 58, 0],
+        q: NADIR,
+        lens: { model: 'pinhole', hfovDeg: 66, aspect: 4 / 3 },
+        camera: 'cam1',
+      },
+    ],
+  };
+
+  it('reads G2 files without a schema key, sized by calibration, in the project frame', () => {
+    const f = readCamerasFile(file);
+    expect(f?.schema).toBe('aio.photo-cameras/1');
+    expect(readCamerasFile({ ...file, schema: 'aio.photo-cameras/2' })).toBeNull();
+    expect(readCamerasFile([1, 2])).toBeNull();
+    if (!f) return;
+    const m = sfmPhotos(f, [500000, 3200000, 0]);
+    expect(m.get('100MEDIA/DJI_0001.JPG')).toMatchObject({
+      id: '100MEDIA/DJI_0001.JPG',
+      size: [1600, 1200],
+      pos: [100, 60, -50],
+      lens: { model: 'pinhole', hfovDeg: 66 },
+    });
+  });
+});
+
+describe('steps', () => {
+  it('wraps', () => {
     expect(step(0, 3, 1)).toBe(1);
     expect(step(2, 3, 1)).toBe(0);
     expect(step(0, 3, -1)).toBe(2);

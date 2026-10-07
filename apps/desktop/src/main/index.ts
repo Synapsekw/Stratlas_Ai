@@ -29,7 +29,7 @@ import {
   shell,
 } from 'electron';
 import { existsSync } from 'node:fs';
-import { arch, release, userInfo } from 'node:os';
+import { arch, release, totalmem, userInfo } from 'node:os';
 import { join } from 'node:path';
 import licenses from 'virtual:licenses';
 import releaseNotes from 'virtual:release-notes';
@@ -88,7 +88,7 @@ import { startSync } from './sync/electron';
 import { registerTeamServerIpc, teamServers } from './teamServer';
 import { globeProjectReader, registerGlobeIpc } from './globe';
 import { registerRasterPacksIpc } from './packs/raster';
-import { nodePhotoSystem, registerPhotogrammetryIpc } from './photogrammetry';
+import { nodePhotoSystem, photoJobEnv, registerPhotogrammetryIpc } from './photogrammetry';
 import { registerTilesetsIpc } from './tilesets';
 import { createTestVault, useTestVault } from './testVault';
 import { importLogo, removeLogo } from './branding';
@@ -514,6 +514,8 @@ const exportJobs = createExportJobs({
 const jobStore = new JobStore(join(app.getPath('userData'), 'jobs.json'));
 const jobs = new JobRunner({
   store: jobStore,
+  // M10: the photo jobs' memory cap (75 % of this computer's memory; no Settings field in 0.10)
+  jobEnv: (job) => photoJobEnv(job.pipeline, totalmem(), process.env),
   findPack: () =>
     findPack({ dataRoot: settings.current().dataRoot, env: process.env, app: packApp }),
   emit: (event) => {

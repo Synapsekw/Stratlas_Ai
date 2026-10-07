@@ -15,11 +15,12 @@ import {
   HardwareProbe,
   LensModel,
   PHOTO_RUN_FILES,
+  PhotoCamerasFile,
   PhotoRun,
-  Quat,
-  Vec3,
   photoRunDir,
   type Layer,
+  type Quat,
+  type Vec3,
   type PhotoEstimate,
   type PhotoPreset,
   type PhotoProduct,
@@ -27,9 +28,9 @@ import {
   type PhotoSource,
   type ProjectManifest,
 } from '@aio/schema';
-import { open, readdir, readFile, stat, statfs } from 'node:fs/promises';
+import { open, readdir, readFile, realpath, stat, statfs } from 'node:fs/promises';
 import { cpus, totalmem } from 'node:os';
-import { extname, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { z } from 'zod';
 import { isChangedOnDisk, readBytesSeen, writeJsonAtomic, writeJsonSeen } from './fsutil';
 import { compareVersions } from './jobs/pack';
@@ -196,6 +197,40 @@ export function nodePhotoSystem(o: {
     gpus: async () => gpusFromInfo(await o.gpuInfo()),
     packVersion: o.packVersion,
   };
+}
+
+// ---------------------------------------------------------------- memory cap
+
+/** The photo jobs that size their heavy stages by `AIO_PHOTO_MEMORY_MB`. */
+export const PHOTO_MEMORY_PIPELINES: ReadonlySet<string> = new Set([
+  'photo.align',
+  'photo.georef',
+  'photo.products',
+]);
+
+/**
+ * The memory the photo jobs may use, MB: 75 % of this computer's memory (at least 512 MB), one
+ * value for alignment and products. There is no Settings field for it (Settings is pinned for
+ * 0.9); `STRATLAS_PHOTO_MEMORY_MB` overrides it for tests.
+ */
+export function photoMemoryMb(
+  totalBytes: number,
+  env: Readonly<Record<string, string | undefined>>,
+): number {
+  const override = Number(env.STRATLAS_PHOTO_MEMORY_MB);
+  if (Number.isInteger(override) && override > 0) return override;
+  return Math.max(512, Math.floor((totalBytes * 0.75) / MB));
+}
+
+/** Extra environment of a pipeline job: the memory cap for the photo jobs, nothing for others. */
+export function photoJobEnv(
+  pipeline: string,
+  totalBytes: number,
+  env: Readonly<Record<string, string | undefined>>,
+): Record<string, string> {
+  return PHOTO_MEMORY_PIPELINES.has(pipeline)
+    ? { AIO_PHOTO_MEMORY_MB: String(photoMemoryMb(totalBytes, env)) }
+    : {};
 }
 
 // ---------------------------------------------------------------- estimate
@@ -476,26 +511,17 @@ function problem(rel: string, e: z.ZodError): string {
 
 // ---------------------------------------------------------------- refined poses
 
-/**
- * The run's refined cameras (`photogrammetry/<run>/cameras-sfm.json`, written by `photo.align`):
- * per photo of the photos layer, the pose in the project's local frame (as `PhotoRef`: `pos`,
- * `q`, `lens`). Read leniently: `cameras` or `items`, keyed by `id` or `photo`.
- */
-const RefinedCamera = z.looseObject({
-  id: z.string().min(1).optional(),
-  photo: z.string().min(1).optional(),
-  pos: Vec3,
-  q: Quat.optional(),
-  lens: z.unknown().optional(),
-});
-const RefinedFile = z.union([
-  z.looseObject({ cameras: z.array(RefinedCamera) }),
-  z.looseObject({ items: z.array(RefinedCamera) }),
-  z.array(RefinedCamera),
-]);
-export const REFINED_FILE = 'cameras-sfm.json';
+/** The run's refined cameras (`aio.photo-cameras/1`, written by `photo.align` and `photo.georef`). */
+export const REFINED_FILE = PHOTO_RUN_FILES.camerasSfm;
 /** The poses a photos layer had before **Use refined poses**, in the run folder. */
 export const POSES_BACKUP = 'cameras.json.bak';
+
+/** A refined pose for one photo of the layer, in the project's local frame. */
+export interface RefinedPose {
+  pos: Vec3;
+  q: Quat;
+  lens?: LensModel;
+}
 
 export interface PoseMoves {
   cameras: number;
@@ -523,17 +549,102 @@ export function poseMoves(
   };
 }
 
-function refinedMap(raw: unknown): Map<string, z.infer<typeof RefinedCamera>> | string {
-  const r = RefinedFile.safeParse(raw);
-  if (!r.success) return problem(REFINED_FILE, r.error);
-  const d = r.data as
-    | z.infer<typeof RefinedCamera>[]
-    | { cameras?: z.infer<typeof RefinedCamera>[]; items?: z.infer<typeof RefinedCamera>[] };
-  const list = Array.isArray(d) ? d : (d.cameras ?? d.items ?? []);
-  const out = new Map<string, z.infer<typeof RefinedCamera>>();
-  for (const c of list) {
-    const id = c.id ?? c.photo;
-    if (id) out.set(id, c);
+/**
+ * Parse `cameras-sfm.json`. G2's first files carry no `schema` key (the format was registered at
+ * the integration); such a file is read as `aio.photo-cameras/1`, any other schema is refused.
+ */
+export function parseCamerasFile(raw: unknown): PhotoCamerasFile | string {
+  const withSchema =
+    raw && typeof raw === 'object' && !Array.isArray(raw) && !('schema' in raw)
+      ? { schema: 'aio.photo-cameras/1', ...raw }
+      : raw;
+  const r = PhotoCamerasFile.safeParse(withSchema);
+  return r.success ? r.data : problem(REFINED_FILE, r.error);
+}
+
+const fileName = (p: string) => (p.split(/[\\/]/).pop() ?? p).toLowerCase();
+const stem = (p: string) => fileName(p).replace(/\.[^.]*$/, '');
+
+/**
+ * Which photo of the layer each refined camera is. `photo.align` keys a photo by the layer's photo
+ * id for a layer run, and by its path below the chosen folder (`DJI_0001.JPG`, or
+ * `100MEDIA/DJI_0001.JPG` with several folders) for a folder run; a folder run's cameras land on
+ * the layer's photos with the same file name (or the same name without extension), when that
+ * name is unique on both sides.
+ */
+export function matchCameras(
+  keys: readonly string[],
+  items: readonly { id: string; src: { path: string } | { hash: string } }[],
+): Map<string, string> {
+  const ids = new Set(items.map((it) => it.id));
+  const index = (name: (it: (typeof items)[number]) => string | null) => {
+    const m = new Map<string, string | null>();
+    for (const it of items) {
+      const n = name(it);
+      if (n) m.set(n, m.has(n) ? null : it.id);
+    }
+    return m;
+  };
+  const byName = index((it) => ('path' in it.src ? fileName(it.src.path) : null));
+  const byStem = index((it) => ('path' in it.src ? stem(it.src.path) : stem(it.id)));
+  const count = (f: (k: string) => string) => {
+    const m = new Map<string, number>();
+    for (const k of keys) m.set(f(k), (m.get(f(k)) ?? 0) + 1);
+    return m;
+  };
+  const keyNames = count(fileName);
+  const keyStems = count(stem);
+  const out = new Map<string, string>();
+  for (const k of keys) {
+    const id = ids.has(k)
+      ? k
+      : ((keyNames.get(fileName(k)) === 1 ? byName.get(fileName(k)) : null) ??
+        (keyStems.get(stem(k)) === 1 ? byStem.get(stem(k)) : null));
+    if (id) out.set(k, id);
+  }
+  return out;
+}
+
+const sameCrs = (a: ProjectManifest['crs'], b: ProjectManifest['crs']) =>
+  'epsg' in a && 'epsg' in b ? a.epsg === b.epsg : JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * The refined pose of each photo of the layer (by photo id), in the project's local frame: the
+ * file's frame is measured from its own `origin`, so a project whose origin moved since gets the
+ * difference added (x east, y up, z south).
+ */
+export function refinedPoses(
+  file: PhotoCamerasFile,
+  manifest: Pick<ProjectManifest, 'crs' | 'origin'>,
+  items: readonly { id: string; src: { path: string } | { hash: string } }[],
+): Map<string, RefinedPose> | string {
+  if (!sameCrs(file.crs, manifest.crs)) {
+    const name = (c: ProjectManifest['crs']) => ('epsg' in c ? `EPSG:${String(c.epsg)}` : 'WKT');
+    return `The run's cameras are in ${name(file.crs)}, the project in ${name(manifest.crs)}. Align the photos again in the project's CRS.`;
+  }
+  const [de, dn, dh] = [
+    file.origin[0] - manifest.origin[0],
+    file.origin[1] - manifest.origin[1],
+    file.origin[2] - manifest.origin[2],
+  ];
+  const match = matchCameras(
+    file.cameras.map((c) => c.photo),
+    items,
+  );
+  const out = new Map<string, RefinedPose>();
+  for (const c of file.cameras) {
+    const id = match.get(c.photo);
+    if (!id) continue;
+    const lens = LensModel.safeParse({
+      model: c.lens.model,
+      hfovDeg: c.lens.hfovDeg,
+      aspect: c.lens.aspect,
+    });
+    out.set(id, {
+      pos: [c.pos[0] + de, c.pos[1] + dh, c.pos[2] - dn],
+      q: [c.q[0], c.q[1], c.q[2], c.q[3]],
+      ...(lens.success ? { lens: lens.data } : {}),
+    });
   }
   return out;
 }
@@ -566,6 +677,202 @@ const exists = async (p: string) =>
 const runPath = (root: string, run: string, rel = '') =>
   join(root, ...photoRunDir(run).split('/'), ...rel.split('/').filter(Boolean));
 
+/** Run files of a folder or a package: the text of one, and the run folder names. */
+function runSource(projects: PhotoProjects | undefined, projectId: string) {
+  if (!projects) return null;
+  const pkg = projects.package(projectId);
+  if (pkg) {
+    return {
+      readOnly: true as const,
+      manifest: () => Promise.resolve(pkg.manifest),
+      runs: () => {
+        const ids = new Set<string>();
+        for (const n of pkg.archive.entries.keys()) {
+          const m = /^photogrammetry\/([^/]+)\/run\.json$/.exec(n);
+          if (m?.[1]) ids.add(m[1]);
+        }
+        return Promise.resolve([...ids]);
+      },
+      read: async (rel: string) =>
+        pkg.archive.entries.has(rel) ? (await pkg.archive.read(rel)).toString('utf8') : null,
+    };
+  }
+  const root = projects.root(projectId);
+  if (root === undefined) return null;
+  return {
+    readOnly: false as const,
+    root,
+    manifest: async () => (await lib()).readManifestFile(root),
+    runs: async () => {
+      try {
+        const list = await readdir(join(root, 'photogrammetry'), { withFileTypes: true });
+        return list.filter((e) => e.isDirectory()).map((e) => e.name);
+      } catch {
+        return [];
+      }
+    },
+    // remembered, so a save of gcp.json compares with what the person saw first
+    read: async (rel: string) =>
+      (await readBytesSeen(join(root, ...rel.split('/'))).catch(() => null))?.toString('utf8') ??
+      null,
+  };
+}
+
+async function readRunFile(
+  src: NonNullable<ReturnType<typeof runSource>>,
+  run: string,
+): Promise<{ ok: true; run: PhotoRun } | { ok: false; error: string }> {
+  const rel = `${photoRunDir(run)}/${PHOTO_RUN_FILES.run}`;
+  const text = await src.read(rel);
+  if (text === null) return { ok: false, error: `There is no run "${run}" in this project.` };
+  let json: unknown;
+  try {
+    json = parseJsonText(text);
+  } catch {
+    return { ok: false, error: `${rel} is not valid JSON.` };
+  }
+  const r = PhotoRun.safeParse(json);
+  return r.success ? { ok: true, run: r.data } : { ok: false, error: problem(rel, r.error) };
+}
+
+/** Run states whose accuracy report is final (alignment, adjustment or products finished). */
+const FINISHED: ReadonlySet<PhotoRun['status']> = new Set(['aligned', 'adjusted', 'done']);
+
+/**
+ * The project's latest finished run that has an accuracy report (the house report's `processing`
+ * section and the `photo-report-pdf` export), or null.
+ */
+export async function latestAccuracyRun(
+  projects: PhotoProjects | undefined,
+  projectId: string,
+): Promise<string | null> {
+  const src = runSource(projects, projectId);
+  if (!src) return null;
+  const done: PhotoRun[] = [];
+  for (const id of await src.runs()) {
+    const r = await readRunFile(src, id).catch(() => null);
+    if (r?.ok && FINISHED.has(r.run.status)) done.push(r.run);
+  }
+  done.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+  for (const run of done) {
+    const text = await src.read(`${photoRunDir(run.id)}/${PHOTO_RUN_FILES.accuracy}`);
+    if (text === null) continue;
+    try {
+      if (AccuracyReport.safeParse(parseJsonText(text)).success) return run.id;
+    } catch {
+      // not JSON: the next run
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------- photos of a run
+
+/** `photo:readPhoto` answers photos up to this size (a 100 MP TIFF is about 300 MB: refused). */
+export const MAX_PHOTO_BYTES = 200 * MB;
+
+const PHOTO_MIME = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.tif': 'image/tiff',
+  '.tiff': 'image/tiff',
+} as const;
+type PhotoMime = (typeof PHOTO_MIME)[keyof typeof PHOTO_MIME];
+
+/** The photo's format from its first bytes; null when they are not JPEG, PNG or TIFF. */
+export function sniffPhoto(head: Uint8Array): PhotoMime | null {
+  const b = (i: number) => head[i] ?? -1;
+  if (b(0) === 0xff && b(1) === 0xd8 && b(2) === 0xff) return 'image/jpeg';
+  if (b(0) === 0x89 && b(1) === 0x50 && b(2) === 0x4e && b(3) === 0x47) return 'image/png';
+  if (
+    (b(0) === 0x49 && b(1) === 0x49 && b(2) === 0x2a && b(3) === 0) ||
+    (b(0) === 0x4d && b(1) === 0x4d && b(2) === 0 && b(3) === 0x2a)
+  )
+    return 'image/tiff';
+  return null;
+}
+
+/** G2's `sparse/photos.json` (`aio.photo-list/1`): the image root and each photo's name below it. */
+const PhotoList = z.looseObject({
+  imageRoot: z.string().min(1).max(4096),
+  photos: z.record(z.string(), z.looseObject({ name: z.string().min(1).max(1024) })),
+});
+
+/** A relative path with no `..`, no drive, no leading slash and no NUL: else null. */
+function safeRelative(p: string): string[] | null {
+  if (!p || p.includes('\0') || /^[a-zA-Z]:/.test(p) || /^[\\/]/.test(p)) return null;
+  const parts = p.split(/[\\/]+/).filter(Boolean);
+  if (!parts.length || parts.some((s) => s === '..' || s === '.')) return null;
+  return parts;
+}
+
+/** `path` with its symlinks resolved, when it is inside `root` (also resolved); else null. */
+async function inside(root: string, path: string): Promise<string | null> {
+  try {
+    const [r, p] = await Promise.all([realpath(root), realpath(path)]);
+    const rel = relative(r, p);
+    return rel && !rel.startsWith('..') && !isAbsolute(rel) ? p : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Where a photo of a run is on disk. The key is the photo's key in the run (`GcpMark.photo`):
+ * the layer's photo id for a layer run, the path below the chosen folder for a folder run. It is
+ * resolved through the run's `sparse/photos.json` when there is one, else from `run.json`'s
+ * folders the way `photo.align` keys them; the result must be inside one of the folders the run
+ * recorded (the project folder for a layer run), symlinks resolved.
+ */
+export async function resolveRunPhoto(
+  root: string,
+  run: PhotoRun,
+  key: string,
+  readText: (rel: string) => Promise<string | null>,
+): Promise<string | null> {
+  const parts = safeRelative(key);
+  if (!parts) return null;
+  const source = run.photos.source;
+  if ('layer' in source) {
+    const manifest = await (await lib()).readManifestFile(root).catch(() => null);
+    const layer = manifest?.layers.find((l) => l.id === source.layer);
+    const item = layer?.kind === 'photos' ? layer.items.find((it) => it.id === key) : undefined;
+    if (!item) return null;
+    const rel = 'path' in item.src ? item.src.path : `assets/sha256/${item.src.hash}`;
+    const relParts = safeRelative(rel);
+    return relParts ? inside(root, join(root, ...relParts)) : null;
+  }
+  const folders = source.folders.map((f) => (isAbsolute(f) ? f : resolve(root, f)));
+  const candidates: string[] = [];
+  const listText = await readText(`${photoRunDir(run.id)}/${PHOTO_RUN_FILES.sparse}photos.json`);
+  if (listText !== null) {
+    try {
+      const list = PhotoList.safeParse(parseJsonText(listText));
+      const name = list.success ? list.data.photos[key]?.name : undefined;
+      const nameParts = name ? safeRelative(name) : null;
+      if (list.success && nameParts) candidates.push(join(list.data.imageRoot, ...nameParts));
+    } catch {
+      // not JSON: from the folders below
+    }
+  }
+  if (folders.length === 1 && folders[0]) candidates.push(join(folders[0], ...parts));
+  else if (parts.length > 1) {
+    // several folders: the key starts with the folder's name, or `<index>-<name>` for two alike
+    const [head = '', ...rest] = parts;
+    folders.forEach((f, i) => {
+      const n = basename(f) || `folder${String(i)}`;
+      if (head === n || head === `${String(i)}-${n}`) candidates.push(join(f, ...rest));
+    });
+  }
+  for (const c of candidates)
+    for (const f of folders) {
+      const real = await inside(f, c);
+      if (real) return real;
+    }
+  return null;
+}
+
 // ---------------------------------------------------------------- handlers
 
 export function registerPhotogrammetryIpc({
@@ -590,64 +897,6 @@ export function registerPhotogrammetryIpc({
     const free = await system.freeDiskBytes().catch(() => p.freeDiskBytes);
     return { ...p, freeDiskBytes: Math.max(0, Math.round(free)) };
   };
-
-  /** Run files of a folder or a package: the text of one, and the run folder names. */
-  function source(projectId: string) {
-    if (!projects) return null;
-    const pkg = projects.package(projectId);
-    if (pkg) {
-      return {
-        readOnly: true as const,
-        manifest: () => Promise.resolve(pkg.manifest),
-        runs: () => {
-          const ids = new Set<string>();
-          for (const n of pkg.archive.entries.keys()) {
-            const m = /^photogrammetry\/([^/]+)\/run\.json$/.exec(n);
-            if (m?.[1]) ids.add(m[1]);
-          }
-          return Promise.resolve([...ids]);
-        },
-        read: async (rel: string) =>
-          pkg.archive.entries.has(rel) ? (await pkg.archive.read(rel)).toString('utf8') : null,
-      };
-    }
-    const root = projects.root(projectId);
-    if (root === undefined) return null;
-    return {
-      readOnly: false as const,
-      root,
-      manifest: async () => (await lib()).readManifestFile(root),
-      runs: async () => {
-        try {
-          const list = await readdir(join(root, 'photogrammetry'), { withFileTypes: true });
-          return list.filter((e) => e.isDirectory()).map((e) => e.name);
-        } catch {
-          return [];
-        }
-      },
-      // remembered, so a save of gcp.json compares with what the person saw first
-      read: async (rel: string) =>
-        (await readBytesSeen(join(root, ...rel.split('/'))).catch(() => null))?.toString('utf8') ??
-        null,
-    };
-  }
-
-  async function readRunFile(
-    src: NonNullable<ReturnType<typeof source>>,
-    run: string,
-  ): Promise<{ ok: true; run: PhotoRun } | { ok: false; error: string }> {
-    const rel = `${photoRunDir(run)}/${PHOTO_RUN_FILES.run}`;
-    const text = await src.read(rel);
-    if (text === null) return { ok: false, error: `There is no run "${run}" in this project.` };
-    let json: unknown;
-    try {
-      json = parseJsonText(text);
-    } catch {
-      return { ok: false, error: `${rel} is not valid JSON.` };
-    }
-    const r = PhotoRun.safeParse(json);
-    return r.success ? { ok: true, run: r.data } : { ok: false, error: problem(rel, r.error) };
-  }
 
   handle('photo:probe', async () => {
     const p = await currentProbe();
@@ -705,7 +954,7 @@ export function registerPhotogrammetryIpc({
   }
 
   handle('photo:runs', async ({ projectId }) => {
-    const src = source(projectId);
+    const src = runSource(projects, projectId);
     if (!src) return projects ? notOpen(projectId) : NO_PROJECTS;
     const runs: PhotoRunSummary[] = [];
     for (const id of await src.runs()) {
@@ -718,7 +967,7 @@ export function registerPhotogrammetryIpc({
   });
 
   handle('photo:readRun', async ({ projectId, run }) => {
-    const src = source(projectId);
+    const src = runSource(projects, projectId);
     if (!src) return projects ? notOpen(projectId) : NO_PROJECTS;
     const r = await readRunFile(src, run);
     if (!r.ok) return r;
@@ -738,7 +987,7 @@ export function registerPhotogrammetryIpc({
   });
 
   handle('photo:readGcp', async ({ projectId, run }) => {
-    const src = source(projectId);
+    const src = runSource(projects, projectId);
     if (!src) return projects ? notOpen(projectId) : NO_PROJECTS;
     const rel = `${photoRunDir(run)}/${PHOTO_RUN_FILES.gcp}`;
     const text = await src.read(rel);
@@ -787,13 +1036,15 @@ export function registerPhotogrammetryIpc({
         error: `This run has no refined cameras yet (${refinedRel}). Align the photos first.`,
       };
     }
-    const refined = refinedMap(raw);
-    if (typeof refined === 'string') return { ok: false, error: refined };
+    const file = parseCamerasFile(raw);
+    if (typeof file === 'string') return { ok: false, error: file };
     const { readManifestFile, writeManifestFile } = await lib();
     const manifest = await readManifestFile(root);
     const target = manifest.layers.find((l): l is PhotosLayer => l.id === layer);
     if (target?.kind !== 'photos')
       return { ok: false, error: `There is no photos layer "${layer}" in this project.` };
+    const refined = refinedPoses(file, manifest, target.items);
+    if (typeof refined === 'string') return { ok: false, error: refined };
     const moves = poseMoves(target.items, refined);
     if (moves.cameras === 0)
       return {
@@ -819,14 +1070,7 @@ export function registerPhotogrammetryIpc({
     );
     const items = target.items.map((it) => {
       const r = refined.get(it.id);
-      if (!r) return it;
-      const lens = LensModel.safeParse(r.lens);
-      return {
-        ...it,
-        pos: [r.pos[0], r.pos[1], r.pos[2]] as [number, number, number],
-        ...(r.q ? { q: [r.q[0], r.q[1], r.q[2], r.q[3]] as [number, number, number, number] } : {}),
-        ...(lens.success ? { lens: lens.data } : {}),
-      };
+      return r ? { ...it, pos: r.pos, q: r.q, ...(r.lens ? { lens: r.lens } : {}) } : it;
     });
     const next: ProjectManifest = {
       ...manifest,
@@ -856,5 +1100,41 @@ export function registerPhotogrammetryIpc({
       };
     }
     return { ok: true, freedBytes };
+  });
+
+  /**
+   * One photo of a run, read only, for the GCP marker when the run's photos are folders outside
+   * the project (a layer run's photos are shown from the project through `aio://`).
+   */
+  handle('photo:readPhoto', async ({ projectId, run, photo }) => {
+    if (!projects) return NO_PROJECTS;
+    if (projects.package(projectId))
+      return { ok: false, error: 'The photos of a package are shown from its photos layer.' };
+    const root = projects.root(projectId);
+    if (root === undefined) return notOpen(projectId);
+    const src = runSource(projects, projectId);
+    if (!src) return notOpen(projectId);
+    const r = await readRunFile(src, run);
+    if (!r.ok) return r;
+    const refused = { ok: false as const, error: `The photo "${photo}" is not one of this run's.` };
+    const path = await resolveRunPhoto(root, r.run, photo, src.read);
+    if (!path || !(extname(path).toLowerCase() in PHOTO_MIME)) return refused;
+    let size: number;
+    try {
+      const s = await stat(path);
+      if (!s.isFile()) return refused;
+      size = s.size;
+    } catch {
+      return { ok: false, error: `The photo "${photo}" cannot be found. Was its folder moved?` };
+    }
+    if (size > MAX_PHOTO_BYTES)
+      return {
+        ok: false,
+        error: `The photo "${photo}" is larger than ${String(MAX_PHOTO_BYTES / MB)} MB.`,
+      };
+    const mime = sniffPhoto(await readHead(path, 8));
+    if (!mime) return { ok: false, error: `The photo "${photo}" is not a JPEG, PNG or TIFF.` };
+    const data = await readFile(path);
+    return { ok: true, mime, data: new Uint8Array(data.buffer, data.byteOffset, data.byteLength) };
   });
 }

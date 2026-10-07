@@ -1,6 +1,6 @@
 import { withExif } from '@aio/project/builder/testing';
 import type { GcpFile, HardwareProbe, PhotoRun, ProjectManifest } from '@aio/schema';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -8,11 +8,16 @@ import { collectHandlers } from './notYet';
 import {
   estimateRun,
   gpusFromInfo,
+  latestAccuracyRun,
   listPhotoFiles,
+  matchCameras,
+  photoJobEnv,
+  photoMemoryMb,
   poseMoves,
   processingVerdict,
   readPhotoSet,
   registerPhotogrammetryIpc,
+  sniffPhoto,
   summariseRun,
   utmEpsg,
   type PhotoProjects,
@@ -92,6 +97,29 @@ function sampleRun(o: Partial<PhotoRun> = {}): PhotoRun {
   };
 }
 
+/** A `cameras-sfm.json` exactly as G2's `photo.align` writes it (`align.py` `cameras_sfm`). */
+function g2Cameras(
+  cams: [photo: string, pos: [number, number, number]][],
+  origin: [number, number, number] = [245884.9, 3179597.1, 0],
+) {
+  return {
+    run: RUN,
+    crs: { epsg: 32639 },
+    origin,
+    frame: 'local (data-conventions section 1: x east, y up, z south)',
+    calibration: [
+      { id: 'cam1', model: 'OPENCV', width: 1600, height: 1200, params: [1230, 1230, 800, 600] },
+    ],
+    cameras: cams.map(([photo, pos]) => ({
+      photo,
+      pos,
+      q: [-0.7071, 0, 0, 0.7071],
+      lens: { model: 'pinhole', hfovDeg: 66.2, aspect: 1.333333 },
+      camera: 'cam1',
+    })),
+  };
+}
+
 const sampleGcp = (): GcpFile => ({
   schema: 'aio.gcp/1',
   crs: { epsg: 32639 },
@@ -105,6 +133,25 @@ const sampleGcp = (): GcpFile => ({
       marks: [],
     },
   ],
+});
+
+describe('photo memory cap', () => {
+  it('is 75 % of the memory, at least 512 MB, unless the test override is set', () => {
+    expect(photoMemoryMb(16 * GB, {})).toBe(12288);
+    expect(photoMemoryMb(32 * GB, {})).toBe(24576);
+    expect(photoMemoryMb(256 * 1024 ** 2, {})).toBe(512);
+    expect(photoMemoryMb(16 * GB, { STRATLAS_PHOTO_MEMORY_MB: '2048' })).toBe(2048);
+    // a nonsense override is ignored
+    for (const v of ['0', '-5', '1.5', 'lots', ''])
+      expect(photoMemoryMb(16 * GB, { STRATLAS_PHOTO_MEMORY_MB: v }), v).toBe(12288);
+  });
+
+  it('goes to the photo jobs only, one value for alignment and products', () => {
+    for (const p of ['photo.align', 'photo.georef', 'photo.products'])
+      expect(photoJobEnv(p, 16 * GB, {}), p).toEqual({ AIO_PHOTO_MEMORY_MB: '12288' });
+    for (const p of ['opf.import', 'tiles.mesh', 'pointcloud.to_copc', 'system.selftest'])
+      expect(photoJobEnv(p, 16 * GB, {}), p).toEqual({});
+  });
 });
 
 describe('processing verdict and GPUs', () => {
@@ -353,6 +400,7 @@ describe('photo IPC', () => {
       'photo:estimate',
       'photo:probe',
       'photo:readGcp',
+      'photo:readPhoto',
       'photo:readRun',
       'photo:runs',
       'photo:writeGcp',
@@ -553,19 +601,16 @@ describe('photo IPC', () => {
       apply: false,
     });
     expect(noRefined).toMatchObject({ ok: false });
+    // exactly what photo.align writes (align.py cameras_sfm): no schema key yet
     await writeFile(
       join(root, 'photogrammetry', RUN, 'cameras-sfm.json'),
-      JSON.stringify({
-        cameras: [
-          { id: 'p1', pos: [0.3, 60.4, 0], q: [0, 0, 0, 1] },
-          { id: 'p2', pos: [10, 60.1, 0] },
-          {
-            photo: 'p3',
-            pos: [20, 60, 0.2],
-            lens: { model: 'pinhole', hfovDeg: 70, aspect: 1.333 },
-          },
-        ],
-      }),
+      JSON.stringify(
+        g2Cameras([
+          ['p1', [0.3, 60.4, 0]],
+          ['p2', [10, 60.1, 0]],
+          ['p3', [20, 60, 0.2]],
+        ]),
+      ),
     );
     const preview = await ipc.call('photo:applyPoses', {
       projectId: 'p',
@@ -590,8 +635,8 @@ describe('photo IPC', () => {
     const items = (m.layers[0] as Extract<ProjectManifest['layers'][number], { kind: 'photos' }>)
       .items;
     expect(items[0]?.pos).toEqual([0.3, 60.4, 0]);
-    expect(items[0]?.q).toEqual([0, 0, 0, 1]);
-    expect(items[2]?.lens).toEqual({ model: 'pinhole', hfovDeg: 70, aspect: 1.333 });
+    expect(items[0]?.q).toEqual([-0.7071, 0, 0, 0.7071]);
+    expect(items[2]?.lens).toEqual({ model: 'pinhole', hfovDeg: 66.2, aspect: 1.333333 });
     expect(await readFile(join(root, 'manifest.json.bak'), 'utf8')).toBe(before);
     const kept = JSON.parse(
       await readFile(join(root, 'photogrammetry', RUN, 'cameras.json.bak'), 'utf8'),
@@ -614,6 +659,182 @@ describe('photo IPC', () => {
         apply: false,
       }),
     ).toMatchObject({ ok: false });
+  });
+
+  it('shifts refined poses to the project origin and refuses another CRS', async () => {
+    const file = join(root, 'photogrammetry', RUN, 'cameras-sfm.json');
+    // the run measured from an origin 100 m east, 50 m north and 2 m up of the project's
+    await writeFile(
+      file,
+      JSON.stringify(g2Cameras([['p1', [0, 58, 0]]], [245984.9, 3179647.1, 2])),
+    );
+    await ipc.call('photo:applyPoses', { projectId: 'p', run: RUN, layer: 'photos', apply: true });
+    const m = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as ProjectManifest;
+    const p1 = (m.layers[0] as Extract<ProjectManifest['layers'][number], { kind: 'photos' }>)
+      .items[0];
+    expect(p1?.pos?.[0]).toBeCloseTo(100, 6);
+    expect(p1?.pos?.[1]).toBeCloseTo(60, 6);
+    expect(p1?.pos?.[2]).toBeCloseTo(-50, 6);
+    await writeFile(
+      file,
+      JSON.stringify({ ...g2Cameras([['p1', [0, 0, 0]]]), crs: { epsg: 4326 } }),
+    );
+    expect(
+      await ipc.call('photo:applyPoses', {
+        projectId: 'p',
+        run: RUN,
+        layer: 'photos',
+        apply: false,
+      }),
+    ).toMatchObject({ ok: false, error: expect.stringContaining('EPSG:4326') as unknown });
+    await writeFile(file, JSON.stringify({ ...g2Cameras([]), schema: 'aio.photo-cameras/9' }));
+    expect(
+      await ipc.call('photo:applyPoses', {
+        projectId: 'p',
+        run: RUN,
+        layer: 'photos',
+        apply: false,
+      }),
+    ).toMatchObject({ ok: false });
+  });
+
+  it('places a folder run on the layer photos with the same file name', () => {
+    const items = [
+      { id: 'a', src: { path: 'photos/DJI_0001.JPG' } },
+      { id: 'b', src: { path: 'photos/DJI_0002.JPG' } },
+      { id: 'c', src: { path: 'photos/dup/DJI_0003.jpg' } },
+      { id: 'd', src: { path: 'photos/other/DJI_0003.jpg' } },
+      { id: 'DJI_0004', src: { hash: 'a'.repeat(64) } },
+    ];
+    const m = matchCameras(
+      ['a', 'DJI_0002.JPG', '100MEDIA/dji_0001.jpg', 'DJI_0003.jpg', 'x/DJI_0004.JPG', 'none.jpg'],
+      items,
+    );
+    expect(Object.fromEntries(m)).toEqual({
+      a: 'a',
+      'DJI_0002.JPG': 'b',
+      '100MEDIA/dji_0001.jpg': 'a',
+      'x/DJI_0004.JPG': 'DJI_0004',
+    });
+    // a file name two keys share is left alone
+    expect(matchCameras(['f1/DJI_0002.JPG', 'f2/DJI_0002.JPG'], items).size).toBe(0);
+  });
+
+  it('reads photos of a folder run read only and refuses anything outside its folders', async () => {
+    const outer = await mkdtemp(join(tmpdir(), 'aio-photo-flight-'));
+    try {
+      const flight = join(outer, 'flight one');
+      await mkdir(join(flight, '100MEDIA'), { recursive: true });
+      const jpeg = withExif({ make: 'Stratlas Synthetic', model: 'SYN-20', width: 64, height: 48 });
+      await writeFile(join(flight, '100MEDIA', 'DJI_0001.JPG'), jpeg);
+      await writeFile(join(flight, 'notes.txt'), 'not a photo');
+      await writeFile(join(flight, 'fake.jpg'), 'not a jpeg');
+      await writeFile(join(outer, 'secret.jpg'), jpeg);
+      await writeFile(
+        join(root, 'photogrammetry', RUN, 'run.json'),
+        JSON.stringify(sampleRun({ photos: { source: { folders: [flight] }, count: 1 } })),
+      );
+      const read = (photo: string) =>
+        ipc.call('photo:readPhoto', { projectId: 'p', run: RUN, photo });
+      const ok = await read('100MEDIA/DJI_0001.JPG');
+      expect(ok).toMatchObject({ ok: true, mime: 'image/jpeg' });
+      if (ok.ok) expect(Buffer.from(ok.data).equals(jpeg)).toBe(true);
+      for (const bad of [
+        '../secret.jpg',
+        '100MEDIA/../../secret.jpg',
+        join(outer, 'secret.jpg'),
+        'C:/Windows/win.ini',
+        '/etc/passwd.jpg',
+        'notes.txt',
+        '100MEDIA/missing.jpg',
+      ])
+        expect(await read(bad), bad).toMatchObject({ ok: false });
+      expect(await read('fake.jpg')).toMatchObject({
+        ok: false,
+        error: 'The photo "fake.jpg" is not a JPEG, PNG or TIFF.',
+      });
+      // through sparse/photos.json, whose image root must still be inside the run's folders
+      await mkdir(join(root, 'photogrammetry', RUN, 'sparse'), { recursive: true });
+      const list = (imageRoot: string, name: string) =>
+        writeFile(
+          join(root, 'photogrammetry', RUN, 'sparse', 'photos.json'),
+          JSON.stringify({ imageRoot, photos: { k1: { name, width: 64, height: 48 } } }),
+        );
+      await list(join(flight, '100MEDIA'), 'DJI_0001.JPG');
+      expect(await read('k1')).toMatchObject({ ok: true, mime: 'image/jpeg' });
+      await list(flight, '100MEDIA/DJI_0001.JPG');
+      expect(await read('100MEDIA/DJI_0001.JPG')).toMatchObject({ ok: true });
+      await writeFile(
+        join(root, 'photogrammetry', RUN, 'sparse', 'photos.json'),
+        JSON.stringify({ imageRoot: outer, photos: { 'x.jpg': { name: 'secret.jpg' } } }),
+      );
+      expect(await read('x.jpg')).toMatchObject({ ok: false });
+      // a symbolic link inside the folder that points out of it
+      try {
+        await symlink(join(outer, 'secret.jpg'), join(flight, 'link.jpg'));
+        expect(await read('link.jpg')).toMatchObject({ ok: false });
+      } catch {
+        // creating symlinks needs developer mode on Windows: covered where it is allowed
+      }
+      expect(
+        await ipc.call('photo:readPhoto', { projectId: 'pkg', run: RUN, photo: 'a.jpg' }),
+      ).toMatchObject({ ok: false });
+    } finally {
+      await rm(outer, { recursive: true, force: true });
+    }
+  });
+
+  it('reads a layer run photo inside the project only', async () => {
+    await mkdir(join(root, 'photos'));
+    const jpeg = withExif({ make: 'Stratlas Synthetic', model: 'SYN-20', width: 64, height: 48 });
+    await writeFile(join(root, 'photos', 'p1.jpg'), jpeg);
+    expect(
+      await ipc.call('photo:readPhoto', { projectId: 'p', run: RUN, photo: 'p1' }),
+    ).toMatchObject({ ok: true, mime: 'image/jpeg' });
+    expect(
+      await ipc.call('photo:readPhoto', { projectId: 'p', run: RUN, photo: 'p9' }),
+    ).toMatchObject({ ok: false });
+  });
+
+  it('sniffs JPEG, PNG and TIFF and finds the latest run with an accuracy report', async () => {
+    expect(sniffPhoto(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]))).toBe('image/jpeg');
+    expect(sniffPhoto(new Uint8Array([0x89, 0x50, 0x4e, 0x47]))).toBe('image/png');
+    expect(sniffPhoto(new Uint8Array([0x49, 0x49, 0x2a, 0]))).toBe('image/tiff');
+    expect(sniffPhoto(new Uint8Array([0x4d, 0x4d, 0, 0x2a]))).toBe('image/tiff');
+    expect(sniffPhoto(new Uint8Array([0x47, 0x49, 0x46]))).toBeNull();
+    expect(await latestAccuracyRun(projects, 'p')).toBeNull();
+    const report = (run: string) => ({
+      schema: 'aio.photo-accuracy/1',
+      run,
+      createdAt: '2026-10-07T10:00:00Z',
+      crs: { epsg: 32639 },
+      images: { total: 3, registered: 3 },
+      meanReprojPx: 0.6,
+      points: [],
+      rmse: {},
+      checkpointsInAdjustment: false,
+      warnings: [],
+    });
+    await writeFile(
+      join(root, 'photogrammetry', RUN, 'report', 'accuracy.json'),
+      JSON.stringify(report(RUN)),
+    );
+    expect(await latestAccuracyRun(projects, 'p')).toBe(RUN);
+    // a newer run still aligning does not count
+    const later = '20261008-0800';
+    await mkdir(join(root, 'photogrammetry', later, 'report'), { recursive: true });
+    await writeFile(
+      join(root, 'photogrammetry', later, 'run.json'),
+      JSON.stringify(
+        sampleRun({ id: later, createdAt: '2026-10-08T08:00:00Z', status: 'aligning' }),
+      ),
+    );
+    await writeFile(
+      join(root, 'photogrammetry', later, 'report', 'accuracy.json'),
+      JSON.stringify(report(later)),
+    );
+    expect(await latestAccuracyRun(projects, 'p')).toBe(RUN);
+    expect(await latestAccuracyRun(projects, 'gone')).toBeNull();
   });
 
   it('moves only the work folder to the recycle bin, with the bytes freed', async () => {
