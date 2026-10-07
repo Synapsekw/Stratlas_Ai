@@ -96,13 +96,16 @@ export function createBlobStore(dir: string): BlobStore {
   }
 
   function save(): Promise<void> {
-    writing = writing.then(async () => {
-      const map = await load();
-      await mkdir(dir, { recursive: true });
-      const tmp = `${stampsFile}.tmp`;
-      await writeFile(tmp, JSON.stringify(Object.fromEntries(map)));
-      await rename(tmp, stampsFile);
-    });
+    // one write at a time; a failed write never blocks the next one
+    writing = writing
+      .catch(() => undefined)
+      .then(async () => {
+        const map = await load();
+        await mkdir(dir, { recursive: true });
+        const tmp = `${stampsFile}.tmp`;
+        await writeFile(tmp, JSON.stringify(Object.fromEntries(map)));
+        await rename(tmp, stampsFile);
+      });
     return writing;
   }
 
@@ -184,7 +187,8 @@ export function createBlobStore(dir: string): BlobStore {
     async touch(sha) {
       const map = await load();
       const v = map.get(sha);
-      if (!v) return;
+      // reads through aio:// come in many ranges: one write a minute is enough for "oldest first"
+      if (!v || Date.now() - v.usedMs < 60_000) return;
       v.usedMs = Date.now();
       await save();
     },
