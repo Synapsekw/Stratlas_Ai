@@ -2,8 +2,8 @@
 // (project, issues, clock, active clip, selection, visibility) into overlay sources and writes
 // clicks back as selections.
 import { getActiveScene, onActiveScene, reducedMotion, type SceneHandle } from '@aio/engine';
-import { normaliseSamples } from '@aio/geo';
-import type { CameraOrientation, Issue, Layer, PoseSample, Vec3 } from '@aio/schema';
+import { clipCamera, clipPoseAt, normaliseSamples } from '@aio/geo';
+import type { Issue, Layer, PoseSample, Vec3 } from '@aio/schema';
 import { assetUrl, type createWorkspace, type Workspace } from '@aio/workspace';
 import type { Feature, FeatureCollection } from 'geojson';
 import {
@@ -18,7 +18,7 @@ import {
   type ExpressionSpecification,
   type MapLayerMouseEvent,
 } from 'maplibre-gl';
-import { Euler, Quaternion, Vector3 } from 'three';
+import { Vector3 } from 'three';
 import { drawPreview, isRepeatClick, type MapDrawSeam } from './draw';
 import { frameProjection, type FrameProjection } from './geo';
 import {
@@ -26,7 +26,6 @@ import {
   footprint,
   headingLine,
   issueAnchor,
-  poseAt,
   rasterQuad,
   severityRankColors,
   type LonLat,
@@ -41,30 +40,6 @@ import { buildStyle } from './style';
 
 /** A camera animation length, or 0 (jump) under reduced motion (OS or Settings). */
 const ms = (duration: number): number => (reducedMotion() ? 0 : duration);
-
-/**
- * A logged camera pose with the clip's calibration: orientation bias (Euler 'YXZ', degrees, in
- * the camera frame) and position offset (local frame, metres).
- */
-function withBias(
-  pose: PoseSample,
-  o: CameraOrientation | undefined,
-  offset: Vec3 | undefined,
-): PoseSample {
-  if (!o && !offset) return pose;
-  const d = Math.PI / 180;
-  const q = o
-    ? new Quaternion(...pose.q).multiply(
-        new Quaternion().setFromEuler(
-          new Euler(o.pitchDeg * d, o.yawDeg * d, o.rollDeg * d, 'YXZ'),
-        ),
-      )
-    : new Quaternion(...pose.q);
-  const pos: Vec3 = offset
-    ? [pose.pos[0] + offset[0], pose.pos[1] + offset[1], pose.pos[2] + offset[2]]
-    : pose.pos;
-  return { ...pose, pos, q: [q.x, q.y, q.z, q.w] };
-}
 
 type VideoLayer = Extract<Layer, { kind: 'video' }>;
 type RasterLayer = Extract<Layer, { kind: 'raster' }>;
@@ -695,13 +670,18 @@ export function createMapController(
       setData(SRC.drone, EMPTY);
       return;
     }
-    const pose = poseAt(f.samples, s.nowMs - f.layer.flight.startUtcMs);
-    if (!pose) {
+    if (!f.samples.length) {
       setData(SRC.drone, EMPTY);
       return;
     }
+    // the camera as every view draws it: direction keyframes (an unsaved draft first), else the
+    // log turned by the clip's calibration
+    const draft = s.directionDraft?.layerId === f.layer.id ? s.directionDraft.keys : undefined;
+    const flightMs = s.nowMs - f.layer.flight.startUtcMs;
+    const cam = clipPoseAt(f.samples, flightMs, clipCamera(f.layer, undefined, draft));
+    const pose: PoseSample = { t: flightMs, pos: cam.log.pos, q: cam.log.q };
     const height = Math.max(1, pose.pos[1]);
-    const biased = withBias(pose, f.layer.orientation, f.layer.positionOffsetM);
+    const biased: PoseSample = { t: flightMs, pos: cam.pos, q: cam.q };
     const ring = footprint(biased, f.layer.lens, {
       maxRange: Math.min(3000, height * 8),
     }).map((v) => (proj ? proj.toLonLat(v) : [0, 0]));
@@ -1005,6 +985,10 @@ export function createMapController(
       followCamera(now);
       return;
     }
+    // an edit saved to the same layers (calibration, camera direction) keeps the view
+    const fitKey = `${id}|${layers.map((l) => l.id).join(',')}`;
+    if (fitKey === fittedKey) return;
+    fittedKey = fitKey;
     if (box) {
       map.fitBounds(
         [
@@ -1017,6 +1001,9 @@ export function createMapController(
       map.jumpTo({ center: proj.toLonLat([0, 0, 0]), zoom: 15 });
     }
   }
+
+  /** The project and layers the view was last fitted to. */
+  let fittedKey: string | null = null;
 
   /** What the project covers (rasters, flights, issues), for the home view. */
   let projectBox: ReturnType<typeof bboxOf> = null;
@@ -1215,7 +1202,8 @@ export function createMapController(
         if (
           s.nowMs !== last.nowMs ||
           s.activeClip !== last.activeClip ||
-          s.hidden !== last.hidden
+          s.hidden !== last.hidden ||
+          s.directionDraft !== last.directionDraft
         ) {
           if (!frame)
             frame = requestAnimationFrame(() => {

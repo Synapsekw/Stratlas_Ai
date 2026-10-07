@@ -1,5 +1,5 @@
+import { clipCamera, clipPoseAt } from '@aio/geo';
 import type { Layer, PoseSample, Vec2 } from '@aio/schema';
-import { interpolatePose, orientCamera } from '@aio/video';
 import type { DeriveSightings } from '../model/editor';
 import { backProject, geomCenter, type RaySurface } from './backproject';
 
@@ -36,12 +36,9 @@ export function createDeriver(src: DeriverSources): DeriveSightings {
       const px = key ? geomCenter(key.geom) : null;
       if (!key || !samples?.length || !px) return [];
       const size = src.imageSize(layer.id, null) ?? [1280, Math.round(1280 / layer.lens.aspect)];
-      const log = interpolatePose(samples, layer.offsetMs + key.t * 1000);
-      const off = layer.positionOffsetM ?? [0, 0, 0];
-      const pose = {
-        pos: [log.pos[0] + off[0], log.pos[1] + off[1], log.pos[2] + off[2]] as typeof log.pos,
-        q: orientCamera(log.q, layer.orientation),
-      };
+      // the camera as every view draws it: direction keyframes, else the log with its bias
+      const at = clipPoseAt(samples, layer.offsetMs + key.t * 1000, clipCamera(layer));
+      const pose = { pos: at.pos, q: at.q };
       const pin = backProject(pose, layer.lens, px, size, scene);
       return pin ? [pin] : [];
     }

@@ -4,10 +4,12 @@ import {
   type LayerHandle,
   type SceneHandle,
 } from '@aio/engine';
+import { clipCamera, clipPoseAt } from '@aio/geo';
 import type { CameraOrientation, LensModel, Quat, Vec3 } from '@aio/schema';
 import {
   Box3,
   BufferAttribute,
+  DoubleSide,
   BufferGeometry,
   CanvasTexture,
   Color,
@@ -16,7 +18,10 @@ import {
   Line,
   LineBasicMaterial,
   LineSegments,
+  Mesh,
+  MeshBasicMaterial,
   PerspectiveCamera,
+  PlaneGeometry,
   Quaternion,
   SRGBColorSpace,
   Sprite,
@@ -31,9 +36,7 @@ import { DRONE_GLB_BASE64 } from './drone-glb';
 import type { Flight } from './flight';
 import { grayFromRgba, type GrayImage } from './autoalign';
 import { imageToRay } from './lens';
-import { orientCamera } from './orientation';
 import { acquirePlayer, releasePlayer, type ClipPlayer } from './player';
-import { interpolatePose } from './pose';
 import { Projector, type ProjectorOptions } from './projector';
 import { loadFlight, videoStore, type VideoLayer } from './runtime';
 import { DroneTrace, type TraceLabels } from './trace';
@@ -180,6 +183,9 @@ export class VideoRig {
   private gimbal: Object3D | null = null;
   private props: Object3D[] = [];
   private readonly frustum: LineSegments;
+  /** The video frame as an image plane at the end of the frustum (Set camera direction). */
+  private readonly framePlane: Mesh<PlaneGeometry, MeshBasicMaterial>;
+  private framePlaneOpacity: number | null = null;
   private readonly beacon = beaconSprite();
   /** The tactical trace of the active clip: trail, shadow, drop lines, ticks and HUD. */
   readonly trace: DroneTrace;
@@ -251,10 +257,25 @@ export class VideoRig {
     this.frustum.renderOrder = 20;
     this.frustum.frustumCulled = false;
     this.frustum.visible = false;
+    this.framePlane = new Mesh(
+      new PlaneGeometry(1, 1),
+      new MeshBasicMaterial({
+        transparent: true,
+        opacity: 0.85,
+        side: DoubleSide,
+        depthTest: false,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    );
+    this.framePlane.name = 'DirectionFrame';
+    this.framePlane.renderOrder = 19;
+    this.framePlane.frustumCulled = false;
+    this.framePlane.visible = false;
     this.trace = new DroneTrace(handle);
     const tele = telemetryChoice.get(handle);
     if (tele) this.setDroneTelemetry(tele);
-    this.group.add(this.drone, this.frustum, this.trace.group);
+    this.group.add(this.drone, this.frustum, this.framePlane, this.trace.group);
     if (this.beacon) this.group.add(this.beacon);
     handle.scene.add(this.group);
     this.offs.push(handle.onFrame(this.frame));
@@ -263,7 +284,12 @@ export class VideoRig {
     this.offs.push(
       videoStore().subscribe((s, p) => {
         if (s.activeClip !== p.activeClip) this.syncActive();
-        if (s.nowMs !== p.nowMs || s.activeClip !== p.activeClip || s.hidden !== p.hidden)
+        if (
+          s.nowMs !== p.nowMs ||
+          s.activeClip !== p.activeClip ||
+          s.hidden !== p.hidden ||
+          s.directionDraft !== p.directionDraft
+        )
           handle.requestRender();
       }),
     );
@@ -436,6 +462,15 @@ export class VideoRig {
     this.handle.requestRender();
   }
 
+  /**
+   * Show the active clip's video frame as an image plane at the end of the frustum with this
+   * opacity (Set camera direction), or `null` to hide it.
+   */
+  setFramePlane(opacity: number | null) {
+    this.framePlaneOpacity = opacity;
+    this.handle.requestRender();
+  }
+
   /** The bias in use for the active clip (the calibration trial, else the layer's). */
   activeOrientation(): CameraOrientation | null {
     const entry = this.activeId ? this.clips.get(this.activeId) : undefined;
@@ -546,6 +581,7 @@ export class VideoRig {
       this.texture?.dispose();
       this.texture = null;
       this.projector.setTexture(null);
+      this.framePlane.material.map = null;
       this.playerOff?.();
       this.playerOff = null;
       releasePlayer(this.activeId);
@@ -560,7 +596,7 @@ export class VideoRig {
     if (!want || !entry?.flight) {
       this.projector.setEnabled(false);
       this.projector.detachAll();
-      this.drone.visible = this.frustum.visible = false;
+      this.drone.visible = this.frustum.visible = this.framePlane.visible = false;
       if (this.beacon) this.beacon.visible = false;
       this.pose.valid = false;
       return;
@@ -571,6 +607,8 @@ export class VideoRig {
     tex.colorSpace = SRGBColorSpace;
     this.texture = tex;
     this.projector.setTexture(tex);
+    this.framePlane.material.map = tex;
+    this.framePlane.material.needsUpdate = true;
     if (this.autoRange) {
       // paint out to about 8x the flight height: covers the footprint, cuts the horizon smear
       const top = Math.max(...entry.flight.samples.map((s) => s.pos[1]));
@@ -622,14 +660,19 @@ export class VideoRig {
     }
     const layerVisible = entry.visible && !s.hidden[entry.layer.id];
     const flightMs = s.nowMs - flight.startUtcMs;
-    const p = interpolatePose(flight.samples, flightMs);
-    this.logPose.pos.fromArray(p.pos);
-    this.logPose.q.fromArray(p.q);
-    this.logPose.flightMs = flightMs;
     const off = this.positionOverride ?? entry.layer.positionOffsetM;
+    const draft = s.directionDraft?.layerId === entry.layer.id ? s.directionDraft.keys : undefined;
+    // one rule for every reader: keyframes when the clip has any, else the log with its bias
+    const p = clipPoseAt(flight.samples, flightMs, {
+      ...clipCamera(entry.layer, flight.startUtcMs, draft),
+      orientation: this.orientationOverride ?? entry.layer.orientation,
+      positionOffsetM: off,
+    });
+    this.logPose.pos.fromArray(p.log.pos);
+    this.logPose.q.fromArray(p.log.q);
+    this.logPose.flightMs = flightMs;
     this.pose.pos.fromArray(p.pos);
-    if (off) this.pose.pos.add(new Vector3(off[0], off[1], off[2]));
-    this.pose.q.fromArray(orientCamera(p.q, this.orientationOverride ?? entry.layer.orientation));
+    this.pose.q.fromArray(p.q);
     this.pose.valid = true;
     const win = this.player.window;
     const covered =
@@ -672,6 +715,7 @@ export class VideoRig {
         flightMs,
         offset: off ?? null,
         orientation: this.orientationOverride ?? entry.layer.orientation ?? null,
+        q: p.q,
         pos: this.pose.pos,
         originH: originHeight(s.project?.manifest.origin),
         droneEye: drone,
@@ -679,8 +723,10 @@ export class VideoRig {
     } else this.trace.update(null);
 
     // frustum: border rays to a length that reads at this zoom, clipped at the ground plane
-    this.updateFrustum(Math.min(400, Math.max(0.6, camDist * 0.12)));
+    const len = Math.min(400, Math.max(0.6, camDist * 0.12));
+    this.updateFrustum(len);
     this.frustum.visible = layerVisible && !drone;
+    this.updateFramePlane(len, layerVisible && !drone && covered);
 
     // projector
     this.projector.setEnabled(this.projectionOn && layerVisible && covered);
@@ -718,6 +764,39 @@ export class VideoRig {
       if (controls) controls.target.copy(droneEyeTarget(this.pose.pos, this.pose.q));
     }
   };
+
+  /**
+   * The frame plane across the frustum at `len` metres along the view axis, pulled in so no
+   * corner goes below the ground plane (y = 0), as the frustum lines are clipped.
+   */
+  private updateFramePlane(len: number, show: boolean) {
+    const plane = this.framePlane;
+    const lens = this.lens;
+    plane.visible = show && this.framePlaneOpacity !== null && !!lens && !!plane.material.map;
+    if (!plane.visible || !lens) return;
+    const o = this.pose.pos;
+    const fwd = new Vector3(0, 0, -1).applyQuaternion(this.pose.q);
+    // corner rays of a pinhole of this field of view (f-theta capped at 150 degrees)
+    const hf = Math.min(150, lens.hfovDeg) / 2;
+    const tx = Math.tan((hf * Math.PI) / 180);
+    const ty = tx / lens.aspect;
+    let L = len;
+    for (const [sx, sy] of [
+      [-1, 1],
+      [1, 1],
+      [1, -1],
+      [-1, -1],
+    ] as const) {
+      const d = new Vector3(sx * tx, sy * ty, -1).applyQuaternion(this.pose.q);
+      // the corner at axis depth L is o + d * L; it stays above y = 0
+      if (d.y < -1e-6) L = Math.min(L, (0.98 * o.y) / -d.y);
+    }
+    L = Math.max(0.3, L);
+    plane.position.copy(o).addScaledVector(fwd, L);
+    plane.quaternion.copy(this.pose.q);
+    plane.scale.set(2 * L * tx, 2 * L * ty, 1);
+    plane.material.opacity = this.framePlaneOpacity ?? 1;
+  }
 
   private updateFrustum(len: number) {
     const attr = this.frustum.geometry.getAttribute('position') as BufferAttribute;
@@ -791,6 +870,11 @@ export function setCalibrationOrientation(
 /** Try a camera position offset on the active clip (calibration); `null` restores the clip's. */
 export function setCalibrationPosition(handle: SceneHandle, offset: Vec3 | null): void {
   videoRig(handle).setPositionOverride(offset);
+}
+
+/** The active clip's frame as an image plane at the end of the frustum; `null` hides it. */
+export function setFramePlane(handle: SceneHandle, opacity: number | null): void {
+  videoRig(handle).setFramePlane(opacity);
 }
 
 /** Try a lens on the active clip (calibration); `null` restores the clip's own lens. */

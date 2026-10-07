@@ -6,10 +6,25 @@
 import type { MapController } from './controller';
 
 let active: MapController | null = null;
+const activeListeners = new Set<(c: MapController | null) => void>();
 
 /** The map view that is on screen (MapView sets and clears it). */
 export function setActiveMap(controller: MapController | null): void {
   active = controller;
+  for (const l of activeListeners) l(controller);
+}
+
+/** The map view on screen, for tools that draw on it (Set camera direction), or null. */
+export function getActiveMap(): MapController | null {
+  return active;
+}
+
+/** Follow the map view on screen; returns the unsubscribe. */
+export function onActiveMap(listener: (c: MapController | null) => void): () => void {
+  activeListeners.add(listener);
+  return () => {
+    activeListeners.delete(listener);
+  };
 }
 
 /** Longest edge of the captured frame, as for the other windows. */

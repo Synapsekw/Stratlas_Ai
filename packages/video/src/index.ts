@@ -99,7 +99,12 @@ export {
   type AutoAlignResult,
   type GrayImage,
 } from './autoalign';
-export { setCalibrationLens, setCalibrationOrientation, setCalibrationPosition } from './rig';
+export {
+  setCalibrationLens,
+  setCalibrationOrientation,
+  setCalibrationPosition,
+  setFramePlane,
+} from './rig';
 export { DEFAULT_TRACE_LABELS, DroneTrace, type TraceLabels } from './trace';
 export {
   distanceAt,

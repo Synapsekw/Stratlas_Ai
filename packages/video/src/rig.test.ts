@@ -2,7 +2,15 @@
 import type { SceneHandle } from '@aio/engine';
 import type { Layer, ProjectManifest } from '@aio/schema';
 import { createWorkspace } from '@aio/workspace';
-import { Line, PerspectiveCamera, Scene, Vector3, type Mesh, type WebGLRenderer } from 'three';
+import {
+  Line,
+  PerspectiveCamera,
+  Quaternion,
+  Scene,
+  Vector3,
+  type Mesh,
+  type WebGLRenderer,
+} from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setFlightPaths, VideoRig } from './rig';
 import { configureVideo } from './runtime';
@@ -278,6 +286,62 @@ describe('VideoRig drone-eye', () => {
     rig.setLensOverride(null);
     for (const f of frames) f();
     expect(h.camera.fov).toBeCloseTo(vfov(80), 3);
+    rig.dispose();
+  });
+
+  it('points the camera by direction keyframes, an unsaved draft first, over the bias', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(flight)))),
+    );
+    const layer = {
+      ...clip(0, 'flights/dir.json'),
+      lens: { model: 'pinhole' as const, hfovDeg: 80, aspect: 2 },
+      offsetMs: 0,
+      orientation: { yawDeg: 30, pitchDeg: 0, rollDeg: 0 },
+      directionKeys: [
+        { t: 0, yaw: 90, pitch: -30, roll: 0, fill: 'smooth' },
+        { t: 1000, yaw: 130, pitch: -30, roll: 0, fill: 'smooth' },
+      ],
+    };
+    const store = createWorkspace();
+    store.getState().openProject({
+      id: 'p',
+      root: 'x',
+      manifest: { layers: [layer] } as unknown as ProjectManifest,
+    });
+    configureVideo({ store, resolveUrl: (_p, ref) => ('path' in ref ? ref.path : ref.hash) });
+    const frames: (() => void)[] = [];
+    const h = Object.assign(handle(), {
+      onFrame: (cb: () => void) => {
+        frames.push(cb);
+        return () => undefined;
+      },
+    });
+    const rig = new VideoRig(h);
+    await rig.addLayer(layer, { scene: h, url: (r) => ('path' in r ? r.path : r.hash) });
+    store.getState().setActiveClip(layer.id);
+    store.getState().setTime(flight.startUtcMs + 500);
+    const heading = () => {
+      for (const f of frames) f();
+      const q = rig.currentPose()?.q;
+      const d = new Vector3(0, 0, -1).applyQuaternion(q ?? new Quaternion());
+      return ((Math.atan2(d.x, -d.z) * 180) / Math.PI + 360) % 360;
+    };
+    // half way between 90 and 130; the calibration bias does not apply
+    expect(heading()).toBeCloseTo(110, 3);
+    // the logged pose stays what the flight file says
+    expect(rig.loggedPose()?.q).toEqual([0, 0, 0, 1]);
+    store.getState().setDirectionDraft({
+      layerId: layer.id,
+      keys: [{ t: 0, yaw: 200, pitch: -30, roll: 0, fill: 'smooth' }],
+    });
+    expect(heading()).toBeCloseTo(200, 3);
+    store.getState().setDirectionDraft({ layerId: layer.id, keys: [] });
+    // no keyframes in the draft: the log (looking north) turned left by the 30 degree bias
+    expect(heading()).toBeCloseTo(330, 3);
+    store.getState().setDirectionDraft(null);
+    expect(heading()).toBeCloseTo(110, 3);
     rig.dispose();
   });
 });

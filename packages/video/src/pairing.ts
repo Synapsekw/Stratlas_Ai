@@ -1,9 +1,9 @@
+import { clipCamera, clipPoseAt } from '@aio/geo';
 import type { FrameRef, Layer, LensModel, Quat, Vec3 } from '@aio/schema';
 import { clockForVideoTime } from './clock';
 import type { Flight } from './flight';
 import { imageToRay, rayToImage } from './lens';
-import { orientCamera, quatConj, quatRotate } from './orientation';
-import { interpolatePose } from './pose';
+import { quatConj, quatRotate } from './orientation';
 
 /**
  * Same view on the other date (M8 C4, FUS-4 and FUS-12): for a video frame or a photo of one
@@ -100,15 +100,17 @@ export function videoTimeS(layer: VideoLayer, flight: Flight, tMs: number): numb
   return (tMs + flight.startUtcMs - layer.flight.startUtcMs - layer.offsetMs) / 1000;
 }
 
-/** The calibrated camera of video second `v`: the logged pose, offset and turned by the clip's bias. */
+/**
+ * The calibrated camera of video second `v`: the logged position plus the clip's offset; the
+ * direction from its keyframes, else the logged orientation turned by its bias (`clipPoseAt`).
+ */
 export function calibratedVideoPose(layer: VideoLayer, flight: Flight, v: number): ViewPose {
-  const s = interpolatePose(flight.samples, flightTimeMs(layer, flight, v));
-  const o = layer.positionOffsetM;
-  return {
-    pos: o ? [s.pos[0] + o[0], s.pos[1] + o[1], s.pos[2] + o[2]] : s.pos,
-    q: orientCamera(s.q, layer.orientation),
-    lens: layer.lens,
-  };
+  const p = clipPoseAt(
+    flight.samples,
+    flightTimeMs(layer, flight, v),
+    clipCamera(layer, flight.startUtcMs),
+  );
+  return { pos: p.pos, q: p.q, lens: layer.lens };
 }
 
 /** A photo's camera, or null when the photo has no position or orientation. */
