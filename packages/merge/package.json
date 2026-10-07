@@ -5,12 +5,14 @@
   "type": "module",
   "description": "The merge engine: ops to state files per record type, last writer by clock per field, sets, conflicts and quarantine.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./generator": "./src/testing/generator.ts"
   },
   "scripts": {
     "test": "vitest run"
   },
   "dependencies": {
+    "@aio/journal": "workspace:*",
     "@aio/schema": "workspace:*"
   }
 }
