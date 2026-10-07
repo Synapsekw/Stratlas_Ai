@@ -16,6 +16,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { expectAccessible } from './a11y';
 import { expect, launchApp, NetworkGuard, test, tinyGlb, type DataRoot } from './fixtures';
 import { pdfText } from './pdf';
 
@@ -241,6 +242,7 @@ test('two reviewers: assign, mention with a view, four-eyes approval, sign-off, 
     await expect(f03.getByTestId('comment')).toHaveCount(1);
     await expect(f03.getByTestId('comment')).toContainText('@Omar please check the weld');
     await expect(f03.getByTestId('comment-view')).toBeVisible();
+    await expectAccessible(rana.win, 'Review panel', { include: '[data-testid="issue-collab"]' });
 
     // four-eyes: Rana made F05, so she cannot approve it
     const f05 = await openIssue(rana.win, 'i_f05');
@@ -271,6 +273,7 @@ test('two reviewers: assign, mention with a view, four-eyes approval, sign-off, 
     await expect(work).toContainText('Assigned to me (1)');
     await expect(work).toContainText('Mentions (1)');
     await expect(work).toContainText('Awaiting my approval (1)');
+    await expectAccessible(omar.win, 'My work', { include: '[data-testid="my-work"]' });
     await work.locator('section', { hasText: 'Mentions' }).getByRole('button').first().click();
     await expect
       .poll(async () => {
@@ -288,6 +291,7 @@ test('two reviewers: assign, mention with a view, four-eyes approval, sign-off, 
       'Approved. The status is now Approved.',
     );
     await expect(f05.getByTestId('approval-state')).toHaveText('Approved');
+    await expectAccessible(omar.win, 'Approvals', { include: '[data-testid="approval-bar"]' });
     await expect
       .poll(async () => (await issuesOnDisk(dir)).find((i) => i.code === 'F05')?.status)
       .toBe('approved');
