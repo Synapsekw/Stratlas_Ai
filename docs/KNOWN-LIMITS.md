@@ -106,6 +106,7 @@ Current limits only; each is removed from this list when fixed.
 - When the credential store (Windows Credential Manager, macOS Keychain) cannot be used, changes are recorded without a signature. **Verify** says so, and in a shared project the other copies hold those changes in quarantine until an owner applies them anyway.
 - Signed checkpoints are written every 500 changes and at each audit export, not yet at every sync or exchange file.
 - Fork detection is proven on the golden fixtures only; a copied folder that kept writing in an unusual way may be reported as a gap or an order problem rather than a fork.
+- The history of a private project cannot be switched off from the app yet (`journal:setEnabled` exists, with no button).
 - Notes saved in the four legacy viewers (through their own storage shim) are not journaled.
 - Customer packages do not yet carry the signed audit summary, and the package export has no **Include full history** choice (`PackageHeader.journal` is in the contract only). Packages carry no member list.
 
