@@ -1,0 +1,16 @@
+{
+  "name": "@aio/collab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The multi-reviewer workflow: approval policy and material hash, comments and assignments projection, review panels.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aio/schema": "workspace:*"
+  }
+}

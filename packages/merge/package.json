@@ -1,0 +1,16 @@
+{
+  "name": "@aio/merge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The merge engine: ops to state files per record type, last writer by clock per field, sets, conflicts and quarantine.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aio/schema": "workspace:*"
+  }
+}

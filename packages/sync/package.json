@@ -1,0 +1,20 @@
+{
+  "name": "@aio/sync",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Moving ops and blobs between copies: the SyncTransport interface, exchange files, hub folders, blobs by content and the HTTP client.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./exchange": "./src/exchange/index.ts",
+    "./hub": "./src/hub/index.ts",
+    "./blobs": "./src/blobs/index.ts",
+    "./http": "./src/http/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aio/schema": "workspace:*"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@aio/journal",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The project journal: canonical JSON, ops, hash chain, hybrid logical clock, Ed25519 signing, segments, verify.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aio/schema": "workspace:*"
+  }
+}
