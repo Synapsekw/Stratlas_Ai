@@ -1,0 +1,17 @@
+{
+  "name": "@aio/team-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Team Server (self-hosted, preview): the aio.sync/1 API over a Store, run on the customer's premises. Stores and forwards; never merges.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aio/schema": "workspace:*",
+    "fastify": "^5.12.5"
+  }
+}

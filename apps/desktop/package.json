@@ -18,6 +18,10 @@
     "dist:mac": "electron-vite build && node ../../tools/release/dist.mjs --mac"
   },
   "dependencies": {
+    "@aio/collab": "workspace:*",
+    "@aio/journal": "workspace:*",
+    "@aio/merge": "workspace:*",
+    "@aio/sync": "workspace:*",
     "@napi-rs/keyring": "^2.1.0",
     "onnxruntime-node": "^1.30.0",
     "zod": "^4.6.5"

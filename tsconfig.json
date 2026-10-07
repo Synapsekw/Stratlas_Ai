@@ -47,6 +47,21 @@
       "path": "packages/modelling"
     },
     {
+      "path": "packages/journal"
+    },
+    {
+      "path": "packages/merge"
+    },
+    {
+      "path": "packages/collab"
+    },
+    {
+      "path": "packages/sync"
+    },
+    {
+      "path": "apps/team-server"
+    },
+    {
       "path": "apps/desktop"
     }
   ]

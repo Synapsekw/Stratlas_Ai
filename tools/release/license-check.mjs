@@ -4,6 +4,8 @@
 //     on the allow-list below; an SPDX `OR` needs one allowed option, `AND` needs all.
 //   - No dependency at all, dev tooling included, may be GPL or AGPL. (LGPL dev tooling such as
 //     the libvips binary behind sharp is tolerated because it never ships.)
+//   - `-r` covers every workspace, so the Team Server (`apps/team-server`, what its Docker image
+//     ships: Fastify and later `pg` and the S3 client) passes the same allow-list as the app (M9).
 import { execSync } from 'node:child_process';
 
 const ALLOWED = new Set([

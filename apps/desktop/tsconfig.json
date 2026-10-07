@@ -23,6 +23,10 @@
     { "path": "../../packages/project" },
     { "path": "../../packages/geo" },
     { "path": "../../packages/change" },
-    { "path": "../../packages/modelling" }
+    { "path": "../../packages/modelling" },
+    { "path": "../../packages/journal" },
+    { "path": "../../packages/merge" },
+    { "path": "../../packages/collab" },
+    { "path": "../../packages/sync" }
   ]
 }
