@@ -160,7 +160,7 @@ export async function writeEmbed(
   e: EmbedPlan,
   o: { tempDir: string; projectName: string; signal?: AbortSignal },
 ): Promise<{ members: ZipMember[]; dispose(): Promise<void> }> {
-  const dir = await mkdtemp(join(o.tempDir, 'stratlas-pack-'));
+  const dir = await mkdtemp(join(o.tempDir, 'quadrion-pack-'));
   try {
     const out = join(dir, `${e.pack.id}.pmtiles`);
     await runExtract({

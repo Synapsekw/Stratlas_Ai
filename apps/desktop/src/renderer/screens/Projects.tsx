@@ -336,7 +336,7 @@ export function ProjectsScreen() {
   const [sort, setSort] = useState<Sort>('recent');
 
   // read the data folder again whenever the library is shown or the window comes back, so a
-  // project copied into it while Stratlas runs appears without a restart
+  // project copied into it while the app runs appears without a restart
   useEffect(() => {
     const reload = () => {
       void shell.getState().loadLibrary();

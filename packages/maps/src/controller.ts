@@ -2,8 +2,8 @@
 // (project, issues, clock, active clip, selection, visibility) into overlay sources and writes
 // clicks back as selections.
 import { getActiveScene, onActiveScene, reducedMotion, type SceneHandle } from '@aio/engine';
-import { normaliseSamples } from '@aio/geo';
-import type { CameraOrientation, Issue, Layer, PoseSample, Vec3 } from '@aio/schema';
+import { clipCamera, clipKeys, clipPoseAt, normaliseSamples } from '@aio/geo';
+import type { Issue, Layer, PoseSample, Vec3 } from '@aio/schema';
 import { assetUrl, type createWorkspace, type Workspace } from '@aio/workspace';
 import type { Feature, FeatureCollection } from 'geojson';
 import {
@@ -18,7 +18,7 @@ import {
   type ExpressionSpecification,
   type MapLayerMouseEvent,
 } from 'maplibre-gl';
-import { Euler, Quaternion, Vector3 } from 'three';
+import { Vector3 } from 'three';
 import { drawPreview, isRepeatClick, type MapDrawSeam } from './draw';
 import { frameProjection, type FrameProjection } from './geo';
 import {
@@ -26,7 +26,6 @@ import {
   footprint,
   headingLine,
   issueAnchor,
-  poseAt,
   rasterQuad,
   severityRankColors,
   type LonLat,
@@ -36,35 +35,18 @@ import { bboxOf, orderPacks, type MapPack } from './packs';
 import { pyramidView, type PyramidIndex } from './pyramid';
 import { issueFeatures, issueShapeBounds, styleLayers, type MapOverlay } from './vector';
 import { MAP_INK } from './ink';
+import {
+  addPhotoPins,
+  PHOTO_PIN_LAYERS,
+  PHOTO_SOURCE,
+  photoPinData,
+  photoPoints,
+} from './photoPins';
 import { installBasemap } from './runtime';
 import { buildStyle } from './style';
 
 /** A camera animation length, or 0 (jump) under reduced motion (OS or Settings). */
 const ms = (duration: number): number => (reducedMotion() ? 0 : duration);
-
-/**
- * A logged camera pose with the clip's calibration: orientation bias (Euler 'YXZ', degrees, in
- * the camera frame) and position offset (local frame, metres).
- */
-function withBias(
-  pose: PoseSample,
-  o: CameraOrientation | undefined,
-  offset: Vec3 | undefined,
-): PoseSample {
-  if (!o && !offset) return pose;
-  const d = Math.PI / 180;
-  const q = o
-    ? new Quaternion(...pose.q).multiply(
-        new Quaternion().setFromEuler(
-          new Euler(o.pitchDeg * d, o.yawDeg * d, o.rollDeg * d, 'YXZ'),
-        ),
-      )
-    : new Quaternion(...pose.q);
-  const pos: Vec3 = offset
-    ? [pose.pos[0] + offset[0], pose.pos[1] + offset[1], pose.pos[2] + offset[2]]
-    : pose.pos;
-  return { ...pose, pos, q: [q.x, q.y, q.z, q.w] };
-}
 
 type VideoLayer = Extract<Layer, { kind: 'video' }>;
 type RasterLayer = Extract<Layer, { kind: 'raster' }>;
@@ -284,6 +266,8 @@ export function createMapController(
         'circle-stroke-width': 2,
       },
     });
+    // Photo pins (clustered), under the issues.
+    addPhotoPins(map);
     // Heat map above the rasters and overlays, under every marker.
     map.addLayer({
       id: 'aio-issues-heat',
@@ -695,13 +679,21 @@ export function createMapController(
       setData(SRC.drone, EMPTY);
       return;
     }
-    const pose = poseAt(f.samples, s.nowMs - f.layer.flight.startUtcMs);
-    if (!pose) {
+    if (!f.samples.length) {
       setData(SRC.drone, EMPTY);
       return;
     }
+    // the camera as every view draws it: direction keyframes (an unsaved draft first), else the
+    // log turned by the clip's calibration
+    const keys =
+      s.directionDraft?.layerId === f.layer.id
+        ? s.directionDraft.keys
+        : clipKeys(s.orientation, f.layer.id);
+    const flightMs = s.nowMs - f.layer.flight.startUtcMs;
+    const cam = clipPoseAt(f.samples, flightMs, clipCamera(f.layer, keys));
+    const pose: PoseSample = { t: flightMs, pos: cam.log.pos, q: cam.log.q };
     const height = Math.max(1, pose.pos[1]);
-    const biased = withBias(pose, f.layer.orientation, f.layer.positionOffsetM);
+    const biased: PoseSample = { t: flightMs, pos: cam.pos, q: cam.q };
     const ring = footprint(biased, f.layer.lens, {
       maxRange: Math.min(3000, height * 8),
     }).map((v) => (proj ? proj.toLonLat(v) : [0, 0]));
@@ -739,6 +731,11 @@ export function createMapController(
         },
       ]),
     );
+  }
+
+  // ----- photos -----
+  function renderPhotos(s: Workspace): void {
+    if (proj && map.getSource(PHOTO_SOURCE)) setData(PHOTO_SOURCE, photoPinData(s, proj));
   }
 
   // ----- issues -----
@@ -994,11 +991,13 @@ export function createMapController(
     const now = store.getState();
     renderFlights(now);
     renderDrone(now);
+    renderPhotos(now);
     paintClusters(now);
     renderIssues(now);
     applyVisibility(now);
     const issuePts = now.issues.map((i) => issueAnchor(i, proj)).filter((x): x is LonLat => !!x);
-    const box = bboxOf([...rasterPts, ...flightPts, ...issuePts]);
+    const photoPts = photoPoints(now, proj);
+    const box = bboxOf([...rasterPts, ...flightPts, ...issuePts, ...photoPts]);
     projectBox = box;
     // a camera request made while the map was starting (the agent's fly_to) wins over the start view
     if (now.lastCamera && now.lastCamera !== startCamera) {
@@ -1018,7 +1017,7 @@ export function createMapController(
     }
   }
 
-  /** What the project covers (rasters, flights, issues), for the home view. */
+  /** What the project covers (rasters, flights, issues, photos), for the home view. */
   let projectBox: ReturnType<typeof bboxOf> = null;
 
   /** A camera request (fly to a point or an issue) moves the map too; the 3D view consumes it. */
@@ -1094,12 +1093,21 @@ export function createMapController(
       return;
     }
     const hit = map.queryRenderedFeatures(e.point, {
-      layers: ISSUE_LAYERS.concat('aio-drone-point', 'aio-flights-line').filter((l) =>
-        map.getLayer(l),
-      ),
+      layers: ISSUE_LAYERS.concat(
+        'aio-drone-point',
+        'aio-flights-line',
+        ...PHOTO_PIN_LAYERS,
+      ).filter((l) => map.getLayer(l)),
     })[0];
     const props = hit?.properties as
-      { issueId?: string; layerId?: string; cluster_id?: number } | undefined;
+      | {
+          issueId?: string;
+          layerId?: string;
+          cluster_id?: number;
+          photoLayer?: string;
+          photoId?: string;
+        }
+      | undefined;
     const st = store.getState();
     const ov = props ? null : overlayAt(e);
     if (props?.cluster_id !== undefined && hit?.geometry.type === 'Point') {
@@ -1111,6 +1119,8 @@ export function createMapController(
       });
     } else if (props?.issueId) {
       st.select({ kind: 'issue', id: props.issueId });
+    } else if (props?.photoId && props.photoLayer) {
+      st.select({ kind: 'photo', id: props.photoId, layer: props.photoLayer });
     } else if (props?.layerId) {
       st.setActiveClip(props.layerId);
       st.select({ kind: 'clip', id: props.layerId });
@@ -1134,7 +1144,12 @@ export function createMapController(
       d.onFinish();
     });
     const drawing = () => draw?.()?.mode != null;
-    for (const id of ['aio-flights-line', 'aio-drone-point']) {
+    for (const id of [
+      'aio-flights-line',
+      'aio-drone-point',
+      'aio-photos-pt',
+      'aio-photos-cluster',
+    ]) {
       map.on('mouseenter', id, () => {
         if (!drawing()) map.getCanvas().style.cursor = 'pointer';
       });
@@ -1204,6 +1219,12 @@ export function createMapController(
         }
         if (s.issues !== last.issues || s.selection !== last.selection) renderIssues(s);
         if (
+          s.selection !== last.selection ||
+          s.hidden !== last.hidden ||
+          s.orientation !== last.orientation
+        )
+          renderPhotos(s);
+        if (
           s.activeClip !== last.activeClip ||
           s.selection !== last.selection ||
           s.hidden !== last.hidden
@@ -1215,7 +1236,9 @@ export function createMapController(
         if (
           s.nowMs !== last.nowMs ||
           s.activeClip !== last.activeClip ||
-          s.hidden !== last.hidden
+          s.hidden !== last.hidden ||
+          s.directionDraft !== last.directionDraft ||
+          s.orientation !== last.orientation
         ) {
           if (!frame)
             frame = requestAnimationFrame(() => {

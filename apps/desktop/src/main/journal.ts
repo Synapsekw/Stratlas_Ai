@@ -11,7 +11,7 @@
  *   a write the handler refuses is undone by ops, never by editing the journal;
  * - `builder:updateLayers` is diffed after it writes (its result is computed in the handler);
  * - on open, a half-done write is finished (crash recovery) and any other difference is recorded
- *   as attributed ops (`via.external`, "changed outside Stratlas");
+ *   as attributed ops (`via.external`, "changed outside Quadrion AI");
  * - around pipeline jobs, the difference is recorded with `via.pipeline`.
  *
  * Packages are read-only: their journal is never appended. Decision 8: the journal is on by
@@ -182,6 +182,12 @@ const WRITERS: Partial<
     rel: 'report/narrative.json',
     after: r.file,
   }),
+  // hand-set camera directions: one record.external op per save until a kind is agreed
+  'orientation:write': (r: IpcRequest<'orientation:write'>) => ({
+    projectId: r.projectId,
+    rel: 'orientation.json',
+    after: r.file,
+  }),
 };
 
 /**
@@ -195,6 +201,7 @@ const READS: ReadonlySet<IpcChannel> = new Set<IpcChannel>([
   'detections:maskAssistStatus',
   'report:list',
   'report:readNarrative',
+  'orientation:read',
   'change:list',
   'change:read',
   'model:list',

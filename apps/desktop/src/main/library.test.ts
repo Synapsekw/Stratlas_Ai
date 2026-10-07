@@ -151,9 +151,9 @@ describe('library store and addToLibrary', () => {
     expect(await addToLibrary(dir, store, new ProjectRegistry())).toEqual({
       ok: false,
       error:
-        'library.json was saved by a newer version of Stratlas (aio.library/2). Update the app to open it. The file was not changed.',
+        'library.json was saved by a newer version of Quadrion AI (aio.library/2). Update the app to open it. The file was not changed.',
     });
-    await expect(store.add(dir)).rejects.toThrow(/newer version of Stratlas/);
+    await expect(store.add(dir)).rejects.toThrow(/newer version of Quadrion AI/);
     expect(await readFile(file, 'utf8')).toBe(newer);
   });
 

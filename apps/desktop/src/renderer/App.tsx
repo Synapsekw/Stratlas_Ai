@@ -45,6 +45,9 @@ import { TitleBar } from './shell/TitleBar';
 import { applyAppearance, OS_QUERIES } from './theme';
 import { HelpPanel } from './help/HelpPanel';
 import { help } from './help/store';
+import { isTypingTarget } from './workspace/DateBar';
+import { timeline, useTimelineSync } from './workspace/timeline';
+import { connectVolumeDates } from './workspace/volumeDates';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
 import { BuilderLayer } from './builder/BuilderLayer';
 import { ModellerLayer } from './modeller/ModellerLayer';
@@ -80,6 +83,14 @@ function onKeyDown(e: KeyboardEvent) {
   } else if (id === 'global.sidebar') {
     e.preventDefault();
     void s.toggleSidebar();
+  } else if (
+    (id === 'global.prevSurvey' || id === 'global.nextSurvey') &&
+    !e.defaultPrevented &&
+    s.screen === 'scene' &&
+    !isTypingTarget(e.target)
+  ) {
+    e.preventDefault();
+    timeline.getState().step(id === 'global.prevSurvey' ? -1 : 1);
   } else if (
     id === 'global.playPause' &&
     !e.defaultPrevented &&
@@ -213,6 +224,20 @@ export function App() {
   const contrast = useShell((s) => s.settings.contrast);
   const motion = useShell((s) => s.settings.motion);
   const screen = useShell((s) => s.screen);
+  // the date bar follows the open project whichever screen shows
+  useTimelineSync();
+  // stockpile projects: the volumes own the survey layers, the date bar mirrors them
+  useEffect(
+    () =>
+      connectVolumeDates(volumetric, timeline, workspace, {
+        isOpen: () => shell.getState().stageMode === 'split',
+        onChange: (listener) =>
+          shell.subscribe((s, p) => {
+            if (s.stageMode !== p.stageMode) listener();
+          }),
+      }),
+    [],
+  );
 
   useEffect(() => {
     // Settings and library are in: tell main the first screen is up (ends the first-start

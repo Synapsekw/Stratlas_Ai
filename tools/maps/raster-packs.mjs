@@ -13,12 +13,13 @@
 //        --label="GCC terrain" --src=D:/downloads/glo30 [--max-zoom=12]
 //   node tools/maps/build-packs.mjs --estimate --bbox=46,16,60,30 --max-zoom=13 [--terrain]
 //
-// Env: STRATLAS_DATA (the data root; packs go to <data>/packs/imagery or packs/terrain),
-// STRATLAS_PIPELINE_PYTHON (default python/.venv).
+// Env: QUADRION_DATA (the data root; packs go to <data>/packs/imagery or packs/terrain),
+// QUADRION_PIPELINE_PYTHON (default python/.venv).
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { envVar } from '../../packages/brand/src/env.ts';
 
 /**
  * Open sources we may pack and redistribute (plan, "Imagery and terrain: sources and licences").
@@ -120,7 +121,7 @@ function python(repo) {
     process.platform === 'win32'
       ? join(repo, 'python', '.venv', 'Scripts', 'python.exe')
       : join(repo, 'python', '.venv', 'bin', 'python');
-  return process.env.STRATLAS_PIPELINE_PYTHON ?? venv;
+  return envVar(process.env, 'PIPELINE_PYTHON') ?? venv;
 }
 
 const RUN = `

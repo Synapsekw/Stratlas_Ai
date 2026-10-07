@@ -1,5 +1,7 @@
+import { envVar } from '@aio/brand/env';
 import type { AioBridge, IpcChannel, IpcEventName } from '@aio/schema';
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
+import { launchGateMode } from './launchGate';
 
 // Only the declared channels exist; main validates every request against @aio/schema. The lists
 // are type-checked against the contract so a new channel cannot be forgotten here. (No runtime
@@ -105,6 +107,8 @@ const CHANNELS = {
   'ai:localModels': true,
   'ai:localProbe': true,
   // M9
+  'launch:get': true,
+  'launch:set': true,
   'identity:get': true,
   'identity:set': true,
   'identity:exportCard': true,
@@ -176,6 +180,8 @@ const CHANNELS = {
   'terrainPacks:list': true,
   'terrainPacks:import': true,
   'terrainPacks:remove': true,
+  'orientation:read': true,
+  'orientation:write': true,
 } as const satisfies Record<IpcChannel, true>;
 
 const EVENTS = {
@@ -228,17 +234,19 @@ const bridge: AioBridge = {
     }
   },
   // Graphics tier detection reads the installed memory before the first frame, so synchronously.
-  // STRATLAS_SYSTEM_MEMORY_GB pretends a smaller machine (low-end simulation, tests).
+  // QUADRION_SYSTEM_MEMORY_GB pretends a smaller machine (low-end simulation, tests).
   systemMemory: () => {
     try {
       const info = process.getSystemMemoryInfo(); // kilobytes
-      const simulated = Number(process.env.STRATLAS_SYSTEM_MEMORY_GB);
+      const simulated = Number(envVar(process.env, 'SYSTEM_MEMORY_GB'));
       const total = simulated > 0 ? simulated * 2 ** 30 : info.total * 1024;
       return { total, free: Math.min(total, info.free * 1024) };
     } catch {
       return null;
     }
   },
+  // The launch screen decides before its first frame, so synchronously from the environment.
+  launchGate: () => launchGateMode(process.env),
   processMemory: async () => {
     try {
       const m = await process.getProcessMemoryInfo(); // kilobytes

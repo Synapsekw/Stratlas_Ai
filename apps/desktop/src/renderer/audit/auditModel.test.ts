@@ -90,16 +90,16 @@ describe('labels', () => {
   });
 
   it('says how a change came about', () => {
-    expect(howLabel(entry(), 'Stratlas')).toBe('By hand');
-    expect(howLabel(entry({ how: 'agent' }), 'Stratlas')).toBe('By the assistant');
-    expect(howLabel(entry({ how: 'external' }), 'Stratlas')).toBe('Changed outside Stratlas');
-    expect(howLabel(entry({ how: 'import' }), 'Stratlas')).toBe('Imported');
-    expect(howLabel(entry({ how: 'pipeline' }), 'Stratlas')).toBe('Pipeline run');
+    expect(howLabel(entry(), 'Quadrion AI')).toBe('By hand');
+    expect(howLabel(entry({ how: 'agent' }), 'Quadrion AI')).toBe('By the assistant');
+    expect(howLabel(entry({ how: 'external' }), 'Quadrion AI')).toBe('Changed outside Quadrion AI');
+    expect(howLabel(entry({ how: 'import' }), 'Quadrion AI')).toBe('Imported');
+    expect(howLabel(entry({ how: 'pipeline' }), 'Quadrion AI')).toBe('Pipeline run');
     const via = { pipeline: { name: 'inspection.run', jobId: 'job-1' } };
-    expect(howLabel(entry({ how: 'pipeline', via }), 'Stratlas')).toBe(
+    expect(howLabel(entry({ how: 'pipeline', via }), 'Quadrion AI')).toBe(
       'Inspection pipeline (run by Dana Saleh)',
     );
-    expect(howLabel(entry({ how: 'pipeline', via, actor: { id: ACTOR } }), 'Stratlas')).toBe(
+    expect(howLabel(entry({ how: 'pipeline', via, actor: { id: ACTOR } }), 'Quadrion AI')).toBe(
       'Inspection pipeline',
     );
   });

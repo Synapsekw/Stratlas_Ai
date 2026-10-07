@@ -10,7 +10,7 @@ const ALLOWED = ['file:', 'aio:', 'devtools:', 'data:', 'blob:', 'chrome-extensi
 async function launch(dataRoot: string, base: string) {
   const app = await electron.launch({
     args: [...GPU_ARGS, join(import.meta.dirname, '../out/main/index.js')],
-    env: { ...process.env, STRATLAS_USER_DATA: join(base, 'user'), STRATLAS_DATA: dataRoot },
+    env: { ...process.env, QUADRION_USER_DATA: join(base, 'user'), QUADRION_DATA: dataRoot },
   });
   const outbound: string[] = [];
   app.context().on('request', (req) => {
@@ -22,7 +22,7 @@ async function launch(dataRoot: string, base: string) {
 }
 
 test('an empty library explains where projects live', async () => {
-  const base = await mkdtemp(join(tmpdir(), 'stratlas-shell-'));
+  const base = await mkdtemp(join(tmpdir(), 'quadrion-shell-'));
   const dataRoot = join(base, 'data');
   await mkdir(join(dataRoot, 'projects'), { recursive: true });
   let app: ElectronApplication | undefined;
@@ -45,7 +45,7 @@ test('an empty library explains where projects live', async () => {
 });
 
 test('open a project, drive the shell and keep the sidebar state', async () => {
-  const base = await mkdtemp(join(tmpdir(), 'stratlas-shell-'));
+  const base = await mkdtemp(join(tmpdir(), 'quadrion-shell-'));
   const dataRoot = join(base, 'data');
   await writeProject(join(dataRoot, 'projects', 'alzour'), sampleManifest(), {
     'issues.json': JSON.stringify({ schema: 'aio.issues/1', issues: [sampleIssue()] }),

@@ -163,7 +163,10 @@ describe('diagnostics bundle', () => {
     const src = await sources();
     src.updates = () => ({
       current: '0.7.0',
-      previous: { version: '0.6.0', dir: 'C:\\Users\\someone\\AppData\\Roaming\\Stratlas\\kept' },
+      previous: {
+        version: '0.6.0',
+        dir: 'C:\\Users\\someone\\AppData\\Roaming\\Quadrion AI\\kept',
+      },
       rolledBack: { from: '0.7.1', to: '0.7.0', at: '2026-10-05T09:00:00.000Z' },
     });
     const files = await collectBundle(src, {

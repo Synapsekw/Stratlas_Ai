@@ -3,7 +3,7 @@ name: nightly installers
 # Builds installers for Windows (NSIS, portable, Store MSIX) and macOS (dmg, zip).
 #
 # The nightly NEVER signs or notarises, even when signing secrets exist: it reads none of them,
-# and STRATLAS_NO_SIGNING=1 makes tools/release/brand-config.mjs drop any signing variable that
+# and QUADRION_NO_SIGNING=1 makes tools/release/brand-config.mjs drop any signing variable that
 # might still reach it. Reason: a cloud HSM plan has a yearly signature quota (DigiCert KeyLocker:
 # 1,000 a year; one Windows build uses 5), which a nightly would spend in a few months. Only
 # release.yml, for a v* tag, signs. The artifacts are unsigned (Windows) or ad-hoc signed (macOS)
@@ -24,7 +24,7 @@ permissions:
 env:
   COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
   # Never sign here (see the top of this file). Do not add signing secrets to this workflow.
-  STRATLAS_NO_SIGNING: '1'
+  QUADRION_NO_SIGNING: '1'
 
 jobs:
   installers:
@@ -186,12 +186,12 @@ jobs:
       run:
         shell: bash
     env:
-      STRATLAS_BUDGETS: '1'
-      STRATLAS_FUZZ_RUNS: '2000'
-      STRATLAS_KILL_BAK: '1'
-      STRATLAS_KILL_ROUNDS: '150'
-      STRATLAS_SOAK: '1'
-      STRATLAS_SOAK_CYCLES: '200'
+      QUADRION_BUDGETS: '1'
+      QUADRION_FUZZ_RUNS: '2000'
+      QUADRION_KILL_BAK: '1'
+      QUADRION_KILL_ROUNDS: '150'
+      QUADRION_SOAK: '1'
+      QUADRION_SOAK_CYCLES: '200'
     steps:
       - uses: actions/checkout@v5
 
@@ -233,13 +233,13 @@ jobs:
         working-directory: python
         run: uv sync --frozen
 
-      - name: Journal and merge budgets (STRATLAS_BUDGETS)
+      - name: Journal and merge budgets (QUADRION_BUDGETS)
         run: pnpm exec vitest run --retry=0 tools/release/budgets.test.mjs packages/merge/src/bench.test.ts packages/journal/src/perf.test.ts
 
-      - name: Fuzzing of every reader (STRATLAS_FUZZ_RUNS)
+      - name: Fuzzing of every reader (QUADRION_FUZZ_RUNS)
         run: pnpm exec vitest run --retry=0 tools/compat/fuzz.test.mjs packages/sync/src/exchange
 
-      - name: Kill during writes and journal appends (STRATLAS_KILL_BAK, STRATLAS_KILL_ROUNDS)
+      - name: Kill during writes and journal appends (QUADRION_KILL_BAK, QUADRION_KILL_ROUNDS)
         run: pnpm exec vitest run --retry=0 tools/compat/kill-write.test.mjs
 
       - run: pnpm -F @aio/desktop build
@@ -247,7 +247,7 @@ jobs:
       - name: Demo projects for the soak
         run: pnpm demo:build --quick
 
-      - name: Renderer soak across the demos (STRATLAS_SOAK, STRATLAS_SOAK_CYCLES)
+      - name: Renderer soak across the demos (QUADRION_SOAK, QUADRION_SOAK_CYCLES)
         working-directory: apps/desktop
         run: pnpm exec playwright test e2e/soak.spec.ts --workers=1
 

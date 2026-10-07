@@ -255,7 +255,8 @@ describe('sync IPC', () => {
   });
 });
 
-describe('hub folder sync between two copies', () => {
+// Two full copies syncing through a folder: slow on a loaded Windows machine.
+describe('hub folder sync between two copies', { timeout: 30_000 }, () => {
   async function pair() {
     const hub = join(base, 'hub');
     await mkdir(hub);

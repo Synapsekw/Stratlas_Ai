@@ -2,7 +2,7 @@
  * HCl photos the right way up (founder report: the photos looking straight down were upside
  * down). Works on a temporary copy of the real HCl project without its video (realData.ts,
  * @realdata); runs only where the real data holds projects/hcl. The camera
- * originals on the NAS (STRATLAS_HCL_ORIGINALS) are only read, and only for the issue box check.
+ * originals on the NAS (QUADRION_HCL_ORIGINALS) are only read, and only for the issue box check.
  *
  * "Right way up" is measured against the scene: the project's LiDAR clouds rendered from the
  * photo's own pose (image +Y up) must agree with the photo as shown better than with the photo
@@ -25,9 +25,9 @@ import {
 import { hasRealProject, missingRealProject } from './realData';
 
 const ORIGINALS =
-  process.env.STRATLAS_HCL_ORIGINALS ??
+  process.env.QUADRION_HCL_ORIGINALS ??
   '//DanNas/Work Data/Asset Inspections/Oil and Gas/Hydrochloric Acid Tank';
-const SHOTS = process.env.STRATLAS_SHOTS;
+const SHOTS = process.env.QUADRION_SHOTS;
 /** Flight 110, outside, about 2 m above the roof looking 78 deg down. */
 const NADIR = '110_0268';
 

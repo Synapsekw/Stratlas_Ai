@@ -7,7 +7,7 @@
  *   distance under the pointer.
  * - The runs use the change demo (C8) and the places and verdicts of its `truth.json`: Run cloud
  *   change and Run model change from the Changes panel. They need the development pipeline Python
- *   (`uv sync` in python/, or STRATLAS_E2E_PYTHON); the cloud run also PDAL (AIO_PDAL or the
+ *   (`uv sync` in python/, or QUADRION_E2E_PYTHON); the cloud run also PDAL (AIO_PDAL or the
  *   development install). Skipped without them.
  */
 import { ProjectManifest, type ProjectManifestInput } from '@aio/schema';

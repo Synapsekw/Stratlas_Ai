@@ -5,15 +5,16 @@ import { posix, win32 } from 'node:path';
 export type AppLink = { kind: 'focus' } | { kind: 'open'; path: string };
 
 /**
- * Parse a link such as `stratlas://open?path=%2FUsers%2Fme%2Fsite.aio` (macOS `open-url`).
+ * Parse a link such as `quadrion://open?path=%2FUsers%2Fme%2Fsite.aio` (macOS `open-url`).
  * Only `open` with an absolute local path to a `.aio` package opens anything, through the same
  * read-only flow as a double-clicked package; every other link of the scheme just brings the
  * app to the front. Network paths are refused, so a web page cannot make the app reach out.
- * Returns null for a URL of another scheme.
+ * `scheme` is one scheme or several (the current one and the legacy `stratlas`, which works the
+ * same). Returns null for a URL of another scheme.
  */
 export function parseAppLink(
   url: string,
-  scheme: string,
+  scheme: string | readonly string[],
   platform: NodeJS.Platform = process.platform,
 ): AppLink | null {
   let u: URL;
@@ -22,7 +23,8 @@ export function parseAppLink(
   } catch {
     return null;
   }
-  if (u.protocol !== `${scheme.toLowerCase()}:`) return null;
+  const schemes = typeof scheme === 'string' ? [scheme] : scheme;
+  if (!schemes.some((s) => u.protocol === `${s.toLowerCase()}:`)) return null;
   const focus: AppLink = { kind: 'focus' };
   const action = (u.hostname || u.pathname.replace(/^\/+/, '')).toLowerCase();
   if (action !== 'open') return focus;
@@ -42,7 +44,7 @@ export function parseAppLink(
  */
 export function linkPathFromArgv(
   argv: readonly string[],
-  scheme: string,
+  scheme: string | readonly string[],
   platform: NodeJS.Platform = process.platform,
 ): string | null {
   for (let i = argv.length - 1; i >= 1; i--) {

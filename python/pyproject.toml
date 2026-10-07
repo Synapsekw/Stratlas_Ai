@@ -1,7 +1,7 @@
 [project]
 name = "aio-pipelines"
 version = "0.4.0"
-description = "Stratlas pipeline pack: data pipelines run by the desktop app over JSON-RPC 2.0 on stdio."
+description = "Quadrion AI pipeline pack: data pipelines run by the desktop app over JSON-RPC 2.0 on stdio."
 requires-python = ">=3.13,<3.14"
 license = "MIT"
 # Every dependency must be MIT/BSD/Apache/PSF/HPND compatible: no GPL or AGPL (no Ultralytics).

@@ -3,7 +3,7 @@ import type { Layer } from '@aio/schema';
 import type { GroundExtent } from './ground';
 
 export { MapView, type MapViewProps } from './MapView';
-export { captureMap } from './capture';
+export { captureMap, getActiveMap, onActiveMap } from './capture';
 export { PackCoverage, type PackCoverageProps } from './PackCoverage';
 export { bboxPolygon, coverageFeatures, dragBbox } from './coverageData';
 export { estimatePackBytes, normaliseBbox, tileCount, type PackEstimate } from './estimate';

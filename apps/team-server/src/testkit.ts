@@ -43,7 +43,7 @@ export interface Person {
   chain: string;
 }
 
-const APP = { name: 'Stratlas', version: '0.9.0' };
+const APP = { name: 'Quadrion AI', version: '0.9.0' };
 
 /** A device record signed by its own key (`aio.device/1`). */
 export function deviceRecord(

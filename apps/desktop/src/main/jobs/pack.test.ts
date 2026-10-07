@@ -45,10 +45,10 @@ describe('findPack', () => {
     await writePack('2.0.0', {
       manifest: { ...base, version: '2.0.0', appRange: '>=2.0.0 <3.0.0' },
     });
-    const app = { version: '0.9.0', name: 'Stratlas' };
+    const app = { version: '0.9.0', name: 'Quadrion AI' };
     const refused = await findPack({ dataRoot: root, env: {}, app });
     expect(refused.pack).toBeNull();
-    expect(refused.runtime.problem).toContain('works with Stratlas >=2.0.0 <3.0.0');
+    expect(refused.runtime.problem).toContain('works with Quadrion AI >=2.0.0 <3.0.0');
     const fits = await writePack('1.0.0', {
       manifest: { ...base, version: '1.0.0', appRange: '>=0.9.0 <2.0.0' },
     });
@@ -78,7 +78,7 @@ describe('findPack', () => {
     const py = join(root, 'venv', 'python.exe');
     await mkdir(join(root, 'venv'), { recursive: true });
     await writeFile(py, '');
-    const r = await findPack({ dataRoot: root, env: { STRATLAS_PIPELINE_PYTHON: py } });
+    const r = await findPack({ dataRoot: root, env: { QUADRION_PIPELINE_PYTHON: py } });
     expect(r.runtime).toMatchObject({ found: true, version: 'dev' });
     expect(r.pack?.python).toBe(py);
   });

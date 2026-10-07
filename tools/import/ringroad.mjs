@@ -1,4 +1,4 @@
-// Convert the staged 1st Ring Road review (MPW, Kuwait) into a native Stratlas project.
+// Convert the staged 1st Ring Road review (MPW, Kuwait) into a native Quadrion AI project.
 // Usage (from packages/project): pnpm import:ringroad [--src <folder>] [--out <folder>]
 import { join } from 'node:path';
 import { importRingroad } from '../../packages/project/src/import/index.ts';

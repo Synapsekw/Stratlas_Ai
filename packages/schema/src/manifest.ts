@@ -102,7 +102,7 @@ export function parseManifestTolerant(
     version.startsWith('aio.project/')
   ) {
     return err(
-      `Project was saved by a newer Stratlas (schema ${version}). Update the app to open it.`,
+      `Project was saved by a newer version of Quadrion AI (schema ${version}). Update the app to open it.`,
     );
   }
   const { known, unknown } = splitLayers(json);
@@ -152,7 +152,7 @@ export function keepUnknownLayers(
   const taken = unknown.find((u) => ids.has(u.id));
   if (taken) {
     return err(
-      `Layer id "${taken.id}" is used by a layer from a newer Stratlas (${taken.kind}). Choose another id.`,
+      `Layer id "${taken.id}" is used by a layer from a newer version of Quadrion AI (${taken.kind}). Choose another id.`,
     );
   }
   return ok({ ...next, layers: [...next.layers, ...unknown] });

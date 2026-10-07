@@ -7,10 +7,18 @@
  * (docs/architecture/data-conventions.md section 1: Y up, X east, Z south).
  */
 import { siteLocation } from '@aio/engine';
-import { fromWgs84, localToProject, projectToLocal, toWgs84 } from '@aio/geo';
+import {
+  clipCamera,
+  clipKeys,
+  clipPoseAt,
+  fromWgs84,
+  localToProject,
+  projectToLocal,
+  toWgs84,
+} from '@aio/geo';
 import type { Issue, Quat, Vec3 } from '@aio/schema';
 import { assetUrl } from '@aio/workspace';
-import { Box3, Quaternion, Vector3, type Object3D } from 'three';
+import { Box3, Vector3, type Object3D } from 'three';
 import { clipStartUtcMs } from './context';
 import { parseFlight, type FlightFile } from './geometry';
 import {
@@ -704,27 +712,10 @@ async function droneEye(ctx: RendererToolContext, l: VideoLayer, utcMs: number):
   const flight = await flightOf(ctx, l);
   const samples = flight?.samples;
   if (!samples?.length) throw new ToolError(`The flight of clip ${l.name} could not be read.`);
-  const t = utcMs - l.flight.startUtcMs;
-  let i = 1;
-  while (i < samples.length - 1 && (samples[i]?.t ?? 0) < t) i++;
-  const a = samples[Math.max(0, i - 1)];
-  const b = samples[i] ?? a;
-  if (!a || !b) throw new ToolError(`The flight of clip ${l.name} has no poses.`);
-  const k = b.t > a.t ? Math.min(1, Math.max(0, (t - a.t) / (b.t - a.t))) : 0;
-  const pos = new Vector3(...a.pos).lerp(new Vector3(...b.pos), k);
-  const q = new Quaternion(...a.q).slerp(new Quaternion(...b.q), k);
-  const off = l.positionOffsetM;
-  if (off) pos.add(new Vector3(...off));
-  const o = l.orientation;
-  if (o) {
-    const D = Math.PI / 180;
-    const half = (d: number) => (d * D) / 2;
-    const y = new Quaternion(0, Math.sin(half(o.yawDeg)), 0, Math.cos(half(o.yawDeg)));
-    const x = new Quaternion(Math.sin(half(o.pitchDeg)), 0, 0, Math.cos(half(o.pitchDeg)));
-    const z = new Quaternion(0, 0, Math.sin(half(o.rollDeg)), Math.cos(half(o.rollDeg)));
-    q.multiply(y.multiply(x).multiply(z)).normalize();
-  }
-  return { pos: pos.toArray(), q: [q.x, q.y, q.z, q.w] };
+  // the camera as every view draws it: direction keyframes, else the log with its bias
+  const keys = clipKeys(ctx.workspace.getState().orientation, l.id);
+  const p = clipPoseAt(samples, utcMs - l.flight.startUtcMs, clipCamera(l, keys));
+  return { pos: p.pos, q: p.q };
 }
 
 /** "13:25" or "13:25:10" on the project day (site time), or an ISO time, to UTC ms. */

@@ -1,4 +1,4 @@
-// The milestone builds whose file formats Stratlas 1.x must keep reading, by the commit that
+// The milestone builds whose file formats Quadrion AI 1.x must keep reading, by the commit that
 // was handed to the founder for testing (docs/plans/ROADMAP.md, docs/TESTING.md). The app version
 // stayed 0.1.0 until M7, so 0.4 to 0.6 are named by milestone, not by package.json.
 

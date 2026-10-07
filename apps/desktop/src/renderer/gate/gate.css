@@ -1,0 +1,428 @@
+/* The launch screen (gate/LaunchGate.tsx), ported from the approved prototype
+   docs/brand/quadrion/gate/index.html (Split layout). Always the dark Mission look
+   (data-surface='dark'): it is the app's splash. Every element rests in its final, visible state;
+   the intro only plays keyframes from hidden to that state, so reduced motion (the OS or
+   Settings, which stop all animation) simply shows the screen. */
+.qg {
+  --qg-ease: cubic-bezier(0.23, 1, 0.32, 1);
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  overflow: hidden;
+  background: var(--bg-0);
+  color: var(--fg-1);
+  font: 15px/1.5 var(--f-ui);
+  -webkit-font-smoothing: antialiased;
+}
+.qg-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.qg-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 58% 52% at 50% 40%,
+    color-mix(in srgb, var(--bg-1) 94%, transparent) 0%,
+    color-mix(in srgb, var(--bg-1) 60%, transparent) 46%,
+    transparent 76%
+  );
+}
+
+/* Split: the lockup on the left, a hairline, the welcome on the right. */
+.qg-main {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+}
+.qg-brand {
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-areas: 'mark wm' '. tag';
+  column-gap: 20px;
+  row-gap: 12px;
+  align-items: center;
+  padding-right: 56px;
+}
+/* the symbol's box is 62 of the prototype's 64 units wide: the same plate size */
+.qg-mark {
+  grid-area: mark;
+  width: calc(clamp(62px, 7vw, 84px) * 0.96875);
+  height: auto;
+  overflow: visible;
+}
+.qg-wm {
+  grid-area: wm;
+  position: relative;
+  width: min(420px, 34vw);
+}
+.qg-wm-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+/* the scan line that reveals the wordmark (seen only while it plays) */
+.qg-wm::after {
+  content: '';
+  position: absolute;
+  top: -8%;
+  bottom: -8%;
+  left: 0;
+  width: 2px;
+  background: var(--acc);
+  box-shadow: 0 0 14px 2px color-mix(in srgb, var(--acc) 55%, transparent);
+  opacity: 0;
+  pointer-events: none;
+}
+.qg-tag {
+  grid-area: tag;
+  margin: 0;
+  font: 500 12.5px var(--f-mono);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+
+.qg-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 260px;
+  padding-left: 56px;
+  border-left: 1px solid var(--line);
+}
+.qg-who {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.qg-hello {
+  font: 500 11px var(--f-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.qg-name {
+  display: block;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  color: var(--fg-0);
+}
+.qg-org {
+  display: block;
+  margin-top: 1px;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+.qg-hint {
+  margin-top: 4px;
+  color: var(--fg-1);
+}
+.qg .qg-enter {
+  position: relative;
+  overflow: hidden;
+  appearance: none;
+  width: 100%;
+  height: 42px;
+  padding: 0 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--acc);
+  color: var(--acc-ink);
+  font: 600 14.5px var(--f-ui);
+  cursor: pointer;
+  transition:
+    transform 160ms var(--qg-ease),
+    box-shadow 200ms ease;
+}
+.qg .qg-enter:active {
+  transform: scale(0.97);
+}
+.qg .qg-enter:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--fg-0) 60%, transparent);
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+.qg-enter::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -40%;
+  width: 30%;
+  background: linear-gradient(100deg, transparent, rgb(255 255 255 / 0.35), transparent);
+  transform: skewX(-18deg);
+  opacity: 0;
+}
+@media (hover: hover) and (pointer: fine) {
+  .qg .qg-enter:hover {
+    box-shadow:
+      0 0 0 4px color-mix(in srgb, var(--acc) 14%, transparent),
+      0 10px 28px -10px color-mix(in srgb, var(--acc) 60%, transparent);
+  }
+  .qg-enter:hover::after {
+    opacity: 1;
+    left: 120%;
+    transition:
+      left 700ms var(--qg-ease),
+      opacity 100ms;
+  }
+}
+.qg-enter kbd {
+  font: 500 10.5px var(--f-mono);
+  color: inherit;
+  border: 1px solid color-mix(in srgb, var(--acc-ink) 28%, transparent);
+  border-radius: 4px;
+  padding: 1px 5px;
+  background: rgb(255 255 255 / 0.22);
+}
+.qg-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 500 11px var(--f-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+.qg-sep {
+  opacity: 0.5;
+}
+.qg-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--acc);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--acc) 14%, transparent);
+}
+
+/* The window's own title-bar strip: the clock sits in it, Skip intro keeps clear of the window
+   buttons (the app's title bar does the same) and stays clickable inside the drag region. */
+.qg-clock {
+  position: absolute;
+  top: 16px;
+  left: 18px;
+  z-index: 1;
+  font: 500 11.5px var(--f-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+.qg-clock b {
+  color: var(--fg-1);
+  font-weight: 500;
+}
+.qg .qg-skip {
+  position: absolute;
+  top: 12px;
+  right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 16px);
+  z-index: 2;
+  app-region: no-drag;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-2);
+  font: 500 12px var(--f-ui);
+  cursor: pointer;
+  transition:
+    color 150ms ease,
+    border-color 150ms ease,
+    opacity 200ms ease;
+}
+.qg .qg-skip:hover {
+  color: var(--fg-1);
+  border-color: var(--line-strong);
+}
+.qg .qg-skip:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+.qg:not([data-phase='intro']) .qg-skip {
+  opacity: 0;
+  pointer-events: none;
+}
+.qg-foot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 14px;
+  z-index: 1;
+  text-align: center;
+  font: 11px var(--f-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+
+/* Narrow windows (or a zoomed one): the welcome stacks under the lockup, centred; the mark stays
+   beside the wordmark. */
+@media (max-width: 900px) {
+  .qg-main {
+    flex-direction: column;
+    gap: 20px;
+  }
+  .qg-brand {
+    padding-right: 0;
+    justify-content: center;
+  }
+  .qg-wm {
+    width: min(420px, 62vw);
+  }
+  .qg-entry {
+    min-width: 0;
+    padding-left: 0;
+    border-left: 0;
+    align-items: center;
+    text-align: center;
+  }
+  .qg-who {
+    align-items: center;
+  }
+  .qg-status {
+    justify-content: center;
+  }
+}
+@media (max-height: 560px) {
+  .qg-main {
+    gap: 12px;
+  }
+  .qg-mark {
+    width: 56px;
+  }
+}
+@media (max-width: 520px) {
+  .qg-brand {
+    column-gap: 12px;
+  }
+  .qg-mark {
+    width: 48px;
+  }
+  .qg-tag {
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+  }
+}
+
+/* The intro, about 1.3 s: the plates drop in turn and the top one lights, the wordmark is
+   revealed behind a scan line, then the tagline, then the welcome comes into focus. Skip intro
+   (or Esc) sets data-instant and every part stands at its end. */
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-motion='reduce']) .qg[data-phase='intro'] .qg-mark .plate {
+    transform-box: fill-box;
+    animation: qg-drop 520ms var(--qg-ease) both;
+  }
+  :root:not([data-motion='reduce']) .qg[data-phase='intro'] .qg-mark .p1 {
+    animation-delay: 50ms;
+  }
+  :root:not([data-motion='reduce']) .qg[data-phase='intro'] .qg-mark .p2 {
+    animation-delay: 110ms;
+  }
+  :root:not([data-motion='reduce']) .qg[data-phase='intro'] .qg-mark .p3 {
+    animation-delay: 170ms;
+  }
+  :root:not([data-motion='reduce']) .qg[data-phase='intro'] .qg-mark .p4 {
+    animation:
+      qg-drop 520ms var(--qg-ease) 230ms both,
+      qg-light 450ms ease 550ms both;
+  }
+  :root:not([data-motion='reduce']) .qg:not([data-instant]) .qg-wm-svg {
+    animation: qg-reveal 600ms var(--qg-ease) 500ms both;
+  }
+  :root:not([data-motion='reduce']) .qg:not([data-instant]) .qg-wm::after {
+    animation: qg-scan 600ms var(--qg-ease) 500ms forwards;
+  }
+  :root:not([data-motion='reduce']) .qg:not([data-instant]) .qg-tag {
+    animation: qg-rise 450ms var(--qg-ease) 850ms both;
+  }
+  :root:not([data-motion='reduce']) .qg:not([data-instant]) .qg-entry {
+    animation: qg-focus 500ms var(--qg-ease) 950ms both;
+  }
+  :root:not([data-motion='reduce']) .qg:not([data-instant]) .qg-status,
+  :root:not([data-motion='reduce']) .qg:not([data-instant]) .qg-clock,
+  :root:not([data-motion='reduce']) .qg:not([data-instant]) .qg-foot {
+    animation: qg-rise 450ms var(--qg-ease) 1100ms both;
+  }
+  /* after the intro the lit plate glows a little */
+  :root:not([data-motion='reduce']) .qg:not([data-phase='intro']) .qg-mark .p4 {
+    filter: drop-shadow(0 0 7px color-mix(in srgb, var(--acc) 45%, transparent));
+  }
+}
+@keyframes qg-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-22px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes qg-light {
+  from {
+    fill: var(--fg-0);
+  }
+  to {
+    fill: var(--acc);
+  }
+}
+@keyframes qg-reveal {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0);
+  }
+}
+@keyframes qg-scan {
+  0% {
+    left: 0;
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
+@keyframes qg-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes qg-focus {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    filter: none;
+    transform: none;
+  }
+}

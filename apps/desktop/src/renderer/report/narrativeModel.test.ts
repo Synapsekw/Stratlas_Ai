@@ -122,7 +122,7 @@ describe('narrative template', () => {
   const h = houseReportModel({
     manifest: sampleManifest(),
     issues: sampleIssues(),
-    branding: resolveReportBranding(undefined, 'Stratlas'),
+    branding: resolveReportBranding(undefined, 'Quadrion AI'),
     now: at('12:00'),
   });
   const facts = narrativeFacts(h);
@@ -145,7 +145,7 @@ describe('narrative template', () => {
       houseReportModel({
         manifest: sampleManifest(),
         issues: [],
-        branding: resolveReportBranding(undefined, 'Stratlas'),
+        branding: resolveReportBranding(undefined, 'Quadrion AI'),
       }),
     );
     const t = templateNarrative(none, { todo: false });

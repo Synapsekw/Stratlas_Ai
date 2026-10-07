@@ -420,7 +420,7 @@ test('@realdata the tank is cut or made transparent only by hand; photos and fli
 });
 
 /** Off-screen screenshots for the founder's review (outside the repo). */
-const SHOTS = process.env.STRATLAS_SHOTS;
+const SHOTS = process.env.QUADRION_SHOTS;
 async function shot(win: Page, name: string) {
   if (SHOTS) await win.screenshot({ path: join(SHOTS, `hcl-${name}.png`) });
 }

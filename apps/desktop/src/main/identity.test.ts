@@ -42,7 +42,7 @@ function journalOn(
 const opsIn = async (root: string) =>
   (await createJournalStore().ops(root)) as unknown as Record<string, unknown>[];
 
-const APP = { name: 'Stratlas', version: '0.9.0' };
+const APP = { name: 'Quadrion AI', version: '0.9.0' };
 const AT = new Date('2026-10-07T10:00:00.000Z');
 
 /** In-memory stand-in for the OS credential vault. */
@@ -86,8 +86,8 @@ describe('--profile', () => {
   });
 
   it('keeps userData and the vault service apart per profile', () => {
-    expect(profileUserData(join('u', 'Stratlas'), 'b')).toBe(
-      join('u', 'Stratlas', 'profiles', 'b'),
+    expect(profileUserData(join('u', 'Quadrion AI'), 'b')).toBe(
+      join('u', 'Quadrion AI', 'profiles', 'b'),
     );
     expect(profileVaultService('ai.synapse.stratlas', 'b')).toBe('ai.synapse.stratlas.profile.b');
     expect(profileVaultService('ai.synapse.stratlas.isolated', null)).toBe(

@@ -5,7 +5,7 @@ Ported from Asset Inspection Kit ``kit/cameras.py``.
 origin = the asset's base centre (WGS84) and the ground altitude in the same datum as the photo
 altitudes. Model frame: X north, Y up (metres above the ground datum), Z east.
 
-Camera heights (Stratlas data-conventions section 3a, the same rule as the app's raw import):
+Camera heights (Quadrion AI data-conventions section 3a, the same rule as the app's raw import):
 absolute altitude is XMP ``AbsoluteAltitude``, else EXIF ``GPSAltitude`` (barometric offset to GNSS,
 nominally above mean sea level and often tens of metres off, drifting between flights; ellipsoidal
 on RTK aircraft); relative altitude is XMP ``RelativeAltitude`` (height above the take-off point).

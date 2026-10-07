@@ -11,7 +11,7 @@ import {
 } from './house';
 import { resolveReportBranding } from './report';
 
-const branding = resolveReportBranding(undefined, 'Stratlas');
+const branding = resolveReportBranding(undefined, 'Quadrion AI');
 const now = new Date('2026-10-04T12:00:00Z');
 
 describe('houseReportModel', () => {

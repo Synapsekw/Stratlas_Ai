@@ -1,4 +1,4 @@
-/* Stratlas shell: frame, title bar, sidebar and screens. Components live in @aio/ui/mission.css. */
+/* Quadrion AI shell: frame, title bar, sidebar and screens. Components live in @aio/ui/mission.css. */
 :root {
   --rp-w: 360px;
 }
@@ -135,19 +135,43 @@ code {
 .app[data-sb='collapsed'] .brand {
   width: calc(var(--sb-w-c) - 14px);
 }
+/* The outlined wordmark (shell/BrandMark.tsx): QUADRION in the foreground, AI in the accent. */
 .wordmark {
-  font: 600 13px/1 var(--f-ui);
-  letter-spacing: 0.16em;
-  color: var(--fg-0);
+  height: 11px;
+  width: auto;
+  flex: none;
   transition: opacity 160ms var(--ease);
+}
+.wm-word,
+.mark-plate {
+  fill: var(--fg-0);
+}
+.wm-ai,
+.mark-top {
+  fill: var(--acc);
 }
 .app[data-sb='collapsed'] .wordmark {
   opacity: 0;
 }
 .mark {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 21px;
   flex: none;
+}
+/* Horizontal lockup (About, first start): symbol beside the wordmark. */
+.lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.lockup-mark {
+  width: 37px;
+  height: 32px;
+  flex: none;
+}
+.lockup-word {
+  height: 15px;
+  width: auto;
 }
 .crumbs {
   display: flex;
@@ -900,12 +924,54 @@ button.chip-status:hover {
 /* ---------- workspace ---------- */
 .ws {
   grid-template-columns: minmax(0, 1fr) var(--rp-w);
-  grid-template-rows: minmax(0, 1fr) auto;
-  grid-template-areas: 'stage right' 'tl right';
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: 'dbar right' 'stage right' 'tl right';
   transition: grid-template-columns 240ms var(--ease-x);
 }
 .ws.right-off {
   grid-template-columns: minmax(0, 1fr) 0px;
+}
+.dbar {
+  grid-area: dbar;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-1);
+  min-height: 34px;
+}
+.dbar:empty {
+  display: none;
+}
+.dbar-date {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px;
+  border-radius: var(--r-4);
+  font-weight: 600;
+  cursor: pointer;
+}
+.dbar-date:hover,
+.dbar-date[aria-expanded='true'] {
+  background: var(--bg-3);
+}
+.dbar-date:focus-visible {
+  outline: 2px solid var(--acc);
+}
+.dbar-count {
+  color: var(--fg-3);
+  font-size: var(--t-12);
+  margin-inline-start: 4px;
+}
+.dbar-pop {
+  position: absolute;
+  top: calc(100% + 4px);
+  inset-inline-start: 8px;
+  z-index: 40;
 }
 .stage {
   grid-area: stage;
@@ -916,6 +982,32 @@ button.chip-status:hover {
   min-height: 0;
   min-width: 0;
   container-type: inline-size;
+}
+.dates-on {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  gap: 10px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: color-mix(in oklch, var(--bg-1) 85%, transparent);
+  border: 1px solid var(--line);
+  font-size: var(--t-12);
+  pointer-events: auto;
+}
+.dates-on-item,
+.date-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.date-badge {
+  font-size: var(--t-12);
+  color: var(--fg-1);
 }
 .stage-panes {
   position: absolute;
@@ -2809,6 +2901,12 @@ svg.flip {
   flex-direction: column;
   gap: 4px;
   font-size: var(--t-12);
+}
+.about-hero .lockup {
+  margin-bottom: 6px;
+}
+.about-hero .tagline {
+  color: var(--fg-1);
 }
 .about-hero b {
   font-size: var(--t-16);

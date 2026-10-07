@@ -1,16 +1,16 @@
 /**
  * The builder sample datasets end to end (outside the CI suite): each sample folder in
- * STRATLAS_SAMPLES (`<real data root>/samples`, written by python/scripts/make_samples.py from
+ * QUADRION_SAMPLES (`<real data root>/samples`, written by python/scripts/make_samples.py from
  * client projects, so @realdata) is built into a new project in a temporary data root the way its
  * README says, its pipeline runs from the Jobs panel, and the result is checked against the
  * numbers in its `sample.json`. The samples are only read.
  *
- * The pipelines run in the development venv, or in a pipeline pack with STRATLAS_E2E_PACK
+ * The pipelines run in the development venv, or in a pipeline pack with QUADRION_E2E_PACK
  * (e.g. `<real data root>/runtime/pipeline-pack-0.2.0`). The inspection sample takes the HCl
  * severity model from the real HCl project's manifest (realData.ts, read only), as the wizard
  * offers it on a machine that has that project in its library.
  *
- *   STRATLAS_SAMPLES="<real data root>/samples" npx playwright test samples --workers=1
+ *   QUADRION_SAMPLES="<real data root>/samples" npx playwright test samples --workers=1
  */
 import type { Issue, Quat, Vec3 } from '@aio/schema';
 import type { ElectronApplication, Page } from '@playwright/test';
@@ -20,27 +20,27 @@ import { join } from 'node:path';
 import { expect, launchApp, test } from './fixtures';
 import { realProjectDir } from './realData';
 
-const SAMPLES = process.env.STRATLAS_SAMPLES ?? '';
-const PACK = process.env.STRATLAS_E2E_PACK ?? '';
+const SAMPLES = process.env.QUADRION_SAMPLES ?? '';
+const PACK = process.env.QUADRION_E2E_PACK ?? '';
 const HCL = realProjectDir('hcl').replace(/\\/g, '/');
 const repo = join(import.meta.dirname, '..', '..', '..');
 const venvPython =
-  process.env.STRATLAS_E2E_PYTHON ??
+  process.env.QUADRION_E2E_PYTHON ??
   (process.platform === 'win32'
     ? join(repo, 'python', '.venv', 'Scripts', 'python.exe')
     : join(repo, 'python', '.venv', 'bin', 'python'));
 
-test.skip(!SAMPLES, 'set STRATLAS_SAMPLES to the sample datasets folder');
+test.skip(!SAMPLES, 'set QUADRION_SAMPLES to the sample datasets folder');
 test.skip(
   !PACK && !existsSync(venvPython),
-  `no pipeline runtime (${venvPython} or STRATLAS_E2E_PACK)`,
+  `no pipeline runtime (${venvPython} or QUADRION_E2E_PACK)`,
 );
 
 /** The pipeline runtime: a pack folder or the development Python. */
 const runtimeEnv = (): Record<string, string> =>
   PACK
-    ? { STRATLAS_PIPELINE_PACK: PACK, STRATLAS_PIPELINE_PYTHON: '' }
-    : { STRATLAS_PIPELINE_PYTHON: venvPython, STRATLAS_PIPELINE_PACK: '' };
+    ? { QUADRION_PIPELINE_PACK: PACK, QUADRION_PIPELINE_PYTHON: '' }
+    : { QUADRION_PIPELINE_PYTHON: venvPython, QUADRION_PIPELINE_PACK: '' };
 
 const sample = <T>(name: string): Promise<T> =>
   readFile(join(SAMPLES, name, 'sample.json'), 'utf8').then((s) => JSON.parse(s) as T);

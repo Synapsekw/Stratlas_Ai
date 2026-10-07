@@ -31,7 +31,7 @@ let updates: string;
 async function installVersion(version: string) {
   await rm(appRoot, { recursive: true, force: true });
   await mkdir(join(appRoot, 'resources'), { recursive: true });
-  await writeFile(join(appRoot, 'Stratlas.exe'), `exe ${version}`);
+  await writeFile(join(appRoot, 'QuadrionAI.exe'), `exe ${version}`);
   await writeFile(join(appRoot, 'resources', 'app.asar'), `asar ${version}`);
 }
 
@@ -39,14 +39,14 @@ const rollbackFor = (current: string) =>
   createRollback({
     dir: updates,
     current,
-    install: { appRoot, exe: 'Stratlas.exe' },
+    install: { appRoot, exe: 'QuadrionAI.exe' },
     fs,
     now: () => new Date('2026-10-05T12:00:00Z'),
   });
 
 beforeEach(async () => {
   base = await mkdtemp(join(tmpdir(), 'rollback-'));
-  appRoot = join(base, 'Programs', 'Stratlas');
+  appRoot = join(base, 'Programs', 'Quadrion AI');
   updates = join(base, 'userData', 'updates');
   await installVersion('0.7.0');
 });
@@ -59,7 +59,7 @@ describe('keeping the previous version', () => {
   it('copies the installed folder, records the update and keeps only one copy', async () => {
     await mkdir(join(updates, 'previous', '0.6.0'), { recursive: true });
     const kept = await rollbackFor('0.7.0').keepCurrent('0.8.0');
-    expect(kept.exe).toBe(join(updates, 'previous', '0.7.0', 'Stratlas.exe'));
+    expect(kept.exe).toBe(join(updates, 'previous', '0.7.0', 'QuadrionAI.exe'));
     expect(await readFile(join(kept.dir, 'resources', 'app.asar'), 'utf8')).toBe('asar 0.7.0');
     expect(existsSync(join(updates, 'previous', '0.6.0'))).toBe(false);
     expect(existsSync(`${kept.dir}.partial`)).toBe(false);
@@ -140,17 +140,17 @@ describe('first start of the new version', () => {
     await mkdir(join(updates, 'previous', '0.5.0'), { recursive: true });
     expect(await r.startup()).toEqual({ kind: 'normal' });
     expect(existsSync(join(updates, 'previous', '0.5.0'))).toBe(false);
-    expect(existsSync(join(updates, 'previous', '0.7.0', 'Stratlas.exe'))).toBe(true);
+    expect(existsSync(join(updates, 'previous', '0.7.0', 'QuadrionAI.exe'))).toBe(true);
   });
 });
 
 describe('a journal saved by a newer version', () => {
   const message =
-    'updates/journal.json was saved by a newer version of Stratlas (aio.update-journal/2). Update the app to open it. The file was not changed.';
+    'updates/journal.json was saved by a newer version of Quadrion AI (aio.update-journal/2). Update the app to open it. The file was not changed.';
 
   it('is never written over, and the kept copies it names stay', async () => {
     const file = join(updates, 'journal.json');
-    const kept = join(updates, 'previous', '0.9.0', 'Stratlas.exe');
+    const kept = join(updates, 'previous', '0.9.0', 'QuadrionAI.exe');
     await mkdir(join(updates, 'previous', '0.9.0'), { recursive: true });
     await writeFile(kept, 'exe 0.9.0');
     const newer = `${JSON.stringify(
@@ -167,7 +167,7 @@ describe('a journal saved by a newer version', () => {
     const r = createRollback({
       dir: updates,
       current: '0.7.0',
-      install: { appRoot, exe: 'Stratlas.exe' },
+      install: { appRoot, exe: 'QuadrionAI.exe' },
       fs,
       log: (l) => lines.push(l),
     });
@@ -200,7 +200,7 @@ describe('restoring the kept version', () => {
       alive: () => false,
       sleep: () => Promise.resolve(),
     });
-    expect(await readFile(join(appRoot, 'Stratlas.exe'), 'utf8')).toBe('exe 0.7.0');
+    expect(await readFile(join(appRoot, 'QuadrionAI.exe'), 'utf8')).toBe('exe 0.7.0');
     expect(existsSync(`${appRoot}.failed`)).toBe(false);
     expect(existsSync(`${appRoot}.restoring`)).toBe(false);
     const r = rollbackFor('0.7.0');
@@ -251,7 +251,7 @@ describe('restoring the kept version', () => {
         sleep: () => Promise.resolve(),
       }),
     ).rejects.toThrow(/in use/);
-    expect(await readFile(join(appRoot, 'Stratlas.exe'), 'utf8')).toBe('exe 0.8.0');
+    expect(await readFile(join(appRoot, 'QuadrionAI.exe'), 'utf8')).toBe('exe 0.8.0');
     expect(existsSync(`${appRoot}.restoring`)).toBe(false);
   });
 });
@@ -261,37 +261,37 @@ describe('helpers', () => {
     expect(
       restoreArgs([
         'x.exe',
-        '--stratlas-restore-into=C:\\P\\Stratlas',
+        '--stratlas-restore-into=C:\\P\\Quadrion AI',
         '--stratlas-restore-wait=77',
         '--stratlas-restore-from=0.8.0',
       ]),
-    ).toEqual({ into: 'C:\\P\\Stratlas', waitPid: 77, from: '0.8.0' });
+    ).toEqual({ into: 'C:\\P\\Quadrion AI', waitPid: 77, from: '0.8.0' });
     expect(restoreArgs(['x.exe'])).toBeNull();
   });
 
   it('finds the install location', () => {
     expect(
-      installOf('C:/P/Stratlas/Stratlas.exe', 'win32', {
+      installOf('C:/P/Quadrion AI/QuadrionAI.exe', 'win32', {
         packaged: true,
         store: false,
         portable: false,
       }),
     ).toEqual({
-      appRoot: 'C:/P/Stratlas',
-      exe: 'Stratlas.exe',
+      appRoot: 'C:/P/Quadrion AI',
+      exe: 'QuadrionAI.exe',
     });
     expect(
-      installOf('/Applications/Stratlas.app/Contents/MacOS/Stratlas', 'darwin', {
+      installOf('/Applications/Quadrion AI.app/Contents/MacOS/Quadrion AI', 'darwin', {
         packaged: true,
         store: false,
         portable: false,
       }),
     ).toEqual({
-      appRoot: '/Applications/Stratlas.app',
-      exe: join('Contents', 'MacOS', 'Stratlas'),
+      appRoot: '/Applications/Quadrion AI.app',
+      exe: join('Contents', 'MacOS', 'Quadrion AI'),
     });
     expect(
-      installOf('/Volumes/Stratlas/Stratlas.app/Contents/MacOS/Stratlas', 'darwin', {
+      installOf('/Volumes/Quadrion AI/Quadrion AI.app/Contents/MacOS/Quadrion AI', 'darwin', {
         packaged: true,
         store: false,
         portable: false,
@@ -303,7 +303,7 @@ describe('helpers', () => {
   });
 
   it('knows a kept copy from the installed app', () => {
-    expect(isKeptCopy(join(updates, 'previous', '0.7.0', 'Stratlas.exe'), updates)).toBe(true);
-    expect(isKeptCopy(join(appRoot, 'Stratlas.exe'), updates)).toBe(false);
+    expect(isKeptCopy(join(updates, 'previous', '0.7.0', 'QuadrionAI.exe'), updates)).toBe(true);
+    expect(isKeptCopy(join(appRoot, 'QuadrionAI.exe'), updates)).toBe(false);
   });
 });

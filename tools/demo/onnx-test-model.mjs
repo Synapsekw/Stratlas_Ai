@@ -92,17 +92,17 @@ const valueInfo = (name, shape) =>
 
 const DOC =
   'Marker test detector: finds magenta survey markers by colour thresholds and pooling. ' +
-  'Built from plain operators, no trained weights. Stratlas test fixture, synthetic data only.';
+  'Built from plain operators, no trained weights. Quadrion AI test fixture, synthetic data only.';
 
 function model(graph, doc = DOC) {
   return Buffer.concat([
     vInt(1, 7), // ir_version
-    vBytes(2, 'Stratlas test fixture'),
+    vBytes(2, 'Quadrion AI test fixture'),
     vBytes(6, doc),
     vMsg(7, graph),
     vMsg(8, vBytes(1, ''), vInt(2, 13)),
     vMsg(14, vBytes(1, 'licence'), vBytes(2, 'MIT')),
-    vMsg(14, vBytes(1, 'source'), vBytes(2, 'Stratlas test fixture')),
+    vMsg(14, vBytes(1, 'source'), vBytes(2, 'Quadrion AI test fixture')),
   ]);
 }
 
@@ -199,11 +199,11 @@ export function markerCard(onnx, name = 'Marker test detector') {
     input: { width: SIZE, height: SIZE, tensor: 'nchw', color: 'rgb', scale: 255 },
     classes: ['marker'],
     licence: 'MIT',
-    source: 'Stratlas test fixture (built from plain operators, no trained weights)',
+    source: 'Quadrion AI test fixture (built from plain operators, no trained weights)',
     sha256: createHash('sha256').update(onnx).digest('hex'),
     description:
       'Finds the magenta survey markers of the synthetic demo. For tests and the demo only; it detects nothing real.',
-    author: 'Stratlas',
+    author: 'Quadrion AI',
     // The score is marker pixels / 24 in a window. The demo's smallest marker (photos-d2 p02 M3)
     // has 12 at 640 px with a Lanczos resize and 11 with the app's bilinear one: 0.50 or 0.46.
     // 0.25 keeps it found whatever the resampler; the demo photos give no other detection.

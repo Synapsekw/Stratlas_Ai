@@ -1,5 +1,5 @@
 /**
- * Defence in depth for the end-to-end tests: an app started by a test (STRATLAS_E2E=1) never writes
+ * Defence in depth for the end-to-end tests: an app started by a test (QUADRION_E2E=1) never writes
  * into the founder's real client data.
  *
  * The e2e fixtures only ever launch the app on a temporary copy of a real project
@@ -11,14 +11,14 @@
  * `globalThis.__stratlasRealDataRefusals`, which the fixtures check when they close the app, so the
  * test fails even when the app's own code catches the error.
  *
- * The real data root is STRATLAS_REAL_DATA_ROOT, else `E:\Stratlas Data` (the founder's
+ * The real data root is QUADRION_REAL_DATA_ROOT, else `E:\Stratlas Data` (the founder's
  * workstation); on Windows that default stays protected, by name only, when the variable names
  * another folder. Copies hard-link large binaries to save time; a write in place to a file with
  * more than one link could change the real file through its other name, so under the guard those
  * are refused wherever they are. Atomic replacements (temp file, rename) only swap the copy's link and
  * stay allowed.
  *
- * Outside tests (no STRATLAS_E2E=1) the guard is off and costs nothing.
+ * Outside tests (no QUADRION_E2E=1) the guard is off and costs nothing.
  */
 // the module object itself (not a frozen namespace), so its functions can be wrapped
 import fs from 'node:fs';
@@ -32,8 +32,8 @@ export const DEFAULT_REAL_DATA_ROOT = 'E:\\Stratlas Data';
 
 /** The real data root to protect, or null when the app was not started by a test. */
 export function realDataRootFromEnv(env: Record<string, string | undefined>): string | null {
-  if (env.STRATLAS_E2E !== '1') return null;
-  const root = env.STRATLAS_REAL_DATA_ROOT;
+  if (env.QUADRION_E2E !== '1') return null;
+  const root = env.QUADRION_REAL_DATA_ROOT;
   return resolve(root !== undefined && root !== '' ? root : DEFAULT_REAL_DATA_ROOT);
 }
 
@@ -306,7 +306,7 @@ function wrapFs(): () => void {
 let uninstall: (() => void) | null = null;
 
 /**
- * Turn the guard on when the app was started by a test (STRATLAS_E2E=1): protect the real data
+ * Turn the guard on when the app was started by a test (QUADRION_E2E=1): protect the real data
  * root and wrap Node's fs. Returns the root protected (null: off). Call first thing in main.
  */
 export function installRealDataGuard(
@@ -314,7 +314,7 @@ export function installRealDataGuard(
 ): string | null {
   const root = realDataRootFromEnv(env);
   if (root === null) return null;
-  // a test pointing STRATLAS_REAL_DATA_ROOT elsewhere still never writes the founder's folder
+  // a test pointing QUADRION_REAL_DATA_ROOT elsewhere still never writes the founder's folder
   const founder = resolve(DEFAULT_REAL_DATA_ROOT);
   setRealDataRoot(root, process.platform === 'win32' && founder !== root ? [founder] : []);
   realDataRefusals();

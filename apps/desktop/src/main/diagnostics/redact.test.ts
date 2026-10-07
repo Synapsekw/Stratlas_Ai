@@ -54,9 +54,9 @@ describe('redactText', () => {
   });
 
   it('removes credentials from URLs', () => {
-    const out = redactText('Feed at https://admin:hunter2!!@updates.example.com/stratlas/');
+    const out = redactText('Feed at https://admin:hunter2!!@updates.example.com/quadrion/');
     expectClean(out);
-    expect(out).toContain('updates.example.com/stratlas/');
+    expect(out).toContain('updates.example.com/quadrion/');
   });
 
   it('masks workspace IDs partly', () => {
@@ -134,7 +134,7 @@ describe('redactSettings', () => {
       baseUrl: 'http://user:hunter2!!@127.0.0.1:11434/v1?token=tok-123456789',
       model: 'llama',
     },
-    updateUrl: 'https://updates.example.com/stratlas/?sig=tok-123456789',
+    updateUrl: 'https://updates.example.com/quadrion/?sig=tok-123456789',
     anthropicWorkspaceId: WORKSPACE,
     reportBranding: { companyName: 'Client Co', accent: '#112233', logo: 'logo-abcdef12.png' },
     // Not in the allow-list: dropped, only its name is listed.
@@ -149,7 +149,7 @@ describe('redactSettings', () => {
     expect(out.cloudAi).toBe(true);
     expect(out.dataRoot).toBe('D:\\Stratlas Data');
     expect(out.anthropicWorkspaceId).toBe(maskId(WORKSPACE));
-    expect(out.updateUrl).toBe('https://updates.example.com/stratlas/');
+    expect(out.updateUrl).toBe('https://updates.example.com/quadrion/');
     expect(out.localModel).toEqual({
       enabled: true,
       baseUrl: 'http://127.0.0.1:11434/v1',

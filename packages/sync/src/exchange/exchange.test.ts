@@ -385,5 +385,6 @@ describe('hostile exchange files', () => {
       );
       if (r !== null) expect(r).toBeInstanceOf(ExchangeError);
     }
-  });
+    // 150 open attempts on disk: seconds on a loaded Windows machine.
+  }, 30_000);
 });

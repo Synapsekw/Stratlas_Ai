@@ -2,6 +2,8 @@
 
 Projects surveyed more than once (for example a stockpile yard flown every month) can show two survey dates side by side.
 
+To step through all survey dates of a project, see [Survey dates](28-survey-dates.md).
+
 ## Compare two dates
 
 1. Open the project on **Scene**.

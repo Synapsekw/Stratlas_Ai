@@ -2,6 +2,9 @@ import type { LensModel, Quat, Vec3 } from '@aio/schema';
 import { imageToRay } from './lens';
 import { quatRotate } from './orientation';
 
+/** A photo's camera with its hand correction (for readers that only import this module). */
+export { correctedPhoto } from '@aio/geo';
+
 /** A posed camera: position and orientation in the local frame, and its lens. */
 export interface GroundPose {
   pos: Vec3;

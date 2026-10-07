@@ -24,10 +24,10 @@ beforeEach(async () => {
   feed = {
     schema: 'aio.update-feed/1',
     version: '0.8.0',
-    notes: '# Stratlas 0.8.0\n\n## New\n\n- Faster maps\n',
+    notes: '# Quadrion AI 0.8.0\n\n## New\n\n- Faster maps\n',
     files: {
-      'win-x64': { url: 'Stratlas-0.8.0-win-x64-setup.exe', sha256: sha, size: installer.length },
-      'mac-arm64': { url: 'Stratlas-0.8.0-mac-arm64.dmg', sha256: sha, size: installer.length },
+      'win-x64': { url: 'QuadrionAI-0.8.0-win-x64-setup.exe', sha256: sha, size: installer.length },
+      'mac-arm64': { url: 'QuadrionAI-0.8.0-mac-arm64.dmg', sha256: sha, size: installer.length },
     },
   };
   server = createServer((req, res) => {
@@ -35,7 +35,7 @@ beforeEach(async () => {
     if (req.url === '/feed/stratlas-update.json') {
       res.setHeader('content-type', 'application/json');
       res.end(JSON.stringify(feed));
-    } else if (req.url?.startsWith('/feed/Stratlas-0.8.0')) {
+    } else if (req.url?.startsWith('/feed/QuadrionAI-0.8.0')) {
       res.end(installer);
     } else {
       res.statusCode = 404;
@@ -103,7 +103,7 @@ describe('online update', () => {
       ok: true,
       available: true,
       version: '0.8.0',
-      notes: '# Stratlas 0.8.0\n\n## New\n\n- Faster maps\n',
+      notes: '# Quadrion AI 0.8.0\n\n## New\n\n- Faster maps\n',
       size: installer.length,
     });
     expect(requests).toEqual(['/feed/stratlas-update.json']);
@@ -119,7 +119,7 @@ describe('online update', () => {
     const { updater, installed, progress } = make();
     await updater.check();
     expect(await updater.downloadAndInstall()).toEqual({ ok: true });
-    const path = join(dir, 'Stratlas-0.8.0-win-x64-setup.exe');
+    const path = join(dir, 'QuadrionAI-0.8.0-win-x64-setup.exe');
     expect(installed).toEqual([`0.8.0 ${path}`]);
     expect(await readFile(path)).toEqual(installer);
     expect(progress.map((p) => p.phase)).toEqual(

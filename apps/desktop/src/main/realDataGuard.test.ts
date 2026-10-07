@@ -38,19 +38,19 @@ afterEach(async () => {
 });
 
 const env = (extra: Record<string, string> = {}) => ({
-  STRATLAS_E2E: '1',
-  STRATLAS_REAL_DATA_ROOT: real,
+  QUADRION_E2E: '1',
+  QUADRION_REAL_DATA_ROOT: real,
   ...extra,
 });
 
 describe('realDataRootFromEnv', () => {
   it('is off outside e2e runs', () => {
     expect(realDataRootFromEnv({})).toBeNull();
-    expect(realDataRootFromEnv({ STRATLAS_REAL_DATA_ROOT: 'X:\\data' })).toBeNull();
+    expect(realDataRootFromEnv({ QUADRION_REAL_DATA_ROOT: 'X:\\data' })).toBeNull();
   });
-  it('protects STRATLAS_REAL_DATA_ROOT, else the founder default', () => {
-    expect(realDataRootFromEnv({ STRATLAS_E2E: '1', STRATLAS_REAL_DATA_ROOT: real })).toBe(real);
-    expect(realDataRootFromEnv({ STRATLAS_E2E: '1' })).toMatch(/Stratlas Data$/);
+  it('protects QUADRION_REAL_DATA_ROOT, else the founder default', () => {
+    expect(realDataRootFromEnv({ QUADRION_E2E: '1', QUADRION_REAL_DATA_ROOT: real })).toBe(real);
+    expect(realDataRootFromEnv({ QUADRION_E2E: '1' })).toMatch(/Stratlas Data$/);
     expect(DEFAULT_REAL_DATA_ROOT).toBe('E:\\Stratlas Data');
   });
 });
@@ -78,7 +78,7 @@ describe('isWithin and isUnderRealData', () => {
 
 describe('the guard refuses writes into a fake real data root', () => {
   it('does nothing when it is not installed', async () => {
-    expect(installRealDataGuard({ STRATLAS_REAL_DATA_ROOT: real })).toBeNull();
+    expect(installRealDataGuard({ QUADRION_REAL_DATA_ROOT: real })).toBeNull();
     const file = join(real, 'projects', 'p', 'issues.json');
     await writeJsonAtomic(file, { issues: [1] });
     expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ issues: [1] });

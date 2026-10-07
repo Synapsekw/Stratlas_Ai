@@ -1,11 +1,12 @@
 import { join } from 'node:path';
+import { envVar } from '../../packages/brand/src/env.ts';
 
 /**
- * `--src` and `--out` with defaults under STRATLAS_DATA (or E:\Stratlas Data), and the optional
+ * `--src` and `--out` with defaults under QUADRION_DATA (or E:\Stratlas Data), and the optional
  * `--originals` folder of original recordings (video proxies are made from them).
  */
 export function parseArgs(project) {
-  const root = process.env.STRATLAS_DATA ?? 'E:\\Stratlas Data';
+  const root = envVar(process.env, 'DATA') ?? 'E:\\Stratlas Data';
   const args = process.argv.slice(2);
   const get = (name) => {
     const i = args.indexOf(`--${name}`);

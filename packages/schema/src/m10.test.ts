@@ -128,6 +128,8 @@ describe('M10 additive rule: no layer kind, raster format, derived kind or recor
       [
         'aio.gcp',
         'aio.globe-settings',
+        'aio.launch-settings',
+        'aio.orientation',
         'aio.photo-accuracy',
         // integration: the other files of a run
         'aio.photo-align',
@@ -192,7 +194,7 @@ describe('manifest reading tolerates layer kinds of a newer build', () => {
     });
     const kept = keepUnknownLayers(before, next);
     expect(kept.ok).toBe(false);
-    if (!kept.ok) expect(kept.error).toMatch(/used by a layer from a newer Stratlas/);
+    if (!kept.ok) expect(kept.error).toMatch(/used by a layer from a newer version of Quadrion AI/);
     const dup = parseManifest({
       ...manifest(),
       layers: [...manifest().layers, { ...NEWER_LAYER, id: 'site' }],
@@ -209,7 +211,7 @@ describe('manifest reading tolerates layer kinds of a newer build', () => {
     expect(parseManifest({ ...manifest(), schema: 'aio.project/2' })).toEqual({
       ok: false,
       error:
-        'Project was saved by a newer Stratlas (schema aio.project/2). Update the app to open it.',
+        'Project was saved by a newer version of Quadrion AI (schema aio.project/2). Update the app to open it.',
     });
   });
 });

@@ -4,7 +4,7 @@
  * Masafi (two real surveys) and Al-Zour (one survey plus a synthetic second date) run where the
  * projects are present, copied to a temporary data root through realData.ts (@realdata; nothing
  * is written under the real data).
- * Screenshots go to STRATLAS_SHOTS when set. Run with --workers=1: the fps numbers mean nothing
+ * Screenshots go to QUADRION_SHOTS when set. Run with --workers=1: the fps numbers mean nothing
  * with other GPU work running.
  */
 import { test as base, type ElectronApplication, type Page, type TestInfo } from '@playwright/test';
@@ -22,7 +22,7 @@ import {
 import { copyRealData, hasRealData, missingRealProject, realProjectDir } from './realData';
 
 const ALZOUR = realProjectDir('alzour');
-const SHOTS = process.env.STRATLAS_SHOTS;
+const SHOTS = process.env.QUADRION_SHOTS;
 
 type V3 = [number, number, number];
 interface View {
@@ -298,13 +298,15 @@ fixtures(
         second: { site: 'shown', 'model-2026-01-01': 'shown', 'model-2026-06-01': 'absent' },
       });
 
-    // leaving the comparison: one 3D view, every date as the layer tree says
+    // leaving the comparison: one 3D view, every date as the layer tree says. The project opened
+    // on its latest date (June), which hides the January model, and the comparison did not change
+    // that, so only the June model is shown.
     await pinTwoViewTier(win);
     await win.getByTestId('compare-dates').click();
     await expect(win.locator('[data-scene-view] canvas')).toHaveCount(1);
     await expect
       .poll(() => layerState(win, ids))
-      .toMatchObject({ main: { 'model-2026-01-01': 'shown', 'model-2026-06-01': 'shown' } });
+      .toMatchObject({ main: { 'model-2026-01-01': 'hidden', 'model-2026-06-01': 'shown' } });
     // the shared models of the second view are released
     await expect
       .poll(() => inspect(win, ({ w }) => w.__stratlas.compare().models.held, null))

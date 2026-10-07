@@ -1,7 +1,7 @@
 /**
  * The build stamp: when this renderer bundle was built and from which commit, so a stale
  * installed copy is obvious (Settings, About; the Projects screen). electron.vite.config.ts
- * injects `__STRATLAS_BUILD__` at build time.
+ * injects `__QUADRION_BUILD__` at build time.
  */
 export interface BuildInfo {
   /** When the bundle was built, ISO 8601 in UTC. Empty when not stamped (unit tests). */
@@ -13,9 +13,9 @@ export interface BuildInfo {
 }
 
 export const build: BuildInfo =
-  typeof __STRATLAS_BUILD__ === 'undefined'
+  typeof __QUADRION_BUILD__ === 'undefined'
     ? { time: '', commit: 'dev', version: '' }
-    : __STRATLAS_BUILD__;
+    : __QUADRION_BUILD__;
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const pad = (n: number) => String(n).padStart(2, '0');

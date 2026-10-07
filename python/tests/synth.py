@@ -6,7 +6,7 @@ truth: what changed, where (array indices or local metres) and by how much.
 
     from synth import ortho_pair, dsm_pair, cloud_pair, mesh_pair, scan, write_geotiff, write_las
 
-Local frame as everywhere in Stratlas: metres, x east, y up, z south.
+Local frame as everywhere in Quadrion AI: metres, x east, y up, z south.
 """
 
 from __future__ import annotations
@@ -356,7 +356,7 @@ def write_las(path: Path, xyz: np.ndarray, epsg: int, scale: float = 0.001, poin
         b"\0" * 16,
         1,
         2,
-        b"Stratlas test (synthetic)",
+        b"Quadrion AI test (synthetic)",
         b"synth.py",
         1,
         2026,

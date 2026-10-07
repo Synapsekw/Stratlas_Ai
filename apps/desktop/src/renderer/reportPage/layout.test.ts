@@ -93,7 +93,7 @@ const row = (code: string): ReportRow => ({
   normal: null,
 });
 
-const model = (branding = resolveReportBranding(undefined, 'Stratlas')): ReportModel => ({
+const model = (branding = resolveReportBranding(undefined, 'Quadrion AI')): ReportModel => ({
   title: 'Tower',
   customer: 'ACME',
   site: 'Dubai',
@@ -121,7 +121,7 @@ describe('report branding', () => {
   it("shows the person's logo, company name and accent when set", () => {
     const b = resolveReportBranding(
       { companyName: 'Synapse <Solutions>', logo: 'logo-abc123def.png', accent: '#2266aa' },
-      'Stratlas',
+      'Quadrion AI',
     );
     const html = reportHtml(model(b), new Map());
     expect(html).toContain('<img src="aio://branding/logo-abc123def.png" alt="">');

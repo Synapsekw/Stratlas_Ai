@@ -13,12 +13,12 @@ describe('validated IPC handlers', () => {
 
   it('passes a valid request and validates the response', async () => {
     const wrapped = validated('app:getInfo', () => ({
-      name: 'Stratlas',
+      name: 'Quadrion AI',
       version: '0.1.0',
       platform: 'win32',
     }));
     await expect(wrapped({})).resolves.toEqual({
-      name: 'Stratlas',
+      name: 'Quadrion AI',
       version: '0.1.0',
       platform: 'win32',
     });

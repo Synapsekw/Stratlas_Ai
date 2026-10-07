@@ -22,12 +22,14 @@ import { appVersion, releaseNotes } from './notes.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
 
+// The file name stays from before the rename: installed 0.9.0 builds look for it.
 export const FEED_FILE = 'stratlas-update.json';
 export const FEED_SCHEMA = 'aio.update-feed/1';
 
 /**
  * The feed platform an installer file serves, or null. Names follow electron-builder.yml
- * (`<product>-<version>-win-x64-setup.exe`, `<product>-<version>-mac-arm64.dmg`).
+ * (`<executable>-<version>-win-x64-setup.exe`, `<executable>-<version>-mac-arm64.dmg`, as
+ * tools/release/brand-config.mjs names them; any prefix matches, so older names work too).
  * @param {string} name
  * @param {string} version
  */

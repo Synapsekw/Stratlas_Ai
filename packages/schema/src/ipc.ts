@@ -19,6 +19,7 @@ import { AiPolicy, EditPolicy, ExportKind, PackageInfo, PackageOrigin } from './
 import { BoundaryEditsFile, VolumesFile } from './volumes';
 import { DetectionsFile } from './detections';
 import { NarrativeFile, ReportContentsSettings } from './report';
+import { OrientationFile } from './orientation';
 import { ReleaseNotes, UpdateStatus } from './update';
 import { ChangeKind, ChangeSet, ChangeSetId, ChangeSetSummary, ChangeThresholds } from './change';
 import { ProcModel, ProcModelId, ProcModelSummary } from './procmodel';
@@ -41,6 +42,7 @@ import {
 import { Id, Sha256Hex } from './common';
 import { ExchangeKind, ExchangePreview, Heads, TeamProjectId } from './exchange';
 import { ActorId, DeviceId, Identity, Initials, Member, PersonName, Role } from './identity';
+import { LaunchSettings } from './launch';
 import {
   AuditEntry,
   AuditExportFormat,
@@ -1471,6 +1473,24 @@ export const ipc = {
     ]),
   },
 
+  // ---------------------------------------------------------------- launch screen
+  /** The launch screen preference, userData `launch.json` (missing file: the defaults, shown). */
+  'launch:get': {
+    request: Empty,
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), settings: LaunchSettings }),
+      Failure,
+    ]),
+  },
+  /** Settings, Appearance, Show launch screen. Answers the file as written. */
+  'launch:set': {
+    request: z.object({ show: z.boolean() }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), settings: LaunchSettings }),
+      Failure,
+    ]),
+  },
+
   // ---------------------------------------------------------------- M9 identity and members (T2)
   /** This person's identity (moved once from the renderer's stored author) and device id. */
   'identity:get': {
@@ -2222,6 +2242,22 @@ export const ipc = {
     request: z.object({ id: RasterPackId }).strict(),
     response: OkOrFailure,
   },
+  /**
+   * The open project's `orientation.json` (`aio.orientation/1`: video direction keyframes and
+   * photo corrections set by hand): null when none was saved; `readOnly` for a package.
+   */
+  'orientation:read': {
+    request: z.object({ projectId: z.string().min(1) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), file: OrientationFile.nullable(), readOnly: z.boolean() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /** Replace `orientation.json` atomically (journalled, a `.bak` of the previous file). */
+  'orientation:write': {
+    request: z.object({ projectId: z.string().min(1), file: OrientationFile }).strict(),
+    response: z.object({ ok: z.boolean(), error: z.string().optional() }),
+  },
 } as const satisfies Record<string, { request: z.ZodType; response: z.ZodType }>;
 
 /** Events pushed from main to the renderer. */
@@ -2414,4 +2450,13 @@ export interface AioBridge {
   systemMemory?(): { total: number; free: number } | null;
   /** This renderer process's memory, bytes (diagnostics, the memory watch). */
   processMemory?(): Promise<{ residentSet: number; private: number } | null>;
+  /**
+   * Whether this run may show the launch screen, read before the first frame: `skip` for an
+   * automated run (QUADRION_E2E=1 without QUADRION_SHOW_GATE=1, or QUADRION_SHOW_GATE=0), else
+   * `auto` (then `Settings.launchScreen` decides). Optional: absent outside Electron means `auto`.
+   */
+  launchGate?(): LaunchGateMode;
 }
+
+/** See `AioBridge.launchGate`. */
+export type LaunchGateMode = 'auto' | 'skip';

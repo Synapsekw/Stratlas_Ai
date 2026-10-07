@@ -89,7 +89,7 @@ export async function stagePackageExport(
   pkg: Pick<PackageSource, 'archive' | 'manifest'>,
   tempDir: string,
 ): Promise<{ root: string; dispose(): Promise<void> }> {
-  const root = await mkdtemp(join(tempDir, 'stratlas-export-'));
+  const root = await mkdtemp(join(tempDir, 'quadrion-export-'));
   try {
     await writeFile(join(root, 'manifest.json'), JSON.stringify(pkg.manifest));
     const issues = pkg.archive.entries.has('issues.json')

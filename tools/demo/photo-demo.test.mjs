@@ -108,7 +108,7 @@ describe('photo demo run files', () => {
 
 describe('photo sets', () => {
   it('bundles the mini set by default and keeps the quick set out of the installer', () => {
-    vi.stubEnv('STRATLAS_PHOTO_DEMO_SET', undefined);
+    vi.stubEnv('QUADRION_PHOTO_DEMO_SET', undefined);
     expect(PHOTO_SET_DEFAULT).toBe('mini');
     expect(photoSetName()).toBe('mini');
     expect(PHOTO_SETS.mini).toMatchObject({ synthArgs: ['--mini'], bundled: true });
@@ -117,8 +117,8 @@ describe('photo sets', () => {
     expect(PHOTO_SETS.mini.budgetMb).toBeLessThanOrEqual(12);
   });
 
-  it('takes the set from the option, then STRATLAS_PHOTO_DEMO_SET, and refuses others', () => {
-    vi.stubEnv('STRATLAS_PHOTO_DEMO_SET', 'quick');
+  it('takes the set from the option, then QUADRION_PHOTO_DEMO_SET, and refuses others', () => {
+    vi.stubEnv('QUADRION_PHOTO_DEMO_SET', 'quick');
     expect(photoSetName()).toBe('quick');
     expect(photoSetName('mini')).toBe('mini');
     expect(() => photoSetName('full')).toThrow(/Unknown photo set "full"/);

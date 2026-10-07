@@ -12,6 +12,8 @@ export interface ClipBar {
   estimated: boolean;
   /** Id of the flight the clip was cut from (see `flightGroups`). */
   group: string;
+  /** Project times of the clip's camera direction keyframes (none: the logged direction). */
+  keys?: number[];
 }
 
 /** Clips cut from one flight log, in time order. */
@@ -128,6 +130,8 @@ export function buildTimelineModel(
   manifest: ProjectManifest,
   issues: readonly Issue[],
   durations: Readonly<Record<string, number>>,
+  /** Camera direction keyframes (clip time, ms) by video layer id, drawn on the clip bars. */
+  directionKeys?: Readonly<Record<string, readonly { t: number }[]>>,
 ): TimelineModel {
   const clips: ClipBar[] = [];
   const photos: PhotoMark[] = [];
@@ -136,6 +140,7 @@ export function buildTimelineModel(
     const bars = g.clips.map((layer) => {
       const startMs = layer.flight.startUtcMs + layer.offsetMs;
       const known = durations[layer.id];
+      const keys = directionKeys?.[layer.id];
       return {
         layerId: layer.id,
         name: layer.name,
@@ -143,6 +148,7 @@ export function buildTimelineModel(
         endMs: startMs + (known ?? DEFAULT_CLIP_MS),
         estimated: known === undefined,
         group: g.id,
+        ...(keys?.length ? { keys: keys.map((k) => startMs + k.t) } : {}),
       };
     });
     clips.push(...bars);

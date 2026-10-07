@@ -16,7 +16,7 @@
 //                                   test detector and truth.json (build-change-demo.mjs)
 //   <out>/demo-photo-processing/    M10: drone photos of a synthetic site with GCPs, a
 //                                   precomputed alignment and truth.json (photo-demo.mjs; the
-//                                   mini set unless --photo-set or STRATLAS_PHOTO_DEMO_SET says
+//                                   mini set unless --photo-set or QUADRION_PHOTO_DEMO_SET says
 //                                   quick, which is for development only and never released)
 //
 // The 3D model is procedural (geometry.mjs, scene.mjs) and written as GLB; every image (video
@@ -47,6 +47,7 @@ import { generatorStamp } from './stamp.mjs';
 import { CHANGE_ID, buildChangeDemo } from './build-change-demo.mjs';
 import { PHOTO_ID, buildPhotoDemo } from './photo-demo.mjs';
 import { writePhoto, writePngCloud, writePyramid } from './writers.mjs';
+import { envVar } from '../../packages/brand/src/env.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 const argv = process.argv.slice(2);
@@ -78,7 +79,10 @@ const builder = await jiti.import(join(repo, 'packages', 'project', 'src', 'buil
 const geo = await jiti.import(join(repo, 'packages', 'geo', 'src', 'index.ts'));
 
 function pipelinePython() {
-  const given = opt('python', process.env.STRATLAS_DEMO_PYTHON ?? process.env.STRATLAS_E2E_PYTHON);
+  const given = opt(
+    'python',
+    envVar(process.env, 'DEMO_PYTHON') ?? envVar(process.env, 'E2E_PYTHON'),
+  );
   if (given) return given;
   const venv =
     process.platform === 'win32'
@@ -101,7 +105,7 @@ const json = (v) => `${JSON.stringify(v, null, 2)}\n`;
 async function main() {
   requireFfmpeg();
   const python = pipelinePython();
-  const scratch = join(tmpdir(), `stratlas-demo-${String(process.pid)}`);
+  const scratch = join(tmpdir(), `quadrion-demo-${String(process.pid)}`);
   await rm(scratch, { recursive: true, force: true });
   await mkdir(scratch, { recursive: true });
   // The pipelines resolve their input paths (Path.resolve): on Windows that expands 8.3 short
@@ -277,7 +281,7 @@ async function main() {
   await mkdir(join(site.root, 'models'), { recursive: true });
   await writeFile(
     join(site.root, 'models', 'tank-farm.glb'),
-    writeGlb(parts, { root: 'DemoTankFarm', generator: 'Stratlas demo builder' }),
+    writeGlb(parts, { root: 'DemoTankFarm', generator: 'Quadrion AI demo builder' }),
   );
   layers.push({
     kind: 'mesh',

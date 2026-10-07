@@ -64,7 +64,7 @@ describe('change demo build', () => {
     for (const f of files) {
       const text = await readFile(f, 'utf8');
       expect(text, f).not.toMatch(
-        /stratlas-change-demo-|change-demo-test-|AppData|\\Users\\|\/home\/|\r/,
+        /quadrion-change-demo-|change-demo-test-|AppData|\\Users\\|\/home\/|\r/,
       );
       const today = new Date().toISOString().slice(0, 10);
       if (!truth.captures.list.some((c) => c.date === today)) expect(text, f).not.toContain(today);

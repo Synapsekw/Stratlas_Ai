@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { feedUrl, parseFeed, platformKey } from './feed';
 
-const file = { url: 'Stratlas-0.8.0-win-x64-setup.exe', sha256: 'AB'.repeat(32), size: 10 };
+const file = { url: 'QuadrionAI-0.8.0-win-x64-setup.exe', sha256: 'AB'.repeat(32), size: 10 };
 const feed = (over: object = {}) =>
   JSON.stringify({
     schema: 'aio.update-feed/1',
@@ -34,8 +34,8 @@ describe('update feed', () => {
       file: {
         ...file,
         sha256: 'ab'.repeat(32),
-        href: 'https://u.example.com/s/Stratlas-0.8.0-win-x64-setup.exe',
-        name: 'Stratlas-0.8.0-win-x64-setup.exe',
+        href: 'https://u.example.com/s/QuadrionAI-0.8.0-win-x64-setup.exe',
+        name: 'QuadrionAI-0.8.0-win-x64-setup.exe',
       },
     });
     expect(parseFeed(feed(), 'https://u.example.com/f.json', 'mac-arm64')).toMatchObject({

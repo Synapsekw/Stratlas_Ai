@@ -63,7 +63,7 @@ First match wins, and only that route's variables reach electron-builder (`build
 | `.pfx` file            | `WIN_CSC_LINK` (path, https URL or base64), `WIN_CSC_KEY_PASSWORD`                                                                                                                     | Only for certificates that are allowed to live in a file                                                       |
 | Cloud HSM command      | `WIN_SIGN_COMMAND`: a command template with `{file}`, run once per binary by `tools/release/win-sign.mjs`                                                                              | Any other cloud HSM, for example SSL.com eSigner (`CodeSignTool.bat sign ... -input_file_path={file}`)         |
 
-OV certificates issued since June 2023 must live in hardware (a cloud HSM). A command must timestamp (RFC 3161, SHA-256) and exit non-zero on failure. `STRATLAS_NO_SIGNING=1` turns every route off (Windows and macOS). A release signs 5 files once each (SHA-256 only, `.exe` files only); see `SECRETS.md` for the quota.
+OV certificates issued since June 2023 must live in hardware (a cloud HSM). A command must timestamp (RFC 3161, SHA-256) and exit non-zero on failure. `QUADRION_NO_SIGNING=1` turns every route off (Windows and macOS). A release signs 5 files once each (SHA-256 only, `.exe` files only); see `SECRETS.md` for the quota.
 
 ### Microsoft Store (MSIX)
 
@@ -91,7 +91,7 @@ pnpm -F @aio/desktop dist:win:store
 
 Check the package before uploading: rename a copy to `.zip` and read `AppxManifest.xml` (identity, `runFullTrust`, the `.aio` `uap:FileTypeAssociation`), or run the Windows App Certification Kit (`appcert.exe test -appxpackagepath <file>.msix -reportoutputpath report.xml`, from the Windows SDK).
 
-A Store build (`appx` / `msix` target) drops every Windows signing variable (`storeBuildEnv` in `brand-config.mjs`), so CI can build it in the same job as the signed installer. The manifest also declares the `stratlas:` link (`windows.protocol`), from the same `protocols` entry as the macOS Info.plist.
+A Store build (`appx` / `msix` target) drops every Windows signing variable (`storeBuildEnv` in `brand-config.mjs`), so CI can build it in the same job as the signed installer. The manifest also declares the `quadrion:` link and the legacy `stratlas:` one (`windows.protocol`), from the same `protocols` entry as the macOS Info.plist.
 
 #### Partner Center steps
 
@@ -109,7 +109,7 @@ The founder's checklist is `STORE-SUBMISSION.md`; listing text, privacy policy d
 Hardened runtime is always on (`build/entitlements.mac.plist`: JIT only). Notarisation runs only when the app is signed and one set of Apple credentials is present; electron-builder staples the ticket.
 
 - **Universal app.** `dist:mac` builds one app for Apple silicon and Intel (`mac-universal/`, `<Product>-<version>-mac-universal.dmg` and `.zip`). The keyring addon ships one `.node` per architecture in its own package, and pnpm installs only the host's: before `dist:mac` add `supportedArchitectures: { os: [current], cpu: [arm64, x64] }` to `pnpm-workspace.yaml` and `pnpm install` (do not commit it; `release.yml` does this itself). `dist.mjs` refuses to build without both (`tools/release/mac-native.mjs`). `SMOKE_ARCH=x86_64 node ../../tools/release/smoke-packaged.mjs` starts the Intel slice under Rosetta.
-- **Document type and link.** `.aio` is a CFBundleDocumentType owned by the app plus an exported UTI (`<appId>.package`); `stratlas://open?path=<absolute .aio path>` is registered as CFBundleURLTypes (`protocols` in `brand-config.mjs`, scheme `urlScheme` in `brand.json`). The app's `open-url` handler opens only an absolute local `.aio` path; any other link of the scheme just brings the app forward (`apps/desktop/src/main/appLink.ts`).
+- **Document type and link.** `.aio` is a CFBundleDocumentType owned by the app plus an exported UTI (`<appId>.package`); `quadrion://open?path=<absolute .aio path>` (and the legacy `stratlas://`) is registered as CFBundleURLTypes (`protocols` in `brand-config.mjs`, scheme `urlScheme` in `brand.json`). The app's `open-url` handler opens only an absolute local `.aio` path; any other link of the scheme just brings the app forward (`apps/desktop/src/main/appLink.ts`).
 - **Menu.** App menu (About, Settings… Cmd+,, Services, Hide, Quit), File, Edit, View, Window, Help (`apps/desktop/src/main/menuTemplate.ts`). Every keyboard handler accepts Cmd where Windows uses Ctrl, and shortcut labels show ⌘ (`shortcut()` in `@aio/ui`).
 - **API keys** are in the login Keychain (service = app id, account = provider) through `@napi-rs/keyring`, the same code as Windows Credential Manager.
 
@@ -120,7 +120,7 @@ Design and failure handling: [ADR 0003](../architecture/adr/0003-updates-and-rol
 - **From a file (offline, APP-2):** Settings, About and updates, Install update from file. The person picks the NSIS `setup.exe`; main checks it is a Windows `.exe`, that `Get-AuthenticodeSignature` reports `Valid`, that the signer is the publisher (exactly `signing.windowsPublisher` in `packages/brand/brand.json` when set, otherwise a CN or O naming the company) and that its product version is newer than the running app. "Install and restart" then keeps a copy of the running version for rollback, runs the installer with `--updated` and quits. Unsigned test builds are refused by design.
 - **Online check (optional):** off by default. The person switches it on and sets an update address; "Check now" reads one static JSON feed, `stratlas-update.json` (`aio.update-feed/1`: version, release notes, per platform the installer URL, SHA-256 and size). `pnpm -F @aio/desktop dist:win` / `dist:mac` writes it into `apps/desktop/dist` (`tools/release/feed.mjs`, file URLs relative to the feed), so the dist folder can be copied to any web server or share as is. The download resumes after an interruption, must match the size and SHA-256, and on Windows passes the same signature check as a file. Nothing is checked automatically, and the switch is disabled on an offline-only workstation (Settings, Privacy and cloud).
 - **Release notes:** `node tools/release/notes.mjs` lists `feat`, `fix` and `perf` commits (and breaking changes) since the previous `v*` tag. The app bundles the notes of its version (Settings, About and updates) and the feed carries them. Tag each release `v<version>` and build release installers from a full clone (`fetch-depth: 0`), or the notes cover only the commits present.
-- **Rollback:** before any installer runs, the app copies its installed folder to `<userData>/updates/previous/<version>/` (and on Windows adds a Start-menu entry "Stratlas <version> (previous version)"). If the new version does not finish loading, the next start offers to return; Settings, About and updates offers it any time while a previous version is kept.
+- **Rollback:** before any installer runs, the app copies its installed folder to `<userData>/updates/previous/<version>/` (and on Windows adds a Start-menu entry "Quadrion AI <version> (previous version)"). If the new version does not finish loading, the next start offers to return; Settings, About and updates offers it any time while a previous version is kept.
 - **Map data:** "Add a region" in Settings, Offline maps is the only other online action. It extracts the region by HTTP range requests from the newest Protomaps daily build at build.protomaps.com, verifies the result (planned size, every gzip tile's CRC-32, PMTiles v3 header, vector tiles, zoom and area) and writes `MapPackInfo` next to the pack. A dropped connection is retried; an interrupted download (error, crash, app quit) keeps its partial file and resumes from the last byte against the same planet build, checked with `If-Range` on the build's ETag (a changed build starts the region again). Cancel deletes the partial file.
 
 ## Continuous integration
@@ -131,7 +131,7 @@ Design and failure handling: [ADR 0003](../architecture/adr/0003-updates-and-rol
 - **e2e** on `windows-latest` and `macos-latest`, in two shards each (`playwright test --shard=1/2` and `2/2`, one worker, no retries, a flaky test fails), beside **check**: install, `pnpm -F @aio/desktop build`, the pipeline venv and the demo project, then the shard. On failure the Playwright output (traces included) is uploaded as `playwright-<os>-shard<n>`.
 - **licence check** on Ubuntu: `pnpm license:check`. Production dependencies of every workspace package must be MIT, MIT-0, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0, MPL-2.0, 0BSD, CC0-1.0, BlueOak-1.0.0 or Unlicense; no dependency at all may be GPL or AGPL.
 
-`.github/workflows/nightly.yml` (02:00 UTC and on demand) builds the installers on Windows and macOS and uploads them as `installers-<os>`. It never signs: it reads no signing secret, sets `STRATLAS_NO_SIGNING=1`, and fails if the signing mode is anything but unsigned / ad-hoc.
+`.github/workflows/nightly.yml` (02:00 UTC and on demand) builds the installers on Windows and macOS and uploads them as `installers-<os>`. It never signs: it reads no signing secret, sets `QUADRION_NO_SIGNING=1`, and fails if the signing mode is anything but unsigned / ad-hoc.
 
 `.github/workflows/release.yml` (tag `v*` and on demand) is the release build:
 
@@ -151,12 +151,12 @@ Specs live in `apps/desktop/e2e/`. Import `test` and `expect` from `./fixtures`,
 import { expect, test } from './fixtures';
 
 test('opens the tiny project', async ({ win, dataRoot }) => {
-  // dataRoot.root is STRATLAS_DATA; dataRoot.projectId is the synthetic project
+  // dataRoot.root is QUADRION_DATA; dataRoot.projectId is the synthetic project
 });
 ```
 
 - `dataRoot`: a temporary data root with `projects/e2e-tiny/` (schema-valid `manifest.json`, a 1 x 1 m quad `models/quad.glb`, empty `issues.json`).
-- `app`, `win`: the built app launched with `STRATLAS_DATA` pointing at `dataRoot`, with a Playwright trace saved on failure.
+- `app`, `win`: the built app launched with `QUADRION_DATA` pointing at `dataRoot`, with a Playwright trace saved on failure.
 - `network`: the zero-network guard. Renderer requests outside `file:`, `aio:`, `data:`, `blob:`, `devtools:` are aborted and recorded; in the main process `network-guard.cjs` (preloaded with `-r`) blocks Node `http`, `https`, `net`, `tls` and `fetch`, and the fixture blocks Electron `net`. Every test that uses `app` or `win` fails if anything was recorded. A test that provokes a request on purpose calls `network.drain()`.
 
 Electron downloads its binary lazily on first launch. After a fresh install run `node node_modules/electron/install.js` once (CI does) so parallel e2e workers do not race the download.

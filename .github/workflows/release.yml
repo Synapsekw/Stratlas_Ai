@@ -9,7 +9,7 @@ name: release
 # submission is manual, docs/release/STORE-SUBMISSION.md). Secret names: docs/release/SECRETS.md.
 #
 # Only a real release signs: a run for a `v*` tag (pushed, or "Run workflow" with the tag
-# chosen). Any other run, such as "Run workflow" on a branch, sets STRATLAS_NO_SIGNING and builds
+# chosen). Any other run, such as "Run workflow" on a branch, sets QUADRION_NO_SIGNING and builds
 # unsigned, because a cloud HSM plan has a yearly signature quota (DigiCert KeyLocker: 1,000; a
 # release uses 5, SECRETS.md). nightly.yml never signs.
 
@@ -29,7 +29,7 @@ env:
   COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
   # '1' unless this run builds a v* tag: tools/release/brand-config.mjs then drops every signing
   # variable (Windows and macOS) before electron-builder runs.
-  STRATLAS_NO_SIGNING: ${{ !(github.ref_type == 'tag' && startsWith(github.ref_name, 'v')) && '1' || '0' }}
+  QUADRION_NO_SIGNING: ${{ !(github.ref_type == 'tag' && startsWith(github.ref_name, 'v')) && '1' || '0' }}
 
 jobs:
   package-win:
@@ -95,8 +95,8 @@ jobs:
           echo "$summary"
           win="$(node -p 'JSON.parse(process.argv[1]).win' "$summary")"
           node tools/release/brand-config.mjs --route
-          if [ "$STRATLAS_NO_SIGNING" = "1" ]; then
-            echo "Not a v* tag: signing is off for this run (STRATLAS_NO_SIGNING)."
+          if [ "$QUADRION_NO_SIGNING" = "1" ]; then
+            echo "Not a v* tag: signing is off for this run (QUADRION_NO_SIGNING)."
           fi
           echo "win=$win" >> "$GITHUB_OUTPUT"
           echo "publisher=$(node -p 'JSON.parse(process.argv[1]).winPublisher' "$summary")" >> "$GITHUB_OUTPUT"
@@ -294,7 +294,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Write the App Store Connect API key
-        if: env.STRATLAS_NO_SIGNING != '1'
+        if: env.QUADRION_NO_SIGNING != '1'
         env:
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
         run: |
@@ -309,8 +309,8 @@ jobs:
         run: |
           summary="$(node tools/release/brand-config.mjs --summary)"
           echo "$summary"
-          if [ "$STRATLAS_NO_SIGNING" = "1" ]; then
-            echo "Not a v* tag: signing is off for this run (STRATLAS_NO_SIGNING)."
+          if [ "$QUADRION_NO_SIGNING" = "1" ]; then
+            echo "Not a v* tag: signing is off for this run (QUADRION_NO_SIGNING)."
           fi
           echo "mac=$(node -p 'JSON.parse(process.argv[1]).mac' "$summary")" >> "$GITHUB_OUTPUT"
 

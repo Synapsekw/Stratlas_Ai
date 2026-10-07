@@ -7,17 +7,17 @@ describe('windowMode', () => {
   });
 
   it('moves isolated test profiles off-screen', () => {
-    expect(windowMode({ STRATLAS_USER_DATA: 'C:/tmp/x' })).toBe('offscreen');
+    expect(windowMode({ QUADRION_USER_DATA: 'C:/tmp/x' })).toBe('offscreen');
   });
 
-  it('lets a person watch a test with STRATLAS_WINDOW=visible', () => {
-    expect(windowMode({ STRATLAS_USER_DATA: 'C:/tmp/x', STRATLAS_WINDOW: 'visible' })).toBe(
+  it('lets a person watch a test with QUADRION_WINDOW=visible', () => {
+    expect(windowMode({ QUADRION_USER_DATA: 'C:/tmp/x', QUADRION_WINDOW: 'visible' })).toBe(
       'normal',
     );
   });
 
   it('forces off-screen on request', () => {
-    expect(windowMode({ STRATLAS_WINDOW: 'offscreen' })).toBe('offscreen');
+    expect(windowMode({ QUADRION_WINDOW: 'offscreen' })).toBe('offscreen');
   });
 });
 
@@ -36,8 +36,8 @@ describe('offscreenOrigin', () => {
 describe('windowSize', () => {
   it('is 1440 x 900 unless set, and never under the 1100 x 700 minimum', () => {
     expect(windowSize({})).toEqual({ width: 1440, height: 900 });
-    expect(windowSize({ STRATLAS_WINDOW_SIZE: '1100x700' })).toEqual({ width: 1100, height: 700 });
-    expect(windowSize({ STRATLAS_WINDOW_SIZE: '800x600' })).toEqual({ width: 1100, height: 700 });
-    expect(windowSize({ STRATLAS_WINDOW_SIZE: 'big' })).toEqual({ width: 1440, height: 900 });
+    expect(windowSize({ QUADRION_WINDOW_SIZE: '1100x700' })).toEqual({ width: 1100, height: 700 });
+    expect(windowSize({ QUADRION_WINDOW_SIZE: '800x600' })).toEqual({ width: 1100, height: 700 });
+    expect(windowSize({ QUADRION_WINDOW_SIZE: 'big' })).toEqual({ width: 1440, height: 900 });
   });
 });

@@ -10,13 +10,13 @@ const ALLOWED = ['file:', 'aio:', 'devtools:', 'data:', 'blob:', 'chrome-extensi
 test('the app starts, exposes the bridge and makes no network requests', async () => {
   // an isolated profile: the person's settings stay untouched and the window opens off-screen;
   // an empty data root: without one the app would list the developer's real data folder
-  const base = await mkdtemp(join(tmpdir(), 'stratlas-e2e-'));
+  const base = await mkdtemp(join(tmpdir(), 'quadrion-e2e-'));
   const app = await electron.launch({
     args: [...GPU_ARGS, join(import.meta.dirname, '../out/main/index.js')],
     env: {
       ...process.env,
-      STRATLAS_USER_DATA: join(base, 'user'),
-      STRATLAS_DATA: join(base, 'data'),
+      QUADRION_USER_DATA: join(base, 'user'),
+      QUADRION_DATA: join(base, 'data'),
     },
   });
   const outbound: string[] = [];
@@ -27,10 +27,10 @@ test('the app starts, exposes the bridge and makes no network requests', async (
 
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
-  await expect(win.locator('.wordmark')).toHaveText(/STRATLAS/);
+  await expect(win.getByTestId('brand-wordmark')).toHaveAttribute('aria-label', 'Quadrion AI');
 
   const info = await win.evaluate(() => window.aio.invoke('app:getInfo', {}));
-  expect(info.name).toBe('Stratlas');
+  expect(info.name).toBe('Quadrion AI');
 
   const rejected = await win.evaluate(() =>
     window.aio.invoke('app:getInfo', { extra: 1 } as never).then(
@@ -46,7 +46,7 @@ test('the app starts, exposes the bridge and makes no network requests', async (
 });
 
 test('library, settings and aio:// work offline and the protocol refuses traversal', async () => {
-  const base = await mkdtemp(join(tmpdir(), 'stratlas-e2e-'));
+  const base = await mkdtemp(join(tmpdir(), 'quadrion-e2e-'));
   const dataRoot = join(base, 'data');
   await writeProject(join(dataRoot, 'projects', 'alzour'), sampleManifest(), {
     'thumbnail.jpg': '0123456789',
@@ -54,7 +54,7 @@ test('library, settings and aio:// work offline and the protocol refuses travers
 
   const app = await electron.launch({
     args: [...GPU_ARGS, join(import.meta.dirname, '../out/main/index.js')],
-    env: { ...process.env, STRATLAS_USER_DATA: join(base, 'user'), STRATLAS_DATA: dataRoot },
+    env: { ...process.env, QUADRION_USER_DATA: join(base, 'user'), QUADRION_DATA: dataRoot },
   });
   const outbound: string[] = [];
   app.context().on('request', (req) => {
@@ -108,13 +108,13 @@ test('library, settings and aio:// work offline and the protocol refuses travers
 test('isolated test profiles open windows off-screen without a taskbar button', async () => {
   const { mkdtemp } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');
-  const base = await mkdtemp(join(tmpdir(), 'stratlas-offscreen-'));
+  const base = await mkdtemp(join(tmpdir(), 'quadrion-offscreen-'));
   const app = await electron.launch({
     args: [...GPU_ARGS, join(import.meta.dirname, '../out/main/index.js')],
     env: {
       ...process.env,
-      STRATLAS_USER_DATA: join(base, 'user'),
-      STRATLAS_DATA: join(base, 'data'),
+      QUADRION_USER_DATA: join(base, 'user'),
+      QUADRION_DATA: join(base, 'data'),
     },
   });
   const win = await app.firstWindow();

@@ -1,5 +1,5 @@
 // Convert the staged Masafi stockpile review (Volumetric Survey Kit offline build) into a native
-// Stratlas project. Usage (from packages/project): pnpm import:masafi [--src <folder>] [--out <folder>]
+// Quadrion AI project. Usage (from packages/project): pnpm import:masafi [--src <folder>] [--out <folder>]
 import { join } from 'node:path';
 import { importMasafi } from '../../packages/project/src/import/index.ts';
 import { parseArgs } from './args.mjs';

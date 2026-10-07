@@ -7,12 +7,12 @@ import { expect, launchApp, test } from './fixtures';
 
 /**
  * The Jobs panel against the real pipeline runtime. It needs a Python with aio_pipelines: the
- * development venv (`uv sync` in python/) or STRATLAS_E2E_PYTHON. Without one, only the
+ * development venv (`uv sync` in python/) or QUADRION_E2E_PYTHON. Without one, only the
  * "no pack" case runs.
  */
 const repo = join(import.meta.dirname, '..', '..', '..');
 const venvPython =
-  process.env.STRATLAS_E2E_PYTHON ??
+  process.env.QUADRION_E2E_PYTHON ??
   (process.platform === 'win32'
     ? join(repo, 'python', '.venv', 'Scripts', 'python.exe')
     : join(repo, 'python', '.venv', 'bin', 'python'));
@@ -58,12 +58,12 @@ test('without a pipeline pack the Jobs panel says where it looked', async ({ win
  * An installed runtime folder (`<data folder>/runtime`, e.g. the real data root's), only read:
  * the app must pick its newest pack, list every pipeline of the schema in it and pass the selftest.
  */
-const RUNTIME = process.env.STRATLAS_E2E_RUNTIME ?? '';
+const RUNTIME = process.env.QUADRION_E2E_RUNTIME ?? '';
 
 test.describe('with an installed runtime folder', () => {
   test.skip(
     !RUNTIME,
-    'set STRATLAS_E2E_RUNTIME to a data folder runtime, e.g. <real data root>/runtime',
+    'set QUADRION_E2E_RUNTIME to a data folder runtime, e.g. <real data root>/runtime',
   );
 
   test('the app picks the newest pipeline pack, which lists every pipeline and passes its selftest', async ({
@@ -94,8 +94,8 @@ test.describe('with an installed runtime folder', () => {
     const link = join(dataRoot.root, 'runtime');
     symlinkSync(RUNTIME, link, 'junction');
     const app = await launchApp(dataRoot, {
-      STRATLAS_PIPELINE_PYTHON: '',
-      STRATLAS_PIPELINE_PACK: '',
+      QUADRION_PIPELINE_PYTHON: '',
+      QUADRION_PIPELINE_PACK: '',
     });
     await network.attach(app);
     try {
@@ -128,7 +128,7 @@ test.describe('with the runtime', () => {
     network,
   }) => {
     test.setTimeout(120_000);
-    const app = await launchApp(dataRoot, { STRATLAS_PIPELINE_PYTHON: venvPython });
+    const app = await launchApp(dataRoot, { QUADRION_PIPELINE_PYTHON: venvPython });
     await network.attach(app);
     try {
       const win = await app.firstWindow();
@@ -187,7 +187,7 @@ test.describe('with the runtime', () => {
     test.setTimeout(120_000);
     const laz = await smallLaz(dataRoot.base);
     const app = await launchApp(dataRoot, {
-      STRATLAS_PIPELINE_PYTHON: venvPython,
+      QUADRION_PIPELINE_PYTHON: venvPython,
       AIO_PDAL: pdal,
     });
     await network.attach(app);

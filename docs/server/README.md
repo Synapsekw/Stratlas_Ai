@@ -5,12 +5,12 @@
 > (decision 14). Teams that need a supported way to share today use exchange files or a hub
 > folder, which need no server at all.
 
-The Team Server lets a team share Stratlas projects over your own network. It runs on your
+The Team Server lets a team share Quadrion AI projects over your own network. It runs on your
 premises, in Docker, with Postgres. Synapse runs nothing and receives nothing: projects, people
 and files stay on your machines.
 
 - It **stores and forwards** the project history (signed ops) and project files (blobs). It never
-  merges: every Stratlas app computes the same state from the same history.
+  merges: every Quadrion AI app computes the same state from the same history.
 - It **enforces roles.** Every change is checked against the person's role at the time it was
   made (owner, reviewer, viewer, client) and refused with 403 when it is not allowed.
 - It **countersigns** every change it accepts (a receipt chain), so an export of its audit shows

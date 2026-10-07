@@ -1,6 +1,6 @@
 /**
  * Al-Zour lens calibration on the real project, outside the CI suite. Needs
- * STRATLAS_B2_ALZOUR=<plan.json> and STRATLAS_B2_OUT=<folder for screenshots>.
+ * QUADRION_B2_ALZOUR=<plan.json> and QUADRION_B2_OUT=<folder for screenshots>.
  *
  * The plan lists, per clip, the video time and point pairs: a pixel in the video frame and the
  * pixel of the same feature in the rendered model, both in screenshot coordinates of the
@@ -9,7 +9,7 @@
  * same frame size through the app (manifest.json.bak is written first, the manifest validated).
  *
  * It runs on a temporary copy of the real project (realData.ts, @realdata), never on the project
- * itself: with `"save": true` the saved manifest is copied to STRATLAS_B2_OUT as
+ * itself: with `"save": true` the saved manifest is copied to QUADRION_B2_OUT as
  * `alzour-manifest-<tag>.json`, for the founder to review and apply by hand.
  */
 import { expect, test, type Page } from '@playwright/test';
@@ -18,9 +18,9 @@ import { join } from 'node:path';
 import { realProject } from './fixtures';
 import { hasRealProject, missingRealProject } from './realData';
 
-const PLAN = process.env.STRATLAS_B2_ALZOUR ?? '';
-const OUT = process.env.STRATLAS_B2_OUT ?? '';
-test.skip(!PLAN || !OUT, 'Al-Zour calibration: set STRATLAS_B2_ALZOUR and STRATLAS_B2_OUT');
+const PLAN = process.env.QUADRION_B2_ALZOUR ?? '';
+const OUT = process.env.QUADRION_B2_OUT ?? '';
+test.skip(!PLAN || !OUT, 'Al-Zour calibration: set QUADRION_B2_ALZOUR and QUADRION_B2_OUT');
 test.skip(!hasRealProject('alzour'), missingRealProject('alzour'));
 test.setTimeout(600_000);
 

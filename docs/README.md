@@ -1,5 +1,7 @@
 # Documentation
 
+The product is **Quadrion AI**. It was called Stratlas until 7 Oct 2026; older plans, ADRs and records keep that name ([rename record](plans/2026-10-07-rename-quadrion.md)).
+
 The order below follows the product process: requirements, then brand and UI direction, then architecture, then plans. Nothing under `apps/` or `packages/` is written until the spec is approved.
 
 | Document                                                           | Purpose                                                                                                                      | Status        |
@@ -9,7 +11,7 @@ The order below follows the product process: requirements, then brand and UI dir
 | [design/BRIEF.md](design/BRIEF.md)                                 | Brief used for the UI and brand rounds                                                                                       | Final         |
 | `design/ui-options/round2/`                                        | Live mockups: Mission (chosen), Flight, Studio. View via the `design-preview` server, `http://localhost:8765/ui-review.html` | Reference     |
 | `design/assets/`                                                   | Real client assets used by the mockups (internal only, see MANIFEST.md)                                                      | Reference     |
-| `brand/`                                                           | Name and logo rounds. Working name **Stratlas** (temporary), R5 placeholder mark                                             | Temporary     |
+| `brand/`                                                           | Name and logo rounds; the final identity kit for **Quadrion AI** is `brand/quadrion/kit/`                                    | Final         |
 | [architecture/tech-evaluation.md](architecture/tech-evaluation.md) | Options and recommendation for every major technology choice                                                                 | Final         |
 | [architecture/SPEC.md](architecture/SPEC.md)                       | System architecture for Releases A and B, parallel delivery model                                                            | Approved v1.0 |
 | [architecture/adr/](architecture/adr/)                             | Architecture decision records: 0001 Electron, 0002 Mission UI                                                                | Accepted      |

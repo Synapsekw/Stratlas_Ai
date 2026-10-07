@@ -1,3 +1,4 @@
+import { brand } from '@aio/brand';
 import { reducedMotion } from '@aio/engine';
 import {
   creditLines,
@@ -194,7 +195,7 @@ export default function GlobeScreen() {
         <h1 className="globe-title">{t('globe.nav')}</h1>
         {loaded.error && <p className="globe-error">{loaded.error}</p>}
         {loaded.sites.length === 0 ? (
-          <p className="globe-empty">{t('globe.noSites')}</p>
+          <p className="globe-empty">{t('globe.noSites', { product: brand.productName })}</p>
         ) : (
           <ul className="globe-sites" data-testid="globe-sites">
             {loaded.sites.map((s) => (

@@ -1,8 +1,8 @@
-# Stratlas
+# Quadrion AI
 
 Offline-first desktop app for fusing and reviewing drone reality capture of industrial assets: 3D models, point clouds, maps, orthomosaics, drone video with flight logs, photos and annotated issues in one scene and timeline, with AI agents in every window.
 
-**Stratlas is a temporary working name** (see `packages/brand`).
+_Four dimensions. One view._ The product was called Stratlas until 7 Oct 2026; identity lives in `packages/brand`, the brand kit in `docs/brand/quadrion/kit/`.
 
 ## Layout
 

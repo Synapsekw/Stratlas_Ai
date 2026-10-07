@@ -677,3 +677,133 @@
   white-space: nowrap;
   max-width: 260px;
 }
+
+/* ---------- drone right-click menu ---------- */
+.dmenu {
+  position: fixed;
+  z-index: 80;
+  padding: 4px;
+  display: grid;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-6);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.5);
+  font-size: var(--t-12);
+}
+.dmenu-h {
+  padding: 4px 8px 6px;
+  font-size: var(--t-11);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dmenu-item {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: var(--r-4);
+  background: none;
+  color: var(--fg-0);
+  text-align: start;
+  cursor: pointer;
+}
+.dmenu-item:hover:not(:disabled),
+.dmenu-item:focus-visible {
+  background: var(--bg-3);
+}
+.dmenu-item:disabled {
+  color: var(--fg-3);
+  cursor: default;
+}
+.dmenu-item.primary {
+  font-weight: 600;
+  color: var(--acc);
+}
+
+/* ---------- align camera to map: the bar next to the drone ---------- */
+.align-bar {
+  position: fixed;
+  z-index: 70;
+  width: 300px;
+  padding: 8px 10px;
+  display: grid;
+  gap: 7px;
+  background: var(--bg-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-6);
+  box-shadow: 0 12px 32px oklch(0.08 0.01 250 / 0.55);
+  font-size: var(--t-12);
+}
+.align-bar header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.align-bar header .faint {
+  margin-inline-start: auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.align-bar .say {
+  margin: 0;
+  color: var(--fg-2);
+  line-height: 1.4;
+}
+.align-bar .say.armed {
+  color: var(--acc);
+}
+.align-bar .say.bad {
+  color: var(--s5);
+}
+.align-bar .tip {
+  margin: 0;
+  font-size: var(--t-11);
+}
+.align-bar .acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.align-bar .acts.end {
+  justify-content: flex-end;
+}
+.align-bar .row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.align-bar .row input[type='range'],
+.align-bar .row select {
+  flex: 1;
+  min-width: 0;
+}
+.align-bar .row .axis {
+  width: 52px;
+}
+.align-bar .row .input.mono {
+  max-width: 72px;
+}
+.align-bar details summary {
+  cursor: pointer;
+  color: var(--fg-2);
+}
+.align-bar details[open] {
+  display: grid;
+  gap: 6px;
+}
+.cam-row {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+
+.dmenu-scroll {
+  display: grid;
+  max-height: 260px;
+  overflow: auto;
+}

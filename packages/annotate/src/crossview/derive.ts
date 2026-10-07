@@ -1,5 +1,5 @@
-import type { Layer, PoseSample, Vec2 } from '@aio/schema';
-import { interpolatePose, orientCamera } from '@aio/video';
+import { clipCamera, clipKeys, clipPoseAt, correctedPhoto, photoCorrection } from '@aio/geo';
+import type { Layer, OrientationFile, PoseSample, Vec2 } from '@aio/schema';
 import type { DeriveSightings } from '../model/editor';
 import { backProject, geomCenter, type RaySurface } from './backproject';
 
@@ -10,6 +10,8 @@ export interface DeriverSources {
   flight: (layerId: string) => readonly PoseSample[] | null;
   /** Pixel size of a photo or video frame, once known. Video falls back to 1280 x lens aspect. */
   imageSize: (layerId: string, photoId: string | null) => Vec2 | null;
+  /** The project's orientation.json (hand-set camera directions), if any. */
+  orientation?: () => OrientationFile | null;
 }
 
 /**
@@ -23,7 +25,10 @@ export function createDeriver(src: DeriverSources): DeriveSightings {
     if (!scene) return [];
     const layer = src.layers().find((l) => l.id === sighting.layer);
     if (sighting.on === 'image' && layer?.kind === 'photos') {
-      const photo = layer.items.find((p) => p.id === sighting.photo);
+      const found = layer.items.find((p) => p.id === sighting.photo);
+      const photo = found
+        ? correctedPhoto(found, photoCorrection(src.orientation?.(), layer.id, found.id))
+        : undefined;
       const size = src.imageSize(layer.id, sighting.photo);
       const px = geomCenter(sighting.geom);
       if (!photo?.pos || !photo.q || !photo.lens || !size || !px) return [];
@@ -36,12 +41,10 @@ export function createDeriver(src: DeriverSources): DeriveSightings {
       const px = key ? geomCenter(key.geom) : null;
       if (!key || !samples?.length || !px) return [];
       const size = src.imageSize(layer.id, null) ?? [1280, Math.round(1280 / layer.lens.aspect)];
-      const log = interpolatePose(samples, layer.offsetMs + key.t * 1000);
-      const off = layer.positionOffsetM ?? [0, 0, 0];
-      const pose = {
-        pos: [log.pos[0] + off[0], log.pos[1] + off[1], log.pos[2] + off[2]] as typeof log.pos,
-        q: orientCamera(log.q, layer.orientation),
-      };
+      // the camera as every view draws it: direction keyframes, else the log with its bias
+      const keys = clipKeys(src.orientation?.(), layer.id);
+      const at = clipPoseAt(samples, layer.offsetMs + key.t * 1000, clipCamera(layer, keys));
+      const pose = { pos: at.pos, q: at.q };
       const pin = backProject(pose, layer.lens, px, size, scene);
       return pin ? [pin] : [];
     }

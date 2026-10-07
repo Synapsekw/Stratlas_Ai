@@ -8,7 +8,7 @@ import { readJson, writeJsonAtomic } from './fsutil';
  * Demo projects that ship with the app (synthetic data from tools/demo/build-demo.mjs; Store
  * certification and a first start need the app to be usable with no client data). A packaged app
  * looks in `resources/demo/` (electron-builder `extraResources` from `apps/desktop/demo/`);
- * development builds and tests use the folder in STRATLAS_DEMO.
+ * development builds and tests use the folder in QUADRION_DEMO.
  *
  * The bundled folder is never written: the installed app may be read only (MSIX) and an update
  * replaces it. Opening a demo project opens a working copy in userData `demo/<id>/`, made on the
@@ -19,7 +19,7 @@ export function demoRoot(o: {
   packaged: boolean;
   resourcesPath: string;
 }): string | undefined {
-  return o.env.STRATLAS_DEMO ?? (o.packaged ? join(o.resourcesPath, 'demo') : undefined);
+  return o.env.QUADRION_DEMO ?? (o.packaged ? join(o.resourcesPath, 'demo') : undefined);
 }
 
 /** `demo.json` beside the bundled projects (written by tools/demo/build-demo.mjs). */

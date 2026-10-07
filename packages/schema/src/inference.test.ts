@@ -9,7 +9,7 @@ const card = {
   input: { width: 640, height: 640, tensor: 'nchw', color: 'rgb', scale: 255 },
   classes: ['marker'],
   licence: 'MIT',
-  source: 'Stratlas test fixture',
+  source: 'Quadrion AI test fixture',
   sha256: 'a'.repeat(64),
 };
 

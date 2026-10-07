@@ -23,6 +23,10 @@ VLR_HEADER = 54
 EXTRA_BYTES_RECORD = 192
 EXTRA_BYTES_USER = "LASF_Spec"
 EXTRA_BYTES_ID = 4
+# Header text fields, 32 bytes each (LAS 1.4 R15), NUL padded.
+SYSTEM_IDENTIFIER = b"Quadrion AI"
+GENERATING_SOFTWARE = b"Quadrion AI change.cloud"
+assert len(SYSTEM_IDENTIFIER) <= 32 and len(GENERATING_SOFTWARE) <= 32
 #: Base record length per point data record format (LAS 1.4 R15).
 BASE_LENGTH = {6: 30, 7: 36, 8: 38}
 #: Extra-bytes data types (1 to 10) to numpy.
@@ -307,8 +311,8 @@ def write_las(
     h[0:4] = b"LASF"
     struct.pack_into("<H", h, 6, encoding)
     h[24], h[25] = 1, 4
-    h[26 : 26 + 8] = b"Stratlas"
-    h[58 : 58 + 21] = b"Stratlas change.cloud"
+    h[26:58] = SYSTEM_IDENTIFIER.ljust(32, b"\0")
+    h[58:90] = GENERATING_SOFTWARE.ljust(32, b"\0")
     struct.pack_into("<HH", h, 90, now.timetuple().tm_yday, now.year)
     struct.pack_into("<H", h, 94, HEADER_SIZE)
     struct.pack_into("<I", h, 96, HEADER_SIZE + len(vlr_bytes))

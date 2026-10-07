@@ -49,7 +49,7 @@ describe('report narrative store', () => {
     const newer = `${JSON.stringify({ ...one, schema: 'aio.narrative/2', more: [] }, null, 1)}\n`;
     await writeFile(join(root, NARRATIVE_PATH), newer);
     const message =
-      'report/narrative.json was saved by a newer version of Stratlas (aio.narrative/2). Update the app to open it. The file was not changed.';
+      'report/narrative.json was saved by a newer version of Quadrion AI (aio.narrative/2). Update the app to open it. The file was not changed.';
     expect(await readNarrative(root)).toEqual({ ok: false, error: message });
     const two = addNarrativeVersion(one, 'summary', version('Second'));
     expect(await writeNarrative(root, two)).toEqual({ ok: false, error: message });

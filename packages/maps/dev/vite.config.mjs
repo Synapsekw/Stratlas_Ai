@@ -4,8 +4,11 @@
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 
-const dataRoot = process.env.STRATLAS_DATA ?? 'E:/Stratlas Data';
-const fixtures = process.env.STRATLAS_FIXTURES ?? 'E:/Dev/AIO Software/docs/design/assets';
+const dataRoot = process.env.QUADRION_DATA ?? process.env.STRATLAS_DATA ?? 'E:/Stratlas Data';
+const fixtures =
+  process.env.QUADRION_FIXTURES ??
+  process.env.STRATLAS_FIXTURES ??
+  'E:/Dev/AIO Software/docs/design/assets';
 
 export default defineConfig({
   root: import.meta.dirname,

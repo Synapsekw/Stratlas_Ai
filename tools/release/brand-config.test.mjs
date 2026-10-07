@@ -120,11 +120,21 @@ describe('macSigning', () => {
 });
 
 describe('macIntegration', () => {
-  const brand = { productName: 'Stratlas', appId: 'ai.example.stratlas', urlScheme: 'stratlas' };
+  const brand = {
+    productName: 'Quadrion AI',
+    appId: 'ai.example.stratlas',
+    urlScheme: 'quadrion',
+    legacyUrlSchemes: ['stratlas'],
+  };
 
-  it('registers the URL scheme and exports the .aio type', () => {
+  it('registers the URL scheme and the legacy one, and exports the .aio type', () => {
     const m = macIntegration(brand);
-    expect(m.protocols).toEqual([{ name: 'Stratlas link', schemes: ['stratlas'], role: 'Viewer' }]);
+    expect(m.protocols).toEqual([
+      { name: 'Quadrion AI link', schemes: ['quadrion', 'stratlas'], role: 'Viewer' },
+    ]);
+    expect(macIntegration({ ...brand, legacyUrlSchemes: undefined }).protocols[0].schemes).toEqual([
+      'quadrion',
+    ]);
     const [uti] = m.extendInfo.UTExportedTypeDeclarations;
     expect(uti.UTTypeIdentifier).toBe('ai.example.stratlas.package');
     expect(uti.UTTypeTagSpecification['public.filename-extension']).toEqual(['aio']);
@@ -147,9 +157,33 @@ describe('effectiveConfig', () => {
     expect(config.appx.identityName).toBe('SynapseSolutions.Stratlas');
     expect(config.appx.publisher).toMatch(/^CN=/);
     expect(config.fileAssociations.map((f) => f.ext)).toEqual(['aio', 'aiosync', 'aioid']);
-    expect(config.protocols[0].schemes).toEqual(['stratlas']);
+    expect(config.protocols[0].schemes).toEqual(['quadrion', 'stratlas']);
+    expect(config.productName).toBe('Quadrion AI');
+    expect(config.executableName).toBe('QuadrionAI');
+    expect(config.appId).toBe('ai.synapse-solutions.stratlas');
+    expect(config.appx.displayName).toBe('Quadrion AI');
     expect(config.mac.extendInfo.UTExportedTypeDeclarations).toHaveLength(3);
     expect(config.copyright).toBe('Copyright 2026 Synapse Solutions');
+  });
+
+  it('names every artifact after the executable name, without spaces', () => {
+    const { config } = effectiveConfig({}, new Date('2026-10-05'));
+    const names = [
+      config.nsis.artifactName,
+      config.portable.artifactName,
+      config.appx.artifactName,
+      config.mac.artifactName,
+      config.dmg.artifactName,
+    ];
+    expect(names).toEqual([
+      'QuadrionAI-${version}-win-${arch}-setup.${ext}',
+      'QuadrionAI-${version}-win-${arch}-portable.${ext}',
+      'QuadrionAI-${version}-win-${arch}-store.msix',
+      'QuadrionAI-${version}-mac-${arch}.${ext}',
+      'QuadrionAI-${version}-mac-${arch}.${ext}',
+    ]);
+    for (const n of names) expect(n).not.toMatch(/\s/);
+    expect(config.nsis.shortcutName).toBe('Quadrion AI');
   });
 
   it('treats empty CI variables as unset', () => {
@@ -158,9 +192,9 @@ describe('effectiveConfig', () => {
     expect(summary.mac).toBe('ad-hoc');
   });
 
-  it('signs nothing with STRATLAS_NO_SIGNING=1, whatever secrets exist', () => {
+  it('signs nothing with QUADRION_NO_SIGNING=1, whatever secrets exist', () => {
     const env = {
-      STRATLAS_NO_SIGNING: '1',
+      QUADRION_NO_SIGNING: '1',
       WIN_CSC_LINK: 'pfx',
       CSC_LINK: 'p12',
       APPLE_ID: 'dev@example.com',
@@ -171,6 +205,11 @@ describe('effectiveConfig', () => {
     expect(summary.win).toBe('unsigned');
     expect(summary.mac).toBe('ad-hoc');
     expect(config.win).toEqual({});
+  });
+
+  it('still honours the legacy STRATLAS_NO_SIGNING=1', () => {
+    const { summary } = effectiveConfig({ STRATLAS_NO_SIGNING: '1', WIN_CSC_LINK: 'pfx' });
+    expect(summary.win).toBe('unsigned');
   });
 
   it('reports WIN_PUBLISHER_NAME as the publisher to check', () => {

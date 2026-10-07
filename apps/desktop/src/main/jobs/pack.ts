@@ -65,8 +65,8 @@ async function readPack(
 }
 
 /**
- * Find the pipeline pack: `STRATLAS_PIPELINE_PYTHON` (a development interpreter, e.g. the uv
- * venv in python/.venv), then `STRATLAS_PIPELINE_PACK` (one pack folder), then the newest valid
+ * Find the pipeline pack: `QUADRION_PIPELINE_PYTHON` (a development interpreter, e.g. the uv
+ * venv in python/.venv), then `QUADRION_PIPELINE_PACK` (one pack folder), then the newest valid
  * `<data folder>/runtime/pipeline-pack-<version>/`. The pack lives outside the installer and the
  * repository; it is built by tools/pipeline-pack/build.mjs.
  */
@@ -76,7 +76,7 @@ export async function findPack(o: {
   /** This app: packs declaring an `appRange` without it are refused with a clear message. */
   app?: PackApp;
 }): Promise<{ pack: PackInfo | null; runtime: RuntimeInfo }> {
-  const devPython = o.env.STRATLAS_PIPELINE_PYTHON;
+  const devPython = o.env.QUADRION_PIPELINE_PYTHON;
   if (devPython) {
     if (await exists(devPython)) {
       const pack = { dir: dirname(devPython), version: 'dev', python: devPython };
@@ -86,11 +86,11 @@ export async function findPack(o: {
       pack: null,
       runtime: {
         found: false,
-        problem: `STRATLAS_PIPELINE_PYTHON points at ${devPython}, which does not exist.`,
+        problem: `QUADRION_PIPELINE_PYTHON points at ${devPython}, which does not exist.`,
       },
     };
   }
-  const single = o.env.STRATLAS_PIPELINE_PACK;
+  const single = o.env.QUADRION_PIPELINE_PACK;
   if (single) {
     const pack = await readPack(single, o.app);
     if (pack && 'refused' in pack) {

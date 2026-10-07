@@ -14,6 +14,7 @@ import {
 import { FocusZone } from '../FocusZone';
 import { SameViewButton } from './FramesPane';
 import { shell } from '../shell';
+import { DateBadge } from './DatesOnScreen';
 import { stagePrefs, useStagePrefs } from './stagePrefs';
 import {
   clampVideoRect,
@@ -173,6 +174,7 @@ export function FloatingVideo({ layerId, docked, stageRef }: Props) {
         >
           <Icon name="video" size={14} className="muted" />
           <b>{layer.name}</b>
+          <DateBadge layerId={layer.id} />
           <span className="mono">{meta}</span>
           <div className="acts">
             <SameViewButton source={{ kind: 'video', layer: layerId }} />

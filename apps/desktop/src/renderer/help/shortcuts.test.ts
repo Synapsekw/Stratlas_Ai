@@ -2,7 +2,7 @@
  * The guide's keyboard chapter (Settings, Keyboard shortcuts) is the shortcut registry
  * (packages/ui/src/shortcuts.ts) written out: same scopes, keys and words as Settings, Keyboard.
  * After changing the registry, regenerate it with
- *   STRATLAS_UPDATE_GUIDE_SHORTCUTS=1 pnpm vitest run apps/desktop/src/renderer/help/shortcuts.test.ts
+ *   QUADRION_UPDATE_GUIDE_SHORTCUTS=1 pnpm vitest run apps/desktop/src/renderer/help/shortcuts.test.ts
  * then `pnpm prettier --write docs/guide/12-settings.md`.
  */
 import { keyLabel, SHORTCUT_SCOPES, SHORTCUTS, t } from '@aio/ui';
@@ -61,7 +61,7 @@ describe('guide keyboard chapter', () => {
     const md = readFileSync(file, 'utf8');
     const { start, end } = section(md);
     const want = shortcutsSection();
-    if (process.env.STRATLAS_UPDATE_GUIDE_SHORTCUTS === '1') {
+    if (process.env.QUADRION_UPDATE_GUIDE_SHORTCUTS === '1') {
       const tail = md.slice(end);
       writeFileSync(file, md.slice(0, start) + want + (tail ? `\n${tail}` : ''));
       return;

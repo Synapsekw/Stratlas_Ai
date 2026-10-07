@@ -252,6 +252,10 @@ export function createPhotosAdapter(
       planes.instanceMatrix.needsUpdate = true;
       planes.computeBoundingSphere();
       planes.renderOrder = 4;
+      planes.name = 'photo-planes';
+      // which photo an instance is (right-click menus)
+      planes.userData.photoIds = photos.map((p) => p.id);
+      group.userData.photosLayer = layer.id;
       group.add(ghost, lines, planes);
 
       // markers: one icon per place (photos taken within STATION_M of each other), merged further
@@ -307,6 +311,12 @@ export function createPhotosAdapter(
         open: select,
         selected: () => selectedIds,
       });
+
+      // the photos under a pointer on a marker (right-click menus): a merged marker lists them all
+      group.userData.photoIdsAt = (x: number, y: number): string[] | null =>
+        group.visible
+          ? (markers.membersAt(x, y)?.flatMap((i) => (located[i] ? [located[i].id] : [])) ?? null)
+          : null;
 
       // selection highlight
       let selected = -1;

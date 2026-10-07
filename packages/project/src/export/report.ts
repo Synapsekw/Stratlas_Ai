@@ -45,7 +45,7 @@ export interface ReportRow {
 }
 
 /**
- * Branding of a report Stratlas generates. It comes from the person's own Settings (Report
+ * Branding of a report the app generates. It comes from the person's own Settings (Report
  * branding), never from the project: an imported kit's client brand (`manifest.brand`, the
  * customer) is not a brand the report may carry.
  */
@@ -56,7 +56,7 @@ export interface ReportBranding {
   logo: string | null;
   /** Accent colour `#rrggbb`, or null for the house accent. */
   accent: string | null;
-  /** Small credit in the footer of a neutral report ("Made with Stratlas"), else null. */
+  /** Small credit in the footer of a neutral report ("Made with Quadrion AI"), else null. */
   credit: string | null;
 }
 

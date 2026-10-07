@@ -1,18 +1,18 @@
 # Upgrade and compatibility policy (1.x)
 
-How Stratlas 1.x treats files written by older and newer versions, and how it proves it. Owned by stream T8. The code is `packages/schema/src/versions.ts`; the proof is `tools/compat/`.
+How Quadrion AI 1.x treats files written by older and newer versions, and how it proves it. Owned by stream T8. The code is `packages/schema/src/versions.ts`; the proof is `tools/compat/`.
 
 ## The rules
 
 1. **Every `/1` file stays readable by every 1.x build.** All file schemas are at version 1 in 1.0 (the registry lists 49 families). A file written by 0.4 or later opens in 1.0 with nothing lost.
 2. **New data goes into new files, never into existing records** (M9 global constraint). Fields are only ever added as optional, and never inside `Issue`, `ChangeReview`, `Detection`, `BoundaryEdit`, `ProcPart` or `NarrativeFile`, so an older build keeps reading what a newer one writes.
-3. **A file from a newer build is refused, never rewritten.** The message names the file and says what to do: "issues.json was saved by a newer version of Stratlas (aio.issues/2). Update the app to open it. The file was not changed."
+3. **A file from a newer build is refused, never rewritten.** The message names the file and says what to do: "issues.json was saved by a newer version of Quadrion AI (aio.issues/2). Update the app to open it. The file was not changed."
 4. **A future `/2` comes with**:
    - a migrator in `MIGRATIONS` (`versions.ts`), one step per version, pure and tested on the corpus;
    - a one-time **Upgrade project** that keeps a backup of every file it converts (`<file>.v1.bak`);
    - a warning before the upgrade that builds older than the new version can no longer open the project.
 5. **Downgrade within 1.x and to 0.8** (rollback, or a second installed copy) keeps working for project data. Settings keep everything the older build knows; settings it does not know are dropped by that build when it saves.
-6. **The pipeline pack declares the app versions it works with** (`appRange`, `>=0.9.0 <2.0.0` for pack 1.0.0). The app refuses a pack outside the range with "This pipeline pack works with Stratlas >=0.9.0 <2.0.0, and this is 0.8.0. Install the pipeline pack made for this version." A pack without a range (0.3 and older) is accepted as before.
+6. **The pipeline pack declares the app versions it works with** (`appRange`, `>=0.9.0 <2.0.0` for pack 1.0.0). The app refuses a pack outside the range with "This pipeline pack works with Quadrion AI >=0.9.0 <2.0.0, and this is 0.8.0. Install the pipeline pack made for this version." A pack without a range (0.3 and older) is accepted as before.
 
 ## The reader
 
@@ -40,6 +40,7 @@ An audit of every reader (7 Oct 2026) found that only the manifest, the package 
 | `report/narrative.json`                    | `main/narrative.ts`, `NarrativeEditor.tsx`         | refused with the update message                             | No (fixed in M9)   |
 | `detections/*.json`                        | `main/detections.ts`, `main/inference/electron.ts` | refused with the update message                             | No (fixed in M9)   |
 | `updates/journal.json` (userData)          | `main/update/rollback.ts`                          | refused with the update message                             | No (fixed in M9)   |
+| `launch.json` (userData)                   | `main/launchSettings.ts`                           | shown (defaults); a change gets the update message          | No                 |
 | `library.json` (userData, `aio.library/1`) | `main/library.ts`                                  | refused with the update message; a file without an id is /1 | No (fixed in M9)   |
 | `issues.json`                              | `main/project.ts`                                  | project does not open; message says "invalid"               | No                 |
 | `volumes.json`, `edits/boundaries.json`    | `main/boundaries.ts`                               | error                                                       | No in practice     |

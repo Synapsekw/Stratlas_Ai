@@ -1,4 +1,4 @@
-# Testing Stratlas
+# Testing Quadrion AI
 
 Only what still needs testing. Each stage lists what to click and what you should see, and each line describes current behaviour. Stages you pass are removed; new stages are added when they are built. Things that work differently on purpose are in [KNOWN-LIMITS.md](KNOWN-LIMITS.md).
 
@@ -6,9 +6,10 @@ Only what still needs testing. Each stage lists what to click and what you shoul
 
 ### Install
 
-- Close Stratlas first. The installer refuses while it runs: "Stratlas is running. Close it and click Retry."
-- Run `E:\Dev\AIO Software\apps\desktop\dist\Stratlas-0.9.0-win-x64-setup.exe` and install over the previous version.
-- No install: `Stratlas-0.9.0-win-x64-portable.exe` in the same folder.
+- The product is **Quadrion AI** (it was called Stratlas until 7 Oct 2026; older stages below keep the old name).
+- Close the app first. The installer refuses while it (or an old Stratlas.exe) runs: "Quadrion AI is running. Close it and click Retry."
+- Run `E:\Dev\AIO Software\apps\desktop\dist\QuadrionAI-0.9.0-win-x64-setup.exe` and install over the previous version (also over a Stratlas install).
+- No install: `QuadrionAI-0.9.0-win-x64-portable.exe` in the same folder.
 - 0.9.0 contains every earlier fix, so all stages below are tested on it too.
 - The build is unsigned. SmartScreen shows "Windows protected your PC": choose **More info**, then **Run anyway**.
 
@@ -39,6 +40,8 @@ Only what still needs testing. Each stage lists what to click and what you shoul
 | M7    | Signed builds and updates only (the rest of M7 passed on 6 Oct 2026)                                                                                                                                             | Needs the signing secrets in GitHub and a second version                                                                      | Waiting for signing                                  |
 | M8    | Change and modelling: changes between survey dates, imagery, surface, cloud and model change, same view on the other date, model builder, local detection, offline agent                                         | Version 0.8.0, built 7 Oct 2026 from main at commit `7faf945`, and pipeline pack 0.3.0 (see M8, Before you start)             | Built; not yet tested by the founder                 |
 | M9    | Team and audit: identity and roles, exchange files, shared folder, conflicts, review workflow, history and audit trail, large files on demand, team server (preview)                                             | Version 0.9.0, built 7 Oct 2026, 11:17, from main at commit `6300be4` or later                                                | Built; not yet tested by the founder                 |
+| R     | The rename to Quadrion AI: name, icon, title bar, installer, settings carried over from Stratlas                                                                                                                 | The installer built from the rename branch (QuadrionAI-0.9.0-win-x64-setup.exe)                                               | Built; not yet tested by the founder                 |
+| L     | The launch screen: welcome with your name, Enter, Esc, the Settings switch                                                                                                                                       | An installer built from the launch-screen branch (after the rename), or later                                                 | Built; not yet tested by the founder                 |
 
 ## Stage M5: your M4 feedback, fixed
 
@@ -398,11 +401,11 @@ Install Ollama (or LM Studio) yourself and pull a model that supports tool calli
 
 M9 adds a signed history of every change, identities and roles, a review workflow, and sharing between copies by exchange files, a shared folder, or a team server (preview). A project you never share works exactly as before.
 
-**Two people on one PC.** Most steps need two people. Run a second copy as "Omar" with `Stratlas.exe --profile=reviewer-b`, started from the install folder (`%LOCALAPPDATA%\Programs\Stratlas`) in a terminal. Each copy needs its own copy of the project: copy the demo tank farm folder to two places, for example `E:\Team test\rana` and `E:\Team test\omar`. **Use the demo or a copy, never your client projects.**
+**Two people on one PC.** Most steps need two people. Run a second copy as "Omar" with `QuadrionAI.exe --profile=reviewer-b`, started from the install folder (`%LOCALAPPDATA%\Programs\Quadrion AI`) in a terminal. Each copy needs its own copy of the project: copy the demo tank farm folder to two places, for example `E:\Team test\rana` and `E:\Team test\omar`. **Use the demo or a copy, never your client projects.**
 
 ### Before you start
 
-- [ ] Install `Stratlas-0.9.0-win-x64-setup.exe`. **Settings, About and updates** shows version 0.9.0.
+- [ ] Install `QuadrionAI-0.9.0-win-x64-setup.exe`. **Settings, About and updates** shows version 0.9.0.
 - [ ] Open one of your own projects (not shared): it looks and works as before, with **Share** in the title bar and no new cards.
 
 ### Identity and team
@@ -413,7 +416,7 @@ M9 adds a signed history of every change, identities and roles, a review workflo
 - [ ] In your copy, open your test project, click **Share** in the title bar, choose **Exchange files**, **Share**: Share adds you as Owner.
 - [ ] **Settings, Identity and team**, **Add from card**, pick Omar's card: a panel "Omar Sample OS", **Add as** Reviewer, **Certify this card** ticked. Click **Add Omar Sample**: the members table shows you as Owner (you) and Omar as Reviewer, "Certified by you". Members also show in the Team dialog (title bar chip).
 - [ ] Change Omar's role to **Viewer**, then back to **Reviewer**. There is no role select on your own row.
-- [ ] Windows **Credential Manager**, Generic credentials: one Stratlas entry with `device-signing` per profile. **Export diagnostics**: the bundle has no key.
+- [ ] Windows **Credential Manager**, Generic credentials: one `ai.synapse-solutions.stratlas` entry with `device-signing` per profile (the app id kept its old name on purpose). **Export diagnostics**: the bundle has no key.
 
 ### Exchange files (USB or email)
 
@@ -421,7 +424,7 @@ M9 adds a signed history of every change, identities and roles, a review workflo
 - [ ] In Omar's copy, **Share**, **Import exchange file**, **Choose file**: From "<your name> (DR)", "Signed by their device", the new changes listed, and "Applying it makes this project part of the team project…". **Apply**: "Applied … changes", F01's new title in Issues.
 - [ ] Import the same file again: "Already applied. Nothing in this file is new." and **Apply** greyed out.
 - [ ] Export again with **Encrypt with a passphrase** (at least 8 characters, twice). In Omar's copy, import it: you are asked for the passphrase; a wrong one says "The passphrase does not open this exchange file."
-- [ ] Double-click an `.aiosync` file in Explorer: Stratlas opens its import dialog.
+- [ ] Double-click an `.aiosync` file in Explorer: Quadrion AI opens its import dialog.
 
 ### Shared folder
 
@@ -429,7 +432,7 @@ M9 adds a signed history of every change, identities and roles, a review workflo
 - [ ] In Omar's copy, **Share**, **Shared folder**, the same path, then choose the **Team project in this folder**: it joins with no exchange file.
 - [ ] Change F02's severity in your copy, **Sync now**: "Synced: 0 received, 1 sent." In Omar's copy, **Sync now**: "1 received" and F02's new severity.
 - [ ] Rename the hub folder away. Edit an issue, **Sync now**: the chip turns amber, "The shared folder cannot be reached…", "1 to send", and your work is kept. Rename it back, **Sync now**: the change is sent.
-- [ ] Watch Resource Monitor (Network) during a sync: no network connections from Stratlas.
+- [ ] Watch Resource Monitor (Network) during a sync: no network connections from Quadrion AI.
 - [ ] **Stop syncing this copy**: the chip goes back to **Share**; your data and history stay.
 
 ### Conflicts
@@ -459,7 +462,7 @@ M9 adds a signed history of every change, identities and roles, a review workflo
 - [ ] **Reports, Open audit trail** (or the project menu in the sidebar): filter by person and by F01. **Verify**: "The history is intact. Every entry is signed."
 - [ ] **Export audit (CSV)** and open it in Excel: names and any Arabic text intact.
 - [ ] In the test copy, open `journal\ops\<folder>\000001.jsonl` in Notepad, change one letter, save. **Verify**: it names the file and line that was edited, and the project still opens and edits.
-- [ ] With the app closed, change a severity in the copy's `issues.json` in Notepad, then reopen: History shows "Changed outside Stratlas".
+- [ ] With the app closed, change a severity in the copy's `issues.json` in Notepad, then reopen: History shows "Changed outside Quadrion AI".
 - [ ] Export the project report PDF: every page footer reads "Audit head <16 characters>, N entries, verified", and an **Audit trail** section lists the changes.
 
 ### Large files on demand
@@ -474,8 +477,8 @@ M9 adds a signed history of every change, identities and roles, a review workflo
 ### Older and newer versions
 
 - [ ] Open a test copy edited in 0.9 with 0.8.0: it opens, with the 0.9 edits.
-- [ ] In a test copy, change `"schema": "aio.project/1"` in `manifest.json` to `aio.project/2` and open it: "Project was saved by a newer Stratlas ... Update the app to open it.", and the file is unchanged.
-- [ ] Switch between projects twenty or thirty times, then open **Task Manager**: Stratlas's memory stays about level (it no longer grows by several MB with every switch).
+- [ ] In a test copy, change `"schema": "aio.project/1"` in `manifest.json` to `aio.project/2` and open it: "Project was saved by a newer version of Quadrion AI ... Update the app to open it.", and the file is unchanged.
+- [ ] Switch between projects twenty or thirty times, then open **Task Manager**: Quadrion AI's memory stays about level (it no longer grows by several MB with every switch).
 
 ### Team server (preview, optional, needs Docker)
 
@@ -485,4 +488,66 @@ Follow `docs/server/README.md` on a Linux machine or Docker Desktop. Then:
 - [ ] Enter `https://<host>:8443` and the owner invite code, **Connect**: **Check the certificate** shows the fingerprint in groups of four. It matches the server's; **They match, connect**: "Connected to ...", "Enrolled as owner".
 - [ ] Reusing the same code says "This invite code is not valid. It may be mistyped, used or expired."
 - [ ] **Share** offers **Team server** once enrolled. Omar enrols with a reviewer code and sees the project after sync. A viewer's edits are refused.
-- [ ] Stop the server: Stratlas keeps working, and sync says "The team server cannot be reached…".
+- [ ] Stop the server: Quadrion AI keeps working, and sync says "The team server cannot be reached…".
+
+## Stage R: the rename to Quadrion AI
+
+The product name, icon and logo changed; nothing else. Use the installer built from the rename branch (`QuadrionAI-0.9.0-win-x64-setup.exe`).
+
+- [ ] With Stratlas 0.9.0 installed and its settings set up (a data folder, your name, a cloud AI key, a theme), run the new installer. It replaces Stratlas: one entry in **Apps** ("Quadrion AI"), the Start menu and desktop shortcut say "Quadrion AI", the install folder is `%LOCALAPPDATA%\Programs\Quadrion AI` and `Programs\Stratlas` is gone.
+- [ ] Start it: the title bar shows the new mark (four plates, the top one mint) and the outlined QUADRION AI wordmark; the taskbar and window icon are the new icon.
+- [ ] Your settings, library, name, identity and AI keys are all there. `%APPDATA%\Quadrion AI` holds `migrated-from-stratlas.json`; `%APPDATA%\Stratlas` is still there, unchanged.
+- [ ] **Settings, About and updates**: the lockup, "Four dimensions. One view.", "Quadrion AI 0.9.0".
+- [ ] **Help, User guide**: the install chapter names `QuadrionAI-<version>-win-x64-setup.exe`.
+- [ ] A generated issue register without branding says "Made with Quadrion AI".
+- [ ] Your data folder is still `E:\Stratlas Data`.
+
+## Stage Timeline T1: survey dates
+
+Survey dates become folders in the sidebar, with a date bar and calendar above the views.
+
+### Before you start
+
+- Open a real project with at least two survey dates (Masafi has several). The automated tests use a project called **E2E three dates**, which only exists inside the tests.
+
+### Date folders
+
+- [ ] **Datasets** shows **Every date** first (if the project has undated layers), then one folder per date, newest first: the newest is highlighted and open, the others closed.
+- [ ] Click an older date's **name**: it opens and highlights, the others close, and the views show that date's data.
+- [ ] Click only the **arrow** of a third date: it opens without switching. Switch one of its layers on: the folder shows "1 on" when closed.
+- [ ] Switch dates again: the layer from the third date stays on.
+- [ ] Hide one layer of the viewed date, switch away and back: it is still hidden.
+- [ ] A project with a single survey date still shows its date folder and the date bar (without arrows). A project with no survey dates shows the old list grouped by type and no date bar.
+
+### Date bar and calendar
+
+- [ ] The bar shows the viewed date, its colour and "n of N surveys". The arrows step through dates; they are absent on a one-date project.
+- [ ] **Alt+Left** / **Alt+Right** step dates on the workspace screen; typing in a comment box does not.
+- [ ] Click the date: the calendar opens on that month, survey days are coloured, other days are shown but can't be selected, the month arrows and **Page Up** / **Page Down** skip months without a survey, the arrow keys move day by day, **Enter** picks the day, and **Escape** closes it and returns focus to the bar.
+- [ ] Ctrl+K, type "survey": **Go to previous survey**, **Go to next survey** and one "Go to survey ..." command per date are listed. Picking one jumps to that date.
+
+### Viewers
+
+- [ ] With two dates' models on, a chip at the top of the 3D view (and the map) lists both dates in their colours. It is hidden while the split view is open.
+- [ ] The floating video, the split video and photo pane headers and the split pane date pickers show the clip's or set's date.
+- [ ] The panorama overlay shows the survey date as YYYY-MM-DD.
+- [ ] Playing a clip from the viewed date, switch dates: the matching clip of the new date plays.
+- [ ] Open the compare split: the first date is on the left and the last on the right. Step the date bar: the left side follows it, the right side keeps its own date.
+- [ ] In stockpile projects (Masafi) the Volumes date buttons and the date bar move together: pick a date in either, step away and back, and that survey's terrain still shows.
+- [ ] Close and reopen the project: the same date is viewed, with the same layers on.
+
+## Stage L: the launch screen
+
+Each start now shows a short launch screen before your projects (the design you approved on 7 Oct 2026, Split layout). Use an installer built from the launch-screen branch.
+
+- [ ] Start the app: no white flash; the launch screen fills the window. Top left, the date and a running clock. Top right, **Skip intro** while the intro plays.
+- [ ] The intro takes about a second: the four plates drop in, the top one turns mint, QUADRION AI appears behind a scan line, then "Four dimensions. One view.", then the welcome comes into focus.
+- [ ] Left: the mark beside the QUADRION AI wordmark (never above it), the tagline under the wordmark. A thin line, then on the right "WELCOME BACK,", your name (the one in **Settings**, **Identity and team**), your company from **Settings**, **Report branding** (if set) and "this computer", the mint **Enter** button with ↵, and "Offline · stays on this machine" ("cloud AI on" when cloud AI is on).
+- [ ] Move the mouse: the points under it light up mint, and the plates lean toward the pointer, the top one most. Leave the mouse still for 4 seconds: everything drifts back to the centre.
+- [ ] Press **Enter** at once, during the intro: the launch screen fades back and **Projects** is there straight away. The app shortcuts (**Ctrl K**) work right after.
+- [ ] Start again and press **Esc**: the intro jumps to its end. Click **Enter** with the mouse: same as the key.
+- [ ] Start again and press **Tab**: a focus ring on **Enter** (none before you press Tab).
+- [ ] Zoom in (**Ctrl +** a few times) until the window is narrow: the welcome moves under the logo, centred; the mark stays beside the wordmark. **Ctrl 0** resets.
+- [ ] **Settings**, **Appearance**, switch off **Show launch screen**, then restart: the app opens straight on **Projects**. Switch it back on: the next start shows it again.
+- [ ] Windows **Settings**, **Accessibility**, **Visual effects**, **Animation effects** off (or **Settings**, **Appearance**, **Reduce motion** in the app), restart: the launch screen appears at once and stays still.
+- [ ] Minimise the window while the launch screen shows: Task Manager shows Quadrion AI using next to no CPU.

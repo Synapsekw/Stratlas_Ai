@@ -21,7 +21,7 @@ import { createJournalService, type JournalService } from './journal';
 import type { KeyEntry } from './keys';
 import { createTestVault, TEST_VAULT_FILE, useTestVault } from './testVault';
 
-const APP = { name: 'Stratlas', version: '0.9.0' };
+const APP = { name: 'Quadrion AI', version: '0.9.0' };
 
 let dir: string;
 beforeEach(async () => {
@@ -125,9 +125,9 @@ describe('one device key per profile (M9 integration)', () => {
   });
 
   it('the TEST-ONLY vault of automated runs stays in the throwaway userData', () => {
-    expect(useTestVault({ STRATLAS_TEST_VAULT: '1', STRATLAS_USER_DATA: dir })).toBe(true);
-    expect(useTestVault({ STRATLAS_TEST_VAULT: '1' })).toBe(false);
-    expect(useTestVault({ STRATLAS_USER_DATA: dir })).toBe(false);
+    expect(useTestVault({ QUADRION_TEST_VAULT: '1', QUADRION_USER_DATA: dir })).toBe(true);
+    expect(useTestVault({ QUADRION_TEST_VAULT: '1' })).toBe(false);
+    expect(useTestVault({ QUADRION_USER_DATA: dir })).toBe(false);
     const entry = createTestVault(dir);
     const keys = createDeviceKeys('svc', entry);
     const first = keys.get();

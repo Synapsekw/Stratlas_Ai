@@ -141,7 +141,7 @@ describe('detection passes (detections/*.json)', () => {
     const file = join(base, 'detections', 'newer.json');
     await writeFile(file, newer);
     const message =
-      'detections/newer.json was saved by a newer version of Stratlas (aio.detections/2). Update the app to open it. The file was not changed.';
+      'detections/newer.json was saved by a newer version of Quadrion AI (aio.detections/2). Update the app to open it. The file was not changed.';
     const r = await readDetectionPasses(folderFiles(base), manifest, false);
     if (!r.ok) throw new Error(r.error);
     // the current pass still reads

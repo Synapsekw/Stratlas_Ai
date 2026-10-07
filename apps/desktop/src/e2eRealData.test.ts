@@ -18,9 +18,12 @@ const files = readdirSync(E2E)
 
 /** A drive-root `Stratlas Data` path, as written in source (`E:\\Stratlas Data`, `E:/Stratlas Data`). */
 const LITERAL_ROOT = /[A-Za-z]:[\\/]+Stratlas Data/;
-/** The real data root by environment, or the per-spec variables it replaced. */
+/**
+ * The real data root by environment, or the per-spec variables it replaced, under the current
+ * QUADRION_ prefix or the legacy STRATLAS_ one.
+ */
 const ROOT_ENV =
-  /process\.env\.(STRATLAS_REAL_DATA_ROOT|STRATLAS_DATA|STRATLAS_DATA_ROOT|STRATLAS_REAL_DATA|STRATLAS_(HCL|EBSM|MASAFI|RINGROAD|COMPARE|PROJECTS|A1)_DATA|STRATLAS_HCL)\b/;
+  /process\.env\.(QUADRION|STRATLAS)_(REAL_DATA_ROOT|DATA|DATA_ROOT|REAL_DATA|(HCL|EBSM|MASAFI|RINGROAD|COMPARE|PROJECTS|A1)_DATA|HCL)\b/;
 /** A spec reaching real projects through the gate. */
 const USES_REAL_PROJECTS =
   /\b(copyRealProjects|realProject|realDataTest|realProjectDir|hasRealProject|missingRealProject)\b|\b(copyRealData|hasRealData|realDataPath)\(\s*\[?\s*'projects'/;
@@ -57,8 +60,8 @@ describe('e2e specs reach the real data only through realData.ts', () => {
       for (const m of launches) {
         // the launch options: up to the call's closing `});`
         const call = f.text.slice(m.index, f.text.indexOf('});', m.index) + 3);
-        if (!/STRATLAS_DATA\b/.test(call))
-          offenders.push(`${f.name}: electron.launch without its own STRATLAS_DATA`);
+        if (!/(QUADRION|STRATLAS)_DATA\b/.test(call))
+          offenders.push(`${f.name}: electron.launch without its own QUADRION_DATA`);
       }
     }
     expect(offenders).toEqual([]);
@@ -78,12 +81,13 @@ describe('e2e specs reach the real data only through realData.ts', () => {
 
   it('catches the patterns it is meant to', () => {
     expect(LITERAL_ROOT.test(`const DATA = 'E:\\\\Stratlas Data';`)).toBe(true);
-    expect(LITERAL_ROOT.test(`STRATLAS_DATA: 'E:/Stratlas Data',`)).toBe(true);
+    expect(LITERAL_ROOT.test(`QUADRION_DATA: 'E:/Stratlas Data',`)).toBe(true);
     expect(LITERAL_ROOT.test(`join(dir, 'Stratlas Data')`)).toBe(false);
     expect(LITERAL_ROOT.test(`'C:\\\\Users\\\\you\\\\Documents\\\\Stratlas Data'`)).toBe(false);
-    expect(ROOT_ENV.test('process.env.STRATLAS_HCL_DATA ?? x')).toBe(true);
-    expect(ROOT_ENV.test('process.env.STRATLAS_DATA ?? x')).toBe(true);
-    expect(ROOT_ENV.test('process.env.STRATLAS_SHOTS')).toBe(false);
+    expect(ROOT_ENV.test('process.env.QUADRION_HCL_DATA ?? x')).toBe(true);
+    expect(ROOT_ENV.test('process.env.QUADRION_DATA ?? x')).toBe(true);
+    expect(ROOT_ENV.test('process.env.STRATLAS_REAL_DATA_ROOT')).toBe(true);
+    expect(ROOT_ENV.test('process.env.QUADRION_SHOTS')).toBe(false);
     expect(USES_REAL_PROJECTS.test(`copyRealData(['projects', 'hcl', d], x)`)).toBe(true);
     expect(USES_REAL_PROJECTS.test(`copyRealData(['packs', f], x)`)).toBe(false);
   });
@@ -108,8 +112,8 @@ describe('copyRealProjects on a fake real data root', () => {
     await writeFile(join(p, 'edits', 'boundaries.json'), '{}');
     await writeFile(join(real, 'packs', 'kuwait.pmtiles'), Buffer.alloc(10, 1));
     await writeFile(join(real, 'packs', 'kuwait.json'), '{}');
-    vi.stubEnv('STRATLAS_REAL_DATA_ROOT', real);
-    vi.stubEnv('STRATLAS_E2E_COPY_DIR', base);
+    vi.stubEnv('QUADRION_REAL_DATA_ROOT', real);
+    vi.stubEnv('QUADRION_E2E_COPY_DIR', base);
     vi.resetModules();
     gate = await import('../e2e/realData');
   });
@@ -119,7 +123,7 @@ describe('copyRealProjects on a fake real data root', () => {
     await rm(base, { recursive: true, force: true });
   });
 
-  it('reads the root from STRATLAS_REAL_DATA_ROOT', () => {
+  it('reads the root from QUADRION_REAL_DATA_ROOT', () => {
     expect(gate.REAL_DATA_ROOT).toBe(real);
     expect(gate.hasRealProject('site')).toBe(true);
     expect(gate.hasRealProject('other')).toBe(false);

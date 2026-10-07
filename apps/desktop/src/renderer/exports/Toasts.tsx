@@ -1,5 +1,7 @@
 import { Icon } from '@aio/ui';
 import { useStore } from 'zustand';
+import { AlignNotice } from '../builder/AlignNotice';
+import { PhotoAlignNotice } from '../builder/PhotoAlignNotice';
 import { DiskChangedNotice } from '../DiskChangedNotice';
 import { GraphicsNotice } from '../GraphicsNotice';
 import { SyncNotices } from '../team/SyncNotices';
@@ -16,6 +18,8 @@ export function Toasts() {
       <GraphicsNotice />
       <DiskChangedNotice />
       <SyncNotices />
+      <AlignNotice />
+      <PhotoAlignNotice />
       {list.map((t) => {
         const pct = t.total > 0 ? Math.round((t.done / t.total) * 100) : null;
         return (

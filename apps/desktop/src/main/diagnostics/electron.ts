@@ -222,7 +222,7 @@ export function registerDiagnosticsIpc(o: DiagnosticsIpcOptions): void {
       title: req.problem ? 'Save the problem report' : 'Export diagnostics',
       defaultPath: join(
         app.getPath('downloads'),
-        `${brand.productName}-${req.problem ? 'problem' : 'diagnostics'}-${day}.zip`,
+        `${brand.executableName}-${req.problem ? 'problem' : 'diagnostics'}-${day}.zip`,
       ),
       filters: [{ name: 'Zip archive', extensions: ['zip'] }],
     };

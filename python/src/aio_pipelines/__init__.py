@@ -1,4 +1,4 @@
-"""Stratlas pipeline pack.
+"""Quadrion AI pipeline pack.
 
 The desktop app spawns ``python -m aio_pipelines`` and talks JSON-RPC 2.0 over stdio, one JSON
 object per line. Bulk data never crosses the pipe: pipelines read and write files in the project

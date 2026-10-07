@@ -130,7 +130,9 @@ export function parsePackageHeader(json: unknown): Result<PackageHeader> {
     version !== PACKAGE_SCHEMA &&
     version.startsWith('aio.package/')
   ) {
-    return err(`Package was written by a newer Stratlas (${version}). Update the app to open it.`);
+    return err(
+      `Package was written by a newer version of Quadrion AI (${version}). Update the app to open it.`,
+    );
   }
   const r = PackageHeader.safeParse(json);
   if (r.success) return ok(r.data);

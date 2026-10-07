@@ -46,6 +46,7 @@ Integrated graphics get **Low**; laptop graphics one step lower than the desktop
 
 - **Theme**: **Dark** (the working theme), **Light** (bright rooms, printouts) or **System**.
 - **Layout direction**: **Left to right** or **Right to left**. Right to left mirrors the panels; maps, timelines and the 3D view keep their orientation.
+- **Launch screen**: **Show launch screen** is on by default. Switch it off to go straight to your projects when {product} starts. See [First start](01-install.md#first-start).
 - **Language**: English.
 
 ## About and updates
@@ -68,6 +69,8 @@ The same list is in **Settings**, **Keyboard**. On a Mac, Ctrl is ⌘ (Command) 
 | Ctrl B     | Collapse or expand the sidebar           |
 | Ctrl Alt B | Collapse or expand the right panel       |
 | Space      | Play or pause the video and the timeline |
+| Alt ←      | Go to the previous survey date           |
+| Alt →      | Go to the next survey date               |
 | F1         | Open or close the user guide             |
 
 ### Scene: 3D, map and split

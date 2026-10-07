@@ -133,7 +133,7 @@ export async function time(fn) {
 
 /**
  * Register the journal budget tests for `bench` (vitest's describe, it and expect). Timing
- * assertions run when `enforce` is true (STRATLAS_BUDGETS=1, nightly and the performance pass);
+ * assertions run when `enforce` is true (QUADRION_BUDGETS=1, nightly and the performance pass);
  * otherwise each check runs once at a small size, so the plumbing stays tested on every merge.
  */
 export function journalBudgetTests({ describe, it, expect }, bench, o) {

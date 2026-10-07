@@ -1,7 +1,7 @@
 /**
  * The app's real-data guard (src/main/realDataGuard.ts) in the built app: started by a test
- * (STRATLAS_E2E=1), it refuses every write under the real data root. Here the "real root" is the
- * test's own temporary data root (STRATLAS_REAL_DATA_ROOT for the app only), so saving an issue
+ * (QUADRION_E2E=1), it refuses every write under the real data root. Here the "real root" is the
+ * test's own temporary data root (QUADRION_REAL_DATA_ROOT for the app only), so saving an issue
  * into the synthetic project must fail loudly and leave issues.json as it was. Synthetic data: runs
  * everywhere, CI included.
  */
@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { expect, launchApp, NetworkGuard, realDataRefusals, test } from './fixtures';
 
 test('the app refuses to write into the real data root and says so', async ({ dataRoot }) => {
-  const app = await launchApp(dataRoot, { STRATLAS_REAL_DATA_ROOT: dataRoot.root });
+  const app = await launchApp(dataRoot, { QUADRION_REAL_DATA_ROOT: dataRoot.root });
   const network = new NetworkGuard();
   await network.attach(app);
   const issuesFile = join(dataRoot.projectDir, 'issues.json');

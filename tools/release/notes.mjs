@@ -76,7 +76,7 @@ export function groupCommits(commits) {
 export function renderNotes({
   version,
   date,
-  productName = 'Stratlas',
+  productName = 'Quadrion AI',
   commits,
   limit = GROUP_LIMIT,
 }) {
@@ -128,6 +128,15 @@ export function readCommits(from, to = 'HEAD', cwd = root) {
 }
 
 /** Version of the desktop app (apps/desktop/package.json). */
+/** The product name from packages/brand/brand.json under `cwd`. */
+function productNameAt(cwd) {
+  try {
+    return JSON.parse(readFileSync(join(cwd, 'packages/brand/brand.json'), 'utf8')).productName;
+  } catch {
+    return 'Quadrion AI';
+  }
+}
+
 export function appVersion(cwd = root) {
   return JSON.parse(readFileSync(join(cwd, 'apps/desktop/package.json'), 'utf8')).version;
 }
@@ -149,15 +158,14 @@ export function releaseNotes(o = {}) {
     return {
       version,
       from,
-      markdown: `# Stratlas ${version}\n\nRelease notes are not available in this build.\n`,
+      markdown: `# ${productNameAt(cwd)} ${version}\n\nRelease notes are not available in this build.\n`,
     };
   }
-  const brand = JSON.parse(readFileSync(join(cwd, 'packages/brand/brand.json'), 'utf8'));
   const date = o.date ?? new Date().toISOString().slice(0, 10);
   return {
     version,
     from,
-    markdown: renderNotes({ version, date, productName: brand.productName, commits }),
+    markdown: renderNotes({ version, date, productName: productNameAt(cwd), commits }),
   };
 }
 

@@ -11,7 +11,7 @@ import { NoProject } from './NoProject';
  * this screen answers their save requests with the native save dialog.
  *
  * Sandbox: scripts and its own aio: origin (the viewers read data/*.js, tiles and localStorage),
- * downloads (`<a download>`), and popups (the report PDF opens in a Stratlas viewer window).
+ * downloads (`<a download>`), and popups (the report PDF opens in an app viewer window).
  */
 export function ReviewScreen() {
   const project = useWorkspace((s) => s.project);

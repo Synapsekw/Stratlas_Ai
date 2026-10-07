@@ -31,9 +31,9 @@
 //
 // build-demo.mjs calls buildPhotoDemo() for the full demo set; run alone, this script adds (or
 // replaces) <out>/demo-photo-processing/ and lists it in <out>/demo.json. The set is
-// --photo-set, else STRATLAS_PHOTO_DEMO_SET, else mini (with --set: the set that folder holds).
+// --photo-set, else QUADRION_PHOTO_DEMO_SET, else mini (with --set: the set that folder holds).
 // Renders are cached by seed, size and generator hash (default: python/.pytest_cache/d/photo-synth,
-// shared with pytest; or STRATLAS_PHOTO_SYNTH_CACHE). --quick is accepted for symmetry with the
+// shared with pytest; or QUADRION_PHOTO_SYNTH_CACHE). --quick is accepted for symmetry with the
 // other demos: the content is the same.
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -43,6 +43,7 @@ import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
+import { envVar } from '../../packages/brand/src/env.ts';
 import { treeHash, treeSize } from './build-change-demo.mjs';
 
 export const PHOTO_ID = 'demo-photo-processing';
@@ -85,7 +86,7 @@ async function libs() {
 
 /** The pipeline Python (python/.venv after `uv sync`), or the one given. */
 export function pipelinePython(given) {
-  const p = given ?? process.env.STRATLAS_DEMO_PYTHON ?? process.env.STRATLAS_E2E_PYTHON;
+  const p = given ?? envVar(process.env, 'DEMO_PYTHON') ?? envVar(process.env, 'E2E_PYTHON');
   if (p) return p;
   const venv =
     process.platform === 'win32'
@@ -95,9 +96,9 @@ export function pipelinePython(given) {
   throw new Error(`No pipeline Python at ${venv}. Run "uv sync" in python/ or pass --python.`);
 }
 
-/** The photo set to build: the one asked for, else STRATLAS_PHOTO_DEMO_SET, else mini. */
+/** The photo set to build: the one asked for, else QUADRION_PHOTO_DEMO_SET, else mini. */
 export function photoSetName(given) {
-  const name = given ?? process.env.STRATLAS_PHOTO_DEMO_SET ?? PHOTO_SET_DEFAULT;
+  const name = given ?? envVar(process.env, 'PHOTO_DEMO_SET') ?? PHOTO_SET_DEFAULT;
   if (!Object.hasOwn(PHOTO_SETS, name))
     throw new Error(`Unknown photo set "${name}" (${Object.keys(PHOTO_SETS).join(' or ')}).`);
   return name;
@@ -116,7 +117,7 @@ export function generatePhotoSet(
   ];
   const c =
     cache ??
-    process.env.STRATLAS_PHOTO_SYNTH_CACHE ??
+    envVar(process.env, 'PHOTO_SYNTH_CACHE') ??
     join(repo, 'python', '.pytest_cache', 'd', 'photo-synth');
   args.push('--cache', c);
   log(`photo set ${photoSet}: rendering (cache ${relative(repo, c) || c})`);
@@ -305,7 +306,7 @@ export function readGcpCsv(text) {
 export async function buildPhotoDemo({ out, log, python, cache, set, photoSet: asked }) {
   log ??= () => undefined;
   const { schema, builder } = await libs();
-  const work = await mkdtemp(join(tmpdir(), 'stratlas-photo-demo-'));
+  const work = await mkdtemp(join(tmpdir(), 'quadrion-photo-demo-'));
   try {
     const setDir =
       set ??

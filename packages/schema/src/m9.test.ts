@@ -342,9 +342,9 @@ describe('M9 contracts', () => {
 
   it('refuses a newer file version with an update message', () => {
     expect(readerFor('aio.op/1').kind).toBe('current');
-    const newer = readerFor('aio.issues/2', 'Stratlas');
+    const newer = readerFor('aio.issues/2', 'Quadrion AI');
     expect(newer.kind).toBe('newer');
-    if (newer.kind === 'newer') expect(newer.message).toMatch(/newer version of Stratlas/);
+    if (newer.kind === 'newer') expect(newer.message).toMatch(/newer version of Quadrion AI/);
     expect(readerFor('aio.nothing/1').kind).toBe('unknown');
   });
 

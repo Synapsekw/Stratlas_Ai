@@ -4,7 +4,7 @@
  * End-to-end tests start many app instances, each with a throwaway userData folder. With the OS
  * vault they would leave a device key per run in Windows Credential Manager or the macOS Keychain
  * (`<appId>.isolated[.profile.<name>]`, account `device-signing`). When the test runner sets
- * `STRATLAS_TEST_VAULT=1` together with an isolated profile (`STRATLAS_USER_DATA`), keys are kept
+ * `QUADRION_TEST_VAULT=1` together with an isolated profile (`QUADRION_USER_DATA`), keys are kept
  * in `<userData>/TEST-ONLY-vault.json` instead: deleted with the test's folder, never read in a
  * person's normal run, and never touching another vault entry.
  */
@@ -16,7 +16,7 @@ export const TEST_VAULT_FILE = 'TEST-ONLY-vault.json';
 
 /** True only for automated runs on an isolated profile. */
 export function useTestVault(env: Record<string, string | undefined>): boolean {
-  return env.STRATLAS_TEST_VAULT === '1' && Boolean(env.STRATLAS_USER_DATA);
+  return env.QUADRION_TEST_VAULT === '1' && Boolean(env.QUADRION_USER_DATA);
 }
 
 /** A `KeyEntry` factory over one JSON file (service and account as the key). */

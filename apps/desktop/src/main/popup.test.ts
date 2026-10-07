@@ -4,7 +4,7 @@ import { popupAction } from './popup';
 const known = (id: string) => id === 'masafi';
 
 describe('popupAction', () => {
-  it('opens a project file (the legacy report PDF) in a Stratlas viewer window', () => {
+  it('opens a project file (the legacy report PDF) in an app viewer window', () => {
     expect(
       popupAction('aio://project/masafi/legacy/Masafi%20Stockpile%20Volume%20Report.pdf', known),
     ).toEqual({

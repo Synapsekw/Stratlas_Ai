@@ -379,7 +379,7 @@ const boxOfPoints = (pts, w, h) => {
 export async function buildChangeDemo({ out, seed = 20261005, quick = false, log = undefined }) {
   log ??= () => undefined;
   const { schema, builder, geo } = await libs();
-  const work = await mkdtemp(join(tmpdir(), 'stratlas-change-demo-'));
+  const work = await mkdtemp(join(tmpdir(), 'quadrion-change-demo-'));
   try {
     const [E, N] = geo
       .fromWgs84([LOCATION.lon, LOCATION.lat, 0], LOCATION.epsg)
@@ -458,7 +458,10 @@ export async function buildChangeDemo({ out, seed = 20261005, quick = false, log
       // model
       await writeFile(
         join(root, 'models', `${L('model')}.glb`),
-        writeGlb(world.parts, { root: `DemoChangeSite_${d}`, generator: 'Stratlas demo builder' }),
+        writeGlb(world.parts, {
+          root: `DemoChangeSite_${d}`,
+          generator: 'Quadrion AI demo builder',
+        }),
       );
       layers.push({
         kind: 'mesh',

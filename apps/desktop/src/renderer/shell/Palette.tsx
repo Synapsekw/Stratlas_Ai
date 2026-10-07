@@ -1,11 +1,19 @@
 import { pinDisplay } from '@aio/annotate';
 import { COLOUR_MODES, pointcloudSettings } from '@aio/pointcloud';
 import type { Layer } from '@aio/schema';
-import { CommandPalette, t, type IconName, type PaletteCommand, shortcutHint } from '@aio/ui';
+import {
+  CommandPalette,
+  formatDate,
+  t,
+  type IconName,
+  type PaletteCommand,
+  shortcutHint,
+} from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useMemo } from 'react';
 import { actionAllowed, allowedActions } from '../exports/exportModel';
 import { runExportAction } from '../exports/exports';
+import { alignCamera } from '../builder/alignSession';
 import { builder } from '../builder/state';
 import { diagnostics } from '../diagnostics/state';
 import { help } from '../help/store';
@@ -16,6 +24,7 @@ import type { Screen } from '../store';
 import { PATH_MODES, setPathMode, togglePaths } from '../workspace/flightPaths';
 import { updateFlightPaths } from '../workspace/pathModel';
 import { toggleTelemetry } from '../workspace/telemetryPref';
+import { timeline, useTimeline } from '../workspace/timeline';
 import { toggleTimeline } from '../workspace/timelinePref';
 import { selectClip } from './Sidebar';
 
@@ -63,6 +72,7 @@ export function Palette() {
   const hidden = useWorkspace((s) => s.hidden);
   const playing = useWorkspace((s) => s.playing);
   const pkg = useShell((s) => s.pkg);
+  const surveys = useTimeline((s) => s.index);
 
   const commands = useMemo<PaletteCommand[]>(() => {
     const s = shell.getState();
@@ -181,6 +191,37 @@ export function Palette() {
           ws.flyTo({ kind: 'home' });
         }),
       );
+      const tl = timeline.getState();
+      if (surveys && surveys.captures.length > 1) {
+        action(
+          'survey-prev',
+          t('palette.prevSurvey'),
+          'history',
+          scene(() => {
+            tl.step(-1);
+          }),
+          shortcutHint('global.prevSurvey'),
+        );
+        action(
+          'survey-next',
+          t('palette.nextSurvey'),
+          'history',
+          scene(() => {
+            tl.step(1);
+          }),
+          shortcutHint('global.nextSurvey'),
+        );
+      }
+      for (const c of surveys?.captures ?? []) {
+        action(
+          `survey-${c.id}`,
+          t('palette.surveyOn', { date: formatDate(c.date) }),
+          'history',
+          scene(() => {
+            tl.focusSurvey(c.id);
+          }),
+        );
+      }
       const layers = project.manifest.layers;
       action(
         'pins',
@@ -325,6 +366,16 @@ export function Palette() {
               builder.getState().startAlign({ kind: 'video', layerId: clip.id });
             },
           });
+          list.push({
+            id: 'builder:align-camera',
+            title: 'Align camera to map: set where the video camera looks',
+            group: 'Actions',
+            icon: 'droneeye',
+            keywords: ['camera direction', 'heading', 'yaw', 'keyframe', 'gimbal', 'orientation'],
+            run: () => {
+              alignCamera.getState().start(clip.id);
+            },
+          });
         }
       }
       action('close', 'Close project', 'x', s.closeProject);
@@ -395,7 +446,7 @@ export function Palette() {
       });
     }
     return list;
-  }, [library, cloudAi, project, pkg, issues, hidden, playing]);
+  }, [library, cloudAi, project, pkg, issues, hidden, playing, surveys]);
 
   if (!open) return null;
   return (

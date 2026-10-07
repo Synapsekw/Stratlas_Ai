@@ -36,6 +36,7 @@ import { parseArgs } from 'node:util';
 import { packBudgetProblems } from '../release/budgets.mjs';
 import { runGate } from '../release/native-licences.mjs';
 import { nativePlan, PROBE, probeProblems } from './native/pack-step.mjs';
+import { envVar } from '../../packages/brand/src/env.ts';
 
 export const PBS_RELEASE = '20260924';
 export const CPYTHON = '3.13.15';
@@ -105,11 +106,12 @@ export async function withTempDir(outRoot, version, build, opts = {}) {
 }
 
 /**
- * Where packs go without --out: `<STRATLAS_DATA>/runtime`, else the Windows workstation's data
+ * Where packs go without --out: `<QUADRION_DATA>/runtime`, else the Windows workstation's data
  * drive. Other systems (a macOS CI runner) have no default and must say where.
  */
 export function defaultOutRoot(platform, env) {
-  if (env.STRATLAS_DATA) return join(env.STRATLAS_DATA, 'runtime');
+  const data = envVar(env, 'DATA');
+  if (data) return join(data, 'runtime');
   return platform === 'win32' ? 'E:/Stratlas Data/runtime' : null;
 }
 
@@ -143,7 +145,7 @@ async function download(url, dest) {
   say(`  downloading ${url}`);
   const res = await fetch(url, {
     redirect: 'follow',
-    headers: { 'User-Agent': 'stratlas-pipeline-pack' },
+    headers: { 'User-Agent': 'quadrion-pipeline-pack' },
   });
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());
@@ -190,7 +192,7 @@ async function main() {
   const target = TARGETS[platform];
   if (!target) fail(`no python-build-standalone target for ${platform}`);
   const out = values.out ?? defaultOutRoot(process.platform, process.env);
-  if (!out) fail('pass --out <folder> or set STRATLAS_DATA (no default data folder on this OS)');
+  if (!out) fail('pass --out <folder> or set QUADRION_DATA (no default data folder on this OS)');
   const outRoot = resolve(out);
   const version = packageVersion(readFileSync(join(pyDir, 'pyproject.toml'), 'utf8'));
   const dest = join(outRoot, `pipeline-pack-${version}`);

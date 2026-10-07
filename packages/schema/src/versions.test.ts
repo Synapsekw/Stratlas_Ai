@@ -68,12 +68,12 @@ describe('readerFor', () => {
     expect(readerFor('aio.issues/1').kind).toBe('current');
     expect(readerFor('aio.nothing/1').kind).toBe('unknown');
     expect(readerFor('not a schema').kind).toBe('unknown');
-    const newer = readerFor('aio.change/2', 'Stratlas');
+    const newer = readerFor('aio.change/2', 'Quadrion AI');
     expect(newer.kind).toBe('newer');
     if (newer.kind === 'newer') {
       expect(newer.found).toBe(2);
       expect(newer.message).toBe(
-        'change/*.json was saved by a newer version of Stratlas (aio.change/2). Update the app to open it. The file was not changed.',
+        'change/*.json was saved by a newer version of Quadrion AI (aio.change/2). Update the app to open it. The file was not changed.',
       );
     }
   });
@@ -95,15 +95,15 @@ describe('newerRefusal', () => {
     expect(newerRefusal({ schema: 'aio.issues/1' })).toBeNull();
     expect(newerRefusal({ schema: 'aio.unknown/9' })).toBeNull();
     expect(newerRefusal('text')).toBeNull();
-    expect(newerRefusal({ schema: 'aio.issues/2' }, 'Stratlas')).toMatch(
-      /^issues\.json was saved by a newer version of Stratlas \(aio\.issues\/2\)/,
+    expect(newerRefusal({ schema: 'aio.issues/2' }, 'Quadrion AI')).toMatch(
+      /^issues\.json was saved by a newer version of Quadrion AI \(aio\.issues\/2\)/,
     );
-    expect(newerRefusal({ v: 7 }, 'Stratlas', 'aio.op')).toMatch(/newer version of Stratlas/);
+    expect(newerRefusal({ v: 7 }, 'Quadrion AI', 'aio.op')).toMatch(/newer version of Quadrion AI/);
   });
 });
 
 describe('readVersioned', () => {
-  const opts = { family: 'aio.issues', schema: Thing, appName: 'Stratlas', what: 'issues.json' };
+  const opts = { family: 'aio.issues', schema: Thing, appName: 'Quadrion AI', what: 'issues.json' };
 
   it('reads a current file', () => {
     const r = readVersioned({ schema: 'aio.issues/1', issues: ['a'] }, opts);
@@ -121,7 +121,7 @@ describe('readVersioned', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.reason).toBe('newer');
-      expect(r.error).toMatch(/newer version of Stratlas \(aio\.issues\/3\)/);
+      expect(r.error).toMatch(/newer version of Quadrion AI \(aio\.issues\/3\)/);
     }
     expect(raw).toEqual(copy);
   });
@@ -239,12 +239,12 @@ describe('app ranges (pipeline pack)', () => {
   });
 
   it('words the refusal for a pack outside the range', () => {
-    expect(packRangeRefusal(undefined, '1.0.0', 'Stratlas')).toBeNull();
-    expect(packRangeRefusal('>=0.9.0 <2.0.0', '1.0.0', 'Stratlas')).toBeNull();
-    expect(packRangeRefusal('>=0.9.0 <2.0.0', '0.8.0', 'Stratlas')).toBe(
-      'This pipeline pack works with Stratlas >=0.9.0 <2.0.0, and this is 0.8.0. Install the pipeline pack made for this version.',
+    expect(packRangeRefusal(undefined, '1.0.0', 'Quadrion AI')).toBeNull();
+    expect(packRangeRefusal('>=0.9.0 <2.0.0', '1.0.0', 'Quadrion AI')).toBeNull();
+    expect(packRangeRefusal('>=0.9.0 <2.0.0', '0.8.0', 'Quadrion AI')).toBe(
+      'This pipeline pack works with Quadrion AI >=0.9.0 <2.0.0, and this is 0.8.0. Install the pipeline pack made for this version.',
     );
-    expect(packRangeRefusal('~1', '1.0.0', 'Stratlas')).toBe(
+    expect(packRangeRefusal('~1', '1.0.0', 'Quadrion AI')).toBe(
       'This pipeline pack declares an app range that cannot be read (~1). Install the pipeline pack made for this version.',
     );
   });

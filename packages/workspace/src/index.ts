@@ -1,6 +1,15 @@
-import type { AssetRef, Issue, ProjectManifest, Vec3, WindowKind } from '@aio/schema';
+import type {
+  AssetRef,
+  DirectionKey,
+  Issue,
+  OrientationFile,
+  ProjectManifest,
+  Vec3,
+  WindowKind,
+} from '@aio/schema';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import { clipStartMs } from './timeline';
 
 export type SelectionKind = 'asset' | 'issue' | 'clip' | 'photo' | 'layer' | 'pano';
 
@@ -38,6 +47,12 @@ export interface CameraRequest {
 
 export interface WorkspaceState {
   project: OpenProject | null;
+  /**
+   * Counts `openProject` calls (never reset, not even by `closeProject`). A change means the
+   * project was opened afresh and visibility was reset from its manifest; `replaceManifest`
+   * and issue edits leave it alone.
+   */
+  openSeq: number;
   issues: Issue[];
   /** Project clock, UTC milliseconds. */
   nowMs: number;
@@ -51,6 +66,22 @@ export interface WorkspaceState {
   camera: CameraRequest | null;
   /** The latest camera request, kept after the 3D view consumes it (the map follows it). */
   lastCamera: CameraRequest | null;
+  /**
+   * Camera direction keyframes of one clip being edited and not saved yet (Set camera direction):
+   * the 3D view and the map draw that clip's camera from them instead of the saved ones.
+   */
+  directionDraft: DirectionDraft | null;
+  /**
+   * The open project's `orientation.json` (camera directions set by hand: video direction
+   * keyframes, photo corrections), or null when it has none (or it is still loading).
+   */
+  orientation: OrientationFile | null;
+}
+
+/** Unsaved direction keyframes of a clip (an empty list shows the logged direction). */
+export interface DirectionDraft {
+  layerId: string;
+  keys: readonly DirectionKey[];
 }
 
 export interface WorkspaceActions {
@@ -70,18 +101,25 @@ export interface WorkspaceActions {
   setLayerVisible(layerId: string, visible: boolean): void;
   /** Show or hide many layers in one update (the master and group eyes of the layer tree). */
   setLayersVisible(layerIds: readonly string[], visible: boolean): void;
+  /** Show and hide layers in one update (date jumps). No-op when both lists are empty. */
+  applyVisibility(show: readonly string[], hide: readonly string[]): void;
   isLayerVisible(layerId: string): boolean;
   upsertIssue(issue: Issue): void;
   removeIssue(issueId: string): void;
   focus(window: WindowKind | null): void;
   flyTo(target: CameraRequest['target']): void;
   consumeCamera(seq: number): void;
+  /** Show a clip's camera from unsaved direction keyframes, or `null` for the saved ones. */
+  setDirectionDraft(draft: DirectionDraft | null): void;
+  /** The project's orientation file after it loaded or was saved. */
+  setOrientation(file: OrientationFile | null): void;
 }
 
 export type Workspace = WorkspaceState & WorkspaceActions;
 
 const initial: WorkspaceState = {
   project: null,
+  openSeq: 0,
   issues: [],
   nowMs: 0,
   playing: false,
@@ -92,6 +130,8 @@ const initial: WorkspaceState = {
   focusedWindow: null,
   camera: null,
   lastCamera: null,
+  directionDraft: null,
+  orientation: null,
 };
 
 export function createWorkspace(): StoreApi<Workspace> {
@@ -102,10 +142,11 @@ export function createWorkspace(): StoreApi<Workspace> {
       const firstClip = project.manifest.layers.find((l) => l.kind === 'video');
       set({
         ...initial,
+        openSeq: get().openSeq + 1,
         project,
         issues,
         activeClip: firstClip?.id ?? null,
-        nowMs: firstClip?.kind === 'video' ? firstClip.flight.startUtcMs + firstClip.offsetMs : 0,
+        nowMs: firstClip?.kind === 'video' ? clipStartMs(firstClip) : 0,
         hidden: Object.fromEntries(
           project.manifest.layers.filter((l) => !l.visible).map((l) => [l.id, true as const]),
         ),
@@ -119,9 +160,7 @@ export function createWorkspace(): StoreApi<Workspace> {
       const clip = activeClip ? null : manifest.layers.find((l) => l.kind === 'video');
       set({
         project: { ...project, manifest },
-        ...(clip?.kind === 'video'
-          ? { activeClip: clip.id, nowMs: clip.flight.startUtcMs + clip.offsetMs }
-          : {}),
+        ...(clip?.kind === 'video' ? { activeClip: clip.id, nowMs: clipStartMs(clip) } : {}),
         ...(added.length
           ? {
               hidden: { ...hidden, ...Object.fromEntries(added.map((l) => [l.id, true as const])) },
@@ -130,7 +169,7 @@ export function createWorkspace(): StoreApi<Workspace> {
       });
     },
     closeProject: () => {
-      set(initial);
+      set({ ...initial, openSeq: get().openSeq });
     },
     setTime: (nowMs) => {
       set({ nowMs });
@@ -171,6 +210,13 @@ export function createWorkspace(): StoreApi<Workspace> {
         Object.keys(hidden).some((id) => !before[id]);
       if (changed) set({ hidden });
     },
+    applyVisibility: (show, hide) => {
+      if (show.length === 0 && hide.length === 0) return;
+      const hidden = { ...get().hidden };
+      for (const id of show) Reflect.deleteProperty(hidden, id);
+      for (const id of hide) hidden[id] = true;
+      set({ hidden });
+    },
     isLayerVisible: (layerId) => !get().hidden[layerId],
     upsertIssue: (issue) => {
       const issues = get().issues.filter((i) => i.id !== issue.id);
@@ -189,6 +235,12 @@ export function createWorkspace(): StoreApi<Workspace> {
     },
     consumeCamera: (s) => {
       if (get().camera?.seq === s) set({ camera: null });
+    },
+    setDirectionDraft: (directionDraft) => {
+      set({ directionDraft });
+    },
+    setOrientation: (orientation) => {
+      set({ orientation });
     },
   }));
 }
@@ -224,3 +276,21 @@ export {
   type ScopedStore,
   type StoreScope,
 } from './captures';
+
+export {
+  clipStartMs,
+  clockInClip,
+  extrasOf,
+  followLayer,
+  initialFocus,
+  layerDate,
+  openChange,
+  snapshotPref,
+  stepCapture,
+  swapChange,
+  visibleIn,
+} from './timeline';
+export type { ClipTiming, DatePref, VisibilityChange } from './timeline';
+
+export { DATE_COLOURS, dateTags } from './dateTags';
+export type { DateTag } from './dateTags';

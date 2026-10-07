@@ -1,4 +1,4 @@
-import type { CameraOrientation, PoseSample, Vec3 } from '@aio/schema';
+import type { CameraOrientation, PoseSample, Quat, Vec3 } from '@aio/schema';
 import { orientCamera } from './orientation';
 import { interpolatePose } from './pose';
 import { cameraAngles } from './telemetry';
@@ -179,6 +179,11 @@ export interface ReadoutInput {
   /** Calibration of the clip (A1): camera position offset and orientation bias. */
   offset?: Vec3 | null | undefined;
   orientation?: CameraOrientation | null | undefined;
+  /**
+   * The camera orientation in use at the playhead (direction keyframes or the calibrated log);
+   * wins over `orientation`.
+   */
+  q?: Quat | null | undefined;
   /** Local y of the ground under the drone, if known. */
   groundY: number | null;
   /** Manifest origin height (`origin[2]`). */
@@ -199,7 +204,7 @@ export function traceReadout(i: ReadoutInput): TraceReadout {
     const b = interpolatePose(i.samples, tb).pos;
     gs = Math.hypot(b[0] - a[0], b[2] - a[2]) / ((tb - ta) / 1000);
   }
-  const angles = cameraAngles(orientCamera(pose.q, i.orientation ?? undefined));
+  const angles = cameraAngles(i.q ?? orientCamera(pose.q, i.orientation ?? undefined));
   return {
     distanceM: distanceAt(i.profile, i.flightMs),
     aglM: i.groundY === null ? null : y - i.groundY,
