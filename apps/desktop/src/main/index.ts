@@ -1010,6 +1010,7 @@ function registerIpc(): void {
       userData: () => app.getPath('userData'),
       vault: (account) => new Entry(keyService, account),
       app: { name: brand.productName, version: app.getVersion() },
+      sessionKeyWithoutVault: Boolean(process.env.STRATLAS_USER_DATA),
     }),
   });
 }

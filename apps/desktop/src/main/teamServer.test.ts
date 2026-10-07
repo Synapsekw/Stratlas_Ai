@@ -255,6 +255,15 @@ describe('interim device key', () => {
       app: { name: 'Stratlas', version: '0.9.0' },
     })();
     expect(d).toBeNull();
+    const session = await interimDeviceSource({
+      userData: () => tmpdir(),
+      vault: () => {
+        throw new Error('no vault');
+      },
+      app: { name: 'Stratlas', version: '0.9.0' },
+      sessionKeyWithoutVault: true,
+    })();
+    expect(session?.record.id).toMatch(/^d_/);
   });
 
   it('derives initials in any script', () => {

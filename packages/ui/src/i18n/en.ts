@@ -1559,7 +1559,7 @@ export const en = {
   'teamServer.cancel': 'Cancel',
   'teamServer.connected': 'Connected to {name}.',
   'teamServer.offline':
-    'Offline only is on, so this computer makes no network connections. Turn it off in Privacy to connect to a team server.',
+    'Offline only is on, so this computer makes no network connections. Turn it off in Privacy and cloud to connect to a team server.',
   'teamServer.address.https': 'A team server address starts with https://.',
   'teamServer.role.owner': 'owner',
   'teamServer.role.reviewer': 'reviewer',

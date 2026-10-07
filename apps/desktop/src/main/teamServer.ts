@@ -63,7 +63,7 @@ export interface TeamServerDeps {
 }
 
 const OFFLINE =
-  'Offline only is on, so this computer makes no network connections. Turn it off in Settings, Privacy to connect to a team server.';
+  'Offline only is on, so this computer makes no network connections. Turn it off in Settings, Privacy and cloud to connect to a team server.';
 
 function failure(e: unknown) {
   if (e instanceof TeamServerError) {
@@ -238,6 +238,11 @@ export function interimDeviceSource(opts: {
   userData: () => string;
   vault: (account: string) => VaultEntry;
   app: AppStamp;
+  /**
+   * Test profiles only (`STRATLAS_USER_DATA`): when the vault cannot be used (a CI keychain),
+   * keep a key for this run in memory instead of giving no device.
+   */
+  sessionKeyWithoutVault?: boolean;
 }): DeviceSource {
   let cached: DeviceIdentity | null = null;
   return () => {
@@ -258,7 +263,11 @@ export function interimDeviceSource(opts: {
       console.warn(
         `Team server: the vault is not available (${e instanceof Error ? e.name : 'error'}).`,
       );
-      return Promise.resolve(null);
+      if (!opts.sessionKeyWithoutVault) return Promise.resolve(null);
+      const pkcs8 = generateKeyPairSync('ed25519')
+        .privateKey.export({ format: 'der', type: 'pkcs8' })
+        .toString('base64');
+      stored = { pkcs8, actor: randomId('a_', 26) };
     }
     const signer = signerFromKey(
       createPrivateKey({ key: Buffer.from(stored.pkcs8, 'base64'), format: 'der', type: 'pkcs8' }),
