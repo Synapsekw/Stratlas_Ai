@@ -1,6 +1,6 @@
 // The 1.0 performance budgets (budgets.mjs). The journal budgets run against T1's bench when
 // packages/journal/src/bench.ts exists, else against the reference bench. Timings are enforced
-// with STRATLAS_BUDGETS=1 (nightly and the performance pass); every merge runs them small.
+// with QUADRION_BUDGETS=1 (nightly and the performance pass); every merge runs them small.
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 import { BUDGETS, journalBudgetTests, percentile, sample } from './budgets.mjs';
 import { referenceBench } from './journal-bench.reference.mjs';
+import { envVar } from '../../packages/brand/src/env.ts';
 
 const t1Bench = fileURLToPath(new URL('../../packages/journal/src/bench.ts', import.meta.url));
 const bench = existsSync(t1Bench)
@@ -45,6 +46,6 @@ describe('budget harness', () => {
 });
 
 journalBudgetTests({ describe, it, expect }, bench, {
-  enforce: process.env.STRATLAS_BUDGETS === '1',
+  enforce: envVar(process.env, 'BUDGETS') === '1',
   tempDir: (name) => mkdtempSync(join(root, `${name}-`)),
 });

@@ -4,6 +4,7 @@ import { formatBytes, formatDate, Icon, Switch, t } from '@aio/ui';
 import { useEffect, useMemo, useState } from 'react';
 import { build, formatBuildTime } from '../../buildStamp';
 import { bridge, shell, useCall, useShell } from '../../shell';
+import { BrandLockup } from '../../shell/BrandMark';
 import { Diagnostics } from './Diagnostics';
 import { ReleaseNotesView } from './ReleaseNotes';
 
@@ -286,7 +287,7 @@ function OnlineCheck({ mac }: { mac: boolean }) {
             <input
               className="input mono"
               aria-label="Update address"
-              placeholder="https://updates.example.com/stratlas/"
+              placeholder="https://updates.example.com/quadrion/"
               value={draft ?? url}
               spellCheck={false}
               onChange={(e) => {
@@ -449,6 +450,8 @@ export function About() {
       <div className="sblock">
         <div className="about-hero">
           <div>
+            <BrandLockup />
+            <span className="tagline">{brand.tagline}</span>
             <b>
               {brand.productName} <span className="mono">{a?.version ?? ''}</span>
             </b>

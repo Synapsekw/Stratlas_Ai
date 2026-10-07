@@ -165,7 +165,7 @@ test('the issue register is neutral by default and carries the branding set in S
     const [neutral] = await pdfPages(pdf);
     expect(neutral?.images).toBe(0);
     expect(neutral?.text).toContain('E2E branding');
-    expect(neutral?.text).toContain('Made with Stratlas');
+    expect(neutral?.text).toContain('Made with Quadrion AI');
     expect(neutral?.text).not.toMatch(/eand|e&/i);
 
     // The person's own branding.

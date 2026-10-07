@@ -3,10 +3,10 @@
  * script of every `legacy/*.html` document (see `legacy.ts`).
  *
  * The viewers were built for two hosts: a plain folder (`target: 'offline'`) and the claude.ai
- * artifact runtime (`window.claude.use(...)`). Inside Stratlas they run offline, and the
+ * artifact runtime (`window.claude.use(...)`). Inside the app they run offline, and the
  * capabilities they ask for are provided locally:
  *
- * - `downloads`: `save({ filename, data })` posts the bytes to the Stratlas window, which asks
+ * - `downloads`: `save({ filename, data })` posts the bytes to the app window, which asks
  *   for a place with the native save dialog (IPC `dialog:saveFile`).
  * - `db`: a small document store (`collection().doc().set/update/delete/get`, `onSnapshot`)
  *   kept in localStorage per project. The Masafi boundary editor stores its edits here.
@@ -18,8 +18,9 @@
  * the serialized source to prove that.
  */
 
-/** Sent from the viewer to the Stratlas window, with a MessagePort for the reply. */
+/** Sent from the viewer to the app window, with a MessagePort for the reply. */
 export interface ShimSaveMessage {
+  /** Kept from before the rename: legacy viewers already open post this exact value. */
   source: 'stratlas-legacy';
   type: 'save';
   filename: string;
@@ -27,7 +28,7 @@ export interface ShimSaveMessage {
   mimeType?: string;
 }
 
-/** The Stratlas window's answer to a save. */
+/** The app window's answer to a save. */
 export type ShimReply =
   { ok: true } | { ok: false; code: 'declined' } | { ok: false; error: string };
 

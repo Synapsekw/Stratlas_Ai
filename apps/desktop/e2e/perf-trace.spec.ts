@@ -1,7 +1,7 @@
 /**
  * Profiling companion of perf.spec.ts (local investigation only): flies the same recorded path
  * with a Chrome performance trace (CDP), per-frame WebGL upload counters and long animation frame
- * attribution, and writes them to STRATLAS_TRACE_DIR. Skipped unless that variable is set. Runs on
+ * attribution, and writes them to QUADRION_TRACE_DIR. Skipped unless that variable is set. Runs on
  * a temporary copy of the real project (realData.ts, @realdata).
  */
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -9,9 +9,9 @@ import { join } from 'node:path';
 import { expect, realDataTest } from './fixtures';
 import { hasRealProject, missingRealProject } from './realData';
 
-const OUT = process.env.STRATLAS_TRACE_DIR ?? '';
-const ID = process.env.STRATLAS_TRACE_PROJECT ?? 'alzour';
-const CPU = process.env.STRATLAS_TRACE_CPU !== '0';
+const OUT = process.env.QUADRION_TRACE_DIR ?? '';
+const ID = process.env.QUADRION_TRACE_PROJECT ?? 'alzour';
+const CPU = process.env.QUADRION_TRACE_CPU !== '0';
 
 interface View {
   position: [number, number, number];
@@ -27,7 +27,7 @@ interface CameraPath {
 const test = realDataTest([ID], { size: [1440, 900] });
 
 test.setTimeout(300_000);
-test.skip(!OUT, 'STRATLAS_TRACE_DIR not set');
+test.skip(!OUT, 'QUADRION_TRACE_DIR not set');
 test.skip(!hasRealProject(ID), missingRealProject(ID));
 
 test(`@realdata trace the ${ID} fly-through`, async ({ win }) => {

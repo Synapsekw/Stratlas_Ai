@@ -78,7 +78,7 @@ async function pack(
       exports: ['issues-csv'],
       ...(o.editPolicy ? { editPolicy: o.editPolicy } : {}),
     },
-    createdBy: 'Stratlas 0.1.0',
+    createdBy: 'Quadrion AI 0.1.0',
     ...(o.passphrase ? { passphrase: o.passphrase } : {}),
   });
   const r = await openPackage(file, o.passphrase);
@@ -138,7 +138,7 @@ describe('extractProject', () => {
       package: 'Tank delivery.aio',
       projectId: 'tank',
       exportedAt: opened.header.createdAt,
-      exportedBy: 'Stratlas 0.1.0',
+      exportedBy: 'Quadrion AI 0.1.0',
       extractedAt: '2026-10-05T09:00:00.000Z',
       extractedBy: 'surveyor',
       encrypted: true,

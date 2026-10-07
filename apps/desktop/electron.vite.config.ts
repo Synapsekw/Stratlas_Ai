@@ -151,7 +151,7 @@ function releaseNotes(): Plugin {
 }
 
 /**
- * `__STRATLAS_BUILD__`: when and from which commit this bundle was built, shown in Settings,
+ * `__QUADRION_BUILD__`: when and from which commit this bundle was built, shown in Settings,
  * About and on the Projects screen so a stale installed copy is obvious. Without git (a source
  * archive) the commit is "dev"; the build never fails over it.
  */
@@ -207,7 +207,7 @@ export default defineConfig({
   renderer: {
     root: resolve(import.meta.dirname, 'src/renderer'),
     plugins: [react(), pdfjsAssets(), cspMeta()],
-    define: { __STRATLAS_BUILD__: JSON.stringify(buildStamp()) },
+    define: { __QUADRION_BUILD__: JSON.stringify(buildStamp()) },
     resolve: { noExternal: bundled },
     build: {
       rollupOptions: {

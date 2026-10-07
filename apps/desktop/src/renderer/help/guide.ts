@@ -1,7 +1,8 @@
 /**
  * The user guide: the Markdown chapters in docs/guide, bundled into the app at build time (Vite
  * `import.meta.glob`), so help works with no network and no files outside the app. The product
- * name in the text is `{product}`, filled from @aio/brand, so a rename needs no guide edit.
+ * name in the text is `{product}` and the executable and installer name `{executable}`
+ * (`QuadrionAI`, no spaces), both filled from @aio/brand, so a rename needs no guide edit.
  */
 import { brand } from '@aio/brand';
 import { parseMarkdown, plainText, type Block } from './markdown';
@@ -20,9 +21,13 @@ export function chapterSlug(path: string): string | null {
   return m?.[2] ?? null;
 }
 
-/** Fill `{product}` with the product name. */
-export function fillProduct(text: string, product: string = brand.productName): string {
-  return text.replaceAll('{product}', product);
+/** Fill `{product}` with the product name and `{executable}` with the executable name. */
+export function fillProduct(
+  text: string,
+  product: string = brand.productName,
+  executable: string = brand.executableName,
+): string {
+  return text.replaceAll('{product}', product).replaceAll('{executable}', executable);
 }
 
 /** Chapters from `path to Markdown` sources, in file order (the number prefix). */

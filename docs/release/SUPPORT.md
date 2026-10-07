@@ -32,9 +32,9 @@ The first answer from a person, counted in business hours.
 
 ## What to send
 
-Stratlas sends nothing on its own: there is no crash upload in 1.0. To report a problem:
+Quadrion AI sends nothing on its own: there is no crash upload in 1.0. To report a problem:
 
-1. In Stratlas, open **Help, Report a problem**. It writes a diagnostics bundle on your computer: the app and system versions, recent logs, settings without keys, and (from 1.0) sync and journal status, the device id and the server version. It never holds API keys, device keys, invite codes or comment text.
+1. In Quadrion AI, open **Help, Report a problem**. It writes a diagnostics bundle on your computer: the app and system versions, recent logs, settings without keys, and (from 1.0) sync and journal status, the device id and the server version. It never holds API keys, device keys, invite codes or comment text.
 2. Look through the bundle if you wish, then attach it to your email or portal case by hand.
 3. Say what you did, what you expected and what happened. Do not send project files unless we ask; if we do, we agree with you how they are sent and deleted.
 

@@ -43,9 +43,9 @@ function identityDevice(userData: string, vault: ReturnType<typeof memoryVault>[
     projectRoot: () => undefined,
     isPackage: () => false,
     chooseCardPath: () => Promise.resolve(null),
-    app: { name: 'Stratlas', version: '0.9.0' },
+    app: { name: 'Quadrion AI', version: '0.9.0' },
   });
-  return deviceSource(service, { name: 'Stratlas', version: '0.9.0' });
+  return deviceSource(service, { name: 'Quadrion AI', version: '0.9.0' });
 }
 
 /** A stand-in team server: health and enrolment, recording what it was sent. */

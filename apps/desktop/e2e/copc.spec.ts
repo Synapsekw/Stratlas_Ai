@@ -14,7 +14,7 @@ const FIXTURE = join(
   import.meta.dirname,
   '../../../packages/pointcloud/test-data/synthetic.copc.laz',
 );
-const SHOTS = process.env.STRATLAS_SHOTS;
+const SHOTS = process.env.QUADRION_SHOTS;
 
 interface Inspect {
   __stratlas: {

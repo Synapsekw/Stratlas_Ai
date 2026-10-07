@@ -68,11 +68,14 @@ function ctx(company?: string): HouseContext {
     h: houseReportModel({
       manifest,
       issues: [],
-      branding: resolveReportBranding(company ? { companyName: company } : undefined, 'Stratlas'),
+      branding: resolveReportBranding(
+        company ? { companyName: company } : undefined,
+        'Quadrion AI',
+      ),
     }),
     text: { summary: '', method: '', findings: '' },
     images: { overview: [] },
-    product: 'Stratlas',
+    product: 'Quadrion AI',
   };
 }
 
@@ -111,7 +114,7 @@ describe('issue page', () => {
 describe('cover', () => {
   it('is neutral by default and never carries the client brand', () => {
     const html = coverHtml(ctx());
-    expect(html).toContain('Made with Stratlas');
+    expect(html).toContain('Made with Quadrion AI');
     expect(html).toContain('Client Co');
     expect(html).not.toMatch(/eand|e&amp;/);
     expect(html).toContain('cv-in solo');
@@ -198,7 +201,7 @@ describe('audit trail (M9)', () => {
     houseReportModel({
       manifest,
       issues: [],
-      branding: resolveReportBranding(undefined, 'Stratlas'),
+      branding: resolveReportBranding(undefined, 'Quadrion AI'),
       audit: a,
     });
 

@@ -15,7 +15,7 @@
 //   node tools/maps/build-packs.mjs --tool-only     only fetch the pmtiles CLI (a build tool here;
 //                                                   the app extracts regions itself)
 //
-// Env: STRATLAS_DATA overrides the data root (default E:\Stratlas Data).
+// Env: QUADRION_DATA overrides the data root (default E:\Stratlas Data).
 
 import { execFileSync, spawn } from 'node:child_process';
 import {
@@ -31,12 +31,13 @@ import { writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ASSET_FONTSTACKS, ASSET_GLYPH_RANGES, ASSET_SPRITES, PACKS } from './packs.config.mjs';
+import { envVar } from '../../packages/brand/src/env.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, '..', '..');
 const binDir = join(here, 'bin');
 const assetsDir = join(repo, 'packages', 'maps', 'assets');
-const dataRoot = process.env.STRATLAS_DATA ?? 'E:\\Stratlas Data';
+const dataRoot = envVar(process.env, 'DATA') ?? 'E:\\Stratlas Data';
 const packsDir = join(dataRoot, 'packs');
 
 const BUILDS_INDEX = 'https://build-metadata.protomaps.dev/builds.json';
@@ -47,7 +48,7 @@ const ASSETS_BASE = 'https://raw.githubusercontent.com/protomaps/basemaps-assets
 const log = (msg) => process.stdout.write(`[maps] ${msg}\n`);
 
 async function getJson(url) {
-  const res = await fetch(url, { headers: { 'user-agent': 'stratlas-build-packs' } });
+  const res = await fetch(url, { headers: { 'user-agent': 'quadrion-build-packs' } });
   if (!res.ok) throw new Error(`GET ${url} -> ${res.status}`);
   return res.json();
 }
@@ -55,7 +56,7 @@ async function getJson(url) {
 async function download(url, dest, attempts = 5) {
   for (let i = 1; ; i++) {
     try {
-      const res = await fetch(url, { headers: { 'user-agent': 'stratlas-build-packs' } });
+      const res = await fetch(url, { headers: { 'user-agent': 'quadrion-build-packs' } });
       if (!res.ok) throw new Error(`GET ${url} -> ${res.status}`);
       const body = Buffer.from(await res.arrayBuffer());
       mkdirSync(dirname(dest), { recursive: true });

@@ -3,15 +3,15 @@
  *
  * Real projects (PRD NFR: 60 fps in the Al-Zour and HCl workspaces on the reference workstation):
  * flies a recorded camera path (e2e/perf/<project>.path.json) with the perf HUD on and asserts the
- * 95th percentile frame time stays under the budget for this machine: STRATLAS_PERF_P95_MS,
+ * 95th percentile frame time stays under the budget for this machine: QUADRION_PERF_P95_MS,
  * default 20 ms (no more than 5 % of frames miss a 60 Hz refresh by more than a few ms). Skipped
  * where the projects are absent; each runs on a temporary copy (realData.ts, @realdata).
  *
  * Everywhere (CI included): a synthetic project (the 16 000 point COPC fixture, a quad, a
  * 4800 x 2400 ortho image) on the software GPU (SwiftShader), which the app must detect as the Low
- * tier; on macOS on the runner's own GPU instead (LOW_TIER_GPU below says why). Startup: launch to an interactive Projects screen within STRATLAS_STARTUP_MS (default
- * 15 s) and project click to the first stage frame within STRATLAS_FIRST_FRAME_MS (default 8 s).
- * Frames: the recorded path (e2e/perf/synthetic.path.json) at a p95 under STRATLAS_PERF_LOW_P95_MS
+ * tier; on macOS on the runner's own GPU instead (LOW_TIER_GPU below says why). Startup: launch to an interactive Projects screen within QUADRION_STARTUP_MS (default
+ * 15 s) and project click to the first stage frame within QUADRION_FIRST_FRAME_MS (default 8 s).
+ * Frames: the recorded path (e2e/perf/synthetic.path.json) at a p95 under QUADRION_PERF_LOW_P95_MS
  * (default 250 ms: generous for a 2 vCPU runner rendering in software, but a 2x regression of the
  * usual 40 to 110 ms trips it). Low tier limits hold (ortho texture scaled to 4096 px, graphics
  * memory under the tier cap), and a lost WebGL context steps down, says so calmly and draws again.
@@ -37,8 +37,8 @@ import {
 } from './fixtures';
 import { hasRealProject, missingRealProject } from './realData';
 
-const BUDGET_MS = Number(process.env.STRATLAS_PERF_P95_MS ?? 20);
-const SHOTS = process.env.STRATLAS_SHOTS;
+const BUDGET_MS = Number(process.env.QUADRION_PERF_P95_MS ?? 20);
+const SHOTS = process.env.QUADRION_SHOTS;
 
 interface View {
   position: [number, number, number];
@@ -159,10 +159,10 @@ for (const id of ['alzour', 'hcl']) {
     test.skip(!hasRealProject(id), missingRealProject(id));
     test.use({ realProjects: [id] });
     // The workstation budget is for its hardware GPU; with every launch on SwiftShader
-    // (STRATLAS_E2E_SWGL=1) the software GPU budget below is the one that applies.
+    // (QUADRION_E2E_SWGL=1) the software GPU budget below is the one that applies.
     test.skip(
-      process.env.STRATLAS_E2E_SWGL === '1',
-      'workstation budget needs the hardware GPU (STRATLAS_E2E_SWGL=1 forces SwiftShader)',
+      process.env.QUADRION_E2E_SWGL === '1',
+      'workstation budget needs the hardware GPU (QUADRION_E2E_SWGL=1 forces SwiftShader)',
     );
     test(`a recorded fly-through holds p95 frame time under ${String(BUDGET_MS)} ms`, async ({
       win,
@@ -215,9 +215,9 @@ for (const id of ['alzour', 'hcl']) {
 
 /* ------------------------------------------------------------------ synthetic, software GPU */
 
-const STARTUP_MS = Number(process.env.STRATLAS_STARTUP_MS ?? 15_000);
-const FIRST_FRAME_MS = Number(process.env.STRATLAS_FIRST_FRAME_MS ?? 8000);
-const LOW_P95_MS = Number(process.env.STRATLAS_PERF_LOW_P95_MS ?? 250);
+const STARTUP_MS = Number(process.env.QUADRION_STARTUP_MS ?? 15_000);
+const FIRST_FRAME_MS = Number(process.env.QUADRION_FIRST_FRAME_MS ?? 8000);
+const LOW_P95_MS = Number(process.env.QUADRION_PERF_LOW_P95_MS ?? 250);
 const COPC = join(import.meta.dirname, '../../../packages/pointcloud/test-data/synthetic.copc.laz');
 /** Over the Low tier's 4096 px texture limit, so the ortho is scaled down on load. */
 const ORTHO = [4800, 2400] as const;
@@ -294,7 +294,7 @@ interface SynthW {
  * runner's own GPU (copc.spec.ts). A Mac always has a Metal GPU, so the low end there is an
  * integrated or virtual GPU: the Apple Paravirtual device of the runner, which the app also puts
  * on the Low tier (isIntegratedGpu), so the same Low tier limits and budgets are checked.
- * STRATLAS_E2E_SWGL=1 still forces SwiftShader on every launch, macOS included.
+ * QUADRION_E2E_SWGL=1 still forces SwiftShader on every launch, macOS included.
  */
 const MAC_OWN_GPU = process.platform === 'darwin';
 const LOW_TIER_GPU = MAC_OWN_GPU ? [] : SOFTWARE_GPU;

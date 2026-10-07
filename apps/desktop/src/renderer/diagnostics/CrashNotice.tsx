@@ -8,7 +8,7 @@ import { SavedPath } from './SavedPath';
 import { saveDiagnostics } from './state';
 
 /**
- * After a crash: "Stratlas closed unexpectedly last time" (or, after a window crash, that the
+ * After a crash: "Quadrion AI closed unexpectedly last time" (or, after a window crash, that the
  * window was reopened), with Save a report and Dismiss. Shown until the person picks one.
  */
 export function CrashNotice() {

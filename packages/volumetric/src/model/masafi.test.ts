@@ -1,5 +1,5 @@
 /**
- * Parity on the real Masafi package (E:\Stratlas Data\projects\masafi, or STRATLAS_MASAFI):
+ * Parity on the real Masafi package (E:\Stratlas Data\projects\masafi, or QUADRION_MASAFI):
  * every pile, date and base recomputed from the kit's 10 cm grids equals volumes.json within
  * 0.5 %. Skipped where the project is not present. Read-only.
  */
@@ -12,7 +12,10 @@ import { localToEN, pileSurface } from './frame';
 import { decodeCoarse, decodeDsm, decodePile } from './kitdata';
 import { BASE_IDS, pileChange, pileVolume } from './volume';
 
-const ROOT = process.env.STRATLAS_MASAFI ?? 'E:\\Stratlas Data\\projects\\masafi';
+const ROOT =
+  process.env.QUADRION_MASAFI ??
+  process.env.STRATLAS_MASAFI ??
+  'E:\\Stratlas Data\\projects\\masafi';
 const present = existsSync(join(ROOT, 'volumes.json'));
 const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf8');
 /** Relative difference against the larger of the kit figure and 10 m³ (the importer's check). */

@@ -423,5 +423,5 @@ def terrain_glb(epoch: str, ground: Part, regions: list[Part], texture_jpeg: byt
         meshes,
         [ground_mat, {"name": "Toe_Line", "color": TOE_COLOR}],
         [("image/jpeg", texture_jpeg)] if texture_jpeg is not None else [],
-        "Stratlas pipelines (Volumetric Survey Kit terrain)",
+        "Quadrion AI pipelines (Volumetric Survey Kit terrain)",
     )

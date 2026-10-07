@@ -635,7 +635,7 @@ def _publish(ctx: StepContext, job: dict, site: dict, manifest: dict) -> dict:
     vol = job["volume"]
     doc = {
         "schema": "aio.volumes/1",
-        "source": "Volumetric Survey Kit, run in Stratlas (volumetric.build)",
+        "source": "Volumetric Survey Kit, run in Quadrion AI (volumetric.build)",
         "units": {"volume": "m3", "area": "m2", "length": "m"},
         "frame": "rings are [x, z] in the project local frame (x east, z south); centreEN in the project CRS",
         "densityTPerM3": vol["density_t_m3"],

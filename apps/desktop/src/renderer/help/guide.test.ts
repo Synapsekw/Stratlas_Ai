@@ -102,6 +102,10 @@ describe('helpers', () => {
 
   it('fills the product name', () => {
     expect(fillProduct('Start {product}.', 'X')).toBe('Start X.');
+    expect(fillProduct('Run {executable}-1.0.0-win-x64-setup.exe', 'X Y', 'XY')).toBe(
+      'Run XY-1.0.0-win-x64-setup.exe',
+    );
+    expect(fillProduct('{executable}.exe')).toBe(`${brand.executableName}.exe`);
   });
 
   it('resolves only bundled guide images', () => {

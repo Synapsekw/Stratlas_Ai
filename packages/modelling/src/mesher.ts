@@ -478,6 +478,6 @@ export function meshProcModel(
     nodes.push(name);
     partIds.push(p.id);
   }
-  const glb = writeGlb(glbParts, { root: model.id, generator: 'Stratlas model builder' });
+  const glb = writeGlb(glbParts, { root: model.id, generator: 'Quadrion AI model builder' });
   return { glb, nodes, partIds };
 }

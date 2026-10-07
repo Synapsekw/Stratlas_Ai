@@ -1,4 +1,4 @@
-# Stratlas 1.0 release notes (draft)
+# Quadrion AI 1.0 release notes (draft)
 
 Draft of 7 Oct 2026. The final pass, with the product name, dates and screenshots, comes with release candidate 1. Items marked _(preview)_ ship as a preview.
 
@@ -20,10 +20,10 @@ Draft of 7 Oct 2026. The final pass, with the product name, dates and screenshot
 ## Upgrading
 
 - Projects from every earlier version open in 1.0 with nothing lost; a `.bak` appears only for files you change.
-- A project edited in 1.0 still opens in 0.8. Its team data is ignored there, and edits made in 0.8 show in 1.0's History as "changed outside Stratlas".
-- If a file was saved by a newer Stratlas, 1.0 says so and leaves the file alone: update the app to open it.
+- A project edited in 1.0 still opens in 0.8. Its team data is ignored there, and edits made in 0.8 show in 1.0's History as "changed outside Quadrion AI".
+- If a file was saved by a newer version of Quadrion AI, 1.0 says so and leaves the file alone: update the app to open it.
 - Settings carry over. If you go back to 0.8, your house report choices are kept; the new audit and sign-off sections return to their default when you come back to 1.0.
-- The pipeline pack 1.0.0 works with Stratlas 0.9 to 1.x and says so if it is paired with another version.
+- The pipeline pack 1.0.0 works with Quadrion AI 0.9 to 1.x and says so if it is paired with another version.
 - See [UPGRADE-POLICY.md](UPGRADE-POLICY.md) for the full policy.
 
 ## Privacy and security

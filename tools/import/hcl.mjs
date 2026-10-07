@@ -1,4 +1,4 @@
-// Convert the staged HCl tank offline package into a native Stratlas project.
+// Convert the staged HCl tank offline package into a native Quadrion AI project.
 // Usage (from packages/project): pnpm import:hcl [--src <folder>] [--out <folder>]
 //   [--originals <folder with the 101-... flight folders of the original MOV recordings>]
 import { join } from 'node:path';

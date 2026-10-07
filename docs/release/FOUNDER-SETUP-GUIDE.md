@@ -1,4 +1,4 @@
-# Founder setup guide: accounts and certificates for Stratlas 1.0
+# Founder setup guide: accounts and certificates for Quadrion AI 1.0
 
 For the founder of Synapse Solutions (Kuwait). This guide covers the outside accounts, certificates and decisions that the 1.0 release needs: founder blockers B1 to B6 in [CHECKLIST-1.0.md](CHECKLIST-1.0.md). You do not need to be a release engineer. Each section says what to click, what to type, what it costs, how long it takes and what to send back to us.
 
@@ -7,7 +7,7 @@ _Facts checked on 7 October 2026. Exchange rate used: 1 USD = 0.310 KWD (7 Oct 2
 **Three rules for the whole guide**
 
 1. **Never paste a secret in chat or email,** not to us and not to anyone else. Secrets (passwords, private keys, `.p12`, `.p8` and `.pfx` files, API keys, client secrets) go straight into GitHub, as described in [section 8](#8-adding-secrets-and-variables-to-github). You send us only the public values listed under "What to send back".
-2. **Keep a private, offline copy** of every file and password in a password manager (for example 1Password or Bitwarden) under a "Stratlas release" folder. Several of these are shown only once.
+2. **Keep a private, offline copy** of every file and password in a password manager (for example 1Password or Bitwarden) under a "Quadrion AI release" folder. Several of these are shown only once.
 3. **"Check:"** marks something we could not confirm from an official source, or that depends on Kuwait. Confirm it when you reach that step and tell us if it differs.
 
 ---
@@ -40,7 +40,7 @@ Long-lead items start in parallel on day 1.
 
 **Week 1**
 
-- [ ] Section 6: run the name searches and decide the product name, or confirm "Stratlas" (2 to 4 hours).
+- [x] Section 6: the product name is decided: **Quadrion AI** (7 Oct 2026). Still to do: the name searches and reservations below (2 to 4 hours).
 - [ ] Section 5: send the penetration test brief to two or three firms for quotes (1 hour).
 - [ ] Section 4: tick the cosign decision (5 minutes).
 - [ ] Answer the certificate authority's phone call and emails as they come.
@@ -239,11 +239,11 @@ Costs: company accounts have been **free** since 7 May 2026, as long as you star
 
 ### Part A: confirm the existing account (about 1 hour)
 
-- [ ] Find out whose login reserved "Stratlas" (ask the team member who added the Store identity on 4 October 2026 if it was not you). Write down the sign-in email, never the password.
+- [ ] Find out whose login reserved "Stratlas", the working name the Store product was reserved under (ask the team member who added the Store identity on 4 October 2026 if it was not you). Write down the sign-in email, never the password.
 - [ ] Sign in at [partner.microsoft.com/dashboard](https://partner.microsoft.com/dashboard) with that login.
 - [ ] Click the gear icon, **Account settings**, then **Legal info** (or **Organization profile**). Check the **account type**: it must say **Company**, with the legal name of Synapse Solutions.
 - [ ] On the same pages, check that every verification shows **Verified** or **Complete** (email, employment, business). Note any that say pending or failed.
-- [ ] Open **Apps and games**, click **Stratlas**, then **Product management**, **Product identity** ([Microsoft Learn: view app identity](https://learn.microsoft.com/en-us/windows/apps/publish/view-app-identity-details)).
+- [ ] Open **Apps and games**, click **Stratlas** (the product reserved under the working name; add Quadrion AI under **Manage app names**), then **Product management**, **Product identity** ([Microsoft Learn: view app identity](https://learn.microsoft.com/en-us/windows/apps/publish/view-app-identity-details)).
 - [ ] Compare the three values with `packages/brand/brand.json`:
 
   | Partner Center field                    | `brand.json` field           | Value now in `brand.json`                 |
@@ -521,7 +521,7 @@ Kuwait has no national accreditation scheme for penetration testers that we coul
 
 ## 6. The final product name (B1)
 
-"Stratlas" is a temporary name (`"temporary": true` in `brand.json`). File formats do not carry the name, so changing it later is cheap in code, but it is not cheap in the Store, on the website or with customers. Decide before RC1.
+Decided on 7 Oct 2026: **Quadrion AI** (`brand.json` has `"temporary": false`; the working name until then was Stratlas). File formats do not carry the name. The checks and reservations below still apply to the new name.
 
 ### Steps: checks before you commit (2 to 4 hours, free)
 
@@ -543,19 +543,19 @@ Kuwait has no national accreditation scheme for penetration testers that we coul
 - [ ] Ask a Kuwaiti trademark agent for a quote for classes 9 and 42. Check: official fees are small (a few tens of KWD per class); agent fees are the main cost.
 - [ ] Optional, later: file abroad (for example the EU, the US, Saudi Arabia, UAE) through Madrid from another office, or nationally, depending on where you sell.
 
-### What we change in `brand.json` once you decide
+### What changed in `brand.json` (done 7 Oct 2026)
 
-You send the name; we make the change. For reference:
+For reference (record of the rename: `docs/plans/2026-10-07-rename-quadrion.md`):
 
-| Field                                                                 | Now                             | Becomes                                                                                                  |
-| --------------------------------------------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `productName`                                                         | `Stratlas`                      | The final name, as shown to users                                                                        |
-| `executableName`                                                      | `Stratlas`                      | The name without spaces                                                                                  |
-| `appId`                                                               | `ai.synapse-solutions.stratlas` | `ai.synapse-solutions.<name>` (lower case). Change before 1.0; after 1.0 it would move settings on macOS |
-| `urlScheme`                                                           | `stratlas`                      | The name in lower case (links like `<name>://`)                                                          |
-| `company`                                                             | `Synapse Solutions`             | Unchanged, unless you want the full legal name shown                                                     |
-| `temporary`                                                           | `true`                          | `false`                                                                                                  |
-| `store.identityName`, `store.publisher`, `store.publisherDisplayName` | From Partner Center             | Unchanged if you reserve the new name under the existing product; new values if you create a new product |
+| Field                                                                 | Before                          | Now                                                                                  |
+| --------------------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------ |
+| `productName`                                                         | `Stratlas`                      | `Quadrion AI`, as shown to users                                                     |
+| `executableName`                                                      | `Stratlas`                      | `QuadrionAI` (no spaces: exe and installer names)                                    |
+| `appId`                                                               | `ai.synapse-solutions.stratlas` | Unchanged on purpose: installed copies upgrade in place and keep their vault entries |
+| `urlScheme`                                                           | `stratlas`                      | `quadrion` (`quadrion://`); `stratlas` stays registered in `legacyUrlSchemes`        |
+| `company`                                                             | `Synapse Solutions`             | Unchanged, unless you want the full legal name shown                                 |
+| `temporary`                                                           | `true`                          | `false`                                                                              |
+| `store.identityName`, `store.publisher`, `store.publisherDisplayName` | From Partner Center             | Unchanged: add the new name under the existing product                               |
 
 Check: if you keep the existing Store product and add the new name to it (**Product management**, **Manage app names**), the package identity name stays `SynapseSolutions.Stratlas`. Users never see it, so that is fine. Confirm in Partner Center when you reserve.
 

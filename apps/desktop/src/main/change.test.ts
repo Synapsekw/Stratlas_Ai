@@ -206,7 +206,7 @@ describe('change IPC', () => {
     const newer = `${JSON.stringify({ ...current.set, schema: 'aio.change/2', extra: 1 })}\n`;
     await writeFile(file, newer);
     const message =
-      'change/d1-d2-issues.json was saved by a newer version of Stratlas (aio.change/2). Update the app to open it. The file was not changed.';
+      'change/d1-d2-issues.json was saved by a newer version of Quadrion AI (aio.change/2). Update the app to open it. The file was not changed.';
     expect(await h.call('change:read', { projectId: 'p', id: 'd1-d2-issues' })).toEqual({
       ok: false,
       error: message,

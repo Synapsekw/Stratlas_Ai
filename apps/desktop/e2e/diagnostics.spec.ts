@@ -238,7 +238,7 @@ async function killTree(app: ElectronApplication): Promise<void> {
 test('after an unclean exit the next start says so, and Dismiss clears it', async ({
   dataRoot,
 }) => {
-  const env = { STRATLAS_CRASH_NOTICE: '1' };
+  const env = { QUADRION_CRASH_NOTICE: '1' };
   const first = await launchApp(dataRoot, env);
   const firstWin = await first.firstWindow();
   await expect(firstWin.locator('.app')).toBeVisible();

@@ -1,17 +1,22 @@
+import { aliasLegacyEnv } from '@aio/brand/env';
 import { defineConfig } from '@playwright/test';
+
+// The app's variables are QUADRION_* since the rename; STRATLAS_* names still set in a shell count
+// as their QUADRION_* twins, here, in every worker and in every app a test starts (main/legacyEnv.ts).
+aliasLegacyEnv(process.env);
 
 // Every app an e2e test starts keeps its device key in a TEST-ONLY file of its throwaway userData,
 // never in Windows Credential Manager or the macOS Keychain (main/testVault.ts, M9 integration).
-process.env.STRATLAS_TEST_VAULT = '1';
+process.env.QUADRION_TEST_VAULT = '1';
 
 // Every app an e2e test starts refuses any write under the founder's real client data
-// (STRATLAS_REAL_DATA_ROOT, default E:\Stratlas Data; main/realDataGuard.ts), also when a spec
+// (QUADRION_REAL_DATA_ROOT, default E:\Stratlas Data; main/realDataGuard.ts), also when a spec
 // launches it without the fixtures. Real projects are only ever opened as temporary copies
 // (e2e/realData.ts), and every test that uses them carries @realdata in its title, so a run
 // without the real data is:
 //   playwright test --grep-invert @realdata
-// With STRATLAS_REAL_DATA_ROOT set to an empty folder, the @realdata tests skip.
-process.env.STRATLAS_E2E = '1';
+// With QUADRION_REAL_DATA_ROOT set to an empty folder, the @realdata tests skip.
+process.env.QUADRION_E2E = '1';
 
 export default defineConfig({
   testDir: './e2e',

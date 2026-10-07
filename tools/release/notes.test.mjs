@@ -57,7 +57,7 @@ describe('conventional commits', () => {
     });
     expect(md).toBe(
       [
-        '# Stratlas 0.7.0',
+        '# Quadrion AI 0.7.0',
         '',
         '2026-10-05',
         '',
@@ -102,7 +102,7 @@ describe('notes between tags', () => {
     mkdirSync(join(repo, 'apps/desktop'), { recursive: true });
     mkdirSync(join(repo, 'packages/brand'), { recursive: true });
     writeFileSync(join(repo, 'apps/desktop/package.json'), '{"version":"0.8.0"}');
-    writeFileSync(join(repo, 'packages/brand/brand.json'), '{"productName":"Stratlas"}');
+    writeFileSync(join(repo, 'packages/brand/brand.json'), '{"productName":"Quadrion AI"}');
     commit('feat: first feature');
     git('tag', 'v0.7.0');
     commit('fix: after the tag');
@@ -122,6 +122,7 @@ describe('notes between tags', () => {
     const n = releaseNotes({ cwd: repo, date: '2026-11-01' });
     expect(n.version).toBe('0.8.0');
     expect(n.from).toBe('v0.7.0');
+    expect(n.markdown).toMatch(/^# Quadrion AI 0\.8\.0/);
     expect(n.markdown).toContain('- Second feature');
     expect(n.markdown).toContain('- After the tag');
     expect(n.markdown).not.toContain('First feature');
@@ -143,19 +144,21 @@ describe('update feed', () => {
   });
 
   it('maps installer names to platforms', () => {
+    expect(platformOf('QuadrionAI-0.7.0-win-x64-setup.exe', '0.7.0')).toBe('win-x64');
+    // installers named before the rename still map
     expect(platformOf('Stratlas-0.7.0-win-x64-setup.exe', '0.7.0')).toBe('win-x64');
-    expect(platformOf('Stratlas-0.7.0-mac-arm64.dmg', '0.7.0')).toBe('mac-arm64');
-    expect(platformOf('Stratlas-0.7.0-win-x64-portable.exe', '0.7.0')).toBeNull();
-    expect(platformOf('Stratlas-0.6.0-win-x64-setup.exe', '0.7.0')).toBeNull();
-    expect(platformOf('Stratlas-0.7.0-win-x64-setup.exe.blockmap', '0.7.0')).toBeNull();
+    expect(platformOf('QuadrionAI-0.7.0-mac-arm64.dmg', '0.7.0')).toBe('mac-arm64');
+    expect(platformOf('QuadrionAI-0.7.0-win-x64-portable.exe', '0.7.0')).toBeNull();
+    expect(platformOf('QuadrionAI-0.6.0-win-x64-setup.exe', '0.7.0')).toBeNull();
+    expect(platformOf('QuadrionAI-0.7.0-win-x64-setup.exe.blockmap', '0.7.0')).toBeNull();
   });
 
   it('hashes installers and merges a feed of the same version', async () => {
-    writeFileSync(join(dist, 'Stratlas-0.7.0-win-x64-setup.exe'), 'abc');
+    writeFileSync(join(dist, 'QuadrionAI-0.7.0-win-x64-setup.exe'), 'abc');
     const feed = await buildFeed({
       dist,
       version: '0.7.0',
-      notes: '# Stratlas 0.7.0\n',
+      notes: '# Quadrion AI 0.7.0\n',
       previous: {
         version: '0.7.0',
         files: { 'mac-arm64': { url: 'm.dmg', sha256: 'f'.repeat(64), size: 1 } },
@@ -166,11 +169,11 @@ describe('update feed', () => {
       schema: 'aio.update-feed/1',
       version: '0.7.0',
       releasedAt: '2026-10-05',
-      notes: '# Stratlas 0.7.0\n',
+      notes: '# Quadrion AI 0.7.0\n',
       files: {
         'mac-arm64': { url: 'm.dmg', sha256: 'f'.repeat(64), size: 1 },
         'win-x64': {
-          url: 'Stratlas-0.7.0-win-x64-setup.exe',
+          url: 'QuadrionAI-0.7.0-win-x64-setup.exe',
           sha256: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
           size: 3,
         },
@@ -178,7 +181,7 @@ describe('update feed', () => {
     });
     const based = await buildFeed({ dist, version: '0.7.0', baseUrl: 'https://u.example.com/s/' });
     expect(based.files['win-x64']?.url).toBe(
-      'https://u.example.com/s/Stratlas-0.7.0-win-x64-setup.exe',
+      'https://u.example.com/s/QuadrionAI-0.7.0-win-x64-setup.exe',
     );
   });
 });

@@ -1,27 +1,27 @@
 /**
  * Where app windows appear. Automated tests and agent scripts run with an isolated profile
- * (STRATLAS_USER_DATA); their windows open off-screen, without taking focus and without a
+ * (QUADRION_USER_DATA); their windows open off-screen, without taking focus and without a
  * taskbar button, so they never flash on the person's desktop. Rendering, WebGL and screenshots
- * keep working. STRATLAS_WINDOW=visible shows them (to watch a test); STRATLAS_WINDOW=offscreen
+ * keep working. QUADRION_WINDOW=visible shows them (to watch a test); QUADRION_WINDOW=offscreen
  * forces off-screen for any profile.
  */
 export type WindowMode = 'normal' | 'offscreen';
 
 export function windowMode(env: Record<string, string | undefined>): WindowMode {
-  if (env.STRATLAS_WINDOW === 'visible') return 'normal';
-  if (env.STRATLAS_WINDOW === 'offscreen') return 'offscreen';
-  return env.STRATLAS_USER_DATA ? 'offscreen' : 'normal';
+  if (env.QUADRION_WINDOW === 'visible') return 'normal';
+  if (env.QUADRION_WINDOW === 'offscreen') return 'offscreen';
+  return env.QUADRION_USER_DATA ? 'offscreen' : 'normal';
 }
 
 /**
- * The main window's size: 1440 x 900, or STRATLAS_WINDOW_SIZE (`1100x700`) to try a small screen
+ * The main window's size: 1440 x 900, or QUADRION_WINDOW_SIZE (`1100x700`) to try a small screen
  * (the CI runners' screens give the main window its minimum, 1100 x 700). Never under the minimum.
  */
 export function windowSize(env: Record<string, string | undefined>): {
   width: number;
   height: number;
 } {
-  const m = /^(\d+)x(\d+)$/.exec(env.STRATLAS_WINDOW_SIZE?.trim() ?? '');
+  const m = /^(\d+)x(\d+)$/.exec(env.QUADRION_WINDOW_SIZE?.trim() ?? '');
   if (!m) return { width: 1440, height: 900 };
   return { width: Math.max(1100, Number(m[1])), height: Math.max(700, Number(m[2])) };
 }

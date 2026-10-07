@@ -1,4 +1,4 @@
-// Convert the staged Al-Zour plant twin (artifact files + asset store blobs) into a native Stratlas project.
+// Convert the staged Al-Zour plant twin (artifact files + asset store blobs) into a native Quadrion AI project.
 // Usage (from packages/project): pnpm import:alzour [--src <folder>] [--out <folder>]
 //   [--originals <folder with the original DJI_xxxx.MOV/MP4 recordings>]
 import { existsSync } from 'node:fs';

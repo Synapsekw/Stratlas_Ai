@@ -5,16 +5,16 @@
 ## Install on Windows
 
 1. Close {product} if it is running. The installer stops while it runs: "{product} is running. Close it and click Retry."
-2. Run `{product}-<version>-win-x64-setup.exe`. Choose the folder, or keep the default.
+2. Run `{executable}-<version>-win-x64-setup.exe`. Choose the folder, or keep the default.
 3. If Windows shows "Windows protected your PC", choose **More info**, then **Run anyway**. Only unsigned test builds show this.
 
-No install rights? Use `{product}-<version>-win-x64-portable.exe` instead. It runs from any folder.
+No install rights? Use `{executable}-<version>-win-x64-portable.exe` instead. It runs from any folder.
 
 To update, run the newer installer over the old version. Your projects, settings and keys stay. See [About and updates](12-settings.md#about-and-updates).
 
 ## Install on macOS
 
-1. Open `{product}-<version>-mac-<arch>.dmg`.
+1. Open `{executable}-<version>-mac-<arch>.dmg`.
 2. Drag {product} into **Applications**.
 
 ## First start

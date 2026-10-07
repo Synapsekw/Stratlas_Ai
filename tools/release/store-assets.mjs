@@ -10,11 +10,15 @@
 // scale, Start, taskbar and the Store. Unqualified copies are removed: two candidates for the
 // same resource would make makepri fail.
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import sharp from 'sharp';
+import { WORDMARK } from '../../packages/brand/src/marks.ts';
 import { render, root, tile, TILE_BG } from './icon-render.mjs';
+
+/** Brand kit colours on dark: ink for QUADRION, mint for AI. */
+const INK = '#EEF2F5';
+const MINT = '#5ED1B3';
 
 /** Display scales Windows asks for (percent). */
 export const SCALES = [100, 125, 150, 200, 400];
@@ -78,22 +82,28 @@ export const LISTING_IMAGES = [
 const appxDir = join(root, 'apps/desktop/build/appx');
 const listingDir = join(root, 'docs/release/store-listing/images');
 
-/** Icon above the product name (wordmark style of packages/brand/mark.svg). */
-async function titled(w, h, productName) {
+/** The outlined wordmark (packages/brand/src/marks.ts) on dark, `width` px wide. */
+function wordmark(width) {
+  const [, , vw, vh] = WORDMARK.viewBox.split(' ').map(Number);
+  const height = Math.round((width * vh) / vw);
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${WORDMARK.viewBox}" width="${width}" height="${height}">` +
+    `<g transform="${WORDMARK.transform}"><path d="${WORDMARK.quadrion}" fill="${INK}"/>` +
+    `<path d="${WORDMARK.ai}" fill="${MINT}"/></g></svg>`;
+  return { input: Buffer.from(svg), height };
+}
+
+/** Icon above the outlined wordmark, the stacked lockup of the brand kit. */
+async function titled(w, h) {
   const side = Math.round(Math.min(w, h) * 0.42);
-  const fontSize = Math.round(side * 0.24);
-  const gap = Math.round(side * 0.16);
-  const top = Math.round((h - side - gap - fontSize) / 2);
-  const text = Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${fontSize * 2}">` +
-      `<text x="50%" y="${fontSize}" text-anchor="middle" font-family="IBM Plex Sans, Segoe UI, Helvetica, Arial, sans-serif" ` +
-      `font-size="${fontSize}" font-weight="600" letter-spacing="${(fontSize * 0.12).toFixed(1)}" fill="#E3EAF2">` +
-      `${productName.toUpperCase()}</text></svg>`,
-  );
+  const wordWidth = Math.round(side * 1.9);
+  const word = wordmark(wordWidth);
+  const gap = Math.round(side * 0.2);
+  const top = Math.round((h - side - gap - word.height) / 2);
   return sharp({ create: { width: w, height: h, channels: 4, background: TILE_BG } })
     .composite([
       { input: await render(side), left: Math.floor((w - side) / 2), top },
-      { input: text, left: 0, top: top + side + gap - Math.round(fontSize * 0.2) },
+      { input: word.input, left: Math.floor((w - wordWidth) / 2), top: top + side + gap },
     ])
     .png()
     .toBuffer();
@@ -106,7 +116,6 @@ async function write(dir, file, data) {
 }
 
 export async function writeStoreAssets() {
-  const brand = JSON.parse(readFileSync(join(root, 'packages/brand/brand.json'), 'utf8'));
   // Unqualified and stale files would compete with the scaled ones in resources.pri.
   await mkdir(appxDir, { recursive: true });
   for (const f of await readdir(appxDir)) {
@@ -119,9 +128,7 @@ export async function writeStoreAssets() {
   }
   process.stdout.write(`Listing images in ${listingDir}\n`);
   for (const img of LISTING_IMAGES) {
-    const data = img.title
-      ? await titled(img.w, img.h, brand.productName)
-      : await tile(img.w, img.h, 0.8);
+    const data = img.title ? await titled(img.w, img.h) : await tile(img.w, img.h, 0.8);
     await write(listingDir, img.file, data);
   }
 }

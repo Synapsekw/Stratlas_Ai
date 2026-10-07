@@ -22,7 +22,7 @@ const ID = 'e2e-camera-direction';
 const NAME = 'E2E camera direction';
 const SITE: [number, number] = [47.98, 29.38];
 const START = Date.UTC(2026, 0, 5, 7, 0, 0);
-const SHOTS = process.env.STRATLAS_SHOTS;
+const SHOTS = process.env.QUADRION_SHOTS;
 
 type V3 = [number, number, number];
 

@@ -25,7 +25,7 @@ function fakeMain(opts: { failGet?: boolean } = {}) {
       if (channel === 'app:getInfo') {
         return Promise.resolve({
           ok: true,
-          value: { name: 'Stratlas', version: '0.9.0', platform: 'win32', user: 'rana' },
+          value: { name: 'Quadrion AI', version: '0.9.0', platform: 'win32', user: 'rana' },
         });
       }
       if (channel === 'identity:set') {

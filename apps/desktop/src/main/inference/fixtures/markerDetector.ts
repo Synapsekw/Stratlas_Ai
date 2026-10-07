@@ -100,8 +100,8 @@ export function markerDetectorOnnx(opts: MarkerModelOptions = {}): Uint8Array {
   // magenta: R + B - 2G over 1.5; cyan: G + B - 2R over 1.5 (inputs are 0 to 1)
   const w = [8, -16, 8, -16, 8, 8];
   return writeOnnx({
-    name: 'stratlas-marker-detector',
-    doc: 'Stratlas test fixture: finds coloured marker patches with plain operators.',
+    name: 'quadrion-marker-detector',
+    doc: 'Quadrion AI test fixture: finds coloured marker patches with plain operators.',
     nodes,
     initializers: [
       { name: 'w', dims: [2, 3, 1, 1], float: w },
@@ -143,7 +143,7 @@ export function markerCard(
     input: { width: size, height: size, tensor: 'nchw', color: 'rgb', scale: 255 },
     classes: [...MARKER_CLASSES],
     licence: 'MIT',
-    source: 'Stratlas test fixture',
+    source: 'Quadrion AI test fixture',
     sha256: sha256(onnx),
     minConfidence: 0.5,
     ...over,

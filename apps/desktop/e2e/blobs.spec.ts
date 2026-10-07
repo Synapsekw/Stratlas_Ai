@@ -3,7 +3,7 @@
  * is registered by a `blob.add` op and lives only in a synthetic hub folder. The project opens
  * before the file arrives, the layer shows "Not on this computer", `aio://` answers the
  * missing-blob 404, and Download fetches it with progress, cancel and resume (the transfer rate is
- * capped by STRATLAS_E2E_BLOB_RATE so each step is visible), after which the model renders.
+ * capped by QUADRION_E2E_BLOB_RATE so each step is visible), after which the model renders.
  * Stream from shared folder reads the hub in place without copying. A project that is never
  * shared shows nothing new.
  */
@@ -152,7 +152,7 @@ async function cachedBlobs(userData: string): Promise<string[]> {
 }
 
 test.describe('a working copy whose binaries live on a hub', () => {
-  test.use({ appEnv: { STRATLAS_E2E_BLOB_RATE: RATE } });
+  test.use({ appEnv: { QUADRION_E2E_BLOB_RATE: RATE } });
   test.beforeEach(async ({ dataRoot }) => {
     await sharedCopy(dataRoot);
   });

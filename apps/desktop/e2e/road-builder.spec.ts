@@ -11,11 +11,11 @@ import { copyRealData, hasRealData } from './realData';
  * A road survey built in the app from raw inputs: the wizard (type Road), the ortho imported,
  * the centreline drawn on the map, the road builder run from the Jobs panel (road.build in the
  * pipeline runtime), and the project open in the road workspace. Needs a Python with
- * aio_pipelines (the development venv, or STRATLAS_E2E_PYTHON). Synthetic data only.
+ * aio_pipelines (the development venv, or QUADRION_E2E_PYTHON). Synthetic data only.
  */
 const repo = join(import.meta.dirname, '..', '..', '..');
 const venvPython =
-  process.env.STRATLAS_E2E_PYTHON ??
+  process.env.QUADRION_E2E_PYTHON ??
   (process.platform === 'win32'
     ? join(repo, 'python', '.venv', 'Scripts', 'python.exe')
     : join(repo, 'python', '.venv', 'bin', 'python'));
@@ -139,7 +139,7 @@ test('a road survey from raw inputs: wizard, drawn centreline, road builder job,
     execFileSync(venvPython, [FIXTURE, join(dataRoot.base, 'raw')], { encoding: 'utf8' }),
   ) as Fixture;
   await providePack(dataRoot.root);
-  const app = await launchApp(dataRoot, { STRATLAS_PIPELINE_PYTHON: venvPython });
+  const app = await launchApp(dataRoot, { QUADRION_PIPELINE_PYTHON: venvPython });
   await network.attach(app);
   try {
     const win = await app.firstWindow();

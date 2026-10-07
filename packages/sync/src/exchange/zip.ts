@@ -322,7 +322,7 @@ export async function openExchangeZip(file: string): Promise<ExchangeZip> {
 function notZip(): ExchangeError {
   return new ExchangeError(
     'not-exchange',
-    'This is not an exchange file. Choose a .aiosync file exported by Stratlas.',
+    'This is not an exchange file. Choose a .aiosync file exported by Quadrion AI.',
   );
 }
 

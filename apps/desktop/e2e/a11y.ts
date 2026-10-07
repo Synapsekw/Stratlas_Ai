@@ -76,8 +76,8 @@ export async function audit(win: Page, o: AuditOptions = {}): Promise<string[]> 
 /** Fail with every violation listed when the window (or `include`) is not accessible. */
 export async function expectAccessible(win: Page, name: string, o: AuditOptions = {}) {
   const violations = await audit(win, o);
-  // STRATLAS_A11Y_REPORT=1 lists every screen's violations instead of stopping at the first
-  if (process.env.STRATLAS_A11Y_REPORT) {
+  // QUADRION_A11Y_REPORT=1 lists every screen's violations instead of stopping at the first
+  if (process.env.QUADRION_A11Y_REPORT) {
     for (const v of violations) console.warn(`[a11y] ${name}: ${v}`);
     return;
   }

@@ -255,7 +255,7 @@ const dayOfYear = (iso) => {
 /**
  * LAS 1.2, point format 2 (XYZ, intensity, classification, RGB), coordinates in the project CRS
  * (`xyz` Float64Array of E, N, H), millimetre scale, with a GeoTIFF key directory naming `epsg`.
- * The header names the generator only as "Stratlas demo" and the capture `date` (no clock, no
+ * The header names the generator only as "Quadrion AI demo" and the capture `date` (no clock, no
  * machine, no tool version).
  */
 export function writeLas({ xyz, rgb, classification, intensity, epsg, date }) {
@@ -292,8 +292,8 @@ export function writeLas({ xyz, rgb, classification, intensity, epsg, date }) {
   h.write('LASF', 0, 'latin1');
   h[24] = 1;
   h[25] = 2;
-  h.write('Stratlas demo (synthetic)', 26, 'latin1');
-  h.write('Stratlas demo builder', 58, 'latin1');
+  h.write('Quadrion AI demo (synthetic)', 26, 'latin1');
+  h.write('Quadrion AI demo builder', 58, 'latin1');
   h.writeUInt16LE(dayOfYear(date), 90);
   h.writeUInt16LE(Number(date.slice(0, 4)), 92);
   h.writeUInt16LE(HEADER, 94);

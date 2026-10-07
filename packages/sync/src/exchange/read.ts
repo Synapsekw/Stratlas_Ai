@@ -94,7 +94,7 @@ async function check(
   if (!zip.entries.has(exchangeMembers.header)) {
     throw new ExchangeError(
       'not-exchange',
-      'This is not an exchange file (it has no aio-exchange.json). Choose a .aiosync file exported by Stratlas.',
+      'This is not an exchange file (it has no aio-exchange.json). Choose a .aiosync file exported by Quadrion AI.',
     );
   }
   const rawHeader = parseJson(

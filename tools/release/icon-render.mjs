@@ -1,4 +1,5 @@
-// Rasterise the brand icon (packages/brand/icon.svg) for installers and Store assets.
+// Rasterise the brand icon (packages/brand/icon.svg, and icon-small.svg from 32 px down) for
+// installers and Store assets.
 // Shared by icons.mjs (ico, icns, png) and store-assets.mjs (MSIX tiles, listing images).
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -7,18 +8,26 @@ import sharp from 'sharp';
 
 export const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
 export const iconSource = join(root, 'packages/brand/icon.svg');
+/** The small-size cut (larger mark, wider cuts between plates) for icons of 32 px and less. */
+export const smallIconSource = join(root, 'packages/brand/icon-small.svg');
+/** Largest icon size, in px, drawn from the small-size cut. */
+export const SMALL_MAX = 32;
 
 /** Tile background for Store assets; matches the icon's own plate colour. */
-export const TILE_BG = '#18202B';
+export const TILE_BG = '#11161C';
 
 const svg = readFileSync(iconSource);
+const smallSvg = readFileSync(smallIconSource);
 
 /** Render the icon at `size` px, optionally inset by `scale` on a transparent canvas. */
 export async function render(size, scale = 1) {
   const inner = Math.round(size * scale);
   // Render at the target resolution (not a downscaled bitmap) so small sizes stay crisp.
   const density = Math.max(1, (72 * inner) / 512);
-  const img = await sharp(svg, { density }).resize(inner, inner).png().toBuffer();
+  const img = await sharp(inner <= SMALL_MAX ? smallSvg : svg, { density })
+    .resize(inner, inner)
+    .png()
+    .toBuffer();
   if (inner === size) return img;
   const pad = Math.floor((size - inner) / 2);
   return sharp({

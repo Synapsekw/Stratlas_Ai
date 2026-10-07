@@ -48,7 +48,7 @@ describe('marker test detector (ONNX from plain operators)', () => {
       expect(ops).toContain(op);
     // only tiny constants: thresholds, shapes, scalars
     expect(onnx.length).toBeLessThan(8000);
-    expect(onnxStrings(onnx).join(' ')).toContain('Stratlas test fixture');
+    expect(onnxStrings(onnx).join(' ')).toContain('Quadrion AI test fixture');
   });
 
   it('finds every seeded marker with its exact box, and nothing else', () => {

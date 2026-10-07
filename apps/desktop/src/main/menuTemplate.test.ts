@@ -10,13 +10,16 @@ const press = (item: Item | undefined) => (item?.click as (() => void) | undefin
 
 function mac(dev = false) {
   const send = vi.fn<(a: MenuAction) => void>();
-  return { send, menu: menuTemplate({ platform: 'darwin', dev, productName: 'Stratlas', send }) };
+  return {
+    send,
+    menu: menuTemplate({ platform: 'darwin', dev, productName: 'Quadrion AI', send }),
+  };
 }
 
 describe('menuTemplate on macOS', () => {
   it('has the app, File, Edit, View, Window and Help menus in order', () => {
     expect(mac().menu.map((m) => m.role ?? m.label)).toEqual([
-      'Stratlas',
+      'Quadrion AI',
       'File',
       'Edit',
       'View',
@@ -88,7 +91,7 @@ describe('menuTemplate on Windows', () => {
     const menu = menuTemplate({
       platform: 'win32',
       dev: false,
-      productName: 'Stratlas',
+      productName: 'Quadrion AI',
       send: () => undefined,
     });
     expect(menu.map((m) => m.role ?? m.label)).toEqual([

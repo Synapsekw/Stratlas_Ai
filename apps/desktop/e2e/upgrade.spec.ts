@@ -5,7 +5,7 @@
  *   is edited through the issue card, and every state file of the project, and settings.json,
  *   still parse with the 0.8 schema afterwards (tools/compat/schema-0.8): an 0.8 build on the
  *   same machine keeps working with them, house report choices included.
- * - A project saved by a newer Stratlas (`aio.project/2`) is refused with the update message and
+ * - A project saved by a newer version of Quadrion AI (`aio.project/2`) is refused with the update message and
  *   its files are left exactly as they were.
  *
  * The project's images, models and clouds come from the synthetic demo (build it with
@@ -22,7 +22,7 @@ import { expect, launchApp, NetworkGuard, type DataRoot } from './fixtures';
 
 const REPO = join(import.meta.dirname, '..', '..', '..');
 const COMPAT = join(REPO, 'tools', 'compat');
-const DEMO = process.env.STRATLAS_E2E_DEMO ?? join(import.meta.dirname, '..', 'demo');
+const DEMO = process.env.QUADRION_E2E_DEMO ?? join(import.meta.dirname, '..', 'demo');
 const PROJECT = 'compat-tank-farm';
 const NAME = 'Demo tank farm';
 
@@ -216,7 +216,10 @@ test('the first edit in this build starts the journal, signed by this device', a
   expect(existsSync(join(data.projectDir, 'journal', 'devices', `${device}.json`))).toBe(true);
 });
 
-test('a project saved by a newer Stratlas is refused and left unchanged', async ({ win, data }) => {
+test('a project saved by a newer version of Quadrion AI is refused and left unchanged', async ({
+  win,
+  data,
+}) => {
   const manifestFile = join(data.projectDir, 'manifest.json');
   const manifest = JSON.parse(await readFile(manifestFile, 'utf8')) as Record<string, unknown>;
   const newer = `${JSON.stringify({ ...manifest, schema: 'aio.project/2', later: true }, null, 2)}\n`;
@@ -228,7 +231,8 @@ test('a project saved by a newer Stratlas is refused and left unchanged', async 
     data.projectDir,
   );
   expect(r.ok).toBe(false);
-  if (!r.ok) expect(r.error).toMatch(/saved by a newer Stratlas \(schema aio\.project\/2\)/);
+  if (!r.ok)
+    expect(r.error).toMatch(/saved by a newer version of Quadrion AI \(schema aio\.project\/2\)/);
   expect(await readFile(manifestFile, 'utf8')).toBe(newer);
   expect(await jsonFiles(data.projectDir)).toEqual(before);
 });

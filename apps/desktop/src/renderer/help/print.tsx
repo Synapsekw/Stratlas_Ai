@@ -10,6 +10,7 @@ import { brand } from '@aio/brand';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { build, formatBuildTime } from '../buildStamp';
+import { BrandLockup } from '../shell/BrandMark';
 import { GuideArticle } from './GuideArticle';
 import { guideChapters } from './guide';
 
@@ -28,7 +29,9 @@ function PrintedGuide() {
   return (
     <>
       <section className="pg-cover">
-        <div className="pg-mark">{brand.productName}</div>
+        <div className="pg-mark">
+          <BrandLockup />
+        </div>
         <h1>User guide</h1>
         <p className="pg-sub">
           Version {build.version} · {formatBuildTime(build.time, { year: true }).split(',')[0]}

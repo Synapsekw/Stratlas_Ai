@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* eslint-disable no-console -- command line output */
-// Stratlas audit verify: an independent check of a project's journal (the audit trail).
+// Quadrion AI audit verify: an independent check of a project's journal (the audit trail).
 //
 //   node verify.mjs <project folder | audit .json> [--json] [--now <iso time>]
 //
@@ -584,7 +584,7 @@ export function readAuditJson(text) {
     });
   }
   if (doc === null || typeof doc !== 'object' || doc.schema !== AUDIT_SCHEMA) {
-    throw new Error(`The file is not a Stratlas audit export (schema "${AUDIT_SCHEMA}").`);
+    throw new Error(`The file is not a Quadrion AI audit export (schema "${AUDIT_SCHEMA}").`);
   }
   const journal = doc.journal;
   if (journal === null || typeof journal !== 'object' || Array.isArray(journal)) {

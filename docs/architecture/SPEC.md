@@ -274,7 +274,7 @@ The build is organised so many agents can work at once without blocking each oth
 
 ## 11. Open decisions
 
-1. UI direction: **decided, Mission** (ADR 0002, `docs/design/DIRECTION.md`). The product name is **Stratlas, temporary**: the display name, app ID, executable name, URL scheme label, icons and wordmark come from one file, `packages/brand/brand.json` plus its icon set, so a rename touches only that package and the installer config generated from it. Internal identifiers (package scope `@aio/*`, the `aio://` protocol, `.aio` project folders) stay neutral and do not change on rename.
+1. UI direction: **decided, Mission** (ADR 0002, `docs/design/DIRECTION.md`). The product name is **Quadrion AI** (final since 2026-10-07; Stratlas before): the display name, app ID, executable name, URL scheme label, icons and wordmark come from one file, `packages/brand/brand.json` plus its icon set, so a rename touches only that package and the installer config generated from it. Internal identifiers (package scope `@aio/*`, the `aio://` protocol, `.aio` project folders) stay neutral and do not change on rename.
 2. Code-signing certificates and Apple Developer account in the Synapse entity.
 3. Mapbox-baked basemaps inside legacy jobs: keep for internal use, replace with OSM before customer distribution.
 4. Licensing model for customer installs.

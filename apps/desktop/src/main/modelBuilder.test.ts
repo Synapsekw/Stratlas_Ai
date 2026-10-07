@@ -73,7 +73,7 @@ function ipc(projects: Partial<ModelProjects> = {}) {
 }
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'stratlas-models-'));
+  dir = await mkdtemp(join(tmpdir(), 'quadrion-models-'));
   root = join(dir, 'site');
   await mkdir(root);
   await writeManifestFile(root, manifest);

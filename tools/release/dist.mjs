@@ -31,7 +31,7 @@ const demo = spawnSync(
 );
 if (demo.status !== 0) process.exit(demo.status ?? 1);
 
-// Empty CI values dropped; with STRATLAS_NO_SIGNING=1 no signing variable at all; for the Store
+// Empty CI values dropped; with QUADRION_NO_SIGNING=1 no signing variable at all; for the Store
 // package none either (Microsoft signs it); for a Windows build only the chosen route's variables.
 const env = builderEnv(process.env, builderArgs);
 // release.yml passes the route its "Signing mode" step reported: the build must use that one.
@@ -63,7 +63,7 @@ if (result.status !== 0) process.exit(result.status ?? 1);
 
 // Never hand over a package that cannot start: check the bundle, then launch the packaged app.
 // Then the update feed (stratlas-update.json) for the installers in dist (ADR 0003), and the PDF
-// user guide beside the installers (<Product>-<version>-user-guide.pdf, from the built guide page).
+// user guide beside the installers (<Executable>-<version>-user-guide.pdf, from the built guide page).
 for (const step of [
   'check-bundle.mjs',
   'smoke-packaged.mjs',

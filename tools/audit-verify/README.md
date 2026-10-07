@@ -1,6 +1,6 @@
 # Audit verify
 
-`verify.mjs` checks a Stratlas project's audit trail (its journal) without Stratlas. It is one file
+`verify.mjs` checks a Quadrion AI project's audit trail (its journal) without the app. It is one file
 that uses only Node's own modules, so you can read every line of it before you run it.
 
 ## What you need
@@ -15,7 +15,7 @@ node verify.mjs <project folder | audit .json> [--json] [--now <iso time>]
 
 - A **project folder** is the folder that holds `manifest.json` and `journal/`. Every file under
   `journal/` is read.
-- An **audit JSON export** is the JSON audit export Stratlas writes (`audit-json`). It carries every
+- An **audit JSON export** is the JSON audit export Quadrion AI writes (`audit-json`). It carries every
   journal file, every device's public key and the checkpoints.
 - `--json` prints the full report instead of the summary.
 - `--now` sets the time the check treats as now, for entries whose clock was ahead. The default is
@@ -48,7 +48,7 @@ Intact: 16 entries in 3 chains, all signed. Audit head 99213e81...
 ```
 
 The audit head is a SHA-256 Merkle root over the last entry of every chain. It is the value printed
-in the footer of Stratlas reports, so you can match a report to the journal it came from.
+in the footer of Quadrion AI reports, so you can match a report to the journal it came from.
 
 ## Exit codes
 

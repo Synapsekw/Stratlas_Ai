@@ -18,7 +18,7 @@ import {
 
 const EBSM = realProjectDir('ebsm');
 /** Media must answer input within this many ms of opening (first run, cold thumbnail cache). */
-const BUDGET_MS = Number(process.env.STRATLAS_MEDIA_BUDGET_MS ?? 3_000);
+const BUDGET_MS = Number(process.env.QUADRION_MEDIA_BUDGET_MS ?? 3_000);
 
 const test = realDataTest(['ebsm'], { size: [1440, 900] });
 

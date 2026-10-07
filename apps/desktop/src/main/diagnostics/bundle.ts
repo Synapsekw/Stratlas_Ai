@@ -1,3 +1,4 @@
+import { brand } from '@aio/brand';
 import { writeZip, type ZipMember } from '@aio/project/package';
 import type { JobRecord, UpdateStatus } from '@aio/schema';
 import { readdir, readFile, stat } from 'node:fs/promises';
@@ -189,7 +190,7 @@ export async function openProjectSizes(
   );
 }
 
-const README = (time: string) => `Stratlas diagnostics bundle
+const README = (time: string) => `${brand.productName} diagnostics bundle
 Saved ${time}. Nothing in it was sent anywhere: attach it to a support message yourself if you want help.
 
 What is inside

@@ -67,7 +67,7 @@ interface Probe {
   };
 }
 
-test.use({ appEnv: { ...PIPELINE_ENV, STRATLAS_AI_TEST_PROVIDER: '1' } });
+test.use({ appEnv: { ...PIPELINE_ENV, QUADRION_AI_TEST_PROVIDER: '1' } });
 test.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`);
 
 const modelling = (truth: { modelling: unknown }) => truth.modelling as Modelling;

@@ -54,7 +54,7 @@ async function start(models: Parameters<typeof startFakeLlm>[0]['models']): Prom
   const data = await createDataRoot();
   const app = await launchApp(data, {
     AIO_NETWORK_GUARD_ALLOW: fake.origin,
-    STRATLAS_DEMO: DEMO_FOLDER,
+    QUADRION_DEMO: DEMO_FOLDER,
   });
   const network = new NetworkGuard([fake.origin]);
   await network.attach(app);

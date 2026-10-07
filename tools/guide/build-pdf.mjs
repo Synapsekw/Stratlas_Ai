@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // The PDF user guide, from the same Markdown as the in-app help (docs/guide). The built app's
 // guide page (apps/desktop/out/renderer/guide.html) is printed in a hidden Electron window with
-// printToPDF, like the house report. Output: apps/desktop/dist/<Product>-<version>-user-guide.pdf.
+// printToPDF, like the house report. Output: apps/desktop/dist/<Executable>-<version>-user-guide.pdf
+// (QuadrionAI-<version>-user-guide.pdf: no spaces, like the installers).
 //
 //   pnpm -F @aio/desktop build        (once, or after the guide changed)
 //   node tools/guide/build-pdf.mjs    [--out <file.pdf>]
@@ -22,7 +23,7 @@ const outArg = args.indexOf('--out');
 const out = resolve(
   outArg >= 0 && args[outArg + 1]
     ? args[outArg + 1]
-    : join(desktop, 'dist', `${brand.productName}-${version}-user-guide.pdf`),
+    : join(desktop, 'dist', `${brand.executableName}-${version}-user-guide.pdf`),
 );
 
 if (!existsSync(page)) {

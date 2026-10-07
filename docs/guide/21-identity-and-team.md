@@ -86,7 +86,7 @@ For training or testing, one computer can act as two reviewers. Each one has its
 From a Command Prompt in the install folder, the same is:
 
 ```
-{product}.exe --profile=reviewer-b
+{executable}.exe --profile=reviewer-b
 ```
 
 Both windows can be open at once. Give the second person their own copy of the project folder, and share it between the two as described in [Exchange files and shared folders](24-exchange-files-and-shared-folders.md). In the Credential Manager each profile has its own entry.

@@ -4,8 +4,8 @@
  * - `dataRoot`: a temporary data root holding one tiny synthetic native project
  *   (`projects/e2e-tiny/` with a schema-valid manifest.json, a 1 x 1 m quad GLB and an empty
  *   issues.json). Deleted after the test.
- * - `app` / `win`: the built app (`out/main/index.js`) launched with STRATLAS_DATA pointing at
- *   `dataRoot.root` and STRATLAS_USER_DATA at a throwaway profile, with the zero-network guard
+ * - `app` / `win`: the built app (`out/main/index.js`) launched with QUADRION_DATA pointing at
+ *   `dataRoot.root` and QUADRION_USER_DATA at a throwaway profile, with the zero-network guard
  *   attached and a Playwright trace kept on failure.
  * - `network`: the zero-network guard. Every test that uses `app` or `win` fails if the app
  *   made any request outside `ALLOWED_PROTOCOLS`, from the renderer or from the main process.
@@ -51,12 +51,12 @@ export const MAIN_ENTRY = join(import.meta.dirname, '../out/main/index.js');
 const GUARD = join(import.meta.dirname, 'network-guard.cjs');
 
 /**
- * Chromium switches for every launch. STRATLAS_E2E_SWGL=1 draws with SwiftShader, the software
+ * Chromium switches for every launch. QUADRION_E2E_SWGL=1 draws with SwiftShader, the software
  * GPU the CI runners fall back to, so a difference that depends on the GPU (the detected
  * graphics tier, timing of a slow frame) shows up on a workstation as well.
  */
 export const GPU_ARGS =
-  process.env.STRATLAS_E2E_SWGL === '1'
+  process.env.QUADRION_E2E_SWGL === '1'
     ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']
     : [];
 
@@ -147,9 +147,9 @@ export function tinyGlb(): Buffer {
 export interface DataRoot {
   /** Temporary folder holding `data/` and `user/`; removed after the test. */
   base: string;
-  /** Value for STRATLAS_DATA. */
+  /** Value for QUADRION_DATA. */
   root: string;
-  /** Value for STRATLAS_USER_DATA, so settings and library.json never touch the real profile. */
+  /** Value for QUADRION_USER_DATA, so settings and library.json never touch the real profile. */
   userData: string;
   projectId: string;
   projectDir: string;
@@ -292,8 +292,8 @@ export async function realDataRefusals(app: ElectronApplication): Promise<string
  * Launch the built app against `dataRoot` with the main-process network guard preloaded.
  *
  * Refuses a data root (or profile) inside the founder's real data (`realData.ts`): real projects
- * are copied first (`copyRealProjects`, `realProject`). The app runs with STRATLAS_E2E=1, so its
- * own guard refuses any write under STRATLAS_REAL_DATA_ROOT; `app.close()` then throws when it
+ * are copied first (`copyRealProjects`, `realProject`). The app runs with QUADRION_E2E=1, so its
+ * own guard refuses any write under QUADRION_REAL_DATA_ROOT; `app.close()` then throws when it
  * refused one, failing the test even if the app swallowed the error.
  */
 export async function launchApp(
@@ -302,17 +302,17 @@ export async function launchApp(
   /** Arguments after the app entry, e.g. a double-clicked `.aio` path. */
   extraArgs: string[] = [],
 ): Promise<ElectronApplication> {
-  assertNotRealData(env.STRATLAS_DATA ?? dataRoot.root, 'The e2e data root');
-  assertNotRealData(env.STRATLAS_USER_DATA ?? dataRoot.userData, 'The e2e profile');
+  assertNotRealData(env.QUADRION_DATA ?? dataRoot.root, 'The e2e data root');
+  assertNotRealData(env.QUADRION_USER_DATA ?? dataRoot.userData, 'The e2e profile');
   const app = await electron.launch({
     // `-r` preloads the guard before the app's main module (Playwright drops NODE_OPTIONS).
     args: [...GPU_ARGS, '-r', GUARD, MAIN_ENTRY, ...extraArgs],
     env: {
       ...(process.env as Record<string, string>),
-      STRATLAS_E2E: '1',
-      STRATLAS_REAL_DATA_ROOT: REAL_DATA_ROOT,
-      STRATLAS_DATA: dataRoot.root,
-      STRATLAS_USER_DATA: dataRoot.userData,
+      QUADRION_E2E: '1',
+      QUADRION_REAL_DATA_ROOT: REAL_DATA_ROOT,
+      QUADRION_DATA: dataRoot.root,
+      QUADRION_USER_DATA: dataRoot.userData,
       ...env,
     },
   });
@@ -470,9 +470,9 @@ export async function createTwoDateProject(dataRoot: DataRoot): Promise<TwoDateP
 
 /**
  * The bundled demo folder (`pnpm demo:build --quick`, or only `pnpm demo:change --quick` for the
- * change demo), or STRATLAS_E2E_DEMO.
+ * change demo), or QUADRION_E2E_DEMO.
  */
-export const DEMO_FOLDER = process.env.STRATLAS_E2E_DEMO ?? join(import.meta.dirname, '..', 'demo');
+export const DEMO_FOLDER = process.env.QUADRION_E2E_DEMO ?? join(import.meta.dirname, '..', 'demo');
 /** The change and modelling demo (M8, tools/demo/build-change-demo.mjs). */
 export const CHANGE_DEMO = { id: 'demo-change-site', name: 'Demo change site (2 dates)' };
 
@@ -524,7 +524,7 @@ export async function openProject(win: Page): Promise<{ id: string | null; root:
 }
 
 /**
- * Open the change demo from the library of an app launched with STRATLAS_DEMO (the `demoProject`
+ * Open the change demo from the library of an app launched with QUADRION_DEMO (the `demoProject`
  * fixture does this). Returns the working copy's folder (userData `demo/demo-change-site`).
  */
 export async function openChangeDemo(win: Page): Promise<{ root: string }> {
@@ -555,12 +555,12 @@ export interface DemoProject {
 
 /**
  * The development pipeline runtime for specs that run pipeline jobs: the venv Python
- * (`uv sync` in python/, or STRATLAS_E2E_PYTHON) and PDAL (AIO_PDAL, else the workstation's
+ * (`uv sync` in python/, or QUADRION_E2E_PYTHON) and PDAL (AIO_PDAL, else the workstation's
  * install). Pass `PIPELINE_ENV` as `appEnv` and skip with `hasPipelinePython` / `hasPdal`.
  */
 const REPO = join(import.meta.dirname, '..', '..', '..');
 export const VENV_PYTHON =
-  process.env.STRATLAS_E2E_PYTHON ??
+  process.env.QUADRION_E2E_PYTHON ??
   (process.platform === 'win32'
     ? join(REPO, 'python', '.venv', 'Scripts', 'python.exe')
     : join(REPO, 'python', '.venv', 'bin', 'python'));
@@ -570,7 +570,7 @@ export const PDAL =
 export const hasPipelinePython = (): boolean => existsSync(VENV_PYTHON);
 export const hasPdal = (): boolean => existsSync(PDAL);
 export const PIPELINE_ENV: Record<string, string> = {
-  STRATLAS_PIPELINE_PYTHON: VENV_PYTHON,
+  QUADRION_PIPELINE_PYTHON: VENV_PYTHON,
   AIO_PDAL: PDAL,
 };
 
@@ -587,7 +587,7 @@ interface Fixtures {
   /** A two-date project written into `dataRoot` before the app starts (list it before `win`). */
   twoDateProject: TwoDateProject;
   /**
-   * Its own app with the bundled demos (STRATLAS_DEMO) and the change demo open. Use it instead
+   * Its own app with the bundled demos (QUADRION_DEMO) and the change demo open. Use it instead
    * of `app` and `win`, not with them. Skips the test when the change demo is not built.
    */
   demoProject: DemoProject;
@@ -644,7 +644,7 @@ export const test = base.extend<Fixtures>({
       `no change demo in ${DEMO_FOLDER}: run pnpm demo:change --quick (or pnpm demo:build --quick)`,
     );
     const network = new NetworkGuard();
-    const app = await launchApp(dataRoot, { ...appEnv, STRATLAS_DEMO: DEMO_FOLDER });
+    const app = await launchApp(dataRoot, { ...appEnv, QUADRION_DEMO: DEMO_FOLDER });
     await network.attach(app);
     let outbound: string[];
     try {

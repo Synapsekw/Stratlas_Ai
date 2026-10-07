@@ -102,8 +102,8 @@ describe('pipeline pack temp folder', () => {
 });
 
 describe('defaultOutRoot', () => {
-  it('uses STRATLAS_DATA on every system', () => {
-    expect(defaultOutRoot('darwin', { STRATLAS_DATA: '/Volumes/Data' })).toBe(
+  it('uses QUADRION_DATA on every system', () => {
+    expect(defaultOutRoot('darwin', { QUADRION_DATA: '/Volumes/Data' })).toBe(
       join('/Volumes/Data', 'runtime'),
     );
   });

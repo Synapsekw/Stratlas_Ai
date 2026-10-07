@@ -1,3 +1,5 @@
+// First: legacy STRATLAS_* environment names count as QUADRION_* (legacyEnv.ts).
+import './legacyEnv';
 import {
   agentToolNames,
   builtInProviders,
@@ -5,7 +7,7 @@ import {
   createProviderRegistry,
   createScriptedProvider,
 } from '@aio/ai/main';
-import { brand } from '@aio/brand';
+import { brand, urlSchemes } from '@aio/brand';
 import {
   ChangeThresholds,
   ipcEvents,
@@ -142,17 +144,32 @@ import { cspForUrl } from './protocol/legacy';
 import { saveFile } from './saveFile';
 import { createSettingsStore, defaultDataRoot, defaultSettings } from './settings';
 import { installRealDataGuard } from './realDataGuard';
+import { migrateLegacyUserData } from './userDataMigration';
 
-// An app started by an e2e test (STRATLAS_E2E=1) refuses every write under the founder's real data
-// root (STRATLAS_REAL_DATA_ROOT, default E:\Stratlas Data), before anything else runs.
+// An app started by an e2e test (QUADRION_E2E=1) refuses every write under the founder's real data
+// root (QUADRION_REAL_DATA_ROOT, default E:\Stratlas Data), before anything else runs.
 installRealDataGuard(process.env);
 
 // --profile=<name>: a second person on one PC (tests, training), with its own userData folder
 // (and with it the single-instance lock) and its own vault service (identity.ts).
 const profile = profileFromArgv(process.argv);
 // Tests and side-by-side dev runs can isolate their profile (and with it the single-instance lock).
-const userDataOverride = process.env.STRATLAS_USER_DATA;
+const userDataOverride = process.env.QUADRION_USER_DATA;
 if (userDataOverride) app.setPath('userData', userDataOverride);
+// Since the rename the folder is ...\Quadrion AI: the old ...\Stratlas folder is copied over once,
+// before anything reads it (userDataMigration.ts). Never stops the start.
+const userDataMigration = (() => {
+  try {
+    return migrateLegacyUserData({
+      userData: app.getPath('userData'),
+      appData: app.getPath('appData'),
+      packaged: app.isPackaged,
+      overridden: Boolean(userDataOverride),
+    });
+  } catch (e) {
+    return { kind: 'error' as const, error: String(e) };
+  }
+})();
 if (profile) app.setPath('userData', profileUserData(app.getPath('userData'), profile));
 
 const dev = !app.isPackaged;
@@ -162,6 +179,12 @@ const logsDir = join(app.getPath('userData'), 'logs');
 const processLogs = createProcessLogs(logsDir);
 const appLog = processLogs.main;
 captureConsole(appLog);
+if (userDataMigration.kind === 'copied')
+  console.warn(
+    `Settings folder copied from ${userDataMigration.from} (${userDataMigration.copied.join(', ')}${userDataMigration.failed.length ? `; not copied: ${userDataMigration.failed.join(', ')}` : ''}).`,
+  );
+else if (userDataMigration.kind === 'error')
+  console.warn(`Settings folder copy failed: ${userDataMigration.error}`);
 // Crash dumps and crash reports stay on this computer (Settings, About, Export diagnostics).
 startCrashReporter();
 const crashes = createCrashStore(join(app.getPath('userData'), 'crash-reports'), {
@@ -248,11 +271,11 @@ const policy = new ProjectPolicy(registry);
 let localServerSeen: LocalServerSeen | null = null;
 // A `.aio` the app was started with (double-click); the renderer takes it once at start.
 let pendingOpenPath: string | null =
-  packagePathFromArgv(process.argv) ?? linkPathFromArgv(process.argv, brand.urlScheme);
+  packagePathFromArgv(process.argv) ?? linkPathFromArgv(process.argv, urlSchemes);
 // An isolated profile (tests, demos) gets its own vault service, so it never reads or writes the
 // person's real API keys.
 const keyService = profileVaultService(
-  process.env.STRATLAS_USER_DATA ? `${brand.appId}.isolated` : brand.appId,
+  process.env.QUADRION_USER_DATA ? `${brand.appId}.isolated` : brand.appId,
   profile,
 );
 const keys = createKeyVault(keyService, (service, account) => new Entry(service, account));
@@ -328,7 +351,7 @@ function broadcast<E extends 'packs:job' | 'update:progress'>(
 
 // The map pack download is one of only two network paths (the other is cloud AI), and runs
 // only when the person starts it in Settings, Maps. Planet builds come from Protomaps (or the
-// STRATLAS_PACK_SOURCE mirror) by HTTP ranges, so a cut-off download continues where it stopped.
+// QUADRION_PACK_SOURCE mirror) by HTTP ranges, so a cut-off download continues where it stopped.
 const planetBuilds = buildSource(process.env);
 // Map data is fetched in its own session: the default session blocks every http(s) request so
 // the renderer stays offline by construction (hardenSession).
@@ -380,12 +403,12 @@ const projectNames = new Map<string, string>();
  * Only an isolated profile can ask for it, so a person's installation never runs it.
  */
 const scripted =
-  process.env.STRATLAS_AI_TEST_PROVIDER === '1' && Boolean(process.env.STRATLAS_USER_DATA);
+  process.env.QUADRION_AI_TEST_PROVIDER === '1' && Boolean(process.env.QUADRION_USER_DATA);
 /**
- * STRATLAS_AI_TEST_SCRIPT=workspace-400: the scripted Anthropic stands in for an organisation key
+ * QUADRION_AI_TEST_SCRIPT=workspace-400: the scripted Anthropic stands in for an organisation key
  * and answers the workspace 400 until Settings has a workspace ID (agent panel fix, e2e).
  */
-const scriptedWorkspace = scripted && process.env.STRATLAS_AI_TEST_SCRIPT === 'workspace-400';
+const scriptedWorkspace = scripted && process.env.QUADRION_AI_TEST_SCRIPT === 'workspace-400';
 const providers = createProviderRegistry(
   scripted
     ? (['anthropic', 'openai', 'google'] as const).map((id) =>
@@ -799,7 +822,7 @@ function registerIpc(): void {
     const win = targetWindow();
     const options = {
       title: 'Export logs',
-      defaultPath: join(app.getPath('downloads'), `${brand.productName}-logs-${day}.txt`),
+      defaultPath: join(app.getPath('downloads'), `${brand.executableName}-logs-${day}.txt`),
       filters: [{ name: 'Text', extensions: ['txt'] }],
     };
     const r = win
@@ -1200,10 +1223,11 @@ app.on('open-file', (e, path) => {
   else pendingOpenPath = path;
 });
 
-// macOS hands `<urlScheme>://` links (Info.plist CFBundleURLTypes) to the app as an event.
+// macOS hands `<urlScheme>://` links (Info.plist CFBundleURLTypes) to the app as an event; the
+// legacy `stratlas://` scheme from before the rename is registered and handled too.
 app.on('open-url', (e, url) => {
   e.preventDefault();
-  const link = parseAppLink(url, brand.urlScheme);
+  const link = parseAppLink(url, urlSchemes);
   if (!link) return;
   if (!app.isReady()) {
     if (link.kind === 'open') pendingOpenPath = link.path;
@@ -1284,7 +1308,7 @@ function createWindow(): BrowserWindow {
   });
 
   // Release smoke check: the packaged app must load its UI and exit 0 (tools/release/smoke-packaged.mjs).
-  if (process.env.STRATLAS_SMOKE === '1') {
+  if (process.env.QUADRION_SMOKE === '1') {
     win.webContents.once('did-finish-load', () => {
       setTimeout(() => {
         void smokeReport(win).finally(() => {
@@ -1302,11 +1326,11 @@ function createWindow(): BrowserWindow {
 }
 
 /**
- * Release smoke check with `STRATLAS_SMOKE_REPORT`: the local detection runtime's answer, asked
+ * Release smoke check with `QUADRION_SMOKE_REPORT`: the local detection runtime's answer, asked
  * from the window like Settings does, written for tools/release/smoke-packaged.mjs.
  */
 async function smokeReport(win: BrowserWindow): Promise<void> {
-  const path = process.env.STRATLAS_SMOKE_REPORT;
+  const path = process.env.QUADRION_SMOKE_REPORT;
   if (!path) return;
   const report = await smokeProbe({
     csp: () => win.webContents.executeJavaScript(CSP_PROBE) as Promise<unknown>,
@@ -1380,16 +1404,16 @@ if (restore) {
 } else {
   // Only the first instance tracks the run: a second launch just hands over its file and quits.
   crashes.start({
-    uncleanNotice: app.isPackaged || process.env.STRATLAS_CRASH_NOTICE === '1',
+    uncleanNotice: app.isPackaged || process.env.QUADRION_CRASH_NOTICE === '1',
   });
   installCrashHandlers({
     crash: crashes,
     logs: processLogs,
     mainWindow: () => mainWindow,
-    smoke: process.env.STRATLAS_SMOKE === '1',
+    smoke: process.env.QUADRION_SMOKE === '1',
   });
   app.on('second-instance', (_e, argv) => {
-    const path = packagePathFromArgv(argv) ?? linkPathFromArgv(argv, brand.urlScheme);
+    const path = packagePathFromArgv(argv) ?? linkPathFromArgv(argv, urlSchemes);
     if (path) {
       openPathInApp(path);
       return;

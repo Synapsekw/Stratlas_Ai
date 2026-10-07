@@ -190,7 +190,7 @@ test('local detection: import the demo detector, find the markers of both dates,
   await expect(card).toContainText('Marker test detector');
   await expect(card).toContainText(`Classes: ${truth.detector.classes.join(', ')}`);
   await expect(win.getByTestId('infer-licence')).toContainText('Licence: MIT');
-  await expect(win.getByTestId('infer-licence')).toContainText('Stratlas test fixture');
+  await expect(win.getByTestId('infer-licence')).toContainText('Quadrion AI test fixture');
 
   // Detections: every photo of both dates, Detect with AI, Local model.
   const photos = await selectAllPhotos(win, truth);

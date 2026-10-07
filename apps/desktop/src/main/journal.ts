@@ -11,7 +11,7 @@
  *   a write the handler refuses is undone by ops, never by editing the journal;
  * - `builder:updateLayers` is diffed after it writes (its result is computed in the handler);
  * - on open, a half-done write is finished (crash recovery) and any other difference is recorded
- *   as attributed ops (`via.external`, "changed outside Stratlas");
+ *   as attributed ops (`via.external`, "changed outside Quadrion AI");
  * - around pipeline jobs, the difference is recorded with `via.pipeline`.
  *
  * Packages are read-only: their journal is never appended. Decision 8: the journal is on by

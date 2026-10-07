@@ -77,7 +77,7 @@ describe('exportPackage and openPackage', () => {
       manifest: manifest(),
       exclude: ['cloud'],
       header: { readOnly: true, aiPolicy: 'forbid', exports: ['issues-csv'] },
-      createdBy: 'Stratlas 0.1.0',
+      createdBy: 'Quadrion AI 0.1.0',
     });
     expect(r.bytes).toBeGreaterThan(300);
 
@@ -91,7 +91,7 @@ describe('exportPackage and openPackage', () => {
       aiPolicy: 'forbid',
       exports: ['issues-csv'],
       excludedLayers: ['cloud'],
-      createdBy: 'Stratlas 0.1.0',
+      createdBy: 'Quadrion AI 0.1.0',
     });
     expect(m.layers.map((l) => l.id)).toEqual(['tank']);
     expect(archive.entries.has('clouds/f101.bin')).toBe(false);

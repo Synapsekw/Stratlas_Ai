@@ -36,6 +36,14 @@ def test_write_then_read_keeps_coordinates_and_fields(tmp_path):
     assert las.extra == []
 
 
+def test_the_header_names_quadrion_ai_in_its_32_byte_text_fields(tmp_path):
+    path = tmp_path / "a.las"
+    write_las(path, _points(), pdrf=6)
+    head = path.read_bytes()[:90]
+    assert head[26:58] == b"Quadrion AI".ljust(32, b"\0")
+    assert head[58:90] == b"Quadrion AI change.cloud".ljust(32, b"\0")
+
+
 def test_a_distance_field_is_appended_as_one_extra_bytes_float(tmp_path):
     xyz = _points()
     src = tmp_path / "src.las"

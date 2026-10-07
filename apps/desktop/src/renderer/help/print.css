@@ -23,12 +23,27 @@ body {
   break-after: page;
 }
 
-.pg-mark {
-  color: var(--acc);
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+/* The horizontal lockup on the cover (shell/BrandMark.tsx). */
+.pg-mark .lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+.pg-mark .lockup-mark {
+  width: 48px;
+  height: 42px;
+}
+.pg-mark .lockup-word {
+  height: 19px;
+  width: auto;
+}
+.pg-mark .wm-word,
+.pg-mark .mark-plate {
+  fill: var(--fg-0);
+}
+.pg-mark .wm-ai,
+.pg-mark .mark-top {
+  fill: var(--acc);
 }
 
 .pg-cover h1 {

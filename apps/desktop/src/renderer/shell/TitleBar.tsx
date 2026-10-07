@@ -7,6 +7,7 @@ import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
 import { help } from '../help/store';
 import { SyncStatus } from '../team/SyncStatus';
+import { BrandSymbol, BrandWordmark } from './BrandMark';
 
 const VIEW_LABEL: Record<Screen, MessageKey> = {
   projects: 'nav.projects',
@@ -20,18 +21,6 @@ const VIEW_LABEL: Record<Screen, MessageKey> = {
   jobs: 'nav.jobs',
   settings: 'nav.settings',
 };
-
-/** The Stratlas mark: four stacked strata, the top one in jade. */
-export function BrandMark() {
-  return (
-    <svg className="mark" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M5 17.6h11.2l3-3.2H8z" fill="var(--fg-0)" fillOpacity={0.26} />
-      <path d="M4 13.3h11.2l3-3.2H7z" fill="var(--fg-0)" fillOpacity={0.55} />
-      <path d="M6 9h11.2l3-3.2H9z" fill="var(--acc)" />
-      <path d="M3 21.9h11.2l3-3.2H6z" fill="var(--fg-0)" fillOpacity={0.12} />
-    </svg>
-  );
-}
 
 export function TitleBar() {
   useT();
@@ -55,8 +44,8 @@ export function TitleBar() {
   return (
     <header className="titlebar">
       <div className="brand">
-        <BrandMark />
-        <span className="wordmark">{brand.productName.toUpperCase()}</span>
+        <BrandSymbol small />
+        <BrandWordmark />
       </div>
       <nav className="crumbs" aria-label={t('titlebar.location')}>
         {crumbs.map((c, i) => (

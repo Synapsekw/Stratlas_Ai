@@ -1,7 +1,7 @@
 /**
  * The house-format project report (BLD-8) and its narrative (BLD-7), end to end on temp copies of
  * the real HCl tank (13 issues) and DAMAC tower (701 issues) projects. The scripted AI model
- * stands in for the cloud (STRATLAS_AI_TEST_PROVIDER, isolated profile): no network at all.
+ * stands in for the cloud (QUADRION_AI_TEST_PROVIDER, isolated profile): no network at all.
  * Runs only where the real data holds the projects (realData.ts, @realdata); the real data is
  * read, copied and never written.
  */
@@ -46,7 +46,7 @@ async function copyProject(id: string): Promise<RealDataCopy> {
 }
 
 async function start(data: DataRoot) {
-  const app = await launchApp(data, { STRATLAS_AI_TEST_PROVIDER: '1' });
+  const app = await launchApp(data, { QUADRION_AI_TEST_PROVIDER: '1' });
   const network = new NetworkGuard();
   await network.attach(app);
   const win = await app.firstWindow();
@@ -163,7 +163,7 @@ test.describe('@realdata HCl', () => {
       const cover = flat(all.text.get(1));
       expect(cover).toContain('hcltank710-d-130335');
       expect(cover).toContain('visualinspectionreport');
-      expect(cover).toContain('madewithstratlas');
+      expect(cover).toContain('madewithquadrionai');
       expect(text).not.toMatch(CLIENT_BRAND);
       for (const heading of [
         'contents',
@@ -257,7 +257,7 @@ test.describe('@realdata DAMAC', () => {
       expect(doc.count).toBeLessThanOrEqual(760);
       expect(flat(doc.text.get(1))).toContain('damachillsresidentialtower');
       expect(flat(doc.text.get(1))).toContain('701issues');
-      expect(flat(doc.text.get(1))).toContain('madewithstratlas');
+      expect(flat(doc.text.get(1))).toContain('madewithquadrionai');
       expect(flat(doc.text.get(2))).toContain('contents');
       expect(flat(doc.text.get(3))).toContain('executivesummary');
       expect(flat(doc.text.get(7))).toContain('findingsregister');

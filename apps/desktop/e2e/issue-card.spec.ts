@@ -5,7 +5,7 @@
  * Esc puts the layout back; Media marks the photos with findings and filters to them.
  *
  * Runs only where the real data holds the projects (realData.ts); skipped elsewhere. Each test
- * runs on a temporary copy of its project (@realdata). Screenshots go to STRATLAS_SHOTS when it
+ * runs on a temporary copy of its project (@realdata). Screenshots go to QUADRION_SHOTS when it
  * is set.
  */
 import type { Page } from '@playwright/test';
@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { expect, realDataTest } from './fixtures';
 import { hasRealProject, missingRealProject, realProjectDir } from './realData';
 
-const SHOTS = process.env.STRATLAS_SHOTS;
+const SHOTS = process.env.QUADRION_SHOTS;
 
 const test = realDataTest([], { size: [1600, 960] });
 

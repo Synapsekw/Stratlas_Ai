@@ -21,7 +21,7 @@ const NAME = 'E2E video first';
 const CLIP = 'Synthetic clip';
 const SITE: [number, number] = [47.98, 29.38];
 /** Keep a screenshot here when set. */
-const SHOTS = process.env.STRATLAS_SHOTS;
+const SHOTS = process.env.QUADRION_SHOTS;
 
 type V3 = [number, number, number];
 

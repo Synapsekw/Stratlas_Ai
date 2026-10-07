@@ -9,7 +9,7 @@
  *    guard lets through, explicitly).
  *
  * Test 1 needs the real projects/hcl and packs/kuwait.pmtiles (realData.ts, @realdata) and is
- * skipped elsewhere; it only reads them. Set STRATLAS_SHOTS to keep screenshots.
+ * skipped elsewhere; it only reads them. Set QUADRION_SHOTS to keep screenshots.
  */
 import type { ElectronApplication, Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
@@ -26,7 +26,7 @@ import {
   realProjectDir,
 } from './realData';
 
-const SHOTS = process.env.STRATLAS_SHOTS;
+const SHOTS = process.env.QUADRION_SHOTS;
 const shot = async (win: Page, name: string) => {
   if (SHOTS) await win.screenshot({ path: join(SHOTS, `${name}.png`) });
 };
@@ -301,7 +301,7 @@ test('a map pack download cut off by quitting the app resumes from its partial f
     '/builds.json': JSON.stringify([{ key: '20261003.pmtiles' }]),
   });
   const origin = new URL(server.url).origin;
-  const env = { STRATLAS_PACK_SOURCE: `${origin}/`, AIO_NETWORK_GUARD_ALLOW: origin };
+  const env = { QUADRION_PACK_SOURCE: `${origin}/`, AIO_NETWORK_GUARD_ALLOW: origin };
   const base = await mkdtemp(join(tmpdir(), 'aio-x1-dl-'));
   const data: DataRoot = {
     base,

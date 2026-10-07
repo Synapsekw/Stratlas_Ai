@@ -17,7 +17,7 @@ import { cameraQuatLookAlong, roundVec, sub } from './math';
 
 /**
  * Asset Inspection Kit offline builds (EBSM, DAMAC and later jobs): the `window.KIT` document of
- * the viewer HTML, the `data/*.js` chunk scripts and the profile, turned into Stratlas parts.
+ * the viewer HTML, the `data/*.js` chunk scripts and the profile, turned into native project parts.
  * Kit frame: Y up, metres, origin at the asset base centre on the ground, X north, Z east.
  */
 

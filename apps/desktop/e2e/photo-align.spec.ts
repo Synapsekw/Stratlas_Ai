@@ -23,7 +23,7 @@ import { expect, test as base, type DataRoot } from './fixtures';
 const ID = 'e2e-photo-align';
 const NAME = 'E2E photo align';
 const SITE: [number, number] = [47.98, 29.38];
-const SHOTS = process.env.STRATLAS_SHOTS;
+const SHOTS = process.env.QUADRION_SHOTS;
 
 interface PhotoItem {
   id: string;
