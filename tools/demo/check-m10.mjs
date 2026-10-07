@@ -265,6 +265,18 @@ export function opfGeolocations(j) {
   return out;
 }
 
+/**
+ * [lon, lat] of an OPF geolocation in a geographic CRS (EPSG 4000 to 4999: WGS 84, ETRS89, Monte
+ * Mario, CH1903+ and the like; OPF lists latitude first), or null for any other CRS. Datum shifts
+ * between geographic CRSs are a few hundred metres at most, far inside the check's radius.
+ */
+export function opfGeographicLonLat({ epsg, coords }) {
+  if (!(epsg >= 4000 && epsg < 5000)) return null;
+  const [lat, lon] = coords;
+  if (typeof lat !== 'number' || typeof lon !== 'number') return null;
+  return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? [lon, lat] : null;
+}
+
 export const isOpf = (j) =>
   j &&
   typeof j === 'object' &&

@@ -1,8 +1,16 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { checkFolder, distanceKm, utmToLonLat } from './check-no-client-data.mjs';
+import {
+  ALLOWED_FIXTURES,
+  checkFolder,
+  distanceKm,
+  textSha256,
+  utmToLonLat,
+} from './check-no-client-data.mjs';
 
 let dir;
 beforeEach(async () => {
@@ -345,6 +353,68 @@ describe('check-no-client-data', () => {
       const r = checkFolder(join(dir, 'demo'), { fixtures: true });
       expect(r.findings).toEqual([]);
       expect(r.points).toBe(2);
+    });
+  });
+
+  describe('pinned third-party fixtures (the OPF specification examples)', () => {
+    const repo = fileURLToPath(new URL('../..', import.meta.url));
+    const spec = join(repo, 'python', 'tests', 'fixtures', 'opf-spec-examples');
+
+    it('passes the repository test fixtures, reporting the pinned findings as allowed', () => {
+      const r = checkFolder(join(repo, 'python', 'tests', 'fixtures'), { fixtures: true });
+      expect(r.findings).toEqual([]);
+      const files = new Set(r.allowed.map((a) => a.split(/[: ]/)[0]));
+      expect([...files].sort()).toEqual(
+        ALLOWED_FIXTURES.map((a) => a.path.replace('python/tests/fixtures/', '')).sort(),
+      );
+      // every pin matches the file in the repository
+      for (const a of ALLOWED_FIXTURES)
+        expect(textSha256(readFileSync(join(repo, a.path)))).toBe(a.sha256);
+    });
+
+    it('still fails on the same content anywhere else, and on client-like values beside it', async () => {
+      const root = await cleanProject();
+      await copyFile(join(spec, 'camera-list.json'), join(root, 'camera-list.json'));
+      await copyFile(join(spec, 'input-cameras.json'), join(root, 'input-cameras.json'));
+      await writeFile(join(root, 'notes.txt'), 'flight DJI_20240314101500_0001_D.JPG, DJI_0042');
+      await writeFile(
+        join(root, 'control.json'),
+        JSON.stringify({
+          format: 'application/opf-input-control-points+json',
+          gcps: [
+            // Monte Mario (EPSG:4265), latitude first, near the 1st Ring Road of KNOWN_SITES
+            { geolocation: { crs: { definition: 'EPSG:4265+5214' }, coordinates: [29.36, 47.98] } },
+          ],
+        }),
+      );
+      const r = checkFolder(join(dir, 'demo'));
+      const text = r.findings.join('\n');
+      expect(r.allowed).toEqual([]);
+      expect(text).toContain('camera-list.json: "DJI camera file name"');
+      expect(text).toMatch(/input-cameras\.json OPF geolocation: .* outside the fictional sites/);
+      expect(text).toContain('notes.txt: "DJI camera file name"');
+      expect(text).toMatch(/control\.json OPF geolocation: .* km from 1st Ring Road/);
+    });
+
+    it('fails a pinned file whose content changed, keeping its findings', async () => {
+      const fixtures = join(dir, 'repo', 'fixtures');
+      await mkdir(fixtures, { recursive: true });
+      const text = await readFile(join(spec, 'camera-list.json'), 'utf8');
+      const allow = [
+        { path: 'fixtures/camera-list.json', sha256: textSha256(Buffer.from(text)), why: 'test' },
+      ];
+      await writeFile(join(fixtures, 'camera-list.json'), text.replace(/\n/g, '\r\n'));
+      const ok = checkFolder(fixtures, { fixtures: true, allow, repoRoot: join(dir, 'repo') });
+      // line endings do not change the pin
+      expect(ok.findings).toEqual([]);
+      expect(ok.allowed).toHaveLength(1);
+      await writeFile(join(fixtures, 'camera-list.json'), text.replace('09572', '09573'));
+      const r = checkFolder(fixtures, { fixtures: true, allow, repoRoot: join(dir, 'repo') });
+      expect(r.allowed).toEqual([]);
+      expect(r.findings.join('\n')).toContain(
+        'camera-list.json: an allowed third-party fixture whose content changed',
+      );
+      expect(r.findings.join('\n')).toContain('camera-list.json: "DJI camera file name"');
     });
   });
 

@@ -21,8 +21,13 @@
 //     inside a fictional site;
 //   - paths of the build machine (C:\Users\..., /home/...) in text files;
 //   - total size (--max-mb).
+// Third-party fixtures with example values that look like client data (the OPF specification
+// examples) are let through file by file, pinned by path and content hash (ALLOWED_FIXTURES);
+// their findings are printed as allowed. The repository's test fixtures are checked by
+// check-no-client-data.test.mjs (python/tests/fixtures, --fixtures mode).
 // Binary payloads (compressed pixels, GLB buffers, kit grids in base64) are not scanned for words:
 // only their metadata, JSON chunks and text.
+import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,6 +40,7 @@ import {
   geotiffInfo,
   isOpf,
   isTileset,
+  opfGeographicLonLat,
   opfGeolocations,
   pmtilesInfo,
   rasterPackFindings,
@@ -66,9 +72,56 @@ export const FORBIDDEN = [
   [/\bEtisalat\b/i, 'Etisalat'],
   [/(^|[^A-Za-z0-9])e&([^A-Za-z0-9]|$)/, 'e&'],
   [/\bElios\b/i, 'Elios (camera of a client survey)'],
-  [/\bDJI_\d{4}\b/, 'DJI camera file name'],
+  // DJI_0123.JPG, DJI_09572.jpg, DJI_20240314101500_0001_D.JPG
+  [/\bDJI_(?:\d{14}_)?\d{4,5}(?!\d)/, 'DJI camera file name'],
   [/DanNas/i, 'NAS path'],
 ];
+
+const REPO = fileURLToPath(new URL('../..', import.meta.url));
+
+/**
+ * Third-party test fixtures whose example values look like client data but are not, let through
+ * file by file. Each entry is one file at one path in the repository, pinned by the SHA-256 of
+ * its text (LF line endings): a copy anywhere else, or any change to the file, is checked as usual
+ * (a changed file is a finding of its own, so the pin gets reviewed). Findings in these files are
+ * reported as allowed, not hidden.
+ *
+ * The Open Photogrammetry Format specification examples (M10, stream G5;
+ * python/tests/fixtures/opf-spec-examples/README.md): Pix4D SA's example data from
+ * github.com/Pix4D/opf-spec (CC-BY-4.0), with a DJI-style example photo name and example
+ * geolocations in Switzerland and Italy. Not client data, not a real survey.
+ */
+export const ALLOWED_FIXTURES = Object.freeze(
+  [
+    [
+      'camera-list.json',
+      'ef81956faa59eeaa1865d6dd1487ea6e8f21d1b9d1a5d2784585897af8682a4d',
+      'example photo URI file:///c:/data/images/DJI_09572.jpg',
+    ],
+    [
+      'input-cameras.json',
+      '9e73136484c724f6929c781241ddbdf58ab986e09a8975dd8438bf1c91a10567',
+      'example camera geolocations (EPSG:4326, EPSG:4150)',
+    ],
+    [
+      'control_points/input-control-points.json',
+      '82c30dacb3ad2263e009ff2e9a9ed21de8a2cfa83e628a76f536e3a1d2032c70',
+      'example control point (EPSG:4265)',
+    ],
+  ].map(([file, sha256, why]) =>
+    Object.freeze({
+      path: `python/tests/fixtures/opf-spec-examples/${file}`,
+      sha256,
+      why: `OPF specification example (Pix4D SA, CC-BY-4.0): ${why}`,
+    }),
+  ),
+);
+
+/** SHA-256 of a file's text with LF line endings (the pin of ALLOWED_FIXTURES). */
+export const textSha256 = (buf) =>
+  createHash('sha256')
+    .update(buf.toString('latin1').replace(/\r\n/g, '\n'), 'latin1')
+    .digest('hex');
 
 const MACHINE_PATH =
   /([A-Za-z]:[\\/]+(Users|Dev|Stratlas)[\\/])|(\/(home|Users)\/[A-Za-z0-9._-]+\/)/;
@@ -275,11 +328,13 @@ const stripPayload = (s) => s.replace(/[A-Za-z0-9+/=]{120,}/g, ' ');
 // ------------------------------------------------------------------ the check
 
 /**
- * Check a folder. Returns { findings: string[], files, bytes, points }.
+ * Check a folder. Returns { findings: string[], allowed: string[], files, bytes, points }.
  * @param {string} dir
- * @param {{ projectsDir?: string, radiusKm?: number, maxMb?: number, fixtures?: boolean }} o
+ * @param {{ projectsDir?: string, radiusKm?: number, maxMb?: number, fixtures?: boolean,
+ *   allow?: readonly { path: string, sha256: string, why: string }[], repoRoot?: string }} o
  *   `fixtures`: a test fixture folder, where GeoTIFFs are allowed (and checked) and no manifest
- *   is required.
+ *   is required. `allow` (default ALLOWED_FIXTURES) and `repoRoot` (default this repository):
+ *   the pinned third-party files whose findings are `allowed` instead.
  */
 export function checkFolder(dir, o = {}) {
   const radiusKm = o.radiusKm ?? 100;
@@ -295,6 +350,10 @@ export function checkFolder(dir, o = {}) {
     ]),
   ];
   const findings = [];
+  const allowList = o.allow ?? ALLOWED_FIXTURES;
+  const repoRoot = o.repoRoot ?? REPO;
+  /** Folder-relative paths of pinned files whose content matched, and why each is allowed. */
+  const allowedFiles = new Map();
   let files = 0;
   let bytes = 0;
   let points = 0;
@@ -367,6 +426,15 @@ export function checkFolder(dir, o = {}) {
       scanText(rel, `file name ${rel}`);
       const ext = extname(name).toLowerCase();
       const buf = readFileSync(p);
+      const pin = allowList.find((a) => a.path === relative(repoRoot, p).replace(/\\/g, '/'));
+      if (pin) {
+        const sha = textSha256(buf);
+        if (sha === pin.sha256) allowedFiles.set(rel, pin.why);
+        else
+          findings.push(
+            `${rel}: an allowed third-party fixture whose content changed (sha256 ${sha}); review it and update ALLOWED_FIXTURES`,
+          );
+      }
       if (TEXT.has(ext)) {
         const text = buf.toString('utf8');
         scanText(stripPayload(text), rel);
@@ -399,10 +467,7 @@ export function checkFolder(dir, o = {}) {
             // M10: OPF geolocations (EPSG:4326 lists latitude first), 3D Tiles, raster packs
             if (isOpf(j))
               for (const g of opfGeolocations(j)) {
-                const ll =
-                  g.epsg === 4326 || g.epsg === 4979
-                    ? [g.coords[1], g.coords[0]]
-                    : utmToLonLat(g.epsg, g.coords[0], g.coords[1]);
+                const ll = opfGeographicLonLat(g) ?? utmToLonLat(g.epsg, g.coords[0], g.coords[1]);
                 if (ll) placed(ll, `${rel} OPF geolocation`, 'a position');
               }
             if (isTileset(j)) {
@@ -518,13 +583,27 @@ export function checkFolder(dir, o = {}) {
       else scanText(strings(buf.subarray(0, 4096)), `${rel} header`);
     }
   };
-  if (!existsSync(dir)) return { findings: [`${dir} does not exist`], files, bytes, points };
+  if (!existsSync(dir))
+    return { findings: [`${dir} does not exist`], allowed: [], files, bytes, points };
   walk(dir);
   if (o.maxMb && bytes > o.maxMb * 1e6)
     findings.push(`total size ${(bytes / 1e6).toFixed(1)} MB is over ${o.maxMb} MB`);
   if (points === 0 && !o.fixtures)
     findings.push('no coordinates found to check (a project needs a manifest origin)');
-  return { findings, files, bytes, points };
+  // findings name their file first ("<rel>: ...", "<rel> OPF geolocation: ...", "file name <rel>: ...")
+  const pinnedFile = (f) =>
+    [...allowedFiles.keys()].find(
+      (rel) =>
+        f.startsWith(`${rel}:`) || f.startsWith(`${rel} `) || f.startsWith(`file name ${rel}:`),
+    );
+  const allowed = [];
+  const kept = [];
+  for (const f of findings) {
+    const rel = pinnedFile(f);
+    if (rel) allowed.push(`${f} [allowed: ${allowedFiles.get(rel)}]`);
+    else kept.push(f);
+  }
+  return { findings: kept, allowed, files, bytes, points };
 }
 
 function cli() {
@@ -536,8 +615,7 @@ function cli() {
   const positional = argv.filter(
     (a, i) => !a.startsWith('--') && !(i > 0 && argv[i - 1].startsWith('--')),
   );
-  const repo = fileURLToPath(new URL('../..', import.meta.url));
-  const dir = resolve(positional[0] ?? join(repo, 'apps', 'desktop', 'demo'));
+  const dir = resolve(positional[0] ?? join(REPO, 'apps', 'desktop', 'demo'));
   const data =
     process.env.STRATLAS_DATA ?? (process.platform === 'win32' ? 'E:\\Stratlas Data' : '');
   const projectsDir = opt('projects') ?? (data ? join(data, 'projects') : undefined);
@@ -551,13 +629,14 @@ function cli() {
     projectsDir && existsSync(projectsDir)
       ? `, reference projects in ${projectsDir}`
       : ', built-in reference sites only';
+  for (const a of r.allowed) console.log(`  allowed: ${a}`);
   if (r.findings.length) {
     console.error(`Client data check FAILED for ${dir} (${r.files} files${refs}):`);
     for (const f of r.findings) console.error(`  - ${f}`);
     process.exit(1);
   }
   console.log(
-    `Client data check passed: ${dir}, ${r.files} files, ${(r.bytes / 1e6).toFixed(1)} MB, ${r.points} coordinates${refs}.`,
+    `Client data check passed: ${dir}, ${r.files} files, ${(r.bytes / 1e6).toFixed(1)} MB, ${r.points} coordinates${refs}${r.allowed.length ? `, ${r.allowed.length} findings in pinned third-party fixtures allowed` : ''}.`,
   );
 }
 
