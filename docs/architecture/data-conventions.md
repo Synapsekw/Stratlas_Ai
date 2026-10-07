@@ -29,7 +29,7 @@ These rules sit beside `@aio/schema` and are binding for every stream. They clar
   team.json              M9: only when the project is shared (section 19)
 ```
 
-`<dataRoot>` defaults to `E:\Stratlas Data` on the development machine (`STRATLAS_DATA` env var overrides; Settings `dataRoot` in the app). Map packs live in `<dataRoot>/packs/<id>.pmtiles` with `<id>.json` (`MapPackInfo`).
+`<dataRoot>` defaults to `E:\Stratlas Data` on the development machine (`STRATLAS_DATA` env var overrides; Settings `dataRoot` in the app). End-to-end tests never use the real data root as the app's data root: they run on temporary copies made by `apps/desktop/e2e/realData.ts`, and an app started by a test (`STRATLAS_E2E=1`) refuses every write under `STRATLAS_REAL_DATA_ROOT` (default `E:\Stratlas Data`); see CONTRIBUTING.md, "End to end on real client data". Map packs live in `<dataRoot>/packs/<id>.pmtiles` with `<id>.json` (`MapPackInfo`).
 
 `aio://project/<project-id>/<relative path>` serves any file under the project folder with HTTP range support; `aio://packs/<id>.pmtiles` serves map packs.
 
