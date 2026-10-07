@@ -1,5 +1,6 @@
 import { Icon } from '@aio/ui';
 import { useStore } from 'zustand';
+import { DiskChangedNotice } from '../DiskChangedNotice';
 import { GraphicsNotice } from '../GraphicsNotice';
 import { cancelExport, toasts } from './exports';
 
@@ -12,6 +13,7 @@ export function Toasts() {
   return (
     <div className="toasts" role="status" aria-live="polite">
       <GraphicsNotice />
+      <DiskChangedNotice />
       {list.map((t) => {
         const pct = t.total > 0 ? Math.round((t.done / t.total) * 100) : null;
         return (
