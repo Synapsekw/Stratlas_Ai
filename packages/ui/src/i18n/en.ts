@@ -426,6 +426,7 @@ export const en = {
   'stage.compare.leftDate': 'Survey date on the left',
   'stage.compare.rightDate': 'Survey date on the right',
   'stage.compare.dateTip': 'The survey this side shows',
+  'stage.datesOn': 'Survey dates on screen',
   'stage.compare.link': 'Link the two views',
   'stage.compare.unlink': 'Unlink the two views',
   'stage.compare.secondView': 'Second 3D view',

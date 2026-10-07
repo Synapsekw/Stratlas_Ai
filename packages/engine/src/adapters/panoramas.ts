@@ -1,5 +1,5 @@
 import type { Layer, PanoRef } from '@aio/schema';
-import { workspace as appWorkspace, type Workspace } from '@aio/workspace';
+import { layerDate, workspace as appWorkspace, type Workspace } from '@aio/workspace';
 import type { Quaternion } from 'three';
 import {
   BackSide,
@@ -451,7 +451,11 @@ export function createPanoramasAdapter(
         uniforms.vtop.value = cov.vtopDeg;
         uniforms.vbot.value = cov.vbotDeg;
         look = startLook(p.headingDeg, cov);
-        hud?.set(p.id, coverageLabel(cov));
+        const date = layerDate(
+          store.getState().project?.manifest ?? { captures: [], layers: [] },
+          layer.id,
+        );
+        hud?.set(p.id, date ? `${coverageLabel(cov)} · ${date}` : coverageLabel(cov));
         loadPano(p);
         applyLook();
       };
