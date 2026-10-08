@@ -27,7 +27,8 @@ export function canonical(v: Json): string {
   return `{${keys.map((k) => `${JSON.stringify(k)}:${canonical(v[k] ?? null)}`).join(',')}}`;
 }
 
-export async function sha256Hex(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+export async function sha256Hex(data: string | Uint8Array): Promise<string> {
+  const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+  const digest = await crypto.subtle.digest('SHA-256', bytes as BufferSource);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }

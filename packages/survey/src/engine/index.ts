@@ -72,3 +72,4 @@ export {
   type TinFile,
 } from './tin';
 export { Accumulator, type Accumulated } from './accumulate';
+export { projectResolver, SurfaceNotFound, type ProjectSurfacesInput } from './resolver';
