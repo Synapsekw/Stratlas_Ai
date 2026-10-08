@@ -96,7 +96,7 @@ export function MeasurementList({ stage }: { stage: EngineStage | null }) {
 
   return (
     <section className="sv-card sv-list" aria-label="Measurements" data-testid="survey-list">
-      <header className="sv-head">
+      <header className="sv-head" role="none">
         <h2>
           Measurements <span className="faint">{file.measurements.length}</span>
         </h2>
@@ -369,7 +369,7 @@ export function MeasurementList({ stage }: { stage: EngineStage | null }) {
         })}
       </div>
       {!readOnly && (
-        <footer className="sv-foot">
+        <footer className="sv-foot" role="none">
           <label className="sv-check" title="Off by default: save when you are ready">
             <input
               type="checkbox"

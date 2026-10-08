@@ -80,7 +80,7 @@ export function MeasurementPanel() {
       aria-label={`Measurement ${m.label}`}
       data-testid="survey-panel"
     >
-      <header className="sv-head">
+      <header className="sv-head" role="none">
         <input
           className="sv-input sv-title"
           aria-label="Measurement name"

@@ -28,6 +28,7 @@ import {
   templateProblems,
   TOOL_FAMILY,
   TOOL_LABELS,
+  uniqueId,
   updateField,
 } from '@aio/survey';
 import { Icon, useFocusTrap } from '@aio/ui';
@@ -98,7 +99,7 @@ export function TemplateEditor() {
       }}
     >
       <div className="sv-dialog sv-tpl">
-        <header className="sv-head">
+        <header className="sv-head" role="none">
           <h2 id="sv-tpl-title">Measurement templates</h2>
           <button type="button" className="btn ghost sm" aria-label="Close" onClick={close}>
             <Icon name="x" size={14} />
@@ -189,7 +190,7 @@ export function TemplateEditor() {
             {error && <li>{error}</li>}
           </ul>
         )}
-        <footer className="sv-foot">
+        <footer className="sv-foot" role="none">
           {draft && !isNew && (
             <>
               <button
@@ -233,7 +234,19 @@ export function TemplateEditor() {
               disabled={busy || problems.length > 0 || projectLocked}
               data-testid="survey-template-save"
               onClick={() => {
-                void run(saveTemplate(scope, draft), () => {
+                // a new template takes its id from its name when it is first saved
+                const t = isNew
+                  ? {
+                      ...draft,
+                      id: uniqueId(
+                        draft.name,
+                        list.map((x) => x.id),
+                        'template',
+                      ),
+                    }
+                  : draft;
+                void run(saveTemplate(scope, t), () => {
+                  setDraft(t);
                   setIsNew(false);
                 });
               }}

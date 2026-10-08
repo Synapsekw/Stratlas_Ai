@@ -78,6 +78,8 @@ export function MeasureToolbar({ stage }: { stage: EngineStage | null }) {
     () => bookmarks(templateLibrary(templates.project, templates.user)),
     [templates],
   );
+  // picking a tool or opening a panel closes the popover, so the keys go to the drawing
+  const [open, setOpen] = useState(false);
   return (
     <>
       <PopTool
@@ -85,6 +87,8 @@ export function MeasureToolbar({ stage }: { stage: EngineStage | null }) {
         label="Survey measurements"
         pressed={active !== null || listOpen}
         wide
+        open={open}
+        onOpenChange={setOpen}
       >
         <div className="pop-form sv-tools" data-testid="survey-tools">
           {!readOnly &&
@@ -110,6 +114,7 @@ export function MeasureToolbar({ stage }: { stage: EngineStage | null }) {
                       onClick={() => {
                         if (active?.tool === t && !active.template) stopTool();
                         else startTool(t);
+                        setOpen(false);
                       }}
                     >
                       {TOOL_LABELS[t]}
@@ -135,6 +140,7 @@ export function MeasureToolbar({ stage }: { stage: EngineStage | null }) {
                     onClick={() => {
                       if (active?.template?.id === t.id) stopTool();
                       else startTool(t.tool, t);
+                      setOpen(false);
                     }}
                   >
                     {t.name}
@@ -209,6 +215,7 @@ export function MeasureToolbar({ stage }: { stage: EngineStage | null }) {
               data-testid="survey-list-open"
               onClick={() => {
                 setListOpen(!listOpen);
+                setOpen(false);
               }}
             >
               <Icon name="layers" size={12} /> Measurements
@@ -219,6 +226,7 @@ export function MeasureToolbar({ stage }: { stage: EngineStage | null }) {
               data-testid="survey-templates-open"
               onClick={() => {
                 openDialog({ kind: 'templates', edit: null, scope: 'project' });
+                setOpen(false);
               }}
             >
               <Icon name="flag" size={12} /> Templates
@@ -229,6 +237,7 @@ export function MeasureToolbar({ stage }: { stage: EngineStage | null }) {
               data-testid="survey-units-open"
               onClick={() => {
                 openDialog({ kind: 'units', target: 'site' });
+                setOpen(false);
               }}
             >
               Units

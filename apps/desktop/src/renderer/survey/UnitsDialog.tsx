@@ -88,7 +88,7 @@ export function UnitsDialog() {
       }}
     >
       <div className="sv-dialog sv-units">
-        <header className="sv-head">
+        <header className="sv-head" role="none">
           <h2 id="sv-units-title">{forMeasurement ? `Units for ${m.label}` : 'Site units'}</h2>
           <button type="button" className="btn ghost sm" aria-label="Close" onClick={close}>
             <Icon name="x" size={14} />
@@ -143,7 +143,7 @@ export function UnitsDialog() {
             {error}
           </p>
         )}
-        <footer className="sv-foot">
+        <footer className="sv-foot" role="none">
           <span className="sv-grow" />
           <button type="button" className="btn sm ghost" onClick={close}>
             Cancel

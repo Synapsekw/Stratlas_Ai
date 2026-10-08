@@ -381,6 +381,8 @@ export function attach3d(stage: EngineStage, frame: Frame): () => void {
   const onKey = (e: KeyboardEvent) => {
     const s = measureStore.getState();
     if (isTyping(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
+    // dialogs, popovers and the side panels keep their own keys
+    if (e.target instanceof HTMLElement && e.target.closest('[role="dialog"], .sv-side')) return;
     if (s.editing && e.key === 'Escape') {
       editEvent({ type: 'escape' });
       measureStore.setState({ editing: null });
