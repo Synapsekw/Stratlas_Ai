@@ -486,7 +486,7 @@ class SurveyPrepare:
         for k, spec in enumerate(params["surfaces"]):
             steps.append(Step(f"surface-{k + 1}", f"Prepare {spec['name']}", self._one(spec, cell), 3.0))
         if params.get("geodesy", True):
-            steps.append(Step("geodesy", "Site coordinate tables", _geodesy, 0.5))
+            steps.append(Step("geodesy", "Site coordinate tables", _geodesy(params), 0.5))
         steps.append(Step("commit", "Save the surfaces", self._commit(params), 1.0))
         return steps
 
@@ -580,11 +580,47 @@ class SurveyPrepare:
         return commit
 
 
-def _geodesy(ctx: StepContext) -> dict[str, Any]:
-    """The site transform tables (G1's ``geodesy.site.write_site_tables``), when that is built."""
-    try:
-        from ..geodesy.site import write_site_tables  # type: ignore[import-not-found]
-    except ImportError:
-        return {"written": False}
-    out = write_site_tables(ctx)
-    return {"written": True, **(out if isinstance(out, dict) else {})}
+def _geodesy(params: dict[str, Any]):
+    """The site transform tables (G1's ``geodesy.site.write_site_tables``), when that is built.
+
+    Called with the project, its data CRS, the survey settings (the defaults when the site has
+    none) and the extent of the surfaces of this job (E, N, from their prepared or staged
+    ``tiles.json``); skipped quietly in a pack without G1.
+    """
+
+    def run(ctx: StepContext) -> dict[str, Any]:
+        try:
+            from ..geodesy.site import write_site_tables  # type: ignore[import-not-found]
+        except ImportError:
+            return {"written": False}
+        manifest = _manifest(ctx.project)
+        p = ctx.project / "survey" / "settings.json"
+        try:
+            settings = json.loads(p.read_text("utf-8")) if p.is_file() else None
+        except (OSError, ValueError) as e:
+            raise JobError(f"The survey settings could not be read: {e}") from e
+        boxes = []
+        for spec in params["surfaces"]:
+            for folder in (ctx.staging / "surfaces" / spec["id"], ctx.project / SURFACES_DIR / spec["id"]):
+                if (folder / "tiles.json").is_file():
+                    b = json.loads((folder / "tiles.json").read_text("utf-8")).get("bounds")
+                    if isinstance(b, list) and len(b) == 6:
+                        boxes.append(b)
+                    break
+        if not boxes:
+            return {"written": False}
+        extent = (
+            min(b[0] for b in boxes),
+            min(b[1] for b in boxes),
+            max(b[3] for b in boxes),
+            max(b[4] for b in boxes),
+        )
+        out = write_site_tables(
+            ctx.project,
+            data_crs=_crs_of(manifest),
+            settings=settings or {"schema": "aio.survey-settings/1", "verticalDatum": {"kind": "project"}},
+            extent=extent,
+        )
+        return {"written": True, **(out if isinstance(out, dict) else {})}
+
+    return run

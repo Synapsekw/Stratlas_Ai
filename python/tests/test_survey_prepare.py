@@ -289,3 +289,28 @@ def test_a_layer_that_is_not_a_dsm_is_refused(tmp_path):
     surface_project(tmp_path, kinds=("cloud", "cloud"))
     with pytest.raises(JobError, match="not a DSM or DTM raster"):
         run_job(pipeline(), tmp_path, {"surfaces": [dsm("x", "surf-a", "c1")]})
+
+
+def test_the_site_tables_are_written_through_g1_when_it_is_there(tmp_path, monkeypatch):
+    import sys
+    import types
+
+    calls = []
+    fake = types.ModuleType("aio_pipelines.geodesy.site")
+
+    def write_site_tables(project_root, *, data_crs, settings, extent, **kw):
+        calls.append((project_root, data_crs, settings, extent, kw))
+        return {"files": 3}
+
+    fake.write_site_tables = write_site_tables
+    monkeypatch.setitem(sys.modules, "aio_pipelines.geodesy.site", fake)
+    surface_project(tmp_path)
+    result, _ = run_job(pipeline(), tmp_path, TWO)
+    assert result["outputs"]["geodesy"] == {"written": True, "files": 3}
+    (root, crs, settings, extent, kw) = calls[0]
+    assert root == tmp_path and crs == {"epsg": EPSG} and kw == {}
+    assert settings["verticalDatum"] == {"kind": "project"}
+    assert extent == pytest.approx((ORIGIN[0] - 30, ORIGIN[1] - 30, ORIGIN[0] + 30, ORIGIN[1] + 30))
+    # geodesy: false leaves them alone
+    result, _ = run_job(pipeline(), tmp_path, {**TWO, "geodesy": False}, job_id="j2")
+    assert "geodesy" not in result["outputs"] and len(calls) == 1
