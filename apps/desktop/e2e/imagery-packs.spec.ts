@@ -41,7 +41,9 @@ async function openSettings(win: Page, page: string): Promise<void> {
 }
 
 interface MapProbe {
-  getStyle(): { sources: Record<string, { attribution?: string }>; layers: { id: string }[] };
+  /** Undefined while a new style loads (a project opening, the Satellite toggle). */
+  getStyle():
+    { sources: Record<string, { attribution?: string }>; layers: { id: string }[] } | undefined;
   jumpTo(o: { center: [number, number]; zoom: number }): void;
   once(ev: string, cb: () => void): void;
   triggerRepaint(): void;
@@ -56,6 +58,7 @@ const mainMap = (win: Page) =>
       { __aioMap: MapProbe } | undefined;
     if (!host) return null;
     const s = host.__aioMap.getStyle();
+    if (!s) return null;
     return {
       sources: Object.fromEntries(
         Object.entries(s.sources).map(([k, v]) => [k, v.attribution ?? null]),
