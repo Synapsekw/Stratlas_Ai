@@ -232,6 +232,100 @@ export function forbiddenInWheel(names, inventory = loadInventory()) {
   return out;
 }
 
+/**
+ * The CMake cache of opencv-python's OpenCV build: scikit-build configures OpenCV in
+ * `_skbuild/<platform>/cmake-build`. Other CMakeCache.txt files lie under `_skbuild` too (try-compile
+ * and sub-projects); reading the first one found gave the gate none of the recipe's options
+ * (pack-native win32-x64: "built with WITH_FFMPEG=unset"). Answers `{ path, cache }`, or throws
+ * unless there is exactly one such cache and it is OpenCV's (CMAKE_HOME_DIRECTORY .../opencv).
+ */
+export function opencvCache(src) {
+  const root = join(src, '_skbuild');
+  const found = existsSync(root)
+    ? readdirSync(root)
+        .map((d) => join(root, d, 'cmake-build', 'CMakeCache.txt'))
+        .filter((p) => existsSync(p))
+    : [];
+  if (found.length !== 1)
+    throw new Error(
+      `expected one _skbuild/<platform>/cmake-build/CMakeCache.txt in ${src}, found ${String(found.length)}`,
+    );
+  const cache = parseCMakeCache(readFileSync(found[0], 'utf8'));
+  const home = String(cache.CMAKE_HOME_DIRECTORY ?? '')
+    .split('\\')
+    .join('/');
+  if (!/\/opencv\/?$/.test(home))
+    throw new Error(`${found[0]} is not OpenCV's cache (CMAKE_HOME_DIRECTORY=${home || 'unset'})`);
+  return { path: found[0], cache };
+}
+
+/** The `require` options a CMake read-back does not meet (an unset option never does). */
+export function unmetRequire(require, cmake) {
+  return Object.entries(require ?? {})
+    .filter(([k, v]) => String(cmake[k]).toUpperCase() !== String(v).toUpperCase())
+    .map(([k, v]) => `${k}=${cmake[k] ?? 'unset'}, the recipe requires ${String(v)}`);
+}
+
+/** `python <args>` installing the built OpenCV wheel and its pinned probe needs into `dir`. */
+export const opencvProbeInstallArgs = (c, wheel, dir) => [
+  '-m',
+  'pip',
+  'install',
+  '--no-deps',
+  '--target',
+  dir,
+  wheel,
+  ...(c.probeRequires ?? []),
+];
+
+/** Python run with `sys.argv[1]` the folder `opencvProbeInstallArgs` filled. */
+export const OPENCV_PROBE =
+  'import json,sys;sys.path.insert(0,sys.argv[1]);import cv2;' +
+  'print(json.dumps({"file":cv2.__file__,"videoCapture":hasattr(cv2,"VideoCapture"),' +
+  '"info":cv2.getBuildInformation()}))';
+
+/** The lines of one section of cv2.getBuildInformation() (up to the next blank line). */
+function buildInfoSection(info, title) {
+  const at = info.indexOf(`${title}:`);
+  if (at < 0) return [];
+  return info
+    .slice(at)
+    .split(/\r?\n/)
+    .slice(1)
+    .join('\n')
+    .split(/\n\s*\n/)[0]
+    .split('\n');
+}
+
+/**
+ * What the probe of a built cv2 (`{ file, videoCapture, info }`) says against the recipe: it must
+ * be the wheel's cv2 (under `dir`), without the videoio module (no VideoCapture, not in "To be
+ * built"), without an FFmpeg or GStreamer backend, without Intel IPP and without non-free code.
+ */
+export function opencvProbeProblems(p, dir) {
+  const out = [];
+  const norm = (s) =>
+    String(s ?? '')
+      .split('\\')
+      .join('/')
+      .toLowerCase();
+  if (!norm(p.file).startsWith(norm(dir)))
+    out.push(`cv2 came from ${String(p.file)}, not the built wheel`);
+  const info = String(p.info ?? '');
+  const modules = /^\s*To be built:\s*(.*)$/m.exec(info)?.[1];
+  if (modules === undefined) out.push('cv2.getBuildInformation() lists no modules');
+  else if (/(^|\s)videoio(\s|$)/.test(modules)) out.push('the videoio module is built');
+  if (p.videoCapture) out.push('cv2 has VideoCapture (videoio)');
+  for (const line of buildInfoSection(info, 'Video I/O'))
+    if (/ffmpeg|gstreamer|avcodec|avformat/i.test(line) && !/:\s*NO\b/.test(line))
+      out.push(`video backend: ${line.trim()}`);
+  const ipp = /^\s*Intel IPP:\s*(.*)$/m.exec(info)?.[1];
+  if (ipp !== undefined && !/^NO\b/.test(ipp.trim())) out.push(`Intel IPP: ${ipp.trim()}`);
+  const nonfree = /^\s*Non-free algorithms:\s*(\S+)/m.exec(info)?.[1];
+  if (nonfree !== 'NO') out.push(`Non-free algorithms: ${nonfree ?? 'not reported'}`);
+  return out;
+}
+
 /** `python <args>` printing the entries of a wheel as JSON. */
 export const wheelListArgs = (wheel) => [
   '-c',
@@ -607,12 +701,29 @@ export async function buildOpencv(r, c, ctx) {
   const wheels = r.plan
     ? ['opencv_python_headless-5.0.0.93.whl']
     : readdirSync(raw).filter((f) => f.startsWith('opencv') && f.endsWith('.whl'));
-  for (const w of wheels) checkWheel(r, ctx, join(raw, w));
+  if (wheels.length !== 1)
+    throw new Error(`expected one OpenCV wheel in ${raw}, found ${wheels.join(', ') || 'none'}`);
+  const wheel = join(raw, wheels[0]);
+  checkWheel(r, ctx, wheel);
+
+  // Second source: the built cv2 itself reports no videoio, FFmpeg, GStreamer, IPP or non-free.
+  const probe = join(ctx.work, 'probe', 'opencv');
+  rmSync(probe, { recursive: true, force: true });
+  r.run(ctx.python, opencvProbeInstallArgs(c, wheel, probe));
+  const answer = r.run(ctx.python, ['-c', OPENCV_PROBE, probe], { capture: true });
+  if (!r.plan) {
+    const problems = opencvProbeProblems(JSON.parse(answer), probe);
+    if (problems.length)
+      throw new Error(`${wheels[0]} reports what the recipe forbids:\n${problems.join('\n')}`);
+  }
+
   let cmake = {};
   if (!r.plan) {
-    const cache = [...walk(join(src, '_skbuild'))].find((p) => basename(p) === 'CMakeCache.txt');
-    if (!cache) throw new Error('opencv-python left no CMakeCache.txt under _skbuild');
-    cmake = pick(parseCMakeCache(readFileSync(cache, 'utf8')), Object.keys(c.cmake));
+    // The options read back from OpenCV's own CMake cache (the gate's first source).
+    cmake = pick(opencvCache(src).cache, Object.keys(c.cmake));
+    const unmet = unmetRequire(c.require, cmake);
+    if (unmet.length)
+      throw new Error(`opencv-python's CMake cache misses the recipe:\n${unmet.join('\n')}`);
     removeWheels(join(ctx.out, 'wheels'), 'opencv_python_headless-');
     mkdirSync(join(ctx.out, 'wheels'), { recursive: true });
     for (const w of wheels) cpSync(join(raw, w), join(ctx.out, 'wheels', w));
@@ -673,7 +784,11 @@ async function buildPdal(r, c, ctx) {
   return { cmake: {}, ports: r.plan ? [] : installedPorts(installed, ctx.triplet), sources: [] };
 }
 
-/** The configure command for our PoissonRecon CMake project (poissonrecon/CMakeLists.txt). */
+/**
+ * The configure command for our PoissonRecon CMake project (poissonrecon/CMakeLists.txt): zlib,
+ * libpng and libjpeg-turbo from vcpkg in manifest mode (poissonrecon/vcpkg.json, copied with its
+ * configuration into `ctx.manifestDir`), installed into `ctx.vcpkgInstalled`.
+ */
 export function poissonConfigure(ctx) {
   const args = [
     '-S',
@@ -683,7 +798,14 @@ export function poissonConfigure(ctx) {
     ...(ctx.platform === 'win32' ? ['-A', 'x64'] : ['-G', 'Ninja']),
     `-DPOISSONRECON_SOURCE=${ctx.src}`,
     '-DCMAKE_BUILD_TYPE=Release',
+    `-DCMAKE_TOOLCHAIN_FILE=${ctx.vcpkgRoot}/scripts/buildsystems/vcpkg.cmake`,
+    `-DVCPKG_MANIFEST_DIR=${ctx.manifestDir}`,
+    `-DVCPKG_TARGET_TRIPLET=${ctx.triplet}`,
+    `-DVCPKG_HOST_TRIPLET=${ctx.hostTriplet}`,
+    `-DVCPKG_INSTALLED_DIR=${ctx.vcpkgInstalled}`,
+    `-DVCPKG_OVERLAY_TRIPLETS=${ctx.overlayTriplets}`,
   ];
+  if (ctx.platform === 'win32') args.push('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL');
   if (ctx.platform === 'darwin') {
     args.push(
       '-DCMAKE_OSX_ARCHITECTURES=arm64',
@@ -698,10 +820,21 @@ async function buildPoissonRecon(r, c, ctx) {
   const src = join(ctx.work, 'src', 'poissonrecon');
   const build = join(ctx.work, 'build', 'poissonrecon');
   const dest = join(ctx.out, 'tools', 'poissonrecon');
+  const manifestDir = join(ctx.work, 'manifests', 'poissonrecon');
+  const vcpkgInstalled = join(ctx.work, 'vcpkg_installed', 'poissonrecon');
+  // Applies poissonrecon/patches: PNG.inl against libpng 1.6.
   fetchSource(r, c, src);
   rmSync(build, { recursive: true, force: true });
   rmSync(dest, { recursive: true, force: true });
-  r.run('cmake', poissonConfigure({ ...ctx, src, build }));
+  if (!r.plan) {
+    mkdirSync(manifestDir, { recursive: true });
+    cpSync(join(NATIVE_DIR, c.manifest), join(manifestDir, 'vcpkg.json'));
+    writeFileSync(
+      join(manifestDir, 'vcpkg-configuration.json'),
+      `${JSON.stringify(vcpkgConfiguration(ctx.components, { overlayTriplets: [ctx.overlayTriplets] }), null, 2)}\n`,
+    );
+  }
+  r.run('cmake', poissonConfigure({ ...ctx, src, build, manifestDir, vcpkgInstalled }));
   r.run('cmake', ['--build', build, '--config', 'Release', '--parallel']);
   r.run('cmake', ['--install', build, '--config', 'Release', '--prefix', dest]);
   if (ctx.platform === 'darwin' && !r.plan) {
@@ -720,7 +853,11 @@ async function buildPoissonRecon(r, c, ctx) {
       r.run('codesign', ['--force', '--sign', '-', exe]);
     }
   }
-  return { cmake: {}, ports: [], sources: [src] };
+  return {
+    cmake: {},
+    ports: r.plan ? [] : installedPorts(vcpkgInstalled, ctx.triplet),
+    sources: [src],
+  };
 }
 
 const BUILDERS = {

@@ -1,0 +1,16 @@
+PoissonRecon 8.76 (262b0f5) Src/PNG.inl: PNGWriter::nextRows reads the row width from the
+png_struct (_png_ptr->width), which only compiles against the libpng 1.2 headers vendored in
+PNG/. We build against vcpkg's libpng 1.6, whose png_struct is opaque, so ask libpng for the
+width it was given in png_set_IHDR instead. Same value, no change in behaviour.
+
+diff --git a/Src/PNG.inl b/Src/PNG.inl
+--- a/Src/PNG.inl
++++ b/Src/PNG.inl
+@@ -164,6 +164,6 @@ unsigned int PNGWriter::nextRow( const unsigned char* row )
+ }
+ unsigned int PNGWriter::nextRows( const unsigned char* rows , unsigned int rowNum )
+ {
+-	for( unsigned int r=0 ; r<rowNum ; r++ ) png_write_row( _png_ptr , (png_bytep)( rows + r * 3 * sizeof( unsigned char ) * _png_ptr->width ) );
++	for( unsigned int r=0 ; r<rowNum ; r++ ) png_write_row( _png_ptr , (png_bytep)( rows + r * 3 * sizeof( unsigned char ) * png_get_image_width( _png_ptr , _info_ptr ) ) );
+ 	return _currentRow += rowNum;
+ }

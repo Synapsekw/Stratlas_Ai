@@ -1,0 +1,17 @@
+{
+  "$comment": "Image libraries for our PoissonRecon build (poissonrecon/CMakeLists.txt), static through the stratlas triplets, in place of the copies vendored in PoissonRecon (zlib whose gz*.c do not compile under C99 with current AppleClang, libpng 1.2.29, IJG JPEG). The licence gate checks their SBOMs like every other port.",
+  "name": "stratlas-poissonrecon",
+  "version-string": "8.76",
+  "license": "MIT",
+  "dependencies": [
+    "zlib",
+    {
+      "name": "libpng",
+      "default-features": false
+    },
+    {
+      "name": "libjpeg-turbo",
+      "default-features": false
+    }
+  ]
+}
