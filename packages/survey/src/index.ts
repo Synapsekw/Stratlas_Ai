@@ -32,3 +32,34 @@ export type {
 export const SURVEY_ENGINE_VERSION = 1;
 
 export { signedVolumeTotals, type VolumeTotals } from './totals';
+
+// designs/ (G6): design TINs, alignments and compliance to design
+export { parseTin, TinError, TinSampler, TIN_CHAIN, type Tin, type TinChain } from './designs/tin';
+export {
+  alignmentPolyline,
+  bearing,
+  distanceAt,
+  elementPoint,
+  formatStation,
+  pointAt,
+  pointAtStation,
+  stationAt,
+  stationLabels,
+  stationOffset,
+  stationRegions,
+  totalLength,
+  type StationLabel,
+  type StationOffset,
+  type StationRegion,
+} from './designs/alignment';
+export {
+  COMPLIANCE_COLOURS,
+  DESIGN_PRESET_LABELS,
+  designComparisonItem,
+  toleranceBand,
+  toleranceHeatmap,
+  toleranceShare,
+  type DesignPreset,
+  type ToleranceBand,
+  type ToleranceShare,
+} from './designs/compliance';
