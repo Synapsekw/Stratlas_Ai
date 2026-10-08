@@ -11,7 +11,15 @@ import { useMemo, useState } from 'react';
 import { CropSection } from './Crop';
 import { startTool, useMeasure } from './measureStore';
 import { editFrom, ringOf, useFocusCapture } from './qaHelpers';
-import { addEdit, openQaPanel, patchEdit, runCleanup, surfaceOfCapture, useQa } from './qaStore';
+import {
+  addEdit,
+  openQaPanel,
+  patchEdit,
+  prepareCapture,
+  runCleanup,
+  surfaceOfCapture,
+  useQa,
+} from './qaStore';
 
 export function CleanupPanel() {
   const project = useWorkspace((s) => s.project);
@@ -46,6 +54,22 @@ export function CleanupPanel() {
           <Icon name="x" size={12} />
         </button>
       </div>
+      {focus && !preferred && !readOnly && (
+        <div className="sv-row sv-wrap">
+          <span className="faint small qa-grow">The survey in focus has no prepared surface.</span>
+          <button
+            type="button"
+            className="btn sm"
+            disabled={busy !== null}
+            data-testid="cleanup-prepare"
+            onClick={() => {
+              void prepareCapture(project.manifest, focus);
+            }}
+          >
+            {busy ?? 'Prepare its surface'}
+          </button>
+        </div>
+      )}
       {own.length === 0 ? (
         <p className="faint small">
           No survey has a prepared surface yet. Run <b>Check against points</b> or prepare the

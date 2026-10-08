@@ -496,7 +496,11 @@ function Histogram({ values }: { values: number[] }) {
   const bw = w / n;
   return (
     <figure className="qa-hist" aria-label="Checkpoint differences">
-      <svg viewBox={`0 0 ${String(w)} ${String(h + 14)}`} role="img">
+      <svg
+        viewBox={`0 0 ${String(w)} ${String(h + 14)}`}
+        role="img"
+        aria-label="Histogram of the checkpoint differences"
+      >
         {counts.map((c, k) => (
           <rect
             key={k}

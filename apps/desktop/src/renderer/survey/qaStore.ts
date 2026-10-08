@@ -223,6 +223,18 @@ async function ensureSurface(
   return { id };
 }
 
+/** Prepare a survey's surface (its DSM, else its cloud) for cleanups, crops and checks. */
+export async function prepareCapture(manifest: ProjectManifest, capture: string): Promise<void> {
+  if (get().busy) return;
+  set({ message: null });
+  try {
+    const r = await ensureSurface(manifest, capture);
+    if ('error' in r) set({ message: { kind: 'error', text: r.error } });
+  } finally {
+    set({ busy: null });
+  }
+}
+
 export type Checkpoints = { csv: string } | { gcp: string } | null;
 
 /** **Check against points** (and against the previous survey) at `level`. */

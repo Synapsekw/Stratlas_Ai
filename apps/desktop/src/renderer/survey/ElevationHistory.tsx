@@ -175,7 +175,11 @@ function HistoryChart({ rows }: { rows: HistoryRow[] }) {
   return (
     <>
       <figure className="qa-hist" aria-label="Height on each survey" data-testid="history-chart">
-        <svg viewBox={`0 0 ${String(w)} ${String(h)}`} role="img">
+        <svg
+          viewBox={`0 0 ${String(w)} ${String(h)}`}
+          role="img"
+          aria-label="Height on each survey"
+        >
           <polyline points={pts.join(' ')} className="qa-line" />
           {rows.map((r, k) =>
             r.height === null ? null : (
