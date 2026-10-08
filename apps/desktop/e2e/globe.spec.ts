@@ -27,6 +27,56 @@ const inspect = (win: Page) =>
     return (c?.inspect() ?? null) as GlobeInspection | null;
   });
 
+/**
+ * How long a flight and the tiles it brings in may take. On a software GPU the Globe's tile
+ * stream can hold the renderer for tens of seconds: on the Windows runner (Low tier) one
+ * `inspect()` sent as the flight to the synthetic packs began came back 30 s later (CI run
+ * 37722686745), and Chromium's WARP rasteriser shows the same on a workstation
+ * (QUADRION_E2E_SWGL=warp: 1 to 6 s per call on one or two cores, 0.2 s on SwiftShader), with the
+ * flight then ending where it should. A polled value arrives late but right, so this is wall time
+ * for slow software rendering; a fast GPU settles in a second or two.
+ */
+const SETTLE_MS = 60_000;
+// a flight and its tiles may each take SETTLE_MS on the software GPU
+test.describe.configure({ timeout: 3 * SETTLE_MS });
+
+/** The graphics tier and WebGL renderer the app detected, for failure messages. */
+const graphics = (win: Page) =>
+  win
+    .evaluate(async () => {
+      const m = await (
+        window as unknown as {
+          __stratlas: { memory(): Promise<{ tier: string; renderer?: string | null }> };
+        }
+      ).__stratlas.memory();
+      return `${m.tier} tier, ${m.renderer ?? 'no WebGL renderer'}`;
+    })
+    .catch((e: unknown) => `graphics unknown: ${String(e)}`);
+
+/** Poll the Globe until `ok`; a timeout says what it last showed and on which GPU. */
+async function settle(win: Page, what: string, ok: (s: GlobeInspection) => boolean) {
+  let last: GlobeInspection | null = null;
+  try {
+    await expect
+      .poll(
+        async () => {
+          last = await inspect(win);
+          return last !== null && ok(last);
+        },
+        { timeout: SETTLE_MS },
+      )
+      .toBe(true);
+  } catch (e) {
+    const shown = last as GlobeInspection | null;
+    const state = shown
+      ? `flying ${String(shown.flying)}, height ${shown.cameraHeight.toFixed(0)} m, tiles loaded ${String(shown.tilesLoaded)}, ${String(shown.imageryTiles)} pack tiles, frame ${String(shown.frame)}`
+      : 'no Globe';
+    throw new Error(`${what} within ${String(SETTLE_MS)} ms: ${state}; ${await graphics(win)}`, {
+      cause: e,
+    });
+  }
+}
+
 const memMiB = (app: ElectronApplication) =>
   app.evaluate(({ app: a }) =>
     Math.round(a.getAppMetrics().reduce((s, m) => s + m.memory.workingSetSize, 0) / 1024),
@@ -146,15 +196,7 @@ async function flyToSite(win: Page, name: string) {
     .getByRole('button', { name: new RegExp(name) })
     .click();
   await expect(win.getByTestId('globe-card')).toContainText(name);
-  await expect
-    .poll(
-      async () => {
-        const s = await inspect(win);
-        return s !== null && !s.flying && s.cameraHeight < 5000;
-      },
-      { timeout: 15_000 },
-    )
-    .toBe(true);
+  await settle(win, `the flight to ${name} ended`, (s) => !s.flying && s.cameraHeight < 5000);
 }
 
 // ---------------------------------------------------------------- tests
@@ -237,15 +279,7 @@ test('every library project is a site; packs draw with their credits', async ({
     'Synthetic imagery (syn-imagery)',
   );
   await flyToSite(win, SITE_A.name);
-  await expect
-    .poll(
-      async () => {
-        const s = await inspect(win);
-        return s !== null && s.tilesLoaded && s.imageryTiles > 0;
-      },
-      { timeout: 30_000 },
-    )
-    .toBe(true);
+  await settle(win, 'the pack tiles loaded', (s) => s.tilesLoaded && s.imageryTiles > 0);
   // the pack's flat magenta is drawn below the site pin, in the middle of the view
   const px = await win.evaluate(() => {
     const el = document.querySelector('[data-testid="globe-canvas"]');

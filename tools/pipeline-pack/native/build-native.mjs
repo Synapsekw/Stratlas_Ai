@@ -71,6 +71,28 @@ export function vcpkgConfiguration({ vcpkg }, { overlayPorts = [], overlayTriple
 export const defines = (options) =>
   Object.entries(options ?? {}).map(([k, v]) => `-D${k}=${String(v)}`);
 
+/**
+ * CMake hints for Homebrew's libomp with AppleClang (macOS), as `{ NAME: value }`; none elsewhere
+ * (MSVC's OpenMP is found by FindOpenMP without hints). `OpenMP_ROOT` alone is not enough: a
+ * project whose `cmake_minimum_required` predates 3.12 (pycolmap's) leaves policy CMP0074 unset,
+ * so `find_package(OpenMP)` from COLMAP's installed config ignores it ("Could NOT find OpenMP_C").
+ * The flags, library names and library path below need no search at all; the policy default is
+ * set as well so any other `<Package>_ROOT` is honoured the same way.
+ */
+export function openmpHints(ctx) {
+  if (ctx.platform !== 'darwin' || !ctx.libomp) return {};
+  const flags = `-Xpreprocessor -fopenmp -I${ctx.libomp}/include`;
+  return {
+    CMAKE_POLICY_DEFAULT_CMP0074: 'NEW',
+    OpenMP_ROOT: ctx.libomp,
+    OpenMP_C_FLAGS: flags,
+    OpenMP_CXX_FLAGS: flags,
+    OpenMP_C_LIB_NAMES: 'omp',
+    OpenMP_CXX_LIB_NAMES: 'omp',
+    OpenMP_omp_LIBRARY: `${ctx.libomp}/lib/libomp.dylib`,
+  };
+}
+
 /** The configure command for COLMAP. */
 export function colmapConfigure(c, ctx) {
   const args = [
@@ -95,14 +117,58 @@ export function colmapConfigure(c, ctx) {
     args.push(
       '-DCMAKE_OSX_ARCHITECTURES=arm64',
       `-DCMAKE_OSX_DEPLOYMENT_TARGET=${ctx.deploymentTarget}`,
+      ...defines(openmpHints(ctx)),
     );
-    if (ctx.libomp) args.push(`-DOpenMP_ROOT=${ctx.libomp}`);
   }
   return args;
 }
 
-/** pip config settings for the pycolmap wheel (scikit-build-core), built against our COLMAP. */
+/** A Python project name as pip compares it (PEP 503). */
+const normName = (n) => n.toLowerCase().replace(/[-_.]+/g, '-');
+
+/** `name==version` (or a bare name) to its normalised name and pinned version. */
+function parseRequirement(req) {
+  const m = /^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:\[[^\]]*\])?\s*(.*)$/.exec(req);
+  if (!m?.[1]) throw new Error(`Not a requirement: ${req}`);
+  const pin = /^==\s*([^\s,;]+)\s*$/.exec(m[2] ?? '');
+  return { name: normName(m[1]), spec: (m[2] ?? '').trim(), pinned: pin?.[1] };
+}
+
+/**
+ * pycolmap's build requirements against our pins: every `[build-system] requires` of the
+ * source's pyproject.toml is installed pinned (an exact pin there must be ours) or left out
+ * with a reason. Returns the problems; a COLMAP bump that adds or repins one fails the build.
+ */
+export function checkBuildRequires(requires, pycolmap) {
+  const ours = new Map(pycolmap.buildRequires.map((r) => [parseRequirement(r).name, r]));
+  const skipped = new Set(Object.keys(pycolmap.notInstalled ?? {}).map(normName));
+  const problems = [];
+  for (const req of requires) {
+    const { name, pinned } = parseRequirement(req);
+    if (skipped.has(name)) continue;
+    const pin = ours.get(name);
+    if (!pin) problems.push(`${req}: not in components.json pycolmap.buildRequires`);
+    else if (pinned && parseRequirement(pin).pinned !== pinned)
+      problems.push(`${req}: components.json pins ${pin}`);
+  }
+  return problems;
+}
+
+/** What the build Python needs for the pycolmap wheel: its build requirements and the repair tool. */
+export function pycolmapRequirements(c, platform) {
+  const repair = c.pycolmap.repair[platform];
+  if (!repair) throw new Error(`No wheel repair tool for ${platform}`);
+  return [...c.pycolmap.buildRequires, repair];
+}
+
+/**
+ * pip config settings for the pycolmap wheel (scikit-build-core), built against our COLMAP.
+ * `ctx.pybind11Dir` is `python -m pybind11 --cmakedir` of the build Python: our
+ * CMAKE_PREFIX_PATH replaces the prefixes scikit-build-core would add for pybind11, so without
+ * it `find_package(pybind11)` fails (pack-native win32-x64).
+ */
 export function pycolmapSettings(ctx) {
+  if (!ctx.pybind11Dir) throw new Error('pycolmap needs the CMake folder of pybind11');
   const d = {
     CMAKE_TOOLCHAIN_FILE: `${ctx.vcpkgRoot}/scripts/buildsystems/vcpkg.cmake`,
     VCPKG_TARGET_TRIPLET: ctx.triplet,
@@ -111,16 +177,30 @@ export function pycolmapSettings(ctx) {
     VCPKG_OVERLAY_TRIPLETS: ctx.overlayTriplets,
     CMAKE_PREFIX_PATH: ctx.install,
     CMAKE_PROJECT_INCLUDE: ctx.projectInclude,
+    pybind11_DIR: ctx.pybind11Dir,
     GENERATE_STUBS: 'OFF',
     CCACHE_ENABLED: 'OFF',
   };
   if (ctx.platform === 'win32') d.CMAKE_MSVC_RUNTIME_LIBRARY = 'MultiThreadedDLL';
   if (ctx.platform === 'darwin') {
     d.CMAKE_OSX_ARCHITECTURES = 'arm64';
-    if (ctx.libomp) d.OpenMP_ROOT = ctx.libomp;
+    Object.assign(d, openmpHints(ctx));
   }
   return Object.entries(d).map(([k, v]) => `--config-settings=cmake.define.${k}=${v}`);
 }
+
+/** `python <args>` building the pycolmap wheel from `ctx.src` into `ctx.raw`, on both platforms. */
+export const pycolmapWheelArgs = (ctx) => [
+  '-m',
+  'pip',
+  'wheel',
+  ctx.src,
+  '--no-deps',
+  '--no-build-isolation',
+  '-w',
+  ctx.raw,
+  ...pycolmapSettings(ctx),
+];
 
 /** Environment for the opencv-python build: headless, no contrib, our CMake options. */
 export function opencvEnv(c) {
@@ -283,30 +363,28 @@ async function buildColmap(r, c, ctx) {
   // pycolmap from the same tree, then its native dependencies bundled into the wheel.
   const raw = join(ctx.work, 'wheels-raw', 'pycolmap');
   rmSync(raw, { recursive: true, force: true });
-  r.run(ctx.python, [
-    '-m',
-    'pip',
-    'install',
-    'scikit-build-core>=0.10',
-    'pybind11==3.0.4',
-    'numpy',
-    ctx.platform === 'win32' ? 'delvewheel' : 'delocate',
-  ]);
-  r.run(
+  // --no-build-isolation: the build Python holds pycolmap's build requirements, pinned
+  const requires = r.run(
     ctx.python,
     [
-      '-m',
-      'pip',
-      'wheel',
-      src,
-      '--no-deps',
-      '--no-build-isolation',
-      '-w',
-      raw,
-      ...pycolmapSettings(cctx),
+      '-c',
+      'import json,sys,tomllib;print(json.dumps(tomllib.load(open(sys.argv[1],"rb"))["build-system"]["requires"]))',
+      join(src, 'pyproject.toml'),
     ],
-    { env: ctx.platform === 'darwin' ? { MACOSX_DEPLOYMENT_TARGET: ctx.deploymentTarget } : {} },
+    { capture: true },
   );
+  if (!r.plan) {
+    const problems = checkBuildRequires(JSON.parse(requires), c.pycolmap);
+    if (problems.length) throw new Error(`pycolmap build requirements:\n${problems.join('\n')}`);
+  }
+  r.run(ctx.python, ['-m', 'pip', 'install', ...pycolmapRequirements(c, ctx.platform)]);
+  const cmakedir = r.run(ctx.python, ['-m', 'pybind11', '--cmakedir'], { capture: true });
+  const pybind11Dir = r.plan
+    ? '$(python -m pybind11 --cmakedir)'
+    : cmakedir.trim().split('\\').join('/');
+  r.run(ctx.python, pycolmapWheelArgs({ ...cctx, raw, pybind11Dir }), {
+    env: ctx.platform === 'darwin' ? { MACOSX_DEPLOYMENT_TARGET: ctx.deploymentTarget } : {},
+  });
   const wheelsOut = join(ctx.out, 'wheels');
   if (!r.plan) removeWheels(wheelsOut, 'pycolmap-');
   for (const w of r.plan
@@ -325,6 +403,15 @@ async function buildColmap(r, c, ctx) {
       ]);
     else r.run('delocate-wheel', ['-w', wheelsOut, '-v', join(raw, w)]);
   }
+  // The wheel must carry the OpenMP runtime it links (Homebrew's libomp is not on users' Macs).
+  if (ctx.platform === 'darwin' && !r.plan)
+    for (const w of readdirSync(wheelsOut).filter((f) => /^pycolmap-.*\.whl$/.test(f))) {
+      const listing = r.run(ctx.python, ['-m', 'zipfile', '-l', join(wheelsOut, w)], {
+        capture: true,
+      });
+      if (!/\.dylibs\/libomp[^/\s]*\.dylib/.test(listing))
+        throw new Error(`${w}: delocate did not bundle libomp.dylib`);
+    }
   return {
     cmake,
     ports: r.plan ? [] : installedPorts(vcpkgInstalled, ctx.triplet),
@@ -420,8 +507,8 @@ export function poissonConfigure(ctx) {
     args.push(
       '-DCMAKE_OSX_ARCHITECTURES=arm64',
       `-DCMAKE_OSX_DEPLOYMENT_TARGET=${ctx.deploymentTarget}`,
+      ...defines(openmpHints(ctx)),
     );
-    if (ctx.libomp) args.push(`-DOpenMP_ROOT=${ctx.libomp}`);
   }
   return args;
 }

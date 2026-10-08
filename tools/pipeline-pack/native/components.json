@@ -63,6 +63,16 @@
         "CHOLMOD_ENABLED": "OFF"
       },
       "outputs": ["wheels/pycolmap-4.2.1-*.whl"],
+      "pycolmap": {
+        "$comment": "The wheel builds with --no-build-isolation in the build Python: `buildRequires` are installed there first, pinned, and must cover every [build-system] requires of the source's pyproject.toml except `notInstalled` (with the reason). `repair` bundles the native libraries into the wheel. Build-time only: none of them ships, except pybind11's headers (listed in includes).",
+        "buildRequires": ["scikit-build-core==1.1.1", "pybind11==3.0.4", "numpy==2.5.3"],
+        "notInstalled": {
+          "pybind11_stubgen": "type stubs only; GENERATE_STUBS=OFF",
+          "ruff": "formats the type stubs only; GENERATE_STUBS=OFF",
+          "clang-format": "formats the type stubs only; GENERATE_STUBS=OFF"
+        },
+        "repair": { "win32": "delvewheel==1.13.1", "darwin": "delocate==0.13.0" }
+      },
       "includes": [
         {
           "name": "pycolmap",

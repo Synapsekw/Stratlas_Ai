@@ -229,6 +229,10 @@ def _build(ctx: StepContext, run_id: str) -> dict[str, Any]:
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
+    # Resolved: pyopf resolves the paths of the tie point buffers it writes and makes their URIs
+    # relative to the glTF path it is given, so a project reached through a symlink, a junction or
+    # a Windows short name (macOS /var, C:\Users\RUNNER~1) needs the one real path throughout.
+    out = out.resolve()
     items: list[dict[str, Any]] = []
 
     def add(kind: str, name: str, objs: list[tuple[Any, str]], sources: tuple = ()) -> dict[str, Any]:
@@ -426,7 +430,7 @@ def _build(ctx: StepContext, run_id: str) -> dict[str, Any]:
         (out / "calibration").mkdir(parents=True, exist_ok=True)
         buffers = pcl.write(out / "calibration" / "tracks.gltf")
         calibration.append((None, "calibration/tracks.gltf"))
-        calibration += [(None, Path(b).relative_to(out).as_posix()) for b in buffers]
+        calibration += [(None, Path(b).resolve().relative_to(out).as_posix()) for b in buffers]
         tracks = len(xyz)
     cal_item = add(
         "calibration", "Calibration", calibration, (cams_item, *([icp_item] if icp_item else []), srf_item)
