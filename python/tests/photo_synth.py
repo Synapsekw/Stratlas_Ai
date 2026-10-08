@@ -68,6 +68,8 @@ GENERATOR = "photo_synth/1"
 RENDER_END = "# " + "=" * 69 + " end of the rendered part"
 DEFAULT_SEED = 20261007
 JPEG_QUALITY = 90
+#: The mini set (the bundled demo) is stored smaller: its photos count against the installer budget.
+MINI_JPEG_QUALITY = 75
 
 # ----------------------------------------------------------------------------------------- site
 
@@ -1198,10 +1200,10 @@ def motion_blur(img: np.ndarray, length: int) -> np.ndarray:
     return uniform_filter1d(img.astype(np.float32), size=max(1, length), axis=0, mode="nearest")
 
 
-def jpeg_bytes(img: np.ndarray) -> bytes:
+def jpeg_bytes(img: np.ndarray, quality: int = JPEG_QUALITY) -> bytes:
     """JPEG at a fixed quality without metadata (no JFIF segment: metadata goes in later)."""
     buf = io.BytesIO()
-    Image.fromarray(img, "RGB").save(buf, "JPEG", quality=JPEG_QUALITY, subsampling=2, optimize=False)
+    Image.fromarray(img, "RGB").save(buf, "JPEG", quality=quality, subsampling=2, optimize=False)
     return _strip_app0(buf.getvalue())
 
 
@@ -1344,7 +1346,7 @@ def _render_job(args) -> tuple[str, bytes]:
     if shot.blur_px:
         blurred = motion_blur(u8, round(shot.blur_px * cam.width / CAMERA.width))
         u8 = np.clip(np.round(blurred), 0, 255).astype(np.uint8)
-    data = jpeg_bytes(u8)
+    data = jpeg_bytes(u8, MINI_JPEG_QUALITY if size == "mini" else JPEG_QUALITY)
     if cache is not None:
         p = Path(cache) / f"{shot.name}.jpg"
         tmp = p.with_suffix(f".{os.getpid()}.tmp")
@@ -1363,14 +1365,34 @@ def camera_for(size: str) -> Camera:
     raise ValueError(size)
 
 
-MINI_NADIR = tuple(f"SYN_{k:04d}.JPG" for k in (13, 14, 15, 23, 24, 25, 33, 34, 35))
+# The mini set's grid photos: an L along the south and east edges of the site (lines 0 to 3 at the
+# south end, all of line 3, the north end of line 4), so four control points (GCP1, GCP2, GCP3,
+# GCP5) and three checkpoints (CHK2, CHK3, CHK4) are each well inside three photos or more, and
+# CHK1 in two. SYN_0023 is the duplicate's source.
+MINI_NADIR = tuple(f"SYN_{k:04d}.JPG" for k in (1, 2, 19, 21, 22, 23, 24, *range(31, 41), 49, 50))
+#: One more station, only in the mini set: the south end of line 0, one spacing before SYN_0001.
+#: GCP1 sits in the corner of the site, well inside only two photos of the grid (SYN_0019 has it
+#: 3 px from its edge).
+MINI_EXTRA = "SYN_0000.JPG"
+
+
+def mini_extra_shot(scene: Scene, seed: int, flight: FlightPlan = FLIGHT) -> Shot:
+    """The mini set's extra station (``MINI_EXTRA``): line 0 flown one station further south."""
+    rng = np.random.default_rng(seed + 2)
+    zt = float(scene.ground(np.array([flight.takeoff[0]]), np.array([flight.takeoff[1]]))[0])
+    j = rng.normal(0, 1, 6)
+    x, y = flight.lines_x[0], flight.first_y - flight.spacing
+    c = np.array([x + 0.6 * j[0], y + 0.5 * j[1], zt + flight.altitude_agl + 0.4 * j[2]])
+    return Shot(
+        MINI_EXTRA, "nadir", c, 1.5 * j[3], -90.0 + 0.8 * j[4], 0.8 * j[5], _time(flight.start, -2.0), line=0
+    )
 
 
 def mini_shots(scene: Scene, seed: int) -> list[Shot]:
-    """The mini set: nine nadir photos over the middle of the site (a 3 x 3 block of the grid,
-    with GCP5, CHK1 and CHK2 in view) and the five bad images, at 960 x 720. Same names and poses
-    as in the quick set."""
-    return [s for s in plan_shots(scene, seed) if s.name in MINI_NADIR or s.kind not in ("nadir", "oblique")]
+    """The mini set at 960 x 720: the extra station, 19 nadir photos of the grid (``MINI_NADIR``)
+    and the five bad images. The grid photos have the same names and poses as in the quick set."""
+    grid = [s for s in plan_shots(scene, seed) if s.name in MINI_NADIR or s.kind not in ("nadir", "oblique")]
+    return [mini_extra_shot(scene, seed), *grid]
 
 
 # Everything above decides the pixels of a photo (scene, camera, flight, rendering): the render
@@ -2346,7 +2368,7 @@ if pytest is not None:
 
     @pytest.fixture(scope="session")
     def photo_mini(photo_set_factory) -> PhotoSet:
-        """Nine nadir photos and the five bad ones at 960 x 720 (``mini_shots``): under a minute."""
+        """20 nadir photos and the five bad ones at 960 x 720 (``mini_shots``): about a minute."""
         return photo_set_factory("mini", "standard")
 
 
@@ -2358,7 +2380,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", required=True)
     ap.add_argument("--seed", type=int, default=DEFAULT_SEED)
     ap.add_argument("--full", action="store_true", help="full resolution (5280 x 3960), nightly")
-    ap.add_argument("--mini", action="store_true", help="9 nadir and 5 bad photos at 960 x 720")
+    ap.add_argument("--mini", action="store_true", help="20 nadir and 5 bad photos at 960 x 720")
     ap.add_argument("--variant", choices=sorted(VARIANTS), default="standard")
     ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--cache", default=None, help="folder for cached renders")

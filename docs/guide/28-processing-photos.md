@@ -4,7 +4,7 @@
 
 ## What you need
 
-- Pipeline pack 0.4.0 or later (Settings, **Pipelines**). The pack holds the photogrammetry tools.
+- Pipeline pack 0.4.0 or later, copied into `runtime` in the data folder. **Jobs** shows "Pipeline pack" and its version at the top. The pack holds the photogrammetry tools.
 - Windows x64 or a Mac with Apple silicon.
 - Drone photos with GPS in their metadata, taken with enough overlap: about 80% along the flight line and 70% between lines for mapping flights.
 - Memory: about 300 photos per run on a 16 GB computer is a comfortable size. {product} keeps the processing below a memory limit it works out from this computer's memory, and stops a stage cleanly rather than running the computer out of memory.

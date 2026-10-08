@@ -10,7 +10,8 @@
 //   survey/gcp.csv             5 control points and 4 checkpoints (id, x, y, z, role; EPSG:32639)
 //   survey/gcp-blunder.csv     the same plus GCP6, stated 1 m off
 //   photogrammetry/<run>/      a precomputed GNSS-only alignment (run.json, gcp.json with the
-//                              points imported and their predicted marks, report/accuracy.json,
+//                              points imported and their predicted marks, the points no photo
+//                              of the layer shows switched off, report/accuracy.json,
 //                              sparse/ as a COLMAP text model), so the GCP marker and the report
 //                              can be used without waiting for photo.align
 //   tiles/ + tilesets.json     the expected surface (true mesh and cloud) as 3D Tiles, hidden;
@@ -18,10 +19,12 @@
 //   truth.json                 the generator's truth (poses, targets, volumes)
 //
 // Two photo sets (PHOTO_SETS):
-//   mini   (default, the bundled demo) 14 photos at 960 x 720: a 3 x 3 block of nadir photos over
-//          the middle of the site and the five bad ones; 13 in the layer. GCP5, CHK1 and CHK2 are
-//          in view (GCP2 only in the photo without GPS); the other points of the survey file lie
-//          outside the block. About 9 MB, so the installer stays within M10 decision 6.
+//   mini   (default, the bundled demo) 25 photos at 960 x 720: 20 nadir photos in an L along
+//          the south and east edges of the site and the five bad ones; 24 in the layer. Four
+//          control points (GCP1, GCP2, GCP3, GCP5) and three checkpoints (CHK2, CHK3, CHK4) are
+//          each in 3 to 9 photos, so the demo can be adjusted; CHK1 is in two, GCP4 in none
+//          (switched off). JPEG quality 75; about 6 MB, so the installer stays within M10
+//          decision 6.
 //   quick  (development and CI only, never bundled) 63 photos at 1600 x 1200 with the oblique
 //          ring and every point in view; about 51 MB. tools/demo/ensure-demo.mjs rebuilds a demo
 //          made from it before a release.
@@ -183,7 +186,7 @@ export function precomputedRun(schema, { truth, alignment, ids, capture, gcpCsv 
     ...unseen.map((p) => ({
       code: 'few-marks',
       point: p.id,
-      message: `${p.id} is in fewer than ${String(MIN_VIEWS)} photos of this flight: it cannot be marked or checked.`,
+      message: `${p.id} is in fewer than ${String(MIN_VIEWS)} photos of this flight: it cannot be marked or checked, so it is switched off.`,
     })),
   ];
   const rejected = alignment.rejected
@@ -254,11 +257,14 @@ export function precomputedRun(schema, { truth, alignment, ids, capture, gcpCsv 
     crs,
     heights: { source: 'ellipsoidal', geoid: 'none' },
     importedFrom: 'gcp.csv',
+    // a point the flight cannot show is switched off, as a person would before adjusting: it
+    // would otherwise hold Adjust back (a control point needs three confirmed marks)
     points: gcpCsv.map((p) => ({
       id: p.id,
       role: p.role,
       xyz: p.xyz,
       accuracy: { horizontalM: 0.01, verticalM: 0.015 },
+      ...(unseen.includes(p) ? { disabled: true } : {}),
       marks: [],
       predicted: (alignment.predictions[p.id] ?? [])
         .filter((q) => ids.has(q.photo))
