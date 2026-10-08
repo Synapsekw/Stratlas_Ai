@@ -32,17 +32,18 @@ Only what still needs testing. Each stage lists what to click and what you shoul
 
 ## Status
 
-| Stage | What it covers                                                                                                                                                                                                   | Build it needs                                                                                                                            | Status                                               |
-| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| M5    | Fixes from the M4 feedback: Masafi, DAMAC, video, layers, cut-away, split, sky and water, report branding                                                                                                        | The M5 installer, built 4 Oct 2026 after the sky and water merge (commit `862c9df`) or later                                              | Not yet tested (skipped for now)                     |
-| M6    | Builder completion: pipelines from raw data, detection review, AI detection, report text and project report, video calibration, packages and map packs                                                           | The M6 installer, built 4 Oct 2026 from main at commit `4624bf2` or later, and pipeline pack 0.2.0 (see M6, Before you start)             | In progress: founder testing; feedback fixed in M6.1 |
-| M6.1  | Your M6 feedback: point size, issue and photo opening, Media highlights, HCl flicker and nadir photos, dark maps, Al-Zour drone trace and photo icons, agent camera moves, Masafi piles and ramps, compare dates | The installer built 5 Oct 2026, 18:00, from main at commit `a8e7b43` or later                                                             | All nine fixes merged; not yet tested by the founder |
-| M7    | Signed builds and updates only (the rest of M7 passed on 6 Oct 2026)                                                                                                                                             | Needs the signing secrets in GitHub and a second version                                                                                  | Waiting for signing                                  |
-| M8    | Change and modelling: changes between survey dates, imagery, surface, cloud and model change, same view on the other date, model builder, local detection, offline agent                                         | Version 0.8.0, built 7 Oct 2026 from main at commit `7faf945`, and pipeline pack 0.3.0 (see M8, Before you start)                         | Built; not yet tested by the founder                 |
-| M9    | Team and audit: identity and roles, exchange files, shared folder, conflicts, review workflow, history and audit trail, large files on demand, team server (preview)                                             | Version 0.9.0, built 7 Oct 2026, 11:17, from main at commit `6300be4` or later                                                            | Built; not yet tested by the founder                 |
-| R     | The rename to Quadrion AI: name, icon, title bar, installer, settings carried over from Stratlas                                                                                                                 | The installer built from the rename branch (QuadrionAI-0.9.0-win-x64-setup.exe)                                                           | Built; not yet tested by the founder                 |
-| L     | The launch screen: welcome with your name, Enter, Esc, the Settings switch                                                                                                                                       | An installer built from the launch-screen branch (after the rename), or later                                                             | Built; not yet tested by the founder                 |
-| M10   | Photos to products: photo processing on the demo and on your own flight, ground control and the accuracy report, OPF, Globe, imagery and terrain packs, 3D Tiles, licence approvals                              | Version 0.10.0, built 8 Oct 2026 from `integration/m10` at commit `3f07041` or later, and pipeline pack 0.4.0 (see M10, Before you start) | Built; not yet tested by the founder                 |
+| Stage       | What it covers                                                                                                                                                                                                   | Build it needs                                                                                                                                                                          | Status                                               |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| M5          | Fixes from the M4 feedback: Masafi, DAMAC, video, layers, cut-away, split, sky and water, report branding                                                                                                        | The M5 installer, built 4 Oct 2026 after the sky and water merge (commit `862c9df`) or later                                                                                            | Not yet tested (skipped for now)                     |
+| M6          | Builder completion: pipelines from raw data, detection review, AI detection, report text and project report, video calibration, packages and map packs                                                           | The M6 installer, built 4 Oct 2026 from main at commit `4624bf2` or later, and pipeline pack 0.2.0 (see M6, Before you start)                                                           | In progress: founder testing; feedback fixed in M6.1 |
+| M6.1        | Your M6 feedback: point size, issue and photo opening, Media highlights, HCl flicker and nadir photos, dark maps, Al-Zour drone trace and photo icons, agent camera moves, Masafi piles and ramps, compare dates | The installer built 5 Oct 2026, 18:00, from main at commit `a8e7b43` or later                                                                                                           | All nine fixes merged; not yet tested by the founder |
+| M7          | Signed builds and updates only (the rest of M7 passed on 6 Oct 2026)                                                                                                                                             | Needs the signing secrets in GitHub and a second version                                                                                                                                | Waiting for signing                                  |
+| M8          | Change and modelling: changes between survey dates, imagery, surface, cloud and model change, same view on the other date, model builder, local detection, offline agent                                         | Version 0.8.0 (built 7 Oct 2026 from main at commit `7faf945`) or later; test it on 0.10.0. Pipeline pack 0.3.0 or later (see M8, Before you start)                                     | Built; not yet tested by the founder                 |
+| M9          | Team and audit: identity and roles, exchange files, shared folder, conflicts, review workflow, history and audit trail, large files on demand, team server (preview)                                             | Version 0.9.0 (built 7 Oct 2026, 11:17, from main at commit `6300be4`) or later; test it on 0.10.0                                                                                      | Built; not yet tested by the founder                 |
+| R           | The rename to Quadrion AI: name, icon, title bar, installer, settings carried over from Stratlas                                                                                                                 | The installer built from the rename branch (QuadrionAI-0.9.0-win-x64-setup.exe)                                                                                                         | Built; not yet tested by the founder                 |
+| Timeline T1 | Survey dates: one folder per date in Datasets, the date bar and calendar, survey commands in Ctrl K, dates in the viewers and compare split                                                                      | Main at commit `2fe069e` or later (in version 0.10.0), and a project of yours with two survey dates or more, such as Masafi (see Timeline T1, Before you start)                         | Built; not yet tested by the founder                 |
+| L           | The launch screen: welcome with your name, Enter, Esc, the Settings switch                                                                                                                                       | An installer built from the launch-screen branch (after the rename), or later                                                                                                           | Built; not yet tested by the founder                 |
+| M10         | Photos to products: photo processing on the demo and on your own flight, ground control and the accuracy report, OPF, Globe, imagery and terrain packs, 3D Tiles, licence approvals                              | Version 0.10.0, built 8 Oct 2026 from `integration/m10` at commit `3f07041` or later with the M10 fixes merged (the 24-photo demo), and pipeline pack 0.4.0 (see M10, Before you start) | Built; not yet tested by the founder                 |
 
 ## Stage M5: your M4 feedback, fixed
 
@@ -314,7 +315,7 @@ Everything here runs offline on the new bundled demo **Demo change site (2 dates
 
 ### Before you start
 
-- [ ] Install `QuadrionAI-0.9.0-win-x64-setup.exe`. **Settings, About and updates** shows version 0.8.0.
+- [ ] Install `QuadrionAI-0.10.0-win-x64-setup.exe` (M8 was built in 0.8.0; 0.10.0 contains it). **Settings, About and updates** shows version 0.10.0.
 - [ ] Copy the folder `E:\Dev\AIO Software\apps\desktop\dist\pipeline-pack-0.3.0` into `E:\Stratlas Data\runtime\`. **Jobs** then shows "Pipeline pack 0.3.0" at the top. The change, drawing and fitting jobs need it.
 - [ ] **Projects** shows three demo cards, one named **Demo change site (2 dates)**. The first-start welcome still opens the 0.7.0 demo.
 
@@ -406,7 +407,7 @@ M9 adds a signed history of every change, identities and roles, a review workflo
 
 ### Before you start
 
-- [ ] Install `QuadrionAI-0.9.0-win-x64-setup.exe`. **Settings, About and updates** shows version 0.9.0.
+- [ ] Install `QuadrionAI-0.10.0-win-x64-setup.exe` (M9 was built in 0.9.0; 0.10.0 contains it). **Settings, About and updates** shows version 0.10.0.
 - [ ] Open one of your own projects (not shared): it looks and works as before, with **Share** in the title bar and no new cards.
 
 ### Identity and team
@@ -559,7 +560,7 @@ M10 turns drone photos into an aligned, georeferenced survey inside Quadrion AI,
 
 ### Before you start
 
-- [ ] Install `QuadrionAI-0.10.0-win-x64-setup.exe`, built from `integration/m10` at commit `3f07041` or later. **Settings, About and updates** shows "Quadrion AI 0.10.0" and that commit in the build stamp.
+- [ ] Install `QuadrionAI-0.10.0-win-x64-setup.exe`, built from `integration/m10` at commit `3f07041` or later with the M10 fixes merged (the photo demo has 24 photos). **Settings, About and updates** shows "Quadrion AI 0.10.0" and that commit in the build stamp.
 - Pipeline pack 0.4.0 is not built on this PC yet: the native COLMAP build happens in CI. Wait for the pack 0.4.0 build; until then the photo steps that need COLMAP are marked (needs pack 0.4.0). The other new M10 jobs (adjusting with ground control, OPF, imagery and terrain packs, Mesh to 3D Tiles) run in pack 0.4.0 too and carry the same mark.
 - [ ] With pack 0.3.0 still installed, the earlier jobs run on 0.10.0 as before (for example **Run imagery change** on **Demo change site (2 dates)**).
 - [ ] (needs pack 0.4.0) When I tell you where it is, copy the folder `pipeline-pack-0.4.0` into `E:\Stratlas Data\runtime\`. **Jobs** shows "Pipeline pack 0.4.0" at the top. The pack's `tools` folder holds `pdal`, `poissonrecon` and `native-manifest.json`.
@@ -568,19 +569,19 @@ M10 turns drone photos into an aligned, georeferenced survey inside Quadrion AI,
 
 ### The photo demo
 
-- [ ] Open **Photo processing demo**. **Datasets** has one layer, "Drone photos (synthetic)", with 13 photos at 960 × 720 of a made-up desert site: nine straight down, plus a blurred one, a duplicate, one of another place and one without GPS.
+- [ ] Open **Photo processing demo**. **Datasets** has one layer, "Drone photos (synthetic)", with 24 photos at 960 × 720 of a made-up desert site: 20 straight down, plus a blurred one, a duplicate, one of another place and one without GPS.
 - [ ] Nothing in the demo names a client, a real site or a real camera.
-- [ ] The demo already holds a finished alignment, run `20260314-1000`, so ground control and the accuracy report work without pack 0.4.0. **Jobs**, section **Photo processing**: the run reads "Aligned" and "Balanced · 13 photos".
+- [ ] The demo already holds a finished alignment, run `20260314-1000`, so ground control and the accuracy report work without pack 0.4.0. **Jobs**, section **Photo processing**: the run reads "Aligned" and "Balanced · 24 photos".
 - [ ] **Open run** on it: the panel "Photo run 20260314-1000" with the tabs **Progress**, **Ground control**, **Accuracy** and **Refined poses**. **Progress** says "The photos are aligned. Mark ground control for survey accuracy, or create the products now." Open "3 photos left out": motion blur, a duplicate of SYN_0023.JPG, and "another place: matches no other photo".
 
 ### Process photos: the wizard
 
 - [ ] **Jobs**, **Process photos** (in the **Photo processing** section). Five steps: Photos, Cameras, Place and heights, Quality, Estimate.
-- [ ] **Which photos?**: **A photos layer** is chosen, with "Drone photos (synthetic) (13 photos)". The other choice is **Folders of photos**. **Next**.
-- [ ] **Cameras**: one camera group, a line like "Stratlas Synthetic SYN-20, 960 × 720, 8.8 mm (13 photos)", and a warning that 1 photo has no GPS position and is placed by matching only. **Next**.
+- [ ] **Which photos?**: **A photos layer** is chosen, with "Drone photos (synthetic) (24 photos)". The other choice is **Folders of photos**. **Next**.
+- [ ] **Cameras**: one camera group, a line like "Stratlas Synthetic SYN-20, 960 × 720, 8.8 mm (24 photos)", and a warning that 1 photo has no GPS position and is placed by matching only. **Next**.
 - [ ] **Place and heights**: the CRS list shows "WGS 84 / UTM zone 39N" with "EPSG:32639 · project · photos", and under it "The photos are in UTM zone 39N (EPSG:32639)." **Camera positions (GNSS)** offers **Read each photo** (chosen), **RTK on every photo**, **Standard GNSS** and **Ignore GNSS**. The heights line names the project's vertical datum (+21.70 m). **Next**.
 - [ ] **Quality and products**: **Quick**, **Balanced** (chosen) and **High**. **Products**: **Orthomosaic**, **Surface model (DSM)**, **Terrain model (DTM)**, **Point cloud** and **Textured mesh** ticked, **3D Tiles** not. **Quick** ticks only the orthomosaic and DSM. Also **Survey date** and **I have ground control points**. **Next**.
-- [ ] **Estimate for this computer** without pack 0.4.0: "Photo processing needs the pipeline pack 0.4.0 or later." and **Start** greyed out.
+- [ ] **Estimate for this computer** without pack 0.4.0: "Photo processing needs the pipeline pack 0.4.0 or later. Copy the pack folder into runtime in the data folder; Jobs then shows its version at the top." and **Start** greyed out.
 - [ ] (needs pack 0.4.0) The same step reads "Photo processing: available (CPU)", then your CPU, cores, memory and free disk, a GPU line (for example "No supported GPU: CPU only"), and **Time**, **Disk** and **Memory**.
 
 ### Run progress (needs pack 0.4.0)
@@ -602,21 +603,21 @@ M10 turns drone photos into an aligned, georeferenced survey inside Quadrion AI,
 ### Ground control on the demo run
 
 - [ ] Run `20260314-1000`, **Ground control**: "9 points from gcp.csv in WGS 84 / UTM zone 39N. Checkpoints are measured, never used in the adjustment." The table has **Point**, **Role**, **Accuracy**, **Marks** and **Use**, and a **Mark** button per point.
-- [ ] Below the table, what **Adjust** still waits for, for example "GCP1: 0 of 3 marks confirmed. Mark it in 3 more photos, or disable it." **Adjust** is greyed out.
-- [ ] Only GCP5, CHK1 and CHK2 can be marked on the demo: the other points lie outside its nine photos (GCP2 is only in the photo without GPS).
-- [ ] **Mark GCP5**: a list of 6 photos, each "predicted"; the photo shows a dashed ring where the point should be, and a loupe with a cross hair on the target.
+- [ ] GCP4 is greyed out with **Use** unticked: none of the demo's photos shows it. Below the table, what **Adjust** still waits for, for example "GCP1: 0 of 3 marks confirmed. Mark it in 3 more photos, or disable it." **Adjust** is greyed out.
+- [ ] **Mark GCP5**: a list of 5 photos, each "predicted"; the photo shows a dashed ring where the point should be, and a loupe with a cross hair on the target.
 - [ ] Press **Enter** three times: each confirms the mark and moves to the next photo. The line reads "3 of 3 marks confirmed · control".
 - [ ] **S** skips a photo, **N** and **P** change photo, **+** and **-** zoom, a click on the target places a mark there. **Esc** goes back to the table: GCP5 has "3 confirmed" and its line under the table is gone.
-- [ ] Mark CHK1 and CHK2 the same way: the line reads "· checkpoint".
-- [ ] (needs pack 0.4.0) To try **Adjust** on the demo: set the **Role** of CHK1 and CHK2 to **Control**, untick **Use** for GCP1 to GCP4, then **Adjust**: the **Adjust with ground control** job runs in **Progress**, and **Accuracy** shows the adjusted residuals.
+- [ ] Mark the other control points the same way, 3 photos each: **GCP1** (in 3 photos), **GCP2** (4) and **GCP3** (4). When all four have "3 confirmed", the lines under the table are gone and **Adjust** can be clicked.
+- [ ] Mark the checkpoints the same way: **CHK2** (in 6 photos), **CHK3** (9) and **CHK4** (4), 3 photos each, and **CHK1** in both of its 2 photos. The line reads "· checkpoint".
+- [ ] (needs pack 0.4.0) **Adjust**: the **Adjust with ground control** job runs in **Progress**. **Accuracy** then shows the adjusted residuals: GCP1, GCP2, GCP3 and GCP5 under "Control points (in the adjustment)", the four checkpoints under "Checkpoints (measured only)", and the headline "Checkpoint RMSE … over 4 points".
 
 ### Accuracy report and PDF
 
-- [ ] Run `20260314-1000`, **Accuracy**: the headline "Checkpoint RMSE … over 2 points; 10 of 13 photos aligned.", then the mean reprojection error and ground sample distance, and "Checkpoints are measured only; they never enter the adjustment."
+- [ ] Run `20260314-1000`, **Accuracy**: the headline "Checkpoint RMSE … over 4 points; 21 of 24 photos aligned.", then the mean reprojection error and ground sample distance, and "Checkpoints are measured only; they never enter the adjustment."
 - [ ] The RMSE table has "Control points (in the adjustment)" and "Checkpoints (measured only)"; the checkpoints read "Over the target" (this run has GNSS only, so it is off by about a metre).
-- [ ] Warnings: "No marks yet: these residuals are the GNSS-only alignment. Mark the points, then adjust.", and one line per point the demo cannot use, for example "GCP1 is in fewer than 2 photos of this flight: it cannot be marked or checked."
-- [ ] The residuals table lists GCP5, CHK1 and CHK2; under it the camera positions against their GNSS and the overlap map. **Save as CSV**: "Saved to …".
-- [ ] **Issues**, **Export**, **Processing accuracy report (PDF)**: a PDF whose name ends in `-accuracy-report.pdf`, with the cover "Processing accuracy report", "10 of 13 photos aligned", the RMSE by role, the residuals per point and the overlap map.
+- [ ] Warnings: "No marks yet: these residuals are the GNSS-only alignment. Mark the points, then adjust.", and "GCP4 is in fewer than 2 photos of this flight: it cannot be marked or checked, so it is switched off."
+- [ ] The residuals table lists GCP1, GCP2, GCP3, GCP5, CHK1, CHK2, CHK3 and CHK4; under it the camera positions against their GNSS and the overlap map. **Save as CSV**: "Saved to …".
+- [ ] **Issues**, **Export**, **Processing accuracy report (PDF)**: a PDF whose name ends in `-accuracy-report.pdf`, with the cover "Processing accuracy report", "21 of 24 photos aligned", the RMSE by role, the residuals per point and the overlap map.
 - [ ] The same export on **Demo tank farm**: "This project has no finished processing run with an accuracy report. Process photos first." No file is written.
 - [ ] **Reports**, **Project report**, **Sections** lists **Processing accuracy**. In the exported project report it comes after "Site and data".
 
