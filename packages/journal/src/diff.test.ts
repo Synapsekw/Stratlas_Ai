@@ -130,3 +130,60 @@ describe('diffRecordFile', () => {
     expect(ops).toEqual([expect.objectContaining({ kind: 'record.external' })]);
   });
 });
+
+describe('survey measurements (M11)', () => {
+  const m = (id: string, label: string) => ({
+    id,
+    family: 'line',
+    tool: 'distance',
+    label,
+    scope: { kind: 'site' },
+    points: [
+      [1, 2, 3],
+      [4, 5, 6],
+    ],
+    items: [],
+    results: [],
+    createdAt: '2026-10-09T06:00:00.000Z',
+  });
+  const file = (measurements: unknown[]) => ({ schema: 'aio.measurements/1', measurements });
+
+  it('is a journaled file', () => {
+    expect(isJournaledFile('survey/measurements.json')).toBe(true);
+    expect(isJournaledFile('survey/templates.json')).toBe(false);
+  });
+
+  it('records create, patch and delete per measurement', () => {
+    const a = m('m1', 'Kerb');
+    const b = m('m2', 'Pad');
+    const create = diffRecordFile('survey/measurements.json', null, file([a]));
+    expect(create).toEqual([
+      expect.objectContaining({
+        kind: 'measurement.create',
+        target: { rec: 'measurement', id: 'm1' },
+        payload: { record: a },
+      }),
+    ]);
+    const patch = diffRecordFile(
+      'survey/measurements.json',
+      file([a, b]),
+      file([{ ...a, label: 'Kerb line' }, b]),
+    );
+    expect(patch).toEqual([
+      expect.objectContaining({
+        kind: 'measurement.patch',
+        target: { rec: 'measurement', id: 'm1' },
+        payload: { set: { label: 'Kerb line' }, was: { label: 'Kerb' } },
+      }),
+    ]);
+    const del = diffRecordFile('survey/measurements.json', file([a, b]), file([b]));
+    expect(del).toEqual([
+      expect.objectContaining({
+        kind: 'measurement.delete',
+        target: { rec: 'measurement', id: 'm1' },
+        payload: {},
+      }),
+    ]);
+    expect(diffRecordFile('survey/measurements.json', file([a]), file([a]))).toEqual([]);
+  });
+});

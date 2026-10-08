@@ -188,6 +188,12 @@ const WRITERS: Partial<
     rel: 'orientation.json',
     after: r.file,
   }),
+  // M11 survey measurements: measurement.create, .patch and .delete per measurement id
+  'survey:writeMeasurements': (r: IpcRequest<'survey:writeMeasurements'>) => ({
+    projectId: r.projectId,
+    rel: 'survey/measurements.json',
+    after: r.file,
+  }),
 };
 
 /**

@@ -1269,7 +1269,7 @@ function registerIpc(): void {
     projectPackage: (id: string) => registry.package(id)?.archive,
     journal: (root: string, drafts: readonly DraftOp[]) => journal.append(root, drafts),
   };
-  registerSurveyIpc({ handle, ...survey });
+  registerSurveyIpc({ handle, ...survey, userData: () => app.getPath('userData') });
   registerGeodesyIpc({ handle, ...survey });
   registerGeoidPacksIpc({
     handle,
