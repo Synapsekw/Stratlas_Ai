@@ -39,6 +39,7 @@
     "@aio/pointcloud": "workspace:*",
     "@aio/project": "workspace:*",
     "@aio/schema": "workspace:*",
+    "@aio/survey": "workspace:*",
     "@aio/tiles": "workspace:*",
     "@aio/ui": "workspace:*",
     "@aio/video": "workspace:*",
