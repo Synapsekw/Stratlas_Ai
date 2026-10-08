@@ -126,6 +126,10 @@
     {
       "pattern": "^(lib)?lsd[-.]",
       "why": "LSD line segment detector (AGPL)"
+    },
+    {
+      "pattern": "^(lib)?pdal_plugin_",
+      "why": "PDAL plugins: the pack's PDAL ships none (fauxplugin is PDAL's own test plugin)"
     }
   ],
   "ports": [

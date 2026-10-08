@@ -23,19 +23,22 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
+  chmodSync,
+  copyFileSync,
   cpSync,
   createReadStream,
   existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
 import { basename, join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { portLinkage, readSbom } from '../../release/native-licences.mjs';
+import { loadInventory, portLinkage, readSbom } from '../../release/native-licences.mjs';
 
 export const NATIVE_DIR = import.meta.dirname;
 const repo = resolve(NATIVE_DIR, '..', '..', '..');
@@ -202,9 +205,162 @@ export const pycolmapWheelArgs = (ctx) => [
   ...pycolmapSettings(ctx),
 ];
 
-/** Environment for the opencv-python build: headless, no contrib, our CMake options. */
+/**
+ * Environment for the opencv-python build: headless, no contrib, our CMake options. Its setup.py
+ * reads CMAKE_ARGS, and our patch (opencv-python/patches) reads -DWITH_FFMPEG=OFF there to stop
+ * requiring the FFmpeg plugin DLL on Windows.
+ */
 export function opencvEnv(c) {
   return { ...c.env, CMAKE_ARGS: defines(c.cmake).join(' ') };
+}
+
+/**
+ * The entries of a built wheel (`names`, paths inside the zip) that the native licence gate
+ * forbids (native-libs.json `forbiddenFiles`: FFmpeg, opencv_videoio_ffmpeg, CHOLMOD...), as
+ * problems. Checked as soon as a wheel is built, before the pack's own gate sees it installed.
+ */
+export function forbiddenInWheel(names, inventory = loadInventory()) {
+  const rules = (inventory.forbiddenFiles ?? []).map((f) => ({
+    re: new RegExp(f.pattern, 'i'),
+    why: f.why,
+  }));
+  const out = [];
+  for (const n of names) {
+    const bad = rules.find((x) => x.re.test(basename(n)));
+    if (bad) out.push(`${n}: forbidden (${bad.why})`);
+  }
+  return out;
+}
+
+/** `python <args>` printing the entries of a wheel as JSON. */
+export const wheelListArgs = (wheel) => [
+  '-c',
+  'import json,sys,zipfile;print(json.dumps(zipfile.ZipFile(sys.argv[1]).namelist()))',
+  wheel,
+];
+
+/**
+ * PDAL plugins (`libpdal_plugin_<type>_<name>`): the pack ships none. PDAL 2.10 builds its test
+ * plugin `fauxplugin` whatever WITH_TESTS says (plugins/CMakeLists.txt adds plugins/faux
+ * unconditionally), so vcpkg installs it beside libpdalcpp.
+ */
+export const PDAL_PLUGIN = /^(lib)?pdal_plugin_/i;
+
+/** The PDAL files we ship, by the folder of the vcpkg install they come from. */
+const PDAL_SHIPS = {
+  // <triplet>/tools/pdal: the tool (and on Windows the DLL vcpkg deploys beside it)
+  bin: {
+    win32: [/^pdal\.exe$/i, /^pdalcpp[^\\/]*\.dll$/i],
+    darwin: [/^pdal$/],
+  },
+  // <triplet>/lib (macOS): the library the tool links; its dependencies are static
+  lib: { darwin: [/^libpdalcpp(\.\d+)*\.dylib$/] },
+};
+const NATIVE_LIB = /\.(dll|dylib|so)$|\.so\.\d+(\.\d+)*$|\.exe$/i;
+
+/**
+ * Which entries of a vcpkg PDAL folder go into the pack. `entries` are `{ name, type, target,
+ * targetIsDir }` (see `readEntries`: `type` is 'file', 'symlink' or 'dir'; `target` the resolved
+ * path of a link, null when it is broken). Answers `{ copy: [{ name, from }], skip: [{ name, why
+ * }] }` and throws on a native library the recipe does not know (a tool that needs it would
+ * break, a pack that ships it would fail the gate).
+ *
+ * Folders are skipped. Plugins are skipped. A link to a file we copy from the same folder (the
+ * `libpdalcpp.20.dylib -> libpdalcpp.20.1.0.dylib` aliases) is skipped: the tool links the full
+ * name (checked with otool) and a CI artifact would turn the link into a second copy; any other
+ * link is copied as the file it points to. Node's cpSync is not used here: with `dereference` it
+ * takes every symlink for a folder ("Recursive option not enabled, cannot copy a directory").
+ */
+export function pdalSelect(entries, folder, platform, dir = folder) {
+  const ships = PDAL_SHIPS[folder]?.[platform];
+  if (!ships) throw new Error(`No PDAL ${folder} files for ${platform}`);
+  const wanted = (e) => ships.some((re) => re.test(e.name));
+  const files = new Set(entries.filter((e) => e.type === 'file' && wanted(e)).map((e) => e.name));
+  const copy = [];
+  const skip = [];
+  for (const e of [...entries].sort((a, b) => a.name.localeCompare(b.name))) {
+    const from = join(dir, e.name);
+    if (e.type === 'dir' || (e.type === 'symlink' && e.targetIsDir)) {
+      skip.push({ name: e.name, why: 'a folder' });
+      continue;
+    }
+    if (PDAL_PLUGIN.test(e.name)) {
+      skip.push({ name: e.name, why: 'a PDAL plugin (the pack ships none)' });
+      continue;
+    }
+    if (!wanted(e)) {
+      if (NATIVE_LIB.test(e.name))
+        throw new Error(
+          `${from}: a native file the PDAL recipe does not ship (add it to build-native.mjs and native-libs.json, or exclude it)`,
+        );
+      skip.push({ name: e.name, why: 'not part of the PDAL tool' });
+      continue;
+    }
+    if (e.type === 'symlink') {
+      if (!e.target) throw new Error(`${from}: a broken symbolic link`);
+      if (files.has(basename(e.target)))
+        skip.push({ name: e.name, why: `a link to ${basename(e.target)}, which is copied` });
+      else copy.push({ name: e.name, from: e.target });
+      continue;
+    }
+    copy.push({ name: e.name, from });
+  }
+  return { copy, skip };
+}
+
+/** A folder's entries for `pdalSelect`, links resolved. */
+export function readEntries(dir) {
+  return readdirSync(dir, { withFileTypes: true }).map((e) => {
+    const p = join(dir, e.name);
+    if (e.isSymbolicLink()) {
+      let target = null;
+      try {
+        target = realpathSync(p);
+      } catch {
+        /* broken link: pdalSelect refuses it */
+      }
+      return {
+        name: e.name,
+        type: 'symlink',
+        target,
+        targetIsDir: target ? statSync(target).isDirectory() : false,
+      };
+    }
+    return { name: e.name, type: e.isDirectory() ? 'dir' : 'file' };
+  });
+}
+
+/**
+ * Copy one file, following links, keeping its mode (the tool's executable bit) but writable by us
+ * (install_name_tool and codesign rewrite it; Homebrew installs its libraries read-only).
+ */
+function copyResolved(from, to) {
+  const real = realpathSync(from);
+  copyFileSync(real, to);
+  chmodSync(to, (statSync(real).mode & 0o777) | 0o200);
+}
+
+/** Copy the PDAL files of a vcpkg folder into `to`; answers what was copied. */
+function copyPdal(from, to, folder, platform) {
+  const { copy, skip } = pdalSelect(readEntries(from), folder, platform, from);
+  mkdirSync(to, { recursive: true });
+  for (const s of skip) process.stdout.write(`  skip ${folder}/${s.name}: ${s.why}\n`);
+  for (const c of copy) {
+    process.stdout.write(`  copy ${folder}/${c.name}\n`);
+    copyResolved(c.from, join(to, c.name));
+  }
+  return copy.map((c) => c.name);
+}
+
+/**
+ * The `@rpath/` libraries `otool -L` lists for a tool that are not among `shipped`: the tool would
+ * not start. Each must be a file we copied into its lib folder.
+ */
+export function missingRpathLibs(otoolOutput, shipped) {
+  const have = new Set(shipped);
+  const out = [];
+  for (const m of otoolOutput.matchAll(/^\s*@rpath\/(\S+)/gm)) if (!have.has(m[1])) out.push(m[1]);
+  return out;
 }
 
 /** CMakeCache.txt to { NAME: value }. */
@@ -412,6 +568,9 @@ async function buildColmap(r, c, ctx) {
       if (!/\.dylibs\/libomp[^/\s]*\.dylib/.test(listing))
         throw new Error(`${w}: delocate did not bundle libomp.dylib`);
     }
+  if (!r.plan)
+    for (const w of readdirSync(wheelsOut).filter((f) => /^pycolmap-.*\.whl$/.test(f)))
+      checkWheel(r, ctx, join(wheelsOut, w));
   return {
     cmake,
     ports: r.plan ? [] : installedPorts(vcpkgInstalled, ctx.triplet),
@@ -419,8 +578,21 @@ async function buildColmap(r, c, ctx) {
   };
 }
 
-async function buildOpencv(r, c, ctx) {
+/**
+ * Refuse a built wheel that holds a file the licence gate forbids (an FFmpeg DLL above all: our
+ * OpenCV is built without FFmpeg, and our patch only stops setup.py from asking for its DLL).
+ */
+function checkWheel(r, ctx, wheel) {
+  const listing = r.run(ctx.python, wheelListArgs(wheel), { capture: true });
+  if (r.plan) return;
+  const problems = forbiddenInWheel(JSON.parse(listing));
+  if (problems.length)
+    throw new Error(`${basename(wheel)} holds forbidden files:\n${problems.join('\n')}`);
+}
+
+export async function buildOpencv(r, c, ctx) {
   const src = join(ctx.work, 'src', 'opencv-python');
+  // Applies opencv-python/patches: setup.py no longer requires the FFmpeg DLL on Windows.
   fetchSource(r, c, src);
   const raw = join(ctx.work, 'wheels-raw', 'opencv');
   rmSync(raw, { recursive: true, force: true });
@@ -432,6 +604,10 @@ async function buildOpencv(r, c, ctx) {
       ...(ctx.platform === 'darwin' ? { MACOSX_DEPLOYMENT_TARGET: ctx.deploymentTarget } : {}),
     },
   });
+  const wheels = r.plan
+    ? ['opencv_python_headless-5.0.0.93.whl']
+    : readdirSync(raw).filter((f) => f.startsWith('opencv') && f.endsWith('.whl'));
+  for (const w of wheels) checkWheel(r, ctx, join(raw, w));
   let cmake = {};
   if (!r.plan) {
     const cache = [...walk(join(src, '_skbuild'))].find((p) => basename(p) === 'CMakeCache.txt');
@@ -439,10 +615,37 @@ async function buildOpencv(r, c, ctx) {
     cmake = pick(parseCMakeCache(readFileSync(cache, 'utf8')), Object.keys(c.cmake));
     removeWheels(join(ctx.out, 'wheels'), 'opencv_python_headless-');
     mkdirSync(join(ctx.out, 'wheels'), { recursive: true });
-    for (const w of readdirSync(raw).filter((f) => f.startsWith('opencv') && f.endsWith('.whl')))
-      cpSync(join(raw, w), join(ctx.out, 'wheels', w));
+    for (const w of wheels) cpSync(join(raw, w), join(ctx.out, 'wheels', w));
   }
   return { cmake, ports: [], sources: [src] };
+}
+
+/**
+ * <pack>/tools/pdal from vcpkg's install for the triplet (`t`): bin/pdal(.exe) where
+ * aio_pipelines/pointcloud.py looks, libpdalcpp beside it (Windows) or in lib (macOS), and PROJ's
+ * and GDAL's data in share. Only the files `pdalSelect` names: no plugins, folders or aliases.
+ */
+export function installPdalTool(r, ctx, t, dest) {
+  rmSync(dest, { recursive: true, force: true });
+  copyPdal(join(t, 'tools', 'pdal'), join(dest, 'bin'), 'bin', ctx.platform);
+  if (ctx.platform === 'darwin') {
+    const libs = copyPdal(join(t, 'lib'), join(dest, 'lib'), 'lib', ctx.platform);
+    const tool = join(dest, 'bin', 'pdal');
+    // vcpkg points the tool at @loader_path/../../lib; ours lives one level up from bin.
+    r.run('install_name_tool', ['-add_rpath', '@loader_path/../lib', tool]);
+    r.run('codesign', ['--force', '--sign', '-', tool]);
+    const missing = missingRpathLibs(r.run('otool', ['-L', tool], { capture: true }), libs);
+    if (missing.length)
+      throw new Error(`${tool} links ${missing.join(', ')}, which tools/pdal/lib does not have`);
+  }
+  for (const d of ['proj', 'gdal']) {
+    const from = join(t, 'share', d);
+    if (existsSync(from))
+      cpSync(from, join(dest, 'share', d), {
+        recursive: true,
+        filter: (s) => !/vcpkg|copyright|usage|\.cmake$/i.test(basename(s)),
+      });
+  }
 }
 
 async function buildPdal(r, c, ctx) {
@@ -465,30 +668,8 @@ async function buildPdal(r, c, ctx) {
     `--overlay-triplets=${ctx.overlayTriplets}`,
     '--clean-after-build',
   ]);
-  if (!r.plan) {
-    // <pack>/tools/pdal/bin/pdal(.exe) is where aio_pipelines/pointcloud.py looks.
-    const t = join(installed, ctx.triplet);
-    const dest = join(ctx.out, 'tools', 'pdal');
-    rmSync(dest, { recursive: true, force: true });
-    mkdirSync(join(dest, 'bin'), { recursive: true });
-    cpSync(join(t, 'tools', 'pdal'), join(dest, 'bin'), { recursive: true });
-    if (ctx.platform === 'darwin') {
-      mkdirSync(join(dest, 'lib'), { recursive: true });
-      for (const f of readdirSync(join(t, 'lib')).filter((n) => n.endsWith('.dylib')))
-        cpSync(join(t, 'lib', f), join(dest, 'lib', f), { dereference: true });
-      // vcpkg points the tool at @loader_path/../../lib; ours lives one level up from bin.
-      r.run('install_name_tool', ['-add_rpath', '@loader_path/../lib', join(dest, 'bin', 'pdal')]);
-      r.run('codesign', ['--force', '--sign', '-', join(dest, 'bin', 'pdal')]);
-    }
-    for (const d of ['proj', 'gdal']) {
-      const from = join(t, 'share', d);
-      if (existsSync(from))
-        cpSync(from, join(dest, 'share', d), {
-          recursive: true,
-          filter: (s) => !/vcpkg|copyright|usage|\.cmake$/i.test(basename(s)),
-        });
-    }
-  }
+  if (!r.plan)
+    installPdalTool(r, ctx, join(installed, ctx.triplet), join(ctx.out, 'tools', 'pdal'));
   return { cmake: {}, ports: r.plan ? [] : installedPorts(installed, ctx.triplet), sources: [] };
 }
 
@@ -526,9 +707,8 @@ async function buildPoissonRecon(r, c, ctx) {
   if (ctx.platform === 'darwin' && !r.plan) {
     // Homebrew's libomp goes beside the tools, which then load it from there.
     mkdirSync(join(dest, 'lib'), { recursive: true });
-    cpSync(join(ctx.libomp, 'lib', 'libomp.dylib'), join(dest, 'lib', 'libomp.dylib'), {
-      dereference: true,
-    });
+    // Not cpSync with `dereference`: it takes a symbolic link for a folder (see pdalSelect).
+    copyResolved(join(ctx.libomp, 'lib', 'libomp.dylib'), join(dest, 'lib', 'libomp.dylib'));
     r.run('install_name_tool', ['-id', '@rpath/libomp.dylib', join(dest, 'lib', 'libomp.dylib')]);
     r.run('codesign', ['--force', '--sign', '-', join(dest, 'lib', 'libomp.dylib')]);
     for (const tool of ['PoissonRecon', 'SurfaceTrimmer']) {

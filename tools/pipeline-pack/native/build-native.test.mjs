@@ -1,16 +1,31 @@
 // The native build recipe (M10 G1): pinned, licence-clean options, and the helpers build-native.mjs
 // uses. The build itself runs in CI (pack-native); these tests keep the recipe honest on every merge.
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   NATIVE_DIR,
+  PDAL_PLUGIN,
+  buildOpencv,
   colmapConfigure,
+  forbiddenInWheel,
   installedPorts,
+  installPdalTool,
   loadComponents,
   checkBuildRequires,
+  missingRpathLibs,
   opencvEnv,
+  pdalSelect,
+  wheelListArgs,
   openmpHints,
   parseCMakeCache,
   pick,
@@ -286,6 +301,279 @@ describe('OpenCV', () => {
     ])
       expect(env.CMAKE_ARGS).toContain(flag);
     for (const [k, v] of Object.entries(c.require)) expect(c.cmake[k], k).toBe(v);
+  });
+
+  it('patches setup.py so a Windows build without FFmpeg does not require the FFmpeg DLL', () => {
+    // pack-native win32-x64: "Exception: Not found: 'bin/opencv_videoio_ffmpeg\d{3}_64\.dll'"
+    const c = byName['opencv-python-headless'];
+    expect(c.patches).toEqual(['opencv-python/patches/0001-no-ffmpeg-dll.patch']);
+    const patch = readFileSync(join(NATIVE_DIR, c.patches[0]), 'utf8');
+    expect(patch).toContain('diff --git a/setup.py b/setup.py');
+    expect(patch).toContain('-            if os.name == "nt"\n');
+    expect(patch).toContain(
+      '+            if os.name == "nt" and "-DWITH_FFMPEG=OFF" not in os.environ.get("CMAKE_ARGS", "")\n',
+    );
+    expect(patch).not.toMatch(/\r\n/);
+    // the condition the patch reads is what our environment passes
+    expect(opencvEnv(c).CMAKE_ARGS.split(' ')).toContain('-DWITH_FFMPEG=OFF');
+  });
+
+  describe('the build step', () => {
+    let work;
+    beforeEach(() => {
+      work = mkdtempSync(join(tmpdir(), 'native-opencv-'));
+    });
+    afterEach(() => rmSync(work, { recursive: true, force: true }));
+
+    const plan = async (platform) => {
+      const calls = [];
+      const r = {
+        plan: true,
+        run: (cmd, args, opts = {}) => {
+          calls.push({ cmd, args, opts });
+          return '';
+        },
+      };
+      const ctx = { work, out: join(work, 'out'), platform, python: 'python' };
+      await buildOpencv(r, byName['opencv-python-headless'], ctx);
+      return calls;
+    };
+
+    it('applies the patch on Windows before building the wheel, then checks the wheel', async () => {
+      const calls = await plan('win32');
+      const src = join(work, 'src', 'opencv-python');
+      const apply = calls.findIndex((x) => x.cmd === 'git' && x.args.includes('apply'));
+      const wheel = calls.findIndex((x) => x.args[2] === 'wheel');
+      expect(apply).toBeGreaterThan(0);
+      expect(calls[apply].args).toEqual([
+        '-C',
+        src,
+        'apply',
+        '--verbose',
+        join(NATIVE_DIR, 'opencv-python', 'patches', '0001-no-ffmpeg-dll.patch'),
+      ]);
+      expect(wheel).toBeGreaterThan(apply);
+      expect(calls[wheel].opts.env.CMAKE_ARGS).toContain('-DWITH_FFMPEG=OFF');
+      const list = calls.slice(wheel + 1).find((x) => x.args[1]?.includes('zipfile'));
+      expect(list?.args.at(-1)).toMatch(/opencv_python_headless-.*\.whl$/);
+    });
+
+    it('applies the same patch on macOS, where it changes nothing', async () => {
+      const calls = await plan('darwin');
+      expect(calls.some((x) => x.cmd === 'git' && x.args.includes('apply'))).toBe(true);
+    });
+  });
+
+  it('refuses a wheel that holds an FFmpeg DLL or another forbidden file', () => {
+    expect(
+      forbiddenInWheel([
+        'cv2/__init__.py',
+        'cv2/cv2.pyd',
+        'opencv_python_headless-5.0.0.93.dist-info/RECORD',
+      ]),
+    ).toEqual([]);
+    const bad = forbiddenInWheel([
+      'cv2/cv2.pyd',
+      'cv2/opencv_videoio_ffmpeg4130_64.dll',
+      'opencv_python_headless.libs/avcodec-61.dll',
+      'pycolmap.libs/cholmod.dll',
+    ]);
+    expect(bad).toHaveLength(3);
+    expect(bad[0]).toMatch(/opencv_videoio_ffmpeg4130_64\.dll: forbidden \(OpenCV FFmpeg plugin/);
+    expect(bad[1]).toMatch(/avcodec-61\.dll: forbidden \(FFmpeg/);
+    expect(wheelListArgs('w.whl').at(-1)).toBe('w.whl');
+  });
+});
+
+describe('PDAL tool files', () => {
+  const lib = (name, type = 'file', target) => ({
+    name,
+    type,
+    ...(type === 'symlink' ? { target, targetIsDir: false } : {}),
+  });
+
+  it('copies libpdalcpp alone into lib on macOS: no plugins, folders, aliases or archives', () => {
+    // pack-native darwin-arm64: "Recursive option not enabled, cannot copy a directory:
+    // .../lib/libpdal_plugin_kernel_fauxplugin.20.dylib/", a symbolic link Node's cpSync with
+    // `dereference` takes for a folder.
+    const { copy, skip } = pdalSelect(
+      [
+        lib('libpdal_plugin_kernel_fauxplugin.20.1.0.dylib'),
+        lib(
+          'libpdal_plugin_kernel_fauxplugin.20.dylib',
+          'symlink',
+          '/v/lib/libpdal_plugin_kernel_fauxplugin.20.1.0.dylib',
+        ),
+        lib('libpdalcpp.20.1.0.dylib'),
+        lib('libpdalcpp.20.dylib', 'symlink', '/v/lib/libpdalcpp.20.1.0.dylib'),
+        lib('libpdalcpp.dylib', 'symlink', '/v/lib/libpdalcpp.20.1.0.dylib'),
+        lib('libpdalcpp.20.1.0.dylib.dSYM', 'dir'),
+        { name: 'libpdalcpp.19.dylib', type: 'symlink', target: '/v/x', targetIsDir: true },
+        lib('libgdal.a'),
+        lib('pkgconfig', 'dir'),
+      ],
+      'lib',
+      'darwin',
+      '/v/lib',
+    );
+    expect(copy).toEqual([
+      { name: 'libpdalcpp.20.1.0.dylib', from: join('/v/lib', 'libpdalcpp.20.1.0.dylib') },
+    ]);
+    expect(Object.fromEntries(skip.map((s) => [s.name, s.why]))).toEqual({
+      'libgdal.a': 'not part of the PDAL tool',
+      'libpdal_plugin_kernel_fauxplugin.20.1.0.dylib': 'a PDAL plugin (the pack ships none)',
+      'libpdal_plugin_kernel_fauxplugin.20.dylib': 'a PDAL plugin (the pack ships none)',
+      'libpdalcpp.19.dylib': 'a folder',
+      'libpdalcpp.20.1.0.dylib.dSYM': 'a folder',
+      'libpdalcpp.20.dylib': 'a link to libpdalcpp.20.1.0.dylib, which is copied',
+      'libpdalcpp.dylib': 'a link to libpdalcpp.20.1.0.dylib, which is copied',
+      pkgconfig: 'a folder',
+    });
+  });
+
+  it('copies a link to a file elsewhere as that file, and refuses a broken link', () => {
+    expect(
+      pdalSelect(
+        [lib('libpdalcpp.20.dylib', 'symlink', '/cellar/libpdalcpp.20.1.0.dylib')],
+        'lib',
+        'darwin',
+        '/v/lib',
+      ).copy,
+    ).toEqual([{ name: 'libpdalcpp.20.dylib', from: '/cellar/libpdalcpp.20.1.0.dylib' }]);
+    expect(() =>
+      pdalSelect([lib('libpdalcpp.20.dylib', 'symlink', null)], 'lib', 'darwin', '/v/lib'),
+    ).toThrow(/broken symbolic link/);
+  });
+
+  it('refuses a native library the recipe does not know rather than drop or ship it', () => {
+    expect(() => pdalSelect([lib('libgeos_c.1.dylib')], 'lib', 'darwin', '/v/lib')).toThrow(
+      /libgeos_c\.1\.dylib: a native file the PDAL recipe does not ship/,
+    );
+    expect(() => pdalSelect([lib('zlib1.dll')], 'bin', 'win32', 'C:/v/tools/pdal')).toThrow(
+      /zlib1\.dll/,
+    );
+  });
+
+  it('copies pdal.exe and pdalcpp.dll on Windows, without plugins', () => {
+    const { copy, skip } = pdalSelect(
+      [
+        lib('pdal.exe'),
+        lib('pdalcpp.dll'),
+        lib('libpdal_plugin_kernel_fauxplugin.dll'),
+        lib('pdal.pdb'),
+      ],
+      'bin',
+      'win32',
+      'v',
+    );
+    expect(copy.map((c) => c.name)).toEqual(['pdal.exe', 'pdalcpp.dll']);
+    expect(skip.map((s) => s.name)).toEqual(['libpdal_plugin_kernel_fauxplugin.dll', 'pdal.pdb']);
+    expect(PDAL_PLUGIN.test('libpdal_plugin_reader_e57.dll')).toBe(true);
+    expect(PDAL_PLUGIN.test('libpdalcpp.dylib')).toBe(false);
+  });
+
+  it('finds the @rpath libraries the tool links that lib does not have', () => {
+    const otool = [
+      '/o/tools/pdal/bin/pdal:',
+      '\t@rpath/libpdalcpp.20.1.0.dylib (compatibility version 20.0.0, current version 20.1.0)',
+      '\t/usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 1800.101.0)',
+      '\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1351.0.0)',
+    ].join('\n');
+    expect(missingRpathLibs(otool, ['libpdalcpp.20.1.0.dylib'])).toEqual([]);
+    expect(missingRpathLibs(otool, ['libpdalcpp.20.dylib'])).toEqual(['libpdalcpp.20.1.0.dylib']);
+  });
+
+  describe('on disk', () => {
+    let dir;
+    beforeEach(() => {
+      dir = mkdtempSync(join(tmpdir(), 'native-pdal-'));
+    });
+    afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+    const put = (rel, body = 'x') => {
+      const p = join(dir, ...rel.split('/'));
+      mkdirSync(join(p, '..'), { recursive: true });
+      writeFileSync(p, body);
+    };
+    const files = (root) =>
+      readdirSync(root, { recursive: true, withFileTypes: true })
+        .filter((e) => e.isFile())
+        .map((e) => relative(root, join(e.parentPath, e.name)).split('\\').join('/'))
+        .sort();
+    const runner = (otool) => {
+      const calls = [];
+      return {
+        calls,
+        plan: false,
+        run: (cmd, args) => {
+          calls.push([cmd, ...args].join(' '));
+          return cmd === 'otool' ? otool : '';
+        },
+      };
+    };
+    const linksWork = () => {
+      try {
+        symlinkSync('libpdalcpp.20.1.0.dylib', join(dir, 't', 'lib', 'libpdalcpp.20.dylib'));
+        symlinkSync(
+          'libpdal_plugin_kernel_fauxplugin.20.1.0.dylib',
+          join(dir, 't', 'lib', 'libpdal_plugin_kernel_fauxplugin.20.dylib'),
+        );
+        return true;
+      } catch {
+        return false; // Windows without the symlink privilege: the folder case still runs
+      }
+    };
+
+    it('installs the macOS tool from a vcpkg tree with plugins, folders and links', () => {
+      put('t/tools/pdal/pdal', 'tool');
+      put('t/lib/libpdalcpp.20.1.0.dylib', 'lib');
+      put('t/lib/libpdal_plugin_kernel_fauxplugin.20.1.0.dylib', 'faux');
+      put('t/lib/libgdal.a', 'a');
+      put('t/lib/pkgconfig/pdal.pc', 'pc');
+      put('t/share/proj/proj.db', 'db');
+      put('t/share/proj/vcpkg.spdx.json', '{}');
+      // a folder with a library's name, as the CI error reported one
+      mkdirSync(join(dir, 't', 'lib', 'libpdal_plugin_kernel_fauxplugin.dylib'));
+      const links = linksWork();
+      const r = runner('\t@rpath/libpdalcpp.20.1.0.dylib (compatibility version 20.0.0)\n');
+      installPdalTool(r, { platform: 'darwin' }, join(dir, 't'), join(dir, 'out'));
+      expect(files(join(dir, 'out'))).toEqual([
+        'bin/pdal',
+        'lib/libpdalcpp.20.1.0.dylib',
+        'share/proj/proj.db',
+      ]);
+      expect(readFileSync(join(dir, 'out', 'lib', 'libpdalcpp.20.1.0.dylib'), 'utf8')).toBe('lib');
+      expect(r.calls.map((c) => c.split(' ')[0])).toEqual([
+        'install_name_tool',
+        'codesign',
+        'otool',
+      ]);
+      expect(links || process.platform === 'win32').toBe(true);
+    });
+
+    it('fails when the tool links a library lib does not have', () => {
+      put('t/tools/pdal/pdal', 'tool');
+      put('t/lib/libpdalcpp.20.1.0.dylib', 'lib');
+      const r = runner('\t@rpath/libpdalcpp.20.dylib (compatibility version 20.0.0)\n');
+      expect(() =>
+        installPdalTool(r, { platform: 'darwin' }, join(dir, 't'), join(dir, 'out')),
+      ).toThrow(/links libpdalcpp\.20\.dylib, which tools\/pdal\/lib does not have/);
+    });
+
+    it('installs the Windows tool from tools/pdal alone', () => {
+      put('t/tools/pdal/pdal.exe', 'MZ');
+      put('t/tools/pdal/pdalcpp.dll', 'MZ');
+      put('t/bin/libpdal_plugin_kernel_fauxplugin.dll', 'MZ');
+      put('t/share/gdal/gdalvrt.xsd', 'x');
+      const r = runner('');
+      installPdalTool(r, { platform: 'win32' }, join(dir, 't'), join(dir, 'out'));
+      expect(files(join(dir, 'out'))).toEqual([
+        'bin/pdal.exe',
+        'bin/pdalcpp.dll',
+        'share/gdal/gdalvrt.xsd',
+      ]);
+      expect(r.calls).toEqual([]);
+    });
   });
 });
 
