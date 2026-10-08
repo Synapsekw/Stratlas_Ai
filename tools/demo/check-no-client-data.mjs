@@ -15,6 +15,10 @@
 //   - camera metadata: EXIF, GPS or XMP in JPEG, PNG and WebP, location atoms in MP4; a JPEG of
 //     the synthetic camera (M10, python/tests/photo_synth.py) may carry EXIF and XMP, but no
 //     serial number, no personal name and GPS only at a fictional site (check-m10.mjs);
+//   - M11 survey files (check-m11.mjs): LandXML, DXF and CSV under survey/, 12da, Trimble JobXML
+//     and .dc, aio.tin/1 surfaces: every coordinate, placed in the file's CRS (else the
+//     project's), inside a fictional site, and job and project names marked synthetic (no real
+//     job numbers);
 //   - M10 placement: OPF geolocations, 3D Tiles transforms, raster pack metadata and PMTiles
 //     bounds, PPK and gcp_list positions, and (with --fixtures, for test fixture folders)
 //     GeoTIFF tags and tie points: near no real site, and camera, control and tile positions
@@ -29,7 +33,7 @@
 // only their metadata, JSON chunks and text.
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { extname, join, relative, resolve } from 'node:path';
+import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   csvLonLats,
@@ -49,6 +53,7 @@ import {
   tilesetLonLat,
   xmpInfo,
 } from './check-m10.mjs';
+import { surveyContent, surveyFindings } from './check-m11.mjs';
 import { m8Text, truthCoords } from './check-m8.mjs';
 import { envVar } from '../../packages/brand/src/env.ts';
 
@@ -160,6 +165,11 @@ const TEXT = new Set([
   '.opf',
   '.gltf',
   '.sha256',
+  // M11: LandXML, 12d ASCII, Trimble JobXML and survey data collector files
+  '.landxml',
+  '.12da',
+  '.jxl',
+  '.dc',
 ]);
 
 // ------------------------------------------------------------------ coordinates
@@ -413,12 +423,34 @@ export function checkFolder(dir, o = {}) {
     if (j.coordinates) walkCoords(j.coordinates, where);
   };
 
-  const walk = (d) => {
+  /** M11: a survey file's names and coordinates (check-m11.mjs), in the project's CRS by default. */
+  const survey = (p, rel, ext, buf, crs) => {
+    const sibling = (e) => {
+      const f = join(dirname(p), `${basename(p, extname(p))}${e}`);
+      return existsSync(f) ? readFileSync(f, 'utf8') : null;
+    };
+    const c = surveyContent(ext, buf, { sibling });
+    if (!c) return;
+    const r = surveyFindings(rel, c, crs, near);
+    findings.push(...r.findings);
+  };
+  /** Survey CSVs and DXFs are the ones under a survey/ folder (M8 drawings are in a local frame). */
+  const inSurvey = (rel) => /(^|\/)survey\//.test(rel);
+
+  const walk = (d, parentCrs = null) => {
+    let crs = parentCrs;
+    const mf = join(d, 'manifest.json');
+    if (existsSync(mf))
+      try {
+        crs = JSON.parse(readFileSync(mf, 'utf8')).crs ?? crs;
+      } catch {
+        // reported when the manifest itself is checked
+      }
     for (const name of readdirSync(d).sort()) {
       const p = join(d, name);
       const st = statSync(p);
       if (st.isDirectory()) {
-        walk(p);
+        walk(p, crs);
         continue;
       }
       files++;
@@ -465,6 +497,8 @@ export function checkFolder(dir, o = {}) {
                   if (s.on === 'map' && s.geojson) geojson(s.geojson, `${rel} ${String(is.code)}`);
             // M8: the places listed in a demo's truth.json
             if (name === 'truth.json') for (const ll of truthCoords(j)) near(ll, rel);
+            // M11: measurements, alignments and calibrations under survey/ (check-m11.mjs)
+            if (inSurvey(rel)) survey(p, rel, ext, buf, crs);
             // M10: OPF geolocations (EPSG:4326 lists latitude first), 3D Tiles, raster packs
             if (isOpf(j))
               for (const g of opfGeolocations(j)) {
@@ -492,6 +526,8 @@ export function checkFolder(dir, o = {}) {
             if (ll) placed(ll, `${rel} point`, 'a control point');
           }
         }
+        // M11: survey text files
+        if (ext !== '.csv' || inSurvey(rel)) survey(p, rel, ext, buf, crs);
         continue;
       }
       if (ext === '.jpg' || ext === '.jpeg') {
@@ -577,6 +613,13 @@ export function checkFolder(dir, o = {}) {
       const m8 = m8Text(ext, buf);
       if (m8 !== null) {
         scanText(m8, `${rel} text`);
+        if (ext === '.dxf' && inSurvey(rel)) survey(p, rel, ext, buf, crs);
+        continue;
+      }
+      // M11: aio.tin/1 design surfaces (the JSON header: words, CRS and bounds)
+      if (ext === '.tin') {
+        scanText(strings(buf.subarray(0, 65536)), `${rel} header`);
+        survey(p, rel, ext, buf, crs);
         continue;
       }
       if (!['.bin', '.laz', '.las', '.pmtiles', '.pdf'].includes(ext))
