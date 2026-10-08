@@ -182,9 +182,10 @@ export const SurveyDefaults = z.looseObject({
  * One side of a comparison (data-conventions section 26). Surfaces: `survey` (a capture's DSM, DTM
  * or a prepared or cleaned surface), `current` and `previous` (resolved through the capture index
  * when computed; the result records which), `design` (a design TIN with its vertical offset).
- * Bases (`BaseSpec`): `reference` levels, `smart` (Delaunay TIN of the perimeter sampled on the
- * From surface), `fit-plane`, `perimeter-mean`, and `custom` (a TIN of the polygon's vertices with
- * heights a person edits).
+ * Bases (`BaseSpec`): `reference` levels, `smart` (Delaunay TIN of the perimeter), `fit-plane`,
+ * `perimeter-mean`, and `custom` (a TIN of the polygon's vertices with heights a person edits).
+ * A base is sampled on the other side of its item, which must then be a surface (a stockpile is
+ * `from: smart, to: current`); an item with a base on both sides is refused.
  */
 export const SurveySurfaceRef = z
   .object({
@@ -219,7 +220,7 @@ export const ReferenceBase = z
 export const SmartBase = z.object({ kind: z.literal('smart') }).strict();
 export const FitPlaneBase = z.object({ kind: z.literal('fit-plane') }).strict();
 export const PerimeterMeanBase = z.object({ kind: z.literal('perimeter-mean') }).strict();
-/** A custom base vertex: absolute elevation, or an offset from the From surface at the vertex. */
+/** A custom base vertex: absolute elevation, or an offset from the item's surface at the vertex. */
 export const CustomBaseVertex = z
   .object({
     e: z.number(),
@@ -253,16 +254,23 @@ export const SurfaceRef = z.union([
  * Coverage-weighted cells at the polygon edge; the deadband removes cells with `|dz| < deadbandM`
  * only when `useDeadband` is on.
  */
-export const ComparisonItem = z.looseObject({
-  id: SurveyId,
-  label: z.string().max(120).optional(),
-  from: SurfaceRef,
-  to: SurfaceRef,
-  deadbandM: z.number().nonnegative().max(10).optional(),
-  useDeadband: z.boolean(),
-  /** Grid cell, metres; default the finer prepared surface's. */
-  cellM: z.number().min(0.01).max(100).optional(),
-});
+const SURFACE_KINDS: readonly string[] = ['survey', 'current', 'previous', 'design'];
+/** True for a surface side (`survey`, `current`, `previous`, `design`); false for a base. */
+export const isSurfaceSide = (ref: { kind: string }): boolean => SURFACE_KINDS.includes(ref.kind);
+const BASE_BOTH_SIDES = 'At least one side must be a surface: a base is sampled on the other side.';
+
+export const ComparisonItem = z
+  .looseObject({
+    id: SurveyId,
+    label: z.string().max(120).optional(),
+    from: SurfaceRef,
+    to: SurfaceRef,
+    deadbandM: z.number().nonnegative().max(10).optional(),
+    useDeadband: z.boolean(),
+    /** Grid cell, metres; default the finer prepared surface's. */
+    cellM: z.number().min(0.01).max(100).optional(),
+  })
+  .refine((i) => isSurfaceSide(i.from) || isSurfaceSide(i.to), BASE_BOTH_SIDES);
 
 /** The engine that produced a result: the TypeScript worker or the Python reference core. */
 export const SurveyEngine = z.enum(['ts', 'py']);
@@ -438,13 +446,15 @@ export const emptyMeasurements = (): MeasurementsFile => ({
 });
 
 /** A comparison preset in a template: an item without its id (one is made when used). */
-export const ComparisonPreset = z.looseObject({
-  label: z.string().max(120).optional(),
-  from: SurfaceRef,
-  to: SurfaceRef,
-  deadbandM: z.number().nonnegative().max(10).optional(),
-  useDeadband: z.boolean(),
-});
+export const ComparisonPreset = z
+  .looseObject({
+    label: z.string().max(120).optional(),
+    from: SurfaceRef,
+    to: SurfaceRef,
+    deadbandM: z.number().nonnegative().max(10).optional(),
+    useDeadband: z.boolean(),
+  })
+  .refine((i) => isSurfaceSide(i.from) || isSurfaceSide(i.to), BASE_BOTH_SIDES);
 
 export const SurveyTemplate = z.looseObject({
   id: SurveyId,

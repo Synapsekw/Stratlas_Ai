@@ -249,6 +249,16 @@ describe('survey files', () => {
     ).toBe(false);
   });
 
+  it('refuses a comparison with a base on both sides (a base is sampled on the other side)', () => {
+    const smart = { kind: 'smart' };
+    expect(
+      ComparisonItem.safeParse({ ...volumeItem, from: smart, to: { kind: 'current' } }).success,
+    ).toBe(true);
+    expect(
+      ComparisonItem.safeParse({ ...volumeItem, from: smart, to: { kind: 'fit-plane' } }).success,
+    ).toBe(false);
+  });
+
   it('reads templates, prepared height tiles, overlays, cleanups and QA', () => {
     expect(SurveyTemplatesFile.parse(emptySurveyTemplates())).toEqual(emptySurveyTemplates());
     const templates = {
