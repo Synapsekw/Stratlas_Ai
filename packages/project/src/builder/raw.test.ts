@@ -248,6 +248,34 @@ describe('importRawFiles', () => {
     expect(started[0]?.params.src).toBe(dxf);
   });
 
+  it('hands a LandXML or 12da design to design.import and leaves other XML alone', async () => {
+    const root = await project();
+    const xml = join(dir, 'pad.xml');
+    const twelve = join(dir, 'pad.12da');
+    const other = join(dir, 'notes.xml');
+    await writeFile(xml, '<?xml version="1.0"?>\n<LandXML version="1.2"></LandXML>\n');
+    await writeFile(twelve, 'model "design"\n');
+    await writeFile(other, '<?xml version="1.0"?>\n<notes/>\n');
+    const started: { method: string; params: Record<string, unknown> }[] = [];
+    const jobs: PipelineJobs = {
+      available: () => Promise.resolve(true),
+      start: (method, params) => {
+        started.push({ method, params });
+        return Promise.resolve({ jobId: `job-${String(started.length)}` });
+      },
+    };
+    const r = await importRawFiles(root, [xml, twelve, other], deps({ jobs }));
+    expect(r.items.map((i) => [i.kind, i.status])).toEqual([
+      ['design', 'queued'],
+      ['design', 'queued'],
+      ['unknown', 'skipped'],
+    ]);
+    expect(started.map((s) => [s.method, s.params.src])).toEqual([
+      ['design.import', xml],
+      ['design.import', twelve],
+    ]);
+  });
+
   it('hands an OPF project to opf.import', async () => {
     const root = await project();
     const opf = join(dir, 'project.opf');

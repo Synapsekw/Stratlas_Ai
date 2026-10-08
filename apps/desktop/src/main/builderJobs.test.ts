@@ -58,6 +58,23 @@ describe('builder conversions as pipeline jobs', () => {
     ]);
   });
 
+  it('starts design.import on a dropped design with its path only', async () => {
+    const { r, started } = runner();
+    await builderPipelineJobs(r).start('design.import', {
+      projectRoot: 'E:/data/projects/site',
+      src: 'D:/designs/pad.xml',
+      epsg: 32639,
+      origin: [1, 2, 3],
+    });
+    expect(started).toEqual([
+      {
+        pipeline: 'design.import',
+        project: 'E:/data/projects/site',
+        params: { src: 'D:/designs/pad.xml' },
+      },
+    ]);
+  });
+
   it('starts opf.import on a dropped OPF project with its path only', async () => {
     const { r, started } = runner();
     await builderPipelineJobs(r).start('opf.import', {
