@@ -34,6 +34,10 @@ export const MERGE_RULES = {
   project: 'none',
   op: 'none',
   file: 'lww-record',
+  // M11: measurements merge by id and field like issues; designs as whole records; site settings by field.
+  measurement: 'lww-field',
+  design: 'lww-record',
+  survey: 'lww-field',
 } as const satisfies Record<RecordKind, MergeRule>;
 
 /** Issue fields merged together (a class change carries its severity model). */
