@@ -222,6 +222,7 @@ export class Environment {
   private landMask: LandMask | null = null;
   private pmrem: PMREMGenerator | null = null;
   private studioEnv: Texture | null = null;
+  private studioTarget: WebGLRenderTarget | null = null;
   private skyEnv: WebGLRenderTarget | null = null;
   private envDirty = true;
   private envAt = -Infinity;
@@ -458,9 +459,13 @@ export class Environment {
       const mat = this.domeMat.clone();
       mat.uniforms.uZenith = { value: new Color(0.32, 0.38, 0.46) };
       mat.uniforms.uHorizon = { value: new Color(0.62, 0.64, 0.66) };
-      scene.add(new Mesh(new SphereGeometry(100, 32, 16), mat));
-      this.studioEnv = this.pmrem.fromScene(scene, 0, 1, 500).texture;
+      const sphere = new SphereGeometry(100, 32, 16);
+      scene.add(new Mesh(sphere, mat));
+      // keep the target, not only its texture: disposing the texture leaves the framebuffer
+      this.studioTarget = this.pmrem.fromScene(scene, 0, 1, 500);
+      this.studioEnv = this.studioTarget.texture;
       mat.dispose();
+      sphere.dispose();
     } catch {
       this.studioEnv = null;
     }
@@ -729,6 +734,7 @@ export class Environment {
     this.grid.material.dispose();
     this.sun.shadow.map?.dispose();
     this.studioEnv?.dispose();
+    this.studioTarget?.dispose();
     this.skyEnv?.dispose();
     this.landMask?.dispose();
     this.normals.dispose();

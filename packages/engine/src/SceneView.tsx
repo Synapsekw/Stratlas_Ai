@@ -30,12 +30,19 @@ export interface SceneViewProps {
  */
 const NO_WEBGL = '3D view needs WebGL, which is not available on this device.';
 
-function webglAvailable(): boolean {
+let webgl: boolean | undefined;
+
+/** Asked once per app: the probe's context is let go at once (it was one more context per open). */
+export function webglAvailable(): boolean {
+  if (webgl !== undefined) return webgl;
   try {
-    return document.createElement('canvas').getContext('webgl2') !== null;
+    const gl = document.createElement('canvas').getContext('webgl2');
+    webgl = gl !== null;
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
   } catch {
-    return false;
+    webgl = false;
   }
+  return webgl;
 }
 
 export function SceneView({ className, store, primary = true, onStage }: SceneViewProps) {
