@@ -49,8 +49,10 @@ import {
   HeightTiles,
   MeasurementsFile,
   SitePoint2,
+  SurveyQa,
   SurveySettings,
   SurveyTemplatesFile,
+  TerrainEditsFile,
 } from './survey';
 import {
   AuditEntry,
@@ -2323,6 +2325,43 @@ export const ipc = {
       z.object({ ok: z.literal(true), surfaces: z.array(HeightTiles) }),
       Failure,
     ]),
+  },
+  /**
+   * QA results (`survey/qa/<capture>.json`): every survey's, or one capture's (an empty list when
+   * it has none). Packages are read in place (G8).
+   */
+  'survey:readQa': {
+    request: z.object({ projectId: ProjectId, capture: Id.optional() }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), files: z.array(SurveyQa), readOnly: z.boolean() }),
+      Failure,
+    ]),
+  },
+  /**
+   * **Release** a survey on hold with a person's note: status `released`, journaled `survey.hold`
+   * (action `release`), written atomically with a `.bak`; refused for packages (G8).
+   */
+  'survey:releaseHold': {
+    request: z
+      .object({ projectId: ProjectId, capture: Id, note: z.string().trim().min(1).max(2000) })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), qa: SurveyQa }),
+      Failure,
+    ]),
+  },
+  /** `survey/cleanups.json`; an empty list when there is none (G8). */
+  'survey:readTerrainEdits': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), file: TerrainEditsFile, readOnly: z.boolean() }),
+      Failure,
+    ]),
+  },
+  /** Write `survey/cleanups.json` atomically (`.bak`, journaled); refused for packages (G8). */
+  'survey:writeTerrainEdits': {
+    request: z.object({ projectId: ProjectId, file: TerrainEditsFile }).strict(),
+    response: OkOrFailure,
   },
   /** Search the EPSG catalogue by code, name or area; `near` ranks CRSs whose area holds it (G1). */
   'geodesy:searchCrs': {
