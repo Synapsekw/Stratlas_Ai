@@ -89,6 +89,17 @@ export function installerBudgetProblems(files, budget = BUDGETS.installer) {
   return { problems, unchecked };
 }
 
+/**
+ * The allowance on the timing budgets (QUADRION_BUDGET_SCALE, at least 1). The budgets are for
+ * release hardware; the nightly runs on shared runners with slower cores and a slow disk sync, so
+ * it sets 1.5 (the smallest that clears their spread) and the performance pass on release hardware
+ * runs 1.
+ */
+export function budgetScale(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 1 ? n : 1;
+}
+
 /** The `p`th percentile (0 to 100) of `samples`, nearest rank. */
 export function percentile(samples, p) {
   if (samples.length === 0) throw new Error('No samples.');
@@ -135,10 +146,12 @@ export async function time(fn) {
  * Register the journal budget tests for `bench` (vitest's describe, it and expect). Timing
  * assertions run when `enforce` is true (QUADRION_BUDGETS=1, nightly and the performance pass);
  * otherwise each check runs once at a small size, so the plumbing stays tested on every merge.
+ * `scale` (see budgetScale) multiplies every limit; the test names keep the 1.0 numbers.
  */
 export function journalBudgetTests({ describe, it, expect }, bench, o) {
-  const { enforce, tempDir } = o;
+  const { enforce, tempDir, scale = 1 } = o;
   const b = BUDGETS.journal;
+  const limit = (ms) => ms * scale;
   const size = (full, small) => (enforce ? full : small);
   const skip = (fn) => (fn ? it : it.skip);
 
@@ -149,7 +162,7 @@ export function journalBudgetTests({ describe, it, expect }, bench, o) {
         const append = await bench.append(tempDir('append'));
         const ms = await sample(append, size(500, 20));
         await append.close?.();
-        if (enforce) expect(percentile(ms, 95)).toBeLessThan(b.appendP95Ms);
+        if (enforce) expect(percentile(ms, 95)).toBeLessThan(limit(b.appendP95Ms));
       },
       120_000,
     );
@@ -159,7 +172,7 @@ export function journalBudgetTests({ describe, it, expect }, bench, o) {
       async () => {
         const { open, baseline } = await bench.open(tempDir('open'), size(100_000, 200));
         const extra = (await time(open)) - (await time(baseline));
-        if (enforce) expect(extra).toBeLessThan(b.open100kExtraMs);
+        if (enforce) expect(extra).toBeLessThan(limit(b.open100kExtraMs));
       },
       300_000,
     );
@@ -169,7 +182,7 @@ export function journalBudgetTests({ describe, it, expect }, bench, o) {
       async () => {
         const merge = await bench.merge(tempDir('merge'), size(10_000, 100));
         const ms = await time(merge);
-        if (enforce) expect(ms).toBeLessThan(b.merge10kMs);
+        if (enforce) expect(ms).toBeLessThan(limit(b.merge10kMs));
       },
       300_000,
     );
@@ -179,7 +192,7 @@ export function journalBudgetTests({ describe, it, expect }, bench, o) {
       async () => {
         const verify = await bench.verify(tempDir('verify'), size(100_000, 200));
         const ms = await time(verify);
-        if (enforce) expect(ms).toBeLessThan(b.verify100kMs);
+        if (enforce) expect(ms).toBeLessThan(limit(b.verify100kMs));
       },
       300_000,
     );

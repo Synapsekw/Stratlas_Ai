@@ -64,9 +64,11 @@ function bigJournal() {
 
 // The budgets are for release hardware and are enforced in the nightly budget run
 // (QUADRION_BUDGETS=1). Shared CI runners are slower and noisier (the parallel verify takes 10 to
-// 13 s there), so an ordinary run only catches gross regressions, at five times the budget.
+// 13 s there), so an ordinary run only catches gross regressions, at five times the budget, and the
+// nightly on shared runners allows QUADRION_BUDGET_SCALE times the budget (tools/release/budgets.mjs).
+const scale = Math.max(1, Number(process.env.QUADRION_BUDGET_SCALE) || 1);
 const budget = (ms: number) =>
-  (process.env.QUADRION_BUDGETS ?? process.env.STRATLAS_BUDGETS) === '1' ? ms : ms * 5;
+  (process.env.QUADRION_BUDGETS ?? process.env.STRATLAS_BUDGETS) === '1' ? ms * scale : ms * 5;
 
 describe('journal budgets at 100,000 ops', () => {
   const big = bigJournal();

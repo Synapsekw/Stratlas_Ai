@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
   BUDGETS,
+  budgetScale,
   folderBytes,
   installerBudgetProblems,
   journalBudgetTests,
@@ -51,6 +52,13 @@ describe('budget harness', () => {
     });
     expect(BUDGETS.startupFirstFrameMs).toBe(5000);
   });
+
+  it('scales the timing limits by at least 1, the full numbers when unset or invalid', () => {
+    expect(budgetScale(undefined)).toBe(1);
+    expect(budgetScale('2')).toBe(2);
+    expect(budgetScale('0.5')).toBe(1);
+    expect(budgetScale('fast')).toBe(1);
+  });
 });
 
 describe('size budgets (M10 decision 6)', () => {
@@ -92,5 +100,6 @@ describe('size budgets (M10 decision 6)', () => {
 
 journalBudgetTests({ describe, it, expect }, bench, {
   enforce: envVar(process.env, 'BUDGETS') === '1',
+  scale: budgetScale(envVar(process.env, 'BUDGET_SCALE')),
   tempDir: (name) => mkdtempSync(join(root, `${name}-`)),
 });
