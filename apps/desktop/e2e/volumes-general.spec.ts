@@ -247,4 +247,58 @@ test.describe('volumes and comparisons', () => {
     expect(Number(shown.replace(/[^0-9.-]/g, ''))).toBeCloseTo(sum, 0);
     await expectAccessible(win, 'Survey bulk totals', { include: '[data-testid="survey-bulk"]' });
   });
+
+  test('whole-site cut and fill as a job, with draft regions kept as measurements', async ({
+    earthworksProject,
+    win,
+  }) => {
+    test.skip(!hasPipelinePython(), 'needs the development pipeline Python (uv sync in python/)');
+    test.setTimeout(420_000);
+    const dir = earthworksProject.dir;
+    await open(win, earthworksProject);
+    await openList(win);
+    const panel = await focus(win, 'Borrow pit');
+    await panel.getByTestId('survey-prepare').click();
+    await expect(panel.getByTestId('survey-prepare')).toHaveCount(0, { timeout: 300_000 });
+    await settled(panel, 1);
+    const before = (await readMeasurements(dir)).measurements.length;
+
+    await win.getByRole('button', { name: 'Survey measurements' }).click();
+    await win.getByTestId('survey-site-open').click();
+    const dlg = win.getByTestId('survey-site');
+    await expect(dlg).toBeVisible();
+    await dlg.getByTestId('survey-site-from').selectOption('previous');
+    await dlg.getByTestId('survey-site-to').selectOption('current');
+    await dlg.getByTestId('survey-site-run').click();
+    await expect(dlg.getByTestId('survey-site-result')).toBeVisible({ timeout: 300_000 });
+    await expect(dlg.getByTestId('survey-site-result')).toContainText('m³');
+    // the job wrote its difference, heat map and contours
+    const outs = await readdir(join(dir, 'survey', 'compare'));
+    const out = outs.find((x) => x.startsWith('site-'));
+    expect(out).toBeTruthy();
+    const files = await readdir(join(dir, 'survey', 'compare', out ?? ''));
+    expect(files).toEqual(expect.arrayContaining(['result.json', 'difference.json', 'heat']));
+    // drafts: pick two, keep them as measurements
+    const drafts = dlg.getByTestId('survey-site-draft');
+    await expect(drafts.first()).toBeVisible({ timeout: 60_000 });
+    expect(await drafts.count()).toBeGreaterThanOrEqual(2);
+    await drafts.nth(0).check();
+    await drafts.nth(1).check();
+    await expectAccessible(win, 'Whole site cut and fill', {
+      include: '[data-testid="survey-site"]',
+    });
+    await dlg.getByTestId('survey-site-accept').click();
+    await dlg.getByRole('button', { name: 'Close' }).click();
+    await win.getByTestId('survey-list-save').click();
+    await expect(win.getByTestId('survey-list')).toContainText('Measurements saved.');
+    const after = (await readMeasurements(dir)).measurements;
+    expect(after).toHaveLength(before + 2);
+    const kept = after.filter((m) => m.folder === 'Whole-site regions');
+    expect(kept).toHaveLength(2);
+    for (const m of kept) {
+      expect(m.family).toBe('polygon');
+      expect(m.points.length).toBeGreaterThanOrEqual(3);
+      expect(m.items[0]?.from).toEqual({ kind: 'previous' });
+    }
+  });
 });
