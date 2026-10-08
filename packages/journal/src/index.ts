@@ -18,10 +18,12 @@ export {
 export {
   diffFields,
   diffIssues,
+  diffMeasurements,
   diffRecordFile,
   externalOp,
   isJournaledFile,
   JOURNALED_DIRS,
+  MEASUREMENTS_REL,
   sightingHash,
   type DraftOp,
   type FieldPatch,

@@ -111,6 +111,7 @@ import {
   useCutawayState,
 } from './useCutaway';
 import { VolumeTools } from './VolumeTools';
+import { MeasureMount, MeasureToolbar } from '../survey/MeasureToolbar';
 import {
   siteBasemapDefault,
   siteBasemapOn,
@@ -219,7 +220,7 @@ function StageToolbar({
   const map = mode === 'map';
   const groups: GroupId[] = useMemo(() => {
     const base: GroupId[] = map
-      ? ['view', 'display', 'video', 'annotate']
+      ? ['view', 'measure', 'display', 'video', 'annotate']
       : hasVolumes
         ? ['view', 'measure', 'volumes', 'display', 'video', 'annotate']
         : hasClouds
@@ -260,7 +261,8 @@ function StageToolbar({
       case 'view':
         return <ViewTools stage={stage} map={map} />;
       case 'measure':
-        return <MeasureTools stage={stage} />;
+        // on the map only the survey measurements (the scene's own tools need the 3D view)
+        return map ? <MeasureToolbar /> : <MeasureTools stage={stage} />;
       case 'display':
         return <DisplayTools stage={stage} map={map} />;
       case 'clouds':
@@ -349,6 +351,7 @@ function StageToolbar({
         </div>
       )}
       <span className="stbar-sp" />
+      <MeasureMount stage={stage} />
       {!map && stage && (
         <div className="tgroup-h overlay-box env-slot" data-fixed="">
           <EnvironmentTool stage={stage} />

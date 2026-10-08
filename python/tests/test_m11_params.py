@@ -92,7 +92,11 @@ def test_the_smallest_parameters_validate(name):
     assert all_pipelines()[name].validate(M11[name]) == M11[name]
 
 
-@pytest.mark.parametrize("name", sorted(M11))
+#: Pipelines a stream has built: their own tests replace the stub's run test (G1: geo.calibration).
+BUILT = {"geo.calibration"}
+
+
+@pytest.mark.parametrize("name", sorted(set(M11) - BUILT))
 def test_a_stub_fails_with_not_implemented_and_leaves_the_project_untouched(tmp_path, name, monkeypatch):
     monkeypatch.delenv("PROJ_NETWORK", raising=False)
     pipeline = all_pipelines()[name]

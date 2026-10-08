@@ -15,3 +15,4 @@ apps/desktop/build/generated
 apps/desktop/demo
 packages/schema/src/__fixtures__/journal/*
 !packages/schema/src/__fixtures__/journal/generate.mjs
+packages/geo/src/__fixtures__/site

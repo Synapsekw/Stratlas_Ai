@@ -1,0 +1,31 @@
+{
+  "schema": "aio.site-transform/1",
+  "from": {
+    "epsg": 32639
+  },
+  "to": {
+    "epsg": 2932
+  },
+  "operation": "Inverse of UTM zone 39N + Inverse of QND95 to WGS 84 (1) + Qatar National Grid; geoid synth-geoid (synth-geoid.gtx)",
+  "grid": {
+    "file": "site-grid.f64",
+    "originX": 252000.0,
+    "originY": 2798000.0,
+    "spacingM": 1.0,
+    "cols": 82,
+    "rows": 82,
+    "bands": 2
+  },
+  "geoidGrid": {
+    "file": "geoid-site.f64",
+    "originX": 252000.0,
+    "originY": 2798000.0,
+    "spacingM": 1.0,
+    "cols": 82,
+    "rows": 82,
+    "bands": 1
+  },
+  "geoid": "synth-geoid",
+  "fingerprint": "sha256:9016094c0a5af9a1c9b95d346fc2741cce1f2e1a3db8c4d4009a77f37e9bc63e",
+  "writtenAt": "2026-10-09T08:00:00.000Z"
+}

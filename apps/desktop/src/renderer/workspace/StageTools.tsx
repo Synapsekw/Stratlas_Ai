@@ -35,6 +35,7 @@ import { shell, useShell } from '../shell';
 import { PATH_MODES, setPathMode } from './flightPaths';
 import { updateFlightPaths, useFlightPathModel } from './pathModel';
 import { CutawayPanel } from './CutawayTool';
+import { MeasureToolbar } from '../survey/MeasureToolbar';
 import { toggleTelemetry, useTelemetryOn } from './telemetryPref';
 import { useCutawayPref } from './useCutaway';
 import {
@@ -338,16 +339,10 @@ function SectionPanel({ stage }: { stage: EngineStage }) {
 /** Select, measure and section. */
 export function MeasureTools({ stage }: { stage: EngineStage | null }) {
   const tool = stage?.tool ?? 'select';
+  // No separate Select tool: the ruler toggles off and Esc returns to selecting. The survey tools
+  // took its place, so the bar still fits one row at 1440 px with both side panels open.
   return (
     <>
-      <Tool
-        icon="select"
-        label="Select"
-        shortcut="scene.escape"
-        pressed={tool === 'select'}
-        disabled={!stage}
-        onClick={() => stage?.setTool('select')}
-      />
       <Tool
         icon="ruler"
         label="Measure a distance"
@@ -366,6 +361,7 @@ export function MeasureTools({ stage }: { stage: EngineStage | null }) {
           <SectionPanel stage={stage} />
         </PopTool>
       )}
+      <MeasureToolbar />
     </>
   );
 }

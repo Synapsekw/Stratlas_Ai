@@ -25,6 +25,7 @@ dependencies = [
   "pycolmap==4.2.1; sys_platform == 'win32' or (sys_platform == 'darwin' and platform_machine == 'arm64')",
   "opencv-python-headless==5.0.0.93; sys_platform == 'win32' or (sys_platform == 'darwin' and platform_machine == 'arm64')",
   "pymeshlab==2025.7.post1; sys_platform == 'win32' or (sys_platform == 'darwin' and platform_machine == 'arm64')",
+  "pyproj>=3.7",
 ]
 
 [dependency-groups]
