@@ -168,6 +168,7 @@ Current limits only; each is removed from this list when fixed.
 - Processing runs on the CPU only (no GPU acceleration in this release), so dense matching is slower than GPU products. Windows x64 and Apple silicon Macs only; Intel Macs and Windows on Arm cannot process photos.
 - The photo pipelines need pipeline pack 0.4.0, which carries prebuilt COLMAP (pycolmap), OpenCV and MeshLab wheels from PyPI and conda-forge's PDAL. The macOS packs (PDAL's copy step and the Apple silicon wheels) are proven in CI only.
 - The pipeline pack contains GPL components (CHOLMOD and SPQR in pycolmap, MeshLab, OpenCV's FFmpeg build on macOS): a distributed pack is under the GNU GPL version 3, and whoever receives it may ask for its source, our pipeline code included (founder decision of 8 Oct 2026). The app and the Team Server are not affected.
+- The mesh's screened Poisson runs at a depth that fits the memory budget (about 10 KB per mesh vertex, measured: depth 11 on the synthetic mini flight needed 20 GB); on a 16 GB laptop meshes of large sites are coarser than the preset's depth.
 - Large flights need memory: aligning about 1,000 photos with the global mapper peaked at about 13 GB. Plan on 300 photos per run on a 16 GB laptop.
 - Matching uses the photos' GPS positions; photos without GPS can only be matched exhaustively in small sets (no vocabulary tree).
 - Heights from the drone's GNSS follow its altitude datum unless a geoid grid is installed (no EGM2008 or EGM96 grid ships yet); use ground control for absolute heights.

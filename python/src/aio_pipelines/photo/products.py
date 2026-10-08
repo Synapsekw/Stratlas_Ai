@@ -740,7 +740,15 @@ class PhotoProducts:
                 )
                 try:
                     mesh, engine = poisson_mesh(
-                        ctx, work / "poisson", pts, nrm, depth, src, count, native.memory_budget()
+                        ctx,
+                        work / "poisson",
+                        pts,
+                        nrm,
+                        depth,
+                        src,
+                        count,
+                        native.memory_budget(),
+                        ctx.outputs("fuse").get("voxel"),
                     )
                 except JobError as e:
                     ctx.log(f"Screened Poisson failed ({e}); the built-in solver makes the mesh.", "warn")

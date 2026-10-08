@@ -426,6 +426,10 @@ DENSITY_TRIM = 7.0
 #: Bytes MeshLab holds per input point while it reconstructs (its vertex record and the octree),
 #: measured on the synthetic sets with margin; the cloud is thinned to fit the memory budget.
 MESHLAB_BYTES_PER_POINT = 400
+#: Peak bytes of a screened Poisson reconstruction per vertex of its mesh (MeshLab's octree and
+#: solver). Measured on G8's mini set (1.5 M points, 230 m): 1.2 GB for 143 k vertices at depth 9,
+#: 20 GB for 2.5 M at depth 11; with margin.
+POISSON_BYTES_PER_VERTEX = 10_000
 
 
 def meshlab_available() -> bool:
@@ -444,6 +448,34 @@ def poisson_engine() -> str | None:
     if meshlab_available():
         return "meshlab"
     return "poissonrecon" if native.find_tool("PoissonRecon") else None
+
+
+def poisson_depth(
+    pts: np.ndarray, max_depth: int, memory_budget: int, spacing: float | None = None
+) -> tuple[int, str]:
+    """The octree depth for a screened Poisson reconstruction of ``pts`` (a sample of the cloud),
+    and why: at most ``max_depth``; no finer than the cloud's ``spacing`` (cells smaller than the
+    points' spacing add memory, not detail); and small enough that the mesh's estimated memory
+    (``POISSON_BYTES_PER_VERTEX`` times the surface's cells, the surface measured as the cells the
+    sample occupies at a coarse depth) fits ``memory_budget``. Depth 11 on G8's mini set needed
+    20 GB, which put the 7 GB and 16 GB CI runners into swap for half an hour."""
+    if len(pts) < 10:
+        return max(6, min(max_depth, 8)), "few points"
+    lo, hi = pts.min(0), pts.max(0)
+    size = float((hi - lo).max()) * 1.1  # MeshLab's bounding cube (scale 1.1)
+    if size <= 0:
+        return max(6, min(max_depth, 8)), "no extent"
+    coarse = 7
+    cell7 = size / 2**coarse
+    area = len(np.unique(np.floor((pts - lo) / cell7).astype(np.int64), axis=0)) * cell7**2
+    depth, why = max_depth, "preset"
+    if spacing and spacing > 0:
+        fit = math.floor(math.log2(size / spacing))
+        if fit < depth:
+            depth, why = fit, f"point spacing {spacing:.3f} m"
+    while depth > 6 and area / (size / 2**depth) ** 2 * POISSON_BYTES_PER_VERTEX > memory_budget:
+        depth, why = depth - 1, f"memory budget {memory_budget / 1e9:.1f} GB"
+    return max(6, depth), why
 
 
 def read_ply_points(path: Path, max_points: int = 0) -> tuple[np.ndarray, np.ndarray]:
@@ -511,16 +543,20 @@ def poisson_meshlab(
     attempts: int = 2,
 ) -> Mesh:
     """Screened Poisson with MeshLab (pymeshlab) in a child Python, so a native crash or a cancel
-    never takes the pipeline down; trimmed by density as SurfaceTrimmer does. A failed attempt is
-    run again single-threaded (the reconstruction has crashed nondeterministically before)."""
+    never takes the pipeline down; trimmed by density as SurfaceTrimmer does. The child runs with
+    ``native.tool_threads`` threads and is stopped above ``memory_budget``; a run stopped for memory
+    is tried again one octree level coarser, any other failure single-threaded (the reconstruction
+    has crashed nondeterministically before)."""
     work.mkdir(parents=True, exist_ok=True)
     out = work / "meshlab-poisson.npz"
     max_points = max(100_000, memory_budget // MESHLAB_BYTES_PER_POINT)
     if count > max_points:
         ctx.log(f"MeshLab meshes {max_points:,} of the {count:,} dense points (memory budget).")
     last: JobError | None = None
+    threads = native.tool_threads()
     for attempt in range(attempts):
-        threads = 0 if attempt == 0 else 1
+        if attempt > 0 and not isinstance(last, native.ToolMemoryExceeded):
+            threads = 1
         out.unlink(missing_ok=True)
         args = [
             sys.executable,
@@ -533,12 +569,22 @@ def poisson_meshlab(
             str(threads),
             str(max_points),
         ]
+        env = {**os.environ, "OMP_NUM_THREADS": str(threads), "OPENBLAS_NUM_THREADS": "1"}
         try:
             native.run_tool(
-                ctx, args, "Poisson meshing", work, expected_s=max(30.0, count / 2e5), progress=(0.0, 0.9)
+                ctx,
+                args,
+                "Poisson meshing",
+                work,
+                expected_s=max(30.0, count / 2e5),
+                progress=(0.0, 0.9),
+                memory_limit=memory_budget,
+                env=env,
             )
         except JobError as e:
             last = e
+            if isinstance(e, native.ToolMemoryExceeded) and depth > 6:
+                depth -= 1  # the next attempt one octree level coarser
             ctx.log(f"MeshLab's Poisson stopped ({e}); attempt {attempt + 2} of {attempts}.", "warn")
             continue
         if not out.is_file():
@@ -563,10 +609,14 @@ def poisson_mesh(
     src: Path,
     count: int,
     memory_budget: int,
+    spacing: float | None = None,
 ) -> tuple[Mesh, str]:
     """Screened Poisson of the cloud in ``src`` (``count`` points; ``pts`` and ``normals`` a sample
-    of it) with the engine of ``poisson_engine``, then the other one when that one fails. Returns
-    the mesh and the engine that made it; raises ``JobError`` when none could."""
+    of it) with the engine of ``poisson_engine``, then the other one when that one fails, at most
+    at ``depth`` (``poisson_depth`` lowers it for the cloud's spacing and the memory budget).
+    Returns the mesh and the engine that made it; raises ``JobError`` when none could."""
+    depth, why = poisson_depth(pts, depth, memory_budget, spacing)
+    ctx.log(f"Screened Poisson at octree depth {depth} ({why}).")
     engine = poisson_engine()
     order = [engine] + [e for e in ("meshlab", "poissonrecon") if e != engine]
     errors: list[str] = []

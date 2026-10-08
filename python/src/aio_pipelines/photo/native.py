@@ -80,6 +80,10 @@ def _kill_tree(proc: subprocess.Popen) -> None:
         proc.wait()
 
 
+class ToolMemoryExceeded(JobError):
+    """A native tool passed its memory limit and was stopped."""
+
+
 def run_tool(
     ctx: StepContext,
     args: Sequence[str],
@@ -87,13 +91,19 @@ def run_tool(
     work: Path,
     expected_s: float = 60.0,
     progress: tuple[float, float] = (0.0, 0.95),
+    memory_limit: int = 0,
+    env: dict[str, str] | None = None,
 ) -> str:
-    """Run a native tool; return its stdout, or raise with the last line it printed."""
+    """Run a native tool; return its stdout, or raise with the last line it printed. With
+    ``memory_limit`` (bytes) the tool and its children are stopped above it
+    (``ToolMemoryExceeded``), so a tool never pushes the computer into swapping."""
     work.mkdir(parents=True, exist_ok=True)
     out_path, err_path = work / "tool.out", work / "tool.err"
     kw: dict = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
     if os.name != "nt":
         kw = {"start_new_session": True}
+    if env is not None:
+        kw["env"] = env
     with open(out_path, "wb") as out_f, open(err_path, "wb") as err_f:
         try:
             proc = subprocess.Popen(list(args), stdin=subprocess.DEVNULL, stdout=out_f, stderr=err_f, **kw)
@@ -101,10 +111,21 @@ def run_tool(
             raise JobError(f"{what}: the tool {Path(args[0]).name} could not start ({e}).") from e
         t0 = time.monotonic()
         lo, hi = progress
+        last_mem = 0.0
         while proc.poll() is None:
             if ctx.cancel_event.is_set():
                 _kill_tree(proc)
                 raise Cancelled()
+            if memory_limit and time.monotonic() - last_mem >= 0.5:
+                from .colmap_io import tree_memory
+
+                last_mem = time.monotonic()
+                used = tree_memory(proc.pid)
+                if used > memory_limit:
+                    _kill_tree(proc)
+                    raise ToolMemoryExceeded(
+                        f"{what} stopped: it needed more than {memory_limit / 1e9:.1f} GB of memory."
+                    )
             frac = min(1.0, (time.monotonic() - t0) / max(1.0, expected_s))
             ctx.progress(lo + (hi - lo) * frac * 0.95, what)
             time.sleep(0.1)
@@ -163,6 +184,12 @@ def memory_cap() -> int | None:
         return max(64, int(float(env))) * 1024 * 1024
     except ValueError:
         return None
+
+
+def tool_threads(cap: int = 8) -> int:
+    """Threads for a native tool: this computer's cores, at most ``cap`` (a small machine is not
+    oversubscribed, a large one is not flooded by a library's own default)."""
+    return max(1, min(os.cpu_count() or 1, cap))
 
 
 def memory_budget() -> int:

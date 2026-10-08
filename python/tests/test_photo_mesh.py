@@ -159,9 +159,11 @@ def test_meshlab_meshes_a_cloud_in_a_child_python_and_trims_it(tmp_path):
 
 def test_a_crashed_meshlab_run_is_tried_again_single_threaded(tmp_path, monkeypatch):
     calls = []
+    monkeypatch.setattr(M.native, "tool_threads", lambda cap=8: 4)
 
-    def fake_run(ctx, args, what, work, expected_s=60.0, progress=(0.0, 0.95)):
-        calls.append(args)
+    def fake_run(ctx, args, what, work, expected_s=60.0, progress=(0.0, 0.95), memory_limit=0, env=None):
+        calls.append(list(args))
+        assert memory_limit == 2**30 and env["OMP_NUM_THREADS"] == args[7]
         if len(calls) == 1:
             raise M.JobError("Poisson meshing failed: exit 3221225477")
         v = np.array([[0.0, 0, 0], [1, 0, 0], [0, 1, 0], [9, 9, 9]])
@@ -171,8 +173,40 @@ def test_a_crashed_meshlab_run_is_tried_again_single_threaded(tmp_path, monkeypa
 
     monkeypatch.setattr(M.native, "run_tool", fake_run)
     m = M.poisson_meshlab(_ctx(tmp_path), tmp_path / "work", tmp_path / "in.ply", 9, 10, 2**30)
-    assert [a[7] for a in calls] == ["0", "1"]  # threads: automatic, then one
+    assert [a[7] for a in calls] == ["4", "1"]  # threads: the machine's (capped), then one
+    assert [a[6] for a in calls] == ["9", "9"]
     assert m.triangles == 1 and len(m.vertices) == 3  # the low-density face is trimmed
+
+
+def test_a_meshlab_run_over_its_memory_is_tried_again_coarser(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(M.native, "tool_threads", lambda cap=8: 4)
+
+    def fake_run(ctx, args, what, work, expected_s=60.0, progress=(0.0, 0.95), memory_limit=0, env=None):
+        calls.append(list(args))
+        if len(calls) == 1:
+            raise M.native.ToolMemoryExceeded("Poisson meshing stopped: it needed more than 1.1 GB")
+        v = np.array([[0.0, 0, 0], [1, 0, 0], [0, 1, 0]])
+        np.savez(args[5], vertices=v, faces=np.array([[0, 1, 2]]), density=np.array([8.0, 8, 8]))
+        return ""
+
+    monkeypatch.setattr(M.native, "run_tool", fake_run)
+    M.poisson_meshlab(_ctx(tmp_path), tmp_path / "work", tmp_path / "in.ply", 11, 10, 2**30)
+    assert [(a[6], a[7]) for a in calls] == [("11", "4"), ("10", "4")]
+
+
+def test_the_poisson_depth_follows_the_spacing_and_the_memory_budget():
+    # a flat 200 m site sampled every 20 cm (G8's mini set is like this)
+    g = np.arange(0, 200, 0.2)
+    xx, yy = np.meshgrid(g, g)
+    pts = np.column_stack([xx.ravel(), yy.ravel(), np.zeros(xx.size)])[::7]
+    assert M.poisson_depth(pts, 11, 64 * 2**30) == (11, "preset")
+    # cells no finer than the 20 cm spacing
+    assert M.poisson_depth(pts, 11, 64 * 2**30, spacing=0.2) == (10, "point spacing 0.200 m")
+    # a 16 GB runner's budget (40 %): depth 10 would need about 9 GB
+    assert M.poisson_depth(pts, 11, int(6.4e9), spacing=0.2) == (9, "memory budget 6.4 GB")
+    assert M.poisson_depth(pts, 11, int(1.5e9))[0] == 8
+    assert M.poisson_depth(pts[:5], 11, 2**30)[0] == 8
 
 
 def test_when_meshlab_fails_the_poisson_tool_stands_in(tmp_path, monkeypatch):
