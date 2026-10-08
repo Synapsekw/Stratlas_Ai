@@ -148,7 +148,7 @@ export function BaseEditor({
                         setVertex(k, toggleMode(v, m.points[k]?.[2] ?? 0));
                       }}
                     >
-                      <option value="z">Elevation</option>
+                      <option value="z">Level</option>
                       <option value="offset">Offset</option>
                     </select>
                   </td>

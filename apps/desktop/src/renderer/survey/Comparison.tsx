@@ -45,6 +45,7 @@ import { Materials } from './Materials';
 import type { Frame } from './measureScene';
 import { updateMeasurement, useMeasure } from './measureStore';
 import { WholeSite } from './WholeSite';
+import './compare.css';
 
 const MAX_ITEMS = 20;
 
@@ -79,12 +80,21 @@ export function Comparisons({ m }: { m: SurveyMeasurement }) {
   if (m.family !== 'polygon') return null;
 
   const setItems = (items: ComparisonItem[]) => {
-    updateMeasurement(m.id, (x) => ({
-      ...x,
-      items,
-      // results of removed items go; the others stay until recomputed (their fingerprints tell)
-      results: x.results.filter((r) => items.some((it) => it.id === r.item)),
-    }));
+    updateMeasurement(m.id, (x) => {
+      // the label is not an input of the result
+      const key = (it: ComparisonItem) => JSON.stringify({ ...it, label: undefined });
+      const before = new Map(x.items.map((it) => [it.id, key(it)]));
+      return {
+        ...x,
+        items,
+        // results of removed items go; a changed item's result is stale until recomputed
+        results: x.results.flatMap((r) => {
+          const it = items.find((y) => y.id === r.item);
+          if (!it) return [];
+          return before.get(it.id) === key(it) ? [r] : [{ ...r, status: 'stale' as const }];
+        }),
+      };
+    });
   };
   const patchItem = (id: string, next: ComparisonItem) => {
     setItems(m.items.map((it) => (it.id === id ? next : it)));

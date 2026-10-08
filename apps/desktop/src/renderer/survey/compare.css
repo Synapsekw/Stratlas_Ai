@@ -1,0 +1,86 @@
+/* G4 comparisons, base editor, heat map colours, calculators, materials and bulk totals. */
+.sv-cmp-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.sv-cmp-item {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-4);
+  background: var(--bg-2);
+}
+.sv-cmp-sides {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: 4px;
+}
+.sv-cmp-sides .sv-swap {
+  margin-bottom: 2px;
+}
+.sv-field.sv-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sv-field.sv-inline .sv-input {
+  width: 88px;
+}
+.sv-cmp-res {
+  display: grid;
+  gap: 4px;
+}
+.sv-cmp-res.stale table {
+  opacity: 0.5;
+}
+.sv-cmp-res td.faint {
+  padding-left: 8px;
+  white-space: nowrap;
+}
+.sv-base-rows {
+  max-height: 240px;
+}
+.sv-base .sv-verts td.mono {
+  padding-right: 6px;
+  white-space: nowrap;
+  font-size: var(--t-11);
+}
+.sv-base .sv-verts select.sv-input {
+  width: 76px;
+  text-align: left;
+}
+.sv-base .sv-verts .sv-input[type='number'] {
+  width: 72px;
+}
+.sv-base tr.on td {
+  background: var(--bg-3, var(--bg-1));
+}
+.sv-legend {
+  display: grid;
+  gap: 2px;
+  flex: 1 1 160px;
+}
+.sv-legend-bar {
+  height: 10px;
+  border-radius: 2px;
+}
+.sv-materials {
+  width: min(820px, 100%);
+}
+.sv-mat-table .sv-input {
+  width: 100%;
+  min-width: 56px;
+  text-align: left;
+}
+.sv-panel .sv-sub select.sv-input {
+  min-width: 96px;
+}
+.sv-field.sv-inline > span.faint {
+  text-transform: none;
+  letter-spacing: 0;
+}

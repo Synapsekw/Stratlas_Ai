@@ -111,6 +111,8 @@ export function attachHeat3d(stage: EngineStage, frame: Frame): () => void {
           transparent: true,
           side: DoubleSide,
           depthWrite: false,
+          // an overlay like the measurement lines: seen through a draped or lower terrain
+          depthTest: false,
           polygonOffset: true,
           polygonOffsetFactor: -2,
           polygonOffsetUnits: -2,
