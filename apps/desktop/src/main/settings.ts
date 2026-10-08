@@ -125,6 +125,7 @@ function merge(defaults: Settings, raw: unknown): Settings {
 }
 
 export interface SettingsStore {
+  /** The settings with every update asked for so far written. */
   get(): Promise<Settings>;
   /** Merge a partial update (undefined fields are ignored), validate and persist it. */
   set(patch: IpcRequest<'settings:set'>): Promise<Settings>;
@@ -179,7 +180,9 @@ export function createSettingsStore(file: string, defaults: Settings): SettingsS
   }
 
   return {
-    get: load,
+    // after the updates asked for so far: the cache changes only once each is written, so a read
+    // straight after a save (the Settings screen, then settings:get) would miss it otherwise
+    get: () => queue.then(load),
     set: (patch) => serial(() => apply(patch)),
     update: (change) => serial(async () => apply(change(await load()))),
     current: () => cache ?? defaults,

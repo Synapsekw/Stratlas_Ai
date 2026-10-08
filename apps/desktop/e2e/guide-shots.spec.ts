@@ -12,7 +12,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
-import { expect, launchApp, NetworkGuard, test, type DataRoot } from './fixtures';
+import { expect, launchApp, NetworkGuard, openProject, test, type DataRoot } from './fixtures';
 import { DEMO_DIR, GUIDE_SHOTS } from './guideShots';
 
 const IMAGES = join(import.meta.dirname, '../../../docs/guide/images');
@@ -76,15 +76,40 @@ for (const shot of GUIDE_SHOTS) {
       await network.attach(app);
       const win = await app.firstWindow();
       await win.waitForLoadState('domcontentloaded');
-      await app.evaluate(
+      // The new size reaches the page later and reflows the card grid: a click before that can
+      // land where the card was (main CI, 8 Oct, the open never started). Wait for the page's
+      // resize, when the size changes at all (display scaling rounds it, so not for exact pixels).
+      await win.evaluate(() => {
+        const w = window as unknown as { guideResized?: Promise<void> };
+        w.guideResized = new Promise((done) => {
+          window.addEventListener(
+            'resize',
+            () => {
+              done();
+            },
+            { once: true },
+          );
+        });
+      });
+      const resized = await app.evaluate(
         ({ BrowserWindow }, size) => {
-          BrowserWindow.getAllWindows()[0]?.setContentSize(size.w, size.h);
+          const bw = BrowserWindow.getAllWindows()[0];
+          const [w, h] = bw?.getContentSize() ?? [size.w, size.h];
+          bw?.setContentSize(size.w, size.h);
+          return w !== size.w || h !== size.h;
         },
         { w: WIDTH, h: HEIGHT },
       );
+      if (resized)
+        await win.evaluate(
+          () => (window as unknown as { guideResized: Promise<void> }).guideResized,
+        );
       if (shot.project) {
         const card = win.getByTestId('project-card').filter({ hasText: shot.project.name });
         await card.click();
+        // The first open copies the demo to its working folder (openChangeDemo waits the same way).
+        const { id } = shot.project;
+        await expect.poll(async () => (await openProject(win)).id, { timeout: 60_000 }).toBe(id);
         await expect(win.locator('.crumbs')).toContainText(shot.project.name);
       }
       await shot.setup(win);
