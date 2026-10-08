@@ -10,6 +10,7 @@ import {
   installedPorts,
   loadComponents,
   opencvEnv,
+  openmpHints,
   parseCMakeCache,
   pick,
   poissonConfigure,
@@ -174,6 +175,35 @@ describe('COLMAP and pycolmap', () => {
     expect(s).toContain('--config-settings=cmake.define.CMAKE_PREFIX_PATH=i');
     expect(s).toContain('--config-settings=cmake.define.GENERATE_STUBS=OFF');
     expect(s).toContain('--config-settings=cmake.define.CMAKE_PROJECT_INCLUDE=pi.cmake');
+    // MSVC's OpenMP needs no hints
+    expect(s.join(' ')).not.toMatch(/OpenMP/);
+  });
+
+  it('gives COLMAP, pycolmap and PoissonRecon the same libomp hints on macOS', () => {
+    // pycolmap's CMakeLists predates policy CMP0074, so OpenMP_ROOT alone is ignored there
+    // (pack-native darwin-arm64: "Could NOT find OpenMP_C (missing: OpenMP_C_FLAGS ...)").
+    const libomp = '/opt/homebrew/opt/libomp';
+    const hints = openmpHints({ platform: 'darwin', libomp });
+    expect(hints).toEqual({
+      CMAKE_POLICY_DEFAULT_CMP0074: 'NEW',
+      OpenMP_ROOT: libomp,
+      OpenMP_C_FLAGS: `-Xpreprocessor -fopenmp -I${libomp}/include`,
+      OpenMP_CXX_FLAGS: `-Xpreprocessor -fopenmp -I${libomp}/include`,
+      OpenMP_C_LIB_NAMES: 'omp',
+      OpenMP_CXX_LIB_NAMES: 'omp',
+      OpenMP_omp_LIBRARY: `${libomp}/lib/libomp.dylib`,
+    });
+    expect(openmpHints({ platform: 'win32', libomp })).toEqual({});
+    expect(openmpHints({ platform: 'darwin' })).toEqual({});
+    const mac = { ...ctx, platform: 'darwin', libomp };
+    const settings = pycolmapSettings(mac);
+    const configure = colmapConfigure(colmap, mac);
+    const poisson = poissonConfigure({ ...mac, src: 's', build: 'b' });
+    for (const [k, v] of Object.entries(hints)) {
+      expect(settings).toContain(`--config-settings=cmake.define.${k}=${v}`);
+      expect(configure).toContain(`-D${k}=${v}`);
+      expect(poisson).toContain(`-D${k}=${v}`);
+    }
   });
 
   it('defines EIGEN_MPL2_ONLY without replacing compiler flags', () => {

@@ -71,6 +71,28 @@ export function vcpkgConfiguration({ vcpkg }, { overlayPorts = [], overlayTriple
 export const defines = (options) =>
   Object.entries(options ?? {}).map(([k, v]) => `-D${k}=${String(v)}`);
 
+/**
+ * CMake hints for Homebrew's libomp with AppleClang (macOS), as `{ NAME: value }`; none elsewhere
+ * (MSVC's OpenMP is found by FindOpenMP without hints). `OpenMP_ROOT` alone is not enough: a
+ * project whose `cmake_minimum_required` predates 3.12 (pycolmap's) leaves policy CMP0074 unset,
+ * so `find_package(OpenMP)` from COLMAP's installed config ignores it ("Could NOT find OpenMP_C").
+ * The flags, library names and library path below need no search at all; the policy default is
+ * set as well so any other `<Package>_ROOT` is honoured the same way.
+ */
+export function openmpHints(ctx) {
+  if (ctx.platform !== 'darwin' || !ctx.libomp) return {};
+  const flags = `-Xpreprocessor -fopenmp -I${ctx.libomp}/include`;
+  return {
+    CMAKE_POLICY_DEFAULT_CMP0074: 'NEW',
+    OpenMP_ROOT: ctx.libomp,
+    OpenMP_C_FLAGS: flags,
+    OpenMP_CXX_FLAGS: flags,
+    OpenMP_C_LIB_NAMES: 'omp',
+    OpenMP_CXX_LIB_NAMES: 'omp',
+    OpenMP_omp_LIBRARY: `${ctx.libomp}/lib/libomp.dylib`,
+  };
+}
+
 /** The configure command for COLMAP. */
 export function colmapConfigure(c, ctx) {
   const args = [
@@ -95,8 +117,8 @@ export function colmapConfigure(c, ctx) {
     args.push(
       '-DCMAKE_OSX_ARCHITECTURES=arm64',
       `-DCMAKE_OSX_DEPLOYMENT_TARGET=${ctx.deploymentTarget}`,
+      ...defines(openmpHints(ctx)),
     );
-    if (ctx.libomp) args.push(`-DOpenMP_ROOT=${ctx.libomp}`);
   }
   return args;
 }
@@ -117,7 +139,7 @@ export function pycolmapSettings(ctx) {
   if (ctx.platform === 'win32') d.CMAKE_MSVC_RUNTIME_LIBRARY = 'MultiThreadedDLL';
   if (ctx.platform === 'darwin') {
     d.CMAKE_OSX_ARCHITECTURES = 'arm64';
-    if (ctx.libomp) d.OpenMP_ROOT = ctx.libomp;
+    Object.assign(d, openmpHints(ctx));
   }
   return Object.entries(d).map(([k, v]) => `--config-settings=cmake.define.${k}=${v}`);
 }
@@ -325,6 +347,15 @@ async function buildColmap(r, c, ctx) {
       ]);
     else r.run('delocate-wheel', ['-w', wheelsOut, '-v', join(raw, w)]);
   }
+  // The wheel must carry the OpenMP runtime it links (Homebrew's libomp is not on users' Macs).
+  if (ctx.platform === 'darwin' && !r.plan)
+    for (const w of readdirSync(wheelsOut).filter((f) => /^pycolmap-.*\.whl$/.test(f))) {
+      const listing = r.run(ctx.python, ['-m', 'zipfile', '-l', join(wheelsOut, w)], {
+        capture: true,
+      });
+      if (!/\.dylibs\/libomp[^/\s]*\.dylib/.test(listing))
+        throw new Error(`${w}: delocate did not bundle libomp.dylib`);
+    }
   return {
     cmake,
     ports: r.plan ? [] : installedPorts(vcpkgInstalled, ctx.triplet),
@@ -420,8 +451,8 @@ export function poissonConfigure(ctx) {
     args.push(
       '-DCMAKE_OSX_ARCHITECTURES=arm64',
       `-DCMAKE_OSX_DEPLOYMENT_TARGET=${ctx.deploymentTarget}`,
+      ...defines(openmpHints(ctx)),
     );
-    if (ctx.libomp) args.push(`-DOpenMP_ROOT=${ctx.libomp}`);
   }
   return args;
 }
