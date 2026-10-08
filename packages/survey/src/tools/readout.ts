@@ -8,7 +8,7 @@ import type {
   SurveyPrecision,
   SurveyUnits,
 } from '@aio/schema';
-import { formatNumber, formatQuantity, localeOf, type NumberLocale, type Quantity } from './format';
+import { formatNumber, formatQuantity, localeOf, type NumberLocale, type Quantity } from '@aio/geo';
 import { sampleProfile, type HeightSampler } from './geometry';
 import { bermCheck, components, elevationDifference, lineMetrics, polygonAreas } from './measure';
 
@@ -22,7 +22,7 @@ export type ReadoutKind = Quantity | 'bearing' | 'count' | 'text';
 export interface ReadoutRow {
   key: string;
   label: string;
-  /** SI value (see `format.ts`), or null when it cannot be computed (no surface, no data). */
+  /** SI value (`@aio/geo` units), or null when it cannot be computed (no surface, no data). */
   value: number | null;
   kind: ReadoutKind;
   /** Why the value is missing, or a qualifier ("68 % covered"). */
@@ -253,7 +253,7 @@ export function formatRow(
   r: ReadoutRow,
   units: SurveyUnits,
   precision: SurveyPrecision,
-  locale: NumberLocale = localeOf(units),
+  locale: NumberLocale = localeOf(units.distance),
 ): string {
   if (r.value === null) return r.note ?? '-';
   let text: string;
