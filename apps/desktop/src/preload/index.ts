@@ -192,6 +192,8 @@ const CHANNELS = {
   'survey:readDesigns': true,
   'survey:writeDesigns': true,
   'survey:surfaces': true,
+  'survey:readOverlays': true,
+  'survey:writeOverlays': true,
   'geodesy:searchCrs': true,
   'geodesy:readCalibration': true,
   'geodesy:applyCalibration': true,

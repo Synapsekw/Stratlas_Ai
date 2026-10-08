@@ -620,6 +620,8 @@ describe('M11 IPC channels', () => {
     'survey:readDesigns',
     'survey:writeDesigns',
     'survey:surfaces',
+    'survey:readOverlays',
+    'survey:writeOverlays',
     'geodesy:searchCrs',
     'geodesy:readCalibration',
     'geodesy:applyCalibration',
