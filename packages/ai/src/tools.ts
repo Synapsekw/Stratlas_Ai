@@ -290,6 +290,20 @@ export const toolInputs = {
       layerId: z.string().min(1).optional().describe('Legacy layer id; default the first'),
     })
     .strict(),
+  // M10 Globe (G6): the library's sites on the Earth
+  list_sites: z.object({}).strict(),
+  show_on_globe: z
+    .object({
+      site: z
+        .string()
+        .min(1)
+        .max(200)
+        .optional()
+        .describe(
+          'Project id or name from list_sites; default the open project, else the whole library',
+        ),
+    })
+    .strict(),
 } as const;
 
 export type ToolName = keyof typeof toolInputs;
@@ -491,6 +505,18 @@ const BUILT_IN: ToolSpec[] = [
   spec('open_original_review', {
     description:
       "Open the project's original offline review (the delivered viewer) full screen in the app.",
+    scope: 'app',
+    risk: 'navigate',
+  }),
+  spec('list_sites', {
+    description:
+      'List the sites of the project library on the Globe: project id, name, longitude and latitude, surveys, open issues by severity and 3D Tiles.',
+    scope: 'app',
+    risk: 'read',
+  }),
+  spec('show_on_globe', {
+    description:
+      'Open the Globe and fly to a site (a project id or name from list_sites, default the open project). The agent panel closes with the project view.',
     scope: 'app',
     risk: 'navigate',
   }),

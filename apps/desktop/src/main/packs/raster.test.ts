@@ -153,6 +153,21 @@ describe('raster packs IPC (G7)', () => {
     expect(started[1] && 'params' in started[1] && 'customerLicence' in started[1].params).toBe(
       false,
     );
+    // customer elevation: the mark goes to the pipeline as on imagery
+    const c = await ipc.call('terrainPacks:import', {
+      path: 'D:/in/lidar-dtm.tif',
+      id: 'site-lidar',
+      label: 'Site LiDAR DTM',
+      licence: 'Customer licence',
+      attribution: '© Survey Co 2026',
+      verticalDatum: 'ellipsoid',
+      customerLicence: true,
+    });
+    expect(c.ok).toBe(true);
+    expect(started[2]).toMatchObject({
+      pipeline: 'packs.terrain',
+      params: { id: 'site-lidar', verticalDatum: 'ellipsoid', customerLicence: true },
+    });
     expect(
       await ipc.call('imageryPacks:import', {
         path: 'D:/x.tif',

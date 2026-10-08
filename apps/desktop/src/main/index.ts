@@ -101,7 +101,7 @@ import { registerTilesetsIpc } from './tilesets';
 import { createTestVault, useTestVault } from './testVault';
 import { importLogo, removeLogo } from './branding';
 import { putThumb } from './thumbs';
-import { CSP_PROBE, RENDERER_PROBE, smokeProbe, writeSmokeReport } from './smoke';
+import { CSP_PROBE, GLOBE_PROBE, RENDERER_PROBE, smokeProbe, writeSmokeReport } from './smoke';
 import { nativeImageOps } from './images';
 import { validated, type Handler } from './ipc';
 import { findPack, JobRunner, JobStore, openTarget, safeJobEvent } from './jobs';
@@ -1368,7 +1368,8 @@ function createWindow(): BrowserWindow {
 
 /**
  * Release smoke check with `QUADRION_SMOKE_REPORT`: the local detection runtime's answer, asked
- * from the window like Settings does, written for tools/release/smoke-packaged.mjs.
+ * from the window like Settings does, and what opening the Globe did (Cesium's workers and
+ * WebAssembly from inside the package), written for tools/release/smoke-packaged.mjs.
  */
 async function smokeReport(win: BrowserWindow): Promise<void> {
   const path = process.env.QUADRION_SMOKE_REPORT;
@@ -1376,6 +1377,7 @@ async function smokeReport(win: BrowserWindow): Promise<void> {
   const report = await smokeProbe({
     csp: () => win.webContents.executeJavaScript(CSP_PROBE) as Promise<unknown>,
     fromRenderer: () => win.webContents.executeJavaScript(RENDERER_PROBE) as Promise<unknown>,
+    globe: () => win.webContents.executeJavaScript(GLOBE_PROBE) as Promise<unknown>,
     fromMain: async () => ({
       runtime: await inferenceHost().probe(settings.current().inference?.provider ?? 'auto'),
     }),

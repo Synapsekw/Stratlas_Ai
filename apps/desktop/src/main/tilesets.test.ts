@@ -34,8 +34,8 @@ const ipc = collectHandlers((handle) => {
 });
 
 describe('tilesets IPC (G7)', () => {
-  it('registers both tileset channels', () => {
-    expect(ipc.channels()).toEqual(['tilesets:list', 'tilesets:write']);
+  it('registers the tileset channels', () => {
+    expect(ipc.channels()).toEqual(['tilesets:import', 'tilesets:list', 'tilesets:write']);
   });
 
   it('lists none for a project without tilesets.json', async () => {

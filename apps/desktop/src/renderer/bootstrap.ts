@@ -1,4 +1,4 @@
-import { registerAppHooks, registerFrameSource } from '@aio/ai';
+import { registerAppHooks, registerFrameSource, ToolError } from '@aio/ai';
 import { registerIssueHistory, setFlightPoses } from '@aio/annotate';
 import {
   configureEngine,
@@ -16,7 +16,8 @@ import { registerAgentPlaces } from './agentPlaces';
 import { IssueHistoryPanel } from './audit/HistoryPanel';
 import { graphics } from './graphics';
 import { graphicsReport, memoryWatch } from './memoryWatch';
-import { shell } from './shell';
+import { requestGlobe } from './globe/request';
+import { bridge, shell } from './shell';
 import { COMPARE_GPU_BYTES, compareRuntime } from './workspace/compare';
 import { registerCorrectedPhotos } from './builder/photoPoses';
 
@@ -80,6 +81,17 @@ export function bootstrap(): void {
   registerAppHooks({
     openReview: () => {
       shell.getState().go('review');
+    },
+    // M10 Globe: list_sites and show_on_globe
+    listSites: async () => {
+      const r = await bridge.call('globe:sites', {});
+      if (!r.ok) throw new ToolError(r.error);
+      if (!r.value.ok) throw new ToolError(r.value.error);
+      return r.value.sites;
+    },
+    showOnGlobe: (projectId) => {
+      requestGlobe(projectId);
+      shell.getState().go('globe');
     },
   });
   // Stockpiles and road chainages for find_places and fly_to.

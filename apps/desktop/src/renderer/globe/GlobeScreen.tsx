@@ -10,6 +10,7 @@ import {
   pathLength,
   polygonArea,
   selectPacks,
+  sitesBounds,
   sortSites,
   type GlobeCamera,
   type SiteGeoref,
@@ -33,6 +34,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useGraphics } from '../graphics';
 import { bridge, shell, useShell } from '../shell';
 import './globe.css';
+import { onGlobeRequest, takeGlobeRequest } from './request';
 
 /** Where the renderer build serves its copy of Cesium (electron.vite.config.ts `cesiumAssets`). */
 const CESIUM_BASE = new URL('cesium/', document.baseURI).href;
@@ -130,6 +132,25 @@ export default function GlobeScreen() {
     };
   }, [project, issues, prefs.showIssues]);
   const [credits, setCredits] = useState<string[]>(() => creditLines([]));
+
+  // the agent's show_on_globe: fly to the site it named, or over the whole library
+  useEffect(() => {
+    if (!ctl || !loaded) return;
+    const serve = () => {
+      const req = takeGlobeRequest();
+      if (!req) return;
+      const s = loaded.sites.find((x) => x.projectId === req.projectId);
+      if (s) {
+        setPick({ kind: 'site', projectId: s.projectId });
+        void ctl.flyToSite(s.lonLat);
+      } else {
+        setPick(null);
+        ctl.flyHome(sitesBounds(loaded.sites));
+      }
+    };
+    serve();
+    return onGlobeRequest(serve);
+  }, [ctl, loaded]);
 
   const save = (next: GlobeSettings) => {
     setSettings(next);

@@ -9,7 +9,8 @@ Terrarium: ``height = R * 256 + G + B / 256 - 32768`` metres, so heights round t
 are lossless (WebP lossless or PNG): a lossy codec would turn colour noise into metres. Heights
 stay in the source's vertical datum (EGM2008 for Copernicus GLO-30), named in the metadata; the
 Globe adds the geoid separation. Pixels no source covers take the nearest known height in the
-tile, so a pack's edge does not fall to sea level.
+tile, so a pack's edge does not fall to sea level. ``customerLicence`` (optional, false when
+absent) marks customer elevation as on imagery: never redistributed, out of packages unless ticked.
 """
 
 from __future__ import annotations
@@ -89,7 +90,10 @@ class TerrainPack:
     description = "A DEM to an offline terrain pack (Terrarium tiles) with its vertical datum."
 
     def validate(self, params: dict[str, Any]) -> dict[str, Any]:
-        out = common_params(params, self.name, {"verticalDatum", "format"})
+        out = common_params(params, self.name, {"verticalDatum", "format", "customerLicence"})
+        customer = params.get("customerLicence", False)
+        if not isinstance(customer, bool):
+            raise JobError("customerLicence must be true or false.")
         datum = params.get("verticalDatum")
         if datum is None:
             raise JobError(f"{self.name} needs: verticalDatum.")
@@ -170,8 +174,7 @@ class TerrainPack:
                         hi=hi,
                         tile_size=TILE_SIZE,
                         fmt=fmt,
-                        # The contract has no customer flag for terrain yet (proposed to G0).
-                        customer=False,
+                        customer=bool(params.get("customerLicence", False)),
                         extra={"encoding": "terrarium", "verticalDatum": params["verticalDatum"]},
                     )
                     counts = writer.finish(
