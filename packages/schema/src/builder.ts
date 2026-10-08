@@ -140,6 +140,8 @@ export const ImportItem = z.object({
     'drawing',
     // M10 (G5): an OPF project (`project.opf`), imported by the `opf.import` pipeline
     'opf',
+    // M11 (G6): a design (LandXML, 12da), imported by the `design.import` pipeline into `survey/designs/`
+    'design',
   ]),
   /**
    * `needs-pipeline`: the conversion runs in the pipeline pack (LAS/LAZ/E57 to COPC, large
