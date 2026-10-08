@@ -1,8 +1,8 @@
 /**
  * One measurement's properties (M11 G3): its readouts in its units, template (changeable), custom
  * fields, style and labels, units override, scope (site or one survey: promote, demote, copy to
- * another survey), vertices (drag in the 3D view, or type coordinates) and its comparison items
- * with any stored results (G4 builds the comparison editor; volumes are computed by the engine).
+ * another survey), vertices (drag in the 3D view, or type coordinates); a polygon's comparison
+ * items and calculators are G4's (`Comparison.tsx`, `Calculators.tsx`).
  */
 import { formatQuantity, unitLabel } from '@aio/geo';
 import type { MeasurementStyle, SurveyMeasurement } from '@aio/schema';
@@ -33,6 +33,8 @@ import {
   updateMeasurement,
   useMeasure,
 } from './measureStore';
+import { Calculators } from './Calculators';
+import { Comparisons } from './Comparison';
 import { MEASURE_COLOR } from './measureScene';
 
 const MAX_VERTEX_ROWS = 50;
@@ -469,33 +471,12 @@ export function MeasurementPanel() {
         )}
       </details>
 
-      {(m.items.length > 0 || m.results.length > 0) && (
-        <details className="sv-sec" open>
-          <summary>Comparisons</summary>
-          <ul className="sv-cmp">
-            {m.items.map((it) => {
-              const r = m.results.find((x) => x.item === it.id);
-              return (
-                <li key={it.id}>
-                  <b>{it.label ?? it.id}</b>
-                  <span className="small faint">
-                    {it.from.kind} to {it.to.kind}
-                  </span>
-                  {r ? (
-                    <span className="mono small">
-                      Cut {formatQuantity(r.cutM3, 'volume', units, settings.precision)} · Fill{' '}
-                      {formatQuantity(r.fillM3, 'volume', units, settings.precision)}
-                      {r.status === 'stale' ? ' · Stale, recompute' : ''}
-                    </span>
-                  ) : (
-                    <span className="small faint">Not computed yet</span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </details>
-      )}
+      {m.family === 'polygon' ? (
+        <>
+          <Comparisons m={m} />
+          <Calculators m={m} />
+        </>
+      ) : null}
 
       {!ro && (
         <div className="sv-row">

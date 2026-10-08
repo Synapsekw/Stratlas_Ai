@@ -23,6 +23,9 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { useShell } from '../shell';
 import { PopTool } from '../workspace/StageTools';
+import { BulkTotals } from './BulkTotals';
+import { CompareLayer } from './Comparison';
+import { openCompareDialog } from './compareStore';
 import { MeasurementList } from './MeasurementList';
 import { MeasurementPanel } from './MeasurementPanel';
 import { attach3d, attachMap, frameOf, stageClamp } from './measureScene';
@@ -241,6 +244,28 @@ export function MeasureToolbar() {
             >
               Units
             </button>
+            <button
+              type="button"
+              className="btn sm"
+              data-testid="survey-materials-tool"
+              onClick={() => {
+                openCompareDialog('materials');
+                setOpen(false);
+              }}
+            >
+              Materials
+            </button>
+            <button
+              type="button"
+              className="btn sm"
+              data-testid="survey-site-open"
+              onClick={() => {
+                openCompareDialog('site');
+                setOpen(false);
+              }}
+            >
+              Whole site cut and fill
+            </button>
           </div>
         </div>
       </PopTool>
@@ -309,8 +334,10 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
         <aside className="sv-side" aria-label="Survey measurements" data-testid="survey-side">
           {listOpen && <MeasurementList stage={stage} />}
           {focus && <MeasurementPanel />}
+          <BulkTotals />
         </aside>
       )}
+      <CompareLayer stage={stage} map={map} frame={frame} />
       {dialog?.kind === 'templates' && <TemplateEditor />}
       {dialog?.kind === 'units' && <UnitsDialog />}
     </>,

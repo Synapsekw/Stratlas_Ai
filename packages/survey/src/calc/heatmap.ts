@@ -195,3 +195,12 @@ export function contourSegments(
   }
   return out;
 }
+
+/** A round contour step giving about ten levels over `span` (1, 2 or 5 times a power of ten). */
+export function niceInterval(span: number): number {
+  if (!(span > 0)) return 0.1;
+  const raw = span / 10;
+  const p = 10 ** Math.floor(Math.log10(raw));
+  for (const f of [1, 2, 5, 10]) if (raw <= f * p) return f * p;
+  return 10 * p;
+}
