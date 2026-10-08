@@ -11,7 +11,11 @@ Picking, measuring and cutaways work on tiles as on the original layer.
 
 ## Import 3D Tiles
 
-Tilesets from other software (3D Tiles 1.0 or 1.1, a `tileset.json` with its files) can be imported into a project: choose **Import 3D Tiles** and the root `tileset.json`. {product} copies the tileset into the project and lists it as imported. Only files inside the tileset's own folder are copied; a tileset that refers to files elsewhere or online is refused.
+Tilesets from other software (3D Tiles 1.0 or 1.1: a `tileset.json` with its files) can be imported into the open project. Press Ctrl+K, choose **Import 3D Tiles from another program**, and pick the root `tileset.json`. The card proposes a name from the folder; add the credit line the tileset's maker asks for and click **Import**. {product} copies the tileset into the project and lists it as imported.
+
+- A tileset placed by its own georeference (Earth-centred coordinates, as most exports are) shows in the 3D view at once.
+- A tileset in a local frame is kept hidden, because placing it on the map is not built yet.
+- A tileset that refers to files outside its folder or online, or that is not 3D Tiles 1.0 or 1.1, is refused with the reason, and nothing is copied.
 
 ## On the Globe
 

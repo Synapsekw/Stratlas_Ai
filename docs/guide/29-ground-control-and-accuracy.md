@@ -29,7 +29,7 @@ Click **Adjust**. The adjustment fits the model to the control points; checkpoin
 - Warnings, for example a control point that does not fit the others ("GCP6 is 1.0 m off") and is left out as an outlier, or photos that could not be aligned.
 - The overlap map: how many photos see each part of the ground.
 
-**Save as CSV** writes the residual table. The accuracy report can also be exported as a PDF, and the house report includes a processing section with the summary and the point table.
+**Save as CSV** writes the residual table. **Issues**, **Export**, **Processing accuracy report (PDF)** writes the latest run's report as a PDF. The house report has a **Processing accuracy** section after **Site and data**, with the RMSE by role, the residuals per point and the warnings; turn it on or off in Settings, **Report contents**.
 
 ## Good practice
 

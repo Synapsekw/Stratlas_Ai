@@ -14,7 +14,7 @@ The list shows each pack with its zoom levels, size, date, licence and attributi
 
 ## Import terrain
 
-**Import terrain** works the same way for an elevation model (DEM GeoTIFF). Also set **Heights measured from**: the vertical datum of the file, for example EGM2008 for Copernicus terrain. Customer-licensed elevation can be marked the same way as imagery.
+**Import terrain** works the same way for an elevation model (DEM GeoTIFF). Also set **Heights measured from**: the vertical datum of the file, for example EGM2008 for Copernicus terrain. **Customer licence, not for redistribution** is offered for terrain too, ticked to start with, and the list shows the datum and the tag.
 
 ## Where packs show
 

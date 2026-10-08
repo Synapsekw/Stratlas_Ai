@@ -16,7 +16,7 @@ Your photos are only read, never changed or moved.
 1. Open a project. On an empty project, click **Process photos** beside **Import files**. On a project that has photos, open **Jobs**, then **Photo processing**, then **Process photos**.
 2. **Photos:** choose **A photos layer** of the project, or **Folders of photos** on this computer. The wizard counts the photos and lists the cameras it found, for example "SYN-20, 1600 × 1200 (58 photos)", with a warning for photos without GPS.
 3. **Place and heights:** check the **Coordinate reference system**. When the photos are far from the project's system, the wizard names the UTM zone they are in. It also says where heights come from (the drone's altitude, or ground control).
-4. **Quality and products:** choose **Fast**, **Standard** or **High**, and the products: point cloud, DSM, DTM, orthophoto and mesh.
+4. **Quality and products:** choose **Fast**, **Standard** or **High**, and the products: point cloud, DSM, DTM, orthophoto and mesh. For a run that is already aligned, **Jobs**, **New job**, **Create products** has the same **Products** checklist.
 5. **Estimate for this computer:** the wizard shows whether processing is available here, the CPU, memory and free disk, and a time range. Click **Start**.
 
 The stages tick in turn: reading the photos, features, matching, alignment, georeferencing, then the products. You can **Pause** a run and **Resume** it later: finished stages are kept from before. **Cancel** stops the tools within a few seconds.
@@ -37,4 +37,4 @@ Each run lives in the project in `photogrammetry/<run>/`: its settings, stages a
 
 ## Use refined poses
 
-Alignment works out where each camera really was. For a photos layer, **Refined poses** says how far the cameras would move, for example "58 cameras move by 1.2 m on average". Click **Use refined poses**, then **Move the cameras**, to put the photos where they were taken. The previous cameras are kept as a backup.
+Alignment works out where each camera really was. For a photos layer (or, for a run from folders, a **Photos layer of the same flight**, matched by file name), **Refined poses** says how far the cameras would move, for example "58 cameras move by 1.2 m on average". Click **Use refined poses**, then **Move the cameras**, to put the photos where they were taken. The previous cameras are kept as a backup.

@@ -170,7 +170,12 @@ Current limits only; each is removed from this list when fixed.
 - Large flights need memory: aligning about 1,000 photos with the global mapper peaked at about 13 GB. Plan on 300 photos per run on a 16 GB laptop.
 - Matching uses the photos' GPS positions; photos without GPS can only be matched exhaustively in small sets (no vocabulary tree).
 - Heights from the drone's GNSS follow its altitude datum unless a geoid grid is installed (no EGM2008 or EGM96 grid ships yet); use ground control for absolute heights.
-- No automatic target detection: every ground control mark is placed or confirmed by a person.
+- No automatic target detection: every ground control mark is placed or confirmed by a person. The marker's own predictions use a pinhole lens without distortion (a few pixels off); the predictions the alignment writes take precedence.
+- TIFF photos in folder runs cannot be shown in the marker (JPEG and PNG can).
+- The real alignment pipeline is tested end to end in CI and on the founder's machine only: the development machine has no COLMAP engine of our own build, so its photo e2e use stand-in pipelines.
+- Without ground control, a small block of nadir photos at one height can carry a uniform height bias of about a metre (focal length and height trade off); add ground control or oblique photos.
+- **Processing accuracy report (PDF)** shows in the Exports menu of every project; without a processed run it answers with a message instead of a file.
+- The bundled photo demo is a small 13-photo block: only three of its nine surveyed points are in enough photos to mark, and it has no oblique photos.
 - Fisheye and spherical cameras are not supported; oblique close-range sets are untested.
 - Texturing drapes the orthophoto or projects one photo per face: there is no seam-levelled texturing (`texrecon` is deferred). The Fast preset is weak on buildings and has no true-ortho on tall structures.
 - No LiDAR processing from raw scans.
@@ -186,7 +191,7 @@ Current limits only; each is removed from this list when fixed.
 - The Globe is for overview and navigation: no editing tools, only a distance and area read-out on the ellipsoid.
 - No geoid grid ships, so terrain heights on the Globe are not corrected to the geoid.
 - Processed orthophotos do not show on the Globe yet, sites have no footprints and there is no date filter.
-- The in-app agent cannot open or move the Globe yet.
+- The agent's **show_on_globe** ends the agent's reply: the agent panel belongs to the project view and closes when the Globe opens. The Globe tools are not in the compact tool profile.
 
 ### Imagery, terrain and 3D Tiles
 
@@ -196,3 +201,5 @@ Current limits only; each is removed from this list when fixed.
 - 3D Tiles are written as uncompressed glTF (no Draco, KTX2 or Meshopt), and are not checked by the official validator.
 - Converting a point cloud to 3D Tiles holds the whole cloud in memory; compressed COPC input needs PDAL.
 - A tileset has no visibility toggle in the layer list, and an issue placed on a tileset may not resolve after the project is reopened.
+- An imported tileset in a local frame (or placed only by a region bounding volume) stays hidden: placing it on the map is not built yet. Imported tilesets are not recorded in the project history.
+- The Globe has its own copy of the Terrarium height decode (about 40 lines) rather than sharing the site view's.

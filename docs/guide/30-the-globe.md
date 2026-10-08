@@ -27,3 +27,7 @@ With a project open, tick **Show issues of the open project**. Issues show as pi
 ## Measure
 
 Click **Measure on the ellipsoid** and click points on the ground. The Globe shows "Distance on the ellipsoid" along the points and the area they enclose. These are geodesic values on the WGS84 ellipsoid, for planning; survey measurements belong in the site view.
+
+## Ask the agent
+
+The AI agent can list your sites ("list my sites": name, place, survey dates, open issues and tilesets) and show one on the Globe ("show the demo on the Globe"). The agent panel closes when the Globe opens, because it belongs to the project view.
