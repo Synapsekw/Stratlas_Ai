@@ -13,7 +13,8 @@
 //                              points imported and their predicted marks, report/accuracy.json,
 //                              sparse/ as a COLMAP text model), so the GCP marker and the report
 //                              can be used without waiting for photo.align
-//   tiles/ + tilesets.json     the expected surface (true mesh and cloud) as 3D Tiles, hidden
+//   tiles/ + tilesets.json     the expected surface (true mesh and cloud) as 3D Tiles, hidden;
+//                              development sets only, not in the bundled (mini) demo
 //   truth.json                 the generator's truth (poses, targets, volumes)
 //
 // Two photo sets (PHOTO_SETS):
@@ -396,28 +397,9 @@ export async function buildPhotoDemo({ out, log, python, cache, set, photoSet: a
       .join('\n');
     await writeFile(join(runDir, 'sparse', 'images.txt'), images);
 
-    // the expected surface as 3D Tiles (hidden until a person shows it)
-    await cp(join(setDir, 'tiles'), join(root, 'tiles'), { recursive: true });
-    const tilesets = schema.TilesetsFile.parse({
-      schema: 'aio.tilesets/1',
-      entries: [
-        {
-          id: 'truth-mesh',
-          name: 'Expected surface, mesh (synthetic truth)',
-          kind: 'mesh',
-          src: 'tiles/truth-mesh/tileset.json',
-          visible: false,
-        },
-        {
-          id: 'truth-cloud',
-          name: 'Expected surface, points (synthetic truth)',
-          kind: 'points',
-          src: 'tiles/truth-cloud/tileset.json',
-          visible: false,
-        },
-      ],
-    });
-    await writeFile(join(root, 'tilesets.json'), json(tilesets));
+    // the expected surface as 3D Tiles (hidden until a person shows it), development sets only:
+    // in the bundled demo they would be a third of its compressed size (the installer budget)
+    if (!PHOTO_SETS[photoSet].bundled) await writeTruthTiles(schema, setDir, root);
     await cp(join(setDir, 'truth.json'), join(root, 'truth.json'));
 
     // tidy: backups and the empty folders the wizard made
@@ -501,3 +483,28 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     console.error(e instanceof Error ? (e.stack ?? e.message) : e);
     process.exit(1);
   });
+
+/** The synthetic truth surface as two hidden tilesets (`tiles/` and `tilesets.json`). */
+async function writeTruthTiles(schema, setDir, root) {
+  await cp(join(setDir, 'tiles'), join(root, 'tiles'), { recursive: true });
+  const tilesets = schema.TilesetsFile.parse({
+    schema: 'aio.tilesets/1',
+    entries: [
+      {
+        id: 'truth-mesh',
+        name: 'Expected surface, mesh (synthetic truth)',
+        kind: 'mesh',
+        src: 'tiles/truth-mesh/tileset.json',
+        visible: false,
+      },
+      {
+        id: 'truth-cloud',
+        name: 'Expected surface, points (synthetic truth)',
+        kind: 'points',
+        src: 'tiles/truth-cloud/tileset.json',
+        visible: false,
+      },
+    ],
+  });
+  await writeFile(join(root, 'tilesets.json'), json(tilesets));
+}

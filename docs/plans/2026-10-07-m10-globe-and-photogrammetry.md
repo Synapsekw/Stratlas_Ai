@@ -825,7 +825,7 @@ Shared files stay with the integration lead after G0; a stream that needs a chan
 
 - **pytest:** the generator is deterministic (same seed, same image hashes on the same platform; truth identical everywhere); cameras in `truth.json` reproject GCP targets onto the rendered target centres within 0.25 px; EXIF and XMP read back through G2's reader.
 - **node:test:** the client-data check finds a planted real-looking camera serial, a coordinate outside the fictional site and a personal name in XMP.
-- **CI:** the photo demo `--quick` builds under its budget (decision 6 of M8 style: about 60 MB or less bundled, or not bundled and generated on demand; see below). Integration (8 Oct 2026): the quick set made a 51 MB demo, over the installer budget of decision 6, so the bundled demo is the mini set (13 photos at 960 x 720, about 9 MB on disk, 5.6 MB compressed, budget 12 MB); the quick set stays for development and CI (`--photo-set quick`).
+- **CI:** the photo demo `--quick` builds under its budget (decision 6 of M8 style: about 60 MB or less bundled, or not bundled and generated on demand; see below). Integration (8 Oct 2026): the quick set made a 51 MB demo, over the installer budget of decision 6, so the bundled demo is the mini set (13 photos at 960 x 720, budget 12 MB), without the hidden truth tilesets (4.6 MB on disk): with them the 0.10.0 installers were 16.7 MB over 0.9.0, without them 13.3 MB (setup 201.2 MB, portable 190.0 MB). The quick set, with the truth tilesets, stays for development and CI (`--photo-set quick`).
 
 **Risks:**
 
