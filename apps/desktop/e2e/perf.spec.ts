@@ -395,7 +395,9 @@ base.describe(`synthetic project on ${GPU_NAME} (Low tier)`, () => {
         if (!k0 || !k1) throw new Error('synthetic path needs two keys');
         await win.getByTestId('project-card').filter({ hasText: path.card }).first().click();
         const canvas = win.locator('[data-scene-view] canvas');
-        await expect(canvas).toBeVisible();
+        // the stage exists within the startup test's budget for the first frame, not the default
+        // 5 s: the Windows runners' software GPU took 6.1 s from the click to the first frame
+        await expect(canvas).toBeVisible({ timeout: FIRST_FRAME_MS });
         await win.evaluate((v) => {
           (window as unknown as SynthW).__stratlas.stage()?.restoreView(v, false);
         }, k0);
