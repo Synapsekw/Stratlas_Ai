@@ -639,6 +639,8 @@ This section is the single written specification of a surface comparison (ADR 00
 
 **Whole site and bulk** (`survey.compare`, `SurveyCompareParams`): either `items[]` (`{ measurement, ring, item, capture? }`, up to 5,000: reports, bulk recompute after a calibration change) or `site` (`{ from, to, deadbandM?, cellM?, ring? }`, a whole-site comparison over the overlap of both surfaces or a boundary), never both; `out?` a project path. Whole-site mode writes the difference grid, its heat map pyramid and contours of the difference; its regions are drafts a person accepts as measurements. `change.surface` keeps its contract (`aio.change/1`, section 14) and calls the core for its volumes and `areas`.
 
+**Items results file** (`SurveyCompareFile`, `aio.survey-compare/1`): `survey.compare` in items mode writes `survey/compare/<job>.json` (or `out`) with `pipeline` (`survey.compare`), `jobId`, `computedAt` and `results[]` of `{ measurement, result }` (`ComparisonResult`). It is a draft: the app copies each result onto its measurement; nothing else reads it.
+
 ## 27. Measurements, templates and materials (M11)
 
 **Saved measurements** (`survey/measurements.json`, `MeasurementsFile`, `aio.measurements/1`): `measurements[]` (`SurveyMeasurement`, at most 20,000, ids unique). The annotation `Measurement` (`annotation.ts`) is unchanged; survey measurements are a separate family.

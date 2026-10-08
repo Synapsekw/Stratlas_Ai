@@ -829,7 +829,13 @@ class SurveyCompare:
                 ctx.progress((k + 1) / len(items), f"{k + 1} of {len(items)}")
             atomic_write_json(
                 ctx.stage("out/results.json"),
-                {"pipeline": self.name, "jobId": ctx.job.job_id, "computedAt": now_iso(), "results": results},
+                {
+                    "schema": "aio.survey-compare/1",
+                    "pipeline": self.name,
+                    "jobId": ctx.job.job_id,
+                    "computedAt": now_iso(),
+                    "results": results,
+                },
             )
             return {"items": len(results), **counts}
 

@@ -126,6 +126,7 @@ describe('M11 additive rule: no layer kind, raster role, project type, setting o
         'aio.measurements',
         'aio.site-calibration',
         'aio.site-transform',
+        'aio.survey-compare',
         'aio.survey-defaults',
         'aio.survey-overlays',
         'aio.survey-qa',
