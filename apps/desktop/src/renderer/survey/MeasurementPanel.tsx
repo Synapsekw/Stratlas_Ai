@@ -4,16 +4,15 @@
  * another survey), vertices (drag in the 3D view, or type coordinates) and its comparison items
  * with any stored results (G4 builds the comparison editor; volumes are computed by the engine).
  */
+import { formatQuantity, unitLabel } from '@aio/geo';
 import type { MeasurementStyle, SurveyMeasurement } from '@aio/schema';
 import {
   changeTemplate,
   effectiveUnits,
-  formatQuantity,
   formatRow,
   horizontalDistance,
   measurementReadout,
   TOOL_LABELS,
-  UNIT_LABELS,
   vertexTable,
   formatBearing,
 } from '@aio/survey';
@@ -336,7 +335,7 @@ export function MeasurementPanel() {
           {m.units && Object.keys(m.units).length > 0
             ? `Own units: ${Object.values(m.units)
                 .flatMap((u) => (u === undefined ? [] : [u]))
-                .map((u) => UNIT_LABELS[u] ?? u)
+                .map((u) => unitLabel(u))
                 .join(', ')}`
             : 'Site units'}
         </p>

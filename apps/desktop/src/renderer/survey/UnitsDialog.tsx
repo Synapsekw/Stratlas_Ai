@@ -13,7 +13,8 @@ import {
   type SurveyUnits,
   UnitsOverride,
 } from '@aio/schema';
-import { effectiveUnits, formatQuantity, UNIT_NAMES } from '@aio/survey';
+import { formatQuantity, unitName, type AnyUnit } from '@aio/geo';
+import { effectiveUnits } from '@aio/survey';
 import { Icon, useFocusTrap } from '@aio/ui';
 import { useRef, useState } from 'react';
 import { openDialog, saveSiteSettings, updateMeasurement, useMeasure } from './measureStore';
@@ -121,11 +122,11 @@ export function UnitsDialog() {
                   }}
                 >
                   {forMeasurement && (
-                    <option value="">Site ({UNIT_NAMES[settings.units[q.key]]})</option>
+                    <option value="">Site ({unitName(settings.units[q.key])})</option>
                   )}
                   {q.options.map((o) => (
                     <option key={o} value={o}>
-                      {UNIT_NAMES[o] ?? o}
+                      {unitName(o as AnyUnit)}
                     </option>
                   ))}
                 </select>

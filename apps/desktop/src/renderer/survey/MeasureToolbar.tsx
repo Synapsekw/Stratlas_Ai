@@ -5,6 +5,7 @@
  * measurements in the 3D view and on the map and holds the panels; the toolbar mounts it.
  */
 import type { EngineStage } from '@aio/engine';
+import { unitLabel } from '@aio/geo';
 import { getActiveMap, onActiveMap, type MapController } from '@aio/maps';
 import type { MeasurementTool } from '@aio/schema';
 import {
@@ -14,7 +15,6 @@ import {
   templateLibrary,
   TOOL_FAMILY,
   TOOL_LABELS,
-  UNIT_LABELS,
   type SnapSource,
 } from '@aio/survey';
 import { Icon, type IconName } from '@aio/ui';
@@ -380,7 +380,7 @@ function DrawBar() {
             data-testid="survey-typed-distance"
           >
             Distance <b className="mono">{draw.typing.distance || '...'}</b>{' '}
-            {UNIT_LABELS[units.distance] ?? units.distance}
+            {unitLabel(units.distance)}
           </span>
           <span
             className={`sv-typed${draw.typing.field === 'bearing' ? ' on' : ''}`}
