@@ -1,16 +1,18 @@
 """Native tools, memory and disk for ``photo.products``.
 
-Native tools are optional command-line programs built by stream G1 into the pipeline pack's
-``tools/`` folder; each is found like PDAL (``pointcloud.find_pdal``): an environment variable,
-then ``<pack>/tools/<name>/``, then the PATH. Every caller has a pure-Python path when a tool is
-missing, so CI and a pack without the tool still produce the product (and say which engine ran).
+Native tools are optional command-line programs in the pipeline pack's ``tools/`` folder or on
+this machine; each is found like PDAL (``pointcloud.find_pdal``): an environment variable, then
+``<pack>/tools/<name>/``, then the PATH. Every caller has a pure-Python path when a tool is
+missing, so a pack without the tool still produces the product (and says which engine ran). Since
+8 Oct 2026 the pack ships only PDAL (conda-forge's build); the others are local builds a person
+points at, and the mesh's primary engine is MeshLab (``pymeshlab``, ``mesh.py``).
 
 | Tool          | Variable              | Pack folder                | Licence                                  |
 | ------------- | --------------------- | -------------------------- | ---------------------------------------- |
 | ``texrecon``  | ``AIO_TEXRECON``      | ``tools/texrecon/``        | BSD-3 (mvs-texturing, mapMAP not gco)    |
 | ``PoissonRecon`` | ``AIO_POISSONRECON`` | ``tools/poissonrecon/``   | MIT (mkazhdan/PoissonRecon)              |
 | ``SurfaceTrimmer`` | ``AIO_SURFACETRIMMER`` | ``tools/poissonrecon/`` | MIT (same repository)                    |
-| ``pdal``      | ``AIO_PDAL``          | ``tools/pdal/``            | BSD-3                                    |
+| ``pdal``      | ``AIO_PDAL``          | ``tools/pdal/`` (shipped)  | BSD-3 (conda-forge build, GPL/LGPL deps) |
 
 ``run_tool`` runs one cancellably: output to files (a full pipe would block the child), stdin
 closed, no console window, and on cancel the whole process tree is killed (``taskkill /T`` on

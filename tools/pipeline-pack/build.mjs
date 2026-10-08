@@ -60,6 +60,15 @@ try:
     out["pymeshlab"] = md.version("pymeshlab")
 except ImportError:
     pass
+if out:
+    # MeshLab's screened Poisson on a small sphere: its Qt and plugins load in the pack
+    import numpy as np, pymeshlab
+    p = np.random.default_rng(0).normal(size=(3000, 3))
+    p /= np.linalg.norm(p, axis=1, keepdims=True)
+    ms = pymeshlab.MeshSet()
+    ms.add_mesh(pymeshlab.Mesh(vertex_matrix=p, v_normals_matrix=p))
+    ms.generate_surface_reconstruction_screened_poisson(depth=5, threads=1)
+    out["poissonFaces"] = ms.current_mesh().face_number()
 print(json.dumps(out))
 `;
 const pyDir = join(repo, 'python');
@@ -330,7 +339,7 @@ async function main() {
         ? `  photogrammetry: pycolmap ${photo.pycolmap} (${photo.colmapBuild}); OpenCV ${photo.opencv}; pymeshlab ${photo.pymeshlab}`
         : '  no photogrammetry wheels on this platform (decision 8)',
     );
-    if (photo.pycolmap && (!photo.opencv || !photo.pymeshlab))
+    if (photo.pycolmap && (!photo.opencv || !photo.pymeshlab || !(photo.poissonFaces > 100)))
       fail(`photogrammetry wheels incomplete: ${JSON.stringify(photo)}`);
     if (pdal) {
       const { version: pdalVersion, missing } = checkPdal(pdal);
