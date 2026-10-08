@@ -1,11 +1,11 @@
-// The native licence gate (M10 G1) on fixture SBOMs and fixture packs: a planted suitesparse-spqr,
-// an LGPL static library and an unknown DLL each fail, a clean set passes, and the inventory the
-// repository commits (native-libs.json) is consistent with the policy.
+// The native licence report (M10 G1) on fixture SBOMs and fixture packs: a planted suitesparse-spqr,
+// an LGPL static library and an unknown DLL are reported against a strict fixture policy, a clean
+// set is clean, and the inventory the repository commits (native-libs.json) knows the pack.
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { loadPolicy } from './licence-policy.mjs';
+import { judge, loadPolicy } from './licence-policy.mjs';
 import {
   checkComponents,
   checkFiles,
@@ -290,53 +290,49 @@ describe('built components', () => {
 });
 
 describe('the committed inventory', () => {
-  it('judges every row and port of native-libs.json under the real policy', () => {
+  it('judges every row of native-libs.json under the real policy', () => {
     const inv = loadInventory();
     const real = loadPolicy();
-    const r = checkPorts(
-      inv.ports.map((p) => ({
-        name: p.name === 'boost-*' ? 'boost-graph' : p.name,
-        version: p.version,
-        licence: p.spdx,
-        linkage: 'static',
-      })),
-      inv,
-      real,
-    );
-    expect(r.problems).toEqual([]);
+    expect(inv.ports ?? []).toEqual([]);
     for (const row of inv.libs) {
       expect(row.files.length, row.name).toBeGreaterThan(0);
       expect(row.source, row.name).toMatch(/^https?:\/\//);
+      const v = judge(real, row.spdx, {
+        ecosystem: 'native',
+        names: [row.name, row.exception].filter(Boolean),
+      });
+      expect(v.status, `${row.name}: ${row.spdx}`).not.toBe('denied');
+      for (const i of row.includes ?? []) expect(i.spdx, `${row.name}: ${i.name}`).toBeTruthy();
     }
   });
 
-  it('forbids an FFmpeg DLL in the OpenCV wheel and any PDAL plugin, whoever ships them', () => {
+  it('knows the prebuilt wheels and the conda-forge PDAL, GPL parts included', () => {
     const inv = loadInventory();
     const real = loadPolicy();
-    const ffmpeg = 'python/Lib/site-packages/cv2/opencv_videoio_ffmpeg4130_64.dll';
-    const owners = new Map([
-      [ffmpeg, { name: 'opencv-python-headless', version: '5.0.0.93', licence: 'Apache-2.0' }],
-    ]);
+    const site = 'python/Lib/site-packages';
     const r = checkFiles(
       [
-        ffmpeg,
-        'tools/pdal/lib/libpdal_plugin_kernel_fauxplugin.20.1.0.dylib',
-        'tools/pdal/bin/libpdal_plugin_reader_e57.dll',
+        `${site}/cv2/opencv_videoio_ffmpeg500_64.dll`,
+        `${site}/pycolmap.libs/cholmod-efaefa147ec003190b879b0614ef982a.dll`,
+        `${site}/pycolmap.libs/spqr-807a879857ee822a86bc8000e067d70f.dll`,
+        'python/lib/python3.13/site-packages/cv2/.dylibs/libx264.164.dylib',
+        `${site}/pymeshlab/Qt5Core.dll`,
+        'tools/pdal/Library/bin/pdal.exe',
+        'tools/pdal/Library/bin/pdalcpp.dll',
+        'tools/pdal/lib/libgeos.3.14.1.dylib',
       ],
-      owners,
-      inv,
-      real,
-    );
-    expect(r.problems).toHaveLength(3);
-    expect(r.problems[0]).toMatch(/opencv_videoio_ffmpeg4130_64\.dll: forbidden/);
-    expect(r.problems[1]).toMatch(/fauxplugin.*forbidden \(PDAL plugins/);
-    const ok = checkFiles(
-      ['tools/pdal/lib/libpdalcpp.20.1.0.dylib', 'tools/pdal/bin/pdalcpp.dll'],
       new Map(),
       inv,
       real,
     );
-    expect(ok.problems).toEqual([]);
+    expect(r.problems).toEqual([]);
+    expect([...r.used].sort()).toEqual([
+      'opencv-python-headless (FFmpeg plugin)',
+      'opencv-python-headless (bundled libraries)',
+      'pdal (conda-forge)',
+      'pycolmap (bundled libraries)',
+      'pymeshlab (bundled libraries)',
+    ]);
   });
 
   it('runs end to end on a folder and reports what it found', () => {

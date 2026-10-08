@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 /* eslint-disable no-console -- command-line output */
-// Data licence gate (M10 G1): every imagery and terrain pack we build and distribute carries its
+// Data licence report (M10 G1): every imagery and terrain pack we build and distribute carries its
 // licence, attribution and provenance (the data source) in its metadata (`aio.raster-pack/1`,
-// data-conventions section 23), under a licence that allows redistribution of derived works.
+// data-conventions section 23), under a licence that allows redistribution of derived works. A
+// report only since the founder decision of 8 Oct 2026 (ADR 0008, amended): it warns about what it
+// finds and never fails CI, a dist or a release.
 //
 //   node tools/release/data-licences.mjs [<folder>...]
 //
@@ -101,11 +103,10 @@ export function runDataGate({ dirs = [], policy = dataPolicy(), sources = loadSo
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const out = runDataGate({ dirs: process.argv.slice(2).map((d) => resolve(d)) });
-  if (out.problems.length > 0) {
-    console.error(`Data licence gate failed:\n  ${out.problems.join('\n  ')}`);
-    process.exit(1);
-  }
+  for (const p of out.problems) console.log(`::warning::data licence report: ${p}`);
   console.log(
-    `Data licence gate passed: ${String(out.sources)} sources, ${String(out.packs)} pack metadata files.`,
+    `Data licence report: ${String(out.sources)} sources, ${String(out.packs)} pack metadata files, ${String(
+      out.problems.length,
+    )} notes (report only).`,
   );
 }

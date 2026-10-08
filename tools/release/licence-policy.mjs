@@ -8,7 +8,10 @@
 //     only with the exact licence of its `runtimes` entry; each for the entry's ecosystem.
 //   - An entry whose `approved` is `pending` still counts, reported as pending: CI passes with a
 //     warning, a strict run (release builds) fails.
-//   - Everything else is denied: GPL, AGPL, SSPL, non-commercial and unknown ids.
+//   - Everything else is denied: GPL, AGPL, SSPL, non-commercial and unknown ids, except that
+//     `copyleft.ecosystems` accepts the copyleft families (GPL, LGPL, AGPL, MPL and similar) in
+//     those ecosystems: the founder decision of 8 Oct 2026 for the pipeline pack (python, native).
+//   - Every gate is a report since that decision: it lists what it finds and never fails a build.
 import { readFileSync } from 'node:fs';
 
 export const EXCEPTIONS_FILE = new URL('./licence-exceptions.json', import.meta.url);
@@ -26,8 +29,12 @@ export function loadPolicy(doc = JSON.parse(readFileSync(EXCEPTIONS_FILE, 'utf8'
     mpl: named(doc.mpl),
     lgplShared: named(doc.lgplShared),
     runtimes: named(doc.runtimes),
+    copyleft: new Set(doc.copyleft?.ecosystems ?? []),
   };
 }
+
+/** Licence families the `copyleft` acceptance covers (never non-commercial or proprietary). */
+const COPYLEFT_ID = /^(A?GPL|LGPL|MPL|EPL|CDDL|EUPL|OSL|CECILL|CPL)-/i;
 
 /**
  * Parse an SPDX licence expression into a tree: `{ id, with? }`, `{ and: [...] }` or
@@ -93,8 +100,9 @@ const RANK = { ok: 2, pending: 1, denied: 0 };
 /**
  * Judge licence expression `expr` for a package known by `names` (its name, aliases and, for a
  * runtime, the runtime entry's name) in `ecosystem` ('npm', 'python' or 'native').
- * Answers `{ status: 'ok' | 'pending' | 'denied', pending: [entry names], lgpl: boolean }`;
- * `lgpl` says the chosen option relies on an LGPL licence (the caller checks the linkage).
+ * Answers `{ status: 'ok' | 'pending' | 'denied', pending: [entry names], lgpl: boolean,
+ * copyleft: boolean }`; `lgpl` says the chosen option relies on an LGPL licence (the caller checks
+ * the linkage), `copyleft` that it is allowed only by the copyleft acceptance of its ecosystem.
  */
 export function judge(policy, expr, { ecosystem, names = [] }) {
   const want = new Set(names.map((n) => n.toLowerCase()));
@@ -104,9 +112,17 @@ export function judge(policy, expr, { ecosystem, names = [] }) {
     status: status === 'ok' && entry?.approved === 'pending' ? 'pending' : status,
     pending: entry?.approved === 'pending' ? [entry.name] : [],
     lgpl,
+    copyleft: false,
   });
+  const accepted = policy.copyleft?.has(ecosystem) ?? false;
 
-  function leaf({ id, with: ex }) {
+  function leaf(node) {
+    const v = strictLeaf(node);
+    if (v.status !== 'denied' || !accepted || !COPYLEFT_ID.test(node.id)) return v;
+    return { status: 'ok', pending: [], lgpl: false, copyleft: true };
+  }
+
+  function strictLeaf({ id, with: ex }) {
     const full = ex ? `${id} WITH ${ex}` : id;
     const runtime = entryFor(policy.runtimes);
     if (runtime && runtime.licence === full) return result('ok', runtime);
@@ -134,12 +150,13 @@ export function judge(policy, expr, { ecosystem, names = [] }) {
       status,
       pending: [...new Set(parts.flatMap((p) => p.pending))],
       lgpl: parts.some((p) => p.lgpl),
+      copyleft: parts.some((p) => p.copyleft),
     };
   }
 
   try {
     return walk(parseExpression(expr));
   } catch {
-    return { status: 'denied', pending: [], lgpl: false };
+    return { status: 'denied', pending: [], lgpl: false, copyleft: false };
   }
 }

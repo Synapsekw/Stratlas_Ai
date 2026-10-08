@@ -72,40 +72,45 @@ describe('licence inventory', () => {
   it('renders the native libraries and the map data (M10 G1)', () => {
     const native = nativeInventory(
       {
-        libs: [{ name: 'gdal', version: '3.12', spdx: 'MIT', source: 'https://gdal.org' }],
-        ports: [{ name: 'zlib', version: '1.3.2', spdx: 'Zlib' }],
-      },
-      {
-        components: [
+        libs: [
+          { name: 'gdal', version: '3.12', spdx: 'MIT', source: 'https://gdal.org' },
           {
-            name: 'colmap',
+            name: 'pycolmap (bundled libraries)',
             version: '4.2.1',
-            spdx: 'BSD-3-Clause',
+            spdx: 'GPL-2.0-or-later',
             source: 'https://colmap',
-            status: 'required',
-            includes: [{ name: 'faiss', version: '1.14.1', spdx: 'MIT' }],
+            includes: [{ name: 'SuiteSparse SPQR', spdx: 'GPL-2.0-or-later', where: 'Windows' }],
           },
-          { name: 'texrecon', spdx: 'BSD-3-Clause', status: 'deferred' },
         ],
       },
+      {
+        platforms: {
+          'win-64': [{ name: 'proj', version: '9.9.0', license: 'MIT' }],
+          'osx-arm64': [
+            { name: 'proj', version: '9.9.0', license: 'MIT' },
+            { name: 'libcxx', version: '23.1.3', license: 'Apache-2.0 WITH LLVM-exception' },
+          ],
+        },
+      },
     );
-    expect(native.builds.map((b) => b.name)).toEqual(['colmap', 'faiss (in colmap)']);
+    expect(native.bundled.map((b) => b.name)).toEqual(['SuiteSparse SPQR (in pycolmap, Windows)']);
+    expect(native.pdal.map((b) => b.name)).toEqual(['libcxx (osx-arm64)', 'proj']);
     const md = render([], [], native, [
       { name: 'Copernicus DEM GLO-30', kind: 'terrain', license: 'X', attribution: '© DLR' },
     ]);
     expect(md).toContain('## Pipeline pack native libraries');
     expect(md).toContain('| gdal | 3.12 | MIT |');
-    expect(md).toContain('| faiss (in colmap) | 1.14.1 | MIT |');
-    expect(md).toContain('| zlib | 1.3.2 | Zlib |');
+    expect(md).toContain('| SuiteSparse SPQR (in pycolmap, Windows) | 4.2.1 | GPL-2.0-or-later |');
+    expect(md).toContain('| proj | 9.9.0 | MIT |');
+    expect(md).toContain('GNU General Public License');
     expect(md).toContain('## Map and imagery data');
     expect(md).toContain('| Copernicus DEM GLO-30 | terrain | X | © DLR |');
-    expect(md).not.toContain('texrecon');
   });
 
   it('lists every native library and data source of the inventories', () => {
     const committed = readFileSync(NOTICES, 'utf8');
     const native = nativeInventory();
-    const missing = [...native.libs, ...native.builds, ...native.ports, ...dataInventory()]
+    const missing = [...native.libs, ...native.bundled, ...native.pdal, ...dataInventory()]
       .map((e) => e.name)
       .filter((n) => !committed.includes(`| ${n} `));
     expect(missing).toEqual([]);

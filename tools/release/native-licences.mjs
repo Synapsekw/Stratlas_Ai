@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 /* eslint-disable no-console -- command-line output */
-// Native licence gate (M10 G1): the native libraries inside the pipeline pack, which neither the
-// npm gate nor the Python metadata gate can see.
+// Native licence report (M10 G1): the native libraries inside the pipeline pack, which neither the
+// npm report nor the Python metadata report can see. A report only since the founder decision of
+// 8 Oct 2026 (ADR 0008, amended): the pack takes prebuilt wheels and conda-forge's PDAL with their
+// GPL parts (`copyleft` in licence-exceptions.json); the CLI prints what it finds and always exits
+// 0, and build.mjs prints the same summary. --native and --strict are kept for old build outputs.
 //
 //   node tools/release/native-licences.mjs --scan <folder> [--scan <folder>...] [--native <out>]
 //                                          [--strict] [--json <report.json>]
@@ -19,7 +22,7 @@
 //             row in native-libs.json with the same version; forbidden ports fail; an LGPL port
 //             must be linked as a shared library; each component must be built with the options
 //             its recipe requires (no LSD, CGAL, CUDA, CHOLMOD, FFmpeg).
-//   --strict  pending founder approvals (licence-exceptions.json) fail too (release builds).
+//   --strict  no effect since 8 Oct 2026 (it made pending approvals fail release builds).
 //
 // Licences are judged by licence-policy.mjs against licence-exceptions.json.
 import {
@@ -445,18 +448,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     console.log(
       `::warning::native licence gate: "${p}" waits for founder approval (licence-exceptions.json)`,
     );
-  if (out.problems.length > 0 || (values.strict && out.pending.length > 0)) {
-    console.error(
-      `Native licence gate failed (${String(out.files)} files, ${String(out.ports)} ports):\n  ${[
-        ...out.problems,
-        ...(values.strict ? out.pending.map((p) => `${p}: approval pending (--strict)`) : []),
-      ].join('\n  ')}`,
-    );
-    process.exit(1);
-  }
+  for (const p of out.problems) console.log(`::warning::native licence report: ${p}`);
   console.log(
-    `Native licence gate passed: ${String(out.files)} native files, ${String(out.ports)} ports${
-      out.pending.length ? `, ${String(out.pending.length)} pending approvals` : ''
-    }.`,
+    `Native licence report: ${String(out.files)} native files, ${String(out.ports)} ports, ${String(
+      out.problems.length,
+    )} notes${out.pending.length ? `, ${String(out.pending.length)} pending approvals` : ''} (report only).`,
   );
 }

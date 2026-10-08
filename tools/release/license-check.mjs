@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-// Licence gate for CI (`pnpm license:check`), using pnpm's own licence report.
-//   - Policy: permissive only (M10 decision 1, 7 Oct 2026), one file for every gate:
-//     tools/release/licence-exceptions.json, read through licence-policy.mjs.
+// Licence report for CI (`pnpm license:check`), using pnpm's own licence report. A report only
+// since the founder decision of 8 Oct 2026 (ADR 0008, amended): it prints what it finds as
+// warnings and never fails CI, a dist or a release.
+//   - Policy: tools/release/licence-exceptions.json, read through licence-policy.mjs (the app
+//     stays permissive by convention: M10 decision 1, 7 Oct 2026).
 //   - Production dependencies of every workspace package (what ships inside the app) must be
 //     allowed: an SPDX `OR` needs one allowed option, `AND` needs all. MPL-2.0 counts only for
 //     the packages named in licence-exceptions.json (`mpl`), and LGPL only for a named shared
@@ -48,8 +50,10 @@ for (const { license, id } of report(false)) {
 
 for (const p of pending)
   process.stdout.write(`::warning::licence exception "${p}" waits for founder approval\n`);
-if (problems.length > 0) {
-  console.error(`Licence check failed:\n  ${[...new Set(problems)].join('\n  ')}`);
-  process.exit(1);
-}
-process.stdout.write('Licence check passed.\n');
+const notes = [...new Set(problems)];
+for (const n of notes) process.stdout.write(`::warning::licence report: ${n}\n`);
+process.stdout.write(
+  notes.length > 0
+    ? `Licence report: ${String(notes.length)} packages outside the permissive policy (report only).\n`
+    : 'Licence report: every package is within the permissive policy.\n',
+);
