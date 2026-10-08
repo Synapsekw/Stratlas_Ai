@@ -4,22 +4,31 @@ The smallest parameters below are the ones ``packages/schema/src/m10.test.ts`` p
 the names and the required ones agree on both sides of the JSON-RPC boundary.
 """
 
+import os
+from pathlib import Path
+
 import pytest
 
 from aio_pipelines.pipelines import all_pipelines
 from aio_pipelines.runtime import JobError
 
+
+# Absolute on the machine running the tests (a "D:/..." path is not absolute on macOS).
+def _abs(rel: str) -> str:
+    return str(Path(os.path.abspath(os.sep)) / rel)
+
+
 M10 = {
     "photo.align": {"photos": {"layer": "photos"}, "preset": "standard"},
     "photo.georef": {"run": "20261007-0900"},
     "photo.products": {"run": "20261007-0900", "products": ["ortho", "dsm"]},
-    "opf.import": {"src": "D:/in/project.opf"},
-    "opf.export": {"run": "20261007-0900", "out": "D:/out/opf"},
+    "opf.import": {"src": _abs("in/project.opf")},
+    "opf.export": {"run": "20261007-0900", "out": _abs("out/opf")},
     "tiles.mesh": {"layer": "mesh-1"},
     "tiles.cloud": {"layer": "cloud-1"},
     "packs.imagery": {
-        "src": ["D:/in/ortho.tif"],
-        "dest": "D:/data/packs/imagery",
+        "src": [_abs("in/ortho.tif")],
+        "dest": _abs("data/packs/imagery"),
         "id": "site-imagery",
         "label": "Site imagery",
         "licence": "customer",
@@ -27,8 +36,8 @@ M10 = {
         "customerLicence": True,
     },
     "packs.terrain": {
-        "src": ["D:/in/dem.tif"],
-        "dest": "D:/data/packs/terrain",
+        "src": [_abs("in/dem.tif")],
+        "dest": _abs("data/packs/terrain"),
         "id": "site-dem",
         "label": "Site terrain",
         "licence": "CC0-1.0",
