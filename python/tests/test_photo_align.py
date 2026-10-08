@@ -31,7 +31,6 @@ from aio_pipelines.photo.colmap_io import (
     ColmapEngine,
     EngineJob,
     MemoryExceeded,
-    licence_problem,
     memory_limit,
     memory_status,
 )
@@ -368,22 +367,7 @@ def test_the_engine_refuses_a_missing_pycolmap():
     try:
         import pycolmap  # noqa: F401
     except ImportError:
-        with pytest.raises(JobError, match="COLMAP build"):
+        with pytest.raises(JobError, match="needs COLMAP"):
             ColmapEngine(python=sys.executable).versions()
         return
     pytest.skip("pycolmap is importable in this environment")
-
-
-def test_licence_problem_names_bundled_gpl_libraries(tmp_path):
-    pkg = tmp_path / "site" / "pycolmap"
-    libs = tmp_path / "site" / "pycolmap.libs"
-    pkg.mkdir(parents=True)
-    libs.mkdir()
-    (pkg / "__init__.py").write_text("")
-    (libs / "cholmod-abc.dll").write_bytes(b"")
-    (libs / "ceres-abc.dll").write_bytes(b"")
-    mod = type("M", (), {"__file__": str(pkg / "__init__.py")})
-    msg = licence_problem(mod)
-    assert msg and "cholmod" in msg and "ceres" not in msg
-    (libs / "cholmod-abc.dll").unlink()
-    assert licence_problem(mod) is None

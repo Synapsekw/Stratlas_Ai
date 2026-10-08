@@ -1,8 +1,8 @@
 """photo.align with the real engine (COLMAP through pycolmap), on rendered synthetic photos and,
 on the founder's machine only, on a real flight.
 
-Both skip unless an engine is installed: the pack's own pycolmap build (stream G1) in this
-Python, or a development interpreter named by ``AIO_COLMAP_PYTHON``.
+Both skip unless an engine is installed: pycolmap in this Python (COLMAP's PyPI wheel, from
+``uv sync``), or another interpreter named by ``AIO_COLMAP_PYTHON``.
 
 ``test_realdata_*`` (the ``@realdata`` tests of the plan) also need ``QUADRION_PHOTO_TEST_DIR`` (or the legacy ``STRATLAS_PHOTO_TEST_DIR``):
 a folder of drone photos, or of camera folders (``DCIM/100MEDIA``, ``101MEDIA``); several folders

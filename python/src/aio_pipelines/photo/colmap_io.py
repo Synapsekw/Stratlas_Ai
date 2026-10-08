@@ -12,12 +12,13 @@ without changing the stages.
 - **cancel** kills it within a fraction of a second (the global mapper has no cancellation hook);
 - a native crash or a memory spike cannot take the pipeline process down;
 - the stage's **peak memory** is measured and recorded in ``run.json``;
-- the interpreter can differ: ``AIO_COLMAP_PYTHON`` names a development Python with a pycolmap
-  build (the pack's own build is in the pack's Python, the default).
+- the interpreter can differ: ``AIO_COLMAP_PYTHON`` names another Python with pycolmap (the
+  default is this Python: the pack and the development venv install COLMAP's own PyPI wheel,
+  ``python/pyproject.toml``).
 
-**Licence guard.** The PyPI pycolmap wheels bundle GPL libraries (``cholmod``, ``spqr``) and must
-never run inside Quadrion AI. The worker refuses a pycolmap whose bundled libraries include them,
-unless ``AIO_DEV_ALLOW_GPL_PYCOLMAP=1`` is set for a local experiment outside the product.
+**Licences.** COLMAP's PyPI wheels bundle CHOLMOD and SPQR (GPL); the founder accepted GPL parts
+in the pipeline pack on 8 Oct 2026 (ADR 0008, amended), so any pycolmap build runs. The
+third-party notices list what the wheel bundles.
 
 Resume: the COLMAP database lives in the job's staging ``work/``; feature extraction skips photos
 that already have keypoints and matching skips pairs that are already matched, so a resumed stage
@@ -54,9 +55,6 @@ from typing import Any, Protocol
 from ..runtime import Cancelled, JobError
 
 PYTHON_ENV = "AIO_COLMAP_PYTHON"
-ALLOW_GPL_ENV = "AIO_DEV_ALLOW_GPL_PYCOLMAP"
-#: Native libraries that must never be inside the pycolmap Quadrion AI runs.
-FORBIDDEN_LIBS = re.compile(r"(cholmod|spqr|cxsparse|csparse|siftgpu|lsd|cgal)", re.I)
 
 Progress = Callable[[float, str | None], None]
 
@@ -534,22 +532,6 @@ def peak_memory_bytes() -> int:
     return int(rss if sys.platform == "darwin" else rss * 1024)
 
 
-def licence_problem(pycolmap_module) -> str | None:
-    """Why this pycolmap build must not run in Quadrion AI (its bundled native libraries), or None."""
-    base = Path(pycolmap_module.__file__).resolve().parent
-    found: list[str] = []
-    for d in (base, base.parent / "pycolmap.libs", base / ".dylibs", base.parent / "pycolmap" / ".dylibs"):
-        if d.is_dir():
-            found += [p.name for p in d.iterdir() if p.is_file() and FORBIDDEN_LIBS.search(p.name)]
-    if not found:
-        return None
-    return (
-        "This pycolmap build bundles libraries Quadrion AI may not ship ("
-        + ", ".join(sorted(set(found))[:6])
-        + "). Install the pipeline pack's own COLMAP build."
-    )
-
-
 class _Out:
     def __init__(self):
         self.path = os.environ.get("AIO_COLMAP_PROGRESS")
@@ -591,14 +573,9 @@ def _import_pycolmap(out: _Out):
         import pycolmap
     except Exception as e:
         raise JobError(
-            "Photo alignment needs the pipeline pack's COLMAP build, which is not installed "
+            "Photo alignment needs COLMAP (pycolmap), which is not in this pipeline pack "
             f"({type(e).__name__})."
         ) from None
-    problem = licence_problem(pycolmap)
-    if problem and os.environ.get(ALLOW_GPL_ENV) != "1":
-        raise JobError(problem)
-    if problem:
-        out.send(log="Development run with a pycolmap that bundles GPL libraries: never ship this.")
     return pycolmap
 
 
@@ -613,8 +590,6 @@ def _versions() -> dict[str, Any]:
         "colmap": str(getattr(pc, "COLMAP_version", "?")),
     }
     info["cuda"] = str(bool(getattr(pc, "has_cuda", False))).lower()
-    if licence_problem(pc):
-        info["licence"] = "dev-only (bundles GPL libraries)"
     return info
 
 
