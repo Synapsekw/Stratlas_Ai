@@ -759,6 +759,25 @@ describe('PoissonRecon (for G3)', () => {
       'file(WRITE "${forward}/PNG/png.h" "#include <zlib.h>\\n#include <png.h>\\n")',
     );
     expect(code).toMatch(/foreach\(h jpeglib jerror jmorecfg\)/);
+    // Every vendored name PoissonRecon's Src/JPEG.h and PNG.h include at the pinned commit
+    // (PreProcessor.h always defines USE_JPEG_TURBO, so Windows takes "JPEG-turbo/..."; pack-native
+    // win32-x64: "Cannot open include file: 'JPEG-turbo/turbojpeg.h'").
+    const forwarded = new Set();
+    for (const m of code.matchAll(/foreach\(h ([^)]+)\)\s+file\(WRITE "\$\{forward\}\/([^/]+)\//g))
+      for (const h of m[1].split(' ')) forwarded.add(`${m[2]}/${h}.h`);
+    for (const m of code.matchAll(/file\(WRITE "\$\{forward\}\/([^"]+)"/g))
+      if (!m[1].includes('${h}')) forwarded.add(m[1]);
+    expect([...forwarded].sort()).toEqual([
+      'JPEG-turbo/jpeglib.h',
+      'JPEG-turbo/turbojpeg.h',
+      'JPEG/jerror.h',
+      'JPEG/jmorecfg.h',
+      'JPEG/jpeglib.h',
+      'PNG/png.h',
+    ]);
+    expect(code).toContain('file(WRITE "${forward}/JPEG-turbo/${h}.h" "#include <${h}.h>\\n")');
+    // libjpeg API only: TurboJPEG's header is included, its library is not linked
+    expect(code).not.toMatch(/turbojpeg-static|libjpeg-turbo::/);
     expect(code).toMatch(/target_include_directories\(\$\{tool\} BEFORE PRIVATE "\$\{forward\}"\)/);
     expect(code).toMatch(/install\(TARGETS PoissonRecon SurfaceTrimmer RUNTIME DESTINATION bin\)/);
   });
