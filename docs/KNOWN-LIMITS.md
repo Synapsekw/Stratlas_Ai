@@ -22,6 +22,7 @@ Current limits only; each is removed from this list when fixed.
 - **Compare dates**: measure, drawing, the AI agent, video and pile bodies work in the left (main) view only. On the **Low** graphics tier you get two maps or the swipe instead of two 3D views.
 - With the right panel open on a 1440 px screen, the Labels and layers buttons move into the **More** menu.
 - No Arabic translation yet; **Right to left** mirrors the panels only.
+- Opening projects again and again from the project list grows the app's window process by about 4 MB per open for the first 80 or so opens, then by under 1 MB per open (one demo project: about 360 MB to 590 MB after 120 opens). The app's own memory, its 3D resources and its WebGL contexts stay flat; the growth is in Chromium's native memory (likely worker heaps or Blink caches) and is not traced further yet. Restarting the app frees it.
 
 ## Reports, packages and maps
 
