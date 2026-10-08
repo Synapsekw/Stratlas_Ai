@@ -81,7 +81,7 @@
       "ecosystem": "native",
       "licence": "LGPL-2.1-or-later",
       "use": "GNU libiconv as a shared library (iconv-2.dll) inside the rasterio Windows wheel, already in pipeline packs 0.2 and 0.3; unmodified and replaceable. Found by the G1 native gate.",
-      "approved": "pending"
+      "approved": "2026-10-08"
     },
     {
       "name": "libspatialite",
@@ -89,7 +89,7 @@
       "licence": "MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later",
       "elected": "LGPL-2.1-or-later",
       "use": "SpatiaLite as a shared library (spatialite.dll) inside the rasterio Windows wheel, already in pipeline packs 0.2 and 0.3; unmodified and replaceable. Found by the G1 native gate.",
-      "approved": "pending"
+      "approved": "2026-10-08"
     },
     {
       "name": "freexl",
@@ -97,14 +97,14 @@
       "licence": "MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later",
       "elected": "LGPL-2.1-or-later",
       "use": "FreeXL as a shared library (freexl-1.dll) inside the rasterio Windows wheel, already in pipeline packs 0.2 and 0.3; unmodified and replaceable. Found by the G1 native gate.",
-      "approved": "pending"
+      "approved": "2026-10-08"
     },
     {
       "name": "libquadmath",
       "ecosystem": "native",
       "licence": "LGPL-2.1-or-later",
       "use": "GCC quad-precision maths as a shared library (.dylibs/libquadmath) inside the numpy and scipy macOS wheels, already in pipeline packs 0.2 and 0.3; unmodified and replaceable. Found by the G1 native gate.",
-      "approved": "pending"
+      "approved": "2026-10-08"
     }
   ],
   "runtimes": [
@@ -114,14 +114,14 @@
       "ecosystem": "native",
       "licence": "GPL-3.0-or-later WITH GCC-exception-3.1",
       "use": "libgfortran and libgcc_s as shared libraries in the numpy and scipy macOS wheels, and libgfortran linked into their OpenBLAS DLLs on Windows (scipy-openblas, GCC 10.3), already in pipeline packs 0.2 and 0.3. The GCC Runtime Library Exception lets the code compiled with them ship under any licence. Found by the G1 native gate.",
-      "approved": "pending"
+      "approved": "2026-10-08"
     },
     {
       "name": "msvc-runtime",
       "ecosystem": "native",
       "licence": "LicenseRef-Microsoft-VC-Redist",
       "use": "Microsoft Visual C++ runtime DLLs (vcruntime140, msvcp140, vcomp140 and their siblings) that CPython and the Windows wheels ship, redistributable under the Visual Studio licence terms, unmodified. Already in pipeline packs 0.2 and 0.3.",
-      "approved": "pending"
+      "approved": "2026-10-08"
     }
   ],
   "elections": [

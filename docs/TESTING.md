@@ -685,17 +685,10 @@ Use a real drone flight of yours. The photos stay in their folder and are only r
 - [ ] Back in **Demo tank farm**, import that same `tileset.json`: "That folder holds this project. Pick the folder of the 3D Tiles export." Nothing is copied.
 - [ ] Optional, with a 3D Tiles export from another program (DJI Terra, Pix4D): a georeferenced one shows in place; one without a georeference says "It has no georeference of its own, so it is kept hidden: placing it on the map is not built yet."
 
-### Licence approvals
+### Licences
 
-The native build found six libraries whose licences need your yes or no. They are already in packs 0.2 and 0.3; the release build fails until each is decided. My recommendation: approve all six. Each is either an unmodified shared library that can be replaced, or a runtime whose licence allows commercial use.
+The six native libraries the build found (libiconv, SpatiaLite, FreeXL, libquadmath, the GCC runtime and the Microsoft Visual C++ runtime) were approved on 8 Oct 2026.
 
-- [ ] libiconv: LGPL-2.1, a shared library in the rasterio Windows wheel.
-- [ ] SpatiaLite: MPL-1.1, GPL-2.0 or LGPL-2.1, used under LGPL; a shared library in the rasterio Windows wheel.
-- [ ] FreeXL: the same three licences, used under LGPL; a shared library in the rasterio Windows wheel.
-- [ ] libquadmath: LGPL-2.1, a shared library in the numpy and scipy Mac wheels.
-- [ ] GCC runtime: GPL-3.0 with the GCC Runtime Library Exception; in the numpy and scipy Mac wheels and the Windows OpenBLAS.
-- [ ] Microsoft Visual C++ runtime: Microsoft's redistributable licence; in Python and the Windows wheels.
-- Tell me "approve all six", or which to refuse. I record your answer in `tools/release/licence-exceptions.json`.
 - [ ] (needs pack 0.4.0) **Settings, About and updates**, **Third-party licences** has the sections "Pipeline pack native libraries" and "Map and imagery data". The only GPL text is the GCC runtime exception and the libraries offered under a choice of licences.
 
 ### Security
