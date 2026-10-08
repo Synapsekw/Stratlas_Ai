@@ -1,0 +1,31 @@
+{
+  "schema": "aio.site-transform/1",
+  "from": {
+    "epsg": 26916
+  },
+  "to": {
+    "epsg": 2240
+  },
+  "operation": "Inverse of UTM zone 16N + SPCS83 Georgia West zone (US survey foot)",
+  "grid": {
+    "file": "site-grid.f64",
+    "originX": 741000.0,
+    "originY": 3734000.0,
+    "spacingM": 1.0,
+    "cols": 82,
+    "rows": 82,
+    "bands": 2
+  },
+  "geoidGrid": {
+    "file": "geoid-site.f64",
+    "originX": 741000.0,
+    "originY": 3734000.0,
+    "spacingM": 1.0,
+    "cols": 82,
+    "rows": 82,
+    "bands": 1
+  },
+  "proj4": "+proj=tmerc +lat_0=30 +lon_0=-84.1666666666667 +k=0.9999 +x_0=699999.9998984 +y_0=0 +datum=NAD83 +units=us-ft +no_defs +type=crs",
+  "fingerprint": "sha256:c3b8b5d50469bf8b85701e581602871290ad2424c6b7c024c7ffa61fc2e95412",
+  "writtenAt": "2026-10-09T08:00:00.000Z"
+}

@@ -1,0 +1,150 @@
+{
+  "schema": "aio.site-calibration/1",
+  "id": "cal-jobxml",
+  "name": "synthetic",
+  "source": {
+    "format": "jobxml",
+    "sha256": "909225869e19502bf8ff538c1258ac4e72df812d05f56258d9ffbed4a20684eb"
+  },
+  "horizontal": {
+    "originE": 10000.0,
+    "originN": 20000.0,
+    "shiftE": 4987.654,
+    "shiftN": -18011.321,
+    "rotationRad": 0.013089969389957472,
+    "scale": 1.000025
+  },
+  "vertical": {
+    "originE": 14990.0,
+    "originN": 1990.0,
+    "shiftM": -0.832,
+    "slopeN": 1.2e-05,
+    "slopeE": -7e-06
+  },
+  "rmsH": 0.005583,
+  "rmsV": 0.005516,
+  "pairs": [
+    {
+      "name": "CP1",
+      "local": [
+        1594.2201,
+        15092.8975,
+        26.8013
+      ],
+      "wgs84": [
+        25.2864272411,
+        51.53099364116,
+        27.6461
+      ],
+      "useH": true,
+      "useV": true,
+      "controllerResidualH": 0.0092,
+      "controllerResidualV": -0.0074,
+      "residualH": 0.009207,
+      "residualV": -0.00733
+    },
+    {
+      "name": "CP2",
+      "local": [
+        2249.8007,
+        15302.0409,
+        32.5223
+      ],
+      "wgs84": [
+        25.29231973515,
+        51.53315524667,
+        33.3523
+      ],
+      "useH": true,
+      "useV": true,
+      "controllerResidualH": 0.0052,
+      "controllerResidualV": 0.0011,
+      "residualH": 0.005135,
+      "residualV": 0.001067
+    },
+    {
+      "name": "CP3",
+      "local": [
+        2229.2063,
+        15205.0789,
+        34.2957
+      ],
+      "wgs84": [
+        25.29214528717,
+        51.53218989147,
+        35.1364
+      ],
+      "useH": true,
+      "useV": true,
+      "controllerResidualH": 0.001,
+      "controllerResidualV": -0.0101,
+      "residualH": 0.001002,
+      "residualV": -0.010065
+    },
+    {
+      "name": "CP4",
+      "local": [
+        1960.1507,
+        14768.1667,
+        35.7746
+      ],
+      "wgs84": [
+        25.28976842429,
+        51.52781724362,
+        36.6049
+      ],
+      "useH": true,
+      "useV": true,
+      "controllerResidualH": 0.0022,
+      "controllerResidualV": 0.0005,
+      "residualH": 0.002183,
+      "residualV": 0.000505
+    },
+    {
+      "name": "CP5",
+      "local": [
+        1829.0199,
+        14829.8532,
+        49.0283
+      ],
+      "wgs84": [
+        25.28857757881,
+        51.52841268024,
+        49.865
+      ],
+      "useH": true,
+      "useV": true,
+      "controllerResidualH": 0.0064,
+      "controllerResidualV": -0.0039,
+      "residualH": 0.006463,
+      "residualV": -0.003889
+    },
+    {
+      "name": "CP6",
+      "local": [
+        1815.3463,
+        15288.7957,
+        42.9404
+      ],
+      "wgs84": [
+        25.28839985797,
+        51.53296720651,
+        43.7799
+      ],
+      "useH": true,
+      "useV": true,
+      "controllerResidualH": 0.0053,
+      "controllerResidualV": -0.0032,
+      "residualH": 0.005324,
+      "residualV": -0.003313
+    }
+  ],
+  "conventions": {
+    "rotation": "ccw",
+    "plane": "local"
+  },
+  "projection": {
+    "wkt": "BOUNDCRS[SOURCECRS[PROJCRS[\"unknown\",BASEGEOGCRS[\"unknown\",DATUM[\"Unknown based on WGS 84 ellipsoid using towgs84=0,0,0,0,0,0,0\",ELLIPSOID[\"WGS 84\",6378137,298.257223563,LENGTHUNIT[\"metre\",1,ID[\"EPSG\",9001]]]],PRIMEM[\"Greenwich\",0,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8901]]],CONVERSION[\"unknown\",METHOD[\"Transverse Mercator\",ID[\"EPSG\",9807]],PARAMETER[\"Latitude of natural origin\",25.29,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8801]],PARAMETER[\"Longitude of natural origin\",51.53,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8802]],PARAMETER[\"Scale factor at natural origin\",1.00002,SCALEUNIT[\"unity\",1],ID[\"EPSG\",8805]],PARAMETER[\"False easting\",10000,LENGTHUNIT[\"metre\",1],ID[\"EPSG\",8806]],PARAMETER[\"False northing\",20000,LENGTHUNIT[\"metre\",1],ID[\"EPSG\",8807]]],CS[Cartesian,2],AXIS[\"(E)\",east,ORDER[1],LENGTHUNIT[\"metre\",1,ID[\"EPSG\",9001]]],AXIS[\"(N)\",north,ORDER[2],LENGTHUNIT[\"metre\",1,ID[\"EPSG\",9001]]]]],TARGETCRS[GEOGCRS[\"WGS 84\",DATUM[\"World Geodetic System 1984\",ELLIPSOID[\"WGS 84\",6378137,298.257223563,LENGTHUNIT[\"metre\",1]]],PRIMEM[\"Greenwich\",0,ANGLEUNIT[\"degree\",0.0174532925199433]],CS[ellipsoidal,2],AXIS[\"latitude\",north,ORDER[1],ANGLEUNIT[\"degree\",0.0174532925199433]],AXIS[\"longitude\",east,ORDER[2],ANGLEUNIT[\"degree\",0.0174532925199433]],ID[\"EPSG\",4326]]],ABRIDGEDTRANSFORMATION[\"Transformation from unknown to WGS84\",METHOD[\"Position Vector transformation (geog2D domain)\",ID[\"EPSG\",9606]],PARAMETER[\"X-axis translation\",0,ID[\"EPSG\",8605]],PARAMETER[\"Y-axis translation\",0,ID[\"EPSG\",8606]],PARAMETER[\"Z-axis translation\",0,ID[\"EPSG\",8607]],PARAMETER[\"X-axis rotation\",0,ID[\"EPSG\",8608]],PARAMETER[\"Y-axis rotation\",0,ID[\"EPSG\",8609]],PARAMETER[\"Z-axis rotation\",0,ID[\"EPSG\",8610]],PARAMETER[\"Scale difference\",1,ID[\"EPSG\",8611]]]]"
+  },
+  "computedAt": "2026-10-09T08:00:00.000Z"
+}
