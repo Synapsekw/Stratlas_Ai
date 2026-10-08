@@ -1,7 +1,18 @@
 pre-commit:
   commands:
+    guard-main:
+      run: node tools/git/guard-main.mjs commit
     lint-staged:
       run: pnpm exec lint-staged
+pre-merge-commit:
+  commands:
+    guard-main:
+      run: node tools/git/guard-main.mjs commit
+pre-push:
+  commands:
+    guard-main:
+      run: node tools/git/guard-main.mjs push
+      use_stdin: true
 commit-msg:
   commands:
     commitlint:

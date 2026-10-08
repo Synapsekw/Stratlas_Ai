@@ -31,7 +31,7 @@ git worktree add ../quadrion-wt/s3-engine -b stream/s3-engine
 
 - A stream owns its package(s) and may not edit another stream's package. Ask the integration lead instead.
 - Nobody edits the main checkout directly; every change, docs included, starts in its own worktree.
-- Get `pnpm check` green on your branch, then hand it to the merge session, which merges branches into `main` one at a time and pushes. `CLAUDE.md` has the full steps.
+- Get `pnpm check` green on your branch, then hand it to the orchestrator session, which merges branches into `main` one at a time and pushes. Nobody commits on `main` (the hooks refuse it). `CLAUDE.md` has the full steps.
 - Contracts in `@aio/schema` are frozen (`contracts-v1`). A change needs an entry in `docs/architecture/contract-changes.md` and the integration lead's sign-off before merge.
 
 ## Tests
