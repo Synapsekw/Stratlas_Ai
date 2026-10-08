@@ -194,6 +194,12 @@ const WRITERS: Partial<
     rel: 'survey/measurements.json',
     after: r.file,
   }),
+  // M11 G8 terrain cleanups and crops: one record.external op per save (no record kind yet)
+  'survey:writeTerrainEdits': (r: IpcRequest<'survey:writeTerrainEdits'>) => ({
+    projectId: r.projectId,
+    rel: 'survey/cleanups.json',
+    after: r.file,
+  }),
 };
 
 /**
