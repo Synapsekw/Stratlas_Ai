@@ -629,6 +629,35 @@ describe('M11 IPC channels', () => {
       expect(r.success, c).toBe(true);
     }
   });
+
+  it('declares the QA and terrain edit channels of G8 (additive)', () => {
+    const qa = {
+      schema: 'aio.survey-qa/1',
+      capture: 'c1',
+      level: 'strict',
+      status: 'released',
+      release: { at: NOW, note: 'Checked against the GNSS log.' },
+      checkedAt: NOW,
+    };
+    const edits = { schema: 'aio.terrain-edits/1', edits: [] };
+    expect(ipc['survey:readQa'].request.safeParse({ projectId: 'p1' }).success).toBe(true);
+    expect(
+      ipc['survey:readQa'].response.safeParse({ ok: true, files: [qa], readOnly: false }).success,
+    ).toBe(true);
+    const release = ipc['survey:releaseHold'].request;
+    expect(release.safeParse({ projectId: 'p1', capture: 'c1', note: 'Checked.' }).success).toBe(
+      true,
+    );
+    expect(release.safeParse({ projectId: 'p1', capture: 'c1', note: '   ' }).success).toBe(false);
+    expect(ipc['survey:releaseHold'].response.safeParse({ ok: true, qa }).success).toBe(true);
+    expect(
+      ipc['survey:readTerrainEdits'].response.safeParse({ ok: true, file: edits, readOnly: true })
+        .success,
+    ).toBe(true);
+    expect(
+      ipc['survey:writeTerrainEdits'].request.safeParse({ projectId: 'p1', file: edits }).success,
+    ).toBe(true);
+  });
 });
 
 describe('M11 journal ops and entitlements', () => {
