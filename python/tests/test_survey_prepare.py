@@ -63,8 +63,10 @@ def test_two_dsms_become_height_tiles_with_the_raster_heights(tmp_path):
     lv1 = decode_tile((tmp_path / "survey" / "surfaces" / "dsm-c2" / "1" / "0_0.bin").read_bytes())
     assert lv1[0, 0] == pytest.approx(want[:2, :2].mean(), abs=1e-5)
     assert (tmp_path / "survey" / "surfaces" / "dsm-c2" / "2" / "0_0.bin").is_file()
-    # G1's site tables are not built here yet: skipped quietly
-    assert result["outputs"]["geodesy"] == {"written": False}
+    # G1's site tables are written for the extent of the job's surfaces
+    geodesy = result["outputs"]["geodesy"]
+    assert geodesy["written"] is True and geodesy["from"] == {"epsg": EPSG}
+    assert (tmp_path / "survey" / "geodesy" / "site-transform.json").is_file()
     assert any(p["path"] == "survey/surfaces/dsm-c2/tiles.json" for p in rec.of("artifact"))
 
 
