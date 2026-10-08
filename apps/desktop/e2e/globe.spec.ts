@@ -186,7 +186,9 @@ async function installSyntheticPacks(dataRoot: DataRoot): Promise<void> {
 async function openGlobe(win: Page) {
   await win.locator('.sb-nav .nav-item', { hasText: 'Globe' }).click();
   await expect(win.getByTestId('globe-canvas').locator('canvas')).toBeVisible();
-  await expect.poll(async () => (await inspect(win))?.sites.length ?? 0).toBeGreaterThan(0);
+  // The Globe's first frames hold the renderer like a flight does: on the Windows runner the
+  // first inspect() came back after 15.8 s (main run 37854082873), so a 5 s poll gave up on it.
+  await settle(win, 'the Globe placed the sites', (s) => s.sites.length > 0);
 }
 
 /** Pick a site in the list and wait for the flight to end over it. */
