@@ -123,6 +123,7 @@
       "tag": "93",
       "commit": "b83046cda41133f1bf2e73e99dba16a1248f103a",
       "status": "required",
+      "patches": ["opencv-python/patches/0001-no-ffmpeg-dll.patch"],
       "env": {
         "ENABLE_HEADLESS": "1",
         "ENABLE_CONTRIB": "0",
@@ -184,7 +185,7 @@
       "status": "required",
       "manifest": "pdal/vcpkg.json",
       "outputs": ["tools/pdal/bin/pdal*"],
-      "note": "The PDAL command-line tool into <pack>/tools/pdal, which aio_pipelines/pointcloud.py looks for; no plugins, PROJ without network"
+      "note": "The PDAL command-line tool into <pack>/tools/pdal, which aio_pipelines/pointcloud.py looks for; no plugins (the port's plugin features are off, and PDAL's test plugin fauxplugin, which it always builds, is left out when build-native.mjs copies the tool), PROJ without network"
     },
     {
       "name": "poissonrecon",

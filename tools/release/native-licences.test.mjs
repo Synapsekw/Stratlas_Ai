@@ -310,6 +310,35 @@ describe('the committed inventory', () => {
     }
   });
 
+  it('forbids an FFmpeg DLL in the OpenCV wheel and any PDAL plugin, whoever ships them', () => {
+    const inv = loadInventory();
+    const real = loadPolicy();
+    const ffmpeg = 'python/Lib/site-packages/cv2/opencv_videoio_ffmpeg4130_64.dll';
+    const owners = new Map([
+      [ffmpeg, { name: 'opencv-python-headless', version: '5.0.0.93', licence: 'Apache-2.0' }],
+    ]);
+    const r = checkFiles(
+      [
+        ffmpeg,
+        'tools/pdal/lib/libpdal_plugin_kernel_fauxplugin.20.1.0.dylib',
+        'tools/pdal/bin/libpdal_plugin_reader_e57.dll',
+      ],
+      owners,
+      inv,
+      real,
+    );
+    expect(r.problems).toHaveLength(3);
+    expect(r.problems[0]).toMatch(/opencv_videoio_ffmpeg4130_64\.dll: forbidden/);
+    expect(r.problems[1]).toMatch(/fauxplugin.*forbidden \(PDAL plugins/);
+    const ok = checkFiles(
+      ['tools/pdal/lib/libpdalcpp.20.1.0.dylib', 'tools/pdal/bin/pdalcpp.dll'],
+      new Map(),
+      inv,
+      real,
+    );
+    expect(ok.problems).toEqual([]);
+  });
+
   it('runs end to end on a folder and reports what it found', () => {
     put('tools/pdal/bin/pdal.exe', 'MZ');
     const out = runGate({ scan: [root], policy, inventory });
