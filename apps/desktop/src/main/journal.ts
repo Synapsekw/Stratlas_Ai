@@ -182,6 +182,12 @@ const WRITERS: Partial<
     rel: 'report/narrative.json',
     after: r.file,
   }),
+  // M11 G6: design.add, design.patch and design.archive (packages/journal diff.ts)
+  'survey:writeDesigns': (r: IpcRequest<'survey:writeDesigns'>) => ({
+    projectId: r.projectId,
+    rel: 'survey/designs.json',
+    after: r.file,
+  }),
   // hand-set camera directions: one record.external op per save until a kind is agreed
   'orientation:write': (r: IpcRequest<'orientation:write'>) => ({
     projectId: r.projectId,
@@ -203,6 +209,7 @@ const WRITERS: Partial<
  */
 const READS: ReadonlySet<IpcChannel> = new Set<IpcChannel>([
   'project:readVolumes',
+  'survey:readDesigns',
   'detections:read',
   'detections:maskAssistStatus',
   'report:list',

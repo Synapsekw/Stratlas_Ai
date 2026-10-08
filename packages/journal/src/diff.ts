@@ -226,6 +226,12 @@ interface FileKind {
   /** `record` payloads (`{ record }`) instead of field patches. */
   record?: boolean;
   units(rel: string, json: Obj): Unit[];
+  /** A kind per unit change, when one file holds several (designs: add, patch, archive). */
+  kindOf?(
+    target: RecordRef,
+    before: Obj | null,
+    after: Obj | null,
+  ): { kind: OpKind; record?: boolean };
 }
 
 const listUnits = (
@@ -249,6 +255,18 @@ const listUnits = (
 };
 
 const base = (rel: string) => rel.slice(rel.lastIndexOf('/') + 1);
+
+/** Only layers' `archived` flags differ (or the design went): `design.archive`. */
+function onlyArchived(before: Obj, after: Obj | null): boolean {
+  if (after === null) return true;
+  const layersOf = (d: Obj): unknown[] => (Array.isArray(d.layers) ? (d.layers as unknown[]) : []);
+  const strip = (d: Obj) => ({
+    ...d,
+    layers: layersOf(d).map((l) => (isObj(l) ? { ...l, archived: undefined } : l)),
+  });
+  const archivedOf = (d: Obj) => layersOf(d).map((l) => (isObj(l) ? l.archived : undefined));
+  return same(strip(before), strip(after)) && !same(archivedOf(before), archivedOf(after));
+}
 
 const FILES: { match: RegExp; kind: FileKind }[] = [
   {
@@ -323,6 +341,29 @@ const FILES: { match: RegExp; kind: FileKind }[] = [
           (id) => ({ rec: 'boundary', id }),
           { rec: 'boundary', id: 'file' },
         ) ?? [{ target: { rec: 'boundary', id: 'file' }, value: json }],
+    },
+  },
+  {
+    // survey/designs.json (M11 G6): one record per design; the file's own keys (activeAlignment)
+    // are one more unit, on the site's survey record (`survey` merges by field). A new design is design.add, archiving layers design.archive, the rest
+    // design.patch.
+    match: /^survey\/designs\.json$/,
+    kind: {
+      kind: 'design.patch',
+      units: (_rel, json) =>
+        listUnits(
+          json,
+          'designs',
+          (d) => (typeof d.id === 'string' ? d.id : undefined),
+          (id) => ({ rec: 'design', id }),
+          { rec: 'survey', id: 'designs' },
+        ) ?? [{ target: { rec: 'survey', id: 'designs' }, value: json }],
+      kindOf: (target, before, after) => {
+        if (target.rec !== 'design') return { kind: 'design.patch' };
+        if (before === null) return { kind: 'design.add', record: true };
+        if (onlyArchived(before, after)) return { kind: 'design.archive' };
+        return { kind: 'design.patch' };
+      },
     },
   },
   {
@@ -428,17 +469,18 @@ function unitOp(
   lab: { label?: string; via?: Via },
 ): DraftOp {
   const b = before ? { base: contentHash(before) } : {};
-  if (spec.record) {
+  const which = spec.kindOf?.(target, before, after) ?? { kind: spec.kind, record: spec.record };
+  if (which.record) {
     const record = after ?? { removed: true };
     return {
-      kind: spec.kind,
+      kind: which.kind,
       target,
       ...b,
       payload: { record, ...(before ? { was: before } : {}) },
       ...lab,
     };
   }
-  return { kind: spec.kind, target, ...b, payload: { ...diffFields(before, after) }, ...lab };
+  return { kind: which.kind, target, ...b, payload: { ...diffFields(before, after) }, ...lab };
 }
 
 /** A difference the journal cannot split into records: file hashes before and after. */

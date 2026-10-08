@@ -8,6 +8,7 @@ import {
   DesignsFile,
   ENTITLEMENTS,
   GeoidPackMeta,
+  ImportItem,
   HeightTiles,
   LAYER_KINDS,
   Layer,
@@ -364,6 +365,12 @@ describe('survey files', () => {
 });
 
 describe('design files', () => {
+  it('lets the Builder import list name a design (G6)', () => {
+    expect(ImportItem.parse({ file: 'pad.xml', kind: 'design', status: 'queued' }).kind).toBe(
+      'design',
+    );
+  });
+
   const design = (id: string) => ({
     id,
     name: 'Bulk earthworks',

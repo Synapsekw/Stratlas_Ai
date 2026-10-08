@@ -36,3 +36,42 @@ export { signedVolumeTotals, type VolumeTotals } from './totals';
 export * from './engine';
 export * from './tools';
 export * from './templates';
+
+// designs/ (G6): design TINs, alignments and compliance to design
+// the design `Tin` record is exported as `DesignTin`: the engine already exports its `Tin` class
+export {
+  parseTin,
+  TinError,
+  TinSampler,
+  TIN_CHAIN,
+  type Tin as DesignTin,
+  type TinChain,
+} from './designs/tin';
+export {
+  alignmentPolyline,
+  bearing,
+  distanceAt,
+  elementPoint,
+  formatStation,
+  pointAt,
+  pointAtStation,
+  stationAt,
+  stationLabels,
+  stationOffset,
+  stationRegions,
+  totalLength,
+  type StationLabel,
+  type StationOffset,
+  type StationRegion,
+} from './designs/alignment';
+export {
+  COMPLIANCE_COLOURS,
+  DESIGN_PRESET_LABELS,
+  designComparisonItem,
+  toleranceBand,
+  toleranceHeatmap,
+  toleranceShare,
+  type DesignPreset,
+  type ToleranceBand,
+  type ToleranceShare,
+} from './designs/compliance';
