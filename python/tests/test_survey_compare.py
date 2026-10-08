@@ -421,3 +421,19 @@ def test_a_whole_site_base_needs_a_ring(tmp_path):
     prepared(tmp_path)
     with pytest.raises(JobError, match="needs a boundary"):
         run_job(pipeline(), tmp_path, {"site": {"from": {"kind": "smart"}, "to": {"kind": "current"}}})
+
+
+def test_change_surface_weights_are_the_core_coverage_in_its_frame():
+    from aio_pipelines.survey.compare import ring_weights, weighted_volumes
+
+    # a triangle in the change frame (x east, z south) on a grid whose rows go south
+    ring = [(1.05, 0.4), (3.3, 0.9), (1.6, 2.75)]
+    w = ring_weights(ring, 0.0, 0.0, 0.5, 8, 7)
+    a = abs((3.3 - 1.05) * (2.75 - 0.4) - (1.6 - 1.05) * (0.9 - 0.4)) / 2
+    assert w.sum() * 0.25 == pytest.approx(a, rel=1e-12)
+    assert w[0].sum() > 0 and w[6].sum() == 0  # row 0 is the northern (smallest z) row
+    dz = np.full((7, 8), 2.0)
+    t = weighted_volumes(dz, w, 0.5)
+    assert t.fill == pytest.approx(2 * a, rel=1e-12) and t.cut == 0
+    t = weighted_volumes(dz, w, 0.5, deadband=3.0, use_deadband=True)
+    assert t.fill == 0 and t.area_unchanged == pytest.approx(a, rel=1e-12)

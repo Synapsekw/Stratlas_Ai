@@ -555,6 +555,48 @@ def _exact_path(lring, item, rf, rt, surf, le, ln, db, check):
     return tot, labels
 
 
+# ------------------------------------------------------------------- the core for other pipelines
+
+
+def weighted_volumes(
+    dz: np.ndarray, weights: np.ndarray, cell: float, deadband: float = 0.0, use_deadband: bool = False
+) -> Totals:
+    """The grid path's sums over given cells: ``weights`` (0 to 1) of each cell of ``dz`` (NaN no data).
+
+    ``change.surface`` uses it for its regions (a weight of 1 per cell) and its ``areas`` (the exact
+    coverage weights of ``ring_weights``).
+    """
+    w = np.asarray(weights, dtype=np.float64)
+    m = w > 0
+    ok = m & np.isfinite(dz)
+    a2 = cell * cell
+    with np.errstate(invalid="ignore"):
+        d = np.where(ok, dz, 0.0)
+    cnt = ok & (np.abs(d) >= deadband) if use_deadband else ok
+    fm = cnt & (d > 0)
+    cm = cnt & (d < 0)
+    return Totals(
+        fill=float((w[fm] * d[fm]).sum()) * a2,
+        cut=float((w[cm] * -d[cm]).sum()) * a2,
+        area_fill=float(w[fm].sum()) * a2,
+        area_cut=float(w[cm].sum()) * a2,
+        area_unchanged=float(w[ok & ~fm & ~cm].sum()) * a2,
+        uncovered=float(w[m & ~ok].sum()) * a2,
+    )
+
+
+def ring_weights(
+    ring_xz: list[tuple[float, float]], x0: float, z0: float, cell: float, cols: int, rows: int
+) -> np.ndarray:
+    """Exact coverage weights of a ring on a grid of the local frame (x east, z south, rows south)."""
+    top = z0 + rows * cell
+    ring = normal_ring([(x - x0, top - z) for x, z in ring_xz])
+    if len(ring) < 3:
+        return np.zeros((rows, cols))
+    w = coverage(ring, Window(cell, 0, 0, cols, rows))
+    return w[::-1].copy()
+
+
 # ------------------------------------------------------------------------------- project surfaces
 
 SOURCE_RANK = {"derived": 0, "dsm": 1, "cloud": 2, "dtm": 3, "design": 4}
