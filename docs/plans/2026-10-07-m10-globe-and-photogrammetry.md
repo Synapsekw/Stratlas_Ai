@@ -544,7 +544,7 @@ Shared files stay with the integration lead after G0; a stream that needs a chan
 
 **Founder test steps (stage M10, pack):**
 
-- [ ] Install pipeline pack 0.4.0 on the Windows workstation and on the Mac. **Settings, Pipelines** shows 0.4.0 and "Photo processing: available (CPU)".
+- [ ] Install pipeline pack 0.4.0 on the Windows workstation and on the Mac (copy the pack folder into `<data folder>/runtime/`). **Jobs** shows "Pipeline pack 0.4.0" at the top, and the processing wizard's **Estimate for this computer** reads "Photo processing: available (CPU)".
 - [ ] **Settings, About, Licences** lists the native libraries with their licences; no GPL, AGPL or "non-commercial" appears.
 - [ ] Install the 0.10.0 app with pack 0.3.0: the app asks for pack 0.4.0 for photo processing and runs every other pipeline as before.
 
@@ -651,7 +651,7 @@ Shared files stay with the integration lead after G0; a stream that needs a chan
 **Scope:**
 
 - **Wizard:** pick photos (a folder, or an existing photos layer); CRS (project CRS, or a UTM zone suggested from the photos for a new project); preset with plain words; products; survey date; a per-machine estimate (time range, disk, memory) from the photo count, image size, preset and the hardware probe; a GPU line ("NVIDIA RTX 4070, 12 GB: used for High" or "No supported GPU: CPU only").
-- **Hardware probe** (`photo:probe`): CPU model and cores, memory, free disk on the data drive, GPU from Electron's `app.getGPUInfo`, CUDA availability from the pack's self-test; cached per session; shown in Settings, Pipelines and in the diagnostics bundle.
+- **Hardware probe** (`photo:probe`): CPU model and cores, memory, free disk on the data drive, GPU from Electron's `app.getGPUInfo`, CUDA availability from the pack's self-test; cached per session; shown in the processing wizard's **Estimate for this computer** and in the diagnostics bundle.
 - **GCPs:** import a CSV or TXT with column mapping and EPSG choice; a table with role (control or check), accuracy and the number of marks; the marker view shows photos that see the selected point, sorted by predicted distance to the image centre, with the prediction ring and draft detections; keyboard (next photo, confirm, skip, zoom); at least three marks per point; **Adjust** starts `photo.georef`.
 - **Accuracy report** view and PDF: tables of residuals, RMSE by role, camera residuals, an overlap map, warnings; the house-report section `processing` with the same summary.
 - **Use refined poses:** a preview listing how far each camera moves (median and maximum), then the swap with `.bak`.

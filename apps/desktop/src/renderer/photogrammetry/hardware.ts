@@ -9,7 +9,7 @@ export function processingLine(p: HardwareProbe): { ok: boolean; text: string } 
     case 'no-pack':
       return {
         ok: false,
-        text: 'Photo processing needs the pipeline pack 0.4.0 or later. Install it in Settings, Pipelines.',
+        text: 'Photo processing needs the pipeline pack 0.4.0 or later. Copy the pack folder into runtime in the data folder; Jobs then shows its version at the top.',
       };
     case 'pack-too-old':
       return {

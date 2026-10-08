@@ -82,6 +82,10 @@ describe('hardware words', () => {
       text: 'Photo processing: available (CPU)',
     });
     expect(processingLine(probe({ processing: 'no-pack' })).ok).toBe(false);
+    // there is no Settings page for packs: the pack is copied into runtime, and Jobs shows it
+    expect(processingLine(probe({ processing: 'no-pack' })).text).toMatch(
+      /runtime in the data folder; Jobs/,
+    );
     expect(processingLine(probe({ processing: 'unsupported-platform' })).text).toMatch(
       /Windows x64 and on Macs with Apple silicon/,
     );
