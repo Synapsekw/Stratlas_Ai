@@ -6,9 +6,13 @@
 # build-native.mjs passes): zlib, libpng 1.6 and libjpeg-turbo. Upstream's vendored copies in ZLIB/,
 # PNG/ (libpng 1.2.29) and JPEG/ are not compiled: their zlib calls read, write, close and lseek
 # without <unistd.h>, an error in C99 that current AppleClang enforces (pack-native darwin-arm64).
-# PoissonRecon names them as "PNG/png.h" and, on Windows, "JPEG/jpeglib.h"; the forwarding
-# headers written below send those names to vcpkg's headers, and the checkout itself is not on the
-# include path, so a vendored header can never be picked up.
+# PoissonRecon names them as "PNG/png.h" and, on Windows only, "JPEG-turbo/turbojpeg.h" and
+# "JPEG-turbo/jpeglib.h" (Src/PreProcessor.h always defines USE_JPEG_TURBO; JPEG.h's other branch
+# names "JPEG/jpeglib.h"); elsewhere it includes <turbojpeg.h> and <jpeglib.h> directly. The
+# forwarding headers written below send those names to vcpkg's headers, and the checkout itself is
+# not on the include path, so a vendored header can never be picked up. JPEG.inl calls only the
+# libjpeg API (jpeg_*), never TurboJPEG's tj* functions, so turbojpeg.h is included but its library
+# is not linked: the same libjpeg API on both platforms. vcpkg's libjpeg-turbo always installs it.
 #
 #   cmake -S tools/pipeline-pack/native/poissonrecon -B <build> -DPOISSONRECON_SOURCE=<checkout>
 #         -DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake -DVCPKG_MANIFEST_DIR=...
@@ -30,6 +34,9 @@ set(forward "${CMAKE_BINARY_DIR}/vcpkg-forward")
 file(WRITE "${forward}/PNG/png.h" "#include <zlib.h>\n#include <png.h>\n")
 foreach(h jpeglib jerror jmorecfg)
     file(WRITE "${forward}/JPEG/${h}.h" "#include <${h}.h>\n")
+endforeach()
+foreach(h turbojpeg jpeglib)
+    file(WRITE "${forward}/JPEG-turbo/${h}.h" "#include <${h}.h>\n")
 endforeach()
 
 foreach(tool PoissonRecon SurfaceTrimmer)
