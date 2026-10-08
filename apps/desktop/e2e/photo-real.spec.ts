@@ -6,9 +6,11 @@
  * checkpoints. The stand-in specs (`photo-process.spec.ts`, `gcp-marking.spec.ts`) cover the app's
  * side in seconds; this one proves the pipelines behind it.
  *
- * Needs the development Python and the COLMAP engine of `photo.align` (pycolmap without CHOLMOD,
- * `AIO_COLMAP_PYTHON`). Without them the test is skipped and says what is missing;
- * `QUADRION_E2E_PHOTO_REAL=1` makes a missing tool a failure instead. Synthetic data only.
+ * Needs the development Python with the COLMAP engine of `photo.align`: pycolmap, which
+ * `uv sync` installs from PyPI since 8 Oct 2026 (or another Python named by `AIO_COLMAP_PYTHON`),
+ * so it runs wherever `uv sync` ran, CI included. Without it the test is skipped and says what is
+ * missing; `QUADRION_E2E_PHOTO_REAL=1` (set in CI) makes a missing tool a failure instead.
+ * Synthetic data only.
  */
 import { ProjectManifest } from '@aio/schema';
 import { execFileSync } from 'node:child_process';

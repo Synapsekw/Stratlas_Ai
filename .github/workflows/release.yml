@@ -372,33 +372,25 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-  # M10 G1: the native components of the pack (COLMAP and pycolmap, OpenCV, PDAL), built from the
-  # pinned recipe with the native licence gate; cached, so a release rebuilds only a changed recipe.
-  pack-native:
-    uses: ./.github/workflows/pack-native.yml
-
-  # Pipeline pack 0.4.0: Windows x64 and macOS arm64 with photogrammetry (the pack-native output),
-  # Intel macOS without it (decision 8). Every pack passes the native licence gate with --strict
-  # (an approval still pending in licence-exceptions.json fails the release) and the size budget
-  # of decision 6 (tools/release/budgets.mjs).
+  # Pipeline pack 0.4.0 from prebuilt parts only (founder decision of 8 Oct 2026): the locked
+  # wheels, photogrammetry included (pycolmap, opencv-python-headless and pymeshlab on Windows x64
+  # and macOS arm64; Intel macOS without them, decision 8), and conda-forge's PDAL on all three.
+  # A few minutes per platform. The native licence report prints a summary and never fails; the
+  # size budget of decision 6 (tools/release/budgets.mjs) still does.
   pipeline-pack:
     name: pipeline pack (${{ matrix.arch }})
-    needs: pack-native
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-2025
             arch: win-x64
-            native: win32-x64
           - os: macos-15
             arch: macos-arm64
-            native: darwin-arm64
           - os: macos-15-intel
             arch: macos-x64
-            native: ''
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -415,19 +407,10 @@ jobs:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
 
-      - uses: actions/download-artifact@v4
-        if: matrix.native != ''
-        with:
-          name: pack-native-${{ matrix.native }}
-          path: pack-native
-
-      # python-build-standalone CPython plus the locked wheels (and our native wheels and tools);
-      # the script smoke-tests the pack, runs the native licence gate and checks the size budget.
+      # python-build-standalone CPython plus the locked wheels and conda-forge's PDAL; the script
+      # smoke-tests the pack, prints the native licence report and checks the unpacked budget.
       - name: Build the pipeline pack
-        run: |
-          native=()
-          if [ -n "${{ matrix.native }}" ]; then native=(--native pack-native); fi
-          node tools/pipeline-pack/build.mjs --out runtime --strict "${native[@]}"
+        run: node tools/pipeline-pack/build.mjs --out runtime
 
       # tar keeps the symlinks (bin/python3) and executable bits that a zip artifact would lose.
       - name: Archive
