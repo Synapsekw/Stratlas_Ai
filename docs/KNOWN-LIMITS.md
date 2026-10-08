@@ -173,7 +173,7 @@ Current limits only; each is removed from this list when fixed.
 - Heights from the drone's GNSS follow its altitude datum unless a geoid grid is installed (no EGM2008 or EGM96 grid ships yet); use ground control for absolute heights.
 - No automatic target detection: every ground control mark is placed or confirmed by a person. The marker's own predictions use a pinhole lens without distortion (a few pixels off); the predictions the alignment writes take precedence.
 - TIFF photos in folder runs cannot be shown in the marker (JPEG and PNG can).
-- The real alignment pipeline runs wherever `uv sync` ran (CI included, with `photo-real.spec.ts`); the other photo e2e specs keep their stand-in pipelines, whose photos no real matcher can align.
+- The real alignment pipeline runs wherever `uv sync` ran, and CI's pipelines job runs it on the synthetic sets; the photo e2e specs keep their stand-in pipelines. The real-engine e2e (`photo-real.spec.ts`) is opt-in (`QUADRION_E2E_PHOTO_REAL=1`): with the real alignment the marker predicts one ground control point in two photos, not the three its script confirms.
 - Without ground control, a small block of nadir photos at one height can carry a uniform height bias of about a metre (focal length and height trade off); add ground control or oblique photos.
 - **Processing accuracy report (PDF)** shows in the Exports menu of every project; without a processed run it answers with a message instead of a file.
 - The bundled photo demo is a small 13-photo block: only three of its nine surveyed points are in enough photos to mark, and it has no oblique photos.

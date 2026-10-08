@@ -70,8 +70,8 @@ const python = (exe: string, code: string, args: string[] = []) =>
   execFileSync(exe, ['-c', code, ...args], { encoding: 'utf8' }).trim();
 
 /**
- * `QUADRION_E2E_PHOTO_REAL=1`: the real photo pipelines must run (`photo-real.spec.ts` fails
- * instead of skipping when a tool is missing). The stand-in specs always use the stand-ins: their
+ * `QUADRION_E2E_PHOTO_REAL=1`: the real photo pipelines run (`photo-real.spec.ts` is opt-in, and
+ * fails instead of skipping when a tool is missing). The stand-in specs always use the stand-ins: their
  * Pillow photos are independent noise that no real matcher can align.
  */
 export const PHOTO_REAL = envVar(process.env, 'E2E_PHOTO_REAL') === '1';
