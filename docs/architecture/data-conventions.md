@@ -29,6 +29,7 @@ These rules sit beside `@aio/schema` and are binding for every stream. They clar
   team.json              M9: only when the project is shared (section 19)
   photogrammetry/<run>/  M10: processing runs (section 21); older builds ignore it
   tilesets.json          M10: 3D Tiles of the project (section 22), tiles in tiles/<id>/
+  survey/                M11: surveying side files (sections 25 to 30); older builds ignore it
 ```
 
 `<dataRoot>` defaults to `E:\Stratlas Data` on the development machine (elsewhere `Documents\Quadrion AI Data`, or an existing `Documents\Stratlas Data` from before the rename) (`QUADRION_DATA` env var overrides; Settings `dataRoot` in the app). End-to-end tests never use the real data root as the app's data root: they run on temporary copies made by `apps/desktop/e2e/realData.ts`, and an app started by a test (`QUADRION_E2E=1`) refuses every write under `QUADRION_REAL_DATA_ROOT` (default `E:\Stratlas Data`); see CONTRIBUTING.md, "End to end on real client data". Map packs live in `<dataRoot>/packs/<id>.pmtiles` with `<id>.json` (`MapPackInfo`).
@@ -503,3 +504,221 @@ Raster packs share one format across MapLibre, the site view (3DTilesRendererJS)
 - **Photos.** One correction per photo against the pose it was imported with (the photo record's `pos` and `q`, from GPS and EXIF/XMP gimbal angles): degrees added to its heading, pitch and roll in the grid frame and metres added to its position. Every view draws a photo through `correctedPhoto(photo, photoCorrection(file, setId, photoId))`. "The same correction for the rest of the flight" goes to the photos of the set taken without a gap over 20 minutes (`sameFlightPhotos`).
 - **Never changed by it:** the manifest, the video layers, the photo records, the flight files, the images and their EXIF. Entries for layers or photos the project no longer has are kept and ignored.
 - **Writes.** `orientation:write` (whole file, atomic, `.bak` of the previous one). It is a journalled writer: each save is recorded before the write as a `record.external` op on `orientation.json` (a dedicated op kind needs the journal schema owner). A newer file (`aio.orientation/2`) is refused on read and never written over; a package's file is read in place and never written. Older builds (0.8, 0.9) do not read the file at all.
+
+## 25. Site settings, units, coordinates and calibration (M11)
+
+Surveying (M11, plan `docs/plans/2026-10-07-m11-surveying.md`) keeps all of its state in side files under `<project>/survey/` and in userData, which 0.10 and older never read: no layer kind, raster `role`, `ProjectType`, `LayerDerived.kind` or `Settings` field is added (`@aio/schema` `survey.ts`, `designs.ts`, `geodesy.ts`; every family in `versions.ts` with `since: '0.11'`). Survey tools work in every project type.
+
+```
+<project>/survey/
+  settings.json                aio.survey-settings/1: how the site is shown and exported (this section)
+  calibration.json             aio.site-calibration/1: the local site calibration (this section)
+  calibration/                 controller files a calibration was imported from, kept as they were
+  geodesy/site-transform.json  aio.site-transform/1 and its float64 grids (this section)
+  surfaces/<id>/tiles.json     aio.height-tiles/1: prepared height tiles (section 26)
+  measurements.json            aio.measurements/1 (section 27)
+  templates.json               aio.survey-templates/1 (section 27)
+  designs.json                 aio.designs/1; designs/<id>/ the original file and its normalised layers (section 28)
+  overlays.json                aio.survey-overlays/1; overlays/<id>/ the overlay files (section 29)
+  cleanups.json                aio.terrain-edits/1 (section 29)
+  qa/<capture>.json            aio.survey-qa/1 (section 29)
+  hydro/<run>/, haul/<run>/    hydrology and haul-road runs (section 30)
+<userData>/survey-defaults.json    aio.survey-defaults/1: defaults for new sites
+<userData>/survey-templates.json   aio.survey-templates/1: the person's template library (section 27)
+<dataRoot>/packs/geoid/<id>.tif    a geoid grid, with <id>.json (aio.geoid-pack/1)
+```
+
+- **SI inside, units at the edges.** Every stored value is metres, square metres, cubic metres, kilograms or tonnes per cubic metre, float64 in JSON and Python. Coordinates are (E, N, Z) in the project CRS (manifest `crs`), metres, never the local render frame of section 1. Units are a display and export choice only.
+- **Every file is `looseObject`** (keys a later 1.x build adds are kept on save) and is written atomically with a `.bak` of the previous one, through the journal (section 17; `JOURNALED_DIRS` gains `survey`). Packages are read-only: player mode reads `survey/`, never writes it and never starts a survey pipeline.
+- **File-name-safe ids** (`SurveyId`, `DesignId`, `GeoidPackId`): letters, digits, dot, dash or underscore, starting with a letter or digit, at most 80 characters.
+
+**Site settings** (`survey/settings.json`, `SurveySettings`, `aio.survey-settings/1`). The manifest `crs` stays what the data is stored in; the site settings say how it is shown and exported. A site without the file uses `defaultSurveySettings()` (`survey:readSettings` answers `exists: false` with them).
+
+- `crs`: the display and export CRS (`{ epsg }` or `{ wkt }`); absent means the manifest `crs`.
+- `verticalDatum` (`SiteVerticalDatum`): `{ kind: 'project' }` (the project's own heights, `verticalDatum.absAltOffsetM` of the manifest, as in 0.10), `{ kind: 'ellipsoidal' }` (heights above the ellipsoid as stored), `{ kind: 'geoid', geoid, epsg? }` (orthometric heights through a geoid pack, `epsg` the vertical CRS, for example 5773 EGM96 height or 3855 EGM2008 height) or `{ kind: 'calibration' }` (the site calibration's vertical adjustment).
+- `calibration`: the id of the applied calibration (`survey/calibration.json`); absent means none.
+- `distances`: `grid` (default) or `ground` (grid distances scaled by the combined factor). Readouts label which one they show; a scale factor of 0.9996 is 40 cm per kilometre.
+- `units` (`SurveyUnits`), `order` (`NEZ` or `ENZ`), `precision` (`SurveyPrecision`: decimal places, 0 to 6, for `coordinate`, `distance`, `area`, `volume`, `grade`), `locale` (`metric`: space-grouped thousands; `imperial`: comma-grouped; absent: from the unit system).
+- `templateSets`: the industry sets in use (`construction`, `mining`, `landfill`; section 27). `materials`: the site materials (section 27). `qa`: `{ level, rmseM? }` (section 29). `heatmap`: `{ stops, stepped, inverted? }`, 2 to 16 ascending `{ value, color }` stops, default -1, -0.1, 0.1, 1 m. `deadbandM`: the default deadband for new comparisons.
+- Written with `survey:writeSettings` (journaled `survey.settings`, a `PatchPayload`; permission `builder.edit`). **Changing the CRS, datum, geoid or calibration never silently changes a reported number:** every result records what it was computed with (section 26, fingerprint) and shows **Stale, recompute** when that changes.
+- userData `survey-defaults.json` (`SurveyDefaults`, `aio.survey-defaults/1`: `units?`, `order?`, `precision?`, `templateSets?`) holds the person's defaults for new sites. A new site's units otherwise come from its CRS's own unit (a US state plane zone in US survey feet gets US survey feet, a metric grid metres; decision 12).
+
+**Units** (`survey.ts`; conversions in `packages/geo/src/units.ts`, G1):
+
+| Quantity | Units (stored values are always the first SI unit)                                   |
+| -------- | ------------------------------------------------------------------------------------ |
+| Distance | `m`, `mm`, `cm`, `km`, `ft`, `us-ft`, `in`, `yd`, `mi`, `us-mi`                      |
+| Area     | `m2`, `ha`, `km2`, `ft2`, `us-ft2`, `yd2`, `acre`, `mi2`                             |
+| Volume   | `m3`, `L`, `ft3`, `yd3`, `us-gal`, `acre-ft`                                         |
+| Density  | `t/m3`, `kg/m3`, `lb/ft3`, `lb/yd3`, `ston/yd3` (short tons per cubic yard)          |
+| Mass     | `kg`, `t`, `ston` (short ton), `lb`                                                  |
+| Grade    | `percent`, `degrees`, `ratio-1-n` (1:n, rise to run), `ratio-n-1` (n:1, run to rise) |
+
+- `ft` is the **international foot** (exactly 0.3048 m), labelled "ft (international)" where both are offered; `us-ft` is the **US survey foot** (exactly 1200/3937 m), labelled "US ft". They are distinct units with distinct labels and never both "ft"; `us-ft2` and `us-mi` derive from the US survey foot. The two differ by 2 ppm, 2 cm over 10 km.
+- One formatter (`formatQuantity(value, quantity, units, precision)`) formats every readout, label and export header. A measurement may override any of the site units (section 27).
+
+**EPSG catalogue.** `tools/geo/build-crs-catalogue.mjs` (calling `python -m aio_pipelines --crs-catalogue`) reads PROJ's `proj.db` and writes `packages/geo/src/catalogue/epsg.json.gz`: one `CrsCatalogueEntry` per CRS (`code`, `name`, `kind` `projected`, `geographic`, `vertical` or `compound`, `area` and `bbox` of use, `unit`, `datum`, `deprecated`, and `proj4` only when proj4js represents it exactly, checked against PROJ at build time). `geodesy:searchCrs` searches it by code, name and area (`near` ranks CRSs whose area of use holds a longitude and latitude). Under 1.5 MB compressed, loaded lazily.
+
+**PROJ is the one truth** (ADR 0010). Every number a person reads or exports comes from PROJ in the pipeline pack, with the site's horizontal CRS, vertical datum, geoid and calibration applied in one pipeline (`python/src/aio_pipelines/geodesy/site.py`). `PROJ_NETWORK=OFF` in the pack's environment; a missing grid is an exact refusal that names the pack it needs, never a fallback to the ellipsoid and never a download.
+
+**Site transform tables** (`survey/geodesy/site-transform.json`, `SiteTransform`, `aio.site-transform/1`), written by `survey.prepare` (G1's part) for the renderer, which never re-implements a datum:
+
+- `from` (the data CRS, manifest `crs`), `to` (the display CRS of the site settings), `operation` (PROJ's chosen operation, shown in **Site settings, Details**), `calibration` and `geoid` ids, a `fingerprint` of every input (CRS, calibration, geoid pack) and `writtenAt`.
+- `proj4`: set only when the display CRS is a pure projection proj4js represents exactly (checked against PROJ at 25 points over the site when written); the renderer then uses proj4js for horizontal readouts.
+- `grid` (`F64Grid`, two bands, E and N): otherwise, and for every calibrated site, the mapping from the project CRS to the site grid at 1 m spacing. `geoidGrid` (`F64Grid`, one band): the geoid undulation over the site extent, cut from the geoid pack by PROJ. Both are interpolated bilinearly.
+- **`F64Grid`**: `file` (relative to `survey/geodesy/`), `originX`, `originY` (the lower-left cell centre in the project CRS, metres), `spacingM`, `cols`, `rows`, `bands`. The file is little-endian float64, row-major from the lower-left cell (rows run north, columns east), `bands` values per cell, nodata NaN.
+- **Parity:** renderer readouts equal pyproj within 1 mm horizontally and vertically at 1,000 random points of each synthetic site, in CI for every fixture CRS and calibration.
+
+**Geoid packs** (`<dataRoot>/packs/geoid/<id>.tif` and `<id>.json`, `GeoidPackMeta`, `aio.geoid-pack/1`; a folder older builds and the other pack managers never scan):
+
+- `id`, `name`, `bbox` (west, south, east, north, degrees), `horizontalEpsg`, `verticalEpsg`, `projFile` (the PROJ-data file name, for example `au_ga_AUSGeoid2020_20180201.tif`), `licence`, `attribution`, `provenance`, `sha256`, `bytes`, and `imported: true` for a grid a person imported.
+- EGM96 and EGM2008 ship in the pipeline pack, as in M10. Regional packs are built from PROJ-data with their licences and attributions (`tools/maps/build-packs.mjs --geoid`). **Import geoid grid** (`geoidPacks:import`: a GeoTIFF or GTX with the `name`, `licence`, `attribution` and `verticalEpsg?` the person states) covers models PROJ-data does not have, such as GCC national geoids. `geoidPacks:list` lists the folder plus the global grids of the pack; `geoidPacks:remove` removes one. Downloading a pack is an explicit online action, refused on an offline-only workstation. The pack's PROJ search path includes the folder.
+- The geoid is named on every height readout (tooltip), result, report and export; each pack's attribution shows wherever its heights do.
+
+**Site calibration** (`survey/calibration.json`, `SiteCalibration`, `aio.site-calibration/1`). Applied in the controller's order:
+
+1. **Base projection** (`projection`): geographic coordinates to a projected CRS, often a transverse Mercator at the site with its own scale factor.
+2. **Horizontal similarity** (`horizontal`, `HorizontalAdjustment`, Helmert 2D) about an origin: `local = origin' + scale * R(rotation) * (grid - origin)`, where `origin` is (`originE`, `originN`) in the base projection, `origin'` is the origin moved by (`shiftE`, `shiftN`), `R` rotates by `rotationRad` (counter-clockwise positive) and `scale` is dimensionless.
+3. **Vertical adjustment** (`vertical`, `VerticalAdjustment`): `dz = shiftM + slopeN * (N - originN) + slopeE * (E - originE)`, a constant shift plus an inclined plane, with slopes in metres per metre, on geoid heights when `geoid` names a geoid pack and on ellipsoidal heights when it is absent.
+
+- `source`: `format` (`jobxml`, `dc`, `12d`, `cal` or `pairs`), the imported `file` (kept as it was in `survey/calibration/`) and its `sha256`; absent file for typed pairs.
+- `pairs` (`CalibrationPair`, at most 500): `name`; `local` as the controller lists it, **(N, E, Z)**; a global position as `wgs84` (latitude and longitude in degrees, ellipsoidal height in metres) or `grid` (N, E, Z in the base projection); `useH`, `useV`; our `residualH` (horizontal, never negative) and `residualV` (signed) in metres; and `controllerResidualH`, `controllerResidualV` when the file reports its own, shown side by side. `rmsH` and `rmsV` are the root mean square of the used residuals. Note the axis order: pairs follow the controller (N, E, Z); everything else in `survey/` is (E, N, Z).
+- **Import** (`geo.calibration`, `GeoCalibrationParams`: a `src` file with an optional `format`, or `pairs` to solve by least squares, not both; `crs` the base projection; `verticalDatum?`; `geoid?`): Trimble JobXML (`.jxl`) and `.dc`, 12d transforms, Trimble `.cal` only if found documented (decision 8), and **Compute from point pairs**, which solves the same model and covers every vendor. Topcon `.gc3` is out.
+- **A person applies it.** An imported or computed calibration is a draft (`appliedAt` absent) until a person confirms it on the residual table: `geodesy:applyCalibration` (`apply: true`, or `false` to remove it), journaled as `survey.calibration` (a `RecordPayload`; permission `builder.edit`), sets `appliedAt` and `appliedBy` and the site settings' `calibration`, and marks every dependent result stale. It then applies everywhere: readouts, measurement coordinates, design import (`useCalibration`), exports ("site grid" means calibrated) and reports, each stating "Site calibration X, residuals H n mm, V n mm".
+
+**Exports** (`survey.export`, `SurveyExportParams`): `what` (`surface`, `ortho`, `cloud`, `contours`, `measurements`, `section`), `format` (`geotiff`, `laz`, `dxf`, `landxml`, `12da`, `csv`, `kml`, `shp`, `geojson`), `crs` (`site`, the site grid, calibrated when a calibration applies; `wgs84`; or `{ epsg }`), `units?`, `decimate?` (the share of points or faces kept, 1 is full), the source (`surface`, `layer`, `overlay` or `measurements`), and `out`, the absolute file or folder main chose. Every export states its CRS, vertical datum, geoid, calibration and units in its metadata and in a file name suffix (for example `_site-grid_usft`).
+
+## 26. Surfaces and the comparison specification (M11)
+
+This section is the single written specification of a surface comparison (ADR 0009). Two executors implement it: the Python reference core (`python/src/aio_pipelines/survey/compare.py` with `grid.py`, `bases.py`, `tin.py`; the `survey.compare` pipeline; results `engine: 'py'`) and the TypeScript executor in a renderer worker (`packages/survey/src/engine/`; results `engine: 'ts'`). They run the shared fixtures in `packages/schema/src/__fixtures__/survey/` and agree to 1e-6 relative; a difference is a bug in one of them, never a tolerance to widen. A change to the formula is a change to this section first.
+
+**Prepared surfaces** (`survey/surfaces/<id>/tiles.json`, `HeightTiles`, `aio.height-tiles/1`), written by `survey.prepare` (`SurveyPrepareParams`: `surfaces[]` of `{ id, name, source, capture? }`, `cellM?`, `geodesy?` (also write the site transform tables of section 25, default true)):
+
+- `source` (`PreparedSurfaceSource`): `{ kind: 'dsm', layer }`, `{ kind: 'dtm', layer }`, `{ kind: 'cloud', layer }` (gridded through PDAL), `{ kind: 'design', design, layer }` (a design TIN, section 28) or `{ kind: 'derived', of, edits }` (a cleanup or crop of another prepared surface, section 29).
+- Tiles of 256 by 256 cells (`tileSize: 256`) at `cellM`, as `<level>/<col>_<row>.bin` (deflate): float32 heights relative to a float64 base per tile, and a nodata bit mask per tile. `originE`, `originN` is the lower-left corner of tile (0, 0) at level 0 in the project CRS; `cols`, `rows`, `levels` (a display pyramid above level 0); `bounds` (min E, min N, min Z, max E, max N, max Z); `tiles` lists the level-0 tiles that exist as `col_row`, and an absent tile is all nodata.
+- Heights relative to a float64 base per tile keep 0.06 mm at a 1,000 m range. A surface is prepared again only when its `fingerprint` (the source's hash, `sourceSha256`, and the preparation parameters) changes. Delivered DSMs, clouds and orthos are read, never written.
+- `survey:surfaces` lists the prepared surfaces for the From and To pickers.
+
+**A comparison item** (`ComparisonItem`): `{ id, label?, from, to, deadbandM?, useDeadband, cellM? }`; a polygon measurement holds up to 20 of them (section 27). Each side is a `SurfaceRef`:
+
+| Kind                  | Meaning                                                                                                                                                                                                                                            | Contract                                                               |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `survey`              | A capture's DSM, DTM, gridded cloud or a cleaned derived surface                                                                                                                                                                                   | `{ kind: 'survey', surface, capture? }`, a prepared surface            |
+| `current`, `previous` | The survey the measurement is viewed on, and the one before it, resolved through `captureIndex()` (`packages/workspace/src/captures.ts`) at compute time; the result records which captures it used                                                | `{ kind: 'current' }`, `{ kind: 'previous' }`                          |
+| `design`              | A design surface layer with its vertical offset added (`DesignLayer.verticalOffsetM`)                                                                                                                                                              | `{ kind: 'design', design, layer }`, the layer's `aio.tin/1`           |
+| `reference`           | A flat level: a typed elevation (`level`, `levelM` in the site's vertical datum), or the highest or lowest height of the surface side along the polygon perimeter (`perimeter-max`, `perimeter-min`) or inside it (`interior-max`, `interior-min`) | `{ kind: 'reference', mode, levelM? }` (`levelM` required for `level`) |
+| `smart`               | A Delaunay TIN of the perimeter densified at the cell size and sampled on the surface side (the kit's `tin`)                                                                                                                                       | `{ kind: 'smart' }`                                                    |
+| `fit-plane`           | The least-squares plane through the perimeter samples (the kit's `plane`)                                                                                                                                                                          | `{ kind: 'fit-plane' }`                                                |
+| `perimeter-mean`      | A flat level at the mean perimeter height (the kit's `avg`)                                                                                                                                                                                        | `{ kind: 'perimeter-mean' }`                                           |
+| `custom`              | A TIN of the polygon's vertices with heights a person edits: per vertex an absolute `z` or an `offsetM` from the surface side at that vertex, never both                                                                                           | `{ kind: 'custom', vertices: [{ e, n, z?, offsetM? }] }`, 3 to 10,000  |
+
+- The last five are **bases** (`BaseSpec`). A base that needs samples (`reference` other than `level`, `smart`, `fit-plane`, `perimeter-mean`, a `custom` vertex with `offsetM`) takes them from the **surface side** of the item: the other side, which must then be a `survey`, `current`, `previous` or `design` surface. (The plan and `survey.ts` call that side "the From surface"; for the usual base-to-survey item the base is From and the survey is To.) Perimeter samples are taken along the polygon's edges densified at the cell size.
+- **The kit's bases** map to `smart` (`tin`), `fit-plane` (`plane`), `perimeter-mean` (`avg`) and `reference` `perimeter-min` (`low`). A volumetric project still shows them under their old names and its `volumes.json` (section 10) is unchanged; the kit's numbers stay identical (exact on the same grid, 0.1% otherwise).
+
+**Sign convention.** `dz = To - From`. Fill where `dz > 0`, cut where `dz < 0`; `net = fill - cut`; `total = fill + cut`. Cut and fill are never negative.
+
+**Volume formula (grid path).** On a grid of cell size `c` aligned to the prepared tiles (`cellM` of the item, default the finer prepared surface's cell):
+
+- Each cell `i` gets a **coverage weight** `w_i`: the exact area of the intersection of the polygon and the cell, divided by `c²`, computed by clipping (never a cell-centre in-or-out test).
+- `dz_i = To(i) - From(i)`, each side sampled bilinearly at the cell centre (TIN surfaces and TIN bases barycentrically; flat and planar bases exactly).
+- `Fill = c² Σ w_i max(dz_i, 0)` and `Cut = c² Σ w_i max(-dz_i, 0)`, summed over the covered cells, and, when the deadband is used, only over cells with `|dz_i| >= deadbandM`.
+- Areas: `areaFillM2 = c² Σ w_i` over cells counted as fill, `areaCutM2` likewise for cut, `areaUnchangedM2` over covered cells that count as neither (inside the deadband, or `dz_i = 0`), `uncoveredM2` over cells where either side has no data, and `areaM2` the polygon's horizontal area (their sum).
+
+**Deadband.** Cells with `|dz_i| < deadbandM` contribute nothing **only when `useDeadband` is on** (**Use deadband in calculations** is an explicit opt-in); with it off the deadband only shapes the heat map. The result records `deadbandM` and `usedDeadband`, and every report and export that shows the volume says whether a deadband was used. A surface with noise below the deadband gives exactly zero cut and fill with the deadband on.
+
+**Uncovered area.** A cell where either surface has no data (a nodata height needed by its sample, or outside the survey) is counted in `uncoveredM2` and never treated as zero height or zero `dz`. With `share = uncoveredM2 / areaM2`: up to 2% the item is `ok`; above 2% it is `partial` with the reason "n% outside the survey" and the volumes of the covered part; above 20% it is `refused` with that reason and no volumes are shown.
+
+**TIN to TIN, exact.** When both sides are triangulated or planar (design to design, design to a reference level or a custom base with absolute heights), the item is computed exactly by intersecting the two triangulations over the polygon (prismoidal), with no grid: `cellM` is `0` in the result and coverage is exact. Within 1e-6 relative of the analytic volume. How the deadband applies on this path is settled by G2 and written here when it lands.
+
+**Outputs and fingerprint** (`ComparisonResult`, one per item, stored on the measurement):
+
+- `item` (the item id), `status` (`ok`, `partial`, `refused` or `stale`) and `reason`; `cutM3`, `fillM3`, `netM3`, `totalM3`; `areaM2`, `areaCutM2`, `areaFillM2`, `areaUnchangedM2`, `uncoveredM2`; `fromLabel` and `toLabel` (what each side was, in words); `fromCapture` and `toCapture` (the captures `current` and `previous` resolved to); `deadbandM`, `usedDeadband`; `cellM`; `engine` (`ts` or `py`); `computedAt`.
+- `fingerprint`: a hash of every input: the surfaces' fingerprints and file hashes, the design's vertical offset, the base parameters (including custom vertices), the deadband and whether it is used, the cell, the polygon, the resolved captures, and the calibration and geoid ids. A result whose fingerprint no longer matches its inputs is **never shown as current**: it shows **Stale, recompute** (`status: 'stale'` once marked).
+- Calculators (shrink and swell, density, weight; section 27) are applied at display time from the material and never change the stored volume.
+
+**Whole site and bulk** (`survey.compare`, `SurveyCompareParams`): either `items[]` (`{ measurement, ring, item, capture? }`, up to 5,000: reports, bulk recompute after a calibration change) or `site` (`{ from, to, deadbandM?, cellM?, ring? }`, a whole-site comparison over the overlap of both surfaces or a boundary), never both; `out?` a project path. Whole-site mode writes the difference grid, its heat map pyramid and contours of the difference; its regions are drafts a person accepts as measurements. `change.surface` keeps its contract (`aio.change/1`, section 14) and calls the core for its volumes and `areas`.
+
+## 27. Measurements, templates and materials (M11)
+
+**Saved measurements** (`survey/measurements.json`, `MeasurementsFile`, `aio.measurements/1`): `measurements[]` (`SurveyMeasurement`, at most 20,000, ids unique). The annotation `Measurement` (`annotation.ts`) is unchanged; survey measurements are a separate family.
+
+- `id`, `family` (`point`, `line`, `polygon`, `markup`) and `tool`: point `elevation`, `elevation-difference`, `elevation-history`, `annotation`; line `distance`, `grade`, `vertex-table`, `berm-check`, `section`; polygon `area`, `volume`; markup `freehand`.
+- `template?`, `label`, `folder?`, `scope` (`{ kind: 'site' }`, or `{ kind: 'survey', capture }` for one survey; promote and demote switch it).
+- `points`: vertices (E, N, Z) in the project CRS, float64, 1 to 100,000; a polygon is closed implicitly (the last point does not repeat the first).
+- `style?` (`MeasurementStyle`: `color`, `fill`, `fillOpacity`, `borderWidth`, `labelSize`, `labelOnlyWhenSelected`, `showPropertyName`), `units?` (`UnitsOverride`: any subset of the site units of section 25), `description?`, `fields?` (custom field values by field id, text or number), `material?` (a site material id).
+- `items` (up to 20 `ComparisonItem`s) and `results` (up to 20 `ComparisonResult`s), section 26.
+- `createdAt`, `createdBy?`, `updatedAt?`.
+- `survey:readMeasurements` returns the file (an empty list when there is none) and `readOnly` (a package). `survey:writeMeasurements` writes it atomically with `.bak`, refused for packages, journaled per measurement as `measurement.create` (`RecordPayload`), `measurement.patch` (`PatchPayload`) or `measurement.delete` (`{}`), record kind `measurement`, permission `edit`. 0.9 and 0.10 read these ops as `unknown-kind` (`packages/journal/src/query.ts`), never refuse them. Sync merges measurements by id.
+
+**Cross-sections** (G5): `SectionSpec` (`line` of 2 to 10,000 (E, N) points; `surfaces` of 1 to 20 `survey`, `current`, `previous` or `design` refs; `stepM?`, default half the finest cell; `exaggeration?` 1 to 20) gives one `SectionProfile` per surface (`surface`, `label`, `chainage[]`, `z[]` with `null` where the surface has no data). The worker samples them as section 26 samples heights. `survey.section` (`SurveySectionParams`: `line`, `surfaces`, `format` `dxf-2d-xy`, `dxf-2d-xz`, `dxf-2d-yz`, `dxf-3d-zup`, `dxf-3d-yup` or `csv`, `capture?`, `out`) writes a section file, one DXF layer per surface.
+
+**Templates** (`survey/templates.json` for the project and userData `survey-templates.json` for the person's library, both `SurveyTemplatesFile`, `aio.survey-templates/1`, at most 1,000 templates):
+
+- `SurveyTemplate`: `id`, `name`, `family`, `tool`, `description?`, `items` (result rows in display order, such as `cut`, `fill`, `net`, `total`, `area`, `length`), `fields` (`CustomField`: `id`, `name`, `type` `text`, `number` or `dropdown`, `options` for a dropdown), `comparisons` (up to 10 `ComparisonPreset`s: an item without its id, which is made when the template is used), `style?`, `bookmarked?` (shown on the toolbar), `set?` (the industry set it came from).
+- `survey:readTemplates` returns `project` (null without a project or file) and `user`; `survey:writeTemplates` writes one of them (`scope` `project` or `user`). A measurement's template can be changed after it is made.
+- **Industry template sets** (`IndustrySet`: `construction`, `mining`, `landfill`; content in `packages/survey/src/templates/{construction,mining,landfill}.json`, G9). A site enables one or more in its settings (`templateSets`) and the toolbar shows their templates.
+
+**Site materials** (in `survey/settings.json` `materials`, `SiteMaterial`, at most 500): `id`, `name`, `code?`, `densityTPerM3?` (tonnes per cubic metre) and `swell?` (`{ loose, compacted }`, volume factors relative to bank, in-situ, volume). CSV import and export. A measurement picks a material.
+
+**Calculators** (G4) work on a stored volume at display time and never change it:
+
+- **Shrink and swell:** loose volume = bank volume times `swell.loose`; compacted volume = bank volume times `swell.compacted`.
+- **Density:** tonnes = volume times `densityTPerM3`.
+- **Weight:** achieved density = tonnage divided by volume (the landfill compaction figure: 63,000 t over 70,104 m³ is 0.899 t/m³).
+
+## 28. Designs and alignments (M11)
+
+Imported design files (`design.import`, G6) keep their original byte for byte and are normalised into layers; no layer kind is added. The list is `survey/designs.json` (`DesignsFile`, `aio.designs/1`), written by the app with `survey:writeDesigns` (journaled `design.add` (`RecordPayload`), `design.patch` and `design.archive` (`PatchPayload`), record kind `design`, permission `builder.edit`; refused for packages) and read with `survey:readDesigns` (an empty list when there is none).
+
+```
+<project>/survey/designs/<id>/
+  <original file>                byte for byte, never rewritten (DesignEntry.src)
+  <layer>.tin                    aio.tin/1 surface
+  <layer>.geojson                linework, GeoJSON in the project CRS with Z
+  <layer>.alignment.json         aio.alignment/1 horizontal alignment
+  <layer>.points.json            points
+  <layer>.glb                    display mesh of a surface for the site view (DesignLayer.glb)
+```
+
+- **`DesignEntry`**: `id` (the folder name), `name`, `folder?`, `src` (the original's file name), `sha256`, `bytes`, `format` (`landxml`, `dxf`, `12da`, `csv`, or `ttm` only with a published specification or a Trimble agreement, decision 2), `units` (the file's length unit, `m`, `mm`, `cm`, `ft`, `us-ft` or `in`, from `INSUNITS` or LandXML `Units`; stored values are always metres), `crs?` (the CRS of the file's coordinates; absent when placed through the site calibration), `calibrated`, `importedAt`, `importedBy?`, `layers[]`. Design ids are unique; `activeAlignment` (`<design>/<layer>`) is the alignment whose station and offset the cursor shows.
+- **`DesignLayer`**: `id`, `name`, `kind` (`surface`, `linework`, `points`, `alignment`), `file` (the normalised file in the design folder), `glb?`, `counts` (entity counts by type: `triangles`, `vertices`, `lines`, `points`, ...), `visible`, `archived`, `verticalOffsetM` (subgrade or pavement depth, applied when the layer is used, never written into the file), `clamp?` (linework draped on the terrain).
+- **Limits** (`DESIGN_LIMITS`): 2,000,000 triangles per surface layer and 500 MB per file; above them, an exact refusal. Hostile files (XML with a DTD or external entities, binary DXF, broken 12da records, mixed CSV separators) are refused with a reason that names the line or entity, never a crash of main and never an unbounded allocation.
+- **`design.import`** (`DesignImportParams`): `src` (absolute; copied into the design folder), `format?` (default from the extension and content), `id?`, `name?`, `crs?`, `useCalibration?` (place local coordinates through the site calibration of section 25), `units?` (default from the file), `layers?` (source layer names, default all).
+
+**`aio.tin/1` files** (`<layer>.tin`, header `TinHeader`): a little-endian uint32 header length; the UTF-8 JSON header; padding to a multiple of 8 bytes; `vertexCount * 3` float64 (E, N, Z in the project CRS, metres, **design offset not applied**); then `triangleCount * 3` uint32 vertex indices. The header holds `schema`, `crs`, `bounds` (min E, min N, min Z, max E, max N, max Z), `vertexCount`, `triangleCount` (at most 2,000,000), `verticesAt` and `trianglesAt` (byte offsets from the file start), and `breaklines?` (the number of breakline and boundary chains carried with the surface).
+
+**Alignments** (`<layer>.alignment.json`, `Alignment`, `aio.alignment/1`): horizontal only in M11 (no vertical alignments).
+
+- `name`, `crs`, `startStation`, `elements[]` (1 to 10,000), `equations[]` (up to 100), `intervalM?` (the station label interval, **Edit station intervals**).
+- Elements (`AlignmentElement`), points (E, N) in the project CRS: `line` (`start`, `end`, `length`); `arc` (`start`, `end`, `center`, `radius`, `rot` `cw` or `ccw` seen from above, `length`); `spiral` (clothoid only: `start`, `end`, `radiusStart` and `radiusEnd` with `null` for an infinite radius at the tangent end, `rot`, `length`, `dirStart` the bearing at the start in radians clockwise from grid north).
+- **Stationing** starts at `startStation` and runs along the elements; a station equation `{ back, ahead }` means that at station `back` on the incoming chainage, stations continue from `ahead`. Station and offset match the alignment's own start station and equations.
+
+## 29. Overlays, cleanups and QA (M11)
+
+**Terrain overlays** (`survey/overlays.json`, `SurveyOverlaysFile`, `aio.survey-overlays/1`, at most 500; files in `survey/overlays/<id>/`), registered there and not in the manifest:
+
+- `SurveyOverlay`: `id`, `name`, `kind` (`contours`, `slope`, `elevation`, `relief`), `source` (`{ surface }`, a prepared surface, or `{ comparison: { from, to } }`, the difference of a comparison), `options` (by kind: contours `minorM`, `majorM`; slope `style`, `stops`; elevation `stops`, `stepped`; relief `azimuth`, `altitude`, `intensity`), `dir` (the overlay's folder), `visible`, `fingerprint`, `createdAt`.
+- Rasters (slope, elevation ramp, relief) are `kit-pyramid` tiles shown by the existing raster and map machinery; contours are GeoJSON with Z and an index for labels, the major interval a multiple of the minor. Default slope stops 0, 57.74, 100 and 173.21 percent (0, 30, 45 and 60 degrees).
+- Made by `survey.overlay` (`SurveyOverlayParams`: `id?`, a `surface` or a `comparison`, not both, `kind`, `options?`).
+
+**Terrain cleanups and crops** (`survey/cleanups.json`, `TerrainEditsFile`, `aio.terrain-edits/1`, at most 2,000 edits):
+
+- `TerrainEdit`: `id`, `kind` (`cleanup`: the surface inside the ring is replaced by an interpolation from the ring's boundary, `method` `tin` or `thin-plate`; `crop`: the surface is cut to the ring), `surface` (the prepared surface it applies to), `ring` (3 to 100,000 (E, N) points), `enabled`, `label?`, `createdAt`.
+- `survey.cleanup` (`SurveyCleanupParams`: a `surface` with `edits` applied in order, or a `dtmFilter` `{ layer, preset }` with presets `equipment`, `equipment-vegetation`, `structures`, `everything` as PDAL `filters.smrf` and `filters.csf` parameter sets; `out?`, default `<capture>-clean`) writes a **new derived surface** `survey/surfaces/<capture>-clean/` (source `{ kind: 'derived', of, edits }`, section 26) that comparisons can pick. The delivered DSM, cloud and ortho are never changed and nothing is deleted.
+
+**Survey QA** (`survey/qa/<capture>.json`, `SurveyQa`, `aio.survey-qa/1`):
+
+- `capture`, `level` (`strict`, `moderate`, `lenient`, `off`), `status` (`pass`, `fail`, `hold`, `released`, `unchecked`), `checkedAt`.
+- `checkpoints?`: `count`, `rmseM`, `meanM`, `maxAbsM` and `points[]` (`name`, `dz` = surface minus surveyed height, metres, `null` where the surface has no data). RMSE thresholds by level: 0.05, 0.10 and 0.20 m, overridable in the site settings (`qa.rmseM`).
+- `previous?` (the compare-to-previous check on the M8 registration check): `capture`, `thresholdM`, `changedShare` (0 to 1). It fails when Strict: more than 50% of the area beyond 0.10 m; Moderate: more than 60% beyond 0.20 m; Lenient: more than 60% beyond 0.40 m.
+- `hold?` (`at`, `reason`) and `release?` (`at`, `by?`, `note`). A failed check puts the survey on hold (a banner; measurements on it are marked "survey on hold"); only a person releases it, with a note. Both are journaled as `survey.hold` (`{ capture, action: 'hold' | 'release', note? }`, permission `edit`).
+- Made by `survey.qa` (`SurveyQaParams`: `capture`, `surface`, `level`, `checkpoints?` from a CSV (absolute) or `{ gcp }`, the M10 GCP file of a run, `previous?` `{ capture, surface }`). Processed surveys also use the M10 accuracy report (section 21).
+
+## 30. Hydrology and haul-road runs (M11, later phases)
+
+Hydrology (G10) and haul-road compliance (G11) are pipeline jobs over a prepared surface (section 26). Each run writes a folder of its own under `survey/hydro/<run>/` or `survey/haul/<run>/` (`run`, a `SurveyId`, optional in the params) with a `run.json` describing the inputs, outputs and fingerprint; that file's family and its `versions.ts` row are added by G10 and G11 when they land (not in G0). A run's `work/` folder holds intermediates and never travels in a package. Runs read surfaces and never change them. Plan gates: `survey.hydro` and `survey.haul` (entitlements, all allowed in M11).
+
+- **Flood to level** (`hydro.flood`, `HydroFloodParams`): `surface`, `levelM` (metres in the site's vertical datum), `mode` (`connected`: only water connected to `seed`; `all-below`: every cell below the level), `seed?` (E, N), `region?` (a ring), `run?`. Outputs: the outline, a depth raster and the stored volume below the level; the outline as DXF.
+- **Runoff and catchments** (`hydro.flow`, `HydroFlowParams`): `surface`, `mode` (`runoff`, `catchment`, `streams`), `drop?` (the drop point for runoff), `outlets?` (up to 100 pour points), `method?` (`d8` or `dinf`), `depressions?` (`fill` or `breach`), `streamAreaM2?` (the contributing area that starts a stream), `region?`, `run?`.
+- **Direct rainfall** (`hydro.rainfall`, `HydroRainfallParams`): `surface`, `hyetograph` (an absolute CSV path: time in minutes, intensity in mm/h), `manningN`, `infiltrationMmPerH` (constant), `cellM` (0.5, 1 or 2), `durationMin?` (up to 7 days), `region?`, `run?`. Water depth over time; a simplified local-inertial model, shipped as preview if it misses its targets.
+- **Haul-road compliance** (`haul.analyse`, `HaulAnalyseParams`): `surface`, `centreline` (drawn (E, N) points, or `{ design, layer }` for a design alignment or polyline layer), `intervalM` (sections every so many metres), `limits` (`minWidthM?`, `maxGradePct?`, `crossFallMinPct?`, `crossFallMaxPct?`, `minBermHeightM?`), `run?`. Per section: running surface edges, width, gradient along, cross fall, superelevation and berm height and width, each against the limits; a results table, map colouring by pass or fail, and a section in the house PDF report.
