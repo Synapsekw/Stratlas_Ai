@@ -113,3 +113,4 @@ export * from './flight';
 export * from './direction';
 export * from './photo';
 export * from './units';
+export * from './catalogue/search';

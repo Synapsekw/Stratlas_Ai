@@ -5,7 +5,8 @@
   "type": "module",
   "description": "CRS registry, float64 project origin, transforms, quadtree tiling.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./catalogue/epsg.json.gz": "./src/catalogue/epsg.json.gz"
   },
   "scripts": {
     "test": "vitest run"
