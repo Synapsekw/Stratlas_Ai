@@ -36,6 +36,7 @@ export { signedVolumeTotals, type VolumeTotals } from './totals';
 export * from './engine';
 export * from './tools';
 export * from './templates';
+export * from './section';
 
 // designs/ (G6): design TINs, alignments and compliance to design
 // the design `Tin` record is exported as `DesignTin`: the engine already exports its `Tin` class
