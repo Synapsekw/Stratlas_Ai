@@ -1259,7 +1259,7 @@ function registerIpc(): void {
   });
 
   // M11: one module per stream (G1 geodesy and geoid packs; G2, G3 and G6 survey; G12 survey AI).
-  registerSurveyIpc({ handle });
+  registerSurveyIpc({ handle, projects: registry });
   registerGeodesyIpc({ handle });
   registerGeoidPacksIpc({ handle });
   registerSurveyAiIpc({ handle });
