@@ -100,6 +100,22 @@ export interface BaseInputs {
   toLocal: (e: number, n: number) => [number, number];
 }
 
+/**
+ * Lowest, highest and mean of perimeter samples (`reference` `perimeter-min` and `perimeter-max`,
+ * `perimeter-mean`): the mean is the sum in sample order over the count, as in the Python core.
+ */
+export function perimeterLevels(zs: ArrayLike<number>): { min: number; max: number; mean: number } {
+  let min = Infinity;
+  let max = -Infinity;
+  let sum = 0;
+  for (const z of Array.from(zs)) {
+    min = Math.min(min, z);
+    max = Math.max(max, z);
+    sum += z;
+  }
+  return { min, max, mean: sum / zs.length };
+}
+
 function seqSum(v: ArrayLike<number>): number {
   let s = 0;
   for (const x of Array.from(v)) s += x;

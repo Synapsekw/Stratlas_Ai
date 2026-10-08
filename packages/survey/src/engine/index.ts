@@ -18,7 +18,16 @@ export {
   type Shared,
   type SiteContext,
 } from './compare';
-export { buildBase, f3, fitPlane, planeFn, Refused, TIN_STEP_M, type Samples } from './bases';
+export {
+  buildBase,
+  f3,
+  fitPlane,
+  perimeterLevels,
+  planeFn,
+  Refused,
+  TIN_STEP_M,
+  type Samples,
+} from './bases';
 export { canonical, sha256Hex, type Json } from './fingerprint';
 export { delaunay } from './delaunay';
 export {
