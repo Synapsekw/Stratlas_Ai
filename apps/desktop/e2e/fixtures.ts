@@ -61,11 +61,15 @@ const GUARD = join(import.meta.dirname, 'network-guard.cjs');
  * Chromium switches for every launch. QUADRION_E2E_SWGL=1 draws with SwiftShader, the software
  * GPU the CI runners fall back to, so a difference that depends on the GPU (the detected
  * graphics tier, timing of a slow frame) shows up on a workstation as well.
+ * QUADRION_E2E_SWGL=warp draws with WARP, Chromium's other software rasteriser on Windows (Low
+ * tier too), which holds the renderer far longer than SwiftShader while the Globe streams tiles.
  */
 export const GPU_ARGS =
   process.env.QUADRION_E2E_SWGL === '1'
     ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']
-    : [];
+    : process.env.QUADRION_E2E_SWGL === 'warp'
+      ? ['--use-angle=d3d11-warp']
+      : [];
 
 export const TINY_PROJECT_ID = 'e2e-tiny';
 
