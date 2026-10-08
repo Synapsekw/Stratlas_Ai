@@ -44,6 +44,7 @@ import { ExchangeKind, ExchangePreview, Heads, TeamProjectId } from './exchange'
 import { ActorId, DeviceId, Identity, Initials, Member, PersonName, Role } from './identity';
 import { LaunchSettings } from './launch';
 import { DesignsFile } from './designs';
+import { HaulRun } from './haul';
 import { CrsCatalogueEntry, GeoidPackId, GeoidPackMeta, SiteCalibration } from './geodesy';
 import {
   HeightTiles,
@@ -2321,6 +2322,14 @@ export const ipc = {
     request: z.object({ projectId: ProjectId }).strict(),
     response: z.discriminatedUnion('ok', [
       z.object({ ok: z.literal(true), surfaces: z.array(HeightTiles) }),
+      Failure,
+    ]),
+  },
+  /** Haul-road compliance runs (`survey/haul/<run>/run.json`, newest first); packages read in place (G11). */
+  'survey:readHaulRuns': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), runs: z.array(HaulRun) }),
       Failure,
     ]),
   },

@@ -433,6 +433,13 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     since: '0.11',
   },
   {
+    family: 'aio.haul-run',
+    version: 1,
+    home: 'project',
+    where: 'survey/haul/<run>/run.json',
+    since: '0.11',
+  },
+  {
     family: 'aio.site-calibration',
     version: 1,
     home: 'project',

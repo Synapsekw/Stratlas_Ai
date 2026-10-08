@@ -192,6 +192,7 @@ const CHANNELS = {
   'survey:readDesigns': true,
   'survey:writeDesigns': true,
   'survey:surfaces': true,
+  'survey:readHaulRuns': true,
   'geodesy:searchCrs': true,
   'geodesy:readCalibration': true,
   'geodesy:applyCalibration': true,
