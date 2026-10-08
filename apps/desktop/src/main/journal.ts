@@ -1194,6 +1194,18 @@ export function createJournalService(deps: JournalServiceDeps) {
     /** Append event ops by this person and device (team, review, sync, binaries). */
     append: (root: string, drafts: readonly DraftOp[], via?: Via) =>
       locked(root, (t) => t.append(drafts, via)),
+    /**
+     * Append a person's edit ops for a file its module writes itself, ops first (survey settings,
+     * the calibration, a QA hold or release: M11). The disk scan does not follow those files
+     * (`isJournaledFile`), so these ops are their one record. Nothing while the project's history
+     * is switched off, like the wrapped writers.
+     */
+    appendEdits: async (root: string, drafts: readonly DraftOp[]): Promise<string[]> => {
+      const st = await load(root);
+      return serial(st, () =>
+        st.meta.journal === 'off' ? Promise.resolve([]) : append(st, drafts),
+      );
+    },
     /** Wait for every pending journal step of a folder. */
     flush: async (root: string) => {
       const st = await load(root);

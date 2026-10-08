@@ -556,7 +556,7 @@ const exportJobs = createExportJobs({
 });
 
 // M11 G8: a survey.qa job that holds a survey is journaled as `survey.hold` when it finishes
-const surveyQaJobs = qaJobEvents({ journal: (root, drafts) => journal.append(root, drafts) });
+const surveyQaJobs = qaJobEvents({ journal: (root, drafts) => journal.appendEdits(root, drafts) });
 const jobStore = new JobStore(join(app.getPath('userData'), 'jobs.json'));
 const jobs = new JobRunner({
   store: jobStore,
@@ -1271,7 +1271,8 @@ function registerIpc(): void {
   const survey = {
     projects: registry,
     projectPackage: (id: string) => registry.package(id)?.archive,
-    journal: (root: string, drafts: readonly DraftOp[]) => journal.append(root, drafts),
+    // ops for the survey files main writes itself (settings, calibration, QA hold and release)
+    journal: (root: string, drafts: readonly DraftOp[]) => journal.appendEdits(root, drafts),
   };
   registerSurveyIpc({ handle, ...survey, userData: () => app.getPath('userData') });
   registerGeodesyIpc({ handle, ...survey });

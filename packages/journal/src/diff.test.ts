@@ -83,6 +83,17 @@ describe('diffRecordFile', () => {
     expect(isJournaledFile('team.json')).toBe(false);
   });
 
+  it('follows the survey files it diffs, never the ones main journals itself (M11)', () => {
+    expect(isJournaledFile('survey/measurements.json')).toBe(true);
+    expect(isJournaledFile('survey/designs.json')).toBe(true);
+    // survey.settings, survey.calibration and survey.hold ops are their one record
+    expect(isJournaledFile('survey/settings.json')).toBe(false);
+    expect(isJournaledFile('survey/calibration.json')).toBe(false);
+    expect(isJournaledFile('survey/qa/c1.json')).toBe(false);
+    // the terrain edits' wrapped writer records them; the scan does not list the file
+    expect(isJournaledFile('survey/cleanups.json')).toBe(false);
+  });
+
   it('reviews change items one by one', () => {
     const set = (status: string) => ({
       schema: 'aio.change/1',

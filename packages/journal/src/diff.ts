@@ -395,7 +395,14 @@ const FILES: { match: RegExp; kind: FileKind }[] = [
   },
 ];
 
-/** The record files the journal follows (project-relative, forward slashes). */
+/**
+ * The record files the journal follows (project-relative, forward slashes): the scan records
+ * their outside changes and the wrapped writers diff them. Under `survey/` that is the
+ * measurements and the designs only. The files main writes with its own ops first (`settings.json`
+ * as `survey.settings`, `calibration.json` as `survey.calibration`, `qa/<capture>.json` as
+ * `survey.hold`) are deliberately not followed, so a write of theirs is never recorded twice; the
+ * terrain edits (`cleanups.json`) are one `record.external` per save through their wrapped writer.
+ */
 export function isJournaledFile(rel: string): boolean {
   return rel === 'issues.json' || rel === MEASUREMENTS_REL || FILES.some((f) => f.match.test(rel));
 }
