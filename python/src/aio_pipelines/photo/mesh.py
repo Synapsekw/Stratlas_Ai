@@ -2,11 +2,16 @@
 
 Engines, in order (``report/products.json`` names the one that ran):
 
-1. **``poissonrecon``**: Kazhdan's screened Poisson reconstruction, the ``PoissonRecon`` and
-   ``SurfaceTrimmer`` tools of github.com/mkazhdan/PoissonRecon (MIT licence, verified 7 Oct 2026;
-   the same code COLMAP vendors). The oriented dense cloud goes in as a binary PLY in the run's
-   local frame (metres from the project origin, so float32 keeps millimetres); the mesh is trimmed
-   by the reconstruction's own sampling density.
+1. **``meshlab-poisson``**: Kazhdan's screened Poisson reconstruction as MeshLab ships it
+   (``pymeshlab``, the PyPI wheel; GPL-3.0, accepted for the pack on 8 Oct 2026). The oriented
+   dense cloud goes in as a binary PLY in the run's local frame (metres from the project origin, so
+   float32 keeps millimetres); a child Python runs the reconstruction (``poisson_meshlab``: a native
+   crash or a cancel never takes the pipeline down, and a failed attempt runs again
+   single-threaded), and the mesh is trimmed by the reconstruction's own sampling density, as
+   SurfaceTrimmer does. **``poissonrecon``**: the same reconstruction with the ``PoissonRecon`` and
+   ``SurfaceTrimmer`` tools of github.com/mkazhdan/PoissonRecon, when ``AIO_POISSONRECON`` names
+   them (or they are on the PATH and pymeshlab is not installed); each of the two stands in for the
+   other when it fails, and when both fail the mesh falls back to (3).
 2. **``grid-25d``**: for nadir surveys (most photos within 20 degrees of straight down) and the
    Fast preset, two triangles per DSM cell (cells without height are left open). Exact on the
    ground, no overhangs.
@@ -14,24 +19,22 @@ Engines, in order (``report/products.json`` names the one that ran):
    normals splatted into a vector field, its divergence solved with the FFT, the indicator's
    level set at the samples extracted with marching cubes (scikit-image, BSD-3) and trimmed where
    no samples are near. Coarser than (1): the grid fits the memory budget. Used for oblique and
-   close-range runs when the tool is missing.
+   close-range runs when no screened Poisson engine is installed or it failed.
 
 The site-view GLB is decimated to ``meshTriangles`` by vertex clustering; the full mesh is kept
 for ``tiles.mesh``. GLB vertices are in the project's local frame (x east, y up, z south from the
 manifest origin, data-conventions section 1) and the layer's ``transform`` is the identity.
 
-**G1 build recipe (PoissonRecon):** ``git clone https://github.com/mkazhdan/PoissonRecon`` at a
-pinned tag (Version 18.x), ``make -j poissonrecon surfacetrimmer`` on macOS (clang, OpenMP from
-Homebrew's libomp or none) or the Visual Studio solution ``PoissonRecon.sln`` targets
-``PoissonRecon`` and ``SurfaceTrimmer`` (Release x64) on Windows; no third-party library is
-needed (PNG and JPEG readers it vendors are only for its texture tools, which we do not build).
-Install as ``<pack>/tools/poissonrecon/PoissonRecon(.exe)`` and ``SurfaceTrimmer(.exe)``; the
-native licence gate lists both as MIT.
+The pack's pymeshlab is a PyPI wheel (``python/pyproject.toml``); no PoissonRecon build ships
+since the decision of 8 Oct 2026 (``AIO_POISSONRECON`` still points a run at a local build).
 """
 
 from __future__ import annotations
 
+import importlib.util
 import math
+import os
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,7 +42,7 @@ from pathlib import Path
 import numpy as np
 
 from ..runtime import JobError, StepContext
-from .native import find_tool, run_tool
+from . import native
 from .surface import GridSpec, read_grid
 
 
@@ -366,7 +369,7 @@ def poisson_tool(
     """Screened Poisson with the native tools; ``pts`` in the local frame. With ``src`` (a PLY
     already written, ``write_ply_chunks``, of ``count`` points) ``pts`` is only a sample of the
     cloud, used when the mesh has to be trimmed without SurfaceTrimmer."""
-    exe = find_tool("PoissonRecon")
+    exe = native.find_tool("PoissonRecon")
     if exe is None:
         raise JobError("PoissonRecon is not in this pipeline pack.")
     raw, out = work / "poisson.ply", work / "poisson-trimmed.ply"
@@ -388,10 +391,10 @@ def poisson_tool(
     ]
     if colours is not None:
         args.append("--colors")
-    run_tool(ctx, args, "Poisson meshing", work, expected_s=max(30.0, n / 2e5), progress=(0.0, 0.8))
-    trimmer = find_tool("SurfaceTrimmer")
+    native.run_tool(ctx, args, "Poisson meshing", work, expected_s=max(30.0, n / 2e5), progress=(0.0, 0.8))
+    trimmer = native.find_tool("SurfaceTrimmer")
     if trimmer is not None:
-        run_tool(
+        native.run_tool(
             ctx,
             [trimmer, "--in", str(raw), "--out", str(out), "--trim", "7"],
             "Trimming the mesh",
@@ -410,6 +413,175 @@ def poisson_tool(
     spacing = float(np.median(cKDTree(pts).query(pts[:: max(1, len(pts) // 5000)], k=2)[0][:, 1]))
     keep = dist <= 4 * max(spacing, 1e-6)
     return compact(Mesh(m.vertices, m.faces[keep[m.faces].all(1)], m.colours))
+
+
+# --------------------------------------------------------------------- MeshLab screened Poisson
+
+#: ``AIO_PYMESHLAB=0`` turns MeshLab's Poisson off (tests and engine comparisons).
+MESHLAB_ENV = "AIO_PYMESHLAB"
+#: Faces whose vertices' sampling density is below this are trimmed: SurfaceTrimmer's ``--trim 7``
+#: on the same scale (the octree depth the samples support; MeshLab keeps it as vertex quality),
+#: and never more than four levels below the reconstruction's depth (shallow test runs).
+DENSITY_TRIM = 7.0
+#: Bytes MeshLab holds per input point while it reconstructs (its vertex record and the octree),
+#: measured on the synthetic sets with margin; the cloud is thinned to fit the memory budget.
+MESHLAB_BYTES_PER_POINT = 400
+
+
+def meshlab_available() -> bool:
+    """True when pymeshlab is installed (looked up, not imported: it loads Qt)."""
+    if os.environ.get(MESHLAB_ENV) == "0":
+        return False
+    return importlib.util.find_spec("pymeshlab") is not None
+
+
+def poisson_engine() -> str | None:
+    """The screened Poisson engine here: ``poissonrecon`` when ``AIO_POISSONRECON`` names the tool
+    (an explicit override), else ``meshlab`` when pymeshlab is installed (the pack's engine), else
+    ``poissonrecon`` when the pack's ``tools/`` or the PATH has the tool, else None."""
+    if os.environ.get("AIO_POISSONRECON") and native.find_tool("PoissonRecon"):
+        return "poissonrecon"
+    if meshlab_available():
+        return "meshlab"
+    return "poissonrecon" if native.find_tool("PoissonRecon") else None
+
+
+def read_ply_points(path: Path, max_points: int = 0) -> tuple[np.ndarray, np.ndarray]:
+    """Points and normals of a binary little-endian PLY (``write_ply_chunks``), every n-th point
+    when it has more than ``max_points`` (0: all)."""
+    with open(path, "rb") as f:
+        head = f.read(65536)
+    end = head.index(b"end_header") + len(b"end_header")
+    end += 2 if head[end : end + 2] == b"\r\n" else 1
+    lines = head[:end].decode("ascii", errors="replace").splitlines()
+    if not any(ln.split()[:2] == ["format", "binary_little_endian"] for ln in lines):
+        raise JobError(f"The cloud {path.name} is not a binary little-endian PLY.")
+    count, props, inside = 0, [], False
+    for ln in lines:
+        p = ln.split()
+        if p[:1] == ["element"]:
+            inside = p[1] == "vertex"
+            if inside:
+                count = int(p[2])
+            elif count:
+                break
+        elif p[:1] == ["property"] and inside:
+            props.append((p[2], _PLY_TYPES[p[1]]))
+    dt = np.dtype(props)
+    arr = np.memmap(path, dt, "r", end, (count,))
+    step = max(1, math.ceil(count / max_points)) if max_points else 1
+    arr = arr[::step]
+    pts = np.column_stack([arr["x"], arr["y"], arr["z"]]).astype(np.float64)
+    nrm = np.column_stack([arr["nx"], arr["ny"], arr["nz"]]).astype(np.float64)
+    del arr
+    return pts, nrm
+
+
+def _meshlab_child(src: str, out: str, depth: int, threads: int, max_points: int) -> None:
+    """In the child Python: the oriented cloud of ``src`` through MeshLab's screened Poisson, the
+    mesh with its per-vertex density to ``out`` (npz)."""
+    import pymeshlab
+
+    pts, nrm = read_ply_points(Path(src), max_points)
+    ms = pymeshlab.MeshSet()
+    ms.add_mesh(pymeshlab.Mesh(vertex_matrix=pts, v_normals_matrix=nrm))
+    del pts, nrm
+    kw: dict = {"depth": depth, "samplespernode": 1.5, "pointweight": 4.0, "preclean": False}
+    if threads > 0:
+        kw["threads"] = threads
+    ms.generate_surface_reconstruction_screened_poisson(**kw)
+    m = ms.current_mesh()
+    tmp = Path(out).with_name(Path(out).stem + ".tmp.npz")
+    np.savez(
+        tmp,
+        vertices=m.vertex_matrix().astype(np.float64),
+        faces=m.face_matrix().astype(np.int64),
+        density=m.vertex_scalar_array().astype(np.float64),
+    )
+    tmp.replace(out)
+
+
+def poisson_meshlab(
+    ctx: StepContext,
+    work: Path,
+    src: Path,
+    depth: int,
+    count: int,
+    memory_budget: int,
+    attempts: int = 2,
+) -> Mesh:
+    """Screened Poisson with MeshLab (pymeshlab) in a child Python, so a native crash or a cancel
+    never takes the pipeline down; trimmed by density as SurfaceTrimmer does. A failed attempt is
+    run again single-threaded (the reconstruction has crashed nondeterministically before)."""
+    work.mkdir(parents=True, exist_ok=True)
+    out = work / "meshlab-poisson.npz"
+    max_points = max(100_000, memory_budget // MESHLAB_BYTES_PER_POINT)
+    if count > max_points:
+        ctx.log(f"MeshLab meshes {max_points:,} of the {count:,} dense points (memory budget).")
+    last: JobError | None = None
+    for attempt in range(attempts):
+        threads = 0 if attempt == 0 else 1
+        out.unlink(missing_ok=True)
+        args = [
+            sys.executable,
+            "-m",
+            "aio_pipelines.photo.mesh",
+            "meshlab-poisson",
+            str(src),
+            str(out),
+            str(depth),
+            str(threads),
+            str(max_points),
+        ]
+        try:
+            native.run_tool(
+                ctx, args, "Poisson meshing", work, expected_s=max(30.0, count / 2e5), progress=(0.0, 0.9)
+            )
+        except JobError as e:
+            last = e
+            ctx.log(f"MeshLab's Poisson stopped ({e}); attempt {attempt + 2} of {attempts}.", "warn")
+            continue
+        if not out.is_file():
+            last = JobError("MeshLab's Poisson finished without a mesh.")
+            continue
+        with np.load(out) as z:
+            verts, faces, density = z["vertices"], z["faces"], z["density"]
+        keep = density >= min(DENSITY_TRIM, depth - 4.0)
+        mesh = compact(Mesh(verts, faces[keep[faces].all(1)]))
+        if mesh.triangles:
+            return mesh
+        last = JobError("MeshLab's Poisson made an empty mesh.")
+    raise last or JobError("MeshLab's Poisson did not run.")
+
+
+def poisson_mesh(
+    ctx: StepContext,
+    work: Path,
+    pts: np.ndarray,
+    normals: np.ndarray,
+    depth: int,
+    src: Path,
+    count: int,
+    memory_budget: int,
+) -> tuple[Mesh, str]:
+    """Screened Poisson of the cloud in ``src`` (``count`` points; ``pts`` and ``normals`` a sample
+    of it) with the engine of ``poisson_engine``, then the other one when that one fails. Returns
+    the mesh and the engine that made it; raises ``JobError`` when none could."""
+    engine = poisson_engine()
+    order = [engine] + [e for e in ("meshlab", "poissonrecon") if e != engine]
+    errors: list[str] = []
+    for name in order:
+        if name == "meshlab" and meshlab_available():
+            try:
+                return poisson_meshlab(ctx, work, src, depth, count, memory_budget), "meshlab-poisson"
+            except JobError as e:
+                errors.append(f"MeshLab: {e}")
+        elif name == "poissonrecon" and native.find_tool("PoissonRecon"):
+            try:
+                return poisson_tool(ctx, work, pts, normals, depth, None, src, count), "poissonrecon"
+            except JobError as e:
+                errors.append(f"PoissonRecon: {e}")
+    raise JobError("; ".join(errors) or "No screened Poisson engine in this pipeline pack.")
 
 
 # -------------------------------------------------------------------------------------- frames
@@ -454,3 +626,10 @@ def ply_header_count(path: Path) -> int:
         if p[:2] == ["element", "face"]:
             return int(p[2])
     return 0
+
+
+if __name__ == "__main__":
+    # the child of ``poisson_meshlab``: meshlab-poisson <src.ply> <out.npz> <depth> <threads> <max points>
+    if len(sys.argv) != 7 or sys.argv[1] != "meshlab-poisson":
+        sys.exit("usage: python -m aio_pipelines.photo.mesh meshlab-poisson SRC OUT DEPTH THREADS MAXPOINTS")
+    _meshlab_child(sys.argv[2], sys.argv[3], int(sys.argv[4]), int(sys.argv[5]), int(sys.argv[6]))

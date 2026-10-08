@@ -15,6 +15,7 @@ import rasterio
 
 import products_synth as ps
 from aio_pipelines.photo import native
+from aio_pipelines.photo.mesh import meshlab_available
 from aio_pipelines.photo.products import PhotoProducts
 from aio_pipelines.pipelines import all_pipelines
 from aio_pipelines.runtime import Cancelled, Job, JobError
@@ -398,11 +399,12 @@ def test_with_poissonrecon_the_dense_cloud_is_meshed_and_textured_from_the_photo
     assert f"element vertex {res['outputs']['fuse']['points']}" in head
 
 
-def test_oblique_runs_without_poissonrecon_use_the_built_in_solver(monkeypatch):
+def test_oblique_runs_without_screened_poisson_use_the_built_in_solver(monkeypatch):
     import aio_pipelines.photo.mesh as mesh_mod
 
     monkeypatch.setattr(mesh_mod, "nadir_share", lambda views, limit_deg=20.0: 0.0)
     monkeypatch.setenv("AIO_POISSONRECON", "")
+    monkeypatch.setenv("AIO_PYMESHLAB", "0")
     monkeypatch.setattr(native, "find_tool", lambda name: None)
     monkeypatch.setenv("AIO_PHOTO_MEMORY_MB", "512")
     root = ps.project("fft")
@@ -412,6 +414,38 @@ def test_oblique_runs_without_poissonrecon_use_the_built_in_solver(monkeypatch):
     assert res["outputs"]["mesh"]["engine"] == "poisson-fft" and res["outputs"]["mesh"]["triangles"] > 1000
     doc = json.loads((root / "photogrammetry" / RUN / "run.json").read_text("utf-8"))
     assert any("built-in Poisson solver" in w for w in doc["warnings"])
+
+
+def test_a_failed_screened_poisson_falls_back_to_the_built_in_solver(monkeypatch):
+    import aio_pipelines.photo.mesh as mesh_mod
+
+    monkeypatch.setattr(mesh_mod, "nadir_share", lambda views, limit_deg=20.0: 0.0)
+    monkeypatch.setattr(mesh_mod, "poisson_engine", lambda: "meshlab")
+
+    def crash(*a, **k):
+        raise JobError("Poisson meshing failed: Failed to close loop")
+
+    monkeypatch.setattr(mesh_mod, "poisson_mesh", crash)
+    monkeypatch.setenv("AIO_PHOTO_MEMORY_MB", "512")
+    root = ps.project("fallback")
+    res, _ = run_job(
+        PhotoProducts(), root, _params(preset="standard", products=["mesh"], meshTriangles=20_000)
+    )
+    assert res["outputs"]["mesh"]["engine"] == "poisson-fft" and res["outputs"]["mesh"]["triangles"] > 1000
+
+
+@pytest.mark.skipif(not meshlab_available(), reason="pymeshlab is not installed")
+def test_oblique_runs_mesh_with_meshlab(monkeypatch):
+    import aio_pipelines.photo.mesh as mesh_mod
+
+    monkeypatch.setattr(mesh_mod, "nadir_share", lambda views, limit_deg=20.0: 0.0)
+    monkeypatch.delenv("AIO_POISSONRECON", raising=False)
+    root = ps.project("meshlab")
+    res, _ = run_job(
+        PhotoProducts(), root, _params(preset="standard", products=["mesh"], meshTriangles=20_000)
+    )
+    assert res["outputs"]["mesh"]["engine"] == "meshlab-poisson"
+    assert res["outputs"]["mesh"]["triangles"] > 1000
 
 
 # ------------------------------------------------------------------------------- tiles (G7) hand-over

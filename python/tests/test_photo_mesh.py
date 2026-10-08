@@ -135,6 +135,90 @@ def test_the_poisson_tool_is_called_and_its_mesh_read(tmp_path, monkeypatch):
     assert "--depth 11" in args and "--colors" in args
 
 
+def _cap(n: int = 20_000, seed: int = 3):
+    """Oriented points on a spherical cap of radius 5 m (normals outwards)."""
+    rng = np.random.default_rng(seed)
+    d = rng.normal(size=(n, 3))
+    d /= np.linalg.norm(d, axis=1, keepdims=True)
+    d = d[d[:, 2] > -0.3]
+    return 5.0 * d, d
+
+
+@pytest.mark.skipif(not M.meshlab_available(), reason="pymeshlab is not installed")
+def test_meshlab_meshes_a_cloud_in_a_child_python_and_trims_it(tmp_path):
+    pts, nrm = _cap()
+    src = tmp_path / "dense.ply"
+    M.write_ply_chunks(src, [(pts, nrm, np.zeros((len(pts), 3), np.uint8))], len(pts))
+    m = M.poisson_meshlab(_ctx(tmp_path), tmp_path / "work", src, 7, len(pts), 2**30)
+    assert m.triangles > 1000
+    r = np.linalg.norm(m.vertices, axis=1)
+    assert np.percentile(np.abs(r - 5.0), 90) < 0.05, np.percentile(np.abs(r - 5.0), [50, 90, 99])
+    # trimmed by density: the reconstruction's closing surface below the open cap is gone
+    assert m.vertices[:, 2].min() > -4.0, m.vertices[:, 2].min()
+
+
+def test_a_crashed_meshlab_run_is_tried_again_single_threaded(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_run(ctx, args, what, work, expected_s=60.0, progress=(0.0, 0.95)):
+        calls.append(args)
+        if len(calls) == 1:
+            raise M.JobError("Poisson meshing failed: exit 3221225477")
+        v = np.array([[0.0, 0, 0], [1, 0, 0], [0, 1, 0], [9, 9, 9]])
+        f = np.array([[0, 1, 2], [0, 1, 3]])
+        np.savez(args[5], vertices=v, faces=f, density=np.array([8.0, 8, 8, 2]))  # trim at 5 (depth 9)
+        return ""
+
+    monkeypatch.setattr(M.native, "run_tool", fake_run)
+    m = M.poisson_meshlab(_ctx(tmp_path), tmp_path / "work", tmp_path / "in.ply", 9, 10, 2**30)
+    assert [a[7] for a in calls] == ["0", "1"]  # threads: automatic, then one
+    assert m.triangles == 1 and len(m.vertices) == 3  # the low-density face is trimmed
+
+
+def test_when_meshlab_fails_the_poisson_tool_stands_in(tmp_path, monkeypatch):
+    src = str(ps.Path(M.__file__).parents[2])
+    monkeypatch.delenv("AIO_POISSONRECON", raising=False)
+    monkeypatch.setattr(M, "meshlab_available", lambda: True)
+    tool = ps.fake_tool(tmp_path / "tools", "PoissonRecon", FAKE_POISSON.replace("{src!r}", repr(src)))
+    monkeypatch.setattr(M.native, "find_tool", lambda name: str(tool) if name == "PoissonRecon" else None)
+
+    def crash(*a, **k):
+        raise M.JobError("MeshLab's Poisson made an empty mesh.")
+
+    monkeypatch.setattr(M, "poisson_meshlab", crash)
+    rng = np.random.default_rng(2)
+    pts = np.column_stack([rng.uniform(0, 10, 3000), rng.uniform(0, 10, 3000), rng.uniform(0, 0.1, 3000)])
+    nrm = np.tile([0.0, 0.0, 1.0], (3000, 1))
+    src_ply = tmp_path / "work" / "dense.ply"
+    M.write_ply_chunks(src_ply, [(pts, nrm, np.zeros((3000, 3), np.uint8))], 3000)
+    assert M.poisson_engine() == "meshlab"
+    mesh, engine = M.poisson_mesh(_ctx(tmp_path), tmp_path / "work", pts, nrm, 9, src_ply, 3000, 2**30)
+    assert engine == "poissonrecon" and mesh.triangles > 1000
+
+
+def test_the_poisson_engine_order(monkeypatch, tmp_path):
+    monkeypatch.delenv("AIO_POISSONRECON", raising=False)
+    monkeypatch.setattr(M.native, "find_tool", lambda name: None)
+    monkeypatch.setattr(M, "meshlab_available", lambda: False)
+    assert M.poisson_engine() is None
+    monkeypatch.setattr(M, "meshlab_available", lambda: True)
+    assert M.poisson_engine() == "meshlab"
+    monkeypatch.setattr(M.native, "find_tool", lambda name: "x")
+    assert M.poisson_engine() == "meshlab"
+    monkeypatch.setenv("AIO_POISSONRECON", "x")  # an explicit tool wins
+    assert M.poisson_engine() == "poissonrecon"
+
+
+def test_read_ply_points_thins_the_cloud(tmp_path):
+    pts, nrm = _cap(5000)
+    src = tmp_path / "c.ply"
+    M.write_ply_chunks(src, [(pts, nrm, np.zeros((len(pts), 3), np.uint8))], len(pts))
+    p, n = M.read_ply_points(src)
+    assert np.allclose(p, pts, atol=1e-5) and np.allclose(n, nrm, atol=1e-6)
+    p2, _ = M.read_ply_points(src, 1000)
+    assert 500 <= len(p2) <= 1000
+
+
 def test_a_missing_tool_says_so(tmp_path, monkeypatch):
     monkeypatch.setenv("AIO_POISSONRECON", str(tmp_path / "nothing.exe"))
     with pytest.raises(Exception, match="PoissonRecon is not in this pipeline pack"):
@@ -222,7 +306,11 @@ def test_the_mesh_layer_is_a_textured_glb_on_the_surface(processed):
     assert np.percentile(np.abs(h - ps.dsm(x, y))[inner & ~edge], 95) < 4 * ps.GSD
     assert len(m.faces) <= 2_000_000
     report = json.loads((root / "photogrammetry" / ps.RUN / "report" / "products.json").read_text("utf-8"))
-    assert report["engines"]["mesh"] == "grid-25d" and report["engines"]["texture"] == "ortho-drape"
+    # a nadir set: screened Poisson when this Python has it (the pack does), else the DSM's grid
+    if M.meshlab_available():
+        assert report["engines"]["mesh"] == "meshlab-poisson" and report["engines"]["texture"] == "views"
+    else:
+        assert report["engines"]["mesh"] == "grid-25d" and report["engines"]["texture"] == "ortho-drape"
 
 
 def test_per_photo_texturing_covers_the_mesh(tmp_path):
