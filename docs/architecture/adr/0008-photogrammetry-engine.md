@@ -1,9 +1,9 @@
 # ADR 0008: Photogrammetry engine and licence policy
 
-- Status: **Accepted, 7 Oct 2026 (founder: go with the recommendations)**. M10 decisions 1, 2, 5 and 8.
+- Status: **Accepted, 7 Oct 2026 (founder: go with the recommendations)**. M10 decisions 1, 2, 5 and 8. **Amended 8 Oct 2026** (founder, directly): prebuilt binaries, GPL accepted in the pipeline pack; decision 1 and the own-build parts of decisions 2 and 6 are superseded for the pack (see "Amendment" below).
 - Deciders: founder; integration lead (M10)
 - Plan: `docs/plans/2026-10-07-m10-globe-and-photogrammetry.md`, "Licence policy and inventory" and "Photogrammetry: options and recommendation"
-- Contracts: `@aio/schema` `photogrammetry.ts`, `jobs.ts` (`photo.*`, `opf.*`); code: `python/src/aio_pipelines/photo/` (G2, G3), `opf/` (G5), `tools/pipeline-pack/native/` (G1), `tools/release/licence-exceptions.json`
+- Contracts: `@aio/schema` `photogrammetry.ts`, `jobs.ts` (`photo.*`, `opf.*`); code: `python/src/aio_pipelines/photo/` (G2, G3), `opf/` (G5), `tools/pipeline-pack/pdal.mjs` and `python/pyproject.toml` (since 8 Oct 2026; `tools/pipeline-pack/native/` before), `tools/release/licence-exceptions.json`
 
 ## Context
 
@@ -25,3 +25,19 @@ The founder asked for photogrammetry "for processing the images into maps", thro
 - COLMAP without CHOLMOD Supernodal is slower on large adjustments; G2 measures on 1,000 images, with Accelerate sparse on macOS and smaller submodels as mitigations.
 - CPU dense matching is slower than GPU products; the Fast preset (2.5D) covers laptops and flat sites.
 - The pipeline pack grows to at most 1.1 GB unpacked and 450 MB compressed per platform (decision 6), or splits a photogrammetry component pack.
+
+## Amendment (8 Oct 2026): prebuilt binaries, GPL accepted in the pipeline pack
+
+The founder decided: "licences don't matter; make it faster and easier to operate". GPL is accepted in the pipeline pack. This supersedes, for the pack, decision 1 (permissive only), the "our own pycolmap build", "CHOLMOD made optional" and "OpenCV without FFmpeg" parts of decision 2, and the disciplined native build of the consequences.
+
+- **Engines from prebuilt packages.** COLMAP's PyPI wheel (`pycolmap` 4.2.1, with CHOLMOD and SPQR), `opencv-python-headless` 5.0.0.93 and `pymeshlab` 2025.7.post1 come from `uv.lock` for Windows x64 and Apple silicon (decision 6's platforms are unchanged); PDAL is conda-forge's `libpdal-core` 2.10.2, installed by micromamba from a SHA-256 pinned lock into `<pack>/tools/pdal` on every pack platform. Nothing is compiled; the vcpkg recipe and `pack-native.yml` are removed.
+- **Mesher.** MeshLab's screened Poisson replaces the PoissonRecon build as the primary engine, in a child process with a retry; PoissonRecon (when a local build is named) and the built-in FFT solver remain the fallbacks. Open3D was rejected for size (about 360 MB with the web packages it needs to import).
+- **Licence checks are reports.** The npm, Python, native, data and Team Server checks list what they find and never fail CI, a dist or a release. `licence-exceptions.json` accepts the copyleft families for the pack (`copyleft`); the app and the Team Server stay permissive by convention.
+- **Attribution still ships.** `THIRD-PARTY-NOTICES.md` lists pycolmap, OpenCV, pymeshlab and every conda-forge package of PDAL with its real licence, GPL parts included; the pack carries PDAL's licence files in `tools/pdal/licenses`.
+
+Consequences:
+
+- The pipeline pack is a combined work with GPL libraries in one process (CHOLMOD and SPQR in pycolmap, MeshLab, OpenCV's macOS FFmpeg with x264 and x265), so a distributed pack is under the GNU GPL version 3: recipients may ask for its corresponding source, our pipeline code included. The app and the Team Server only start the pack as a separate program.
+- The pack builds in about a minute with warm caches (was one to two hours per platform cold); CI runs the real engines on every push.
+- CHOLMOD is back in COLMAP's bundle adjustment, which is faster on large problems than the Eigen-only build.
+- Windows pack 0.4.0: about 994 MB unpacked and 343 MB as `.tar.gz`, within decision 6's 1.1 GB and 450 MB.

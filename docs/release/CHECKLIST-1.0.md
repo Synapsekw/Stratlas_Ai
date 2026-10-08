@@ -108,10 +108,10 @@ These need the founder before release candidate 1 (RC1). Each has a default the 
 
 ## Licences
 
-| Gate                                                                   | Owner | Status | Evidence or next step                                                                   |
-| ---------------------------------------------------------------------- | ----- | ------ | --------------------------------------------------------------------------------------- |
-| `app:licenses` lists every new dependency                              | IL    | Done   | Built from the same pnpm report at build time                                           |
-| No GPL or AGPL in the app, pipeline pack or server image (scans in CI) | IL    | Done   | `pnpm license:check` (all workspaces, server included); `python/tests/test_licences.py` |
+| Gate                                                                                                                                           | Owner | Status | Evidence or next step                                                                                                    |
+| ---------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `app:licenses` lists every new dependency                                                                                                      | IL    | Done   | Built from the same pnpm report at build time                                                                            |
+| Licences reported for the app, pipeline pack and server image (CI reports, never blocking since 8 Oct 2026; GPL accepted in the pipeline pack) | IL    | Done   | `pnpm license:check`, `python/tests/test_licences.py`, `native-licences.mjs`; GPL parts listed in THIRD-PARTY-NOTICES.md |
 
 ## Brand and accessibility
 

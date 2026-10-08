@@ -166,13 +166,14 @@ Current limits only; each is removed from this list when fixed.
 ### Processing photos
 
 - Processing runs on the CPU only (no GPU acceleration in this release), so dense matching is slower than GPU products. Windows x64 and Apple silicon Macs only; Intel Macs and Windows on Arm cannot process photos.
-- The photo pipelines need pipeline pack 0.4.0 with its native tools (COLMAP, PDAL, PoissonRecon). The pack's COLMAP and OpenCV builds are proven in CI only.
+- The photo pipelines need pipeline pack 0.4.0, which carries prebuilt COLMAP (pycolmap), OpenCV and MeshLab wheels from PyPI and conda-forge's PDAL. The macOS packs (PDAL's copy step and the Apple silicon wheels) are proven in CI only.
+- The pipeline pack contains GPL components (CHOLMOD and SPQR in pycolmap, MeshLab, OpenCV's FFmpeg build on macOS): a distributed pack is under the GNU GPL version 3, and whoever receives it may ask for its source, our pipeline code included (founder decision of 8 Oct 2026). The app and the Team Server are not affected.
 - Large flights need memory: aligning about 1,000 photos with the global mapper peaked at about 13 GB. Plan on 300 photos per run on a 16 GB laptop.
 - Matching uses the photos' GPS positions; photos without GPS can only be matched exhaustively in small sets (no vocabulary tree).
 - Heights from the drone's GNSS follow its altitude datum unless a geoid grid is installed (no EGM2008 or EGM96 grid ships yet); use ground control for absolute heights.
 - No automatic target detection: every ground control mark is placed or confirmed by a person. The marker's own predictions use a pinhole lens without distortion (a few pixels off); the predictions the alignment writes take precedence.
 - TIFF photos in folder runs cannot be shown in the marker (JPEG and PNG can).
-- The real alignment pipeline is tested end to end in CI and on the founder's machine only: the development machine has no COLMAP engine of our own build, so its photo e2e use stand-in pipelines.
+- The real alignment pipeline runs wherever `uv sync` ran (CI included, with `photo-real.spec.ts`); the other photo e2e specs keep their stand-in pipelines, whose photos no real matcher can align.
 - Without ground control, a small block of nadir photos at one height can carry a uniform height bias of about a metre (focal length and height trade off); add ground control or oblique photos.
 - **Processing accuracy report (PDF)** shows in the Exports menu of every project; without a processed run it answers with a message instead of a file.
 - The bundled photo demo is a small 13-photo block: only three of its nine surveyed points are in enough photos to mark, and it has no oblique photos.

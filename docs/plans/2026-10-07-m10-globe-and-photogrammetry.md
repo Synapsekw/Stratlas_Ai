@@ -82,6 +82,8 @@ Four findings shape the plan:
 
 ## Licence policy and inventory
 
+> **Superseded for the pipeline pack on 8 Oct 2026** (see "Decision change (8 Oct 2026)"): GPL is accepted in the pack and every licence gate is a report.
+
 ### The policy (decision 1)
 
 Recommended reading of "Apache only": **permissive only.**
@@ -434,6 +436,17 @@ On 7 Oct 2026 the founder said "go with the recommendations". Every decision abo
 11. **Version line:** M10 develops on `main` as 0.10.0. Cut `release/1.0` from the M9 line so 1.0 ships without M10, and ship M10 as 1.1.0 at its exit; the contracts do not depend on the number. If 1.0 has not shipped by M10's exit, the founder chooses between 1.0 with M10 or 1.0 then 1.1.
 12. **Customer imagery in packages:** imported customer imagery never travels in a `.aio` package by default; the builder can tick it per pack, with a reminder of the provider's licence (`RasterPackMeta.customerLicence`, the package option lands with the integration follow-up X1).
 
+## Decision change (8 Oct 2026)
+
+On 8 Oct 2026 the founder decided, directly: "licences don't matter; make it faster and easier to operate". GPL is accepted in the pipeline pack. This supersedes, for the pipeline pack, the permissive-only policy of decision 1 and the "our own builds" half of decision 8 and stream G1 (ADR 0008, amended the same day). What changed:
+
+- **No source build.** Pipeline pack 0.4.0 is built from prebuilt parts only: COLMAP's own `pycolmap` 4.2.1 wheel, `opencv-python-headless` 5.0.0.93 and `pymeshlab` 2025.7.post1 from PyPI (in `python/pyproject.toml` and `uv.lock`, for Windows x64 and Apple silicon: decision 8's platforms stay, and pycolmap has no Intel Mac wheel), and conda-forge's prebuilt PDAL (`libpdal-core` 2.10.2), installed by micromamba from an explicit, SHA-256 pinned lock (`tools/pipeline-pack/pdal.mjs`, `pdal-lock.json`) into `<pack>/tools/pdal`, for all three pack platforms. `tools/pipeline-pack/native/` (the vcpkg recipe for COLMAP, OpenCV, PDAL and PoissonRecon) and `.github/workflows/pack-native.yml` are deleted; they stay in git history. A pack builds in about a minute with warm caches instead of one to two hours per platform.
+- **Mesher.** MeshLab's screened Poisson (`pymeshlab`, the same Kazhdan reconstruction as PoissonRecon) is the primary mesh engine, run in a child Python with a single-threaded retry; PoissonRecon (`AIO_POISSONRECON`, a local build) stands in when it fails, then the built-in FFT solver. Open3D was measured and rejected: its wheel needs Dash, Flask, Plotly and Jupyter widgets to import, about 360 MB installed on Windows against 120 MB for pymeshlab after pruning, which would have pushed the pack past its 1.1 GB budget.
+- **PDAL.** No PyPI wheel bundles libpdal (`pdal` 3.5.5 on PyPI is bindings only, as an sdist). Our code calls the `pdal` command-line tool with pipeline JSON (COPC read and write, `filters.smrf`, `filters.reprojection`, `writers.gdal` and others), so conda-forge's build is a drop-in replacement that only touches the pack build; replacing PDAL with pure-PyPI tools (laspy, lazrs, a COPC writer, our own ground filter) would have meant rewriting six modules. `AIO_PDAL` discovery is unchanged; `pointcloud.pdal_env` points the relocated tool at its own PROJ and GDAL data.
+- **Licences are reports.** `pnpm license:check`, `python/tests/test_licences.py`, `tools/release/native-licences.mjs`, `tools/release/data-licences.mjs` and the Team Server check print what they find and never fail CI, a dist or a release; `--strict` has no effect. `licence-exceptions.json` gains `copyleft` (the GPL family accepted for the pack's `python` and `native` ecosystems); the app and the Team Server stay permissive by convention. `THIRD-PARTY-NOTICES.md` still ships and now lists pycolmap, OpenCV, pymeshlab and every conda-forge package of PDAL with their real licences, GPL parts included.
+- **GPL implication.** Our pipeline code (MIT) runs in one process with GPL libraries: SuiteSparse CHOLMOD and SPQR inside pycolmap (GPL-2.0-or-later), MeshLab inside pymeshlab (GPL-3.0) and, on macOS, OpenCV's FFmpeg build with x264 and x265 (GPL-2.0-or-later). A distributed pipeline pack is therefore a combined work under the GNU GPL version 3: whoever receives the pack may ask for the corresponding source of the pack, our pipeline code included, and may redistribute it under the GPL. The desktop app and the Team Server start the pack as a separate program and are not affected. The pycolmap licence refusal (`AIO_DEV_ALLOW_GPL_PYCOLMAP`) is removed.
+- **CI.** The pipelines job runs `uv sync --frozen`, installs PDAL with `pdal.mjs` and runs every test against the real engines (COLMAP alignment of the synthetic sets, OpenCV SGBM, MeshLab, PDAL); the e2e jobs set `QUADRION_E2E_PHOTO_REAL=1`, so `photo-real.spec.ts` aligns the mini flight for real. `release.yml` and `nightly.yml` build the packs without a native stage.
+
 ## Step 0: G0 contracts (serial, about 3 hours, integration lead)
 
 Before the fan-out, one agent writes every contract below in `packages/schema`:
@@ -499,6 +512,8 @@ Shared files stay with the integration lead after G0; a stream that needs a chan
 | G8 Synthetic data and the M10 harness                  | Rendered photogrammetry set with known poses, GCPs and surfaces; OPF fixtures; synthetic packs and tilesets; photo demo project; client-data check                                                         | Global constraint   |
 
 ### G1 Pack 0.4.0: native builds and licence gate
+
+> **Superseded on 8 Oct 2026** (see "Decision change (8 Oct 2026)"): the pack is built from prebuilt wheels and conda-forge's PDAL, `tools/pipeline-pack/native/` and `pack-native` are gone, and the licence gates are reports. The stream as planned is kept below for the record.
 
 **Owns:**
 
