@@ -45,6 +45,17 @@ async function journalText(root: string): Promise<string> {
   return out.join('\n');
 }
 
+/**
+ * The Survey QA and cleanup menu: its tool is in the Survey measurements popover, which sits on
+ * the toolbar, or under More tools when the toolbar is narrow.
+ */
+async function openQaMenu(win: Page): Promise<void> {
+  const survey = win.getByRole('button', { name: 'Survey measurements', exact: true });
+  if (!(await survey.isVisible())) await win.getByRole('button', { name: 'More tools' }).click();
+  await survey.click();
+  await win.getByRole('button', { name: 'Survey QA and cleanup' }).click();
+}
+
 async function open(win: Page, p: SurveyDemoProject): Promise<void> {
   await win.locator('.sb-nav .nav-item', { hasText: 'Projects' }).first().click();
   await win.getByTestId('project-card').filter({ hasText: p.name }).first().click();
@@ -73,7 +84,7 @@ test('check against points shows the RMSE, Strict holds the planted survey, rele
   };
   await open(win, earthworksProject);
 
-  await win.getByRole('button', { name: 'Survey QA and cleanup' }).click();
+  await openQaMenu(win);
   await win.getByTestId('survey-qa-open-qa').click();
   const panel = win.getByTestId('qa-panel');
   await expect(panel).toBeVisible();
@@ -136,7 +147,7 @@ test('a cleanup around the parked excavator makes a cleaned surface; the origina
   await open(win, earthworksProject);
 
   // the survey picker: by year and month; the excavator is on the survey of 6 April 2026
-  await win.getByRole('button', { name: 'Survey QA and cleanup' }).click();
+  await openQaMenu(win);
   await win.getByTestId('survey-qa-open-surveys').click();
   const picker = win.getByTestId('survey-picker');
   await expect(picker).toContainText('2026');
@@ -144,7 +155,7 @@ test('a cleanup around the parked excavator makes a cleaned surface; the origina
   await picker.getByTestId('survey-pick-d2').click();
   await expect(picker.getByTestId('survey-pick-d2')).toHaveAttribute('aria-pressed', 'true');
 
-  await win.getByRole('button', { name: 'Survey QA and cleanup' }).click();
+  await openQaMenu(win);
   await win.getByTestId('survey-qa-open-cleanup').click();
   const panel = win.getByTestId('cleanup-panel');
   await panel.getByTestId('cleanup-prepare').click();
@@ -179,7 +190,7 @@ test('a cleanup around the parked excavator makes a cleaned surface; the origina
     before,
   );
   // the cleaned surface is a helper: shown behind Show hidden
-  await win.getByRole('button', { name: 'Survey QA and cleanup' }).click();
+  await openQaMenu(win);
   await win.getByTestId('survey-qa-open-surveys').click();
   await picker.getByTestId('survey-show-hidden').check();
   await expect(picker.getByTestId('survey-helpers')).toContainText('(cleaned)');

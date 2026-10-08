@@ -282,7 +282,7 @@ export function DesignsPanel() {
   );
 }
 
-/** The Designs button of the stage toolbar. */
+/** The Designs button (in the Survey measurements popover). */
 export function DesignsTool() {
   const hasProject = useWorkspace((s) => s.project !== null);
   return (

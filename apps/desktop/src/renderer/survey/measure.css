@@ -4,6 +4,10 @@
   min-width: 320px;
   max-width: 420px;
 }
+/* Designs and survey QA: their tools nest in the Survey measurements popover */
+.sv-nested {
+  padding: 0;
+}
 .sv-fam {
   display: grid;
   gap: 4px;

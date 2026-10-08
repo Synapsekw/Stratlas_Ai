@@ -93,11 +93,15 @@ async function answerOpenDialog(app: ElectronApplication, path: string): Promise
   }, path);
 }
 
-/** The Designs button sits on the toolbar, or under More tools when the toolbar is narrow. */
+/**
+ * The Designs button is in the Survey measurements popover, whose tool sits on the toolbar, or
+ * under More tools when the toolbar is narrow.
+ */
 async function openDesigns(win: Page): Promise<void> {
-  const button = win.getByRole('button', { name: 'Designs', exact: true });
-  if (!(await button.isVisible())) await win.getByRole('button', { name: 'More tools' }).click();
-  await button.click();
+  const survey = win.getByRole('button', { name: 'Survey measurements', exact: true });
+  if (!(await survey.isVisible())) await win.getByRole('button', { name: 'More tools' }).click();
+  await survey.click();
+  await win.getByRole('button', { name: 'Designs', exact: true }).click();
   await expect(win.getByTestId('designs-panel')).toBeVisible();
 }
 
@@ -142,7 +146,9 @@ test('a LandXML design imports, shows in the Designs panel and its alignment giv
   })) as { ok: boolean; file: { activeAlignment?: string } };
   expect(saved.file.activeAlignment).toBe('Pad-design/CL1');
 
-  // close the panel, look straight down at the origin: the cursor readout gains station and offset
+  // close the panel (and the Survey measurements popover around it), look straight down at the
+  // origin: the cursor readout gains station and offset
+  await win.keyboard.press('Escape');
   await win.keyboard.press('Escape');
   await win.evaluate(() =>
     (

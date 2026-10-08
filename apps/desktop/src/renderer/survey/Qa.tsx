@@ -49,8 +49,8 @@ const ENTRIES: {
   { panel: 'history', label: 'Elevation history', icon: 'point' },
 ];
 
-/** The stage toolbar's survey QA entry. */
-export function SurveyQaTool() {
+/** The survey QA entry (in the Survey measurements popover); `onPicked` after opening a panel. */
+export function SurveyQaTool({ onPicked }: { onPicked?: () => void } = {}) {
   const panel = useQa((s) => s.panel);
   const [open, setOpen] = useState(false);
   return (
@@ -72,6 +72,7 @@ export function SurveyQaTool() {
             onClick={() => {
               openQaPanel(panel === e.panel ? null : e.panel);
               setOpen(false);
+              onPicked?.();
             }}
           >
             <Icon name={e.icon} size={12} /> {e.label}

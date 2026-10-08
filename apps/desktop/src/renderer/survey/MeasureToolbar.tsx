@@ -25,9 +25,11 @@ import { useShell } from '../shell';
 import { PopTool } from '../workspace/StageTools';
 import { BulkTotals } from './BulkTotals';
 import { CompareLayer } from './Comparison';
+import { DesignsTool } from './Designs';
 import { openCompareDialog } from './compareStore';
 import { MeasurementList } from './MeasurementList';
 import { MeasurementPanel } from './MeasurementPanel';
+import { SurveyQaTool } from './Qa';
 import { attach3d, attachMap, frameOf, stageClamp } from './measureScene';
 import {
   drawEvent,
@@ -93,6 +95,21 @@ export function MeasureToolbar() {
         onOpenChange={setOpen}
       >
         <div className="pop-form sv-tools" data-testid="survey-tools">
+          {/* the site's designs and survey QA: here rather than on the bar, which fits one row at
+              1440 px with both side panels open */}
+          <div className="sv-fam" role="group" aria-label="Site data">
+            <span className="pop-title">
+              <Icon name="layers" size={12} /> Site data
+            </span>
+            <div className="tgroup-h sv-nested">
+              <DesignsTool />
+              <SurveyQaTool
+                onPicked={() => {
+                  setOpen(false);
+                }}
+              />
+            </div>
+          </div>
           {!readOnly &&
             FAMILIES.map((f) => (
               <div
