@@ -3,7 +3,8 @@
  * turn, again and again, and checks that memory and open handles stay flat. After a warm-up, the
  * median of the last cycles may exceed the median of the first measured cycles by at most 10 %
  * (plus a small absolute allowance for noise) for: the main process heap, the renderer heap,
- * the working set of all app processes, and the main process's active handles and requests.
+ * and the main process's active handles and requests; and by 20 % for the working set of all app
+ * processes (see the checks below).
  * The renderer allowance is small on purpose: T8 found 6 MB of renderer heap kept per project
  * switch (34 MB to 516 MB over 80 cycles: each closed 3D view and its renderer stayed alive, and
  * with them the closed workspace's DOM and maps), which this must catch; fixed, it stays near
@@ -148,17 +149,21 @@ test(`${String(CYCLES)} open cycles across the demos keep memory and handles fla
 
   const first = samples.slice(WARMUP, WARMUP + WINDOW);
   const last = samples.slice(-WINDOW);
-  const checks: [keyof Omit<Sample, 'cycle' | 'byType'>, number][] = [
-    ['mainHeap', 8 * MB],
-    ['rendererHeap', 4 * MB],
-    ['workingSet', 64 * MB],
-    ['handles', 5],
+  // The working set gets twice the growth: it includes Chromium's native memory, which keeps
+  // filling for about 80 opens and then grows under 1 MB per open while every JS and Blink object
+  // count stays flat (each open makes a new WebGL context and compiles its shaders again), and the
+  // GPU process, whose caches rise and drop by 70 MB. The heaps and handles keep 10 %.
+  const checks: [keyof Omit<Sample, 'cycle' | 'byType'>, number, number][] = [
+    ['mainHeap', 8 * MB, GROWTH],
+    ['rendererHeap', 4 * MB, GROWTH],
+    ['workingSet', 64 * MB, 2 * GROWTH],
+    ['handles', 5, GROWTH],
   ];
-  for (const [key, slack] of checks) {
+  for (const [key, slack, growth] of checks) {
     const before = median(first.map((s) => s[key]));
     const after = median(last.map((s) => s[key]));
     expect(after, `${key}: ${String(before)} then ${String(after)}`).toBeLessThanOrEqual(
-      before * (1 + GROWTH) + slack,
+      before * (1 + growth) + slack,
     );
   }
 });
