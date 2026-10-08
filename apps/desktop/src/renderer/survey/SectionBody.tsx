@@ -30,8 +30,9 @@ import {
 
 export function gradeText(g: Grade | null): string {
   if (!g) return 'n/a';
-  const one = Number.isFinite(g.oneIn) ? `1:${g.oneIn.toFixed(2)}` : 'flat';
-  return `${g.degrees.toFixed(2)}° · ${g.percent.toFixed(2)}% · ${one}`;
+  // below 1 in a million it reads flat (a plane's rounding, not a slope)
+  if (Math.abs(g.ratio) < 1e-6) return '0.00° · 0.00% · flat';
+  return `${g.degrees.toFixed(2)}° · ${g.percent.toFixed(2)}% · 1:${g.oneIn.toFixed(2)}`;
 }
 
 /** The section's chart, surfaces, pins and controls (in the dock and in the window). */

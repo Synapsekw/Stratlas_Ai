@@ -51,9 +51,11 @@ export function attachSectionMap(ctl: MapController, epsg: number | null): () =>
     }
     return { type: 'FeatureCollection', features };
   };
+  let waiting = false;
   const draw = () => {
     try {
-      if (!map.isStyleLoaded()) return;
+      waiting = !map.isStyleLoaded();
+      if (waiting) return;
       const src = map.getSource(SRC) as { setData?: (d: unknown) => void } | undefined;
       if (src?.setData) src.setData(data());
       else map.addSource(SRC, { type: 'geojson', data: data() as never });
@@ -93,7 +95,11 @@ export function attachSectionMap(ctl: MapController, epsg: number | null): () =>
   const onStyle = () => {
     draw();
   };
+  const onIdle = () => {
+    if (waiting) draw();
+  };
   map.on('styledata', onStyle);
+  map.on('idle', onIdle);
   const off = sectionStore.subscribe((s, prev) => {
     if (s.line !== prev.line || s.pins !== prev.pins || s.dismissed !== prev.dismissed) draw();
   });
@@ -101,6 +107,7 @@ export function attachSectionMap(ctl: MapController, epsg: number | null): () =>
   return () => {
     off();
     map.off('styledata', onStyle);
+    map.off('idle', onIdle);
     try {
       for (const id of [...LAYERS].reverse()) if (map.getLayer(id)) map.removeLayer(id);
       if (map.getSource(SRC)) map.removeSource(SRC);

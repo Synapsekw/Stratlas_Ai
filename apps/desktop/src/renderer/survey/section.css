@@ -118,7 +118,7 @@
 .sec-stations .sv-field input {
   width: 64px;
 }
-.sec-window {
+.sv-dialog.sec-window {
   width: min(1500px, 100%);
   height: min(90vh, 900px);
 }
@@ -126,11 +126,11 @@
 /* the overlays panel */
 .ov-panel {
   position: fixed;
-  top: 96px;
+  top: 150px;
   left: 16px;
   z-index: 50;
   width: min(360px, calc(100vw - 32px));
-  max-height: calc(100vh - 180px);
+  max-height: calc(100vh - 240px);
 }
 .ov-list {
   list-style: none;

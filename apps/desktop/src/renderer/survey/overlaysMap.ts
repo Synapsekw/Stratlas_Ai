@@ -32,6 +32,8 @@ export function attachOverlaysMap(ctl: MapController, epsg: number | null): () =
   const drawn = new Map<string, Drawn>();
   let gen = 0;
   let disposed = false;
+  /** A sync found the style still loading: the next idle map syncs again. */
+  let waiting = false;
 
   const lngLat = (e: number, n: number): [number, number] => {
     const p = toWgs84([e, n, 0], epsg);
@@ -120,10 +122,14 @@ export function attachOverlaysMap(ctl: MapController, epsg: number | null): () =
     const project = workspace.getState().project;
     const file = overlays.getState().file;
     try {
-      if (!map.isStyleLoaded()) return;
+      if (!map.isStyleLoaded()) {
+        waiting = true;
+        return;
+      }
     } catch {
       return;
     }
+    waiting = false;
     const want = new Map<string, SurveyOverlay>();
     if (project && file && overlays.getState().projectId === project.id)
       for (const o of file.overlays) if (o.visible) want.set(`${o.id}|${o.fingerprint}`, o);
@@ -160,7 +166,11 @@ export function attachOverlaysMap(ctl: MapController, epsg: number | null): () =
       drawn.clear();
     void sync();
   };
+  const onIdle = () => {
+    if (waiting) void sync();
+  };
   map.on('styledata', onStyle);
+  map.on('idle', onIdle);
   const off = overlays.subscribe((s, prev) => {
     if (s.file !== prev.file || s.projectId !== prev.projectId) void sync();
   });
@@ -169,6 +179,7 @@ export function attachOverlaysMap(ctl: MapController, epsg: number | null): () =
     disposed = true;
     off();
     map.off('styledata', onStyle);
+    map.off('idle', onIdle);
     try {
       for (const d of drawn.values()) remove(d);
     } catch {
