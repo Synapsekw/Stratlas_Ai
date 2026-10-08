@@ -66,9 +66,8 @@ const SNAP_SOURCES: { source: SnapSource; label: string }[] = [
   { source: 'guide', label: 'Guidelines' },
 ];
 
-/** The stage toolbar's survey tools (mounted in `MeasureTools`). */
-export function MeasureToolbar({ stage }: { stage: EngineStage | null }) {
-  const pkg = useShell((s) => s.pkg);
+/** The stage toolbar's survey tools (in `MeasureTools`, and alone on the map). */
+export function MeasureToolbar() {
   const active = useMeasure((s) => s.tool);
   const listOpen = useMeasure((s) => s.listOpen);
   const templates = useMeasure((s) => s.templates);
@@ -245,13 +244,21 @@ export function MeasureToolbar({ stage }: { stage: EngineStage | null }) {
           </div>
         </div>
       </PopTool>
-      {!pkg && <MeasureLayer stage={stage} />}
     </>
   );
 }
 
 function useActiveMap(): MapController | null {
   return useSyncExternalStore(onActiveMap, getActiveMap, getActiveMap);
+}
+
+/**
+ * The workspace mount of the measurements (one per stage, whatever toolbar groups show): none in
+ * a package, whose player mode does not draw or edit measurements yet.
+ */
+export function MeasureMount({ stage }: { stage: EngineStage | null }) {
+  const pkg = useShell((s) => s.pkg);
+  return pkg ? null : <MeasureLayer stage={stage} />;
 }
 
 /**

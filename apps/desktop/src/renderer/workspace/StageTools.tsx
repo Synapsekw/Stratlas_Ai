@@ -367,7 +367,7 @@ export function MeasureTools({ stage }: { stage: EngineStage | null }) {
           <SectionPanel stage={stage} />
         </PopTool>
       )}
-      <MeasureToolbar stage={stage} />
+      <MeasureToolbar />
     </>
   );
 }
