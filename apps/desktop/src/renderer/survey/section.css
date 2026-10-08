@@ -1,0 +1,150 @@
+/* Cross-sections and terrain overlays (M11 G5). Mission tokens only. */
+
+.sec-dock {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 55;
+  width: min(1180px, calc(100vw - 32px));
+  max-height: 46vh;
+}
+.sec-body {
+  display: grid;
+  grid-template-columns: minmax(180px, 230px) minmax(0, 1fr) minmax(220px, 320px);
+  gap: 12px;
+  min-height: 0;
+}
+.sec-body.big {
+  flex: 1;
+  min-height: 0;
+}
+.sec-side,
+.sec-pins {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  overflow: auto;
+}
+.sec-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.sec-chart {
+  position: relative;
+  height: 220px;
+  min-width: 0;
+  cursor: crosshair;
+}
+.sec-body.big .sec-chart {
+  height: min(62vh, 640px);
+}
+.sec-chart svg {
+  display: block;
+}
+.sec-grid line {
+  stroke: var(--line-soft);
+  stroke-width: 1;
+}
+.sec-grid text {
+  fill: var(--fg-2);
+  font: 10px var(--f-mono);
+}
+.sec-fill {
+  fill: #2166ac;
+  fill-opacity: 0.35;
+}
+.sec-cut {
+  fill: #b2182b;
+  fill-opacity: 0.35;
+}
+.sec-pin {
+  stroke: var(--fg-0);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+.sec-shade-note {
+  position: absolute;
+  right: 20px;
+  top: 14px;
+  margin: 0;
+  padding: 2px 6px;
+  border-radius: var(--r-4);
+  background: var(--bg-1);
+}
+.sec-empty {
+  display: grid;
+  place-items: center;
+  height: 220px;
+}
+.sec-surfaces {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sec-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 2px;
+  border: 1px solid var(--line-strong);
+}
+.sec-pin-table caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+}
+.sec-pin-table th {
+  text-align: left;
+  font-weight: 500;
+}
+.sec-pin-table th .btn.on {
+  color: var(--acc);
+}
+.sec-download {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.sec-stations {
+  display: grid;
+  gap: 4px;
+}
+.sec-stations .sv-field input {
+  width: 64px;
+}
+.sec-window {
+  width: min(1500px, 100%);
+  height: min(90vh, 900px);
+}
+
+/* the overlays panel */
+.ov-panel {
+  position: fixed;
+  top: 96px;
+  left: 16px;
+  z-index: 50;
+  width: min(360px, calc(100vw - 32px));
+  max-height: calc(100vh - 180px);
+}
+.ov-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.ov-legend {
+  display: flex;
+  height: 8px;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.ov-legend span {
+  flex: 1;
+}

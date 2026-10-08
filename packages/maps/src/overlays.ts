@@ -1,6 +1,7 @@
 import type { Issue, LensModel, PoseSample, SeverityModel, Vec3 } from '@aio/schema';
 import { Quaternion, Vector3 } from 'three';
 import type { FrameProjection } from './geo';
+import { pyramidView, type PyramidIndex, type PyramidTile } from './pyramid';
 
 export type LonLat = [number, number];
 
@@ -176,4 +177,22 @@ export function severityRankColors(models: readonly SeverityModel[]): [number, s
     for (const l of m.levels) if (!out.has(l.value)) out.set(l.value, l.color);
   }
   return [...out.entries()].sort((a, b) => a[0] - b[0]);
+}
+
+/**
+ * The tiles that show a whole kit pyramid (a terrain overlay, M11 G5): the finest level that needs
+ * at most `maxTiles` tiles, each with its local corners for an image quad.
+ */
+export function overlayTiles(index: PyramidIndex, maxTiles = 64): PyramidTile[] {
+  const { tl, tr, bl } = index.corners;
+  const br = [tr[0] + bl[0] - tl[0], tr[2] + bl[2] - tl[2]];
+  const xs = [tl[0], tr[0], bl[0], br[0] ?? tl[0]];
+  const zs = [tl[2], tr[2], bl[2], br[1] ?? tl[2]];
+  const view = {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minZ: Math.min(...zs),
+    maxZ: Math.max(...zs),
+  };
+  return pyramidView(index, view, 0, maxTiles)?.tiles ?? [];
 }

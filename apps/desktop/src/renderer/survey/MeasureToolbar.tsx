@@ -41,13 +41,18 @@ import {
   useMeasure,
 } from './measureStore';
 import { TemplateEditor } from './TemplateEditor';
+import { OverlaysPanel, useOverlaysLoad } from './Overlays';
+import { attachOverlaysMap } from './overlaysMap';
+import { setOverlaysOpen, useOverlays } from './overlaysStore';
+import { SectionDock } from './SectionDock';
+import { attachSectionMap } from './sectionMap';
 import { UnitsDialog } from './UnitsDialog';
 import './measure.css';
 
-/** The tools the toolbar offers, by family (sections and history open with G5 and G8). */
+/** The tools the toolbar offers, by family (a cross-section opens G5's dock; history with G8). */
 const FAMILIES: { family: 'point' | 'line' | 'polygon' | 'markup'; tools: MeasurementTool[] }[] = [
   { family: 'point', tools: ['elevation', 'elevation-difference', 'annotation'] },
-  { family: 'line', tools: ['distance', 'grade', 'vertex-table', 'berm-check'] },
+  { family: 'line', tools: ['distance', 'grade', 'vertex-table', 'berm-check', 'section'] },
   { family: 'polygon', tools: ['area', 'volume'] },
   { family: 'markup', tools: ['freehand'] },
 ];
@@ -241,6 +246,17 @@ export function MeasureToolbar() {
             >
               Units
             </button>
+            <button
+              type="button"
+              className="btn sm"
+              data-testid="survey-overlays-open"
+              onClick={() => {
+                setOverlaysOpen(true);
+                setOpen(false);
+              }}
+            >
+              <Icon name="raster" size={12} /> Overlays
+            </button>
           </div>
         </div>
       </PopTool>
@@ -274,6 +290,8 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
   const listOpen = useMeasure((s) => s.listOpen);
   const focus = useMeasure((s) => s.focus);
   const dialog = useMeasure((s) => s.dialog);
+  const overlaysOpen = useOverlays((s) => s.open);
+  useOverlaysLoad();
 
   useEffect(() => {
     void loadMeasurements(projectId);
@@ -293,7 +311,14 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
   useEffect(() => {
     if (!map || !frame) return;
     const clampZ = stage ? stageClamp(stage, frame) : () => null;
-    return attachMap(map, frame, clampZ);
+    const detach = [
+      attachMap(map, frame, clampZ),
+      attachSectionMap(map, frame.epsg),
+      attachOverlaysMap(map, frame.epsg),
+    ];
+    return () => {
+      for (const d of detach) d();
+    };
   }, [map, frame, stage]);
 
   // a project switch ends any drawing
@@ -311,6 +336,8 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
           {focus && <MeasurementPanel />}
         </aside>
       )}
+      <SectionDock stage={stage} />
+      {overlaysOpen && <OverlaysPanel />}
       {dialog?.kind === 'templates' && <TemplateEditor />}
       {dialog?.kind === 'units' && <UnitsDialog />}
     </>,
