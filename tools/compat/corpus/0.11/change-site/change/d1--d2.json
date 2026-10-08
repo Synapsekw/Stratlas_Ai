@@ -1,0 +1,70 @@
+{
+  "schema": "aio.change/1",
+  "id": "d1--d2",
+  "from": "d1",
+  "to": "d2",
+  "producer": "change.compare",
+  "run": {
+    "jobId": "job-compat-1",
+    "at": "2026-03-09T15:30:00.000Z",
+    "params": { "minAreaM2": 2 }
+  },
+  "createdAt": "2026-03-09T15:30:00.000Z",
+  "items": [
+    {
+      "kind": "issue",
+      "id": "i-1",
+      "label": "Coating loss grew",
+      "review": {
+        "status": "confirmed",
+        "by": "Rana Example",
+        "at": "2026-03-09T15:30:00.000Z",
+        "note": "Seen on site."
+      },
+      "verdict": "grown",
+      "from": "issue-a",
+      "to": "issue-b",
+      "size": { "from": 0.4, "to": 0.9, "unit": "m2" }
+    },
+    {
+      "kind": "detection",
+      "id": "d-1",
+      "verdict": "new",
+      "classId": "marker",
+      "count": { "from": 2, "to": 3 },
+      "toIds": ["M3-p01"]
+    },
+    {
+      "kind": "region",
+      "id": "r-1",
+      "review": { "status": "dismissed", "by": "Omar Sample", "at": "2026-03-09T15:30:00.000Z" },
+      "verdict": "cut",
+      "outlineLocal": [
+        [0, 0, 0],
+        [4, 0, 0],
+        [4, 0, 3]
+      ],
+      "areaM2": 6,
+      "volume": { "cutM3": 3.5, "fillM3": 0, "netM3": -3.5 }
+    },
+    {
+      "kind": "component",
+      "id": "c-1",
+      "verdict": "moved",
+      "part": "tank-2",
+      "offsetM": [0.2, 0, -0.1]
+    },
+    {
+      "kind": "frame",
+      "id": "f-1",
+      "score": 0.7,
+      "verdict": "changed",
+      "a": { "layer": "photos-d1", "photo": "p01" },
+      "b": { "layer": "photos-d2", "photo": "p01" }
+    }
+  ],
+  "layers": [],
+  "stats": { "items": 5 },
+  "registration": { "ok": true, "shiftM": 0.04, "toleranceM": 0.1 },
+  "coverage": 0.92
+}
