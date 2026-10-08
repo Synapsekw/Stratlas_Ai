@@ -9,12 +9,15 @@ import {
   colmapConfigure,
   installedPorts,
   loadComponents,
+  checkBuildRequires,
   opencvEnv,
   openmpHints,
   parseCMakeCache,
   pick,
   poissonConfigure,
+  pycolmapRequirements,
   pycolmapSettings,
+  pycolmapWheelArgs,
   targetFor,
   vcpkgConfiguration,
 } from './build-native.mjs';
@@ -113,6 +116,7 @@ describe('COLMAP and pycolmap', () => {
     fetchContent: 'fc',
     projectInclude: 'pi.cmake',
     deploymentTarget: '14.0',
+    pybind11Dir: 'py/pybind11/share/cmake/pybind11',
   };
 
   it('pins 4.2.1 by commit and applies the CHOLMOD patch', () => {
@@ -177,6 +181,60 @@ describe('COLMAP and pycolmap', () => {
     expect(s).toContain('--config-settings=cmake.define.CMAKE_PROJECT_INCLUDE=pi.cmake');
     // MSVC's OpenMP needs no hints
     expect(s.join(' ')).not.toMatch(/OpenMP/);
+  });
+
+  it('builds the pycolmap wheel the same way on both platforms, with its pinned build requirements', () => {
+    // --no-build-isolation: pack-native win32-x64 found no pybind11 config, since our
+    // CMAKE_PREFIX_PATH replaces the prefixes scikit-build-core adds
+    for (const platform of ['win32', 'darwin']) {
+      const reqs = pycolmapRequirements(colmap, platform);
+      expect(reqs).toEqual(
+        expect.arrayContaining(['scikit-build-core==1.1.1', 'pybind11==3.0.4', 'numpy==2.5.3']),
+      );
+      expect(reqs).toContain(platform === 'win32' ? 'delvewheel==1.13.1' : 'delocate==0.13.0');
+      for (const r of reqs) expect(r, r).toMatch(/^[A-Za-z0-9._-]+==\S+$/);
+      const args = pycolmapWheelArgs({
+        ...ctx,
+        platform,
+        raw: 'raw',
+        libomp: '/opt/homebrew/opt/libomp',
+      });
+      expect(args.slice(0, 8)).toEqual([
+        '-m',
+        'pip',
+        'wheel',
+        's',
+        '--no-deps',
+        '--no-build-isolation',
+        '-w',
+        'raw',
+      ]);
+      expect(args).toContain(
+        '--config-settings=cmake.define.pybind11_DIR=py/pybind11/share/cmake/pybind11',
+      );
+      expect(args.some((a) => a.includes('OpenMP_omp_LIBRARY'))).toBe(platform === 'darwin');
+    }
+    expect(() => pycolmapSettings({ ...ctx, platform: 'win32', pybind11Dir: undefined })).toThrow(
+      /pybind11/,
+    );
+  });
+
+  it('covers every build requirement of pycolmap 4.2.1, or says why one is left out', () => {
+    // [build-system] requires of colmap/pyproject.toml at the pinned commit
+    const upstream = [
+      'scikit-build-core>=0.3.3',
+      'pybind11==3.0.4',
+      'pybind11_stubgen @ git+https://github.com/sarlinpe/pybind11-stubgen@sarlinpe/fix-2025-08-20',
+      'numpy',
+      'ruff==0.15.20',
+      'clang-format==22.1.5',
+    ];
+    expect(checkBuildRequires(upstream, colmap.pycolmap)).toEqual([]);
+    expect(checkBuildRequires(['pybind11==3.0.5', 'cmake>=3.30'], colmap.pycolmap)).toEqual([
+      'pybind11==3.0.5: components.json pins pybind11==3.0.4',
+      'cmake>=3.30: not in components.json pycolmap.buildRequires',
+    ]);
+    expect(checkBuildRequires(['Scikit_Build.Core'], colmap.pycolmap)).toEqual([]);
   });
 
   it('gives COLMAP, pycolmap and PoissonRecon the same libomp hints on macOS', () => {
