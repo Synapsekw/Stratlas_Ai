@@ -71,6 +71,7 @@ import { CompareButton, CompareMap, useVolumesFollowDate } from './CompareContro
 import { CompareScene } from './CompareScene';
 import { ChangeLegends } from './MapSwipe';
 import { CursorReadout, useSceneCursor } from './SceneCursor';
+import { DesignsTool } from '../survey/Designs';
 import './m8Mounts';
 import { paneCapture, PaneChooser, SplitPane, useSplit } from './SplitPanes';
 import {
@@ -260,7 +261,12 @@ function StageToolbar({
       case 'view':
         return <ViewTools stage={stage} map={map} />;
       case 'measure':
-        return <MeasureTools stage={stage} />;
+        return (
+          <>
+            <MeasureTools stage={stage} />
+            <DesignsTool />
+          </>
+        );
       case 'display':
         return <DisplayTools stage={stage} map={map} />;
       case 'clouds':
