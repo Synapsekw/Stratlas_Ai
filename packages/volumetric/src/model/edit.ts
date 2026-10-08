@@ -5,6 +5,7 @@
  * Coordinates are easting and northing in the project CRS.
  */
 import type { BaseVolumes, VolumeBaseId } from '@aio/schema';
+import { Accumulator, fitPlane, perimeterLevels } from '@aio/survey';
 import { BASE_IDS } from './volume';
 
 export type EN = [number, number];
@@ -139,53 +140,13 @@ export function editGeometry(ring: readonly EN[], surf: Surface): EditGeometry |
     if (z != null) bs.push([E, N, z]);
   }
   if (bs.length < 3) return null;
-  let lo = Infinity;
-  let sum = 0;
-  for (const q of bs) {
-    lo = Math.min(lo, q[2]);
-    sum += q[2];
-  }
-  const avg = sum / bs.length;
-
-  // least-squares plane z = c0 + c1 (E - x0) + c2 (N - y0)
-  const a = [
-    [0, 0, 0],
-    [0, 0, 0],
-    [0, 0, 0],
-  ];
-  const r = [0, 0, 0];
-  for (const [E, N, z] of bs) {
-    const v = [1, E - x0, N - y0];
-    for (let i = 0; i < 3; i++) {
-      const row = a[i];
-      if (!row) continue;
-      r[i] = (r[i] ?? 0) + (v[i] ?? 0) * z;
-      for (let j = 0; j < 3; j++) row[j] = (row[j] ?? 0) + (v[i] ?? 0) * (v[j] ?? 0);
-    }
-  }
-  const M = a.map((row, i) => [...row, r[i] ?? 0]);
-  const at = (i: number, j: number) => M[i]?.[j] ?? 0;
-  for (let i = 0; i < 3; i++) {
-    let pv = i;
-    for (let k = i + 1; k < 3; k++) if (Math.abs(at(k, i)) > Math.abs(at(pv, i))) pv = k;
-    const mi = M[i];
-    const mp = M[pv];
-    if (mi && mp) {
-      M[i] = mp;
-      M[pv] = mi;
-    }
-    if (Math.abs(at(i, i)) < 1e-9) continue;
-    for (let k = 0; k < 3; k++) {
-      if (k === i) continue;
-      const f = at(k, i) / at(i, i);
-      const rk = M[k];
-      const ri = M[i];
-      if (!rk || !ri) continue;
-      for (let q = i; q < 4; q++) rk[q] = (rk[q] ?? 0) - f * (ri[q] ?? 0);
-    }
-  }
-  const pc = [0, 1, 2].map((i) => (Math.abs(at(i, i)) < 1e-9 ? 0 : at(i, 3) / at(i, i)));
-  const [p0 = 0, p1 = 0, p2 = 0] = pc;
+  // the survey engine's bases (data-conventions section 26): perimeter-min (the kit's low),
+  // perimeter-mean (avg) and fit-plane (plane), the kit's arithmetic step by step
+  const xs = Float64Array.from(bs, (q) => q[0]);
+  const ys = Float64Array.from(bs, (q) => q[1]);
+  const zs = Float64Array.from(bs, (q) => q[2]);
+  const { min: lo, mean: avg } = perimeterLevels(zs);
+  const [p0, p1, p2] = fitPlane(xs, ys, zs, x0, y0);
   const plane = (E: number, N: number) => p0 + p1 * (E - x0) + p2 * (N - y0);
 
   // triangulated toe: membrane pinned to the ground just outside the line
@@ -268,11 +229,12 @@ const r2 = (v: number) => Math.round(v * 100) / 100;
 export function editVolumes(g: EditGeometry, gridX0: number, gridY1: number): EditResult {
   const R = 0.1;
   const A = R * R;
-  const acc: Record<VolumeBaseId, { fill: number; cut: number }> = {
-    tin: { fill: 0, cut: 0 },
-    plane: { fill: 0, cut: 0 },
-    avg: { fill: 0, cut: 0 },
-    low: { fill: 0, cut: 0 },
+  // the survey engine's sums, a weight of 1 per cell whose centre is inside the line (the kit's grid)
+  const acc: Record<VolumeBaseId, Accumulator> = {
+    tin: new Accumulator(),
+    plane: new Accumulator(),
+    avg: new Accumulator(),
+    low: new Accumulator(),
   };
   let n = 0;
   let top = -Infinity;
@@ -292,11 +254,7 @@ export function editVolumes(g: EditGeometry, gridX0: number, gridY1: number): Ed
         if (z == null) continue;
         n++;
         if (z > top) top = z;
-        for (const b of BASE_IDS) {
-          const d = z - g.baseAt(b, E, N);
-          if (d > 0) acc[b].fill += d;
-          else acc[b].cut -= d;
-        }
+        for (const b of BASE_IDS) acc[b].add(1, z - g.baseAt(b, E, N));
         const bt = g.baseAt('tin', E, N);
         if (bt < bmin) bmin = bt;
       }

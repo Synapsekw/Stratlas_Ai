@@ -13,7 +13,7 @@ import {
 import { afterEach, describe, expect, it } from 'vitest';
 import { createJournalService, type JournalIdentity, type JournalService } from './journal';
 import { collectHandlers } from './notYet';
-import { registerSurveyIpc, writeMeasurements, type SurveyArchive } from './survey';
+import { listSurfaces, registerSurveyIpc, writeMeasurements, type SurveyArchive } from './survey';
 
 const dirs: string[] = [];
 const journals: JournalService[] = [];
@@ -316,5 +316,64 @@ describe('survey templates', () => {
     expect(await ipc.call('survey:writeTemplates', { scope: 'project', file: tpl })).toMatchObject({
       ok: false,
     });
+  });
+});
+
+describe('survey:surfaces (G2)', () => {
+  const tiles = (id: string) => ({
+    schema: 'aio.height-tiles/1',
+    id,
+    name: `DSM ${id}`,
+    source: { kind: 'dsm', layer: 'dsm' },
+    crs: { epsg: 32631 },
+    cellM: 0.1,
+    tileSize: 256,
+    originE: 302000,
+    originN: 2574000,
+    cols: 1,
+    rows: 1,
+    levels: 1,
+    bounds: [302000, 2574000, 100, 302025.6, 2574025.6, 104],
+    tiles: ['0_0'],
+    fingerprint: `fp-${id}`,
+    preparedAt: '2026-10-09T00:00:00Z',
+  });
+
+  it('lists the prepared surfaces of an open project, sorted, leaving out unfinished ones', async () => {
+    const root = tmp('surfaces');
+    for (const id of ['b', 'a']) {
+      mkdirSync(join(root, 'survey', 'surfaces', id), { recursive: true });
+      writeFileSync(join(root, 'survey', 'surfaces', id, 'tiles.json'), JSON.stringify(tiles(id)));
+    }
+    mkdirSync(join(root, 'survey', 'surfaces', 'busy'), { recursive: true });
+    mkdirSync(join(root, 'survey', 'surfaces', 'bad'), { recursive: true });
+    writeFileSync(
+      join(root, 'survey', 'surfaces', 'bad', 'tiles.json'),
+      '{"schema":"aio.height-tiles/9"}',
+    );
+    const ipc = collectHandlers((handle) => {
+      registerSurveyIpc({
+        handle,
+        projects: { root: (id) => (id === 'p' ? root : undefined), package: () => undefined },
+      });
+    });
+    const r = await ipc.call('survey:surfaces', { projectId: 'p' });
+    expect(r.ok && r.surfaces.map((s) => s.id)).toEqual(['a', 'b']);
+    expect(await ipc.call('survey:surfaces', { projectId: 'q' })).toMatchObject({ ok: false });
+  });
+
+  it('answers an empty list for a project without surfaces, and reads a package in place', async () => {
+    const root = tmp('surfaces');
+    expect(await listSurfaces({ root })).toEqual({ ok: true, surfaces: [] });
+    const files = new Map([
+      ['survey/surfaces/s1/tiles.json', JSON.stringify(tiles('s1'))],
+      ['survey/surfaces/s1/0/0_0.bin', 'x'],
+    ]);
+    const archive = {
+      entries: files,
+      read: (k: string) => Promise.resolve(Buffer.from(files.get(k) ?? '')),
+    };
+    const r = await listSurfaces({ archive });
+    expect(r.ok && r.surfaces.map((s) => s.id)).toEqual(['s1']);
   });
 });

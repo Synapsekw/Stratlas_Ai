@@ -1,4 +1,5 @@
 import type { BaseVolumes, FillCut, VolumeBaseId } from '@aio/schema';
+import { Accumulator, ArraySurface } from '@aio/survey';
 import type { PileEpochGrid, PileGrid } from './kitdata';
 
 export const BASE_IDS: readonly VolumeBaseId[] = ['tin', 'plane', 'avg', 'low'];
@@ -46,8 +47,8 @@ export function pileVolume(g: PileGrid, epoch: string, base: VolumeBaseId): Pile
   if (!o?.m) return null;
   const { m, z } = o;
   const baseAt = gridBase(o, base, g);
-  let fill = 0;
-  let cut = 0;
+  // the survey engine's sums over the kit's mask (a weight of 1 per cell)
+  const acc = new Accumulator();
   let top = -Infinity;
   let bmin = Infinity;
   let n = 0;
@@ -57,15 +58,14 @@ export function pileVolume(g: PileGrid, epoch: string, base: VolumeBaseId): Pile
       if (!m[i]) continue;
       const zz = (z[i] ?? 0) / 100 + g.zoff;
       const b = baseAt(x, y, i);
-      const d = zz - b;
-      if (d > 0) fill += d;
-      else cut -= d;
+      acc.add(1, zz - b);
       if (zz > top) top = zz;
       if (b < bmin) bmin = b;
       n++;
     }
   }
   const a = g.res * g.res;
+  const { fill, cut } = acc;
   return {
     fill: fill * a,
     cut: cut * a,
@@ -104,4 +104,19 @@ export function pileChange(g: PileGrid, from: string, to: string, deadband: numb
   }
   const area = g.res * g.res;
   return { fill: fill * area, cut: cut * area, net: (fill - cut) * area };
+}
+
+/**
+ * One survey of a pile's 10 cm grid as a survey engine surface (heights in metres, rows from the
+ * south, NaN where the pile has no grid), for comparisons on the kit's grids.
+ */
+export function pileEngineSurface(g: PileGrid, epoch: string): ArraySurface | null {
+  const z = g.ep[epoch]?.z;
+  if (!z) return null;
+  const h = new Float64Array(g.w * g.h);
+  for (let y = 0; y < g.h; y++) {
+    const dst = (g.h - 1 - y) * g.w;
+    for (let x = 0; x < g.w; x++) h[dst + x] = (z[y * g.w + x] ?? 0) / 100 + g.zoff;
+  }
+  return new ArraySurface(g.x0, g.y1 - g.h * g.res, g.res, g.w, g.h, h);
 }

@@ -1,0 +1,23 @@
+{
+  "schema": "aio.height-tiles/1",
+  "id": "cone",
+  "name": "Cone survey",
+  "source": {
+    "kind": "dsm",
+    "layer": "cone"
+  },
+  "crs": {
+    "epsg": 32631
+  },
+  "cellM": 0.5,
+  "tileSize": 256,
+  "originE": 302000.0,
+  "originN": 2574000.0,
+  "cols": 1,
+  "rows": 1,
+  "levels": 1,
+  "bounds": [302000.0, 2574000.0, 100.0, 302020.0, 2574020.0, 103.7978515625],
+  "tiles": ["0_0"],
+  "fingerprint": "fp-cone",
+  "preparedAt": "2026-10-09T00:00:00Z"
+}
