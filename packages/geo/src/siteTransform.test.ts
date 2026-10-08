@@ -1,3 +1,4 @@
+import { SiteCalibration } from '@aio/schema';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
@@ -112,5 +113,20 @@ describe('tables', () => {
     const t = f64Table(grid, le([NaN, 2, 4, 10, 12, 14]));
     expect(sampleTable(t, 100.5, 200.5)).toBeNull();
     expect(sampleTable(t, 103, 201)).not.toBeNull();
+  });
+});
+
+describe('a calibration as geo.calibration writes it', () => {
+  it('parses as the SiteCalibration contract, a draft with residuals', () => {
+    const raw = JSON.parse(
+      readFileSync(new URL('./__fixtures__/site/calibration-jobxml.json', import.meta.url), 'utf8'),
+    ) as unknown;
+    const cal = SiteCalibration.parse(raw);
+    expect(cal.appliedAt).toBeUndefined();
+    expect(cal.pairs).toHaveLength(6);
+    for (const p of cal.pairs) {
+      expect(p.residualH).toBeGreaterThanOrEqual(0);
+      expect(Math.abs((p.residualH ?? 0) - (p.controllerResidualH ?? 0))).toBeLessThan(0.001);
+    }
   });
 });

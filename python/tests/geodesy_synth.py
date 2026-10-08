@@ -160,8 +160,129 @@ def write_fixtures(out: Path = FIXTURES, n_points: int = 1000) -> None:
                 newline="",
             )
             print(f"{name}: {header['operation']}")
+        # a calibration as geo.calibration imports it from a synthetic JobXML (for the TS contract)
+        from aio_pipelines.geodesy.calibration import compute_calibration
+
+        jxl = tmp / "synthetic.jxl"
+        jxl.write_bytes(synthetic_jobxml()[0])
+        cal = compute_calibration({"src": str(jxl), "crs": {"epsg": 32639}})
+        cal.update(id="cal-jobxml", computedAt=NOW)
+        cal["source"].pop("name", None)
+        text = json.dumps(cal, indent=2) + "\n"
+        (out / "calibration-jobxml.json").write_text(text, encoding="utf-8", newline="")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+# ------------------------------------------------------------------------------------------ JobXML
+
+
+def synthetic_jobxml(
+    *,
+    rotation_deg: float = 0.75,
+    rotation_cw: bool = False,
+    plane_on_grid: bool = False,
+    noise_m: float = 0.004,
+    n_points: int = 6,
+    seed: int = 7,
+    geoid: str | None = None,
+    geoid_dir: Path | None = None,
+) -> tuple[bytes, dict[str, Any]]:
+    """A vendor-shaped JobXML (JobXML schema 6.x element names) with a known site calibration.
+
+    The base projection is a transverse Mercator at a fictional Doha site. Local positions follow
+    the model with ``noise_m`` of noise, and the controller residuals in the file are the model's own
+    residuals in the file's convention (``rotation_cw``: clockwise rotation; ``plane_on_grid``: the
+    inclined plane on base projection coordinates). Answers the bytes and the truth.
+    """
+    sys.path.insert(0, str(ROOT / "python" / "src"))
+    from pyproj import CRS, Transformer
+
+    from aio_pipelines.geodesy.calibration import apply_horizontal, plane_dz
+    from aio_pipelines.geodesy.site import geoid_file, undulation
+
+    rng = np.random.default_rng(seed)
+    tm = "+proj=tmerc +lat_0=25.29 +lon_0=51.53 +k=1.00002 +x_0=10000 +y_0=20000 +a=6378137 +rf=298.257223563 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs"
+    base = CRS.from_proj4(tm)
+    inv = Transformer.from_crs(base, CRS.from_epsg(4979), always_xy=True)
+    th = math.radians(rotation_deg) * (-1 if rotation_cw else 1)
+    h = {
+        "originE": 10000.0,
+        "originN": 20000.0,
+        "shiftE": 4987.654,
+        "shiftN": -18011.321,
+        "rotationRad": th,
+        "scale": 1.000025,
+    }
+    v = {"originE": 14990.0, "originN": 1990.0, "shiftM": -0.832, "slopeN": 12e-6, "slopeE": -7e-6}
+    ge = 10000 + rng.uniform(-400, 400, n_points)
+    gn = 20000 + rng.uniform(-400, 400, n_points)
+    hh = 20 + rng.uniform(0, 30, n_points)
+    lon, lat, _ = inv.transform(ge, gn, hh)
+    n_geoid = (
+        undulation(geoid_file(geoid, [geoid_dir] if geoid_dir else None), lon, lat)
+        if geoid
+        else np.zeros(n_points)
+    )
+    big_h = hh - n_geoid
+    le, ln = apply_horizontal(h, ge, gn)
+    dz = plane_dz(v, ge, gn) if plane_on_grid else plane_dz(v, le, ln)
+    model = np.column_stack([le, ln, big_h + dz])
+    local = model + rng.normal(0, noise_m, model.shape)
+    res_h = np.hypot(local[:, 0] - model[:, 0], local[:, 1] - model[:, 1])
+    res_v = local[:, 2] - model[:, 2]
+    vtype = "GeoidModelAndInclinedPlane" if geoid else "InclinedPlane"
+    geoid_xml = f"<GeoidName>{geoid}</GeoidName>" if geoid else ""
+    rec_id = iter(range(1, 10_000))
+
+    def rid() -> str:
+        return f"{next(rec_id):08X}"
+
+    pts = []
+    cals = []
+    for i in range(n_points):
+        pts.append(
+            f'<PointRecord ID="{rid()}" TimeStamp="2026-10-01T09:00:00"><Name>CP{i + 1}</Name>'
+            "<Method>KeyedIn</Method><Classification>Normal</Classification><Deleted>false</Deleted>"
+            f"<Grid><North>{local[i, 1]:.4f}</North><East>{local[i, 0]:.4f}</East><Elevation>{local[i, 2]:.4f}</Elevation></Grid>"
+            "</PointRecord>"
+        )
+        pts.append(
+            f'<PointRecord ID="{rid()}" TimeStamp="2026-10-01T09:05:00"><Name>GPS{i + 1}</Name>'
+            "<Method>GpsCalibrationPoint</Method><Classification>Normal</Classification><Deleted>false</Deleted>"
+            f"<WGS84><Latitude>{lat[i]:.11f}</Latitude><Longitude>{lon[i]:.11f}</Longitude><Height>{hh[i]:.4f}</Height></WGS84>"
+            "</PointRecord>"
+        )
+        cals.append(
+            f'<CalibrationPointRecord ID="{rid()}" TimeStamp="2026-10-01T10:00:00">'
+            f"<GridPointName>CP{i + 1}</GridPointName><WGS84PointName>GPS{i + 1}</WGS84PointName>"
+            f"<Dimension>3D</Dimension><HorizontalResidual>{res_h[i]:.4f}</HorizontalResidual>"
+            f"<VerticalResidual>{res_v[i]:.4f}</VerticalResidual></CalibrationPointRecord>"
+        )
+    rot_file = rotation_deg  # the file always states the angle; the convention is the reader's
+    xml = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<JOBFile jobName="Fictional site" version="6.30" product="Synthetic" productVersion="1">'
+        "<Environment><CoordinateSystem>"
+        "<SystemName>Synthetic</SystemName><ZoneName>Doha site TM</ZoneName><DatumName>WGS 1984</DatumName>"
+        "<Ellipsoid><EarthRadius>6378137</EarthRadius><Flattening>0.00335281066474748</Flattening></Ellipsoid>"
+        "<Projection><Type>TransverseMercator</Type><Scale>1.00002</Scale><CentralMeridian>51.53</CentralMeridian>"
+        "<OriginLatitude>25.29</OriginLatitude><FalseNorthing>20000</FalseNorthing><FalseEasting>10000</FalseEasting></Projection>"
+        "<HorizontalAdjustment><Type>PlaneAdjustment</Type>"
+        f"<OriginNorth>{h['originN']}</OriginNorth><OriginEast>{h['originE']}</OriginEast>"
+        f"<TranslationNorth>{h['shiftN']}</TranslationNorth><TranslationEast>{h['shiftE']}</TranslationEast>"
+        f"<Rotation>{rot_file!r}</Rotation><ScaleFactor>{h['scale']!r}</ScaleFactor></HorizontalAdjustment>"
+        f"<VerticalAdjustment><Type>{vtype}</Type>"
+        f"<OriginNorth>{v['originN']}</OriginNorth><OriginEast>{v['originE']}</OriginEast>"
+        f"<SlopeNorthPerUnit>{v['slopeN']!r}</SlopeNorthPerUnit><SlopeEastPerUnit>{v['slopeE']!r}</SlopeEastPerUnit>"
+        f"<ConstantAdjustment>{v['shiftM']!r}</ConstantAdjustment>{geoid_xml}</VerticalAdjustment>"
+        "<UnknownFutureElement><Anything>kept out</Anything></UnknownFutureElement>"
+        "</CoordinateSystem></Environment>"
+        f"<FieldBook>{''.join(pts)}{''.join(cals)}</FieldBook>"
+        "</JOBFile>\n"
+    )
+    truth = {"horizontal": h, "vertical": v, "residualH": res_h, "residualV": res_v, "projection": tm}
+    return xml.encode("utf-8"), truth
 
 
 if __name__ == "__main__":
