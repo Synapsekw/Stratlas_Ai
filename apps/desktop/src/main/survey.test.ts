@@ -61,8 +61,9 @@ function setup(pkgMembers?: Record<string, unknown>) {
     root: (id: string) => (id === 'p' ? root : undefined),
     package: (id: string) => (id === 'pkg' ? { archive: archive(pkgMembers ?? {}) } : undefined),
   };
+  const projectPackage = (id: string) => projects.package(id)?.archive;
   const ipc = collectHandlers((handle) => {
-    registerSurveyIpc({ handle, projects, userData: () => userData });
+    registerSurveyIpc({ handle, projects, projectPackage, userData: () => userData });
   });
   return { root, userData, projects, ipc };
 }
@@ -219,6 +220,7 @@ describe('survey measurements in the journal', () => {
           handle(channel, journal.wrap(channel, handler));
         },
         projects,
+        projectPackage: (id) => projects.package(id)?.archive,
         userData: () => userData,
       });
     });

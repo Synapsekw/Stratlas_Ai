@@ -1259,7 +1259,12 @@ function registerIpc(): void {
   });
 
   // M11: one module per stream (G1 geodesy and geoid packs; G2, G3 and G6 survey; G12 survey AI).
-  registerSurveyIpc({ handle, projects: registry, userData: () => app.getPath('userData') });
+  registerSurveyIpc({
+    handle,
+    projects: registry,
+    projectPackage: (id: string) => registry.package(id)?.archive,
+    userData: () => app.getPath('userData'),
+  });
   registerGeodesyIpc({ handle });
   registerGeoidPacksIpc({ handle });
   registerSurveyAiIpc({ handle });

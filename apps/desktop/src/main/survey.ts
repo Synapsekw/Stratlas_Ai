@@ -37,12 +37,31 @@ export interface SurveyProjects {
   package(id: string): { archive: SurveyArchive } | undefined;
 }
 
+/** The same deps as G1's site settings (`geodesy.ts`), plus userData for the template library. */
 export interface SurveyIpcDeps {
   handle: Handle;
   /** Without it (G0 tests) the measurement and template channels answer "not available yet". */
-  projects?: SurveyProjects;
+  projects?: { root(id: string): string | undefined; package(id: string): unknown };
+  /** The archive of an open package, for read-only reads. */
+  projectPackage?: (id: string) => SurveyArchive | undefined;
   /** userData, for the person's template library (`survey-templates.json`). */
   userData?: () => string;
+}
+
+const NO_MEMBERS: SurveyArchive = {
+  entries: new Map(),
+  read: () => Promise.reject(new Error('The package has no such member.')),
+};
+
+/** Folders and packages as this module reads them. */
+function access(deps: Omit<SurveyIpcDeps, 'handle' | 'userData'>): SurveyProjects | undefined {
+  const { projects, projectPackage } = deps;
+  if (!projects) return undefined;
+  return {
+    root: (id) => projects.root(id),
+    package: (id) =>
+      projects.package(id) ? { archive: projectPackage?.(id) ?? NO_MEMBERS } : undefined,
+  };
 }
 
 interface Failure {
@@ -226,7 +245,8 @@ export async function writeTemplates(
 
 // ---------------------------------------------------------------- registration
 
-export function registerSurveyIpc({ handle, projects, userData }: SurveyIpcDeps): void {
+export function registerSurveyIpc({ handle, userData, ...deps }: SurveyIpcDeps): void {
+  const projects = access(deps);
   const what = 'Surveying';
   const unavailable = (): Failure => notYet(what);
   handle('survey:readSettings', () => notYet(what));
