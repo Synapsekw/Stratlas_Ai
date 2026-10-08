@@ -182,6 +182,23 @@ const CHANNELS = {
   'terrainPacks:remove': true,
   'orientation:read': true,
   'orientation:write': true,
+  // M11
+  'survey:readSettings': true,
+  'survey:writeSettings': true,
+  'survey:readMeasurements': true,
+  'survey:writeMeasurements': true,
+  'survey:readTemplates': true,
+  'survey:writeTemplates': true,
+  'survey:readDesigns': true,
+  'survey:writeDesigns': true,
+  'survey:surfaces': true,
+  'geodesy:searchCrs': true,
+  'geodesy:readCalibration': true,
+  'geodesy:applyCalibration': true,
+  'geoidPacks:list': true,
+  'geoidPacks:import': true,
+  'geoidPacks:remove': true,
+  'surveyAi:suggest': true,
 } as const satisfies Record<IpcChannel, true>;
 
 const EVENTS = {
