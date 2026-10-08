@@ -112,6 +112,7 @@ import {
 } from './useCutaway';
 import { VolumeTools } from './VolumeTools';
 import { MeasureMount, MeasureToolbar } from '../survey/MeasureToolbar';
+import { SurveyQaMount, SurveyQaTool } from '../survey/Qa';
 import {
   siteBasemapDefault,
   siteBasemapOn,
@@ -262,7 +263,14 @@ function StageToolbar({
         return <ViewTools stage={stage} map={map} />;
       case 'measure':
         // on the map only the survey measurements (the scene's own tools need the 3D view)
-        return map ? <MeasureToolbar /> : <MeasureTools stage={stage} />;
+        return map ? (
+          <>
+            <MeasureToolbar />
+            <SurveyQaTool />
+          </>
+        ) : (
+          <MeasureTools stage={stage} />
+        );
       case 'display':
         return <DisplayTools stage={stage} map={map} />;
       case 'clouds':
@@ -352,6 +360,7 @@ function StageToolbar({
       )}
       <span className="stbar-sp" />
       <MeasureMount stage={stage} />
+      <SurveyQaMount />
       {!map && stage && (
         <div className="tgroup-h overlay-box env-slot" data-fixed="">
           <EnvironmentTool stage={stage} />

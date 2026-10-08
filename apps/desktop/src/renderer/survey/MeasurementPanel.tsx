@@ -35,6 +35,7 @@ import {
   useMeasure,
 } from './measureStore';
 import { MEASURE_COLOR } from './measureScene';
+import { HoldNote } from './Qa';
 
 const MAX_VERTEX_ROWS = 50;
 
@@ -104,6 +105,7 @@ export function MeasurementPanel() {
           <Icon name="x" size={14} />
         </button>
       </header>
+      <HoldNote capture={capture} />
       <p className="small faint">
         {tpl ? `${tpl.name} · ` : ''}
         {TOOL_LABELS[m.tool]}
