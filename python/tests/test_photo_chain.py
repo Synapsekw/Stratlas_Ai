@@ -191,6 +191,7 @@ def test_align_then_products_with_the_precomputed_engine(monkeypatch, tmp_path, 
         assert np.linalg.norm(np.array([x, -z, y]) - want) < 0.15, c["photo"]
 
 
+@pytest.mark.timeout(1200)  # COLMAP and MeshLab for real: minutes on a 3-core runner
 def test_align_then_products_with_colmap_and_spaces_in_the_folders(monkeypatch, tmp_path, mini_rtk):
     from aio_pipelines.photo.colmap_io import ColmapEngine
     from aio_pipelines.runtime import JobError

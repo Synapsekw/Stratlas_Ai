@@ -252,8 +252,11 @@ jobs:
         run: uv run --frozen ruff check .
       - name: Ruff format
         run: uv run --frozen ruff format --check .
+      # One line per test as it runs (-vv, as pyproject.toml adds -q), so a stall names its test,
+      # and the slowest tests at the end. A test over its pytest-timeout limit (300 s by default,
+      # pyproject.toml) fails with the stacks of its threads.
       - name: Pytest
-        run: uv run --frozen pytest
+        run: uv run --frozen pytest -vv -rfEs --durations=20
       - name: Entry point
         run: uv run --frozen python -m aio_pipelines --list
 
