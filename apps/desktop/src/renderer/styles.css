@@ -3228,9 +3228,20 @@ svg.flip {
   gap: 4px;
   min-width: 0;
 }
-.nj-field label {
+.nj-field label,
+.nj-field .nj-label {
   font-size: var(--t-12);
   color: var(--fg-1);
+}
+.nj-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+.nj-list .nj-tick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .nj-field .req {
   color: var(--fg-3);

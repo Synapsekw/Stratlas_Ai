@@ -230,7 +230,11 @@ export async function runExport(
   onProgress: Progress = () => undefined,
   signal?: AbortSignal,
 ): Promise<ExportResult> {
-  if (job.format === 'report-pdf' || job.format === 'house-pdf') {
+  if (
+    job.format === 'report-pdf' ||
+    job.format === 'house-pdf' ||
+    job.format === 'photo-report-pdf'
+  ) {
     throw new Error('The PDF report is printed from a report window, not the export process.');
   }
   if (job.format === 'audit-csv' || job.format === 'audit-json') {

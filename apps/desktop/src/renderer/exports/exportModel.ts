@@ -71,6 +71,13 @@ export const EXPORT_ACTIONS: readonly ExportAction[] = [
     icon: 'report',
   },
   {
+    id: 'photo-report-pdf',
+    label: 'Processing accuracy report (PDF)',
+    title: 'Export the accuracy report of the latest photo processing run as PDF',
+    hint: 'Control and checkpoints',
+    icon: 'report',
+  },
+  {
     id: 'snapshot',
     label: '3D view snapshot (PNG)',
     title: 'Save a snapshot of the 3D view',
@@ -146,7 +153,8 @@ export function snapshotName(projectName: string, now: Date): string {
 }
 
 export function doneMessage(id: ExportActionId, r: { path: string; count?: number }): string {
-  if (r.count === undefined || id === 'snapshot') return `Saved to ${r.path}`;
+  if (r.count === undefined || id === 'snapshot' || id === 'photo-report-pdf')
+    return `Saved to ${r.path}`;
   const what = id === 'masks-zip' ? 'mask files' : r.count === 1 ? 'issue' : 'issues';
   return `${String(r.count)} ${what} saved to ${r.path}`;
 }

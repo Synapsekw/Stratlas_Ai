@@ -29,6 +29,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { useGraphics } from '../graphics';
+import { TILESET_WRITERS } from '../jobs';
 
 const KEY = 'stratlas.rasterPacks';
 
@@ -159,7 +160,8 @@ export function listenForJobs(): void {
   listening = true;
   bridge.on('jobs:event', (e) => {
     if (e.type !== 'update' || e.job.status !== 'done') return;
-    if (/^(tiles|packs)\./.test(e.job.pipeline)) rasterPacks.getState().refresh();
+    const p = e.job.pipeline;
+    if (p.startsWith('packs.') || TILESET_WRITERS.has(p)) rasterPacks.getState().refresh();
   });
 }
 

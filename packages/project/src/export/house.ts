@@ -19,6 +19,7 @@ import {
   severityModelOf,
   type ExportContext,
 } from './facts';
+import type { ProcessingSummary } from './processing';
 import { reportModel, type ReportBranding, type ReportModel, type ReportRow } from './report';
 
 export type HouseKind = 'inspection' | 'volumetric' | 'road' | 'fusion';
@@ -32,6 +33,8 @@ export interface HouseInput extends ExportContext {
   now?: Date;
   /** M9: the audit head and the change log per issue, from the project journal. */
   audit?: AuditSummary | null | undefined;
+  /** M10: the accuracy of the project's latest finished processing run (photogrammetry). */
+  processing?: ProcessingSummary | null | undefined;
 }
 
 /**
@@ -164,6 +167,8 @@ export interface HouseModel {
   plan: PlanPoint[];
   /** M9: the audit head and change log; null for a project without a journal. */
   audit: AuditSummary | null;
+  /** M10: the latest processing run's accuracy; null for a project without one. */
+  processing: ProcessingSummary | null;
 }
 
 /** What kind of report to print: the builder type, else what the project holds. */
@@ -419,13 +424,15 @@ function roadSummary(r: RoadModel): RoadSummary {
 /** Everything the house-format report shows. Text has no em or en dashes. */
 /**
  * The sections the house report prints, in order (Settings lists these). `audit` (M9 T1) prints
- * only for a project with a journal; `approvals` joins when T3 prints it.
+ * only for a project with a journal; `approvals` joins when T3 prints it; `processing` (M10)
+ * only for a project with a finished photogrammetry run.
  */
 export const HOUSE_SECTIONS = [
   'contents',
   'summary',
   'scope',
   'site',
+  'processing',
   'statistics',
   'register',
   'issues',
@@ -447,7 +454,8 @@ export function houseReportModel(input: HouseInput): HouseModel {
     (id) =>
       reportSectionOn(input.contents, id) &&
       (id !== 'issues' || issuePages.length > 0) &&
-      (id !== 'audit' || Boolean(input.audit)),
+      (id !== 'audit' || Boolean(input.audit)) &&
+      (id !== 'processing' || Boolean(input.processing)),
   );
   const { layers, totals } = dataRows(m);
   const plan: PlanPoint[] = [];
@@ -486,6 +494,7 @@ export function houseReportModel(input: HouseInput): HouseModel {
     road: input.road ? roadSummary(input.road) : null,
     plan,
     audit: input.audit ?? null,
+    processing: input.processing ?? null,
   };
 }
 

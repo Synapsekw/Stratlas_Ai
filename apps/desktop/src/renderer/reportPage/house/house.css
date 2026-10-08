@@ -832,3 +832,23 @@ ol.contents li.sub {
 .ip-note p.note.long {
   -webkit-line-clamp: 10;
 }
+
+/* M10 processing accuracy */
+.grid.proc-points td:nth-child(n + 3),
+.grid.proc-rmse td:nth-child(n + 2):nth-child(-n + 4) {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.grid.proc-points tr.flag td {
+  color: #a33a1c;
+}
+.warnline {
+  padding-left: 10px;
+  border-left: 2px solid #c8742b;
+}
+svg.overlap {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid #d5dbe1;
+}

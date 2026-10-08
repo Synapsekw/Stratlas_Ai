@@ -5,30 +5,46 @@
  * arrow goes to the next photo, P or the left arrow to the previous one, + and - zoom, Esc goes
  * back to the table. Every change is saved at once (`photo:writeGcp`, atomic with a `.bak`).
  */
-import type { GcpFile, GcpPoint, PhotoRun } from '@aio/schema';
+import {
+  PHOTO_RUN_FILES,
+  photoRunDir,
+  type GcpFile,
+  type GcpPoint,
+  type PhotoCamerasFile,
+  type PhotoRun,
+} from '@aio/schema';
 import { Icon } from '@aio/ui';
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { bridge } from '../shell';
 import {
   applyMark,
+  clickToPixel,
   confirmedMarks,
   gcpLocal,
+  loupeBackground,
   MIN_MARKS,
   photosFor,
   predictions,
+  readCamerasFile,
+  sfmPhotos,
   step,
   withPoint,
   type MarkAction,
   type MarkerPhoto,
+  type SfmPhoto,
 } from './marks';
 
 interface ShownPhoto extends MarkerPhoto {
-  url: string;
+  /** `aio://` address of a photo in the project; null for a folder run's photo (read by main). */
+  url: string | null;
   name: string;
 }
 
 const ZOOMS = [1, 1.5, 2, 3, 4] as const;
 const LOUPE = 4;
+/** The loupe's diameter, CSS pixels (photo.css .ph-loupe). */
+const LOUPE_BOX = 140;
 
 export function GcpMarker({
   run,
@@ -65,30 +81,77 @@ export function GcpMarker({
     };
   }, []);
 
-  // the photos of the run's photos layer, posed, with their size in original pixels
-  const photos = useMemo<ShownPhoto[]>(() => {
-    if (!project || !('layer' in run.photos.source)) return [];
-    const layerId = run.photos.source.layer;
-    const layer = project.manifest.layers.find((l) => l.id === layerId);
-    if (layer?.kind !== 'photos') return [];
-    const group = run.cameras.length === 1 ? run.cameras[0] : undefined;
-    return layer.items.map((it) => {
-      const aspect = it.lens?.aspect ?? 4 / 3;
-      const size: [number, number] = group
-        ? [group.widthPx, group.heightPx]
-        : [4000, Math.round(4000 / aspect)];
-      const name = 'path' in it.src ? (it.src.path.split('/').pop() ?? it.id) : it.id;
-      return {
-        id: it.id,
-        size,
-        pos: it.pos,
-        q: it.q,
-        lens: it.lens,
-        url: assetUrl(project.id, it.src),
-        name,
-      };
+  // the run's refined cameras (cameras-sfm.json): poses for the predictions, original sizes
+  const [sfm, setSfm] = useState<{ run: string; file: PhotoCamerasFile } | null>(null);
+  const projectId = project?.id ?? null;
+  useEffect(() => {
+    if (!projectId) return;
+    let live = true;
+    const url = assetUrl(projectId, {
+      path: `${photoRunDir(run.id)}/${PHOTO_RUN_FILES.camerasSfm}`,
     });
-  }, [project, run]);
+    fetch(url)
+      .then((r) => (r.ok ? (r.json() as Promise<unknown>) : null))
+      .then((raw) => {
+        const file = raw === null ? null : readCamerasFile(raw);
+        if (live) setSfm(file ? { run: run.id, file } : null);
+      })
+      .catch(() => {
+        if (live) setSfm(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, [projectId, run.id]);
+
+  // the photos of the run, posed, with their size in original pixels
+  const photos = useMemo<ShownPhoto[]>(() => {
+    if (!project) return [];
+    const refined =
+      sfm?.run === run.id
+        ? sfmPhotos(sfm.file, project.manifest.origin)
+        : new Map<string, SfmPhoto>();
+    const group = run.cameras.length === 1 ? run.cameras[0] : undefined;
+    // marks are in original pixels: the calibration's size, else the one camera group's
+    const groupSize = (aspect: number): [number, number] =>
+      group ? [group.widthPx, group.heightPx] : [4000, Math.round(4000 / aspect)];
+    const source = run.photos.source;
+    if ('layer' in source) {
+      const layer = project.manifest.layers.find((l) => l.id === source.layer);
+      if (layer?.kind !== 'photos') return [];
+      return layer.items.map((it) => {
+        const r = refined.get(it.id);
+        const size = r ? r.size : groupSize(it.lens?.aspect ?? 4 / 3);
+        const name = 'path' in it.src ? (it.src.path.split('/').pop() ?? it.id) : it.id;
+        return {
+          id: it.id,
+          size,
+          pos: r?.pos ?? it.pos,
+          q: r?.q ?? it.q,
+          lens: r?.lens ?? it.lens,
+          url: assetUrl(project.id, it.src),
+          name,
+        };
+      });
+    }
+    // a folder run: the photos are read through main (photo:readPhoto), keyed by their path
+    const out = new Map<string, ShownPhoto>();
+    for (const r of refined.values())
+      out.set(r.id, { ...r, url: null, name: r.id.split('/').pop() ?? r.id });
+    for (const key of [
+      ...(point.predicted ?? []).map((p) => p.photo),
+      ...point.marks.map((m) => m.photo),
+    ]) {
+      if (out.has(key)) continue;
+      out.set(key, {
+        id: key,
+        size: groupSize(4 / 3),
+        url: null,
+        name: key.split('/').pop() ?? key,
+      });
+    }
+    return [...out.values()];
+  }, [project, run, sfm, point]);
 
   const frame = useMemo(() => {
     if (!project || !('epsg' in project.manifest.crs)) return null;
@@ -103,6 +166,40 @@ export function GcpMarker({
   const mark = current ? point.marks.find((m) => m.photo === current.photo.id) : undefined;
   const confirmed = confirmedMarks(point).length;
   const ids = gcp.points.map((p) => p.id);
+
+  // a folder run's photo, read through main (read only, inside the run's folders), as a blob URL
+  const [read, setRead] = useState<{ id: string; url: string | null; error?: string } | null>(null);
+  const currentId = current?.photo.id ?? null;
+  const viaMain = current?.photo.url === null;
+  useEffect(() => {
+    if (!projectId || !currentId || !viaMain) return;
+    let live = true;
+    let made: string | null = null;
+    void bridge.call('photo:readPhoto', { projectId, run: run.id, photo: currentId }).then((r) => {
+      if (!live) return;
+      const error = !r.ok
+        ? r.error
+        : !r.value.ok
+          ? r.value.error
+          : r.value.mime === 'image/tiff'
+            ? 'This photo is a TIFF, which the marker cannot show yet. Mark it in a JPEG copy.'
+            : null;
+      if (error !== null || !r.ok || !r.value.ok) {
+        setRead({ id: currentId, url: null, error: error ?? 'The photo cannot be read.' });
+        return;
+      }
+      made = URL.createObjectURL(new Blob([new Uint8Array(r.value.data)], { type: r.value.mime }));
+      setRead({ id: currentId, url: made });
+    });
+    return () => {
+      live = false;
+      if (made) URL.revokeObjectURL(made);
+    };
+  }, [projectId, run.id, currentId, viaMain]);
+  const imageUrl = current
+    ? (current.photo.url ?? (read?.id === current.photo.id ? read.url : null))
+    : null;
+  const imageError = current && read?.id === current.photo.id ? read.error : undefined;
 
   useEffect(() => {
     viewer.current?.focus();
@@ -158,22 +255,8 @@ export function GcpMarker({
   });
 
   if (!project) return null;
-  if (!('layer' in run.photos.source))
-    return (
-      <div className="ph-marker-empty">
-        <p className="small">
-          This run reads photos from folders outside the project, which the marker cannot show yet.
-          Import the photos as a photos layer, then process that layer to mark ground control.
-        </p>
-        <button type="button" className="btn sm" onClick={onBack}>
-          Back to the points
-        </button>
-      </div>
-    );
-
   const size = current?.photo.size ?? [1, 1];
   const ring = current?.prediction;
-  const pct = (v: number, of: number) => `${String((v / of) * 100)}%`;
   const loupeAt = target;
 
   return (
@@ -248,27 +331,33 @@ export function GcpMarker({
               <>
                 <div
                   className="ph-mk-img"
-                  style={{ width: `${String((ZOOMS[zoom] ?? 1) * 100)}%` }}
+                  style={{
+                    width: `${String((ZOOMS[zoom] ?? 1) * 100)}%`,
+                    ...(imageUrl ? {} : { aspectRatio: `${String(size[0])} / ${String(size[1])}` }),
+                  }}
                   onClick={(e) => {
                     const r = e.currentTarget.getBoundingClientRect();
-                    const px: [number, number] = [
-                      ((e.clientX - r.left) / r.width) * size[0],
-                      ((e.clientY - r.top) / r.height) * size[1],
-                    ];
+                    const px = clickToPixel([e.clientX, e.clientY], r, size);
                     void act({ kind: 'place', photo: current.photo.id, px }, false);
                   }}
                 >
-                  <img
-                    src={current.photo.url}
-                    alt={`Photo ${current.photo.name}`}
-                    draggable={false}
-                    onLoad={(e) => {
-                      setLoadedSize({
-                        id: current.photo.id,
-                        size: [e.currentTarget.naturalWidth, e.currentTarget.naturalHeight],
-                      });
-                    }}
-                  />
+                  {imageUrl ? (
+                    <img
+                      src={imageUrl}
+                      alt={`Photo ${current.photo.name}`}
+                      draggable={false}
+                      onLoad={(e) => {
+                        setLoadedSize({
+                          id: current.photo.id,
+                          size: [e.currentTarget.naturalWidth, e.currentTarget.naturalHeight],
+                        });
+                      }}
+                    />
+                  ) : (
+                    <p className="small faint ph-mk-wait" role="status">
+                      {imageError ?? 'Reading the photo'}
+                    </p>
+                  )}
                   <svg
                     className="ph-mk-over"
                     viewBox={`0 0 ${String(size[0])} ${String(size[1])}`}
@@ -304,14 +393,15 @@ export function GcpMarker({
                     )}
                   </svg>
                 </div>
-                {loupeAt && natural && (
+                {loupeAt && natural && imageUrl && (
                   <div
                     className="ph-loupe"
                     aria-hidden="true"
+                    data-testid="marker-loupe"
                     style={{
-                      backgroundImage: `url("${current.photo.url}")`,
-                      backgroundSize: `${String(LOUPE * 100)}% auto`,
-                      backgroundPosition: `${pct(loupeAt[0], size[0])} ${pct(loupeAt[1], size[1])}`,
+                      backgroundImage: `url("${imageUrl}")`,
+                      backgroundSize: loupeBackground(loupeAt, size, LOUPE_BOX, LOUPE).size,
+                      backgroundPosition: loupeBackground(loupeAt, size, LOUPE_BOX, LOUPE).position,
                     }}
                   >
                     <i />

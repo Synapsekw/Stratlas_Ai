@@ -111,6 +111,41 @@ function FieldInput({
   onChange: (v: string) => void;
 }) {
   const id = `job-f-${field.key}`;
+  if (field.kind === 'list') {
+    const ticked = new Set(value.split(',').filter(Boolean));
+    return (
+      <div className="nj-field">
+        <span id={`${id}-l`} className="nj-label">
+          {field.label}
+          {field.required && <span className="req"> required</span>}
+        </span>
+        <div className="nj-list" role="group" aria-labelledby={`${id}-l`}>
+          {(field.options ?? []).map((o) => (
+            <label key={o.value} className="nj-tick">
+              <input
+                type="checkbox"
+                checked={ticked.has(o.value)}
+                onChange={(e) => {
+                  const next = new Set(ticked);
+                  if (e.target.checked) next.add(o.value);
+                  else next.delete(o.value);
+                  // in the order of the choices
+                  onChange(
+                    (field.options ?? [])
+                      .map((x) => x.value)
+                      .filter((v) => next.has(v))
+                      .join(','),
+                  );
+                }}
+              />
+              {o.label}
+            </label>
+          ))}
+        </div>
+        {field.help && <p className="nj-help">{field.help}</p>}
+      </div>
+    );
+  }
   return (
     <div className="nj-field">
       <label htmlFor={id}>

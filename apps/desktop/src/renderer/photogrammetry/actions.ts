@@ -9,7 +9,7 @@ import { bridge, jobs } from '../shell';
 import { photoUi, type PendingProducts } from './store';
 
 async function start(
-  pipeline: 'photo.align' | 'photo.georef' | 'photo.products',
+  pipeline: 'photo.align' | 'photo.georef' | 'photo.products' | 'opf.export',
   project: string,
   params: Record<string, unknown>,
 ): Promise<string | null> {
@@ -55,6 +55,11 @@ export async function startProducts(run: string, p: PendingProducts): Promise<st
   });
   if (!err) photoUi.getState().setPending(run, null);
   return err;
+}
+
+/** **Export as OPF**: the run's cameras, calibration and outputs as an OPF project in `out`. */
+export function startOpfExport(root: string, run: string, out: string): Promise<string | null> {
+  return start('opf.export', root, { run, out });
 }
 
 /** Pause: the job stops at its current stage; **Resume** continues from there. */

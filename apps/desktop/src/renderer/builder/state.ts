@@ -65,6 +65,8 @@ export const IMPORT_FILTERS = [
       'las',
       'laz',
       'e57',
+      'dxf',
+      'opf',
     ],
   },
   { name: 'All files', extensions: ['*'] },

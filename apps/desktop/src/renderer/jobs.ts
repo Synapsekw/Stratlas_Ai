@@ -1,3 +1,4 @@
+import { brand } from '@aio/brand';
 import {
   pipelineParams,
   type AioBridge,
@@ -81,6 +82,21 @@ const MANIFEST_WRITERS: ReadonlySet<string> = new Set([
   'model.fit_cloud',
   // M10 OPF: a photos layer, point clouds and rasters from an OPF project
   'opf.import',
+  // M10 photo products: ortho, DSM, DTM, cloud and mesh layers of a run. `photo.align` and
+  // `photo.georef` write only their run folder, the tiles jobs `tilesets.json` (TILESET_WRITERS)
+  // and the pack jobs the data folder, so none of them reloads the manifest.
+  'photo.products',
+]);
+
+/**
+ * Pipelines that add 3D Tiles to the project's `tilesets.json`: the site view lists its tilesets
+ * again when one finishes (`workspace/siteTiles.ts`). `photo.products` runs `tiles.mesh` inside
+ * itself for the `tiles` product.
+ */
+export const TILESET_WRITERS: ReadonlySet<string> = new Set([
+  'tiles.mesh',
+  'tiles.cloud',
+  'photo.products',
 ]);
 /** Pipelines that also write issues.json (and road.json): the open project reopens whole. */
 const PROJECT_WRITERS: ReadonlySet<string> = new Set(['road.build']);
@@ -309,8 +325,11 @@ function mergeLog(history: JobLogLine[], live: JobLogLine[] | undefined): JobLog
 export interface Field {
   key: string;
   label: string;
-  /** `file` picks one file, `files` one or more (separated by `;`, sent as a list when several). */
-  kind: 'folder' | 'file' | 'files' | 'text' | 'number' | 'origin' | 'select';
+  /**
+   * `file` picks one file, `files` one or more (separated by `;`, sent as a list when several);
+   * `list` ticks any of `options` (kept comma-separated, always sent as a list).
+   */
+  kind: 'folder' | 'file' | 'files' | 'text' | 'number' | 'origin' | 'select' | 'list';
   /** A select whose values are 'true' / 'false' sends a boolean. */
   boolean?: boolean;
   required?: boolean;
@@ -588,9 +607,22 @@ export const FORMS: Record<PipelineName, Field[]> = {
       ],
     },
   ],
-  // G3: the products list itself comes from the wizard (a form field cannot send a list of one).
   'photo.products': [
     { key: 'run', label: 'Run id', kind: 'text', required: true, placeholder: '20261007-0915' },
+    {
+      key: 'products',
+      label: 'Products',
+      kind: 'list',
+      required: true,
+      options: [
+        { value: 'ortho', label: 'Orthomosaic' },
+        { value: 'dsm', label: 'Surface model (DSM)' },
+        { value: 'dtm', label: 'Terrain model (DTM)' },
+        { value: 'cloud', label: 'Point cloud' },
+        { value: 'mesh', label: 'Textured mesh' },
+        { value: 'tiles', label: '3D Tiles' },
+      ],
+    },
     {
       key: 'preset',
       label: 'Quality',
@@ -625,6 +657,18 @@ export const FORMS: Record<PipelineName, Field[]> = {
       filters: [{ name: 'OPF project', extensions: ['opf', 'json'] }],
     },
     {
+      key: 'products',
+      label: 'Bring in',
+      kind: 'list',
+      help: 'Leave all unticked to bring in every output the OPF project has.',
+      options: [
+        { value: 'cloud', label: 'Point cloud' },
+        { value: 'ortho', label: 'Orthomosaic' },
+        { value: 'dsm', label: 'Surface model (DSM)' },
+        { value: 'mesh', label: 'Mesh' },
+      ],
+    },
+    {
       key: 'photosRoot',
       label: 'Photos folder',
       kind: 'folder',
@@ -645,7 +689,7 @@ export const FORMS: Record<PipelineName, Field[]> = {
       label: 'Export to folder',
       kind: 'folder',
       required: true,
-      help: 'An empty folder, or an earlier Stratlas OPF export, which is replaced.',
+      help: `An empty folder, or an earlier ${brand.productName} OPF export, which is replaced.`,
     },
   ],
   'tiles.mesh': [{ key: 'layer', label: 'Mesh layer id', kind: 'text', required: true }],
@@ -681,6 +725,24 @@ export function buildParams(
       params[f.key] = parts;
     } else if (f.boolean) {
       params[f.key] = raw === 'true';
+    } else if (f.kind === 'list') {
+      const allowed = new Set((f.options ?? []).map((o) => o.value));
+      const list = [
+        ...new Set(
+          raw
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean),
+        ),
+      ];
+      const bad = list.find((v) => !allowed.has(v));
+      if (bad !== undefined)
+        return { ok: false, error: `${f.label}: "${bad}" is not one of the choices.` };
+      if (!list.length) {
+        if (f.required) return { ok: false, error: `${f.label} is required.` };
+        continue;
+      }
+      params[f.key] = list;
     } else if (f.kind === 'files') {
       const list = raw
         .split(';')

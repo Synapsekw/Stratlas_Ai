@@ -121,6 +121,8 @@ const RASTER = new Set(['.tif', '.tiff']);
 const CLOUD = new Set(['.las', '.laz', '.e57', '.ply']);
 /** DXF plot plans (M8): imported by the `drawing.import` pipeline into `drawings/`. */
 const DRAWING = new Set(['.dxf']);
+/** OPF projects (M10): imported by the `opf.import` pipeline (photos, cloud, ortho, DSM). */
+const OPF = new Set(['.opf']);
 /** Codecs Chromium plays (sample entry fourcc). */
 const PLAYABLE = new Set(['avc1', 'avc3', 'hvc1', 'hev1', 'vp09', 'av01']);
 /** GeoTIFFs above this go to the pipeline pack (tiling), below it are drawn as one image. */
@@ -558,6 +560,8 @@ export async function importRawFiles(
         });
       } else if (DRAWING.has(ext)) {
         await job(file, 'drawing', 'drawing.import', {});
+      } else if (OPF.has(ext)) {
+        await job(file, 'opf', 'opf.import', {});
       } else if (ext === '.dwg') {
         items.push({
           file: name,
@@ -586,7 +590,9 @@ export async function importRawFiles(
                 ? 'pointcloud'
                 : DRAWING.has(ext)
                   ? 'drawing'
-                  : 'unknown';
+                  : OPF.has(ext)
+                    ? 'opf'
+                    : 'unknown';
       items.push({
         file: name,
         kind,

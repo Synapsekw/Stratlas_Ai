@@ -41,6 +41,8 @@ export interface ReportWindowOptions {
   audit?: AuditSummary | null | undefined;
   /** House report: the sign-off block (JSON) for section `approvals` (M9 T3). */
   signoff?: string | undefined;
+  /** M10: the processing run the house report's `processing` section and the accuracy report print. */
+  processingRun?: string | null | undefined;
 }
 
 /**
@@ -76,7 +78,8 @@ export async function printReport(
     projectId: string;
     outPath: string;
     issueIds?: string[] | undefined;
-    kind?: 'register' | 'house';
+    /** `processing`: the house page with the processing section alone (`photo-report-pdf`). */
+    kind?: 'register' | 'house' | 'processing';
   },
   progress: (p: ExportProgress) => void,
   signal: AbortSignal,
@@ -97,15 +100,18 @@ export async function printReport(
   });
   const part = `${args.outPath}.part`;
   const cancelled = () => signal.aborted;
-  const house = args.kind === 'house';
+  const processing = args.kind === 'processing';
+  const house = args.kind === 'house' || processing;
   const page = REPORT_PAGES[house ? 'house' : 'register'];
   const query = reportQuery(
     args,
     opts.branding,
     house ? opts.contents : undefined,
-    house ? opts.audit : undefined,
+    args.kind === 'house' ? opts.audit : undefined,
   );
-  if (house && opts.signoff) query.signoff = opts.signoff;
+  if (args.kind === 'house' && opts.signoff) query.signoff = opts.signoff;
+  if (house && opts.processingRun) query.processing = opts.processingRun;
+  if (processing) query.only = 'processing';
   try {
     if (opts.devUrl) {
       const url = new URL(page, opts.devUrl.endsWith('/') ? opts.devUrl : `${opts.devUrl}/`);

@@ -1,10 +1,11 @@
 /**
  * The photo processing harness of the Process photos specs (M10 G4):
  *
- * - `buildPhotoPack(dir)`: a throwaway pipeline pack (`STRATLAS_PIPELINE_PACK`) whose Python is a
+ * - `buildPhotoPack(dir)`: a throwaway pipeline pack (`QUADRION_PIPELINE_PACK`) whose Python is a
  *   venv over the development one, with `photo-fake/aio_photo_fake.py` swapped in for the photo
- *   pipelines, so the specs run end to end before streams G2 and G3 land the real ones. Set
- *   `STRATLAS_E2E_PHOTO_REAL=1` to run the same specs on the real pipelines (`PIPELINE_ENV`).
+ *   pipelines: the app's side of processing (wizard, run panel, marking, reports, refined poses)
+ *   end to end in seconds. The real pipelines run in `photo-real.spec.ts` on G8's synthetic set,
+ *   where this machine has their native tools (`missingRealPhotoTools`).
  * - `writePhotoProject(dataRoot)`: `projects/e2e-photos/`, a fictional site in UTM 39N with a
  *   photos layer of twelve nadir photos (rendered by Pillow: noise ground and checker targets at
  *   the six ground control points), and the GCP CSV (`GCP1`-`GCP4` and `GCP6` control, `GCP5`
@@ -12,14 +13,16 @@
  *
  * Synthetic data only: no client file, place or camera.
  */
+import { envVar } from '@aio/brand/env';
 import { toWgs84 } from '@aio/geo';
 import { ProjectManifest, type ProjectManifestInput } from '@aio/schema';
 import type { Fixtures, Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, PIPELINE_ENV, VENV_PYTHON, type DataRoot } from './fixtures';
+import { expect, VENV_PYTHON, type DataRoot } from './fixtures';
 
 export const PHOTO_PROJECT = { id: 'e2e-photos', name: 'E2E photo site' } as const;
 export const PHOTO_SIZE: [number, number] = [800, 600];
@@ -66,12 +69,51 @@ export function expectedPixel(
 const python = (exe: string, code: string, args: string[] = []) =>
   execFileSync(exe, ['-c', code, ...args], { encoding: 'utf8' }).trim();
 
-/** Whether the specs use the real photo pipelines (`STRATLAS_E2E_PHOTO_REAL=1`). */
-export const PHOTO_REAL = process.env.STRATLAS_E2E_PHOTO_REAL === '1';
+/**
+ * `QUADRION_E2E_PHOTO_REAL=1`: the real photo pipelines must run (`photo-real.spec.ts` fails
+ * instead of skipping when a tool is missing). The stand-in specs always use the stand-ins: their
+ * Pillow photos are independent noise that no real matcher can align.
+ */
+export const PHOTO_REAL = envVar(process.env, 'E2E_PHOTO_REAL') === '1';
+
+const imports = (exe: string, module: string): boolean => {
+  if (!existsSync(exe)) return false;
+  try {
+    execFileSync(exe, ['-c', `import ${module}`], { stdio: 'ignore', timeout: 60_000 });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * The Python whose `pycolmap` runs G2's structure from motion: `AIO_COLMAP_PYTHON` (the pack's
+ * native build without CHOLMOD), else the development Python when it has `pycolmap`; null when
+ * this machine has none.
+ */
+export function colmapPython(): string | null {
+  const env = process.env.AIO_COLMAP_PYTHON;
+  if (env && imports(env, 'pycolmap')) return env;
+  return imports(VENV_PYTHON, 'pycolmap') ? VENV_PYTHON : null;
+}
+
+/**
+ * What the real photo pipelines need that this machine lacks, in words, or null when all is
+ * here: the development Python, and the COLMAP engine of `photo.align` (pycolmap). PDAL, OpenCV
+ * and PoissonRecon are optional (photo.products falls back to its own numpy engines).
+ */
+export function missingRealPhotoTools(): string | null {
+  const missing: string[] = [];
+  if (!existsSync(VENV_PYTHON)) missing.push(`the pipeline Python (${VENV_PYTHON})`);
+  else if (!colmapPython())
+    missing.push(
+      'the COLMAP engine of photo.align (pycolmap without CHOLMOD: set AIO_COLMAP_PYTHON to the pack 0.4.0 Python)',
+    );
+  return missing.length ? missing.join('; ') : null;
+}
 
 /** Build the throwaway pack in `dir`; answers the app environment that selects it. */
 export async function buildPhotoPack(dir: string): Promise<Record<string, string>> {
-  if (PHOTO_REAL) return { ...PIPELINE_ENV };
   const venv = join(dir, 'venv');
   execFileSync(VENV_PYTHON, ['-m', 'venv', '--without-pip', venv]);
   const exe =
@@ -102,7 +144,7 @@ export async function buildPhotoPack(dir: string): Promise<Record<string, string
       files: {},
     }),
   );
-  return { STRATLAS_PIPELINE_PACK: dir, AIO_FAKE_PHOTO_STEP_S: '0.5' };
+  return { QUADRION_PIPELINE_PACK: dir, AIO_FAKE_PHOTO_STEP_S: '0.5' };
 }
 
 const RENDER = `

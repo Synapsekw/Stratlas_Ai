@@ -28,6 +28,8 @@ export interface JobRunnerDeps {
   now?: () => Date;
   /** How long a cancelled job may take to stop before its runtime is killed. */
   cancelGraceMs?: number;
+  /** Extra environment for a job's runtime (the photo jobs' memory cap, M10). */
+  jobEnv?: (job: JobRecord) => Record<string, string>;
 }
 
 interface Live {
@@ -279,9 +281,10 @@ export class JobRunner {
   }
 
   private launch(job: JobRecord, pack: PackInfo): void {
-    const env: NodeJS.ProcessEnv = Object.fromEntries(
-      Object.entries(process.env).filter(([k]) => !ENV_DROP.has(k)),
-    );
+    const env: NodeJS.ProcessEnv = {
+      ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !ENV_DROP.has(k))),
+      ...this.deps.jobEnv?.(job),
+    };
     const child = this.spawn(pack.python, ['-I', '-u', '-X', 'utf8', '-m', 'aio_pipelines'], {
       cwd: pack.dir,
       env,

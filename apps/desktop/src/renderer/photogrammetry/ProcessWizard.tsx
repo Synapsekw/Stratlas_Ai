@@ -18,6 +18,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { bridge, useShell } from '../shell';
 import { startAlign } from './actions';
 import {
+  cameraGroups,
   defaultProducts,
   diskShort,
   formatBytes,
@@ -26,6 +27,7 @@ import {
   PRESETS,
   PRODUCTS,
   splitNotes,
+  suggestedEpsg,
 } from './estimate';
 import { gpuLine, machineLine, processingLine } from './hardware';
 import { photoUi } from './store';
@@ -126,7 +128,8 @@ export function ProcessWizard() {
   const notes = estimate ? splitNotes(estimate) : null;
   const verdict = probe ? processingLine(probe) : null;
   const crsList = searchCrs(crsQuery);
-  const suggested = notes?.zone?.epsg ?? null;
+  const suggested = estimate ? suggestedEpsg(estimate) : null;
+  const groups = estimate ? cameraGroups(estimate) : null;
   const crsChoices = [
     ...(projectEpsg !== null ? [projectEpsg] : []),
     ...(suggested !== null && suggested !== projectEpsg ? [suggested] : []),
@@ -320,10 +323,10 @@ export function ProcessWizard() {
                 </p>
               </header>
               {estimating && !estimate && <p className="faint small">Reading the photos</p>}
-              {notes && (
+              {groups && (
                 <ul className="ph-groups" aria-label="Camera groups" data-testid="photo-groups">
-                  {notes.groups.length === 0 && <li className="faint">No photos found yet.</li>}
-                  {notes.groups.map((g) => (
+                  {groups.length === 0 && <li className="faint">No photos found yet.</li>}
+                  {groups.map((g) => (
                     <li key={g}>
                       <Icon name="camera" size={14} />
                       {g}

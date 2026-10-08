@@ -35,6 +35,31 @@ describe('export jobs', () => {
     expect(events).toEqual([{ jobId: 'j1', phase: 'Writing', done: 1, total: 2 }]);
   });
 
+  it('prints the latest run accuracy report, and says so first when there is none', async () => {
+    const printed: unknown[] = [];
+    const none = deps({ processingRun: () => Promise.resolve(null) });
+    expect(
+      await createExportJobs(none.d).run({ ...req, format: 'photo-report-pdf' }),
+    ).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('no finished processing run') as unknown,
+    });
+    expect(none.asked).toEqual([]);
+    const { d, asked } = deps({
+      processingRun: () => Promise.resolve('20261007-0915'),
+      printReport: (args) => {
+        printed.push(args);
+        return Promise.resolve({ count: 0, bytes: 4000 });
+      },
+    });
+    expect(await createExportJobs(d).run({ ...req, format: 'photo-report-pdf' })).toMatchObject({
+      ok: true,
+      bytes: 4000,
+    });
+    expect(asked[0]).toMatch(/HCl-Tank-accuracy-report\.pdf$/);
+    expect(printed).toEqual([expect.objectContaining({ projectId: 'hcl', kind: 'processing' })]);
+  });
+
   it('refuses a format the open package does not allow before asking where to save', async () => {
     const { d, asked } = deps({
       refuse: (_id, format) => (format === 'csv' ? 'This package does not allow it.' : null),

@@ -1,15 +1,15 @@
 /**
  * Process photos over the whole app (G4, mounted once by the Builder's import layer): the wizard
  * and the run panel when open, a **Process photos** button beside **Import files** on an empty
- * project, the products the wizard queued once the alignment finishes, and a manifest reload when
- * processing added layers.
+ * project, and the products the wizard queued once the alignment finishes. The layers processing
+ * adds come in through the app's manifest reload (`MANIFEST_WRITERS` in `jobs.ts`).
  */
 import { Icon } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { jobs, useShell } from '../shell';
-import { reloadManifest, startProducts } from './actions';
+import { startProducts } from './actions';
 import { ProcessWizard } from './ProcessWizard';
 import { RunPanel } from './RunPanel';
 import { newlyDone, photoUi, runOfJob, usePhotoUi } from './store';
@@ -26,7 +26,7 @@ export function PhotoProcessLayer() {
     photoUi.getState().close();
   }, [projectId]);
 
-  // queued products start when their alignment finishes; new layers reload the manifest
+  // queued products start when their alignment finishes; open run panels read their run again
   useEffect(() => {
     const since = new Date().toISOString();
     return jobs.subscribe((next, prev) => {
@@ -43,10 +43,7 @@ export function PhotoProcessLayer() {
         )
           void startProducts(run, pending);
         const root = workspace.getState().project?.root;
-        if (root && folderKey(root) === folderKey(job.project)) {
-          if (job.pipeline === 'photo.products') void reloadManifest();
-          ui.bump();
-        }
+        if (root && folderKey(root) === folderKey(job.project)) ui.bump();
       }
     });
   }, []);

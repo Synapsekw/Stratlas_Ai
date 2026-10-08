@@ -1,15 +1,15 @@
 /**
  * Photo processing in the Jobs panel (G4): **Process photos**, the project's runs with their
  * status, preset, products and accuracy, and per run **Open run**, **Re-run products** and
- * **Delete run's work files** (only `work/`, to the recycle bin, after asking). A photo job
- * selected in the Jobs list opens its run.
+ * **Delete run's work files** (only `work/`, to the recycle bin, after asking) and **Export as OPF**
+ * (`opf.export` into a folder the person picks). A photo job selected in the Jobs list opens its run.
  */
 import type { JobRecord, PhotoRunSummary } from '@aio/schema';
 import { Icon } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useState } from 'react';
 import { bridge, useJobs, useShell } from '../shell';
-import { startProducts } from './actions';
+import { startOpfExport, startProducts } from './actions';
 import { defaultProducts, formatBytes, PRESETS } from './estimate';
 import { formatResidual } from './report';
 import { photoUi, runOfJob, usePhotoUi } from './store';
@@ -155,6 +155,30 @@ export function PhotoRuns({ selected }: { selected?: JobRecord | undefined }) {
                     }}
                   >
                     Re-run products
+                  </button>
+                )}
+                {!pkg && ['aligned', 'adjusted', 'done'].includes(r.status) && (
+                  <button
+                    type="button"
+                    className="btn sm ghost"
+                    onClick={() => {
+                      void bridge
+                        .call('dialog:openFolder', {
+                          title: 'Export as OPF: choose an empty folder',
+                        })
+                        .then(async (d) => {
+                          if (!d.ok || !d.value.path) return;
+                          const out = d.value.path;
+                          const err = await startOpfExport(project.root, r.id, out);
+                          setError(err);
+                          if (!err)
+                            setNotice(
+                              `Exporting run ${r.id} as OPF to ${out}. The job is in the list.`,
+                            );
+                        });
+                    }}
+                  >
+                    Export as OPF
                   </button>
                 )}
                 {!pkg &&

@@ -1,4 +1,4 @@
-import type { PhotoEstimate, PhotoPreset, PhotoProduct } from '@aio/schema';
+import type { PhotoCameraGroup, PhotoEstimate, PhotoPreset, PhotoProduct } from '@aio/schema';
 
 /** The wizard's presets in plain words (plan "Quality presets"). */
 export const PRESETS: readonly {
@@ -87,6 +87,23 @@ export function splitNotes(e: PhotoEstimate): {
     else other.push(n);
   }
   return { groups, zone, other };
+}
+
+/** A camera group of the estimate in the wizard: "Stratlas Synthetic SYN-20, 1600 × 1200 (58 photos)". */
+export function cameraLabel(c: PhotoCameraGroup): string {
+  const name = [c.make, c.model].filter(Boolean).join(' ') || 'Unknown camera';
+  const focal = c.focalMm ? `, ${String(c.focalMm)} mm` : '';
+  return `${name}, ${String(c.widthPx)} × ${String(c.heightPx)}${focal} (${String(c.photos)} ${c.photos === 1 ? 'photo' : 'photos'})`;
+}
+
+/** Camera groups to list: the estimate's `cameras`, then groups only a note names (no frame size). */
+export function cameraGroups(e: PhotoEstimate): string[] {
+  return [...(e.cameras ?? []).map(cameraLabel), ...splitNotes(e).groups];
+}
+
+/** The photos' UTM zone: the estimate's `suggestedEpsg`, else the one its note names. */
+export function suggestedEpsg(e: PhotoEstimate): number | null {
+  return e.suggestedEpsg ?? splitNotes(e).zone?.epsg ?? null;
 }
 
 /** True when the estimate says the data drive is too small. */

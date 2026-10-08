@@ -15,6 +15,8 @@ import {
   issuePageHtml,
   metres,
   narrativeHtml,
+  overlapSvg,
+  residual,
   type HouseContext,
 } from './sections';
 
@@ -218,5 +220,25 @@ describe('audit trail (M9)', () => {
     expect(auditFooter(withAudit(null))).toBe('');
     const frame = frameHtml({ ...ctx(), h });
     expect(frame).toContain('pg-fa');
+  });
+});
+
+describe('processing section helpers', () => {
+  it('prints residuals in centimetres below a metre, never as -0.0', () => {
+    expect(residual(0.0123)).toBe('1.2 cm');
+    expect(residual(-0.0004)).toBe('0.0 cm');
+    expect(residual(-0.018)).toBe('-1.8 cm');
+    expect(residual(1.234)).toBe('1.23 m');
+    expect(residual(Number.NaN)).toBe('not known');
+  });
+
+  it('draws the overlap map from the footprints, north up', () => {
+    expect(overlapSvg([])).toBe('');
+    const svg = overlapSvg([
+      { x: 0, z: 0, r: 10 },
+      { x: 20, z: 0, r: 10 },
+    ]);
+    expect(svg).toContain('viewBox="-10 -10 40 20"');
+    expect(svg.match(/<circle /g)).toHaveLength(2);
   });
 });

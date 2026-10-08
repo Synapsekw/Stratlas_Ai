@@ -3,9 +3,9 @@
  * with progress per stage, pause and resume, cancel and resume, the products the wizard chose
  * start by themselves and come back as layers, the accuracy report and **Use refined poses**.
  *
- * Runs on the e2e stand-in pipelines (`e2e/photo-fake`, see `photoPack.ts`) until streams G2 and
- * G3 land; `STRATLAS_E2E_PHOTO_REAL=1` runs it on the real ones. Needs the development Python
- * (`uv sync` in python/, or STRATLAS_E2E_PYTHON). Synthetic photos only; zero network.
+ * Runs on the e2e stand-in pipelines (`e2e/photo-fake`, see `photoPack.ts`): the app's side of
+ * processing. The real pipelines run in `photo-real.spec.ts` where this machine has their tools. Needs the development Python
+ * (`uv sync` in python/, or QUADRION_E2E_PYTHON). Synthetic photos only; zero network.
  */
 import type { Page } from '@playwright/test';
 import { expectAccessible } from './a11y';

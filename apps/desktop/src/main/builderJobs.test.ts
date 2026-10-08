@@ -58,6 +58,23 @@ describe('builder conversions as pipeline jobs', () => {
     ]);
   });
 
+  it('starts opf.import on a dropped OPF project with its path only', async () => {
+    const { r, started } = runner();
+    await builderPipelineJobs(r).start('opf.import', {
+      projectRoot: 'E:/data/projects/site',
+      src: 'D:/pix4d/site/project.opf',
+      epsg: 32639,
+      origin: [1, 2, 3],
+    });
+    expect(started).toEqual([
+      {
+        pipeline: 'opf.import',
+        project: 'E:/data/projects/site',
+        params: { src: 'D:/pix4d/site/project.opf' },
+      },
+    ]);
+  });
+
   it('says when the pack is missing or cannot convert a file type yet', async () => {
     expect(await builderPipelineJobs(runner(false).r).available()).toBe(false);
     await expect(

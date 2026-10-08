@@ -7,7 +7,15 @@
  */
 import { worldToPixel } from '@aio/annotate';
 import { fromWgs84, projectToLocal, toWgs84 } from '@aio/geo';
-import type { GcpFile, GcpMark, GcpPoint, LensModel, Quat, Vec3 } from '@aio/schema';
+import {
+  PhotoCamerasFile,
+  type GcpFile,
+  type GcpMark,
+  type GcpPoint,
+  type LensModel,
+  type Quat,
+  type Vec3,
+} from '@aio/schema';
 
 /** Where the cameras put a point in one photo (`GcpPrediction`; the schema exports no type). */
 export type GcpPrediction = NonNullable<GcpPoint['predicted']>[number];
@@ -165,6 +173,96 @@ export function photosFor<P extends MarkerPhoto>(
     }
   }
   return out.map(({ photo, prediction }) => ({ photo, prediction }));
+}
+
+// ---------------------------------------------------------------- pixels
+
+/**
+ * Marks use COLMAP's pixel convention, the one `photo.align` and `photo.georef` measure with
+ * (G2 `gcp.py`) and the synthetic set's truth is written in (G8): the top-left corner of the image
+ * is (0, 0), x runs right and y down, continuously, so the centre of pixel (i, j) is
+ * (i + 0.5, j + 0.5) and the image centre is (width / 2, height / 2). The photo on screen may be
+ * any size (a review copy, a zoom); positions scale with the original size.
+ */
+export function clickToPixel(
+  client: readonly [number, number],
+  rect: { left: number; top: number; width: number; height: number },
+  size: readonly [number, number],
+): [number, number] {
+  const clamp = (v: number, hi: number) => Math.min(hi, Math.max(0, v));
+  return [
+    clamp(((client[0] - rect.left) / rect.width) * size[0], size[0]),
+    clamp(((client[1] - rect.top) / rect.height) * size[1], size[1]),
+  ];
+}
+
+/**
+ * The loupe: the photo at `zoom` times the box width, placed so the original-image pixel position
+ * `px` sits under the box centre (where the cross hair is drawn). CSS pixels.
+ */
+export function loupeBackground(
+  px: readonly [number, number],
+  size: readonly [number, number],
+  box: number,
+  zoom: number,
+): { size: string; position: string } {
+  const w = box * zoom;
+  const h = (w * size[1]) / size[0];
+  const x = box / 2 - (px[0] / size[0]) * w;
+  const y = box / 2 - (px[1] / size[1]) * h;
+  const f = (v: number) => `${String(Math.round(v * 100) / 100)}px`;
+  return { size: `${f(w)} ${f(h)}`, position: `${f(x)} ${f(y)}` };
+}
+
+/**
+ * `cameras-sfm.json` as the marker reads it: G2's first files carry no `schema` key (registered at
+ * the integration) and are read as `aio.photo-cameras/1`; anything else that does not parse is null.
+ */
+export function readCamerasFile(raw: unknown): PhotoCamerasFile | null {
+  const withSchema =
+    raw && typeof raw === 'object' && !Array.isArray(raw) && !('schema' in raw)
+      ? { schema: 'aio.photo-cameras/1', ...raw }
+      : raw;
+  const r = PhotoCamerasFile.safeParse(withSchema);
+  return r.success ? r.data : null;
+}
+
+/** A refined camera of the run (`cameras-sfm.json`) as a marker photo, in the project's frame. */
+export interface SfmPhoto extends MarkerPhoto {
+  pos: Vec3;
+  q: Quat;
+}
+
+/**
+ * The run's refined cameras as marker photos: keyed as the run keys photos (`GcpMark.photo`),
+ * posed in the open project's local frame (the file is measured from its own origin), and sized
+ * by their calibration (the original image size, which marks are measured in).
+ */
+export function sfmPhotos(file: PhotoCamerasFile, origin: Vec3): Map<string, SfmPhoto> {
+  const sizes = new Map(file.calibration.map((c) => [c.id, [c.width, c.height] as const]));
+  const [de, dn, dh] = [
+    file.origin[0] - origin[0],
+    file.origin[1] - origin[1],
+    file.origin[2] - origin[2],
+  ];
+  const out = new Map<string, SfmPhoto>();
+  for (const c of file.cameras) {
+    const s = c.camera ? sizes.get(c.camera) : undefined;
+    const aspect = c.lens.aspect > 0 ? c.lens.aspect : 4 / 3;
+    const size: [number, number] = s ? [s[0], s[1]] : [4000, Math.round(4000 / aspect)];
+    const lens: LensModel | undefined =
+      c.lens.model === 'pinhole' && c.lens.hfovDeg < 180
+        ? { model: 'pinhole', hfovDeg: c.lens.hfovDeg, aspect }
+        : undefined;
+    out.set(c.photo, {
+      id: c.photo,
+      size,
+      pos: [c.pos[0] + de, c.pos[1] + dh, c.pos[2] - dn],
+      q: [c.q[0], c.q[1], c.q[2], c.q[3]],
+      lens,
+    });
+  }
+  return out;
 }
 
 /** Next index in a list, wrapping; -1 for an empty list. */

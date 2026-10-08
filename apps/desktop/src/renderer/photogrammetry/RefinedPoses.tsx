@@ -1,7 +1,8 @@
 /**
  * **Use refined poses** (G4): a preview of how far each camera of the photos layer moves to its
  * calibrated position, then the swap on the person's word. The poses before are kept in the run
- * folder (`cameras.json.bak`) and the manifest keeps its `.bak`.
+ * folder (`cameras.json.bak`) and the manifest keeps its `.bak`. A run made from folders applies to a
+ * photos layer of the same photos, chosen here; main matches the cameras by file name.
  */
 import type { PhotoRun } from '@aio/schema';
 import { Icon } from '@aio/ui';
@@ -20,7 +21,10 @@ interface Preview {
 
 export function RefinedPoses({ run, data }: { run: string; data: PhotoRun | null }) {
   const project = useWorkspace((s) => s.project);
-  const layer = data && 'layer' in data.photos.source ? data.photos.source.layer : null;
+  const own = data && 'layer' in data.photos.source ? data.photos.source.layer : null;
+  const photoLayers = (project?.manifest.layers ?? []).filter((l) => l.kind === 'photos');
+  const [chosen, setChosen] = useState<string | null>(null);
+  const layer = own ?? chosen ?? photoLayers[0]?.id ?? null;
   const [preview, setPreview] = useState<Preview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -51,7 +55,7 @@ export function RefinedPoses({ run, data }: { run: string; data: PhotoRun | null
     return (
       <p className="small faint">
         Refined poses apply to a photos layer. This run read its photos from folders; import them as
-        a layer to use the calibrated cameras for findings.
+        a photos layer to use the calibrated cameras for findings (they are matched by file name).
       </p>
     );
 
@@ -79,6 +83,26 @@ export function RefinedPoses({ run, data }: { run: string; data: PhotoRun | null
         Alignment calibrated every camera. Using the refined poses moves the photos of the layer to
         those positions, so findings in a photo land closer on the model.
       </p>
+      {!own && photoLayers.length > 0 && (
+        <label className="b-field">
+          <span>Photos layer of the same flight</span>
+          <select
+            className="input sm"
+            value={layer}
+            onChange={(e) => {
+              setPreview(null);
+              setError(null);
+              setChosen(e.target.value);
+            }}
+          >
+            {photoLayers.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {preview && !preview.applied && (
         <p data-testid="poses-preview">
           {preview.cameras} cameras move by {formatResidual(preview.medianMoveM)} (median), at most{' '}
