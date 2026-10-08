@@ -239,6 +239,7 @@ describe('survey QA IPC', () => {
     });
     await listen({ type: 'update', job: job('d3', 'running') });
     await listen({ type: 'update', job: job('d3', 'done') });
+    await listen({ type: 'update', job: job('d3', 'done') });
     await listen({ type: 'update', job: job('d2', 'done') });
     await listen({ type: 'update', job: { ...job('d3', 'done'), pipeline: 'survey.compare' } });
     expect(seen).toEqual([

@@ -221,10 +221,15 @@ export function qaJobEvents(deps: {
   journal: JournalAppend;
   packaged?: (root: string) => boolean;
 }) {
+  // a job's finished update can arrive more than once: its hold is journaled once
+  const seen = new Set<string>();
   return async (e: JobEvent): Promise<void> => {
     if (e.type !== 'update' || e.job.pipeline !== 'survey.qa' || e.job.status !== 'done') return;
     const capture = e.job.params.capture;
     if (typeof capture !== 'string' || deps.packaged?.(e.job.project)) return;
+    const key = `${e.job.id}@${e.job.finishedAt ?? e.job.updatedAt}`;
+    if (seen.has(key)) return;
+    seen.add(key);
     try {
       await recordQaHold(e.job.project, capture, deps.journal);
     } catch (err) {
