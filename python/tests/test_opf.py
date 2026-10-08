@@ -305,6 +305,38 @@ def test_an_imported_opf_run_goes_through_photo_products(tmp_path, monkeypatch):
         assert 500000 - 5 < b.left < b.right < 500000 + 85 and 3200000 - 5 < b.bottom < b.top < 3200000 + 65
 
 
+def _link_dir(link: Path, target: Path) -> None:
+    """A directory link: a junction on Windows (no privilege needed), else a symlink."""
+    import os
+
+    if os.name == "nt":
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(link))
+    else:
+        link.symlink_to(target, target_is_directory=True)
+
+
+def test_a_project_reached_through_a_link_exports(tmp_path):
+    """macOS temp folders (/var -> /private/var) and Windows short names (RUNNER~1) are such paths:
+    pyopf hands back the tie point buffers by their resolved path."""
+    real = tmp_path / "real"
+    real.mkdir()
+    linked = tmp_path / "linked"
+    _link_dir(linked, real)
+    src = opf_synth.make_project(linked / "source")
+    opf_synth.make_run(src, linked / "photos")
+    out = linked / "export"
+    res, _ = run_job(OpfExport(), src, {"run": RUN, "out": str(out)})
+    assert res["outputs"]["build"]["tiePoints"] > 0
+    cal = next(
+        i for i in json.loads((out / "project.opf").read_text("utf-8"))["items"] if i["type"] == "calibration"
+    )
+    uris = [r["uri"] for r in cal["resources"]]
+    assert "calibration/tracks.gltf" in uris
+    assert all(not Path(u).is_absolute() and (out / u).is_file() for u in uris)
+
+
 def test_re_export_overwrites_an_earlier_export_but_not_other_folders(tmp_path):
     src = opf_synth.make_project(tmp_path / "source")
     opf_synth.make_run(src, tmp_path / "photos")

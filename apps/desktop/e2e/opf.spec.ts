@@ -33,7 +33,12 @@ async function runJob(win: Page, pipeline: string, project: string, fields: [Reg
   // the new job is listed and shown, and runs to the end
   await expect(win.locator('.job-row')).toHaveCount(rows + 1, { timeout: 30_000 });
   const detail = win.locator('.job-detail');
-  await expect(detail.locator('.jd-h .job-state')).toHaveText('Done', { timeout: 90_000 });
+  const state = detail.locator('.jd-h .job-state');
+  await expect(state).toHaveAttribute('data-status', /^(done|failed|cancelled|interrupted)$/, {
+    timeout: 90_000,
+  });
+  // a job that ends otherwise puts its error and log in the report
+  expect(await state.getAttribute('data-status'), await detail.innerText()).toBe('done');
 }
 
 test.describe('OPF import and export', () => {
