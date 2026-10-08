@@ -173,6 +173,8 @@ def _check(project: Path, truth_root: Path, registered_at_least: int, bias_m: fl
 
 
 def test_align_then_products_with_the_precomputed_engine(monkeypatch, tmp_path, mini_rtk):
+    # the quick variant: the mesh takes the built-in path (the COLMAP variant runs MeshLab)
+    monkeypatch.setenv("AIO_PYMESHLAB", "0")
     project = _project(tmp_path / "project")
     engine = PrecomputedEngine(mini_rtk.root / "alignment" / "sparse")
     _chain(monkeypatch, project, mini_rtk.photos, engine)
