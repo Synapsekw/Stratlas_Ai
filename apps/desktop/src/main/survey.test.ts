@@ -24,10 +24,11 @@ describe('survey IPC (G0 stubs)', () => {
 
   it('answers a typed "not implemented" that passes the contract', async () => {
     const notImplemented = { ok: false, code: 'not-implemented' };
-    expect(await ipc.call('survey:readSettings', { projectId: 'p' })).toMatchObject(notImplemented);
+    // the site settings are G1's (geodesy.test.ts); with no project registry they refuse
+    expect(await ipc.call('survey:readSettings', { projectId: 'p' })).toMatchObject({ ok: false });
     expect(
       await ipc.call('survey:writeSettings', { projectId: 'p', settings: defaultSurveySettings() }),
-    ).toMatchObject(notImplemented);
+    ).toMatchObject({ ok: false });
     expect(
       await ipc.call('survey:writeMeasurements', {
         projectId: 'p',

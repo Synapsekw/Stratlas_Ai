@@ -103,6 +103,7 @@ import {
   registerPhotogrammetryIpc,
 } from './photogrammetry';
 import { registerTilesetsIpc } from './tilesets';
+import type { DraftOp } from '@aio/journal';
 import { registerGeodesyIpc } from './geodesy';
 import { registerGeoidPacksIpc } from './packs/geoid';
 import { registerSurveyIpc } from './survey';
@@ -1259,8 +1260,13 @@ function registerIpc(): void {
   });
 
   // M11: one module per stream (G1 geodesy and geoid packs; G2, G3 and G6 survey; G12 survey AI).
-  registerSurveyIpc({ handle });
-  registerGeodesyIpc({ handle });
+  const survey = {
+    projects: registry,
+    projectPackage: (id: string) => registry.package(id)?.archive,
+    journal: (root: string, drafts: readonly DraftOp[]) => journal.append(root, drafts),
+  };
+  registerSurveyIpc({ handle, ...survey });
+  registerGeodesyIpc({ handle, ...survey });
   registerGeoidPacksIpc({ handle });
   registerSurveyAiIpc({ handle });
 }
