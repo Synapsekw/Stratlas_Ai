@@ -35,6 +35,7 @@ import { shell, useShell } from '../shell';
 import { PATH_MODES, setPathMode } from './flightPaths';
 import { updateFlightPaths, useFlightPathModel } from './pathModel';
 import { CutawayPanel } from './CutawayTool';
+import { MeasureToolbar } from '../survey/MeasureToolbar';
 import { toggleTelemetry, useTelemetryOn } from './telemetryPref';
 import { useCutawayPref } from './useCutaway';
 import {
@@ -366,6 +367,7 @@ export function MeasureTools({ stage }: { stage: EngineStage | null }) {
           <SectionPanel stage={stage} />
         </PopTool>
       )}
+      <MeasureToolbar stage={stage} />
     </>
   );
 }
