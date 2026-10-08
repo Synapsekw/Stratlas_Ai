@@ -84,6 +84,19 @@ describe('pipeline params', () => {
       'tiles.cloud',
       'packs.imagery',
       'packs.terrain',
+      'survey.prepare',
+      'survey.compare',
+      'survey.overlay',
+      'survey.section',
+      'survey.export',
+      'survey.qa',
+      'survey.cleanup',
+      'design.import',
+      'geo.calibration',
+      'hydro.flood',
+      'hydro.flow',
+      'hydro.rainfall',
+      'haul.analyse',
     ]);
     for (const p of PIPELINES) expect(p.title.length).toBeGreaterThan(3);
   });

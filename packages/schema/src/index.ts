@@ -30,6 +30,10 @@ export * from './entitlements';
 export * from './photogrammetry';
 export * from './tilesets';
 export * from './globe';
+// M11 surveying
+export * from './geodesy';
+export * from './designs';
+export * from './survey';
 // Video direction keyframes and photo corrections (orientation.json, proposal)
 export * from './orientation';
 export * from './launch';

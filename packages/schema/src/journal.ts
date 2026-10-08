@@ -108,6 +108,16 @@ export const OP_KINDS = [
   'manifest.entry',
   'boundary.edit',
   'narrative.version',
+  // surveying (M11; read as unknown-kind by 0.9 and 0.10)
+  'measurement.create',
+  'measurement.patch',
+  'measurement.delete',
+  'design.add',
+  'design.patch',
+  'design.archive',
+  'survey.settings',
+  'survey.calibration',
+  'survey.hold',
   // binaries
   'blob.add',
   // team
@@ -151,6 +161,9 @@ export const RECORD_KINDS = [
   'boundary',
   'narrative',
   'report',
+  'measurement',
+  'design',
+  'survey',
   'blob',
   'member',
   'device',
@@ -326,6 +339,12 @@ export const ExchangeImportPayload = z.object({
   ops: z.number().int().nonnegative(),
 });
 export const JournalSwitchPayload = z.object({ reason: z.string().max(500).optional() });
+/** `survey.hold`: a failed QA check holds a survey; a person releases it with a note (M11 G8). */
+export const SurveyHoldPayload = z.object({
+  capture: z.string().min(1).max(128),
+  action: z.enum(['hold', 'release']),
+  note: z.string().max(2000).optional(),
+});
 
 /** The payload schema of each known kind (the server and the importer validate with these). */
 export const OP_PAYLOADS = {
@@ -351,6 +370,15 @@ export const OP_PAYLOADS = {
   'manifest.entry': PatchPayload,
   'boundary.edit': RecordPayload,
   'narrative.version': RecordPayload,
+  'measurement.create': RecordPayload,
+  'measurement.patch': PatchPayload,
+  'measurement.delete': z.object({}),
+  'design.add': RecordPayload,
+  'design.patch': PatchPayload,
+  'design.archive': PatchPayload,
+  'survey.settings': PatchPayload,
+  'survey.calibration': RecordPayload,
+  'survey.hold': SurveyHoldPayload,
   'blob.add': BlobAddPayload,
   'member.add': MemberAddPayload,
   'member.role': MemberRolePayload,
@@ -396,6 +424,15 @@ export const OP_PERMISSION = {
   'manifest.entry': 'builder.edit',
   'boundary.edit': 'edit',
   'narrative.version': 'edit',
+  'measurement.create': 'edit',
+  'measurement.patch': 'edit',
+  'measurement.delete': 'edit',
+  'design.add': 'builder.edit',
+  'design.patch': 'builder.edit',
+  'design.archive': 'builder.edit',
+  'survey.settings': 'builder.edit',
+  'survey.calibration': 'builder.edit',
+  'survey.hold': 'edit',
   'blob.add': 'builder.edit',
   'member.add': 'admin',
   'member.role': 'admin',

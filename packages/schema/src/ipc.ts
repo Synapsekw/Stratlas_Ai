@@ -43,6 +43,15 @@ import { Id, Sha256Hex } from './common';
 import { ExchangeKind, ExchangePreview, Heads, TeamProjectId } from './exchange';
 import { ActorId, DeviceId, Identity, Initials, Member, PersonName, Role } from './identity';
 import { LaunchSettings } from './launch';
+import { DesignsFile } from './designs';
+import { CrsCatalogueEntry, GeoidPackId, GeoidPackMeta, SiteCalibration } from './geodesy';
+import {
+  HeightTiles,
+  MeasurementsFile,
+  SitePoint2,
+  SurveySettings,
+  SurveyTemplatesFile,
+} from './survey';
 import {
   AuditEntry,
   AuditExportFormat,
@@ -2241,6 +2250,167 @@ export const ipc = {
   'terrainPacks:remove': {
     request: z.object({ id: RasterPackId }).strict(),
     response: OkOrFailure,
+  },
+
+  // ---------------------------------------------------------------- M11 surveying (G0 stubs)
+  /**
+   * The site's `survey/settings.json`; `exists: false` with the defaults when there is none (G1).
+   */
+  'survey:readSettings': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), settings: SurveySettings, exists: z.boolean() }),
+      Failure,
+    ]),
+  },
+  /** Write `survey/settings.json` atomically (`.bak`, journaled `survey.settings`); refused for packages. */
+  'survey:writeSettings': {
+    request: z.object({ projectId: ProjectId, settings: SurveySettings }).strict(),
+    response: OkOrFailure,
+  },
+  /** `survey/measurements.json`; an empty list when there is none (G3). */
+  'survey:readMeasurements': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), file: MeasurementsFile, readOnly: z.boolean() }),
+      Failure,
+    ]),
+  },
+  /** Write `survey/measurements.json` atomically (`.bak`, journaled `measurement.*`); refused for packages. */
+  'survey:writeMeasurements': {
+    request: z.object({ projectId: ProjectId, file: MeasurementsFile }).strict(),
+    response: OkOrFailure,
+  },
+  /** The project's templates (`survey/templates.json`) and the user library (userData). */
+  'survey:readTemplates': {
+    request: z.object({ projectId: ProjectId.optional() }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        project: SurveyTemplatesFile.nullable(),
+        user: SurveyTemplatesFile,
+      }),
+      Failure,
+    ]),
+  },
+  'survey:writeTemplates': {
+    request: z
+      .object({
+        scope: z.enum(['project', 'user']),
+        projectId: ProjectId.optional(),
+        file: SurveyTemplatesFile,
+      })
+      .strict(),
+    response: OkOrFailure,
+  },
+  /** `survey/designs.json`; an empty list when there is none (G6). */
+  'survey:readDesigns': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), file: DesignsFile }),
+      Failure,
+    ]),
+  },
+  /** Write `survey/designs.json` (journaled `design.*`); refused for packages. */
+  'survey:writeDesigns': {
+    request: z.object({ projectId: ProjectId, file: DesignsFile }).strict(),
+    response: OkOrFailure,
+  },
+  /** Prepared surfaces (`tiles.json` in each `survey/surfaces/<id>/`), for the From and To pickers (G2). */
+  'survey:surfaces': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), surfaces: z.array(HeightTiles) }),
+      Failure,
+    ]),
+  },
+  /** Search the EPSG catalogue by code, name or area; `near` ranks CRSs whose area holds it (G1). */
+  'geodesy:searchCrs': {
+    request: z
+      .object({
+        query: z.string().max(200),
+        /** Longitude and latitude, degrees. */
+        near: z.tuple([z.number().min(-180).max(180), z.number().min(-90).max(90)]).optional(),
+        kinds: z.array(z.enum(['projected', 'geographic', 'vertical', 'compound'])).optional(),
+        limit: z.number().int().min(1).max(500).optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), results: z.array(CrsCatalogueEntry) }),
+      Failure,
+    ]),
+  },
+  /** `survey/calibration.json`, null when the site has none (G1). */
+  'geodesy:readCalibration': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), calibration: SiteCalibration.nullable() }),
+      Failure,
+    ]),
+  },
+  /**
+   * **Apply** (or remove) the site calibration a person confirmed: journaled
+   * (`survey.calibration`), marks dependent results stale; refused for packages.
+   */
+  'geodesy:applyCalibration': {
+    request: z
+      .object({ projectId: ProjectId, calibration: SiteCalibration, apply: z.boolean() })
+      .strict(),
+    response: OkOrFailure,
+  },
+  /** Geoid packs in the data folder's `packs/geoid/` plus the global ones in the pipeline pack. */
+  'geoidPacks:list': {
+    request: Empty,
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), packs: z.array(GeoidPackMeta) }),
+      Failure,
+    ]),
+  },
+  /** **Import geoid grid**: a GeoTIFF or GTX with the licence and attribution the person states. */
+  'geoidPacks:import': {
+    request: z
+      .object({
+        path: z.string().min(1).max(1024),
+        name: z.string().min(1).max(200),
+        licence: z.string().min(1).max(200),
+        attribution: z.string().max(1000),
+        verticalEpsg: z.number().int().positive().optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), pack: GeoidPackMeta }),
+      Failure,
+    ]),
+  },
+  'geoidPacks:remove': {
+    request: z.object({ id: GeoidPackId }).strict(),
+    response: OkOrFailure,
+  },
+  /**
+   * **Suggest boundaries** (G12): a draft outline around a click on an ortho layer, from the
+   * local segmentation model; a draft until a person accepts it.
+   */
+  'surveyAi:suggest': {
+    request: z
+      .object({
+        projectId: ProjectId,
+        /** The ortho raster layer. */
+        layer: Id,
+        click: SitePoint2,
+        /** Grow or shrink the outline, pixels (keys U and I). */
+        bufferPx: z.number().int().min(-50).max(50).optional(),
+        /** Target vertex count (keys J and K). */
+        vertices: z.number().int().min(4).max(500).optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        ring: z.array(SitePoint2),
+        score: z.number().min(0).max(1),
+      }),
+      Failure,
+    ]),
   },
   /**
    * The open project's `orientation.json` (`aio.orientation/1`: video direction keyframes and

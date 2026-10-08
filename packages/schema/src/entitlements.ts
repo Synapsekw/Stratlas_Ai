@@ -20,6 +20,12 @@ export const ENTITLEMENTS = [
   'collab.comment',
   'collab.assign',
   'collab.approve',
+  // M11 surveying (decision 7): all allowed in M11 builds; M12 maps them to plans.
+  'survey.measure',
+  'survey.designs',
+  'survey.hydro',
+  'survey.haul',
+  'survey.ai',
 ] as const;
 
 export type Entitlement = (typeof ENTITLEMENTS)[number];

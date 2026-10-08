@@ -308,7 +308,14 @@ export function isJournaledFile(rel: string): boolean {
 }
 
 /** Folders that hold journaled record files, for scanning a project. */
-export const JOURNALED_DIRS = ['change', 'detections', 'models', 'edits', 'report'] as const;
+export const JOURNALED_DIRS = [
+  'change',
+  'detections',
+  'models',
+  'edits',
+  'report',
+  'survey',
+] as const;
 
 const key = (t: RecordRef) => `${t.rec}\u0000${t.id}\u0000${t.in ?? ''}`;
 
