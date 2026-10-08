@@ -6,6 +6,27 @@ import { Crs } from './manifest';
 import { PhotoPreset, PhotoProduct, PhotoRunId, PhotoSource } from './photogrammetry';
 import { ProcModelId, ProcPartKind } from './procmodel';
 import { TilesetId } from './tilesets';
+import { DesignFormat, DesignId, DesignSourceUnits } from './designs';
+import {
+  CalibrationPair,
+  CalibrationSourceFormat,
+  GeoidPackId,
+  SiteVerticalDatum,
+} from './geodesy';
+import {
+  ComparisonItem,
+  CurrentSurfaceRef,
+  DesignSurfaceRef,
+  DistanceUnit,
+  OverlayKind,
+  PreparedSurfaceSource,
+  PreviousSurfaceRef,
+  QaLevel,
+  SitePoint2,
+  SurfaceRef,
+  SurveyId,
+  SurveySurfaceRef,
+} from './survey';
 
 /**
  * Pipeline jobs (Release B). Main spawns the pipeline pack's Python (`python -m aio_pipelines`)
@@ -43,6 +64,20 @@ export const PipelineName = z.enum([
   'tiles.cloud',
   'packs.imagery',
   'packs.terrain',
+  // M11 (pipeline pack 0.5.0)
+  'survey.prepare',
+  'survey.compare',
+  'survey.overlay',
+  'survey.section',
+  'survey.export',
+  'survey.qa',
+  'survey.cleanup',
+  'design.import',
+  'geo.calibration',
+  'hydro.flood',
+  'hydro.flow',
+  'hydro.rainfall',
+  'haul.analyse',
 ]);
 export type PipelineName = z.infer<typeof PipelineName>;
 
@@ -191,6 +226,79 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
     title: 'Terrain pack',
     description:
       'A DEM to an offline terrain pack (Terrarium tiles in PMTiles) with its vertical datum, licence and attribution.',
+  },
+  {
+    name: 'survey.prepare',
+    title: 'Prepare surfaces',
+    description:
+      'A DSM, DTM, cloud, design or cleaned surface to height tiles for measuring, plus the site coordinate tables.',
+  },
+  {
+    name: 'survey.compare',
+    title: 'Compare surfaces',
+    description:
+      'Cut, fill, net and total between any two surfaces or a base, for many measurements at once or the whole site.',
+  },
+  {
+    name: 'survey.overlay',
+    title: 'Terrain overlay',
+    description: 'Contours, slope, elevation ramp or shaded relief of a surface or a difference.',
+  },
+  {
+    name: 'survey.section',
+    title: 'Cross-section',
+    description: 'A multi-surface cross-section as DXF (2D or 3D) or CSV.',
+  },
+  {
+    name: 'survey.export',
+    title: 'Survey export',
+    description:
+      'Surfaces, orthos, clouds, contours, measurements and sections as GeoTIFF, LAZ, DXF, LandXML, 12da, CSV, KML, SHP or GeoJSON in the site grid or WGS84.',
+  },
+  {
+    name: 'survey.qa',
+    title: 'Survey QA',
+    description:
+      'Checks a surface against checkpoints and against the previous survey at the site QA level.',
+  },
+  {
+    name: 'survey.cleanup',
+    title: 'Terrain cleanup',
+    description:
+      'Cleanups, crops and DTM filters as a new derived surface; the delivered surface is never changed.',
+  },
+  {
+    name: 'design.import',
+    title: 'Import design',
+    description:
+      'LandXML, DXF, 12da or CSV designs to TIN surfaces, linework, alignments and points, keeping the original file.',
+  },
+  {
+    name: 'geo.calibration',
+    title: 'Site calibration',
+    description:
+      'A Trimble JobXML or .dc, a 12d transform or point pairs to a site calibration with residuals.',
+  },
+  {
+    name: 'hydro.flood',
+    title: 'Flood to level',
+    description: 'The area, depth and stored volume below a water level.',
+  },
+  {
+    name: 'hydro.flow',
+    title: 'Runoff and catchments',
+    description: 'Flow paths from a drop point, catchments of outlets and the stream network.',
+  },
+  {
+    name: 'hydro.rainfall',
+    title: 'Direct rainfall',
+    description: 'Water depth over time from a rainfall hyetograph (simplified 2D model).',
+  },
+  {
+    name: 'haul.analyse',
+    title: 'Haul-road compliance',
+    description:
+      'Width, gradient, cross fall, superelevation and berm height along a haul road against site limits.',
   },
 ];
 
@@ -656,6 +764,282 @@ export const TerrainPackParams = z
   })
   .strict();
 
+// ---------------------------------------------------------------- M11 surveying
+// Python stubs in `python/src/aio_pipelines/{survey,design,geodesy,hydro,haul}/` take the same
+// parameter names (G0); each stream fills its own module. Inputs read in place are absolute paths;
+// outputs stay in `<project>/survey/` except exports, whose destination main chooses (`out`).
+
+/** A ring in the project CRS (E, N), metres; the last point may repeat the first. */
+const SiteRing = z.array(SitePoint2).min(3).max(100_000);
+
+/** `survey.prepare` (python `aio_pipelines/survey/prepare.py`, G2; site tables G1). */
+export const SurveyPrepareParams = z
+  .object({
+    surfaces: z
+      .array(
+        z
+          .object({
+            id: SurveyId,
+            name: z.string().min(1).max(200),
+            source: PreparedSurfaceSource,
+            capture: Id.optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(50),
+    /** Tile cell, metres; default the source's own. */
+    cellM: z.number().min(0.01).max(100).optional(),
+    /** Also write `survey/geodesy/` (site transform and geoid subgrid); default true. */
+    geodesy: z.boolean().optional(),
+  })
+  .strict();
+
+/** `survey.compare` (python `aio_pipelines/survey/compare.py`, G2): stored items or the whole site. */
+export const SurveyCompareParams = z
+  .object({
+    items: z
+      .array(
+        z
+          .object({
+            measurement: SurveyId,
+            ring: SiteRing,
+            item: ComparisonItem,
+            /** The capture the measurement is viewed on (resolves `current` and `previous`). */
+            capture: Id.optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(5000)
+      .optional(),
+    site: z
+      .object({
+        from: SurfaceRef,
+        to: SurfaceRef,
+        deadbandM: z.number().nonnegative().max(10).optional(),
+        cellM: z.number().min(0.01).max(100).optional(),
+        /** Restrict to a boundary; default the overlap of both surfaces. */
+        ring: SiteRing.optional(),
+      })
+      .strict()
+      .optional(),
+    out: ProjectPath.optional(),
+  })
+  .strict()
+  .refine(
+    (p) => (p.items === undefined) !== (p.site === undefined),
+    'Give items or site, not both.',
+  );
+
+/** `survey.overlay` (python `aio_pipelines/survey/overlay.py`, G5). */
+export const SurveyOverlayParams = z
+  .object({
+    id: SurveyId.optional(),
+    surface: SurveyId.optional(),
+    comparison: z.object({ from: SurfaceRef, to: SurfaceRef }).strict().optional(),
+    kind: OverlayKind,
+    /**
+     * Contours: `minorM`, `majorM`; slope: `style`, `stops`; elevation: `stops`, `stepped`;
+     * relief: `azimuth`, `altitude`, `intensity`.
+     */
+    options: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict()
+  .refine(
+    (p) => (p.surface === undefined) !== (p.comparison === undefined),
+    'Give a surface or a comparison, not both.',
+  );
+
+const SectionSurface = z.union([
+  SurveySurfaceRef,
+  CurrentSurfaceRef,
+  PreviousSurfaceRef,
+  DesignSurfaceRef,
+]);
+
+/** `survey.section` (python `aio_pipelines/survey/section.py`, G5). */
+export const SurveySectionParams = z
+  .object({
+    line: z.array(SitePoint2).min(2).max(10_000),
+    surfaces: z.array(SectionSurface).min(1).max(20),
+    format: z.enum(['dxf-2d-xy', 'dxf-2d-xz', 'dxf-2d-yz', 'dxf-3d-zup', 'dxf-3d-yup', 'csv']),
+    /** The capture the section is viewed on. */
+    capture: Id.optional(),
+    /** Absolute output file, chosen by main. */
+    out: z.string().min(1).max(MAX_PATH),
+  })
+  .strict();
+
+/** `survey.export` (python `aio_pipelines/survey/export.py`, G7). */
+export const SurveyExportParams = z
+  .object({
+    what: z.enum(['surface', 'ortho', 'cloud', 'contours', 'measurements', 'section']),
+    format: z.enum(['geotiff', 'laz', 'dxf', 'landxml', '12da', 'csv', 'kml', 'shp', 'geojson']),
+    /** `site`: the site grid, calibrated when a calibration applies. */
+    crs: z.union([
+      z.enum(['site', 'wgs84']),
+      z.object({ epsg: z.number().int().positive() }).strict(),
+    ]),
+    units: DistanceUnit.optional(),
+    /** Surfaces and clouds: keep this share of points or faces (1 = full). */
+    decimate: z.number().gt(0).max(1).optional(),
+    /** What to export: a prepared surface, a layer, an overlay or measurement ids. */
+    surface: SurveyId.optional(),
+    layer: Id.optional(),
+    overlay: SurveyId.optional(),
+    measurements: z.array(SurveyId).max(20_000).optional(),
+    /** Absolute output file or folder, chosen by main. */
+    out: z.string().min(1).max(MAX_PATH),
+  })
+  .strict();
+
+/** `survey.qa` (python `aio_pipelines/survey/qa.py`, G8). */
+export const SurveyQaParams = z
+  .object({
+    capture: Id,
+    surface: SurveyId,
+    level: QaLevel,
+    /** Checkpoints: a CSV (absolute) or the M10 GCP file of a run. */
+    checkpoints: z
+      .union([
+        z.object({ csv: z.string().min(1).max(MAX_PATH) }).strict(),
+        z.object({ gcp: ProjectPath }).strict(),
+      ])
+      .optional(),
+    previous: z.object({ capture: Id, surface: SurveyId }).strict().optional(),
+  })
+  .strict();
+
+/** `survey.cleanup` (python `aio_pipelines/survey/cleanup.py`, G8). */
+export const SurveyCleanupParams = z
+  .object({
+    /** The prepared surface the edits apply to. */
+    surface: SurveyId.optional(),
+    /** Edits from `survey/cleanups.json`, applied in order. */
+    edits: z.array(SurveyId).max(2000).optional(),
+    /** A DTM from a cloud layer with a filter preset (PDAL smrf or csf). */
+    dtmFilter: z
+      .object({
+        layer: Id,
+        preset: z.enum(['equipment', 'equipment-vegetation', 'structures', 'everything']),
+      })
+      .strict()
+      .optional(),
+    /** The derived surface id; default `<capture>-clean`. */
+    out: SurveyId.optional(),
+  })
+  .strict()
+  .refine(
+    (p) => (p.surface !== undefined && p.edits !== undefined) !== (p.dtmFilter !== undefined),
+    'Give a surface with edits, or a DTM filter.',
+  );
+
+/** `design.import` (python `aio_pipelines/design/importer.py`, G6). */
+export const DesignImportParams = z
+  .object({
+    /** The design file (absolute); copied byte for byte into `survey/designs/<id>/`. */
+    src: z.string().min(1).max(MAX_PATH),
+    /** Default from the extension and content. */
+    format: DesignFormat.optional(),
+    id: DesignId.optional(),
+    name: z.string().min(1).max(200).optional(),
+    crs: Crs.optional(),
+    /** Place local coordinates through the site calibration. */
+    useCalibration: z.boolean().optional(),
+    /** Default from the file (`INSUNITS`, LandXML `Units`). */
+    units: DesignSourceUnits.optional(),
+    /** Source layer names to import; default all. */
+    layers: z.array(z.string().min(1).max(200)).max(1000).optional(),
+  })
+  .strict();
+
+/** `geo.calibration` (python `aio_pipelines/geodesy/calibration.py`, G1). */
+export const GeoCalibrationParams = z
+  .object({
+    /** A controller file (absolute): JobXML, `.dc`, 12d, `.cal`. */
+    src: z.string().min(1).max(MAX_PATH).optional(),
+    format: CalibrationSourceFormat.optional(),
+    /** Or point pairs to solve by least squares. */
+    pairs: z.array(CalibrationPair).min(1).max(500).optional(),
+    /** The base projection. */
+    crs: Crs,
+    verticalDatum: SiteVerticalDatum.optional(),
+    geoid: GeoidPackId.optional(),
+  })
+  .strict()
+  .refine(
+    (p) => (p.src === undefined) !== (p.pairs === undefined),
+    'Give a file or point pairs, not both.',
+  );
+
+/** `hydro.flood` (python `aio_pipelines/hydro/flood.py`, G10). */
+export const HydroFloodParams = z
+  .object({
+    surface: SurveyId,
+    levelM: z.number(),
+    /** `connected`: only water connected to `seed`; `all-below`: every cell below the level. */
+    mode: z.enum(['connected', 'all-below']),
+    seed: SitePoint2.optional(),
+    region: SiteRing.optional(),
+    run: SurveyId.optional(),
+  })
+  .strict();
+
+/** `hydro.flow` (python `aio_pipelines/hydro/flow.py`, G10). */
+export const HydroFlowParams = z
+  .object({
+    surface: SurveyId,
+    mode: z.enum(['runoff', 'catchment', 'streams']),
+    drop: SitePoint2.optional(),
+    outlets: z.array(SitePoint2).max(100).optional(),
+    method: z.enum(['d8', 'dinf']).optional(),
+    depressions: z.enum(['fill', 'breach']).optional(),
+    /** Stream threshold: contributing area, square metres. */
+    streamAreaM2: z.number().positive().optional(),
+    region: SiteRing.optional(),
+    run: SurveyId.optional(),
+  })
+  .strict();
+
+/** `hydro.rainfall` (python `aio_pipelines/hydro/rainfall.py`, G10; decision 3). */
+export const HydroRainfallParams = z
+  .object({
+    surface: SurveyId,
+    /** Rainfall CSV (absolute): time in minutes, intensity in mm/h. */
+    hyetograph: z.string().min(1).max(MAX_PATH),
+    manningN: z.number().positive().max(1),
+    infiltrationMmPerH: z.number().nonnegative().max(1000),
+    cellM: z.union([z.literal(0.5), z.literal(1), z.literal(2)]),
+    durationMin: z.number().positive().max(10_080).optional(),
+    region: SiteRing.optional(),
+    run: SurveyId.optional(),
+  })
+  .strict();
+
+/** `haul.analyse` (python `aio_pipelines/haul/analyse.py`, G11). */
+export const HaulAnalyseParams = z
+  .object({
+    surface: SurveyId,
+    /** A drawn centreline (E, N) or a design alignment or polyline layer. */
+    centreline: z.union([
+      z.array(SitePoint2).min(2).max(100_000),
+      z.object({ design: DesignId, layer: DesignId }).strict(),
+    ]),
+    intervalM: z.number().positive().max(1000),
+    limits: z
+      .object({
+        minWidthM: z.number().positive().optional(),
+        maxGradePct: z.number().positive().optional(),
+        crossFallMinPct: z.number().optional(),
+        crossFallMaxPct: z.number().optional(),
+        minBermHeightM: z.number().positive().optional(),
+      })
+      .strict(),
+    run: SurveyId.optional(),
+  })
+  .strict();
+
 export type PhotoAlignParams = z.infer<typeof PhotoAlignParams>;
 export type PhotoGeorefParams = z.infer<typeof PhotoGeorefParams>;
 export type PhotoProductsParams = z.infer<typeof PhotoProductsParams>;
@@ -665,6 +1049,19 @@ export type TilesMeshParams = z.infer<typeof TilesMeshParams>;
 export type TilesCloudParams = z.infer<typeof TilesCloudParams>;
 export type ImageryPackParams = z.infer<typeof ImageryPackParams>;
 export type TerrainPackParams = z.infer<typeof TerrainPackParams>;
+export type SurveyPrepareParams = z.infer<typeof SurveyPrepareParams>;
+export type SurveyCompareParams = z.infer<typeof SurveyCompareParams>;
+export type SurveyOverlayParams = z.infer<typeof SurveyOverlayParams>;
+export type SurveySectionParams = z.infer<typeof SurveySectionParams>;
+export type SurveyExportParams = z.infer<typeof SurveyExportParams>;
+export type SurveyQaParams = z.infer<typeof SurveyQaParams>;
+export type SurveyCleanupParams = z.infer<typeof SurveyCleanupParams>;
+export type DesignImportParams = z.infer<typeof DesignImportParams>;
+export type GeoCalibrationParams = z.infer<typeof GeoCalibrationParams>;
+export type HydroFloodParams = z.infer<typeof HydroFloodParams>;
+export type HydroFlowParams = z.infer<typeof HydroFlowParams>;
+export type HydroRainfallParams = z.infer<typeof HydroRainfallParams>;
+export type HaulAnalyseParams = z.infer<typeof HaulAnalyseParams>;
 
 const PARAMS = {
   'aik.cameras': AikCamerasParams,
@@ -692,6 +1089,19 @@ const PARAMS = {
   'tiles.cloud': TilesCloudParams,
   'packs.imagery': ImageryPackParams,
   'packs.terrain': TerrainPackParams,
+  'survey.prepare': SurveyPrepareParams,
+  'survey.compare': SurveyCompareParams,
+  'survey.overlay': SurveyOverlayParams,
+  'survey.section': SurveySectionParams,
+  'survey.export': SurveyExportParams,
+  'survey.qa': SurveyQaParams,
+  'survey.cleanup': SurveyCleanupParams,
+  'design.import': DesignImportParams,
+  'geo.calibration': GeoCalibrationParams,
+  'hydro.flood': HydroFloodParams,
+  'hydro.flow': HydroFlowParams,
+  'hydro.rainfall': HydroRainfallParams,
+  'haul.analyse': HaulAnalyseParams,
 } as const satisfies Record<PipelineName, z.ZodType>;
 
 export function pipelineParams(name: PipelineName): z.ZodType<Record<string, unknown>> {

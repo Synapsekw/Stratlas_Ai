@@ -160,6 +160,9 @@ importers:
       '@aio/schema':
         specifier: workspace:*
         version: link:../../packages/schema
+      '@aio/survey':
+        specifier: workspace:*
+        version: link:../../packages/survey
       '@aio/tiles':
         specifier: workspace:*
         version: link:../../packages/tiles
@@ -472,6 +475,12 @@ importers:
       zod:
         specifier: ^4.6.5
         version: 4.6.5
+
+  packages/survey:
+    dependencies:
+      '@aio/schema':
+        specifier: workspace:*
+        version: link:../schema
 
   packages/sync:
     dependencies:

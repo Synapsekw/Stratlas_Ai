@@ -1,0 +1,31 @@
+{
+  "schema": "aio.narrative/1",
+  "parts": {
+    "summary": {
+      "versions": [
+        {
+          "text": "Two tanks show coating loss near the base.",
+          "source": "template",
+          "createdAt": "2026-03-02T09:00:00.000Z"
+        },
+        {
+          "text": "Two tanks show coating loss near the base. One weld needs a closer look.",
+          "source": "user",
+          "createdAt": "2026-03-09T15:30:00.000Z",
+          "author": "Rana Example"
+        }
+      ]
+    },
+    "findings": {
+      "versions": [
+        {
+          "text": "Findings are listed by severity.",
+          "source": "ai",
+          "createdAt": "2026-03-09T15:30:00.000Z",
+          "provider": "local",
+          "model": "test-model"
+        }
+      ]
+    }
+  }
+}

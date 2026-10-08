@@ -1,0 +1,290 @@
+{
+  "schema": "aio.project/1",
+  "id": "demo-tank-farm",
+  "name": "Demo tank farm",
+  "customer": "Demo customer (fictional)",
+  "site": "Fictional site in open desert (synthetic demo data)",
+  "crs": { "epsg": 32631 },
+  "origin": [316542, 2589075, 386],
+  "captures": [
+    { "id": "survey-2026-03-02", "label": "Drone survey 2 Mar 2026", "date": "2026-03-02" },
+    { "id": "survey-2026-04-13", "label": "Drone survey 13 Apr 2026", "date": "2026-04-13" }
+  ],
+  "layers": [
+    {
+      "kind": "mesh",
+      "id": "model",
+      "name": "Tank farm model (synthetic)",
+      "visible": true,
+      "src": { "path": "models/tank-farm.glb" },
+      "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+      "tags": [
+        { "node": "T101_Foundation", "tag": "T-101 ring foundation", "area": "Tank T-101" },
+        { "node": "T101_Shell_C1", "tag": "T-101 shell course 1", "area": "Tank T-101" },
+        { "node": "T101_Shell_C2", "tag": "T-101 shell course 2", "area": "Tank T-101" },
+        { "node": "T101_Shell_C3", "tag": "T-101 shell course 3", "area": "Tank T-101" },
+        { "node": "T101_Shell_C4", "tag": "T-101 shell course 4", "area": "Tank T-101" },
+        { "node": "T101_Roof", "tag": "T-101 fixed cone roof", "area": "Tank T-101" },
+        { "node": "T101_Handrail", "tag": "T-101 roof handrail", "area": "Tank T-101" },
+        { "node": "T101_Stair", "tag": "T-101 spiral stair", "area": "Tank T-101" },
+        { "node": "T101_N1", "tag": "T-101 outlet nozzle N1", "area": "Tank T-101" },
+        { "node": "T101_Manway", "tag": "T-101 shell manway", "area": "Tank T-101" },
+        { "node": "T102_Foundation", "tag": "T-102 ring foundation", "area": "Tank T-102" },
+        { "node": "T102_Shell_C1", "tag": "T-102 shell course 1", "area": "Tank T-102" },
+        { "node": "T102_Shell_C2", "tag": "T-102 shell course 2", "area": "Tank T-102" },
+        { "node": "T102_Shell_C3", "tag": "T-102 shell course 3", "area": "Tank T-102" },
+        { "node": "T102_Roof", "tag": "T-102 fixed cone roof", "area": "Tank T-102" },
+        { "node": "T102_Handrail", "tag": "T-102 roof handrail", "area": "Tank T-102" },
+        { "node": "T102_Stair", "tag": "T-102 spiral stair", "area": "Tank T-102" },
+        { "node": "T102_N1", "tag": "T-102 outlet nozzle N1", "area": "Tank T-102" },
+        { "node": "T102_Manway", "tag": "T-102 shell manway", "area": "Tank T-102" },
+        { "node": "Bund_Wall_N", "tag": "Bund wall north", "area": "Bund" },
+        { "node": "Bund_Wall_S", "tag": "Bund wall south", "area": "Bund" },
+        { "node": "Bund_Wall_W", "tag": "Bund wall west", "area": "Bund" },
+        { "node": "Bund_Wall_E", "tag": "Bund wall east", "area": "Bund" },
+        { "node": "Rack_Bent_01", "tag": "Pipe rack bent 1", "area": "Pipe rack" },
+        { "node": "Rack_Bent_02", "tag": "Pipe rack bent 2", "area": "Pipe rack" },
+        { "node": "Rack_Bent_03", "tag": "Pipe rack bent 3", "area": "Pipe rack" },
+        { "node": "Rack_Bent_04", "tag": "Pipe rack bent 4", "area": "Pipe rack" },
+        { "node": "Rack_Bent_05", "tag": "Pipe rack bent 5", "area": "Pipe rack" },
+        { "node": "Rack_Bent_06", "tag": "Pipe rack bent 6", "area": "Pipe rack" },
+        { "node": "Rack_Bent_07", "tag": "Pipe rack bent 7", "area": "Pipe rack" },
+        { "node": "Rack_Bent_08", "tag": "Pipe rack bent 8", "area": "Pipe rack" },
+        { "node": "Rack_Bent_09", "tag": "Pipe rack bent 9", "area": "Pipe rack" },
+        { "node": "Rack_Bent_10", "tag": "Pipe rack bent 10", "area": "Pipe rack" },
+        { "node": "Rack_Bent_11", "tag": "Pipe rack bent 11", "area": "Pipe rack" },
+        { "node": "Rack_Beams", "tag": "Pipe rack longitudinal beams", "area": "Pipe rack" },
+        { "node": "Line_101", "tag": "Line 101 (T-101 outlet, insulated)", "area": "Pipe rack" },
+        { "node": "Line_102", "tag": "Line 102 (T-102 outlet)", "area": "Pipe rack" },
+        { "node": "Line_FW", "tag": "Fire water ring main", "area": "Pipe rack" },
+        { "node": "P101_Pump", "tag": "Pump P-101", "area": "Pump station" },
+        { "node": "Control_Building", "tag": "Control building", "area": "Utilities" }
+      ]
+    },
+    {
+      "kind": "mesh",
+      "id": "terrain-2026-04-13",
+      "name": "Terrain 13 Apr 2026",
+      "visible": true,
+      "src": { "path": "models/terrain-2026-04-13.glb" },
+      "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+      "tags": [
+        { "node": "P01_e2", "tag": "P01", "area": "809 m³" },
+        { "node": "P02_e2", "tag": "P02", "area": "314 m³" }
+      ]
+    },
+    {
+      "kind": "mesh",
+      "id": "terrain-2026-03-02",
+      "name": "Terrain 2 Mar 2026",
+      "visible": false,
+      "src": { "path": "models/terrain-2026-03-02.glb" },
+      "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+      "tags": [
+        { "node": "P01_e1", "tag": "P01", "area": "1,349 m³" },
+        { "node": "P02_e1", "tag": "P02", "area": "162 m³" }
+      ]
+    },
+    {
+      "kind": "raster",
+      "id": "ortho-2026-04-13",
+      "name": "Ortho 13 Apr 2026",
+      "visible": true,
+      "src": { "path": "rasters/ortho-e2/tiles.json" },
+      "role": "ortho",
+      "format": "kit-pyramid",
+      "corners": { "tl": [72, -0.5, -40], "tr": [153.92, -0.5, -40], "bl": [72, -0.5, 41.92] }
+    },
+    {
+      "kind": "raster",
+      "id": "ortho-2026-03-02",
+      "name": "Ortho 2 Mar 2026",
+      "visible": false,
+      "src": { "path": "rasters/ortho-e1/tiles.json" },
+      "role": "ortho",
+      "format": "kit-pyramid",
+      "corners": { "tl": [72, -0.5, -40], "tr": [153.92, -0.5, -40], "bl": [72, -0.5, 41.92] }
+    },
+    {
+      "kind": "raster",
+      "id": "site-ortho",
+      "name": "Site orthomosaic 2026-04-13",
+      "visible": true,
+      "src": { "path": "rasters/site-ortho/tiles.json" },
+      "role": "ortho",
+      "format": "kit-pyramid",
+      "corners": { "tl": [-64, 0.02, -64], "tr": [64, 0.02, -64], "bl": [-64, 0.02, 64] }
+    },
+    {
+      "kind": "raster",
+      "id": "site-dsm",
+      "name": "Site DSM 2026-04-13 (shaded relief)",
+      "visible": false,
+      "src": { "path": "rasters/site-dsm/tiles.json" },
+      "role": "dsm",
+      "format": "kit-pyramid",
+      "corners": { "tl": [-64, 0.03, -64], "tr": [64, 0.03, -64], "bl": [-64, 0.03, 64] }
+    },
+    {
+      "kind": "pointcloud",
+      "id": "cloud",
+      "name": "Photogrammetry point cloud 2026-04-13",
+      "visible": false,
+      "src": { "path": "clouds/site/index.json" },
+      "format": "png-packed",
+      "pointCount": 332520
+    },
+    {
+      "kind": "video",
+      "id": "flight-01",
+      "name": "Drone video: orbit of the tank farm",
+      "visible": true,
+      "src": { "path": "video/flight-01.mp4" },
+      "flight": { "src": { "path": "flights/flight-01.json" }, "startUtcMs": 1776072000000 },
+      "lens": { "model": "pinhole", "hfovDeg": 70, "aspect": 1.7778 },
+      "offsetMs": 0,
+      "poster": { "path": "posters/flight-01.jpg" }
+    },
+    {
+      "kind": "photos",
+      "id": "photos",
+      "name": "Inspection photos",
+      "visible": true,
+      "items": [
+        {
+          "id": "d01",
+          "src": { "path": "photos/d01.jpg" },
+          "takenAt": "2026-04-13T09:30:00.000Z",
+          "pos": [-11.732, 3.218, 7.335],
+          "q": [-0.162937, 0.003132, 0.000517, 0.986631],
+          "lens": { "model": "pinhole", "hfovDeg": 55, "aspect": 1.3333 }
+        },
+        {
+          "id": "d02",
+          "src": { "path": "photos/d02.jpg" },
+          "takenAt": "2026-04-13T09:31:00.000Z",
+          "pos": [-4.987, 13.948, -19.679],
+          "q": [-0.05711, 0.924045, 0.152601, 0.34582],
+          "lens": { "model": "pinhole", "hfovDeg": 55, "aspect": 1.3333 }
+        },
+        {
+          "id": "d03",
+          "src": { "path": "photos/d03.jpg" },
+          "takenAt": "2026-04-13T09:32:00.000Z",
+          "pos": [-7.61, 2.804, -17.36],
+          "q": [-0.161717, -0.12055, -0.019908, 0.979244],
+          "lens": { "model": "pinhole", "hfovDeg": 55, "aspect": 1.3333 }
+        },
+        {
+          "id": "d04",
+          "src": { "path": "photos/d04.jpg" },
+          "takenAt": "2026-04-13T09:33:00.000Z",
+          "pos": [-12.8, 1.77, 24.851],
+          "q": [-0.161717, -0.12055, -0.019908, 0.979244],
+          "lens": { "model": "pinhole", "hfovDeg": 55, "aspect": 1.3333 }
+        },
+        {
+          "id": "d05",
+          "src": { "path": "photos/d05.jpg" },
+          "takenAt": "2026-04-13T09:34:00.000Z",
+          "pos": [7.92, 10.03, 19.84],
+          "q": [-0.606679, 0.243114, 0.202226, 0.729342],
+          "lens": { "model": "pinhole", "hfovDeg": 55, "aspect": 1.3333 }
+        },
+        {
+          "id": "d06",
+          "src": { "path": "photos/d06.jpg" },
+          "takenAt": "2026-04-13T09:35:00.000Z",
+          "pos": [4.518, 6.262, -14.324],
+          "q": [0.067522, 0.89793, 0.148288, -0.408867],
+          "lens": { "model": "pinhole", "hfovDeg": 55, "aspect": 1.3333 }
+        },
+        {
+          "id": "o01",
+          "src": { "path": "photos/o01.jpg" },
+          "takenAt": "2026-04-13T09:40:00.000Z",
+          "pos": [-46, 38, 40],
+          "q": [-0.24274, -0.379438, -0.103869, 0.886744],
+          "lens": { "model": "pinhole", "hfovDeg": 72, "aspect": 1.3333 }
+        },
+        {
+          "id": "o02",
+          "src": { "path": "photos/o02.jpg" },
+          "takenAt": "2026-04-13T09:41:00.000Z",
+          "pos": [36, 42, -40],
+          "q": [-0.120354, 0.877, 0.290559, 0.363265],
+          "lens": { "model": "pinhole", "hfovDeg": 72, "aspect": 1.3333 }
+        },
+        {
+          "id": "o03",
+          "src": { "path": "photos/o03.jpg" },
+          "takenAt": "2026-04-13T09:42:00.000Z",
+          "pos": [-30, 55, -52],
+          "q": [0.092052, 0.901001, 0.352775, -0.235103],
+          "lens": { "model": "pinhole", "hfovDeg": 72, "aspect": 1.3333 }
+        }
+      ]
+    }
+  ],
+  "severityModels": [
+    {
+      "id": "general-inspection",
+      "name": "General inspection",
+      "levels": [
+        {
+          "value": 1,
+          "label": "Minor",
+          "color": "#78b3d6",
+          "criteria": "Cosmetic or early stage. Monitor."
+        },
+        {
+          "value": 2,
+          "label": "Moderate",
+          "color": "#ebc751",
+          "criteria": "Visible deterioration. Plan maintenance."
+        },
+        {
+          "value": 3,
+          "label": "Severe",
+          "color": "#f05653",
+          "criteria": "Loss of function or safety risk. Act now."
+        }
+      ],
+      "uncertain": { "label": "Uncertain", "color": "#878d93" }
+    }
+  ],
+  "classCatalogues": [
+    {
+      "id": "general-inspection-classes",
+      "name": "General inspection classes",
+      "assetType": "asset",
+      "classes": [
+        {
+          "id": "corrosion",
+          "label": "Corrosion",
+          "color": "#f48d3c",
+          "severityModel": "general-inspection"
+        },
+        {
+          "id": "crack",
+          "label": "Crack",
+          "color": "#f05653",
+          "severityModel": "general-inspection"
+        },
+        {
+          "id": "damage",
+          "label": "Damage",
+          "color": "#ebc751",
+          "severityModel": "general-inspection"
+        },
+        {
+          "id": "other",
+          "label": "Other",
+          "color": "#95a0ab",
+          "severityModel": "general-inspection"
+        }
+      ]
+    }
+  ],
+  "type": "fusion"
+}

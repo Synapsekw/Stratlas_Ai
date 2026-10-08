@@ -12,11 +12,12 @@ export const MILESTONES = [
   { version: '0.7', commit: 'af820d6', date: '2026-10-06', note: '0.7.0 merged (M7)' },
   { version: '0.8', commit: '7faf945', date: '2026-10-07', note: '0.8.0 merged (M8)' },
   { version: '0.9', commit: '91770f2', date: '2026-10-07', note: '0.9.0 merged (M9)' },
+  { version: '0.10', commit: 'e422fd3', date: '2026-10-08', note: '0.10.0 merged (M10)' },
 ];
 
 /**
  * The oldest build whose schema the "this build writes files it reads" test runs against (the
- * corpus test also runs it against the previous milestone, 0.9).
+ * corpus test also runs it against the later milestones, 0.9 and 0.10).
  */
 export const OLDEST_SUPPORTED_DOWNGRADE = '0.8';
 

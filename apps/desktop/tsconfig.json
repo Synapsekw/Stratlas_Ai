@@ -29,6 +29,7 @@
     { "path": "../../packages/merge" },
     { "path": "../../packages/collab" },
     { "path": "../../packages/sync" },
-    { "path": "../../packages/tiles" }
+    { "path": "../../packages/tiles" },
+    { "path": "../../packages/survey" }
   ]
 }

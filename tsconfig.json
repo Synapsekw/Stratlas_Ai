@@ -65,6 +65,9 @@
       "path": "packages/tiles"
     },
     {
+      "path": "packages/survey"
+    },
+    {
       "path": "apps/team-server"
     },
     {

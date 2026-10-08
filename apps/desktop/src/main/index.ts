@@ -103,6 +103,10 @@ import {
   registerPhotogrammetryIpc,
 } from './photogrammetry';
 import { registerTilesetsIpc } from './tilesets';
+import { registerGeodesyIpc } from './geodesy';
+import { registerGeoidPacksIpc } from './packs/geoid';
+import { registerSurveyIpc } from './survey';
+import { registerSurveyAiIpc } from './surveyAi';
 import { createTestVault, useTestVault } from './testVault';
 import { importLogo, removeLogo } from './branding';
 import { putThumb } from './thumbs';
@@ -1253,6 +1257,12 @@ function registerIpc(): void {
     dataRoot: () => settings.current().dataRoot,
     startJob: (req) => jobs.start(req),
   });
+
+  // M11: one module per stream (G1 geodesy and geoid packs; G2, G3 and G6 survey; G12 survey AI).
+  registerSurveyIpc({ handle });
+  registerGeodesyIpc({ handle });
+  registerGeoidPacksIpc({ handle });
+  registerSurveyAiIpc({ handle });
 }
 
 /** Hand a package path to the renderer (second launch, macOS open-file). */

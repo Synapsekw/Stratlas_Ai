@@ -1,8 +1,8 @@
 // The 1.x upgrade policy, proved on the compatibility corpus (tools/compat/corpus, built by
 // build-corpus.mjs from each milestone's own schema):
-// - every file written by 0.4 to 0.10 opens in this build with nothing lost;
-// - every file this build writes parses with the 0.9 and the 0.8 schema with nothing lost (an 0.9
-//   or 0.8 build on the same machine still opens it);
+// - every file written by 0.4 to 0.11 opens in this build with nothing lost;
+// - every file this build writes parses with the 0.10, 0.9 and 0.8 schemas with nothing lost (an
+//   0.10, 0.9 or 0.8 build on the same machine still opens it);
 // - every reader refuses a `/2` file with the "newer version" message and changes nothing.
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import * as current from '../../packages/schema/src/index.ts';
 import * as v08 from './schema-0.8/index.mjs';
 import * as v09 from './schema-0.9/index.mjs';
+import * as v010 from './schema-0.10/index.mjs';
 import { familyOf } from './families.mjs';
 import { MILESTONES } from './milestones.mjs';
 
@@ -19,7 +20,7 @@ const corpus = join(here, 'corpus');
 const index = JSON.parse(readFileSync(join(corpus, 'index.json'), 'utf8'));
 const versions = readdirSync(corpus).filter((n) => /^\d+\.\d+$/.test(n));
 /** This build (build-corpus.mjs `CURRENT`): corpus/<CURRENT> is what it writes. */
-const CURRENT = '0.10';
+const CURRENT = '0.11';
 
 const load = (version, p) => JSON.parse(readFileSync(join(corpus, version, p), 'utf8'));
 const rel = (p) => p.slice(p.indexOf('/') + 1);
@@ -40,7 +41,7 @@ function lost(before, after, path = '') {
 }
 
 describe('compatibility corpus', () => {
-  it('has a build for every milestone from 0.4 and the current 0.10', () => {
+  it('has a build for every milestone from 0.4 and the current 0.11', () => {
     expect(versions.sort()).toEqual([...MILESTONES.map((m) => m.version), CURRENT].sort());
     for (const v of versions) {
       for (const p of index.builds[v].files) expect(existsSync(join(corpus, v, p))).toBe(true);
@@ -69,6 +70,7 @@ describe('compatibility corpus', () => {
 });
 
 for (const [older, schemas] of [
+  ['0.10', v010],
   ['0.9', v09],
   ['0.8', v08],
 ]) {
