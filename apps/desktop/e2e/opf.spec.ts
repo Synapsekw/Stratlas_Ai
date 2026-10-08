@@ -1,3 +1,4 @@
+import { brand } from '@aio/brand';
 import { GcpFile, PhotoRun, ProjectManifest } from '@aio/schema';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -120,7 +121,7 @@ test.describe('OPF import and export', () => {
         generator: { name: string };
         items: { type: string }[];
       };
-      expect(project.generator.name).toBe('Stratlas');
+      expect(project.generator.name).toBe(brand.productName);
       expect(project.items.map((i) => i.type)).toEqual(
         expect.arrayContaining([
           'scene_reference_frame',
