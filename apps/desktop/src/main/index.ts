@@ -105,7 +105,7 @@ import {
 import { registerTilesetsIpc } from './tilesets';
 import type { DraftOp } from '@aio/journal';
 import { registerGeodesyIpc } from './geodesy';
-import { registerGeoidPacksIpc } from './packs/geoid';
+import { geoidJobEnv, packGeoidDirsOf, registerGeoidPacksIpc } from './packs/geoid';
 import { registerSurveyIpc } from './survey';
 import { registerSurveyAiIpc } from './surveyAi';
 import { createTestVault, useTestVault } from './testVault';
@@ -558,7 +558,11 @@ const jobStore = new JobStore(join(app.getPath('userData'), 'jobs.json'));
 const jobs = new JobRunner({
   store: jobStore,
   // M10: the photo jobs' memory cap (75 % of this computer's memory; no Settings field in 0.10)
-  jobEnv: (job) => photoJobEnv(job.pipeline, totalmem(), process.env),
+  jobEnv: (job) => ({
+    ...photoJobEnv(job.pipeline, totalmem(), process.env),
+    // M11 G1: geoid packs for the site pipeline, and PROJ never on the network
+    ...geoidJobEnv(settings.current().dataRoot),
+  }),
   findPack: () =>
     findPack({ dataRoot: settings.current().dataRoot, env: process.env, app: packApp }),
   emit: (event) => {
@@ -1267,7 +1271,18 @@ function registerIpc(): void {
   };
   registerSurveyIpc({ handle, ...survey });
   registerGeodesyIpc({ handle, ...survey });
-  registerGeoidPacksIpc({ handle });
+  registerGeoidPacksIpc({
+    handle,
+    dataRoot: () => settings.current().dataRoot,
+    packGeoidDirs: async () => {
+      const { pack } = await findPack({
+        dataRoot: settings.current().dataRoot,
+        env: process.env,
+        app: packApp,
+      });
+      return pack ? packGeoidDirsOf(pack.dir) : [];
+    },
+  });
   registerSurveyAiIpc({ handle });
 }
 

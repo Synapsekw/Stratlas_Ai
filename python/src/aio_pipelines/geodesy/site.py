@@ -154,6 +154,22 @@ def geoid_dirs(extra: Sequence[Path] | None = None) -> list[Path]:
     return dirs
 
 
+_grid_dirs_added: set[str] = set()
+
+
+def use_pack_grids(extra: Sequence[Path] | None = None) -> None:
+    """Add the geoid pack folders to PROJ's search path, so horizontal grids packed there (OSTN15
+    for British National Grid) are found like the PROJ-data files they are."""
+    from pyproj import datadir
+
+    for d in geoid_dirs(extra):
+        key = str(d.resolve()) if d.exists() else ""
+        # never a folder with its own proj.db (rasterio's PROJ data): only grid folders
+        if key and key not in _grid_dirs_added and d.is_dir() and not (d / "proj.db").exists():
+            datadir.append_data_dir(key)
+            _grid_dirs_added.add(key)
+
+
 def geoid_file(geoid: str, dirs: Sequence[Path] | None = None) -> Path:
     """The grid file of a geoid pack id (``<id>.tif``/``.gtx``, or a global grid), or a refusal."""
     names = [f"{geoid}.tif", f"{geoid}.gtx"]
@@ -279,6 +295,7 @@ def site_pipeline(
     network_off()
     from pyproj import CRS, Transformer
 
+    use_pack_grids(geoid_dirs_extra)
     src = crs_of(data_crs)
     vd = settings.get("verticalDatum") or {"kind": "project"}
     kind = vd.get("kind", "project")
