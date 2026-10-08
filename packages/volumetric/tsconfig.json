@@ -12,6 +12,7 @@
     { "path": "../schema" },
     { "path": "../engine" },
     { "path": "../ui" },
-    { "path": "../workspace" }
+    { "path": "../workspace" },
+    { "path": "../survey" }
   ]
 }
