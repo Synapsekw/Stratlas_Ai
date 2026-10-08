@@ -328,14 +328,29 @@ test.describe('a synthetic project', () => {
       }
     };
     await walkBar();
+    const firstWidth = await win.evaluate(() => window.innerWidth);
     const size = await app.evaluate(({ BrowserWindow }) => {
       const w = BrowserWindow.getAllWindows()[0];
       if (!w) return null;
       const before = w.getContentSize();
       const [minW = 0, minH = 0] = w.getMinimumSize();
       w.setContentSize(minW, minH);
-      return before;
+      return [...before, minW];
     });
+    // More tools may already show at the first size (a narrower screen), so it is no sign the bar
+    // has refitted: wait until the renderer has the new size and every tool is inside the bar.
+    await expect
+      .poll(() =>
+        bar.evaluate(
+          (el, { first, min }) => {
+            const end = el.getBoundingClientRect().right + 1;
+            const inside = [...el.children].every((c) => c.getBoundingClientRect().right <= end);
+            return (window.innerWidth < first || first <= min) && inside;
+          },
+          { first: firstWidth, min: size?.[2] ?? 0 },
+        ),
+      )
+      .toBe(true);
     const more = bar.getByRole('button', { name: 'More tools', exact: true });
     await expect(more, 'tools fold into More tools in the smallest window').toBeVisible();
     await walkBar();

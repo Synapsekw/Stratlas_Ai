@@ -10,7 +10,7 @@
 - **H** or **Whole site**: frame the whole project.
 - **F** or **Fly to selection**: fly to what you picked.
 - **View presets**: **Iso**, **Top** or **North**. Clicking the compass also turns the view north-up from the top.
-- **Esc** or **Select** returns to the pointer.
+- **Esc**, or clicking the active tool again, returns to the pointer.
 
 {product} remembers the camera for each project when you leave Scene and come back.
 
