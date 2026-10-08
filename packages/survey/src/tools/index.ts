@@ -4,3 +4,5 @@ export * from './format';
 export * from './geometry';
 export * from './measure';
 export * from './readout';
+export * from './draw';
+export * from './edit';
