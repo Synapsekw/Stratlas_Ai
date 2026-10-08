@@ -221,7 +221,7 @@ def test_export_a_run_and_import_it_into_a_new_project(tmp_path, monkeypatch):
     assert sorted(res["outputs"]["build"]["outputs"]) == ["dsm.tif", "ortho.tif"]
     assert (out / "project.opf").is_file() and (out / "outputs" / "ortho.tif").is_file()
     doc = json.loads((out / "project.opf").read_text("utf-8"))
-    assert doc["generator"]["name"] == "Stratlas"
+    assert doc["generator"]["name"] == "Quadrion AI"
     srf = json.loads((out / "scene_reference_frame.json").read_text("utf-8"))
     assert srf["crs"]["definition"] == "EPSG:32639"
     # photos are referenced where the run read them

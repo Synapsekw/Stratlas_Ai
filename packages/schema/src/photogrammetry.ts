@@ -345,7 +345,10 @@ export const PhotoCalibration = z.looseObject({
 
 /** A refined camera in `cameras-sfm.json`: the photo key, its position and rotation. */
 export const PhotoSfmCamera = z.looseObject({
-  /** Photo key: the photos layer's photo id, or the file path below the run's image root. */
+  /**
+   * Photo key, as in `sparse/photos.json`: the photos layer's photo id, or for folders read in
+   * place the path below the chosen folder (prefixed with the folder's name when there are several).
+   */
   photo: z.string().min(1).max(1024),
   /** Camera centre in the project's local frame (data-conventions section 1: x east, y up, z south). */
   pos: Vec3,

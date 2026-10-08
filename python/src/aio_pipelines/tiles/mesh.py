@@ -40,7 +40,7 @@ COMPRESSION = ("meshopt", "draco", "none")
 DEFAULT_MAX_TRIANGLES = 100_000
 DEFAULT_TEXTURE_PX = 2048
 MAX_DEPTH = 14
-GENERATOR = "Stratlas tiles.mesh"
+GENERATOR = "Quadrion AI tiles.mesh"
 
 
 @dataclass

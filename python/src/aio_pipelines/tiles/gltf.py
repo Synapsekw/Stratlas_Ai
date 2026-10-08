@@ -126,7 +126,7 @@ def write_glb(
         primitives.append(prim)
     t = [float(v) for v in translation]
     gltf: dict[str, Any] = {
-        "asset": {"version": "2.0", "generator": "Stratlas pipeline pack"},
+        "asset": {"version": "2.0", "generator": "Quadrion AI pipeline pack"},
         "scene": 0,
         "scenes": [{"nodes": [0]}],
         "nodes": [{"mesh": 0, "translation": t}],

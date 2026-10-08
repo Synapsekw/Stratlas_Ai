@@ -16,7 +16,7 @@ without changing the stages.
   build (the pack's own build is in the pack's Python, the default).
 
 **Licence guard.** The PyPI pycolmap wheels bundle GPL libraries (``cholmod``, ``spqr``) and must
-never run inside Stratlas. The worker refuses a pycolmap whose bundled libraries include them,
+never run inside Quadrion AI. The worker refuses a pycolmap whose bundled libraries include them,
 unless ``AIO_DEV_ALLOW_GPL_PYCOLMAP=1`` is set for a local experiment outside the product.
 
 Resume: the COLMAP database lives in the job's staging ``work/``; feature extraction skips photos
@@ -55,7 +55,7 @@ from ..runtime import Cancelled, JobError
 
 PYTHON_ENV = "AIO_COLMAP_PYTHON"
 ALLOW_GPL_ENV = "AIO_DEV_ALLOW_GPL_PYCOLMAP"
-#: Native libraries that must never be inside the pycolmap Stratlas runs.
+#: Native libraries that must never be inside the pycolmap Quadrion AI runs.
 FORBIDDEN_LIBS = re.compile(r"(cholmod|spqr|cxsparse|csparse|siftgpu|lsd|cgal)", re.I)
 
 Progress = Callable[[float, str | None], None]
@@ -535,7 +535,7 @@ def peak_memory_bytes() -> int:
 
 
 def licence_problem(pycolmap_module) -> str | None:
-    """Why this pycolmap build must not run in Stratlas (its bundled native libraries), or None."""
+    """Why this pycolmap build must not run in Quadrion AI (its bundled native libraries), or None."""
     base = Path(pycolmap_module.__file__).resolve().parent
     found: list[str] = []
     for d in (base, base.parent / "pycolmap.libs", base / ".dylibs", base.parent / "pycolmap" / ".dylibs"):
@@ -544,7 +544,7 @@ def licence_problem(pycolmap_module) -> str | None:
     if not found:
         return None
     return (
-        "This pycolmap build bundles libraries Stratlas may not ship ("
+        "This pycolmap build bundles libraries Quadrion AI may not ship ("
         + ", ".join(sorted(set(found))[:6])
         + "). Install the pipeline pack's own COLMAP build."
     )

@@ -34,7 +34,7 @@ from .transform import SiteFrame, box_of, enu_to_gltf
 KEYS = {"layer", "id", "name", "maxPointsPerTile"}
 DEFAULT_MAX_POINTS = 100_000
 MAX_DEPTH = 16
-GENERATOR = "Stratlas tiles.cloud"
+GENERATOR = "Quadrion AI tiles.cloud"
 COPC_USER = "copc"
 
 

@@ -39,7 +39,7 @@ from .mesh import Mesh, enu_to_local, face_normals, vertex_normals
 from .native import find_tool, run_tool
 from .scene import Camera, View, load_image
 
-GENERATOR = "Stratlas photo.products"
+GENERATOR = "Quadrion AI photo.products"
 JPEG_QUALITY = 88
 
 

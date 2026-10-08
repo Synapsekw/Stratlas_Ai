@@ -230,7 +230,7 @@ def write_las_tiles(path: Path, store: PointTiles, shift: np.ndarray, scale: flo
         h[0:4] = b"LASF"
         struct.pack_into("<H", h, 6, 0x10)
         h[24], h[25] = 1, 4
-        h[26:34] = b"Stratlas"
+        h[26:37] = b"Quadrion AI"
         h[58:72] = b"photo.products"
         struct.pack_into("<HHHII", h, 90, now.timetuple().tm_yday, now.year, 375, 375, 0)
         h[104] = 7

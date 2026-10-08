@@ -1,6 +1,6 @@
 """Frames, rotations and lenses shared by ``opf.import`` and ``opf.export``.
 
-Conventions (OPF 1.0 specification, CC-BY-4.0, Pix4D; Stratlas data-conventions sections 1 and 21):
+Conventions (OPF 1.0 specification, CC-BY-4.0, Pix4D; Quadrion AI data-conventions sections 1 and 21):
 
 - **OPF processing CRS**: the scene reference frame's base CRS made right-handed and isometric
   (``canonical = shift + swap(scale * base)``), centred near (0, 0, 0) by ``shift``.

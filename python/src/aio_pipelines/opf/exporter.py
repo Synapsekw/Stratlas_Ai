@@ -1,7 +1,7 @@
 """opf.export: a processing run as an OPF 1.0 project another OPF reader (Pix4D) opens.
 
 Parameters as ``OpfExportParams`` in ``@aio/schema``: ``run`` (a run id under ``photogrammetry/``)
-and ``out`` (an absolute folder, chosen in a save dialog; empty, new, or an earlier Stratlas
+and ``out`` (an absolute folder, chosen in a save dialog; empty, new, or an earlier Quadrion AI
 export, which is overwritten).
 
 The run is read from its files (data-conventions section 21): ``run.json``, the sparse model
@@ -49,7 +49,7 @@ from .geometry import (
 )
 
 RUN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
-GENERATOR = "Stratlas"
+GENERATOR = "Quadrion AI"
 #: Luminance weights for an RGB sensor's bands (they must sum to 1).
 RGB_BANDS = (("Red", 0.2126), ("Green", 0.7152), ("Blue", 0.0722))
 OUTPUT_ROLES = (("dsm", re.compile(r"dsm|dtm|dem", re.I)), ("ortho", re.compile(r"ortho", re.I)))
@@ -466,7 +466,7 @@ def _build(ctx: StepContext, run_id: str) -> dict[str, Any]:
         "version": "1.0",
         "id": str(uuid4()),
         "name": str(manifest.get("name") or run_id)[:200],
-        "description": f"Stratlas processing run {run_id}",
+        "description": f"Quadrion AI processing run {run_id}",
         "generator": {"name": GENERATOR, "version": __version__},
         "items": items,
     }
@@ -519,7 +519,7 @@ def _write(ctx: StepContext, out: Path, run_id: str) -> dict[str, Any]:
                 gen = None
         if gen != GENERATOR:
             raise JobError(
-                f'"{out}" is not empty. Choose an empty folder, or an earlier Stratlas OPF export.'
+                f'"{out}" is not empty. Choose an empty folder, or an earlier Quadrion AI OPF export.'
             )
     out.mkdir(parents=True, exist_ok=True)
     files = sorted(p for p in staged.rglob("*") if p.is_file() and not p.name.startswith("."))

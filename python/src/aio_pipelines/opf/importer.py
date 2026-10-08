@@ -1,4 +1,4 @@
-"""opf.import: an OPF project (Pix4D or any OPF 1.x writer) into the open Stratlas project.
+"""opf.import: an OPF project (Pix4D or any OPF 1.x writer) into the open Quadrion AI project.
 
 Parameters as ``OpfImportParams`` in ``@aio/schema``: ``src`` (the ``.opf`` file, read only),
 ``products`` (outputs to bring in: ``cloud``, ``ortho``, ``dsm``, ``mesh``; default all) and
@@ -6,7 +6,7 @@ Parameters as ``OpfImportParams`` in ``@aio/schema``: ``src`` (the ``.opf`` file
 
 What comes in (data-conventions section 21; no new layer kind, format or field):
 
-- a **processing run** ``photogrammetry/<run>/`` as if Stratlas had aligned the photos itself:
+- a **processing run** ``photogrammetry/<run>/`` as if Quadrion AI had aligned the photos itself:
   ``run.json`` (``aio.photo-run/1``; its photos source is the folders the originals were found
   in, read in place), ``sparse/`` as ``photo.align`` writes it (``write_run_sparse``: a COLMAP
   text model in the run's grid frame, the project CRS minus the manifest origin, with

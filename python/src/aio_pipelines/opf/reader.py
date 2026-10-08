@@ -372,7 +372,7 @@ def read_opf(
         skipped_items.append(
             {
                 "what": f"{len(icp.mtps)} manual tie points",
-                "reason": "Stratlas keeps control and check points only",
+                "reason": "Quadrion AI keeps control and check points only",
             }
         )
     if marks_dropped:
