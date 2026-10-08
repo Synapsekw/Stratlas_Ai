@@ -57,6 +57,11 @@ const cli = createRequire(import.meta.url).resolve('electron-builder/cli.js');
 const args = [cli, '--config', path, '--publish', 'never', ...builderArgs];
 // Without a certificate, never let electron-builder pick an arbitrary keychain identity.
 if (!env.CSC_LINK && !env.CSC_NAME) env.CSC_IDENTITY_AUTO_DISCOVERY = 'false';
+// apps/desktop has no lockfile or packageManager field, so electron-builder picks the package
+// manager from npm_config_user_agent, which only a pnpm script sets. Run directly (the Store step
+// in nightly.yml and release.yml), it falls back to npm, which cannot resolve the workspace:*
+// dependencies and packages no node_modules at all (no onnxruntime, so no local detection).
+if (!env.npm_config_user_agent?.includes('pnpm')) env.npm_config_user_agent = 'pnpm';
 
 const result = spawnSync(process.execPath, args, { cwd: appDir, stdio: 'inherit', env });
 if (result.status !== 0) process.exit(result.status ?? 1);
