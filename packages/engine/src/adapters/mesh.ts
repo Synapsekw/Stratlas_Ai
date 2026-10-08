@@ -43,11 +43,16 @@ const GROUNDISH = /^(Ground|Ground_Mainland|Paving|Asphalt|Laydown|Slope|Concret
 /** Ground surfaces whose modelled outline may overhang the real shore (cut where imagery shows sea). */
 const SHORE = /^(Ground|Ground_Mainland|Paving|Asphalt|Laydown|Slope|Rock_Armour)$/;
 
+/**
+ * Frees every drawable of a template: meshes, and the lines and points a GLB may carry too (the
+ * stockpile outlines), which were skipped: only losing the stage's WebGL context freed them.
+ */
 function disposeTree(root: Object3D) {
   const geos = new Set<BufferGeometry>();
   const mats = new Set<Material>();
-  root.traverse((m) => {
-    if (!isMesh(m)) return;
+  root.traverse((o) => {
+    const m = o as Partial<Mesh>;
+    if (!m.geometry || !m.material) return;
     geos.add(m.geometry);
     for (const mat of Array.isArray(m.material) ? m.material : [m.material]) mats.add(mat);
   });

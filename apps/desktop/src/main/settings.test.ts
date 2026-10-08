@@ -103,6 +103,16 @@ describe('settings store', () => {
     expect(JSON.parse(await readFile(file, 'utf8'))).toEqual(next);
   });
 
+  // agent-local e2e, flaky on Windows CI: settings:get answered while saves were still writing.
+  it('reads what was asked for before the read, even while it is still being written', async () => {
+    const store = createSettingsStore(file, defaults);
+    await store.get();
+    const writing = store.set({ cloudAi: true });
+    const read = await store.get();
+    expect(read.cloudAi).toBe(true);
+    await writing;
+  });
+
   it('fills fields missing from an older file with defaults', async () => {
     await writeFile(file, JSON.stringify({ theme: 'light' }));
     const store = createSettingsStore(file, defaults);
