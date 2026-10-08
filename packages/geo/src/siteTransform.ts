@@ -126,6 +126,22 @@ export function createSiteTransform(
   };
 }
 
+/**
+ * proj4js from one proj4 string to another, answering metres: for a display CRS the catalogue
+ * checked against PROJ (`CrsCatalogueEntry.proj4`) when the site has no tables yet.
+ */
+export function proj4Projector(
+  fromProj4: string,
+  toProj4: string,
+): (e: number, n: number) => [number, number] {
+  const conv = proj4(fromProj4, toProj4);
+  const toM = proj4ToMetre(toProj4);
+  return (e, n) => {
+    const [x, y] = conv.forward([e, n]);
+    return [x * toM, y * toM];
+  };
+}
+
 /** Metres per unit of a proj4 string (`+units=us-ft`, `+to_meter=`), 1 by default. */
 function proj4ToMetre(def: string | undefined): number {
   if (!def) return 1;

@@ -2,12 +2,24 @@ import type { SceneHandle } from '@aio/engine';
 import { crsLabel, formatEastNorth, localToProject } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import {
+  SiteSettingsButton,
+  siteCursorText,
+  siteCursorTitle,
+  useSiteDisplay,
+} from '../survey/SiteSettings';
 
 export function CursorReadout({ text }: { text: string | null }) {
   const crs = useWorkspace((s) => (s.project ? crsLabel(s.project.manifest.crs) : ''));
+  // M11 G1: the site's display CRS, heights and unit once the site has settings
+  const site = useSiteDisplay((s) => (s.exists && s.settings ? siteCursorTitle() : null));
   return (
-    <div className="cursor-ro" aria-live="off">
-      {crs}
+    <div className="cursor-ro" aria-live="off" data-testid="cursor-readout">
+      <span style={{ pointerEvents: 'auto' }}>
+        <SiteSettingsButton />
+      </span>
+      <br />
+      {site ?? crs}
       <br />
       {text ?? 'Point at the scene for coordinates'}
     </div>
@@ -61,7 +73,7 @@ export function useSceneCursor(scene: () => SceneHandle | null): {
         hit.point.y,
         hit.point.z,
       ]);
-      setCursor(`${formatEastNorth(e2, n)} · EL ${el.toFixed(1)} m`);
+      setCursor(siteCursorText(e2, n, el) ?? `${formatEastNorth(e2, n)} · EL ${el.toFixed(1)} m`);
     });
   };
 
