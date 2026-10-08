@@ -161,6 +161,58 @@ export function diffIssues(
   return ops;
 }
 
+// ---------------------------------------------------------------- survey measurements (M11)
+
+/** The survey measurements file (data-conventions section 27). */
+export const MEASUREMENTS_REL = 'survey/measurements.json';
+
+/**
+ * Ops for one `survey/measurements.json` write, per measurement by id: `measurement.create` (the
+ * record), `measurement.patch` (field differences with `was`) and `measurement.delete` (`{}`).
+ * The file's other keys (`schema`) are bookkeeping, not a record.
+ */
+export function diffMeasurements(
+  before: readonly Obj[],
+  after: readonly Obj[],
+  commands?: readonly EditCommand[],
+): DraftOp[] {
+  const ops: DraftOp[] = [];
+  const old = new Map(before.map((m) => [String(m.id), m]));
+  const now = new Set(after.map((m) => String(m.id)));
+  for (const m of after) {
+    const id = String(m.id);
+    const target: RecordRef = { rec: 'measurement', id };
+    const lab = tagFor(id, commands);
+    const prev = old.get(id);
+    if (!prev) {
+      ops.push({ kind: 'measurement.create', target, payload: { record: m }, ...lab });
+      continue;
+    }
+    if (same(prev, m)) continue;
+    const patch = diffFields(prev, m);
+    if (!empty(patch))
+      ops.push({
+        kind: 'measurement.patch',
+        target,
+        base: contentHash(prev),
+        payload: { ...patch },
+        ...lab,
+      });
+  }
+  for (const prev of before) {
+    const id = String(prev.id);
+    if (now.has(id)) continue;
+    ops.push({
+      kind: 'measurement.delete',
+      target: { rec: 'measurement', id },
+      base: contentHash(prev),
+      payload: {},
+      ...tagFor(id, commands),
+    });
+  }
+  return ops;
+}
+
 // ---------------------------------------------------------------- other record files
 
 interface Unit {
@@ -304,7 +356,7 @@ const FILES: { match: RegExp; kind: FileKind }[] = [
 
 /** The record files the journal follows (project-relative, forward slashes). */
 export function isJournaledFile(rel: string): boolean {
-  return rel === 'issues.json' || FILES.some((f) => f.match.test(rel));
+  return rel === 'issues.json' || rel === MEASUREMENTS_REL || FILES.some((f) => f.match.test(rel));
 }
 
 /** Folders that hold journaled record files, for scanning a project. */
@@ -336,6 +388,15 @@ export function diffRecordFile(
     const b = before === null ? [] : list(before);
     const a = after === null ? [] : list(after);
     if (b && a) return diffIssues(b, a, commands);
+  }
+  if (rel === MEASUREMENTS_REL) {
+    const list = (v: unknown) =>
+      isObj(v) && Array.isArray(v.measurements)
+        ? v.measurements.filter(isObj).filter((m) => typeof m.id === 'string')
+        : null;
+    const b = before === null ? [] : list(before);
+    const a = after === null ? [] : list(after);
+    if (b && a) return diffMeasurements(b, a, commands);
   }
   const spec = FILES.find((f) => f.match.test(rel))?.kind;
   const okShape = (v: unknown) => v === null || isObj(v);
