@@ -229,7 +229,8 @@ def test_a_mesh_layer_becomes_a_valid_tileset_in_place(mesh_project):
         "capture": "c1",
         "visible": True,
     }
-    assert result["outputs"]["commit"]["tileset"]["id"] == "mesh-1-tiles"
+    assert result["outputs"]["commit"]["tileset"] == "mesh-1-tiles"
+    assert result["outputs"]["commit"]["entry"]["id"] == "mesh-1-tiles"
     assert any(a["path"] == "tilesets.json" for a in rec.of("artifact"))
 
 

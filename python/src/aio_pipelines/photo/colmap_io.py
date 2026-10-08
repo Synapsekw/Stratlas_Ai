@@ -22,6 +22,19 @@ unless ``AIO_DEV_ALLOW_GPL_PYCOLMAP=1`` is set for a local experiment outside th
 Resume: the COLMAP database lives in the job's staging ``work/``; feature extraction skips photos
 that already have keypoints and matching skips pairs that are already matched, so a resumed stage
 continues where it stopped.
+
+**Photo names with spaces.** COLMAP's pair list (``ImportedPairingOptions.match_list_path``) is
+one ``name1 name2`` per line, split at the first space, so a photo below a folder such as
+``Mapping Photos/`` could never be paired. The pair list therefore names photos by
+``engine_alias`` (space as ``%20``, percent as ``%25``), and the match stage renames the images in
+the database to those aliases for its own duration (``names.alias.json`` remembers the real names,
+so a stage stopped half way is put right by the next one). Features and mapping use the real
+names, which is what COLMAP reads the photos by. On Windows the worker sets the C runtime's locale
+to UTF-8 before COLMAP loads (``utf8_paths``), so photos below folders such as ``Média`` open too.
+
+**Memory.** The guard stops a stage above ``memory_limit``: ``AIO_PHOTO_MEMORY_MB`` when the app
+sets it (one cap for every photo job, ``native.memory_cap``), else 75 % of the physical memory and
+no more than 90 % of what is free when the stage starts.
 """
 
 from __future__ import annotations
@@ -141,9 +154,12 @@ def memory_status() -> tuple[int, int]:
         return 0, 0
 
 
-def memory_limit(total: int, available: int) -> int:
-    """The most an engine stage may use: 75 % of the memory at most, and no more than 90 % of
-    what is free when the stage starts (other programs keep theirs)."""
+def memory_limit(total: int, available: int, cap: int | None = None) -> int:
+    """The most an engine stage may use: ``cap`` (``AIO_PHOTO_MEMORY_MB``, the app's setting)
+    when given, else 75 % of the memory at most and no more than 90 % of what is free when the
+    stage starts (other programs keep theirs)."""
+    if cap:
+        return int(cap)
     if total <= 0:
         return 0
     lim = int(0.75 * total)
@@ -252,6 +268,54 @@ def tree_memory(pid: int) -> int:
 
 class MemoryExceeded(JobError):
     """An engine stage passed the memory limit and was stopped."""
+
+
+# ------------------------------------------------------------------------------- names
+
+
+def engine_alias(name: str) -> str:
+    """A photo name as COLMAP's pair list can hold it (that list splits each line at a space):
+    the percent sign and every white space or control character percent-encoded (UTF-8), so a
+    space is ``%20`` and a percent sign ``%25``. Unique, and ``urllib.parse.unquote`` reverses it."""
+    from urllib.parse import quote
+
+    return "".join(quote(ch, safe="") if ch == "%" or ch.isspace() or ord(ch) < 32 else ch for ch in name)
+
+
+def alias_names(db, work: Path) -> int:
+    """Rename the database's images to their ``engine_alias`` for matching; the real names are
+    kept in ``work/names.alias.json`` until ``restore_names``. Returns how many were renamed."""
+    restore_names(db, work)
+    images = list(db.read_all_images())
+    real = {int(im.image_id): im.name for im in images if engine_alias(im.name) != im.name}
+    if not real:
+        return 0
+    rec = work / "names.alias.json"
+    tmp = rec.with_name(rec.name + ".tmp")
+    tmp.write_text(json.dumps({str(k): v for k, v in real.items()}), "utf-8")
+    tmp.replace(rec)
+    for im in images:
+        if int(im.image_id) in real:
+            im.name = engine_alias(im.name)
+            db.update_image(im)
+    return len(real)
+
+
+def restore_names(db, work: Path) -> int:
+    """Put back the real image names an aliased (perhaps stopped) match stage left in the database."""
+    rec = work / "names.alias.json"
+    if not rec.is_file():
+        return 0
+    real = {int(k): v for k, v in json.loads(rec.read_text("utf-8")).items()}
+    n = 0
+    for im in db.read_all_images():
+        name = real.get(int(im.image_id))
+        if name is not None and im.name != name:
+            im.name = name
+            db.update_image(im)
+            n += 1
+    rec.unlink()
+    return n
 
 
 # ------------------------------------------------------------------------------- parent side
@@ -399,7 +463,7 @@ class ColmapEngine:
 
     def match(self, job: EngineJob, pairs: list[tuple[str, str]], progress: Progress) -> dict[str, Any]:
         pairs_file = job.work / "pairs.txt"
-        pairs_file.write_text("".join(f"{a} {b}\n" for a, b in pairs), "utf-8")
+        pairs_file.write_text("".join(f"{engine_alias(a)} {engine_alias(b)}\n" for a, b in pairs), "utf-8")
         return self._run(job, "match", {**self._base(job), "pairs": str(pairs_file)}, progress, "match")
 
     def map(self, job: EngineJob, mapper: str, progress: Progress) -> dict[str, Any]:
@@ -499,7 +563,30 @@ class _Out:
             print(line, flush=True)
 
 
+def utf8_paths() -> bool:
+    """Make COLMAP open photos whose paths have letters outside the ANSI code page (Windows).
+
+    COLMAP reads images through the C runtime's narrow file functions, which take a path in the
+    ANSI code page: a photo below ``Média`` fails with "BITMAP_ERROR: Failed to read the image
+    file format". With the C runtime's character type set to UTF-8 (the pack builds COLMAP
+    against the shared UCRT, ``VCPKG_CRT_LINKAGE dynamic``; Windows 10 1803 and later) those
+    functions take UTF-8, which is what COLMAP passes. Only ``LC_CTYPE``: numbers keep the "C"
+    format. Other systems take UTF-8 already."""
+    if os.name != "nt":
+        return False
+    try:
+        import ctypes
+
+        ucrt = ctypes.CDLL("ucrtbase")
+        ucrt.setlocale.restype = ctypes.c_char_p
+        ucrt.setlocale.argtypes = [ctypes.c_int, ctypes.c_char_p]
+        return bool(ucrt.setlocale(2, b".UTF-8"))  # LC_CTYPE
+    except (OSError, AttributeError):
+        return False
+
+
 def _import_pycolmap(out: _Out):
+    utf8_paths()
     try:
         import pycolmap
     except Exception as e:
@@ -537,6 +624,7 @@ def _op_features(pc, req: dict[str, Any], out: _Out) -> dict[str, Any]:
     groups = {g["id"]: g for g in req["groups"]}
     images = req["images"]
     with pc.Database.open(db_path) as db:
+        restore_names(db, Path(db_path).parent)
         existing = {im.name: im for im in db.read_all_images()}
         cams = {c.camera_id: c for c in db.read_all_cameras()}
         cam_of_group: dict[int, int] = {}
@@ -610,18 +698,31 @@ def _op_match(pc, req: dict[str, Any], out: _Out) -> dict[str, Any]:
     vo = pc.TwoViewGeometryOptions()
     chunk = max(200, len(lines) // 50)
     work = Path(req["pairs"]).parent
-    for k in range(0, len(lines), chunk):
-        part = work / "pairs.part.txt"
-        part.write_text("\n".join(lines[k : k + chunk]) + "\n", "utf-8")
-        po = pc.ImportedPairingOptions()
-        po.match_list_path = str(part)
-        pc.match_image_pairs(
-            db_path, matching_options=mo, pairing_options=po, verification_options=vo, device=pc.Device.cpu
-        )
-        out.send(
-            progress=min(1.0, (k + chunk) / max(len(lines), 1)),
-            message=f"{min(k + chunk, len(lines))} of {len(lines)} pairs",
-        )
+    db_work = Path(db_path).parent
+    with pc.Database.open(db_path) as db:
+        renamed = alias_names(db, db_work)  # the pair list names photos by their aliases
+    if renamed:
+        out.send(log=f"{renamed} photo names have spaces; matched under escaped names.")
+    try:
+        for k in range(0, len(lines), chunk):
+            part = work / "pairs.part.txt"
+            part.write_text("\n".join(lines[k : k + chunk]) + "\n", "utf-8")
+            po = pc.ImportedPairingOptions()
+            po.match_list_path = str(part)
+            pc.match_image_pairs(
+                db_path,
+                matching_options=mo,
+                pairing_options=po,
+                verification_options=vo,
+                device=pc.Device.cpu,
+            )
+            out.send(
+                progress=min(1.0, (k + chunk) / max(len(lines), 1)),
+                message=f"{min(k + chunk, len(lines))} of {len(lines)} pairs",
+            )
+    finally:
+        with pc.Database.open(db_path) as db:
+            restore_names(db, db_work)
     with pc.Database.open(db_path) as db:
         matched = db.num_matched_image_pairs()
         verified = db.num_verified_image_pairs()
@@ -681,6 +782,8 @@ def _op_map(pc, req: dict[str, Any], out: _Out) -> dict[str, Any]:
     dest = Path(req["out"])
     dest.mkdir(parents=True, exist_ok=True)
     mapper = req["mapper"]
+    with pc.Database.open(db_path) as db:
+        restore_names(db, Path(db_path).parent)  # the real names: COLMAP reads the photos by them
     t0 = time.monotonic()
     out.send(progress=0.02, message=f"{mapper} structure from motion")
     if mapper == "global":

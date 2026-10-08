@@ -411,18 +411,28 @@ A folder of drone photos becomes ordinary layers through three pipeline jobs (`p
   run.json               aio.photo-run/1: photos, camera groups, CRS, heights, preset, stages, outputs, accuracy summary, versions, hardware
   gcp.json               aio.gcp/1: control and check points with their marks (written by the app, .bak on every write)
   report/accuracy.json   aio.photo-accuracy/1: residuals per point, RMSE per role, camera residuals, warnings
-  report/align.json      alignment report (registered and rejected photos, reprojection error); stream G2's shape
-  report/products.json   products report (GSD, coverage, density, timings, memory peak); stream G3's shape
-  sparse/                the sparse model (COLMAP)
+  report/align.json      aio.photo-align/1: registered and rejected photos (with reasons), reprojection error, pairs, calibration
+  report/products.json   aio.photo-products/1: GSD, coverage, density, engines, timings, memory peak and budget, disk
+  cameras-sfm.json       aio.photo-cameras/1: refined poses in the local frame for **Use refined poses**
+  sparse/                the sparse model: COLMAP text (cameras.txt, images.txt, points3D.txt) in the run's grid frame
+  sparse/frame.json      aio.photo-frame/1: the grid frame (crs, origin), the local ENU frame, heights, georeferenced
+  sparse/photos.json     aio.photo-list/1: imageRoot, and per photo key its name below it, size and GNSS prior
+  mesh/full.glb          the full-resolution mesh handed to tiles.mesh (tileset <run>-mesh)
   work/                  intermediates; the only part **Delete run's work files** removes (to the recycle bin)
   dsm.tif, dtm.tif, ortho.tif   COG copies of the surfaces and the orthomosaic
 ```
+
+- **The sparse model** (written by `photo.align`, `photo.georef` and `opf.import`; read by `photo.georef`, `photo.products` and `opf.export`) is in the run's **grid frame**: the run's projected CRS minus `frame.json` `origin`, x east, y north, z up, metres (the manifest origin when the project has one). Model coordinates plus `origin` are project CRS coordinates; there is no other offset. COLMAP conventions otherwise: `x_cam = R X + t`, pixel (0, 0) at the top-left corner of the image. A `sparse/` without `frame.json` (an older import, or a model made by hand) is read in the project CRS itself.
+- **Photo keys** name the photos everywhere in a run (the model's image names, `photos.json`, `cameras-sfm.json` `photo`, `gcp.json` marks): a photos layer run uses the layer's photo ids; a folder run the path below the chosen folder (the folder's own name first when the run has several). Keys and folder names may hold spaces and any letters. In `images.txt` the percent sign and white space are percent-encoded as UTF-8 (a percent sign `%25`, a space `%20`; COLMAP text splits at spaces); every reader decodes them. `photos.json` `imageRoot` is the folder COLMAP read the photos from (the deepest folder common to all of them) and `name` the path below it; `photo.products` and `opf.export` find a photo there, or through the photos layer for a layer run.
+- **`cameras-sfm.json`**: `run`, `crs` (`{ epsg }` or `{ wkt }`), `origin` (the manifest origin the local frame is measured from), `frame`, `calibration[]` (`id`, COLMAP `model`, `width`, `height`, `params`) and `cameras[]` (`photo` key, `pos` in the local frame of section 1, `q` as three.js `[x, y, z, w]`, `lens` `{ model, hfovDeg, aspect }`, `camera` = a calibration id).
+- **Tiles of a run**: `photo.products` hands `mesh/full.glb` to `tiles.mesh` (`src`, `id` `<run>-mesh`, `run`), which returns `{ tileset: <id> }`, writes `tiles/<run>-mesh/` and its `tilesets.json` entry (section 22) and lists the id in the run's `outputs.tilesets`. When tiling fails the products stay, the run gets a warning and a failed `tiles` stage.
+- **Memory**: `AIO_PHOTO_MEMORY_MB`, set by the app, is the one memory cap of the photo jobs: `photo.products` plans within it (else 40 % of the physical memory) and `photo.align` stops a COLMAP stage above it (else 75 % of the memory and 90 % of what is free when the stage starts).
 
 - **Run ids** are file-name safe (`PhotoRunId`, for example `20261007-0915`), the folder name under `photogrammetry/`. A run lists every layer, tileset and file it made in `outputs`, so **Re-run products** and package export know what belongs to it. Every path in a run file is project-relative (`ProjectPath`: no `..`, no drive letter).
 - **Photos are read, never written.** EXIF and XMP are read in place; a folder run references the photos where they are. **Use refined poses** writes the photos layer's `cameras.json` from the run's `cameras-sfm.json` (same camera format), keeping the old one as `.bak`, after a preview of how far each camera moves.
 - **Heights** (`PhotoHeights`): where the run's heights came from (`ellipsoidal`, `orthometric`, `relative` or `gcp`), the PROJ geoid grid used (`egm96`, `egm2008`) and the manifest's `verticalDatum.absAltOffsetM` when applied. Every run states it.
 - **Ground control** (`gcp.json`): points with `role` `control` or `check`, `xyz` in the file's `crs`, a stated accuracy (1 sigma, metres) and marks per photo (`px` in original image pixels, x right and y down; `by` `person`, `detector` or `import`; `state` `draft`, `confirmed` or `skipped`). A detector's or a prediction's mark is a draft until a person confirms it. `predicted` holds where the current cameras put the point in each photo with a search radius. A disabled point is kept, never deleted.
-- **Accuracy is honest:** checkpoints are measured, never used in the adjustment; `checkpointsInAdjustment` is always `false` and the report lists every residual.
+- **Accuracy is honest:** checkpoints are measured, never used in the adjustment; `checkpointsInAdjustment` is always `false` and the report lists every residual. Each listed point says `usedInAdjustment`: true for a control point that constrained the adjustment, false for checkpoints, control points left out as outliers and every point of a GNSS-only alignment (disabled points are not measured).
 - **Forward compatibility:** these files keep keys a later 1.x build adds (`looseObject`), so a save by 0.10 never drops them. Each family is in `versions.ts` (`since: '0.10'`).
 - **Packages** (integration follow-up X1) carry `run.json`, `gcp.json` and `report/`, never `work/`.
 

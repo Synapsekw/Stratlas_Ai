@@ -5,9 +5,12 @@ Both skip unless an engine is installed: the pack's own pycolmap build (stream G
 Python, or a development interpreter named by ``AIO_COLMAP_PYTHON``.
 
 ``test_realdata_*`` (the ``@realdata`` tests of the plan) also need ``STRATLAS_PHOTO_TEST_DIR``:
-a folder of drone photos, or of camera folders (``DCIM/100MEDIA``, ``101MEDIA``). The photos
-are read in place and never written; the test checks that nothing in the folder changed. The
-project goes to ``STRATLAS_PHOTO_TEST_OUT`` when set (kept for inspection), else a temporary
+a folder of drone photos, or of camera folders (``DCIM/100MEDIA``, ``101MEDIA``); several folders
+separated by ``;`` (``:`` on macOS) are aligned as one run, so photos whose folders have spaces
+sit below the common folder. ``STRATLAS_PHOTO_TEST_LIMIT`` keeps only the first N photos of each
+folder (in name order, so neighbours overlap): a quick check instead of the whole flight. The
+photos are read in place and never written; the test checks that nothing in the folders changed.
+The project goes to ``STRATLAS_PHOTO_TEST_OUT`` when set (kept for inspection), else a temporary
 folder. Nothing from a real flight is ever committed.
 """
 
@@ -59,10 +62,25 @@ def _photo_folders(root: Path) -> list[Path]:
 @pytest.mark.skipif(
     not os.environ.get("STRATLAS_PHOTO_TEST_DIR"), reason="STRATLAS_PHOTO_TEST_DIR is not set"
 )
-def test_realdata_flight_aligns_with_gnss_only(tmp_path):
+def test_realdata_flight_aligns_with_gnss_only(tmp_path, monkeypatch):
     _engine_or_skip()
-    root = Path(os.environ["STRATLAS_PHOTO_TEST_DIR"])
-    folders = _photo_folders(root)
+    roots = [Path(p) for p in os.environ["STRATLAS_PHOTO_TEST_DIR"].split(os.pathsep) if p.strip()]
+    folders = [f for root in roots for f in _photo_folders(root)]
+    limit = int(os.environ.get("STRATLAS_PHOTO_TEST_LIMIT") or 0)
+    if limit:
+        import aio_pipelines.photo.align as align_mod
+
+        every = align_mod.list_folder_photos
+
+        def first_of_each(fs):
+            listed = every(fs)
+            out = []
+            for f in fs:
+                mine = sorted(((k, p) for k, p in listed if p.is_relative_to(f)), key=lambda kp: kp[0])
+                out += mine[:limit]
+            return out
+
+        monkeypatch.setattr(align_mod, "list_folder_photos", first_of_each)
     before = input_fingerprint(tmp_path, [str(f) for f in folders])
     out = Path(os.environ.get("STRATLAS_PHOTO_TEST_OUT") or tmp_path / "out")
     project = out / "project"
@@ -76,7 +94,10 @@ def test_realdata_flight_aligns_with_gnss_only(tmp_path):
     assert result["status"] == "done"
     align = json.loads((project / "photogrammetry/realdata/report/align.json").read_text("utf-8"))
     total = align["images"]["total"]
-    assert align["images"]["registered"] >= 0.95 * total
+    if limit:
+        assert total <= limit * len(folders)
+    # a few dozen photos per folder may leave a folder of a few photos on its own: 90 % then
+    assert align["images"]["registered"] >= (0.9 if limit else 0.95) * total
     assert align["meanReprojPx"] < 1.0
     # without RTK or control, cameras sit within GNSS accuracy of their logged positions
     assert align["cameraResiduals"]["medianM"] < 10

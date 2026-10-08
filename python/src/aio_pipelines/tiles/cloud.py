@@ -310,7 +310,7 @@ class TilesCloud:
                 entry["capture"] = info["capture"]
             upsert_tileset(ctx.project, entry)
             ctx.artifact("tilesets.json")
-            return {"tileset": entry, **ctx.outputs("tile")}
+            return {"tileset": entry["id"], "entry": entry, **ctx.outputs("tile")}
 
         return [
             Step("read", "Find the point cloud", read, 0.02),

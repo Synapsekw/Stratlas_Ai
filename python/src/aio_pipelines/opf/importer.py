@@ -8,8 +8,11 @@ What comes in (data-conventions section 21; no new layer kind, format or field):
 
 - a **processing run** ``photogrammetry/<run>/`` as if Stratlas had aligned the photos itself:
   ``run.json`` (``aio.photo-run/1``; its photos source is the folders the originals were found
-  in, read in place), ``sparse/`` (a COLMAP text model in the project CRS: perspective sensors as
-  ``OPENCV``/``FULL_OPENCV``, the calibrated poses, the tie points), ``gcp.json`` (``aio.gcp/1``:
+  in, read in place), ``sparse/`` as ``photo.align`` writes it (``write_run_sparse``: a COLMAP
+  text model in the run's grid frame, the project CRS minus the manifest origin, with
+  ``frame.json`` and ``photos.json``; perspective sensors as ``OPENCV``/``FULL_OPENCV``, the
+  calibrated poses, the tie points), so ``photo.products`` and ``photo.georef`` take an imported
+  run like their own, ``gcp.json`` (``aio.gcp/1``:
   control and check points, marks ``by: import``, confirmed) and ``report/opf-import.json`` (what
   came in, what was left out and why);
 - a **photos layer** of review copies (2560 px, ``photos/<run>/``) placed by the calibrated poses
@@ -47,6 +50,67 @@ from ..runtime import (
 
 PRODUCTS = ("cloud", "ortho", "dsm", "mesh")
 REVIEW_EDGE = 2560
+SPARSE_FILES = ("cameras.txt", "images.txt", "points3D.txt", "frame.json", "photos.json")
+
+
+def write_run_sparse(folder: Path, model: Any, manifest: dict[str, Any], plan: dict[str, Any]) -> None:
+    """The imported model as ``photo.align`` writes a run's ``sparse/``: COLMAP text in the grid
+    frame (project CRS minus the manifest origin, or a rounded centre of the cameras when the
+    project has none), image names as photo keys (``align.encode_name``), with ``frame.json`` and
+    ``photos.json`` (each photo key's file as ``imageRoot`` plus ``name``)."""
+    import os
+
+    import numpy as np
+
+    from ..photo import crs as C
+    from ..photo.align import LIST_SCHEMA, encode_name, frame_record
+    from ..photo.model import qvec_to_rotmat
+    from . import colmap
+    from .geometry import project_crs
+
+    crs = project_crs(manifest)
+    o = manifest.get("origin")
+    if isinstance(o, list) and len(o) == 3 and all(isinstance(v, int | float) for v in o):
+        origin = np.array(o, dtype=np.float64)
+    else:
+        centres = [
+            -qvec_to_rotmat(im.qvec).T @ np.asarray(im.tvec, dtype=np.float64) for im in model.images.values()
+        ]
+        pts = np.array(centres) if centres else np.asarray(model.xyz).reshape(-1, 3)
+        origin = np.round(np.median(pts, axis=0)) if len(pts) else np.zeros(3)
+    shifted = colmap.Model(cameras=dict(model.cameras))
+    for iid, im in model.images.items():
+        R = qvec_to_rotmat(im.qvec)
+        t = np.asarray(im.tvec, dtype=np.float64) + R @ origin  # x_cam = R (X' + origin) + t
+        shifted.images[iid] = colmap.Image(
+            iid, list(im.qvec), [float(v) for v in t], im.camera_id, encode_name(im.name)
+        )
+    if len(model.xyz):
+        shifted.xyz = np.asarray(model.xyz, dtype=np.float64) - origin
+        shifted.rgb, shifted.error = model.rgb, model.error
+    colmap.write_text(folder, shifted)
+    grid = C.GridFrame(crs, tuple(float(v) for v in origin))
+    lon, lat, _ = grid.to_geodetic([[0.0, 0.0, 0.0]])
+    enu = C.EnuFrame(float(lon[0]), float(lat[0]), float(origin[2]))
+    atomic_write_json(folder / "frame.json", frame_record(grid, enu, plan.get("heights") or {}, True))
+    found = [p for p in plan["photos"] if p.get("file")]
+    root = None
+    if found:
+        try:
+            root = Path(os.path.commonpath([str(Path(p["file"]).parent) for p in found]))
+        except ValueError:  # photos on several drives: each by its full path
+            root = None
+    photos: dict[str, Any] = {}
+    for p in found:
+        f = Path(p["file"])
+        rec: dict[str, Any] = {"name": f.relative_to(root).as_posix() if root else f.as_posix()}
+        if p.get("size"):
+            rec["width"], rec["height"] = int(p["size"][0]), int(p["size"][1])
+        photos[p["name"]] = rec
+    atomic_write_json(
+        folder / "photos.json",
+        {"schema": LIST_SCHEMA, "imageRoot": str(root) if root else "", "photos": photos},
+    )
 
 
 def read_manifest(project: Path) -> dict[str, Any]:
@@ -167,7 +231,6 @@ class OpfImport:
             return json.loads(ctx.stage("plan.json").read_text("utf-8"))
 
         def read(ctx: StepContext) -> dict[str, Any]:
-            from . import colmap
             from .reader import read_opf
 
             src = ctx.input(params["src"])
@@ -180,7 +243,7 @@ class OpfImport:
             taken = {p.name for p in runs.iterdir()} if runs.is_dir() else set()
             run = uniq(f"opf-{datetime.now(UTC).strftime('%Y%m%d-%H%M')}", taken)
             plan, model = read_opf(src, photos_root, m, want, ctx.check)
-            colmap.write_text(ctx.stage("run/sparse/.keep").parent, model)
+            write_run_sparse(ctx.stage("run/sparse/.keep").parent, model, m, plan)
             atomic_write_json(ctx.stage("plan.json"), plan, indent=None)
             s = plan["summary"]
             ctx.log(
@@ -263,10 +326,8 @@ def _commit(ctx: StepContext, plan: dict[str, Any], params: dict[str, Any]) -> d
     layers[:] = [x for x in layers if not (isinstance(x, dict) and str(x.get("id", "")).startswith(ours))]
     taken = {str(layer.get("id")) for layer in layers if isinstance(layer, dict)}
 
-    files = [f"{run_dir}/sparse/{n}" for n in ("cameras.txt", "images.txt", "points3D.txt")]
-    moves = [
-        (f"run/sparse/{n}", f"{run_dir}/sparse/{n}") for n in ("cameras.txt", "images.txt", "points3D.txt")
-    ]
+    files = [f"{run_dir}/sparse/{n}" for n in SPARSE_FILES]
+    moves = [(f"run/sparse/{n}", f"{run_dir}/sparse/{n}") for n in SPARSE_FILES]
     trees: list[tuple[str, str]] = []
     if plan["gcp"]:
         atomic_write_json(ctx.stage("run/gcp.json"), plan["gcp"])

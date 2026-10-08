@@ -125,13 +125,72 @@ def test_the_products_report(processed):
     assert r["memoryPeakBytes"] > 0 and r["disk"]["neededBytes"] > 0
 
 
-def test_tiles_from_a_pack_without_g7_is_a_warning_not_a_failure(processed):
+TILESET_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")  # TilesetId (tilesets.ts)
+
+
+def test_the_full_mesh_becomes_3d_tiles_listed_in_tilesets_json(processed):
+    from aio_pipelines.tiles.tileset import check_tileset
+
     root, res, _ = processed
+    assert res["status"] == "done"
+    tiles = res["outputs"]["tiles"]
+    assert tiles["ok"] is True and tiles["tileset"] == f"{RUN}-mesh"
+    doc = json.loads((root / "photogrammetry" / RUN / "run.json").read_text("utf-8"))
+    assert doc["outputs"]["tilesets"] == [f"{RUN}-mesh"]
+    assert next(s for s in doc["stages"] if s["name"] == "tiles")["state"] == "done"
+    assert not any("3D Tiles were not made" in w for w in doc.get("warnings") or [])
+    ts = json.loads((root / "tilesets.json").read_text("utf-8"))
+    assert ts["schema"] == "aio.tilesets/1" and len(ts["entries"]) == 1
+    entry = ts["entries"][0]
+    # TilesetEntry (packages/schema/src/tilesets.ts): what the app reads
+    assert entry == {
+        "id": f"{RUN}-mesh",
+        "name": f"Mesh {RUN}",
+        "kind": "mesh",
+        "src": f"tiles/{RUN}-mesh/tileset.json",
+        "run": RUN,
+        "visible": True,
+    }
+    assert TILESET_ID.match(entry["id"]) and 1 <= len(entry["name"]) <= 200
+    assert not re.match(r"^([A-Za-z]:|/)", entry["src"]) and ".." not in entry["src"].split("/")
+    assert (root / entry["src"]).is_file()
+    assert check_tileset((root / entry["src"]).parent) == []
+    assert (root / "photogrammetry" / RUN / "mesh" / "full.glb").is_file()
+
+
+def test_tiles_that_fail_are_a_warning_not_a_failure(monkeypatch):
+    import aio_pipelines.tiles.mesh as tiles_mesh
+    from aio_pipelines.runtime import Step
+
+    class BrokenTilesMesh:
+        name, title, description = "tiles.mesh", "Mesh to 3D Tiles", "fails"
+
+        def validate(self, params):
+            return params
+
+        def plan(self, params):
+            def fail(ctx):
+                raise JobError("the tiler is not in this pack")
+
+            return [Step("tile", "Tile", fail)]
+
+    monkeypatch.setattr(tiles_mesh, "TilesMesh", BrokenTilesMesh)
+    root = ps.project("tiles-fail")
+    res, _ = run_job(PhotoProducts(), root, _params(preset="fast", products=["mesh", "tiles"]))
     assert res["status"] == "done" and res["outputs"]["tiles"]["ok"] is False
     doc = json.loads((root / "photogrammetry" / RUN / "run.json").read_text("utf-8"))
-    assert any("3D Tiles were not made" in w for w in doc["warnings"])
+    assert any("3D Tiles were not made: the tiler is not in this pack" in w for w in doc["warnings"])
     assert next(s for s in doc["stages"] if s["name"] == "tiles")["state"] == "failed"
+    assert doc["outputs"]["tilesets"] == []
     assert (root / "photogrammetry" / RUN / "mesh" / "full.glb").is_file()
+    assert (root / "models" / f"{RUN}-mesh.glb").is_file()  # the products stay
+    assert not (root / "tilesets.json").exists()
+
+
+def test_the_products_report_carries_its_schema(processed):
+    root, _, _ = processed
+    r = json.loads((root / "photogrammetry" / RUN / "report" / "products.json").read_text("utf-8"))
+    assert r["schema"] == "aio.photo-products/1"
 
 
 def test_the_dense_cloud_meets_the_targets(processed):
@@ -140,7 +199,9 @@ def test_the_dense_cloud_meets_the_targets(processed):
 
     work = next((root / "photogrammetry" / RUN / "work" / "products").iterdir())
     store = PointTiles(work / "cloud", 1.0)
-    xyz = np.concatenate([p["xyz"] for _, p in store.fused()]) - np.array(ps.ORIGIN)
+    # the cloud tiles are in the run's grid frame: the project CRS minus the run's origin (here
+    # the manifest origin), so local coordinates already
+    xyz = np.concatenate([p["xyz"] for _, p in store.fused()])
     x, y, h = xyz.T
     inner = (np.abs(x) < 22) & (np.abs(y) < 16) & ~ps.in_box(x + 0.3, y) & ~ps.in_box(x - 0.3, y)
     err = np.abs(h - ps.dsm(x, y))[inner]
@@ -212,9 +273,9 @@ def test_a_small_memory_cap_still_finishes(monkeypatch):
 # -------------------------------------------------------------------------------- fast preset
 
 
-def test_fast_works_from_the_sparse_points_and_the_offset_is_applied():
+def test_fast_works_from_the_sparse_points_and_the_frame_origin_is_applied():
     a = ps.project("fast-a")
-    b = ps.project("fast-b", sparse_offset=(412000.0, 3245000.0, 0.0))
+    b = ps.project("fast-b", frame_origin=(412000.0, 3245000.0, 0.0))
     for root in (a, b):
         res, _ = run_job(PhotoProducts(), root, _params(preset="fast", products=["dsm", "ortho", "mesh"]))
         assert res["outputs"]["dense"]["engine"] == "sparse"

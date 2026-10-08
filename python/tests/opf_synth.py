@@ -2,9 +2,10 @@
 
 - ``make_project``: an empty Stratlas project (EPSG:32639, origin 500000 E, 3200000 N).
 - ``make_run``: a processed run in a project, as stream G2/G3 leave it: original photos in a
-  folder outside the project, ``photogrammetry/<run>/run.json``, a COLMAP text sparse model in the
-  project CRS, ``gcp.json`` with control and check points and marks, and a small orthomosaic and
-  DSM (COG-sized GeoTIFFs) listed in the run's outputs.
+  folder outside the project, ``photogrammetry/<run>/run.json``, a COLMAP text sparse model as
+  ``photo.align`` writes it (grid frame, ``frame.json``, ``photos.json``), ``gcp.json`` with control
+  and check points and marks, and a small orthomosaic and DSM (COG-sized GeoTIFFs) listed in the
+  run's outputs.
 - ``write_opf``: a hand-written OPF 1.0 project following the specification (CC-BY-4.0, Pix4D):
   photos beside it, input and calibrated cameras, control points, a dense OPF glTF point cloud
   and an orthomosaic and DSM item; written as plain JSON, independently of pyopf's writer.
@@ -146,13 +147,32 @@ def _geotiffs(folder: Path) -> tuple[Path, Path]:
     return ortho, dsm
 
 
-def make_run(project: Path, photos: Path, run: str = "20261007-0900", n: int = 6) -> dict:
-    """A processed run (folder source), as described in the module notes. Returns the truth."""
+def make_run(
+    project: Path, photos: Path, run: str = "20261007-0900", n: int = 6, legacy: bool = False
+) -> dict:
+    """A processed run (folder source), as described in the module notes. Returns the truth.
+
+    The sparse model is written as ``photo.align`` writes it: in the grid frame (project CRS minus
+    the manifest origin) with ``frame.json`` and ``photos.json``. ``legacy``: in the project CRS
+    itself without them (a model folder made by hand or by an older import)."""
     cams = cameras(n)
     for i, c in enumerate(cams):
         _photo(photos / c["name"], i)
     rd = project / "photogrammetry" / run
     (rd / "sparse").mkdir(parents=True, exist_ok=True)
+    shift = np.zeros(3) if legacy else np.asarray(ORIGIN, dtype=np.float64)
+    if not legacy:
+        from aio_pipelines.photo import crs as C
+        from aio_pipelines.photo.align import LIST_SCHEMA, frame_record
+
+        grid = C.GridFrame(C.crs_of(EPSG), ORIGIN)
+        lon, lat, _ = grid.to_geodetic([[0.0, 0.0, 0.0]])
+        frame = frame_record(grid, C.EnuFrame(float(lon[0]), float(lat[0]), ORIGIN[2]), {})
+        (rd / "sparse" / "frame.json").write_text(json.dumps(frame, indent=1), "utf-8")
+        listing = {c["name"]: {"name": c["name"], "width": W, "height": H} for c in cams}
+        (rd / "sparse" / "photos.json").write_text(
+            json.dumps({"schema": LIST_SCHEMA, "imageRoot": str(photos), "photos": listing}), "utf-8"
+        )
     params = [FOCAL, FOCAL * 1.0, W / 2 + 3.25, H / 2 - 1.5, -0.081, 0.012, 0.0004, -0.0007]
     (rd / "sparse" / "cameras.txt").write_text(
         f"1 OPENCV {W} {H} {' '.join(repr(p) for p in params)}\n", "utf-8"
@@ -162,12 +182,13 @@ def make_run(project: Path, photos: Path, run: str = "20261007-0900", n: int = 6
     for i, c in enumerate(cams):
         r = _rot(*c["opk"])
         r_cw = flip @ r.T
-        t = -r_cw @ np.asarray(c["enh"])
+        t = -r_cw @ (np.asarray(c["enh"]) - shift)
         q = _quat_wxyz(r_cw)
         lines.append(" ".join([str(i + 1), *(repr(float(v)) for v in (*q, *t)), "1", c["name"]]))
         lines.append("")
     (rd / "sparse" / "images.txt").write_text("\n".join(lines) + "\n", "utf-8")
     xyz, rgb = tie_points()
+    xyz = xyz - shift
     pts = [
         f"{i + 1} {x!r} {y!r} {z!r} {r} {g} {b} 0.5"
         for i, ((x, y, z), (r, g, b)) in enumerate(zip(xyz.tolist(), rgb.tolist(), strict=True))

@@ -1,9 +1,10 @@
 """photo.products: dense cloud (COPC), DSM and DTM, orthomosaic and textured mesh, as new layers.
 
 Parameters as ``PhotoProductsParams`` in ``@aio/schema`` ``jobs.ts``. From an aligned run
-(``photogrammetry/<run>/``: ``run.json`` and the sparse model of ``photo.align`` and
-``photo.georef``), one job step per stage, each resumable (the runtime skips finished steps) and
-cancellable, with progress per stage:
+(``photogrammetry/<run>/``: ``run.json`` and the sparse model of ``photo.align``,
+``photo.georef`` or ``opf.import``: ``sparse/`` in the grid frame with ``frame.json`` and
+``photos.json``, read by ``scene.load_run``), one job step per stage, each resumable (the runtime
+skips finished steps) and cancellable, with progress per stage:
 
 | Step      | Makes                                                                        |
 | --------- | ---------------------------------------------------------------------------- |
@@ -24,6 +25,12 @@ provenance is the run's ``outputs`` (data-conventions section 21). Intermediates
 ``photogrammetry/<run>/work/products/<key>/`` (``key`` from the settings that change them), so a
 second job with other products reuses the depth maps and the cloud. Nothing a person delivered is
 replaced: a layer with one of this run's ids that the run did not make is refused.
+
+The report is ``report/products.json`` (``aio.photo-products/1``). Memory: the stages plan their
+clusters within ``AIO_PHOTO_MEMORY_MB`` when the app sets it (the one cap of the photo jobs),
+else 40 % of the physical memory (``native.memory_budget``). The ``tiles`` step hands
+``photogrammetry/<run>/mesh/full.glb`` to ``tiles.mesh`` as tileset ``<run>-mesh``; when that
+fails the products stay and the run says why (a warning, a failed ``tiles`` stage).
 """
 
 from __future__ import annotations
@@ -56,6 +63,7 @@ from ..runtime import (
 )
 from . import native
 
+PRODUCTS_SCHEMA = "aio.photo-products/1"
 PRODUCTS = ("cloud", "dsm", "dtm", "ortho", "mesh", "tiles")
 PRESETS = ("fast", "standard", "high")
 RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
@@ -970,8 +978,8 @@ class PhotoProducts:
             warnings.append(
                 "The mesh was made by the built-in Poisson solver on a coarse grid; PoissonRecon is not in this pack."
             )
-        # no schema id yet: the integration lead registers one in versions.ts (G3's report)
         return {
+            "schema": PRODUCTS_SCHEMA,
             "run": run.id,
             "createdAt": now_iso(),
             "preset": s["preset"],

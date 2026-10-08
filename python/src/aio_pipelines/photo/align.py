@@ -19,6 +19,25 @@ Stages (``PhotoStageName``; each a resumable job step):
 
 The engine is an adapter (``colmap_io.SfmEngine``); ``PhotoAlign.engine_factory`` picks it.
 Photos are read in place and never written. Nothing leaves the project except reading photos.
+
+Run files (data-conventions section 21), every JSON file with its ``schema``:
+
+- ``sparse/`` COLMAP text model in the **grid frame**: the run's projected CRS minus
+  ``frame.json`` ``origin`` (x east, y north, z up, metres). Image names are photo keys, the
+  percent sign and white space percent-encoded: ``%25``, ``%20`` (``encode_name``).
+- ``sparse/frame.json`` (``aio.photo-frame/1``): ``crs``, ``origin``, the local ENU frame,
+  ``heights``, ``georeferenced``.
+- ``sparse/photos.json`` (``aio.photo-list/1``): ``imageRoot`` and per photo key its ``name``
+  below it (the path COLMAP read), size and GNSS prior.
+- ``cameras-sfm.json`` (``aio.photo-cameras/1``): refined poses in the project's local frame.
+- ``report/align.json`` (``aio.photo-align/1``) and ``report/accuracy.json``.
+
+Photo keys are the photos layer's photo ids, or the path below the chosen folder (the folder's
+own name first when there are several); names may hold spaces and any letters.
+
+Memory: ``AIO_PHOTO_MEMORY_MB`` (set by the app) caps every COLMAP stage; the guard stops a stage
+above it. Without it the limit is 75 % of the memory and 90 % of what is free
+(``colmap_io.memory_limit``).
 """
 
 from __future__ import annotations
@@ -59,14 +78,20 @@ from .colmap_io import (
     EngineImage,
     EngineJob,
     SfmEngine,
+    engine_alias,
     load_engine,
     memory_limit,
     memory_status,
 )
 from .exif import PhotoMeta, apply_ppk, inspect_photos, list_folder_photos, read_photo, read_ppk
 from .model import SparseModel, rotmat_to_qvec
+from .native import memory_cap
 
 RUN_SCHEMA = "aio.photo-run/1"
+ALIGN_SCHEMA = "aio.photo-align/1"
+CAMERAS_SCHEMA = "aio.photo-cameras/1"
+FRAME_SCHEMA = "aio.photo-frame/1"
+LIST_SCHEMA = "aio.photo-list/1"
 RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 PRESETS = {
     # share of the longest image side used for features, and SIFT features per photo
@@ -552,32 +577,77 @@ def write_sparse(
     """``sparse/``: the model in the grid frame as COLMAP text, plus ``frame.json``."""
     m = model.copy()
     for im in m.images.values():
-        im.name = im.name.replace("%", "%25").replace(" ", "%20")
+        im.name = encode_name(im.name)
     m.write_text(folder)
-    atomic_write_json(
-        folder / "frame.json",
-        {
-            "frame": "grid",
-            "axes": "x east, y north, z up (project CRS grid), metres from origin",
-            "crs": C.crs_record(grid.crs),
-            "origin": list(grid.origin),
-            "enu": enu.record(),
-            "heights": heights,
-            "georeferenced": georeferenced,
-            "names": "photo keys; space written as %20 and percent as %25",
-        },
-    )
+    atomic_write_json(folder / "frame.json", frame_record(grid, enu, heights, georeferenced))
 
 
-def read_sparse(folder: Path) -> tuple[SparseModel, dict[str, Any]]:
+def encode_name(name: str) -> str:
+    """A photo key as an image name of the COLMAP text model, whose lines split at white space:
+    the percent sign and white space percent-encoded (``%25``, ``%20``, ``%C2%A0``...;
+    ``decode_name`` reverses it)."""
+    return engine_alias(name)
+
+
+def decode_name(name: str) -> str:
+    from urllib.parse import unquote
+
+    return unquote(name)
+
+
+def frame_record(
+    grid: C.GridFrame, enu: C.EnuFrame, heights: dict[str, Any], georeferenced: bool = True
+) -> dict[str, Any]:
+    """``sparse/frame.json`` (``aio.photo-frame/1``): the frame of the sparse model's coordinates."""
+    return {
+        "schema": FRAME_SCHEMA,
+        "frame": "grid",
+        "axes": "x east, y north, z up (project CRS grid), metres from origin",
+        "crs": C.crs_record(grid.crs),
+        "origin": [float(v) for v in grid.origin],
+        "enu": enu.record(),
+        "heights": heights,
+        "georeferenced": georeferenced,
+        "names": "photo keys; percent and white space percent-encoded (%25, %20)",
+    }
+
+
+def read_frame(folder: Path) -> dict[str, Any]:
     try:
         frame = json.loads((folder / "frame.json").read_text("utf-8"))
     except (OSError, ValueError) as e:
         raise JobError(f"The run's sparse model has no frame record: {e}") from e
+    o = frame.get("origin") if isinstance(frame, dict) else None
+    if not (isinstance(o, list) and len(o) == 3 and all(isinstance(v, int | float) for v in o)):
+        raise JobError("The run's sparse/frame.json has no origin (three numbers).")
+    if frame.get("frame", "grid") != "grid":
+        raise JobError(
+            f'The run\'s sparse model is in a frame this build does not read ("{frame["frame"]}").'
+        )
+    return frame
+
+
+def read_sparse(folder: Path) -> tuple[SparseModel, dict[str, Any]]:
+    """The run's sparse model (grid frame, image names decoded to photo keys) and ``frame.json``."""
+    frame = read_frame(folder)
     m = SparseModel.read_text(folder)
     for im in m.images.values():
-        im.name = im.name.replace("%20", " ").replace("%25", "%")
+        im.name = decode_name(im.name)
     return m, frame
+
+
+def read_photo_list(folder: Path) -> dict[str, Any]:
+    """``sparse/photos.json`` (``aio.photo-list/1``), or an empty list when there is none."""
+    p = folder / "photos.json"
+    if not p.is_file():
+        return {"imageRoot": None, "photos": {}}
+    try:
+        doc = json.loads(p.read_text("utf-8"))
+    except (OSError, ValueError) as e:
+        raise JobError(f"The run's photo list sparse/photos.json cannot be read: {e}") from e
+    if not isinstance(doc, dict) or not isinstance(doc.get("photos"), dict):
+        raise JobError("The run's photo list sparse/photos.json has no photos.")
+    return doc
 
 
 def enu_to_grid_model(model: SparseModel, enu: C.EnuFrame, grid: C.GridFrame) -> SparseModel:
@@ -724,7 +794,7 @@ class PhotoAlign:
 
     def _engine_job(self, ctx: StepContext, metas: list[PhotoMeta]) -> EngineJob:
         info = json.loads(ctx.stage("work/photos.json").read_text("utf-8"))
-        limit = memory_limit(*memory_status())
+        limit = memory_limit(*memory_status(), cap=memory_cap())
         return EngineJob(
             work=ctx.stage("work/engine/.keep").parent,
             image_root=Path(info["imageRoot"]),
@@ -805,12 +875,9 @@ class PhotoAlign:
             root = Path(os.path.commonpath([str(p.parent) for p in paths]))
         except ValueError:
             raise JobError("The photos of one run must be on one drive.") from None
+        # engine names: the path below the common folder (spaces and any letters are fine: the
+        # engine escapes what COLMAP's own lists cannot hold, colmap_io.engine_alias)
         names = {m.key: p.relative_to(root).as_posix() for m, p in zip(ok, paths, strict=True)}
-        spaced = [n for n in names.values() if " " in n]
-        if spaced:
-            raise JobError(
-                f'Photo names with spaces cannot be aligned yet ("{spaced[0]}"); rename the files or folders.'
-            )
         longest = max(max(m.width, m.height) for m in ok)
         share, feats = PRESETS[params["preset"]]
         max_size = int(params.get("maxImageSize") or max(640, round(longest * share)))
@@ -1121,6 +1188,7 @@ class PhotoAlign:
             )
         )
         align = {
+            "schema": ALIGN_SCHEMA,
             "run": state["id"],
             "createdAt": now_iso(),
             "engine": state.get("versions", {}),
@@ -1241,9 +1309,10 @@ def cameras_sfm(grid_model: SparseModel, state: dict[str, Any], info: dict[str, 
             }
         )
     return {
+        "schema": CAMERAS_SCHEMA,
         "run": state["id"],
-        "crs": state["crs"],
-        "origin": state["frames"]["origin"],
+        "crs": C.crs_record(state["crs"]),
+        "origin": [float(v) for v in state["frames"]["origin"]],
         "frame": "local (data-conventions section 1: x east, y up, z south)",
         "calibration": [
             {
@@ -1269,7 +1338,7 @@ def photos_record(metas: list[PhotoMeta], info: dict[str, Any], H: np.ndarray, g
         if m.has_gps and not np.isnan(H[i]) and sig:
             rec["gnss"] = {"lon": m.lon, "lat": m.lat, "h": float(H[i]), "sigmaH": sig[0], "sigmaV": sig[1]}
         out[m.key] = rec
-    return {"imageRoot": info["imageRoot"], "photos": out}
+    return {"schema": LIST_SCHEMA, "imageRoot": info["imageRoot"], "photos": out}
 
 
 def measure_points(model: SparseModel, gcp: dict[str, Any], enu: C.EnuFrame, grid: C.GridFrame, cam_res):
