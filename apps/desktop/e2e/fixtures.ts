@@ -34,6 +34,12 @@ import {
   type PhotoProject,
 } from './m10Fixtures';
 import {
+  createSurveyProject,
+  surveyDemoFolder,
+  type SurveyDemoKey,
+  type SurveyDemoProject,
+} from './surveyFixtures';
+import {
   assertNotRealData,
   copyRealProjects,
   REAL_DATA_ROOT,
@@ -701,6 +707,29 @@ interface Fixtures {
    * starts (list it before `win`). Synthetic only (`m10Fixtures.ts`).
    */
   globeLibrary: GlobeLibrary;
+  /**
+   * M11: the synthetic survey demos (tools/demo/survey-demo.mjs, `--quick`, built once into a
+   * temp cache) copied into `dataRoot` as writable projects. List them before `win`. Each skips
+   * the test when the demos cannot be built (no pipeline Python). `surveyProject` is the analytic
+   * demo (five shapes on flat ground, two dates); the others are the industry demos.
+   */
+  surveyProject: SurveyDemoProject;
+  earthworksProject: SurveyDemoProject;
+  quarryProject: SurveyDemoProject;
+  landfillProject: SurveyDemoProject;
+}
+
+/** A survey demo fixture: build (once) and copy, or skip the test with the reason. */
+function surveyFixture(key: SurveyDemoKey) {
+  return async (
+    { dataRoot }: { dataRoot: DataRoot },
+    use: (p: SurveyDemoProject) => Promise<void>,
+    testInfo: { skip: (condition: boolean, description: string) => void },
+  ) => {
+    const { dir, reason } = surveyDemoFolder();
+    testInfo.skip(dir === null, reason);
+    await use(await createSurveyProject(dataRoot.root, dir ?? '', key));
+  };
 }
 
 export const test = base.extend<Fixtures>({
@@ -763,6 +792,11 @@ export const test = base.extend<Fixtures>({
   threeDateProject: async ({ dataRoot }, use) => {
     await use(await createThreeDateProject(dataRoot));
   },
+
+  surveyProject: surveyFixture('survey'),
+  earthworksProject: surveyFixture('earthworks'),
+  quarryProject: surveyFixture('quarry'),
+  landfillProject: surveyFixture('landfill'),
 
   demoProject: async ({ dataRoot, appEnv }, use, testInfo) => {
     testInfo.skip(
