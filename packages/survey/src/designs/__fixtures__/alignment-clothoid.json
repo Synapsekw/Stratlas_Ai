@@ -1,0 +1,184 @@
+{
+  "alignment": {
+    "schema": "aio.alignment/1",
+    "name": "CL1",
+    "crs": {
+      "epsg": 32639
+    },
+    "startStation": 1000.0,
+    "elements": [
+      {
+        "type": "line",
+        "start": [520000.0, 2750000.0],
+        "end": [520000.0, 2750100.0],
+        "length": 100.0
+      },
+      {
+        "type": "spiral",
+        "spiral": "clothoid",
+        "start": [520000.0, 2750100.0],
+        "end": [520002.99518202175, 2750159.865140552],
+        "radiusStart": null,
+        "radiusEnd": 200.0,
+        "rot": "cw",
+        "length": 60.0,
+        "dirStart": 0.0
+      },
+      {
+        "type": "arc",
+        "start": [520002.99518202175, 2750159.865140552],
+        "end": [520016.5371988084, 2750207.8611825192],
+        "center": [520200.749397609, 2750129.9775140574],
+        "radius": 200.0,
+        "rot": "cw",
+        "length": 50.0
+      }
+    ],
+    "equations": [
+      {
+        "back": 1150.0,
+        "ahead": 2000.0
+      }
+    ],
+    "intervalM": 20.0
+  },
+  "truth": [
+    {
+      "distance": 50.0,
+      "station": 1050.0,
+      "region": 0,
+      "offset": 0.0,
+      "e": 520000.0,
+      "n": 2750050.0,
+      "bearing": 0.0
+    },
+    {
+      "distance": 50.0,
+      "station": 1050.0,
+      "region": 0,
+      "offset": 5.0,
+      "e": 520005.0,
+      "n": 2750050.0,
+      "bearing": 0.0
+    },
+    {
+      "distance": 50.0,
+      "station": 1050.0,
+      "region": 0,
+      "offset": -3.0,
+      "e": 519997.0,
+      "n": 2750050.0,
+      "bearing": 0.0
+    },
+    {
+      "distance": 130.0,
+      "station": 1130.0,
+      "region": 0,
+      "offset": 0.0,
+      "e": 520000.3749623343,
+      "n": 2750129.9957815246,
+      "bearing": 0.0375
+    },
+    {
+      "distance": 130.0,
+      "station": 1130.0,
+      "region": 0,
+      "offset": 5.0,
+      "e": 520005.37144712126,
+      "n": 2750129.8083254667,
+      "bearing": 0.0375
+    },
+    {
+      "distance": 130.0,
+      "station": 1130.0,
+      "region": 0,
+      "offset": -3.0,
+      "e": 519997.3770714621,
+      "n": 2750130.108255159,
+      "bearing": 0.0375
+    },
+    {
+      "distance": 160.0,
+      "station": 2010.0,
+      "region": 1,
+      "offset": 0.0,
+      "e": 520002.99518202175,
+      "n": 2750159.865140552,
+      "bearing": 0.15
+    },
+    {
+      "distance": 160.0,
+      "station": 2010.0,
+      "region": 1,
+      "offset": 5.0,
+      "e": 520007.9390374114,
+      "n": 2750159.11794989,
+      "bearing": 0.15
+    },
+    {
+      "distance": 160.0,
+      "station": 2010.0,
+      "region": 1,
+      "offset": -3.0,
+      "e": 520000.0288687879,
+      "n": 2750160.3134549498,
+      "bearing": 0.15
+    },
+    {
+      "distance": 185.0,
+      "station": 2035.0,
+      "region": 1,
+      "offset": 0.0,
+      "e": 520008.2643580833,
+      "n": 2750184.286901449,
+      "bearing": 0.275
+    },
+    {
+      "distance": 185.0,
+      "station": 2035.0,
+      "region": 1,
+      "offset": 5.0,
+      "e": 520013.07648407144,
+      "n": 2750182.929166764,
+      "bearing": 0.275
+    },
+    {
+      "distance": 185.0,
+      "station": 2035.0,
+      "region": 1,
+      "offset": -3.0,
+      "e": 520005.3770824904,
+      "n": 2750185.1015422596,
+      "bearing": 0.275
+    },
+    {
+      "distance": 210.0,
+      "station": 2060.0,
+      "region": 1,
+      "offset": 0.0,
+      "e": 520016.5371988084,
+      "n": 2750207.8611825192,
+      "bearing": 0.4
+    },
+    {
+      "distance": 210.0,
+      "station": 2060.0,
+      "region": 1,
+      "offset": 5.0,
+      "e": 520021.1425037784,
+      "n": 2750205.9140908075,
+      "bearing": 0.4
+    },
+    {
+      "distance": 210.0,
+      "station": 2060.0,
+      "region": 1,
+      "offset": -3.0,
+      "e": 520013.7740158264,
+      "n": 2750209.029437546,
+      "bearing": 0.4
+    }
+  ],
+  "spiralPI": [520000.0, 2750140.047244629],
+  "note": "Truth from scipy.special.fresnel (independent of the alignment code); regenerate with the G6 test."
+}
