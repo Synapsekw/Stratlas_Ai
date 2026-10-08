@@ -269,10 +269,14 @@ async function layerBounds(
     const al = await loadAlignment(projectId, design, layer);
     return boundsOf(alignmentPolyline(al, 5).map(([e, n]) => [e, n, 0]));
   }
+  // linework and points are GeoJSON in the project CRS with Z
   const json = (await fetchJson(projectId, path)) as {
-    points?: { e: number; n: number; z: number }[];
-    features?: { geometry?: { coordinates?: number[][] } }[];
+    features?: { geometry?: { type?: string; coordinates?: unknown } }[];
   };
-  if (layer.kind === 'points') return boundsOf((json.points ?? []).map((p) => [p.e, p.n, p.z]));
-  return boundsOf((json.features ?? []).flatMap((f) => f.geometry?.coordinates ?? []));
+  const coords = (json.features ?? []).flatMap((f): number[][] => {
+    const c = f.geometry?.coordinates;
+    if (!Array.isArray(c)) return [];
+    return f.geometry?.type === 'Point' ? [c as number[]] : (c as number[][]);
+  });
+  return boundsOf(coords);
 }

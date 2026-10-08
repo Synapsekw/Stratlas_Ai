@@ -47,7 +47,6 @@ DESIGNS_FILE = "survey/designs.json"
 DESIGNS_DIR = "survey/designs"
 DESIGNS_SCHEMA = "aio.designs/1"
 ALIGNMENT_SCHEMA = "aio.alignment/1"
-POINTS_SCHEMA = "aio.design-points/1"
 FORMATS = ("landxml", "dxf", "12da", "csv", "ttm")
 UNITS = tuple(UNIT_M)
 DESIGN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
@@ -469,16 +468,18 @@ class DesignImport:
             for pts in design.points:
                 lid = layer_id(pts.name)
                 xyz = to_project(np.asarray([[p.e, p.n, p.z] for p in pts.points], dtype=np.float64))
+                # GeoJSON points in the project CRS with Z, like the linework
                 body = {
-                    "schema": POINTS_SCHEMA,
+                    "type": "FeatureCollection",
                     "crs": project_crs,
-                    "points": [
+                    "features": [
                         {
-                            "id": p.id,
-                            **({"code": p.code} if p.code else {}),
-                            "e": float(r[0]),
-                            "n": float(r[1]),
-                            "z": float(r[2]),
+                            "type": "Feature",
+                            "properties": {"id": p.id, **({"code": p.code} if p.code else {})},
+                            "geometry": {
+                                "type": "Point",
+                                "coordinates": [float(r[0]), float(r[1]), float(r[2])],
+                            },
                         }
                         for p, r in zip(pts.points, xyz, strict=True)
                     ],

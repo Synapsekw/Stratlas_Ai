@@ -555,7 +555,9 @@ def test_import_landxml_end_to_end(tmp_path):
         "equations": 1,
     }
     pts = json.loads((folder / kinds["points"]["file"]).read_text("utf-8"))
-    assert pts["points"][0] == {"id": "CP1", "code": "CTRL", "e": E0 - 5, "n": N0 - 5, "z": 99.5}
+    assert pts["type"] == "FeatureCollection" and pts["crs"] == CRS
+    assert pts["features"][0]["properties"] == {"id": "CP1", "code": "CTRL"}
+    assert pts["features"][0]["geometry"] == {"type": "Point", "coordinates": [E0 - 5, N0 - 5, 99.5]}
     lw = json.loads((folder / kinds["linework"]["file"]).read_text("utf-8"))
     assert lw["features"][0]["geometry"]["coordinates"][0] == [E0, N0 + 10, 100.25]
     # a second import of the same file gets its own id; the first is kept
@@ -595,9 +597,12 @@ def test_import_places_a_design_from_another_crs(tmp_path):
     run_job(DesignImport(), root, {"src": str(csv)})
     (d,) = json.loads((root / "survey" / "designs.json").read_text("utf-8"))["designs"]
     assert d["crs"] == {"epsg": 4326}
-    p = json.loads((root / "survey" / "designs" / "g" / "g.points.json").read_text("utf-8"))["points"][0]
+    feature = json.loads((root / "survey" / "designs" / "g" / "g.points.json").read_text("utf-8"))[
+        "features"
+    ][0]
+    e, n, z = feature["geometry"]["coordinates"]
     # 51.2 E is 0.2 degrees east of the zone 39N central meridian (51 E), 24.8 N
-    assert 520000 < p["e"] < 520300 and 2742000 < p["n"] < 2745000 and p["z"] == 12
+    assert 520000 < e < 520300 and 2742000 < n < 2745000 and z == 12
 
 
 def test_import_refusals(tmp_path):
