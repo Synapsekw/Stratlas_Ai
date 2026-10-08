@@ -17,7 +17,6 @@ section 28. Steps:
 from __future__ import annotations
 
 import hashlib
-import importlib
 import io
 import json
 import math
@@ -173,8 +172,7 @@ def crs_transform(src: dict[str, Any], dst: dict[str, Any]) -> Transform:
 def calibration_transform(project: Path, project_crs: dict[str, Any]) -> Transform:
     """Local coordinates to the project CRS through the applied site calibration (section 25).
 
-    The calibration arithmetic is ``aio_pipelines.geodesy.site`` (stream G1). Until that module is in
-    the pack, a calibrated import is refused with a clear message instead of guessing.
+    The arithmetic is G1's (``aio_pipelines.geodesy.site``): see :func:`local_to_project`.
     """
     p = project / "survey" / "calibration.json"
     if not p.exists():
@@ -191,19 +189,61 @@ def calibration_transform(project: Path, project_crs: dict[str, Any]) -> Transfo
             "The site calibration is a draft. Check its residuals and apply it in Site settings, then "
             "import again."
         )
-    try:
-        site = importlib.import_module("aio_pipelines.geodesy.site")
-        fn = site.local_to_project
-    except (ImportError, AttributeError):
+    if not isinstance(cal.get("projection"), dict) or not (cal.get("horizontal") or cal.get("vertical")):
         raise JobError(
-            "Placing a design through the site calibration needs the site geodesy of a newer pipeline "
-            "pack. Choose the CRS of the design and import again."
-        ) from None
+            "The site calibration has no base projection or adjustment. Compute it again in Site "
+            "settings, or choose the CRS of the design, and import again."
+        )
 
     def run(xyz: np.ndarray) -> np.ndarray:
-        return np.asarray(fn(cal, project_crs, np.asarray(xyz, dtype=np.float64)), dtype=np.float64)
+        return local_to_project(cal, project_crs, np.asarray(xyz, dtype=np.float64))
 
     return run
+
+
+def local_to_project(cal: dict[str, Any], project_crs: dict[str, Any], xyz: np.ndarray) -> np.ndarray:
+    """Local site grid (E', N', Z', metres) to the project CRS (E, N, Z): G1's calibration inverted.
+
+    The calibration (``SiteCalibration``) maps its base projection to the local grid as one PROJ
+    ``affine`` pipeline (:func:`aio_pipelines.geodesy.site.calibration_pipeline`: the horizontal
+    similarity, then the inclined plane on the local coordinates). That pipeline is run in reverse
+    to the base projection, then PROJ's best operation (:func:`horizontal_transformer`, a missing
+    grid refused by name) takes E, N to the project CRS, scaled at the PROJ edge for feet. Heights
+    lose the calibration's vertical adjustment and so are on the calibration's height reference
+    (its geoid, or ellipsoidal); no further datum change is made.
+    """
+    from pyproj import Transformer
+    from pyproj.enums import TransformDirection
+
+    from ..geodesy.site import (
+        calibration_pipeline,
+        crs_of,
+        horizontal_transformer,
+        metres_per_unit,
+        network_off,
+    )
+
+    network_off()
+    out = np.array(xyz, dtype=np.float64, copy=True)
+    if len(out) == 0:
+        return out
+    pipe = calibration_pipeline(cal)
+    if pipe is not None:
+        x, y, z = Transformer.from_pipeline(pipe).transform(
+            out[:, 0], out[:, 1], out[:, 2], direction=TransformDirection.INVERSE
+        )
+        out[:, 0], out[:, 1], out[:, 2] = x, y, z
+    base, dst = crs_of(cal["projection"]), crs_of(project_crs)
+    if not base.equals(dst):
+        tr = horizontal_transformer(base, dst)
+        xs, ys = tr.transform(
+            out[:, 0] / metres_per_unit(base), out[:, 1] / metres_per_unit(base), errcheck=False
+        )
+        out[:, 0] = np.asarray(xs, dtype=np.float64) * metres_per_unit(dst)
+        out[:, 1] = np.asarray(ys, dtype=np.float64) * metres_per_unit(dst)
+    if not np.isfinite(out[:, :2]).all():
+        raise JobError("Some design coordinates fall outside the area the site calibration can place.")
+    return out
 
 
 def _nan_heights_from(surface: Surface, chain: np.ndarray) -> np.ndarray:

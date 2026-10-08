@@ -624,7 +624,7 @@ def test_import_refusals(tmp_path):
     (root / "survey" / "calibration.json").write_text(
         json.dumps({"appliedAt": "2026-10-09T00:00:00Z"}), "utf-8"
     )
-    with pytest.raises(JobError, match="needs the site geodesy of a newer pipeline pack"):
+    with pytest.raises(JobError, match="has no base projection or adjustment"):
         run_job(pipe, root, {"src": str(src), "useCalibration": True}, job_id="j6")
     dwg = write(tmp_path, "plan.dwg", b"AC1027\x00\x00")
     with pytest.raises(JobError, match="DWG drawing"):
@@ -638,6 +638,66 @@ def test_import_refusals(tmp_path):
     # nothing was added by a refused import
     ds = json.loads((root / "survey" / "designs.json").read_text("utf-8"))["designs"]
     assert [d["id"] for d in ds] == ["pad"]
+
+
+CAL_H = {
+    "originE": E0,
+    "originN": N0,
+    "shiftE": -519000.0,
+    "shiftN": -2749000.0,
+    "rotationRad": 0.3,
+    "scale": 1.0002,
+}
+CAL_V = {"originE": 1000.0, "originN": 1000.0, "shiftM": -2.5, "slopeN": 0.001, "slopeE": -0.002}
+
+
+@pytest.mark.parametrize("base_epsg", [32639, 32640])
+def test_import_places_local_points_through_the_site_calibration(tmp_path, base_epsg):
+    """Local grid points go back through G1's calibration to the project CRS (within 1 mm)."""
+    from pyproj import Transformer
+
+    from aio_pipelines.geodesy.calibration import apply_horizontal, plane_dz
+
+    root = project(tmp_path)
+    truth = np.asarray(pad_vertices()[:4])  # in the project CRS (UTM 39N)
+    base = truth.copy()
+    if base_epsg != CRS["epsg"]:
+        e, n = Transformer.from_crs(CRS["epsg"], base_epsg, always_xy=True).transform(
+            truth[:, 0], truth[:, 1]
+        )
+        base[:, 0], base[:, 1] = e, n
+        cal = {**CAL_H, "originE": float(base[0, 0]), "originN": float(base[0, 1])}
+    else:
+        cal = CAL_H
+    # the calibration's model (G1's numpy side, not the PROJ pipeline under test): base to local
+    le, ln = apply_horizontal(cal, base[:, 0], base[:, 1])
+    lz = base[:, 2] + plane_dz(CAL_V, le, ln)
+    (root / "survey").mkdir()
+    (root / "survey" / "calibration.json").write_text(
+        json.dumps(
+            {
+                "schema": "aio.site-calibration/1",
+                "id": "cal-1",
+                "name": "Site grid",
+                "projection": {"epsg": base_epsg},
+                "horizontal": cal,
+                "vertical": CAL_V,
+                "pairs": [],
+                "computedAt": "2026-10-09T00:00:00Z",
+                "appliedAt": "2026-10-09T00:00:00Z",
+            }
+        ),
+        "utf-8",
+    )
+    rows = "".join(
+        f"{k + 1},{n:.6f},{e:.6f},{z:.6f},P\n" for k, (e, n, z) in enumerate(zip(le, ln, lz, strict=True))
+    )
+    run_job(DesignImport(), root, {"src": str(write(tmp_path, "local.csv", rows)), "useCalibration": True})
+    (d,) = json.loads((root / "survey" / "designs.json").read_text("utf-8"))["designs"]
+    assert d["calibrated"] is True
+    pts = json.loads((root / "survey" / "designs" / d["id"] / d["layers"][0]["file"]).read_text("utf-8"))
+    got = np.asarray([f["geometry"]["coordinates"] for f in pts["features"]])
+    assert np.abs(got - truth).max() < 1e-3
 
 
 def test_display_glb_faces_point_up():
