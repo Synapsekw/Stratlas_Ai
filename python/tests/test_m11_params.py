@@ -62,6 +62,11 @@ M11 = {
     },
 }
 
+#: Pipelines a stream has built (no longer stubs): checked for their names and titles here, and
+#: by their own tests for what they do.
+BUILT = {"survey.compare", "survey.prepare"}
+STUBS = sorted(set(M11) - BUILT)
+
 TITLES = {
     "survey.prepare": "Prepare surfaces",
     "survey.compare": "Compare surfaces",
@@ -92,7 +97,7 @@ def test_the_smallest_parameters_validate(name):
     assert all_pipelines()[name].validate(M11[name]) == M11[name]
 
 
-@pytest.mark.parametrize("name", sorted(M11))
+@pytest.mark.parametrize("name", STUBS)
 def test_a_stub_fails_with_not_implemented_and_leaves_the_project_untouched(tmp_path, name, monkeypatch):
     monkeypatch.delenv("PROJ_NETWORK", raising=False)
     pipeline = all_pipelines()[name]
@@ -154,7 +159,8 @@ def test_a_stub_checks_fixed_choices():
 def test_a_stub_enforces_exactly_one_of_two_alternatives():
     pipes = all_pipelines()
     site = M11["survey.compare"]["site"]
-    item = {"measurement": "m1", "ring": [[0, 0], [1, 0], [1, 1]], "item": {}}
+    real = {"id": "i1", "from": {"kind": "smart"}, "to": {"kind": "current"}, "useDeadband": False}
+    item = {"measurement": "m1", "ring": [[0, 0], [1, 0], [1, 1]], "item": real}
     assert pipes["survey.compare"].validate({"items": [item]})
     for bad in ({}, {"items": [item], "site": site}):
         with pytest.raises(JobError, match="Give items or site, not both"):
