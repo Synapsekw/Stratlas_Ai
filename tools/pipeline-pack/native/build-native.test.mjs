@@ -23,7 +23,12 @@ import {
   loadComponents,
   checkBuildRequires,
   missingRpathLibs,
+  OPENCV_PROBE,
+  opencvCache,
   opencvEnv,
+  opencvProbeInstallArgs,
+  opencvProbeProblems,
+  unmetRequire,
   pdalSelect,
   wheelListArgs,
   openmpHints,
@@ -356,6 +361,14 @@ describe('OpenCV', () => {
       expect(calls[wheel].opts.env.CMAKE_ARGS).toContain('-DWITH_FFMPEG=OFF');
       const list = calls.slice(wheel + 1).find((x) => x.args[1]?.includes('zipfile'));
       expect(list?.args.at(-1)).toMatch(/opencv_python_headless-.*\.whl$/);
+      // then the wheel's own cv2 is probed
+      const install = calls.findIndex((x) => x.args.includes('--target'));
+      const probe = calls.findIndex((x) => x.args[1] === OPENCV_PROBE);
+      expect(install).toBeGreaterThan(wheel);
+      expect(calls[install].args).toContain('numpy==2.5.3');
+      expect(probe).toBeGreaterThan(install);
+      expect(calls[probe].args[2]).toBe(join(work, 'probe', 'opencv'));
+      expect(calls[probe].opts.capture).toBe(true);
     });
 
     it('applies the same patch on macOS, where it changes nothing', async () => {
@@ -382,6 +395,140 @@ describe('OpenCV', () => {
     expect(bad[0]).toMatch(/opencv_videoio_ffmpeg4130_64\.dll: forbidden \(OpenCV FFmpeg plugin/);
     expect(bad[1]).toMatch(/avcodec-61\.dll: forbidden \(FFmpeg/);
     expect(wheelListArgs('w.whl').at(-1)).toBe('w.whl');
+  });
+
+  describe("the options read back from OpenCV's own CMake cache", () => {
+    let src;
+    beforeEach(() => {
+      src = mkdtempSync(join(tmpdir(), 'native-skbuild-'));
+    });
+    afterEach(() => rmSync(src, { recursive: true, force: true }));
+
+    const cache = (rel, lines) => {
+      const p = join(src, ...rel.split('/'));
+      mkdirSync(join(p, '..'), { recursive: true });
+      writeFileSync(p, `${lines.join('\r\n')}\r\n`);
+    };
+    const opencv = () => [
+      '# This is the CMakeCache file.',
+      `CMAKE_HOME_DIRECTORY:INTERNAL=${src.split('\\').join('/')}/opencv`,
+      'WITH_FFMPEG:BOOL=OFF',
+      'WITH_GSTREAMER:BOOL=OFF',
+      'BUILD_opencv_videoio:BOOL=OFF',
+      'OPENCV_ENABLE_NONFREE:BOOL=OFF',
+      'WITH_IPP:BOOL=OFF',
+    ];
+
+    it('reads _skbuild/<platform>/cmake-build/CMakeCache.txt, not the first cache under _skbuild', () => {
+      // pack-native win32-x64: the gate saw "built with WITH_FFMPEG=unset" while the configure
+      // log passed -DWITH_FFMPEG=OFF and listed videoio as disabled: another cache was read.
+      cache('_skbuild/win-amd64-3.13/cmake-build/3rdparty/probe/CMakeCache.txt', [
+        'CMAKE_HOME_DIRECTORY:INTERNAL=C:/x/probe',
+      ]);
+      cache('_skbuild/win-amd64-3.13/cmake-build/CMakeCache.txt', opencv());
+      const found = opencvCache(src);
+      expect(found.path).toBe(
+        join(src, '_skbuild', 'win-amd64-3.13', 'cmake-build', 'CMakeCache.txt'),
+      );
+      const c = byName['opencv-python-headless'];
+      const cmake = pick(found.cache, Object.keys(c.cmake));
+      expect(cmake).toMatchObject({ WITH_FFMPEG: 'OFF', BUILD_opencv_videoio: 'OFF' });
+      expect(unmetRequire(c.require, cmake)).toEqual([]);
+    });
+
+    it('refuses a missing, doubled or foreign cache', () => {
+      expect(() => opencvCache(src)).toThrow(/found 0/);
+      cache('_skbuild/win-amd64-3.13/cmake-build/CMakeCache.txt', [
+        'CMAKE_HOME_DIRECTORY:INTERNAL=C:/x/other',
+      ]);
+      expect(() => opencvCache(src)).toThrow(/is not OpenCV's cache/);
+      cache('_skbuild/macosx-14.0-arm64-3.13/cmake-build/CMakeCache.txt', opencv());
+      expect(() => opencvCache(src)).toThrow(/found 2/);
+    });
+
+    it('keeps an unset option a failure', () => {
+      const c = byName['opencv-python-headless'];
+      expect(unmetRequire(c.require, {})).toContain('WITH_FFMPEG=unset, the recipe requires OFF');
+      expect(unmetRequire({ WITH_IPP: 'OFF' }, { WITH_IPP: 'ON' })).toEqual([
+        'WITH_IPP=ON, the recipe requires OFF',
+      ]);
+    });
+  });
+
+  describe('the probe of the built cv2', () => {
+    // The shape of cv2.getBuildInformation() (pack-native win32-x64 configure summary).
+    const info = (over = {}) =>
+      [
+        'General configuration for OpenCV 5.0.0 =====================================',
+        '  OpenCV modules:',
+        `    To be built:                 ${over.modules ?? 'calib core features flann geometry highgui imgcodecs imgproc objdetect photo ptcloud python3 stereo stitching video'}`,
+        '    Disabled:                    dnn java videoio world',
+        `    Non-free algorithms:         ${over.nonfree ?? 'NO'}`,
+        '',
+        '  Video I/O:',
+        '    DirectShow:                  YES',
+        ...(over.video ?? []),
+        '',
+        '  Other third-party libraries:',
+        ...(over.ipp ? [`    Intel IPP:                   ${over.ipp}`] : []),
+        '    Custom HAL:                  NO',
+        '',
+      ].join('\n');
+    const dir = join('C:', 'w', 'probe', 'opencv');
+    const ok = { file: join(dir, 'cv2', '__init__.py'), videoCapture: false, info: info() };
+
+    it('passes a build without videoio, FFmpeg, GStreamer, IPP or non-free code', () => {
+      expect(opencvProbeProblems(ok, dir)).toEqual([]);
+    });
+
+    it('fails each thing the recipe forbids', () => {
+      const bad = opencvProbeProblems(
+        {
+          file: '/usr/lib/python3/cv2/__init__.py',
+          videoCapture: true,
+          info: info({
+            modules: 'core imgproc videoio',
+            nonfree: 'YES',
+            video: [
+              '    FFMPEG:                      YES',
+              '      avcodec:                   YES (61.3.100)',
+              '    GStreamer:                   NO',
+            ],
+            ipp: '2022.1.0 [2022.1.0]',
+          }),
+        },
+        dir,
+      );
+      expect(bad).toEqual([
+        'cv2 came from /usr/lib/python3/cv2/__init__.py, not the built wheel',
+        'the videoio module is built',
+        'cv2 has VideoCapture (videoio)',
+        'video backend: FFMPEG:                      YES',
+        'video backend: avcodec:                   YES (61.3.100)',
+        'Intel IPP: 2022.1.0 [2022.1.0]',
+        'Non-free algorithms: YES',
+      ]);
+      expect(opencvProbeProblems({ ...ok, info: '' }, dir)).toEqual([
+        'cv2.getBuildInformation() lists no modules',
+        'Non-free algorithms: not reported',
+      ]);
+    });
+
+    it('runs the wheel itself with numpy pinned', () => {
+      const c = byName['opencv-python-headless'];
+      expect(opencvProbeInstallArgs(c, 'w.whl', 'd')).toEqual([
+        '-m',
+        'pip',
+        'install',
+        '--no-deps',
+        '--target',
+        'd',
+        'w.whl',
+        'numpy==2.5.3',
+      ]);
+      expect(OPENCV_PROBE).toContain('sys.path.insert(0,sys.argv[1])');
+      expect(OPENCV_PROBE).toContain('cv2.getBuildInformation()');
+    });
   });
 });
 
@@ -592,23 +739,82 @@ describe('PoissonRecon (for G3)', () => {
     ]);
   });
 
-  it('builds both tools from upstream sources with the vendored image libraries as C', () => {
+  it('builds both tools against vcpkg zlib, libpng and libjpeg-turbo, never the vendored copies', () => {
+    // pack-native darwin-arm64: the vendored ZLIB/gzwrite.c "call to undeclared function
+    // 'close'" (C99 with current AppleClang). Nothing of ZLIB/, PNG/ or JPEG/ is compiled now.
     const text = readFileSync(join(NATIVE_DIR, 'poissonrecon', 'CMakeLists.txt'), 'utf8');
-    expect(text).toMatch(/foreach\(tool PoissonRecon SurfaceTrimmer\)/);
-    expect(text).toMatch(/foreach\(lib ZLIB PNG JPEG\)/);
-    expect(text).toMatch(/PROPERTIES LANGUAGE C\)/);
-    expect(text).toMatch(/install\(TARGETS PoissonRecon SurfaceTrimmer RUNTIME DESTINATION bin\)/);
-    const mac = poissonConfigure({
-      platform: 'darwin',
+    const code = text
+      .split('\n')
+      .filter((l) => !l.trimStart().startsWith('#'))
+      .join('\n');
+    expect(code).toMatch(/foreach\(tool PoissonRecon SurfaceTrimmer\)/);
+    for (const pkg of ['ZLIB', 'PNG', 'JPEG'])
+      expect(code).toContain(`find_package(${pkg} REQUIRED)`);
+    expect(code).toContain('PNG::PNG JPEG::JPEG ZLIB::ZLIB');
+    expect(code).not.toMatch(
+      /add_library|vcxproj|LANGUAGE C|-w\b|-Wno-error|POISSONRECON_SOURCE}\/(JPEG|PNG|ZLIB)/,
+    );
+    // forwarding headers for the names PoissonRecon includes, ahead of everything else
+    expect(code).toContain(
+      'file(WRITE "${forward}/PNG/png.h" "#include <zlib.h>\\n#include <png.h>\\n")',
+    );
+    expect(code).toMatch(/foreach\(h jpeglib jerror jmorecfg\)/);
+    expect(code).toMatch(/target_include_directories\(\$\{tool\} BEFORE PRIVATE "\$\{forward\}"\)/);
+    expect(code).toMatch(/install\(TARGETS PoissonRecon SurfaceTrimmer RUNTIME DESTINATION bin\)/);
+  });
+
+  it('installs the image libraries from its own pinned manifest, static by the triplets', () => {
+    expect(c.manifest).toBe('poissonrecon/vcpkg.json');
+    const m = json(c.manifest);
+    expect(m.dependencies).toEqual([
+      'zlib',
+      { name: 'libpng', 'default-features': false },
+      { name: 'libjpeg-turbo', 'default-features': false },
+    ]);
+    expect(c.spdx).toBe('MIT');
+    expect(c.includes).toBeUndefined();
+    const ctx = {
       src: 's',
       build: 'b',
+      vcpkgRoot: 'v',
+      manifestDir: 'm',
+      vcpkgInstalled: 'vi',
+      triplet: 'arm64-osx-stratlas',
+      hostTriplet: 'arm64-osx-release',
+      overlayTriplets: 'ot',
       deploymentTarget: '14.0',
       libomp: '/opt/homebrew/opt/libomp',
-    });
+    };
+    const mac = poissonConfigure({ ...ctx, platform: 'darwin' });
     expect(mac).toEqual(
-      expect.arrayContaining(['-DPOISSONRECON_SOURCE=s', '-DOpenMP_ROOT=/opt/homebrew/opt/libomp']),
+      expect.arrayContaining([
+        '-DPOISSONRECON_SOURCE=s',
+        '-DCMAKE_TOOLCHAIN_FILE=v/scripts/buildsystems/vcpkg.cmake',
+        '-DVCPKG_MANIFEST_DIR=m',
+        '-DVCPKG_INSTALLED_DIR=vi',
+        '-DVCPKG_TARGET_TRIPLET=arm64-osx-stratlas',
+        '-DVCPKG_OVERLAY_TRIPLETS=ot',
+        '-DOpenMP_ROOT=/opt/homebrew/opt/libomp',
+      ]),
     );
-    expect(poissonConfigure({ platform: 'win32', src: 's', build: 'b' })).toContain('-A');
+    const win = poissonConfigure({ ...ctx, platform: 'win32', triplet: 'x64-windows-stratlas' });
+    expect(win).toEqual(
+      expect.arrayContaining([
+        '-A',
+        '-DVCPKG_TARGET_TRIPLET=x64-windows-stratlas',
+        '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL',
+      ]),
+    );
+  });
+
+  it('patches PNG.inl to read the row width through libpng 1.6, whose png_struct is opaque', () => {
+    expect(c.patches).toEqual(['poissonrecon/patches/0001-libpng16-row-width.patch']);
+    const patch = readFileSync(join(NATIVE_DIR, c.patches[0]), 'utf8');
+    expect(patch).toContain('diff --git a/Src/PNG.inl b/Src/PNG.inl');
+    expect(patch).toMatch(/^-.*\* _png_ptr->width \) \);$/m);
+    expect(patch).toMatch(/^\+.*\* png_get_image_width\( _png_ptr , _info_ptr \) \) \);$/m);
+    expect(patch).not.toMatch(/^\+.*->width/m);
+    expect(patch).not.toMatch(/\r\n/);
   });
 });
 

@@ -1,11 +1,17 @@
 # PoissonRecon and SurfaceTrimmer (M10 G1 for G3's photo/mesh.py), from mkazhdan/PoissonRecon
 # (MIT) at the commit components.json pins. Upstream builds with a Makefile (Linux) and Visual
-# Studio projects; this one CMake project builds the two tools the pack needs on Windows and macOS
-# from the same sources: the vendored zlib (Zlib), libpng (libpng licence) and IJG JPEG (IJG) as
-# static libraries, each with the source list of upstream's own .vcxproj, so a new upstream
-# commit needs no change here.
+# Studio projects; this one CMake project builds the two tools the pack needs on Windows and macOS.
+#
+# Image libraries come from vcpkg (poissonrecon/vcpkg.json, static, through the vcpkg toolchain
+# build-native.mjs passes): zlib, libpng 1.6 and libjpeg-turbo. Upstream's vendored copies in ZLIB/,
+# PNG/ (libpng 1.2.29) and JPEG/ are not compiled: their zlib calls read, write, close and lseek
+# without <unistd.h>, an error in C99 that current AppleClang enforces (pack-native darwin-arm64).
+# PoissonRecon names them as "PNG/png.h" and, on Windows, "JPEG/jpeglib.h"; the forwarding
+# headers written below send those names to vcpkg's headers, and the checkout itself is not on the
+# include path, so a vendored header can never be picked up.
 #
 #   cmake -S tools/pipeline-pack/native/poissonrecon -B <build> -DPOISSONRECON_SOURCE=<checkout>
+#         -DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake -DVCPKG_MANIFEST_DIR=...
 cmake_minimum_required(VERSION 3.21)
 project(StratlasPoissonRecon C CXX)
 
@@ -15,39 +21,22 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(OpenMP REQUIRED COMPONENTS CXX)
+find_package(ZLIB REQUIRED)
+find_package(PNG REQUIRED)
+find_package(JPEG REQUIRED)
 
-# The ClCompile items of one of upstream's Visual Studio projects, as absolute paths.
-function(vcxproj_sources out project)
-    file(STRINGS "${POISSONRECON_SOURCE}/${project}" lines REGEX "ClCompile Include=")
-    set(files "")
-    foreach(line IN LISTS lines)
-        string(REGEX REPLACE ".*ClCompile Include=\"([^\"]+)\".*" "\\1" f "${line}")
-        string(REPLACE "\\" "/" f "${f}")
-        list(APPEND files "${POISSONRECON_SOURCE}/${f}")
-    endforeach()
-    set(${out} ${files} PARENT_SCOPE)
-endfunction()
-
-foreach(lib ZLIB PNG JPEG)
-    vcxproj_sources(srcs ${lib}.vcxproj)
-    # Programs that upstream compiles into its Windows libraries but never calls.
-    list(FILTER srcs EXCLUDE REGEX "/(pngtest|ckconfig)\\.c(pp)?$")
-    # The vendored IJG JPEG files are named .cpp but are C, and the tools call them as C.
-    set_source_files_properties(${srcs} PROPERTIES LANGUAGE C)
-    add_library(pr_${lib} STATIC ${srcs})
-    target_include_directories(pr_${lib} PUBLIC "${POISSONRECON_SOURCE}" "${POISSONRECON_SOURCE}/${lib}")
-    target_compile_definitions(pr_${lib} PRIVATE _CRT_SECURE_NO_DEPRECATE _CRT_SECURE_NO_WARNINGS)
-    if(NOT MSVC)
-        target_compile_options(pr_${lib} PRIVATE -w)
-    endif()
+# libpng 1.6's png.h no longer includes zlib.h; PNG.inl uses Z_BEST_SPEED from it.
+set(forward "${CMAKE_BINARY_DIR}/vcpkg-forward")
+file(WRITE "${forward}/PNG/png.h" "#include <zlib.h>\n#include <png.h>\n")
+foreach(h jpeglib jerror jmorecfg)
+    file(WRITE "${forward}/JPEG/${h}.h" "#include <${h}.h>\n")
 endforeach()
-target_link_libraries(pr_PNG PUBLIC pr_ZLIB)
 
 foreach(tool PoissonRecon SurfaceTrimmer)
     add_executable(${tool} "${POISSONRECON_SOURCE}/Src/${tool}.cpp")
-    target_include_directories(${tool} PRIVATE "${POISSONRECON_SOURCE}" "${POISSONRECON_SOURCE}/JPEG")
+    target_include_directories(${tool} BEFORE PRIVATE "${forward}")
     target_compile_definitions(${tool} PRIVATE RELEASE NOMINMAX _CRT_SECURE_NO_WARNINGS)
-    target_link_libraries(${tool} PRIVATE OpenMP::OpenMP_CXX pr_PNG pr_JPEG pr_ZLIB)
+    target_link_libraries(${tool} PRIVATE OpenMP::OpenMP_CXX PNG::PNG JPEG::JPEG ZLIB::ZLIB)
     if(MSVC)
         target_compile_options(${tool} PRIVATE /bigobj /EHsc)
         target_link_libraries(${tool} PRIVATE psapi)

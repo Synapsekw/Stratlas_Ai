@@ -223,7 +223,7 @@ Generated from `tools/release/native-libs.json` and `tools/pipeline-pack/native/
 
 ### Inside the Python wheels and CPython
 
-52 libraries: MIT (14), BSD-3-Clause (5), BSD-2-Clause (3), Zlib (3), Apache-2.0 (2), GPL-3.0-or-later WITH GCC-exception-3.1 (2), LGPL-2.1-or-later (2), MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later (2), 0BSD (1), Apache-2.0 WITH LLVM-exception (1), blessing (1), BSD-3-Clause AND GPL-3.0-or-later WITH GCC-exception-3.1 (1), BSD-3-Clause AND MIT AND Apache-2.0 (1), BSD-3-Clause OR GPL-2.0-only (1), curl (1), FTL OR GPL-2.0-or-later (1), IJG AND BSD-3-Clause AND Zlib (1), LGPL-2.1-only (1), libpng-2.0 (1), libtiff (1), LicenseRef-Microsoft-VC-Redist (1), MIT AND Zlib AND Libpng AND IJG (1), PostgreSQL (1), PSF-2.0 (1), Qhull (1), TCL (1), X11 (1).
+52 libraries: MIT (14), BSD-3-Clause (5), BSD-2-Clause (3), Zlib (3), Apache-2.0 (2), GPL-3.0-or-later WITH GCC-exception-3.1 (2), LGPL-2.1-or-later (2), MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later (2), 0BSD (1), Apache-2.0 WITH LLVM-exception (1), blessing (1), BSD-3-Clause AND GPL-3.0-or-later WITH GCC-exception-3.1 (1), BSD-3-Clause AND MIT AND Apache-2.0 (1), BSD-3-Clause OR GPL-2.0-only (1), curl (1), FTL OR GPL-2.0-or-later (1), IJG AND BSD-3-Clause AND Zlib (1), LGPL-2.1-only (1), libpng-2.0 (1), libtiff (1), LicenseRef-Microsoft-VC-Redist (1), MIT AND Zlib AND libpng-2.0 AND IJG AND BSD-3-Clause (1), PostgreSQL (1), PSF-2.0 (1), Qhull (1), TCL (1), X11 (1).
 
 | Package         | Version                                             | Licence                                                  |
 | --------------- | --------------------------------------------------- | -------------------------------------------------------- |
@@ -270,7 +270,7 @@ Generated from `tools/release/native-libs.json` and `tools/pipeline-pack/native/
 | openssl         | 3.x (CPython, rasterio)                             | Apache-2.0                                               |
 | pcre2           | 10.x (rasterio)                                     | BSD-3-Clause                                             |
 | pdal            | 2.10.1 (our build)                                  | BSD-3-Clause AND MIT AND Apache-2.0                      |
-| poissonrecon    | 8.76 (our build)                                    | MIT AND Zlib AND Libpng AND IJG                          |
+| poissonrecon    | 8.76 (our build)                                    | MIT AND Zlib AND libpng-2.0 AND IJG AND BSD-3-Clause     |
 | proj            | 9.7 (rasterio 1.5)                                  | MIT                                                      |
 | qhull           | 8.0 (rasterio Windows)                              | Qhull                                                    |
 | scipy-openblas  | 0.3.31 (scipy), 0.3.34 (numpy)                      | BSD-3-Clause AND GPL-3.0-or-later WITH GCC-exception-3.1 |
@@ -305,10 +305,7 @@ COLMAP without CHOLMOD, LSD, CGAL, SiftGPU, CUDA or downloads; OpenCV without FF
 | KleidiCV (in opencv-python-headless)      |                                          | Apache-2.0                          |
 | quirc (in opencv-python-headless)         |                                          | ISC                                 |
 | pdal                                      | 2.10.1                                   | BSD-3-Clause AND MIT AND Apache-2.0 |
-| poissonrecon                              | 8.76                                     | MIT AND Zlib AND Libpng AND IJG     |
-| zlib (in poissonrecon)                    |                                          | Zlib                                |
-| libpng (in poissonrecon)                  |                                          | Libpng                              |
-| IJG JPEG (in poissonrecon)                |                                          | IJG                                 |
+| poissonrecon                              | 8.76                                     | MIT                                 |
 
 ### vcpkg ports compiled into our native builds
 

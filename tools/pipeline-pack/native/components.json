@@ -155,6 +155,8 @@
         "WITH_IPP": "OFF"
       },
       "outputs": ["wheels/opencv_python_headless-*.whl"],
+      "probeRequires": ["numpy==2.5.3"],
+      "probe": "After the build, the wheel is installed with probeRequires into a scratch folder and cv2.getBuildInformation() must report no videoio module, no FFmpeg or GStreamer backend, no Intel IPP and no non-free code; build-native.mjs also reads `require` back from _skbuild/<platform>/cmake-build/CMakeCache.txt, OpenCV's own cache.",
       "includes": [
         {
           "name": "libjpeg-turbo",
@@ -190,30 +192,15 @@
     {
       "name": "poissonrecon",
       "version": "8.76",
-      "spdx": "MIT AND Zlib AND Libpng AND IJG",
+      "spdx": "MIT",
       "source": "https://github.com/mkazhdan/PoissonRecon",
       "commit": "262b0f539d404057d1f36e1adc07fc9388678899",
       "status": "required",
       "cmakeProject": "poissonrecon",
+      "manifest": "poissonrecon/vcpkg.json",
+      "patches": ["poissonrecon/patches/0001-libpng16-row-width.patch"],
       "outputs": ["tools/poissonrecon/bin/PoissonRecon*", "tools/poissonrecon/bin/SurfaceTrimmer*"],
-      "note": "PoissonRecon and SurfaceTrimmer for photo/mesh.py (G3), found at <pack>/tools/poissonrecon or AIO_POISSONRECON and AIO_SURFACETRIMMER. Built by our CMake project (poissonrecon/CMakeLists.txt) from upstream's sources; no version tags after V8, so pinned by commit (Version 8.76, 29 Apr 2026).",
-      "includes": [
-        {
-          "name": "zlib",
-          "spdx": "Zlib",
-          "note": "Vendored in PoissonRecon, static"
-        },
-        {
-          "name": "libpng",
-          "spdx": "Libpng",
-          "note": "Vendored in PoissonRecon, static"
-        },
-        {
-          "name": "IJG JPEG",
-          "spdx": "IJG",
-          "note": "Vendored in PoissonRecon, static"
-        }
-      ]
+      "note": "PoissonRecon and SurfaceTrimmer for photo/mesh.py (G3), found at <pack>/tools/poissonrecon or AIO_POISSONRECON and AIO_SURFACETRIMMER. Built by our CMake project (poissonrecon/CMakeLists.txt) from upstream's sources; no version tags after V8, so pinned by commit (Version 8.76, 29 Apr 2026). zlib, libpng and libjpeg-turbo come from vcpkg (poissonrecon/vcpkg.json, static; ports checked by the licence gate) instead of the copies vendored upstream, which are not compiled: their zlib does not build under C99 with current AppleClang and their libpng is 1.2.29. Our patch reads the PNG row width through libpng 1.6's API."
     },
     {
       "name": "texrecon",
