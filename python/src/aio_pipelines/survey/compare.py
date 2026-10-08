@@ -105,6 +105,8 @@ class Resolved:
     vertices: np.ndarray | None = None
     triangles: np.ndarray | None = None
     offset: float = 0.0
+    #: Where the surface has data (min E, min N, max E, max N), when known.
+    extent: tuple[float, float, float, float] | None = None
     _tins: dict[tuple[float, float], Tin] = field(default_factory=dict)
 
     def tin(self, le: float, ln: float) -> Tin:
@@ -612,6 +614,7 @@ class ProjectSurfaces:
             fingerprint=str(meta.get("fingerprint")),
             capture=capture or meta.get("capture"),
             grid=self._grids[sid],
+            extent=_extent(meta),
         )
 
     def current_previous(self) -> tuple[str | None, str | None]:
@@ -679,6 +682,13 @@ class ProjectSurfaces:
         if settings.get("calibration"):
             out["calibration"] = settings["calibration"]
         return out
+
+
+def _extent(meta: dict[str, Any]) -> tuple[float, float, float, float] | None:
+    b = meta.get("bounds")
+    if isinstance(b, list) and len(b) == 6:
+        return (float(b[0]), float(b[1]), float(b[3]), float(b[4]))
+    return None
 
 
 # -------------------------------------------------------------------------------------- pipeline
@@ -839,9 +849,8 @@ def _overlap_ring(ps: ProjectSurfaces, spec: dict[str, Any]) -> list[list[float]
             raise JobError("A whole-site comparison against a base needs a boundary (ring).")
         r = ps.resolve(ref)
         if r.kind == "grid":
-            meta = ps.metas().get(str(ref.get("surface"))) if ref.get("kind") == "survey" else None
-            b = (meta or {}).get("bounds")
-            boxes.append((b[0], b[1], b[3], b[4]) if b else r.grid.bounds)  # type: ignore[union-attr]
+            assert r.grid is not None
+            boxes.append(r.extent or r.grid.bounds)
         else:
             v = r.vertices
             assert v is not None
