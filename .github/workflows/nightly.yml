@@ -127,25 +127,21 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
-  # M10 G1: the native components (rebuilt only when their recipe changed) and the full pipeline
-  # pack with photogrammetry for both platforms: smoke test, native licence gate (pending
-  # approvals warn here; release.yml fails on them) and the size budget of decision 6.
-  pack-native:
-    uses: ./.github/workflows/pack-native.yml
-
+  # The full pipeline pack with photogrammetry for both platforms, from prebuilt parts only
+  # (founder decision of 8 Oct 2026): smoke test, the native licence report (never fails) and the
+  # size budget of decision 6.
   pipeline-pack:
-    name: pipeline pack (${{ matrix.native }})
-    needs: pack-native
+    name: pipeline pack (${{ matrix.target }})
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-2025
-            native: win32-x64
+            target: win32-x64
           - os: macos-15
-            native: darwin-arm64
+            target: darwin-arm64
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -159,12 +155,8 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
-      - uses: actions/download-artifact@v4
-        with:
-          name: pack-native-${{ matrix.native }}
-          path: pack-native
-      - name: Build the pipeline pack with the native tools
-        run: node tools/pipeline-pack/build.mjs --out runtime --native pack-native
+      - name: Build the pipeline pack (prebuilt wheels and PDAL)
+        run: node tools/pipeline-pack/build.mjs --out runtime
       - name: Size budget (decision 6)
         run: |
           pack="$(ls -d runtime/pipeline-pack-* | head -n 1)"

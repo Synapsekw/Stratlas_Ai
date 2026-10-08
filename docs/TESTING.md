@@ -561,9 +561,9 @@ M10 turns drone photos into an aligned, georeferenced survey inside Quadrion AI,
 ### Before you start
 
 - [ ] Install `QuadrionAI-0.10.0-win-x64-setup.exe`, built from `integration/m10` at commit `3f07041` or later with the M10 fixes merged (the photo demo has 24 photos). **Settings, About and updates** shows "Quadrion AI 0.10.0" and that commit in the build stamp.
-- Pipeline pack 0.4.0 is not built on this PC yet: the native COLMAP build happens in CI. Wait for the pack 0.4.0 build; until then the photo steps that need COLMAP are marked (needs pack 0.4.0). The other new M10 jobs (adjusting with ground control, OPF, imagery and terrain packs, Mesh to 3D Tiles) run in pack 0.4.0 too and carry the same mark.
+- Pipeline pack 0.4.0 is not built on this PC yet (since 8 Oct 2026 it is built from prebuilt wheels and PDAL in about a minute: `node tools/pipeline-pack/build.mjs`). Wait for the pack 0.4.0 build; until then the photo steps that need COLMAP are marked (needs pack 0.4.0). The other new M10 jobs (adjusting with ground control, OPF, imagery and terrain packs, Mesh to 3D Tiles) run in pack 0.4.0 too and carry the same mark.
 - [ ] With pack 0.3.0 still installed, the earlier jobs run on 0.10.0 as before (for example **Run imagery change** on **Demo change site (2 dates)**).
-- [ ] (needs pack 0.4.0) When I tell you where it is, copy the folder `pipeline-pack-0.4.0` into `E:\Stratlas Data\runtime\`. **Jobs** shows "Pipeline pack 0.4.0" at the top. The pack's `tools` folder holds `pdal`, `poissonrecon` and `native-manifest.json`.
+- [ ] (needs pack 0.4.0) When I tell you where it is, copy the folder `pipeline-pack-0.4.0` into `E:\Stratlas Data\runtime\`. **Jobs** shows "Pipeline pack 0.4.0" at the top. The pack's `tools` folder holds `pdal` (conda-forge's build, with `conda-packages.json` and `licenses`).
 - [ ] **Projects** shows four demo cards, one named **Photo processing demo**.
 - Opening a demo makes a working copy in `%APPDATA%\Quadrion AI\demo\`; the bundled demo never changes. Your own photos are only read, never changed.
 
@@ -685,18 +685,11 @@ Use a real drone flight of yours. The photos stay in their folder and are only r
 - [ ] Back in **Demo tank farm**, import that same `tileset.json`: "That folder holds this project. Pick the folder of the 3D Tiles export." Nothing is copied.
 - [ ] Optional, with a 3D Tiles export from another program (DJI Terra, Pix4D): a georeferenced one shows in place; one without a georeference says "It has no georeference of its own, so it is kept hidden: placing it on the map is not built yet."
 
-### Licence approvals
+### Licences
 
-The native build found six libraries whose licences need your yes or no. They are already in packs 0.2 and 0.3; the release build fails until each is decided. My recommendation: approve all six. Each is either an unmodified shared library that can be replaced, or a runtime whose licence allows commercial use.
+The six native libraries the build found (libiconv, SpatiaLite, FreeXL, libquadmath, the GCC runtime and the Microsoft Visual C++ runtime) were approved on 8 Oct 2026. Later that day licences stopped gating anything and GPL was accepted in the pipeline pack.
 
-- [ ] libiconv: LGPL-2.1, a shared library in the rasterio Windows wheel.
-- [ ] SpatiaLite: MPL-1.1, GPL-2.0 or LGPL-2.1, used under LGPL; a shared library in the rasterio Windows wheel.
-- [ ] FreeXL: the same three licences, used under LGPL; a shared library in the rasterio Windows wheel.
-- [ ] libquadmath: LGPL-2.1, a shared library in the numpy and scipy Mac wheels.
-- [ ] GCC runtime: GPL-3.0 with the GCC Runtime Library Exception; in the numpy and scipy Mac wheels and the Windows OpenBLAS.
-- [ ] Microsoft Visual C++ runtime: Microsoft's redistributable licence; in Python and the Windows wheels.
-- Tell me "approve all six", or which to refuse. I record your answer in `tools/release/licence-exceptions.json`.
-- [ ] (needs pack 0.4.0) **Settings, About and updates**, **Third-party licences** has the sections "Pipeline pack native libraries" and "Map and imagery data". The only GPL text is the GCC runtime exception and the libraries offered under a choice of licences.
+- [ ] (needs pack 0.4.0) **Settings, About and updates**, **Third-party licences** has the sections "Pipeline pack native libraries" and "Map and imagery data". The pipeline pack section names its GPL parts (CHOLMOD and SPQR in pycolmap, MeshLab, OpenCV's FFmpeg on macOS) and says the pack is under the GNU GPL version 3.
 
 ### Security
 

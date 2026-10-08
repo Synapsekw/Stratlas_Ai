@@ -70,6 +70,7 @@ describe('judge', () => {
       status: 'pending',
       pending: ['libiconv'],
       lgpl: true,
+      copyleft: false,
     });
   });
 
@@ -84,5 +85,37 @@ describe('judge', () => {
   it('never allows GPL, AGPL or unknown ids', () => {
     for (const l of ['GPL-2.0-or-later', 'AGPL-3.0-only', 'SSPL-1.0', 'LicenseRef-NonCommercial'])
       expect(native(l, ['geos', 'eigen', 'gcc-runtime']).status).toBe('denied');
+  });
+});
+
+describe('the copyleft acceptance (founder decision of 8 Oct 2026)', () => {
+  const pack = loadPolicy({
+    allowed: { spdx: ['MIT'] },
+    copyleft: { ecosystems: ['python', 'native'] },
+  });
+
+  it('allows the GPL family in the pipeline pack, marked as copyleft', () => {
+    for (const l of ['GPL-3.0-only', 'LGPL-2.1-or-later', 'AGPL-3.0-only', 'MPL-2.0'])
+      for (const ecosystem of ['python', 'native'])
+        expect(judge(pack, l, { ecosystem })).toMatchObject({ status: 'ok', copyleft: true });
+    expect(judge(pack, 'MIT AND GPL-2.0-or-later', { ecosystem: 'native' })).toMatchObject({
+      status: 'ok',
+      copyleft: true,
+      lgpl: false,
+    });
+    expect(judge(pack, 'MIT', { ecosystem: 'native' }).copyleft).toBe(false);
+  });
+
+  it('keeps the app (npm) permissive, and never allows non-commercial or unknown ids', () => {
+    expect(judge(pack, 'GPL-3.0-only', { ecosystem: 'npm' }).status).toBe('denied');
+    for (const l of ['LicenseRef-NonCommercial', 'SSPL-1.0', 'CC-BY-NC-4.0'])
+      expect(judge(pack, l, { ecosystem: 'native' }).status).toBe('denied');
+  });
+
+  it('is what the committed policy says', () => {
+    const real = loadPolicy();
+    expect(judge(real, 'GPL-3.0-only', { ecosystem: 'python' }).status).toBe('ok');
+    expect(judge(real, 'GPL-2.0-or-later', { ecosystem: 'native' }).status).toBe('ok');
+    expect(judge(real, 'GPL-3.0-only', { ecosystem: 'npm' }).status).toBe('denied');
   });
 });

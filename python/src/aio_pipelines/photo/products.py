@@ -699,8 +699,7 @@ class PhotoProducts:
         return {"spec": spec.__dict__, "layer": lid, "pyramid": pyr, **info}
 
     def _mesh(self, ctx: StepContext) -> dict[str, Any]:
-        from .mesh import cluster, mesh_25d, poisson_fft, poisson_tool, write_ply_chunks
-        from .native import find_tool
+        from .mesh import cluster, mesh_25d, poisson_engine, poisson_fft, poisson_mesh, write_ply_chunks
         from .surface import GridSpec
 
         s = self._settings(ctx)
@@ -715,8 +714,8 @@ class PhotoProducts:
         full_tri = max(budget_tri, 4 * budget_tri)
         dspec = GridSpec(**ctx.outputs("dsm")["spec"])
         nadir = s["nadirShare"] >= 0.8
-        tool = find_tool("PoissonRecon")
-        if not s["scale"] or (nadir and tool is None):
+        screened = poisson_engine()
+        if not s["scale"] or (nadir and screened is None):
             engine = "grid-25d"
             mesh = mesh_25d(work / "dsm-raw.tif", dspec, origin, full_tri)
         else:
@@ -732,15 +731,28 @@ class PhotoProducts:
             pts = np.concatenate([a for a, _ in parts])
             nrm = np.concatenate([b for _, b in parts])
             del parts
-            if tool is not None:
-                engine = "poissonrecon"
+            mesh = None
+            if screened is not None:
                 depth = 11 if s["preset"] == "standard" else 12
                 src = work / "poisson" / "dense.ply"
                 write_ply_chunks(
                     src, ((p["xyz"] + shift, p["normal"], p["rgb"]) for _, p in store.fused()), count
                 )
-                mesh = poisson_tool(ctx, work / "poisson", pts, nrm, depth, None, src, count)
-            else:
+                try:
+                    mesh, engine = poisson_mesh(
+                        ctx,
+                        work / "poisson",
+                        pts,
+                        nrm,
+                        depth,
+                        src,
+                        count,
+                        native.memory_budget(),
+                        ctx.outputs("fuse").get("voxel"),
+                    )
+                except JobError as e:
+                    ctx.log(f"Screened Poisson failed ({e}); the built-in solver makes the mesh.", "warn")
+            if mesh is None:
                 engine = "poisson-fft"
                 mesh = poisson_fft(pts, nrm, native.memory_budget() // 2, check=ctx.check)
             if mesh.triangles > full_tri:
@@ -976,7 +988,8 @@ class PhotoProducts:
             )
         if engines["mesh"] == "poisson-fft":
             warnings.append(
-                "The mesh was made by the built-in Poisson solver on a coarse grid; PoissonRecon is not in this pack."
+                "The mesh was made by the built-in Poisson solver on a coarse grid; screened Poisson "
+                "(MeshLab) is not in this pack or failed."
             )
         return {
             "schema": PRODUCTS_SCHEMA,

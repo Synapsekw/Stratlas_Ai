@@ -33,7 +33,7 @@ from typing import Any, ClassVar, Protocol
 import numpy as np
 
 from ..params import known_keys, number, text
-from ..pointcloud import PDAL_MISSING, find_pdal
+from ..pointcloud import PDAL_MISSING, find_pdal, pdal_env
 from ..runtime import JobError, Step, StepContext, atomic_write_bytes, commit_files
 from .changeset import change_set, change_set_id, dump_change_set, write_change_set
 from .derived import (
@@ -564,6 +564,7 @@ def _pdal(ctx: StepContext, args: list[str], what: str) -> str:
             stdin=subprocess.DEVNULL,
             stdout=out_f,
             stderr=err_f,
+            env=pdal_env(args[0]),
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         while proc.poll() is None:

@@ -57,7 +57,7 @@ Verify (in the app) checks the whole history and names exactly what is wrong: an
 - Electron with context isolation, the renderer sandbox and Node integration off; a Content Security Policy on every page; Electron fuses set (no `RunAsNode`, no Node options or inspector from the command line, app code only from the app archive, whose integrity is checked).
 - Every message between the interface and the main process is checked against a schema.
 - Logs and the diagnostics bundle never contain keys, tokens, invite codes or comment text; the bundle stays on the computer until a person attaches it to a support request.
-- Third-party components: no GPL or AGPL code in the app, the pipeline pack or the server image, checked in CI. Inventory: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+- Third-party components: the app and the server image use permissive licences; the pipeline pack contains GPL components (COLMAP's CHOLMOD and SPQR, MeshLab, OpenCV's FFmpeg build on macOS) and is distributed under the GNU GPL version 3 (founder decision of 8 Oct 2026). CI reports the licences of everything that ships and never blocks on them. Inventory with every licence: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## Team Server (preview in 1.0)
 

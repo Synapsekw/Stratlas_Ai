@@ -70,8 +70,8 @@ const python = (exe: string, code: string, args: string[] = []) =>
   execFileSync(exe, ['-c', code, ...args], { encoding: 'utf8' }).trim();
 
 /**
- * `QUADRION_E2E_PHOTO_REAL=1`: the real photo pipelines must run (`photo-real.spec.ts` fails
- * instead of skipping when a tool is missing). The stand-in specs always use the stand-ins: their
+ * `QUADRION_E2E_PHOTO_REAL=1`: the real photo pipelines run (`photo-real.spec.ts` is opt-in, and
+ * fails instead of skipping when a tool is missing). The stand-in specs always use the stand-ins: their
  * Pillow photos are independent noise that no real matcher can align.
  */
 export const PHOTO_REAL = envVar(process.env, 'E2E_PHOTO_REAL') === '1';
@@ -87,9 +87,9 @@ const imports = (exe: string, module: string): boolean => {
 };
 
 /**
- * The Python whose `pycolmap` runs G2's structure from motion: `AIO_COLMAP_PYTHON` (the pack's
- * native build without CHOLMOD), else the development Python when it has `pycolmap`; null when
- * this machine has none.
+ * The Python whose `pycolmap` runs G2's structure from motion: `AIO_COLMAP_PYTHON` when set,
+ * else the development Python, which has COLMAP's PyPI wheel after `uv sync`; null when this
+ * machine has none.
  */
 export function colmapPython(): string | null {
   const env = process.env.AIO_COLMAP_PYTHON;
@@ -100,14 +100,14 @@ export function colmapPython(): string | null {
 /**
  * What the real photo pipelines need that this machine lacks, in words, or null when all is
  * here: the development Python, and the COLMAP engine of `photo.align` (pycolmap). PDAL, OpenCV
- * and PoissonRecon are optional (photo.products falls back to its own numpy engines).
+ * and MeshLab are optional (photo.products falls back to its own numpy engines).
  */
 export function missingRealPhotoTools(): string | null {
   const missing: string[] = [];
   if (!existsSync(VENV_PYTHON)) missing.push(`the pipeline Python (${VENV_PYTHON})`);
   else if (!colmapPython())
     missing.push(
-      'the COLMAP engine of photo.align (pycolmap without CHOLMOD: set AIO_COLMAP_PYTHON to the pack 0.4.0 Python)',
+      'the COLMAP engine of photo.align (pycolmap: run uv sync --frozen in python/, or set AIO_COLMAP_PYTHON)',
     );
   return missing.length ? missing.join('; ') : null;
 }

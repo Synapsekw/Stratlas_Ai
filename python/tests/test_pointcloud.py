@@ -3,7 +3,7 @@ import subprocess
 
 import pytest
 
-from aio_pipelines.pointcloud import PDAL_MISSING, PointcloudToCopc, find_pdal
+from aio_pipelines.pointcloud import PDAL_MISSING, PointcloudToCopc, find_pdal, pdal_env
 from aio_pipelines.runtime import JobError
 from conftest import run_job
 
@@ -100,3 +100,21 @@ def test_converts_a_laz_to_copc_and_adds_the_layer(tmp_path):
     # a second run with another id adds no duplicate layer
     run_job(PointcloudToCopc(), root, {"src": str(laz), "epsg": 32639}, job_id="j2")
     assert len(json.loads((root / "manifest.json").read_text())["layers"]) == 1
+
+
+def test_a_conda_style_pdal_runs_with_its_own_proj_and_gdal_data(tmp_path, monkeypatch):
+    monkeypatch.delenv("PROJ_DATA", raising=False)
+    monkeypatch.delenv("GDAL_DATA", raising=False)
+    exe = tmp_path / "pdal" / "Library" / "bin" / "pdal.exe"
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"")
+    plain = pdal_env(str(exe))
+    assert "PROJ_DATA" not in plain and "GDAL_DATA" not in plain
+    share = tmp_path / "pdal" / "Library" / "share"
+    (share / "proj").mkdir(parents=True)
+    (share / "proj" / "proj.db").write_bytes(b"")
+    (share / "gdal").mkdir()
+    env = pdal_env(str(exe))
+    assert env["PROJ_DATA"] == str((share / "proj").resolve())
+    assert env["GDAL_DATA"] == str((share / "gdal").resolve())
+    assert env["PROJ_NETWORK"] == "OFF"

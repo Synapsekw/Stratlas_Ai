@@ -7,8 +7,9 @@ geotags, ``photo_synth.py``):
   GNSS georeferencing and bundle adjustment, run files) with an engine that hands back G8's
   precomputed COLMAP model in an arbitrary frame instead of running COLMAP; then the real
   ``photo.products``.
-- **COLMAP** (``AIO_COLMAP_PYTHON`` set): the same chain with the real engine, the photos in
-  folders whose names have spaces. Skipped otherwise.
+- **COLMAP**: the same chain with the real engine (pycolmap in this Python, from ``uv sync``, or
+  the Python ``AIO_COLMAP_PYTHON`` names), the photos in folders whose names have spaces. Skipped
+  when no engine starts.
 
 Both check the products against G8's truth: the layers in the manifest, the files of the run and
 the DSM against the true surface.
@@ -17,7 +18,6 @@ the DSM against the true surface.
 from __future__ import annotations
 
 import json
-import os
 import shutil
 from pathlib import Path
 
@@ -132,7 +132,9 @@ def _check(project: Path, truth_root: Path, registered_at_least: int, bias_m: fl
     run = json.loads((base / "run.json").read_text("utf-8"))
     assert run["status"] == "done" and run["photos"]["registered"] >= registered_at_least
     rejected = {Path(r["name"]).name for r in run["photos"]["rejected"]}
-    assert {"SYN_0060.JPG", "SYN_0062.JPG"} <= rejected  # the copy and the broken photo
+    assert "SYN_0062.JPG" in rejected  # the broken photo
+    # one of the duplicate pair: the copy, or its source when the folder order puts the copy first
+    assert len(rejected & {"SYN_0023.JPG", "SYN_0060.JPG"}) == 1, rejected
     # the layers joined the manifest, their files are there
     manifest = json.loads((project / "manifest.json").read_text("utf-8"))
     by_id = {x["id"]: x for x in manifest["layers"]}
@@ -171,6 +173,8 @@ def _check(project: Path, truth_root: Path, registered_at_least: int, bias_m: fl
 
 
 def test_align_then_products_with_the_precomputed_engine(monkeypatch, tmp_path, mini_rtk):
+    # the quick variant: the mesh takes the built-in path (the COLMAP variant runs MeshLab)
+    monkeypatch.setenv("AIO_PYMESHLAB", "0")
     project = _project(tmp_path / "project")
     engine = PrecomputedEngine(mini_rtk.root / "alignment" / "sparse")
     _chain(monkeypatch, project, mini_rtk.photos, engine)
@@ -187,9 +191,7 @@ def test_align_then_products_with_the_precomputed_engine(monkeypatch, tmp_path, 
         assert np.linalg.norm(np.array([x, -z, y]) - want) < 0.15, c["photo"]
 
 
-@pytest.mark.skipif(
-    not os.environ.get("AIO_COLMAP_PYTHON"), reason="AIO_COLMAP_PYTHON is not set (no COLMAP engine)"
-)
+@pytest.mark.timeout(1200)  # COLMAP and MeshLab for real: minutes on a 3-core runner
 def test_align_then_products_with_colmap_and_spaces_in_the_folders(monkeypatch, tmp_path, mini_rtk):
     from aio_pipelines.photo.colmap_io import ColmapEngine
     from aio_pipelines.runtime import JobError

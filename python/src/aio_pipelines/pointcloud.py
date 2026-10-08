@@ -1,7 +1,10 @@
 """pointcloud.to_copc: LAS, LAZ or E57 to a COPC file in the project CRS, with PDAL.
 
 PDAL runs as its command-line tool (``pdal``), found in this order: the ``AIO_PDAL`` environment
-variable, ``tools/pdal`` inside the pipeline pack, then the PATH. The cloud is reprojected to
+variable, ``tools/pdal`` inside the pipeline pack, then the PATH. The pack's PDAL is conda-forge's
+``libpdal-core`` build (``tools/pipeline-pack/pdal.mjs``): ``Library/bin/pdal.exe`` on Windows,
+``bin/pdal`` on macOS, with its PROJ and GDAL data in ``share/`` beside ``bin/``; ``pdal_env``
+points PDAL at that data wherever the pack was installed, and keeps PROJ off the network. The cloud is reprojected to
 the project CRS when the source declares its own; a source without a CRS is taken as already in
 the project CRS. The layer is added to the project manifest last (data-conventions section 4:
 ``format: "copc"``, project CRS).
@@ -41,6 +44,23 @@ def find_pdal() -> str | None:
     return shutil.which("pdal")
 
 
+def pdal_env(exe: str) -> dict[str, str]:
+    """The environment PDAL runs in: this process's, plus the PROJ and GDAL data of a conda-style
+    PDAL (``<exe>/../../share/proj``, as the pack's is; conda's activation scripts are never run)
+    and, on Windows, its folder first on the PATH. A PDAL without such data keeps the environment."""
+    env = dict(os.environ)
+    share = Path(exe).resolve().parent.parent / "share"
+    if (share / "proj" / "proj.db").is_file():
+        env["PROJ_DATA"] = str(share / "proj")
+        env["PROJ_LIB"] = str(share / "proj")
+        env.setdefault("PROJ_NETWORK", "OFF")
+    if (share / "gdal").is_dir():
+        env["GDAL_DATA"] = str(share / "gdal")
+    if os.name == "nt":
+        env["PATH"] = str(Path(exe).resolve().parent) + os.pathsep + env.get("PATH", "")
+    return env
+
+
 def _run(ctx: StepContext, args: list[str], what: str) -> str:
     """Run PDAL, cancellable; return its stdout or raise with its message.
 
@@ -54,6 +74,7 @@ def _run(ctx: StepContext, args: list[str], what: str) -> str:
             stdin=subprocess.DEVNULL,
             stdout=out_f,
             stderr=err_f,
+            env=pdal_env(args[0]),
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         t0 = time.monotonic()

@@ -3,24 +3,24 @@
 // aio_pipelines, as a folder outside the repository and the installer, with a manifest of every
 // file's size and SHA-256 (the pack is signed file by file in CI and verified by the app later).
 //
-//   node tools/pipeline-pack/build.mjs [--out "E:/Stratlas Data/runtime"] [--force]
-//        [--native <build-native output>] [--strict]
+//   node tools/pipeline-pack/build.mjs [--out "E:/Stratlas Data/runtime"] [--force] [--no-pdal]
 //
-// --native (M10 G1) adds the photogrammetry tools built by native/build-native.mjs (in CI the
-// pack-native artifact): our pycolmap and OpenCV wheels into the pack's Python and the PDAL tool
-// into tools/. Windows x64 and macOS arm64 only; the Intel Mac pack is built without it
-// (decision 8). Every pack then passes the native licence gate (tools/release/native-licences.mjs;
-// --strict also fails on approvals still pending, for releases) and the size budget of decision 6.
+// Everything is prebuilt (founder decision of 8 Oct 2026, ADR 0008 amended): the photogrammetry
+// engines are wheels in uv.lock (pycolmap, opencv-python-headless and pymeshlab, for Windows x64
+// and Apple silicon; the Intel Mac pack has none, decision 8) and PDAL is conda-forge's build,
+// installed into tools/pdal by pdal.mjs from its lock. A pack builds in a few minutes; nothing is
+// compiled. The native licence report (tools/release/native-licences.mjs) prints a summary and
+// never fails; the size budget of decision 6 still does. --native and --strict, from the old
+// source build, are accepted and ignored. --no-pdal leaves PDAL out (a quicker local pack).
 //
 // Output: <out>/pipeline-pack-<version>/{python/, tools/, manifest.json}, built in a temp folder next to
 // it and renamed into place when complete. The app finds the newest pack in
 // <data folder>/runtime/. Builds for the host platform (Windows x64, macOS arm64 or x64).
-// Online: downloads CPython once into <out>/.cache and wheels through uv's cache.
+// Online: downloads CPython once into <out>/.cache, wheels through uv's cache and PDAL's conda
+// packages through micromamba's cache (pdal.mjs).
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
-  chmodSync,
-  cpSync,
   createReadStream,
   existsSync,
   mkdirSync,
@@ -35,7 +35,7 @@ import { join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { packBudgetProblems } from '../release/budgets.mjs';
 import { runGate } from '../release/native-licences.mjs';
-import { nativePlan, PROBE, probeProblems } from './native/pack-step.mjs';
+import { checkPdal, installPdal } from './pdal.mjs';
 import { envVar } from '../../packages/brand/src/env.ts';
 
 export const PBS_RELEASE = '20260924';
@@ -49,6 +49,28 @@ const TARGETS = {
 };
 
 const repo = resolve(import.meta.dirname, '..', '..');
+
+/** Run with the pack's Python: the photogrammetry wheels it has (none on an Intel Mac). */
+const PHOTO_PROBE = `
+import json
+out = {}
+try:
+    import pycolmap, cv2, importlib.metadata as md
+    out = {"pycolmap": pycolmap.__version__, "colmapBuild": pycolmap.COLMAP_build, "opencv": cv2.__version__}
+    out["pymeshlab"] = md.version("pymeshlab")
+except ImportError:
+    pass
+if out:
+    # MeshLab's screened Poisson on a small sphere: its Qt and plugins load in the pack
+    import numpy as np, pymeshlab
+    p = np.random.default_rng(0).normal(size=(3000, 3))
+    p /= np.linalg.norm(p, axis=1, keepdims=True)
+    ms = pymeshlab.MeshSet()
+    ms.add_mesh(pymeshlab.Mesh(vertex_matrix=p, v_normals_matrix=p))
+    ms.generate_surface_reconstruction_screened_poisson(depth=5, threads=1)
+    out["poissonFaces"] = ms.current_mesh().face_number()
+print(json.dumps(out))
+`;
 const pyDir = join(repo, 'python');
 
 const say = (msg) => process.stdout.write(`${msg}\n`);
@@ -184,10 +206,14 @@ async function main() {
       out: { type: 'string' },
       force: { type: 'boolean', default: false },
       'keep-tests': { type: 'boolean', default: false },
+      'no-pdal': { type: 'boolean', default: false },
+      // the old source build's options, ignored since 8 Oct 2026
       native: { type: 'string' },
       strict: { type: 'boolean', default: false },
     },
   });
+  if (values.native !== undefined || values.strict)
+    say('  --native and --strict are ignored: the pack is built from prebuilt wheels and PDAL');
   const platform = `${process.platform}-${process.arch}`;
   const target = TARGETS[platform];
   if (!target) fail(`no python-build-standalone target for ${platform}`);
@@ -267,32 +293,11 @@ async function main() {
     ]);
     rmSync(reqs, { force: true });
 
-    // 2b. Photogrammetry tools (M10 G1): our licence-clean pycolmap and OpenCV wheels (never the
-    // PyPI ones: GPL CHOLMOD, FFmpeg) and the PDAL tool, where aio_pipelines looks for it.
-    const native = values.native ? nativePlan(resolve(values.native), platform) : null;
-    if (native) {
-      run('uv', [
-        'pip',
-        'install',
-        '--python',
-        python,
-        '--break-system-packages',
-        '--no-deps',
-        ...native.wheels,
-      ]);
-      if (native.tools) cpSync(native.tools, join(tmp, 'tools'), { recursive: true });
-      // A CI artifact (zip) loses the executable bit: restore it on the tools' programs.
-      if (process.platform !== 'win32')
-        for (const f of walk(join(tmp, 'tools')))
-          if (/[\\/]bin[\\/][^\\/]+$/.test(f) || f.endsWith('.dylib')) chmodSync(f, 0o755);
-      mkdirSync(join(tmp, 'tools'), { recursive: true });
-      writeFileSync(
-        join(tmp, 'tools', 'native-manifest.json'),
-        `${JSON.stringify(native.manifest, null, 1)}\n`,
-      );
-    } else {
-      say('  no --native: this pack has no photogrammetry tools');
-    }
+    // 2b. PDAL (conda-forge's prebuilt libpdal-core) where aio_pipelines looks for it
+    const pdal = values['no-pdal']
+      ? null
+      : await installPdal({ platform, cache, dest: join(tmp, 'tools', 'pdal'), log: say });
+    if (!pdal) say('  --no-pdal: this pack has no PDAL');
 
     // 3. Trim what the pack never runs, then precompile so a signed, read-only pack never writes .pyc
     const lib =
@@ -302,6 +307,11 @@ async function main() {
     if (!values['keep-tests']) {
       for (const d of ['test', 'idlelib', 'tkinter', 'turtledemo', 'ensurepip'])
         rmSync(join(lib, d), { recursive: true, force: true });
+      // pymeshlab's own test meshes, and import libraries and debug symbols no program loads
+      const site = join(lib, 'site-packages');
+      rmSync(join(site, 'pymeshlab', 'tests'), { recursive: true, force: true });
+      if (existsSync(site))
+        for (const f of walk(site)) if (/\.(lib|pdb)$/i.test(f)) rmSync(f, { force: true });
     }
     run(python, ['-I', '-m', 'compileall', '-q', '-j', '0', lib], { capture: true });
 
@@ -323,25 +333,28 @@ async function main() {
       { capture: true },
     ).trim();
     say(`  ${pipelines.length} pipelines; GDAL ${libs}`);
-    if (native) {
-      const probe = JSON.parse(run(python, ['-I', '-c', PROBE], { capture: true }));
-      const bad = probeProblems(probe);
-      if (bad.length > 0) fail(`native tools: ${bad.join('; ')}`);
-      const exe = process.platform === 'win32' ? 'pdal.exe' : 'pdal';
-      const pdal = run(join(tmp, 'tools', 'pdal', 'bin', exe), ['--version'], { capture: true });
-      say(
-        `  pycolmap ${probe.pycolmap} (${probe.colmapBuild}); OpenCV ${probe.opencv}; ${pdal.trim().split('\n')[0]}`,
-      );
+    const photo = JSON.parse(run(python, ['-I', '-c', PHOTO_PROBE], { capture: true }));
+    say(
+      photo.pycolmap
+        ? `  photogrammetry: pycolmap ${photo.pycolmap} (${photo.colmapBuild}); OpenCV ${photo.opencv}; pymeshlab ${photo.pymeshlab}`
+        : '  no photogrammetry wheels on this platform (decision 8)',
+    );
+    if (photo.pycolmap && (!photo.opencv || !photo.pymeshlab || !(photo.poissonFaces > 100)))
+      fail(`photogrammetry wheels incomplete: ${JSON.stringify(photo)}`);
+    if (pdal) {
+      const { version: pdalVersion, missing } = checkPdal(pdal);
+      if (missing.length > 0) fail(`PDAL lacks ${missing.join(', ')}`);
+      say(`  ${pdalVersion}`);
     }
 
-    // 4b. Native licence gate over every DLL, dylib and executable of the pack (M10 G1)
+    // 4b. Native licence report over every DLL, dylib and executable of the pack: a summary, never
+    // a failure (founder decision of 8 Oct 2026); the notes go to the build log
     const gate = runGate({ scan: [tmp] });
-    for (const p of gate.pending)
-      say(`  warning: licence exception "${p}" waits for founder approval`);
-    if (gate.problems.length > 0) fail(`native licence gate:\n  ${gate.problems.join('\n  ')}`);
-    if (values.strict && gate.pending.length > 0)
-      fail(`native licence gate (--strict): approval pending for ${gate.pending.join(', ')}`);
-    say(`  native licence gate: ${gate.files} native files checked`);
+    say(
+      `  native licence report: ${gate.files} native files, ${gate.problems.length} notes (report only)`,
+    );
+    for (const n of gate.problems.slice(0, 20)) say(`    ${n}`);
+    if (gate.problems.length > 20) say(`    ... and ${gate.problems.length - 20} more`);
 
     // 5. Manifest with every file's size and hash
     const files = {};
@@ -356,6 +369,12 @@ async function main() {
       appRange: ver.appRange,
       python: { version: CPYTHON, build: PBS_RELEASE, executable: target.exe },
       platform,
+      prebuilt: {
+        photogrammetry: photo.pycolmap
+          ? { pycolmap: photo.pycolmap, opencv: photo.opencv, pymeshlab: photo.pymeshlab }
+          : null,
+        pdal: pdal ? 'tools/pdal (conda-forge libpdal-core, tools/pdal/conda-packages.json)' : null,
+      },
       createdAt: new Date().toISOString(),
       pipelines,
       files,

@@ -30,7 +30,7 @@ Without a certificate the build is unsigned. Windows SmartScreen then shows "Win
 | `pnpm -F @aio/desktop dist:mac`       | Universal (arm64 + x64) `dmg` + `zip` (run on a Mac, see macOS)       |
 | `pnpm -F @aio/desktop dist:config`    | Write and print the effective electron-builder config, build nothing  |
 | `pnpm icons`                          | Re-render icons, Store tiles and listing images from `packages/brand` |
-| `pnpm license:check`                  | Licence gate (also runs in CI)                                        |
+| `pnpm license:check`                  | Licence report, never fails (also runs in CI)                         |
 | `pnpm test:e2e`                       | Playwright Electron suite with the zero-network guard                 |
 
 ## How the config is put together
@@ -129,7 +129,8 @@ Design and failure handling: [ADR 0003](../architecture/adr/0003-updates-and-rol
 
 - **check** on `windows-latest` and `macos-latest`: install (pnpm store cached), `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm test`.
 - **e2e** on `windows-latest` and `macos-latest`, in two shards each (`playwright test --shard=1/2` and `2/2`, one worker, no retries, a flaky test fails), beside **check**: install, `pnpm -F @aio/desktop build`, the pipeline venv and the demo project, then the shard. On failure the Playwright output (traces included) is uploaded as `playwright-<os>-shard<n>`.
-- **licence check** on Ubuntu: `pnpm license:check`. Production dependencies of every workspace package must be MIT, MIT-0, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0, MPL-2.0, 0BSD, CC0-1.0, BlueOak-1.0.0 or Unlicense; no dependency at all may be GPL or AGPL.
+- **licence check** on Ubuntu: `pnpm license:check` and the data report. Reports only since the founder decision of 8 Oct 2026: packages outside the permissive allow-list (MIT, MIT-0, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0, MPL-2.0, 0BSD, CC0-1.0, BlueOak-1.0.0, Unlicense) and any GPL or AGPL dependency show as warnings; the job never fails.
+- **pipelines** on `windows-latest` and `macos-latest`: `uv sync --frozen` (the prebuilt pycolmap, OpenCV and pymeshlab wheels), conda-forge's PDAL (`tools/pipeline-pack/pdal.mjs`), Ruff and the whole pytest suite on the real engines. No native build stage: `pack-native.yml` is gone.
 
 `.github/workflows/nightly.yml` (02:00 UTC and on demand) builds the installers on Windows and macOS and uploads them as `installers-<os>`. It never signs: it reads no signing secret, sets `QUADRION_NO_SIGNING=1`, and fails if the signing mode is anything but unsigned / ad-hoc.
 
@@ -137,7 +138,7 @@ Design and failure handling: [ADR 0003](../architecture/adr/0003-updates-and-rol
 
 - **package (Windows):** signed NSIS installer and portable exe (`dist:win`, bundle check and packaged smoke test included), the DigiCert KeyLocker set-up on that route, `signtool verify /pa`, timestamp and publisher (`WIN_PUBLISHER_NAME`) checks of every exe when signing is on, the Store `.msix`, SHA-256 sums; artifact `release-windows`.
 - **package (macOS universal):** universal dmg and zip, `lipo` and keyring-addon checks, the Info.plist URL and document types printed, a Rosetta smoke test of the Intel slice, `codesign` / `spctl` / `stapler` checks when signed and notarised, SHA-256 sums; artifact `release-macos`.
-- **pipeline pack** on `macos-latest` (arm64) and `macos-15-intel` (x64): `tools/pipeline-pack/build.mjs`, archived as `.tar.gz` (keeps symlinks and permissions); artifacts `pipeline-pack-macos-<arch>`.
+- **pipeline pack** on `windows-2025`, `macos-15` (arm64) and `macos-15-intel` (x64): `tools/pipeline-pack/build.mjs` from prebuilt parts (the locked wheels and conda-forge's PDAL, a few minutes), the size budget, archived as `.tar.gz` (keeps symlinks and permissions); artifacts `pipeline-pack-<arch>`.
 
 Nothing is published. Only `release.yml` reads the signing secrets and variables, listed with how to create them in `SECRETS.md`, and it signs only for a `v*` tag; any other run, and a run with none set, produces unsigned (Windows) or ad-hoc signed (macOS) builds and stays green.
 
