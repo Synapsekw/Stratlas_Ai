@@ -1,6 +1,6 @@
 /**
  * Process photos on the real pipelines (M10 G2 alignment and georeferencing): G8's synthetic
- * mini flight (`python/tests/photo_synth.py --mini`, nine nadir photos and five bad ones at
+ * mini flight (`python/tests/photo_synth.py --mini`, 20 nadir photos and five bad ones at
  * 960 x 720 over a fictional desert site) in a folder outside the project, aligned by COLMAP,
  * marked on its photos read through main, adjusted on the control points and judged on the
  * checkpoints. The stand-in specs (`photo-process.spec.ts`, `gcp-marking.spec.ts`) cover the app's
@@ -122,6 +122,11 @@ test.describe('real photo pipelines', () => {
     const table = panel.getByTestId('gcp-table');
     const marker = panel.getByTestId('gcp-marker');
     for (const t of realSite.truth.targets.filter((x) => x.role !== 'blunder')) {
+      // a point in fewer than three photos of the flight (GCP4, CHK1) is switched off
+      if (t.observations.length < 3) {
+        await table.getByRole('checkbox', { name: `Use ${t.id}` }).uncheck();
+        continue;
+      }
       await table.getByRole('button', { name: `Mark ${t.id}` }).click();
       await expect(marker.getByRole('img', { name: /^Photo / })).toHaveAttribute('src', /^blob:/, {
         timeout: 20_000,

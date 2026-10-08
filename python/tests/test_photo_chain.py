@@ -1,6 +1,6 @@
 """photo.align then photo.products on G8's synthetic photos, end to end (M10 integration).
 
-Two variants on the mini set (nine rendered nadir photos and five bad ones at 960 x 720, RTK
+Two variants on the mini set (20 rendered nadir photos and five bad ones at 960 x 720, RTK
 geotags, ``photo_synth.py``):
 
 - **precomputed engine** (always): the real ``photo.align`` (EXIF and XMP, inspection, pairs,
@@ -208,6 +208,6 @@ def test_align_then_products_with_colmap_and_spaces_in_the_folders(monkeypatch, 
     project = _project(tmp_path / "project")
     _chain(monkeypatch, project, flight, engine=None, preset="high")
     gsd = mini_rtk.truth["gsdCm"] / 100
-    # nine nadir photos from one height, no ground control: the self-calibrated focal length moves
+    # nadir photos from one height, no ground control: the self-calibrated focal length moves
     # every height by the same amount (photo.align warns about it), so the bias is loose here
     _check(project, mini_rtk.root, registered_at_least=8, bias_m=2.5, spread_m=6 * gsd)

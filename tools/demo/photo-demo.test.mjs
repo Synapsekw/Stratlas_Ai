@@ -83,6 +83,12 @@ describe('photo demo run files', () => {
       { photo: 'syn-0002', px: [110.5, 210.25], radiusPx: 30.6 },
     ]);
     expect(gcp.points.every((p) => p.marks.length === 0)).toBe(true);
+    // G2 cannot be marked here: it is switched off, so it does not hold Adjust back
+    expect(gcp.points.map((p) => [p.id, p.disabled ?? false])).toEqual([
+      ['G1', false],
+      ['G2', true],
+      ['C1', false],
+    ]);
     expect(accuracy.checkpointsInAdjustment).toBe(false);
     // the report lists only points in two registered photos or more, and says why G2 is missing
     expect(accuracy.points.map((p) => [p.id, p.role, p.dzM])).toEqual([
