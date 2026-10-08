@@ -90,7 +90,8 @@ function main(argv) {
   const meta = fromIdx >= 0 ? JSON.parse(readFileSync(argv[fromIdx + 1], 'utf8')) : pythonRows();
   const { entries, checked, kept } = toEntries(meta.rows);
   const doc = {
-    schema: 'aio.crs-catalogue/1',
+    format: 'epsg-catalogue',
+    version: 1,
     source: `EPSG dataset in PROJ ${meta.proj} (pyproj ${meta.pyproj})`,
     entries,
   };

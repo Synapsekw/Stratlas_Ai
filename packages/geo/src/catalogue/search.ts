@@ -8,9 +8,13 @@ import type { CrsCatalogueEntry } from '@aio/schema';
 
 export type CrsKind = CrsCatalogueEntry['kind'];
 
-/** The decompressed catalogue file (`aio.crs-catalogue/1`). */
+/**
+ * The decompressed catalogue file: a build artefact bundled with the app, never a project or user
+ * file, so it has a format name and version rather than an `aio.*` file schema id.
+ */
 export interface CrsCatalogue {
-  schema: 'aio.crs-catalogue/1';
+  format: 'epsg-catalogue';
+  version: 1;
   /** The EPSG dataset and PROJ version it was read from. */
   source: string;
   entries: CrsCatalogueEntry[];
@@ -27,10 +31,15 @@ export interface CrsSearch {
 /** Parse the catalogue's JSON text, refusing anything that is not a catalogue. */
 export function parseCatalogue(text: string): CrsCatalogue {
   const doc = JSON.parse(text) as Partial<CrsCatalogue>;
-  if (doc.schema !== 'aio.crs-catalogue/1' || !Array.isArray(doc.entries)) {
-    throw new Error('Not a CRS catalogue (aio.crs-catalogue/1).');
+  if (doc.format !== 'epsg-catalogue' || doc.version !== 1 || !Array.isArray(doc.entries)) {
+    throw new Error('Not an EPSG catalogue this build reads (epsg-catalogue version 1).');
   }
-  return { schema: doc.schema, source: doc.source ?? '', entries: doc.entries };
+  return {
+    format: doc.format,
+    version: doc.version,
+    source: doc.source ?? '',
+    entries: doc.entries,
+  };
 }
 
 /** Does a west, south, east, north box (degrees, may cross the antimeridian) hold a point? */
