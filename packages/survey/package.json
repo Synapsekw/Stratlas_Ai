@@ -1,0 +1,16 @@
+{
+  "name": "@aio/survey",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Surveying (M11): the survey engine's TypeScript executor, measurement tools, sections, templates and calculators.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aio/schema": "workspace:*"
+  }
+}
