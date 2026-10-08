@@ -50,6 +50,7 @@ export function MeasurementList({ stage }: { stage: EngineStage | null }) {
   const readOnly = useMeasure((s) => s.readOnly);
   const autosave = useMeasure((s) => s.autosave);
   const dirty = useMeasure(isDirty);
+  const unwritten = useMeasure((s) => s.resultsUnwritten);
   const saving = useMeasure((s) => s.saving);
   const message = useMeasure((s) => s.message);
   const status = useMeasure((s) => s.status);
@@ -381,7 +382,8 @@ export function MeasurementList({ stage }: { stage: EngineStage | null }) {
             Autosave
           </label>
           <span className="small faint sv-grow" role="status">
-            {message ?? (dirty ? 'Unsaved changes' : 'All saved')}
+            {message ??
+              (dirty ? 'Unsaved changes' : unwritten ? 'New results not saved yet' : 'All saved')}
           </span>
           {dirty && (
             <button type="button" className="btn sm ghost" onClick={revertMeasurements}>
@@ -391,7 +393,7 @@ export function MeasurementList({ stage }: { stage: EngineStage | null }) {
           <button
             type="button"
             className="btn sm primary"
-            disabled={!dirty || saving}
+            disabled={(!dirty && !unwritten) || saving}
             data-testid="survey-list-save"
             onClick={() => {
               void saveMeasurements();

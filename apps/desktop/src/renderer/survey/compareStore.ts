@@ -3,7 +3,9 @@
  * project, its prepared surfaces and designs, and the results of each measurement's comparison
  * items. The focused polygon is computed when its inputs change (its stored results' fingerprints
  * no longer match), and while its vertices are dragged (live numbers, not stored). A result whose
- * fingerprint no longer matches is shown as **Stale, recompute**, never as current.
+ * fingerprint no longer matches is shown as **Stale, recompute**, never as current. Results the
+ * app computes on its own (on focus) are derived, not a person's edit: they do not mark the file
+ * unsaved and are written with the next save; Recompute is the person's and is saved as an edit.
  */
 import type { DraftRegion } from '@aio/survey';
 import type {
@@ -20,7 +22,7 @@ import { createStore, useStore } from 'zustand';
 import { bridge } from '../shell';
 import { connectEngine, RunCancelled, startEngineWorker, type EngineClient } from './engineClient';
 import type { EnginePort, HeatGrid, RunReply } from './engineProtocol';
-import { measureStore, updateMeasurement } from './measureStore';
+import { measureStore, setComputedResults, updateMeasurement } from './measureStore';
 
 export interface CaptureInfo {
   id: string;
@@ -243,11 +245,13 @@ const HEAT_CELLS = 192;
 
 /**
  * Compute a measurement's items now. Stored on the measurement unless `live` (dragging): then the
- * numbers are shown and the stored results stay until the edit ends.
+ * numbers are shown and the stored results stay until the edit ends. `auto` (the app computing
+ * the focused polygon on its own) stores them as derived results that leave the file saved; a
+ * person's Recompute stores them as an edit.
  */
 export async function compute(
   id: string,
-  opts: { live?: boolean; points?: readonly SitePoint[] } = {},
+  opts: { live?: boolean; auto?: boolean; points?: readonly SitePoint[] } = {},
 ): Promise<RunReply | null> {
   const m = measureStore.getState().file.measurements.find((x) => x.id === id);
   if (m?.family !== 'polygon' || m.items.length === 0 || get().status !== 'ready') return null;
@@ -277,13 +281,13 @@ export async function compute(
     });
     if (!live && !measureStore.getState().readOnly) {
       const byItem = new Map(r.results.map((x) => [x.item, x]));
-      updateMeasurement(id, (x) => ({
-        ...x,
-        results: x.items.flatMap((it) => {
+      const merged = (x: SurveyMeasurement) =>
+        x.items.flatMap((it) => {
           const res = byItem.get(it.id) ?? x.results.find((y) => y.item === it.id);
           return res ? [res] : [];
-        }),
-      }));
+        });
+      if (opts.auto) setComputedResults(id, merged);
+      else updateMeasurement(id, (x) => ({ ...x, results: merged(x) }));
       set({
         current: { ...get().current, [id]: r.results.map((x) => x.fingerprint) },
       });
@@ -325,7 +329,7 @@ export function scheduleCheck(delayMs = 120): void {
         return !r || r.status === 'stale' || r.fingerprint !== cur[k];
       });
       const shown = get().computed[m.id];
-      if (needs) await compute(m.id);
+      if (needs) await compute(m.id, { auto: true });
       else if (!shown || shown.live || shown.ringKey !== ringKey(m.points))
         // stored results are current: compute once more for the heat map only
         await compute(m.id, { live: true });
