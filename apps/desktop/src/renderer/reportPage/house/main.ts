@@ -8,9 +8,12 @@ import {
   HOUSE_SECTIONS,
   houseReportModel,
   issueAction,
+  measurementsCsv,
   narrativeFacts,
   processingSummary,
   resolveReportBranding,
+  stockpileCsv,
+  SURVEY_SECTIONS,
   type AuditSummary,
   type HouseModel,
   type ProcessingSummary,
@@ -59,12 +62,14 @@ import {
   layoutSite,
   layoutStatistics,
   layoutSummary,
+  SECTION_LAYOUTS,
   sectionTitle,
   type ContentsEntry,
   type HouseContext,
   type IssueImages,
 } from './sections';
 import { layoutApprovals, parseSignOff } from '../../team/houseApprovals';
+import { buildSurveyData, readSurveyFiles, surveySectionIds, type SurveyFiles } from './surveyData';
 
 interface PageState {
   state: 'loading' | 'ready' | 'error';
@@ -76,6 +81,8 @@ interface PageState {
   pages?: number;
   /** Seconds spent per phase, for the e2e timing report. */
   timings?: Record<string, number>;
+  /** A survey CSV export (`only` = `measurements-csv` or `stockpile-csv`): the file's text. */
+  csv?: string;
 }
 
 const w = window as unknown as { __report: PageState };
@@ -192,13 +199,70 @@ async function run(): Promise<void> {
     if (acc) processing = processingSummary(acc, parsed(PhotoRun, runRaw, 'run.json'), manifest);
   }
   // the run's accuracy report PDF: the processing section alone, behind its own cover
-  const only = params.get('only') === 'processing';
+  const onlyParam = params.get('only');
+  const only = onlyParam === 'processing';
   if (only) {
     if (!processing) throw new Error('This project has no processing run with an accuracy report.');
     contents = {
       sections: Object.fromEntries(HOUSE_SECTIONS.map((id) => [id, id === 'processing'])),
     };
   }
+  // M11: the survey sections (and the survey report PDF and CSVs: the survey data alone)
+  const surveyOnly = onlyParam === 'survey';
+  const csvKind =
+    onlyParam === 'measurements-csv' || onlyParam === 'stockpile-csv' ? onlyParam : null;
+  const surfaceIds = (params.get('surfaces') ?? '').split(',').filter((x) => x !== '');
+  const read = {
+    json: (path: string) => optional(projectId, path),
+    text: async (path: string) => {
+      try {
+        const r = await fetch(assetUrl(projectId, { path }));
+        return r.ok ? await r.text() : null;
+      } catch {
+        return null;
+      }
+    },
+    bytes: async (path: string) => {
+      try {
+        const r = await fetch(assetUrl(projectId, { path }));
+        return r.ok ? new Uint8Array(await r.arrayBuffer()) : null;
+      } catch {
+        return null;
+      }
+    },
+  };
+  let surveyFiles: SurveyFiles | null = null;
+  try {
+    surveyFiles = await readSurveyFiles(read, manifest, surfaceIds);
+  } catch (e) {
+    console.warn('Report: the survey files are unreadable and left out', e);
+  }
+  if ((surveyOnly || csvKind) && !surveyFiles)
+    throw new Error('This project has no saved survey measurements.');
+  const progress = (phase: string) => (done: number, total: number) => {
+    set({ phase, done, total });
+  };
+  if (csvKind && surveyFiles) {
+    const data = await buildSurveyData(surveyFiles, read.bytes, {
+      need: csvKind,
+      progress: progress('Computing the survey volumes'),
+    });
+    const csv = csvKind === 'measurements-csv' ? measurementsCsv(data) : stockpileCsv(data);
+    const count =
+      csvKind === 'measurements-csv' ? data.measurements.length : data.stockpiles.rows.length;
+    set({ state: 'ready', phase: 'Ready', done: count, total: count, count, csv });
+    return;
+  }
+  const surveySections = surveyFiles ? surveySectionIds(surveyFiles) : [];
+  if (surveyOnly)
+    contents = {
+      sections: Object.fromEntries(
+        HOUSE_SECTIONS.map((id) => [
+          id,
+          (SURVEY_SECTIONS as readonly ReportSectionId[]).includes(id),
+        ]),
+      ),
+    };
   const h: HouseModel = houseReportModel({
     manifest,
     issues,
@@ -209,8 +273,13 @@ async function run(): Promise<void> {
     road: road?.ok ? road.value : null,
     audit,
     processing,
+    surveySections,
   });
-  document.title = only ? `${h.base.title} accuracy report` : `${h.base.title} report`;
+  document.title = only
+    ? `${h.base.title} accuracy report`
+    : surveyOnly
+      ? `${h.base.title} survey report`
+      : `${h.base.title} report`;
   const template = templateNarrative(narrativeFacts(h), { todo: false });
   const text = Object.fromEntries(
     (['summary', 'method', 'findings'] as const).map((id: NarrativeSectionId) => [
@@ -232,8 +301,8 @@ async function run(): Promise<void> {
   set({ phase: 'Loading the 3D model', done: 0, total: h.issuePages.length });
   let snap: Snapshotter | null = null;
   try {
-    // the accuracy report draws no 3D view
-    if (!only)
+    // the accuracy and survey reports draw no 3D view
+    if (!only && !surveyOnly)
       snap = await createSnapshotter(projectId, manifest, {
         width: 760,
         height: 560,
@@ -250,6 +319,13 @@ async function run(): Promise<void> {
       return null;
     }
   };
+  const survey =
+    surveyFiles && h.sections.some((id) => (SURVEY_SECTIONS as readonly string[]).includes(id))
+      ? await buildSurveyData(surveyFiles, read.bytes, {
+          need: 'report',
+          progress: progress('Computing the survey volumes'),
+        })
+      : null;
   const overview: string[] = [];
   if (snap && h.sections.includes('site')) {
     for (const [az, el] of [
@@ -267,6 +343,8 @@ async function run(): Promise<void> {
     images: { overview, ...(thumbnail ? { thumbnail } : {}) },
     product: brand.productName,
     ...(only ? { only: { kicker: t('house.proc.cover') } } : {}),
+    ...(surveyOnly ? { only: { kicker: t('house.survey.cover') } } : {}),
+    survey,
   };
   lap('model', t1);
 
@@ -435,6 +513,14 @@ async function run(): Promise<void> {
           entries.push({ label: title, page: pager.start('appendix'), num: letter, sub: true });
         });
         break;
+      }
+      default: {
+        // sections with a module of their own (sections.ts SECTION_LAYOUTS: the survey sections)
+        const layout = SECTION_LAYOUTS[id];
+        if (!layout) break;
+        const n = numbered(id);
+        pager.start(id);
+        layout(pager, ctx, n);
       }
     }
   }

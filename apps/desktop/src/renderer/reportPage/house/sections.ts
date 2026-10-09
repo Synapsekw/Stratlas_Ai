@@ -5,6 +5,7 @@ import {
   type HouseModel,
   type ReportBranding,
   type ReportRow,
+  type SurveyReportData,
 } from '@aio/project/export';
 import type { NarrativeSectionId, ReportSectionId } from '@aio/schema';
 import { t } from '@aio/ui';
@@ -12,6 +13,7 @@ import { listOf, longDate, num, num1 } from '../../report/narrativeTemplate';
 import { barChart, esc, logoUrl } from '../layout';
 import { isFlat, pileMap, planMap, sideView } from './charts';
 import type { Pager } from './pager';
+import { layoutEarthworks, layoutLandfill, layoutMeasurements, layoutStockpiles } from './survey';
 
 type Key = Parameters<typeof t>[0];
 const tk = (key: string, vars?: Record<string, string | number>) => t(key as Key, vars);
@@ -45,6 +47,8 @@ export interface HouseContext {
   product: string;
   /** A report of one section (the run's accuracy report PDF): its name in the frame and cover. */
   only?: { kicker: string };
+  /** M11: the survey sections' data (`surveyData.ts`), when any of them prints. */
+  survey?: SurveyReportData | null;
 }
 
 /** What the frame and the cover call the report. */
@@ -179,7 +183,7 @@ export function heading(p: Pager, kicker: string, title: string): void {
   p.add(el(`<h1>${txt(title)}</h1>`), true);
 }
 
-function subheading(p: Pager, title: string): void {
+export function subheading(p: Pager, title: string): void {
   p.add(el(`<h2>${txt(title)}</h2>`), true);
 }
 
@@ -190,7 +194,7 @@ function paragraphs(p: Pager, text: string): void {
   }
 }
 
-function tableMaker(cls: string, head: readonly string[]) {
+export function tableMaker(cls: string, head: readonly string[]) {
   return () => {
     const table = el(
       `<table class="${cls}"><thead><tr>${head.map((x) => `<th>${txt(x)}</th>`).join('')}</tr></thead><tbody></tbody></table>`,
@@ -201,12 +205,14 @@ function tableMaker(cls: string, head: readonly string[]) {
   };
 }
 
-const row = (cells: readonly string[], cls = '') =>
+export const row = (cells: readonly string[], cls = '') =>
   el(
     `<table><tbody><tr class="${cls}">${cells.map((c) => `<td>${c}</td>`).join('')}</tr></tbody></table>`,
   ).querySelector('tr') as HTMLElement;
 
-function tiles(items: readonly { value: string; label: string; color?: string }[]): HTMLElement {
+export function tiles(
+  items: readonly { value: string; label: string; color?: string }[],
+): HTMLElement {
   return el(
     `<div class="tiles">${items
       .map(
@@ -990,6 +996,19 @@ export function layoutProcessing(p: Pager, ctx: HouseContext, n: string): void {
     p.add(el(`<p class="caption">${txt(tk('house.proc.overlap'))}</p>`));
   }
 }
+
+/**
+ * Sections laid out by a module of their own, one line each (M11 G9's survey sections in
+ * `survey.ts`; a later stream adds its section here the same way).
+ */
+export const SECTION_LAYOUTS: Partial<
+  Record<ReportSectionId, (p: Pager, ctx: HouseContext, n: string) => void>
+> = {
+  measurements: layoutMeasurements,
+  earthworks: layoutEarthworks,
+  stockpiles: layoutStockpiles,
+  landfill: layoutLandfill,
+};
 
 /** Section titles for the contents. */
 export const sectionTitle = (id: ReportSectionId): string => tk(`house.sec.${id}`);
