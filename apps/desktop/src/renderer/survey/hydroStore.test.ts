@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import type { HydroRun, ProjectManifest } from '@aio/schema';
+import type { HeightTiles, HydroRun, ProjectManifest } from '@aio/schema';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const runs: HydroRun[] = [];
+const started: { pipeline: string; project: string; params: Record<string, unknown> }[] = [];
 vi.mock('../shell', () => ({
   bridge: {
     call: (channel: string) =>
@@ -12,10 +13,29 @@ vi.mock('../shell', () => ({
           : { ok: true, value: { ok: true, runs } },
       ),
   },
-  jobs: { getState: () => ({ start: () => Promise.resolve(null) }) },
+  jobs: {
+    getState: () => ({
+      start: (req: (typeof started)[number]) => {
+        started.push(req);
+        return Promise.resolve(null);
+      },
+    }),
+  },
 }));
 
-const { hydro, loadHydro, newRunId, prepareParams } = await import('./hydroStore');
+const {
+  HYDRO_CELL_LIMITS,
+  hydro,
+  isCellLimitError,
+  loadHydro,
+  newRunId,
+  prepareParams,
+  regionNeed,
+  runCells,
+  startHydro,
+  withRegion,
+} = await import('./hydroStore');
+const { workspace } = await import('@aio/workspace');
 const { parsePoint, parsePoints } = await import('./HydroForms');
 const { tabOf } = await import('./Hydro');
 
@@ -87,5 +107,77 @@ describe('hydrology in the renderer (G10)', () => {
     expect(
       tabOf(run('b', { results: { mode: 'catchment', method: 'd8', depressions: 'fill' } })),
     ).toBe('catchment');
+  });
+
+  it('counts the cells a run reads and asks for a region above the limit', () => {
+    // 4 km by 3 km at 0.5 m: 8000 by 6000 = 48 million cells
+    const s: Pick<HeightTiles, 'bounds' | 'cellM' | 'originE' | 'originN'> = {
+      bounds: [0, 0, 0, 4000, 3000, 10],
+      cellM: 0.5,
+      originE: 0,
+      originN: 0,
+    };
+    expect(runCells(s, null)).toEqual({ cols: 8000, rows: 6000, cellM: 0.5 });
+    expect(regionNeed('hydro.flood', s, null)).toMatch(
+      /^The surface is 8,000 by 6,000 cells at 0.5 m; Flood to level takes at most 25,000,000 cells\. Pick or draw a region/,
+    );
+    // a 1 km square region: 2000 by 2000 = 4 million, at the runoff limit exactly
+    const square: [number, number][] = [
+      [1000, 1000],
+      [2000, 1000],
+      [2000, 2000],
+      [1000, 2000],
+    ];
+    expect(runCells(s, square)).toEqual({ cols: 2000, rows: 2000, cellM: 0.5 });
+    expect(regionNeed('hydro.flow', s, square)).toBeNull();
+    expect(regionNeed('hydro.flood', s, square)).toBeNull();
+    // rainfall resamples to its own cell: the whole site at 2 m is 2000 by 1500 = 3 million
+    expect(regionNeed('hydro.rainfall', s, null, 2)).toBeNull();
+    expect(regionNeed('hydro.rainfall', s, null, 1)).toMatch(
+      /Direct rainfall takes at most 4,000,000/,
+    );
+    // a region beyond the surface
+    const away: [number, number][] = [
+      [5000, 5000],
+      [6000, 5000],
+      [6000, 6000],
+    ];
+    expect(runCells(s, away)).toBeNull();
+    expect(regionNeed('hydro.flow', s, away)).toMatch(/does not overlap/);
+    expect(regionNeed('hydro.flow', undefined, null)).toBeNull();
+    expect(HYDRO_CELL_LIMITS['hydro.flow']).toBe(4_000_000);
+  });
+
+  it('sends the region with the run, and knows the pipeline refusal', async () => {
+    const square: [number, number][] = [
+      [1, 1],
+      [2, 1],
+      [2, 2],
+    ];
+    expect(withRegion({ surface: 's' }, square)).toEqual({ surface: 's', region: square });
+    expect(withRegion({ surface: 's' }, null)).toEqual({ surface: 's' });
+    workspace.setState({ project: { id: 'p', root: 'C:/projects/p' } } as unknown as Parameters<
+      typeof workspace.setState
+    >[0]);
+    started.length = 0;
+    expect(
+      await startHydro(
+        'hydro.flood',
+        withRegion({ surface: 's', levelM: 3, mode: 'all-below' }, square),
+        'flood',
+      ),
+    ).toBeNull();
+    expect(started[0]).toMatchObject({
+      pipeline: 'hydro.flood',
+      project: 'C:/projects/p',
+      params: { surface: 's', levelM: 3, mode: 'all-below', region: square },
+    });
+    expect(
+      isCellLimitError(
+        'The area is 8,000 by 6,000 cells at 0.5 m; this tool takes at most 4,000,000 cells (about 1,000 by 1,000 m at this cell). Draw a region around the area of interest.',
+      ),
+    ).toBe(true);
+    expect(isCellLimitError('The surface has no data.')).toBe(false);
+    expect(isCellLimitError(null)).toBe(false);
   });
 });

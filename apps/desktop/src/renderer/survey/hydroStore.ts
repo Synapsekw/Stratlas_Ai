@@ -140,6 +140,93 @@ export async function startHydro(
   return null;
 }
 
+// ------------------------------------------------------------------------------------ regions
+
+export type HydroJob = 'hydro.flood' | 'hydro.flow' | 'hydro.rainfall';
+
+/** The cells each tool reads at most (the pipelines' `MAX_CELLS`); a region narrows a larger site. */
+export const HYDRO_CELL_LIMITS: Record<HydroJob, number> = {
+  'hydro.flood': 25_000_000,
+  'hydro.flow': 4_000_000,
+  'hydro.rainfall': 4_000_000,
+};
+
+const TOOL_NAME: Record<HydroJob, string> = {
+  'hydro.flood': 'Flood to level',
+  'hydro.flow': 'Runoff and catchment',
+  'hydro.rainfall': 'Direct rainfall',
+};
+
+export type Ring = [number, number][];
+
+/**
+ * The cells a run reads (columns, rows) at `cellM` (the surface's own cell by default) over the
+ * surface's extent, or over the part of it the region's box covers, as `load_surface` counts them.
+ * Null when the region misses the surface.
+ */
+export function runCells(
+  surface: Pick<HeightTiles, 'bounds' | 'cellM' | 'originE' | 'originN'>,
+  region: Ring | null,
+  cellM?: number,
+): { cols: number; rows: number; cellM: number } | null {
+  const [minE, minN, , maxE, maxN] = surface.bounds;
+  let box = [minE, minN, maxE, maxN];
+  if (region && region.length >= 3) {
+    const xs = region.map((p) => p[0]);
+    const ys = region.map((p) => p[1]);
+    box = [
+      Math.max(Math.min(...xs), minE),
+      Math.max(Math.min(...ys), minN),
+      Math.min(Math.max(...xs), maxE),
+      Math.min(Math.max(...ys), maxN),
+    ];
+  }
+  const c = cellM ?? surface.cellM;
+  const [w0 = 0, s0 = 0, e0 = 0, n0 = 0] = box;
+  const i0 = Math.max(0, Math.floor((w0 - surface.originE) / c + 1e-9));
+  const j0 = Math.max(0, Math.floor((s0 - surface.originN) / c + 1e-9));
+  const i1 = Math.ceil((e0 - surface.originE) / c - 1e-9);
+  const j1 = Math.ceil((n0 - surface.originN) / c - 1e-9);
+  if (i1 <= i0 || j1 <= j0) return null;
+  return { cols: i1 - i0, rows: j1 - j0, cellM: c };
+}
+
+const count = new Intl.NumberFormat('en');
+
+/**
+ * Why a run needs a region (the area is above the tool's cell limit, or the region misses the
+ * surface), or null when it can run as it is.
+ */
+export function regionNeed(
+  pipeline: HydroJob,
+  surface: Pick<HeightTiles, 'bounds' | 'cellM' | 'originE' | 'originN'> | undefined,
+  region: Ring | null,
+  cellM?: number,
+): string | null {
+  if (!surface) return null;
+  const cells = runCells(surface, region, cellM);
+  if (!cells) return 'The region does not overlap the surface. Pick or draw another one.';
+  const limit = HYDRO_CELL_LIMITS[pipeline];
+  if (cells.cols * cells.rows <= limit) return null;
+  const area = `${count.format(cells.cols)} by ${count.format(cells.rows)} cells at ${String(cells.cellM)} m`;
+  return region
+    ? `The region is ${area}; ${TOOL_NAME[pipeline]} takes at most ${count.format(limit)} cells. Draw a smaller region.`
+    : `The surface is ${area}; ${TOOL_NAME[pipeline]} takes at most ${count.format(limit)} cells. Pick or draw a region around the area of interest.`;
+}
+
+/** A pipeline refusal for too many cells (the job's own words), so the panel asks for a region. */
+export function isCellLimitError(error: string | null): boolean {
+  return error !== null && /takes at most [\d,]+ cells/.test(error);
+}
+
+/** The params of a run with its region, when one is chosen. */
+export function withRegion(
+  params: Record<string, unknown>,
+  region: Ring | null,
+): Record<string, unknown> {
+  return region && region.length >= 3 ? { ...params, region } : params;
+}
+
 /** The DSM layers of a project as `survey.prepare` surfaces (`dsm-<capture or layer>`). */
 export function prepareParams(manifest: ProjectManifest): SurveyPrepareParams | null {
   const surfaces: SurveyPrepareParams['surfaces'] = [];
