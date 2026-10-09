@@ -31,7 +31,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { join, relative, resolve, win32 } from 'node:path';
 import { parseArgs } from 'node:util';
 import { packBudgetProblems } from '../release/budgets.mjs';
 import { runGate } from '../release/native-licences.mjs';
@@ -50,27 +50,95 @@ const TARGETS = {
 
 const repo = resolve(import.meta.dirname, '..', '..');
 
-/** Run with the pack's Python: the photogrammetry wheels it has (none on an Intel Mac). */
-const PHOTO_PROBE = `
+// The photogrammetry smoke test runs each engine in the process the product runs it in. pycolmap and
+// pymeshlab each bundle their own libomp, and two copies in one process abort on macOS ("OMP: Error
+// #15", nightly of 9 Oct 2026), so they never share one: pycolmap runs in the COLMAP child
+// (photo/colmap_io.py), OpenCV in the pipeline process (dense matching), and MeshLab in a child that
+// pipeline process starts (photo/mesh.py).
+
+/** Run with the pack's Python, like the COLMAP child: pycolmap alone (none on an Intel Mac). */
+const COLMAP_PROBE = `
 import json
+try:
+    import pycolmap
+    print(json.dumps({"pycolmap": pycolmap.__version__, "colmapBuild": pycolmap.COLMAP_build}))
+except ImportError:
+    print("{}")
+`;
+
+/**
+ * Run with the pack's Python, like the pipeline process: OpenCV loaded, then MeshLab's screened
+ * Poisson on a small sphere through the product's own child command and environment (photo/mesh.py),
+ * so its Qt and plugins load in the pack.
+ */
+const MESH_PROBE = `
+import importlib.metadata as md, json, subprocess, sys, tempfile
+from pathlib import Path
 out = {}
 try:
-    import pycolmap, cv2, importlib.metadata as md
-    out = {"pycolmap": pycolmap.__version__, "colmapBuild": pycolmap.COLMAP_build, "opencv": cv2.__version__}
-    out["pymeshlab"] = md.version("pymeshlab")
+    import cv2
+    out["opencv"] = cv2.__version__
 except ImportError:
     pass
-if out:
-    # MeshLab's screened Poisson on a small sphere: its Qt and plugins load in the pack
-    import numpy as np, pymeshlab
+try:
+    out["pymeshlab"] = md.version("pymeshlab")
+except md.PackageNotFoundError:
+    pass
+if "pymeshlab" in out:
+    import numpy as np
+    from aio_pipelines.photo import mesh as M
     p = np.random.default_rng(0).normal(size=(3000, 3))
     p /= np.linalg.norm(p, axis=1, keepdims=True)
-    ms = pymeshlab.MeshSet()
-    ms.add_mesh(pymeshlab.Mesh(vertex_matrix=p, v_normals_matrix=p))
-    ms.generate_surface_reconstruction_screened_poisson(depth=5, threads=1)
-    out["poissonFaces"] = ms.current_mesh().face_number()
+    with tempfile.TemporaryDirectory() as d:
+        src, dst = Path(d) / "sphere.ply", Path(d) / "sphere.npz"
+        M.write_ply_chunks(src, [(p, p, np.zeros((len(p), 3), np.uint8))], len(p))
+        r = subprocess.run(M.meshlab_command(src, dst, 5, 1, 0), env=M.meshlab_env(1),
+                           capture_output=True, text=True, timeout=600)
+        if r.returncode == 0 and dst.is_file():
+            with np.load(dst) as z:
+                out["poissonFaces"] = int(len(z["faces"]))
+        else:
+            out["meshlabExit"] = r.returncode
+            out["meshlabOutput"] = (r.stderr + r.stdout)[-3000:]
+    out["pymeshlabInParent"] = "pymeshlab" in sys.modules
 print(json.dumps(out))
 `;
+
+/**
+ * What is wrong with the photogrammetry smoke test's result (COLMAP_PROBE and MESH_PROBE merged),
+ * or null. A pack with pycolmap needs OpenCV and pymeshlab too; MeshLab, where it is, must mesh the
+ * sphere in its own process.
+ */
+export function photogrammetryProblem(photo) {
+  const { meshlabOutput, ...summary } = photo;
+  const detail = `${JSON.stringify(summary)}${meshlabOutput ? `\n${meshlabOutput}` : ''}`;
+  if (photo.pycolmap && (!photo.opencv || !photo.pymeshlab))
+    return `photogrammetry wheels incomplete: ${detail}`;
+  if (!photo.pymeshlab) return null;
+  if (photo.pymeshlabInParent) return `pymeshlab was imported outside its child process: ${detail}`;
+  if (!(photo.poissonFaces > 100)) return `MeshLab's screened Poisson failed: ${detail}`;
+  return null;
+}
+
+/**
+ * The tar to call. On Windows that is the system's bsdtar (%SystemRoot%\System32\tar.exe): a bare
+ * `tar` from Git Bash (the CI shell) is GNU tar, which reads `D:\...` as a remote host and fails.
+ * Without the system tar, a GNU tar on the PATH gets --force-local. Elsewhere, the PATH's tar.
+ */
+export function tarCommand(
+  platform = process.platform,
+  env = process.env,
+  exists = existsSync,
+  version = () =>
+    spawnSync('tar', ['--version'], { encoding: 'utf8', windowsHide: true }).stdout ?? '',
+) {
+  if (platform !== 'win32') return { cmd: 'tar', args: [] };
+  const root = env.SystemRoot ?? env.SYSTEMROOT ?? env.windir ?? env.WINDIR ?? 'C:\\Windows';
+  const system = win32.join(root, 'System32', 'tar.exe');
+  if (exists(system)) return { cmd: system, args: [] };
+  return { cmd: 'tar', args: /GNU tar/i.test(version()) ? ['--force-local'] : [] };
+}
+
 const pyDir = join(repo, 'python');
 
 const say = (msg) => process.stdout.write(`${msg}\n`);
@@ -183,10 +251,13 @@ function run(cmd, args, opts = {}) {
     ...opts,
   });
   if (r.error) fail(`${cmd} could not start: ${r.error.message}`);
-  if (r.status !== 0)
+  if (r.status !== 0) {
+    // what a captured command printed (compileall reports its errors on stdout)
+    const printed = opts.capture ? `\n${r.stderr ?? ''}${(r.stdout ?? '').slice(-4000)}` : '';
     fail(
-      `${cmd} ${args.join(' ')} failed (exit ${r.status})${opts.capture ? `\n${r.stderr}` : ''}`,
+      `${cmd} ${args.join(' ')} failed (${r.signal ? `signal ${r.signal}` : `exit ${r.status}`})${printed}`,
     );
+  }
   return r.stdout ?? '';
 }
 
@@ -244,7 +315,8 @@ async function main() {
   say(`  CPython ${CPYTHON} (${PBS_RELEASE}) verified`);
 
   await withTempDir(outRoot, version, async (tmp) => {
-    run('tar', ['-xzf', tgz, '-C', tmp]);
+    const tar = tarCommand();
+    run(tar.cmd, [...tar.args, '-xzf', tgz, '-C', tmp]);
     const python = join(tmp, ...target.exe.split('/'));
     if (!existsSync(python)) fail(`the archive has no ${target.exe}`);
 
@@ -333,14 +405,17 @@ async function main() {
       { capture: true },
     ).trim();
     say(`  ${pipelines.length} pipelines; GDAL ${libs}`);
-    const photo = JSON.parse(run(python, ['-I', '-c', PHOTO_PROBE], { capture: true }));
+    const photo = {
+      ...JSON.parse(run(python, ['-I', '-c', COLMAP_PROBE], { capture: true })),
+      ...JSON.parse(run(python, ['-I', '-c', MESH_PROBE], { capture: true })),
+    };
     say(
       photo.pycolmap
-        ? `  photogrammetry: pycolmap ${photo.pycolmap} (${photo.colmapBuild}); OpenCV ${photo.opencv}; pymeshlab ${photo.pymeshlab}`
+        ? `  photogrammetry: pycolmap ${photo.pycolmap} (${photo.colmapBuild}); OpenCV ${photo.opencv}; pymeshlab ${photo.pymeshlab}, MeshLab Poisson ${photo.poissonFaces} faces in its own process`
         : '  no photogrammetry wheels on this platform (decision 8)',
     );
-    if (photo.pycolmap && (!photo.opencv || !photo.pymeshlab || !(photo.poissonFaces > 100)))
-      fail(`photogrammetry wheels incomplete: ${JSON.stringify(photo)}`);
+    const photoProblem = photogrammetryProblem(photo);
+    if (photoProblem) fail(photoProblem);
     if (pdal) {
       const { version: pdalVersion, missing } = checkPdal(pdal);
       if (missing.length > 0) fail(`PDAL lacks ${missing.join(', ')}`);
