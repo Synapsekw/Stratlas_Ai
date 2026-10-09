@@ -171,6 +171,25 @@ export function createSettingsStore(file: string, defaults: Settings): SettingsS
     return next;
   }
 
+  /**
+   * Changes asked for and not yet written, oldest first. current() shows them over the written
+   * settings, so a reader right after a change (offline-only turned on, then a map download or
+   * a sync; cloud AI turned off, then a message) acts on it before the file is written. Each one
+   * leaves once its write ends; a change that cannot be saved then stops showing.
+   */
+  const asked = new Set<{ patch: IpcRequest<'settings:set'> }>();
+
+  function withAsked(base: Settings): Settings {
+    let merged = base;
+    // one at a time, as they will be written: an invalid one is skipped, not the rest with it
+    for (const { patch } of asked) {
+      const given = Object.entries(patch).filter(([, v]) => v !== undefined);
+      const r = Settings.safeParse({ ...merged, ...Object.fromEntries(given) });
+      if (r.success) merged = r.data;
+    }
+    return merged;
+  }
+
   // Updates run one at a time: each reads what the previous one wrote.
   let queue: Promise<unknown> = Promise.resolve();
   function serial(job: () => Promise<Settings>): Promise<Settings> {
@@ -183,9 +202,18 @@ export function createSettingsStore(file: string, defaults: Settings): SettingsS
     // after the updates asked for so far: the cache changes only once each is written, so a read
     // straight after a save (the Settings screen, then settings:get) would miss it otherwise
     get: () => queue.then(load),
-    set: (patch) => serial(() => apply(patch)),
+    set: (patch) => {
+      const entry = { patch };
+      asked.add(entry);
+      const run = serial(() => apply(patch));
+      void run.then(
+        () => asked.delete(entry),
+        () => asked.delete(entry),
+      );
+      return run;
+    },
     update: (change) => serial(async () => apply(change(await load()))),
-    current: () => cache ?? defaults,
+    current: () => withAsked(cache ?? defaults),
     settled: () => queue.then(() => undefined),
   };
 }
