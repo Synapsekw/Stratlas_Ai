@@ -21,7 +21,7 @@
 Off-grid neighbours (outside the window or nodata) take the height of the local plane through the
 cell (central differences), so water can leave the grid where the slope carries it out; a cell
 that drains off the grid is an outlet. All in float64 numpy; the flood itself is a Python loop over
-compact arrays (about a microsecond per neighbour), so a run is bounded by ``MAX_CELLS`` in
+compact arrays (about a second per million cells), and a run is bounded by ``MAX_CELLS`` in
 ``flow.py``. Code written from the papers, not from any GPL implementation (pysheds, RichDEM,
 GRASS are never used).
 """

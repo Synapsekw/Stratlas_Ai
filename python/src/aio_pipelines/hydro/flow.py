@@ -24,8 +24,9 @@ cells (or inside ``region``), with the algorithms of ``dem.py``:
      reaches ``streamAreaM2`` (default 1% of the area, between 100 m² and 1 ha), each with the
      upslope area at its downstream end.
 
-Bounded memory and time: at most ``MAX_CELLS`` cells (the flood is a Python loop of about a
-microsecond per neighbour, so 9 M cells take a few minutes).
+Bounded memory and time: at most ``MAX_CELLS`` cells. The directions hold the eight neighbour
+heights of every cell, so a run peaks near 250 bytes a cell (about 1 GB at the limit); routing a
+million cells takes a few seconds (the flood loop is about a second per million cells).
 """
 
 from __future__ import annotations
@@ -50,7 +51,7 @@ from .common import (
     write_run,
 )
 
-MAX_CELLS = 9_000_000
+MAX_CELLS = 4_000_000
 #: Outlets snap to the largest accumulation within this distance (metres, at least one cell).
 SNAP_M = 5.0
 STREAM_DEFAULT_SHARE = 0.01

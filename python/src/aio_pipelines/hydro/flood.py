@@ -41,7 +41,7 @@ from .common import (
     write_run,
 )
 
-#: Largest window read (cells): 25 M float64 heights and their masks stay under about 600 MB.
+#: Largest window read (cells): heights, depths, labels and masks peak near 1 GB at 25 M cells.
 MAX_CELLS = 25_000_000
 DXF_LAYER = "FLOOD-OUTLINE"
 
