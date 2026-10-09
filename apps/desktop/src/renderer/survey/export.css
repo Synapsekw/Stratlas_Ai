@@ -1,0 +1,9 @@
+/* Export survey data (M11 G7) */
+.sv-export-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+.sv-export code {
+  overflow-wrap: anywhere;
+}

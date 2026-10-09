@@ -26,6 +26,7 @@ import { PopTool, Tool } from '../workspace/StageTools';
 import { BulkTotals } from './BulkTotals';
 import { CompareLayer } from './Comparison';
 import { DesignsTool } from './Designs';
+import { ExportDialogMount, ExportTool } from './ExportDialog';
 import { HaulRoadTool } from './HaulRoad';
 import { HydroTool } from './Hydro';
 import { useHydro } from './hydroStore';
@@ -106,8 +107,8 @@ export function MeasureToolbar() {
         onOpenChange={setOpen}
       >
         <div className="pop-form sv-tools" data-testid="survey-tools">
-          {/* the site's designs, survey QA, terrain overlays, hydrology and haul road: here rather
-              than on the bar, which fits one row at 1440 px with both side panels open */}
+          {/* the site's designs, survey QA, terrain overlays, hydrology, haul road and export: here
+              rather than on the bar, which fits one row at 1440 px with both side panels open */}
           <div className="sv-fam" role="group" aria-label="Site data">
             <span className="pop-title">
               <Icon name="layers" size={12} /> Site data
@@ -131,6 +132,11 @@ export function MeasureToolbar() {
               />
               <HydroTool />
               <HaulRoadTool />
+              <ExportTool
+                onPicked={() => {
+                  setOpen(false);
+                }}
+              />
             </div>
           </div>
           {!readOnly &&
@@ -391,6 +397,7 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
       {overlaysOpen && <OverlaysPanel />}
       {dialog?.kind === 'templates' && <TemplateEditor />}
       {dialog?.kind === 'units' && <UnitsDialog />}
+      <ExportDialogMount />
     </>,
     document.body,
   );

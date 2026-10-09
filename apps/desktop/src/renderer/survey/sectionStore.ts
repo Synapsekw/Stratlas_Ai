@@ -374,8 +374,9 @@ export function waitForJob(id: string): Promise<Ended> {
 }
 
 /**
- * **Download**: run `survey.section` into `survey/sections/` of the project, then offer the file
- * to save where the person chooses. Answers an error sentence or null.
+ * **Download**: ask where to save first (`dialog:savePath`), then run `survey.section` with that
+ * file as its `out`, so nothing is written into the project. Answers an error sentence or null
+ * (null too when the person cancels the dialog).
  */
 export async function exportSection(format: SectionFormat): Promise<string | null> {
   const s = get();
@@ -386,14 +387,23 @@ export async function exportSection(format: SectionFormat): Promise<string | nul
   if (!refs.length) return 'Pick at least one surface.';
   const ext = format === 'csv' ? 'csv' : 'dxf';
   const name = `${slug(s.source?.label ?? 'section')}-${format}.${ext}`;
-  const rel = `survey/sections/${name}`;
-  const sep = project.root.includes('\\') ? '\\' : '/';
-  const out = `${project.root.replace(/[\\/]+$/, '')}${sep}${rel.split('/').join(sep)}`;
-  set({ exporting: { format, busy: true, note: 'Writing the section…' } });
   const fail = (error: string) => {
     set({ exporting: { format, busy: false, note: error } });
     return error;
   };
+  const chosen = await bridge.call('dialog:savePath', {
+    defaultName: name,
+    title: `Save the cross-section (${FORMAT_LABELS[format]})`,
+    filters: [{ name: ext === 'csv' ? 'CSV' : 'DXF', extensions: [ext] }],
+  });
+  if (!chosen.ok) return fail(chosen.error);
+  if (chosen.value.error) return fail(chosen.value.error);
+  const out = chosen.value.path;
+  if (!out) {
+    set({ exporting: null });
+    return null;
+  }
+  set({ exporting: { format, busy: true, note: 'Writing the section…' } });
   const r = await bridge.call('jobs:start', {
     pipeline: 'survey.section',
     project: project.root,
@@ -404,22 +414,6 @@ export async function exportSection(format: SectionFormat): Promise<string | nul
   if (!started.ok) return fail(started.error);
   const done = await waitForJob(started.job.id);
   if (!done.ok) return fail(done.error);
-  const bytes = await fetch(assetUrl(project.id, { path: rel }));
-  if (!bytes.ok) return fail(`The section file could not be read (${String(bytes.status)}).`);
-  const data = new Uint8Array(await bytes.arrayBuffer());
-  const saved = await bridge.call('dialog:saveFile', {
-    defaultName: name,
-    data,
-    title: `Save the cross-section (${FORMAT_LABELS[format]})`,
-  });
-  if (!saved.ok) return fail(saved.error);
-  if (saved.value.error) return fail(saved.value.error);
-  set({
-    exporting: {
-      format,
-      busy: false,
-      note: saved.value.path ? `Saved ${saved.value.path}` : `Kept in the project: ${rel}`,
-    },
-  });
+  set({ exporting: { format, busy: false, note: `Saved ${out}` } });
   return null;
 }

@@ -903,6 +903,25 @@ export const ipc = {
       .strict(),
     response: z.object({ path: z.string().nullable(), error: z.string().optional() }),
   },
+  /**
+   * Ask where to save with the native dialog and answer the chosen path only; nothing is written.
+   * For files a pipeline job writes itself (`survey.export`, `survey.section`: their `out`), so
+   * nothing is staged in the project first. `path` is null when the person cancels; `error` says
+   * why the destination is refused (an open package's export limits).
+   */
+  'dialog:savePath': {
+    request: z
+      .object({
+        /** File name only; main drops any folder part. */
+        defaultName: z.string().min(1).max(255),
+        title: z.string().max(200).optional(),
+        filters: z
+          .array(z.object({ name: z.string(), extensions: z.array(z.string().min(1)) }))
+          .optional(),
+      })
+      .strict(),
+    response: z.object({ path: z.string().nullable(), error: z.string().optional() }),
+  },
   /** Pick one existing file (a `.aio` package, an installer) with the native dialog. */
   'dialog:openFile': {
     request: z

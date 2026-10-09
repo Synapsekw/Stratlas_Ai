@@ -74,6 +74,7 @@ BUILT = {
     "hydro.rainfall",
     "survey.cleanup",
     "survey.compare",
+    "survey.export",
     "survey.overlay",
     "survey.prepare",
     "survey.qa",

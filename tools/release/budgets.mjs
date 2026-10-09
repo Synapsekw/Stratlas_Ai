@@ -32,7 +32,7 @@ export const BUDGETS = Object.freeze({
   /** Installer growth allowed over the M7 budget. */
   installerExtraBytes: 5 * 1024 * 1024,
   /**
-   * Pipeline pack 0.4.0 per platform (M10 decision 6): the unpacked folder and its archive. Over
+   * Pipeline pack 0.5.0 per platform (M10 decision 6): the unpacked folder and its archive. Over
    * budget, split a "photogrammetry" component pack rather than grow the base.
    */
   pack: Object.freeze({ unpackedBytes: 1_100_000_000, compressedBytes: 450_000_000 }),

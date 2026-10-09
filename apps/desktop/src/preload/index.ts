@@ -39,6 +39,7 @@ const CHANNELS = {
   'detections:maskAssist': true,
   'dialog:openFolder': true,
   'dialog:saveFile': true,
+  'dialog:savePath': true,
   'dialog:openFile': true,
   'app:takeOpenPath': true,
   'package:plan': true,

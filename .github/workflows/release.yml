@@ -372,7 +372,7 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-  # Pipeline pack 0.4.0 from prebuilt parts only (founder decision of 8 Oct 2026): the locked
+  # Pipeline pack 0.5.0 from prebuilt parts only (founder decision of 8 Oct 2026): the locked
   # wheels, photogrammetry included (pycolmap, opencv-python-headless and pymeshlab on Windows x64
   # and macOS arm64; Intel macOS without them, decision 8), and conda-forge's PDAL on all three.
   # A few minutes per platform. The native licence report prints a summary and never fails; the
