@@ -1,10 +1,11 @@
 /**
  * Compliance to design (M11 G6, DSN-3): the tolerance (plus and minus), its heat map stops and the
  * two comparison presets for a design surface, **Cut/Fill to design** and **Remaining to design**.
- * The comparison itself is G4's: a preset is handed to whoever registered in `DESIGN_PRESET_SINKS`
- * (the comparison UI), and the in-tolerance share comes with its result (`toleranceShare`).
+ * The comparison itself is G4's: a preset adds its item to the focused polygon (or to one the
+ * person draws next) and computes it (`compliancePreset.ts`); the in-tolerance share comes with
+ * its result (`toleranceShare`, shown in the measurement's comparisons).
  */
-import type { ComparisonItem, DesignEntry } from '@aio/schema';
+import type { DesignEntry } from '@aio/schema';
 import {
   DESIGN_PRESET_LABELS,
   designComparisonItem,
@@ -12,9 +13,8 @@ import {
   type DesignPreset,
 } from '@aio/survey';
 import { useState } from 'react';
-
-/** Receivers of a design preset (G4's comparison UI registers one). */
-export const DESIGN_PRESET_SINKS: ((item: ComparisonItem, toleranceM: number) => void)[] = [];
+import { applyDesignPreset } from './compliancePreset';
+import { useMeasure } from './measureStore';
 
 const PRESETS: DesignPreset[] = ['cut-fill-to-design', 'remaining-to-design'];
 
@@ -32,6 +32,11 @@ export function ComplianceSection({ designs }: { designs: readonly DesignEntry[]
   const [ref, setRef] = useState(surfaces[0]?.ref ?? '');
   const [mm, setMm] = useState('50');
   const [note, setNote] = useState<string | null>(null);
+  const focused = useMeasure((s) => {
+    const m = s.file.measurements.find((x) => x.id === s.focus);
+    return m?.family === 'polygon' ? m.label : null;
+  });
+  const readOnly = useMeasure((s) => s.readOnly);
   const tol = Number(mm) / 1000;
   const valid = Number.isFinite(tol) && tol > 0 && tol <= 10;
   const pick = surfaces.find((s) => s.ref === ref) ?? surfaces[0];
@@ -80,12 +85,17 @@ export function ComplianceSection({ designs }: { designs: readonly DesignEntry[]
           ))}
         </div>
       )}
+      <p className="pop-note" data-testid="compliance-target">
+        {focused
+          ? `Adds to the selected polygon, "${focused}".`
+          : 'No polygon is selected: you draw the area first.'}
+      </p>
       <div className="pop-row">
         {PRESETS.map((p) => (
           <button
             key={p}
             type="button"
-            disabled={!valid}
+            disabled={!valid || readOnly}
             onClick={() => {
               const item = designComparisonItem(p, {
                 id: `${p}-${pick.layer}`.slice(0, 80),
@@ -93,19 +103,18 @@ export function ComplianceSection({ designs }: { designs: readonly DesignEntry[]
                 layer: pick.layer,
                 toleranceM: tol,
               });
-              for (const sink of DESIGN_PRESET_SINKS) sink(item, tol);
-              setNote(
-                DESIGN_PRESET_SINKS.length
-                  ? `${DESIGN_PRESET_LABELS[p]} added to the comparison.`
-                  : 'Open Volumes and comparisons to compute it.',
-              );
+              setNote(applyDesignPreset(item, DESIGN_PRESET_LABELS[p]));
             }}
           >
             {DESIGN_PRESET_LABELS[p]}
           </button>
         ))}
       </div>
-      {note && <p className="pop-note">{note}</p>}
+      {note && (
+        <p className="pop-note" role="status" data-testid="compliance-note">
+          {note}
+        </p>
+      )}
     </section>
   );
 }

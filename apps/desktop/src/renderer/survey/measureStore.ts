@@ -60,6 +60,16 @@ export interface ActiveTool {
   template: SurveyTemplate | null;
   /** The site's design layers for the template's roles (`SurveySettings.designRoles`). */
   picks: RolePicks;
+  /** A one-shot drawing for another tool: what to draw, said in the drawing bar. */
+  prompt?: string;
+  /** Called with the finished measurement; the tool then stops (one shape only). */
+  then?: (m: SurveyMeasurement) => void;
+}
+
+/** A one-shot drawing: the prompt shown while drawing and what to do with the shape. */
+export interface DrawFor {
+  prompt: string;
+  then: (m: SurveyMeasurement) => void;
 }
 
 /**
@@ -406,11 +416,15 @@ export function setSnapSource(source: SnapSource, on: boolean): void {
 
 // ---------------------------------------------------------------- drawing
 
-export function startTool(tool: MeasurementTool, template: SurveyTemplate | null = null): void {
+export function startTool(
+  tool: MeasurementTool,
+  template: SurveyTemplate | null = null,
+  forOther?: DrawFor,
+): void {
   if (get().readOnly) return;
   const begin = (picks: RolePicks) => {
     set({
-      tool: { tool, template, picks },
+      tool: { tool, template, picks, ...(forOther ?? {}) },
       draw: initialDraw(TOOL_FAMILY[tool]),
       editing: null,
       message: null,
@@ -513,6 +527,13 @@ export function drawEvent(e: DrawEvent, env: DrawEnv): void {
       picks,
     );
     addMeasurement(m);
+    if (s.tool.then) {
+      // a one-shot drawing for another tool: hand the shape over and stop
+      stopTool();
+      set({ listOpen: true });
+      s.tool.then(m);
+      return;
+    }
     // the tool stays on for the next one (a template used twice in a row)
     set({ draw: initialDraw(TOOL_FAMILY[tool]), listOpen: true });
     return;

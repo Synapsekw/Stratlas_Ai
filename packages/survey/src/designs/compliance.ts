@@ -102,9 +102,10 @@ export const DESIGN_PRESET_LABELS: Record<DesignPreset, string> = {
 };
 
 /**
- * A comparison item for a design surface layer. **Cut/Fill to design** counts every cell;
- * **Remaining to design** leaves out the cells within the tolerance (the deadband), so what it
- * reports is the volume still to move.
+ * A comparison item for a design surface layer. **Cut/Fill to design** counts every cell (the
+ * tolerance rides along as an unused deadband, for its in-tolerance share); **Remaining to
+ * design** leaves out the cells within the tolerance (the deadband), so what it reports is the
+ * volume still to move.
  */
 export function designComparisonItem(
   preset: DesignPreset,
@@ -118,5 +119,5 @@ export function designComparisonItem(
   };
   return preset === 'remaining-to-design'
     ? { ...base, deadbandM: opts.toleranceM, useDeadband: true }
-    : { ...base, useDeadband: false };
+    : { ...base, deadbandM: opts.toleranceM, useDeadband: false };
 }

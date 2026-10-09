@@ -21,7 +21,8 @@ import type {
 import { createStore, useStore } from 'zustand';
 import { bridge } from '../shell';
 import { connectEngine, RunCancelled, startEngineWorker, type EngineClient } from './engineClient';
-import type { EnginePort, HeatGrid, RunReply } from './engineProtocol';
+import { designs as designsStore } from './designsStore';
+import type { EnginePort, HeatGrid, ItemShare, RunReply } from './engineProtocol';
 import { measureStore, setComputedResults, updateMeasurement } from './measureStore';
 
 export interface CaptureInfo {
@@ -35,6 +36,8 @@ export interface Computed {
   ringKey: string;
   results: ComparisonResult[];
   heat: HeatGrid[];
+  /** The in-tolerance share of each design item (compliance to design). */
+  shares: ItemShare[];
   ms: number;
   live: boolean;
 }
@@ -186,6 +189,12 @@ export async function refreshSurfaces(): Promise<void> {
   const surfaces = s.value.surfaces;
   // designs are G6's; without them the pickers offer surveys and bases only
   const designs = d.ok && d.value.ok ? d.value.file.designs : [];
+  pushContext(projectId, surfaces, designs);
+  set({ status: 'ready', error: null, surfaces, designs, current: {} });
+  scheduleCheck();
+}
+
+function pushContext(projectId: string, surfaces: HeightTiles[], designs: DesignEntry[]): void {
   const settings = measureStore.getState().settings;
   client().setContext({
     base: `aio://project/${encodeURIComponent(projectId)}/`,
@@ -197,7 +206,18 @@ export async function refreshSurfaces(): Promise<void> {
       ...(settings.calibration ? { calibration: settings.calibration } : {}),
     },
   });
-  set({ status: 'ready', error: null, surfaces, designs, current: {} });
+}
+
+/**
+ * The site's designs changed (a vertical offset, an archived layer, an import): hand them to the
+ * engine, whose fingerprints then mark the affected results stale (the focused one is computed).
+ */
+export function takeDesigns(file: { designs: DesignEntry[] }): void {
+  const { projectId, status, surfaces } = get();
+  if (!projectId || status !== 'ready') return;
+  if (JSON.stringify(file.designs) === JSON.stringify(get().designs)) return;
+  pushContext(projectId, surfaces, file.designs);
+  set({ designs: file.designs, current: {} });
   scheduleCheck();
 }
 
@@ -260,12 +280,14 @@ export async function compute(
   set({ running: { ...get().running, [id]: true } });
   try {
     const capture = captureOf(m);
+    const toleranceM = measureStore.getState().settings.deadbandM;
     const r = await client().run(
       {
         ring: ringOf(points),
         items: m.items,
         ...(capture !== undefined ? { capture } : {}),
         heat: HEAT_CELLS,
+        ...(toleranceM !== undefined ? { toleranceM } : {}),
       },
       id,
     );
@@ -274,7 +296,14 @@ export async function compute(
     set({
       computed: {
         ...get().computed,
-        [id]: { ringKey: ringKey(points), results: r.results, heat: r.heat, ms: r.ms, live },
+        [id]: {
+          ringKey: ringKey(points),
+          results: r.results,
+          heat: r.heat,
+          shares: r.shares,
+          ms: r.ms,
+          live,
+        },
       },
       running: { ...get().running, [id]: false },
       problems,
@@ -347,9 +376,12 @@ function scheduleLive(id: string, points: readonly SitePoint[]): void {
 }
 
 let unsubscribe: (() => void) | null = null;
-/** Follow the measurements store (once). */
+/** Follow the measurements store and the site's designs (once). */
 export function followMeasurements(): () => void {
   if (unsubscribe) return unsubscribe;
+  const offDesigns = designsStore.subscribe((s, prev) => {
+    if (s.file && s.file !== prev.file && s.projectId === get().projectId) takeDesigns(s.file);
+  });
   const off = measureStore.subscribe((s, prev) => {
     if (s.editing && s.focus && s.editing.points !== prev.editing?.points) {
       const m = s.file.measurements.find((x) => x.id === s.focus);
@@ -366,6 +398,7 @@ export function followMeasurements(): () => void {
   });
   unsubscribe = () => {
     off();
+    offDesigns();
     unsubscribe = null;
   };
   return unsubscribe;
