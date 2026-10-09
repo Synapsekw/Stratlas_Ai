@@ -26,6 +26,7 @@ import { PopTool, Tool } from '../workspace/StageTools';
 import { BulkTotals } from './BulkTotals';
 import { CompareLayer } from './Comparison';
 import { DesignsTool } from './Designs';
+import { ExportDialogMount, ExportTool } from './ExportDialog';
 import { openCompareDialog } from './compareStore';
 import { MeasurementList } from './MeasurementList';
 import { MeasurementPanel } from './MeasurementPanel';
@@ -121,6 +122,11 @@ export function MeasureToolbar() {
                 pressed={overlaysOpen}
                 onClick={() => {
                   setOverlaysOpen(!overlaysOpen);
+                  setOpen(false);
+                }}
+              />
+              <ExportTool
+                onPicked={() => {
                   setOpen(false);
                 }}
               />
@@ -384,6 +390,7 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
       {overlaysOpen && <OverlaysPanel />}
       {dialog?.kind === 'templates' && <TemplateEditor />}
       {dialog?.kind === 'units' && <UnitsDialog />}
+      <ExportDialogMount />
     </>,
     document.body,
   );
