@@ -40,6 +40,7 @@ import type {
 import { Icon, useFocusTrap } from '@aio/ui';
 import { assetUrl, useWorkspace, workspace, type OpenProject } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { bridge, useShell } from '../shell';
@@ -832,14 +833,17 @@ export function SiteSettingsButton() {
         <Icon name="globe" size={12} />
         Site settings
       </button>
-      {open && (
-        <SiteSettingsDialog
-          project={project}
-          onClose={() => {
-            siteDisplay.setState({ open: false });
-          }}
-        />
-      )}
+      {/* portalled to the body: inside the stage it sat under the sidebar in a small window */}
+      {open &&
+        createPortal(
+          <SiteSettingsDialog
+            project={project}
+            onClose={() => {
+              siteDisplay.setState({ open: false });
+            }}
+          />,
+          document.body,
+        )}
     </>
   );
 }
