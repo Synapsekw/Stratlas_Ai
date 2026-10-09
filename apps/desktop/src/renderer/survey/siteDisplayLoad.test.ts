@@ -36,6 +36,9 @@ const project: OpenProject = {
   } as unknown as ProjectManifest,
 };
 
+const urlOf = (u: RequestInfo | URL): string =>
+  typeof u === 'string' ? u : u instanceof URL ? u.href : u.url;
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -43,21 +46,25 @@ afterEach(() => {
 describe('site display on opening a project', () => {
   // @realdata HCl and Masafi failed on a console 404 for the tables every project before M11 lacks.
   it('asks for no readout tables a project does not have', async () => {
-    const fetch = vi.fn(() => Promise.resolve(new Response(null, { status: 404 })));
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(new Response(null, { status: 404 })),
+    );
     vi.stubGlobal('fetch', fetch);
     answers.tables = false;
     await loadSiteDisplay(project);
-    expect(fetch.mock.calls.map(([url]) => String(url))).not.toContainEqual(
+    expect(fetch.mock.calls.map(([url]) => urlOf(url))).not.toContainEqual(
       expect.stringContaining('site-transform.json'),
     );
   });
 
   it('reads the readout tables when the project has them', async () => {
-    const fetch = vi.fn(() => Promise.resolve(new Response(null, { status: 404 })));
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(new Response(null, { status: 404 })),
+    );
     vi.stubGlobal('fetch', fetch);
     answers.tables = true;
     await loadSiteDisplay(project);
-    expect(fetch.mock.calls.map(([url]) => String(url))).toContainEqual(
+    expect(fetch.mock.calls.map(([url]) => urlOf(url))).toContainEqual(
       expect.stringContaining('site-transform.json'),
     );
   });
