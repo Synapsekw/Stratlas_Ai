@@ -73,11 +73,11 @@ export async function readPackageHydroRuns(archive: HydroArchive): Promise<Runs>
   const re = new RegExp(`^${HYDRO_DIR}/([^/]+)/${HYDRO_RUN_FILE.replace('.', '\\.')}$`);
   const runs: HydroRun[] = [];
   for (const name of archive.entries.keys()) {
-    const m = re.exec(name);
-    if (!m) continue;
+    const folder = re.exec(name)?.[1];
+    if (folder === undefined) continue;
     try {
       const run = parse(JSON.parse((await archive.read(name)).toString('utf8')) as unknown, name);
-      if (run?.id === m[1]) runs.push(run);
+      if (run?.id === folder) runs.push(run);
     } catch {
       // not JSON: left out
     }
