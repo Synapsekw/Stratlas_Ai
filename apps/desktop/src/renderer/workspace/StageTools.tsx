@@ -36,6 +36,7 @@ import { PATH_MODES, setPathMode } from './flightPaths';
 import { updateFlightPaths, useFlightPathModel } from './pathModel';
 import { CutawayPanel } from './CutawayTool';
 import { MeasureToolbar } from '../survey/MeasureToolbar';
+import { usePopPlacement } from './popPlacement';
 import { toggleTelemetry, useTelemetryOn } from './telemetryPref';
 import { useCutawayPref } from './useCutaway';
 import {
@@ -150,6 +151,8 @@ export function PopTool({
   const ref = useRef<HTMLDivElement>(null);
   const pop = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
+  // on the stage, never under the timeline or the Context panel; it scrolls when the stage is short
+  usePopPlacement(open, ref, pop);
   useEffect(() => {
     if (!open) return;
     const away = (e: PointerEvent) => {

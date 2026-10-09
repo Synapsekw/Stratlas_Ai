@@ -4,6 +4,11 @@
   min-width: 320px;
   max-width: 420px;
 }
+/* its popover fits the tools: 320 px plus the popover's padding and border (a 300 px popover let
+   them stick out past its edge) */
+.stage-pop.wide:has(> .sv-tools) {
+  width: calc(320px + 2 * 12px + 2px);
+}
 /* Designs and survey QA: their tools nest in the Survey measurements popover */
 .sv-nested {
   padding: 0;
