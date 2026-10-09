@@ -71,6 +71,7 @@ import { CompareButton, CompareMap, useVolumesFollowDate } from './CompareContro
 import { CompareScene } from './CompareScene';
 import { ChangeLegends } from './MapSwipe';
 import { CursorReadout, useSceneCursor } from './SceneCursor';
+import { HydroTool } from '../survey/Hydro';
 import './m8Mounts';
 import { paneCapture, PaneChooser, SplitPane, useSplit } from './SplitPanes';
 import {
@@ -264,7 +265,12 @@ function StageToolbar({
       case 'measure':
         // on the map only the survey measurements (the scene's own tools need the 3D view)
         // the site's designs and survey QA are in the Survey measurements popover
-        return map ? <MeasureToolbar /> : <MeasureTools stage={stage} />;
+        return (
+          <>
+            {map ? <MeasureToolbar /> : <MeasureTools stage={stage} />}
+            <HydroTool />
+          </>
+        );
       case 'display':
         return <DisplayTools stage={stage} map={map} />;
       case 'clouds':

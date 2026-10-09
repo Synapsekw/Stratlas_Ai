@@ -1,0 +1,28 @@
+/* The Hydrology panel (M11 G10): a wider pop with rows that wrap instead of overflowing. */
+.stage-pop.wide:has(.hydro-panel) {
+  width: 360px;
+}
+.hydro-panel,
+.hydro-panel > * {
+  min-width: 0;
+}
+.hydro-panel .ctx-tabs {
+  flex-wrap: wrap;
+}
+.hydro-panel .pop-row {
+  flex-wrap: wrap;
+}
+.hydro-panel .pop-row > span:first-child {
+  flex: 1 0 100%;
+}
+.hydro-panel .pop-row input:not([type='range'], [type='checkbox']),
+.hydro-panel .pop-row select,
+.hydro-panel .pop-row textarea {
+  flex: 1 1 140px;
+  min-width: 0;
+  max-width: 100%;
+}
+.hydro-panel p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

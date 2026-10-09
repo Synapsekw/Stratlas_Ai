@@ -44,6 +44,7 @@ import { ExchangeKind, ExchangePreview, Heads, TeamProjectId } from './exchange'
 import { ActorId, DeviceId, Identity, Initials, Member, PersonName, Role } from './identity';
 import { LaunchSettings } from './launch';
 import { DesignsFile } from './designs';
+import { HydroRun } from './hydro';
 import { CrsCatalogueEntry, GeoidPackId, GeoidPackMeta, SiteCalibration } from './geodesy';
 import {
   HeightTiles,
@@ -2379,6 +2380,14 @@ export const ipc = {
   'survey:writeOverlays': {
     request: z.object({ projectId: ProjectId, file: SurveyOverlaysFile }).strict(),
     response: OkOrFailure,
+  },
+  /** Hydrology runs (`survey/hydro/<run>/run.json`), newest first; packages read in place (G10). */
+  'survey:readHydroRuns': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), runs: z.array(HydroRun) }),
+      Failure,
+    ]),
   },
   /** Search the EPSG catalogue by code, name or area; `near` ranks CRSs whose area holds it (G1). */
   'geodesy:searchCrs': {

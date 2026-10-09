@@ -110,6 +110,7 @@ import { registerSurveyIpc } from './survey';
 import { registerSurveyAiIpc } from './surveyAi';
 import { qaJobEvents, registerSurveyQaIpc } from './surveyQa';
 import { registerSurveyOverlaysIpc } from './surveyOverlays';
+import { registerSurveyHydroIpc } from './surveyHydro';
 import { createTestVault, useTestVault } from './testVault';
 import { importLogo, removeLogo } from './branding';
 import { putThumb } from './thumbs';
@@ -1279,6 +1280,7 @@ function registerIpc(): void {
   registerSurveyOverlaysIpc({ handle, ...survey });
   registerGeodesyIpc({ handle, ...survey });
   registerSurveyQaIpc({ handle, ...survey });
+  registerSurveyHydroIpc({ handle, ...survey });
   registerGeoidPacksIpc({
     handle,
     dataRoot: () => settings.current().dataRoot,

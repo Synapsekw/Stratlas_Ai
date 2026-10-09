@@ -198,6 +198,7 @@ const CHANNELS = {
   'survey:writeTerrainEdits': true,
   'survey:readOverlays': true,
   'survey:writeOverlays': true,
+  'survey:readHydroRuns': true,
   'geodesy:searchCrs': true,
   'geodesy:readCalibration': true,
   'geodesy:applyCalibration': true,
