@@ -159,6 +159,7 @@ import { createAioHandler } from './protocol/handler';
 import { APP_CSP } from './csp';
 import { cspForUrl } from './protocol/legacy';
 import { saveFile } from './saveFile';
+import { savePath } from './exports/savePath';
 import { createSettingsStore, defaultDataRoot, defaultSettings } from './settings';
 import { installRealDataGuard } from './realDataGuard';
 import { migrateLegacyUserData } from './userDataMigration';
@@ -1136,6 +1137,22 @@ function registerIpc(): void {
       },
     });
   });
+
+  // M11 G7: where a pipeline job (survey.export, survey.section) writes its file; nothing is written here.
+  handle('dialog:savePath', (req) =>
+    savePath(req, {
+      downloadsDir: app.getPath('downloads'),
+      refuse: (name) => policy.checkExport(name),
+      choose: async (defaultPath, o) => {
+        const win = targetWindow();
+        const options = { defaultPath, ...o };
+        const r = win
+          ? await dialog.showSaveDialog(win, options)
+          : await dialog.showSaveDialog(options);
+        return r.canceled || !r.filePath ? null : r.filePath;
+      },
+    }),
+  );
 
   // M8: one module per stream (C1 change, C5 model builder, C6 local detection, C7 local agent).
   registerChangeIpc({
