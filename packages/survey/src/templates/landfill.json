@@ -1,0 +1,215 @@
+{
+  "schema": "aio.survey-templates/1",
+  "templates": [
+    {
+      "id": "landfill-cell-progress",
+      "name": "Cell progress",
+      "family": "polygon",
+      "tool": "volume",
+      "description": "Waste placed in a cell so far (the cell base design to the survey) and the airspace left to the final cap design. Pick your design's layers when they are not cell-base and final-cap of cell-design.",
+      "items": ["fill", "net", "area"],
+      "fields": [],
+      "comparisons": [
+        {
+          "label": "Placed so far",
+          "from": {
+            "kind": "design",
+            "design": "cell-design",
+            "layer": "cell-base"
+          },
+          "to": {
+            "kind": "current"
+          },
+          "useDeadband": false
+        },
+        {
+          "label": "Airspace remaining",
+          "from": {
+            "kind": "current"
+          },
+          "to": {
+            "kind": "design",
+            "design": "cell-design",
+            "layer": "final-cap"
+          },
+          "useDeadband": false
+        }
+      ],
+      "style": {
+        "color": "#4f7a3a",
+        "fillOpacity": 0.15
+      },
+      "bookmarked": true,
+      "set": "landfill"
+    },
+    {
+      "id": "landfill-lift-heights",
+      "name": "Lift heights",
+      "family": "point",
+      "tool": "elevation-history",
+      "description": "The height of the waste at a point on every survey: each lift's thickness.",
+      "items": ["n", "e", "z"],
+      "fields": [
+        {
+          "id": "lift",
+          "name": "Lift",
+          "type": "number"
+        }
+      ],
+      "comparisons": [],
+      "style": {
+        "color": "#4f7a3a",
+        "fillOpacity": 0.15
+      },
+      "bookmarked": true,
+      "set": "landfill"
+    },
+    {
+      "id": "landfill-airspace",
+      "name": "Airspace remaining",
+      "family": "polygon",
+      "tool": "volume",
+      "description": "The airspace left between the survey and the final cap design.",
+      "items": ["fill", "area"],
+      "fields": [],
+      "comparisons": [
+        {
+          "label": "Airspace remaining",
+          "from": {
+            "kind": "current"
+          },
+          "to": {
+            "kind": "design",
+            "design": "cell-design",
+            "layer": "final-cap"
+          },
+          "useDeadband": false
+        }
+      ],
+      "style": {
+        "color": "#4f7a3a",
+        "fillOpacity": 0.15
+      },
+      "bookmarked": true,
+      "set": "landfill"
+    },
+    {
+      "id": "landfill-compaction",
+      "name": "Compaction",
+      "family": "polygon",
+      "tool": "volume",
+      "description": "A lift's volume (the survey before to the survey on screen) and the density the weighbridge tonnage achieved in it.",
+      "items": ["net", "fill", "area"],
+      "fields": [
+        {
+          "id": "tonnes",
+          "name": "Weighbridge tonnes",
+          "type": "number"
+        }
+      ],
+      "comparisons": [
+        {
+          "label": "Lift",
+          "from": {
+            "kind": "previous"
+          },
+          "to": {
+            "kind": "current"
+          },
+          "useDeadband": false
+        }
+      ],
+      "style": {
+        "color": "#4f7a3a",
+        "fillOpacity": 0.15
+      },
+      "bookmarked": true,
+      "set": "landfill"
+    },
+    {
+      "id": "landfill-monthly-cell",
+      "name": "Monthly cell report",
+      "family": "polygon",
+      "tool": "volume",
+      "description": "The month's lift, its compaction and the airspace left, for the monthly cell report.",
+      "items": ["net", "fill", "area"],
+      "fields": [
+        {
+          "id": "tonnes",
+          "name": "Weighbridge tonnes",
+          "type": "number"
+        },
+        {
+          "id": "cell",
+          "name": "Cell",
+          "type": "text"
+        }
+      ],
+      "comparisons": [
+        {
+          "label": "Lift",
+          "from": {
+            "kind": "previous"
+          },
+          "to": {
+            "kind": "current"
+          },
+          "useDeadband": false
+        },
+        {
+          "label": "Airspace remaining",
+          "from": {
+            "kind": "current"
+          },
+          "to": {
+            "kind": "design",
+            "design": "cell-design",
+            "layer": "final-cap"
+          },
+          "useDeadband": false
+        }
+      ],
+      "style": {
+        "color": "#4f7a3a",
+        "fillOpacity": 0.15
+      },
+      "bookmarked": true,
+      "set": "landfill"
+    },
+    {
+      "id": "landfill-daily-change",
+      "name": "Daily change",
+      "family": "polygon",
+      "tool": "volume",
+      "description": "The day's change on the tipping face, leaving out changes under 5 cm.",
+      "items": ["fill", "cut", "net", "area"],
+      "fields": [
+        {
+          "id": "cover",
+          "name": "Daily cover applied",
+          "type": "dropdown",
+          "options": ["Yes", "No"]
+        }
+      ],
+      "comparisons": [
+        {
+          "label": "Since previous survey",
+          "from": {
+            "kind": "previous"
+          },
+          "to": {
+            "kind": "current"
+          },
+          "useDeadband": true,
+          "deadbandM": 0.05
+        }
+      ],
+      "style": {
+        "color": "#4f7a3a",
+        "fillOpacity": 0.15
+      },
+      "bookmarked": true,
+      "set": "landfill"
+    }
+  ]
+}

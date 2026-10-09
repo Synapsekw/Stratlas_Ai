@@ -1,0 +1,241 @@
+{
+  "schema": "aio.survey-templates/1",
+  "templates": [
+    {
+      "id": "mining-stockpile",
+      "name": "Stockpile (smart base)",
+      "family": "polygon",
+      "tool": "volume",
+      "description": "A stockpile against a TIN of its toe (the smart base). Pick the pile's material for its tonnes.",
+      "items": ["net", "area", "perimeter"],
+      "fields": [
+        {
+          "id": "product",
+          "name": "Product",
+          "type": "text"
+        }
+      ],
+      "comparisons": [
+        {
+          "label": "Stockpile",
+          "from": {
+            "kind": "smart"
+          },
+          "to": {
+            "kind": "current"
+          },
+          "useDeadband": false
+        }
+      ],
+      "style": {
+        "color": "#8c6d4f",
+        "fillOpacity": 0.15
+      },
+      "bookmarked": true,
+      "set": "mining"
+    },
+    {
+      "id": "mining-bench-volume",
+      "name": "Bench volume to reference level",
+      "family": "polygon",
+      "tool": "volume",
+      "description": "Material above a bench's reference level. Type the bench floor level on the base (a typed level); until then the lowest point of the boundary is used.",
+      "items": ["net", "area"],
+      "fields": [
+        {
+          "id": "bench",
+          "name": "Bench",
+          "type": "text"
+        },
+        {
+          "id": "reference-level",
+          "name": "Reference level (m)",
+          "type": "number"
+        }
+      ],
+      "comparisons": [
+        {
+          "label": "Above the reference level",
+          "from": {
+            "kind": "reference",
+            "mode": "perimeter-min"
+          },
+          "to": {
+            "kind": "current"
+          },
+          "useDeadband": false
+        }
+      ],
+      "style": {
+        "color": "#8c6d4f",
+        "fillOpacity": 0.15
+      },
+      "bookmarked": true,
+      "set": "mining"
+    },
+    {
+      "id": "mining-blast-area",
+      "name": "Blast area",
+      "family": "polygon",
+      "tool": "area",
+      "description": "The footprint of a blast pattern.",
+      "items": ["area", "perimeter"],
+      "fields": [
+        {
+          "id": "blast-id",
+          "name": "Blast id",
+          "type": "text"
+        },
+        {
+          "id": "holes",
+          "name": "Holes",
+          "type": "number"
+        },
+        {
+          "id": "pattern",
+          "name": "Pattern (burden x spacing)",
+          "type": "text"
+        }
+      ],
+      "comparisons": [],
+      "style": {
+        "color": "#c0392b",
+        "fillOpacity": 0.15
+      },
+      "bookmarked": true,
+      "set": "mining"
+    },
+    {
+      "id": "mining-post-blast",
+      "name": "Post-blast",
+      "family": "polygon",
+      "tool": "volume",
+      "description": "The swell of a blast: the survey before the blast to the survey after it.",
+      "items": ["fill", "cut", "net", "area"],
+      "fields": [
+        {
+          "id": "blast-id",
+          "name": "Blast id",
+          "type": "text"
+        }
+      ],
+      "comparisons": [
+        {
+          "label": "Blast swell",
+          "from": {
+            "kind": "previous"
+          },
+          "to": {
+            "kind": "current"
+          },
+          "useDeadband": false
+        }
+      ],
+      "style": {
+        "color": "#c0392b",
+        "fillOpacity": 0.15
+      },
+      "bookmarked": true,
+      "set": "mining"
+    },
+    {
+      "id": "mining-berm-check",
+      "name": "Berm check",
+      "family": "line",
+      "tool": "berm-check",
+      "description": "A safety berm across its crest and toes: crest height and widths against the required height.",
+      "items": ["crest-z", "crest-width", "base-width", "height-left", "height-right"],
+      "fields": [
+        {
+          "id": "required-height",
+          "name": "Required height (m)",
+          "type": "number"
+        },
+        {
+          "id": "result",
+          "name": "Result",
+          "type": "dropdown",
+          "options": ["Pass", "Fail"]
+        }
+      ],
+      "comparisons": [],
+      "style": {
+        "color": "#d35400",
+        "fillOpacity": 0.15
+      },
+      "bookmarked": true,
+      "set": "mining"
+    },
+    {
+      "id": "mining-end-of-month",
+      "name": "End-of-month inventory",
+      "family": "polygon",
+      "tool": "volume",
+      "description": "A stockpile for the month-end inventory: its volume on the smart base and the change since the survey before.",
+      "items": ["net", "area"],
+      "fields": [
+        {
+          "id": "product",
+          "name": "Product",
+          "type": "text"
+        }
+      ],
+      "comparisons": [
+        {
+          "label": "Stockpile",
+          "from": {
+            "kind": "smart"
+          },
+          "to": {
+            "kind": "current"
+          },
+          "useDeadband": false
+        },
+        {
+          "label": "Change since previous survey",
+          "from": {
+            "kind": "previous"
+          },
+          "to": {
+            "kind": "current"
+          },
+          "useDeadband": false
+        }
+      ],
+      "style": {
+        "color": "#8c6d4f",
+        "fillOpacity": 0.15
+      },
+      "bookmarked": true,
+      "set": "mining"
+    },
+    {
+      "id": "mining-exclusion-zone",
+      "name": "Exclusion zone",
+      "family": "polygon",
+      "tool": "area",
+      "description": "An area people and equipment keep out of.",
+      "items": ["area", "perimeter"],
+      "fields": [
+        {
+          "id": "reason",
+          "name": "Reason",
+          "type": "dropdown",
+          "options": ["Blasting", "Unstable ground", "Water", "Equipment", "Other"]
+        },
+        {
+          "id": "until",
+          "name": "Until",
+          "type": "text"
+        }
+      ],
+      "comparisons": [],
+      "style": {
+        "color": "#e74c3c",
+        "fillOpacity": 0.15
+      },
+      "bookmarked": true,
+      "set": "mining"
+    }
+  ]
+}

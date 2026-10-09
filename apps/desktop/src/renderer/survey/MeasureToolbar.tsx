@@ -11,6 +11,7 @@ import type { MeasurementTool } from '@aio/schema';
 import {
   bookmarks,
   FAMILY_LABELS,
+  industryTemplates,
   parseBearing,
   templateLibrary,
   TOOL_FAMILY,
@@ -81,12 +82,13 @@ export function MeasureToolbar() {
   const active = useMeasure((s) => s.tool);
   const listOpen = useMeasure((s) => s.listOpen);
   const templates = useMeasure((s) => s.templates);
+  const sets = useMeasure((s) => s.settings.templateSets);
   const snap = useMeasure((s) => s.snap);
   const readOnly = useMeasure((s) => s.readOnly);
   const overlaysOpen = useOverlays((s) => s.open);
   const lib = useMemo(
-    () => bookmarks(templateLibrary(templates.project, templates.user)),
-    [templates],
+    () => bookmarks(templateLibrary(templates.project, templates.user, industryTemplates(sets))),
+    [templates, sets],
   );
   // picking a tool or opening a panel closes the popover, so the keys go to the drawing
   const [open, setOpen] = useState(false);

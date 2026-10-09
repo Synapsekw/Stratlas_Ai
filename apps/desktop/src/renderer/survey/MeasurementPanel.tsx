@@ -23,6 +23,7 @@ import {
   copyToSurvey,
   deleteMeasurements,
   editEvent,
+  knownTemplates,
   openDialog,
   patchMeasurement,
   replaceMeasurement,
@@ -51,10 +52,7 @@ export function MeasurementPanel() {
   const captures = useWorkspace((s) => s.project?.manifest.captures ?? []);
   const [copyTo, setCopyTo] = useState('');
 
-  const all = useMemo(
-    () => [...(templates.project?.templates ?? []), ...templates.user.templates],
-    [templates],
-  );
+  const all = useMemo(() => knownTemplates({ templates, settings }), [templates, settings]);
   const tpl = m?.template ? all.find((t) => t.id === m.template) : undefined;
   const units = effectiveUnits(settings.units, m?.units);
   const rows = useMemo(() => {

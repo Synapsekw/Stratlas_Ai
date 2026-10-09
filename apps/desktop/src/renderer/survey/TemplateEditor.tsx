@@ -2,10 +2,12 @@
  * Measurement templates (M11 G3, data-conventions section 27): the project's templates and the
  * person's library. A template picks a tool, the result rows in order (drag and drop, or the
  * arrows), custom fields (text, number, dropdown), default comparison presets, a default style
- * and a description; a bookmark puts it on the toolbar. Industry sets come with G9.
+ * and a description; a bookmark puts it on the toolbar. The site's industry template sets (G9:
+ * construction, mining and quarry, landfill) are switched on here and join the toolbar.
  */
 import {
   ComparisonPreset,
+  IndustrySet,
   MeasurementTool,
   type SurfaceRef,
   type SurveyTemplate,
@@ -17,6 +19,8 @@ import {
   availableItems,
   cleanOptions,
   copyTemplate,
+  INDUSTRY_SET_LABELS,
+  industrySet,
   ITEM_LABELS,
   moveItem,
   newTemplate,
@@ -34,7 +38,13 @@ import {
 import { Icon, useFocusTrap } from '@aio/ui';
 import { useRef, useState } from 'react';
 import { MEASURE_COLOR } from './measureScene';
-import { deleteTemplate, openDialog, saveTemplate, useMeasure } from './measureStore';
+import {
+  deleteTemplate,
+  openDialog,
+  saveSiteSettings,
+  saveTemplate,
+  useMeasure,
+} from './measureStore';
 
 type Scope = 'project' | 'user';
 
@@ -60,6 +70,7 @@ export function TemplateEditor() {
   const templates = useMeasure((s) => s.templates);
   const readOnly = useMeasure((s) => s.readOnly);
   const projectId = useMeasure((s) => s.projectId);
+  const settings = useMeasure((s) => s.settings);
   const initialScope: Scope =
     dialog?.kind === 'templates' ? dialog.scope : projectId && !readOnly ? 'project' : 'user';
   const [scope, setScope] = useState<Scope>(initialScope);
@@ -163,6 +174,28 @@ export function TemplateEditor() {
             >
               <Icon name="plus" size={12} /> New template
             </button>
+            <fieldset className="sv-sets" data-testid="survey-template-sets">
+              <legend>Industry template sets</legend>
+              {IndustrySet.options.map((set) => (
+                <label key={set} className="sv-check">
+                  <input
+                    type="checkbox"
+                    checked={settings.templateSets.includes(set)}
+                    disabled={busy || readOnly || !projectId}
+                    data-testid={`survey-template-set-${set}`}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      const next = IndustrySet.options.filter((x) =>
+                        x === set ? on : settings.templateSets.includes(x),
+                      );
+                      void run(saveSiteSettings({ ...settings, templateSets: next }));
+                    }}
+                  />
+                  {INDUSTRY_SET_LABELS[set]}{' '}
+                  <small className="faint">({String(industrySet(set).length)})</small>
+                </label>
+              ))}
+            </fieldset>
           </nav>
           <div className="sv-tpl-edit">
             {!draft && (

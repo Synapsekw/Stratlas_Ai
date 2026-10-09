@@ -20,10 +20,12 @@ import {
   DEFAULT_SNAP,
   drawReducer,
   editReducer,
+  industryTemplates,
   initialDraw,
   initialEdit,
   measurementFrom,
   removeTemplate,
+  templateLibrary,
   TOOL_FAMILY,
   TOOL_LABELS,
   upsertTemplate,
@@ -456,6 +458,18 @@ export function editEvent(e: EditEvent): void {
 }
 
 // ---------------------------------------------------------------- templates
+
+/**
+ * Every template a measurement can name: the project's, the person's library, then the industry
+ * sets the site enables (G9), each id once (the toolbar's order).
+ */
+export function knownTemplates(s: Pick<MeasureState, 'templates' | 'settings'>): SurveyTemplate[] {
+  return templateLibrary(
+    s.templates.project,
+    s.templates.user,
+    industryTemplates(s.settings.templateSets),
+  ).map((l) => l.template);
+}
 
 export async function saveTemplate(
   scope: 'project' | 'user',
