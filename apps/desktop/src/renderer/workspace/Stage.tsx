@@ -72,6 +72,7 @@ import { CompareScene } from './CompareScene';
 import { ChangeLegends } from './MapSwipe';
 import { CursorReadout, useSceneCursor } from './SceneCursor';
 import { DesignsTool } from '../survey/Designs';
+import { HydroTool } from '../survey/Hydro';
 import './m8Mounts';
 import { paneCapture, PaneChooser, SplitPane, useSplit } from './SplitPanes';
 import {
@@ -267,6 +268,7 @@ function StageToolbar({
           <>
             {map ? <MeasureToolbar /> : <MeasureTools stage={stage} />}
             <DesignsTool />
+            <HydroTool />
           </>
         );
       case 'display':
