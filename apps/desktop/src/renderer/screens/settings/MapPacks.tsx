@@ -10,6 +10,7 @@ import type { MapPackInfo, PackJob } from '@aio/schema';
 import { formatBytes, formatDate, Icon, t } from '@aio/ui';
 import { useEffect, useMemo, useState } from 'react';
 import { bridge, useShell } from '../../shell';
+import { GeoidPacks } from './GeoidPacks';
 import { RasterPacks } from './RasterPacks';
 
 const ZOOMS: { z: number; hint: string }[] = [
@@ -592,6 +593,9 @@ export function MapPacks() {
 
       {/* M10 G7: imagery and terrain packs */}
       <RasterPacks />
+
+      {/* M11: geoid grids for orthometric heights */}
+      <GeoidPacks />
     </>
   );
 }
