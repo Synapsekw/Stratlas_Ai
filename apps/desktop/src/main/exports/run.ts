@@ -251,7 +251,7 @@ export async function runExport(
     job.format === 'stockpile-csv' ||
     job.format === 'survey-report-pdf'
   ) {
-    throw new Error('Survey reports are not available yet (M11 G9).');
+    throw new Error('Survey reports and CSVs are made by the report window, not here.');
   }
   const part = `${job.outPath}.part`;
   try {
