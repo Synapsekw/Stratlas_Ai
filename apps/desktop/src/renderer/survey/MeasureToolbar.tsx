@@ -457,6 +457,11 @@ function DrawBar() {
       data-surface="dark"
     >
       <b>{tool.template?.name ?? TOOL_LABELS[tool.tool]}</b>
+      {tool.prompt && (
+        <span className="small" role="status" data-testid="survey-draw-prompt">
+          {tool.prompt}
+        </span>
+      )}
       <span className="faint small">
         {draw.points.length} {draw.points.length === 1 ? 'point' : 'points'}
         {draw.lockedBearing !== null && ` · locked ${draw.lockedBearing.toFixed(1)}°`}

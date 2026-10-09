@@ -7,6 +7,7 @@ import {
   Alignment,
   type AioBridge,
   type DesignEntry,
+  type DesignImportParams,
   type DesignLayer,
   type DesignsFile,
 } from '@aio/schema';
@@ -15,6 +16,7 @@ import { assetUrl, workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { bridge, jobs } from '../shell';
+import type { DesignProbe } from './designImportForm';
 
 export interface ActiveAlignment {
   ref: string;
@@ -164,25 +166,29 @@ export function activateAlignment(ref: string | null) {
   });
 }
 
-/** Pick a design file and start `design.import`; answers an error sentence or null. */
-export async function importDesign(): Promise<string | null> {
-  const project = workspace.getState().project;
-  if (!project) return 'No project is open.';
+/** Pick a design file (the options step follows); null when the person cancelled. */
+export async function pickDesignFile(): Promise<{ path: string } | { error: string } | null> {
   const pick = await bridge.call('dialog:openFile', {
     title: 'Import design',
     filters: [{ name: 'Design', extensions: ['xml', 'landxml', 'dxf', '12da', 'csv', 'txt'] }],
   });
-  if (!pick.ok) return pick.error;
-  if (!pick.value.path) return null;
-  return startDesignImport(project.root, pick.value.path);
+  if (!pick.ok) return { error: pick.error };
+  return pick.value.path ? { path: pick.value.path } : null;
 }
 
-export async function startDesignImport(root: string, src: string): Promise<string | null> {
+/** A quick look at the file (format, units, layers); null when it cannot be read. */
+export async function probeDesignFile(path: string): Promise<DesignProbe | null> {
+  const r = await bridge.call('survey:probeDesign', { path });
+  return r.ok && r.value.ok ? r.value : null;
+}
+
+/** Start `design.import` with the options step's parameters; answers an error sentence or null. */
+export async function startDesignImport(
+  root: string,
+  params: DesignImportParams,
+): Promise<string | null> {
   watchImports();
-  const r = await jobs
-    .getState()
-    .start({ pipeline: 'design.import', project: root, params: { src } });
-  return r;
+  return jobs.getState().start({ pipeline: 'design.import', project: root, params });
 }
 
 let watching = false;

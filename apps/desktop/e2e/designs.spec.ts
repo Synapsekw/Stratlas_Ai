@@ -2,9 +2,11 @@
  * Designs in the site view (M11 G6): a small LandXML design (a 3 x 3 pad surface with a breakline
  * and boundary, two points, and an alignment with a line, a clothoid, an arc and a station
  * equation, all synthetic at the tiny project's site) is imported through the Designs panel with
- * `design.import` (development pipeline Python). It shows in the panel with its layers and counts;
- * activating the alignment makes the cursor readout show station and offset. Zero network, as
- * every test (the fixture asserts it).
+ * `design.import` (development pipeline Python), through the options step (detected format, units
+ * and layers). It shows in the panel with its layers and counts, and is drawn in the 3D view (its
+ * surface, points and alignment objects) and on the map (the designs source and layers, with
+ * station labels); hiding a layer takes it out of the view. Activating the alignment makes the
+ * cursor readout show station and offset. Zero network, as every test (the fixture asserts it).
  */
 import type { ElectronApplication, Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
@@ -87,6 +89,44 @@ function landXml(): string {
 `;
 }
 
+/** The design layer of every object in the 3D view's designs group (in the page). */
+function designObjects(): string[] {
+  const g = (
+    window as unknown as {
+      __stratlas: {
+        stage(): {
+          scene: {
+            getObjectByName(
+              n: string,
+            ): { children: { userData: { designRef?: string } }[] } | undefined;
+          };
+        } | null;
+      };
+    }
+  ).__stratlas
+    .stage()
+    ?.scene.getObjectByName('aio-designs');
+  return (g?.children ?? []).map((c) => c.userData.designRef ?? '');
+}
+
+/** The layer and kind of every feature in the map's designs source, once its layers are on. */
+function mapDesignFeatures(): string[] {
+  const el = [...document.querySelectorAll('*')].find((e) => '__aioMap' in e) as
+    | (Element & {
+        __aioMap: {
+          getLayer(id: string): unknown;
+          querySourceFeatures(id: string): { properties: { ref?: string; kind?: string } }[];
+        };
+      })
+    | undefined;
+  const m = el?.__aioMap;
+  if (!m?.getLayer('aio-designs-line') || !m.getLayer('aio-designs-label')) return [];
+  const keys = m
+    .querySourceFeatures('aio-designs')
+    .map((f) => (f.properties.ref ?? '') + ' ' + (f.properties.kind ?? ''));
+  return [...new Set(keys)].sort();
+}
+
 async function answerOpenDialog(app: ElectronApplication, path: string): Promise<void> {
   await app.evaluate(({ dialog }, p) => {
     dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [p] });
@@ -122,12 +162,39 @@ test('a LandXML design imports, shows in the Designs panel and its alignment giv
   await answerOpenDialog(app, src);
   await win.getByRole('button', { name: 'Import design' }).click();
 
+  // the options step: what a quick look at the file found, every layer ticked
+  const options = win.getByTestId('design-import');
+  await expect(options).toBeVisible();
+  await expect(options.getByTestId('design-import-format')).toContainText('Automatic (LandXML)');
+  await expect(options.getByTestId('design-import-units')).toContainText('metres');
+  const layerList = options.getByTestId('design-import-layers');
+  for (const name of ['Control', 'Pad design', 'CL1'])
+    await expect(layerList.getByRole('checkbox', { name })).toBeChecked();
+  await options.getByTestId('design-import-start').click();
+  await expect(options).toHaveCount(0);
+
   // the job runs, then the panel reloads with the design and its four layers
   const design = win.getByTestId('design-Pad-design');
   await expect(design).toBeVisible({ timeout: 120_000 });
   await expect(win.getByTestId('design-layer-Pad-design')).toContainText('8 triangles, 9 vertices');
   await expect(win.getByTestId('design-layer-CL1')).toContainText('Alignment');
   await expect(win.getByTestId('design-layer-Control')).toContainText('1 point');
+
+  // drawn in the 3D view: the surface (mesh and outline), the points and the alignment (line and
+  // station ticks), each tagged with its layer
+  const drawn = () => win.evaluate(designObjects);
+  await expect
+    .poll(async () => [...new Set(await drawn())].sort(), { timeout: 20_000 })
+    .toEqual(['Pad-design/CL1', 'Pad-design/Control', 'Pad-design/Pad-design']);
+  expect((await drawn()).filter((r) => r === 'Pad-design/Pad-design')).toHaveLength(2);
+  await expect(win.locator('.dsn-station').first()).toBeAttached();
+
+  // hiding a layer takes it out of the view
+  await win
+    .getByTestId('design-layer-Control')
+    .getByRole('checkbox', { name: 'Show Control' })
+    .click();
+  await expect.poll(async () => (await drawn()).includes('Pad-design/Control')).toBe(false);
 
   // activate the alignment: the panel says so and designs.json records it
   await win
@@ -170,4 +237,16 @@ test('a LandXML design imports, shows in the Designs panel and its alignment giv
       { timeout: 20_000 },
     )
     .toMatch(/Sta \d+\+\d{3}\.\d{3} {2}Off \d+\.\d{3}/);
+
+  // on the map: the designs source with the pad outline, the alignment and its station labels
+  const bar = win.getByRole('toolbar', { name: 'Stage tools' });
+  await bar.getByRole('button', { name: 'Map' }).click();
+  await expect(win.locator('.maplibregl-canvas').first()).toBeVisible();
+  await expect
+    .poll(() => win.evaluate(mapDesignFeatures), { timeout: 30_000 })
+    .toEqual([
+      'Pad-design/CL1 alignment',
+      'Pad-design/CL1 station',
+      'Pad-design/Pad-design surface',
+    ]);
 });

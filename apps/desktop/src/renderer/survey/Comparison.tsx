@@ -39,6 +39,7 @@ import {
   useCompare,
   type Computed,
 } from './compareStore';
+import type { ItemShare } from './engineProtocol';
 import { attachHeat3d, attachHeatMap, attachSiteMap } from './heatScene';
 import { HeatmapStopsButton } from './HeatmapStops';
 import { Materials } from './Materials';
@@ -134,8 +135,15 @@ export function Comparisons({ m }: { m: SurveyMeasurement }) {
           const stored = m.results.find((r) => r.item === it.id);
           const shown = live?.results.find((r) => r.item === it.id) ?? stored;
           const stale = !live && stored !== undefined && isStale({ current }, m, stored);
+          // the share of the numbers shown (not of an older computation)
+          const fromRun = computed?.results.find((r) => r.item === it.id);
+          const share =
+            shown && fromRun?.fingerprint === shown.fingerprint
+              ? (computed?.shares.find((x) => x.item === it.id) ?? null)
+              : null;
           return (
             <ItemEditor
+              share={share}
               key={it.id}
               index={k}
               m={m}
@@ -201,6 +209,7 @@ function ItemEditor({
   item,
   options,
   result,
+  share,
   stale,
   live,
   running,
@@ -214,6 +223,7 @@ function ItemEditor({
   item: ComparisonItem;
   options: SideOption[];
   result: ComparisonResult | null;
+  share: ItemShare | null;
   stale: boolean;
   live: boolean;
   running: boolean;
@@ -376,7 +386,7 @@ function ItemEditor({
           Use deadband in calculations
         </label>
       </div>
-      <Results result={result} stale={stale} live={live} running={running} m={m} />
+      <Results result={result} share={share} stale={stale} live={live} running={running} m={m} />
     </li>
   );
 }
@@ -523,12 +533,14 @@ function ReferenceLevel({
 
 function Results({
   result,
+  share,
   stale,
   live,
   running,
   m,
 }: {
   result: ComparisonResult | null;
+  share: ItemShare | null;
   stale: boolean;
   live: boolean;
   running: boolean;
@@ -608,6 +620,19 @@ function Results({
           ? `Grid ${formatQuantity(result.cellM, 'distance', units, settings.precision)}.`
           : 'Exact (triangulated).'}
       </p>
+      {share && share.share.areaM2 > 0 && (
+        <p
+          className="small"
+          data-testid="survey-cmp-share"
+          data-share={share.share.share}
+          data-tolerance={share.toleranceM}
+        >
+          <b>{(share.share.share * 100).toFixed(1)}% in tolerance</b> (plus or minus{' '}
+          {formatQuantity(share.toleranceM, 'distance', units, settings.precision)}):{' '}
+          {a(share.share.inToleranceM2)} of {a(share.share.areaM2)}; cut beyond it{' '}
+          {a(share.share.cutM2)}, fill beyond it {a(share.share.fillM2)}.
+        </p>
+      )}
     </div>
   );
 }

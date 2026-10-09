@@ -10,7 +10,7 @@ import type {
   HeightTiles,
   SurfaceRef,
 } from '@aio/schema';
-import type { SiteContext } from '@aio/survey';
+import type { SiteContext, ToleranceShare } from '@aio/survey';
 
 /** What the worker resolves surfaces against: one open project. */
 export interface EngineContext {
@@ -45,11 +45,22 @@ export interface RunRequest {
   capture?: string;
   /** Also return heat grids of at most this many cells a side (0: none). */
   heat?: number;
+  /** The tolerance of a design item without its own `deadbandM` (the site's default), metres. */
+  toleranceM?: number;
+}
+
+/** The in-tolerance share of a design item's area (compliance to design, DSN-3). */
+export interface ItemShare {
+  item: string;
+  toleranceM: number;
+  share: ToleranceShare;
 }
 
 export interface RunReply {
   results: ComparisonResult[];
   heat: HeatGrid[];
+  /** One per item with a design side that was computed on a grid. */
+  shares: ItemShare[];
   ms: number;
 }
 

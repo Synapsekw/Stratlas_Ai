@@ -15,6 +15,7 @@ import {
   projectResolver,
   resolveCurrentPrevious,
   TileCache,
+  toleranceShare,
   type GridOut,
   type Resolve,
   type ResolvedSurface,
@@ -25,6 +26,7 @@ import type {
   EngineReply,
   EngineRequest,
   HeatGrid,
+  ItemShare,
   RunReply,
   RunRequest,
   SiteRequest,
@@ -74,8 +76,10 @@ export class EngineSession {
     const shared = newShared();
     const results = [];
     const heat: HeatGrid[] = [];
+    const shares: ItemShare[] = [];
     for (const item of req.items) {
-      const out: GridOut[] | undefined = req.heat ? [] : undefined;
+      const design = isDesignItem(item);
+      const out: GridOut[] | undefined = req.heat || design ? [] : undefined;
       const r = await compareItem(
         req.ring,
         item,
@@ -87,8 +91,12 @@ export class EngineSession {
       const g = out?.[0];
       if (g && req.heat && r.status !== 'refused')
         heat.push(await heatGrid(item, g, req.heat, resolve, signal));
+      if (design && out?.length && r.status !== 'refused') {
+        const toleranceM = item.deadbandM ?? req.toleranceM ?? DEFAULT_TOLERANCE_M;
+        shares.push({ item: item.id, toleranceM, share: gridShare(out, toleranceM) });
+      }
     }
-    return { results, heat, ms: performance.now() - t0 };
+    return { results, heat, shares, ms: performance.now() - t0 };
   }
 
   /** The fingerprint each item would have now (the inputs only, nothing is computed). */
@@ -173,6 +181,28 @@ export class EngineSession {
       },
     };
   }
+}
+
+/** The tolerance of a design item that names none (the compliance default, 50 mm). */
+export const DEFAULT_TOLERANCE_M = 0.05;
+
+const isDesignItem = (item: ComparisonItem) =>
+  item.from.kind === 'design' || item.to.kind === 'design';
+
+/** The in-tolerance share over every band of the grid outputs (full resolution). */
+export function gridShare(out: readonly GridOut[], toleranceM: number): ItemShare['share'] {
+  const acc = { areaM2: 0, inToleranceM2: 0, cutM2: 0, fillM2: 0, uncoveredM2: 0, share: 0 };
+  for (const g of out)
+    for (const b of g.bands) {
+      const s = toleranceShare(b.dz, toleranceM, b.win.cell * b.win.cell, b.w);
+      acc.areaM2 += s.areaM2;
+      acc.inToleranceM2 += s.inToleranceM2;
+      acc.cutM2 += s.cutM2;
+      acc.fillM2 += s.fillM2;
+      acc.uncoveredM2 += s.uncoveredM2;
+    }
+  acc.share = acc.areaM2 > 0 ? acc.inToleranceM2 / acc.areaM2 : 0;
+  return acc;
 }
 
 /** The bands of a grid output as one window (row 0 south). */
