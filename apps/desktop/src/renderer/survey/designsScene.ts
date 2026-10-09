@@ -447,9 +447,12 @@ export function attachDesignsMap(ctl: MapController, frame: Frame): () => void {
     type: 'FeatureCollection',
     features: designFeatures(designsView.getState().layers, epsg),
   });
+  // sources still loading (rasters): draw again once the map is idle
+  let waiting = false;
   const draw = () => {
     try {
-      if (!map.isStyleLoaded()) return;
+      waiting = !map.isStyleLoaded();
+      if (waiting) return;
       const src = map.getSource(DESIGNS_SOURCE) as { setData?: (d: unknown) => void } | undefined;
       if (src?.setData) src.setData(data());
       else map.addSource(DESIGNS_SOURCE, { type: 'geojson', data: data() as never });
@@ -501,12 +504,17 @@ export function attachDesignsMap(ctl: MapController, frame: Frame): () => void {
   const onStyle = () => {
     draw();
   };
+  const onIdle = () => {
+    if (waiting) draw();
+  };
   map.on('styledata', onStyle);
+  map.on('idle', onIdle);
   const off = designsView.subscribe(draw);
   draw();
   return () => {
     off();
     map.off('styledata', onStyle);
+    map.off('idle', onIdle);
     try {
       for (const id of Object.values(DESIGNS_LAYERS)) if (map.getLayer(id)) map.removeLayer(id);
       if (map.getSource(DESIGNS_SOURCE)) map.removeSource(DESIGNS_SOURCE);
