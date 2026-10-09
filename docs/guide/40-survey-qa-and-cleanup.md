@@ -35,6 +35,16 @@ A cleanup replaces the terrain inside an area with a surface carried across from
 
 The cleaned surface is named after the survey with `-clean` at the end. Pick it in a comparison to use it; comparisons on the original are unchanged.
 
+## DTM from a point cloud
+
+**Cleanup and crop**, **DTM from a point cloud** makes a bare-ground surface from a point cloud layer, filtering out what stands on the ground:
+
+1. Pick the **Point cloud**.
+2. Choose what to **Remove**: **Equipment** (parked plant and other small objects), **Equipment and vegetation**, **Structures** (buildings and other large objects as well) or **Everything above the ground** (a cloth simulation).
+3. Click **Make a DTM**. The DTM is a new surface named after the survey with `-dtm` at the end; pick it in a comparison to use it.
+
+The button is greyed out with the reason when the project has no point cloud or the pipeline pack has no PDAL.
+
 ## Surveys and elevation history
 
 **Surveys** lists the survey dates by year and month, newest first, with their QA status. Click one to view it. **Show hidden** also lists helper surfaces such as cleaned surfaces.
