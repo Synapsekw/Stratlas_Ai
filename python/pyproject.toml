@@ -20,6 +20,8 @@ dependencies = [
   "shapely>=2.0",
   "pyshp>=2.3",
   "pyopf>=1.4.1,<2",
+  # designs and DXF linework (M11 G6): MIT, a prebuilt wheel, no extras
+  "ezdxf>=1.4",
   # photogrammetry (M10): COLMAP's own wheels, OpenCV's headless wheels and MeshLab's screened
   # Poisson; one marker for all three, the platforms of decision 8
   "pycolmap==4.2.1; sys_platform == 'win32' or (sys_platform == 'darwin' and platform_machine == 'arm64')",

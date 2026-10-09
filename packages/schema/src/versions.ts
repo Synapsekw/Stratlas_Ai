@@ -433,6 +433,13 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     since: '0.11',
   },
   {
+    family: 'aio.haul-run',
+    version: 1,
+    home: 'project',
+    where: 'survey/haul/<run>/run.json',
+    since: '0.11',
+  },
+  {
     family: 'aio.site-calibration',
     version: 1,
     home: 'project',
@@ -458,6 +465,13 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     version: 1,
     home: 'userData',
     where: 'survey-defaults.json',
+    since: '0.11',
+  },
+  {
+    family: 'aio.hydro-run',
+    version: 1,
+    home: 'project',
+    where: 'survey/hydro/<run>/run.json',
     since: '0.11',
   },
 ];

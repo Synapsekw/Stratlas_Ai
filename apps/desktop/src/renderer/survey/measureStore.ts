@@ -57,8 +57,13 @@ export interface MeasureState {
   /** Saving is refused (a package): measurements are shown, never written. */
   readOnly: boolean;
   file: MeasurementsFile;
-  /** The file as last read or saved, to tell unsaved changes. */
+  /**
+   * The file as last read or saved, to tell a person's unsaved changes. Results the app computed
+   * on its own are put on it too (`setComputedResults`), so they never count as an edit.
+   */
   savedText: string;
+  /** Results the app computed are not on disk yet (written with the next save). */
+  resultsUnwritten: boolean;
   saving: boolean;
   /** A short line after a save or a refusal. */
   message: string | null;
@@ -97,6 +102,7 @@ const initial = (): Omit<MeasureState, 'snap' | 'autosave' | 'surface'> => ({
   readOnly: false,
   file: emptyMeasurements(),
   savedText: text(emptyMeasurements()),
+  resultsUnwritten: false,
   saving: false,
   message: null,
   settings: defaultSurveySettings(),
@@ -179,6 +185,7 @@ export async function saveMeasurements(): Promise<boolean> {
     saving: false,
     message: ok ? 'Measurements saved.' : `Not saved: ${error ?? ''}`,
     ...(ok ? { savedText: text(file) } : {}),
+    ...(ok && get().file === file ? { resultsUnwritten: false } : {}),
   });
   return ok;
 }
@@ -187,8 +194,16 @@ export async function saveMeasurements(): Promise<boolean> {
 export function revertMeasurements(): void {
   const s = get();
   const parsed = MeasurementsFile.safeParse(JSON.parse(s.savedText));
+  // the baseline as parsed too (its key order), so the reverted file reads as saved
   if (parsed.success)
-    set({ file: parsed.data, selected: [], focus: null, editing: null, message: null });
+    set({
+      file: parsed.data,
+      savedText: text(parsed.data),
+      selected: [],
+      focus: null,
+      editing: null,
+      message: null,
+    });
 }
 
 function changed(file: MeasurementsFile, extra: Partial<MeasureState> = {}): void {
@@ -232,6 +247,34 @@ export function updateMeasurement(
       m.id === id ? { ...fn(m), updatedAt: now() } : m,
     ),
   });
+}
+
+/**
+ * Put results the app computed on its own (opening a polygon whose stored results are missing or
+ * stale) on a measurement. Derived numbers, not a person's edit: `updatedAt` stays, autosave does
+ * not run, and the saved baseline takes the same results, so the file does not show unsaved
+ * changes. The results are written with the next save (a person's edit, or Recompute).
+ */
+export function setComputedResults(
+  id: string,
+  fn: (m: SurveyMeasurement) => SurveyMeasurement['results'],
+): void {
+  const s = get();
+  if (s.readOnly) return;
+  const target = s.file.measurements.find((m) => m.id === id);
+  if (!target) return;
+  const results = fn(target);
+  if (JSON.stringify(results) === JSON.stringify(target.results)) return;
+  const file: MeasurementsFile = {
+    ...s.file,
+    measurements: s.file.measurements.map((m) => (m.id === id ? { ...m, results } : m)),
+  };
+  // the same results on the baseline (when it has the measurement), so only a person's edits
+  // count as unsaved; JSON text round trips keep the key order
+  const saved = JSON.parse(s.savedText) as { measurements?: { id?: unknown }[] };
+  if (Array.isArray(saved.measurements))
+    saved.measurements = saved.measurements.map((m) => (m.id === id ? { ...m, results } : m));
+  set({ file, savedText: JSON.stringify(saved), resultsUnwritten: true });
 }
 
 /** Move measurements into a folder ('' takes them out of any folder). */

@@ -1,6 +1,8 @@
 import type { VolumeBaseId } from '@aio/schema';
 import { Icon, shortcutHint, t } from '@aio/ui';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { EngineBase } from '../model/compute';
+import { localToEN } from '../model/frame';
 import { registerRows, sortRows, totals, type SortKey } from '../model/register';
 import { useVolumetric, volumetric } from '../store';
 import { f0, f1, sgn } from './format';
@@ -365,6 +367,78 @@ function ChangeSummary() {
   );
 }
 
+/**
+ * The general survey engine's bases (M11, ADR 0009) for the selected pile and date: additional
+ * choices on the pile's 10 cm grid, under their engine names. The kit's four bases above keep
+ * their names and numbers, and the register, totals and volumes.json use only those (founder
+ * decision pending on whether the engine's smart base may ever replace the kit's tin).
+ */
+function EngineBases({ pile }: { pile: string }) {
+  const svc = useVolumetric((x) => x.service);
+  const epoch = useVolumetric((x) => x.epoch);
+  const origin = useVolumetric((x) => x.origin);
+  const ring = useVolumetric((x) => x.piles.find((p) => p.id === pile)?.epochs[epoch]?.ring);
+  const [got, setGot] = useState<{ key: string; bases: EngineBase[] } | null>(null);
+  const [open, setOpen] = useState(false);
+  const key = `${pile}/${epoch}/${JSON.stringify(ring ?? null)}`;
+  useEffect(() => {
+    if (!open || !svc || !ring || got?.key === key) return;
+    let live = true;
+    svc
+      .engineBases(
+        pile,
+        epoch,
+        ring.map((q) => localToEN(origin, q)),
+      )
+      .then(
+        (bases) => {
+          if (live) setGot({ key, bases });
+        },
+        () => {
+          if (live) setGot({ key, bases: [] });
+        },
+      );
+    return () => {
+      live = false;
+    };
+  }, [open, svc, ring, pile, epoch, origin, key, got?.key]);
+  const bases = got?.key === key ? got.bases : null;
+  return (
+    <details
+      className="vol-engine"
+      data-testid="vol-engine-bases"
+      onToggle={(e) => {
+        setOpen(e.currentTarget.open);
+      }}
+    >
+      <summary>More bases (survey engine)</summary>
+      <p className="vol-note">
+        Additional choices from the general survey engine on the 10 cm pile grid. They are not the
+        bases above: the engine's smart base is a triangulation of the toe line, the kit's TIN a
+        smooth membrane, so the figures differ. The register and totals keep the four bases above.
+      </p>
+      {bases === null ? (
+        <p className="vol-note">Computing…</p>
+      ) : bases.length === 0 ? (
+        <p className="vol-note">No grid for this date.</p>
+      ) : (
+        <dl className="vol-facts">
+          {bases.map((b) => (
+            <div key={b.key} data-testid="vol-engine-base" data-base={b.key}>
+              <dt>{b.label}</dt>
+              <dd>
+                {b.result.status === 'refused'
+                  ? (b.result.reason ?? 'Not computed')
+                  : `${f0(b.result.netM3)} m³`}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </details>
+  );
+}
+
 function PileDetail({ id }: { id: string }) {
   const s = useVolumetric((x) => x);
   const pile = s.piles.find((p) => p.id === id);
@@ -623,6 +697,7 @@ function PileDetail({ id }: { id: string }) {
               </>
             )}
           </dl>
+          <EngineBases pile={id} />
         </section>
       )}
       <section className="vol-sec">

@@ -121,6 +121,8 @@ const RASTER = new Set(['.tif', '.tiff']);
 const CLOUD = new Set(['.las', '.laz', '.e57', '.ply']);
 /** DXF plot plans (M8): imported by the `drawing.import` pipeline into `drawings/`. */
 const DRAWING = new Set(['.dxf']);
+/** Designs (M11 G6): LandXML (`.xml` only when it is LandXML) and 12da, by `design.import`. */
+const DESIGN = new Set(['.landxml', '.12da']);
 /** OPF projects (M10): imported by the `opf.import` pipeline (photos, cloud, ortho, DSM). */
 const OPF = new Set(['.opf']);
 /** Codecs Chromium plays (sample entry fourcc). */
@@ -562,6 +564,12 @@ export async function importRawFiles(
         await job(file, 'drawing', 'drawing.import', {});
       } else if (OPF.has(ext)) {
         await job(file, 'opf', 'opf.import', {});
+      } else if (
+        DESIGN.has(ext) ||
+        (ext === '.xml' &&
+          new TextDecoder().decode(await readHead(file, 4096)).includes('<LandXML'))
+      ) {
+        await job(file, 'design', 'design.import', {});
       } else if (ext === '.dwg') {
         items.push({
           file: name,
@@ -592,7 +600,9 @@ export async function importRawFiles(
                   ? 'drawing'
                   : OPF.has(ext)
                     ? 'opf'
-                    : 'unknown';
+                    : DESIGN.has(ext) || ext === '.xml'
+                      ? 'design'
+                      : 'unknown';
       items.push({
         file: name,
         kind,

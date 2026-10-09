@@ -3,10 +3,11 @@
  * measurements (`survey/measurements.json`, G3), the comparison templates of the project
  * (`survey/templates.json`) and of the user library (userData), its designs (`survey/designs.json`,
  * G6) and the prepared surfaces for the From and To pickers (`survey/surfaces/<id>/tiles.json`,
- * G2). Every write is atomic with a `.bak` and refused for packages; measurements are journaled
- * (`survey:writeMeasurements` is a journaled writer in `journal.ts`: `measurement.create`,
- * `.patch` and `.delete` per measurement). The computing runs as pipeline jobs (`survey.*`,
- * `design.import`) through `jobs:start`. The site settings are G1's (`geodesy.ts`); the prepared surfaces are G2's (`listSurfaces`); designs are still G0 stubs here.
+ * G2). Every write is atomic with a `.bak` and refused for packages; measurements and designs are
+ * journaled (`survey:writeMeasurements` and `survey:writeDesigns` are journaled writers in
+ * `journal.ts`). The computing runs as pipeline jobs (`survey.*`, `design.import`) through
+ * `jobs:start`. The site settings are G1's (`geodesy.ts`), the prepared surfaces G2's
+ * (`listSurfaces`) and the designs G6's (`surveyDesigns.ts`).
  */
 import {
   HeightTiles,
@@ -27,6 +28,7 @@ import { isChangedOnDisk, readJsonSeen, writeJsonSeen } from './fsutil';
 import { newerOnDisk, newerThanThisBuild } from './newer';
 import { surveySettingsHandlers, type JournalAppend } from './geodesy';
 import { notYet, type Handle } from './notYet';
+import { readDesigns, readPackageDesigns, writeDesigns } from './surveyDesigns';
 
 /** A package's archive, read in place (members by project-relative name). */
 export interface SurveyArchive {
@@ -80,6 +82,7 @@ interface Failure {
 const READ_ONLY_MEASUREMENTS =
   'This project is a read-only package. Its measurements cannot be changed.';
 const READ_ONLY_TEMPLATES = 'This project is a read-only package. Its templates cannot be changed.';
+const READ_ONLY_DESIGNS = 'This project is a read-only package. Its designs cannot be changed.';
 
 function why(e: unknown): string {
   const code = (e as NodeJS.ErrnoException).code;
@@ -250,8 +253,6 @@ export async function writeTemplates(
   }
 }
 
-// ---------------------------------------------------------------- registration
-
 // ---------------------------------------------------------------- prepared surfaces (G2)
 
 const surfaceJson = new RegExp(`^${SURFACES_DIR}/([A-Za-z0-9][A-Za-z0-9._-]{0,79})/tiles[.]json$`);
@@ -325,8 +326,24 @@ export function registerSurveyIpc({ handle, userData, journal, ...deps }: Survey
   handle('survey:writeTemplates', (req) =>
     projects && userData ? writeTemplates(projects, userData(), req) : unavailable(),
   );
-  handle('survey:readDesigns', () => notYet(what));
-  handle('survey:writeDesigns', () => notYet(what));
+  // designs (G6): surveyDesigns.ts
+  handle('survey:readDesigns', ({ projectId }) => {
+    if (!projects) return unavailable();
+    const root = projects.root(projectId);
+    if (root !== undefined) return readDesigns(root);
+    const pkg = projects.package(projectId);
+    if (pkg) return readPackageDesigns(pkg.archive);
+    return { ok: false, error: `Project "${projectId}" is not open.` };
+  });
+  handle('survey:writeDesigns', ({ projectId, file }) => {
+    if (!projects) return unavailable();
+    if (projects.package(projectId))
+      return { ok: false, error: READ_ONLY_DESIGNS, code: 'read-only' };
+    const root = projects.root(projectId);
+    if (root === undefined)
+      return { ok: false, error: `Project "${projectId}" is not open. Open it, then try again.` };
+    return writeDesigns(root, file);
+  });
   handle('survey:surfaces', ({ projectId }) => {
     if (!projects) return unavailable();
     const root = projects.root(projectId);

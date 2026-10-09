@@ -7,6 +7,8 @@ export const BUILDER_PIPELINES: Readonly<Record<string, PipelineName>> = {
   'drawing.import': 'drawing.import',
   // M10: an OPF project dropped on the builder (photos, cloud, ortho and DSM in one job)
   'opf.import': 'opf.import',
+  // M11 G6: a LandXML or 12da design dropped on the builder (into survey/designs/)
+  'design.import': 'design.import',
 };
 
 /** Keys of the builder's job params each pipeline takes (`projectRoot` becomes the job project). */
@@ -15,6 +17,7 @@ const PARAM_KEYS: Readonly<Partial<Record<PipelineName, readonly string[]>>> = {
   // the drawing's units and placement are set in the Model builder afterwards
   'drawing.import': ['src'],
   'opf.import': ['src'],
+  'design.import': ['src'],
 };
 
 export interface JobStarter {

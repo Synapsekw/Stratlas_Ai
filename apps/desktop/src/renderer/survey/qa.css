@@ -1,0 +1,203 @@
+/* Survey QA, cleanup, crop, survey picker and elevation history (M11 G8). Mission tokens only. */
+
+.qa-menu {
+  display: grid;
+  gap: 4px;
+  min-width: 220px;
+}
+.qa-menu .btn {
+  justify-content: flex-start;
+}
+
+.qa-side {
+  position: fixed;
+  top: 96px;
+  left: 16px;
+  bottom: 16px;
+  z-index: 50;
+  width: min(380px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+}
+.qa-card {
+  flex: 0 1 auto;
+  max-height: 100%;
+}
+.qa-grow {
+  flex: 1;
+  min-width: 0;
+}
+.qa-mode {
+  display: grid;
+  gap: 4px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.qa-banner {
+  position: fixed;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 61;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(720px, calc(100vw - 32px));
+  padding: 8px 12px;
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-6);
+  background: var(--bg-1);
+  color: var(--fg-0);
+  box-shadow: var(--shadow);
+  font-size: var(--t-12);
+}
+.qa-banner > svg {
+  color: var(--warn);
+  flex: none;
+}
+.qa-banner-text {
+  flex: 1;
+}
+
+.qa-hold-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: var(--r-4);
+  border: 1px solid var(--warn-line);
+  color: var(--fg-0);
+  font-size: var(--t-12);
+}
+
+.qa-pill {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: var(--t-11);
+  color: var(--fg-1);
+  white-space: nowrap;
+}
+.qa-pill.qa-pass,
+.qa-pill.qa-released {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+.qa-pill.qa-hold,
+.qa-pill.qa-fail {
+  border-color: var(--warn-line);
+  color: var(--warn);
+}
+
+.qa-error {
+  margin: 0;
+  color: var(--danger-ink);
+  font-size: var(--t-12);
+}
+.qa-ok {
+  margin: 0;
+  color: var(--ok);
+  font-size: var(--t-12);
+}
+
+.qa-result,
+.qa-release,
+.qa-crop {
+  display: grid;
+  gap: 6px;
+}
+.qa-stats {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr;
+  gap: 2px 10px;
+  margin: 0;
+  font-size: var(--t-12);
+}
+.qa-stats dt {
+  color: var(--fg-2);
+}
+.qa-stats dd {
+  margin: 0;
+}
+
+.qa-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-12);
+}
+.qa-table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--fg-2);
+  border-bottom: 1px solid var(--line);
+  padding: 2px 4px;
+}
+.qa-table td {
+  padding: 2px 4px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.qa-table tr.qa-far td {
+  color: var(--warn);
+}
+
+.qa-hist {
+  margin: 0;
+}
+.qa-hist svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.qa-bar {
+  fill: var(--acc);
+}
+.qa-bar.far {
+  fill: var(--warn);
+}
+.qa-axis {
+  fill: var(--fg-2);
+  font: 10px var(--f-mono);
+}
+.qa-line {
+  fill: none;
+  stroke: var(--acc);
+  stroke-width: 1.5;
+}
+.qa-dot {
+  fill: var(--acc);
+}
+
+.qa-edits {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.qa-year,
+.qa-month {
+  display: grid;
+  gap: 4px;
+}
+.qa-survey {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-4);
+  background: var(--bg-2);
+  color: var(--fg-0);
+  font-size: var(--t-12);
+  text-align: left;
+  cursor: pointer;
+}
+.qa-survey[aria-pressed='true'] {
+  border-color: var(--acc);
+}

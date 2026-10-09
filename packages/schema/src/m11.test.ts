@@ -1,4 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
 import {
@@ -8,7 +10,10 @@ import {
   DesignsFile,
   ENTITLEMENTS,
   GeoidPackMeta,
+  HaulRun,
+  ImportItem,
   HeightTiles,
+  HydroRun,
   LAYER_KINDS,
   Layer,
   MeasurementsFile,
@@ -122,7 +127,9 @@ describe('M11 additive rule: no layer kind, raster role, project type, setting o
         'aio.alignment',
         'aio.designs',
         'aio.geoid-pack',
+        'aio.haul-run',
         'aio.height-tiles',
+        'aio.hydro-run',
         'aio.measurements',
         'aio.site-calibration',
         'aio.site-transform',
@@ -364,6 +371,12 @@ describe('survey files', () => {
 });
 
 describe('design files', () => {
+  it('lets the Builder import list name a design (G6)', () => {
+    expect(ImportItem.parse({ file: 'pad.xml', kind: 'design', status: 'queued' }).kind).toBe(
+      'design',
+    );
+  });
+
   const design = (id: string) => ({
     id,
     name: 'Bulk earthworks',
@@ -444,6 +457,26 @@ describe('design files', () => {
     };
     expect(Alignment.safeParse(alignment).success).toBe(true);
     expect(Alignment.safeParse({ ...alignment, elements: [] }).success).toBe(false);
+  });
+});
+
+describe('haul-road runs', () => {
+  it('parses a run as haul.analyse writes it (G11), and refuses a wrong one', () => {
+    // written by python/src/aio_pipelines/haul/analyse.py (a straight road, a berm and a drop)
+    const haulRunFixture = JSON.parse(
+      readFileSync(fileURLToPath(new URL('./__fixtures__/haul/run.json', import.meta.url)), 'utf8'),
+    ) as { stations: Record<string, unknown>[] } & Record<string, unknown>;
+    const run = HaulRun.parse(haulRunFixture);
+    expect(run.params.limits.minBermHeightM).toBe(1);
+    expect(run.stations).toHaveLength(3);
+    expect(run.stations[0]?.checks.bermRight).toBe('fail');
+    expect(run.stations[0]?.bermRight?.kind).toBe('drop');
+    expect(HaulRun.safeParse({ ...haulRunFixture, schema: 'aio.haul-run/2' }).success).toBe(false);
+    expect(HaulRun.safeParse({ ...haulRunFixture, params: { surface: 'dsm-1' } }).success).toBe(
+      false,
+    );
+    const station = { ...haulRunFixture.stations[0], status: 'maybe' };
+    expect(HaulRun.safeParse({ ...haulRunFixture, stations: [station] }).success).toBe(false);
   });
 });
 
@@ -613,6 +646,14 @@ describe('M11 IPC channels', () => {
     'survey:readDesigns',
     'survey:writeDesigns',
     'survey:surfaces',
+    'survey:readOverlays',
+    'survey:writeOverlays',
+    'survey:readQa',
+    'survey:releaseHold',
+    'survey:readTerrainEdits',
+    'survey:writeTerrainEdits',
+    'survey:readHydroRuns',
+    'survey:readHaulRuns',
     'geodesy:searchCrs',
     'geodesy:readCalibration',
     'geodesy:applyCalibration',
@@ -628,6 +669,35 @@ describe('M11 IPC channels', () => {
       const r = ipc[c].response.safeParse({ ok: false, error: 'x', code: 'not-implemented' });
       expect(r.success, c).toBe(true);
     }
+  });
+
+  it('declares the QA and terrain edit channels of G8 (additive)', () => {
+    const qa = {
+      schema: 'aio.survey-qa/1',
+      capture: 'c1',
+      level: 'strict',
+      status: 'released',
+      release: { at: NOW, note: 'Checked against the GNSS log.' },
+      checkedAt: NOW,
+    };
+    const edits = { schema: 'aio.terrain-edits/1', edits: [] };
+    expect(ipc['survey:readQa'].request.safeParse({ projectId: 'p1' }).success).toBe(true);
+    expect(
+      ipc['survey:readQa'].response.safeParse({ ok: true, files: [qa], readOnly: false }).success,
+    ).toBe(true);
+    const release = ipc['survey:releaseHold'].request;
+    expect(release.safeParse({ projectId: 'p1', capture: 'c1', note: 'Checked.' }).success).toBe(
+      true,
+    );
+    expect(release.safeParse({ projectId: 'p1', capture: 'c1', note: '   ' }).success).toBe(false);
+    expect(ipc['survey:releaseHold'].response.safeParse({ ok: true, qa }).success).toBe(true);
+    expect(
+      ipc['survey:readTerrainEdits'].response.safeParse({ ok: true, file: edits, readOnly: true })
+        .success,
+    ).toBe(true);
+    expect(
+      ipc['survey:writeTerrainEdits'].request.safeParse({ projectId: 'p1', file: edits }).success,
+    ).toBe(true);
   });
 });
 
@@ -663,5 +733,95 @@ describe('M11 journal ops and entitlements', () => {
     const survey = ['survey.measure', 'survey.designs', 'survey.hydro', 'survey.haul', 'survey.ai'];
     expect(ENTITLEMENTS.filter((e) => e.startsWith('survey.'))).toEqual(survey);
     for (const e of ENTITLEMENTS) expect(can(e), e).toBe(true);
+  });
+});
+
+describe('M11 hydrology runs (G10)', () => {
+  const run = {
+    schema: 'aio.hydro-run/1',
+    id: 'pit-flood',
+    pipeline: 'hydro.flood',
+    jobId: '20261009-100000-hydro-flood-a1b2',
+    computedAt: NOW,
+    surface: { id: 'dsm-m1', name: 'DSM m1', fingerprint: `sha256:${SHA}` },
+    params: { surface: 'dsm-m1', levelM: 118.5, mode: 'connected', seed: [552880, 2333100] },
+    cellM: 1,
+    results: {
+      levelM: 118.5,
+      mode: 'connected',
+      seed: [552880, 2333100],
+      areaM2: 1200,
+      volumeM3: 4100.5,
+      maxDepthM: 9.2,
+      wetCells: 1200,
+      outlineAreaM2: 1198.7,
+      outlineRings: 1,
+    },
+    files: {
+      outline: 'outline.geojson',
+      dxf: 'outline.dxf',
+      depth: 'depth.json',
+      view: { file: 'depth-view.png', bounds: [552850, 2333070, 552910, 2333130] },
+    },
+    fingerprint: `sha256:${SHA}`,
+  };
+
+  it('reads a flood, a flow and a rainfall run', () => {
+    expect(HydroRun.parse(run)).toEqual(run);
+    const flow = {
+      ...run,
+      pipeline: 'hydro.flow',
+      results: {
+        mode: 'catchment',
+        method: 'dinf',
+        depressions: 'breach',
+        outlets: [{ pourPoint: [1, 2], areaM2: 10, cells: 10, contributingAreaM2: 9.5 }],
+        streamAreaM2: 100,
+        streamLinks: 3,
+        streamLengthM: 50,
+      },
+      files: { catchments: 'catchments.geojson', streams: 'streams.geojson' },
+    };
+    expect(HydroRun.safeParse(flow).success).toBe(true);
+    const rain = {
+      ...run,
+      pipeline: 'hydro.rainfall',
+      preview: true,
+      notes: ['Simplified 2D model.'],
+      results: {
+        durationMin: 60,
+        frameMin: 2,
+        frames: [
+          {
+            tMin: 2,
+            file: 'frames/0.json',
+            view: 'frames/0-view.png',
+            maxDepthM: 0.01,
+            wetAreaM2: 5,
+          },
+        ],
+        rainM3: 10,
+        infiltratedM3: 1,
+        outflowM3: 8,
+        storedM3: 1,
+        massErrorPct: 0,
+        peakOutflowM3s: 0.02,
+        peakAtMin: 30,
+        finalOutflowM3s: 0.02,
+        maxDepthM: 0.01,
+        steps: 1000,
+        areaM2: 2000,
+      },
+      files: { maxDepth: 'max-depth.json', hydrograph: 'hydrograph.csv' },
+    };
+    expect(HydroRun.safeParse(rain).success).toBe(true);
+    // flood results under a flow run do not pass
+    expect(HydroRun.safeParse({ ...run, pipeline: 'hydro.flow' }).success).toBe(false);
+  });
+
+  it('keeps every listed file inside the run folder', () => {
+    for (const bad of ['../outline.dxf', '/abs/outline.dxf', 'a/../../b', 'C:/x.dxf'])
+      expect(HydroRun.safeParse({ ...run, files: { dxf: bad } }).success, bad).toBe(false);
+    expect(HydroRun.safeParse({ ...run, id: '../x' }).success).toBe(false);
   });
 });

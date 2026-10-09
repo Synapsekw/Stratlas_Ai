@@ -44,13 +44,18 @@ import { ExchangeKind, ExchangePreview, Heads, TeamProjectId } from './exchange'
 import { ActorId, DeviceId, Identity, Initials, Member, PersonName, Role } from './identity';
 import { LaunchSettings } from './launch';
 import { DesignsFile } from './designs';
+import { HydroRun } from './hydro';
+import { HaulRun } from './haul';
 import { CrsCatalogueEntry, GeoidPackId, GeoidPackMeta, SiteCalibration } from './geodesy';
 import {
   HeightTiles,
   MeasurementsFile,
   SitePoint2,
+  SurveyQa,
+  SurveyOverlaysFile,
   SurveySettings,
   SurveyTemplatesFile,
+  TerrainEditsFile,
 } from './survey';
 import {
   AuditEntry,
@@ -2321,6 +2326,75 @@ export const ipc = {
     request: z.object({ projectId: ProjectId }).strict(),
     response: z.discriminatedUnion('ok', [
       z.object({ ok: z.literal(true), surfaces: z.array(HeightTiles) }),
+      Failure,
+    ]),
+  },
+  /**
+   * QA results (`survey/qa/<capture>.json`): every survey's, or one capture's (an empty list when
+   * it has none). Packages are read in place (G8).
+   */
+  'survey:readQa': {
+    request: z.object({ projectId: ProjectId, capture: Id.optional() }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), files: z.array(SurveyQa), readOnly: z.boolean() }),
+      Failure,
+    ]),
+  },
+  /**
+   * **Release** a survey on hold with a person's note: status `released`, journaled `survey.hold`
+   * (action `release`), written atomically with a `.bak`; refused for packages (G8).
+   */
+  'survey:releaseHold': {
+    request: z
+      .object({ projectId: ProjectId, capture: Id, note: z.string().trim().min(1).max(2000) })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), qa: SurveyQa }),
+      Failure,
+    ]),
+  },
+  /** `survey/cleanups.json`; an empty list when there is none (G8). */
+  'survey:readTerrainEdits': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), file: TerrainEditsFile, readOnly: z.boolean() }),
+      Failure,
+    ]),
+  },
+  /** Write `survey/cleanups.json` atomically (`.bak`, journaled); refused for packages (G8). */
+  'survey:writeTerrainEdits': {
+    request: z.object({ projectId: ProjectId, file: TerrainEditsFile }).strict(),
+    response: OkOrFailure,
+  },
+  /** `survey/overlays.json`; an empty list when there is none; `readOnly` for a package (G5). */
+  'survey:readOverlays': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), file: SurveyOverlaysFile, readOnly: z.boolean() }),
+      Failure,
+    ]),
+  },
+  /**
+   * Write `survey/overlays.json` atomically (`.bak`): visibility, names and removals of overlays
+   * `survey.overlay` made (a removed overlay's folder is deleted); refused for packages (G5).
+   */
+  'survey:writeOverlays': {
+    request: z.object({ projectId: ProjectId, file: SurveyOverlaysFile }).strict(),
+    response: OkOrFailure,
+  },
+  /** Hydrology runs (`survey/hydro/<run>/run.json`), newest first; packages read in place (G10). */
+  'survey:readHydroRuns': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), runs: z.array(HydroRun) }),
+      Failure,
+    ]),
+  },
+  /** Haul-road compliance runs (`survey/haul/<run>/run.json`, newest first); packages read in place (G11). */
+  'survey:readHaulRuns': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), runs: z.array(HaulRun) }),
       Failure,
     ]),
   },

@@ -149,4 +149,26 @@ describe('VolumeCompute', () => {
     const { c } = compute();
     await expect(c.recompute('P09')).rejects.toThrow(/P09/);
   });
+
+  it('offers the general engine bases beside the kit ones, on the pile grid', async () => {
+    const { c } = compute();
+    const kit = await c.recompute('P01');
+    const r = await c.engineBases('P01', 'e2', ring);
+    expect(r.map((b) => b.key)).toEqual([
+      'smart',
+      'fit-plane',
+      'perimeter-mean',
+      'perimeter-min',
+      'perimeter-max',
+    ]);
+    // the block (1 m by 0.4 m, 2 m high) on a flat floor: every toe base is the floor
+    for (const b of r) {
+      expect(b.result.status, b.key).toBe('ok');
+      expect(b.result.netM3, b.key).toBeCloseTo(0.8, 6);
+      expect(b.result.engine).toBe('ts');
+    }
+    // the kit's own numbers are what they were
+    expect(kit.e2?.tin.net).toBeCloseTo(0.8, 6);
+    expect(await c.engineBases('P01', 'e9', ring)).toEqual([]);
+  });
 });

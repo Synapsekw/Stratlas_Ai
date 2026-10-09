@@ -108,6 +108,10 @@ import { registerGeodesyIpc } from './geodesy';
 import { geoidJobEnv, packGeoidDirsOf, registerGeoidPacksIpc } from './packs/geoid';
 import { registerSurveyIpc } from './survey';
 import { registerSurveyAiIpc } from './surveyAi';
+import { qaJobEvents, registerSurveyQaIpc } from './surveyQa';
+import { registerSurveyOverlaysIpc } from './surveyOverlays';
+import { registerSurveyHydroIpc } from './surveyHydro';
+import { registerSurveyHaulIpc } from './surveyHaul';
 import { createTestVault, useTestVault } from './testVault';
 import { importLogo, removeLogo } from './branding';
 import { putThumb } from './thumbs';
@@ -554,6 +558,8 @@ const exportJobs = createExportJobs({
   emit: emitExportProgress,
 });
 
+// M11 G8: a survey.qa job that holds a survey is journaled as `survey.hold` when it finishes
+const surveyQaJobs = qaJobEvents({ journal: (root, drafts) => journal.appendEdits(root, drafts) });
 const jobStore = new JobStore(join(app.getPath('userData'), 'jobs.json'));
 const jobs = new JobRunner({
   store: jobStore,
@@ -574,6 +580,7 @@ const jobs = new JobRunner({
     const win = mainWindow ?? BrowserWindow.getAllWindows()[0];
     if (win && !win.isDestroyed()) win.webContents.send('jobs:event', safe);
     void journal.jobEvent(safe);
+    void surveyQaJobs(safe);
   },
 });
 
@@ -1267,10 +1274,15 @@ function registerIpc(): void {
   const survey = {
     projects: registry,
     projectPackage: (id: string) => registry.package(id)?.archive,
-    journal: (root: string, drafts: readonly DraftOp[]) => journal.append(root, drafts),
+    // ops for the survey files main writes itself (settings, calibration, QA hold and release)
+    journal: (root: string, drafts: readonly DraftOp[]) => journal.appendEdits(root, drafts),
   };
   registerSurveyIpc({ handle, ...survey, userData: () => app.getPath('userData') });
+  registerSurveyOverlaysIpc({ handle, ...survey });
   registerGeodesyIpc({ handle, ...survey });
+  registerSurveyQaIpc({ handle, ...survey });
+  registerSurveyHydroIpc({ handle, ...survey });
+  registerSurveyHaulIpc({ handle, ...survey });
   registerGeoidPacksIpc({
     handle,
     dataRoot: () => settings.current().dataRoot,

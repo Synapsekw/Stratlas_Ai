@@ -47,6 +47,7 @@ export function connectVolumeService(
     reliefRaster: call('reliefRaster'),
     grid: call('grid'),
     heights: call('heights'),
+    engineBases: call('engineBases'),
   };
   return {
     ...(ops as VolumeOps),

@@ -783,7 +783,9 @@ export const FORMS: Record<PipelineName, Field[]> = {
       kind: 'file',
       required: true,
       help: 'Read only; a copy is kept with the project.',
-      filters: [{ name: 'Design', extensions: ['xml', 'dxf', '12da', 'csv', 'ttm'] }],
+      filters: [
+        { name: 'Design', extensions: ['xml', 'landxml', 'dxf', '12da', 'csv', 'txt', 'ttm'] },
+      ],
     },
     {
       key: 'format',

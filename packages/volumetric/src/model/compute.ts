@@ -3,7 +3,8 @@
  * Web Worker (worker.ts) and in tests. Grids load lazily, once, from the project's kit scripts.
  * All positions are easting and northing in the project CRS.
  */
-import type { BaseVolumes, VolumeBaseId } from '@aio/schema';
+import type { BaseVolumes, ComparisonResult, SurfaceRef, VolumeBaseId } from '@aio/schema';
+import { compareItem } from '@aio/survey';
 import {
   changeBodyCoarse,
   changeBodyFine,
@@ -40,7 +41,7 @@ import {
   type PileGrid,
 } from './kitdata';
 import { pileLongSection, type PileSection } from './section';
-import { pileVolumes } from './volume';
+import { pileEngineSurface, pileVolumes } from './volume';
 
 /** URLs of the kit scripts. */
 export interface GridSources {
@@ -285,12 +286,59 @@ export class VolumeCompute {
     return reliefRaster(await this.dsm(epoch), lo, hi, style);
   }
 
+  /**
+   * The general survey engine's bases (M11, ADR 0009) for one pile and date, on the pile's own
+   * 10 cm grid and its toe line (E, N): additional choices beside the kit's four bases, which keep
+   * their names and numbers (the kit's `tin` is a membrane, not the engine's Delaunay `smart`).
+   */
+  async engineBases(id: string, epoch: string, ring: EN[]): Promise<EngineBase[]> {
+    const g = await this.pile(id);
+    const grid = pileEngineSurface(g, epoch);
+    if (!grid || ring.length < 3) return [];
+    const resolve = () =>
+      Promise.resolve({ kind: 'grid' as const, name: id, fingerprint: `kit-${id}-${epoch}`, grid });
+    const out: EngineBase[] = [];
+    for (const b of ENGINE_BASES) {
+      const result = await compareItem(
+        ring,
+        { id: b.key, from: b.ref, to: { kind: 'survey', surface: id }, useDeadband: false },
+        resolve,
+      );
+      out.push({ key: b.key, label: b.label, result });
+    }
+    return out;
+  }
+
   /** Surface heights under points (E, N) of one survey, null where there is no data. */
   async heights(epoch: string, pile: string | null, pts: EN[]): Promise<(number | null)[]> {
     const { surf } = await this.surface(epoch, pile);
     return pts.map(([E, N]) => surf(E, N));
   }
 }
+
+/** One general engine base of a pile (`engineBases`). */
+export interface EngineBase {
+  key: string;
+  label: string;
+  result: ComparisonResult;
+}
+
+/** The engine's bases offered in the volumetric workspace, under their engine names. */
+export const ENGINE_BASES: readonly { key: string; label: string; ref: SurfaceRef }[] = [
+  { key: 'smart', label: 'Smart (Delaunay of the toe)', ref: { kind: 'smart' } },
+  { key: 'fit-plane', label: 'Best-fit plane', ref: { kind: 'fit-plane' } },
+  { key: 'perimeter-mean', label: 'Mean toe level', ref: { kind: 'perimeter-mean' } },
+  {
+    key: 'perimeter-min',
+    label: 'Lowest toe point',
+    ref: { kind: 'reference', mode: 'perimeter-min' },
+  },
+  {
+    key: 'perimeter-max',
+    label: 'Highest toe point',
+    ref: { kind: 'reference', mode: 'perimeter-max' },
+  },
+];
 
 /** Nearest-cell base height of a body (for the lifted base outline). */
 function bodyBase(b: BodyCells): (E: number, N: number) => number {
