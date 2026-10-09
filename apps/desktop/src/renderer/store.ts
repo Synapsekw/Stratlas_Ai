@@ -94,6 +94,15 @@ export interface ShellActions {
   clearSettingsFocus: () => void;
   loadLibrary: () => Promise<void>;
   updateSettings: (patch: Partial<Settings>) => Promise<string | null>;
+  /**
+   * Run a call that changes settings in main and answers with them (the report logo): its
+   * settings replace the local ones only if no other change started meanwhile, as for
+   * `updateSettings`. Returns the call's answer.
+   */
+  settingsCall: <T>(
+    start: () => Promise<T>,
+    settingsOf: (answer: T) => Settings | null,
+  ) => Promise<T>;
   toggleSidebar: () => Promise<void>;
   openProject: (path: string, passphrase?: string) => Promise<void>;
   cancelUnlock: () => void;
@@ -129,6 +138,13 @@ export function createShellStore(
   workspace: StoreApi<Workspace>,
   options: ShellOptions = {},
 ): StoreApi<Shell> {
+  /**
+   * Counts settings changes started here. A whole settings object from main replaces the local
+   * one only when no change started after it was asked for: the startup read (which waits for the
+   * library, slow with the demo copies) and the answer to an older change must not undo a newer
+   * one (a local model chosen meanwhile went back to the default address, localhost:11434).
+   */
+  let settingsRev = 0;
   const setReadOnly = (on: boolean) => {
     options.onReadOnly?.(on);
   };
@@ -157,9 +173,10 @@ export function createShellStore(
     origin: null,
 
     init: async () => {
+      const rev = settingsRev;
       const [settings] = await Promise.all([bridge.call('settings:get', {}), get().loadLibrary()]);
-      if (settings.ok) set({ settings: settings.value, settingsError: null });
-      else set({ settingsError: settings.error });
+      if (!settings.ok) set({ settingsError: settings.error });
+      else if (rev === settingsRev) set({ settings: settings.value, settingsError: null });
     },
 
     go: (screen) => {
@@ -181,16 +198,26 @@ export function createShellStore(
     },
 
     updateSettings: async (patch) => {
+      const rev = ++settingsRev;
       const before = get().settings;
       set({ settings: { ...before, ...patch } });
       const r = await bridge.call('settings:set', patch);
       if (r.ok) {
-        set({ settings: r.value, settingsError: null });
+        // main writes changes in order, so the newest answer holds every one of them
+        if (rev === settingsRev) set({ settings: r.value, settingsError: null });
         return null;
       }
       // Keep the local change so the app stays usable; report the failure.
       set({ settingsError: r.error });
       return r.error;
+    },
+
+    settingsCall: async (start, settingsOf) => {
+      const rev = ++settingsRev;
+      const answer = await start();
+      const next = settingsOf(answer);
+      if (next && rev === settingsRev) set({ settings: next, settingsError: null });
+      return answer;
     },
 
     toggleSidebar: async () => {
