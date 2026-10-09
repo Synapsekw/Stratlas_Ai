@@ -42,9 +42,10 @@ import { assetUrl, useWorkspace, workspace, type OpenProject } from '@aio/worksp
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
-import { bridge } from '../shell';
+import { bridge, useShell } from '../shell';
 import { rowsOfPairs } from './calibrationPairs';
 import { CalibrationPairsEditor } from './PairsEditor';
+import './site.css';
 import { refreshSiteTables, siteTablesStale, type SiteTablesHeader } from './siteTables';
 
 // ---------------------------------------------------------------- the site's display state
@@ -400,6 +401,8 @@ function SiteSettingsDialog({ project, onClose }: { project: OpenProject; onClos
   const [note, setNote] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [pairsOpen, setPairsOpen] = useState(false);
+  // a package (player mode) shows its site settings and calibration; it never changes them
+  const readOnly = useShell((s) => s.pkg) !== null;
   const near = originLonLat(project);
 
   const readCalibration = async () => {
@@ -596,123 +599,129 @@ function SiteSettingsDialog({ project, onClose }: { project: OpenProject; onClos
               {note}
             </p>
           )}
-          <section className="dlg-sec">
-            <h3 className="caps">Coordinate system</h3>
-            <CrsPicker
-              value={crsName}
-              near={near}
-              onPick={(e) => {
-                setCrsName(`${e.name} (EPSG ${String(e.code)})`);
-                // decision 12: a site's units follow its CRS's unit; change them below
-                set({
-                  crs: { epsg: e.code },
-                  units: { ...unitsForCrsUnit(e.unit), grade: draft.units.grade },
-                });
-              }}
-            />
-            <label className="field">
-              <span>Heights</span>
-              <select
-                className="input"
-                data-testid="site-vertical"
-                value={vdValue}
-                onChange={(e) => {
-                  const v = e.target.value;
+          {readOnly && (
+            <p className="help" data-testid="site-readonly">
+              Read-only package: the site settings and the calibration are shown only.
+            </p>
+          )}
+          <fieldset className="site-fields" disabled={readOnly}>
+            <section className="dlg-sec">
+              <h3 className="caps">Coordinate system</h3>
+              <CrsPicker
+                value={crsName}
+                near={near}
+                onPick={(e) => {
+                  setCrsName(`${e.name} (EPSG ${String(e.code)})`);
+                  // decision 12: a site's units follow its CRS's unit; change them below
                   set({
-                    verticalDatum: v.startsWith('geoid:')
-                      ? { kind: 'geoid', geoid: v.slice(6) }
-                      : v === 'ellipsoidal'
-                        ? { kind: 'ellipsoidal' }
-                        : v === 'calibration'
-                          ? { kind: 'calibration' }
-                          : { kind: 'project' },
+                    crs: { epsg: e.code },
+                    units: { ...unitsForCrsUnit(e.unit), grade: draft.units.grade },
                   });
                 }}
-              >
-                <option value="project">Project heights (as stored)</option>
-                <option value="ellipsoidal">Ellipsoidal</option>
-                {geoids.map((g) => (
-                  <option key={g.id} value={`geoid:${g.id}`}>
-                    {g.name} geoid
-                  </option>
-                ))}
-                {vd.kind === 'geoid' && !geoids.some((g) => g.id === vd.geoid) && (
-                  <option value={vdValue}>{vd.geoid} geoid (pack not installed)</option>
-                )}
-                <option value="calibration" disabled={!applied}>
-                  Site calibration
-                </option>
-              </select>
-            </label>
-            <label className="field">
-              <span>Distances</span>
-              <select
-                className="input"
-                value={draft.distances}
-                onChange={(e) => {
-                  set({ distances: e.target.value === 'ground' ? 'ground' : 'grid' });
-                }}
-              >
-                <option value="grid">Grid</option>
-                <option value="ground">Ground</option>
-              </select>
-            </label>
-          </section>
-
-          <section className="dlg-sec">
-            <h3 className="caps">Units and precision</h3>
-            {(Object.keys(QUANTITY_UNITS) as (keyof SurveyUnits)[]).map((q) => (
-              <label className="field" key={q}>
-                <span>{QUANTITY_LABEL[q]}</span>
+              />
+              <label className="field">
+                <span>Heights</span>
                 <select
                   className="input"
-                  data-testid={`site-unit-${q}`}
-                  value={draft.units[q]}
+                  data-testid="site-vertical"
+                  value={vdValue}
                   onChange={(e) => {
-                    set({ units: { ...draft.units, [q]: e.target.value } });
+                    const v = e.target.value;
+                    set({
+                      verticalDatum: v.startsWith('geoid:')
+                        ? { kind: 'geoid', geoid: v.slice(6) }
+                        : v === 'ellipsoidal'
+                          ? { kind: 'ellipsoidal' }
+                          : v === 'calibration'
+                            ? { kind: 'calibration' }
+                            : { kind: 'project' },
+                    });
                   }}
                 >
-                  {QUANTITY_UNITS[q].map((u) => (
-                    <option key={u} value={u}>
-                      {unitName(u)}
+                  <option value="project">Project heights (as stored)</option>
+                  <option value="ellipsoidal">Ellipsoidal</option>
+                  {geoids.map((g) => (
+                    <option key={g.id} value={`geoid:${g.id}`}>
+                      {g.name} geoid
                     </option>
                   ))}
+                  {vd.kind === 'geoid' && !geoids.some((g) => g.id === vd.geoid) && (
+                    <option value={vdValue}>{vd.geoid} geoid (pack not installed)</option>
+                  )}
+                  <option value="calibration" disabled={!applied}>
+                    Site calibration
+                  </option>
                 </select>
               </label>
-            ))}
-            <label className="field">
-              <span>Order</span>
-              <select
-                className="input"
-                data-testid="site-order"
-                value={draft.order}
-                onChange={(e) => {
-                  set({ order: e.target.value === 'ENZ' ? 'ENZ' : 'NEZ' });
-                }}
-              >
-                <option value="NEZ">North, East, Z</option>
-                <option value="ENZ">East, North, Z</option>
-              </select>
-            </label>
-            {(Object.keys(PRECISION_LABEL) as (keyof typeof PRECISION_LABEL)[]).map((q) => (
-              <label className="field" key={q}>
-                <span>{PRECISION_LABEL[q]} (decimals)</span>
-                <input
+              <label className="field">
+                <span>Distances</span>
+                <select
                   className="input"
-                  type="number"
-                  min={0}
-                  max={6}
-                  data-testid={`site-precision-${q}`}
-                  value={draft.precision[q]}
+                  value={draft.distances}
                   onChange={(e) => {
-                    const v = Math.max(0, Math.min(6, Math.round(Number(e.target.value) || 0)));
-                    set({ precision: { ...draft.precision, [q]: v } });
+                    set({ distances: e.target.value === 'ground' ? 'ground' : 'grid' });
                   }}
-                />
+                >
+                  <option value="grid">Grid</option>
+                  <option value="ground">Ground</option>
+                </select>
               </label>
-            ))}
-          </section>
+            </section>
 
+            <section className="dlg-sec">
+              <h3 className="caps">Units and precision</h3>
+              {(Object.keys(QUANTITY_UNITS) as (keyof SurveyUnits)[]).map((q) => (
+                <label className="field" key={q}>
+                  <span>{QUANTITY_LABEL[q]}</span>
+                  <select
+                    className="input"
+                    data-testid={`site-unit-${q}`}
+                    value={draft.units[q]}
+                    onChange={(e) => {
+                      set({ units: { ...draft.units, [q]: e.target.value } });
+                    }}
+                  >
+                    {QUANTITY_UNITS[q].map((u) => (
+                      <option key={u} value={u}>
+                        {unitName(u)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+              <label className="field">
+                <span>Order</span>
+                <select
+                  className="input"
+                  data-testid="site-order"
+                  value={draft.order}
+                  onChange={(e) => {
+                    set({ order: e.target.value === 'ENZ' ? 'ENZ' : 'NEZ' });
+                  }}
+                >
+                  <option value="NEZ">North, East, Z</option>
+                  <option value="ENZ">East, North, Z</option>
+                </select>
+              </label>
+              {(Object.keys(PRECISION_LABEL) as (keyof typeof PRECISION_LABEL)[]).map((q) => (
+                <label className="field" key={q}>
+                  <span>{PRECISION_LABEL[q]} (decimals)</span>
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    max={6}
+                    data-testid={`site-precision-${q}`}
+                    value={draft.precision[q]}
+                    onChange={(e) => {
+                      const v = Math.max(0, Math.min(6, Math.round(Number(e.target.value) || 0)));
+                      set({ precision: { ...draft.precision, [q]: v } });
+                    }}
+                  />
+                </label>
+              ))}
+            </section>
+          </fieldset>
           <section className="dlg-sec">
             <h3 className="caps">Site calibration</h3>
             {cal ? (
@@ -725,51 +734,53 @@ function SiteSettingsDialog({ project, onClose }: { project: OpenProject; onClos
             ) : (
               <p className="help">No calibration. Import a controller job to see its residuals.</p>
             )}
-            <div className="row">
-              <button
-                type="button"
-                className="btn sm"
-                data-testid="site-calibration-import"
-                disabled={applied}
-                title={
-                  applied ? 'Remove the applied calibration before importing another.' : undefined
-                }
-                onClick={() => void importCalibration()}
-              >
-                Import calibration…
-              </button>
-              <button
-                type="button"
-                className="btn sm"
-                data-testid="site-calibration-pairs"
-                aria-expanded={pairsOpen}
-                disabled={applied}
-                title={
-                  applied ? 'Remove the applied calibration before computing another.' : undefined
-                }
-                onClick={() => {
-                  setPairsOpen(!pairsOpen);
-                }}
-              >
-                Compute from point pairs…
-              </button>
-              {cal && !applied && (
+            {!readOnly && (
+              <div className="row">
                 <button
                   type="button"
-                  className="btn primary sm"
-                  data-testid="site-calibration-apply"
-                  onClick={() => void apply(true)}
+                  className="btn sm"
+                  data-testid="site-calibration-import"
+                  disabled={applied}
+                  title={
+                    applied ? 'Remove the applied calibration before importing another.' : undefined
+                  }
+                  onClick={() => void importCalibration()}
                 >
-                  Apply
+                  Import calibration…
                 </button>
-              )}
-              {cal && applied && (
-                <button type="button" className="btn sm" onClick={() => void apply(false)}>
-                  Remove calibration
+                <button
+                  type="button"
+                  className="btn sm"
+                  data-testid="site-calibration-pairs"
+                  aria-expanded={pairsOpen}
+                  disabled={applied}
+                  title={
+                    applied ? 'Remove the applied calibration before computing another.' : undefined
+                  }
+                  onClick={() => {
+                    setPairsOpen(!pairsOpen);
+                  }}
+                >
+                  Compute from point pairs…
                 </button>
-              )}
-            </div>
-            {pairsOpen && !applied && (
+                {cal && !applied && (
+                  <button
+                    type="button"
+                    className="btn primary sm"
+                    data-testid="site-calibration-apply"
+                    onClick={() => void apply(true)}
+                  >
+                    Apply
+                  </button>
+                )}
+                {cal && applied && (
+                  <button type="button" className="btn sm" onClick={() => void apply(false)}>
+                    Remove calibration
+                  </button>
+                )}
+              </div>
+            )}
+            {pairsOpen && !applied && !readOnly && (
               <CalibrationPairsEditor
                 initial={cal?.source.format === 'pairs' ? rowsOfPairs(cal.pairs) : null}
                 busy={jobId !== null}
@@ -783,16 +794,18 @@ function SiteSettingsDialog({ project, onClose }: { project: OpenProject; onClos
         </div>
         <div className="dlg-f">
           <button type="button" className="btn ghost" onClick={onClose}>
-            Cancel
+            {readOnly ? 'Close' : 'Cancel'}
           </button>
-          <button
-            type="button"
-            className="btn primary"
-            data-testid="site-settings-save"
-            onClick={() => void save()}
-          >
-            Save
-          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              className="btn primary"
+              data-testid="site-settings-save"
+              onClick={() => void save()}
+            >
+              Save
+            </button>
+          )}
         </div>
       </div>
     </div>

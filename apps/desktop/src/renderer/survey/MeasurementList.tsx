@@ -370,6 +370,11 @@ export function MeasurementList({ stage }: { stage: EngineStage | null }) {
           );
         })}
       </div>
+      {readOnly && (
+        <p className="small faint sv-foot" data-testid="survey-list-readonly">
+          Read-only package: measurements are shown only.
+        </p>
+      )}
       {!readOnly && (
         <footer className="sv-foot" role="none">
           <label className="sv-check" title="Off by default: save when you are ready">
