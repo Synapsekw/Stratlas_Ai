@@ -75,6 +75,7 @@ describe('survey IPC (G0 stubs without deps)', () => {
 
   it('registers every survey channel', () => {
     expect(ipc.channels()).toEqual([
+      'survey:probeDesign',
       'survey:readDesigns',
       'survey:readMeasurements',
       'survey:readSettings',
