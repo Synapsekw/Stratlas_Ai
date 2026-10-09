@@ -28,12 +28,10 @@
   text-align: left;
   width: 100%;
 }
-/* the Designs pop (its own, not the Survey measurements popover it nests in) stays inside the
-   stage, above the timeline bar: capped in height, scrolling inside */
+/* the Designs pop (its own, not the Survey measurements popover it nests in). It stays on the
+   stage and scrolls when the stage is short (workspace/popPlacement.ts). */
 .stage-pop.wide:has(> .designs-panel) {
-  width: min(360px, calc(100vw - 48px));
-  max-height: calc(100vh - 260px);
-  overflow: auto;
+  width: 360px;
 }
 .designs-panel,
 .designs-panel > * {
