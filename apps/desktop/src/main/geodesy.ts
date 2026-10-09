@@ -19,12 +19,13 @@ import {
   CALIBRATION_FILE,
   defaultSurveySettings,
   SiteCalibration,
+  SITE_TRANSFORM_FILE,
   SURVEY_SETTINGS_FILE,
   SurveySettings,
   type IpcRequest,
   type IpcResponse,
 } from '@aio/schema';
-import { mkdir, readFile } from 'node:fs/promises';
+import { mkdir, readFile, stat } from 'node:fs/promises';
 import { userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
@@ -354,24 +355,44 @@ export function surveySettingsHandlers(deps: {
   journal?: JournalAppend;
 }) {
   const { projects, projectPackage, journal } = deps;
-  return {
-    read: async ({ projectId }: IpcRequest<'survey:readSettings'>): Promise<ReadSettings> => {
-      if (!projects) return NO_PROJECTS;
-      const archive = projects.package(projectId) ? projectPackage?.(projectId) : undefined;
-      if (archive) {
-        try {
-          const raw = await readPackageJson(archive, SURVEY_SETTINGS_FILE);
-          return raw === undefined
-            ? { ok: true, settings: defaultSurveySettings(), exists: false }
-            : parseSettings(raw);
-        } catch (e) {
-          return { ok: false, error: `Could not read the site settings: ${why(e)}` };
-        }
+
+  /** Whether the readout tables exist: a project from before M11 has none to fetch. */
+  async function hasTables(projectId: string): Promise<boolean> {
+    const archive = projects?.package(projectId) ? projectPackage?.(projectId) : undefined;
+    if (archive) return archive.entries.has(SITE_TRANSFORM_FILE);
+    const root = projects?.root(projectId);
+    if (root === undefined) return false;
+    return stat(join(root, ...SITE_TRANSFORM_FILE.split('/'))).then(
+      (s) => s.isFile(),
+      () => false,
+    );
+  }
+
+  async function readSettings(projectId: string): Promise<ReadSettings> {
+    const r = await readSettingsOnly(projectId);
+    return r.ok ? { ...r, tables: await hasTables(projectId) } : r;
+  }
+
+  async function readSettingsOnly(projectId: string): Promise<ReadSettings> {
+    if (!projects) return NO_PROJECTS;
+    const archive = projects.package(projectId) ? projectPackage?.(projectId) : undefined;
+    if (archive) {
+      try {
+        const raw = await readPackageJson(archive, SURVEY_SETTINGS_FILE);
+        return raw === undefined
+          ? { ok: true, settings: defaultSurveySettings(), exists: false }
+          : parseSettings(raw);
+      } catch (e) {
+        return { ok: false, error: `Could not read the site settings: ${why(e)}` };
       }
-      const root = projects.root(projectId);
-      if (root === undefined) return { ok: false, error: 'The project is not open.' };
-      return readSurveySettings(root);
-    },
+    }
+    const root = projects.root(projectId);
+    if (root === undefined) return { ok: false, error: 'The project is not open.' };
+    return readSurveySettings(root);
+  }
+
+  return {
+    read: ({ projectId }: IpcRequest<'survey:readSettings'>) => readSettings(projectId),
     write: async (
       req: IpcRequest<'survey:writeSettings'>,
     ): Promise<IpcResponse<'survey:writeSettings'>> => {
