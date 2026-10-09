@@ -77,7 +77,7 @@ describe('shell store', () => {
     const bridge: Bridge = {
       call: (channel, req) => {
         if (channel === 'settings:get')
-          return Promise.resolve({ ok: true, value: DEFAULT_SETTINGS });
+          return Promise.resolve({ ok: true, value: DEFAULT_SETTINGS } as Res<never>);
         if (channel === 'library:list')
           return new Promise((done) => {
             libraryDone = () => {
