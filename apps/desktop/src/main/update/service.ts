@@ -47,6 +47,8 @@ const fileExists = async (p: string) => {
 
 export interface UpdateServiceDeps {
   settings: () => Settings;
+  /** Resolves once the settings changes asked for so far are written (see OnlineDeps). */
+  settled?: () => Promise<void>;
   log: (level: 'info' | 'warn' | 'error', line: string) => void;
   progress: (p: IpcEvent<'update:progress'>) => void;
   notes: ReleaseNotes;
@@ -145,6 +147,7 @@ export function createUpdateService(d: UpdateServiceDeps) {
 
   const online = createOnlineUpdater({
     settings: d.settings,
+    ...(d.settled ? { settled: d.settled } : {}),
     currentVersion: current,
     platform: process.platform,
     arch: process.arch,

@@ -84,6 +84,25 @@ function make(settings: Partial<typeof on> = {}, over: Partial<OnlineDeps> = {})
 }
 
 describe('online update', () => {
+  // updates.spec.ts:35, flaky on Windows CI: Check now came right after the switch and the
+  // address were saved, and read the settings before they were written ("switched off").
+  it('reads the settings once the changes asked for before the check are written', async () => {
+    let current: typeof on = { ...on, updateCheck: false, updateUrl: '' };
+    let written = (): void => undefined;
+    const settled = new Promise<void>((done) => {
+      written = () => {
+        current = { ...on, updateUrl: `${base}/feed/` };
+        done();
+      };
+    });
+    const { updater, fetches } = make({}, { settings: () => current, settled: () => settled });
+    const checking = updater.check();
+    written();
+    const r = await checking;
+    expect(r.ok).toBe(true);
+    expect(fetches()).toBe(1);
+  });
+
   it('makes no request when offline-only, switched off or without an address', async () => {
     for (const s of [{ offlineOnly: true }, { updateCheck: false }, { updateUrl: '' }]) {
       const { updater, fetches } = make(s);
