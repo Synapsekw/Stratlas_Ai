@@ -533,6 +533,41 @@ def _meshlab_child(src: str, out: str, depth: int, threads: int, max_points: int
     tmp.replace(out)
 
 
+#: Variables that make the loader put extra libraries into a process. MeshLab's child drops them:
+#: an OpenMP runtime preloaded there would meet the libomp the pymeshlab wheel bundles, and two
+#: initialised copies abort the process on macOS ("OMP: Error #15").
+MESHLAB_DROPPED_ENV = ("DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH", "LD_PRELOAD")
+
+
+def meshlab_command(src: Path, out: Path, depth: int, threads: int, max_points: int) -> list[str]:
+    """The child Python that runs MeshLab's Poisson (``_meshlab_child``). MeshLab always runs in a
+    process of its own: pymeshlab and pycolmap each bundle libomp, and two copies in one process
+    abort on macOS. The child is isolated (``-I``) like the app's pipeline process, so no user
+    site-packages, ``.pth`` file or ``PYTHONPATH`` can import another native library into it."""
+    isolated = ["-I"] if sys.flags.isolated else []
+    return [
+        sys.executable,
+        *isolated,
+        "-m",
+        "aio_pipelines.photo.mesh",
+        "meshlab-poisson",
+        str(src),
+        str(out),
+        str(depth),
+        str(threads),
+        str(max_points),
+    ]
+
+
+def meshlab_env(threads: int) -> dict[str, str]:
+    """The environment of MeshLab's child: this process's, without ``MESHLAB_DROPPED_ENV``, with
+    OpenMP held to ``threads`` and OpenBLAS to one thread."""
+    env = {k: v for k, v in os.environ.items() if k.upper() not in MESHLAB_DROPPED_ENV}
+    env["OMP_NUM_THREADS"] = str(threads)
+    env["OPENBLAS_NUM_THREADS"] = "1"
+    return env
+
+
 def poisson_meshlab(
     ctx: StepContext,
     work: Path,
@@ -558,18 +593,8 @@ def poisson_meshlab(
         if attempt > 0 and not isinstance(last, native.ToolMemoryExceeded):
             threads = 1
         out.unlink(missing_ok=True)
-        args = [
-            sys.executable,
-            "-m",
-            "aio_pipelines.photo.mesh",
-            "meshlab-poisson",
-            str(src),
-            str(out),
-            str(depth),
-            str(threads),
-            str(max_points),
-        ]
-        env = {**os.environ, "OMP_NUM_THREADS": str(threads), "OPENBLAS_NUM_THREADS": "1"}
+        args = meshlab_command(src, out, depth, threads, max_points)
+        env = meshlab_env(threads)
         try:
             native.run_tool(
                 ctx,
