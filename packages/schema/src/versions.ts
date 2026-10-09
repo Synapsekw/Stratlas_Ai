@@ -460,6 +460,13 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     where: 'survey-defaults.json',
     since: '0.11',
   },
+  {
+    family: 'aio.hydro-run',
+    version: 1,
+    home: 'project',
+    where: 'survey/hydro/<run>/run.json',
+    since: '0.11',
+  },
 ];
 
 /**

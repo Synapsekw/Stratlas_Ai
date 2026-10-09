@@ -10,6 +10,7 @@ import {
   GeoidPackMeta,
   ImportItem,
   HeightTiles,
+  HydroRun,
   LAYER_KINDS,
   Layer,
   MeasurementsFile,
@@ -124,6 +125,7 @@ describe('M11 additive rule: no layer kind, raster role, project type, setting o
         'aio.designs',
         'aio.geoid-pack',
         'aio.height-tiles',
+        'aio.hydro-run',
         'aio.measurements',
         'aio.site-calibration',
         'aio.site-transform',
@@ -620,6 +622,7 @@ describe('M11 IPC channels', () => {
     'survey:readDesigns',
     'survey:writeDesigns',
     'survey:surfaces',
+    'survey:readHydroRuns',
     'geodesy:searchCrs',
     'geodesy:readCalibration',
     'geodesy:applyCalibration',
@@ -670,5 +673,95 @@ describe('M11 journal ops and entitlements', () => {
     const survey = ['survey.measure', 'survey.designs', 'survey.hydro', 'survey.haul', 'survey.ai'];
     expect(ENTITLEMENTS.filter((e) => e.startsWith('survey.'))).toEqual(survey);
     for (const e of ENTITLEMENTS) expect(can(e), e).toBe(true);
+  });
+});
+
+describe('M11 hydrology runs (G10)', () => {
+  const run = {
+    schema: 'aio.hydro-run/1',
+    id: 'pit-flood',
+    pipeline: 'hydro.flood',
+    jobId: '20261009-100000-hydro-flood-a1b2',
+    computedAt: NOW,
+    surface: { id: 'dsm-m1', name: 'DSM m1', fingerprint: `sha256:${SHA}` },
+    params: { surface: 'dsm-m1', levelM: 118.5, mode: 'connected', seed: [552880, 2333100] },
+    cellM: 1,
+    results: {
+      levelM: 118.5,
+      mode: 'connected',
+      seed: [552880, 2333100],
+      areaM2: 1200,
+      volumeM3: 4100.5,
+      maxDepthM: 9.2,
+      wetCells: 1200,
+      outlineAreaM2: 1198.7,
+      outlineRings: 1,
+    },
+    files: {
+      outline: 'outline.geojson',
+      dxf: 'outline.dxf',
+      depth: 'depth.json',
+      view: { file: 'depth-view.png', bounds: [552850, 2333070, 552910, 2333130] },
+    },
+    fingerprint: `sha256:${SHA}`,
+  };
+
+  it('reads a flood, a flow and a rainfall run', () => {
+    expect(HydroRun.parse(run)).toEqual(run);
+    const flow = {
+      ...run,
+      pipeline: 'hydro.flow',
+      results: {
+        mode: 'catchment',
+        method: 'dinf',
+        depressions: 'breach',
+        outlets: [{ pourPoint: [1, 2], areaM2: 10, cells: 10, contributingAreaM2: 9.5 }],
+        streamAreaM2: 100,
+        streamLinks: 3,
+        streamLengthM: 50,
+      },
+      files: { catchments: 'catchments.geojson', streams: 'streams.geojson' },
+    };
+    expect(HydroRun.safeParse(flow).success).toBe(true);
+    const rain = {
+      ...run,
+      pipeline: 'hydro.rainfall',
+      preview: true,
+      notes: ['Simplified 2D model.'],
+      results: {
+        durationMin: 60,
+        frameMin: 2,
+        frames: [
+          {
+            tMin: 2,
+            file: 'frames/0.json',
+            view: 'frames/0-view.png',
+            maxDepthM: 0.01,
+            wetAreaM2: 5,
+          },
+        ],
+        rainM3: 10,
+        infiltratedM3: 1,
+        outflowM3: 8,
+        storedM3: 1,
+        massErrorPct: 0,
+        peakOutflowM3s: 0.02,
+        peakAtMin: 30,
+        finalOutflowM3s: 0.02,
+        maxDepthM: 0.01,
+        steps: 1000,
+        areaM2: 2000,
+      },
+      files: { maxDepth: 'max-depth.json', hydrograph: 'hydrograph.csv' },
+    };
+    expect(HydroRun.safeParse(rain).success).toBe(true);
+    // flood results under a flow run do not pass
+    expect(HydroRun.safeParse({ ...run, pipeline: 'hydro.flow' }).success).toBe(false);
+  });
+
+  it('keeps every listed file inside the run folder', () => {
+    for (const bad of ['../outline.dxf', '/abs/outline.dxf', 'a/../../b', 'C:/x.dxf'])
+      expect(HydroRun.safeParse({ ...run, files: { dxf: bad } }).success, bad).toBe(false);
+    expect(HydroRun.safeParse({ ...run, id: '../x' }).success).toBe(false);
   });
 });

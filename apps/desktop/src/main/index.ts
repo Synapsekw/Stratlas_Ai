@@ -108,6 +108,7 @@ import { registerGeodesyIpc } from './geodesy';
 import { geoidJobEnv, packGeoidDirsOf, registerGeoidPacksIpc } from './packs/geoid';
 import { registerSurveyIpc } from './survey';
 import { registerSurveyAiIpc } from './surveyAi';
+import { registerSurveyHydroIpc } from './surveyHydro';
 import { createTestVault, useTestVault } from './testVault';
 import { importLogo, removeLogo } from './branding';
 import { putThumb } from './thumbs';
@@ -1271,6 +1272,7 @@ function registerIpc(): void {
   };
   registerSurveyIpc({ handle, ...survey, userData: () => app.getPath('userData') });
   registerGeodesyIpc({ handle, ...survey });
+  registerSurveyHydroIpc({ handle, ...survey });
   registerGeoidPacksIpc({
     handle,
     dataRoot: () => settings.current().dataRoot,
