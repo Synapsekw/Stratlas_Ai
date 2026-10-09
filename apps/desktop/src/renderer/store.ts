@@ -94,6 +94,15 @@ export interface ShellActions {
   clearSettingsFocus: () => void;
   loadLibrary: () => Promise<void>;
   updateSettings: (patch: Partial<Settings>) => Promise<string | null>;
+  /**
+   * Run a call that changes settings in main and answers with them (the report logo): its
+   * settings replace the local ones only if no other change started meanwhile, as for
+   * `updateSettings`. Returns the call's answer.
+   */
+  settingsCall: <T>(
+    start: () => Promise<T>,
+    settingsOf: (answer: T) => Settings | null,
+  ) => Promise<T>;
   toggleSidebar: () => Promise<void>;
   openProject: (path: string, passphrase?: string) => Promise<void>;
   cancelUnlock: () => void;
@@ -201,6 +210,14 @@ export function createShellStore(
       // Keep the local change so the app stays usable; report the failure.
       set({ settingsError: r.error });
       return r.error;
+    },
+
+    settingsCall: async (start, settingsOf) => {
+      const rev = ++settingsRev;
+      const answer = await start();
+      const next = settingsOf(answer);
+      if (next && rev === settingsRev) set({ settings: next, settingsError: null });
+      return answer;
     },
 
     toggleSidebar: async () => {

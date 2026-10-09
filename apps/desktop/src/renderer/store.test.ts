@@ -123,6 +123,42 @@ describe('shell store', () => {
     expect(s.getState().settings).toMatchObject({ theme: 'light', sidebarCollapsed: true });
   });
 
+  it('keeps a change made while another call that answers with settings (a logo) runs', async () => {
+    let logoDone: (v: Settings) => void = () => undefined;
+    const bridge: Bridge = {
+      call: (channel, req) =>
+        channel === 'settings:set'
+          ? Promise.resolve({
+              ok: true,
+              value: { ...DEFAULT_SETTINGS, ...(req as Partial<Settings>) },
+            } as Res<never>)
+          : Promise.resolve({ ok: false, error: `no ${channel}` } as Res<never>),
+    };
+    const s = createShellStore(bridge, createWorkspace());
+    const logo = s.getState().settingsCall(
+      () =>
+        new Promise<Settings>((done) => {
+          logoDone = done;
+        }),
+      (v) => v,
+    );
+    await s.getState().updateSettings({ cloudAi: true });
+    // the logo's answer was read before the newer change was written
+    logoDone({ ...DEFAULT_SETTINGS, reportBranding: { logo: 'logo.png' } });
+    expect(await logo).toMatchObject({ reportBranding: { logo: 'logo.png' } });
+    expect(s.getState().settings.cloudAi).toBe(true);
+  });
+
+  it('takes the settings a call answers with when nothing changed meanwhile', async () => {
+    const s = createShellStore(fakeBridge({}).bridge, createWorkspace());
+    const next = { ...DEFAULT_SETTINGS, reportBranding: { logo: 'logo.png' } };
+    await s.getState().settingsCall(
+      () => Promise.resolve({ ok: true as const, settings: next }),
+      (r) => r.settings,
+    );
+    expect(s.getState().settings.reportBranding).toEqual({ logo: 'logo.png' });
+  });
+
   it('defaults to offline: cloud AI off', () => {
     expect(DEFAULT_SETTINGS.cloudAi).toBe(false);
   });

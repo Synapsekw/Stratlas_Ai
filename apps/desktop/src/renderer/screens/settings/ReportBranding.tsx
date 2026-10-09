@@ -91,18 +91,24 @@ export function ReportBranding() {
     });
     if (!pick.ok || !pick.value.path) return;
     setBusy(true);
-    const r = await bridge.call('branding:setLogo', { path: pick.value.path });
+    const path = pick.value.path;
+    // its settings answer must not undo a change made while the logo was copied
+    const r = await shell.getState().settingsCall(
+      () => bridge.call('branding:setLogo', { path }),
+      (a) => (a.ok && a.value.ok ? a.value.settings : null),
+    );
     setBusy(false);
     if (!r.ok) setError(r.error);
     else if (!r.value.ok) setError(r.value.error);
-    else shell.setState({ settings: r.value.settings });
   };
 
   const removeLogo = async () => {
     setError(null);
-    const r = await bridge.call('branding:clearLogo', {});
-    if (r.ok) shell.setState({ settings: r.value });
-    else setError(r.error);
+    const r = await shell.getState().settingsCall(
+      () => bridge.call('branding:clearLogo', {}),
+      (a) => (a.ok ? a.value : null),
+    );
+    if (!r.ok) setError(r.error);
   };
 
   return (
