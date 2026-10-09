@@ -608,6 +608,9 @@ export class Stage implements EngineStage {
   private readonly onContextLost = () => {
     if (this.disposed) return;
     this.lost = true;
+    // nothing is drawn until the context is back: the last frame's counters must not stand in for
+    // the first restored frame (which, on a software GPU, may take tens of seconds)
+    (this.renderer.info as Partial<WebGLRenderer['info']>).reset?.();
     engineConfig().onGpuEvent?.({ type: 'context-lost' });
   };
 
