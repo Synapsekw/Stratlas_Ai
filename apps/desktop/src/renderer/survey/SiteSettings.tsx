@@ -2,8 +2,9 @@
  * **Site settings** (M11 G1, GEO-1 to GEO-4, data-conventions section 25): how the site's
  * coordinates are shown and exported. The display CRS (searched in the EPSG catalogue), the
  * vertical datum and geoid, units, coordinate order, precision, and the site calibration: import a
- * controller job (JobXML) or 12d parameters through `geo.calibration`, read the residual table
- * beside the controller's own, and **Apply** it (journaled in main).
+ * controller job (JobXML) or 12d parameters, or **Compute from point pairs** typed or imported from
+ * a CSV (`PairsEditor.tsx`), through `geo.calibration`, read the residual table beside the
+ * controller's own, and **Apply** it (journaled in main).
  *
  * Readouts: `siteCursorText` formats a project-CRS position for the cursor. It reads the tables
  * PROJ wrote (`survey/geodesy/site-transform.json`, `@aio/geo` `createSiteTransform`), or uses
@@ -29,6 +30,7 @@ import {
   type SiteTransformer,
 } from '@aio/geo';
 import type {
+  CalibrationPair,
   CrsCatalogueEntry,
   GeoidPackMeta,
   SiteCalibration,
@@ -41,6 +43,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { bridge } from '../shell';
+import { rowsOfPairs } from './calibrationPairs';
+import { CalibrationPairsEditor } from './PairsEditor';
 import { refreshSiteTables, siteTablesStale, type SiteTablesHeader } from './siteTables';
 
 // ---------------------------------------------------------------- the site's display state
@@ -336,6 +340,10 @@ function CrsPicker({
 }
 
 function ResidualTable({ cal, units }: { cal: SiteCalibration; units: SurveyUnits }) {
+  // a calibration computed from pairs has no controller residuals to show beside its own
+  const controller = cal.pairs.some(
+    (p) => p.controllerResidualH !== undefined || p.controllerResidualV !== undefined,
+  );
   const mm = (v: number | undefined) =>
     v === undefined
       ? ''
@@ -352,8 +360,8 @@ function ResidualTable({ cal, units }: { cal: SiteCalibration; units: SurveyUnit
           <th>Point</th>
           <th>H</th>
           <th>V</th>
-          <th>Controller H</th>
-          <th>Controller V</th>
+          {controller && <th>Controller H</th>}
+          {controller && <th>Controller V</th>}
           <th>Used</th>
         </tr>
       </thead>
@@ -363,8 +371,8 @@ function ResidualTable({ cal, units }: { cal: SiteCalibration; units: SurveyUnit
             <td>{p.name}</td>
             <td className="mono">{mm(p.residualH)}</td>
             <td className="mono">{mm(p.residualV)}</td>
-            <td className="mono">{mm(p.controllerResidualH)}</td>
-            <td className="mono">{mm(p.controllerResidualV)}</td>
+            {controller && <td className="mono">{mm(p.controllerResidualH)}</td>}
+            {controller && <td className="mono">{mm(p.controllerResidualV)}</td>}
             <td>{[p.useH ? 'H' : '', p.useV ? 'V' : ''].filter(Boolean).join(' + ') || 'no'}</td>
           </tr>
         ))}
@@ -374,7 +382,7 @@ function ResidualTable({ cal, units }: { cal: SiteCalibration; units: SurveyUnit
           <td>RMS</td>
           <td className="mono">{mm(cal.rmsH)}</td>
           <td className="mono">{mm(cal.rmsV)}</td>
-          <td colSpan={3} />
+          <td colSpan={controller ? 3 : 1} />
         </tr>
       </tfoot>
     </table>
@@ -391,6 +399,7 @@ function SiteSettingsDialog({ project, onClose }: { project: OpenProject; onClos
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [pairsOpen, setPairsOpen] = useState(false);
   const near = originLonLat(project);
 
   const readCalibration = async () => {
@@ -420,10 +429,12 @@ function SiteSettingsDialog({ project, onClose }: { project: OpenProject; onClos
       if (e.type !== 'update' || e.job.id !== jobId) return;
       if (e.job.status === 'done') {
         setNote('Calibration read. Check the residuals, then Apply.');
+        setJobId(null);
         void readCalibration();
       }
       if (e.job.status === 'failed' || e.job.status === 'cancelled') {
         setNote(null);
+        setJobId(null);
         setError(e.job.error ?? 'The calibration could not be read.');
       }
     });
@@ -493,6 +504,27 @@ function SiteSettingsDialog({ project, onClose }: { project: OpenProject; onClos
     }
     setJobId(r.value.job.id);
     setNote('Reading the calibration…');
+  };
+  const computePairs = async (pairs: CalibrationPair[]) => {
+    setError(null);
+    const crs = draft.crs ?? project.manifest.crs;
+    // WGS84 heights are taken to the site's geoid first, as a controller does
+    const geoid = draft.verticalDatum.kind === 'geoid' ? draft.verticalDatum.geoid : undefined;
+    const r = await bridge.call('jobs:start', {
+      pipeline: 'geo.calibration',
+      project: project.root,
+      params: { pairs, crs, ...(geoid ? { geoid } : {}) },
+    });
+    if (!r.ok) {
+      setError(r.error);
+      return;
+    }
+    if (!r.value.ok) {
+      setError(r.value.error);
+      return;
+    }
+    setJobId(r.value.job.id);
+    setNote('Computing the calibration from the point pairs…');
   };
   const apply = async (on: boolean) => {
     if (!cal) return;
@@ -706,6 +738,21 @@ function SiteSettingsDialog({ project, onClose }: { project: OpenProject; onClos
               >
                 Import calibration…
               </button>
+              <button
+                type="button"
+                className="btn sm"
+                data-testid="site-calibration-pairs"
+                aria-expanded={pairsOpen}
+                disabled={applied}
+                title={
+                  applied ? 'Remove the applied calibration before computing another.' : undefined
+                }
+                onClick={() => {
+                  setPairsOpen(!pairsOpen);
+                }}
+              >
+                Compute from point pairs…
+              </button>
               {cal && !applied && (
                 <button
                   type="button"
@@ -722,6 +769,16 @@ function SiteSettingsDialog({ project, onClose }: { project: OpenProject; onClos
                 </button>
               )}
             </div>
+            {pairsOpen && !applied && (
+              <CalibrationPairsEditor
+                initial={cal?.source.format === 'pairs' ? rowsOfPairs(cal.pairs) : null}
+                busy={jobId !== null}
+                onCompute={(pairs) => void computePairs(pairs)}
+                onClose={() => {
+                  setPairsOpen(false);
+                }}
+              />
+            )}
           </section>
         </div>
         <div className="dlg-f">
