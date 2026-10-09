@@ -480,6 +480,25 @@ describe('Stage', () => {
     stage.dispose();
   });
 
+  // perf e2e, flaky on the Windows runner: the last frame's points outlived a lost context, so a
+  // wait for the restored frame passed at once and the restored frame then held the page.
+  it('reports nothing drawn while its context is lost, until a frame draws again', () => {
+    const { stage, resize } = make();
+    resize(800, 600);
+    const render = (stage.renderer.info as unknown as { render: { points: number } }).render;
+    Object.assign(stage.renderer.info, {
+      reset: () => {
+        render.points = 0;
+      },
+    });
+    render.points = 16000;
+    expect(stage.perfStats().points).toBe(16000);
+    stage.canvas.dispatchEvent(new Event('webglcontextlost'));
+    expect(stage.contextLost).toBe(true);
+    expect(stage.perfStats().points).toBe(0);
+    stage.dispose();
+  });
+
   it('applies quality presets: pixel ratio cap and shadow map size', () => {
     const { stage, resize } = make();
     resize(800, 600);

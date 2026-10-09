@@ -463,7 +463,11 @@ base.describe(`synthetic project on ${GPU_NAME} (Low tier)`, () => {
         await win.evaluate((v) => {
           (window as unknown as SynthW).__stratlas.stage()?.restoreView(v, false);
         }, k1);
-        await expect.poll(points, { timeout: 30_000 }).toBe(16000);
+        // The first restored frame draws them: it compiles every shader and uploads the points and
+        // the ortho again on the software GPU, and holds the page meanwhile (over 30 s on the
+        // Windows runner, run 37858660949). The count reads 0 until it is drawn, so wait for it as
+        // for the first load before clicking.
+        await expect.poll(points, { timeout: 60_000 }).toBe(16000);
         await notice.getByRole('button', { name: 'Dismiss' }).click();
         await expect(notice).toBeHidden();
         if (SHOTS) await win.screenshot({ path: join(SHOTS, 'perf-synthetic.png') });
