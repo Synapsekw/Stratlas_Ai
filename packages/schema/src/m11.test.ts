@@ -6,7 +6,9 @@ import type { z } from 'zod';
 import {
   Alignment,
   ComparisonItem,
+  ComparisonPreset,
   CustomBase,
+  DesignPickRef,
   DesignsFile,
   ENTITLEMENTS,
   EXPORT_FORMATS,
@@ -284,6 +286,30 @@ describe('survey files', () => {
     ).toBe(true);
     expect(
       ComparisonItem.safeParse({ ...volumeItem, from: smart, to: { kind: 'fit-plane' } }).success,
+    ).toBe(false);
+  });
+
+  it('lets a template preset leave its design layer to pick, never a measurement item', () => {
+    const pick = { kind: 'design-pick', role: 'subgrade', hint: 'Subgrade' };
+    const preset = { label: 'Survey to subgrade', from: { kind: 'current' }, to: pick };
+    expect(ComparisonPreset.safeParse({ ...preset, useDeadband: false }).success).toBe(true);
+    expect(
+      ComparisonPreset.safeParse({ from: pick, to: { kind: 'smart' }, useDeadband: false }).success,
+    ).toBe(true);
+    expect(DesignPickRef.safeParse({ ...pick, role: 'no spaces' }).success).toBe(false);
+    expect(DesignPickRef.safeParse({ kind: 'design-pick', role: 'og' }).success).toBe(false);
+    // a measurement's item always names a real design layer (the pick replaces the role first)
+    expect(ComparisonItem.safeParse({ ...volumeItem, to: pick }).success).toBe(false);
+    // the site keeps the layer it picked for each role
+    const roles = { og: { design: 'bulk', layer: 'ground' } };
+    expect(
+      SurveySettings.safeParse({ ...defaultSurveySettings(), designRoles: roles }).success,
+    ).toBe(true);
+    expect(
+      SurveySettings.safeParse({
+        ...defaultSurveySettings(),
+        designRoles: { og: { design: 'bulk' } },
+      }).success,
     ).toBe(false);
   });
 

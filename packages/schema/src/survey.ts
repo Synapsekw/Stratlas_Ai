@@ -143,6 +143,13 @@ export const SurveySettings = z.looseObject({
   heatmap: HeatmapStyle,
   /** Default deadband for new comparisons, metres. */
   deadbandM: z.number().nonnegative().max(10).optional(),
+  /**
+   * The design surface layer the site picked for each template role (`DesignPickRef.role`, G9):
+   * asked once when a template that compares to a design is first used, then reused.
+   */
+  designRoles: z
+    .record(DesignId, z.object({ design: DesignId, layer: DesignId }).strict())
+    .optional(),
 });
 
 /** Metric defaults for a site without `survey/settings.json` (G1 derives units from the CRS). */
@@ -457,16 +464,36 @@ export const emptyMeasurements = (): MeasurementsFile => ({
   measurements: [],
 });
 
+/**
+ * The design side of a template's comparison preset before the site has picked a layer for it
+ * (G9's industry sets): a `role` (`og`, `subgrade`, `final-cap`) and the words the picker shows as
+ * a hint. Only templates hold one: when a template is used, the site's pick for the role
+ * (`SurveySettings.designRoles`), or the layer the person picks then, replaces it with a
+ * `DesignSurfaceRef`, so a measurement's items never name a design that is not there.
+ */
+export const DesignPickRef = z
+  .object({
+    kind: z.literal('design-pick'),
+    role: DesignId,
+    hint: z.string().min(1).max(120),
+  })
+  .strict();
+/** A side of a template's comparison preset: a `SurfaceRef`, or a design layer still to pick. */
+export const PresetSurfaceRef = z.union([SurfaceRef, DesignPickRef]);
+/** True for a preset's surface side, a design layer still to pick included. */
+export const isPresetSurfaceSide = (ref: { kind: string }): boolean =>
+  ref.kind === 'design-pick' || isSurfaceSide(ref);
+
 /** A comparison preset in a template: an item without its id (one is made when used). */
 export const ComparisonPreset = z
   .looseObject({
     label: z.string().max(120).optional(),
-    from: SurfaceRef,
-    to: SurfaceRef,
+    from: PresetSurfaceRef,
+    to: PresetSurfaceRef,
     deadbandM: z.number().nonnegative().max(10).optional(),
     useDeadband: z.boolean(),
   })
-  .refine((i) => isSurfaceSide(i.from) || isSurfaceSide(i.to), BASE_BOTH_SIDES);
+  .refine((i) => isPresetSurfaceSide(i.from) || isPresetSurfaceSide(i.to), BASE_BOTH_SIDES);
 
 export const SurveyTemplate = z.looseObject({
   id: SurveyId,
@@ -626,6 +653,8 @@ export type ReferenceMode = z.infer<typeof ReferenceMode>;
 export type CustomBaseVertex = z.infer<typeof CustomBaseVertex>;
 export type BaseSpec = z.infer<typeof BaseSpec>;
 export type SurfaceRef = z.infer<typeof SurfaceRef>;
+export type DesignPickRef = z.infer<typeof DesignPickRef>;
+export type PresetSurfaceRef = z.infer<typeof PresetSurfaceRef>;
 export type ComparisonItem = z.infer<typeof ComparisonItem>;
 export type SurveyEngine = z.infer<typeof SurveyEngine>;
 export type ComparisonStatus = z.infer<typeof ComparisonStatus>;
