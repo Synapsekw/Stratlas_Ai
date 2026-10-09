@@ -270,6 +270,8 @@ describe('the kit through the survey engine: numbers unchanged', () => {
 });
 
 describe('the general engine on the kit grids', () => {
+  // the kit grids come from the built demo (pnpm demo:build) or a local Masafi copy; CI's check job has neither
+  if (SETS.length === 0) it.skip('needs the built demo or a Masafi copy', () => undefined);
   for (const s of SETS) {
     it(`stays close to the kit on the ${s.name} (coverage weights, bases at the cell)`, async () => {
       const { read, vols, origin } = load(s);
