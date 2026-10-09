@@ -32,18 +32,19 @@ Only what still needs testing. Each stage lists what to click and what you shoul
 
 ## Status
 
-| Stage       | What it covers                                                                                                                                                                                                   | Build it needs                                                                                                                                                                          | Status                                               |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| M5          | Fixes from the M4 feedback: Masafi, DAMAC, video, layers, cut-away, split, sky and water, report branding                                                                                                        | The M5 installer, built 4 Oct 2026 after the sky and water merge (commit `862c9df`) or later                                                                                            | Not yet tested (skipped for now)                     |
-| M6          | Builder completion: pipelines from raw data, detection review, AI detection, report text and project report, video calibration, packages and map packs                                                           | The M6 installer, built 4 Oct 2026 from main at commit `4624bf2` or later, and pipeline pack 0.2.0 (see M6, Before you start)                                                           | In progress: founder testing; feedback fixed in M6.1 |
-| M6.1        | Your M6 feedback: point size, issue and photo opening, Media highlights, HCl flicker and nadir photos, dark maps, Al-Zour drone trace and photo icons, agent camera moves, Masafi piles and ramps, compare dates | The installer built 5 Oct 2026, 18:00, from main at commit `a8e7b43` or later                                                                                                           | All nine fixes merged; not yet tested by the founder |
-| M7          | Signed builds and updates only (the rest of M7 passed on 6 Oct 2026)                                                                                                                                             | Needs the signing secrets in GitHub and a second version                                                                                                                                | Waiting for signing                                  |
-| M8          | Change and modelling: changes between survey dates, imagery, surface, cloud and model change, same view on the other date, model builder, local detection, offline agent                                         | Version 0.8.0 (built 7 Oct 2026 from main at commit `7faf945`) or later; test it on 0.10.0. Pipeline pack 0.3.0 or later (see M8, Before you start)                                     | Built; not yet tested by the founder                 |
-| M9          | Team and audit: identity and roles, exchange files, shared folder, conflicts, review workflow, history and audit trail, large files on demand, team server (preview)                                             | Version 0.9.0 (built 7 Oct 2026, 11:17, from main at commit `6300be4`) or later; test it on 0.10.0                                                                                      | Built; not yet tested by the founder                 |
-| R           | The rename to Quadrion AI: name, icon, title bar, installer, settings carried over from Stratlas                                                                                                                 | The installer built from the rename branch (QuadrionAI-0.9.0-win-x64-setup.exe)                                                                                                         | Built; not yet tested by the founder                 |
-| Timeline T1 | Survey dates: one folder per date in Datasets, the date bar and calendar, survey commands in Ctrl K, dates in the viewers and compare split                                                                      | Main at commit `2fe069e` or later (in version 0.10.0), and a project of yours with two survey dates or more, such as Masafi (see Timeline T1, Before you start)                         | Built; not yet tested by the founder                 |
-| L           | The launch screen: welcome with your name, Enter, Esc, the Settings switch                                                                                                                                       | An installer built from the launch-screen branch (after the rename), or later                                                                                                           | Built; not yet tested by the founder                 |
-| M10         | Photos to products: photo processing on the demo and on your own flight, ground control and the accuracy report, OPF, Globe, imagery and terrain packs, 3D Tiles, licence approvals                              | Version 0.10.0, built 8 Oct 2026 from `integration/m10` at commit `3f07041` or later with the M10 fixes merged (the 24-photo demo), and pipeline pack 0.4.0 (see M10, Before you start) | Built; not yet tested by the founder                 |
+| Stage       | What it covers                                                                                                                                                                                                                                                                                                              | Build it needs                                                                                                                                                                          | Status                                               |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| M5          | Fixes from the M4 feedback: Masafi, DAMAC, video, layers, cut-away, split, sky and water, report branding                                                                                                                                                                                                                   | The M5 installer, built 4 Oct 2026 after the sky and water merge (commit `862c9df`) or later                                                                                            | Not yet tested (skipped for now)                     |
+| M6          | Builder completion: pipelines from raw data, detection review, AI detection, report text and project report, video calibration, packages and map packs                                                                                                                                                                      | The M6 installer, built 4 Oct 2026 from main at commit `4624bf2` or later, and pipeline pack 0.2.0 (see M6, Before you start)                                                           | In progress: founder testing; feedback fixed in M6.1 |
+| M6.1        | Your M6 feedback: point size, issue and photo opening, Media highlights, HCl flicker and nadir photos, dark maps, Al-Zour drone trace and photo icons, agent camera moves, Masafi piles and ramps, compare dates                                                                                                            | The installer built 5 Oct 2026, 18:00, from main at commit `a8e7b43` or later                                                                                                           | All nine fixes merged; not yet tested by the founder |
+| M7          | Signed builds and updates only (the rest of M7 passed on 6 Oct 2026)                                                                                                                                                                                                                                                        | Needs the signing secrets in GitHub and a second version                                                                                                                                | Waiting for signing                                  |
+| M8          | Change and modelling: changes between survey dates, imagery, surface, cloud and model change, same view on the other date, model builder, local detection, offline agent                                                                                                                                                    | Version 0.8.0 (built 7 Oct 2026 from main at commit `7faf945`) or later; test it on 0.10.0. Pipeline pack 0.3.0 or later (see M8, Before you start)                                     | Built; not yet tested by the founder                 |
+| M9          | Team and audit: identity and roles, exchange files, shared folder, conflicts, review workflow, history and audit trail, large files on demand, team server (preview)                                                                                                                                                        | Version 0.9.0 (built 7 Oct 2026, 11:17, from main at commit `6300be4`) or later; test it on 0.10.0                                                                                      | Built; not yet tested by the founder                 |
+| R           | The rename to Quadrion AI: name, icon, title bar, installer, settings carried over from Stratlas                                                                                                                                                                                                                            | The installer built from the rename branch (QuadrionAI-0.9.0-win-x64-setup.exe)                                                                                                         | Built; not yet tested by the founder                 |
+| Timeline T1 | Survey dates: one folder per date in Datasets, the date bar and calendar, survey commands in Ctrl K, dates in the viewers and compare split                                                                                                                                                                                 | Main at commit `2fe069e` or later (in version 0.10.0), and a project of yours with two survey dates or more, such as Masafi (see Timeline T1, Before you start)                         | Built; not yet tested by the founder                 |
+| L           | The launch screen: welcome with your name, Enter, Esc, the Settings switch                                                                                                                                                                                                                                                  | An installer built from the launch-screen branch (after the rename), or later                                                                                                           | Built; not yet tested by the founder                 |
+| M10         | Photos to products: photo processing on the demo and on your own flight, ground control and the accuracy report, OPF, Globe, imagery and terrain packs, 3D Tiles, licence approvals                                                                                                                                         | Version 0.10.0, built 8 Oct 2026 from `integration/m10` at commit `3f07041` or later with the M10 fixes merged (the 24-photo demo), and pipeline pack 0.4.0 (see M10, Before you start) | Built; not yet tested by the founder                 |
+| M11         | Surveying: site coordinates and calibration, the surface engine, measurement tools and templates, volumes and comparisons, cross-sections and terrain overlays, designs and alignments, survey exports and the interop matrix, QA and cleanup, survey reports and template sets, haul road, hydrology, your three real jobs | Version 0.11.0 built from `m11/docs-int` (all M11 streams but G12 AI helpers) or later, pipeline pack 0.5.0, and the survey demos (see M11, Before you start)                           | Built; not yet tested by the founder                 |
 
 ## Stage M5: your M4 feedback, fixed
 
@@ -694,3 +695,190 @@ The six native libraries the build found (libiconv, SpatiaLite, FreeXL, libquadm
 ### Security
 
 - The installed app refuses code injected into its window. There is nothing to click: the release check tests it on every build.
+
+## Stage M11: surveying
+
+M11 measures a site the way a surveyor and a site engineer do, offline: site coordinates and a controller calibration, one volume engine behind every polygon, typed measurement tools and templates, cross-sections, terrain overlays, designs with alignments, QA and cleanup, survey reports, exports to Civil 3D, Trimble Business Center (TBC) and 12d, and the later phases haul road and hydrology. The local AI helpers (G12: **Suggest boundaries**, AI cut and fill breakdown) are not built yet and wait for your go-ahead. What M11 does not do yet is in [KNOWN-LIMITS.md](KNOWN-LIMITS.md), section "Surveying (M11)".
+
+Most steps use four synthetic demo projects that you generate on this PC. The last two sections use your own software (Civil 3D, TBC, 12d, QGIS, Google Earth) and your three real jobs. Keep Wi-Fi off for the whole stage, except where a step says otherwise.
+
+### Before you start
+
+- [ ] Install `QuadrionAI-0.11.0-win-x64-setup.exe`, built from `m11/docs-int` or later. **Settings, About and updates** shows "Quadrion AI 0.11.0" and that commit in the build stamp.
+- [ ] Copy the folder `pipeline-pack-0.5.0` into `E:\Stratlas Data\runtime\` when I tell you where it is. **Jobs** shows "Pipeline pack 0.5.0" at the top. Every survey job (preparing surfaces, whole-site comparisons, sections, overlays, exports, QA, cleanup, design import, calibration, haul road, hydrology) runs in it.
+- [ ] Build the demos: in a terminal in `E:\Dev\AIO Software`, run `pnpm demo:survey --out "E:\Stratlas Data\survey-demos"`. It ends with "written to ..." and four folders: `demo-survey-earthworks`, `demo-survey-quarry`, `demo-survey-landfill` and `demo-survey-analytic`. Each folder holds a `README.txt` and a `truth.json` with the exact volumes, areas, grades, checkpoints and calibration of every survey.
+- [ ] **Projects**, **Add project folder**, once for each of the four folders: the cards **Earthworks demo**, **Quarry demo**, **Landfill demo** and **Survey analytic demo** appear.
+- [ ] Turn Wi-Fi off. The title bar shows **Offline**, and it stays that way through every step below.
+- Where things are: on the stage toolbar, the **Survey measurements** popover (in the 3D view next to **Measure a distance** and **Section plane**; on the map it is the only measure button). Its first group, **Site data**, holds **Designs**, **Survey QA and cleanup**, **Terrain overlays**, **Hydrology**, **Haul road** and **Export survey data**. Below are the tool families **Point**, **Line**, **Polygon** and **Markup**, the bookmarked templates, **Drawing aids**, and the buttons **Measurements**, **Templates**, **Units**, **Materials** and **Whole site cut and fill**. There is no separate Select tool: **Esc** returns to selecting.
+- The demos' surfaces are prepared on first use: where a panel says "No survey surface is prepared yet", click **Prepare surfaces** (or **Prepare the DSMs**) and wait for the job.
+
+### Site coordinates and calibration
+
+- [ ] Open **Earthworks demo**. The cursor readout at the bottom of the view has a small globe button, **Site settings**, with the tooltip "Site settings: coordinate system, heights, units and calibration".
+- [ ] **Site settings** ("How coordinates are shown and exported"): in **Coordinate system**, type "Kuwait" in the search box. The list shows lines like "EPSG n Name · unit". Pick the Kuwait national grid (KUDAMS / KTM). **Heights**: **Ellipsoidal** (the EGM96 and EGM2008 grids are not in pack 0.5.0 yet; see KNOWN-LIMITS). **Order**: **North, East, Z**; **Coordinates (decimals)**: 3. **Save**.
+- [ ] The readout's second line names the CRS with its EPSG code, "ellipsoidal" and "m"; the third line reads "N ... E ... Z ... m" with 3 decimals. The numbers are meaningless this far from Kuwait; only the format matters.
+- [ ] **Site settings** again: search "ftUS" and pick a US state plane zone in US survey feet. The units under **Units and precision** switch to **US survey ft** by themselves. **Save**: the readout and every measurement label show "US ft" (never just "ft"). Switch back to **WGS 84 / UTM zone 39N** (EPSG 32639) and metres.
+- [ ] **Site settings**, **Site calibration**: "No calibration. Import a controller job to see its residuals." (or the demo's draft calibration). **Import calibration…** and pick `survey\calibration\site-calibration.jxl` in the demo folder: "Reading the calibration…", then "Calibration read. Check the residuals, then Apply."
+- [ ] The residual table has **Point**, **H**, **V**, **Controller H**, **Controller V**, **Used** and an **RMS** row. **H** and **V** match the controller's columns within 1 mm.
+- [ ] **Apply**: "Calibration applied. Results computed before show Stale until recomputed." The state line reads "...: applied", and **Heights** now offers **Site calibration**. **Import calibration…** is greyed out, with the tooltip "Remove the applied calibration before importing another."
+- [ ] A comparison computed before (for example on **Pad to design**) shows **Stale, recompute**; **Recompute** brings it back with the calibration applied.
+- [ ] **Remove calibration**: "Calibration removed." Apply it again for the steps below.
+- [ ] Type `site-calibration.dc` into the import dialog's file box: the job refuses with "Trimble .dc files have no public specification, so they are not read. Export the job from the controller as JobXML (.jxl), or compute the calibration from point pairs."
+- [ ] Your surveyor's controller job (decision 9, see the parity table below): import its JobXML; the residuals match the controller's within 1 mm; **Apply**; a known control point's readout matches the controller.
+
+### Surface engine
+
+- [ ] **Earthworks demo**, **Polygon**, **Volume**: draw a polygon over the pad. In **Comparisons**, **From** **Previous survey**, **To** **Current survey**: cut and fill appear in under a second, with the time in ms.
+- [ ] Drag a vertex (**Vertices**, **Edit vertices in the view**): the numbers change while you drag ("Live while you edit; saved when the edit ends.").
+- [ ] **Survey analytic demo**: each saved measurement's volume (after **Recompute**) matches its shape's volume in `truth.json` within 0.5%.
+- [ ] A polygon drawn half off the survey reads "Partly outside the survey: … The volumes are of the covered part."; drawn mostly off it, the comparison is refused.
+- [ ] Open a stockpile project from 0.10 (Masafi, or the volumetric demo): every pile's volume on the four kit bases and the register totals are the same as in 0.10.
+- [ ] In a pile's details, open **More bases (survey engine)**: **Smart (Delaunay of the toe)**, **Best-fit plane**, **Mean toe level**, **Lowest toe point** and **Highest toe point**, each with a net m³, and the note that these are extra choices and that the engine's smart base differs from the kit's TIN. Which base the kit should show by default is your decision (see KNOWN-LIMITS).
+
+### Measurement tools and templates
+
+- [ ] **Line**, **Distance**: click two points. The results show the terrain, slope and horizontal lengths.
+- [ ] While drawing, type 25 and press **Enter**: the next segment is exactly 25 m. Hold **Shift**: the bar shows "· locked" with the angle (15 degree steps and the last segment's bearing). **Tab** types a bearing. **Backspace** in an empty box removes the last point; **Esc** first clears what you typed, then cancels.
+- [ ] **Drawing aids**: tick **Snap to vertices** and the **Designs** chip; draw near a pad corner: the bar shows "· snapped to a design vertex". **Snap distance** goes from 2 to 30 px.
+- [ ] **Line**, **Grade and slope**, **Vertex differences** and **Berm check**, and **Point**, **Elevation** and **Elevation difference**: each shows its values in the panel.
+- [ ] The same tools work on the **Map** (2D) through **Survey measurements**, and what you draw on one shows on the other.
+- [ ] After drawing: "Unsaved measurement changes." with **Save measurements**. In **Measurements**, **Autosave** is off by default; the footer reads "Unsaved changes", then "All saved" after **Save**.
+- [ ] **Templates** ("Measurement templates"), **New template**: **Name** "Crew check", **Tool** volume, **Custom fields**: "Crew", **Dropdown**, choices "A, B"; **Comparisons**: **Add comparison** (Previous survey to Current survey); tick **Bookmark on the toolbar**; **Save template**. It shows under **Templates** in the popover. Use it twice: each measurement has **Crew** under **Details**.
+- [ ] **Units for this measurement** on one polygon: **US survey ft** and **yd³**, **Apply**: that measurement shows them; the others keep metres. **Units** in the popover ("Site units") changes every measurement without its own units.
+- [ ] **Measurements**: search, sort, **Filters** (template, scope, a **Crew** value, **Created by me**, **Last 7 days**), folders, **Move**, **Fly to**.
+- [ ] In a measurement's **Scope**: "Whole site: shown with every survey"; pick a survey to make it "Only in ..."; **Promote to the whole site** undoes it; **Copy to another survey** makes a copy.
+- [ ] **Vertices**: **Edit vertices in the view**: drag, **Alt**+click deletes, the blue dots insert; typing N, E or Z in the table moves the vertex.
+
+### Volumes and comparisons
+
+- [ ] **Quarry demo**, measurement **Stockpile SP1**: **From** **Smart (triangulated perimeter)**, **To** **Current survey**: the volume matches SP1 in `truth.json` within 1%. Switch **From** to **Reference level**, **Set to lowest**: the volume grows; **Set to highest**: it shrinks.
+- [ ] Both sides a base or design (for example **Reference level** to a design layer): the warning "No reference to current terrain".
+- [ ] **Custom base (edit vertices)**: **Custom base vertices**, set one vertex's level: the volume updates. **Move all by** 0.5 m changes it by about the area times 0.5.
+- [ ] **Colours and stops** ("Heat map colours"): the default stops give a deadband ("Deadband from the stops: ..."). Tick **Use deadband in calculations** in the comparison: cut and fill drop, and the footer reads "Deadband used: changes under ... count as unchanged."
+- [ ] **Heat map of the difference**: **On the terrain (3D)**, **On the map (2D)** and **Contours** each show.
+- [ ] **Landfill demo**, measurement **Cell 1**: add comparisons until it has three (previous survey to current, the oldest survey to current, current survey to the final-cap layer of **Cell 1 design (synthetic)**); each shows **Cut**, **Fill**, **Net** and **Total**.
+- [ ] **Material and calculators**: **Material** **Municipal solid waste**; enter the tonnage of `survey\weighbridge.csv` in **Weighed tonnage (t)**: **Achieved density** equals tonnes over the volume shown (63,000 t over 70,104 m³ would read 0.899 t/m³) and matches `truth.json`. "Calculated for display only; the stored volume does not change."
+- [ ] **Materials** ("Site materials"): **Export CSV**, change a density in the file, **Import CSV**: "n materials read from ... Save to keep them."; **Save materials**.
+- [ ] Select **Stockpile SP1** to **SP3** in **Measurements**: the totals show **Cut**, **Fill**, **Net** and **Horizontal area**; **Change for all** sets one surface for all three.
+- [ ] **Whole site cut and fill** between the first and last survey: **Compare**; under **Suggested regions (drafts)** keep two: **Keep 2 as volume measurements**. They appear in the folder "Whole-site regions".
+
+### Cross-sections and terrain overlays
+
+- [ ] **Earthworks demo**, **Line**, **Cross-section** across the pad: the section opens docked under the view. Under **Surfaces**, tick the three surveys and the pad design: one line each.
+- [ ] Click the chart: a pin "Ch ..." with each surface's elevation, "Δ" against the surface you click, and the grade as "degrees · percent · 1:n". Set **Exaggeration** to 1:4.
+- [ ] **Shade** "A to B" shades cut and fill between two lines. **Enable cutaway** cuts the 3D view along the line.
+- [ ] The maximise button opens the section large; **Esc** goes back to the dock.
+- [ ] **DXF 2D (XZ plane)**, **Download**: "Saved ...". Open it in your CAD software: the profile is at the right chainage and level, one layer per surface.
+- [ ] **Terrain overlays**: **Contours**, **Minor (m)** 0.5, **Major (m)** 2.5, **Make overlay**: "Overlay made." On the **Map**, the contours draw over the site.
+- [ ] **Gradient**, **Degrees (0, 30, 45, 60)**: the pad batters read their design angle. **Elevation** with **Stepped colours** and a range, and **Shaded relief**, each draw on the map. **Difference from** an earlier survey makes contours of the change.
+- [ ] Overlays show on the map only, not in the 3D view (KNOWN-LIMITS).
+- [ ] With the road alignment active (below) and a section dock open: **Stations of the active alignment**, **Every (m)** 20, **Section at stations**; **Next** and **Previous** step along the road.
+
+### Designs, alignments and compliance
+
+- [ ] **Earthworks demo**, **Designs**: "Pad and road design (synthetic)" with its layers (**Surface**, **Linework**, **Points**, **Alignment**), counts like "n triangles, n vertices", **Fly to**, and the source file as a download.
+- [ ] **Import design** and pick the DXF in `survey\design-files\` of the demo folder: a second design with the same layers. Do the same with the 12da and the CSV. In a cross-section, each imported pad surface lies on the original one.
+- [ ] A DXF without drawing units is refused with "... has no drawing units ($INSUNITS). Choose the units ...". **Jobs**, **New job**, **Import design** has **Design units**, **Format** and **Local coordinates** (**Place through the site calibration**); with **Design units** set, the import goes through.
+- [ ] **Jobs**, **New job**, **Import design** with a `.ttm` file: "... is a Trimble TIN (TTM), which this import cannot read: there is no published specification. Export the surface as LandXML from Trimble Business Center and import that."
+- [ ] Cut and fill to design: on the pad polygon, **From** **Current survey**, **To** the pad design layer, and heat map stops at minus and plus 0.05 m: the area within 50 mm is left clear. **Remaining to design** is the same comparison: its cut and fill are what is still to move.
+- [ ] The **Compliance to design** buttons **Cut/Fill to design** and **Remaining to design** only answer "Open Volumes and comparisons to compute it." for now (KNOWN-LIMITS).
+- [ ] **Vertical offset (m)** -0.3 on the pad layer, **Apply vertical offset**: the comparison turns **Stale, recompute**; recomputed, the remaining volume changes by about the pad area times 0.3.
+- [ ] **Archive** a layer: it hides under **Show archived layers (1)**; **Restore** brings it back.
+- [ ] Road alignment, **Activate alignment**: the cursor readout adds "Sta 0+... Off ... L" or "R", or "...: off the alignment". **Station interval (m)** with **Set interval**. **Deactivate alignment**.
+- [ ] Your real design and survey (decision 9): see the parity table.
+
+### Exports
+
+- [ ] **Export survey data**: "For Civil 3D, Trimble Business Center, 12d and GIS. ..." **Export** offers **Surface**, **Orthomosaic**, **Point cloud**, **Contours**, **Measurements** and **Sections**, each with its formats.
+- [ ] **Surface**, latest survey, **LandXML**, **Site grid (calibrated)**, metres: the line "Offered as ..._site-grid-cal..._m.xml. The file states its coordinate system, vertical datum, geoid, calibration and units." **Export…**: "Saved ...".
+- [ ] **Units** US survey feet: the name ends in `_usft`. **KMZ**: "KMZ holds WGS 84 longitude and latitude; choose WGS 84." until you pick WGS 84.
+- [ ] **CSV** of a surface: a `.txt` beside it lists "Coordinate system:", "Vertical datum:", "Geoid:", "Site calibration:" and the units. A GeoTIFF carries the same in its tags.
+- [ ] **Measurements**, **All measurements**, **DXF**, **One file per measurement (choose a folder)**: one DXF per measurement.
+- [ ] **Contours** of the overlay you made, as **Shapefile** and **DXF**.
+- [ ] **Point cloud**, **LAZ** on a project with a cloud: a LAZ file (or, without PDAL in the pack, "Exporting a point cloud as LAZ needs PDAL ...").
+
+### Interop matrix
+
+Use the exports above (Earthworks demo, latest survey and the pad and road design) in your own software. Wi-Fi may be on for these programs; Quadrion AI stays offline. Note a spot height on the pad from the Quadrion AI readout first.
+
+- [ ] **Civil 3D**, LandXML surface: imports; a spot height matches the readout within 1 mm.
+- [ ] **Civil 3D**, LandXML alignment: imports with its stationing, including the station equation; a station read in Civil 3D matches the cursor readout.
+- [ ] **Civil 3D**, DXF surface (3D faces): lands at the same coordinates; spot height within 1 mm.
+- [ ] **TBC**, LandXML surface and alignment: import; spot height within 1 mm; stationing with the equation matches.
+- [ ] **TBC**, DXF surface: same coordinates; spot height within 1 mm.
+- [ ] **TBC**, LandXML into machine control: TBC writes the machine-control files from the imported surface (Quadrion AI writes no TTM or VCL itself).
+- [ ] **12d Model**, 12da surface and alignment: import; spot height within 1 mm; stationing with the equation matches.
+- [ ] **12d Model**, LandXML and DXF surfaces: same coordinates; spot height within 1 mm.
+- [ ] Designs back the other way: a LandXML, DXF and 12da surface and alignment exported from Civil 3D, TBC and 12d import into Quadrion AI in place (cross-section and cursor readout).
+- [ ] **QGIS**, GeoTIFF of the latest DSM in **WGS 84** and in the **Site grid**: both open with their CRS and overlay each other exactly.
+- [ ] **TBC**, calibrated site against the controller job: export the surface in **Site grid (calibrated)**, load the controller JobXML in TBC: control points and the surface agree within 1 mm horizontally and vertically.
+- [ ] **Civil 3D**, LandXML in **US survey feet**: Civil 3D reads the feet as US survey feet; a spot height matches the readout in US ft within 0.003 US ft.
+- [ ] **Google Earth**, KMZ of the measurement outlines: they lie on the site.
+- [ ] **Civil 3D** and **QGIS**, contours as DXF and SHP: at the right place and level in both.
+
+### QA, cleanup and timeline
+
+- [ ] **Earthworks demo**, **Survey QA and cleanup**, **Check against points**: **Survey** 4 May 2026, **CSV file** `survey\checkpoints.csv` of the demo folder, **QA level (site settings)** **Strict: RMSE up to 5.0 cm**, **Check the survey**.
+- [ ] The result shows **RMSE**, **Mean**, **Largest** and **Points** "8 of 8", a histogram, and CHK6 highlighted about 15 cm off. The survey goes **On hold** ("Checkpoint RMSE ... is above the Strict limit of 5.0 cm."), and a line gives the share of the area changed since the previous survey.
+- [ ] A banner over the view: "Survey 4 May 2026 is on hold." with the reason with **Review and release**; measurements on it read "Survey on hold: its QA check failed and no one has released it yet."
+- [ ] **Release note** "Checked against the GNSS log", **Release the survey**: "Released ... by ...: ..." and the banner is gone.
+- [ ] Run the same check at **Moderate**: the RMSE is within its 10 cm limit.
+- [ ] **Cleanup and crop** on the 6 April 2026 survey: **Draw an area** around the parked excavator, then **Copy as cleanup**; **Make the cleaned surface**: 'The cleaned surface "...-clean" is ready; pick it in a comparison to use it.'
+- [ ] **Parked excavator**: its volume changes only when its comparison picks the cleaned surface; the delivered surface is unchanged.
+- [ ] **Copy as crop** and **Crop to another survey's extent**, **Add crop**: a cropped surface the same way.
+- [ ] **Surveys**: grouped by year and month, newest first, with "surface" and QA pills. **Show hidden (n)** lists the cleaned surface ("from ...").
+- [ ] **Elevation history**: select a point measurement, **Use the selected point**, **Show the history**: a chart and a table **Survey**, **Height**, **Change**.
+
+### Survey reports and industry template sets
+
+- [ ] **Templates**, **Industry template sets**: **Construction (6)**, **Mining and quarry (7)** and **Landfill (6)**. Each demo has its own set on; the toolbar lists its templates.
+- [ ] **Earthworks demo**, template **Pad check**: the first time, "Design layers for Pad check" asks for the pad layer ("Pick a design layer"); **Use these layers**. The next use does not ask.
+- [ ] **Quarry demo**: **Issues**, **Export**, **Survey report (PDF)**: a file ending in `-survey-report.pdf` with the stockpile inventory; its totals match the panel, and tonnes use each pile's material (Crushed rock 20 mm 1.6, Washed sand 1.5, Base course 2.1 t/m³).
+- [ ] **Export**, **Stockpile inventory (CSV)** (every survey, by material) and **Survey measurements (CSV)** (every item): totals as in the panel.
+- [ ] **Landfill demo**, **Survey report (PDF)**: "Landfill airspace and compaction" shows the airspace remaining to the final cap and the compaction per lift, with the weighbridge tonnage.
+- [ ] **Earthworks demo**, **Survey report (PDF)**: "Earthworks to design" with cut to design, the share within tolerance and cross-sections. Every survey section states the CRS, datum, geoid, calibration and units.
+- [ ] A project without survey measurements: "This project has no saved survey measurements."
+- [ ] **Reports**, **Project report**, **Sections** lists the survey sections; they print in the project report too.
+
+### Haul road
+
+- [ ] **Quarry demo**, **Haul road** ("Haul-road compliance"): **Surface** the latest survey, **Centreline** "Haul road (synthetic): ... (alignment)", **Sections every (m)** 10.
+- [ ] **Limits**: **Minimum width (m)** 24, **Maximum grade (%)** 10, **Minimum berm height (m)** 1.0; leave the cross fall empty ("Not checked"). **Run analysis**: "Run started. Its results show below when the job is done."
+- [ ] The summary reads "... N stations, P pass, F fail". The failing stretches are the steep stretch at chainage 170 to 195 (12%) and the low left berm at chainage 100 to 120 (0.8 m); the rest passes.
+- [ ] **Colour the centreline by pass or fail**: green and red along the road. Clicking a row in the table flies to that station.
+- [ ] Optional: **Cross fall from (%)** and **to (%)** around the 2% crown; the superelevated curve (5%) shows where it leaves that range.
+- [ ] **Save as site defaults**: "Saved as the site defaults."
+- [ ] The **Survey report (PDF)** has "Haul-road compliance" with the limits used and the failing stretches.
+
+### Hydrology
+
+- [ ] **Quarry demo**, open the **Map**, then **Hydrology**. Tabs **Flood to level**, **Runoff**, **Catchment** and **Direct rainfall**; results draw on the map only.
+- [ ] **Flood to level**: **Water level (m)** typed a few metres above the pit floor, **Connected to a point**, **Pick** in the sump, **Flood**: "Level ...: area ..., stored volume ..., deepest ...". **Download outline (DXF)**: in CAD the outline is on layer FLOOD-OUTLINE.
+- [ ] A point above the level: "The ground at the seed point is at ... m, not below the water level ... m. ..."
+- [ ] **Runoff**: **Drop point** on the haul road, **Show flow path**: "Flow path ... long, falling ...", drawn down to the pit. Try **D-infinity** and **Fill**.
+- [ ] **Catchment**: **Pick outlet** at the sump, **Delineate**: the catchment and the streams.
+- [ ] **Direct rainfall**: a CSV with two rows `0,20` and `60,20` (minutes, mm/h), **Cell** 1 m, **Run rainfall**: the **Time** slider shows the water depth over time; **Hydrograph (CSV)** and **Maximum depth grid** download.
+
+### Real-data parity (decision 9)
+
+Your three jobs, on this PC only, with Wi-Fi off. Client files stay on this PC: never in the repository, a package or a message. For each job: calibration, design import, comparisons against the figure the customer accepted, sections, exports opened in the target software, and the report. Targets: volumes within 1%, checkpoint heights within 10 mm, calibration residuals within 1 mm of the controller.
+
+- [ ] Earthworks job: import the controller JobXML and **Apply**; import the design (LandXML or DXF); compute cut and fill to design on the accepted areas.
+- [ ] Quarry job: the month-end stockpiles and their materials; compare with the month-end figure.
+- [ ] Landfill job: the cell design and the lift; compare airspace and compaction with the weighbridge tonnage.
+- [ ] Fill in the table and send it back with the reports.
+
+| Job        | Check                                    | Accepted figure (and from which program) | Quadrion AI | Difference | Target | Pass |
+| ---------- | ---------------------------------------- | ---------------------------------------- | ----------- | ---------- | ------ | ---- |
+| Earthworks | Calibration residuals against controller |                                          |             |            | 1 mm   | [ ]  |
+| Earthworks | Cut to design                            |                                          |             |            | 1%     | [ ]  |
+| Earthworks | Fill to design                           |                                          |             |            | 1%     | [ ]  |
+| Earthworks | Checkpoint heights                       |                                          |             |            | 10 mm  | [ ]  |
+| Earthworks | Spot height in Civil 3D, TBC or 12d      |                                          |             |            | 1 mm   | [ ]  |
+| Quarry     | Month-end volume per stockpile           |                                          |             |            | 1%     | [ ]  |
+| Quarry     | Month-end total tonnes                   |                                          |             |            | 1%     | [ ]  |
+| Quarry     | Checkpoint heights                       |                                          |             |            | 10 mm  | [ ]  |
+| Landfill   | Lift volume                              |                                          |             |            | 1%     | [ ]  |
+| Landfill   | Airspace remaining to the cell design    |                                          |             |            | 1%     | [ ]  |
+| Landfill   | Compaction from the weighbridge tonnage  |                                          |             |            | 1%     | [ ]  |
+| Landfill   | Checkpoint heights                       |                                          |             |            | 10 mm  | [ ]  |
