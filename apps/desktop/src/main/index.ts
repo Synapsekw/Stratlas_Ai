@@ -387,6 +387,7 @@ const packs = createPackManager({
 // now; a copy of this version is kept before any installer runs, for rollback.
 const updates = createUpdateService({
   settings: () => settings.current(),
+  settled: () => settings.settled(),
   log: (level, line) => {
     appLog.write(level, [line]);
   },

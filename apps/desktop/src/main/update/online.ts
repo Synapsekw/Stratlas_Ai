@@ -17,6 +17,11 @@ export interface Progress {
 
 export interface OnlineDeps {
   settings: () => OnlineSettings;
+  /**
+   * Resolves once every settings change asked for so far is written (SettingsStore.settled):
+   * Check now right after the switch or the address read them before they were saved.
+   */
+  settled?: () => Promise<void>;
   currentVersion: string;
   platform: string;
   arch: string;
@@ -47,7 +52,8 @@ export function createOnlineUpdater(d: OnlineDeps) {
     null;
   let busy = false;
 
-  function refuse(): string | null {
+  async function refuse(): Promise<string | null> {
+    await d.settled?.();
     const s = d.settings();
     if (s.offlineOnly)
       return 'This workstation is set to offline-only, so online update checks are off.';
@@ -58,7 +64,7 @@ export function createOnlineUpdater(d: OnlineDeps) {
 
   return {
     async check(): Promise<Check> {
-      const why = refuse();
+      const why = await refuse();
       if (why) return { ok: false, error: why };
       found = null;
       let url: string;
@@ -111,7 +117,7 @@ export function createOnlineUpdater(d: OnlineDeps) {
     },
 
     async downloadAndInstall(): Promise<{ ok: boolean; error?: string }> {
-      const why = refuse();
+      const why = await refuse();
       if (why) return { ok: false, error: why };
       if (!found) return { ok: false, error: 'Check for updates first.' };
       if (busy) return { ok: false, error: 'The update is already downloading.' };
