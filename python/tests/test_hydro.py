@@ -11,14 +11,17 @@ from __future__ import annotations
 import itertools
 import json
 import math
+import shutil
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from aio_pipelines.hydro import dem
+from aio_pipelines.hydro.common import read_hyetograph
 from aio_pipelines.hydro.flood import HydroFlood
 from aio_pipelines.hydro.flow import HydroFlow
+from aio_pipelines.hydro.rainfall import HydroRainfall, frame_interval, rain_function
 from aio_pipelines.runtime import JobError
 from aio_pipelines.survey.grid import TILE, encode_tile
 from conftest import run_job
@@ -373,3 +376,169 @@ def test_a_surface_too_large_for_the_tool_asks_for_a_region(tmp_path, monkeypatc
     monkeypatch.setattr(flow, "MAX_CELLS", 1000)
     with pytest.raises(JobError, match="Draw a region"):
         run_job(HydroFlow(), tmp_path, {"surface": "v", "mode": "streams"})
+
+
+# ---------------------------------------------------------------------------------- direct rainfall
+
+
+def plane(
+    tmp_path: Path, slope: float, cell: float = 0.5, length: float = 100.0, width: float = 20.0
+) -> None:
+    """A plane falling east at ``slope``, ``length`` by ``width`` metres, prepared at ``cell``."""
+    nx, ny = round(length / cell), round(width / cell)
+    x = (np.arange(nx) + 0.5) * cell
+    z = np.tile(50.0 + slope * (length - x), (ny, 1))
+    write_surface(tmp_path, "plane", z, 1000.0, 2000.0, cell)
+
+
+def write_rain(path: Path, rows: list[tuple[float, float]]) -> str:
+    path.write_text("time_min,intensity_mm_h\n" + "".join(f"{t},{i}\n" for t, i in rows), "utf-8")
+    return str(path)
+
+
+@pytest.mark.parametrize("cell", [2, 1, 0.5])
+@pytest.mark.parametrize("slope, n, rain, infil", [(0.01, 0.03, 50.0, 0.0), (0.05, 0.03, 60.0, 10.0)])
+def test_rain_on_a_tilted_plane_reaches_the_steady_outflow_within_5_percent(
+    tmp_path, cell, slope, n, rain, infil
+):
+    plane(tmp_path, slope)
+    hy = write_rain(tmp_path / "rain.csv", [(0, rain), (120, 0)])
+    params = {
+        "surface": "plane",
+        "hyetograph": hy,
+        "manningN": n,
+        "infiltrationMmPerH": infil,
+        "cellM": cell,
+        "durationMin": 90,
+    }
+    result, _ = run_job(HydroRainfall(), tmp_path, params)
+    doc = run_of(tmp_path, result["outputs"]["commit"])
+    res = doc["results"]
+    steady = (rain - infil) / 1000 / 3600 * 100 * 20  # m³/s: effective rain times area
+    assert res["finalOutflowM3s"] == pytest.approx(steady, rel=0.05)
+    assert res["massErrorPct"] < 1e-6
+    assert "preview" not in doc
+    assert res["areaM2"] == pytest.approx(2000)
+    assert res["frameMin"] == 2 and len(res["frames"]) == 45
+    folder = tmp_path / doc_path(doc)
+    f = res["frames"][-1]
+    assert (folder / f["file"]).is_file() and (folder / f["view"]).is_file()
+    hydro = (folder / "hydrograph.csv").read_text("utf-8").splitlines()
+    assert hydro[0] == "timeMin,rainM3s,outflowM3s,storedM3" and len(hydro) == 451
+
+
+def test_the_steady_depth_matches_the_kinematic_wave():
+    # at 0.5 m the outlet depth is (q n / S^0.5)^(3/5) for q the rain over the plane's length
+    from aio_pipelines.hydro.inertial import InertialModel, run
+
+    dx, length, width, slope, n = 0.5, 100.0, 10.0, 0.01, 0.03
+    nx, ny = round(length / dx), round(width / dx)
+    x = (np.arange(nx) + 0.5) * dx
+    m = InertialModel(np.tile(10 + slope * (length - x), (ny, 1)), dx, n, 0.0)
+    i = 50 / 1000 / 3600
+    run(m, lambda t: i, [], 3600.0, lambda t: None)
+    want = (i * length * n / math.sqrt(slope)) ** 0.6
+    assert m.h[ny // 2, -1] == pytest.approx(want, rel=0.02)
+
+
+def test_rain_stops_and_the_water_drains_and_soaks_in(tmp_path):
+    plane(tmp_path, 0.01, cell=1.0, length=40, width=10)
+    hy = write_rain(tmp_path / "rain.csv", [(0, 40), (10, 0)])
+    params = {
+        "surface": "plane",
+        "hyetograph": hy,
+        "manningN": 0.03,
+        "infiltrationMmPerH": 5,
+        "cellM": 1,
+        "durationMin": 60,
+    }
+    result, _ = run_job(HydroRainfall(), tmp_path, params)
+    res = run_of(tmp_path, result["outputs"]["commit"])["results"]
+    assert res["rainM3"] == pytest.approx(40 / 1000 / 6 * 400)
+    assert res["storedM3"] < 0.01 * res["rainM3"]
+    assert res["infiltratedM3"] > 0 and res["outflowM3"] > 0
+    assert res["massErrorPct"] < 1e-6
+    assert res["peakAtMin"] <= 12
+
+
+def test_a_pond_fills_and_holds_its_water(tmp_path):
+    w, e, n = two_basins(tmp_path)
+    hy = write_rain(tmp_path / "rain.csv", [(0, 100), (30, 0)])
+    params = {
+        "surface": "pits",
+        "hyetograph": hy,
+        "manningN": 0.03,
+        "infiltrationMmPerH": 0,
+        "cellM": 2,
+        "region": [[10, 30], [50, 30], [50, 70], [10, 70]],
+    }
+    result, _ = run_job(HydroRainfall(), tmp_path, params)
+    doc = run_of(tmp_path, result["outputs"]["commit"])
+    res = doc["results"]
+    # all the rain on the pit's catchment stays in the pit: most of the region drains to it
+    assert res["storedM3"] > 0.5 * res["rainM3"] and res["maxDepthM"] > 0.05
+    assert res["durationMin"] == 30 and res["frameMin"] == 1
+
+
+def test_the_hyetograph_reader_and_the_rain_steps(tmp_path):
+    p = tmp_path / "r.csv"
+    p.write_text("minutes;mm per hour\n0;10\n5;20\n15;0\n", "utf-8")
+    rows = read_hyetograph(p)
+    assert rows == [(0, 10), (5, 20), (15, 0)]
+    at, changes = rain_function(rows)
+    assert changes == [0, 300, 900]
+    assert at(10) == pytest.approx(10 / 3.6e6) and at(300) == pytest.approx(20 / 3.6e6) and at(900) == 0
+    for bad, msg in (
+        ("0,1\n", "at least two rows"),
+        ("0,1\n0,2\n", "must increase"),
+        ("0,1\n5,-1\n", "negative"),
+    ):
+        p.write_text(bad, "utf-8")
+        with pytest.raises(JobError, match=msg):
+            read_hyetograph(p)
+    assert frame_interval(90) == 2 and frame_interval(10_080) == 180
+
+
+def test_rainfall_parameters_are_checked():
+    base = {
+        "surface": "s",
+        "hyetograph": str(Path.cwd() / "r.csv"),
+        "manningN": 0.03,
+        "infiltrationMmPerH": 0,
+        "cellM": 1,
+    }
+    assert HydroRainfall().validate(base) == base
+    for bad, msg in (
+        ({"cellM": 5}, "cellM must be one of"),
+        ({"manningN": 0}, "manningN must be above 0"),
+        ({"infiltrationMmPerH": -1}, "infiltrationMmPerH must be at least 0"),
+        ({"durationMin": 20_000}, "durationMin must be above 0 and at most 10080"),
+        ({"hyetograph": "rain.csv"}, "full path"),
+    ):
+        with pytest.raises(JobError, match=msg):
+            HydroRainfall().validate({**base, **bad})
+
+
+def test_a_coarse_model_reads_a_fine_surface_through_its_pyramid(tmp_path):
+    # a 0.25 m surface with a pyramid: the 2 m model reads level 3, not the whole surface
+    from aio_pipelines.hydro.common import load_surface
+
+    plane(tmp_path, 0.01, cell=0.25, length=64, width=16)
+    folder = tmp_path / "survey" / "surfaces" / "plane"
+    meta = json.loads((folder / "tiles.json").read_text("utf-8"))
+    z0 = 50.0 + 0.01 * (64 - (np.arange(256) + 0.5) * 0.25)
+    for lv in (1, 2, 3):
+        c = 0.25 * 2**lv
+        nx, ny = round(64 / c), round(16 / c)
+        t = np.full((TILE, TILE), np.nan)
+        t[:ny, :nx] = np.tile(50.0 + 0.01 * (64 - (np.arange(nx) + 0.5) * c), (ny, 1))
+        (folder / str(lv)).mkdir()
+        (folder / str(lv) / "0_0.bin").write_bytes(encode_tile(t))
+    meta["levels"] = 4
+    (folder / "tiles.json").write_text(json.dumps(meta), "utf-8")
+    shutil.rmtree(folder / "0")  # level 0 gone: reading it would fail the test
+    surf = load_surface(tmp_path, "plane", None, 10_000, cell=2.0)
+    assert surf.raster.z.shape == (8, 32) and surf.raster.cell == 2.0
+    want = 50.0 + 0.01 * (64 - (np.arange(32) + 0.5) * 2.0)
+    assert np.allclose(surf.raster.z[3], want, atol=1e-6)
+    assert z0.size == 256

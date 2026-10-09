@@ -70,6 +70,7 @@ BUILT = {
     "geo.calibration",
     "hydro.flood",
     "hydro.flow",
+    "hydro.rainfall",
     "survey.compare",
     "survey.prepare",
 }
