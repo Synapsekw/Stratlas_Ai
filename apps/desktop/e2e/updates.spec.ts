@@ -153,8 +153,12 @@ test('a first start after an update ends its watch once the window is ready', as
       };
     await expect.poll(async () => (await read()).pending).toBeUndefined();
     expect((await read()).previous?.version).toBe('0.6.0');
-    const log = await readFile(join(dataRoot.userData, 'logs', 'main.log'), 'utf8');
-    expect(log).toContain(`Version ${running} started well after the update.`);
+    // The journal is written before the line is logged, and the log appends through a queue (the
+    // file may not exist yet on a first start): wait for the line itself.
+    const mainLog = join(dataRoot.userData, 'logs', 'main.log');
+    await expect
+      .poll(() => readFile(mainLog, 'utf8').catch(() => ''))
+      .toContain(`Version ${running} started well after the update.`);
     expect(await network.outbound()).toEqual([]);
   } finally {
     await app.close();
