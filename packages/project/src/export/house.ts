@@ -20,6 +20,7 @@ import {
   type ExportContext,
 } from './facts';
 import type { ProcessingSummary } from './processing';
+import { SURVEY_SECTIONS } from './surveyCsv';
 import { reportModel, type ReportBranding, type ReportModel, type ReportRow } from './report';
 
 export type HouseKind = 'inspection' | 'volumetric' | 'road' | 'fusion';
@@ -35,6 +36,8 @@ export interface HouseInput extends ExportContext {
   audit?: AuditSummary | null | undefined;
   /** M10: the accuracy of the project's latest finished processing run (photogrammetry). */
   processing?: ProcessingSummary | null | undefined;
+  /** M11: the survey sections that have something to print (`SURVEY_SECTIONS`). */
+  surveySections?: readonly ReportSectionId[] | undefined;
 }
 
 /**
@@ -425,7 +428,8 @@ function roadSummary(r: RoadModel): RoadSummary {
 /**
  * The sections the house report prints, in order (Settings lists these). `audit` (M9 T1) prints
  * only for a project with a journal; `approvals` joins when T3 prints it; `processing` (M10)
- * only for a project with a finished photogrammetry run.
+ * only for a project with a finished photogrammetry run; the survey sections (M11) only for a
+ * project with survey measurements of their kind.
  */
 export const HOUSE_SECTIONS = [
   'contents',
@@ -433,6 +437,7 @@ export const HOUSE_SECTIONS = [
   'scope',
   'site',
   'processing',
+  ...SURVEY_SECTIONS,
   'statistics',
   'register',
   'issues',
@@ -455,7 +460,9 @@ export function houseReportModel(input: HouseInput): HouseModel {
       reportSectionOn(input.contents, id) &&
       (id !== 'issues' || issuePages.length > 0) &&
       (id !== 'audit' || Boolean(input.audit)) &&
-      (id !== 'processing' || Boolean(input.processing)),
+      (id !== 'processing' || Boolean(input.processing)) &&
+      (!(SURVEY_SECTIONS as readonly ReportSectionId[]).includes(id) ||
+        Boolean(input.surveySections?.includes(id))),
   );
   const { layers, totals } = dataRows(m);
   const plan: PlanPoint[] = [];

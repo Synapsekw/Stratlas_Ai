@@ -426,3 +426,18 @@ textarea.sv-input {
   color: var(--s5);
   font-size: var(--t-12);
 }
+.sv-sets {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0 0;
+  padding: 8px 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.sv-sets legend {
+  padding: 0;
+  font-size: var(--t-11);
+  color: var(--fg-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}

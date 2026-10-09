@@ -1,5 +1,6 @@
 import type { IpcEvent, IpcRequest, IpcResponse } from '@aio/schema';
 import { join } from 'node:path';
+import type { ReportKind } from './reportWindow';
 import {
   defaultExportName,
   EXPORT_FILTERS,
@@ -7,6 +8,16 @@ import {
   type ExportProgress,
   type ExportResult,
 } from './run';
+
+/**
+ * M11 G9: the survey formats are made by the house report page, which computes the survey data
+ * with the engine (the PDF's survey sections alone, or the CSV text it publishes).
+ */
+const SURVEY_KIND = {
+  'survey-report-pdf': 'survey',
+  'measurements-csv': 'measurements-csv',
+  'stockpile-csv': 'stockpile-csv',
+} as const satisfies Record<string, ReportKind>;
 
 /** A temporary project folder for an export (a package's manifest and issues). */
 export interface StagedRoot {
@@ -44,7 +55,7 @@ export interface ExportDeps {
       root: string;
       outPath: string;
       issueIds?: string[] | undefined;
-      kind: 'register' | 'house' | 'processing';
+      kind: ReportKind;
     },
     progress: (p: ExportProgress) => void,
     signal: AbortSignal,
@@ -52,6 +63,8 @@ export interface ExportDeps {
   emit: (event: IpcEvent<'export:progress'>) => void;
   /** M10: the project's latest finished processing run with an accuracy report, or null. */
   processingRun?: (projectId: string) => Promise<string | null>;
+  /** M11: does the project have saved survey measurements (the survey report and CSVs)? */
+  hasSurvey?: (projectId: string) => Promise<boolean>;
   /** M9 T1: `audit-csv` and `audit-json` through the journal's audit export. */
   audit?: (
     projectId: string,
@@ -118,6 +131,13 @@ export function createExportJobs(deps: ExportDeps): ExportJobs {
         error:
           'This project has no finished processing run with an accuracy report. Process photos first.',
       };
+    const survey: ReportKind | undefined =
+      req.format in SURVEY_KIND ? SURVEY_KIND[req.format as keyof typeof SURVEY_KIND] : undefined;
+    if (survey && deps.hasSurvey && !(await deps.hasSurvey(req.projectId)))
+      return {
+        ok: false,
+        error: 'This project has no saved survey measurements. Measure and save them first.',
+      };
     const name = defaultExportName(await deps.projectName(root), req.format);
     const outPath = await deps.chooseSavePath(
       join(deps.downloadsDir, name),
@@ -133,7 +153,8 @@ export function createExportJobs(deps: ExportDeps): ExportJobs {
       const r =
         req.format === 'report-pdf' ||
         req.format === 'house-pdf' ||
-        req.format === 'photo-report-pdf'
+        req.format === 'photo-report-pdf' ||
+        survey
           ? await deps.printReport(
               {
                 projectId: req.projectId,
@@ -141,11 +162,12 @@ export function createExportJobs(deps: ExportDeps): ExportJobs {
                 outPath,
                 issueIds: req.issueIds,
                 kind:
-                  req.format === 'house-pdf'
+                  survey ??
+                  (req.format === 'house-pdf'
                     ? 'house'
                     : req.format === 'photo-report-pdf'
                       ? 'processing'
-                      : 'register',
+                      : 'register'),
               },
               progress,
               ac.signal,

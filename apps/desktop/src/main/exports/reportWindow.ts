@@ -20,6 +20,17 @@ export interface ReportPageState {
   pages?: number;
 }
 
+/**
+ * What a report window makes: the issue register or the house report (PDF), the processing run's
+ * accuracy report (the processing section alone), the survey report (the survey sections alone,
+ * M11) or a survey CSV the house page computes with the survey engine (`measurements-csv`,
+ * `stockpile-csv`; written as the page publishes it, never printed).
+ */
+export type ReportKind =
+  'register' | 'house' | 'processing' | 'survey' | 'measurements-csv' | 'stockpile-csv';
+
+const isCsv = (k: ReportKind | undefined) => k === 'measurements-csv' || k === 'stockpile-csv';
+
 const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${String(c.charCodeAt(0))};`);
 
 /** printToPDF footer: the page's footer text on the left, page numbers on the right. */
@@ -43,6 +54,8 @@ export interface ReportWindowOptions {
   signoff?: string | undefined;
   /** M10: the processing run the house report's `processing` section and the accuracy report print. */
   processingRun?: string | null | undefined;
+  /** M11: the project's prepared surfaces (`survey/surfaces/<id>`) the survey sections compute on. */
+  surveySurfaces?: readonly string[] | undefined;
 }
 
 /**
@@ -79,7 +92,7 @@ export async function printReport(
     outPath: string;
     issueIds?: string[] | undefined;
     /** `processing`: the house page with the processing section alone (`photo-report-pdf`). */
-    kind?: 'register' | 'house' | 'processing';
+    kind?: ReportKind;
   },
   progress: (p: ExportProgress) => void,
   signal: AbortSignal,
@@ -101,7 +114,8 @@ export async function printReport(
   const part = `${args.outPath}.part`;
   const cancelled = () => signal.aborted;
   const processing = args.kind === 'processing';
-  const house = args.kind === 'house' || processing;
+  const csv = isCsv(args.kind);
+  const house = args.kind !== undefined && args.kind !== 'register';
   const page = REPORT_PAGES[house ? 'house' : 'register'];
   const query = reportQuery(
     args,
@@ -112,6 +126,8 @@ export async function printReport(
   if (args.kind === 'house' && opts.signoff) query.signoff = opts.signoff;
   if (house && opts.processingRun) query.processing = opts.processingRun;
   if (processing) query.only = 'processing';
+  if (args.kind === 'survey' || csv) query.only = args.kind ?? '';
+  if (house && opts.surveySurfaces?.length) query.surfaces = opts.surveySurfaces.join(',');
   try {
     if (opts.devUrl) {
       const url = new URL(page, opts.devUrl.endsWith('/') ? opts.devUrl : `${opts.devUrl}/`);
@@ -134,6 +150,15 @@ export async function printReport(
       if (state) progress({ phase: state.phase, done: state.done, total: state.total });
       if (state?.state === 'ready') break;
       await sleep(250);
+    }
+    if (csv) {
+      const text = (await win.webContents.executeJavaScript(
+        'String(window.__report?.csv ?? "")',
+      )) as string;
+      if (cancelled()) throw new Error('Export cancelled.');
+      await writeFile(part, text, 'utf8');
+      await rename(part, args.outPath);
+      return { count: state.count ?? 0, bytes: (await stat(args.outPath)).size };
     }
     progress({
       phase: state.pages ? `Printing ${String(state.pages)} pages` : 'Printing the PDF',

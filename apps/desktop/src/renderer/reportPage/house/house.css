@@ -852,3 +852,54 @@ svg.overlap {
   height: auto;
   border: 1px solid #d5dbe1;
 }
+
+/* M11 survey sections */
+.sv-basis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1mm 4mm;
+  margin: 0 0 2mm;
+  padding: 2mm 3mm;
+  background: var(--band);
+  border-left: 0.6mm solid var(--acc);
+  font-size: 7.2pt;
+  color: var(--ink-2);
+}
+.map .svl {
+  fill: none;
+  stroke: var(--acc-ink);
+  stroke-width: 1.4;
+}
+.map .svp {
+  fill: var(--acc-ink);
+}
+svg.svsec {
+  display: block;
+  border: 0.3mm solid var(--rule);
+  background: #ffffff;
+}
+svg.svsec text {
+  font-size: 8px;
+  fill: var(--ink-2);
+  font-family: var(--f-ui);
+}
+svg.svsec .axl {
+  stroke: var(--rule);
+}
+.grid.sv-vol td:nth-child(n + 4):nth-child(-n + 7),
+.grid.sv-piles td:nth-child(n + 4),
+.grid.sv-ew td:nth-child(n + 4),
+.grid.sv-mat td:nth-child(n + 2),
+.grid.sv-lifts td:nth-child(n + 2):nth-child(-n + 5) {
+  text-align: right;
+  white-space: nowrap;
+}
+.grid.sv-list th:nth-child(1),
+.grid.sv-vol th:nth-child(1),
+.grid.sv-piles th:nth-child(1),
+.grid.sv-ew th:nth-child(1) {
+  width: 11mm;
+}
+.grid tr.flag td {
+  color: #a33a1c;
+}

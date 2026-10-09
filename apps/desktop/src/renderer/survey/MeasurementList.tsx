@@ -24,6 +24,7 @@ import { focusPoint, frameOf } from './measureScene';
 import {
   deleteMeasurements,
   isDirty,
+  knownTemplates,
   revertMeasurements,
   saveMeasurements,
   select,
@@ -68,8 +69,8 @@ export function MeasurementList({ stage }: { stage: EngineStage | null }) {
   const [folderName, setFolderName] = useState('');
 
   const allTemplates = useMemo(
-    () => [...(templates.project?.templates ?? []), ...templates.user.templates],
-    [templates],
+    () => knownTemplates({ templates, settings }),
+    [templates, settings],
   );
   const dropdowns = useMemo(() => dropdownFilters(allTemplates), [allTemplates]);
   const filter: MeasurementFilter = {

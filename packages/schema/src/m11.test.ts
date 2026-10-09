@@ -9,6 +9,8 @@ import {
   CustomBase,
   DesignsFile,
   ENTITLEMENTS,
+  EXPORT_FORMATS,
+  EXPORT_FORMAT_KIND,
   GeoidPackMeta,
   HaulRun,
   ImportItem,
@@ -78,8 +80,10 @@ describe('M11 additive rule: no layer kind, raster role, project type, setting o
     expect(role?.options).toEqual(['ortho', 'dsm', 'plan']);
   });
 
-  it('keeps the 0.10 project types and report sections (G9 adds its sections later)', () => {
+  it('keeps the 0.10 project types and report sections, plus exactly the four of G9', () => {
     expect(ProjectType.options).toEqual(['inspection', 'volumetric', 'road', 'twin', 'fusion']);
+    // G9 (not G0): the survey sections. `ReportContentsSettings` is strict over these ids, so
+    // settings keep them in `reportSectionsExtra`, which 0.10 carries over without reading.
     expect([...REPORT_SECTIONS]).toEqual([
       'contents',
       'summary',
@@ -92,7 +96,23 @@ describe('M11 additive rule: no layer kind, raster role, project type, setting o
       'audit',
       'approvals',
       'processing',
+      'measurements',
+      'earthworks',
+      'stockpiles',
+      'landfill',
     ]);
+  });
+
+  it('adds exactly the three G9 export formats, under existing package export kinds', () => {
+    expect(EXPORT_FORMATS.slice(-3)).toEqual([
+      'measurements-csv',
+      'stockpile-csv',
+      'survey-report-pdf',
+    ]);
+    expect(EXPORT_FORMATS).toHaveLength(13);
+    expect(EXPORT_FORMAT_KIND['measurements-csv']).toBe('files');
+    expect(EXPORT_FORMAT_KIND['stockpile-csv']).toBe('files');
+    expect(EXPORT_FORMAT_KIND['survey-report-pdf']).toBe('report-pdf');
   });
 
   it('keeps the 0.10 Settings keys (survey defaults are their own userData file)', () => {

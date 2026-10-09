@@ -40,6 +40,7 @@ import { listConversations, loadConversation, saveConversation } from './convers
 import { demoLibraryPaths, demoOpenPath, demoRoot, findDemos, markDemoEntries } from './demo';
 import { createExportJobs } from './exports/jobs';
 import { printReport } from './exports/reportWindow';
+import { hasSurveyMeasurements, surveySurfaceIds } from './exports/survey';
 import { readNarrative, readPackageNarrative, writeNarrative } from './narrative';
 import { readOrientation, readPackageOrientation, writeOrientation } from './orientation';
 import { listReports } from './exports/reports';
@@ -553,9 +554,13 @@ const exportJobs = createExportJobs({
       // M10: the latest finished processing run (house section, accuracy report PDF)
       processingRun:
         args.kind === 'register' ? null : await latestAccuracyRun(registry, args.projectId),
+      // M11 G9: the prepared surfaces the survey sections and CSVs compute on
+      surveySurfaces:
+        args.kind === 'register' ? undefined : await surveySurfaceIds(registry, args.projectId),
     });
   },
   processingRun: (projectId) => latestAccuracyRun(registry, projectId),
+  hasSurvey: (projectId) => hasSurveyMeasurements(registry, projectId),
   emit: emitExportProgress,
 });
 

@@ -56,6 +56,12 @@ export const ReportSectionId = z.enum([
   'approvals',
   // M10 (G4): photogrammetry accuracy (summary, GCP and checkpoint table, overlap map)
   'processing',
+  // M11 (G9): survey measurements, earthworks to design, the stockpile inventory and landfill
+  // airspace and compaction. Settings keep them in `reportSectionsExtra` (not read by 0.8 to 0.10)
+  'measurements',
+  'earthworks',
+  'stockpiles',
+  'landfill',
 ]);
 export const REPORT_SECTIONS = ReportSectionId.options;
 

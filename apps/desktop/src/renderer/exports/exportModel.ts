@@ -77,6 +77,28 @@ export const EXPORT_ACTIONS: readonly ExportAction[] = [
     hint: 'Control and checkpoints',
     icon: 'report',
   },
+  // M11 G9: survey reports, computed with the survey engine as the measurement panel computes
+  {
+    id: 'survey-report-pdf',
+    label: 'Survey report (PDF)',
+    title: 'Export the survey report (measurements, stockpiles, earthworks, landfill) as PDF',
+    hint: 'Stockpiles, earthworks, landfill',
+    icon: 'report',
+  },
+  {
+    id: 'stockpile-csv',
+    label: 'Stockpile inventory (CSV)',
+    title: 'Export the stockpile inventory with materials and tonnes as CSV',
+    hint: 'Every survey, by material',
+    icon: 'download',
+  },
+  {
+    id: 'measurements-csv',
+    label: 'Survey measurements (CSV)',
+    title: 'Export every survey measurement as CSV, as displayed and in SI units',
+    hint: 'Every item',
+    icon: 'download',
+  },
   {
     id: 'snapshot',
     label: '3D view snapshot (PNG)',

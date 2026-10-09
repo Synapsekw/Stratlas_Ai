@@ -19,7 +19,7 @@ import {
 import { unitName } from '@aio/geo';
 import { useMemo, useState } from 'react';
 import { computeAll, isStale, useCompare } from './compareStore';
-import { replaceMeasurement, useMeasure } from './measureStore';
+import { knownTemplates, replaceMeasurement, useMeasure } from './measureStore';
 
 export function BulkTotals() {
   const selected = useMeasure((s) => s.selected);
@@ -56,9 +56,7 @@ export function BulkTotals() {
   const v = (x: number) => formatQuantity(x, 'volume', units, settings.precision);
   const a = (x: number) => formatQuantity(x, 'area', units, settings.precision);
   const tplName = t.template
-    ? ([...(templates.project?.templates ?? []), ...templates.user.templates].find(
-        (x) => x.id === t.template,
-      )?.name ?? t.template)
+    ? (knownTemplates({ templates, settings }).find((x) => x.id === t.template)?.name ?? t.template)
     : null;
   const apply = () => {
     const o = options.find((x) => x.key === key);

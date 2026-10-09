@@ -35,7 +35,13 @@ import {
   Vector3,
   type Material,
 } from 'three';
-import { drawEvent, editEvent, measureStore, type MeasureState } from './measureStore';
+import {
+  drawEvent,
+  editEvent,
+  knownTemplates,
+  measureStore,
+  type MeasureState,
+} from './measureStore';
 
 export const MEASURE_COLOR = '#ffd166';
 const DRAFT_COLOR = '#4cc9f0';
@@ -99,9 +105,7 @@ function labelOf(
   showName: boolean,
   s: MeasureState,
 ): string {
-  const tpl = [...(s.templates.project?.templates ?? []), ...s.templates.user.templates].find(
-    (t) => t.id === m.template,
-  );
+  const tpl = knownTemplates(s).find((t) => t.id === m.template);
   const row = measurementReadout(m, {}, tpl?.items).find((r) => r.value !== null);
   const value = row ? formatRow(row, effectiveUnits(site, m.units), precision) : '';
   const named = showName && row ? `${row.label}: ${value}` : value;

@@ -51,6 +51,9 @@ const SUFFIX: Record<ExportFormat, string> = {
   'audit-csv': '-audit.csv',
   'audit-json': '-audit.json',
   'photo-report-pdf': '-accuracy-report.pdf',
+  'measurements-csv': '-measurements.csv',
+  'stockpile-csv': '-stockpile-inventory.csv',
+  'survey-report-pdf': '-survey-report.pdf',
 };
 
 /** Save dialog filter per format. */
@@ -65,6 +68,9 @@ export const EXPORT_FILTERS: Record<ExportFormat, { name: string; extensions: st
   'audit-csv': { name: 'CSV', extensions: ['csv'] },
   'audit-json': { name: 'Signed audit JSON', extensions: ['json'] },
   'photo-report-pdf': { name: 'PDF', extensions: ['pdf'] },
+  'measurements-csv': { name: 'CSV', extensions: ['csv'] },
+  'stockpile-csv': { name: 'CSV', extensions: ['csv'] },
+  'survey-report-pdf': { name: 'PDF', extensions: ['pdf'] },
 };
 
 /** File name offered in the save dialog: the project name made file safe, plus the format. */
@@ -239,6 +245,13 @@ export async function runExport(
   }
   if (job.format === 'audit-csv' || job.format === 'audit-json') {
     throw new Error('The audit trail is exported by the journal service (M9 T1), not here.');
+  }
+  if (
+    job.format === 'measurements-csv' ||
+    job.format === 'stockpile-csv' ||
+    job.format === 'survey-report-pdf'
+  ) {
+    throw new Error('Survey reports and CSVs are made by the report window, not here.');
   }
   const part = `${job.outPath}.part`;
   try {

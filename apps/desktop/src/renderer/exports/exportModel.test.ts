@@ -36,6 +36,9 @@ describe('export actions', () => {
       'report-pdf',
       'house-pdf',
       'photo-report-pdf',
+      'survey-report-pdf',
+      'stockpile-csv',
+      'measurements-csv',
       'snapshot',
     ]);
   });
