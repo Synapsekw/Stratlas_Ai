@@ -258,6 +258,7 @@ export async function compute(
   const points = opts.points ?? m.points;
   if (points.length < 3) return null;
   set({ running: { ...get().running, [id]: true } });
+  const asked = inputsKey(m, opts.points === undefined);
   try {
     const capture = captureOf(m);
     const r = await client().run(
@@ -271,6 +272,14 @@ export async function compute(
     );
     const live = opts.live === true;
     const problems = Object.fromEntries(Object.entries(get().problems).filter(([k]) => k !== id));
+    // the items (or the ring) changed while it ran: these numbers are for what was asked, not for
+    // what the measurement is now, so nothing is stored or taken as current; the change itself
+    // schedules the next run (an older answer stored here showed as current until then)
+    const now = measureStore.getState().file.measurements.find((x) => x.id === id);
+    if (!now || inputsKey(now, opts.points === undefined) !== asked) {
+      set({ running: { ...get().running, [id]: false }, problems });
+      return r;
+    }
     set({
       computed: {
         ...get().computed,
@@ -302,6 +311,14 @@ export async function compute(
     return null;
   }
 }
+
+/** What a run computes for: the items (their labels aside) and, unless given, the ring. */
+const inputsKey = (m: SurveyMeasurement, withRing: boolean): string =>
+  JSON.stringify([
+    m.items.map((it) => ({ ...it, label: undefined })),
+    captureOf(m) ?? null,
+    withRing ? ringOf(m.points) : null,
+  ]);
 
 /** Compute every item of every given measurement (Recompute all, bulk). */
 export async function computeAll(ids: readonly string[]): Promise<void> {

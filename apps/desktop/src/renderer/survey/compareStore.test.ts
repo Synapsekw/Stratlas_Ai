@@ -147,3 +147,37 @@ describe('results the app computes on its own', () => {
     expect(writes()).toBe(1);
   });
 });
+
+describe('a run the measurement outgrew', () => {
+  it('stores nothing when an item changed while it ran: the change is computed next', async () => {
+    const running = compute('m1', { auto: true });
+    // the person sets another level while the first run is still out (the Set of the base editor)
+    const file = measureStore.getState().file;
+    measureStore.setState({
+      file: {
+        ...file,
+        measurements: file.measurements.map((m) =>
+          m.id === 'm1'
+            ? {
+                ...m,
+                items: m.items.map((it) => ({
+                  ...it,
+                  from: { kind: 'reference' as const, mode: 'level' as const, levelM: 90 },
+                })),
+              }
+            : m,
+        ),
+      },
+    });
+    const r = await running;
+    expect(r?.results[0]?.status).toBe('ok');
+    // the answer was for level 100: not stored for level 90, and not taken as current
+    expect(stored()?.results).toEqual([]);
+    expect(compareStore.getState().current.m1).toBeUndefined();
+    expect(compareStore.getState().running.m1).toBe(false);
+    // the next run is for level 90
+    const next = await compute('m1', { auto: true });
+    expect(stored()?.results[0]?.fingerprint).toBe(next?.results[0]?.fingerprint);
+    expect(next?.results[0]?.fingerprint).not.toBe(r?.results[0]?.fingerprint);
+  });
+});
