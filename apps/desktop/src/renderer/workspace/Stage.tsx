@@ -71,8 +71,8 @@ import { CompareButton, CompareMap, useVolumesFollowDate } from './CompareContro
 import { CompareScene } from './CompareScene';
 import { ChangeLegends } from './MapSwipe';
 import { CursorReadout, useSceneCursor } from './SceneCursor';
-import { HaulRoadTool } from '../survey/HaulRoad';
-import { HydroTool } from '../survey/Hydro';
+import { HaulRoadMount } from '../survey/HaulRoad';
+import { HydroMount } from '../survey/Hydro';
 import './m8Mounts';
 import { paneCapture, PaneChooser, SplitPane, useSplit } from './SplitPanes';
 import {
@@ -264,15 +264,10 @@ function StageToolbar({
       case 'view':
         return <ViewTools stage={stage} map={map} />;
       case 'measure':
-        // on the map only the survey measurements (the scene's own tools need the 3D view)
-        // the site's designs and survey QA are in the Survey measurements popover
-        return (
-          <>
-            {map ? <MeasureToolbar /> : <MeasureTools stage={stage} />}
-            <HydroTool />
-            <HaulRoadTool stage={stage} />
-          </>
-        );
+        // on the map only the survey measurements (the scene's own tools need the 3D view);
+        // the site data (designs, survey QA, overlays, hydrology, haul road) are in the Survey
+        // measurements popover
+        return map ? <MeasureToolbar /> : <MeasureTools stage={stage} />;
       case 'display':
         return <DisplayTools stage={stage} map={map} />;
       case 'clouds':
@@ -363,6 +358,8 @@ function StageToolbar({
       <span className="stbar-sp" />
       <MeasureMount stage={stage} />
       <SurveyQaMount />
+      <HydroMount />
+      <HaulRoadMount stage={stage} />
       {!map && stage && (
         <div className="tgroup-h overlay-box env-slot" data-fixed="">
           <EnvironmentTool stage={stage} />

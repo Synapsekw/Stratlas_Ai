@@ -1,10 +1,8 @@
 /* Haul-road compliance (M11 G11): the panel, limits and results table. Mission tokens only. */
 
-/* the Haul road pop is wider than the other tools: the results table needs the room */
-/* opened towards the start of the stage, so the side panel does not cover it */
-.stage-pop.wide:has(.haul-panel) {
-  inset-inline-start: auto;
-  inset-inline-end: -2px;
+/* the Haul road pop is wider than the other tools: the results table needs the room. Only its
+   own pop (a direct child), not the Survey measurements popover it nests in */
+.stage-pop.wide:has(> .haul-panel) {
   width: min(440px, calc(100vw - 48px));
   max-height: calc(100vh - 160px);
   overflow: auto;

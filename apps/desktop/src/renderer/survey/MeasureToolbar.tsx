@@ -26,6 +26,9 @@ import { PopTool, Tool } from '../workspace/StageTools';
 import { BulkTotals } from './BulkTotals';
 import { CompareLayer } from './Comparison';
 import { DesignsTool } from './Designs';
+import { HaulRoadTool } from './HaulRoad';
+import { HydroTool } from './Hydro';
+import { useHydro } from './hydroStore';
 import { openCompareDialog } from './compareStore';
 import { MeasurementList } from './MeasurementList';
 import { MeasurementPanel } from './MeasurementPanel';
@@ -84,6 +87,8 @@ export function MeasureToolbar() {
   const snap = useMeasure((s) => s.snap);
   const readOnly = useMeasure((s) => s.readOnly);
   const overlaysOpen = useOverlays((s) => s.open);
+  // the Hydrology panel closes while a point is picked on the map and opens again with it
+  const hydroOpen = useHydro((s) => s.open);
   const lib = useMemo(
     () => bookmarks(templateLibrary(templates.project, templates.user)),
     [templates],
@@ -97,12 +102,12 @@ export function MeasureToolbar() {
         label="Survey measurements"
         pressed={active !== null || listOpen}
         wide
-        open={open}
+        open={open || hydroOpen}
         onOpenChange={setOpen}
       >
         <div className="pop-form sv-tools" data-testid="survey-tools">
-          {/* the site's designs, survey QA and terrain overlays: here rather than on the bar,
-              which fits one row at 1440 px with both side panels open */}
+          {/* the site's designs, survey QA, terrain overlays, hydrology and haul road: here rather
+              than on the bar, which fits one row at 1440 px with both side panels open */}
           <div className="sv-fam" role="group" aria-label="Site data">
             <span className="pop-title">
               <Icon name="layers" size={12} /> Site data
@@ -124,6 +129,8 @@ export function MeasureToolbar() {
                   setOpen(false);
                 }}
               />
+              <HydroTool />
+              <HaulRoadTool />
             </div>
           </div>
           {!readOnly &&

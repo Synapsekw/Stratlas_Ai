@@ -1,5 +1,6 @@
 /**
- * Hydrology (M11 G10, PRD HYD-1 to HYD-3): the Hydrology button of the stage toolbar and its panel.
+ * Hydrology (M11 G10, PRD HYD-1 to HYD-3): the Hydrology button (Survey measurements popover,
+ * Site data) and its panel, and `HydroMount`, which draws the runs on the map.
  * Pick a prepared surface, then **Flood to level**, **Runoff**, **Catchment** or **Direct rainfall**
  * (forms in `HydroForms.tsx`); each runs as a pipeline job and lands in `survey/hydro/<run>/`. The
  * newest run of the tab shows on the map (outline and depth, flow path, catchments and streams, a
@@ -317,12 +318,42 @@ function HydroMapLayer({
   return null;
 }
 
-/** The Hydrology button of the stage toolbar. */
+/**
+ * The Hydrology button (in the Survey measurements popover's Site data group). Its panel opens
+ * from the store, so a point picked on the map opens it again.
+ */
 export function HydroTool() {
   const project = useWorkspace((s) => s.project);
   const projectId = project?.id ?? null;
   const epsg = project && 'epsg' in project.manifest.crs ? project.manifest.crs.epsg : null;
   const open = useHydro((s) => s.open);
+  const map = useActiveMap();
+  return (
+    <PopTool
+      icon="target"
+      label="Hydrology"
+      disabled={!projectId}
+      wide
+      open={open}
+      onOpenChange={(o) => {
+        hydro.setState({ open: o });
+        if (o && projectId) void loadHydro(projectId);
+      }}
+    >
+      <HydroPanel map={map !== null && epsg !== null} />
+    </PopTool>
+  );
+}
+
+/**
+ * The workspace mount of hydrology (one per stage, whatever toolbar groups show): loads the runs,
+ * follows the jobs, draws the shown run on the map and ends a map pick on Escape, so the layers
+ * stay when the toolbar folds the button into More tools.
+ */
+export function HydroMount() {
+  const project = useWorkspace((s) => s.project);
+  const projectId = project?.id ?? null;
+  const epsg = project && 'epsg' in project.manifest.crs ? project.manifest.crs.epsg : null;
   const pick = useHydro((s) => s.pick);
   const map = useActiveMap();
   useEffect(() => {
@@ -339,24 +370,7 @@ export function HydroTool() {
       window.removeEventListener('keydown', onKey);
     };
   }, [pick]);
-  return (
-    <>
-      <PopTool
-        icon="target"
-        label="Hydrology"
-        disabled={!projectId}
-        wide
-        open={open}
-        onOpenChange={(o) => {
-          hydro.setState({ open: o });
-          if (o && projectId) void loadHydro(projectId);
-        }}
-      >
-        <HydroPanel map={map !== null && epsg !== null} />
-      </PopTool>
-      {map && projectId && epsg !== null && (
-        <HydroMapLayer map={map} projectId={projectId} epsg={epsg} />
-      )}
-    </>
-  );
+  return map && projectId && epsg !== null ? (
+    <HydroMapLayer map={map} projectId={projectId} epsg={epsg} />
+  ) : null;
 }

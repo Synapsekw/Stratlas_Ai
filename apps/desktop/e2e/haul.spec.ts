@@ -23,11 +23,15 @@ async function open(win: Page, p: SurveyDemoProject): Promise<void> {
   await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible();
 }
 
-/** The Haul road button sits on the toolbar, or under More tools when the toolbar is narrow. */
+/**
+ * The Haul road button is in the Survey measurements popover (Site data), whose tool sits on the
+ * toolbar, or under More tools when the toolbar is narrow.
+ */
 async function openHaulRoad(win: Page): Promise<void> {
-  const button = win.getByRole('button', { name: 'Haul road', exact: true });
-  if (!(await button.isVisible())) await win.getByRole('button', { name: 'More tools' }).click();
-  await button.click();
+  const survey = win.getByRole('button', { name: 'Survey measurements', exact: true });
+  if (!(await survey.isVisible())) await win.getByRole('button', { name: 'More tools' }).click();
+  await survey.click();
+  await win.getByRole('button', { name: 'Haul road', exact: true }).click();
   await expect(win.getByTestId('haul-panel')).toBeVisible();
 }
 

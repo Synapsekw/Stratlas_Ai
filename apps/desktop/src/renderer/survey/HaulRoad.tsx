@@ -449,8 +449,22 @@ function useActiveMap() {
   return useSyncExternalStore(onActiveMap, getActiveMap, getActiveMap);
 }
 
-/** The Haul road button of the stage toolbar, and the coloured centreline in the views. */
-export function HaulRoadTool({ stage }: { stage: EngineStage | null }) {
+/** The Haul road button (in the Survey measurements popover's Site data group). */
+export function HaulRoadTool() {
+  const hasProject = useWorkspace((s) => s.project !== null);
+  return (
+    <PopTool icon="road" label="Haul road" disabled={!hasProject} wide>
+      <HaulRoadPanel />
+    </PopTool>
+  );
+}
+
+/**
+ * The workspace mount of haul roads (one per stage, whatever toolbar groups show): loads the runs,
+ * follows the jobs and colours the shown centreline in the 3D view and on the map, so the colouring
+ * stays when the toolbar folds the button into More tools.
+ */
+export function HaulRoadMount({ stage }: { stage: EngineStage | null }) {
   const project = useWorkspace((s) => s.project);
   const projectId = project?.id ?? null;
   const manifest = project?.manifest ?? null;
@@ -469,10 +483,5 @@ export function HaulRoadTool({ stage }: { stage: EngineStage | null }) {
     if (!map || !frame) return;
     return attachHaulMap(map, frame);
   }, [map, frame]);
-
-  return (
-    <PopTool icon="road" label="Haul road" disabled={!project} wide>
-      <HaulRoadPanel />
-    </PopTool>
-  );
+  return null;
 }

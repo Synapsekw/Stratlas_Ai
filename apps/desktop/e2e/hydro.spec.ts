@@ -24,13 +24,17 @@ interface GroundTruth {
   N0: number;
 }
 
-/** The Hydrology button sits on the toolbar, or under More tools when the toolbar is narrow. */
+/**
+ * The Hydrology button is in the Survey measurements popover (Site data), whose tool sits on the
+ * toolbar, or under More tools when the toolbar is narrow.
+ */
 async function openHydrology(win: Page): Promise<void> {
   const panel = win.getByTestId('hydro-panel');
   if (await panel.isVisible()) return;
-  const button = win.getByRole('button', { name: 'Hydrology', exact: true });
-  if (!(await button.isVisible())) await win.getByRole('button', { name: 'More tools' }).click();
-  await button.click();
+  const survey = win.getByRole('button', { name: 'Survey measurements', exact: true });
+  if (!(await survey.isVisible())) await win.getByRole('button', { name: 'More tools' }).click();
+  await survey.click();
+  await win.getByRole('button', { name: 'Hydrology', exact: true }).click();
   await expect(panel).toBeVisible();
 }
 

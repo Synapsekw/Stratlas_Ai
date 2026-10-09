@@ -1,5 +1,6 @@
-/* The Hydrology panel (M11 G10): a wider pop with rows that wrap instead of overflowing. */
-.stage-pop.wide:has(.hydro-panel) {
+/* The Hydrology panel (M11 G10): a wider pop with rows that wrap instead of overflowing (its own
+   pop only, not the Survey measurements popover it nests in). */
+.stage-pop.wide:has(> .hydro-panel) {
   width: 360px;
 }
 .hydro-panel,
