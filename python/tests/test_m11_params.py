@@ -70,6 +70,7 @@ BUILT = {
     "geo.calibration",
     "survey.cleanup",
     "survey.compare",
+    "survey.export",
     "survey.overlay",
     "survey.prepare",
     "survey.qa",
