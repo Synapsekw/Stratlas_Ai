@@ -1,4 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
 import {
@@ -8,6 +10,7 @@ import {
   DesignsFile,
   ENTITLEMENTS,
   GeoidPackMeta,
+  HaulRun,
   ImportItem,
   HeightTiles,
   HydroRun,
@@ -124,6 +127,7 @@ describe('M11 additive rule: no layer kind, raster role, project type, setting o
         'aio.alignment',
         'aio.designs',
         'aio.geoid-pack',
+        'aio.haul-run',
         'aio.height-tiles',
         'aio.hydro-run',
         'aio.measurements',
@@ -456,6 +460,26 @@ describe('design files', () => {
   });
 });
 
+describe('haul-road runs', () => {
+  it('parses a run as haul.analyse writes it (G11), and refuses a wrong one', () => {
+    // written by python/src/aio_pipelines/haul/analyse.py (a straight road, a berm and a drop)
+    const haulRunFixture = JSON.parse(
+      readFileSync(fileURLToPath(new URL('./__fixtures__/haul/run.json', import.meta.url)), 'utf8'),
+    ) as { stations: Record<string, unknown>[] } & Record<string, unknown>;
+    const run = HaulRun.parse(haulRunFixture);
+    expect(run.params.limits.minBermHeightM).toBe(1);
+    expect(run.stations).toHaveLength(3);
+    expect(run.stations[0]?.checks.bermRight).toBe('fail');
+    expect(run.stations[0]?.bermRight?.kind).toBe('drop');
+    expect(HaulRun.safeParse({ ...haulRunFixture, schema: 'aio.haul-run/2' }).success).toBe(false);
+    expect(HaulRun.safeParse({ ...haulRunFixture, params: { surface: 'dsm-1' } }).success).toBe(
+      false,
+    );
+    const station = { ...haulRunFixture.stations[0], status: 'maybe' };
+    expect(HaulRun.safeParse({ ...haulRunFixture, stations: [station] }).success).toBe(false);
+  });
+});
+
 describe('geodesy files', () => {
   it('reads a site calibration, a site transform and a geoid pack', () => {
     const calibration = {
@@ -629,6 +653,7 @@ describe('M11 IPC channels', () => {
     'survey:readTerrainEdits',
     'survey:writeTerrainEdits',
     'survey:readHydroRuns',
+    'survey:readHaulRuns',
     'geodesy:searchCrs',
     'geodesy:readCalibration',
     'geodesy:applyCalibration',

@@ -71,6 +71,7 @@ import { CompareButton, CompareMap, useVolumesFollowDate } from './CompareContro
 import { CompareScene } from './CompareScene';
 import { ChangeLegends } from './MapSwipe';
 import { CursorReadout, useSceneCursor } from './SceneCursor';
+import { HaulRoadTool } from '../survey/HaulRoad';
 import { HydroTool } from '../survey/Hydro';
 import './m8Mounts';
 import { paneCapture, PaneChooser, SplitPane, useSplit } from './SplitPanes';
@@ -269,6 +270,7 @@ function StageToolbar({
           <>
             {map ? <MeasureToolbar /> : <MeasureTools stage={stage} />}
             <HydroTool />
+            <HaulRoadTool stage={stage} />
           </>
         );
       case 'display':

@@ -199,6 +199,7 @@ const CHANNELS = {
   'survey:readOverlays': true,
   'survey:writeOverlays': true,
   'survey:readHydroRuns': true,
+  'survey:readHaulRuns': true,
   'geodesy:searchCrs': true,
   'geodesy:readCalibration': true,
   'geodesy:applyCalibration': true,

@@ -35,6 +35,7 @@ export * from './geodesy';
 export * from './designs';
 export * from './survey';
 export * from './hydro';
+export * from './haul';
 // Video direction keyframes and photo corrections (orientation.json, proposal)
 export * from './orientation';
 export * from './launch';

@@ -1,0 +1,237 @@
+{
+  "schema": "aio.haul-run/1",
+  "id": "example",
+  "jobId": "20261009-100000-haul-analyse-a1b2",
+  "engine": 1,
+  "params": {
+    "surface": "dsm-1",
+    "centreline": [
+      [552980.0, 2333000.0],
+      [553020.0, 2333000.0]
+    ],
+    "intervalM": 20,
+    "limits": {
+      "minWidthM": 18,
+      "maxGradePct": 10,
+      "crossFallMinPct": 1,
+      "crossFallMaxPct": 4,
+      "minBermHeightM": 1
+    },
+    "run": "example"
+  },
+  "surface": {
+    "id": "dsm-1",
+    "name": "Quarry DSM",
+    "fingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "cellM": 0.5,
+    "capture": "m1"
+  },
+  "centreline": {
+    "source": "drawn",
+    "name": "Drawn centreline",
+    "lengthM": 40.0,
+    "points": 2
+  },
+  "intervalM": 20.0,
+  "limits": {
+    "minWidthM": 18,
+    "maxGradePct": 10,
+    "crossFallMinPct": 1,
+    "crossFallMaxPct": 4,
+    "minBermHeightM": 1
+  },
+  "stations": [
+    {
+      "chainageM": 1.0,
+      "station": 1.0,
+      "stationLabel": "0+001.000",
+      "region": 0,
+      "e": 552981.0,
+      "n": 2333000.0,
+      "z": 99.9925,
+      "curvature": 0.0,
+      "radiusM": null,
+      "turn": null,
+      "widthM": 20.0,
+      "edgeLeftM": 10.0,
+      "edgeRightM": 10.0,
+      "gradePct": 0.0,
+      "crossFallLeftPct": 3.0,
+      "crossFallRightPct": 3.0,
+      "shape": "crown",
+      "superelevationPct": null,
+      "bermLeft": {
+        "kind": "berm",
+        "heightM": 1.4,
+        "widthM": 4.0,
+        "crestOffsetM": 12.0
+      },
+      "bermRight": {
+        "kind": "drop",
+        "heightM": 0.0,
+        "widthM": null,
+        "crestOffsetM": null
+      },
+      "sides": {
+        "left": "edge",
+        "right": "edge"
+      },
+      "checks": {
+        "width": "pass",
+        "grade": "pass",
+        "crossFall": "pass",
+        "superelevation": "n/a",
+        "bermLeft": "pass",
+        "bermRight": "fail"
+      },
+      "status": "fail"
+    },
+    {
+      "chainageM": 20.0,
+      "station": 20.0,
+      "stationLabel": "0+020.000",
+      "region": 0,
+      "e": 553000.0,
+      "n": 2333000.0,
+      "z": 99.9925,
+      "curvature": 0.0,
+      "radiusM": null,
+      "turn": null,
+      "widthM": 20.0,
+      "edgeLeftM": 10.0,
+      "edgeRightM": 10.0,
+      "gradePct": 0.0,
+      "crossFallLeftPct": 3.0,
+      "crossFallRightPct": 3.0,
+      "shape": "crown",
+      "superelevationPct": null,
+      "bermLeft": {
+        "kind": "berm",
+        "heightM": 1.4,
+        "widthM": 4.0,
+        "crestOffsetM": 12.0
+      },
+      "bermRight": {
+        "kind": "drop",
+        "heightM": 0.0,
+        "widthM": null,
+        "crestOffsetM": null
+      },
+      "sides": {
+        "left": "edge",
+        "right": "edge"
+      },
+      "checks": {
+        "width": "pass",
+        "grade": "pass",
+        "crossFall": "pass",
+        "superelevation": "n/a",
+        "bermLeft": "pass",
+        "bermRight": "fail"
+      },
+      "status": "fail"
+    },
+    {
+      "chainageM": 39.0,
+      "station": 39.0,
+      "stationLabel": "0+039.000",
+      "region": 0,
+      "e": 553019.0,
+      "n": 2333000.0,
+      "z": 99.9925,
+      "curvature": 0.0,
+      "radiusM": null,
+      "turn": null,
+      "widthM": 20.0,
+      "edgeLeftM": 10.0,
+      "edgeRightM": 10.0,
+      "gradePct": 0.0,
+      "crossFallLeftPct": 3.0,
+      "crossFallRightPct": 3.0,
+      "shape": "crown",
+      "superelevationPct": null,
+      "bermLeft": {
+        "kind": "berm",
+        "heightM": 1.4,
+        "widthM": 4.0,
+        "crestOffsetM": 12.0
+      },
+      "bermRight": {
+        "kind": "drop",
+        "heightM": 0.0,
+        "widthM": null,
+        "crestOffsetM": null
+      },
+      "sides": {
+        "left": "edge",
+        "right": "edge"
+      },
+      "checks": {
+        "width": "pass",
+        "grade": "pass",
+        "crossFall": "pass",
+        "superelevation": "n/a",
+        "bermLeft": "pass",
+        "bermRight": "fail"
+      },
+      "status": "fail"
+    }
+  ],
+  "stretches": [
+    {
+      "check": "bermRight",
+      "fromChainageM": 1.0,
+      "toChainageM": 39.0,
+      "fromStation": "0+001.000",
+      "toStation": "0+039.000",
+      "stations": 3
+    }
+  ],
+  "summary": {
+    "stations": 3,
+    "pass": 0,
+    "fail": 3,
+    "noData": 0,
+    "checks": {
+      "width": {
+        "pass": 3,
+        "fail": 0,
+        "n/a": 0,
+        "no-data": 0
+      },
+      "grade": {
+        "pass": 3,
+        "fail": 0,
+        "n/a": 0,
+        "no-data": 0
+      },
+      "crossFall": {
+        "pass": 3,
+        "fail": 0,
+        "n/a": 0,
+        "no-data": 0
+      },
+      "superelevation": {
+        "pass": 0,
+        "fail": 0,
+        "n/a": 3,
+        "no-data": 0
+      },
+      "bermLeft": {
+        "pass": 3,
+        "fail": 0,
+        "n/a": 0,
+        "no-data": 0
+      },
+      "bermRight": {
+        "pass": 0,
+        "fail": 3,
+        "n/a": 0,
+        "no-data": 0
+      }
+    }
+  },
+  "geojson": "haul.geojson",
+  "fingerprint": "sha256:0c5fa9386014d2d1194abb389c0dd485c145b77fecec1a07b207177f00d8c685",
+  "computedAt": "2026-10-09T10:00:00Z"
+}

@@ -68,6 +68,7 @@ M11 = {
 BUILT = {
     "design.import",
     "geo.calibration",
+    "haul.analyse",
     "hydro.flood",
     "hydro.flow",
     "hydro.rainfall",

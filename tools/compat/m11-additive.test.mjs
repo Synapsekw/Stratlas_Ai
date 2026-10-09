@@ -89,7 +89,7 @@ describe('existing files 0.11 writes stay readable by 0.10', () => {
   it('new M11 files are families 0.10 does not know, so it never reads them', () => {
     const known010 = new Set(v010.SCHEMA_REGISTRY.map((e) => e.family));
     const m11 = current.SCHEMA_REGISTRY.filter((e) => e.since === '0.11');
-    expect(m11.length).toBe(16);
+    expect(m11.length).toBe(17);
     for (const e of m11) expect(known010.has(e.family), e.family).toBe(false);
     for (const e of m11.filter((x) => x.home === 'project'))
       expect(e.where.startsWith('survey/'), `${e.family} lives in ${e.where}`).toBe(true);
