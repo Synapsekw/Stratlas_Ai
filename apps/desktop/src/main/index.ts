@@ -40,6 +40,7 @@ import { listConversations, loadConversation, saveConversation } from './convers
 import { demoLibraryPaths, demoOpenPath, demoRoot, findDemos, markDemoEntries } from './demo';
 import { createExportJobs } from './exports/jobs';
 import { printReport } from './exports/reportWindow';
+import { hasSurveyMeasurements, surveyRunIds, surveySurfaceIds } from './exports/survey';
 import { readNarrative, readPackageNarrative, writeNarrative } from './narrative';
 import { readOrientation, readPackageOrientation, writeOrientation } from './orientation';
 import { listReports } from './exports/reports';
@@ -108,6 +109,10 @@ import { registerGeodesyIpc } from './geodesy';
 import { geoidJobEnv, packGeoidDirsOf, registerGeoidPacksIpc } from './packs/geoid';
 import { registerSurveyIpc } from './survey';
 import { registerSurveyAiIpc } from './surveyAi';
+import { qaJobEvents, registerSurveyQaIpc } from './surveyQa';
+import { registerSurveyOverlaysIpc } from './surveyOverlays';
+import { registerSurveyHydroIpc } from './surveyHydro';
+import { registerSurveyHaulIpc } from './surveyHaul';
 import { createTestVault, useTestVault } from './testVault';
 import { importLogo, removeLogo } from './branding';
 import { putThumb } from './thumbs';
@@ -157,6 +162,7 @@ import { createAioHandler } from './protocol/handler';
 import { APP_CSP } from './csp';
 import { cspForUrl } from './protocol/legacy';
 import { saveFile } from './saveFile';
+import { savePath } from './exports/savePath';
 import { createSettingsStore, defaultDataRoot, defaultSettings } from './settings';
 import { installRealDataGuard } from './realDataGuard';
 import { migrateLegacyUserData } from './userDataMigration';
@@ -548,12 +554,21 @@ const exportJobs = createExportJobs({
       // M10: the latest finished processing run (house section, accuracy report PDF)
       processingRun:
         args.kind === 'register' ? null : await latestAccuracyRun(registry, args.projectId),
+      // M11 G9: the prepared surfaces the survey sections and CSVs compute on
+      surveySurfaces:
+        args.kind === 'register' ? undefined : await surveySurfaceIds(registry, args.projectId),
+      // the haul-road and hydrology runs the `haul` and `hydrology` sections print
+      surveyRuns:
+        args.kind === 'register' ? undefined : await surveyRunIds(registry, args.projectId),
     });
   },
   processingRun: (projectId) => latestAccuracyRun(registry, projectId),
+  hasSurvey: (projectId) => hasSurveyMeasurements(registry, projectId),
   emit: emitExportProgress,
 });
 
+// M11 G8: a survey.qa job that holds a survey is journaled as `survey.hold` when it finishes
+const surveyQaJobs = qaJobEvents({ journal: (root, drafts) => journal.appendEdits(root, drafts) });
 const jobStore = new JobStore(join(app.getPath('userData'), 'jobs.json'));
 const jobs = new JobRunner({
   store: jobStore,
@@ -574,6 +589,7 @@ const jobs = new JobRunner({
     const win = mainWindow ?? BrowserWindow.getAllWindows()[0];
     if (win && !win.isDestroyed()) win.webContents.send('jobs:event', safe);
     void journal.jobEvent(safe);
+    void surveyQaJobs(safe);
   },
 });
 
@@ -1132,6 +1148,22 @@ function registerIpc(): void {
     });
   });
 
+  // M11 G7: where a pipeline job (survey.export, survey.section) writes its file; nothing is written here.
+  handle('dialog:savePath', (req) =>
+    savePath(req, {
+      downloadsDir: app.getPath('downloads'),
+      refuse: (name) => policy.checkExport(name),
+      choose: async (defaultPath, o) => {
+        const win = targetWindow();
+        const options = { defaultPath, ...o };
+        const r = win
+          ? await dialog.showSaveDialog(win, options)
+          : await dialog.showSaveDialog(options);
+        return r.canceled || !r.filePath ? null : r.filePath;
+      },
+    }),
+  );
+
   // M8: one module per stream (C1 change, C5 model builder, C6 local detection, C7 local agent).
   registerChangeIpc({
     handle,
@@ -1267,10 +1299,15 @@ function registerIpc(): void {
   const survey = {
     projects: registry,
     projectPackage: (id: string) => registry.package(id)?.archive,
-    journal: (root: string, drafts: readonly DraftOp[]) => journal.append(root, drafts),
+    // ops for the survey files main writes itself (settings, calibration, QA hold and release)
+    journal: (root: string, drafts: readonly DraftOp[]) => journal.appendEdits(root, drafts),
   };
   registerSurveyIpc({ handle, ...survey, userData: () => app.getPath('userData') });
+  registerSurveyOverlaysIpc({ handle, ...survey });
   registerGeodesyIpc({ handle, ...survey });
+  registerSurveyQaIpc({ handle, ...survey });
+  registerSurveyHydroIpc({ handle, ...survey });
+  registerSurveyHaulIpc({ handle, ...survey });
   registerGeoidPacksIpc({
     handle,
     dataRoot: () => settings.current().dataRoot,

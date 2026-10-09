@@ -41,6 +41,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { bridge } from '../shell';
+import { refreshSiteTables, siteTablesStale, type SiteTablesHeader } from './siteTables';
 
 // ---------------------------------------------------------------- the site's display state
 
@@ -55,6 +56,8 @@ interface SiteDisplay {
   crsName: string;
   /** Why the readout shows project coordinates instead of site ones. */
   note: string | null;
+  /** Why the readout tables no longer match the settings (they are written again), or null. */
+  stale: string | null;
   open: boolean;
 }
 
@@ -66,6 +69,7 @@ export const siteDisplay = createStore<SiteDisplay>()(() => ({
   projector: null,
   crsName: '',
   note: null,
+  stale: null,
   open: false,
 }));
 
@@ -86,12 +90,18 @@ async function catalogueEntry(code: number): Promise<CrsCatalogueEntry | null> {
 /** Read the site's settings and readout tables (after opening a project or saving settings). */
 export async function loadSiteDisplay(project: OpenProject | null): Promise<void> {
   if (!project) {
-    siteDisplay.setState({ projectId: null, settings: null, exists: false, transformer: null });
+    siteDisplay.setState({
+      projectId: null,
+      settings: null,
+      exists: false,
+      transformer: null,
+      stale: null,
+    });
     return;
   }
   const r = await bridge.call('survey:readSettings', { projectId: project.id });
   if (!r.ok || !r.value.ok) {
-    siteDisplay.setState({ projectId: project.id, settings: null, exists: false });
+    siteDisplay.setState({ projectId: project.id, settings: null, exists: false, stale: null });
     return;
   }
   const { settings, exists } = r.value;
@@ -101,19 +111,25 @@ export async function loadSiteDisplay(project: OpenProject | null): Promise<void
   const header = await fetchBytes(
     assetUrl(project.id, { path: 'survey/geodesy/site-transform.json' }),
   );
+  let stale: string | null = null;
   if (header) {
     try {
-      const json = JSON.parse(new TextDecoder().decode(header)) as {
+      const json = JSON.parse(new TextDecoder().decode(header)) as SiteTablesHeader & {
         grid?: { file: string };
         geoidGrid?: { file: string };
       };
-      const get = (f: string) => fetchBytes(assetUrl(project.id, { path: `survey/geodesy/${f}` }));
-      const grid = json.grid ? await get(json.grid.file) : null;
-      const geoidGrid = json.geoidGrid ? await get(json.geoidGrid.file) : null;
-      transformer = createSiteTransform(json, {
-        ...(grid ? { grid } : {}),
-        ...(geoidGrid ? { geoidGrid } : {}),
-      });
+      // tables made before a calibration was applied (or the settings changed) are never used
+      stale = exists ? siteTablesStale(json, settings, project.manifest.crs) : null;
+      if (!stale) {
+        const get = (f: string) =>
+          fetchBytes(assetUrl(project.id, { path: `survey/geodesy/${f}` }));
+        const grid = json.grid ? await get(json.grid.file) : null;
+        const geoidGrid = json.geoidGrid ? await get(json.geoidGrid.file) : null;
+        transformer = createSiteTransform(json, {
+          ...(grid ? { grid } : {}),
+          ...(geoidGrid ? { geoidGrid } : {}),
+        });
+      }
     } catch (e) {
       note = `The site tables could not be read: ${e instanceof Error ? e.message : String(e)}`;
     }
@@ -130,11 +146,18 @@ export async function loadSiteDisplay(project: OpenProject | null): Promise<void
       if (from) projector = proj4Projector(from, entry.proj4);
     }
     if (!transformer && !projector && !same) {
-      note = 'Site tables are not prepared yet: showing project coordinates.';
+      note = stale
+        ? `Site tables are out of date (${stale}): showing project coordinates until they are written again.`
+        : 'Site tables are not prepared yet: showing project coordinates.';
     }
   }
   if (!transformer && settings.verticalDatum.kind !== 'project' && !note) {
-    note = 'Site tables are not prepared yet: heights are as stored.';
+    note = stale
+      ? `Site tables are out of date (${stale}): heights are as stored until they are written again.`
+      : 'Site tables are not prepared yet: heights are as stored.';
+  }
+  if (!transformer && stale && !note) {
+    note = `Site tables are out of date (${stale}): showing project coordinates until they are written again.`;
   }
   siteDisplay.setState({
     projectId: project.id,
@@ -144,6 +167,7 @@ export async function loadSiteDisplay(project: OpenProject | null): Promise<void
     projector,
     crsName,
     note,
+    stale,
   });
 }
 
@@ -419,6 +443,15 @@ function SiteSettingsDialog({ project, onClose }: { project: OpenProject; onClos
   const set = (patch: Partial<SurveySettings>) => {
     setDraft({ ...draft, ...patch });
   };
+  // the readout tables follow the settings and the calibration: write them again after a change
+  const rewriteTables = async (): Promise<boolean> => {
+    if (!siteDisplay.getState().stale) return true;
+    const err = await refreshSiteTables(project, () => {
+      void loadSiteDisplay(project);
+    });
+    if (err) setError(`The site tables were not written again: ${err}`);
+    return err === null;
+  };
   const save = async () => {
     setError(null);
     const r = await bridge.call('survey:writeSettings', { projectId: project.id, settings: draft });
@@ -431,7 +464,7 @@ function SiteSettingsDialog({ project, onClose }: { project: OpenProject; onClos
       return;
     }
     await loadSiteDisplay(project);
-    onClose();
+    if (await rewriteTables()) onClose();
   };
   const importCalibration = async () => {
     setError(null);
@@ -481,6 +514,7 @@ function SiteSettingsDialog({ project, onClose }: { project: OpenProject; onClos
     const s = await bridge.call('survey:readSettings', { projectId: project.id });
     if (s.ok && s.value.ok) setDraft(s.value.settings);
     await loadSiteDisplay(project);
+    await rewriteTables();
     setNote(
       on
         ? 'Calibration applied. Results computed before show Stale until recomputed.'

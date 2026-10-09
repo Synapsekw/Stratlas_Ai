@@ -1,0 +1,209 @@
+{
+  "schema": "aio.survey-templates/1",
+  "templates": [
+    {
+      "id": "construction-og-to-subgrade",
+      "name": "OG to subgrade design",
+      "family": "polygon",
+      "tool": "volume",
+      "description": "Bulk earthworks of the design: original ground to the subgrade design, both design surfaces (exact). The first time it is used, pick the design layers for original ground and subgrade.",
+      "items": ["cut", "fill", "net", "total", "area"],
+      "fields": [],
+      "comparisons": [
+        {
+          "label": "OG to subgrade",
+          "from": {
+            "kind": "design-pick",
+            "role": "og",
+            "hint": "Original ground (OG)"
+          },
+          "to": {
+            "kind": "design-pick",
+            "role": "subgrade",
+            "hint": "Subgrade"
+          },
+          "useDeadband": false
+        }
+      ],
+      "style": {
+        "color": "#e8a33d",
+        "fillOpacity": 0.15
+      },
+      "bookmarked": true,
+      "set": "construction"
+    },
+    {
+      "id": "construction-survey-to-og",
+      "name": "Survey to OG",
+      "family": "polygon",
+      "tool": "volume",
+      "description": "What has moved since the original ground: the original ground design surface to the survey on screen.",
+      "items": ["cut", "fill", "net", "total", "area"],
+      "fields": [],
+      "comparisons": [
+        {
+          "label": "OG to survey",
+          "from": {
+            "kind": "design-pick",
+            "role": "og",
+            "hint": "Original ground (OG)"
+          },
+          "to": {
+            "kind": "current"
+          },
+          "useDeadband": false
+        }
+      ],
+      "style": {
+        "color": "#e8a33d",
+        "fillOpacity": 0.15
+      },
+      "bookmarked": true,
+      "set": "construction"
+    },
+    {
+      "id": "construction-survey-to-subgrade",
+      "name": "Survey to subgrade",
+      "family": "polygon",
+      "tool": "volume",
+      "description": "Cut and fill still to do to the subgrade design, and the volume outside a 5 cm tolerance (Remaining to design).",
+      "items": ["cut", "fill", "net", "total", "area"],
+      "fields": [],
+      "comparisons": [
+        {
+          "label": "Cut/Fill to design",
+          "from": {
+            "kind": "current"
+          },
+          "to": {
+            "kind": "design-pick",
+            "role": "subgrade",
+            "hint": "Subgrade"
+          },
+          "useDeadband": false
+        },
+        {
+          "label": "Remaining to design",
+          "from": {
+            "kind": "current"
+          },
+          "to": {
+            "kind": "design-pick",
+            "role": "subgrade",
+            "hint": "Subgrade"
+          },
+          "useDeadband": true,
+          "deadbandM": 0.05
+        }
+      ],
+      "style": {
+        "color": "#e8a33d",
+        "fillOpacity": 0.15
+      },
+      "bookmarked": true,
+      "set": "construction"
+    },
+    {
+      "id": "construction-compare-to-previous",
+      "name": "Compare to previous",
+      "family": "polygon",
+      "tool": "volume",
+      "description": "Cut and fill between the survey before and the survey on screen.",
+      "items": ["cut", "fill", "net", "total", "area"],
+      "fields": [],
+      "comparisons": [
+        {
+          "label": "Since previous survey",
+          "from": {
+            "kind": "previous"
+          },
+          "to": {
+            "kind": "current"
+          },
+          "useDeadband": false
+        }
+      ],
+      "style": {
+        "color": "#e8a33d",
+        "fillOpacity": 0.15
+      },
+      "bookmarked": true,
+      "set": "construction"
+    },
+    {
+      "id": "construction-pad-check",
+      "name": "Pad check",
+      "family": "polygon",
+      "tool": "volume",
+      "description": "A pad against its design within a 3 cm tolerance: the in-tolerance share, and the cut and fill outside it.",
+      "items": ["cut", "fill", "net", "total", "area"],
+      "fields": [
+        {
+          "id": "pad-level",
+          "name": "Design pad level (m)",
+          "type": "number"
+        },
+        {
+          "id": "checked-by",
+          "name": "Checked by",
+          "type": "text"
+        },
+        {
+          "id": "result",
+          "name": "Result",
+          "type": "dropdown",
+          "options": ["Accepted", "Rework", "Re-survey"]
+        }
+      ],
+      "comparisons": [
+        {
+          "label": "Pad to design",
+          "from": {
+            "kind": "current"
+          },
+          "to": {
+            "kind": "design-pick",
+            "role": "pad",
+            "hint": "Pad"
+          },
+          "useDeadband": true,
+          "deadbandM": 0.03
+        }
+      ],
+      "style": {
+        "color": "#e8a33d",
+        "fillOpacity": 0.15
+      },
+      "bookmarked": true,
+      "set": "construction"
+    },
+    {
+      "id": "construction-area-progress",
+      "name": "Area progress",
+      "family": "polygon",
+      "tool": "area",
+      "description": "An area of work and how far it has come.",
+      "items": ["area", "perimeter", "slope-area"],
+      "fields": [
+        {
+          "id": "activity",
+          "name": "Activity",
+          "type": "dropdown",
+          "options": ["Clearing", "Bulk cut", "Bulk fill", "Subgrade", "Base course", "Surfacing"]
+        },
+        {
+          "id": "complete",
+          "name": "Complete (%)",
+          "type": "number"
+        }
+      ],
+      "comparisons": [],
+      "style": {
+        "color": "#e8a33d",
+        "fillOpacity": 0.15
+      },
+      "bookmarked": true,
+      "set": "construction"
+    }
+  ]
+}

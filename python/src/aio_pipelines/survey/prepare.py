@@ -584,13 +584,21 @@ def _geodesy(params: dict[str, Any]):
     """The site transform tables (G1's ``geodesy.site.write_site_tables``), when that is built.
 
     Called with the project, its data CRS, the survey settings (the defaults when the site has
-    none) and the extent of the surfaces of this job (E, N, from their prepared or staged
-    ``tiles.json``); skipped quietly in a pack without G1.
+    none), the applied site calibration (``geodesy.site.applied_calibration``, the one every export
+    uses, so a readout on a calibrated site matches its exports) and the extent of every prepared
+    surface: this job's (staged or kept) and the project's others (E, N, from their ``tiles.json``),
+    so preparing one more surface never shrinks the tables. Skipped quietly in a pack without G1.
+    The tables are written again on every run: their header's ``fingerprint`` holds the CRS,
+    settings and calibration they were made with, and the app re-runs this step after a person
+    applies a calibration or changes the site settings.
     """
 
     def run(ctx: StepContext) -> dict[str, Any]:
         try:
-            from ..geodesy.site import write_site_tables  # type: ignore[import-not-found]
+            from ..geodesy.site import (  # type: ignore[import-not-found]
+                applied_calibration,
+                write_site_tables,
+            )
         except ImportError:
             return {"written": False}
         manifest = _manifest(ctx.project)
@@ -600,13 +608,26 @@ def _geodesy(params: dict[str, Any]):
         except (OSError, ValueError) as e:
             raise JobError(f"The survey settings could not be read: {e}") from e
         boxes = []
-        for spec in params["surfaces"]:
-            for folder in (ctx.staging / "surfaces" / spec["id"], ctx.project / SURFACES_DIR / spec["id"]):
-                if (folder / "tiles.json").is_file():
-                    b = json.loads((folder / "tiles.json").read_text("utf-8")).get("bounds")
-                    if isinstance(b, list) and len(b) == 6:
-                        boxes.append(b)
-                    break
+        ours = {spec["id"] for spec in params["surfaces"]}
+        folders = [
+            folder
+            for spec in params["surfaces"]
+            for folder in (ctx.staging / "surfaces" / spec["id"], ctx.project / SURFACES_DIR / spec["id"])
+        ]
+        kept = ctx.project / SURFACES_DIR
+        if kept.is_dir():
+            folders += [f for f in sorted(kept.iterdir()) if f.is_dir() and f.name not in ours]
+        seen: set[str] = set()
+        for folder in folders:
+            if folder.name in seen or not (folder / "tiles.json").is_file():
+                continue
+            seen.add(folder.name)
+            try:
+                b = json.loads((folder / "tiles.json").read_text("utf-8")).get("bounds")
+            except (OSError, ValueError):
+                continue
+            if isinstance(b, list) and len(b) == 6:
+                boxes.append(b)
         if not boxes:
             return {"written": False}
         extent = (
@@ -615,10 +636,12 @@ def _geodesy(params: dict[str, Any]):
             max(b[3] for b in boxes),
             max(b[4] for b in boxes),
         )
+        settings = settings or {"schema": "aio.survey-settings/1", "verticalDatum": {"kind": "project"}}
         out = write_site_tables(
             ctx.project,
             data_crs=_crs_of(manifest),
-            settings=settings or {"schema": "aio.survey-settings/1", "verticalDatum": {"kind": "project"}},
+            settings=settings,
+            calibration=applied_calibration(ctx.project, settings),
             extent=extent,
         )
         return {"written": True, **(out if isinstance(out, dict) else {})}

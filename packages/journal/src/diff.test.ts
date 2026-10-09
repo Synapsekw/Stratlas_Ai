@@ -83,6 +83,17 @@ describe('diffRecordFile', () => {
     expect(isJournaledFile('team.json')).toBe(false);
   });
 
+  it('follows the survey files it diffs, never the ones main journals itself (M11)', () => {
+    expect(isJournaledFile('survey/measurements.json')).toBe(true);
+    expect(isJournaledFile('survey/designs.json')).toBe(true);
+    // survey.settings, survey.calibration and survey.hold ops are their one record
+    expect(isJournaledFile('survey/settings.json')).toBe(false);
+    expect(isJournaledFile('survey/calibration.json')).toBe(false);
+    expect(isJournaledFile('survey/qa/c1.json')).toBe(false);
+    // the terrain edits' wrapped writer records them; the scan does not list the file
+    expect(isJournaledFile('survey/cleanups.json')).toBe(false);
+  });
+
   it('reviews change items one by one', () => {
     const set = (status: string) => ({
       schema: 'aio.change/1',
@@ -150,6 +161,7 @@ describe('survey measurements (M11)', () => {
 
   it('is a journaled file', () => {
     expect(isJournaledFile('survey/measurements.json')).toBe(true);
+    expect(isJournaledFile('survey/designs.json')).toBe(true);
     expect(isJournaledFile('survey/templates.json')).toBe(false);
   });
 
@@ -185,5 +197,60 @@ describe('survey measurements (M11)', () => {
       }),
     ]);
     expect(diffRecordFile('survey/measurements.json', file([a]), file([a]))).toEqual([]);
+  });
+});
+
+describe('diffRecordFile: survey/designs.json (M11 G6)', () => {
+  const layer = (archived: boolean) => ({
+    id: 'pad',
+    name: 'Pad',
+    kind: 'surface',
+    file: 'pad.tin',
+    counts: { triangles: 8 },
+    visible: true,
+    archived,
+    verticalOffsetM: 0,
+  });
+  const design = (archived = false, name = 'Pad design') => ({
+    id: 'd1',
+    name,
+    src: 'pad.xml',
+    layers: [layer(archived)],
+  });
+  const file = (designs: unknown[], extra: Record<string, unknown> = {}) => ({
+    schema: 'aio.designs/1',
+    designs,
+    ...extra,
+  });
+  const rel = 'survey/designs.json';
+
+  it('records a new design as design.add with the whole record', () => {
+    expect(diffRecordFile(rel, file([]), file([design()]))).toEqual([
+      expect.objectContaining({
+        kind: 'design.add',
+        target: { rec: 'design', id: 'd1' },
+        payload: { record: design() },
+      }),
+    ]);
+  });
+
+  it('records archiving a layer as design.archive and other changes as design.patch', () => {
+    const archive = diffRecordFile(rel, file([design()]), file([design(true)]));
+    expect(archive.map((o) => o.kind)).toEqual(['design.archive']);
+    const rename = diffRecordFile(rel, file([design()]), file([design(false, 'Pad v2')]));
+    expect(rename).toEqual([
+      expect.objectContaining({
+        kind: 'design.patch',
+        payload: { set: { name: 'Pad v2' }, was: { name: 'Pad design' } },
+      }),
+    ]);
+    const active = diffRecordFile(
+      rel,
+      file([design()]),
+      file([design()], { activeAlignment: 'd1/cl' }),
+    );
+    expect(active).toEqual([
+      expect.objectContaining({ kind: 'design.patch', target: { rec: 'survey', id: 'designs' } }),
+    ]);
   });
 });

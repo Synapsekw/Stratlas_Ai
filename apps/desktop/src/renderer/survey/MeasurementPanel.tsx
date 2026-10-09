@@ -1,21 +1,21 @@
 /**
  * One measurement's properties (M11 G3): its readouts in its units, template (changeable), custom
  * fields, style and labels, units override, scope (site or one survey: promote, demote, copy to
- * another survey), vertices (drag in the 3D view, or type coordinates) and its comparison items
- * with any stored results (G4 builds the comparison editor; volumes are computed by the engine).
+ * another survey), vertices (drag in the 3D view, or type coordinates); a polygon's comparison
+ * items and calculators are G4's (`Comparison.tsx`, `Calculators.tsx`).
  */
+import { formatQuantity, unitLabel } from '@aio/geo';
 import type { MeasurementStyle, SurveyMeasurement } from '@aio/schema';
 import {
   changeTemplate,
   effectiveUnits,
-  formatQuantity,
   formatRow,
   horizontalDistance,
   measurementReadout,
   TOOL_LABELS,
-  UNIT_LABELS,
   vertexTable,
   formatBearing,
+  type RolePicks,
 } from '@aio/survey';
 import { Icon } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
@@ -24,6 +24,7 @@ import {
   copyToSurvey,
   deleteMeasurements,
   editEvent,
+  knownTemplates,
   openDialog,
   patchMeasurement,
   replaceMeasurement,
@@ -33,8 +34,12 @@ import {
   stopEditing,
   updateMeasurement,
   useMeasure,
+  withDesignLayers,
 } from './measureStore';
+import { Calculators } from './Calculators';
+import { Comparisons } from './Comparison';
 import { MEASURE_COLOR } from './measureScene';
+import { HoldNote } from './Qa';
 
 const MAX_VERTEX_ROWS = 50;
 
@@ -49,10 +54,7 @@ export function MeasurementPanel() {
   const captures = useWorkspace((s) => s.project?.manifest.captures ?? []);
   const [copyTo, setCopyTo] = useState('');
 
-  const all = useMemo(
-    () => [...(templates.project?.templates ?? []), ...templates.user.templates],
-    [templates],
-  );
+  const all = useMemo(() => knownTemplates({ templates, settings }), [templates, settings]);
   const tpl = m?.template ? all.find((t) => t.id === m.template) : undefined;
   const units = effectiveUnits(settings.units, m?.units);
   const rows = useMemo(() => {
@@ -104,6 +106,7 @@ export function MeasurementPanel() {
           <Icon name="x" size={14} />
         </button>
       </header>
+      <HoldNote capture={capture} />
       <p className="small faint">
         {tpl ? `${tpl.name} · ` : ''}
         {TOOL_LABELS[m.tool]}
@@ -133,12 +136,14 @@ export function MeasurementPanel() {
             disabled={ro}
             data-testid="survey-template"
             onChange={(e) => {
-              const next = changeTemplate(
-                m,
-                family.find((t) => t.id === e.target.value) ?? null,
-                new Date().toISOString(),
-              );
-              if (next) replaceMeasurement(next);
+              const t = family.find((x) => x.id === e.target.value) ?? null;
+              const apply = (picks: RolePicks) => {
+                const next = changeTemplate(m, t, new Date().toISOString(), picks);
+                if (next) replaceMeasurement(next);
+              };
+              // a template that compares to a design asks for its layers first (G9 sets)
+              if (t) void withDesignLayers(t, apply);
+              else apply({});
             }}
           >
             <option value="">None ({TOOL_LABELS[m.tool]})</option>
@@ -336,7 +341,7 @@ export function MeasurementPanel() {
           {m.units && Object.keys(m.units).length > 0
             ? `Own units: ${Object.values(m.units)
                 .flatMap((u) => (u === undefined ? [] : [u]))
-                .map((u) => UNIT_LABELS[u] ?? u)
+                .map((u) => unitLabel(u))
                 .join(', ')}`
             : 'Site units'}
         </p>
@@ -470,33 +475,12 @@ export function MeasurementPanel() {
         )}
       </details>
 
-      {(m.items.length > 0 || m.results.length > 0) && (
-        <details className="sv-sec" open>
-          <summary>Comparisons</summary>
-          <ul className="sv-cmp">
-            {m.items.map((it) => {
-              const r = m.results.find((x) => x.item === it.id);
-              return (
-                <li key={it.id}>
-                  <b>{it.label ?? it.id}</b>
-                  <span className="small faint">
-                    {it.from.kind} to {it.to.kind}
-                  </span>
-                  {r ? (
-                    <span className="mono small">
-                      Cut {formatQuantity(r.cutM3, 'volume', units, settings.precision)} · Fill{' '}
-                      {formatQuantity(r.fillM3, 'volume', units, settings.precision)}
-                      {r.status === 'stale' ? ' · Stale, recompute' : ''}
-                    </span>
-                  ) : (
-                    <span className="small faint">Not computed yet</span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </details>
-      )}
+      {m.family === 'polygon' ? (
+        <>
+          <Comparisons m={m} />
+          <Calculators m={m} />
+        </>
+      ) : null}
 
       {!ro && (
         <div className="sv-row">

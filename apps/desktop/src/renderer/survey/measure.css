@@ -4,6 +4,15 @@
   min-width: 320px;
   max-width: 420px;
 }
+/* its popover fits the tools: 320 px plus the popover's padding and border (a 300 px popover let
+   them stick out past its edge) */
+.stage-pop.wide:has(> .sv-tools) {
+  width: calc(320px + 2 * 12px + 2px);
+}
+/* Designs and survey QA: their tools nest in the Survey measurements popover */
+.sv-nested {
+  padding: 0;
+}
 .sv-fam {
   display: grid;
   gap: 4px;
@@ -421,4 +430,19 @@ textarea.sv-input {
   padding-left: 18px;
   color: var(--s5);
   font-size: var(--t-12);
+}
+.sv-sets {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0 0;
+  padding: 8px 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.sv-sets legend {
+  padding: 0;
+  font-size: var(--t-11);
+  color: var(--fg-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }

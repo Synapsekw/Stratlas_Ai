@@ -6,6 +6,7 @@
  */
 import {
   defaultSurveySettings,
+  type DesignPickRef,
   emptyMeasurements,
   emptySurveyTemplates,
   MeasurementsFile,
@@ -18,27 +19,36 @@ import {
 } from '@aio/schema';
 import {
   DEFAULT_SNAP,
+  designLayerOptions,
+  designRolesOf,
   drawReducer,
   editReducer,
+  industryTemplates,
   initialDraw,
   initialEdit,
   measurementFrom,
+  missingRoles,
   removeTemplate,
+  templateLibrary,
   TOOL_FAMILY,
   TOOL_LABELS,
   upsertTemplate,
+  validPicks,
+  type DesignLayerOption,
   type DrawEnv,
   type DrawEvent,
   type DrawState,
   type EditEvent,
   type EditState,
   type HeightSampler,
+  type RolePicks,
   type SnapSettings,
   type SnapSource,
 } from '@aio/survey';
 import { createStore, useStore } from 'zustand';
 import { authorName } from '../author';
 import { bridge } from '../shell';
+import { designs, loadDesigns } from './designsStore';
 
 export type MeasureDialog =
   | { kind: 'units'; target: 'site' | 'measurement' }
@@ -48,6 +58,22 @@ export type MeasureDialog =
 export interface ActiveTool {
   tool: MeasurementTool;
   template: SurveyTemplate | null;
+  /** The site's design layers for the template's roles (`SurveySettings.designRoles`). */
+  picks: RolePicks;
+}
+
+/**
+ * A template that compares to a design asks, the first time it is used on a site, which design
+ * surface layer each of its roles means (G9's industry sets: `og`, `subgrade`, `final-cap`).
+ */
+export interface RolePrompt {
+  template: SurveyTemplate;
+  roles: DesignPickRef[];
+  options: DesignLayerOption[];
+  /** The site's picks that still hold (kept with the answer). */
+  picks: RolePicks;
+  then: (picks: RolePicks) => void;
+  error: string | null;
 }
 
 export interface MeasureState {
@@ -57,8 +83,13 @@ export interface MeasureState {
   /** Saving is refused (a package): measurements are shown, never written. */
   readOnly: boolean;
   file: MeasurementsFile;
-  /** The file as last read or saved, to tell unsaved changes. */
+  /**
+   * The file as last read or saved, to tell a person's unsaved changes. Results the app computed
+   * on its own are put on it too (`setComputedResults`), so they never count as an edit.
+   */
   savedText: string;
+  /** Results the app computed are not on disk yet (written with the next save). */
+  resultsUnwritten: boolean;
   saving: boolean;
   /** A short line after a save or a refusal. */
   message: string | null;
@@ -78,6 +109,8 @@ export interface MeasureState {
   snap: SnapSettings;
   /** The surface readouts sample (the 3D view's terrain until G2's prepared surfaces). */
   surface: HeightSampler | null;
+  /** Asking for the design layers of a template's roles before it is used. */
+  rolePrompt: RolePrompt | null;
 }
 
 const now = () => new Date().toISOString();
@@ -97,6 +130,7 @@ const initial = (): Omit<MeasureState, 'snap' | 'autosave' | 'surface'> => ({
   readOnly: false,
   file: emptyMeasurements(),
   savedText: text(emptyMeasurements()),
+  resultsUnwritten: false,
   saving: false,
   message: null,
   settings: defaultSurveySettings(),
@@ -109,6 +143,7 @@ const initial = (): Omit<MeasureState, 'snap' | 'autosave' | 'surface'> => ({
   editing: null,
   listOpen: false,
   dialog: null,
+  rolePrompt: null,
 });
 
 export const measureStore = createStore<MeasureState>()(() => ({
@@ -179,6 +214,7 @@ export async function saveMeasurements(): Promise<boolean> {
     saving: false,
     message: ok ? 'Measurements saved.' : `Not saved: ${error ?? ''}`,
     ...(ok ? { savedText: text(file) } : {}),
+    ...(ok && get().file === file ? { resultsUnwritten: false } : {}),
   });
   return ok;
 }
@@ -187,8 +223,16 @@ export async function saveMeasurements(): Promise<boolean> {
 export function revertMeasurements(): void {
   const s = get();
   const parsed = MeasurementsFile.safeParse(JSON.parse(s.savedText));
+  // the baseline as parsed too (its key order), so the reverted file reads as saved
   if (parsed.success)
-    set({ file: parsed.data, selected: [], focus: null, editing: null, message: null });
+    set({
+      file: parsed.data,
+      savedText: text(parsed.data),
+      selected: [],
+      focus: null,
+      editing: null,
+      message: null,
+    });
 }
 
 function changed(file: MeasurementsFile, extra: Partial<MeasureState> = {}): void {
@@ -232,6 +276,34 @@ export function updateMeasurement(
       m.id === id ? { ...fn(m), updatedAt: now() } : m,
     ),
   });
+}
+
+/**
+ * Put results the app computed on its own (opening a polygon whose stored results are missing or
+ * stale) on a measurement. Derived numbers, not a person's edit: `updatedAt` stays, autosave does
+ * not run, and the saved baseline takes the same results, so the file does not show unsaved
+ * changes. The results are written with the next save (a person's edit, or Recompute).
+ */
+export function setComputedResults(
+  id: string,
+  fn: (m: SurveyMeasurement) => SurveyMeasurement['results'],
+): void {
+  const s = get();
+  if (s.readOnly) return;
+  const target = s.file.measurements.find((m) => m.id === id);
+  if (!target) return;
+  const results = fn(target);
+  if (JSON.stringify(results) === JSON.stringify(target.results)) return;
+  const file: MeasurementsFile = {
+    ...s.file,
+    measurements: s.file.measurements.map((m) => (m.id === id ? { ...m, results } : m)),
+  };
+  // the same results on the baseline (when it has the measurement), so only a person's edits
+  // count as unsaved; JSON text round trips keep the key order
+  const saved = JSON.parse(s.savedText) as { measurements?: { id?: unknown }[] };
+  if (Array.isArray(saved.measurements))
+    saved.measurements = saved.measurements.map((m) => (m.id === id ? { ...m, results } : m));
+  set({ file, savedText: JSON.stringify(saved), resultsUnwritten: true });
 }
 
 /** Move measurements into a folder ('' takes them out of any folder). */
@@ -336,12 +408,73 @@ export function setSnapSource(source: SnapSource, on: boolean): void {
 
 export function startTool(tool: MeasurementTool, template: SurveyTemplate | null = null): void {
   if (get().readOnly) return;
+  const begin = (picks: RolePicks) => {
+    set({
+      tool: { tool, template, picks },
+      draw: initialDraw(TOOL_FAMILY[tool]),
+      editing: null,
+      message: null,
+    });
+  };
+  if (template) void withDesignLayers(template, begin);
+  else begin({});
+}
+
+/**
+ * Run `then` with the site's design layers for a template's roles: at once when the template has
+ * none or the site picked them all (and they are still there), otherwise after the person picks
+ * them in the prompt (`answerRoles`).
+ */
+export async function withDesignLayers(
+  template: SurveyTemplate,
+  then: (picks: RolePicks) => void,
+): Promise<void> {
+  const projectId = get().projectId;
+  if (designRolesOf(template).length === 0 || !projectId) {
+    then({});
+    return;
+  }
+  const d = designs.getState();
+  if (d.projectId !== projectId || !d.file) await loadDesigns(projectId);
+  const list = designs.getState().file?.designs ?? [];
+  const { designRoles } = get().settings;
+  const picks = validPicks(designRoles, list);
+  const roles = missingRoles(template, designRoles, list);
+  if (roles.length === 0) {
+    then(picks);
+    return;
+  }
   set({
-    tool: { tool, template },
-    draw: initialDraw(TOOL_FAMILY[tool]),
-    editing: null,
-    message: null,
+    rolePrompt: { template, roles, options: designLayerOptions(list), picks, then, error: null },
   });
+}
+
+/**
+ * The person's answer to the prompt: the layer for each role, kept in the site settings for next
+ * time; `null` goes on without the comparisons whose layer is not picked.
+ */
+export async function answerRoles(
+  chosen: Record<string, { design: string; layer: string }> | null,
+): Promise<void> {
+  const p = get().rolePrompt;
+  if (!p) return;
+  if (chosen && Object.keys(chosen).length > 0) {
+    const settings = get().settings;
+    const err = await saveSiteSettings({
+      ...settings,
+      designRoles: { ...(settings.designRoles ?? {}), ...chosen },
+    });
+    if (err) {
+      set({ rolePrompt: { ...p, error: `The design layers were not saved: ${err}` } });
+      return;
+    }
+  }
+  set({ rolePrompt: null });
+  p.then({ ...p.picks, ...(chosen ?? {}) });
+}
+
+export function cancelRoles(): void {
+  set({ rolePrompt: null });
 }
 
 export function stopTool(): void {
@@ -366,15 +499,19 @@ export function drawEvent(e: DrawEvent, env: DrawEnv): void {
     return;
   }
   if (next.done) {
-    const { tool, template } = s.tool;
-    const m = measurementFrom(template ?? tool, {
-      id: newMeasurementId(),
-      label: nextLabel(template?.name ?? TOOL_LABELS[tool]),
-      points: next.points,
-      scope: { kind: 'site' },
-      createdAt: now(),
-      createdBy: authorName() || undefined,
-    });
+    const { tool, template, picks } = s.tool;
+    const m = measurementFrom(
+      template ?? tool,
+      {
+        id: newMeasurementId(),
+        label: nextLabel(template?.name ?? TOOL_LABELS[tool]),
+        points: next.points,
+        scope: { kind: 'site' },
+        createdAt: now(),
+        createdBy: authorName() || undefined,
+      },
+      picks,
+    );
     addMeasurement(m);
     // the tool stays on for the next one (a template used twice in a row)
     set({ draw: initialDraw(TOOL_FAMILY[tool]), listOpen: true });
@@ -413,6 +550,18 @@ export function editEvent(e: EditEvent): void {
 }
 
 // ---------------------------------------------------------------- templates
+
+/**
+ * Every template a measurement can name: the project's, the person's library, then the industry
+ * sets the site enables (G9), each id once (the toolbar's order).
+ */
+export function knownTemplates(s: Pick<MeasureState, 'templates' | 'settings'>): SurveyTemplate[] {
+  return templateLibrary(
+    s.templates.project,
+    s.templates.user,
+    industryTemplates(s.settings.templateSets),
+  ).map((l) => l.template);
+}
 
 export async function saveTemplate(
   scope: 'project' | 'user',

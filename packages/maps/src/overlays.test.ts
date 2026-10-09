@@ -6,6 +6,7 @@ import {
   footprint,
   headingLine,
   issueAnchor,
+  overlayTiles,
   poseAt,
   rasterQuad,
   severityRankColors,
@@ -254,5 +255,29 @@ describe('issue features for the clustered map layer', () => {
       [2, '#222222'],
       [3, '#333333'],
     ]);
+  });
+});
+
+describe('overlay pyramids (M11 G5)', () => {
+  const index = {
+    levels: [
+      { z: 0, tileSize: 512, cols: 1, rows: 1, pattern: 'survey/overlays/s/0/{x}_{y}.webp' },
+      { z: 1, tileSize: 512, cols: 2, rows: 2, pattern: 'survey/overlays/s/1/{x}_{y}.webp' },
+      { z: 2, tileSize: 512, cols: 4, rows: 4, pattern: 'survey/overlays/s/2/{x}_{y}.webp' },
+    ],
+    corners: {
+      tl: [-10, 0, -10] as [number, number, number],
+      tr: [10, 0, -10] as [number, number, number],
+      bl: [-10, 0, 10] as [number, number, number],
+    },
+  };
+  it('shows the finest level within the tile budget, tiles covering the whole pyramid', () => {
+    const all = overlayTiles(index);
+    expect(all).toHaveLength(16);
+    expect(all[0]?.path).toBe('survey/overlays/s/2/0_0.webp');
+    expect(all[0]?.corners.tl).toEqual([-10, 0, -10]);
+    expect(all[15]?.corners.bl).toEqual([5, 0, 10]);
+    const few = overlayTiles(index, 4);
+    expect(few.map((t) => t.z)).toEqual([1, 1, 1, 1]);
   });
 });

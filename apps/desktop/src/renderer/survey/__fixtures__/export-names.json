@@ -1,0 +1,77 @@
+{
+  "note": "The survey export file name suffix (data-conventions section 25): python/src/aio_pipelines/export/frame.py name_suffix and renderer/survey/exportHelpers.ts exportSuffix both check these cases.",
+  "cases": [
+    {
+      "crs": "site",
+      "calibrated": false,
+      "vertical": "project",
+      "geoid": null,
+      "units": "m",
+      "suffix": "_site-grid_m"
+    },
+    {
+      "crs": "site",
+      "calibrated": false,
+      "vertical": "project",
+      "geoid": null,
+      "units": "us-ft",
+      "suffix": "_site-grid_usft"
+    },
+    {
+      "crs": "site",
+      "calibrated": false,
+      "vertical": "ellipsoidal",
+      "geoid": null,
+      "units": "ft",
+      "suffix": "_site-grid_ellh_ft"
+    },
+    {
+      "crs": "site",
+      "calibrated": true,
+      "vertical": "calibration",
+      "geoid": null,
+      "units": "m",
+      "suffix": "_site-grid-cal_cal_m"
+    },
+    {
+      "crs": "site",
+      "calibrated": true,
+      "vertical": "geoid",
+      "geoid": "egm2008",
+      "units": "us-ft",
+      "suffix": "_site-grid-cal_egm2008_usft"
+    },
+    {
+      "crs": "wgs84",
+      "calibrated": true,
+      "vertical": "calibration",
+      "geoid": null,
+      "units": "m",
+      "suffix": "_wgs84_ellh_m"
+    },
+    {
+      "crs": "wgs84",
+      "calibrated": false,
+      "vertical": "geoid",
+      "geoid": "AUSGeoid2020",
+      "units": "m",
+      "suffix": "_wgs84_ausgeoid2020_m"
+    },
+    {
+      "crs": { "epsg": 2227 },
+      "calibrated": false,
+      "vertical": "project",
+      "geoid": null,
+      "units": "us-ft",
+      "suffix": "_epsg2227_usft"
+    },
+    {
+      "crs": { "epsg": 32639 },
+      "calibrated": true,
+      "vertical": "geoid",
+      "geoid": "synth_geoid.v2",
+      "units": "m",
+      "suffix": "_epsg32639_synthgeoidv2_m"
+    }
+  ]
+}

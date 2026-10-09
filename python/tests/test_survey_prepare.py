@@ -305,12 +305,13 @@ def test_the_site_tables_are_written_through_g1_when_it_is_there(tmp_path, monke
         return {"files": 3}
 
     fake.write_site_tables = write_site_tables
+    fake.applied_calibration = lambda root, settings: None
     monkeypatch.setitem(sys.modules, "aio_pipelines.geodesy.site", fake)
     surface_project(tmp_path)
     result, _ = run_job(pipeline(), tmp_path, TWO)
     assert result["outputs"]["geodesy"] == {"written": True, "files": 3}
     (root, crs, settings, extent, kw) = calls[0]
-    assert root == tmp_path and crs == {"epsg": EPSG} and kw == {}
+    assert root == tmp_path and crs == {"epsg": EPSG} and kw == {"calibration": None}
     assert settings["verticalDatum"] == {"kind": "project"}
     assert extent == pytest.approx((ORIGIN[0] - 30, ORIGIN[1] - 30, ORIGIN[0] + 30, ORIGIN[1] + 30))
     # geodesy: false leaves them alone

@@ -10,10 +10,21 @@
 //   and its audit view shows them as `unknown-kind` ("From a newer version").
 // The one known exception, as in M10: the job index (userData jobs.json) lists jobs of the new
 // pipelines, which 0.10's index reader skips one by one instead of refusing the file.
+// G9 adds four report sections and the integration two more (`haul`, `hydrology`) to
+// `ReportSectionId`, strict in `ReportContentsSettings`: settings keep them in
+// `reportSectionsExtra`, which 0.10 folds back only for the sections it knows and carries over
+// unread on its own saves (the M9 fix), so only the toggles are new to it.
 import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import {
+  REPORT_SECTIONS_08,
+  createSettingsStore,
+  defaultSettings,
+} from '../../apps/desktop/src/main/settings.ts';
 import * as current from '../../packages/schema/src/index.ts';
 import * as v010 from './schema-0.10/index.mjs';
 import { familyOf } from './families.mjs';
@@ -80,16 +91,33 @@ describe('existing files 0.11 writes stay readable by 0.10', () => {
     expect(v010.Settings.safeParse({ ...settings, survey: { units: 'm' } }).success).toBe(true);
   });
 
-  it('keeps the 0.10 layer kinds, project types and report sections', () => {
+  it('keeps the 0.10 layer kinds and project types; report sections gain exactly six survey ids', () => {
     expect([...current.LAYER_KINDS].sort()).toEqual([...v010.LAYER_KINDS].sort());
     expect(current.ProjectType.options).toEqual(v010.ProjectType.options);
-    expect([...current.REPORT_SECTIONS]).toEqual([...v010.REPORT_SECTIONS]);
+    // G9 (plan "Contract changes"): the 0.10 sections in order, then the four survey sections and
+    // the haul-road and hydrology runs; settings saved with them toggled stay readable by 0.10
+    // (the test below)
+    expect([...current.REPORT_SECTIONS]).toEqual([
+      ...v010.REPORT_SECTIONS,
+      'measurements',
+      'earthworks',
+      'stockpiles',
+      'landfill',
+      'haul',
+      'hydrology',
+    ]);
+    expect([...current.EXPORT_FORMATS]).toEqual([
+      ...v010.EXPORT_FORMATS,
+      'measurements-csv',
+      'stockpile-csv',
+      'survey-report-pdf',
+    ]);
   });
 
   it('new M11 files are families 0.10 does not know, so it never reads them', () => {
     const known010 = new Set(v010.SCHEMA_REGISTRY.map((e) => e.family));
     const m11 = current.SCHEMA_REGISTRY.filter((e) => e.since === '0.11');
-    expect(m11.length).toBe(15);
+    expect(m11.length).toBe(17);
     for (const e of m11) expect(known010.has(e.family), e.family).toBe(false);
     for (const e of m11.filter((x) => x.home === 'project'))
       expect(e.where.startsWith('survey/'), `${e.family} lives in ${e.where}`).toBe(true);
@@ -111,6 +139,117 @@ describe('existing files 0.11 writes stay readable by 0.10', () => {
     expect(current.JobRecord.safeParse(job).success).toBe(true);
     expect(v010.JobRecord.safeParse(job).success).toBe(false);
     expect(v010.JobRecord.safeParse({ ...job, pipeline: 'photo.align' }).success).toBe(true);
+  });
+});
+
+// What apps/desktop/src/main/settings.ts did at 0.10.0 (unchanged since the M9 fix): sections in
+// `reportSectionsExtra` that its ReportSectionId knows are folded back into `reportContents`, each
+// top-level field its schema accepts is kept, and on save the sections 0.8 does not know go to
+// `reportSectionsExtra` together with the extras it read and does not know itself.
+const EXTRA = 'reportSectionsExtra';
+const known010 = (id) => v010.ReportSectionId.safeParse(id).success;
+const isRecord = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
+function extras010(raw) {
+  if (!isRecord(raw?.[EXTRA])) return {};
+  return Object.fromEntries(Object.entries(raw[EXTRA]).filter(([, on]) => typeof on === 'boolean'));
+}
+function read010(raw) {
+  const ours = Object.entries(extras010(raw)).filter(([id]) => known010(id));
+  const contents = isRecord(raw.reportContents) ? raw.reportContents : {};
+  const sections = isRecord(contents.sections) ? contents.sections : {};
+  const stored = ours.length
+    ? {
+        ...raw,
+        reportContents: { ...contents, sections: { ...Object.fromEntries(ours), ...sections } },
+      }
+    : raw;
+  const kept = {};
+  for (const [key, field] of Object.entries(v010.Settings.shape)) {
+    if (!(key in stored)) continue;
+    const r = field.safeParse(stored[key]);
+    if (r.success) kept[key] = r.data;
+  }
+  return kept;
+}
+function write010(settings, keep) {
+  const { reportContents, ...rest } = settings;
+  const out = { ...rest };
+  const extra = Object.fromEntries(Object.entries(keep).filter(([id]) => !known010(id)));
+  if (reportContents) {
+    const { sections = {}, ...others } = reportContents;
+    const old = Object.entries(sections).filter(([id]) => REPORT_SECTIONS_08.includes(id));
+    for (const [id, on] of Object.entries(sections))
+      if (!REPORT_SECTIONS_08.includes(id)) extra[id] = on;
+    out.reportContents = old.length ? { ...others, sections: Object.fromEntries(old) } : others;
+  }
+  if (Object.keys(extra).length) out[EXTRA] = extra;
+  return out;
+}
+
+describe('settings with a G9 report section toggled, read by 0.10', () => {
+  it('keeps every 0.10 report choice, and the survey toggles survive an 0.10 save', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'aio-compat-m11-settings-'));
+    const file = join(dir, 'settings.json');
+    try {
+      const store = createSettingsStore(file, defaultSettings('C:/Data'));
+      await store.set({
+        theme: 'light',
+        reportContents: {
+          sections: {
+            appendices: false,
+            processing: false,
+            stockpiles: false,
+            measurements: true,
+            haul: false,
+            hydrology: true,
+          },
+          issuePages: 'none',
+        },
+      });
+      const disk = JSON.parse(await readFile(file, 'utf8'));
+      // the strict part holds 0.8's sections only; the rest wait in reportSectionsExtra
+      expect(disk.reportContents).toEqual({ sections: { appendices: false }, issuePages: 'none' });
+      expect(disk[EXTRA]).toEqual({
+        processing: false,
+        stockpiles: false,
+        measurements: true,
+        haul: false,
+        hydrology: true,
+      });
+      expect(v010.Settings.safeParse(disk).success).toBe(true);
+
+      // 0.10 reads its own choices (processing folded back), never refuses the file
+      const seen = read010(disk);
+      expect(seen.theme).toBe('light');
+      expect(seen.reportContents).toEqual({
+        sections: { processing: false, appendices: false },
+        issuePages: 'none',
+      });
+      expect(v010.ReportContentsSettings.safeParse(seen.reportContents).success).toBe(true);
+
+      // 0.10 saves a change of its own: the survey toggles ride along in reportSectionsExtra
+      const parsed = v010.Settings.parse({ ...defaultSettings('C:/Data'), ...seen, theme: 'dark' });
+      await writeFile(file, JSON.stringify(write010(parsed, extras010(disk))));
+      const back = await createSettingsStore(file, defaultSettings('C:/Data')).get();
+      expect(back.theme).toBe('dark');
+      expect(back.reportContents?.sections).toEqual({
+        appendices: false,
+        processing: false,
+        stockpiles: false,
+        measurements: true,
+        haul: false,
+        hydrology: true,
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('would have been refused whole by 0.10 inside the strict reportContents (the M9 risk)', () => {
+    const raw = { reportContents: { sections: { appendices: false, landfill: true } } };
+    expect(read010(raw).reportContents).toBeUndefined();
+    const haul = { reportContents: { sections: { appendices: false, haul: true } } };
+    expect(read010(haul).reportContents).toBeUndefined();
   });
 });
 

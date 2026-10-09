@@ -2,6 +2,7 @@ import type { SceneHandle } from '@aio/engine';
 import { crsLabel, formatEastNorth, localToProject } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { stationReadout } from '../survey/designsStore';
 import {
   SiteSettingsButton,
   siteCursorText,
@@ -73,7 +74,10 @@ export function useSceneCursor(scene: () => SceneHandle | null): {
         hit.point.y,
         hit.point.z,
       ]);
-      setCursor(siteCursorText(e2, n, el) ?? `${formatEastNorth(e2, n)} · EL ${el.toFixed(1)} m`);
+      // the station and offset on the active alignment are read in the project CRS (G6)
+      const station = stationReadout(e2, n);
+      const at = siteCursorText(e2, n, el) ?? `${formatEastNorth(e2, n)} · EL ${el.toFixed(1)} m`;
+      setCursor(station ? `${at} · ${station}` : at);
     });
   };
 

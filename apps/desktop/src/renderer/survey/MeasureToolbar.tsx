@@ -5,16 +5,17 @@
  * measurements in the 3D view and on the map and holds the panels; the toolbar mounts it.
  */
 import type { EngineStage } from '@aio/engine';
+import { unitLabel } from '@aio/geo';
 import { getActiveMap, onActiveMap, type MapController } from '@aio/maps';
 import type { MeasurementTool } from '@aio/schema';
 import {
   bookmarks,
   FAMILY_LABELS,
+  industryTemplates,
   parseBearing,
   templateLibrary,
   TOOL_FAMILY,
   TOOL_LABELS,
-  UNIT_LABELS,
   type SnapSource,
 } from '@aio/survey';
 import { Icon, type IconName } from '@aio/ui';
@@ -22,9 +23,19 @@ import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { useShell } from '../shell';
-import { PopTool } from '../workspace/StageTools';
+import { PopTool, Tool } from '../workspace/StageTools';
+import { BulkTotals } from './BulkTotals';
+import { CompareLayer } from './Comparison';
+import { DesignsTool } from './Designs';
+import { DesignRolePrompt } from './DesignRolePrompt';
+import { ExportDialogMount, ExportTool } from './ExportDialog';
+import { HaulRoadTool } from './HaulRoad';
+import { HydroTool } from './Hydro';
+import { useHydro } from './hydroStore';
+import { openCompareDialog } from './compareStore';
 import { MeasurementList } from './MeasurementList';
 import { MeasurementPanel } from './MeasurementPanel';
+import { SurveyQaTool } from './Qa';
 import { attach3d, attachMap, frameOf, stageClamp } from './measureScene';
 import {
   drawEvent,
@@ -41,13 +52,18 @@ import {
   useMeasure,
 } from './measureStore';
 import { TemplateEditor } from './TemplateEditor';
+import { OverlaysPanel, useOverlaysLoad } from './Overlays';
+import { attachOverlaysMap } from './overlaysMap';
+import { setOverlaysOpen, useOverlays } from './overlaysStore';
+import { SectionDock } from './SectionDock';
+import { attachSectionMap } from './sectionMap';
 import { UnitsDialog } from './UnitsDialog';
 import './measure.css';
 
-/** The tools the toolbar offers, by family (sections and history open with G5 and G8). */
+/** The tools the toolbar offers, by family (a cross-section opens G5's dock; history with G8). */
 const FAMILIES: { family: 'point' | 'line' | 'polygon' | 'markup'; tools: MeasurementTool[] }[] = [
   { family: 'point', tools: ['elevation', 'elevation-difference', 'annotation'] },
-  { family: 'line', tools: ['distance', 'grade', 'vertex-table', 'berm-check'] },
+  { family: 'line', tools: ['distance', 'grade', 'vertex-table', 'berm-check', 'section'] },
   { family: 'polygon', tools: ['area', 'volume'] },
   { family: 'markup', tools: ['freehand'] },
 ];
@@ -71,11 +87,15 @@ export function MeasureToolbar() {
   const active = useMeasure((s) => s.tool);
   const listOpen = useMeasure((s) => s.listOpen);
   const templates = useMeasure((s) => s.templates);
+  const sets = useMeasure((s) => s.settings.templateSets);
   const snap = useMeasure((s) => s.snap);
   const readOnly = useMeasure((s) => s.readOnly);
+  const overlaysOpen = useOverlays((s) => s.open);
+  // the Hydrology panel closes while a point is picked on the map and opens again with it
+  const hydroOpen = useHydro((s) => s.open);
   const lib = useMemo(
-    () => bookmarks(templateLibrary(templates.project, templates.user)),
-    [templates],
+    () => bookmarks(templateLibrary(templates.project, templates.user, industryTemplates(sets))),
+    [templates, sets],
   );
   // picking a tool or opening a panel closes the popover, so the keys go to the drawing
   const [open, setOpen] = useState(false);
@@ -86,10 +106,42 @@ export function MeasureToolbar() {
         label="Survey measurements"
         pressed={active !== null || listOpen}
         wide
-        open={open}
+        open={open || hydroOpen}
         onOpenChange={setOpen}
       >
         <div className="pop-form sv-tools" data-testid="survey-tools">
+          {/* the site's designs, survey QA, terrain overlays, hydrology, haul road and export: here
+              rather than on the bar, which fits one row at 1440 px with both side panels open */}
+          <div className="sv-fam" role="group" aria-label="Site data">
+            <span className="pop-title">
+              <Icon name="layers" size={12} /> Site data
+            </span>
+            <div className="tgroup-h sv-nested">
+              <DesignsTool />
+              <SurveyQaTool
+                onPicked={() => {
+                  setOpen(false);
+                }}
+              />
+              <Tool
+                icon="raster"
+                label="Terrain overlays"
+                testId="survey-overlays-open"
+                pressed={overlaysOpen}
+                onClick={() => {
+                  setOverlaysOpen(!overlaysOpen);
+                  setOpen(false);
+                }}
+              />
+              <HydroTool />
+              <HaulRoadTool />
+              <ExportTool
+                onPicked={() => {
+                  setOpen(false);
+                }}
+              />
+            </div>
+          </div>
           {!readOnly &&
             FAMILIES.map((f) => (
               <div
@@ -241,6 +293,28 @@ export function MeasureToolbar() {
             >
               Units
             </button>
+            <button
+              type="button"
+              className="btn sm"
+              data-testid="survey-materials-tool"
+              onClick={() => {
+                openCompareDialog('materials');
+                setOpen(false);
+              }}
+            >
+              Materials
+            </button>
+            <button
+              type="button"
+              className="btn sm"
+              data-testid="survey-site-open"
+              onClick={() => {
+                openCompareDialog('site');
+                setOpen(false);
+              }}
+            >
+              Whole site cut and fill
+            </button>
           </div>
         </div>
       </PopTool>
@@ -274,6 +348,8 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
   const listOpen = useMeasure((s) => s.listOpen);
   const focus = useMeasure((s) => s.focus);
   const dialog = useMeasure((s) => s.dialog);
+  const overlaysOpen = useOverlays((s) => s.open);
+  useOverlaysLoad();
 
   useEffect(() => {
     void loadMeasurements(projectId);
@@ -293,7 +369,14 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
   useEffect(() => {
     if (!map || !frame) return;
     const clampZ = stage ? stageClamp(stage, frame) : () => null;
-    return attachMap(map, frame, clampZ);
+    const detach = [
+      attachMap(map, frame, clampZ),
+      attachSectionMap(map, frame.epsg),
+      attachOverlaysMap(map, frame.epsg),
+    ];
+    return () => {
+      for (const d of detach) d();
+    };
   }, [map, frame, stage]);
 
   // a project switch ends any drawing
@@ -309,10 +392,16 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
         <aside className="sv-side" aria-label="Survey measurements" data-testid="survey-side">
           {listOpen && <MeasurementList stage={stage} />}
           {focus && <MeasurementPanel />}
+          <BulkTotals />
         </aside>
       )}
+      <CompareLayer stage={stage} map={map} frame={frame} />
+      <SectionDock stage={stage} />
+      {overlaysOpen && <OverlaysPanel />}
       {dialog?.kind === 'templates' && <TemplateEditor />}
       {dialog?.kind === 'units' && <UnitsDialog />}
+      <DesignRolePrompt />
+      <ExportDialogMount />
     </>,
     document.body,
   );
@@ -380,7 +469,7 @@ function DrawBar() {
             data-testid="survey-typed-distance"
           >
             Distance <b className="mono">{draw.typing.distance || '...'}</b>{' '}
-            {UNIT_LABELS[units.distance] ?? units.distance}
+            {unitLabel(units.distance)}
           </span>
           <span
             className={`sv-typed${draw.typing.field === 'bearing' ? ' on' : ''}`}

@@ -1,5 +1,5 @@
 import type { DistanceUnit, MeasurementFamily } from '@aio/schema';
-import { toSi } from './format';
+import { toSI } from '@aio/geo';
 import {
   bearingDeg,
   closestOnSegment2,
@@ -306,7 +306,7 @@ export function typedPoint(s: DrawState, env: DrawEnv): Pt | null {
   const prev = s.points[s.points.length - 1];
   const typed = parseTyped(s.typing.distance);
   if (!prev || typed === null || typed <= 0) return null;
-  const dist = toSi(typed, 'distance', env.distanceUnit ?? 'm');
+  const dist = toSI(typed, 'distance', env.distanceUnit ?? 'm');
   const bearing =
     parseBearing(s.typing.bearing) ??
     s.lockedBearing ??

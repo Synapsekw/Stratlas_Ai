@@ -36,6 +36,7 @@ import { PATH_MODES, setPathMode } from './flightPaths';
 import { updateFlightPaths, useFlightPathModel } from './pathModel';
 import { CutawayPanel } from './CutawayTool';
 import { MeasureToolbar } from '../survey/MeasureToolbar';
+import { usePopPlacement } from './popPlacement';
 import { toggleTelemetry, useTelemetryOn } from './telemetryPref';
 import { useCutawayPref } from './useCutaway';
 import {
@@ -72,11 +73,22 @@ interface ToolProps {
   shortcut?: ShortcutId;
   pressed?: boolean;
   disabled?: boolean;
+  /** A `data-testid` for the e2e specs. */
+  testId?: string;
   onClick: () => void;
 }
 
 /** A square stage tool with a tooltip that names its shortcut. */
-export function Tool({ icon, label, keys, shortcut, pressed, disabled, onClick }: ToolProps) {
+export function Tool({
+  icon,
+  label,
+  keys,
+  shortcut,
+  pressed,
+  disabled,
+  testId,
+  onClick,
+}: ToolProps) {
   const hint = shortcut ? shortcutHint(shortcut) : keys;
   return (
     <button
@@ -86,6 +98,7 @@ export function Tool({ icon, label, keys, shortcut, pressed, disabled, onClick }
       aria-label={label}
       aria-keyshortcuts={shortcut ? ariaKeys(shortcut) : keys}
       disabled={disabled}
+      data-testid={testId}
       onClick={onClick}
     >
       <Icon name={icon} />
@@ -138,6 +151,8 @@ export function PopTool({
   const ref = useRef<HTMLDivElement>(null);
   const pop = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
+  // on the stage, never under the timeline or the Context panel; it scrolls when the stage is short
+  usePopPlacement(open, ref, pop);
   useEffect(() => {
     if (!open) return;
     const away = (e: PointerEvent) => {

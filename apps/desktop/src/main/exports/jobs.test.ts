@@ -1,4 +1,5 @@
 import type { IpcEvent } from '@aio/schema';
+import { basename } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createExportJobs, type ExportDeps } from './jobs';
 
@@ -58,6 +59,33 @@ describe('export jobs', () => {
     });
     expect(asked[0]).toMatch(/HCl-Tank-accuracy-report\.pdf$/);
     expect(printed).toEqual([expect.objectContaining({ projectId: 'hcl', kind: 'processing' })]);
+  });
+
+  it('makes the survey report and CSVs in the report window, refused first without a survey', async () => {
+    const none = deps({ hasSurvey: () => Promise.resolve(false) });
+    expect(await createExportJobs(none.d).run({ ...req, format: 'stockpile-csv' })).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('no saved survey measurements') as unknown,
+    });
+    expect(none.asked).toEqual([]);
+    const printed: { kind: string }[] = [];
+    const { d, asked } = deps({
+      hasSurvey: () => Promise.resolve(true),
+      runFile: () => Promise.reject(new Error('not the export process')),
+      printReport: (args) => {
+        printed.push(args);
+        return Promise.resolve({ count: 3, bytes: 700 });
+      },
+    });
+    const jobs = createExportJobs(d);
+    for (const format of ['survey-report-pdf', 'stockpile-csv', 'measurements-csv'] as const)
+      expect(await jobs.run({ ...req, jobId: format, format })).toMatchObject({ ok: true });
+    expect(printed.map((p) => p.kind)).toEqual(['survey', 'stockpile-csv', 'measurements-csv']);
+    expect(asked.map((a) => basename(a))).toEqual([
+      'HCl-Tank-survey-report.pdf',
+      'HCl-Tank-stockpile-inventory.csv',
+      'HCl-Tank-measurements.csv',
+    ]);
   });
 
   it('refuses a format the open package does not allow before asking where to save', async () => {

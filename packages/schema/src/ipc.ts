@@ -44,13 +44,18 @@ import { ExchangeKind, ExchangePreview, Heads, TeamProjectId } from './exchange'
 import { ActorId, DeviceId, Identity, Initials, Member, PersonName, Role } from './identity';
 import { LaunchSettings } from './launch';
 import { DesignsFile } from './designs';
+import { HydroRun } from './hydro';
+import { HaulRun } from './haul';
 import { CrsCatalogueEntry, GeoidPackId, GeoidPackMeta, SiteCalibration } from './geodesy';
 import {
   HeightTiles,
   MeasurementsFile,
   SitePoint2,
+  SurveyQa,
+  SurveyOverlaysFile,
   SurveySettings,
   SurveyTemplatesFile,
+  TerrainEditsFile,
 } from './survey';
 import {
   AuditEntry,
@@ -479,6 +484,11 @@ export const EXPORT_FORMATS = [
   'audit-json',
   // M10 (G4): a photogrammetry run's accuracy report, under the existing kind `report-pdf`
   'photo-report-pdf',
+  // M11 (G9): the survey measurement and stockpile inventory CSVs (kind `files`, checked by format)
+  // and the survey sections of the house report alone (kind `report-pdf`)
+  'measurements-csv',
+  'stockpile-csv',
+  'survey-report-pdf',
 ] as const;
 export const ExportFormat = z.enum(EXPORT_FORMATS);
 
@@ -497,6 +507,9 @@ export const EXPORT_FORMAT_KIND = {
   'audit-csv': 'files',
   'audit-json': 'files',
   'photo-report-pdf': 'report-pdf',
+  'measurements-csv': 'files',
+  'stockpile-csv': 'files',
+  'survey-report-pdf': 'report-pdf',
 } as const satisfies Record<z.infer<typeof ExportFormat>, ExportKind>;
 
 export const ReportFile = z.object({
@@ -894,6 +907,25 @@ export const ipc = {
         defaultName: z.string().min(1).max(255),
         data: z.union([z.string(), z.instanceof(Uint8Array)]),
         title: z.string().optional(),
+      })
+      .strict(),
+    response: z.object({ path: z.string().nullable(), error: z.string().optional() }),
+  },
+  /**
+   * Ask where to save with the native dialog and answer the chosen path only; nothing is written.
+   * For files a pipeline job writes itself (`survey.export`, `survey.section`: their `out`), so
+   * nothing is staged in the project first. `path` is null when the person cancels; `error` says
+   * why the destination is refused (an open package's export limits).
+   */
+  'dialog:savePath': {
+    request: z
+      .object({
+        /** File name only; main drops any folder part. */
+        defaultName: z.string().min(1).max(255),
+        title: z.string().max(200).optional(),
+        filters: z
+          .array(z.object({ name: z.string(), extensions: z.array(z.string().min(1)) }))
+          .optional(),
       })
       .strict(),
     response: z.object({ path: z.string().nullable(), error: z.string().optional() }),
@@ -2321,6 +2353,75 @@ export const ipc = {
     request: z.object({ projectId: ProjectId }).strict(),
     response: z.discriminatedUnion('ok', [
       z.object({ ok: z.literal(true), surfaces: z.array(HeightTiles) }),
+      Failure,
+    ]),
+  },
+  /**
+   * QA results (`survey/qa/<capture>.json`): every survey's, or one capture's (an empty list when
+   * it has none). Packages are read in place (G8).
+   */
+  'survey:readQa': {
+    request: z.object({ projectId: ProjectId, capture: Id.optional() }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), files: z.array(SurveyQa), readOnly: z.boolean() }),
+      Failure,
+    ]),
+  },
+  /**
+   * **Release** a survey on hold with a person's note: status `released`, journaled `survey.hold`
+   * (action `release`), written atomically with a `.bak`; refused for packages (G8).
+   */
+  'survey:releaseHold': {
+    request: z
+      .object({ projectId: ProjectId, capture: Id, note: z.string().trim().min(1).max(2000) })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), qa: SurveyQa }),
+      Failure,
+    ]),
+  },
+  /** `survey/cleanups.json`; an empty list when there is none (G8). */
+  'survey:readTerrainEdits': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), file: TerrainEditsFile, readOnly: z.boolean() }),
+      Failure,
+    ]),
+  },
+  /** Write `survey/cleanups.json` atomically (`.bak`, journaled); refused for packages (G8). */
+  'survey:writeTerrainEdits': {
+    request: z.object({ projectId: ProjectId, file: TerrainEditsFile }).strict(),
+    response: OkOrFailure,
+  },
+  /** `survey/overlays.json`; an empty list when there is none; `readOnly` for a package (G5). */
+  'survey:readOverlays': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), file: SurveyOverlaysFile, readOnly: z.boolean() }),
+      Failure,
+    ]),
+  },
+  /**
+   * Write `survey/overlays.json` atomically (`.bak`): visibility, names and removals of overlays
+   * `survey.overlay` made (a removed overlay's folder is deleted); refused for packages (G5).
+   */
+  'survey:writeOverlays': {
+    request: z.object({ projectId: ProjectId, file: SurveyOverlaysFile }).strict(),
+    response: OkOrFailure,
+  },
+  /** Hydrology runs (`survey/hydro/<run>/run.json`), newest first; packages read in place (G10). */
+  'survey:readHydroRuns': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), runs: z.array(HydroRun) }),
+      Failure,
+    ]),
+  },
+  /** Haul-road compliance runs (`survey/haul/<run>/run.json`, newest first); packages read in place (G11). */
+  'survey:readHaulRuns': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), runs: z.array(HaulRun) }),
       Failure,
     ]),
   },

@@ -56,6 +56,69 @@
       "attribution": "© OpenStreetMap contributors, Protomaps",
       "provenance": "Protomaps daily planet build",
       "source": "https://www.openstreetmap.org/copyright"
+    },
+    {
+      "name": "EPSG Geodetic Parameter Dataset",
+      "kind": "CRS dataset",
+      "use": "CRS names, areas of use and transformations, inside PROJ's proj.db in the pipeline pack (pyproj) and in the renderer's CRS catalogue built from it (M11)",
+      "licence": "LicenseRef-IOGP-EPSG-Terms-of-Use",
+      "attribution": "EPSG Geodetic Parameter Dataset, © IOGP (International Association of Oil & Gas Producers), epsg.org; included unchanged as part of PROJ's proj.db, provided \"as is\" under the IOGP EPSG terms of use",
+      "provenance": "proj.db of the PROJ build inside the pyproj wheel",
+      "source": "https://epsg.org/terms-of-use.html"
+    },
+    {
+      "name": "AUSGeoid2020",
+      "kind": "geoid pack (optional)",
+      "use": "Optional regional geoid pack built by tools/maps/geoid-packs.mjs (M11 decision 5); not in the installer or the pipeline pack",
+      "licence": "CC-BY-4.0",
+      "attribution": "© Commonwealth of Australia (Geoscience Australia), AUSGeoid2020, CC BY 4.0",
+      "provenance": "PROJ-data au_ga_AUSGeoid2020_20180201.tif",
+      "source": "https://github.com/OSGeo/PROJ-data/tree/master/au_ga"
+    },
+    {
+      "name": "GEOID18",
+      "kind": "geoid pack (optional)",
+      "use": "Optional regional geoid pack built by tools/maps/geoid-packs.mjs (M11 decision 5); not in the installer or the pipeline pack",
+      "licence": "public-domain",
+      "attribution": "NOAA National Geodetic Survey, GEOID18",
+      "provenance": "PROJ-data us_noaa_g2018u0.tif",
+      "source": "https://github.com/OSGeo/PROJ-data/tree/master/us_noaa"
+    },
+    {
+      "name": "OSGM15",
+      "kind": "geoid pack (optional)",
+      "use": "Optional regional geoid pack built by tools/maps/geoid-packs.mjs (M11 decision 5); not in the installer or the pipeline pack",
+      "licence": "BSD-2-Clause",
+      "attribution": "© Ordnance Survey, OSGM15 (BSD 2-Clause licence)",
+      "provenance": "PROJ-data uk_os_OSGM15_GB.tif",
+      "source": "https://github.com/OSGeo/PROJ-data/tree/master/uk_os"
+    },
+    {
+      "name": "OSTN15",
+      "kind": "horizontal grid pack (optional)",
+      "use": "Optional OSGB36 horizontal grid pack for British National Grid, built by tools/maps/geoid-packs.mjs (M11 decision 5); not in the installer or the pipeline pack",
+      "licence": "BSD-2-Clause",
+      "attribution": "© Ordnance Survey, OSTN15 (BSD 2-Clause licence)",
+      "provenance": "PROJ-data uk_os_OSTN15_NTv2_OSGBtoETRS.tif",
+      "source": "https://github.com/OSGeo/PROJ-data/tree/master/uk_os"
+    },
+    {
+      "name": "NZGeoid2016",
+      "kind": "geoid pack (optional)",
+      "use": "Optional regional geoid pack built by tools/maps/geoid-packs.mjs (M11 decision 5); not in the installer or the pipeline pack",
+      "licence": "CC-BY-4.0",
+      "attribution": "Land Information New Zealand (LINZ), NZGeoid2016, CC BY 4.0",
+      "provenance": "PROJ-data nz_linz_nzgeoid2016.tif",
+      "source": "https://github.com/OSGeo/PROJ-data/tree/master/nz_linz"
+    },
+    {
+      "name": "CGG2013a",
+      "kind": "geoid pack (optional)",
+      "use": "Optional regional geoid pack built by tools/maps/geoid-packs.mjs (M11 decision 5); not in the installer or the pipeline pack",
+      "licence": "Open Government Licence - Canada",
+      "attribution": "Contains information licensed under the Open Government Licence - Canada (NRCan, CGG2013a)",
+      "provenance": "PROJ-data ca_nrc_CGG2013an83.tif",
+      "source": "https://github.com/OSGeo/PROJ-data/tree/master/ca_nrc"
     }
   ]
 }

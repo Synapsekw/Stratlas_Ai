@@ -12,6 +12,7 @@ export type VolumeOps = Pick<
   | 'reliefRaster'
   | 'grid'
   | 'heights'
+  | 'engineBases'
 >;
 export type VolumeOp = keyof VolumeOps;
 

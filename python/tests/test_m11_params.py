@@ -65,7 +65,21 @@ M11 = {
 #: Pipelines a stream has built (no longer stubs): checked for their names and titles here, and
 #: by their own tests for what they do.
 #: Pipelines a stream has built: their own tests replace the stub's run test.
-BUILT = {"geo.calibration", "survey.compare", "survey.prepare"}
+BUILT = {
+    "design.import",
+    "geo.calibration",
+    "haul.analyse",
+    "hydro.flood",
+    "hydro.flow",
+    "hydro.rainfall",
+    "survey.cleanup",
+    "survey.compare",
+    "survey.export",
+    "survey.overlay",
+    "survey.prepare",
+    "survey.qa",
+    "survey.section",
+}
 STUBS = sorted(set(M11) - BUILT)
 
 TITLES = {
