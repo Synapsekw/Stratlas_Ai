@@ -10,9 +10,10 @@
 //   and its audit view shows them as `unknown-kind` ("From a newer version").
 // The one known exception, as in M10: the job index (userData jobs.json) lists jobs of the new
 // pipelines, which 0.10's index reader skips one by one instead of refusing the file.
-// G9 adds four report sections (`ReportSectionId`, strict in `ReportContentsSettings`): settings
-// keep them in `reportSectionsExtra`, which 0.10 folds back only for the sections it knows and
-// carries over unread on its own saves (the M9 fix), so only the toggles are new to it.
+// G9 adds four report sections and the integration two more (`haul`, `hydrology`) to
+// `ReportSectionId`, strict in `ReportContentsSettings`: settings keep them in
+// `reportSectionsExtra`, which 0.10 folds back only for the sections it knows and carries over
+// unread on its own saves (the M9 fix), so only the toggles are new to it.
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -90,17 +91,20 @@ describe('existing files 0.11 writes stay readable by 0.10', () => {
     expect(v010.Settings.safeParse({ ...settings, survey: { units: 'm' } }).success).toBe(true);
   });
 
-  it('keeps the 0.10 layer kinds and project types; report sections gain exactly G9 four', () => {
+  it('keeps the 0.10 layer kinds and project types; report sections gain exactly six survey ids', () => {
     expect([...current.LAYER_KINDS].sort()).toEqual([...v010.LAYER_KINDS].sort());
     expect(current.ProjectType.options).toEqual(v010.ProjectType.options);
-    // G9 (plan "Contract changes"): the 0.10 sections in order, then the four survey sections;
-    // settings saved with them toggled stay readable by 0.10 (the test below)
+    // G9 (plan "Contract changes"): the 0.10 sections in order, then the four survey sections and
+    // the haul-road and hydrology runs; settings saved with them toggled stay readable by 0.10
+    // (the test below)
     expect([...current.REPORT_SECTIONS]).toEqual([
       ...v010.REPORT_SECTIONS,
       'measurements',
       'earthworks',
       'stockpiles',
       'landfill',
+      'haul',
+      'hydrology',
     ]);
     expect([...current.EXPORT_FORMATS]).toEqual([
       ...v010.EXPORT_FORMATS,
@@ -191,14 +195,27 @@ describe('settings with a G9 report section toggled, read by 0.10', () => {
       await store.set({
         theme: 'light',
         reportContents: {
-          sections: { appendices: false, processing: false, stockpiles: false, measurements: true },
+          sections: {
+            appendices: false,
+            processing: false,
+            stockpiles: false,
+            measurements: true,
+            haul: false,
+            hydrology: true,
+          },
           issuePages: 'none',
         },
       });
       const disk = JSON.parse(await readFile(file, 'utf8'));
       // the strict part holds 0.8's sections only; the rest wait in reportSectionsExtra
       expect(disk.reportContents).toEqual({ sections: { appendices: false }, issuePages: 'none' });
-      expect(disk[EXTRA]).toEqual({ processing: false, stockpiles: false, measurements: true });
+      expect(disk[EXTRA]).toEqual({
+        processing: false,
+        stockpiles: false,
+        measurements: true,
+        haul: false,
+        hydrology: true,
+      });
       expect(v010.Settings.safeParse(disk).success).toBe(true);
 
       // 0.10 reads its own choices (processing folded back), never refuses the file
@@ -220,6 +237,8 @@ describe('settings with a G9 report section toggled, read by 0.10', () => {
         processing: false,
         stockpiles: false,
         measurements: true,
+        haul: false,
+        hydrology: true,
       });
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -229,6 +248,8 @@ describe('settings with a G9 report section toggled, read by 0.10', () => {
   it('would have been refused whole by 0.10 inside the strict reportContents (the M9 risk)', () => {
     const raw = { reportContents: { sections: { appendices: false, landfill: true } } };
     expect(read010(raw).reportContents).toBeUndefined();
+    const haul = { reportContents: { sections: { appendices: false, haul: true } } };
+    expect(read010(haul).reportContents).toBeUndefined();
   });
 });
 

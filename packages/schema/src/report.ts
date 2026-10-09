@@ -62,6 +62,9 @@ export const ReportSectionId = z.enum([
   'earthworks',
   'stockpiles',
   'landfill',
+  // M11 (integration): haul-road compliance runs and hydrology runs, kept the same way
+  'haul',
+  'hydrology',
 ]);
 export const REPORT_SECTIONS = ReportSectionId.options;
 

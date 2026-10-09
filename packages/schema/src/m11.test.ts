@@ -82,10 +82,11 @@ describe('M11 additive rule: no layer kind, raster role, project type, setting o
     expect(role?.options).toEqual(['ortho', 'dsm', 'plan']);
   });
 
-  it('keeps the 0.10 project types and report sections, plus exactly the four of G9', () => {
+  it('keeps the 0.10 project types and report sections, plus exactly the six survey ones', () => {
     expect(ProjectType.options).toEqual(['inspection', 'volumetric', 'road', 'twin', 'fusion']);
-    // G9 (not G0): the survey sections. `ReportContentsSettings` is strict over these ids, so
-    // settings keep them in `reportSectionsExtra`, which 0.10 carries over without reading.
+    // G9 (not G0): the survey sections, then the haul-road and hydrology runs (integration).
+    // `ReportContentsSettings` is strict over these ids, so settings keep them in
+    // `reportSectionsExtra`, which 0.10 carries over without reading.
     expect([...REPORT_SECTIONS]).toEqual([
       'contents',
       'summary',
@@ -102,6 +103,8 @@ describe('M11 additive rule: no layer kind, raster role, project type, setting o
       'earthworks',
       'stockpiles',
       'landfill',
+      'haul',
+      'hydrology',
     ]);
   });
 
