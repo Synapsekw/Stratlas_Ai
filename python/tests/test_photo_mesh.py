@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import threading
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -155,6 +158,7 @@ def test_meshlab_meshes_a_cloud_in_a_child_python_and_trims_it(tmp_path):
     assert np.percentile(np.abs(r - 5.0), 90) < 0.05, np.percentile(np.abs(r - 5.0), [50, 90, 99])
     # trimmed by density: the reconstruction's closing surface below the open cap is gone
     assert m.vertices[:, 2].min() > -4.0, m.vertices[:, 2].min()
+    assert "pymeshlab" not in sys.modules  # MeshLab ran in the child only
 
 
 def test_a_crashed_meshlab_run_is_tried_again_single_threaded(tmp_path, monkeypatch):
@@ -163,18 +167,18 @@ def test_a_crashed_meshlab_run_is_tried_again_single_threaded(tmp_path, monkeypa
 
     def fake_run(ctx, args, what, work, expected_s=60.0, progress=(0.0, 0.95), memory_limit=0, env=None):
         calls.append(list(args))
-        assert memory_limit == 2**30 and env["OMP_NUM_THREADS"] == args[7]
+        assert memory_limit == 2**30 and env["OMP_NUM_THREADS"] == args[-2]
         if len(calls) == 1:
             raise M.JobError("Poisson meshing failed: exit 3221225477")
         v = np.array([[0.0, 0, 0], [1, 0, 0], [0, 1, 0], [9, 9, 9]])
         f = np.array([[0, 1, 2], [0, 1, 3]])
-        np.savez(args[5], vertices=v, faces=f, density=np.array([8.0, 8, 8, 2]))  # trim at 5 (depth 9)
+        np.savez(args[-4], vertices=v, faces=f, density=np.array([8.0, 8, 8, 2]))  # trim at 5 (depth 9)
         return ""
 
     monkeypatch.setattr(M.native, "run_tool", fake_run)
     m = M.poisson_meshlab(_ctx(tmp_path), tmp_path / "work", tmp_path / "in.ply", 9, 10, 2**30)
-    assert [a[7] for a in calls] == ["4", "1"]  # threads: the machine's (capped), then one
-    assert [a[6] for a in calls] == ["9", "9"]
+    assert [a[-2] for a in calls] == ["4", "1"]  # threads: the machine's (capped), then one
+    assert [a[-3] for a in calls] == ["9", "9"]
     assert m.triangles == 1 and len(m.vertices) == 3  # the low-density face is trimmed
 
 
@@ -187,12 +191,53 @@ def test_a_meshlab_run_over_its_memory_is_tried_again_coarser(tmp_path, monkeypa
         if len(calls) == 1:
             raise M.native.ToolMemoryExceeded("Poisson meshing stopped: it needed more than 1.1 GB")
         v = np.array([[0.0, 0, 0], [1, 0, 0], [0, 1, 0]])
-        np.savez(args[5], vertices=v, faces=np.array([[0, 1, 2]]), density=np.array([8.0, 8, 8]))
+        np.savez(args[-4], vertices=v, faces=np.array([[0, 1, 2]]), density=np.array([8.0, 8, 8]))
         return ""
 
     monkeypatch.setattr(M.native, "run_tool", fake_run)
     M.poisson_meshlab(_ctx(tmp_path), tmp_path / "work", tmp_path / "in.ply", 11, 10, 2**30)
-    assert [(a[6], a[7]) for a in calls] == [("11", "4"), ("10", "4")]
+    assert [(a[-3], a[-2]) for a in calls] == [("11", "4"), ("10", "4")]
+
+
+_NATIVE = {"cv2", "pycolmap", "pymeshlab"}
+
+
+def test_meshlab_never_shares_a_process_with_another_openmp_library():
+    # pymeshlab and pycolmap each bundle libomp; two copies in one process abort on macOS. The
+    # pipelines and MeshLab's child load none of them at import, and the pipeline process never
+    # imports pymeshlab (the child does).
+    probe = (
+        "import sys, aio_pipelines.pipelines, aio_pipelines.photo.mesh as M\n"
+        f"print(sorted({{m.split('.')[0] for m in sys.modules}} & set({sorted(_NATIVE)!r})))\n"
+        "print(M.meshlab_command('in.ply', 'out.npz', 8, 2, 100)[1:3])\n"
+    )
+    out = subprocess.run(
+        [sys.executable, "-I", "-c", probe], capture_output=True, text=True, timeout=120, check=True
+    ).stdout.splitlines()
+    assert out[0] == "[]"
+    assert out[1] == "['-I', '-m']"  # the child is isolated like the app's pipeline process
+    assert M.meshlab_command(Path("a"), Path("b"), 8, 2, 100)[1:] == [
+        *(["-I"] if sys.flags.isolated else []),
+        "-m",
+        "aio_pipelines.photo.mesh",
+        "meshlab-poisson",
+        "a",
+        "b",
+        "8",
+        "2",
+        "100",
+    ]
+
+
+def test_meshlab_child_drops_preloaded_libraries(monkeypatch):
+    monkeypatch.setenv("DYLD_INSERT_LIBRARIES", "/opt/homebrew/lib/libomp.dylib")
+    monkeypatch.setenv("DYLD_LIBRARY_PATH", "/opt/homebrew/lib")
+    monkeypatch.setenv("LD_PRELOAD", "libgomp.so.1")
+    monkeypatch.setenv("AIO_KEEP_ME", "1")
+    env = M.meshlab_env(3)
+    assert not set(M.MESHLAB_DROPPED_ENV) & set(env)
+    assert env["AIO_KEEP_ME"] == "1"
+    assert env["OMP_NUM_THREADS"] == "3" and env["OPENBLAS_NUM_THREADS"] == "1"
 
 
 def test_the_poisson_depth_follows_the_spacing_and_the_memory_budget():

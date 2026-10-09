@@ -260,6 +260,68 @@ jobs:
       - name: Entry point
         run: uv run --frozen python -m aio_pipelines --list
 
+  # Which parts of the tree a push or pull request changed, for the jobs that only run when theirs did.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      pack: ${{ steps.filter.outputs.pack }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            pack:
+              - 'tools/pipeline-pack/**'
+              - 'python/pyproject.toml'
+              - 'python/uv.lock'
+              - 'python/src/aio_pipelines/photo/**'
+              - '.github/workflows/ci.yml'
+
+  # The pipeline pack as the nightly and the release build it, with its built-in smoke test (the
+  # photogrammetry engines each in the process the product runs them in). Only when the pack's
+  # build, its lock or the photo pipelines change: the nightly of 9 Oct 2026 caught two pack bugs
+  # (GNU tar on the Windows runner, two libomp copies on macOS) that no PR job built. No archive or
+  # extra tests here; the nightly and the release check the archive's budget.
+  pack:
+    name: pipeline pack (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.pack == 'true' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    # a few minutes; the nightly's took about one on macOS
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+      - name: Cache PDAL's conda packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/conda
+          key: conda-pdal-${{ runner.os }}-${{ hashFiles('tools/pipeline-pack/pdal-lock.json') }}
+      - name: Build the pipeline pack and smoke-test it
+        env:
+          QUADRION_CONDA_ROOT: ${{ runner.temp }}/conda
+        run: node tools/pipeline-pack/build.mjs --out "$RUNNER_TEMP/runtime"
+
   licenses:
     name: licence check
     runs-on: ubuntu-latest

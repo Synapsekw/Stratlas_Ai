@@ -2,7 +2,14 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { BuildError, defaultOutRoot, staleTempDirs, withTempDir } from './build.mjs';
+import {
+  BuildError,
+  defaultOutRoot,
+  photogrammetryProblem,
+  staleTempDirs,
+  tarCommand,
+  withTempDir,
+} from './build.mjs';
 
 let out;
 beforeEach(() => {
@@ -111,5 +118,72 @@ describe('defaultOutRoot', () => {
   it('has a default only on the Windows workstation', () => {
     expect(defaultOutRoot('win32', {})).toBe('E:/Stratlas Data/runtime');
     expect(defaultOutRoot('darwin', {})).toBeNull();
+  });
+});
+
+describe('pipeline pack tar', () => {
+  const never = () => {
+    throw new Error('tar --version must not run');
+  };
+
+  it("uses Windows' own bsdtar, not the GNU tar of Git Bash", () => {
+    const seen = [];
+    const exists = (p) => {
+      seen.push(p);
+      return true;
+    };
+    expect(tarCommand('win32', { SystemRoot: 'C:\\Windows' }, exists, never)).toEqual({
+      cmd: 'C:\\Windows\\System32\\tar.exe',
+      args: [],
+    });
+    expect(seen).toEqual(['C:\\Windows\\System32\\tar.exe']);
+  });
+
+  it('keeps a GNU tar from reading D:\\ as a remote host when there is no system tar', () => {
+    const gnu = () => 'tar (GNU tar) 1.35\n';
+    expect(tarCommand('win32', { SystemRoot: 'D:\\Win' }, () => false, gnu)).toEqual({
+      cmd: 'tar',
+      args: ['--force-local'],
+    });
+    const bsd = () => 'bsdtar 3.7.7 - libarchive 3.7.7';
+    expect(tarCommand('win32', {}, () => false, bsd)).toEqual({ cmd: 'tar', args: [] });
+  });
+
+  it("uses the PATH's tar on macOS", () => {
+    expect(tarCommand('darwin', {}, never, never)).toEqual({ cmd: 'tar', args: [] });
+  });
+});
+
+describe('pipeline pack photogrammetry smoke test', () => {
+  const full = {
+    pycolmap: '4.0.1',
+    colmapBuild: 'Commit abc without CUDA',
+    opencv: '4.12.0',
+    pymeshlab: '2025.7',
+    poissonFaces: 2000,
+    pymeshlabInParent: false,
+  };
+
+  it('passes a pack whose engines each run in their own process', () => {
+    expect(photogrammetryProblem(full)).toBeNull();
+    expect(photogrammetryProblem({})).toBeNull(); // the Intel Mac pack has none (decision 8)
+  });
+
+  it("fails a pack whose MeshLab child crashed, with the child's output", () => {
+    const problem = photogrammetryProblem({
+      ...full,
+      poissonFaces: undefined,
+      meshlabExit: -6,
+      meshlabOutput: 'OMP: Error #15: Initializing libomp.dylib',
+    });
+    expect(problem).toMatch(/screened Poisson failed/);
+    expect(problem).toMatch(/OMP: Error #15/);
+  });
+
+  it('fails a pack with missing wheels or MeshLab in the probing process', () => {
+    expect(photogrammetryProblem({ ...full, opencv: undefined })).toMatch(/incomplete/);
+    expect(photogrammetryProblem({ ...full, pymeshlabInParent: true })).toMatch(
+      /outside its child/,
+    );
   });
 });
