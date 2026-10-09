@@ -110,13 +110,15 @@ export async function loadSiteDisplay(project: OpenProject | null): Promise<void
     siteDisplay.setState({ projectId: project.id, settings: null, exists: false, stale: null });
     return;
   }
-  const { settings, exists } = r.value;
+  const { settings, exists, tables } = r.value;
   let transformer: SiteTransformer | null = null;
   let projector: SiteDisplay['projector'] = null;
   let note: string | null = null;
-  const header = await fetchBytes(
-    assetUrl(project.id, { path: 'survey/geodesy/site-transform.json' }),
-  );
+  // Only when they exist: a project from before M11 has none, and every aio:// 404 is a console
+  // error (each real project failed its @realdata check).
+  const header = tables
+    ? await fetchBytes(assetUrl(project.id, { path: 'survey/geodesy/site-transform.json' }))
+    : null;
   let stale: string | null = null;
   if (header) {
     try {

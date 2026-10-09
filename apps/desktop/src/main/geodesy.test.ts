@@ -1,6 +1,6 @@
 import type { DraftOp } from '@aio/journal';
 import { defaultSurveySettings, type SiteCalibration } from '@aio/schema';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -100,6 +100,18 @@ describe('geodesy IPC', () => {
     expect(op?.payload).toMatchObject({ set: { 'units.distance': 'us-ft', 'crs.epsg': 2240 } });
     const back = await ipc.call('survey:readSettings', { projectId: 'p' });
     expect(back).toMatchObject({ ok: true, exists: true, settings: { crs: { epsg: 2240 } } });
+  });
+
+  // A project from before M11 has no readout tables: the renderer must not ask for them (each
+  // aio:// 404 is a console error; every real project failed its @realdata check).
+  it('says whether the site readout tables exist', async () => {
+    const before = await ipc.call('survey:readSettings', { projectId: 'p' });
+    expect(before).toMatchObject({ ok: true, tables: false });
+    await mkdir(join(root, 'survey', 'geodesy'), { recursive: true });
+    await writeFile(join(root, 'survey', 'geodesy', 'site-transform.json'), '{}');
+    const after = await ipc.call('survey:readSettings', { projectId: 'p' });
+    expect(after).toMatchObject({ ok: true, tables: true });
+    await rm(join(root, 'survey', 'geodesy'), { recursive: true, force: true });
   });
 
   it('applies a confirmed calibration: journaled, then the files', async () => {

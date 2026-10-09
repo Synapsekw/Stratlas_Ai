@@ -2293,7 +2293,13 @@ export const ipc = {
   'survey:readSettings': {
     request: z.object({ projectId: ProjectId }).strict(),
     response: z.discriminatedUnion('ok', [
-      z.object({ ok: z.literal(true), settings: SurveySettings, exists: z.boolean() }),
+      z.object({
+        ok: z.literal(true),
+        settings: SurveySettings,
+        exists: z.boolean(),
+        /** Whether `survey/geodesy/site-transform.json` exists (only then is it fetched). */
+        tables: z.boolean().optional(),
+      }),
       Failure,
     ]),
   },
