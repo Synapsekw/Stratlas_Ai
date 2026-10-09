@@ -5,13 +5,16 @@
  * Alignments controls; the Compliance section sits below. Opened from the stage toolbar.
  */
 import { useAnnotateReadOnly } from '@aio/annotate';
+import type { EngineStage } from '@aio/engine';
+import { getActiveMap, onActiveMap } from '@aio/maps';
 import type { DesignEntry, DesignLayer } from '@aio/schema';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { PopTool } from '../workspace/StageTools';
 import { ActiveAlignmentNote, AlignmentControls } from './Alignments';
 import { ComplianceSection } from './Compliance';
 import { DesignImportOptions } from './DesignImport';
+import { attachDesigns3d, attachDesignsMap, followDesigns } from './designsScene';
 import type { DesignProbe } from './designImportForm';
 import {
   designFileUrl,
@@ -24,6 +27,7 @@ import {
   useDesigns,
   watchImports,
 } from './designsStore';
+import { frameOf, stageClamp } from './measureScene';
 import './designs.css';
 
 const KIND_LABEL: Record<DesignLayer['kind'], string> = {
@@ -248,7 +252,7 @@ export function DesignsPanel() {
   const list = file?.designs ?? [];
   const folders = [...new Set(list.map((d) => d.folder ?? ''))].sort();
   return (
-    <div className="pop-form" data-testid="designs-panel" aria-busy={busy}>
+    <div className="pop-form designs-panel" data-testid="designs-panel" aria-busy={busy}>
       <div className="pop-row">
         <strong>Designs</strong>
         <button
@@ -313,4 +317,32 @@ export function DesignsTool() {
       <DesignsPanel />
     </PopTool>
   );
+}
+
+/**
+ * The workspace mount of the designs (one per stage, whatever toolbar groups show): loads the
+ * site's designs and draws the visible layers in the 3D view and on the map, so they stay drawn
+ * when the toolbar folds the Designs button into More tools or the panel is closed.
+ */
+export function DesignsMount({ stage }: { stage: EngineStage | null }) {
+  const project = useWorkspace((s) => s.project);
+  const projectId = project?.id ?? null;
+  const manifest = project?.manifest ?? null;
+  const frame = useMemo(() => (manifest ? frameOf(manifest) : null), [manifest]);
+  const groundZ = manifest?.origin[2] ?? 0;
+  const map = useSyncExternalStore(onActiveMap, getActiveMap, getActiveMap);
+  useEffect(() => followDesigns(), []);
+  useEffect(() => {
+    watchImports();
+    if (projectId) void loadDesigns(projectId);
+  }, [projectId]);
+  useEffect(() => {
+    if (!stage || !frame) return;
+    return attachDesigns3d(stage, frame, stageClamp(stage, frame), groundZ);
+  }, [stage, frame, groundZ]);
+  useEffect(() => {
+    if (!map || !frame) return;
+    return attachDesignsMap(map, frame);
+  }, [map, frame]);
+  return null;
 }

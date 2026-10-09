@@ -71,6 +71,7 @@ import { CompareButton, CompareMap, useVolumesFollowDate } from './CompareContro
 import { CompareScene } from './CompareScene';
 import { ChangeLegends } from './MapSwipe';
 import { CursorReadout, useSceneCursor } from './SceneCursor';
+import { DesignsMount } from '../survey/Designs';
 import { HaulRoadMount } from '../survey/HaulRoad';
 import { HydroMount } from '../survey/Hydro';
 import './m8Mounts';
@@ -360,6 +361,7 @@ function StageToolbar({
       <SurveyQaMount />
       <HydroMount />
       <HaulRoadMount stage={stage} />
+      <DesignsMount stage={stage} />
       {!map && stage && (
         <div className="tgroup-h overlay-box env-slot" data-fixed="">
           <EnvironmentTool stage={stage} />

@@ -1,4 +1,4 @@
-/* Designs panel (M11 G6): the import options step. Mission tokens only. */
+/* Designs panel (M11 G6): its pop and the import options step. Mission tokens only. */
 .design-import {
   border-top: 1px solid var(--line-soft);
   padding-top: 8px;
@@ -27,4 +27,15 @@
   justify-content: flex-start;
   text-align: left;
   width: 100%;
+}
+/* the Designs pop (its own, not the Survey measurements popover it nests in) stays inside the
+   stage, above the timeline bar: capped in height, scrolling inside */
+.stage-pop.wide:has(> .designs-panel) {
+  width: min(360px, calc(100vw - 48px));
+  max-height: calc(100vh - 260px);
+  overflow: auto;
+}
+.designs-panel,
+.designs-panel > * {
+  min-width: 0;
 }
