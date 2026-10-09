@@ -415,3 +415,18 @@ def test_sections_along_line_measurements(tmp_path):
     assert float(body[-1][1]) == pytest.approx(np.hypot(50, 30))
     with pytest.raises(JobError, match="line measurements"):
         run(root, tmp_path / "x.csv", "j2", what="section", format="csv", measurements=["m-pt"])
+
+
+def test_a_grid_above_the_triangle_limit_is_refused_with_the_level_that_fits(tmp_path, monkeypatch):
+    import aio_pipelines.export.tin as tin
+
+    monkeypatch.setattr(tin, "MAX_TRIANGLES", 2000)
+    root = full_project(tmp_path)
+    with pytest.raises(JobError, match=r"level of detail of at most 0\.0625 \(one post in 4 each way\)"):
+        run(root, tmp_path / "p.dxf", what="surface", format="dxf", surface="plane")
+    res = run(root, tmp_path / "p.dxf", "j2", what="surface", format="dxf", surface="plane", decimate=1 / 16)
+    assert res["faces"] <= 2000
+    # a boundary is traced on the posts that fit, without asking
+    run(root, tmp_path / "b.geojson", "j3", what="surface", format="geojson", surface="plane")
+    (f,) = json.loads((tmp_path / "b.geojson").read_text("utf-8"))["features"]
+    assert f["geometry"]["type"] == "Polygon"

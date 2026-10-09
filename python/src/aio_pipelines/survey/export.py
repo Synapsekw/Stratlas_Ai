@@ -388,7 +388,8 @@ def parts_out(frame: Frame, parts: DesignParts) -> DesignParts:
 # ---------------------------------------------------------------------------- grid as triangles
 
 
-def grid_surface(grid: Grid, decimate: float | None, ctx: StepContext) -> Surface:
+def grid_surface(grid: Grid, decimate: float | None, ctx: StepContext, coarsen: bool = False) -> Surface:
+    """A grid as a TIN of its posts; ``coarsen`` takes the step that fits instead of refusing."""
     from ..export.tin import boundary_rings, grid_tin, read_posts, step_for, tin_limit
 
     g = grid.surface
@@ -397,6 +398,8 @@ def grid_surface(grid: Grid, decimate: float | None, ctx: StepContext) -> Surfac
     w = max(1, math.ceil((e1 - e0) / g.cell))
     h = max(1, math.ceil((n1 - n0) / g.cell))
     need = tin_limit(w, h)
+    if coarsen:
+        step = max(step, need)
     if need > step:
         share = 1 / need**2
         raise JobError(
@@ -672,7 +675,8 @@ def export_surface(ctx: StepContext, params: dict[str, Any], frame: Frame, out: 
                 body.surfaces[0].chains = []
             res = write_parts(path, fmt, frame, body, ctx)
             return {"files": [str(path)], **res}
-        s = grid_surface(grid, params.get("decimate") or _boundary_share(grid), ctx)
+        # the terrain boundary: traced on the posts, coarser where a large grid needs it
+        s = grid_surface(grid, params.get("decimate"), ctx, coarsen=True)
         path = out.file(grid.name, frame, fmt, kmz=_kmz(out))
         res = write_features(path, fmt, frame, boundary_features(frame, [s], grid.name), grid.name)
         return {"files": res.pop("files", [str(path)]), **res}
@@ -685,13 +689,6 @@ def export_surface(ctx: StepContext, params: dict[str, Any], frame: Frame, out: 
         return {"files": res.pop("files", [str(path)]), **res}
     res = write_parts(path, fmt, frame, parts_out(frame, parts), ctx)
     return {"files": [str(path)], **res}
-
-
-def _boundary_share(grid: Grid) -> float | None:
-    """A boundary of a large grid is traced on a coarser lattice (at most 4 million posts)."""
-    e0, n0, e1, n1 = grid.box
-    posts = (e1 - e0) * (n1 - n0) / grid.surface.cell**2
-    return None if posts <= 4_000_000 else 4_000_000 / posts
 
 
 def _kmz(out: Out) -> bool:
