@@ -27,6 +27,7 @@ import { PopTool, Tool } from '../workspace/StageTools';
 import { BulkTotals } from './BulkTotals';
 import { CompareLayer } from './Comparison';
 import { DesignsTool } from './Designs';
+import { DesignRolePrompt } from './DesignRolePrompt';
 import { ExportDialogMount, ExportTool } from './ExportDialog';
 import { HaulRoadTool } from './HaulRoad';
 import { HydroTool } from './Hydro';
@@ -399,6 +400,7 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
       {overlaysOpen && <OverlaysPanel />}
       {dialog?.kind === 'templates' && <TemplateEditor />}
       {dialog?.kind === 'units' && <UnitsDialog />}
+      <DesignRolePrompt />
       <ExportDialogMount />
     </>,
     document.body,

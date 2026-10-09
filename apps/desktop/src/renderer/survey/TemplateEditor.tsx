@@ -9,6 +9,7 @@ import {
   ComparisonPreset,
   IndustrySet,
   MeasurementTool,
+  type PresetSurfaceRef,
   type SurfaceRef,
   type SurveyTemplate,
 } from '@aio/schema';
@@ -62,8 +63,11 @@ const REFS: { id: string; label: string; ref: SurfaceRef }[] = [
   },
 ];
 
-const refLabel = (r: SurfaceRef) =>
-  REFS.find((x) => JSON.stringify(x.ref) === JSON.stringify(r))?.label ?? r.kind;
+const refLabel = (r: PresetSurfaceRef) => {
+  if (r.kind === 'design-pick') return `${r.hint} design layer (picked on first use)`;
+  if (r.kind === 'design') return `Design ${r.design}, ${r.layer}`;
+  return REFS.find((x) => JSON.stringify(x.ref) === JSON.stringify(r))?.label ?? r.kind;
+};
 
 export function TemplateEditor() {
   const dialog = useMeasure((s) => s.dialog);

@@ -12,10 +12,10 @@ import mining from './mining.json' with { type: 'json' };
  * The industry template sets (M11 G9, PRD SRV-14, data-conventions section 27): construction,
  * mining and quarry, and landfill, shipped as `SurveyTemplatesFile` JSON next to this file. A site
  * enables one or more in its settings (`templateSets`); the toolbar then shows their templates
- * (each is bookmarked) after the project's and the person's own. Comparison presets that name a
- * design use conventional layer names (`design/og`, `design/subgrade`, `design/pad`,
- * `cell-design/cell-base`, `cell-design/final-cap`); a project with other names picks its own
- * layers in the comparison, and until then the item says the design is missing.
+ * (each is bookmarked) after the project's and the person's own. Comparison presets that compare
+ * to a design name no design id: their design side is a role to pick (`design-pick`: `og`,
+ * `subgrade`, `pad`, `cell-base`, `final-cap`), which the site picks a layer for the first time
+ * the template is used (`designRoles.ts`).
  */
 const FILES: Record<IndustrySetId, unknown> = { construction, mining, landfill };
 

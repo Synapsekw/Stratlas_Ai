@@ -11,6 +11,7 @@ import {
   type SurveyTemplatesFile,
 } from '@aio/schema';
 import { DEFAULT_ITEMS, ITEM_LABELS, TOOL_FAMILY, TOOL_LABELS } from '../tools/readout';
+import { resolvePreset, type RolePicks } from './designRoles';
 
 /**
  * Measurement templates (data-conventions section 27): the model and the editor's logic. A
@@ -262,16 +263,23 @@ export const bookmarks = (lib: readonly LibraryTemplate[]): LibraryTemplate[] =>
 
 // ---------------------------------------------------------------- measurements from templates
 
-/** Comparison items for a template's presets, with fresh ids. */
+/**
+ * Comparison items for a template's presets, with fresh ids. A design layer a preset leaves to pick
+ * takes the site's pick (`picks`, `SurveySettings.designRoles`); a preset whose role has no pick
+ * is left out (the app asks for the layer before a template is used, `missingRoles`).
+ */
 export function itemsFromPresets(
   presets: readonly ComparisonPreset[],
   taken: Iterable<string> = [],
+  picks: RolePicks = {},
 ): ComparisonItem[] {
   const used = new Set(taken);
-  return presets.map((p, i) => {
+  return presets.flatMap((preset, i) => {
+    const p = resolvePreset(preset, picks);
+    if (!p) return [];
     const id = uniqueId(p.label ?? `comparison-${String(i + 1)}`, used, 'comparison');
     used.add(id);
-    return ComparisonItem.parse({ ...p, id });
+    return [ComparisonItem.parse({ ...p, id })];
   });
 }
 
@@ -285,8 +293,15 @@ export interface NewMeasurement {
   folder?: string | undefined;
 }
 
-/** A measurement drawn with a template (or with a bare tool when `t` is a tool). */
-export function measurementFrom(t: SurveyTemplate | MeasurementTool, m: NewMeasurement) {
+/**
+ * A measurement drawn with a template (or with a bare tool when `t` is a tool); `picks` are the
+ * site's design layers for the template's roles.
+ */
+export function measurementFrom(
+  t: SurveyTemplate | MeasurementTool,
+  m: NewMeasurement,
+  picks: RolePicks = {},
+) {
   const tool = typeof t === 'string' ? t : t.tool;
   const out: SurveyMeasurement = {
     id: m.id,
@@ -295,7 +310,7 @@ export function measurementFrom(t: SurveyTemplate | MeasurementTool, m: NewMeasu
     label: m.label.slice(0, 200) || TOOL_LABELS[tool],
     scope: m.scope,
     points: m.points,
-    items: typeof t === 'string' ? [] : itemsFromPresets(t.comparisons),
+    items: typeof t === 'string' ? [] : itemsFromPresets(t.comparisons, [], picks),
     results: [],
     createdAt: m.createdAt,
   };
@@ -317,6 +332,7 @@ export function changeTemplate(
   m: SurveyMeasurement,
   t: SurveyTemplate | null,
   now: string,
+  picks: RolePicks = {},
 ): SurveyMeasurement | null {
   if (!t) {
     const next = { ...m, updatedAt: now };
@@ -325,7 +341,10 @@ export function changeTemplate(
   }
   if (t.family !== m.family) return null;
   const have = new Set(m.items.map((i) => JSON.stringify([i.from, i.to])));
-  const missing = t.comparisons.filter((p) => !have.has(JSON.stringify([p.from, p.to])));
+  const missing = t.comparisons.flatMap((preset) => {
+    const p = resolvePreset(preset, picks);
+    return p && !have.has(JSON.stringify([p.from, p.to])) ? [p] : [];
+  });
   const room = Math.max(0, 20 - m.items.length);
   const next: SurveyMeasurement = {
     ...m,

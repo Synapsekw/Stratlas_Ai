@@ -6,16 +6,16 @@
       "name": "Cell progress",
       "family": "polygon",
       "tool": "volume",
-      "description": "Waste placed in a cell so far (the cell base design to the survey) and the airspace left to the final cap design. Pick your design's layers when they are not cell-base and final-cap of cell-design.",
+      "description": "Waste placed in a cell so far (the cell base design to the survey) and the airspace left to the final cap design. The first time it is used, pick the design layers for the cell base and the final cap.",
       "items": ["fill", "net", "area"],
       "fields": [],
       "comparisons": [
         {
           "label": "Placed so far",
           "from": {
-            "kind": "design",
-            "design": "cell-design",
-            "layer": "cell-base"
+            "kind": "design-pick",
+            "role": "cell-base",
+            "hint": "Cell base"
           },
           "to": {
             "kind": "current"
@@ -28,9 +28,9 @@
             "kind": "current"
           },
           "to": {
-            "kind": "design",
-            "design": "cell-design",
-            "layer": "final-cap"
+            "kind": "design-pick",
+            "role": "final-cap",
+            "hint": "Final cap"
           },
           "useDeadband": false
         }
@@ -79,9 +79,9 @@
             "kind": "current"
           },
           "to": {
-            "kind": "design",
-            "design": "cell-design",
-            "layer": "final-cap"
+            "kind": "design-pick",
+            "role": "final-cap",
+            "hint": "Final cap"
           },
           "useDeadband": false
         }
@@ -162,9 +162,9 @@
             "kind": "current"
           },
           "to": {
-            "kind": "design",
-            "design": "cell-design",
-            "layer": "final-cap"
+            "kind": "design-pick",
+            "role": "final-cap",
+            "hint": "Final cap"
           },
           "useDeadband": false
         }

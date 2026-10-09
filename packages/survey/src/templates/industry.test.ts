@@ -2,12 +2,13 @@ import {
   ComparisonItem,
   ComparisonPreset,
   IndustrySet,
-  isSurfaceSide,
+  isPresetSurfaceSide,
   SurveyTemplate,
   SurveyTemplatesFile,
 } from '@aio/schema';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { designRolesOf } from './designRoles';
 import { availableItems, itemsFromPresets, templateLibrary, templateProblems } from './model';
 import { industrySet, industryTemplates, INDUSTRY_SET_LABELS } from './industry';
 import { TOOL_FAMILY } from '../tools/readout';
@@ -75,14 +76,30 @@ describe('industry template sets', () => {
           else expect(t.comparisons.length, t.id).toBeGreaterThan(0);
           for (const p of t.comparisons) {
             expect(ComparisonPreset.safeParse(p).success, `${t.id} ${p.label ?? ''}`).toBe(true);
-            expect(isSurfaceSide(p.from) || isSurfaceSide(p.to), t.id).toBe(true);
+            expect(isPresetSurfaceSide(p.from) || isPresetSurfaceSide(p.to), t.id).toBe(true);
             // a deadband preset says so explicitly, never a silent default
             if (p.useDeadband) expect(p.deadbandM, t.id).toBeGreaterThan(0);
           }
-          // a measurement made from it gets valid comparison items
-          for (const it of itemsFromPresets(t.comparisons))
-            expect(ComparisonItem.safeParse(it).success, t.id).toBe(true);
+          // a measurement made from it, its design layers picked, gets valid comparison items
+          const picks = Object.fromEntries(
+            designRolesOf(t).map((r) => [r.role, { design: 'site-design', layer: `${r.role}-1` }]),
+          );
+          const items = itemsFromPresets(t.comparisons, [], picks);
+          expect(items, t.id).toHaveLength(t.comparisons.length);
+          for (const it of items) expect(ComparisonItem.safeParse(it).success, t.id).toBe(true);
         }
+      });
+
+      it('names no design id: a design side is a role to pick, with its hint', () => {
+        for (const t of industrySet(set))
+          for (const p of t.comparisons)
+            for (const side of [p.from, p.to]) {
+              expect(side.kind, `${t.id} ${p.label ?? ''}`).not.toBe('design');
+              if (side.kind === 'design-pick') {
+                expect(['og', 'subgrade', 'pad', 'cell-base', 'final-cap']).toContain(side.role);
+                expect(side.hint.length).toBeGreaterThan(0);
+              }
+            }
       });
 
       it('has no em or en dashes in what a person reads', () => {

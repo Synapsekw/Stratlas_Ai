@@ -15,6 +15,7 @@ import {
   TOOL_LABELS,
   vertexTable,
   formatBearing,
+  type RolePicks,
 } from '@aio/survey';
 import { Icon } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
@@ -33,6 +34,7 @@ import {
   stopEditing,
   updateMeasurement,
   useMeasure,
+  withDesignLayers,
 } from './measureStore';
 import { Calculators } from './Calculators';
 import { Comparisons } from './Comparison';
@@ -134,12 +136,14 @@ export function MeasurementPanel() {
             disabled={ro}
             data-testid="survey-template"
             onChange={(e) => {
-              const next = changeTemplate(
-                m,
-                family.find((t) => t.id === e.target.value) ?? null,
-                new Date().toISOString(),
-              );
-              if (next) replaceMeasurement(next);
+              const t = family.find((x) => x.id === e.target.value) ?? null;
+              const apply = (picks: RolePicks) => {
+                const next = changeTemplate(m, t, new Date().toISOString(), picks);
+                if (next) replaceMeasurement(next);
+              };
+              // a template that compares to a design asks for its layers first (G9 sets)
+              if (t) void withDesignLayers(t, apply);
+              else apply({});
             }}
           >
             <option value="">None ({TOOL_LABELS[m.tool]})</option>

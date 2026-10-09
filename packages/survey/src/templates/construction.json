@@ -6,21 +6,21 @@
       "name": "OG to subgrade design",
       "family": "polygon",
       "tool": "volume",
-      "description": "Bulk earthworks of the design: original ground to the subgrade design, both design surfaces (exact). Pick your design's layers in the comparison when they are not called og and subgrade.",
+      "description": "Bulk earthworks of the design: original ground to the subgrade design, both design surfaces (exact). The first time it is used, pick the design layers for original ground and subgrade.",
       "items": ["cut", "fill", "net", "total", "area"],
       "fields": [],
       "comparisons": [
         {
           "label": "OG to subgrade",
           "from": {
-            "kind": "design",
-            "design": "design",
-            "layer": "og"
+            "kind": "design-pick",
+            "role": "og",
+            "hint": "Original ground (OG)"
           },
           "to": {
-            "kind": "design",
-            "design": "design",
-            "layer": "subgrade"
+            "kind": "design-pick",
+            "role": "subgrade",
+            "hint": "Subgrade"
           },
           "useDeadband": false
         }
@@ -44,9 +44,9 @@
         {
           "label": "OG to survey",
           "from": {
-            "kind": "design",
-            "design": "design",
-            "layer": "og"
+            "kind": "design-pick",
+            "role": "og",
+            "hint": "Original ground (OG)"
           },
           "to": {
             "kind": "current"
@@ -76,9 +76,9 @@
             "kind": "current"
           },
           "to": {
-            "kind": "design",
-            "design": "design",
-            "layer": "subgrade"
+            "kind": "design-pick",
+            "role": "subgrade",
+            "hint": "Subgrade"
           },
           "useDeadband": false
         },
@@ -88,9 +88,9 @@
             "kind": "current"
           },
           "to": {
-            "kind": "design",
-            "design": "design",
-            "layer": "subgrade"
+            "kind": "design-pick",
+            "role": "subgrade",
+            "hint": "Subgrade"
           },
           "useDeadband": true,
           "deadbandM": 0.05
@@ -162,9 +162,9 @@
             "kind": "current"
           },
           "to": {
-            "kind": "design",
-            "design": "design",
-            "layer": "pad"
+            "kind": "design-pick",
+            "role": "pad",
+            "hint": "Pad"
           },
           "useDeadband": true,
           "deadbandM": 0.03
