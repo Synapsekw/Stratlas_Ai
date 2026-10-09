@@ -1,9 +1,16 @@
 // @vitest-environment jsdom
 import type { Capture, HeightTiles, ProjectManifest, SurveyQa } from '@aio/schema';
-import { TerrainEdit } from '@aio/schema';
+import { SurveyCleanupParams, TerrainEdit } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { editFrom, extentRing } from './qaHelpers';
-import { isHeld, sourceOfCapture, surfaceOfCapture } from './qaStore';
+import {
+  cloudLayers,
+  DTM_PRESETS,
+  dtmFilterBlock,
+  isHeld,
+  sourceOfCapture,
+  surfaceOfCapture,
+} from './qaStore';
 import { groupByMonth } from './SurveyPicker';
 
 const surface = (id: string, kind: 'dsm' | 'cloud' | 'dtm', capture?: string): HeightTiles => ({
@@ -95,5 +102,25 @@ describe('survey QA helpers', () => {
     expect(isHeld(qa('released'))).toBe(false);
     expect(isHeld(qa('pass'))).toBe(false);
     expect(isHeld(undefined)).toBe(false);
+  });
+
+  it('says why the DTM filter cannot run: no cloud layer, no pipeline pack, no PDAL', () => {
+    const none = { layers: [] } as unknown as Pick<ProjectManifest, 'layers'>;
+    const cloud = {
+      layers: [
+        { id: 'pc-d1', kind: 'pointcloud', name: 'Survey 1 cloud', capture: 'd1' },
+        { id: 'dsm-d1', kind: 'raster', name: 'Survey 1 DSM', role: 'dsm' },
+      ],
+    } as unknown as Pick<ProjectManifest, 'layers'>;
+    expect(cloudLayers(cloud)).toEqual([{ id: 'pc-d1', name: 'Survey 1 cloud', capture: 'd1' }]);
+    expect(dtmFilterBlock(none, { found: true, pdal: true })).toMatch(/has none/);
+    expect(dtmFilterBlock(cloud, null)).toMatch(/Checking/);
+    expect(dtmFilterBlock(cloud, { found: false })).toMatch(/not installed/);
+    expect(dtmFilterBlock(cloud, { found: true, pdal: false })).toMatch(/PDAL/);
+    expect(dtmFilterBlock(cloud, { found: true, pdal: true })).toBeNull();
+    // the four presets of survey.cleanup's schema, in order
+    expect(DTM_PRESETS.map((p) => p.id)).toEqual(
+      SurveyCleanupParams.shape.dtmFilter.unwrap().shape.preset.options,
+    );
   });
 });

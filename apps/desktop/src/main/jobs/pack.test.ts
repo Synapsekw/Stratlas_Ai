@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { compareVersions, findPack } from './pack';
+import { compareVersions, findPack, findPdal } from './pack';
 
 let root: string;
 
@@ -87,5 +87,34 @@ describe('findPack', () => {
     expect(compareVersions('0.10.0', '0.9.1')).toBeGreaterThan(0);
     expect(compareVersions('1.0.0', '1.0.0')).toBe(0);
     expect(compareVersions('1.0.0-rc1', '1.0.0')).toBeLessThan(0);
+  });
+});
+
+describe('findPdal', () => {
+  it('finds tools/pdal beside a pack, beside a venv, through AIO_PDAL or the PATH', async () => {
+    const pack = await writePack('0.5.0');
+    const python = join(pack, 'python', 'python.exe');
+    expect(await findPdal({ python }, {}, 'win32')).toBeNull();
+    const exe = join(pack, 'tools', 'pdal', 'Library', 'bin', 'pdal.exe');
+    await mkdir(join(pack, 'tools', 'pdal', 'Library', 'bin'), { recursive: true });
+    await writeFile(exe, '');
+    expect(await findPdal({ python }, {}, 'win32')).toBe(exe);
+
+    // a development venv: python/.venv/Scripts/python.exe looks in python/tools/pdal
+    const venv = join(root, 'python', '.venv', 'Scripts', 'python.exe');
+    expect(await findPdal({ python: venv }, {}, 'win32')).toBeNull();
+    const dev = join(root, 'python', 'tools', 'pdal', 'bin', 'pdal.exe');
+    await mkdir(join(root, 'python', 'tools', 'pdal', 'bin'), { recursive: true });
+    await writeFile(dev, '');
+    expect(await findPdal({ python: venv }, {}, 'win32')).toBe(dev);
+
+    const onPath = join(root, 'path-bin');
+    await mkdir(onPath);
+    await writeFile(join(onPath, 'pdal.exe'), '');
+    expect(await findPdal(null, { PATH: `${join(root, 'nothing')};${onPath}` }, 'win32')).toBe(
+      join(onPath, 'pdal.exe'),
+    );
+    expect(await findPdal(null, { AIO_PDAL: exe }, 'win32')).toBe(exe);
+    expect(await findPdal(null, { AIO_PDAL: join(root, 'missing.exe') }, 'win32')).toBeNull();
   });
 });

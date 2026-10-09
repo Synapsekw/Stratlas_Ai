@@ -349,6 +349,71 @@ export async function runCleanup(surface: string): Promise<void> {
   }
 }
 
+// ------------------------------------------------------------------------------------ DTM filter
+
+export type DtmPreset = 'equipment' | 'equipment-vegetation' | 'structures' | 'everything';
+
+/** The DTM filter presets of `survey.cleanup` (PDAL smrf or csf), with what each removes. */
+export const DTM_PRESETS: { id: DtmPreset; label: string; hint: string }[] = [
+  { id: 'equipment', label: 'Equipment', hint: 'Parked plant and other small objects' },
+  {
+    id: 'equipment-vegetation',
+    label: 'Equipment and vegetation',
+    hint: 'Plant, bushes and trees',
+  },
+  { id: 'structures', label: 'Structures', hint: 'Buildings and other large objects as well' },
+  { id: 'everything', label: 'Everything above the ground', hint: 'Cloth simulation (CSF)' },
+];
+
+/** What the pipeline pack offers here (`app:setupStatus`), for the DTM filter. */
+export interface PipelineTools {
+  found: boolean;
+  pdal?: boolean | undefined;
+}
+
+/** The point cloud layers of a project, the sources of a DTM filter. */
+export function cloudLayers(
+  manifest: Pick<ProjectManifest, 'layers'>,
+): { id: string; name: string; capture?: string }[] {
+  return manifest.layers
+    .filter((l) => l.kind === 'pointcloud')
+    .map((l) => ({ id: l.id, name: l.name, ...(l.capture ? { capture: l.capture } : {}) }));
+}
+
+/** Why the DTM filter cannot run here (no cloud layer, no pipeline pack, no PDAL), or null. */
+export function dtmFilterBlock(
+  manifest: Pick<ProjectManifest, 'layers'>,
+  tools: PipelineTools | null,
+): string | null {
+  if (cloudLayers(manifest).length === 0)
+    return 'The DTM filter works on a point cloud, and this project has none.';
+  if (!tools) return 'Checking the pipeline pack…';
+  if (!tools.found) return 'The DTM filter runs in the pipeline pack, which is not installed.';
+  if (tools.pdal === false)
+    return 'The DTM filter runs in PDAL, which the pipeline pack here does not have. Install the full pipeline pack.';
+  return null;
+}
+
+/** A DTM from a cloud layer with a filter preset, as a new prepared surface `<capture>-dtm`. */
+export async function runDtmFilter(layer: string, preset: DtmPreset): Promise<void> {
+  if (get().busy || get().readOnly) return;
+  set({ busy: 'Filtering the ground', message: null });
+  try {
+    const err = await run('survey.cleanup', { dtmFilter: { layer, preset } });
+    await refreshQa();
+    set({
+      message: err
+        ? { kind: 'error', text: err }
+        : {
+            kind: 'ok',
+            text: 'The DTM is ready as a new surface; pick it in a comparison to use it.',
+          },
+    });
+  } finally {
+    set({ busy: null });
+  }
+}
+
 /** For tests: back to an empty store. */
 export function resetQa(): void {
   set({
