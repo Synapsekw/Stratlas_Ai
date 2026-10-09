@@ -139,10 +139,14 @@
     },
     {
       "name": "proj",
-      "version": "9.7 (rasterio 1.5)",
+      "version": "9.7 (rasterio 1.5), 9.8 (pyproj 3.8)",
       "spdx": "MIT",
       "source": "https://github.com/OSGeo/PROJ",
-      "files": ["**/rasterio.libs/proj*.dll", "**/.dylibs/libproj*.dylib"],
+      "files": [
+        "**/rasterio.libs/proj*.dll",
+        "**/pyproj.libs/proj*.dll",
+        "**/.dylibs/libproj*.dylib"
+      ],
       "linkage": "shared"
     },
     {
