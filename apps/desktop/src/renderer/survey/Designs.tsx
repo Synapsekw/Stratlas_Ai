@@ -11,16 +11,20 @@ import { useEffect, useState } from 'react';
 import { PopTool } from '../workspace/StageTools';
 import { ActiveAlignmentNote, AlignmentControls } from './Alignments';
 import { ComplianceSection } from './Compliance';
+import { DesignImportOptions } from './DesignImport';
+import type { DesignProbe } from './designImportForm';
 import {
   designFileUrl,
   flyToLayer,
-  importDesign,
   loadDesigns,
   patchDesign,
   patchLayer,
+  pickDesignFile,
+  probeDesignFile,
   useDesigns,
   watchImports,
 } from './designsStore';
+import './designs.css';
 
 const KIND_LABEL: Record<DesignLayer['kind'], string> = {
   surface: 'Surface',
@@ -233,6 +237,7 @@ export function DesignsPanel() {
   const error = useDesigns((s) => s.error);
   const busy = useDesigns((s) => s.busy);
   const [importError, setImportError] = useState<string | null>(null);
+  const [pending, setPending] = useState<{ path: string; probe: DesignProbe | null } | null>(null);
   const projectId = project?.id ?? null;
   const readOnly = useAnnotateReadOnly();
   useEffect(() => {
@@ -248,14 +253,32 @@ export function DesignsPanel() {
         <strong>Designs</strong>
         <button
           type="button"
-          disabled={readOnly}
+          disabled={readOnly || pending !== null}
           onClick={() => {
-            void importDesign().then(setImportError);
+            setImportError(null);
+            void pickDesignFile().then(async (r) => {
+              if (!r) return;
+              if ('error' in r) {
+                setImportError(r.error);
+                return;
+              }
+              setPending({ path: r.path, probe: await probeDesignFile(r.path) });
+            });
           }}
         >
           Import design
         </button>
       </div>
+      {pending && (
+        <DesignImportOptions
+          path={pending.path}
+          probe={pending.probe}
+          onClose={(e) => {
+            setPending(null);
+            setImportError(e);
+          }}
+        />
+      )}
       <ActiveAlignmentNote />
       {(error ?? importError) && (
         <p className="pop-note" role="alert">
