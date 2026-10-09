@@ -8,6 +8,7 @@ plan (agreement within 1% of cells) is skipped; the analytic truths below are as
 
 from __future__ import annotations
 
+import itertools
 import json
 import math
 from pathlib import Path
@@ -15,11 +16,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from aio_pipelines.hydro import dem
 from aio_pipelines.hydro.flood import HydroFlood
+from aio_pipelines.hydro.flow import HydroFlow
 from aio_pipelines.runtime import JobError
 from aio_pipelines.survey.grid import TILE, encode_tile
 from conftest import run_job
-from survey_synth import Grid, bowl
+from survey_synth import Grid, bowl, catchment
 
 # ------------------------------------------------------------------------------------ fixtures
 
@@ -222,3 +225,151 @@ def test_flood_parameters_are_checked(params, message):
 def test_a_missing_surface_is_a_clear_error(tmp_path):
     with pytest.raises(JobError, match="is not prepared"):
         run_job(HydroFlood(), tmp_path, {"surface": "nope", "levelM": 1, "mode": "all-below"})
+
+
+# ---------------------------------------------------------------------------------- flow routing
+
+
+def v_grid(res: float):
+    """G13's V catchment over a whole number of cells either side of the channel, so the channel
+    runs along a column of cell centres (its half-size grows by half a cell)."""
+    half = 50.0 + res / 2
+    s = catchment(half=half)
+    return s, s.grid(res, half=half)
+
+
+def test_priority_flood_fills_a_pit_and_every_cell_drains():
+    z = np.array(
+        [[5, 5, 5, 5, 5], [5, 2, 2, 2, 5], [5, 2, 1, 2, 5], [5, 2, 2, 2, 4.5], [5, 5, 5, 5, 5]], float
+    )
+    fl = dem.priority_flood(z)
+    inner = fl.filled[1:4, 1:4]
+    assert np.all(inner > 4.5) and np.all(inner < 4.5 + 1e-9)
+    assert fl.order.size == z.size and sorted(fl.order.tolist()) == list(range(z.size))
+    rt = dem.routing(fl.filled, "d8")
+    # every cell reaches the grid's edge
+    for c in range(z.size):
+        assert dem.trace(rt, c)[-1] in {k for k in range(z.size) if rt.d8r[k] < 0}
+    # breaching carves the spill path instead: the pit keeps its height, the outlet is lowered
+    b = dem.breach(z, fl)
+    assert b[2, 2] == 1.0 and b[3, 4] < 1.0
+    assert np.all(b <= z)
+
+
+@pytest.mark.parametrize("res", [1.0, 0.5])
+def test_the_v_catchment_pour_point_is_exact_and_its_area_within_one_perimeter_cell(tmp_path, res):
+    s, g = v_grid(res)
+    write_grid(tmp_path, "v", g)
+    truth = s.truth["catchmentAreaM2"]
+    tol = 4 * g.width * res * res  # the catchment's perimeter times one cell
+    for method in ("d8", "dinf"):
+        result, _ = run_job(
+            HydroFlow(), tmp_path, {"surface": "v", "mode": "catchment", "method": method}, job_id=method
+        )
+        doc = run_of(tmp_path, result["outputs"]["commit"])
+        (out,) = doc["results"]["outlets"]
+        assert out["pourPoint"] == pytest.approx([s.centre[0], s.centre[1] - g.width * res / 2], abs=1e-9)
+        if method == "dinf":
+            assert abs(out["contributingAreaM2"] - truth) <= tol
+        elif res == 1.0:
+            # D8 cannot send water off the edge at the plane's true angle, so only at 1 m
+            assert abs(out["areaM2"] - truth) <= tol
+        gj = json.loads((tmp_path / doc_path(doc) / "catchments.geojson").read_text("utf-8"))
+        assert gj["features"][0]["properties"]["areaM2"] == pytest.approx(out["areaM2"], abs=0.1)
+
+
+def doc_path(doc: dict) -> str:
+    return f"survey/hydro/{doc['id']}"
+
+
+def test_a_given_outlet_snaps_to_the_channel_and_nested_outlets_split_the_catchment(tmp_path):
+    s, g = v_grid(1.0)
+    write_grid(tmp_path, "v", g)
+    e0, n0 = s.centre
+    outlets = [[e0 + 2.0, n0 - 50.5], [e0 - 1.0, n0]]
+    result, _ = run_job(HydroFlow(), tmp_path, {"surface": "v", "mode": "catchment", "outlets": outlets})
+    lo, mid = run_of(tmp_path, result["outputs"]["commit"])["results"]["outlets"]
+    assert lo["pourPoint"] == pytest.approx([e0, n0 - 50.5], abs=1e-9)
+    # snapped to the largest accumulation within 5 m: down the channel
+    assert mid["pourPoint"][0] == e0 and n0 - 5.5 <= mid["pourPoint"][1] < n0
+    # the upper outlet takes the valley upstream of it
+    up = s.centre[1] + 50.5 - mid["pourPoint"][1]
+    assert mid["areaM2"] == pytest.approx(101 * up, rel=0.03)
+    assert lo["areaM2"] + mid["areaM2"] == pytest.approx(101 * 101, rel=1e-9)
+
+
+@pytest.mark.parametrize("method", ["d8", "dinf"])
+def test_a_runoff_path_ends_at_the_pour_point(tmp_path, method):
+    s, g = v_grid(1.0)
+    write_grid(tmp_path, "v", g)
+    e0, n0 = s.centre
+    drop = [e0 - 30.2, n0 + 40.3]
+    result, _ = run_job(
+        HydroFlow(), tmp_path, {"surface": "v", "mode": "runoff", "drop": drop, "method": method}
+    )
+    doc = run_of(tmp_path, result["outputs"]["commit"])
+    path = doc["results"]["path"]
+    assert path["end"] == pytest.approx([e0, n0 - 50.5], abs=1e-9)
+    assert path["leavesSurface"] is True and path["start"] == drop
+    assert path["fallM"] == pytest.approx(
+        float(s.heights(np.array(drop[0]), np.array(drop[1]))) - s.base, abs=0.4
+    )
+    gj = json.loads((tmp_path / doc_path(doc) / "path.geojson").read_text("utf-8"))
+    coords = gj["features"][0]["geometry"]["coordinates"]
+    assert len(coords[0]) == 3 and coords[-1][:2] == pytest.approx([e0, n0 - 50.5], abs=1e-3)
+    chain = gj["features"][0]["properties"]["chainageM"]
+    assert chain[0] == 0 and chain[-1] == pytest.approx(path["lengthM"], abs=0.01)
+    # downhill all the way
+    zs = [c[2] for c in coords]
+    assert all(b <= a + 1e-9 for a, b in itertools.pairwise(zs))
+
+
+def test_streams_follow_the_channel_from_the_threshold(tmp_path):
+    s, g = v_grid(1.0)
+    write_grid(tmp_path, "v", g)
+    result, _ = run_job(HydroFlow(), tmp_path, {"surface": "v", "mode": "streams", "streamAreaM2": 2000})
+    doc = run_of(tmp_path, result["outputs"]["commit"])
+    assert doc["results"]["streamAreaM2"] == 2000 and doc["results"]["streamLinks"] >= 1
+    gj = json.loads((tmp_path / doc_path(doc) / "streams.geojson").read_text("utf-8"))
+    xs = [c[0] for f in gj["features"] for c in f["geometry"]["coordinates"]]
+    assert max(abs(x - s.centre[0]) for x in xs) < 1e-6  # all on the channel
+    # the stream starts where the channel has drained 2,000 m² (about 20 rows from the top)
+    ys = [c[1] for f in gj["features"] for c in f["geometry"]["coordinates"]]
+    assert s.centre[1] + 50.5 - max(ys) == pytest.approx(20, abs=2)
+
+
+def test_a_flat_area_with_a_pit_drains_after_filling_or_breaching(tmp_path):
+    w, e, n = two_basins(tmp_path)
+    for dep in ("fill", "breach"):
+        result, _ = run_job(
+            HydroFlow(),
+            tmp_path,
+            {"surface": "pits", "mode": "runoff", "drop": [w + 3, n], "depressions": dep},
+            job_id=dep,
+        )
+        path = run_of(tmp_path, result["outputs"]["commit"])["results"]["path"]
+        assert path["leavesSurface"] is True
+
+
+@pytest.mark.parametrize(
+    "params, message",
+    [
+        ({"surface": "s", "mode": "runoff"}, "Runoff needs a drop point"),
+        ({"surface": "s", "mode": "catchment", "method": "mfd"}, "method must be one of"),
+        ({"surface": "s", "mode": "streams", "streamAreaM2": 0}, "streamAreaM2 must be a positive area"),
+        ({"surface": "s", "mode": "catchment", "outlets": [[0, 0]] * 101}, "up to 100"),
+    ],
+)
+def test_flow_parameters_are_checked(params, message):
+    with pytest.raises(JobError, match=message):
+        HydroFlow().validate(params)
+
+
+def test_a_surface_too_large_for_the_tool_asks_for_a_region(tmp_path, monkeypatch):
+    import aio_pipelines.hydro.flow as flow
+
+    s, g = v_grid(1.0)
+    write_grid(tmp_path, "v", g)
+    monkeypatch.setattr(flow, "MAX_CELLS", 1000)
+    with pytest.raises(JobError, match="Draw a region"):
+        run_job(HydroFlow(), tmp_path, {"surface": "v", "mode": "streams"})

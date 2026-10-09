@@ -69,6 +69,7 @@ BUILT = {
     "design.import",
     "geo.calibration",
     "hydro.flood",
+    "hydro.flow",
     "survey.compare",
     "survey.prepare",
 }
