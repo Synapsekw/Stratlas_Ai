@@ -89,7 +89,9 @@ export function MeasureToolbar() {
   const templates = useMeasure((s) => s.templates);
   const sets = useMeasure((s) => s.settings.templateSets);
   const snap = useMeasure((s) => s.snap);
-  const readOnly = useMeasure((s) => s.readOnly);
+  // a package is read only from the start (main says so too once the measurements are read)
+  const pkg = useShell((s) => s.pkg);
+  const readOnly = useMeasure((s) => s.readOnly) || pkg !== null;
   const overlaysOpen = useOverlays((s) => s.open);
   // the Hydrology panel closes while a point is picked on the map and opens again with it
   const hydroOpen = useHydro((s) => s.open);
@@ -201,8 +203,9 @@ export function MeasureToolbar() {
             </div>
           )}
           {readOnly && (
-            <p className="pop-note">
-              This project is a read-only package: measurements are shown only.
+            <p className="pop-note" data-testid="survey-tools-readonly">
+              This project is a read-only package: measurements, sections and results are shown
+              only.
             </p>
           )}
           <span className="pop-title">Drawing aids</span>
@@ -271,28 +274,32 @@ export function MeasureToolbar() {
             >
               <Icon name="layers" size={12} /> Measurements
             </button>
-            <button
-              type="button"
-              className="btn sm"
-              data-testid="survey-templates-open"
-              onClick={() => {
-                openDialog({ kind: 'templates', edit: null, scope: 'project' });
-                setOpen(false);
-              }}
-            >
-              <Icon name="flag" size={12} /> Templates
-            </button>
-            <button
-              type="button"
-              className="btn sm"
-              data-testid="survey-units-open"
-              onClick={() => {
-                openDialog({ kind: 'units', target: 'site' });
-                setOpen(false);
-              }}
-            >
-              Units
-            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                className="btn sm"
+                data-testid="survey-templates-open"
+                onClick={() => {
+                  openDialog({ kind: 'templates', edit: null, scope: 'project' });
+                  setOpen(false);
+                }}
+              >
+                <Icon name="flag" size={12} /> Templates
+              </button>
+            )}
+            {!readOnly && (
+              <button
+                type="button"
+                className="btn sm"
+                data-testid="survey-units-open"
+                onClick={() => {
+                  openDialog({ kind: 'units', target: 'site' });
+                  setOpen(false);
+                }}
+              >
+                Units
+              </button>
+            )}
             <button
               type="button"
               className="btn sm"
@@ -327,12 +334,13 @@ function useActiveMap(): MapController | null {
 }
 
 /**
- * The workspace mount of the measurements (one per stage, whatever toolbar groups show): none in
- * a package, whose player mode does not draw or edit measurements yet.
+ * The workspace mount of the measurements (one per stage, whatever toolbar groups show). In a
+ * package (player mode) it draws and lists the measurements, sections, overlays and comparison
+ * results read only: main reads them from the package in place and refuses every write and job,
+ * and the panels hide their edit, run and save controls (`readOnly`).
  */
 export function MeasureMount({ stage }: { stage: EngineStage | null }) {
-  const pkg = useShell((s) => s.pkg);
-  return pkg ? null : <MeasureLayer stage={stage} />;
+  return <MeasureLayer stage={stage} />;
 }
 
 /**
@@ -457,6 +465,11 @@ function DrawBar() {
       data-surface="dark"
     >
       <b>{tool.template?.name ?? TOOL_LABELS[tool.tool]}</b>
+      {tool.prompt && (
+        <span className="small" role="status" data-testid="survey-draw-prompt">
+          {tool.prompt}
+        </span>
+      )}
       <span className="faint small">
         {draw.points.length} {draw.points.length === 1 ? 'point' : 'points'}
         {draw.lockedBearing !== null && ` · locked ${draw.lockedBearing.toFixed(1)}°`}

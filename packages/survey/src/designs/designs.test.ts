@@ -177,7 +177,7 @@ describe('compliance to design', () => {
   it('makes the two design presets as valid comparison items', () => {
     const opts = { id: 'c1', design: 'pad', layer: 'Pad-design', toleranceM: 0.05 };
     const cf = ComparisonItem.parse(designComparisonItem('cut-fill-to-design', opts));
-    expect(cf).toMatchObject({ from: { kind: 'current' }, useDeadband: false });
+    expect(cf).toMatchObject({ from: { kind: 'current' }, useDeadband: false, deadbandM: 0.05 });
     expect(cf.to).toEqual({ kind: 'design', design: 'pad', layer: 'Pad-design' });
     const rem = ComparisonItem.parse(designComparisonItem('remaining-to-design', opts));
     expect(rem).toMatchObject({ deadbandM: 0.05, useDeadband: true, label: 'Remaining to design' });

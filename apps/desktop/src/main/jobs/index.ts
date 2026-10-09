@@ -2,7 +2,7 @@ import type { JobRecord } from '@aio/schema';
 import { join } from 'node:path';
 import { jobDir } from './runner';
 
-export { findPack, type PackInfo } from './pack';
+export { findPack, findPdal, type PackInfo } from './pack';
 export { RpcClient, RpcError } from './rpc';
 export { JobRunner, jobDir, safeJobEvent } from './runner';
 export { JobStore } from './store';

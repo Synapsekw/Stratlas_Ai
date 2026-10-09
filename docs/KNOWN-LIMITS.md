@@ -211,10 +211,9 @@ Current limits only; each is removed from this list when fixed.
 ### Coordinates, geoids and calibration
 
 - The global EGM96 and EGM2008 geoid grids are not bundled in pipeline pack 0.5.0 yet. Until they are, orthometric heights need a geoid pack; a height that needs a missing grid is refused with the pack's name ("Showing heights on this site needs the ... geoid pack, which is not installed."), never shown on the ellipsoid and never downloaded.
-- Regional geoid grids (AUSGeoid2020, GEOID18, OSGM15 with OSTN15, NZGeoid2016, CGG2013a) come only as optional geoid packs, built from PROJ-data files with `tools/maps/geoid-packs.mjs`. Settings has no page to import, list or remove geoid packs yet; the **Heights** list shows what is installed.
-- Calibrations are imported from Trimble JobXML (`.jxl`) and from 12d parameters typed into a small key and value text file. Trimble `.dc` is refused (no public specification of its records); Trimble `.cal` is not read (closed). **Compute from point pairs** runs in the pipeline, but the app has no screen for entering pairs yet.
+- Regional geoid grids (AUSGeoid2020, GEOID18, OSGM15 with OSTN15, NZGeoid2016, CGG2013a) come only as optional geoid packs, built from PROJ-data files with `tools/maps/geoid-packs.mjs`, or imported by you (**Settings**, **Offline maps**, **Geoid packs**, **Import geoid grid**). An imported grid must be a classic GeoTIFF or a GTX in longitude and latitude; BigTIFF is refused. Its licence and attribution are what you state; the app does not check them.
+- Calibrations are imported from Trimble JobXML (`.jxl`) and from 12d parameters typed into a small key and value text file, or computed from point pairs. Trimble `.dc` is refused (no public specification of its records); Trimble `.cal` is not read (closed). Point pairs share one kind of global position (all WGS84 or all grid); a mix needs two files.
 - JobXML sign conventions (rotation, and which coordinates the inclined plane uses) are checked against synthetic files only; the importer keeps the reading that reproduces the file's own residuals. Check it against a real controller job (TESTING, stage M11).
-- A design cannot be given its own CRS in the app yet (neither the Designs panel nor **Jobs**, **Import design** asks for one): it is placed in the project CRS, the CRS the file states, or through the site calibration.
 - Contour intervals, overlay ranges and station fields are typed in metres whatever the site's units.
 
 ### Formats and interop
@@ -222,21 +221,21 @@ Current limits only; each is removed from this list when fixed.
 - No DWG, IFC, TTM or Trimble machine-control files (`.vcl`, `.dsz`, `.svd`, `.svl`): none has a public specification or an agreement with the vendor (M11 decisions 1 and 2). Save DWG as ASCII DXF. The path to machine control is LandXML (or DXF) into Trimble Business Center, which writes the machine files.
 - 12da is read and written from 12d's public description of the format ("12d A File Format"); it is tested against our own files, not yet against files from 12d Model itself.
 - Alignments: horizontal geometry (lines, arcs, clothoid spirals) with station equations is read and written; vertical alignments (profiles) are not.
-- The Designs panel's **Import design** has no options: a DXF without drawing units is refused there, and the units, format and calibration placement are set in **Jobs**, **New job**, **Import design**.
+- **Import design** lists a file's layers from a quick look at it (files up to 64 MB; for a larger one the layer names are typed). Units the file states are always used; a units choice applies only to a file that states none.
 
 ### Volumes, designs and views
 
 - The stockpile kit's `tin` base (a smooth membrane over the toe) differs from the survey engine's `smart` base (a triangulation of the toe line), so the two give different figures. The kit's four bases and their numbers are unchanged; the engine's bases are offered as extra choices under **More bases (survey engine)**, and the register and totals keep the kit's bases. Which one the kit should show is a founder decision still open.
-- Terrain overlays (contours, gradient, elevation, shaded relief) draw on the 2D map only, not in the 3D view. Design surfaces and linework are not drawn in either view: they show in sections, snapping, the station readout, comparisons and exports.
-- The **Compliance to design** buttons (**Cut/Fill to design**, **Remaining to design**) only point to the comparisons ("Open Volumes and comparisons to compute it."); set up the design comparison in a polygon's **Comparisons**. The share of the area within tolerance is in the survey report, not in the panel.
+- Terrain overlays (contours, gradient, elevation, shaded relief) draw on the 2D map only, not in the 3D view.
+- Designs in the views: alignments have no vertical geometry, so they are drawn on the terrain; the 3D view labels at most 300 stations of an alignment (every few at a short interval). A surface layer shows on the map as its outline only.
 - Hydrology results show on the 2D map only.
-- Packages (player mode) do not show survey measurements, sections or terrain overlays yet; the QA hold banner, saved hydrology runs and haul-road results show read-only.
-- The DTM filter presets for point clouds (equipment, vegetation, structures) run in the pipeline but have no button in the app yet.
+- Packages (player mode) show the survey measurements, sections, overlays, comparison results, designs, QA status, hydrology runs and haul-road results read only. Nothing is computed or saved there: a section cannot be downloaded, a stale result stays stale, and the survey exports are not offered.
+- The DTM filter presets (equipment, vegetation, structures, everything) need a point cloud layer and PDAL in the pipeline pack; without either, the button in **Cleanup and crop** is greyed out with the reason.
 - The local AI helpers (M11 G12: **Suggest boundaries** and the AI cut and fill breakdown) are not built; they wait for the founder's go-ahead. **Whole site cut and fill** suggests rule-based regions as drafts.
 
 ### Hydrology and haul road
 
 - Direct rainfall is a simplified model: a local-inertial 2D solver on a regular grid (2, 1 or 0.5 m) with one Manning's n and one constant infiltration rate for the whole area; no pipes, culverts or buildings.
-- Hydrology runs refuse areas above their cell limits: flood to level 25 million cells, runoff and catchment 4 million, direct rainfall 4 million. The refusal asks for a region, but the app has no control to draw one yet, so a larger site has to be run on a coarser surface.
+- Hydrology runs read at most a bounded number of cells: flood to level 25 million, runoff and catchment 4 million, direct rainfall 4 million. A larger surface needs a **Region** (an area or volume measurement); the region is its bounding box clipped to the surface, so cells outside the polygon but inside its box count too.
 - Hydrology is checked against analytic truths (a bowl, a V-shaped catchment, a tilted plane); WhiteboxTools is not used as a second opinion.
 - A haul-road centreline is a design alignment, a design polyline or a drawn line; proposing one from the surface is not built.

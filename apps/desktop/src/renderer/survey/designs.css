@@ -1,0 +1,39 @@
+/* Designs panel (M11 G6): its pop and the import options step. Mission tokens only. */
+.design-import {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 8px;
+  min-width: 0;
+}
+.design-import fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.design-import .pop-row > select,
+.design-import .pop-row > input:not([type='checkbox']) {
+  flex: 1;
+  min-width: 0;
+}
+.design-import-crs,
+.design-import-layers {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  max-height: 160px;
+  overflow: auto;
+}
+.design-import-crs .btn {
+  justify-content: flex-start;
+  text-align: left;
+  width: 100%;
+}
+/* the Designs pop (its own, not the Survey measurements popover it nests in). It stays on the
+   stage and scrolls when the stage is short (workspace/popPlacement.ts). */
+.stage-pop.wide:has(> .designs-panel) {
+  width: 360px;
+}
+.designs-panel,
+.designs-panel > * {
+  min-width: 0;
+}

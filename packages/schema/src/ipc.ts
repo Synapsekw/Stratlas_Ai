@@ -43,7 +43,7 @@ import { Id, Sha256Hex } from './common';
 import { ExchangeKind, ExchangePreview, Heads, TeamProjectId } from './exchange';
 import { ActorId, DeviceId, Identity, Initials, Member, PersonName, Role } from './identity';
 import { LaunchSettings } from './launch';
-import { DesignsFile } from './designs';
+import { DesignFormat, DesignsFile, DesignSourceUnits } from './designs';
 import { HydroRun } from './hydro';
 import { HaulRun } from './haul';
 import { CrsCatalogueEntry, GeoidPackId, GeoidPackMeta, SiteCalibration } from './geodesy';
@@ -185,6 +185,8 @@ export const SetupStatus = z.object({
     found: z.boolean(),
     version: z.string().optional(),
     problem: z.string().optional(),
+    /** PDAL was found (the pack's `tools/pdal`, `AIO_PDAL` or the PATH): DTM filter presets. */
+    pdal: z.boolean().optional(),
   }),
 });
 
@@ -2347,6 +2349,24 @@ export const ipc = {
   'survey:writeDesigns': {
     request: z.object({ projectId: ProjectId, file: DesignsFile }).strict(),
     response: OkOrFailure,
+  },
+  /**
+   * A quick look at a design file before **Import design** (no job): the format, the units the
+   * file states and its source layer names, read in main from a file the person picked. `partial`
+   * when the file is too large to read whole (the layers may then be incomplete).
+   */
+  'survey:probeDesign': {
+    request: z.object({ path: z.string().min(1).max(1024) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        format: DesignFormat.nullable(),
+        units: DesignSourceUnits.nullable(),
+        layers: z.array(z.string().max(200)).max(1000),
+        partial: z.boolean(),
+      }),
+      Failure,
+    ]),
   },
   /** Prepared surfaces (`tiles.json` in each `survey/surfaces/<id>/`), for the From and To pickers (G2). */
   'survey:surfaces': {

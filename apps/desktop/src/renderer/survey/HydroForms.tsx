@@ -3,11 +3,26 @@
  * seed or every cell below), **Runoff** (a drop point), **Catchment** (outlets, or the main outlet,
  * and the stream threshold) and **Direct rainfall** (a rainfall CSV, Manning's n, infiltration,
  * the cell and the duration). Each starts its job through `hydroStore.ts`; points are typed as
- * "E, N" or picked on the map.
+ * "E, N" or picked on the map. Each run can be limited to a **Region**: an area or volume
+ * measurement, picked from the list or drawn there and then; a surface above the tool's cell limit
+ * asks for one before it runs.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { bridge } from '../shell';
-import { hydro, startHydro, startPick, useDraft, useHydro, type PickKind } from './hydroStore';
+import {
+  hydro,
+  isCellLimitError,
+  regionNeed,
+  startHydro,
+  startPick,
+  useDraft,
+  useHydro,
+  withRegion,
+  type HydroJob,
+  type PickKind,
+  type Ring,
+} from './hydroStore';
+import { startTool, useMeasure } from './measureStore';
 
 /** "551200.5, 2331349" to [E, N], or null. */
 export function parsePoint(text: string): [number, number] | null {
@@ -111,6 +126,97 @@ interface FormProps {
   readOnly: boolean;
 }
 
+/** The polygon measurements a region can come from (area and volume). */
+function useRegionPolygons(): { id: string; label: string; ring: Ring }[] {
+  const measurements = useMeasure((s) => s.file.measurements);
+  return useMemo(
+    () =>
+      measurements
+        .filter((m) => m.family === 'polygon' && m.points.length >= 3)
+        .map((m) => ({
+          id: m.id,
+          label: m.label,
+          ring: m.points.map((p): [number, number] => [p[0], p[1]]),
+        })),
+    [measurements],
+  );
+}
+
+/** Polygons there were when **Draw a region** started: the first new one becomes the region. */
+let drawingFrom: Set<string> | null = null;
+
+/**
+ * The run's region (shared by the four tools): a polygon measurement or the whole surface, and
+ * why the run needs one (above the cell limit) or another one (it misses the surface).
+ */
+function useRegion(
+  pipeline: HydroJob,
+  surfaceId: string,
+  cellM?: number,
+): { ring: Ring | null; need: string | null; field: ReactNode } {
+  const [id, setId] = useDraft('region', '');
+  const polygons = useRegionPolygons();
+  const surface = useHydro((s) => s.surfaces.find((x) => x.id === surfaceId));
+  const refused = useHydro((s) => isCellLimitError(s.error));
+  const readOnly = useMeasure((s) => s.readOnly);
+  // a region drawn from here becomes the run's region once it is finished
+  useEffect(() => {
+    const from = drawingFrom;
+    if (!from) return;
+    const added = polygons.find((p) => !from.has(p.id));
+    if (added) {
+      drawingFrom = null;
+      setId(added.id);
+    }
+    // setId is a new function each render; only the polygons matter
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [polygons]);
+  const ring = polygons.find((p) => p.id === id)?.ring ?? null;
+  const need = regionNeed(pipeline, surface, ring, cellM);
+  const field = (
+    <div className="hydro-region" data-testid="hydro-region">
+      <label className="pop-row">
+        <span>Region</span>
+        <select
+          value={ring ? id : ''}
+          aria-label="Region"
+          data-testid="hydro-region-pick"
+          onChange={(e) => {
+            setId(e.target.value);
+          }}
+        >
+          <option value="">Whole surface</option>
+          {polygons.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+        {!readOnly && (
+          <button
+            type="button"
+            data-testid="hydro-region-draw"
+            title="Draw an area in the view; it becomes the region when it is finished"
+            onClick={() => {
+              drawingFrom = new Set(polygons.map((p) => p.id));
+              startTool('area');
+              hydro.setState({ open: false });
+            }}
+          >
+            Draw a region
+          </button>
+        )}
+      </label>
+      {(need !== null || (refused && !ring)) && (
+        <p className="pop-note" role="status" data-testid="hydro-region-need">
+          {need ?? 'This surface is above the cell limit of the tool. Pick or draw a region.'}
+        </p>
+      )}
+    </div>
+  );
+  return { ring, need, field };
+}
+
 export function FloodForm({ surface, map, readOnly }: FormProps) {
   const [level, setLevel] = useDraft('flood.level', '');
   const [mode, setMode] = useDraft('flood.mode', 'connected');
@@ -124,10 +230,14 @@ export function FloodForm({ surface, map, readOnly }: FormProps) {
   usePicked('seed', (e, n) => {
     setSeed(fmtPoint(e, n));
   });
+  const region = useRegion('hydro.flood', surface);
   const lv = Number(level);
   const seedPt = seed.trim() ? parsePoint(seed) : null;
   const valid =
-    level.trim() !== '' && Number.isFinite(lv) && (seed.trim() === '' || seedPt !== null);
+    region.need === null &&
+    level.trim() !== '' &&
+    Number.isFinite(lv) &&
+    (seed.trim() === '' || seedPt !== null);
   return (
     <form
       className="pop-form"
@@ -141,7 +251,7 @@ export function FloodForm({ surface, map, readOnly }: FormProps) {
           mode: mode === 'all-below' ? 'all-below' : 'connected',
         };
         if (mode === 'connected' && seedPt) params.seed = seedPt;
-        void startHydro('hydro.flood', params, 'flood').then(setError);
+        void startHydro('hydro.flood', withRegion(params, region.ring), 'flood').then(setError);
       }}
     >
       <label className="pop-row">
@@ -184,6 +294,7 @@ export function FloodForm({ surface, map, readOnly }: FormProps) {
           <PickButton kind="seed" label="Pick" map={map} />
         </label>
       )}
+      {region.field}
       <div className="pop-row">
         <button type="submit" disabled={readOnly || !valid}>
           Flood
@@ -206,6 +317,7 @@ export function RunoffForm({ surface, map, readOnly }: FormProps) {
   usePicked('drop', (e, n) => {
     setDrop(fmtPoint(e, n));
   });
+  const region = useRegion('hydro.flow', surface);
   const pt = parsePoint(drop);
   return (
     <form
@@ -213,10 +325,10 @@ export function RunoffForm({ surface, map, readOnly }: FormProps) {
       aria-label="Runoff"
       onSubmit={(ev) => {
         ev.preventDefault();
-        if (!pt) return;
+        if (!pt || region.need) return;
         void startHydro(
           'hydro.flow',
-          { surface, mode: 'runoff', drop: pt, method, depressions },
+          withRegion({ surface, mode: 'runoff', drop: pt, method, depressions }, region.ring),
           'runoff',
         ).then(setError);
       }}
@@ -238,8 +350,9 @@ export function RunoffForm({ surface, map, readOnly }: FormProps) {
         depressions={depressions}
         setDepressions={setDepressions}
       />
+      {region.field}
       <div className="pop-row">
-        <button type="submit" disabled={readOnly || !pt}>
+        <button type="submit" disabled={readOnly || !pt || region.need !== null}>
           Show flow path
         </button>
       </div>
@@ -261,10 +374,11 @@ export function CatchmentForm({ surface, map, readOnly }: FormProps) {
   usePicked('outlet', (e, n) => {
     setOutlets((t) => (t.trim() ? `${t.trim()}\n` : '') + fmtPoint(e, n));
   });
+  const region = useRegion('hydro.flow', surface);
   const pts = parsePoints(outlets);
   const th = Number(threshold);
   const thOk = threshold.trim() === '' || (Number.isFinite(th) && th > 0);
-  const valid = pts !== null && pts.length <= 100 && thOk;
+  const valid = region.need === null && pts !== null && pts.length <= 100 && thOk;
   return (
     <form
       className="pop-form"
@@ -275,7 +389,7 @@ export function CatchmentForm({ surface, map, readOnly }: FormProps) {
         const params: Record<string, unknown> = { surface, mode: 'catchment', method, depressions };
         if (pts.length) params.outlets = pts;
         if (threshold.trim()) params.streamAreaM2 = th;
-        void startHydro('hydro.flow', params, 'catchment').then(setError);
+        void startHydro('hydro.flow', withRegion(params, region.ring), 'catchment').then(setError);
       }}
     >
       <label className="pop-row">
@@ -311,6 +425,7 @@ export function CatchmentForm({ surface, map, readOnly }: FormProps) {
           }}
         />
       </label>
+      {region.field}
       <div className="pop-row">
         <button type="submit" disabled={readOnly || !valid}>
           Delineate
@@ -332,10 +447,12 @@ export function RainfallForm({ surface, readOnly }: FormProps) {
   const [cell, setCell] = useDraft('rain.cell', '1');
   const [duration, setDuration] = useDraft('rain.duration', '');
   const [error, setError] = useState<string | null>(null);
+  const region = useRegion('hydro.rainfall', surface, Number(cell));
   const nv = Number(n);
   const iv = Number(infil);
   const dv = Number(duration);
   const valid =
+    region.need === null &&
     csv !== '' &&
     Number.isFinite(nv) &&
     nv > 0 &&
@@ -359,7 +476,9 @@ export function RainfallForm({ surface, readOnly }: FormProps) {
           cellM: Number(cell),
         };
         if (duration.trim()) params.durationMin = dv;
-        void startHydro('hydro.rainfall', params, 'rainfall').then(setError);
+        void startHydro('hydro.rainfall', withRegion(params, region.ring), 'rainfall').then(
+          setError,
+        );
       }}
     >
       <div className="pop-row">
@@ -438,6 +557,7 @@ export function RainfallForm({ surface, readOnly }: FormProps) {
           }}
         />
       </label>
+      {region.field}
       <div className="pop-row">
         <button type="submit" disabled={readOnly || !valid}>
           Run rainfall

@@ -25,6 +25,7 @@ import { mkdir, readdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { z } from 'zod';
 import { isChangedOnDisk, readJsonSeen, writeJsonSeen } from './fsutil';
+import { probeDesign } from './designProbe';
 import { newerOnDisk, newerThanThisBuild } from './newer';
 import { surveySettingsHandlers, type JournalAppend } from './geodesy';
 import { notYet, type Handle } from './notYet';
@@ -335,6 +336,8 @@ export function registerSurveyIpc({ handle, userData, journal, ...deps }: Survey
     if (pkg) return readPackageDesigns(pkg.archive);
     return { ok: false, error: `Project "${projectId}" is not open.` };
   });
+  // a look at a design file before importing it (no project needed)
+  handle('survey:probeDesign', ({ path }) => probeDesign(path));
   handle('survey:writeDesigns', ({ projectId, file }) => {
     if (!projects) return unavailable();
     if (projects.package(projectId))

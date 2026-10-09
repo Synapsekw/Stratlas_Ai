@@ -30,6 +30,9 @@ Rain falls on every cell and runs over the surface.
 
 Direct rainfall is a simplified model: one roughness and one infiltration rate for the whole area, and no pipes or culverts.
 
-## Size limits
+## Regions and size limits
 
-Each tool reads a bounded number of cells: 25 million for flood to level, 4 million for runoff, catchments and direct rainfall. Above that a run is refused; use a coarser surface or a coarser rainfall cell.
+Each tool reads a bounded number of cells: 25 million for flood to level, 4 million for runoff, catchments and direct rainfall. Every form has a **Region**: **Whole surface**, or an area or volume measurement that limits the run to it.
+
+- Pick a measurement in **Region**, or click **Draw a region**: the panel closes, you draw an area in the view, and when you finish it the panel uses it as the region.
+- When the surface is above the tool's limit, the form says so ("The surface is ... cells at ... m; ... takes at most ... cells. Pick or draw a region around the area of interest.") and the run button stays greyed out until a region is small enough. A coarser rainfall **Cell** also lowers the count.

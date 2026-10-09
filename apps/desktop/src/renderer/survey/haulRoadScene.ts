@@ -91,9 +91,13 @@ export function attachHaulMap(ctl: MapController, frame: Frame): () => void {
         : [],
     };
   };
+  // a layer added while the style or a source is still loading can be dropped: draw again once
+  // the map is idle
+  let waiting = false;
   const draw = () => {
     try {
-      if (!map.isStyleLoaded()) return;
+      waiting = !map.isStyleLoaded();
+      if (waiting) return;
       const src = map.getSource(SRC) as { setData?: (d: unknown) => void } | undefined;
       if (src?.setData) src.setData(data());
       else map.addSource(SRC, { type: 'geojson', data: data() as never });
@@ -105,13 +109,25 @@ export function attachHaulMap(ctl: MapController, frame: Frame): () => void {
           paint: { 'line-color': ['get', 'color'], 'line-width': 4 },
         });
     } catch {
-      // the style is being replaced: drawn again on its next load
+      // the style is being replaced: drawn again on its next load or when the map is idle
+      waiting = true;
     }
   };
   const onStyle = () => {
     draw();
   };
+  const onIdle = () => {
+    // still waiting, or the layer went missing (a layer added during a load can be dropped)
+    let missing = waiting;
+    try {
+      missing ||= !map.getLayer(LAYER);
+    } catch {
+      missing = true;
+    }
+    if (missing) draw();
+  };
   map.on('styledata', onStyle);
+  map.on('idle', onIdle);
   const off = haul.subscribe((s, prev) => {
     if (changed(s, prev)) draw();
   });
@@ -119,6 +135,7 @@ export function attachHaulMap(ctl: MapController, frame: Frame): () => void {
   return () => {
     off();
     map.off('styledata', onStyle);
+    map.off('idle', onIdle);
     try {
       if (map.getLayer(LAYER)) map.removeLayer(LAYER);
       if (map.getSource(SRC)) map.removeSource(SRC);

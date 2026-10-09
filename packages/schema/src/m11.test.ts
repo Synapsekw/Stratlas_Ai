@@ -694,6 +694,7 @@ describe('M11 IPC channels', () => {
     'survey:writeTemplates',
     'survey:readDesigns',
     'survey:writeDesigns',
+    'survey:probeDesign',
     'survey:surfaces',
     'survey:readOverlays',
     'survey:writeOverlays',

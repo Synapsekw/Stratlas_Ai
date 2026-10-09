@@ -39,6 +39,8 @@ export function gradeText(g: Grade | null): string {
 export function SectionBody({ big = false }: { big?: boolean }) {
   const s = useSection((x) => x);
   const settings = useMeasure((m) => m.settings);
+  // a package (player mode) shows its sections; writing one out runs a pipeline, which it never does
+  const readOnly = useMeasure((m) => m.readOnly);
   const activeAlignment = useDesigns((d) => d.active);
   const [format, setFormat] = useState<SectionFormat>('dxf-2d-xz');
   const lines: ChartLine[] = useMemo(() => {
@@ -227,34 +229,36 @@ export function SectionBody({ big = false }: { big?: boolean }) {
             </tbody>
           </table>
         ))}
-        <div className="sec-download">
-          <select
-            className="sv-input"
-            aria-label="Download format"
-            data-testid="section-format"
-            value={format}
-            onChange={(e) => {
-              setFormat(e.target.value as SectionFormat);
-            }}
-          >
-            {(Object.keys(FORMAT_LABELS) as SectionFormat[]).map((f) => (
-              <option key={f} value={f}>
-                {FORMAT_LABELS[f]}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            className="btn sm"
-            data-testid="section-download"
-            disabled={!s.result || s.exporting?.busy === true}
-            onClick={() => {
-              void exportSection(format);
-            }}
-          >
-            <Icon name="download" size={12} /> Download
-          </button>
-        </div>
+        {!readOnly && (
+          <div className="sec-download">
+            <select
+              className="sv-input"
+              aria-label="Download format"
+              data-testid="section-format"
+              value={format}
+              onChange={(e) => {
+                setFormat(e.target.value as SectionFormat);
+              }}
+            >
+              {(Object.keys(FORMAT_LABELS) as SectionFormat[]).map((f) => (
+                <option key={f} value={f}>
+                  {FORMAT_LABELS[f]}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="btn sm"
+              data-testid="section-download"
+              disabled={!s.result || s.exporting?.busy === true}
+              onClick={() => {
+                void exportSection(format);
+              }}
+            >
+              <Icon name="download" size={12} /> Download
+            </button>
+          </div>
+        )}
         {s.exporting?.note && (
           <p className="small faint" data-testid="section-export-note" role="status">
             {s.exporting.note}

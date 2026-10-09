@@ -192,6 +192,7 @@ const CHANNELS = {
   'survey:writeTemplates': true,
   'survey:readDesigns': true,
   'survey:writeDesigns': true,
+  'survey:probeDesign': true,
   'survey:surfaces': true,
   'survey:readQa': true,
   'survey:releaseHold': true,

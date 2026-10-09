@@ -201,3 +201,21 @@
 .qa-survey[aria-pressed='true'] {
   border-color: var(--acc);
 }
+
+.qa-dtm {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-4);
+  min-width: 0;
+}
+.qa-dtm > legend {
+  padding: 0 4px;
+  color: var(--fg-1);
+  font-size: var(--t-12);
+}
+.qa-dtm > .btn {
+  justify-self: start;
+}

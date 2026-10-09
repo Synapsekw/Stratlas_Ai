@@ -1,6 +1,6 @@
 import { packRangeRefusal, PipelinePackManifest, type RuntimeInfo } from '@aio/schema';
 import { access, readdir } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { readJson } from '../fsutil';
 
 /** A usable pipeline runtime: the pack folder and its Python. */
@@ -134,4 +134,39 @@ export async function findPack(o: {
           : `No pipeline pack in ${runtimeDir}. Build one with node tools/pipeline-pack/build.mjs or copy one there.`,
     },
   };
+}
+
+/**
+ * Where the pipelines find PDAL (python `pointcloud.find_pdal`): `AIO_PDAL`, then `tools/pdal`
+ * beside the pack's Python prefix (`Library/bin` or `bin`), then the PATH. Null when none is
+ * there, so the app can say why the DTM filter presets cannot run before a job fails.
+ */
+export async function findPdal(
+  pack: Pick<PackInfo, 'python'> | null,
+  env: Record<string, string | undefined>,
+  platform: NodeJS.Platform = process.platform,
+): Promise<string | null> {
+  const given = env.AIO_PDAL;
+  if (given && (await exists(given))) return given;
+  const exe = platform === 'win32' ? 'pdal.exe' : 'pdal';
+  const roots: string[] = [];
+  if (pack) {
+    // the interpreter sits in its prefix (a pack) or in its Scripts or bin folder (a venv)
+    const dir = dirname(pack.python);
+    const inner = /^(scripts|bin)$/i.test(basename(dir));
+    const prefix = inner ? dirname(dir) : dir;
+    roots.push(join(dirname(prefix), 'tools', 'pdal'));
+  }
+  for (const r of roots) {
+    for (const cand of [join(r, 'Library', 'bin', exe), join(r, 'bin', exe)]) {
+      if (await exists(cand)) return cand;
+    }
+  }
+  const sep = platform === 'win32' ? ';' : ':';
+  for (const d of (env.PATH ?? env.Path ?? '').split(sep)) {
+    if (!d) continue;
+    const cand = join(d, exe);
+    if (await exists(cand)) return cand;
+  }
+  return null;
 }
