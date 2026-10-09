@@ -32,6 +32,7 @@ import numpy as np
 
 from ..params import known_keys, number, text
 from ..runtime import JobError, Step, StepContext, input_fingerprint
+from ..survey.compare import ring_weights
 from .changeset import change_set, change_set_id
 from .imagery import (
     Grid,
@@ -43,13 +44,13 @@ from .imagery import (
     commit_run,
     derived,
     find_layer,
+    from_lonlat,
     intersect,
     load_arrays,
     outline,
     polygons,
     project_crs,
     read_manifest,
-    ring_mask,
     save_arrays,
     write_pyramid,
 )
@@ -325,11 +326,11 @@ def surface_regions(dod: np.ndarray, min_depth: float, min_cells: int) -> list[t
 
 
 def volumes(dod: np.ndarray, mask: np.ndarray, cell: float, floor: float = 0.0) -> dict[str, float]:
-    d = np.where(mask & np.isfinite(dod), dod, 0.0)
-    d = np.where(np.abs(d) >= floor, d, 0.0)
-    a = cell * cell
-    fill = float(d[d > 0].sum() * a)
-    cut = float(abs(d[d < 0].sum()) * a)  # abs: no "-0.0" when nothing was cut
+    """Cut, fill and net of the cells of ``mask`` (or their coverage weights) through the survey core."""
+    from ..survey.compare import weighted_volumes
+
+    t = weighted_volumes(dod, mask, cell, floor, floor > 0)
+    fill, cut = t.fill, abs(t.cut)  # abs: no "-0.0" when nothing was cut
     return {"cutM3": round(cut, 2), "fillM3": round(fill, 2), "netM3": round(fill - cut, 2)}
 
 
@@ -540,9 +541,12 @@ class ChangeSurface:
             # areas the person drew: their own cut, fill and net
             floor = 0.5 * min_depth
             for area in params.get("areas") or []:
-                inside = ring_mask(m, [area["ring"]], grid)
+                # exact coverage weights of the drawn polygon (the survey core)
+                inside = ring_weights(
+                    from_lonlat(m, area["ring"]), grid.x0, grid.z0, grid.cell, grid.cols, grid.rows
+                )
                 vol = volumes(dod, inside, grid.cell, floor)
-                cells = inside & np.isfinite(dod)
+                cells = (inside > 0) & np.isfinite(dod)
                 verdict = "fill" if vol["netM3"] >= 0 else "cut"
                 xs = (np.nonzero(cells)[1] + 0.5) * grid.cell + grid.x0
                 zs = (np.nonzero(cells)[0] + 0.5) * grid.cell + grid.z0
@@ -552,7 +556,7 @@ class ChangeSurface:
                     "verdict": verdict,
                     "label": f"{area['name']}: fill {vol['fillM3']:,.1f} m³, cut {vol['cutM3']:,.1f} m³",
                     "method": "area",
-                    "areaM2": round(float(cells.sum() * grid.cell**2), 2),
+                    "areaM2": round(float(inside[cells].sum() * grid.cell**2), 2),
                     "volume": vol,
                     "outline": area["ring"],
                 }

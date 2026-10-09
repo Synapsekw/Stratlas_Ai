@@ -377,6 +377,13 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     since: '0.11',
   },
   {
+    family: 'aio.survey-compare',
+    version: 1,
+    home: 'project',
+    where: 'survey/compare/<job>.json',
+    since: '0.11',
+  },
+  {
     family: 'aio.height-tiles',
     version: 1,
     home: 'project',

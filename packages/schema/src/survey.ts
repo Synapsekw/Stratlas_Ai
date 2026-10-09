@@ -309,6 +309,18 @@ export const ComparisonResult = z.looseObject({
   computedAt: IsoTime,
 });
 
+/**
+ * The results of a `survey.compare` run in items mode (`survey/compare/<job>.json`, or `out`):
+ * one result per stored item, applied to the measurements by the app. A draft until applied.
+ */
+export const SurveyCompareFile = z.looseObject({
+  schema: z.literal('aio.survey-compare/1'),
+  pipeline: z.literal('survey.compare'),
+  jobId: z.string().min(1).max(200),
+  computedAt: IsoTime,
+  results: z.array(z.looseObject({ measurement: SurveyId, result: ComparisonResult })).max(5000),
+});
+
 // ---------------------------------------------------------------- prepared surfaces
 
 export const PreparedSurfaceSource = z.discriminatedUnion('kind', [
@@ -618,6 +630,7 @@ export type ComparisonItem = z.infer<typeof ComparisonItem>;
 export type SurveyEngine = z.infer<typeof SurveyEngine>;
 export type ComparisonStatus = z.infer<typeof ComparisonStatus>;
 export type ComparisonResult = z.infer<typeof ComparisonResult>;
+export type SurveyCompareFile = z.infer<typeof SurveyCompareFile>;
 export type PreparedSurfaceSource = z.infer<typeof PreparedSurfaceSource>;
 export type HeightTiles = z.infer<typeof HeightTiles>;
 export type MeasurementFamily = z.infer<typeof MeasurementFamily>;

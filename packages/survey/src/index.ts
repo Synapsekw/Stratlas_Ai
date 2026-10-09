@@ -33,5 +33,6 @@ export const SURVEY_ENGINE_VERSION = 1;
 
 export { signedVolumeTotals, type VolumeTotals } from './totals';
 
+export * from './engine';
 export * from './tools';
 export * from './templates';
