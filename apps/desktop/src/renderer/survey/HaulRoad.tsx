@@ -100,7 +100,20 @@ function StationRow({ st }: { st: HaulStation }) {
       data-status={st.status}
       className={`haul-row is-${st.status}`}
     >
-      <th scope="row">{st.stationLabel}</th>
+      <th scope="row">
+        <button
+          type="button"
+          className="haul-fly"
+          title="Fly to this station"
+          aria-label={`Fly to ${st.stationLabel}`}
+          onClick={() => {
+            setError(flyToStation(st.e, st.n, st.z));
+          }}
+        >
+          {st.stationLabel}
+        </button>
+        {error && <span role="alert">{error}</span>}
+      </th>
       {CELL_CHECKS.map((c) => (
         <td
           key={c.key}
@@ -113,18 +126,6 @@ function StationRow({ st }: { st: HaulStation }) {
       <td title={failed.join(', ')}>
         {st.status === 'pass' ? 'Pass' : st.status === 'fail' ? 'Fail' : 'No data'}
       </td>
-      <td>
-        <button
-          type="button"
-          aria-label={`Fly to ${st.stationLabel}`}
-          onClick={() => {
-            setError(flyToStation(st.e, st.n, st.z));
-          }}
-        >
-          Fly to
-        </button>
-        {error && <span role="alert">{error}</span>}
-      </td>
     </tr>
   );
 }
@@ -135,7 +136,7 @@ function RunResults({ run }: { run: HaulRun }) {
   const stale = staleReason(run, surfaces);
   const s = run.summary;
   return (
-    <section aria-label="Haul-road results" data-testid="haul-results">
+    <section className="haul-results" aria-label="Haul-road results" data-testid="haul-results">
       {stale && (
         <p className="pop-note" role="status" data-testid="haul-stale">
           Stale, recompute. {stale}
@@ -156,7 +157,7 @@ function RunResults({ run }: { run: HaulRun }) {
           ))}
         </ul>
       )}
-      <label className="pop-row">
+      <label className="haul-check">
         <input
           type="checkbox"
           checked={shown}
@@ -170,16 +171,15 @@ function RunResults({ run }: { run: HaulRun }) {
         <table className="haul-table" data-testid="haul-table">
           <thead>
             <tr>
-              <th scope="col">Station</th>
+              <th scope="col" title="Click a station to fly to it">
+                Station
+              </th>
               {CELL_CHECKS.map((c) => (
                 <th key={c.key} scope="col">
                   {c.label}
                 </th>
               ))}
               <th scope="col">Result</th>
-              <th scope="col">
-                <span className="sr-only">Fly to</span>
-              </th>
             </tr>
           </thead>
           <tbody>
@@ -220,7 +220,7 @@ function HaulRoadForm({ defaults }: { defaults: HaulSiteDefaults }) {
       setNote(built.error);
       return;
     }
-    setNote('Measuring the road. The results show here when the job is done.');
+    setNote('Run started. Its results show below when the job is done.');
     void startHaulRun(built.params).then((e) => {
       if (e) setNote(e);
     });
@@ -343,7 +343,7 @@ function HaulRoadForm({ defaults }: { defaults: HaulSiteDefaults }) {
             />
           </label>
         ))}
-        <div className="pop-row">
+        <div className="haul-wheel">
           <label>
             <span>Largest wheel height (m)</span>
             <input

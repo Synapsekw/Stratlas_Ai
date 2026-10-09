@@ -1,8 +1,47 @@
 /* Haul-road compliance (M11 G11): the panel, limits and results table. Mission tokens only. */
 
+/* the Haul road pop is wider than the other tools: the results table needs the room */
+/* opened towards the start of the stage, so the side panel does not cover it */
+.stage-pop.wide:has(.haul-panel) {
+  inset-inline-start: auto;
+  inset-inline-end: -2px;
+  width: min(440px, calc(100vw - 48px));
+  max-height: calc(100vh - 160px);
+  overflow: auto;
+}
 .haul-panel {
-  min-width: 420px;
-  max-width: 640px;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+.haul-panel > *,
+.haul-results > * {
+  min-width: 0;
+}
+.haul-results {
+  display: grid;
+  gap: 8px;
+}
+.haul-panel .pop-row > select,
+.haul-panel .pop-row > input:not([type='checkbox']) {
+  flex: 1;
+  min-width: 0;
+}
+.haul-panel .pop-row > span:first-child {
+  flex: 0 0 120px;
+}
+.haul-wheel {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: end;
+  gap: 8px;
+}
+.haul-wheel label {
+  display: grid;
+  gap: 2px;
+  color: var(--fg-3);
+}
+.haul-wheel input {
+  min-width: 0;
 }
 .haul-limits {
   display: grid;
@@ -23,6 +62,7 @@
   color: var(--danger);
 }
 .haul-table-wrap {
+  max-width: 100%;
   max-height: 320px;
   overflow: auto;
 }
@@ -45,6 +85,21 @@
   font-weight: 500;
   background: var(--bg-1, Canvas);
 }
+.haul-fly {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+/* the station (fly to) stays in view while the table scrolls sideways */
+.haul-table tbody th {
+  position: sticky;
+  left: 0;
+  background: var(--bg-1, Canvas);
+}
 .haul-row.is-fail th {
   color: var(--danger);
 }
@@ -54,4 +109,13 @@
 .haul-table td.is-fail {
   color: var(--danger);
   font-weight: 600;
+}
+.haul-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.haul-check input {
+  margin: 0;
+  accent-color: var(--acc);
 }
