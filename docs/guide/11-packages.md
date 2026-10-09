@@ -33,6 +33,8 @@ A line reads "From" the pack, with the number of tiles and their size, and the p
 
 It opens on **Welcome**: the client, site, capture date and issue count, tips on what to try, **Start exploring** and **Open the issue register**. The title bar shows **Read-only package**. There are no annotation tools, and cloud AI is off unless the package allows it.
 
+A package of a survey project shows its survey measurements, sections, terrain overlays, comparison results, designs and QA status: **Survey measurements**, **Measurements** lists them and the views draw them. They are read only: there are no drawing tools, no **Save**, and **Site settings** can be read but not saved. Nothing runs in a package, so a section cannot be downloaded and a result that is out of date stays out of date.
+
 The map region in the package shows in **Settings**, **Offline maps** as **In open package**.
 
 ## Extract to edit

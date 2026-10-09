@@ -119,7 +119,7 @@ import { putThumb } from './thumbs';
 import { CSP_PROBE, GLOBE_PROBE, RENDERER_PROBE, smokeProbe, writeSmokeReport } from './smoke';
 import { nativeImageOps } from './images';
 import { validated, type Handler } from './ipc';
-import { findPack, JobRunner, JobStore, openTarget, safeJobEvent } from './jobs';
+import { findPack, findPdal, JobRunner, JobStore, openTarget, safeJobEvent } from './jobs';
 import { createKeyVault } from './keys';
 import { addToLibrary, createLibraryStore, listLibrary } from './library';
 import { captureConsole, exportLogs } from './logs';
@@ -670,6 +670,7 @@ function registerIpc(): void {
       findPack({ dataRoot, env: process.env, app: packApp }),
     ]);
     const { runtime } = found;
+    const pdal = runtime.found ? (await findPdal(found.pack, process.env)) !== null : false;
     return {
       dataRoot,
       dataRootExists: existsSync(dataRoot),
@@ -678,6 +679,7 @@ function registerIpc(): void {
         found: runtime.found,
         ...(runtime.version ? { version: runtime.version } : {}),
         ...(runtime.problem ? { problem: runtime.problem } : {}),
+        pdal,
       },
     };
   });

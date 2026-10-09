@@ -24,6 +24,18 @@ In **Site settings**, section **Coordinate system**:
 
 Heights that need a geoid grid which is not installed are refused with the pack's name, never shown on the ellipsoid and never downloaded. Regional geoids (AUSGeoid2020, GEOID18, OSGM15 with OSTN15, NZGeoid2016, CGG2013a) come as optional geoid packs.
 
+## Geoid packs
+
+**Settings**, **Offline maps**, **Geoid packs** lists the geoid grids heights can use: EGM96 and EGM2008 from the pipeline pack (tagged **Pipeline pack**), and regional grids. Each row shows the **Region** it covers, the **Vertical datum** (an EPSG code, or "Not stated"), the **Licence**, the attribution and the size.
+
+To add a regional grid, for example the geoid model of your country:
+
+1. Click **Import geoid grid** and pick the grid: a GeoTIFF (`.tif`) or a GTX (`.gtx`) file in longitude and latitude.
+2. Give it a **Name**, and state its **Licence** and the **Attribution** the licence asks for. **Import** stays greyed out until both are filled in. Add the **Vertical datum (EPSG)** if you know it, for example 5711.
+3. Click **Import**: "... is imported. Site settings, Heights now offers it."
+
+**Remove** (then **Remove** _name_ to confirm) deletes a regional grid. EGM96 and EGM2008 stay. Nothing is ever downloaded.
+
 ## Units and precision
 
 Section **Units and precision** sets the site's **Distance**, **Area**, **Volume**, **Density**, **Mass** and **Grade** units, the **Order** (**North, East, Z** or **East, North, Z**) and the decimals for coordinates, distances, areas, volumes and grades.
@@ -41,6 +53,18 @@ A site calibration ties the grid to the control on site the way the controller d
 
 Applying a calibration is recorded in the project history. Volumes, sections and other results computed before show **Stale, recompute** until you recompute them, so a number never changes silently. To use another calibration, **Remove calibration** first.
 
-Trimble `.dc` files are not read: they have no public specification. Export the job from the controller as JobXML instead.
+Trimble `.dc` files are not read: they have no public specification. Export the job from the controller as JobXML instead, or compute the calibration from point pairs.
+
+## Compute from point pairs
+
+When there is no controller file, compute the calibration from points measured both ways: their global position and their local site coordinates.
+
+1. In **Site settings**, section **Site calibration**, click **Compute from point pairs…**.
+2. Choose what the **Global positions** are: **WGS84 latitude, longitude, ellipsoidal height**, or **Grid N, E, Z in the site coordinate system**.
+3. Type the pairs in the table (**Add a pair** adds a row), or **Import CSV**: one pair per line with a name, the three global values, then local N, E and Z, and optionally H and V (1 or 0). A header line is skipped; a header that names "latitude" or "grid" sets the global positions for you.
+4. Clear **H** or **V** on a pair to leave it out of the horizontal or the vertical adjustment. The horizontal needs at least two pairs.
+5. Click **Compute**. The residual table and **Apply** work as for an imported job; a computed calibration has no controller columns.
+
+If the site's **Heights** use a geoid, WGS84 heights are taken to that geoid first, as a controller does.
 
 > Check the residuals against the controller's before you apply. If they differ, the controller job may use a convention the importer did not expect; tell us which job it was.

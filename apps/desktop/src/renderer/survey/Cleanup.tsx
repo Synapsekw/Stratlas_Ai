@@ -4,22 +4,119 @@
  * measurement (**Copy as cleanup**), listed in `survey/cleanups.json` with on and off toggles, and
  * run into a new cleaned surface `<survey>-clean`. The delivered surface never changes; a
  * comparison uses the cleaned one only when a person picks it. Crops are in `Crop.tsx`.
+ * **DTM filter** makes a bare-ground surface from a point cloud layer with a preset (PDAL), disabled
+ * with the reason when the project has no cloud or the pipeline pack has no PDAL.
  */
 import { Icon } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { bridge } from '../shell';
 import { CropSection } from './Crop';
 import { startTool, useMeasure } from './measureStore';
 import { editFrom, ringOf, useFocusCapture } from './qaHelpers';
 import {
   addEdit,
+  cloudLayers,
+  DTM_PRESETS,
+  dtmFilterBlock,
   openQaPanel,
   patchEdit,
   prepareCapture,
   runCleanup,
+  runDtmFilter,
   surfaceOfCapture,
   useQa,
+  type DtmPreset,
+  type PipelineTools,
 } from './qaStore';
+
+/** **DTM filter**: a point cloud layer and a preset to a new bare-ground surface. */
+function DtmFilterSection() {
+  const project = useWorkspace((s) => s.project);
+  const busy = useQa((s) => s.busy);
+  const [tools, setTools] = useState<PipelineTools | null>(null);
+  const [layer, setLayer] = useState<string | null>(null);
+  const [preset, setPreset] = useState<DtmPreset>('equipment');
+  useEffect(() => {
+    let live = true;
+    void bridge.call('app:setupStatus', {}).then((r) => {
+      if (live) setTools(r.ok ? r.value.pipeline : { found: false });
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (!project) return null;
+  const clouds = cloudLayers(project.manifest);
+  const block = dtmFilterBlock(project.manifest, tools);
+  const source = layer ?? clouds[0]?.id ?? '';
+  const hint = DTM_PRESETS.find((p) => p.id === preset)?.hint;
+  return (
+    <fieldset className="qa-dtm" data-testid="dtm-filter">
+      <legend>DTM from a point cloud</legend>
+      {clouds.length > 0 && (
+        <>
+          <label className="sv-field">
+            <span>Point cloud</span>
+            <select
+              className="sv-input"
+              value={source}
+              disabled={block !== null}
+              data-testid="dtm-filter-layer"
+              onChange={(e) => {
+                setLayer(e.target.value);
+              }}
+            >
+              {clouds.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="sv-field">
+            <span>Remove</span>
+            <select
+              className="sv-input"
+              value={preset}
+              disabled={block !== null}
+              data-testid="dtm-filter-preset"
+              onChange={(e) => {
+                const p = DTM_PRESETS.find((x) => x.id === e.target.value);
+                if (p) setPreset(p.id);
+              }}
+            >
+              {DTM_PRESETS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {hint && <p className="faint small">{hint}.</p>}
+        </>
+      )}
+      <button
+        type="button"
+        className="btn sm"
+        disabled={block !== null || busy !== null || !source}
+        title={block ?? undefined}
+        aria-describedby={block ? 'dtm-filter-why' : undefined}
+        data-testid="dtm-filter-run"
+        onClick={() => {
+          void runDtmFilter(source, preset);
+        }}
+      >
+        {busy ?? 'Make a DTM'}
+      </button>
+      {block && (
+        <p className="faint small" id="dtm-filter-why" data-testid="dtm-filter-why">
+          {block}
+        </p>
+      )}
+    </fieldset>
+  );
+}
 
 export function CleanupPanel() {
   const project = useWorkspace((s) => s.project);
@@ -70,6 +167,7 @@ export function CleanupPanel() {
           </button>
         </div>
       )}
+      {!readOnly && <DtmFilterSection />}
       {own.length === 0 ? (
         <p className="faint small">
           No survey has a prepared surface yet. Run <b>Check against points</b> or prepare the
