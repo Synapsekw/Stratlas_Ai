@@ -147,21 +147,26 @@ def _same_crs(a: dict[str, Any] | None, b: dict[str, Any] | None) -> bool:
 
 
 def crs_transform(src: dict[str, Any], dst: dict[str, Any]) -> Transform:
-    """Horizontal transform with PROJ (through rasterio); heights pass as they are."""
-    from rasterio.crs import CRS
-    from rasterio.warp import transform
+    """Horizontal transform with PROJ (G1's ``horizontal_transformer``); heights pass as they are.
 
-    def to_crs(c: dict[str, Any]) -> Any:
-        return CRS.from_epsg(c["epsg"]) if "epsg" in c else CRS.from_wkt(c["wkt"])
+    Coordinates in and out are metres (SI inside): a CRS in feet (US survey or international) is
+    converted at the PROJ edge, so ``E, N`` scaled to metres from a US-feet file land where the
+    same file read in feet by PROJ does. Geographic coordinates (degrees) pass unscaled.
+    """
+    from ..geodesy.site import crs_of, horizontal_transformer, metres_per_unit, network_off
 
-    s, d = to_crs(src), to_crs(dst)
+    network_off()
+    s, d = crs_of(src), crs_of(dst)
+    tr = horizontal_transformer(s, d)
+    ks, kd = metres_per_unit(s), metres_per_unit(d)
 
     def run(xyz: np.ndarray) -> np.ndarray:
         out = np.array(xyz, dtype=np.float64, copy=True)
         if len(out) == 0:
             return out
-        xs, ys = transform(s, d, out[:, 0].tolist(), out[:, 1].tolist())
-        out[:, 0], out[:, 1] = xs, ys
+        xs, ys = tr.transform(out[:, 0] / ks, out[:, 1] / ks, errcheck=False)
+        out[:, 0] = np.asarray(xs, dtype=np.float64) * kd
+        out[:, 1] = np.asarray(ys, dtype=np.float64) * kd
         if not np.isfinite(out[:, :2]).all():
             raise JobError("Some design coordinates fall outside the area the CRS can transform.")
         return out
