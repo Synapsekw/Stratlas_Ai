@@ -482,6 +482,11 @@ export const EXPORT_FORMATS = [
   'audit-json',
   // M10 (G4): a photogrammetry run's accuracy report, under the existing kind `report-pdf`
   'photo-report-pdf',
+  // M11 (G9): the survey measurement and stockpile inventory CSVs (kind `files`, checked by format)
+  // and the survey sections of the house report alone (kind `report-pdf`)
+  'measurements-csv',
+  'stockpile-csv',
+  'survey-report-pdf',
 ] as const;
 export const ExportFormat = z.enum(EXPORT_FORMATS);
 
@@ -500,6 +505,9 @@ export const EXPORT_FORMAT_KIND = {
   'audit-csv': 'files',
   'audit-json': 'files',
   'photo-report-pdf': 'report-pdf',
+  'measurements-csv': 'files',
+  'stockpile-csv': 'files',
+  'survey-report-pdf': 'report-pdf',
 } as const satisfies Record<z.infer<typeof ExportFormat>, ExportKind>;
 
 export const ReportFile = z.object({

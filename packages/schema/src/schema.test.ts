@@ -237,11 +237,18 @@ describe('ipc contracts', () => {
       'report-pdf': 'pdf',
       'house-pdf': 'pdf',
       'photo-report-pdf': 'pdf',
+      'survey-report-pdf': 'pdf',
     } as const;
     for (const format of EXPORT_FORMATS) {
-      // M9 audit exports fall under `files` (no new ExportKind for older players); their CSV and
-      // JSON names would read as issue exports, so they are checked by format, never by name.
-      if (format === 'audit-csv' || format === 'audit-json') {
+      // M9 audit and M11 survey CSV exports fall under `files` (no new ExportKind for older
+      // players); their CSV and JSON names would read as issue exports, so they are checked by
+      // format, never by name.
+      if (
+        format === 'audit-csv' ||
+        format === 'audit-json' ||
+        format === 'measurements-csv' ||
+        format === 'stockpile-csv'
+      ) {
         expect(EXPORT_FORMAT_KIND[format]).toBe('files');
         continue;
       }
