@@ -129,6 +129,13 @@ export function createShellStore(
   workspace: StoreApi<Workspace>,
   options: ShellOptions = {},
 ): StoreApi<Shell> {
+  /**
+   * Counts settings changes started here. A whole settings object from main replaces the local
+   * one only when no change started after it was asked for: the startup read (which waits for the
+   * library, slow with the demo copies) and the answer to an older change must not undo a newer
+   * one (a local model chosen meanwhile went back to the default address, localhost:11434).
+   */
+  let settingsRev = 0;
   const setReadOnly = (on: boolean) => {
     options.onReadOnly?.(on);
   };
@@ -157,9 +164,10 @@ export function createShellStore(
     origin: null,
 
     init: async () => {
+      const rev = settingsRev;
       const [settings] = await Promise.all([bridge.call('settings:get', {}), get().loadLibrary()]);
-      if (settings.ok) set({ settings: settings.value, settingsError: null });
-      else set({ settingsError: settings.error });
+      if (!settings.ok) set({ settingsError: settings.error });
+      else if (rev === settingsRev) set({ settings: settings.value, settingsError: null });
     },
 
     go: (screen) => {
@@ -181,11 +189,13 @@ export function createShellStore(
     },
 
     updateSettings: async (patch) => {
+      const rev = ++settingsRev;
       const before = get().settings;
       set({ settings: { ...before, ...patch } });
       const r = await bridge.call('settings:set', patch);
       if (r.ok) {
-        set({ settings: r.value, settingsError: null });
+        // main writes changes in order, so the newest answer holds every one of them
+        if (rev === settingsRev) set({ settings: r.value, settingsError: null });
         return null;
       }
       // Keep the local change so the app stays usable; report the failure.

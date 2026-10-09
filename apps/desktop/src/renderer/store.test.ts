@@ -70,6 +70,59 @@ describe('shell store', () => {
     expect(s.getState().libraryError).toContain('library:list');
   });
 
+  // agent-local e2e, flaky on Windows CI: the startup settings came back after the library (the
+  // demo copies are slow) and undid a local model chosen meanwhile; Test then probed localhost:11434.
+  it("keeps a change made while it starts: init's settings are older than the change", async () => {
+    let libraryDone: (v: unknown) => void = () => undefined;
+    const bridge: Bridge = {
+      call: (channel, req) => {
+        if (channel === 'settings:get')
+          return Promise.resolve({ ok: true, value: DEFAULT_SETTINGS });
+        if (channel === 'library:list')
+          return new Promise((done) => {
+            libraryDone = () => {
+              done({ ok: true, value: [] } as Res<never>);
+            };
+          });
+        if (channel === 'settings:set')
+          return Promise.resolve({
+            ok: true,
+            value: { ...DEFAULT_SETTINGS, ...(req as Partial<Settings>) },
+          } as Res<never>);
+        return Promise.resolve({ ok: false, error: `no ${channel}` } as Res<never>);
+      },
+    };
+    const s = createShellStore(bridge, createWorkspace());
+    const starting = s.getState().init();
+    await s.getState().updateSettings({ cloudAi: true });
+    libraryDone(undefined);
+    await starting;
+    expect(s.getState().settings.cloudAi).toBe(true);
+  });
+
+  it("keeps the newest change when an older change's answer comes back last", async () => {
+    const answers: ((v: Settings) => void)[] = [];
+    const bridge: Bridge = {
+      call: (channel) =>
+        channel === 'settings:set'
+          ? new Promise((done) => {
+              answers.push((v) => {
+                done({ ok: true, value: v } as Res<never>);
+              });
+            })
+          : Promise.resolve({ ok: false, error: `no ${channel}` } as Res<never>),
+    };
+    const s = createShellStore(bridge, createWorkspace());
+    const older = s.getState().updateSettings({ theme: 'light' });
+    const newer = s.getState().updateSettings({ sidebarCollapsed: true });
+    // main writes them in order: the newer answer holds both
+    answers[1]?.({ ...DEFAULT_SETTINGS, theme: 'light', sidebarCollapsed: true });
+    await newer;
+    answers[0]?.({ ...DEFAULT_SETTINGS, theme: 'light' });
+    await older;
+    expect(s.getState().settings).toMatchObject({ theme: 'light', sidebarCollapsed: true });
+  });
+
   it('defaults to offline: cloud AI off', () => {
     expect(DEFAULT_SETTINGS.cloudAi).toBe(false);
   });
