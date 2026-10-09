@@ -1,0 +1,57 @@
+/* Haul-road compliance (M11 G11): the panel, limits and results table. Mission tokens only. */
+
+.haul-panel {
+  min-width: 420px;
+  max-width: 640px;
+}
+.haul-limits {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line-1, currentColor);
+  border-radius: var(--r-4);
+}
+.haul-limits legend {
+  font-size: var(--t-11);
+  color: var(--fg-3);
+}
+.haul-stretches {
+  margin: 0;
+  padding-left: 18px;
+  font-size: var(--t-12);
+  color: var(--danger);
+}
+.haul-table-wrap {
+  max-height: 320px;
+  overflow: auto;
+}
+.haul-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-12);
+  font-variant-numeric: tabular-nums;
+}
+.haul-table th,
+.haul-table td {
+  padding: 2px 6px;
+  text-align: right;
+  white-space: nowrap;
+}
+.haul-table thead th {
+  position: sticky;
+  top: 0;
+  color: var(--fg-3);
+  font-weight: 500;
+  background: var(--bg-1, Canvas);
+}
+.haul-row.is-fail th {
+  color: var(--danger);
+}
+.haul-row.is-pass th {
+  color: var(--ok);
+}
+.haul-table td.is-fail {
+  color: var(--danger);
+  font-weight: 600;
+}
