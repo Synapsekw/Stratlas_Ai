@@ -13,6 +13,7 @@ import { listOf, longDate, num, num1 } from '../../report/narrativeTemplate';
 import { barChart, esc, logoUrl } from '../layout';
 import { isFlat, pileMap, planMap, sideView } from './charts';
 import type { Pager } from './pager';
+import { layoutHaul, layoutHydrology, type SiteRuns } from './runs';
 import { layoutEarthworks, layoutLandfill, layoutMeasurements, layoutStockpiles } from './survey';
 
 type Key = Parameters<typeof t>[0];
@@ -49,6 +50,8 @@ export interface HouseContext {
   only?: { kicker: string };
   /** M11: the survey sections' data (`surveyData.ts`), when any of them prints. */
   survey?: SurveyReportData | null;
+  /** M11: the haul-road and hydrology runs the `haul` and `hydrology` sections print (`runs.ts`). */
+  runs?: SiteRuns | null;
 }
 
 /** What the frame and the cover call the report. */
@@ -1008,6 +1011,8 @@ export const SECTION_LAYOUTS: Partial<
   earthworks: layoutEarthworks,
   stockpiles: layoutStockpiles,
   landfill: layoutLandfill,
+  haul: layoutHaul,
+  hydrology: layoutHydrology,
 };
 
 /** Section titles for the contents. */

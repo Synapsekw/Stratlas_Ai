@@ -20,7 +20,7 @@ import {
   type ExportContext,
 } from './facts';
 import type { ProcessingSummary } from './processing';
-import { SURVEY_SECTIONS } from './surveyCsv';
+import { RUN_SECTIONS, SURVEY_SECTIONS } from './surveyCsv';
 import { reportModel, type ReportBranding, type ReportModel, type ReportRow } from './report';
 
 export type HouseKind = 'inspection' | 'volumetric' | 'road' | 'fusion';
@@ -36,7 +36,10 @@ export interface HouseInput extends ExportContext {
   audit?: AuditSummary | null | undefined;
   /** M10: the accuracy of the project's latest finished processing run (photogrammetry). */
   processing?: ProcessingSummary | null | undefined;
-  /** M11: the survey sections that have something to print (`SURVEY_SECTIONS`). */
+  /**
+   * M11: the survey sections that have something to print (`SURVEY_SECTIONS`, and `RUN_SECTIONS`
+   * for a project with haul-road or hydrology runs).
+   */
   surveySections?: readonly ReportSectionId[] | undefined;
 }
 
@@ -429,7 +432,7 @@ function roadSummary(r: RoadModel): RoadSummary {
  * The sections the house report prints, in order (Settings lists these). `audit` (M9 T1) prints
  * only for a project with a journal; `approvals` joins when T3 prints it; `processing` (M10)
  * only for a project with a finished photogrammetry run; the survey sections (M11) only for a
- * project with survey measurements of their kind.
+ * project with survey measurements of their kind, the haul-road and hydrology ones with runs.
  */
 export const HOUSE_SECTIONS = [
   'contents',
@@ -438,6 +441,7 @@ export const HOUSE_SECTIONS = [
   'site',
   'processing',
   ...SURVEY_SECTIONS,
+  ...RUN_SECTIONS,
   'statistics',
   'register',
   'issues',
@@ -461,7 +465,7 @@ export function houseReportModel(input: HouseInput): HouseModel {
       (id !== 'issues' || issuePages.length > 0) &&
       (id !== 'audit' || Boolean(input.audit)) &&
       (id !== 'processing' || Boolean(input.processing)) &&
-      (!(SURVEY_SECTIONS as readonly ReportSectionId[]).includes(id) ||
+      (!([...SURVEY_SECTIONS, ...RUN_SECTIONS] as readonly ReportSectionId[]).includes(id) ||
         Boolean(input.surveySections?.includes(id))),
   );
   const { layers, totals } = dataRows(m);

@@ -13,6 +13,7 @@ import {
   processingSummary,
   resolveReportBranding,
   stockpileCsv,
+  RUN_SECTIONS,
   SURVEY_SECTIONS,
   type AuditSummary,
   type HouseModel,
@@ -69,6 +70,7 @@ import {
   type IssueImages,
 } from './sections';
 import { layoutApprovals, parseSignOff } from '../../team/houseApprovals';
+import { readSiteRuns, runSectionIds, type SiteRuns } from './runs';
 import { buildSurveyData, readSurveyFiles, surveySectionIds, type SurveyFiles } from './surveyData';
 
 interface PageState {
@@ -253,13 +255,26 @@ async function run(): Promise<void> {
     set({ state: 'ready', phase: 'Ready', done: count, total: count, count, csv });
     return;
   }
-  const surveySections = surveyFiles ? surveySectionIds(surveyFiles) : [];
+  // the haul-road and hydrology runs main named (newest first)
+  const runIds = (k: string) => (params.get(k) ?? '').split(',').filter((x) => x !== '');
+  let runs: SiteRuns | null = null;
+  if (runIds('haul').length > 0 || runIds('hydro').length > 0) {
+    try {
+      runs = await readSiteRuns(read, manifest, { haul: runIds('haul'), hydro: runIds('hydro') });
+    } catch (e) {
+      console.warn('Report: the haul-road and hydrology runs are unreadable and left out', e);
+    }
+  }
+  const surveySections = [
+    ...(surveyFiles ? surveySectionIds(surveyFiles) : []),
+    ...runSectionIds(runs),
+  ];
   if (surveyOnly)
     contents = {
       sections: Object.fromEntries(
         HOUSE_SECTIONS.map((id) => [
           id,
-          (SURVEY_SECTIONS as readonly ReportSectionId[]).includes(id),
+          ([...SURVEY_SECTIONS, ...RUN_SECTIONS] as readonly ReportSectionId[]).includes(id),
         ]),
       ),
     };
@@ -345,6 +360,7 @@ async function run(): Promise<void> {
     ...(only ? { only: { kicker: t('house.proc.cover') } } : {}),
     ...(surveyOnly ? { only: { kicker: t('house.survey.cover') } } : {}),
     survey,
+    runs,
   };
   lap('model', t1);
 

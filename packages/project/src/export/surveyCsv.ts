@@ -28,6 +28,13 @@ export const SURVEY_SECTIONS = [
   'landfill',
 ] as const satisfies readonly ReportSectionId[];
 
+/**
+ * Sections drawn from the site's runs rather than its measurements: haul-road compliance
+ * (`aio.haul-run/1`) and hydrology (`aio.hydro-run/1`). They follow the survey sections and print
+ * only when the project has runs of their kind.
+ */
+export const RUN_SECTIONS = ['haul', 'hydrology'] as const satisfies readonly ReportSectionId[];
+
 // ---------------------------------------------------------------- basis
 
 /** What every survey number was computed and shown with (each section and CSV states it). */

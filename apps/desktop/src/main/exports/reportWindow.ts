@@ -56,6 +56,8 @@ export interface ReportWindowOptions {
   processingRun?: string | null | undefined;
   /** M11: the project's prepared surfaces (`survey/surfaces/<id>`) the survey sections compute on. */
   surveySurfaces?: readonly string[] | undefined;
+  /** M11: the haul-road and hydrology runs (ids, newest first) the `haul` and `hydrology` sections print. */
+  surveyRuns?: { haul: readonly string[]; hydro: readonly string[] } | undefined;
 }
 
 /**
@@ -128,6 +130,8 @@ export async function printReport(
   if (processing) query.only = 'processing';
   if (args.kind === 'survey' || csv) query.only = args.kind ?? '';
   if (house && opts.surveySurfaces?.length) query.surfaces = opts.surveySurfaces.join(',');
+  if (house && opts.surveyRuns?.haul.length) query.haul = opts.surveyRuns.haul.join(',');
+  if (house && opts.surveyRuns?.hydro.length) query.hydro = opts.surveyRuns.hydro.join(',');
   try {
     if (opts.devUrl) {
       const url = new URL(page, opts.devUrl.endsWith('/') ? opts.devUrl : `${opts.devUrl}/`);
