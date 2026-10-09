@@ -113,6 +113,71 @@ describe('settings store', () => {
     await writing;
   });
 
+  // current() serves synchronous and per-request readers (offline-only, AI routes, the data
+  // folder, the team cache): a change asked for must show there before it is written.
+  describe('current() right after a change is asked for', () => {
+    it('shows offline-only', async () => {
+      const store = createSettingsStore(file, defaults);
+      await store.get();
+      const writing = store.set({ offlineOnly: true });
+      expect(store.current().offlineOnly).toBe(true);
+      await writing;
+      expect(store.current().offlineOnly).toBe(true);
+    });
+
+    it('shows cloud AI, the routes and the local model', async () => {
+      const store = createSettingsStore(file, defaults);
+      await store.get();
+      const localModel = {
+        enabled: true,
+        baseUrl: 'http://127.0.0.1:11434/v1',
+        model: 'fake',
+        kind: 'ollama' as const,
+      };
+      const routes = [{ task: 'chat' as const, provider: 'local' as const, model: 'fake' }];
+      const writing = store.set({ cloudAi: true });
+      const next = store.set({ cloudAi: false, localModel, routes });
+      expect(store.current()).toMatchObject({ cloudAi: false, localModel, routes });
+      await Promise.all([writing, next]);
+      expect(store.current()).toMatchObject({ cloudAi: false, localModel, routes });
+    });
+
+    it('shows the data folder', async () => {
+      const store = createSettingsStore(file, defaults);
+      await store.get();
+      const writing = store.set({ dataRoot: join(dir, 'other') });
+      expect(store.current().dataRoot).toBe(join(dir, 'other'));
+      await writing;
+    });
+
+    it('shows the team cache size', async () => {
+      const store = createSettingsStore(file, defaults);
+      await store.get();
+      const team = { autoSync: true, intervalMin: 15, blobCacheGb: 80 };
+      const writing = store.set({ team });
+      expect(store.current().team?.blobCacheGb).toBe(80);
+      await writing;
+    });
+
+    it('drops a change that cannot be saved, and keeps one made by update()', async () => {
+      const store = createSettingsStore(file, defaults);
+      await store.get();
+      const bad = store.set({ theme: 'neon' as never });
+      const fine = store.set({ cloudAi: true });
+      // the invalid one does not hide the valid one asked after it
+      expect(store.current()).toMatchObject({ theme: defaults.theme, cloudAi: true });
+      await fine;
+      await expect(bad).rejects.toThrow();
+      const logo = store.update(() => ({ reportBranding: { logo: 'logo-abc123.png' } }));
+      const offline = store.set({ offlineOnly: true });
+      await Promise.all([logo, offline]);
+      expect(store.current()).toMatchObject({
+        offlineOnly: true,
+        reportBranding: { logo: 'logo-abc123.png' },
+      });
+    });
+  });
+
   it('fills fields missing from an older file with defaults', async () => {
     await writeFile(file, JSON.stringify({ theme: 'light' }));
     const store = createSettingsStore(file, defaults);

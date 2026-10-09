@@ -11,6 +11,7 @@ import {
   tilesOver,
   type RangeServer,
 } from '../testing';
+import { createSettingsStore, defaultSettings } from '../settings';
 import { httpSource } from './extract';
 import { createPackManager } from './manager';
 
@@ -86,6 +87,28 @@ describe('pack downloads', () => {
     expect(r.error).toMatch(/offline-only/i);
     expect(m.jobs()).toEqual([]);
     expect(server.ranges).toEqual([]);
+  });
+
+  // Privacy: offline-only turned on, then a download asked for at once, while the setting is
+  // still being written. The settings store must answer with the change already.
+  it('refuses a download asked for right after offline-only is turned on', async () => {
+    const settingsDir = await mkdtemp(join(tmpdir(), 'aio-offline-'));
+    try {
+      const store = createSettingsStore(
+        join(settingsDir, 'settings.json'),
+        defaultSettings(settingsDir),
+      );
+      await store.get();
+      const { m } = manager({ offlineOnly: () => store.current().offlineOnly === true });
+      const writing = store.set({ offlineOnly: true });
+      const r = await m.download(qatar);
+      await writing;
+      expect(r.ok).toBe(false);
+      expect(r.error).toMatch(/offline-only/i);
+      expect(server.ranges).toEqual([]);
+    } finally {
+      await rm(settingsDir, { recursive: true, force: true });
+    }
   });
 
   it('extracts the region from the newest build over ranges and installs a verified pack', async () => {
