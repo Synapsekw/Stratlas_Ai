@@ -185,6 +185,8 @@ export const SetupStatus = z.object({
     found: z.boolean(),
     version: z.string().optional(),
     problem: z.string().optional(),
+    /** PDAL was found (the pack's `tools/pdal`, `AIO_PDAL` or the PATH): DTM filter presets. */
+    pdal: z.boolean().optional(),
   }),
 });
 
