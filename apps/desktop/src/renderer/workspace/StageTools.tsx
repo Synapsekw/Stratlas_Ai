@@ -72,11 +72,22 @@ interface ToolProps {
   shortcut?: ShortcutId;
   pressed?: boolean;
   disabled?: boolean;
+  /** A `data-testid` for the e2e specs. */
+  testId?: string;
   onClick: () => void;
 }
 
 /** A square stage tool with a tooltip that names its shortcut. */
-export function Tool({ icon, label, keys, shortcut, pressed, disabled, onClick }: ToolProps) {
+export function Tool({
+  icon,
+  label,
+  keys,
+  shortcut,
+  pressed,
+  disabled,
+  testId,
+  onClick,
+}: ToolProps) {
   const hint = shortcut ? shortcutHint(shortcut) : keys;
   return (
     <button
@@ -86,6 +97,7 @@ export function Tool({ icon, label, keys, shortcut, pressed, disabled, onClick }
       aria-label={label}
       aria-keyshortcuts={shortcut ? ariaKeys(shortcut) : keys}
       disabled={disabled}
+      data-testid={testId}
       onClick={onClick}
     >
       <Icon name={icon} />

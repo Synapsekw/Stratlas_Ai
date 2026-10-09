@@ -36,6 +36,7 @@ export {
   footprint,
   headingLine,
   issueAnchor,
+  overlayTiles,
   poseAt,
   rasterQuad,
   severityRankColors,

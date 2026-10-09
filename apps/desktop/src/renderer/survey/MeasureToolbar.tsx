@@ -22,7 +22,7 @@ import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { useShell } from '../shell';
-import { PopTool } from '../workspace/StageTools';
+import { PopTool, Tool } from '../workspace/StageTools';
 import { BulkTotals } from './BulkTotals';
 import { CompareLayer } from './Comparison';
 import { DesignsTool } from './Designs';
@@ -46,13 +46,18 @@ import {
   useMeasure,
 } from './measureStore';
 import { TemplateEditor } from './TemplateEditor';
+import { OverlaysPanel, useOverlaysLoad } from './Overlays';
+import { attachOverlaysMap } from './overlaysMap';
+import { setOverlaysOpen, useOverlays } from './overlaysStore';
+import { SectionDock } from './SectionDock';
+import { attachSectionMap } from './sectionMap';
 import { UnitsDialog } from './UnitsDialog';
 import './measure.css';
 
-/** The tools the toolbar offers, by family (sections and history open with G5 and G8). */
+/** The tools the toolbar offers, by family (a cross-section opens G5's dock; history with G8). */
 const FAMILIES: { family: 'point' | 'line' | 'polygon' | 'markup'; tools: MeasurementTool[] }[] = [
   { family: 'point', tools: ['elevation', 'elevation-difference', 'annotation'] },
-  { family: 'line', tools: ['distance', 'grade', 'vertex-table', 'berm-check'] },
+  { family: 'line', tools: ['distance', 'grade', 'vertex-table', 'berm-check', 'section'] },
   { family: 'polygon', tools: ['area', 'volume'] },
   { family: 'markup', tools: ['freehand'] },
 ];
@@ -78,6 +83,7 @@ export function MeasureToolbar() {
   const templates = useMeasure((s) => s.templates);
   const snap = useMeasure((s) => s.snap);
   const readOnly = useMeasure((s) => s.readOnly);
+  const overlaysOpen = useOverlays((s) => s.open);
   const lib = useMemo(
     () => bookmarks(templateLibrary(templates.project, templates.user)),
     [templates],
@@ -95,8 +101,8 @@ export function MeasureToolbar() {
         onOpenChange={setOpen}
       >
         <div className="pop-form sv-tools" data-testid="survey-tools">
-          {/* the site's designs and survey QA: here rather than on the bar, which fits one row at
-              1440 px with both side panels open */}
+          {/* the site's designs, survey QA and terrain overlays: here rather than on the bar,
+              which fits one row at 1440 px with both side panels open */}
           <div className="sv-fam" role="group" aria-label="Site data">
             <span className="pop-title">
               <Icon name="layers" size={12} /> Site data
@@ -105,6 +111,16 @@ export function MeasureToolbar() {
               <DesignsTool />
               <SurveyQaTool
                 onPicked={() => {
+                  setOpen(false);
+                }}
+              />
+              <Tool
+                icon="raster"
+                label="Terrain overlays"
+                testId="survey-overlays-open"
+                pressed={overlaysOpen}
+                onClick={() => {
+                  setOverlaysOpen(!overlaysOpen);
                   setOpen(false);
                 }}
               />
@@ -316,6 +332,8 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
   const listOpen = useMeasure((s) => s.listOpen);
   const focus = useMeasure((s) => s.focus);
   const dialog = useMeasure((s) => s.dialog);
+  const overlaysOpen = useOverlays((s) => s.open);
+  useOverlaysLoad();
 
   useEffect(() => {
     void loadMeasurements(projectId);
@@ -335,7 +353,14 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
   useEffect(() => {
     if (!map || !frame) return;
     const clampZ = stage ? stageClamp(stage, frame) : () => null;
-    return attachMap(map, frame, clampZ);
+    const detach = [
+      attachMap(map, frame, clampZ),
+      attachSectionMap(map, frame.epsg),
+      attachOverlaysMap(map, frame.epsg),
+    ];
+    return () => {
+      for (const d of detach) d();
+    };
   }, [map, frame, stage]);
 
   // a project switch ends any drawing
@@ -355,6 +380,8 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
         </aside>
       )}
       <CompareLayer stage={stage} map={map} frame={frame} />
+      <SectionDock stage={stage} />
+      {overlaysOpen && <OverlaysPanel />}
       {dialog?.kind === 'templates' && <TemplateEditor />}
       {dialog?.kind === 'units' && <UnitsDialog />}
     </>,

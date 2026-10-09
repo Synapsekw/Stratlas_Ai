@@ -70,8 +70,10 @@ BUILT = {
     "geo.calibration",
     "survey.cleanup",
     "survey.compare",
+    "survey.overlay",
     "survey.prepare",
     "survey.qa",
+    "survey.section",
 }
 STUBS = sorted(set(M11) - BUILT)
 

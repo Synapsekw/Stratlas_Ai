@@ -50,6 +50,7 @@ import {
   MeasurementsFile,
   SitePoint2,
   SurveyQa,
+  SurveyOverlaysFile,
   SurveySettings,
   SurveyTemplatesFile,
   TerrainEditsFile,
@@ -2361,6 +2362,22 @@ export const ipc = {
   /** Write `survey/cleanups.json` atomically (`.bak`, journaled); refused for packages (G8). */
   'survey:writeTerrainEdits': {
     request: z.object({ projectId: ProjectId, file: TerrainEditsFile }).strict(),
+    response: OkOrFailure,
+  },
+  /** `survey/overlays.json`; an empty list when there is none; `readOnly` for a package (G5). */
+  'survey:readOverlays': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), file: SurveyOverlaysFile, readOnly: z.boolean() }),
+      Failure,
+    ]),
+  },
+  /**
+   * Write `survey/overlays.json` atomically (`.bak`): visibility, names and removals of overlays
+   * `survey.overlay` made (a removed overlay's folder is deleted); refused for packages (G5).
+   */
+  'survey:writeOverlays': {
+    request: z.object({ projectId: ProjectId, file: SurveyOverlaysFile }).strict(),
     response: OkOrFailure,
   },
   /** Search the EPSG catalogue by code, name or area; `near` ranks CRSs whose area holds it (G1). */

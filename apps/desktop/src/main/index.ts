@@ -109,6 +109,7 @@ import { geoidJobEnv, packGeoidDirsOf, registerGeoidPacksIpc } from './packs/geo
 import { registerSurveyIpc } from './survey';
 import { registerSurveyAiIpc } from './surveyAi';
 import { qaJobEvents, registerSurveyQaIpc } from './surveyQa';
+import { registerSurveyOverlaysIpc } from './surveyOverlays';
 import { createTestVault, useTestVault } from './testVault';
 import { importLogo, removeLogo } from './branding';
 import { putThumb } from './thumbs';
@@ -1275,6 +1276,7 @@ function registerIpc(): void {
     journal: (root: string, drafts: readonly DraftOp[]) => journal.appendEdits(root, drafts),
   };
   registerSurveyIpc({ handle, ...survey, userData: () => app.getPath('userData') });
+  registerSurveyOverlaysIpc({ handle, ...survey });
   registerGeodesyIpc({ handle, ...survey });
   registerSurveyQaIpc({ handle, ...survey });
   registerGeoidPacksIpc({
