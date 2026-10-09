@@ -18,7 +18,7 @@ Parameters as ``SurveyQaParams`` in ``@aio/schema`` (``jobs.ts``); the result is
   beyond 0.10 m; Moderate: more than 60 % beyond 0.20 m; Lenient: more than 60 % beyond 0.40 m).
   ``off`` measures without a verdict (status ``unchecked``; the previous check at Moderate's
   threshold, for information).
-- **Status**: ``hold`` with ``hold.reason`` when a check fails (main journals the hold as a
+- **Status**: ``hold`` with ``hold.reason`` when a check fails (main records the hold as a
   ``survey.hold`` op when the job finishes; only a person releases it, with a note), ``pass`` when
   every check that ran passed, ``unchecked`` when the level is off or nothing could be checked.
 
