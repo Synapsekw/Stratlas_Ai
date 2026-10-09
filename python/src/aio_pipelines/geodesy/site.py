@@ -346,6 +346,30 @@ def site_pipeline(
     )
 
 
+CALIBRATION_FILE = "survey/calibration.json"
+
+
+def applied_calibration(project_root: str | Path, settings: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The site's applied calibration (``survey/calibration.json``), or None.
+
+    A calibration is applied when it carries ``appliedAt`` and the survey settings name it in
+    ``calibration`` (main's ``geodesy:applyCalibration`` sets both); a draft, a removed one or one
+    the settings do not name is not. The renderer's tables (``survey.prepare``) and every export
+    (``survey.export``) read it here, so readouts and exports share one calibrated frame.
+    """
+    p = Path(project_root) / CALIBRATION_FILE
+    if not p.is_file():
+        return None
+    try:
+        cal = json.loads(p.read_text("utf-8"))
+    except (OSError, ValueError) as e:
+        raise JobError(f"The site calibration could not be read: {e}") from e
+    if not isinstance(cal, dict) or not cal.get("appliedAt"):
+        return None
+    named = (settings or {}).get("calibration")
+    return cal if named and named == cal.get("id") else None
+
+
 # ------------------------------------------------------------------------------------------ tables
 
 

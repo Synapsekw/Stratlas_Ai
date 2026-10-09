@@ -115,13 +115,10 @@ def site_files(project: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str,
     if not isinstance(crs, dict) or not (isinstance(crs.get("epsg"), int) or isinstance(crs.get("wkt"), str)):
         raise JobError("The project has no coordinate system; set one before exporting survey data.")
     data_crs = {"epsg": crs["epsg"]} if isinstance(crs.get("epsg"), int) else {"wkt": crs["wkt"]}
+    from ..geodesy.site import applied_calibration
+
     settings = read_json(project / "survey" / "settings.json", "survey settings") or {}
-    cal = read_json(project / "survey" / "calibration.json", "site calibration")
-    if cal is not None and not (
-        cal.get("appliedAt") and settings.get("calibration") and settings.get("calibration") == cal.get("id")
-    ):
-        cal = None
-    return data_crs, settings, cal
+    return data_crs, settings, applied_calibration(project, settings)
 
 
 @dataclass
