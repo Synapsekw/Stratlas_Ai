@@ -269,9 +269,29 @@ const HEAT_CELLS = 192;
  * the focused polygon on its own) stores them as derived results that leave the file saved; a
  * person's Recompute stores them as an edit.
  */
-export async function compute(
+export function compute(
   id: string,
   opts: { live?: boolean; auto?: boolean; points?: readonly SitePoint[] } = {},
+): Promise<RunReply | null> {
+  const run = computeNow(id, opts);
+  flights.set(id, run);
+  void run.finally(() => {
+    if (flights.get(id) === run) flights.delete(id);
+  });
+  return run;
+}
+
+/**
+ * The latest run in flight of each measurement. The check after a change waits for the focused
+ * measurement's run rather than starting its own over it: a run with the same key cancels the
+ * one before, so the check used to throw a person's Recompute away (it answered null) and store
+ * its own derived result in its place.
+ */
+const flights = new Map<string, Promise<RunReply | null>>();
+
+async function computeNow(
+  id: string,
+  opts: { live?: boolean; auto?: boolean; points?: readonly SitePoint[] },
 ): Promise<RunReply | null> {
   const m = measureStore.getState().file.measurements.find((x) => x.id === id);
   if (m?.family !== 'polygon' || m.items.length === 0 || get().status !== 'ready') return null;
@@ -365,6 +385,9 @@ export function scheduleCheck(delayMs = 120): void {
   timer = setTimeout(() => {
     timer = null;
     void (async () => {
+      // a run of the focused measurement is still out: decide once it has answered
+      const focus = measureStore.getState().focus;
+      if (focus) await flights.get(focus);
       await checkFingerprints();
       const s = measureStore.getState();
       const m = s.file.measurements.find((x) => x.id === s.focus);
