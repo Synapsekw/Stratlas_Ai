@@ -43,8 +43,11 @@ export const DEFAULT_SETTINGS: Settings = {
   updateUrl: '',
 };
 
-/** A Settings field to focus when Settings opens (the agent panel's "Open AI settings"). */
-export type SettingsFocus = 'anthropic-workspace';
+/**
+ * A Settings field to focus when Settings opens: the agent panel's "Open AI settings", and
+ * "Offline maps" of the map type picker (Imagery and terrain, where packs are imported).
+ */
+export type SettingsFocus = 'anthropic-workspace' | 'raster-packs';
 
 /** The pages of the Settings screen. */
 export type SettingsPage =
@@ -60,6 +63,12 @@ export type SettingsPage =
   | 'appearance'
   | 'keyboard'
   | 'about';
+
+/** The Settings page each focus target is on. */
+const FOCUS_PAGE: Record<SettingsFocus, SettingsPage> = {
+  'anthropic-workspace': 'ai',
+  'raster-packs': 'maps',
+};
 
 export interface ShellState {
   screen: Screen;
@@ -210,7 +219,11 @@ export function createShellStore(
     },
 
     openSettings: (focus) => {
-      set({ screen: 'settings', settingsFocus: focus ?? null, settingsPage: focus ? 'ai' : null });
+      set({
+        screen: 'settings',
+        settingsFocus: focus ?? null,
+        settingsPage: focus ? FOCUS_PAGE[focus] : null,
+      });
     },
 
     openSettingsPage: (page) => {
