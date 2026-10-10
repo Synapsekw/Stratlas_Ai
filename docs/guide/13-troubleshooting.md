@@ -32,8 +32,8 @@ The Projects screen shows "The project did not open." with the reason:
 
 - "Jobs cannot run yet: the processing tools are missing or need an update", or "No pipeline pack in ..." under **Details**: the processing tools are not installed. Click **Update processing tools** (or open **Settings**, **Processing tools**), click **Choose file** under **Install or update from file** and pick the pipeline pack file that came with the installer. **Jobs** then shows "Processing tools" and their version.
 - "There is no pipeline called ...", or "The processing tools need an update": the pack is older than the app, which happens after an update of {product}. Install the pack that came with this version the same way; {product} uses the newest pack it has.
-- "This pack is for ..., and this computer is ...": the file is the pack for another kind of computer. Pick the one for this computer.
-- "This pack is damaged" or "This pack is incomplete": the file did not copy whole. Copy or download it again.
+- "These processing tools are for ..., and this computer is ...": the file is for another kind of computer. Pick the one for this computer.
+- "This file is damaged" or "This file is incomplete": the file did not copy whole. Copy or download it again.
 - See [Processing tools](12-settings.md#processing-tools).
 - A job that was running when {product} closed shows **Interrupted**: click **Resume**.
 
