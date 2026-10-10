@@ -75,6 +75,7 @@ import {
   type PinState,
   type PinTone,
 } from './pins';
+import { createOnlineSatelliteProvider } from './onlineSatellite';
 import { PmtilesImageryProvider, asImageryProvider, packTerrainProvider } from './providers';
 import {
   configureCesiumBase,
@@ -173,6 +174,7 @@ export class GlobeController {
   private readonly palette: GlobePalette;
   private style: GlobeStyle;
   private street: GlobeTileSource | null = null;
+  private onlineSatellite = false;
   private imageryPacks: readonly Pack[] = [];
   private terrainPacks: readonly Pack[] = [];
   private sourceFor: SourceFor = packSource;
@@ -512,6 +514,16 @@ export class GlobeController {
     this.queueRebuild();
   }
 
+  /**
+   * Online satellite may be drawn (the person switched it on; main still decides tile by tile).
+   * It shows in the Satellite look only, under the imagery packs.
+   */
+  setOnlineSatellite(on: boolean): void {
+    if (on === this.onlineSatellite) return;
+    this.onlineSatellite = on;
+    this.queueRebuild();
+  }
+
   /** The host's street tiles (null: no street pack is installed). The Globe never disposes them. */
   setStreet(source: GlobeTileSource | null): void {
     if (source === this.street) return;
@@ -571,6 +583,7 @@ export class GlobeController {
       style: this.style,
       street: street !== null,
       imagery: this.imageryPacks,
+      onlineSatellite: this.onlineSatellite,
     });
     const names = plan.map((entry) =>
       entry.kind === 'earth-shapes'
@@ -622,6 +635,8 @@ export class GlobeController {
           }
         } else if (entry.kind === 'natural-earth') {
           layers.add(naturalEarthLayer());
+        } else if (entry.kind === 'online-satellite') {
+          layers.add(new ImageryLayer(createOnlineSatelliteProvider()));
         } else {
           const provider = new PmtilesImageryProvider(entry.pack, this.sourceFor(entry.pack));
           this.imageryProviders.push(provider);

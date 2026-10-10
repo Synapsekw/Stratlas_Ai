@@ -2677,9 +2677,8 @@ export const en = {
   'globe.lookSatellite': 'Satellite',
   'globe.lookNaturalEarth': 'Natural Earth',
   'globe.noStreetPacks':
-    'No street map pack is installed, so the Globe shows land and borders only. Add packs in Settings, Map packs.',
-  'globe.noImageryPacks':
-    'No imagery pack is installed, so the street map shows. Add imagery in Settings, Map packs.',
+    'No street map pack is installed, so the Globe shows land and borders only. Add packs in Settings, Offline maps.',
+  'globe.satelliteHint': 'Turn on Online satellite in the map type menu to see imagery everywhere.',
   'globe.zoomIn': 'Zoom in',
   'globe.zoomOut': 'Zoom out',
   'globe.allSites': 'Show all sites',

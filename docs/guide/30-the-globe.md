@@ -6,7 +6,7 @@ The Globe shows every project in your library as a site on the Earth, offline. I
 
 Click **Globe** in the sidebar. The Earth is drawn as the dark street map the Map view uses, from the street map packs you have installed: countries and cities from far out, streets where a detailed pack covers the place. Each project with a location is a pin, and **Sites on the globe** lists them. The footer credits what is shown, for example "Natural Earth (public domain)", "© OpenStreetMap contributors" and "CesiumJS (Apache-2.0)"; **Imagery and terrain credits** lists them all.
 
-The Globe makes no network requests. Everything it draws ships with {product} or comes from packs you add in Settings (see the chapters on map packs and on imagery and terrain packs).
+The Globe makes no network requests of its own. Everything it draws ships with {product} or comes from packs you add in Settings (see the chapters on map packs and on imagery and terrain packs). The one exception is online satellite, which shows in the **Satellite** look only after you have switched it on, and never on an offline-only workstation except for what is already cached.
 
 Left alone with the whole Earth in view, the Globe turns slowly for a while and then rests. Any click, drag or scroll stops it. It does not turn when Reduce motion is on or on the Low graphics preset.
 
@@ -14,8 +14,8 @@ Left alone with the whole Earth in view, the Globe turns slowly for a while and 
 
 **Map** chooses what the Earth is drawn from:
 
-- **Street map:** the street map packs over the land and borders that ship with {product}. Without any street map pack the Globe says "No street map pack is installed, so the Globe shows land and borders only. Add packs in Settings, Map packs."
-- **Satellite:** your imagery packs over the street map. **Imagery** then chooses between **Best available**, the sharpest installed pack for each place, and one pack. Without any imagery pack the Globe says "No imagery pack is installed, so the street map shows. Add imagery in Settings, Map packs."
+- **Street map:** the street map packs over the land and borders that ship with {product}. Without any street map pack the Globe says "No street map pack is installed, so the Globe shows land and borders only. Add packs in Settings, Offline maps."
+- **Satellite:** imagery over the street map. With **Online satellite** switched on (see the chapter on maps), the whole Earth shows that imagery, and your imagery packs lie over it where you have them; it is credited in the footer while it shows. With it off, only your imagery packs show. **Imagery** chooses between **Best available**, the sharpest installed pack for each place, and one pack. Without any imagery pack and with online satellite off the Globe says "Turn on Online satellite in the map type menu to see imagery everywhere."
 - **Natural Earth:** the painted Natural Earth II picture of the Earth, with your imagery packs over it. Street map packs are not drawn in this look.
 
 Street names and other labels are part of the map, so they lie on the ground: they turn with the Earth and lean when you tilt the view.

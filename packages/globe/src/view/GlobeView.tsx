@@ -38,6 +38,8 @@ export interface GlobeViewProps {
   street?: GlobeTileSource | null;
   /** The street style's colours (the built-in copy of them when left out). */
   palette?: GlobePalette;
+  /** Online satellite may be drawn (Satellite look only): the person switched it on. */
+  onlineSatellite?: boolean;
   sites: readonly GlobeSite[];
   imagery: readonly RasterPackInfo[];
   terrain: readonly RasterPackInfo[];
@@ -154,6 +156,9 @@ export function GlobeView(props: GlobeViewProps) {
   useEffect(() => {
     ctl?.setStreet(props.street ?? null);
   }, [ctl, props.street]);
+  useEffect(() => {
+    ctl?.setOnlineSatellite(props.onlineSatellite === true);
+  }, [ctl, props.onlineSatellite]);
   useEffect(() => {
     ctl?.setPacks(props.imagery, props.terrain);
   }, [ctl, props.imagery, props.terrain]);

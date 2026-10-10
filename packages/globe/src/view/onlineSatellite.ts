@@ -1,6 +1,7 @@
 /**
  * Online satellite on the Globe (ADR 0007, amendment of 10 Oct 2026): Sentinel-2 cloudless 2016 as
- * a CesiumJS imagery provider. Not used by the Globe view yet; it is the seam for wiring it in.
+ * a CesiumJS imagery provider. The Globe draws it in the Satellite look, above the street globe and
+ * under the imagery packs, when the layer plan lists it (`planGlobeLayers`, `onlineSatellite`).
  *
  * The provider asks the app's own protocol only (`aio://online/s2cloudless-2016/{z}/{x}/{y}.jpg`,
  * `ONLINE_SATELLITE.tileUrl`): main decides whether a tile is served (the person's switch, the
@@ -8,10 +9,9 @@
  * `offline.ts` stand. No ion, Bing, Google, Esri or Mapbox provider is involved; this is a plain
  * tile provider of our own, like `PmtilesImageryProvider`.
  *
- * To use it: add `new ImageryLayer(createOnlineSatelliteProvider())` above the bundled Natural
- * Earth layer and under the imagery packs, while `onlineSatelliteAvailability({ satellite,
- * offlineOnly })` is not `off` (`satellite` from `onlineTiles:status`), and show
- * `provider.credit` (CesiumJS does, through the layer's credit display).
+ * The host says when it may be drawn: while `onlineSatelliteAvailability({ satellite,
+ * offlineOnly })` is not `off` (`satellite` from `onlineTiles:status`). Its credit shows in the
+ * Globe's credits while it is drawn (`planCredits`).
  */
 import { Event } from '@cesium/core';
 import { Credit, WebMercatorTilingScheme, type ImageryProvider } from '@cesium/engine';

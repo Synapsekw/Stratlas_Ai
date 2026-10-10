@@ -36,6 +36,9 @@ more kind of plan entry and one more case in the view.
   levels in one view, and a street style draws each zoom differently, so with the view at rest
   every street tile in view is drawn again in the style of the deepest one (`styleZoomFor`,
   `TileSourceImageryProvider.syncView`): labels and line widths agree across tile edges.
+- **Online satellite** (`view/onlineSatellite.ts`): Sentinel-2 through `aio://online/...`, in the
+  Satellite look only, above the street globe and under the packs, while the host says the
+  person switched it on. Main serves or refuses every tile.
 - **Imagery packs** (`view/providers.ts`): raster PMTiles, in the Satellite and Natural Earth
   looks.
 - **Natural Earth II**: the painted raster of the first Globe, the Natural Earth look.

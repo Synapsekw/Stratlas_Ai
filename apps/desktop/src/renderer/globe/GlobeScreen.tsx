@@ -30,6 +30,7 @@ import {
 import {
   defaultGlobeSettings,
   type GlobeSettings,
+  onlineSatelliteAvailability,
   type GlobeSite,
   type MapPackInfo,
   type ProjectManifest,
@@ -40,6 +41,7 @@ import { useWorkspace, workspace } from '@aio/workspace';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useGraphics } from '../graphics';
 import { bridge, shell, useShell } from '../shell';
+import { rasterPacks, useRasterPacks } from '../workspace/siteTiles';
 import './globe.css';
 import { onGlobeRequest, takeGlobeRequest } from './request';
 import { GLOBE_PALETTE, useStreetTiles } from './street';
@@ -143,6 +145,14 @@ export default function GlobeScreen() {
     [loaded, prefs.terrain],
   );
   const street = useStreetTiles(loaded?.street ?? null, look, tier);
+  // online satellite: the person's one switch (the map type menu, Settings, the palette); main
+  // holds it and serves or refuses every tile, the Globe only draws the layer while it is on
+  const offlineOnly = useShell((s) => s.settings.offlineOnly === true);
+  const satelliteOn = useRasterPacks((s) => s.prefs.onlineSatellite);
+  const online = onlineSatelliteAvailability({ satellite: satelliteOn, offlineOnly }) !== 'off';
+  useEffect(() => {
+    rasterPacks.getState().refresh();
+  }, []);
   const [tilesets, setTilesets] = useState<GlobeTilesets | null>(null);
   useEffect(() => {
     let live = true;
@@ -269,6 +279,7 @@ export default function GlobeScreen() {
         style={look}
         street={street}
         palette={GLOBE_PALETTE}
+        onlineSatellite={online}
         sites={loaded.sites}
         imagery={imagery}
         terrain={terrain}
@@ -349,8 +360,8 @@ export default function GlobeScreen() {
           {look === 'street' && loaded.street.length === 0 && (
             <p className="globe-note">{t('globe.noStreetPacks')}</p>
           )}
-          {look === 'satellite' && loaded.imagery.length === 0 && (
-            <p className="globe-note">{t('globe.noImageryPacks')}</p>
+          {look === 'satellite' && loaded.imagery.length === 0 && !online && (
+            <p className="globe-note">{t('globe.satelliteHint')}</p>
           )}
           {look !== 'street' && (
             <label className="globe-field">

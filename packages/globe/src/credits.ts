@@ -42,7 +42,8 @@ export function creditLines(packs: readonly Credited[], shown: CreditsShown = {}
 
 /**
  * The credit lines of a layer plan: what the Earth is drawn from (the shapes, the street packs,
- * the old raster), then the imagery packs in it and the terrain packs in use.
+ * the old raster), the online satellite imagery when the plan draws it, then the imagery packs
+ * in it and the terrain packs in use.
  */
 export function planCredits<P extends Credited>(
   plan: readonly GlobeLayerPlan<P>[],
@@ -51,11 +52,13 @@ export function planCredits<P extends Credited>(
 ): string[] {
   const base: string[] = [];
   const packs: Credited[] = [];
+  let onlineSatellite = false;
   for (const layer of plan) {
     if (layer.kind === 'earth-shapes') base.push(EARTH_SHAPES_CREDIT);
     else if (layer.kind === 'street') base.push(streetCredit);
     else if (layer.kind === 'natural-earth') base.push(BUNDLED_CREDIT);
+    else if (layer.kind === 'online-satellite') onlineSatellite = true;
     else packs.push(layer.pack);
   }
-  return creditLines([...packs, ...terrain], { base });
+  return creditLines([...packs, ...terrain], { base, onlineSatellite });
 }

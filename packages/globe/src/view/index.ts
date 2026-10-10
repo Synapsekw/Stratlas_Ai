@@ -23,7 +23,7 @@ export {
   packTerrainProvider,
   type PackTerrainOptions,
 } from './providers';
-// Online satellite (ADR 0007 amended 10 Oct 2026): the provider for the Globe, not wired in yet
+// Online satellite (ADR 0007 amended 10 Oct 2026): the Globe's Satellite look draws it
 export {
   OnlineSatelliteImageryProvider,
   createOnlineSatelliteProvider,

@@ -15,7 +15,12 @@ import {
   syntheticPackMeta,
   terrariumPng,
 } from '@aio/globe/testing';
-import { ProjectManifest, SCHEMA_VERSION, type ProjectManifestInput } from '@aio/schema';
+import {
+  ONLINE_SATELLITE,
+  ProjectManifest,
+  SCHEMA_VERSION,
+  type ProjectManifestInput,
+} from '@aio/schema';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -353,14 +358,18 @@ test('every library project is a site; packs draw with their credits', async ({
   // the street map is the default look: the bundled land shapes, and no imagery pack drawn
   const credits = win.getByTestId('globe-credits');
   await expect(win.getByTestId('globe-look-street')).toHaveAttribute('aria-pressed', 'true');
-  expect((await inspect(win))?.layers).toEqual(['earth-shapes:whole']);
+  await expect
+    .poll(async () => (await inspect(win))?.layers, { timeout: SETTLE_MS })
+    .toEqual(['earth-shapes:whole']);
   await expect(credits).toContainText('Natural Earth (public domain)');
   await expect(credits).not.toContainText('Synthetic imagery test pack');
   await expect(win.getByText(/No street map pack is installed/)).toBeVisible();
   // satellite is a choice: the packs go over the street globe
   await win.getByTestId('globe-look-satellite').click();
   await settle(win, 'the imagery pack is a layer', (s) => s.imagery.includes('syn-imagery'));
-  expect((await inspect(win))?.layers).toEqual(['earth-shapes:whole', 'pack:syn-imagery']);
+  await expect
+    .poll(async () => (await inspect(win))?.layers, { timeout: SETTLE_MS })
+    .toEqual(['earth-shapes:whole', 'pack:syn-imagery']);
   await expect(win.locator('.globe-field select').first()).toContainText(
     'Synthetic imagery (syn-imagery)',
   );
@@ -408,7 +417,9 @@ test('every library project is a site; packs draw with their credits', async ({
     'the Natural Earth raster is the base',
     (s) => s.layers[0] === 'natural-earth-ii',
   );
-  expect((await inspect(win))?.layers).toEqual(['natural-earth-ii', 'pack:syn-imagery']);
+  await expect
+    .poll(async () => (await inspect(win))?.layers, { timeout: SETTLE_MS })
+    .toEqual(['natural-earth-ii', 'pack:syn-imagery']);
   await expect(credits).toContainText('Natural Earth II (public domain)');
   await settle(win, 'the pack draws over it', (s) => s.tilesLoaded && s.imageryTiles > 0);
   const old = await sampleAt(win, 0.35, 0.75);
@@ -443,7 +454,9 @@ test('street packs draw as the street map of the Globe, offline under the app CS
     });
   });
   await openGlobe(win);
-  expect((await inspect(win))?.layers).toEqual(['earth-shapes:underlay', 'street']);
+  await expect
+    .poll(async () => (await inspect(win))?.layers, { timeout: SETTLE_MS })
+    .toEqual(['earth-shapes:underlay', 'street']);
   await expect(win.getByTestId('globe-credits')).toContainText('OpenStreetMap contributors');
   await expect(win.getByText(/No street map pack is installed/)).toHaveCount(0);
   await flyToSite(win, SITE_A.name);
@@ -460,7 +473,7 @@ test('street packs draw as the street map of the Globe, offline under the app CS
   // the Natural Earth look draws no street tiles
   await win.getByTestId('globe-look-natural-earth').click();
   await settle(win, 'the street layer is gone', (s) => !s.layers.includes('street'));
-  expect((await inspect(win))?.street).toBeNull();
+  await expect.poll(async () => (await inspect(win))?.street, { timeout: SETTLE_MS }).toBeNull();
   const violations = await win.evaluate(
     () => (window as unknown as { __violations: string[] }).__violations,
   );
@@ -490,7 +503,9 @@ test('a site lights up under the pointer and when it is selected', async ({ win 
   // a click selects it: the card opens and the label stays beside the pin
   await win.mouse.click((box?.x ?? 0) + x, (box?.y ?? 0) + y);
   await expect(win.getByTestId('globe-card')).toContainText(SITE_A.name);
-  expect((await inspect(win))?.selected).toBe(SITE_A.id);
+  await expect
+    .poll(async () => (await inspect(win))?.selected, { timeout: SETTLE_MS })
+    .toBe(SITE_A.id);
   const selected = win.getByTestId('globe-tag-selected');
   await expect(selected).toContainText(SITE_A.name);
   await expect(selected.locator('.aio-globe-chip')).toBeVisible();
@@ -714,4 +729,96 @@ test('closing the Globe gives its WebGL context back', async ({ app, win }) => {
   }
   // eslint-disable-next-line no-console -- the GPU process working set, for the report
   console.log(`globe GPU process: ${String(before)} MiB, open ${seen.join(', ')} MiB`);
+});
+
+// ---------------------------------------------------------------- online satellite
+
+test.describe('online satellite on the Globe', () => {
+  // No test reaches the network: main answers with its stand-in (flat green tiles made in main,
+  // the addresses it would have asked for kept in `__aioOnlineTileRequests`), as in
+  // online-satellite.spec.ts. The zero-network guard of the fixtures runs as on every test.
+  test.use({ appEnv: { QUADRION_ONLINE_TILES_TEST: '1' } });
+
+  /** How many tiles main's stand-in for the service was asked for. */
+  const asked = (app: ElectronApplication) =>
+    app.evaluate(
+      () =>
+        (globalThis as { __aioOnlineTileRequests?: string[] }).__aioOnlineTileRequests?.length ?? 0,
+    );
+  const layers = async (win: Page) => (await inspect(win))?.layers ?? null;
+  const HINT = 'Turn on Online satellite in the map type menu to see imagery everywhere.';
+
+  test('the Satellite look draws it once it is switched on, under the packs, and only then', async ({
+    app,
+    win,
+    dataRoot,
+    network,
+  }) => {
+    await installSyntheticPacks(dataRoot);
+    await openGlobe(win);
+    const credits = win.getByTestId('globe-credits');
+    // switched off (as a new profile is): the Satellite look is the packs alone
+    await win.getByTestId('globe-look-satellite').click();
+    await expect
+      .poll(() => layers(win), { timeout: SETTLE_MS })
+      .toEqual(['earth-shapes:whole', 'pack:syn-imagery']);
+    await expect(credits).not.toContainText(ONLINE_SATELLITE.attribution);
+    expect(await asked(app)).toBe(0);
+
+    // The person's switch (the map type menu, Settings, the palette) is held by main: switch it
+    // on there and come back to the Globe, which asks main how it stands when it opens.
+    const on = await win.evaluate(() =>
+      window.aio.invoke('onlineTiles:setSatellite', { on: true }),
+    );
+    expect(on).toMatchObject({ ok: true, satellite: true });
+    await win.locator('.sb-nav .nav-item', { hasText: 'Projects' }).click();
+    await expect(win.getByTestId('globe-canvas')).toHaveCount(0);
+    await openGlobe(win);
+    // the look was remembered; the online imagery lies over the Earth and under the pack
+    await expect
+      .poll(() => layers(win), { timeout: SETTLE_MS })
+      .toEqual(['earth-shapes:whole', 'online-satellite', 'pack:syn-imagery']);
+    await expect(credits).toContainText(ONLINE_SATELLITE.attribution);
+    await expect(credits).toContainText('Synthetic imagery test pack');
+    await expect(win.getByText(HINT)).toHaveCount(0);
+    // its tiles come through main (the stand-in here) and draw: green well over red and blue,
+    // whatever the GPU and the Globe's light make of the exact shade
+    await expect.poll(() => asked(app), { timeout: SETTLE_MS }).toBeGreaterThan(0);
+    await expect
+      .poll(
+        async () => {
+          const spots = await Promise.all([sampleAt(win, 0.55, 0.4), sampleAt(win, 0.7, 0.6)]);
+          return spots.some(([r = 0, g = 0, b = 0] = []) => g > r + 30 && g > b + 30);
+        },
+        { timeout: SETTLE_MS },
+      )
+      .toBe(true);
+
+    // never in the other looks
+    await win.getByTestId('globe-look-street').click();
+    await expect.poll(() => layers(win), { timeout: SETTLE_MS }).toEqual(['earth-shapes:whole']);
+    await expect(credits).not.toContainText(ONLINE_SATELLITE.attribution);
+    await win.getByTestId('globe-look-natural-earth').click();
+    await expect
+      .poll(() => layers(win), { timeout: SETTLE_MS })
+      .toEqual(['natural-earth-ii', 'pack:syn-imagery']);
+    await expect(credits).not.toContainText(ONLINE_SATELLITE.attribution);
+    // and nothing left the computer: not from the page, not from main
+    expect(await network.outbound()).toEqual([]);
+  });
+
+  test('without it and without a pack, the Satellite look says where to switch it on', async ({
+    app,
+    win,
+  }) => {
+    await openGlobe(win);
+    await win.getByTestId('globe-look-satellite').click();
+    await expect
+      .poll(async () => (await inspect(win))?.style, { timeout: SETTLE_MS })
+      .toBe('satellite');
+    await expect.poll(() => layers(win), { timeout: SETTLE_MS }).toEqual(['earth-shapes:whole']);
+    await expect(win.getByText(HINT)).toBeVisible();
+    await expect(win.getByTestId('globe-credits')).not.toContainText(ONLINE_SATELLITE.attribution);
+    expect(await asked(app)).toBe(0);
+  });
 });

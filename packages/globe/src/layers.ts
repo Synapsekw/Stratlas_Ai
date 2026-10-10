@@ -4,8 +4,10 @@
  * the plan lists. A further source (a streamed one, if the founder ever allows it) is one more
  * kind of entry here and one more case in the view, and nothing else changes.
  *
- * Everything in a plan is offline: bundled shapes, bundled Natural Earth II, street packs and
- * imagery packs read from the data folder.
+ * Everything in a plan is drawn from the app's own addresses: bundled shapes, bundled Natural
+ * Earth II, street packs and imagery packs read from the data folder, and (only in the Satellite
+ * look, only once the person switched it on) online satellite through `aio://online/...`, which
+ * main serves or refuses.
  */
 import type { GlobeStyle } from './style';
 import { imageryLayerOrder, type PackExtent } from './tiles';
@@ -82,6 +84,11 @@ export type GlobeLayerPlan<P> =
   | { kind: 'street' }
   /** Natural Earth II, the painted raster of CesiumJS's assets: the Earth of the old look. */
   | { kind: 'natural-earth' }
+  /**
+   * Online satellite (ADR 0007, amendment of 10 Oct 2026): Sentinel-2 through the app's own
+   * `aio://online/...` address. Main decides whether a tile is served; the plan only lists it.
+   */
+  | { kind: 'online-satellite' }
   /** An installed imagery pack. */
   | { kind: 'imagery-pack'; pack: P };
 
@@ -91,6 +98,11 @@ export interface GlobeLayerInput<P> {
   street: boolean;
   /** The imagery packs the Imagery setting selects. */
   imagery: readonly P[];
+  /**
+   * Online satellite may be drawn: the person switched it on (`onlineSatelliteAvailability` is
+   * `online`, or `cached` on an offline-only workstation). Absent: no.
+   */
+  onlineSatellite?: boolean;
 }
 
 /** The Globe's imagery layers for a look, bottom first. */
@@ -106,7 +118,10 @@ export function planGlobeLayers<P extends Pick<PackExtent, 'bbox' | 'maxZoom'>>(
     ? [{ kind: 'earth-shapes', role: 'underlay' }, { kind: 'street' }]
     : [{ kind: 'earth-shapes', role: 'whole' }];
   // satellite is a choice: the street globe stays the default, packs or not
-  return input.style === 'satellite' ? [...base, ...packs] : base;
+  if (input.style !== 'satellite') return base;
+  // online imagery covers the whole Earth, so it goes under the packs: a pack wins where it is
+  const online: GlobeLayerPlan<P>[] = input.onlineSatellite ? [{ kind: 'online-satellite' }] : [];
+  return [...base, ...online, ...packs];
 }
 
 /** Whether a plan draws imagery packs (their credits show only then). */
