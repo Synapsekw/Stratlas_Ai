@@ -1,20 +1,22 @@
 import { PIPELINES, type IpcChannel, type PackInstallProgress } from '@aio/schema';
 import { randomBytes } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, symlinkSync } from 'node:fs';
 import {
+  lstat,
   mkdir,
   mkdtemp,
   readdir,
   readFile,
   readlink,
+  realpath,
   rm,
   stat,
   symlink,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { dirname, join, resolve } from 'node:path';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { validated } from '../ipc';
 import { findPack } from './pack';
 import {
@@ -84,15 +86,21 @@ async function archive(name: string, bytes: Buffer): Promise<string> {
   return path;
 }
 
-/** Every file and folder under `dir`, with file sizes: what "unchanged" is compared on. */
+/**
+ * Every file, folder and link under `dir`: what "unchanged" is compared on. A file is listed with
+ * its size, a link (a symbolic link or a Windows junction) with where it points, and is never read
+ * or walked through: its target may be a folder, or outside `dir`.
+ */
 async function tree(dir: string, prefix = ''): Promise<string[]> {
   const out: string[] = [];
   for (const e of (await readdir(dir, { withFileTypes: true })).sort((a, b) =>
     a.name.localeCompare(b.name),
   )) {
     const rel = `${prefix}${e.name}`;
-    if (e.isDirectory()) out.push(`${rel}/`, ...(await tree(join(dir, e.name), `${rel}/`)));
-    else out.push(`${rel} ${String((await readFile(join(dir, e.name))).length)}`);
+    const path = join(dir, e.name);
+    if (e.isSymbolicLink()) out.push(`${rel} -> ${await readlink(path)}`);
+    else if (e.isDirectory()) out.push(`${rel}/`, ...(await tree(path, `${rel}/`)));
+    else out.push(`${rel} ${String((await stat(path)).size)}`);
   }
   return out;
 }
@@ -113,15 +121,53 @@ async function refusedUnchanged(
   return r.ok ? '' : r.error;
 }
 
-const canSymlink = async (): Promise<boolean> => {
-  const probe = join(root, 'in', 'probe-link');
+/**
+ * A link to a folder that needs no special right: a junction on Windows (where a symbolic link
+ * takes Developer Mode or an administrator), a symbolic link everywhere else.
+ */
+const DIR_LINK = process.platform === 'win32' ? 'junction' : 'dir';
+const dirLink = (target: string, path: string) => symlink(target, path, DIR_LINK);
+
+/**
+ * What this machine lets a process create, found out once. `symlink`: the symbolic links an
+ * archive asks for (a CI runner can, a Windows workstation without Developer Mode cannot).
+ * `dirLink`: a link to a folder at all, which every machine must manage, or the tests that plant
+ * links prove nothing.
+ */
+const CAN = { symlink: false, dirLink: false };
+/** The refusal of an archive with links where the machine may not create them. */
+const NO_LINKS = 'this computer may not create links in the data folder';
+
+beforeAll(async () => {
+  const probe = await mkdtemp(join(tmpdir(), 'aio-pack-links-'));
   try {
-    await symlink('probe-target', probe);
-    await rm(probe, { force: true });
-    return true;
-  } catch {
-    return false;
+    await mkdir(join(probe, 'folder'));
+    CAN.symlink = await symlink('folder', join(probe, 'link')).then(
+      () => true,
+      () => false,
+    );
+    CAN.dirLink = await dirLink(join(probe, 'folder'), join(probe, 'dir-link')).then(
+      () => true,
+      () => false,
+    );
+  } finally {
+    await rm(probe, { recursive: true, force: true });
   }
+});
+
+/** A folder outside the data folder with one file in it: where nothing may ever be written. */
+async function outsideFolder(): Promise<string> {
+  const dir = join(root, 'outside');
+  await mkdir(dir);
+  await writeFile(join(dir, 'keep.txt'), "not the installer's to touch");
+  return dir;
+}
+
+/** The temporary folder of the install that is running. */
+const runningTemp = (): string => {
+  const name = readdirSync(runtime).find((n) => /^\.install-[0-9a-f]+\.tmp$/.test(n));
+  if (!name) throw new Error('no temporary folder in runtime');
+  return join(runtime, name);
 };
 
 describe('installPackArchive', () => {
@@ -214,23 +260,152 @@ describe('installPackArchive', () => {
     }
   });
 
-  it('never writes through a link, and refuses a link chain that ends outside', async () => {
-    // "in" is the pack folder itself, so "up" (in/..) really is runtime, though its name stays inside
+  it('can make a link to a folder on this machine, so the tests below prove something', () => {
+    expect(CAN.dirLink).toBe(true);
+  });
+
+  it('never writes through a link the archive made', async () => {
+    // "alias" is a link to the pack's own python folder; the next entry tries to write through it
+    const entries: FakeTarEntry[] = [
+      ...fakePackEntries('0.5.0'),
+      { path: 'pipeline-pack-0.5.0/alias', type: 'symlink', linkpath: 'python' },
+      { path: 'pipeline-pack-0.5.0/alias/evil.txt', data: 'through the link' },
+    ];
+    const THROUGH = 'The archive writes through alias, which is a link or a file, not a folder.';
+    // as the app makes links
+    const real = await refusedUnchanged(entries);
+    if (CAN.symlink) expect(real).toContain(THROUGH);
+    else expect(real).toContain(NO_LINKS);
+    // and with the link made as this machine always can (a junction on Windows): the same
+    // refusal, on every machine
+    const made: string[] = [];
+    const asDirLink = await refusedUnchanged(entries, {
+      makeLink: async (target, path) => {
+        await dirLink(resolve(dirname(path), target), path);
+        made.push(path);
+      },
+    });
+    expect(made).toHaveLength(1);
+    expect(asDirLink).toContain(THROUGH);
+  });
+
+  it('refuses a link that really leads out of the pack, whatever its name says', async () => {
+    const outside = await outsideFolder();
+    // by name the link stays inside (python); what gets made leads to the folder outside
+    const entries: FakeTarEntry[] = [
+      ...fakePackEntries('0.5.0'),
+      { path: 'pipeline-pack-0.5.0/tools', type: 'symlink', linkpath: 'python' },
+    ];
+    const made: string[] = [];
+    const error = await refusedUnchanged(entries, {
+      makeLink: async (_target, path) => {
+        await dirLink(outside, path);
+        made.push(path);
+      },
+    });
+    expect(made).toHaveLength(1);
+    expect(error).toBe(
+      'This file holds a link that does not lead to a file inside it (tools). It was not installed.',
+    );
+    // cleaning up removed the link, not what it led to
+    expect(await readdir(outside)).toEqual(['keep.txt']);
+    expect(await readdir(runtime)).toEqual(['pipeline-pack-0.2.0']);
+  });
+
+  it('refuses a chain of links that ends outside the pack, and a link that leads nowhere', async () => {
+    // "in" is the pack folder itself; "up" is in/.., which by its name is the pack folder again
     const chain: FakeTarEntry[] = [
       ...fakePackEntries('0.5.0'),
       { path: 'pipeline-pack-0.5.0/in', type: 'symlink', linkpath: '.' },
       { path: 'pipeline-pack-0.5.0/up', type: 'symlink', linkpath: 'in/..' },
     ];
-    const through = await refusedUnchanged([
-      ...chain,
-      { path: 'pipeline-pack-0.5.0/up/evil.txt', data: 'out' },
-    ]);
-    const ends = await refusedUnchanged(chain);
-    expect(existsSync(join(runtime, 'evil.txt'))).toBe(false);
-    if (await canSymlink()) {
-      expect(through).toContain('which is a link or a file, not a folder');
-      expect(ends).toContain('a link that does not lead to a file inside it');
+    const nowhere: FakeTarEntry[] = [
+      ...fakePackEntries('0.5.0'),
+      { path: 'pipeline-pack-0.5.0/python/ghost', type: 'symlink', linkpath: 'not-there' },
+    ];
+    const OUT = 'a link that does not lead to a file inside it';
+    if (!CAN.symlink) {
+      // no links may be made here: both are refused whole, with the reason
+      expect(await refusedUnchanged(chain)).toContain(NO_LINKS);
+      expect(await refusedUnchanged(nowhere)).toContain(NO_LINKS);
+      return;
     }
+    expect(await refusedUnchanged(nowhere)).toContain(OUT);
+    if (process.platform !== 'win32') {
+      // followed link by link, "up" is the folder above the pack: runtime itself
+      expect(await refusedUnchanged(chain)).toContain(OUT);
+      return;
+    }
+    // Windows takes the ".." of a link's target by name, so there "up" is the pack folder and
+    // nothing leads out. Either way the rule holds: refused and unchanged, or installed with
+    // every link ending inside the pack.
+    const path = await archive('chain.tar.gz', fakeTarGz(chain));
+    const before = await tree(root);
+    const r = await install(path);
+    if (!r.ok) {
+      expect(r.error).toContain(OUT);
+      expect(await tree(root)).toEqual(before);
+      return;
+    }
+    const pack = await realpath(r.dir);
+    for (const link of ['in', 'up']) expect(await realpath(join(r.dir, link))).toBe(pack);
+    expect(existsSync(join(runtime, 'manifest.json'))).toBe(false);
+  });
+
+  it('never writes through a link planted in its temporary folder, and leaves what it points at', async () => {
+    const outside = await outsideFolder();
+    const path = await archive('pipeline-pack-0.5.0-win-x64.tar.gz', fakePackArchive('0.5.0'));
+    const before = await tree(root);
+    let planted = '';
+    const r = await install(path, {
+      progressEveryMs: 0,
+      onProgress: (p) => {
+        // the first bytes are read and nothing is unpacked yet: python becomes a link out
+        if (planted || p.phase !== 'unpack' || p.bytesDone === 0) return;
+        planted = join(runningTemp(), 'python');
+        symlinkSync(outside, planted, DIR_LINK);
+      },
+    });
+    expect(planted).not.toBe('');
+    expect(r).toEqual({
+      ok: false,
+      error:
+        'The archive writes through python, which is a link or a file, not a folder. It was not installed.',
+    });
+    // nothing went through the link, the temporary folder is gone, and removing it took the link
+    // away, not the folder it led to
+    expect(await readdir(outside)).toEqual(['keep.txt']);
+    expect(await tree(root)).toEqual(before);
+  });
+
+  it('treats a link planted in runtime as a link: removed or replaced, never followed', async () => {
+    const outside = await outsideFolder();
+    const path = await archive('pipeline-pack-0.5.0-win-x64.tar.gz', fakePackArchive('0.5.0'));
+    // where a killed install would have left its temporary folder
+    const stale = join(runtime, '.install-0123abcdef01.tmp');
+    await dirLink(outside, stale);
+    // and where the pack itself goes
+    const dest = join(runtime, 'pipeline-pack-0.5.0');
+    await dirLink(outside, dest);
+
+    // something is there under that name: asked first, and nothing touched but the stale link
+    expect(await install(path)).toMatchObject({ ok: false, code: 'exists', version: '0.5.0' });
+    expect(existsSync(stale)).toBe(false);
+    expect((await lstat(dest)).isSymbolicLink()).toBe(true);
+    expect(await readdir(outside)).toEqual(['keep.txt']);
+
+    // replacing it puts a real folder there; the folder the link led to is as it was
+    expect(await install(path, { replace: true })).toEqual({
+      ok: true,
+      version: '0.5.0',
+      dir: dest,
+      replaced: true,
+    });
+    const now = await lstat(dest);
+    expect([now.isSymbolicLink(), now.isDirectory()]).toEqual([false, true]);
+    expect(existsSync(join(dest, 'python', 'python.exe'))).toBe(true);
+    expect(await readdir(outside)).toEqual(['keep.txt']);
+    expect((await readdir(runtime)).sort()).toEqual(['pipeline-pack-0.2.0', 'pipeline-pack-0.5.0']);
   });
 
   it('copies a hard link inside the pack, and keeps a link that stays inside', async () => {
@@ -247,15 +422,21 @@ describe('installPackArchive', () => {
       'fake python of pack 0.5.0',
     );
 
-    if (!(await canSymlink())) return;
     const withLink = [
       ...fakePackEntries('0.7.0'),
       { path: 'pipeline-pack-0.7.0/python/python3', type: 'symlink', linkpath: 'python.exe' },
     ] satisfies FakeTarEntry[];
-    expect(await install(await archive('link.tar.gz', fakeTarGz(withLink)))).toMatchObject({
-      ok: true,
-      version: '0.7.0',
-    });
+    if (!CAN.symlink) {
+      expect(await refusedUnchanged(withLink)).toContain(NO_LINKS);
+      return;
+    }
+    const linked = await install(await archive('link.tar.gz', fakeTarGz(withLink)));
+    expect(linked).toMatchObject({ ok: true, version: '0.7.0' });
+    const dir = join(runtime, 'pipeline-pack-0.7.0');
+    expect(await readlink(join(dir, 'python', 'python3'))).toBe('python.exe');
+    expect(await readFile(join(dir, 'python', 'python3'), 'utf8')).toBe(
+      'fake python of pack 0.7.0',
+    );
   });
 
   it('installs a macOS pack: in-pack links and executable bits are kept', async () => {
@@ -277,9 +458,9 @@ describe('installPackArchive', () => {
     const path = await archive('pipeline-pack-1.2.0-macos-arm64.tar.gz', fakeTarGz(mac));
     const before = await tree(root);
     const r = await install(path, { platform: 'darwin-arm64', win32: false });
-    if (!(await canSymlink())) {
-      // Windows without the right to make links: refused whole, nothing half-installed
-      expect(r.ok).toBe(false);
+    if (!CAN.symlink) {
+      // Windows without the right to make links: refused whole, with the reason, nothing left
+      expect(r.ok ? '' : r.error).toContain(NO_LINKS);
       expect(await tree(root)).toEqual(before);
       return;
     }

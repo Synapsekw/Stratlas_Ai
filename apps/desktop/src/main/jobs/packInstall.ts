@@ -248,6 +248,7 @@ interface UnpackOptions {
   /** The first entry named the pack's folder: the place to refuse a version that is installed. */
   onTop: (top: string) => Promise<void>;
   onProgress: (bytesDone: number, entries: number) => void;
+  makeLink: (target: string, path: string) => Promise<void>;
 }
 
 /**
@@ -449,7 +450,15 @@ async function unpack(archive: string, tmp: string, o: UnpackOptions): Promise<U
         }
         await ensureDir(rel.slice(0, -1));
         await settled();
-        await symlink(to, dest);
+        try {
+          await o.makeLink(to, dest);
+        } catch (e) {
+          // Windows lets only an administrator, or anyone with Developer Mode on, make links
+          if ((e as NodeJS.ErrnoException).code !== 'EPERM') throw e;
+          throw refused(
+            `This file holds links (${shown(entry.path)}), and this computer may not create links in the data folder. On Windows that takes Developer Mode or an administrator. It was not installed.`,
+          );
+        }
         links.push(dest);
         entry.resume();
         return;
@@ -707,6 +716,12 @@ export interface InstallOptions {
   win32?: boolean;
   /** Least time between two progress reports of one phase, 150 ms by default. */
   progressEveryMs?: number;
+  /**
+   * Make the symbolic link an archive entry asks for (tests: a junction where Windows allows no
+   * links, or a link that is not what its name says); `fs.symlink` by default. Whatever it makes
+   * is checked like any link: it must really lead to something inside the pack.
+   */
+  makeLink?: (target: string, path: string) => Promise<void>;
 }
 
 export type InstallResult =
@@ -765,6 +780,7 @@ export async function installPackArchive(
       limits,
       win32,
       signal: o.signal,
+      makeLink: o.makeLink ?? ((target, path) => symlink(target, path)),
       onTop: async (top) => {
         if (o.replace !== true && (await existing(top))) {
           const version = PACK_DIR.exec(top)?.[1] ?? '';
