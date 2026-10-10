@@ -48,7 +48,8 @@ The palette also has the screens (**Go to Issues**, **Go to Settings**, ...) and
 Both side panels fold away to give the view more room: the sidebar on the left, and on **Scene** the [right panel](03-scene.md#the-right-panel) with the selection, the issues and the AI agent.
 
 - Each has the same tab on its inner edge. Click it to fold the panel, click it again to bring it back. Rest the pointer on it to see what it does and its shortcut.
-- The left sidebar folds to its icons. The right panel folds away completely; its tab stays at the edge of the window.
+- The left sidebar folds to its icons. The right panel folds to a thin strip at the edge of the window; click anywhere on the strip to bring it back.
+- The tabs lie inside the panels, so they never cover the 3D view, the map or a list.
 - **Ctrl B** folds the left sidebar and **Ctrl Alt B** the right panel. **Ctrl K** has **Collapse left sidebar** and **Collapse right sidebar** (**Expand** when they are folded).
 - {product} remembers both on this computer, so they are as you left them the next time you start it.
 
