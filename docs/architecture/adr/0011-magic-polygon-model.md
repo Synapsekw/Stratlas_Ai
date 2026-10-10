@@ -32,7 +32,7 @@ Not SAM 3 (custom licence, decision 4). Full checksums are in the cache's `SHA25
 
 EfficientSAM and SAM 2.1 hold the right outline among their three masks (best-of-three IoU 0.989 to 0.990) but score a part of the pile (a frustum's flat top, one face of a wedge) higher, so their own choice misses; MobileSAM's choice was right on every crop. SAM 2.1 tiny misses the latency target with four threads (a laptop's share).
 
-**Delivery options:** (a) in the installer: always there, but even the smallest model is 44 MB against an installer growth budget of 15 MB over 0.9.0 (`tools/release/budgets.mjs`); (b) a separate model pack a person imports, as map and geoid packs: one more file to find and install; (c) inside the pipeline pack, which every surveying feature already needs (the survey pipelines run there): nothing extra for the person.
+**Delivery options:** (a) in the installer: always there, but even the smallest model is 44 MB against an installer growth budget of 20 MB over 0.9.0 (`tools/release/budgets.mjs`); (b) a separate model pack a person imports, as map and geoid packs: one more file to find and install; (c) inside the pipeline pack, which every surveying feature already needs (the survey pipelines run there): nothing extra for the person.
 
 ## Decision
 
