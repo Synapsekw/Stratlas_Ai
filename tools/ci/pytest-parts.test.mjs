@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const repo = (path) => fileURLToPath(new URL(`../../${path}`, import.meta.url));
 
-// ci.yml runs the Windows pytest suite in three parts chosen by file name (the pipelines job):
+// ci.yml runs the pytest suite in three parts chosen by file name (the pipelines job):
 // tests/test_photo_chain.py, the other tests/test_photo_*.py, and everything else under tests.
 describe('pytest parts of the pipelines job', () => {
   it('finds every test file directly in python/tests, named test_*.py', () => {
@@ -18,16 +18,10 @@ describe('pytest parts of the pipelines job', () => {
     expect(tests).toContain('test_photo_chain.py');
   });
 
-  it('has the three Windows parts and the whole suite on macOS in the CI matrix', () => {
+  it('has the three parts in the CI matrix, and a branch of the step for each', () => {
     const ci = readFileSync(repo('.github/workflows/ci.yml'), 'utf8');
-    const rows = [...ci.matchAll(/- \{ os: (\S+), part: (\S+) \}/g)].map(
-      ([, os, part]) => `${os} ${part}`,
-    );
-    expect(rows.sort()).toEqual([
-      'macos-latest all',
-      'windows-latest photo',
-      'windows-latest photo-chain',
-      'windows-latest rest',
-    ]);
+    const parts = /^ {8}part: \[([\w, -]+)\]$/m.exec(ci)?.[1].split(', ');
+    expect(parts).toEqual(['photo-chain', 'photo', 'rest']);
+    for (const part of parts) expect(ci).toMatch(new RegExp(`^ {12}${part}\\) tests=`, 'm'));
   });
 });
