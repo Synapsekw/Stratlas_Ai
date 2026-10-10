@@ -233,4 +233,37 @@ describe('the check after a change', () => {
     });
     expect(writes()).toBe(1);
   });
+
+  it('is no longer running when the engine stops under a run', async () => {
+    // an engine that never reads its tiles: the run is out when the engine is put away
+    setEnginePort(null);
+    ports?.port1.close();
+    ports?.port2.close();
+    ports = new MessageChannel();
+    serveEngine(ports.port2, () => new Promise<Uint8Array | null>(() => undefined));
+    setEnginePort(ports.port1);
+    engineClient().setContext({
+      base: 'aio://project/p1/',
+      surfaces: [{ ...cone, capture: 'c2' }],
+      captures: ['c1', 'c2'],
+      designs: [],
+      site: { verticalDatum: { kind: 'project' } },
+    });
+    const run = compute('m1');
+    expect(compareStore.getState().running.m1).toBe(true);
+    setEnginePort(null);
+    expect(await run).toBeNull();
+    // cancelled, and nothing took its place: Recompute is offered again
+    expect(compareStore.getState().running.m1).toBe(false);
+  });
+
+  it('stays running when a newer run of the same measurement replaced it', async () => {
+    const first = compute('m1', { auto: true });
+    const second = compute('m1');
+    expect(await first).toBeNull();
+    // the first answer (cancelled) must not say the measurement is done
+    expect(compareStore.getState().running.m1).toBe(true);
+    expect((await second)?.results[0]?.status).toBe('ok');
+    expect(compareStore.getState().running.m1).toBe(false);
+  });
 });
