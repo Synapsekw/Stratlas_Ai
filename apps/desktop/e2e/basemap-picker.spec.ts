@@ -10,6 +10,9 @@ import type { Page, TestInfo } from '@playwright/test';
 import { expectAccessible } from './a11y';
 import { expect, launchApp, NetworkGuard, test } from './fixtures';
 
+// two launches in the first test, a theme change in the last: room for a slow runner
+test.setTimeout(180_000);
+
 const SITE_A = 'Globe site A (synthetic, open desert)';
 const WORLD = 'g7-raster-imagery-synthetic-world-layer';
 const DETAIL = 'g7-raster-imagery-synthetic-site-a-layer';
@@ -62,7 +65,6 @@ test('the map type is chosen on the map, keeps the camera and survives a relaunc
   dataRoot,
   globeLibrary,
 }, testInfo) => {
-  test.setTimeout(180_000);
   expect(globeLibrary.imagery.map((p) => p.id)).toEqual(['synthetic-world', 'synthetic-site-a']);
 
   const guard = new NetworkGuard();
