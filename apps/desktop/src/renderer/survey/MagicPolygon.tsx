@@ -15,6 +15,7 @@ import { useEffect } from 'react';
 import { createStore, useStore } from 'zustand';
 import { bridge } from '../shell';
 import { measureStore, setDrawInterceptor } from './measureStore';
+import type { Outline } from './snapRegions';
 import {
   browserCropIo,
   composeCrop,
@@ -284,6 +285,41 @@ function intercept(e: DrawEvent, env: DrawEnv): boolean {
   }
   if (e.type === 'move' || e.type === 'stroke') return s.last !== null || s.busy;
   return false;
+}
+
+// ---------------------------------------------------------------- outlines for other tools
+
+/** Whether the boundary model can run, as `surveyAi:status` answers. */
+export async function magicStatus(): Promise<Status> {
+  const r = await bridge.call('surveyAi:status', {});
+  return r.ok ? r.value : { available: false, reason: 'failed', detail: r.error };
+}
+
+/**
+ * Asks the model for the outline at a point of the open project's ortho within a given crop (the
+ * AI cut and fill breakdown snaps its regions with it, `snapRegions.ts`). Null with no project.
+ */
+export function projectOutline(): Outline | null {
+  const ws = workspace.getState();
+  const project = ws.project;
+  if (!project) return null;
+  const io = browserCropIo((ref) => assetUrl(project.id, ref));
+  return async (click, window) => {
+    const layer = await orthoAt(project.manifest, ws.hidden, click, io);
+    if (!layer) return { ok: false, error: 'No ortho is shown here.' };
+    const crop = await composeCrop(layer, window, project.manifest.origin, io);
+    if (!crop.ok) return crop;
+    const res = await bridge.call('surveyAi:suggest', {
+      projectId: project.id,
+      layer: layer.id,
+      click,
+      crop: { key: cropKey(layer.id, window), ...window, rgb: crop.rgb },
+    });
+    if (!res.ok) return { ok: false, error: res.error };
+    return res.value.ok
+      ? { ok: true, ring: res.value.ring, touchesEdge: res.value.touchesEdge }
+      : { ok: false, error: res.value.error };
+  };
 }
 
 // ---------------------------------------------------------------- the panel
