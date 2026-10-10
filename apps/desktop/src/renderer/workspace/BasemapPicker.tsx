@@ -14,6 +14,7 @@
 import { Icon, useFocusTrap, useT, type MessageKey } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useStore } from 'zustand';
 import { shell, useShell } from '../shell';
 import { BASEMAPS, basemapPatch, onlineRow, siteLonLat, type Basemap } from './basemap';
 import { onlineSatelliteSwitch } from './onlineSatellite';
@@ -132,6 +133,8 @@ export function BasemapChoices() {
   const model = useBasemap();
   const offlineOnly = useShell((s) => s.settings.offlineOnly === true);
   const online = onlineRow(model.online, offlineOnly);
+  // while the notice asks, the reason line under it waits: the question fits a small window
+  const asking = useStore(onlineSatelliteSwitch, (s) => s.asking);
   const cards = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const onlineNoteId = useId();
@@ -264,7 +267,7 @@ export function BasemapChoices() {
         />
       </label>
       <OnlineSatelliteNotice className="bm-notice" />
-      {missing && (
+      {missing && !asking && (
         <p className="pop-note bm-note" data-testid="basemap-note">
           {t(missing)} <PacksLink />
           {!model.satellite && !offlineOnly && (

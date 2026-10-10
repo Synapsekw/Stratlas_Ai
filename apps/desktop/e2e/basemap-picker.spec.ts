@@ -396,6 +396,7 @@ test.describe('Online satellite', () => {
     await expect(row(win)).toBeEnabled();
     await expect(pop.getByText('Online satellite', { exact: true }).first()).toBeVisible();
     await expect(rowNote(win)).toHaveText('Sentinel-2, 2016, about 10 m per pixel');
+    await expect(rowNote(win)).toBeInViewport({ ratio: 1 });
     await expect(win.getByTestId('basemap-satellite')).toBeDisabled();
     await expect(win.getByTestId('basemap-note')).toHaveText(
       'No imagery or terrain pack covers this site. Offline maps or turn on Online satellite',
@@ -408,6 +409,9 @@ test.describe('Online satellite', () => {
     const notice = pop.getByTestId('online-satellite-notice');
     await expect(notice).toContainText("from EOX's servers");
     await expect(notice).toContainText('the areas you view are visible to that service');
+    // the whole question is on screen, also in the smallest window (the popover scrolls there)
+    await expect(notice).toBeInViewport({ ratio: 1 });
+    await expect(notice.getByRole('button', { name: 'Switch on' })).toBeInViewport({ ratio: 1 });
     await expect(row(win)).not.toBeChecked();
     await expect(win.getByTestId('basemap-satellite')).toBeDisabled();
     expect(await switchedOn(win)).toBe(false);

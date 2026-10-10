@@ -6,7 +6,7 @@
  * place it is shown in goes away.
  */
 import { Icon, useT } from '@aio/ui';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useStore } from 'zustand';
 import { onlineSatelliteSwitch } from './onlineSatellite';
 
@@ -20,6 +20,13 @@ export function OnlineSatelliteNotice({ className = '' }: { className?: string }
     },
     [],
   );
+  // in a short popover or a long page the question must be in view, with its two buttons
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = box.current;
+    if (asking && el && typeof el.scrollIntoView === 'function')
+      el.scrollIntoView({ block: 'nearest' });
+  }, [asking]);
   if (!asking)
     return error ? (
       <p className="prov-err" role="alert" data-testid="online-satellite-error">
@@ -28,6 +35,7 @@ export function OnlineSatelliteNotice({ className = '' }: { className?: string }
     ) : null;
   return (
     <div
+      ref={box}
       className={`notice warn os-notice ${className}`.trim()}
       role="alert"
       data-testid="online-satellite-notice"

@@ -31,7 +31,13 @@ async function openSettings(win: Page, page: string): Promise<void> {
 async function openMap(win: Page): Promise<void> {
   await win.locator('.nav-item', { hasText: 'Projects' }).click();
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
-  await win.getByRole('button', { name: 'Map', exact: true }).first().click();
+  // the view switch of the stage toolbar (the one control of that name there)
+  const map = win
+    .getByRole('toolbar', { name: 'Stage tools' })
+    .getByRole('group', { name: 'Stage view' })
+    .getByRole('button', { name: 'Map', exact: true });
+  await map.click();
+  await expect(map).toHaveAttribute('aria-pressed', 'true');
 }
 
 /** The addresses main's stand-in for the service was asked for. */
