@@ -145,28 +145,19 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # The importers (and their tests) make thumbnails, textures and video proxies with ffmpeg.
-      - name: Install ffmpeg (Windows)
-        if: runner.os == 'Windows'
-        uses: FedericoCarboni/setup-ffmpeg@v3
-      # That action has no Apple silicon build. Homebrew's plain ffmpeg has no libwebp (the kit
-      # importers write WebP tiles); ffmpeg-full has it but is keg-only, so put it on the PATH.
-      - name: Install ffmpeg (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install ffmpeg-full
-          echo "$(brew --prefix ffmpeg-full)/bin" >> "$GITHUB_PATH"
-      - name: ffmpeg encodes WebP
-        run: ffmpeg -hide_banner -encoders | grep -w libwebp
+      - uses: ./.github/actions/ffmpeg
       # Electron fetches its binary lazily on first launch; parallel e2e workers would race.
       - name: Download Electron binary
         run: node node_modules/electron/install.js
       - run: pnpm test
 
   # The Playwright + Electron suite in shards, each on one worker (playwright.config.ts: several
-  # Electron windows with WebGL compete for the runner's software GPU). A shard is a contiguous
-  # run of the spec files by test count. In two shards per OS the tests alone took 11.7 to 12.5 min
-  # a shard (run 38047000052), so Windows has four. macOS has three: with the unit tests and the
-  # pipelines that is five macOS jobs at once, which is what the two-shard run already used.
+  # Electron windows with WebGL compete for the runner's software GPU). tools/ci/e2e-shards.mjs
+  # splits the spec files by how long each takes, so the shards of an OS end together: Playwright's
+  # own --shard goes by test count, and of three macOS shards the first ran 10.7 min of tests and
+  # the second 4.6 (run 38051445110). Windows has five shards (25 min of tests in all). macOS has
+  # three (21 min): with the unit tests and the pipelines that is five macOS jobs at once, and a
+  # sixth would wait for one of them to end.
   e2e:
     name: e2e (${{ matrix.os }}, ${{ matrix.shard }}/${{ matrix.of }})
     needs: gate
@@ -175,10 +166,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: windows-latest, shard: 1, of: 4 }
-          - { os: windows-latest, shard: 2, of: 4 }
-          - { os: windows-latest, shard: 3, of: 4 }
-          - { os: windows-latest, shard: 4, of: 4 }
+          - { os: windows-latest, shard: 1, of: 5 }
+          - { os: windows-latest, shard: 2, of: 5 }
+          - { os: windows-latest, shard: 3, of: 5 }
+          - { os: windows-latest, shard: 4, of: 5 }
+          - { os: windows-latest, shard: 5, of: 5 }
           - { os: macos-latest, shard: 1, of: 3 }
           - { os: macos-latest, shard: 2, of: 3 }
           - { os: macos-latest, shard: 3, of: 3 }
@@ -235,17 +227,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # The importers make thumbnails, textures and video proxies with ffmpeg (as in check).
-      - name: Install ffmpeg (Windows)
-        if: runner.os == 'Windows'
-        uses: FedericoCarboni/setup-ffmpeg@v3
-      - name: Install ffmpeg (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install ffmpeg-full
-          echo "$(brew --prefix ffmpeg-full)/bin" >> "$GITHUB_PATH"
-      - name: ffmpeg encodes WebP
-        run: ffmpeg -hide_banner -encoders | grep -w libwebp
+      # The importers make thumbnails, textures and video proxies with ffmpeg (as in the unit tests).
+      - uses: ./.github/actions/ffmpeg
       # Electron fetches its binary lazily on first launch; parallel e2e workers would race.
       - name: Download Electron binary
         run: node node_modules/electron/install.js
@@ -290,9 +273,13 @@ jobs:
       # Built above; no retries, and a test reported flaky fails the run (playwright.config.ts).
       # photo-real.spec.ts stays opt-in (QUADRION_E2E_PHOTO_REAL=1): its marking script does not
       # fit the real alignment yet; the pipelines job runs the real engines instead.
+      # The shard's spec files come from tools/ci/e2e-shards.mjs (its test checks that the shards
+      # of the matrix above hold every spec file once).
       - name: E2E (Playwright + Electron, zero-network guard, shard ${{ matrix.shard }}/${{ matrix.of }})
         working-directory: apps/desktop
-        run: pnpm exec playwright test --shard=${{ matrix.shard }}/${{ matrix.of }}
+        run: |
+          files=$(node ../../tools/ci/e2e-shards.mjs --shard ${{ matrix.shard }}/${{ matrix.of }})
+          pnpm exec playwright test $files
 
       - name: Upload Playwright traces
         if: failure()
@@ -307,14 +294,23 @@ jobs:
   # opencv-python-headless and pymeshlab from PyPI, founder decision of 8 Oct 2026) and pdal.mjs
   # conda-forge's PDAL, so the real engines run here: COLMAP alignment, OpenCV's SGBM, MeshLab's
   # Poisson and PDAL's COPC, SMRF and reprojection. Nothing is compiled.
+  #
+  # On the Windows runner the suite took 18.5 min in one job, and it was the longest job of a run:
+  # tests/test_photo_chain.py alone took 409 s there (101 s on macOS), the other photo tests 326 s
+  # and the rest 374 s (run 38051445110). So Windows runs those three parts in a job each. macOS
+  # (9 to 10 min in one job) stays whole: a sixth macOS job would wait (see e2e).
   python:
-    name: pipelines (${{ matrix.os }})
+    name: pipelines (${{ matrix.os }}, ${{ matrix.part }})
     needs: gate
     if: needs.gate.outputs.run == 'true'
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        include:
+          - { os: windows-latest, part: photo-chain }
+          - { os: windows-latest, part: photo }
+          - { os: windows-latest, part: rest }
+          - { os: macos-latest, part: all }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     defaults:
@@ -361,8 +357,18 @@ jobs:
       # One line per test as it runs (-vv, as pyproject.toml adds -q), so a stall names its test,
       # and the slowest tests at the end. A test over its pytest-timeout limit (300 s by default,
       # pyproject.toml) fails with the stacks of its threads.
-      - name: Pytest
-        run: uv run --frozen pytest -vv -rfEs --durations=20
+      # The parts: the test files sit directly in python/tests (tools/ci/pytest-parts.test.mjs
+      # checks that), so photo-chain, photo and rest together are every one of them.
+      - name: Pytest (${{ matrix.part }})
+        run: |
+          case "${{ matrix.part }}" in
+            all) tests=(tests) ;;
+            photo-chain) tests=(tests/test_photo_chain.py) ;;
+            photo) tests=($(ls tests/test_photo_*.py | grep -v '^tests/test_photo_chain\.py$')) ;;
+            rest) tests=(tests "--ignore-glob=tests/test_photo_*.py") ;;
+            *) echo "Unknown part ${{ matrix.part }}" >&2 && exit 1 ;;
+          esac
+          uv run --frozen pytest -vv -rfEs --durations=20 "${tests[@]}"
       - name: Entry point
         run: uv run --frozen python -m aio_pipelines --list
 

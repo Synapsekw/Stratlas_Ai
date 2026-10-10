@@ -1,0 +1,50 @@
+name: ffmpeg
+description: Puts an ffmpeg with libx264 and libwebp on the PATH, for the importers, their tests and the demo project.
+
+# Windows: FedericoCarboni/setup-ffmpeg downloads gyan.dev's full build each time, which took from
+# 14 s to 139 s within one run (38051445110). The two programs are kept in a cache instead, so the
+# download only runs when the cache is empty. The cache holds whatever version was the release
+# then: raise the number in the key to fetch the current one.
+# macOS: that action has no Apple silicon build. Homebrew's plain ffmpeg has no libwebp (the kit
+# importers write WebP tiles); ffmpeg-full has it but is keg-only, so it is put on the PATH.
+
+runs:
+  using: composite
+  steps:
+    - name: Restore ffmpeg (Windows)
+      if: runner.os == 'Windows'
+      id: kept
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ runner.temp }}/ffmpeg
+        key: ffmpeg-windows-full-1
+    - name: Download ffmpeg (Windows)
+      if: runner.os == 'Windows' && steps.kept.outputs.cache-hit != 'true'
+      uses: FedericoCarboni/setup-ffmpeg@v3
+    - name: Copy ffmpeg for the cache (Windows)
+      if: runner.os == 'Windows' && steps.kept.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        mkdir -p "$RUNNER_TEMP/ffmpeg"
+        cp "$(dirname "$(command -v ffmpeg)")"/ff*.exe "$RUNNER_TEMP/ffmpeg/"
+        ls -l "$RUNNER_TEMP/ffmpeg"
+    # Several jobs of a run may save the same key at once; the first one wins.
+    - name: Save ffmpeg (Windows)
+      if: runner.os == 'Windows' && steps.kept.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.temp }}/ffmpeg
+        key: ${{ steps.kept.outputs.cache-primary-key }}
+    - name: ffmpeg from the cache (Windows)
+      if: runner.os == 'Windows' && steps.kept.outputs.cache-hit == 'true'
+      shell: bash
+      run: cygpath -w "$RUNNER_TEMP/ffmpeg" >> "$GITHUB_PATH"
+    - name: Install ffmpeg (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        brew install ffmpeg-full
+        echo "$(brew --prefix ffmpeg-full)/bin" >> "$GITHUB_PATH"
+    - name: ffmpeg encodes WebP
+      shell: bash
+      run: ffmpeg -hide_banner -encoders | grep -w libwebp
