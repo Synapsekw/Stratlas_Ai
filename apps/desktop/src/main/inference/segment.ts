@@ -137,21 +137,37 @@ export function encoderTensor(
   return { data, dims: [1, 3, SAM_SIZE, SAM_SIZE] };
 }
 
-/** The standard SAM decoder feeds for one positive click (pixels of the SAM_SIZE image). */
+/** A further click on the same crop: part of the object (`include`) or not part of it. */
+export interface RefinePoint {
+  at: Vec2;
+  include: boolean;
+}
+
+/**
+ * The standard SAM decoder feeds for a click on the object and any further clicks that add to or
+ * take away from it (pixels of the SAM_SIZE image; labels 1 inside, 0 outside).
+ */
 export function decoderFeeds(
   ort: OrtLike,
   embeddings: OrtTensor,
   click: Vec2,
+  refine: readonly RefinePoint[] = [],
 ): Record<string, OrtTensor> {
+  const n = refine.length + 2;
+  const coords = new Float32Array(n * 2);
+  const labels = new Float32Array(n);
+  coords.set(click, 0);
+  labels[0] = 1;
+  refine.forEach((r, i) => {
+    coords.set(r.at, (i + 1) * 2);
+    labels[i + 1] = r.include ? 1 : 0;
+  });
+  // SAM's padding point (label -1) for a prompt without a box
+  labels[n - 1] = -1;
   return {
     image_embeddings: embeddings,
-    // the click and SAM's padding point (label -1) for a prompt without a box
-    point_coords: new ort.Tensor(
-      'float32',
-      new Float32Array([click[0], click[1], 0, 0]),
-      [1, 2, 2],
-    ),
-    point_labels: new ort.Tensor('float32', new Float32Array([1, -1]), [1, 2]),
+    point_coords: new ort.Tensor('float32', coords, [1, n, 2]),
+    point_labels: new ort.Tensor('float32', labels, [1, n]),
     mask_input: new ort.Tensor('float32', new Float32Array(256 * 256), [1, 1, 256, 256]),
     has_mask_input: new ort.Tensor('float32', new Float32Array([0]), [1]),
     orig_im_size: new ort.Tensor('float32', new Float32Array([SAM_SIZE, SAM_SIZE]), [2]),
@@ -388,6 +404,8 @@ export interface SuggestCrop {
 export interface SuggestRequest {
   click: Vec2;
   crop: SuggestCrop;
+  /** Further clicks (project CRS) that add to or take away from the object. */
+  refine?: readonly RefinePoint[] | undefined;
   bufferPx?: number | undefined;
   vertices?: number | undefined;
 }
@@ -501,7 +519,7 @@ export function createSegmenter(deps: SegmenterDeps): Segmenter {
       };
     },
 
-    async suggest({ click, crop, bufferPx, vertices }) {
+    async suggest({ click, crop, refine, bufferPx, vertices }) {
       const l = await load();
       if (!l.ok) return { ok: false, error: unavailableMessage(l.status), code: 'unavailable' };
       const { ort, encoder, decoder, model } = l.s;
@@ -535,10 +553,23 @@ export function createSegmenter(deps: SegmenterDeps): Segmenter {
             };
           cached = { key: crop.key, embeddings, decoded: new Map() };
         }
-        const cell = `${String(Math.round(at[0]))},${String(Math.round(at[1]))}`;
+        const more: RefinePoint[] = [];
+        for (const r of refine ?? []) {
+          const p: Vec2 = [(r.at[0] - crop.x0) / res, (crop.y1 - r.at[1]) / res];
+          // a click outside the crop cannot steer the model
+          if (p[0] >= 0 && p[1] >= 0 && p[0] < SAM_SIZE && p[1] < SAM_SIZE) {
+            more.push({ at: p, include: r.include });
+          }
+        }
+        const cell = [at, ...more.map((m) => m.at)]
+          .map(
+            (p, i) =>
+              `${String(Math.round(p[0]))},${String(Math.round(p[1]))}${i && !more[i - 1]?.include ? '-' : ''}`,
+          )
+          .join(';');
         let hit = cached.decoded.get(cell);
         if (!hit) {
-          const feeds = decoderFeeds(ort, cached.embeddings, at);
+          const feeds = decoderFeeds(ort, cached.embeddings, at, more);
           const res2 = await decoder.run(
             Object.fromEntries(
               decoder.inputNames.map((n) => [n, feeds[n] ?? cached?.embeddings]),

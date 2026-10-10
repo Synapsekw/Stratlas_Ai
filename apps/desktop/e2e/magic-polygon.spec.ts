@@ -213,6 +213,16 @@ test.describe('Suggest boundaries', () => {
       await win.keyboard.press('j');
       await expect.poll(points).toBeLessThan(before);
 
+      // Remove area: the next click steers the same draft instead of starting a new one
+      await win.getByTestId('survey-magic-mode-remove').click();
+      await expect(win.getByTestId('survey-magic-mode-remove')).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      await win.mouse.click(box.x + box.width / 2 + 4, box.y + box.height / 2 + 4);
+      await expect(win.getByTestId('survey-magic-score')).toContainText('90%');
+      await expect(win.locator('.sv-magic')).toContainText('+4 px');
+
       // Enter accepts the draft as the area measurement
       await win.keyboard.press('Enter');
       await expect(win.getByTestId('survey-item')).toHaveCount(1);

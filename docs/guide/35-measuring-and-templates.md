@@ -30,11 +30,12 @@ Pick a tool and click on the site. Points sit on the terrain under the pointer.
 While you draw a polygon (**Area**, **Volume** or a polygon template), the drawing bar has **Suggest boundaries**. Switch it on and click an object on the ortho, for example a stockpile: a draft outline appears around it in about a second. It is a draft until you accept it.
 
 - **Buffer** (keys **U** and **I**) shrinks or grows the draft. **Vertices** (keys **J** and **K**) gives it fewer or more points.
-- Click somewhere else to try again. **Finish**, **Enter** or a double-click accepts the draft as the polygon; **Esc** cancels.
+- **Next click** says what a further click does. **New outline** (the default) starts again where you click. **Remove area** takes what you click out of the draft: use it when the draft also took a pile that touches yours. **Add area** adds what you click: use it when the draft covers only part of the object.
+- **Finish**, **Enter** or a double-click accepts the draft as the polygon; **Esc** cancels.
 - The outline comes from a model that runs on this computer, inside the pipeline pack. Nothing is sent anywhere. Without the pack, the button tells you what to add.
 - It reads the ortho that is shown under the click, so show the ortho of the survey you are measuring. It works in the 3D view and on the map.
 
-A draft is a suggestion from a picture: check it against the terrain before you rely on the volume, especially where piles touch or lie in shadow.
+A draft is a suggestion from a picture: check it against the terrain before you rely on the volume. Where two piles touch, the first draft often runs around both; one **Remove area** click on the other pile usually fixes it.
 
 ## Saving and the list
 

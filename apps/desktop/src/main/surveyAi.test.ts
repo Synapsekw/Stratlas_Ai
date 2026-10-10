@@ -41,11 +41,18 @@ describe('survey AI IPC (G12)', () => {
       layer: 'ortho',
       click: [500_010.5, 2_800_020.25],
       crop,
+      refine: [{ at: [500_020, 2_800_030], include: false }],
       bufferPx: 4,
       vertices: 40,
     });
     expect(r).toMatchObject({ ok: true, score: 0.95, touchesEdge: false });
-    expect(calls[0]).toEqual({ click: [500_010.5, 2_800_020.25], crop, bufferPx: 4, vertices: 40 });
+    expect(calls[0]).toEqual({
+      click: [500_010.5, 2_800_020.25],
+      crop,
+      refine: [{ at: [500_020, 2_800_030], include: false }],
+      bufferPx: 4,
+      vertices: 40,
+    });
   });
 
   it('refuses a request without a crop (contract)', async () => {

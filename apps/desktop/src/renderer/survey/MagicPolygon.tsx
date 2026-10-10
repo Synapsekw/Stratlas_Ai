@@ -37,12 +37,18 @@ export const CROP_SIDES_M = [60, 120, 240, 480] as const;
 const BUFFER_STEP = 2;
 const BUFFER_MAX = 50;
 
+export type MagicMode = 'new' | 'add' | 'remove';
+
 export interface MagicState {
   on: boolean;
   status: Status | null;
   busy: boolean;
   /** The last request, kept for buffer and vertex changes. */
   last: { layer: RasterLayer; click: SitePoint; window: CropWindow; key: string } | null;
+  /** What the next click does: a new outline, or add to or take away from the draft. */
+  mode: MagicMode;
+  /** The clicks that added to or took away from the draft, in order. */
+  refine: { at: [number, number]; include: boolean }[];
   score: number | null;
   touchesEdge: boolean;
   /** Vertex count of the full outline, before thinning. */
@@ -58,6 +64,8 @@ const initial: MagicState = {
   status: null,
   busy: false,
   last: null,
+  mode: 'new',
+  refine: [],
   score: null,
   touchesEdge: false,
   fullVertices: null,
@@ -182,6 +190,7 @@ async function suggest(
       layer: target.layer.id,
       click: [target.click[0], target.click[1]],
       crop: { key, ...target.window, ...(rgb ? { rgb } : {}) },
+      ...(get().refine.length ? { refine: get().refine } : {}),
       ...(get().bufferPx ? { bufferPx: get().bufferPx } : {}),
       ...(get().vertices ? { vertices: get().vertices ?? undefined } : {}),
     });
@@ -224,6 +233,22 @@ async function suggest(
 /** A click while Suggest boundaries is on: the outline of what is under it. */
 export function magicClick(click: SitePoint, env: DrawEnv): void {
   lastEnv = env;
+  const before = get();
+  if (before.mode !== 'new' && before.last) {
+    // add to or take away from the draft: the same crop, one more click for the model
+    const w = before.last.window;
+    const side = w.res * w.size;
+    const inside =
+      click[0] >= w.x0 && click[0] < w.x0 + side && click[1] <= w.y1 && click[1] > w.y1 - side;
+    if (!inside) {
+      set({ message: 'That click is outside the area the model sees. Click nearer the draft.' });
+      return;
+    }
+    const at: [number, number] = [click[0], click[1]];
+    set({ refine: [...before.refine, { at, include: before.mode === 'add' }].slice(-20) });
+    void suggest(null, env);
+    return;
+  }
   const ws = workspace.getState();
   const project = ws.project;
   if (!project) return;
@@ -234,6 +259,7 @@ export function magicClick(click: SitePoint, env: DrawEnv): void {
     bufferPx: 0,
     vertices: null,
     fullVertices: null,
+    refine: [],
   });
   void orthoAt(project.manifest, ws.hidden, [click[0], click[1]], io).then((layer) => {
     if (!layer) {
@@ -245,6 +271,11 @@ export function magicClick(click: SitePoint, env: DrawEnv): void {
     }
     return suggest({ layer, click, side: CROP_SIDES_M[0] }, env);
   });
+}
+
+/** What the next click does (the panel's **New outline**, **Add area**, **Remove area**). */
+export function setMode(mode: MagicMode): void {
+  set({ mode });
 }
 
 /** Grow or shrink the draft (pixels of the crop; keys U and I). */
@@ -324,6 +355,20 @@ export function projectOutline(): Outline | null {
 
 // ---------------------------------------------------------------- the panel
 
+const MODES: readonly [MagicMode, string, string][] = [
+  ['new', 'New outline', 'The next click outlines what is under it and replaces the draft'],
+  [
+    'add',
+    'Add area',
+    'The next click adds what is under it to the draft (a part the model left out)',
+  ],
+  [
+    'remove',
+    'Remove area',
+    'The next click takes what is under it out of the draft (a touching pile the model took along)',
+  ],
+];
+
 /** The Suggest boundaries button and, while it is on, its draft controls (in the drawing bar). */
 export function MagicPolygon() {
   const on = useMagic((s) => s.on);
@@ -334,6 +379,7 @@ export function MagicPolygon() {
   const vertices = useMagic((s) => s.vertices);
   const fullVertices = useMagic((s) => s.fullVertices);
   const hasDraft = useMagic((s) => s.last !== null);
+  const mode = useMagic((s) => s.mode);
   const status = useMagic((s) => s.status);
   useWorkspace((s) => s.project?.id);
 
@@ -358,6 +404,8 @@ export function MagicPolygon() {
       if (s.draw !== prev.draw && (!s.draw || s.draw.points.length === 0) && get().last) {
         set({
           last: null,
+          mode: 'new',
+          refine: [],
           score: null,
           touchesEdge: false,
           fullVertices: null,
@@ -411,6 +459,24 @@ export function MagicPolygon() {
                   Draft, model confidence {Math.round(score * 100)}%
                 </span>
               )}
+              <span className="sv-magic-modes" role="group" aria-label="What the next click does">
+                <span className="small">Next click:</span>
+                {MODES.map(([m, label, tip]) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`btn sm${mode === m ? ' primary' : ' ghost'}`}
+                    aria-pressed={mode === m}
+                    title={tip}
+                    data-testid={`survey-magic-mode-${m}`}
+                    onClick={() => {
+                      setMode(m);
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </span>
               <label className="small sv-magic-range">
                 Buffer (U, I)
                 <input

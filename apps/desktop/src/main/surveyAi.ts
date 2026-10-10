@@ -18,6 +18,7 @@ export function registerSurveyAiIpc({ handle, segmenter }: SurveyAiIpcDeps): voi
     segmenter.suggest({
       click: req.click,
       crop: req.crop,
+      refine: req.refine,
       bufferPx: req.bufferPx,
       vertices: req.vertices,
     }),

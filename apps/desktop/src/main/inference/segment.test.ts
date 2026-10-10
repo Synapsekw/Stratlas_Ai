@@ -10,6 +10,7 @@ import {
   bestMask,
   bufferMask,
   createSegmenter,
+  decoderFeeds,
   encoderTensor,
   fillHoles,
   findSegmentModel,
@@ -104,6 +105,34 @@ describe('tensors', () => {
     expect(big[0]).toBe(0);
     expect(big[3 * 3]).toBe(100);
     expect(resizeRgb(rgb, 2, 2)).toBe(rgb);
+  });
+
+  it('feeds the click, then the add and remove clicks, then the padding point', () => {
+    const ort = {
+      Tensor: class {
+        constructor(
+          readonly type: string,
+          readonly data: Float32Array,
+          readonly dims: readonly number[],
+        ) {}
+      },
+    } as unknown as OrtLike;
+    const emb = { data: new Float32Array(1), dims: [1] };
+    const one = decoderFeeds(ort, emb, [10, 20]);
+    expect(Array.from(one.point_coords?.data ?? [])).toEqual([10, 20, 0, 0]);
+    expect(Array.from(one.point_labels?.data ?? [])).toEqual([1, -1]);
+    const more = decoderFeeds(
+      ort,
+      emb,
+      [10, 20],
+      [
+        { at: [30, 40], include: false },
+        { at: [50, 60], include: true },
+      ],
+    );
+    expect(more.point_coords?.dims).toEqual([1, 4, 2]);
+    expect(Array.from(more.point_coords?.data ?? [])).toEqual([10, 20, 30, 40, 50, 60, 0, 0]);
+    expect(Array.from(more.point_labels?.data ?? [])).toEqual([1, 0, 1, -1]);
   });
 
   it('picks the mask with the best predicted IoU and scales it to the model size', () => {
@@ -223,6 +252,19 @@ describe('the pack model', () => {
     if (!second.ok) return;
     expect(second.ring).toHaveLength(12);
     expect(ringArea(second.ring)).toBeGreaterThan(ringArea(first.ring) * 1.1);
+    // a Remove area click is passed on (the fixture model reads the first click only), and one
+    // outside the crop is ignored
+    const refined = await seg.suggest({
+      click: [pile.e, pile.n],
+      crop: { ...crop, rgb: undefined },
+      refine: [
+        { at: [500_040, 2_800_030], include: false },
+        { at: [x0 - 100, y1], include: true },
+      ],
+    });
+    expect(refined.ok).toBe(true);
+    if (refined.ok)
+      expect(Math.abs(ringArea(refined.ring) / ringArea(first.ring) - 1)).toBeLessThan(0.01);
     // another crop without pixels is stale; a click outside the crop is refused
     expect(
       await seg.suggest({

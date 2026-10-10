@@ -476,3 +476,8 @@ textarea.sv-input {
 .sv-magic-range input {
   width: 110px;
 }
+.sv-magic-modes {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}

@@ -880,6 +880,7 @@ Needs a build with G12 (`m11/g12-ai` or later) and a pipeline pack 0.5.0 built f
 - [ ] Click the middle of the pile: within a second or two a draft outline hugs the toe of the pile, with "Draft, model confidence ...%".
 - [ ] Press **I** a few times: the draft grows, and **Buffer** shows "+2 px", "+4 px". **U** shrinks it. **J** gives fewer points, **K** more.
 - [ ] Click the sand next to the pile, then the pile again: each click replaces the draft.
+- [ ] **Next click**: **Remove area**, then click a part of the draft: the draft changes instead of starting again. **Add area** works the same way for a part the draft left out. **New outline** goes back to replacing. On your own ortho, try this where two piles touch: the first draft often runs around both, and **Remove area** on the other pile should leave yours.
 - [ ] **Enter**: the draft becomes "Area 1" in the list. Its area is close to 1,018 m2 (the pile is a cone of 18 m radius on 31 March).
 - [ ] The same on the **Map**: **Suggest boundaries**, a click on "Stockpile SP2", **Enter**.
 - [ ] **Volume** instead of **Area**, **Suggest boundaries**, a click on a pile, **Enter**: the volume computes on the accepted outline.
