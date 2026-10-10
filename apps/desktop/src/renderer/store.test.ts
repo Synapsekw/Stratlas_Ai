@@ -212,6 +212,54 @@ describe('shell store', () => {
     expect(s.getState().settings.sidebarCollapsed).toBe(true);
   });
 
+  it('shows the right panel until told otherwise, and remembers that it was folded', () => {
+    const data: Record<string, string> = {};
+    const storage = {
+      getItem: (k: string) => data[k] ?? null,
+      setItem: (k: string, v: string) => {
+        data[k] = v;
+      },
+    };
+    const { bridge, calls } = fakeBridge({});
+    const s = createShellStore(bridge, createWorkspace(), { storage });
+    expect(s.getState().rightCollapsed).toBe(false);
+    s.getState().toggleRight();
+    expect(s.getState().rightCollapsed).toBe(true);
+    expect(data['quadrion.panels']).toBe('{"rightCollapsed":true}');
+    // the choice belongs to this workstation: it is not a setting
+    expect(calls).toEqual([]);
+    // the next start of the app begins folded
+    const again = createShellStore(bridge, createWorkspace(), { storage });
+    expect(again.getState().rightCollapsed).toBe(true);
+    again.getState().toggleRight();
+    expect(again.getState().rightCollapsed).toBe(false);
+    expect(data['quadrion.panels']).toBe('{"rightCollapsed":false}');
+  });
+
+  it('unfolds the right panel for an action that needs it and leaves a shown one alone', () => {
+    const writes: string[] = [];
+    const storage = {
+      getItem: () => '{"rightCollapsed":true}',
+      setItem: (_k: string, v: string) => {
+        writes.push(v);
+      },
+    };
+    const s = createShellStore(fakeBridge({}).bridge, createWorkspace(), { storage });
+    expect(s.getState().rightCollapsed).toBe(true);
+    s.getState().setRight(false);
+    expect(s.getState().rightCollapsed).toBe(false);
+    s.getState().setRight(false);
+    expect(s.getState().rightCollapsed).toBe(false);
+    expect(writes).toEqual(['{"rightCollapsed":false}']);
+  });
+
+  it('folds the right panel without storage (blocked, or none)', () => {
+    const s = createShellStore(fakeBridge({}).bridge, createWorkspace(), { storage: null });
+    expect(s.getState().rightCollapsed).toBe(false);
+    s.getState().toggleRight();
+    expect(s.getState().rightCollapsed).toBe(true);
+  });
+
   it('opens a project into the workspace and shows the scene', async () => {
     const issues = [] as never[];
     const { bridge } = fakeBridge({

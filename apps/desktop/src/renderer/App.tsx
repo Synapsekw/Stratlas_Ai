@@ -310,7 +310,7 @@ export function App() {
     // a picked issue opens its card: the right panel unfolds if it was folded away
     const stopCard = startCardFocus(workspace, ({ id, fromScene }) => {
       const sh = shell.getState();
-      if (sh.rightCollapsed) sh.toggleRight();
+      sh.setRight(false);
       // picked in 3D: its photo (or video frame) opens beside the 3D view; an open evidence
       // pane follows the card to the next issue
       const ev = evidence.getState();
