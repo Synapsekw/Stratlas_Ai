@@ -87,14 +87,9 @@ jobs:
 
       # dist builds the demo project (tools/demo/build-demo.mjs): ffmpeg for its video and the
       # pipeline Python for its stockpile and road parts, then the client data check.
-      - name: Install ffmpeg (Windows)
-        if: runner.os == 'Windows'
-        uses: FedericoCarboni/setup-ffmpeg@v3
-      - name: Install ffmpeg (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install ffmpeg-full
-          echo "$(brew --prefix ffmpeg-full)/bin" >> "$GITHUB_PATH"
+      # From the cache on Windows. This run is on main, so it also keeps that cache where every
+      # pull request can read it (.github/actions/ffmpeg).
+      - uses: ./.github/actions/ffmpeg
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
@@ -212,14 +207,7 @@ jobs:
       - name: Download Electron binary
         run: node node_modules/electron/install.js
 
-      - name: Install ffmpeg (Windows)
-        if: runner.os == 'Windows'
-        uses: FedericoCarboni/setup-ffmpeg@v3
-      - name: Install ffmpeg (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install ffmpeg-full
-          echo "$(brew --prefix ffmpeg-full)/bin" >> "$GITHUB_PATH"
+      - uses: ./.github/actions/ffmpeg
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true

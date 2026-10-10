@@ -5,6 +5,9 @@ description: Puts an ffmpeg with libx264 and libwebp on the PATH, for the import
 # 14 s to 139 s within one run (38051445110). The two programs are kept in a cache instead, so the
 # download only runs when the cache is empty. The cache holds whatever version was the release
 # then: raise the number in the key to fetch the current one.
+# A cache saved by a pull request's run is only read by that pull request; every pull request
+# reads the caches of main. The nightly runs on main and uses this action, so it saves the cache
+# there (also after the key changes) and keeps it from expiring.
 # macOS: that action has no Apple silicon build. Homebrew's plain ffmpeg has no libwebp (the kit
 # importers write WebP tiles); ffmpeg-full has it but is keg-only, so it is put on the PATH.
 
