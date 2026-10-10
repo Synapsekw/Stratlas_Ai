@@ -59,7 +59,7 @@ A licence audit on 10 Oct 2026 looked at what we would owe others if the app wer
 ### Founder decisions and checks needed before the first sale
 
 1. **A lawyer confirms the wall between app and pack.** The app stays closed only if starting the pack as a separate program over JSON-RPC counts as two programs. Until then the rule holds: the app never shares code with the pack, and anything that must stay proprietary lives in the app.
-2. **The public repository.** `Synapsekw/Stratlas_Ai` is public, has no licence file and names clients (EBSM, DAMAC, Masafi, HCl Tank, Al-Zour) in tracked files, with a real site coordinate in `tools/demo/check-no-client-data.mjs`, next to the competitor and pricing documents. Decide: private or public, and whether the history is cleaned.
+2. **The public repository.** `Synapsekw/Stratlas_Ai` is public, has no licence file and names the client projects in about 210 tracked files (importers, tests, design shots, plans), with four real site coordinates in `tools/demo/check-no-client-data.mjs`, next to the competitor and pricing documents. Decide: private or public, and whether the history is cleaned.
 3. **Name and trademark.** Clearance of "Quadrion AI" in classes 9 and 42 (`docs/release/FOUNDER-SETUP-GUIDE.md`); the nearest name found is General Atomics' "Quadratix".
 4. **Video codec patents.** The macOS pack carries H.264 and H.265 encoders (OpenCV's FFmpeg build) and Electron carries decoders. Ask the lawyer whether patent pool fees apply at our volume.
 5. **Propeller's terms.** The feature inventory in `docs/business/` was made while signed in to Propeller's demo sites; check that their terms allow it.
