@@ -14,6 +14,8 @@ The highlighted folder is the date you are viewing. Click a date's name to view 
 
 Drag a dataset from the list and drop it on another date folder to file it under that date. While you drag, the folders that can take it get a dashed outline and the one under the pointer lights up in its colour. Dropping a dataset on the folder it is already in does nothing. A flight row carries all of its clips with it.
 
+In a small window the list can be longer than the sidebar. If the folder you want is out of view, hold the dataset at the top or bottom edge of the list and the list scrolls under it.
+
 Drop a dataset on **Every date** to take its date off. When every dataset has a date the Every date folder is not in the list, so while you drag it appears at the foot of the list as a place to drop.
 
 Without dragging: right-click a dataset (or focus it and press the menu key or **Shift+F10**), then pick a date or **Every date (no date)** under **Move to date**. The **Belongs to date...** box in the Selection panel does the same.
