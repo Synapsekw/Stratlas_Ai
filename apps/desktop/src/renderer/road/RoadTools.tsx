@@ -8,7 +8,7 @@ import { PopTool, Tool } from '../workspace/StageTools';
 import { pciRating } from './model';
 import { densityLegend } from './overlays';
 import { roadStore, setRoad, useRoad, type MeasureMode } from './store';
-import { focusDefect, measureText, useFilteredDefects } from './useRoadMap';
+import { filteredDefects, focusDefect, measureText, useFilteredDefects } from './useRoadMap';
 
 const SIZES = ['10', '20', '50'];
 
@@ -478,10 +478,12 @@ export function CloseupDock() {
 
 /**
  * Road keys on the stage: P PCI grid, D density, M measure and C close-up on the map, Left and
- * Right step through the filtered defects. They run before the stage's own keys.
+ * Right step through the filtered defects. They run before the stage's own keys: the listener is
+ * added once per road, ahead of the stage's (Stage.tsx calls this hook first), and reads the
+ * store when a key comes. Added again for every change of the defect list, as it was, it ran
+ * after the stage's keys from the first filter on, and M in split view measured in 3D.
  */
 export function useRoadKeys(active: boolean): void {
-  const rows = useFilteredDefects();
   useEffect(() => {
     if (!active) return;
     const onKey = (e: KeyboardEvent) => {
@@ -504,7 +506,9 @@ export function useRoadKeys(active: boolean): void {
         setRoad({ measure: { mode: null, vertices: [] } });
       else if (isShortcut('scene.drawUndo', e) && s.measure.mode)
         setRoad({ measure: { mode: s.measure.mode, vertices: s.measure.vertices.slice(0, -1) } });
-      else if ((id === 'road.next' || id === 'road.prev') && rows.length) {
+      else if (id === 'road.next' || id === 'road.prev') {
+        const rows = filteredDefects(s);
+        if (!rows.length) return;
         const sel = workspace.getState().selection;
         const i = sel?.kind === 'issue' ? rows.findIndex((r) => r.id === sel.id) : -1;
         const d = id === 'road.next' ? 1 : -1;
@@ -517,5 +521,5 @@ export function useRoadKeys(active: boolean): void {
     return () => {
       window.removeEventListener('keydown', onKey);
     };
-  }, [active, rows]);
+  }, [active]);
 }

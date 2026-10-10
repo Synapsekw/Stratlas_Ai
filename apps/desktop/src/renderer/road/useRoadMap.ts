@@ -10,19 +10,24 @@ import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
 import { useMemo } from 'react';
 import { filterDefects, pointAtKm, sortDefects, type DefectRow } from './model';
 import { densityCollection, roadOverlays } from './overlays';
-import { roadStore, setRoad, useRoad, type MeasureMode } from './store';
+import { roadStore, setRoad, useRoad, type MeasureMode, type RoadState } from './store';
 
 /** True while the open project is a road survey with its road model loaded. */
 export function useIsRoad(): boolean {
   return useRoad((s) => s.status === 'ready');
 }
 
-/** The defects that pass the filters, in the chosen order (memoised on the store values). */
+/** The defects that pass the filters, in the chosen order. */
+export function filteredDefects(s: Pick<RoadState, 'rows' | 'filter' | 'sort'>): DefectRow[] {
+  return sortDefects(filterDefects(s.rows, s.filter), s.sort);
+}
+
+/** `filteredDefects` of the store (memoised on the store values). */
 export function useFilteredDefects(): DefectRow[] {
   const rows = useRoad((s) => s.rows);
   const filter = useRoad((s) => s.filter);
   const sort = useRoad((s) => s.sort);
-  return useMemo(() => sortDefects(filterDefects(rows, filter), sort), [rows, filter, sort]);
+  return useMemo(() => filteredDefects({ rows, filter, sort }), [rows, filter, sort]);
 }
 
 export interface RoadMapProps {
