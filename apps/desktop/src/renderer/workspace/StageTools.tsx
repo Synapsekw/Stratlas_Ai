@@ -32,6 +32,7 @@ import {
   type ReactNode,
 } from 'react';
 import { shell, useShell } from '../shell';
+import { GroundRows } from './BasemapPicker';
 import { PATH_MODES, setPathMode } from './flightPaths';
 import { updateFlightPaths, useFlightPathModel } from './pathModel';
 import { CutawayPanel } from './CutawayTool';
@@ -528,6 +529,7 @@ export function DisplayTools({ stage, map }: { stage: EngineStage | null; map: b
             <KindRow key={k.label} {...k} />
           ))}
           {!map && <StreetMapRow />}
+          {!map && <GroundRows />}
           <span className="pop-title">Issue pins</span>
           <PinControls />
         </div>

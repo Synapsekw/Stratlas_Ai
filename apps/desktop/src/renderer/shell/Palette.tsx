@@ -10,7 +10,7 @@ import {
   shortcutHint,
 } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { actionAllowed, allowedActions } from '../exports/exportModel';
 import { runExportAction } from '../exports/exports';
 import { alignCamera } from '../builder/alignSession';
@@ -22,8 +22,10 @@ import { legacyLayers } from '../legacy';
 import { openModelBuilder } from '../modeller/ModellerLayer';
 import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
+import { BASEMAPS, basemapPatch } from '../workspace/basemap';
 import { PATH_MODES, setPathMode, togglePaths } from '../workspace/flightPaths';
 import { updateFlightPaths } from '../workspace/pathModel';
+import { rasterPacks, useBasemap } from '../workspace/siteTiles';
 import { toggleTelemetry } from '../workspace/telemetryPref';
 import { timeline, useTimeline } from '../workspace/timeline';
 import { toggleTimeline } from '../workspace/timelinePref';
@@ -78,6 +80,12 @@ export function Palette() {
   const leftCollapsed = useShell((s) => s.settings.sidebarCollapsed);
   const rightCollapsed = useShell((s) => s.rightCollapsed);
   const surveys = useTimeline((s) => s.index);
+  // the map type commands follow the packs on this computer: list them as the palette opens
+  const basemap = useBasemap();
+  const hasProject = project !== null;
+  useEffect(() => {
+    if (open && hasProject) rasterPacks.getState().refresh();
+  }, [open, hasProject]);
 
   const commands = useMemo<PaletteCommand[]>(() => {
     const s = shell.getState();
@@ -217,6 +225,48 @@ export function Palette() {
           ws.flyTo({ kind: 'home' });
         }),
       );
+      // the map type, as the picker on the map offers it (a type with no pack is not listed)
+      const onMap = (fn: () => void) =>
+        scene(() => {
+          if (shell.getState().stageMode === '3d') s.setStageMode('map');
+          fn();
+        });
+      for (const b of BASEMAPS) {
+        if (b !== 'streets' && !basemap.satellite) continue;
+        list.push({
+          id: `basemap:${b}`,
+          title: t('palette.basemap', { name: t(`basemap.${b}`).toLowerCase() }),
+          group: 'Actions',
+          icon: 'map',
+          keywords: ['basemap', 'map type', 'imagery', 'aerial', 'streets', 'satellite'],
+          ...(basemap.choice === b ? { hint: t('palette.basemap.current') } : {}),
+          run: onMap(() => {
+            rasterPacks.getState().set(basemapPatch(b));
+          }),
+        });
+      }
+      if (basemap.hillshade)
+        list.push({
+          id: 'basemap:hillshade',
+          title: t(basemap.hillshadeOn ? 'palette.hillshade.off' : 'palette.hillshade.on'),
+          group: 'Actions',
+          icon: 'map',
+          keywords: ['hillshade', 'relief', 'terrain', 'map type'],
+          run: onMap(() => {
+            rasterPacks.getState().set({ hillshade: !basemap.hillshadeOn });
+          }),
+        });
+      if (!pkg)
+        list.push({
+          id: 'basemap:packs',
+          title: t('palette.basemap.packs'),
+          group: 'Actions',
+          icon: 'import',
+          keywords: ['satellite', 'imagery', 'terrain', 'basemap', 'offline maps', 'packs'],
+          run: () => {
+            s.openSettings('raster-packs');
+          },
+        });
       const tl = timeline.getState();
       if (surveys && surveys.captures.length > 1) {
         action(
@@ -500,6 +550,7 @@ export function Palette() {
     surveys,
     leftCollapsed,
     rightCollapsed,
+    basemap,
   ]);
 
   if (!open) return null;

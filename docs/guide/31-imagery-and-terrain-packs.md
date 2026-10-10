@@ -23,6 +23,8 @@ The list shows each pack with its zoom levels, size, date, licence and attributi
 - **Terrain around the site in 3D** and **Imagery around the site in 3D:** the landscape around the site in the 3D view, on the Medium graphics preset and up.
 - The Globe uses every installed pack (see the chapter on the Globe).
 
+The same choices are on the map itself: the map type chip under the zoom buttons (**Streets**, **Satellite**, **Satellite only**, **Terrain shading**), and **Layers and issue pins** in 3D. See [Maps and offline packs](06-maps.md#choose-the-map-type).
+
 ## Licences
 
 Every pack carries its licence, attribution and data source, and the attribution shows wherever the imagery shows. {product} ships only Natural Earth II (public domain). Imagery you buy from a commercial provider is imported by you under your licence and is never redistributed: a pack with **Customer licence** stays out of packages.
