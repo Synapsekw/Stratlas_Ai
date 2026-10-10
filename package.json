@@ -27,7 +27,8 @@
     "demo:check": "node tools/demo/check-no-client-data.mjs && node tools/demo/check-change-demo.mjs",
     "demo:change": "node tools/demo/build-change-demo.mjs",
     "demo:survey": "node tools/demo/survey-demo.mjs",
-    "review": "node tools/review-board/server.mjs"
+    "review": "node tools/review-board/server.mjs",
+    "test-board": "node tools/test-board/build.mjs"
   },
   "devDependencies": {
     "@commitlint/cli": "^20.0.0",

@@ -27,6 +27,12 @@
       ],
       "port": 4178,
       "url": "http://127.0.0.1:4178"
+    },
+    {
+      "name": "test-board",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8771", "--directory", "tools/test-board/dist"],
+      "port": 8771
     }
   ]
 }

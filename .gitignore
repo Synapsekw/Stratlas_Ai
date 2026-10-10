@@ -34,3 +34,6 @@ dist-types/
 
 # founder review board answers (tools/review-board)
 .review-board/
+
+# private part of the team test board (tools/test-board): client, site and tester names
+tools/test-board/local/
