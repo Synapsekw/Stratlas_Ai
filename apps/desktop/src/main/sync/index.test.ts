@@ -1,7 +1,7 @@
 import { cp, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { projectCacheKey } from '@aio/sync/blobs';
 import {
   createDeviceKeys,
@@ -18,6 +18,15 @@ import { registerSyncIpc } from './index';
 import { createSyncService, safeJoin, type ServerTransport } from './service';
 import type { Heads, Op } from '@aio/schema';
 
+/**
+ * These tests run the real stack (identity, journal, merge, sync) on real folders: a test of two
+ * copies makes 200 to 1,200 file system calls (about 50 to 80 files written and as many renames)
+ * and waits on the disk for four fifths of its time. Alone that is 0.2 to 1 s a test (measured
+ * 10 Oct 2026); it grows with whatever else uses the disk, and beside other test runs on the
+ * same machine the 5 s default ran out in three sessions. No sleep, lock or retry is behind it.
+ */
+vi.setConfig({ testTimeout: 30_000 });
+
 let base: string;
 beforeEach(async () => {
   base = await mkdtemp(join(tmpdir(), 'aio-sync-'));
@@ -26,7 +35,9 @@ beforeEach(async () => {
 const journals: JournalService[] = [];
 afterEach(async () => {
   await Promise.all(journals.splice(0).map((j) => j.closeAll()));
-  await rm(base, { recursive: true, force: true });
+  // a test that failed half way may still be writing: its folder then takes a few tries to go,
+  // and must not fail the next test with ENOTEMPTY or EBUSY
+  await rm(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 interface Issue {
@@ -256,7 +267,7 @@ describe('sync IPC', () => {
 });
 
 // Two full copies syncing through a folder: slow on a loaded Windows machine.
-describe('hub folder sync between two copies', { timeout: 30_000 }, () => {
+describe('hub folder sync between two copies', () => {
   async function pair() {
     const hub = join(base, 'hub');
     await mkdir(hub);
@@ -593,7 +604,7 @@ describe('exchange files between two copies', () => {
         passphrase: 'long enough phrase',
       }),
     ).toMatchObject({ ok: true, preview: { header: { encrypted: true } } });
-  }, 20_000);
+  });
 
   it('refuses a file for another team project', async () => {
     const { a, aDir } = await pair();
