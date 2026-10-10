@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import shutil
 import struct
@@ -62,6 +63,18 @@ def _run_id(params: dict[str, Any]) -> str:
 
 def _manifest(ctx: StepContext) -> dict[str, Any]:
     return _read(ctx.out("manifest.json"))
+
+
+def _gsd_cm(cameras: list[dict[str, Any]], width: int) -> float:
+    """The ground sample distance of the stand-in's cameras over its site, flat at local height 0:
+    height over focal length, the median of the photos (as ``accuracy.gsd_cm`` measures a model).
+    The marker reads the model's ground level from it, so it has to fit the cameras."""
+    values = sorted(
+        c["pos"][1] / (width / 2 / math.tan(math.radians(c["lens"]["hfovDeg"]) / 2))
+        for c in cameras
+        if c["pos"][1] > 0
+    )
+    return round(values[len(values) // 2] * 100, 3) if values else 2.0
 
 
 def _photos_layer(ctx: StepContext, source: dict[str, Any]) -> dict[str, Any] | None:
@@ -222,6 +235,7 @@ class FakeAlign(_align.PhotoAlign):
                         "camera": "cam1",
                     }
                 )
+            gsd = _gsd_cm(refined, size[0])
             manifest = _manifest(ctx)
             atomic_write_json(
                 folder / "cameras-sfm.json",
@@ -255,7 +269,7 @@ class FakeAlign(_align.PhotoAlign):
                     "run": run,
                     "createdAt": now_iso(),
                     "crs": params.get("crs") or manifest["crs"],
-                    "gsdCm": 2.0,
+                    "gsdCm": gsd,
                     "images": {"total": count, "registered": count},
                     "meanReprojPx": 0.62,
                     "points": [],
@@ -277,7 +291,7 @@ class FakeAlign(_align.PhotoAlign):
                 run,
                 status="aligned",
                 photos={"source": params["photos"], "count": count, "registered": count},
-                accuracy={"meanReprojPx": 0.62, "gsdCm": 2.0},
+                accuracy={"meanReprojPx": 0.62, "gsdCm": gsd},
             )
             return {}
 
@@ -366,7 +380,12 @@ class FakeGeoref(_georef.PhotoGeoref):
                 ctx,
                 run,
                 status="adjusted",
-                accuracy={"meanReprojPx": 0.55, "gsdCm": 2.0, "warnings": len(warnings), **r},
+                accuracy={
+                    "meanReprojPx": 0.55,
+                    "gsdCm": report.get("gsdCm", 2.0),
+                    "warnings": len(warnings),
+                    **r,
+                },
             )
             return {}
 

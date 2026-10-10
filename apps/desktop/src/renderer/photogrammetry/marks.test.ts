@@ -1,3 +1,4 @@
+import { worldToPixel } from '@aio/annotate';
 import type { GcpFile, GcpPoint } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
@@ -6,12 +7,21 @@ import {
   clickToPixel,
   gcpLocal,
   gcpLonLat,
+  GNSS_RADIUS_PX,
+  groundShift,
+  inFrame,
   loupeBackground,
+  MARKED_RADIUS_PX,
+  markerList,
+  MAX_SHIFT_M,
+  nextToMark,
   photosFor,
   predictions,
   readCamerasFile,
   sfmPhotos,
   step,
+  surveyShift,
+  triangulate,
   withPoint,
   type MarkerPhoto,
 } from './marks';
@@ -158,6 +168,232 @@ describe('predictions', () => {
 
   it('steps through a list and wraps', () => {
     expect(step(1, 3, 1)).toBe(2);
+  });
+});
+
+/**
+ * A flight without RTK, as `photo.align` leaves it before any ground control: the cameras sit
+ * 25 m below the survey's height datum (the drone's logged altitude) and 2.5 m beside it (the GNSS
+ * bias). Four nadir photos 60 m above the model's ground; the survey's ground is at 100 m.
+ */
+describe('predictions that learn from the marks', () => {
+  const frame = { epsg: 32639, origin: [500000, 3200000, 0] as [number, number, number] };
+  /** Cameras' frame minus survey, local metres (x east, y up, z south). */
+  const SHIFT = [1.5, -25, -2] as const;
+  const size: [number, number] = [960, 720];
+  const lens = { model: 'pinhole' as const, hfovDeg: 74.32, aspect: 4 / 3 };
+  const photos: MarkerPhoto[] = [-60, -30, 0, 30].map((x) => ({
+    id: `x${String(x)}`,
+    size,
+    pos: [x, 135, 0],
+    q: NADIR,
+    lens,
+  }));
+  /** As the run states it: the depth of the model's ground (60 m) over the focal length. */
+  const gsdCm = (60 / (480 / Math.tan((lens.hfovDeg * Math.PI) / 360))) * 100;
+  const surveyed = (id: string, east: number, north: number, o: Partial<GcpPoint> = {}): GcpPoint =>
+    point({ id, xyz: [500000 + east, 3200000 + north, 100], ...o });
+  /** Where the target really is in a photo: the survey as the cameras' frame has it. */
+  const truePx = (p: GcpPoint, ph: MarkerPhoto): [number, number] | null => {
+    const l = gcpLocal(p, 32639, frame);
+    if (!l || !ph.pos || !ph.q || !ph.lens) return null;
+    const at: [number, number, number] = [l[0] + SHIFT[0], l[1] + SHIFT[1], l[2] + SHIFT[2]];
+    return worldToPixel({ pos: ph.pos, q: ph.q }, ph.lens, at, ph.size);
+  };
+  const seenIn = (p: GcpPoint) => photos.filter((ph) => truePx(p, ph)).map((ph) => ph.id);
+  /** The point marked by a person on its target in these photos. */
+  const marked = (p: GcpPoint, ids: string[]): GcpPoint => ({
+    ...p,
+    marks: ids.map((id) => {
+      const ph = photos.find((x) => x.id === id);
+      const px = ph ? truePx(p, ph) : null;
+      if (!px) throw new Error(`${p.id} is not in ${id}`);
+      return { photo: id, px, by: 'person' as const, at: AT, state: 'confirmed' as const };
+    }),
+  });
+  const file = (...points: GcpPoint[]): GcpFile => ({
+    schema: 'aio.gcp/1',
+    crs: { epsg: 32639 },
+    points,
+  });
+  /** The largest distance of the predictions from the targets, pixels. */
+  const worst = (
+    p: GcpPoint,
+    list: { photo: MarkerPhoto; prediction: { px: number[] } | null }[],
+  ) =>
+    Math.max(
+      ...list.map(({ photo, prediction }) => {
+        const t = truePx(p, photo);
+        if (!t || !prediction) return Infinity;
+        return Math.hypot((prediction.px[0] ?? NaN) - t[0], (prediction.px[1] ?? NaN) - t[1]);
+      }),
+    );
+  const ids = (list: { photo: MarkerPhoto }[]) => list.map((x) => x.photo.id).sort();
+
+  // 38 m west of the third photo: 95 px from its left edge
+  const edge = surveyed('EDGE', -38, 0);
+  const mid = surveyed('MID', -10, 5);
+
+  it('as surveyed, a point is missed in a photo that sees it and its ring is far from the target', () => {
+    expect(seenIn(edge)).toEqual(['x-60', 'x-30', 'x0']);
+    const preds = predictions(edge, gcpLocal(edge, 32639, frame), photos);
+    // 35 m below the cameras, not 60: every position is 1.7 times as far from the image centre
+    expect(preds.map((x) => x.photo).sort()).toEqual(['x-30', 'x-60']);
+    expect(worst(edge, photosFor(edge, preds, photos))).toBeGreaterThan(1.5 * GNSS_RADIUS_PX);
+  });
+
+  it("before any mark, puts the survey on the model's ground", () => {
+    const f = file(edge, mid);
+    const placed = f.points.map((p) => ({ point: p, local: gcpLocal(p, 32639, frame) }));
+    const shift = groundShift(placed, photos, gsdCm);
+    expect(shift?.[0]).toBe(0);
+    expect(shift?.[1]).toBeCloseTo(-25, 6);
+    expect(shift?.[2]).toBe(0);
+    const list = markerList(f, edge, photos, frame, gsdCm);
+    expect(ids(list)).toEqual(['x-30', 'x-60', 'x0']);
+    // what is left is the GNSS bias: 2.5 m at 9.5 cm a pixel
+    expect(worst(edge, list)).toBeLessThan(GNSS_RADIUS_PX / 2);
+    expect(list.every((x) => x.prediction?.radiusPx === GNSS_RADIUS_PX)).toBe(true);
+
+    // nothing to go by: no stated GSD, no photo that looks down, no point that can be placed
+    expect(groundShift(placed, photos, undefined)).toBeNull();
+    const level: MarkerPhoto[] = photos.map((ph) => ({ ...ph, q: [0, 0, 0, 1] }));
+    expect(groundShift(placed, level, gsdCm)).toBeNull();
+    expect(groundShift([{ point: edge, local: null }], photos, gsdCm)).toBeNull();
+    expect(ids(markerList(f, edge, photos, frame))).toEqual(['x-30', 'x-60']);
+  });
+
+  it('keeps the positions as surveyed when a number gives no plausible shift', () => {
+    const f = file(edge, mid);
+    const placed = f.points.map((p) => ({ point: p, local: gcpLocal(p, 32639, frame) }));
+    const asSurveyed = markerList(f, edge, photos, frame).map((x) => x.prediction?.px);
+    // a GSD that is no positive number
+    for (const bad of [0, -9.4, Number.NaN, Number.POSITIVE_INFINITY, null]) {
+      expect(groundShift(placed, photos, bad)).toBeNull();
+      expect(markerList(f, edge, photos, frame, bad).map((x) => x.prediction?.px)).toEqual(
+        asSurveyed,
+      );
+    }
+    // a GSD that does not fit the cameras (metres taken for centimetres): the ground would be
+    // 6 km below the photos, further than any height datum is from another
+    expect(MAX_SHIFT_M).toBe(150);
+    expect(groundShift(placed, photos, gsdCm * 100)).toBeNull();
+    expect(markerList(f, edge, photos, frame, gsdCm * 100).map((x) => x.prediction?.px)).toEqual(
+      asSurveyed,
+    );
+    // a point marked on another point's target, 310 m from its own coordinate, says nothing:
+    // the ground level decides, as before any mark
+    const wrong: GcpPoint = {
+      ...surveyed('WRONG', 300, 5),
+      marks: marked(mid, ['x-30', 'x0']).marks,
+    };
+    const mixed = file(wrong, edge);
+    const shift = surveyShift(
+      mixed.points.map((p) => ({ point: p, local: gcpLocal(p, 32639, frame) })),
+      photos,
+      gsdCm,
+    );
+    expect(shift?.[0]).toBe(0);
+    expect(shift?.[1]).toBeCloseTo(-25, 6);
+    expect(worst(edge, markerList(mixed, edge, photos, frame, gsdCm))).toBeLessThan(
+      GNSS_RADIUS_PX / 2,
+    );
+  });
+
+  it('triangulates a point from two marks and places it in every photo that sees it', () => {
+    const p = marked(edge, ['x-60', 'x-30']);
+    const local = gcpLocal(p, 32639, frame) ?? [0, 0, 0];
+    const at = triangulate(p, photos);
+    for (const k of [0, 1, 2] as const) expect(at?.[k]).toBeCloseTo(local[k] + SHIFT[k], 6);
+    const list = markerList(file(p), p, photos, frame);
+    expect(ids(list)).toEqual(['x-30', 'x-60', 'x0']);
+    expect(worst(p, list)).toBeLessThan(1e-6);
+    expect(list.every((x) => x.prediction?.radiusPx === MARKED_RADIUS_PX)).toBe(true);
+    // the point's own marks say more than the run's predictions, written before them
+    const stale = {
+      ...p,
+      predicted: [{ photo: 'x30', px: [1, 1] as [number, number], radiusPx: 9 }],
+    };
+    expect(ids(markerList(file(stale), stale, photos, frame))).toEqual(['x-30', 'x-60', 'x0']);
+  });
+
+  it('does not triangulate from one photo, a photo without a pose or rays close to parallel', () => {
+    expect(triangulate(marked(edge, ['x-60']), photos)).toBeNull();
+    const unposed: MarkerPhoto[] = photos.map((ph) =>
+      ph.id === 'x-30' ? { id: ph.id, size } : ph,
+    );
+    expect(triangulate(marked(edge, ['x-60', 'x-30']), unposed)).toBeNull();
+    // two photos half a metre apart: the rays cross at half a degree
+    const near: MarkerPhoto[] = [
+      { id: 'x-60', size, pos: [-60, 135, 0], q: NADIR, lens },
+      { id: 'again', size, pos: [-59.5, 135, 0], q: NADIR, lens },
+    ];
+    const twice: GcpPoint = {
+      ...edge,
+      marks: near.map((ph) => ({
+        photo: ph.id,
+        px: truePx(edge, ph) ?? [0, 0],
+        by: 'person' as const,
+        at: AT,
+        state: 'confirmed' as const,
+      })),
+    };
+    expect(twice.marks[0]?.px[0]).not.toBeCloseTo(twice.marks[1]?.px[0] ?? 0, 1);
+    expect(triangulate(twice, near)).toBeNull();
+    // a skipped photo and a draft are not measurements
+    const skipped = applyMark(marked(edge, ['x-60']), { kind: 'skip', photo: 'x-30' }, AT);
+    expect(triangulate(skipped, photos)).toBeNull();
+  });
+
+  it('places the points not marked yet by what the marked ones say about the survey', () => {
+    const done = marked(mid, ['x-30', 'x0']);
+    const f = file(done, edge);
+    const placed = f.points.map((p) => ({ point: p, local: gcpLocal(p, 32639, frame) }));
+    const shift = surveyShift(placed, photos, gsdCm);
+    for (const k of [0, 1, 2] as const) expect(shift?.[k]).toBeCloseTo(SHIFT[k], 6);
+    const list = markerList(f, edge, photos, frame, gsdCm);
+    expect(ids(list)).toEqual(['x-30', 'x-60', 'x0']);
+    expect(worst(edge, list)).toBeLessThan(1e-5);
+    expect(list.every((x) => x.prediction?.radiusPx === GNSS_RADIUS_PX)).toBe(true);
+    // a point a person switched off says nothing: back to the model's ground
+    const off = file({ ...done, disabled: true }, edge);
+    expect(worst(edge, markerList(off, edge, photos, frame, gsdCm))).toBeGreaterThan(10);
+    expect(ids(markerList(off, edge, photos, frame, gsdCm))).toEqual(['x-30', 'x-60', 'x0']);
+  });
+
+  it('offers a photo its ring reaches into, with nothing to confirm beside the frame', () => {
+    // 27 px left of the third photo: beside the frame, inside the search ring
+    const beside = surveyed('BESIDE', -49.5, 0);
+    const f = file(marked(mid, ['x-30', 'x0']), beside);
+    const list = markerList(f, beside, photos, frame, gsdCm);
+    expect(ids(list)).toEqual(['x-30', 'x-60', 'x0']);
+    const px = list.find((x) => x.photo.id === 'x0')?.prediction?.px ?? [0, 0];
+    expect(px[0]).toBeCloseTo(-26.6, 1);
+    expect(inFrame(px, size)).toBe(false);
+    expect(inFrame(px, size, GNSS_RADIUS_PX)).toBe(true);
+    // placed by its own marks the ring is 12 px: the photo is no longer offered
+    const own = marked(beside, ['x-60', 'x-30']);
+    expect(ids(markerList(file(own), own, photos, frame, gsdCm))).toEqual(['x-30', 'x-60']);
+    expect(inFrame([0, 720], size)).toBe(true);
+    expect(inFrame([960.5, 10], size)).toBe(false);
+  });
+
+  it('goes on to the next photo without a mark, in the list as the mark leaves it', () => {
+    // as surveyed the third photo is not offered: after the second mark it is
+    const one = marked(edge, ['x-30']);
+    const before = markerList(file(one), one, photos, frame);
+    expect(ids(before)).toEqual(['x-30', 'x-60']);
+    expect(nextToMark(before, one, 'x-30')).toBe('x-60');
+    const two = marked(edge, ['x-30', 'x-60']);
+    const after = markerList(file(two), two, photos, frame);
+    expect(nextToMark(after, two, 'x-60')).toBe('x0');
+    // every photo marked or skipped: simply the next one; nothing in an empty list
+    const all = applyMark(two, { kind: 'skip', photo: 'x0' }, AT);
+    const full = markerList(file(all), all, photos, frame);
+    const order = full.map((x) => x.photo.id);
+    expect(nextToMark(full, all, order[0] ?? '')).toBe(order[1]);
+    expect(nextToMark(full, all, order[2] ?? '')).toBe(order[0]);
+    expect(nextToMark([], all, 'x0')).toBeNull();
   });
 });
 
