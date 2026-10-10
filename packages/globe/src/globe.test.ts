@@ -1,3 +1,4 @@
+import { ONLINE_SATELLITE } from '@aio/schema';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
@@ -66,9 +67,9 @@ describe('@aio/globe public API (G0)', () => {
   });
 
   it('credits the online satellite imagery when it is drawn, right above the bundled one', () => {
-    expect(ONLINE_SATELLITE_CREDIT).toBe(
-      'Sentinel-2 cloudless - https://s2maps.eu by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)',
-    );
+    expect(ONLINE_SATELLITE_CREDIT).toBe(ONLINE_SATELLITE.attribution);
+    expect(ONLINE_SATELLITE_CREDIT).toContain('EOX IT Services GmbH');
+    expect(ONLINE_SATELLITE_CREDIT).toContain('Copernicus Sentinel data 2016');
     const packs = [{ attribution: 'Customer aerial survey 2026', customerLicence: true }];
     expect(creditLines(packs, { onlineSatellite: true })).toEqual([
       'Natural Earth II (public domain)',

@@ -101,7 +101,7 @@ What you get:
 
 - Sentinel-2 imagery from 2016, at about 10 m per pixel. It shows the lie of the land, roads and large structures, not site detail, and nothing built since 2016. Zoomed in past that detail the imagery is stretched, not sharper.
 - It sits at the bottom of the map: your imagery packs and the project's orthos draw over it, and street lines and labels stay on top.
-- The credit shows in the corner of the map while the imagery does: "Sentinel-2 cloudless - https://s2maps.eu by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)". The imagery is licensed CC BY 4.0.
+- The credit shows in the corner of the map while the imagery does: "EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)". The imagery is licensed CC BY 4.0.
 
 What is sent:
 

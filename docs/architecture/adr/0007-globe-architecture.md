@@ -36,11 +36,13 @@ The founder: "Not everybody wants to work completely offline." Decision 3 gains 
 
 **Licence and attribution.** The 2016 layer is released under CC BY 4.0: commercial use, use of the hosted tiles in applications and keeping tiles are allowed, with attribution. The credit is shown wherever the imagery is drawn (the map's attribution control, the Globe's credits once it is wired in) and in Settings, About:
 
-> Sentinel-2 cloudless - https://s2maps.eu by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)
+> EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)
 
-The credit is one constant (`ONLINE_SATELLITE.attribution` in `@aio/schema`). The service's capabilities document words the same credit under the product's newer name, "EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)"; which wording to carry is the founder's call, and changing it is a change of that constant.
+This is the service's own wording for the 2016 layer, copied from its capabilities document as of 10 Oct 2026 (the abstract of the layer, up to "released under"). It is one constant, `ONLINE_SATELLITE.attribution` in `@aio/schema`, and every place that shows the credit reads it. The address in it is the product's page; the app never requests it.
 
-**Why 2016 only.** The 2018 to 2025 layers of the same service are CC BY-NC-SA 4.0, which forbids commercial use; the app must never request them. The 2017 layer is not cleared for use. In the service's capabilities document (read 10 Oct 2026) the 2016 layer is the one whose identifier has no year (`s2cloudless_3857`); the later years are `s2cloudless-<year>_3857`. The layer id is one constant in main (`ONLINE_SATELLITE_LAYER`) with this reason beside it, and a unit test fails if it ever carries a later year. A newer or sharper source is a new founder decision and a new amendment, not a change of that constant.
+**Why 2016 only.** The 2018 to 2025 layers of the same service are CC BY-NC-SA 4.0, which forbids commercial use; the app must never request them. The capabilities document lists the 2017 layer as CC BY 4.0 as well, but it is not used: the founder's decision names 2016, and one layer is enough.
+
+**The real id of the 2016 layer is `s2cloudless_3857`.** In the service's capabilities document (read 10 Oct 2026) the 2016 Web Mercator layer is the one whose identifier has no year; `s2cloudless-2016_3857` does not exist and answers 404. The later years are `s2cloudless-<year>_3857`. The app's own id for the source, `s2cloudless-2016`, says the year so that nobody takes it for the newest imagery. The layer id is one constant in main (`ONLINE_SATELLITE_LAYER`) with this reason beside it, and a unit test fails if it ever carries a later year. A newer or sharper source is a new founder decision and a new amendment, not a change of that constant.
 
 **Main enforces the gate.** The renderer never names the service and cannot reach it: its CSP and the session's request filter are unchanged, and it asks the app's own protocol, `aio://online/s2cloudless-2016/{z}/{x}/{y}.jpg`. The handler in main (`apps/desktop/src/main/onlineTiles.ts`):
 

@@ -125,6 +125,8 @@ describe('main owns the network', () => {
     });
   }
 
+  // The credit names the product's page (cloudless.eox.at), as the licence asks; that is not the
+  // tile service, which only main may name.
   it('nothing the renderer is built from names the service', () => {
     const folders = [
       join(repo, 'apps', 'desktop', 'src', 'renderer'),
@@ -135,7 +137,7 @@ describe('main owns the network', () => {
     expect(folders.length).toBeGreaterThan(10);
     const named = folders
       .flatMap(sources)
-      .filter((file) => readFileSync(file, 'utf8').includes('eox.at'))
+      .filter((file) => /(tiles|maps)\.eox\.at|s2cloudless_3857/.test(readFileSync(file, 'utf8')))
       .map((file) => relative(repo, file));
     expect(named).toEqual([]);
   });

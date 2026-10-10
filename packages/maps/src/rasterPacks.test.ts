@@ -285,10 +285,9 @@ describe('online satellite on the map (Sentinel-2, ADR 0007 amended)', () => {
       tileSize: 256,
       minzoom: 0,
       maxzoom: 14,
-      attribution:
-        'Sentinel-2 cloudless - https://s2maps.eu by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)',
+      attribution: ONLINE_SATELLITE.attribution,
     });
-    expect(onlineSatelliteSource().attribution).toBe(ONLINE_SATELLITE.attribution);
+    expect(onlineSatelliteSource().attribution).toContain('EOX IT Services GmbH');
     expect(ONLINE_SATELLITE_SOURCE).toBe('g7-raster-online-s2cloudless-2016');
     expect(onlineSatelliteLayer()).toMatchObject({
       id: 'g7-raster-online-s2cloudless-2016-layer',

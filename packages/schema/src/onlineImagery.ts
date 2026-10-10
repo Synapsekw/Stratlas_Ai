@@ -14,9 +14,13 @@ export const ONLINE_SATELLITE = {
   /** The id in `aio://online/<id>/...`, in source and layer ids, and in the cache folder. */
   id: 's2cloudless-2016',
   label: 'Online satellite (Sentinel-2)',
-  /** The credit the licence asks for, shown wherever the imagery is drawn and in About. */
+  /**
+   * The credit the licence asks for, shown wherever the imagery is drawn and in About: the
+   * service's own wording for the 2016 layer, copied from its capabilities document (10 Oct 2026).
+   * The address in it is the product's page, not the tile service the app asks.
+   */
   attribution:
-    'Sentinel-2 cloudless - https://s2maps.eu by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)',
+    'EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)',
   licence: 'CC-BY-4.0',
   /** The year of the imagery: it does not show anything built since. */
   year: 2016,
