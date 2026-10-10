@@ -3,7 +3,7 @@
 // aio_pipelines, as a folder outside the repository and the installer, with a manifest of every
 // file's size and SHA-256 (the pack is signed file by file in CI and verified by the app later).
 //
-//   node tools/pipeline-pack/build.mjs [--out "E:/Stratlas Data/runtime"] [--force] [--no-pdal]
+//   node tools/pipeline-pack/build.mjs [--out "E:/Stratlas Data/runtime"] [--force] [--no-pdal] [--no-sam]
 //
 // Everything is prebuilt (founder decision of 8 Oct 2026, ADR 0008 amended): the photogrammetry
 // engines are wheels in uv.lock (pycolmap, opencv-python-headless and pymeshlab, for Windows x64
@@ -12,6 +12,8 @@
 // compiled. The native licence report (tools/release/native-licences.mjs) prints a summary and
 // never fails; the size budget of decision 6 still does. --native and --strict, from the old
 // source build, are accepted and ignored. --no-pdal leaves PDAL out (a quicker local pack).
+// The boundary model for Suggest boundaries (MobileSAM, ADR 0011) goes into models/sam from pinned,
+// checksummed downloads (sam.mjs); --no-sam leaves it out.
 //
 // Output: <out>/pipeline-pack-<version>/{python/, tools/, manifest.json}, built in a temp folder next to
 // it and renamed into place when complete. The app finds the newest pack in
@@ -36,6 +38,7 @@ import { parseArgs } from 'node:util';
 import { packBudgetProblems } from '../release/budgets.mjs';
 import { runGate } from '../release/native-licences.mjs';
 import { checkPdal, installPdal } from './pdal.mjs';
+import { installSam, SAM_MODEL } from './sam.mjs';
 import { envVar } from '../../packages/brand/src/env.ts';
 
 export const PBS_RELEASE = '20260924';
@@ -278,6 +281,7 @@ async function main() {
       force: { type: 'boolean', default: false },
       'keep-tests': { type: 'boolean', default: false },
       'no-pdal': { type: 'boolean', default: false },
+      'no-sam': { type: 'boolean', default: false },
       // the old source build's options, ignored since 8 Oct 2026
       native: { type: 'string' },
       strict: { type: 'boolean', default: false },
@@ -371,6 +375,12 @@ async function main() {
       : await installPdal({ platform, cache, dest: join(tmp, 'tools', 'pdal'), log: say });
     if (!pdal) say('  --no-pdal: this pack has no PDAL');
 
+    // 2c. The boundary model for Suggest boundaries and the mask assist (ADR 0011)
+    const sam = values['no-sam']
+      ? null
+      : await installSam({ cache, dest: join(tmp, 'models', 'sam'), log: say });
+    if (!sam) say('  --no-sam: this pack has no boundary model');
+
     // 3. Trim what the pack never runs, then precompile so a signed, read-only pack never writes .pyc
     const lib =
       process.platform === 'win32'
@@ -449,6 +459,9 @@ async function main() {
           ? { pycolmap: photo.pycolmap, opencv: photo.opencv, pymeshlab: photo.pymeshlab }
           : null,
         pdal: pdal ? 'tools/pdal (conda-forge libpdal-core, tools/pdal/conda-packages.json)' : null,
+        sam: sam
+          ? `models/sam (${SAM_MODEL.name} ${SAM_MODEL.version}, ${SAM_MODEL.licence})`
+          : null,
       },
       createdAt: new Date().toISOString(),
       pipelines,
