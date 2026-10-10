@@ -101,6 +101,12 @@ async function fetchRoad(url: string): Promise<unknown> {
  * Follow the open project: load `road.json` for a road survey (data-conventions section 9) and
  * keep the defect rows in step with the issues. A road survey without road.json (the road
  * builder has not run yet) is in `setup`. Returns an unsubscribe function.
+ *
+ * The open project is replaced by a newer copy of itself whenever its records are read again: a
+ * job ended, a sync merged, a layer was saved (and the road builder's end does it twice, once
+ * for the job and once for the journal). That is not another project: `road.json` is read again,
+ * and the view stays as the person set it (overlay, filters, sort, a centreline being drawn),
+ * with the road shown until the new one is in.
  */
 export function startRoadSync(
   store = workspace,
@@ -115,23 +121,27 @@ export function startRoadSync(
       roadStore.setState({ ...initial });
       return;
     }
-    roadStore.setState({ ...initial, projectId: project.id, status: 'loading' });
+    const again = roadStore.getState().projectId === project.id;
+    if (!again) roadStore.setState({ ...initial, projectId: project.id, status: 'loading' });
     void load(assetUrl(project.id, { path: 'road.json' }))
       .then((json) => {
         if (mine !== seq) return;
         if (json === null) {
-          roadStore.setState({ status: 'setup' });
+          roadStore.setState({ status: 'setup', error: null, road: null, rows: [] });
           return;
         }
         const r = parseRoadModel(json);
         if (!r.ok) {
-          roadStore.setState({ status: 'error', error: r.error });
+          roadStore.setState({ status: 'error', error: r.error, road: null, rows: [] });
           return;
         }
         roadStore.setState({
           status: 'ready',
+          error: null,
           road: r.value,
           rows: rowsFor(store.getState(), r.value),
+          // the centreline is drawn only until the road builder has run
+          draw: initial.draw,
         });
       })
       .catch((e: unknown) => {
@@ -139,6 +149,8 @@ export function startRoadSync(
         roadStore.setState({
           status: 'error',
           error: `Road model not loaded: ${e instanceof Error ? e.message : String(e)}`,
+          road: null,
+          rows: [],
         });
       });
   };

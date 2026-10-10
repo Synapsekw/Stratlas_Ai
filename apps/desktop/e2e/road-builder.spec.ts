@@ -268,6 +268,27 @@ test('a road survey from raw inputs: wizard, drawn centreline, road builder job,
     await expect(win.getByTestId('defect-count')).toHaveText('3 of 3 defects');
     await win.keyboard.press('p');
     await expect(win.getByLabel('PCI legend')).toBeVisible();
+    // The open project read again under the road (a sync merge, a saved layer; the road builder's
+    // end does it twice, and the second used to land around the key above and take it): the road
+    // stays as it was set.
+    await win.evaluate(() => {
+      const ws = (
+        window as unknown as {
+          __stratlas: {
+            workspace: {
+              getState(): {
+                project: { manifest: object } | null;
+                replaceManifest(m: object): void;
+              };
+            };
+          };
+        }
+      ).__stratlas.workspace.getState();
+      if (ws.project) ws.replaceManifest({ ...ws.project.manifest });
+    });
+    await expect(win.getByLabel('Chainage', { exact: true })).toBeVisible();
+    await expect(win.getByLabel('PCI legend')).toBeVisible();
+    await expect(win.getByTestId('defect-count')).toHaveText('3 of 3 defects');
     // On a failure, say what the maps held and what the page logged (CI runners differ).
     let probe: MapProbe | null = null;
     try {
