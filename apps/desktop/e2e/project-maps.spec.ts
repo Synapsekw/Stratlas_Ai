@@ -22,6 +22,9 @@ import {
   type DataRoot,
 } from './fixtures';
 
+// each test starts its own app (some two): room for a slow start on a busy machine
+test.describe.configure({ timeout: 180_000 });
+
 const SHOTS = process.env.QUADRION_SHOTS;
 const shot = async (win: Page, name: string) => {
   if (SHOTS) await win.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: true });
@@ -205,8 +208,6 @@ test('an opened project without a detailed street map says so once and leads to 
 });
 
 test.describe('with a planet build stand-in on 127.0.0.1', () => {
-  test.setTimeout(180_000);
-
   async function standIn() {
     const build = pmtilesArchive({
       tiles: tilesOver(BUILD_BOX, 0, 15, (z, x, y) =>
