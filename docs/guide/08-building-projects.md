@@ -47,7 +47,7 @@ After the import the panel says which altitude was used and with which number. O
 
 ## Run a job
 
-**Jobs** is the processing that runs on this computer: what is running, and what finished. The processing tools (the pipeline pack) live in `runtime` in the data folder; **Jobs** shows "Processing tools" and their version at the top.
+**Jobs** is the processing that runs on this computer: what is running, and what finished. The processing tools (the pipeline pack) are installed and updated in **Settings**, **Processing tools** (see [Processing tools](12-settings.md#processing-tools)); **Jobs** shows "Processing tools" and their version at the top.
 
 The first button, **Create maps from photos**, turns drone photos into maps and a 3D model: see [Creating maps from photos](28-processing-photos.md).
 

@@ -6,7 +6,7 @@ The full licence texts ship with the software: the app lists every package with 
 
 ## Desktop app and Team Server (npm)
 
-167 packages: MIT (113), Apache-2.0 (18), ISC (13), BSD-3-Clause (11), BSD-2-Clause (3), OFL-1.1 (3), (AFL-2.1 OR BSD-3-Clause) (1), (MIT AND Zlib) (1), (MIT OR Apache-2.0) (1), (MIT OR CC0-1.0) (1), (MPL-2.0 OR Apache-2.0) (1), 0BSD (1).
+173 packages: MIT (114), Apache-2.0 (18), ISC (14), BSD-3-Clause (11), BlueOak-1.0.0 (4), BSD-2-Clause (3), OFL-1.1 (3), (AFL-2.1 OR BSD-3-Clause) (1), (MIT AND Zlib) (1), (MIT OR Apache-2.0) (1), (MIT OR CC0-1.0) (1), (MPL-2.0 OR Apache-2.0) (1), 0BSD (1).
 
 | Package                               | Version       | Licence                   |
 | ------------------------------------- | ------------- | ------------------------- |
@@ -28,6 +28,7 @@ The full licence texts ship with the software: the app lists every package with 
 | @fontsource/ibm-plex-mono             | 5.3.0         | OFL-1.1                   |
 | @fontsource/ibm-plex-sans             | 5.3.0         | OFL-1.1                   |
 | @fontsource/ibm-plex-sans-condensed   | 5.3.0         | OFL-1.1                   |
+| @isaacs/fs-minipass                   | 4.0.1         | ISC                       |
 | @mapbox/jsonlint-lines-primitives     | 2.0.3         | MIT                       |
 | @mapbox/point-geometry                | 1.1.0         | ISC                       |
 | @mapbox/tiny-sdf                      | 2.2.0         | BSD-2-Clause              |
@@ -64,6 +65,7 @@ The full licence texts ship with the software: the app lists every package with 
 | avvio                                 | 9.3.0         | MIT                       |
 | bidi-js                               | 1.1.0         | MIT                       |
 | bitmap-sdf                            | 1.0.4         | MIT                       |
+| chownr                                | 3.0.0         | BlueOak-1.0.0             |
 | commander                             | 2.20.3        | MIT                       |
 | cookie                                | 1.1.1         | MIT                       |
 | copc                                  | 0.0.9         | MIT                       |
@@ -112,6 +114,8 @@ The full licence texts ship with the software: the app lists every package with 
 | meshoptimizer                         | 1.3.0         | MIT                       |
 | mgrs                                  | 1.0.0         | MIT                       |
 | minimist                              | 1.2.8         | MIT                       |
+| minipass                              | 7.1.3         | BlueOak-1.0.0             |
+| minizlib                              | 3.1.0         | MIT                       |
 | murmurhash-js                         | 1.0.0         | MIT                       |
 | node-fetch                            | 2.7.0         | MIT                       |
 | object-keys                           | 1.1.1         | MIT                       |
@@ -161,6 +165,7 @@ The full licence texts ship with the software: the app lists every package with 
 | set-cookie-parser                     | 2.7.2         | MIT                       |
 | sonic-boom                            | 4.2.1         | MIT                       |
 | split2                                | 4.2.0         | ISC                       |
+| tar                                   | 7.5.22        | BlueOak-1.0.0             |
 | thread-stream                         | 4.2.0         | MIT                       |
 | three                                 | 0.186.1       | MIT                       |
 | tinyqueue                             | 3.0.0         | ISC                       |
@@ -175,6 +180,7 @@ The full licence texts ship with the software: the app lists every package with 
 | whatwg-url                            | 5.0.0         | MIT                       |
 | wkt-parser                            | 1.5.6         | MIT                       |
 | xtend                                 | 4.0.2         | MIT                       |
+| yallist                               | 5.0.0         | BlueOak-1.0.0             |
 | zod                                   | 4.6.5         | MIT                       |
 | zustand                               | 5.0.15        | MIT                       |
 

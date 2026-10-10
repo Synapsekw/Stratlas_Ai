@@ -2,6 +2,7 @@ import { brand } from '@aio/brand';
 import type { LibraryEntry, SetupStatus } from '@aio/schema';
 import { Icon, type IconName } from '@aio/ui';
 import { useEffect, useState } from 'react';
+import { openProcessingTools } from '../processingTools';
 import { shell, useCall, useShell } from '../shell';
 
 type State = 'ok' | 'no' | 'warn';
@@ -63,7 +64,11 @@ export function setupRows(s: SetupStatus, online: boolean): Row[] {
         : 'Not installed',
       explain: s.pipeline.found
         ? 'Builds projects from raw photos, surveys and road data in Jobs.'
-        : 'Needed to build projects from raw data, for survey jobs and for Suggest boundaries (Jobs). Viewing, annotating, measuring, volumes, maps and reports work without it.',
+        : 'Needed to build projects from raw data, for survey jobs and for Suggest boundaries (Jobs). Viewing, annotating, measuring, volumes, maps and reports work without it. It installs from its file in Settings, Processing tools.',
+      action: {
+        label: 'Processing tools',
+        run: openProcessingTools,
+      },
     },
     {
       id: 'network',

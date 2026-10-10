@@ -10,12 +10,22 @@
 
 No install rights? Use `{executable}-<version>-win-x64-portable.exe` instead. It runs from any folder.
 
-To update, run the newer installer over the old version. Your projects, settings and keys stay. See [About and updates](12-settings.md#about-and-updates).
+To update, run the newer installer over the old version. Your projects, settings and keys stay. See [About and updates](12-settings.md#about-and-updates). The processing tools are a separate file: after an update, install the one that came with it (see [Install the processing tools](#install-the-processing-tools)).
 
 ## Install on macOS
 
 1. Open `{executable}-<version>-mac-<arch>.dmg`.
 2. Drag {product} into **Applications**.
+
+## Install the processing tools
+
+The tools that build maps and models from your data come as one more file beside the installer: `pipeline-pack-<version>-<platform>.tar.gz` (the pipeline pack). Viewing, measuring and reports work without it.
+
+1. Start {product} and open **Settings**, **Processing tools**.
+2. Click **Choose file** under **Install or update from file** and pick that file. If the file is in Downloads or beside the app, {product} offers it: click **Install version ... found in Downloads**.
+3. When it says the tools are installed, **Jobs** shows "Processing tools" and the version.
+
+Do this again with the new file after each update of {product}. See [Processing tools](12-settings.md#processing-tools).
 
 ## First start
 
@@ -27,14 +37,14 @@ Under **This workstation** the welcome says what is there and what is missing, a
 
 - **Data folder** where your own projects and offline map packs live. Click **Choose folder** to pick another one.
 - **Offline maps**: without a map pack, maps show each project's own orthomosaics and plans. Import a pack or download a region in **Settings**, **Offline maps**.
-- **Pipeline pack**: needed to build projects from raw data, for survey jobs and for **Suggest boundaries**.
+- **Pipeline pack**: needed to build projects from raw data, for survey jobs and for **Suggest boundaries**. **Processing tools** opens the page where it installs from its file.
 - **Network**: not needed.
 
 ![The Projects screen on first start, with the demo projects](images/first-start.png)
 
 To add your own project, copy its folder into `projects` in the data folder, or click **Add project folder**.
 
-> The data folder is `Documents\{product} Data` unless you pick another. It holds `projects`, `packs` (offline maps) and `runtime` (the pipeline pack for building projects).
+> The data folder is `Documents\{product} Data` unless you pick another. It holds `projects`, `packs` (offline maps) and `runtime` (the pipeline pack for building projects, installed in **Settings**, **Processing tools**).
 
 ## Online or offline only
 

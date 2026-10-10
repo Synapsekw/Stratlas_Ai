@@ -628,6 +628,67 @@ export const en = {
   'settings.privacy.text':
     '{product} works fully offline. Cloud AI is opt-in, and every action that sends data or changes the project asks you first.',
   'settings.data.text': 'Where projects and offline map packs live on this workstation.',
+
+  // Settings, Processing tools (the pipeline pack) and its start notice
+  'settings.page.tools': 'Processing tools',
+  'settings.tools.text':
+    'The tools that build maps and models from your data. They run on this computer.',
+  'tools.title': 'On this computer',
+  'tools.how':
+    'The processing tools come as one file beside the installer, pipeline-pack-<version>-<platform>.tar.gz (about 400 MB), and are kept in the data folder. Updating {product} does not update them: install the file that came with the new version here.',
+  'tools.status': 'Status',
+  'tools.version': 'Version',
+  'tools.location': 'Location',
+  'tools.size': 'Size',
+  'tools.none': 'None',
+  'tools.looking': 'Looking',
+  'tools.state.ok': 'Up to date',
+  'tools.state.tooOld': 'Too old for this version of {product}',
+  'tools.state.missing': 'Not installed',
+  'tools.state.incompatible': 'Not made for this version of {product}',
+  'tools.state.dev': 'Set by this computer',
+  'tools.dev':
+    'The tools come from QUADRION_PIPELINE_PYTHON or QUADRION_PIPELINE_PACK on this computer. Tools installed here are used once that is unset.',
+  'tools.install': 'Install or update from file',
+  'tools.installHint':
+    'Choose the processing tools file, pipeline-pack-<version>-<platform>.tar.gz. It is checked, then installed into the data folder. Nothing is downloaded.',
+  'tools.choose': 'Choose file',
+  'tools.offer': 'Install version {version} found in {where}',
+  'tools.offerTitle': 'A newer version is on this computer',
+  'tools.where.downloads': 'Downloads',
+  'tools.where.app': 'the app folder',
+  'tools.where.runtime': 'the data folder',
+  'tools.progress.unpack': 'Unpacking: {done} of {total}',
+  'tools.progress.files': '{files} files',
+  'tools.progress.check': 'Checking the files',
+  'tools.progress.activate': 'Finishing',
+  'tools.progress.label': 'Installing the processing tools',
+  'tools.cancel': 'Cancel',
+  'tools.replace.title': 'Version {version} is already installed.',
+  'tools.replace.text': 'Replace it with the one in this file?',
+  'tools.replace.yes': 'Replace version {version}',
+  'tools.replace.no': 'Keep it',
+  'tools.installed': 'Processing tools {version} are installed. Jobs use them from now on.',
+  'tools.resume.createMaps': 'Create maps from photos',
+  'tools.removed': '{name} was moved to the bin.',
+  'tools.others.title': 'Versions no longer in use',
+  'tools.others.help':
+    'Older versions stay in the data folder until you remove them. Remove moves one to the bin of this computer (Recycle Bin or Trash), where it can be restored.',
+  'tools.others.incomplete': 'Incomplete',
+  'tools.others.remove': 'Remove',
+  'tools.others.confirm': 'Move version {version} to the bin',
+  'tools.others.keep': 'Keep',
+  'tools.others.actions': 'Actions',
+  'tools.notice.tooOld.title': 'The processing tools need an update',
+  'tools.notice.tooOld':
+    'The processing tools on this computer (version {version}) are older than this version of {product} needs. Some jobs do not start until they are updated.',
+  'tools.notice.missing.title': 'The processing tools are not installed',
+  'tools.notice.missing':
+    'Building maps and models from your data needs them. Viewing, measuring and reports work without.',
+  'tools.notice.incompatible':
+    'The processing tools on this computer are not made for this version of {product}. Jobs do not start until they are updated.',
+  'tools.notice.update': 'Update processing tools',
+  'tools.notice.dismiss': 'Dismiss',
   'settings.severity.text':
     'Each project grades issues with its own model. Levels carry a colour, criteria and a recommended action.',
 

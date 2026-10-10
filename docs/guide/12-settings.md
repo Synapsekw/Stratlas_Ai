@@ -3,7 +3,7 @@
 Click **Settings** at the bottom of the sidebar. The pages are grouped:
 
 - **Intelligence**: **AI providers**, **Usage and cost**, **Privacy and cloud** (see [AI agent](07-ai-agent.md)). **AI providers** also holds the **Local model** (see [Set up a local model](20-local-model.md)) and the **Detection models** (see [Local detection with ONNX models](19-local-detection.md)).
-- **Data**: **Identity and team** (see [Identity and team](21-identity-and-team.md)), **Data folder**, **Offline maps** (see [Maps](06-maps.md)), **Severity models**, **Report branding** (see [Reports](10-reports-and-exports.md#report-branding)).
+- **Data**: **Identity and team** (see [Identity and team](21-identity-and-team.md)), **Data folder**, **Processing tools**, **Offline maps** (see [Maps](06-maps.md)), **Severity models**, **Report branding** (see [Reports](10-reports-and-exports.md#report-branding)).
 - **App**: **Graphics quality**, **Appearance**, **About and updates**.
 
 The **?** at the top right of each page opens its section of this guide.
@@ -12,19 +12,41 @@ Two title bar chips open a page directly: the mode chip (**Online** or **Offline
 
 ## Data folder
 
-The data folder holds `projects`, `packs` (offline maps) and `runtime` (the pipeline pack).
+The data folder holds `projects`, `packs` (offline maps) and `runtime` (the processing tools, see [Processing tools](#processing-tools)).
 
 1. **Settings**, **Data folder**.
 2. Click **Change folder** and pick the folder. The library reloads.
 
 On the same page:
 
-- **Pipeline pack**: the version {product} found in `runtime`, or what is missing.
 - **Team server** (**Preview**): connect to your team's own server. See [Team server (preview)](26-team-server.md).
 
 The name recorded on your issues is now on **Identity and team**, with your initials (see [Identity and team](21-identity-and-team.md)).
 
 ![The Data folder page](images/settings-data.png)
+
+## Processing tools
+
+The processing tools build maps and models from your data: photo processing, survey jobs, point cloud conversion and **Suggest boundaries**. They run on this computer. They come as one file beside the installer, `pipeline-pack-<version>-<platform>.tar.gz` (the pipeline pack, about 400 MB). They are not part of the installer: updating {product} does not update them. After an update, install the file that came with the new version.
+
+1. **Settings**, **Processing tools**.
+2. Under **Install or update from file**, click **Choose file** and pick that file. When {product} finds a newer one in Downloads, in the app folder or in `runtime` in the data folder, it offers it instead: click **Install version 0.5.0 found in Downloads**.
+3. Wait for "Processing tools 0.5.0 are installed." **Jobs** shows the new version at once; there is no restart. **Cancel** stops the install and leaves everything as it was. If you came here from **Create maps from photos**, the message has a **Create maps from photos** button that takes you back to it.
+
+**Status** says where you stand:
+
+- **Up to date**: every job this version of {product} has can run.
+- **Too old for this version of {product}**: the lines below say what the installed version lacks, for example "Creating maps from photos needs version 0.4.0 or later."
+- **Not made for this version of {product}**: the tools in the data folder are for another version of {product}.
+- **Not installed**: viewing, measuring, maps and reports work; jobs do not start.
+
+{product} checks the file before it uses it: it must hold the processing tools for this computer and this version, complete, with every file matching its checksum. A file that fails says why and changes nothing. A version that is already installed asks first: **Replace version 0.5.0** or **Keep it**. Nothing is downloaded.
+
+**Versions no longer in use** lists the older versions with their sizes. **Remove**, then **Move version 0.2.0 to the bin**, moves one to the bin of the computer (Recycle Bin on Windows, Trash on a Mac), where it can be restored. {product} never removes one on its own.
+
+With a project open, {product} says once when the tools are missing or too old: "The processing tools need an update", with **Update processing tools**. **Dismiss** keeps the notice away for that version. The same button is in **Create maps from photos** and on **Jobs** when jobs cannot run; all of them open this page.
+
+![The Processing tools page](images/settings-tools.png)
 
 ## Graphics quality
 

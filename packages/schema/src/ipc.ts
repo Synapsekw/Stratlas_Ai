@@ -2,7 +2,17 @@ import { z } from 'zod';
 import { AiErrorCode, AiProvider, AiTask, ToolRisk, WindowKind } from './agent';
 import { Issue } from './annotation';
 import { Conversation, ConversationId, ConversationSummary } from './conversation';
-import { JobEvent, JobId, JobLogLine, JobRecord, JobStartRequest, RuntimeInfo } from './jobs';
+import {
+  JobEvent,
+  JobId,
+  JobLogLine,
+  JobRecord,
+  JobStartRequest,
+  PackArchive,
+  PackInstallProgress,
+  PipelinePackStatus,
+  RuntimeInfo,
+} from './jobs';
 import {
   AltitudeChoice,
   AltitudePlan,
@@ -2677,6 +2687,56 @@ export const ipc = {
     request: z.object({ projectId: z.string().min(1), file: OrientationFile }).strict(),
     response: z.object({ ok: z.boolean(), error: z.string().optional() }),
   },
+  /**
+   * Settings, Processing tools: the pipeline pack in use, what it lacks for this app version and
+   * the other pack folders in `<data folder>/runtime/`.
+   */
+  'pipelinePack:status': { request: Empty, response: PipelinePackStatus },
+  /**
+   * Look for a pack archive for this computer (`pipeline-pack-<version>-<platform>.tar.gz`) beside
+   * the app, in Downloads and in `runtime`: file names and the archive's manifest only. `offer` is
+   * the newest one worth installing (newer than the pack in use), `startDir` where the file dialog
+   * of `pipelinePack:choose` opens.
+   */
+  'pipelinePack:find': {
+    request: Empty,
+    response: z.object({ offer: PackArchive.nullable(), startDir: z.string().nullable() }),
+  },
+  /** Pick a pack archive (`.tar.gz`) with the native dialog, opened where one is most likely. */
+  'pipelinePack:choose': { request: Empty, response: z.object({ path: z.string().nullable() }) },
+  /**
+   * Install a pack archive into `<data folder>/runtime/`: unpacked into a temporary folder there,
+   * checked (paths, links, size, manifest, platform, app range, Python, every file's SHA-256), then
+   * renamed into place. Nothing changes on a failure or a cancel. A version already installed
+   * answers `exists` until the request says `replace`. Progress: `pipelinePack:progress`.
+   */
+  'pipelinePack:install': {
+    request: z
+      .object({ path: z.string().min(1).max(2048), replace: z.boolean().optional() })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), version: z.string(), status: PipelinePackStatus }),
+      z.object({
+        ok: z.literal(false),
+        error: z.string(),
+        /** `exists`: that version is installed (ask, then send `replace`); `busy`: an install is running. */
+        code: z.enum(['exists', 'cancelled', 'busy']).optional(),
+        version: z.string().optional(),
+      }),
+    ]),
+  },
+  /** Stop the running install; its temporary folder is removed. */
+  'pipelinePack:cancel': { request: Empty, response: z.object({ ok: z.boolean() }) },
+  /** Move a pack folder that is not in use (`InstalledPack.name`) to the bin (Recycle Bin, Trash). */
+  'pipelinePack:remove': {
+    request: z
+      .object({ name: z.string().regex(/^pipeline-pack-[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$/) })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), status: PipelinePackStatus }),
+      Failure,
+    ]),
+  },
 } as const satisfies Record<string, { request: z.ZodType; response: z.ZodType }>;
 
 /** Events pushed from main to the renderer. */
@@ -2823,6 +2883,8 @@ export const ipcEvents = {
       ]),
     ),
   }),
+  /** Progress of `pipelinePack:install` (Settings, Processing tools). */
+  'pipelinePack:progress': PackInstallProgress,
 } as const satisfies Record<string, z.ZodType>;
 
 export type IpcChannel = keyof typeof ipc;

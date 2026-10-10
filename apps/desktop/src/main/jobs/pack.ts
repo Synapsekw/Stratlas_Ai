@@ -11,7 +11,8 @@ export interface PackInfo {
   manifest?: PipelinePackManifest;
 }
 
-const PACK_DIR = /^pipeline-pack-(.+)$/;
+/** A pack folder in `<data folder>/runtime/`: `pipeline-pack-<version>`. */
+export const PACK_DIR = /^pipeline-pack-(.+)$/;
 
 async function exists(p: string): Promise<boolean> {
   try {
@@ -43,7 +44,8 @@ export interface PackApp {
   name?: string;
 }
 
-async function readPack(
+/** Read one pack folder: null when it has no valid manifest or no Python; `refused` by its app range. */
+export async function readPack(
   dir: string,
   appInfo?: PackApp,
 ): Promise<PackInfo | { refused: string } | null> {
@@ -131,7 +133,7 @@ export async function findPack(o: {
       problem:
         candidates.length > 0
           ? `No valid pipeline pack in ${runtimeDir}: each one needs manifest.json and its Python.`
-          : `No pipeline pack in ${runtimeDir}. Build one with node tools/pipeline-pack/build.mjs or copy one there.`,
+          : `No pipeline pack in ${runtimeDir}. Install one in Settings, Processing tools.`,
     },
   };
 }

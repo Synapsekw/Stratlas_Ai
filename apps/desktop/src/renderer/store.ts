@@ -57,6 +57,7 @@ export type SettingsPage =
   | 'privacy'
   | 'identity'
   | 'data'
+  | 'tools'
   | 'maps'
   | 'severity'
   | 'branding'

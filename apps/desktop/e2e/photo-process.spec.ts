@@ -399,9 +399,14 @@ plain.describe('when this computer cannot create maps', () => {
       await expect(blocked).toContainText('needs the processing tools, version 0.4.0 or later');
       await fix.click();
       await expect(wizard).toHaveCount(0);
-      // Settings, on the page that shows this computer's processing tools
+      // Settings, on the page that installs and updates this computer's processing tools
       await expect(win.locator('.screen.settings')).toBeVisible();
-      await expect(win.getByTestId('pipeline-pack')).toBeVisible();
+      await expect(win.getByRole('heading', { level: 1, name: 'Processing tools' })).toBeVisible();
+      await expect(win.getByTestId('processing-tools').getByTestId('tools-state')).toHaveAttribute(
+        'data-state',
+        'missing',
+      );
+      await expect(win.getByTestId('tools-choose')).toBeVisible();
     },
   );
 
