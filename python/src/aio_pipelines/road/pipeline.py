@@ -27,6 +27,7 @@ from ..runtime import (
     commit_files,
     commit_tree,
     now_iso,
+    replace_over,
     safe_project_path,
 )
 from . import catalogue as cat
@@ -818,6 +819,6 @@ def write_thumbnail(ctx: StepContext) -> None:
         im.thumbnail((1280, 1280))
         tmp = out.with_name(".thumbnail.jpg.tmp")
         im.save(tmp, "JPEG", quality=82)
-        tmp.replace(out)
+        replace_over(tmp, out)
     except Exception as e:  # a poster is a nicety; never fail the job for it
         ctx.log(f"No library thumbnail: {e}", "warn")

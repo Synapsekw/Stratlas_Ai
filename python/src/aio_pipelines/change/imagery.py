@@ -21,7 +21,15 @@ from typing import Any
 
 import numpy as np
 
-from ..runtime import JobError, StepContext, atomic_write_json, commit_tree, safe_project_path
+from ..runtime import (
+    JobError,
+    StepContext,
+    atomic_write_bytes,
+    atomic_write_json,
+    commit_tree,
+    replace_over,
+    safe_project_path,
+)
 from .changeset import CHANGE_DIR, dump_change_set, merge_reviews, read_change_set
 
 #: The largest comparison grid (cells); finer inputs are compared at a coarser cell.
@@ -556,7 +564,7 @@ def save_arrays(path: Path, **arrays: np.ndarray) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.stem + ".tmp.npz")
     np.savez_compressed(tmp, **arrays)
-    tmp.replace(path)
+    replace_over(tmp, path)
 
 
 def load_arrays(path: Path) -> dict[str, np.ndarray]:
@@ -587,10 +595,7 @@ def commit_run(
     merged = merge_reviews(change_set, previous)
     if set_path.exists():
         shutil.copy2(set_path, set_path.with_name(set_path.name + ".bak"))
-    set_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = set_path.with_name(f".{set_path.name}.tmp")
-    tmp.write_bytes(dump_change_set(merged))
-    tmp.replace(set_path)
+    atomic_write_bytes(set_path, dump_change_set(merged))
     ctx.artifact(f"{CHANGE_DIR}/{set_id}.json")
     mpath = ctx.out("manifest.json")
     manifest = read_manifest(ctx.project)

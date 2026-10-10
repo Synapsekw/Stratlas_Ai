@@ -28,7 +28,7 @@ from typing import Any
 
 import numpy as np
 
-from ..runtime import JobError
+from ..runtime import JobError, replace_over
 
 TILE = 1024
 QUALITY = 80
@@ -216,7 +216,7 @@ def save_webp(im, path: Path, quality: int = QUALITY) -> None:
     if a is not None and a.min() == 255:
         im = im.convert("RGB")
     im.save(tmp, "WEBP", quality=quality, method=4)
-    os.replace(tmp, path)
+    replace_over(tmp, path)
 
 
 def data_tiles(sources: list[Source], plan: Plan, check: Callable[[], None]) -> set[tuple[int, int]]:

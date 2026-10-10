@@ -25,7 +25,7 @@ from typing import Any
 
 import numpy as np
 
-from ..runtime import JobError
+from ..runtime import JobError, replace_over
 from .fuse import PointTiles
 
 NODATA = -9999.0
@@ -276,7 +276,7 @@ def to_cog(src: Path, dst: Path, resampling: str = "average") -> None:
         OVERVIEW_RESAMPLING=resampling.upper(),
         BIGTIFF="IF_SAFER",
     )
-    tmp.replace(dst)
+    replace_over(tmp, dst)
 
 
 def grid_points(

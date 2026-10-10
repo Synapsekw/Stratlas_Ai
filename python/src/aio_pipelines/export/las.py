@@ -24,7 +24,7 @@ from pathlib import Path
 import numpy as np
 
 from ..change.las import BASE_LENGTH, Las
-from ..runtime import JobError
+from ..runtime import JobError, replace_over
 
 HEADER = 375
 VLR_HEAD = 54
@@ -107,7 +107,7 @@ def write_las(path: Path, src: Las, xyz: np.ndarray, *, wkt: str, geographic: bo
         f.write(bytes(h))
         f.write(vlr)
         f.write(rec.tobytes())
-    os.replace(tmp, path)
+    replace_over(tmp, path)
     return {"points": n, "pointFormat": src.pdrf}
 
 
@@ -129,4 +129,4 @@ def compress_laz(pdal: str, las: Path, laz: Path, env: dict[str, str]) -> None:
         if tmp.exists():
             tmp.unlink()
         raise JobError(f"PDAL could not write the LAZ file: {msg[-1] if msg else f'exit {proc.returncode}'}")
-    os.replace(tmp, laz)
+    replace_over(tmp, laz)

@@ -20,13 +20,12 @@ from __future__ import annotations
 
 import json
 import math
-import os
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
-from ..runtime import JobError
+from ..runtime import JobError, atomic_write_bytes
 
 KIT_DEFAULT_HFOV = 70.0  # kit cameras.py: no focal length -> 70 degrees
 
@@ -167,10 +166,7 @@ def write_kit_model(parts, frame: Frame, out: Path) -> list[dict[str, str]]:
         used.add(name)
         scene.add_geometry(km, node_name=name, geom_name=name)
         nodes.append({"node": name, "layer": layer_id})
-    out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_name(out.name + ".partial")
-    tmp.write_bytes(scene.export(file_type="glb"))
-    os.replace(tmp, out)
+    atomic_write_bytes(out, scene.export(file_type="glb"))
     return nodes
 
 
