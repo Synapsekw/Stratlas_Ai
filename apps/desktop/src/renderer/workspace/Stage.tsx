@@ -104,7 +104,7 @@ import {
   VideoTools,
   ViewTools,
 } from './StageTools';
-import { fitGroups, GAP, GROUP_LABEL, type GroupId } from './toolbarFit';
+import { createToolbarFit, GAP, GROUP_LABEL, type GroupId } from './toolbarFit';
 import { toggleTimeline } from './timelinePref';
 import {
   insideView,
@@ -236,20 +236,23 @@ function StageToolbar({
     return road && mode !== '3d' ? [...base.slice(0, -1), 'road', 'annotate'] : base;
   }, [map, hasClouds, hasVolumes, road, mode]);
   const [moreOpen, setMoreOpen] = useState(false);
-  const widths = useRef(new Map<GroupId, number>());
+  // the widths belong to one view and its groups: after a change of view every group is measured
+  // again before anything folds (toolbarFit.ts)
+  const [fitter] = useState(createToolbarFit);
   const [hidden, setHidden] = useState<GroupId[]>([]);
 
   const fit = useCallback(() => {
     const bar = barRef.current;
     if (!bar) return;
+    const shown = new Map<GroupId, number>();
     for (const el of bar.querySelectorAll<HTMLElement>('[data-group]'))
-      widths.current.set(el.dataset.group as GroupId, el.offsetWidth);
+      shown.set(el.dataset.group as GroupId, el.offsetWidth);
     let fixed = 0;
     for (const el of bar.querySelectorAll<HTMLElement>('[data-fixed]'))
       fixed += el.offsetWidth + GAP;
-    const next = fitGroups(groups, widths.current, fixed, bar.clientWidth);
+    const next = fitter.fit(mode, groups, shown, fixed, bar.clientWidth);
     setHidden((prev) => (prev.join() === next.join() ? prev : next));
-  }, [barRef, groups]);
+  }, [barRef, fitter, groups, mode]);
 
   useLayoutEffect(fit);
   useEffect(() => {
