@@ -446,3 +446,38 @@ textarea.sv-input {
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
+
+/* Suggest boundaries (G12): the draft's controls, above the drawing bar */
+.sv-magic {
+  position: fixed;
+  left: 50%;
+  bottom: 104px;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  max-width: min(720px, calc(100vw - 32px));
+  padding: 6px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-6);
+  background: var(--bg-1);
+  color: var(--fg-0);
+}
+.sv-magic .warn {
+  color: var(--warn, #ffb454);
+}
+.sv-magic-range {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.sv-magic-range input {
+  width: 110px;
+}
+.sv-magic-modes {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}

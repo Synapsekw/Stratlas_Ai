@@ -208,6 +208,7 @@ const CHANNELS = {
   'geoidPacks:list': true,
   'geoidPacks:import': true,
   'geoidPacks:remove': true,
+  'surveyAi:status': true,
   'surveyAi:suggest': true,
 } as const satisfies Record<IpcChannel, true>;
 

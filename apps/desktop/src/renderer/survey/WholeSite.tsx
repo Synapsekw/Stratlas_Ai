@@ -22,7 +22,9 @@ import {
   useCompare,
   type SiteTiles,
 } from './compareStore';
+import { magicStatus, projectOutline, unavailableText } from './MagicPolygon';
 import { addMeasurement, measureStore, newMeasurementId, useMeasure } from './measureStore';
+import { snapRegion } from './snapRegions';
 
 const MAX_SITE_CELLS = 1_000_000;
 
@@ -56,6 +58,10 @@ export function WholeSite() {
   const [useDb, setUseDb] = useState(false);
   const [picked, setPicked] = useState<Set<number>>(() => new Set());
   const [error, setError] = useState<string | null>(null);
+  /** Drafts whose boundary the model snapped to the ortho, and the line said after a snap. */
+  const [snapped, setSnapped] = useState<Set<number>>(() => new Set());
+  const [snapNote, setSnapNote] = useState<string | null>(null);
+  const [snapping, setSnapping] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const close = () => {
     openCompareDialog(null);
@@ -88,6 +94,8 @@ export function WholeSite() {
         : [];
       patchSite({ drafts });
       setPicked(new Set());
+      setSnapped(new Set());
+      setSnapNote(null);
     } catch (err) {
       patchSite({ error: err instanceof Error ? err.message : String(err) });
     }
@@ -160,6 +168,47 @@ export function WholeSite() {
       drafts: [],
       error: null,
     });
+  };
+
+  /** Snap the ticked drafts' boundaries to the ortho with the local model (SAI-2); still drafts. */
+  const snap = async () => {
+    const s = compareStore.getState().site;
+    const outline = projectOutline();
+    if (!s || !outline) return;
+    setSnapping(true);
+    setSnapNote(null);
+    try {
+      const status = await magicStatus();
+      if (!status.available) {
+        setSnapNote(
+          unavailableText(status).replaceAll('Suggest boundaries', 'Snapping to the ortho'),
+        );
+        return;
+      }
+      const drafts = [...s.drafts];
+      const done = new Set(snapped);
+      const kept: string[] = [];
+      for (const k of [...picked].sort((x, y) => x - y)) {
+        const d = drafts[k];
+        if (!d || done.has(k)) continue;
+        const r = await snapRegion(d.ring, outline);
+        if (r.snapped) {
+          drafts[k] = { ...d, ring: r.ring };
+          done.add(k);
+        } else kept.push(`Region ${String(k + 1)}: ${r.reason ?? 'kept as it was.'}`);
+      }
+      patchSite({ drafts });
+      setSnapped(done);
+      const n = [...picked].filter((k) => done.has(k)).length;
+      setSnapNote(
+        [
+          `${String(n)} of ${String(picked.size)} ticked regions follow the edge in the ortho.`,
+          ...kept,
+        ].join(' '),
+      );
+    } finally {
+      setSnapping(false);
+    }
   };
 
   const accept = () => {
@@ -335,6 +384,7 @@ export function WholeSite() {
                     />
                     {d.kind === 'cut' ? 'Cut' : 'Fill'} region {k + 1}: about {v(d.volumeM3)} over{' '}
                     {a(d.areaM2)}
+                    {snapped.has(k) && <span className="faint"> (snapped to the ortho)</span>}
                   </label>
                 </li>
               ))}
@@ -349,7 +399,24 @@ export function WholeSite() {
               >
                 Keep {picked.size || ''} as {TOOL_LABELS.volume.toLowerCase()} measurements
               </button>
+              <button
+                type="button"
+                className="btn sm ghost"
+                disabled={picked.size === 0 || snapping}
+                data-testid="survey-site-snap"
+                title="The local model moves the ticked regions' boundaries to the edges seen in the ortho. They stay drafts."
+                onClick={() => {
+                  void snap();
+                }}
+              >
+                {snapping ? 'Snapping...' : 'Snap to ortho edges'}
+              </button>
             </div>
+            {snapNote && (
+              <p className="small" role="status" data-testid="survey-site-snap-note">
+                {snapNote}
+              </p>
+            )}
           </fieldset>
         )}
         {site && res && site.drafts.length === 0 && !job && (
