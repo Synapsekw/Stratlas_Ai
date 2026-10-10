@@ -503,10 +503,22 @@ function nextLabel(base: string): string {
   }
 }
 
+/**
+ * Takes drawing events before the drawing does (Suggest boundaries, G12: a click asks the model
+ * for an outline instead of adding a vertex); returns true when it used the event.
+ */
+export type DrawInterceptor = (e: DrawEvent, env: DrawEnv) => boolean;
+let interceptor: DrawInterceptor | null = null;
+
+export function setDrawInterceptor(f: DrawInterceptor | null): void {
+  interceptor = f;
+}
+
 /** Feed a drawing event; a finished shape becomes a measurement (unsaved until Save). */
 export function drawEvent(e: DrawEvent, env: DrawEnv): void {
   const s = get();
   if (!s.draw || !s.tool) return;
+  if (interceptor?.(e, env)) return;
   const next = drawReducer(s.draw, e, env);
   if (next.cancelled) {
     stopTool();

@@ -31,6 +31,7 @@ import { DesignRolePrompt } from './DesignRolePrompt';
 import { ExportDialogMount, ExportTool } from './ExportDialog';
 import { HaulRoadTool } from './HaulRoad';
 import { HydroTool } from './Hydro';
+import { MagicPolygon } from './MagicPolygon';
 import { useHydro } from './hydroStore';
 import { openCompareDialog } from './compareStore';
 import { MeasurementList } from './MeasurementList';
@@ -494,6 +495,7 @@ function DrawBar() {
         </>
       )}
       <span className="sv-grow" />
+      {TOOL_FAMILY[tool.tool] === 'polygon' && <MagicPolygon />}
       {TOOL_FAMILY[tool.tool] !== 'point' && (
         <button
           type="button"
