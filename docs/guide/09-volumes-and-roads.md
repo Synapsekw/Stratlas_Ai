@@ -51,7 +51,7 @@ A road survey maps pavement distresses along a centreline and rates the road wit
 1. **New project**, type **Road**. The severity step preselects **Road distress (ASTM D6433)**. **Create project**: it opens in **Road setup**.
 2. **Import files**: the orthomosaic GeoTIFF.
 3. Optional, **Draw centreline**: the stage switches to the map. Click along the road from its start (km 0); **Backspace** removes the last point; **Finish** saves it. **Run the road builder** opens the job with it filled in.
-4. **Jobs**, **New job**, **Road survey**: pick the **Centreline**, the **Orthomosaic GeoTIFF**, the **Defect polygons**, the **Sample units** (**Along the road** or **Square grid**) and, optionally, the **Pavement raster**. **Start job**.
+4. **Jobs**, **New job**, **Advanced: run a pipeline directly**, **Road survey**: pick the **Centreline**, the **Orthomosaic GeoTIFF**, the **Defect polygons**, the **Sample units** (**Along the road** or **Square grid**) and, optionally, the **Pavement raster**. **Start job**.
 
 ### Work along the road
 

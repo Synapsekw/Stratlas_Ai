@@ -1,40 +1,71 @@
-# Processing photos
+# Creating maps from photos
 
-{product} turns a folder of drone photos into the layers it already shows: an orthophoto and surfaces (DSM and DTM) on the map, a point cloud and a textured mesh in 3D. Processing runs on this computer, offline, on the CPU. Nothing is sent anywhere.
+{product} turns a folder of drone photos into maps and a 3D model: a photo map (orthophoto) and surface models on the map, a point cloud and a 3D model in 3D. It runs on this computer, offline. Nothing is sent anywhere, and your photos are only read, never changed or moved.
 
-## What you need
+## Create maps
 
-- Pipeline pack 0.4.0 or later, copied into `runtime` in the data folder. **Jobs** shows "Pipeline pack" and its version at the top. The pack holds the photogrammetry tools.
-- Windows x64 or a Mac with Apple silicon.
-- Drone photos with GPS in their metadata, taken with enough overlap: about 80% along the flight line and 70% between lines for mapping flights.
-- Memory: about 300 photos per run on a 16 GB computer is a comfortable size. {product} keeps the processing below a memory limit it works out from this computer's memory, and stops a stage cleanly rather than running the computer out of memory.
+1. Open a project, then click **Create maps from photos**. The button is at the top of **Jobs**, first under **New job**, and beside **Import files** on an empty project.
+2. Choose the photos: drop a folder of photos on the window, or click **Choose a folder**. On a project that already has photos, **Photos in this project** is chosen for you. Folders inside the folder are read too.
+3. Read the summary, for example "248 photos, 1 camera, GPS on all", and the time on this computer underneath.
+4. Click **Create maps**.
 
-Your photos are only read, never changed or moved.
+That is all. Everything else is chosen for you: **Standard** quality, the photo map, the surface models (DSM and DTM), the point cloud and the 3D model, in the project's coordinate system.
 
-## Start a run
+### When {product} asks a question
 
-1. Open a project. On an empty project, click **Process photos** beside **Import files**. On a project that has photos, open **Jobs**, then **Photo processing**, then **Process photos**.
-2. **Photos:** choose **A photos layer** of the project, or **Folders of photos** on this computer. The wizard counts the photos and lists the cameras it found, for example "SYN-20, 1600 × 1200 (58 photos)", with a warning for photos without GPS.
-3. **Place and heights:** check the **Coordinate reference system**. When the photos are far from the project's system, the wizard names the UTM zone they are in. It also says where heights come from (the drone's altitude, or ground control).
-4. **Quality and products:** choose **Fast**, **Standard** or **High**, and the products: point cloud, DSM, DTM, orthophoto and mesh. For a run that is already aligned, **Jobs**, **New job**, **Create products** has the same **Products** checklist.
-5. **Estimate for this computer:** the wizard shows whether processing is available here, the CPU, memory and free disk, and a time range. Click **Start**.
+A question only shows when your photos raise it:
 
-The stages tick in turn: reading the photos, features, matching, alignment, georeferencing, then the products. You can **Pause** a run and **Resume** it later: finished stages are kept from before. **Cancel** stops the tools within a few seconds.
+- **Coordinate system:** the photos were taken in another UTM zone than the project uses. Choose which the maps should use.
+- **No GPS:** some or all photos have no GPS position. Photos without one are placed by matching the others. With no GPS at all, the maps cannot sit in the right place until you add ground control points.
+- **Disk space:** the data drive is too small for the run. Free some space, or switch to a quicker quality with the button beside the message.
+- **Time:** the chosen quality would take a working day or more on this computer. The message gives the time of the next quicker quality and a button to switch to it.
 
-When the run is done, its outputs are **Added to the project as new layers**: the orthophoto, DSM and DTM on the map, and the point cloud and mesh in 3D. Layers you had before are not changed. Click **Show in 3D** to see them.
+### If maps cannot be made on this computer
 
-## Quality presets
+{product} checks this the moment you click **Create maps from photos**, before you choose anything:
 
-- **Fast:** reduced image size, for a quick look and a preview surface. Weak on buildings and tall structures.
-- **Standard:** the everyday choice for mapping flights.
-- **High:** full image size where memory allows; slower.
+- **The processing tools are not installed**, or **The processing tools need an update**: click **Update processing tools**. Maps from photos need version 0.4.0 or later. **Jobs** shows "Processing tools" and their version at the top.
+- **This computer cannot create maps from photos**: processing runs on Windows x64 and on Macs with Apple silicon. Other computers can open the results.
 
-The estimate is a range because the scene and the computer's temperature change the time. Processing on the CPU is slower than on GPU products.
+## Options
+
+**Options**, on the same screen, holds every choice you can change. You do not need to open it.
+
+- **Quality:** **Quick**, **Standard** or **High**.
+  - **Quick:** photos at a quarter of their size, for a quick look and a preview surface. Weak on buildings and tall structures.
+  - **Standard:** the everyday choice for mapping flights.
+  - **High:** photos at full size, for close-range inspection and fine detail. Much slower.
+- **What to create:** the photo map (orthomosaic), surface model (DSM), terrain model (DTM), point cloud, 3D model (textured mesh) and 3D Tiles.
+- **Coordinate system:** the project's, the UTM zone the photos are in, or another you search for.
+- **Camera positions (GNSS)** and **Heights:** how far the photos' positions are trusted, and where heights come from.
+- **Survey date:** the date the new layers belong to.
+- **I have ground control points:** the run stops after matching the photos, so you can mark the points before the maps are built.
+- **This computer and the cameras:** the processor, memory and free disk, and the cameras found, for example "SYN-20, 1600 × 1200 (58 photos)".
+
+Processing runs on the processor. Graphics card acceleration is not available yet.
+
+## While it runs
+
+One run, one list of steps: **Reading photos**, **Matching photos**, **Building the map**, **Building the 3D model**, **Adding to the project**. **Every step** shows the detailed stages underneath. You can **Pause** a run and **Resume** it later: finished steps are kept from before. **Cancel** stops the tools within a few seconds and keeps the work so far.
+
+The time is a range, because the scene and how warm the computer runs change it. About 300 photos per run on a 16 GB computer is a comfortable size. {product} keeps the processing below a memory limit it works out from this computer's memory, and stops a step cleanly rather than running the computer out of memory.
+
+For good results, fly with enough overlap: about 80% along the flight line and 70% between lines for mapping flights.
+
+## Your maps are ready
+
+When the run is done it says **Your maps are ready** and lists the new layers. Layers you had before are not changed.
+
+- **Show on map** opens the photo map and the surface models on the map.
+- **Show in 3D** opens the point cloud and the 3D model.
+- **Improve accuracy with ground control points** is the optional next step for survey accuracy: import the points, mark them on the photos, then **Adjust**. See [Ground control and accuracy](29-ground-control-and-accuracy.md).
 
 ## Runs and their files
 
-Each run lives in the project in `photogrammetry/<run>/`: its settings, stages and timings, the alignment and accuracy reports, the camera model and the products. **Jobs** lists the runs; **Open run** shows one. A run's working files take the most space; **Delete work files** moves them to the recycle bin after asking, and shows the space freed. The outputs stay.
+**Jobs** lists each run under **Maps from photos**. **Open run** shows one; **Create maps again** rebuilds its maps; **Export as OPF** writes it for other programs.
+
+Each run lives in the project in `photogrammetry/<run>/`: its settings, steps and timings, the accuracy reports, the camera model and the outputs. A run's working files take the most space; **Delete work files** moves them to the recycle bin after asking, and shows the space freed. The outputs stay.
 
 ## Use refined poses
 
-Alignment works out where each camera really was. For a photos layer (or, for a run from folders, a **Photos layer of the same flight**, matched by file name), **Refined poses** says how far the cameras would move, for example "58 cameras move by 1.2 m on average". Click **Use refined poses**, then **Move the cameras**, to put the photos where they were taken. The previous cameras are kept as a backup.
+Matching works out where each camera really was. For a photos layer (or, for a run from folders, a **Photos layer of the same flight**, matched by file name), **Refined poses** says how far the cameras would move, for example "58 cameras move by 1.2 m on average". Click **Use refined poses**, then **Move the cameras**, to put the photos where they were taken. The previous cameras are kept as a backup.

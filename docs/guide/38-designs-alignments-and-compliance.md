@@ -13,7 +13,7 @@ Design surfaces, linework, points and alignments come from Civil 3D, Trimble Bus
 - **Units**: when the file states its units (DXF drawing units, LandXML units) they are used and shown. When it states none, choose metres, millimetres, centimetres, feet, US survey feet or inches; a DXF without drawing units is refused until you choose them.
 - **Layers to import**: every layer of the file, ticked. Untick the ones you do not want. For a file over 64 MB, type the layer names, separated by commas, or leave it empty for every layer.
 
-**Import** runs the import as a job; the design appears in the list with its layers. **Jobs**, **New job**, **Import design** offers the same import as a job.
+**Import** runs the import as a job; the design appears in the list with its layers. **Jobs**, **New job**, **Advanced: run a pipeline directly**, **Import design** offers the same import as a job.
 
 Files that cannot be read safely are refused with the reason: DWG (save it as ASCII DXF), binary DXF, LandXML with a document type or entities, files over 500 MB, and Trimble TTM (no published specification; export the surface as LandXML from Trimble Business Center).
 
