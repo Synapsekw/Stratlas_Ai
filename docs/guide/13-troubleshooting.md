@@ -29,7 +29,7 @@ The Projects screen shows "The project did not open." with the reason:
 
 ## Jobs do not start
 
-- "No pipeline pack in ...": the pipeline pack is missing from `runtime` in the data folder. Copy the pack folder there; **Jobs** then shows "Pipeline pack" and its version.
+- "No pipeline pack in ...": the pipeline pack is missing from `runtime` in the data folder. Copy the pack folder there; **Jobs** then shows "Processing tools" and their version.
 - "There is no pipeline called ...": the pack is older than the app. Copy the matching pack; {product} uses the newest pack in `runtime`.
 - A job that was running when {product} closed shows **Interrupted**: click **Resume**.
 

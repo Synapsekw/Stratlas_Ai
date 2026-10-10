@@ -1,5 +1,5 @@
 /**
- * The photo processing harness of the Process photos specs (M10 G4):
+ * The photo processing harness of the Create maps from photos specs (M10 G4):
  *
  * - `buildPhotoPack(dir)`: a throwaway pipeline pack (`QUADRION_PIPELINE_PACK`) whose Python is a
  *   venv over the development one, with `photo-fake/aio_photo_fake.py` swapped in for the photo
@@ -16,7 +16,7 @@
 import { envVar } from '@aio/brand/env';
 import { toWgs84 } from '@aio/geo';
 import { ProjectManifest, type ProjectManifestInput } from '@aio/schema';
-import type { Fixtures, Page } from '@playwright/test';
+import type { ElectronApplication, Fixtures, Locator, Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -296,30 +296,91 @@ export async function openPhotoSite(win: Page): Promise<void> {
   await expect(win.locator('.crumbs')).toContainText(PHOTO_PROJECT.name);
 }
 
-/** Jobs, Photo processing, Process photos: the wizard. */
+/**
+ * Whether the app under test can create maps from photos at all: Windows x64 and Apple silicon
+ * only (main `processingVerdict`). Elsewhere (an Intel Mac runner) the dialog opens on "This
+ * computer cannot create maps from photos" whatever pack is installed, so specs that start a run
+ * skip there.
+ */
+export const PHOTO_PLATFORM =
+  (process.platform === 'win32' && process.arch === 'x64') ||
+  (process.platform === 'darwin' && process.arch === 'arm64');
+export const PHOTO_PLATFORM_ONLY = `maps from photos run on Windows x64 and Apple silicon only, not on ${process.platform} ${process.arch}`;
+
+/** Jobs, **Create maps from photos**: the one-screen dialog. */
 export async function openWizard(win: Page) {
   await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
-  await win.getByTestId('photo-runs').getByRole('button', { name: 'Process photos' }).click();
-  const wizard = win.getByRole('dialog', { name: 'Process photos' });
+  await win.getByTestId('create-maps').click();
+  const wizard = win.getByRole('dialog', { name: 'Create maps from photos' });
   await expect(wizard).toBeVisible();
   return wizard;
 }
 
-/** Walk the wizard with its defaults (the photos layer, Balanced); answers the run panel. */
+/** Open the dialog's **Options** (quality, what to create, coordinate system, ground control). */
+export async function openOptions(wizard: Locator): Promise<Locator> {
+  const options = wizard.getByTestId('photo-options');
+  await options.locator('summary').click();
+  await expect(options.getByRole('group', { name: 'Quality' })).toBeVisible();
+  return options;
+}
+
+/** Choose a folder of photos in the dialog: the OS folder dialog answers `folder` once. */
+export async function chooseFolder(
+  app: ElectronApplication,
+  wizard: Locator,
+  folder: string,
+): Promise<void> {
+  await app.evaluate(({ dialog }, path) => {
+    const orig = dialog.showOpenDialog.bind(dialog);
+    (dialog as { showOpenDialog: unknown }).showOpenDialog = () => {
+      (dialog as { showOpenDialog: unknown }).showOpenDialog = orig;
+      return Promise.resolve({ canceled: false, filePaths: [path] });
+    };
+  }, folder);
+  await wizard.getByTestId('photo-add-folder').click();
+}
+
+/**
+ * The simple flow: the photos layer is already chosen, so wait for the summary and press
+ * **Create maps** (Standard and its outputs). `groundControl` ticks **I have ground control
+ * points** under Options first. Answers the run panel.
+ */
 export async function startRun(win: Page, o: { groundControl?: boolean } = {}) {
   const wizard = await openWizard(win);
-  const next = wizard.getByRole('button', { name: 'Next' });
-  await next.click();
-  await expect(wizard.getByTestId('photo-groups')).toContainText('Stratlas Synthetic SYN-20');
-  await next.click();
-  await next.click();
-  if (o.groundControl) await wizard.getByText('I have ground control points').click();
-  await next.click();
-  await expect(wizard.getByTestId('photo-estimate')).toBeVisible({ timeout: 60_000 });
+  await expect(wizard.getByTestId('photo-summary')).toContainText('12 photos, 1 camera', {
+    timeout: 60_000,
+  });
+  if (o.groundControl) {
+    const options = await openOptions(wizard);
+    await options.getByText('I have ground control points').click();
+  }
   await wizard.getByTestId('photo-start').click();
   const panel = win.getByTestId('photo-run');
   await expect(panel).toBeVisible();
   return panel;
+}
+
+/**
+ * A throwaway pack too old to create maps from photos (0.3.0; nothing in it ever runs): the
+ * dialog must say so the moment it opens. Answers the app environment that selects it.
+ */
+export async function oldPackEnv(dir: string): Promise<Record<string, string>> {
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, 'python.exe'), '');
+  await writeFile(
+    join(dir, 'manifest.json'),
+    JSON.stringify({
+      schema: 'aio.pipeline-pack/1',
+      version: '0.3.0',
+      protocol: 'aio.pipelines/1',
+      python: { version: '3', build: 'e2e old pack', executable: 'python.exe' },
+      platform: `${process.platform}-${process.arch}`,
+      createdAt: new Date().toISOString(),
+      pipelines: [],
+      files: {},
+    }),
+  );
+  return { QUADRION_PIPELINE_PACK: dir };
 }
 
 /** The run id the open run panel shows. */

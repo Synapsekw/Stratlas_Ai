@@ -4,7 +4,7 @@ OPF (Open Photogrammetry Format) is an open format for photogrammetry projects, 
 
 ## Import an OPF project
 
-1. Open a project, then **Jobs**, **New job**, **OPF import**. You can also add a `project.opf` file in the builder's **Import files**.
+1. Open a project, then **Jobs**, **New job**, **Advanced: run a pipeline directly**, **OPF import**. You can also add a `project.opf` file in the builder's **Import files**.
 2. Choose the `project.opf` file and start the job.
 
 When it is done, the project has:
@@ -17,7 +17,7 @@ The job log lists what was not imported. If the OPF project names its photos by 
 
 ## Export a run as OPF
 
-Open **Jobs**, **New job**, **OPF export**. Give the run id and an empty folder. {product} writes `project.opf` with the cameras, calibration, control points and sparse cloud, and the orthophoto and DSM in `outputs/`. A folder that is not empty is refused, so nothing is overwritten.
+Open **Jobs**, **New job**, **Advanced: run a pipeline directly**, **OPF export**. Give the run id and an empty folder. {product} writes `project.opf` with the cameras, calibration, control points and sparse cloud, and the orthophoto and DSM in `outputs/`. A folder that is not empty is refused, so nothing is overwritten.
 
 ## What OPF does not carry here
 

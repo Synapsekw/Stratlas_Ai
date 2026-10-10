@@ -47,22 +47,35 @@ After the import the panel says which altitude was used and with which number. O
 
 ## Run a job
 
-Jobs run the pipelines of the pipeline pack. The pack lives in `runtime` in the data folder; **Jobs** shows "Pipeline pack" and its version at the top.
+**Jobs** is the processing that runs on this computer: what is running, and what finished. The processing tools (the pipeline pack) live in `runtime` in the data folder; **Jobs** shows "Processing tools" and their version at the top.
 
-1. Click **Jobs**, then **New job**.
+The first button, **Create maps from photos**, turns drone photos into maps and a 3D model: see [Creating maps from photos](28-processing-photos.md).
+
+**New job** offers a short list of tasks. Each one opens the screen that guides you through it:
+
+- **Maps and models:** **Create maps from photos**, **Build a model from a drawing or point cloud**.
+- **Measure and compare:** **Compare two survey dates**, **Cut and fill for the whole site**, **Check a survey**, **Contours, slope and relief**, **Measure stockpiles**.
+- **Import and convert:** **Import files**, **Export survey data**.
+
+A task that needs an open project, or two survey dates, says so.
+
+Each running job shows its steps and progress; the log is below. A job ends **Done**, **Failed** or **Cancelled**. **Cancel** stops a running job. A job stopped by quitting {product} shows **Interrupted**; **Resume** carries on from the next step. **Open output** and **Log file** show what it wrote.
+
+### Advanced: run a pipeline directly
+
+Under the tasks, **Advanced: run a pipeline directly** holds every pipeline of the processing tools with its own form, for when no guided screen fits.
+
+1. Click **Jobs**, **New job**, then **Advanced: run a pipeline directly**.
 2. Pick the **Pipeline** and the **Project folder**, fill in the pipeline's fields, and click **Start job**.
-3. Each step shows its progress; the log is below. The job ends **Done**, **Failed** or **Cancelled**.
 
-**Cancel** stops a running job. A job stopped by quitting {product} shows **Interrupted**; **Resume** carries on from the next step. **Open output** and **Log file** show what it wrote.
+The pipelines are grouped by area:
 
-The pipelines:
-
-- **Cameras from photos**, **Place findings on the model**, **Findings register and stats**
-- **Inspection: detections to issues**: places reviewed detections on the model and groups them into issues.
-- **Volumetric survey** and **Stockpile volumes**: see [Volumes](09-volumes-and-roads.md).
-- **Road survey**: see [Roads](09-volumes-and-roads.md#roads).
-- **Point cloud to COPC**: converts LAS and LAZ for streaming.
-- **Check the pipeline pack**
+- **Photos to maps:** the three steps **Create maps from photos** runs for you.
+- **Inspection:** **Cameras from photos**, **Place findings on the model**, **Findings register and stats**, and **Inspection: detections to issues**, which places reviewed detections on the model and groups them into issues.
+- **Stockpiles and volumes:** **Volumetric survey** and **Stockpile volumes**: see [Volumes](09-volumes-and-roads.md).
+- **Change between dates**, **Survey tools** and **Water and haul roads:** what the Changes tab and the survey tools on the Scene run.
+- **Import and convert:** for example **Point cloud to COPC**, which converts LAS and LAZ for streaming.
+- **Map packs**, **Road survey** (see [Roads](09-volumes-and-roads.md#roads)) and **System** (**Check the pipeline pack**).
 
 Jobs write into the open project, always with a backup, and never drop your own issues.
 

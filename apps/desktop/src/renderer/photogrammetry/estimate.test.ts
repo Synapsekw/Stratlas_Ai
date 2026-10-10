@@ -1,15 +1,27 @@
-import type { HardwareProbe } from '@aio/schema';
+import type { HardwareProbe, PhotoEstimate } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
   cameraGroups,
   cameraLabel,
   defaultProducts,
+  diskNeed,
   diskShort,
+  fasterPreset,
   formatBytes,
   formatMinutes,
+  gpsNote,
+  isLongRun,
+  longRunHint,
+  memoryNote,
   newRunId,
+  photoSummary,
+  presetLabel,
+  PRESETS,
+  SIMPLE_DEFAULTS,
   splitNotes,
   suggestedEpsg,
+  summaryLine,
+  zoneQuestion,
 } from './estimate';
 import { gpuLine, machineLine, processingLine } from './hardware';
 
@@ -76,31 +88,189 @@ describe('estimate words', () => {
 });
 
 describe('hardware words', () => {
-  it('says whether processing runs here and why not', () => {
-    expect(processingLine(probe())).toEqual({
-      ok: true,
-      text: 'Photo processing: available (CPU)',
+  it('says whether maps can be made here, and what fixes it when they cannot', () => {
+    expect(processingLine(probe())).toMatchObject({ ok: true, fix: null });
+    // missing or old processing tools: one fix, the same for both
+    const none = processingLine(probe({ processing: 'no-pack' }));
+    expect(none).toMatchObject({
+      ok: false,
+      fix: 'tools',
+      title: 'The processing tools are not installed',
     });
-    expect(processingLine(probe({ processing: 'no-pack' })).ok).toBe(false);
-    // there is no Settings page for packs: the pack is copied into runtime, and Jobs shows it
-    expect(processingLine(probe({ processing: 'no-pack' })).text).toMatch(
-      /runtime in the data folder; Jobs/,
-    );
-    expect(processingLine(probe({ processing: 'unsupported-platform' })).text).toMatch(
-      /Windows x64 and on Macs with Apple silicon/,
-    );
+    expect(none.text).toMatch(/needs the processing tools, version 0\.4\.0 or later/);
+    const old = processingLine(probe({ processing: 'pack-too-old' }));
+    expect(old).toMatchObject({
+      ok: false,
+      fix: 'tools',
+      title: 'The processing tools need an update',
+    });
+    expect(old.text).toMatch(/too old to create maps from photos\. Update them to version 0\.4\.0/);
+    // nothing on this computer fixes the platform
+    const platform = processingLine(probe({ processing: 'unsupported-platform' }));
+    expect(platform).toMatchObject({ ok: false, fix: null });
+    expect(platform.text).toMatch(/Windows x64 and on Macs with Apple silicon/);
+    // the words a person reads say "processing tools", never "pipeline pack"
+    for (const p of ['no-pack', 'pack-too-old', 'unsupported-platform'] as const) {
+      const v = processingLine(probe({ processing: p }));
+      expect(`${v.title} ${v.text}`).not.toMatch(/pipeline|pack\b/i);
+    }
   });
 
-  it('names the GPU and whether High uses it', () => {
-    expect(gpuLine(probe(), 'high')).toBe('No supported GPU: CPU only');
+  it('names the graphics card only when it is used; its absence is not a fault', () => {
+    const quiet = 'Runs on the processor. Graphics card acceleration is not available yet.';
+    expect(gpuLine(probe(), 'high')).toBe(quiet);
     const rtx = { name: 'NVIDIA GeForce RTX 4070', vendor: 'NVIDIA', vramBytes: 12 * GB };
     expect(gpuLine(probe({ gpus: [rtx], cuda: true }), 'high')).toBe(
       'NVIDIA GeForce RTX 4070, 12.0 GB: used for High',
     );
-    expect(gpuLine(probe({ gpus: [rtx] }), 'standard')).toMatch(/not used yet.*CPU only/);
+    expect(gpuLine(probe({ gpus: [rtx], cuda: true }), 'standard')).toBe(
+      'NVIDIA GeForce RTX 4070, 12.0 GB: used for High only',
+    );
+    // a card without the accelerator reads the same as no card: nothing to install
+    expect(gpuLine(probe({ gpus: [rtx] }), 'standard')).toBe(quiet);
+    expect(gpuLine(probe({ gpus: [rtx] }), 'standard')).not.toMatch(/not installed|CPU only/);
     expect(machineLine(probe())).toBe(
       'Synthetic CPU, 8 cores, 32.0 GB memory, 512 GB free on the data drive',
     );
+  });
+});
+
+describe('create maps from photos: the simple start', () => {
+  const est = (o: Partial<PhotoEstimate> = {}): PhotoEstimate => ({
+    minutes: [180, 360],
+    diskBytes: 38 * GB,
+    memoryBytes: 8 * GB,
+    ...o,
+  });
+  const camera = (photos: number, id = 'cam1') => ({
+    id,
+    make: 'Stratlas Synthetic',
+    model: 'SYN-20',
+    widthPx: 1600,
+    heightPx: 1200,
+    photos,
+  });
+
+  it('starts on Standard with the maps, the point cloud and the 3D model', () => {
+    expect(SIMPLE_DEFAULTS).toEqual({
+      preset: 'standard',
+      gnss: 'auto',
+      groundControlFirst: false,
+    });
+    expect(presetLabel(SIMPLE_DEFAULTS.preset)).toBe('Standard');
+    expect(defaultProducts(SIMPLE_DEFAULTS.preset)).toEqual([
+      'ortho',
+      'dsm',
+      'dtm',
+      'cloud',
+      'mesh',
+    ]);
+    expect(PRESETS.map((p) => p.label)).toEqual(['Quick', 'Standard', 'High']);
+  });
+
+  it('sums the photos up in one line', () => {
+    const one = photoSummary(est({ cameras: [camera(248)] }));
+    expect(one).toEqual({ photos: 248, cameras: 1, noGps: 0, about: false });
+    expect(summaryLine(one)).toBe('248 photos, 1 camera, GPS on all');
+    // a photos layer knows its count exactly
+    expect(summaryLine(photoSummary(est({ cameras: [camera(12)] }), 12))).toBe(
+      '12 photos, 1 camera, GPS on all',
+    );
+    // large folders are counted from a sample
+    const many = photoSummary(est({ cameras: [camera(1200), camera(48, 'cam2')] }));
+    expect(summaryLine(many)).toBe('About 1,248 photos, 2 cameras, GPS on all');
+    // a camera only a note names counts too
+    const noted = photoSummary(
+      est({
+        cameras: [camera(58)],
+        notes: ['Camera group: Unknown camera (2 photos), frame size not readable.'],
+      }),
+    );
+    expect(summaryLine(noted)).toBe('60 photos, 2 cameras, GPS on all');
+    expect(summaryLine({ photos: 1, cameras: 1, noGps: 0, about: false })).toBe(
+      '1 photo, 1 camera, GPS on all',
+    );
+  });
+
+  it('says how many photos have no GPS, and what that means', () => {
+    const some = photoSummary(
+      est({
+        cameras: [camera(58)],
+        notes: ['3 photos have no GPS position; they are placed by matching only.'],
+      }),
+    );
+    expect(summaryLine(some)).toBe('58 photos, 1 camera, 3 without GPS');
+    expect(gpsNote(some)).toBe(
+      '3 photos have no GPS position. They are placed by matching the other photos.',
+    );
+    const one = photoSummary(
+      est({
+        cameras: [camera(58)],
+        notes: ['1 photo has no GPS position; they are placed by matching only.'],
+      }),
+    );
+    expect(gpsNote(one)).toBe(
+      '1 photo has no GPS position. It is placed by matching the other photos.',
+    );
+    const none = photoSummary(
+      est({
+        cameras: [camera(58)],
+        notes: ['58 photos have no GPS position; they are placed by matching only.'],
+      }),
+    );
+    expect(summaryLine(none)).toBe('58 photos, 1 camera, no GPS');
+    expect(gpsNote(none)).toMatch(/until you add ground control points/);
+    expect(gpsNote(photoSummary(est({ cameras: [camera(58)] })))).toBeNull();
+  });
+
+  it('asks about the coordinate system only when the photos are in another UTM zone', () => {
+    expect(zoneQuestion(32639, 32639)).toBeNull();
+    expect(zoneQuestion(32639, null)).toBeNull();
+    expect(zoneQuestion(null, 32639)).toBeNull();
+    expect(zoneQuestion(32639, 32640)).toEqual({
+      project: { epsg: 32639, name: 'UTM zone 39N' },
+      photos: { epsg: 32640, name: 'UTM zone 40N' },
+    });
+    expect(zoneQuestion(32639, 32755)?.photos.name).toBe('UTM zone 55S');
+    // a national or local grid says nothing about the photos' UTM zone: no question
+    expect(zoneQuestion(27700, 32630)).toBeNull();
+    expect(zoneQuestion(2039, 32636)).toBeNull();
+  });
+
+  it('reads the disk shortfall and the memory note out of the estimate', () => {
+    const short = est({
+      notes: [
+        'Needs 59 GB free on the data drive, has 21 GB. Free some space or choose a smaller preset.',
+        'Standard on 16.0 GB: images at half size and dense matching in clusters of about 40 photos, so it stays within memory.',
+        'Times are a range: scene content and a warm laptop can make a run slower.',
+      ],
+    });
+    expect(diskNeed(short)).toEqual({ needs: '59 GB', has: '21 GB' });
+    expect(memoryNote(short)).toMatch(/^Standard on 16\.0 GB/);
+    expect(diskNeed(est())).toBeNull();
+    expect(memoryNote(est())).toBeNull();
+  });
+
+  it('gives one hint about time, and only for a very long run', () => {
+    // Standard on an ordinary flight: no hint at all
+    expect(isLongRun(est())).toBe(false);
+    expect(longRunHint('standard', est(), null)).toBeNull();
+    // High on the processor: the long time, and the quicker quality with its own estimate
+    const high = est({ minutes: [1200, 2340] });
+    const standard = est({ minutes: [300, 600] });
+    expect(isLongRun(high)).toBe(true);
+    expect(longRunHint('high', high, { preset: 'standard', estimate: standard })).toEqual({
+      text: 'High takes about 20 to 39 h on this computer. Standard: about 5 to 10 h.',
+      switchTo: 'standard',
+    });
+    // before the quicker estimate is in: the time alone, nothing to switch to yet
+    expect(longRunHint('high', high, null)).toEqual({
+      text: 'High takes about 20 to 39 h on this computer.',
+      switchTo: null,
+    });
+    expect(fasterPreset('high')).toBe('standard');
+    expect(fasterPreset('standard')).toBe('fast');
+    expect(fasterPreset('fast')).toBeNull();
   });
 });
 

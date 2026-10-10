@@ -17,7 +17,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expect, launchApp, test } from './fixtures';
+import { expect, launchApp, openPipelineForm, test } from './fixtures';
 import { realProjectDir } from './realData';
 
 const SAMPLES = process.env.QUADRION_SAMPLES ?? '';
@@ -186,7 +186,7 @@ test('@realdata inspection-hcl-mini: photos and model imported, the AI pass plac
     );
     const run = async () => {
       await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
-      await win.getByRole('button', { name: 'New job' }).click();
+      await openPipelineForm(win);
       await expect(win.getByLabel('Pipeline', { exact: true })).toHaveValue('inspection.run');
       return runJob(win, () => win.getByTestId('job-start').click(), 180_000);
     };
@@ -409,7 +409,7 @@ test('@realdata road-ringroad-mini: ortho, centreline and defects; the delivered
     await expect(panel).toContainText('Imported 1 of 1 files', { timeout: 120_000 });
     await panel.getByRole('button', { name: 'Close' }).click();
     await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
-    await win.getByRole('button', { name: 'New job' }).click();
+    await openPipelineForm(win);
     await win.getByLabel('Pipeline', { exact: true }).selectOption('road.build');
     await win.locator('#job-f-centreline').fill(join(dir, 'centreline.geojson'));
     await win.locator('#job-f-ortho').fill(join(dir, s.ortho));

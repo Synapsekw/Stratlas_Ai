@@ -624,6 +624,17 @@ export async function openProject(win: Page): Promise<{ id: string | null; root:
 }
 
 /**
+ * On the Jobs screen: **New job**, then **Advanced: run a pipeline directly**, the form that takes
+ * a pipeline (`#job-pipeline`) and its parameters and starts it (`job-start`). New job itself
+ * opens on a short list of tasks; specs that run a pipeline by name go through here.
+ */
+export async function openPipelineForm(win: Page): Promise<void> {
+  await win.getByRole('button', { name: 'New job', exact: true }).click();
+  await win.getByTestId('job-advanced').locator('summary').click();
+  await expect(win.locator('#job-pipeline')).toBeVisible();
+}
+
+/**
  * Open the change demo from the library of an app launched with QUADRION_DEMO (the `demoProject`
  * fixture does this). Returns the working copy's folder (userData `demo/demo-change-site`).
  */

@@ -20,7 +20,15 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, PIPELINE_ENV, test as base, VENV_PYTHON, type DataRoot } from './fixtures';
 import type { PhotoTruth } from './m10Fixtures';
-import { colmapPython, missingRealPhotoTools, PHOTO_REAL, runId } from './photoPack';
+import {
+  chooseFolder,
+  colmapPython,
+  missingRealPhotoTools,
+  openOptions,
+  openWizard,
+  PHOTO_REAL,
+  runId,
+} from './photoPack';
 
 const REPO = join(import.meta.dirname, '..', '..', '..');
 const MISSING = missingRealPhotoTools();
@@ -88,34 +96,24 @@ test.describe('real photo pipelines', () => {
   }) => {
     test.setTimeout(30 * 60_000);
     await win.getByTestId('project-card').filter({ hasText: PROJECT.name }).first().click();
-    await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
-    await win.getByTestId('photo-runs').getByRole('button', { name: 'Process photos' }).click();
-    const wizard = win.getByRole('dialog', { name: 'Process photos' });
-    await wizard.getByRole('button', { name: /Folders of photos/ }).click();
-    await app.evaluate(({ dialog }, folder) => {
-      const orig = dialog.showOpenDialog.bind(dialog);
-      (dialog as { showOpenDialog: unknown }).showOpenDialog = () => {
-        (dialog as { showOpenDialog: unknown }).showOpenDialog = orig;
-        return Promise.resolve({ canceled: false, filePaths: [folder] });
-      };
-    }, realSite.flight);
-    await wizard.getByRole('button', { name: 'Add a folder' }).click();
-    const next = wizard.getByRole('button', { name: 'Next' });
-    await next.click();
-    await expect(wizard.getByTestId('photo-groups')).toContainText('Stratlas Synthetic', {
+    // the project has no photos layer: the dialog opens straight on the folders
+    const wizard = await openWizard(win);
+    await chooseFolder(app, wizard, realSite.flight);
+    await expect(wizard.getByTestId('photo-summary')).toContainText('1 camera', {
       timeout: 60_000,
     });
-    await next.click();
-    await next.click();
-    await wizard.getByText('I have ground control points').click();
-    await wizard.getByRole('button', { name: /^Quick/ }).click();
-    await next.click();
-    await expect(wizard.getByTestId('photo-estimate')).toBeVisible({ timeout: 60_000 });
+    const options = await openOptions(wizard);
+    await expect(options.getByTestId('photo-groups')).toContainText('Stratlas Synthetic');
+    await options.getByText('I have ground control points').click();
+    await options.getByRole('button', { name: /^Quick/ }).click();
+    await expect(wizard.getByTestId('photo-estimate')).toContainText(/About|Under/, {
+      timeout: 60_000,
+    });
     await wizard.getByTestId('photo-start').click();
     const panel = win.getByTestId('photo-run');
     const run = await runId(win);
     await expect(panel.getByRole('region', { name: 'Next steps' })).toContainText(
-      'The photos are aligned',
+      'The photos are matched',
       { timeout: 20 * 60_000 },
     );
 

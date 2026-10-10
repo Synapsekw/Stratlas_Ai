@@ -4,7 +4,7 @@ Large meshes and point clouds load faster as 3D Tiles: the site view and the Glo
 
 ## Make tiles from a mesh or a cloud
 
-- **Photo processing** makes tiles of its mesh when **Tiles** is among the products.
+- **Create maps from photos** makes tiles of its 3D model when **3D Tiles** is ticked under **Options**, **What to create**.
 - For any mesh or point cloud layer, open **Jobs**, choose **Mesh to 3D Tiles** or **Point cloud to 3D Tiles**, and give the layer. The tiles stream into the site view when the job is done.
 
 Picking, measuring and cutaways work on tiles as on the original layer.

@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, rmdirSync, symlinkSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expect, launchApp, test } from './fixtures';
+import { expect, launchApp, openPipelineForm, test } from './fixtures';
 
 /**
  * The Jobs panel against the real pipeline runtime. It needs a Python with aio_pipelines: the
@@ -50,7 +50,7 @@ async function smallLaz(dir: string): Promise<string> {
 test('without a pipeline pack the Jobs panel says where it looked', async ({ win, dataRoot }) => {
   await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
   await expect(win.locator('.jobs-rt.missing')).toContainText(join(dataRoot.root, 'runtime'));
-  await win.getByRole('button', { name: 'New job' }).click();
+  await openPipelineForm(win);
   await expect(win.getByTestId('job-start')).toBeDisabled();
 });
 
@@ -101,8 +101,8 @@ test.describe('with an installed runtime folder', () => {
     try {
       const win = await app.firstWindow();
       await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
-      await expect(win.locator('.jobs-rt')).toContainText(`Pipeline pack ${newest}`);
-      await win.getByRole('button', { name: 'New job' }).click();
+      await expect(win.locator('.jobs-rt')).toContainText(`Processing tools ${newest}`);
+      await openPipelineForm(win);
       await win.getByLabel('Pipeline', { exact: true }).selectOption('system.selftest');
       await win.getByLabel(/^Project folder/).fill(dataRoot.projectDir);
       await win.getByLabel('Wait (s)').fill('0');
@@ -133,10 +133,10 @@ test.describe('with the runtime', () => {
     try {
       const win = await app.firstWindow();
       await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
-      await expect(win.locator('.jobs-rt')).toContainText('Pipeline pack dev');
+      await expect(win.locator('.jobs-rt')).toContainText('Processing tools dev');
 
       const startSelftest = async (seconds: string) => {
-        await win.getByRole('button', { name: 'New job' }).click();
+        await openPipelineForm(win);
         await win.getByLabel('Pipeline', { exact: true }).selectOption('system.selftest');
         await win.getByLabel(/^Project folder/).fill(dataRoot.projectDir);
         await win.getByLabel('Wait (s)').fill(seconds);
