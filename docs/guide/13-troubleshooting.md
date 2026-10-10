@@ -9,13 +9,14 @@ If they do not match the build you installed, an older copy is still running: qu
 
 ## Offline
 
-{product} is made to run with no network. The title bar always shows **Offline**.
+{product} is made to run with no network. The title bar shows the mode of the workstation, **Online** or **Offline only** (see [Online or offline only](01-install.md#online-or-offline-only)).
 
 - **Maps are empty**: no map pack covers the site. Import a pack file or download a region in **Settings**, **Offline maps**. Orthos and plans of the project still show.
-- **A map download stopped**: open **Settings**, **Offline maps** and click **Resume**. If the workstation is offline-only, import a pack file instead.
+- **A map download stopped**: open **Settings**, **Offline maps** and click **Resume**. If the workstation is offline-only, import a pack file instead, or click **Offline only** in the title bar and switch to **Online**.
 - **The agent says it is off**: switch on **Cloud AI** in **Settings**, **Privacy and cloud**, add a key in **AI providers**, then click **Check again**. With no network, use a local model (see [Set up a local model](20-local-model.md#if-it-does-not-answer)). If it says the workstation is offline-only, cloud AI stays off whatever the **Cloud AI** switch says: use a local model on this computer, or switch off **Offline-only workstation** in **Privacy and cloud**.
+- **The title bar says Online and nothing downloads**: **Online** is the mode, not the network. Click it: with no network it says "This computer has no network connection right now."
 - **"Workspace ID needed"**: see [Anthropic workspace ID](07-ai-agent.md#anthropic-workspace-id).
-- To make sure nothing goes out, switch on **Offline-only workstation** in **Settings**, **Privacy and cloud**. Cloud AI, map downloads, online update checks and team server connections are then off. A local model on this computer still works.
+- To make sure nothing goes out, click **Online** in the title bar and switch to **Offline only** (the same switch as **Offline-only workstation** in **Settings**, **Privacy and cloud**). Cloud AI, map downloads, online update checks and team server connections are then off. A local model on this computer still works.
 
 ## A project does not open
 

@@ -50,18 +50,18 @@ While the Model builder is open, the agent uses the **Build from drawings** rout
 1. Open **Settings**, **Privacy and cloud**.
 2. Switch on **Cloud AI**. The title bar chip changes from **Cloud AI off** to **Cloud AI**.
 
-**Ctrl K**, **Turn cloud AI on** does the same. A package can forbid cloud AI: then the chip reads **Cloud AI blocked** and nothing from it is sent.
+**Ctrl K**, **Turn cloud AI on** does the same. Clicking the cloud AI chip in the title bar opens **Privacy and cloud**. The workstation must be **Online** (see [Online or offline only](01-install.md#online-or-offline-only)): in **Offline only** the **Cloud AI** switch is greyed. A package can forbid cloud AI: then the chip reads **Cloud AI blocked** and nothing from it is sent.
 
 ### On an offline-only workstation
 
-With **Offline-only workstation** on (**Settings**, **Privacy and cloud**), cloud AI is off whatever the **Cloud AI** switch says.
+With **Offline-only workstation** on (**Settings**, **Privacy and cloud**, or the switch behind **Offline only** in the title bar), cloud AI is off whatever the **Cloud AI** switch says.
 
 - Nothing goes to Anthropic, OpenAI or Google Gemini: not from the agent, **Detect with AI**, **Draft with AI** or **Test connection**. This holds from the moment you switch it on. A reply under way stops before its next step.
-- The **Cloud AI** switch shows off and is greyed, and the title bar chip reads **Cloud AI blocked**.
+- The **Cloud AI** switch shows off and is greyed. The title bar reads **Offline only** and **Cloud AI blocked** (**Cloud AI off** when the switch was off already).
 - The agent reads **The agent is off**: "Cloud AI is off because this workstation is offline-only. A local model on this machine can still be used. To use cloud AI, turn off Offline-only workstation in Settings, Privacy and cloud."
 - A local model on this computer keeps working. See [Set up a local model](20-local-model.md). A model server on another machine counts as cloud AI and is refused.
 
-Switch **Offline-only workstation** off to use cloud AI again. The **Cloud AI** switch goes back to what you had set.
+Switch **Offline-only workstation** off, or click **Offline only** in the title bar and switch to **Online**, to use cloud AI again. The **Cloud AI** switch goes back to what you had set.
 
 ## Talk to the agent
 

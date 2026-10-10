@@ -28,7 +28,7 @@ The pack appears under **Installed packs**.
 
 ### Download a region
 
-{product} downloads map data only when you start it, from build.protomaps.com.
+{product} downloads map data only when you start it, from build.protomaps.com. The workstation must be **Online**: click the mode in the title bar, switch to **Online**, then **Download maps** (see [Online or offline only](01-install.md#online-or-offline-only)). In **Offline only**, **Download** is greyed and the page says to import a pack file instead.
 
 1. Click **Add a region**.
 2. Pick the area: **Country** (choose from the list) or **Draw a box** (drag on the map).
