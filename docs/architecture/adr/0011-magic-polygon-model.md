@@ -3,7 +3,7 @@
 - Status: **Accepted, 10 Oct 2026.** M11 decision 4 (magic polygon model and weights); founder approved G12, the model downloads for the spike and shipping the model inside the pipeline pack (10 Oct 2026, in the M11 Build session).
 - Deciders: founder; integration lead (M11 G12)
 - Plan: `docs/plans/2026-10-07-m11-surveying.md`, decision 4 and "G12 Local AI helpers"
-- Contracts: `@aio/schema` `ipc.ts` (`surveyAi:suggest`, `surveyAi:status`); data-conventions section 26 ("Suggest boundaries"); code: `apps/desktop/src/main/inference/segment.ts`, `apps/desktop/src/main/surveyAi.ts`, `apps/desktop/src/renderer/survey/MagicPolygon.tsx`, `apps/desktop/src/renderer/survey/orthoCrop.ts`, `tools/pipeline-pack/sam.mjs`
+- Contracts: `@aio/schema` `ipc.ts` (`surveyAi:suggest`, `surveyAi:status`); data-conventions sections 16 (the boundary model) and 27 ("Suggest boundaries"); code: `apps/desktop/src/main/inference/segment.ts`, `apps/desktop/src/main/surveyAi.ts`, `apps/desktop/src/renderer/survey/MagicPolygon.tsx`, `apps/desktop/src/renderer/survey/orthoCrop.ts`, `apps/desktop/src/renderer/survey/snapRegions.ts`, `tools/pipeline-pack/sam.mjs`
 
 ## Context
 
@@ -41,10 +41,11 @@ EfficientSAM and SAM 2.1 hold the right outline among their three masks (best-of
 3. **No download, no pop-up.** The app makes no network call (zero network). Without the pack, or with a pack that carries no model, **Suggest boundaries** stays visible and says what it needs ("Suggest boundaries needs the pipeline pack ..."); the first-start welcome's pipeline pack line names it too. The Review mask assist uses the same model.
 4. **The model card says how the encoder takes its image** (`input`: `hwc-255`, an H x W x 3 image of 0 to 255 values, as this export takes; or `nchw-imagenet`, the 1 x 3 x 1024 x 1024 ImageNet-normalised tensor of the usual SAM export, the default when absent), so a later re-export from the official checkpoint drops in without code changes.
 5. **Licence check:** the card's licence passes the M8 model licence gate (`inference/licence.ts`); a pack whose card names a licence the gate refuses is not used.
-6. The click runs on a 1024 x 1024 crop of the ortho the renderer composes from the layer's own tiles (never the map canvas, so measurements and labels drawn on it never reach the model), around the click, about four times the expected object size and grown once when the outline touches the crop's edge; the embeddings of the last crop are kept, so a second click, the buffer (keys U and I) and the vertex count (keys J and K) answer in tens of milliseconds.
+6. The click runs on a 1024 x 1024 crop of the ortho the renderer composes from the layer's own image or tiles (never the map or 3D canvas, so measurements and labels drawn on it never reach the model): 60 m around the click, grown to 120, 240 and 480 m while the outline reaches the crop's edge. The embeddings of the last crop are kept, so a second click, the buffer (keys U and I) and the vertex count (keys J and K) answer in a fraction of a second. The same call snaps the whole-site comparison's draft regions (`snapRegions.ts`): the outline is taken only when its overlap over union with the rule-based region is at least 0.5.
 
 ## Consequences
 
 - The synthetic crops are simple (uniform materials on sand); real orthos have shadows, vehicles and touching piles. The founder's real-data checks (TESTING stage M11) decide whether the DSM edge channel the plan mentions is needed; until then the outline comes from the ortho alone, and KNOWN-LIMITS says so.
 - The AI cut and fill breakdown stays rule-based on the `change.surface` and whole-site regions (decision 4); the model only proposes snapped boundaries as drafts.
 - A future model (a re-export, a larger SAM) is a pack change with a new card, not an app change.
+- Checked end to end on 10 Oct 2026: `segment.ts` with the shipped export on the 44 crops gives IoU 0.985 mean and 0.948 worst (the polygon, after simplifying), 0.55 s a click and 0.17 s for a buffer or vertex change; in the app on the quick quarry demo the first click on Stockpile SP1 (model load included) answers in 1.4 s with an outline of 58 points, 969 m2 against the cone's 1,018 m2; the Review mask assist outlines six crops from a box within 2% of the true area.

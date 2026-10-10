@@ -231,7 +231,10 @@ Current limits only; each is removed from this list when fixed.
 - Hydrology results show on the 2D map only.
 - Packages (player mode) show the survey measurements, sections, overlays, comparison results, designs, QA status, hydrology runs and haul-road results read only. Nothing is computed or saved there: a section cannot be downloaded, a stale result stays stale, and the survey exports are not offered.
 - The DTM filter presets (equipment, vegetation, structures, everything) need a point cloud layer and PDAL in the pipeline pack; without either, the button in **Cleanup and crop** is greyed out with the reason.
-- The local AI helpers (M11 G12: **Suggest boundaries** and the AI cut and fill breakdown) are not built; they wait for the founder's go-ahead. **Whole site cut and fill** suggests rule-based regions as drafts.
+- **Suggest boundaries** and **Snap to ortho edges** need the pipeline pack with its boundary model (MobileSAM, pack 0.5.0 built after 10 Oct 2026); an older pack has none and the buttons say so. The app never downloads the model.
+- The outline comes from the ortho alone (not the DSM): shadows, vehicles on a pile, and piles of the same material that touch can pull it off the toe. It is checked on synthetic piles only (outline overlap 0.95 or better on 44 crops); your real orthos are the next check. Treat every draft as a suggestion.
+- **Suggest boundaries** reads tiled and image orthos (`kit-pyramid`, `image`); a COG or PMTiles ortho is refused with the reason. One click, one object: there is no "add to" or "remove from" click yet, and no outline with holes.
+- The AI cut and fill breakdown is the rule-based regions of **Whole site cut and fill** with their boundaries snapped by the model; the model does not find regions by itself.
 
 ### Hydrology and haul road
 

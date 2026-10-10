@@ -474,6 +474,14 @@ The `pdal` tool of the pack (`tools/pdal`), installed from conda-forge's `libpda
 | zlib                            | 1.3.2        | Zlib                                          |
 | zstd                            | 1.5.7        | BSD-3-Clause                                  |
 
+## Pipeline pack models
+
+Model weights the pipeline pack carries, from `tools/pipeline-pack/sam.mjs`: fetched from the pinned source when the pack is built and refused unless the SHA-256 matches (ADR 0011). They run on this computer only; nothing is sent anywhere. Models a customer imports (detectors, Settings, Local detection) are theirs and are never redistributed by us.
+
+| Model     | Version | Licence    | Used for                                                                                    | Source                                                                                                                                    | Files                                                                                                        |
+| --------- | ------- | ---------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| MobileSAM | 1.0     | Apache-2.0 | Suggest boundaries, snapping cut and fill regions and the Review mask assist (`models/sam`) | MobileSAM (https://github.com/ChaoningZhang/MobileSAM, Apache-2.0), ONNX export https://huggingface.co/PulpCut/mobilesam-onnx at 1e774d85 | `encoder.onnx` 28.2 MB, SHA-256 `4125037c5e24d6ea...`; `decoder.onnx` 16.5 MB, SHA-256 `b0735abf07c7affd...` |
+
 ## Map and imagery data
 
 From `tools/release/data-sources.json`; every imagery and terrain pack we build carries its licence, attribution and provenance, checked by `tools/release/data-licences.mjs`. The attribution shows in the Globe, the map and every export that contains the data. Imagery a customer imports under their own licence is never redistributed by us.

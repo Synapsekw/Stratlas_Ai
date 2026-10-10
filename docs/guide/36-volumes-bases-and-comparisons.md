@@ -45,6 +45,8 @@ Select several measurements in the list: the totals add their comparisons up. **
 
 **Whole site cut and fill** compares two surveys or designs over their whole overlap in a background job. It then suggests cut and fill regions as drafts. **Keep** the ones you want: they become volume measurements in the folder "Whole-site regions".
 
+**Snap to ortho edges** moves the ticked regions' boundaries to the edges seen in the ortho, with the same local model as **Suggest boundaries** ([Measuring and templates](35-measuring-and-templates.md)). A region is snapped only when the edge in the ortho matches it; otherwise it stays as it was, and the panel says why. Snapped regions are still drafts.
+
 ## Stockpile projects
 
 Stockpile projects keep their four bases and their figures. In a pile's details, **More bases (survey engine)** adds the engine's bases as extra choices. The engine's smart base is a triangulation of the toe line, while the kit's TIN base is a smooth surface over the toe, so their figures differ. The register and the totals keep the four original bases.

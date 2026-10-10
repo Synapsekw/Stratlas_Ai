@@ -5,6 +5,7 @@ import {
   dataInventory,
   jsEntries,
   jsInventory,
+  modelInventory,
   nativeInventory,
   pythonLicense,
   render,
@@ -105,6 +106,15 @@ describe('licence inventory', () => {
     expect(md).toContain('GNU General Public License');
     expect(md).toContain('## Map and imagery data');
     expect(md).toContain('| Copernicus DEM GLO-30 | terrain | X | © DLR |');
+  });
+
+  it('lists the model weights the pipeline pack carries', () => {
+    const models = modelInventory();
+    expect(models.map((m) => [m.name, m.license])).toEqual([['MobileSAM', 'Apache-2.0']]);
+    const md = render([], [], null, null, models);
+    expect(md).toContain('## Pipeline pack models');
+    expect(md).toContain('| MobileSAM | 1.0 | Apache-2.0 |');
+    expect(readFileSync(NOTICES, 'utf8')).toMatch(/\| MobileSAM\s+\| 1\.0\s+\| Apache-2\.0\s+\|/);
   });
 
   it('lists every native library and data source of the inventories', () => {

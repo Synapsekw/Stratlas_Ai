@@ -25,6 +25,17 @@ Pick a tool and click on the site. Points sit on the terrain under the pointer.
 
 **Drawing aids** switch snapping on: **Snap to vertices** and **Snap to edges**, the sources to snap to (**Measurements**, **Designs**, **Alignments**, **Guidelines**) and the **Snap distance** in screen pixels. The drawing bar says what you snapped to, for example "snapped to a design vertex".
 
+## Suggest boundaries
+
+While you draw a polygon (**Area**, **Volume** or a polygon template), the drawing bar has **Suggest boundaries**. Switch it on and click an object on the ortho, for example a stockpile: a draft outline appears around it in about a second. It is a draft until you accept it.
+
+- **Buffer** (keys **U** and **I**) shrinks or grows the draft. **Vertices** (keys **J** and **K**) gives it fewer or more points.
+- Click somewhere else to try again. **Finish**, **Enter** or a double-click accepts the draft as the polygon; **Esc** cancels.
+- The outline comes from a model that runs on this computer, inside the pipeline pack. Nothing is sent anywhere. Without the pack, the button tells you what to add.
+- It reads the ortho that is shown under the click, so show the ortho of the survey you are measuring. It works in the 3D view and on the map.
+
+A draft is a suggestion from a picture: check it against the terrain before you rely on the volume, especially where piles touch or lie in shadow.
+
 ## Saving and the list
 
 New and changed measurements are kept until you save: the bar shows "Unsaved measurement changes." with **Save measurements**. **Autosave** in the **Measurements** list is off by default.

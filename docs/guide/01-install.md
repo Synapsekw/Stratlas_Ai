@@ -27,7 +27,7 @@ Under **This workstation** the welcome says what is there and what is missing, a
 
 - **Data folder** where your own projects and offline map packs live. Click **Choose folder** to pick another one.
 - **Offline maps**: without a map pack, maps show each project's own orthomosaics and plans. Import a pack or download a region in **Settings**, **Offline maps**.
-- **Pipeline pack**: needed only to build projects from raw data.
+- **Pipeline pack**: needed to build projects from raw data, for survey jobs and for **Suggest boundaries**.
 - **Network**: not needed.
 
 ![The Projects screen on first start, with the demo projects](images/first-start.png)
