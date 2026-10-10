@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { t } from '@aio/ui';
+import { ariaKeys, shortcutHint, t } from '@aio/ui';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -53,7 +53,8 @@ describe('PanelHandle', () => {
     expect(left.getAttribute('aria-expanded')).toBe('true');
     expect(left.getAttribute('aria-controls')).toBe(PANEL_ID.left);
     expect(left.dataset.side).toBe('left');
-    expect(left.getAttribute('aria-keyshortcuts')).toMatch(/^(Control|Meta)\+B$/);
+    // the keys as this platform names them (Control+B; Meta+B on macOS), from the registry
+    expect(left.getAttribute('aria-keyshortcuts')).toBe(ariaKeys('global.sidebar'));
   });
 
   it('mirrors on the right with the right panel and its own shortcut', () => {
@@ -61,7 +62,8 @@ describe('PanelHandle', () => {
     expect(right.getAttribute('aria-label')).toBe('Collapse right sidebar');
     expect(right.getAttribute('aria-controls')).toBe(PANEL_ID.right);
     expect(right.dataset.side).toBe('right');
-    expect(right.getAttribute('aria-keyshortcuts')).toMatch(/^(Control|Meta)\+Alt\+B$/);
+    expect(right.getAttribute('aria-keyshortcuts')).toBe(ariaKeys('global.rightPanel'));
+    expect(ariaKeys('global.rightPanel')).not.toBe(ariaKeys('global.sidebar'));
     expect(PANEL_ID.right).not.toBe(PANEL_ID.left);
   });
 
@@ -73,10 +75,23 @@ describe('PanelHandle', () => {
     expect(folded.getAttribute('aria-label')).toBe('Expand right sidebar');
   });
 
-  it('shows the action and its shortcut in the tool tip', () => {
-    const tip = render('left', true).querySelector('.tip');
-    expect(tip?.textContent).toContain('Expand left sidebar');
-    expect(tip?.querySelector('.kbd')?.textContent).toMatch(/B$/);
+  it('shows the action and its shortcut in the tool tip, in the keys of the platform', () => {
+    const left = render('left', true).querySelector('.tip');
+    expect(left?.textContent).toContain('Expand left sidebar');
+    // "Ctrl B" on Windows and Linux, "⌘B" on macOS: whatever the registry says here
+    expect(left?.querySelector('.kbd')?.textContent).toBe(shortcutHint('global.sidebar'));
+    act(() => root?.unmount());
+    root = undefined;
+    const right = render('right', false).querySelector('.tip');
+    expect(right?.textContent).toContain('Collapse right sidebar');
+    expect(right?.querySelector('.kbd')?.textContent).toBe(shortcutHint('global.rightPanel'));
+  });
+
+  it('names the same shortcuts on macOS and elsewhere', () => {
+    expect(shortcutHint('global.sidebar', false)).toBe('Ctrl B');
+    expect(shortcutHint('global.sidebar', true)).toBe('⌘B');
+    expect(shortcutHint('global.rightPanel', false)).toBe('Ctrl Alt B');
+    expect(shortcutHint('global.rightPanel', true)).toBe('⌥⌘B');
   });
 
   it('draws one chevron in the tab, hidden from assistive technology', () => {

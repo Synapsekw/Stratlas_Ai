@@ -29,9 +29,10 @@ export interface PanelHandleProps {
 
 /**
  * The tab on the inner edge of a side panel: one click folds the panel away or brings it back.
- * The same control on both sides, mirrored. It sits on the border between the panel and the main
- * view and stays there when the panel is folded (at the window edge for a panel that folds to
- * nothing), so a panel is never lost. Its chevron points the way the edge will move.
+ * The same control on both sides, mirrored. It lies inside its panel, against the border it
+ * moves, never over the main view (styles.css says why), and stays there when the panel is
+ * folded: on the sidebar's icon rail, and as the strip the right panel folds to, so a panel is
+ * never lost. Its chevron points the way the edge will move.
  */
 export function PanelHandle({ side, collapsed, shortcut, onToggle }: PanelHandleProps) {
   const t = useT();
