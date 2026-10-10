@@ -133,6 +133,13 @@ export const en = {
   'basemap.noPacks': 'No imagery or terrain pack covers this site.',
   'basemap.openPacks': 'Offline maps',
   'basemap.openPacks.tip': 'Import imagery and terrain in Settings, Offline maps',
+  'basemap.online': 'Online satellite',
+  'basemap.online.detail': 'Sentinel-2, 2016, about 10 m per pixel',
+  'basemap.online.offline': 'Go online to use it',
+  'basemap.online.saved': 'Showing saved tiles only',
+  'basemap.online.tip':
+    'Satellite imagery of the whole world, requested from EOX for the areas you look at',
+  'basemap.online.or': 'or turn on',
   'ground.imagery': 'Imagery around the site',
   'ground.imagery.tip': 'The imagery packs draped on the land around the site in 3D',
   'ground.terrain': 'Terrain around the site',
@@ -143,6 +150,8 @@ export const en = {
   'palette.hillshade.on': 'Turn terrain shading on the map on',
   'palette.hillshade.off': 'Turn terrain shading on the map off',
   'palette.basemap.packs': 'Import imagery and terrain packs (Settings, Offline maps)',
+  'palette.online.on': 'Turn online satellite on',
+  'palette.online.off': 'Turn online satellite off',
 
   // Volumes (stockpile workspace)
   'vol.baseShort.tin': 'toe TIN base',
@@ -2637,7 +2646,7 @@ export const en = {
   // Online satellite (ADR 0007, amendment of 10 Oct 2026)
   'g7.online.toggle': 'Online satellite (Sentinel-2)',
   'g7.online.help':
-    'Off by default. When on, the map draws Sentinel-2 imagery from 2016 (about 10 m per pixel) under your imagery packs and orthos. The tiles for the areas you look at are requested from EOX and kept on this computer.',
+    'Off by default. When on, the Satellite map types draw Sentinel-2 imagery from 2016 (about 10 m per pixel) under your imagery packs and orthos, also where no pack covers the site. The tiles for the areas you look at are requested from EOX and kept on this computer.',
   'g7.online.offlineOnly':
     'This workstation is offline-only, so online satellite cannot be switched on. Turn off offline-only in Privacy and cloud.',
   'g7.online.offlineOnlyCached':

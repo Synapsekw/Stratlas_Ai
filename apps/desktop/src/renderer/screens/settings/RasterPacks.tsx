@@ -15,6 +15,8 @@ import {
 import { formatBytes, formatDate, Icon, t } from '@aio/ui';
 import { useEffect, useRef, useState } from 'react';
 import { bridge, shell, useShell } from '../../shell';
+import { onlineSatelliteSwitch } from '../../workspace/onlineSatellite';
+import { OnlineSatelliteNotice } from '../../workspace/OnlineSatelliteNotice';
 import { listenForJobs, rasterPacks, useRasterPacks } from '../../workspace/siteTiles';
 
 type Kind = 'imagery' | 'terrain';
@@ -232,23 +234,6 @@ function PackRow({ pack, onRemoved }: { pack: RasterPackInfo; onRemoved: (e?: st
   );
 }
 
-/** Whether the person has read what online satellite sends (shown the first time only). */
-const NOTICE_KEY = 'stratlas.onlineSatelliteNotice';
-function noticeSeen(): boolean {
-  try {
-    return localStorage.getItem(NOTICE_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-function markNoticeSeen(): void {
-  try {
-    localStorage.setItem(NOTICE_KEY, '1');
-  } catch {
-    // blocked storage: the notice shows again next time
-  }
-}
-
 function Toggle({
   label,
   checked,
@@ -291,7 +276,6 @@ export function RasterPacks() {
   // Online satellite: main enforces the switch and owns the cache; this page asks it.
   const offlineOnly = useShell((s) => s.settings.offlineOnly === true);
   const online = prefs.onlineSatellite;
-  const [asking, setAsking] = useState(false);
   const [cache, setCache] = useState<OnlineTileCache | null>(null);
 
   useEffect(() => {
@@ -320,16 +304,9 @@ export function RasterPacks() {
     };
   }, [online]);
 
-  const setOnline = async (on: boolean) => {
-    setAsking(false);
-    const err = await rasterPacks.getState().setOnlineSatellite(on);
-    if (err) setError(err);
-    else if (on) markNoticeSeen();
-  };
+  // the first time it asks first (the notice below); the map type picker shares switch and notice
   const toggleOnline = (on: boolean) => {
-    // the first time: say what is sent, and switch on only on the person's yes
-    if (on && !noticeSeen()) setAsking(true);
-    else void setOnline(on);
+    onlineSatelliteSwitch.getState().request(on);
   };
   const clearCache = async () => {
     const r = await bridge.call('onlineTiles:clearCache', {});
@@ -486,24 +463,7 @@ export function RasterPacks() {
         />
       </div>
       <div className="online-satellite" data-testid="online-satellite">
-        {asking && (
-          <div className="notice warn" role="alert" data-testid="online-satellite-notice">
-            <Icon name="warn" size={14} />
-            <span>{t('g7.online.notice')}</span>
-            <button type="button" className="btn sm primary" onClick={() => void setOnline(true)}>
-              {t('g7.online.confirm')}
-            </button>
-            <button
-              type="button"
-              className="btn sm ghost"
-              onClick={() => {
-                setAsking(false);
-              }}
-            >
-              {t('g7.online.cancel')}
-            </button>
-          </div>
-        )}
+        <OnlineSatelliteNotice />
         <p className="help" id="online-satellite-help">
           <b>{t('g7.online.toggle')}.</b>{' '}
           {t(

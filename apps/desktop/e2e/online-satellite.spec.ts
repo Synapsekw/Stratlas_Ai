@@ -125,6 +125,10 @@ test('switched on, the Map draws Sentinel-2 under everything, credited, through 
   await expect
     .poll(async () => (await mainMap(win))?.sources[SOURCE]?.attribution, { timeout: 30_000 })
     .toBe(ONLINE_SATELLITE.attribution);
+  // once the map has its own layers too (the project's, over the basemap)
+  await expect
+    .poll(async () => (await mainMap(win))?.layers.some((l) => l.id === 'aio-view3d-fill'))
+    .toBe(true);
   const style = await mainMap(win);
   expect(style?.sources[SOURCE]).toMatchObject({
     tiles: ['aio://online/s2cloudless-2016/{z}/{x}/{y}.jpg'],

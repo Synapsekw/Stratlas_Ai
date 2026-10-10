@@ -25,7 +25,7 @@ The list shows each pack with its zoom levels, size, date, licence and attributi
 
 The same choices are on the map itself: the map type chip under the zoom buttons (**Streets**, **Satellite**, **Satellite only**, **Terrain shading**), and **Layers and issue pins** in 3D. See [Maps and offline packs](06-maps.md#choose-the-map-type).
 
-**Online satellite (Sentinel-2)** in the same list is not a pack: it streams imagery from 2016 for the areas you look at, when you switch it on, and your packs draw over it. See [Online satellite](06-maps.md#online-satellite).
+**Online satellite (Sentinel-2)** in the same list, and **Online satellite** in the map type chip, is not a pack: it streams imagery from 2016 for the areas you look at, when you switch it on, and your packs draw over it. See [Online satellite](06-maps.md#online-satellite).
 
 ## Licences
 

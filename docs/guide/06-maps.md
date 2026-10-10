@@ -17,12 +17,13 @@ The chip under the zoom buttons names the map type in use. Click it to choose:
 - **Satellite:** imagery with the streets and names over it.
 - **Satellite only:** imagery alone, without streets and names.
 - **Terrain shading:** relief shading from a terrain pack, with any map type.
+- **Online satellite:** satellite imagery of the whole world from the internet (Sentinel-2, 2016, about 10 m per pixel), for sites no imagery pack covers. Off until you tick it. See [Online satellite](#online-satellite).
 
 When several imagery packs cover the site, **Imagery** picks one of them, or **Best available** to draw them all, detailed over coarse.
 
-Switching keeps the map where it is. The choice is remembered on this computer and is the same as the ticks under **Imagery and terrain** in Settings, **Offline maps**. From the keyboard, the arrow keys move between the map types and **Esc** closes the list. The command palette (**Ctrl K**) has the same choices: type "map type".
+Switching keeps the map where it is. The choice is remembered on this computer and is the same as the ticks under **Imagery and terrain** in Settings, **Offline maps**. From the keyboard, the arrow keys move between the map types and **Esc** closes the list. The command palette (**Ctrl K**) has the same choices: type "map type", or "online satellite".
 
-Imagery and terrain come from packs on your disk, never from the internet. A map type with no pack for the site is greyed out, and the list says which pack is missing. Click **Offline maps** there to open Settings where packs are imported. See [Imagery and terrain packs](31-imagery-and-terrain-packs.md).
+Imagery and terrain come from packs on your disk. The one exception is **Online satellite**, and only once you have switched it on. A map type with no imagery for the site is greyed out, and the list says which pack is missing. Click **Offline maps** there to open Settings where packs are imported, or **Online satellite** to turn that on instead. See [Imagery and terrain packs](31-imagery-and-terrain-packs.md).
 
 ### The ground in 3D
 
@@ -91,13 +92,15 @@ Click **Remove** on the pack's row, then confirm. Maps lose that area until the 
 
 ## Online satellite
 
-Not every workstation has to work offline. **Online satellite (Sentinel-2)** draws satellite imagery of the whole world on the map without a pack. It is off until you switch it on.
+Not every workstation has to work offline. **Online satellite** draws satellite imagery of the whole world on the map without a pack. It is off until you switch it on.
 
-1. Open **Settings**, **Offline maps**, **Imagery and terrain**.
-2. Tick **Online satellite (Sentinel-2)**.
-3. The first time, read the notice and click **Switch on**.
+1. On the map, click the map type chip and tick **Online satellite**. The same switch is **Online satellite (Sentinel-2)** in **Settings**, **Offline maps**, **Imagery and terrain**; the two always agree.
+2. The first time, read the notice and click **Switch on**. Nothing is requested before that.
+3. Choose **Satellite** or **Satellite only**. With online satellite on they can be chosen at any site, also where no imagery pack covers it.
 
 What you get:
+
+- Imagery, like a pack: it shows with **Satellite** and **Satellite only**, and not with **Streets**.
 
 - Sentinel-2 imagery from 2016, at about 10 m per pixel. It shows the lie of the land, roads and large structures, not site detail, and nothing built since 2016. Zoomed in past that detail the imagery is stretched, not sharper.
 - It sits at the bottom of the map: your imagery packs and the project's orthos draw over it, and street lines and labels stay on top.
@@ -109,7 +112,7 @@ What is sent:
 - Tiles you have viewed are kept on this computer (up to 300 MB; the ones used longest ago make room for new ones), so those areas draw again without a request. **Clear cached satellite tiles** in the same place deletes them and shows how much they take.
 - The service is free and comes with no guarantee. When it cannot be reached, the map shows what it has and tries again later.
 
-On an offline-only workstation the box is greyed: "This workstation is offline-only, so online satellite cannot be switched on." If it was on before the workstation was set to offline-only, nothing more is requested; areas you viewed before still draw from this computer, and you can untick the box to hide them.
+On an offline-only workstation it cannot be switched on: the row on the map is greyed and reads "Go online to use it", and Settings says "This workstation is offline-only, so online satellite cannot be switched on." If it was on before the workstation was set to offline-only, nothing more is requested: the row reads "Showing saved tiles only", areas you viewed before still draw from this computer, and you can untick it to hide them.
 
 For imagery that works with no network, or sharper imagery of your site, use an imagery pack. See [Imagery and terrain packs](31-imagery-and-terrain-packs.md).
 

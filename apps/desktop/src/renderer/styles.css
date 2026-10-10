@@ -79,6 +79,16 @@ code {
 .notice .btn {
   margin-inline-start: auto;
 }
+/* the one-time notice of online satellite (OnlineSatelliteNotice.tsx): its two buttons together */
+.os-notice .os-acts {
+  display: flex;
+  flex: none;
+  gap: 6px;
+  margin-inline-start: auto;
+}
+.os-notice .os-acts .btn {
+  margin-inline-start: 0;
+}
 .link {
   color: var(--fg-2);
   font: 400 11px var(--f-ui);
