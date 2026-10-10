@@ -179,7 +179,8 @@ export function DateTree(props: DateTreeProps) {
       {folders.map((f) => {
         const expanded = open[f.id] === true;
         const focused = f.id === focus;
-        const empty = f.capture !== null && f.layerIds.length === 0;
+        // a date with only its issues is not empty: its Annotations group shows
+        const empty = f.capture !== null && f.layerIds.length === 0 && f.groups.length === 0;
         const tag = f.capture ? tags[f.capture.id] : undefined;
         const icon = dateIcon(tag?.icon);
         const on = f.capture && !focused ? f.layerIds.filter((id) => !hidden[id]).length : 0;
