@@ -133,13 +133,27 @@ const set = (patch: Partial<CompareState>) => {
 const get = () => compareStore.getState();
 
 let engine: EngineClient | null = null;
+let startEngine: () => EngineClient = startEngineWorker;
 /** Tests hand in a port (a MessageChannel served by `serveEngine`). */
 export function setEnginePort(port: EnginePort | null): void {
   engine?.dispose();
   engine = port ? connectEngine(port) : null;
 }
+/** Tests hand in how an engine is started (null: the module worker again). */
+export function setEngineStarter(start: (() => EnginePort) | null): void {
+  engine?.dispose();
+  engine = null;
+  startEngine = start ? () => connectEngine(start()) : startEngineWorker;
+}
 function client(): EngineClient {
-  engine ??= startEngineWorker();
+  if (engine?.stopped()) {
+    // the engine died (its requests failed with why): another one, told the same project, so the
+    // next Recompute works without restarting the app
+    const context = engine.context();
+    engine = startEngine();
+    if (context) engine.setContext(context);
+  }
+  engine ??= startEngine();
   return engine;
 }
 

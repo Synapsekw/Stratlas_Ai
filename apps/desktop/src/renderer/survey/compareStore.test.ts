@@ -14,7 +14,7 @@ const call = vi.fn((channel: string) =>
 vi.mock('../shell', () => ({ bridge: { call } }));
 vi.mock('../author', () => ({ authorName: () => '' }));
 
-const { compareStore, compute, engineClient, scheduleCheck, setEnginePort } =
+const { compareStore, compute, engineClient, scheduleCheck, setEnginePort, setEngineStarter } =
   await import('./compareStore');
 const { isDirty, measureStore, patchMeasurement, revertMeasurements, saveMeasurements } =
   await import('./measureStore');
@@ -265,5 +265,60 @@ describe('the check after a change', () => {
     expect(compareStore.getState().running.m1).toBe(true);
     expect((await second)?.results[0]?.status).toBe('ok');
     expect(compareStore.getState().running.m1).toBe(false);
+  });
+});
+
+describe('an engine that dies', () => {
+  afterEach(() => {
+    setEngineStarter(null);
+  });
+
+  it('fails the run with what happened, and the next Recompute starts a new engine with the same project', async () => {
+    // every engine started here; the first never reads its tiles, so its run is out when it dies
+    const started: MessageChannel[] = [];
+    setEngineStarter(() => {
+      const ch = new MessageChannel();
+      const first = started.length === 0;
+      started.push(ch);
+      serveEngine(ch.port2, (url) => {
+        if (first) return new Promise<Uint8Array | null>(() => undefined);
+        const m = /survey\/surfaces\/cone\/(.+)$/.exec(url);
+        return Promise.resolve(
+          m?.[1] ? new Uint8Array(readFileSync(join(DIR, 'tiles', 'cone', m[1]))) : null,
+        );
+      });
+      return ch.port1;
+    });
+    engineClient().setContext({
+      base: 'aio://project/p1/',
+      surfaces: [{ ...cone, capture: 'c2' }],
+      captures: ['c1', 'c2'],
+      designs: [],
+      site: { verticalDatum: { kind: 'project' } },
+    });
+    expect(started).toHaveLength(1);
+
+    const run = compute('m1');
+    expect(compareStore.getState().running.m1).toBe(true);
+    // the worker reports an uncaught error (as the browser does on its Worker object)
+    const dying = started[0]?.port1 as unknown as { onerror?: (ev: { message?: string }) => void };
+    dying.onerror?.({ message: 'Uncaught RangeError: Array buffer allocation failed' });
+    expect(await run).toBeNull();
+    const s = compareStore.getState();
+    expect(s.running.m1).toBe(false);
+    expect(s.problems.m1).toMatch(/comparison engine stopped/);
+    expect(s.problems.m1).toMatch(/Recompute/);
+    expect(stored()?.results).toEqual([]);
+
+    // Recompute: a new engine, told the project again, computes
+    const again = await compute('m1');
+    expect(started).toHaveLength(2);
+    expect(again?.results[0]?.status).toBe('ok');
+    expect(compareStore.getState().problems.m1).toBeUndefined();
+    expect(stored()?.results).toHaveLength(1);
+    for (const ch of started) {
+      ch.port1.close();
+      ch.port2.close();
+    }
   });
 });

@@ -23,6 +23,20 @@ export class RunCancelled extends Error {
   }
 }
 
+/**
+ * The engine died under its requests (an uncaught error in the worker, a script that did not
+ * load, a message that could not be read): what was out fails with this, and the client is done.
+ * `compareStore` starts another engine for the next request.
+ */
+export class EngineStopped extends Error {
+  constructor(detail?: string) {
+    super(
+      `The comparison engine stopped${detail ? ` (${detail})` : ''}. Recompute to start it again.`,
+    );
+    this.name = 'EngineStopped';
+  }
+}
+
 export interface SiteReply {
   result: ComparisonResult;
   grid: {
@@ -43,6 +57,10 @@ export interface EngineClient {
   site(req: SiteRequest, key?: string): Promise<SiteReply>;
   /** G3's seam: one item over one ring, for a capture. */
   runner(capture?: string): ComparisonRunner;
+  /** Why the engine died, or null while it runs (and after it was put away on purpose). */
+  stopped(): EngineStopped | null;
+  /** The context it was last given (for the engine started in its place). */
+  context(): EngineContext | null;
   dispose(): void;
 }
 
@@ -51,6 +69,30 @@ export function connectEngine(port: EnginePort & { terminate?(): void }): Engine
   const keyed = new Map<string, number>();
   let next = 1;
   let closed = false;
+  let died: EngineStopped | null = null;
+  let known: EngineContext | null = null;
+  /** The engine will not answer any more: fail what is out and put the worker away. */
+  const die = (detail?: string) => {
+    if (closed) return;
+    closed = true;
+    died = new EngineStopped(detail?.slice(0, 300));
+    const out = [...pending.values()];
+    pending.clear();
+    keyed.clear();
+    for (const p of out) p.reject(died);
+    port.onmessage = null;
+    port.onerror = null;
+    port.onmessageerror = null;
+    port.terminate?.();
+  };
+  port.onerror = (ev) => {
+    // a script that did not load arrives as a plain event, without a message
+    const message = (ev as { message?: unknown }).message;
+    die(typeof message === 'string' && message ? message : undefined);
+  };
+  port.onmessageerror = () => {
+    die('a message from it could not be read');
+  };
   port.onmessage = (ev: MessageEvent) => {
     const r = ev.data as EngineReply;
     const p = pending.get(r.id);
@@ -60,7 +102,7 @@ export function connectEngine(port: EnginePort & { terminate?(): void }): Engine
     else p.reject(r.cancelled ? new RunCancelled() : new Error(r.error));
   };
   const call = <T>(make: (id: number) => EngineRequest, key?: string): Promise<T> => {
-    if (closed) return Promise.reject(new RunCancelled());
+    if (closed) return Promise.reject(died ?? new RunCancelled());
     const id = next++;
     if (key !== undefined) {
       const old = keyed.get(key);
@@ -88,6 +130,8 @@ export function connectEngine(port: EnginePort & { terminate?(): void }): Engine
   };
   const client: EngineClient = {
     setContext(context) {
+      known = context;
+      if (closed) return;
       port.postMessage({ kind: 'context', context } satisfies EngineRequest);
     },
     run: (req, key) => call<RunReply>((id) => ({ kind: 'run', id, req }), key),
@@ -105,11 +149,16 @@ export function connectEngine(port: EnginePort & { terminate?(): void }): Engine
         return res;
       },
     }),
+    stopped: () => died,
+    context: () => known,
     dispose() {
+      if (closed) return;
       closed = true;
       for (const p of pending.values()) p.reject(new RunCancelled());
       pending.clear();
       port.onmessage = null;
+      port.onerror = null;
+      port.onmessageerror = null;
       port.terminate?.();
     },
   };

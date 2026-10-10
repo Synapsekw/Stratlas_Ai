@@ -232,6 +232,7 @@ Current limits only; each is removed from this list when fixed.
 - Terrain overlays (contours, gradient, elevation, shaded relief) draw on the 2D map only, not in the 3D view.
 - Designs in the views: alignments have no vertical geometry, so they are drawn on the terrain; the 3D view labels at most 300 stations of an alignment (every few at a short interval). A surface layer shows on the map as its outline only.
 - Hydrology results show on the 2D map only.
+- If the comparison engine stops (an error inside it, or an answer it cannot hand over), the measurement says why and **Recompute** starts a new engine with the same project; no restart is needed. Running out of memory on a very large comparison has not been tested: it may close the window instead.
 - Packages (player mode) show the survey measurements, sections, overlays, comparison results, designs, QA status, hydrology runs and haul-road results read only. Nothing is computed or saved there: a section cannot be downloaded, a stale result stays stale, and the survey exports are not offered.
 - The DTM filter presets (equipment, vegetation, structures, everything) need a point cloud layer and PDAL in the pipeline pack; without either, the button in **Cleanup and crop** is greyed out with the reason.
 - **Suggest boundaries** and **Snap to ortho edges** need the pipeline pack with its boundary model (MobileSAM, pack 0.5.0 built after 10 Oct 2026); an older pack has none and the buttons say so. The app never downloads the model.

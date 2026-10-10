@@ -86,4 +86,10 @@ export type EngineReply =
 export interface EnginePort {
   postMessage(message: unknown, transfer?: Transferable[]): void;
   onmessage: ((ev: MessageEvent) => void) | null;
+  /**
+   * A Worker reports an uncaught error in it, or a script that did not load, here; a message that
+   * could not be read arrives as `onmessageerror`. Either way a request may never be answered.
+   */
+  onerror?: ((ev: ErrorEvent) => void) | null;
+  onmessageerror?: ((ev: MessageEvent) => void) | null;
 }

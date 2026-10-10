@@ -2,9 +2,9 @@ import type { HeightTiles } from '@aio/schema';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { connectEngine, RunCancelled } from './engineClient';
-import type { EngineContext } from './engineProtocol';
+import type { EngineContext, EnginePort, EngineRequest } from './engineProtocol';
 import { serveEngine } from './engineServe';
 
 const DIR = join(
@@ -158,5 +158,40 @@ describe('the survey engine worker', () => {
     } finally {
       close();
     }
+  });
+
+  it('answers with the problem when its answer cannot be sent, so the request does not wait', async () => {
+    // a port that refuses the first good answer (as postMessage does for a buffer it cannot move)
+    const replies: { id: number; ok: boolean; error?: string }[] = [];
+    let refused = false;
+    const port: EnginePort = {
+      postMessage: (r) => {
+        const reply = r as { id: number; ok: boolean; error?: string };
+        if (reply.ok && !refused) {
+          refused = true;
+          throw new Error('DataCloneError: an ArrayBuffer is detached and could not be cloned');
+        }
+        replies.push(reply);
+      },
+      onmessage: null,
+    };
+    serveEngine(port, () => Promise.resolve(null));
+    const send = (data: EngineRequest) => port.onmessage?.({ data } as MessageEvent);
+    send({
+      kind: 'context',
+      context: {
+        base: 'aio://project/p1/',
+        surfaces: [{ ...cone, capture: 'c2' }],
+        captures: ['c1', 'c2'],
+        designs: [],
+        site: { verticalDatum: { kind: 'project' } },
+      },
+    });
+    send({ kind: 'fingerprints', id: 7, req: { ring, items: [] } });
+    await vi.waitFor(() => {
+      expect(replies).toHaveLength(1);
+    });
+    expect(replies[0]).toMatchObject({ id: 7, ok: false });
+    expect(replies[0]?.error).toMatch(/answer could not be sent.*DataCloneError/);
   });
 });
