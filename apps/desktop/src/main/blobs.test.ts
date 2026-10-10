@@ -92,7 +92,24 @@ let root: string;
 let userData: string;
 let hubBlobs: string;
 let events: IpcEvent<'blobs:progress'>[];
+let waiting: ((e: IpcEvent<'blobs:progress'>) => void)[];
 let registered: BlobRef[][];
+
+/** The first progress event that matches, among those already emitted or the ones to come. */
+function progress(
+  match: (e: IpcEvent<'blobs:progress'>) => boolean,
+): Promise<IpcEvent<'blobs:progress'>> {
+  const seen = events.find(match);
+  if (seen) return Promise.resolve(seen);
+  return new Promise((resolve) => {
+    const waiter = (e: IpcEvent<'blobs:progress'>) => {
+      if (!match(e)) return;
+      waiting.splice(waiting.indexOf(waiter), 1);
+      resolve(e);
+    };
+    waiting.push(waiter);
+  });
+}
 
 async function putHub(data: Uint8Array) {
   const file = join(hubBlobs, blobPath(sha(data)).slice('blobs/'.length));
@@ -125,7 +142,10 @@ function service(o: { cap?: number } = {}): BlobService {
     userData,
     projectRoot: (id) => (id === 'p' ? root : undefined),
     capBytes: () => o.cap ?? 1e12,
-    emit: (e) => events.push(e),
+    emit: (e) => {
+      events.push(e);
+      for (const waiter of [...waiting]) waiter(e);
+    },
     register: (_id, _root, refs) => {
       registered.push(refs);
       return Promise.resolve();
@@ -139,6 +159,7 @@ beforeEach(async () => {
   userData = join(base, 'user');
   hubBlobs = join(base, 'hub', HUB_PATHS.blobs(TEAM));
   events = [];
+  waiting = [];
   registered = [];
   await mkdir(join(root, 'models'), { recursive: true });
   await writeFile(join(root, 'manifest.json'), JSON.stringify(manifest()));
@@ -307,10 +328,14 @@ describe('a working copy whose binaries live on a hub', () => {
   it('fetches always and on-open layers without a click', async () => {
     await sharedCopy();
     const svc = service();
-    await svc.status('p'); // big defaults to always (small file)
-    await expect
-      .poll(async () => (await svc.status('p'))?.layers.find((l) => l.layer === 'big')?.state)
-      .toBe('present');
+    // big defaults to always (small file): asking for the status starts its copy in the background
+    const before = await svc.status('p');
+    expect(before?.layers.find((l) => l.layer === 'big')?.state).toBe('missing');
+    // The layer is here once that copy has ended, which its last progress event says. A poll of
+    // the status had 1 s for a copy that is synced to disk, and ran out on a busy Windows runner.
+    const end = await progress((e) => e.layer === 'big' && e.state !== 'running');
+    expect(end).toMatchObject({ state: 'done', done: BIG.length, total: BIG.length });
+    expect((await svc.status('p'))?.layers.find((l) => l.layer === 'big')?.state).toBe('present');
   });
 
   it('streams from the shared folder without copying', async () => {
