@@ -8,7 +8,7 @@ import { LocationPicker } from '@aio/maps';
 import type { GcpFile, GcpPoint, PhotoRun } from '@aio/schema';
 import { Icon } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { bridge, useJobs } from '../shell';
 import { isActive } from '../jobs';
 import { startGeoref } from './actions';
@@ -38,6 +38,13 @@ export function GcpPanel({ run, data }: { run: string; data: PhotoRun | null }) 
     (j) => j.pipeline === 'photo.georef',
   );
 
+  // the saves on their way (`save`): the last one, how many wait, and the file as last saved
+  const saves = useRef<{ tail: Promise<unknown>; waiting: number; saved: GcpFile | null }>({
+    tail: Promise.resolve(),
+    waiting: 0,
+    saved: null,
+  });
+
   const projectId = project?.id;
   useEffect(() => {
     if (!projectId) return;
@@ -47,7 +54,10 @@ export function GcpPanel({ run, data }: { run: string; data: PhotoRun | null }) 
       setLoaded(true);
       if (!r.ok) setError(r.error);
       else if (!r.value.ok) setError(r.value.error);
-      else setGcp(r.value.gcp);
+      else {
+        saves.current.saved = r.value.gcp;
+        setGcp(r.value.gcp);
+      }
     });
     return () => {
       live = false;
@@ -56,13 +66,32 @@ export function GcpPanel({ run, data }: { run: string; data: PhotoRun | null }) 
 
   if (!project) return null;
 
-  /** Save the whole file (atomic, with a .bak in main); the panel shows what was saved. */
-  const save = async (next: GcpFile): Promise<boolean> => {
-    const r = await bridge.call('photo:writeGcp', { projectId: project.id, run, gcp: next });
-    const err = !r.ok ? r.error : r.value.ok ? null : r.value.error;
-    setError(err);
-    if (!err) setGcp(next);
-    return !err;
+  /**
+   * Save the whole file (atomic, with a .bak in main), one write at a time and in order: main
+   * compares the file with what it last saw, so two writes at once would look like a change on
+   * disk. A change to the points (`show: 'now'`: Use, a role, a mark) shows at once, so the
+   * control answers its click and the next change builds on it; when its save fails and nothing
+   * else waits to be saved, the panel goes back to the file as it was last saved, with the error.
+   * An import (`show: 'saved'`) shows only once it is saved.
+   */
+  const save = (next: GcpFile, show: 'now' | 'saved'): Promise<boolean> => {
+    const q = saves.current;
+    if (show === 'now') setGcp(next);
+    q.waiting += 1;
+    const done = q.tail
+      .then(() => bridge.call('photo:writeGcp', { projectId: project.id, run, gcp: next }))
+      .then((r) => {
+        const err = !r.ok ? r.error : r.value.ok ? null : r.value.error;
+        q.waiting -= 1;
+        setError(err);
+        if (!err) {
+          q.saved = next;
+          if (show === 'saved') setGcp(next);
+        } else if (q.waiting === 0 && show === 'now') setGcp(q.saved);
+        return !err;
+      });
+    q.tail = done;
+    return done;
   };
 
   if (!loaded) return <p className="faint small">Reading ground control</p>;
@@ -83,7 +112,7 @@ export function GcpPanel({ run, data }: { run: string; data: PhotoRun | null }) 
             : null
         }
         onSave={async (f) => {
-          if (await save(f)) {
+          if (await save(f, 'saved')) {
             setImporting(false);
             setNotice(
               `${String(f.points.length)} points imported from ${f.importedFrom ?? 'the file'}.`,
@@ -101,7 +130,7 @@ export function GcpPanel({ run, data }: { run: string; data: PhotoRun | null }) 
         run={data}
         gcp={gcp}
         point={point}
-        onSave={save}
+        onSave={(f) => save(f, 'now')}
         onBack={() => {
           setMarking(null);
         }}
@@ -113,7 +142,7 @@ export function GcpPanel({ run, data }: { run: string; data: PhotoRun | null }) 
 
   const problems = adjustProblems(gcp);
   const update = (p: GcpPoint) =>
-    void save({ ...gcp, points: gcp.points.map((q) => (q.id === p.id ? p : q)) });
+    void save({ ...gcp, points: gcp.points.map((q) => (q.id === p.id ? p : q)) }, 'now');
   const adjusting = georef ? isActive(georef) : false;
 
   return (
