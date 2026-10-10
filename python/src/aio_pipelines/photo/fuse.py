@@ -21,6 +21,7 @@ from pathlib import Path
 
 import numpy as np
 
+from ..runtime import replace_over
 from .scene import Camera, View
 
 
@@ -104,7 +105,7 @@ class PointTiles:
             d.mkdir(parents=True, exist_ok=True)
             tmp = d / f".{name}.tmp.npz"
             np.savez(tmp, xyz=xyz[a:b], rgb=rgb[a:b], normal=normal[a:b].astype(np.float32))
-            tmp.replace(d / f"{name}.npz")
+            replace_over(tmp, d / f"{name}.npz")
         return len(xyz)
 
     def chunk_tiles(self) -> list[str]:
@@ -141,7 +142,7 @@ class PointTiles:
                 xyz, rgb, nrm, cnt = voxel_mean(xyz, rgb, nrm, voxel)
                 tmp = out / f".{name}.tmp.npz"
                 np.savez(tmp, xyz=xyz, rgb=rgb, normal=nrm, count=cnt)
-                tmp.replace(dst)
+                replace_over(tmp, dst)
             with np.load(dst) as z:
                 xyz = z["xyz"]
                 if len(xyz):
@@ -242,7 +243,7 @@ def write_las_tiles(path: Path, store: PointTiles, shift: np.ndarray, scale: flo
         struct.pack_into("<Q", h, 255, n)  # all first returns
         f.seek(0)
         f.write(bytes(h))
-    tmp.replace(path)
+    replace_over(tmp, path)
     return n
 
 

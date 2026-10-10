@@ -20,6 +20,7 @@ from pathlib import Path
 
 import numpy as np
 
+from ..runtime import replace_over
 from .grid import _bin_block, source_res
 
 TILE_QUALITY = 80  # kit: WEBP quality=80, method=4
@@ -146,7 +147,7 @@ def resample_ortho(
                 dest = tdir / f"{tx}_{ty}.webp"
                 tmp = dest.with_name(f".{dest.stem}.tmp.webp")
                 Image.fromarray(t, "RGBA").save(tmp, "WEBP", quality=TILE_QUALITY, method=4)
-                tmp.replace(dest)
+                replace_over(tmp, dest)
             prog.write_text(str(ty + 1))
             progress((ty + 1) / nty)
     prog.write_text(str(nty))
@@ -177,6 +178,6 @@ def build_pyramid(tiles: Path, grid: dict, check: Callable[[], None] = lambda: N
             out = dst / f"{px}_{py}.webp"
             tmp = out.with_name(f".{out.stem}.tmp.webp")
             im.resize((T, T), Image.LANCZOS).save(tmp, "WEBP", quality=TILE_QUALITY, method=4)
-            tmp.replace(out)
+            replace_over(tmp, out)
         counts[z] = len(parents)
     return counts

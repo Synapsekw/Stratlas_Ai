@@ -52,7 +52,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
-from ..runtime import Cancelled, JobError
+from ..runtime import Cancelled, JobError, atomic_write_bytes
 
 PYTHON_ENV = "AIO_COLMAP_PYTHON"
 
@@ -289,9 +289,7 @@ def alias_names(db, work: Path) -> int:
     if not real:
         return 0
     rec = work / "names.alias.json"
-    tmp = rec.with_name(rec.name + ".tmp")
-    tmp.write_text(json.dumps({str(k): v for k, v in real.items()}), "utf-8")
-    tmp.replace(rec)
+    atomic_write_bytes(rec, json.dumps({str(k): v for k, v in real.items()}).encode("utf-8"))
     for im in images:
         if int(im.image_id) in real:
             im.name = engine_alias(im.name)

@@ -27,7 +27,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ..runtime import JobError
+from ..runtime import JobError, atomic_write_bytes, replace_over
 from .frame import Frame
 
 NODATA = -9999.0
@@ -115,9 +115,7 @@ def _crs(frame: Frame):
 
 def sidecar(path: Path, lines: list[str]) -> Path:
     note = path.with_suffix(".txt") if path.suffix.lower() != ".txt" else path.with_suffix(".note.txt")
-    tmp = note.with_name(f".{note.name}.{os.getpid()}.tmp")
-    tmp.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
-    os.replace(tmp, note)
+    atomic_write_bytes(note, ("\n".join(lines) + "\n").encode("utf-8"))
     return note
 
 
@@ -229,7 +227,7 @@ def write_geotiff(
         if not rgb:
             opts["PREDICTOR"] = "YES"
         rio_copy(work, out_tmp, driver="COG", **opts)
-        os.replace(out_tmp, path)
+        replace_over(out_tmp, path)
     finally:
         for p in (work, out_tmp):
             if p.exists():

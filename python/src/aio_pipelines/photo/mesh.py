@@ -41,7 +41,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ..runtime import JobError, StepContext
+from ..runtime import JobError, StepContext, replace_over
 from . import native
 from .surface import GridSpec, read_grid
 
@@ -530,7 +530,7 @@ def _meshlab_child(src: str, out: str, depth: int, threads: int, max_points: int
         faces=m.face_matrix().astype(np.int64),
         density=m.vertex_scalar_array().astype(np.float64),
     )
-    tmp.replace(out)
+    replace_over(tmp, out)
 
 
 #: Variables that make the loader put extra libraries into a process. MeshLab's child drops them:

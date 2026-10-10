@@ -22,7 +22,7 @@ from typing import Any
 
 import numpy as np
 
-from ..runtime import JobError, StepContext, atomic_write_json
+from ..runtime import JobError, StepContext, atomic_write_json, replace_over
 from .geometry import SceneFrame, crs_definition, project_crs
 
 DSM_GRID_MAX = 4096
@@ -119,7 +119,7 @@ def import_clouds(ctx: StepContext, plan: dict[str, Any], run: str) -> list[dict
         _run(ctx, [pdal, "pipeline", str(pipe)], f"Write the COPC file of {c['name']}")
         if not tmp.is_file():
             raise JobError("PDAL finished without writing the COPC file.")
-        tmp.replace(target)
+        replace_over(tmp, target)
         las.unlink(missing_ok=True)
         atomic_write_json(ctx.stage(f"clouds/{i}.json"), {"points": len(xyz)})
         record["points"] = len(xyz)
@@ -196,7 +196,7 @@ def _cog(src: Path, dest: Path) -> None:
 
     tmp = dest.with_name(f".{dest.stem}.tmp.tif")
     rio_copy(str(src), str(tmp), driver="COG", compress="DEFLATE", BIGTIFF="IF_SAFER")
-    tmp.replace(dest)
+    replace_over(tmp, dest)
 
 
 def _pyramid(

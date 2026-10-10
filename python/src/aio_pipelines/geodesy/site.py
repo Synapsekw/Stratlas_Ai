@@ -35,7 +35,7 @@ from typing import Any
 
 import numpy as np
 
-from ..runtime import JobError
+from ..runtime import JobError, atomic_write_bytes
 
 os.environ["PROJ_NETWORK"] = "OFF"
 
@@ -490,9 +490,7 @@ def write_site_tables(
         raise JobError("PROJ could not convert every point of the site extent.")
     grid = np.empty((rows * cols, 2), dtype="<f8")
     grid[:, 0], grid[:, 1] = xs, ys
-    tmp = out_dir / f"{GRID_FILE}.tmp"
-    tmp.write_bytes(grid.tobytes())
-    os.replace(tmp, out_dir / GRID_FILE)
+    atomic_write_bytes(out_dir / GRID_FILE, grid.tobytes())
     header: dict[str, Any] = {
         "schema": "aio.site-transform/1",
         "from": crs_record(pipe.data_crs),
@@ -511,9 +509,7 @@ def write_site_tables(
     vertical_used = pipe.vertical_kind != "project" or pipe.calibration is not None
     if vertical_used:
         n_eff = -np.asarray(zs, dtype="<f8")
-        tmp = out_dir / f"{GEOID_FILE}.tmp"
-        tmp.write_bytes(n_eff.astype("<f8").tobytes())
-        os.replace(tmp, out_dir / GEOID_FILE)
+        atomic_write_bytes(out_dir / GEOID_FILE, n_eff.astype("<f8").tobytes())
         header["geoidGrid"] = {**header["grid"], "file": GEOID_FILE, "bands": 1}
     elif (out_dir / GEOID_FILE).exists():
         (out_dir / GEOID_FILE).unlink()
@@ -540,7 +536,5 @@ def write_site_tables(
         }
     )[:200]
     header["writtenAt"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-    tmp = out_dir / "site-transform.json.tmp"
-    tmp.write_text(json.dumps(header, indent=2) + "\n", encoding="utf-8", newline="")
-    os.replace(tmp, out_dir / "site-transform.json")
+    atomic_write_bytes(out_dir / "site-transform.json", (json.dumps(header, indent=2) + "\n").encode("utf-8"))
     return header

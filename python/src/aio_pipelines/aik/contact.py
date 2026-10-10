@@ -22,6 +22,8 @@ from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
+from ..runtime import replace_over
+
 
 def _font(n):
     for name in ("DejaVuSans-Bold.ttf", "arialbd.ttf", "Arial Bold.ttf"):
@@ -102,7 +104,7 @@ def sheets(
             d.text((c["x"] + 6, c["y"] + 2), label, fill=(255, 220, 0), font=f)
         tmp = fn + ".partial.jpg"
         sh.save(tmp, quality=80)
-        os.replace(tmp, fn)
+        replace_over(tmp, fn)
         progress((i + 1) / len(layout), sheet["name"])
     return written
 

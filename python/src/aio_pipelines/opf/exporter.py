@@ -34,7 +34,7 @@ import numpy as np
 
 from .. import __version__
 from ..params import known_keys, text
-from ..runtime import JobError, Step, StepContext, atomic_write_json
+from ..runtime import JobError, Step, StepContext, atomic_write_json, replace_over
 from . import colmap
 from .geometry import (
     ZUP_TO_GLTF,
@@ -541,12 +541,12 @@ def _write(ctx: StepContext, out: Path, run_id: str) -> dict[str, Any]:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 tmp = target.with_name(f".{target.name}.tmp")
                 shutil.copyfile(o["src"], tmp)
-                tmp.replace(target)
+                replace_over(tmp, target)
                 done += 1
                 ctx.progress(done / max(1, total), f"Copied {o['name']}")
         tmp = dest.with_name(f".{dest.name}.tmp")
         shutil.copyfile(p, tmp)
-        tmp.replace(dest)
+        replace_over(tmp, dest)
         done += 1
         ctx.progress(done / max(1, total))
     ctx.log(f"Run {run_id} exported as OPF to {out}.")

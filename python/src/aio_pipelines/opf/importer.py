@@ -45,6 +45,7 @@ from ..runtime import (
     commit_files,
     commit_tree,
     now_iso,
+    replace_over,
     safe_project_path,
 )
 
@@ -269,7 +270,7 @@ class OpfImport:
                     tmp = dest.with_name(f".{dest.stem}.tmp.jpg")
                     try:
                         size = review_copy(Path(p["file"]), tmp, REVIEW_EDGE)
-                        tmp.replace(dest)
+                        replace_over(tmp, dest)
                         want_size = p.get("size")
                         if want_size and abs(size[0] / size[1] - want_size[0] / want_size[1]) > 0.01:
                             odd += 1

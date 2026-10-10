@@ -59,6 +59,7 @@ from ..runtime import (
     atomic_write_json,
     commit_files,
     now_iso,
+    replace_over,
     safe_project_path,
 )
 from . import native
@@ -438,7 +439,7 @@ class PhotoProducts:
                 matched += sum(p["matched"] for p in info["pairs"])
             tmp = out / f".{v.id}.tmp.npy"
             np.save(tmp, d)
-            tmp.replace(dst)
+            replace_over(tmp, dst)
             ctx.progress((i + 1) / len(views), f"Depth map {i + 1} of {len(views)}")
         return {
             "engine": matcher.name,
@@ -600,9 +601,9 @@ class PhotoProducts:
                             1,
                             window=Window(0, 0, spec.width, spec.height),
                         )
-                    src.with_suffix(".fill.tif").replace(src)
-            zmin.with_suffix(".tmp.tif").replace(zmin)
-            raw.with_suffix(".tmp.tif").replace(raw)
+                    replace_over(src.with_suffix(".fill.tif"), src)
+            replace_over(zmin.with_suffix(".tmp.tif"), zmin)
+            replace_over(raw.with_suffix(".tmp.tif"), raw)
         else:
             g = {}
         out: dict[str, Any] = {"spec": spec.__dict__, **g}
@@ -660,7 +661,7 @@ class PhotoProducts:
             engine = dtm_grid(
                 work / "dsm-raw.tif", work / "zmin-raw.tif", spec, tmp, run.epsg, budget, ctx.check, ground
             )
-            tmp.replace(raw)
+            replace_over(tmp, raw)
             ctx.log(f"DTM: ground found by {engine['engine']}.")
         out = {"engine": engine.get("engine", "reused"), **engine}
         out.update(self._surface_layer(ctx, raw, spec, "dtm"))
@@ -691,7 +692,7 @@ class PhotoProducts:
             info = orthomosaic(
                 mosaic, spec, tmp, run.epsg, ctx.check, lambda f, m=None: ctx.progress(0.7 * f, m)
             )
-            tmp.replace(raw)
+            replace_over(tmp, raw)
         to_cog(raw, ctx.stage(f"photogrammetry/{run.id}/ortho.tif"), "average")
         lid = f"{run.id}-ortho"
         y = s["groundZ"] + run.offset[2] - run.origin[2]
@@ -761,7 +762,7 @@ class PhotoProducts:
             raise JobError("The mesh came out empty; the cloud may be too sparse.")
         tmp = dst.with_name(".mesh-full.tmp.npz")
         np.savez(tmp, vertices=mesh.vertices, faces=mesh.faces, engine=np.array(engine))
-        tmp.replace(dst)
+        replace_over(tmp, dst)
         ctx.log(f"Mesh ({engine}): {mesh.triangles:,} triangles.")
         return {"engine": engine, "triangles": mesh.triangles}
 

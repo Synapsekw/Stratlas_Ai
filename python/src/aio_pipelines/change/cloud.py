@@ -34,7 +34,7 @@ import numpy as np
 
 from ..params import known_keys, number, text
 from ..pointcloud import PDAL_MISSING, find_pdal, pdal_env
-from ..runtime import JobError, Step, StepContext, atomic_write_bytes, commit_files
+from ..runtime import JobError, Step, StepContext, atomic_write_bytes, commit_files, replace_over
 from .changeset import change_set, change_set_id, dump_change_set, write_change_set
 from .derived import (
     capture_label,
@@ -1017,7 +1017,7 @@ def _save_tile(path: Path, r: TileResult) -> None:
     arrays["totals"] = np.array([r.points, r.changed, r.far, r.sum_abs], dtype=np.float64)
     tmp = path.with_name(f".{path.stem}.{os.getpid()}.tmp.npz")
     np.savez(tmp, **arrays)
-    os.replace(tmp, path)
+    replace_over(tmp, path)
 
 
 def _load_tile(path: Path) -> TileResult:

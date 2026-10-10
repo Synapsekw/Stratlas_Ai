@@ -30,7 +30,7 @@ from xml.sax.saxutils import escape
 
 import numpy as np
 
-from ..runtime import AtomicPath, JobError
+from ..runtime import AtomicPath, JobError, replace_over
 
 
 def r(v: float) -> str:
@@ -270,6 +270,6 @@ def write_shp(path: Path, features: list[Feature], *, wkt: str) -> list[Path]:
         tmps[".prj"].write_text(esri_wkt(wkt), encoding="utf-8")
         tmps[".cpg"].write_text("UTF-8", encoding="ascii")
         for ext, src in tmps.items():
-            os.replace(src, target.with_suffix(ext))
+            replace_over(src, target.with_suffix(ext))
         written.append(target)
     return written
