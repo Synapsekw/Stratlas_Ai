@@ -39,6 +39,30 @@ git worktree add ../quadrion-wt/s3-engine -b stream/s3-engine
 - Unit: Vitest, next to the code as `*.test.ts`.
 - End to end: Playwright with Electron in `apps/desktop/e2e/`, including the zero-network test.
 
+### End to end the way CI runs it
+
+CI runs the end to end specs under conditions a workstation does not have by default, so a spec can pass locally and fail on every CI run:
+
+- **A small window.** The runners' screens give the main window its minimum size, 1100 x 700 (`src/main/windowMode.ts`). At that width the stage toolbar folds groups into **More tools** (`COLLAPSE_ORDER` in `workspace/toolbarFit.ts`), panels are narrower and popovers have less room.
+- **A software renderer.** The runners have no GPU.
+- **Every demo built.** CI runs `pnpm demo:build --quick` before the specs, not only the change demo.
+
+Before a hand-off, run every spec you added or changed that way, from `apps/desktop`:
+
+```bash
+pnpm demo:build --quick
+QUADRION_WINDOW_SIZE=1100x700 QUADRION_E2E_SWGL=1 npx playwright test e2e/<spec>.spec.ts --workers=1
+```
+
+In PowerShell, set `$env:QUADRION_WINDOW_SIZE = '1100x700'` and `$env:QUADRION_E2E_SWGL = '1'` first. `--repeat-each=3` shows a timing problem early.
+
+Write specs so they hold at that size:
+
+- Open a stage tool from the bar, or from **More tools** when it is folded there (`environment.spec.ts`, `designs.spec.ts` and `haul.spec.ts` show how).
+- Click the 3D, Map or Split switch inside the "Stage tools" toolbar, not the first button named "3D" on the page, and wait for its pressed state.
+- Wait for the scene canvas before looking for a tool that only the 3D view has.
+- A new floating control must not cover the view: assert with `document.elementFromPoint` that clicks on the view reach it, at 1100 x 700 as well.
+
 ### End to end on real client data
 
 Some specs run on the founder's real projects. They must never write into them:
