@@ -2560,6 +2560,15 @@ export const ipc = {
             rgb: z.instanceof(Uint8Array).optional(),
           })
           .strict(),
+        /**
+         * Further clicks on the same crop that steer the outline: `include` true adds what is
+         * under the click to the object (**Add area**), false takes it away (**Remove area**, a
+         * touching pile the model took along). A click outside the crop is ignored.
+         */
+        refine: z
+          .array(z.object({ at: SitePoint2, include: z.boolean() }).strict())
+          .max(20)
+          .optional(),
         /** Grow or shrink the outline, pixels (keys U and I). */
         bufferPx: z.number().int().min(-50).max(50).optional(),
         /** Target vertex count (keys J and K). */
