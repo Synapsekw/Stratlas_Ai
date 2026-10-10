@@ -41,7 +41,16 @@ The palette also has the screens (**Go to Issues**, **Go to Settings**, ...) and
 
 - **Projects**, **Scene**, **Issues**, **Media**, **Detections**, **Reports** and **Jobs**. **Original review** appears after Scene when the project has one.
 - **Datasets** lists the layers of the open project with an eye to show or hide each one.
-- **Collapse** (**Ctrl B**) folds the sidebar to icons.
+- The small tab on the sidebar's right edge, halfway down, folds the sidebar to a rail of icons and brings it back. **Ctrl B** and **Collapse** at the bottom do the same. The arrow on the tab points the way the edge will move.
+
+### Folding the side panels away
+
+Both side panels fold away to give the view more room: the sidebar on the left, and on **Scene** the [right panel](03-scene.md#the-right-panel) with the selection, the issues and the AI agent.
+
+- Each has the same tab on its inner edge. Click it to fold the panel, click it again to bring it back. Rest the pointer on it to see what it does and its shortcut.
+- The left sidebar folds to its icons. The right panel folds away completely; its tab stays at the edge of the window.
+- **Ctrl B** folds the left sidebar and **Ctrl Alt B** the right panel. **Ctrl K** has **Collapse left sidebar** and **Collapse right sidebar** (**Expand** when they are folded).
+- {product} remembers both on this computer, so they are as you left them the next time you start it.
 
 ## The original review
 
