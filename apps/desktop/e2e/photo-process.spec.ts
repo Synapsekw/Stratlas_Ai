@@ -399,7 +399,9 @@ plain.describe('when this computer cannot create maps', () => {
       await expect(blocked).toContainText('needs the processing tools, version 0.4.0 or later');
       await fix.click();
       await expect(wizard).toHaveCount(0);
+      // Settings, on the page that shows this computer's processing tools
       await expect(win.locator('.screen.settings')).toBeVisible();
+      await expect(win.getByTestId('pipeline-pack')).toBeVisible();
     },
   );
 
