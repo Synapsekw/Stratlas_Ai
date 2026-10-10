@@ -300,21 +300,23 @@ const keyService = profileVaultService(
   process.env.QUADRION_USER_DATA ? `${brand.appId}.isolated` : brand.appId,
   profile,
 );
-const keys = createKeyVault(keyService, (service, account) => new Entry(service, account));
+// Automated runs on an isolated profile keep every key (API keys, the device key) in a TEST-ONLY
+// file in their throwaway userData instead of the OS vault (testVault.ts): the isolated service
+// is one per machine, so a key a test stored there would be found by every later run.
+const vaultEntry = useTestVault(process.env)
+  ? createTestVault(app.getPath('userData'))
+  : (service: string, account: string) => new Entry(service, account);
+const keys = createKeyVault(keyService, vaultEntry);
 /** The app as pipeline packs see it: a pack declaring an app range without this version is refused. */
 const packApp = { version: app.getVersion(), name: brand.productName };
 const appStamp = { name: brand.productName, version: app.getVersion() };
 // One device key per profile (M9 integration): T2's identity service, vault account
-// `device-signing` under the profile's service. Automated runs on an isolated profile keep it in
-// a TEST-ONLY file in their throwaway userData instead of the OS vault (testVault.ts).
-const deviceVault = useTestVault(process.env)
-  ? createTestVault(app.getPath('userData'))
-  : (service: string, account: string) => new Entry(service, account);
+// `device-signing` under the profile's service, in the same vault as the API keys.
 const identityService = createIdentityService({
   store: createIdentityStore(identityPath(app.getPath('userData')), {
     osUser: () => osUser().user,
   }),
-  keys: createDeviceKeys(keyService, deviceVault, registerSecret),
+  keys: createDeviceKeys(keyService, vaultEntry, registerSecret),
   // T2's team ops go through T1's journal service, the only writer of `journal/`
   journal: teamJournal(() => journal),
   projectRoot: (id) => registry.root(id),

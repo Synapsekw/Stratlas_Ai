@@ -13,7 +13,7 @@
 import { MESSAGES } from '@aio/ai/main';
 import { offlineRoutes } from '@aio/ai/routes';
 import type { Page } from '@playwright/test';
-import { rm } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { GREETING, startFakeLlm } from './fake-llm';
 import { createDataRoot, expect, launchApp, NetworkGuard, test, TINY_PROJECT_ID } from './fixtures';
@@ -89,6 +89,8 @@ test('offline-only: no cloud AI request leaves, and the app says why', async () 
       (key) => window.aio.invoke('ai:setKey', { provider: 'anthropic', key }),
       KEY,
     );
+    // the key is in this run's throwaway vault file, not the OS vault (testVault.ts)
+    expect(await readFile(join(data.userData, 'TEST-ONLY-vault.json'), 'utf8')).toContain(KEY);
     // Settings, Privacy and cloud: cloud AI on, as the person turns it on.
     await openSettings(win, 'Privacy and cloud');
     const cloudSwitch = win.getByRole('switch', { name: 'Allow cloud AI' });

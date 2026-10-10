@@ -3,7 +3,8 @@
  *
  * End-to-end tests start many app instances, each with a throwaway userData folder. With the OS
  * vault they would leave a device key per run in Windows Credential Manager or the macOS Keychain
- * (`<appId>.isolated[.profile.<name>]`, account `device-signing`). When the test runner sets
+ * (`<appId>.isolated[.profile.<name>]`, account `device-signing`), and an API key a test stored
+ * (account `anthropic`) would be found by every later run on the machine. When the test runner sets
  * `QUADRION_TEST_VAULT=1` together with an isolated profile (`QUADRION_USER_DATA`), keys are kept
  * in `<userData>/TEST-ONLY-vault.json` instead: deleted with the test's folder, never read in a
  * person's normal run, and never touching another vault entry.
