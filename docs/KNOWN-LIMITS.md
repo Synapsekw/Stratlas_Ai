@@ -31,7 +31,7 @@ Current limits only; each is removed from this list when fixed.
 
 ## Builder
 
-- The pipeline pack is not in the installer; it lives in `E:\Stratlas Data\runtime` (now `pipeline-pack-0.2.0`) and must match the build. The app uses the newest pack there.
+- The pipeline pack is not in the installer and updating the app does not update it: it is installed from its file (`pipeline-pack-<version>-<arch>.tar.gz`) in **Settings**, **Processing tools**, into `runtime` in the data folder, and must match the build. The app uses the newest pack there. The pack is not signed: the install checks every file against the checksums in the pack's own manifest, which catches a damaged file, not a forged one.
 - **Outline** (mask assist) needs a mask model file in the pipeline pack; none ships yet (licences).
 - The HCl sample's GPS and gimbal tags are written from the delivered camera poses (the Elios 3 logs no GPS in the tank) around the approximate HCl origin; a real photo set brings its own tags.
 - Cloud AI detection needs Cloud AI on and your own key; cost is an estimate from list prices.
