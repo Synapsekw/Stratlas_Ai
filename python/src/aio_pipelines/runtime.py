@@ -117,6 +117,31 @@ def _tmp_for(path: Path) -> Path:
     return path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
 
 
+_WINDOWS = os.name == "nt"
+# Waits between the tries of a refused rename: 10 ms doubling to 1.28 s, about 2.5 s in all (the
+# same as the app's own writes, `renameOver` in apps/desktop/src/main/fsutil.ts).
+_REPLACE_WAITS_S = tuple(0.01 * 2**i for i in range(8))
+
+
+def replace_over(src: str | os.PathLike[str], dst: str | os.PathLike[str]) -> None:
+    """``os.replace`` that waits for a reader of ``dst`` on Windows.
+
+    Windows refuses to replace a file while any other process holds it open, even only to read it:
+    the app reading ``run.json`` or ``manifest.json`` again when a job changes state, a search
+    indexer, antivirus, a backup or sync client. Such a reader is gone within milliseconds, so
+    there a refused rename is tried again for about 2.5 s before it fails. Without this a job
+    failed with ``PermissionError: [WinError 5]`` whenever a stage's write met a read.
+    """
+    for wait in (*_REPLACE_WAITS_S, None):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if not _WINDOWS or wait is None:
+                raise
+            time.sleep(wait)
+
+
 def atomic_write_bytes(path: Path, data: bytes) -> None:
     """Write a file so it is either the old version or the complete new one, never partial."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -126,7 +151,7 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
             f.write(data)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, path)
+        replace_over(tmp, path)
     finally:
         if tmp.exists():
             tmp.unlink()
@@ -149,7 +174,7 @@ class AtomicPath:
 
     def __exit__(self, exc_type, exc, tb) -> None:
         if exc_type is None:
-            os.replace(self.tmp, self.dest)
+            replace_over(self.tmp, self.dest)
         elif self.tmp.exists():
             self.tmp.unlink()
 
@@ -231,7 +256,7 @@ def commit_files(ctx: StepContext, moves: Iterable[tuple[str, str]], announce: b
         dst = ctx.out(project_rel)
         if src.exists():
             dst.parent.mkdir(parents=True, exist_ok=True)
-            os.replace(src, dst)
+            replace_over(src, dst)
             moved += 1
         elif not dst.exists():
             raise JobError(f'The staged file "{staged_rel}" is missing; start the job again.')
