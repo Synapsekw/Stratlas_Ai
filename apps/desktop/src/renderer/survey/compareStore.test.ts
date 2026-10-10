@@ -14,7 +14,8 @@ const call = vi.fn((channel: string) =>
 vi.mock('../shell', () => ({ bridge: { call } }));
 vi.mock('../author', () => ({ authorName: () => '' }));
 
-const { compareStore, compute, engineClient, setEnginePort } = await import('./compareStore');
+const { compareStore, compute, engineClient, scheduleCheck, setEnginePort } =
+  await import('./compareStore');
 const { isDirty, measureStore, patchMeasurement, revertMeasurements, saveMeasurements } =
   await import('./measureStore');
 const { serveEngine } = await import('./engineServe');
@@ -179,5 +180,57 @@ describe('a run the measurement outgrew', () => {
     const next = await compute('m1', { auto: true });
     expect(stored()?.results[0]?.fingerprint).toBe(next?.results[0]?.fingerprint);
     expect(next?.results[0]?.fingerprint).not.toBe(r?.results[0]?.fingerprint);
+  });
+});
+
+describe('the check after a change', () => {
+  it('lets a run in flight finish instead of replacing it: a person Recompute stays an edit', async () => {
+    // an engine that reads its tiles only when let: the run is still out when the check fires
+    let release = (): void => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    setEnginePort(null);
+    ports?.port1.close();
+    ports?.port2.close();
+    ports = new MessageChannel();
+    serveEngine(ports.port2, async (url) => {
+      await gate;
+      const m = /survey\/surfaces\/cone\/(.+)$/.exec(url);
+      return m?.[1] ? new Uint8Array(readFileSync(join(DIR, 'tiles', 'cone', m[1]))) : null;
+    });
+    setEnginePort(ports.port1);
+    engineClient().setContext({
+      base: 'aio://project/p1/',
+      surfaces: [{ ...cone, capture: 'c2' }],
+      captures: ['c1', 'c2'],
+      designs: [],
+      site: { verticalDatum: { kind: 'project' } },
+    });
+    measureStore.setState({ focus: 'm1' });
+
+    // a person's Recompute, then the check a change schedules, while the run is still out
+    const person = compute('m1');
+    scheduleCheck(0);
+    const early = await Promise.race([
+      person,
+      new Promise<'still out'>((resolve) => {
+        setTimeout(() => {
+          resolve('still out');
+        }, 150);
+      }),
+    ]);
+    // the check did not start a run of its own over the person's (that cancelled it: null)
+    expect(early).toBe('still out');
+    release();
+    const r = await person;
+    expect(r?.results[0]?.status).toBe('ok');
+    // stored as the person's edit, once
+    expect(stored()?.results).toHaveLength(1);
+    expect(stored()?.updatedAt).not.toBe(UPDATED);
+    await vi.waitFor(() => {
+      expect(compareStore.getState().running.m1).toBe(false);
+    });
+    expect(writes()).toBe(1);
   });
 });
