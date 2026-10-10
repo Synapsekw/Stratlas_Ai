@@ -14,6 +14,8 @@ On the **Map**, the tools are **Point**, **Line** and **Area**.
 
 To close the tools, click **Close the annotation tools** or press **A** again. Packages opened read-only have no annotation tools.
 
+In a project with survey dates, an issue belongs to the date of the layers it is marked on. Its pin and shape go off the 3D view and the map when that date is hidden and come back when it is shown; the **Issues** list always holds every issue. See [Survey dates](28-survey-dates.md).
+
 ## Mark an issue on a photo or a video frame
 
 1. Open the photo from **Media** or from a marker in the scene.

@@ -52,6 +52,17 @@ If a video clip is playing when you move to another date, it switches to the mat
 
 In stockpile projects the Volumes date buttons and the date bar move together.
 
+## Issues and measurements belong to their date
+
+An issue belongs to the survey date of the layers it is marked on, and its **Issues** row sits in that date's folder. A measurement set to **Only in** one survey belongs to that survey. Both go off screen with their date and come back with it, in the 3D view and on the map:
+
+- The eye on a date folder ("Hide everything from ...") hides the date's layers and, with them, its issue pins, shapes, heat map and measurements. Click it again to show them.
+- Moving to another date does the same for the date you leave.
+- An issue shows while at least one layer it is marked on is shown. So if you switch on a single layer of a hidden date, the issues marked on that layer come back, and hiding only the model an issue is pinned to hides that issue. An issue that names its date without being marked on one of its layers shows while any layer of that date is shown.
+- A photo or a video clip you open always shows the issues of its own date, whatever is hidden elsewhere.
+
+Issues on layers in **Every date**, and measurements for the whole site, are always shown. Nothing is removed: the **Issues** list, counts, reports and exports still hold every issue.
+
 ## Which date am I looking at?
 
 Each date has a colour. It appears on the folder, in the date bar, on the calendar, in the header of the floating video and of the split video and photo panes (and on the date pickers in the split panes), and in a small chip at the top of the 3D view or map whenever more than one date is on screen. The chip is hidden while the split view is open. The panorama overlay shows the survey date as YYYY-MM-DD.

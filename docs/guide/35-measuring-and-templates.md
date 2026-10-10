@@ -50,7 +50,7 @@ Click a measurement to open its panel:
 - the results, then **Details** (template, folder, description and the template's custom fields);
 - **Style and label**: colour, fill, border, label size, **Label only when selected** and **Show the property name**;
 - **Units**: **Site units**, or **Units for this measurement** to give this one its own units (for example US survey feet and cubic yards);
-- **Scope**: a measurement belongs to the whole site ("Whole site: shown with every survey") or to one survey ("Only in ..."). **Promote to the whole site** and **Copy to another survey** move it between the two;
+- **Scope**: a measurement belongs to the whole site ("Whole site: shown with every survey") or to one survey ("Only in ..."). **Promote to the whole site** and **Copy to another survey** move it between the two. A measurement of one survey is drawn while that survey is on screen: hide the survey's layers, or move to another date, and it goes with them;
 - **Vertices**: **Edit vertices in the view** (drag a vertex, **Alt**+click deletes it, the blue dots insert one), or type N, E and Z in the table;
 - for polygons, **Comparisons** and **Material and calculators**.
 
