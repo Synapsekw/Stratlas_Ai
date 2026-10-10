@@ -69,10 +69,11 @@ export function GcpPanel({ run, data }: { run: string; data: PhotoRun | null }) 
   /**
    * Save the whole file (atomic, with a .bak in main), one write at a time and in order: main
    * compares the file with what it last saw, so two writes at once would look like a change on
-   * disk. A change to the points (`show: 'now'`: Use, a role, a mark) shows at once, so the
-   * control answers its click and the next change builds on it; when its save fails and nothing
-   * else waits to be saved, the panel goes back to the file as it was last saved, with the error.
-   * An import (`show: 'saved'`) shows only once it is saved.
+   * disk. A change in the table (`show: 'now'`: Use, a role) shows at once, so the control answers
+   * its click and the next change builds on it; when its save fails and nothing else waits to be
+   * saved, the panel goes back to the file as it was last saved, with the error. An import and a
+   * mark (`show: 'saved'`) show only once they are saved: the marker moves on with the mark, and
+   * what it counts is on disk. **Adjust** waits for the saves on their way.
    */
   const save = (next: GcpFile, show: 'now' | 'saved'): Promise<boolean> => {
     const q = saves.current;
@@ -125,19 +126,28 @@ export function GcpPanel({ run, data }: { run: string; data: PhotoRun | null }) 
   const point = marking ? gcp.points.find((p) => p.id === marking) : undefined;
   if (point)
     return (
-      <GcpMarker
-        key={point.id}
-        run={data}
-        gcp={gcp}
-        point={point}
-        onSave={(f) => save(f, 'now')}
-        onBack={() => {
-          setMarking(null);
-        }}
-        onPoint={(id) => {
-          setMarking(id);
-        }}
-      />
+      <>
+        {/* a mark main refused does not show: say why, here too */}
+        {error && (
+          <p className="notice danger small" role="alert">
+            <Icon name="warn" size={14} />
+            {error}
+          </p>
+        )}
+        <GcpMarker
+          key={point.id}
+          run={data}
+          gcp={gcp}
+          point={point}
+          onSave={(f) => save(f, 'saved')}
+          onBack={() => {
+            setMarking(null);
+          }}
+          onPoint={(id) => {
+            setMarking(id);
+          }}
+        />
+      </>
     );
 
   const problems = adjustProblems(gcp);
@@ -262,10 +272,13 @@ export function GcpPanel({ run, data }: { run: string; data: PhotoRun | null }) 
           data-testid="gcp-adjust"
           disabled={problems.length > 0 || adjusting}
           onClick={() => {
-            void startGeoref(project.root, run).then((err) => {
-              setError(err);
-              if (!err) photoUi.getState().setTab('progress');
-            });
+            // the adjustment reads gcp.json: not before the last change shown here is in it
+            void saves.current.tail
+              .then(() => startGeoref(project.root, run))
+              .then((err) => {
+                setError(err);
+                if (!err) photoUi.getState().setTab('progress');
+              });
           }}
         >
           <Icon name="target" size={14} />

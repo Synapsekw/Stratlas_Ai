@@ -192,6 +192,19 @@ export function triangulate(p: GcpPoint, photos: readonly MarkerPhoto[]): Vec3 |
   return x;
 }
 
+/**
+ * The largest shift between survey and cameras the marker believes, metres. Height datums differ
+ * by the geoid's undulation (at most about 106 m on Earth) and a logged altitude is tens of metres
+ * off; a GNSS position without RTK is metres off. Anything beyond comes from a wrong number (a GSD
+ * that does not fit the cameras, marks on the wrong target) and is ignored.
+ */
+export const MAX_SHIFT_M = 150;
+
+const plausible = (shift: Vec3): Vec3 | null =>
+  shift.every((v) => Number.isFinite(v)) && Math.hypot(shift[0], shift[1], shift[2]) <= MAX_SHIFT_M
+    ? shift
+    : null;
+
 /** A point of the GCP file with its surveyed position in the project's local frame. */
 export interface PlacedPoint {
   point: GcpPoint;
@@ -202,14 +215,16 @@ export interface PlacedPoint {
  * The model's ground level against the survey's, before any mark: `[0, up, 0]`, metres. A run
  * states its ground sample distance, the median depth of each photo's tie points over its focal
  * length, so the ground lies `gsd * focal` below a photo that looks down; ground control lies on
- * the ground. Null without a stated GSD, without a photo looking down or without a placed point.
+ * the ground. Null without a stated GSD (or one that is no positive number), without a photo
+ * looking down, without a placed point, or when the shift is no plausible one (`MAX_SHIFT_M`):
+ * better the positions as surveyed than a wild guess.
  */
 export function groundShift(
   points: readonly PlacedPoint[],
   photos: readonly MarkerPhoto[],
-  gsdCm: number | undefined,
+  gsdCm: number | null | undefined,
 ): Vec3 | null {
-  if (gsdCm === undefined || !(gsdCm > 0)) return null;
+  if (typeof gsdCm !== 'number' || !Number.isFinite(gsdCm) || gsdCm <= 0) return null;
   const ground: number[] = [];
   for (const ph of photos) {
     if (!ph.pos || !ph.q || ph.lens?.model !== 'pinhole') continue;
@@ -222,7 +237,7 @@ export function groundShift(
   const surveyed: number[] = [];
   for (const { point, local } of points) if (local && !point.disabled) surveyed.push(local[1]);
   if (!ground.length || !surveyed.length) return null;
-  return [0, median(ground) - median(surveyed), 0];
+  return plausible([0, median(ground) - median(surveyed), 0]);
 }
 
 /**
@@ -233,18 +248,21 @@ export function groundShift(
  *
  * The marks say where the survey really is: every point with two confirmed marks is triangulated,
  * and the median of (triangulated - surveyed) is the shift. Before any mark, `groundShift` gives
- * its vertical part. Null when neither is known: the positions are projected as surveyed.
+ * its vertical part. Null when neither is known: the positions are projected as surveyed. A point
+ * whose marks put it further from its surveyed position than `MAX_SHIFT_M` says nothing (marks on
+ * another target, a wrong coordinate).
  */
 export function surveyShift(
   points: readonly PlacedPoint[],
   photos: readonly MarkerPhoto[],
-  gsdCm?: number,
+  gsdCm?: number | null,
 ): Vec3 | null {
   const seen: Vec3[] = [];
   for (const { point, local } of points) {
     if (!local || point.disabled) continue;
     const x = triangulate(point, photos);
-    if (x) seen.push([x[0] - local[0], x[1] - local[1], x[2] - local[2]]);
+    const shift = x && plausible([x[0] - local[0], x[1] - local[1], x[2] - local[2]]);
+    if (shift) seen.push(shift);
   }
   if (seen.length === 0) return groundShift(points, photos, gsdCm);
   return [
@@ -341,7 +359,7 @@ export function markerList<P extends MarkerPhoto>(
   p: GcpPoint,
   photos: readonly P[],
   frame: Frame | null,
-  gsdCm?: number,
+  gsdCm?: number | null,
 ): { photo: P; prediction: GcpPrediction | null }[] {
   const epsg = 'epsg' in f.crs ? f.crs.epsg : null;
   const place = (q: GcpPoint) => (frame && epsg !== null ? gcpLocal(q, epsg, frame) : null);

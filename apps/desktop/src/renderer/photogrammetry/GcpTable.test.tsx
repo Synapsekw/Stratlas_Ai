@@ -9,17 +9,18 @@ interface Reply {
   ok: true;
   value: { ok: true } | { ok: false; error: string };
 }
-const { call, writes } = vi.hoisted(() => ({
+const { call, writes, startGeoref } = vi.hoisted(() => ({
   call: vi.fn(),
   /** The `photo:writeGcp` calls main has not answered yet, oldest first. */
   writes: [] as { gcp: GcpFile; answer: (r: Reply) => void }[],
+  startGeoref: vi.fn(() => Promise.resolve(null)),
 }));
 vi.mock('../shell', () => ({
   bridge: { call },
   useJobs: (selector: (s: { jobs: never[] }) => unknown) => selector({ jobs: [] }),
 }));
 vi.mock('@aio/maps', () => ({ LocationPicker: () => null }));
-vi.mock('./actions', () => ({ startGeoref: () => Promise.resolve(null) }));
+vi.mock('./actions', () => ({ startGeoref }));
 vi.mock('./GcpMarker', () => ({ GcpMarker: () => null }));
 
 import { GcpPanel } from './GcpTable';
@@ -56,27 +57,32 @@ const OK: Reply = { ok: true, value: { ok: true } };
 
 let host: HTMLDivElement;
 let root: Root | undefined;
-beforeEach(async () => {
-  writes.length = 0;
-  call.mockReset();
+/** Open the panel on a run whose gcp.json is `gcp`. */
+const mount = async (gcp: GcpFile) => {
   call.mockImplementation((channel: string, req: { gcp: GcpFile }) => {
-    if (channel === 'photo:readGcp')
-      return Promise.resolve({ ok: true, value: { ok: true, gcp: onDisk } });
+    if (channel === 'photo:readGcp') return Promise.resolve({ ok: true, value: { ok: true, gcp } });
     if (channel === 'photo:writeGcp')
       return new Promise<Reply>((answer) => {
         writes.push({ gcp: req.gcp, answer });
       });
     throw new Error(`unexpected channel ${channel}`);
   });
-  workspace.getState().openProject({ id: manifest.id, root: '/gcp-site', manifest });
-  host = document.createElement('div');
-  document.body.append(host);
+  act(() => root?.unmount());
   root = createRoot(host);
   await act(async () => {
     // the run document only has to be there: the table reads the points from gcp.json
     root?.render(<GcpPanel run={RUN} data={{ id: RUN } as PhotoRun} />);
     await Promise.resolve();
   });
+};
+beforeEach(async () => {
+  writes.length = 0;
+  call.mockReset();
+  startGeoref.mockClear();
+  workspace.getState().openProject({ id: manifest.id, root: '/gcp-site', manifest });
+  host = document.createElement('div');
+  document.body.append(host);
+  await mount(onDisk);
 });
 afterEach(() => {
   act(() => root?.unmount());
@@ -160,5 +166,36 @@ describe('the Use checkbox of the ground control table', () => {
     expect(use('GCP3').checked).toBe(true);
     expect(use('GCP2').checked).toBe(false);
     expect(host.querySelector('[role="alert"]')?.textContent).toContain('changed on disk');
+  });
+
+  it('starts the adjustment only when the change shown is in gcp.json', async () => {
+    // three control points marked in three photos each, a fourth without a mark
+    const marked = (p: GcpPoint): GcpPoint => ({
+      ...p,
+      marks: ['a', 'b', 'c'].map((photo) => ({
+        photo,
+        px: [10, 10] as [number, number],
+        by: 'person' as const,
+        at: '2026-10-10T10:00:00.000Z',
+        state: 'confirmed' as const,
+      })),
+    });
+    await mount({
+      ...onDisk,
+      points: onDisk.points.map((p) => (p.id === 'GCP4' ? p : marked(p))),
+    });
+    const adjust =
+      host.querySelector<HTMLButtonElement>('[data-testid="gcp-adjust"]') ??
+      expect.fail('no Adjust button');
+    expect(adjust.disabled).toBe(true);
+    // GCP4 off: Adjust can be clicked at once, while main is still saving that
+    click(use('GCP4'));
+    expect(adjust.disabled).toBe(false);
+    click(adjust);
+    await sent();
+    expect(writes).toHaveLength(1);
+    expect(startGeoref).not.toHaveBeenCalled();
+    await answer(OK);
+    expect(startGeoref).toHaveBeenCalledTimes(1);
   });
 });

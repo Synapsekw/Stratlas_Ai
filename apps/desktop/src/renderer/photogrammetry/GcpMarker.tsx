@@ -73,6 +73,8 @@ export function GcpMarker({
   const [zoom, setZoom] = useState(0);
   const [loadedSize, setLoadedSize] = useState<{ id: string; size: [number, number] } | null>(null);
   const [saving, setSaving] = useState(false);
+  /** A mark action is being saved (`act`). */
+  const busy = useRef(false);
   const viewer = useRef<HTMLDivElement>(null);
   const keyRef = useRef<(e: KeyboardEvent) => void>(() => undefined);
   // a native listener: the dialog's own Esc (closing the panel) must not see the marker's keys
@@ -233,17 +235,29 @@ export function GcpMarker({
     el.scrollTop = target[1] * s - el.clientHeight / 2;
   }, [current, target, zoom, natural]);
 
+  /**
+   * One mark action. `onSave` answers once main has saved the file and shows it then, so the
+   * count, the mark and the photo shown change together and what the marker shows is what is on
+   * disk. Never the count before the photo: a key press or a reader in between would take the
+   * photo just marked for the next one (the ring of one photo under the name of another, or the
+   * same photo confirmed twice). While a mark is being saved, further mark actions are ignored:
+   * they would act on the photo and the marks as shown, not as they are about to be.
+   */
   const act = async (a: MarkAction, advance: boolean) => {
+    if (busy.current) return;
+    busy.current = true;
     setSaving(true);
-    // this photo stays the one shown while the mark is saved, wherever the list now has it
-    setShown(a.photo);
     const next = applyMark(point, a, new Date().toISOString());
     const file = withPoint(gcp, next);
     const ok = await onSave(file);
+    busy.current = false;
     setSaving(false);
-    // on to the next photo that still needs a mark, in the list as this mark leaves it
-    if (ok && advance)
-      setShown(nextToMark(markerList(file, next, photos, frame, gsdCm), next, a.photo));
+    // the next photo that still needs a mark, in the list as this mark leaves it; a placed mark
+    // keeps its photo, wherever the list now has it
+    if (ok)
+      setShown(
+        advance ? nextToMark(markerList(file, next, photos, frame, gsdCm), next, a.photo) : a.photo,
+      );
   };
   const go = (by: 1 | -1) => {
     setShown(list[step(index, list.length, by)]?.photo.id ?? null);

@@ -13,6 +13,7 @@ import {
   loupeBackground,
   MARKED_RADIUS_PX,
   markerList,
+  MAX_SHIFT_M,
   nextToMark,
   photosFor,
   predictions,
@@ -260,6 +261,43 @@ describe('predictions that learn from the marks', () => {
     expect(groundShift(placed, level, gsdCm)).toBeNull();
     expect(groundShift([{ point: edge, local: null }], photos, gsdCm)).toBeNull();
     expect(ids(markerList(f, edge, photos, frame))).toEqual(['x-30', 'x-60']);
+  });
+
+  it('keeps the positions as surveyed when a number gives no plausible shift', () => {
+    const f = file(edge, mid);
+    const placed = f.points.map((p) => ({ point: p, local: gcpLocal(p, 32639, frame) }));
+    const asSurveyed = markerList(f, edge, photos, frame).map((x) => x.prediction?.px);
+    // a GSD that is no positive number
+    for (const bad of [0, -9.4, Number.NaN, Number.POSITIVE_INFINITY, null]) {
+      expect(groundShift(placed, photos, bad)).toBeNull();
+      expect(markerList(f, edge, photos, frame, bad).map((x) => x.prediction?.px)).toEqual(
+        asSurveyed,
+      );
+    }
+    // a GSD that does not fit the cameras (metres taken for centimetres): the ground would be
+    // 6 km below the photos, further than any height datum is from another
+    expect(MAX_SHIFT_M).toBe(150);
+    expect(groundShift(placed, photos, gsdCm * 100)).toBeNull();
+    expect(markerList(f, edge, photos, frame, gsdCm * 100).map((x) => x.prediction?.px)).toEqual(
+      asSurveyed,
+    );
+    // a point marked on another point's target, 310 m from its own coordinate, says nothing:
+    // the ground level decides, as before any mark
+    const wrong: GcpPoint = {
+      ...surveyed('WRONG', 300, 5),
+      marks: marked(mid, ['x-30', 'x0']).marks,
+    };
+    const mixed = file(wrong, edge);
+    const shift = surveyShift(
+      mixed.points.map((p) => ({ point: p, local: gcpLocal(p, 32639, frame) })),
+      photos,
+      gsdCm,
+    );
+    expect(shift?.[0]).toBe(0);
+    expect(shift?.[1]).toBeCloseTo(-25, 6);
+    expect(worst(edge, markerList(mixed, edge, photos, frame, gsdCm))).toBeLessThan(
+      GNSS_RADIUS_PX / 2,
+    );
   });
 
   it('triangulates a point from two marks and places it in every photo that sees it', () => {
