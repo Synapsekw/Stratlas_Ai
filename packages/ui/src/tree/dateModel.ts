@@ -1,7 +1,53 @@
 import type { Capture, Issue, ProjectManifest } from '@aio/schema';
+import { ICONS, type IconName } from '../icons/paths';
 import { buildDatasetTree, treeLayerIds, type TreeGroup } from './model';
 
 export const EVERY_DATE = 'every';
+
+/** The icons a survey date folder can take instead of its colour square. */
+export const DATE_ICONS = [
+  'flag',
+  'pin',
+  'tag',
+  'target',
+  'check',
+  'warn',
+  'lock',
+  'clock',
+  'drone',
+  'camera',
+  'sun',
+  'pile',
+  'road',
+  'plant',
+  'tank',
+] as const satisfies readonly IconName[];
+
+/** `name` when it is an icon this build can draw (a newer build may have saved another). */
+export function dateIcon(name: string | undefined): IconName | undefined {
+  return name !== undefined && Object.hasOwn(ICONS, name) ? (name as IconName) : undefined;
+}
+
+/**
+ * The name a person gave a survey date, shown beside its date: `Capture.label`, unless it only
+ * repeats the date (the ISO date or the way the folder writes it).
+ */
+export function captureName(c: Capture, dateLabel: string): string | undefined {
+  return c.label !== dateLabel && c.label !== c.date ? c.label : undefined;
+}
+
+/**
+ * What to save as `Capture.label` for the name typed into a folder's rename field: the name, or
+ * the plain date when the field was emptied (the folder then shows its date alone).
+ */
+export function captureLabelFor(c: Pick<Capture, 'date'>, typed: string): string {
+  return typed.trim() || c.date;
+}
+
+/** The survey date a drop on `folder` files layers under: its capture, or null for Every date. */
+export function dropCapture(folder: Pick<DateFolder, 'capture'>): string | null {
+  return folder.capture?.id ?? null;
+}
 
 /** One sidebar folder: a survey date (or Every date) holding the usual kind groups. */
 export interface DateFolder {
@@ -40,11 +86,12 @@ export function buildDateTree(
     const groups =
       layers.length > 0 ? buildDatasetTree({ ...manifest, layers }, [], durations) : [];
     const label = labels.dateLabel(c);
+    const name = captureName(c, label);
     folders.push({
       id: c.id,
       capture: c,
       label,
-      ...(c.label !== label && c.label !== c.date ? { sub: c.label } : {}),
+      ...(name !== undefined ? { sub: name } : {}),
       groups,
       layerIds: treeLayerIds(groups),
     });

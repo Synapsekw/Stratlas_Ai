@@ -1115,6 +1115,104 @@ select.input option {
 .tree-nested {
   padding-inline-start: 14px;
 }
+/* a folder's icon, in the date's colour, where the colour square would be */
+.dfolder .dicon {
+  color: var(--dtag);
+  flex: none;
+}
+/* a folder's "more" button: its menu (rename, colour, icon) without a right-click */
+.dfolder-row > .dmore {
+  color: var(--fg-3);
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: var(--r-2);
+  opacity: 0;
+}
+.dfolder-row:hover > .dmore,
+.dfolder-row > .dmore:focus-visible {
+  opacity: 1;
+}
+.dfolder-row > .dmore:hover {
+  color: var(--fg-0);
+  background: var(--bg-3);
+}
+/* the name field of a folder being renamed */
+.dfolder .dname.editing {
+  cursor: default;
+}
+.dfolder .drename {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  padding: 0 6px;
+  font-size: var(--t-12);
+}
+/* dragging a dataset row onto a date folder: folders that take the drop, and the one under it */
+.dtree .titem[draggable='true'] {
+  -webkit-user-drag: element;
+}
+.dfolder.drop-can {
+  border-radius: var(--r-4);
+  outline: 1px dashed var(--fg-4);
+  outline-offset: -1px;
+}
+.dfolder.drop-over {
+  outline: 2px solid var(--dtag, var(--acc));
+  background: color-mix(in oklch, var(--dtag, var(--acc)) 14%, transparent);
+}
+/* Every date as a drop place while every dataset is dated: kept in view at the foot of the list */
+.dfolder-spare {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  background: var(--bg-chrome, var(--bg-1));
+}
+.dfolder-spare .dname {
+  cursor: default;
+}
+.dfolder-spare .dchev {
+  cursor: default;
+}
+/* what a drop on Every date could not do (a name that carries a date), or a failed save */
+.dtree-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0 6px 6px;
+  padding: 6px 8px;
+  border-radius: var(--r-4);
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  font-size: var(--t-12);
+  color: var(--fg-1);
+}
+.dtree-note.danger {
+  border-color: var(--danger-line);
+  background: var(--s5-a);
+}
+.dtree-note > span {
+  flex: 1;
+  min-width: 0;
+}
+.dtree-note > button {
+  all: unset;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: var(--r-2);
+  color: var(--fg-2);
+  cursor: pointer;
+}
+.dtree-note > button:hover,
+.dtree-note > button:focus-visible {
+  color: var(--fg-0);
+  background: var(--bg-3);
+}
 
 /* ---------- command palette ---------- */
 .cmdk-scrim {

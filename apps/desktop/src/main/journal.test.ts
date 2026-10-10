@@ -589,6 +589,7 @@ describe('journal service', () => {
     const writers: IpcChannel[] = [
       'project:writeCentreline',
       'builder:updateLayers',
+      'builder:updateCapture',
       'change:compute',
       'model:build',
     ];

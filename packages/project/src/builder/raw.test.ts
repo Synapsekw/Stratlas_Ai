@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createProject, updateLayers, writeManifestFile } from './create';
+import { createProject, updateCapture, updateLayers, writeManifestFile } from './create';
 import {
   NO_PIPELINE,
   importRawFiles,
@@ -681,5 +681,59 @@ describe('updateLayers', () => {
     const cleared = await updateLayers(root, ['mesh-m'], { capture: null });
     const after = cleared.manifest.layers.find((l) => l.id === 'mesh-m');
     expect(after && 'capture' in after).toBe(false);
+  });
+});
+
+describe('updateCapture', () => {
+  const dated = async () => {
+    const root = await project();
+    await writeFile(join(dir, 'm.glb'), glb());
+    await importRawFiles(root, [join(dir, 'm.glb')], deps());
+    const m = await readManifest(root);
+    await writeManifestFile(root, {
+      ...m,
+      captures: [
+        { id: 'c1', label: 'First survey', date: '2026-01-10' },
+        { id: 'c2', label: 'Second survey', date: '2026-02-10' },
+      ],
+    });
+    return root;
+  };
+
+  it('renames a survey date and leaves its date, the other dates and the layers alone', async () => {
+    const root = await dated();
+    const before = await readManifest(root);
+    const r = await updateCapture(root, 'c1', { label: '  Baseline  ' });
+    expect(r.backup).toMatch(/manifest\.json\.bak$/);
+    expect(r.manifest.captures).toEqual([
+      { id: 'c1', label: 'Baseline', date: '2026-01-10' },
+      { id: 'c2', label: 'Second survey', date: '2026-02-10' },
+    ]);
+    expect(r.manifest.layers).toEqual(before.layers);
+    expect((await readManifest(root)).captures[0]?.label).toBe('Baseline');
+  });
+
+  it('sets the colour and icon of a date and puts them back to automatic', async () => {
+    const root = await dated();
+    const set = await updateCapture(root, 'c2', { colour: 5, icon: 'flag' });
+    expect(set.manifest.captures[1]).toEqual({
+      id: 'c2',
+      label: 'Second survey',
+      date: '2026-02-10',
+      colour: 5,
+      icon: 'flag',
+    });
+    const reset = await updateCapture(root, 'c2', { colour: null, icon: null });
+    expect(reset.manifest.captures[1]).toEqual({
+      id: 'c2',
+      label: 'Second survey',
+      date: '2026-02-10',
+    });
+    expect((await readManifest(root)).captures[1]).toEqual(reset.manifest.captures[1]);
+  });
+
+  it('refuses a date the project does not have', async () => {
+    const root = await dated();
+    await expect(updateCapture(root, 'c9', { label: 'Nope' })).rejects.toThrow(/c9/);
   });
 });

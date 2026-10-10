@@ -6,6 +6,7 @@ import { JobEvent, JobId, JobLogLine, JobRecord, JobStartRequest, RuntimeInfo } 
 import {
   AltitudeChoice,
   AltitudePlan,
+  CapturePatch,
   ImportHeights,
   ImportItem,
   LayerPatch,
@@ -1328,6 +1329,24 @@ export const ipc = {
         projectId: z.string().min(1),
         layerIds: z.array(z.string().min(1)).min(1),
         patch: LayerPatch,
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), manifest: ProjectManifest, backup: z.string() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /**
+   * Rename a survey date (`Capture.label`) or set the colour and icon of its folder. Only the
+   * manifest's `captures` entry changes: no layer, no file and no date. Backed up and validated
+   * like `builder:updateLayers`.
+   */
+  'builder:updateCapture': {
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        captureId: z.string().min(1),
+        patch: CapturePatch,
       })
       .strict(),
     response: z.discriminatedUnion('ok', [

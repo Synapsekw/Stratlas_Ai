@@ -49,6 +49,7 @@ import {
   builderAltitudePlan,
   builderImport,
   builderTemplates,
+  builderUpdateCapture,
   builderUpdateLayers,
   createBuilderProject,
   photoGps,
@@ -1139,6 +1140,10 @@ function registerIpc(): void {
   handle(
     'builder:updateLayers',
     (req) => packageRefusal(req.projectId) ?? builderUpdateLayers(req, registry),
+  );
+  handle(
+    'builder:updateCapture',
+    (req) => packageRefusal(req.projectId) ?? builderUpdateCapture(req, registry),
   );
 
   handle('dialog:saveFile', (req) => {

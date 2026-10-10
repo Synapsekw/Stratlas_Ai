@@ -270,9 +270,11 @@ export {
   counterpart,
   dateSpellings,
   knownCapture,
+  planDateMove,
   scopedStore,
   type CaptureHints,
   type CaptureIndex,
+  type DateMove,
   type ScopedStore,
   type StoreScope,
 } from './captures';
@@ -292,5 +294,5 @@ export {
 } from './timeline';
 export type { ClipTiming, DatePref, VisibilityChange } from './timeline';
 
-export { DATE_COLOURS, dateTags } from './dateTags';
+export { DATE_COLOURS, autoDateColour, dateTags } from './dateTags';
 export type { DateTag } from './dateTags';

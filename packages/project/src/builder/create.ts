@@ -2,6 +2,7 @@ import {
   keepUnknownLayers,
   parseManifest,
   type CameraOrientation,
+  type CapturePatch,
   type LayerPatch,
   type NewProjectRequest,
   type ProjectManifest,
@@ -162,6 +163,34 @@ export async function updateLayers(
     return next;
   });
   const manifest: ProjectManifest = { ...m, layers };
+  const backup = await writeManifestFile(root, manifest);
+  return { manifest, backup };
+}
+
+/**
+ * Rename a survey date or set the colour and icon of its folder (`null` goes back to the automatic
+ * one) and save. Only the `captures` entry changes: the date, the layers and every file stay as
+ * they are. Backs up and validates the manifest first.
+ */
+export async function updateCapture(
+  root: string,
+  captureId: string,
+  patch: CapturePatch,
+): Promise<{ manifest: ProjectManifest; backup: string }> {
+  const m = await readManifestFile(root);
+  if (!m.captures.some((c) => c.id === captureId))
+    throw new Error(`Capture "${captureId}" is not in this project.`);
+  const captures = m.captures.map((c) => {
+    if (c.id !== captureId) return c;
+    const next = { ...c };
+    if (patch.label !== undefined) next.label = patch.label.trim();
+    if (patch.colour === null) delete next.colour;
+    else if (patch.colour !== undefined) next.colour = patch.colour;
+    if (patch.icon === null) delete next.icon;
+    else if (patch.icon !== undefined) next.icon = patch.icon;
+    return next;
+  });
+  const manifest: ProjectManifest = { ...m, captures };
   const backup = await writeManifestFile(root, manifest);
   return { manifest, backup };
 }

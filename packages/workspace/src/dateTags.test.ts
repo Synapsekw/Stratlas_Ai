@@ -33,4 +33,31 @@ describe('dateTags', () => {
     }));
     expect(dateTags(many).d8?.colour).toBe('var(--date-1)');
   });
+  it('a picked colour wins over the date order and leaves the other dates alone', () => {
+    const t = dateTags([
+      { id: 'sep', date: '2024-09-04' },
+      { id: 'oct', date: '2024-10-02', colour: 7, icon: 'flag' },
+      { id: 'nov', date: '2024-11-06' },
+    ]);
+    expect(t.oct).toMatchObject({
+      colour: 'var(--date-7)',
+      colourIndex: 7,
+      picked: true,
+      icon: 'flag',
+    });
+    expect(t.sep).toMatchObject({ colour: 'var(--date-1)', colourIndex: 1 });
+    expect(t.sep?.picked).toBeUndefined();
+    expect(t.sep?.icon).toBeUndefined();
+    // the order keeps counting every date, so November keeps the colour it had
+    expect(t.nov?.colour).toBe('var(--date-3)');
+  });
+  it('ignores a colour outside the palette', () => {
+    const t = dateTags([
+      { id: 'a', date: '2024-09-04', colour: 12 },
+      { id: 'b', date: '2024-10-02', colour: 0 },
+    ]);
+    expect(t.a?.colour).toBe('var(--date-1)');
+    expect(t.a?.picked).toBeUndefined();
+    expect(t.b?.colour).toBe('var(--date-2)');
+  });
 });

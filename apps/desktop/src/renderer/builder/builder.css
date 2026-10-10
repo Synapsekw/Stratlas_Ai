@@ -722,6 +722,64 @@
   font-weight: 600;
   color: var(--acc);
 }
+/* the survey date folder's menu: a rule, then a row of colours and a grid of icons */
+.dmenu-sep {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--line);
+}
+.dmenu-row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  padding: 5px 8px;
+  color: var(--fg-2);
+}
+.dmenu-row > span {
+  line-height: 22px;
+}
+.dmenu-picks {
+  display: grid;
+  grid-template-columns: repeat(8, 22px);
+  gap: 2px;
+}
+.dmenu-pick {
+  all: unset;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-4);
+  color: var(--fg-1);
+  cursor: pointer;
+}
+.dmenu-pick:hover,
+.dmenu-pick:focus-visible {
+  background: var(--bg-3);
+  color: var(--fg-0);
+}
+.dmenu-pick:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
+}
+.dmenu-pick[aria-checked='true'] {
+  background: var(--bg-3);
+  box-shadow: inset 0 0 0 1px var(--fg-2);
+}
+.dmenu .sw {
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--sw);
+  justify-self: center;
+}
+.dmenu .sw.none {
+  background: transparent;
+  border: 1px solid var(--fg-3);
+}
 
 /* ---------- align camera to map: the bar next to the drone ---------- */
 .align-bar {

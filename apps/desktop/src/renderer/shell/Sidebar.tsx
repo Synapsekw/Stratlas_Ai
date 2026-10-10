@@ -1,10 +1,13 @@
+import { useAnnotateReadOnly } from '@aio/annotate';
 import {
   arrowFocus,
   ariaKeys,
   buildDatasetTree,
   buildDateTree,
+  captureLabelFor,
   DatasetTree,
   DateTree,
+  EVERY_DATE,
   formatDate,
   Icon,
   t,
@@ -12,6 +15,8 @@ import {
   useFocusTrap,
   useT,
   VisibilityEye,
+  type DateFolderMenuRequest,
+  type DateItemMenuRequest,
   type IconName,
   type MessageKey,
   type TreeItem,
@@ -31,6 +36,8 @@ import { useCaptureIndex } from '../workspace/compare';
 import { flightPathShown, toggleFlightPath } from '../workspace/flightPaths';
 import { updateFlightPaths, useFlightPathModel } from '../workspace/pathModel';
 import { timeline, useTimeline } from '../workspace/timeline';
+import { moveLayersToDate, updateCapture } from './dateFolders';
+import { DateFolderMenu, LayerDateMenu } from './DateMenus';
 
 interface NavDef {
   screen: Screen;
@@ -253,7 +260,61 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
         : [],
     [project, index, datesOn, issues, durations, t],
   );
+  // filing datasets under dates and naming the folders edits the manifest: not in a package,
+  // and not for a reviewer who may only look
+  const lookOnly = useAnnotateReadOnly();
+  const canEdit = !readOnly && !lookOnly;
+  const [folderMenu, setFolderMenu] = useState<DateFolderMenuRequest | null>(null);
+  const [itemMenu, setItemMenu] = useState<DateItemMenuRequest | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [note, setNote] = useState<{ text: string; danger: boolean } | null>(null);
+  // menus, the name field and the note belong to the project they were opened in
+  const projectId = project?.id;
+  const [notedFor, setNotedFor] = useState(projectId);
+  if (notedFor !== projectId) {
+    setNotedFor(projectId);
+    setFolderMenu(null);
+    setItemMenu(null);
+    setRenaming(null);
+    setNote(null);
+  }
   if (!project) return null;
+
+  const failed = (error: string | null) => {
+    setNote(error ? { text: error, danger: true } : null);
+  };
+
+  const onMove = (layerIds: string[], capture: string | null) => {
+    void moveLayersToDate(layerIds, capture).then(({ error, stays }) => {
+      if (error) {
+        failed(error);
+        return;
+      }
+      const kept = Object.entries(stays);
+      const [first] = kept;
+      if (!first) {
+        setNote(null);
+        return;
+      }
+      const manifest = workspace.getState().project?.manifest;
+      const name = manifest?.layers.find((l) => l.id === first[0])?.name ?? first[0];
+      const date = manifest?.captures.find((c) => c.id === first[1])?.date;
+      setNote({
+        text: t('tree.dates.move.stays', {
+          count: kept.length,
+          name,
+          date: date ? formatDate(date) : first[1],
+        }),
+        danger: false,
+      });
+    });
+  };
+
+  const onRename = (captureId: string, name: string) => {
+    const capture = project.manifest.captures.find((c) => c.id === captureId);
+    if (!capture) return;
+    void updateCapture(captureId, { label: captureLabelFor(capture, name) }).then(failed);
+  };
 
   const selectedId =
     selection && (selection.kind === 'layer' || selection.kind === 'clip')
@@ -320,6 +381,25 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           />
         </span>
       </div>
+      {datesOn && note && (
+        <p
+          className={`dtree-note${note.danger ? ' danger' : ''}`}
+          role={note.danger ? 'alert' : 'status'}
+          data-testid="date-note"
+        >
+          <span>{note.text}</span>
+          <button
+            type="button"
+            aria-label={t('tree.dates.dismiss')}
+            title={t('tree.dates.dismiss')}
+            onClick={() => {
+              setNote(null);
+            }}
+          >
+            <Icon name="x" size={12} />
+          </button>
+        </p>
+      )}
       {datesOn ? (
         <DateTree
           folders={folders}
@@ -336,6 +416,15 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           onSelect={onSelect}
           flightPath={flightPath}
           onLayerSettings={onLayerSettings}
+          onFolderMenu={setFolderMenu}
+          onMove={canEdit ? onMove : undefined}
+          onItemMenu={canEdit ? setItemMenu : undefined}
+          renaming={canEdit ? renaming : null}
+          onRenameStart={canEdit ? setRenaming : undefined}
+          onRename={onRename}
+          onRenameEnd={() => {
+            setRenaming(null);
+          }}
         />
       ) : (
         <DatasetTree
@@ -352,6 +441,39 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           onRailGroup={() => {
             void shell.getState().toggleSidebar();
           }}
+        />
+      )}
+      {datesOn && folderMenu && (
+        <DateFolderMenu
+          menu={folderMenu}
+          folder={folders.find((f) => f.id === folderMenu.folder.id) ?? folderMenu.folder}
+          tag={tags[folderMenu.folder.id]}
+          focused={folderMenu.folder.id === focus}
+          hidden={hidden}
+          canEdit={canEdit}
+          onClose={() => {
+            setFolderMenu(null);
+          }}
+          onFocus={(id) => {
+            timeline.getState().focusSurvey(id);
+          }}
+          onSetVisible={setVisible}
+          onRename={setRenaming}
+          onStyle={(id, patch) => {
+            void updateCapture(id, patch).then(failed);
+          }}
+        />
+      )}
+      {datesOn && canEdit && itemMenu && (
+        <LayerDateMenu
+          menu={itemMenu}
+          captures={project.manifest.captures}
+          tags={tags}
+          every={EVERY_DATE}
+          onClose={() => {
+            setItemMenu(null);
+          }}
+          onMove={onMove}
         />
       )}
     </div>

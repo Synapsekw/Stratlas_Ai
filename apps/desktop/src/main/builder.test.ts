@@ -3,7 +3,13 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { builderTemplates, builderUpdateLayers, createBuilderProject, photoGps } from './builder';
+import {
+  builderTemplates,
+  builderUpdateCapture,
+  builderUpdateLayers,
+  createBuilderProject,
+  photoGps,
+} from './builder';
 import { ProjectRegistry } from './project';
 import { sampleManifest, writeProject } from './testing';
 
@@ -66,5 +72,32 @@ describe('builder main handlers', () => {
       new ProjectRegistry(),
     );
     expect(r).toMatchObject({ ok: false });
+  });
+
+  it('renames and colours a survey date of an open project, and only that', async () => {
+    const dir = join(base, 'projects', 'dated');
+    const manifest = sampleManifest();
+    await writeProject(dir, manifest);
+    const registry = new ProjectRegistry();
+    const closed = await builderUpdateCapture(
+      { projectId: 'x', captureId: 'c1', patch: { label: 'Baseline' } },
+      registry,
+    );
+    expect(closed).toMatchObject({ ok: false });
+    const projectId = registry.register(dir);
+    const r = await builderUpdateCapture(
+      { projectId, captureId: 'c1', patch: { label: 'Baseline', colour: 4 } },
+      registry,
+    );
+    expect(r.ok && r.manifest.captures).toEqual([
+      { id: 'c1', label: 'Baseline', date: '2023-02-21', colour: 4 },
+      { id: 'c2', label: 'Resurvey', date: '2024-01-10' },
+    ]);
+    expect(r.ok && r.manifest.layers.map((l) => l.id)).toEqual(manifest.layers.map((l) => l.id));
+    const unknown = await builderUpdateCapture(
+      { projectId, captureId: 'nope', patch: { icon: 'flag' } },
+      registry,
+    );
+    expect(unknown).toMatchObject({ ok: false });
   });
 });
