@@ -21,6 +21,16 @@ Region downloads (Settings, Offline maps) need no external tool: the app extract
 
 Without a certificate the build is unsigned. Windows SmartScreen then shows "Windows protected your PC": choose **More info**, then **Run anyway**. That is expected for test builds.
 
+### A new version number for every build that is handed over
+
+Every installer build given to the founder or a tester gets its own version number (founder, 10 Oct 2026), and so does every pipeline pack whose Python changed since the last one handed over. Two builds with one number cannot be told apart in **About and updates** or in a bug report, and **Install update from file** takes only a newer version. A patch number is enough for a test build (0.11.0, then 0.11.1). Before building:
+
+- **The app:** `version` in `apps/desktop/package.json`. The installer file names, About, the update feed and the release notes read it.
+- **The pipeline pack:** `version` in `python/pyproject.toml`, then `uv lock` in `python/`. The pack's folder, archive name and manifest read it, and **Settings**, **Processing tools** offers a pack file that is newer than the one in use.
+- **The two rules between them stay as they are** unless one side really needs the other: `APP_RANGE` in `python/src/aio_pipelines/__init__.py` (the apps a pack works with) and `PHOTO_PACK` in `apps/desktop/src/main/photogrammetry.ts` (the oldest pack the app's photo processing takes). `apps/desktop/src/main/jobs/packVersions.test.ts` checks that this repository's app and pack accept each other.
+
+No `v*` tag and no GitHub Release while testing is internal.
+
 ## Commands
 
 | Command                               | Does                                                                  |
@@ -127,7 +137,7 @@ Design and failure handling: [ADR 0003](../architecture/adr/0003-updates-and-rol
 
 The pipeline pack (the Python processing tools, about 400 MB archived and 1.1 GB unpacked) is never in the installer (size budget, `tools/release/budgets.mjs`). It is built by `tools/pipeline-pack/build.mjs` and archived as `pipeline-pack-<version>-<arch>.tar.gz` (`win-x64`, `macos-arm64`, `macos-x64`), one top folder `pipeline-pack-<version>/` with `manifest.json`. Updating the app does not touch the pack, so **every hand-over of an installer carries the matching pack archive beside it** (the same folder, or the tester's Downloads), and the note that goes with a build says so.
 
-- **How a tester installs it:** Settings, Processing tools, Install or update from file. The app looks for `pipeline-pack-*-<arch>.tar.gz` beside the app, in Downloads and in `<data folder>/runtime/` (file names and the archive's manifest only) and offers the newest one that is newer than the pack in use ("Install version 0.5.0 found in Downloads"); otherwise the person picks the file. Nobody copies folders into `runtime` by hand any more.
+- **How a tester installs it:** Settings, Processing tools, Install or update from file. The app looks for `pipeline-pack-*-<arch>.tar.gz` beside the app, in Downloads and in `<data folder>/runtime/` (file names and the archive's manifest only) and offers the newest one that is newer than the pack in use ("Install version 0.5.1 found in Downloads"); otherwise the person picks the file. Nobody copies folders into `runtime` by hand any more.
 - **What main does** (`apps/desktop/src/main/jobs/packInstall.ts`): unpacks into a temporary folder inside `runtime` (same volume), refuses absolute paths, `..`, anything beside the one pack folder, links that lead out, devices, more than 250,000 entries or 6 GB; then checks the manifest (`aio.pipeline-pack/1`), the platform, `appRange` against this app, the Python, and every file's size and SHA-256 against `manifest.files`; only then renames the folder to `pipeline-pack-<version>`. A failure or a cancel leaves `runtime` as it was. A version already there is replaced only after the person says so. Older packs stay until the person removes them (to the Recycle Bin or Trash). No network.
 - **The pack is not signed.** `manifest.files` (written by the build) catches a damaged or cut-short archive, not a forged one: hand the archive over the same trusted way as the installer. The SHA-256 of the archive itself is printed by the release workflow (`pipeline pack`, step Archive).
 - **Wording for the note beside a build** (the `BUILT-FROM` text and the team kit are written by hand at hand-over, not by a tool in this repository): "After installing or updating the app, open Settings, Processing tools, click Install or update from file and pick `pipeline-pack-<version>-<arch>.tar.gz` (beside this note). Jobs then shows Processing tools `<version>`."

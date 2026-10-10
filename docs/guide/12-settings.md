@@ -30,8 +30,8 @@ The name recorded on your issues is now on **Identity and team**, with your init
 The processing tools build maps and models from your data: photo processing, survey jobs, point cloud conversion and **Suggest boundaries**. They run on this computer. They come as one file beside the installer, `pipeline-pack-<version>-<platform>.tar.gz` (the pipeline pack, about 400 MB). They are not part of the installer: updating {product} does not update them. After an update, install the file that came with the new version.
 
 1. **Settings**, **Processing tools**.
-2. Under **Install or update from file**, click **Choose file** and pick that file. When {product} finds a newer one in Downloads, in the app folder or in `runtime` in the data folder, it offers it instead: click **Install version 0.5.0 found in Downloads**.
-3. Wait for "Processing tools 0.5.0 are installed." **Jobs** shows the new version at once; there is no restart. **Cancel** stops the install and leaves everything as it was. If you came here from **Create maps from photos**, the message has a **Create maps from photos** button that takes you back to it.
+2. Under **Install or update from file**, click **Choose file** and pick that file. When {product} finds a newer one in Downloads, in the app folder or in `runtime` in the data folder, it offers it instead: click **Install version 0.5.1 found in Downloads**.
+3. Wait for "Processing tools 0.5.1 are installed." **Jobs** shows the new version at once; there is no restart. **Cancel** stops the install and leaves everything as it was. If you came here from **Create maps from photos**, the message has a **Create maps from photos** button that takes you back to it.
 
 **Status** says where you stand:
 
@@ -40,7 +40,7 @@ The processing tools build maps and models from your data: photo processing, sur
 - **Not made for this version of {product}**: the tools in the data folder are for another version of {product}.
 - **Not installed**: viewing, measuring, maps and reports work; jobs do not start.
 
-{product} checks the file before it uses it: it must hold the processing tools for this computer and this version, complete, with every file matching its checksum. A file that fails says why and changes nothing. A version that is already installed asks first: **Replace version 0.5.0** or **Keep it**. Nothing is downloaded.
+{product} checks the file before it uses it: it must hold the processing tools for this computer and this version, complete, with every file matching its checksum. A file that fails says why and changes nothing. A version that is already installed asks first: **Replace version 0.5.1** or **Keep it**. Nothing is downloaded.
 
 **Versions no longer in use** lists the older versions with their sizes. **Remove**, then **Move version 0.2.0 to the bin**, moves one to the bin of the computer (Recycle Bin on Windows, Trash on a Mac), where it can be restored. {product} never removes one on its own.
 
