@@ -122,6 +122,7 @@ import {
   useSiteBasemap,
   useSiteBasemapLayer,
 } from './siteBasemap';
+import { BasemapPicker } from './BasemapPicker';
 import { useSiteTiles } from './siteTiles';
 
 const MODES: { mode: StageMode; label: string; icon: IconName; keys: string }[] = [
@@ -668,7 +669,7 @@ export function Stage() {
   );
   useSiteBasemapLayer(engine, project, streetMap);
   // M10 G7: 3D Tiles, terrain and imagery around the site, the Satellite map
-  useSiteTiles(engine, project, maps[0]);
+  useSiteTiles(engine, project, maps[0], maps[1]);
 
   // Flight paths: all, the active clip's flight only, or none, and single hidden flights.
   const paths = useFlightPathModel();
@@ -847,6 +848,7 @@ export function Stage() {
                     : {})}
               />
             </div>
+            <BasemapPicker />
             {roadMap && <RoadLegend />}
             <ChangeLegends />
             {roadMap && <PciUnitCard />}

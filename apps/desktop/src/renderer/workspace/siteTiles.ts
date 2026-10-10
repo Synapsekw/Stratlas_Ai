@@ -6,14 +6,21 @@
  *   job finishes;
  * - terrain and imagery around the site (Settings, Map packs: off by default, offered from the
  *   Medium tier up), built from the installed packs;
- * - the Satellite basemap: the installed imagery packs under the streets on the main map, and the
- *   terrain packs as a hillshade (on by default when there are packs).
+ * - the Satellite basemap: the installed imagery packs under the streets on the project's maps,
+ *   and the terrain packs as a hillshade (on by default when there are packs). The map type
+ *   picker on the map, the Settings checkboxes and the command palette all write the choices
+ *   here; `basemap.ts` says what they mean for a site.
  *
  * The choices are remembered on this computer; terrain and imagery around the site are also
  * written to the Globe settings (`GlobeSettings.aroundSite`) once that channel is built (G6).
  */
 import type { EngineStage } from '@aio/engine';
-import { applyRasterPacks, installRasterProtocol, type MapController } from '@aio/maps';
+import {
+  installRasterProtocol,
+  setStreetOverlay,
+  syncRasterPacks,
+  type MapController,
+} from '@aio/maps';
 import type { AioBridge, ProjectManifest, RasterPackInfo, TilesetEntry } from '@aio/schema';
 import {
   attachTileset,
@@ -24,12 +31,20 @@ import {
   tilesetsToLoad,
   type TilesetHandle,
 } from '@aio/tiles';
-import { assetUrl } from '@aio/workspace';
-import { useEffect, useRef, useState } from 'react';
+import { assetUrl, useWorkspace } from '@aio/workspace';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { useGraphics } from '../graphics';
 import { TILESET_WRITERS } from '../jobs';
+import {
+  basemapModel,
+  groundModel,
+  siteLonLat,
+  type BasemapDraw,
+  type BasemapModel,
+  type GroundModel,
+} from './basemap';
 
 const KEY = 'stratlas.rasterPacks';
 
@@ -38,6 +53,10 @@ export interface RasterPrefs {
   satellite: boolean;
   /** Terrain packs as a hillshade on the map. */
   hillshade: boolean;
+  /** Streets and names over the imagery on the map (off: Satellite only). */
+  streets: boolean;
+  /** The one imagery pack the map draws, or null for the best available. */
+  imageryPack: string | null;
   /** Terrain and imagery around the site in 3D. */
   aroundTerrain: boolean;
   aroundImagery: boolean;
@@ -46,6 +65,8 @@ export interface RasterPrefs {
 const DEFAULTS: RasterPrefs = {
   satellite: true,
   hillshade: true,
+  streets: true,
+  imageryPack: null,
   aroundTerrain: false,
   aroundImagery: false,
 };
@@ -63,10 +84,13 @@ function readPrefs(): RasterPrefs {
     const v = JSON.parse(storage()?.getItem(KEY) ?? '{}') as Partial<
       Record<keyof RasterPrefs, unknown>
     >;
-    const pick = (k: keyof RasterPrefs) => (typeof v[k] === 'boolean' ? v[k] : DEFAULTS[k]);
+    type Flag = Exclude<keyof RasterPrefs, 'imageryPack'>;
+    const pick = (k: Flag) => (typeof v[k] === 'boolean' ? v[k] : DEFAULTS[k]);
     return {
       satellite: pick('satellite'),
       hillshade: pick('hillshade'),
+      streets: pick('streets'),
+      imageryPack: typeof v.imageryPack === 'string' && v.imageryPack ? v.imageryPack : null,
       aroundTerrain: pick('aroundTerrain'),
       aroundImagery: pick('aroundImagery'),
     };
@@ -150,6 +174,45 @@ async function saveAroundSite(p: RasterPrefs): Promise<void> {
 
 export function useRasterPacks<T>(selector: (s: RasterState) => T): T {
   return useStore(rasterPacks, selector);
+}
+
+/** Where the open project is on the Earth as a stable value ("lon,lat"), or null. */
+function useSiteKey(): string | null {
+  return useWorkspace((s) => siteLonLat(s.project?.manifest ?? null)?.join(',') ?? null);
+}
+
+function siteOf(key: string | null): readonly [number, number] | null {
+  if (key === null) return null;
+  const [lon, lat] = key.split(',').map(Number);
+  return lon !== undefined && lat !== undefined ? [lon, lat] : null;
+}
+
+/**
+ * The basemap of the open project's maps: what is chosen, what can be chosen and what the map
+ * draws. The same object until a choice, the packs or the project change.
+ */
+export function useBasemap(): BasemapModel {
+  const prefs = useRasterPacks((s) => s.prefs);
+  const imagery = useRasterPacks((s) => s.imagery);
+  const terrain = useRasterPacks((s) => s.terrain);
+  const site = useSiteKey();
+  return useMemo(
+    () => basemapModel(prefs, imagery, terrain, siteOf(site)),
+    [prefs, imagery, terrain, site],
+  );
+}
+
+/** What the 3D view can draw around the open project's site. */
+export function useGround(): GroundModel {
+  const tier = useGraphics((s) => s.tier);
+  const imagery = useRasterPacks((s) => s.imagery);
+  const terrain = useRasterPacks((s) => s.terrain);
+  const site = useSiteKey();
+  const offered = tilesBudget(tier).surroundings;
+  return useMemo(
+    () => groundModel(imagery, terrain, siteOf(site), offered),
+    [imagery, terrain, site, offered],
+  );
 }
 
 let listening = false;
@@ -276,58 +339,71 @@ export function useSiteSurroundings(stage: EngineStage | null, project: Project)
   }, [stage, manifest, wantTerrain, wantImagery, imagery, terrain]);
 }
 
-/** The Satellite basemap and hillshade on a map. */
-export function useSatelliteMap(map: MapController | null): void {
-  const prefs = useRasterPacks((s) => s.prefs);
-  const imagery = useRasterPacks((s) => s.imagery);
-  const terrain = useRasterPacks((s) => s.terrain);
+/** Maps whose streets over the imagery are hidden (Satellite only). */
+const streetsHidden = new WeakSet<object>();
+
+/**
+ * Keep a map's basemap at `draw`: the imagery packs, the hillshade and the streets over them.
+ * Only what differs is touched (`syncRasterPacks`), so switching the map type never empties the
+ * map and never moves its camera, and a pack that stays on screen keeps the tiles it has drawn.
+ */
+export function useSatelliteMap(map: MapController | null, draw: BasemapDraw): void {
+  // a map that has had packs on it: turning everything off must then take them away again
+  const touched = useRef<MapController | null>(null);
   useEffect(() => {
     if (!map) return;
-    const satellite = prefs.satellite && imagery.length > 0;
-    const hillshade = prefs.hillshade && terrain.length > 0;
-    if (!satellite && !hillshade) return;
-    let off: (() => void) | null = null;
+    const plain = !draw.satellite && !draw.hillshade && draw.streets;
+    if (plain && touched.current !== map) return;
+    touched.current = map;
     let live = true;
+    let done = false;
     const ml = map.map;
-    // Add the packs once the style takes sources (MapLibre refuses while it loads), and again
-    // after a new style replaced them.
+    // Apply once the style takes sources (MapLibre refuses while it loads), and again after a
+    // new style replaced them.
     const attempt = () => {
-      if (!live || off) return;
+      if (!live || done) return;
       try {
-        off = applyRasterPacks(ml, { imagery, terrain, satellite, hillshade });
+        syncRasterPacks(ml, draw);
+        // the streets are shown until hidden: only a map that hid them is told to show them
+        if (!draw.streets || streetsHidden.has(ml)) {
+          setStreetOverlay(ml, draw.streets);
+          if (draw.streets) streetsHidden.delete(ml);
+          else streetsHidden.add(ml);
+        }
       } catch {
         return; // not ready yet: the next style event tries again
       }
+      done = true;
       ml.off('styledata', attempt);
     };
-    const restyled = () => {
-      off = null;
+    const apply = () => {
+      done = false;
       ml.on('styledata', attempt);
       attempt();
+    };
+    const restyled = () => {
+      streetsHidden.delete(ml);
+      apply();
     };
     void installRasterProtocol().then(() => {
       if (!live) return;
       ml.on('style.load', restyled);
-      restyled();
+      apply();
     });
     return () => {
       live = false;
       ml.off('styledata', attempt);
       ml.off('style.load', restyled);
-      try {
-        off?.();
-      } catch {
-        // the map is already gone
-      }
     };
-  }, [map, prefs.satellite, prefs.hillshade, imagery, terrain]);
+  }, [map, draw]);
 }
 
-/** Everything G7 adds to the site view and its main map. */
+/** Everything G7 adds to the site view and its maps (the main one, a second when comparing). */
 export function useSiteTiles(
   stage: EngineStage | null,
   project: Project,
   map: MapController | null,
+  second: MapController | null = null,
 ): void {
   const rev = useRasterPacks((s) => s.rev);
   useEffect(() => {
@@ -336,5 +412,7 @@ export function useSiteTiles(
   }, []);
   useSiteTilesets(stage, project, rev);
   useSiteSurroundings(stage, project);
-  useSatelliteMap(map);
+  const { draw } = useBasemap();
+  useSatelliteMap(map, draw);
+  useSatelliteMap(second, draw);
 }

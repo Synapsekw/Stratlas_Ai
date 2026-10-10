@@ -814,7 +814,8 @@ const HEAD: Record<Page, { title: MessageKey; text: MessageKey }> = {
 export function SettingsScreen() {
   useT();
   const [picked, setPicked] = useState<Page>('ai');
-  // a page asked for from outside (the title bar's Download maps) holds until one is picked here
+  // a page asked for from outside (the title bar's Download maps, "Offline maps" of the map type
+  // picker) holds until one is picked here
   const asked = useShell((s) => s.settingsPage);
   const page = asked ?? picked;
   const error = useShell((s) => s.settingsError);

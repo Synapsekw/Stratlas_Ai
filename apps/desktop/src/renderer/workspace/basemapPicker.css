@@ -1,0 +1,189 @@
+/* The map type picker on the Map view (BasemapPicker.tsx): a chip under the map's zoom buttons
+   and its popover of map type cards. Like the stage toolbar it sits on the map and is dark in
+   every theme (data-surface="dark" on the anchor); the little map pictures keep the map's own
+   colours. */
+
+.bm-anchor {
+  position: absolute;
+  /* under the zoom buttons: their corner starts at 50px, 10px margin, two 29px buttons */
+  top: 126px;
+  right: 10px; /* physical: the map pane keeps left-to-right geometry */
+  z-index: 6;
+}
+/* in a split the zoom buttons sit below the pane chooser, and so does the chip */
+.stage-panes[data-mode='split'] .bm-anchor {
+  top: 168px;
+}
+/* open: over the legends and cards that share the map */
+.bm-anchor[data-open] {
+  z-index: 21;
+}
+
+.bm-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 3px 7px 3px 3px;
+  color: var(--fg-0);
+  font-size: var(--t-12);
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px var(--shadow);
+  transition:
+    border-color 120ms,
+    background-color 120ms;
+}
+.bm-chip:hover {
+  border-color: var(--line-strong);
+  background: var(--bg-1);
+}
+.bm-chip:active {
+  transform: translateY(0.5px);
+}
+.bm-chip[aria-expanded='true'] {
+  border-color: var(--acc-a40);
+  background: var(--bg-1);
+}
+.bm-chip .bm-swatch {
+  width: 38px;
+  height: 24px;
+  border-radius: var(--r-2);
+  box-shadow: 0 0 0 1px var(--line-strong);
+}
+.bm-swatch {
+  display: block;
+  flex: none;
+}
+
+.stage-pop.bm-pop {
+  width: 304px;
+  inset-inline-start: auto;
+  inset-inline-end: 0;
+  padding: 12px;
+}
+.bm-form {
+  gap: 12px;
+}
+.bm-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.bm-card {
+  display: grid;
+  gap: 6px;
+  padding: 3px 3px 4px;
+  border-radius: var(--r-6);
+  color: var(--fg-1);
+  font-size: var(--t-12);
+  text-align: center;
+  cursor: pointer;
+}
+.bm-pic {
+  position: relative;
+  display: block;
+  aspect-ratio: 88 / 56;
+  border-radius: var(--r-4);
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--line-strong);
+  transition: box-shadow 140ms var(--ease);
+}
+.bm-pic .bm-swatch {
+  width: 100%;
+  height: 100%;
+}
+.bm-card:not(:disabled):hover .bm-pic {
+  box-shadow: 0 0 0 2px var(--fg-3);
+}
+.bm-card:not(:disabled):hover {
+  color: var(--fg-0);
+}
+.bm-card:not(:disabled):active .bm-pic {
+  transform: scale(0.98);
+}
+.bm-card[aria-checked='true'] {
+  color: var(--fg-0);
+  font-weight: 600;
+}
+.bm-card[aria-checked='true'] .bm-pic,
+.bm-card[aria-checked='true']:hover .bm-pic {
+  box-shadow: 0 0 0 2px var(--acc);
+}
+.bm-card:focus-visible {
+  outline-offset: 2px;
+  border-radius: var(--r-6);
+}
+.bm-card:disabled {
+  color: var(--fg-3);
+  cursor: default;
+}
+.bm-card:disabled .bm-swatch {
+  opacity: 0.38;
+  filter: grayscale(1);
+}
+.bm-tick {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--acc);
+  color: var(--acc-ink);
+  box-shadow: 0 1px 3px oklch(0 0 0 / 0.45);
+}
+.bm-card-l {
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.bm-pack > span:first-child {
+  color: var(--fg-1);
+  min-width: 0;
+}
+.bm-pack > select.input {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+}
+/* the form's rows sit on a hairline, apart from the cards */
+.bm-form > .bm-pack,
+.bm-form > .bm-toggle {
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
+}
+.bm-form > .bm-pack + .bm-toggle {
+  padding-top: 0;
+  border-top: 0;
+}
+.bm-toggle:has(input:disabled) .pop-grow {
+  color: var(--fg-3);
+}
+.bm-note {
+  line-height: 1.5;
+}
+.bm-link {
+  color: var(--acc-strong);
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--acc-a40);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.bm-link:hover {
+  text-decoration-color: currentColor;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bm-chip,
+  .bm-pic {
+    transition: none;
+  }
+  .bm-chip:active,
+  .bm-card:not(:disabled):active .bm-pic {
+    transform: none;
+  }
+}

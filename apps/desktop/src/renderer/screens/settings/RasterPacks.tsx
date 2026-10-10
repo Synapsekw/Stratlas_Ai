@@ -6,8 +6,8 @@
  */
 import type { RasterPackInfo, TerrainDatum } from '@aio/schema';
 import { formatBytes, formatDate, Icon, t } from '@aio/ui';
-import { useEffect, useState } from 'react';
-import { bridge } from '../../shell';
+import { useEffect, useRef, useState } from 'react';
+import { bridge, shell, useShell } from '../../shell';
 import { listenForJobs, rasterPacks, useRasterPacks } from '../../workspace/siteTiles';
 
 type Kind = 'imagery' | 'terrain';
@@ -266,6 +266,17 @@ export function RasterPacks() {
     rasterPacks.getState().refresh();
   }, []);
 
+  // "Offline maps" in the map type picker asks for this block: bring it into view, focus on
+  // the first import button
+  const block = useRef<HTMLDivElement>(null);
+  const asked = useShell((s) => s.settingsFocus === 'raster-packs');
+  useEffect(() => {
+    if (!asked) return;
+    block.current?.scrollIntoView({ block: 'start' });
+    block.current?.querySelector<HTMLElement>('button')?.focus();
+    shell.getState().clearSettingsFocus();
+  }, [asked]);
+
   // the import's job: its end clears the note (the list refreshes), a failure shows why
   useEffect(() => {
     const aio = window.aio as typeof window.aio | undefined;
@@ -307,7 +318,7 @@ export function RasterPacks() {
   const all = [...imagery, ...terrain];
 
   return (
-    <div className="sblock" data-testid="raster-packs">
+    <div className="sblock" data-testid="raster-packs" ref={block}>
       <h2>
         {t('g7.packs.title')}{' '}
         <span className="sub">
