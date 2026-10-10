@@ -120,6 +120,15 @@ export function Palette() {
         s.setExportFor(project.id);
       });
     }
+    // the title bar's connection switch (Settings, Privacy and cloud: Offline-only workstation)
+    list.push({
+      id: 'connection',
+      title: t(offlineOnly ? 'connection.goOnline' : 'connection.workOffline'),
+      group: 'Actions',
+      icon: offlineOnly ? 'globe' : 'offline',
+      keywords: ['connection', 'network', 'internet', 'online', 'offline', 'download maps'],
+      run: () => void s.updateSettings({ offlineOnly: !offlineOnly }),
+    });
     if (offlineOnly) {
       // the switch would change nothing while the workstation is offline-only: say so instead
       action('cloud', 'Cloud AI is off: this workstation is offline-only', 'agent', () => {

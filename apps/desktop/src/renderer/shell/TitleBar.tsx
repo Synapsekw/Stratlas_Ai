@@ -2,12 +2,12 @@ import { brand } from '@aio/brand';
 import { ariaKeys, formatDate, Icon, shortcutHint, t, useT, type MessageKey } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { Fragment } from 'react';
-import { cloudAiBlocked } from '../player';
 import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
 import { help } from '../help/store';
 import { SyncStatus } from '../team/SyncStatus';
 import { BrandSymbol, BrandWordmark } from './BrandMark';
+import { ConnectionStatus } from './ConnectionStatus';
 
 const VIEW_LABEL: Record<Screen, MessageKey> = {
   projects: 'nav.projects',
@@ -26,12 +26,8 @@ const VIEW_LABEL: Record<Screen, MessageKey> = {
 export function TitleBar() {
   useT();
   const screen = useShell((s) => s.screen);
-  const cloudSetting = useShell((s) => s.settings.cloudAi);
   const pkg = useShell((s) => s.pkg);
   const origin = useShell((s) => s.origin);
-  const offlineOnly = useShell((s) => s.settings.offlineOnly === true);
-  const blocked = cloudAiBlocked(pkg);
-  const cloudAi = cloudSetting && !blocked && !offlineOnly;
   const manifest = useWorkspace((s) => s.project?.manifest);
 
   const crumbs: string[] =
@@ -117,36 +113,7 @@ export function TitleBar() {
           </span>
         )}
         <SyncStatus />
-        <span className="chip-status" title={t('titlebar.offlineTip')}>
-          <Icon name="offline" size={14} />
-          {t('titlebar.offline')}
-        </span>
-        <button
-          type="button"
-          className="chip-status"
-          title={t(
-            offlineOnly
-              ? 'titlebar.cloudOfflineTip'
-              : blocked
-                ? 'titlebar.cloudBlockedTip'
-                : cloudAi
-                  ? 'titlebar.cloudOnTip'
-                  : 'titlebar.cloudOffTip',
-          )}
-          onClick={() => {
-            shell.getState().go('settings');
-          }}
-          data-testid="cloud-chip"
-        >
-          <span className={cloudAi ? 'dot' : 'dot off'} />
-          {t(
-            (blocked || offlineOnly) && cloudSetting
-              ? 'titlebar.cloudBlocked'
-              : cloudAi
-                ? 'titlebar.cloudOn'
-                : 'titlebar.cloudOff',
-          )}
-        </button>
+        <ConnectionStatus store={shell} />
       </div>
     </header>
   );

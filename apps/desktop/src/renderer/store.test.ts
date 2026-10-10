@@ -174,6 +174,25 @@ describe('shell store', () => {
     expect(s.getState().settingsFocus).toBeNull();
   });
 
+  it('opens Settings on a page asked for from outside, until a page is picked or Settings is left', () => {
+    const s = createShellStore(fakeBridge({}).bridge, createWorkspace());
+    expect(s.getState().settingsPage).toBeNull();
+    s.getState().openSettingsPage('maps');
+    expect(s.getState()).toMatchObject({ screen: 'settings', settingsPage: 'maps' });
+    // the Settings entry of the sidebar while it is open keeps the page
+    s.getState().go('settings');
+    expect(s.getState().settingsPage).toBe('maps');
+    s.getState().clearSettingsPage();
+    expect(s.getState().settingsPage).toBeNull();
+    s.getState().openSettingsPage('privacy');
+    s.getState().go('projects');
+    expect(s.getState().settingsPage).toBeNull();
+    // a field to focus lives on AI providers
+    s.getState().openSettingsPage('maps');
+    s.getState().openSettings('anthropic-workspace');
+    expect(s.getState().settingsPage).toBe('ai');
+  });
+
   it('toggles the sidebar optimistically and persists it', async () => {
     const { bridge, calls } = fakeBridge({
       'settings:set': (req) => ({ ...DEFAULT_SETTINGS, ...(req as Partial<Settings>) }),

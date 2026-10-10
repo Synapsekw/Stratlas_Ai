@@ -108,6 +108,7 @@ test('open a project, drive the shell and keep the sidebar state', async () => {
     await expect(win.getByRole('heading', { name: 'AI providers' })).toBeVisible();
     await expect(win.getByLabel('Anthropic API key')).toHaveAttribute('type', 'password');
     await expect(win.getByLabel('Provider for Agent chat')).toBeVisible();
+    await expect(win.getByTestId('connection-chip')).toHaveText('Online');
     await expect(win.getByTestId('cloud-chip')).toHaveText('Cloud AI off');
 
     expect(run.outbound).toEqual([]);

@@ -36,15 +36,27 @@ To add your own project, copy its folder into `projects` in the data folder, or 
 
 > The data folder is `Documents\{product} Data` unless you pick another. It holds `projects`, `packs` (offline maps) and `runtime` (the pipeline pack for building projects).
 
-## Check that you are offline
+## Online or offline only
 
-The title bar always shows **Offline**: {product} works with no network. The app goes online only when you start one of these:
+{product} works with no network. The title bar shows the mode this workstation is in, and the cloud AI chip next to it shows what that leaves of cloud AI.
 
-- a map region download ([Maps and offline packs](06-maps.md)),
-- an online update check (off by default),
-- cloud AI, when you switch it on ([AI agent](07-ai-agent.md)).
+- **Online** (the default): nothing goes online on its own. The app uses the network only for what you turn on or start:
+  - a map region download ([Maps and offline packs](06-maps.md)),
+  - an online update check (off by default),
+  - cloud AI, when you switch it on ([AI agent](07-ai-agent.md)),
+  - a team server connection ([Team server](26-team-server.md)).
+- **Offline only**: the workstation makes no network connections. All four are off, and the cloud AI chip reads **Cloud AI off** or **Cloud AI blocked**, never **Cloud AI**. A local model on this computer still works.
 
-To rule all three out, switch on **Offline-only workstation** in **Settings**, **Privacy and cloud**. A local model on this computer still works.
+To change the mode:
+
+1. Click **Online** or **Offline only** in the title bar. **Connection** opens.
+2. Click the switch between **Offline only** and **Online**. The change is saved at once and kept when you start {product} again.
+
+In **Connection**, **Download maps** opens **Settings**, **Offline maps** (it reads "Go online first" in **Offline only**), and **Cloud AI** shows **On**, **Off** or **Blocked** and opens **Settings**, **Privacy and cloud**. With **Online** chosen and no network on the computer, it says "This computer has no network connection right now."
+
+The same switch is **Offline-only workstation** in **Settings**, **Privacy and cloud**. **Ctrl K**, **Go online** or **Work offline only** does the same.
+
+The chip shows the mode you chose, not the cable: it stays **Online** when the Wi-Fi is off.
 
 ## Get help
 

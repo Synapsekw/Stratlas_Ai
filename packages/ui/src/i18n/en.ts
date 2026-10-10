@@ -29,17 +29,21 @@ export const en = {
   'titlebar.location': 'Location',
   'titlebar.project': 'Project',
   'titlebar.search': 'Search projects, layers, issues',
-  'titlebar.offline': 'Offline',
-  'titlebar.offlineTip': 'Runs with no network. Projects, maps and models are local.',
+  'titlebar.online': 'Online',
+  'titlebar.offlineOnly': 'Offline only',
+  'titlebar.onlineTip':
+    'Online: this workstation may use the network for what you turn on or start. Click to change.',
+  'titlebar.offlineOnlyTip':
+    'Offline only: this workstation makes no network connections. Click to change.',
   'titlebar.cloudOn': 'Cloud AI',
   'titlebar.cloudOff': 'Cloud AI off',
-  'titlebar.cloudOnTip': 'Cloud AI is allowed. Change in Settings.',
-  'titlebar.cloudOffTip': 'Cloud AI is off. Change in Settings.',
+  'titlebar.cloudOnTip': 'Cloud AI is allowed. Change in Settings, Privacy and cloud.',
+  'titlebar.cloudOffTip': 'Cloud AI is off. Change in Settings, Privacy and cloud.',
   'titlebar.cloudBlocked': 'Cloud AI blocked',
   'titlebar.cloudBlockedTip':
     'This package does not allow cloud AI. Nothing is sent to any provider.',
   'titlebar.cloudOfflineTip':
-    'Cloud AI is off because this workstation is offline-only. Change in Settings, Privacy and cloud.',
+    'Cloud AI is off because this workstation is offline-only. Go online from the title bar to use it.',
   'titlebar.readOnlyPackage': 'Read-only package',
   'titlebar.package': 'Package',
   'titlebar.readOnlyPackageTip': 'Opened from {file}. Nothing in this package can be changed.',
@@ -47,6 +51,25 @@ export const en = {
   'titlebar.copyOf': 'Copy of {file}',
   'titlebar.copyOfTip':
     'Extracted from the package {file} (exported {exported}) on {extracted}. Changes here stay in this project; the package is unchanged.',
+
+  // The connection menu of the title bar (shell/ConnectionStatus.tsx)
+  'connection.title': 'Connection',
+  'connection.chip': 'Connection: {mode}',
+  'connection.switch': 'Online',
+  'connection.onlineText':
+    'You can download maps, use cloud AI when it is turned on, connect to a team server and check for updates. Each stays off until you turn it on or start it.',
+  'connection.offlineText':
+    'This workstation makes no network connections: nothing is sent and nothing is downloaded. Go online to download maps, use cloud AI, connect to a team server or check for updates.',
+  'connection.noNetwork': 'This computer has no network connection right now.',
+  'connection.maps': 'Download maps',
+  'connection.mapsHint': 'Settings, Offline maps',
+  'connection.mapsOffline': 'Go online first',
+  'connection.cloud': 'Cloud AI',
+  'connection.on': 'On',
+  'connection.off': 'Off',
+  'connection.blocked': 'Blocked',
+  'connection.goOnline': 'Go online',
+  'connection.workOffline': 'Work offline only',
 
   // Launch screen (renderer gate/): before the workspace on every start
   'gate.region': 'Open {product}',
@@ -57,6 +80,7 @@ export const en = {
   'gate.enter': 'Enter',
   'gate.local': 'stays on this machine',
   'gate.cloudOn': 'cloud AI on',
+  'gate.cloudOff': 'cloud AI off',
   'gate.skip': 'Skip intro',
 
   // Packages: extract to edit, map regions

@@ -8,6 +8,8 @@ Click **Settings** at the bottom of the sidebar. The pages are grouped:
 
 The **?** at the top right of each page opens its section of this guide.
 
+Two title bar chips open a page directly: the mode chip (**Online** or **Offline only**) has **Download maps**, which opens **Offline maps**, and the cloud AI chip opens **Privacy and cloud**. See [Online or offline only](01-install.md#online-or-offline-only).
+
 ## Data folder
 
 The data folder holds `projects`, `packs` (offline maps) and `runtime` (the pipeline pack).

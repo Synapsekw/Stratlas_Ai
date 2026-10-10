@@ -22,7 +22,7 @@ Only what still needs testing. Each stage lists what to click and what you shoul
 ### Data
 
 - Projects, map packs and the pipeline pack live in `E:\Stratlas Data` (`projects`, `packs`, `runtime`). Change it in **Settings, Data folder**.
-- Everything runs offline; the title bar shows **Offline**. The app goes online only when you start a map region download or use cloud AI.
+- Everything runs offline. The title bar shows the mode, **Online** or **Offline only**; click it to change. In **Online** the app goes online only when you start a map region download, use cloud AI, connect to a team server or check for updates. In **Offline only** it never does.
 
 ### Reporting
 
@@ -709,7 +709,7 @@ Most steps use four synthetic demo projects that you generate on this PC. The la
 - [ ] Build the demos: in a terminal in `E:\Dev\AIO Software`, run `pnpm demo:survey --out "E:\Stratlas Data\survey-demos"`. It ends with "written to ..." and four folders: `demo-survey-earthworks`, `demo-survey-quarry`, `demo-survey-landfill` and `demo-survey-analytic`. Each folder holds a `README.txt` and a `truth.json` with the exact volumes, areas, grades, checkpoints and calibration of every survey.
 - [ ] **Projects**, **Add project folder**, once for each of the four folders: the cards **Earthworks demo**, **Quarry demo**, **Landfill demo** and **Survey analytic demo** appear.
 - [ ] Make a synthetic geoid grid and a CSV of calibration point pairs: in a terminal in `E:\Dev\AIO Software\python\tests`, run `..\.venv\Scripts\python -c "from pathlib import Path; from survey_synth import write_geoid_grid, site_calibration, FIXTURE_CRS; o = Path(r'E:\Stratlas Data\survey-demos'); write_geoid_grid(o / 'synthetic-geoid.tif', FIXTURE_CRS['utm39n'].lonlat); c = site_calibration(); (o / 'site-pairs.csv').write_text('name,grid N,grid E,grid Z,local N,local E,local Z,H,V\n' + ''.join(','.join([p['name'], *map(repr, p['grid']), *map(repr, p['local']), '1', '1']) + '\n' for p in c['pairs'])); print(round(c['rmsH'] * 1000, 1), round(c['rmsV'] * 1000, 1))"`. It prints the two RMS values in mm (8.3 and 4.9) and writes `synthetic-geoid.tif` and `site-pairs.csv` beside the demos.
-- [ ] Turn Wi-Fi off. The title bar shows **Offline**, and it stays that way through every step below.
+- [ ] Turn Wi-Fi off. Every step below works without it. The title bar keeps showing the mode you chose (**Online** or **Offline only**), not the Wi-Fi.
 - Where things are: on the stage toolbar, the **Survey measurements** popover (in the 3D view next to **Measure a distance** and **Section plane**; on the map it is the only measure button). Its first group, **Site data**, holds **Designs**, **Survey QA and cleanup**, **Terrain overlays**, **Hydrology**, **Haul road** and **Export survey data**. Below are the tool families **Point**, **Line**, **Polygon** and **Markup**, the bookmarked templates, **Drawing aids**, and the buttons **Measurements**, **Templates**, **Units**, **Materials** and **Whole site cut and fill**. There is no separate Select tool: **Esc** returns to selecting.
 - The demos' surfaces are prepared on first use: where a panel says "No survey surface is prepared yet", click **Prepare surfaces** (or **Prepare the DSMs**) and wait for the job.
 
@@ -886,7 +886,7 @@ Needs a build with G12 (`m11/g12-ai` or later) and a pipeline pack 0.5.0 built f
 - [ ] **Volume** instead of **Area**, **Suggest boundaries**, a click on a pile, **Enter**: the volume computes on the accepted outline.
 - [ ] Hide the orthomosaic layer and click with **Suggest boundaries** on: "No ortho is shown here. Show an ortho layer of this survey, then click again."
 - [ ] **Whole site cut and fill** (31 January to 31 March), tick two suggested regions, **Snap to ortho edges**: the note says how many of the ticked regions follow the edge in the ortho, and why any other stayed as it was; snapped ones read "(snapped to the ortho)". **Keep** them.
-- [ ] Wi-Fi is still off and the title bar still shows **Offline**.
+- [ ] Wi-Fi is still off, and every step above worked without it.
 - [ ] Optional, with an older pipeline pack (no `models\sam`): **Suggest boundaries** says "This pipeline pack has no boundary model. Update the pipeline pack to use Suggest boundaries."
 - [ ] **Detections**, a box on a photo, **Outline** in its details (key **M**): the same model outlines the object in the box.
 - [ ] On one of your own orthos: click three piles and one pit. Note for each whether the draft is on the toe, and send me the ones that are not (a screenshot is enough).

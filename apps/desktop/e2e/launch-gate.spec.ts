@@ -88,7 +88,8 @@ test.describe('with QUADRION_SHOW_GATE=1', () => {
     await expect(win.getByTestId('launch-gate-org')).toHaveText(
       'Synapse Solutions · this computer',
     );
-    await expect(panel).toContainText(/Offline\s*·\s*stays on this machine/);
+    // the same words as the title bar chips: the mode, then what it leaves of cloud AI
+    await expect(panel).toContainText(/Online\s*·\s*cloud AI off/);
     await expect(win.locator('.qg-clock')).toContainText(/\d\d:\d\d:\d\d/);
     await expect(win.getByRole('img', { name: 'Quadrion AI' }).first()).toBeVisible();
 

@@ -46,10 +46,30 @@ export const DEFAULT_SETTINGS: Settings = {
 /** A Settings field to focus when Settings opens (the agent panel's "Open AI settings"). */
 export type SettingsFocus = 'anthropic-workspace';
 
+/** The pages of the Settings screen. */
+export type SettingsPage =
+  | 'ai'
+  | 'usage'
+  | 'privacy'
+  | 'identity'
+  | 'data'
+  | 'maps'
+  | 'severity'
+  | 'branding'
+  | 'graphics'
+  | 'appearance'
+  | 'keyboard'
+  | 'about';
+
 export interface ShellState {
   screen: Screen;
   /** Focus this field when Settings opens; cleared once focused. */
   settingsFocus: SettingsFocus | null;
+  /**
+   * The Settings page something outside Settings asked for (the title bar's Download maps); null
+   * once the person picks a page there or leaves Settings, which opens on AI providers.
+   */
+  settingsPage: SettingsPage | null;
   settings: Settings;
   settingsError: string | null;
   /** null until the first library:list answer. */
@@ -92,6 +112,10 @@ export interface ShellActions {
   /** Open Settings (AI providers) and focus a field there. */
   openSettings: (focus?: SettingsFocus) => void;
   clearSettingsFocus: () => void;
+  /** Open Settings on this page. */
+  openSettingsPage: (page: SettingsPage) => void;
+  /** The person picked a page in Settings: the page asked for from outside no longer holds. */
+  clearSettingsPage: () => void;
   loadLibrary: () => Promise<void>;
   updateSettings: (patch: Partial<Settings>) => Promise<string | null>;
   /**
@@ -151,6 +175,7 @@ export function createShellStore(
   return createStore<Shell>()((set, get) => ({
     screen: 'projects',
     settingsFocus: null,
+    settingsPage: null,
     settings: DEFAULT_SETTINGS,
     settingsError: null,
     library: null,
@@ -180,11 +205,20 @@ export function createShellStore(
     },
 
     go: (screen) => {
-      set({ screen });
+      // leaving Settings forgets the page asked for: it opens on AI providers next time
+      set(screen === 'settings' ? { screen } : { screen, settingsPage: null });
     },
 
     openSettings: (focus) => {
-      set({ screen: 'settings', settingsFocus: focus ?? null });
+      set({ screen: 'settings', settingsFocus: focus ?? null, settingsPage: focus ? 'ai' : null });
+    },
+
+    openSettingsPage: (page) => {
+      set({ screen: 'settings', settingsPage: page });
+    },
+
+    clearSettingsPage: () => {
+      if (get().settingsPage) set({ settingsPage: null });
     },
 
     clearSettingsFocus: () => {
