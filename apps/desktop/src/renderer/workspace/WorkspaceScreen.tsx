@@ -17,10 +17,11 @@ import { jumpToKeyframe, moveKeyframe, timelineKeys } from '../builder/alignSess
 import { IssueCard } from '../issueCard/IssueCard';
 import { useCardFocusSeq } from '../issueCard/state';
 import { useMedia } from '../media';
+import { PANEL_ID, PanelHandle } from '../shell/PanelHandle';
 import { selectClip } from '../shell/Sidebar';
 import { cloudAiBlocked } from '../player';
 import { useModeller } from '../modeller';
-import { useShell } from '../shell';
+import { shell, useShell } from '../shell';
 import { ChainageRuler } from '../road/ChainageRuler';
 import { RoadPanel } from '../road/RoadPanel';
 import { RoadSetupCard } from '../road/RoadSetup';
@@ -277,8 +278,15 @@ export function WorkspaceScreen() {
       <div className="tl-wrap">
         {road ? <ChainageRuler /> : timeline ? <WorkspaceTimeline /> : <TimelineBar />}
       </div>
+      <PanelHandle
+        side="right"
+        collapsed={rightCollapsed}
+        shortcut="global.rightPanel"
+        onToggle={shell.getState().toggleRight}
+      />
       <aside
         className="right"
+        id={PANEL_ID.right}
         aria-label="Context"
         aria-hidden={rightCollapsed}
         inert={rightCollapsed}

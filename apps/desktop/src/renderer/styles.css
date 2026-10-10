@@ -1,6 +1,10 @@
 /* Quadrion AI shell: frame, title bar, sidebar and screens. Components live in @aio/ui/mission.css. */
 :root {
   --rp-w: 360px;
+  /* folding a side panel away and back: short and ease-out, so the views settle at once */
+  --panel-ms: 180ms;
+  /* the tab on a side panel's inner edge; the right panel folds to a strip this wide */
+  --ph-w: 12px;
 }
 
 .app {
@@ -130,7 +134,7 @@ code {
   gap: 10px;
   width: calc(var(--sb-w) - 14px);
   flex: none;
-  transition: width 240ms var(--ease-x);
+  transition: width var(--panel-ms) var(--ease);
 }
 .app[data-sb='collapsed'] .brand {
   width: calc(var(--sb-w-c) - 14px);
@@ -458,8 +462,12 @@ button.chip-status:hover {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow: hidden;
-  transition: width 240ms var(--ease-x);
+  /* clip, not hidden: the tool tips that wait beside the rows make the sidebar wider inside than
+     it shows, and nothing may scroll it sideways (bringing the tab on its edge into view did) */
+  overflow: clip;
+  transition:
+    width var(--panel-ms) var(--ease),
+    border-color 120ms var(--ease);
   position: relative;
   z-index: 20;
 }
@@ -576,7 +584,7 @@ button.chip-status:hover {
   min-height: 44px;
   transition:
     border-color 120ms,
-    padding 240ms var(--ease-x);
+    padding var(--panel-ms) var(--ease);
 }
 .proj-switch:hover {
   border-color: var(--line-strong);
@@ -620,6 +628,9 @@ button.chip-status:hover {
 .app[data-sb='collapsed'] .proj-switch .pt,
 .app[data-sb='collapsed'] .proj-switch > svg {
   opacity: 0;
+  /* they no longer fit in the rail and hang over the main view, unseen: they take no clicks
+     there (the chevron sat 7 to 21 px into the 3D view) */
+  pointer-events: none;
 }
 .proj-menu {
   position: absolute;
@@ -697,6 +708,131 @@ button.chip-status:hover {
   position: relative;
   min-width: 0;
   min-height: 0;
+}
+
+/* ---------- panel handles (shell/PanelHandle.tsx) ----------
+   One tab on the inner edge of each side panel, the same on both sides and mirrored, at
+   mid-height. It lies inside its panel, in the panel's own edge padding, and never over the main
+   view: a click or a drag anywhere on the 3D view, the map or a list, right up to their edge,
+   goes to them and not to a handle (a tab that reached into the view took the clicks meant for
+   the edge of the 3D view). */
+.ph {
+  position: absolute;
+  top: 50%;
+  width: var(--ph-w);
+  height: 56px;
+  margin-top: -28px;
+  display: flex;
+  align-items: center;
+  color: var(--fg-1);
+}
+/* Left: against the sidebar's border, from inside. It moves with the sidebar as it folds. */
+.ph[data-side='left'] {
+  inset-inline-end: 0;
+  z-index: 1; /* over the rows, under the sidebar's tool tips and menus */
+}
+/* Right: in the Scene's grid, in the panel's column (an absolutely placed grid item is laid out
+   in its grid area), after the panel's border. The panel itself is inert while folded, so the
+   handle is its sibling, not its child. */
+.ph[data-side='right'] {
+  grid-column: 2 / 3;
+  grid-row: 1 / -1;
+  inset-inline-start: 1px;
+  z-index: 19; /* over the panel, under menus and dialogs */
+}
+/* The right panel folds to a strip as wide as the tab: the whole strip brings it back. */
+.ph[data-side='right'][aria-expanded='false'] {
+  top: 0;
+  bottom: 0;
+  height: auto;
+  margin-top: 0;
+}
+.ph-tab {
+  width: 100%;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  background: var(--bg-2);
+  border: 1px solid var(--line-strong);
+  transition:
+    background-color 120ms var(--ease),
+    border-color 120ms var(--ease),
+    color 120ms var(--ease);
+}
+.ph[data-side='left'] .ph-tab {
+  border-inline-end: 0;
+  border-start-start-radius: 6px;
+  border-end-start-radius: 6px;
+}
+.ph[data-side='right'] .ph-tab {
+  border-inline-start: 0;
+  border-start-end-radius: 6px;
+  border-end-end-radius: 6px;
+}
+.ph:hover .ph-tab,
+.ph:focus-visible .ph-tab {
+  background: var(--bg-3);
+  border-color: var(--acc-a40);
+  color: var(--fg-0);
+}
+.ph:active .ph-tab {
+  background: var(--acc-a20);
+  border-color: var(--acc-a40);
+  color: var(--acc-strong);
+}
+/* the ring goes inside the tab: the sidebar clips what leaves it */
+.ph:focus-visible {
+  outline: none;
+}
+.ph:focus-visible .ph-tab {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
+}
+/* the edge the tab moves lights up while the pointer is on it */
+.sidebar:has(> .ph:hover) {
+  border-inline-end-color: var(--acc);
+}
+.ws:has(> .ph:hover) > .right {
+  border-inline-start-color: var(--acc);
+}
+.ws.right-off:has(> .ph:hover) > .right {
+  background: var(--bg-3);
+}
+/* the chevron points the way the edge will move: towards the panel to fold it, away to open it */
+.ph-chev {
+  transition: transform var(--panel-ms) var(--ease);
+}
+.ph[data-side='left'][aria-expanded='true'] .ph-chev,
+.ph[data-side='right'][aria-expanded='false'] .ph-chev {
+  transform: rotate(180deg);
+}
+[dir='rtl'] .ph-tab {
+  transform: scaleX(-1);
+}
+/* The tool tips open over the main view and take no clicks. The sidebar clips its content, so
+   the left one is placed on the window instead: beside the sidebar, at the tab's height. */
+.ph[data-side='left'] .tip {
+  position: fixed;
+  top: calc(var(--tb-h) + (100vh - var(--tb-h)) / 2);
+  inset-inline-start: calc(var(--sb-w) + 10px);
+}
+.app[data-sb='collapsed'] .ph[data-side='left'] .tip {
+  inset-inline-start: calc(var(--sb-w-c) + 10px);
+}
+.ph[data-side='right'] .tip {
+  inset-inline-start: auto;
+  inset-inline-end: calc(100% + 10px);
+  transform: translate(4px, -50%);
+}
+.ph:hover .tip,
+.ph:focus-visible .tip {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+@media (forced-colors: active) {
+  .ph-tab {
+    border-color: ButtonText;
+  }
 }
 .screen {
   position: absolute;
@@ -1143,10 +1279,11 @@ button.chip-status:hover {
   grid-template-columns: minmax(0, 1fr) var(--rp-w);
   grid-template-rows: auto minmax(0, 1fr) auto;
   grid-template-areas: 'dbar right' 'stage right' 'tl right';
-  transition: grid-template-columns 240ms var(--ease-x);
+  transition: grid-template-columns var(--panel-ms) var(--ease);
 }
 .ws.right-off {
-  grid-template-columns: minmax(0, 1fr) 0px;
+  /* the panel's border and the tab: the strip that brings the panel back */
+  grid-template-columns: minmax(0, 1fr) calc(var(--ph-w) + 1px);
 }
 .dbar {
   grid-area: dbar;
@@ -2009,9 +2146,17 @@ svg.flip {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+  transition:
+    border-color 120ms var(--ease),
+    background-color 120ms var(--ease);
 }
 .right > * {
   width: var(--rp-w);
+}
+/* folded to its strip, the panel shows nothing of its content (once it has finished folding) */
+.ws.right-off > .right > * {
+  visibility: hidden;
+  transition: visibility 0s linear var(--panel-ms);
 }
 .ctx-wrap {
   flex: none;

@@ -97,4 +97,4 @@ In the video window: **K** or **Space** pauses, **L** plays (press again for fas
 
 ## The right panel
 
-The right panel holds the **Selection** card, the **Issues** list (and **Volumes** on stockpile projects), and the AI agent at the bottom. **Ctrl Alt B** or the right-panel button folds it away.
+The right panel (the right sidebar) holds the **Selection** card, the **Issues** list (and **Volumes** on stockpile projects), and the AI agent at the bottom. The tab on its left edge, **Ctrl Alt B** or the right-panel button in the toolbar folds it away and brings it back; folded, the panel is a thin strip at the edge of the window, and a click on the strip opens it. The 3D view, the map and the video take the room. Picking an issue or clicking **Show changes** opens the panel again, because they show their result there; selecting a layer does not.
