@@ -384,6 +384,15 @@ describe('raster packs and globe settings', () => {
       GlobeSettings.safeParse({ schema: 'aio.globe-settings/1', terrainExaggeration: 9 }).success,
     ).toBe(false);
   });
+
+  it('globe settings carry the optional street map preferences for project places', () => {
+    // absent: tell the person, never download by itself (the reader fills the defaults)
+    expect(defaultGlobeSettings().projectMaps).toBeUndefined();
+    const on = { ...defaultGlobeSettings(), projectMaps: { offer: false, auto: true } };
+    expect(GlobeSettings.parse(on)).toEqual(on);
+    expect(GlobeSettings.safeParse({ ...on, projectMaps: {} }).success).toBe(true);
+    expect(GlobeSettings.safeParse({ ...on, projectMaps: { auto: 'yes' } }).success).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------- pipelines and channels

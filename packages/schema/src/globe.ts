@@ -145,6 +145,13 @@ export const GlobeSettings = z.looseObject({
   showIssues: z.boolean().optional(),
   /** Terrain and imagery around the site in the three.js site view (G7). */
   aroundSite: z.object({ terrain: z.boolean(), imagery: z.boolean() }).optional(),
+  /**
+   * Street maps for the places of the library's projects (Settings, Offline maps). `offer`
+   * (default true): say so when an opened project has no detailed street map. `auto` (default
+   * false): download the missing maps of a newly opened project without asking first. Nothing is
+   * downloaded on an offline-only workstation, whatever this says.
+   */
+  projectMaps: z.object({ offer: z.boolean().optional(), auto: z.boolean().optional() }).optional(),
 });
 
 export const defaultGlobeSettings = (): GlobeSettings => ({
