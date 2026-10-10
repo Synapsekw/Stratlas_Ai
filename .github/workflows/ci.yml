@@ -17,18 +17,93 @@ env:
   COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
 
 jobs:
-  # Lint, format, types and unit tests. The e2e suite runs beside it in its own jobs (below): one
-  # job doing both took 31 min on the Windows runner (lint 8, unit tests 3, e2e 14) and was
-  # cancelled at its 30 min limit (run 37582837137).
-  check:
-    name: check (${{ matrix.os }})
+  # A push to main is the fast-forward of a pull request that already ran this workflow on the very
+  # same commit, so the run on main repeated it (18 min each for rounds 20 and 21 of 10 Oct 2026).
+  # Such a push skips every job below. They run when the commit has no green pull request run into
+  # main, when that cannot be read, and always for a pull request or "Run workflow".
+  gate:
+    name: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - name: Has this commit passed as a pull request into main?
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # main only moves forward, so a pull request into main that main was later fast-forwarded
+        # to had main's commits already: the merge its run tested is the tree of this commit.
+        run: |
+          run=true
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            # the newest pull requests into main, open or closed: the list does not wait for GitHub
+            # to mark the one just fast-forwarded as merged
+            pull=$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=all&base=main&sort=updated&direction=desc&per_page=50" \
+              --jq "[.[] | select(.head.sha == \"$GITHUB_SHA\")][0].html_url // empty") || pull=
+            green=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&event=pull_request&status=success&per_page=1" \
+              --jq '.workflow_runs[0].html_url // empty') || green=
+            if [ -n "$pull" ] && [ -n "$green" ]; then
+              run=false
+              echo "Every job is skipped: this commit passed as $pull in $green." | tee -a "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+  # Lint, format and types give the same answer on every OS, so they run once, on Linux, in a job
+  # each. On the Windows runner they were 10 of the check job's 15 min (lint 495 s in 63 ESLint
+  # processes one after another, format 45 s, types 62 s; run 38047000052).
+  static:
+    name: ${{ matrix.task }}
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        task: [lint, 'format:check', typecheck]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # The runner has 4 cores and 16 GB; tools/lint.mjs would use half the cores.
+      QUADRION_LINT_JOBS: '4'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          # pnpm is enabled by corepack below; its store is cached explicitly.
+          package-manager-cache: false
+      - run: corepack enable
+      - name: Locate pnpm store
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+      # Scripts are not needed to read the sources (skips the Electron download).
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm ${{ matrix.task }}
+
+  # The unit tests, on both systems the product ships for. The e2e suite runs beside them in its
+  # own jobs (below): one job doing both took 31 min on the Windows runner (lint 8, unit tests 3,
+  # e2e 14) and was cancelled at its 30 min limit (run 37582837137).
+  unit:
+    name: unit tests (${{ matrix.os }})
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     strategy:
       fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    # about 15 min on Windows, 11 on macOS
-    timeout-minutes: 30
+    # the tests took 208 s on Windows and 153 s on macOS (run 38047000052), after about 80 s of set-up
+    timeout-minutes: 20
     defaults:
       run:
         shell: bash
@@ -85,22 +160,28 @@ jobs:
       # Electron fetches its binary lazily on first launch; parallel e2e workers would race.
       - name: Download Electron binary
         run: node node_modules/electron/install.js
-      - run: pnpm lint
-      - run: pnpm format:check
-      - run: pnpm typecheck
       - run: pnpm test
 
-  # The Playwright + Electron suite in two shards per OS, each on one worker (playwright.config.ts:
-  # several Electron windows with WebGL compete for the runner's software GPU). A shard is a
-  # contiguous half of the spec files by test count; on the Windows runner the halves took about
-  # 8.5 and 5 min of the 13.8 the whole suite took (run 37575692965), plus about 5 min of setup.
+  # The Playwright + Electron suite in shards, each on one worker (playwright.config.ts: several
+  # Electron windows with WebGL compete for the runner's software GPU). A shard is a contiguous
+  # run of the spec files by test count. In two shards per OS the tests alone took 11.7 to 12.5 min
+  # a shard (run 38047000052), so Windows has four. macOS has three: with the unit tests and the
+  # pipelines that is five macOS jobs at once, which is what the two-shard run already used.
   e2e:
-    name: e2e (${{ matrix.os }}, ${{ matrix.shard }}/2)
+    name: e2e (${{ matrix.os }}, ${{ matrix.shard }}/${{ matrix.of }})
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
-        shard: [1, 2]
+        include:
+          - { os: windows-latest, shard: 1, of: 4 }
+          - { os: windows-latest, shard: 2, of: 4 }
+          - { os: windows-latest, shard: 3, of: 4 }
+          - { os: windows-latest, shard: 4, of: 4 }
+          - { os: macos-latest, shard: 1, of: 3 }
+          - { os: macos-latest, shard: 2, of: 3 }
+          - { os: macos-latest, shard: 3, of: 3 }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     defaults:
@@ -108,6 +189,17 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v5
+
+      # The demo project took 96 to 129 s of every shard to build (run 38047000052). The build reads
+      # tools/demo, the workspace packages, the pipeline Python and the lockfiles, so the cache is
+      # keyed by all of them and has no restore-keys: never an older demo. This step stays above
+      # the installs, or the patterns would also match node_modules and the venv.
+      - name: Restore the demo project
+        id: demo
+        uses: actions/cache/restore@v4
+        with:
+          path: apps/desktop/demo
+          key: demo-quick-${{ runner.os }}-${{ hashFiles('tools/demo/**', 'packages/**', 'python/**', 'pnpm-lock.yaml') }}
 
       - uses: actions/setup-node@v5
         with:
@@ -181,14 +273,26 @@ jobs:
       # client data before anything is packaged; the first-start and guide-shots e2e open it.
       # It includes the photo processing demo (M10), rendered from the synthetic photo set.
       - name: Demo project (build and client data check)
+        if: steps.demo.outputs.cache-hit != 'true'
         run: pnpm demo:build --quick
+      # Saved here, not at the end of the job, so a failing test does not cost the next run the
+      # build. The shards of one OS save the same key at once; the first one wins.
+      - name: Save the demo project
+        if: steps.demo.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: apps/desktop/demo
+          key: ${{ steps.demo.outputs.cache-primary-key }}
+      - name: Demo project from the cache (client data check)
+        if: steps.demo.outputs.cache-hit == 'true'
+        run: pnpm demo:check
 
       # Built above; no retries, and a test reported flaky fails the run (playwright.config.ts).
       # photo-real.spec.ts stays opt-in (QUADRION_E2E_PHOTO_REAL=1): its marking script does not
       # fit the real alignment yet; the pipelines job runs the real engines instead.
-      - name: E2E (Playwright + Electron, zero-network guard, shard ${{ matrix.shard }}/2)
+      - name: E2E (Playwright + Electron, zero-network guard, shard ${{ matrix.shard }}/${{ matrix.of }})
         working-directory: apps/desktop
-        run: pnpm exec playwright test --shard=${{ matrix.shard }}/2
+        run: pnpm exec playwright test --shard=${{ matrix.shard }}/${{ matrix.of }}
 
       - name: Upload Playwright traces
         if: failure()
@@ -205,6 +309,8 @@ jobs:
   # Poisson and PDAL's COPC, SMRF and reprojection. Nothing is compiled.
   python:
     name: pipelines (${{ matrix.os }})
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -263,6 +369,8 @@ jobs:
   # Which parts of the tree a push or pull request changed, for the jobs that only run when theirs did.
   changes:
     name: changes
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -290,8 +398,10 @@ jobs:
   # extra tests here; the nightly and the release check the archive's budget.
   pack:
     name: pipeline pack (${{ matrix.os }})
-    needs: changes
-    if: needs.changes.outputs.pack == 'true' || github.event_name == 'workflow_dispatch'
+    needs: [gate, changes]
+    if: >-
+      needs.gate.outputs.run == 'true' &&
+      (needs.changes.outputs.pack == 'true' || github.event_name == 'workflow_dispatch')
     strategy:
       fail-fast: false
       matrix:
@@ -324,6 +434,8 @@ jobs:
 
   licenses:
     name: licence check
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -354,6 +466,8 @@ jobs:
   # M9 T7: the Team Server (preview) on a real Postgres. Linux only; no image is built or pushed.
   team-server:
     name: team server (postgres)
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:

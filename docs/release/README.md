@@ -125,10 +125,12 @@ Design and failure handling: [ADR 0003](../architecture/adr/0003-updates-and-rol
 
 ## Continuous integration
 
-`.github/workflows/ci.yml`, on every push to `main` and every pull request:
+`.github/workflows/ci.yml`, on every pull request, and on a push to `main` unless that commit already passed as a pull request into `main` (the **gate** job; "Run workflow" always runs everything):
 
-- **check** on `windows-latest` and `macos-latest`: install (pnpm store cached), `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm test`.
-- **e2e** on `windows-latest` and `macos-latest`, in two shards each (`playwright test --shard=1/2` and `2/2`, one worker, no retries, a flaky test fails), beside **check**: install, `pnpm -F @aio/desktop build`, the pipeline venv and the demo project, then the shard. On failure the Playwright output (traces included) is uploaded as `playwright-<os>-shard<n>`.
+- **gate** on Ubuntu: on a push to `main`, looks among the newest pull requests into `main` for one with this commit as its head, and for a green `ci` run of it. `main` is only fast-forwarded, so that run tested the same tree; every other job is then skipped and the run's summary links the run that counted. When the answer cannot be read, everything runs.
+- **lint**, **format:check** and **typecheck** on Ubuntu, a job each: they give the same answer on every OS. `pnpm lint` (`tools/lint.mjs`) runs its ESLint processes several at a time: `QUADRION_LINT_JOBS` sets how many (4 here), by default half the cores and at most 4.
+- **unit tests** on `windows-latest` and `macos-latest`: install (pnpm store cached), ffmpeg, `pnpm test`.
+- **e2e** on `windows-latest` in four shards and on `macos-latest` in three (`playwright test --shard=1/4` and so on; one worker, no retries, a flaky test fails), beside the other jobs: install, `pnpm -F @aio/desktop build`, the pipeline venv and the demo project, then the shard. The demo project is cached by everything its build reads (`tools/demo`, `packages`, `python` and `pnpm-lock.yaml`); a restored demo still gets the client data check (`pnpm demo:check`). macOS stays at three shards: GitHub runs at most five macOS jobs at once on plans below Enterprise, and the unit tests and the pipelines take the other two. On failure the Playwright output (traces included) is uploaded as `playwright-<os>-shard<n>`.
 - **licence check** on Ubuntu: `pnpm license:check` and the data report. Reports only since the founder decision of 8 Oct 2026: packages outside the permissive allow-list (MIT, MIT-0, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0, MPL-2.0, 0BSD, CC0-1.0, BlueOak-1.0.0, Unlicense) and any GPL or AGPL dependency show as warnings; the job never fails.
 - **pipelines** on `windows-latest` and `macos-latest`: `uv sync --frozen` (the prebuilt pycolmap, OpenCV and pymeshlab wheels), conda-forge's PDAL (`tools/pipeline-pack/pdal.mjs`), Ruff and the whole pytest suite on the real engines. No native build stage: `pack-native.yml` is gone.
 
