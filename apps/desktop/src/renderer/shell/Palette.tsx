@@ -27,6 +27,7 @@ import { updateFlightPaths } from '../workspace/pathModel';
 import { toggleTelemetry } from '../workspace/telemetryPref';
 import { timeline, useTimeline } from '../workspace/timeline';
 import { toggleTimeline } from '../workspace/timelinePref';
+import { panelHandleLabel } from './PanelHandle';
 import { selectClip } from './Sidebar';
 
 const LAYER_ICON: Record<Layer['kind'], IconName> = {
@@ -74,6 +75,8 @@ export function Palette() {
   const hidden = useWorkspace((s) => s.hidden);
   const playing = useWorkspace((s) => s.playing);
   const pkg = useShell((s) => s.pkg);
+  const leftCollapsed = useShell((s) => s.settings.sidebarCollapsed);
+  const rightCollapsed = useShell((s) => s.rightCollapsed);
   const surveys = useTimeline((s) => s.index);
 
   const commands = useMemo<PaletteCommand[]>(() => {
@@ -103,13 +106,16 @@ export function Palette() {
       },
       shortcutHint('global.help'),
     );
-    action(
-      'sidebar',
-      'Toggle sidebar',
-      'sidebar',
-      () => void s.toggleSidebar(),
-      shortcutHint('global.sidebar'),
-    );
+    // the same words as the tab on the panel's edge: what the command does next
+    list.push({
+      id: 'sidebar',
+      title: t(panelHandleLabel('left', leftCollapsed)),
+      group: 'Actions',
+      icon: 'sidebar',
+      keywords: ['toggle sidebar', 'hide sidebar', 'show sidebar', 'fold', 'navigation'],
+      hint: shortcutHint('global.sidebar'),
+      run: () => void s.toggleSidebar(),
+    });
     action('add-folder', 'Add project folder', 'import', () => void s.addProjectFolder());
     action('open-package', 'Open a project package (.aio)', 'lock', () => void s.openPackageFile());
     action('report-problem', t('diag.report'), 'bell', () => {
@@ -175,13 +181,15 @@ export function Palette() {
           s.setStageMode('split');
         }),
       );
-      action(
-        'right',
-        'Toggle right panel',
-        'sidebar',
-        s.toggleRight,
-        shortcutHint('global.rightPanel'),
-      );
+      list.push({
+        id: 'right',
+        title: t(panelHandleLabel('right', rightCollapsed)),
+        group: 'Actions',
+        icon: 'sidebar',
+        keywords: ['toggle right panel', 'hide right panel', 'show right panel', 'fold', 'agent'],
+        hint: shortcutHint('global.rightPanel'),
+        run: s.toggleRight,
+      });
       action(
         'play',
         playing ? 'Pause' : 'Play',
@@ -471,7 +479,19 @@ export function Palette() {
       });
     }
     return list;
-  }, [library, cloudAi, offlineOnly, project, pkg, issues, hidden, playing, surveys]);
+  }, [
+    library,
+    cloudAi,
+    offlineOnly,
+    project,
+    pkg,
+    issues,
+    hidden,
+    playing,
+    surveys,
+    leftCollapsed,
+    rightCollapsed,
+  ]);
 
   if (!open) return null;
   return (

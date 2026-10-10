@@ -25,6 +25,7 @@ import { legacyLayers } from '../legacy';
 import { useMedia } from '../media';
 import { isActive } from '../jobs';
 import { shell, useJobs, useShell } from '../shell';
+import { PANEL_ID, PanelHandle } from './PanelHandle';
 import type { Screen } from '../store';
 import { useCaptureIndex } from '../workspace/compare';
 import { flightPathShown, toggleFlightPath } from '../workspace/flightPaths';
@@ -372,7 +373,7 @@ export function Sidebar() {
   const nav = pkg ? withReview.filter((n) => n.screen !== 'jobs') : withReview;
 
   return (
-    <aside className="sidebar" aria-label={t('nav.primary')}>
+    <aside className="sidebar" id={PANEL_ID.left} aria-label={t('nav.primary')}>
       <div className="sb-scroll">
         <nav className="sb-sec sb-nav" aria-label={t('nav.sections')}>
           {nav.map((n) => (
@@ -410,6 +411,7 @@ export function Sidebar() {
           }}
           aria-keyshortcuts={ariaKeys('global.sidebar')}
           aria-expanded={!collapsed}
+          aria-controls={PANEL_ID.left}
           data-testid="sidebar-toggle"
         >
           <Icon name="sidebar" />
@@ -421,6 +423,14 @@ export function Sidebar() {
           </span>
         </button>
       </div>
+      <PanelHandle
+        side="left"
+        collapsed={collapsed}
+        shortcut="global.sidebar"
+        onToggle={() => {
+          void shell.getState().toggleSidebar();
+        }}
+      />
     </aside>
   );
 }

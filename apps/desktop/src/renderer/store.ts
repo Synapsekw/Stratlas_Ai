@@ -13,6 +13,7 @@ import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { createBridge, type Bridge } from './bridge';
 import { landingScreen } from './legacy';
+import { browserStorage, readPanelPrefs, writePanelPrefs, type PanelStorage } from './panelPrefs';
 import { isPlayer } from './player';
 import { videoFirst } from './stageDefault';
 
@@ -65,6 +66,7 @@ export interface ShellState {
    * the person: the next project that is not video-first goes back to the 3D view.
    */
   stageAuto: boolean;
+  /** The right panel of the Scene is folded away (remembered on this machine, panelPrefs.ts). */
   rightCollapsed: boolean;
   videoDocked: boolean;
   videoHidden: boolean;
@@ -115,6 +117,12 @@ export interface ShellActions {
   setPalette: (open: boolean) => void;
   setStageMode: (mode: StageMode) => void;
   toggleRight: () => void;
+  /**
+   * Fold the right panel away or bring it back. `setRight(false)` is what an action that needs
+   * the panel calls (a picked issue's card, Show changes); a selection that merely changes never
+   * unfolds it.
+   */
+  setRight: (collapsed: boolean) => void;
   setVideoDocked: (docked: boolean) => void;
   setVideoHidden: (hidden: boolean) => void;
   setLabelMode: (mode: LabelMode) => void;
@@ -131,6 +139,8 @@ export type Shell = ShellState & ShellActions;
 export interface ShellOptions {
   /** Player mode on or off (annotation read-only); called on every project open and close. */
   onReadOnly?: (on: boolean) => void;
+  /** Where the right panel's folded state is kept; the window's local storage by default. */
+  storage?: PanelStorage | null;
 }
 
 export function createShellStore(
@@ -148,6 +158,7 @@ export function createShellStore(
   const setReadOnly = (on: boolean) => {
     options.onReadOnly?.(on);
   };
+  const storage = options.storage === undefined ? browserStorage() : options.storage;
   return createStore<Shell>()((set, get) => ({
     screen: 'projects',
     settingsFocus: null,
@@ -160,7 +171,7 @@ export function createShellStore(
     paletteOpen: false,
     stageMode: '3d',
     stageAuto: false,
-    rightCollapsed: false,
+    rightCollapsed: readPanelPrefs(storage).rightCollapsed,
     videoDocked: false,
     videoHidden: false,
     labelMode: 'key',
@@ -327,7 +338,12 @@ export function createShellStore(
       set({ stageMode, stageAuto: false });
     },
     toggleRight: () => {
-      set({ rightCollapsed: !get().rightCollapsed });
+      get().setRight(!get().rightCollapsed);
+    },
+    setRight: (rightCollapsed) => {
+      if (get().rightCollapsed === rightCollapsed) return;
+      set({ rightCollapsed });
+      writePanelPrefs(storage, { rightCollapsed });
     },
     setVideoDocked: (videoDocked) => {
       set({ videoDocked });

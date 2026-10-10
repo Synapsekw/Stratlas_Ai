@@ -64,6 +64,7 @@ import { useRoadSetupMap } from '../road/RoadSetup';
 import { useRoadMap } from '../road/useRoadMap';
 import { isTyping } from '../keys';
 import { shell, useShell } from '../shell';
+import { PANEL_ID } from '../shell/PanelHandle';
 import type { StageMode } from '../store';
 import { FloatingVideo } from './FloatingVideo';
 import { compareRuntime, linkMaps, primaryMap, primaryScene, useCompareNotice } from './compare';
@@ -374,6 +375,7 @@ function StageToolbar({
           aria-pressed={!rightCollapsed}
           aria-label={rightCollapsed ? 'Show the right panel' : 'Hide the right panel'}
           aria-keyshortcuts={ariaKeys('global.rightPanel')}
+          aria-controls={PANEL_ID.right}
           onClick={shell.getState().toggleRight}
         >
           <Icon name="sidebar" className="flip" />

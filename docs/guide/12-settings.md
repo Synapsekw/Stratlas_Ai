@@ -66,8 +66,8 @@ The same list is in **Settings**, **Keyboard**. On a Mac, Ctrl is ⌘ (Command) 
 | Keys       | Does                                     |
 | ---------- | ---------------------------------------- |
 | Ctrl K     | Open or close the command search         |
-| Ctrl B     | Collapse or expand the sidebar           |
-| Ctrl Alt B | Collapse or expand the right panel       |
+| Ctrl B     | Collapse or expand the left sidebar      |
+| Ctrl Alt B | Collapse or expand the right sidebar     |
 | Space      | Play or pause the video and the timeline |
 | Alt ←      | Go to the previous survey date           |
 | Alt →      | Go to the next survey date               |
