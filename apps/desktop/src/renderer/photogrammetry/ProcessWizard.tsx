@@ -48,7 +48,7 @@ import {
   zoneQuestion,
 } from './estimate';
 import { gpuLine, machineLine, processingLine } from './hardware';
-import { openProcessingTools } from './processingTools';
+import { openProcessingTools } from '../processingTools';
 import { photoUi } from './store';
 
 type Gnss = 'auto' | 'rtk' | 'standard' | 'ignore';

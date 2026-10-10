@@ -10,7 +10,7 @@ import { useWorkspace } from '@aio/workspace';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { buildParams, canResume, FORMS, isActive, type Field, type JobDraft } from '../jobs';
 import { PhotoRuns } from '../photogrammetry/PhotoRuns';
-import { openProcessingTools } from '../photogrammetry/processingTools';
+import { openProcessingTools } from '../processingTools';
 import { bridge, jobs, useJobs, useShell } from '../shell';
 import { openJobTask } from './jobTaskActions';
 import {

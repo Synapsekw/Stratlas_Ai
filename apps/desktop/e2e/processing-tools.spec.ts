@@ -15,6 +15,7 @@ import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fakePackArchive, fakePackFiles } from '../src/main/jobs/packArchive.fakes';
 import { expect, launchApp, test, type DataRoot } from './fixtures';
+import { PHOTO_PLATFORM, PHOTO_PLATFORM_ONLY } from './photoPack';
 
 /** This computer as a pack manifest and a pack archive name it. */
 const PLATFORM = `${process.platform}-${process.arch}`;
@@ -57,6 +58,20 @@ async function stubDialogAndBin(app: ElectronApplication, path: string): Promise
   }, path);
 }
 
+/**
+ * Nothing of the Settings page is cut off or pushed sideways (CI runs the window at its smallest,
+ * 1100 x 700): the page does not scroll sideways and `inside` lies wholly in the window.
+ */
+async function expectFits(win: Page, ...inside: string[]): Promise<void> {
+  const sideways = await win.locator('.set-body').evaluate((el) => el.scrollWidth - el.clientWidth);
+  expect(sideways, 'the Settings page scrolls sideways').toBeLessThanOrEqual(1);
+  for (const id of inside) {
+    const target = win.getByTestId(id);
+    await target.scrollIntoViewIfNeeded();
+    await expect(target, id).toBeInViewport({ ratio: 1 });
+  }
+}
+
 async function openTinyProject(win: Page): Promise<void> {
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
   await expect(win.locator('.crumbs')).toContainText('E2E tiny project');
@@ -80,8 +95,9 @@ test('the start notice leads to Settings, where a pack file installs and Jobs fo
     await expect(win.getByTestId('tools-notice')).toHaveCount(0);
     await openTinyProject(win);
     const notice = win.getByTestId('tools-notice');
-    await expect(notice).toContainText('Processing tools need an update');
-    await expect(notice).toContainText('pack 0.2.0');
+    await expect(notice).toContainText('The processing tools need an update');
+    await expect(notice).toContainText('version 0.2.0');
+    await expect(notice).toBeInViewport({ ratio: 1 });
     await win.screenshot({ path: testInfo.outputPath('processing-tools-notice.png') });
     await notice.getByRole('button', { name: 'Update processing tools' }).click();
 
@@ -91,8 +107,9 @@ test('the start notice leads to Settings, where a pack file installs and Jobs fo
     await expect(page.getByTestId('tools-state')).toHaveAttribute('data-state', 'too-old');
     await expect(page.getByTestId('tools-state')).toContainText('Too old for this version');
     await expect(page.getByTestId('tools-version')).toHaveText('0.2.0');
-    await expect(page.getByTestId('tools-needs')).toContainText('This pack cannot run');
+    await expect(page.getByTestId('tools-needs')).toContainText('This version cannot run');
     await expect(win.getByTestId('tools-notice')).toHaveCount(0); // not on the page it points at
+    await expectFits(win, 'tools-info', 'tools-needs', 'tools-choose');
     await win.screenshot({ path: testInfo.outputPath('processing-tools-too-old.png') });
 
     // install from the file the dialog answers
@@ -112,12 +129,14 @@ test('the start notice leads to Settings, where a pack file installs and Jobs fo
     // the old pack is listed with its size and stays until removed
     const others = win.getByTestId('tools-others');
     await expect(others.getByTestId('tools-pack-0.2.0')).toContainText('0.2.0');
+    await expectFits(win, 'tools-note', 'tools-remove-0.2.0');
     await win.screenshot({ path: testInfo.outputPath('processing-tools.png') });
 
     // the same file again asks before replacing
     await page.getByTestId('tools-choose').click();
     const replace = page.getByTestId('tools-replace');
-    await expect(replace).toContainText('Pack 0.5.0 is already installed.');
+    await expect(replace).toContainText('Version 0.5.0 is already installed.');
+    await expectFits(win, 'tools-replace', 'tools-replace-yes');
     await replace.getByRole('button', { name: 'Keep it' }).click();
     await expect(replace).toHaveCount(0);
 
@@ -134,6 +153,7 @@ test('the start notice leads to Settings, where a pack file installs and Jobs fo
       .click();
     await win.getByTestId('tools-remove-0.2.0').click();
     expect(existsSync(join(runtime, 'pipeline-pack-0.2.0'))).toBe(true);
+    await expectFits(win, 'tools-remove-confirm-0.2.0');
     await win.getByTestId('tools-remove-confirm-0.2.0').click();
     await expect(win.getByTestId('tools-others')).toHaveCount(0);
     await expect(win.getByTestId('tools-note')).toContainText('pipeline-pack-0.2.0 was moved');
@@ -179,7 +199,7 @@ test('a newer pack file in the data folder is offered, and a dismissed notice st
     const offer = win.getByTestId('tools-offer');
     await expect(offer).toContainText(`pipeline-pack-99.1.0-${PLATFORM}.tar.gz`);
     await offer
-      .getByRole('button', { name: 'Install pack 99.1.0 found in the data folder' })
+      .getByRole('button', { name: 'Install version 99.1.0 found in the data folder' })
       .click();
     await expect(win.getByTestId('tools-note')).toContainText(
       'Processing tools 99.1.0 are installed.',
@@ -225,6 +245,83 @@ test('an automated run never shows the notice, and a broken file changes nothing
     await expect(win.getByTestId('tools-state')).toHaveAttribute('data-state', 'too-old');
     expect(await readdir(join(dataRoot.root, 'runtime'))).toEqual(['pipeline-pack-0.2.0']);
     expect(existsSync(whole)).toBe(true);
+    expect(await network.outbound()).toEqual([]);
+  } finally {
+    await app.close();
+  }
+});
+
+test('Update processing tools is one way in from Create maps and from Jobs, and leads back', async ({
+  dataRoot,
+  network,
+}) => {
+  test.skip(!PHOTO_PLATFORM, PHOTO_PLATFORM_ONLY);
+  // no processing tools at all
+  const archive = await writeArchive(join(dataRoot.base, 'kit'), '0.5.0');
+  const app = await launchApp(dataRoot, ENV);
+  await network.attach(app);
+  try {
+    const win = await app.firstWindow();
+    await win.waitForLoadState('domcontentloaded');
+    await stubDialogAndBin(app, archive);
+    await openTinyProject(win);
+    const notice = win.getByTestId('tools-notice');
+    await expect(notice).toContainText('The processing tools are not installed');
+
+    // Jobs says it itself ("Jobs cannot run yet"): the notice does not say it a second time there
+    await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
+    const panel = win.locator('.jobs-rt-fix');
+    await expect(panel).toContainText('the processing tools are missing or need an update');
+    await expect(notice).toHaveCount(0);
+    // nor over the Create maps dialog, which has the same button
+    await win.getByTestId('create-maps').click();
+    const wizard = win.getByRole('dialog', { name: 'Create maps from photos' });
+    const blocked = wizard.getByTestId('photo-blocked');
+    await expect(blocked).toContainText('The processing tools are not installed');
+    await expect(notice).toHaveCount(0);
+
+    // the dialog's button: Settings, Processing tools
+    await blocked.getByRole('button', { name: 'Update processing tools' }).click();
+    await expect(wizard).toHaveCount(0);
+    await expect(win.getByRole('heading', { level: 1, name: 'Processing tools' })).toBeVisible();
+    await expect(win.getByTestId('tools-state')).toHaveAttribute('data-state', 'missing');
+    await win.getByTestId('tools-choose').click();
+    const note = win.getByTestId('tools-note');
+    await expect(note).toContainText('Processing tools 0.5.0 are installed.');
+    await expectFits(win, 'tools-note', 'tools-resume');
+
+    // and back: the dialog opens again, checks this computer again, and is no longer blocked
+    await note.getByRole('button', { name: 'Create maps from photos' }).click();
+    await expect(wizard).toBeVisible();
+    await expect(wizard.getByTestId('photo-blocked')).toHaveCount(0);
+    await expect(wizard.getByTestId('photo-drop')).toBeVisible();
+    await wizard.getByRole('button', { name: 'Close' }).first().click();
+    await expect(win.locator('.jobs-rt')).toContainText('Processing tools 0.5.0');
+    await expect(win.locator('.jobs-rt-fix')).toHaveCount(0);
+
+    expect(await network.outbound()).toEqual([]);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the Jobs panel opens the same page', async ({ dataRoot, network }) => {
+  const app = await launchApp(dataRoot, ENV);
+  await network.attach(app);
+  try {
+    const win = await app.firstWindow();
+    await win.waitForLoadState('domcontentloaded');
+    await openTinyProject(win);
+    await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
+    await win
+      .locator('.jobs-rt-fix')
+      .getByRole('button', { name: 'Update processing tools' })
+      .click();
+    await expect(win.getByRole('heading', { level: 1, name: 'Processing tools' })).toBeVisible();
+    await expect(win.getByTestId('tools-state')).toContainText('Not installed');
+    // nothing was interrupted, so nothing is offered to go back to
+    await expect(win.getByTestId('tools-resume')).toHaveCount(0);
+    await expectFits(win, 'tools-info', 'tools-choose');
     expect(await network.outbound()).toEqual([]);
   } finally {
     await app.close();

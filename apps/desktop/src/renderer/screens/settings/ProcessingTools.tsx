@@ -1,5 +1,5 @@
 /**
- * Settings, Processing tools: the one home of the pipeline pack. What it is in a sentence, the
+ * Settings, Processing tools: the one home of the processing tools (the pipeline pack). What they are in a sentence, the
  * version in use and where it lives, whether it is up to date for this version of the app,
  * **Install or update from file** (a `.tar.gz` checked and unpacked by main, with progress and
  * cancel), a one-click offer when a newer pack file is found on this computer, and the packs no
@@ -11,7 +11,7 @@ import { brand } from '@aio/brand';
 import type { InstalledPack, PackInstallProgress, PipelinePackStatus } from '@aio/schema';
 import { formatBytes, Icon, t, type IconName, type MessageKey } from '@aio/ui';
 import { useEffect, useRef, useState } from 'react';
-import { processingTools, useProcessingTools } from '../../processingTools';
+import { processingTools, resumeAfterTools, useProcessingTools } from '../../processingTools';
 import { useShell } from '../../shell';
 import './processingTools.css';
 
@@ -109,6 +109,7 @@ function Install() {
   const replace = useProcessingTools((s) => s.replace);
   const error = useProcessingTools((s) => s.error);
   const note = useProcessingTools((s) => s.note);
+  const resume = useProcessingTools((s) => s.resume);
   const pt = processingTools.getState();
   const running = progressText(progress);
   return (
@@ -210,12 +211,24 @@ function Install() {
         </p>
       )}
       {note && (
-        <p className="notice ok" role="status" data-testid="tools-note">
+        <div className="notice ok" role="status" data-testid="tools-note">
           <Icon name="check" size={14} />
-          {note.kind === 'installed'
-            ? t('tools.installed', { version: note.version })
-            : t('tools.removed', { name: note.name })}
-        </p>
+          <span>
+            {note.kind === 'installed'
+              ? t('tools.installed', { version: note.version })
+              : t('tools.removed', { name: note.name })}
+          </span>
+          {note.kind === 'installed' && resume === 'create-maps' && (
+            <button
+              type="button"
+              className="btn sm primary"
+              data-testid="tools-resume"
+              onClick={resumeAfterTools}
+            >
+              {t('tools.resume.createMaps')}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -296,7 +309,7 @@ function OtherPacks({ packs, disabled }: { packs: InstalledPack[]; disabled: boo
       <table className="tbl">
         <thead>
           <tr>
-            <th>{t('tools.others.pack')}</th>
+            <th>{t('tools.version')}</th>
             <th>{t('tools.location')}</th>
             <th>{t('tools.size')}</th>
             <th aria-label={t('tools.others.actions')} />
@@ -330,7 +343,7 @@ export function ProcessingTools() {
     <>
       <div className="sblock processing-tools" data-testid="processing-tools">
         <h2 ref={heading} tabIndex={-1}>
-          {t('tools.title')} <span className="sub">{t('tools.sub')}</span>
+          {t('tools.title')}
         </h2>
         <p className="help">{t('tools.how', { product: brand.productName })}</p>
         <Status status={status} />

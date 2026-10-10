@@ -1432,7 +1432,7 @@ function registerIpc(): void {
     features:
       processingVerdict(process.platform, process.arch, null) === 'unsupported-platform'
         ? []
-        : [{ label: 'Photo processing', minVersion: PHOTO_PACK }],
+        : [{ label: 'Creating maps from photos', minVersion: PHOTO_PACK }],
     places: () =>
       packArchivePlaces({
         exe: app.getPath('exe'),

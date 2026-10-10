@@ -19,7 +19,7 @@ const status = (over: Partial<PipelinePackStatus> = {}): PipelinePackStatus => (
   dir: 'D:\\data\\runtime\\pipeline-pack-0.2.0',
   runtimeDir: 'D:\\data\\runtime',
   platform: 'win32-x64',
-  needs: ['Photo processing needs pack 0.4.0 or later.'],
+  needs: ['Creating maps from photos needs version 0.4.0 or later.'],
   others: [],
   installing: false,
   notify: true,
@@ -176,7 +176,7 @@ describe('the processing tools store', () => {
   it('shows why an install failed, and nothing after a cancel', async () => {
     let answer: unknown = {
       ok: false,
-      error: 'This pack is for an Intel Mac, and this computer is Windows (x64).',
+      error: 'These processing tools are for an Intel Mac, and this computer is Windows (x64).',
     };
     const { bridge, calls } = fakeBridge({ 'pipelinePack:install': () => answer });
     const s = createProcessingToolsStore(bridge, undefined);
@@ -210,7 +210,7 @@ describe('the processing tools store', () => {
       'pipelinePack:remove': (req) =>
         (req as { name: string }).name === 'pipeline-pack-0.2.0'
           ? { ok: true, status: { ...UP_TO_DATE, others: [] } }
-          : { ok: false, error: 'This pack is the one in use. Install a newer one first.' },
+          : { ok: false, error: 'This version is the one in use. Install a newer one first.' },
     });
     const s = createProcessingToolsStore(bridge, undefined, {
       onChanged: () => {

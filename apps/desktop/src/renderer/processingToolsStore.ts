@@ -31,6 +31,8 @@ export interface ProcessingTools {
   replace: { path: string; version: string } | null;
   /** The notice key the person dismissed (`packNoticeKey`). */
   dismissed: string | null;
+  /** What **Update processing tools** interrupted, offered again once the tools are installed. */
+  resume: 'create-maps' | null;
   /** Goes up when the installed packs change. */
   revision: number;
   /** Read the status and look for an archive. */
@@ -91,6 +93,7 @@ export function createProcessingToolsStore(
       note: null,
       replace: null,
       dismissed: readDismissed(storage),
+      resume: null,
       revision: 0,
 
       load: async () => {

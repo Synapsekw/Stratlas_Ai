@@ -47,7 +47,7 @@ import {
 
 const APP = { version: '0.11.0', name: 'Quadrion AI' };
 const PLATFORM = 'win32-x64';
-const PHOTO = [{ label: 'Photo processing', minVersion: '0.4.0' }];
+const PHOTO = [{ label: 'Creating maps from photos', minVersion: '0.4.0' }];
 
 // Each test unpacks several archives to disk; a busy machine or a virus scanner makes that slow.
 vi.setConfig({ testTimeout: 60_000 });
@@ -307,11 +307,11 @@ describe('installPackArchive', () => {
   it('tells the two kinds of Mac apart', async () => {
     const intel = fakePackEntries('0.5.0', { platform: 'darwin-x64' });
     expect(await refusedUnchanged(intel, { platform: 'darwin-arm64', win32: false })).toBe(
-      'This pack is for an Intel Mac, and this computer is a Mac with Apple silicon. Pick the pack made for this computer.',
+      'These processing tools are for an Intel Mac, and this computer is a Mac with Apple silicon. Pick the file made for this computer.',
     );
     const silicon = fakePackEntries('0.5.0', { platform: 'darwin-arm64' });
     expect(await refusedUnchanged(silicon, { platform: 'darwin-x64', win32: false })).toBe(
-      'This pack is for a Mac with Apple silicon, and this computer is an Intel Mac. Pick the pack made for this computer.',
+      'These processing tools are for a Mac with Apple silicon, and this computer is an Intel Mac. Pick the file made for this computer.',
     );
     expect(packArchiveName('pipeline-pack-0.5.0-macos-x64.tar.gz', 'darwin-arm64')).toBeNull();
     expect(packArchiveName('pipeline-pack-0.5.0-macos-arm64.tar.gz', 'darwin-x64')).toBeNull();
@@ -359,7 +359,7 @@ describe('installPackArchive', () => {
   it('refuses a pack for another platform', async () => {
     const error = await refusedUnchanged(fakePackEntries('0.5.0', { platform: 'darwin-arm64' }));
     expect(error).toBe(
-      'This pack is for a Mac with Apple silicon, and this computer is Windows (x64). Pick the pack made for this computer.',
+      'These processing tools are for a Mac with Apple silicon, and this computer is Windows (x64). Pick the file made for this computer.',
     );
   });
 
@@ -405,13 +405,13 @@ describe('installPackArchive', () => {
       (e): FakeTarEntry => (e.path.endsWith('os.py') ? { ...e, data: 'import syz' } : e),
     );
     expect(await refusedUnchanged(damaged)).toBe(
-      'This pack is damaged: python/Lib/os.py does not match its checksum. Copy or download the archive again.',
+      'This file is damaged: python/Lib/os.py does not match its checksum. Copy or download it again.',
     );
     const incomplete = fakePackEntries('0.5.0', {
       files: { 'python/Lib/os.py': 'import sys' },
     }).filter((e) => !e.path.endsWith('os.py'));
     expect(await refusedUnchanged(incomplete)).toBe(
-      'This pack is incomplete: python/Lib/os.py is missing. Copy or download the archive again.',
+      'This file is incomplete: python/Lib/os.py is missing. Copy or download it again.',
     );
   });
 
@@ -492,7 +492,7 @@ describe('installPackArchive', () => {
     });
     expect(asked).toEqual([runtime]);
     expect(r.ok ? '' : r.error).toMatch(
-      /^Not enough free disk space: the pack needs about 65 MB in .+runtime, and 10 MB is free\. Free some space and try again\.$/,
+      /^Not enough free disk space: the processing tools need about 65 MB in .+runtime, and 10 MB is free\. Free some space and try again\.$/,
     );
     expect(await tree(root)).toEqual(before);
     // the disk filling up while unpacking
@@ -516,7 +516,7 @@ describe('installPackArchive', () => {
       ok: false,
       code: 'exists',
       version: '0.5.0',
-      error: 'Pipeline pack 0.5.0 is already installed.',
+      error: 'Processing tools 0.5.0 are already installed.',
     });
     expect(await tree(root)).toEqual(before);
 
@@ -634,10 +634,10 @@ describe('listPacks and packStatus', () => {
       installing: false,
       notify: true,
     });
-    expect(s.needs[0]).toBe('Photo processing needs pack 0.4.0 or later.');
+    expect(s.needs[0]).toBe('Creating maps from photos needs version 0.4.0 or later.');
     expect(s.needs[1]).toMatch(
       new RegExp(
-        `^This pack cannot run ${String(PIPELINES.length - 1)} kinds of job this version has`,
+        `^This version cannot run ${String(PIPELINES.length - 1)} kinds of job this app has`,
       ),
     );
   });
@@ -682,7 +682,7 @@ describe('listPacks and packStatus', () => {
       files: {},
     };
     expect(packNeeds('0.9.0', manifest, PHOTO)).toEqual([
-      `This pack cannot run "${all[0]?.title ?? ''}".`,
+      `This version cannot run "${all[0]?.title ?? ''}".`,
     ]);
     expect(packNeeds('0.9.0', { ...manifest, pipelines: all }, PHOTO)).toEqual([]);
     expect(packNeeds('dev', undefined, PHOTO)).toEqual([]);
@@ -892,7 +892,7 @@ describe('pipeline pack IPC', () => {
     // the pack in use is never removed; an older one goes to the bin
     expect(await call('pipelinePack:remove', { name: 'pipeline-pack-0.5.0' })).toEqual({
       ok: false,
-      error: 'This pack is the one in use. Install a newer one first.',
+      error: 'This version is the one in use. Install a newer one first.',
     });
     expect(await call('pipelinePack:remove', { name: 'pipeline-pack-0.1.0' })).toMatchObject({
       ok: false,
@@ -925,7 +925,7 @@ describe('pipeline pack IPC', () => {
     expect(await call('pipelinePack:install', { path })).toEqual({
       ok: false,
       code: 'busy',
-      error: 'A pack is being installed already.',
+      error: 'The processing tools are being installed already.',
     });
     expect(await call('pipelinePack:status')).toMatchObject({ installing: true });
     expect(await call('pipelinePack:cancel')).toEqual({ ok: true });

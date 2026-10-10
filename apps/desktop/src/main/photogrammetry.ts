@@ -917,7 +917,11 @@ export function registerPhotogrammetryIpc({
   now = () => new Date(),
 }: PhotogrammetryIpcDeps): void {
   let probe: Promise<HardwareProbe> | null = null;
-  /** The probe, read once per session; free disk is measured again on each call. */
+  /**
+   * The probe, read once per session; free disk is measured again on each call, and so are the
+   * processing tools: they can be installed or updated while the app runs (Settings, Processing
+   * tools), and the dialog must not go on saying they are missing until a restart.
+   */
   const currentProbe = async (): Promise<HardwareProbe | null> => {
     if (!system) return null;
     probe ??= readProbe(system);
@@ -928,8 +932,15 @@ export function registerPhotogrammetryIpc({
       probe = null;
       throw e;
     }
-    const free = await system.freeDiskBytes().catch(() => p.freeDiskBytes);
-    return { ...p, freeDiskBytes: Math.max(0, Math.round(free)) };
+    const [free, pack] = await Promise.all([
+      system.freeDiskBytes().catch(() => p.freeDiskBytes),
+      system.packVersion().catch(() => null),
+    ]);
+    return {
+      ...p,
+      freeDiskBytes: Math.max(0, Math.round(free)),
+      processing: processingVerdict(system.platform, system.arch, pack),
+    };
   };
 
   handle('photo:probe', async () => {

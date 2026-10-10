@@ -160,12 +160,12 @@ export function installProblem(e: unknown): {
   if (code === 'ENOSPC') {
     return {
       error:
-        'The disk filled up while the pack was being unpacked. Free some space and try again. Nothing was changed.',
+        'The disk filled up while the processing tools were being unpacked. Free some space and try again. Nothing was changed.',
     };
   }
   if (code === 'EACCES' || code === 'EPERM' || code === 'EROFS') {
     return {
-      error: `The pack could not be written into the data folder (${err.message}). Check that the folder can be written to. Nothing was changed.`,
+      error: `The processing tools could not be written into the data folder (${err.message}). Check that the folder can be written to. Nothing was changed.`,
     };
   }
   if (
@@ -178,7 +178,9 @@ export function installProblem(e: unknown): {
         'This file is not a complete pipeline pack archive: it is damaged or was cut short. Copy or download it again. Nothing was changed.',
     };
   }
-  return { error: `The pack could not be installed: ${err.message} Nothing was changed.` };
+  return {
+    error: `The processing tools could not be installed: ${err.message} Nothing was changed.`,
+  };
 }
 
 // ---------------------------------------------------------------- archive paths
@@ -567,23 +569,23 @@ async function checkUnpacked(
     const text = await readFile(join(tmp, 'manifest.json'), 'utf8');
     raw = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text) as unknown;
   } catch {
-    throw refused("This pack's manifest.json cannot be read. It was not installed.");
+    throw refused("This file's manifest.json cannot be read. It was not installed.");
   }
   const parsed = PipelinePackManifest.safeParse(raw);
   if (!parsed.success) {
     throw refused(
-      "This pack's manifest.json is not one this app can read (aio.pipeline-pack/1). It was not installed.",
+      "This file's manifest.json is not one this app can read (aio.pipeline-pack/1). It was not installed.",
     );
   }
   const m = parsed.data;
   if (!VERSION.test(m.version) || u.top !== `pipeline-pack-${m.version}`) {
     throw refused(
-      `This pack's folder (${shown(u.top)}) and its manifest (version ${shown(m.version)}) disagree. It was not installed.`,
+      `This file's folder (${shown(u.top)}) and its manifest (version ${shown(m.version)}) disagree. It was not installed.`,
     );
   }
   if (m.platform !== o.platform) {
     throw refused(
-      `This pack is for ${platformName(m.platform)}, and this computer is ${platformName(o.platform)}. Pick the pack made for this computer.`,
+      `These processing tools are for ${platformName(m.platform)}, and this computer is ${platformName(o.platform)}. Pick the file made for this computer.`,
     );
   }
   const range = packRangeRefusal(m.appRange, o.app.version, o.app.name);
@@ -595,7 +597,7 @@ async function checkUnpacked(
     const to = await realpath(link).catch(() => null);
     if (to === null || !isWithin(root, to)) {
       throw refused(
-        `This pack holds a link that does not lead to a file inside it (${shown(link.slice(tmp.length + 1))}). It was not installed.`,
+        `This file holds a link that does not lead to a file inside it (${shown(link.slice(tmp.length + 1))}). It was not installed.`,
       );
     }
   }
@@ -604,7 +606,7 @@ async function checkUnpacked(
   const python = exe.ok ? await stat(join(tmp, ...exe.segments)).catch(() => null) : null;
   if (!python?.isFile()) {
     throw refused(
-      `This pack has no Python at ${shown(m.python.executable)}: it is incomplete. It was not installed.`,
+      `This file has no Python at ${shown(m.python.executable)}: it is incomplete. It was not installed.`,
     );
   }
 
@@ -612,12 +614,12 @@ async function checkUnpacked(
     const got = u.files.get(name);
     if (!got) {
       throw refused(
-        `This pack is incomplete: ${shown(name)} is missing. Copy or download the archive again.`,
+        `This file is incomplete: ${shown(name)} is missing. Copy or download it again.`,
       );
     }
     if (got.size !== want.size || got.sha256 !== want.sha256) {
       throw refused(
-        `This pack is damaged: ${shown(name)} does not match its checksum. Copy or download the archive again.`,
+        `This file is damaged: ${shown(name)} does not match its checksum. Copy or download it again.`,
       );
     }
   }
@@ -745,7 +747,7 @@ export async function installPackArchive(
     const margin = Math.max(64 * 2 ** 20, need * 0.02);
     if (free !== null && free < need + margin) {
       throw refused(
-        `Not enough free disk space: the pack needs about ${mb(need + margin)} in ${runtimeDir}, and ${mb(free)} is free. Free some space and try again.`,
+        `Not enough free disk space: the processing tools need about ${mb(need + margin)} in ${runtimeDir}, and ${mb(free)} is free. Free some space and try again.`,
       );
     }
 
@@ -767,7 +769,7 @@ export async function installPackArchive(
         if (o.replace !== true && (await existing(top))) {
           const version = PACK_DIR.exec(top)?.[1] ?? '';
           throw new PackRefused(
-            `Pipeline pack ${version} is already installed.`,
+            `Processing tools ${version} are already installed.`,
             'exists',
             version,
           );
@@ -792,7 +794,7 @@ export async function installPackArchive(
     const replaced = await existing(unpacked.top);
     if (replaced && o.replace !== true) {
       throw new PackRefused(
-        `Pipeline pack ${manifest.version} is already installed.`,
+        `Processing tools ${manifest.version} are already installed.`,
         'exists',
         manifest.version,
       );
@@ -804,7 +806,7 @@ export async function installPackArchive(
         await renameDir(dest, aside, 3);
       } catch {
         throw refused(
-          `Pipeline pack ${manifest.version} is in use and could not be replaced. Wait for running jobs to finish, then try again.`,
+          `Processing tools ${manifest.version} are in use and could not be replaced. Wait for running jobs to finish, then try again.`,
         );
       }
     }
@@ -889,7 +891,7 @@ export function packNeeds(
   if (version !== 'dev') {
     for (const f of features) {
       if (compareVersions(version, f.minVersion) < 0) {
-        needs.push(`${f.label} needs pack ${f.minVersion} or later.`);
+        needs.push(`${f.label} needs version ${f.minVersion} or later.`);
       }
     }
   }
@@ -897,10 +899,10 @@ export function packNeeds(
     const have = new Set(manifest.pipelines.map((p) => p.name));
     const missing = PIPELINES.filter((p) => !have.has(p.name));
     const [a, b] = missing;
-    if (a && !b) needs.push(`This pack cannot run "${a.title}".`);
+    if (a && !b) needs.push(`This version cannot run "${a.title}".`);
     else if (a && b) {
       needs.push(
-        `This pack cannot run ${String(missing.length)} kinds of job this version has, for example "${a.title}" and "${b.title}".`,
+        `This version cannot run ${String(missing.length)} kinds of job this app has, for example "${a.title}" and "${b.title}".`,
       );
     }
   }
@@ -1199,7 +1201,11 @@ export function registerPipelinePackIpc(d: PipelinePackIpcDeps): void {
   }));
   d.handle('pipelinePack:install', async ({ path, replace }) => {
     if (running) {
-      return { ok: false, error: 'A pack is being installed already.', code: 'busy' };
+      return {
+        ok: false,
+        error: 'The processing tools are being installed already.',
+        code: 'busy',
+      };
     }
     running = new AbortController();
     try {
@@ -1232,7 +1238,7 @@ export function registerPipelinePackIpc(d: PipelinePackIpcDeps): void {
         ok: false,
         error:
           s.dir !== undefined && s.dir === join(s.runtimeDir, name)
-            ? 'This pack is the one in use. Install a newer one first.'
+            ? 'This version is the one in use. Install a newer one first.'
             : `There is no ${name} in ${s.runtimeDir}.`,
       };
     }

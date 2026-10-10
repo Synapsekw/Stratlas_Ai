@@ -457,6 +457,30 @@ describe('photo IPC', () => {
     expect(free.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
+  it('reads the processing tools again on each probe: an install shows without a restart', async () => {
+    let installed: string | null = null;
+    const gpus = vi.fn(() => Promise.resolve([]));
+    const probed = collectHandlers((handle) => {
+      registerPhotogrammetryIpc({
+        handle,
+        system: fakeSystem({ gpus, packVersion: () => Promise.resolve(installed) }),
+      });
+    });
+    expect(await probed.call('photo:probe', {})).toMatchObject({
+      probe: { processing: 'no-pack' },
+    });
+    installed = '0.2.0';
+    expect(await probed.call('photo:probe', {})).toMatchObject({
+      probe: { processing: 'pack-too-old' },
+    });
+    installed = '0.5.0';
+    expect(await probed.call('photo:probe', {})).toMatchObject({
+      probe: { processing: 'available' },
+    });
+    // the hardware itself is still looked at once
+    expect(gpus).toHaveBeenCalledTimes(1);
+  });
+
   it('answers without a system in tests and old wiring', async () => {
     const bare = collectHandlers((handle) => {
       registerPhotogrammetryIpc({ handle });
