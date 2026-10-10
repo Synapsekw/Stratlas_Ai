@@ -44,8 +44,9 @@ To add your own project, copy its folder into `projects` in the data folder, or 
   - a map region download ([Maps and offline packs](06-maps.md)),
   - an online update check (off by default),
   - cloud AI, when you switch it on ([AI agent](07-ai-agent.md)),
+  - online satellite imagery, when you switch it on ([Maps and offline packs](06-maps.md#online-satellite)),
   - a team server connection ([Team server](26-team-server.md)).
-- **Offline only**: the workstation makes no network connections. All four are off, and the cloud AI chip reads **Cloud AI off** or **Cloud AI blocked**, never **Cloud AI**. A local model on this computer still works.
+- **Offline only**: the workstation makes no network connections. All five are off, and the cloud AI chip reads **Cloud AI off** or **Cloud AI blocked**, never **Cloud AI**. A local model on this computer still works.
 
 To change the mode:
 

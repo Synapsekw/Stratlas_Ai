@@ -25,6 +25,8 @@ The list shows each pack with its zoom levels, size, date, licence and attributi
 
 The same choices are on the map itself: the map type chip under the zoom buttons (**Streets**, **Satellite**, **Satellite only**, **Terrain shading**), and **Layers and issue pins** in 3D. See [Maps and offline packs](06-maps.md#choose-the-map-type).
 
+**Online satellite (Sentinel-2)** in the same list is not a pack: it streams imagery from 2016 for the areas you look at, when you switch it on, and your packs draw over it. See [Online satellite](06-maps.md#online-satellite).
+
 ## Licences
 
 Every pack carries its licence, attribution and data source, and the attribution shows wherever the imagery shows. {product} ships only Natural Earth II (public domain). Imagery you buy from a commercial provider is imported by you under your licence and is never redistributed: a pack with **Customer licence** stays out of packages.

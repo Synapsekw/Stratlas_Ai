@@ -89,6 +89,30 @@ If the workstation is set to offline-only, downloads are off: "This workstation 
 
 Click **Remove** on the pack's row, then confirm. Maps lose that area until the pack is added again. A pack that came with an open package shows **In open package** and cannot be removed.
 
+## Online satellite
+
+Not every workstation has to work offline. **Online satellite (Sentinel-2)** draws satellite imagery of the whole world on the map without a pack. It is off until you switch it on.
+
+1. Open **Settings**, **Offline maps**, **Imagery and terrain**.
+2. Tick **Online satellite (Sentinel-2)**.
+3. The first time, read the notice and click **Switch on**.
+
+What you get:
+
+- Sentinel-2 imagery from 2016, at about 10 m per pixel. It shows the lie of the land, roads and large structures, not site detail, and nothing built since 2016. Zoomed in past that detail the imagery is stretched, not sharper.
+- It sits at the bottom of the map: your imagery packs and the project's orthos draw over it, and street lines and labels stay on top.
+- The credit shows in the corner of the map while the imagery does: "Sentinel-2 cloudless - https://s2maps.eu by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)". The imagery is licensed CC BY 4.0.
+
+What is sent:
+
+- {product} requests the imagery tiles for the areas you look at from the servers of EOX IT Services GmbH. That service can therefore see which areas you view, and the address your computer connects from. Nothing else is sent: no project data, no account, no key.
+- Tiles you have viewed are kept on this computer (up to 300 MB; the ones used longest ago make room for new ones), so those areas draw again without a request. **Clear cached satellite tiles** in the same place deletes them and shows how much they take.
+- The service is free and comes with no guarantee. When it cannot be reached, the map shows what it has and tries again later.
+
+On an offline-only workstation the box is greyed: "This workstation is offline-only, so online satellite cannot be switched on." If it was on before the workstation was set to offline-only, nothing more is requested; areas you viewed before still draw from this computer, and you can untick the box to hide them.
+
+For imagery that works with no network, or sharper imagery of your site, use an imagery pack. See [Imagery and terrain packs](31-imagery-and-terrain-packs.md).
+
 ## Maps inside packages
 
 A package can carry the map region around its site, so the customer sees street maps with no pack installed. See [Packages](11-packages.md#include-the-map-region).
