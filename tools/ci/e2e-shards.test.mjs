@@ -49,21 +49,17 @@ describe('e2e shards', () => {
     expect(matched).toEqual(files);
   });
 
-  it('has every shard of each OS in the CI matrix', () => {
+  it('has every shard in the CI matrix', () => {
     const ci = readFileSync(
       fileURLToPath(new URL('../../.github/workflows/ci.yml', import.meta.url)),
       'utf8',
     );
     expect(ci).toContain('tools/ci/e2e-shards.mjs --shard ${{ matrix.shard }}/${{ matrix.of }}');
-    const rows = [...ci.matchAll(/- \{ os: (\S+), shard: (\d+), of: (\d+) \}/g)];
-    const byOs = new Map();
-    for (const [, os, shard, of] of rows) byOs.set(os, [...(byOs.get(os) ?? []), `${shard}/${of}`]);
-    expect([...byOs.keys()].sort()).toEqual(['macos-latest', 'windows-latest']);
-    for (const shards of byOs.values()) {
-      const total = shards.length;
-      const whole = Array.from({ length: total }, (_, i) => `${String(i + 1)}/${String(total)}`);
-      expect([...shards].sort()).toEqual(whole);
-    }
+    // the e2e job's matrix: `shard: [1, 2, ...]` and `of: [<total>]`, for every system
+    const shards = /^ {8}shard: \[([\d, ]+)\]$/m.exec(ci)?.[1].split(', ').map(Number);
+    const total = Number(/^ {8}of: \[(\d+)\]$/m.exec(ci)?.[1]);
+    expect(total).toBeGreaterThan(0);
+    expect(shards).toEqual(Array.from({ length: total }, (_, i) => i + 1));
   });
 });
 

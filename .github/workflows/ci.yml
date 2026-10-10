@@ -5,6 +5,13 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      # macOS is parked (founder, 10 Oct 2026: Windows only for now). Its jobs are all still here:
+      # this switch runs the unit tests, the e2e shards, the pipelines and the pack on macOS too.
+      macos:
+        description: Also run the macOS jobs (parked since 10 Oct 2026)
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -21,6 +28,11 @@ jobs:
   # same commit, so the run on main repeated it (18 min each for rounds 20 and 21 of 10 Oct 2026).
   # Such a push skips every job below. They run when the commit has no green pull request run into
   # main, when that cannot be read, and always for a pull request or "Run workflow".
+  #
+  # The gate also names the systems the jobs below run on: Windows, and macOS only when "Run
+  # workflow" asks for it. On every pull request the macOS jobs took 10 to 13 min and then waited
+  # for each other: GitHub runs five macOS jobs of an account at once, across all its runs, and
+  # with three rounds in CI the last macOS shard waited 4.8 min for a runner (run 38059448343).
   gate:
     name: gate
     runs-on: ubuntu-latest
@@ -31,7 +43,16 @@ jobs:
       pull-requests: read
     outputs:
       run: ${{ steps.decide.outputs.run }}
+      systems: ${{ steps.systems.outputs.systems }}
     steps:
+      - name: Which systems?
+        id: systems
+        env:
+          MACOS: ${{ inputs.macos }}
+        run: |
+          systems='["windows-latest"]'
+          if [ "$MACOS" = true ]; then systems='["windows-latest", "macos-latest"]'; fi
+          echo "systems=$systems" | tee -a "$GITHUB_OUTPUT"
       - name: Has this commit passed as a pull request into main?
         id: decide
         env:
@@ -100,7 +121,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        os: ${{ fromJSON(needs.gate.outputs.systems) }}
     runs-on: ${{ matrix.os }}
     # the tests took 208 s on Windows and 153 s on macOS (run 38047000052), after about 80 s of set-up
     timeout-minutes: 20
@@ -153,11 +174,10 @@ jobs:
 
   # The Playwright + Electron suite in shards, each on one worker (playwright.config.ts: several
   # Electron windows with WebGL compete for the runner's software GPU). tools/ci/e2e-shards.mjs
-  # splits the spec files by how long each takes, so the shards of an OS end together: Playwright's
-  # own --shard goes by test count, and of three macOS shards the first ran 10.7 min of tests and
-  # the second 4.6 (run 38051445110). Windows has five shards (25 min of tests in all). macOS has
-  # three (21 min): with the unit tests and the pipelines that is five macOS jobs at once, and a
-  # sixth would wait for one of them to end.
+  # splits the spec files by how long each takes, so the shards end together: Playwright's own
+  # --shard goes by test count, and of three shards on macOS the first ran 10.7 min of tests and
+  # the second 4.6 (run 38051445110). Five shards for 25 min of tests on Windows. macOS, when it
+  # is asked for, gets the same five; they queue behind GitHub's five macOS jobs at once.
   e2e:
     name: e2e (${{ matrix.os }}, ${{ matrix.shard }}/${{ matrix.of }})
     needs: gate
@@ -165,15 +185,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { os: windows-latest, shard: 1, of: 5 }
-          - { os: windows-latest, shard: 2, of: 5 }
-          - { os: windows-latest, shard: 3, of: 5 }
-          - { os: windows-latest, shard: 4, of: 5 }
-          - { os: windows-latest, shard: 5, of: 5 }
-          - { os: macos-latest, shard: 1, of: 3 }
-          - { os: macos-latest, shard: 2, of: 3 }
-          - { os: macos-latest, shard: 3, of: 3 }
+        os: ${{ fromJSON(needs.gate.outputs.systems) }}
+        shard: [1, 2, 3, 4, 5]
+        of: [5]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     defaults:
@@ -297,8 +311,8 @@ jobs:
   #
   # On the Windows runner the suite took 18.5 min in one job, and it was the longest job of a run:
   # tests/test_photo_chain.py alone took 409 s there (101 s on macOS), the other photo tests 326 s
-  # and the rest 374 s (run 38051445110). So Windows runs those three parts in a job each. macOS
-  # (9 to 10 min in one job) stays whole: a sixth macOS job would wait (see e2e).
+  # and the rest 374 s (run 38051445110). So the suite runs in those three parts, a job each
+  # (6.0 to 6.9 min on Windows, run 38059448343).
   python:
     name: pipelines (${{ matrix.os }}, ${{ matrix.part }})
     needs: gate
@@ -306,11 +320,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { os: windows-latest, part: photo-chain }
-          - { os: windows-latest, part: photo }
-          - { os: windows-latest, part: rest }
-          - { os: macos-latest, part: all }
+        os: ${{ fromJSON(needs.gate.outputs.systems) }}
+        part: [photo-chain, photo, rest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     defaults:
@@ -362,7 +373,6 @@ jobs:
       - name: Pytest (${{ matrix.part }})
         run: |
           case "${{ matrix.part }}" in
-            all) tests=(tests) ;;
             photo-chain) tests=(tests/test_photo_chain.py) ;;
             photo) tests=($(ls tests/test_photo_*.py | grep -v '^tests/test_photo_chain\.py$')) ;;
             rest) tests=(tests "--ignore-glob=tests/test_photo_*.py") ;;
@@ -411,7 +421,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        os: ${{ fromJSON(needs.gate.outputs.systems) }}
     runs-on: ${{ matrix.os }}
     # a few minutes; the nightly's took about one on macOS
     timeout-minutes: 20
