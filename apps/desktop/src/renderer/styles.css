@@ -3311,6 +3311,84 @@ svg.flip {
   margin: 6px 0 0;
 }
 
+/* ---------- settings: maps for your projects, and its notice in the toast stack ---------- */
+.pm-plan td:first-child,
+.pm-plan th:first-child {
+  width: 28px;
+  padding-inline-end: 0;
+}
+.pm-plan input[type='checkbox'] {
+  display: block;
+  accent-color: var(--acc);
+}
+.pm-plan tfoot td {
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 0;
+  background: var(--bg-1);
+  color: var(--fg-2);
+}
+.pm-acts {
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+.pm-acts .help {
+  margin: 0 auto 0 0;
+}
+.pm-note {
+  margin: 10px 0 0;
+}
+.pm-orphans {
+  margin-top: 14px;
+}
+.pm-orphans .notice {
+  margin-bottom: 8px;
+}
+.pm-orphan {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: var(--t-12);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-4);
+}
+.pm-orphan + .pm-orphan {
+  margin-top: 6px;
+}
+.pm-orphan .pack-acts {
+  margin-inline-start: auto;
+}
+.pm-prefs {
+  margin-top: 14px;
+  padding: 0 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-4);
+}
+.pm-prefs .prov-err {
+  margin: 0 0 10px;
+}
+.pm-areas {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pm-areas li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.toast .pm-acts {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+.pm-failed {
+  color: var(--danger-ink);
+}
+
 /* ---------- settings: about and updates ---------- */
 .about-hero {
   display: flex;

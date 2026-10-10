@@ -813,7 +813,7 @@ export const en = {
   'settings.maps.add': 'Add a region',
   'settings.maps.import': 'Import pack file',
   'settings.maps.online':
-    'This downloads map data from build.protomaps.com. It is the only download the app makes, and only when you start it.',
+    'This downloads map data from build.protomaps.com. It is the only download the app makes, and only when you start it (or have turned on automatic street maps for new projects).',
   'settings.maps.offlineOnly':
     'This workstation is offline-only. Import a pack file, or turn off offline-only in Privacy and cloud.',
   'settings.maps.remove': 'Remove',
@@ -824,6 +824,93 @@ export const en = {
   'settings.maps.again': 'Download again',
   'settings.maps.interrupted':
     'The download stopped at {size}. Resume continues from there with the same planet build {build}; the finished pack is checked tile by tile.',
+
+  // Maps for the library's projects (Settings, Offline maps; the notice when a project opens)
+  'maps.coverage.title': 'Maps for your projects',
+  'maps.coverage.text':
+    'Detailed street maps only where your projects are: a box around each site, an overview of its country and a coarse map of the world for the Globe. Nothing else is downloaded.',
+  'maps.coverage.host':
+    'From build.protomaps.com, which sees the areas asked for and nothing about your projects.',
+  'maps.coverage.offlineOnly':
+    'This workstation is set to Offline only, so nothing is downloaded. To download these areas, switch to Online in the title bar or in Settings, Privacy and cloud. On a machine with no network, bring the packs in with Import pack file.',
+  'maps.coverage.error': 'The projects could not be checked: {error}',
+  'maps.coverage.noProjects': 'No projects in the library yet',
+  'maps.coverage.nonePlaced': 'No project is placed on the Earth yet',
+  'maps.coverage.missing_one': '{count} of {total} projects has no detailed street map',
+  'maps.coverage.missing_other': '{count} of {total} projects have no detailed street map',
+  'maps.coverage.allDetailed_one': 'The {count} placed project has a detailed street map',
+  'maps.coverage.allDetailed_other': 'All {count} placed projects have a detailed street map',
+  'maps.coverage.covered':
+    'Every project has a detailed street map, with the overview of its country and of the world. Nothing to download.',
+  'maps.coverage.coveredNoProjects':
+    'The world overview is installed. Site and country maps are listed here once a project is placed on the Earth.',
+  'maps.coverage.unplaced_one':
+    '{count} project is not placed on the Earth (a local grid, or a coordinate system the app does not know), so no map is planned for it.',
+  'maps.coverage.unplaced_other':
+    '{count} projects are not placed on the Earth (a local grid, or a coordinate system the app does not know), so no map is planned for them.',
+  'maps.coverage.col.include': 'Include',
+  'maps.coverage.col.area': 'Area',
+  'maps.coverage.col.for': 'For',
+  'maps.coverage.col.detail': 'Detail',
+  'maps.coverage.col.size': 'Estimated size',
+  'maps.coverage.col.actions': 'Actions',
+  'maps.coverage.include': 'Include {label}',
+  'maps.coverage.for.world': 'The Globe, at every zoom',
+  'maps.coverage.for.projects_one': '{count} project',
+  'maps.coverage.for.projects_other': '{count} projects',
+  'maps.coverage.detail.site': 'Zoom {zoom}: full detail',
+  'maps.coverage.detail.country': 'Zoom {zoom}: country overview',
+  'maps.coverage.detail.area': 'Zoom {zoom}: regional overview',
+  'maps.coverage.detail.world': 'Zoom {zoom}: world overview',
+  'maps.coverage.about': 'about {size}',
+  'maps.coverage.inDownloads': 'In Downloads',
+  'maps.coverage.show': 'Show',
+  'maps.coverage.total_one': 'Total, {count} area',
+  'maps.coverage.total_other': 'Total, {count} areas',
+  'maps.coverage.totalNone': 'none chosen',
+  'maps.coverage.download': 'Download about {size}',
+  'maps.coverage.downloadNone': 'Download',
+  'maps.coverage.hint_one': '{count} project has no detailed street map',
+  'maps.coverage.hint_other': '{count} projects have no detailed street map',
+  'maps.coverage.label.site': 'Site area: {names}',
+  'maps.coverage.label.country': '{country} overview',
+  'maps.coverage.label.area': 'Region around {names}',
+  'maps.coverage.label.world': 'World overview',
+  'maps.coverage.names.two': '{a} and {b}',
+  'maps.coverage.names.more': '{a}, {b} and {count} more',
+  'maps.coverage.orphans_one': '{count} pack covers an area with no project any more',
+  'maps.coverage.orphans_other': '{count} packs cover areas with no project any more',
+  'maps.coverage.orphans.review': 'Review',
+  'maps.coverage.orphans.remove': 'Remove {label}',
+  'maps.coverage.orphans.keep': 'Keep',
+  'maps.coverage.pref.auto': 'Download street maps for new projects automatically',
+  'maps.coverage.pref.auto.off': 'Off: the app asks first, naming the areas and their size.',
+  'maps.coverage.pref.auto.on':
+    'On: the first time a project with a place on the Earth is opened, its missing areas are queued in Downloads without asking. You can cancel them there.',
+  'maps.coverage.pref.auto.offline':
+    'Nothing is downloaded while this workstation is set to Offline only, whatever this switch says.',
+  'maps.coverage.pref.offer': 'Tell me when an opened project has no detailed street map',
+  'maps.coverage.pref.offer.text':
+    'A small notice with the areas and their size. It downloads nothing until you press Download.',
+  'maps.coverage.pref.failed': 'The preference was not saved: {error}',
+  'maps.offer.title': 'No detailed street map here',
+  'maps.offer.text':
+    '{project} has no detailed street map on this workstation. Download these areas from build.protomaps.com, about {size} in all? The map host sees which areas are asked for.',
+  'maps.offer.download': 'Download about {size}',
+  'maps.offer.review': 'Choose areas',
+  'maps.offer.dismiss': 'Not now',
+  'maps.offer.starting': 'Starting the street map downloads for {project}.',
+  'maps.offer.startedTitle': 'Street maps are downloading',
+  'maps.offer.started_one':
+    '{count} area for {project} is in Downloads, about {size}. Follow or cancel it in Settings, Offline maps.',
+  'maps.offer.started_other':
+    '{count} areas for {project} are in Downloads, about {size}. Follow or cancel them in Settings, Offline maps.',
+  'maps.offer.startedAuto_one':
+    'Street maps for new projects download automatically: {count} area for {project} is in Downloads, about {size}. Cancel it or turn this off in Settings, Offline maps.',
+  'maps.offer.startedAuto_other':
+    'Street maps for new projects download automatically: {count} areas for {project} are in Downloads, about {size}. Cancel them or turn this off in Settings, Offline maps.',
+  'maps.offer.showDownloads': 'Show downloads',
+  'maps.offer.failed': '{label} did not start: {error}',
 
   // About
   'settings.graphics.text':

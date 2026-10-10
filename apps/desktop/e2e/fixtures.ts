@@ -14,7 +14,12 @@
  *   import { expect, test } from './fixtures';
  *   test('does a thing', async ({ win }) => { ... });
  */
-import { ProjectManifest, SCHEMA_VERSION, type ProjectManifestInput } from '@aio/schema';
+import {
+  defaultGlobeSettings,
+  ProjectManifest,
+  SCHEMA_VERSION,
+  type ProjectManifestInput,
+} from '@aio/schema';
 import {
   _electron as electron,
   test as base,
@@ -306,6 +311,30 @@ export async function realDataRefusals(app: ElectronApplication): Promise<string
 }
 
 /**
+ * A profile starts with the "no detailed street map" notice turned off (Settings, Offline maps,
+ * "Tell me when an opened project has no detailed street map"): the fixture projects are placed
+ * on the Earth and no spec installs street maps for them, so every spec would open under that
+ * notice, which sits in the toast stack over the bottom right corner. Written only when the
+ * profile has no `globe.json` yet; a spec about the notice writes its own first
+ * (`project-maps.spec.ts`). `launchApp` does this; a spec that starts the app itself and then
+ * clicks in an open project calls it too.
+ */
+export async function quietStreetMapOffer(
+  userData: string,
+  extraArgs: readonly string[] = [],
+): Promise<void> {
+  const profile = extraArgs.find((a) => a.startsWith('--profile='))?.slice('--profile='.length);
+  const dir = profile ? join(userData, 'profiles', profile) : userData;
+  const file = join(dir, 'globe.json');
+  if (existsSync(file)) return;
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    file,
+    JSON.stringify({ ...defaultGlobeSettings(), projectMaps: { offer: false } }, null, 2),
+  );
+}
+
+/**
  * Launch the built app against `dataRoot` with the main-process network guard preloaded.
  *
  * Refuses a data root (or profile) inside the founder's real data (`realData.ts`): real projects
@@ -321,6 +350,7 @@ export async function launchApp(
 ): Promise<ElectronApplication> {
   assertNotRealData(env.QUADRION_DATA ?? dataRoot.root, 'The e2e data root');
   assertNotRealData(env.QUADRION_USER_DATA ?? dataRoot.userData, 'The e2e profile');
+  await quietStreetMapOffer(env.QUADRION_USER_DATA ?? dataRoot.userData, extraArgs);
   const app = await electron.launch({
     // `-r` preloads the guard before the app's main module (Playwright drops NODE_OPTIONS).
     args: [...GPU_ARGS, '-r', GUARD, MAIN_ENTRY, ...extraArgs],

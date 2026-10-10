@@ -9,8 +9,10 @@ import {
 import type { MapPackInfo, PackJob } from '@aio/schema';
 import { formatBytes, formatDate, Icon, t } from '@aio/ui';
 import { useEffect, useMemo, useState } from 'react';
+import { mapCoverage } from '../../mapCoverage/store';
 import { bridge, useShell } from '../../shell';
 import { GeoidPacks } from './GeoidPacks';
+import { ProjectMaps } from './ProjectMaps';
 import { RasterPacks } from './RasterPacks';
 
 const ZOOMS: { z: number; hint: string }[] = [
@@ -78,6 +80,8 @@ function usePacks(dataRoot: string) {
     setError,
     refresh: () => {
       setRev((n) => n + 1);
+      // "Maps for your projects" reads the same lists
+      void mapCoverage.getState().refresh();
     },
   };
 }
@@ -370,6 +374,8 @@ export function MapPacks() {
   const [drawing, setDrawing] = useState(false);
   const [highlight, setHighlight] = useState<string | null>(null);
   const [focus, setFocus] = useState<Bbox | null>(null);
+  /** An area of "Maps for your projects" shown on the coverage map. */
+  const [preview, setPreview] = useState<Bbox | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
 
@@ -411,6 +417,18 @@ export function MapPacks() {
 
   return (
     <>
+      <ProjectMaps
+        offlineOnly={offlineOnly}
+        onShow={(b) => {
+          setPreview(b);
+          setFocus(b);
+        }}
+        onChanged={refresh}
+        confirm={confirm}
+        setConfirm={setConfirm}
+        remove={remove}
+      />
+
       <div className="sblock">
         <h2>
           Installed packs{' '}
@@ -457,7 +475,7 @@ export function MapPacks() {
             className="pack-map"
             packs={packs ?? []}
             highlight={highlight}
-            draft={draft}
+            draft={adding ? draft : preview}
             drawing={adding && drawing}
             onDraw={(b) => {
               setDraft(b);
