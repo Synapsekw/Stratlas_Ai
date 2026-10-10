@@ -25,6 +25,7 @@ import type { Screen } from '../store';
 import { BASEMAPS, basemapPatch } from '../workspace/basemap';
 import { PATH_MODES, setPathMode, togglePaths } from '../workspace/flightPaths';
 import { updateFlightPaths } from '../workspace/pathModel';
+import { onlineSatelliteSwitch } from '../workspace/onlineSatellite';
 import { rasterPacks, useBasemap } from '../workspace/siteTiles';
 import { toggleTelemetry } from '../workspace/telemetryPref';
 import { timeline, useTimeline } from '../workspace/timeline';
@@ -255,6 +256,20 @@ export function Palette() {
           run: onMap(() => {
             rasterPacks.getState().set({ hillshade: !basemap.hillshadeOn });
           }),
+        });
+      // online satellite: the same switch as the picker's row, not offered offline only. The
+      // first time it asks first, in Settings, where the notice says what is requested.
+      if (!offlineOnly)
+        list.push({
+          id: 'basemap:online',
+          title: t(basemap.online ? 'palette.online.off' : 'palette.online.on'),
+          group: 'Actions',
+          icon: 'globe',
+          keywords: ['satellite', 'sentinel', 'imagery', 'online', 'map type', 'basemap'],
+          run: () => {
+            onlineSatelliteSwitch.getState().request(!basemap.online);
+            if (onlineSatelliteSwitch.getState().asking) s.openSettings('raster-packs');
+          },
         });
       if (!pkg)
         list.push({

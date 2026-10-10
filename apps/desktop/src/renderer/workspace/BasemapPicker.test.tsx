@@ -3,12 +3,13 @@ import type { ProjectManifest, RasterPackInfo } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { graphics } from '../graphics';
 import { shell } from '../shell';
 import { BasemapPicker, GroundRows } from './BasemapPicker';
 import { siteLonLat } from './basemap';
 import { threeDates } from './__fixtures__/threeDates';
+import { onlineNoticeSeen, onlineSatelliteSwitch } from './onlineSatellite';
 import { rasterPacks } from './siteTiles';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -45,12 +46,31 @@ const DEFAULTS = {
   imageryPack: null,
   aroundTerrain: false,
   aroundImagery: false,
+  onlineSatellite: false,
 };
 
 let host: HTMLDivElement;
 let root: Root | undefined;
+/** What main was asked through `onlineTiles:setSatellite`, in order. */
+let switched: boolean[] = [];
+const offlineOnly = (on: boolean) => {
+  act(() => {
+    shell.setState({ settings: { ...shell.getState().settings, offlineOnly: on } });
+  });
+};
 beforeEach(() => {
   localStorage.clear();
+  switched = [];
+  // main, as far as the switch goes: it says yes and remembers nothing
+  (globalThis as { aio?: unknown }).aio = {
+    invoke: vi.fn((channel: string, req: { on?: boolean }) => {
+      if (channel !== 'onlineTiles:setSatellite') return Promise.reject(new Error(channel));
+      switched.push(req.on === true);
+      return Promise.resolve({ ok: true, satellite: req.on === true });
+    }),
+  };
+  onlineSatelliteSwitch.setState({ asking: false, error: null });
+  shell.setState({ settings: { ...shell.getState().settings, offlineOnly: false } });
   rasterPacks.setState({ prefs: { ...DEFAULTS }, imagery: [], terrain: [] });
   host = document.createElement('div');
   document.body.append(host);
@@ -61,6 +81,7 @@ afterEach(() => {
   root = undefined;
   host.remove();
   workspace.getState().closeProject();
+  delete (globalThis as { aio?: unknown }).aio;
 });
 
 const q = (id: string) => host.querySelector<HTMLElement>(`[data-testid="${id}"]`);
@@ -205,6 +226,158 @@ describe('the map type picker', () => {
     // on Streets no imagery draws: the pack waits for Satellite
     act(() => q('basemap-streets')?.click());
     expect((q('basemap-pack') as HTMLSelectElement).disabled).toBe(true);
+  });
+
+  describe('Online satellite', () => {
+    const box = () => q('basemap-online') as HTMLInputElement;
+    const note = () => q('basemap-online-note')?.textContent;
+    const tick = () => {
+      act(() => {
+        box().click();
+      });
+    };
+    const button = (name: string) =>
+      [...(q('online-satellite-notice')?.querySelectorAll('button') ?? [])].find(
+        (b) => b.textContent === name,
+      );
+    const settle = () => act(() => Promise.resolve());
+
+    it('is a row under Terrain shading that says what it is, off to start with', () => {
+      render();
+      open();
+      expect(box().checked).toBe(false);
+      expect(box().disabled).toBe(false);
+      expect(box().closest('label')?.textContent).toContain('Online satellite');
+      expect(note()).toBe('Sentinel-2, 2016, about 10 m per pixel');
+      expect(box().getAttribute('aria-describedby')).toBe(q('basemap-online-note')?.id);
+      // after the terrain shading row
+      const rows = [...host.querySelectorAll('.bm-toggle input')];
+      expect(rows.map((r) => r.getAttribute('data-testid'))).toEqual([
+        'basemap-hillshade',
+        'basemap-online',
+      ]);
+    });
+
+    it('the first time shows the notice, and switches nothing on until the person says yes', async () => {
+      render();
+      open();
+      tick();
+      expect(q('online-satellite-notice')?.textContent).toContain("from EOX's servers");
+      expect(box().checked).toBe(false);
+      expect(switched).toEqual([]);
+      // Cancel: still off, and the notice comes again next time
+      act(() => button('Cancel')?.click());
+      expect(q('online-satellite-notice')).toBeNull();
+      expect(switched).toEqual([]);
+      expect(onlineNoticeSeen()).toBe(false);
+
+      tick();
+      act(() => button('Switch on')?.click());
+      await settle();
+      expect(switched).toEqual([true]);
+      expect(box().checked).toBe(true);
+      expect(prefs().onlineSatellite).toBe(true);
+      expect(q('online-satellite-notice')).toBeNull();
+      expect(onlineNoticeSeen()).toBe(true);
+
+      // off and on again: no notice any more
+      tick();
+      await settle();
+      expect(switched).toEqual([true, false]);
+      expect(box().checked).toBe(false);
+      tick();
+      await settle();
+      expect(q('online-satellite-notice')).toBeNull();
+      expect(switched).toEqual([true, false, true]);
+    });
+
+    it('closing the picker with the notice open switches nothing on', () => {
+      render();
+      open();
+      tick();
+      expect(onlineSatelliteSwitch.getState().asking).toBe(true);
+      act(() => q('basemap-button')?.click());
+      expect(onlineSatelliteSwitch.getState().asking).toBe(false);
+      expect(switched).toEqual([]);
+    });
+
+    it('makes Satellite and Satellite only a choice where no pack covers the site', () => {
+      rasterPacks.setState({ imagery: [pack('far', { bbox: [10, 10, 11, 11] })] });
+      render();
+      open();
+      expect((q('basemap-satellite') as HTMLButtonElement).disabled).toBe(true);
+      expect(q('basemap-note')?.textContent).toContain('No imagery or terrain pack covers this');
+      act(() => {
+        rasterPacks.getState().set({ onlineSatellite: true });
+      });
+      expect((q('basemap-satellite') as HTMLButtonElement).disabled).toBe(false);
+      expect((q('basemap-imagery') as HTMLButtonElement).disabled).toBe(false);
+      // Satellite was the remembered type: with imagery to draw, the map shows it
+      expect(q('basemap-satellite')?.getAttribute('aria-checked')).toBe('true');
+      expect(q('basemap-button')?.textContent).toBe('Satellite');
+      // the imagery line is gone; only what is still missing is said
+      expect(q('basemap-note')?.textContent).toContain('No terrain pack covers this site.');
+      expect(q('basemap-note')?.textContent).not.toContain('imagery');
+      expect(q('basemap-turn-on-online')).toBeNull();
+      act(() => q('basemap-imagery')?.click());
+      expect(q('basemap-button')?.textContent).toBe('Satellite only');
+    });
+
+    it('the reason line offers it as a second way out when it is off', async () => {
+      localStorage.setItem('stratlas.onlineSatelliteNotice', '1');
+      rasterPacks.setState({ terrain: [pack('dem', { kind: 'terrain' })] });
+      render();
+      open();
+      expect(q('basemap-note')?.textContent).toBe(
+        'No imagery pack covers this site. Offline maps or turn on Online satellite',
+      );
+      act(() => q('basemap-turn-on-online')?.click());
+      await settle();
+      expect(switched).toEqual([true]);
+      expect(q('basemap-note')).toBeNull();
+      expect(q('basemap-button')?.textContent).toBe('Satellite');
+    });
+
+    it('offline only: greyed with the reason, and no second way out', () => {
+      offlineOnly(true);
+      render();
+      open();
+      expect(box().disabled).toBe(true);
+      expect(box().checked).toBe(false);
+      expect(note()).toBe('Go online to use it');
+      expect(q('basemap-note')?.textContent).toContain('No imagery or terrain pack covers this');
+      expect(q('basemap-turn-on-online')).toBeNull();
+    });
+
+    it('offline only and already on: saved tiles only, and it can still be switched off', async () => {
+      rasterPacks.getState().set({ onlineSatellite: true });
+      offlineOnly(true);
+      render();
+      open();
+      expect(box().checked).toBe(true);
+      expect(box().disabled).toBe(false);
+      expect(note()).toBe('Showing saved tiles only');
+      expect((q('basemap-satellite') as HTMLButtonElement).disabled).toBe(false);
+      tick();
+      await settle();
+      expect(switched).toEqual([false]);
+      expect(box().checked).toBe(false);
+      expect(box().disabled).toBe(true);
+      expect(note()).toBe('Go online to use it');
+    });
+
+    it('says why when main does not switch it', async () => {
+      localStorage.setItem('stratlas.onlineSatelliteNotice', '1');
+      (globalThis as { aio?: unknown }).aio = {
+        invoke: vi.fn(() => Promise.resolve({ ok: false, error: 'It was not saved.' })),
+      };
+      render();
+      open();
+      tick();
+      await settle();
+      expect(box().checked).toBe(false);
+      expect(q('online-satellite-error')?.textContent).toBe('It was not saved.');
+    });
   });
 
   it('works from the keyboard: arrows choose, Escape closes and focus returns to the chip', async () => {

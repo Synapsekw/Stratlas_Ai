@@ -44,6 +44,7 @@ import { Id, Sha256Hex } from './common';
 import { ExchangeKind, ExchangePreview, Heads, TeamProjectId } from './exchange';
 import { ActorId, DeviceId, Identity, Initials, Member, PersonName, Role } from './identity';
 import { LaunchSettings } from './launch';
+import { OnlineTileCache, OnlineTilesStatus } from './onlineImagery';
 import { DesignFormat, DesignsFile, DesignSourceUnits } from './designs';
 import { HydroRun } from './hydro';
 import { HaulRun } from './haul';
@@ -2337,6 +2338,24 @@ export const ipc = {
     request: z.object({ id: RasterPackId }).strict(),
     response: OkOrFailure,
   },
+
+  // ------------------------------------------- Online satellite (ADR 0007, amended 10 Oct 2026)
+  /**
+   * Whether **Online satellite** is switched on (userData `online.json`, `OnlineSettings`), and
+   * the cache of its tiles on this computer. Whether tiles are requested also depends on
+   * `Settings.offlineOnly` (`onlineSatelliteAvailability`); main enforces both.
+   */
+  'onlineTiles:status': { request: Empty, response: OnlineTilesStatus },
+  /** Switch **Online satellite** on or off. Off counts at once; on once it is saved. */
+  'onlineTiles:setSatellite': {
+    request: z.object({ on: z.boolean() }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), satellite: z.boolean() }),
+      Failure,
+    ]),
+  },
+  /** **Clear cached satellite tiles**: deletes every cached tile; answers the empty cache. */
+  'onlineTiles:clearCache': { request: Empty, response: OnlineTileCache },
 
   // ---------------------------------------------------------------- M11 surveying (G0 stubs)
   /**

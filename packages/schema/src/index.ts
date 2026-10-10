@@ -39,3 +39,5 @@ export * from './haul';
 // Video direction keyframes and photo corrections (orientation.json, proposal)
 export * from './orientation';
 export * from './launch';
+// Online satellite imagery (ADR 0007, amendment of 10 Oct 2026)
+export * from './onlineImagery';

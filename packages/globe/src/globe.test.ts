@@ -1,9 +1,11 @@
+import { ONLINE_SATELLITE } from '@aio/schema';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   BANNED_CESIUM_IMPORTS,
   OFFLINE_CESIUM,
   ONLINE_GLOBE_HOSTS,
+  ONLINE_SATELLITE_CREDIT,
   creditLines,
   offlineSource,
   onlineHostsIn,
@@ -62,5 +64,30 @@ describe('@aio/globe public API (G0)', () => {
       'Contains modified Copernicus Sentinel data 2025',
       'Customer aerial survey 2026 (customer licence)',
     ]);
+  });
+
+  it('credits the online satellite imagery when it is drawn, right above the bundled one', () => {
+    expect(ONLINE_SATELLITE_CREDIT).toBe(ONLINE_SATELLITE.attribution);
+    expect(ONLINE_SATELLITE_CREDIT).toContain('EOX IT Services GmbH');
+    expect(ONLINE_SATELLITE_CREDIT).toContain('Copernicus Sentinel data 2016');
+    const packs = [{ attribution: 'Customer aerial survey 2026', customerLicence: true }];
+    expect(creditLines(packs, { onlineSatellite: true })).toEqual([
+      'Natural Earth II (public domain)',
+      ONLINE_SATELLITE_CREDIT,
+      'Customer aerial survey 2026 (customer licence)',
+    ]);
+    expect(creditLines(packs, { onlineSatellite: false })).not.toContain(ONLINE_SATELLITE_CREDIT);
+    expect(creditLines(packs)).not.toContain(ONLINE_SATELLITE_CREDIT);
+  });
+
+  it('the online satellite source is read through the app, never from a server by name', () => {
+    // ADR 0007, amendment of 10 Oct 2026: main owns the address of the service
+    const provider = repoFile('packages/globe/src/view/onlineSatellite.ts');
+    expect(provider).toContain('onlineSatelliteTileUrl');
+    expect(provider).not.toMatch(/https?:\/\//);
+    expect(onlineHostsIn(provider)).toEqual([]);
+    // and it is one of our own providers, not a banned online one
+    for (const name of BANNED_CESIUM_IMPORTS)
+      expect(provider, name).not.toMatch(new RegExp(`\\b${name}\\b`));
   });
 });

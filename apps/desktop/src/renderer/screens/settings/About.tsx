@@ -1,5 +1,5 @@
 import { brand } from '@aio/brand';
-import type { AioBridge, IpcEvent, IpcResponse } from '@aio/schema';
+import { ONLINE_SATELLITE, type AioBridge, type IpcEvent, type IpcResponse } from '@aio/schema';
 import { formatBytes, formatDate, Icon, Switch, t } from '@aio/ui';
 import { useEffect, useMemo, useState } from 'react';
 import { build, formatBuildTime } from '../../buildStamp';
@@ -398,6 +398,10 @@ function Licences() {
       <p className="help">
         Open-source packages shipped inside the app, listed from its dependency tree when it was
         built. Map data © OpenStreetMap contributors (ODbL), basemap by Protomaps.
+      </p>
+      <p className="help" data-testid="about-online-satellite">
+        Online satellite imagery (off unless you switch it on in Offline maps):{' '}
+        <span dir="ltr">{ONLINE_SATELLITE.attribution}</span>, licensed CC BY 4.0.
       </p>
       {list && !list.ok && <p className="prov-err">{list.error}</p>}
       {/* scrolls on its own: focusable so the keyboard can scroll it */}

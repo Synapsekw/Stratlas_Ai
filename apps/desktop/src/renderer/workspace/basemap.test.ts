@@ -5,6 +5,7 @@ import {
   basemapPatch,
   coveringPacks,
   groundModel,
+  onlineRow,
   siteLonLat,
   type BasemapPrefs,
 } from './basemap';
@@ -41,6 +42,7 @@ const prefs = (over: Partial<BasemapPrefs> = {}): BasemapPrefs => ({
   hillshade: true,
   streets: true,
   imageryPack: null,
+  onlineSatellite: false,
   ...over,
 });
 
@@ -75,6 +77,7 @@ describe('the basemap of a site', () => {
       satellite: false,
       hillshade: false,
       streets: true,
+      online: false,
     });
   });
 
@@ -124,6 +127,83 @@ describe('the basemap of a site', () => {
     const m = basemapModel(prefs(), [elsewhere], [demFar], null);
     expect(m.satellite).toBe(true);
     expect(m.hillshade).toBe(true);
+  });
+
+  describe('with online satellite switched on', () => {
+    const on = (over: Partial<BasemapPrefs> = {}) => prefs({ onlineSatellite: true, ...over });
+
+    it('Satellite can be chosen where no pack covers the site, and draws the online imagery', () => {
+      const m = basemapModel(on(), [elsewhere], [], SITE);
+      expect(m.satellite).toBe(true);
+      expect(m.online).toBe(true);
+      expect(m.packs).toEqual([]);
+      expect(m.choice).toBe('satellite');
+      // the packs elsewhere still draw (over it), so the map stays sharp where they are
+      expect(m.draw).toEqual({
+        imagery: [elsewhere],
+        terrain: [],
+        satellite: true,
+        hillshade: false,
+        streets: true,
+        online: true,
+      });
+      expect(basemapModel(on(), [], [], SITE).draw).toMatchObject({ online: true, imagery: [] });
+    });
+
+    it('Satellite only keeps it and hides the streets', () => {
+      const m = basemapModel(on({ streets: false }), [], [], SITE);
+      expect(m.choice).toBe('imagery');
+      expect(m.draw).toMatchObject({ satellite: true, streets: false, online: true });
+    });
+
+    it('is imagery like the packs: Streets draws none of it', () => {
+      const m = basemapModel(on({ satellite: false }), [here], [], SITE);
+      expect(m.choice).toBe('streets');
+      expect(m.satellite).toBe(true);
+      expect(m.draw).toMatchObject({ satellite: false, online: false, imagery: [], streets: true });
+    });
+
+    it('draws under the one pack chosen as under all of them', () => {
+      const one = basemapModel(on({ imageryPack: 'here' }), [world, here], [], SITE);
+      expect(one.draw.imagery.map((p) => p.id)).toEqual(['here']);
+      expect(one.draw.online).toBe(true);
+    });
+
+    it('off, nothing changes: no pack, no Satellite', () => {
+      const m = basemapModel(prefs(), [], [], SITE);
+      expect(m.satellite).toBe(false);
+      expect(m.online).toBe(false);
+      expect(m.draw.online).toBe(false);
+    });
+  });
+
+  it('the Online satellite row: what it is, greyed offline, or saved tiles only', () => {
+    expect(onlineRow(false, false)).toEqual({
+      availability: 'off',
+      checked: false,
+      disabled: false,
+      note: 'detail',
+    });
+    expect(onlineRow(true, false)).toEqual({
+      availability: 'online',
+      checked: true,
+      disabled: false,
+      note: 'detail',
+    });
+    // offline only: it cannot be switched on
+    expect(onlineRow(false, true)).toEqual({
+      availability: 'off',
+      checked: false,
+      disabled: true,
+      note: 'offline',
+    });
+    // already on: saved tiles still draw, and it can be switched off to hide them
+    expect(onlineRow(true, true)).toEqual({
+      availability: 'cached',
+      checked: true,
+      disabled: false,
+      note: 'saved',
+    });
   });
 
   it('remembers a map type as the choices the Settings checkboxes read', () => {

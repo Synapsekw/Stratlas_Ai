@@ -474,6 +474,15 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     where: 'survey/hydro/<run>/run.json',
     since: '0.11',
   },
+  // whether online satellite is switched on, beside settings.json rather than in it
+  // (onlineImagery.ts; ADR 0007, amendment of 10 Oct 2026)
+  {
+    family: 'aio.online-settings',
+    version: 1,
+    home: 'userData',
+    where: 'online.json',
+    since: '0.11',
+  },
 ];
 
 /**

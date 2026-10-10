@@ -31,6 +31,11 @@ export interface AioRoots {
    * a stream from the shared folder, or missing (a 404 with `x-aio-blob: missing <sha256> <size>`).
    */
   blob?(id: string, rel: string): Promise<BlobLookup | null>;
+  /**
+   * `aio://online/<id>/<z>/<x>/<y>.jpg`: an online satellite tile, gated and cached by main
+   * (`onlineTiles.ts`; ADR 0007, amendment of 10 Oct 2026). Absent: 404.
+   */
+  onlineTile?(segments: readonly string[], req: Request): Promise<Response>;
 }
 
 const PACK = /^([a-z0-9-]+)\.pmtiles$/;
@@ -184,6 +189,8 @@ async function serveLegacyDocument(read: () => Promise<string>, projectId: strin
  *   an open package (`roots.embeddedPack`).
  * - `aio://thumb/<id>/<path>` serves a small thumbnail of a project image, or 404 (thumbs.ts).
  * - `aio://branding/<logo>` serves the person's report logo from userData.
+ * - `aio://online/<id>/<z>/<x>/<y>.jpg` serves an online satellite tile when the person switched
+ *   that on (`roots.onlineTile`: the gate, the one host and the cache live in `onlineTiles.ts`).
  */
 export function createAioHandler(roots: AioRoots): (req: Request) => Promise<Response> {
   return async (req) => {
@@ -253,6 +260,10 @@ export function createAioHandler(roots: AioRoots): (req: Request) => Promise<Res
       if (name === undefined || rest.length > 0 || !LOGO_NAME.test(name) || dir === undefined)
         return status(404);
       return serveFile(join(dir, name), req, KEEP);
+    }
+
+    if (url.host === 'online') {
+      return roots.onlineTile ? roots.onlineTile(segments, req) : status(404);
     }
 
     if (url.host === 'packs') {

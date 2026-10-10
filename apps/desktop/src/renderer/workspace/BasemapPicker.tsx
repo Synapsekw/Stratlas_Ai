@@ -6,12 +6,19 @@
  * chosen for the open site. A choice with no pack to draw from is greyed out with the reason and
  * a way to Settings, where packs are imported. `GroundRows` puts the 3D view's part of it (imagery
  * and terrain around the site) in the Layers popover.
+ *
+ * One row is not a pack: Online satellite (Sentinel-2, off by default; ADR 0007 amended 10 Oct
+ * 2026). It is the same switch as the checkbox in Settings (`onlineSatellite.ts`), with the same
+ * notice the first time. Switched on, it makes Satellite a choice at any site.
  */
 import { Icon, useFocusTrap, useT, type MessageKey } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
-import { shell } from '../shell';
-import { BASEMAPS, basemapPatch, siteLonLat, type Basemap } from './basemap';
+import { useStore } from 'zustand';
+import { shell, useShell } from '../shell';
+import { BASEMAPS, basemapPatch, onlineRow, siteLonLat, type Basemap } from './basemap';
+import { onlineSatelliteSwitch } from './onlineSatellite';
+import { OnlineSatelliteNotice } from './OnlineSatelliteNotice';
 import { usePopPlacement } from './popPlacement';
 import { rasterPacks, useBasemap, useGround, useRasterPacks } from './siteTiles';
 import './basemapPicker.css';
@@ -114,12 +121,23 @@ function PacksLink() {
   );
 }
 
-/** The choices themselves: the cards, the pack and terrain shading. */
+const ONLINE_NOTE = {
+  detail: 'basemap.online.detail',
+  offline: 'basemap.online.offline',
+  saved: 'basemap.online.saved',
+} as const satisfies Record<string, MessageKey>;
+
+/** The choices themselves: the cards, the pack, terrain shading and online satellite. */
 export function BasemapChoices() {
   const t = useT();
   const model = useBasemap();
+  const offlineOnly = useShell((s) => s.settings.offlineOnly === true);
+  const online = onlineRow(model.online, offlineOnly);
+  // while the notice asks, the reason line under it waits: the question fits a small window
+  const asking = useStore(onlineSatelliteSwitch, (s) => s.asking);
   const cards = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  const onlineNoteId = useId();
   const choose = (b: Basemap) => {
     rasterPacks.getState().set(basemapPatch(b));
   };
@@ -229,9 +247,46 @@ export function BasemapChoices() {
           }}
         />
       </label>
-      {missing && (
+      <label className="pop-row bm-toggle bm-online" title={t('basemap.online.tip')}>
+        <span className="pop-grow">
+          {t('basemap.online')}
+          <span className="bm-sub" id={onlineNoteId} data-testid="basemap-online-note">
+            {t(ONLINE_NOTE[online.note])}
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          data-testid="basemap-online"
+          aria-describedby={onlineNoteId}
+          disabled={online.disabled}
+          checked={online.checked}
+          onChange={() => {
+            // the first time this opens the notice below; nothing is on until the person says yes
+            onlineSatelliteSwitch.getState().request(!online.checked);
+          }}
+        />
+      </label>
+      <OnlineSatelliteNotice className="bm-notice" />
+      {missing && !asking && (
         <p className="pop-note bm-note" data-testid="basemap-note">
           {t(missing)} <PacksLink />
+          {!model.satellite && !offlineOnly && (
+            <>
+              {' '}
+              {t('basemap.online.or')}{' '}
+              <button
+                type="button"
+                className="bm-link"
+                title={t('basemap.online.tip')}
+                data-testid="basemap-turn-on-online"
+                onClick={() => {
+                  onlineSatelliteSwitch.getState().request(true);
+                }}
+              >
+                {t('basemap.online')}
+              </button>
+            </>
+          )}
         </p>
       )}
     </div>

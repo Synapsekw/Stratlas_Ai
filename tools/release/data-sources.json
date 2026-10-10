@@ -1,5 +1,5 @@
 {
-  "$comment": "Map and imagery data Stratlas distributes or ships (M10 decision 4), the data inventory behind docs/release/THIRD-PARTY-NOTICES.md. Imagery and terrain sources are checked by data-licences.mjs like the pack metadata built from them; street maps (vector PMTiles, MapPackInfo) predate M10 and are listed for the inventory only. Packs a customer imports under their own licence are never listed here and never redistributed by us.",
+  "$comment": "Map and imagery data Stratlas distributes or ships (M10 decision 4), the data inventory behind docs/release/THIRD-PARTY-NOTICES.md. Imagery and terrain sources are checked by data-licences.mjs like the pack metadata built from them; street maps (vector PMTiles, MapPackInfo) predate M10 and are listed for the inventory only. Packs a customer imports under their own licence are never listed here and never redistributed by us. The online satellite source (ADR 0007, amendment of 10 Oct 2026) is streamed on request and never shipped; it is listed for its licence and attribution.",
   "schema": "data-sources/1",
   "sources": [
     {
@@ -37,6 +37,15 @@
       "attribution": "© ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium",
       "provenance": "ESA WorldCover 2021 Sentinel-2 RGBNIR composite",
       "source": "https://esa-worldcover.org/en/data-access"
+    },
+    {
+      "name": "Sentinel-2 cloudless 2016 (EOX)",
+      "kind": "online imagery (optional)",
+      "use": "Online satellite on the map, streamed from EOX's tile service for the areas in view when the person switches it on (ADR 0007, amendment of 10 Oct 2026); never shipped, never written into a pack, a project or a package. The 2016 layer only: later years are CC BY-NC-SA and are not used",
+      "licence": "CC-BY-4.0",
+      "attribution": "EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)",
+      "provenance": "EOX::Maps WMTS, layer s2cloudless_3857 (Sentinel-2 cloudless 2016, Web Mercator)",
+      "source": "https://tiles.maps.eox.at/wmts/1.0.0/WMTSCapabilities.xml"
     },
     {
       "name": "Copernicus DEM GLO-30",

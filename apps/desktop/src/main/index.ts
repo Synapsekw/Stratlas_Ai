@@ -98,6 +98,8 @@ import { startSync } from './sync/electron';
 import { registerTeamServerIpc, teamServers } from './teamServer';
 import { globeProjectReader, registerGlobeIpc } from './globe';
 import { registerRasterPacksIpc } from './packs/raster';
+import { createOnlineSettingsStore, onlineSettingsPath } from './onlineSettings';
+import { createOnlineTiles, fakeTileFetch } from './onlineTiles';
 import {
   latestAccuracyRun,
   nodePhotoSystem,
@@ -393,6 +395,47 @@ const packs = createPackManager({
   source: (url, identity) => httpSource(url, mapFetch, identity),
   buildBase: planetBuilds.base,
   latestBuild: (signal) => findLatestBuild(mapFetch, signal, planetBuilds),
+});
+
+// Online satellite (ADR 0007, amendment of 10 Oct 2026): a network path that, like the others,
+// runs only on the person's say. Off by default; `onlineTiles.ts` refuses every tile unless the
+// person switched it on (userData online.json, not a settings.json field: onlineSettings.ts),
+// asks the one service only while the workstation is not offline-only, and keeps what it fetched
+// in <userData>/cache/online-tiles.
+const onlineSettings = createOnlineSettingsStore(onlineSettingsPath(app.getPath('userData')));
+const e2eRun = process.env.QUADRION_E2E === '1';
+/**
+ * QUADRION_ONLINE_TILES_TEST=1: an end-to-end test stands in for the service with tiles made here
+ * (one flat colour), and reads the addresses asked for from `__aioOnlineTileRequests`. Only an
+ * isolated profile of an e2e run can ask for it, so a person's installation never runs it.
+ */
+const fakeOnlineTiles =
+  e2eRun &&
+  process.env.QUADRION_ONLINE_TILES_TEST === '1' &&
+  Boolean(process.env.QUADRION_USER_DATA);
+const onlineTileRequests: string[] = [];
+if (fakeOnlineTiles)
+  Object.defineProperty(globalThis, '__aioOnlineTileRequests', { value: onlineTileRequests });
+const onlineTiles = createOnlineTiles({
+  switches: () => ({
+    satellite: onlineSettings.satellite(),
+    offlineOnly: settings.current().offlineOnly === true,
+  }),
+  cacheDir: () => join(app.getPath('userData'), 'cache', 'online-tiles'),
+  // an e2e run never reaches the service: there is no fetcher at all unless the spec asks for
+  // the fake one
+  fetch: fakeOnlineTiles
+    ? fakeTileFetch(() => {
+        // 256 x 256 of one green; red and blue are equal, so the platform's byte order of a
+        // bitmap (BGRA or RGBA) does not change the colour
+        const px = Buffer.alloc(256 * 256 * 4);
+        for (let i = 0; i < px.length; i += 4) px.set([30, 170, 30, 255], i);
+        return nativeImage.createFromBitmap(px, { width: 256, height: 256 }).toJPEG(80);
+      }, onlineTileRequests)
+    : e2eRun
+      ? null
+      : (url, init) => mapFetch(url, init),
+  userAgent: `${brand.productName}/${app.getVersion()} (desktop app; online satellite imagery)`,
 });
 
 // Updates (ADR 0003): from a file, or from the optional feed only when the person presses Check
@@ -1335,6 +1378,12 @@ function registerIpc(): void {
     dataRoot: () => settings.current().dataRoot,
     startJob: (req) => jobs.start(req),
   });
+  handle('onlineTiles:status', async () => ({
+    satellite: await onlineSettings.get(),
+    cache: await onlineTiles.cache(),
+  }));
+  handle('onlineTiles:setSatellite', ({ on }) => onlineSettings.set(on));
+  handle('onlineTiles:clearCache', () => onlineTiles.clear());
 
   // M11: one module per stream (G1 geodesy and geoid packs; G2, G3 and G6 survey; G12 survey AI).
   const survey = {
@@ -1616,6 +1665,8 @@ if (restore) {
       console.warn('Map pack jobs could not be restored', e);
     });
     await jobStore.load();
+    // before the first tile can be asked for: until it is read, online satellite is off
+    await onlineSettings.load();
     protocol.handle(
       'aio',
       createAioHandler({
@@ -1626,6 +1677,7 @@ if (restore) {
         brandingDir,
         embeddedPack: (id) => findEmbedded(id, registry.openPackages()),
         blob: (id, rel) => blobs.lookup(id, rel),
+        onlineTile: (segments, req) => onlineTiles.serve(segments, req),
       }),
     );
     registerIpc();

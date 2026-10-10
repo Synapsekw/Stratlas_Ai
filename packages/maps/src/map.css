@@ -45,6 +45,10 @@
 .aio-map .maplibregl-ctrl-attrib.maplibregl-compact {
   box-shadow: 0 0 0 1px var(--line, #24282d);
 }
+/* a long credit (online satellite) wraps in its corner instead of running across the map's foot */
+.aio-map .maplibregl-ctrl-attrib.maplibregl-compact-show {
+  max-width: 300px;
+}
 .aio-map .maplibregl-ctrl-attrib-button {
   background-color: transparent;
 }
