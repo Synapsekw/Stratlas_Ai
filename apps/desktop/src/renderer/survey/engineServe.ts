@@ -307,11 +307,21 @@ export function serveEngine(port: EnginePort, fetch: FetchBytes = fetchBytes): v
     work.then(
       (value) => {
         running.delete(msg.id);
-        const transfer: Transferable[] = [];
-        if (msg.kind === 'run')
-          for (const h of (value as RunReply).heat)
-            transfer.push(h.dz.buffer as ArrayBuffer, h.z.buffer as ArrayBuffer);
-        reply({ id: msg.id, ok: true, value }, transfer);
+        try {
+          const transfer: Transferable[] = [];
+          if (msg.kind === 'run')
+            for (const h of (value as RunReply).heat)
+              transfer.push(h.dz.buffer as ArrayBuffer, h.z.buffer as ArrayBuffer);
+          reply({ id: msg.id, ok: true, value }, transfer);
+        } catch (e) {
+          // the answer could not be handed over (a buffer that cannot be moved): say so, or the
+          // request would wait for ever and its measurement would read Computing
+          reply({
+            id: msg.id,
+            ok: false,
+            error: `The engine's answer could not be sent: ${e instanceof Error ? e.message : String(e)}`,
+          });
+        }
       },
       (e: unknown) => {
         running.delete(msg.id);
