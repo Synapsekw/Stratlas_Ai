@@ -77,6 +77,17 @@ describe('library projects as Globe sites', () => {
     expect(originLonLat(manifest({ crs: { wkt: 'not a crs' } }))).toBeNull();
   });
 
+  it('does not place a project on a local grid (it would land at 0 N 0 E)', () => {
+    for (const wkt of [
+      'LOCAL_CS["Site grid",UNIT["metre",1]]',
+      ' local_cs["Site grid",UNIT["metre",1]]',
+      'ENGCRS["Site grid",EDATUM["Site datum"],CS[Cartesian,2],AXIS["e",east],AXIS["n",north],UNIT["metre",1]]',
+    ]) {
+      expect(originLonLat({ crs: { wkt }, origin: [0, 0, 0] })).toBeNull();
+      expect(originLonLat({ crs: { wkt }, origin: [0.5, 0.2, 0] })).toBeNull();
+    }
+  });
+
   it('counts open issues by severity and lists captures and tilesets', async () => {
     const projects: Record<string, GlobeProject> = {
       a: {
