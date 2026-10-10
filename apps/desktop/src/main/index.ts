@@ -109,6 +109,7 @@ import { registerGeodesyIpc } from './geodesy';
 import { geoidJobEnv, packGeoidDirsOf, registerGeoidPacksIpc } from './packs/geoid';
 import { registerSurveyIpc } from './survey';
 import { registerSurveyAiIpc } from './surveyAi';
+import { createSegmenter } from './inference/segment';
 import { qaJobEvents, registerSurveyQaIpc } from './surveyQa';
 import { registerSurveyOverlaysIpc } from './surveyOverlays';
 import { registerSurveyHydroIpc } from './surveyHydro';
@@ -1323,7 +1324,15 @@ function registerIpc(): void {
       return pack ? packGeoidDirsOf(pack.dir) : [];
     },
   });
-  registerSurveyAiIpc({ handle });
+  registerSurveyAiIpc({
+    handle,
+    segmenter: createSegmenter({
+      packDir: async () =>
+        (await findPack({ dataRoot: settings.current().dataRoot, env: process.env, app: packApp }))
+          .pack?.dir ?? null,
+      loadRuntime: loadOnnxRuntime,
+    }),
+  });
 }
 
 /** Hand a package path to the renderer (second launch, macOS open-file). */

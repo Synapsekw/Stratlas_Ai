@@ -6,7 +6,9 @@
  * Everything else in the review works without a mask model.
  *
  * The model is the usual SAM / MobileSAM ONNX export: the encoder takes a 1024 x 1024 normalised
- * RGB image (longest side scaled to 1024, padded right and bottom), the decoder takes the
+ * RGB image (longest side scaled to 1024, padded right and bottom), or, when `model.json` says
+ * `"input": "hwc-255"` (the shipped MobileSAM export, ADR 0011), the same image as 1024 x 1024 x 3
+ * values of 0 to 255; the decoder takes the
  * embeddings, the box as two labelled points (2, 3), an empty mask input and the original size,
  * and returns mask logits at the original size with an IoU score per mask.
  */
@@ -38,6 +40,8 @@ export interface SamModel {
   name: string;
   encoder: string;
   decoder: string;
+  /** How the encoder takes its image (`model.json` `input`). */
+  input?: 'hwc-255' | 'nchw-imagenet';
 }
 
 /** An image scaled so its longest side is at most `maxSide`, as RGBA, with its original size. */
@@ -71,13 +75,18 @@ export async function findSamModel(packDir: string | null): Promise<SamModel | n
   const decoder = join(dir, 'decoder.onnx');
   if (!(await exists(encoder)) || !(await exists(decoder))) return null;
   let name = 'SAM';
+  let input: SamModel['input'];
   try {
-    const meta = JSON.parse(await readFile(join(dir, 'model.json'), 'utf8')) as { name?: unknown };
+    const meta = JSON.parse(await readFile(join(dir, 'model.json'), 'utf8')) as {
+      name?: unknown;
+      input?: unknown;
+    };
     if (typeof meta.name === 'string' && meta.name.trim()) name = meta.name.trim().slice(0, 80);
+    if (meta.input === 'hwc-255') input = 'hwc-255';
   } catch {
     // no model.json: keep the generic name
   }
-  return { name, encoder, decoder };
+  return { name, encoder, decoder, ...(input ? { input } : {}) };
 }
 
 /**
@@ -106,6 +115,19 @@ export function encoderInput(img: DecodedImage): Float32Array {
       for (let c = 0; c < 3; c++) {
         out[c * plane + o] = ((img.rgba[i + c] ?? 0) - (MEAN[c] ?? 0)) / (STD[c] ?? 1);
       }
+    }
+  }
+  return out;
+}
+
+/** The padded 1024 x 1024 x 3 encoder input of 0 to 255 values (`input: hwc-255`). */
+export function encoderInputHwc(img: DecodedImage): Float32Array {
+  const out = new Float32Array(SAM_SIZE * SAM_SIZE * 3);
+  for (let y = 0; y < img.scaledHeight; y++) {
+    for (let x = 0; x < img.scaledWidth; x++) {
+      const i = (y * img.scaledWidth + x) * 4;
+      const o = (y * SAM_SIZE + x) * 3;
+      for (let c = 0; c < 3; c++) out[o + c] = img.rgba[i + c] ?? 0;
     }
   }
   return out;
@@ -179,7 +201,10 @@ export function createMaskAssist(deps: MaskAssistDeps): MaskAssist {
       try {
         if (cached?.path !== path) {
           const image = await deps.decode(path, SAM_SIZE);
-          const input = new ort.Tensor('float32', encoderInput(image), [1, 3, SAM_SIZE, SAM_SIZE]);
+          const input =
+            l.s.model.input === 'hwc-255'
+              ? new ort.Tensor('float32', encoderInputHwc(image), [SAM_SIZE, SAM_SIZE, 3])
+              : new ort.Tensor('float32', encoderInput(image), [1, 3, SAM_SIZE, SAM_SIZE]);
           const out = await encoder.run({ [encoder.inputNames[0] ?? 'image']: input });
           const embeddings = out[encoder.outputNames[0] ?? 'image_embeddings'];
           if (!embeddings) return { ok: false, error: 'The mask model returned no embeddings.' };
