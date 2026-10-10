@@ -39,6 +39,18 @@ export function isWorkspaceError(status: number | undefined, detail: string): bo
   );
 }
 
+/** Shown wherever cloud AI is refused because the workstation is offline-only. */
+export const OFFLINE_ONLY_MESSAGE =
+  'Cloud AI is off because this workstation is offline-only. A local model on this machine can still be used. To use cloud AI, turn off Offline-only workstation in Settings, Privacy and cloud.';
+
+/** A cloud request refused before it left: the workstation is offline-only. */
+export class OfflineOnlyError extends Error {
+  constructor() {
+    super(OFFLINE_ONLY_MESSAGE);
+    this.name = 'OfflineOnlyError';
+  }
+}
+
 const MAX_DETAIL = 400;
 
 /** Patterns of API keys and bearer tokens of the providers we talk to. */
@@ -144,6 +156,9 @@ function hint(status: number, detail: string): string {
 export function describeError(err: unknown, ctx: ErrorContext): DescribedError {
   const e = unwrap(err);
   const { label } = ctx;
+  if (e instanceof OfflineOnlyError) {
+    return { message: e.message, log: `offline-only (${label}): the request was not sent` };
+  }
   if (APICallError.isInstance(e)) {
     const status = e.statusCode;
     const { message, type } = providerError(e);

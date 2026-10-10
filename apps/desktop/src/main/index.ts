@@ -163,6 +163,7 @@ import { APP_CSP } from './csp';
 import { cspForUrl } from './protocol/legacy';
 import { saveFile } from './saveFile';
 import { savePath } from './exports/savePath';
+import { aiGates } from './aiGates';
 import { createSettingsStore, defaultDataRoot, defaultSettings } from './settings';
 import { installRealDataGuard } from './realDataGuard';
 import { migrateLegacyUserData } from './userDataMigration';
@@ -299,21 +300,23 @@ const keyService = profileVaultService(
   process.env.QUADRION_USER_DATA ? `${brand.appId}.isolated` : brand.appId,
   profile,
 );
-const keys = createKeyVault(keyService, (service, account) => new Entry(service, account));
+// Automated runs on an isolated profile keep every key (API keys, the device key) in a TEST-ONLY
+// file in their throwaway userData instead of the OS vault (testVault.ts): the isolated service
+// is one per machine, so a key a test stored there would be found by every later run.
+const vaultEntry = useTestVault(process.env)
+  ? createTestVault(app.getPath('userData'))
+  : (service: string, account: string) => new Entry(service, account);
+const keys = createKeyVault(keyService, vaultEntry);
 /** The app as pipeline packs see it: a pack declaring an app range without this version is refused. */
 const packApp = { version: app.getVersion(), name: brand.productName };
 const appStamp = { name: brand.productName, version: app.getVersion() };
 // One device key per profile (M9 integration): T2's identity service, vault account
-// `device-signing` under the profile's service. Automated runs on an isolated profile keep it in
-// a TEST-ONLY file in their throwaway userData instead of the OS vault (testVault.ts).
-const deviceVault = useTestVault(process.env)
-  ? createTestVault(app.getPath('userData'))
-  : (service: string, account: string) => new Entry(service, account);
+// `device-signing` under the profile's service, in the same vault as the API keys.
 const identityService = createIdentityService({
   store: createIdentityStore(identityPath(app.getPath('userData')), {
     osUser: () => osUser().user,
   }),
-  keys: createDeviceKeys(keyService, deviceVault, registerSecret),
+  keys: createDeviceKeys(keyService, vaultEntry, registerSecret),
   // T2's team ops go through T1's journal service, the only writer of `journal/`
   journal: teamJournal(() => journal),
   projectRoot: (id) => registry.root(id),
@@ -431,6 +434,8 @@ const scripted =
  * and answers the workspace 400 until Settings has a workspace ID (agent panel fix, e2e).
  */
 const scriptedWorkspace = scripted && process.env.QUADRION_AI_TEST_SCRIPT === 'workspace-400';
+/** Offline-only and the cloud switch, as every cloud AI path asks them. */
+const gates = aiGates(settings, policy);
 const providers = createProviderRegistry(
   scripted
     ? (['anthropic', 'openai', 'google'] as const).map((id) =>
@@ -445,6 +450,8 @@ const providers = createProviderRegistry(
     : builtInProviders({
         // Keys not scoped to a workspace need the workspace ID (Settings, AI providers).
         anthropicWorkspaceId: () => settings.current().anthropicWorkspaceId,
+        // the last line of defence: no request to a provider leaves an offline-only workstation
+        offlineOnly: gates.offlineOnly,
       }),
 );
 
@@ -456,8 +463,7 @@ const agent = createAgentRuntime(
       registerSecret(key);
       return key;
     },
-    // Cloud AI also needs the open package's permission (AI-2, default forbid).
-    cloudAllowed: () => policy.cloudAllowed(settings.current().cloudAi),
+    ...gates,
     routes: () => settings.current().routes,
     localModel: () => settings.current().localModel,
     policy: async (projectId) => {
@@ -1195,7 +1201,7 @@ function registerIpc(): void {
   registerLocalModelsIpc({
     handle,
     localModel: () => settings.current().localModel,
-    cloudAllowed: () => policy.cloudAllowed(settings.current().cloudAi),
+    ...gates,
     remember: (server) => {
       localServerSeen = server;
     },

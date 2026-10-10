@@ -38,6 +38,8 @@ export const en = {
   'titlebar.cloudBlocked': 'Cloud AI blocked',
   'titlebar.cloudBlockedTip':
     'This package does not allow cloud AI. Nothing is sent to any provider.',
+  'titlebar.cloudOfflineTip':
+    'Cloud AI is off because this workstation is offline-only. Change in Settings, Privacy and cloud.',
   'titlebar.readOnlyPackage': 'Read-only package',
   'titlebar.package': 'Package',
   'titlebar.readOnlyPackageTip': 'Opened from {file}. Nothing in this package can be changed.',

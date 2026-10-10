@@ -52,6 +52,17 @@ While the Model builder is open, the agent uses the **Build from drawings** rout
 
 **Ctrl K**, **Turn cloud AI on** does the same. A package can forbid cloud AI: then the chip reads **Cloud AI blocked** and nothing from it is sent.
 
+### On an offline-only workstation
+
+With **Offline-only workstation** on (**Settings**, **Privacy and cloud**), cloud AI is off whatever the **Cloud AI** switch says.
+
+- Nothing goes to Anthropic, OpenAI or Google Gemini: not from the agent, **Detect with AI**, **Draft with AI** or **Test connection**. This holds from the moment you switch it on. A reply under way stops before its next step.
+- The **Cloud AI** switch shows off and is greyed, and the title bar chip reads **Cloud AI blocked**.
+- The agent reads **The agent is off**: "Cloud AI is off because this workstation is offline-only. A local model on this machine can still be used. To use cloud AI, turn off Offline-only workstation in Settings, Privacy and cloud."
+- A local model on this computer keeps working. See [Set up a local model](20-local-model.md). A model server on another machine counts as cloud AI and is refused.
+
+Switch **Offline-only workstation** off to use cloud AI again. The **Cloud AI** switch goes back to what you had set.
+
 ## Talk to the agent
 
 The agent sits at the bottom of the right panel on **Scene** (open the panel with **Ctrl Alt B** if it is folded).
@@ -79,7 +90,7 @@ After each move the agent says where the camera is. If a name fits several place
 
 ## What is sent and when
 
-- Nothing is sent while **Cloud AI** is off, or to a local model.
+- Nothing is sent while **Cloud AI** is off or the workstation is offline-only, or to a local model.
 - The first message to a cloud provider in a project shows **Send to** ... with exactly what leaves the workstation: **Provider and model**, **Your message**, **Window context (text)** and **Attached frame**. Tick **Always allow for this project** to skip this preview next time.
 - The window context is text only: the project name, client and site, the time and the active clip, what is selected, the visible layer names, and counts of layers, clips and issues. No photos, positions or issue notes.
 - A frame (an image of the view) is sent only when you attach it with the camera button, or approve a step that sends one.

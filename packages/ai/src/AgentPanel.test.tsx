@@ -10,6 +10,7 @@ import {
   type AgentFixControls,
   type AgentPanelProps,
 } from './AgentPanel';
+import { OFFLINE_ONLY_MESSAGE } from './errors';
 import { fixtureManifest } from './test-fixtures';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -93,6 +94,29 @@ describe('AgentPanel', () => {
   it('explains how to turn on cloud AI', async () => {
     const el = await render(bridge(false).b);
     expect(el.textContent).toContain('Cloud AI is off');
+    expect(el.querySelector('textarea')?.disabled).toBe(true);
+  });
+
+  it('says cloud AI is off because the workstation is offline-only', async () => {
+    const base = bridge(false).b;
+    const b: AioBridge = {
+      invoke: <C extends IpcChannel>(channel: C, req: IpcRequest<C>) =>
+        channel === 'ai:status'
+          ? Promise.resolve({
+              ready: false,
+              reason: 'offline-only',
+              message: OFFLINE_ONLY_MESSAGE,
+              cloud: true,
+            } as IpcResponse<C>)
+          : base.invoke(channel, req),
+      on: (event, listener) => base.on(event, listener),
+    };
+    const el = await render(b);
+    const off = el.querySelector('.ag-off')?.textContent ?? '';
+    expect(off).toContain('Cloud AI is off because this workstation is offline-only.');
+    expect(off).toContain('turn off Offline-only workstation in Settings, Privacy and cloud');
+    // not the steps for the cloud switch: turning it on would change nothing
+    expect(off).not.toContain('Switch on Allow cloud AI');
     expect(el.querySelector('textarea')?.disabled).toBe(true);
   });
 

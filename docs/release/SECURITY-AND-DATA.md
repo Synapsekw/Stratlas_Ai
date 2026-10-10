@@ -28,7 +28,7 @@ Synapse Solutions hosts no customer data in 1.0. A hosted service is not offered
 | Team Server sync    | Only for a project in server mode, on a click or the auto-sync the person turned on | The customer's own Team Server                         | That project's changes and files, in signed requests                                                 |
 | Shared folder (hub) | Only for a project in hub mode                                                      | The customer's network share                           | That project's changes and files                                                                     |
 
-An administrator can turn every online action off for a workstation (**offline-only** setting). The test suite runs every end-to-end test behind a network guard that fails the test on any unexpected request.
+An administrator can turn every online action off for a workstation (**offline-only** setting). That includes cloud AI: while it is on, no request goes to an AI provider, whatever the cloud AI switch says, and a model on the same computer keeps working. The test suite runs every end-to-end test behind a network guard that fails the test on any unexpected request.
 
 Transfer files (`.aiosync`), identity cards (`.aioid`) and packages (`.aio`) leave the computer only when a person saves them and carries or sends them.
 

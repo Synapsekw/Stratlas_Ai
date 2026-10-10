@@ -44,6 +44,8 @@ The title bar always shows **Offline**: {product} works with no network. The app
 - an online update check (off by default),
 - cloud AI, when you switch it on ([AI agent](07-ai-agent.md)).
 
+To rule all three out, switch on **Offline-only workstation** in **Settings**, **Privacy and cloud**. A local model on this computer still works.
+
 ## Get help
 
 - Press **F1**, or click **?** in the title bar, to open this guide. Type in **Search the guide** to find a topic.

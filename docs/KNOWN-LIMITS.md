@@ -92,6 +92,7 @@ Current limits only; each is removed from this list when fixed.
 - Local model quality and speed depend on the person's hardware; without a graphics card an answer can take tens of seconds.
 - Vision support of a local model is guessed from its name.
 - Token counts for local models are estimates (characters divided by 4).
+- A model server on this computer (`localhost`, a `127.` address or `::1`) is trusted as local, also on an offline-only workstation. The app does not check what that server does with a request: one that forwards to another machine sends the data there.
 - Ollama may serve a smaller context window than the model's maximum; pick **Compact** for small contexts.
 - Tested against a simulated server only; real Ollama, LM Studio and llama.cpp servers are not yet tested.
 

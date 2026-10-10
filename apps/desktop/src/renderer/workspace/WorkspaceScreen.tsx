@@ -252,7 +252,12 @@ export function WorkspaceScreen() {
   const modellerOpen = useModeller((s) => s.open);
   // the agent checks its route again when the AI settings change
   const aiKey = useShell((s) =>
-    JSON.stringify([s.settings.cloudAi, s.settings.routes, s.settings.localModel]),
+    JSON.stringify([
+      s.settings.cloudAi,
+      s.settings.offlineOnly === true,
+      s.settings.routes,
+      s.settings.localModel,
+    ]),
   );
   const road = useIsRoad();
   const volumes = useVolumetric((s) => s.status === 'ready');

@@ -35,7 +35,13 @@ import {
   detectUserText,
   parseDetectReply,
 } from './detect';
-import { describeError, isNetworkError, type DescribedError } from './errors';
+import {
+  describeError,
+  isNetworkError,
+  OFFLINE_ONLY_MESSAGE,
+  OfflineOnlyError,
+  type DescribedError,
+} from './errors';
 import {
   COMPACT_MAX_STEPS,
   DEFAULT_LOCAL_TIMEOUT_MS,
@@ -63,7 +69,13 @@ import {
 } from './routes';
 import { allToolSpecs, riskOf, toolsForWindow, type ToolProfile } from './tools';
 
-export { describeError, sanitize, type DescribedError } from './errors';
+export {
+  describeError,
+  OFFLINE_ONLY_MESSAGE,
+  OfflineOnlyError,
+  sanitize,
+  type DescribedError,
+} from './errors';
 export {
   anthropicHeaders,
   createProviderRegistry,
@@ -90,6 +102,11 @@ export interface AgentRuntimeHost {
   getKey(provider: AiProvider): Promise<string | null>;
   /** False when the person has cloud AI switched off: the runtime must refuse to call out. */
   cloudAllowed(): boolean;
+  /**
+   * True while the workstation is offline-only: every cloud call is refused, whatever the cloud
+   * switch says. A model on this machine (a loopback address) stays available.
+   */
+  offlineOnly?(): boolean;
   emit(event: IpcEvent<'ai:event'>): void;
   /** Model routes from Settings; defaults to defaultRoutes(). */
   routes?(): readonly ModelRoute[];
@@ -158,6 +175,7 @@ export const MESSAGES = {
   localTimeout: (ms: number) =>
     `The local model did not answer within ${String(Math.ceil(ms / 1000))} s. It may still be loading: try again, or allow more time in Settings, AI providers.`,
   cloudOff: 'Cloud AI is off. Turn it on in Settings, AI providers, to use the agent.',
+  offlineOnly: OFFLINE_ONLY_MESSAGE,
   busy: 'The agent is already working on this message.',
   noProvider: 'This AI provider is not available. Choose another in Settings, AI providers.',
   forbidden:
@@ -243,6 +261,7 @@ export function createAgentRuntime(
   const providers = options.providers ?? createProviderRegistry();
   const maxSteps = options.maxSteps ?? MAX_STEPS;
   const runs = new Map<string, Run>();
+  const offlineOnly = () => host.offlineOnly?.() ?? false;
 
   function waitForRenderer(run: Run, callId: string): Promise<Outcome> {
     return new Promise<Outcome>((resolve, reject) => {
@@ -307,10 +326,13 @@ export function createAgentRuntime(
     if (registered) return registered;
     if (id !== 'local') return undefined;
     const cfg = host.localModel?.();
-    return cfg?.enabled ? localProvider(cfg) : undefined;
+    return cfg?.enabled ? localProvider(cfg, { offlineOnly }) : undefined;
   }
 
-  /** Every gate before a call, in order: route, provider, cloud switch, project policy, key. */
+  /**
+   * Every gate before a call, in order: route, provider, offline-only, cloud switch, project
+   * policy, key.
+   */
   async function check(task: AiTask, projectId: string | undefined): Promise<Check> {
     let route: ModelRoute;
     try {
@@ -330,6 +352,10 @@ export function createAgentRuntime(
         : { ok: false, reason: 'no-provider', message: MESSAGES.noProvider, route, cloud: true };
     }
     const cloud = provider.cloud;
+    // before the cloud switch: turning that on would not help while the workstation is offline-only
+    if (cloud && offlineOnly()) {
+      return { ok: false, reason: 'offline-only', message: MESSAGES.offlineOnly, route, cloud };
+    }
     if (cloud && !host.cloudAllowed()) {
       return { ok: false, reason: 'cloud-off', message: MESSAGES.cloudOff, route, cloud };
     }
@@ -410,7 +436,13 @@ export function createAgentRuntime(
           if (answerOnly && firstReply) {
             host.emit({ type: 'text', runId, delta: `${MESSAGES.answerOnlyNotice}\n\n` });
           }
-          await streamOnce(req, run, route, model, { local, answerOnly, watchdog, progress });
+          await streamOnce(req, run, route, model, {
+            local,
+            cloud: provider.cloud,
+            answerOnly,
+            watchdog,
+            progress,
+          });
           break;
         } catch (e) {
           // A server that refuses tools before anything was said: answer in text only.
@@ -459,6 +491,8 @@ export function createAgentRuntime(
     model: LanguageModel,
     o: {
       local: LocalModelSettings | undefined;
+      /** The provider sends data off this machine. */
+      cloud: boolean;
       answerOnly: boolean;
       watchdog: Watchdog | undefined;
       progress: { steps: number; lastFinish: string | undefined };
@@ -492,6 +526,11 @@ export function createAgentRuntime(
       messages: toModelMessages({ ...req, messages: trimmed.messages }),
       ...(tools ? { tools } : {}),
       stopWhen: stepCountIs(limit),
+      // Offline-only turned on during the run (while an approval waited): no further step goes out.
+      prepareStep: () => {
+        if (o.cloud && offlineOnly()) throw new OfflineOnlyError();
+        return {};
+      },
       abortSignal: signal,
       maxRetries: options.maxRetries ?? 2,
       maxOutputTokens: local ? outputBudget(local.contextTokens) : 16_000,
@@ -675,6 +714,7 @@ export function createAgentRuntime(
       if (!provider) {
         return { ok: false, message: id === 'local' ? MESSAGES.localOff : MESSAGES.noProvider };
       }
+      if (provider.cloud && offlineOnly()) return { ok: false, message: MESSAGES.offlineOnly };
       if (provider.cloud && !host.cloudAllowed()) return { ok: false, message: MESSAGES.cloudOff };
       const routes = host.routes?.() ?? defaultRoutes();
       const routed =

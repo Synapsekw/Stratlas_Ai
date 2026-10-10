@@ -48,7 +48,9 @@ Only for a server that asks for one, such as LM Studio or a secured llama.cpp se
 
 ## A server on another machine
 
-An address that is not on this computer, for example a server elsewhere on your network, is not local: requests to it leave this computer, so they count as cloud AI. **Find models** warns first; **Look there anyway** goes on, **Cancel** stops. With cloud AI off, {product} does not send to it.
+An address that is not on this computer, for example a server elsewhere on your network, is not local: requests to it leave this computer, so they count as cloud AI. **Find models** warns first; **Look there anyway** goes on, **Cancel** stops. With cloud AI off, or on an offline-only workstation, {product} does not send to it.
+
+On this computer means the address is `localhost`, `127.0.0.1` (any `127.` address) or `::1`. Any other name counts as another machine, also one that ends in `.localhost`.
 
 ## If it does not answer
 
