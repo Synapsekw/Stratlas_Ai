@@ -32,7 +32,10 @@ more kind of plan entry and one more case in the view.
   colours. The Earth of a fresh install, and the layer under the street tiles.
 - **Street tiles** (`GlobeTileSource`): Web Mercator raster tiles the host draws. The app renders
   its street style from the installed street packs with a hidden MapLibre map (`@aio/maps`
-  `createStreetTiles`); this package knows neither MapLibre nor the packs.
+  `createStreetTiles`); this package knows neither MapLibre nor the packs. CesiumJS mixes tile
+  levels in one view, and a street style draws each zoom differently, so with the view at rest
+  every street tile in view is drawn again in the style of the deepest one (`styleZoomFor`,
+  `TileSourceImageryProvider.syncView`): labels and line widths agree across tile edges.
 - **Imagery packs** (`view/providers.ts`): raster PMTiles, in the Satellite and Natural Earth
   looks.
 - **Natural Earth II**: the painted raster of the first Globe, the Natural Earth look.

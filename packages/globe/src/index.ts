@@ -31,6 +31,7 @@ export {
 export {
   planGlobeLayers,
   planShowsPacks,
+  styleZoomFor,
   type GlobeLayerInput,
   type GlobeLayerPlan,
   type GlobeTileSource,

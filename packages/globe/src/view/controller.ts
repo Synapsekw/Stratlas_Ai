@@ -144,6 +144,8 @@ export interface GlobeInspection {
   imageryTiles: number;
   /** Street tiles drawn so far and what they cost; null when no street pack is drawn. */
   street: GlobeTileStats | null;
+  /** The style zoom the street tiles in view agree on (the deepest of them); null before. */
+  streetZoom: number | null;
   /** Tiles of the bundled land shapes painted so far, and the milliseconds a tile took (mean). */
   earthTiles: number;
   earthTileMs: number;
@@ -180,6 +182,7 @@ export class GlobeController {
   private built: { names: string[]; street: GlobeTileSource | null; sourceFor: SourceFor } | null =
     null;
   private earth: EarthImageryProvider | null = null;
+  private streetTiles: { layer: ImageryLayer; provider: TileSourceImageryProvider } | null = null;
   private imageryProviders: PmtilesImageryProvider[] = [];
   private terrainIds: string[] = [];
   private terrainDecoded: (() => number) | null = null;
@@ -276,6 +279,13 @@ export class GlobeController {
       // it: one more frame shows them (the scene draws on demand)
       widget.scene.camera.changed.addEventListener(() => {
         widget.scene.requestRender();
+      }),
+      // once the view has come to rest and its tiles are in, the street tiles agree on one style
+      widget.scene.camera.moveEnd.addEventListener(() => {
+        this.syncStreetStyle();
+      }),
+      widget.scene.globe.tileLoadProgressEvent.addEventListener((queued: number) => {
+        if (queued === 0) this.syncStreetStyle();
       }),
     );
     this.rebuildLayers();
@@ -583,6 +593,7 @@ export class GlobeController {
       layers.removeAll(true);
       this.imageryProviders = [];
       this.earth = null;
+      this.streetTiles = null;
       for (const entry of plan) {
         if (entry.kind === 'earth-shapes') {
           const imagePx = Math.round((entry.role === 'whole' ? 512 : 256) * pixelRatio);
@@ -603,10 +614,12 @@ export class GlobeController {
             ),
           );
         } else if (entry.kind === 'street') {
-          if (street)
-            layers.add(
-              new ImageryLayer(asProvider(new TileSourceImageryProvider(street, pixelRatio))),
-            );
+          if (street) {
+            const provider = new TileSourceImageryProvider(street, pixelRatio);
+            const layer = new ImageryLayer(asProvider(provider));
+            layers.add(layer);
+            this.streetTiles = { layer, provider };
+          }
         } else if (entry.kind === 'natural-earth') {
           layers.add(naturalEarthLayer());
         } else {
@@ -626,6 +639,37 @@ export class GlobeController {
     this.credits = planCredits(plan, street?.credit ?? '', terrainInUse);
     this.o.onCredits?.(this.credits);
     this.scene.requestRender();
+  }
+
+  /**
+   * Street tiles are drawn per tile, each in the style of its own zoom, so where a coarser tile
+   * meets a finer one a label would change size and be cut at the edge. With the view at rest,
+   * every street tile in view is drawn again in the style of the deepest one (`syncView`).
+   */
+  private syncStreetStyle(): void {
+    const street = this.streetTiles;
+    if (!street || this.destroyed || this.flying()) return;
+    // CesiumJS's list of the tiles it draws, each with the imagery it wants per layer
+    interface DrawnImagery {
+      imageryLayer?: unknown;
+      level: number;
+      x: number;
+      y: number;
+    }
+    interface DrawnTile {
+      data?: { imagery?: { loadingImagery?: DrawnImagery; readyImagery?: DrawnImagery }[] };
+    }
+    const surface = (this.scene.globe as unknown as { _surface?: { _tilesToRender?: DrawnTile[] } })
+      ._surface;
+    const inView: { level: number; x: number; y: number }[] = [];
+    for (const tile of surface?._tilesToRender ?? []) {
+      for (const slot of tile.data?.imagery ?? []) {
+        const wanted = slot.loadingImagery ?? slot.readyImagery;
+        if (wanted?.imageryLayer === street.layer)
+          inView.push({ level: wanted.level, x: wanted.x, y: wanted.y });
+      }
+    }
+    if (street.provider.syncView(inView)) this.scene.requestRender();
   }
 
   // ---------------------------------------------------------------- measuring
@@ -972,6 +1016,7 @@ export class GlobeController {
       imagery: this.imageryProviders.map((p) => p.pack.id),
       imageryTiles: this.imageryProviders.reduce((n, p) => n + p.tilesLoaded, 0),
       street: this.layerNames.includes('street') ? (this.street?.stats?.() ?? null) : null,
+      streetZoom: this.streetTiles?.provider.viewZoom ?? null,
       earthTiles: this.earth?.tilesDrawn ?? 0,
       earthTileMs: this.earth?.tilesDrawn ? this.earth.drawMs / this.earth.tilesDrawn : 0,
       terrain: this.terrainIds,

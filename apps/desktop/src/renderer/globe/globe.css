@@ -10,6 +10,8 @@
   --globe-edge: 12px;
   --globe-clear: var(--acc);
   --globe-attention: var(--s4);
+  /* the chrome follows the width of the Globe itself (the window less the sidebar) */
+  container: globe / inline-size;
 }
 .globe-screen .aio-globe {
   position: absolute;
@@ -34,6 +36,21 @@
   border: 1px solid var(--line);
   border-radius: var(--r-6);
   box-shadow: 0 12px 32px var(--shadow);
+  --globe-panel-w: 296px;
+}
+/* The smallest window (1100 px, 848 px of Globe): a narrower panel and card, so the middle of
+   the Globe stays free to click and drag. */
+@container globe (max-width: 1000px) {
+  .globe-panel,
+  .globe-card,
+  .globe-controls,
+  .globe-credits,
+  .globe-readout {
+    --globe-panel-w: 264px;
+  }
+  .globe-card {
+    width: 272px;
+  }
 }
 
 /* a pin's colour, wherever a site is named: the list, the card, the key */
@@ -54,7 +71,7 @@
 .globe-panel {
   top: var(--globe-edge);
   inset-inline-start: var(--globe-edge);
-  width: 296px;
+  width: var(--globe-panel-w);
   max-height: calc(100% - 2 * var(--globe-edge) - 40px);
   display: flex;
   flex-direction: column;
@@ -264,6 +281,8 @@
   inset-inline-start: var(--globe-edge);
   bottom: var(--globe-edge);
   max-width: calc(100% - 2 * var(--globe-edge) - 48px);
+  /* never over the Globe: the credits are read, not clicked */
+  pointer-events: none;
   display: flex;
   flex-wrap: wrap;
   gap: 2px 14px;
@@ -272,13 +291,13 @@
   color: var(--fg-2);
   font-size: var(--t-11);
 }
+/* beside the panel, centred in what is left of the top edge (no card is open while measuring) */
 .globe-readout {
   top: var(--globe-edge);
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: calc(100% - 680px);
-  min-width: 280px;
-  margin: 0;
+  inset-inline-start: calc(2 * var(--globe-edge) + var(--globe-panel-w));
+  inset-inline-end: var(--globe-edge);
+  width: fit-content;
+  margin: 0 auto;
   display: flex;
   flex-wrap: wrap;
   justify-content: center;

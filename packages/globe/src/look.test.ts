@@ -1,7 +1,7 @@
 import { GlobeSettings, defaultGlobeSettings } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { EARTH_SHAPES_CREDIT, BUNDLED_CREDIT, planCredits } from './credits';
-import { planGlobeLayers, planShowsPacks } from './layers';
+import { planGlobeLayers, planShowsPacks, styleZoomFor } from './layers';
 import {
   GLOBE_LOOKS,
   IDLE_SPIN,
@@ -96,6 +96,26 @@ describe('planGlobeLayers', () => {
     ]);
     const old = planGlobeLayers({ style: 'natural-earth', street: false, imagery: [] });
     expect(planCredits(old, osm)).toEqual([BUNDLED_CREDIT]);
+  });
+});
+
+describe('styleZoomFor', () => {
+  it('draws every street tile in view in the style of the deepest one', () => {
+    // the deepest tile in view is at level 6: its neighbours one and two levels up follow it
+    expect(styleZoomFor(6, 6, 2)).toBe(6);
+    expect(styleZoomFor(5, 6, 2)).toBe(6);
+    expect(styleZoomFor(4, 6, 2)).toBe(6);
+  });
+
+  it('follows the view only as far as the source can draw, and never below the tile itself', () => {
+    expect(styleZoomFor(2, 6, 2)).toBe(4);
+    expect(styleZoomFor(8, 6, 2)).toBe(8);
+    expect(styleZoomFor(5, 6, 0)).toBe(5);
+    expect(styleZoomFor(5, 6, -1)).toBe(5);
+  });
+
+  it('is the tile own level before the view is known', () => {
+    expect(styleZoomFor(5, null, 2)).toBe(5);
   });
 });
 

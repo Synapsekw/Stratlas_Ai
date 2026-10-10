@@ -25,6 +25,11 @@ export const STREET_TILE_PROTOCOL = 'aioglobe';
 export const STREET_TILE_SIZE = 512;
 /** Drawn around each tile and cropped away, CSS pixels. */
 const MARGIN = 128;
+/**
+ * A tile can be drawn in the style of a zoom up to this many levels deeper than its own: the
+ * Globe asks for that so a coarser tile shows the same labels as the finer tile beside it.
+ */
+export const STREET_STYLE_STEPS = 2;
 /** A tile that is not drawn after this long is handed over as it is. */
 const IDLE_TIMEOUT_MS = 8000;
 
@@ -50,11 +55,19 @@ export interface StreetTiles {
   /** The deepest level any pack is drawn at. */
   readonly maxZoom: number;
   readonly credit: string;
+  /** How many levels deeper than a tile's own its style zoom may be. */
+  readonly styleSteps: number;
   /**
-   * Tile `z/x/y`. `undefined`: a tile is being drawn, ask again shortly. `null`: no pack reaches
-   * this tile at this level.
+   * Tile `z/x/y`, drawn as the style has it at `styleZoom` (the tile's own zoom when left out,
+   * at most `styleSteps` deeper). `undefined`: a tile is being drawn, ask again shortly. `null`:
+   * no pack reaches this tile at this level.
    */
-  request(z: number, x: number, y: number): Promise<HTMLCanvasElement | null> | undefined;
+  request(
+    z: number,
+    x: number,
+    y: number,
+    styleZoom?: number,
+  ): Promise<HTMLCanvasElement | null> | undefined;
   stats(): StreetTileStats;
   dispose(): void;
 }
@@ -132,7 +145,7 @@ export function createStreetTiles(
   let host: HTMLDivElement | null = null;
   let map: MapLibreMap | null = null;
   let ready: Promise<void> | null = null;
-  const state = { busy: false, disposed: false };
+  const state = { busy: false, disposed: false, step: 0 };
   /** Asked again after every wait: `dispose` may run while a tile is being drawn. */
   const gone = (): boolean => state.disposed;
 
@@ -143,7 +156,7 @@ export function createStreetTiles(
     host = document.createElement('div');
     host.setAttribute('aria-hidden', 'true');
     host.inert = true;
-    host.style.cssText = `position:fixed;left:-${String(view * 2)}px;top:0;width:${String(view)}px;height:${String(view)}px;pointer-events:none;contain:strict`;
+    host.style.cssText = `position:fixed;left:-20000px;top:0;width:${String(view)}px;height:${String(view)}px;pointer-events:none;contain:strict`;
     document.body.appendChild(host);
     const m = new MapLibreMap({
       container: host,
@@ -188,13 +201,32 @@ export function createStreetTiles(
       });
     });
 
-  const draw = async (z: number, x: number, y: number): Promise<HTMLCanvasElement | null> => {
+  const draw = async (
+    z: number,
+    x: number,
+    y: number,
+    step: number,
+  ): Promise<HTMLCanvasElement | null> => {
     await start();
     const m = map;
-    if (!m || gone()) return null;
+    if (!m || !host || gone()) return null;
     const [west, south, east, north] = tileBbox(z, x, y);
     const t0 = performance.now();
-    m.jumpTo({ center: [(west + east) / 2, midLatitude(z, y)], zoom: z, bearing: 0, pitch: 0 });
+    // a deeper style zoom shows the same ground on a larger map: draw that map at fewer device
+    // pixels per CSS pixel, and the picture has the size it always has
+    const scale = 2 ** step;
+    if (step !== state.step) {
+      state.step = step;
+      host.style.width = `${String(view * scale)}px`;
+      host.style.height = `${String(view * scale)}px`;
+      m.setPixelRatio(ratio / scale);
+    }
+    m.jumpTo({
+      center: [(west + east) / 2, midLatitude(z, y)],
+      zoom: z + step,
+      bearing: 0,
+      pitch: 0,
+    });
     m.triggerRepaint();
     if (!(await idle(m))) stats.timeouts++;
     if (gone()) return null;
@@ -209,7 +241,7 @@ export function createStreetTiles(
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
     const source = m.getCanvas();
-    const k = source.width / view;
+    const k = source.width / (view * scale);
     ctx.drawImage(source, a.x * k, a.y * k, (b.x - a.x) * k, (b.y - a.y) * k, 0, 0, out, out);
     const n = stats.tiles + 1;
     stats.drawMs += (t1 - t0 - stats.drawMs) / n;
@@ -221,7 +253,8 @@ export function createStreetTiles(
     tileSize: STREET_TILE_SIZE,
     maxZoom: cover.maxZoom,
     credit: '© OpenStreetMap contributors',
-    request(z, x, y) {
+    styleSteps: STREET_STYLE_STEPS,
+    request(z, x, y, styleZoom = z) {
       if (state.disposed || !cover.has(z, x, y)) {
         stats.skipped++;
         return Promise.resolve(null);
@@ -232,7 +265,8 @@ export function createStreetTiles(
       }
       state.busy = true;
       const t0 = performance.now();
-      return draw(z, x, y).finally(() => {
+      const step = Math.max(0, Math.min(STREET_STYLE_STEPS, Math.round(styleZoom - z)));
+      return draw(z, x, y, step).finally(() => {
         state.busy = false;
         const ms = performance.now() - t0;
         stats.tiles++;

@@ -22,10 +22,22 @@ export interface GlobeTileSource {
   /** Shown in the Globe's credits while the tiles are. */
   readonly credit: string;
   /**
-   * One tile. `undefined`: busy, ask again on a later frame. A promise of `null`: nothing here at
-   * this level (the Globe keeps the coarser tile above it).
+   * How many levels deeper than a tile's own the source can draw its style (0 when left out).
+   * The Globe then has every tile in view drawn in the style of the deepest one, so labels and
+   * line widths agree where a coarser tile meets a finer one (`styleZoomFor`).
    */
-  request(z: number, x: number, y: number): Promise<TexImageSource | null> | undefined;
+  readonly styleSteps?: number;
+  /**
+   * One tile, drawn as the style has it at `styleZoom` (the tile's own level when left out).
+   * `undefined`: busy, ask again on a later frame. A promise of `null`: nothing here at this
+   * level (the Globe keeps the coarser tile above it).
+   */
+  request(
+    z: number,
+    x: number,
+    y: number,
+    styleZoom?: number,
+  ): Promise<TexImageSource | null> | undefined;
   stats?(): GlobeTileStats;
   dispose?(): void;
 }
@@ -51,6 +63,16 @@ export interface GlobeTileStats {
   timeouts?: number;
   /** The last fault the renderer reported, if any. */
   lastError?: string | null;
+}
+
+/**
+ * The style zoom a street tile of `level` is drawn at when the deepest tile in view is at
+ * `viewZoom`: the view's zoom, but never shallower than the tile's own level and at most `steps`
+ * levels deeper (beyond that the picture would be too small to read anyway).
+ */
+export function styleZoomFor(level: number, viewZoom: number | null, steps: number): number {
+  if (viewZoom === null) return level;
+  return Math.max(level, Math.min(viewZoom, level + Math.max(0, steps)));
 }
 
 export type GlobeLayerPlan<P> =

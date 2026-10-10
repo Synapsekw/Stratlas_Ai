@@ -13,7 +13,7 @@ import {
 import { EARTH_SHAPES_CREDIT } from '../credits';
 import { drawEarthTile, geographicTileBox, type EarthInk } from '../earth/draw';
 import { parseEarth, type EarthShapes } from '../earth/shapes';
-import type { GlobeTileSource } from '../layers';
+import { styleZoomFor, type GlobeTileSource } from '../layers';
 
 let shapes: Promise<EarthShapes> | undefined;
 
@@ -107,6 +107,12 @@ export class TileSourceImageryProvider {
   readonly hasAlphaChannel = true;
   readonly tileDiscardPolicy = undefined;
   tilesLoaded = 0;
+  /** The level of the deepest street tile in view: the style every tile in view is drawn in. */
+  viewZoom: number | null = null;
+  /** Set by CesiumJS while the layer is shown: draws every loaded tile again, in place. */
+  _reload: (() => void) | undefined = undefined;
+  /** The style zoom each tile handed over since the last redraw was drawn at. */
+  private readonly drawn = new Map<string, number>();
 
   constructor(
     readonly source: GlobeTileSource,
@@ -125,14 +131,40 @@ export class TileSourceImageryProvider {
     return undefined;
   }
 
+  private styleZoom(level: number): number {
+    return styleZoomFor(level, this.viewZoom, this.source.styleSteps ?? 0);
+  }
+
   requestImage(x: number, y: number, level: number): Promise<TexImageSource> | undefined {
-    const pending = this.source.request(level, x, y);
+    const styleZoom = this.styleZoom(level);
+    const pending = this.source.request(level, x, y, styleZoom);
     if (!pending) return undefined;
     return pending.then((image) => {
       if (!image) throw new Error('No street tile at this level');
       this.tilesLoaded++;
+      if (this.drawn.size > 4000) this.drawn.clear();
+      this.drawn.set(`${String(level)}/${String(x)}/${String(y)}`, styleZoom);
       return image;
     });
+  }
+
+  /**
+   * The street tiles now in view (CesiumJS's own list). When one of them was drawn in another
+   * style zoom than the deepest of them asks for, all are drawn again: a coarser tile then shows
+   * the same labels, at the same size on the ground, as the finer tile beside it. True when a
+   * redraw was started.
+   */
+  syncView(inView: readonly { level: number; x: number; y: number }[]): boolean {
+    if (inView.length === 0) return false;
+    this.viewZoom = inView.reduce((deepest, t) => Math.max(deepest, t.level), 0);
+    const stale = inView.some((t) => {
+      const was = this.drawn.get(`${String(t.level)}/${String(t.x)}/${String(t.y)}`);
+      return was !== undefined && was !== this.styleZoom(t.level);
+    });
+    if (!stale || !this._reload) return false;
+    this.drawn.clear();
+    this._reload();
+    return true;
   }
 
   pickFeatures(): undefined {
