@@ -16,7 +16,8 @@ const repoFile = (p: string) => readFileSync(new URL(`../../../${p}`, import.met
 describe('@aio/globe public API (G0)', () => {
   it('keeps Cesium offline: no ion token, our own base layer, the online providers banned', () => {
     expect(OFFLINE_CESIUM.ionToken).toBeNull();
-    expect(OFFLINE_CESIUM.baseLayer).toBe('natural-earth-ii');
+    expect(OFFLINE_CESIUM.baseLayer).toBe('earth-shapes');
+    expect(OFFLINE_CESIUM.naturalEarth).toBe('natural-earth-ii');
     expect(BANNED_CESIUM_IMPORTS).toEqual(
       expect.arrayContaining(['Ion', 'createWorldImageryAsync', 'BingMapsImageryProvider']),
     );

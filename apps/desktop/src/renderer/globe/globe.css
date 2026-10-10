@@ -1,9 +1,15 @@
-/* The Globe screen (M10 G6): the CesiumWidget fills the screen; our chrome floats over it. */
+/* The Globe screen (M10 G6): the CesiumWidget fills the screen; our chrome floats over it. The
+   Globe is a dark map in every theme (the section carries data-surface='dark'), so its panels
+   use the dark Mission tokens too, as everything drawn inside a street map does. */
 .globe-screen {
   position: absolute;
   inset: 0;
   overflow: hidden;
-  background: #000;
+  background: var(--bg-0);
+  color: var(--fg-1);
+  --globe-edge: 12px;
+  --globe-clear: var(--acc);
+  --globe-attention: var(--s4);
 }
 .globe-screen .aio-globe {
   position: absolute;
@@ -13,126 +19,300 @@
 .globe-screen .cesium-widget-credits {
   display: none;
 }
-.globe-panel {
+
+/* One surface for everything that floats over the map: nearly solid, a little of the map's light
+   through it, the hairline and shadow of the app's popovers. */
+.globe-panel,
+.globe-card,
+.globe-controls,
+.globe-credits,
+.globe-readout {
   position: absolute;
-  top: var(--s3);
-  inset-inline-start: var(--s3);
-  width: 260px;
-  max-height: calc(100% - 2 * var(--s3) - 36px);
-  overflow: auto;
-  padding: var(--s3);
-  border-radius: var(--r-6);
-  background: var(--bg-1);
+  z-index: 2;
+  background: color-mix(in oklch, var(--bg-1) 90%, transparent);
+  backdrop-filter: blur(16px) saturate(1.15);
   border: 1px solid var(--line);
-  box-shadow: var(--shadow);
-  color: var(--fg-0);
-  font-size: var(--t-13);
+  border-radius: var(--r-6);
+  box-shadow: 0 12px 32px var(--shadow);
+}
+
+/* a pin's colour, wherever a site is named: the list, the card, the key */
+.globe-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--globe-clear);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--globe-clear) 22%, transparent);
+}
+[data-tone='attention'] > .globe-dot {
+  background: var(--globe-attention);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--globe-attention) 22%, transparent);
+}
+
+/* ------------------------------------------------------------------ the panel */
+.globe-panel {
+  top: var(--globe-edge);
+  inset-inline-start: var(--globe-edge);
+  width: 296px;
+  max-height: calc(100% - 2 * var(--globe-edge) - 40px);
   display: flex;
   flex-direction: column;
-  gap: var(--s2);
+  font-size: var(--t-12);
+}
+.globe-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px 10px;
+  flex: none;
 }
 .globe-title {
   margin: 0;
-  font-size: var(--t-16);
+  font-size: var(--t-14);
+  font-weight: 600;
+  color: var(--fg-0);
+  letter-spacing: 0.01em;
+}
+.globe-count {
+  color: var(--fg-2);
+  font-size: var(--t-11);
 }
 .globe-sites {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 6px 8px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
+  min-height: 56px;
+  overflow-y: auto;
+  flex: 0 1 auto;
 }
 .globe-site {
   width: 100%;
   text-align: start;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: var(--s2);
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  column-gap: 12px;
+  row-gap: 1px;
+  align-items: center;
+  padding: 7px 10px 8px;
   border-radius: var(--r-4);
-  border: 1px solid transparent;
-  background: transparent;
   color: inherit;
-  cursor: pointer;
+  transition: background-color 120ms;
 }
 .globe-site:hover,
-.globe-site[aria-current='true'] {
+.globe-site:focus-visible {
   background: var(--bg-2);
-  border-color: var(--line);
+}
+.globe-site[aria-current='true'] {
+  background: var(--bg-3);
+  box-shadow: inset 2px 0 0 var(--acc);
 }
 .globe-site .name {
+  font-size: var(--t-13);
   font-weight: 600;
+  color: var(--fg-0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.globe-site .meta,
-.globe-card .meta,
-.globe-note,
-.globe-empty {
+.globe-site .globe-facts {
+  grid-column: 2;
+}
+.globe-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
   color: var(--fg-2);
-  font-size: var(--t-12);
+  font-size: var(--t-11);
+}
+.globe-facts [data-tone='attention'] {
+  color: var(--globe-attention);
+}
+.globe-error,
+.globe-empty,
+.globe-note {
   margin: 0;
+  color: var(--fg-2);
+  font-size: var(--t-11);
+  line-height: 1.45;
+}
+.globe-error,
+.globe-empty {
+  padding: 0 14px 12px;
+  font-size: var(--t-12);
 }
 .globe-error {
   color: var(--danger-ink);
-  margin: 0;
+}
+.globe-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--line-soft);
+  flex: none;
 }
 .globe-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
 }
 .globe-field > span {
   color: var(--fg-2);
-  font-size: var(--t-12);
+  font-size: var(--t-11);
+}
+.globe-looks {
+  display: flex;
+}
+.globe-looks button {
+  flex: 1 1 0;
+  justify-content: center;
+  padding: 0 6px;
+  font-size: var(--t-11);
+  white-space: nowrap;
 }
 .globe-check {
   display: flex;
-  gap: var(--s2);
+  gap: 8px;
   align-items: center;
+  color: var(--fg-1);
 }
+.globe-check input {
+  accent-color: var(--acc);
+  margin: 0;
+}
+.globe-measure {
+  width: 100%;
+}
+.globe-measure[aria-pressed='true'] {
+  background: var(--acc-a20);
+  border-color: var(--acc-a40);
+  color: var(--acc-strong);
+}
+.globe-key {
+  list-style: none;
+  margin: 0;
+  display: flex;
+  gap: 16px;
+  padding: 9px 14px 10px;
+  border-top: 1px solid var(--line-soft);
+  color: var(--fg-2);
+  font-size: var(--t-11);
+  flex: none;
+}
+.globe-key li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+/* ------------------------------------------------------------------ the site card */
 .globe-card {
-  position: absolute;
-  top: var(--s3);
-  inset-inline-end: var(--s3);
-  width: 280px;
-  padding: var(--s3);
-  border-radius: var(--r-6);
-  background: var(--bg-1);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow);
-  color: var(--fg-0);
+  top: var(--globe-edge);
+  inset-inline-end: var(--globe-edge);
+  width: 304px;
+  padding: 14px 14px 12px;
+  color: var(--fg-1);
+  animation: globe-rise 180ms var(--ease-x);
 }
 .globe-card h2 {
-  margin: 0 0 var(--s1);
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: 0 28px 6px 0;
   font-size: var(--t-14);
+  font-weight: 600;
+  color: var(--fg-0);
+  line-height: 1.3;
+}
+.globe-card .meta {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: var(--t-12);
+}
+.globe-card-close {
+  position: absolute;
+  top: 8px;
+  inset-inline-end: 8px;
 }
 .globe-card .actions {
   display: flex;
-  gap: var(--s2);
+  gap: 8px;
   justify-content: flex-end;
-  margin-top: var(--s3);
-}
-.globe-credits {
-  position: absolute;
-  inset-inline: 0;
-  bottom: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  padding: 4px var(--s3);
-  background: rgb(0 0 0 / 0.55);
-  color: #e8e8e8;
-  font-size: var(--t-11);
+  margin-top: 14px;
 }
 
-.globe-measure {
+/* ------------------------------------------------------------------ view buttons, credits, read-out */
+.globe-controls {
+  inset-inline-end: var(--globe-edge);
+  bottom: var(--globe-edge);
   display: flex;
   flex-direction: column;
-  gap: var(--s1);
-  align-items: flex-start;
+  gap: 1px;
+  padding: 2px;
+}
+.globe-controls .btn {
+  width: 30px;
+  height: 30px;
+  color: var(--fg-1);
+}
+.globe-credits {
+  inset-inline-start: var(--globe-edge);
+  bottom: var(--globe-edge);
+  max-width: calc(100% - 2 * var(--globe-edge) - 48px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  padding: 4px 10px 5px;
+  box-shadow: none;
+  color: var(--fg-2);
+  font-size: var(--t-11);
 }
 .globe-readout {
+  top: var(--globe-edge);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 680px);
+  min-width: 280px;
   margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px 16px;
+  padding: 7px 14px 8px;
+  border-color: var(--acc-a40);
+  color: var(--fg-0);
   font-size: var(--t-12);
-  color: var(--fg-1);
+  text-align: center;
+}
+
+@keyframes globe-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .globe-card {
+    animation: none;
+  }
+}
+:root[data-motion='reduce'] .globe-card {
+  animation: none;
+}
+@media (forced-colors: active) {
+  .globe-panel,
+  .globe-card,
+  .globe-controls,
+  .globe-credits,
+  .globe-readout {
+    border: 1px solid CanvasText;
+  }
+  .globe-dot {
+    forced-color-adjust: none;
+  }
 }

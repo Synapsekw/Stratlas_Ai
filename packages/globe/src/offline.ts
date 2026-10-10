@@ -55,8 +55,14 @@ export const CESIUM_BASE_PATH = 'cesium/';
 export const OFFLINE_CESIUM = {
   /** `Ion.defaultAccessToken` is never set and nothing of ours reaches `Ion.defaultServer`. */
   ionToken: null,
-  /** Natural Earth II from the bundled assets, never `ImageryLayer.fromWorldImagery()`. */
-  baseLayer: 'natural-earth-ii',
+  /**
+   * The Earth is drawn from what the app ships or the person installed, never
+   * `ImageryLayer.fromWorldImagery()`: the bundled land and border shapes (with street tiles
+   * from the installed street packs over them) by default.
+   */
+  baseLayer: 'earth-shapes',
+  /** The old look's Earth: Natural Earth II from the app's own copy of Cesium's assets. */
+  naturalEarth: 'natural-earth-ii',
   geocoder: false,
   baseLayerPicker: false,
   /** Lowered from Cesium's 512 MiB default; the Globe owns the GPU only while it is open. */

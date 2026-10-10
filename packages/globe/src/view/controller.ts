@@ -1,7 +1,12 @@
 /**
- * The Globe's scene: the offline CesiumWidget, imagery and terrain from packs, library sites as
- * clustered pins, the open project's issues as pins coloured by severity, picking, fly-in and the
- * camera hand-off. Nothing here edits or measures (decision 3): picking only says what was hit.
+ * The Globe's scene: the offline CesiumWidget, the Earth of the chosen look (street tiles over
+ * the bundled land shapes, imagery packs, or the old Natural Earth raster), terrain from packs,
+ * library sites as clustered pins, the open project's issues as pins coloured by severity,
+ * picking, hovering, fly-in, the slow idle turn and the camera hand-off. Nothing here edits or
+ * measures (decision 3): picking only says what was hit.
+ *
+ * The scene draws on demand (`requestRenderMode`): every motion here asks for frames only while
+ * it runs and then lets the Globe go back to drawing nothing.
  */
 import {
   BoundingSphere,
@@ -9,19 +14,22 @@ import {
   Cartesian3,
   Cartographic,
   Color,
+  Ellipsoid,
+  EllipsoidalOccluder,
   HeadingPitchRange,
   Matrix4,
   Math as CMath,
   Rectangle,
 } from '@cesium/core';
-import type { ImageryLayer } from '@cesium/engine';
 import {
   Cesium3DTileset,
+  ConstantProperty,
   CustomDataSource,
+  EasingFunction,
   EllipsoidTerrainProvider,
   Entity,
   HeightReference,
-  LabelStyle,
+  ImageryLayer,
   ScreenSpaceEventHandler,
   SceneTransforms,
   ScreenSpaceEventType,
@@ -31,6 +39,7 @@ import {
 import type { GlobeSite, RasterPackInfo, TilesetEntry } from '@aio/schema';
 import { FetchSource, type Source } from 'pmtiles';
 import { siteToGlobe, type GlobeCamera, type SiteCamera } from '../camera';
+import { planCredits } from '../credits';
 import {
   ecefToGeodetic,
   enuBasis,
@@ -39,21 +48,54 @@ import {
   localToEcefMatrix,
   type SiteGeoref,
 } from '../geodesy';
+import { planGlobeLayers, type GlobeTileSource, type GlobeTileStats } from '../layers';
+import { IDLE_SPIN, WHOLE_EARTH_HEIGHT_M, idleSpinPending, idleSpinRate } from '../look';
 import { OFFLINE_CESIUM } from '../offline';
-import { creditLines } from '../credits';
 import type { IssuePin } from '../sites';
+import {
+  DEFAULT_GLOBE_STYLE,
+  STREET_GLOBE_PALETTE,
+  type GlobePalette,
+  type GlobeStyle,
+} from '../style';
 import { NO_GEOID, type Geoid } from '../terrarium';
-import { imageryLayerOrder, rasterPackUrl } from '../tiles';
+import { rasterPackUrl } from '../tiles';
+import {
+  EarthImageryProvider,
+  TileSourceImageryProvider,
+  asProvider,
+  loadEarthShapes,
+} from './earthLayers';
+import {
+  SITE_PIN_SIZE,
+  clusterPin,
+  issuePin,
+  measurePin,
+  sitePin,
+  type PinState,
+  type PinTone,
+} from './pins';
 import { PmtilesImageryProvider, asImageryProvider, packTerrainProvider } from './providers';
 import {
   configureCesiumBase,
   createOfflineWidget,
+  dressScene,
   naturalEarthLayer,
   type GlobeTier,
+  type GlobeWidget,
 } from './setup';
 
 export type GlobePick =
   { kind: 'site'; projectId: string } | { kind: 'issue'; projectId: string; issueId: string };
+
+/** What the pointer rests on: a site, a cluster of sites, or an issue of the open project. */
+export type GlobeHover =
+  | { kind: 'site'; projectId: string }
+  | { kind: 'cluster'; count: number }
+  | { kind: 'issue'; projectId: string; issueId: string };
+
+/** The two labels the view floats over the Globe: beside the selected site, and under the pointer. */
+export type GlobeTagSlot = 'selected' | 'hover';
 
 export interface GlobeControllerOptions {
   container: HTMLElement;
@@ -63,12 +105,20 @@ export interface GlobeControllerOptions {
   /** Jump instead of flying (OS or Settings reduced motion). */
   reducedMotion: () => boolean;
   onPick: (pick: GlobePick | null) => void;
-  /** The credit lines of what is drawn (Natural Earth II, then each pack once). */
+  /** What the pointer rests on, whenever it changes. */
+  onHover?: (hover: GlobeHover | null) => void;
+  /** The credit lines of what is drawn (the Earth's source, then each pack once). */
   onCredits?: (lines: string[]) => void;
   /** The measuring points (longitude, latitude), whenever they change. */
   onMeasure?: (points: [number, number][]) => void;
   /** Geoid undulation for EGM terrain packs; none bundled yet. */
   geoid?: Geoid;
+  /** The look to start with (the street map unless told otherwise). */
+  style?: GlobeStyle;
+  /** The colours of the street style; the built-in copy of them when left out. */
+  palette?: GlobePalette;
+  /** The font of the cluster counts (the app's UI font). */
+  font?: string;
 }
 
 type Pack = RasterPackInfo;
@@ -79,48 +129,24 @@ export const packSource: SourceFor = (p) => new FetchSource(rasterPackUrl(p.kind
 
 const SITE_PREFIX = 'site:';
 const ISSUE_PREFIX = 'issue:';
-
-/** A round map pin, drawn once per colour (no image is fetched). */
-const pinCache = new Map<string, HTMLCanvasElement>();
-function pinImage(fill: string, ring = '#ffffff', size = 28): HTMLCanvasElement {
-  const key = `${fill}/${ring}/${String(size)}`;
-  const hit = pinCache.get(key);
-  if (hit) return hit;
-  const c = Object.assign(document.createElement('canvas'), { width: size, height: size });
-  const ctx = c.getContext('2d');
-  if (ctx) {
-    ctx.beginPath();
-    ctx.arc(size / 2, size / 2, size / 2 - 3, 0, Math.PI * 2);
-    ctx.fillStyle = fill;
-    ctx.fill();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = ring;
-    ctx.stroke();
-  }
-  pinCache.set(key, c);
-  return c;
-}
-
-function clusterImage(count: number): HTMLCanvasElement {
-  const size = count < 10 ? 34 : 40;
-  const c = Object.assign(document.createElement('canvas'), { width: size, height: size });
-  const ctx = c.getContext('2d');
-  if (ctx) {
-    ctx.drawImage(pinImage('#1f9d7a', '#ffffff', size), 0, 0);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `bold ${String(size * 0.42)}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(count), size / 2, size / 2 + 1);
-  }
-  return c;
-}
+/** Sites closer than this on screen (CSS pixels) gather into a cluster. */
+const CLUSTER_REACH_PX = 30;
+/** The deepest level the land shapes are painted at, alone and under street tiles. */
+const EARTH_LEVELS = { whole: 11, underlay: 8 } as const;
 
 export interface GlobeInspection {
   tilesLoaded: boolean;
   frame: number;
+  /** The look drawn, and its layers bottom first. */
+  style: GlobeStyle;
+  layers: string[];
   imagery: string[];
   imageryTiles: number;
+  /** Street tiles drawn so far and what they cost; null when no street pack is drawn. */
+  street: GlobeTileStats | null;
+  /** Tiles of the bundled land shapes painted so far, and the milliseconds a tile took (mean). */
+  earthTiles: number;
+  earthTileMs: number;
   terrain: string[];
   terrainTiles: number;
   sites: string[];
@@ -132,64 +158,264 @@ export interface GlobeInspection {
   cameraHeight: number;
   /** A camera flight is under way. */
   flying: boolean;
+  /** The idle turn is under way. */
+  spinning: boolean;
+  /** Device pixels per CSS pixel the scene is drawn at. */
+  pixelRatio: number;
+  hover: GlobeHover | null;
+  selected: string | null;
 }
 
 export class GlobeController {
+  readonly widget: CesiumWidget;
+  private readonly palette: GlobePalette;
+  private style: GlobeStyle;
+  private street: GlobeTileSource | null = null;
+  private imageryPacks: readonly Pack[] = [];
+  private terrainPacks: readonly Pack[] = [];
+  private sourceFor: SourceFor = packSource;
+  private layerNames: string[] = [];
+  private layerGeneration = 0;
+  private rebuildQueued = false;
+  private built: { names: string[]; street: GlobeTileSource | null; sourceFor: SourceFor } | null =
+    null;
+  private earth: EarthImageryProvider | null = null;
   private imageryProviders: PmtilesImageryProvider[] = [];
-  private imageryLayers: ImageryLayer[] = [];
   private terrainIds: string[] = [];
   private terrainDecoded: (() => number) | null = null;
   private readonly sites = new CustomDataSource('sites');
   private readonly issues = new CustomDataSource('issues');
   private readonly measure = new CustomDataSource('measure');
+  private readonly tones = new Map<string, PinTone>();
+  private selected: string | null = null;
+  private pointerHover: GlobeHover | null = null;
+  private pointerAnchor: Cartesian3 | null = null;
+  private listHover: string | null = null;
+  private readonly tags: Partial<Record<GlobeTagSlot, HTMLElement>> = {};
   private measuring = false;
   private measured: [number, number][] = [];
   private readonly handler: ScreenSpaceEventHandler;
   private credits: string[] = [];
   private tilesets: { id: string; tileset: Cesium3DTileset }[] = [];
   private tilesetGeneration = 0;
+  private lastTouch = performance.now();
+  private spinTimer: ReturnType<typeof setTimeout> | undefined;
+  private spinFrame = 0;
+  private spinLast = 0;
+  private zoomFrame = 0;
+  private hoverFrame = 0;
+  private hoverAt: Cartesian2 | null = null;
+  private pressed = false;
+  private destroyed = false;
+  private readonly unlisten: (() => void)[] = [];
 
   private constructor(
-    readonly widget: CesiumWidget,
+    private readonly g: GlobeWidget,
     private readonly o: GlobeControllerOptions,
   ) {
+    this.widget = g.widget;
+    this.palette = o.palette ?? STREET_GLOBE_PALETTE;
+    this.style = o.style ?? DEFAULT_GLOBE_STYLE;
+    const widget = this.widget;
+    const font = o.font ?? 'sans-serif';
     const clustering = this.sites.clustering;
     clustering.enabled = true;
-    clustering.pixelRange = 40;
+    // the sprites carry a wide halo: reach in from their edge, so only dots that touch gather
+    clustering.pixelRange = (CLUSTER_REACH_PX - SITE_PIN_SIZE) / 2;
     clustering.minimumClusterSize = 2;
     clustering.clusterEvent.addEventListener((entities, cluster) => {
+      const attention = entities.some((e) => this.tones.get(e.id) === 'attention');
       cluster.label.show = false;
       cluster.billboard.show = true;
       // the typings say string; a Billboard takes a canvas as its image as well
-      cluster.billboard.image = clusterImage(entities.length) as unknown as string;
+      cluster.billboard.image = clusterPin(
+        entities.length,
+        attention ? 'attention' : 'clear',
+        this.palette,
+        g.pixelRatio,
+        font,
+      ) as unknown as string;
       cluster.billboard.verticalOrigin = VerticalOrigin.CENTER;
+      cluster.billboard.scale = 1 / g.pixelRatio;
+      cluster.billboard.disableDepthTestDistance = Number.POSITIVE_INFINITY;
     });
     void widget.dataSources.add(this.sites);
     void widget.dataSources.add(this.issues);
     void widget.dataSources.add(this.measure);
     // a render error stops CesiumJS's render loop: say so in the log (diagnostics, tests)
     widget.scene.renderError.addEventListener((_scene: unknown, error: unknown) => {
+      const aura = g.aura?.stage;
+      if (aura?.enabled) {
+        // a GPU that cannot run the aura pass: go on without it, as the Low preset does
+        aura.enabled = false;
+        console.warn('The Globe draws without its aura on this GPU:', error);
+        widget.useDefaultRenderLoop = true;
+        widget.scene.requestRender();
+        return;
+      }
       console.error('The Globe stopped drawing:', error);
     });
     this.handler = new ScreenSpaceEventHandler(widget.scene.canvas);
     this.handler.setInputAction((e: { position: Cartesian2 }) => {
       this.pick(e.position);
     }, ScreenSpaceEventType.LEFT_CLICK);
+    this.handler.setInputAction((e: { endPosition: Cartesian2 }) => {
+      this.hoverAt = Cartesian2.clone(e.endPosition, this.hoverAt ?? new Cartesian2());
+      if (!this.hoverFrame && !this.pressed)
+        this.hoverFrame = requestAnimationFrame(() => {
+          this.hoverFrame = 0;
+          this.updateHover();
+        });
+    }, ScreenSpaceEventType.MOUSE_MOVE);
+    this.listen();
+    this.unlisten.push(
+      widget.scene.postRender.addEventListener(() => {
+        this.placeTags();
+      }),
+      // pins gather and part when the camera has moved far enough, after the frame that moved
+      // it: one more frame shows them (the scene draws on demand)
+      widget.scene.camera.changed.addEventListener(() => {
+        widget.scene.requestRender();
+      }),
+    );
+    this.rebuildLayers();
+    this.armSpin();
   }
 
-  /** Build the Globe in `container` (Natural Earth II first, then packs when they are set). */
-  static async create(o: GlobeControllerOptions): Promise<GlobeController> {
+  /** Build the Globe in `container`; its Earth follows the look, the packs and the street tiles. */
+  static create(o: GlobeControllerOptions): Promise<GlobeController> {
     configureCesiumBase(o.baseUrl);
-    const baseLayer = await naturalEarthLayer();
-    const widget = createOfflineWidget(o.container, { tier: o.tier, baseLayer });
-    return new GlobeController(widget, o);
+    const g = createOfflineWidget(o.container, { tier: o.tier }, o.palette ?? STREET_GLOBE_PALETTE);
+    return Promise.resolve(new GlobeController(g, o));
   }
 
   private get scene() {
     return this.widget.scene;
   }
 
+  // ---------------------------------------------------------------- touch, hover, pick
+
+  /** Anything the person does stops the idle turn and starts its wait again. */
+  private listen(): void {
+    const canvas = this.scene.canvas;
+    const on = <K extends keyof HTMLElementEventMap>(
+      type: K,
+      fn: (e: HTMLElementEventMap[K]) => void,
+    ) => {
+      canvas.addEventListener(type, fn, { passive: true });
+      this.unlisten.push(() => {
+        canvas.removeEventListener(type, fn);
+      });
+    };
+    on('pointerdown', () => {
+      this.pressed = true;
+      this.touch();
+    });
+    // a drag may end anywhere: the release is heard on the window
+    const release = () => {
+      this.pressed = false;
+    };
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', release);
+    this.unlisten.push(() => {
+      window.removeEventListener('pointerup', release);
+      window.removeEventListener('pointercancel', release);
+    });
+    on('wheel', () => {
+      this.touch();
+    });
+    on('pointerleave', () => {
+      this.hoverAt = null;
+      this.setPointerHover(null, null);
+    });
+  }
+
+  private touch(): void {
+    this.lastTouch = performance.now();
+    this.armSpin();
+  }
+
+  private hitAt(position: Cartesian2): { hover: GlobeHover; anchor: Cartesian3 | null } | null {
+    const hit = this.scene.pick(position) as
+      { id?: unknown; primitive?: { position?: Cartesian3 } } | undefined;
+    const id = hit?.id;
+    if (Array.isArray(id)) {
+      const count = id.filter((e) => e instanceof Entity).length;
+      return { hover: { kind: 'cluster', count }, anchor: hit?.primitive?.position ?? null };
+    }
+    if (!(id instanceof Entity)) return null;
+    const anchor = id.position?.getValue(this.widget.clock.currentTime) ?? null;
+    if (id.id.startsWith(SITE_PREFIX))
+      return { hover: { kind: 'site', projectId: id.id.slice(SITE_PREFIX.length) }, anchor };
+    if (id.id.startsWith(ISSUE_PREFIX)) {
+      const [projectId = '', issueId = ''] = id.id.slice(ISSUE_PREFIX.length).split('|');
+      return { hover: { kind: 'issue', projectId, issueId }, anchor };
+    }
+    return null;
+  }
+
+  private updateHover(): void {
+    if (this.destroyed || this.measuring || !this.hoverAt) return;
+    const hit = this.hitAt(this.hoverAt);
+    this.setPointerHover(hit?.hover ?? null, hit?.anchor ?? null);
+  }
+
+  private setPointerHover(hover: GlobeHover | null, anchor: Cartesian3 | null): void {
+    const same = JSON.stringify(hover) === JSON.stringify(this.pointerHover);
+    this.pointerAnchor = anchor;
+    if (same) return;
+    const before = this.hoveredSite();
+    this.pointerHover = hover;
+    this.scene.canvas.style.cursor = hover ? 'pointer' : '';
+    this.restyleSites([before, this.hoveredSite()]);
+    this.o.onHover?.(hover);
+    this.placeTags();
+  }
+
+  /** The site that shows as hovered: under the pointer, else the one hovered in the list. */
+  private hoveredSite(): string | null {
+    return this.pointerHover?.kind === 'site' ? this.pointerHover.projectId : this.listHover;
+  }
+
+  /** A site hovered or focused in the list lights its pin as the pointer would. */
+  setHighlighted(projectId: string | null): void {
+    if (projectId === this.listHover) return;
+    const before = this.hoveredSite();
+    this.listHover = projectId;
+    this.restyleSites([before, this.hoveredSite()]);
+    this.placeTags();
+  }
+
+  /** The selected site (its card is open): its pin wears the ring and the label stays beside it. */
+  setSelected(projectId: string | null): void {
+    if (projectId === this.selected) return;
+    const before = this.selected;
+    this.selected = projectId;
+    this.restyleSites([before, projectId]);
+    this.placeTags();
+    this.armSpin();
+  }
+
+  private pinState(projectId: string): PinState {
+    if (projectId === this.selected) return 'selected';
+    return projectId === this.hoveredSite() ? 'hover' : 'rest';
+  }
+
+  private restyleSites(ids: readonly (string | null)[]): void {
+    for (const id of new Set(ids)) {
+      if (id === null) continue;
+      const entity = this.sites.entities.getById(`${SITE_PREFIX}${id}`);
+      if (!entity?.billboard) continue;
+      const tone = this.tones.get(entity.id) ?? 'clear';
+      entity.billboard.image = new ConstantProperty(
+        sitePin(tone, this.pinState(id), this.palette, this.g.pixelRatio),
+      );
+    }
+    this.scene.requestRender();
+  }
+
   private pick(position: Cartesian2): void {
+    this.touch();
     if (this.measuring) {
       this.addMeasurePoint(position);
       return;
@@ -199,7 +425,7 @@ export class GlobeController {
     // a cluster: zoom to its sites
     if (Array.isArray(id)) {
       const entities = id.filter((e): e is Entity => e instanceof Entity);
-      void this.widget.flyTo(entities, { duration: this.duration(1.5) });
+      void this.widget.flyTo(entities, { duration: this.duration(1.6) });
       return;
     }
     if (!(id instanceof Entity)) {
@@ -218,24 +444,99 @@ export class GlobeController {
     return this.o.reducedMotion() ? 0 : seconds;
   }
 
+  // ---------------------------------------------------------------- floating labels
+
   /**
-   * Imagery packs as layers over Natural Earth II (least detailed lowest), and terrain packs as
-   * one terrain (none on the Low tier). Replaces what was there.
+   * Give the Globe an element to keep beside the selected site or under the pointer (`null`
+   * takes it back). The view fills it; the Globe only moves it, after each frame it draws.
+   */
+  bindTag(slot: GlobeTagSlot, el: HTMLElement | null): void {
+    if (el) this.tags[slot] = el;
+    else Reflect.deleteProperty(this.tags, slot);
+    this.placeTags();
+  }
+
+  private sitePosition(projectId: string | null): Cartesian3 | null {
+    if (projectId === null) return null;
+    const e = this.sites.entities.getById(`${SITE_PREFIX}${projectId}`);
+    return e?.position?.getValue(this.widget.clock.currentTime) ?? null;
+  }
+
+  private placeTags(): void {
+    if (this.destroyed) return;
+    const hovered = this.hoveredSite();
+    const anchors: Record<GlobeTagSlot, Cartesian3 | null> = {
+      selected: this.sitePosition(this.selected),
+      // the pointer's own thing first; a site lit from the list has no pointer on the Globe
+      hover:
+        this.pointerHover && this.pointerHover.kind !== 'site'
+          ? this.pointerAnchor
+          : hovered !== this.selected
+            ? this.sitePosition(hovered)
+            : null,
+    };
+    const occluder = new EllipsoidalOccluder(Ellipsoid.WGS84, this.scene.camera.positionWC);
+    for (const slot of ['selected', 'hover'] as const) {
+      const el = this.tags[slot];
+      if (!el) continue;
+      const p = anchors[slot];
+      const at =
+        p && occluder.isPointVisible(p)
+          ? SceneTransforms.worldToWindowCoordinates(this.scene, p)
+          : undefined;
+      if (!at) {
+        el.style.visibility = 'hidden';
+        continue;
+      }
+      el.style.visibility = 'visible';
+      el.style.transform = `translate3d(${at.x.toFixed(1)}px, ${at.y.toFixed(1)}px, 0)`;
+    }
+  }
+
+  // ---------------------------------------------------------------- the Earth: layers and terrain
+
+  /** The look: the street map (default), imagery packs over it, or the old Natural Earth raster. */
+  setStyle(style: GlobeStyle): void {
+    if (style === this.style) return;
+    this.style = style;
+    this.queueRebuild();
+  }
+
+  /** The host's street tiles (null: no street pack is installed). The Globe never disposes them. */
+  setStreet(source: GlobeTileSource | null): void {
+    if (source === this.street) return;
+    this.street = source;
+    this.queueRebuild();
+  }
+
+  /**
+   * The imagery packs the Imagery setting selects (drawn in the Satellite and Natural Earth
+   * looks, least detailed lowest) and the terrain packs as one terrain (none on the Low preset).
    */
   setPacks(imagery: readonly Pack[], terrain: readonly Pack[], sourceFor: SourceFor = packSource) {
-    const layers = this.scene.imageryLayers;
-    for (const l of this.imageryLayers) layers.remove(l, true);
-    this.imageryProviders = imageryLayerOrder(imagery).map(
-      (p) => new PmtilesImageryProvider(p, sourceFor(p)),
-    );
-    this.imageryLayers = this.imageryProviders.map((p) =>
-      layers.addImageryProvider(asImageryProvider(p)),
-    );
+    this.imageryPacks = imagery;
+    this.terrainPacks = terrain;
+    this.sourceFor = sourceFor;
+    this.applyTerrain();
+    this.queueRebuild();
+  }
+
+  private queueRebuild(): void {
+    if (this.rebuildQueued) return;
+    this.rebuildQueued = true;
+    queueMicrotask(() => {
+      this.rebuildQueued = false;
+      if (!this.destroyed) this.rebuildLayers();
+    });
+  }
+
+  private applyTerrain(): void {
+    const terrain = this.terrainPacks;
     const useTerrain = this.o.tier !== 'low' && terrain.length > 0;
     if (useTerrain) {
       const provider = packTerrainProvider({
         packs: terrain,
-        sourceFor,
+        sourceFor: this.sourceFor,
         geoid: this.o.geoid ?? NO_GEOID,
         size: this.o.tier === 'medium' ? 33 : 65,
       });
@@ -247,10 +548,87 @@ export class GlobeController {
       this.terrainDecoded = null;
       this.terrainIds = [];
     }
-    this.credits = creditLines([...imagery, ...(useTerrain ? terrain : [])]);
+  }
+
+  /**
+   * Build the imagery layers of the plan (`planGlobeLayers`) in place of what was there; a plan
+   * that lists what is already drawn only refreshes the credits.
+   */
+  private rebuildLayers(): void {
+    const { look, pixelRatio } = this.g;
+    const street = this.street;
+    const plan = planGlobeLayers({
+      style: this.style,
+      street: street !== null,
+      imagery: this.imageryPacks,
+    });
+    const names = plan.map((entry) =>
+      entry.kind === 'earth-shapes'
+        ? `earth-shapes:${entry.role}`
+        : entry.kind === 'imagery-pack'
+          ? `pack:${entry.pack.id}`
+          : entry.kind === 'natural-earth'
+            ? OFFLINE_CESIUM.naturalEarth
+            : entry.kind,
+    );
+    const built = this.built;
+    const same =
+      built !== null &&
+      built.street === street &&
+      built.sourceFor === this.sourceFor &&
+      built.names.join('|') === names.join('|');
+    if (!same) {
+      const generation = ++this.layerGeneration;
+      const layers = this.scene.imageryLayers;
+      layers.removeAll(true);
+      this.imageryProviders = [];
+      this.earth = null;
+      for (const entry of plan) {
+        if (entry.kind === 'earth-shapes') {
+          const imagePx = Math.round((entry.role === 'whole' ? 512 : 256) * pixelRatio);
+          const ink = this.palette;
+          const maximumLevel = EARTH_LEVELS[entry.role];
+          layers.add(
+            ImageryLayer.fromProviderAsync(
+              loadEarthShapes().then((shapes) => {
+                const provider = new EarthImageryProvider(shapes, {
+                  ink,
+                  imagePx,
+                  pixelRatio,
+                  maximumLevel,
+                });
+                if (generation === this.layerGeneration) this.earth = provider;
+                return asProvider(provider);
+              }),
+            ),
+          );
+        } else if (entry.kind === 'street') {
+          if (street)
+            layers.add(
+              new ImageryLayer(asProvider(new TileSourceImageryProvider(street, pixelRatio))),
+            );
+        } else if (entry.kind === 'natural-earth') {
+          layers.add(naturalEarthLayer());
+        } else {
+          const provider = new PmtilesImageryProvider(entry.pack, this.sourceFor(entry.pack));
+          this.imageryProviders.push(provider);
+          layers.add(new ImageryLayer(asImageryProvider(provider)));
+        }
+      }
+      this.built = { names, street, sourceFor: this.sourceFor };
+      this.layerNames = names;
+      this.scene.globe.maximumScreenSpaceError = names.includes('street')
+        ? look.streetScreenSpaceError
+        : look.screenSpaceError;
+      dressScene(this.g, this.style, this.palette);
+    }
+    const terrainInUse = this.terrainPacks.filter((p) => this.terrainIds.includes(p.id));
+    this.credits = planCredits(plan, street?.credit ?? '', terrainInUse);
     this.o.onCredits?.(this.credits);
     this.scene.requestRender();
   }
+
+  // ---------------------------------------------------------------- measuring
 
   /**
    * The geodesic read-out (decision 3, the Globe's only tool): while on, clicks put points on the
@@ -258,10 +636,12 @@ export class GlobeController {
    */
   setMeasuring(on: boolean): void {
     this.measuring = on;
-    if (!on) {
+    if (on) this.setPointerHover(null, null);
+    else {
       this.measured = [];
       this.drawMeasure();
     }
+    this.armSpin();
   }
 
   private addMeasurePoint(position: Cartesian2): void {
@@ -284,16 +664,18 @@ export class GlobeController {
         polyline: {
           positions: Cartesian3.fromDegreesArray(ring.flat()),
           clampToGround: true,
-          width: 3,
-          material: Color.fromCssColorString('#ffd43b'),
+          width: 2.5,
+          material: Color.fromCssColorString(this.palette.ink),
         },
       });
     for (const [lon, lat] of pts)
       this.measure.entities.add({
         position: Cartesian3.fromDegrees(lon, lat),
-        point: {
-          pixelSize: 8,
-          color: Color.fromCssColorString('#ffd43b'),
+        billboard: {
+          image: measurePin(this.palette, this.g.pixelRatio),
+          // sprites are drawn in device pixels; CesiumJS sizes billboards in CSS pixels
+          scale: 1 / this.g.pixelRatio,
+          verticalOrigin: VerticalOrigin.CENTER,
           heightReference: HeightReference.CLAMP_TO_GROUND,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
@@ -308,30 +690,26 @@ export class GlobeController {
     this.scene.requestRender();
   }
 
+  // ---------------------------------------------------------------- pins
+
   /** Library projects as pins at their origins, clustered when they crowd. */
   setSites(sites: readonly GlobeSite[]): void {
     this.sites.entities.suspendEvents();
     this.sites.entities.removeAll();
+    this.tones.clear();
     for (const s of sites) {
+      const id = `${SITE_PREFIX}${s.projectId}`;
+      const tone: PinTone = s.issues.open > 0 ? 'attention' : 'clear';
+      this.tones.set(id, tone);
       this.sites.entities.add({
-        id: `${SITE_PREFIX}${s.projectId}`,
+        id,
         name: s.name,
         position: Cartesian3.fromDegrees(s.lonLat[0], s.lonLat[1], 0),
         billboard: {
-          image: pinImage(s.issues.open > 0 ? '#d0a03a' : '#1f9d7a'),
+          image: sitePin(tone, this.pinState(s.projectId), this.palette, this.g.pixelRatio),
+          // sprites are drawn in device pixels; CesiumJS sizes billboards in CSS pixels
+          scale: 1 / this.g.pixelRatio,
           verticalOrigin: VerticalOrigin.CENTER,
-          heightReference: HeightReference.CLAMP_TO_GROUND,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        },
-        label: {
-          text: s.name,
-          font: '13px sans-serif',
-          fillColor: Color.WHITE,
-          outlineColor: Color.BLACK,
-          outlineWidth: 3,
-          style: LabelStyle.FILL_AND_OUTLINE,
-          verticalOrigin: VerticalOrigin.TOP,
-          pixelOffset: new Cartesian2(0, 18),
           heightReference: HeightReference.CLAMP_TO_GROUND,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
@@ -352,7 +730,9 @@ export class GlobeController {
         name: `${p.code} ${p.title}`,
         position: new Cartesian3(x, y, z),
         billboard: {
-          image: pinImage(p.colour, '#ffffff', 20),
+          image: issuePin(p.colour, this.palette, this.g.pixelRatio),
+          // sprites are drawn in device pixels; CesiumJS sizes billboards in CSS pixels
+          scale: 1 / this.g.pixelRatio,
           verticalOrigin: VerticalOrigin.CENTER,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
@@ -414,25 +794,78 @@ export class GlobeController {
     this.scene.requestRender();
   }
 
+  // ---------------------------------------------------------------- camera
+
   /** The whole Earth, or a box around the given sites. */
   flyHome(bounds: readonly [number, number, number, number] | null): void {
+    this.touch();
     const rect = bounds
       ? Rectangle.fromDegrees(...bounds)
       : Rectangle.fromDegrees(-30, -40, 110, 70);
-    this.scene.camera.flyTo({ destination: rect, duration: this.duration(1.5) });
+    this.scene.camera.flyTo({
+      destination: rect,
+      duration: this.duration(1.8),
+      easingFunction: EasingFunction.QUINTIC_IN_OUT,
+    });
   }
 
   /** Fly to a site: looking down at 45 degrees from the south, `range` metres away. */
   flyToSite(lonLat: readonly [number, number], range = 1500): Promise<void> {
+    this.touch();
     const centre = Cartesian3.fromDegrees(lonLat[0], lonLat[1], 0);
     return new Promise((resolve) => {
       this.scene.camera.flyToBoundingSphere(new BoundingSphere(centre, 50), {
         offset: new HeadingPitchRange(0, CMath.toRadians(-45), range),
-        duration: this.duration(2),
+        duration: this.duration(2.4),
+        // a gentle start and a soft landing, whatever the distance
+        easingFunction: EasingFunction.QUARTIC_IN_OUT,
         complete: resolve,
         cancel: resolve,
       });
     });
+  }
+
+  /**
+   * Step the view towards (`in`) or away from (`out`) what is in the middle of it, by half the
+   * distance (or twice): a short eased move, a jump with reduced motion.
+   */
+  zoom(direction: 'in' | 'out'): void {
+    this.touch();
+    const scene = this.scene;
+    const camera = scene.camera;
+    cancelAnimationFrame(this.zoomFrame);
+    const canvas = scene.canvas;
+    const centre = new Cartesian2(canvas.clientWidth / 2, canvas.clientHeight / 2);
+    const target = camera.pickEllipsoid(centre);
+    const range = target
+      ? Cartesian3.distance(camera.positionWC, target)
+      : camera.positionCartographic.height;
+    const control = scene.screenSpaceCameraController;
+    const wanted =
+      direction === 'in'
+        ? Math.max(range / 2, control.minimumZoomDistance * 4)
+        : Math.min(range * 2, control.maximumZoomDistance);
+    const total = range - wanted;
+    if (Math.abs(total) < 1) return;
+    const ms = this.duration(0.28) * 1000;
+    if (ms === 0) {
+      camera.moveForward(total);
+      scene.requestRender();
+      return;
+    }
+    const t0 = performance.now();
+    let done = 0;
+    const step = (now: number) => {
+      if (this.destroyed) return;
+      const t = Math.min(1, (now - t0) / ms);
+      // ease-out: most of the way at once, then it settles
+      const eased = 1 - (1 - t) ** 3;
+      camera.moveForward(total * eased - done);
+      done = total * eased;
+      scene.requestRender();
+      if (t < 1) this.zoomFrame = requestAnimationFrame(step);
+    };
+    this.zoomFrame = requestAnimationFrame(step);
   }
 
   /** The camera as the hand-off needs it (ECEF position and direction). */
@@ -450,6 +883,7 @@ export class GlobeController {
   }
 
   setCamera(cam: GlobeCamera): void {
+    this.touch();
     const [lon, lat] = ecefToGeodetic(...cam.position);
     const { u } = enuBasis(lon, lat);
     const d = cam.direction;
@@ -462,6 +896,58 @@ export class GlobeController {
     });
     this.scene.requestRender();
   }
+
+  // ---------------------------------------------------------------- the idle turn
+
+  private flying(): boolean {
+    const camera = this.scene.camera as unknown as { _currentFlight?: unknown };
+    return camera._currentFlight !== undefined;
+  }
+
+  /** Whether the slow turn may run: the whole Earth in view, nothing selected, nobody busy. */
+  private maySpin(): boolean {
+    return (
+      this.g.look.idleSpin &&
+      !this.destroyed &&
+      !this.measuring &&
+      this.selected === null &&
+      !this.pressed &&
+      !this.o.reducedMotion() &&
+      !document.hidden &&
+      !this.flying() &&
+      this.scene.camera.positionCartographic.height >= WHOLE_EARTH_HEIGHT_M
+    );
+  }
+
+  /** Stop the turn and wait again: it starts after a quiet spell and rests after a while. */
+  private armSpin(): void {
+    clearTimeout(this.spinTimer);
+    cancelAnimationFrame(this.spinFrame);
+    this.spinFrame = 0;
+    if (!this.g.look.idleSpin || this.destroyed) return;
+    this.spinTimer = setTimeout(() => {
+      if (!this.maySpin()) return;
+      this.spinLast = performance.now();
+      this.spinFrame = requestAnimationFrame(this.spin);
+    }, IDLE_SPIN.delayMs);
+  }
+
+  private readonly spin = (now: number): void => {
+    this.spinFrame = 0;
+    const since = now - this.lastTouch;
+    if (!idleSpinPending(since) || !this.maySpin()) return;
+    const dt = Math.min(100, now - this.spinLast) / 1000;
+    this.spinLast = now;
+    const rate = idleSpinRate(since);
+    if (rate > 0) {
+      // the camera goes west, so the Earth turns east under it, as it does
+      this.scene.camera.rotate(Cartesian3.UNIT_Z, CMath.toRadians(rate * dt));
+      this.scene.requestRender();
+    }
+    this.spinFrame = requestAnimationFrame(this.spin);
+  };
+
+  // ---------------------------------------------------------------- inspection
 
   /**
    * Where a site or issue pin is drawn, in CSS pixels of the canvas (`site:<projectId>` or
@@ -481,8 +967,13 @@ export class GlobeController {
     return {
       tilesLoaded: scene.globe.tilesLoaded,
       frame: (scene as unknown as { frameState: { frameNumber: number } }).frameState.frameNumber,
+      style: this.style,
+      layers: [...this.layerNames],
       imagery: this.imageryProviders.map((p) => p.pack.id),
       imageryTiles: this.imageryProviders.reduce((n, p) => n + p.tilesLoaded, 0),
+      street: this.layerNames.includes('street') ? (this.street?.stats?.() ?? null) : null,
+      earthTiles: this.earth?.tilesDrawn ?? 0,
+      earthTileMs: this.earth?.tilesDrawn ? this.earth.drawMs / this.earth.tilesDrawn : 0,
       terrain: this.terrainIds,
       terrainTiles: this.terrainDecoded?.() ?? 0,
       sites: this.sites.entities.values.map((e) => e.id.slice(SITE_PREFIX.length)),
@@ -494,8 +985,11 @@ export class GlobeController {
       issuePins: this.issues.entities.values.map((e) => e.id.slice(ISSUE_PREFIX.length)),
       credits: this.credits,
       cameraHeight: scene.camera.positionCartographic.height,
-      flying:
-        (scene.camera as unknown as { _currentFlight?: unknown })._currentFlight !== undefined,
+      flying: this.flying(),
+      spinning: this.spinFrame !== 0,
+      pixelRatio: this.g.pixelRatio,
+      hover: this.pointerHover,
+      selected: this.selected,
     };
   }
 
@@ -523,6 +1017,12 @@ export class GlobeController {
 
   /** Tear the scene down and give its WebGL context back (the Globe owns the GPU only while open). */
   destroy(): void {
+    this.destroyed = true;
+    clearTimeout(this.spinTimer);
+    cancelAnimationFrame(this.spinFrame);
+    cancelAnimationFrame(this.zoomFrame);
+    cancelAnimationFrame(this.hoverFrame);
+    for (const off of this.unlisten) off();
     const canvas = this.scene.canvas;
     this.handler.destroy();
     this.widget.destroy();

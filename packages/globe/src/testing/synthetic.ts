@@ -1,7 +1,8 @@
 /**
- * Synthetic raster packs for tests (Node only): tiny PNG tiles and a PMTiles v3 writer, so a
- * test builds an imagery pack (one flat colour) or a terrain pack (one Terrarium height) over a
- * box without any real data. Never shipped in the app.
+ * Synthetic packs for tests (Node only): tiny PNG tiles, a one-polygon vector tile and a PMTiles
+ * v3 writer, so a test builds an imagery pack (one flat colour), a terrain pack (one Terrarium
+ * height) or a street pack (one layer filled edge to edge) over a box without any real data.
+ * Never shipped in the app.
  */
 import type { RasterPackMeta } from '@aio/schema';
 import { zxyToTileId } from 'pmtiles';
@@ -53,6 +54,48 @@ function varint(n: number, out: number[]): void {
 }
 
 /**
+ * A Mapbox Vector Tile with one layer holding one polygon that fills the tile: a street pack
+ * of these draws every tile in the colour the street style gives `layer` (`water`, `earth`).
+ */
+export function squareMvt(layer: string, extent = 4096): Buffer {
+  const zigzag = (n: number) => (n << 1) ^ (n >> 31);
+  const packed = (values: number[]): number[] => {
+    const out: number[] = [];
+    for (const v of values) varint(v, out);
+    return out;
+  };
+  const field = (tag: number, bytes: number[]): number[] => {
+    const out = [tag];
+    varint(bytes.length, out);
+    return [...out, ...bytes];
+  };
+  // MoveTo the corner, three LineTo around the square (clockwise, y down), ClosePath
+  const geometry = packed([
+    9,
+    0,
+    0,
+    26,
+    zigzag(extent),
+    0,
+    0,
+    zigzag(extent),
+    zigzag(-extent),
+    0,
+    15,
+  ]);
+  const feature = [0x18, 3, ...field(0x22, geometry)];
+  const body = [
+    0x78,
+    2,
+    ...field(0x0a, [...Buffer.from(layer, 'utf8')]),
+    ...field(0x12, feature),
+    0x28,
+    ...packed([extent]),
+  ];
+  return Buffer.from(field(0x1a, body));
+}
+
+/**
  * A PMTiles v3 archive holding `tile` at every tile of `bbox` from `minZoom` to `maxZoom` (one
  * copy of the bytes, every entry pointing at it). Internal compression none, root directory only.
  */
@@ -61,7 +104,7 @@ export function pmtilesOf(o: {
   minZoom: number;
   maxZoom: number;
   tile: Buffer;
-  tileType: 'png' | 'webp' | 'jpeg';
+  tileType: 'png' | 'webp' | 'jpeg' | 'mvt';
   metadata?: unknown;
 }): Buffer {
   const ids: number[] = [];
@@ -111,7 +154,7 @@ export function pmtilesOf(o: {
   header[96] = 0; // not clustered (entries share one tile)
   header[97] = 1; // internal compression: none
   header[98] = 1; // tile compression: none
-  header[99] = { png: 2, jpeg: 3, webp: 4 }[o.tileType];
+  header[99] = { mvt: 1, png: 2, jpeg: 3, webp: 4 }[o.tileType];
   header[100] = o.minZoom;
   header[101] = o.maxZoom;
   const e7 = (v: number) => Math.round(v * 1e7);

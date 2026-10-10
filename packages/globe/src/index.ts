@@ -1,5 +1,5 @@
 // @aio/globe (M10 stream G6): the Globe view on CesiumJS. This entry holds what needs no CesiumJS
-// (offline rules, credits, tile and terrain maths, the project frame to ECEF, the camera
+// (offline rules, credits, looks and the layer plan, tile and terrain maths, the project frame to ECEF, the camera
 // hand-off, sites and issue pins); `@aio/globe/view` holds the CesiumJS view, imported only from
 // the renderer's lazily loaded Globe chunk.
 export {
@@ -12,7 +12,42 @@ export {
   offlineSource,
   onlineHostsIn,
 } from './offline';
-export { BUNDLED_CREDIT, ONLINE_SATELLITE_CREDIT, creditLines } from './credits';
+export {
+  BUNDLED_CREDIT,
+  EARTH_SHAPES_CREDIT,
+  ONLINE_SATELLITE_CREDIT,
+  creditLines,
+  planCredits,
+  type CreditsShown,
+} from './credits';
+export {
+  DEFAULT_GLOBE_STYLE,
+  GLOBE_STYLES,
+  STREET_GLOBE_PALETTE,
+  globeStyleOf,
+  type GlobePalette,
+  type GlobeStyle,
+} from './style';
+export {
+  planGlobeLayers,
+  planShowsPacks,
+  type GlobeLayerInput,
+  type GlobeLayerPlan,
+  type GlobeTileSource,
+  type GlobeTileStats,
+} from './layers';
+export {
+  GLOBE_LOOKS,
+  IDLE_SPIN,
+  WHOLE_EARTH_HEIGHT_M,
+  globePixelRatio,
+  idleSpinPending,
+  idleSpinRate,
+  wholeEarthAmount,
+  type GlobeLook,
+  type GlobeTierName,
+  type IdleSpin,
+} from './look';
 export {
   MERCATOR_MAX_LAT,
   imageryLayerOrder,

@@ -1,13 +1,20 @@
 /**
- * The Globe (M10 G6): CesiumJS offline under the app CSP, every library project as a site,
- * imagery and terrain from synthetic packs with their credits, the hand-off to the site view and
- * back, issue pins, and the WebGL context given back when the Globe closes. Synthetic data only;
- * the zero-network guard of the fixtures runs on every test.
+ * The Globe (M10 G6): CesiumJS offline under the app CSP, every library project as a site, the
+ * street map from a synthetic street pack over the bundled land shapes, imagery and terrain from
+ * synthetic packs with their credits, the three looks, the hand-off to the site view and back,
+ * issue pins, and the WebGL context given back when the Globe closes. Synthetic data only; the
+ * zero-network guard of the fixtures runs on every test.
  */
 import { utmToWgs84 } from '@aio/geo';
 import { enuToEcefMatrix } from '@aio/globe';
 import type { GlobeInspection } from '@aio/globe/view';
-import { pmtilesOf, solidPng, syntheticPackMeta, terrariumPng } from '@aio/globe/testing';
+import {
+  pmtilesOf,
+  solidPng,
+  squareMvt,
+  syntheticPackMeta,
+  terrariumPng,
+} from '@aio/globe/testing';
 import { ProjectManifest, SCHEMA_VERSION, type ProjectManifestInput } from '@aio/schema';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -76,6 +83,15 @@ async function settle(win: Page, what: string, ok: (s: GlobeInspection) => boole
     });
   }
 }
+
+/** Where a site's pin is drawn, in CSS pixels of the Globe; null when it is not on screen. */
+const pinOf = (win: Page, projectId: string) =>
+  win.evaluate((id) => {
+    const el = document.querySelector('[data-testid="globe-canvas"]');
+    const c = (el as { __aioGlobe?: { pinPosition(id: string): [number, number] | null } })
+      .__aioGlobe;
+    return c?.pinPosition(`site:${id}`) ?? null;
+  }, projectId);
 
 const memMiB = (app: ElectronApplication) =>
   app.evaluate(({ app: a }) =>
@@ -183,6 +199,63 @@ async function installSyntheticPacks(dataRoot: DataRoot): Promise<void> {
   }
 }
 
+/**
+ * Install a synthetic street pack over the synthetic packs' box (`packs/<id>.pmtiles` and its
+ * `MapPackInfo`, as a pack download leaves them): every vector tile from zoom 6 down is one
+ * polygon of the street style's water, so where the pack is drawn the land turns to water.
+ */
+async function installSyntheticStreets(dataRoot: DataRoot): Promise<void> {
+  const bytes = pmtilesOf({
+    bbox: PACK_BBOX,
+    minZoom: 6,
+    maxZoom: 14,
+    tile: squareMvt('water'),
+    tileType: 'mvt',
+  });
+  const dir = join(dataRoot.root, 'packs');
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, 'syn-streets.pmtiles'), bytes);
+  await writeFile(
+    join(dir, 'syn-streets.json'),
+    JSON.stringify({
+      id: 'syn-streets',
+      label: 'Synthetic streets',
+      bbox: [...PACK_BBOX],
+      maxZoom: 14,
+      sizeBytes: bytes.length,
+    }),
+  );
+}
+
+/** The colour drawn at a point of the Globe (fractions of the canvas), after its next frame. */
+const sampleAt = (win: Page, fx: number, fy: number) =>
+  win.evaluate(
+    ([x, y]) => {
+      const el = document.querySelector('[data-testid="globe-canvas"]');
+      const c = (el as { __aioGlobe?: { samplePixel(x: number, y: number): Promise<number[]> } })
+        .__aioGlobe;
+      return c?.samplePixel(x, y);
+    },
+    [fx, fy] as const,
+  );
+
+/**
+ * A click at this point of the window lands on the Globe's canvas: no panel, card, button or
+ * label of the Globe's chrome is in the way (whatever the platform's window chrome and fonts).
+ */
+async function expectGlobeAt(win: Page, x: number, y: number) {
+  const hit = await win.evaluate(
+    ([px, py]) => {
+      const el = document.elementFromPoint(px, py);
+      if (!el) return 'nothing';
+      const inGlobe = el.closest('[data-testid="globe-canvas"]') !== null;
+      return `${el.tagName.toLowerCase()}${inGlobe ? ' of the Globe' : ` .${el.getAttribute('class') ?? ''}`}`;
+    },
+    [x, y] as const,
+  );
+  expect(hit, `what is at ${x.toFixed(0)}, ${y.toFixed(0)}`).toBe('canvas of the Globe');
+}
+
 async function openGlobe(win: Page) {
   await win.locator('.sb-nav .nav-item', { hasText: 'Globe' }).click();
   await expect(win.getByTestId('globe-canvas').locator('canvas')).toBeVisible();
@@ -277,6 +350,17 @@ test('every library project is a site; packs draw with their credits', async ({
   await expect(list).toContainText(SITE_B.name);
   await expect(list).toContainText('1 open issue');
   await expectAccessible(win, 'Globe');
+  // the street map is the default look: the bundled land shapes, and no imagery pack drawn
+  const credits = win.getByTestId('globe-credits');
+  await expect(win.getByTestId('globe-look-street')).toHaveAttribute('aria-pressed', 'true');
+  expect((await inspect(win))?.layers).toEqual(['earth-shapes:whole']);
+  await expect(credits).toContainText('Natural Earth (public domain)');
+  await expect(credits).not.toContainText('Synthetic imagery test pack');
+  await expect(win.getByText(/No street map pack is installed/)).toBeVisible();
+  // satellite is a choice: the packs go over the street globe
+  await win.getByTestId('globe-look-satellite').click();
+  await settle(win, 'the imagery pack is a layer', (s) => s.imagery.includes('syn-imagery'));
+  expect((await inspect(win))?.layers).toEqual(['earth-shapes:whole', 'pack:syn-imagery']);
   await expect(win.locator('.globe-field select').first()).toContainText(
     'Synthetic imagery (syn-imagery)',
   );
@@ -292,8 +376,7 @@ test('every library project is a site; packs draw with their credits', async ({
   expect(px?.[0]).toBeGreaterThan(150);
   expect(px?.[1]).toBeLessThan(100);
   expect(px?.[2]).toBeGreaterThan(110);
-  const credits = win.getByTestId('globe-credits');
-  await expect(credits).toContainText('Natural Earth II');
+  await expect(credits).toContainText('Natural Earth (public domain)');
   await expect(credits).toContainText('Synthetic imagery test pack');
   const state = await inspect(win);
   if (state?.terrain.length) {
@@ -318,6 +401,125 @@ test('every library project is a site; packs draw with their credits', async ({
     // Low tier (software GPU): terrain stays off, and the panel says so
     await expect(win.getByText('Terrain is off on the Low graphics preset.')).toBeVisible();
   }
+  // the old look stays within reach: Natural Earth II under the packs, credited as before
+  await win.getByTestId('globe-look-natural-earth').click();
+  await settle(
+    win,
+    'the Natural Earth raster is the base',
+    (s) => s.layers[0] === 'natural-earth-ii',
+  );
+  expect((await inspect(win))?.layers).toEqual(['natural-earth-ii', 'pack:syn-imagery']);
+  await expect(credits).toContainText('Natural Earth II (public domain)');
+  await settle(win, 'the pack draws over it', (s) => s.tilesLoaded && s.imageryTiles > 0);
+  const old = await sampleAt(win, 0.35, 0.75);
+  expect(old?.[0]).toBeGreaterThan(150);
+  expect(old?.[1]).toBeLessThan(100);
+  // and the look is remembered for the next time the Globe opens
+  await win.locator('.sb-nav .nav-item', { hasText: 'Projects' }).click();
+  await expect(win.getByTestId('globe-canvas')).toHaveCount(0);
+  await win.locator('.sb-nav .nav-item', { hasText: 'Globe' }).click();
+  await expect(win.getByTestId('globe-look-natural-earth')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('street packs draw as the street map of the Globe, offline under the app CSP', async ({
+  win,
+  dataRoot,
+  network,
+}) => {
+  await installSyntheticStreets(dataRoot);
+  const problems: string[] = [];
+  win.on('console', (m) => {
+    const text = m.text();
+    if (m.type() === 'error' || /Content Security Policy|Refused to/i.test(text))
+      problems.push(text);
+  });
+  win.on('pageerror', (e) => problems.push(String(e)));
+  await expect(win.locator('.sb-nav .nav-item', { hasText: 'Globe' })).toBeVisible();
+  await win.evaluate(() => {
+    const w = window as unknown as { __violations: string[] };
+    w.__violations = [];
+    document.addEventListener('securitypolicyviolation', (e) => {
+      w.__violations.push(`${e.effectiveDirective} ${e.blockedURI}`);
+    });
+  });
+  await openGlobe(win);
+  expect((await inspect(win))?.layers).toEqual(['earth-shapes:underlay', 'street']);
+  await expect(win.getByTestId('globe-credits')).toContainText('OpenStreetMap contributors');
+  await expect(win.getByText(/No street map pack is installed/)).toHaveCount(0);
+  await flyToSite(win, SITE_A.name);
+  // street tiles are drawn one at a time by a hidden map: wait for the ones in view
+  await settle(win, 'the street tiles drew', (s) => s.tilesLoaded && (s.street?.tiles ?? 0) > 0);
+  // site A is inland: the land shapes alone would be the style's land (a neutral dark grey);
+  // the synthetic pack paints its tiles as water (a dark blue)
+  const px = await sampleAt(win, 0.35, 0.75);
+  // (land is about 16, 19, 23 and water about 1, 20, 31: blue well over red, whatever the GPU)
+  expect((px?.[2] ?? 0) - (px?.[0] ?? 0)).toBeGreaterThan(13);
+  const state = await inspect(win);
+  expect(state?.street?.timeouts).toBe(0);
+  expect(state?.street?.lastError ?? null).toBeNull();
+  // the Natural Earth look draws no street tiles
+  await win.getByTestId('globe-look-natural-earth').click();
+  await settle(win, 'the street layer is gone', (s) => !s.layers.includes('street'));
+  expect((await inspect(win))?.street).toBeNull();
+  const violations = await win.evaluate(
+    () => (window as unknown as { __violations: string[] }).__violations,
+  );
+  expect(violations).toEqual([]);
+  expect(problems).toEqual([]);
+  expect(await network.outbound()).toEqual([]);
+});
+
+test('a site lights up under the pointer and when it is selected', async ({ win }) => {
+  await openGlobe(win);
+  // the sites are far apart, each its own pin; the pins stand still once the opening flight ends
+  await settle(win, 'the opening flight ended', (s) => !s.flying);
+  await expect.poll(async () => (await pinOf(win, SITE_A.id)) !== null).toBe(true);
+  const box = await win.getByTestId('globe-canvas').boundingBox();
+  const [x, y] = (await pinOf(win, SITE_A.id)) ?? [0, 0];
+  // the pointer arrives, then rests on the pin
+  await expectGlobeAt(win, (box?.x ?? 0) + x, (box?.y ?? 0) + y);
+  await win.mouse.move((box?.x ?? 0) + x + 40, (box?.y ?? 0) + y + 30);
+  await win.mouse.move((box?.x ?? 0) + x, (box?.y ?? 0) + y);
+  await expect
+    .poll(async () => (await inspect(win))?.hover, { timeout: 15_000 })
+    .toEqual({ kind: 'site', projectId: SITE_A.id });
+  const hover = win.getByTestId('globe-tag-hover');
+  await expect(hover).toContainText(SITE_A.name);
+  // the label itself (the element the Globe moves is a point without a size)
+  await expect(hover.locator('.aio-globe-chip')).toBeVisible();
+  // a click selects it: the card opens and the label stays beside the pin
+  await win.mouse.click((box?.x ?? 0) + x, (box?.y ?? 0) + y);
+  await expect(win.getByTestId('globe-card')).toContainText(SITE_A.name);
+  expect((await inspect(win))?.selected).toBe(SITE_A.id);
+  const selected = win.getByTestId('globe-tag-selected');
+  await expect(selected).toContainText(SITE_A.name);
+  await expect(selected.locator('.aio-globe-chip')).toBeVisible();
+  // a row of the list lights its pin the same way
+  await win
+    .getByTestId('globe-sites')
+    .getByRole('button', { name: new RegExp(SITE_B.name) })
+    .hover();
+  await expect(hover).toContainText(SITE_B.name);
+  // closing the card clears the selection
+  await win.getByTestId('globe-card').getByRole('button', { name: 'Close' }).click();
+  await expect(win.getByTestId('globe-card')).toHaveCount(0);
+  await expect.poll(async () => (await inspect(win))?.selected).toBeNull();
+});
+
+test('the view buttons zoom and show every site again', async ({ win }) => {
+  await openGlobe(win);
+  await settle(win, 'the opening flight ended', (s) => !s.flying);
+  const height = async () => (await inspect(win))?.cameraHeight ?? 0;
+  const start = await height();
+  await win.getByRole('button', { name: 'Zoom in' }).click();
+  await expect.poll(height, { timeout: 15_000 }).toBeLessThan(start * 0.7);
+  const near = await height();
+  await win.getByRole('button', { name: 'Zoom out' }).click();
+  await expect.poll(height, { timeout: 15_000 }).toBeGreaterThan(near * 1.5);
+  await flyToSite(win, SITE_A.name);
+  await win.getByRole('button', { name: 'Show all sites' }).click();
+  await expect(win.getByTestId('globe-card')).toHaveCount(0);
+  await settle(win, 'the Globe shows every site', (s) => !s.flying && s.cameraHeight > 100_000);
 });
 
 test('Open site here hands over to the site view; the Globe comes back to the same view', async ({
@@ -381,6 +583,7 @@ test('an issue pin opens the issue in the site view', async ({ win }) => {
       { timeout: 15_000 },
     )
     .toBe(true);
+  await expectGlobeAt(win, (box?.x ?? 0) + x, (box?.y ?? 0) + y);
   await win.mouse.click((box?.x ?? 0) + x, (box?.y ?? 0) + y);
   const card = win.getByTestId('globe-card');
   await expect(card).toContainText('F01 Corrosion on the tank');
@@ -465,11 +668,13 @@ test('the only tool is a distance and area read-out on the ellipsoid', async ({ 
   const readout = win.getByTestId('globe-readout');
   await expect(readout).toContainText('Click points on the ground');
   const box = await win.getByTestId('globe-canvas').boundingBox();
-  const at = (fx: number, fy: number) =>
-    win.mouse.click(
-      (box?.x ?? 0) + (box?.width ?? 0) * fx,
-      (box?.y ?? 0) + (box?.height ?? 0) * fy,
-    );
+  const at = async (fx: number, fy: number) => {
+    const x = (box?.x ?? 0) + (box?.width ?? 0) * fx;
+    const y = (box?.y ?? 0) + (box?.height ?? 0) * fy;
+    // the panel, the read-out and the view buttons leave this part of the Globe free
+    await expectGlobeAt(win, x, y);
+    await win.mouse.click(x, y);
+  };
   await at(0.35, 0.7);
   await at(0.65, 0.7);
   await expect(readout).toContainText(/Distance on the ellipsoid: \d+ m/);

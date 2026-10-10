@@ -3,6 +3,7 @@
 export {
   GlobeView,
   type GlobeIssuePins,
+  type GlobeTagText,
   type GlobeTilesets,
   type GlobeViewProps,
 } from './GlobeView';
@@ -10,8 +11,10 @@ export {
   GlobeController,
   packSource,
   type GlobeControllerOptions,
+  type GlobeHover,
   type GlobeInspection,
   type GlobePick,
+  type GlobeTagSlot,
   type SourceFor,
 } from './controller';
 export {
@@ -27,8 +30,16 @@ export {
   type OnlineTileRead,
 } from './onlineSatellite';
 export {
+  EarthImageryProvider,
+  TileSourceImageryProvider,
+  loadEarthShapes,
+  type EarthImageryOptions,
+} from './earthLayers';
+export {
   configureCesiumBase,
   createOfflineWidget,
+  dressScene,
   naturalEarthLayer,
   type GlobeTier,
+  type GlobeWidget,
 } from './setup';
