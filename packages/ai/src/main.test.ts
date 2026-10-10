@@ -257,6 +257,32 @@ describe('agent runtime', () => {
     expect(text(t.events)).toBe('');
   });
 
+  it('ends a cloud run before its next step once the workstation is offline-only', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    let offline = false;
+    const t = setup({
+      steps: [
+        toolStep('c1', 'create_issue_draft', { title: 'Roof corrosion', severity: 3 }),
+        textStep('never'),
+      ],
+      host: { offlineOnly: () => offline },
+    });
+    await t.runtime.send(req());
+    const call = await t.next((e) => e.type === 'tool-call');
+    if (call.type !== 'tool-call') throw new Error('unreachable');
+    // the switch is turned on while the approval waits; the person then approves
+    offline = true;
+    t.runtime.toolResult({ runId: 'r1', callId: call.callId, approved: true, result: {} });
+    expect(await t.end('r1')).toEqual({
+      type: 'error',
+      runId: 'r1',
+      message: MESSAGES.offlineOnly,
+    });
+    expect(t.chat.doStreamCalls).toHaveLength(1);
+    expect(text(t.events)).toBe('');
+    warn.mockRestore();
+  });
+
   it('turns a network failure into a clear message', async () => {
     const t = setup({
       doStream: () => Promise.reject(new TypeError('fetch failed')),

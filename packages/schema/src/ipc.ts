@@ -292,8 +292,9 @@ export const Settings = z.object({
   /** `reduce` always cuts motion (camera flights jump, no fades); `system` follows the OS. */
   motion: z.enum(['system', 'reduce']).optional(),
   /**
-   * Offline-only workstation: every online action (map pack download, update check) is disabled.
-   * Default false; the app still makes no request unless the person starts one.
+   * Offline-only workstation: every online action (map pack download, update check, team server,
+   * cloud AI) is disabled. A local model on this machine stays available. Default false; the app
+   * still makes no request unless the person starts one.
    */
   offlineOnly: z.boolean().optional(),
   /** Allow the "Check now" button for online updates (ADR 0003). Default false. */
@@ -733,6 +734,8 @@ export const ipc = {
           'local-off',
           /** M8: the local model cannot call tools; the agent answers in text only. */
           'answer-only',
+          /** The workstation is offline-only (`Settings.offlineOnly`): no cloud call is made. */
+          'offline-only',
         ])
         .optional(),
       message: z.string().optional(),

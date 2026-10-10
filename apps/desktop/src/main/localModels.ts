@@ -3,7 +3,7 @@
  * (`ai:localModels`) and the capability probe (`ai:localProbe`). Both run only on the person's
  * click in Settings. A server on this machine is always allowed; an address on another machine
  * sends data off this one, so it is refused unless cloud AI is allowed (the existing rule for a
- * non-loopback "local" model). The optional server key comes from the OS vault and is never
+ * non-loopback "local" model), and always while the workstation is offline-only. The optional server key comes from the OS vault and is never
  * logged or returned.
  */
 import { DEFAULT_LOCAL_MODEL, isLoopbackUrl } from '@aio/ai/routes';
@@ -20,6 +20,8 @@ export interface LocalModelsIpcDeps {
   localModel?: () => LocalModelSettings | undefined;
   /** Cloud AI is allowed now: only then may a server on another machine be reached. */
   cloudAllowed?: () => boolean;
+  /** The workstation is offline-only: a server on another machine is refused whatever else is on. */
+  offlineOnly?: () => boolean;
   /** The optional server key (vault account `local`), or null. Never logged. */
   getKey?: () => Promise<string | null>;
   /** Replaces the network for tests. */
@@ -38,26 +40,34 @@ export interface LocalServerSeen {
   at: string;
 }
 
-function remoteRefused(url: string): string {
-  let where = url;
+function originOf(url: string): string {
   try {
-    where = new URL(url).origin;
+    return new URL(url).origin;
   } catch {
     // keep the address as typed
+    return url;
   }
-  return `${where} is on another machine, so data would leave this one. Turn on cloud AI in Settings, Privacy, to use it.`;
+}
+
+function remoteRefused(url: string): string {
+  return `${originOf(url)} is on another machine, so data would leave this one. Turn on cloud AI in Settings, Privacy, to use it.`;
+}
+
+function remoteOffline(url: string): string {
+  return `${originOf(url)} is on another machine, and this workstation is offline-only, so nothing is sent to it. Use a model server on this machine, or turn off Offline-only workstation in Settings, Privacy and cloud.`;
 }
 
 export function registerLocalModelsIpc(deps: LocalModelsIpcDeps): void {
   const { handle } = deps;
   const fetch = deps.fetch ?? globalThis.fetch;
+  const offlineOnly = () => deps.offlineOnly?.() ?? false;
 
   /** The address to use, or the refusal for one on another machine. */
   function address(baseUrl: string | undefined): { url: string } | { error: string } {
     const url = baseUrl ?? deps.localModel?.()?.baseUrl ?? DEFAULT_LOCAL_MODEL.baseUrl;
-    if (!isLoopbackUrl(url) && !(deps.cloudAllowed?.() ?? false)) {
-      return { error: remoteRefused(url) };
-    }
+    if (isLoopbackUrl(url)) return { url };
+    if (offlineOnly()) return { error: remoteOffline(url) };
+    if (!(deps.cloudAllowed?.() ?? false)) return { error: remoteRefused(url) };
     return { url };
   }
 
@@ -90,7 +100,7 @@ export function registerLocalModelsIpc(deps: LocalModelsIpcDeps): void {
     const listed = await discover(a.url, k);
     const info = listed.ok ? listed.models.find((m) => m.id === model) : undefined;
     const r = await probeLocalModel({
-      model: localProvider({ baseUrl: a.url }, { fetch }).languageModel(model, k),
+      model: localProvider({ baseUrl: a.url }, { fetch, offlineOnly }).languageModel(model, k),
       claimsVision: info?.vision,
       timeoutMs: deps.localModel?.()?.timeoutMs ?? PROBE_TIMEOUT_MS,
     });

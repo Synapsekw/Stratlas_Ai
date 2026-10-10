@@ -569,8 +569,23 @@ function Usage() {
   );
 }
 
+/** AI providers: why no cloud provider answers while the workstation is offline-only. */
+function CloudAiOffline() {
+  const offlineOnly = useShell((s) => s.settings.offlineOnly === true);
+  if (!offlineOnly) return null;
+  return (
+    <p className="notice warn" role="status" data-testid="cloud-ai-offline">
+      <Icon name="offline" size={14} />
+      This workstation is offline-only, so cloud AI is off: no provider is called and Test
+      connection is refused. A local model on this machine still works. To use cloud AI, turn off
+      Offline-only workstation in Privacy and cloud.
+    </p>
+  );
+}
+
 function Privacy() {
   const cloudAi = useShell((s) => s.settings.cloudAi);
+  const offlineOnly = useShell((s) => s.settings.offlineOnly === true);
   const pkg = useShell((s) => s.pkg);
   return (
     <>
@@ -585,14 +600,17 @@ function Privacy() {
         <div className="master">
           <b>Cloud AI</b>
           <Switch
-            checked={cloudAi}
+            checked={cloudAi && !offlineOnly}
+            disabled={offlineOnly}
             label="Allow cloud AI"
             onChange={(v) => void shell.getState().updateSettings({ cloudAi: v })}
           />
-          <p>
-            {cloudAi
-              ? 'On: the agent may send text and frames to the providers you set up. Every data-sending step still asks first.'
-              : 'Off: nothing leaves this workstation. The agent panel stays available for local tools only.'}
+          <p data-testid="cloud-ai-state">
+            {offlineOnly
+              ? 'Off: this workstation is offline-only (below), so nothing is sent to any provider. A local model on this machine still works.'
+              : cloudAi
+                ? 'On: the agent may send text and frames to the providers you set up. Every data-sending step still asks first.'
+                : 'Off: nothing leaves this workstation. The agent panel stays available for local tools only.'}
           </p>
         </div>
       </div>
@@ -641,7 +659,7 @@ function OfflineOnly() {
         />
         <p>
           {offlineOnly
-            ? 'On: map pack downloads and online update checks are disabled. Packs and updates come in as files.'
+            ? 'On: cloud AI, map pack downloads, online update checks and team server connections are disabled. Packs and updates come in as files; a local model on this machine still works.'
             : 'Off: you can start a map pack download or an update check yourself. Nothing goes online on its own.'}
         </p>
       </div>
@@ -848,6 +866,7 @@ export function SettingsScreen() {
           )}
           {page === 'ai' && (
             <>
+              <CloudAiOffline />
               <div className="sblock">
                 <h2>
                   Providers <span className="sub">{PROVIDERS.length} supported</span>

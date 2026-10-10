@@ -134,6 +134,15 @@ describe('local server addresses', () => {
     expect(isLoopbackUrl('http://192.168.1.20:11434')).toBe(false);
     expect(isLoopbackUrl('https://api.example.com/v1')).toBe(false);
     expect(isLoopbackUrl('not a url')).toBe(false);
+    // names that only look local: each is resolved by DNS or is another host altogether
+    for (const remote of [
+      'http://ollama.localhost:11434/v1',
+      'http://localhost.example.com:11434',
+      'http://127.0.0.1.example.com:11434',
+      'http://localhost@example.com:11434',
+      'http://0.0.0.0:11434',
+    ])
+      expect(isLoopbackUrl(remote), remote).toBe(false);
   });
 
   it('lists the default ports of Ollama, LM Studio and the llama.cpp server, on this machine', () => {

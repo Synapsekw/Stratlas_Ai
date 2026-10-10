@@ -29,8 +29,9 @@ export function TitleBar() {
   const cloudSetting = useShell((s) => s.settings.cloudAi);
   const pkg = useShell((s) => s.pkg);
   const origin = useShell((s) => s.origin);
+  const offlineOnly = useShell((s) => s.settings.offlineOnly === true);
   const blocked = cloudAiBlocked(pkg);
-  const cloudAi = cloudSetting && !blocked;
+  const cloudAi = cloudSetting && !blocked && !offlineOnly;
   const manifest = useWorkspace((s) => s.project?.manifest);
 
   const crumbs: string[] =
@@ -124,11 +125,13 @@ export function TitleBar() {
           type="button"
           className="chip-status"
           title={t(
-            blocked
-              ? 'titlebar.cloudBlockedTip'
-              : cloudAi
-                ? 'titlebar.cloudOnTip'
-                : 'titlebar.cloudOffTip',
+            offlineOnly
+              ? 'titlebar.cloudOfflineTip'
+              : blocked
+                ? 'titlebar.cloudBlockedTip'
+                : cloudAi
+                  ? 'titlebar.cloudOnTip'
+                  : 'titlebar.cloudOffTip',
           )}
           onClick={() => {
             shell.getState().go('settings');
@@ -137,7 +140,7 @@ export function TitleBar() {
         >
           <span className={cloudAi ? 'dot' : 'dot off'} />
           {t(
-            blocked && cloudSetting
+            (blocked || offlineOnly) && cloudSetting
               ? 'titlebar.cloudBlocked'
               : cloudAi
                 ? 'titlebar.cloudOn'

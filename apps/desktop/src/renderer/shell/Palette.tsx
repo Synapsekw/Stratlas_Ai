@@ -68,6 +68,7 @@ export function Palette() {
   const open = useShell((s) => s.paletteOpen);
   const library = useShell((s) => s.library);
   const cloudAi = useShell((s) => s.settings.cloudAi);
+  const offlineOnly = useShell((s) => s.settings.offlineOnly === true);
   const project = useWorkspace((s) => s.project);
   const issues = useWorkspace((s) => s.issues);
   const hidden = useWorkspace((s) => s.hidden);
@@ -119,12 +120,19 @@ export function Palette() {
         s.setExportFor(project.id);
       });
     }
-    action(
-      'cloud',
-      cloudAi ? 'Turn cloud AI off' : 'Turn cloud AI on',
-      'agent',
-      () => void s.updateSettings({ cloudAi: !cloudAi }),
-    );
+    if (offlineOnly) {
+      // the switch would change nothing while the workstation is offline-only: say so instead
+      action('cloud', 'Cloud AI is off: this workstation is offline-only', 'agent', () => {
+        s.go('settings');
+      });
+    } else {
+      action(
+        'cloud',
+        cloudAi ? 'Turn cloud AI off' : 'Turn cloud AI on',
+        'agent',
+        () => void s.updateSettings({ cloudAi: !cloudAi }),
+      );
+    }
     if (legacyLayers(project?.manifest).length > 0) {
       list.push({
         id: 'go:review',
@@ -463,7 +471,7 @@ export function Palette() {
       });
     }
     return list;
-  }, [library, cloudAi, project, pkg, issues, hidden, playing, surveys]);
+  }, [library, cloudAi, offlineOnly, project, pkg, issues, hidden, playing, surveys]);
 
   if (!open) return null;
   return (

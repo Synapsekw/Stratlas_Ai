@@ -10,6 +10,7 @@ import { createGoogle } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
 import type { LocalModelSettings } from '@aio/schema';
 import type { LanguageModel } from 'ai';
+import { OfflineOnlyError } from './errors';
 import { isLoopbackUrl, openAiBase, PROVIDER_LABELS } from './routes';
 
 export { isLoopbackUrl };
@@ -44,6 +45,23 @@ export interface BuiltInProviderOptions {
   anthropicWorkspaceId?: () => string | undefined;
   /** Replaces the network for tests. */
   fetch?: typeof globalThis.fetch;
+  /**
+   * True while the workstation is offline-only. Read on every request: a cloud request is then
+   * refused before it leaves, whatever started it (a run under way when the switch was turned on).
+   */
+  offlineOnly?: () => boolean;
+}
+
+/** The `fetch` of a cloud provider: every request is refused while the workstation is offline-only. */
+function cloudFetch(options: BuiltInProviderOptions): { fetch?: typeof globalThis.fetch } {
+  const { offlineOnly } = options;
+  if (!offlineOnly) return options.fetch ? { fetch: options.fetch } : {};
+  return {
+    fetch: (input, init) =>
+      offlineOnly()
+        ? Promise.reject(new OfflineOnlyError())
+        : (options.fetch ?? globalThis.fetch)(input, init),
+  };
 }
 
 /** The `anthropic-workspace-id` header, or nothing when no workspace is set. */
@@ -53,7 +71,7 @@ export function anthropicHeaders(workspaceId: string | undefined): Record<string
 }
 
 export function builtInProviders(options: BuiltInProviderOptions = {}): ModelProvider[] {
-  const fetch = options.fetch ? { fetch: options.fetch } : {};
+  const fetch = cloudFetch(options);
   return [
     {
       id: 'anthropic',
@@ -86,16 +104,19 @@ export function builtInProviders(options: BuiltInProviderOptions = {}): ModelPro
 
 /**
  * The local model from Settings. An address on another machine sends data off this one, so it is
- * then treated as a cloud provider (refused while cloud AI is off or the project forbids it).
+ * then treated as a cloud provider (refused while cloud AI is off, the project forbids it or the
+ * workstation is offline-only). A server on this machine is never held back by offline-only.
  */
 export function localProvider(
   cfg: Pick<LocalModelSettings, 'baseUrl'>,
-  options: Pick<BuiltInProviderOptions, 'fetch'> = {},
+  options: Pick<BuiltInProviderOptions, 'fetch' | 'offlineOnly'> = {},
 ): ModelProvider {
+  const cloud = !isLoopbackUrl(cfg.baseUrl);
+  const fetch = cloud ? cloudFetch(options) : options.fetch ? { fetch: options.fetch } : {};
   return {
     id: 'local',
     label: PROVIDER_LABELS.local,
-    cloud: !isLoopbackUrl(cfg.baseUrl),
+    cloud,
     needsKey: false,
     optionalKey: true,
     // OpenAI-compatible chat completions: Ollama, LM Studio and the llama.cpp server all serve them.
@@ -104,7 +125,7 @@ export function localProvider(
         baseURL: openAiBase(cfg.baseUrl),
         apiKey: key ?? 'local',
         name: 'local',
-        ...(options.fetch ? { fetch: options.fetch } : {}),
+        ...fetch,
       }).chat(model),
   };
 }

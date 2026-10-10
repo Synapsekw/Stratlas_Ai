@@ -163,6 +163,7 @@ import { APP_CSP } from './csp';
 import { cspForUrl } from './protocol/legacy';
 import { saveFile } from './saveFile';
 import { savePath } from './exports/savePath';
+import { aiGates } from './aiGates';
 import { createSettingsStore, defaultDataRoot, defaultSettings } from './settings';
 import { installRealDataGuard } from './realDataGuard';
 import { migrateLegacyUserData } from './userDataMigration';
@@ -431,6 +432,8 @@ const scripted =
  * and answers the workspace 400 until Settings has a workspace ID (agent panel fix, e2e).
  */
 const scriptedWorkspace = scripted && process.env.QUADRION_AI_TEST_SCRIPT === 'workspace-400';
+/** Offline-only and the cloud switch, as every cloud AI path asks them. */
+const gates = aiGates(settings, policy);
 const providers = createProviderRegistry(
   scripted
     ? (['anthropic', 'openai', 'google'] as const).map((id) =>
@@ -445,6 +448,8 @@ const providers = createProviderRegistry(
     : builtInProviders({
         // Keys not scoped to a workspace need the workspace ID (Settings, AI providers).
         anthropicWorkspaceId: () => settings.current().anthropicWorkspaceId,
+        // the last line of defence: no request to a provider leaves an offline-only workstation
+        offlineOnly: gates.offlineOnly,
       }),
 );
 
@@ -456,8 +461,7 @@ const agent = createAgentRuntime(
       registerSecret(key);
       return key;
     },
-    // Cloud AI also needs the open package's permission (AI-2, default forbid).
-    cloudAllowed: () => policy.cloudAllowed(settings.current().cloudAi),
+    ...gates,
     routes: () => settings.current().routes,
     localModel: () => settings.current().localModel,
     policy: async (projectId) => {
@@ -1195,7 +1199,7 @@ function registerIpc(): void {
   registerLocalModelsIpc({
     handle,
     localModel: () => settings.current().localModel,
-    cloudAllowed: () => policy.cloudAllowed(settings.current().cloudAi),
+    ...gates,
     remember: (server) => {
       localServerSeen = server;
     },

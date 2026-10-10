@@ -23,7 +23,11 @@ export const LOCAL_SERVERS = [
   { kind: 'openai-compatible', label: 'llama.cpp server', baseUrl: 'http://localhost:8080/v1' },
 ] as const;
 
-/** True for localhost, 127.0.0.0/8 and ::1: requests to these never leave the machine. */
+/**
+ * True for localhost, 127.0.0.0/8 and ::1: requests to these never leave the machine. A name under
+ * `.localhost` is not one of them: Node asks the DNS server for it, which may answer with any
+ * address, so it counts as another machine.
+ */
 export function isLoopbackUrl(url: string): boolean {
   let host: string;
   try {
@@ -31,7 +35,7 @@ export function isLoopbackUrl(url: string): boolean {
   } catch {
     return false;
   }
-  if (host === 'localhost' || host.endsWith('.localhost')) return true;
+  if (host === 'localhost') return true;
   if (host === '[::1]' || host === '::1') return true;
   return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
 }
