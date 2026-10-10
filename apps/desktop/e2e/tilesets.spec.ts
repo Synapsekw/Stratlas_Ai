@@ -92,6 +92,8 @@ interface Probe {
       raycast(x: number, y: number): { object: { userData: Record<string, unknown> } } | null;
       setSection(p: object): void;
       setViewPreset(p: string): void;
+      onFrame(cb: () => void): () => void;
+      requestRender(): void;
       clippingPlanes: unknown[];
     } | null;
   };
@@ -104,6 +106,33 @@ const loadedTiles = (win: Page, id = 'site-tiles') =>
       (window as unknown as Probe).__stratlas.stage()?.scene.getObjectByName(name)?.children
         .length ?? 0,
     `tileset:${id}`,
+  );
+
+/**
+ * Wait until the stage has drawn a frame asked for now. The first frame after the shaders change
+ * (the cutaway's clipping planes) recompiles them inside the draw, which holds the renderer for
+ * seconds on a software GPU: about as long as the first tile's frame, 3.9 s on the CI runner
+ * (run 38049437845). The stage draws on the next animation frame, not when the change is made, so
+ * without this the draw lands in whatever step comes next.
+ */
+const stageDrew = (win: Page) =>
+  win.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const stage = (window as unknown as Probe).__stratlas.stage();
+        if (!stage) {
+          resolve();
+          return;
+        }
+        // called as the draw starts: the animation frame after it comes once the draw has ended
+        const off = stage.onFrame(() => {
+          off();
+          requestAnimationFrame(() => {
+            resolve();
+          });
+        });
+        stage.requestRender();
+      }),
   );
 
 async function answerOpenDialog(app: ElectronApplication, path: string): Promise<void> {
@@ -183,6 +212,9 @@ test('a mesh becomes 3D Tiles that stream, pick and cut in the site view, and im
   });
   expect(cut.shared).toBeGreaterThan(0);
   expect(cut.planes).toBeGreaterThan(0);
+  // the cut is drawn before the palette and the import card are used: its first frame must not
+  // land in a step that has the default 5 s
+  await stageDrew(win);
 
   // Import 3D Tiles: the tiles copied out as another program's export come back in
   const exported = join(dataRoot.base, 'Bentley export');
@@ -196,7 +228,11 @@ test('a mesh becomes 3D Tiles that stream, pick and cut in the site view, and im
   await expect(card.getByRole('textbox', { name: 'Tileset name' })).toHaveValue('Bentley export');
   await card.getByRole('textbox', { name: 'Credit line' }).fill('E2E export');
   await card.getByRole('button', { name: 'Import' }).click();
-  await expect(card).toContainText('Imported Bentley export');
+  // The result shows once main has checked and copied the folder and the renderer gets a turn.
+  // The import's end also makes the site view load the new tileset, and its first tile's frame
+  // compiles a shader like the first tileset's did: when that frame comes before this check, the
+  // check waits for it, so it gets the time the tile polls get.
+  await expect(card).toContainText('Imported Bentley export', { timeout: 60_000 });
   await expect(card.getByRole('status')).toContainText('placed by its own georeference');
   expect((await readdir(join(dataRoot.projectDir, 'tiles'))).sort()).toEqual([
     'Bentley-export',
