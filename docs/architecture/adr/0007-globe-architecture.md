@@ -20,6 +20,6 @@ The founder asked to integrate Cesium "to import the satellite maps and work wit
 ## Consequences
 
 - Two engines to keep current: CesiumJS is pinned and updated once per milestone with the zero-network test as the gate; 3DTilesRendererJS (pre-1.0) is pinned and wrapped.
-- The installer grows by at most 15 MB (decision 6) for CesiumJS and 3DTilesRendererJS.
+- The installer grows by at most 15 MB (decision 6) for CesiumJS and 3DTilesRendererJS. Amended 10 Oct 2026 (founder): 20 MB over the 0.9.0 installer in total, adding 5 MB for the M11 survey tools (0.11.0 was 16.3 MB over).
 - Imagery and terrain come only from packs whose licence allows offline redistribution, or from the customer's own imagery under its licence (decisions 4 and 12, ADR-level detail in the plan's "Imagery and terrain: sources and licences").
 - Rejected: (a) CesiumJS alone (every tool rebuilt or missing on the globe); (b) 3DTilesRendererJS alone (most of the value at a fraction of the cost, but not the Cesium globe the founder named, and a less mature globe).

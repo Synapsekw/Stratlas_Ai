@@ -37,12 +37,12 @@ export const BUDGETS = Object.freeze({
    */
   pack: Object.freeze({ unpackedBytes: 1_100_000_000, compressedBytes: 450_000_000 }),
   /**
-   * Installer growth for CesiumJS and 3DTilesRendererJS over the 0.9.0 installer (M10 decision 6),
-   * per installer file. The baseline is the 0.9.0 release build of each file; a platform without
+   * Installer growth over the 0.9.0 installer, per installer file: 15 MB for CesiumJS and
+   * 3DTilesRendererJS (M10 decision 6) plus 5 MB for the M11 survey tools (founder, 10 Oct 2026). The baseline is the 0.9.0 release build of each file; a platform without
    * a baseline is reported, not enforced.
    */
   installer: Object.freeze({
-    growthOver090Bytes: 15 * 1024 * 1024,
+    growthOver090Bytes: 20 * 1024 * 1024,
     // The Windows installers as built for the 0.9.0 release (7 Oct 2026).
     baseline090: Object.freeze({
       'win-x64-setup.exe': 187_894_920,
