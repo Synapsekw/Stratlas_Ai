@@ -6,6 +6,7 @@ import { useIdentity } from '../author';
 import { build } from '../buildStamp';
 import { bridge, useShell } from '../shell';
 import { BrandSymbol, BrandWordmark } from '../shell/BrandMark';
+import { connectionStatus } from '../shell/connection';
 import { OS_QUERIES, wantsReducedMotion } from '../theme';
 import {
   gateAtStart,
@@ -126,6 +127,12 @@ function Gate({ onGone }: { onGone: () => void }) {
   const [instant, setInstant] = useState(false);
   const [waited, setWaited] = useState(false);
   const settings = useShell((s) => s.settings);
+  // the same words as the title bar chips (no package is open before the workspace)
+  const status = connectionStatus({
+    offlineOnly: settings.offlineOnly === true,
+    cloudAi: settings.cloudAi,
+    pkgBlocked: false,
+  });
   const reduce = wantsReducedMotion(settings.motion, {
     reducedMotion: useMedia(OS_QUERIES.reducedMotion),
   });
@@ -462,11 +469,17 @@ function Gate({ onGone }: { onGone: () => void }) {
           </button>
           <div className="qg-status">
             <span className="qg-dot" aria-hidden="true" />
-            {t('titlebar.offline')}
+            {t(status.modeLabel)}
             <span className="qg-sep" aria-hidden="true">
               ·
             </span>
-            {t(settings.cloudAi ? 'gate.cloudOn' : 'gate.local')}
+            {t(
+              status.mode === 'offline'
+                ? 'gate.local'
+                : status.cloudActive
+                  ? 'gate.cloudOn'
+                  : 'gate.cloudOff',
+            )}
           </div>
         </section>
       </div>

@@ -26,6 +26,7 @@ import { useState } from 'react';
 import { GPU_TIERS, TIER_ORDER, graphics, useGraphics, type GpuTier } from '../graphics';
 import { cloudAiBlocked } from '../player';
 import { bridge, shell, useCall, useShell } from '../shell';
+import type { SettingsPage } from '../store';
 import { HelpLink } from '../help/HelpPanel';
 import { SETTINGS_HELP } from '../help/store';
 import { About } from './settings/About';
@@ -39,19 +40,7 @@ import { ProviderConnection } from './settings/ProviderConnection';
 import { ReportBranding } from './settings/ReportBranding';
 import { TeamServer } from './settings/TeamServer';
 
-type Page =
-  | 'ai'
-  | 'usage'
-  | 'privacy'
-  | 'identity'
-  | 'data'
-  | 'maps'
-  | 'severity'
-  | 'branding'
-  | 'graphics'
-  | 'appearance'
-  | 'keyboard'
-  | 'about';
+type Page = SettingsPage;
 
 const PAGES: { page: Page; label: MessageKey; icon: IconName; group: MessageKey }[] = [
   { page: 'ai', label: 'settings.page.ai', icon: 'agent', group: 'settings.group.intelligence' },
@@ -824,7 +813,10 @@ const HEAD: Record<Page, { title: MessageKey; text: MessageKey }> = {
 
 export function SettingsScreen() {
   useT();
-  const [page, setPage] = useState<Page>('ai');
+  const [picked, setPicked] = useState<Page>('ai');
+  // a page asked for from outside (the title bar's Download maps) holds until one is picked here
+  const asked = useShell((s) => s.settingsPage);
+  const page = asked ?? picked;
   const error = useShell((s) => s.settingsError);
   return (
     <section className="screen settings" aria-label={t('settings.title')}>
@@ -839,7 +831,8 @@ export function SettingsScreen() {
                 type="button"
                 aria-current={page === p.page}
                 onClick={() => {
-                  setPage(p.page);
+                  setPicked(p.page);
+                  shell.getState().clearSettingsPage();
                 }}
               >
                 <Icon name={p.icon} />

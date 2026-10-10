@@ -231,6 +231,223 @@ button.chip-status:hover {
   border-color: var(--line-strong);
   color: var(--fg-0);
 }
+/* The connection pair (shell/ConnectionStatus.tsx): the mode chip and the cloud AI chip share one
+   outline, so they read as one statement about the network. */
+.conn {
+  position: relative;
+  display: flex;
+  app-region: no-drag;
+}
+.conn > .chip-status {
+  position: relative;
+}
+.conn > .conn-mode {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+.conn > .conn-cloud {
+  margin-inline-start: -1px;
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
+/* the hovered, focused or open half draws its whole outline over its neighbour's */
+.conn > .chip-status:hover,
+.conn > .chip-status:focus-visible,
+.conn > .conn-mode[aria-expanded='true'] {
+  z-index: 1;
+}
+.conn > .conn-mode[aria-expanded='true'] {
+  border-color: var(--line-strong);
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.conn[data-mode='online'] > .conn-mode > .i:first-child {
+  color: var(--ok);
+}
+.conn[data-mode='offline'] > .conn-mode > .i:first-child {
+  color: var(--fg-3);
+}
+.conn-mode > .conn-caret {
+  margin-inline: -2px -3px;
+  color: var(--fg-3);
+}
+/* cloud AI that cannot run reads quieter than cloud AI that is merely switched off */
+.conn > .conn-cloud[data-state='off'] {
+  color: var(--fg-2);
+}
+.conn > .conn-cloud[data-state='blocked'] {
+  color: var(--fg-3);
+}
+/* a narrow window: the pair gives its spare room back to the breadcrumbs and the search */
+@media (max-width: 1280px) {
+  .conn > .chip-status {
+    gap: 5px;
+    padding: 0 6px;
+  }
+  .conn-mode > .conn-caret {
+    display: none;
+  }
+}
+.conn-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  inset-inline-end: 0;
+  z-index: 40;
+  display: grid;
+  gap: 10px;
+  width: 320px;
+  padding: 12px;
+  background: var(--bg-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-6);
+  box-shadow: 0 12px 32px var(--shadow);
+  font-size: var(--t-12);
+  color: var(--fg-1);
+  cursor: default;
+  app-region: no-drag;
+  transform-origin: top;
+  animation: conn-in 140ms var(--ease);
+}
+@keyframes conn-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+.conn-switch {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  background: var(--bg-2);
+  color: var(--fg-3);
+}
+.conn-switch:hover {
+  border-color: var(--line-strong);
+}
+.conn-switch:focus-visible,
+.conn-link:focus-visible {
+  border-radius: var(--r-4);
+}
+.conn-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  transition: color 160ms var(--ease);
+}
+.conn-opt:first-child {
+  justify-self: end;
+}
+.conn-opt[data-current='true'] {
+  color: var(--fg-0);
+}
+.conn-track {
+  position: relative;
+  width: 30px;
+  height: 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--bg-3);
+  transition: background-color 160ms var(--ease);
+}
+.conn-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  inset-inline-start: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--fg-2);
+  transition:
+    transform 180ms var(--ease),
+    background-color 160ms;
+}
+.conn-switch[aria-checked='true'] .conn-track {
+  border-color: transparent;
+  background: var(--acc);
+}
+.conn-switch[aria-checked='true'] .conn-track::after {
+  transform: translateX(12px);
+  background: var(--acc-ink);
+}
+[dir='rtl'] .conn-switch[aria-checked='true'] .conn-track::after {
+  transform: translateX(-12px);
+}
+.conn-text,
+.conn-note {
+  margin: 0;
+  line-height: 1.5;
+  color: var(--fg-2);
+  white-space: normal;
+}
+.conn-note {
+  display: flex;
+  gap: 6px;
+  color: var(--fg-1);
+}
+.conn-note .i {
+  flex: none;
+  margin-top: 2px;
+  color: var(--s3);
+}
+.conn-links {
+  display: grid;
+  gap: 2px;
+  margin: 0 -6px -6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line-soft);
+}
+.conn-link {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 6px;
+  border-radius: var(--r-4);
+  color: var(--fg-0);
+  text-align: start;
+}
+.conn-link > .i {
+  color: var(--fg-2);
+}
+.conn-link:not([aria-disabled='true']):hover,
+.conn-link:not([aria-disabled='true']):focus-visible {
+  background: var(--bg-3);
+}
+.conn-link[aria-disabled='true'] {
+  color: var(--fg-3);
+  cursor: default;
+}
+.conn-link[aria-disabled='true'] > .i {
+  color: var(--fg-4);
+}
+.conn-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--t-11);
+  color: var(--fg-3);
+}
+.conn-hint[data-state='on'] {
+  color: var(--fg-1);
+}
+.conn-hint .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.conn-hint .dot.off {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--fg-3);
+}
 
 /* ---------- sidebar ---------- */
 .sidebar {
