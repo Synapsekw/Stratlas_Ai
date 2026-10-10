@@ -287,6 +287,9 @@ test.describe('volumes and comparisons', () => {
     await expectAccessible(win, 'Whole site cut and fill', {
       include: '[data-testid="survey-site"]',
     });
+    // snapping to the ortho needs the boundary model (G12): the test pack has none, and says so
+    await dlg.getByTestId('survey-site-snap').click();
+    await expect(dlg.getByTestId('survey-site-snap-note')).toContainText('no boundary model');
     await dlg.getByTestId('survey-site-accept').click();
     await dlg.getByRole('button', { name: 'Close' }).click();
     await win.getByTestId('survey-list-save').click();

@@ -355,10 +355,13 @@ export function reduceRing(ring: readonly Vec2[], n: number): Vec2[] {
   return pts;
 }
 
+/** How far the default outline may cut a corner of the mask, cells of the model's grid. */
+export const OUTLINE_TOLERANCE = 2;
+
 /**
  * The outline of a mask as a closed ring of cell centres (without the closing point): traced,
- * then simplified within half a cell, then reduced to `vertices` when given. Null when the region
- * is too small for three corners.
+ * then simplified within `OUTLINE_TOLERANCE` cells (the mask's pixel steps go, the shape stays),
+ * then reduced to `vertices` when given. Null when the region is too small for three corners.
  */
 export function maskRing(mask: BinaryMask, vertices?: number): Vec2[] | null {
   const traced = traceBoundary(mask);
@@ -366,7 +369,7 @@ export function maskRing(mask: BinaryMask, vertices?: number): Vec2[] | null {
   const first = traced[0];
   if (!first) return null;
   // simplify works on an open polyline: close it, simplify, open it again
-  const open = simplify([...traced, first], 0.5).slice(0, -1);
+  const open = simplify([...traced, first], OUTLINE_TOLERANCE).slice(0, -1);
   const ring = vertices && open.length > vertices ? reduceRing(open, vertices) : open;
   return ring.length >= 3 ? ring.map(([x, y]) => [x + 0.5, y + 0.5] as Vec2) : null;
 }
