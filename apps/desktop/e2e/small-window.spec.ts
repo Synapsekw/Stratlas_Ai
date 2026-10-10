@@ -5,6 +5,7 @@
  * Screenshots go to the test's output folder (test-results/), or to QUADRION_E2E_SHOTS when it
  * names a folder.
  */
+import { ONLINE_SATELLITE } from '@aio/schema';
 import type { ElectronApplication, Page, TestInfo } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -172,4 +173,114 @@ test('the Projects header keeps every action in view, down to the smallest windo
       await shot(win, info, 'projects-header-1440.png');
     }
   }
+});
+
+// ------------------------------------------------------------------------- the foot of the map
+
+/**
+ * What is wrong at the foot of the main map: the scale bar (left), the note that no map pack is
+ * installed and the credits (right) each have a box inside the map, none cut off, and no two of
+ * them overlap. Empty when all is well.
+ */
+async function footProblems(win: Page): Promise<string[]> {
+  return win.evaluate(() => {
+    const map = document.querySelector('.pane-map .aio-map');
+    if (!map) return ['no map'];
+    const frame = map.getBoundingClientRect();
+    const parts = {
+      scale: map.querySelector('.maplibregl-ctrl-scale'),
+      note: map.querySelector('[data-testid="map-no-packs"]'),
+      credits: map.querySelector('.maplibregl-ctrl-attrib'),
+    };
+    const out: string[] = [];
+    const boxes: [string, DOMRect][] = [];
+    for (const [name, el] of Object.entries(parts)) {
+      const r = el?.getBoundingClientRect();
+      if (!el || !r || r.width < 1 || r.height < 1) {
+        out.push(`${name} is not shown`);
+        continue;
+      }
+      if (
+        r.left < frame.left ||
+        r.right > frame.right ||
+        r.top < frame.top ||
+        r.bottom > frame.bottom
+      )
+        out.push(`${name} runs out of the map`);
+      if (el.scrollWidth > el.clientWidth + 1) out.push(`${name} is cut off`);
+      boxes.push([name, r]);
+    }
+    for (const [i, [a, ra]] of boxes.entries())
+      for (const [b, rb] of boxes.slice(i + 1))
+        if (ra.left < rb.right && rb.left < ra.right && ra.top < rb.bottom && rb.top < ra.bottom)
+          out.push(`${a} and ${b} overlap`);
+    return out;
+  });
+}
+
+/** The credits of the main map, and the button that folds them to an "i" and back. */
+const credits = (win: Page) => win.locator('.pane-map .maplibregl-ctrl-attrib');
+const creditsButton = (win: Page) => win.locator('.pane-map .maplibregl-ctrl-attrib-button');
+
+/** The scale bar, the note and the credits keep apart, with the credits open and folded. */
+async function expectFootApart(win: Page, state: string): Promise<void> {
+  await expect(credits(win)).toHaveClass(/maplibregl-compact-show/);
+  await expect.poll(() => footProblems(win), { message: `${state}, credits open` }).toEqual([]);
+  await creditsButton(win).click();
+  await expect(credits(win)).not.toHaveClass(/maplibregl-compact-show/);
+  await expect.poll(() => footProblems(win), { message: `${state}, credits folded` }).toEqual([]);
+  // open again: the credits can still be read
+  await creditsButton(win).click();
+  await expect(credits(win)).toHaveClass(/maplibregl-compact-show/);
+  await expect.poll(() => footProblems(win), { message: `${state}, credits open` }).toEqual([]);
+}
+
+async function openMapWithoutPacks(win: Page): Promise<void> {
+  await openProject(win);
+  await showView(win, 'Map');
+  await expect(win.locator('.maplibregl-canvas')).toBeVisible(VIEW_READY);
+  // the tiny project's data root has no map pack: the map says so
+  await expect(win.getByTestId('map-no-packs')).toHaveText(
+    'No map pack installed: project layers only. Add a pack in Settings, Offline maps.',
+  );
+}
+
+test('the scale bar, the no pack note and the credits keep apart at the foot of the map', async ({
+  win,
+}, info) => {
+  await openMapWithoutPacks(win);
+  await expect(credits(win)).toContainText('OpenStreetMap');
+  await expectFootApart(win, 'no map pack');
+  await shot(win, info, 'map-foot-no-pack.png');
+});
+
+test.describe('with online satellite', () => {
+  // No test reaches the network: main stands in for the service (online-satellite.spec.ts), and
+  // the zero-network guard of the fixtures still fails the test on any real request.
+  test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x700', QUADRION_ONLINE_TILES_TEST: '1' } });
+
+  test('the long satellite credit keeps apart from the scale bar and the note too', async ({
+    win,
+  }, info) => {
+    await openMapWithoutPacks(win);
+    await expectFootApart(win, 'online satellite off');
+
+    // switched on in the map type picker: the map draws it, with the service's long credit
+    const chip = win.getByTestId('basemap-button');
+    await chip.click();
+    await win.getByTestId('basemap-online').click();
+    await win
+      .getByTestId('basemap-pop')
+      .getByTestId('online-satellite-notice')
+      .getByRole('button', { name: 'Switch on' })
+      .click();
+    await expect(chip).toHaveText('Satellite');
+    // the picker's own button closes it again
+    await chip.click();
+    await expect(chip).toHaveAttribute('aria-expanded', 'false');
+    await expect(win.getByTestId('basemap-pop')).toHaveCount(0);
+    await expect(credits(win)).toContainText(ONLINE_SATELLITE.attribution, VIEW_READY);
+    await expectFootApart(win, 'online satellite on');
+    await shot(win, info, 'map-foot-online-satellite.png');
+  });
 });

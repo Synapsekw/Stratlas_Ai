@@ -59,6 +59,47 @@
   color: var(--fg-1, #b9bec4);
 }
 
+/* The foot of the map: the scale bar on the left, the credits on the right and the note that no
+   map pack is installed. The note stays in the middle of the foot while it fits on one line
+   between the two (each side keeps clear of the wider of them, so it stays centred). Where it
+   does not fit, in a narrow map (a small window) or beside a long credit that is open, it goes
+   above them and wraps. The three never overlap. (The note is centred with justify-self: with
+   auto margins a note that does not fit would not count as overflowing, and would stay put.) */
+.aio-map {
+  anchor-scope: --aio-map-scale, --aio-map-credits;
+}
+.aio-map .maplibregl-ctrl-scale {
+  anchor-name: --aio-map-scale;
+}
+.aio-map .maplibregl-ctrl-attrib {
+  anchor-name: --aio-map-credits;
+}
+.aio-map-note {
+  --beside: calc(
+    max(anchor-size(--aio-map-scale width, 0px), anchor-size(--aio-map-credits width, 0px)) + 20px
+  );
+  position: absolute;
+  bottom: 8px;
+  left: var(--beside);
+  right: var(--beside);
+  width: max-content;
+  justify-self: center;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--scrim, rgb(8 10 13 / 0.82));
+  color: var(--fg-2, #878d93);
+  font: var(--t-12, 12px) var(--f-ui, sans-serif);
+  text-align: center;
+  pointer-events: none;
+  position-try-fallbacks: --aio-map-note-above;
+}
+@position-try --aio-map-note-above {
+  bottom: calc(max(anchor(--aio-map-scale top, 0px), anchor(--aio-map-credits top, 0px)) + 6px);
+  left: 10px;
+  right: 10px;
+  width: fit-content;
+}
+
 .aio-map .maplibregl-popup-content {
   background: var(--bg-1, #0e1114);
   color: var(--fg-0, #eaedf1);
