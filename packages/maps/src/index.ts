@@ -1,6 +1,8 @@
 import { getAdapter, registerAdapter, type AdapterContext, type LayerHandle } from '@aio/engine';
 import type { Layer } from '@aio/schema';
 import type { GroundExtent } from './ground';
+import type { MapPack } from './packs';
+import type { StreetTileOptions, StreetTiles } from './streetTiles';
 
 export { MapView, type MapViewProps } from './MapView';
 export { captureMap, getActiveMap, onActiveMap } from './capture';
@@ -82,6 +84,24 @@ export function registerMapAdapters(): void {
       return createGround(layer, ctx);
     },
   });
+}
+
+// The street map on the Globe: the street style's colours, which tiles are worth drawing, and
+// the tiles themselves (MapLibre loads lazily, only when the Globe opens with street packs).
+export { STREET } from './ink';
+export { STREET_MAX_LEVEL, STREET_OVERZOOM, streetCover, type StreetCover } from './streetCover';
+export type { StreetTileOptions, StreetTileStats, StreetTiles } from './streetTiles';
+
+/**
+ * The street map as Web Mercator raster tiles drawn from the installed street packs, for the
+ * Globe (`streetTiles.ts`); null without packs.
+ */
+export async function createStreetTiles(
+  packs: readonly MapPack[],
+  options: StreetTileOptions = {},
+): Promise<StreetTiles | null> {
+  const { createStreetTiles: create } = await import('./streetTiles');
+  return create(packs, options);
 }
 
 /**

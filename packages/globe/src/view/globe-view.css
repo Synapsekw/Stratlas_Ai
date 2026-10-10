@@ -1,0 +1,100 @@
+/* The Globe's floating labels: a name beside the selected site and under the pointer. The Globe
+   moves them (a transform per drawn frame); they are always dark, as the map under them is. */
+.aio-globe {
+  font-family: var(--f-ui, 'Segoe UI', system-ui, sans-serif);
+}
+.aio-globe-tags {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.aio-globe-tag {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  visibility: hidden;
+  will-change: transform;
+  --tag-tone: oklch(0.79 0.115 172);
+}
+.aio-globe-tag[data-tone='attention'] {
+  --tag-tone: oklch(0.74 0.155 55);
+}
+.aio-globe-chip {
+  position: absolute;
+  left: 0;
+  bottom: 24px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  max-width: 320px;
+  padding: 5px 10px 6px;
+  border-radius: 6px;
+  border: 1px solid oklch(0.36 0.012 250);
+  background: oklch(0.145 0.008 250 / 0.94);
+  box-shadow: 0 6px 18px oklch(0.08 0.01 250 / 0.6);
+  color: oklch(0.945 0.006 250);
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+  animation: aio-globe-chip-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.aio-globe-chip-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.aio-globe-chip-note {
+  color: oklch(0.7 0.012 250);
+  font-size: 11px;
+}
+.aio-globe-tag[data-slot='selected'] .aio-globe-chip {
+  border-color: color-mix(in oklch, var(--tag-tone) 55%, oklch(0.36 0.012 250));
+}
+/* three rings leave the selected site, then it rests: nothing keeps animating on a Globe left open */
+.aio-globe-pulse {
+  position: absolute;
+  left: -14px;
+  top: -14px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1.5px solid var(--tag-tone);
+  opacity: 0;
+  animation: aio-globe-pulse 1800ms cubic-bezier(0.25, 1, 0.5, 1) 3;
+}
+@keyframes aio-globe-pulse {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.85;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+@keyframes aio-globe-chip-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aio-globe-pulse,
+  .aio-globe-chip {
+    animation: none;
+  }
+}
+:root[data-motion='reduce'] .aio-globe-pulse,
+:root[data-motion='reduce'] .aio-globe-chip {
+  animation: none;
+}
+@media (forced-colors: active) {
+  .aio-globe-chip {
+    border-color: CanvasText;
+  }
+}

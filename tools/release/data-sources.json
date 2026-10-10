@@ -5,10 +5,19 @@
     {
       "name": "Natural Earth II",
       "kind": "imagery",
-      "use": "Low-resolution world imagery shipped inside the app for the Globe (G6)",
+      "use": "Low-resolution world imagery shipped inside the app for the Globe's Natural Earth look (G6)",
       "licence": "public-domain",
       "attribution": "Natural Earth",
       "provenance": "Natural Earth II raster, naturalearthdata.com",
+      "source": "https://www.naturalearthdata.com/about/terms-of-use/"
+    },
+    {
+      "name": "Natural Earth 1:50m land and countries",
+      "kind": "shapes",
+      "use": "Land and country borders shipped inside the app: the Globe's Earth under the street map and without street packs",
+      "licence": "public-domain",
+      "attribution": "Natural Earth",
+      "provenance": "Natural Earth 1:50m cultural and physical vectors, as TopoJSON from the world-atlas package",
       "source": "https://www.naturalearthdata.com/about/terms-of-use/"
     },
     {

@@ -137,7 +137,14 @@ export const GlobeSite = z.object({
  */
 export const GlobeSettings = z.looseObject({
   schema: z.literal('aio.globe-settings/1'),
-  /** `auto`: the best covering imagery pack per tile over Natural Earth II; or one pack. */
+  /**
+   * The Globe's look (10 Oct 2026, additive): `street` (absent means this) is the dark street map
+   * from the installed street packs over the bundled land shapes; `satellite` drapes the imagery
+   * packs over it; `natural-earth` is the painted Natural Earth II raster of 0.10. A value this
+   * build does not know reads as absent, so a newer file never resets the other preferences.
+   */
+  style: z.enum(['street', 'satellite', 'natural-earth']).optional().catch(undefined),
+  /** `auto`: the best covering imagery pack per tile (Satellite and Natural Earth); or one pack. */
   imagery: z.union([z.literal('auto'), RasterPackId]).optional(),
   /** `auto`: the best covering terrain pack; `off`: the ellipsoid. */
   terrain: z.union([z.literal('auto'), z.literal('off'), RasterPackId]).optional(),

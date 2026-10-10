@@ -393,6 +393,16 @@ describe('raster packs and globe settings', () => {
     expect(GlobeSettings.safeParse({ ...on, projectMaps: {} }).success).toBe(true);
     expect(GlobeSettings.safeParse({ ...on, projectMaps: { auto: 'yes' } }).success).toBe(false);
   });
+
+  it('globe settings may name a look; one a build does not know reads as none', () => {
+    const base = defaultGlobeSettings();
+    expect(base.style).toBeUndefined();
+    for (const style of ['street', 'satellite', 'natural-earth'] as const)
+      expect(GlobeSettings.parse({ ...base, style }).style).toBe(style);
+    const later = GlobeSettings.parse({ ...base, style: 'a-later-look', imagery: 'gulf' });
+    expect(later.style).toBeUndefined();
+    expect(later.imagery).toBe('gulf');
+  });
 });
 
 // ---------------------------------------------------------------- pipelines and channels
