@@ -301,7 +301,7 @@ export function ProjectMenu({
   const [dialog, setDialog] = useState<'rename' | 'delete' | null>(null);
   const open = at !== null;
 
-  // a click elsewhere, a scroll or a resize closes the menu
+  // a click elsewhere, a resize, or a scroll that moves the card closes the menu
   useEffect(() => {
     if (!open) return;
     const outside = (e: Event) => {
@@ -310,15 +310,29 @@ export function ProjectMenu({
       if (list.current?.contains(target) || more.current?.contains(target)) return;
       onAt(null);
     };
+    // Where the card was when the menu opened. A scroll event is reported a frame after the
+    // scroll itself, so one that brought the card into view just before a right-click arrives
+    // when the menu is already open: the card has not moved since, and the menu stays.
+    const anchor = more.current?.getBoundingClientRect();
+    const scrolled = (e: Event) => {
+      if (list.current?.contains(e.target as Node | null)) return;
+      const now = more.current?.getBoundingClientRect();
+      const still =
+        anchor !== undefined &&
+        now !== undefined &&
+        Math.abs(now.left - anchor.left) < 1 &&
+        Math.abs(now.top - anchor.top) < 1;
+      if (!still) onAt(null);
+    };
     const away = () => {
       onAt(null);
     };
     window.addEventListener('pointerdown', outside, true);
-    window.addEventListener('scroll', outside, true);
+    window.addEventListener('scroll', scrolled, true);
     window.addEventListener('resize', away);
     return () => {
       window.removeEventListener('pointerdown', outside, true);
-      window.removeEventListener('scroll', outside, true);
+      window.removeEventListener('scroll', scrolled, true);
       window.removeEventListener('resize', away);
     };
   }, [open, onAt]);

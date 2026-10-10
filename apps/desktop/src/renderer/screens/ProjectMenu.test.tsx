@@ -156,6 +156,35 @@ describe('the three dots of a project card', () => {
     expect(q('project-menu')).toBeNull();
   });
 
+  /** The dots at `top` on screen, as the browser would report them. */
+  const dotsAt = (top: number) => {
+    const b = dots();
+    if (b) b.getBoundingClientRect = () => new DOMRect(700, top, 26, 26);
+  };
+  const scroll = () => {
+    act(() => {
+      document.body.dispatchEvent(new Event('scroll'));
+    });
+  };
+
+  it('stays open when a scroll is reported but the card has not moved since it opened', () => {
+    // a scroll that brought the card into view just before the click is reported a frame later
+    render();
+    dotsAt(180);
+    click(dots());
+    scroll();
+    expect(q('project-menu')).not.toBeNull();
+  });
+
+  it('closes when the list scrolls and the card moves away', () => {
+    render();
+    dotsAt(180);
+    click(dots());
+    dotsAt(60);
+    scroll();
+    expect(q('project-menu')).toBeNull();
+  });
+
   it('opens the project and shows its folder', () => {
     render();
     click(dots());
