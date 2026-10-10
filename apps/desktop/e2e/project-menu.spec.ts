@@ -80,6 +80,48 @@ const menu = (win: Page) => win.getByTestId('project-menu');
 const manifestName = async (dir: string) =>
   (JSON.parse(await readFile(join(dir, 'manifest.json'), 'utf8')) as { name: string }).name;
 
+/**
+ * Where a card and its dots are, with the card scrolled into view first: in a small window (CI
+ * runs at the minimum, 1100 x 700) the library is one column and the second card starts below
+ * the fold, where `elementFromPoint` finds nothing.
+ */
+async function cardLayout(win: Page, name: string) {
+  await card(win, name).scrollIntoViewIfNeeded();
+  return card(win, name).evaluate((el) => {
+    const c = el.getBoundingClientRect();
+    const more = el.parentElement?.querySelector('.pc-more');
+    const b = more?.getBoundingClientRect();
+    const mid = { x: c.left + c.width / 2, y: c.top + c.height / 2 };
+    const apart = (r: DOMRect | undefined) =>
+      b === undefined ||
+      r === undefined ||
+      r.right <= b.left ||
+      r.left >= b.right ||
+      r.bottom <= b.top ||
+      r.top >= b.bottom;
+    const onDots = b ? document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2) : null;
+    return {
+      middleInView:
+        mid.x >= 0 && mid.x < window.innerWidth && mid.y >= 0 && mid.y < window.innerHeight,
+      // the card itself or something inside it (its picture, its name)
+      middleIsCard: el.contains(document.elementFromPoint(mid.x, mid.y)),
+      dotsOnTop: more?.contains(onDots) === true,
+      dotsInsideCard:
+        b !== undefined &&
+        b.left >= c.left &&
+        b.right <= c.right &&
+        b.top >= c.top &&
+        b.bottom <= c.bottom,
+      dotsClearOfText: ['.pc-kind', '.pc-name', '.pc-date', '.pc-where', '.pc-size'].every((q) =>
+        apart(el.querySelector(q)?.getBoundingClientRect()),
+      ),
+      dotsClearOfOtherCards: [...document.querySelectorAll('[data-testid="project-card"]')]
+        .filter((other) => other !== el)
+        .every((other) => apart(other.getBoundingClientRect())),
+    };
+  });
+}
+
 test('a project card has a menu: rename keeps after a restart, delete moves the folder away', async ({
   dataRoot,
 }) => {
@@ -102,27 +144,16 @@ test('a project card has a menu: rename keeps after a restart, delete moves the 
     await expect(dots(win, 'E2E tiny project')).toBeVisible();
     // the dots are not part of the card's own text: the specs that find a card by name still do
     await expect(card(win, 'Throwaway yard')).not.toContainText('Actions');
-    // they sit in the corner of their own card and cover nothing else: the middle of the card is
-    // still the card, and the dots lie inside the card's box
-    const layout = await card(win, 'Throwaway yard').evaluate((el) => {
-      const c = el.getBoundingClientRect();
-      const b = el.parentElement?.querySelector('.pc-more')?.getBoundingClientRect();
-      const middle = document.elementFromPoint(c.left + c.width / 2, c.top + c.height / 2);
-      const onDots = b
-        ? document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)
-        : null;
-      return {
-        middleIsCard: el.contains(middle),
-        dotsOnTop: onDots?.closest('.pc-more') !== null && onDots !== null,
-        dotsInside:
-          b !== undefined &&
-          b.left >= c.left &&
-          b.right <= c.right &&
-          b.top >= c.top &&
-          b.bottom <= c.bottom,
-      };
-    });
-    expect(layout).toEqual({ middleIsCard: true, dotsOnTop: true, dotsInside: true });
+    // they sit in the corner of their own card and cover nothing else, whatever the window size
+    for (const name of ['E2E tiny project', 'Throwaway yard'])
+      expect(await cardLayout(win, name), name).toEqual({
+        middleInView: true,
+        middleIsCard: true,
+        dotsOnTop: true,
+        dotsInsideCard: true,
+        dotsClearOfText: true,
+        dotsClearOfOtherCards: true,
+      });
     await expectAccessible(win, 'Projects with the card menus');
 
     // keyboard: Enter opens with focus on the first item, arrows move, Escape closes and returns
