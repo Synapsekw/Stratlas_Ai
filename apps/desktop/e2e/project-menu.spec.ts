@@ -102,6 +102,27 @@ test('a project card has a menu: rename keeps after a restart, delete moves the 
     await expect(dots(win, 'E2E tiny project')).toBeVisible();
     // the dots are not part of the card's own text: the specs that find a card by name still do
     await expect(card(win, 'Throwaway yard')).not.toContainText('Actions');
+    // they sit in the corner of their own card and cover nothing else: the middle of the card is
+    // still the card, and the dots lie inside the card's box
+    const layout = await card(win, 'Throwaway yard').evaluate((el) => {
+      const c = el.getBoundingClientRect();
+      const b = el.parentElement?.querySelector('.pc-more')?.getBoundingClientRect();
+      const middle = document.elementFromPoint(c.left + c.width / 2, c.top + c.height / 2);
+      const onDots = b
+        ? document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)
+        : null;
+      return {
+        middleIsCard: el.contains(middle),
+        dotsOnTop: onDots?.closest('.pc-more') !== null && onDots !== null,
+        dotsInside:
+          b !== undefined &&
+          b.left >= c.left &&
+          b.right <= c.right &&
+          b.top >= c.top &&
+          b.bottom <= c.bottom,
+      };
+    });
+    expect(layout).toEqual({ middleIsCard: true, dotsOnTop: true, dotsInside: true });
     await expectAccessible(win, 'Projects with the card menus');
 
     // keyboard: Enter opens with focus on the first item, arrows move, Escape closes and returns
