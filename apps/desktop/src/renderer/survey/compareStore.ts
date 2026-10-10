@@ -288,6 +288,9 @@ export function compute(
  * its own derived result in its place.
  */
 const flights = new Map<string, Promise<RunReply | null>>();
+/** The newest run started for each measurement (to tell a replaced run from a stopped one). */
+const latestRun = new Map<string, number>();
+let runSeq = 0;
 
 async function computeNow(
   id: string,
@@ -298,6 +301,8 @@ async function computeNow(
   const points = opts.points ?? m.points;
   if (points.length < 3) return null;
   set({ running: { ...get().running, [id]: true } });
+  const mine = ++runSeq;
+  latestRun.set(id, mine);
   const asked = inputsKey(m, opts.points === undefined);
   try {
     const capture = captureOf(m);
@@ -352,7 +357,12 @@ async function computeNow(
     }
     return r;
   } catch (e) {
-    if (e instanceof RunCancelled) return null;
+    if (e instanceof RunCancelled) {
+      // replaced by a newer run of this measurement: that one says when it is done. Cancelled
+      // with nothing in its place (the engine stopped): it is no longer running
+      if (latestRun.get(id) === mine) set({ running: { ...get().running, [id]: false } });
+      return null;
+    }
     set({
       running: { ...get().running, [id]: false },
       problems: { ...get().problems, [id]: e instanceof Error ? e.message : String(e) },
