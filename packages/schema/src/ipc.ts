@@ -2576,7 +2576,8 @@ export const ipc = {
       z.object({
         ok: z.literal(false),
         error: z.string(),
-        code: z.enum(['stale', 'unavailable', 'nothing']).optional(),
+        /** The usual failure codes, or: `stale` (send the crop's pixels again), `unavailable` (no model), `nothing` (no outline here). */
+        code: z.union([FailureCode, z.enum(['stale', 'unavailable', 'nothing'])]).optional(),
       }),
     ]),
   },
