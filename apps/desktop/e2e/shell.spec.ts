@@ -113,6 +113,15 @@ test('open a project, drive the shell and keep the sidebar state', async () => {
     await expect(win.getByTestId('connection-chip')).toHaveText('Online');
     await expect(win.getByTestId('cloud-chip')).toHaveText('Cloud AI off');
 
+    // The command search knows the Processing tools page, also by the pack's older name.
+    await win.keyboard.press('Control+K');
+    await expect(palette).toBeVisible();
+    await win.keyboard.type('pipeline pack');
+    await expect(palette.getByRole('option').first()).toHaveText(/^Processing tools \(Settings\)/);
+    await win.keyboard.press('Enter');
+    await expect(palette).toBeHidden();
+    await expect(win.locator('.set-page h1')).toHaveText('Processing tools');
+
     expect(run.outbound).toEqual([]);
   } finally {
     await app?.close();
