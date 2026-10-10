@@ -1,0 +1,18 @@
+{
+  "source": "docs/TESTING.md",
+  "title": "Quadrion Test Run",
+  "owner": "the test lead",
+  "testers": [
+    {
+      "id": "tester-1",
+      "name": "Tester 1"
+    },
+    {
+      "id": "tester-2",
+      "name": "Tester 2"
+    }
+  ],
+  "guide": "How to use this document",
+  "exclude": ["Stage M7"],
+  "order": []
+}

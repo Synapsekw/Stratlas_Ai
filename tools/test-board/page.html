@@ -1,0 +1,2524 @@
+<title>__TITLE__</title>
+<link
+  rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap"
+/>
+<style>
+  /* Layout: the product's Mission direction (docs/design/DIRECTION.md), dark first. A chrome bar
+     (view switch, tester, save state). Guided run: stage rail beside one step card whose stage
+     track shows every line of the stage with a playhead. Overview: a run matrix (one track per
+     tester over all lines) above one row per line with a column per tester. */
+  :root {
+    --bg-0: oklch(0.17 0.012 250);
+    --bg-1: oklch(0.205 0.014 250);
+    --bg-2: oklch(0.24 0.016 250);
+    --bg-3: oklch(0.3 0.02 250);
+    --bg-chrome: oklch(0.19 0.014 250);
+    --line: oklch(0.31 0.016 250);
+    --line-soft: oklch(0.26 0.014 250);
+    --line-strong: oklch(0.43 0.018 250);
+    --fg-0: oklch(0.97 0.004 250);
+    --fg-1: oklch(0.87 0.008 250);
+    --fg-2: oklch(0.72 0.014 250);
+    --fg-3: oklch(0.6 0.016 250);
+    --acc: oklch(0.79 0.115 172);
+    --acc-ink: oklch(0.2 0.03 172);
+    --acc-dim: oklch(0.79 0.115 172 / 0.14);
+    --pass: oklch(0.8 0.16 150);
+    --pass-dim: oklch(0.8 0.16 150 / 0.14);
+    --fail: oklch(0.7 0.19 25);
+    --fail-dim: oklch(0.7 0.19 25 / 0.16);
+    --skip: oklch(0.84 0.14 85);
+    --skip-dim: oklch(0.84 0.14 85 / 0.14);
+    --grid: oklch(1 0 0 / 0.028);
+    --sans: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+    --cond: 'IBM Plex Sans Condensed', 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme='dark']) {
+      --bg-0: oklch(0.955 0.005 250);
+      --bg-1: oklch(0.995 0.002 250);
+      --bg-2: oklch(0.972 0.004 250);
+      --bg-3: oklch(0.92 0.01 250);
+      --bg-chrome: oklch(0.985 0.003 250);
+      --line: oklch(0.87 0.008 250);
+      --line-soft: oklch(0.92 0.006 250);
+      --line-strong: oklch(0.74 0.012 250);
+      --fg-0: oklch(0.2 0.02 250);
+      --fg-1: oklch(0.3 0.02 250);
+      --fg-2: oklch(0.44 0.018 250);
+      --fg-3: oklch(0.55 0.016 250);
+      --acc: oklch(0.5 0.095 180);
+      --acc-ink: oklch(0.99 0.005 180);
+      --acc-dim: oklch(0.5 0.095 180 / 0.12);
+      --pass: oklch(0.5 0.14 150);
+      --pass-dim: oklch(0.5 0.14 150 / 0.12);
+      --fail: oklch(0.52 0.2 27);
+      --fail-dim: oklch(0.52 0.2 27 / 0.1);
+      --skip: oklch(0.56 0.12 75);
+      --skip-dim: oklch(0.56 0.12 75 / 0.13);
+      --grid: oklch(0 0 0 / 0.035);
+      color-scheme: light;
+    }
+  }
+  :root[data-theme='light'] {
+    --bg-0: oklch(0.955 0.005 250);
+    --bg-1: oklch(0.995 0.002 250);
+    --bg-2: oklch(0.972 0.004 250);
+    --bg-3: oklch(0.92 0.01 250);
+    --bg-chrome: oklch(0.985 0.003 250);
+    --line: oklch(0.87 0.008 250);
+    --line-soft: oklch(0.92 0.006 250);
+    --line-strong: oklch(0.74 0.012 250);
+    --fg-0: oklch(0.2 0.02 250);
+    --fg-1: oklch(0.3 0.02 250);
+    --fg-2: oklch(0.44 0.018 250);
+    --fg-3: oklch(0.55 0.016 250);
+    --acc: oklch(0.5 0.095 180);
+    --acc-ink: oklch(0.99 0.005 180);
+    --acc-dim: oklch(0.5 0.095 180 / 0.12);
+    --pass: oklch(0.5 0.14 150);
+    --pass-dim: oklch(0.5 0.14 150 / 0.12);
+    --fail: oklch(0.52 0.2 27);
+    --fail-dim: oklch(0.52 0.2 27 / 0.1);
+    --skip: oklch(0.56 0.12 75);
+    --skip-dim: oklch(0.56 0.12 75 / 0.13);
+    --grid: oklch(0 0 0 / 0.035);
+    color-scheme: light;
+  }
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    background-color: var(--bg-0);
+    /* the survey grid of the product's stage, kept faint */
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 32px 32px;
+    color: var(--fg-1);
+    font: 14px/1.5 var(--sans);
+  }
+  button,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+  button {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid var(--acc);
+    outline-offset: 2px;
+  }
+  code {
+    font: 0.9em var(--mono);
+    background: var(--bg-3);
+    color: var(--fg-0);
+    padding: 1px 5px;
+    border-radius: 2px;
+    overflow-wrap: anywhere;
+  }
+  pre {
+    font: 12px/1.5 var(--mono);
+    background: var(--bg-0);
+    border: 1px solid var(--line-soft);
+    padding: 10px 12px;
+    border-radius: 4px;
+    overflow-x: auto;
+  }
+  a {
+    color: var(--acc);
+  }
+  b {
+    color: var(--fg-0);
+    font-weight: 600;
+  }
+  .lbl {
+    font: 600 11px/1.2 var(--cond);
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+  }
+  .tele {
+    font: 500 11.5px/1.2 var(--mono);
+    color: var(--fg-2);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+  }
+  .tele b {
+    font-weight: 500;
+  }
+
+  /* chrome bar */
+  .bar {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 5;
+    background: var(--bg-chrome);
+    border-bottom: 1px solid var(--line);
+    padding: 9px 16px;
+  }
+  .bar-in {
+    max-width: 1180px;
+    margin-inline: auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 18px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 auto 0 0;
+    font: 600 14px/1 var(--cond);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--fg-0);
+  }
+  .home {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: 0;
+    background: none;
+    padding: 0;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    color: inherit;
+  }
+  .brand .mark {
+    width: 20px;
+    height: 20px;
+    flex: none;
+  }
+  .brand small {
+    font: 500 11.5px/1 var(--mono);
+    letter-spacing: 0.04em;
+    color: var(--fg-3);
+    text-transform: none;
+  }
+  .seg {
+    display: inline-flex;
+    border: 1px solid var(--line-strong);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .seg button {
+    border: 0;
+    background: transparent;
+    padding: 6px 13px;
+    font: 600 12px/1.3 var(--cond);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--fg-2);
+  }
+  .seg button + button {
+    border-left: 1px solid var(--line-strong);
+  }
+  .seg button[aria-pressed='true'] {
+    background: var(--acc);
+    color: var(--acc-ink);
+  }
+  .who-pick {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .who-pick select {
+    background: var(--bg-2);
+    border: 1px solid var(--line-strong);
+    border-radius: 4px;
+    padding: 5px 8px;
+    color: var(--fg-0);
+  }
+  .save {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font: 500 11.5px/1.3 var(--mono);
+    color: var(--fg-2);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    padding: 5px 9px;
+  }
+  .save::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    background: var(--fg-3);
+  }
+  .save[data-mode='online']::before {
+    background: var(--pass);
+  }
+  .save[data-mode='local']::before,
+  .save[data-mode='error']::before {
+    background: var(--skip);
+  }
+  .link {
+    border: 0;
+    background: none;
+    padding: 0;
+    color: var(--acc);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .notice {
+    max-width: 1180px;
+    margin: 8px auto 0;
+    font-size: 13px;
+    color: var(--fg-1);
+    border-left: 2px solid var(--acc);
+    padding-left: 10px;
+  }
+  .save .link + .link {
+    margin-left: 4px;
+  }
+  .howto ol {
+    margin: 8px 0 0;
+    padding-left: 20px;
+    color: var(--fg-2);
+    font-size: 13px;
+    display: grid;
+    gap: 5px;
+    max-width: 78ch;
+  }
+  .copybox {
+    max-width: 1180px;
+    margin: 10px auto 0;
+    display: grid;
+    gap: 8px;
+  }
+  .copybox textarea {
+    width: 100%;
+    height: 120px;
+    font: 12px/1.4 var(--mono);
+    background: var(--bg-0);
+    border: 1px solid var(--line-strong);
+    border-radius: 4px;
+    padding: 8px;
+  }
+  .copybox .save {
+    border: 0;
+    display: inline-flex;
+  }
+
+  .wrap {
+    max-width: 1212px;
+    margin-inline: auto;
+    padding-block: 22px 56px;
+    padding-inline: 16px;
+  }
+  .panel {
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+  }
+  .btn {
+    border: 1px solid var(--line-strong);
+    background: var(--bg-2);
+    border-radius: 4px;
+    padding: 8px 16px;
+    color: var(--fg-0);
+  }
+  .btn:hover {
+    border-color: var(--fg-2);
+  }
+  .btn.main {
+    background: var(--acc);
+    border-color: var(--acc);
+    color: var(--acc-ink);
+    font-weight: 600;
+  }
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  /* guided run */
+  .guide {
+    padding: 11px 16px;
+    margin-bottom: 16px;
+  }
+  .guide summary {
+    cursor: pointer;
+    font: 600 12px/1.4 var(--cond);
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--fg-1);
+  }
+  .guide .cols {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 4px 28px;
+    padding-top: 6px;
+  }
+  .guide h4 {
+    margin: 12px 0 4px;
+    font: 600 11px/1.2 var(--cond);
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--acc);
+  }
+  .guide ul {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--fg-2);
+    font-size: 13px;
+  }
+  .run {
+    display: grid;
+    grid-template-columns: 320px minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+  }
+  .rail {
+    position: sticky;
+    top: calc(env(safe-area-inset-top, 0px) + 66px);
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 3px 0;
+    max-height: calc(100vh - 96px);
+    overflow-y: auto;
+    padding: 6px;
+  }
+  .rail .lbl {
+    grid-column: 1 / -1;
+    padding: 6px 8px 8px;
+  }
+  .rail button {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: subgrid;
+    column-gap: 10px;
+    align-items: baseline;
+    text-align: left;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 7px 8px;
+    /* the row fills with the share of lines answered */
+    background: linear-gradient(var(--acc-dim) 0 0) left / var(--p, 0%) 100% no-repeat;
+  }
+  .rail button:hover {
+    border-color: var(--line-strong);
+  }
+  .rail button[aria-current='true'] {
+    border-color: var(--acc);
+  }
+  .rail .short {
+    font: 500 12px/1.4 var(--mono);
+    color: var(--fg-0);
+  }
+  .rail .name {
+    color: var(--fg-2);
+    font-size: 12.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .rail button[aria-current='true'] .name {
+    color: var(--fg-0);
+  }
+  .rail .num {
+    font: 400 11.5px/1.4 var(--mono);
+    color: var(--fg-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .rail button[data-done='true'] .num {
+    color: var(--pass);
+  }
+
+  .step {
+    padding: 20px 24px 22px;
+    display: grid;
+    gap: 18px;
+  }
+  .head {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px 16px;
+  }
+  .where {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+  }
+  .code {
+    font: 500 12px/1 var(--mono);
+    color: var(--acc);
+    border: 1px solid var(--acc);
+    border-radius: 2px;
+    padding: 4px 6px;
+  }
+  .where .hi {
+    color: var(--fg-0);
+  }
+  .where .sep {
+    color: var(--line-strong);
+  }
+  .trackbox {
+    display: grid;
+    gap: 7px;
+  }
+  .track {
+    display: flex;
+    gap: 1px;
+    height: 20px;
+    align-items: center;
+  }
+  .track[data-dense] {
+    gap: 0;
+  }
+  .tick {
+    flex: 1;
+    min-width: 0;
+    height: 12px;
+    border: 0;
+    padding: 0;
+    border-radius: 1px;
+    background: var(--bg-3);
+    transition: height 0.15s ease-out;
+  }
+  .tick:hover {
+    height: 16px;
+  }
+  .tick[data-s='pass'] {
+    background: var(--pass);
+  }
+  .tick[data-s='fail'] {
+    background: var(--fail);
+  }
+  .tick[data-s='skip'] {
+    background: var(--skip);
+  }
+  /* the playhead */
+  .tick[aria-current='true'] {
+    height: 20px;
+    box-shadow: 0 0 0 1px var(--fg-0);
+  }
+  .trackmeta {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 4px 16px;
+  }
+  .notes {
+    border-left: 1px solid var(--line-strong);
+    padding-left: 14px;
+    color: var(--fg-2);
+    font-size: 13px;
+  }
+  .notes summary {
+    cursor: pointer;
+    font: 600 11px/1.6 var(--cond);
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--fg-1);
+  }
+  .notes p,
+  .notes ul,
+  .notes ol,
+  .notes h4 {
+    margin: 6px 0;
+  }
+  .notes h4 {
+    color: var(--fg-0);
+    font-size: 13px;
+  }
+  .notes ul,
+  .notes ol,
+  .task ul {
+    padding-left: 20px;
+  }
+  /* the test line sits in a callout frame, as assets and issues do on the product's stage */
+  .task {
+    --c: var(--acc);
+    padding: 20px 22px;
+    font-size: 18px;
+    line-height: 1.55;
+    color: var(--fg-0);
+    background:
+      linear-gradient(var(--c) 0 0) top left / 16px 1px no-repeat,
+      linear-gradient(var(--c) 0 0) top left / 1px 16px no-repeat,
+      linear-gradient(var(--c) 0 0) top right / 16px 1px no-repeat,
+      linear-gradient(var(--c) 0 0) top right / 1px 16px no-repeat,
+      linear-gradient(var(--c) 0 0) bottom left / 16px 1px no-repeat,
+      linear-gradient(var(--c) 0 0) bottom left / 1px 16px no-repeat,
+      linear-gradient(var(--c) 0 0) bottom right / 16px 1px no-repeat,
+      linear-gradient(var(--c) 0 0) bottom right / 1px 16px no-repeat,
+      var(--bg-2);
+  }
+  .task > div {
+    max-width: 70ch;
+  }
+  .task ul {
+    font-size: 15px;
+    color: var(--fg-1);
+    margin: 10px 0 0;
+  }
+  .answers {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .answers button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid var(--line-strong);
+    background: var(--bg-2);
+    border-radius: 4px;
+    padding: 13px 14px;
+    font-weight: 600;
+    color: var(--fg-0);
+    text-align: left;
+    transition:
+      background-color 0.12s ease-out,
+      border-color 0.12s ease-out;
+  }
+  .answers button:hover {
+    border-color: var(--fg-2);
+  }
+  .answers button:active {
+    transform: translateY(1px);
+  }
+  kbd {
+    font: 500 11px/1 var(--mono);
+    color: var(--fg-2);
+    border: 1px solid var(--line-strong);
+    border-radius: 2px;
+    padding: 4px 6px;
+  }
+  .answers button[aria-pressed='true'][data-v='pass'] {
+    background: var(--pass-dim);
+    border-color: var(--pass);
+    color: var(--pass);
+  }
+  .answers button[aria-pressed='true'][data-v='fail'] {
+    background: var(--fail-dim);
+    border-color: var(--fail);
+    color: var(--fail);
+  }
+  .answers button[aria-pressed='true'][data-v='skip'] {
+    background: var(--skip-dim);
+    border-color: var(--skip);
+    color: var(--skip);
+  }
+  .answers button[aria-pressed='true'] kbd {
+    color: inherit;
+    border-color: currentColor;
+  }
+  .field {
+    display: grid;
+    gap: 7px;
+  }
+  .field textarea {
+    width: 100%;
+    min-height: 78px;
+    resize: vertical;
+    background: var(--bg-0);
+    border: 1px solid var(--line-strong);
+    border-radius: 4px;
+    padding: 10px 12px;
+    color: var(--fg-0);
+  }
+  .field textarea::placeholder {
+    color: var(--fg-3);
+  }
+  .err {
+    color: var(--fail);
+    font-size: 13px;
+    margin: 0;
+  }
+  .others {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 8px;
+  }
+  .others > div {
+    border: 1px solid var(--line-soft);
+    border-radius: 4px;
+    padding: 9px 12px;
+    display: grid;
+    gap: 5px;
+    align-content: start;
+  }
+  .others .top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .st {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font: 600 11px/1.2 var(--cond);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+    white-space: nowrap;
+  }
+  .st::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    background: var(--bg-3);
+  }
+  [data-s='pass'] > .st,
+  [data-s='pass'] > .top > .st {
+    color: var(--pass);
+  }
+  [data-s='fail'] > .st,
+  [data-s='fail'] > .top > .st {
+    color: var(--fail);
+  }
+  [data-s='skip'] > .st,
+  [data-s='skip'] > .top > .st {
+    color: var(--skip);
+  }
+  [data-s='pass'] .st::before {
+    background: var(--pass);
+  }
+  [data-s='fail'] .st::before {
+    background: var(--fail);
+  }
+  [data-s='skip'] .st::before {
+    background: var(--skip);
+  }
+  .cmt {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--fg-2);
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+  .nav {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    border-top: 1px solid var(--line-soft);
+    padding-top: 16px;
+  }
+  .nav .btns {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+  }
+  .pick {
+    padding: 34px 28px;
+    display: grid;
+    gap: 16px;
+    justify-items: start;
+    max-width: 720px;
+  }
+  .pick h2 {
+    margin: 0;
+    font: 600 26px/1.2 var(--cond);
+    letter-spacing: 0.02em;
+    color: var(--fg-0);
+    text-wrap: balance;
+  }
+  .pick p {
+    margin: 0;
+    color: var(--fg-2);
+    max-width: 58ch;
+  }
+  .pick .btns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .pick .btn {
+    padding: 10px 22px;
+  }
+
+  /* overview */
+  .matrix {
+    padding: 16px 18px 18px;
+    margin-bottom: 18px;
+    display: grid;
+    gap: 12px;
+  }
+  .matrix .top {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px 20px;
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+  }
+  .mrow {
+    display: grid;
+    grid-template-columns: 84px minmax(0, 1fr) 250px;
+    gap: 14px;
+    align-items: center;
+  }
+  .mrow .who {
+    font: 600 12.5px/1.2 var(--cond);
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--fg-0);
+  }
+  .strip {
+    display: flex;
+    gap: 3px;
+    height: 22px;
+  }
+  .strip .segm {
+    display: flex;
+    min-width: 0;
+    background: var(--bg-3);
+  }
+  .strip .segm button {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    padding: 0;
+    background: transparent;
+  }
+  .strip .segm button:hover {
+    background: var(--fg-0);
+  }
+  .strip .segm button[data-s='pass'] {
+    background: var(--pass);
+  }
+  .strip .segm button[data-s='fail'] {
+    background: var(--fail);
+  }
+  .strip .segm button[data-s='skip'] {
+    background: var(--skip);
+  }
+  .axis .strip {
+    height: auto;
+  }
+  .axis .segm {
+    background: none;
+    border-left: 1px solid var(--line-strong);
+    padding-left: 4px;
+    overflow: hidden;
+    white-space: nowrap;
+    font: 500 10.5px/1.4 var(--mono);
+    color: var(--fg-3);
+  }
+  .mrow .nums {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .nums span[data-v='pass'] b {
+    color: var(--pass);
+  }
+  .nums span[data-v='fail'] b {
+    color: var(--fail);
+  }
+  .nums span[data-v='skip'] b {
+    color: var(--skip);
+  }
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+  .filters button {
+    border: 1px solid var(--line-strong);
+    background: var(--bg-1);
+    border-radius: 2px;
+    padding: 6px 11px;
+    font: 600 11.5px/1.2 var(--cond);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--fg-2);
+  }
+  .filters button[aria-pressed='true'] {
+    background: var(--acc-dim);
+    border-color: var(--acc);
+    color: var(--acc);
+  }
+  .filters button span {
+    font: 400 11.5px/1 var(--mono);
+    letter-spacing: 0;
+    margin-left: 4px;
+    color: var(--fg-3);
+  }
+  .stage {
+    margin-bottom: 20px;
+  }
+  .stage > h3 {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 10px;
+    margin: 0 0 8px;
+    font: inherit;
+  }
+  .grid-head,
+  .row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) repeat(var(--cols), minmax(0, 160px));
+    gap: 14px;
+    padding: 10px 16px;
+  }
+  .grid-head {
+    border-bottom: 1px solid var(--line);
+  }
+  .row {
+    font-size: 13px;
+    align-items: start;
+  }
+  .row + .row {
+    border-top: 1px solid var(--line-soft);
+  }
+  .row .group {
+    display: block;
+    margin-bottom: 3px;
+    font: 500 10.5px/1.3 var(--mono);
+    color: var(--fg-3);
+  }
+  .row .open {
+    border: 0;
+    background: none;
+    padding: 0;
+    text-align: left;
+    font: inherit;
+    color: var(--fg-1);
+  }
+  .row .open:hover {
+    color: var(--acc);
+  }
+  .cell {
+    display: grid;
+    gap: 4px;
+    justify-items: start;
+  }
+  .cell .who {
+    display: none;
+  }
+  .empty {
+    padding: 30px 16px;
+    color: var(--fg-2);
+    text-align: center;
+  }
+
+  @media (max-width: 880px) {
+    .run {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .rail {
+      position: static;
+      display: flex;
+      max-height: none;
+      overflow-x: auto;
+      gap: 6px;
+    }
+    .rail .lbl,
+    .rail .name {
+      display: none;
+    }
+    .rail button {
+      display: flex;
+      gap: 8px;
+      flex: none;
+      white-space: nowrap;
+      border-color: var(--line);
+    }
+    .step {
+      padding: 16px;
+    }
+    .task {
+      font-size: 16px;
+      padding: 16px;
+    }
+    .mrow {
+      grid-template-columns: 84px minmax(0, 1fr);
+    }
+    .mrow .strip {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+    .axis {
+      display: none;
+    }
+    .grid-head {
+      display: none;
+    }
+    .row {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 8px;
+    }
+    .cell {
+      grid-template-columns: 70px minmax(0, 1fr);
+      align-items: baseline;
+    }
+    .cell .who {
+      display: block;
+    }
+    .cell .cmt {
+      grid-column: 1 / -1;
+    }
+  }
+  @media (max-width: 480px) {
+    .answers {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .brand small {
+      display: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      transition: none !important;
+    }
+  }
+
+  /* launch gate: the app's approved launch screen (docs/brand/quadrion/gate, Split layout) as the
+     way in. Always dark by choice, like the app's: it is the splash. */
+  .lg {
+    --ground: #11161c;
+    --deep: #0b0f13;
+    --gline: #2a3340;
+    --ink: #eef2f5;
+    --ink-2: #c5cdd6;
+    --ink-3: #8e99a6;
+    --mint: #5ed1b3;
+    --mint-ink: #08201a;
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    overflow: hidden;
+    background: var(--deep);
+    color: var(--ink-2);
+    font: 15px/1.5 var(--sans);
+    color-scheme: dark;
+  }
+  .lg canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    transition: opacity 0.35s var(--ease-out);
+  }
+  .lg-vignette {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      ellipse 58% 52% at 50% 40%,
+      rgb(17 22 28 / 0.94) 0%,
+      rgb(17 22 28 / 0.6) 46%,
+      rgb(11 15 19 / 0) 76%
+    );
+  }
+  .lg-main {
+    position: relative;
+    z-index: 1;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+    transition:
+      opacity 0.28s var(--ease-out),
+      filter 0.28s var(--ease-out),
+      transform 0.28s var(--ease-out);
+  }
+  .lg-brand {
+    display: grid;
+    grid-template-columns: auto auto;
+    grid-template-areas: 'mark wm' '. tag';
+    column-gap: 20px;
+    row-gap: 12px;
+    align-items: center;
+    padding-right: 56px;
+  }
+  /* mark: the plates drop in and the top one lights; afterwards they follow the pointer */
+  .lg-mark {
+    grid-area: mark;
+    width: clamp(62px, 7vw, 84px);
+    height: auto;
+    overflow: visible;
+  }
+  .lg-plate {
+    fill: var(--ink);
+    opacity: 0;
+    transform-box: fill-box;
+    animation: lg-drop 0.52s var(--ease-out) forwards;
+  }
+  .lg-p1 {
+    animation-delay: 0.05s;
+  }
+  .lg-p2 {
+    animation-delay: 0.11s;
+  }
+  .lg-p3 {
+    animation-delay: 0.17s;
+  }
+  .lg-p4 {
+    animation:
+      lg-drop 0.52s var(--ease-out) 0.23s forwards,
+      lg-light 0.45s ease 0.55s forwards;
+  }
+  @keyframes lg-drop {
+    from {
+      opacity: 0;
+      transform: translateY(-22px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes lg-light {
+    to {
+      fill: var(--mint);
+    }
+  }
+  .lg-glow {
+    filter: drop-shadow(0 0 7px rgb(94 209 179 / 0.45));
+  }
+  /* wordmark: revealed behind a scan line */
+  .lg-wm {
+    grid-area: wm;
+    position: relative;
+    width: min(420px, 34vw);
+  }
+  .lg-wm svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    clip-path: inset(0 100% 0 0);
+    animation: lg-reveal 0.6s var(--ease-out) 0.5s forwards;
+  }
+  .lg-wm::after {
+    content: '';
+    position: absolute;
+    top: -8%;
+    bottom: -8%;
+    left: 0;
+    width: 2px;
+    background: var(--mint);
+    box-shadow: 0 0 14px 2px rgb(94 209 179 / 0.55);
+    opacity: 0;
+    animation: lg-scan 0.6s var(--ease-out) 0.5s forwards;
+  }
+  @keyframes lg-reveal {
+    to {
+      clip-path: inset(0 0 0 0);
+    }
+  }
+  @keyframes lg-scan {
+    0% {
+      left: 0;
+      opacity: 1;
+    }
+    80% {
+      opacity: 1;
+    }
+    100% {
+      left: 100%;
+      opacity: 0;
+    }
+  }
+  .lg-tag {
+    grid-area: tag;
+    margin: 0;
+    font: 500 12.5px var(--mono);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    opacity: 0;
+    animation: lg-rise 0.45s var(--ease-out) 0.85s forwards;
+  }
+  @keyframes lg-rise {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  /* entry: who is coming in, then Enter; after Enter, who is testing */
+  .lg-entry {
+    border-left: 1px solid var(--gline);
+    padding-left: 56px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    min-width: 270px;
+    opacity: 0;
+    filter: blur(6px);
+    transform: translateY(8px);
+    animation: lg-focus 0.5s var(--ease-out) 0.95s forwards;
+  }
+  @keyframes lg-focus {
+    to {
+      opacity: 1;
+      filter: none;
+      transform: none;
+    }
+  }
+  .lg-who {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .lg-hello {
+    font: 500 11px var(--mono);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .lg-who b {
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.15;
+    color: var(--ink);
+  }
+  .lg-who small {
+    color: var(--ink-3);
+    font-size: 12px;
+  }
+  .lg-enter,
+  .lg-name {
+    position: relative;
+    overflow: hidden;
+    appearance: none;
+    border: 0;
+    border-radius: 8px;
+    height: 42px;
+    padding: 0 18px;
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font: 600 14.5px var(--sans);
+    transition:
+      transform 0.16s var(--ease-out),
+      box-shadow 0.2s ease,
+      background-color 0.2s ease,
+      color 0.2s ease;
+  }
+  .lg-enter {
+    background: var(--mint);
+    color: var(--mint-ink);
+  }
+  .lg-name {
+    justify-content: space-between;
+    background: transparent;
+    color: var(--mint);
+    box-shadow: inset 0 0 0 1px rgb(94 209 179 / 0.55);
+  }
+  .lg-name span {
+    font: 500 11px var(--mono);
+    letter-spacing: 0.08em;
+    opacity: 0.75;
+  }
+  .lg-names {
+    display: grid;
+    gap: 8px;
+  }
+  .lg-enter:active,
+  .lg-name:active {
+    transform: scale(0.97);
+  }
+  .lg :focus-visible {
+    outline: 2px solid rgb(238 242 245 / 0.6);
+    outline-offset: 3px;
+  }
+  .lg-enter::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -40%;
+    width: 30%;
+    background: linear-gradient(100deg, transparent, rgb(255 255 255 / 0.35), transparent);
+    transform: skewX(-18deg);
+    opacity: 0;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .lg-enter:hover {
+      box-shadow:
+        0 0 0 4px rgb(94 209 179 / 0.14),
+        0 10px 28px -10px rgb(94 209 179 / 0.6);
+    }
+    .lg-enter:hover::after {
+      opacity: 1;
+      left: 120%;
+      transition:
+        left 0.7s var(--ease-out),
+        opacity 0.1s;
+    }
+    .lg-name:hover {
+      background: var(--mint);
+      color: var(--mint-ink);
+    }
+  }
+  .lg kbd {
+    font: 500 10.5px var(--mono);
+    color: inherit;
+    border: 1px solid rgb(8 32 26 / 0.28);
+    border-radius: 4px;
+    padding: 1px 5px;
+    background: rgb(255 255 255 / 0.22);
+  }
+  .lg-link {
+    align-self: flex-start;
+    border: 0;
+    background: none;
+    padding: 0;
+    font: 500 12px var(--sans);
+    color: var(--ink-3);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .lg-link:hover {
+    color: var(--ink-2);
+  }
+  .lg-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font: 500 11px var(--mono);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    white-space: nowrap;
+  }
+  .lg-status i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--mint);
+    box-shadow: 0 0 0 3px rgb(94 209 179 / 0.14);
+    flex: none;
+  }
+  .lg-clock {
+    position: absolute;
+    top: calc(16px + env(safe-area-inset-top, 0px));
+    left: 18px;
+    z-index: 1;
+    font: 500 11.5px var(--mono);
+    letter-spacing: 0.08em;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+    opacity: 0;
+    animation: lg-rise 0.45s var(--ease-out) 1.1s forwards;
+  }
+  .lg-clock b {
+    color: var(--ink-2);
+    font-weight: 500;
+  }
+  .lg-skip {
+    position: absolute;
+    top: calc(12px + env(safe-area-inset-top, 0px));
+    right: 16px;
+    z-index: 2;
+    font: 500 12px var(--sans);
+    color: var(--ink-3);
+    background: transparent;
+    border: 1px solid var(--gline);
+    border-radius: 6px;
+    padding: 5px 10px;
+    transition:
+      color 0.15s ease,
+      opacity 0.2s ease;
+  }
+  .lg-skip:hover {
+    color: var(--ink-2);
+  }
+  .lg.done .lg-skip {
+    opacity: 0;
+    pointer-events: none;
+  }
+  /* leaving: quick. The gate blurs back and the board comes forward. */
+  .lg.leaving {
+    opacity: 0;
+    transition: opacity 0.3s var(--ease-out);
+    pointer-events: none;
+  }
+  .lg.leaving .lg-main {
+    filter: blur(8px);
+    transform: scale(1.03);
+  }
+  /* skip: jump every intro animation to its end state */
+  .lg.instant .lg-plate {
+    animation: none !important;
+    opacity: 1;
+  }
+  .lg.instant .lg-wm svg,
+  .lg.instant .lg-tag,
+  .lg.instant .lg-entry,
+  .lg.instant .lg-clock {
+    animation: none !important;
+    opacity: 1;
+    filter: none;
+    transform: none;
+    clip-path: none;
+  }
+  .lg.instant .lg-wm::after {
+    animation: none !important;
+    opacity: 0;
+  }
+  .lg.instant .lg-p4 {
+    fill: var(--mint);
+  }
+  @media (max-width: 900px) {
+    .lg-main {
+      flex-direction: column;
+      gap: 24px;
+    }
+    .lg-brand {
+      padding-right: 0;
+      justify-content: center;
+    }
+    .lg-wm {
+      width: min(420px, 62vw);
+    }
+    .lg-entry {
+      border-left: 0;
+      padding-left: 0;
+      align-items: center;
+      text-align: center;
+      min-width: 0;
+      width: min(320px, 100%);
+    }
+    .lg-who {
+      align-items: center;
+    }
+    .lg-link {
+      align-self: center;
+    }
+    .lg-status {
+      justify-content: center;
+      white-space: normal;
+    }
+  }
+  @media (max-width: 520px) {
+    .lg-brand {
+      column-gap: 12px;
+    }
+    .lg-mark {
+      width: 48px;
+    }
+    .lg-tag {
+      font-size: 10.5px;
+      letter-spacing: 0.14em;
+    }
+    .lg-clock {
+      display: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .lg-plate,
+    .lg-wm svg,
+    .lg-tag,
+    .lg-clock,
+    .lg-entry {
+      animation: none !important;
+      opacity: 1;
+      filter: none;
+      transform: none;
+    }
+    .lg-wm svg {
+      clip-path: none;
+    }
+    .lg-wm::after {
+      animation: none !important;
+      opacity: 0;
+    }
+    .lg-p4 {
+      fill: var(--mint);
+    }
+    .lg.leaving .lg-main {
+      filter: none;
+      transform: none;
+    }
+  }
+</style>
+
+<div class="lg" id="lg">
+  <canvas id="lg-bg" aria-hidden="true"></canvas>
+  <div class="lg-vignette" aria-hidden="true"></div>
+  <div class="lg-clock" id="lg-clock" aria-hidden="true"></div>
+  <button class="lg-skip" id="lg-skip" type="button">Skip intro</button>
+  <div class="lg-main">
+    <div class="lg-brand">
+      <svg class="lg-mark" viewBox="0 0 64 64" role="img" aria-label="Quadrion AI"><defs><mask id="cut0" maskUnits="userSpaceOnUse" x="-24" y="-24" width="112" height="112"><rect x="-24" y="-24" width="112" height="112" fill="#fff"/><path data-plate="1" d="M30 32 L51 40 L30 48 L9 40Z" fill="#000" stroke="#000" stroke-width="5"/><path data-plate="2" d="M34 22 L55 30 L34 38 L13 30Z" fill="#000" stroke="#000" stroke-width="5"/><path data-plate="3" d="M38 12 L59 20 L38 28 L17 20Z" fill="#000" stroke="#000" stroke-width="5"/></mask><mask id="cut1" maskUnits="userSpaceOnUse" x="-24" y="-24" width="112" height="112"><rect x="-24" y="-24" width="112" height="112" fill="#fff"/><path data-plate="2" d="M34 22 L55 30 L34 38 L13 30Z" fill="#000" stroke="#000" stroke-width="5"/><path data-plate="3" d="M38 12 L59 20 L38 28 L17 20Z" fill="#000" stroke="#000" stroke-width="5"/></mask><mask id="cut2" maskUnits="userSpaceOnUse" x="-24" y="-24" width="112" height="112"><rect x="-24" y="-24" width="112" height="112" fill="#fff"/><path data-plate="3" d="M38 12 L59 20 L38 28 L17 20Z" fill="#000" stroke="#000" stroke-width="5"/></mask></defs><g mask="url(#cut0)"><path class="lg-plate lg-p1" data-plate="0" d="M26 42 L47 50 L26 58 L5 50Z"/></g><g mask="url(#cut1)"><path class="lg-plate lg-p2" data-plate="1" d="M30 32 L51 40 L30 48 L9 40Z"/></g><g mask="url(#cut2)"><path class="lg-plate lg-p3" data-plate="2" d="M34 22 L55 30 L34 38 L13 30Z"/></g><g><path class="lg-plate lg-p4" data-plate="3" d="M38 12 L59 20 L38 28 L17 20Z"/></g></svg>
+      <div class="lg-wm" aria-hidden="true"><svg viewBox="0 0 827.82 76.51"><g transform="translate(-3.42 3.14)"><path d="M77.76 71.37L57.99 71.37L46.62 60.96Q46.01 60.96 45.31 61.01Q44.61 61.05 43.91 61.05L43.91 61.05Q32.10 61.05 23.48 57.38Q14.87 53.70 10.15 46.75Q5.42 39.80 5.42 29.91L5.42 29.91Q5.42 20.03 10.15 13.08Q14.87 6.12 23.62 2.49Q32.36-1.14 44.43-1.14L44.43-1.14Q56.50-1.14 65.25 2.49Q73.99 6.12 78.72 13.08Q83.44 20.03 83.44 29.91L83.44 29.91Q83.44 40.58 77.97 47.80Q72.51 55.01 62.54 58.34L62.54 58.34L77.76 71.37ZM44.43 49.07L44.43 49.07Q49.59 49.07 53.88 47.89Q58.16 46.71 61.31 44.43Q64.46 42.16 66.17 38.75Q67.87 35.34 67.87 30.87L67.87 30.87L67.87 28.86Q67.87 24.40 66.17 21.03Q64.46 17.67 61.31 15.39Q58.16 13.12 53.88 11.94Q49.59 10.76 44.43 10.76L44.43 10.76Q39.27 10.76 34.99 11.94Q30.70 13.12 27.55 15.39Q24.40 17.67 22.70 21.03Q20.99 24.40 20.99 28.86L20.99 28.86L20.99 30.87Q20.99 35.34 22.70 38.75Q24.40 42.16 27.55 44.43Q30.70 46.71 34.99 47.89Q39.27 49.07 44.43 49.07ZM139.33 61.05L139.33 61.05Q127.78 61.05 120.22 57.55Q112.65 54.05 108.94 47.58Q105.22 41.11 105.22 32.19L105.22 32.19L105.22-0.09L120.35-0.09L120.35 31.49Q120.35 39.88 125.29 44.48Q130.23 49.07 139.33 49.07L139.33 49.07Q148.43 49.07 153.37 44.48Q158.31 39.88 158.31 31.49L158.31 31.49L158.31-0.09L173.35-0.09L173.35 32.19Q173.35 41.11 169.68 47.58Q166.01 54.05 158.44 57.55Q150.87 61.05 139.33 61.05ZM205.71 60L190.23 60L220.06-0.09L237.03-0.09L266.85 60L250.41 60L245.16 49.15L210.96 49.15L205.71 60ZM222.86 23.88L216.47 37.52L239.65 37.52L233.27 23.79Q232.92 22.92 232.13 21.17Q231.34 19.42 230.60 17.58Q229.85 15.74 229.24 14.26Q228.63 12.77 228.45 12.42L228.45 12.42L227.76 12.42Q227.06 14.17 226.09 16.36Q225.13 18.54 224.30 20.60Q223.47 22.65 222.86 23.88L222.86 23.88ZM318.10 60L285.48 60L285.48-0.09L318.10-0.09Q329.21-0.09 337.17 3.37Q345.13 6.82 349.42 13.51Q353.70 20.20 353.70 30L353.70 30Q353.70 39.71 349.42 46.40Q345.13 53.09 337.17 56.55Q329.21 60 318.10 60L318.10 60ZM300.61 11.81L300.61 48.02L317.32 48.02Q321.87 48.02 325.67 46.92Q329.48 45.83 332.27 43.69Q335.07 41.55 336.56 38.35Q338.05 35.16 338.05 30.96L338.05 30.96L338.05 28.95Q338.05 24.75 336.56 21.56Q335.07 18.37 332.27 16.22Q329.48 14.08 325.67 12.94Q321.87 11.81 317.32 11.81L317.32 11.81L300.61 11.81ZM391.05 60L375.92 60L375.92-0.09L424.46-0.09Q430.93-0.09 435.09 2.54Q439.24 5.16 441.34 9.45Q443.44 13.73 443.44 18.98L443.44 18.98Q443.44 24.40 440.69 29.08Q437.93 33.76 432.33 36.47L432.33 36.47L444.84 60L427.87 60L417.29 39.18L391.05 39.18L391.05 60ZM391.05 11.81L391.05 27.29L420.00 27.29Q423.67 27.29 425.82 25.06Q427.96 22.83 427.96 19.33L427.96 19.33Q427.96 16.88 427.00 15.22Q426.03 13.56 424.29 12.68Q422.54 11.81 420.00 11.81L420.00 11.81L391.05 11.81ZM480.70 60L465.57 60L465.57-0.09L480.70-0.09L480.70 60ZM541.92 61.05L541.92 61.05Q529.94 61.05 521.15 57.38Q512.36 53.70 507.64 46.75Q502.92 39.80 502.92 29.91L502.92 29.91Q502.92 20.03 507.64 13.08Q512.36 6.12 521.15 2.49Q529.94-1.14 541.92-1.14L541.92-1.14Q553.99-1.14 562.74 2.49Q571.49 6.12 576.21 13.08Q580.93 20.03 580.93 29.91L580.93 29.91Q580.93 39.80 576.21 46.75Q571.49 53.70 562.74 57.38Q553.99 61.05 541.92 61.05ZM541.92 49.07L541.92 49.07Q547.08 49.07 551.37 47.89Q555.66 46.71 558.80 44.43Q561.95 42.16 563.66 38.70Q565.36 35.25 565.36 30.87L565.36 30.87L565.36 28.86Q565.36 24.49 563.66 21.08Q561.95 17.67 558.80 15.39Q555.66 13.12 551.37 11.94Q547.08 10.76 541.92 10.76L541.92 10.76Q536.76 10.76 532.48 11.94Q528.19 13.12 525.04 15.39Q521.90 17.67 520.19 21.08Q518.48 24.49 518.48 28.86L518.48 28.86L518.48 30.87Q518.48 35.25 520.19 38.70Q521.90 42.16 525.04 44.43Q528.19 46.71 532.48 47.89Q536.76 49.07 541.92 49.07ZM617.58 60L603.15 60L603.15-0.09L617.06-0.09L649.24 30.09Q650.20 30.87 651.65 32.36Q653.09 33.85 654.66 35.47Q656.24 37.08 657.38 38.31L657.38 38.31L658.16 38.31Q658.08 36.56 657.94 33.94Q657.81 31.31 657.81 29.56L657.81 29.56L657.81-0.09L672.24-0.09L672.24 60L658.60 60L626.68 29.83Q624.40 27.73 621.95 25.19Q619.50 22.65 618.02 21.08L618.02 21.08L617.32 21.08Q617.41 22.22 617.49 24.93Q617.58 27.64 617.58 31.05L617.58 31.05L617.58 60Z" fill="#EEF2F5"/><path d="M734.34 60L718.86 60L748.69-0.09L765.66-0.09L795.48 60L779.04 60L773.79 49.15L739.59 49.15L734.34 60ZM751.49 23.88L745.10 37.52L768.28 37.52L761.90 23.79Q761.55 22.92 760.76 21.17Q759.97 19.42 759.23 17.58Q758.48 15.74 757.87 14.26Q757.26 12.77 757.08 12.42L757.08 12.42L756.38 12.42Q755.69 14.17 754.72 16.36Q753.76 18.54 752.93 20.60Q752.10 22.65 751.49 23.88L751.49 23.88ZM829.24 60L814.11 60L814.11-0.09L829.24-0.09L829.24 60Z" fill="#5ED1B3"/></g></svg></div>
+      <p class="lg-tag">Four dimensions. One view.</p>
+    </div>
+    <section class="lg-entry" id="lg-entry" aria-label="Open the test run"></section>
+  </div>
+</div>
+<script>
+  // the gate shows once per browser tab session: a republish reloads the page mid-run
+  try {
+    if (sessionStorage.getItem('tb:entered')) document.getElementById('lg').hidden = true;
+  } catch {
+    /* no session storage: the gate shows on every load */
+  }
+</script>
+
+<header class="bar">
+  <div class="bar-in">
+    <h1 class="brand">
+      <button type="button" class="home" id="home" title="Back to the launch screen"><svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><defs><mask id="tbcut0" maskUnits="userSpaceOnUse" x="-24" y="-24" width="112" height="112"><rect x="-24" y="-24" width="112" height="112" fill="#fff"/><path d="M30 32 L51 40 L30 48 L9 40Z" fill="#000" stroke="#000" stroke-width="5"/><path d="M34 22 L55 30 L34 38 L13 30Z" fill="#000" stroke="#000" stroke-width="5"/><path d="M38 12 L59 20 L38 28 L17 20Z" fill="#000" stroke="#000" stroke-width="5"/></mask><mask id="tbcut1" maskUnits="userSpaceOnUse" x="-24" y="-24" width="112" height="112"><rect x="-24" y="-24" width="112" height="112" fill="#fff"/><path d="M34 22 L55 30 L34 38 L13 30Z" fill="#000" stroke="#000" stroke-width="5"/><path d="M38 12 L59 20 L38 28 L17 20Z" fill="#000" stroke="#000" stroke-width="5"/></mask><mask id="tbcut2" maskUnits="userSpaceOnUse" x="-24" y="-24" width="112" height="112"><rect x="-24" y="-24" width="112" height="112" fill="#fff"/><path d="M38 12 L59 20 L38 28 L17 20Z" fill="#000" stroke="#000" stroke-width="5"/></mask></defs><g mask="url(#tbcut0)"><path d="M26 42 L47 50 L26 58 L5 50Z" fill="currentColor"/></g><g mask="url(#tbcut1)"><path d="M30 32 L51 40 L30 48 L9 40Z" fill="currentColor"/></g><g mask="url(#tbcut2)"><path d="M34 22 L55 30 L34 38 L13 30Z" fill="currentColor"/></g><g><path d="M38 12 L59 20 L38 28 L17 20Z" style="fill:var(--acc)"/></g></svg><span id="brand"></span></button
+      ><small id="brand-sub"></small>
+    </h1>
+    <div class="seg" role="group" aria-label="View">
+      <button type="button" id="view-run" aria-pressed="true">Guided run</button>
+      <button type="button" id="view-overview" aria-pressed="false">Overview</button>
+    </div>
+    <label class="who-pick" for="me"><span class="lbl">Testing as</span><select id="me"></select></label>
+    <div class="save" id="save" data-mode="connecting"><span id="save-text">Connecting</span></div>
+  </div>
+  <p class="notice" id="notice" role="status" hidden></p>
+  <input type="file" id="file-in" accept=".json,application/json" multiple hidden />
+  <div class="copybox" id="copybox" hidden>
+    <textarea id="copy-text" readonly aria-label="Your results"></textarea>
+    <div>
+      <button type="button" class="btn" id="copy-go">Copy</button>
+      <span id="copy-done" class="save" hidden></span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section id="run"></section>
+  <section id="overview" hidden></section>
+</main>
+
+<script>
+  const DATA = __DATA__;
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) =>
+    String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const LABEL = { pass: 'Works', fail: 'Does not work', skip: 'Skipped', '': 'Not tested' };
+  const TESTERS = DATA.testers;
+  // opened as a saved file (double-clicked), not inside claude.ai: answers live in this browser and
+  // travel as a results file
+  const STANDALONE = !window.claude?.use;
+  // a results file the tester chose once: where the browser allows it, it is rewritten after every answer
+  let fileHandle = null;
+  let fileTimer = 0;
+  let savedAt = '';
+  const clockTime = () => new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  // what the lines are grouped by: milestone stages, or verticals
+  const OWNER = DATA.owner ?? 'the test lead';
+  const UNIT = DATA.unit ?? 'stage';
+  const UNITS = `${UNIT}s`;
+  const nameOf = (tid) => TESTERS.find((t) => t.id === tid)?.name ?? tid;
+
+  // every test line in run order
+  const steps = [];
+  DATA.stages.forEach((stage, si) =>
+    stage.groups.forEach((group) => group.items.forEach((item) => steps.push({ id: item.id, si, stage, group, item }))),
+  );
+  const stepIndex = new Map(steps.map((s, i) => [s.id, i]));
+  const stageFirst = DATA.stages.map((_, si) => steps.findIndex((s) => s.si === si));
+
+  // browser storage holds conveniences only (who you are, where you were) and, without the online
+  // store, this tester's answers
+  const local = {
+    get(key) {
+      try {
+        return localStorage.getItem(`tb:${key}`);
+      } catch {
+        return null;
+      }
+    },
+    set(key, value) {
+      try {
+        localStorage.setItem(`tb:${key}`, value);
+      } catch {
+        /* a private window: the page still works for this visit */
+      }
+    },
+  };
+
+  /** tester id -> line id -> { s: 'pass' | 'fail' | 'skip' | '', c: comment, t: ISO time } */
+  const results = Object.fromEntries(TESTERS.map((t) => [t.id, {}]));
+  for (const t of TESTERS) {
+    try {
+      Object.assign(results[t.id], JSON.parse(local.get(`answers:${t.id}`) ?? '{}'));
+    } catch {
+      /* unreadable saved answers: start empty */
+    }
+  }
+
+  const state = {
+    me: TESTERS.some((t) => t.id === local.get('me')) ? local.get('me') : '',
+    view: local.get('view') === 'overview' ? 'overview' : 'run',
+    pos: 0,
+    filter: 'all',
+    mode: 'connecting', // connecting | online | local
+    saving: 0,
+    error: '',
+  };
+
+  const rec = (tid, id) => results[tid][id] ?? { s: '', c: '', t: '' };
+  const firstOpen = (tid, from = 0) => {
+    for (let k = 0; k < steps.length; k++) {
+      const i = (from + k) % steps.length;
+      if (!rec(tid, steps[i].id).s) return i;
+    }
+    return -1;
+  };
+  const tally = (tid, list = steps) => {
+    const n = { pass: 0, fail: 0, skip: 0, none: 0, total: list.length };
+    for (const s of list) n[rec(tid, s.id).s || 'none']++;
+    n.done = n.total - n.none;
+    return n;
+  };
+
+  // ---- saving -------------------------------------------------------------------------------
+
+  let db = null;
+  const dirty = new Map(); // "tester|line" -> the record to write, or null to delete
+  const chains = new Map();
+  const items = (tid) => db.collection(`results/${tid}/items`);
+
+  function persistLocal(tid) {
+    local.set(`answers:${tid}`, JSON.stringify(results[tid]));
+  }
+
+  function write(key) {
+    const run = async () => {
+      if (!dirty.has(key) || state.mode === 'local') return;
+      const value = dirty.get(key);
+      const [tid, id] = key.split('|');
+      state.saving++;
+      showSave();
+      try {
+        if (value) await items(tid).doc(id).set(value);
+        else await items(tid).doc(id).delete();
+        if (dirty.get(key) === value) dirty.delete(key);
+        state.error = '';
+      } catch (e) {
+        // a viewer without write access keeps working on this device
+        if (['invalid_argument', 'not_granted', 'revoked', 'capability_disabled'].includes(e?.code)) goLocal();
+        else state.error = 'Could not save online. Your answer is kept while this page stays open.';
+      }
+      state.saving--;
+      showSave();
+    };
+    chains.set(key, (chains.get(key) ?? Promise.resolve()).then(run));
+  }
+
+  function goLocal() {
+    state.mode = 'local';
+    dirty.clear();
+    if (state.me) persistLocal(state.me);
+    showSave();
+  }
+
+  function save(id, patch) {
+    const tid = state.me;
+    if (!tid) return;
+    const next = { ...rec(tid, id), ...patch, t: new Date().toISOString() };
+    const blank = !next.s && !next.c.trim();
+    if (blank) delete results[tid][id];
+    else results[tid][id] = next;
+    if (state.mode === 'local') persistLocal(tid);
+    else {
+      dirty.set(`${tid}|${id}`, blank ? null : next);
+      if (db) write(`${tid}|${id}`);
+    }
+    savedAt = clockTime();
+    if (fileHandle) {
+      clearTimeout(fileTimer);
+      fileTimer = setTimeout(writeResultsFile, 1200);
+    }
+    refresh();
+  }
+
+  function onSnapshot(tid, snap) {
+    const next = {};
+    for (const d of snap.docs) {
+      const v = d.data();
+      if (v && stepIndex.has(d.id)) next[d.id] = { s: String(v.s ?? ''), c: String(v.c ?? ''), t: String(v.t ?? '') };
+    }
+    // answers given here and not yet confirmed win over what the store last held
+    for (const [key, value] of dirty) {
+      const [t, id] = key.split('|');
+      if (t !== tid) continue;
+      if (value) next[id] = value;
+      else delete next[id];
+    }
+    results[tid] = next;
+    if (state.mode === 'connecting') state.mode = 'online';
+    refresh();
+  }
+
+  async function connect() {
+    try {
+      db = window.claude?.use ? await window.claude.use('db') : null;
+    } catch {
+      db = null;
+    }
+    if (!db) return goLocal(), refresh();
+    for (const t of TESTERS) {
+      items(t.id)
+        .limit(1000)
+        .onSnapshot(
+          (snap) => onSnapshot(t.id, snap),
+          () => {
+            if (state.mode === 'connecting') goLocal(), refresh();
+          },
+        );
+    }
+    for (const key of dirty.keys()) write(key);
+  }
+
+  // ---- bar ----------------------------------------------------------------------------------
+
+  function showSave() {
+    const el = $('save');
+    const mode = state.error ? 'error' : state.mode;
+    el.dataset.mode = mode;
+    let text = 'Connecting';
+    if (state.error) text = state.error;
+    else if (state.mode === 'online') text = state.saving ? 'Saving' : `Autosaved online${savedAt ? ` ${savedAt}` : ''}`;
+    else if (state.mode === 'local' && STANDALONE) {
+      const filed = (state.me && local.get(`filed:${state.me}`)) || '';
+      const open = state.me ? Object.values(results[state.me]).filter((r) => r.t > filed).length : 0;
+      const at = savedAt ? ` ${savedAt}` : '';
+      if (fileHandle) text = `Autosaved${at} to ${fileHandle.name}`;
+      else text = `Autosaved${at} in this browser` + (open ? ` · ${open} not in a results file yet` : '');
+    } else if (state.mode === 'local') text = 'Saved on this device only';
+    $('save-text').textContent = text;
+    showFileButtons();
+    if (STANDALONE) return;
+    let copy = $('copy-open');
+    if (state.mode === 'local' && state.me && !copy) {
+      copy = document.createElement('button');
+      copy.type = 'button';
+      copy.id = 'copy-open';
+      copy.className = 'link';
+      copy.textContent = 'Copy my results';
+      copy.addEventListener('click', () => {
+        const box = $('copybox');
+        box.hidden = !box.hidden;
+        $('copy-done').hidden = true;
+        $('copy-text').value = JSON.stringify(
+          { board: DATA.title, tester: state.me, results: results[state.me] },
+          null,
+          1,
+        );
+      });
+      el.append(copy);
+    }
+    if (copy) copy.hidden = !(state.mode === 'local' && state.me);
+  }
+
+  function showFileButtons() {
+    const el = $('save');
+    const saveButton = $('file-save');
+    if (saveButton) {
+      saveButton.hidden = !state.me;
+      saveButton.textContent = fileHandle ? 'Save now' : 'Save results file';
+    }
+    if ($('file-load')) return;
+    const add = (id, label, run) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.id = id;
+      b.className = 'link';
+      b.textContent = label;
+      b.addEventListener('click', run);
+      el.append(b);
+    };
+    // a page inside claude.ai cannot hand out files, and saves online instead; it can still take them in
+    if (STANDALONE) {
+      add('file-save', 'Save results file', saveResultsFile);
+      $('file-save').hidden = !state.me;
+    }
+    add('file-load', 'Load results file', () => $('file-in').click());
+  }
+
+  let noticeTimer = 0;
+  function notice(text) {
+    const el = $('notice');
+    el.textContent = text;
+    el.hidden = false;
+    clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(() => (el.hidden = true), 20000);
+  }
+
+  const resultsPayload = (me, now) => ({
+    format: 'quadrion-test-results/1',
+    board: DATA.title,
+    tester: me,
+    name: nameOf(me),
+    savedAt: now.toISOString(),
+    lines: steps.length,
+    answered: tally(me).done,
+    results: results[me],
+  });
+
+  /** Rewrite the chosen results file with the answers as they are now. */
+  async function writeResultsFile() {
+    const me = state.me;
+    if (!fileHandle || !me) return false;
+    const now = new Date();
+    try {
+      const out = await fileHandle.createWritable();
+      await out.write(JSON.stringify(resultsPayload(me, now), null, 1));
+      await out.close();
+      local.set(`filed:${me}`, now.toISOString());
+      savedAt = clockTime();
+      showSave();
+      return true;
+    } catch {
+      fileHandle = null;
+      notice('The results file could not be written. Your answers are still saved in this browser: click Save results file to choose the file again.');
+      showSave();
+      return false;
+    }
+  }
+
+  /**
+   * The tester's answers as a small file to email: the way results leave a saved copy of the page.
+   * Chrome and Edge keep writing to the file once it is chosen; other browsers download a new one.
+   */
+  async function saveResultsFile() {
+    const me = state.me;
+    if (!me) return;
+    commitComment();
+    clearTimeout(fileTimer);
+    if (fileHandle) {
+      if (await writeResultsFile()) notice(`Saved to ${fileHandle.name}.`);
+      return;
+    }
+    if (window.showSaveFilePicker) {
+      try {
+        fileHandle = await window.showSaveFilePicker({
+          suggestedName: `quadrion-test-results-${me}.json`,
+          types: [{ description: 'Quadrion test results', accept: { 'application/json': ['.json'] } }],
+        });
+        if (await writeResultsFile())
+          notice(`Saved to ${fileHandle.name}. This file now updates by itself after every answer. Email it to ${OWNER} when you stop for the day and when you finish.`);
+        return;
+      } catch (e) {
+        fileHandle = null;
+        if (e?.name === 'AbortError') return;
+        // no file access here: fall back to a download
+      }
+    }
+    const now = new Date();
+    const payload = resultsPayload(me, now);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 1)], { type: 'application/json' }));
+    a.download = `quadrion-test-results-${me}-${now.toISOString().slice(0, 10)}.json`;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    local.set(`filed:${me}`, now.toISOString());
+    notice(`Saved ${a.download} to your Downloads folder (${payload.answered} of ${steps.length} lines answered). Email that file to ${OWNER}.`);
+    showSave();
+  }
+
+  /** Results files into this copy: your own to carry on, or each tester's for the overview. */
+  async function loadResultsFiles(files) {
+    const said = [];
+    const online = [];
+    for (const file of files) {
+      try {
+        const data = JSON.parse(await file.text());
+        if (data?.format !== 'quadrion-test-results/1' || !results[data.tester]) throw new Error('not a results file');
+        let taken = 0;
+        let gone = 0;
+        for (const [id, r] of Object.entries(data.results ?? {})) {
+          if (!stepIndex.has(id) || !r || typeof r !== 'object') {
+            gone++;
+            continue;
+          }
+          const next = {
+            s: ['pass', 'fail', 'skip'].includes(r.s) ? r.s : '',
+            c: String(r.c ?? ''),
+            t: String(r.t ?? ''),
+          };
+          const cur = results[data.tester][id];
+          // the later answer wins, so loading an older file never undoes newer work
+          if (!cur || next.t >= cur.t) {
+            results[data.tester][id] = next;
+            taken++;
+            if (db && state.mode === 'online') {
+              dirty.set(`${data.tester}|${id}`, next);
+              online.push(`${data.tester}|${id}`);
+            }
+          }
+        }
+        if (!online.length) persistLocal(data.tester);
+        said.push(
+          `${nameOf(data.tester)}: ${taken} ${taken === 1 ? 'answer' : 'answers'} loaded from ${file.name}` +
+            (gone ? ` (${gone} left out: the test line has changed since)` : '') +
+            '.',
+        );
+      } catch {
+        said.push(`${file.name} is not a results file of this test run.`);
+      }
+    }
+    notice(said.join(' '));
+    shown = '';
+    refresh();
+    // online, the loaded answers go to the store one after the other, never as a burst
+    for (let k = 0; k < online.length && state.mode === 'online'; k++) {
+      write(online[k]);
+      await chains.get(online[k]);
+      if ((k + 1) % 20 === 0 || k + 1 === online.length)
+        notice(`${said.join(' ')} Saving online: ${k + 1} of ${online.length}.`);
+    }
+  }
+  $('file-in').addEventListener('change', (e) => {
+    loadResultsFiles([...e.target.files]);
+    e.target.value = '';
+  });
+
+  $('copy-go').addEventListener('click', async () => {
+    const ta = $('copy-text');
+    try {
+      await navigator.clipboard.writeText(ta.value);
+      $('copy-done').textContent = `Copied. Send it to ${OWNER}.`;
+      $('copy-done').hidden = false;
+    } catch {
+      ta.focus();
+      ta.select();
+    }
+  });
+
+  function setView(view) {
+    commitComment();
+    state.view = view;
+    local.set('view', view);
+    refresh();
+  }
+  $('view-run').addEventListener('click', () => setView('run'));
+  $('view-overview').addEventListener('click', () => setView('overview'));
+
+  function setMe(tid) {
+    commitComment();
+    state.me = tid;
+    fileHandle = null;
+    local.set('me', tid);
+    const saved = stepIndex.get(local.get(`pos:${tid}`) ?? '');
+    const open = firstOpen(tid);
+    state.pos = saved ?? (open === -1 ? 0 : open);
+    $('copybox').hidden = true;
+    refresh();
+  }
+  $('me').addEventListener('change', (e) => setMe(e.target.value));
+
+  function go(i) {
+    if (i < 0 || i >= steps.length) return;
+    commitComment();
+    state.pos = i;
+    if (state.me) local.set(`pos:${state.me}`, steps[i].id);
+    refresh();
+    window.scrollTo({ top: 0 });
+  }
+
+  // ---- guided run ---------------------------------------------------------------------------
+
+  let shown = ''; // "tester|line" the step card currently shows
+  let commentTimer = 0;
+  let needComment = false;
+  const pad = (n, w = 3) => String(n).padStart(w, '0');
+  const stageSteps = DATA.stages.map((_, si) => steps.filter((s) => s.si === si));
+  // the line's text for a tooltip: the tags go, the escaped entities stay valid in an attribute
+  const tip = (s) => s.item.html.replace(/<[^>]+>/g, '');
+
+  function commitComment() {
+    clearTimeout(commentTimer);
+    const ta = $('comment');
+    const step = steps[state.pos];
+    if (!ta || !state.me || shown !== `${state.me}|${step.id}`) return;
+    if (ta.value !== rec(state.me, step.id).c) save(step.id, { c: ta.value });
+  }
+
+  function answer(value) {
+    const step = steps[state.pos];
+    const cur = rec(state.me, step.id);
+    const ta = $('comment');
+    const next = cur.s === value ? '' : value;
+    clearTimeout(commentTimer);
+    save(step.id, { s: next, c: ta ? ta.value : cur.c });
+    needComment = false;
+    if (next === 'fail') $('comment').focus();
+    // works and skip move on by themselves; a failure waits for its comment
+    else if (next && state.pos < steps.length - 1) go(state.pos + 1);
+  }
+
+  function next() {
+    const step = steps[state.pos];
+    const ta = $('comment');
+    if (rec(state.me, step.id).s === 'fail' && !ta.value.trim()) {
+      needComment = true;
+      refresh();
+      ta.focus();
+      return;
+    }
+    go(state.pos + 1);
+  }
+
+  function renderRail() {
+    const cur = steps[state.pos]?.si;
+    return `<nav class="panel rail" aria-label="${UNITS}"><span class="lbl">${UNITS}</span>${DATA.stages
+      .map((st, si) => {
+        const n = tally(state.me, stageSteps[si]);
+        return `<button type="button" data-stage="${si}" aria-current="${si === cur}" data-done="${n.none === 0}" style="--p:${(100 * n.done) / n.total}%" title="${esc(st.title)}"><span class="short">${esc(st.short)}</span><span class="name">${esc(st.name)}</span><span class="num">${n.done}/${n.total}</span></button>`;
+      })
+      .join('')}</nav>`;
+  }
+
+  function renderGuide() {
+    if (STANDALONE) {
+      const open = tally(state.me).done === 0 ? ' open' : '';
+      return `<details class="panel guide howto"${open}><summary>How to use this file</summary><ol>
+        <li>Keep this file on your PC and open it in Chrome or Edge. It works offline.</li>
+        <li>Each line says what to do in Quadrion AI and what you should see. Answer <b>Works</b>, <b>Does not work</b> or <b>Skip</b> (keys 1, 2, 3). For <b>Does not work</b>, write what you did, what you saw and what you expected.</li>
+        <li>Your answers are autosaved in this browser as you go; the top right shows when. Use the same browser on the same PC, and do not clear its site data.</li>
+        <li>Click <b>Save results file</b> (top right) and choose where to keep it. In Chrome and Edge that file then updates by itself after every answer, and <b>Save now</b> writes it at once. After you reopen this page, click <b>Save results file</b> again and pick the same file.</li>
+        <li>When you stop for the day, and when you finish, email the results file to ${esc(OWNER)}. A later file holds everything the earlier one did, so sending again is fine.</li>
+        <li>To carry on in another browser or on another PC: open this file there, pick your name, and <b>Load results file</b>.</li>
+        <li><b>Overview</b> shows every tester side by side. Load each tester's results file to fill their column.</li>
+      </ol></details>`;
+    }
+    if (!DATA.guide.length) return '';
+    const open = tally(state.me).done === 0 ? ' open' : '';
+    return `<details class="panel guide"${open}><summary>Before you start: install, build check, data, reporting</summary><div class="cols">${DATA.guide
+      .map((g) => `<div><h4>${esc(g.title)}</h4>${g.html}</div>`)
+      .join('')}</div></details>`;
+  }
+
+  function renderStep() {
+    const step = steps[state.pos];
+    const { stage, group, item } = step;
+    const list = stageSteps[step.si];
+    const firstOfStage = stageFirst[step.si] === state.pos;
+    const others = TESTERS.filter((t) => t.id !== state.me);
+    return `<div class="panel step">
+      <div class="head">
+        <div class="where"><span class="code">${esc(stage.short)}</span><span class="lbl">${esc(stage.name)}</span>${group.title ? `<span class="sep">/</span><span class="lbl hi">${esc(group.title)}</span>` : ''}</div>
+        <span class="tele" id="count"></span>
+      </div>
+      <div class="trackbox">
+        <div class="track" id="track" role="group" aria-label="Lines in this ${UNIT}"${list.length > 150 ? ' data-dense' : ''}>${list
+          .map(
+            (s, k) =>
+              `<button type="button" class="tick" data-open="${stepIndex.get(s.id)}" title="${k + 1}. ${tip(s)}" aria-label="Line ${k + 1} of this ${UNIT}"></button>`,
+          )
+          .join('')}</div>
+        <div class="trackmeta"><span class="tele" id="instage"></span><span class="tele" id="answered"></span></div>
+      </div>
+      ${stage.intro ? `<details class="notes"${firstOfStage ? ' open' : ''}><summary>About this ${UNIT}</summary>${stage.intro}</details>` : ''}
+      ${group.notes ? `<div class="notes">${group.notes}</div>` : ''}
+      <div class="task"><div>${item.html}${item.sub.length ? `<ul>${item.sub.map((s) => `<li>${s}</li>`).join('')}</ul>` : ''}</div></div>
+      <div class="answers" role="group" aria-label="Result">
+        <button type="button" data-v="pass" aria-pressed="false"><kbd>1</kbd>Works</button>
+        <button type="button" data-v="fail" aria-pressed="false"><kbd>2</kbd>Does not work</button>
+        <button type="button" data-v="skip" aria-pressed="false"><kbd>3</kbd>Skip</button>
+      </div>
+      <div class="field">
+        <label class="lbl" for="comment">Comment</label>
+        <textarea id="comment" placeholder="What you did, what you saw, what you expected"></textarea>
+        <p class="err" id="err" hidden>Describe what went wrong before you move on.</p>
+      </div>
+      <div class="others" id="others">${others.map((t) => `<div data-t="${t.id}"></div>`).join('')}</div>
+      <div class="nav">
+        <button type="button" class="link" id="jump">Go to the next line without an answer</button>
+        <div class="btns">
+          <button type="button" class="btn" id="back">Back</button>
+          <button type="button" class="btn main" id="next">Next</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function updateStep() {
+    const step = steps[state.pos];
+    const mine = rec(state.me, step.id);
+    const n = tally(state.me);
+    const list = stageSteps[step.si];
+    $('count').innerHTML = `LINE <b>${pad(state.pos + 1)}</b> / ${steps.length}`;
+    $('instage').innerHTML = `${esc(step.stage.short)} · <b>${pad(list.indexOf(step) + 1, 2)}</b> / ${pad(list.length, 2)} IN ${UNIT.toUpperCase()}`;
+    $('answered').innerHTML = `ANSWERED <b>${n.done}</b> · OPEN <b>${n.none}</b>`;
+    [...$('track').children].forEach((el, k) => {
+      el.dataset.s = rec(state.me, list[k].id).s;
+      el.setAttribute('aria-current', list[k] === step);
+    });
+    for (const b of document.querySelectorAll('.answers button')) b.setAttribute('aria-pressed', b.dataset.v === mine.s);
+    const ta = $('comment');
+    if (document.activeElement !== ta && ta.value !== mine.c) ta.value = mine.c;
+    $('err').hidden = !(needComment && mine.s === 'fail' && !ta.value.trim());
+    for (const el of $('others').children) {
+      const r = rec(el.dataset.t, step.id);
+      el.dataset.s = r.s;
+      el.innerHTML = `<div class="top"><span class="lbl">${esc(nameOf(el.dataset.t))}</span><span class="st">${LABEL[r.s]}</span></div>${r.c ? `<p class="cmt">${esc(r.c)}</p>` : ''}`;
+    }
+    $('back').disabled = state.pos === 0;
+    $('next').disabled = state.pos === steps.length - 1;
+    const open = firstOpen(state.me, state.pos + 1);
+    $('jump').hidden = open === -1 || open === state.pos;
+  }
+
+  function renderRun() {
+    const root = $('run');
+    if (!state.me) {
+      shown = '';
+      root.innerHTML = `<div class="panel pick"><span class="lbl">${steps.length} lines · ${DATA.stages.length} ${UNITS}</span><h2>Who is testing?</h2><p>Your answers are saved under your name, one line at a time. You can stop and come back: the run reopens where you left it.</p><div class="btns">${TESTERS.map((t) => `<button type="button" class="btn main" data-me="${t.id}">${esc(t.name)}</button>`).join('')}</div></div>`;
+      return;
+    }
+    const key = `${state.me}|${steps[state.pos].id}`;
+    if (shown !== key) {
+      shown = key;
+      needComment = false;
+      root.innerHTML = `${renderGuide()}<div class="run">${renderRail()}${renderStep()}</div>`;
+      $('comment').value = rec(state.me, steps[state.pos].id).c;
+    } else {
+      // same step: refresh the rail's counts without touching the comment being typed
+      root.querySelector('.rail').outerHTML = renderRail();
+    }
+    updateStep();
+  }
+
+  $('run').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.me) setMe(b.dataset.me);
+    else if (b.dataset.stage) go(stageFirst[Number(b.dataset.stage)]);
+    else if (b.dataset.open) go(Number(b.dataset.open));
+    else if (b.dataset.v) answer(b.dataset.v);
+    else if (b.id === 'back') go(state.pos - 1);
+    else if (b.id === 'next') next();
+    else if (b.id === 'jump') go(firstOpen(state.me, state.pos + 1));
+  });
+  $('run').addEventListener('input', (e) => {
+    if (e.target.id !== 'comment') return;
+    $('err').hidden = true;
+    clearTimeout(commentTimer);
+    commentTimer = setTimeout(commitComment, 700);
+  });
+  $('run').addEventListener('focusout', (e) => {
+    if (e.target.id === 'comment') commitComment();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (gateOpen || state.view !== 'run' || !state.me || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+    const key = { 1: 'pass', 2: 'fail', 3: 'skip' }[e.key];
+    if (key) answer(key);
+    else if (e.key === 'ArrowRight') next();
+    else if (e.key === 'ArrowLeft') go(state.pos - 1);
+  });
+
+  // ---- overview -----------------------------------------------------------------------------
+
+  const FILTERS = [
+    ['all', 'All'],
+    ['none', 'Not tested'],
+    ['fail', 'Failed'],
+    ['differ', 'Disagreements'],
+    ['commented', 'Commented'],
+  ];
+  const test = {
+    all: () => true,
+    none: (rs) => rs.every((r) => !r.s),
+    fail: (rs) => rs.some((r) => r.s === 'fail'),
+    differ: (rs) => rs.some((r) => r.s === 'pass') && rs.some((r) => r.s === 'fail'),
+    commented: (rs) => rs.some((r) => r.c.trim()),
+  };
+  const row = (s) => TESTERS.map((t) => rec(t.id, s.id));
+
+  /** One track per tester over every line of the run, stage by stage: where the failures cluster. */
+  function renderMatrix() {
+    const axis = `<div class="mrow axis" aria-hidden="true"><span></span><div class="strip">${DATA.stages
+      .map((st, si) => `<div class="segm" style="flex:${stageSteps[si].length}">${esc(st.short)}</div>`)
+      .join('')}</div><span></span></div>`;
+    const rows = TESTERS.map((t) => {
+      const n = tally(t.id);
+      const strip = DATA.stages
+        .map(
+          (st, si) =>
+            `<div class="segm" style="flex:${stageSteps[si].length}">${stageSteps[si]
+              .map(
+                (s) =>
+                  `<button type="button" tabindex="-1" data-open="${stepIndex.get(s.id)}" data-s="${rec(t.id, s.id).s}" title="${esc(st.short)} · ${tip(s)}"></button>`,
+              )
+              .join('')}</div>`,
+        )
+        .join('');
+      const num = (v, w) => `<span data-v="${v}">${w} <b>${pad(n[v])}</b></span>`;
+      return `<div class="mrow"><span class="who">${esc(t.name)}</span><div class="strip">${strip}</div><div class="nums tele">${num('pass', 'W')}${num('fail', 'F')}${num('skip', 'S')}<span>OPEN <b>${pad(n.none)}</b></span></div></div>`;
+    }).join('');
+    const key = (s, w) => `<span data-s="${s}"><span class="st">${w}</span></span>`;
+    return `<div class="panel matrix"><div class="top"><span class="lbl">Run matrix · ${steps.length} lines</span><div class="legend">${key('pass', 'Works')}${key('fail', 'Does not work')}${key('skip', 'Skipped')}${key('', 'Not tested')}</div></div>${axis}${rows}</div>`;
+  }
+
+  function renderOverview() {
+    const filters = FILTERS.map(
+      ([v, w]) =>
+        `<button type="button" data-filter="${v}" aria-pressed="${state.filter === v}">${w}<span>${steps.filter((s) => test[v](row(s))).length}</span></button>`,
+    ).join('');
+    let body = '';
+    DATA.stages.forEach((st, si) => {
+      const list = stageSteps[si].filter((s) => test[state.filter](row(s)));
+      if (!list.length) return;
+      body += `<div class="stage"><h3><span class="code">${esc(st.short)}</span><span class="lbl hi">${esc(st.name)}</span><span class="tele">${list.length} ${list.length === 1 ? 'LINE' : 'LINES'}</span></h3><div class="panel"><div class="grid-head"><span class="lbl">Test line</span>${TESTERS.map((t) => `<span class="lbl">${esc(t.name)}</span>`).join('')}</div>${list
+        .map(
+          (s) =>
+            `<div class="row"><div>${s.group.title ? `<span class="group">${esc(s.group.title)}</span>` : ''}<button type="button" class="open" data-open="${stepIndex.get(s.id)}" title="Open this line in the guided run">${s.item.html}</button></div>${TESTERS.map(
+              (t) => {
+                const r = rec(t.id, s.id);
+                return `<div class="cell" data-s="${r.s}"><span class="who lbl">${esc(t.name)}</span><span class="st">${LABEL[r.s]}</span>${r.c ? `<p class="cmt">${esc(r.c)}</p>` : ''}</div>`;
+              },
+            ).join('')}</div>`,
+        )
+        .join('')}</div></div>`;
+    });
+    $('overview').style.setProperty('--cols', TESTERS.length);
+    $('overview').innerHTML = `${renderMatrix()}<div class="filters" role="group" aria-label="Show">${filters}</div>${body || '<div class="panel empty">No lines match this filter.</div>'}`;
+  }
+
+  $('overview').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.filter) {
+      state.filter = b.dataset.filter;
+      renderOverview();
+    } else if (b.dataset.open) {
+      state.view = 'run';
+      local.set('view', 'run');
+      go(Number(b.dataset.open));
+    }
+  });
+
+  // ---- launch gate ---------------------------------------------------------------------------
+  // The app's launch screen (docs/brand/quadrion/gate, Split layout): terrain, mark and wordmark,
+  // then Enter. After Enter it asks who is testing, unless this browser already knows.
+
+  const gate = $('lg');
+  let gateOpen = !gate.hidden;
+  let gateMode = 'welcome';
+  let stopGate = () => {};
+  let gateWired = false;
+  let gateSkip = () => {};
+
+  function gateEntry(mode) {
+    gateMode = mode;
+    const el = $('lg-entry');
+    const status = `<div class="lg-status"><i aria-hidden="true"></i>${steps.length} lines · ${DATA.stages.length} ${UNITS}</div>`;
+    if (mode === 'pick') {
+      el.innerHTML = `<div class="lg-who"><span class="lg-hello">Team test run</span><b>Who is testing?</b><small>Your answers are saved under your name.</small></div><div class="lg-names">${TESTERS.map((t, k) => `<button type="button" class="lg-name" data-gate-me="${t.id}">${esc(t.name)}<span>${pad(k + 1, 2)}</span></button>`).join('')}</div>${status}`;
+      el.querySelector('.lg-name').focus({ preventScroll: true });
+    } else {
+      const me = state.me;
+      el.innerHTML = `<div class="lg-who"><span class="lg-hello">${me ? 'Welcome back,' : 'Welcome to the'}</span><b>${me ? esc(nameOf(me)) : 'Team test run'}</b><small>Synapse Solutions · Quadrion AI test run</small></div><button id="lg-enter" class="lg-enter" type="button">Enter <kbd>↵</kbd></button>${me ? '<button type="button" class="lg-link" id="lg-switch">Someone else is testing</button>' : ''}${status}`;
+    }
+  }
+
+  function gateSwap(mode) {
+    const el = $('lg-entry');
+    gateEntry(mode);
+    // replay the focus-in for the new content
+    el.style.animation = 'none';
+    void el.offsetWidth;
+    el.style.animation = 'lg-focus 0.35s var(--ease-out) forwards';
+  }
+
+  function leaveGate() {
+    if (!gateOpen) return;
+    gateOpen = false;
+    try {
+      sessionStorage.setItem('tb:entered', '1');
+    } catch {
+      /* the gate just shows again on the next load */
+    }
+    document.querySelector('.bar').inert = false;
+    document.querySelector('.wrap').inert = false;
+    gate.classList.add('leaving');
+    setTimeout(() => {
+      gate.hidden = true;
+      stopGate();
+    }, 320);
+  }
+
+  function gateEnter() {
+    if (state.me) leaveGate();
+    else gateSwap('pick');
+  }
+
+  /** Back to the launch screen from the logo, without replaying the intro. */
+  function openGate() {
+    if (gateOpen) return;
+    commitComment();
+    gateOpen = true;
+    gate.hidden = false;
+    gate.classList.remove('leaving', 'done');
+    gate.classList.add('instant');
+    initGate();
+  }
+
+  function initGate() {
+    if (!gateOpen) return;
+    document.querySelector('.bar').inert = true;
+    document.querySelector('.wrap').inert = true;
+    gateEntry('welcome');
+
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const finePointer = matchMedia('(hover: hover) and (pointer: fine)').matches;
+    let introDone = false;
+
+    const clock = $('lg-clock');
+    const tick = () => {
+      const d = new Date();
+      const day = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
+      const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      clock.innerHTML = `${esc(day.toUpperCase())} · <b>${esc(time)}</b>`;
+    };
+    tick();
+    const clockTimer = setInterval(tick, 1000);
+
+    const p4 = gate.querySelector('.lg-p4');
+    const finishIntro = () => {
+      if (introDone) return;
+      introDone = true;
+      gate.classList.add('done');
+      // hand the plates from the CSS keyframes to the pointer springs
+      for (const p of gate.querySelectorAll('.lg-plate')) {
+        p.style.animation = 'none';
+        p.style.opacity = '1';
+      }
+      p4.style.fill = 'var(--mint)';
+      if (!reduce) p4.classList.add('lg-glow');
+    };
+    gateSkip = () => {
+      gate.classList.add('instant');
+      finishIntro();
+    };
+    setTimeout(finishIntro, reduce || gate.classList.contains('instant') ? 0 : 1300);
+
+    // the gate can open again from the logo: its buttons and keys are wired once
+    if (!gateWired) wireGate();
+    const stopRun = runGate(reduce, finePointer, () => introDone);
+    stopGate = () => {
+      stopRun();
+      clearInterval(clockTimer);
+    };
+  }
+
+  function wireGate() {
+    gateWired = true;
+    gate.addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      if (b.id === 'lg-skip') {
+        gateSkip();
+        b.blur();
+      } else if (b.id === 'lg-enter') gateEnter();
+      else if (b.id === 'lg-switch') gateSwap('pick');
+      else if (b.dataset.gateMe) {
+        setMe(b.dataset.gateMe);
+        leaveGate();
+      }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (!gateOpen) return;
+      if (e.key === 'Escape') gateSkip();
+      // Enter anywhere opens, as in the app; on a button it is that button's own click
+      if (e.key === 'Enter' && gateMode === 'welcome' && document.activeElement?.tagName !== 'BUTTON') {
+        e.preventDefault();
+        gateEnter();
+      }
+    });
+  }
+
+  /** The terrain, the pointer springs and the clock of one opening of the gate. */
+  function runGate(reduce, finePointer, isIntroDone) {
+    // pointer, smoothed by springs so motion has weight; it drifts back to the centre when idle
+    let tx = 0;
+    let ty = 0;
+    let lastMove = 0;
+    let px = -9999;
+    let py = -9999;
+    const spring = (k, d) => ({
+      x: 0,
+      v: 0,
+      step(target, dt) {
+        this.v += ((target - this.x) * k - this.v * d) * dt;
+        this.x += this.v * dt;
+      },
+    });
+    const sx = spring(90, 14);
+    const sy = spring(90, 14);
+    const lx = spring(160, 22);
+    const ly = spring(160, 22);
+    lx.x = ly.x = -9999;
+    const onMove = (e) => {
+      tx = (e.clientX / innerWidth) * 2 - 1;
+      ty = (e.clientY / innerHeight) * 2 - 1;
+      if (px < -9000) {
+        lx.x = e.clientX;
+        ly.x = e.clientY;
+      }
+      px = e.clientX;
+      py = e.clientY;
+      lastMove = performance.now();
+    };
+    if (finePointer && !reduce) addEventListener('pointermove', onMove, { passive: true });
+
+    // the plates separate in depth toward the pointer: the top one travels furthest
+    const plates = [0, 1, 2, 3].map((i) => gate.querySelectorAll(`[data-plate="${i}"]`));
+    const DEPTH = [1, 2.2, 3.5, 5];
+    const SPREAD = [1.2, 0.4, -0.4, -1.2];
+    const placePlates = () => {
+      const opened = Math.min(1, Math.hypot(sx.x, sy.x));
+      for (let i = 0; i < 4; i++) {
+        const dx = sx.x * DEPTH[i];
+        const dy = sy.x * DEPTH[i] * 0.6 + SPREAD[i] * opened * 2;
+        for (const el of plates[i]) el.setAttribute('transform', `translate(${dx.toFixed(2)} ${dy.toFixed(2)})`);
+      }
+    };
+
+    // terrain: a drifting point cloud that the pointer scans
+    const cv = $('lg-bg');
+    const ctx = cv.getContext('2d');
+    let W = 0;
+    let H = 0;
+    const t0 = performance.now();
+    let lastDraw = 0;
+    let lastT = t0;
+    let running = !reduce;
+    const COLS = 96;
+    const ROWS = 48;
+    const height = (x, z, t) =>
+      Math.sin(x * 0.11 + t * 0.00012) * 1.6 + Math.cos(z * 0.17 - t * 0.00009) * 1.2 + Math.sin((x + z) * 0.05) * 2.2;
+    const draw = (t) => {
+      ctx.clearRect(0, 0, W, H);
+      const horizon = H * 0.47 - sy.x * 18;
+      const fov = Math.min(W, H) * 0.9;
+      const scanZ = ((t * 0.006) % (ROWS + 20)) - 10;
+      const R = Math.max(110, Math.min(W, H) * 0.16);
+      for (let r = 0; r < ROWS; r++) {
+        const z = ROWS - r + 4 + ((t * 0.0012) % 1);
+        const near = 1 - z / (ROWS + 6);
+        for (let c = 0; c < COLS; c++) {
+          const x = (c - COLS / 2) * 1.12;
+          const y = height(c, r + t * 0.0012, t);
+          const X = W / 2 + (x / z) * fov * 0.55 - sx.x * 70 * near;
+          const Y = horizon + ((9 - y) / z) * fov * 0.32;
+          if (X < -4 || X > W + 4 || Y < 0 || Y > H + 4) continue;
+          const d = Math.abs(ROWS - r - scanZ);
+          const lit = d < 1.6 ? 1 - d / 1.6 : 0;
+          const dl = Math.hypot(X - lx.x, Y - ly.x);
+          const torch = dl < R ? (1 - dl / R) ** 2 : 0;
+          const glow = Math.max(lit, torch);
+          ctx.fillStyle =
+            glow > 0.02
+              ? `rgba(94,209,179,${(0.18 + glow * 0.7).toFixed(3)})`
+              : `rgba(238,242,245,${(0.05 + near * 0.3).toFixed(3)})`;
+          const s = (0.6 + near * 1.6) * (1 + glow * 0.6);
+          ctx.fillRect(X - s / 2, Y - s / 2, s, s);
+        }
+      }
+    };
+    const size = () => {
+      const dpr = Math.min(devicePixelRatio || 1, 2);
+      W = cv.clientWidth;
+      H = cv.clientHeight;
+      cv.width = W * dpr;
+      cv.height = H * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (reduce) draw(0);
+    };
+    // one loop drives the springs (every frame) and the terrain (about 30 fps)
+    const frame = (now) => {
+      if (!running) return;
+      const dt = Math.min(0.05, (now - lastT) / 1000);
+      lastT = now;
+      const idle = now - lastMove > 4000;
+      sx.step(idle ? 0 : tx, dt);
+      sy.step(idle ? 0 : ty, dt);
+      if (px > -9000) {
+        lx.step(px, dt);
+        ly.step(py, dt);
+      }
+      if (isIntroDone()) placePlates();
+      if (now - lastDraw > 33) {
+        draw(now - t0);
+        lastDraw = now;
+      }
+      requestAnimationFrame(frame);
+    };
+    const onVisible = () => {
+      if (reduce || !gateOpen) return;
+      running = !document.hidden;
+      if (running) {
+        lastT = performance.now();
+        requestAnimationFrame(frame);
+      }
+    };
+    addEventListener('resize', size);
+    document.addEventListener('visibilitychange', onVisible);
+    size();
+    if (!reduce) requestAnimationFrame(frame);
+
+    return () => {
+      running = false;
+      removeEventListener('resize', size);
+      removeEventListener('pointermove', onMove);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }
+
+  // ---- start --------------------------------------------------------------------------------
+
+  function refresh() {
+    $('view-run').setAttribute('aria-pressed', state.view === 'run');
+    $('view-overview').setAttribute('aria-pressed', state.view === 'overview');
+    $('run').hidden = state.view !== 'run';
+    $('overview').hidden = state.view !== 'overview';
+    if ($('me').value !== state.me) $('me').value = state.me;
+    showSave();
+    if (state.view === 'run') renderRun();
+    else {
+      shown = '';
+      renderOverview();
+    }
+  }
+
+  $('brand').textContent = 'Quadrion AI';
+  $('home').addEventListener('click', openGate);
+  $('brand-sub').textContent = `test run / ${steps.length} lines`;
+  $('me').innerHTML =
+    '<option value="">Choose</option>' + TESTERS.map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
+  if (state.me) {
+    const saved = stepIndex.get(local.get(`pos:${state.me}`) ?? '');
+    state.pos = saved ?? Math.max(0, firstOpen(state.me));
+  }
+  refresh();
+  initGate();
+  connect();
+</script>
