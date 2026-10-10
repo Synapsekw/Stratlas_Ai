@@ -435,7 +435,7 @@ export interface Segmenter {
 
 const UNAVAILABLE: Record<Exclude<SegmentStatus, { available: true }>['reason'], string> = {
   'no-pack':
-    'Suggest boundaries needs the pipeline pack. Add it on the Jobs page (Check the pipeline pack), then try again.',
+    'Suggest boundaries needs the pipeline pack. Copy the pipeline pack folder into "runtime" in your data folder, then try again. Jobs shows the pack once it is found.',
   'no-model':
     'This pipeline pack has no boundary model. Update the pipeline pack to use Suggest boundaries.',
   'no-runtime': 'The ONNX runtime is not installed, so Suggest boundaries cannot run.',
