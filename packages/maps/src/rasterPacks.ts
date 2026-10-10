@@ -11,6 +11,7 @@ import type {
 import { FetchSource, PMTiles } from 'pmtiles';
 import { orderPacks } from './packs';
 import type { TileReader } from './protocol';
+import { BASEMAP_SOURCE } from './style';
 
 /**
  * Imagery and terrain packs on the 2D map (M10 G7, decision 4): a **Satellite** basemap of the
@@ -101,9 +102,12 @@ export function insertBefore(
   return layers.find((l) => l.type === 'line' || l.type === 'symbol')?.id;
 }
 
+/** A layer of a style as this module reads it. */
+type StyleLayer = Pick<LayerSpecification, 'id' | 'type'> & { source?: unknown };
+
 /** The slice of a MapLibre map this module drives. */
 export interface RasterMap {
-  getStyle(): { layers?: Pick<LayerSpecification, 'id' | 'type'>[] } | undefined;
+  getStyle(): { layers?: StyleLayer[]; sources?: Record<string, unknown> } | undefined;
   getSource(id: string): unknown;
   addSource(id: string, source: RasterSourceSpecification | RasterDEMSourceSpecification): unknown;
   removeSource(id: string): unknown;
@@ -151,6 +155,69 @@ export function applyRasterPacks(map: RasterMap, d: RasterPackDisplay): () => vo
     for (const id of added.layers.reverse()) if (map.getLayer(id)) map.removeLayer(id);
     for (const id of added.sources) if (map.getSource(id)) map.removeSource(id);
   };
+}
+
+/**
+ * Bring a map's pack sources and layers to `d`, touching only what differs: a pack already on the
+ * map keeps its source, its layer and the tiles it has drawn. Switching the basemap (Streets,
+ * Satellite, one pack or all of them) or the hillshade therefore never blanks what stays on
+ * screen, where removing everything and adding it again would. Layers keep their order: imagery
+ * coarse to detailed, the hillshade over it, all of it under the streets. Throws while the style
+ * is loading (as MapLibre does): call again on the next style event, and after a style reload.
+ */
+export function syncRasterPacks(map: RasterMap, d: RasterPackDisplay): void {
+  const sources = new Map<string, RasterSourceSpecification | RasterDEMSourceSpecification>();
+  /** Bottom to top. */
+  const layers: (RasterLayerSpecification | HillshadeLayerSpecification)[] = [];
+  if (d.satellite) {
+    const imagery = d.imagery.filter((p) => p.kind === 'imagery');
+    for (const p of imagery) sources.set(rasterSourceId(p), imagerySource(p));
+    layers.push(...satelliteLayers(imagery));
+  }
+  const dem = orderPacks(d.terrain.filter((p) => p.kind === 'terrain'))[0];
+  if (d.hillshade && dem) {
+    sources.set(rasterSourceId(dem), terrainSource(dem));
+    layers.push(hillshadeLayer(dem));
+  }
+  const style = map.getStyle();
+  const present = style?.layers ?? [];
+  const wanted = new Map(layers.map((l) => [l.id, l.source]));
+  // a layer whose pack changed (the hillshade of another terrain pack) goes and comes back
+  for (const l of present)
+    if (l.id.startsWith(PREFIX) && wanted.get(l.id) !== l.source) map.removeLayer(l.id);
+  for (const id of Object.keys(style?.sources ?? {}))
+    if (id.startsWith(PREFIX) && !sources.has(id)) map.removeSource(id);
+  for (const [id, source] of sources) if (!map.getSource(id)) map.addSource(id, source);
+  // top down, each under the one above it, so a pack added later lands in its place
+  let above = insertBefore(present.filter((l) => !l.id.startsWith(PREFIX)));
+  for (const l of [...layers].reverse()) {
+    if (!map.getLayer(l.id)) map.addLayer(l, above);
+    above = l.id;
+  }
+}
+
+/** The slice of a MapLibre map `setStreetOverlay` drives. */
+export interface StreetOverlayMap {
+  getStyle(): { layers?: StyleLayer[] } | undefined;
+  setLayoutProperty(layer: string, name: 'visibility', value: 'visible' | 'none'): unknown;
+}
+
+/**
+ * Show or hide the streets and names the basemap draws over the imagery (Satellite only hides
+ * them). The land and water under the imagery stay, so the map is never empty where no pack
+ * reaches, and the project's own layers (orthos, flights, issues) are not basemap layers and stay
+ * too. Returns the ids it set. Throws while the style is loading, as MapLibre does.
+ */
+export function setStreetOverlay(map: StreetOverlayMap, visible: boolean): string[] {
+  const layers = map.getStyle()?.layers ?? [];
+  const first = layers.findIndex((l) => l.type === 'line' || l.type === 'symbol');
+  if (first < 0) return [];
+  const ids = layers
+    .slice(first)
+    .filter((l) => l.source === BASEMAP_SOURCE)
+    .map((l) => l.id);
+  for (const id of ids) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
+  return ids;
 }
 
 /** A transparent 1 x 1 PNG for an imagery tile no pack holds (a missing tile is not an error). */
