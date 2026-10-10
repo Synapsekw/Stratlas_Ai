@@ -47,10 +47,56 @@ const mapState = (win: Page) =>
 
 const packs = (win: Page) => mapState(win).then((s) => s?.packs ?? null);
 
+/** A map that was just created (a view change, back from Settings) loads its style first. */
+const MAP_READY = { timeout: 30_000 };
+
+const stageBar = (win: Page) => win.getByRole('toolbar', { name: 'Stage tools' });
+
+/** Switch the stage with its view switch (the one control of that name on the toolbar). */
+async function showView(win: Page, view: '3D' | 'Map'): Promise<void> {
+  const button = stageBar(win)
+    .getByRole('group', { name: 'Stage view' })
+    .getByRole('button', { name: view, exact: true });
+  await button.click();
+  await expect(button).toHaveAttribute('aria-pressed', 'true');
+  await expect(win.locator('.stage')).toHaveAttribute('data-mode', view === '3D' ? '3d' : 'map');
+}
+
 async function openMap(win: Page, project: string): Promise<void> {
   await win.getByTestId('project-card').filter({ hasText: project }).click();
-  await win.getByRole('button', { name: 'Map', exact: true }).first().click();
+  await showView(win, 'Map');
   await expect(win.getByTestId('basemap-button')).toBeVisible();
+}
+
+/**
+ * The Layers popover of the 3D view. The 3D toolbar holds more tools than the map's, and what
+ * does not fit the window folds into More tools, the Labels and layers group first: on a small
+ * display (a CI runner's 1024 x 768) the Layers tool is not on the bar at all. The bar fits
+ * itself again once the 3D scene runs (its environment tool takes room), so wait for that, then
+ * open Layers from wherever it is.
+ */
+async function openLayers3d(win: Page): Promise<void> {
+  const bar = stageBar(win);
+  await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible(MAP_READY);
+  await expect(bar.getByRole('button', { name: 'Environment and time of day' })).toBeVisible(
+    MAP_READY,
+  );
+  const layers = bar.getByRole('button', { name: 'Layers and issue pins', exact: true });
+  const more = bar.getByRole('button', { name: 'More tools', exact: true });
+  await expect(layers.or(more).first()).toBeVisible();
+  if (!(await layers.isVisible())) {
+    await more.click();
+    await expect(win.getByRole('dialog', { name: 'More tools' })).toBeVisible();
+  }
+  await layers.click();
+  await expect(win.getByRole('dialog', { name: 'Layers and issue pins' })).toBeVisible();
+}
+
+/** Close every stage popover (Layers, and More tools around it when the tool was folded). */
+async function closeStagePopovers(win: Page): Promise<void> {
+  const open = win.locator('.stage-pop');
+  for (let i = 0; i < 3 && (await open.count()) > 0; i++) await win.keyboard.press('Escape');
+  await expect(open).toHaveCount(0);
 }
 
 async function shot(win: Page, testInfo: TestInfo, name: string): Promise<void> {
@@ -155,9 +201,12 @@ test('the map type is chosen on the map, keeps the camera and survives a relaunc
     // Settings shows the same choice, and its checkbox moves the map type
     await chip.click();
     await win.getByTestId('basemap-streets').click();
+    await expect(chip).toHaveText('Streets');
     await win.keyboard.press('Escape');
+    await expect(pop).toBeHidden();
     await win.locator('.nav-item', { hasText: 'Settings' }).click();
     await win.locator('.set-nav button', { hasText: 'Offline maps' }).click();
+    await expect(win.locator('.set-page h1')).toHaveText('Offline maps');
     const satellite = win
       .getByTestId('raster-packs')
       .getByRole('checkbox', { name: /^Satellite: imagery packs/ });
@@ -165,15 +214,16 @@ test('the map type is chosen on the map, keeps the camera and survives a relaunc
     await satellite.check();
     await win.locator('.nav-item', { hasText: 'Scene' }).click();
     await expect(chip).toHaveText('Satellite');
-    await expect.poll(() => packs(win)).toEqual([WORLD, DETAIL, HILLSHADE]);
+    await expect.poll(() => packs(win), MAP_READY).toEqual([WORLD, DETAIL, HILLSHADE]);
 
     // the 3D view's part: imagery and terrain around the site, in Layers
-    await win.getByRole('button', { name: '3D', exact: true }).first().click();
-    await win.getByRole('button', { name: 'Layers and issue pins' }).click();
+    await showView(win, '3D');
+    await expect(chip).toHaveCount(0);
+    await openLayers3d(win);
     await expect(win.getByTestId('ground-aroundImagery')).toBeVisible();
     await expect(win.getByTestId('ground-aroundTerrain')).toBeVisible();
     await shot(win, testInfo, 'layers-3d-ground');
-    await win.keyboard.press('Escape');
+    await closeStagePopovers(win);
 
     // the command search has the map types too, and shows the map it changes
     await win.keyboard.press('Control+K');
@@ -183,20 +233,23 @@ test('the map type is chosen on the map, keeps the camera and survives a relaunc
     await expect(palette.getByText('Map type: satellite only')).toBeVisible();
     await win.keyboard.press('Enter');
     await expect(palette).toBeHidden();
+    await expect(win.locator('.stage')).toHaveAttribute('data-mode', 'map');
     await expect(chip).toHaveText('Satellite only');
     await expect
       .poll(async () => {
         const s = await mapState(win);
         return s ? s.streets - s.hidden : -1;
-      })
+      }, MAP_READY)
       .toBe(0);
 
     // leave it on Streets for the relaunch
-    await win.getByRole('button', { name: 'Map', exact: true }).first().click();
     await chip.click();
+    await expect(pop).toBeVisible();
     await win.getByTestId('basemap-streets').click();
-    await expect.poll(() => packs(win)).toEqual([HILLSHADE]);
+    await expect(chip).toHaveText('Streets');
+    await expect.poll(() => packs(win), MAP_READY).toEqual([HILLSHADE]);
     await win.keyboard.press('Escape');
+    await expect(pop).toBeHidden();
     expect(await guard.outbound(), 'the app made network requests').toEqual([]);
   } finally {
     await first.close();
