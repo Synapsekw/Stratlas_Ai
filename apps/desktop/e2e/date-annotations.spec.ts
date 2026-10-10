@@ -157,7 +157,8 @@ async function open(win: Page, id: string) {
 
 /** The eye of a date folder ("Hide everything from 6 Nov 2024"). */
 const folderEye = (win: Page, date: string) =>
-  win.getByTestId(`date-folder-${date}`).locator('.dfolder-row .eye');
+  // the folder's menu button shares the eye's look, so the eye is picked by its state attribute
+  win.getByTestId(`date-folder-${date}`).locator('.dfolder-row .eye[data-visibility]');
 
 test.describe('annotations follow their survey date', () => {
   test('the folder eye hides and shows the issues of its date in the 3D view', async ({
