@@ -192,7 +192,7 @@ describe('the pack model', () => {
       crop: { key: 'k', size: 64, x0: 0, y1: 0, res: 1 },
     });
     expect(r).toMatchObject({ ok: false, code: 'unavailable' });
-    if (!r.ok) expect(r.error).toMatch(/needs the pipeline pack/);
+    if (!r.ok) expect(r.error).toMatch(/the processing tools are missing or need an update/);
     await pack(colourSegmenterOnnx().card);
     const noRt = createSegmenter({
       packDir: () => Promise.resolve(dir),

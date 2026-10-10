@@ -13,6 +13,7 @@ import type { DrawEnv, DrawEvent } from '@aio/survey';
 import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect } from 'react';
 import { createStore, useStore } from 'zustand';
+import { openProcessingTools } from '../processingTools';
 import { bridge } from '../shell';
 import { measureStore, setDrawInterceptor } from './measureStore';
 import type { Outline } from './snapRegions';
@@ -84,17 +85,23 @@ const get = () => magicStore.getState();
 /** What a person reads when Suggest boundaries cannot run. */
 export function unavailableText(s: Status): string {
   switch (s.reason) {
+    // the words of the Jobs screen; Settings, Processing tools installs and updates them
     case 'no-pack':
-      return 'Suggest boundaries needs the pipeline pack. Copy the pipeline pack folder into "runtime" in your data folder, then try again. Jobs shows the pack once it is found.';
+      return 'Suggest boundaries cannot run yet: the processing tools are missing or need an update.';
     case 'no-model':
-      return 'This pipeline pack has no boundary model. Update the pipeline pack to use Suggest boundaries.';
+      return 'The processing tools on this computer have no boundary model. Update them to use Suggest boundaries.';
     case 'no-runtime':
       return 'The ONNX runtime is not installed, so Suggest boundaries cannot run.';
     case 'licence':
-      return `The boundary model in the pipeline pack has a licence this app does not accept. ${s.detail ?? ''}`.trim();
+      return `The boundary model in the processing tools has a licence this app does not accept. ${s.detail ?? ''}`.trim();
     default:
       return `The boundary model could not be loaded. ${s.detail ?? ''}`.trim();
   }
+}
+
+/** Whether new processing tools would make Suggest boundaries run (Settings, Processing tools). */
+export function toolsWouldHelp(s: Status | null): boolean {
+  return s !== null && !s.available && (s.reason === 'no-pack' || s.reason === 'no-model');
 }
 
 /** Turn Suggest boundaries on (after checking the model is there) or off. */
@@ -446,6 +453,16 @@ export function MagicPolygon() {
             >
               {message}
             </span>
+          )}
+          {message && toolsWouldHelp(status) && (
+            <button
+              type="button"
+              className="btn sm"
+              data-testid="survey-magic-tools"
+              onClick={openProcessingTools}
+            >
+              Update processing tools
+            </button>
           )}
           {busy && !message && (
             <span className="small" role="status" data-testid="survey-magic-status">
