@@ -35,6 +35,8 @@ const KEYS = {
 
 interface Probe {
   __stratlas: {
+    /** The 3D view that is showing, with the graphics quality it draws at. */
+    stage(): { quality: { maxPixelRatio: number } } | null;
     workspace: {
       getState(): {
         selection: { kind: string; id: string } | null;
@@ -77,23 +79,35 @@ async function openScene(win: Page): Promise<void> {
 const width = async (win: Page, selector: string): Promise<number> =>
   (await win.locator(selector).boundingBox())?.width ?? -1;
 
+/**
+ * A layout that follows a fold or a new window size: the panels slide (180 ms), then the 3D view
+ * and the map are given their new size and drawn again, which a software GPU takes its time over.
+ */
+const SETTLED = { timeout: 30_000 };
+
 /** The element settles at `expected` pixels wide (within a pixel: display scaling rounds). */
 async function expectWidth(win: Page, selector: string, expected: number): Promise<void> {
   await expect
     .poll(async () => Math.abs((await width(win, selector)) - expected) <= 1, {
+      ...SETTLED,
       message: `${selector} is ${String(await width(win, selector))} wide, not ${String(expected)}`,
     })
     .toBe(true);
 }
 
-/** The 3D canvas fills its pane and its drawing buffer matches (redrawn, not stretched). */
+/**
+ * The 3D canvas fills its pane and its drawing buffer matches (redrawn, not stretched). The 3D
+ * view draws at the display's pixel ratio up to the limit of its graphics preset (the engine's
+ * `setQuality`): on a software GPU that is the Low preset's 1, also on a display scaled to 200%.
+ */
 async function sceneFits(win: Page): Promise<boolean> {
   return win.evaluate(() => {
     const canvas = document.querySelector<HTMLCanvasElement>('[data-scene-view] canvas');
     const pane = canvas?.closest<HTMLElement>('[data-scene-view]');
-    if (!canvas || !pane) return false;
+    const limit = (window as unknown as Probe).__stratlas.stage()?.quality.maxPixelRatio;
+    if (!canvas || !pane || limit === undefined) return false;
     const shown = canvas.getBoundingClientRect().width;
-    const buffer = canvas.width / window.devicePixelRatio;
+    const buffer = canvas.width / Math.min(window.devicePixelRatio, limit);
     return Math.abs(shown - pane.clientWidth) <= 1 && Math.abs(buffer - shown) <= 2;
   });
 }
@@ -165,7 +179,7 @@ test('each side panel folds away and comes back, and the views take the room', a
     const view = await win.evaluate(() => window.innerWidth);
     const stage0 = view - SIDEBAR - RIGHT;
     await expectWidth(win, '.stage', stage0);
-    await expect.poll(() => sceneFits(win)).toBe(true);
+    await expect.poll(() => sceneFits(win), SETTLED).toBe(true);
     // each handle lies inside its panel, against the edge it moves, both at one height; it is
     // as wide as the panel's edge padding (12) and 56 tall
     const lb = await left.boundingBox();
@@ -200,13 +214,13 @@ test('each side panel folds away and comes back, and the views take the room', a
     await expect(left).toHaveAccessibleName('Expand left sidebar');
     await expectWidth(win, '.sidebar', RAIL);
     await expectWidth(win, '.stage', stage0 + SIDEBAR - RAIL);
-    await expect.poll(() => sceneFits(win)).toBe(true);
+    await expect.poll(() => sceneFits(win), SETTLED).toBe(true);
     await expect(left).toBeInViewport();
     await shot(win, info, '2-left-collapsed.png');
     await left.click();
     await expect(win.locator('.app')).toHaveAttribute('data-sb', 'expanded');
     await expectWidth(win, '.stage', stage0);
-    await expect.poll(() => sceneFits(win)).toBe(true);
+    await expect.poll(() => sceneFits(win), SETTLED).toBe(true);
 
     // right: folds to a strip as wide as its tab at the window edge; the whole strip is the
     // handle that brings it back
@@ -216,7 +230,7 @@ test('each side panel folds away and comes back, and the views take the room', a
     await expect(right).toHaveAccessibleName('Expand right sidebar');
     await expectWidth(win, '.right', STRIP);
     await expectWidth(win, '.stage', stage0 + RIGHT - STRIP);
-    await expect.poll(() => sceneFits(win)).toBe(true);
+    await expect.poll(() => sceneFits(win), SETTLED).toBe(true);
     await expect(right).toBeInViewport();
     // nothing in the folded panel shows, takes focus or takes a click
     await expect(win.locator('.right')).toHaveAttribute('inert', '');
@@ -237,7 +251,7 @@ test('each side panel folds away and comes back, and the views take the room', a
     // both folded: only the rail and the strip are left beside the view
     await left.click();
     await expectWidth(win, '.stage', view - RAIL - STRIP);
-    await expect.poll(() => sceneFits(win)).toBe(true);
+    await expect.poll(() => sceneFits(win), SETTLED).toBe(true);
     await shot(win, info, '4-both-collapsed.png');
     await expectAccessible(win, 'Scene, both side panels folded');
 
@@ -245,16 +259,16 @@ test('each side panel folds away and comes back, and the views take the room', a
     await win.keyboard.press('3');
     await expect(win.locator('.stage')).toHaveAttribute('data-mode', 'split');
     await expect(win.locator('.maplibregl-canvas')).toBeVisible({ timeout: 15_000 });
-    await expect.poll(() => mapFits(win)).toBe(true);
+    await expect.poll(() => mapFits(win), SETTLED).toBe(true);
     await right.click();
     await expect(win.locator('.ws.right-off')).toHaveCount(0);
     await expectWidth(win, '.stage', view - RAIL - RIGHT);
-    await expect.poll(() => mapFits(win)).toBe(true);
-    await expect.poll(() => sceneFits(win)).toBe(true);
+    await expect.poll(() => mapFits(win), SETTLED).toBe(true);
+    await expect.poll(() => sceneFits(win), SETTLED).toBe(true);
     await left.click();
     await expectWidth(win, '.stage', stage0);
-    await expect.poll(() => mapFits(win)).toBe(true);
-    await expect.poll(() => sceneFits(win)).toBe(true);
+    await expect.poll(() => mapFits(win), SETTLED).toBe(true);
+    await expect.poll(() => sceneFits(win), SETTLED).toBe(true);
     await shot(win, info, '5-split-expanded.png');
     await win.keyboard.press('1');
 
@@ -336,6 +350,38 @@ async function atCentre(win: Page): Promise<string> {
   });
 }
 
+/**
+ * Give the window a size and wait until the page has it: the size asked for, or the nearest one
+ * the display and the window's minimum allow, which is the size the window itself reports. Says
+ * what the page got.
+ */
+async function resizeWindow(
+  app: ElectronApplication,
+  win: Page,
+  size: [number, number],
+): Promise<string> {
+  await app.evaluate(({ BrowserWindow }, [w, h]) => {
+    BrowserWindow.getAllWindows()[0]?.setContentSize(w, h);
+  }, size);
+  const sizes = async () => ({
+    window: await app.evaluate(
+      ({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getContentSize() ?? [],
+    ),
+    page: await win.evaluate(() => [innerWidth, innerHeight]),
+  });
+  await expect
+    .poll(async () => {
+      const { window, page } = await sizes();
+      const same =
+        window.length === 2 && window.every((n, i) => Math.abs(n - (page[i] ?? -9)) <= 1);
+      return same
+        ? 'the same'
+        : `the window is ${window.join(' x ')}, the page ${page.join(' x ')}`;
+    }, SETTLED)
+    .toBe('the same');
+  return (await sizes()).page.join(' x ');
+}
+
 /** Fold or unfold each panel with its own handle until it is as asked. */
 async function fold(win: Page, left: boolean, right: boolean): Promise<void> {
   for (const [side, folded] of [
@@ -346,9 +392,14 @@ async function fold(win: Page, left: boolean, right: boolean): Promise<void> {
     if ((await handle.getAttribute('aria-expanded')) === String(folded)) await handle.click();
     await expect(handle).toHaveAttribute('aria-expanded', String(!folded));
   }
-  await expect.poll(() => sceneFits(win)).toBe(true);
-  // the fold has finished (180 ms) before anything is measured
-  await win.waitForTimeout(300);
+  // the fold has finished before anything is measured: both panels are as wide as their state
+  // says, the main view has what is left of the window, and the 3D view is drawn at that size
+  const sidebar = left ? RAIL : SIDEBAR;
+  const panel = right ? STRIP : RIGHT;
+  await expectWidth(win, '.sidebar', sidebar);
+  await expectWidth(win, '.right', panel);
+  await expectWidth(win, '.stage', (await win.evaluate(() => window.innerWidth)) - sidebar - panel);
+  await expect.poll(() => sceneFits(win), SETTLED).toBe(true);
 }
 
 test('a click anywhere on the 3D view goes to the view, never to a handle', async ({
@@ -363,12 +414,7 @@ test('a click anywhere on the 3D view goes to the view, never to a handle', asyn
     // out (1280 wide, about 700 high: there the 3D canvas is 668 x 598 and the click that
     // perf.spec.ts makes 5 px in and 300 px down is at the height of the tabs); a usual window.
     for (const size of [MIN_SIZE, [1280, 700], SIZE] as [number, number][]) {
-      await app.evaluate(({ BrowserWindow }, [w, h]) => {
-        BrowserWindow.getAllWindows()[0]?.setContentSize(w, h);
-      }, size);
-      // the window takes the size, or the nearest one the display and its minimum allow
-      await win.waitForTimeout(400);
-      const inner = await win.evaluate(() => `${String(innerWidth)} x ${String(innerHeight)}`);
+      const inner = await resizeWindow(app, win, size);
       for (const [left, right] of [
         [false, false],
         [true, false],

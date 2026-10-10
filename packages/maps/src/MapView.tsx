@@ -189,23 +189,8 @@ export function MapView({
         </div>
       )}
       {status === 'ready' && noPacks && (
-        <div
-          role="note"
-          data-testid="map-no-packs"
-          style={{
-            position: 'absolute',
-            bottom: 8,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            whiteSpace: 'nowrap',
-            padding: '4px 8px',
-            borderRadius: 4,
-            background: 'var(--scrim)',
-            color: 'var(--fg-2)',
-            font: 'var(--t-12) var(--f-ui)',
-            pointerEvents: 'none',
-          }}
-        >
+        // laid out with the scale bar and the credits at the foot of the map (map.css)
+        <div role="note" data-testid="map-no-packs" className="aio-map-note">
           No map pack installed: project layers only. Add a pack in Settings, Offline maps.
         </div>
       )}

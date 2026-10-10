@@ -259,7 +259,10 @@ test.describe('Suggest boundaries', () => {
     }
   });
 
-  test('without a pipeline pack the button says what it needs', async ({ dataRoot, network }) => {
+  test('without the processing tools the button says so and leads to where they install', async ({
+    dataRoot,
+    network,
+  }) => {
     await createMagicProject(dataRoot);
     const app = await launchApp(dataRoot, {
       QUADRION_PIPELINE_PYTHON: '',
@@ -279,7 +282,12 @@ test.describe('Suggest boundaries', () => {
       const magic = win.getByTestId('survey-magic');
       await magic.click();
       await expect(magic).toHaveAttribute('aria-pressed', 'false');
-      await expect(win.getByTestId('survey-magic-status')).toContainText('needs the pipeline pack');
+      await expect(win.getByTestId('survey-magic-status')).toHaveText(
+        'Suggest boundaries cannot run yet: the processing tools are missing or need an update.',
+      );
+      // and the way to them: Settings, Processing tools
+      await win.getByTestId('survey-magic-tools').click();
+      await expect(win.locator('.set-page h1')).toHaveText('Processing tools');
     } finally {
       await app.close();
     }

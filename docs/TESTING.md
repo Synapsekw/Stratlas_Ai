@@ -899,7 +899,7 @@ Needs a build with G12 (`m11/g12-ai` or later) and a pipeline pack 0.5.0 built f
 - [ ] Hide the orthomosaic layer and click with **Suggest boundaries** on: "No ortho is shown here. Show an ortho layer of this survey, then click again."
 - [ ] **Whole site cut and fill** (31 January to 31 March), tick two suggested regions, **Snap to ortho edges**: the note says how many of the ticked regions follow the edge in the ortho, and why any other stayed as it was; snapped ones read "(snapped to the ortho)". **Keep** them.
 - [ ] Wi-Fi is still off, and every step above worked without it.
-- [ ] Optional, with an older pipeline pack (no `models\sam`): **Suggest boundaries** says "This pipeline pack has no boundary model. Update the pipeline pack to use Suggest boundaries."
+- [ ] Optional, with an older pipeline pack (no `models\sam`): **Suggest boundaries** says "The processing tools on this computer have no boundary model. Update them to use Suggest boundaries.", and **Update processing tools** beside it opens Settings, Processing tools.
 - [ ] **Detections**, a box on a photo, **Outline** in its details (key **M**): the same model outlines the object in the box.
 - [ ] On one of your own orthos: click three piles and one pit. Note for each whether the draft is on the toe, and send me the ones that are not (a screenshot is enough).
 

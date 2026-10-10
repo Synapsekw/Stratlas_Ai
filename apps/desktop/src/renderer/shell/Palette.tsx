@@ -20,6 +20,7 @@ import { diagnostics } from '../diagnostics/state';
 import { help } from '../help/store';
 import { legacyLayers } from '../legacy';
 import { openModelBuilder } from '../modeller/ModellerLayer';
+import { openProcessingTools } from '../processingTools';
 import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
 import { BASEMAPS, basemapPatch } from '../workspace/basemap';
@@ -103,6 +104,15 @@ export function Palette() {
         },
       });
     }
+    // where the processing tools (the pipeline pack) are installed and updated
+    list.push({
+      id: 'go:processing-tools',
+      title: 'Processing tools (Settings)',
+      group: 'Navigate',
+      icon: 'download',
+      keywords: ['pipeline pack', 'update', 'install', 'tools', 'python', 'jobs'],
+      run: openProcessingTools,
+    });
     const action = (id: string, title: string, icon: IconName, run: () => void, hint?: string) => {
       list.push({ id, title, group: 'Actions', icon, run, ...(hint ? { hint } : {}) });
     };
