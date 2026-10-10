@@ -38,8 +38,8 @@ async function openProject(win: Page): Promise<void> {
 }
 
 /**
- * Ask for a window size and wait until the page has it. The window takes the size or the nearest
- * one the display allows (a scaled display rounds by a few pixels), so the width it got is returned.
+ * Give the window a size and wait until the page has it: the size asked for, or the nearest one
+ * the display allows, which is the size the window itself reports. Returns the page's width.
  */
 async function resize(app: ElectronApplication, win: Page, w: number, h: number): Promise<number> {
   await app.evaluate(
@@ -49,10 +49,18 @@ async function resize(app: ElectronApplication, win: Page, w: number, h: number)
     [w, h] as const,
   );
   await expect
-    .poll(async () => Math.abs((await win.evaluate(() => innerWidth)) - w), {
-      message: `the window is about ${String(w)} wide`,
+    .poll(async () => {
+      const window = await app.evaluate(
+        ({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getContentSize() ?? [],
+      );
+      const page = await win.evaluate(() => [innerWidth, innerHeight]);
+      const same =
+        window.length === 2 && window.every((n, i) => Math.abs(n - (page[i] ?? -9)) <= 1);
+      return same
+        ? 'the same'
+        : `the window is ${window.join(' x ')}, the page ${page.join(' x ')}`;
     })
-    .toBeLessThanOrEqual(16);
+    .toBe('the same');
   return win.evaluate(() => innerWidth);
 }
 
@@ -157,6 +165,7 @@ test('the Projects header keeps every action in view, down to the smallest windo
       at?.items.filter((i) => !i.inside || !i.onTop),
       `at ${String(got)}`,
     ).toEqual([]);
+    // (a screen that cannot hold a 1440 window, a CI runner's, leaves this part out)
     if (got >= 1440) {
       expect(new Set(at?.items.map((i) => i.row)).size, 'rows of actions at 1440').toBe(1);
       expect(at?.items[0]?.width, 'the filter at 1440').toBe(240);
