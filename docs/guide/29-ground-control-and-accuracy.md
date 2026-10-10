@@ -17,6 +17,8 @@ Marking tells {product} where each target is in the photos. Open **Mark** on a p
 - Click the centre of the target to place a mark, then press **Enter** to confirm it. Press **C** to confirm a predicted mark as it is.
 - **S** skips a photo, **N** and **P** go to the next and previous photo, **+** and **-** zoom, **Esc** closes the marker.
 - A point needs marks in at least three photos; the marker counts them, for example "3 of 3 marks confirmed".
+- The ring is a search area, not the target: a flight without RTK logs heights that can be tens of metres off the survey, so the first rings can sit well beside the targets. Click the target itself. Once a point has two marks, {product} knows where it is: its ring sits on the target in every other photo, and photos that also see it join the list. The points you mark afterwards start with better rings as well.
+- A photo can be listed with its ring partly outside the picture: the target may be near the edge. Press **S** if it is not there.
 
 Marks are saved in the run as you go. Photos stay where they are: when a run reads photos from folders outside the project, the marker opens them read-only from those folders.
 

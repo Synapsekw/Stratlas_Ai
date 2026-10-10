@@ -1,9 +1,15 @@
 /**
  * The GCP marker (G4): the photos that see the selected point, nearest the image centre first;
  * the photo with a loupe, the prediction ring and any draft detections; click to place a mark.
- * Keyboard: Enter or C confirms (the draft, or the prediction), S skips the photo, N or the right
- * arrow goes to the next photo, P or the left arrow to the previous one, + and - zoom, Esc goes
- * back to the table. Every change is saved at once (`photo:writeGcp`, atomic with a `.bak`).
+ * Keyboard: Enter or C confirms (the draft, or the prediction) and goes to the next photo without
+ * a mark, S skips the photo, N or the right arrow goes to the next photo, P or the left arrow to
+ * the previous one, + and - zoom, Esc goes back to the table. Every change is saved at once
+ * (`photo:writeGcp`, atomic with a `.bak`).
+ *
+ * The predictions learn from the marks (`marks.ts`): two confirmed marks of a point triangulate
+ * it, which places it in every other photo, and the marked points say how far the survey sits
+ * from the cameras (a flight without RTK logs heights tens of metres off), which places the
+ * points not marked yet.
  */
 import {
   PHOTO_RUN_FILES,
@@ -21,11 +27,11 @@ import {
   applyMark,
   clickToPixel,
   confirmedMarks,
-  gcpLocal,
+  inFrame,
   loupeBackground,
+  markerList,
   MIN_MARKS,
-  photosFor,
-  predictions,
+  nextToMark,
   readCamerasFile,
   sfmPhotos,
   step,
@@ -62,7 +68,8 @@ export function GcpMarker({
   onPoint: (id: string) => void;
 }) {
   const project = useWorkspace((s) => s.project);
-  const [index, setIndex] = useState(0);
+  // the photo shown, by its id: a mark can add photos to the list and reorder it
+  const [shown, setShown] = useState<string | null>(null);
   const [zoom, setZoom] = useState(0);
   const [loadedSize, setLoadedSize] = useState<{ id: string; size: [number, number] } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -157,11 +164,17 @@ export function GcpMarker({
     if (!project || !('epsg' in project.manifest.crs)) return null;
     return { epsg: project.manifest.crs.epsg, origin: project.manifest.origin };
   }, [project]);
-  const fileEpsg = 'epsg' in gcp.crs ? gcp.crs.epsg : null;
-  const local = frame && fileEpsg !== null ? gcpLocal(point, fileEpsg, frame) : null;
-  const preds = useMemo(() => predictions(point, local, photos), [point, local, photos]);
-  const list = useMemo(() => photosFor(point, preds, photos), [point, preds, photos]);
-  const current = list[Math.min(index, Math.max(0, list.length - 1))];
+  // the run's ground sample distance: where the model's ground is before any mark (groundShift)
+  const gsdCm = run.accuracy?.gsdCm;
+  const list = useMemo(
+    () => markerList(gcp, point, photos, frame, gsdCm),
+    [gcp, point, photos, frame, gsdCm],
+  );
+  const index = Math.max(
+    0,
+    list.findIndex((x) => x.photo.id === shown),
+  );
+  const current = list[index];
   const natural = current && loadedSize?.id === current.photo.id ? loadedSize.size : null;
   const mark = current ? point.marks.find((m) => m.photo === current.photo.id) : undefined;
   const confirmed = confirmedMarks(point).length;
@@ -205,6 +218,11 @@ export function GcpMarker({
     viewer.current?.focus();
   }, [point.id]);
 
+  // a prediction beside the photo (its ring reaches in) says where to look; it is never a mark
+  const predicted =
+    current?.prediction && inFrame(current.prediction.px, current.photo.size)
+      ? current.prediction.px
+      : undefined;
   // keep the prediction (or the mark) in view when the photo or the zoom changes
   const target = mark?.px ?? current?.prediction?.px ?? null;
   useEffect(() => {
@@ -217,20 +235,28 @@ export function GcpMarker({
 
   const act = async (a: MarkAction, advance: boolean) => {
     setSaving(true);
+    // this photo stays the one shown while the mark is saved, wherever the list now has it
+    setShown(a.photo);
     const next = applyMark(point, a, new Date().toISOString());
-    const ok = await onSave(withPoint(gcp, next));
+    const file = withPoint(gcp, next);
+    const ok = await onSave(file);
     setSaving(false);
-    if (ok && advance && list.length > 1) setIndex((i) => step(i, list.length, 1));
+    // on to the next photo that still needs a mark, in the list as this mark leaves it
+    if (ok && advance)
+      setShown(nextToMark(markerList(file, next, photos, frame, gsdCm), next, a.photo));
+  };
+  const go = (by: 1 | -1) => {
+    setShown(list[step(index, list.length, by)]?.photo.id ?? null);
   };
   const confirm = () => {
     if (!current) return;
-    const px = mark?.px ?? current.prediction?.px;
+    const px = mark?.px ?? predicted;
     if (!px) return;
     void act({ kind: 'confirm', photo: current.photo.id, px: [px[0], px[1]] }, true);
   };
   const skip = () => {
     if (!current) return;
-    const px = current.prediction?.px;
+    const px = predicted;
     void act(
       { kind: 'skip', photo: current.photo.id, ...(px ? { px: [px[0], px[1]] } : {}) },
       true,
@@ -240,8 +266,8 @@ export function GcpMarker({
     const k = e.key;
     if (k === 'Enter' || k === 'c' || k === 'C') confirm();
     else if (k === 's' || k === 'S') skip();
-    else if (k === 'n' || k === 'N' || k === 'ArrowRight') setIndex((i) => step(i, list.length, 1));
-    else if (k === 'p' || k === 'P' || k === 'ArrowLeft') setIndex((i) => step(i, list.length, -1));
+    else if (k === 'n' || k === 'N' || k === 'ArrowRight') go(1);
+    else if (k === 'p' || k === 'P' || k === 'ArrowLeft') go(-1);
     else if (k === '+' || k === '=') setZoom((z) => Math.min(ZOOMS.length - 1, z + 1));
     else if (k === '-') setZoom((z) => Math.max(0, z - 1));
     else if (k === 'Escape') onBack();
@@ -257,7 +283,7 @@ export function GcpMarker({
   if (!project) return null;
   const size = current?.photo.size ?? [1, 1];
   const ring = current?.prediction;
-  const loupeAt = target;
+  const loupeAt = mark?.px ?? predicted ?? null;
 
   return (
     <div className="ph-marker" data-testid="gcp-marker">
@@ -293,7 +319,7 @@ export function GcpMarker({
                   type="button"
                   aria-current={i === index ? 'true' : undefined}
                   onClick={() => {
-                    setIndex(i);
+                    setShown(x.photo.id);
                   }}
                 >
                   <span className="mono">{x.photo.name}</span>
@@ -448,7 +474,7 @@ export function GcpMarker({
           <button
             type="button"
             className="btn sm primary"
-            disabled={!current || (!mark && !ring)}
+            disabled={!current || (!mark && !predicted)}
             onClick={confirm}
           >
             <Icon name="check" size={14} />

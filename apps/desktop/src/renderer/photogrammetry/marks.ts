@@ -5,7 +5,7 @@
  * target is hidden or blurred). Pure functions over `GcpFile`, so the marker view and the tests
  * share them.
  */
-import { worldToPixel } from '@aio/annotate';
+import { cameraToPixel, conjugate, pixelToWorldRay, rotate } from '@aio/annotate';
 import { fromWgs84, projectToLocal, toWgs84 } from '@aio/geo';
 import {
   PhotoCamerasFile,
@@ -125,24 +125,181 @@ export function gcpLonLat(p: GcpPoint, fileEpsg: number): [number, number] | nul
 /** Search radius of a prediction from photo positions only (GNSS, before alignment). */
 export const GNSS_RADIUS_PX = 80;
 
+/** Search radius of a prediction from the point's own confirmed marks (`triangulate`). */
+export const MARKED_RADIUS_PX = 12;
+/** Two marks place a point only when their rays cross at this angle or more (sine of 2 degrees). */
+const MIN_RAY_SIN = Math.sin((2 * Math.PI) / 180);
+
+const median = (values: readonly number[]): number => {
+  const v = [...values].sort((a, b) => a - b);
+  const mid = v.length >> 1;
+  return v.length % 2 ? (v[mid] ?? 0) : ((v[mid - 1] ?? 0) + (v[mid] ?? 0)) / 2;
+};
+
 /**
- * Where the point should appear in each photo, from the photos' poses. The run's own predictions
- * (`predicted`, written by `photo.align` from the calibrated cameras) win when present.
+ * Where a point's confirmed marks put it in the cameras' frame: the position nearest the rays
+ * through its marks, or null with fewer than two marked photos that have a pose, or when the rays
+ * are close to parallel. This is the point as the model sees it, whatever the survey's height
+ * datum or the flight's GNSS bias.
+ */
+export function triangulate(p: GcpPoint, photos: readonly MarkerPhoto[]): Vec3 | null {
+  const byId = new Map(photos.map((ph) => [ph.id, ph]));
+  const rays: { origin: Vec3; dir: Vec3 }[] = [];
+  for (const m of confirmedMarks(p)) {
+    const ph = byId.get(m.photo);
+    if (!ph?.pos || !ph.q || !ph.lens) continue;
+    rays.push(pixelToWorldRay({ pos: ph.pos, q: ph.q }, ph.lens, m.px, ph.size));
+  }
+  const first = rays[0];
+  if (!first || rays.length < 2) return null;
+  // the point nearest every ray: sum(I - u u^T) x = sum(I - u u^T) o, a symmetric 3 x 3 system
+  let a = 0;
+  let b = 0;
+  let c = 0;
+  let d = 0;
+  let e = 0;
+  let f = 0;
+  const r: Vec3 = [0, 0, 0];
+  let spread = 0;
+  const v = first.dir;
+  for (const { origin: o, dir: u } of rays) {
+    const along = o[0] * u[0] + o[1] * u[1] + o[2] * u[2];
+    a += 1 - u[0] * u[0];
+    b -= u[0] * u[1];
+    c -= u[0] * u[2];
+    d += 1 - u[1] * u[1];
+    e -= u[1] * u[2];
+    f += 1 - u[2] * u[2];
+    r[0] += o[0] - u[0] * along;
+    r[1] += o[1] - u[1] * along;
+    r[2] += o[2] - u[2] * along;
+    spread = Math.max(
+      spread,
+      Math.hypot(u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]),
+    );
+  }
+  if (spread < MIN_RAY_SIN) return null;
+  const det = a * (d * f - e * e) - b * (b * f - c * e) + c * (b * e - c * d);
+  if (Math.abs(det) < 1e-12) return null;
+  const x: Vec3 = [
+    (r[0] * (d * f - e * e) - b * (r[1] * f - r[2] * e) + c * (r[1] * e - r[2] * d)) / det,
+    (a * (r[1] * f - r[2] * e) - r[0] * (b * f - c * e) + c * (b * r[2] - c * r[1])) / det,
+    (a * (d * r[2] - e * r[1]) - b * (b * r[2] - c * r[1]) + r[0] * (b * e - c * d)) / det,
+  ];
+  // behind a camera: the marks do not agree on one point
+  for (const { origin: o, dir: u } of rays)
+    if ((x[0] - o[0]) * u[0] + (x[1] - o[1]) * u[1] + (x[2] - o[2]) * u[2] <= 0) return null;
+  return x;
+}
+
+/** A point of the GCP file with its surveyed position in the project's local frame. */
+export interface PlacedPoint {
+  point: GcpPoint;
+  local: Vec3 | null;
+}
+
+/**
+ * The model's ground level against the survey's, before any mark: `[0, up, 0]`, metres. A run
+ * states its ground sample distance, the median depth of each photo's tie points over its focal
+ * length, so the ground lies `gsd * focal` below a photo that looks down; ground control lies on
+ * the ground. Null without a stated GSD, without a photo looking down or without a placed point.
+ */
+export function groundShift(
+  points: readonly PlacedPoint[],
+  photos: readonly MarkerPhoto[],
+  gsdCm: number | undefined,
+): Vec3 | null {
+  if (gsdCm === undefined || !(gsdCm > 0)) return null;
+  const ground: number[] = [];
+  for (const ph of photos) {
+    if (!ph.pos || !ph.q || ph.lens?.model !== 'pinhole') continue;
+    // 1 for a nadir photo; an oblique photo's depth is not its height above the ground
+    const down = -rotate(ph.q, [0, 0, -1])[1];
+    if (down < Math.SQRT1_2) continue;
+    const focalPx = ph.size[0] / 2 / Math.tan((ph.lens.hfovDeg * Math.PI) / 360);
+    ground.push(ph.pos[1] - (gsdCm / 100) * focalPx * down);
+  }
+  const surveyed: number[] = [];
+  for (const { point, local } of points) if (local && !point.disabled) surveyed.push(local[1]);
+  if (!ground.length || !surveyed.length) return null;
+  return [0, median(ground) - median(surveyed), 0];
+}
+
+/**
+ * How far the cameras' frame sits from the survey, metres in the local frame (add it to a surveyed
+ * position before projecting it). A flight without RTK logs heights tens of metres off the survey
+ * datum and positions a few metres off, and the GNSS-only alignment inherits both: projected at
+ * its surveyed height a point lands far from its target, or outside the photos that see it.
+ *
+ * The marks say where the survey really is: every point with two confirmed marks is triangulated,
+ * and the median of (triangulated - surveyed) is the shift. Before any mark, `groundShift` gives
+ * its vertical part. Null when neither is known: the positions are projected as surveyed.
+ */
+export function surveyShift(
+  points: readonly PlacedPoint[],
+  photos: readonly MarkerPhoto[],
+  gsdCm?: number,
+): Vec3 | null {
+  const seen: Vec3[] = [];
+  for (const { point, local } of points) {
+    if (!local || point.disabled) continue;
+    const x = triangulate(point, photos);
+    if (x) seen.push([x[0] - local[0], x[1] - local[1], x[2] - local[2]]);
+  }
+  if (seen.length === 0) return groundShift(points, photos, gsdCm);
+  return [
+    median(seen.map((s) => s[0])),
+    median(seen.map((s) => s[1])),
+    median(seen.map((s) => s[2])),
+  ];
+}
+
+/** True for a position inside the photo, or within `margin` pixels of it. */
+export const inFrame = (
+  px: readonly [number, number],
+  size: readonly [number, number],
+  margin = 0,
+): boolean =>
+  px[0] >= -margin && px[1] >= -margin && px[0] <= size[0] + margin && px[1] <= size[1] + margin;
+
+/**
+ * A position in every photo whose search ring reaches into the frame: a prediction is only as good
+ * as its radius, so a target near the edge of a photo may be predicted just beside it. Such a photo
+ * is offered (the target may well be in it), but its prediction is not a mark to confirm.
+ */
+const project = (at: Vec3, photos: readonly MarkerPhoto[], radiusPx: number): GcpPrediction[] => {
+  const out: GcpPrediction[] = [];
+  for (const ph of photos) {
+    if (!ph.pos || !ph.q || !ph.lens) continue;
+    const rel: Vec3 = [at[0] - ph.pos[0], at[1] - ph.pos[1], at[2] - ph.pos[2]];
+    const px = cameraToPixel(ph.lens, rotate(conjugate(ph.q), rel), ph.size);
+    if (px && inFrame(px, ph.size, radiusPx))
+      out.push({ photo: ph.id, px: [px[0], px[1]], radiusPx });
+  }
+  return out;
+};
+
+/**
+ * Where the point should appear in each photo, best knowledge first:
+ *
+ * 1. its own confirmed marks: with two, the point is triangulated and projected into every photo;
+ * 2. the run's own predictions (`predicted`, written by `photo.align` and `photo.georef` from the
+ *    calibrated cameras);
+ * 3. its surveyed position moved by `shift` (`surveyShift`: what the marks of the other points,
+ *    or the run's ground level, say about the survey), through the photos' poses.
  */
 export function predictions(
   p: GcpPoint,
   local: Vec3 | null,
   photos: readonly MarkerPhoto[],
+  shift: Vec3 | null = null,
 ): GcpPrediction[] {
+  const own = triangulate(p, photos);
+  if (own) return project(own, photos, MARKED_RADIUS_PX);
   if (p.predicted?.length) return p.predicted;
   if (!local) return [];
-  const out: GcpPrediction[] = [];
-  for (const ph of photos) {
-    if (!ph.pos || !ph.q || !ph.lens) continue;
-    const px = worldToPixel({ pos: ph.pos, q: ph.q }, ph.lens, local, ph.size);
-    if (px) out.push({ photo: ph.id, px: [px[0], px[1]], radiusPx: GNSS_RADIUS_PX });
-  }
-  return out;
+  const at: Vec3 = shift ? [local[0] + shift[0], local[1] + shift[1], local[2] + shift[2]] : local;
+  return project(at, photos, GNSS_RADIUS_PX);
 }
 
 /**
@@ -173,6 +330,49 @@ export function photosFor<P extends MarkerPhoto>(
     }
   }
   return out.map(({ photo, prediction }) => ({ photo, prediction }));
+}
+
+/**
+ * The marker's list for one point of a GCP file: every point placed in the project's frame, the
+ * survey's shift learned from the file's marks (`surveyShift`), the predictions and their photos.
+ */
+export function markerList<P extends MarkerPhoto>(
+  f: GcpFile,
+  p: GcpPoint,
+  photos: readonly P[],
+  frame: Frame | null,
+  gsdCm?: number,
+): { photo: P; prediction: GcpPrediction | null }[] {
+  const epsg = 'epsg' in f.crs ? f.crs.epsg : null;
+  const place = (q: GcpPoint) => (frame && epsg !== null ? gcpLocal(q, epsg, frame) : null);
+  const shift = surveyShift(
+    f.points.map((q) => ({ point: q, local: place(q) })),
+    photos,
+    gsdCm,
+  );
+  return photosFor(p, predictions(p, place(p), photos, shift), photos);
+}
+
+/**
+ * The photo to show after marking or skipping `from`: the next one in the list without a mark
+ * (wrapping), else simply the next one. The list is the one after the action: a second mark
+ * triangulates the point, which can add photos and reorder them.
+ */
+export function nextToMark(
+  list: readonly { photo: MarkerPhoto }[],
+  p: GcpPoint,
+  from: string,
+): string | null {
+  const marked = new Set(p.marks.map((m) => m.photo));
+  const i = Math.max(
+    0,
+    list.findIndex((x) => x.photo.id === from),
+  );
+  for (let k = 1; k <= list.length; k++) {
+    const id = list[(i + k) % list.length]?.photo.id;
+    if (id !== undefined && !marked.has(id)) return id;
+  }
+  return list[(i + 1) % Math.max(1, list.length)]?.photo.id ?? null;
 }
 
 // ---------------------------------------------------------------- pixels
