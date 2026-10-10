@@ -17,6 +17,13 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      # macOS is parked (founder, 10 Oct 2026: Windows only until it is solid). Its jobs are all
+      # still here: this switch runs them too.
+      macos:
+        description: Also run the macOS jobs (parked since 10 Oct 2026)
+        type: boolean
+        default: false
 
 concurrency:
   group: release-${{ github.ref }}
@@ -247,8 +254,11 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+  # Parked with the rest of macOS: only "Run workflow" with the macOS switch builds it, so a v*
+  # tag builds the Windows packages alone until macOS is taken up again.
   package-mac:
     name: package (macOS universal)
+    if: inputs.macos
     runs-on: macos-latest
     timeout-minutes: 90
     defaults:
@@ -382,13 +392,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: windows-2025
-            arch: win-x64
-          - os: macos-15
-            arch: macos-arm64
-          - os: macos-15-intel
-            arch: macos-x64
+        # win-x64; macos-arm64 and macos-x64 only when "Run workflow" asks for macOS
+        include: ${{ fromJSON(inputs.macos && '[{"os":"windows-2025","arch":"win-x64"},{"os":"macos-15","arch":"macos-arm64"},{"os":"macos-15-intel","arch":"macos-x64"}]' || '[{"os":"windows-2025","arch":"win-x64"}]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     defaults:
