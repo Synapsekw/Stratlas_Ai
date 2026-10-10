@@ -2514,8 +2514,29 @@ export const ipc = {
     response: OkOrFailure,
   },
   /**
+   * Whether **Suggest boundaries** can run (G12): the segmentation model is the pipeline pack's
+   * `models/sam/` (ADR 0011). `no-pack`: no pipeline pack; `no-model`: a pack without the model;
+   * `licence`: the model card's licence is refused by the model licence gate.
+   */
+  'surveyAi:status': {
+    request: Empty,
+    response: z.object({
+      available: z.boolean(),
+      model: z.string().optional(),
+      reason: z.enum(['no-pack', 'no-model', 'no-runtime', 'licence', 'failed']).optional(),
+      detail: z.string().optional(),
+    }),
+  },
+  /**
    * **Suggest boundaries** (G12): a draft outline around a click on an ortho layer, from the
    * local segmentation model; a draft until a person accepts it.
+   *
+   * The renderer sends a square crop of the ortho around the click (`crop`, RGB, north up, made
+   * from the layer's own tiles), placed in the project CRS by its top-left corner and pixel size.
+   * Main keeps the model's embeddings of the last crop by `crop.key`: a request with the same key
+   * may leave `rgb` out (a second click, a new buffer or vertex count), and is answered with code
+   * `stale` when main no longer holds it. `touchesEdge` says the outline reached the crop's edge
+   * (the renderer asks again with a larger crop).
    */
   'surveyAi:suggest': {
     request: z
@@ -2524,6 +2545,21 @@ export const ipc = {
         /** The ortho raster layer. */
         layer: Id,
         click: SitePoint2,
+        crop: z
+          .object({
+            /** Names this crop (layer, place, size): equal keys are equal pixels. */
+            key: z.string().min(1).max(300),
+            /** Pixels per side (the model's input is 1024). */
+            size: z.number().int().min(64).max(1024),
+            /** Project CRS easting of the crop's left edge and northing of its top edge. */
+            x0: z.number(),
+            y1: z.number(),
+            /** Ground size of one pixel, project CRS units. */
+            res: z.number().positive(),
+            /** `size` x `size` x 3 bytes, row 0 north. */
+            rgb: z.instanceof(Uint8Array).optional(),
+          })
+          .strict(),
         /** Grow or shrink the outline, pixels (keys U and I). */
         bufferPx: z.number().int().min(-50).max(50).optional(),
         /** Target vertex count (keys J and K). */
@@ -2535,8 +2571,13 @@ export const ipc = {
         ok: z.literal(true),
         ring: z.array(SitePoint2),
         score: z.number().min(0).max(1),
+        touchesEdge: z.boolean(),
       }),
-      Failure,
+      z.object({
+        ok: z.literal(false),
+        error: z.string(),
+        code: z.enum(['stale', 'unavailable', 'nothing']).optional(),
+      }),
     ]),
   },
   /**
