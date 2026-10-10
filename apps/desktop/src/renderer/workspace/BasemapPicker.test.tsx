@@ -45,6 +45,7 @@ const DEFAULTS = {
   imageryPack: null,
   aroundTerrain: false,
   aroundImagery: false,
+  onlineSatellite: false,
 };
 
 let host: HTMLDivElement;

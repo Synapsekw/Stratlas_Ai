@@ -24,6 +24,8 @@ export interface BasemapPrefs {
   streets: boolean;
   /** The one imagery pack to draw, or null for the best available. */
   imageryPack: string | null;
+  /** Online satellite (Sentinel-2) is switched on (main holds the switch). */
+  onlineSatellite?: boolean;
 }
 
 export type LonLat = readonly [number, number];
@@ -58,6 +60,8 @@ export interface BasemapDraw {
   hillshade: boolean;
   /** The streets and names of the basemap over the imagery. */
   streets: boolean;
+  /** Online satellite under the packs. */
+  online?: boolean;
 }
 
 export interface BasemapModel {
@@ -108,6 +112,7 @@ export function basemapModel(
       satellite: satelliteOn,
       hillshade: hillshadeOn,
       streets: choice !== 'imagery',
+      ...(prefs.onlineSatellite ? { online: true } : {}),
     },
   };
 }

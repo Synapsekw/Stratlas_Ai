@@ -9,7 +9,8 @@
  * - the Satellite basemap: the installed imagery packs under the streets on the project's maps,
  *   and the terrain packs as a hillshade (on by default when there are packs). The map type
  *   picker on the map, the Settings checkboxes and the command palette all write the choices
- *   here; `basemap.ts` says what they mean for a site.
+ *   here; `basemap.ts` says what they mean for a site;
+ * - online satellite (Sentinel-2, off by default) under the packs, when the person switched it on.
  *
  * The choices are remembered on this computer; terrain and imagery around the site are also
  * written to the Globe settings (`GlobeSettings.aroundSite`) once that channel is built (G6).
@@ -60,6 +61,13 @@ export interface RasterPrefs {
   /** Terrain and imagery around the site in 3D. */
   aroundTerrain: boolean;
   aroundImagery: boolean;
+  /**
+   * Online satellite (Sentinel-2) at the bottom of the map's satellite stack. Main holds and
+   * enforces the switch (userData `online.json`, ADR 0007 amended 10 Oct 2026); this copy says
+   * what to draw and follows main on every refresh. Change it with `setOnlineSatellite`, which
+   * asks main first.
+   */
+  onlineSatellite: boolean;
 }
 
 const DEFAULTS: RasterPrefs = {
@@ -69,6 +77,7 @@ const DEFAULTS: RasterPrefs = {
   imageryPack: null,
   aroundTerrain: false,
   aroundImagery: false,
+  onlineSatellite: false,
 };
 
 function storage(): Storage | null {
@@ -93,6 +102,8 @@ function readPrefs(): RasterPrefs {
       imageryPack: typeof v.imageryPack === 'string' && v.imageryPack ? v.imageryPack : null,
       aroundTerrain: pick('aroundTerrain'),
       aroundImagery: pick('aroundImagery'),
+      // main says (the first refresh): until then nothing online is drawn or asked for
+      onlineSatellite: false,
     };
   } catch {
     return { ...DEFAULTS };
@@ -110,6 +121,11 @@ interface RasterState {
   /** Bumped when packs or tilesets may have changed (a pack or tiles job finished). */
   rev: number;
   set(patch: Partial<RasterPrefs>): void;
+  /**
+   * Switch online satellite on or off: main first (it refuses every tile until its switch is on),
+   * then the layer. Answers an error message, or null when it is done.
+   */
+  setOnlineSatellite(on: boolean): Promise<string | null>;
   refresh(): void;
 }
 
@@ -128,19 +144,35 @@ export const rasterPacks = createStore<RasterState>()((set, get) => ({
     }
     if ('aroundTerrain' in patch || 'aroundImagery' in patch) void saveAroundSite(prefs);
   },
+  async setOnlineSatellite(on) {
+    const bridge = aio();
+    if (!bridge) return 'Settings are not available.';
+    try {
+      const r = await bridge.invoke('onlineTiles:setSatellite', { on });
+      if (!r.ok) return r.error;
+      get().set({ onlineSatellite: r.satellite });
+      return null;
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+  },
   refresh() {
     const bridge = aio();
     if (!bridge) return;
     void Promise.all([
       bridge.invoke('imageryPacks:list', {}).catch(() => null),
       bridge.invoke('terrainPacks:list', {}).catch(() => null),
-    ]).then(([i, t]) => {
+      bridge.invoke('onlineTiles:status', {}).catch(() => null),
+    ]).then(([i, t, status]) => {
       const cur = get();
       set({
         imagery: unchanged(cur.imagery, i?.ok ? i.packs : []),
         terrain: unchanged(cur.terrain, t?.ok ? t.packs : []),
         rev: cur.rev + 1,
       });
+      // main decides whether online satellite is on; the layer follows it
+      const online = status?.satellite === true;
+      if (status && online !== get().prefs.onlineSatellite) get().set({ onlineSatellite: online });
     });
   },
 }));
@@ -352,7 +384,7 @@ export function useSatelliteMap(map: MapController | null, draw: BasemapDraw): v
   const touched = useRef<MapController | null>(null);
   useEffect(() => {
     if (!map) return;
-    const plain = !draw.satellite && !draw.hillshade && draw.streets;
+    const plain = !draw.satellite && !draw.hillshade && draw.streets && !draw.online;
     if (plain && touched.current !== map) return;
     touched.current = map;
     let live = true;

@@ -1,4 +1,4 @@
-import type { RasterPackInfo, RasterPackKind } from '@aio/schema';
+import { ONLINE_SATELLITE, type RasterPackInfo, type RasterPackKind } from '@aio/schema';
 import type {
   GetResourceResponse,
   HillshadeLayerSpecification,
@@ -95,6 +95,36 @@ export function hillshadeLayer(pack: Pack): HillshadeLayerSpecification {
   };
 }
 
+/**
+ * Online satellite (ADR 0007, amendment of 10 Oct 2026): Sentinel-2 cloudless 2016, streamed by
+ * main through `aio://online/...` while the person has it switched on. The description
+ * (`ONLINE_SATELLITE` in `@aio/schema`) names no server; the source carries the credit the licence
+ * asks for, so the map's attribution control shows it while the layer is on.
+ */
+export const ONLINE_SATELLITE_SOURCE = `${PREFIX}online-${ONLINE_SATELLITE.id}`;
+export const ONLINE_SATELLITE_LAYER = `${ONLINE_SATELLITE_SOURCE}-layer`;
+
+export function onlineSatelliteSource(): RasterSourceSpecification {
+  return {
+    type: 'raster',
+    tiles: [ONLINE_SATELLITE.tileUrl],
+    tileSize: ONLINE_SATELLITE.tileSize,
+    minzoom: ONLINE_SATELLITE.minZoom,
+    // the imagery's own detail: a closer view stretches these tiles, no deeper one is asked for
+    maxzoom: ONLINE_SATELLITE.maxZoom,
+    attribution: ONLINE_SATELLITE.attribution,
+  };
+}
+
+export function onlineSatelliteLayer(): RasterLayerSpecification {
+  return {
+    id: ONLINE_SATELLITE_LAYER,
+    type: 'raster',
+    source: ONLINE_SATELLITE_SOURCE,
+    paint: { 'raster-fade-duration': 0 },
+  };
+}
+
 /** Where raster layers go: under the first line or label layer (streets and names on top). */
 export function insertBefore(
   layers: readonly Pick<LayerSpecification, 'id' | 'type'>[],
@@ -123,6 +153,11 @@ export interface RasterPackDisplay {
   satellite: boolean;
   /** Shade the relief of the most detailed terrain pack. */
   hillshade: boolean;
+  /**
+   * Draw the online satellite imagery at the bottom of the stack: under the imagery packs (which
+   * are sharper and win where they have tiles) and under the project's own orthos.
+   */
+  online?: boolean;
 }
 
 /**
@@ -142,6 +177,11 @@ export function applyRasterPacks(map: RasterMap, d: RasterPackDisplay): () => vo
     map.addLayer(l, before);
     added.layers.push(l.id);
   };
+  if (d.online) {
+    // first, so every pack layer added below draws over it
+    addSource(ONLINE_SATELLITE_SOURCE, onlineSatelliteSource());
+    addLayer(onlineSatelliteLayer());
+  }
   if (d.satellite) {
     for (const p of d.imagery) addSource(rasterSourceId(p), imagerySource(p));
     for (const l of satelliteLayers(d.imagery)) addLayer(l);
@@ -169,6 +209,11 @@ export function syncRasterPacks(map: RasterMap, d: RasterPackDisplay): void {
   const sources = new Map<string, RasterSourceSpecification | RasterDEMSourceSpecification>();
   /** Bottom to top. */
   const layers: (RasterLayerSpecification | HillshadeLayerSpecification)[] = [];
+  if (d.online) {
+    // the bottom of the stack: every pack layer draws over it
+    sources.set(ONLINE_SATELLITE_SOURCE, onlineSatelliteSource());
+    layers.push(onlineSatelliteLayer());
+  }
   if (d.satellite) {
     const imagery = d.imagery.filter((p) => p.kind === 'imagery');
     for (const p of imagery) sources.set(rasterSourceId(p), imagerySource(p));

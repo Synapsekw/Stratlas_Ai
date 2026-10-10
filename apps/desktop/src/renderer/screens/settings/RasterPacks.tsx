@@ -2,9 +2,16 @@
  * Settings, Map packs: imagery and terrain packs (M10 G7, decision 4). Lists the installed packs
  * with their licence and attribution, imports the customer's GeoTIFF or COG (or a DEM) as a pack
  * through the pipeline pack, removes packs, and holds the display choices: the Satellite map, the
- * hillshade, and terrain and imagery around the site in 3D.
+ * hillshade, and terrain and imagery around the site in 3D. Also the one online source (ADR 0007,
+ * amendment of 10 Oct 2026): the Online satellite switch, off by default and not available on an
+ * offline-only workstation, with its notice the first time and the cache of viewed tiles.
  */
-import type { RasterPackInfo, TerrainDatum } from '@aio/schema';
+import {
+  ONLINE_SATELLITE,
+  type OnlineTileCache,
+  type RasterPackInfo,
+  type TerrainDatum,
+} from '@aio/schema';
 import { formatBytes, formatDate, Icon, t } from '@aio/ui';
 import { useEffect, useRef, useState } from 'react';
 import { bridge, shell, useShell } from '../../shell';
@@ -225,15 +232,34 @@ function PackRow({ pack, onRemoved }: { pack: RasterPackInfo; onRemoved: (e?: st
   );
 }
 
+/** Whether the person has read what online satellite sends (shown the first time only). */
+const NOTICE_KEY = 'stratlas.onlineSatelliteNotice';
+function noticeSeen(): boolean {
+  try {
+    return localStorage.getItem(NOTICE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+function markNoticeSeen(): void {
+  try {
+    localStorage.setItem(NOTICE_KEY, '1');
+  } catch {
+    // blocked storage: the notice shows again next time
+  }
+}
+
 function Toggle({
   label,
   checked,
   disabled,
+  describedBy,
   onChange,
 }: {
   label: string;
   checked: boolean;
   disabled?: boolean;
+  describedBy?: string;
   onChange: (on: boolean) => void;
 }) {
   return (
@@ -242,6 +268,7 @@ function Toggle({
         type="checkbox"
         checked={checked}
         disabled={disabled}
+        aria-describedby={describedBy}
         onChange={(e) => {
           onChange(e.target.checked);
         }}
@@ -261,6 +288,12 @@ export function RasterPacks() {
 
   const [jobId, setJobId] = useState<string | null>(null);
 
+  // Online satellite: main enforces the switch and owns the cache; this page asks it.
+  const offlineOnly = useShell((s) => s.settings.offlineOnly === true);
+  const online = prefs.onlineSatellite;
+  const [asking, setAsking] = useState(false);
+  const [cache, setCache] = useState<OnlineTileCache | null>(null);
+
   useEffect(() => {
     listenForJobs();
     rasterPacks.getState().refresh();
@@ -276,6 +309,33 @@ export function RasterPacks() {
     block.current?.querySelector<HTMLElement>('button')?.focus();
     shell.getState().clearSettingsFocus();
   }, [asked]);
+
+  useEffect(() => {
+    let live = true;
+    void bridge.call('onlineTiles:status', {}).then((r) => {
+      if (live && r.ok) setCache(r.value.cache);
+    });
+    return () => {
+      live = false;
+    };
+  }, [online]);
+
+  const setOnline = async (on: boolean) => {
+    setAsking(false);
+    const err = await rasterPacks.getState().setOnlineSatellite(on);
+    if (err) setError(err);
+    else if (on) markNoticeSeen();
+  };
+  const toggleOnline = (on: boolean) => {
+    // the first time: say what is sent, and switch on only on the person's yes
+    if (on && !noticeSeen()) setAsking(true);
+    else void setOnline(on);
+  };
+  const clearCache = async () => {
+    const r = await bridge.call('onlineTiles:clearCache', {});
+    if (r.ok) setCache(r.value);
+    else setError(r.error);
+  };
 
   // the import's job: its end clears the note (the list refreshes), a failure shows why
   useEffect(() => {
@@ -403,6 +463,14 @@ export function RasterPacks() {
           }}
         />
         <Toggle
+          label={t('g7.online.toggle')}
+          checked={online}
+          // offline-only: it cannot be switched on (it can still be switched off)
+          disabled={offlineOnly && !online}
+          describedBy="online-satellite-help"
+          onChange={toggleOnline}
+        />
+        <Toggle
           label={t('g7.packs.aroundTerrain')}
           checked={prefs.aroundTerrain}
           onChange={(on) => {
@@ -416,6 +484,48 @@ export function RasterPacks() {
             rasterPacks.getState().set({ aroundImagery: on });
           }}
         />
+      </div>
+      <div className="online-satellite" data-testid="online-satellite">
+        {asking && (
+          <div className="notice warn" role="alert" data-testid="online-satellite-notice">
+            <Icon name="warn" size={14} />
+            <span>{t('g7.online.notice')}</span>
+            <button type="button" className="btn sm primary" onClick={() => void setOnline(true)}>
+              {t('g7.online.confirm')}
+            </button>
+            <button
+              type="button"
+              className="btn sm ghost"
+              onClick={() => {
+                setAsking(false);
+              }}
+            >
+              {t('g7.online.cancel')}
+            </button>
+          </div>
+        )}
+        <p className="help" id="online-satellite-help">
+          <b>{t('g7.online.toggle')}.</b>{' '}
+          {t(
+            offlineOnly
+              ? online
+                ? 'g7.online.offlineOnlyCached'
+                : 'g7.online.offlineOnly'
+              : 'g7.online.help',
+          )}{' '}
+          <span dir="ltr">
+            {t('g7.online.credit', { attribution: ONLINE_SATELLITE.attribution })}
+          </span>
+        </p>
+        <button
+          type="button"
+          className="btn sm ghost"
+          data-testid="online-satellite-clear"
+          disabled={!cache || cache.tiles === 0}
+          onClick={() => void clearCache()}
+        >
+          {t('g7.online.clearCache', { size: formatBytes(cache?.bytes ?? 0) })}
+        </button>
       </div>
     </div>
   );

@@ -843,7 +843,7 @@ export const en = {
   'settings.maps.add': 'Add a region',
   'settings.maps.import': 'Import pack file',
   'settings.maps.online':
-    'This downloads map data from build.protomaps.com. It is the only download the app makes, and only when you start it (or have turned on automatic street maps for new projects).',
+    'This downloads map data from build.protomaps.com, and only when you start it (or have turned on automatic street maps for new projects).',
   'settings.maps.offlineOnly':
     'This workstation is offline-only. Import a pack file, or turn off offline-only in Privacy and cloud.',
   'settings.maps.remove': 'Remove',
@@ -2634,6 +2634,20 @@ export const en = {
   'g7.packs.hillshade': 'Relief shading from terrain packs on the map',
   'g7.packs.aroundTerrain': 'Terrain around the site in 3D (Medium graphics and up)',
   'g7.packs.aroundImagery': 'Imagery around the site in 3D (Medium graphics and up)',
+  // Online satellite (ADR 0007, amendment of 10 Oct 2026)
+  'g7.online.toggle': 'Online satellite (Sentinel-2)',
+  'g7.online.help':
+    'Off by default. When on, the map draws Sentinel-2 imagery from 2016 (about 10 m per pixel) under your imagery packs and orthos. The tiles for the areas you look at are requested from EOX and kept on this computer.',
+  'g7.online.offlineOnly':
+    'This workstation is offline-only, so online satellite cannot be switched on. Turn off offline-only in Privacy and cloud.',
+  'g7.online.offlineOnlyCached':
+    'This workstation is offline-only: nothing is requested, and only the areas you viewed before are drawn, from this computer.',
+  'g7.online.notice':
+    "Online satellite requests the imagery tiles for the areas you look at from EOX's servers, so the areas you view are visible to that service. Nothing else is sent. The imagery is from 2016, at about 10 m per pixel.",
+  'g7.online.confirm': 'Switch on',
+  'g7.online.cancel': 'Cancel',
+  'g7.online.credit': 'Imagery: {attribution}, CC BY 4.0.',
+  'g7.online.clearCache': 'Clear cached satellite tiles ({size})',
   // Align camera to map, Align photo to map, the drone and photo right-click menus
   'align.direction.title': 'Align camera to map',
   'align.direction.cancel': 'Cancel',

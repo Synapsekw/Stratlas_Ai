@@ -1,3 +1,4 @@
+import { ONLINE_SATELLITE } from '@aio/schema';
 import type { LayerSpecification } from 'maplibre-gl';
 import { describe, expect, it } from 'vitest';
 import {
@@ -6,6 +7,10 @@ import {
   HILLSHADE_LAYER,
   imagerySource,
   insertBefore,
+  ONLINE_SATELLITE_LAYER,
+  ONLINE_SATELLITE_SOURCE,
+  onlineSatelliteLayer,
+  onlineSatelliteSource,
   rasterTileUrl,
   satelliteLayers,
   setStreetOverlay,
@@ -269,5 +274,114 @@ describe('imagery and terrain packs on the map (Satellite)', () => {
     await expect(handler({ url: 'aioraster://terrain/dem/6/1/2' }, abort)).rejects.toThrow();
     await expect(handler({ url: 'aioraster://imagery/../x/1/1/1' }, abort)).rejects.toThrow();
     expect(opened).toEqual(['imagery/site', 'terrain/dem']);
+  });
+});
+
+describe('online satellite on the map (Sentinel-2, ADR 0007 amended)', () => {
+  it("asks the app's own protocol, up to the imagery's own zoom, with its credit", () => {
+    expect(onlineSatelliteSource()).toEqual({
+      type: 'raster',
+      tiles: ['aio://online/s2cloudless-2016/{z}/{x}/{y}.jpg'],
+      tileSize: 256,
+      minzoom: 0,
+      maxzoom: 14,
+      attribution:
+        'Sentinel-2 cloudless - https://s2maps.eu by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)',
+    });
+    expect(onlineSatelliteSource().attribution).toBe(ONLINE_SATELLITE.attribution);
+    expect(ONLINE_SATELLITE_SOURCE).toBe('g7-raster-online-s2cloudless-2016');
+    expect(onlineSatelliteLayer()).toMatchObject({
+      id: 'g7-raster-online-s2cloudless-2016-layer',
+      type: 'raster',
+      source: ONLINE_SATELLITE_SOURCE,
+    });
+    // the renderer names no online server: every tile goes through aio://
+    for (const url of onlineSatelliteSource().tiles ?? []) expect(url).toMatch(/^aio:\/\/online\//);
+  });
+
+  const world = pack('world');
+  const site = pack('site', { bbox: [51, 28.9, 51.01, 28.94], maxZoom: 17 });
+  const dem = pack('dem', { kind: 'terrain', maxZoom: 12 });
+  const all = { imagery: [site, world], terrain: [dem], satellite: true, hillshade: true };
+  const BASE = ['background', 'water', 'roads', 'buildings', 'labels', 'issues'];
+  const STACK = [
+    'background',
+    'water',
+    ONLINE_SATELLITE_LAYER,
+    'g7-raster-imagery-world-layer',
+    'g7-raster-imagery-site-layer',
+    HILLSHADE_LAYER,
+    'roads',
+    'buildings',
+    'labels',
+    'issues',
+  ];
+
+  it('sits at the bottom of the satellite stack: under the packs, streets and labels above', () => {
+    const map = new FakeMap();
+    syncRasterPacks(map, { ...all, online: true });
+    expect(map.layers.map((l) => l.id)).toEqual(STACK);
+    expect(map.sources.get(ONLINE_SATELLITE_SOURCE)).toMatchObject({
+      attribution: ONLINE_SATELLITE.attribution,
+    });
+    // nothing is touched when nothing changed
+    map.log = [];
+    syncRasterPacks(map, { ...all, online: true });
+    expect(map.log).toEqual([]);
+  });
+
+  it('comes and goes in place: the packs on the map keep their layers and tiles', () => {
+    const map = new FakeMap();
+    syncRasterPacks(map, all);
+    map.log = [];
+    // switched on while the packs are drawn: it lands under them
+    syncRasterPacks(map, { ...all, online: true });
+    expect(map.log).toEqual([`+${ONLINE_SATELLITE_SOURCE}`, `+${ONLINE_SATELLITE_LAYER}`]);
+    expect(map.layers.map((l) => l.id)).toEqual(STACK);
+    map.log = [];
+    syncRasterPacks(map, all);
+    expect(map.log).toEqual([`-${ONLINE_SATELLITE_LAYER}`, `-${ONLINE_SATELLITE_SOURCE}`]);
+    expect(map.layers.map((l) => l.id)).toEqual(
+      STACK.filter((id) => id !== ONLINE_SATELLITE_LAYER),
+    );
+  });
+
+  it('draws alone when no pack is installed, and not at all unless asked', () => {
+    const map = new FakeMap();
+    const none = { imagery: [], terrain: [], satellite: true, hillshade: true };
+    syncRasterPacks(map, none);
+    syncRasterPacks(map, { ...none, online: false });
+    expect(map.layers.map((l) => l.id)).toEqual(BASE);
+    expect(map.sources.size).toBe(0);
+
+    syncRasterPacks(map, { ...none, online: true });
+    expect(map.layers.map((l) => l.id)).toEqual([
+      'background',
+      'water',
+      ONLINE_SATELLITE_LAYER,
+      'roads',
+      'buildings',
+      'labels',
+      'issues',
+    ]);
+    expect([...map.sources.keys()]).toEqual([ONLINE_SATELLITE_SOURCE]);
+    // Satellite only hides the streets over it; the credit stays with the source
+    setStreetOverlay(map, false);
+    expect(map.getLayer(ONLINE_SATELLITE_LAYER)).toBeDefined();
+    expect(map.sources.get(ONLINE_SATELLITE_SOURCE)).toMatchObject({
+      attribution: ONLINE_SATELLITE.attribution,
+    });
+    syncRasterPacks(map, none);
+    expect(map.layers.map((l) => l.id)).toEqual(BASE);
+    expect(map.sources.size).toBe(0);
+  });
+
+  it('applyRasterPacks puts it in the same place', () => {
+    const map = new FakeMap();
+    const off = applyRasterPacks(map, { ...all, online: true });
+    expect(map.layers.map((l) => l.id)).toEqual(STACK);
+    off();
+    expect(map.layers.map((l) => l.id)).toEqual(BASE);
+    expect(map.sources.size).toBe(0);
   });
 });

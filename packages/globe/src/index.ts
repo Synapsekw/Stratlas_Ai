@@ -12,7 +12,7 @@ export {
   offlineSource,
   onlineHostsIn,
 } from './offline';
-export { BUNDLED_CREDIT, creditLines } from './credits';
+export { BUNDLED_CREDIT, ONLINE_SATELLITE_CREDIT, creditLines } from './credits';
 export {
   MERCATOR_MAX_LAT,
   imageryLayerOrder,

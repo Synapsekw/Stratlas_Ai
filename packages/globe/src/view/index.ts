@@ -20,6 +20,12 @@ export {
   packTerrainProvider,
   type PackTerrainOptions,
 } from './providers';
+// Online satellite (ADR 0007 amended 10 Oct 2026): the provider for the Globe, not wired in yet
+export {
+  OnlineSatelliteImageryProvider,
+  createOnlineSatelliteProvider,
+  type OnlineTileRead,
+} from './onlineSatellite';
 export {
   configureCesiumBase,
   createOfflineWidget,
