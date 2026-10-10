@@ -228,13 +228,17 @@ test('the connection pair fits the title bar at the smallest window, in its long
     await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
     await expect(win.locator('.crumbs')).toContainText('E2E tiny project');
     await expect(win.getByTestId('sync-chip')).toBeVisible();
-    // The smallest window is 1100 wide (main/index.ts), and the title bar keeps clear of the
-    // window's own buttons. A resized test viewport has no such buttons, so their room comes off.
-    const buttons = await win.evaluate(() => {
+    // The smallest window is 1100 wide (main/index.ts), and on Windows the title bar keeps clear
+    // of the caption buttons on its right. A resized test viewport has no such buttons, so their
+    // room comes off. On macOS the traffic lights sit on the left and the bar reserves nothing on
+    // the right beyond its own padding, so the pair must fit the full 1100.
+    const padRight = await win.evaluate(() => {
       const bar = document.querySelector('.titlebar');
       return bar ? Math.ceil(parseFloat(getComputedStyle(bar).paddingRight)) : 0;
     });
-    expect(buttons).toBeGreaterThan(40);
+    const BASE_PAD = 10; // the bar's own right padding (styles.css)
+    if (process.platform === 'win32') expect(padRight).toBeGreaterThan(40);
+    const buttons = padRight > BASE_PAD ? padRight : 0;
     const width = 1100 - buttons;
     await win.setViewportSize({ width, height: 700 });
     await expect.poll(() => win.evaluate(() => window.innerWidth)).toBe(width);
