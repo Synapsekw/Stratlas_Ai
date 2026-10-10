@@ -1,6 +1,6 @@
 import { PIPELINES, type IpcChannel, type PackInstallProgress } from '@aio/schema';
 import { randomBytes } from 'node:crypto';
-import { existsSync, readdirSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync } from 'node:fs';
 import {
   lstat,
   mkdir,
@@ -16,7 +16,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { validated } from '../ipc';
 import { findPack } from './pack';
 import {
@@ -133,27 +133,38 @@ const dirLink = (target: string, path: string) => symlink(target, path, DIR_LINK
  * archive asks for (a CI runner can, a Windows workstation without Developer Mode cannot).
  * `dirLink`: a link to a folder at all, which every machine must manage, or the tests that plant
  * links prove nothing.
+ *
+ * Found out as the file loads, not in a `beforeAll`: the tests about an archive's links come in
+ * pairs, one for a machine that can make symbolic links and one for a machine that cannot
+ * (`it.runIf(CAN.symlink)` and `it.skipIf(CAN.symlink)`), so a run's log says by name which of the
+ * two this machine took, and shows the other as skipped.
  */
-const CAN = { symlink: false, dirLink: false };
+const CAN = ((): { symlink: boolean; dirLink: boolean } => {
+  const probe = mkdtempSync(join(tmpdir(), 'aio-pack-links-'));
+  const can = (make: () => void): boolean => {
+    try {
+      make();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  try {
+    mkdirSync(join(probe, 'folder'));
+    return {
+      symlink: can(() => {
+        symlinkSync('folder', join(probe, 'link'));
+      }),
+      dirLink: can(() => {
+        symlinkSync(join(probe, 'folder'), join(probe, 'dir-link'), DIR_LINK);
+      }),
+    };
+  } finally {
+    rmSync(probe, { recursive: true, force: true });
+  }
+})();
 /** The refusal of an archive with links where the machine may not create them. */
 const NO_LINKS = 'this computer may not create links in the data folder';
-
-beforeAll(async () => {
-  const probe = await mkdtemp(join(tmpdir(), 'aio-pack-links-'));
-  try {
-    await mkdir(join(probe, 'folder'));
-    CAN.symlink = await symlink('folder', join(probe, 'link')).then(
-      () => true,
-      () => false,
-    );
-    CAN.dirLink = await dirLink(join(probe, 'folder'), join(probe, 'dir-link')).then(
-      () => true,
-      () => false,
-    );
-  } finally {
-    await rm(probe, { recursive: true, force: true });
-  }
-});
 
 /** A folder outside the data folder with one file in it: where nothing may ever be written. */
 async function outsideFolder(): Promise<string> {
@@ -264,22 +275,31 @@ describe('installPackArchive', () => {
     expect(CAN.dirLink).toBe(true);
   });
 
-  it('never writes through a link the archive made', async () => {
-    // "alias" is a link to the pack's own python folder; the next entry tries to write through it
-    const entries: FakeTarEntry[] = [
-      ...fakePackEntries('0.5.0'),
-      { path: 'pipeline-pack-0.5.0/alias', type: 'symlink', linkpath: 'python' },
-      { path: 'pipeline-pack-0.5.0/alias/evil.txt', data: 'through the link' },
-    ];
-    const THROUGH = 'The archive writes through alias, which is a link or a file, not a folder.';
-    // as the app makes links
-    const real = await refusedUnchanged(entries);
-    if (CAN.symlink) expect(real).toContain(THROUGH);
-    else expect(real).toContain(NO_LINKS);
-    // and with the link made as this machine always can (a junction on Windows): the same
-    // refusal, on every machine
+  // "alias" is a link to the pack's own python folder; the next entry tries to write through it
+  const THROUGH_ALIAS: FakeTarEntry[] = [
+    ...fakePackEntries('0.5.0'),
+    { path: 'pipeline-pack-0.5.0/alias', type: 'symlink', linkpath: 'python' },
+    { path: 'pipeline-pack-0.5.0/alias/evil.txt', data: 'through the link' },
+  ];
+  const THROUGH = 'The archive writes through alias, which is a link or a file, not a folder.';
+
+  // as the app makes links: one of the two, by what this machine may create
+  it.runIf(CAN.symlink)('refuses a write through a real symlink the archive made', async () => {
+    expect(await refusedUnchanged(THROUGH_ALIAS)).toContain(THROUGH);
+  });
+
+  it.skipIf(CAN.symlink)(
+    'refuses an archive that writes through a link, where links cannot be created',
+    async () => {
+      expect(await refusedUnchanged(THROUGH_ALIAS)).toContain(NO_LINKS);
+    },
+  );
+
+  // and with the link made as this machine always can (a junction on Windows): the same refusal,
+  // on every machine
+  it('refuses a write through a link made as a folder link, on every machine', async () => {
     const made: string[] = [];
-    const asDirLink = await refusedUnchanged(entries, {
+    const asDirLink = await refusedUnchanged(THROUGH_ALIAS, {
       makeLink: async (target, path) => {
         await dirLink(resolve(dirname(path), target), path);
         made.push(path);
@@ -312,45 +332,59 @@ describe('installPackArchive', () => {
     expect(await readdir(runtime)).toEqual(['pipeline-pack-0.2.0']);
   });
 
-  it('refuses a chain of links that ends outside the pack, and a link that leads nowhere', async () => {
-    // "in" is the pack folder itself; "up" is in/.., which by its name is the pack folder again
-    const chain: FakeTarEntry[] = [
-      ...fakePackEntries('0.5.0'),
-      { path: 'pipeline-pack-0.5.0/in', type: 'symlink', linkpath: '.' },
-      { path: 'pipeline-pack-0.5.0/up', type: 'symlink', linkpath: 'in/..' },
-    ];
-    const nowhere: FakeTarEntry[] = [
-      ...fakePackEntries('0.5.0'),
-      { path: 'pipeline-pack-0.5.0/python/ghost', type: 'symlink', linkpath: 'not-there' },
-    ];
-    const OUT = 'a link that does not lead to a file inside it';
-    if (!CAN.symlink) {
+  // "in" is the pack folder itself; "up" is in/.., which by its name is the pack folder again
+  const CHAIN: FakeTarEntry[] = [
+    ...fakePackEntries('0.5.0'),
+    { path: 'pipeline-pack-0.5.0/in', type: 'symlink', linkpath: '.' },
+    { path: 'pipeline-pack-0.5.0/up', type: 'symlink', linkpath: 'in/..' },
+  ];
+  const NOWHERE: FakeTarEntry[] = [
+    ...fakePackEntries('0.5.0'),
+    { path: 'pipeline-pack-0.5.0/python/ghost', type: 'symlink', linkpath: 'not-there' },
+  ];
+  const OUT = 'a link that does not lead to a file inside it';
+  const WIN = process.platform === 'win32';
+
+  it.skipIf(CAN.symlink)(
+    'refuses a chain of links and a link that leads nowhere, where links cannot be created',
+    async () => {
       // no links may be made here: both are refused whole, with the reason
-      expect(await refusedUnchanged(chain)).toContain(NO_LINKS);
-      expect(await refusedUnchanged(nowhere)).toContain(NO_LINKS);
-      return;
-    }
-    expect(await refusedUnchanged(nowhere)).toContain(OUT);
-    if (process.platform !== 'win32') {
-      // followed link by link, "up" is the folder above the pack: runtime itself
-      expect(await refusedUnchanged(chain)).toContain(OUT);
-      return;
-    }
-    // Windows takes the ".." of a link's target by name, so there "up" is the pack folder and
-    // nothing leads out. Either way the rule holds: refused and unchanged, or installed with
-    // every link ending inside the pack.
-    const path = await archive('chain.tar.gz', fakeTarGz(chain));
-    const before = await tree(root);
-    const r = await install(path);
-    if (!r.ok) {
-      expect(r.error).toContain(OUT);
-      expect(await tree(root)).toEqual(before);
-      return;
-    }
-    const pack = await realpath(r.dir);
-    for (const link of ['in', 'up']) expect(await realpath(join(r.dir, link))).toBe(pack);
-    expect(existsSync(join(runtime, 'manifest.json'))).toBe(false);
+      expect(await refusedUnchanged(CHAIN)).toContain(NO_LINKS);
+      expect(await refusedUnchanged(NOWHERE)).toContain(NO_LINKS);
+    },
+  );
+
+  it.runIf(CAN.symlink)('refuses a real symlink that leads nowhere', async () => {
+    expect(await refusedUnchanged(NOWHERE)).toContain(OUT);
   });
+
+  it.runIf(CAN.symlink && !WIN)(
+    'refuses a chain of real symlinks that ends outside the pack',
+    async () => {
+      // followed link by link, "up" is the folder above the pack: runtime itself
+      expect(await refusedUnchanged(CHAIN)).toContain(OUT);
+    },
+  );
+
+  it.runIf(CAN.symlink && WIN)(
+    'on Windows with real symlinks, a chain of links is refused and unchanged, or installed with both links resolving to the pack folder',
+    async () => {
+      // Windows takes the ".." of a link's target by name, so there "up" is the pack folder and
+      // nothing leads out. Either way the rule holds: refused and unchanged, or installed with
+      // every link ending inside the pack.
+      const path = await archive('chain.tar.gz', fakeTarGz(CHAIN));
+      const before = await tree(root);
+      const r = await install(path);
+      if (!r.ok) {
+        expect(r.error).toContain(OUT);
+        expect(await tree(root)).toEqual(before);
+        return;
+      }
+      const pack = await realpath(r.dir);
+      for (const link of ['in', 'up']) expect(await realpath(join(r.dir, link))).toBe(pack);
+      expect(existsSync(join(runtime, 'manifest.json'))).toBe(false);
+    },
+  );
 
   it('never writes through a link planted in its temporary folder, and leaves what it points at', async () => {
     const outside = await outsideFolder();
@@ -408,7 +442,7 @@ describe('installPackArchive', () => {
     expect((await readdir(runtime)).sort()).toEqual(['pipeline-pack-0.2.0', 'pipeline-pack-0.5.0']);
   });
 
-  it('copies a hard link inside the pack, and keeps a link that stays inside', async () => {
+  it('copies a hard link inside the pack', async () => {
     const withHard = [
       ...fakePackEntries('0.5.0', { files: { 'python/copy.exe': 'fake python of pack 0.5.0' } }),
     ].map((e): FakeTarEntry =>
@@ -421,16 +455,15 @@ describe('installPackArchive', () => {
     expect(await readFile(join(runtime, 'pipeline-pack-0.5.0', 'python', 'copy.exe'), 'utf8')).toBe(
       'fake python of pack 0.5.0',
     );
+  });
 
-    const withLink = [
-      ...fakePackEntries('0.7.0'),
-      { path: 'pipeline-pack-0.7.0/python/python3', type: 'symlink', linkpath: 'python.exe' },
-    ] satisfies FakeTarEntry[];
-    if (!CAN.symlink) {
-      expect(await refusedUnchanged(withLink)).toContain(NO_LINKS);
-      return;
-    }
-    const linked = await install(await archive('link.tar.gz', fakeTarGz(withLink)));
+  const LINK_INSIDE = [
+    ...fakePackEntries('0.7.0'),
+    { path: 'pipeline-pack-0.7.0/python/python3', type: 'symlink', linkpath: 'python.exe' },
+  ] satisfies FakeTarEntry[];
+
+  it.runIf(CAN.symlink)('keeps a real symlink that stays inside the pack', async () => {
+    const linked = await install(await archive('link.tar.gz', fakeTarGz(LINK_INSIDE)));
     expect(linked).toMatchObject({ ok: true, version: '0.7.0' });
     const dir = join(runtime, 'pipeline-pack-0.7.0');
     expect(await readlink(join(dir, 'python', 'python3'))).toBe('python.exe');
@@ -439,51 +472,66 @@ describe('installPackArchive', () => {
     );
   });
 
-  it('installs a macOS pack: in-pack links and executable bits are kept', async () => {
-    // as python-build-standalone lays a Mac out: bin/python3 is a link to the real interpreter
-    const entries = fakePackEntries('1.2.0', {
+  it.skipIf(CAN.symlink)(
+    'refuses an archive with a link that stays inside, where links cannot be created',
+    async () => {
+      expect(await refusedUnchanged(LINK_INSIDE)).toContain(NO_LINKS);
+    },
+  );
+
+  /** A Mac pack as python-build-standalone lays it out: bin/python3 is a link to the real interpreter. */
+  const macPack = (): FakeTarEntry[] => [
+    ...fakePackEntries('1.2.0', {
       platform: 'darwin-arm64',
       executable: 'python/bin/python3',
       pythonFile: 'python/bin/python3.13',
       files: { 'python/lib/python3.13/os.py': 'import sys', 'tools/pdal/bin/pdal': 'fake pdal' },
     }).map((e): FakeTarEntry =>
       e.path.endsWith('python3.13') || e.path.endsWith('/pdal') ? { ...e, mode: 0o755 } : e,
-    );
-    const mac: FakeTarEntry[] = [
-      ...entries,
-      { path: 'pipeline-pack-1.2.0/python/bin/python3', type: 'symlink', linkpath: 'python3.13' },
-      // a link to a folder, up and down inside the pack
-      { path: 'pipeline-pack-1.2.0/tools/py', type: 'symlink', linkpath: '../python/lib' },
-    ];
-    const path = await archive('pipeline-pack-1.2.0-macos-arm64.tar.gz', fakeTarGz(mac));
-    const before = await tree(root);
-    const r = await install(path, { platform: 'darwin-arm64', win32: false });
-    if (!CAN.symlink) {
+    ),
+    { path: 'pipeline-pack-1.2.0/python/bin/python3', type: 'symlink', linkpath: 'python3.13' },
+    // a link to a folder, up and down inside the pack
+    { path: 'pipeline-pack-1.2.0/tools/py', type: 'symlink', linkpath: '../python/lib' },
+  ];
+
+  it.runIf(CAN.symlink)(
+    'installs a macOS pack with real symlinks: in-pack links and executable bits are kept',
+    async () => {
+      const path = await archive('pipeline-pack-1.2.0-macos-arm64.tar.gz', fakeTarGz(macPack()));
+      const r = await install(path, { platform: 'darwin-arm64', win32: false });
+      const dir = join(runtime, 'pipeline-pack-1.2.0');
+      expect(r).toEqual({ ok: true, version: '1.2.0', dir, replaced: false });
+      expect(await readlink(join(dir, 'python', 'bin', 'python3'))).toBe('python3.13');
+      expect(await readFile(join(dir, 'python', 'bin', 'python3'), 'utf8')).toBe(
+        'fake python of pack 1.2.0',
+      );
+      expect(await readFile(join(dir, 'tools', 'py', 'python3.13', 'os.py'), 'utf8')).toBe(
+        'import sys',
+      );
+      // findPack runs the pack through the link, as the app does
+      const found = await findPack({ dataRoot, env: {}, app: APP });
+      expect(found.pack?.python).toBe(join(dir, 'python', 'bin', 'python3'));
+      if (process.platform !== 'win32') {
+        // Windows keeps no executable bit; everywhere else the interpreter and tools must run
+        const mode = async (...p: string[]) => (await stat(join(dir, ...p))).mode & 0o777;
+        expect((await mode('python', 'bin', 'python3.13')) & 0o111).toBe(0o111);
+        expect((await mode('tools', 'pdal', 'bin', 'pdal')) & 0o100).toBe(0o100);
+        expect((await mode('python', 'lib', 'python3.13', 'os.py')) & 0o111).toBe(0);
+      }
+    },
+  );
+
+  it.skipIf(CAN.symlink)(
+    'refuses a macOS pack with links whole, where links cannot be created',
+    async () => {
       // Windows without the right to make links: refused whole, with the reason, nothing left
+      const path = await archive('pipeline-pack-1.2.0-macos-arm64.tar.gz', fakeTarGz(macPack()));
+      const before = await tree(root);
+      const r = await install(path, { platform: 'darwin-arm64', win32: false });
       expect(r.ok ? '' : r.error).toContain(NO_LINKS);
       expect(await tree(root)).toEqual(before);
-      return;
-    }
-    const dir = join(runtime, 'pipeline-pack-1.2.0');
-    expect(r).toEqual({ ok: true, version: '1.2.0', dir, replaced: false });
-    expect(await readlink(join(dir, 'python', 'bin', 'python3'))).toBe('python3.13');
-    expect(await readFile(join(dir, 'python', 'bin', 'python3'), 'utf8')).toBe(
-      'fake python of pack 1.2.0',
-    );
-    expect(await readFile(join(dir, 'tools', 'py', 'python3.13', 'os.py'), 'utf8')).toBe(
-      'import sys',
-    );
-    // findPack runs the pack through the link, as the app does
-    const found = await findPack({ dataRoot, env: {}, app: APP });
-    expect(found.pack?.python).toBe(join(dir, 'python', 'bin', 'python3'));
-    if (process.platform !== 'win32') {
-      // Windows keeps no executable bit; everywhere else the interpreter and tools must run
-      const mode = async (...p: string[]) => (await stat(join(dir, ...p))).mode & 0o777;
-      expect((await mode('python', 'bin', 'python3.13')) & 0o111).toBe(0o111);
-      expect((await mode('tools', 'pdal', 'bin', 'pdal')) & 0o100).toBe(0o100);
-      expect((await mode('python', 'lib', 'python3.13', 'os.py')) & 0o111).toBe(0);
-    }
-  });
+    },
+  );
 
   it('tells the two kinds of Mac apart', async () => {
     const intel = fakePackEntries('0.5.0', { platform: 'darwin-x64' });
