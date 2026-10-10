@@ -77,9 +77,9 @@ const tryGit = (args, opts) => {
   }
 };
 
+// One command string through the shell: pnpm is pnpm.cmd on Windows, and the args are fixed here.
 const pnpm = (args, cwd) =>
-  spawnSync('pnpm', args, { cwd, stdio: 'inherit', shell: process.platform === 'win32' }).status ===
-  0;
+  spawnSync(`pnpm ${args.join(' ')}`, { cwd, stdio: 'inherit', shell: true }).status === 0;
 
 const fail = (...lines) => {
   for (const line of lines) console.error(line);

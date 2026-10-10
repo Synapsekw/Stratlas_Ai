@@ -86,10 +86,10 @@ function main() {
   });
 
   console.log('-> installing dependencies in the worktree');
-  const install = spawnSync('pnpm', ['install', '--frozen-lockfile', '--prefer-offline'], {
+  const install = spawnSync('pnpm install --frozen-lockfile --prefer-offline', {
     cwd: wt,
     stdio: 'inherit',
-    shell: process.platform === 'win32',
+    shell: true,
   });
   if (install.status !== 0) {
     console.error('error: pnpm install failed in the worktree; fix it before building.');
