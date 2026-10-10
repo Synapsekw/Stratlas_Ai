@@ -36,6 +36,7 @@ import { Appearance } from './settings/Appearance';
 import { Keyboard } from './settings/Keyboard';
 import { LocalModel } from './settings/LocalModel';
 import { MapPacks } from './settings/MapPacks';
+import { ProcessingTools } from './settings/ProcessingTools';
 import { ProviderConnection } from './settings/ProviderConnection';
 import { ReportBranding } from './settings/ReportBranding';
 import { TeamServer } from './settings/TeamServer';
@@ -58,6 +59,7 @@ const PAGES: { page: Page; label: MessageKey; icon: IconName; group: MessageKey 
   },
   { page: 'identity', label: 'identity.page', icon: 'key', group: 'settings.group.data' },
   { page: 'data', label: 'settings.page.data', icon: 'layers', group: 'settings.group.data' },
+  { page: 'tools', label: 'settings.page.tools', icon: 'download', group: 'settings.group.data' },
   { page: 'maps', label: 'settings.page.maps', icon: 'map', group: 'settings.group.data' },
   {
     page: 'severity',
@@ -659,54 +661,22 @@ function OfflineOnly() {
 function DataFolder() {
   const dataRoot = useShell((s) => s.settings.dataRoot);
   return (
-    <>
-      <div className="sblock">
-        <h2>Data folder</h2>
-        <p className="help">
-          Projects live in <span className="mono">projects\</span> and map packs in{' '}
-          <span className="mono">packs\</span> inside this folder. Changing it reloads the library.
-        </p>
-        <div className="path-row">
-          <Icon name="layers" size={14} className="faint" />
-          <span className="mono">{dataRoot || 'Not set'}</span>
-          <button
-            type="button"
-            className="btn sm"
-            onClick={() => void shell.getState().chooseDataRoot()}
-          >
-            Change folder
-          </button>
-        </div>
-      </div>
-      <PipelinePack dataRoot={dataRoot} />
-    </>
-  );
-}
-
-function PipelinePack({ dataRoot }: { dataRoot: string }) {
-  const list = useCall('jobs:list', {}, dataRoot);
-  const runtime = list?.ok ? list.value.runtime : null;
-  return (
     <div className="sblock">
-      <h2>Pipeline pack</h2>
+      <h2>Data folder</h2>
       <p className="help">
-        Builder pipelines run in a separately installed Python pack, found in{' '}
-        <span className="mono">runtime\pipeline-pack-&lt;version&gt;\</span> inside the data folder.
+        Projects live in <span className="mono">projects\</span> and map packs in{' '}
+        <span className="mono">packs\</span> inside this folder. Changing it reloads the library.
       </p>
-      <div className="path-row" data-testid="pipeline-pack">
-        <Icon name={runtime?.found ? 'check' : 'warn'} size={14} className="faint" />
-        {list === null ? (
-          <span className="faint">Looking</span>
-        ) : !list.ok ? (
-          <span>{list.error}</span>
-        ) : runtime?.found ? (
-          <span>
-            Version <b className="mono">{runtime.version}</b>{' '}
-            <span className="mono faint">{runtime.dir}</span>
-          </span>
-        ) : (
-          <span>{runtime?.problem}</span>
-        )}
+      <div className="path-row">
+        <Icon name="layers" size={14} className="faint" />
+        <span className="mono">{dataRoot || 'Not set'}</span>
+        <button
+          type="button"
+          className="btn sm"
+          onClick={() => void shell.getState().chooseDataRoot()}
+        >
+          Change folder
+        </button>
       </div>
     </div>
   );
@@ -802,6 +772,7 @@ const HEAD: Record<Page, { title: MessageKey; text: MessageKey }> = {
   privacy: { title: 'settings.page.privacy', text: 'settings.privacy.text' },
   identity: { title: 'identity.page', text: 'identity.page.text' },
   data: { title: 'settings.page.data', text: 'settings.data.text' },
+  tools: { title: 'settings.page.tools', text: 'settings.tools.text' },
   maps: { title: 'settings.page.maps', text: 'settings.maps.text' },
   severity: { title: 'settings.page.severity', text: 'settings.severity.text' },
   branding: { title: 'settings.page.branding', text: 'settings.branding.text' },
@@ -879,6 +850,7 @@ export function SettingsScreen() {
           {page === 'identity' && <IdentitySettings />}
           {page === 'data' && <DataFolder />}
           {page === 'data' && <TeamServer />}
+          {page === 'tools' && <ProcessingTools />}
           {page === 'maps' && <MapPacks />}
           {page === 'severity' && <Severity />}
           {page === 'branding' && <ReportBranding />}

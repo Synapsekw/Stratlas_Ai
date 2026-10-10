@@ -1190,6 +1190,64 @@ export const RuntimeInfo = z.object({
 });
 export type RuntimeInfo = z.infer<typeof RuntimeInfo>;
 
+/** One `pipeline-pack-<version>` folder in `<data folder>/runtime/` (Settings, Processing tools). */
+export const InstalledPack = z.object({
+  /** The folder name, `pipeline-pack-<version>`. */
+  name: z.string(),
+  version: z.string(),
+  dir: z.string(),
+  bytes: z.number().nonnegative(),
+  /** False for a folder without a readable manifest or its Python (a half-copied pack). */
+  valid: z.boolean(),
+});
+export type InstalledPack = z.infer<typeof InstalledPack>;
+
+/**
+ * The pipeline pack as Settings, Processing tools shows it. `state`: `ok` (every job this app can
+ * start is in the pack), `too-old` (a pack is in use but `needs` lists what it lacks), `incompatible`
+ * (packs are there but none is made for this app version), `missing`, or `dev` (the pack comes from
+ * `QUADRION_PIPELINE_PYTHON` or `QUADRION_PIPELINE_PACK`, not from the data folder).
+ */
+export const PipelinePackStatus = z.object({
+  state: z.enum(['ok', 'too-old', 'incompatible', 'missing', 'dev']),
+  version: z.string().optional(),
+  dir: z.string().optional(),
+  bytes: z.number().nonnegative().optional(),
+  /** `<data folder>/runtime`: where packs are installed. */
+  runtimeDir: z.string(),
+  /** This computer as a pack manifest names it (`win32-x64`). */
+  platform: z.string(),
+  /** What a newer pack is needed for, a plain sentence each (`too-old`). */
+  needs: z.array(z.string()),
+  /** Why no pack is usable (`missing`, `incompatible`), in words for the person. */
+  problem: z.string().optional(),
+  /** The other pack folders in `runtime`, newest first: not in use, safe to remove. */
+  others: z.array(InstalledPack),
+  /** An install is running (`pipelinePack:progress` follows it). */
+  installing: z.boolean(),
+  /** False in an automated run: the start notice stays away (QUADRION_PACK_NOTICE=1 brings it back). */
+  notify: z.boolean(),
+});
+export type PipelinePackStatus = z.infer<typeof PipelinePackStatus>;
+
+/** A pipeline pack archive found beside the app, in Downloads or in `runtime` (names and manifest only). */
+export const PackArchive = z.object({
+  path: z.string(),
+  version: z.string(),
+  where: z.enum(['app', 'downloads', 'runtime']),
+  bytes: z.number().nonnegative(),
+});
+export type PackArchive = z.infer<typeof PackArchive>;
+
+/** Progress of `pipelinePack:install`: archive bytes read and entries unpacked. */
+export const PackInstallProgress = z.object({
+  phase: z.enum(['unpack', 'check', 'activate', 'done', 'failed', 'cancelled']),
+  bytesDone: z.number().nonnegative(),
+  bytesTotal: z.number().nonnegative(),
+  entries: z.number().int().nonnegative(),
+});
+export type PackInstallProgress = z.infer<typeof PackInstallProgress>;
+
 export const JobStartRequest = z.union([
   z
     .object({

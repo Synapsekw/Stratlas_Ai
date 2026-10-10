@@ -154,6 +154,12 @@ export const GUIDE_SHOTS: GuideShot[] = [
     setup: settingsPage('Data folder'),
   },
   {
+    id: 'settings-tools',
+    chapter: 'settings',
+    project: SHOT_PROJECT,
+    setup: settingsPage('Processing tools'),
+  },
+  {
     id: 'settings-graphics',
     chapter: 'settings',
     project: SHOT_PROJECT,

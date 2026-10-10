@@ -103,7 +103,9 @@ import { createOnlineTiles, fakeTileFetch } from './onlineTiles';
 import {
   latestAccuracyRun,
   nodePhotoSystem,
+  PHOTO_PACK,
   photoJobEnv,
+  processingVerdict,
   registerPhotogrammetryIpc,
 } from './photogrammetry';
 import { registerTilesetsIpc } from './tilesets';
@@ -124,6 +126,7 @@ import { CSP_PROBE, GLOBE_PROBE, RENDERER_PROBE, smokeProbe, writeSmokeReport } 
 import { nativeImageOps } from './images';
 import { validated, type Handler } from './ipc';
 import { findPack, findPdal, JobRunner, JobStore, openTarget, safeJobEvent } from './jobs';
+import { packArchivePlaces, registerPipelinePackIpc } from './jobs/packInstall';
 import { createKeyVault } from './keys';
 import { addToLibrary, createLibraryStore, listLibrary } from './library';
 import { registerLibraryActionsIpc, samePath } from './libraryActions';
@@ -170,7 +173,7 @@ import { saveFile } from './saveFile';
 import { savePath } from './exports/savePath';
 import { aiGates } from './aiGates';
 import { createSettingsStore, defaultDataRoot, defaultSettings } from './settings';
-import { installRealDataGuard } from './realDataGuard';
+import { assertWritable, installRealDataGuard } from './realDataGuard';
 import { migrateLegacyUserData } from './userDataMigration';
 
 // An app started by an e2e test (QUADRION_E2E=1) refuses every write under the founder's real data
@@ -369,7 +372,7 @@ function applyTheme(theme: Settings['theme']): void {
   }
 }
 
-function broadcast<E extends 'packs:job' | 'update:progress'>(
+function broadcast<E extends 'packs:job' | 'update:progress' | 'pipelinePack:progress'>(
   event: E,
   payload: IpcEvent<E>,
 ): void {
@@ -1418,6 +1421,42 @@ function registerIpc(): void {
           .pack?.dir ?? null,
       loadRuntime: loadOnnxRuntime,
     }),
+  });
+  // Settings, Processing tools: install or update the pipeline pack from a file, no network
+  registerPipelinePackIpc({
+    handle,
+    dataRoot: () => settings.current().dataRoot,
+    env: process.env,
+    app: packApp,
+    platform: `${process.platform}-${process.arch}`,
+    features:
+      processingVerdict(process.platform, process.arch, null) === 'unsupported-platform'
+        ? []
+        : [{ label: 'Photo processing', minVersion: PHOTO_PACK }],
+    places: () =>
+      packArchivePlaces({
+        exe: app.getPath('exe'),
+        portableDir: process.env.PORTABLE_EXECUTABLE_DIR,
+        downloads: app.getPath('downloads'),
+      }),
+    chooseFile: async (startDir) => {
+      const win = targetWindow();
+      const options = {
+        title: 'Choose a pipeline pack (.tar.gz)',
+        properties: ['openFile' as const],
+        filters: [{ name: 'Pipeline pack', extensions: ['gz', 'tgz', 'tar'] }],
+        ...(startDir ? { defaultPath: startDir } : {}),
+      };
+      const r = win
+        ? await dialog.showOpenDialog(win, options)
+        : await dialog.showOpenDialog(options);
+      return r.canceled ? null : (r.filePaths[0] ?? null);
+    },
+    trash: (dir) => shell.trashItem(dir),
+    emit: (p) => {
+      broadcast('pipelinePack:progress', p);
+    },
+    assertWritable,
   });
 }
 

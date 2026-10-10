@@ -217,6 +217,12 @@ const CHANNELS = {
   'geoidPacks:remove': true,
   'surveyAi:status': true,
   'surveyAi:suggest': true,
+  'pipelinePack:status': true,
+  'pipelinePack:find': true,
+  'pipelinePack:choose': true,
+  'pipelinePack:install': true,
+  'pipelinePack:cancel': true,
+  'pipelinePack:remove': true,
 } as const satisfies Record<IpcChannel, true>;
 
 const EVENTS = {
@@ -238,6 +244,7 @@ const EVENTS = {
   'exchange:progress': true,
   'blobs:progress': true,
   'sync:notice': true,
+  'pipelinePack:progress': true,
 } as const satisfies Record<IpcEventName, true>;
 
 const known = <K extends string>(table: Record<K, true>, key: string): key is K =>
