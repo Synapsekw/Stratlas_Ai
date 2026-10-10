@@ -1,6 +1,6 @@
 # GPU acceleration for photo processing
 
-> 10 Oct 2026. Status: a proposal for the founder. Nothing was installed, downloaded, built or changed to write it; the pack, the pipelines and the app are as they were. It supersedes the "deferred to M10.1" part of decision 5 in `docs/architecture/adr/0008-photogrammetry-engine.md` once the founder has decided the points under "Decisions needed". Every fact below carries one of three labels: **measured** (read from this workstation, the installed pack or the repository), **documented** (read from a named source on 10 Oct 2026) or **my estimate**.
+> 10 Oct 2026. Status: accepted by the founder on 10 Oct 2026 with every recommendation as written (see "Decisions needed from the founder"); written as a proposal. Nothing was installed, downloaded, built or changed to write it; the pack, the pipelines and the app are as they were. It supersedes the "deferred to M10.1" part of decision 5 in `docs/architecture/adr/0008-photogrammetry-engine.md` once the founder has decided the points under "Decisions needed". Every fact below carries one of three labels: **measured** (read from this workstation, the installed pack or the repository), **documented** (read from a named source on 10 Oct 2026) or **my estimate**.
 
 ## Summary for the founder
 
@@ -198,6 +198,8 @@ On your workstation, for the measured flight shape (about 1,000 photos of 20 MP)
 **Honest scope of the recommendation:** NVIDIA cards with 4 GB or more (8 GB recommended) on Windows x64, from the GTX 10-series to the RTX 50-series with the CUDA 12.9 runtime; presets Standard and High; stages matching (alignment) and depth maps, then fusion; everything else on the CPU. Macs, AMD and Intel cards get the CPU process pool only.
 
 ## Decisions needed from the founder
+
+> **Decided, 10 Oct 2026.** The founder accepted every recommendation below as written ("go with the GPU plan recommendations"). In short: the prebuilt-only rule stays (1); NVIDIA on Windows x64 first (2); a separate add-on with its own budget (3); tested on numpy in CI plus a recorded bench on the founder's workstation (4); the lean add-on first, with COLMAP's GPU build decided later on the spike's numbers and a licence read (5); NVIDIA's runtime licence accepted for the add-on only (6); the CUDA 12.9 runtime (7); the CPU process pool for depth maps is part of this item and is the first work package (8); the spike may time a copy of one real flight (9); the GPU is on by default with a switch (10). The M10 Build stream takes the spike and the CPU process pool, since the photo pipelines and the pack build are its stream. The spike starts once the branches in flight on 10 Oct have landed: its timings need a quiet machine.
 
 1. **May any native component be built from source if a stage has no prebuilt GPU path?** This would unlock Caspar bundle adjustment and OpenCV's CUDA matchers, and brings back a native build stage in CI. Options: keep the rule; allow one named component. **Recommended: keep the rule.** By default: kept; the sparse model stays on the CPU.
 2. **NVIDIA on Windows x64 first?** Options: yes; wait for a route that covers every card. **Recommended: yes.** By default: yes, with the CPU process pool for everyone else.
