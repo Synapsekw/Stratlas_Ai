@@ -17,6 +17,12 @@ The founder asked to integrate Cesium "to import the satellite maps and work wit
 4. **One data layer for three renderers.** Imagery packs are raster PMTiles (Web Mercator) and terrain packs are Terrarium-encoded PMTiles, read by MapLibre, 3DTilesRendererJS and CesiumJS (a small `PmtilesImageryProvider` and a heightmap provider with the geoid offset). Tilesets are standard 3D Tiles in `<project>/tiles/<id>/`, listed in `tilesets.json` (`aio.tilesets/1`); no layer kind is added. Our tilesets are placed per vertex through the project CRS in float64, so the two views agree within 2 cm.
 5. **Resources.** CesiumJS is a lazily loaded chunk; the Globe tears down its WebGL context when the person leaves it, so the two views never hold both GPU budgets. Low tier: terrain off, a higher screen-space error, no atmosphere.
 
+## Amendment, 10 Oct 2026: the Globe is a street map (founder)
+
+The Globe's default Earth is no longer Natural Earth II but the app's own street map: the street style of the Map view, drawn from the installed street packs (vector PMTiles) by a hidden MapLibre map, one Web Mercator tile at a time, and draped by CesiumJS as an imagery layer (`@aio/maps` `createStreetTiles`, `@aio/globe` `GlobeTileSource`). Under it, and alone on a fresh install, lie land and country borders from Natural Earth 1:50m vectors bundled with the app (about 750 kB), painted in the street style's colours. Imagery packs are the **Satellite** look, an explicit choice; Natural Earth II is the **Natural Earth** look. `planGlobeLayers` (`packages/globe/src/layers.ts`) is the one place that decides the layers. Decision 3 stands: every layer is drawn from files the app ships or the person installed, no provider is added, the lint rule, the bundle check and the zero-network guard are unchanged.
+
+CesiumJS stays (decision 1): pins, fly-in, terrain, 3D Tiles, imagery packs and the read-out keep working as they were. The cost is that labels are part of the draped picture, so they turn and lean with the ground. MapLibre's own globe projection would keep labels upright, but it has no terrain packs of ours, no 3D Tiles and no camera hand-off: a rebuild of the Globe, not taken.
+
 ## Consequences
 
 - Two engines to keep current: CesiumJS is pinned and updated once per milestone with the zero-network test as the gate; 3DTilesRendererJS (pre-1.0) is pinned and wrapped.
