@@ -176,8 +176,9 @@ jobs:
   # Electron windows with WebGL compete for the runner's software GPU). tools/ci/e2e-shards.mjs
   # splits the spec files by how long each takes, so the shards end together: Playwright's own
   # --shard goes by test count, and of three shards on macOS the first ran 10.7 min of tests and
-  # the second 4.6 (run 38051445110). Five shards for 25 min of tests on Windows. macOS, when it
-  # is asked for, gets the same five; they queue behind GitHub's five macOS jobs at once.
+  # the second 4.6 (run 38051445110). Six shards for 25 min of tests on Windows: with five, a
+  # shard took up to 10.5 min, of which 2 min is the demo build (run 38061603126). macOS, when it
+  # is asked for, gets the same six; they queue behind GitHub's five macOS jobs at once.
   e2e:
     name: e2e (${{ matrix.os }}, ${{ matrix.shard }}/${{ matrix.of }})
     needs: gate
@@ -186,8 +187,8 @@ jobs:
       fail-fast: false
       matrix:
         os: ${{ fromJSON(needs.gate.outputs.systems) }}
-        shard: [1, 2, 3, 4, 5]
-        of: [5]
+        shard: [1, 2, 3, 4, 5, 6]
+        of: [6]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     defaults:
@@ -200,6 +201,10 @@ jobs:
       # tools/demo, the workspace packages, the pipeline Python and the lockfiles, so the cache is
       # keyed by all of them and has no restore-keys: never an older demo. This step stays above
       # the installs, or the patterns would also match node_modules and the venv.
+      # A cache saved by a pull request's run is only read by later runs of that pull request (a
+      # re-run after a flaky test, a new push); other pull requests read the caches of main, and
+      # main has this one only after a run there that the gate did not skip. So most first runs
+      # build the demo.
       - name: Restore the demo project
         id: demo
         uses: actions/cache/restore@v4
