@@ -40,3 +40,28 @@ Seats: per named user (sign in, up to two machines each) or per machine; founder
 2. Selling entity (Kuwait or another country) and payment provider that accepts it.
 3. Buy a licence service or build our own.
 4. Per user or per machine seats.
+
+## Third-party licences before the first sale (added 10 Oct 2026)
+
+A licence audit on 10 Oct 2026 looked at what we would owe others if the app were sold. The app is used internally only for now, so the founder parked all of it for this milestone: nothing below is built yet, and all of it is due before the first copy goes to a customer.
+
+**Decided (founder, 10 Oct 2026):** the pipeline pack keeps its ready-made GPL engines (ADR 0008, amended) and ships with a source archive. The pipeline code is therefore open to anyone who receives the pack; the desktop app and the Team Server stay closed, because they only start the pack as a separate program.
+
+### Work to do in this milestone
+
+| Stream                      | Scope                                                                                                                                                                                                                                                                                                               |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| L6 Pack source archive      | A script builds a source archive with every pack release: our pipeline code, the pack build scripts and lock files, and the source of every GPL and LGPL component at the version shipped. Hosted beside the pack download under the same access, for as long as that pack version is offered                       |
+| L7 Pack licence and notices | GPL-3.0 text and a "source is here" note in the pack and in Settings, About; `THIRD-PARTY-NOTICES.md` no longer points to the upstream projects for source; `python/pyproject.toml` says GPL-3.0 instead of MIT, so nobody can take the pipeline code into a closed product                                         |
+| L8 Licence texts in the app | The installer carries the full licence text and copyright notice of every npm package it ships (Settings, About lists only name, version and licence id today); the Team Server image does the same for its Debian base layer                                                                                       |
+| L9 Customer terms           | A EULA for the app that says the pipeline pack is under the GPL and is not restricted by the EULA; the privacy policy published; the licence service gates the download of pipeline packs and map packs, never what a customer does with them afterwards (GPL for the pack, ODbL for the OpenStreetMap street maps) |
+
+### Founder decisions and checks needed before the first sale
+
+1. **A lawyer confirms the wall between app and pack.** The app stays closed only if starting the pack as a separate program over JSON-RPC counts as two programs. Until then the rule holds: the app never shares code with the pack, and anything that must stay proprietary lives in the app.
+2. **The public repository.** `Synapsekw/Stratlas_Ai` is public, has no licence file and names clients (EBSM, DAMAC, Masafi, HCl Tank, Al-Zour) in tracked files, with a real site coordinate in `tools/demo/check-no-client-data.mjs`, next to the competitor and pricing documents. Decide: private or public, and whether the history is cleaned.
+3. **Name and trademark.** Clearance of "Quadrion AI" in classes 9 and 42 (`docs/release/FOUNDER-SETUP-GUIDE.md`); the nearest name found is General Atomics' "Quadratix".
+4. **Video codec patents.** The macOS pack carries H.264 and H.265 encoders (OpenCV's FFmpeg build) and Electron carries decoders. Ask the lawyer whether patent pool fees apply at our volume.
+5. **Propeller's terms.** The feature inventory in `docs/business/` was made while signed in to Propeller's demo sites; check that their terms allow it.
+6. **Ownership of the kits.** The pipelines were ported from the Asset Inspection Kit and the Volumetric Survey Kit; confirm Synapse Solutions owns both outright, with no employer or client claim.
+7. **The macOS COLMAP wheel.** The Windows `pycolmap` 4.2.1 wheel was scanned on 10 Oct 2026 and carries no AGPL (LSD) or non-commercial (SiftGPU) code; the macOS wheel was not checked.
