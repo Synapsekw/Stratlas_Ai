@@ -5,7 +5,7 @@
  * Screenshots go to the test's output folder (test-results/), or to QUADRION_E2E_SHOTS when it
  * names a folder.
  */
-import type { Page, TestInfo } from '@playwright/test';
+import type { ElectronApplication, Page, TestInfo } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from './fixtures';
@@ -35,6 +35,25 @@ async function openProject(win: Page): Promise<void> {
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
   await expect(win.locator('.crumbs b')).toHaveText('Scene');
   await expect(win.locator('[data-scene-view] canvas')).toBeVisible(VIEW_READY);
+}
+
+/**
+ * Ask for a window size and wait until the page has it. The window takes the size or the nearest
+ * one the display allows (a scaled display rounds by a few pixels), so the width it got is returned.
+ */
+async function resize(app: ElectronApplication, win: Page, w: number, h: number): Promise<number> {
+  await app.evaluate(
+    ({ BrowserWindow }, [cw, ch]) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(cw, ch);
+    },
+    [w, h] as const,
+  );
+  await expect
+    .poll(async () => Math.abs((await win.evaluate(() => innerWidth)) - w), {
+      message: `the window is about ${String(w)} wide`,
+    })
+    .toBeLessThanOrEqual(16);
+  return win.evaluate(() => innerWidth);
 }
 
 async function shot(win: Page, info: TestInfo, name: string): Promise<void> {
@@ -75,4 +94,73 @@ test('the Map toolbar shows its tools again after a visit to the 3D view', async
   await expect(layers).toBeVisible();
   await expect(more).toHaveCount(0);
   await shot(win, info, 'map-toolbar-after-3d.png');
+});
+
+/**
+ * The header of the Projects screen: how far the main pane scrolls sideways (0: nothing is cut
+ * off), and for each action whether it lies inside the pane and is what a click at its middle
+ * reaches (not the Recent panel beside the pane).
+ */
+async function headerLayout(win: Page) {
+  return win.evaluate(() => {
+    const main = document.querySelector('.home-main');
+    const acts = document.querySelector('.home-acts');
+    if (!main || !acts) return null;
+    const pane = main.getBoundingClientRect();
+    const items = [...acts.querySelectorAll('input, button')].map((el) => {
+      const r = el.getBoundingClientRect();
+      const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return {
+        name: el.getAttribute('aria-label') ?? el.textContent.trim(),
+        inside: r.left >= pane.left && r.right <= pane.right && r.width > 0,
+        onTop: el === top || el.contains(top),
+        row: Math.round(r.top + r.height / 2),
+        width: Math.round(r.width),
+      };
+    });
+    return { overflow: main.scrollWidth - main.clientWidth, items };
+  });
+}
+
+test('the Projects header keeps every action in view, down to the smallest window', async ({
+  app,
+  win,
+}, info) => {
+  await expect(win.getByTestId('project-card').first()).toBeVisible();
+  const names = ['Filter projects', 'Recent', 'Name', 'Open package', 'Add project folder'];
+
+  // the smallest window: the actions wrap inside the pane, New project included
+  const small = await headerLayout(win);
+  expect(small?.overflow, 'the main pane scrolls sideways').toBe(0);
+  expect(small?.items.map((i) => i.name)).toEqual([...names, 'New project']);
+  expect(small?.items.filter((i) => !i.inside || !i.onTop)).toEqual([]);
+  const add = win.locator('.home-acts').getByTestId('new-project');
+  await expect(add).toBeInViewport({ ratio: 1 });
+  await shot(win, info, 'projects-header-1100.png');
+  // and it is the button a click reaches: the wizard opens
+  await add.click();
+  const wizard = win.getByTestId('new-project-wizard');
+  await expect(wizard).toBeVisible();
+  await win.keyboard.press('Escape');
+  await expect(wizard).toBeHidden();
+
+  // wider windows: still nothing cut off, and from 1440 on the actions share one row as before
+  for (const [w, h] of [
+    [1180, 700],
+    [1280, 720],
+    [1440, 900],
+  ] as const) {
+    const got = await resize(app, win, w, h);
+    const at = await headerLayout(win);
+    expect(at?.overflow, `the main pane scrolls sideways at ${String(got)}`).toBe(0);
+    expect(
+      at?.items.filter((i) => !i.inside || !i.onTop),
+      `at ${String(got)}`,
+    ).toEqual([]);
+    if (got >= 1440) {
+      expect(new Set(at?.items.map((i) => i.row)).size, 'rows of actions at 1440').toBe(1);
+      expect(at?.items[0]?.width, 'the filter at 1440').toBe(240);
+      await shot(win, info, 'projects-header-1440.png');
+    }
+  }
 });
