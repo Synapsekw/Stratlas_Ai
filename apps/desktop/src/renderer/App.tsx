@@ -1,6 +1,5 @@
 import { AnnotateStyles, issueSaver, setAnnotationPeople } from '@aio/annotate';
 import { changeStore } from '@aio/change';
-import { PIPELINES } from '@aio/schema';
 import {
   announce,
   buildTimelineModel,
@@ -17,6 +16,7 @@ import { getMedia } from './media';
 import { nextClipInFlight, startPlaybackLoop } from './playback';
 import { IssuesScreen } from './screens/Issues';
 import { JobsScreen } from './screens/Jobs';
+import { jobTitle } from './screens/jobTasks';
 import { MediaScreen } from './screens/Media';
 import { DetectionsScreen } from './screens/Detections';
 import { ProjectsScreen } from './screens/Projects';
@@ -283,9 +283,8 @@ export function App() {
     // a job that ends is said aloud wherever the person is
     const stopJobAnnounce = jobs.subscribe((s, prev) => {
       for (const { job, ok } of jobsEnded(prev.jobs, s.jobs)) {
-        const title = PIPELINES.find((p) => p.name === job.pipeline)?.title ?? job.pipeline;
         announce(
-          t(ok ? 'announce.jobDone' : 'announce.jobFailed', { job: title }),
+          t(ok ? 'announce.jobDone' : 'announce.jobFailed', { job: jobTitle(job.pipeline) }),
           ok ? 'polite' : 'assertive',
         );
       }

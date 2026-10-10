@@ -19,10 +19,14 @@ import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, test as base, VENV_PYTHON } from './fixtures';
 import {
   CAMERAS,
+  chooseFolder,
   expectedPixel,
   GCPS,
+  openOptions,
   openPhotoSite,
   openWizard,
+  PHOTO_PLATFORM,
+  PHOTO_PLATFORM_ONLY,
   photoFixtures,
   runId,
   startRun,
@@ -33,6 +37,7 @@ import {
 const test = base.extend<PhotoFixtures, PhotoWorkerFixtures>(photoFixtures);
 
 test.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`);
+test.skip(!PHOTO_PLATFORM, PHOTO_PLATFORM_ONLY);
 
 /** The marker's current photo and where its prediction ring is drawn. */
 async function ringOffset(win: Page, point: (typeof GCPS)[number]): Promise<number> {
@@ -164,23 +169,16 @@ test('a flight in a folder outside the project: the marker reads its photos thro
   await openPhotoSite(win);
   const wizard = await openWizard(win);
   await wizard.getByRole('button', { name: /Folders of photos/ }).click();
-  await app.evaluate(({ dialog }, folder) => {
-    const orig = dialog.showOpenDialog.bind(dialog);
-    (dialog as { showOpenDialog: unknown }).showOpenDialog = () => {
-      (dialog as { showOpenDialog: unknown }).showOpenDialog = orig;
-      return Promise.resolve({ canceled: false, filePaths: [folder] });
-    };
-  }, flight);
-  await wizard.getByRole('button', { name: 'Add a folder' }).click();
+  await chooseFolder(app, wizard, flight);
   await expect(wizard.getByRole('list', { name: 'Chosen folders' })).toContainText('flight one');
-  const next = wizard.getByRole('button', { name: 'Next' });
-  await next.click();
-  await expect(wizard.getByTestId('photo-groups')).toContainText('Stratlas Synthetic SYN-20');
-  await next.click();
-  await next.click();
-  await wizard.getByText('I have ground control points').click();
-  await next.click();
-  await expect(wizard.getByTestId('photo-estimate')).toBeVisible({ timeout: 60_000 });
+  // the folder is read where it is: the summary counts its photos, subfolders included
+  await expect(wizard.getByTestId('photo-summary')).toContainText('12 photos, 1 camera', {
+    timeout: 60_000,
+  });
+  const options = await openOptions(wizard);
+  await expect(options.getByTestId('photo-groups')).toContainText('Stratlas Synthetic SYN-20');
+  await options.getByText('I have ground control points').click();
+  await expect(wizard.getByTestId('photo-estimate')).toContainText(/About|Under/);
   await wizard.getByTestId('photo-start').click();
   const panel = win.getByTestId('photo-run');
   const run = await runId(win);

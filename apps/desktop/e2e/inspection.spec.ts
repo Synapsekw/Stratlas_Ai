@@ -7,7 +7,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
-import { expect, launchApp, test } from './fixtures';
+import { expect, launchApp, openPipelineForm, test } from './fixtures';
 import { copyRealData, hasRealProject, missingRealProject, realProjectDir } from './realData';
 
 /**
@@ -203,8 +203,8 @@ const workspaceIssues = (win: Page) =>
 /** Start the inspection pipeline from the Jobs panel and wait for it to finish. */
 async function runInspection(win: Page, expectDefault: boolean): Promise<string> {
   await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
-  await expect(win.locator('.jobs-rt')).toContainText('Pipeline pack dev');
-  await win.getByRole('button', { name: 'New job' }).click();
+  await expect(win.locator('.jobs-rt')).toContainText('Processing tools dev');
+  await openPipelineForm(win);
   const pick = win.getByLabel('Pipeline', { exact: true });
   if (expectDefault) await expect(pick).toHaveValue('inspection.run');
   else await pick.selectOption('inspection.run');

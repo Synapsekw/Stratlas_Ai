@@ -1,6 +1,6 @@
 /**
- * Photo processing in the Jobs panel (G4): **Process photos**, the project's runs with their
- * status, preset, products and accuracy, and per run **Open run**, **Re-run products** and
+ * Maps from photos in the Jobs panel (G4): the project's runs with their status, quality, outputs
+ * and accuracy, and per run **Open run**, **Create maps again** (`photo.products`) and
  * **Delete run's work files** (only `work/`, to the recycle bin, after asking) and **Export as OPF**
  * (`opf.export` into a folder the person picks). A photo job selected in the Jobs list opens its run.
  */
@@ -11,18 +11,11 @@ import { useEffect, useState } from 'react';
 import { bridge, useJobs, useShell } from '../shell';
 import { startOpfExport, startProducts } from './actions';
 import { defaultProducts, formatBytes, PRESETS } from './estimate';
+import { RUN_STATUS } from './phases';
 import { formatResidual } from './report';
 import { photoUi, runOfJob, usePhotoUi } from './store';
 
-const STATUS: Record<PhotoRunSummary['status'], string> = {
-  aligning: 'Aligning',
-  aligned: 'Aligned',
-  adjusted: 'Adjusted',
-  processing: 'Creating products',
-  done: 'Done',
-  failed: 'Failed',
-  cancelled: 'Cancelled',
-};
+const STATUS: Record<PhotoRunSummary['status'], string> = RUN_STATUS;
 
 const folderKey = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
 
@@ -77,21 +70,9 @@ export function PhotoRuns({ selected }: { selected?: JobRecord | undefined }) {
   };
 
   return (
-    <section className="ph-runs" aria-label="Photo processing" data-testid="photo-runs">
+    <section className="ph-runs" aria-label="Maps from photos" data-testid="photo-runs">
       <header className="ph-runs-h">
-        <h2 className="caps">Photo processing</h2>
-        <button
-          type="button"
-          className="btn sm primary"
-          disabled={pkg !== null}
-          title={pkg ? 'A package is read only.' : undefined}
-          onClick={() => {
-            photoUi.getState().openWizard();
-          }}
-        >
-          <Icon name="photo" size={14} />
-          Process photos
-        </button>
+        <h2 className="caps">Maps from photos</h2>
       </header>
       {selectedRun && (
         <button
@@ -112,7 +93,9 @@ export function PhotoRuns({ selected }: { selected?: JobRecord | undefined }) {
         </p>
       )}
       {runs?.length === 0 && (
-        <p className="small faint">No photo runs in {project.manifest.name} yet.</p>
+        <p className="small faint">
+          No maps have been made from photos in {project.manifest.name} yet.
+        </p>
       )}
       {runs && runs.length > 0 && (
         <ul className="ph-run-list">
@@ -154,7 +137,7 @@ export function PhotoRuns({ selected }: { selected?: JobRecord | undefined }) {
                       });
                     }}
                   >
-                    Re-run products
+                    Create maps again
                   </button>
                 )}
                 {!pkg && ['aligned', 'adjusted', 'done'].includes(r.status) && (

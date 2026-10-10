@@ -1,11 +1,19 @@
 /**
- * **Process photos** (G4): pick the photos (a photos layer, or folders read in place), see the
- * camera groups, choose the CRS and how GNSS heights weigh, a preset and the products, then an
- * estimate for this computer before anything starts. Start runs `photo.align`; the products the
- * person chose start by themselves when the alignment finishes, unless ground control comes first.
+ * **Create maps from photos**: choose the photos, then start. One screen: a photos layer or
+ * folders (dropped or chosen, read in place), a plain summary with the time on this computer, and
+ * **Create maps**. Everything else starts from `SIMPLE_DEFAULTS` and stays under **Options**
+ * (quality, what to create, coordinate system, heights, survey date, ground control first).
+ *
+ * What makes processing impossible on this computer is checked the moment the dialog opens and
+ * shown in place of the form, with the one button that fixes it. A question shows inline only
+ * when the photos raise it (another UTM zone, no GPS, a drive too small, a very long run).
+ *
+ * Start runs `photo.align`; the outputs start by themselves when the matching finishes
+ * (`PhotoProcessLayer`), unless the person marks ground control first.
  */
 import { crsOption, searchCrs } from '@aio/geo';
 import type {
+  AioBridge,
   HardwareProbe,
   PhotoEstimate,
   PhotoPreset,
@@ -14,25 +22,34 @@ import type {
 } from '@aio/schema';
 import { Icon, useFocusTrap } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { bridge, useShell } from '../shell';
 import { startAlign } from './actions';
 import {
   cameraGroups,
   defaultProducts,
-  diskShort,
+  diskNeed,
+  fasterPreset,
   formatBytes,
   formatMinutes,
+  gpsNote,
+  isLongRun,
+  longRunHint,
+  memoryNote,
   newRunId,
+  photoSummary,
+  presetLabel,
   PRESETS,
   PRODUCTS,
+  SIMPLE_DEFAULTS,
   splitNotes,
   suggestedEpsg,
+  summaryLine,
+  zoneQuestion,
 } from './estimate';
 import { gpuLine, machineLine, processingLine } from './hardware';
+import { openProcessingTools } from './processingTools';
 import { photoUi } from './store';
-
-const STEPS = ['Photos', 'Cameras', 'Place and heights', 'Quality', 'Estimate'] as const;
 
 type Gnss = 'auto' | 'rtk' | 'standard' | 'ignore';
 const GNSS: readonly { id: Gnss; label: string; hint: string }[] = [
@@ -54,11 +71,35 @@ const GNSS: readonly { id: Gnss; label: string; hint: string }[] = [
   },
 ];
 
+const TITLE = 'Create maps from photos';
+
 const baseName = (p: string) =>
   p
     .replace(/[\\/]+$/, '')
     .split(/[\\/]/)
     .pop() ?? p;
+const parentFolder = (p: string) => p.replace(/[\\/]+$/, '').replace(/[\\/][^\\/]+$/, '');
+
+/** The folders of a drop: a dropped folder as it is, a dropped photo as the folder it is in. */
+function droppedFolders(e: DragEvent): string[] {
+  const aio = (window as { aio?: AioBridge }).aio;
+  const out: string[] = [];
+  for (const item of [...e.dataTransfer.items]) {
+    if (item.kind !== 'file') continue;
+    const file = item.getAsFile();
+    const path = file ? (aio?.pathForFile?.(file) ?? '') : '';
+    if (!path) continue;
+    const folder = item.webkitGetAsEntry()?.isDirectory ? path : parentFolder(path);
+    if (folder && !out.includes(folder)) out.push(folder);
+  }
+  return out;
+}
+
+interface Estimated {
+  key: string;
+  photosKey: string;
+  estimate: PhotoEstimate;
+}
 
 export function ProcessWizard() {
   const project = useWorkspace((s) => s.project);
@@ -73,36 +114,57 @@ export function ProcessWizard() {
     () => (project?.manifest.layers ?? []).filter((l) => l.kind === 'photos'),
     [project],
   );
-  const [step, setStep] = useState(0);
   const [kind, setKind] = useState<'layer' | 'folders'>(layers.length ? 'layer' : 'folders');
   const [layerId, setLayerId] = useState(layers[0]?.id ?? '');
   const [folders, setFolders] = useState<string[]>([]);
+  const [over, setOver] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const projectEpsg = project && 'epsg' in project.manifest.crs ? project.manifest.crs.epsg : null;
   const [epsg, setEpsg] = useState<number | null>(projectEpsg);
   const [crsQuery, setCrsQuery] = useState('');
-  const [gnss, setGnss] = useState<Gnss>('auto');
-  const [preset, setPreset] = useState<PhotoPreset>('standard');
-  const [products, setProducts] = useState<PhotoProduct[]>(defaultProducts('standard'));
+  const [gnss, setGnss] = useState<Gnss>(SIMPLE_DEFAULTS.gnss);
+  const [preset, setPreset] = useState<PhotoPreset>(SIMPLE_DEFAULTS.preset);
+  const [products, setProducts] = useState<PhotoProduct[]>(defaultProducts(SIMPLE_DEFAULTS.preset));
   const [capture, setCapture] = useState('');
-  const [gcpFirst, setGcpFirst] = useState(false);
-  const [probe, setProbe] = useState<HardwareProbe | null>(null);
-  const [result, setResult] = useState<{ key: string; estimate: PhotoEstimate } | null>(null);
+  const [gcpFirst, setGcpFirst] = useState<boolean>(SIMPLE_DEFAULTS.groundControlFirst);
+  /** `undefined` until this computer answered; null when it cannot say (the form then shows). */
+  const [probe, setProbe] = useState<HardwareProbe | null | undefined>(undefined);
+  const [result, setResult] = useState<Estimated | null>(null);
+  const [quicker, setQuicker] = useState<(Estimated & { preset: PhotoPreset }) | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const photos: PhotoSource | null =
     kind === 'layer' ? (layerId ? { layer: layerId } : null) : folders.length ? { folders } : null;
+  const photosKey = JSON.stringify(photos);
   const key = JSON.stringify([photos, preset, products]);
 
+  // whether this computer can do it at all comes first, before anything is chosen
   useEffect(() => {
+    let live = true;
     void bridge.call('photo:probe', {}).then((r) => {
-      if (r.ok && r.value.ok) setProbe(r.value.probe);
+      if (live) setProbe(r.ok && r.value.ok ? r.value.probe : null);
     });
+    return () => {
+      live = false;
+    };
   }, []);
 
-  // the estimate follows the photos, the preset and the products (read from step 2 on)
+  const verdict = probe ? processingLine(probe) : null;
+  const blocked = pkg
+    ? {
+        title: 'This project is a read-only package',
+        text: 'Extract the package to create maps from its photos.',
+        fix: null,
+      }
+    : verdict && !verdict.ok
+      ? verdict
+      : null;
+  const ready = probe !== undefined && !blocked;
+
+  // the estimate follows the photos, the quality and what to create
   useEffect(() => {
-    if (!photos || step < 1 || !project) return;
+    if (!photos || !project || !ready) return;
     let live = true;
     void bridge
       .call('photo:estimate', { projectId: project.id, photos, preset, products })
@@ -112,7 +174,7 @@ export function ProcessWizard() {
         else if (!r.value.ok) setError(r.value.error);
         else {
           setError(null);
-          setResult({ key, estimate: r.value.estimate });
+          setResult({ key, photosKey, estimate: r.value.estimate });
         }
       });
     return () => {
@@ -120,48 +182,87 @@ export function ProcessWizard() {
     };
     // `key` stands for photos, preset and products
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, step >= 1, project?.id]);
+  }, [key, ready, project?.id]);
 
-  const estimate = result?.estimate ?? null;
-  const estimating = photos !== null && step >= 1 && result?.key !== key && !error;
+  const fresh = result !== null && result.key === key;
+  const estimate = result?.photosKey === photosKey ? result.estimate : null;
+  const estimating = photos !== null && !fresh && !error;
+  const long = fresh && estimate !== null && isLongRun(estimate);
+  const alt = fasterPreset(preset);
+
+  // a very long run: how long the next quicker quality would take, to offer it in one click
+  useEffect(() => {
+    if (!long || !alt || !photos || !project) return;
+    let live = true;
+    void bridge
+      .call('photo:estimate', {
+        projectId: project.id,
+        photos,
+        preset: alt,
+        products: defaultProducts(alt),
+      })
+      .then((r) => {
+        if (live && r.ok && r.value.ok)
+          setQuicker({ key, photosKey, preset: alt, estimate: r.value.estimate });
+      });
+    return () => {
+      live = false;
+    };
+    // `key` stands for photos, preset and products
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, long, alt, project?.id]);
+
   if (!project) return null;
-  const notes = estimate ? splitNotes(estimate) : null;
-  const verdict = probe ? processingLine(probe) : null;
-  const crsList = searchCrs(crsQuery);
+
+  const layer = layers.find((l) => l.id === layerId);
+  const summary = estimate
+    ? photoSummary(estimate, kind === 'layer' ? layer?.items.length : undefined)
+    : null;
+  const noPhotos = fresh && estimate !== null && estimate.minutes[1] === 0;
+  const disk = fresh && estimate ? diskNeed(estimate) : null;
   const suggested = estimate ? suggestedEpsg(estimate) : null;
+  const zone = estimate && !noPhotos ? zoneQuestion(projectEpsg, suggested) : null;
+  const gps = summary && !noPhotos ? gpsNote(summary) : null;
+  const slow =
+    fresh && estimate && !disk && !noPhotos
+      ? longRunHint(preset, estimate, quicker?.key === key ? quicker : null)
+      : null;
+  const notes = estimate ? splitNotes(estimate) : null;
   const groups = estimate ? cameraGroups(estimate) : null;
+  const crsList = searchCrs(crsQuery);
   const crsChoices = [
     ...(projectEpsg !== null ? [projectEpsg] : []),
     ...(suggested !== null && suggested !== projectEpsg ? [suggested] : []),
     ...crsList.map((c) => c.epsg).filter((e) => e !== projectEpsg && e !== suggested),
   ];
+  const datum = project.manifest.verticalDatum;
 
-  const stepBlocked = (i: number): string | null => {
-    if (pkg) return 'This project is a read-only package. Extract it to process photos.';
-    if (i === 0 && !photos)
-      return kind === 'layer' ? 'Choose a photos layer.' : 'Choose a folder of photos.';
-    if (i === 2 && projectEpsg !== null && epsg === null) return 'Choose a CRS.';
-    if (i === 3 && !products.length) return 'Choose at least one product.';
-    return null;
+  /** What is still missing before a start, said once beside the button. */
+  const missing = !photos
+    ? kind === 'layer'
+      ? 'Choose a photos layer.'
+      : 'Choose a folder of photos to begin.'
+    : !products.length
+      ? 'Choose at least one thing to create in Options.'
+      : null;
+  const cannotStart = missing !== null || noPhotos || disk !== null;
+
+  const choosePreset = (p: PhotoPreset) => {
+    setPreset(p);
+    setProducts(defaultProducts(p));
   };
-  const blocked = stepBlocked(step);
-  const noPhotos = estimate !== null && !estimating && estimate.minutes[1] === 0;
-  const startBlocked =
-    STEPS.map((_, i) => stepBlocked(i)).find(Boolean) ??
-    (verdict && !verdict.ok ? verdict.text : null) ??
-    (noPhotos ? 'No photos were found.' : null) ??
-    (estimate && diskShort(estimate) ? 'Not enough free disk for this run.' : null);
-
+  const addFolders = (paths: readonly string[]) => {
+    if (!paths.length) return;
+    setKind('folders');
+    setFolders((f) => [...f, ...paths.filter((p) => !f.includes(p))]);
+  };
   const chooseFolder = async () => {
     const r = await bridge.call('dialog:openFolder', { title: 'Folder of photos' });
-    if (r.ok && r.value.path) {
-      const p = r.value.path;
-      setFolders((f) => (f.includes(p) ? f : [...f, p]));
-    }
+    if (r.ok && r.value.path) addFolders([r.value.path]);
   };
 
   const go = async () => {
-    if (!photos || startBlocked) return;
+    if (!photos || cannotStart || !ready) return;
     setBusy(true);
     setError(null);
     const runs = await bridge.call('photo:runs', { projectId: project.id });
@@ -191,80 +292,148 @@ export function ProcessWizard() {
     ui.openRun(run, 'progress');
   };
 
+  // the one hint about time: beside the summary, or beside the quality choice while Options is open
+  const timeHint = slow && (
+    <div className="ph-q quiet" role="group" aria-label="Time" data-testid="ask-time">
+      <p>
+        <Icon name="clock" size={14} />
+        <span>{slow.text}</span>
+      </p>
+      {slow.switchTo && (
+        <button
+          type="button"
+          className="btn sm"
+          onClick={() => {
+            if (slow.switchTo) choosePreset(slow.switchTo);
+          }}
+        >
+          Use {presetLabel(slow.switchTo)}
+        </button>
+      )}
+    </div>
+  );
+
+  // a drop on this dialog chooses photos; it never reaches the window's import
+  const dragProps = ready
+    ? {
+        onDragEnter: (e: DragEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOver(true);
+        },
+        onDragOver: (e: DragEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = 'copy';
+        },
+        onDragLeave: (e: DragEvent) => {
+          e.stopPropagation();
+          if (!(e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget)))
+            setOver(false);
+        },
+        onDrop: (e: DragEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOver(false);
+          addFolders(droppedFolders(e));
+        },
+      }
+    : {};
+
   return (
     <div
       ref={dlg}
       className="b-scrim"
       role="dialog"
       aria-modal="true"
-      aria-label="Process photos"
+      aria-label={TITLE}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) close();
       }}
+      {...dragProps}
     >
-      <div className="b-sheet ph-sheet" data-testid="photo-wizard">
-        <nav className="b-steps" aria-label="Steps">
-          <h2>Process photos</h2>
-          {STEPS.map((label, i) => (
-            <button
-              key={label}
-              type="button"
-              className={`b-step${i < step ? ' done' : ''}`}
-              aria-current={i === step ? 'step' : undefined}
-              onClick={() => {
-                if (i <= step || !STEPS.slice(0, i).some((_, k) => stepBlocked(k))) setStep(i);
-              }}
-            >
-              <i>{i < step ? <Icon name="check" size={12} /> : i + 1}</i>
-              {label}
-            </button>
-          ))}
-        </nav>
+      <div className="ph-simple" data-testid="photo-wizard">
+        <header className="ph-head" role="none">
+          <div>
+            <h2>{TITLE}</h2>
+            {ready && (
+              <p className="small faint">
+                Choose the photos, then start. They are read where they are and never changed.
+              </p>
+            )}
+          </div>
+          <button type="button" className="btn ghost sm" onClick={close} aria-label="Close">
+            <Icon name="x" size={14} />
+          </button>
+        </header>
 
-        <div className="b-body">
-          {step === 0 && (
-            <>
-              <header role="none">
-                <h3>Which photos?</h3>
-                <p>
-                  Photos are read where they are and never changed. Processing adds new layers next
-                  to what the project has.
-                </p>
-              </header>
-              <div className="b-cards" role="group" aria-label="Photo source">
-                <button
-                  type="button"
-                  className="b-card"
-                  aria-pressed={kind === 'layer'}
-                  disabled={!layers.length}
-                  onClick={() => {
-                    setKind('layer');
-                  }}
-                >
-                  <Icon name="photo" size={16} />
-                  <b>A photos layer</b>
-                  <small>
-                    {layers.length
-                      ? 'Photos already imported into this project.'
-                      : 'This project has no photos layer yet.'}
-                  </small>
-                </button>
-                <button
-                  type="button"
-                  className="b-card"
-                  aria-pressed={kind === 'folders'}
-                  onClick={() => {
-                    setKind('folders');
-                  }}
-                >
-                  <Icon name="import" size={16} />
-                  <b>Folders of photos</b>
-                  <small>A flight&apos;s folders, read in place (JPEG or TIFF).</small>
+        {probe === undefined && !blocked && (
+          <div className="b-body">
+            <p className="faint small" role="status">
+              Checking this computer
+            </p>
+          </div>
+        )}
+
+        {blocked && (
+          <div className="b-body">
+            <section className="ph-blocked" aria-label="Cannot start" data-testid="photo-blocked">
+              <Icon name="warn" size={20} />
+              <h3>{blocked.title}</h3>
+              <p>{blocked.text}</p>
+              <div className="ph-acts">
+                {blocked.fix === 'tools' && (
+                  <button
+                    type="button"
+                    className="btn primary"
+                    data-testid="photo-fix"
+                    onClick={openProcessingTools}
+                  >
+                    Update processing tools
+                  </button>
+                )}
+                <button type="button" className="btn ghost" onClick={close}>
+                  Close
                 </button>
               </div>
+            </section>
+          </div>
+        )}
+
+        {ready && (
+          <>
+            <div className="b-body">
+              {layers.length > 0 && (
+                <div className="b-cards ph-source" role="group" aria-label="Photo source">
+                  <button
+                    type="button"
+                    className="b-card"
+                    aria-pressed={kind === 'layer'}
+                    onClick={() => {
+                      setKind('layer');
+                    }}
+                  >
+                    <Icon name="photo" size={16} />
+                    <b>Photos in this project</b>
+                    <small>A photos layer you already imported.</small>
+                  </button>
+                  <button
+                    type="button"
+                    className="b-card"
+                    aria-pressed={kind === 'folders'}
+                    onClick={() => {
+                      setKind('folders');
+                    }}
+                  >
+                    <Icon name="import" size={16} />
+                    <b>Folders of photos</b>
+                    <small>A flight&apos;s folders on this computer.</small>
+                  </button>
+                </div>
+              )}
               {kind === 'layer' ? (
                 <label className="b-field">
-                  <span>Photos layer</span>
+                  <span>Photos</span>
                   <select
                     className="input"
                     value={layerId}
@@ -280,8 +449,7 @@ export function ProcessWizard() {
                   </select>
                 </label>
               ) : (
-                <div className="b-field">
-                  <span>Folders</span>
+                <div className={`ph-drop${over ? ' over' : ''}`} data-testid="photo-drop">
                   {folders.length > 0 && (
                     <ul className="ph-folders" aria-label="Chosen folders">
                       {folders.map((f) => (
@@ -301,315 +469,360 @@ export function ProcessWizard() {
                       ))}
                     </ul>
                   )}
-                  <div>
-                    <button type="button" className="btn sm" onClick={() => void chooseFolder()}>
+                  <div className="ph-drop-act">
+                    {folders.length === 0 && <p>Drop a folder of photos here, or</p>}
+                    <button
+                      type="button"
+                      className={folders.length ? 'btn sm' : 'btn'}
+                      data-testid="photo-add-folder"
+                      onClick={() => void chooseFolder()}
+                    >
                       <Icon name="plus" size={14} />
-                      Add a folder
+                      {folders.length ? 'Add another folder' : 'Choose a folder'}
                     </button>
                   </div>
-                  <p className="hint">Subfolders are read too, up to four levels deep.</p>
+                  <p className="hint">JPEG or TIFF photos. Folders inside are read too.</p>
                 </div>
               )}
-            </>
-          )}
 
-          {step === 1 && (
-            <>
-              <header role="none">
-                <h3>Cameras</h3>
-                <p>
-                  Each camera body and lens is calibrated on its own during alignment, from the
-                  photos themselves.
-                </p>
-              </header>
-              {estimating && !estimate && <p className="faint small">Reading the photos</p>}
-              {groups && (
-                <ul className="ph-groups" aria-label="Camera groups" data-testid="photo-groups">
-                  {groups.length === 0 && <li className="faint">No photos found yet.</li>}
-                  {groups.map((g) => (
-                    <li key={g}>
-                      <Icon name="camera" size={14} />
-                      {g}
-                    </li>
-                  ))}
-                </ul>
+              {photos && (
+                <section className="ph-sum" aria-label="Summary" aria-live="polite">
+                  {!summary && !error && <p className="faint small">Reading the photos</p>}
+                  {noPhotos && (
+                    <p className="notice warn small" data-testid="photo-none">
+                      <Icon name="warn" size={14} />
+                      No photos were found there. Choose a folder with JPEG or TIFF photos.
+                    </p>
+                  )}
+                  {summary && estimate && !noPhotos && (
+                    <>
+                      <p className="ph-sum-line" data-testid="photo-summary">
+                        {summaryLine(summary)}
+                      </p>
+                      <p className="ph-sum-time" data-testid="photo-estimate">
+                        {fresh
+                          ? `${formatMinutes(estimate.minutes)} on this computer`
+                          : 'Working out the time'}
+                      </p>
+                      {fresh && (
+                        <p className="small faint" data-testid="photo-needs">
+                          Uses about {formatBytes(estimate.diskBytes)} of disk space and{' '}
+                          {formatBytes(estimate.memoryBytes)} of memory while it runs.
+                        </p>
+                      )}
+                    </>
+                  )}
+                </section>
               )}
-              {notes?.other
-                .filter((n) => /GPS|Mixed cameras/.test(n))
-                .map((n) => (
-                  <p key={n} className="notice warn small">
-                    <Icon name="warn" size={14} />
-                    {n}
-                  </p>
-                ))}
-            </>
-          )}
 
-          {step === 2 && (
-            <>
-              <header role="none">
-                <h3>Place and heights</h3>
-                <p>
-                  Results are written in the project&apos;s coordinate system unless you choose
-                  another. Heights follow the project&apos;s vertical datum.
-                </p>
-              </header>
-              <div className="b-field">
-                <span>Coordinate reference system</span>
-                {projectEpsg === null ? (
-                  <p className="small">The project&apos;s own CRS (WKT) is used.</p>
-                ) : (
-                  <>
-                    <input
-                      className="input"
-                      type="search"
-                      value={crsQuery}
-                      placeholder="Search zone, country or EPSG code"
-                      aria-label="Search CRS"
-                      onChange={(e) => {
-                        setCrsQuery(e.target.value);
+              {disk && (
+                <div className="ph-q" role="group" aria-label="Disk space" data-testid="ask-disk">
+                  <p>
+                    <Icon name="warn" size={14} />
+                    <span>
+                      Not enough free disk space: this needs {disk.needs} on the data drive, and it
+                      has {disk.has}. Free some space
+                      {alt ? `, or use ${presetLabel(alt)} quality, which needs less.` : '.'}
+                    </span>
+                  </p>
+                  {alt && (
+                    <button
+                      type="button"
+                      className="btn sm"
+                      onClick={() => {
+                        choosePreset(alt);
                       }}
-                    />
-                    <div className="b-list" role="listbox" aria-label="CRS">
-                      {crsChoices.map((code) => {
-                        const c = crsOption(code);
-                        return (
-                          <button
-                            key={code}
-                            type="button"
-                            role="option"
-                            aria-selected={epsg === code}
-                            onClick={() => {
-                              setEpsg(code);
-                            }}
-                          >
-                            <span>{c?.name ?? `EPSG:${String(code)}`}</span>
-                            <span className="mono">
-                              EPSG:{code}
-                              {code === projectEpsg ? ' · project' : ''}
-                              {code === suggested ? ' · photos' : ''}
-                            </span>
-                          </button>
-                        );
-                      })}
+                    >
+                      Use {presetLabel(alt)}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {!optionsOpen && timeHint}
+
+              {zone && (
+                <div
+                  className="ph-q"
+                  role="group"
+                  aria-label="Coordinate system"
+                  data-testid="ask-zone"
+                >
+                  <p>
+                    <Icon name="globe" size={14} />
+                    <span>
+                      These photos were taken in {zone.photos.name}, but this project uses{' '}
+                      {zone.project.name}. Which should the maps use?
+                    </span>
+                  </p>
+                  <div className="ph-q-choice">
+                    <button
+                      type="button"
+                      className="btn sm"
+                      aria-pressed={epsg === zone.project.epsg}
+                      onClick={() => {
+                        setEpsg(zone.project.epsg);
+                      }}
+                    >
+                      The project&apos;s ({zone.project.name})
+                    </button>
+                    <button
+                      type="button"
+                      className="btn sm"
+                      aria-pressed={epsg === zone.photos.epsg}
+                      onClick={() => {
+                        setEpsg(zone.photos.epsg);
+                      }}
+                    >
+                      The photos&apos; ({zone.photos.name})
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {gps && (
+                <p className="ph-note small" data-testid="photo-gps">
+                  <Icon name="pin" size={14} />
+                  <span>{gps}</span>
+                </p>
+              )}
+
+              <details
+                className="ph-options"
+                data-testid="photo-options"
+                onToggle={(e) => {
+                  setOptionsOpen(e.currentTarget.open);
+                }}
+              >
+                <summary>Options</summary>
+                <div className="ph-options-body">
+                  <div className="b-field">
+                    <span id="ph-quality">Quality</span>
+                    <div className="b-cards ph-presets" role="group" aria-labelledby="ph-quality">
+                      {PRESETS.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className="b-card"
+                          aria-pressed={preset === p.id}
+                          onClick={() => {
+                            choosePreset(p.id);
+                          }}
+                        >
+                          <Icon
+                            name={
+                              p.id === 'fast' ? 'play' : p.id === 'standard' ? 'layers' : 'target'
+                            }
+                            size={16}
+                          />
+                          <b>{p.label}</b>
+                          <small>
+                            {p.hint} {p.detail}
+                          </small>
+                        </button>
+                      ))}
                     </div>
-                  </>
-                )}
-                {notes?.zone && <p className="hint">{notes.zone.text}</p>}
-              </div>
-              <div className="b-field">
-                <span>Camera positions (GNSS)</span>
-                <div className="ph-radios" role="radiogroup" aria-label="Camera positions">
-                  {GNSS.map((g) => (
-                    <label key={g.id} className="ph-radio">
+                    {/* beside the choice it is about, while that choice is in view */}
+                    {optionsOpen && timeHint}
+                  </div>
+
+                  <fieldset className="ph-products">
+                    <legend>What to create</legend>
+                    {PRODUCTS.map((p) => (
+                      <label key={p.id} className="ph-check">
+                        <input
+                          type="checkbox"
+                          checked={products.includes(p.id)}
+                          onChange={(e) => {
+                            setProducts((x) =>
+                              e.target.checked
+                                ? PRODUCTS.map((y) => y.id).filter(
+                                    (y) => y === p.id || x.includes(y),
+                                  )
+                                : x.filter((y) => y !== p.id),
+                            );
+                          }}
+                        />
+                        <span>
+                          <b>{p.label}</b>
+                          <small>{p.hint}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </fieldset>
+
+                  <div className="b-field">
+                    <span>Coordinate system</span>
+                    {projectEpsg === null ? (
+                      <p className="small">The project&apos;s own coordinate system is used.</p>
+                    ) : (
+                      <>
+                        <input
+                          className="input"
+                          type="search"
+                          value={crsQuery}
+                          placeholder="Search zone, country or EPSG code"
+                          aria-label="Search coordinate systems"
+                          onChange={(e) => {
+                            setCrsQuery(e.target.value);
+                          }}
+                        />
+                        <div className="b-list" role="listbox" aria-label="Coordinate system">
+                          {crsChoices.map((code) => {
+                            const c = crsOption(code);
+                            return (
+                              <button
+                                key={code}
+                                type="button"
+                                role="option"
+                                aria-selected={epsg === code}
+                                onClick={() => {
+                                  setEpsg(code);
+                                }}
+                              >
+                                <span>{c?.name ?? `EPSG:${String(code)}`}</span>
+                                <span className="mono">
+                                  EPSG:{code}
+                                  {code === projectEpsg ? ' · project' : ''}
+                                  {code === suggested ? ' · photos' : ''}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+                    {notes?.zone && <p className="hint">{notes.zone.text}</p>}
+                  </div>
+
+                  <div className="b-field">
+                    <span id="ph-gnss">Camera positions (GNSS)</span>
+                    <div className="ph-radios" role="radiogroup" aria-labelledby="ph-gnss">
+                      {GNSS.map((g) => (
+                        <label key={g.id} className="ph-radio">
+                          <input
+                            type="radio"
+                            name="ph-gnss"
+                            checked={gnss === g.id}
+                            onChange={() => {
+                              setGnss(g.id);
+                            }}
+                          />
+                          <span>
+                            <b>{g.label}</b>
+                            <small>{g.hint}</small>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="b-field">
+                    <span>Heights</span>
+                    <p className="small" data-testid="photo-heights">
+                      {datum
+                        ? `Absolute altitude ${datum.absAltOffsetM >= 0 ? '+' : ''}${datum.absAltOffsetM.toFixed(2)} m (the project's vertical datum${datum.note ? `: ${datum.note}` : ''}). Every run states the heights it used.`
+                        : 'The photos’ altitudes as recorded; ground control corrects them. Every run states the heights it used.'}
+                    </p>
+                  </div>
+
+                  <div className="b-row">
+                    <label className="b-field">
+                      <span>Survey date</span>
+                      <select
+                        className="input"
+                        value={capture}
+                        onChange={(e) => {
+                          setCapture(e.target.value);
+                        }}
+                      >
+                        <option value="">None</option>
+                        {project.manifest.captures.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.label} ({c.date})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="ph-check ph-gcpfirst">
                       <input
-                        type="radio"
-                        name="ph-gnss"
-                        checked={gnss === g.id}
-                        onChange={() => {
-                          setGnss(g.id);
+                        type="checkbox"
+                        checked={gcpFirst}
+                        onChange={(e) => {
+                          setGcpFirst(e.target.checked);
                         }}
                       />
                       <span>
-                        <b>{g.label}</b>
-                        <small>{g.hint}</small>
+                        <b>I have ground control points</b>
+                        <small>
+                          Stop after matching the photos, to mark the points before the maps are
+                          built.
+                        </small>
                       </span>
                     </label>
-                  ))}
-                </div>
-              </div>
-              <p className="small faint" data-testid="photo-heights">
-                {project.manifest.verticalDatum
-                  ? `Heights: absolute altitude ${project.manifest.verticalDatum.absAltOffsetM >= 0 ? '+' : ''}${project.manifest.verticalDatum.absAltOffsetM.toFixed(2)} m (the project's vertical datum${project.manifest.verticalDatum.note ? `: ${project.manifest.verticalDatum.note}` : ''}). Every run states the heights it used.`
-                  : 'Heights: the photos’ altitudes as recorded; ground control corrects them. Every run states the heights it used.'}
-              </p>
-            </>
-          )}
+                  </div>
 
-          {step === 3 && (
-            <>
-              <header role="none">
-                <h3>Quality and products</h3>
-                <p>Quicker presets use smaller images. You can create more products later.</p>
-              </header>
-              <div className="b-cards ph-presets" role="group" aria-label="Preset">
-                {PRESETS.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    className="b-card"
-                    aria-pressed={preset === p.id}
-                    onClick={() => {
-                      setPreset(p.id);
-                      setProducts(defaultProducts(p.id));
-                    }}
-                  >
-                    <Icon
-                      name={p.id === 'fast' ? 'play' : p.id === 'standard' ? 'layers' : 'target'}
-                      size={16}
-                    />
-                    <b>{p.label}</b>
-                    <small>
-                      {p.hint} {p.detail}
-                    </small>
-                  </button>
-                ))}
-              </div>
-              <fieldset className="ph-products">
-                <legend>Products</legend>
-                {PRODUCTS.map((p) => (
-                  <label key={p.id} className="ph-check">
-                    <input
-                      type="checkbox"
-                      checked={products.includes(p.id)}
-                      onChange={(e) => {
-                        setProducts((x) =>
-                          e.target.checked
-                            ? PRODUCTS.map((y) => y.id).filter((y) => y === p.id || x.includes(y))
-                            : x.filter((y) => y !== p.id),
-                        );
-                      }}
-                    />
-                    <span>
-                      <b>{p.label}</b>
-                      <small>{p.hint}</small>
-                    </span>
-                  </label>
-                ))}
-              </fieldset>
-              <div className="b-row">
-                <label className="b-field">
-                  <span>Survey date</span>
-                  <select
-                    className="input"
-                    value={capture}
-                    onChange={(e) => {
-                      setCapture(e.target.value);
-                    }}
-                  >
-                    <option value="">None</option>
-                    {project.manifest.captures.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.label} ({c.date})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="ph-check ph-gcpfirst">
-                  <input
-                    type="checkbox"
-                    checked={gcpFirst}
-                    onChange={(e) => {
-                      setGcpFirst(e.target.checked);
-                    }}
-                  />
-                  <span>
-                    <b>I have ground control points</b>
-                    <small>Products wait until you have marked them and adjusted.</small>
-                  </span>
-                </label>
-              </div>
-            </>
-          )}
-
-          {step === 4 && (
-            <>
-              <header role="none">
-                <h3>Estimate for this computer</h3>
-                <p>From the photos, the preset and this computer. Nothing has started yet.</p>
-              </header>
-              {probe && verdict && (
-                <div className="ph-machine" data-testid="photo-probe">
-                  <p className={verdict.ok ? 'small' : 'notice warn small'}>
-                    {!verdict.ok && <Icon name="warn" size={14} />}
-                    {verdict.text}
-                  </p>
-                  <p className="small faint">{machineLine(probe)}</p>
-                  <p className="small" data-testid="photo-gpu">
-                    {gpuLine(probe, preset)}
-                  </p>
+                  <div className="b-field ph-machine">
+                    <span>This computer and the cameras</span>
+                    {probe && (
+                      <p className="small faint" data-testid="photo-probe">
+                        {machineLine(probe)}
+                      </p>
+                    )}
+                    {probe && (
+                      <p className="small faint" data-testid="photo-gpu">
+                        {gpuLine(probe, preset)}
+                      </p>
+                    )}
+                    {estimate && memoryNote(estimate) && (
+                      <p className="small faint">{memoryNote(estimate)}</p>
+                    )}
+                    {groups && groups.length > 0 && (
+                      <ul className="ph-groups" aria-label="Cameras" data-testid="photo-groups">
+                        {groups.map((g) => (
+                          <li key={g}>
+                            <Icon name="camera" size={14} />
+                            {g}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {groups && groups.length > 1 && (
+                      <p className="small faint">
+                        Each camera is calibrated on its own, which needs more overlap per camera.
+                      </p>
+                    )}
+                  </div>
                 </div>
-              )}
-              {estimate ? (
-                <dl className="ph-estimate" data-testid="photo-estimate">
-                  <div>
-                    <dt>Time</dt>
-                    <dd>{formatMinutes(estimate.minutes)}</dd>
-                  </div>
-                  <div>
-                    <dt>Disk</dt>
-                    <dd>{formatBytes(estimate.diskBytes)}</dd>
-                  </div>
-                  <div>
-                    <dt>Memory</dt>
-                    <dd>{formatBytes(estimate.memoryBytes)}</dd>
-                  </div>
-                </dl>
+              </details>
+            </div>
+
+            <footer className="b-foot">
+              {error ? (
+                <span className="err" role="alert">
+                  {error}
+                </span>
               ) : (
-                <p className="faint small">{estimating ? 'Estimating' : 'No estimate yet.'}</p>
+                <span className="grow hint faint small" data-testid="photo-missing">
+                  {missing}
+                </span>
               )}
-              {notes && (
-                <ul className="ph-notes">
-                  {notes.other.map((n) => (
-                    <li key={n}>{n}</li>
-                  ))}
-                </ul>
-              )}
-            </>
-          )}
-        </div>
-
-        <footer className="b-foot">
-          {error ? (
-            <span className="err" role="alert">
-              {error}
-            </span>
-          ) : (
-            <span className="grow" />
-          )}
-          {(step < STEPS.length - 1 ? blocked : startBlocked) && (
-            <span className="hint faint small">
-              {step < STEPS.length - 1 ? blocked : startBlocked}
-            </span>
-          )}
-          <button type="button" className="btn ghost" onClick={close}>
-            Cancel
-          </button>
-          {step > 0 && (
-            <button
-              type="button"
-              className="btn"
-              onClick={() => {
-                setStep(step - 1);
-              }}
-            >
-              Back
-            </button>
-          )}
-          {step < STEPS.length - 1 ? (
-            <button
-              type="button"
-              className="btn primary"
-              disabled={Boolean(blocked)}
-              onClick={() => {
-                setStep(step + 1);
-              }}
-            >
-              Next
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="btn primary"
-              data-testid="photo-start"
-              disabled={busy || Boolean(startBlocked) || estimating}
-              onClick={() => void go()}
-            >
-              <Icon name="play" size={14} />
-              {busy ? 'Starting' : 'Start'}
-            </button>
-          )}
-        </footer>
+              <button type="button" className="btn ghost" onClick={close}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                data-testid="photo-start"
+                disabled={busy || cannotStart || estimating}
+                onClick={() => void go()}
+              >
+                <Icon name="play" size={14} />
+                {busy ? 'Starting' : 'Create maps'}
+              </button>
+            </footer>
+          </>
+        )}
       </div>
     </div>
   );

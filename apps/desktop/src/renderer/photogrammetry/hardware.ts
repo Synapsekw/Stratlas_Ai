@@ -1,32 +1,58 @@
 import type { HardwareProbe, PhotoPreset } from '@aio/schema';
 import { formatBytes } from './estimate';
 
-/** Whether processing can start here, and why not in words. */
-export function processingLine(p: HardwareProbe): { ok: boolean; text: string } {
+/** The first version of the processing tools that turns photos into maps (pack 0.4.0, M10). */
+const TOOLS_VERSION = '0.4.0';
+
+/**
+ * Whether this computer can create maps from photos. When it cannot: a title and one sentence in
+ * plain words, and `fix` names what puts it right (`tools`: install or update the processing
+ * tools; null: nothing on this computer does).
+ */
+export interface ProcessingVerdict {
+  ok: boolean;
+  title: string;
+  text: string;
+  fix: 'tools' | null;
+}
+
+export function processingLine(p: HardwareProbe): ProcessingVerdict {
   switch (p.processing) {
     case 'available':
-      return { ok: true, text: `Photo processing: available (${p.cuda ? 'GPU' : 'CPU'})` };
+      return {
+        ok: true,
+        title: 'Ready',
+        text: 'This computer can create maps from photos.',
+        fix: null,
+      };
     case 'no-pack':
       return {
         ok: false,
-        text: 'Photo processing needs the pipeline pack 0.4.0 or later. Copy the pack folder into runtime in the data folder; Jobs then shows its version at the top.',
+        title: 'The processing tools are not installed',
+        text: `Creating maps from photos needs the processing tools, version ${TOOLS_VERSION} or later. They are not on this computer yet.`,
+        fix: 'tools',
       };
     case 'pack-too-old':
       return {
         ok: false,
-        text: 'The installed pipeline pack is too old for photo processing. Install pack 0.4.0 or later.',
+        title: 'The processing tools need an update',
+        text: `The processing tools on this computer are too old to create maps from photos. Update them to version ${TOOLS_VERSION} or later.`,
+        fix: 'tools',
       };
     case 'unsupported-platform':
       return {
         ok: false,
-        text: 'Photo processing runs on Windows x64 and on Macs with Apple silicon. This computer can open the results.',
+        title: 'This computer cannot create maps from photos',
+        text: 'Creating maps from photos runs on Windows x64 and on Macs with Apple silicon. This computer can open the results.',
+        fix: null,
       };
   }
 }
 
 /**
- * The GPU line of the wizard: "NVIDIA GeForce RTX 4070: used for High", or why the CPU does the
- * work. The CUDA build is an optional download (decision 5), so a GPU alone is not enough.
+ * What does the work, as quiet detail: "NVIDIA GeForce RTX 4070: used for High" when the pack's
+ * CUDA build is present, else the processor. Graphics card acceleration does not exist yet
+ * (ADR 0008 decision 5), so its absence is information, never something the person missed.
  */
 export function gpuLine(p: HardwareProbe, preset: PhotoPreset): string {
   const nvidia = p.gpus.find((g) => g.vendor === 'NVIDIA' || /nvidia/i.test(g.name));
@@ -34,9 +60,7 @@ export function gpuLine(p: HardwareProbe, preset: PhotoPreset): string {
     g.vramBytes ? `, ${formatBytes(g.vramBytes)}` : '';
   if (p.cuda && nvidia)
     return `${nvidia.name}${vram(nvidia)}: ${preset === 'high' ? 'used for High' : 'used for High only'}`;
-  if (nvidia)
-    return `${nvidia.name}${vram(nvidia)}: not used yet (the GPU accelerator is not installed). CPU only.`;
-  return 'No supported GPU: CPU only';
+  return 'Runs on the processor. Graphics card acceleration is not available yet.';
 }
 
 /** "Synthetic 8-core CPU, 8 cores, 32 GB memory, 512 GB free". */

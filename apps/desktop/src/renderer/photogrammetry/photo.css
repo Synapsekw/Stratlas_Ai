@@ -1,11 +1,8 @@
-/* Process photos (M10 G4): wizard, run panel, ground control, marker, report. Mission tokens only. */
+/* Maps from photos (M10 G4): the one-screen start, run panel, ground control, marker, report.
+   Mission tokens only. */
 
-.ph-sheet {
-  width: min(920px, 100%);
-}
 .ph-folders,
 .ph-groups,
-.ph-notes,
 .ph-warn {
   list-style: none;
   margin: 0;
@@ -35,12 +32,8 @@
   font-size: var(--t-13);
   color: var(--fg-1);
 }
-.ph-notes li,
 .ph-warn li {
   font-size: var(--t-12);
-  color: var(--fg-1);
-}
-.ph-warn li {
   color: var(--s3);
 }
 .ph-radios,
@@ -55,6 +48,7 @@
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
 }
 .ph-products legend {
+  padding: 0;
   font-size: var(--t-11);
   color: var(--fg-2);
   text-transform: uppercase;
@@ -86,33 +80,6 @@
 }
 .ph-gcpfirst {
   align-self: end;
-}
-.ph-machine p {
-  margin: 0 0 4px;
-}
-.ph-estimate {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin: 0;
-}
-.ph-estimate div {
-  border: 1px solid var(--line);
-  border-radius: var(--r-4);
-  padding: 10px 12px;
-  background: var(--bg-2);
-}
-.ph-estimate dt {
-  font-size: var(--t-11);
-  color: var(--fg-2);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.ph-estimate dd {
-  margin: 4px 0 0;
-  font-size: var(--t-14);
-  font-weight: 600;
-  color: var(--fg-0);
 }
 .ph-launch {
   margin-left: 8px;
@@ -231,9 +198,6 @@
 .ph-stages li[data-state='done'] .si,
 .ph-stages li[data-state='skipped'] .si {
   color: var(--ok);
-}
-.ph-results ul {
-  margin: 4px 0 8px;
 }
 
 /* ---------- tables ---------- */
@@ -526,8 +490,277 @@
 }
 
 /* CRS lists are listboxes: the chosen option is aria-selected (aria-pressed is not allowed) */
-.ph-sheet .b-list button[aria-selected='true'],
+.ph-simple .b-list button[aria-selected='true'],
 .ph-import .b-list button[aria-selected='true'] {
   background: var(--acc-a12);
   color: var(--fg-0);
+}
+
+/* ---------- create maps from photos: one screen ---------- */
+.ph-simple {
+  width: min(680px, 100%);
+  max-height: min(760px, 100%);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: var(--bg-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-6);
+  box-shadow: 0 24px 64px oklch(0.08 0.01 250 / 0.6);
+  overflow: hidden;
+  animation: cmdk-in 180ms var(--ease-x);
+}
+.ph-simple .ph-head {
+  padding: 16px 24px 4px;
+}
+.ph-simple .b-body {
+  padding-top: 12px;
+}
+.ph-simple .ph-source {
+  grid-template-columns: 1fr 1fr;
+}
+.ph-drop {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-6);
+  background: var(--bg-2);
+  transition:
+    border-color 120ms var(--ease),
+    background-color 120ms var(--ease);
+}
+.ph-drop.over {
+  border-color: var(--acc);
+  background: var(--acc-a12);
+}
+.ph-drop-act {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.ph-drop-act p {
+  margin: 0;
+  font-size: var(--t-13);
+  color: var(--fg-1);
+}
+.ph-drop .hint {
+  margin: 0;
+  text-align: center;
+  font-size: var(--t-11);
+  color: var(--fg-3);
+}
+.ph-drop .ph-folders li {
+  background: var(--bg-1);
+}
+.ph-sum {
+  display: grid;
+  gap: 2px;
+}
+.ph-sum p {
+  margin: 0;
+}
+.ph-sum-line {
+  font-size: var(--t-16);
+  font-weight: 600;
+  color: var(--fg-0);
+}
+.ph-sum-time {
+  font-size: var(--t-13);
+  color: var(--fg-1);
+}
+.ph-sum .notice {
+  margin: 0;
+}
+/* one question, asked in line: what it is about, then the choice */
+.ph-q {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-4);
+  background: var(--s3-a);
+  font-size: var(--t-12);
+  color: var(--fg-0);
+}
+.ph-q.quiet {
+  border-color: var(--line);
+  background: var(--bg-2);
+  color: var(--fg-1);
+}
+.ph-q p,
+.ph-note {
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.45;
+}
+.ph-q p svg,
+.ph-note svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--s3);
+}
+.ph-q.quiet p svg,
+.ph-note svg {
+  color: var(--fg-2);
+}
+.ph-note {
+  color: var(--fg-1);
+}
+.ph-q-choice {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ph-q-choice .btn[aria-pressed='true'] {
+  border-color: var(--acc);
+  background: var(--acc-a12);
+}
+.ph-options,
+.ph-detail {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 10px;
+}
+.ph-options > summary,
+.ph-detail > summary {
+  cursor: pointer;
+  width: fit-content;
+  font-size: var(--t-12);
+  color: var(--fg-1);
+  border-radius: var(--r-4);
+}
+.ph-options > summary:hover,
+.ph-detail > summary:hover {
+  color: var(--fg-0);
+}
+.ph-options-body {
+  display: grid;
+  gap: 16px;
+  padding-top: 14px;
+}
+.ph-options .ph-presets {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.ph-machine p {
+  margin: 0;
+}
+.ph-blocked {
+  margin: auto;
+  max-width: 440px;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 28px 8px 20px;
+  text-align: center;
+}
+.ph-blocked svg {
+  color: var(--s3);
+}
+.ph-blocked h3 {
+  margin: 4px 0 0;
+  font-size: var(--t-16);
+  font-weight: 600;
+  color: var(--fg-0);
+}
+.ph-blocked p {
+  margin: 0;
+  font-size: var(--t-13);
+  line-height: 1.5;
+  color: var(--fg-1);
+}
+.ph-blocked .ph-acts {
+  justify-content: center;
+  margin-top: 12px;
+}
+.ph-simple .b-foot .hint {
+  font-size: var(--t-12);
+}
+
+/* ---------- run: phases in plain words, the result ---------- */
+.ph-phases {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.ph-phases li {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--t-13);
+  color: var(--fg-1);
+}
+.ph-phases li[data-state='running'] {
+  color: var(--fg-0);
+  font-weight: 500;
+}
+.ph-phases li[data-state='pending'] {
+  color: var(--fg-2);
+}
+.ph-phases .si i {
+  display: block;
+  width: 8px;
+  height: 8px;
+  margin: 0 auto;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+}
+.ph-phases li[data-state='running'] .si i {
+  background: var(--acc);
+  border-color: var(--acc);
+}
+.ph-phases li[data-state='done'] .si,
+.ph-phases li[data-state='kept'] .si {
+  color: var(--ok);
+}
+.ph-phases li[data-state='failed'] .si {
+  color: var(--s5);
+}
+.ph-detail .ph-stages {
+  margin-top: 8px;
+}
+.ph-detail p {
+  margin: 8px 0 0;
+}
+.ph-ready {
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  padding: 14px;
+  background: var(--bg-2);
+}
+.ph-ready h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: var(--t-16);
+  font-weight: 600;
+  color: var(--fg-0);
+}
+.ph-ready h3 svg {
+  color: var(--ok);
+}
+.ph-ready p {
+  margin: 0;
+}
+.ph-ready ul {
+  margin: 4px 0 0;
+  padding-inline-start: 18px;
+  font-size: var(--t-12);
+  color: var(--fg-1);
+}
+.ph-ready .ph-improve {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 10px;
 }

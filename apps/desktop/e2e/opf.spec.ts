@@ -10,6 +10,7 @@ import {
   hasPdal,
   hasPipelinePython,
   launchApp,
+  openPipelineForm,
   PIPELINE_ENV,
   test,
   VENV_PYTHON,
@@ -24,7 +25,7 @@ import {
 const SYNTH = join(import.meta.dirname, '..', '..', '..', 'python', 'tests', 'opf_synth.py');
 
 async function runJob(win: Page, pipeline: string, project: string, fields: [RegExp, string][]) {
-  await win.getByRole('button', { name: 'New job' }).click();
+  await openPipelineForm(win);
   await win.getByLabel('Pipeline', { exact: true }).selectOption(pipeline);
   await win.getByLabel(/^Project folder/).fill(project);
   for (const [label, value] of fields) await win.getByLabel(label).fill(value);

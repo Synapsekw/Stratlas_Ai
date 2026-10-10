@@ -129,7 +129,7 @@ export function createExportJobs(deps: ExportDeps): ExportJobs {
       return {
         ok: false,
         error:
-          'This project has no finished processing run with an accuracy report. Process photos first.',
+          'This project has no finished processing run with an accuracy report. Create maps from photos first.',
       };
     const survey: ReportKind | undefined =
       req.format in SURVEY_KIND ? SURVEY_KIND[req.format as keyof typeof SURVEY_KIND] : undefined;

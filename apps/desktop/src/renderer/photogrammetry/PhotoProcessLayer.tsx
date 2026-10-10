@@ -1,7 +1,8 @@
 /**
- * Process photos over the whole app (G4, mounted once by the Builder's import layer): the wizard
- * and the run panel when open, a **Process photos** button beside **Import files** on an empty
- * project, and the products the wizard queued once the alignment finishes. The layers processing
+ * Maps from photos over the whole app (G4, mounted once by the Builder's import layer): the
+ * **Create maps from photos** dialog and the run panel when open, a **Create maps from photos**
+ * button beside **Import files** on an empty project, and the outputs the dialog queued once the
+ * photos are matched. The layers processing
  * adds come in through the app's manifest reload (`MANIFEST_WRITERS` in `jobs.ts`).
  */
 import { Icon } from '@aio/ui';
@@ -57,7 +58,7 @@ export function PhotoProcessLayer() {
   );
 }
 
-/** **Process photos** beside **Import files** while the project has no layers. */
+/** **Create maps from photos** beside **Import files** while the project has no layers. */
 function EmptyProjectLauncher() {
   const empty = useWorkspace((s) => s.project !== null && s.project.manifest.layers.length === 0);
   const pkg = useShell((s) => s.pkg);
@@ -85,7 +86,7 @@ function EmptyProjectLauncher() {
       }}
     >
       <Icon name="photo" size={14} />
-      Process photos
+      Create maps from photos
     </button>,
     slot,
   );
