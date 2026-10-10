@@ -1,6 +1,6 @@
 import { setActiveScene, type SceneHandle } from '@aio/engine';
 import type { ProjectManifest } from '@aio/schema';
-import { createWorkspace } from '@aio/workspace';
+import { captureIndex, createWorkspace, scopedStore } from '@aio/workspace';
 import { PerspectiveCamera, Scene, type Points, type WebGLRenderer } from 'three';
 import { afterEach, describe, expect, it } from 'vitest';
 import { catalogue, makeIssue, photoSighting, tankModel } from '../testing';
@@ -225,6 +225,93 @@ describe('installIssueOverlay', () => {
     frame(cbs);
     expect(shown()?.sort()).toEqual(['c', 'far', 'i1']);
     uninstall();
+  });
+
+  it('hides the pins, heat and shapes of a survey date with its layers', () => {
+    const model = (id: string, capture: string): ProjectManifest['layers'][number] => ({
+      kind: 'mesh',
+      id,
+      name: id,
+      visible: true,
+      src: { path: `models/${id}.glb` },
+      transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+      capture,
+    });
+    const dated: ProjectManifest = {
+      ...manifest,
+      captures: [
+        { id: 'sep', label: 'September', date: '2024-09-04' },
+        { id: 'oct', label: 'October', date: '2024-10-02' },
+      ],
+      layers: [model('tank', 'sep'), model('tank-oct', 'oct')],
+    };
+    const octSighting = { ...farSighting, layer: 'tank-oct' };
+    const square = [
+      [0, 0],
+      [0.0001, 0],
+      [0.0001, 0.0001],
+      [0, 0],
+    ];
+    const store = createWorkspace();
+    store.getState().openProject({ id: 'p', root: 'r', manifest: dated }, [
+      makeIssue({ id: 'sep-1' }),
+      makeIssue({ id: 'oct-1', code: 'F02', sightings: [octSighting] }),
+      // a map shape that belongs to September only by its capture field
+      makeIssue({
+        id: 'sep-shape',
+        code: 'F03',
+        capture: 'sep',
+        sightings: [
+          { on: 'map', layer: 'basemap', geojson: { type: 'Polygon', coordinates: [square] } },
+        ],
+      }),
+    ]);
+    store.getState().setDates(captureIndex(dated));
+    const display = createPinDisplay(null);
+    display.getState().setHeat(true);
+    const uninstall = installIssueOverlay(store, display);
+    const { handle, frames } = fakeHandle();
+    setActiveScene(handle);
+    const pinned = () => {
+      frame(frames);
+      return layoutOf(handle)
+        ?.items.flatMap((i) => (i.members as { issueId: string }[]).map((m) => m.issueId))
+        .sort();
+    };
+    const heat = () =>
+      pinGroup(handle)?.getObjectByName('annotate-issue-heat') as Points | undefined;
+    const drape = () => handle.scene.getObjectByName('annotate-map-shapes');
+    expect(pinned()).toEqual(['oct-1', 'sep-1']);
+    expect(drape()?.children).toHaveLength(2);
+
+    // the folder eye of September: its pin, its heat and its shape go; October stays
+    store.getState().setLayersVisible(['tank'], false);
+    expect(pinned()).toEqual(['oct-1']);
+    expect(heat()?.geometry.drawRange.count).toBe(1);
+    expect(drape()?.children).toHaveLength(0);
+    // selecting a hidden date's issue does not bring its pin back
+    store.getState().select({ kind: 'issue', id: 'sep-1' });
+    expect(pinned()).toEqual(['oct-1']);
+    store.getState().select(null);
+
+    store.getState().setLayersVisible(['tank'], true);
+    expect(pinned()).toEqual(['oct-1', 'sep-1']);
+    expect(heat()?.geometry.drawRange.count).toBe(2);
+    expect(drape()?.children).toHaveLength(2);
+
+    // a view of one date (comparing two dates) draws that date's issues only
+    uninstall();
+    const left = scopedStore(store, {
+      capture: 'sep',
+      index: captureIndex(dated),
+      mode: 'hide',
+      camera: true,
+    });
+    const offLeft = installIssueOverlay(left, display, { scene: handle });
+    expect(pinned()).toEqual(['sep-1']);
+    left.setScope({ capture: 'oct', index: captureIndex(dated), mode: 'hide', camera: true });
+    expect(pinned()).toEqual(['oct-1']);
+    offLeft();
   });
 
   it('attaches to a scene that was already active', () => {

@@ -645,7 +645,8 @@ export function Stage() {
   const closeup = roadMap !== null && closeupOn && hasPhoto && showMap;
   // road keys first: they run before the stage keys below
   useRoadKeys(roadMap !== null);
-  useIssueOverlay();
+  // the pins of a survey date follow that date's layers as the 3D view shows them
+  useIssueOverlay(primaryScene);
   // The Pins control drives the map markers too.
   const pinFilter = usePinDisplay((s) => s.filter);
   const pinHeat = usePinDisplay((s) => s.heat);
@@ -870,7 +871,7 @@ export function Stage() {
       <div className="stage-under">
         {annotating && (
           <div className="ann-subbar overlay-box" role="group" aria-label="Annotation tools">
-            {show3d && <AnnotationToolbar className="stage-ann" />}
+            {show3d && <AnnotationToolbar className="stage-ann" store={primaryScene} />}
             {showMap && <MapDrawTools draw={mapDraw} />}
             <Tool
               icon="x"

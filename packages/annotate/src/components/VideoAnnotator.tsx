@@ -1,5 +1,5 @@
 import type { FrameGeom, ImageGeom, Sighting } from '@aio/schema';
-import { useWorkspace, workspace } from '@aio/workspace';
+import { issuesOnScreen, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fitView, type Point, type Size, type ViewTransform } from '../image/geometry';
 import {
@@ -45,7 +45,14 @@ const isFrameGeom = (g: ImageGeom): g is FrameGeom => g.type === 'box' || g.type
 export function VideoAnnotator({ layerId, frameSize }: { layerId: string; frameSize?: Size }) {
   const project = useWorkspace((s) => s.project);
   const nowMs = useWorkspace((s) => s.nowMs);
-  const issues = useWorkspace((s) => s.issues);
+  const allIssues = useWorkspace((s) => s.issues);
+  const dates = useWorkspace((s) => s.dates);
+  const hidden = useWorkspace((s) => s.hidden);
+  // the clip is on screen here, so its survey date is; an issue of a date that is not is left out
+  const issues = useMemo(
+    () => issuesOnScreen(allIssues, dates, hidden, [layerId]),
+    [allIssues, dates, hidden, layerId],
+  );
   const selection = useWorkspace((s) => s.selection);
   const storedTool = useAnnotateUi((s) => s.imageTool);
   const { modelById } = useTaxonomy();

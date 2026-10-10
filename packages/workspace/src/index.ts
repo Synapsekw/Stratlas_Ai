@@ -9,6 +9,7 @@ import type {
 } from '@aio/schema';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import type { CaptureIndex } from './captures';
 import { clipStartMs } from './timeline';
 
 export type SelectionKind = 'asset' | 'issue' | 'clip' | 'photo' | 'layer' | 'pano';
@@ -62,6 +63,12 @@ export interface WorkspaceState {
   activeClip: string | null;
   selection: Selection | null;
   hidden: Record<string, true>;
+  /**
+   * The open project's survey dates and their layers (the capture index), set by the app; null
+   * until it is known. Views read it with `hidden` to leave out the annotations of a date that is
+   * not on screen (`issuesOnScreen`).
+   */
+  dates: CaptureIndex | null;
   focusedWindow: WindowKind | null;
   camera: CameraRequest | null;
   /** The latest camera request, kept after the 3D view consumes it (the map follows it). */
@@ -104,6 +111,8 @@ export interface WorkspaceActions {
   /** Show and hide layers in one update (date jumps). No-op when both lists are empty. */
   applyVisibility(show: readonly string[], hide: readonly string[]): void;
   isLayerVisible(layerId: string): boolean;
+  /** The open project's capture index (null: none); the app sets it when it changes. */
+  setDates(dates: CaptureIndex | null): void;
   upsertIssue(issue: Issue): void;
   removeIssue(issueId: string): void;
   focus(window: WindowKind | null): void;
@@ -127,6 +136,7 @@ const initial: WorkspaceState = {
   activeClip: null,
   selection: null,
   hidden: {},
+  dates: null,
   focusedWindow: null,
   camera: null,
   lastCamera: null,
@@ -218,6 +228,9 @@ export function createWorkspace(): StoreApi<Workspace> {
       set({ hidden });
     },
     isLayerVisible: (layerId) => !get().hidden[layerId],
+    setDates: (dates) => {
+      if (dates !== get().dates) set({ dates });
+    },
     upsertIssue: (issue) => {
       const issues = get().issues.filter((i) => i.id !== issue.id);
       set({ issues: [...issues, issue] });
@@ -296,3 +309,13 @@ export type { ClipTiming, DatePref, VisibilityChange } from './timeline';
 
 export { DATE_COLOURS, autoDateColour, dateTags } from './dateTags';
 export type { DateTag } from './dateTags';
+
+export {
+  captureOnScreen,
+  issueCapture,
+  issueOnScreen,
+  issuesByCapture,
+  issuesOnScreen,
+  sameItems,
+  scopeOnScreen,
+} from './dateVisibility';

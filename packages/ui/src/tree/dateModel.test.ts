@@ -46,12 +46,48 @@ describe('buildDateTree', () => {
     expect(folders.find((f) => f.id === 'a')?.sub).toBe('Survey A');
     expect(folders.find((f) => f.id === 'b')?.sub).toBeUndefined();
   });
-  it('keeps annotations in Every date', () => {
+  it('keeps the annotations of no date in Every date', () => {
+    // the mock issue is marked on a clip that belongs to no date
     const every = folders.find((f) => f.id === EVERY_DATE);
     expect(every?.groups.some((g) => g.kind === 'annotations')).toBe(true);
     expect(folders.find((f) => f.id === 'a')?.groups.some((g) => g.kind === 'annotations')).toBe(
       false,
     );
+  });
+  it('puts each issue in the folder of its survey date', () => {
+    const onLayer = (id: string, layer: string) =>
+      mockIssue({
+        id,
+        sightings: [{ on: 'mesh', layer, geom: { type: 'spoint', p: [0, 0, 0], n: [0, 1, 0] } }],
+      });
+    const dated = buildDateTree(
+      manifest,
+      [
+        onLayer('i-a', firstLayerId),
+        mockIssue({ id: 'i-a2', capture: 'a', status: 'draft' }),
+        mockIssue({ id: 'i-b', capture: 'b' }),
+        mockIssue({ id: 'i-every' }),
+      ],
+      {},
+      { captures, of },
+      labels,
+    );
+    const rows = (id: string) =>
+      dated
+        .find((f) => f.id === id)
+        ?.groups.find((g) => g.kind === 'annotations')
+        ?.items.map((i) => [i.id, i.meta]);
+    expect(rows('a')).toEqual([
+      ['issues', '2'],
+      ['drafts', '1'],
+    ]);
+    expect(rows(EVERY_DATE)).toEqual([['issues', '1']]);
+    expect(rows('c')).toBeUndefined();
+    // a date with issues and no layers lists them; it still has no layers for its eye
+    expect(rows('b')).toEqual([['issues', '1']]);
+    expect(dated.find((f) => f.id === 'b')?.layerIds).toEqual([]);
+    // the annotation rows are no layers: the folder eye switches the layers only
+    expect(dated.find((f) => f.id === 'a')?.layerIds).toEqual([firstLayerId]);
   });
   it('drops Every date when it would be empty', () => {
     const only = { ...manifest, layers: base.layers.slice(0, 1) };

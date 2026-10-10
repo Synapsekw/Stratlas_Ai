@@ -4,7 +4,13 @@
 import { getActiveScene, onActiveScene, reducedMotion, type SceneHandle } from '@aio/engine';
 import { clipCamera, clipKeys, clipPoseAt, normaliseSamples } from '@aio/geo';
 import type { Issue, Layer, PoseSample, Vec3 } from '@aio/schema';
-import { assetUrl, type createWorkspace, type Workspace } from '@aio/workspace';
+import {
+  assetUrl,
+  issuesOnScreen,
+  sameItems,
+  type createWorkspace,
+  type Workspace,
+} from '@aio/workspace';
 import type { Feature, FeatureCollection } from 'geojson';
 import {
   AttributionControl,
@@ -747,11 +753,18 @@ export function createMapController(
   let issueFilter: ReadonlySet<string> | null = null;
   let issueColor: IssueColorBy = 'severity';
   let hoverIssue: string | null = null;
-  /** Points without a shape cluster up to z19; shaped ones until their polygons show. */
+  /** The issues drawn last: those whose survey date is on screen in this map's store. */
+  let drawnIssues: readonly Issue[] | null = null;
+  /**
+   * Points without a shape cluster up to z19; shaped ones until their polygons show. An issue of
+   * a survey date draws only while that date is on screen (`issuesOnScreen`).
+   */
   function renderIssues(s: Workspace, focusOnly = false): void {
     if (!map.getSource(SRC.issues)) return;
     const manifest = s.project?.manifest;
-    const f = issueFeatures(s.issues, {
+    const shown = issuesOnScreen(s.issues, s.dates, s.hidden);
+    drawnIssues = shown;
+    const f = issueFeatures(shown, {
       models: manifest?.severityModels ?? [],
       catalogues: manifest?.classCatalogues ?? [],
       selectedId: s.selection?.kind === 'issue' ? s.selection.id : null,
@@ -1218,6 +1231,12 @@ export function createMapController(
           return;
         }
         if (s.issues !== last.issues || s.selection !== last.selection) renderIssues(s);
+        // a layer switch redraws the issues only when it puts a date's issues on or off screen
+        else if (
+          (s.hidden !== last.hidden || s.dates !== last.dates) &&
+          !sameItems(issuesOnScreen(s.issues, s.dates, s.hidden), drawnIssues ?? s.issues)
+        )
+          renderIssues(s);
         if (
           s.selection !== last.selection ||
           s.hidden !== last.hidden ||

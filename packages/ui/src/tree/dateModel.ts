@@ -1,4 +1,5 @@
 import type { Capture, Issue, ProjectManifest } from '@aio/schema';
+import { issuesByCapture } from '@aio/workspace';
 import { ICONS, type IconName } from '../icons/paths';
 import { buildDatasetTree, treeLayerIds, type TreeGroup } from './model';
 
@@ -68,7 +69,9 @@ export function buildDateTree(
 ): DateFolder[] {
   const folders: DateFolder[] = [];
   const common = manifest.layers.filter((l) => !(l.id in dates.of));
-  const everyGroups = buildDatasetTree({ ...manifest, layers: common }, issues, durations);
+  // an issue sits in the folder of its survey date (the folder eye hides it with the layers)
+  const byDate = issuesByCapture(issues, dates);
+  const everyGroups = buildDatasetTree({ ...manifest, layers: common }, byDate.undated, durations);
   if (everyGroups.length > 0) {
     folders.push({
       id: EVERY_DATE,
@@ -83,8 +86,11 @@ export function buildDateTree(
   );
   for (const c of newestFirst) {
     const layers = manifest.layers.filter((l) => dates.of[l.id] === c.id);
+    const own = byDate.dated[c.id] ?? [];
     const groups =
-      layers.length > 0 ? buildDatasetTree({ ...manifest, layers }, [], durations) : [];
+      layers.length > 0 || own.length > 0
+        ? buildDatasetTree({ ...manifest, layers }, own, durations)
+        : [];
     const label = labels.dateLabel(c);
     const name = captureName(c, label);
     folders.push({

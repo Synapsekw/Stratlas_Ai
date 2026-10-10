@@ -148,11 +148,11 @@ export function CompareScene({
     });
   }, [stage]);
 
-  // the same issue pins as the main view
+  // issue pins as in the main view: those of this view's date and of no date
   useEffect(() => {
     if (!stage) return;
-    return installIssueOverlay(workspace, pinDisplay, { scene: stage });
-  }, [stage]);
+    return installIssueOverlay(store, pinDisplay, { scene: stage });
+  }, [stage, store]);
 
   // callouts keep clear of the toolbars and readouts
   useEffect(() => {
