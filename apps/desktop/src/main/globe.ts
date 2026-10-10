@@ -44,8 +44,18 @@ export interface GlobeIpcDeps {
   rasterPacks?: (kind: RasterPackKind) => Promise<RasterPackInfo[]>;
 }
 
-/** WGS84 longitude and latitude of a project origin, or null when its CRS is unknown here. */
+/**
+ * A WKT that names a local or engineering grid: metres on a site, with no place on the Earth.
+ * proj4 reads one as plain coordinates, which would put the project near 0 N 0 E.
+ */
+const LOCAL_GRID = /^\s*(LOCAL_CS|ENGCRS|ENGINEERINGCRS)\s*\[/i;
+
+/**
+ * WGS84 longitude and latitude of a project origin, or null when its CRS is unknown here or is a
+ * local grid that is not tied to the Earth.
+ */
 export function originLonLat(m: Pick<ProjectManifest, 'crs' | 'origin'>): [number, number] | null {
+  if ('wkt' in m.crs && LOCAL_GRID.test(m.crs.wkt)) return null;
   try {
     const [lon, lat] = projectToLonLat(m.origin, m.crs);
     if (!Number.isFinite(lon) || !Number.isFinite(lat) || Math.abs(lat) > 90) return null;

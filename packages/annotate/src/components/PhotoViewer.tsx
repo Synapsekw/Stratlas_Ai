@@ -1,6 +1,6 @@
 import { correctedPhoto, photoCorrection } from '@aio/geo';
 import type { ImageGeom, Sighting } from '@aio/schema';
-import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
+import { assetUrl, issuesOnScreen, useWorkspace, workspace } from '@aio/workspace';
 import {
   useCallback,
   useEffect,
@@ -88,7 +88,15 @@ export function PhotoViewer({
   handle?: Ref<PhotoViewerHandle>;
 }) {
   const project = useWorkspace((s) => s.project);
-  const issues = useWorkspace((s) => s.issues);
+  const allIssues = useWorkspace((s) => s.issues);
+  const dates = useWorkspace((s) => s.dates);
+  const hidden = useWorkspace((s) => s.hidden);
+  // the photo is on screen here, so its survey date is: the issues of a date that is not on
+  // screen (hidden layers) are left out, on the photo and where it sees them in 3D
+  const issues = useMemo(
+    () => issuesOnScreen(allIssues, dates, hidden, [layerId]),
+    [allIssues, dates, hidden, layerId],
+  );
   const selection = useWorkspace((s) => s.selection);
   const readOnly = useAnnotateReadOnly();
   const pickedTool = useAnnotateUi((s) => s.imageTool);

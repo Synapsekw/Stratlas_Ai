@@ -9,7 +9,8 @@
  * - writers (`project:writeIssues`, `change:write`, `detections:write`, `model:write`,
  *   `project:writeBoundaries`, `report:writeNarrative`) are wrapped: ops first, then the write;
  *   a write the handler refuses is undone by ops, never by editing the journal;
- * - `builder:updateLayers` is diffed after it writes (its result is computed in the handler);
+ * - `builder:updateLayers` and `builder:updateCapture` are diffed after they write (their result
+ *   is computed in the handler);
  * - on open, a half-done write is finished (crash recovery) and any other difference is recorded
  *   as attributed ops (`via.external`, "changed outside Quadrion AI");
  * - around pipeline jobs, the difference is recorded with `via.pipeline`.
@@ -234,6 +235,7 @@ const READS: ReadonlySet<IpcChannel> = new Set<IpcChannel>([
   'sync:quarantine',
   'blobs:status',
   'thumbs:put',
+  'library:reveal',
 ]);
 
 /** Does a request schema of the contract have a `projectId` (an object, or any union member)? */
@@ -841,15 +843,34 @@ export function createJournalService(deps: JournalServiceDeps) {
         );
       };
     }
-    if (channel === 'builder:updateLayers') {
+    if (channel === 'builder:updateLayers' || channel === 'builder:updateCapture') {
       return async (req) => {
         const r = await handler(req);
-        const { projectId } = req as IpcRequest<'builder:updateLayers'>;
+        const { projectId } = req as IpcRequest<'builder:updateLayers' | 'builder:updateCapture'>;
         const root = deps.projects.root(projectId);
         if ((r as { ok: boolean }).ok && root !== undefined) {
           const st = await load(root);
           if (st.meta.journal === 'on') {
             await serial(st, () => reconcile(st, ['manifest.json'], undefined));
+          }
+        }
+        return r;
+      };
+    }
+    if (channel === 'library:rename') {
+      // the project's new name is the app's own change, not one found later as made outside it
+      return async (req) => {
+        const r = await handler(req);
+        const { projectId } = req as IpcRequest<'library:rename'>;
+        const root = deps.projects.root(projectId);
+        if ((r as { ok: boolean }).ok && root !== undefined && !deps.projects.package(projectId)) {
+          try {
+            const st = await load(root);
+            // a folder never opened here has no baseline: its first open takes one, name included
+            if (st.meta.journal === 'on' && st.meta.files['manifest.json'] !== undefined)
+              await serial(st, () => reconcile(st, ['manifest.json'], undefined));
+          } catch (e) {
+            console.warn(`Journal: could not record the new name of ${root} (${String(e)}).`);
           }
         }
         return r;
@@ -1249,6 +1270,24 @@ export function createJournalService(deps: JournalServiceDeps) {
     close: async (root: string) => {
       const st = states.get(keyOf(root));
       if (st) await release(st);
+    },
+    /**
+     * A project folder is gone (moved to the recycle bin): close its segment and drop what the
+     * journal remembers of its files, so a new project made later in a folder of the same name
+     * starts from its own baseline instead of being compared with the deleted one.
+     */
+    forget: async (root: string) => {
+      const key = keyOf(root);
+      const st = states.get(key);
+      if (st) await release(st);
+      await serialKey(key, async () => {
+        states.delete(key);
+        projectIds.delete(key);
+        const dir = join(cacheRoot, key);
+        await rm(join(dir, 'meta.json'), { force: true });
+        await rm(join(dir, 'pending.json'), { force: true });
+        await rm(join(dir, 'snapshot'), { recursive: true, force: true });
+      });
     },
     /** Close every kept segment (app quitting, tests), after the pending steps of each folder. */
     closeAll: async () => {

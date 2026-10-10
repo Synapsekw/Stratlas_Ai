@@ -6,6 +6,7 @@ import { JobEvent, JobId, JobLogLine, JobRecord, JobStartRequest, RuntimeInfo } 
 import {
   AltitudeChoice,
   AltitudePlan,
+  CapturePatch,
   ImportHeights,
   ImportItem,
   LayerPatch,
@@ -569,6 +570,36 @@ export const ipc = {
       z.object({ ok: z.literal(true), entry: LibraryEntry }),
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
+  },
+  /**
+   * The menu of one project on the Projects screen (three dots or right-click). `projectId` is the
+   * library entry's `id`: main finds the folder itself, so the renderer never names a path.
+   *
+   * `library:reveal` shows the project folder (or the `.aio` file) in the file manager.
+   */
+  'library:reveal': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: OkOrFailure,
+  },
+  /**
+   * Change the name a project shows (`name` in its `manifest.json`, the previous file kept as
+   * `manifest.json.bak`). The folder on disk and the project id keep their names. Only for a
+   * project folder directly inside `<data folder>/projects`; packages and demo projects refuse.
+   */
+  'library:rename': {
+    request: z.object({ projectId: ProjectId, name: z.string().trim().min(1).max(120) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), name: z.string() }),
+      Failure,
+    ]),
+  },
+  /**
+   * Move a project folder to the recycle bin (never a permanent delete). Only for a project
+   * folder directly inside `<data folder>/projects`; refuses while a job runs in it.
+   */
+  'library:delete': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: OkOrFailure,
   },
   'project:open': {
     request: z
@@ -1328,6 +1359,24 @@ export const ipc = {
         projectId: z.string().min(1),
         layerIds: z.array(z.string().min(1)).min(1),
         patch: LayerPatch,
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), manifest: ProjectManifest, backup: z.string() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /**
+   * Rename a survey date (`Capture.label`) or set the colour and icon of its folder. Only the
+   * manifest's `captures` entry changes: no layer, no file and no date. Backed up and validated
+   * like `builder:updateLayers`.
+   */
+  'builder:updateCapture': {
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        captureId: z.string().min(1),
+        patch: CapturePatch,
       })
       .strict(),
     response: z.discriminatedUnion('ok', [

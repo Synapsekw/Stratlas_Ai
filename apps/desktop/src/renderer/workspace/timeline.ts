@@ -309,6 +309,9 @@ export function useTimelineSync(): void {
   const openSeq = useWorkspace((s) => s.openSeq);
   const index = useCaptureIndex();
   useEffect(() => {
+    // the views read the dates from the workspace to leave out the annotations of a hidden date;
+    // set before the timeline hides the other dates' layers, so both land in one redraw
+    appWorkspace.getState().setDates(projectId ? index : null);
     timeline.getState().attach(projectId, index);
   }, [projectId, index, openSeq]);
 }

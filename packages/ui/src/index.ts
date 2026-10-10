@@ -24,8 +24,19 @@ export * from './dates/calendarModel';
 export { Calendar, type CalendarDay } from './dates/Calendar';
 export * from './tree/model';
 export * from './tree/dateModel';
-export { DatasetTree, VisibilityEye, type DatasetTreeProps } from './tree/DatasetTree';
-export { DateTree, type DateTreeProps } from './tree/DateTree';
+export {
+  DatasetTree,
+  VisibilityEye,
+  menuPoint,
+  type DatasetTreeProps,
+  type MenuPoint,
+} from './tree/DatasetTree';
+export {
+  DateTree,
+  type DateFolderMenuRequest,
+  type DateItemMenuRequest,
+  type DateTreeProps,
+} from './tree/DateTree';
 export { rankCommands, scoreMatch, type Command } from './palette/rank';
 export * from './shortcuts';
 export { announce, announced, LiveAnnouncer, type Politeness } from './announce';

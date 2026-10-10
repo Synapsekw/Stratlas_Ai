@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type DragEvent, type MouseEvent } from 'react';
 import { useT } from '../i18n';
 import { Icon } from '../icons/Icon';
 import {
@@ -39,6 +39,31 @@ export interface DatasetTreeProps {
   defaultOpen?: readonly TreeGroupKind[] | undefined;
   /** Rendered inside a date folder: the root is a group, not a second tree. */
   nested?: boolean | undefined;
+  /**
+   * Rows that can be dragged (onto a survey date folder): the layers a row carries, none for a
+   * row that stays put. With `onDragItem`, which hears the layers when a drag starts and null when
+   * it ends.
+   */
+  dragIds?: ((item: TreeItem) => string[]) | undefined;
+  onDragItem?: ((layerIds: string[] | null) => void) | undefined;
+  /** Right-click, or the menu key, on a row: where to put its menu. */
+  onItemMenu?: ((item: TreeItem, at: MenuPoint) => void) | undefined;
+}
+
+/** Where a context menu opens, in window pixels. */
+export interface MenuPoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * Where the menu of a `contextmenu` event goes: the pointer, or (the menu key and Shift+F10 give
+ * no pointer) just inside the row.
+ */
+export function menuPoint(e: MouseEvent<HTMLElement>): MenuPoint {
+  if (e.clientX !== 0 || e.clientY !== 0) return { x: e.clientX, y: e.clientY };
+  const r = e.currentTarget.getBoundingClientRect();
+  return { x: r.left + 24, y: r.bottom };
 }
 
 const DEFAULT_OPEN: TreeGroupKind[] = ['models', 'maps', 'video', 'annotations'];
@@ -95,6 +120,37 @@ export function DatasetTree(props: DatasetTreeProps) {
   /** Flight rows the user opened or closed; others open while they hold the active clip. */
   const [flightOpen, setFlightOpen] = useState<Record<string, boolean>>({});
 
+  /** Drag and menu wiring of a row; nothing when the tree is not editable. */
+  const moving = (it: TreeItem) => {
+    const ids = props.onDragItem ? (props.dragIds?.(it) ?? []) : [];
+    const menu = props.onItemMenu;
+    return {
+      ...(ids.length > 0
+        ? {
+            draggable: true,
+            onDragStart: (e: DragEvent<HTMLElement>) => {
+              e.stopPropagation();
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/plain', it.name);
+              props.onDragItem?.(ids);
+            },
+            onDragEnd: () => {
+              props.onDragItem?.(null);
+            },
+          }
+        : {}),
+      ...(menu
+        ? {
+            onContextMenu: (e: MouseEvent<HTMLElement>) => {
+              e.preventDefault();
+              e.stopPropagation();
+              menu(it, menuPoint(e));
+            },
+          }
+        : {}),
+    };
+  };
+
   const row = (it: TreeItem, sub: boolean) => {
     const off = it.layerId ? hidden[it.layerId] === true : false;
     const sel = it.id === selectedId;
@@ -106,6 +162,8 @@ export function DatasetTree(props: DatasetTreeProps) {
         tabIndex={0}
         className={`titem${sub ? ' sub' : ''}${sel ? ' sel' : ''}${off ? ' hidden' : ''}`}
         title={it.name}
+        data-testid={it.layerId ? `tree-row-${it.layerId}` : undefined}
+        {...moving(it)}
         onClick={() => {
           props.onSelect(it);
         }}
@@ -173,6 +231,7 @@ export function DatasetTree(props: DatasetTreeProps) {
           tabIndex={0}
           className={`titem flight${clipsOff ? ' hidden' : ''}`}
           title={it.name}
+          {...moving(it)}
           onClick={() => {
             setFlightOpen((o) => ({ ...o, [it.id]: !open }));
           }}

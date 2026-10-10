@@ -22,6 +22,7 @@ import {
   type SnapProvider,
   type ToScreen,
 } from '@aio/survey';
+import { scopeOnScreen, workspace, type Workspace } from '@aio/workspace';
 import {
   BufferGeometry,
   Float32BufferAttribute,
@@ -74,10 +75,38 @@ interface Shape {
   labelSize: number;
 }
 
+/** What decides which survey dates are on screen: the capture index and the layer switches. */
+type DatesOnScreen = Pick<Workspace, 'dates' | 'hidden'>;
+
+/**
+ * The measurements a view draws: the site-wide ones, and a survey's own while that survey is on
+ * screen (hide the date's layers and its measurements go with them). The one being edited stays.
+ */
+function drawn(s: MeasureState, ws: DatesOnScreen): SurveyMeasurement[] {
+  return s.file.measurements.filter(
+    (m) => (s.editing !== null && m.id === s.focus) || scopeOnScreen(m.scope, ws.dates, ws.hidden),
+  );
+}
+
+/** Changes when a layer switch puts a survey's measurements on or off screen. */
+const drawnKey = (s: MeasureState, ws: DatesOnScreen): string =>
+  drawn(s, ws)
+    .map((m) => m.id)
+    .join(' ');
+
+/** Redraw when the layer switches put a survey's measurements on or off screen. */
+function onDatesChange(redraw: () => void): () => void {
+  return workspace.subscribe((ws, prev) => {
+    if (ws.hidden === prev.hidden && ws.dates === prev.dates) return;
+    const s = measureStore.getState();
+    if (drawnKey(s, ws) !== drawnKey(s, prev)) redraw();
+  });
+}
+
 function shapesOf(s: MeasureState): Shape[] {
   const units = s.settings.units;
   const precision = s.settings.precision;
-  return s.file.measurements.map((m) => {
+  return drawn(s, workspace.getState()).map((m) => {
     const selected = s.selected.includes(m.id);
     const points = s.editing && m.id === s.focus ? s.editing.points : m.points;
     const style = m.style;
@@ -116,7 +145,7 @@ function labelOf(
 export function snapProviders(s: MeasureState): SnapProvider[] {
   return [
     measurementSnaps(
-      s.file.measurements
+      drawn(s, workspace.getState())
         .filter((m) => !(s.editing && m.id === s.focus))
         .map((m) => ({ points: m.points, closed: isClosed(m.family) })),
     ),
@@ -429,10 +458,12 @@ export function attach3d(stage: EngineStage, frame: Frame): () => void {
     canvas.style.cursor = s.draw ? 'crosshair' : '';
     if (drawing && stage.tool !== 'select') stage.setTool('select');
   });
+  const offDates = onDatesChange(rebuild);
   rebuild();
 
   return () => {
     offStore();
+    offDates();
     offFrame();
     offClaim();
     canvas.removeEventListener('pointermove', onMove);
@@ -658,9 +689,11 @@ export function attachMap(
       draw();
     canvas.style.cursor = s.draw ? 'crosshair' : '';
   });
+  const offDates = onDatesChange(draw);
   draw();
   return () => {
     offStore();
+    offDates();
     map.off('mousemove', onMove as never);
     map.off('click', onClick as never);
     map.off('dblclick', onDbl as never);

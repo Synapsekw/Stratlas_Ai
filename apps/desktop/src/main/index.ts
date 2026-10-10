@@ -49,6 +49,7 @@ import {
   builderAltitudePlan,
   builderImport,
   builderTemplates,
+  builderUpdateCapture,
   builderUpdateLayers,
   createBuilderProject,
   photoGps,
@@ -123,6 +124,7 @@ import { validated, type Handler } from './ipc';
 import { findPack, findPdal, JobRunner, JobStore, openTarget, safeJobEvent } from './jobs';
 import { createKeyVault } from './keys';
 import { addToLibrary, createLibraryStore, listLibrary } from './library';
+import { registerLibraryActionsIpc, samePath } from './libraryActions';
 import { captureConsole, exportLogs } from './logs';
 import { openProjectSizes } from './diagnostics/bundle';
 import { createCrashStore } from './diagnostics/crash';
@@ -692,6 +694,31 @@ function registerIpc(): void {
     };
   });
   handle('library:add', ({ path }) => addToLibrary(path, library, registry));
+  // the menu of one project on the Projects screen: show in folder, rename, move to the recycle bin
+  registerLibraryActionsIpc({
+    handle,
+    projects: registry,
+    dataRoot: () => settings.current().dataRoot,
+    isDemo: async (path) => {
+      const demos = await bundledDemos();
+      const known = [
+        ...(demos?.projects ?? []),
+        ...(await demoLibraryPaths(demos, demoCopyRoot())).map((d) => d.path),
+      ];
+      return known.some((p) => samePath(p, path));
+    },
+    jobRunningIn: (root) =>
+      jobStore.all().some((j) => jobs.isRunning(j.id) && samePath(j.project, root)),
+    reveal: (path) => {
+      shell.showItemInFolder(path);
+    },
+    renamed: (projectId, name) => {
+      if (projectNames.has(projectId)) projectNames.set(projectId, name);
+    },
+    trash: (path) => shell.trashItem(path),
+    release: (root) => journal.close(root),
+    forget: (root) => journal.forget(root),
+  });
 
   handle('project:open', async ({ path, passphrase }) => {
     // a bundled demo project opens as its working copy in userData (never written in resources)
@@ -1139,6 +1166,10 @@ function registerIpc(): void {
   handle(
     'builder:updateLayers',
     (req) => packageRefusal(req.projectId) ?? builderUpdateLayers(req, registry),
+  );
+  handle(
+    'builder:updateCapture',
+    (req) => packageRefusal(req.projectId) ?? builderUpdateCapture(req, registry),
   );
 
   handle('dialog:saveFile', (req) => {

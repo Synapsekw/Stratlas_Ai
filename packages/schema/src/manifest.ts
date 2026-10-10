@@ -6,7 +6,24 @@ import { ProjectType, VerticalDatum } from './builder';
 
 export const SCHEMA_VERSION = 'aio.project/1' as const;
 
-export const Capture = z.object({ id: Id, label: z.string().min(1), date: IsoDate });
+/** How many colours the survey date palette has (`--date-1` to `--date-8`). */
+export const CAPTURE_COLOURS = 8;
+
+export const Capture = z.object({
+  id: Id,
+  label: z.string().min(1),
+  date: IsoDate,
+  /**
+   * The colour the date shows in, picked by a person: 1 to 8 of the survey date palette. Absent:
+   * the colour its place in date order gives.
+   */
+  colour: z.number().int().min(1).max(CAPTURE_COLOURS).optional(),
+  /** The icon of the date's folder, an icon name the app knows. Absent: the colour square. */
+  icon: z
+    .string()
+    .regex(/^[a-z0-9-]{1,32}$/)
+    .optional(),
+});
 
 export const Crs = z.union([
   z.object({ epsg: z.number().int() }).strict(),

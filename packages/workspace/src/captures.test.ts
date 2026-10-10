@@ -8,6 +8,7 @@ import {
   counterpart,
   dateSpellings,
   knownCapture,
+  planDateMove,
   scopedStore,
   type StoreScope,
 } from './captures';
@@ -341,5 +342,60 @@ describe('explicit layer dates (M8, Layer.capture)', () => {
     if (!first) throw new Error('fixture');
     const ix = captureIndex({ ...site, captures: [first] });
     expect(ix.of['ortho-a']).toBe('d1');
+  });
+
+  it('without the own captures, files layers by the lists and the names alone', () => {
+    const ix = captureIndex(site, {}, { own: false });
+    expect(ix.of['ortho-a']).toBeUndefined();
+    expect(ix.of['model-x']).toBe('d1');
+    expect(ix.of['model-y']).toBe('d1');
+  });
+
+  describe('planDateMove', () => {
+    it('files layers under another date by writing only the ones that change', () => {
+      expect(planDateMove(site, {}, ['ortho-a', 'ortho-b', 'plan'], 'd2')).toEqual({
+        write: ['ortho-a', 'plan'],
+        stays: {},
+      });
+    });
+
+    it('writes nothing when a layer is dropped on the date it is already in', () => {
+      expect(planDateMove(site, {}, ['ortho-a'], 'd1')).toEqual({ write: [], stays: {} });
+      // dated by its name alone: already there too
+      expect(planDateMove(site, {}, ['model-y'], 'd1')).toEqual({ write: [], stays: {} });
+      // an undated layer dropped on Every date
+      expect(planDateMove(site, {}, ['plan'], null)).toEqual({ write: [], stays: {} });
+    });
+
+    it('takes the date off a layer that only its own capture dates', () => {
+      expect(planDateMove(site, {}, ['ortho-a'], null)).toEqual({ write: ['ortho-a'], stays: {} });
+    });
+
+    it('says which layers their name keeps on a date when no date is asked', () => {
+      // model-x: own capture d2, the name says d1; clearing files it under d1
+      expect(planDateMove(site, {}, ['model-x'], null)).toEqual({
+        write: ['model-x'],
+        stays: { 'model-x': 'd1' },
+      });
+      // model-y: dated by its name only, nothing to clear
+      expect(planDateMove(site, {}, ['model-y'], null)).toEqual({
+        write: [],
+        stays: { 'model-y': 'd1' },
+      });
+    });
+
+    it('honours the volumes lists and ignores unknown layers, dates and repeats', () => {
+      const hints = { layers: { d2: ['plan'] } };
+      expect(planDateMove(site, hints, ['plan'], 'd2')).toEqual({ write: [], stays: {} });
+      expect(planDateMove(site, hints, ['plan'], null)).toEqual({
+        write: [],
+        stays: { plan: 'd2' },
+      });
+      expect(planDateMove(site, {}, ['nope', 'plan', 'plan'], 'd1')).toEqual({
+        write: ['plan'],
+        stays: {},
+      });
+      expect(planDateMove(site, {}, ['plan'], 'gone')).toEqual({ write: [], stays: {} });
+    });
   });
 });

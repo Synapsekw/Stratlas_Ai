@@ -4,6 +4,7 @@ import { AlignNotice } from '../builder/AlignNotice';
 import { PhotoAlignNotice } from '../builder/PhotoAlignNotice';
 import { DiskChangedNotice } from '../DiskChangedNotice';
 import { GraphicsNotice } from '../GraphicsNotice';
+import { ProjectMapNotice } from '../mapCoverage/ProjectMapNotice';
 import { SyncNotices } from '../team/SyncNotices';
 import { cancelExport, toasts } from './exports';
 
@@ -20,6 +21,7 @@ export function Toasts() {
       <SyncNotices />
       <AlignNotice />
       <PhotoAlignNotice />
+      <ProjectMapNotice />
       {list.map((t) => {
         const pct = t.total > 0 ? Math.round((t.done / t.total) * 100) : null;
         return (

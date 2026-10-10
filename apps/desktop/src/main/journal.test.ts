@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
   mkdirSync,
@@ -426,6 +427,70 @@ describe('journal service', () => {
     expect(readdirSync(root)).not.toContain('journal');
   });
 
+  /** `library:rename` as main wraps it: the handler rewrites the manifest's name. */
+  const renameIn = (s: ReturnType<typeof service>, root: string) =>
+    s.journal.wrap('library:rename', ({ name }) => {
+      writeFileSync(
+        join(root, 'manifest.json'),
+        JSON.stringify({ schema: 'aio.project/1', name, layers: [] }),
+      );
+      return { ok: true as const, name };
+    });
+
+  it("records a project renamed in the library as the app's own change, not one made outside", async () => {
+    const { root, userData } = setup();
+    const s = service(root, userData);
+    await s.open({ path: root });
+    expect(await renameIn(s, root)({ projectId: 'p', name: 'North yard' })).toEqual({
+      ok: true,
+      name: 'North yard',
+    });
+    // the next open finds nothing new: the change is already in the journal
+    await s.open({ path: root });
+    const h = await s.journal.history({ projectId: 'p' });
+    if (!h.ok) throw new Error(h.error);
+    expect(h.entries).toHaveLength(1);
+    expect(h.entries[0]).toMatchObject({ kind: 'manifest.entry', how: 'hand' });
+    expect(h.entries[0]?.via).toBeUndefined();
+  });
+
+  it('leaves a folder never opened here without a journal when it is renamed', async () => {
+    const { root, userData } = setup();
+    const s = service(root, userData);
+    await renameIn(s, root)({ projectId: 'p', name: 'North yard' });
+    expect(readdirSync(root)).not.toContain('journal');
+    // its first open takes the baseline with the new name: nothing to record
+    await s.open({ path: root });
+    const h = await s.journal.history({ projectId: 'p' });
+    if (!h.ok) throw new Error(h.error);
+    expect(h.entries).toEqual([]);
+  });
+
+  it('forgets a deleted folder: its segment is closed and a new project there starts afresh', async () => {
+    const { root, userData } = setup();
+    const s = service(root, userData);
+    await s.open({ path: root });
+    await s.writeIssues({ projectId: 'p', issues: [{ ...f01, severity: 5 }] });
+    expect(Object.keys((await s.journal.meta(root)).files)).toContain('issues.json');
+    await s.journal.forget(root);
+    // nothing of this process holds the folder: it can be moved away (the recycle bin)
+    const bin = `${root}-bin`;
+    dirs.push(bin);
+    renameSync(root, bin);
+    // a new project made later in a folder of the same name is not compared with the old one
+    mkdirSync(root);
+    writeFileSync(
+      join(root, 'issues.json'),
+      JSON.stringify({ schema: 'aio.issues/1', issues: [] }),
+    );
+    writeFileSync(join(root, 'manifest.json'), JSON.stringify({ schema: 'aio.project/1' }));
+    expect((await s.journal.meta(root)).files).toEqual({});
+    await s.open({ path: root });
+    const h = await s.journal.history({ projectId: 'p' });
+    if (!h.ok) throw new Error(h.error);
+    expect(h.entries).toEqual([]);
+  });
+
   it('answers an open before any journal work: no replica, baseline copy or device key on the way', async () => {
     // a small private project opened on a cold first start (CI run 37575692965: the project card
     // stayed on "Opening" while the journal took its first look at the folder)
@@ -584,13 +649,17 @@ describe('journal service', () => {
       'report:list',
       'blobs:status',
       'ai:project',
+      'library:reveal',
     ];
     expect(reads.filter(waits)).toEqual([]);
     const writers: IpcChannel[] = [
       'project:writeCentreline',
       'builder:updateLayers',
+      'builder:updateCapture',
       'change:compute',
       'model:build',
+      'library:rename',
+      'library:delete',
     ];
     expect(writers.filter(waits)).toEqual(writers);
   });

@@ -181,12 +181,33 @@ export const LayerPatch = z.union([
   z.object({ capture: Id.nullable() }).strict(),
 ]);
 
+/**
+ * Patch for `builder:updateCapture`: the name of a survey date (`label`), and the colour (1 to 8
+ * of the date palette) and icon of its folder; `null` puts the colour or the icon back to the
+ * automatic one. The date itself never changes here.
+ */
+export const CapturePatch = z
+  .object({
+    label: z.string().trim().min(1).max(80).optional(),
+    colour: z.number().int().min(1).max(8).nullable().optional(),
+    icon: z
+      .string()
+      .regex(/^[a-z0-9-]{1,32}$/)
+      .nullable()
+      .optional(),
+  })
+  .strict()
+  .refine((p) => p.label !== undefined || p.colour !== undefined || p.icon !== undefined, {
+    message: 'Give label, colour or icon',
+  });
+
 export type ProjectType = z.infer<typeof ProjectType>;
 export type SeverityTemplate = z.infer<typeof SeverityTemplate>;
 export type ReportBrand = z.infer<typeof ReportBrand>;
 export type NewProjectRequest = z.infer<typeof NewProjectRequest>;
 export type ImportItem = z.infer<typeof ImportItem>;
 export type LayerPatch = z.infer<typeof LayerPatch>;
+export type CapturePatch = z.infer<typeof CapturePatch>;
 export type VerticalDatum = z.infer<typeof VerticalDatum>;
 export type AltitudeSource = z.infer<typeof AltitudeSource>;
 export type FlightHeights = z.infer<typeof FlightHeights>;

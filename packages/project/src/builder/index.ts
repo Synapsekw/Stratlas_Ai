@@ -10,6 +10,7 @@ export {
   readManifestFile,
   slug,
   uniqueId,
+  updateCapture,
   updateLayers,
   writeManifestFile,
 } from './create';

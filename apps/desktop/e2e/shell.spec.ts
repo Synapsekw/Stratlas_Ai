@@ -3,11 +3,13 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { sampleIssue, sampleManifest, writeProject } from '../src/main/testing';
-import { GPU_ARGS } from './fixtures';
+import { GPU_ARGS, quietStreetMapOffer } from './fixtures';
 
 const ALLOWED = ['file:', 'aio:', 'devtools:', 'data:', 'blob:', 'chrome-extension:'];
 
 async function launch(dataRoot: string, base: string) {
+  // the opened project is placed on the Earth: no street map notice over the controls
+  await quietStreetMapOffer(join(base, 'user'));
   const app = await electron.launch({
     args: [...GPU_ARGS, join(import.meta.dirname, '../out/main/index.js')],
     env: { ...process.env, QUADRION_USER_DATA: join(base, 'user'), QUADRION_DATA: dataRoot },

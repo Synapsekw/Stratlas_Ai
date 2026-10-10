@@ -22,6 +22,31 @@ describe('project type', () => {
   });
 });
 
+describe('capture colour and icon', () => {
+  const withCapture = (extra: Record<string, unknown>) =>
+    ProjectManifest.safeParse({
+      ...base,
+      captures: [{ id: 'c1', label: 'Survey', date: '2026-01-10', ...extra }],
+    });
+
+  it('are optional, so older manifests stay valid', () => {
+    const r = withCapture({});
+    expect(r.success && r.data.captures[0]).toEqual({
+      id: 'c1',
+      label: 'Survey',
+      date: '2026-01-10',
+    });
+  });
+
+  it('take a palette colour 1 to 8 and an icon name', () => {
+    const r = withCapture({ colour: 3, icon: 'flag' });
+    expect(r.success && r.data.captures[0]).toMatchObject({ colour: 3, icon: 'flag' });
+    expect(withCapture({ colour: 9 }).success).toBe(false);
+    expect(withCapture({ colour: 1.5 }).success).toBe(false);
+    expect(withCapture({ icon: '../x' }).success).toBe(false);
+  });
+});
+
 describe('builder ipc contracts', () => {
   it('validates a new project request', () => {
     const req = ipc['builder:createProject'].request;
@@ -97,6 +122,21 @@ describe('builder ipc contracts', () => {
       false,
     );
     expect(req.safeParse({ projectId: 'p', layerIds: ['m'], patch: {} }).success).toBe(false);
+  });
+
+  it('patches the name, colour and icon of a survey date, never its date', () => {
+    const req = ipc['builder:updateCapture'].request;
+    const ok = (patch: unknown) =>
+      req.safeParse({ projectId: 'p', captureId: 'c1', patch }).success;
+    expect(ok({ label: 'Baseline' })).toBe(true);
+    expect(ok({ colour: 8, icon: 'flag' })).toBe(true);
+    expect(ok({ colour: null, icon: null })).toBe(true);
+    expect(ok({})).toBe(false);
+    expect(ok({ label: '   ' })).toBe(false);
+    expect(ok({ colour: 9 })).toBe(false);
+    expect(ok({ colour: 0 })).toBe(false);
+    expect(ok({ icon: 'Not An Icon' })).toBe(false);
+    expect(ok({ date: '2026-01-01' })).toBe(false);
   });
 
   it('lets the open-files dialog take filters', () => {

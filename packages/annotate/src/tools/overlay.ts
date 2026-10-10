@@ -1,6 +1,6 @@
 import { getActiveScene, isEngineStage, onActiveScene, type SceneHandle } from '@aio/engine';
-import type { Vec3 } from '@aio/schema';
-import type { Workspace } from '@aio/workspace';
+import type { Issue, Vec3 } from '@aio/schema';
+import { issuesOnScreen, sameItems, type Workspace } from '@aio/workspace';
 import {
   AdditiveBlending,
   BufferAttribute,
@@ -298,6 +298,8 @@ export interface IssueOverlayOptions {
  * and an optional severity heat map. A pin click selects its issue; a badge click flies in
  * to separate its pins, or lists them when they share one spot. Issues' polygon map sightings
  * are draped on the ground (same filter; the selected one outlined) and select on click.
+ * An issue of a survey date draws only while that date is on screen in `store` (`issuesOnScreen`:
+ * hide the date's layers and its pins, shapes and heat go with them).
  * Follows the active scene through `onActiveScene`. Returns an uninstall function.
  */
 export function installIssueOverlay(
@@ -368,6 +370,11 @@ export function installIssueOverlay(
     // component callouts keep their plates off the drawn pins and badges
     const offObstacles = isEngineStage(handle) ? handle.addLabelObstacles(() => obstacles) : null;
 
+    // the issues whose survey date is on screen (all of them without dates or with none hidden)
+    const onScreen = (s: Workspace): readonly Issue[] =>
+      issuesOnScreen(s.issues, s.dates, s.hidden);
+    let shown = onScreen(store.getState());
+
     // polygon map sightings draped on the ground
     const drape = createDrapeLayer(handle);
     let toLocal: MapToLocal | null = null;
@@ -377,7 +384,7 @@ export function installIssueOverlay(
       const f = display.getState().filter;
       toLocal = m ? mapToLocal(m.crs, m.origin) : null;
       drape.shapes(
-        f === 'all' ? s.issues : s.issues.filter((i) => pinPasses(i.severity, f)),
+        f === 'all' ? shown : shown.filter((i) => pinPasses(i.severity, f)),
         m?.severityModels ?? [],
         toLocal,
       );
@@ -386,7 +393,7 @@ export function installIssueOverlay(
       const s = store.getState();
       const id = s.selection?.kind === 'issue' ? s.selection.id : null;
       drape.select(
-        s.issues.find((x) => x.id === id) ?? null,
+        shown.find((x) => x.id === id) ?? null,
         s.project?.manifest.severityModels ?? [],
         toLocal,
       );
@@ -397,10 +404,10 @@ export function installIssueOverlay(
       const d = display.getState();
       const sel = s.selection?.kind === 'issue' ? s.selection.id : null;
       const models = s.project?.manifest.severityModels ?? [];
-      pins = issuePins(s.issues, models, sel, d.filter);
+      pins = issuePins(shown, models, sel, d.filter);
       // the heat map follows a severity threshold, and still shows with the pins off
       const heatPins = d.heat
-        ? issuePins(s.issues, models, null, d.filter === 'off' ? 'all' : d.filter)
+        ? issuePins(shown, models, null, d.filter === 'off' ? 'all' : d.filter)
         : [];
       heatBuf.ensure(heatPins.length);
       const hp = heatBuf.array('position');
@@ -504,11 +511,16 @@ export function installIssueOverlay(
     });
 
     const unsub = store.subscribe((s, prev) => {
-      if (s.issues !== prev.issues || s.selection !== prev.selection || s.project !== prev.project)
-        rebuild();
-      if (s.issues !== prev.issues || s.project !== prev.project) drapeAll();
-      if (s.issues !== prev.issues || s.selection !== prev.selection || s.project !== prev.project)
-        drapeSelection();
+      // a layer switch redraws only when it puts a date's issues on or off screen
+      let issues = false;
+      if (s.issues !== prev.issues || s.hidden !== prev.hidden || s.dates !== prev.dates) {
+        const next = onScreen(s);
+        issues = !sameItems(next, shown);
+        shown = next;
+      }
+      if (issues || s.selection !== prev.selection || s.project !== prev.project) rebuild();
+      if (issues || s.project !== prev.project) drapeAll();
+      if (issues || s.selection !== prev.selection || s.project !== prev.project) drapeSelection();
     });
     const unsubDisplay = display.subscribe((d, prev) => {
       rebuild();

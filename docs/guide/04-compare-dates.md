@@ -14,6 +14,8 @@ To step through all survey dates of a project, see [Survey dates](28-survey-date
 4. Orbit, pan or zoom. With **Link the two views** on, both sides move together. Click it again to **Unlink the two views**.
 5. Click a pile or an object on one side: it is outlined on both.
 
+Each side draws the issues of its own date, and the issues that belong to no date. See [Survey dates](28-survey-dates.md#issues-and-measurements-belong-to-their-date).
+
 To stop, click **Stop comparing dates**. {product} remembers the comparison per project.
 
 ## What changed

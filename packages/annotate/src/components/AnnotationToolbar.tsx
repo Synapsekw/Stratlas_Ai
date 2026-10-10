@@ -1,6 +1,7 @@
 import { getActiveScene, onActiveScene } from '@aio/engine';
-import { useWorkspace, workspace } from '@aio/workspace';
+import { useWorkspace, workspace, type Workspace } from '@aio/workspace';
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import type { StoreApi } from 'zustand/vanilla';
 import { annotateUi, beginSighting, useAnnotateReadOnly, useAnnotateUi } from '../runtime';
 import { installIssueOverlay, startSceneTool, type SceneTool } from '../tools/scene';
 import { SightingPicker } from './SightingPicker';
@@ -17,11 +18,15 @@ const TOOLS: { id: SceneTool; label: string; title: string }[] = [
 let overlayUsers = 0;
 let uninstallOverlay: (() => void) | null = null;
 
-/** Install the 3D issue pins once for the app, however many components ask for them. */
-export function useIssueOverlay(): void {
+/**
+ * Install the 3D issue pins once for the app, however many components ask for them. `store` is
+ * the workspace as the 3D view sees it (one survey date while it shows one): the pins of a date
+ * follow that date's layers there. Every caller passes the same store.
+ */
+export function useIssueOverlay(store: StoreApi<Workspace> = workspace): void {
   useEffect(() => {
     overlayUsers += 1;
-    uninstallOverlay ??= installIssueOverlay(workspace);
+    uninstallOverlay ??= installIssueOverlay(store);
     return () => {
       overlayUsers -= 1;
       if (overlayUsers === 0) {
@@ -29,15 +34,22 @@ export function useIssueOverlay(): void {
         uninstallOverlay = null;
       }
     };
-  }, []);
+  }, [store]);
 }
 
 /**
  * 3D annotation tools for the stage toolbar: pins, surface lines and areas on meshes, points and
  * boxes on point clouds. Also shows issue pins in the active scene.
  */
-export function AnnotationToolbar({ className }: { className?: string }) {
-  useIssueOverlay();
+export function AnnotationToolbar({
+  className,
+  store,
+}: {
+  className?: string;
+  /** The workspace as the 3D view sees it, for the issue pins (`useIssueOverlay`). */
+  store?: StoreApi<Workspace>;
+}) {
+  useIssueOverlay(store);
   const [tool, setTool] = useState<SceneTool | null>(null);
   // An external store: the scene may be published before this component subscribes.
   const scene = useSyncExternalStore(onActiveScene, getActiveScene, getActiveScene);

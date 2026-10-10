@@ -261,3 +261,22 @@ export async function builderUpdateLayers(
     return { ok: false, error: errorText(e) };
   }
 }
+
+/** Rename a survey date or set its folder colour and icon: only `manifest.captures` changes. */
+export async function builderUpdateCapture(
+  req: IpcRequest<'builder:updateCapture'>,
+  registry: ProjectRegistry,
+): Promise<IpcResponse<'builder:updateCapture'>> {
+  const root = registry.root(req.projectId);
+  if (root === undefined)
+    return {
+      ok: false,
+      error: `Project "${req.projectId}" is not open. Open it, then save again.`,
+    };
+  try {
+    const r = await (await lib()).updateCapture(root, req.captureId, req.patch);
+    return { ok: true, manifest: r.manifest, backup: r.backup };
+  } catch (e) {
+    return { ok: false, error: errorText(e) };
+  }
+}

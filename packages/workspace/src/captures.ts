@@ -122,10 +122,13 @@ function matches(layer: Layer, capture: Capture, epoch: string | undefined): boo
  * date or "Belongs to date..."), then the explicit lists when given (volumetric projects), else a
  * layer belongs to the one capture whose id or date its id or name carries (or, for a mesh, whose
  * survey key ends its tagged node names). A layer that names no capture, or several, is common.
+ * With `own: false` the layers' own `capture` is left out: where the lists and the names alone
+ * would file each layer.
  */
 export function captureIndex(
   manifest: Pick<ProjectManifest, 'captures' | 'layers'>,
   hints: CaptureHints = {},
+  opts: { own?: boolean } = {},
 ): CaptureIndex {
   const captures = [...manifest.captures].sort((a, b) =>
     a.date === b.date ? 0 : a.date < b.date ? -1 : 1,
@@ -139,7 +142,7 @@ export function captureIndex(
   // 1. the layer's own `capture` (M8) wins over everything else
   const ids = new Set(captures.map((c) => c.id));
   for (const l of manifest.layers) {
-    if (!l.capture || !ids.has(l.capture)) continue;
+    if (opts.own === false || !l.capture || !ids.has(l.capture)) continue;
     explicit.add(l.id);
     of[l.id] = l.capture;
     layers[l.capture]?.push(l.id);
@@ -193,6 +196,47 @@ export function captureIndex(
     slot[l.id] = `${l.kind}${role}:${strip(l.name, tokens)}`;
   }
   return { captures, layers, of, epochs, slot };
+}
+
+/** What filing layers under another survey date (or under none) comes to. */
+export interface DateMove {
+  /** Layers whose own `capture` has to change: set to the date, or cleared for "no date". */
+  write: string[];
+  /**
+   * Layers that keep a date although "no date" was asked: the capture their name (or the volumes
+   * file) gives them, by layer id. Clearing `capture` cannot take that away.
+   */
+  stays: Record<string, string>;
+}
+
+/**
+ * Plan filing `layerIds` under `target` (a capture id, or null for no date). Only the layers'
+ * `capture` field is ever written; a layer already filed there is left out, so dropping a layer
+ * on the folder it is in writes nothing.
+ */
+export function planDateMove(
+  manifest: Pick<ProjectManifest, 'captures' | 'layers'>,
+  hints: CaptureHints,
+  layerIds: readonly string[],
+  target: string | null,
+): DateMove {
+  const now = captureIndex(manifest, hints).of;
+  const known = new Map(manifest.layers.map((l) => [l.id, l]));
+  const ids = [...new Set(layerIds)].filter((id) => known.has(id));
+  if (target !== null) {
+    if (!manifest.captures.some((c) => c.id === target)) return { write: [], stays: {} };
+    return { write: ids.filter((id) => now[id] !== target), stays: {} };
+  }
+  const named = captureIndex(manifest, hints, { own: false }).of;
+  const write: string[] = [];
+  const stays: Record<string, string> = {};
+  for (const id of ids) {
+    const by = named[id];
+    if (by !== undefined) stays[id] = by;
+    // clearing changes something only where the layer carries a `capture` of its own
+    if (known.get(id)?.capture !== undefined && now[id] !== by) write.push(id);
+  }
+  return { write, stays };
 }
 
 /** Two dates to compare: at least two captures, each with a layer of its own. */

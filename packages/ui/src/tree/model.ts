@@ -151,6 +151,18 @@ function itemLayerIds(it: TreeItem): string[] {
   return [...(it.layerId ? [it.layerId] : []), ...(it.children ?? []).flatMap(itemLayerIds)];
 }
 
+/** Layer kinds that are never of one survey date: an offline basemap, an original review. */
+const NEVER_DATED: ReadonlySet<Layer['kind']> = new Set(['basemap', 'legacy']);
+
+/**
+ * The layers a row stands for that can be filed under a survey date (a flight row: its clips).
+ * Empty for a row that is not a layer (Issues, Drafts) and for basemaps and original reviews.
+ */
+export function datableLayerIds(it: TreeItem): string[] {
+  const own = it.layerId && it.layerKind && !NEVER_DATED.has(it.layerKind) ? [it.layerId] : [];
+  return [...own, ...(it.children ?? []).flatMap(datableLayerIds)];
+}
+
 /** Every layer id in a group, flight clips included. */
 export function groupLayerIds(group: TreeGroup): string[] {
   return group.items.flatMap(itemLayerIds);

@@ -360,6 +360,94 @@ describe('shell store', () => {
     expect(s.getState().libraryError).toBeNull();
   });
 
+  it('renames a project by its library id and reads the library again', async () => {
+    const renamed = { ...entry, name: 'Tank farm' };
+    const { bridge, calls } = fakeBridge({
+      'library:rename': () => ({ ok: true, name: 'Tank farm' }),
+      'library:list': () => [renamed],
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    expect(await s.getState().renameProject(entry, 'Tank farm')).toBeNull();
+    expect(calls[0]).toEqual({
+      channel: 'library:rename',
+      req: { projectId: entry.id, name: 'Tank farm' },
+    });
+    expect(s.getState().library).toEqual([renamed]);
+  });
+
+  it('shows the new name of the open project at once', async () => {
+    const { bridge } = fakeBridge({
+      'project:open': () => ({ ok: true, id: entry.id, root: entry.path, manifest, issues: [] }),
+      'library:rename': () => ({ ok: true, name: 'Tank farm' }),
+      'library:list': () => [],
+    });
+    const ws = createWorkspace();
+    const s = createShellStore(bridge, ws);
+    await s.getState().openProject(entry.path);
+    await s.getState().renameProject(entry, 'Tank farm');
+    expect(ws.getState().project?.manifest.name).toBe('Tank farm');
+    // another project renamed while this one is open leaves it alone
+    await s.getState().renameProject({ ...entry, id: 'other', path: 'E:\\data\\projects\\o' }, 'X');
+    expect(ws.getState().project?.manifest.name).toBe('Tank farm');
+  });
+
+  it('answers why a rename did not work and keeps the library as it is', async () => {
+    const { bridge, calls } = fakeBridge({
+      'library:rename': () => ({ ok: false, error: 'manifest.json is read-only' }),
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    expect(await s.getState().renameProject(entry, 'Tank farm')).toBe('manifest.json is read-only');
+    expect(calls.map((c) => c.channel)).toEqual(['library:rename']);
+  });
+
+  it('deletes a project and reads the library again', async () => {
+    const { bridge, calls } = fakeBridge({
+      'library:delete': () => ({ ok: true }),
+      'library:list': () => [],
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    expect(await s.getState().deleteProject(entry)).toBeNull();
+    expect(calls).toEqual([
+      { channel: 'library:delete', req: { projectId: entry.id } },
+      { channel: 'library:list', req: {} },
+    ]);
+    expect(s.getState().library).toEqual([]);
+  });
+
+  it('keeps a project in the list when the recycle bin refused it', async () => {
+    const { bridge } = fakeBridge({
+      'library:delete': () => ({ ok: false, error: 'The item is in use.' }),
+      'library:list': () => [entry],
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    expect(await s.getState().deleteProject(entry)).toBe('The item is in use.');
+    expect(s.getState().library).toEqual([entry]);
+  });
+
+  it('never asks main to delete the open project', async () => {
+    const { bridge, calls } = fakeBridge({
+      'project:open': () => ({ ok: true, id: entry.id, root: entry.path, manifest, issues: [] }),
+      'library:delete': () => ({ ok: true }),
+    });
+    const ws = createWorkspace();
+    const s = createShellStore(bridge, ws);
+    await s.getState().openProject(entry.path);
+    expect(await s.getState().deleteProject(entry)).toContain('Close it first');
+    expect(calls.map((c) => c.channel)).not.toContain('library:delete');
+    expect(ws.getState().project).not.toBeNull();
+  });
+
+  it('shows a project in its folder, and says so in the library when that fails', async () => {
+    const answers = [{ ok: true }, { ok: false, error: 'Not found: the project folder.' }];
+    const { bridge, calls } = fakeBridge({ 'library:reveal': () => answers.shift() });
+    const s = createShellStore(bridge, createWorkspace());
+    expect(await s.getState().revealProject(entry)).toBeNull();
+    expect(calls[0]).toEqual({ channel: 'library:reveal', req: { projectId: entry.id } });
+    expect(s.getState().libraryError).toBeNull();
+    expect(await s.getState().revealProject(entry)).toContain('Not found');
+    expect(s.getState().libraryError).toContain('Not found');
+  });
+
   it('closing the project returns to the library', async () => {
     const { bridge } = fakeBridge({
       'project:open': () => ({ ok: true, id: 'hcl', root: entry.path, manifest, issues: [] }),

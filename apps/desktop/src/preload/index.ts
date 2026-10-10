@@ -11,6 +11,9 @@ const CHANNELS = {
   'library:list': true,
   'app:setupStatus': true,
   'library:add': true,
+  'library:reveal': true,
+  'library:rename': true,
+  'library:delete': true,
   'project:open': true,
   'project:writeIssues': true,
   'project:readVolumes': true,
@@ -89,6 +92,7 @@ const CHANNELS = {
   'builder:import': true,
   'builder:altitudePlan': true,
   'builder:updateLayers': true,
+  'builder:updateCapture': true,
   // M8
   'change:list': true,
   'change:read': true,
