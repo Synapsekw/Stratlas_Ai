@@ -156,6 +156,8 @@ describe('M11 additive rule: no layer kind, raster role, project type, setting o
         'aio.height-tiles',
         'aio.hydro-run',
         'aio.measurements',
+        // online satellite's switch, its own userData file (ADR 0007, amendment of 10 Oct 2026)
+        'aio.online-settings',
         'aio.site-calibration',
         'aio.site-transform',
         'aio.survey-compare',

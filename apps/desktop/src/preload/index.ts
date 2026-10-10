@@ -185,6 +185,9 @@ const CHANNELS = {
   'terrainPacks:list': true,
   'terrainPacks:import': true,
   'terrainPacks:remove': true,
+  'onlineTiles:status': true,
+  'onlineTiles:setSatellite': true,
+  'onlineTiles:clearCache': true,
   'orientation:read': true,
   'orientation:write': true,
   // M11
