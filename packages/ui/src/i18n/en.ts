@@ -166,6 +166,39 @@ export const en = {
   // Library
   'library.count_one': '{count} project',
   'library.count_other': '{count} projects',
+  // The menu of one project (three dots on its card, or right-click)
+  'library.menu.button': 'Actions for {project}',
+  'library.menu.label': 'Project {project}',
+  'library.menu.open': 'Open',
+  'library.menu.rename': 'Rename',
+  'library.menu.reveal': 'Show in folder',
+  'library.menu.export': 'Export package',
+  'library.menu.close': 'Close project',
+  'library.menu.delete': 'Delete',
+  'library.menu.why.package': 'A package is a read-only file',
+  'library.menu.why.demo': 'Demo projects ship with the app',
+  'library.menu.why.kit': 'A kit export has no project file',
+  'library.menu.why.outside': 'Not in the data folder',
+  'library.menu.why.open': 'Close the project first',
+  'library.menu.failed': '{action} did not work for {project}.',
+  'library.rename.title': 'Rename project',
+  'library.rename.field': 'Project name',
+  'library.rename.help':
+    'Only the name shown in the app changes. The folder on disk keeps its name: {folder}',
+  'library.rename.confirm': 'Rename',
+  'library.rename.busy': 'Renaming',
+  'library.rename.failed': 'The project was not renamed.',
+  'library.delete.title': 'Delete {project}?',
+  'library.delete.text':
+    'The project folder moves to the recycle bin with everything in it: models, point clouds, maps, photos, video, issues and reports.',
+  'library.delete.folder': 'Folder',
+  'library.delete.size': 'Size',
+  'library.delete.restore':
+    'Nothing is erased for good. To get the project back, restore the folder from the recycle bin.',
+  'library.delete.confirm': 'Move to recycle bin',
+  'library.delete.busy': 'Moving',
+  'library.delete.failed': 'The project was not deleted. It is still in the library.',
+  'library.cancel': 'Cancel',
 
   // Detection review (BLD-5) and AI-assisted detection (BLD-6)
   'det.title': 'Detection review',

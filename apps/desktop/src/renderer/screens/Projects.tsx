@@ -15,6 +15,7 @@ import { builder } from '../builder/state';
 import { build, formatBuildTime } from '../buildStamp';
 import { shell, useCall, useShell } from '../shell';
 import { FirstStart, SetupChecklist } from './FirstStart';
+import { ProjectMenu, type MenuAt } from './ProjectMenu';
 
 const LAYER_CHIPS: { key: string; icon: IconName; label: string }[] = [
   { key: 'mesh', icon: 'scene', label: 'Models' },
@@ -86,62 +87,76 @@ function ProjectCard({
   const counts = entry.layerCounts ?? {};
   const chips = LAYER_CHIPS.filter((c) => (counts[c.key] ?? 0) > 0);
   const where = [entry.customer, entry.site].filter(Boolean).join(' · ');
+  const [menu, setMenu] = useState<MenuAt | null>(null);
   return (
-    <button
-      type="button"
-      className={`pcard${opening ? ' opening' : ''}${current ? ' current' : ''}`}
-      onClick={() => {
-        if (!opening) void shell.getState().openProject(entry.path);
+    // the card and its three dots are two buttons side by side: a click on the card opens the
+    // project, the dots (or a right-click anywhere on the card) open the project's menu
+    <div
+      className="pcard-wrap"
+      onContextMenu={(e) => {
+        // not a right-click inside a dialog of the menu (portals bubble here through React)
+        if (!e.currentTarget.contains(e.target as Node)) return;
+        e.preventDefault();
+        setMenu({ x: e.clientX, y: e.clientY });
       }}
-      aria-busy={opening}
-      title={entry.path}
-      data-testid="project-card"
     >
-      <div className="pc-media">
-        <Thumb entry={entry} />
-        <span className="pc-kind">
-          {entry.package ? (
-            <>
-              <Icon name={entry.package.encrypted ? 'key' : 'lock'} size={12} />
-              {entry.package.encrypted ? 'Encrypted package' : 'Package'}
-            </>
-          ) : entry.demo ? (
-            `Demo · ${KIND_LABEL[entry.kind]}`
-          ) : (
-            KIND_LABEL[entry.kind]
-          )}
-        </span>
-        {current && <span className="pc-open">Open</span>}
-        {opening && (
-          <span className="pc-busy">
-            <span className="spin" />
-            Opening
+      <button
+        type="button"
+        className={`pcard${opening ? ' opening' : ''}${current ? ' current' : ''}`}
+        onClick={() => {
+          if (!opening) void shell.getState().openProject(entry.path);
+        }}
+        aria-busy={opening}
+        title={entry.path}
+        data-testid="project-card"
+      >
+        <div className="pc-media">
+          <Thumb entry={entry} />
+          <span className="pc-kind">
+            {entry.package ? (
+              <>
+                <Icon name={entry.package.encrypted ? 'key' : 'lock'} size={12} />
+                {entry.package.encrypted ? 'Encrypted package' : 'Package'}
+              </>
+            ) : entry.demo ? (
+              `Demo · ${KIND_LABEL[entry.kind]}`
+            ) : (
+              KIND_LABEL[entry.kind]
+            )}
           </span>
-        )}
-      </div>
-      <div className="pc-body">
-        <div className="pc-row">
-          <b className="pc-name">{entry.name}</b>
-          {entry.captureDate && <span className="pc-date">{formatDate(entry.captureDate)}</span>}
-        </div>
-        <div className="pc-row">
-          <span className="pc-where">{where || entry.path}</span>
-          {entry.sizeBytes !== undefined && (
-            <span className="pc-size mono">{formatBytes(entry.sizeBytes)}</span>
+          {current && <span className="pc-open">Open</span>}
+          {opening && (
+            <span className="pc-busy">
+              <span className="spin" />
+              Opening
+            </span>
           )}
         </div>
-        {chips.length > 0 && (
-          <div className="pc-chips">
-            {chips.map((c) => (
-              <span key={c.key} className="lchip" title={c.label}>
-                <Icon name={c.icon} size={12} />
-                {formatCompact(counts[c.key] ?? 0)}
-              </span>
-            ))}
+        <div className="pc-body">
+          <div className="pc-row">
+            <b className="pc-name">{entry.name}</b>
+            {entry.captureDate && <span className="pc-date">{formatDate(entry.captureDate)}</span>}
           </div>
-        )}
-      </div>
-    </button>
+          <div className="pc-row">
+            <span className="pc-where">{where || entry.path}</span>
+            {entry.sizeBytes !== undefined && (
+              <span className="pc-size mono">{formatBytes(entry.sizeBytes)}</span>
+            )}
+          </div>
+          {chips.length > 0 && (
+            <div className="pc-chips">
+              {chips.map((c) => (
+                <span key={c.key} className="lchip" title={c.label}>
+                  <Icon name={c.icon} size={12} />
+                  {formatCompact(counts[c.key] ?? 0)}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </button>
+      <ProjectMenu entry={entry} current={current} opening={opening} at={menu} onAt={setMenu} />
+    </div>
   );
 }
 

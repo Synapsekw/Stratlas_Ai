@@ -92,6 +92,11 @@ export class ProjectRegistry {
     return this.packages.get(id);
   }
 
+  /** Where an id points on disk: a project folder or a `.aio` file (opened or still locked). */
+  path(id: string): string | undefined {
+    return this.byId.get(id);
+  }
+
   /** Every package opened in this session, by project id. */
   openPackages(): [string, PackageSource][] {
     return [...this.packages.entries()];

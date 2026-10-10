@@ -235,6 +235,7 @@ const READS: ReadonlySet<IpcChannel> = new Set<IpcChannel>([
   'sync:quarantine',
   'blobs:status',
   'thumbs:put',
+  'library:reveal',
 ]);
 
 /** Does a request schema of the contract have a `projectId` (an object, or any union member)? */
@@ -856,6 +857,25 @@ export function createJournalService(deps: JournalServiceDeps) {
         return r;
       };
     }
+    if (channel === 'library:rename') {
+      // the project's new name is the app's own change, not one found later as made outside it
+      return async (req) => {
+        const r = await handler(req);
+        const { projectId } = req as IpcRequest<'library:rename'>;
+        const root = deps.projects.root(projectId);
+        if ((r as { ok: boolean }).ok && root !== undefined && !deps.projects.package(projectId)) {
+          try {
+            const st = await load(root);
+            // a folder never opened here has no baseline: its first open takes one, name included
+            if (st.meta.journal === 'on' && st.meta.files['manifest.json'] !== undefined)
+              await serial(st, () => reconcile(st, ['manifest.json'], undefined));
+          } catch (e) {
+            console.warn(`Journal: could not record the new name of ${root} (${String(e)}).`);
+          }
+        }
+        return r;
+      };
+    }
     if (channel === 'change:compute') {
       // change sets made by the in-app comparison: recorded as that run's work right away, so
       // the next review of an item is not taken for a change made outside the app
@@ -1250,6 +1270,24 @@ export function createJournalService(deps: JournalServiceDeps) {
     close: async (root: string) => {
       const st = states.get(keyOf(root));
       if (st) await release(st);
+    },
+    /**
+     * A project folder is gone (moved to the recycle bin): close its segment and drop what the
+     * journal remembers of its files, so a new project made later in a folder of the same name
+     * starts from its own baseline instead of being compared with the deleted one.
+     */
+    forget: async (root: string) => {
+      const key = keyOf(root);
+      const st = states.get(key);
+      if (st) await release(st);
+      await serialKey(key, async () => {
+        states.delete(key);
+        projectIds.delete(key);
+        const dir = join(cacheRoot, key);
+        await rm(join(dir, 'meta.json'), { force: true });
+        await rm(join(dir, 'pending.json'), { force: true });
+        await rm(join(dir, 'snapshot'), { recursive: true, force: true });
+      });
     },
     /** Close every kept segment (app quitting, tests), after the pending steps of each folder. */
     closeAll: async () => {

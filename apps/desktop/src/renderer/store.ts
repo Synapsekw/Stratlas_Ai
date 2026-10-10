@@ -137,6 +137,14 @@ export interface ShellActions {
   setExportFor: (projectId: string | null) => void;
   closeProject: () => void;
   addProjectFolder: () => Promise<void>;
+  /**
+   * The menu of one project on the Projects screen. Each answers null when it worked, else the
+   * sentence to show; the library is read again after a rename or a delete.
+   */
+  revealProject: (entry: LibraryEntry) => Promise<string | null>;
+  renameProject: (entry: LibraryEntry, name: string) => Promise<string | null>;
+  /** Moves the project folder to the recycle bin; refused while the project is open. */
+  deleteProject: (entry: LibraryEntry) => Promise<string | null>;
   chooseDataRoot: () => Promise<void>;
   setPalette: (open: boolean) => void;
   setStageMode: (mode: StageMode) => void;
@@ -352,6 +360,36 @@ export function createShellStore(
         return;
       }
       await get().loadLibrary();
+    },
+
+    revealProject: async (entry) => {
+      const r = await bridge.call('library:reveal', { projectId: entry.id });
+      const error = !r.ok ? r.error : r.value.ok ? null : r.value.error;
+      // no dialog is open for this one: the library's own notice says it
+      if (error) set({ libraryError: error });
+      return error;
+    },
+
+    renameProject: async (entry, name) => {
+      const r = await bridge.call('library:rename', { projectId: entry.id, name });
+      if (!r.ok) return r.error;
+      if (!r.value.ok) return r.value.error;
+      // the open project shows its new name at once (sidebar, title bar)
+      const open = workspace.getState().project;
+      if (open?.root === entry.path)
+        workspace.getState().replaceManifest({ ...open.manifest, name: r.value.name });
+      await get().loadLibrary();
+      return null;
+    },
+
+    deleteProject: async (entry) => {
+      if (workspace.getState().project?.root === entry.path)
+        return 'This project is open. Close it first, then delete it.';
+      const r = await bridge.call('library:delete', { projectId: entry.id });
+      // read the folder again either way: what is still on disk stays in the list
+      await get().loadLibrary();
+      if (!r.ok) return r.error;
+      return r.value.ok ? null : r.value.error;
     },
 
     chooseDataRoot: async () => {

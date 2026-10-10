@@ -571,6 +571,36 @@ export const ipc = {
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
   },
+  /**
+   * The menu of one project on the Projects screen (three dots or right-click). `projectId` is the
+   * library entry's `id`: main finds the folder itself, so the renderer never names a path.
+   *
+   * `library:reveal` shows the project folder (or the `.aio` file) in the file manager.
+   */
+  'library:reveal': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: OkOrFailure,
+  },
+  /**
+   * Change the name a project shows (`name` in its `manifest.json`, the previous file kept as
+   * `manifest.json.bak`). The folder on disk and the project id keep their names. Only for a
+   * project folder directly inside `<data folder>/projects`; packages and demo projects refuse.
+   */
+  'library:rename': {
+    request: z.object({ projectId: ProjectId, name: z.string().trim().min(1).max(120) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), name: z.string() }),
+      Failure,
+    ]),
+  },
+  /**
+   * Move a project folder to the recycle bin (never a permanent delete). Only for a project
+   * folder directly inside `<data folder>/projects`; refuses while a job runs in it.
+   */
+  'library:delete': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: OkOrFailure,
+  },
   'project:open': {
     request: z
       .object({ path: z.string().min(1), passphrase: z.string().min(1).max(256).optional() })

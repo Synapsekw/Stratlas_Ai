@@ -14,6 +14,22 @@ Most projects open on **Scene**. A project that only holds an original review vi
 
 Each card shows the kind (for example **Inspection kit**, **Volumetric survey**, **Road survey**, **Package**), the capture date, the client and site, the size, and how many models, point clouds, rasters, video clips, photos, panoramas and issues it holds.
 
+## The menu of a project: rename, show in folder, delete
+
+Every card has three dots in its top corner. Click them, or right-click the card, to open the menu of that project. With the keyboard, move to the dots with **Tab**, press **Enter**, pick with the Up and Down keys, and close with **Esc**.
+
+- **Open**: the same as clicking the card.
+- **Rename**: type the new name and click **Rename**. Only the name shown in the app changes; the folder on disk keeps its name, so nothing that points at the folder breaks.
+- **Show in folder**: shows the project folder (or the package file) in the file manager.
+- **Export package** and **Close project**: on the project that is open. See [Packages](11-packages.md).
+- **Delete**: asks first, naming the project and its folder. **Move to recycle bin** then moves the whole project folder to the recycle bin. Nothing is erased for good: to get the project back, restore the folder from the recycle bin. If the folder cannot be moved (a file of the project is open in another program, or the drive has no recycle bin), the app says why and the project stays in the library.
+
+**Rename** and **Delete** are greyed, with the reason under them, when they do not apply:
+
+- **Close the project first**: the open project cannot be deleted. Use **Close project**, then delete it.
+- **Not in the data folder**: a folder you added from somewhere else stays yours to rename or delete in the file manager.
+- **A package is a read-only file** and **Demo projects ship with the app**.
+
 ## Add projects
 
 - **Add project folder**: pick a folder anywhere that holds a `manifest.json`, or a known kit export. It stays where it is; the library remembers it.
