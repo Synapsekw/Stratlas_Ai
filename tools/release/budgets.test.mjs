@@ -63,7 +63,7 @@ describe('budget harness', () => {
 
 describe('size budgets (M10 decision 6)', () => {
   it('holds the pack and installer numbers', () => {
-    expect(BUDGETS.pack).toEqual({ unpackedBytes: 1_100_000_000, compressedBytes: 450_000_000 });
+    expect(BUDGETS.pack).toEqual({ unpackedBytes: 1_150_000_000, compressedBytes: 450_000_000 });
     expect(BUDGETS.installer.growthOver090Bytes).toBe(15 * 1024 * 1024);
   });
 
@@ -71,7 +71,7 @@ describe('size budgets (M10 decision 6)', () => {
     expect(packBudgetProblems({ unpackedBytes: 900e6, compressedBytes: 400e6 })).toEqual([]);
     expect(packBudgetProblems({ unpackedBytes: 900e6 })).toEqual([]);
     expect(packBudgetProblems({ unpackedBytes: 1.2e9, compressedBytes: 460e6 })).toEqual([
-      'pack is 1200.0 MB unpacked, the budget is 1100.0 MB',
+      'pack is 1200.0 MB unpacked, the budget is 1150.0 MB',
       'pack archive is 460.0 MB, the budget is 450.0 MB',
     ]);
   });

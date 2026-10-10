@@ -33,9 +33,11 @@ export const BUDGETS = Object.freeze({
   installerExtraBytes: 5 * 1024 * 1024,
   /**
    * Pipeline pack 0.5.0 per platform (M10 decision 6): the unpacked folder and its archive. Over
-   * budget, split a "photogrammetry" component pack rather than grow the base.
+   * budget, split a "photogrammetry" component pack rather than grow the base. The unpacked
+   * budget was 1,100 MB until the boundary model of M11 G12 (MobileSAM, 44.7 MB) took the Windows
+   * pack to about 1,106 MB: the founder raised it to 1,150 MB on 10 Oct 2026 (ADR 0011).
    */
-  pack: Object.freeze({ unpackedBytes: 1_100_000_000, compressedBytes: 450_000_000 }),
+  pack: Object.freeze({ unpackedBytes: 1_150_000_000, compressedBytes: 450_000_000 }),
   /**
    * Installer growth for CesiumJS and 3DTilesRendererJS over the 0.9.0 installer (M10 decision 6),
    * per installer file. The baseline is the 0.9.0 release build of each file; a platform without
