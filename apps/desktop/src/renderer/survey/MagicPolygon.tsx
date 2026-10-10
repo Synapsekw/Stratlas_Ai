@@ -85,7 +85,7 @@ const get = () => magicStore.getState();
 export function unavailableText(s: Status): string {
   switch (s.reason) {
     case 'no-pack':
-      return 'Suggest boundaries needs the pipeline pack. Add it on the Jobs page (Check the pipeline pack), then try again.';
+      return 'Suggest boundaries needs the pipeline pack. Copy the pipeline pack folder into "runtime" in your data folder, then try again. Jobs shows the pack once it is found.';
     case 'no-model':
       return 'This pipeline pack has no boundary model. Update the pipeline pack to use Suggest boundaries.';
     case 'no-runtime':
