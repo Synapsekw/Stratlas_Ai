@@ -100,7 +100,7 @@ export function CompareButton({ split }: { split: SplitModel }) {
             changeStore.getState().setShow(on);
             if (on) {
               openChangesTab();
-              if (shell.getState().rightCollapsed) shell.getState().toggleRight();
+              shell.getState().setRight(false);
             }
           }}
         >

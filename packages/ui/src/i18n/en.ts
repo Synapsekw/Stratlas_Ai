@@ -22,6 +22,11 @@ export const en = {
   'nav.collapse': 'Collapse',
   'nav.collapseSidebar': 'Collapse sidebar',
   'nav.expandSidebar': 'Expand sidebar',
+  // The tab on the inner edge of each side panel (shell/PanelHandle.tsx) and the command search
+  'panel.collapseLeft': 'Collapse left sidebar',
+  'panel.expandLeft': 'Expand left sidebar',
+  'panel.collapseRight': 'Collapse right sidebar',
+  'panel.expandRight': 'Expand right sidebar',
   'nav.noProject': 'No project open',
   'nav.chooseProject': 'Choose a project from the library',
 
@@ -587,8 +592,8 @@ export const en = {
   'keys.scope.agent': 'Agent message box',
   'keys.scope.dialog': 'Dialogs and popovers',
   'keys.global.palette': 'Open or close the command search',
-  'keys.global.sidebar': 'Collapse or expand the sidebar',
-  'keys.global.rightPanel': 'Collapse or expand the right panel',
+  'keys.global.sidebar': 'Collapse or expand the left sidebar',
+  'keys.global.rightPanel': 'Collapse or expand the right sidebar',
   'keys.global.help': 'Open or close the user guide',
   'keys.global.playPause': 'Play or pause the video and the timeline',
   'keys.global.prevSurvey': 'Go to the previous survey date',
