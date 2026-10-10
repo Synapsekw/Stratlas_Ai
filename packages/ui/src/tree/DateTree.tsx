@@ -275,7 +275,7 @@ export function DateTree(props: DateTreeProps) {
               {onFolderMenu && (
                 <button
                   type="button"
-                  className="eye dmore"
+                  className="dmore"
                   aria-haspopup="menu"
                   aria-label={t('tree.dates.more', { date: f.label })}
                   title={t('tree.dates.more', { date: f.label })}
