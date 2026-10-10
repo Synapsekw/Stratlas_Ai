@@ -295,7 +295,8 @@ test('Satellite is greyed out with the reason when no imagery pack covers the si
     'No imagery or terrain pack covers this site.',
   );
   await expect(win.getByTestId('basemap-pack')).toHaveCount(0);
-  expect(await packs(win)).toEqual([]);
+  // the style may still be loading on a slow renderer: wait for it, then no pack layer is drawn
+  await expect.poll(() => packs(win), MAP_READY).toEqual([]);
   await shot(win, testInfo, 'picker-no-packs');
   await expectAccessible(win, 'Map type picker without packs');
 
@@ -529,7 +530,7 @@ test.describe('Online satellite', () => {
     await expect(row(win)).toBeEnabled();
     await expect(rowNote(win)).toHaveText('Showing saved tiles only');
     await expect(win.getByTestId('basemap-satellite')).toBeEnabled();
-    expect(await packs(win)).toEqual([ONLINE]);
+    await expect.poll(() => packs(win), MAP_READY).toEqual([ONLINE]);
     await shot(win, testInfo, 'picker-online-offline-only-on');
     await expectAccessible(win, 'Map type picker, online satellite on and offline only');
 
