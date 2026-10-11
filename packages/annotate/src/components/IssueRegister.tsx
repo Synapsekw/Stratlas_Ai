@@ -48,6 +48,7 @@ const GROUPS: { key: IssueGroupKey; label: string }[] = [
   { key: 'zone', label: 'By zone' },
   { key: 'status', label: 'By status' },
 ];
+const NONE_COLLAPSED: ReadonlySet<string> = new Set();
 /** Fixed row heights keep the virtual list exact (see `.ann-row` and `.ann-group`). */
 const ROW_H = 48;
 const HEAD_H = 30;
@@ -153,7 +154,14 @@ export function IssueRegister({ className }: { className?: string }) {
   const dir = useIssueView((s) => s.dir);
   const groupBy = useIssueView((s) => s.groupBy);
   const scope = useIssueView((s) => s.scope);
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  // collapsed group keys belong to one grouping: a grouping set from outside this register
+  // (the store is shared) starts with every group open, as a change made here does
+  const [collapsedIn, setCollapsedIn] = useState<{
+    by: IssueGroupKey;
+    keys: ReadonlySet<string>;
+  }>({ by: groupBy, keys: new Set() });
+  if (collapsedIn.by !== groupBy) setCollapsedIn({ by: groupBy, keys: new Set() });
+  const collapsed = collapsedIn.by === groupBy ? collapsedIn.keys : NONE_COLLAPSED;
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const [anchor, setAnchor] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -177,14 +185,10 @@ export function IssueRegister({ className }: { className?: string }) {
       sortIssues(
         search(
           filterInView(mine ? issues.filter((i) => mine.has(i.id)) : issues, {
-            text,
             sev,
             classId,
             status,
             dataset,
-            sort,
-            dir,
-            groupBy,
             scope,
           }),
           query,
@@ -192,7 +196,7 @@ export function IssueRegister({ className }: { className?: string }) {
         sort,
         dir,
       ),
-    [issues, mine, search, query, text, sev, classId, status, dataset, sort, dir, groupBy, scope],
+    [issues, mine, search, query, sev, classId, status, dataset, sort, dir, scope],
   );
   const groups = useMemo(
     () => groupIssues(shown, groupBy, (id) => classById.get(id)?.label ?? id),
@@ -294,11 +298,11 @@ export function IssueRegister({ className }: { className?: string }) {
           className="ann-group"
           aria-expanded={open}
           onClick={() => {
-            setCollapsed((cur) => {
-              const next = new Set(cur);
+            setCollapsedIn((cur) => {
+              const next = new Set(cur.by === groupBy ? cur.keys : NONE_COLLAPSED);
               if (next.has(r.key)) next.delete(r.key);
               else next.add(r.key);
-              return next;
+              return { by: groupBy, keys: next };
             });
           }}
         >
@@ -527,8 +531,9 @@ export function IssueRegister({ className }: { className?: string }) {
           aria-label="Group"
           value={groupBy}
           onChange={(e) => {
-            setIssueView({ groupBy: e.target.value as IssueGroupKey });
-            setCollapsed(new Set());
+            const by = e.target.value as IssueGroupKey;
+            setIssueView({ groupBy: by });
+            setCollapsedIn({ by, keys: new Set() });
           }}
         >
           {GROUPS.map((g) => (

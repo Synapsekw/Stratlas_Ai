@@ -56,7 +56,10 @@ export function useIssueView<T>(selector: (s: IssueViewState) => T): T {
  * The scope and the filters, in the register's order: only the scoped issues (an id that is gone
  * is ignored), then severity, class, status and dataset. No text search and no sort.
  */
-export function filterInView(issues: readonly Issue[], v: IssueViewState): Issue[] {
+export function filterInView(
+  issues: readonly Issue[],
+  v: Pick<IssueViewState, 'sev' | 'classId' | 'status' | 'dataset' | 'scope'>,
+): Issue[] {
   const scoped = v.scope ? new Set(v.scope.ids) : null;
   return filterIssues(scoped ? issues.filter((i) => scoped.has(i.id)) : issues, {
     ...(v.sev !== null ? { severities: [v.sev] } : {}),

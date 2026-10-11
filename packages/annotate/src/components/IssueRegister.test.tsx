@@ -166,6 +166,24 @@ describe('IssueRegister at scale', () => {
     ui.unmount();
   });
 
+  it('opens every group when the grouping is changed from outside the register', () => {
+    workspace.getState().openProject({ id: 'big', root: 'r', manifest }, many(50));
+    const ui = mount();
+    ui.change('Group', 'severity');
+    const collapsedRows = () => ui.rows();
+    const open = collapsedRows();
+    ui.click('.ann-group');
+    expect(collapsedRows()).toBeLessThan(open);
+    act(() => {
+      setIssueView({ groupBy: 'class' });
+    });
+    act(() => {
+      setIssueView({ groupBy: 'severity' });
+    });
+    expect(collapsedRows()).toBe(open);
+    ui.unmount();
+  });
+
   it('keeps a filter when the register is left and opened again', () => {
     workspace.getState().openProject({ id: 'big', root: 'r', manifest }, many(20));
     const first = mount();
