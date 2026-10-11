@@ -120,7 +120,10 @@ class Drawn extends Object3D {
   override traverse(callback: (object: Object3D) => unknown): void {
     const walk = (o: Object3D) => {
       if (!o.visible) return;
-      if (o.layers.test(this.camera.layers)) callback(o);
+      const material = (o as { material?: Material | Material[] }).material;
+      // a material switched off is skipped by the renderer as well (pick proxies)
+      const off = material !== undefined && !Array.isArray(material) && !material.visible;
+      if (!off && o.layers.test(this.camera.layers)) callback(o);
       for (const c of o.children) walk(c);
     };
     walk(this.root);

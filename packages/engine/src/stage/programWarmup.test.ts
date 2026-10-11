@@ -312,13 +312,17 @@ describe('drawnObjects', () => {
     const picking = mesh('picking');
     picking.layers.set(5);
     const nested = mesh('nested');
-    root.add(shown, hidden, off, picking, new Group().add(nested));
+    // a mesh the renderer skips because its material is switched off, with a child that is drawn
+    const proxy = mesh('proxy');
+    proxy.material.visible = false;
+    proxy.add(mesh('under-proxy'));
+    root.add(shown, hidden, off, picking, new Group().add(nested), proxy);
     const seen: string[] = [];
     drawnObjects(root, camera).traverse((o) => {
       const m = (o as Partial<Mesh>).material;
       if (m && !Array.isArray(m)) seen.push(m.name);
     });
-    expect(seen).toEqual(['shown', 'nested']);
+    expect(seen).toEqual(['shown', 'nested', 'under-proxy']);
     // lights are taken from the scene itself
     const lights: unknown[] = [];
     drawnObjects(root, camera).traverseVisible((o) => lights.push(o));
