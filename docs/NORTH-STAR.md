@@ -24,8 +24,8 @@ The full table, with plans, is [plans/ROADMAP.md](plans/ROADMAP.md). Status and 
 
 ## 3. Now
 
-- **Phase**: M10 integration rounds; pipeline pack install from Settings (round 40), the Globe street map (round 41) and the session workflow (round 45) are merged.
-- **Branch**: `main` at round 45; merging goes through the Orchestrator session, one branch at a time.
-- **In flight**: `feat/drag-group-to-date` (a group heading in a survey date folder moves its whole group to another date, with Undo) is in integration round 46, in CI as a draft pull request.
+- **Phase**: M10 integration rounds; pipeline pack install from Settings (round 40), the Globe street map (round 41), the session workflow (round 45) and moving a whole group to another survey date (round 46) are merged.
+- **Branch**: `main`; merging goes through the Orchestrator session, one branch at a time.
+- **In flight**: `feat/photo-maps-project-and-date` (maps made from photos land under the photos' survey date, added to the project when it is missing; the wizard and the run panel name the project) is with the Orchestrator. A redesign of the Jobs screen, where jobs belong to the open project, is being designed in its own session and branches after that lands.
 - **Next**: finish M10; then Walks 360 and the timeline.
-- **Owed**: founder decisions on the online map provider and API key, the GPU spike, and the M11 G12 AI helpers; client and site names still in `docs/TESTING.md` need a clean-up branch; macOS stays parked.
+- **Owed**: founder decisions on the online map provider and API key, the GPU spike, and the M11 G12 AI helpers; a photo run whose map-building step fails to start stays on "Working" (follow-up); client and site names still in `docs/TESTING.md` need a clean-up branch; macOS stays parked.
