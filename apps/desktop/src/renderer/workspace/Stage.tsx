@@ -18,18 +18,10 @@ import {
   type MapIssueDisplay,
 } from '@aio/maps';
 import {
-  ClassificationLegend,
-  ElevationLegend,
-  pointcloudSettings,
-  useClassificationLegend,
-  useElevationRange,
-} from '@aio/pointcloud';
-import {
   arrowFocus,
   ariaKeys,
   Icon,
   isShortcut,
-  localToProject,
   matchShortcut,
   shortcutHint,
   useT,
@@ -67,11 +59,19 @@ import { shell, useShell } from '../shell';
 import { PANEL_ID } from '../shell/PanelHandle';
 import type { StageMode } from '../store';
 import { FloatingVideo } from './FloatingVideo';
-import { compareRuntime, linkMaps, primaryMap, primaryScene, useCompareNotice } from './compare';
+import {
+  compareRuntime,
+  linkMaps,
+  primaryMap,
+  primaryScene,
+  useCaptureEpoch,
+  useCompareNotice,
+} from './compare';
 import { CompareButton, CompareMap, useVolumesFollowDate } from './CompareControls';
 import { CompareScene } from './CompareScene';
 import { ChangeLegends } from './MapSwipe';
 import { CursorReadout, useSceneCursor } from './SceneCursor';
+import { StageClassLegend, StageElevationLegend } from './StageLegends';
 import { DesignsMount } from '../survey/Designs';
 import { HaulRoadMount } from '../survey/HaulRoad';
 import { HydroMount } from '../survey/Hydro';
@@ -129,47 +129,26 @@ const MODES: { mode: StageMode; label: string; icon: IconName; keys: string }[] 
   { mode: 'split', label: 'Split', icon: 'split', keys: '3' },
 ];
 
-/** The elevation ramp and its range in metres while the clouds are coloured by elevation. */
-function StageElevationLegend() {
-  const range = useElevationRange();
-  const origin = useWorkspace((s) => s.project?.manifest.origin);
-  return (
-    <ElevationLegend
-      className="elev-legend overlay-box"
-      range={range}
-      toElevation={(y) => (origin ? localToProject(origin, [0, y, 0])[2] : y)}
-    />
-  );
-}
-
-/** The classes of the shown points while the clouds are coloured by classification. */
-function StageClassLegend() {
-  const { counts, hidden } = useClassificationLegend();
-  return (
-    <ClassificationLegend
-      className="elev-legend class-legend overlay-box"
-      counts={counts}
-      hidden={hidden}
-      onToggle={(c) => {
-        pointcloudSettings.getState().toggleClass(c);
-      }}
-    />
-  );
-}
-
 function ScenePane({
   hidden,
   engine,
   side,
+  capture,
   corner,
 }: {
   hidden: boolean;
   engine: EngineStage | null;
   /** The split side it shows on. */
   side?: Side | undefined;
+  /** The survey date its side shows (a split that shows dates). */
+  capture?: string | undefined;
   corner?: ReactNode;
 }) {
   const { cursor, onMove, onLeave } = useSceneCursor(getActiveScene);
+  // with a date of its own the pane draws that survey's volumes, and its legends read its own
+  // clouds (the other side of a comparison has its own legends)
+  const epoch = useCaptureEpoch(capture);
+  const view = capture ? engine : undefined;
 
   return (
     <FocusZone
@@ -185,10 +164,10 @@ function ScenePane({
         <SceneView className="scene-fill" store={primaryScene} />
       </div>
       <CursorReadout text={cursor} />
-      <StageElevationLegend />
-      <VolumetricStage stage={engine} />
-      <StageClassLegend />
-      <CloudChangeLegend />
+      <StageElevationLegend view={view} />
+      <VolumetricStage stage={engine} epoch={epoch} />
+      <StageClassLegend view={view} />
+      <CloudChangeLegend view={view} />
       <ChangeLegends />
       {corner}
     </FocusZone>
@@ -825,7 +804,13 @@ export function Stage() {
         data-mode={mode}
         dir="ltr"
       >
-        <ScenePane hidden={!show3d} engine={engine} side={at('3d')} corner={chooser('3d')} />
+        <ScenePane
+          hidden={!show3d}
+          engine={engine}
+          side={at('3d')}
+          capture={sceneCapture}
+          corner={chooser('3d')}
+        />
         {second3d && secondCapture3d && index && (
           <CompareScene
             key={projectId}

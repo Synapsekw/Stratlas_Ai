@@ -180,6 +180,7 @@ export const en = {
   'vol.elev.hillshadeTip': 'Shade the colours with the relief, lit from four directions',
   'vol.elev.reading': 'Reading the survey heights',
   'vol.elev.metres': '{value} m',
+  'vol.compare.noDrape': 'Not enough graphics memory to colour this view. It shows the photo.',
   'vol.detail.measure': 'Measurement',
   'vol.detail.onBase': 'on the {base} base',
   'vol.detail.fill': 'Fill',

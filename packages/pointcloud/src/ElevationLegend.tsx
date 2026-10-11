@@ -78,10 +78,12 @@ export function ElevationLegend({
  */
 export function useElevationRange(
   store: StoreApi<PointcloudSettings> = pointcloudSettings,
+  /** One 3D view of several: its own clouds and automatic range (see `usePointcloudCounts`). */
+  view?: object | null,
 ): readonly [number, number] | null {
   const mode = useStore(store, (x) => x.colourMode);
   const manual = useStore(store, (x) => x.heightRange);
-  const counts = usePointcloudCounts();
+  const counts = usePointcloudCounts(view);
   if (mode !== 'height' || counts.loaded === 0) return null;
   return manual ?? counts.heightRange;
 }

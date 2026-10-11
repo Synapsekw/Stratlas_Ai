@@ -209,6 +209,9 @@ export class VolumeCompute {
     const chg = req.mode === 'chg';
     const dsm = await this.dsm(chg ? this.last : req.epoch);
     const first = chg ? await this.dsm(this.first) : null;
+    // the toe lies on the ground of the survey the view shows (a change body is the same on
+    // every date; a view of an earlier date would bury or float a toe draped on the last one)
+    const ground = chg && req.epoch !== this.last ? await this.dsm(req.epoch) : dsm;
     const coarse = await this.coarse();
     const out: ScenePile[] = [];
     for (const p of req.piles) {
@@ -234,7 +237,7 @@ export class VolumeCompute {
             : coarseBody(coarse, dsm, p.id, req.epoch, req.base);
         if (body) baseAt = bodyBase(body);
       }
-      out.push({ id: p.id, body, ...drape(p.ring, (E, N) => sampleDsm(dsm, E, N), baseAt) });
+      out.push({ id: p.id, body, ...drape(p.ring, (E, N) => sampleDsm(ground, E, N), baseAt) });
     }
     return { piles: out };
   }

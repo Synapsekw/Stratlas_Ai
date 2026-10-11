@@ -38,7 +38,17 @@ With two maps or two orthos of different dates, a bar at the top of the views of
 
 ## What works on which side
 
-Measuring, drawing, the AI agent, video and pile bodies work in the left (main) view only. The right view follows the camera.
+Both sides show the same things, each for its own date:
+
+- On a stockpile project: the surface colours (**Photo**, **Elevation**, **Cut / fill**), the pile bodies, the toe lines and the callouts. One switch in the stage toolbar sets both sides. The legend on the left sets the elevation ramp and range for both sides; the right view shows the same legend without the controls.
+- The point cloud legends (elevation, classification, change), on each side that shows the colouring.
+- Saved survey measurements. A measurement of the whole site is drawn on both sides, a measurement of one survey date on the side that shows that date. This also holds for two maps.
+
+The same rule holds in the ordinary **Split** (the 3D view beside the map) on a project with two or more survey dates: a measurement that belongs to one survey is drawn on the pane that shows that date, so it can show on one side and not on the other when the two sides are set to different dates.
+
+These still work in the left (main) view only: measuring, drawing, editing a pile boundary, picking a section line, the swipe, the AI agent and video. Designs, the haul road and terrain overlays are drawn there only. The right view follows the camera, and a click on it selects.
+
+If the graphics card cannot hold the surface colours for the right view, that view keeps the photo and its legend says: "Not enough graphics memory to colour this view. It shows the photo."
 
 ## Low graphics tier
 

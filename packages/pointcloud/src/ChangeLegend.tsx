@@ -169,6 +169,8 @@ export interface ChangeLegendProps {
   store?: StoreApi<PointcloudSettings>;
   /** The 3D view whose pointer reads the distance; defaults to the active scene. */
   scene?: () => SceneHandle | null;
+  /** One 3D view of several: the legend shows while that view draws a change cloud. */
+  view?: object | null;
   /** More about the same dates under the legend (the volume change). */
   children?: ReactNode;
 }
@@ -178,12 +180,13 @@ export function ChangeLegend({
   className,
   store = pointcloudSettings,
   scene = getActiveScene,
+  view,
   children,
 }: ChangeLegendProps) {
   const mode = useStore(store, (x) => x.colourMode);
   const threshold = useStore(store, (x) => x.changeThreshold);
   const manual = useStore(store, (x) => x.changeRange);
-  const scalar = usePointcloudCounts().scalar ?? null;
+  const scalar = usePointcloudCounts(view).scalar ?? null;
   const on = mode === 'change' && scalar !== null;
   const hover = useScalarHover(scene, on);
   if (!on) return null;

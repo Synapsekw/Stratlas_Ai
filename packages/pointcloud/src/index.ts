@@ -35,7 +35,7 @@ export {
   type ColourMode,
   type PointcloudSettings,
 } from './settings';
-export { pointcloudStats, usePointcloudCounts, type CloudCounts } from './stats';
+export { countsOf, pointcloudStats, usePointcloudCounts, type CloudCounts } from './stats';
 export { DEFAULT_CHANGE_RANGE, FLIGHT_PALETTE, MODE_INDEX } from './material';
 export { CHANGE_STOPS, changeColour, changeGradient, isNeutral, isWarm } from './changeRamp';
 export {

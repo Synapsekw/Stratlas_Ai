@@ -22,7 +22,7 @@ import {
   type SnapProvider,
   type ToScreen,
 } from '@aio/survey';
-import { scopeOnScreen, workspace, type Workspace } from '@aio/workspace';
+import { workspace, type Workspace } from '@aio/workspace';
 import {
   BufferGeometry,
   Float32BufferAttribute,
@@ -36,6 +36,8 @@ import {
   Vector3,
   type Material,
 } from 'three';
+import type { StoreApi } from 'zustand/vanilla';
+import { measurementsOn as drawn, type DatesOnScreen } from './measureDates';
 import {
   drawEvent,
   editEvent,
@@ -75,17 +77,18 @@ interface Shape {
   labelSize: number;
 }
 
-/** What decides which survey dates are on screen: the capture index and the layer switches. */
-type DatesOnScreen = Pick<Workspace, 'dates' | 'hidden'>;
-
-/**
- * The measurements a view draws: the site-wide ones, and a survey's own while that survey is on
- * screen (hide the date's layers and its measurements go with them). The one being edited stays.
- */
-function drawn(s: MeasureState, ws: DatesOnScreen): SurveyMeasurement[] {
-  return s.file.measurements.filter(
-    (m) => (s.editing !== null && m.id === s.focus) || scopeOnScreen(m.scope, ws.dates, ws.hidden),
-  );
+/** How one view draws the measurements when it is not the only view (a split). */
+export interface MeasureViewOptions {
+  /**
+   * Draw only: the saved measurements, their labels and a drawing in progress, with no pointer or
+   * keyboard input and no vertex handles (the second 3D view or map of a split).
+   */
+  display?: boolean;
+  /**
+   * The workspace as this view sees it (a pane that shows one survey date): its survey dates
+   * decide which measurements it draws. Defaults to the workspace itself.
+   */
+  dates?: StoreApi<Workspace>;
 }
 
 /** Changes when a layer switch puts a survey's measurements on or off screen. */
@@ -94,19 +97,19 @@ const drawnKey = (s: MeasureState, ws: DatesOnScreen): string =>
     .map((m) => m.id)
     .join(' ');
 
-/** Redraw when the layer switches put a survey's measurements on or off screen. */
-function onDatesChange(redraw: () => void): () => void {
-  return workspace.subscribe((ws, prev) => {
+/** Redraw when the layer switches (or the view's date) put measurements on or off screen. */
+function onDatesChange(dates: StoreApi<Workspace>, redraw: () => void): () => void {
+  return dates.subscribe((ws, prev) => {
     if (ws.hidden === prev.hidden && ws.dates === prev.dates) return;
     const s = measureStore.getState();
     if (drawnKey(s, ws) !== drawnKey(s, prev)) redraw();
   });
 }
 
-function shapesOf(s: MeasureState): Shape[] {
+function shapesOf(s: MeasureState, ws: DatesOnScreen): Shape[] {
   const units = s.settings.units;
   const precision = s.settings.precision;
-  return drawn(s, workspace.getState()).map((m) => {
+  return drawn(s, ws).map((m) => {
     const selected = s.selected.includes(m.id);
     const points = s.editing && m.id === s.focus ? s.editing.points : m.points;
     const style = m.style;
@@ -142,10 +145,13 @@ function labelOf(
 }
 
 /** Snap targets: saved measurements (G6 adds designs, alignments and guides as providers). */
-export function snapProviders(s: MeasureState): SnapProvider[] {
+export function snapProviders(
+  s: MeasureState,
+  ws: DatesOnScreen = workspace.getState(),
+): SnapProvider[] {
   return [
     measurementSnaps(
-      drawn(s, workspace.getState())
+      drawn(s, ws)
         .filter((m) => !(s.editing && m.id === s.focus))
         .map((m) => ({ points: m.points, closed: isClosed(m.family) })),
     ),
@@ -176,9 +182,15 @@ const DRAW_KEYS = /^([0-9.\-'" ]|Backspace|Tab|Enter|Escape)$/;
 
 /**
  * Draw the measurements in the 3D stage and drive the active tool and vertex editing there.
- * Returns the detach.
+ * Returns the detach. With `opts.display` the view draws only (see `MeasureViewOptions`).
  */
-export function attach3d(stage: EngineStage, frame: Frame): () => void {
+export function attach3d(
+  stage: EngineStage,
+  frame: Frame,
+  opts: MeasureViewOptions = {},
+): () => void {
+  const dates = opts.dates ?? workspace;
+  const display = opts.display === true;
   const group = new Group();
   group.name = 'aio-survey-measurements';
   group.renderOrder = 40;
@@ -202,7 +214,7 @@ export function attach3d(stage: EngineStage, frame: Frame): () => void {
   const env = (): DrawEnv => {
     const s = measureStore.getState();
     return {
-      snap: (screen) => findSnap(screen, snapProviders(s), toScreen, s.snap),
+      snap: (screen) => findSnap(screen, snapProviders(s, dates.getState()), toScreen, s.snap),
       clampZ,
       distanceUnit: effectiveUnits(s.settings.units).distance,
     };
@@ -226,7 +238,7 @@ export function attach3d(stage: EngineStage, frame: Frame): () => void {
       (o.material as Material).dispose();
     }
   };
-  const addLine = (pts: readonly SitePoint[], closed: boolean, color: string, width = 1) => {
+  const addLine = (pts: readonly SitePoint[], closed: boolean, color: string, name = '') => {
     if (pts.length < 2) return;
     const g = new BufferGeometry();
     g.setAttribute(
@@ -240,15 +252,16 @@ export function attach3d(stage: EngineStage, frame: Frame): () => void {
       color,
       depthTest: false,
       transparent: true,
-      linewidth: width,
+      linewidth: 1,
     });
     const line = closed && pts.length > 2 ? new LineLoop(g, mat) : new Line(g, mat);
+    line.name = name;
     line.renderOrder = 40;
     line.frustumCulled = false;
     line.raycast = () => undefined;
     group.add(line);
   };
-  const addPoints = (pts: readonly SitePoint[], color: string, size = 7) => {
+  const addPoints = (pts: readonly SitePoint[], color: string, size = 7, name = '') => {
     if (pts.length === 0) return;
     const g = new BufferGeometry();
     g.setAttribute(
@@ -266,6 +279,7 @@ export function attach3d(stage: EngineStage, frame: Frame): () => void {
       transparent: true,
     });
     const p = new Points(g, mat);
+    p.name = name;
     p.renderOrder = 41;
     p.frustumCulled = false;
     p.raycast = () => undefined;
@@ -276,12 +290,14 @@ export function attach3d(stage: EngineStage, frame: Frame): () => void {
   const rebuild = () => {
     const s = measureStore.getState();
     disposeGroup();
-    shapes = shapesOf(s);
+    shapes = shapesOf(s, dates.getState());
     for (const sh of shapes) {
-      addLine(sh.points, sh.closed, sh.selected ? '#ffffff' : sh.color);
-      addPoints(sh.points, sh.color, sh.selected ? 8 : 5);
+      // named after the measurement: which view draws which is read from the scene (tests)
+      const name = `measure:${sh.id}`;
+      addLine(sh.points, sh.closed, sh.selected ? '#ffffff' : sh.color, name);
+      addPoints(sh.points, sh.color, sh.selected ? 8 : 5, name);
     }
-    if (s.editing) {
+    if (s.editing && !display) {
       const m = s.file.measurements.find((x) => x.id === s.focus);
       const closed = m ? isClosed(m.family) : false;
       const mids: SitePoint[] = [];
@@ -387,7 +403,7 @@ export function attach3d(stage: EngineStage, frame: Frame): () => void {
     stage.controls.enabled = true;
     editEvent({ type: 'up' });
   };
-  const offClaim = stage.claimClicks((e) => {
+  const claim = (e: PointerEvent) => {
     const s = measureStore.getState();
     if (s.editing) return true;
     if (!s.draw) return false;
@@ -405,7 +421,8 @@ export function attach3d(stage: EngineStage, frame: Frame): () => void {
         env(),
       );
     return true;
-  });
+  };
+  const offClaim = display ? null : stage.claimClicks(claim);
   const onDbl = (e: MouseEvent) => {
     if (!measureStore.getState().draw) return;
     e.preventDefault();
@@ -438,12 +455,15 @@ export function attach3d(stage: EngineStage, frame: Frame): () => void {
       drawEvent({ type: 'move', ...last, shift: false }, env());
   };
 
-  canvas.addEventListener('pointermove', onMove);
-  canvas.addEventListener('pointerdown', onDown, { capture: true });
-  window.addEventListener('pointerup', onUp);
-  canvas.addEventListener('dblclick', onDbl);
-  window.addEventListener('keydown', onKey, { capture: true });
-  window.addEventListener('keyup', onKeyUp, { capture: true });
+  // a view that only draws takes no input: the tools act in the main view
+  if (!display) {
+    canvas.addEventListener('pointermove', onMove);
+    canvas.addEventListener('pointerdown', onDown, { capture: true });
+    window.addEventListener('pointerup', onUp);
+    canvas.addEventListener('dblclick', onDbl);
+    window.addEventListener('keydown', onKey, { capture: true });
+    window.addEventListener('keyup', onKeyUp, { capture: true });
+  }
   const offStore = measureStore.subscribe((s, prev) => {
     if (
       s.file !== prev.file ||
@@ -454,29 +474,32 @@ export function attach3d(stage: EngineStage, frame: Frame): () => void {
       s.templates !== prev.templates
     )
       rebuild();
+    if (display) return;
     const drawing = s.draw !== null || s.editing !== null;
     canvas.style.cursor = s.draw ? 'crosshair' : '';
     if (drawing && stage.tool !== 'select') stage.setTool('select');
   });
-  const offDates = onDatesChange(rebuild);
+  const offDates = onDatesChange(dates, rebuild);
   rebuild();
 
   return () => {
     offStore();
     offDates();
     offFrame();
-    offClaim();
-    canvas.removeEventListener('pointermove', onMove);
-    canvas.removeEventListener('pointerdown', onDown, { capture: true });
-    window.removeEventListener('pointerup', onUp);
-    canvas.removeEventListener('dblclick', onDbl);
-    window.removeEventListener('keydown', onKey, { capture: true });
-    window.removeEventListener('keyup', onKeyUp, { capture: true });
+    offClaim?.();
+    if (!display) {
+      canvas.removeEventListener('pointermove', onMove);
+      canvas.removeEventListener('pointerdown', onDown, { capture: true });
+      window.removeEventListener('pointerup', onUp);
+      canvas.removeEventListener('dblclick', onDbl);
+      window.removeEventListener('keydown', onKey, { capture: true });
+      window.removeEventListener('keyup', onKeyUp, { capture: true });
+      canvas.style.cursor = '';
+    }
     if (dragging) stage.controls.enabled = true;
     disposeGroup();
     stage.scene.remove(group);
     labels.remove();
-    canvas.style.cursor = '';
     stage.requestRender();
   };
 }
@@ -515,14 +538,20 @@ interface MapMouse {
 const SRC = 'aio-survey';
 const LAYERS = ['aio-survey-fill', 'aio-survey-line', 'aio-survey-pt'] as const;
 
-/** Draw the measurements on the map and drive the active tool there. Returns the detach. */
+/**
+ * Draw the measurements on the map and drive the active tool there. Returns the detach. With
+ * `opts.display` the map draws only (see `MeasureViewOptions`).
+ */
 export function attachMap(
   ctl: MapController,
   frame: Frame,
   clampZ: (e: number, n: number) => number | null,
+  opts: MeasureViewOptions = {},
 ): () => void {
   const epsg = frame.epsg;
   if (epsg === null) return () => undefined;
+  const dates = opts.dates ?? workspace;
+  const display = opts.display === true;
   const map = ctl.map;
   const toLngLat = (p: SitePoint): [number, number] => {
     const ll = toWgs84([p[0], p[1], p[2]], epsg);
@@ -537,7 +566,7 @@ export function attachMap(
   const env = (): DrawEnv => {
     const s = measureStore.getState();
     return {
-      snap: (screen) => findSnap(screen, snapProviders(s), toScreen, s.snap),
+      snap: (screen) => findSnap(screen, snapProviders(s, dates.getState()), toScreen, s.snap),
       clampZ,
       distanceUnit: effectiveUnits(s.settings.units).distance,
     };
@@ -550,7 +579,7 @@ export function attachMap(
   const data = () => {
     const s = measureStore.getState();
     const features: unknown[] = [];
-    for (const sh of shapesOf(s)) {
+    for (const sh of shapesOf(s, dates.getState())) {
       const coords = sh.points.map(toLngLat);
       const props = { color: sh.selected ? '#ffffff' : sh.color, id: sh.id };
       if (coords.length === 1)
@@ -592,9 +621,23 @@ export function attachMap(
     }
     return { type: 'FeatureCollection', features };
   };
+  // A style still loading cannot take the source. The map says `styledata` before its style
+  // counts as loaded, and a map that only draws gets no later event of its own: wait until it
+  // has settled once.
+  let waiting = false;
+  const whenIdle = () => {
+    waiting = false;
+    draw();
+  };
   const draw = () => {
     try {
-      if (!map.isStyleLoaded()) return;
+      if (!map.isStyleLoaded()) {
+        if (!waiting) {
+          waiting = true;
+          map.once('idle', whenIdle);
+        }
+        return;
+      }
       const src = map.getSource(SRC) as { setData?: (d: unknown) => void } | undefined;
       if (src?.setData) src.setData(data());
       else map.addSource(SRC, { type: 'geojson', data: data() as never });
@@ -675,9 +718,11 @@ export function attachMap(
   const onStyle = () => {
     draw();
   };
-  map.on('mousemove', onMove as never);
-  map.on('click', onClick as never);
-  map.on('dblclick', onDbl as never);
+  if (!display) {
+    map.on('mousemove', onMove as never);
+    map.on('click', onClick as never);
+    map.on('dblclick', onDbl as never);
+  }
   map.on('styledata', onStyle);
   const offStore = measureStore.subscribe((s, prev) => {
     if (
@@ -687,18 +732,21 @@ export function attachMap(
       s.editing !== prev.editing
     )
       draw();
-    canvas.style.cursor = s.draw ? 'crosshair' : '';
+    if (!display) canvas.style.cursor = s.draw ? 'crosshair' : '';
   });
-  const offDates = onDatesChange(draw);
+  const offDates = onDatesChange(dates, draw);
   draw();
   return () => {
     offStore();
     offDates();
-    map.off('mousemove', onMove as never);
-    map.off('click', onClick as never);
-    map.off('dblclick', onDbl as never);
+    if (!display) {
+      map.off('mousemove', onMove as never);
+      map.off('click', onClick as never);
+      map.off('dblclick', onDbl as never);
+      canvas.style.cursor = '';
+    }
     map.off('styledata', onStyle);
-    canvas.style.cursor = '';
+    map.off('idle', whenIdle);
     try {
       for (const id of [...LAYERS].reverse()) if (map.getLayer(id)) map.removeLayer(id);
       if (map.getSource(SRC)) map.removeSource(SRC);

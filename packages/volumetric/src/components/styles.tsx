@@ -118,6 +118,7 @@ const css = `
 .vol-legend .key i.line { height: 2px; background: #fff; }
 .vol-legend.live { pointer-events: auto; max-width: 240px; }
 .vol-legend.vol-hint { max-width: 300px; color: var(--fg-2); line-height: 1.45; font-size: var(--t-12); }
+.vol-legend-note { color: var(--fg-2); line-height: 1.45; }
 .vol-elev { display: grid; gap: 6px; padding-bottom: 4px; }
 .vol-elev .ramp { width: 100%; height: 10px; }
 .vol-elev-note { color: var(--fg-3); }

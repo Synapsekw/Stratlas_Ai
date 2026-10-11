@@ -8,7 +8,7 @@
  * with other GPU work running.
  */
 import { test as base, type ElectronApplication, type Page, type TestInfo } from '@playwright/test';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -31,8 +31,10 @@ interface View {
 }
 interface Obj {
   name: string;
+  uuid: string;
   visible: boolean;
   parent: Obj | null;
+  children: Obj[];
   getObjectByName(n: string): Obj | undefined;
 }
 interface PerfStats {
@@ -82,6 +84,9 @@ interface MapLike {
   getCenter(): { lng: number; lat: number };
   getZoom(): number;
   jumpTo(v: { center: [number, number]; zoom: number }): void;
+  getSource(
+    id: string,
+  ): { getData(): Promise<{ features?: { properties?: { id?: string } }[] }> } | undefined;
 }
 
 /** Run a probe in the renderer with the inspection hook typed (sent as a function, no eval). */
@@ -196,47 +201,164 @@ async function settled(win: Page): Promise<void> {
     .toBe(true);
 }
 
+/** The saved survey measurements each 3D view draws (its objects are named `measure:<id>`). */
+function measuresDrawn(win: Page) {
+  return inspect(
+    win,
+    ({ w }) => {
+      const ids = (s: StageLike | null) => {
+        const group = s?.scene.getObjectByName('aio-survey-measurements');
+        const names = (group?.children ?? []).map((c) => c.name);
+        return [...new Set(names.filter((n) => n.startsWith('measure:')))]
+          .map((n) => n.slice('measure:'.length))
+          .sort();
+      };
+      return { main: ids(w.__stratlas.stage()), second: ids(w.__stratlas.compare().second) };
+    },
+    null,
+  );
+}
+
+/** The saved survey measurements each map of the comparison draws (null: no map or no source yet). */
+function measuresOnMaps(win: Page) {
+  return inspect(
+    win,
+    async ({ w }) => {
+      const out: (string[] | null)[] = [];
+      for (const m of w.__stratlas.compare().maps) {
+        const data = await m?.map.getSource('aio-survey')?.getData();
+        const ids = data?.features?.map((f) => f.properties?.id ?? '?');
+        out.push(ids ? [...new Set(ids)].sort() : null);
+      }
+      return out;
+    },
+    null,
+  );
+}
+
+/** The Photo, Elevation or Cut / fill switch of a stockpile project (under More tools when folded). */
+async function surfaceColours(win: Page, name: 'Photo' | 'Elevation' | 'Cut / fill') {
+  const button = win
+    .getByRole('group', { name: 'Surface colours' })
+    .getByRole('button', { name, exact: true });
+  // The toolbar may fold or unfold the group between the look and the click (it measures itself
+  // again when the views change), so both are tried together until the click lands. More tools
+  // is a toggle: a try that closed it opens it again on the next one. Pressing the switch twice
+  // changes nothing.
+  await expect(async () => {
+    if (!(await button.isVisible()))
+      await win.getByRole('button', { name: 'More tools' }).click({ timeout: 2_000 });
+    await button.click({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  await expect(button).toHaveAttribute('aria-pressed', 'true');
+}
+
+/** The surface colours draped on each 3D view: the survey (epoch) of each drape that shows. */
+function drapes(win: Page) {
+  return inspect(
+    win,
+    ({ w }) => {
+      const shown = (s: StageLike | null) =>
+        (s?.scene.getObjectByName('volumetric')?.children ?? [])
+          .filter((c) => c.name.startsWith('drape:') && c.visible)
+          .map((c) => c.name.slice('drape:'.length));
+      return { main: shown(w.__stratlas.stage()), second: shown(w.__stratlas.compare().second) };
+    },
+    null,
+  );
+}
+
+/**
+ * The street map under the site in each 3D view: whether its group shows, and whether the plain
+ * ground is drawn instead. Both views follow one choice, so they must agree.
+ */
+function streetGround(win: Page) {
+  return inspect(
+    win,
+    ({ w }) => {
+      const of = (s: StageLike | null) => ({
+        map: s?.scene.getObjectByName('basemap:site-street-map')?.visible ?? false,
+        plain: s?.scene.getObjectByName('env:ground')?.visible ?? null,
+      });
+      return { main: of(w.__stratlas.stage()), second: of(w.__stratlas.compare().second) };
+    },
+    null,
+  );
+}
+
 /* ----------------------------------------------------------------------- synthetic project */
 
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
+/**
+ * A second project next to the one-capture tiny project: a common site and a model per date,
+ * with three saved survey measurements (one of the site, one of each date).
+ */
+async function writeTwoDates(root: string): Promise<void> {
+  const dir = join(root, 'projects', 'e2e-dates');
+  await mkdir(join(dir, 'models'), { recursive: true });
+  for (const f of ['site', 'model-2026-01-01', 'model-2026-06-01'])
+    await writeFile(join(dir, 'models', `${f}.glb`), tinyGlb());
+  const mesh = (id: string, name: string, at: number) => ({
+    kind: 'mesh',
+    id,
+    name,
+    visible: true,
+    src: { path: `models/${id}.glb` },
+    transform: [...IDENTITY.slice(0, 12), at, 0, 0, 1],
+  });
+  const manifest = tinyManifest();
+  await writeFile(
+    join(dir, 'manifest.json'),
+    JSON.stringify({
+      ...manifest,
+      id: 'e2e-dates',
+      name: 'E2E two dates',
+      captures: [
+        { id: 'jan', label: 'January flight', date: '2026-01-01' },
+        { id: 'jun', label: 'June flight', date: '2026-06-01' },
+      ],
+      layers: [
+        mesh('site', 'Site', 0),
+        mesh('model-2026-01-01', 'Model 1 Jan 2026', 2),
+        mesh('model-2026-06-01', 'Model 1 Jun 2026', 4),
+      ],
+    }),
+  );
+  await writeFile(join(dir, 'issues.json'), JSON.stringify({ schema: 'aio.issues/1', issues: [] }));
+  const [e, n, z] = manifest.origin;
+  const line = (id: string, scope: object, east: number) => ({
+    id,
+    family: 'line',
+    tool: 'distance',
+    label: id,
+    scope,
+    points: [
+      [e + east, n + 0.2, z],
+      [e + east + 1, n + 0.8, z],
+    ],
+    items: [],
+    results: [],
+    createdAt: '2026-10-11T00:00:00Z',
+  });
+  await mkdir(join(dir, 'survey'), { recursive: true });
+  await writeFile(
+    join(dir, 'survey', 'measurements.json'),
+    JSON.stringify({
+      schema: 'aio.measurements/1',
+      measurements: [
+        line('m-site', { kind: 'site' }, 0),
+        line('m-jan', { kind: 'survey', capture: 'jan' }, 2),
+        line('m-jun', { kind: 'survey', capture: 'jun' }, 4),
+      ],
+    }),
+  );
+}
+
 fixtures(
   'a synthetic two-date project compares two 3D views; one date offers nothing',
   async ({ win, dataRoot }) => {
-    // a second project next to the one-capture tiny project: a common site and a model per date
-    const dir = join(dataRoot.root, 'projects', 'e2e-dates');
-    await mkdir(join(dir, 'models'), { recursive: true });
-    for (const f of ['site', 'model-2026-01-01', 'model-2026-06-01'])
-      await writeFile(join(dir, 'models', `${f}.glb`), tinyGlb());
-    const mesh = (id: string, name: string, at: number) => ({
-      kind: 'mesh',
-      id,
-      name,
-      visible: true,
-      src: { path: `models/${id}.glb` },
-      transform: [...IDENTITY.slice(0, 12), at, 0, 0, 1],
-    });
-    await writeFile(
-      join(dir, 'manifest.json'),
-      JSON.stringify({
-        ...tinyManifest(),
-        id: 'e2e-dates',
-        name: 'E2E two dates',
-        captures: [
-          { id: 'jan', label: 'January flight', date: '2026-01-01' },
-          { id: 'jun', label: 'June flight', date: '2026-06-01' },
-        ],
-        layers: [
-          mesh('site', 'Site', 0),
-          mesh('model-2026-01-01', 'Model 1 Jan 2026', 2),
-          mesh('model-2026-06-01', 'Model 1 Jun 2026', 4),
-        ],
-      }),
-    );
-    await writeFile(
-      join(dir, 'issues.json'),
-      JSON.stringify({ schema: 'aio.issues/1', issues: [] }),
-    );
+    await writeTwoDates(dataRoot.root);
 
     // one capture: no comparison offered
     await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).first().click();
@@ -311,6 +433,60 @@ fixtures(
     await expect
       .poll(() => inspect(win, ({ w }) => w.__stratlas.compare().models.held, null))
       .toMatchObject({ [siteKey ?? 'site']: 1 });
+  },
+);
+
+fixtures(
+  'both sides of a comparison draw the saved measurements of the site and of their own date',
+  async ({ win, dataRoot }) => {
+    // two 3D views, then two maps, on a software renderer in CI: more than the default minute
+    fixtures.setTimeout(180_000);
+    await writeTwoDates(dataRoot.root);
+    await win.getByTestId('project-card').filter({ hasText: 'E2E two dates' }).first().click();
+    await expect(win.locator('[data-scene-view=""] canvas')).toBeVisible({ timeout: 30_000 });
+    // one 3D view: the site's measurement and the one of the survey on screen (the latest)
+    await expect
+      .poll(() => measuresDrawn(win), { timeout: 30_000 })
+      .toEqual({ main: ['m-jun', 'm-site'], second: [] });
+
+    // two 3D views: January on the left, June on the right, each with its own
+    await pinTwoViewTier(win);
+    await win.getByTestId('compare-dates').click();
+    await expect(win.locator('[data-scene-view] canvas')).toHaveCount(2, { timeout: 30_000 });
+    await expect(win.getByTestId('pane-date-left')).toHaveValue('jan');
+    await expect
+      .poll(() => measuresDrawn(win), { timeout: 30_000 })
+      .toEqual({ main: ['m-jan', 'm-site'], second: ['m-jun', 'm-site'] });
+    // the right side picks January: the sides swap, and so do the measurements
+    await win.getByTestId('pane-date-right').selectOption('jan');
+    await expect(win.getByTestId('pane-date-left')).toHaveValue('jun');
+    await expect
+      .poll(() => measuresDrawn(win), { timeout: 30_000 })
+      .toEqual({ main: ['m-jun', 'm-site'], second: ['m-jan', 'm-site'] });
+    // and back: January on the left, June on the right
+    await win.getByTestId('pane-date-left').selectOption('jan');
+    await expect(win.getByTestId('pane-date-right')).toHaveValue('jun');
+
+    // two maps: the same rule
+    await pinTwoViewTier(win);
+    await win.getByTestId('compare-dates').click();
+    await expect(win.locator('[data-scene-view] canvas')).toHaveCount(1, { timeout: 30_000 });
+    const modes = win.getByRole('toolbar', { name: 'Stage tools' });
+    await modes.getByRole('button', { name: 'Map', exact: true }).click();
+    await expect(modes.getByRole('button', { name: 'Map', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await win.getByTestId('compare-dates').click();
+    await expect(win.locator('.pane-map')).toHaveCount(2, { timeout: 30_000 });
+    await expect(win.getByTestId('pane-date-left')).toHaveValue('jan');
+    await expect(win.getByTestId('pane-date-right')).toHaveValue('jun');
+    await expect
+      .poll(() => measuresOnMaps(win), { timeout: 60_000 })
+      .toEqual([
+        ['m-jan', 'm-site'],
+        ['m-jun', 'm-site'],
+      ]);
   },
 );
 
@@ -466,6 +642,31 @@ real.describe('@realdata Masafi', () => {
       await copyRealData(['projects', 'masafi'], join(root.data, 'projects', 'masafi'), {
         include: (rel) => rel !== 'edits',
       });
+      // a saved survey measurement of the whole site, at the project origin
+      // (the copy above is the only project in this data root)
+      const [copied = ''] = await readdir(join(root.data, 'projects'));
+      const project = join(root.data, 'projects', copied);
+      const { origin } = JSON.parse(await readFile(join(project, 'manifest.json'), 'utf8')) as {
+        origin: V3;
+      };
+      const mfile = join(project, 'survey', 'measurements.json');
+      const saved: { schema: string; measurements: unknown[] } = await readFile(mfile, 'utf8').then(
+        (t) => JSON.parse(t) as { schema: string; measurements: unknown[] },
+        () => ({ schema: 'aio.measurements/1', measurements: [] }),
+      );
+      saved.measurements.push({
+        id: 'parity-line',
+        family: 'line',
+        tool: 'distance',
+        label: 'Parity line',
+        scope: { kind: 'site' },
+        points: [origin, [origin[0] + 20, origin[1] + 10, origin[2]]],
+        items: [],
+        results: [],
+        createdAt: '2026-10-11T00:00:00Z',
+      });
+      await mkdir(join(project, 'survey'), { recursive: true });
+      await writeFile(mfile, JSON.stringify(saved));
       const errors: string[] = [];
       win.on('pageerror', (e) => errors.push(e.message));
       await win.reload();
@@ -525,6 +726,66 @@ real.describe('@realdata Masafi', () => {
       expect(key && models.held[key]).toBe(2);
       await win.waitForTimeout(2500);
       await shot(win, 'masafi-3d');
+
+      // the saved measurement is drawn on both views
+      await expect
+        .poll(async () => {
+          const m = await measuresDrawn(win);
+          return [m.main.includes('parity-line'), m.second.includes('parity-line')];
+        })
+        .toEqual([true, true]);
+
+      // one switch, both views: each drapes the elevation colours on its own survey
+      const second = win.getByTestId('pane-3d-compare');
+      await surfaceColours(win, 'Elevation');
+      await expect
+        .poll(() => drapes(win), { timeout: 60_000 })
+        .toEqual({ main: ['e1'], second: ['e2'] });
+      const legend = second.getByTestId('vol-legend-view');
+      await expect(legend).toHaveAttribute('data-surface-shown', 'elev');
+      await expect(legend.locator('.ends')).toContainText(' m');
+      await expect(second.getByTestId('vol-no-drape')).toHaveCount(0);
+      // with the colours on, both views still agree on the street ground under the site
+      await expect
+        .poll(async () => {
+          const g = await streetGround(win);
+          return JSON.stringify(g.main) === JSON.stringify(g.second);
+        })
+        .toBe(true);
+      await report(testInfo, 'street-ground', await streetGround(win));
+      // the same range on both sides: the left legend sets it for both
+      const ends = (await legend.locator('.ends').innerText()).replace(/\s+/g, ' ');
+      expect(
+        (await win.getByTestId('vol-elev').locator('.ends').innerText()).replace(/\s+/g, ' '),
+      ).toBe(ends);
+      await win.waitForTimeout(1500);
+      await shot(win, 'stockpile-elevation');
+      // cut and fill: the same colours on each side's own terrain
+      const elevDrape = await inspect(
+        win,
+        ({ w }) => w.__stratlas.compare().second?.scene.getObjectByName('drape:e2')?.uuid ?? null,
+        null,
+      );
+      await surfaceColours(win, 'Cut / fill');
+      await expect(legend).toHaveAttribute('data-surface-shown', 'change');
+      await expect
+        .poll(
+          () =>
+            inspect(
+              win,
+              ({ w }) =>
+                w.__stratlas.compare().second?.scene.getObjectByName('drape:e2')?.uuid ?? null,
+              null,
+            ),
+          { timeout: 60_000 },
+        )
+        .not.toBe(elevDrape);
+      await expect.poll(() => drapes(win)).toEqual({ main: ['e1'], second: ['e2'] });
+      await win.waitForTimeout(1500);
+      await shot(win, 'stockpile-cutfill');
+      await surfaceColours(win, 'Photo');
+      await expect.poll(() => drapes(win)).toEqual({ main: [], second: [] });
+      await expect(legend).toHaveCount(0);
 
       // linked camera: orbit the right view, the left follows
       const before = await views(win);
@@ -664,6 +925,12 @@ real.describe('@realdata Masafi', () => {
           ),
         )
         .toBe(true);
+      // the saved measurement is on both maps
+      await expect
+        .poll(async () => (await measuresOnMaps(win)).map((ids) => ids?.includes('parity-line')), {
+          timeout: 30_000,
+        })
+        .toEqual([true, true]);
       await win.waitForTimeout(3000);
       await shot(win, 'masafi-maps');
 

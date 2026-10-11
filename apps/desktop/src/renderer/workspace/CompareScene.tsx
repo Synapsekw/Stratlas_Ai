@@ -2,7 +2,7 @@ import { installIssueOverlay, pinDisplay } from '@aio/annotate';
 import { CameraLink, SceneView, type ClientRectLike, type EngineStage } from '@aio/engine';
 import { setBudgetShare, splitBudget } from '@aio/pointcloud';
 import { useT } from '@aio/ui';
-import { volumetric } from '@aio/volumetric';
+import { VolumetricStage } from '@aio/volumetric';
 import {
   scopedStore,
   useWorkspace,
@@ -10,10 +10,23 @@ import {
   type CaptureIndex,
   type StoreScope,
 } from '@aio/workspace';
-import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react';
+import { CloudChangeLegend } from '../change/producers/CloudChangeLegend';
 import { FocusZone } from '../FocusZone';
-import { compareRuntime } from './compare';
+import { graphics } from '../graphics';
+import { useMeasureDisplay3d } from '../survey/measureDisplay';
+import { compareRuntime, drapeAllowed, useCaptureEpoch } from './compare';
+import { ChangeLegends } from './MapSwipe';
 import { CursorReadout, useSceneCursor } from './SceneCursor';
+import { StageClassLegend, StageElevationLegend } from './StageLegends';
 import { useSiteBasemapLayer } from './siteBasemap';
 import type { Side } from './splitModel';
 import { useStreetMap3d } from './streetMap3d';
@@ -52,8 +65,10 @@ function mirror(from: EngineStage, to: EngineStage) {
  * The second 3D view of a split that compares two survey dates: its own stage (engine) showing
  * the layers of one capture, sharing parsed models with the main view, its camera linked to the
  * main view's, the same selection (a pile picked on one date is outlined on the other), issue
- * pins, sun time, section and half the point budget. Tools, the agent and the video stay with
- * the main view.
+ * pins, sun time, section and half the point budget. It shows what the main view shows, for its
+ * own date: the volumes overlay (bodies, toe lines, surface colours), the legends and the saved
+ * survey measurements, all drawn only. Tools, editing, the agent and the video stay with the
+ * main view.
  */
 export function CompareScene({
   side,
@@ -122,25 +137,23 @@ export function CompareScene({
   const streetMap = useStreetMap3d();
   useSiteBasemapLayer(stage, project, streetMap.shown, false);
 
-  // as in the main view (volumetric scene controller): a survey's flat ortho is not drawn in 3D
-  // when the survey has a terrain mesh carrying the same photo (it would cut through the ground)
-  useEffect(() => {
-    if (!stage) return;
-    return stage.onFrame(() => {
-      const v = volumetric.getState();
-      if (v.status !== 'ready') return;
-      for (const sl of Object.values(v.layers)) {
-        if (!sl.terrain) continue;
-        for (const id of sl.layers) {
-          if (id === sl.terrain) continue;
-          const o = stage.scene.getObjectByName(`layer:${id}`);
-          if (o?.userData.aioRaster !== true || !o.visible) continue;
-          o.visible = false;
-          stage.requestRender();
-        }
-      }
-    });
-  }, [stage]);
+  // the volumes overlay of this view's date (VolumetricStage below), as the main view has it:
+  // it also keeps the survey's flat ortho out of 3D. Its surface colours add a texture to this
+  // view, so they ask first whether two views still fit the tier's graphics memory.
+  const epoch = useCaptureEpoch(capture);
+  const layerVisible = useCallback((id: string) => !store.getState().hidden[id], [store]);
+  const budget = useCallback(
+    (bytes: number) =>
+      drapeAllowed(
+        (main?.memoryEstimate() ?? 0) + (stage?.memoryEstimate() ?? 0),
+        bytes,
+        graphics().getState().tier,
+      ),
+    [main, stage],
+  );
+
+  // the saved survey measurements of the site and of this view's date
+  useMeasureDisplay3d(stage, store);
 
   // issue pins as in the main view: those of this view's date and of no date
   useEffect(() => {
@@ -200,6 +213,17 @@ export function CompareScene({
         <SceneView className="scene-fill" store={store} primary={false} onStage={setStage} />
       </div>
       <CursorReadout text={cursor} />
+      <StageElevationLegend view={stage} />
+      <VolumetricStage
+        stage={stage}
+        epoch={epoch}
+        display
+        layerVisible={layerVisible}
+        budget={budget}
+      />
+      <StageClassLegend view={stage} />
+      <CloudChangeLegend view={stage} />
+      <ChangeLegends store={store} />
       {corner}
     </FocusZone>
   );

@@ -66,6 +66,24 @@ function lineGeometry(pts: number[]): BufferGeometry {
   return g;
 }
 
+/** How one 3D view draws the volumes when it is not the only view (a split comparing two dates). */
+export interface VolumetricView {
+  /**
+   * Draws only: no boundary edit and no swipe (the second view of a comparison). Such a view
+   * draws the survey it is given (`setEpoch`) and nothing at all without one: its pane shows a
+   * date the volumes do not have, and another date's piles would be wrong there.
+   */
+  display?: boolean;
+  /**
+   * Whether a drape texture of `bytes` may be made (the graphics memory two views share).
+   * Absent: always.
+   */
+  budget?: (bytes: number) => boolean;
+}
+
+/** A drape the view's graphics memory budget turned down. */
+class DrapeRefused extends Error {}
+
 export class VolumetricScene {
   readonly group = new Group();
   private readonly bodies = new Group();
@@ -76,6 +94,12 @@ export class VolumetricScene {
   private sceneSeq = 0;
   private liveDrawn: unknown = null;
   private sectionDrawn: unknown = null;
+  private sectionEpoch = '';
+  /** The survey this view shows; null: the one the store shows. */
+  private viewEpoch: string | null = null;
+  /** Drapes the budget turned down, by survey: the colouring refused. */
+  private readonly refused = new Map<string, SurfaceMode>();
+  private readonly refusedListeners = new Set<(refused: boolean) => void>();
   private readonly drapes = new Map<
     string,
     {
@@ -111,6 +135,7 @@ export class VolumetricScene {
     private readonly store: StoreApi<Volumetric>,
     /** Whether the app shows a layer (to give hidden survey orthos back their state). */
     private readonly layerVisible: (id: string) => boolean = () => true,
+    private readonly view: VolumetricView = {},
   ) {
     this.group.name = 'volumetric';
     this.group.add(this.bodies, this.sectionG, this.editG);
@@ -122,6 +147,7 @@ export class VolumetricScene {
     this.sceneKey = '';
     this.liveDrawn = null;
     this.sectionDrawn = null;
+    this.sectionEpoch = '';
     this.calloutKey = '';
     this.stage.scene.add(this.group);
     this.unsub.push(
@@ -154,6 +180,47 @@ export class VolumetricScene {
     this.stage.requestRender();
   }
 
+  /**
+   * The survey this view shows, when the pane it is in shows one date of several. Null: the
+   * survey the store shows (a single 3D view), or nothing in a view that only draws.
+   */
+  setEpoch(epoch: string | null): void {
+    if (epoch === this.viewEpoch) return;
+    this.viewEpoch = epoch;
+    if (this.unsub.length) this.update();
+  }
+
+  /** The survey drawn here: this view's own, else the store's. */
+  private epoch(): string {
+    return this.viewEpoch ?? this.store.getState().shownEpoch();
+  }
+
+  /**
+   * A view that only draws, on a date without volumes: it draws no bodies, toe lines, section
+   * line or surface colours (the main view falls back to the store's survey instead).
+   */
+  private blank(): boolean {
+    return this.view.display === true && this.viewEpoch === null;
+  }
+
+  /** Whether a surface colouring is left out here for lack of graphics memory. */
+  get drapeRefused(): boolean {
+    return this.refused.size > 0;
+  }
+
+  /** Hear when a drape is refused by the budget, and when nothing is refused any more. */
+  onDrapeRefused(listener: (refused: boolean) => void): () => void {
+    this.refusedListeners.add(listener);
+    return () => this.refusedListeners.delete(listener);
+  }
+
+  private setRefused(epoch: string, mode: SurfaceMode | null): void {
+    const before = this.drapeRefused;
+    if (mode) this.refused.set(epoch, mode);
+    else this.refused.delete(epoch);
+    if (this.drapeRefused !== before) for (const l of [...this.refusedListeners]) l(!before);
+  }
+
   /** Run after every rendered frame's update (handles follow the camera). */
   onFrame(cb: () => void): () => void {
     this.frameListeners.add(cb);
@@ -182,6 +249,17 @@ export class VolumetricScene {
       this.group.visible = false;
       return;
     }
+    if (this.blank()) {
+      // forget what was drawn for the last date: asked for again when the view gets a survey
+      this.group.visible = false;
+      this.sceneSeq++;
+      this.sceneKey = '';
+      this.sectionDrawn = null;
+      disposeGroup(this.bodies);
+      disposeGroup(this.sectionG);
+      this.stage.requestRender();
+      return;
+    }
     this.group.visible = true;
     void this.updateBodies();
     this.updateEdit();
@@ -194,10 +272,12 @@ export class VolumetricScene {
     const svc = s.service;
     if (!svc) return;
     const chg = s.surface === 'change';
-    const epoch = s.shownEpoch();
+    const epoch = this.epoch();
     const origin = s.origin;
+    // the pile being edited is drawn by the edit itself, in the view that edits
+    const editedPile = this.view.display ? undefined : s.edit?.pile;
     const piles = s.piles
-      .filter((p) => p.id !== s.edit?.pile && s.isPileShown(p.id) && (chg || p.epochs[epoch]))
+      .filter((p) => p.id !== editedPile && s.isPileShown(p.id) && (chg || p.epochs[epoch]))
       .map((p) => {
         const src = chg ? p.zoneRing : (p.epochs[epoch]?.ring ?? p.zoneRing);
         return {
@@ -213,7 +293,7 @@ export class VolumetricScene {
       selected: s.selected,
       piles,
     };
-    const key = JSON.stringify([req, s.body, !!s.edit, s.swipe]);
+    const key = JSON.stringify([req, s.body, this.editing(), this.swiping()]);
     if (key === this.sceneKey) return;
     this.sceneKey = key;
     const seq = ++this.sceneSeq;
@@ -232,9 +312,10 @@ export class VolumetricScene {
     disposeGroup(this.bodies);
     const local = this.local;
     const clip = this.stage.clippingPlanes;
-    const editing = !!s.edit;
+    const editing = this.editing();
+    const swipe = this.swiping();
     // while swiping between the dates only the toe lines show: the bodies would hide the ground
-    const lifted = s.body === 'lift' && !editing && !s.swipe;
+    const lifted = s.body === 'lift' && !editing && !swipe;
     for (const p of piles) {
       const sel = p.id === s.selected;
       const dim = (!!s.selected && !sel) || editing;
@@ -242,7 +323,7 @@ export class VolumetricScene {
       g.name = `vol:${p.id}`;
       g.userData.pile = p.id;
       let lift = 0;
-      if (p.body && s.body !== 'off' && !s.swipe) {
+      if (p.body && s.body !== 'off' && !swipe) {
         const geo = bodyGeometry(p.body, local, { lifted, change: chg });
         lift = geo.lift;
         const top = new BufferGeometry();
@@ -368,7 +449,17 @@ export class VolumetricScene {
     this.stage.requestRender();
   }
 
+  /** A boundary is being edited in this view (the edit and the swipe stay with the main view). */
+  private editing(): boolean {
+    return !this.view.display && !!this.store.getState().edit;
+  }
+
+  private swiping(): boolean {
+    return !this.view.display && this.store.getState().swipe;
+  }
+
   private updateEdit(): void {
+    if (this.view.display) return;
     const ed = this.store.getState().edit;
     const live = ed?.live ?? null;
     if (live === this.liveDrawn && !this.dragRing) return;
@@ -468,16 +559,17 @@ export class VolumetricScene {
   private async updateSection(): Promise<void> {
     const s = this.store.getState();
     const sec = s.section;
-    if (sec === this.sectionDrawn) return;
+    const epoch = this.epoch();
+    if (sec === this.sectionDrawn && epoch === this.sectionEpoch) return;
     this.sectionDrawn = sec;
+    this.sectionEpoch = epoch;
     disposeGroup(this.sectionG);
     this.stage.requestRender();
     if (sec.mode === 'idle' || !s.service) return;
-    const epoch = s.shownEpoch();
     const line =
       sec.points.length === 2 ? [...densifyOpen(sec.points[0], sec.points[1], 0.5)] : sec.points;
     const hs = await s.service.heights(epoch, null, [...sec.points, ...line]).catch(() => null);
-    if (!hs || this.store.getState().section !== sec) return;
+    if (!hs || this.store.getState().section !== sec || this.epoch() !== epoch) return;
     const local = this.local;
     sec.points.forEach(([E, N], k) => {
       const z = hs[k] ?? 0;
@@ -581,8 +673,8 @@ export class VolumetricScene {
   private wantedDrapes(): Map<string, { mode: SurfaceMode; key: string }> {
     const s = this.store.getState();
     const out = new Map<string, { mode: SurfaceMode; key: string }>();
-    if (s.swipe || s.surface === 'photo') return out;
-    const epoch = s.shownEpoch();
+    if (this.blank() || this.swiping() || s.surface === 'photo') return out;
+    const epoch = this.epoch();
     if (s.surface === 'change') out.set(epoch, { mode: 'change', key: 'change' });
     else {
       const r = s.reliefStyle();
@@ -609,8 +701,12 @@ export class VolumetricScene {
       if (w?.mode !== d.mode || root !== d.root) this.removeDrape(epoch);
       else d.group.visible = visibleChain(root);
     }
+    // a refusal lasts while the same colouring of the same survey is wanted
+    for (const [epoch, mode] of [...this.refused])
+      if (want.get(epoch)?.mode !== mode) this.setRefused(epoch, null);
     for (const [epoch, w] of want) {
       if (this.drapes.get(epoch)?.key === w.key || this.pendingDrapes.has(epoch)) continue;
+      if (this.refused.get(epoch) === w.mode) continue;
       const root = this.terrainRoot(epoch);
       if (root) this.buildDrape(epoch, w.mode, w.key, root);
     }
@@ -633,6 +729,20 @@ export class VolumetricScene {
     return tex;
   }
 
+  /**
+   * The texture of a raster for the drape of `epoch`, unless the view's graphics memory budget
+   * turns it down. A drape this view already holds for that survey is replaced by the new one, so
+   * only the memory beyond what it holds is asked for: a restyle (ramp, range, hillshade) of the
+   * same size never is.
+   */
+  private admit(raster: Raster, epoch: string): Texture {
+    const held = this.drapes.get(epoch)?.texture?.image as
+      { width?: number; height?: number } | undefined;
+    const extra = raster.width * raster.height * 4 - (held?.width ?? 0) * (held?.height ?? 0) * 4;
+    if (extra > 0 && this.view.budget && !this.view.budget(extra)) throw new DrapeRefused();
+    return VolumetricScene.texture(raster);
+  }
+
   /** The texture of a drape: the shared change colours, or a relief of its own. */
   private surfaceTexture(epoch: string, mode: SurfaceMode): Promise<Texture | null> {
     const s = this.store.getState();
@@ -640,7 +750,7 @@ export class VolumetricScene {
     if (mode === 'photo' || !svc) return Promise.resolve(null);
     if (mode === 'change') {
       if (!this.changeTexture) {
-        const p = svc.changeRaster().then((r) => VolumetricScene.texture(r));
+        const p = svc.changeRaster().then((r) => this.admit(r, epoch));
         p.catch(() => {
           this.changeTexture = null;
         });
@@ -650,7 +760,7 @@ export class VolumetricScene {
     }
     const style = s.reliefStyle();
     if (!style) return Promise.resolve(null);
-    return svc.reliefRaster(epoch, style).then((r) => VolumetricScene.texture(r));
+    return svc.reliefRaster(epoch, style).then((r) => this.admit(r, epoch));
   }
 
   private buildDrape(epoch: string, mode: SurfaceMode, key: string, root: Object3D): void {
@@ -703,6 +813,15 @@ export class VolumetricScene {
       },
       (e: unknown) => {
         this.pendingDrapes.delete(epoch);
+        if (e instanceof DrapeRefused) {
+          // the view shows the survey photo and the pane says why (VolumetricStage): colours of
+          // an older style must not stay under a legend that says there are none
+          if (this.unsub.length && this.wantedDrapes().get(epoch)?.mode === mode) {
+            this.removeDrape(epoch);
+            this.setRefused(epoch, mode);
+          }
+          return;
+        }
         this.store.getState().setMessage(e instanceof Error ? e.message : String(e));
       },
     );
@@ -721,6 +840,7 @@ export class VolumetricScene {
   private restoreSurface(): void {
     for (const epoch of [...this.drapes.keys()]) this.removeDrape(epoch);
     this.pendingDrapes.clear();
+    for (const epoch of [...this.refused.keys()]) this.setRefused(epoch, null);
     void this.changeTexture?.then(
       (t) => {
         t.dispose();
@@ -735,7 +855,7 @@ export class VolumetricScene {
     const epochs = s.file?.captures.map((c) => c.epoch) ?? [];
     const first = epochs[0];
     const last = epochs.at(-1);
-    if (!s.swipe || !first || !last || first === last) {
+    if (!this.swiping() || !first || !last || first === last) {
       if (this.savedClip.size) this.restoreClip();
       for (const d of this.drapes.values())
         if (d.material.clippingPlanes !== this.stage.clippingPlanes) {

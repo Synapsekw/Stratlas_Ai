@@ -23,6 +23,7 @@ import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { useShell } from '../shell';
+import { primaryMap, primaryScene } from '../workspace/compare';
 import { PopTool, Tool } from '../workspace/StageTools';
 import { BulkTotals } from './BulkTotals';
 import { CompareLayer } from './Comparison';
@@ -368,7 +369,8 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
     if (!stage || !frame) return;
     const clamp = stageClamp(stage, frame);
     setSurface({ heightAt: clamp });
-    const detach = attach3d(stage, frame);
+    // the main view's own dates: the date its side shows while the split shows dates
+    const detach = attach3d(stage, frame, { dates: primaryScene });
     return () => {
       detach();
       setSurface(null);
@@ -379,7 +381,7 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
     if (!map || !frame) return;
     const clampZ = stage ? stageClamp(stage, frame) : () => null;
     const detach = [
-      attachMap(map, frame, clampZ),
+      attachMap(map, frame, clampZ, { dates: primaryMap }),
       attachSectionMap(map, frame.epsg),
       attachOverlaysMap(map, frame.epsg),
     ];

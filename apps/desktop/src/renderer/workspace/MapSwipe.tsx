@@ -25,10 +25,11 @@ import {
 } from '@aio/maps';
 import type { Layer } from '@aio/schema';
 import { Icon, useT } from '@aio/ui';
-import { assetUrl, useWorkspace } from '@aio/workspace';
+import { assetUrl, useWorkspace, workspace, type Workspace } from '@aio/workspace';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { create } from 'zustand';
+import { create, useStore } from 'zustand';
+import type { StoreApi } from 'zustand/vanilla';
 import './mapSwipe.css';
 import type { SplitModel } from './SplitPanes';
 
@@ -279,10 +280,16 @@ export function ChangeLegend({ layer }: { layer: RasterLayer }) {
   );
 }
 
-/** Legends of the visible change heat maps (the first one; they share a scale per kind). */
-export function ChangeLegends() {
-  const layer = useWorkspace((s) =>
-    s.project?.manifest.layers.find((l) => isChangeHeatMap(l) && l.visible),
+/**
+ * Legends of the visible change heat maps (the first one; they share a scale per kind). A pane
+ * that shows one survey date passes its `store`: the legend shows there only while that side
+ * shows the heat map.
+ */
+export function ChangeLegends({ store }: { store?: StoreApi<Workspace> | undefined } = {}) {
+  const layer = useStore(store ?? workspace, (s) =>
+    s.project?.manifest.layers.find(
+      (l) => isChangeHeatMap(l) && l.visible && (!store || !s.hidden[l.id]),
+    ),
   );
   return layer && isChangeHeatMap(layer) ? <ChangeLegend layer={layer} /> : null;
 }

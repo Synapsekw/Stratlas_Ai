@@ -3,8 +3,9 @@
  * ortho GeoTIFFs, a stockyard with two cone piles, one cut down between the dates) picked in the
  * new project wizard, the Volumetric Survey Kit run as a `volumetric.build` job in the
  * Processing drawer, and the project opening in the native volumetric workspace (register,
- * recomputed volumes, pile selection). Needs the development Python with aio_pipelines (`uv sync` in
- * python/) or QUADRION_E2E_PYTHON; skipped without it.
+ * recomputed volumes, pile selection). Then Compare dates: both 3D views show the surface
+ * colours, the selected pile and the legend, each for its own survey. Needs the development
+ * Python with aio_pipelines (`uv sync` in python/) or QUADRION_E2E_PYTHON; skipped without it.
  */
 import type { ElectronApplication, Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
@@ -90,18 +91,71 @@ async function recompute(win: Page, pile: string): Promise<Record<string, Record
   }, pile);
 }
 
+interface Obj3 {
+  name: string;
+  uuid: string;
+  visible: boolean;
+  children: Obj3[];
+  getObjectByName(n: string): Obj3 | undefined;
+}
+interface Views {
+  __stratlas: {
+    stage(): { scene: Obj3 } | null;
+    compare(): { second: { scene: Obj3 } | null };
+    graphics(): { getState(): { tier: string; setOverride(t: string | null): void } };
+  };
+}
+
+/** What the volumes overlay draws on each 3D view: the surveys draped, and the pile's toe line. */
+function overlays(win: Page, pile: string) {
+  return win.evaluate((id) => {
+    const w = window as unknown as Views;
+    const of = (s: { scene: Obj3 } | null) => {
+      const group = s?.scene.getObjectByName('volumetric');
+      return {
+        drapes: (group?.children ?? [])
+          .filter((c) => c.name.startsWith('drape:') && c.visible)
+          .map((c) => c.name.slice('drape:'.length)),
+        toe: group?.getObjectByName(`vol:${id}`)?.getObjectByName('toe-selected') !== undefined,
+      };
+    };
+    return { main: of(w.__stratlas.stage()), second: of(w.__stratlas.compare().second) };
+  }, pile);
+}
+
+/** The Photo, Elevation or Cut / fill switch (under More tools when the toolbar folds it). */
+async function surfaceColours(win: Page, name: 'Photo' | 'Elevation' | 'Cut / fill') {
+  const button = win
+    .getByRole('group', { name: 'Surface colours' })
+    .getByRole('button', { name, exact: true });
+  // The toolbar may fold or unfold the group between the look and the click (it measures itself
+  // again when the views change), so both are tried together until the click lands. More tools
+  // is a toggle: a try that closed it opens it again on the next one. Pressing the switch twice
+  // changes nothing.
+  await expect(async () => {
+    if (!(await button.isVisible()))
+      await win.getByRole('button', { name: 'More tools' }).click({ timeout: 2_000 });
+    await button.click({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  await expect(button).toHaveAttribute('aria-pressed', 'true');
+}
+
 test.skip(!existsSync(venvPython), `no Python with aio_pipelines at ${venvPython}`);
 
 test('a volumetric project from two raw survey dates: wizard, Processing drawer, volumetric workspace', async ({
   dataRoot,
   network,
 }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(360_000);
   const raw = join(dataRoot.base, 'raw').replace(/\\/g, '/');
   execFileSync(venvPython, ['-c', `import os; os.makedirs(r'${raw}', exist_ok=True)`]);
   execFileSync(venvPython, ['-c', MAKE_SURVEYS, raw]);
 
-  const app = await launchApp(dataRoot, { QUADRION_PIPELINE_PYTHON: venvPython });
+  // the smallest window: the second view's legend (step 4) must leave the view its clicks there
+  const app = await launchApp(dataRoot, {
+    QUADRION_PIPELINE_PYTHON: venvPython,
+    QUADRION_WINDOW_SIZE: '1100x700',
+  });
   await network.attach(app);
   try {
     const win = await app.firstWindow();
@@ -188,6 +242,86 @@ test('a volumetric project from two raw survey dates: wizard, Processing drawer,
         );
     await register.locator(`tbody tr[data-pile="${pid}"]`).click();
     await expect(win.getByTestId('vol-pile')).toHaveAttribute('data-pile', pid);
+
+    // 4. Compare dates: the first survey on the left, the last on the right. One toolbar drives
+    // both views; each shows the selected pile and the surface colours of its own survey.
+    // (CI draws with a software GPU, the Low tier, which runs one 3D view: pin Medium.)
+    await win.evaluate(() => {
+      const g = (window as unknown as Views).__stratlas.graphics().getState();
+      if (g.tier === 'low') g.setOverride('medium');
+    });
+    await win.getByTestId('compare-dates').click();
+    await expect(win.locator('[data-scene-view] canvas')).toHaveCount(2);
+    const second = win.getByTestId('pane-3d-compare');
+    await expect
+      .poll(() => overlays(win, pid), { timeout: 60_000 })
+      .toEqual({ main: { drapes: [], toe: true }, second: { drapes: [], toe: true } });
+    await surfaceColours(win, 'Elevation');
+    await expect
+      .poll(() => overlays(win, pid), { timeout: 60_000 })
+      .toEqual({ main: { drapes: ['e1'], toe: true }, second: { drapes: ['e2'], toe: true } });
+    // the right view has the legend too, read only, with the range the left legend sets
+    const legend = second.getByTestId('vol-legend-view');
+    await expect(legend).toHaveAttribute('data-surface-shown', 'elev');
+    await expect(legend.locator('.ends')).toContainText(' m');
+    await expect(legend.getByRole('radio')).toHaveCount(0);
+    await expect(legend.getByRole('slider')).toHaveCount(0);
+    await expect(second.getByTestId('vol-no-drape')).toHaveCount(0);
+    // with the colours on, both views still agree on the ground under the site (one choice
+    // drives the street map of both)
+    await expect
+      .poll(() =>
+        win.evaluate(() => {
+          const w = window as unknown as Views;
+          const of = (s: { scene: Obj3 } | null) =>
+            JSON.stringify([
+              s?.scene.getObjectByName('basemap:site-street-map')?.visible ?? false,
+              s?.scene.getObjectByName('env:ground')?.visible ?? null,
+            ]);
+          return of(w.__stratlas.stage()) === of(w.__stratlas.compare().second);
+        }),
+      )
+      .toBe(true);
+    // it lies over the view without taking its clicks (asked again while a popover or a
+    // callout is still settling over that spot)
+    await expect
+      .poll(
+        () =>
+          legend.evaluate((el) => {
+            const r = el.getBoundingClientRect();
+            const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            return {
+              tag: at?.tagName ?? null,
+              inPane: at?.closest('[data-testid="pane-3d-compare"]') !== null,
+              inLegend: el.contains(at),
+            };
+          }),
+        { timeout: 20_000 },
+      )
+      .toEqual({ tag: 'CANVAS', inPane: true, inLegend: false });
+    // cut and fill: the change colours on each side's own terrain
+    const elevDrape = await win.evaluate(
+      () =>
+        (window as unknown as Views).__stratlas.compare().second?.scene.getObjectByName('drape:e2')
+          ?.uuid ?? null,
+    );
+    await surfaceColours(win, 'Cut / fill');
+    await expect(legend).toHaveAttribute('data-surface-shown', 'change');
+    await expect
+      .poll(
+        () =>
+          win.evaluate(
+            () =>
+              (window as unknown as Views).__stratlas
+                .compare()
+                .second?.scene.getObjectByName('drape:e2')?.uuid ?? null,
+          ),
+        { timeout: 60_000 },
+      )
+      .not.toBe(elevDrape);
+    await expect
+      .poll(() => overlays(win, pid), { timeout: 60_000 })
+      .toMatchObject({ main: { drapes: ['e1'] }, second: { drapes: ['e2'] } });
     expect(errors).toEqual([]);
     expect(await network.outbound()).toEqual([]);
   } finally {
