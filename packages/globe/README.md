@@ -48,8 +48,22 @@ more kind of plan entry and one more case in the view.
 - `aura.ts`: one post-process pass for the street looks: soft shading of the whole Earth, a haze
   along the limb, a glow around it and a sparse star field, all fading out near the ground. Not
   on the Low preset. The Natural Earth look keeps CesiumJS's star box and atmosphere.
-- `pins.ts`: site, cluster, issue and measuring pins drawn on canvases. The label beside the
-  selected site and under the pointer is an HTML element the controller moves (`bindTag`).
+- `pins.ts`: what is drawn on canvases and shown as billboards. A site is a chip: a dot in its
+  tone (the site itself: the billboard is anchored there, so `pinPosition` is the dot), its name
+  cut to a width, and a badge with the open issues. Issue and measuring pins are small sprites.
+  The sizes and the cutting are pure (`../chips.ts`: `chipMetrics`, `fitLabel`, `issueBadge`).
+- Gathering is the package's own pass, not CesiumJS's `EntityCluster` (which only asks whether a
+  neighbour's anchor lies in a chip's box, and misses overlaps once north is not up). After a
+  frame in which the view moved, the controller hands every chip's place and size to
+  `groupChips` (`../chips.ts`, pure, the same answer at any heading) and draws one chip
+  ("3 sites", from the host's `clusterLabel`) for each group in a billboard collection of its
+  own, hiding the members' chips. A click on it flies in until they part.
+  `inspect().clusters` lists the groups.
+- Three HTML elements the controller moves after each frame (`bindTag`): the rings of the
+  selected site (no label: its chip and its card say the name), the label under the pointer or
+  of the site lit from the host's list, and the `card` slot. The host fills the slot through
+  `GlobeView`'s `card` and `cardPick` (a site's pin or an issue's); `placeCard` keeps it by the
+  pin and inside the view less `cardInsets`, the room the host's own controls take.
 - `look.ts`: what each graphics preset buys (pixel ratio, screen-space error, the aura, the idle
   turn). The scene draws on demand; the idle turn and the zoom step ask for frames only while
   they run.

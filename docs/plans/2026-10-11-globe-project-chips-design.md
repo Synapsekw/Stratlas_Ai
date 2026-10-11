@@ -52,7 +52,9 @@ No shortcut is added. No words change except the new ones; the Globe keeps sayin
   `clusterPin` go.
 - `view/controller.ts`: sites are billboards of `siteChip`, anchored at the dot (left origin and a
   pixel offset), so `pinPosition` and every click and hover test keep pointing at the site.
-  Clustering reaches from the chips' own boxes. The cluster's words come from a
+  Gathering is the package's own pass (`groupChips` in `chips.ts`, run when the view changes):
+  CesiumJS's clustering only asks whether a neighbour's anchor point lies in a chip's box, which
+  misses overlaps once the camera is not north up. The gathered chip's words come from a
   `clusterLabel(count)` option. A third tag slot, `card`, is placed with `placeCard` at the pick
   given to `setCard(pick | null)`: a site's pin or an issue's pin.
 - `view/GlobeView.tsx`: a `card` prop (a React node) rendered in the `card` slot, outside the
@@ -89,8 +91,8 @@ bar.
 
 ## Trade-offs taken
 
-- Chips are drawn on the Globe's canvas, not as HTML: clustering, clicks and terrain stay
-  CesiumJS's, at the cost of chips not being focusable. The field is the keyboard's way to a site.
+- Chips are drawn on the Globe's canvas, not as HTML: clicks and terrain stay CesiumJS's, at the
+  cost of chips not being focusable. The field is the keyboard's way to a site.
 - A card at the pin covers some ground beside the selected site. It closes with its button or Esc,
   and "Show all sites" clears it.
 
