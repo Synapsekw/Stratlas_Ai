@@ -39,7 +39,6 @@ import { MeasureToolbar } from '../survey/MeasureToolbar';
 import { usePopPlacement } from './popPlacement';
 import { toggleTelemetry, useTelemetryOn } from './telemetryPref';
 import { useCutawayPref } from './useCutaway';
-import { siteBasemap, siteBasemapOn, useSiteBasemap, wantsSiteBasemap } from './siteBasemap';
 
 /** The live 3D stage (view presets, tools, section), re-rendering on tool and section changes. */
 export function useEngineStage(): EngineStage | null {
@@ -420,34 +419,6 @@ function KindRow({ kinds, label, icon }: (typeof KINDS)[number]) {
   );
 }
 
-/** The offline street map under the site in 3D, for projects that can have it. */
-function StreetMapRow() {
-  const t = useT();
-  const projectId = useWorkspace((s) => s.project?.id ?? null);
-  const wanted = useWorkspace((s) => (s.project ? wantsSiteBasemap(s.project.manifest) : false));
-  const covered = useSiteBasemap((s) => s.covered);
-  const on = useSiteBasemap((s) => (projectId ? siteBasemapOn(s.choices, projectId) : false));
-  if (!projectId || !wanted) return null;
-  return (
-    <label
-      className="pop-row"
-      title={covered === false ? t('stage.streetMap.none') : t('stage.streetMap.tip')}
-    >
-      <Icon name="map" size={14} className="muted" />
-      <span className="pop-grow">{t('stage.streetMap')}</span>
-      <input
-        type="checkbox"
-        data-testid="street-map-3d"
-        disabled={covered === false}
-        checked={on && covered !== false}
-        onChange={() => {
-          siteBasemap.getState().set(projectId, !on);
-        }}
-      />
-    </label>
-  );
-}
-
 /**
  * Issue pins on and off in one click (I), so the severity heat map reads cleanly. The Layers
  * popover sets the same filter: the button turns the pins back on to the last filter it chose.
@@ -515,7 +486,6 @@ export function DisplayTools({ stage, map }: { stage: EngineStage | null; map: b
           {KINDS.map((k) => (
             <KindRow key={k.label} {...k} />
           ))}
-          {!map && <StreetMapRow />}
           {!map && <GroundRows />}
           <span className="pop-title">Issue pins</span>
           <PinControls />

@@ -8,16 +8,22 @@
  * and terrain around the site from packs. Nothing is drawn, and nothing fails, when no installed
  * pack covers the site.
  */
-import type { EngineStage, LayerHandle } from '@aio/engine';
-import { createStreetGround, frameProjection, packCovers, type GroundExtent } from '@aio/maps';
+import type { EngineStage } from '@aio/engine';
+import {
+  createStreetRings,
+  frameProjection,
+  packCovers,
+  type GroundExtent,
+  type GroundRingsHandle,
+} from '@aio/maps';
 import type { AioBridge, Layer, MapPackInfo, ProjectManifest, Vec3 } from '@aio/schema';
 import type { MessageKey } from '@aio/ui';
 import { loadFlight } from '@aio/video';
 import { assetUrl } from '@aio/workspace';
-import type { Mesh } from 'three';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
+import { useGraphics } from '../graphics';
 import type { GroundModel } from './basemap';
 
 /** Id of the street map ground (never a manifest layer id: those are the project's own). */
@@ -318,10 +324,12 @@ function contentFloor(stage: EngineStage, manifest: ProjectManifest): number | n
 }
 
 /**
- * Draw the street map ground in `stage` while `on`, for the open project. Placed just under the
- * lowest terrain so the yard and its ortho sit on top of it. `probe`: this view looks up which
- * pack covers the site (the main view); a second view (comparing dates) passes false and reads
- * the main view's answer, so opening it does not redraw the main view's street map.
+ * Draw the street map rings in `stage` while `on` (`shown` of `useStreetMap3d`), for the open
+ * project: once the scene is up, nearest ring first. Placed just under the lowest terrain so the
+ * yard and its ortho sit on top of it. `probe`: this view looks up which pack covers the site and
+ * sizes the rings (the main view); a second view (comparing dates) passes false and reads the
+ * main view's answers, so both draw the same ground and opening it does not redraw the main
+ * view's.
  */
 export function useSiteBasemapLayer(
   stage: EngineStage | null,
@@ -357,27 +365,41 @@ export function useSiteBasemapLayer(
   const covered = useSiteBasemap((s) => s.covered);
   const active = !!stage && !!projectId && !!manifest && wanted && on && !!covered;
 
-  // what the street map covers: the flights, photos and origin, recomputed as data is added
-  const [extent, setExtent] = useState<string | null>(null);
+  // the Low tier (the software renderer) draws smaller pictures
+  const sizePx = useGraphics((s) => (s.tier === 'low' ? 1024 : 2048));
+  // the floor is read from the newest manifest without redrawing the rings for every change of it
+  const manifestNow = useRef(manifest);
   useEffect(() => {
-    if (!active) return;
+    manifestNow.current = manifest;
+  }, [manifest]);
+
+  // what the rings cover: the models, clouds, flights, photos and the origin, measured once the
+  // scene is up, and again as data is added (the same rings again change nothing)
+  useEffect(() => {
+    if (!probe || !active) return;
     let live = true;
-    contentPoints(projectId, manifest).then(
-      (points) => {
-        if (live) setExtent(JSON.stringify(streetMapExtent(points)));
-      },
-      () => {
-        if (live) setExtent(JSON.stringify(streetMapExtent([])));
+    const points = contentPoints(projectId, manifest).catch((): Vec3[] => []);
+    const stop = settledBox(
+      () => stage.contentBounds(),
+      (box) => {
+        void points.then((p) => {
+          if (!live) return;
+          const near = streetMapExtent([...p, ...(box ? boxPoints(box) : [])]);
+          siteBasemap.getState().setRings(projectId, JSON.stringify(streetMapRings(near)));
+        });
       },
     );
     return () => {
       live = false;
+      stop();
     };
-  }, [active, projectId, manifest]);
+  }, [probe, active, stage, projectId, manifest]);
+
+  const rings = useSiteBasemap((s) => (s.rings?.projectId === projectId ? s.rings.json : null));
 
   useEffect(() => {
-    if (!active || !extent) return;
-    let handle: LayerHandle | null = null;
+    if (!active || !rings) return;
+    let handle: GroundRingsHandle | null = null;
     let disposed = false;
     let timer: ReturnType<typeof setInterval> | null = null;
     const offs: (() => void)[] = [];
@@ -393,35 +415,40 @@ export function useSiteBasemapLayer(
       url: (ref: Parameters<typeof assetUrl>[1]) => assetUrl(projectId, ref),
       scene: stage,
     };
-    createStreetGround(layer, ctx, JSON.parse(extent) as GroundExtent).then(
-      (h) => {
-        if (disposed) {
-          h.dispose();
-          return;
-        }
-        handle = h;
-        const mesh = stage.scene.getObjectByName(`basemap:${SITE_BASEMAP_ID}`) as Mesh | undefined;
-        if (!mesh) return;
+    createStreetRings(layer, ctx, {
+      extents: JSON.parse(rings) as GroundExtent[],
+      sizePx,
+      onRing(mesh, index) {
+        if (disposed) return;
         // never pickable: clicks on the street map are clicks on empty ground
         mesh.raycast = () => undefined;
-        // it is the ground now: the plain ground goes, projected video lands on the streets
-        mesh.userData.aioGround = true;
-        offs.push(stage.addRaycastTarget(mesh, SITE_BASEMAP_ID), stage.addProjectionReceiver(mesh));
+        // projected video lands on the streets
+        offs.push(stage.addProjectionReceiver(mesh));
+        const group = mesh.parent;
+        if (index > 0 || !group) return;
+        // it is the ground now, from the first ring on: the plain ground goes
+        group.userData.aioGround = true;
+        offs.push(stage.addRaycastTarget(group, SITE_BASEMAP_ID));
         // terrain loads in its own time: settle under it as it arrives
         let tries = 0;
         const place = () => {
-          const floor = contentFloor(stage, manifest);
+          const floor = manifestNow.current ? contentFloor(stage, manifestNow.current) : null;
           const y = Math.min(-0.25, (floor ?? 0) - 0.4);
-          if (mesh.position.y !== y + 0.2) {
-            // the ground quad is built at y = -0.2
-            mesh.position.y = y + 0.2;
-            mesh.updateMatrixWorld(true);
+          if (group.position.y !== y + 0.2) {
+            // the rings are built at y = -0.2
+            group.position.y = y + 0.2;
+            group.updateMatrixWorld(true);
             stage.requestRender();
           }
           if (++tries > 20 && timer) clearInterval(timer);
         };
         place();
         timer = setInterval(place, 1500);
+      },
+    }).then(
+      (h) => {
+        if (disposed) h.dispose();
+        else handle = h;
       },
       (e: unknown) => {
         console.warn('Street map under the site not drawn', e);
@@ -433,5 +460,5 @@ export function useSiteBasemapLayer(
       for (const off of offs) off();
       handle?.dispose();
     };
-  }, [active, stage, projectId, manifest, extent]);
+  }, [active, stage, projectId, rings, sizePx]);
 }

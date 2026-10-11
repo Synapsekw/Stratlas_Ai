@@ -109,8 +109,6 @@ export const en = {
   'stage.pins.show': 'Show issue pins',
   'stage.pins.hide': 'Hide issue pins',
   'stage.pins.toggle': 'Turn issue pins off or on',
-  'stage.streetMap': 'Street map under the site',
-  'stage.streetMap.tip': 'The offline street map drawn on the ground around the site in 3D',
   'stage.streetMap.none': 'No installed map pack covers this site',
   'stage.streetMap.show': 'Show the street map under the site',
   'stage.streetMap.hide': 'Hide the street map under the site',

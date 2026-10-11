@@ -365,8 +365,8 @@ export function BasemapPicker() {
 }
 
 /**
- * The 3D view's ground from packs, in the Layers popover under the street map: imagery and
- * terrain around the site. The same choices as Settings, Offline maps. Nothing for a project
+ * The 3D view's ground from packs, in the Layers popover: imagery and terrain around the site
+ * (while either is drawn, the street map under the site gives way, `siteBasemap.ts`). The same choices as Settings, Offline maps. Nothing for a project
  * that is not placed on the Earth.
  */
 export function GroundRows() {
