@@ -18,7 +18,7 @@ If no project can be placed, the Globe says so at the top: "No project can be pl
 
 A site's chip has a dot, the project's name and, when the project has open issues, their number. The dot is mint with no open issues and amber with some. A long name is cut short on the chip; rest the pointer on the chip to read it in full, with the last capture or the open issues.
 
-Chips that would overlap gather into one that says how many it holds, for example "3 sites". It is amber when any of them has open issues. Click it to zoom in until they part; sites at the same place stay one chip.
+Chips that would overlap gather into one that says how many it holds, for example "3 sites". It is amber when any of them has open issues. Click it and the Globe flies to its sites, where each has its own chip again, even when they are only a short walk apart. Projects at the same place stay one chip at any zoom: a click on it lists them in **Find a site**, where you pick one by name.
 
 **Show all sites** brings every site into view, each chip whole and clear of the field and the buttons.
 
@@ -26,11 +26,13 @@ Click a chip to select the site. Its card opens beside it, with the last capture
 
 - **Fly to** moves the view to the site.
 - **Open site here** opens the project in the site view, looking the same direction. Click **Globe** again to come back to the same view.
-- **Close** closes the card. So does Esc while the card has the focus. The keyboard is then back in **Find a site**.
+- **Close** closes the card. So does Esc, with the focus in the card or in **Find a site** (there the first Esc closes the list when it is open). After Esc, or Enter on **Close**, the keyboard is back in **Find a site**.
 
 ## Find a site
 
-Click **Find a site** to list every site with its last capture and open issues. Type part of a name to shorten the list; "No site with that name" means nothing matches. Rest the pointer on a row, or move to it with the Up and Down keys, to light its chip on the Globe. Click a row, or press Enter, and the Globe flies to the site and opens its card. Esc closes the list.
+Click **Find a site** to list every site with its last capture and open issues. Type part of a name to shorten the list; "No site with that name" means nothing matches. Rest the pointer on a row, or move to it with the Up and Down keys, to light its chip on the Globe. Click a row, or press Enter, and the Globe flies to the site and opens its card. Esc closes the list; Esc again closes the card.
+
+When the list opens after a click on a chip of projects at the same place, it shows only those. Type, or close it, and it lists every site again.
 
 With the keyboard, Tab goes from **Find a site** to **Map**, then to the open card and to the buttons at the lower right.
 

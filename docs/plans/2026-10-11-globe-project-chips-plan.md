@@ -7,9 +7,13 @@
 gives way to a search field, a Map dialog and a Measure button.
 
 **Architecture:** the chips stay CesiumJS billboards drawn on small canvases (as the pins are), so
-clustering, picking and terrain clamping do not change; only the card is HTML, placed by the
-controller after each frame through a third tag slot. The screen's chrome is split into two small
-components (`GlobeSearch`, `GlobeMapMenu`) that `GlobeScreen` composes.
+picking does not change; only the card is HTML, placed by the controller after each frame through
+a third tag slot. (As built, two things the first draft meant to leave alone did change. Chips
+gather in the package's own pass, `groupChips`, not CesiumJS's clustering, which misses overlaps
+once north is not up. And the controller puts each site on the terrain itself, `Globe.getHeight`,
+instead of a clamped billboard, so the chip, the card and the labels share one ground position.)
+The screen's chrome is split into two small components (`GlobeSearch`, `GlobeMapMenu`) that
+`GlobeScreen` composes.
 
 **Tech stack:** TypeScript, React 18, CesiumJS (`@cesium/engine`), Vitest, Playwright (Electron).
 

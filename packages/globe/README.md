@@ -64,13 +64,25 @@ more kind of plan entry and one more case in the view.
   frame in which the view moved, the controller hands every chip's place and size to
   `groupChips` (`../chips.ts`, pure, the same answer at any heading) and draws one chip
   ("3 sites", from the host's `clusterLabel`) for each group in a billboard collection of its
-  own, hiding the members' chips. A click on it flies to its sites, where they part (sites at
-  the same place cannot). `inspect().clusters` lists the groups, `inspect().chips` the box of
-  every chip drawn.
+  own, hiding the members' chips. `inspect().clusters` lists the groups, `inspect().chips` the
+  box of every chip drawn.
+- A click on a gathered chip flies to its sites' own box, however small (`PARTING_SPAN_DEG`,
+  some 55 m, is the least), so sites a short walk apart part in one click. Sites that still
+  stand as one chip when the flight has ended (the same place, or nearer than a chip can show)
+  cannot part: the host is told through `onGroup(projectIds)` and tells them apart its own way
+  (the app lists them in its field). A click whose sites part calls nothing.
 - A flight that frames sites (`flyHome`, a click on a gathered chip) frames their chips, not
   their points: `padBounds` (`../camera.ts`, pure) grows the sites' box by what the host's
   `cardInsets` and a chip's size around its dot are worth on the ground, so every chip lands
-  whole in the view and clear of the host's controls.
+  whole in the view and clear of the host's controls. `flyHome` starts from the box it is given
+  (`sitesBounds`, the sites with their margin) and grows it only at the edges where a chip
+  would lack its room, so a library whose margin already leaves the room opens as that box
+  alone; a library too wide for the room to be had gets that box too. The gathered chip's
+  flight ends as much higher as the highest of its sites stands on the terrain, so the chips
+  land where the framing put them.
+- `flyToSite` aims at the ground the site's chip stands on, so the chip lands in the middle of
+  the view with terrain as without. (From far out that ground is known from coarse tiles only,
+  and the chip may land a little off until the next flight.)
 - Three HTML elements the controller moves after each frame (`bindTag`): the rings of the
   selected site (no label: its chip and its card say the name), the label under the pointer or
   of the site lit from the host's list, and the `card` slot. The host fills the slot through
