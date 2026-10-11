@@ -2,8 +2,10 @@
  * The builder sample datasets end to end (outside the CI suite): each sample folder in
  * QUADRION_SAMPLES (`<real data root>/samples`, written by python/scripts/make_samples.py from
  * client projects, so @realdata) is built into a new project in a temporary data root the way its
- * README says, its pipeline runs from Settings, Advanced, and the result is checked against the
- * numbers in its `sample.json`. The samples are only read.
+ * README says, and the result is checked against the numbers in its `sample.json`. The samples are
+ * only read. The inspection and road samples run their pipeline from Settings, Processing tools,
+ * Advanced; the volumetric sample builds from the new project wizard, and its build shows in the
+ * Processing drawer.
  *
  * The pipelines run in the development venv, or in a pipeline pack with QUADRION_E2E_PACK
  * (e.g. `<real data root>/runtime/pipeline-pack-0.2.0`). The inspection sample takes the HCl

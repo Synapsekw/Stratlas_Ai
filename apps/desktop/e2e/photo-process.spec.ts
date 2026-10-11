@@ -253,16 +253,17 @@ test.describe('on the stand-in pipelines', () => {
       .poll(async () => (await layers(win))?.map((l) => l.id))
       .toContain(`photo-${run}-mesh`);
     // the new layer is under the photos' survey date, which the run added
-    const filed = await win.evaluate(
-      ([id, day]) => {
-        const m = (window as unknown as Probe).__stratlas.workspace.getState().project?.manifest;
-        const capture = m?.layers.find((l) => l.id === id)?.capture;
-        return { capture, date: m?.captures.find((c) => c.id === capture)?.date, day };
-      },
-      [`photo-${run}-mesh`, PHOTO_DAY] as const,
-    );
-    expect(filed.capture).toBe(`capture-${PHOTO_DAY}`);
-    expect(filed.date).toBe(PHOTO_DAY);
+    const filed = () =>
+      win.evaluate(
+        ([id, day]) => {
+          const m = (window as unknown as Probe).__stratlas.workspace.getState().project?.manifest;
+          const capture = m?.layers.find((l) => l.id === id)?.capture;
+          return { capture, date: m?.captures.find((c) => c.id === capture)?.date, day };
+        },
+        [`photo-${run}-mesh`, PHOTO_DAY] as const,
+      );
+    await expect.poll(async () => (await filed()).capture).toBe(`capture-${PHOTO_DAY}`);
+    await expect.poll(async () => (await filed()).date).toBe(PHOTO_DAY);
     await expect(results.getByTestId('photo-results-where')).toHaveText(
       `Added to ${PHOTO_PROJECT.name} under ${DAY_WORDS} as new layers:`,
     );
