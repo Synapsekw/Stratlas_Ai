@@ -240,6 +240,8 @@ test('a PNG and a PDF come in as drawings, open side by side, take an opacity an
   const strip = win.getByTestId('place-strip');
   await expect(strip).toContainText('Click a point on the drawing');
   await strip.getByRole('button', { name: 'Typed' }).click();
+  // the strip took room from the pane: fit the sheet again, so the pane's middle is the sheet's
+  await view.getByRole('button', { name: 'Fit the whole raster' }).click();
   const box = await view.boundingBox();
   if (!box) throw new Error('no drawing pane');
   const [e0, n0] = m.origin;

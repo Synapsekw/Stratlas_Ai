@@ -256,6 +256,8 @@ export function RasterView({
         drag.current = null;
         // a click, not a pan: the pixel under it, for the place tool
         if (!pick || !src || d?.id !== e.pointerId) return;
+        // the fit button sits on the picture: a click on it is not a point
+        if (e.target instanceof Element && e.target.closest('button')) return;
         if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return;
         const r = e.currentTarget.getBoundingClientRect();
         const x = (e.clientX - r.left - d.view.x) / d.view.scale;
