@@ -18,13 +18,15 @@ If no project can be placed, the Globe says so at the top: "No project can be pl
 
 A site's chip has a dot, the project's name and, when the project has open issues, their number. The dot is mint with no open issues and amber with some. A long name is cut short on the chip; rest the pointer on the chip to read it in full, with the last capture or the open issues.
 
-Chips that would overlap gather into one that says how many it holds, for example "3 sites". It is amber when any of them has open issues. Click it to zoom in until they part.
+Chips that would overlap gather into one that says how many it holds, for example "3 sites". It is amber when any of them has open issues. Click it to zoom in until they part; sites at the same place stay one chip.
+
+**Show all sites** brings every site into view, each chip whole and clear of the field and the buttons.
 
 Click a chip to select the site. Its card opens beside it, with the last capture, the number of open issues and tilesets. The card stays by the site as the Globe moves.
 
 - **Fly to** moves the view to the site.
 - **Open site here** opens the project in the site view, looking the same direction. Click **Globe** again to come back to the same view.
-- **Close** closes the card. So does Esc while the card has the focus.
+- **Close** closes the card. So does Esc while the card has the focus. The keyboard is then back in **Find a site**.
 
 ## Find a site
 
