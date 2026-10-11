@@ -387,10 +387,11 @@ export function dtmFilterBlock(
 ): string | null {
   if (cloudLayers(manifest).length === 0)
     return 'The DTM filter works on a point cloud, and this project has none.';
-  if (!tools) return 'Checking the pipeline pack…';
-  if (!tools.found) return 'The DTM filter runs in the pipeline pack, which is not installed.';
+  if (!tools) return 'Checking the processing tools…';
+  if (!tools.found)
+    return 'The DTM filter needs the processing tools, which are not installed. Install them in Settings, Processing tools.';
   if (tools.pdal === false)
-    return 'The DTM filter runs in PDAL, which the pipeline pack here does not have. Install the full pipeline pack.';
+    return 'The DTM filter needs PDAL, which the processing tools on this computer do not have. Update them in Settings, Processing tools.';
   return null;
 }
 

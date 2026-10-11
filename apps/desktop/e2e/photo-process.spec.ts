@@ -355,7 +355,7 @@ test.describe('on the stand-in pipelines', () => {
       const create = next.getByRole('button', { name: 'Create maps' });
       try {
         await expect(why).toContainText('The maps could not be started.', { timeout: 60_000 });
-        await expect(why).toContainText('is not a valid pipeline pack');
+        await expect(why).toContainText('is not a valid processing tools folder');
         // not left on "Working": matching is done, no maps are waiting, and the way on is there
         await expect(panel.getByTestId('photo-job').locator('[data-status]')).toHaveText('Done');
         await expect(phase(win, 'map')).toHaveCount(0);
@@ -368,7 +368,7 @@ test.describe('on the stand-in pipelines', () => {
         await create.click();
         await expect(create).toBeEnabled();
         await expect(panel.getByRole('alert')).toHaveCount(1);
-        await expect(why).toContainText('is not a valid pipeline pack');
+        await expect(why).toContainText('is not a valid processing tools folder');
       } finally {
         await rename(`${manifest}.away`, manifest);
       }

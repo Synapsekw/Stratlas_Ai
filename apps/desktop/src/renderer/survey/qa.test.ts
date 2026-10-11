@@ -104,7 +104,7 @@ describe('survey QA helpers', () => {
     expect(isHeld(undefined)).toBe(false);
   });
 
-  it('says why the DTM filter cannot run: no cloud layer, no pipeline pack, no PDAL', () => {
+  it('says why the DTM filter cannot run: no cloud layer, no processing tools, no PDAL', () => {
     const none = { layers: [] } as unknown as Pick<ProjectManifest, 'layers'>;
     const cloud = {
       layers: [
@@ -118,6 +118,16 @@ describe('survey QA helpers', () => {
     expect(dtmFilterBlock(cloud, { found: false })).toMatch(/not installed/);
     expect(dtmFilterBlock(cloud, { found: true, pdal: false })).toMatch(/PDAL/);
     expect(dtmFilterBlock(cloud, { found: true, pdal: true })).toBeNull();
+    // in the words of Settings, Processing tools, which is where both are put right
+    for (const tools of [null, { found: false }, { found: true, pdal: false }]) {
+      const why = dtmFilterBlock(cloud, tools);
+      expect(why).toMatch(/processing tools/);
+      expect(why).not.toMatch(/pipeline pack/i);
+    }
+    expect(dtmFilterBlock(cloud, { found: false })).toContain('Settings, Processing tools');
+    expect(dtmFilterBlock(cloud, { found: true, pdal: false })).toContain(
+      'Settings, Processing tools',
+    );
     // the four presets of survey.cleanup's schema, in order
     expect(DTM_PRESETS.map((p) => p.id)).toEqual(
       SurveyCleanupParams.shape.dtmFilter.unwrap().shape.preset.options,

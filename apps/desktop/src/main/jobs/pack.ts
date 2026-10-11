@@ -102,7 +102,7 @@ export async function findPack(o: {
       ? { pack, runtime: { found: true, version: pack.version, dir: pack.dir } }
       : {
           pack: null,
-          runtime: { found: false, problem: `${single} is not a valid pipeline pack.` },
+          runtime: { found: false, problem: `${single} is not a valid processing tools folder.` },
         };
   }
   const runtimeDir = join(o.dataRoot, 'runtime');
@@ -132,8 +132,8 @@ export async function findPack(o: {
       found: false,
       problem:
         candidates.length > 0
-          ? `No valid pipeline pack in ${runtimeDir}: each one needs manifest.json and its Python.`
-          : `No pipeline pack in ${runtimeDir}. Install one in Settings, Processing tools.`,
+          ? `No valid processing tools in ${runtimeDir}: each version needs manifest.json and its Python. Install them again in Settings, Processing tools.`
+          : `No processing tools in ${runtimeDir}. Install them in Settings, Processing tools.`,
     },
   };
 }

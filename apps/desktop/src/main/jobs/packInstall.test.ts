@@ -236,17 +236,17 @@ describe('installPackArchive', () => {
 
   it('refuses anything beside the one pack folder at the top', async () => {
     expect(await refusedUnchanged([{ path: 'README.txt', data: 'hello' }])).toContain(
-      'not a pipeline pack: it starts with README.txt',
+      'not a processing tools file: it starts with README.txt',
     );
     expect(
       await refusedUnchanged([
         ...fakePackEntries('0.5.0'),
         { path: 'pipeline-pack-0.6.0/extra.txt', data: 'x' },
       ]),
-    ).toContain('a pipeline pack is one folder');
+    ).toContain('the processing tools come as one folder');
     expect(
       await refusedUnchanged([...fakePackEntries('0.5.0'), { path: 'autorun.inf', data: 'x' }]),
-    ).toContain('a pipeline pack is one folder');
+    ).toContain('the processing tools come as one folder');
     // the folder name and the manifest must name the same version
     expect(
       await refusedUnchanged(fakePackEntries('0.5.0', { top: 'pipeline-pack-9.9.9' })),
@@ -882,7 +882,7 @@ describe('listPacks and packStatus', () => {
   it('tells missing from incompatible, and leaves a development pack alone', async () => {
     await rm(runtime, { recursive: true });
     expect(await status()).toMatchObject({ state: 'missing', needs: [], others: [] });
-    expect((await status()).problem).toContain('Install one in Settings, Processing tools');
+    expect((await status()).problem).toContain('Install them in Settings, Processing tools');
     await writeFolderPack('2.0.0', { appRange: '>=2.0.0 <3.0.0' });
     const s = await status();
     expect(s.state).toBe('incompatible');

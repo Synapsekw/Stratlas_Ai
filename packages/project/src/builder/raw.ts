@@ -51,7 +51,7 @@ export interface PipelineJobs {
 
 export const NO_PIPELINE: PipelineJobs = {
   available: () => Promise.resolve(false),
-  start: () => Promise.reject(new Error('The pipeline pack is not installed.')),
+  start: () => Promise.reject(new Error('The processing tools are not installed.')),
 };
 
 /** Video probing and SRT conversion (from `@aio/video/telemetry`, injected by the app). */
@@ -133,7 +133,7 @@ const REVIEW_PX = 2560;
 const THUMB_PX = 480;
 
 const PIPELINE_MISSING =
-  'Needs the pipeline pack to convert. Install it, then import this file again.';
+  'Needs the processing tools to convert. Install them in Settings, Processing tools, then import this file again.';
 
 async function exists(p: string): Promise<boolean> {
   try {
@@ -273,7 +273,7 @@ export async function importRawFiles(
         kind,
         status: 'queued',
         jobId,
-        message: 'Converting in the pipeline pack.',
+        message: 'Converting with the processing tools.',
       });
     } catch (e) {
       items.push({

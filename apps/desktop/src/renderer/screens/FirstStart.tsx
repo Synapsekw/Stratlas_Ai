@@ -57,7 +57,7 @@ export function setupRows(s: SetupStatus, online: boolean): Row[] {
     {
       id: 'pipeline',
       icon: 'refresh',
-      title: 'Pipeline pack',
+      title: 'Processing tools',
       state: s.pipeline.found ? 'ok' : 'warn',
       status: s.pipeline.found
         ? `Installed${s.pipeline.version ? ` (${s.pipeline.version})` : ''}`

@@ -230,7 +230,7 @@ function decompress(c: number, data: Uint8Array, expected: number): Uint8Array {
       return packBits(data, expected);
     default:
       throw new Error(
-        `TIFF compression ${String(c)} is not supported here; use the pipeline pack.`,
+        `TIFF compression ${String(c)} is not supported here; the processing tools convert it.`,
       );
   }
 }
@@ -238,7 +238,7 @@ function decompress(c: number, data: Uint8Array, expected: number): Uint8Array {
 /** Decode a whole (Geo)TIFF into memory. */
 export function decodeTiff(b: Uint8Array): TiffImage {
   const { tags, le, bigTiff } = readTags(b);
-  if (bigTiff) throw new Error('BigTIFF files are converted by the pipeline pack.');
+  if (bigTiff) throw new Error('BigTIFF files are converted by the processing tools.');
   const width = first(tags, 256, 0) ?? 0;
   const height = first(tags, 257, 0) ?? 0;
   const samples = first(tags, 277, 1) ?? 1;
@@ -248,12 +248,13 @@ export function decodeTiff(b: Uint8Array): TiffImage {
   const predictor = first(tags, 317, 1) ?? 1;
   const sf = first(tags, 339, 1) ?? 1;
   if (!width || !height) throw new Error('TIFF has no image size.');
-  if (planar !== 1) throw new Error('Planar TIFF layout is converted by the pipeline pack.');
-  if (first(tags, 262) === 6) throw new Error('YCbCr TIFF is converted by the pipeline pack.');
+  if (planar !== 1) throw new Error('Planar TIFF layout is converted by the processing tools.');
+  if (first(tags, 262) === 6) throw new Error('YCbCr TIFF is converted by the processing tools.');
   if (![8, 16, 32].includes(bits)) throw new Error(`${String(bits)}-bit TIFF is not supported.`);
   const format: TiffImage['format'] = sf === 3 ? 'float' : sf === 2 ? 'int' : 'uint';
   if (format === 'float' && bits !== 32) throw new Error('Only 32-bit float TIFF is supported.');
-  if (predictor === 3) throw new Error('Floating point predictor: use the pipeline pack.');
+  if (predictor === 3)
+    throw new Error('Floating point predictor: the processing tools convert it.');
   const bps = bits / 8;
   const pixel = samples * bps;
   const raw = new Uint8Array(width * height * pixel);
