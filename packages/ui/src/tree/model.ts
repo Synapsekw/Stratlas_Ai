@@ -40,6 +40,7 @@ const GROUPS: { kind: TreeGroupKind; label: string; icon: IconName }[] = [
 
 const groupOf: Record<Layer['kind'], TreeGroupKind> = {
   mesh: 'models',
+  // Retired: a delivered viewer gets no row (`buildDatasetTree` skips it); the type needs the key.
   legacy: 'models',
   pointcloud: 'pointclouds',
   basemap: 'maps',
@@ -55,7 +56,7 @@ function metaOf(layer: Layer, durations: Readonly<Record<string, number>>): stri
     case 'mesh':
       return layer.tags?.length ? `${formatCompact(layer.tags.length)} tags` : undefined;
     case 'legacy':
-      return 'legacy';
+      return undefined;
     case 'pointcloud':
       return layer.pointCount !== undefined ? formatCompact(layer.pointCount) : layer.format;
     case 'basemap':
@@ -90,6 +91,8 @@ export function buildDatasetTree(
   }
   const placed = new Set<string>();
   for (const layer of manifest.layers) {
+    // A retired delivered viewer stays in older manifests and is never listed.
+    if (layer.kind === 'legacy') continue;
     const g = groups.get(groupOf[layer.kind]);
     if (!g) continue;
     const flight = flights.get(layer.id);
@@ -151,12 +154,12 @@ function itemLayerIds(it: TreeItem): string[] {
   return [...(it.layerId ? [it.layerId] : []), ...(it.children ?? []).flatMap(itemLayerIds)];
 }
 
-/** Layer kinds that are never of one survey date: an offline basemap, an original review. */
+/** Layer kinds that are never of one survey date: an offline basemap, a retired viewer. */
 const NEVER_DATED: ReadonlySet<Layer['kind']> = new Set(['basemap', 'legacy']);
 
 /**
  * The layers a row stands for that can be filed under a survey date (a flight row: its clips).
- * Empty for a row that is not a layer (Issues, Drafts) and for basemaps and original reviews.
+ * Empty for a row that is not a layer (Issues, Drafts) and for basemaps and retired viewers.
  */
 export function datableLayerIds(it: TreeItem): string[] {
   const own = it.layerId && it.layerKind && !NEVER_DATED.has(it.layerKind) ? [it.layerId] : [];

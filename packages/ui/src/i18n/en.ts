@@ -10,7 +10,6 @@ export const en = {
   'nav.projects': 'Projects',
   'nav.welcome': 'Welcome',
   'nav.scene': 'Scene',
-  'nav.review': 'Original review',
   'nav.issues': 'Issues',
   'nav.media': 'Media',
   'nav.detections': 'Detections',

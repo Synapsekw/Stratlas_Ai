@@ -62,6 +62,32 @@ describe('buildDatasetTree', () => {
   });
 });
 
+describe('a retired viewer layer in the dataset tree', () => {
+  const meshes = mockManifest().layers.filter((l) => l.kind === 'mesh');
+  const viewer: Layer = {
+    kind: 'legacy',
+    id: 'old',
+    name: 'Delivered viewer',
+    visible: true,
+    viewer: 'aik',
+    entry: { path: 'legacy/index.html' },
+  };
+  const rows = (tree: TreeGroup[]) =>
+    tree.flatMap((g) => g.items.flatMap((i) => [i, ...(i.children ?? [])]));
+
+  it('has no row and is not counted', () => {
+    const tree = buildDatasetTree({ ...mockManifest(), layers: [...meshes, viewer] }, []);
+    expect(rows(tree).some((i) => i.layerKind === 'legacy' || i.id === 'old')).toBe(false);
+    expect(tree.map((g) => [g.kind, g.count, g.items.map((i) => i.id)])).toEqual([
+      ['models', 1, ['plant']],
+    ]);
+  });
+
+  it('leaves no empty group behind when it is the only layer', () => {
+    expect(buildDatasetTree({ ...mockManifest(), layers: [viewer] }, [])).toEqual([]);
+  });
+});
+
 describe('flights in the dataset tree', () => {
   const clip = (n: number): Layer => ({
     kind: 'video',
@@ -123,11 +149,11 @@ describe('groupDatableLayerIds', () => {
 
   it('is empty for a group with nothing that can be dated', () => {
     const g: TreeGroup = {
-      kind: 'models',
-      label: 'Models',
-      icon: 'scene',
+      kind: 'maps',
+      label: 'Maps and rasters',
+      icon: 'map',
       count: 1,
-      items: [{ id: 'old', layerId: 'old', layerKind: 'legacy', name: 'Original review' }],
+      items: [{ id: 'base', layerId: 'base', layerKind: 'basemap', name: 'Offline map' }],
     };
     expect(groupDatableLayerIds(g)).toEqual([]);
   });
