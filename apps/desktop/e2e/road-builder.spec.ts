@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pmtilesFile } from '../src/main/testing';
+import { expectAccessible } from './a11y';
 import { closeProcessing, expect, launchApp, test } from './fixtures';
 import { copyRealData, hasRealData } from './realData';
 
@@ -228,6 +229,10 @@ test('a road survey from raw inputs: wizard, drawn centreline, road builder job,
     await dialog.locator('#job-f-ortho').fill(fx.ortho);
     await dialog.locator('#job-f-defects').fill(fx.defects);
     await dialog.locator('#job-f-unitLength').fill('30');
+    await expectAccessible(win, 'Start dialog', { include: '[data-testid="pipeline-dialog"]' });
+    // for a person to look at: only with QUADRION_E2E_SHOTS set to a folder
+    if (process.env.QUADRION_E2E_SHOTS)
+      await win.screenshot({ path: join(process.env.QUADRION_E2E_SHOTS, 'start-dialog.png') });
     await dialog.getByTestId('job-start').click();
     // the Processing drawer opens on the job
     const detail = win.getByTestId('processing-drawer').locator('.job-detail');

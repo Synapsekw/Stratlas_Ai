@@ -173,6 +173,7 @@ test.describe('with the runtime', () => {
       await drawer.getByTestId('proc-running').locator('.job-row').click();
       const detail = drawer.locator('.job-detail');
       await expect(detail).toHaveAttribute('data-form', 'folded');
+      await shot(win, 'processing-job-details');
       const wait = detail.locator('.jd-steps li', { hasText: 'Wait' });
       await expect(wait).toHaveAttribute('data-state', 'running', { timeout: 60_000 });
       await expectAccessible(win, 'Processing drawer, a job', {
@@ -209,6 +210,8 @@ test.describe('with the runtime', () => {
 
       // it can be opened and cancelled from here; once it has stopped, nothing is left to show
       await other.click();
+      // the header names the project the job belongs to, not a project that is not there
+      await expect(drawer.getByTestId('proc-project')).toHaveText(TINY);
       await drawer.locator('.job-detail').getByRole('button', { name: 'Cancel' }).click();
       await expect(drawer.getByTestId('proc-none')).toHaveText('No project is open.', {
         timeout: 15_000,

@@ -14,7 +14,15 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
-import { expect, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } from './fixtures';
+import {
+  closeProcessing,
+  expect,
+  hasPipelinePython,
+  openProcessing,
+  PIPELINE_ENV,
+  test,
+  VENV_PYTHON,
+} from './fixtures';
 
 type V2 = [number, number];
 type V3 = [number, number, number];
@@ -85,6 +93,33 @@ async function openBuilder(win: Page) {
   return panel;
 }
 
+/**
+ * The Processing drawer lies over the open panel: along its left edge, whatever paints at a point
+ * is the drawer's own. For a person to look at, with QUADRION_E2E_SHOTS set to a folder.
+ */
+async function drawerOverPanel(win: Page): Promise<void> {
+  const drawer = await openProcessing(win);
+  const box = await drawer.boundingBox();
+  expect(box).not.toBeNull();
+  const { x, y, height } = box ?? { x: 0, y: 0, height: 0 };
+  const covered = await win.evaluate(
+    ({ left, top, h }) =>
+      [0.15, 0.35, 0.55, 0.75].map(
+        (f) =>
+          document
+            .elementFromPoint(left + 12, top + h * f)
+            ?.closest('[data-testid="processing-drawer"]') === null,
+      ),
+    { left: x, top: y, h: height },
+  );
+  expect(covered).toEqual([false, false, false, false]);
+  if (process.env.QUADRION_E2E_SHOTS)
+    await win.screenshot({
+      path: join(process.env.QUADRION_E2E_SHOTS, 'drawer-over-model-builder.png'),
+    });
+  await closeProcessing(win);
+}
+
 async function importDxf(panel: ReturnType<Page['getByTestId']>, file: string, units = '') {
   await panel.getByRole('button', { name: 'Import drawing (DXF)' }).click();
   const form = panel.getByLabel('Import drawing');
@@ -127,6 +162,7 @@ test('the demo plot plan: units, a broken file, placed by control points, parts 
   const m = modelling(truth).drawing;
   const manifest = () => json<ProjectManifest>(join(root, 'manifest.json'));
   const panel = await openBuilder(win);
+  await drawerOverPanel(win);
   const say = panel.getByTestId('model-builder-say');
 
   // a drawing without units is refused with the fix, then comes in with the units truth gives
