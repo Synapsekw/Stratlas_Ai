@@ -101,6 +101,19 @@ export {
 } from './camera';
 export { formatArea, formatLength, geodesicDistance, pathLength, polygonArea } from './measure';
 export {
+  CARD_GAP,
+  CHIP,
+  chipMetrics,
+  fitLabel,
+  issueBadge,
+  placeCard,
+  type CardPlace,
+  type ChipMetrics,
+  type Insets,
+  type Measure,
+  type ViewSize,
+} from './chips';
+export {
   issuePins,
   lastCapture,
   severityColour,
