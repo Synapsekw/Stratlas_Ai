@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   APP_CSP,
   APP_CSP_DIRECTIVES,
+  cspForUrl,
   cspMetaTag,
   HEADER_ONLY_DIRECTIVES,
   inlineScripts,
@@ -44,6 +45,31 @@ describe('app CSP', () => {
     expect(APP_CSP).toContain("default-src 'self' aio:");
     expect(APP_CSP).toContain("connect-src 'self' aio: data: blob:");
     expect(APP_CSP).toContain("worker-src 'self' blob:");
+  });
+});
+
+describe('cspForUrl', () => {
+  const app = "default-src 'self'";
+  it("leaves Chromium's own pages alone (the built-in PDF viewer needs chrome://resources)", () => {
+    expect(cspForUrl('chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/index.html', app)).toBe(
+      null,
+    );
+    expect(cspForUrl('chrome://resources/js/load_time_data.js', app)).toBe(null);
+    expect(cspForUrl('devtools://devtools/bundled/devtools_app.html', app)).toBe(null);
+  });
+  it('sets no policy on a project PDF, which the built-in viewer renders', () => {
+    expect(cspForUrl('aio://project/p1/report/Volume%20Report.PDF', app)).toBe(null);
+    expect(cspForUrl('aio://project/p1/legacy/Volume%20Report.pdf', app)).toBe(null);
+  });
+  it('gives HTML under legacy/ the app policy, like any project file', () => {
+    expect(cspForUrl('aio://project/p1/legacy/Old%20Review.html', app)).toBe(app);
+  });
+  it('keeps the app policy for everything else', () => {
+    expect(cspForUrl('aio://project/p1/legacy/data/site.js', app)).toBe(app);
+    expect(cspForUrl('aio://project/p1/report.html', app)).toBe(app);
+    expect(cspForUrl('aio://packs/gcc.pdf', app)).toBe(app);
+    expect(cspForUrl('file:///C:/app/index.html', app)).toBe(app);
+    expect(cspForUrl('not a url', app)).toBe(app);
   });
 });
 

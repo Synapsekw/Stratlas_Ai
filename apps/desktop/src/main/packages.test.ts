@@ -34,7 +34,6 @@ beforeEach(async () => {
     'flights/DJI_0790.json': '{"samples":[]}',
     'video/DJI_0790.mp4': 'mp4',
     'thumbnail.jpg': 'jpg',
-    'legacy/Old Review.html': '<!doctype html><html><head></head><body>old</body></html>',
   });
   await mkdir(join(root, 'video'), { recursive: true });
   const { writeFile } = await import('node:fs/promises');
@@ -118,14 +117,11 @@ describe('aio:// inside a package', () => {
     expect(Buffer.from(await res.arrayBuffer()).equals(VIDEO.subarray(1000, 1100))).toBe(true);
   });
 
-  it('serves a whole member, a legacy page with its shims, and 404 for anything else', async () => {
+  it('serves a whole member, and 404 for anything else', async () => {
     const { id, handler } = await opened();
     const whole = await handler(new Request(`aio://project/${id}/models/plant.glb`));
     expect(whole.status).toBe(200);
     expect(await whole.text()).toBe('glTF');
-    const legacy = await handler(new Request(`aio://project/${id}/legacy/Old%20Review.html`));
-    expect(legacy.headers.get('content-security-policy')).toBeTruthy();
-    expect(await legacy.text()).toContain('old');
     expect((await handler(new Request(`aio://project/${id}/nope.bin`))).status).toBe(404);
     expect((await handler(new Request(`aio://project/${id}/../alzour/x`))).status).toBe(404);
   });

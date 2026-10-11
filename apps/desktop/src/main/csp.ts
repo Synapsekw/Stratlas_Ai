@@ -8,8 +8,8 @@
  * - In dev the pages come from the Vite dev server over http, and main sets the same policy as
  *   a response header (index.ts, `hardenSession`). The meta is added at build only.
  *
- * Legacy viewer documents (`aio://project/<id>/legacy/*.html`) have their own policy, sent by the
- * aio:// handler as a header (protocol/legacy.ts, `LEGACY_CSP`).
+ * The header reaches every response that has headers, aio:// project files included, except
+ * Chromium's own pages and project PDFs (`cspForUrl`).
  *
  * This module is imported by the Vite config at build time, so it must not import Electron.
  */
@@ -59,6 +59,25 @@ const escapeAttr = (s: string) =>
 /** The `<meta>` tag for `policy`. */
 export function cspMetaTag(policy: string): string {
   return `<meta http-equiv="Content-Security-Policy" content="${escapeAttr(metaPolicy(policy))}" />`;
+}
+
+/** Chromium's own pages (the built-in PDF viewer, DevTools) bring their own policy. */
+const BROWSER_PAGES = ['chrome:', 'chrome-extension:', 'devtools:'];
+
+/**
+ * The CSP for a response: none for Chromium's own pages and for project PDFs (the built-in
+ * viewer renders them), else the app policy.
+ */
+export function cspForUrl(url: string, appCsp: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return appCsp;
+  }
+  if (BROWSER_PAGES.includes(u.protocol)) return null;
+  if (u.protocol !== 'aio:' || u.host !== 'project') return appCsp;
+  return /\.pdf$/i.test(u.pathname) ? null : appCsp;
 }
 
 /**
