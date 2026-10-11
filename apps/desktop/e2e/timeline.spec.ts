@@ -105,11 +105,11 @@ async function showTogether(row: Locator, target: Locator) {
 
 /**
  * Drag a dataset row onto a date folder the way a person can: with both ends in view before the
- * press. `dragTo` alone brings the target into view after pressing, and in a short window (CI runs
- * at 1100 x 700, where the list is taller than the sidebar) that scroll slides the pressed row from
- * under the pointer, so Chromium starts no drag at all. A folder that cannot be in view together
- * with the row is reached by holding the drag at the edge of the list instead (see the smallest
- * window tests below).
+ * press. `dragTo` alone brings the target into view after pressing, and in a short window (CI's is
+ * 1100 wide and about 720 high, where the list is taller than the sidebar) that scroll slides the
+ * pressed row from under the pointer, so Chromium starts no drag at all. A folder that cannot be
+ * in view together with the row is reached by holding the drag at the edge of the list instead
+ * (see the smallest window tests below).
  */
 async function dragOnto(row: Locator, target: Locator) {
   await showTogether(row, target);
@@ -520,8 +520,10 @@ test.describe('survey date folders', () => {
 });
 
 test.describe('survey date folders in the smallest window', () => {
-  // CI runs every spec at 1100 x 700. Asked for here, so a run at the default size covers what
-  // only shows in a short window too: a list taller than the sidebar, and menus near the bottom.
+  // The smallest window the app allows, 1100 x 700. CI's own window is a little taller (about
+  // 1100 x 720: it asks for no size and the runner's screen decides, see CONTRIBUTING.md), and a
+  // workstation's is far larger. Asked for here, so every run covers what only shows in a short
+  // window: a list taller than the sidebar, and menus near the bottom.
   test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x700' } });
 
   test('a drag held at the edge of the list scrolls it to a folder below the fold', async ({

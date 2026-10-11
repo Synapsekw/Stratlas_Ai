@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { focusLost, keepFocusAlive, trapFocus } from './focus';
 
 /** The element with `id`; the test fails when it is missing. */
@@ -40,11 +40,19 @@ function setup() {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   document.body.innerHTML = '';
 });
 
 describe('keepFocusAlive', () => {
-  const tick = () => new Promise((r) => setTimeout(r, 5));
+  /**
+   * Let the rescue run: the removal reaches the observer in a microtask, which arms a 0 ms timer.
+   * On the fake clock that order holds whatever the load; a real sleep raced the rescue's timer.
+   */
+  const tick = () => vi.advanceTimersByTimeAsync(5);
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
 
   it('moves focus from a removed control to its nearest surviving neighbour', async () => {
     document.body.innerHTML = `<main><h1>Issues</h1><ul id="list"><li><button id="del">Delete</button></li></ul>

@@ -75,12 +75,29 @@ const GUARD = join(import.meta.dirname, 'network-guard.cjs');
  * QUADRION_E2E_SWGL=warp draws with WARP, Chromium's other software rasteriser on Windows (Low
  * tier too), which holds the renderer far longer than SwiftShader while the Globe streams tiles.
  */
-export const GPU_ARGS =
+const SWGL_ARGS =
   process.env.QUADRION_E2E_SWGL === '1'
     ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']
     : process.env.QUADRION_E2E_SWGL === 'warp'
       ? ['--use-angle=d3d11-warp']
       : [];
+
+/**
+ * QUADRION_E2E_SCALE=1 draws at that display scale whatever the screen's own (Chromium's
+ * `--force-device-scale-factor`). The CI runners' screens are at 100 %; on a workstation at 200 %
+ * a CSS pixel is two device pixels, so a row that sits half a pixel past an edge there sits a
+ * whole pixel past it, or not at all, on a runner: a "fully in view" check can pass on one and
+ * fail on the other in a window of the same size. Unset (as in CI), the screen's scale is used.
+ */
+export function scaleArgs(env: Record<string, string | undefined>): string[] {
+  const scale = env.QUADRION_E2E_SCALE?.trim() ?? '';
+  return /^\d+(\.\d+)?$/.test(scale) && Number(scale) > 0
+    ? [`--force-device-scale-factor=${scale}`]
+    : [];
+}
+
+/** Every launch gets these: the GPU switches above and the display scale, when asked for. */
+export const GPU_ARGS = [...SWGL_ARGS, ...scaleArgs(process.env)];
 
 export const TINY_PROJECT_ID = 'e2e-tiny';
 
@@ -801,6 +818,26 @@ function surveyFixture(key: SurveyDemoKey) {
   };
 }
 
+let windowReported = false;
+
+/**
+ * One line in the run's log, from the first window of each worker: the size and display scale the
+ * specs really run at. CI asks for no size (the runner's screen decides), so its log is where
+ * that size is read; CONTRIBUTING.md, "End to end the way CI runs it", says how to match it.
+ */
+async function reportWindow(win: Page): Promise<void> {
+  if (windowReported) return;
+  windowReported = true;
+  const [w, h, scale] = await win
+    .evaluate(() => [innerWidth, innerHeight, devicePixelRatio])
+    .catch(() => [0, 0, 0]);
+  const asked = process.env.QUADRION_WINDOW_SIZE ?? 'not set';
+  process.stdout.write(
+    `[e2e] window ${String(w)} x ${String(h)} px at display scale ${String(scale)} ` +
+      `(QUADRION_WINDOW_SIZE ${asked})\n`,
+  );
+}
+
 export const test = base.extend<Fixtures>({
   appEnv: [{}, { option: true }],
 
@@ -836,9 +873,11 @@ export const test = base.extend<Fixtures>({
     expect(outbound, 'the app made network requests').toEqual([]);
   },
 
-  win: async ({ app }, use) => {
+  win: async ({ app, appEnv }, use) => {
     const win = await app.firstWindow();
     await win.waitForLoadState('domcontentloaded');
+    // a spec that asks for its own window size says nothing about the run's
+    if (!appEnv.QUADRION_WINDOW_SIZE) await reportWindow(win);
     await use(win);
   },
 
