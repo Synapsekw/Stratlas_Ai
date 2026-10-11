@@ -1,9 +1,9 @@
 /**
  * The Globe's scene: the offline CesiumWidget, the Earth of the chosen look (street tiles over
  * the bundled land shapes, imagery packs, or the old Natural Earth raster), terrain from packs,
- * library sites as clustered pins, the open project's issues as pins coloured by severity,
- * picking, hovering, fly-in, the slow idle turn and the camera hand-off. Nothing here edits or
- * measures (decision 3): picking only says what was hit.
+ * library sites as named chips that gather when they crowd, the open project's issues as pins
+ * coloured by severity, picking, hovering, the card at a pin, fly-in, the slow idle turn and the
+ * camera hand-off. Nothing here edits or measures (decision 3): picking only says what was hit.
  *
  * The scene draws on demand (`requestRenderMode`): every motion here asks for frames only while
  * it runs and then lets the Globe go back to drawing nothing.
@@ -19,16 +19,20 @@ import {
   HeadingPitchRange,
   Matrix4,
   Math as CMath,
+  PerspectiveFrustum,
   Rectangle,
 } from '@cesium/core';
 import {
+  BillboardCollection,
   Cesium3DTileset,
+  ConstantPositionProperty,
   ConstantProperty,
   CustomDataSource,
   EasingFunction,
   EllipsoidTerrainProvider,
   Entity,
   HeightReference,
+  HorizontalOrigin,
   ImageryLayer,
   ScreenSpaceEventHandler,
   SceneTransforms,
@@ -38,7 +42,16 @@ import {
 } from '@cesium/engine';
 import type { GlobeSite, RasterPackInfo, TilesetEntry } from '@aio/schema';
 import { FetchSource, type Source } from 'pmtiles';
-import { siteToGlobe, type GlobeCamera, type SiteCamera } from '../camera';
+import {
+  padBounds,
+  PARTING_SPAN_DEG,
+  siteToGlobe,
+  type Bounds,
+  type GlobeCamera,
+  type PadOptions,
+  type SiteCamera,
+} from '../camera';
+import { CHIP, groupChips, placeCard, type Insets, type PlacedChip } from '../chips';
 import { planCredits } from '../credits';
 import {
   ecefToGeodetic,
@@ -67,13 +80,14 @@ import {
   loadEarthShapes,
 } from './earthLayers';
 import {
-  SITE_PIN_SIZE,
-  clusterPin,
+  chipFont,
+  chipSize,
+  clusterChip,
+  forgetChips,
   issuePin,
   measurePin,
-  sitePin,
+  siteChip,
   type PinState,
-  type PinTone,
 } from './pins';
 import { createOnlineSatelliteProvider } from './onlineSatellite';
 import { PmtilesImageryProvider, asImageryProvider, packTerrainProvider } from './providers';
@@ -95,8 +109,11 @@ export type GlobeHover =
   | { kind: 'cluster'; count: number }
   | { kind: 'issue'; projectId: string; issueId: string };
 
-/** The two labels the view floats over the Globe: beside the selected site, and under the pointer. */
-export type GlobeTagSlot = 'selected' | 'hover';
+/**
+ * What the view floats over the Globe: the rings at the selected site, the label under the
+ * pointer, and the card at the pin it tells of.
+ */
+export type GlobeTagSlot = 'selected' | 'hover' | 'card';
 
 export interface GlobeControllerOptions {
   container: HTMLElement;
@@ -106,6 +123,11 @@ export interface GlobeControllerOptions {
   /** Jump instead of flying (OS or Settings reduced motion). */
   reducedMotion: () => boolean;
   onPick: (pick: GlobePick | null) => void;
+  /**
+   * A gathered chip was clicked and its sites (project ids) still stand as one chip where the
+   * flight to them ended: they are at the same place, or nearer than a chip can show.
+   */
+  onGroup?: (projectIds: string[]) => void;
   /** What the pointer rests on, whenever it changes. */
   onHover?: (hover: GlobeHover | null) => void;
   /** The credit lines of what is drawn (the Earth's source, then each pack once). */
@@ -118,8 +140,10 @@ export interface GlobeControllerOptions {
   style?: GlobeStyle;
   /** The colours of the street style; the built-in copy of them when left out. */
   palette?: GlobePalette;
-  /** The font of the cluster counts (the app's UI font). */
+  /** The font of the chips (the app's UI font). */
   font?: string;
+  /** The words on the chip of sites that gathered (the app's language); their number without. */
+  clusterLabel?: (count: number) => string;
 }
 
 type Pack = RasterPackInfo;
@@ -130,8 +154,26 @@ export const packSource: SourceFor = (p) => new FetchSource(rasterPackUrl(p.kind
 
 const SITE_PREFIX = 'site:';
 const ISSUE_PREFIX = 'issue:';
-/** Sites closer than this on screen (CSS pixels) gather into a cluster. */
-const CLUSTER_REACH_PX = 30;
+/**
+ * From a site to the left end of its chip's sprite, which puts the centre of the chip's dot on
+ * the site: `pinPosition`, the pointer and the floating elements all aim there. CSS pixels:
+ * CesiumJS's billboard shader turns the offset into metres with the size of a CSS pixel, and does
+ * not scale it with the billboard.
+ */
+const CHIP_OFFSET = new Cartesian2(-(CHIP.pad + CHIP.dotX), 0);
+const NO_INSETS: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
+
+/** What a site's chip says, and where the site stands. */
+interface SiteChip {
+  name: string;
+  open: number;
+  lonLat: readonly [number, number];
+  /** The height of the ground it is drawn on, metres above the ellipsoid. */
+  height: number;
+}
+
+/** A longitude or a difference of two, degrees, as the nearest turn: from -180 to 180. */
+const turn = (deg: number): number => ((((deg + 180) % 360) + 360) % 360) - 180;
 /** The deepest level the land shapes are painted at, alone and under street tiles. */
 const EARTH_LEVELS = { whole: 11, underlay: 8 } as const;
 
@@ -153,6 +195,13 @@ export interface GlobeInspection {
   terrain: string[];
   terrainTiles: number;
   sites: string[];
+  /** The chips that stand for several sites now: how many, and which (ids in order). */
+  clusters: { count: number; sites: string[] }[];
+  /**
+   * Every chip drawn now, a site's own or a gathered one: the sites it stands for and its box in
+   * CSS pixels of the canvas (which a chip partly out of view runs past).
+   */
+  chips: { sites: string[]; x: number; y: number; width: number; height: number }[];
   /** Project tilesets on the Globe and whether their root content is drawn. */
   tilesets: { id: string; ready: boolean }[];
   issuePins: string[];
@@ -191,12 +240,30 @@ export class GlobeController {
   private readonly sites = new CustomDataSource('sites');
   private readonly issues = new CustomDataSource('issues');
   private readonly measure = new CustomDataSource('measure');
-  private readonly tones = new Map<string, PinTone>();
+  private readonly font: string;
+  /** The page's font faces; absent where the browser has no such set. */
+  private readonly fonts = (document as { fonts?: FontFaceSet }).fonts;
+  /** What each site's chip says, by entity id: a chip is drawn again when its state changes. */
+  private readonly chips = new Map<string, SiteChip>();
+  /** The sites whose own chip is not drawn (entity ids): gathered, or behind the Earth. */
+  private readonly hidden = new Set<string>();
+  /** One chip for each group of sites that gathered; those past the groups are not shown. */
+  private readonly gatheredChips = new BillboardCollection();
+  /** The groups now drawn: the ids of their sites, in order. */
+  private gathered: string[][] = [];
+  /** The groups and their drawings at the last pass: the same again changes nothing. */
+  private gatheredAs = '';
+  /** The view the chips were last gathered for. */
+  private readonly gatheredFor = { view: new Matrix4(), width: 0, height: 0 };
+  /** The ground under a site may have changed (terrain came in or went): look after this frame. */
+  private groundStale = false;
   private selected: string | null = null;
   private pointerHover: GlobeHover | null = null;
   private pointerAnchor: Cartesian3 | null = null;
   private listHover: string | null = null;
   private readonly tags: Partial<Record<GlobeTagSlot, HTMLElement>> = {};
+  private card: GlobePick | null = null;
+  private cardInsets = NO_INSETS;
   private measuring = false;
   private measured: [number, number][] = [];
   private readonly handler: ScreenSpaceEventHandler;
@@ -221,32 +288,12 @@ export class GlobeController {
     this.widget = g.widget;
     this.palette = o.palette ?? STREET_GLOBE_PALETTE;
     this.style = o.style ?? DEFAULT_GLOBE_STYLE;
+    this.font = o.font ?? 'sans-serif';
     const widget = this.widget;
-    const font = o.font ?? 'sans-serif';
-    const clustering = this.sites.clustering;
-    clustering.enabled = true;
-    // the sprites carry a wide halo: reach in from their edge, so only dots that touch gather
-    clustering.pixelRange = (CLUSTER_REACH_PX - SITE_PIN_SIZE) / 2;
-    clustering.minimumClusterSize = 2;
-    clustering.clusterEvent.addEventListener((entities, cluster) => {
-      const attention = entities.some((e) => this.tones.get(e.id) === 'attention');
-      cluster.label.show = false;
-      cluster.billboard.show = true;
-      // the typings say string; a Billboard takes a canvas as its image as well
-      cluster.billboard.image = clusterPin(
-        entities.length,
-        attention ? 'attention' : 'clear',
-        this.palette,
-        g.pixelRatio,
-        font,
-      ) as unknown as string;
-      cluster.billboard.verticalOrigin = VerticalOrigin.CENTER;
-      cluster.billboard.scale = 1 / g.pixelRatio;
-      cluster.billboard.disableDepthTestDistance = Number.POSITIVE_INFINITY;
-    });
     void widget.dataSources.add(this.sites);
     void widget.dataSources.add(this.issues);
     void widget.dataSources.add(this.measure);
+    widget.scene.primitives.add(this.gatheredChips);
     // a render error stops CesiumJS's render loop: say so in the log (diagnostics, tests)
     widget.scene.renderError.addEventListener((_scene: unknown, error: unknown) => {
       const aura = g.aura?.stage;
@@ -273,21 +320,31 @@ export class GlobeController {
         });
     }, ScreenSpaceEventType.MOUSE_MOVE);
     this.listen();
+    const fonts = this.fonts;
+    if (fonts) {
+      const loaded = (e: FontFaceSetLoadEvent) => {
+        this.redrawChips(e.fontfaces);
+      };
+      fonts.addEventListener('loadingdone', loaded);
+      this.unlisten.push(() => {
+        fonts.removeEventListener('loadingdone', loaded);
+      });
+    }
     this.unlisten.push(
       widget.scene.postRender.addEventListener(() => {
+        this.followGround();
+        this.gatherIfMoved();
         this.placeTags();
-      }),
-      // pins gather and part when the camera has moved far enough, after the frame that moved
-      // it: one more frame shows them (the scene draws on demand)
-      widget.scene.camera.changed.addEventListener(() => {
-        widget.scene.requestRender();
       }),
       // once the view has come to rest and its tiles are in, the street tiles agree on one style
       widget.scene.camera.moveEnd.addEventListener(() => {
         this.syncStreetStyle();
+        this.groundChanged();
       }),
       widget.scene.globe.tileLoadProgressEvent.addEventListener((queued: number) => {
         if (queued === 0) this.syncStreetStyle();
+        // a terrain tile that came in may be the ground under a site
+        this.groundChanged();
       }),
     );
     this.rebuildLayers();
@@ -389,7 +446,7 @@ export class GlobeController {
     return this.pointerHover?.kind === 'site' ? this.pointerHover.projectId : this.listHover;
   }
 
-  /** A site hovered or focused in the list lights its pin as the pointer would. */
+  /** A site hovered or focused in the list lights its chip as the pointer would. */
   setHighlighted(projectId: string | null): void {
     if (projectId === this.listHover) return;
     const before = this.hoveredSite();
@@ -398,7 +455,7 @@ export class GlobeController {
     this.placeTags();
   }
 
-  /** The selected site (its card is open): its pin wears the ring and the label stays beside it. */
+  /** The selected site (its card is open): its chip wears the outline and the rings leave it. */
   setSelected(projectId: string | null): void {
     if (projectId === this.selected) return;
     const before = this.selected;
@@ -413,15 +470,26 @@ export class GlobeController {
     return projectId === this.hoveredSite() ? 'hover' : 'rest';
   }
 
+  /** A site's chip as it is now: at rest, lit or selected. */
+  private chipImage(projectId: string, chip: SiteChip): HTMLCanvasElement {
+    return siteChip(
+      chip.name,
+      chip.open,
+      chip.open > 0 ? 'attention' : 'clear',
+      this.pinState(projectId),
+      this.palette,
+      this.g.pixelRatio,
+      this.font,
+    ).canvas;
+  }
+
   private restyleSites(ids: readonly (string | null)[]): void {
     for (const id of new Set(ids)) {
       if (id === null) continue;
       const entity = this.sites.entities.getById(`${SITE_PREFIX}${id}`);
-      if (!entity?.billboard) continue;
-      const tone = this.tones.get(entity.id) ?? 'clear';
-      entity.billboard.image = new ConstantProperty(
-        sitePin(tone, this.pinState(id), this.palette, this.g.pixelRatio),
-      );
+      const chip = entity && this.chips.get(entity.id);
+      if (!entity?.billboard || !chip) continue;
+      entity.billboard.image = new ConstantProperty(this.chipImage(id, chip));
     }
     this.scene.requestRender();
   }
@@ -436,8 +504,7 @@ export class GlobeController {
     const id = hit?.id;
     // a cluster: zoom to its sites
     if (Array.isArray(id)) {
-      const entities = id.filter((e): e is Entity => e instanceof Entity);
-      void this.widget.flyTo(entities, { duration: this.duration(1.6) });
+      this.flyToSites(id.flatMap((e) => (e instanceof Entity ? [e.id] : [])));
       return;
     }
     if (!(id instanceof Entity)) {
@@ -459,8 +526,9 @@ export class GlobeController {
   // ---------------------------------------------------------------- floating labels
 
   /**
-   * Give the Globe an element to keep beside the selected site or under the pointer (`null`
-   * takes it back). The view fills it; the Globe only moves it, after each frame it draws.
+   * Give the Globe an element to keep at the selected site, under the pointer or (the card) by
+   * a pin (`null` takes it back). The view fills it; the Globe only moves it, after each frame
+   * it draws.
    */
   bindTag(slot: GlobeTagSlot, el: HTMLElement | null): void {
     if (el) this.tags[slot] = el;
@@ -468,9 +536,37 @@ export class GlobeController {
     this.placeTags();
   }
 
+  /** The pin the card tells of, a site's or an issue's: the card slot is kept by it. */
+  setCard(pick: GlobePick | null): void {
+    this.card = pick;
+    this.placeTags();
+  }
+
+  /**
+   * The room the screen's own controls take at each edge (`null`: none): the card stays clear of
+   * it, and so do the chips of the sites a flight frames (`flyHome`, a click on a gathered chip).
+   */
+  setCardInsets(insets: Insets | null): void {
+    this.cardInsets = insets ?? NO_INSETS;
+    this.placeTags();
+  }
+
+  /** Place the floating elements again: the card's size changed with what it holds. */
+  layoutCard(): void {
+    this.placeTags();
+  }
+
   private sitePosition(projectId: string | null): Cartesian3 | null {
     if (projectId === null) return null;
     const e = this.sites.entities.getById(`${SITE_PREFIX}${projectId}`);
+    return e?.position?.getValue(this.widget.clock.currentTime) ?? null;
+  }
+
+  private cardPosition(): Cartesian3 | null {
+    const pick = this.card;
+    if (!pick) return null;
+    if (pick.kind === 'site') return this.sitePosition(pick.projectId);
+    const e = this.issues.entities.getById(`${ISSUE_PREFIX}${pick.projectId}|${pick.issueId}`);
     return e?.position?.getValue(this.widget.clock.currentTime) ?? null;
   }
 
@@ -486,9 +582,10 @@ export class GlobeController {
           : hovered !== this.selected
             ? this.sitePosition(hovered)
             : null,
+      card: this.cardPosition(),
     };
     const occluder = new EllipsoidalOccluder(Ellipsoid.WGS84, this.scene.camera.positionWC);
-    for (const slot of ['selected', 'hover'] as const) {
+    for (const slot of ['selected', 'hover', 'card'] as const) {
       const el = this.tags[slot];
       if (!el) continue;
       const p = anchors[slot];
@@ -501,7 +598,20 @@ export class GlobeController {
         continue;
       }
       el.style.visibility = 'visible';
-      el.style.transform = `translate3d(${at.x.toFixed(1)}px, ${at.y.toFixed(1)}px, 0)`;
+      if (slot !== 'card') {
+        el.style.transform = `translate3d(${at.x.toFixed(1)}px, ${at.y.toFixed(1)}px, 0)`;
+        continue;
+      }
+      // the card has a size, its content's: it goes under or over the pin and stays in the view
+      const canvas = this.scene.canvas;
+      const place = placeCard(
+        at,
+        { width: el.offsetWidth, height: el.offsetHeight },
+        { width: canvas.clientWidth, height: canvas.clientHeight },
+        this.cardInsets,
+      );
+      el.style.transform = `translate3d(${String(place.left)}px, ${String(place.top)}px, 0)`;
+      if (el.dataset.side !== place.side) el.dataset.side = place.side;
     }
   }
 
@@ -570,6 +680,8 @@ export class GlobeController {
       this.terrainDecoded = null;
       this.terrainIds = [];
     }
+    // the sites stand on another ground now (back on the ellipsoid without terrain)
+    this.groundStale = true;
   }
 
   /**
@@ -746,42 +858,244 @@ export class GlobeController {
   /** Vertical exaggeration of the terrain (Globe settings). */
   setExaggeration(k: number): void {
     this.scene.verticalExaggeration = k;
+    // the ground under the sites rises or sinks with it
+    this.groundChanged();
     this.scene.requestRender();
   }
 
   // ---------------------------------------------------------------- pins
 
-  /** Library projects as pins at their origins, clustered when they crowd. */
+  /** Library projects as chips at their origins, gathered into one where they would overlap. */
   setSites(sites: readonly GlobeSite[]): void {
-    this.sites.entities.suspendEvents();
-    this.sites.entities.removeAll();
-    this.tones.clear();
+    const entities = this.sites.entities;
+    const ids = new Set(sites.map((s) => `${SITE_PREFIX}${s.projectId}`));
+    entities.suspendEvents();
+    for (const gone of entities.values.filter((e) => !ids.has(e.id))) {
+      entities.remove(gone);
+      this.chips.delete(gone.id);
+      this.hidden.delete(gone.id);
+    }
     for (const s of sites) {
       const id = `${SITE_PREFIX}${s.projectId}`;
-      const tone: PinTone = s.issues.open > 0 ? 'attention' : 'clear';
-      this.tones.set(id, tone);
-      this.sites.entities.add({
+      const lonLat: [number, number] = [s.lonLat[0], s.lonLat[1]];
+      const was = this.chips.get(id);
+      // a site that stays where it was keeps its ground until `settleSites` has looked again
+      const height = was?.lonLat[0] === lonLat[0] && was.lonLat[1] === lonLat[1] ? was.height : 0;
+      const chip: SiteChip = { name: s.name, open: s.issues.open, lonLat, height };
+      this.chips.set(id, chip);
+      const position = Cartesian3.fromDegrees(lonLat[0], lonLat[1], height);
+      const image = this.chipImage(s.projectId, chip);
+      // a site already there keeps its entity: its chip does not go and come back, and stays
+      // hidden if it is gathered
+      const known = entities.getById(id);
+      if (known?.billboard) {
+        known.name = s.name;
+        known.position = new ConstantPositionProperty(position);
+        known.billboard.image = new ConstantProperty(image);
+        continue;
+      }
+      entities.add({
         id,
         name: s.name,
-        position: Cartesian3.fromDegrees(s.lonLat[0], s.lonLat[1], 0),
+        position,
         billboard: {
-          image: sitePin(tone, this.pinState(s.projectId), this.palette, this.g.pixelRatio),
+          image,
           // sprites are drawn in device pixels; CesiumJS sizes billboards in CSS pixels
           scale: 1 / this.g.pixelRatio,
+          // the chip runs to the right of its dot, and the dot is the site
+          horizontalOrigin: HorizontalOrigin.LEFT,
           verticalOrigin: VerticalOrigin.CENTER,
-          heightReference: HeightReference.CLAMP_TO_GROUND,
+          pixelOffset: CHIP_OFFSET,
+          // no height reference: the site's position is on the ground already (`settleSites`)
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
       });
     }
-    this.sites.entities.resumeEvents();
+    entities.resumeEvents();
+    this.settleSites();
+    // the faces these words need, asked for now: `loadingdone` then draws the chips again
+    const words = [...sites.map((s) => s.name), this.clusterWords(2), '0123456789+…'].join(' ');
+    void this.fonts?.load(chipFont(this.font), words).catch(() => undefined);
+    // a site may have moved or changed its count under the same groups
+    this.gatheredAs = '';
+    this.gather();
     this.scene.requestRender();
+  }
+
+  private clusterWords(count: number): string {
+    return this.o.clusterLabel?.(count) ?? String(count);
+  }
+
+  /** The ground under the sites may have changed; nothing to look at without terrain. */
+  private groundChanged(): void {
+    if (this.terrainIds.length > 0) this.groundStale = true;
+  }
+
+  /**
+   * Put every site on the ground as it is drawn now; says whether one moved. With terrain that
+   * is the height of the most detailed tile loaded under the site, exaggeration included
+   * (`Globe.getHeight`; where no tile is loaded, the site stays as it stood); without, the
+   * ellipsoid. The chip is drawn at the site's position, and the pointer, the rings, the card,
+   * `pinPosition` and the gathering all read that same position. (A billboard CesiumJS clamps
+   * itself keeps where it stands to itself, so nothing else could point at it: with terrain and
+   * a tilted view the card and the rings stood tens of pixels off the chip.)
+   */
+  private settleSites(): boolean {
+    const terrain = this.terrainIds.length > 0;
+    const entities = this.sites.entities;
+    let moved = false;
+    for (const [id, chip] of this.chips) {
+      const [lon, lat] = chip.lonLat;
+      const height = terrain
+        ? (this.scene.globe.getHeight(Cartographic.fromDegrees(lon, lat)) ?? chip.height)
+        : 0;
+      // (a centimetre is nothing on screen, and a tile read twice differs by less)
+      if (Math.abs(height - chip.height) < 0.01) continue;
+      chip.height = height;
+      const entity = entities.getById(id);
+      if (entity)
+        entity.position = new ConstantPositionProperty(Cartesian3.fromDegrees(lon, lat, height));
+      moved = true;
+    }
+    return moved;
+  }
+
+  /**
+   * After a frame in which the ground may have changed: the sites follow it, and are gathered
+   * again where they stand now. Nothing is looked at otherwise, and never without terrain.
+   */
+  private followGround(): void {
+    if (!this.groundStale || this.destroyed) return;
+    this.groundStale = false;
+    if (!this.settleSites()) return;
+    // the gathered chips stand in the middle of their sites: place them again as well
+    this.gatheredAs = '';
+    this.gather();
+    this.scene.requestRender();
+  }
+
+  /**
+   * A font face arrived. A canvas draws with the faces loaded at that moment, so a chip drawn
+   * before the face of its words has another font's glyphs and width: every chip is drawn again,
+   * and gathered again by its new width.
+   */
+  private redrawChips(faces: readonly FontFace[]): void {
+    const families = this.font.toLowerCase();
+    // only for a face the chips may be drawn in
+    if (!faces.some((f) => families.includes(f.family.replace(/["']/g, '').toLowerCase()))) return;
+    forgetChips();
+    this.restyleSites([...this.chips.keys()].map((id) => id.slice(SITE_PREFIX.length)));
+    this.gather();
+  }
+
+  /** Gather the chips again when the view has moved since the last time. */
+  private gatherIfMoved(): void {
+    if (this.destroyed) return;
+    const { viewMatrix } = this.scene.camera;
+    const { clientWidth, clientHeight } = this.scene.canvas;
+    const last = this.gatheredFor;
+    if (
+      Matrix4.equals(viewMatrix, last.view) &&
+      clientWidth === last.width &&
+      clientHeight === last.height
+    )
+      return;
+    Matrix4.clone(viewMatrix, last.view);
+    last.width = clientWidth;
+    last.height = clientHeight;
+    // what a pass shows or hides is no move of the view: the frame it asks for ends here
+    if (this.gather()) this.scene.requestRender();
+  }
+
+  /**
+   * Chips that would overlap are drawn as one (`groupChips`): their sites' own chips are not
+   * drawn, nor are those of sites behind the Earth, and each group has one chip in the middle
+   * of its sites. Says whether what is drawn changed.
+   */
+  private gather(): boolean {
+    const scene = this.scene;
+    const entities = this.sites.entities;
+    const time = this.widget.clock.currentTime;
+    const occluder = new EllipsoidalOccluder(Ellipsoid.WGS84, scene.camera.positionWC);
+    const inView: PlacedChip[] = [];
+    for (const [id, chip] of this.chips) {
+      const p = entities.getById(id)?.position?.getValue(time);
+      const at =
+        p && occluder.isPointVisible(p)
+          ? SceneTransforms.worldToWindowCoordinates(scene, p)
+          : undefined;
+      if (at) inView.push({ id, x: at.x, y: at.y, ...chipSize(chip.name, chip.open, this.font) });
+    }
+    const groups = groupChips(inView, (count) =>
+      chipSize(this.clusterWords(count), 0, this.font),
+    ).filter((group) => group.ids.length > 1);
+    const alone = new Set(inView.map((chip) => chip.id));
+    for (const id of groups.flatMap((group) => group.ids)) alone.delete(id);
+
+    let changed = false;
+    for (const entity of entities.values) {
+      const hide = !alone.has(entity.id);
+      if (!entity.billboard || hide === this.hidden.has(entity.id)) continue;
+      // by its size, not by `show`: CesiumJS gives up the billboard of an entity that is not
+      // shown and loads its image again when it is, so a chip would come back a frame late.
+      // Nothing else sets a site's scale.
+      entity.billboard.scale = new ConstantProperty(hide ? 0 : 1 / this.g.pixelRatio);
+      if (hide) this.hidden.add(entity.id);
+      else this.hidden.delete(entity.id);
+      changed = true;
+    }
+
+    const drawn = groups.map(({ ids }) => ({
+      ids,
+      sprite: clusterChip(
+        this.clusterWords(ids.length),
+        ids.some((id) => (this.chips.get(id)?.open ?? 0) > 0) ? 'attention' : 'clear',
+        this.palette,
+        this.g.pixelRatio,
+        this.font,
+      ),
+    }));
+    const as = JSON.stringify(drawn.map(({ ids, sprite }) => [sprite.id, ids]));
+    if (as === this.gatheredAs) return changed;
+    this.gatheredAs = as;
+    this.gathered = drawn.map(({ ids }) => ids.map((id) => id.slice(SITE_PREFIX.length)));
+    const pool = this.gatheredChips;
+    drawn.forEach(({ ids, sprite }, i) => {
+      const members = ids.flatMap((id) => entities.getById(id) ?? []);
+      const middle = new Cartesian3();
+      for (const member of members) {
+        const p = member.position?.getValue(time);
+        if (p) Cartesian3.add(middle, p, middle);
+      }
+      // the middle of its sites in the world: it does not shift as the view turns
+      const position = Cartesian3.divideByScalar(middle, members.length, middle);
+      const billboard =
+        i < pool.length
+          ? pool.get(i)
+          : pool.add({
+              position,
+              // sprites are drawn in device pixels; CesiumJS sizes billboards in CSS pixels
+              scale: 1 / this.g.pixelRatio,
+              verticalOrigin: VerticalOrigin.CENTER,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            });
+      billboard.position = position;
+      // what a pick of it says it hit: the sites it stands for
+      billboard.id = members;
+      // by the drawing's id: the atlas keeps one copy however often a chip is shown
+      billboard.setImage(sprite.id, sprite.canvas);
+      billboard.show = true;
+    });
+    for (let i = drawn.length; i < pool.length; i++) pool.get(i).show = false;
+    return true;
   }
 
   /** The open project's issues as pins at their 3D anchors, coloured by severity. */
   setIssuePins(projectId: string, georef: SiteGeoref, pins: readonly IssuePin[]): void {
-    this.issues.entities.suspendEvents();
+    // on its own, before the new ones go in: within one batch CesiumJS sets the removal of an
+    // id against its addition, tells nobody, and the old pin stays drawn
     this.issues.entities.removeAll();
+    this.issues.entities.suspendEvents();
     for (const p of pins) {
       const [x, y, z] = localToEcef(p.local, georef);
       this.issues.entities.add({
@@ -855,12 +1169,121 @@ export class GlobeController {
 
   // ---------------------------------------------------------------- camera
 
-  /** The whole Earth, or a box around the given sites. */
+  /**
+   * The room a flight to these sites (entity ids) leaves at each edge of the view: what the
+   * screen's own controls take, then what a chip takes around its site. A site's own chip runs
+   * to the right of its dot; gathered, the sites share one chip centred on the middle of them.
+   */
+  private chipRoom(ids: readonly string[]): Insets {
+    let east = 0;
+    for (const id of ids) {
+      const chip = this.chips.get(id);
+      if (chip) east = Math.max(east, chipSize(chip.name, chip.open, this.font).width - CHIP.dotX);
+    }
+    const half =
+      ids.length > 1 ? chipSize(this.clusterWords(ids.length), 0, this.font).width / 2 : 0;
+    // and the clear room of a sprite: an outline stays whole, a pixel of rounding costs nothing
+    const above = CHIP.height / 2 + CHIP.pad;
+    const edge = this.cardInsets;
+    return {
+      top: edge.top + above,
+      right: edge.right + Math.max(east, half) + CHIP.pad,
+      bottom: edge.bottom + above,
+      left: edge.left + Math.max(CHIP.dotX, half) + CHIP.pad,
+    };
+  }
+
+  /**
+   * The box to fly to so that the chips of these sites (entity ids), which lie in `bounds`, are
+   * whole in the view and clear of the screen's controls (`padBounds`).
+   */
+  private frame(
+    bounds: Readonly<Bounds>,
+    ids: readonly string[],
+    how: Pick<PadOptions, 'minSpanDeg' | 'around'> = {},
+  ): Rectangle {
+    const { clientWidth: width, clientHeight: height } = this.scene.canvas;
+    const frustum = this.scene.camera.frustum;
+    const fov = frustum instanceof PerspectiveFrustum ? frustum.fov : undefined;
+    const [west, south, east, north] = padBounds(bounds, { width, height }, this.chipRoom(ids), {
+      ...how,
+      ...(fov === undefined ? {} : { fovDeg: CMath.toDegrees(fov) }),
+    });
+    // a box padded past the antimeridian: CesiumJS reads west beyond east as a box across it
+    const wrapped = (lon: number) => (Math.abs(lon) > 180 ? turn(lon) : lon);
+    return Rectangle.fromDegrees(wrapped(west), south, wrapped(east), north);
+  }
+
+  /**
+   * Fly to where these sites (entity ids) are all in view, as near as their chips allow: sites
+   * that gathered part there. Those that cannot (the same place, or nearer than a chip can show)
+   * still stand as one chip when the flight has ended, and the screen is told (`onGroup`).
+   */
+  private flyToSites(ids: readonly string[]): void {
+    const members = ids.flatMap((id) => this.chips.get(id) ?? []);
+    const [first] = members;
+    if (!first) return;
+    // longitudes as they lie around the first site, so a group across the antimeridian is one box
+    const lons = members.map((chip) => first.lonLat[0] + turn(chip.lonLat[0] - first.lonLat[0]));
+    const lats = members.map((chip) => chip.lonLat[1]);
+    const bounds: Bounds = [
+      Math.min(...lons),
+      Math.min(...lats),
+      Math.max(...lons),
+      Math.max(...lats),
+    ];
+    const camera = this.scene.camera;
+    // their own span, however small: sites a stone's throw apart are to part too
+    const box = this.frame(bounds, ids, { minSpanDeg: PARTING_SPAN_DEG });
+    // The box is framed on the ellipsoid, and the chips stand on the ground: seen straight down
+    // from a distance d, a chip h up is drawn d / (d - h) further from the middle. The camera
+    // stands as much higher as the highest of them (no higher without terrain).
+    const above = camera.getRectangleCameraCoordinates(box);
+    const ground = Math.max(0, ...members.map((chip) => chip.height));
+    const up = Ellipsoid.WGS84.geodeticSurfaceNormal(above, new Cartesian3());
+    camera.flyTo({
+      destination: Cartesian3.add(above, Cartesian3.multiplyByScalar(up, ground, up), up),
+      // as a flight to a box ends: straight down, north up
+      orientation: { heading: 0, pitch: -CMath.PI_OVER_TWO, roll: 0 },
+      duration: this.duration(1.6),
+      complete: () => {
+        this.landedOn(ids);
+      },
+    });
+  }
+
+  /** The flight to the sites of a gathered chip (entity ids) has ended: have they parted? */
+  private landedOn(ids: readonly string[]): void {
+    if (this.destroyed || !this.o.onGroup) return;
+    // as they stand in the view the flight ended at, which no frame has drawn yet
+    this.gather();
+    const sites = ids.map((id) => id.slice(SITE_PREFIX.length));
+    if (this.gathered.some((group) => sites.every((id) => group.includes(id))))
+      this.o.onGroup(sites);
+  }
+
+  /** The box of every site, with no margin around it; null without sites. */
+  private sitesBox(): Bounds | null {
+    const places = [...this.chips.values()].map((chip) => chip.lonLat);
+    if (places.length === 0) return null;
+    const lons = places.map(([lon]) => lon);
+    const lats = places.map(([, lat]) => lat);
+    return [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)];
+  }
+
+  /**
+   * The whole Earth, or a box around the given sites (`sitesBounds`): the view as that box
+   * alone gives it, widened only at the edges where a chip would not be whole in it or would
+   * lie under the screen's controls.
+   */
   flyHome(bounds: readonly [number, number, number, number] | null): void {
     this.touch();
-    const rect = bounds
-      ? Rectangle.fromDegrees(...bounds)
-      : Rectangle.fromDegrees(-30, -40, 110, 70);
+    const sites = this.sitesBox();
+    const rect = !bounds
+      ? Rectangle.fromDegrees(-30, -40, 110, 70)
+      : sites
+        ? this.frame(sites, [...this.chips.keys()], { around: bounds })
+        : Rectangle.fromDegrees(...bounds);
     this.scene.camera.flyTo({
       destination: rect,
       duration: this.duration(1.8),
@@ -868,10 +1291,17 @@ export class GlobeController {
     });
   }
 
-  /** Fly to a site: looking down at 45 degrees from the south, `range` metres away. */
+  /**
+   * Fly to a site: looking down at 45 degrees from the south, `range` metres away. The view
+   * aims at the ground the site's chip stands on, so the chip lands in the middle of it with
+   * terrain as without.
+   */
   flyToSite(lonLat: readonly [number, number], range = 1500): Promise<void> {
     this.touch();
-    const centre = Cartesian3.fromDegrees(lonLat[0], lonLat[1], 0);
+    const site = [...this.chips.values()].find(
+      (chip) => chip.lonLat[0] === lonLat[0] && chip.lonLat[1] === lonLat[1],
+    );
+    const centre = Cartesian3.fromDegrees(lonLat[0], lonLat[1], site?.height ?? 0);
     return new Promise((resolve) => {
       this.scene.camera.flyToBoundingSphere(new BoundingSphere(centre, 50), {
         offset: new HeadingPitchRange(0, CMath.toRadians(-45), range),
@@ -1037,6 +1467,8 @@ export class GlobeController {
       terrain: this.terrainIds,
       terrainTiles: this.terrainDecoded?.() ?? 0,
       sites: this.sites.entities.values.map((e) => e.id.slice(SITE_PREFIX.length)),
+      clusters: this.gathered.map((sites) => ({ count: sites.length, sites })),
+      chips: this.chipBoxes(),
       tilesets: this.tilesets.map(({ id, tileset }) => ({
         id,
         ready:
@@ -1051,6 +1483,38 @@ export class GlobeController {
       hover: this.pointerHover,
       selected: this.selected,
     };
+  }
+
+  /** Where every chip drawn now is, a site's own and a gathered one (`GlobeInspection.chips`). */
+  private chipBoxes(): GlobeInspection['chips'] {
+    const scene = this.scene;
+    const time = this.widget.clock.currentTime;
+    const boxes: GlobeInspection['chips'] = [];
+    for (const [id, chip] of this.chips) {
+      if (this.hidden.has(id)) continue;
+      const p = this.sites.entities.getById(id)?.position?.getValue(time);
+      const at = p && SceneTransforms.worldToWindowCoordinates(scene, p);
+      if (!at) continue;
+      const { width, height } = chipSize(chip.name, chip.open, this.font);
+      // the dot is the site; the chip runs to the right of it
+      boxes.push({
+        sites: [id.slice(SITE_PREFIX.length)],
+        x: at.x - CHIP.dotX,
+        y: at.y - height / 2,
+        width,
+        height,
+      });
+    }
+    this.gathered.forEach((sites, i) => {
+      const at =
+        i < this.gatheredChips.length
+          ? SceneTransforms.worldToWindowCoordinates(scene, this.gatheredChips.get(i).position)
+          : undefined;
+      if (!at) return;
+      const { width, height } = chipSize(this.clusterWords(sites.length), 0, this.font);
+      boxes.push({ sites, x: at.x - width / 2, y: at.y - height / 2, width, height });
+    });
+    return boxes;
   }
 
   /** The colour drawn at a point of the canvas (fractions of its size), after the next frame. */

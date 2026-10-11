@@ -95,11 +95,30 @@ export {
 export {
   globeToSite,
   headingPitch,
+  padBounds,
   siteToGlobe,
+  type Bounds,
   type GlobeCamera,
   type SiteCamera,
 } from './camera';
 export { formatArea, formatLength, geodesicDistance, pathLength, polygonArea } from './measure';
+export {
+  CARD_GAP,
+  CHIP,
+  CHIP_GAP,
+  chipMetrics,
+  fitLabel,
+  groupChips,
+  issueBadge,
+  placeCard,
+  type CardPlace,
+  type ChipGroup,
+  type ChipMetrics,
+  type Insets,
+  type Measure,
+  type PlacedChip,
+  type ViewSize,
+} from './chips';
 export {
   issuePins,
   lastCapture,

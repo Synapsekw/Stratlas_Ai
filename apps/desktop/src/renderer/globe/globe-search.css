@@ -1,0 +1,114 @@
+/* The Globe's "Find a site" field and its list. The screen places `.globe-search`; this styles what
+   is inside it. The Globe is a dark map in every theme, so these use the same surface as the site
+   card (globe.css): nearly solid, the map's light a little through it, a hairline and a shadow. */
+.globe-search {
+  width: 260px;
+  font-size: var(--t-12);
+  color: var(--fg-1);
+}
+
+.globe-search-in,
+.globe-search-pop {
+  background: color-mix(in oklch, var(--bg-1) 90%, transparent);
+  backdrop-filter: blur(16px) saturate(1.15);
+  border: 1px solid var(--line);
+  border-radius: var(--r-6);
+  box-shadow: 0 12px 32px var(--shadow);
+}
+
+.globe-search-in {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px;
+  color: var(--fg-3);
+  transition: border-color 120ms;
+}
+/* the input drops its own outline; the whole field shows the focus instead */
+.globe-search-in:focus-within {
+  border-color: var(--acc-a40);
+}
+.globe-search-in svg {
+  flex: none;
+}
+.globe-search-in input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  font-size: var(--t-13);
+  color: var(--fg-0);
+}
+.globe-search-in input::placeholder {
+  color: var(--fg-3);
+}
+
+/* the list drops under the field and scrolls past about seven sites */
+.globe-search-pop {
+  margin-top: 6px;
+  padding: 6px;
+}
+.globe-search-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.globe-search-site {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  column-gap: 12px;
+  row-gap: 1px;
+  align-items: center;
+  padding: 7px 10px 8px;
+  border-radius: var(--r-4);
+  color: inherit;
+  text-align: start;
+  transition: background-color 120ms;
+}
+.globe-search-site[data-active='true'] {
+  background: var(--bg-3);
+}
+/* the site whose card is open: a full outline, not a stripe */
+.globe-search-site[aria-selected='true'] {
+  box-shadow: inset 0 0 0 1px var(--acc-a40);
+}
+.globe-search-site .name {
+  font-size: var(--t-13);
+  font-weight: 600;
+  color: var(--fg-0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.globe-search-site .globe-facts {
+  grid-column: 2;
+}
+.globe-search-none {
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--fg-2);
+  font-size: var(--t-12);
+}
+/* mounted for the screen reader but with nothing to say: no room taken */
+.globe-search-none:empty {
+  padding: 0;
+}
+
+@media (forced-colors: active) {
+  .globe-search-in,
+  .globe-search-pop {
+    border: 1px solid CanvasText;
+  }
+  .globe-search-in:focus-within {
+    outline: 2px solid Highlight;
+  }
+  .globe-search-site[data-active='true'] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}

@@ -1,11 +1,22 @@
 import type { Vec3 } from '@aio/schema';
-import { ecefToGeodetic, ecefToLocal, enuBasis, localToEcef, type SiteGeoref } from './geodesy';
+import type { Insets, ViewSize } from './chips';
+import {
+  ecefToGeodetic,
+  ecefToLocal,
+  enuBasis,
+  geodeticToEcef,
+  localToEcef,
+  type SiteGeoref,
+} from './geodesy';
 
 /**
  * The camera hand-off between the Globe and the site view (**Open site here**, **Back to globe**):
  * the same position and looking direction, converted between ECEF and the project's local frame
  * through the project CRS. The site view keeps a camera as a position and an orbit target
  * (`SavedView` of `@aio/engine`), the Globe as a position and a direction.
+ *
+ * And the box the Globe's camera flies to so that the chips of a set of sites are whole in the
+ * view (`padBounds`).
  */
 
 /** A Globe camera: ECEF position and unit direction. */
@@ -57,4 +68,191 @@ export function headingPitch(cam: GlobeCamera): { heading: number; pitch: number
   const heading = (Math.atan2(dot(d, e), dot(d, n)) * 180) / Math.PI;
   const pitch = (Math.asin(Math.max(-1, Math.min(1, dot(d, u)))) * 180) / Math.PI;
   return { heading: (heading + 360) % 360, pitch };
+}
+
+// ---------------------------------------------------------------- framing sites
+
+/** A box on the Earth: west, south, east and north, degrees. */
+export type Bounds = [number, number, number, number];
+
+/** The least a framed box spans, degrees of latitude: about a kilometre on the ground. */
+const MIN_FRAME_SPAN_DEG = 0.01;
+
+/**
+ * The least the box of a click on a gathered chip spans, degrees of latitude: some 55 m, so that
+ * sites a stone's throw apart are flown to by their own span and part. (By the kilometre of the
+ * opening view they would land less than a chip apart and gather again.)
+ */
+export const PARTING_SPAN_DEG = 0.0005;
+
+/** No box is flown to with less span than this, whatever is asked: about a metre. */
+const LEAST_SPAN_DEG = 0.00001;
+
+const RAD = Math.PI / 180;
+
+/** The places CesiumJS keeps in view when it flies to a box. */
+function marksOf([w, s, e, n]: Readonly<Bounds>): [number, number][] {
+  const mid = (w + e) / 2;
+  const marks: [number, number][] = [
+    [w, n],
+    [e, n],
+    [w, s],
+    [e, s],
+    [mid, n],
+    [mid, s],
+  ];
+  // across the equator a box is widest there
+  if (s < 0 && n > 0) marks.push([w, 0], [e, 0]);
+  return marks;
+}
+
+/**
+ * Where places are drawn after a flight to `box`, in pixels of a view whose half angles have the
+ * tangents `tanX` and `tanY`. As CesiumJS does it (`Camera.flyTo` with a rectangle): the camera
+ * stands above the middle of the box, looks straight down with north up, and is just far enough
+ * away for every mark of the box to be in view.
+ */
+function flightTo(box: Readonly<Bounds>, view: ViewSize, tanX: number, tanY: number) {
+  const lon = (box[0] + box[2]) / 2;
+  const lat = (box[1] + box[3]) / 2;
+  const centre = geodeticToEcef(lon, lat, 0);
+  const { e: right, n: up, u } = enuBasis(lon, lat);
+  const from = (place: readonly [number, number]) =>
+    sub(geodeticToEcef(place[0], place[1], 0), centre);
+  let distance = -Infinity;
+  for (const mark of marksOf(box)) {
+    const v = from(mark);
+    // a place away from the middle lies under the plane the camera looks down on
+    const below = -dot(v, u);
+    distance = Math.max(
+      distance,
+      Math.abs(dot(v, right)) / tanX - below,
+      Math.abs(dot(v, up)) / tanY - below,
+    );
+  }
+  const at = (place: readonly [number, number]): [number, number] => {
+    const v = from(place);
+    const depth = distance - dot(v, u);
+    return [
+      (view.width / 2) * (1 + dot(v, right) / (depth * tanX)),
+      (view.height / 2) * (1 - dot(v, up) / (depth * tanY)),
+    ];
+  };
+  return { distance, at };
+}
+
+/** How `padBounds` frames a box. */
+export interface PadOptions {
+  /** The view's angle along its longer side, degrees (CesiumJS's default). */
+  fovDeg?: number;
+  /** The least span the box is given first, degrees of latitude. */
+  minSpanDeg?: number;
+  /**
+   * A box around `bounds` that the flight shows whatever the pads ask (the sites with their
+   * margin, `sitesBounds`): the answer holds all of it.
+   */
+  around?: Readonly<Bounds>;
+}
+
+/**
+ * The box to fly to so that `bounds` lands inside the view less `pad` pixels at each edge: the
+ * room the screen's controls take, and what a chip needs around its site (a chip runs far to the
+ * right of it). A flight to a box fits the box to the whole view, so the box grows by what the
+ * pads are worth on the ground, on a round Earth seen in perspective (a tenth of the view is not
+ * a tenth of the degrees once the box is wide).
+ *
+ * A box with little or no span is first given `minSpanDeg` (the flight to one site must not end
+ * on the ground). A box half the Earth wide, or pads that leave no view, come back as they are;
+ * a box too wide for its pads grows until the whole Earth is in view, which is as far as a
+ * flight to a box goes. East may pass 180 degrees: the caller wraps it.
+ *
+ * With `around`, the answer starts from that box and grows only at the edges where `bounds`
+ * would lack its room: a margin that already leaves the room is flown to as it is. And where
+ * the room cannot be had, the answer is that box again, the plain fit: the box grown as far as it
+ * goes is lopsided, and may leave a site out of view at the side it grew least.
+ */
+export function padBounds(
+  bounds: Readonly<Bounds>,
+  view: ViewSize,
+  pad: Insets,
+  { fovDeg = 60, minSpanDeg = MIN_FRAME_SPAN_DEG, around }: PadOptions = {},
+): Bounds {
+  const [west, south, east, north] = bounds;
+  // what is flown to when the room cannot be had
+  const plain: Bounds = around
+    ? [around[0], around[1], around[2], around[3]]
+    : [west, south, east, north];
+  const fits = view.width - pad.left - pad.right >= 1 && view.height - pad.top - pad.bottom >= 1;
+  // the whole Earth shows anyway, or nothing of the view is left to frame in
+  if (east - west >= 180 || !fits) return plain;
+
+  // the least span, the same on the ground both ways (and never none: a box of no span has no
+  // pixel to tell its degrees by)
+  const least = minSpanDeg > LEAST_SPAN_DEG ? minSpanDeg : LEAST_SPAN_DEG;
+  const narrow = Math.max(Math.cos(((south + north) / 2) * RAD), 0.01);
+  const addLat = Math.max(0, least - (north - south)) / 2;
+  const addLon = Math.max(0, least / narrow - (east - west)) / 2;
+  const wanted: Bounds = [
+    west - addLon,
+    Math.max(-90, south - addLat),
+    east + addLon,
+    Math.min(90, north + addLat),
+  ];
+
+  const tan = Math.tan((fovDeg / 2) * RAD);
+  const aspect = view.width / view.height;
+  const tanX = aspect >= 1 ? tan : tan * aspect;
+  const tanY = aspect >= 1 ? tan / aspect : tan;
+  // What must land inside: the whole edge of the box. A meridian bulges between its ends, which
+  // are all CesiumJS looks at, so a wide box is not quite in view even after its own flight.
+  const edge: [number, number][] = [];
+  for (let i = 0; i <= 8; i++) {
+    const lon = wanted[0] + ((wanted[2] - wanted[0]) * i) / 8;
+    const lat = wanted[1] + ((wanted[3] - wanted[1]) * i) / 8;
+    edge.push([lon, wanted[1]], [lon, wanted[3]], [wanted[0], lat], [wanted[2], lat]);
+  }
+  let box: Bounds = around
+    ? [
+        Math.min(wanted[0], around[0]),
+        Math.min(wanted[1], around[1]),
+        Math.max(wanted[2], around[2]),
+        Math.max(wanted[3], around[3]),
+      ]
+    : wanted;
+  let shown = { box, distance: -Infinity };
+  // Growing the box moves the camera away, which takes back part of the room just made: each
+  // round adds what is still missing, less every time (by the share of the view the pads take).
+  for (let round = 0; round < 64; round++) {
+    const flight = flightTo(box, view, tanX, tanY);
+    // Once the whole Earth is in view a wider box brings the camera nearer again (its corners
+    // go round the far side): the box before it showed the most there is to show. Nearer by
+    // kilometres, that is: an edge grown sideways leaves the camera put, give or take rounding.
+    if (flight.distance < shown.distance - 0.001 || box[2] - box[0] >= 180)
+      return around ? plain : shown.box;
+    shown = { box, distance: flight.distance };
+    const drawn = edge.map(flight.at);
+    const xs = drawn.map((p) => p[0]);
+    const ys = drawn.map((p) => p[1]);
+    const left = Math.min(...xs);
+    const right = Math.max(...xs);
+    const top = Math.min(...ys);
+    const bottom = Math.max(...ys);
+    const missing = {
+      left: Math.max(0, pad.left - left),
+      right: Math.max(0, right - (view.width - pad.right)),
+      top: Math.max(0, pad.top - top),
+      bottom: Math.max(0, bottom - (view.height - pad.bottom)),
+    };
+    if (Math.max(missing.left, missing.right, missing.top, missing.bottom) < 0.05) return box;
+    const lonPerPixel = (wanted[2] - wanted[0]) / (right - left);
+    const latPerPixel = (wanted[3] - wanted[1]) / (bottom - top);
+    box = [
+      box[0] - missing.left * lonPerPixel,
+      Math.max(-90, box[1] - missing.bottom * latPerPixel),
+      box[2] + missing.right * lonPerPixel,
+      Math.min(90, box[3] + missing.top * latPerPixel),
+    ];
+  }
+  // (the rounds ran out with room still missing)
+  return around ? plain : box;
 }

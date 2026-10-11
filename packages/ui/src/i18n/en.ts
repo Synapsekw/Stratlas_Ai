@@ -2729,7 +2729,7 @@ export const en = {
   // the street map Globe (10 Oct 2026): looks, map controls, the pins' key and labels
   'globe.siteCount_one': '{count} site',
   'globe.siteCount_other': '{count} sites',
-  'globe.look': 'Map',
+  'globe.look': 'Map type',
   'globe.lookStreet': 'Street map',
   'globe.lookSatellite': 'Satellite',
   'globe.lookNaturalEarth': 'Natural Earth',
@@ -2743,9 +2743,12 @@ export const en = {
   'globe.key': 'Site pins',
   'globe.keyClear': 'No open issues',
   'globe.keyAttention': 'Open issues',
-  'globe.cluster_one': '{count} site here',
-  'globe.cluster_other': '{count} sites here',
   'globe.closeCard': 'Close',
+  // project chips on the Globe (11 Oct 2026): the field that finds a site, the Map dialog
+  'globe.find': 'Find a site',
+  'globe.findNone': 'No site with that name',
+  'globe.mapMenu': 'Map',
+  'globe.mapMenuTitle': 'Map settings',
   // M10 G7: imagery and terrain packs (Settings, Map packs)
   'g7.packs.title': 'Imagery and terrain',
   'g7.packs.count_one': '{count} pack, {size}',

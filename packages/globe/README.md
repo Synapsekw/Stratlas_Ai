@@ -48,8 +48,50 @@ more kind of plan entry and one more case in the view.
 - `aura.ts`: one post-process pass for the street looks: soft shading of the whole Earth, a haze
   along the limb, a glow around it and a sparse star field, all fading out near the ground. Not
   on the Low preset. The Natural Earth look keeps CesiumJS's star box and atmosphere.
-- `pins.ts`: site, cluster, issue and measuring pins drawn on canvases. The label beside the
-  selected site and under the pointer is an HTML element the controller moves (`bindTag`).
+- `pins.ts`: what is drawn on canvases and shown as billboards. A site is a chip: a dot in its
+  tone (the site itself: the billboard is anchored there, so `pinPosition` is the dot), its name
+  cut to a width, and a badge with the open issues. Issue and measuring pins are small sprites.
+  The sizes and the cutting are pure (`../chips.ts`: `chipMetrics`, `fitLabel`, `issueBadge`).
+- A site stands on the ground, and one position says where: with terrain the controller puts the
+  site's entity at the height of the terrain under it (`Globe.getHeight`, exaggeration
+  included) and looks again after a frame in which terrain tiles came in, the view came to rest
+  or the exaggeration changed; without terrain it is on the ellipsoid and nothing is looked at.
+  The chip has no height reference of its own (a billboard CesiumJS clamps keeps its ground
+  place to itself), so the chip, `pinPosition`, the rings, the label, the card and the
+  gathering all read that one position.
+- Gathering is the package's own pass, not CesiumJS's `EntityCluster` (which only asks whether a
+  neighbour's anchor lies in a chip's box, and misses overlaps once north is not up). After a
+  frame in which the view moved, the controller hands every chip's place and size to
+  `groupChips` (`../chips.ts`, pure, the same answer at any heading) and draws one chip
+  ("3 sites", from the host's `clusterLabel`) for each group in a billboard collection of its
+  own, hiding the members' chips. `inspect().clusters` lists the groups, `inspect().chips` the
+  box of every chip drawn.
+- A click on a gathered chip flies to its sites' own box, however small (`PARTING_SPAN_DEG`,
+  some 55 m, is the least), so sites a short walk apart part in one click. Sites that still
+  stand as one chip when the flight has ended (the same place, or nearer than a chip can show)
+  cannot part: the host is told through `onGroup(projectIds)` and tells them apart its own way
+  (the app lists them in its field). A click whose sites part calls nothing.
+- A flight that frames sites (`flyHome`, a click on a gathered chip) frames their chips, not
+  their points: `padBounds` (`../camera.ts`, pure) grows the sites' box by what the host's
+  `cardInsets` and a chip's size around its dot are worth on the ground, so every chip lands
+  whole in the view and clear of the host's controls. `flyHome` starts from the box it is given
+  (`sitesBounds`, the sites with their margin) and grows it only at the edges where a chip
+  would lack its room, so a library whose margin already leaves the room opens as that box
+  alone; a library too wide for the room to be had gets that box too. The gathered chip's
+  flight ends as much higher as the highest of its sites stands on the terrain, so the chips
+  land where the framing put them.
+- `flyToSite` aims at the ground the site's chip stands on, so the chip lands in the middle of
+  the view with terrain as without.
+- Both flights take that ground as it is known at the click. From far out it is known from
+  coarse tiles only (and reads as 0 outside a terrain pack), so on real relief a chip may land
+  off its place, and the chips of sites a short walk apart, framed from a hundred metres up,
+  may land partly out of view; a second click, with the finer tiles in, frames them right.
+- Three HTML elements the controller moves after each frame (`bindTag`): the rings of the
+  selected site (no label: its chip and its card say the name), the label under the pointer or
+  of the site lit from the host's list, and the `card` slot. The host fills the slot through
+  `GlobeView`'s `card` and `cardPick` (a site's pin or an issue's); `placeCard` keeps it by the
+  pin and inside the view less `cardInsets`, the room the host's own controls take (which the
+  flights that frame sites leave free as well).
 - `look.ts`: what each graphics preset buys (pixel ratio, screen-space error, the aura, the idle
   turn). The scene draws on demand; the idle turn and the zoom step ask for frames only while
   they run.

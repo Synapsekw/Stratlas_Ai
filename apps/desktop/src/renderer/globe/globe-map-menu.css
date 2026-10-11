@@ -1,0 +1,41 @@
+/* The Map button at the top right of the Globe and its dialog. The block inside (the looks, the
+   selects, the key) is the one the side panel had, styled by globe.css; this file adds the
+   button, the dialog's box and nothing else. The screen positions .globe-map. */
+.globe-map {
+  position: relative;
+  z-index: 3;
+}
+/* the same surface as the site card: nearly solid, the map's light through it, the hairline */
+.globe-map-button {
+  background: color-mix(in oklch, var(--bg-1) 90%, transparent);
+  backdrop-filter: blur(16px) saturate(1.15);
+  border: 1px solid var(--line);
+  /* the corner of the field beside it */
+  border-radius: var(--r-6);
+  box-shadow: 0 12px 32px var(--shadow);
+  color: var(--fg-1);
+}
+.globe-map-button[aria-expanded='true'] {
+  background: var(--acc-a20);
+  border-color: var(--acc-a40);
+  color: var(--acc-strong);
+}
+.globe-map-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  inset-inline-end: 0;
+  width: 280px;
+  background: color-mix(in oklch, var(--bg-1) 90%, transparent);
+  backdrop-filter: blur(16px) saturate(1.15);
+  border: 1px solid var(--line);
+  border-radius: var(--r-6);
+  box-shadow: 0 12px 32px var(--shadow);
+  color: var(--fg-1);
+  font-size: var(--t-12);
+}
+@media (forced-colors: active) {
+  .globe-map-button,
+  .globe-map-pop {
+    border: 1px solid CanvasText;
+  }
+}

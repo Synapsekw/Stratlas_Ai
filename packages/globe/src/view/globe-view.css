@@ -1,5 +1,6 @@
-/* The Globe's floating labels: a name beside the selected site and under the pointer. The Globe
-   moves them (a transform per drawn frame); they are always dark, as the map under them is. */
+/* What floats over the Globe: the rings at the selected site, the label under the pointer and the
+   card at a pin. The Globe moves them (a transform per drawn frame); the rings and the label are
+   always dark, as the map under them is. */
 .aio-globe {
   font-family: var(--f-ui, 'Segoe UI', system-ui, sans-serif);
 }
@@ -22,6 +23,16 @@
 }
 .aio-globe-tag[data-tone='attention'] {
   --tag-tone: oklch(0.74 0.155 55);
+}
+/* the card of a pin: the screen fills it, so unlike the two above it has a size and takes the
+   pointer; nothing of it shows, or is hit, while the Globe keeps it hidden */
+.aio-globe-card-slot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  visibility: hidden;
+  will-change: transform;
 }
 .aio-globe-chip {
   position: absolute;
@@ -51,9 +62,6 @@
 .aio-globe-chip-note {
   color: oklch(0.7 0.012 250);
   font-size: 11px;
-}
-.aio-globe-tag[data-slot='selected'] .aio-globe-chip {
-  border-color: color-mix(in oklch, var(--tag-tone) 55%, oklch(0.36 0.012 250));
 }
 /* three rings leave the selected site, then it rests: nothing keeps animating on a Globe left open */
 .aio-globe-pulse {
