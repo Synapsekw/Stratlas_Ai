@@ -152,11 +152,19 @@ function Progress({ run, data, jobs }: { run: string; data: PhotoRun | null; job
   const pending = usePhotoUi((s) => s.pending[run]);
   const stopped = usePhotoUi((s) => s.stopped[run]);
   const kept = usePhotoUi((s) => s.dates[run]);
+  const startError = usePhotoUi((s) => s.startErrors[run]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const act = async (p: Promise<string | null>) => {
     setBusy(true);
     setError(await p);
+    setBusy(false);
+  };
+  // why the maps did not start is kept for the run (`startError`), not said a second time below
+  const create = async (p: Promise<string | null>) => {
+    setBusy(true);
+    setError(null);
+    await p;
     setBusy(false);
   };
   if (!project) return null;
@@ -367,11 +375,19 @@ function Progress({ run, data, jobs }: { run: string; data: PhotoRun | null; job
         </section>
       )}
 
+      {startError && (
+        <p className="notice danger small" role="alert" data-testid="photo-start-error">
+          <Icon name="warn" size={14} />
+          <span>The maps could not be started. {startError}</span>
+        </p>
+      )}
+
       {aligned && !pending && !productsJob && (
         <section className="ph-next" aria-label="Next steps">
           <p className="small">
-            The photos are matched. Mark ground control points for survey accuracy, or create the
-            maps now.
+            {startError
+              ? 'The photos are matched and nothing is lost. Press Create maps to try again.'
+              : 'The photos are matched. Mark ground control points for survey accuracy, or create the maps now.'}
           </p>
           <div className="ph-acts">
             <button
@@ -389,7 +405,7 @@ function Progress({ run, data, jobs }: { run: string; data: PhotoRun | null; job
               className="btn sm primary"
               disabled={busy}
               onClick={() =>
-                void act(
+                void create(
                   startProducts(run, {
                     root: project.root,
                     preset: data?.preset ?? 'standard',

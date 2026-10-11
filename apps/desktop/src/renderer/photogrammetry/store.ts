@@ -27,6 +27,8 @@ export interface PhotoUi {
   stopped: Record<string, 'paused' | 'cancelled'>;
   /** The wizard's survey date pick per run, for a run that builds its maps later (ground control first). */
   dates: Record<string, { capture?: string; captureDate?: string }>;
+  /** Why the maps of a run did not start, until a start works (the run panel says it). */
+  startErrors: Record<string, string>;
   /** Bumped after a write, so open panels read the run again. */
   version: number;
   openWizard: () => void;
@@ -36,6 +38,7 @@ export interface PhotoUi {
   setPending: (run: string, p: PendingProducts | null) => void;
   setStopped: (run: string, s: 'paused' | 'cancelled' | null) => void;
   setDate: (run: string, d: { capture?: string; captureDate?: string } | null) => void;
+  setStartError: (run: string, error: string | null) => void;
   bump: () => void;
 }
 
@@ -44,6 +47,7 @@ export const photoUi = createStore<PhotoUi>()((set) => ({
   pending: {},
   stopped: {},
   dates: {},
+  startErrors: {},
   version: 0,
   openWizard: () => {
     set({ view: { kind: 'wizard' } });
@@ -76,6 +80,15 @@ export const photoUi = createStore<PhotoUi>()((set) => ({
       const dates = Object.fromEntries(Object.entries(s.dates).filter(([k]) => k !== run));
       if (d && (d.capture || d.captureDate)) dates[run] = d;
       return { dates };
+    });
+  },
+  setStartError: (run, error) => {
+    set((s) => {
+      const startErrors = Object.fromEntries(
+        Object.entries(s.startErrors).filter(([k]) => k !== run),
+      );
+      if (error) startErrors[run] = error;
+      return { startErrors };
     });
   },
   bump: () => {

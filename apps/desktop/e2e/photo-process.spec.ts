@@ -11,12 +11,13 @@
  * states, which run nothing. Synthetic photos only; zero network.
  */
 import type { Page } from '@playwright/test';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, launchApp, test as plain, VENV_PYTHON } from './fixtures';
 import {
+  buildPhotoPack,
   CAMERAS,
   chooseFolder,
   oldPackEnv,
@@ -35,6 +36,26 @@ import {
 } from './photoPack';
 
 const test = plain.extend<PhotoFixtures, PhotoWorkerFixtures>(photoFixtures);
+/**
+ * The same, on a pack of its own (`ownPack`, its folder): a test may take it away while a run is
+ * at work without touching the pack the other tests of the worker share. A start is refused by
+ * the app before any pipeline runs, so the stand-in pipelines cannot refuse one themselves.
+ */
+const alone = test.extend<{ ownPack: string }>({
+  // eslint-disable-next-line no-empty-pattern -- Playwright requires the destructuring form.
+  ownPack: async ({}, use) => {
+    const dir = await mkdtemp(join(tmpdir(), 'aio-photo-pack-own-'));
+    try {
+      await use(dir);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+  appEnv: async ({ ownPack, photoSite }, use) => {
+    expect(photoSite.dir).toBeTruthy();
+    await use(await buildPhotoPack(ownPack));
+  },
+});
 /** PHOTO_DAY the way the app writes a date. */
 const DAY_WORDS = '14 Mar 2026';
 
@@ -315,6 +336,63 @@ test.describe('on the stand-in pipelines', () => {
       `Photo run ${run}`,
     );
   });
+
+  alone(
+    'maps that cannot start say why, and Create maps tries again under the same survey date',
+    async ({ win, ownPack }) => {
+      test.setTimeout(180_000);
+      await openPhotoSite(win);
+      const panel = await startRun(win);
+      const run = await runId(win);
+      await expect(phase(win, 'match')).toHaveAttribute('data-state', 'running', {
+        timeout: 60_000,
+      });
+      // the processing tools go missing while the photos are matched: the maps cannot start
+      const manifest = join(ownPack, 'manifest.json');
+      await rename(manifest, `${manifest}.away`);
+      const why = panel.getByTestId('photo-start-error');
+      const next = panel.getByRole('region', { name: 'Next steps' });
+      const create = next.getByRole('button', { name: 'Create maps' });
+      try {
+        await expect(why).toContainText('The maps could not be started.', { timeout: 60_000 });
+        await expect(why).toContainText('is not a valid pipeline pack');
+        // not left on "Working": matching is done, no maps are waiting, and the way on is there
+        await expect(panel.getByTestId('photo-job').locator('[data-status]')).toHaveText('Done');
+        await expect(phase(win, 'map')).toHaveCount(0);
+        await expect(next).toContainText('Press Create maps to try again.');
+        await expectAccessible(win, 'photo run, maps could not start', {
+          include: '[data-testid="photo-run"]',
+        });
+        await shot(win, 'create-maps-not-started');
+        // trying while the tools are still missing says it again, once
+        await create.click();
+        await expect(create).toBeEnabled();
+        await expect(panel.getByRole('alert')).toHaveCount(1);
+        await expect(why).toContainText('is not a valid pipeline pack');
+      } finally {
+        await rename(`${manifest}.away`, manifest);
+      }
+
+      // the tools are back: the same button builds the maps, and the message goes
+      await create.click();
+      await expect(why).toHaveCount(0);
+      const results = panel.getByTestId('photo-results');
+      await expect(results).toContainText('Your maps are ready', { timeout: 60_000 });
+      // under the survey date the dialog worked out from the photos, kept through the refusal
+      const filed = await win.evaluate(
+        ([id]) => {
+          const m = (window as unknown as Probe).__stratlas.workspace.getState().project?.manifest;
+          const capture = m?.layers.find((l) => l.id === id)?.capture;
+          return { capture, date: m?.captures.find((c) => c.id === capture)?.date };
+        },
+        [`photo-${run}-mesh`] as const,
+      );
+      expect(filed).toEqual({ capture: `capture-${PHOTO_DAY}`, date: PHOTO_DAY });
+      await expect(results.getByTestId('photo-results-where')).toHaveText(
+        `Added to ${PHOTO_PROJECT.name} under ${DAY_WORDS} as new layers:`,
+      );
+    },
+  );
 
   test('a short flight raises no warning at any quality', async ({ win }) => {
     test.setTimeout(120_000);
