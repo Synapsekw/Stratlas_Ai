@@ -1,6 +1,6 @@
 import { fromWgs84 } from '@aio/geo';
 import { parseManifest, type ProjectManifest } from '@aio/schema';
-import { copyFile, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, open, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
@@ -797,5 +797,19 @@ describe('ensureCapture', () => {
   it('refuses a day that is not a date', async () => {
     const root = await dated();
     await expect(ensureCapture(root, '10 March')).rejects.toThrow('is not a date');
+  });
+
+  it('adds the date while something else is reading the manifest', async () => {
+    // Windows refuses the rename while a handle is open (EPERM). The app's journal reads the
+    // manifest when a job ends, which is when the maps of a photo run ask for their survey date:
+    // a refused write left those maps without a date. The write waits the reader out.
+    const root = await dated();
+    const reader = await open(join(root, 'manifest.json'), 'r');
+    const added = ensureCapture(root, '2026-03-14');
+    setTimeout(() => void reader.close(), 50);
+    const r = await added;
+    expect(r).toMatchObject({ captureId: 'capture-2026-03-14', created: true });
+    expect((await readManifest(root)).captures.map((c) => c.id)).toContain('capture-2026-03-14');
+    expect(await readdir(root)).not.toContain('manifest.json.partial');
   });
 });
