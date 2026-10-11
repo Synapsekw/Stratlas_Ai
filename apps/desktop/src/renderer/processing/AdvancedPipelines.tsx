@@ -19,6 +19,7 @@ export function AdvancedPipelines() {
   const [open, setOpen] = useState(false);
   const list = useJobs((s) => s.jobs);
   const selected = useJobs((s) => s.selected);
+  const error = useJobs((s) => s.error);
   const library = useShell((s) => s.library);
   const now = useNow(open && list.some(isActive));
   const job = list.find((j) => j.id === selected);
@@ -39,10 +40,17 @@ export function AdvancedPipelines() {
           <p className="help">{t('processing.advanced.help')}</p>
           <PipelineForm />
           <h3 className="caps">{t('processing.advanced.all')}</h3>
-          {list.length === 0 ? (
-            <p className="help" data-testid="jobs-none">
-              {t('processing.advanced.none')}
+          {error && (
+            <p className="nj-err" role="alert" data-testid="jobs-error">
+              {error}
             </p>
+          )}
+          {list.length === 0 ? (
+            !error && (
+              <p className="help" data-testid="jobs-none">
+                {t('processing.advanced.none')}
+              </p>
+            )
           ) : (
             <div className="jobs-list" role="list" aria-label={t('processing.advanced.all')}>
               {list.map((j) => (

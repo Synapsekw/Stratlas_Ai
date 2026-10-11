@@ -521,13 +521,12 @@ export function Sidebar() {
   const hasReview = useWorkspace((s) => legacyLayers(s.project?.manifest).length > 0);
   // The original review sits right after Scene when the open project has one.
   const withReview = hasReview ? [...NAV.slice(0, 2), REVIEW, ...NAV.slice(2)] : NAV;
-  const nav = withReview;
 
   return (
     <aside className="sidebar" id={PANEL_ID.left} aria-label={t('nav.primary')}>
       <div className="sb-scroll">
         <nav className="sb-sec sb-nav" aria-label={t('nav.sections')}>
-          {nav.map((n) => (
+          {withReview.map((n) => (
             <NavItem
               key={n.screen}
               def={n}

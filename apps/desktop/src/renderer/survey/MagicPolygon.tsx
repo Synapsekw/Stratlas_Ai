@@ -85,7 +85,7 @@ const get = () => magicStore.getState();
 /** What a person reads when Suggest boundaries cannot run. */
 export function unavailableText(s: Status): string {
   switch (s.reason) {
-    // the words of the Jobs screen; Settings, Processing tools installs and updates them
+    // the words of the Processing drawer; Settings, Processing tools installs and updates them
     case 'no-pack':
       return 'Suggest boundaries cannot run yet: the processing tools are missing or need an update.';
     case 'no-model':

@@ -21,6 +21,8 @@ export interface DrawerListProps {
   finished: readonly JobRecord[];
   elsewhere: readonly { job: JobRecord; project: string }[];
   toolsMissing: boolean;
+  /** Why the job list could not be read (`jobs:list` failed), or null. */
+  error?: string | null;
   now: number;
   onPick: (id: string) => void;
   onCreateMaps: () => void;
@@ -36,6 +38,7 @@ export function DrawerList({
   finished,
   elsewhere,
   toolsMissing,
+  error = null,
   now,
   onPick,
   onCreateMaps,
@@ -79,6 +82,11 @@ export function DrawerList({
           </button>
         </div>
       )}
+      {error && (
+        <p className="nj-err" role="alert" data-testid="proc-error">
+          {error}
+        </p>
+      )}
       {own && running.length > 0 && (
         <section data-testid="proc-running">
           <h3 className="caps">{t('processing.running')}</h3>
@@ -107,7 +115,7 @@ export function DrawerList({
           )}
         </section>
       )}
-      {own && running.length === 0 && finished.length === 0 && (
+      {own && !error && running.length === 0 && finished.length === 0 && (
         <p className="proc-empty faint" data-testid="proc-empty">
           {t('processing.empty', { name: projectName })}
         </p>
@@ -121,7 +129,7 @@ export function DrawerList({
           </div>
         </section>
       )}
-      {!own && elsewhere.length === 0 && (
+      {!own && !error && elsewhere.length === 0 && (
         <p className="proc-empty faint" data-testid="proc-none">
           {t(readOnlyPackage ? 'processing.noPackage' : 'processing.noProject')}
         </p>

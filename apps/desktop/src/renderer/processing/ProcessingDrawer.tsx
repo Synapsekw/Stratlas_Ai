@@ -29,6 +29,7 @@ export function ProcessingDrawer() {
   const picked = useProcessing((s) => s.picked);
   const all = useJobs((s) => s.jobs);
   const runtime = useJobs((s) => s.runtime);
+  const error = useJobs((s) => s.error);
   const project = useWorkspace((s) => s.project);
   const pkg = useShell((s) => s.pkg !== null);
   const library = useShell((s) => s.library);
@@ -133,6 +134,7 @@ export function ProcessingDrawer() {
             finished={mine.finished}
             elsewhere={elsewhere}
             toolsMissing={runtime?.found === false}
+            error={error}
             now={now}
             onPick={(id) => {
               processing.getState().pick(id);

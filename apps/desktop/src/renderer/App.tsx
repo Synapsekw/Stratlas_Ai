@@ -280,7 +280,8 @@ export function App() {
         if (merged.unsaved) issueSaver.schedule(project.id, merged.issues);
         // the review keeps its own copy of the passes (the pipeline wrote the issue of each
         // accepted detection into them): read them again if it has this project loaded, so a
-        // person who started the run from Detections sees the result and never saves over it
+        // person who started the run from Detections sees the result and never saves over it.
+        // (A review edit saved while the run was in progress is not repaired by this reload.)
         if (detections.getState().projectId === project.id) void loadDetections(project.id, true);
       });
     });

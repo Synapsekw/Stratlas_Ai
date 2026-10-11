@@ -251,12 +251,12 @@ function Wizard() {
           .getState()
           .start({ pipeline: 'volumetric.build', project: r.value.path, params: build })
       : null;
+    // the store selects the job it has just started: take its id before `created` reads the list
+    const startedId = jobError ? undefined : (jobs.getState().selected ?? undefined);
     await builder.getState().created(r.value.path);
     if (build) {
       // the new project is open on the Scene (`created`): show its build, the job just started
-      processing
-        .getState()
-        .openDrawer(jobError ? undefined : (jobs.getState().selected ?? undefined));
+      processing.getState().openDrawer(startedId);
       if (jobError)
         builder.setState({
           importResult: { items: [], error: t('builder.surveys.startFailed', { error: jobError }) },

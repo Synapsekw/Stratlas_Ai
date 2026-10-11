@@ -67,6 +67,13 @@ describe('the processing list of a project', () => {
     expect(props.onCreateMaps).toHaveBeenCalledTimes(1);
   });
 
+  it('shows why the list could not be read instead of saying nothing happened yet', () => {
+    show({ error: 'The job index could not be read.' });
+    expect(q('proc-error')?.textContent).toBe('The job index could not be read.');
+    expect(q('proc-error')?.classList.contains('nj-err')).toBe(true);
+    expect(q('proc-empty')).toBeNull();
+  });
+
   it('lists running before finished, each row with its kind', () => {
     const run = job({ status: 'running', progress: 0.4 });
     const done = job({ pipeline: 'inspection.run' });
@@ -134,6 +141,12 @@ describe('the processing list without a project of its own', () => {
     expect(q('proc-finished')).toBeNull();
     expect(q('proc-empty')).toBeNull();
     expect(rows('proc-elsewhere')).toHaveLength(1);
+  });
+
+  it('shows the reason instead of "no project is open" when the list could not be read', () => {
+    show({ projectName: null, error: 'The job index could not be read.' });
+    expect(q('proc-error')).not.toBeNull();
+    expect(q('proc-none')).toBeNull();
   });
 
   it('says no project is open when nothing runs anywhere', () => {
