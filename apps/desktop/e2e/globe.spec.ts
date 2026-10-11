@@ -272,6 +272,7 @@ interface GlobeHook {
         setView(view: { orientation: { heading: number; pitch: number; roll: number } }): void;
         moveLeft(metres: number): void;
         moveUp(metres: number): void;
+        moveForward(metres: number): void;
       };
     };
   };
@@ -287,6 +288,17 @@ async function faceSouth(win: Page) {
     });
     scene.requestRender();
   });
+  await frames(win);
+}
+
+/** Bring the view nearer to what is in the middle of it by a share of its height, as the wheel does. */
+async function comeNearer(win: Page, share: number) {
+  await win.evaluate((k) => {
+    const el = document.querySelector('[data-testid="globe-canvas"]');
+    const scene = (el as unknown as { __aioGlobe: GlobeHook }).__aioGlobe.widget.scene;
+    scene.camera.moveForward(scene.camera.positionCartographic.height * k);
+    scene.requestRender();
+  }, share);
   await frames(win);
 }
 
@@ -931,6 +943,21 @@ test('a site lights up under the pointer and when it is selected', async ({ win 
   await card.getByRole('button', { name: 'Close' }).click();
   await expect(card).toHaveCount(0);
   await expect.poll(async () => (await inspect(win))?.selected).toBeNull();
+  // A click of the mouse on Close leaves the keyboard where it was. Here that is the field (its
+  // list was opened there): the list stays shut.
+  await frames(win);
+  await expect(win.getByTestId('globe-sites')).toHaveCount(0);
+  // And with the keyboard in no control (the card opened by a click on the chip), it puts it in
+  // none: no text field shows its ring, and no list opens, for a click of the mouse.
+  await win.mouse.click(x, y);
+  await expect(card).toContainText(SITE_A.name);
+  await expect(findField(win)).not.toBeFocused();
+  await card.getByRole('button', { name: 'Close' }).click();
+  await expect(card).toHaveCount(0);
+  // (what the app does when a focused control goes has happened by the second frame)
+  await frames(win);
+  await expect(findField(win)).not.toBeFocused();
+  await expect(win.getByTestId('globe-sites')).toHaveCount(0);
 });
 
 test('chips that overlap gather into one, at any heading, and part again', async ({ win }) => {
@@ -958,10 +985,27 @@ test('chips that overlap gather into one, at any heading, and part again', async
       .toBeGreaterThan(from * 1.8);
     await frames(win);
   }
-  const northUp = await sharedChip();
+  let northUp = await sharedChip();
+  // Site A's own place must lie clear of the gathered chip before anything is read there: under
+  // the chip it is drawn in the chip's own colours, and "no dot of its own" would say nothing.
+  // The gathered chip stands in the middle of the two, so from a little nearer (they still share
+  // a chip: their own are far wider than it) site A's place is out from under it.
+  const underChip = async (chip: DrawnChip) => {
+    const [x, y] = await pinInWindow(win, SITE_A.id);
+    // (a dot is 8 px across; a pixel more for its soft edge)
+    return overlap({ x: x - 5, y: y - 5, width: 10, height: 10 }, chip.box);
+  };
+  for (let step = 0; step < 8 && (await underChip(northUp)); step++) {
+    await comeNearer(win, 0.1);
+    northUp = await sharedChip();
+  }
+  expect(
+    await underChip(northUp),
+    `site A's place lies under the gathered chip (${edges(northUp.box)})`,
+  ).toBe(false);
   // The Globe says so, and it is what is drawn: where the gathered chip's dot is, the amber of a
-  // chip that holds a site with an open issue (site A); and at site A's own place, off that dot,
-  // no dot of its own.
+  // chip that holds a site with an open issue (site A); and at site A's own place, clear of that
+  // chip, no dot of its own.
   expect((await inspect(win))?.clusters).toContainEqual({
     count: northUp.sites.length,
     sites: northUp.sites,
@@ -1033,6 +1077,9 @@ test('chips that overlap gather into one, at any heading, and part again', async
   const parted = (await chipsDrawn(win)).filter((c) => c.sites.some((id) => pair.includes(id)));
   expect(parted.map((c) => c.sites.join(' and ')).sort()).toEqual([...pair].sort());
   await expectClearOfControls(win, parted);
+  // they parted, so the Globe had nothing to list in the field
+  await expect(win.getByTestId('globe-sites')).toHaveCount(0);
+  await expect(findField(win)).not.toBeFocused();
   for (const id of pair) {
     expect(await gathered(win, id)).toBe(false);
     const [x, y] = await pinInWindow(win, id);
@@ -1041,63 +1088,69 @@ test('chips that overlap gather into one, at any heading, and part again', async
   }
 });
 
-test("the Globe's controls fit the smallest window", async ({ win }) => {
-  await openGlobe(win);
-  await settle(win, 'the opening flight ended', (s) => !s.flying);
-  const globe = await globeBox(win);
-  // at rest: the field in the middle of the top edge, Map at its end, the four view buttons
-  // (Measure first) and the credits along the bottom, each inside the Globe and clear of the rest
-  expectLaidOut(globe, await edgePieces(win));
-  await expectClearOfTitleBar(win);
-  const view = win.getByRole('group', { name: 'Globe view' }).getByRole('button');
-  await expect(view).toHaveCount(4);
-  const names: (string | null)[] = [];
-  for (const button of await view.all()) {
-    expect(within(await boxOf(button, 'a view button'), globe)).toBe(true);
-    names.push(await button.getAttribute('aria-label'));
-  }
-  expect(names).toEqual(['Measure on the ellipsoid', 'Zoom in', 'Zoom out', 'Show all sites']);
-  // nothing of it covers the middle of the Globe
-  await expectGlobeAt(win, globe.x + globe.width / 2, globe.y + globe.height / 2);
+test.describe('in the smallest window', () => {
+  // a test about the smallest window asks for it itself, whatever size the run has
+  test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x700' } });
 
-  // the field's list and the Map dialog open inside the Globe too
-  const list = await openSiteList(win);
-  expect(within(await boxOf(list, 'the list of sites'), globe)).toBe(true);
-  await win.keyboard.press('Escape');
-  await expect(list).toHaveCount(0);
-  const map = await openMap(win);
-  const dialog = await boxOf(map, 'the Map dialog');
-  expect(within(dialog, globe), `the Map dialog (${edges(dialog)}) inside the Globe`).toBe(true);
-  const field = await boxOf(win.locator('.globe-search-in'), 'the Find a site field');
-  expect(overlap(dialog, field), 'the Map dialog overlaps the field').toBe(false);
-  await closeMap(win);
+  test("the Globe's controls fit the smallest window", async ({ win }) => {
+    await openGlobe(win);
+    await settle(win, 'the opening flight ended', (s) => !s.flying);
+    const globe = await globeBox(win);
+    // at rest: the field in the middle of the top edge, Map at its end, the four view buttons
+    // (Measure first) and the credits along the bottom, each inside the Globe and clear of the
+    // rest
+    expectLaidOut(globe, await edgePieces(win));
+    await expectClearOfTitleBar(win);
+    const view = win.getByRole('group', { name: 'Globe view' }).getByRole('button');
+    await expect(view).toHaveCount(4);
+    const names: (string | null)[] = [];
+    for (const button of await view.all()) {
+      expect(within(await boxOf(button, 'a view button'), globe)).toBe(true);
+      names.push(await button.getAttribute('aria-label'));
+    }
+    expect(names).toEqual(['Measure on the ellipsoid', 'Zoom in', 'Zoom out', 'Show all sites']);
+    // nothing of it covers the middle of the Globe
+    await expectGlobeAt(win, globe.x + globe.width / 2, globe.y + globe.height / 2);
 
-  // a selected site's card, wherever its pin is: in the middle after the flight, then with the
-  // pin slid into the lower right corner (where the view buttons are) and the upper right one
-  // (under the Map button), the card stays inside the Globe and clear of every control
-  await flyToSite(win, SITE_A.name);
-  for (const [fx, fy, inside] of [
-    [0.5, 0.5, true],
-    [0.3, 0.4, true],
-    [0.96, 0.94, false],
-    [0.97, 0.05, false],
-    [0.45, 0.04, false],
-    [0.03, 0.95, false],
-  ] as const) {
-    // (the slide fails unless the pin arrives at its place)
-    await putPinAt(win, SITE_A.id, fx, fy);
-    const card = await cardBox(win);
-    expectLaidOut(globe, { ...(await edgePieces(win)), 'the card': card });
-    // well inside the Globe the card stands by its pin; at an edge it slides along the edge
-    if (inside) expectByPin(card, await pinInWindow(win, SITE_A.id));
-  }
-  // and what is not under the card still takes the pointer
-  await expectGlobeAt(win, globe.x + globe.width * 0.25, globe.y + globe.height * 0.4);
+    // the field's list and the Map dialog open inside the Globe too
+    const list = await openSiteList(win);
+    expect(within(await boxOf(list, 'the list of sites'), globe)).toBe(true);
+    await win.keyboard.press('Escape');
+    await expect(list).toHaveCount(0);
+    const map = await openMap(win);
+    const dialog = await boxOf(map, 'the Map dialog');
+    expect(within(dialog, globe), `the Map dialog (${edges(dialog)}) inside the Globe`).toBe(true);
+    const field = await boxOf(win.locator('.globe-search-in'), 'the Find a site field');
+    expect(overlap(dialog, field), 'the Map dialog overlaps the field').toBe(false);
+    await closeMap(win);
 
-  // while measuring, the read-out stands where the field was, clear of the Map button
-  await win.getByRole('button', { name: 'Measure on the ellipsoid' }).click();
-  await expect(findField(win)).toHaveCount(0);
-  expectLaidOut(globe, await edgePieces(win));
+    // a selected site's card, wherever its pin is: in the middle after the flight, then with the
+    // pin slid into the lower right corner (where the view buttons are) and the upper right one
+    // (under the Map button), the card stays inside the Globe and clear of every control
+    await flyToSite(win, SITE_A.name);
+    for (const [fx, fy, inside] of [
+      [0.5, 0.5, true],
+      [0.3, 0.4, true],
+      [0.96, 0.94, false],
+      [0.97, 0.05, false],
+      [0.45, 0.04, false],
+      [0.03, 0.95, false],
+    ] as const) {
+      // (the slide fails unless the pin arrives at its place)
+      await putPinAt(win, SITE_A.id, fx, fy);
+      const card = await cardBox(win);
+      expectLaidOut(globe, { ...(await edgePieces(win)), 'the card': card });
+      // well inside the Globe the card stands by its pin; at an edge it slides along the edge
+      if (inside) expectByPin(card, await pinInWindow(win, SITE_A.id));
+    }
+    // and what is not under the card still takes the pointer
+    await expectGlobeAt(win, globe.x + globe.width * 0.25, globe.y + globe.height * 0.4);
+
+    // while measuring, the read-out stands where the field was, clear of the Map button
+    await win.getByRole('button', { name: 'Measure on the ellipsoid' }).click();
+    await expect(findField(win)).toHaveCount(0);
+    expectLaidOut(globe, await edgePieces(win));
+  });
 });
 
 test('the keyboard alone reaches a site and the map settings', async ({ win }) => {
@@ -1150,6 +1203,36 @@ test('the keyboard alone reaches a site and the map settings', async ({ win }) =
   // from there the keyboard goes on: Down lists the sites again
   await win.keyboard.press('ArrowDown');
   await expect(list.getByRole('option')).toHaveCount(3);
+
+  // A pick with the keyboard leaves the focus in the field, its list shut and the card open:
+  // Esc there closes the card, and the keyboard stays in the field
+  await win.keyboard.press('ArrowDown');
+  await win.keyboard.press('Enter');
+  await expect(card).toBeVisible();
+  await expect(list).toHaveCount(0);
+  await expect(findField(win)).toBeFocused();
+  await settle(win, 'the flight to the picked site ended', (s) => !s.flying && s.selected !== null);
+  await win.keyboard.press('Escape');
+  await expect(card).toHaveCount(0);
+  await expect.poll(async () => (await inspect(win))?.selected).toBeNull();
+  await expect(findField(win)).toBeFocused();
+  await expect(list).toHaveCount(0);
+
+  // The card's own Close button, pressed with the keyboard, gives the keyboard back to the field
+  // as Esc in the card does
+  await win.keyboard.press('ArrowDown');
+  await win.keyboard.press('ArrowDown');
+  await win.keyboard.press('Enter');
+  await expect(card).toBeVisible();
+  await settle(win, 'the flight to the picked site ended', (s) => !s.flying && s.selected !== null);
+  await win.keyboard.press('Tab');
+  await expect(mapButton).toBeFocused();
+  await win.keyboard.press('Tab');
+  await expect(card.getByRole('button', { name: 'Close' })).toBeFocused();
+  await win.keyboard.press('Enter');
+  await expect(card).toHaveCount(0);
+  await expect(findField(win)).toBeFocused();
+  await expect(list).toHaveCount(0);
 });
 
 test.describe('with a long-named site at the east end of the library', () => {
@@ -1197,6 +1280,132 @@ test.describe('with a long-named site at the east end of the library', () => {
     await expect(win.getByTestId('globe-card')).toHaveCount(0);
     await settle(win, 'the Globe left the site', (s) => s.cameraHeight > 100_000);
     await expectFramed('after Show all sites');
+  });
+});
+
+test.describe('with sites too near each other to tell apart from far out', () => {
+  /**
+   * Two sites 150 m apart, east to west, and two at one and the same place: each pair far from
+   * the other and from every other site, so from far out each is one chip, "2 sites".
+   */
+  const NEAR_WEST = {
+    id: 'globe-near-west',
+    name: 'Near site west',
+    origin: [300_000, 2_000_000, 4] as const,
+  };
+  const NEAR_EAST = {
+    id: 'globe-near-east',
+    name: 'Near site east',
+    origin: [300_150, 2_000_000, 4] as const,
+  };
+  const TWIN_ONE = {
+    id: 'globe-twin-one',
+    name: 'Twin site one',
+    origin: [600_000, 2_400_000, 6] as const,
+  };
+  const TWIN_TWO = { ...TWIN_ONE, id: 'globe-twin-two', name: 'Twin site two' };
+  test.beforeEach(async ({ dataRoot }) => {
+    for (const site of [NEAR_WEST, NEAR_EAST, TWIN_ONE, TWIN_TWO])
+      await writeGlobeProject(dataRoot, site, []);
+  });
+
+  /** The chip drawn for exactly these sites, once the Globe draws one. */
+  async function chipOfBoth(win: Page, sites: readonly { id: string }[]): Promise<DrawnChip> {
+    const ids = sites.map((s) => s.id).sort();
+    const find = async () =>
+      (await chipsDrawn(win)).find((c) => [...c.sites].sort().join() === ids.join()) ?? null;
+    await expect
+      .poll(async () => (await find()) !== null, {
+        message: `one chip for ${ids.join(' and ')}`,
+        timeout: SETTLE_MS,
+      })
+      .toBe(true);
+    await frames(win);
+    const chip = await find();
+    if (!chip) throw new Error(`no chip for ${ids.join(' and ')}`);
+    return chip;
+  }
+
+  /** Click the chip that stands for these two sites, as a hand does: the pointer rests on it first. */
+  async function clickChipOfBoth(win: Page, sites: readonly { id: string }[]) {
+    const chip = await chipOfBoth(win, sites);
+    await pointAt(win, ...middleOf(chip));
+    await expect
+      .poll(async () => (await inspect(win))?.hover ?? null, { timeout: 15_000 })
+      .toEqual({ kind: 'cluster', count: sites.length });
+    await win.mouse.click(...middleOf(chip));
+  }
+
+  test('one click on the chip of two sites 150 m apart parts them', async ({ win }) => {
+    await openGlobe(win);
+    await settle(win, 'the opening flight ended', (s) => !s.flying && s.sites.length === 7);
+    const pair = [NEAR_EAST, NEAR_WEST];
+    await clickChipOfBoth(win, pair);
+    // one flight, to a few hundred metres above the two
+    await settle(
+      win,
+      'the flight to the two near sites ended',
+      (s) => !s.flying && s.cameraHeight < 5000,
+    );
+    for (const site of pair)
+      await expect.poll(() => gathered(win, site.id), { timeout: SETTLE_MS }).toBe(false);
+    await frames(win);
+    // each has its own chip, whole in the view and clear of the Globe's controls, west of east
+    const ids = pair.map((s) => s.id);
+    const parted = (await chipsDrawn(win)).filter((c) => c.sites.some((id) => ids.includes(id)));
+    expect(parted.map((c) => c.sites.join(' and ')).sort()).toEqual([...ids].sort());
+    await expectClearOfControls(win, parted);
+    const [west] = await pinInWindow(win, NEAR_WEST.id);
+    const [east] = await pinInWindow(win, NEAR_EAST.id);
+    expect(east - west, 'from the west site to the east one, pixels').toBeGreaterThan(200);
+    // they parted, so the Globe listed nothing in the field
+    await expect(win.getByTestId('globe-sites')).toHaveCount(0);
+    await expect(findField(win)).not.toBeFocused();
+    // and each answers the pointer as itself
+    for (const site of pair) {
+      const [x, y] = await expectDotAtPin(win, site, mint);
+      await pointAt(win, x, y);
+      await expect
+        .poll(async () => (await inspect(win))?.hover ?? null, { timeout: 15_000 })
+        .toEqual({ kind: 'site', projectId: site.id });
+    }
+  });
+
+  test('a click on the chip of two sites at the same place lists them in the field', async ({
+    win,
+  }) => {
+    await openGlobe(win);
+    await settle(win, 'the opening flight ended', (s) => !s.flying && s.sites.length === 7);
+    const twins = [TWIN_ONE, TWIN_TWO];
+    await clickChipOfBoth(win, twins);
+    // The flight ends over them and they still stand as one chip: the field lists exactly the
+    // two, with the keyboard in it
+    const list = win.getByTestId('globe-sites');
+    await expect(list).toBeVisible({ timeout: SETTLE_MS });
+    await expect(findField(win)).toBeFocused();
+    await expect(list.getByRole('option')).toHaveCount(2);
+    await expect(list.getByRole('option').nth(0)).toContainText(TWIN_ONE.name);
+    await expect(list.getByRole('option').nth(1)).toContainText(TWIN_TWO.name);
+    const state = await inspect(win);
+    expect(state?.flying).toBe(false);
+    expect(state?.cameraHeight).toBeLessThan(5000);
+    expect((await chipOfBoth(win, twins)).sites).toHaveLength(2);
+    await expectAccessible(win, 'Globe');
+    // one of them picked there: its card opens, by the chip the two share
+    await list.getByRole('option', { name: new RegExp(TWIN_TWO.name) }).click();
+    await expect(list).toHaveCount(0);
+    const card = win.getByTestId('globe-card');
+    await expect(card).toContainText(TWIN_TWO.name);
+    await expect(card).toHaveAccessibleName(TWIN_TWO.name);
+    await expect
+      .poll(async () => (await inspect(win))?.selected, { timeout: SETTLE_MS })
+      .toBe(TWIN_TWO.id);
+    await settle(win, 'the flight to the picked site ended', (s) => !s.flying);
+    expectByPin(await cardBox(win), await pinInWindow(win, TWIN_TWO.id));
+    // the next time the field lists the whole library again
+    await win.keyboard.press('Escape');
+    await expect(card).toHaveCount(0);
+    await expect((await openSiteList(win)).getByRole('option')).toHaveCount(7);
   });
 });
 
