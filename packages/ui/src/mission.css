@@ -1150,8 +1150,9 @@ select.input option {
   padding: 0 6px;
   font-size: var(--t-12);
 }
-/* dragging a dataset row onto a date folder: folders that take the drop, and the one under it */
-.dtree .titem[draggable='true'] {
+/* dragging a dataset row or a group header onto a date folder: folders that take the drop, and the one under it */
+.dtree .titem[draggable='true'],
+.dtree .tgroup-row[draggable='true'] {
   -webkit-user-drag: element;
 }
 .dfolder.drop-can {

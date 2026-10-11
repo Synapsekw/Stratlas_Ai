@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Layer } from '@aio/schema';
 import { mockIssue, mockManifest, T0 } from '../__fixtures__/project';
-import { buildDatasetTree } from './model';
+import { buildDatasetTree, groupDatableLayerIds, type TreeGroup } from './model';
 
 describe('buildDatasetTree', () => {
   const tree = buildDatasetTree(
@@ -93,5 +93,42 @@ describe('flights in the dataset tree', () => {
         ],
       },
     ]);
+  });
+});
+
+describe('groupDatableLayerIds', () => {
+  it('takes every datable layer, flight clips included, and leaves what is never dated', () => {
+    const g: TreeGroup = {
+      kind: 'maps',
+      label: 'Maps and rasters',
+      icon: 'map',
+      count: 4,
+      items: [
+        { id: 'ortho', layerId: 'ortho', layerKind: 'raster', name: 'Ortho' },
+        { id: 'base', layerId: 'base', layerKind: 'basemap', name: 'Offline map' },
+        {
+          id: 'flight:1',
+          name: 'Flight 1',
+          flightId: '1',
+          children: [
+            { id: 'c1', layerId: 'c1', layerKind: 'video', name: 'Clip 1' },
+            { id: 'c2', layerId: 'c2', layerKind: 'video', name: 'Clip 2' },
+          ],
+        },
+        { id: 'issues', name: 'Issues' },
+      ],
+    };
+    expect(groupDatableLayerIds(g)).toEqual(['ortho', 'c1', 'c2']);
+  });
+
+  it('is empty for a group with nothing that can be dated', () => {
+    const g: TreeGroup = {
+      kind: 'models',
+      label: 'Models',
+      icon: 'scene',
+      count: 1,
+      items: [{ id: 'old', layerId: 'old', layerKind: 'legacy', name: 'Original review' }],
+    };
+    expect(groupDatableLayerIds(g)).toEqual([]);
   });
 });

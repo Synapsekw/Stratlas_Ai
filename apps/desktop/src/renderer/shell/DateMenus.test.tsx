@@ -164,6 +164,7 @@ describe('LayerDateMenu', () => {
       root?.render(
         <LayerDateMenu
           menu={{
+            name: 'Quad',
             item: { id: 'quad', layerId: 'quad', layerKind: 'mesh', name: 'Quad' },
             layerIds: ['quad'],
             from,
@@ -201,5 +202,29 @@ describe('LayerDateMenu', () => {
     click('move-to-every');
     expect(onMove).toHaveBeenLastCalledWith(['quad'], null);
     expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it('heads the menu of a group with the group and how many datasets it moves', () => {
+    const onMove = vi.fn();
+    root = createRoot(host);
+    act(() =>
+      root?.render(
+        <LayerDateMenu
+          menu={{ name: 'Video · 12 datasets', layerIds: ['a', 'b'], from: 'nov', x: 5, y: 5 }}
+          captures={captures}
+          tags={tags}
+          every={EVERY_DATE}
+          onClose={vi.fn()}
+          onMove={onMove}
+        />,
+      ),
+    );
+    const menu = document.body.querySelector('[data-testid="move-menu"]');
+    expect(menu?.textContent).toContain('Move to date · Video · 12 datasets');
+    expect(menu?.getAttribute('aria-label')).toBe('Move Video · 12 datasets to a survey date');
+    act(() => {
+      document.body.querySelector<HTMLButtonElement>('[data-testid="move-to-oct"]')?.click();
+    });
+    expect(onMove).toHaveBeenCalledWith(['a', 'b'], 'oct');
   });
 });
