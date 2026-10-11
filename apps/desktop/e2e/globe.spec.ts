@@ -839,7 +839,16 @@ test('every library project is a site; packs draw with their credits', async ({
   // and the look is remembered for the next time the Globe opens
   await win.locator('.sb-nav .nav-item', { hasText: 'Projects' }).click();
   await expect(win.getByTestId('globe-canvas')).toHaveCount(0);
-  await win.locator('.sb-nav .nav-item', { hasText: 'Globe' }).click();
+  await openGlobe(win);
+  await expect(win.getByTestId('globe-screen')).toHaveAttribute('data-look', 'natural-earth');
+  // The Globe has drawn its Earth again before the Map button is clicked: a click waits for the
+  // renderer, and on the software renderer the first frames of a new Globe can hold it. In CI
+  // this click once ran out of its 30 s straight after the Globe came back (run 38181308082).
+  await settle(
+    win,
+    'the remembered look is drawn again',
+    (s) => s.layers[0] === 'natural-earth-ii' && s.tilesLoaded,
+  );
   await openMap(win);
   await expect(win.getByTestId('globe-look-natural-earth')).toHaveAttribute('aria-pressed', 'true');
 });
