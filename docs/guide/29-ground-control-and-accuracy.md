@@ -39,3 +39,4 @@ Click **Adjust**. The adjustment fits the model to the control points; checkpoin
 - Use the same coordinate system and height datum as the survey.
 - Mark each target in photos from different flight lines.
 - If a point is named as an outlier, check its coordinates and marks before you disable it.
+- An outlier is only named when the other points can tell: a wrong position from five control points on, a wrong height alone only on larger sets. Read the residuals of the control points as well: a point that does not fit shows there.

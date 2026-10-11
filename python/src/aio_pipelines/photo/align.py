@@ -1343,11 +1343,13 @@ def photos_record(metas: list[PhotoMeta], info: dict[str, Any], H: np.ndarray, g
 
 def measure_points(model: SparseModel, gcp: dict[str, Any], enu: C.EnuFrame, grid: C.GridFrame, cam_res):
     """Triangulate every point from its confirmed marks through ``model`` (ENU); residuals in the
-    grid frame; predictions for every point."""
+    grid frame; predictions for every point, where the model has it (``gcp.model_positions``: the
+    model has not seen ground control, so its heights are the drone's, not the survey's)."""
     geo = G.points_to_geodetic(gcp)
     by_name = {im.name: im.id for im in model.images.values()}
     points: list[A.PointResidual] = []
     surveyed_enu: dict[str, np.ndarray] = {}
+    measured_enu: dict[str, np.ndarray] = {}
     for p in gcp.get("points") or []:
         lon, lat, h = geo[p["id"]]
         surveyed_enu[p["id"]] = enu.from_geodetic([lon], [lat], [h])[0]
@@ -1360,6 +1362,7 @@ def measure_points(model: SparseModel, gcp: dict[str, Any], enu: C.EnuFrame, gri
             )
             continue
         X, err = B.triangulate(model, marks)
+        measured_enu[p["id"]] = X
         d = grid.from_geodetic(*enu.to_geodetic(X[None]))[0] - grid.from_geodetic([lon], [lat], [h])[0]
         points.append(A.PointResidual(p["id"], p["role"], d, err, len(marks), used=False))
     unmeasured = [p for p in points if np.isnan(p.d).any()]
@@ -1369,7 +1372,7 @@ def measure_points(model: SparseModel, gcp: dict[str, Any], enu: C.EnuFrame, gri
         sigma = max(
             0.05, float(cam_res.get("rmseHorizontalM", 0.5)), float(cam_res.get("rmseVerticalM", 0.5)) / 2
         )
-    preds = G.predict_marks(model, surveyed_enu, sigma)
+    preds = G.predict_marks(model, G.model_positions(model, surveyed_enu, measured_enu), sigma)
     return points, preds, unmeasured
 
 

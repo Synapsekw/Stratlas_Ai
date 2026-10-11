@@ -191,16 +191,24 @@ class SceneTruth:
             obs.append((idx, uv[idx] + rng.normal(0, noise_px, (len(idx), 2))))
         return obs
 
-    def marks(self, rng, noise_px=0.5):
-        """GCP marks: {gcp id: [(image name, (x, y))]} for every image that sees the target."""
+    def marks(self, rng, noise_px=0.5, per_point: int | None = None):
+        """GCP marks: {gcp id: [(image name, (x, y))]} for every image that sees the target, or
+        only for the ``per_point`` images that see it nearest their centre (a person marking the
+        least a point needs)."""
         out: dict[str, list[tuple[str, tuple[float, float]]]] = {}
+        w, h = self.camera.width, self.camera.height
         for g in self.gcps:
+            seen = []
             for i, name in enumerate(self.names):
                 uv, z = project_points(self.camera, self.rotations[i], self.centres[i], g.enu[None])
                 x, y = uv[0]
-                if z[0] > 0 and 20 <= x < self.camera.width - 20 and 20 <= y < self.camera.height - 20:
-                    n = rng.normal(0, noise_px, 2)
-                    out.setdefault(g.id, []).append((name, (float(x + n[0]), float(y + n[1]))))
+                if z[0] > 0 and 20 <= x < w - 20 and 20 <= y < h - 20:
+                    seen.append((float(np.hypot(x - w / 2, y - h / 2)), name, float(x), float(y)))
+            if per_point is not None:
+                seen = sorted(seen)[:per_point]
+            for _, name, x, y in seen:
+                n = rng.normal(0, noise_px, 2)
+                out.setdefault(g.id, []).append((name, (x + float(n[0]), y + float(n[1]))))
         return out
 
 
@@ -281,6 +289,58 @@ def make_scene(
     )
 
 
+#: Ground control of ``make_edge_scene`` (fractions of the block's half extent): four control
+#: points, three of them close to one line, and three checkpoints.
+EDGE_GCPS = (
+    ("GCP1", "control", -0.85, -0.85),
+    ("GCP2", "control", 0.85, -0.85),
+    ("GCP3", "control", 0.75, 0.85),
+    ("GCP5", "control", 0.05, 0.40),
+    ("CHK1", "check", 0.0, -0.80),
+    ("CHK2", "check", 0.80, 0.0),
+    ("CHK3", "check", 0.55, 0.50),
+)
+
+
+def make_edge_scene(
+    seed: int = 7,
+    rows: int = 8,
+    cols: int = 5,
+    south: int = 2,
+    east: int = 2,
+    overlap: tuple[float, float] = (0.7, 0.6),
+    **kw,
+) -> SceneTruth:
+    """A small block along two edges of a site: the ``south`` lines and the ``east`` columns of
+    ``make_scene``'s grid, with ``EDGE_GCPS``. Three of its four control points are close to one
+    line, so the fourth is far from where the others say anything about heights."""
+    full = make_scene(seed=seed, rows=rows, cols=cols, overlap=overlap, **kw)
+    keep = [i for i in range(rows * cols) if i // cols < south or i % cols >= cols - east]
+    cam = full.camera
+    foot_w = full.altitude * cam.width / cam.params[0]
+    foot_h = full.altitude * cam.height / cam.params[0]
+    half_x = (cols - 1) / 2 * foot_w * (1 - overlap[1])
+    half_y = (rows - 1) / 2 * foot_h * (1 - overlap[0])
+    gcps = [
+        GcpTruth(
+            gid, role, np.array([fx * half_x, fy * half_y, float(ground_height(fx * half_x, fy * half_y))])
+        )
+        for gid, role, fx, fy in EDGE_GCPS
+    ]
+    return SceneTruth(
+        full.enu,
+        cam,
+        [full.names[i] for i in keep],
+        full.centres[keep],
+        full.rotations[keep],
+        full.points,
+        gcps,
+        full.gnss[keep],
+        full.gnss_sigma,
+        full.altitude,
+    )
+
+
 def write_scene_photos(
     scene: SceneTruth, folder: Path, rtk: bool = True, alt_offset: float = 0.0
 ) -> list[Path]:
@@ -319,10 +379,19 @@ class SyntheticEngine:
 
     name = "synthetic"
 
-    def __init__(self, scene: SceneTruth, seed: int = 3, pose_noise=(0.03, 0.05), unregistered=()):
+    def __init__(
+        self,
+        scene: SceneTruth,
+        seed: int = 3,
+        pose_noise=(0.03, 0.05),
+        unregistered=(),
+        distortion_error: float = 0.0,
+    ):
         self.scene = scene
         self.seed = seed
         self.pose_noise = pose_noise
+        #: Added to the first radial coefficient: a self-calibrated lens bends the heights.
+        self.distortion_error = distortion_error
         self.unregistered = set(unregistered)
         self.calls: list[str] = []
         self.pairs: list[tuple[str, str]] = []
@@ -364,6 +433,7 @@ class SyntheticEngine:
         cam = Camera(1, "OPENCV", sc.camera.width, sc.camera.height, sc.camera.params.copy())
         cam.params[0] *= 1.01  # self-calibration is not perfect
         cam.params[1] *= 1.01
+        cam.params[4] += self.distortion_error
         model.cameras[1] = cam
         obs = sc.observations(rng)
         point_tracks: dict[int, list[tuple[int, int]]] = {}
@@ -419,11 +489,17 @@ def _rodrigues(w: np.ndarray) -> np.ndarray:
 
 
 def write_gcp_files(
-    scene: SceneTruth, project: Path, run: str, seed: int = 11, noise_px: float = 0.5
+    scene: SceneTruth,
+    project: Path,
+    run: str,
+    seed: int = 11,
+    noise_px: float = 0.5,
+    marks_per_point: int | None = None,
 ) -> Path:
-    """``gcp.json`` (aio.gcp/1) for the scene: surveyed in UTM 39N, marks confirmed by a person."""
+    """``gcp.json`` (aio.gcp/1) for the scene: surveyed in UTM 39N, marks confirmed by a person
+    (in every photo that sees a point, or in ``marks_per_point`` of them)."""
     rng = np.random.default_rng(seed)
-    marks = scene.marks(rng, noise_px)
+    marks = scene.marks(rng, noise_px, marks_per_point)
     pts = []
     for g in scene.gcps:
         lon, lat, h = scene.lonlat_h((g.enu + g.stated_error)[None])
