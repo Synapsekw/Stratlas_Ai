@@ -194,12 +194,24 @@ export function GlobeView(props: GlobeViewProps) {
     ctl?.setCard(props.cardPick ?? null);
   }, [ctl, props.cardPick]);
   useLayoutEffect(() => {
-    if (props.cardInsets) ctl?.setCardInsets(props.cardInsets);
+    ctl?.setCardInsets(props.cardInsets ?? null);
   }, [ctl, props.cardInsets]);
   // the card's size is its content's, which any render may have changed
   useLayoutEffect(() => {
     if (props.card) ctl?.layoutCard();
   });
+  // and which may change with no render here and the Globe at rest (a list that opens in it)
+  useEffect(() => {
+    const slot = cardSlot.current;
+    if (!ctl || !slot) return;
+    const sized = new ResizeObserver(() => {
+      ctl.layoutCard();
+    });
+    sized.observe(slot);
+    return () => {
+      sized.disconnect();
+    };
+  }, [ctl]);
 
   useEffect(() => {
     ctl?.setMeasuring(props.measuring);

@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { CARD_GAP, CHIP, chipMetrics, fitLabel, issueBadge, placeCard } from './chips';
+import {
+  CARD_GAP,
+  CHIP,
+  CHIP_GAP,
+  chipMetrics,
+  fitLabel,
+  groupChips,
+  issueBadge,
+  placeCard,
+  type PlacedChip,
+} from './chips';
 
 /** Ten pixels a character (a code point), whatever it is. */
 const measure = (text: string) => Array.from(text).length * 10;
@@ -56,6 +66,90 @@ describe('chipMetrics', () => {
     const many = chipMetrics(70, 19);
     expect(many.badge?.width).toBe(19 + 2 * CHIP.badgePadX);
     expect(Number.isInteger(many.width)).toBe(true);
+  });
+});
+
+describe('groupChips', () => {
+  const clusterSize = () => ({ width: 80, height: CHIP.height });
+  const chip = (id: string, x: number, y: number, width = 100): PlacedChip => ({
+    id,
+    x,
+    y,
+    width,
+    height: CHIP.height,
+  });
+  const members = (chips: PlacedChip[], gap?: number) =>
+    groupChips(chips, clusterSize, gap).map((g) => g.ids);
+
+  it('has nothing to gather without chips', () => {
+    expect(groupChips([], clusterSize)).toEqual([]);
+  });
+
+  it('leaves chips that are far apart alone, each at its own dot', () => {
+    expect(groupChips([chip('b', 400, 300), chip('a', 100, 100)], clusterSize)).toEqual([
+      { ids: ['a'], x: 100, y: 100 },
+      { ids: ['b'], x: 400, y: 300 },
+    ]);
+  });
+
+  it('gathers two chips that overlap, whichever comes first', () => {
+    // the name of `a` runs into `b`, whose dot is 60 px to its right
+    const a = chip('a', 100, 100);
+    const b = chip('b', 160, 100);
+    const one = [{ ids: ['a', 'b'], x: 130, y: 100 }];
+    expect(groupChips([a, b], clusterSize)).toEqual(one);
+    expect(groupChips([b, a], clusterSize)).toEqual(one);
+  });
+
+  it('gathers a chip with the one above it', () => {
+    expect(members([chip('a', 100, 100), chip('b', 100, 100 + CHIP.height - 1)])).toEqual([
+      ['a', 'b'],
+    ]);
+    expect(members([chip('a', 100, 100), chip('b', 100, 100 + CHIP.height + CHIP_GAP)])).toEqual([
+      ['a'],
+      ['b'],
+    ]);
+  });
+
+  it('counts chips nearer than the gap as overlapping', () => {
+    // `a` ends at 188, `b` starts at 192
+    const pair = [chip('a', 100, 100), chip('b', 192 + CHIP.dotX, 100)];
+    expect(members(pair)).toEqual([['a', 'b']]);
+    expect(members(pair, 0)).toEqual([['a'], ['b']]);
+  });
+
+  it('gathers a chain into one, though its ends are apart', () => {
+    const a = chip('a', 100, 100);
+    const b = chip('b', 180, 100);
+    const c = chip('c', 260, 100);
+    expect(members([a, c])).toEqual([['a'], ['c']]);
+    expect(members([a, b, c])).toEqual([['a', 'b', 'c']]);
+    expect(members([c, a, b])).toEqual([['a', 'b', 'c']]);
+  });
+
+  it('takes in a chip that the gathered chip would cover', () => {
+    // `a` and `b` are stacked; their chip is centred on them and reaches left to 60, where `c`,
+    // clear of both by 30 px, ends at 58
+    const a = chip('a', 100, 100, 60);
+    const b = chip('b', 100, 120, 60);
+    const c = chip('c', 10, 110, 60);
+    expect(members([c, a])).toEqual([['a'], ['c']]);
+    expect(members([c, b])).toEqual([['b'], ['c']]);
+    expect(members([c, a, b])).toEqual([['a', 'b', 'c']]);
+  });
+
+  it('gathers the same chips when the view faces the other way', () => {
+    const north = [chip('a', 100, 100, 120), chip('b', 160, 100, 80), chip('c', 600, 100)];
+    // facing south, what was on the left is on the right; names still run to the right
+    const south = north.map((c) => ({ ...c, x: 700 - c.x }));
+    expect(members(north)).toEqual([['a', 'b'], ['c']]);
+    expect(members(south)).toEqual([['a', 'b'], ['c']]);
+    expect(members([...south].reverse())).toEqual([['a', 'b'], ['c']]);
+  });
+
+  it('answers the same for the same view', () => {
+    const chips = [chip('a', 100, 100), chip('b', 150, 110), chip('c', 420, 100)];
+    expect(groupChips(chips, clusterSize)).toEqual(groupChips(chips, clusterSize));
   });
 });
 

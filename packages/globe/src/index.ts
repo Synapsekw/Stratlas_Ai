@@ -103,14 +103,18 @@ export { formatArea, formatLength, geodesicDistance, pathLength, polygonArea } f
 export {
   CARD_GAP,
   CHIP,
+  CHIP_GAP,
   chipMetrics,
   fitLabel,
+  groupChips,
   issueBadge,
   placeCard,
   type CardPlace,
+  type ChipGroup,
   type ChipMetrics,
   type Insets,
   type Measure,
+  type PlacedChip,
   type ViewSize,
 } from './chips';
 export {

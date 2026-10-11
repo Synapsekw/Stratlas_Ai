@@ -1,6 +1,7 @@
 /**
  * The geometry of the Globe's site chips and of the card at a pin, in CSS pixels: how a name is
- * cut, where a chip's dot, name and badge sit, and where the card goes so it stays in the view.
+ * cut, where a chip's dot, name and badge sit, which chips gather into one because they would
+ * overlap, and where the card goes so it stays in the view.
  * No DOM and no CesiumJS: the view draws and places with these numbers.
  */
 
@@ -81,6 +82,103 @@ export function chipMetrics(nameWidth: number, badgeTextWidth: number | null): C
 export interface ViewSize {
   width: number;
   height: number;
+}
+
+/** A chip on screen: its dot (the site) and its size. */
+export interface PlacedChip {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Chips drawn as one: their ids in order and the middle of their dots. One id: a chip alone. */
+export interface ChipGroup {
+  ids: string[];
+  x: number;
+  y: number;
+}
+
+/** Chips nearer than this, edge to edge, gather: the clear room of two sprites. */
+export const CHIP_GAP = 2 * CHIP.pad;
+
+/** A gathered chip can reach a chip its members did not: this many rounds settle it. */
+const GATHER_ROUNDS = 8;
+
+interface Box {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+const middle = (members: readonly PlacedChip[]): { x: number; y: number } => ({
+  x: members.reduce((sum, c) => sum + c.x, 0) / members.length,
+  y: members.reduce((sum, c) => sum + c.y, 0) / members.length,
+});
+
+/**
+ * Which chips are drawn as one because they would overlap, or come nearer than `gap`. A chip
+ * alone runs to the right of its dot; a gathered one is centred on the middle of its members'
+ * dots, `clusterSize(count)` large, and takes in whatever it reaches in turn. The answer does not
+ * depend on the order of `chips`, nor on which way the view faces: groups come by their first id.
+ */
+export function groupChips(
+  chips: readonly PlacedChip[],
+  clusterSize: (count: number) => ViewSize,
+  gap: number = CHIP_GAP,
+): ChipGroup[] {
+  const boxOf = (members: readonly PlacedChip[]): Box => {
+    const [only] = members;
+    if (only && members.length === 1) {
+      const left = only.x - CHIP.dotX;
+      const top = only.y - only.height / 2;
+      return { left, top, right: left + only.width, bottom: top + only.height };
+    }
+    const { x, y } = middle(members);
+    const { width, height } = clusterSize(members.length);
+    return {
+      left: x - width / 2,
+      top: y - height / 2,
+      right: x + width / 2,
+      bottom: y + height / 2,
+    };
+  };
+  const near = (a: Box, b: Box) =>
+    a.left < b.right + gap &&
+    b.left < a.right + gap &&
+    a.top < b.bottom + gap &&
+    b.top < a.bottom + gap;
+
+  let groups = [...chips].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)).map((c) => [c]);
+  for (let round = 0; round < GATHER_ROUNDS; round++) {
+    const boxes = groups.map(boxOf);
+    // every group joins the first group it is tied to, straight or through others
+    const first = groups.map((_, i) => i);
+    const firstOf = (i: number): number => {
+      let at = i;
+      for (let up = first[at]; up !== undefined && up !== at; up = first[at]) at = up;
+      return at;
+    };
+    boxes.forEach((a, i) => {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const b = boxes[j];
+        if (!b || !near(a, b)) continue;
+        const p = firstOf(i);
+        const q = firstOf(j);
+        first[Math.max(p, q)] = Math.min(p, q);
+      }
+    });
+    const next = new Map<number, PlacedChip[]>();
+    groups.forEach((members, i) => {
+      const at = firstOf(i);
+      next.set(at, [...(next.get(at) ?? []), ...members]);
+    });
+    if (next.size === groups.length) break;
+    groups = [...next.values()];
+  }
+  return groups.map((members) => ({ ids: members.map((c) => c.id).sort(), ...middle(members) }));
 }
 
 /** The room the screen's own controls take at each edge of the Globe. */
