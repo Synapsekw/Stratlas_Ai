@@ -86,7 +86,8 @@ export {
   type PlaceKind,
   type PlaceSource,
 } from './places';
-export { SUGGESTIONS } from './suggestions';
+export { SUGGESTIONS, suggestionsFor, type SuggestionFacts } from './suggestions';
+export { viewContext } from './view-context';
 export {
   assetIndex,
   clearAssetCache,
@@ -97,3 +98,4 @@ export {
   type AssetLink,
   type IssueDetail,
 } from './asset-index';
+export { compareCodes } from './tool-kit';

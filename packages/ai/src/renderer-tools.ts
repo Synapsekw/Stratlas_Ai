@@ -15,27 +15,31 @@ import {
 } from '@aio/schema';
 import { assetUrl, workspace, type Selection } from '@aio/workspace';
 import './analysis-tools';
-import { assetIndex, describeIssue, issuesOn, type AssetIndex } from './asset-index';
+import { assetIndex, describeIssue } from './asset-index';
 import './camera-tools';
 import './collab-tools';
 import { clipStartUtcMs, selectionLabel } from './context';
 import { parseFlight, passNear } from './geometry';
 import { targetPoint } from './places';
 import { capturePhoto, MAX_EDGE } from './photo-frame';
-import { compareCodes, worstFirst } from './show-tools';
+import { assetsUnknown, findingsOn, matchesText, noted, WHOLE_PROJECT } from './show-tools';
 import {
   appHooks,
   assetRef,
   clip,
   clips,
+  compareCodes,
   define,
   findIssue,
   iso,
+  issueClass,
+  issueClasses,
   plural,
   project,
   round1,
   severityRank,
   ToolError,
+  worstFirst,
   type RendererToolContext,
 } from './tool-kit';
 import type { Target } from './tools';
@@ -121,33 +125,23 @@ define('find_clips_near', async ({ target, radiusM }, ctx) => {
   };
 });
 
-/**
- * Rows carry the asset a finding sits on. While the bounds of the assets are not known the rows
- * have none, and the model is told why, so it does not read that as "on no asset".
- */
-const assetsUnknown = (index: AssetIndex) =>
-  index.status === 'loading'
-    ? {
-        note: 'The 3D model has not loaded yet, so the asset of each finding is not known. Open Scene and ask again.',
-      }
-    : {};
-
 define('list_issues', (f, ctx) => {
-  const text = f.text?.toLowerCase();
-  const there = f.where !== undefined ? issuesOn(ctx, f.where) : null;
+  const { text } = f;
+  const { there, whole } = findingsOn(ctx, f.where);
   const ids = there ? new Set(there.ids) : null;
+  const cls = f.classId !== undefined ? issueClass(ctx, f.classId) : null;
   const matching = ctx.workspace
     .getState()
     .issues.filter(
       (i) =>
         (!ids || ids.has(i.id)) &&
         (!f.status || i.status === f.status) &&
-        (!f.classId || i.classId === f.classId) &&
+        (!cls || i.classId === cls.id) &&
         (!f.source || i.source === f.source) &&
         (f.severityMin === undefined || severityRank(i.severity) >= f.severityMin) &&
         (f.severityMax === undefined ||
           (i.severity !== 'uncertain' && i.severity <= f.severityMax)) &&
-        (!text || `${i.code} ${i.title} ${i.note}`.toLowerCase().includes(text)),
+        (text === undefined || matchesText(i, text)),
     );
   // sorted before the limit cuts, so the worst are never the ones left out
   if (f.sort === 'severity') matching.sort(worstFirst);
@@ -158,10 +152,10 @@ define('list_issues', (f, ctx) => {
     result: {
       total: matching.length,
       shown: issues.length,
-      ...(there ? { where: there.label } : {}),
+      ...(there ? { where: there.label } : whole ? { where: null } : {}),
       ...(there && there.unplaced > 0 ? { notOnAnAsset: there.unplaced } : {}),
       issues,
-      ...assetsUnknown(index),
+      ...noted(whole && WHOLE_PROJECT, assetsUnknown(index)),
     },
     summary: plural(matching.length, 'issue'),
   };
@@ -177,7 +171,10 @@ define('summarize_issues', ({ status }, ctx) => {
     return out;
   };
   const index = assetIndex(ctx);
-  const worst = [...issues]
+  // the open ones, so the first row is the finding show_issue shows; closed ones are counted
+  // above, and listed only when they are what was asked for
+  const worst = issues
+    .filter((i) => status === 'closed' || i.status !== 'closed')
     .sort(worstFirst)
     .slice(0, 10)
     .map((i) => describeIssue(ctx, i, index));
@@ -189,7 +186,7 @@ define('summarize_issues', ({ status }, ctx) => {
       byClass: count((i) => label.get(i.classId) ?? i.classId),
       bySource: count((i) => i.source),
       mostSevere: worst,
-      ...assetsUnknown(index),
+      ...noted(assetsUnknown(index)),
     },
     summary: plural(issues.length, 'issue'),
   };
@@ -325,20 +322,12 @@ async function draftLocation(
 
 define('create_issue_draft', async (input, ctx) => {
   const m = project(ctx).manifest;
-  const classes = m.classCatalogues.flatMap((c) => c.classes);
-  if (classes.length === 0) {
-    throw new ToolError('This project has no issue classes yet. Add a class catalogue first.');
-  }
+  const classes = issueClasses(ctx);
   const { sightings, classId: inferred } = await draftLocation(ctx, input.at);
-  const classId = input.classId ?? inferred ?? (classes.length === 1 ? classes[0]?.id : undefined);
-  const cls = classes.find((c) => c.id === classId || c.label === classId);
-  if (!cls) {
-    const list = classes
-      .slice(0, 20)
-      .map((c) => `${c.id} (${c.label})`)
-      .join(', ');
-    throw new ToolError(`Choose classId from this project's classes: ${list}.`);
-  }
+  const cls = issueClass(
+    ctx,
+    input.classId ?? inferred ?? (classes.length === 1 ? classes[0]?.id : undefined),
+  );
   const model = m.severityModels.find((s) => s.id === cls.severityModel);
   if (!model) throw new ToolError(`Class ${cls.label} has no severity model in this project.`);
   const ws = ctx.workspace.getState();

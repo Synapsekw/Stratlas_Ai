@@ -266,3 +266,50 @@ export function issueRow(i: Issue) {
 export function severityRank(s: Issue['severity']): number {
   return s === 'uncertain' ? -1 : s;
 }
+
+/**
+ * Natural order for codes: prefix, then number (F2 before F10). A copy of `compareCodes` in
+ * @aio/annotate (model/query.ts), which this package must not depend on. The two must order alike,
+ * so that "the first by code" is the finding the issue register lists first; the desktop app sees
+ * both packages and holds them together (renderer/agent/codeOrder.test.ts).
+ */
+export function compareCodes(a: string, b: string): number {
+  const pa = /^([A-Z]*)(\d*)$/.exec(a);
+  const pb = /^([A-Z]*)(\d*)$/.exec(b);
+  const prefixA = pa?.[1] ?? a;
+  const prefixB = pb?.[1] ?? b;
+  if (prefixA !== prefixB) return prefixA < prefixB ? -1 : 1;
+  return Number(pa?.[2] ?? 0) - Number(pb?.[2] ?? 0);
+}
+
+/**
+ * Worst first; findings of one level in code order, so the first is the same every time. The
+ * register's sort by severity (`sortIssues` in @aio/annotate), and it must stay that.
+ */
+export const worstFirst = (a: Issue, b: Issue): number =>
+  severityRank(b.severity) - severityRank(a.severity) || compareCodes(a.code, b.code);
+
+/** The issue classes of the project. A project without any cannot take a class. */
+export function issueClasses(ctx: RendererToolContext) {
+  const classes = project(ctx).manifest.classCatalogues.flatMap((c) => c.classes);
+  if (classes.length === 0) {
+    throw new ToolError('This project has no issue classes yet. Add a class catalogue first.');
+  }
+  return classes;
+}
+
+/** An issue class by its id or its label. The error lists the classes, so the model can choose. */
+export function issueClass(ctx: RendererToolContext, ref: string | undefined) {
+  const classes = issueClasses(ctx);
+  const label = ref?.toLowerCase();
+  const cls =
+    classes.find((c) => c.id === ref) ??
+    classes.find((c) => c.label === ref) ??
+    classes.find((c) => c.label.toLowerCase() === label);
+  if (cls) return cls;
+  const list = classes
+    .slice(0, 20)
+    .map((c) => `${c.id} (${c.label})`)
+    .join(', ');
+  throw new ToolError(`Choose classId from this project's classes: ${list}.`);
+}

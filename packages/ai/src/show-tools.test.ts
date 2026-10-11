@@ -12,9 +12,10 @@ import {
   type PhotoViewResult,
   type RendererToolContext,
 } from './renderer-tools';
-import { compareCodes } from './show-tools';
+import { showToolInputs } from './show-tool-specs';
 import { fakeStage, fixtureIssue, siteManifest, siteWorkspace } from './test-fixtures';
 import { getToolSpec, riskOf, toolsForWindow, undoable } from './tools';
+import { z } from 'zod';
 
 beforeEach(() => {
   clearAssetCache();
@@ -156,8 +157,24 @@ describe('the catalogue', () => {
     expect(compact).not.toContain('list_assets');
   });
 
-  it('orders codes the way the register does', () => {
-    expect(['F10', 'F2', 'D9', 'F05'].sort(compareCodes)).toEqual(['D9', 'F2', 'F05', 'F10']);
+  it('tells the model what each field takes, in the schema the provider gets', () => {
+    const fields = (name: keyof typeof showToolInputs) => {
+      const schema = z.toJSONSchema(showToolInputs[name]) as {
+        properties?: Record<string, { description?: string }>;
+      };
+      return schema.properties ?? {};
+    };
+    // a description on the optional wrapper replaces the one inside: both have to say it
+    const one = fields('show_issue');
+    expect(one.where?.description).toContain('"selection"');
+    expect(one.where?.description).toContain('With no issue');
+    expect(one.issue?.description).toContain('code');
+    expect(one.issue?.description).toContain('Leave out');
+    for (const name of ['show_photos', 'show_issues'] as const) {
+      expect(fields(name).where?.description, name).toContain('"selection"');
+      expect(fields(name).severity?.description, name).toContain('"highest"');
+    }
+    expect(fields('show_photos').issue?.description).toContain('code');
   });
 });
 
@@ -214,6 +231,32 @@ describe('show_issue', () => {
     ws.getState().select({ kind: 'asset', id: '20-T-0002' });
     const selected = await runRendererTool('show_issue', { where: 'selection' }, c);
     expect(selected.result).toMatchObject({ issue: { code: 'F02' } });
+    expect(selected.result).not.toHaveProperty('where');
+    expect(selected.result).not.toHaveProperty('note');
+  });
+
+  it('"this asset" with no tagged asset selected is the whole project, and it says so', async () => {
+    const whole = {
+      issue: { code: 'F05' },
+      where: null,
+      note: 'Nothing is selected, so this covers the whole project.',
+    };
+    const { c, ws } = ctx();
+    const nothing = await runRendererTool('show_issue', { where: 'selection' }, c);
+    expect(nothing.result).toMatchObject(whole);
+    // a finding, or a part of the model that carries no tag, is not something findings sit on
+    ws.getState().select({ kind: 'issue', id: 'f2' });
+    expect((await runRendererTool('show_issue', { where: 'selection' }, c)).result).toMatchObject(
+      whole,
+    );
+    ws.getState().select({ kind: 'asset', id: 'Mesh_12' });
+    expect((await runRendererTool('show_issue', { where: 'selection' }, c)).result).toMatchObject(
+      whole,
+    );
+    // a name that matches nothing is still an error
+    await expect(runRendererTool('show_issue', { where: 'T-999' }, c)).rejects.toThrow(
+      'No place matches "T-999"',
+    );
   });
 
   it('says so when the asset has no open findings, and changes nothing', async () => {
@@ -321,6 +364,39 @@ describe('show_issue', () => {
     expect(currentPose(c)).toEqual(before);
   });
 
+  it('a finding marked on the map only: the map shows it, and it says so', async () => {
+    const onMap = fixtureIssue({
+      id: 'm1',
+      code: 'M01',
+      sightings: [{ on: 'map', layer: 'plant', geojson: { type: 'Point', coordinates: [48, 29] } }],
+    });
+    const { c, ws } = ctx({ ws: workspace([onMap]) });
+    const r = await runRendererTool('show_issue', { issue: 'M01' }, c);
+    expect(r.result).toMatchObject({
+      issue: { code: 'M01' },
+      photoOnly: false,
+      note: 'This finding is marked on the map only. The map shows it.',
+    });
+    expect(ws.getState().lastCamera?.target).toEqual({
+      kind: 'selection',
+      selection: { kind: 'issue', id: 'm1' },
+    });
+  });
+
+  it('says why the finding has no asset while the bounds of the assets are not known', async () => {
+    // no screen hook: nothing to wait for, and no 3D view was ever mounted
+    const host = recordingApp();
+    const app: AppHooks = { openScreen: host.app.openScreen, showEvidence: host.app.showEvidence };
+    const { c } = ctx({ stage: false, app });
+    const r = await runRendererTool('show_issue', {}, c);
+    expect(r.result).toMatchObject({
+      issue: { code: 'F05' },
+      note: 'The 3D model has not loaded yet, so the asset of each finding is not known. Open Scene and ask again.',
+    });
+    expect((r.result as { issue: object }).issue).not.toHaveProperty('asset');
+    expect(host.app.openScreen).toHaveBeenCalledWith('scene');
+  });
+
   it('undo puts the selection, the camera and the view of the app back', async () => {
     const { c, ws, app, restore } = ctx({ screen: 'issues' });
     ws.getState().select({ kind: 'asset', id: '20-T-0001' });
@@ -333,6 +409,33 @@ describe('show_issue', () => {
     expect(near(currentPose(c)?.position ?? [], before?.position ?? [NaN])).toBe(true);
     expect(near(currentPose(c)?.target ?? [], before?.target ?? [NaN])).toBe(true);
     expect(restore).toHaveBeenCalledTimes(1);
+  });
+
+  it('from another screen, undo puts the camera back where it was when the 3D view appeared', async () => {
+    const ws = workspace();
+    // an old camera request of the agent: not where the camera is when Scene opens again
+    ws.getState().flyTo({ kind: 'point', p: [1, 2, 3], distance: 10, dir: [0, 0, 1] });
+    const stage = fakeStage(ws);
+    const host = recordingApp({ screen: 'media' });
+    let mounted = false;
+    const app: AppHooks = {
+      ...host.app,
+      openScreen: (s) => {
+        host.app.openScreen(s);
+        mounted = mounted || s === 'scene';
+      },
+    };
+    // the 3D view is not mounted on Media: it appears once Scene is opened
+    const c: RendererToolContext = {
+      ...ctx({ ws, app, stage: false }).c,
+      scene: () => (mounted ? stage : null),
+    };
+    const r = await runRendererTool('show_issue', {}, c);
+    expect(near(currentPose(c)?.target ?? [], [300, 50, -50])).toBe(true);
+    r.undo?.();
+    expect(near(currentPose(c)?.position ?? [], [600, 450, 600])).toBe(true);
+    expect(near(currentPose(c)?.target ?? [], [0, 0, 0])).toBe(true);
+    expect(host.restore).toHaveBeenCalledTimes(1);
   });
 
   it('remembers the view of the app before it opens anything', async () => {
@@ -450,14 +553,65 @@ describe('show_photos', () => {
 
   it('a severity word that is not a level is an input error the model can read', async () => {
     const { c, app } = ctx();
+    const said =
+      'Invalid input at severity: Give a level value from severityLevels (a number), "uncertain" or "highest".';
     const bad = runRendererTool('show_photos', { severity: 'critical' }, c);
     await expect(bad).rejects.toBeInstanceOf(ToolError);
-    await expect(bad).rejects.toThrow(/^Invalid input at severity/);
-    await expect(runRendererTool('show_issues', { severity: 'severe' }, c)).rejects.toThrow(
-      /^Invalid input at severity/,
-    );
+    await expect(bad).rejects.toThrow(new ToolError(said));
+    for (const severity of ['severe', '4', 2.5]) {
+      await expect(runRendererTool('show_issues', { severity }, c)).rejects.toThrow(
+        new ToolError(said),
+      );
+    }
     expect(app.showPhotos).not.toHaveBeenCalled();
     expect(app.showIssues).not.toHaveBeenCalled();
+  });
+
+  it('a level the project does not have is an error that lists its levels', async () => {
+    const { c, app, log } = ctx();
+    const said =
+      'This project has no severity level 7. Its levels are 1 S1, 2 S2, 3 S3, 4 S4, 5 S5.';
+    const photos = runRendererTool('show_photos', { severity: 7 }, c);
+    await expect(photos).rejects.toBeInstanceOf(ToolError);
+    await expect(photos).rejects.toThrow(new ToolError(said));
+    await expect(runRendererTool('show_issues', { severity: 7 }, c)).rejects.toThrow(
+      new ToolError(said),
+    );
+    expect(app.captureView).not.toHaveBeenCalled();
+    expect(log).toEqual([]);
+  });
+
+  it('"uncertain" in a project whose levels have no uncertain is the same kind of error', async () => {
+    const ws = workspace();
+    const m = siteManifest();
+    const severityModels = m.severityModels.map((s) => ({
+      id: s.id,
+      name: s.name,
+      levels: s.levels.slice(0, 3),
+    }));
+    ws.getState().replaceManifest({ ...m, severityModels });
+    await expect(
+      runRendererTool('show_issues', { severity: 'uncertain' }, ctx({ ws }).c),
+    ).rejects.toThrow('This project has no "uncertain" level. Its levels are 1 S1, 2 S2, 3 S3.');
+  });
+
+  it('"this asset" with nothing selected: the photos of the whole project', async () => {
+    const { c, app } = ctx();
+    const r = await runRendererTool('show_photos', { where: 'selection', severity: 'highest' }, c);
+    expect(app.showPhotos).toHaveBeenCalledWith({
+      onlyFindings: true,
+      order: 'severity',
+      severity: 'highest',
+      scope: null,
+    });
+    expect(r.result).toEqual({
+      shown: 3,
+      total: 12,
+      severity: 'S4',
+      scope: null,
+      where: null,
+      note: 'Nothing is selected, so this covers the whole project.',
+    });
   });
 
   it('undo is the view the app remembered before the filter changed', async () => {
@@ -527,6 +681,30 @@ describe('show_issues', () => {
   it('with no level asked reports none', async () => {
     const r = await runRendererTool('show_issues', {}, ctx().c);
     expect(r.result).toEqual({ shown: 7, severity: null, scope: null });
+  });
+
+  it('"highest" with a text is the highest level among the findings the text matches', async () => {
+    const { c, app } = ctx();
+    const r = await runRendererTool('show_issues', { severity: 'highest', text: 'PAINT' }, c);
+    expect(app.showIssues).toHaveBeenCalledWith(
+      expect.objectContaining({ severity: 2, text: 'PAINT' }),
+    );
+    expect(r.result).toMatchObject({ severity: 'S2' });
+  });
+
+  it('"this asset" with nothing selected: the findings of the whole project', async () => {
+    const { c, app } = ctx();
+    const r = await runRendererTool('show_issues', { where: 'selection', severity: 'highest' }, c);
+    expect(app.showIssues).toHaveBeenCalledWith(
+      expect.objectContaining({ severity: 4, scope: null }),
+    );
+    expect(r.result).toEqual({
+      shown: 7,
+      severity: 'S4',
+      scope: null,
+      where: null,
+      note: 'Nothing is selected, so this covers the whole project.',
+    });
   });
 
   it('needs the app to set the filter', async () => {
@@ -654,16 +832,35 @@ describe('issue rows', () => {
     expect(codes).toEqual(['A01', 'F02', 'F05', 'F10']);
   });
 
-  it('summarize_issues names the level and the asset of the most severe ones', async () => {
-    const r = await runRendererTool('summarize_issues', {}, ctx().c);
+  it('list_issues on "this asset" with nothing selected lists the whole project and says so', async () => {
+    const { c, ws } = ctx();
+    const r = await runRendererTool('list_issues', { where: 'selection' }, c);
     expect(r.result).toMatchObject({
-      mostSevere: [
-        { code: 'A01', severityLabel: 'S5', asset: '20-T-0001' },
-        { code: 'F05', severityLabel: 'S4', asset: '20-T-0003' },
-        { code: 'F02', severityLabel: 'S2', asset: '20-T-0002' },
-      ],
+      total: 3,
+      where: null,
+      note: 'Nothing is selected, so this covers the whole project.',
     });
+    ws.getState().select({ kind: 'asset', id: '20-T-0002' });
+    const tank = await runRendererTool('list_issues', { where: 'selection' }, c);
+    expect(tank.result).toMatchObject({ total: 1, where: '20-T-0002' });
+    expect(tank.result).not.toHaveProperty('note');
+  });
+
+  it('summarize_issues names the level and the asset of the most severe open ones', async () => {
+    const { c } = ctx();
+    const r = await runRendererTool('summarize_issues', {}, c);
+    // A01 (S5) is closed: the first row is the finding show_issue picks
+    expect((r.result as { mostSevere: object[] }).mostSevere).toMatchObject([
+      { code: 'F05', severityLabel: 'S4', asset: '20-T-0003' },
+      { code: 'F02', severityLabel: 'S2', asset: '20-T-0002' },
+    ]);
+    expect(r.result).toMatchObject({ total: 3, byStatus: { closed: 1 } });
+    const shown = await runRendererTool('show_issue', { evidence: false }, c);
+    expect(shown.result).toMatchObject({ issue: { code: 'F05' } });
     // the bounds are known here, so there is nothing to explain
     expect(r.result).not.toHaveProperty('note');
+    // asked for the closed ones: those are the ones listed
+    const closed = await runRendererTool('summarize_issues', { status: 'closed' }, c);
+    expect((closed.result as { mostSevere: object[] }).mostSevere).toMatchObject([{ code: 'A01' }]);
   });
 });

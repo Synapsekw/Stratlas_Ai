@@ -9,17 +9,20 @@
 import { z } from 'zod';
 import type { ToolSpec } from './tools';
 
-const IssueRef = z.string().min(1).max(60).describe('Issue code or id, e.g. F03');
-const Where = z
-  .string()
-  .min(1)
-  .max(120)
-  .describe(
-    'A tagged asset or an area (component group) by name, or "selection" for the selected asset',
-  );
-// A level value only: a word like "critical" is an input error the model reads and corrects.
+// What a field takes, as text: a description on an optional field replaces the one inside it in
+// the schema the provider gets, so a field with a text of its own has to repeat this.
+const ISSUE_REF = 'Issue code or id, e.g. F03';
+const WHERE =
+  'A tagged asset or an area (component group) by name, or "selection" for the selected asset (with nothing selected: the whole project)';
+
+const IssueRef = z.string().min(1).max(60).describe(ISSUE_REF);
+const Where = z.string().min(1).max(120).describe(WHERE);
+// A level value only: a word like "critical" is an input error the model reads and corrects, so
+// the error says what is allowed.
 const Level = z
-  .union([z.number().int().min(0).max(9), z.enum(['uncertain', 'highest'])])
+  .union([z.number().int().min(0).max(9), z.enum(['uncertain', 'highest'])], {
+    error: 'Give a level value from severityLevels (a number), "uncertain" or "highest"',
+  })
   .describe(
     'A severity level value from severityLevels in the window context, or "highest" for the highest level present',
   );
@@ -28,9 +31,11 @@ const Status = z.enum(['draft', 'reviewed', 'approved', 'closed']);
 export const showToolInputs = {
   show_issue: z
     .object({
-      issue: IssueRef.optional().describe('Leave out to show the most severe open finding'),
+      issue: IssueRef.optional().describe(
+        `${ISSUE_REF}. Leave out to show the most severe open finding`,
+      ),
       where: Where.optional().describe(
-        'With no issue: the most severe open finding on this asset or in this area',
+        `With no issue: the most severe open finding on this asset or in this area. ${WHERE}`,
       ),
       evidence: z.boolean().default(true).describe('Open its photo beside the 3D view'),
     })
@@ -116,7 +121,7 @@ export const SHOW_TOOL_SPECS: ToolSpec[] = [
     meta: {
       name: 'list_assets',
       description:
-        "Per tagged asset or per area: how many findings, how many open, and the worst severity. Use it for 'which asset is in the worst shape'.",
+        "Per tagged asset or per area: how many findings, how many open, and the worst open severity. Use it for 'which asset is in the worst shape'.",
       scope: 'project',
       risk: 'read',
     },

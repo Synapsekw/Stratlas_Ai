@@ -7,16 +7,19 @@
 import type { Issue } from '@aio/schema';
 import type { Selection } from '@aio/workspace';
 import type { z } from 'zod';
-import { assetIndex, describeIssue, issuesOn, severityLabel } from './asset-index';
+import { assetIndex, describeIssue, issuesOn, severityLabel, type AssetIndex } from './asset-index';
 import { applyPose, currentPose, ensureScene, flyToIssue } from './camera-tools';
 import { findIssueFuzzy, issuePoints } from './places';
 import { showToolInputs, type ShowToolName } from './show-tool-specs';
 import {
+  assetRef,
+  issueClass,
   plural,
   project,
   registerRendererTool,
   severityRank,
   ToolError,
+  worstFirst,
   type AppHooks,
   type AppScreen,
   type RendererToolContext,
@@ -41,39 +44,70 @@ function host<K extends keyof AppHooks>(
   return app as AppHooks & Required<Pick<AppHooks, K>>;
 }
 
-/**
- * Natural order for codes: prefix, then number (F2 before F10). The order of the issue register
- * (`compareCodes` in @aio/annotate, which this package does not depend on), so "the first by
- * code" is the one the person sees first.
- */
-export function compareCodes(a: string, b: string): number {
-  const pa = /^([A-Z]*)(\d*)$/.exec(a);
-  const pb = /^([A-Z]*)(\d*)$/.exec(b);
-  const prefixA = pa?.[1] ?? a;
-  const prefixB = pb?.[1] ?? b;
-  if (prefixA !== prefixB) return prefixA < prefixB ? -1 : 1;
-  return Number(pa?.[2] ?? 0) - Number(pb?.[2] ?? 0);
-}
-
-/** Worst first; findings of one level in code order, so the first is the same every time. */
-export const worstFirst = (a: Issue, b: Issue) =>
-  severityRank(b.severity) - severityRank(a.severity) || compareCodes(a.code, b.code);
-
 const isOpen = (i: Issue) => i.status !== 'closed';
 
-/** An issue class by id or by its label. */
-function classOf(ctx: RendererToolContext, ref: string) {
-  const classes = project(ctx).manifest.classCatalogues.flatMap((c) => c.classes);
-  const cls =
-    classes.find((c) => c.id === ref) ??
-    classes.find((c) => c.label.toLowerCase() === ref.toLowerCase());
-  if (cls) return cls;
-  if (classes.length === 0) throw new ToolError('This project has no issue classes.');
-  const list = classes
-    .slice(0, 20)
-    .map((c) => `${c.id} (${c.label})`)
-    .join(', ');
-  throw new ToolError(`Choose classId from this project's classes: ${list}.`);
+// What the issue tools share (list_issues and summarize_issues use these too) ------------------
+
+export const WHOLE_PROJECT = 'Nothing is selected, so this covers the whole project.';
+
+/**
+ * The findings `where` names: on a tagged asset, in an area, or on the selection. "This asset"
+ * with no tagged asset selected means the whole project (a project is often one asset), so
+ * "selection" then names nothing (`whole`), and the tool says so in its result.
+ */
+export function findingsOn(
+  ctx: RendererToolContext,
+  where: string | undefined,
+): { there: ReturnType<typeof issuesOn> | null; whole: boolean } {
+  if (where === undefined) return { there: null, whole: false };
+  if (where === 'selection') {
+    const selected = ctx.workspace.getState().selection;
+    if (selected?.kind !== 'asset' || !assetRef(ctx, selected.id)) {
+      return { there: null, whole: true };
+    }
+  }
+  return { there: issuesOn(ctx, where), whole: false };
+}
+
+/**
+ * Rows carry the asset a finding sits on. While the bounds of the assets are not known the rows
+ * have none, and the model is told why, so it does not read that as "on no asset".
+ */
+export const assetsUnknown = (index: AssetIndex) =>
+  index.status === 'loading' &&
+  'The 3D model has not loaded yet, so the asset of each finding is not known. Open Scene and ask again.';
+
+/** What a result has to tell the model beside its numbers, as one `note`; no key when nothing. */
+export function noted(...notes: (string | false | undefined)[]): { note?: string } {
+  const said = notes.filter((n): n is string => typeof n === 'string');
+  return said.length > 0 ? { note: said.join(' ') } : {};
+}
+
+/** The text filter of list_issues: in the code, the title or the note, whatever the case. */
+export const matchesText = (i: Issue, text: string) =>
+  `${i.code} ${i.title} ${i.note}`.toLowerCase().includes(text.toLowerCase());
+
+/**
+ * A level the project does not have (7 where there are three) would open an empty screen. It is
+ * an error that lists the levels instead, so the model can pick one.
+ */
+function checkLevel(ctx: RendererToolContext, level: SeverityLevel | 'highest' | undefined): void {
+  if (level === undefined || level === 'highest') return;
+  const models = project(ctx).manifest.severityModels;
+  const known =
+    level === 'uncertain'
+      ? models.some((m) => m.uncertain !== undefined)
+      : models.some((m) => m.levels.some((l) => l.value === level));
+  if (known) return;
+  const levels = models
+    .flatMap((m) => m.levels)
+    .sort((a, b) => a.value - b.value)
+    .map((l) => `${String(l.value)} ${l.label}`);
+  if (levels.length === 0) throw new ToolError('This project has no severity levels.');
+  const missing = level === 'uncertain' ? '"uncertain" level' : `severity level ${String(level)}`;
+  throw new ToolError(
+    `This project has no ${missing}. Its levels are ${[...new Set(levels)].join(', ')}.`,
+  );
 }
 
 /** The name of a level: from the first severity model of the project that has it. */
@@ -120,52 +154,57 @@ function define<N extends ShowToolName>(
 function pick(
   ctx: RendererToolContext,
   input: { issue?: string | undefined; where?: string | undefined },
-): { issue: Issue; among: Issue[] } {
+): { issue: Issue; among: Issue[]; whole: boolean } {
   const open = ctx.workspace.getState().issues.filter(isOpen);
-  if (input.issue !== undefined) return { issue: findIssueFuzzy(ctx, input.issue), among: open };
-  let among = open;
-  let on = '';
-  if (input.where !== undefined) {
-    const there = issuesOn(ctx, input.where);
-    const ids = new Set(there.ids);
-    among = open.filter((i) => ids.has(i.id));
-    on = ` on ${there.label}`;
+  if (input.issue !== undefined) {
+    return { issue: findIssueFuzzy(ctx, input.issue), among: open, whole: false };
   }
+  const { there, whole } = findingsOn(ctx, input.where);
+  const ids = there ? new Set(there.ids) : null;
+  const among = ids ? open.filter((i) => ids.has(i.id)) : open;
   const issue = [...among].sort(worstFirst)[0];
-  if (!issue) throw new ToolError(`No open findings${on}.`);
-  return { issue, among };
+  if (!issue) throw new ToolError(`No open findings${there ? ` on ${there.label}` : ''}.`);
+  return { issue, among, whole };
 }
 
 define('show_issue', async (input, ctx) => {
   project(ctx);
   const app = host(ctx, 'openScreen');
   if (input.evidence) host(ctx, 'showEvidence');
-  const { issue, among } = pick(ctx, input);
+  const { issue, among, whole } = pick(ctx, input);
 
   // what undo needs, taken before anything changes
   const restoreView = app.captureView?.();
   const selectionBefore = ctx.workspace.getState().selection;
-  const poseBefore = currentPose(ctx);
 
   // ensureScene opens Scene from another screen; a host that cannot say what shows gets it opened
   if (!app.screen) app.openScreen('scene');
   await ensureScene(ctx);
+  // the camera is read once the 3D view is there: on Media or Issues there is none to read, only
+  // an old request of the agent, and undo would send the camera to that
+  const poseBefore = currentPose(ctx);
   const selection: Selection = { kind: 'issue', id: issue.id };
   ctx.workspace.getState().select(selection);
   const opened = input.evidence && app.showEvidence?.(issue.id) === true;
 
-  let note: string | undefined;
+  const placed = issuePoints(issue).length > 0;
+  let nowhere: string | undefined;
   // opening the evidence of a pin flies to the pin, as a click on it does; anything else (no
   // evidence, or a finding on a photo only) the camera is sent to here
-  if (!(opened && issuePoints(issue).length > 0)) {
+  if (!(opened && placed)) {
     const flight = await flyToIssue(ctx, issue);
     if (!flight.moved) {
+      // nothing for the 3D camera, but the map pans to a finding that is marked on it
       ctx.workspace.getState().flyTo({ kind: 'selection', selection });
-      note = 'This finding has no position to fly to.';
+      const mapOnly = issue.sightings.length > 0 && issue.sightings.every((s) => s.on === 'map');
+      nowhere = mapOnly
+        ? 'This finding is marked on the map only. The map shows it.'
+        : 'This finding has no position to fly to.';
     }
   }
 
-  const detail = describeIssue(ctx, issue, assetIndex(ctx));
+  const index = assetIndex(ctx);
+  const detail = describeIssue(ctx, issue, index);
   const rank = severityRank(issue.severity);
   const same = among
     .filter((i) => i.id !== issue.id && severityRank(i.severity) === rank)
@@ -176,7 +215,9 @@ define('show_issue', async (input, ctx) => {
       evidence: opened,
       photoOnly: detail.photoOnly,
       sameLevel: { count: same.length, codes: same.slice(0, 5).map((i) => i.code) },
-      ...(note ? { note } : {}),
+      ...(whole ? { where: null } : {}),
+      // only a finding with a place in the model can sit on an asset at all
+      ...noted(whole && WHOLE_PROJECT, nowhere, placed && assetsUnknown(index)),
     },
     summary: issue.code,
     undo: () => {
@@ -204,19 +245,18 @@ define('show_photos', (input, ctx) => {
   if (!manifest.layers.some((l) => l.kind === 'photos' && l.items.length > 0)) {
     throw new ToolError('This project has no photos.');
   }
+  checkLevel(ctx, input.severity);
 
   // the findings asked for: on an asset or in an area, one finding, one class; all named must hold
   let found: Issue[] | null = null;
   const labels: string[] = [];
-  let unplaced = 0;
   const narrow = (keep: (i: Issue) => boolean) =>
     (found ?? ctx.workspace.getState().issues).filter(keep);
-  if (input.where !== undefined) {
-    const there = issuesOn(ctx, input.where);
+  const { there, whole } = findingsOn(ctx, input.where);
+  if (there) {
     const ids = new Set(there.ids);
     found = narrow((i) => ids.has(i.id));
     labels.push(`On ${there.label}`);
-    unplaced = there.unplaced;
   }
   if (input.issue !== undefined) {
     const one = findIssueFuzzy(ctx, input.issue);
@@ -224,7 +264,7 @@ define('show_photos', (input, ctx) => {
     labels.push(`Finding ${one.code}`);
   }
   if (input.classId !== undefined) {
-    const cls = classOf(ctx, input.classId);
+    const cls = issueClass(ctx, input.classId);
     found = narrow((i) => i.classId === cls.id);
     labels.push(cls.label);
   }
@@ -246,7 +286,9 @@ define('show_photos', (input, ctx) => {
       total: view.total,
       severity: view.severityLabel || null,
       scope: label || null,
-      ...(unplaced > 0 ? { notOnAnAsset: unplaced } : {}),
+      ...(there && there.unplaced > 0 ? { notOnAnAsset: there.unplaced } : {}),
+      ...(whole ? { where: null } : {}),
+      ...noted(whole && WHOLE_PROJECT),
     },
     summary: plural(view.shown, 'photo'),
     ...(restoreView ? { undo: restoreView } : {}),
@@ -256,8 +298,9 @@ define('show_photos', (input, ctx) => {
 define('show_issues', (input, ctx) => {
   project(ctx);
   const app = host(ctx, 'showIssues', 'openScreen');
-  const there = input.where !== undefined ? issuesOn(ctx, input.where) : null;
-  const cls = input.classId !== undefined ? classOf(ctx, input.classId) : null;
+  checkLevel(ctx, input.severity);
+  const { there, whole } = findingsOn(ctx, input.where);
+  const cls = input.classId !== undefined ? issueClass(ctx, input.classId) : null;
   const scope: ViewScope | null = there ? { label: `On ${there.label}`, ids: there.ids } : null;
 
   let severity: SeverityLevel | null;
@@ -266,13 +309,15 @@ define('show_issues', (input, ctx) => {
     // the highest level present among the findings asked for, not the top of the scale; closed
     // findings count only when they are what was asked for
     const ids = there ? new Set(there.ids) : null;
+    const text = input.text;
     const worst = ctx.workspace
       .getState()
       .issues.filter(
         (i) =>
           (!ids || ids.has(i.id)) &&
           (!cls || i.classId === cls.id) &&
-          (input.status ? i.status === input.status : isOpen(i)),
+          (input.status ? i.status === input.status : isOpen(i)) &&
+          (text === undefined || matchesText(i, text)),
       )
       .sort(worstFirst)[0];
     severity = worst?.severity ?? null;
@@ -299,6 +344,8 @@ define('show_issues', (input, ctx) => {
       severity: severityName,
       scope: scope?.label ?? null,
       ...(there && there.unplaced > 0 ? { notOnAnAsset: there.unplaced } : {}),
+      ...(whole ? { where: null } : {}),
+      ...noted(whole && WHOLE_PROJECT),
     },
     summary: plural(shown, 'finding'),
     ...(restoreView ? { undo: restoreView } : {}),

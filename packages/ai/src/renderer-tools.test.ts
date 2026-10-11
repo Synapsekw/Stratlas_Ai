@@ -120,15 +120,39 @@ describe('read tools', () => {
     expect((summed.result as { note?: string }).note).toContain(note);
   });
 
-  it('summarize_issues lists the most severe with the name of their level', async () => {
+  it('list_issues on "this asset" with nothing selected lists the whole project', async () => {
+    // no bounds are known here either, but nothing is asked about an asset
+    const r = await runRendererTool('list_issues', { where: 'selection' }, ctx());
+    expect(r.result).toMatchObject({ total: 3, where: null });
+    const note = (r.result as { note: string }).note;
+    expect(note).toContain('Nothing is selected, so this covers the whole project.');
+    expect(note).toContain('The 3D model has not loaded yet');
+  });
+
+  it('list_issues takes a class by its id or its label, and lists the classes for a wrong one', async () => {
+    for (const classId of ['coating', 'Coating damage', 'coating DAMAGE']) {
+      const r = await runRendererTool('list_issues', { classId }, ctx());
+      expect(r.result, classId).toMatchObject({ total: 1, issues: [{ code: 'F01' }] });
+    }
+    const wrong = runRendererTool('list_issues', { classId: 'rust' }, ctx());
+    await expect(wrong).rejects.toBeInstanceOf(ToolError);
+    await expect(wrong).rejects.toThrow(
+      "Choose classId from this project's classes: corrosion (Corrosion), coating (Coating damage).",
+    );
+  });
+
+  it('summarize_issues lists the most severe open ones with the name of their level', async () => {
     const r = await runRendererTool('summarize_issues', {}, ctx());
-    expect(r.result).toMatchObject({
-      mostSevere: [
-        { code: 'F01', severityLabel: 'S5' },
-        { code: 'D01', severityLabel: 'S4' },
-        { code: 'D02', severityLabel: 'S2' },
-      ],
-    });
+    // F01 (S5) is closed: it is counted, not listed
+    expect((r.result as { mostSevere: object[] }).mostSevere).toMatchObject([
+      { code: 'D01', severityLabel: 'S4' },
+      { code: 'D02', severityLabel: 'S2' },
+    ]);
+    expect(r.result).toMatchObject({ total: 3, byStatus: { closed: 1 } });
+    const closed = await runRendererTool('summarize_issues', { status: 'closed' }, ctx());
+    expect((closed.result as { mostSevere: object[] }).mostSevere).toMatchObject([
+      { code: 'F01', severityLabel: 'S5' },
+    ]);
   });
 
   it('summarize_issues counts by severity, status and class', async () => {
