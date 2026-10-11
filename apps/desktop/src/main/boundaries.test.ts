@@ -1,5 +1,5 @@
 import type { BoundaryEdit, BoundaryEditsFile } from '@aio/schema';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -97,6 +97,49 @@ describe('writeBoundaries', () => {
       await readFile(join(dir, 'edits', 'boundaries.json.bak'), 'utf8'),
     ) as unknown;
     expect(bak).toEqual(file(edit()));
+  });
+
+  it('saves edits sent before the save before them answered', async () => {
+    const dir = await writeProject(join(base, 'p'), sampleManifest(), {
+      'volumes.json': JSON.stringify(volumes),
+      'edits/boundaries.json': JSON.stringify(file(edit())),
+    });
+    expect((await readVolumes(dir)).ok).toBe(true);
+    // quick edits of one outline: each is sent while the ones before are still being written
+    const tops = [61, 62, 63, 64];
+    const sent = tops.map((topM) => writeBoundaries(dir, file(edit({ topM }))));
+    expect(await Promise.all(sent)).toEqual(sent.map(() => ({ ok: true })));
+    // every one was written whole, one after the other: the file and its backup are two of them
+    // (called at the same instant like this, the order they reach the file in is not the order
+    // of the calls: each checks volumes.json first)
+    const path = join(dir, 'edits', 'boundaries.json');
+    const topOf = async (p: string) =>
+      (JSON.parse(await readFile(p, 'utf8')) as BoundaryEditsFile).edits[0]?.topM;
+    const [last, before] = [await topOf(path), await topOf(`${path}.bak`)];
+    expect(tops).toContain(last);
+    expect(tops).toContain(before);
+    expect(before).not.toBe(last);
+    expect((await readdir(join(dir, 'edits'))).sort()).toEqual([
+      'boundaries.json',
+      'boundaries.json.bak',
+    ]);
+  });
+
+  it('refuses every overlapping save when someone else saved the edits meanwhile', async () => {
+    const dir = await writeProject(join(base, 'p'), sampleManifest(), {
+      'volumes.json': JSON.stringify(volumes),
+      'edits/boundaries.json': JSON.stringify(file(edit())),
+    });
+    expect((await readVolumes(dir)).ok).toBe(true);
+    const path = join(dir, 'edits', 'boundaries.json');
+    const theirs = JSON.stringify(file(edit({ topM: 99 })));
+    await writeFile(path, theirs);
+    const sent = [61, 62, 63].map((topM) => writeBoundaries(dir, file(edit({ topM }))));
+    for (const r of await Promise.all(sent)) {
+      expect(r.ok).toBe(false);
+      expect(r.error).toMatch(/edits\/boundaries\.json was changed by someone else/);
+    }
+    expect(await readFile(path, 'utf8')).toBe(theirs);
   });
 
   it('refuses an edit of a pile or date the project does not have', async () => {
