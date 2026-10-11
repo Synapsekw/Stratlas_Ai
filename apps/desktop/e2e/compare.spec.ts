@@ -8,7 +8,7 @@
  * with other GPU work running.
  */
 import { test as base, type ElectronApplication, type Page, type TestInfo } from '@playwright/test';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -632,7 +632,9 @@ real.describe('@realdata Masafi', () => {
         include: (rel) => rel !== 'edits',
       });
       // a saved survey measurement of the whole site, at the project origin
-      const project = join(root.data, 'projects', 'masafi');
+      // (the copy above is the only project in this data root)
+      const [copied = ''] = await readdir(join(root.data, 'projects'));
+      const project = join(root.data, 'projects', copied);
       const { origin } = JSON.parse(await readFile(join(project, 'manifest.json'), 'utf8')) as {
         origin: V3;
       };
@@ -739,14 +741,14 @@ real.describe('@realdata Masafi', () => {
           return JSON.stringify(g.main) === JSON.stringify(g.second);
         })
         .toBe(true);
-      await report(testInfo, 'masafi-street-ground', await streetGround(win));
+      await report(testInfo, 'street-ground', await streetGround(win));
       // the same range on both sides: the left legend sets it for both
       const ends = (await legend.locator('.ends').innerText()).replace(/\s+/g, ' ');
       expect(
         (await win.getByTestId('vol-elev').locator('.ends').innerText()).replace(/\s+/g, ' '),
       ).toBe(ends);
       await win.waitForTimeout(1500);
-      await shot(win, 'masafi-elevation');
+      await shot(win, 'stockpile-elevation');
       // cut and fill: the same colours on each side's own terrain
       const elevDrape = await inspect(
         win,
@@ -769,7 +771,7 @@ real.describe('@realdata Masafi', () => {
         .not.toBe(elevDrape);
       await expect.poll(() => drapes(win)).toEqual({ main: ['e1'], second: ['e2'] });
       await win.waitForTimeout(1500);
-      await shot(win, 'masafi-cutfill');
+      await shot(win, 'stockpile-cutfill');
       await surfaceColours(win, 'Photo');
       await expect.poll(() => drapes(win)).toEqual({ main: [], second: [] });
       await expect(legend).toHaveCount(0);
