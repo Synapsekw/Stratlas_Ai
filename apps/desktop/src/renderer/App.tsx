@@ -26,6 +26,7 @@ import { ReviewScreen } from './screens/Review';
 import { SettingsScreen } from './screens/Settings';
 import { WelcomeScreen } from './screens/Welcome';
 import { initAuthor } from './author';
+import { detections, loadDetections } from './detections/store';
 import { roadStore, startRoadSync } from './road/store';
 import { Toasts } from './exports/Toasts';
 import { spaceIsPlayPause } from './keys';
@@ -277,6 +278,10 @@ export function App() {
         const merged = mergeDiskIssues(ws.issues, r.value.issues);
         workspace.setState({ issues: merged.issues });
         if (merged.unsaved) issueSaver.schedule(project.id, merged.issues);
+        // the review keeps its own copy of the passes (the pipeline wrote the issue of each
+        // accepted detection into them): read them again if it has this project loaded, so a
+        // person who started the run from Detections sees the result and never saves over it
+        if (detections.getState().projectId === project.id) void loadDetections(project.id, true);
       });
     });
     // a job that ends is said aloud wherever the person is
