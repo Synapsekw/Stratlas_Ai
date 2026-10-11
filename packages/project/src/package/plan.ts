@@ -44,6 +44,10 @@ const SKIP = [
   /(^|\/)(Thumbs\.db|desktop\.ini|\.DS_Store)$/i,
 ];
 
+/** Where importers put the delivered viewer until 11 Oct 2026, and the grids beside it. */
+const RETIRED_DIR = 'legacy/';
+const RETIRED_GRIDS = 'legacy/data/';
+
 const pathOf = (ref: AssetRef | undefined): string | null =>
   ref && 'path' in ref ? ref.path.replace(/\\/g, '/').replace(/^\.\//, '') : null;
 
@@ -154,12 +158,20 @@ export function planPackage(
       .filter((l) => l.kind !== 'legacy')
       .map((l) => [l.id, { id: l.id, name: l.name, kind: l.kind, bytes: 0, files: 0 }]),
   );
+  // A re-import writes a manifest without the retired layer and leaves the older viewer folder
+  // on disk. No layer names it then, and it is not packed, except the grids a project with
+  // volumes may still read from it.
+  const orphanViewer = retired.length === 0;
+  const hasVolumes = files.some((f) => f.path.replace(/\\/g, '/') === 'volumes.json');
   const members: SourceFile[] = [];
   let baseBytes = 0;
   for (const f of files) {
     const path = f.path.replace(/\\/g, '/');
     if (SKIP.some((re) => re.test(path))) continue;
     const owners = ownersOf(path);
+    if (orphanViewer && owners.length === 0 && path.startsWith(RETIRED_DIR)) {
+      if (!hasVolumes || !path.startsWith(RETIRED_GRIDS)) continue;
+    }
     if (owners.length === 0) baseBytes += f.size;
     if (owners.length === 1) {
       const s = shares.get(owners[0] ?? '');

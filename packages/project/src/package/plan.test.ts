@@ -142,6 +142,24 @@ describe('planPackage', () => {
     expect(paths(planPackage(stockpile, files, ['legacy']))).toContain('legacy/data/model.js');
   });
 
+  it('leaves out a viewer folder no layer names any more', () => {
+    const m = manifest();
+    // After a re-import the manifest has no legacy layer, and the older folder is still on disk.
+    const reimported = { ...m, layers: m.layers.filter((l) => l.kind !== 'legacy') };
+    const p = planPackage(reimported, files, []);
+    expect(paths(p)).not.toContain('legacy/OPEN Review.html');
+    expect(paths(p)).not.toContain('legacy/data/model.js');
+    expect(p.baseBytes).toBe(planPackage(m, files, []).baseBytes);
+  });
+
+  it('keeps legacy/data of a project with volumes when no layer names the viewer', () => {
+    const m = manifest();
+    const reimported = { ...m, layers: m.layers.filter((l) => l.kind !== 'legacy') };
+    const p = planPackage(reimported, [...files, { path: 'volumes.json', size: 10 }], []);
+    expect(paths(p)).toContain('legacy/data/model.js');
+    expect(paths(p)).not.toContain('legacy/OPEN Review.html');
+  });
+
   it('keeps a file under a retired viewer folder that another layer uses', () => {
     const m = manifest();
     const shared = {

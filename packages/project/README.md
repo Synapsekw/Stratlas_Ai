@@ -35,8 +35,8 @@ player (APP-5). Node only.
   foreign-encrypted members and unsafe names; `openPackage` unlocks, validates the header and
   manifest, and names any layer file that is missing.
 
-A retired `legacy` layer of an older project is never packed; the grids of a stockpile project
-travel. A map region can ride along as extra members (`exportPackage({ extra })`, written by the
+A retired `legacy` layer of an older project is never packed, nor is a `legacy/` folder that no
+layer names after a re-import; the grids of a stockpile project travel. A map region can ride along as extra members (`exportPackage({ extra })`, written by the
 desktop app as `packs/<id>.pmtiles` and `packs/<id>.json`, see data-conventions section 8).
 
 - **Extract to edit:** `extractProject` copies an opened package into a new project folder

@@ -46,7 +46,8 @@ export function assembleContext(
   if (!project) {
     return { window, project: null, selection: null, note: 'No project is open.' };
   }
-  const all = layers(state);
+  // A retired viewer of an older project is no layer the assistant can use.
+  const all = layers(state).filter((l) => l.kind !== 'legacy');
   const clip = all.find((l): l is VideoLayer => l.kind === 'video' && l.id === state.activeClip);
   const visible = all.filter((l) => !state.hidden[l.id]);
   const open = state.issues.filter((i) => i.status !== 'closed');
