@@ -162,6 +162,8 @@ The truth surface is a 25 cm grid, coarser than the 1.7 cm GSD, so the "within 3
 
 For the founder to decide; nothing below has been started.
 
+> **Decided, 11 Oct 2026.** The founder accepted the recommendations of this section: one add-on that carries cuBLAS, with a budget of 1,200 MB installed (item 4, option a). It is delivered as a file beside the installer and the pipeline pack and installed in Settings, Processing tools; it is never inside the installer, whose size does not change, and there is no automatic download until a download host is decided. On a computer with an NVIDIA card and no add-on, the wizard and Settings say that it exists and where to install it. The first item of WP1 and its process pool are built (`docs/plans/2026-10-11-photo-dense-pool.md`); the array-module seam of WP1 moved to the package that puts the array code on the card.
+
 1. **Depth maps on the card keep today's CPU matcher.** WP3 becomes "our array code on the card" (rectification, back-projection, merging, pinholes), not "a CuPy backend for the matcher". It is simpler than planned: no band planning for the card, no question of hand-written kernels, about 2 GB of card memory, and results that differ from today's by rounding only.
 2. **Fusion's per-photo check goes on the card in the same package**, not "later". It takes twice as long as depth maps today and gains about 70 times.
 3. **WP1 gains a first item that needs no card:** keep the pixel directions per camera in fusion. Then the process pool, sized by memory (6.2 GB per process at High), with the gain the spike measured (2.3 to 3.6 times), not the 4 to 6 times of finding 1. On a computer with the add-on, several photos at once through the card take the pool's place.
