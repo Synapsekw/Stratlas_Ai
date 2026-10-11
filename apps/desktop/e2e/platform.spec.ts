@@ -206,6 +206,8 @@ test('about lists the version, folders and licences, and refuses an unsigned ins
   win,
   dataRoot,
 }) => {
+  // room for the installer check to run into the app's own limit (below) and still be read
+  test.setTimeout(90_000);
   // The build stamp tells a stale copy apart: on the Projects screen and in About.
   await win.locator('.nav-item', { hasText: 'Projects' }).click();
   await expect(win.getByTestId('build-stamp')).toHaveText(
@@ -224,11 +226,29 @@ test('about lists the version, folders and licences, and refuses an unsigned ins
   const fake = join(dataRoot.base, 'Setup-9.9.9.exe');
   await writeFile(fake, 'MZ not really an installer');
   await answerOpenDialog(app, fake);
-  await win.getByRole('button', { name: 'Choose installer' }).click();
+  const card = win.locator('.opt-card', { hasText: 'Choose installer' });
+  await card.getByRole('button', { name: 'Choose installer' }).click();
+  // The steps apart, so a failure says which one: first the app shows the file it was given
+  // (nothing here when the open dialog answered without a path, or could not be asked).
+  await expect(
+    win.getByTestId('update-file'),
+    'the open dialog answered with the installer',
+  ).toContainText('Setup-9.9.9.exe');
+  // Then it checks the file. On Windows that is a PowerShell process, which the app gives 30 s
+  // (update/verify.ts) and then answers "could not be checked". With 30 s here as well, a
+  // PowerShell that did not answer read as "update-verdict not found": the app's answer came a
+  // moment after this wait ended (seen once in CI, where the whole test takes 5 to 9 s). So wait
+  // past the app's limit: every outcome is then an answer on the page, a verdict or an error
+  // line, and the last assertion shows its text.
+  const verdict = win.getByTestId('update-verdict');
+  const failed = card.locator('.prov-err');
+  await expect(verdict.or(failed).first(), 'the app answered the check').toBeVisible({
+    timeout: 45_000,
+  });
+  await expect(failed, 'the check ran (no error from the call itself)').toHaveCount(0);
   // Installing from a file is Windows only (Authenticode); macOS points to the .dmg instead.
-  await expect(win.getByTestId('update-verdict')).toContainText(
+  await expect(verdict).toContainText(
     process.platform === 'win32' ? /not signed|not valid/ : /open the new \.dmg/,
-    { timeout: 30_000 },
   );
   await expect(win.getByRole('button', { name: 'Install and restart' })).toHaveCount(0);
 
