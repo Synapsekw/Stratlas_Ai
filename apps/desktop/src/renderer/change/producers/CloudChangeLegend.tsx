@@ -4,10 +4,11 @@
  * the same dates read only from C2's `change.surface` set. The cloud and model change producers
  * are registered at start (`registerAppChangeProducers`).
  */
+import type { EngineStage } from '@aio/engine';
 import { ChangeLegend } from '@aio/pointcloud';
 import { t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { bridge, useJobs, useShell } from '../../shell';
 import {
   changeCloudLayers,
@@ -103,10 +104,18 @@ function VolumeChangeRow() {
   );
 }
 
-/** Mounted beside the elevation and class legends of a 3D view. */
-export function CloudChangeLegend() {
+/**
+ * Mounted beside the elevation and class legends of a 3D view. A pane that shows one survey date
+ * names its `view`: the legend shows there while that view draws a change cloud, and reads the
+ * distance under the pointer in that view.
+ */
+export function CloudChangeLegend({ view }: { view?: EngineStage | null | undefined } = {}) {
+  const scene = useCallback(() => view ?? null, [view]);
   return (
-    <ChangeLegend className="elev-legend class-legend overlay-box">
+    <ChangeLegend
+      className="elev-legend class-legend overlay-box"
+      {...(view !== undefined ? { view, scene } : {})}
+    >
       <VolumeChangeRow />
     </ChangeLegend>
   );

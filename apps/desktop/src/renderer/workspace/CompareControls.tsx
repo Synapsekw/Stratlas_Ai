@@ -9,13 +9,15 @@ import {
   type CaptureIndex,
   type StoreScope,
 } from '@aio/workspace';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { openChangesTab, useChangeOverlays } from '../change';
 import { FocusZone } from '../FocusZone';
 import { HelpLink } from '../help/HelpPanel';
 import { useGraphics } from '../graphics';
 import { shell, useShell } from '../shell';
+import { useMeasureDisplayMap } from '../survey/measureDisplay';
 import { compareNotice } from './compare';
+import { ChangeLegends } from './MapSwipe';
 import { isTwin, type SplitModel } from './SplitPanes';
 import { chooseCapture, compareSplit, PER_CAPTURE, type PaneKind, type Side } from './splitModel';
 
@@ -114,7 +116,11 @@ export function CompareButton({ split }: { split: SplitModel }) {
   );
 }
 
-/** The second map of a split comparing two dates: its date's ortho over the basemap. */
+/**
+ * The second map of a split comparing two dates: its date's ortho over the basemap, the saved
+ * survey measurements of the site and of its date (drawn only), and the legend of a change heat
+ * map it shows. Drawing and the measure tools stay with the main map.
+ */
 export function CompareMap({
   side,
   capture,
@@ -138,6 +144,15 @@ export function CompareMap({
   useEffect(() => {
     store.setScope(scope);
   }, [store, scope]);
+  const [map, setMap] = useState<MapController | null>(null);
+  const onMap = useCallback(
+    (c: MapController | null) => {
+      setMap(c);
+      onController(c);
+    },
+    [onController],
+  );
+  useMeasureDisplayMap(map, store);
   return (
     <FocusZone
       kind="map"
@@ -152,10 +167,11 @@ export function CompareMap({
           issues={issues}
           store={store}
           primary={false}
-          onController={onController}
+          onController={onMap}
           cameraWedge={false}
         />
       </div>
+      <ChangeLegends store={store} />
       {corner}
     </FocusZone>
   );

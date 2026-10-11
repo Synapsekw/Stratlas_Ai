@@ -61,6 +61,24 @@ export const COMPARE_GPU_BYTES: Record<GpuTier, number> = {
   ultra: 6 * 2 ** 30,
 };
 
+/**
+ * Whether a texture of `bytes` still fits beside what the 3D views use already (`used`, bytes):
+ * the second view's surface colours ask before they are made (VolumetricStage `budget`).
+ */
+export function drapeAllowed(used: number, bytes: number, tier: GpuTier): boolean {
+  return used + bytes <= COMPARE_GPU_BYTES[tier];
+}
+
+/**
+ * The volumes survey (epoch) of the date a pane shows, for the volumetric overlay of that pane;
+ * null when the pane shows no date of its own or the date has no volumes.
+ */
+export function useCaptureEpoch(capture: string | undefined): string | null {
+  return useVolumetric((s) =>
+    capture ? (s.file?.captures.find((c) => c.captureId === capture)?.epoch ?? null) : null,
+  );
+}
+
 /** The dates the split can show (null with fewer than two dated captures). */
 export function splitDates(index: CaptureIndex | null, tier: GpuTier): SplitDates | undefined {
   if (!index || !canCompare(index)) return undefined;

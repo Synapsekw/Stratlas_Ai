@@ -1,6 +1,14 @@
 import { captureIndex } from '@aio/workspace';
 import { describe, expect, it } from 'vitest';
-import { captureLabel, linkMaps, splitDates, volumeHints, type LinkableMap } from './compare';
+import {
+  captureLabel,
+  COMPARE_GPU_BYTES,
+  drapeAllowed,
+  linkMaps,
+  splitDates,
+  volumeHints,
+  type LinkableMap,
+} from './compare';
 import { fromLinked, placement, toLinked } from './rasterLink';
 
 class FakeMap implements LinkableMap {
@@ -163,5 +171,20 @@ describe('dates of a project for the split', () => {
       epochs: { a: 'e1', b: 'e2' },
       layers: { a: ['t1', 'ortho-2020-12-31'], b: ['t2', 'ortho-2021-01-10'] },
     });
+  });
+});
+
+describe('drapeAllowed', () => {
+  const MB = 2 ** 20;
+
+  it("lets a drape in while two views stay under the tier's graphics memory", () => {
+    expect(drapeAllowed(400 * MB, 64 * MB, 'medium')).toBe(true);
+    expect(drapeAllowed(COMPARE_GPU_BYTES.medium - 64 * MB, 64 * MB, 'medium')).toBe(true);
+  });
+
+  it('turns it down when it would go over, and always on the Low tier', () => {
+    expect(drapeAllowed(COMPARE_GPU_BYTES.medium - 63 * MB, 64 * MB, 'medium')).toBe(false);
+    expect(drapeAllowed(COMPARE_GPU_BYTES.medium - 63 * MB, 64 * MB, 'high')).toBe(true);
+    expect(drapeAllowed(0, 1, 'low')).toBe(false);
   });
 });
