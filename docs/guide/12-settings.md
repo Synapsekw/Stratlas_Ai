@@ -31,7 +31,7 @@ The processing tools build maps and models from your data: photo processing, sur
 
 1. **Settings**, **Processing tools**.
 2. Under **Install or update from file**, click **Choose file** and pick that file. When {product} finds a newer one in Downloads, in the app folder or in `runtime` in the data folder, it offers it instead: click **Install version 0.5.1 found in Downloads**.
-3. Wait for "Processing tools 0.5.1 are installed." **Jobs** shows the new version at once; there is no restart. **Cancel** stops the install and leaves everything as it was. If you came here from **Create maps from photos**, the message has a **Create maps from photos** button that takes you back to it.
+3. Wait for "Processing tools 0.5.2 are installed." **Jobs** shows the new version at once; there is no restart. **Cancel** stops the install and leaves everything as it was. If you came here from **Create maps from photos**, the message has a **Create maps from photos** button that takes you back to it.
 
 **Status** says where you stand:
 
