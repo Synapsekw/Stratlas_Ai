@@ -167,6 +167,8 @@ None expected. The tool catalogue, `AppHooks` and the stores live outside `@aio/
 - A finding without any location and without a photo: it is selected and its card opens; the agent says it has nothing to fly to.
 - The 3D model is still loading: asset bounds are not known yet. The asset tools answer "the model is still loading" instead of "no findings on this asset".
 - A read-only package: every new step is a view change, so all of them work.
+- The Issues filters now stay as they were set while the project is open, on the Issues screen and in the Scene panel alike (before, each list forgot its filters when it was left). They reset when another project opens.
+- A request about an asset typed on a screen without the 3D view: the asset bounds measured when the model loaded are remembered for the project, so the answer does not depend on which screen is showing.
 - The person changes a filter by hand after the agent set it: the person's change stands; the chip goes when they clear it.
 - **Undo** on a step that changed screen puts the screen, the filter, the selection, the camera and the split back as they were.
 - Offline-only switched on mid reply: the reply stops before its next step, as today, wherever the person is.
