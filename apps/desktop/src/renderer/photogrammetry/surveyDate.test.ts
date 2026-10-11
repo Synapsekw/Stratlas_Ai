@@ -218,7 +218,7 @@ describe('captureOfRun', () => {
 describe('dateWarningPlace', () => {
   it("says the decision in the owner's words", () => {
     expect(DATE_NOT_SAVED).toBe(
-      'The survey date could not be saved, so these maps are under no date. Move them to the date in Datasets.',
+      'The survey date could not be saved, so these maps are under no date. If their survey date is in Datasets, move them to it.',
     );
   });
 

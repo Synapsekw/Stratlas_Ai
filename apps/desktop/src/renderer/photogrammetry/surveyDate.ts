@@ -123,7 +123,7 @@ export function pickParams(pick: DatePick): { capture?: string; captureDate?: st
 
 /** Said when a run's maps were built without the survey date wanted, because it could not be saved. */
 export const DATE_NOT_SAVED =
-  'The survey date could not be saved, so these maps are under no date. Move them to the date in Datasets.';
+  'The survey date could not be saved, so these maps are under no date. If their survey date is in Datasets, move them to it.';
 
 /**
  * Where the run panel says `DATE_NOT_SAVED`, once: with the results when the run is ready and its
