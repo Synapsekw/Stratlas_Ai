@@ -515,6 +515,16 @@ describe('framing sites for their chips (padBounds)', () => {
       }
     });
 
+    it('still grows an edge when the view is bound by its height, so the camera stays put', () => {
+      // growing east alone leaves the camera where it was, to a rounding error either way
+      const sites: Bounds = [51.5, 22.6, 56.4, 26.1];
+      const view: ViewSize = { width: 848, height: 680 };
+      const around = margin(sites);
+      expect(roomAround(sites, around, view).right).toBeLessThan(PAD.right);
+      const flown = padBounds(sites, view, PAD, { around });
+      expect(roomAround(sites, flown, view).right).toBeGreaterThan(PAD.right - 0.5);
+    });
+
     it('falls back to that box when a library is too wide for the room to be had', () => {
       for (const width of [80, 100]) {
         const library: Bounds = [0, 10, width, 50];

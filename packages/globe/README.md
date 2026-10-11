@@ -81,8 +81,11 @@ more kind of plan entry and one more case in the view.
   flight ends as much higher as the highest of its sites stands on the terrain, so the chips
   land where the framing put them.
 - `flyToSite` aims at the ground the site's chip stands on, so the chip lands in the middle of
-  the view with terrain as without. (From far out that ground is known from coarse tiles only,
-  and the chip may land a little off until the next flight.)
+  the view with terrain as without.
+- Both flights take that ground as it is known at the click. From far out it is known from
+  coarse tiles only (and reads as 0 outside a terrain pack), so on real relief a chip may land
+  off its place, and the chips of sites a short walk apart, framed from a hundred metres up,
+  may land partly out of view; a second click, with the finer tiles in, frames them right.
 - Three HTML elements the controller moves after each frame (`bindTag`): the rings of the
   selected site (no label: its chip and its card say the name), the label under the pointer or
   of the site lit from the host's list, and the `card` slot. The host fills the slot through

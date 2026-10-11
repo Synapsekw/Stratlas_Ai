@@ -225,8 +225,9 @@ export function padBounds(
   for (let round = 0; round < 64; round++) {
     const flight = flightTo(box, view, tanX, tanY);
     // Once the whole Earth is in view a wider box brings the camera nearer again (its corners
-    // go round the far side): the box before it showed the most there is to show.
-    if (flight.distance < shown.distance || box[2] - box[0] >= 180)
+    // go round the far side): the box before it showed the most there is to show. Nearer by
+    // kilometres, that is: an edge grown sideways leaves the camera put, give or take rounding.
+    if (flight.distance < shown.distance - 0.001 || box[2] - box[0] >= 180)
       return around ? plain : shown.box;
     shown = { box, distance: flight.distance };
     const drawn = edge.map(flight.at);
