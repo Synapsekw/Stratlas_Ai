@@ -627,10 +627,57 @@ class ColmapEngine:
         }
         return self._run(job, "features", payload, progress, "features")
 
+    #: The array library of the matcher on the card. Tests set ``numpy`` to run that path
+    #: without a graphics card; in production it is CuPy from the GPU add-on.
+    match_backend: str | None = None
+
+    def _card(self, job: EngineJob) -> dict[str, Any] | None:
+        """The graphics card for matching: the GPU add-on the app named, when its card passes
+        the test (asked in a process of its own). None means COLMAP's matcher on the CPU."""
+        if self.match_backend:
+            return {"backend": self.match_backend}
+        from .. import accel
+
+        addon = os.environ.get(accel.ADDON_ENV)
+        if not addon:
+            return None
+        state = accel.check(Path(addon))
+        if state.get("state") != "ready":
+            job.log(f"Matching uses the CPU. {state.get('reason') or 'The graphics card is not ready.'}")
+            return None
+        return {"addon": addon, "version": state.get("version"), "gpu": state.get("gpu")}
+
     def match(self, job: EngineJob, pairs: list[tuple[str, str]], progress: Progress) -> dict[str, Any]:
         pairs_file = job.work / "pairs.txt"
         pairs_file.write_text("".join(f"{engine_alias(a)} {engine_alias(b)}\n" for a, b in pairs), "utf-8")
-        return self._run(job, "match", {**self._base(job), "pairs": str(pairs_file)}, progress, "match")
+        base = {**self._base(job), "pairs": str(pairs_file)}
+        card = self._card(job)
+        if card:
+            # the card compares the descriptors, COLMAP verifies the matches as it always does
+            try:
+                made = self._run(
+                    job, "match-gpu", {**base, **card}, lambda f, m=None: progress(0.85 * f, m), "match-gpu"
+                )
+                job.log(f"Matched {made['pairs']} pairs on {made['gpu']} in {made['seconds']:.0f} s.")
+                res = self._run(job, "verify", base, lambda f, m=None: progress(0.85 + 0.15 * f, m), "verify")
+                job.memory_peak["match"] = max(
+                    job.memory_peak.get("match-gpu", 0), job.memory_peak.get("verify", 0)
+                )
+                return {
+                    **res,
+                    "engine": "sift-card",
+                    "device": "gpu",
+                    **({"accelerator": card["version"]} if card.get("version") else {}),
+                }
+            except Cancelled:
+                raise
+            except JobError as e:
+                from . import gpu_match
+
+                job.log(f"The graphics card could not be used for matching ({e}); matching on the CPU.")
+                # what the card wrote is dropped, so COLMAP matches and verifies every pair itself
+                gpu_match.clear_matches(job.database)
+        return {**self._run(job, "match", base, progress, "match"), "engine": "sift-colmap", "device": "cpu"}
 
     def map(self, job: EngineJob, mapper: str, progress: Progress) -> dict[str, Any]:
         out = job.work / f"sfm-{mapper}"
@@ -867,6 +914,35 @@ def _op_match(pc, req: dict[str, Any], out: _Out) -> dict[str, Any]:
     return {"pairs": len(lines), "matched": int(matched), "verified": int(verified)}
 
 
+def _op_verify(pc, req: dict[str, Any], out: _Out) -> dict[str, Any]:
+    """COLMAP's geometric verification of matches already in the database (the card's): the
+    second half of what ``_op_match`` does in one call."""
+    db_path = req["database"]
+    lines = [ln for ln in Path(req["pairs"]).read_text("utf-8").splitlines() if ln.strip()]
+    vo = pc.TwoViewGeometryOptions()
+    chunk = max(200, len(lines) // 20)
+    work = Path(req["pairs"]).parent
+    db_work = Path(db_path).parent
+    with pc.Database.open(db_path) as db:
+        alias_names(db, db_work)  # the pair list names photos by their aliases
+    try:
+        for k in range(0, len(lines), chunk):
+            part = work / "pairs.part.txt"
+            part.write_text("\n".join(lines[k : k + chunk]) + "\n", "utf-8")
+            pc.verify_matches(db_path, str(part), options=vo)
+            out.send(
+                progress=min(1.0, (k + chunk) / max(len(lines), 1)),
+                message=f"{min(k + chunk, len(lines))} of {len(lines)} pairs checked",
+            )
+    finally:
+        with pc.Database.open(db_path) as db:
+            restore_names(db, db_work)
+    with pc.Database.open(db_path) as db:
+        matched = db.num_matched_image_pairs()
+        verified = db.num_verified_image_pairs()
+    return {"pairs": len(lines), "matched": int(matched), "verified": int(verified)}
+
+
 def _export(pc, rec, path: Path) -> dict[str, Any]:
     """A pycolmap reconstruction as ``model.npz`` (``photo/model.py``)."""
     import numpy as np
@@ -973,10 +1049,25 @@ def worker_main(argv: list[str]) -> int:
                 time.sleep(0.1)
             out.send(result={"slept": True})
             return 0
+        if req.get("op") == "match-gpu":
+            # before pycolmap is imported, and without it: NVIDIA's libraries and COLMAP's never
+            # share a process. Any failure is a JobError, which sends the engine back to the CPU.
+            from . import gpu_match
+
+            try:
+                xp = None
+                if req.get("backend") == "numpy":
+                    import numpy as xp
+                result = gpu_match.run(req, out.send, xp)
+            except Exception as e:
+                raise JobError(f"{type(e).__name__}: {str(e)[:300]}") from e
+            out.send(memoryPeakBytes=peak_memory_bytes())
+            out.send(result=result)
+            return 0
         pc = _import_pycolmap(out)
         if hasattr(pc, "set_random_seed"):
             pc.set_random_seed(int(req.get("seed", 0)))
-        op = {"features": _op_features, "match": _op_match, "map": _op_map}[req["op"]]
+        op = {"features": _op_features, "match": _op_match, "verify": _op_verify, "map": _op_map}[req["op"]]
         result = op(pc, req, out)
         out.send(memoryPeakBytes=peak_memory_bytes())
         out.send(result=result)
