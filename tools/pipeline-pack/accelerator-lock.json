@@ -1,0 +1,53 @@
+{
+  "$comment": "The GPU add-on of the pipeline pack: ready-made wheels from PyPI, pinned by URL and SHA-256 (tools/pipeline-pack/accelerator.mjs). Nothing is compiled. Raise \"version\" with every change; \"packRange\" names the pipeline packs it fits (their Python and numpy).",
+  "schema": "accelerator-lock/1",
+  "kind": "gpu-cuda",
+  "version": "0.1.0",
+  "packRange": ">=0.5.0 <0.6.0",
+  "python": "3.13",
+  "runtime": { "cuda": "12.9", "minDriver": "528.33" },
+  "platforms": {
+    "win32-x64": [
+      {
+        "name": "cupy-cuda12x",
+        "version": "14.2.0",
+        "license": "MIT",
+        "url": "https://files.pythonhosted.org/packages/29/94/2dfb330afc6756ab9a8d16e955c0458e82e769930eab01e6c491e411363d/cupy_cuda12x-14.2.0-cp313-cp313-win_amd64.whl",
+        "sha256": "dcea9f2b1887ac631a9275a61577e09d1eea26bf5f95491501c3b7528cebc592",
+        "size": 98760068
+      },
+      {
+        "name": "cuda-pathfinder",
+        "version": "1.8.3",
+        "license": "Apache-2.0",
+        "url": "https://files.pythonhosted.org/packages/b9/fb/f8e1890428f9f590b4beebd63b068aac1ce32a3331510c847b9f9a78f261/cuda_pathfinder-1.8.3-py3-none-any.whl",
+        "sha256": "e29e59829c297a7a5233bd9cc71094fc5bddbd076951482670178f9eade39b1f",
+        "size": 62561
+      },
+      {
+        "name": "nvidia-cuda-runtime-cu12",
+        "version": "12.9.79",
+        "license": "LicenseRef-NVIDIA-Proprietary",
+        "url": "https://files.pythonhosted.org/packages/59/df/e7c3a360be4f7b93cee39271b792669baeb3846c58a4df6dfcf187a7ffab/nvidia_cuda_runtime_cu12-12.9.79-py3-none-win_amd64.whl",
+        "sha256": "8e018af8fa02363876860388bd10ccb89eb9ab8fb0aa749aaf58430a9f7c4891",
+        "size": 3591604
+      },
+      {
+        "name": "nvidia-cuda-nvrtc-cu12",
+        "version": "12.9.86",
+        "license": "LicenseRef-NVIDIA-Proprietary",
+        "url": "https://files.pythonhosted.org/packages/52/de/823919be3b9d0ccbf1f784035423c5f18f4267fb0123558d58b813c6ec86/nvidia_cuda_nvrtc_cu12-12.9.86-py3-none-win_amd64.whl",
+        "sha256": "72972ebdcf504d69462d3bcd67e7b81edd25d0fb85a2c46d3ea3517666636349",
+        "size": 76408187
+      },
+      {
+        "name": "nvidia-cublas-cu12",
+        "version": "12.9.2.10",
+        "license": "LicenseRef-NVIDIA-Proprietary",
+        "url": "https://files.pythonhosted.org/packages/20/e2/fc9a0e985249d873150276d5afb02e39a66817fedbf1a385724393e505ed/nvidia_cublas_cu12-12.9.2.10-py3-none-win_amd64.whl",
+        "sha256": "623f43027d40d44ceadf0043f002bd25cf353e8f13ce90b9a87057019f560661",
+        "size": 553162896
+      }
+    ]
+  }
+}

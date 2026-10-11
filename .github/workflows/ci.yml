@@ -400,6 +400,7 @@ jobs:
       pull-requests: read
     outputs:
       pack: ${{ steps.filter.outputs.pack }}
+      addon: ${{ steps.filter.outputs.addon }}
     steps:
       - uses: actions/checkout@v5
       - uses: dorny/paths-filter@v3
@@ -412,6 +413,10 @@ jobs:
               - 'python/uv.lock'
               - 'python/src/aio_pipelines/photo/**'
               - '.github/workflows/ci.yml'
+            addon:
+              - 'tools/pipeline-pack/accelerator*'
+              - 'python/src/aio_pipelines/accel.py'
+              - 'tools/release/budgets.mjs'
 
   # The pipeline pack as the nightly and the release build it, with its built-in smoke test (the
   # photogrammetry engines each in the process the product runs them in). Only when the pack's
@@ -453,6 +458,54 @@ jobs:
         env:
           QUADRION_CONDA_ROOT: ${{ runner.temp }}/conda
         run: node tools/pipeline-pack/build.mjs --out "$RUNNER_TEMP/runtime"
+
+  # The optional GPU add-on beside the pack: built from its pinned wheels (nothing is compiled, no
+  # graphics card is needed), held to its own size budget, and loaded once so that a computer
+  # without an NVIDIA card gets an answer in words. Only when its build, its lock or its loader
+  # change. The card itself is tested by hand on a workstation (plan "GPU acceleration").
+  addon:
+    name: GPU add-on (windows)
+    needs: [gate, changes]
+    if: >-
+      needs.gate.outputs.run == 'true' &&
+      (needs.changes.outputs.addon == 'true' || github.event_name == 'workflow_dispatch')
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+      - name: Cache the add-on's wheels
+        uses: actions/cache@v4
+        with:
+          path: addon-cache
+          key: gpu-addon-${{ hashFiles('tools/pipeline-pack/accelerator-lock.json') }}
+      - name: The pipelines' Python (compiles the add-on, runs its loader)
+        working-directory: python
+        run: uv sync --frozen
+      - name: Build the GPU add-on and its archive
+        run: >-
+          node tools/pipeline-pack/accelerator.mjs --out runtime --cache addon-cache
+          --python python/.venv/Scripts/python.exe --archive .
+      - name: Size budget
+        run: >-
+          node tools/release/budgets.mjs --addon "$(ls -d runtime/pipeline-addon-cuda-* | head -n 1)"
+          --addon-archive "$(ls pipeline-addon-cuda-*.tar.gz)"
+      - name: The loader answers in words without an NVIDIA card
+        working-directory: python
+        run: |
+          addon="$(ls -d ../runtime/pipeline-addon-cuda-* | head -n 1)"
+          uv run --frozen python -m aio_pipelines.accel --selftest --addon "$addon" | tee selftest.json
+          node -e "const s = JSON.parse(require('node:fs').readFileSync('selftest.json', 'utf8').trim().split('\n').pop()); if (s.state !== 'unsupported-gpu') { console.error('expected unsupported-gpu on a runner without a card'); process.exit(1); }"
 
   licenses:
     name: licence check

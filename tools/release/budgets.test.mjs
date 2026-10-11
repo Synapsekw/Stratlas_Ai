@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
+  addonBudgetProblems,
   BUDGETS,
   budgetScale,
   folderBytes,
@@ -73,6 +74,16 @@ describe('size budgets (M10 decision 6)', () => {
     expect(packBudgetProblems({ unpackedBytes: 1.2e9, compressedBytes: 460e6 })).toEqual([
       'pack is 1200.0 MB unpacked, the budget is 1150.0 MB',
       'pack archive is 460.0 MB, the budget is 450.0 MB',
+    ]);
+  });
+
+  it('holds the GPU add-on to its own budget, apart from the pack', () => {
+    expect(BUDGETS.addon).toEqual({ unpackedBytes: 1_200_000_000, compressedBytes: 800_000_000 });
+    expect(addonBudgetProblems({ unpackedBytes: 1123e6, compressedBytes: 729e6 })).toEqual([]);
+    expect(addonBudgetProblems({ unpackedBytes: 1123e6 })).toEqual([]);
+    expect(addonBudgetProblems({ unpackedBytes: 1.25e9, compressedBytes: 810e6 })).toEqual([
+      'GPU add-on is 1250.0 MB unpacked, the budget is 1200.0 MB',
+      'GPU add-on archive is 810.0 MB, the budget is 800.0 MB',
     ]);
   });
 
