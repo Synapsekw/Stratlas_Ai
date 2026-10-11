@@ -20,6 +20,12 @@ export interface PendingProducts {
   captureDate?: string;
 }
 
+/** A survey date that could not be saved for a run's maps: its day, and the run's project folder. */
+export interface DateWarning {
+  date: string;
+  root: string;
+}
+
 export interface PhotoUi {
   view: PhotoView | null;
   pending: Record<string, PendingProducts>;
@@ -29,8 +35,12 @@ export interface PhotoUi {
   dates: Record<string, { capture?: string; captureDate?: string }>;
   /** Why the maps of a run did not start, until a start works (the run panel says it). */
   startErrors: Record<string, string>;
-  /** Runs whose maps were started without the survey date wanted, because it could not be saved. */
-  dateWarnings: Record<string, true>;
+  /**
+   * Runs whose maps were started without the survey date wanted, because it could not be saved:
+   * the day (`YYYY-MM-DD`) that failed and the folder of the project the run belongs to, so
+   * filing them under it later acts on that project only.
+   */
+  dateWarnings: Record<string, DateWarning>;
   /** Bumped after a write, so open panels read the run again. */
   version: number;
   openWizard: () => void;
@@ -41,7 +51,7 @@ export interface PhotoUi {
   setStopped: (run: string, s: 'paused' | 'cancelled' | null) => void;
   setDate: (run: string, d: { capture?: string; captureDate?: string } | null) => void;
   setStartError: (run: string, error: string | null) => void;
-  setDateWarning: (run: string, on: boolean) => void;
+  setDateWarning: (run: string, warning: DateWarning | null) => void;
   bump: () => void;
 }
 
@@ -95,12 +105,12 @@ export const photoUi = createStore<PhotoUi>()((set) => ({
       return { startErrors };
     });
   },
-  setDateWarning: (run, on) => {
+  setDateWarning: (run, warning) => {
     set((s) => {
       const dateWarnings = Object.fromEntries(
         Object.entries(s.dateWarnings).filter(([k]) => k !== run),
       );
-      if (on) dateWarnings[run] = true;
+      if (warning) dateWarnings[run] = warning;
       return { dateWarnings };
     });
   },

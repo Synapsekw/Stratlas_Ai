@@ -9,14 +9,21 @@ import { useWorkspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
 import { isActive } from '../jobs';
 import { bridge, shell, useJobs } from '../shell';
-import { cancelRun, pauseJob, resumeJob, startProducts } from './actions';
+import { cancelRun, fileUnderDate, pauseJob, resumeJob, startProducts } from './actions';
 import { AccuracyReportView } from './AccuracyReport';
 import { defaultProducts, presetLabel } from './estimate';
 import { GcpPanel } from './GcpTable';
 import { RUN_STATUS, runView, type PhaseState } from './phases';
 import { RefinedPoses } from './RefinedPoses';
-import { captureOfRun, DATE_NOT_SAVED, dateWarningPlace } from './surveyDate';
-import { jobsOfRun, photoUi, STAGE_WORDS, usePhotoUi, type RunTab } from './store';
+import { captureOfRun, dateWarningPlace, dateWarningWords } from './surveyDate';
+import {
+  jobsOfRun,
+  photoUi,
+  STAGE_WORDS,
+  usePhotoUi,
+  type DateWarning,
+  type RunTab,
+} from './store';
 
 const TABS: readonly { id: RunTab; label: string }[] = [
   { id: 'progress', label: 'Progress' },
@@ -153,9 +160,14 @@ function Progress({ run, data, jobs }: { run: string; data: PhotoRun | null; job
   const stopped = usePhotoUi((s) => s.stopped[run]);
   const kept = usePhotoUi((s) => s.dates[run]);
   const startError = usePhotoUi((s) => s.startErrors[run]);
-  const dateWarned = usePhotoUi((s) => s.dateWarnings[run] === true);
+  const dateWarning = usePhotoUi((s) => s.dateWarnings[run]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [filing, setFiling] = useState(false);
+  const [fileFailed, setFileFailed] = useState<{
+    on: DateWarning | undefined;
+    reason: string;
+  } | null>(null);
   const act = async (p: Promise<string | null>) => {
     setBusy(true);
     setError(await p);
@@ -194,12 +206,52 @@ function Progress({ run, data, jobs }: { run: string; data: PhotoRun | null; job
   const where = dated
     ? `Added to ${project.manifest.name} under ${formatDate(dated.date)} as new layers:`
     : `Added to ${project.manifest.name} as new layers, under no survey date:`;
-  const warnAt = dateWarningPlace({ warned: dateWarned, dated: Boolean(dated), ready });
-  const dateWarning = (
-    <p className="notice warn small" role="status" data-testid="photo-date-warning">
-      <Icon name="warn" size={14} />
-      <span>{DATE_NOT_SAVED}</span>
-    </p>
+  const warnAt = dateWarningPlace({ warned: Boolean(dateWarning), dated: Boolean(dated), ready });
+  const words = dateWarningWords(dateWarning?.date, warnAt === 'results', formatDate);
+  // the reason a try failed belongs to the warning it was made on, not to a later one
+  const fileReason = fileFailed && fileFailed.on === dateWarning ? fileFailed.reason : null;
+  const fileUnder = () => {
+    setFiling(true);
+    setFileFailed(null);
+    void fileUnderDate(run)
+      .then((reason) => {
+        if (reason) setFileFailed({ on: dateWarning, reason });
+      })
+      .catch((e: unknown) => {
+        setFileFailed({ on: dateWarning, reason: e instanceof Error ? e.message : String(e) });
+      })
+      .finally(() => {
+        setFiling(false);
+      });
+  };
+  const dateWarningNotice = (
+    <>
+      <p className="notice warn small ph-date-warn" role="status" data-testid="photo-date-warning">
+        <Icon name="warn" size={14} />
+        <span>{words.sentence}</span>
+        {words.button && (
+          <button
+            type="button"
+            className="btn sm"
+            data-testid="photo-date-file"
+            disabled={filing}
+            onClick={fileUnder}
+          >
+            {words.button}
+          </button>
+        )}
+      </p>
+      {fileReason && (
+        <p
+          className="notice danger small ph-date-err"
+          role="alert"
+          data-testid="photo-date-file-error"
+        >
+          <Icon name="warn" size={14} />
+          <span>{fileReason}</span>
+        </p>
+      )}
+    </>
   );
   const show = (mode: 'map' | '3d') => {
     photoUi.getState().close();
@@ -220,7 +272,7 @@ function Progress({ run, data, jobs }: { run: string; data: PhotoRun | null; job
           <p className="small" data-testid="photo-results-where">
             {where}
           </p>
-          {warnAt === 'results' && dateWarning}
+          {warnAt === 'results' && dateWarningNotice}
           <ul>
             {layerNames.map((n) => (
               <li key={n}>{n}</li>
@@ -384,7 +436,7 @@ function Progress({ run, data, jobs }: { run: string; data: PhotoRun | null; job
         </section>
       )}
 
-      {warnAt === 'progress' && dateWarning}
+      {warnAt === 'progress' && dateWarningNotice}
 
       {startError && (
         <p className="notice danger small" role="alert" data-testid="photo-start-error">

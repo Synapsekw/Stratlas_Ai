@@ -3,9 +3,11 @@ import {
   captureOfRun,
   choiceOf,
   DATE_NOT_SAVED,
+  DATE_NOT_SAVED_SHORT,
   dateOptions,
   dateSentence,
   dateWarningPlace,
+  dateWarningWords,
   daysNote,
   daysOfItems,
   pickFromChoice,
@@ -215,13 +217,40 @@ describe('captureOfRun', () => {
   });
 });
 
-describe('dateWarningPlace', () => {
-  it("says the decision in the owner's words", () => {
+describe('dateWarningWords', () => {
+  it('pins both sentences word for word', () => {
     expect(DATE_NOT_SAVED).toBe(
       'The survey date could not be saved, so these maps are under no date. If their survey date is in Datasets, move them to it.',
     );
+    expect(DATE_NOT_SAVED_SHORT).toBe(
+      'The survey date could not be saved, so these maps are under no date.',
+    );
   });
 
+  it('with a date to offer and layers to file: the short sentence and a button naming the day', () => {
+    expect(dateWarningWords('2026-03-14', true, show)).toEqual({
+      sentence: DATE_NOT_SAVED_SHORT,
+      button: 'File them under <2026-03-14>',
+    });
+  });
+
+  it('with a date but the maps still being built: the short sentence, no button yet', () => {
+    expect(dateWarningWords('2026-03-14', false, show)).toEqual({
+      sentence: DATE_NOT_SAVED_SHORT,
+      button: null,
+    });
+  });
+
+  it('with no date to offer: the full sentence and no button', () => {
+    expect(dateWarningWords(undefined, true, show)).toEqual({
+      sentence: DATE_NOT_SAVED,
+      button: null,
+    });
+    expect(dateWarningWords('', false, show)).toEqual({ sentence: DATE_NOT_SAVED, button: null });
+  });
+});
+
+describe('dateWarningPlace', () => {
   it('is on the results when the run is ready and its layers are under no date', () => {
     expect(dateWarningPlace({ warned: true, dated: false, ready: true })).toBe('results');
   });

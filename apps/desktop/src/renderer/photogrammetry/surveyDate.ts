@@ -125,6 +125,27 @@ export function pickParams(pick: DatePick): { capture?: string; captureDate?: st
 export const DATE_NOT_SAVED =
   'The survey date could not be saved, so these maps are under no date. If their survey date is in Datasets, move them to it.';
 
+/** The same, when the warning has a button that files the maps under the date: it does the rest. */
+export const DATE_NOT_SAVED_SHORT =
+  'The survey date could not be saved, so these maps are under no date.';
+
+/**
+ * The words of the warning. With a date to offer, the short sentence; the button, "File them under
+ * <date>", comes once the run's layers exist (`canFile`) because there is nothing to file before.
+ * With no date to offer, the full sentence that points at Datasets, and no button.
+ */
+export function dateWarningWords(
+  date: string | undefined,
+  canFile: boolean,
+  show: (iso: string) => string,
+): { sentence: string; button: string | null } {
+  if (!date) return { sentence: DATE_NOT_SAVED, button: null };
+  return {
+    sentence: DATE_NOT_SAVED_SHORT,
+    button: canFile ? `File them under ${show(date)}` : null,
+  };
+}
+
 /**
  * Where the run panel says `DATE_NOT_SAVED`, once: with the results when the run is ready and its
  * layers are under no date, on the progress while the maps are still being built, else nowhere
