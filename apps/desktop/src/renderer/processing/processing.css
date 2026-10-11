@@ -77,12 +77,15 @@
   font-size: 12px;
 }
 
-/* ---------- processing: the drawer ---------- */
+/* ---------- processing: the drawer ----------
+ * Floating tool panels (model builder, alignment, survey bars: 60, 61) < this drawer (62) < toasts
+ * and the user guide (63) < the align bar, drone menu and import panel (70, 80) < modal sheets,
+ * which include the photo wizard and a run's panel (90) < command palette (100) < dialogs (110). */
 .proc-drawer {
   position: fixed;
   inset-block: var(--tb-h) 0;
   inset-inline-end: 0;
-  z-index: 50;
+  z-index: 62;
   display: flex;
   flex-direction: column;
   width: min(400px, calc(100vw - 56px));

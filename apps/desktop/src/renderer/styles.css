@@ -3744,10 +3744,6 @@ svg.flip {
   padding: 0 8px 16px;
   border-top: 1px solid var(--line-soft);
 }
-.jl-h {
-  padding: 12px 8px 6px;
-  color: var(--fg-3);
-}
 .job-row {
   display: grid;
   gap: 6px;
@@ -3879,9 +3875,6 @@ svg.flip {
   min-height: 0;
   padding: 18px 24px 20px;
   overflow: hidden;
-}
-.job-detail.empty {
-  justify-content: center;
 }
 .jd-h {
   display: flex;
