@@ -71,19 +71,33 @@ async function captureOf(p: PendingProducts): Promise<string | null> {
   }
 }
 
-export async function startProducts(run: string, p: PendingProducts): Promise<string | null> {
+async function requestProducts(run: string, p: PendingProducts): Promise<string | null> {
   if (!p.products.length) return 'Choose at least one product.';
-  const capture = await captureOf(p);
-  const err = await start('photo.products', p.root, {
-    run,
-    products: p.products,
-    preset: p.preset,
-    ...(capture ? { capture } : {}),
-  });
-  if (!err) {
-    photoUi.getState().setPending(run, null);
-    photoUi.getState().setDate(run, null);
+  try {
+    const capture = await captureOf(p);
+    return await start('photo.products', p.root, {
+      run,
+      products: p.products,
+      preset: p.preset,
+      ...(capture ? { capture } : {}),
+    });
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
   }
+}
+
+/**
+ * Build the maps of a run (`photo.products`). Started or refused, the maps the dialog queued no
+ * longer wait: a start that happens by itself when the photos are matched has nobody to answer
+ * to, so the reason of a refusal is kept for the run panel, which then offers **Create maps**
+ * again. The run's survey date stays until a start works, so that next try files the maps under it.
+ */
+export async function startProducts(run: string, p: PendingProducts): Promise<string | null> {
+  const err = await requestProducts(run, p);
+  const ui = photoUi.getState();
+  ui.setPending(run, null);
+  ui.setStartError(run, err);
+  if (!err) ui.setDate(run, null);
   return err;
 }
 

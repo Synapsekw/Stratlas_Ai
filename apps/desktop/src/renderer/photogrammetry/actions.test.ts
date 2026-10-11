@@ -114,3 +114,62 @@ describe('startProducts and the survey date', () => {
     expect(paramsOfStart()).not.toHaveProperty('capture');
   });
 });
+
+describe('startProducts when the start is refused', () => {
+  const refused = { ok: true, value: { ok: false, error: 'No pipeline pack is installed.' } };
+  const queued = { ...base, products: ['ortho'], capture: 'c2' } as const;
+
+  it('drops the queued maps and keeps the reason and the survey date for the run', async () => {
+    call.mockResolvedValue(refused);
+    const ui = photoUi.getState();
+    ui.setDate('q1', { capture: 'c2' });
+    ui.setPending('q1', { ...queued, products: ['ortho'] });
+    const err = await startProducts('q1', { ...queued, products: ['ortho'] });
+    expect(err).toBe('No pipeline pack is installed.');
+    const after = photoUi.getState();
+    // nothing starts by itself any more: the run panel offers Create maps again
+    expect(after.pending.q1).toBeUndefined();
+    expect(after.startErrors.q1).toBe('No pipeline pack is installed.');
+    // the next try still files the maps under the photos' survey date
+    expect(after.dates.q1).toEqual({ capture: 'c2' });
+  });
+
+  it('keeps the reason when main cannot be reached at all', async () => {
+    call.mockResolvedValue({ ok: false, error: 'The app is busy. Try again.' });
+    photoUi.getState().setPending('q2', { ...queued, products: ['ortho'] });
+    expect(await startProducts('q2', { ...queued, products: ['ortho'] })).toBe(
+      'The app is busy. Try again.',
+    );
+    expect(photoUi.getState().pending.q2).toBeUndefined();
+    expect(photoUi.getState().startErrors.q2).toBe('The app is busy. Try again.');
+  });
+
+  it('answers a reason instead of throwing when the call itself fails', async () => {
+    call.mockRejectedValue(new Error('channel closed'));
+    photoUi.getState().setPending('q3', { ...queued, products: ['ortho'] });
+    expect(await startProducts('q3', { ...queued, products: ['ortho'] })).toBe('channel closed');
+    expect(photoUi.getState().pending.q3).toBeUndefined();
+    expect(photoUi.getState().startErrors.q3).toBe('channel closed');
+  });
+
+  it('a queue without outputs is dropped with its reason too', async () => {
+    photoUi.getState().setPending('q4', { ...base, products: [] });
+    expect(await startProducts('q4', { ...base, products: [] })).toBe(
+      'Choose at least one product.',
+    );
+    expect(call).not.toHaveBeenCalled();
+    expect(photoUi.getState().pending.q4).toBeUndefined();
+    expect(photoUi.getState().startErrors.q4).toBe('Choose at least one product.');
+  });
+
+  it('the reason goes when the maps do start', async () => {
+    call.mockResolvedValueOnce(refused).mockResolvedValue(started);
+    photoUi.getState().setDate('q5', { capture: 'c2' });
+    await startProducts('q5', { ...queued, products: ['ortho'] });
+    expect(photoUi.getState().startErrors.q5).toBeDefined();
+    expect(await startProducts('q5', { ...queued, products: ['ortho'] })).toBeNull();
+    expect(photoUi.getState().startErrors.q5).toBeUndefined();
+    expect(paramsOfStart()).toMatchObject({ run: 'q5', capture: 'c2' });
+    expect(photoUi.getState().dates.q5).toBeUndefined();
+  });
+});

@@ -27,7 +27,8 @@ export function PhotoProcessLayer() {
     photoUi.getState().close();
   }, [projectId]);
 
-  // queued products start when their alignment finishes; open run panels read their run again
+  // queued products start when their alignment finishes; open run panels read their run again.
+  // Nobody waits on that start: a refusal is kept for the run panel (`startProducts`).
   useEffect(() => {
     const since = new Date().toISOString();
     return jobs.subscribe((next, prev) => {
