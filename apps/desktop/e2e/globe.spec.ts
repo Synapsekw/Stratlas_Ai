@@ -10,7 +10,7 @@
  * are a dialog behind the **Map** button: the tests reach a site and a look the way a person does.
  */
 import { utmToWgs84 } from '@aio/geo';
-import { enuToEcefMatrix } from '@aio/globe';
+import { CHIP, enuToEcefMatrix } from '@aio/globe';
 import type { GlobeStyle } from '@aio/globe';
 import type { GlobeInspection } from '@aio/globe/view';
 import {
@@ -318,6 +318,16 @@ async function putPinAt(win: Page, projectId: string, fx: number, fy: number) {
     [projectId, fx, fy] as const,
   );
   await frames(win);
+  // the slide must have arrived: a pin left short of its place would test nothing of that place
+  const canvas = await boxOf(win.getByTestId('globe-canvas'), 'the Globe');
+  const at = await pinOf(win, projectId);
+  const off = at
+    ? Math.hypot(at[0] - fx * canvas.width, at[1] - fy * canvas.height)
+    : Number.POSITIVE_INFINITY;
+  expect(
+    off,
+    `the pin of ${projectId} was slid to ${String(fx)}, ${String(fy)} of the Globe and stands ${at ? `at ${at[0].toFixed(0)}, ${at[1].toFixed(0)}` : 'nowhere'} of ${canvas.width.toFixed(0)} x ${canvas.height.toFixed(0)}`,
+  ).toBeLessThan(3);
 }
 
 interface Box {
@@ -546,6 +556,107 @@ async function pointAt(win: Page, x: number, y: number) {
   await win.mouse.move(x, y);
 }
 
+/** A chip drawn on the Globe: the sites it stands for (one, or those it gathered) and its box. */
+interface DrawnChip {
+  sites: string[];
+  box: Box;
+}
+
+/** Every chip drawn now, a site's own or a gathered one, each with its box in the window. */
+async function chipsDrawn(win: Page): Promise<DrawnChip[]> {
+  const canvas = await boxOf(win.getByTestId('globe-canvas'), 'the Globe');
+  const chips = (await inspect(win))?.chips ?? [];
+  return chips.map(({ sites, x, y, width, height }) => ({
+    sites,
+    box: { x: canvas.x + x, y: canvas.y + y, width, height },
+  }));
+}
+
+/** The centre of a chip's dot, and the middle of the chip, in the window. */
+const dotOf = ({ box }: DrawnChip): [number, number] => [box.x + CHIP.dotX, box.y + box.height / 2];
+const middleOf = ({ box }: DrawnChip): [number, number] => [
+  box.x + box.width / 2,
+  box.y + box.height / 2,
+];
+
+/**
+ * The room the Globe's own controls take at each edge (the screen's `CARD_INSETS`): the row of
+ * the field and the Map button, the view buttons, the credits.
+ */
+const CONTROLS = { top: 56, right: 56, bottom: 44, left: 12 };
+
+/**
+ * These chips are whole inside the Globe and clear of its controls: inside the Globe's box less
+ * the room the controls take, and under none of them.
+ */
+async function expectClearOfControls(win: Page, chips: readonly DrawnChip[]) {
+  const globe = await globeBox(win);
+  const free: Box = {
+    x: globe.x + CONTROLS.left,
+    y: globe.y + CONTROLS.top,
+    width: globe.width - CONTROLS.left - CONTROLS.right,
+    height: globe.height - CONTROLS.top - CONTROLS.bottom,
+  };
+  const pieces = Object.entries(await edgePieces(win));
+  for (const { sites, box } of chips) {
+    const name = `the chip of ${sites.join(' and ')} (${edges(box)})`;
+    expect(within(box, free), `${name} inside the Globe less its controls (${edges(free)})`).toBe(
+      true,
+    );
+    for (const [piece, pieceBox] of pieces)
+      expect(overlap(box, pieceBox), `${name} under ${piece} (${edges(pieceBox)})`).toBe(false);
+  }
+}
+
+/** The colour drawn at a point of the window that lies on the Globe, after its next frame. */
+async function drawnAt(win: Page, x: number, y: number) {
+  const canvas = await boxOf(win.getByTestId('globe-canvas'), 'the Globe');
+  const [r = 0, g = 0, b = 0] =
+    (await sampleAt(win, (x - canvas.x) / canvas.width, (y - canvas.y) / canvas.height)) ?? [];
+  return { r, g, b };
+}
+interface Rgb {
+  r: number;
+  g: number;
+  b: number;
+}
+/** The dot of a chip with open issues, and of one without (the palette's amber and mint). */
+const amber = ({ r, g, b }: Rgb) => r > 180 && g > 80 && g < 200 && r - b > 80;
+const mint = ({ r, g, b }: Rgb) => g > 150 && g - r > 60 && b > 110 && b < g;
+
+/**
+ * The dot of a site's chip is the site: at the site's own place (`pinPosition`) the chip is
+ * drawn in its dot's colour, and 6 px to each side in the chip's dark ground (the dot is 8 px
+ * across), whatever the screen's scale. The place, in the window.
+ */
+async function expectDotAtPin(
+  win: Page,
+  site: { id: string; name: string },
+  dot: (colour: Rgb) => boolean,
+): Promise<[number, number]> {
+  const [x, y] = await pinInWindow(win, site.id);
+  // (billboard images load a frame late)
+  await expect
+    .poll(async () => dot(await drawnAt(win, x, y)), {
+      message: `the dot of its chip at the place of ${site.name}'s pin`,
+      timeout: 15_000,
+    })
+    .toBe(true);
+  for (const [dx, dy] of [
+    [-6, 0],
+    [6, 0],
+    [0, -6],
+    [0, 6],
+  ] as const) {
+    const { r, g, b } = await drawnAt(win, x + dx, y + dy);
+    expect(
+      Math.max(r, g, b),
+      `the chip of ${site.name} ${String(dx)}, ${String(dy)} px from its dot is drawn ${String(r)}, ${String(g)}, ${String(b)}`,
+    ).toBeLessThan(90);
+  }
+  return [x, y];
+}
+
 // ---------------------------------------------------------------- tests
 
 test('spike: the Globe renders offline under the app CSP', async ({ app, win, network }) => {
@@ -679,6 +790,18 @@ test('every library project is a site; packs draw with their credits', async ({
         { timeout: 30_000 },
       )
       .toBeCloseTo(BENCHMARK_M, 0);
+    // The chip stands on that ground, and what points at the site points at the chip: from
+    // this slanted view its dot is drawn at the site's place, 123 m up, and the open card and
+    // the rings of the selected site are by it (on the ellipsoid they would be 40 px lower).
+    await frames(win);
+    const pin = await expectDotAtPin(win, SITE_A, amber);
+    expectByPin(await cardBox(win), pin);
+    const rings = await boxOf(
+      win.getByTestId('globe-tag-selected').locator('.aio-globe-pulse'),
+      'the rings of the selected site',
+    );
+    expect(Math.abs(rings.x + rings.width / 2 - pin[0])).toBeLessThan(3);
+    expect(Math.abs(rings.y + rings.height / 2 - pin[1])).toBeLessThan(3);
   } else {
     // Low tier (software GPU): terrain stays off, and the Map dialog says so
     await expect(
@@ -769,41 +892,8 @@ test('a site lights up under the pointer and when it is selected', async ({ win 
   await settle(win, 'the opening flight ended', (s) => !s.flying);
   await standAlone(win, SITE_A);
   // The dot of the chip is the site: at the site's own place the chip is drawn in the amber of
-  // a site with an open issue, and 6 px to each side in the chip's dark ground (the dot is 8 px
-  // across), whatever the screen's scale.
-  const [x, y] = await pinInWindow(win, SITE_A.id);
-  const canvas = await boxOf(win.getByTestId('globe-canvas'), 'the Globe');
-  const drawnAt = async (dx: number, dy: number) => {
-    const [r = 0, g = 0, b = 0] =
-      (await sampleAt(
-        win,
-        (x - canvas.x + dx) / canvas.width,
-        (y - canvas.y + dy) / canvas.height,
-      )) ?? [];
-    return { r, g, b };
-  };
-  // (billboard images load a frame late)
-  await expect
-    .poll(
-      async () => {
-        const { r, g, b } = await drawnAt(0, 0);
-        return r > 180 && g > 80 && g < 200 && r - b > 80;
-      },
-      { message: "amber at the place of site A's pin", timeout: 15_000 },
-    )
-    .toBe(true);
-  for (const [dx, dy] of [
-    [-6, 0],
-    [6, 0],
-    [0, -6],
-    [0, 6],
-  ] as const) {
-    const { r, g, b } = await drawnAt(dx, dy);
-    expect(
-      Math.max(r, g, b),
-      `the chip ${String(dx)}, ${String(dy)} px from its dot is drawn ${String(r)}, ${String(g)}, ${String(b)}`,
-    ).toBeLessThan(90);
-  }
+  // a site with an open issue.
+  const [x, y] = await expectDotAtPin(win, SITE_A, amber);
   // the pointer arrives, then rests on the dot
   await pointAt(win, x, y);
   await expect
@@ -848,9 +938,17 @@ test('chips that overlap gather into one, at any heading, and part again', async
   await settle(win, 'the opening flight ended', (s) => !s.flying);
   // the tiny project and site A lie some 250 km apart, site B far to the south-west of both
   const pair = [TINY_PROJECT_ID, SITE_A.id];
-  const groups = async () => (await inspect(win))?.clusters ?? null;
-  const together = async () =>
-    (await groups())?.some((c) => pair.every((id) => c.sites.includes(id))) ?? false;
+  /** The one chip drawn for both of them (and for whatever else it took in), if there is one. */
+  const shared = async () =>
+    (await chipsDrawn(win)).find((c) => pair.every((id) => c.sites.includes(id))) ?? null;
+  const together = async () => (await shared()) !== null;
+  const sharedChip = async () => {
+    await expect.poll(together, { timeout: SETTLE_MS }).toBe(true);
+    await frames(win);
+    const chip = await shared();
+    if (!chip) throw new Error('the two sites share no chip');
+    return chip;
+  };
   // from further out the chips of the two would overlap: one chip stands for both
   for (let step = 0; step < 2 && !(await together()); step++) {
     const from = (await inspect(win))?.cameraHeight ?? 0;
@@ -860,23 +958,42 @@ test('chips that overlap gather into one, at any heading, and part again', async
       .toBeGreaterThan(from * 1.8);
     await frames(win);
   }
-  await expect.poll(groups, { timeout: SETTLE_MS }).toEqual([{ count: 2, sites: pair }]);
-  // the gathered chip lies between its sites and answers the pointer as one thing
-  const between = async (): Promise<[number, number]> => {
-    const [ax, ay] = await pinInWindow(win, SITE_A.id);
-    const [tx, ty] = await pinInWindow(win, TINY_PROJECT_ID);
-    return [(ax + tx) / 2, (ay + ty) / 2];
-  };
+  const northUp = await sharedChip();
+  // The Globe says so, and it is what is drawn: where the gathered chip's dot is, the amber of a
+  // chip that holds a site with an open issue (site A); and at site A's own place, off that dot,
+  // no dot of its own.
+  expect((await inspect(win))?.clusters).toContainEqual({
+    count: northUp.sites.length,
+    sites: northUp.sites,
+  });
+  await expect
+    .poll(async () => amber(await drawnAt(win, ...dotOf(northUp))), {
+      message: `the amber dot of the gathered chip (${edges(northUp.box)})`,
+      timeout: 15_000,
+    })
+    .toBe(true);
+  const ownPlace = await pinInWindow(win, SITE_A.id);
+  expect(
+    Math.hypot(ownPlace[0] - dotOf(northUp)[0], ownPlace[1] - dotOf(northUp)[1]),
+    "site A's place lies off the gathered chip's dot",
+  ).toBeGreaterThan(10);
+  expect(
+    amber(await drawnAt(win, ...ownPlace)),
+    'site A draws a dot of its own while it is gathered',
+  ).toBe(false);
+  // the gathered chip answers the pointer as one thing
   const hoverOf = async () => (await inspect(win))?.hover ?? null;
-  const northUp = await between();
-  await pointAt(win, ...northUp);
-  await expect.poll(hoverOf, { timeout: 15_000 }).toEqual({ kind: 'cluster', count: 2 });
+  await pointAt(win, ...middleOf(northUp));
+  await expect
+    .poll(hoverOf, { timeout: 15_000 })
+    .toEqual({ kind: 'cluster', count: northUp.sites.length });
   // its words are on the chip: no label is added under the pointer
   await expect(win.getByTestId('globe-tag-hover')).toHaveText('');
   // neither site answers at its own place while it is gathered
   for (const id of pair) {
     const [x, y] = await pinInWindow(win, id);
-    if (Math.hypot(x - northUp[0], y - northUp[1]) < 40) continue; // under the gathered chip
+    // (under the gathered chip its place answers as the chip does)
+    if (overlap({ x: x - 4, y: y - 4, width: 8, height: 8 }, northUp.box)) continue;
     await pointAt(win, x, y);
     await frames(win);
     expect((await hoverOf())?.kind ?? 'nothing', `what is at the place of ${id}`).not.toBe('site');
@@ -889,16 +1006,33 @@ test('chips that overlap gather into one, at any heading, and part again', async
   const [aAfter] = await pinInWindow(win, SITE_A.id);
   const [tAfter] = await pinInWindow(win, TINY_PROJECT_ID);
   expect(Math.sign(aAfter - tAfter)).toBe(-Math.sign(aBefore - tBefore));
-  await expect.poll(groups, { timeout: SETTLE_MS }).toEqual([{ count: 2, sites: pair }]);
+  const southUp = await sharedChip();
+  await pointAt(win, ...middleOf(southUp));
+  await expect
+    .poll(hoverOf, { timeout: 15_000 })
+    .toEqual({ kind: 'cluster', count: southUp.sites.length });
 
-  // a click on the gathered chip flies in until they part: each is its own chip again
-  const southUp = await between();
-  await pointAt(win, ...southUp);
-  await expect.poll(hoverOf, { timeout: 15_000 }).toEqual({ kind: 'cluster', count: 2 });
-  await win.mouse.click(...southUp);
-  await expect.poll(groups, { timeout: SETTLE_MS }).toEqual([]);
-  await settle(win, 'the flight to the two sites ended', (s) => !s.flying);
-  await frames(win);
+  // A click on the gathered chip flies to its sites until they part. (Had a third site joined
+  // the two, the first flight shows all three and the two may still share a chip: a person
+  // clicks that one again.)
+  for (let click = 0; click < 3 && (await together()); click++) {
+    const chip = await sharedChip();
+    await pointAt(win, ...middleOf(chip));
+    await expect
+      .poll(hoverOf, { timeout: 15_000 })
+      .toEqual({ kind: 'cluster', count: chip.sites.length });
+    await win.mouse.click(...middleOf(chip));
+    await expect
+      .poll(async () => (await shared())?.sites.length ?? 0, { timeout: SETTLE_MS })
+      .toBeLessThan(chip.sites.length);
+    await settle(win, 'the flight to the gathered sites ended', (s) => !s.flying);
+    await frames(win);
+  }
+  expect(await together(), 'the two sites still share a chip').toBe(false);
+  // each is its own chip again, whole in the view and clear of the Globe's controls
+  const parted = (await chipsDrawn(win)).filter((c) => c.sites.some((id) => pair.includes(id)));
+  expect(parted.map((c) => c.sites.join(' and ')).sort()).toEqual([...pair].sort());
+  await expectClearOfControls(win, parted);
   for (const id of pair) {
     expect(await gathered(win, id)).toBe(false);
     const [x, y] = await pinInWindow(win, id);
@@ -942,15 +1076,20 @@ test("the Globe's controls fit the smallest window", async ({ win }) => {
   // pin slid into the lower right corner (where the view buttons are) and the upper right one
   // (under the Map button), the card stays inside the Globe and clear of every control
   await flyToSite(win, SITE_A.name);
-  for (const [fx, fy] of [
-    [0.5, 0.5],
-    [0.96, 0.94],
-    [0.97, 0.05],
-    [0.45, 0.04],
-    [0.03, 0.95],
+  for (const [fx, fy, inside] of [
+    [0.5, 0.5, true],
+    [0.3, 0.4, true],
+    [0.96, 0.94, false],
+    [0.97, 0.05, false],
+    [0.45, 0.04, false],
+    [0.03, 0.95, false],
   ] as const) {
+    // (the slide fails unless the pin arrives at its place)
     await putPinAt(win, SITE_A.id, fx, fy);
-    expectLaidOut(globe, { ...(await edgePieces(win)), 'the card': await cardBox(win) });
+    const card = await cardBox(win);
+    expectLaidOut(globe, { ...(await edgePieces(win)), 'the card': card });
+    // well inside the Globe the card stands by its pin; at an edge it slides along the edge
+    if (inside) expectByPin(card, await pinInWindow(win, SITE_A.id));
   }
   // and what is not under the card still takes the pointer
   await expectGlobeAt(win, globe.x + globe.width * 0.25, globe.y + globe.height * 0.4);
@@ -1001,10 +1140,64 @@ test('the keyboard alone reaches a site and the map settings', async ({ win }) =
   await expect(card).toContainText(SITE_B.name);
   await win.keyboard.press('Tab');
   await expect(card.locator(':focus')).toHaveCount(1);
-  // Esc in the card closes it
+  // Esc in the card closes it, and the keyboard is back in the field the site was picked from
+  // (its list waits to be asked for)
   await win.keyboard.press('Escape');
   await expect(card).toHaveCount(0);
   await expect.poll(async () => (await inspect(win))?.selected).toBeNull();
+  await expect(findField(win)).toBeFocused();
+  await expect(list).toHaveCount(0);
+  // from there the keyboard goes on: Down lists the sites again
+  await win.keyboard.press('ArrowDown');
+  await expect(list.getByRole('option')).toHaveCount(3);
+});
+
+test.describe('with a long-named site at the east end of the library', () => {
+  /**
+   * East of every other site and far from each, with a name longer than a chip shows: the widest
+   * chip there can be, at the east edge of every view that frames the library.
+   */
+  const SITE_EAST = {
+    id: 'globe-east',
+    name: 'Eastern survey area with a very long name',
+    origin: [900_000, 2_700_000, 8] as const,
+  };
+  test.beforeEach(async ({ dataRoot }) => {
+    await writeGlobeProject(dataRoot, SITE_EAST, []);
+  });
+
+  test('the opening view and Show all sites show every chip whole, clear of the controls', async ({
+    win,
+  }) => {
+    await openGlobe(win);
+    const everySite = [TINY_PROJECT_ID, SITE_A.id, SITE_B.id, SITE_EAST.id].sort();
+    /** The view shows every site, each chip (its own or a gathered one) whole and in the clear. */
+    const expectFramed = async (when: string) => {
+      await settle(win, `the flight ended (${when})`, (s) => !s.flying && s.sites.length === 4);
+      await frames(win);
+      const chips = await chipsDrawn(win);
+      expect(chips.flatMap((c) => c.sites).sort(), `the sites drawn (${when})`).toEqual(everySite);
+      await expectClearOfControls(win, chips);
+      // the long-named site has a chip of its own, cut to the widest a chip gets, at the east end
+      const east = chips.find((c) => c.sites.includes(SITE_EAST.id));
+      if (!east) throw new Error(`no chip for ${SITE_EAST.name} (${when})`);
+      expect(east.sites).toEqual([SITE_EAST.id]);
+      expect(east.box.width).toBeGreaterThan(CHIP.maxName);
+      for (const chip of chips)
+        expect(chip.box.x + chip.box.width).toBeLessThanOrEqual(east.box.x + east.box.width);
+      // and it is drawn where the Globe says: its dot (mint: no open issue) at its place
+      await expectDotAtPin(win, SITE_EAST, mint);
+      return chips;
+    };
+    await expectFramed('the opening view');
+
+    // from near one site, Show all sites frames them the same way
+    await flyToSite(win, SITE_A.name);
+    await win.getByRole('button', { name: 'Show all sites' }).click();
+    await expect(win.getByTestId('globe-card')).toHaveCount(0);
+    await settle(win, 'the Globe left the site', (s) => s.cameraHeight > 100_000);
+    await expectFramed('after Show all sites');
+  });
 });
 
 test('the view buttons zoom and show every site again', async ({ win }) => {
@@ -1096,9 +1289,17 @@ test('an issue pin opens the issue in the site view', async ({ win }) => {
   // from further out the pin lies on the chip of its site (which runs east of the site's dot):
   // it is still drawn over the chip, and it is the pin that answers the pointer, not the chip
   const onChip = async () => {
-    const [sx, sy] = (await pinOf(win, SITE_A.id)) ?? [0, 0];
-    const [ix, iy] = (await pinAt()) ?? [0, 0];
-    return ix - sx > 4 && ix - sx < 60 && Math.abs(iy - sy) < 11;
+    const chip = (await chipsDrawn(win)).find((c) => c.sites.join() === SITE_A.id);
+    const at = await pinAt();
+    if (!chip || !at) return false;
+    // on the chip, right of its dot
+    const [dotX, dotY] = dotOf(chip);
+    const [ix, iy] = [box.x + at[0], box.y + at[1]];
+    return (
+      ix - dotX > CHIP.dotRadius &&
+      ix < chip.box.x + chip.box.width &&
+      Math.abs(iy - dotY) < chip.box.height / 2 - 1
+    );
   };
   for (let step = 0; step < 4 && !(await onChip()); step++) {
     const from = (await inspect(win))?.cameraHeight ?? 0;
@@ -1109,6 +1310,8 @@ test('an issue pin opens the issue in the site view', async ({ win }) => {
     await frames(win);
   }
   expect(await onChip(), "the issue pin lies on its site's chip").toBe(true);
+  // (the chip is site A's own: from here no other site is near enough to share one)
+  expect(await gathered(win, SITE_A.id)).toBe(false);
   await expect.poll(drawnRed, { timeout: 15_000 }).toBe(true);
   [x, y] = (await pinAt()) ?? [0, 0];
   await pointAt(win, box.x + x, box.y + y);
