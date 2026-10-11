@@ -17,6 +17,7 @@ import {
   AltitudeChoice,
   AltitudePlan,
   CapturePatch,
+  DrawingStem,
   ImportHeights,
   ImportItem,
   LayerPatch,
@@ -1334,6 +1335,12 @@ export const ipc = {
         utcOffsetMin: z.number().int().min(-720).max(840).optional(),
         /** How camera heights are made (data-conventions section 3a); default `auto`. */
         altitude: AltitudeChoice.optional(),
+        /**
+         * Add drawing: every picture in `paths` becomes a drawing (a JPEG is not a photo, a
+         * georeferenced TIFF is not an ortho). Without it only PDF, PNG, WebP, SVG and TIFF without
+         * a georeference do.
+         */
+        drawings: z.boolean().optional(),
       })
       .strict(),
     response: z.discriminatedUnion('ok', [
@@ -1357,6 +1364,32 @@ export const ipc = {
       .strict(),
     response: z.discriminatedUnion('ok', [
       z.object({ ok: z.literal(true), plan: AltitudePlan }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /**
+   * One page of a drawing the app window drew (`ImportItem.drawing`: PDF, WebP, SVG), as a PNG:
+   * written to `drawings/<stem>/plan.png` (`drawings/<stem>-p<page>/plan.png` when the file has
+   * several `pages`) with its provisional placement and a hidden `raster` layer (`role: 'plan'`,
+   * `format: 'image'`). Refused on a package.
+   */
+  'builder:addDrawingPage': {
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        stem: DrawingStem,
+        /** The original's file name, for the layer name. */
+        name: z.string().min(1).max(255),
+        /** 1-based page number, and how many pages the file has (absent: a one page drawing). */
+        page: z.number().int().min(1).max(9999).optional(),
+        pages: z.number().int().min(1).max(9999).optional(),
+        png: z.instanceof(Uint8Array).refine((d) => d.byteLength <= 64 * 1024 * 1024, {
+          message: 'A drawing page is at most 64 MB',
+        }),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), manifest: ProjectManifest, layerId: z.string() }),
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
   },

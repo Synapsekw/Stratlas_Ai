@@ -151,6 +151,12 @@ export const NewProjectRequest = z
   })
   .strict();
 
+/** The folder name of one drawing under `drawings/` (data-conventions section 15). */
+export const DrawingStem = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,80}$/);
+
+/** Where an image raster lies in the local frame: its top-left, top-right and bottom-left corners. */
+export const RasterCorners = z.object({ tl: Vec3, tr: Vec3, bl: Vec3 });
+
 export const ImportItem = z.object({
   /** File name as given. */
   file: z.string(),
@@ -179,11 +185,19 @@ export const ImportItem = z.object({
   jobId: z.string().optional(),
   /** Altitude the camera heights came from (`mixed`: some frames fell back to the other one). */
   heightSource: z.enum(['absolute', 'relative', 'none', 'mixed']).optional(),
+  /**
+   * A drawing whose pages the app window still has to draw (PDF, WebP, SVG: main has no canvas).
+   * The original is already copied to `src`; each page goes back through `builder:addDrawingPage`.
+   */
+  drawing: z
+    .object({ stem: DrawingStem, src: z.string().min(1), name: z.string().min(1) })
+    .optional(),
 });
 
 /**
- * Patch for `builder:updateLayers`: a mesh georeference, or a video calibration (time offset,
- * lens, orientation bias, position offset; `null` clears a bias).
+ * Patch for `builder:updateLayers`: a mesh georeference, a video calibration (time offset, lens,
+ * orientation bias, position offset; `null` clears a bias), the survey date of any layer, or the
+ * corners of a raster drawn as one image (placing a drawing).
  */
 export const LayerPatch = z.union([
   z.object({ transform: Mat4 }).strict(),
@@ -205,6 +219,11 @@ export const LayerPatch = z.union([
     ),
   /** The capture (survey date) of any layer kind (M8); `null` clears it. */
   z.object({ capture: Id.nullable() }).strict(),
+  /**
+   * Where a raster with `format: 'image'` lies (a drawing placed by point pairs). On a drawing
+   * (`drawings/<stem>/plan.png`) the save also shows the layer and marks its placement as placed.
+   */
+  z.object({ corners: RasterCorners }).strict(),
 ]);
 
 /**
@@ -233,6 +252,7 @@ export type SeverityTemplate = z.infer<typeof SeverityTemplate>;
 export type ReportBrand = z.infer<typeof ReportBrand>;
 export type NewProjectRequest = z.infer<typeof NewProjectRequest>;
 export type ImportItem = z.infer<typeof ImportItem>;
+export type RasterCorners = z.infer<typeof RasterCorners>;
 export type LayerPatch = z.infer<typeof LayerPatch>;
 export type CapturePatch = z.infer<typeof CapturePatch>;
 export type VerticalDatum = z.infer<typeof VerticalDatum>;

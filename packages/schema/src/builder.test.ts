@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ImportItem,
   ipc,
   NewProjectRequest,
   PhotoEstimate,
@@ -243,6 +244,60 @@ describe('survey date of a photo run', () => {
     expect(req.safeParse({ projectId: 'p', date: 'tomorrow' }).success).toBe(false);
     expect(req.safeParse({ projectId: 'p', date: '2026-03-14', label: 'x' }).success).toBe(false);
     const res = ipc['builder:ensureCapture'].response;
+    expect(res.safeParse({ ok: false, error: 'no' }).success).toBe(true);
+  });
+});
+
+describe('drawings (PDF and picture imports, placement)', () => {
+  const corners = { tl: [-50, 0, -35], tr: [50, 0, -35], bl: [-50, 0, 35] };
+
+  it('the layer patch takes the corners of an image raster, and nothing beside them', () => {
+    const req = ipc['builder:updateLayers'].request;
+    const ok = (patch: unknown) =>
+      req.safeParse({ projectId: 'p', layerIds: ['sheet-a'], patch }).success;
+    expect(ok({ corners })).toBe(true);
+    expect(ok({ corners: { tl: [0, 0, 0], tr: [1, 0, 0] } })).toBe(false);
+    expect(ok({ corners, transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] })).toBe(
+      false,
+    );
+    // the patches that were there before still parse
+    expect(ok({ capture: null })).toBe(true);
+    expect(ok({ offsetMs: 12 })).toBe(true);
+  });
+
+  it('builder:import takes the drawings flag and still refuses unknown keys', () => {
+    const req = ipc['builder:import'].request;
+    expect(req.safeParse({ projectId: 'p', paths: ['a.jpg'] }).success).toBe(true);
+    expect(req.safeParse({ projectId: 'p', paths: ['a.jpg'], drawings: true }).success).toBe(true);
+    expect(req.safeParse({ projectId: 'p', paths: ['a.jpg'], drawings: 'yes' }).success).toBe(
+      false,
+    );
+    expect(req.safeParse({ projectId: 'p', paths: ['a.jpg'], as: 'drawing' }).success).toBe(false);
+  });
+
+  it('an import item may carry the drawing whose pages the app window still draws', () => {
+    const item = { file: 'site.pdf', kind: 'drawing', status: 'queued' };
+    expect(ImportItem.safeParse(item).success).toBe(true);
+    const r = ImportItem.safeParse({
+      ...item,
+      drawing: { stem: 'site', src: 'drawings/site.pdf', name: 'site.pdf' },
+    });
+    expect(r.success && r.data.drawing?.stem).toBe('site');
+    expect(
+      ImportItem.safeParse({ ...item, drawing: { stem: '../x', src: 'a', name: 'a' } }).success,
+    ).toBe(false);
+  });
+
+  it('builder:addDrawingPage takes one PNG page of a staged drawing', () => {
+    const req = ipc['builder:addDrawingPage'].request;
+    const page = { projectId: 'p', stem: 'site', name: 'site.pdf', png: new Uint8Array([1, 2]) };
+    expect(req.safeParse(page).success).toBe(true);
+    expect(req.safeParse({ ...page, page: 2, pages: 5 }).success).toBe(true);
+    expect(req.safeParse({ ...page, page: 0 }).success).toBe(false);
+    expect(req.safeParse({ ...page, stem: 'Site Plan' }).success).toBe(false);
+    expect(req.safeParse({ ...page, png: 'data' }).success).toBe(false);
+    expect(req.safeParse({ ...page, corners }).success).toBe(false);
+    const res = ipc['builder:addDrawingPage'].response;
     expect(res.safeParse({ ok: false, error: 'no' }).success).toBe(true);
   });
 });
