@@ -7,6 +7,7 @@ pairs, georeferencing, bundle adjustment, reports, run files, resume and cancel.
 
 import json
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -14,6 +15,7 @@ import time
 import numpy as np
 import pytest
 
+from aio_pipelines.photo import colmap_io
 from aio_pipelines.photo import crs as C
 from aio_pipelines.photo.align import (
     FEATURE_BASE_GB,
@@ -28,11 +30,18 @@ from aio_pipelines.photo.align import (
     three_quaternion,
 )
 from aio_pipelines.photo.colmap_io import (
+    START_TOLERANCE_S,
     ColmapEngine,
     EngineJob,
     MemoryExceeded,
+    descendants,
+    kill,
     memory_limit,
     memory_status,
+    process_memory,
+    process_started,
+    process_tree,
+    tree_memory,
 )
 from aio_pipelines.photo.exif import read_photo
 from aio_pipelines.photo.model import project_points, qvec_to_rotmat
@@ -360,6 +369,107 @@ def test_the_memory_guard_stops_a_stage_before_it_takes_the_computer(tmp_path):
         )
     assert time.monotonic() - t0 < 30
     assert limit < job.memory_peak["features"] < limit + 300 * 2**20
+
+
+# Windows never updates a parent PID. When a parent ends and its PID is given to a new process,
+# the old children still name that PID, so the new process seems to have children it never
+# started. The fabricated trees below are (PID, parent PID) with the time each process started.
+
+
+def _started(times):
+    return lambda pid: times.get(pid)
+
+
+def test_a_reused_pid_does_not_adopt_the_children_of_the_process_that_had_it():
+    # 400 is the engine, with its own child and grandchild. 80 was started long ago by a process
+    # that has ended; the engine was given that PID. 84 is 80's child, younger than the engine.
+    links = [(4, 0), (80, 400), (84, 80), (300, 4), (400, 300), (404, 400), (408, 404)]
+    times = {4: 1.0, 80: 50.0, 84: 2000.0, 300: 900.0, 400: 1000.0, 404: 1000.2, 408: 1003.0}
+    assert descendants(400, links, _started(times)) == [400, 404, 408]
+
+
+def test_a_reused_pid_below_the_root_adopts_nobody_either():
+    # the engine's child 404 has the PID of an ended process whose child 90 lives on
+    links = [(400, 300), (404, 400), (408, 404), (90, 404), (94, 90)]
+    times = {400: 1000.0, 404: 1000.2, 408: 1003.0, 90: 500.0, 94: 1100.0}
+    assert descendants(400, links, _started(times)) == [400, 404, 408]
+
+
+def test_a_loop_of_parent_pids_ends():
+    # 400's own parent PID, 500, now belongs to its child; 600 names itself, as the idle process does
+    links = [(400, 500), (500, 400), (504, 500), (600, 600)]
+    times = {400: 1000.0, 500: 1001.0, 504: 1002.0, 600: 1.0}
+    assert descendants(400, links, _started(times)) == [400, 500, 504]
+    assert descendants(600, links, _started(times)) == [600]
+    # without start times too (other systems re-parent, so every link there is a live one)
+    assert descendants(400, links) == [400, 500, 504]
+    assert descendants(1, [(1, 3), (2, 1), (3, 2), (2, 1)]) == [1, 2, 3]
+
+
+def test_a_child_may_start_on_the_same_clock_tick_as_its_parent():
+    links = [(404, 400), (408, 400), (412, 400)]
+    times = {
+        400: 1000.0,
+        404: 1000.0,
+        408: 1000.0 - START_TOLERANCE_S / 2,
+        412: 1000.0 - START_TOLERANCE_S * 2,
+    }
+    assert descendants(400, links, _started(times)) == [400, 404, 408]
+
+
+def test_a_process_that_ends_during_the_walk_is_left_out_and_the_rest_is_counted():
+    links = [(404, 400), (408, 404), (412, 400), (416, 412)]
+    times = {400: 1000.0, 404: None, 408: 1002.0, 412: 1001.0, 416: 1003.0}  # 404 is gone
+    assert descendants(400, links, _started(times)) == [400, 412, 416]
+    assert descendants(400, links, _started({})) == [400]  # the root itself is gone
+
+
+@pytest.mark.skipif(os.name != "nt", reason="only Windows keeps the parent PID of an ended process")
+def test_the_tree_of_a_real_process_has_its_descendants_and_no_older_process(monkeypatch):
+    """A reused PID with real processes: this test process, older than the child it starts, is
+    made to name the child's PID as its parent. The child's own child must still be counted."""
+    code = (
+        "import subprocess, sys, time\n"
+        "p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+        "print(p.pid, flush=True)\n"
+        "time.sleep(60)\n"
+    )
+    child = subprocess.Popen(
+        [sys.executable, "-c", code],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        text=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    try:
+        grandchild = int(child.stdout.readline())
+        me = os.getpid()
+        assert process_started(me) <= process_started(child.pid) <= process_started(grandchild)
+        assert process_started(0x7FFFFFFC) is None  # no such process
+        real = colmap_io.process_links()
+        assert grandchild in process_tree(child.pid) and me not in process_tree(child.pid)
+        monkeypatch.setattr(
+            colmap_io, "process_links", lambda: [(p, child.pid if p == me else pp) for p, pp in real]
+        )
+        tree = process_tree(child.pid)
+        assert tree[0] == child.pid and grandchild in tree
+        assert me not in tree
+        assert process_memory(grandchild) > 0
+        monkeypatch.setattr(colmap_io, "process_memory", lambda p: 10**12 if p == me else 1)
+        assert len(tree) <= tree_memory(child.pid) < 10**12
+    finally:
+        kill(child)
+        child.stdout.close()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="only Windows keeps the parent PID of an ended process")
+def test_the_memory_guard_does_not_count_an_older_process_that_names_the_engines_pid(tmp_path, reused_pid):
+    eng = ColmapEngine(python=sys.executable)
+    job = EngineJob(
+        work=tmp_path / "w", image_root=tmp_path, images=[], groups=[], memory_limit_bytes=400 * 2**20
+    )
+    res = eng._run(job, "probe-sleep", {"seconds": 2}, lambda f, m=None: None, "features")
+    assert res == {"slept": True}
 
 
 def test_three_quaternion_of_a_nadir_camera_looks_down():

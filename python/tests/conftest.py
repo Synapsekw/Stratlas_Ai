@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import math
+import os
 import struct
 import threading
 from pathlib import Path
@@ -34,6 +35,24 @@ def run_job(pipeline, project, params, job_id="j1", cancel=None):
     rec = Recorder()
     job = Job(job_id, pipeline, project, params, rec, cancel or threading.Event())
     return job.run(), rec
+
+
+@pytest.fixture
+def reused_pid(monkeypatch):
+    """What Windows shows when a child is given the PID of an ended process: an older process
+    names that PID as its parent. Here the older process is this test process, for every child
+    it starts, and it is made to hold a terabyte, far above any memory limit."""
+    from aio_pipelines.photo import colmap_io
+
+    me = os.getpid()
+    links, memory = colmap_io.process_links, colmap_io.process_memory
+
+    def links_after_reuse():
+        rows = links()
+        return rows + [(me, pid) for pid, parent in rows if parent == me]
+
+    monkeypatch.setattr(colmap_io, "process_links", links_after_reuse)
+    monkeypatch.setattr(colmap_io, "process_memory", lambda pid: 10**12 if pid == me else memory(pid))
 
 
 def _rational(x, den=10000):

@@ -35,7 +35,10 @@ to UTF-8 before COLMAP loads (``utf8_paths``), so photos below folders such as `
 
 **Memory.** The guard stops a stage above ``memory_limit``: ``AIO_PHOTO_MEMORY_MB`` when the app
 sets it (one cap for every photo job, ``native.memory_cap``), else 75 % of the physical memory and
-no more than 90 % of what is free when the stage starts.
+no more than 90 % of what is free when the stage starts. What it measures is the resident memory of
+the engine's own process tree (``tree_memory``; ``native.run_tool`` guards a native tool with the
+same figure). On Windows a parent PID alone does not put a process in that tree: the PID of an
+ended process is given out again, and its children still name it (``descendants``).
 """
 
 from __future__ import annotations
@@ -208,56 +211,118 @@ def process_memory(pid: int) -> int:
         return 0
 
 
-def process_tree(pid: int) -> list[int]:
-    """A process and all its descendants (a Windows venv ``python.exe`` is a launcher whose child
-    does the work)."""
-    pairs: list[tuple[int, int]] = []
+def process_started(pid: int) -> float | None:
+    """When a process started, in seconds (Windows); None when that cannot be read: the process
+    is gone, or it is not ours to open."""
     try:
-        if os.name == "nt":
-            import ctypes
-            from ctypes import wintypes
+        import ctypes
+        from ctypes import wintypes
 
-            class PE(ctypes.Structure):
-                _fields_ = [
-                    ("dwSize", wintypes.DWORD),
-                    ("cntUsage", wintypes.DWORD),
-                    ("th32ProcessID", wintypes.DWORD),
-                    ("th32DefaultHeapID", ctypes.c_size_t),
-                    ("th32ModuleID", wintypes.DWORD),
-                    ("cntThreads", wintypes.DWORD),
-                    ("th32ParentProcessID", wintypes.DWORD),
-                    ("pcPriClassBase", ctypes.c_long),
-                    ("dwFlags", wintypes.DWORD),
-                    ("szExeFile", ctypes.c_char * 260),
-                ]
-
-            k32 = ctypes.WinDLL("kernel32")
-            k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
-            snap = k32.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
-            if snap in (None, wintypes.HANDLE(-1).value):
-                return [pid]
-            try:
-                pe = PE()
-                pe.dwSize = ctypes.sizeof(PE)
-                ok = k32.Process32First(snap, ctypes.byref(pe))
-                while ok:
-                    pairs.append((int(pe.th32ProcessID), int(pe.th32ParentProcessID)))
-                    ok = k32.Process32Next(snap, ctypes.byref(pe))
-            finally:
-                k32.CloseHandle(snap)
-        else:
-            out = subprocess.run(["ps", "-A", "-o", "pid=,ppid="], capture_output=True, text=True, timeout=5)
-            for line in out.stdout.splitlines():
-                a, b = line.split()
-                pairs.append((int(a), int(b)))
+        k32 = ctypes.WinDLL("kernel32")
+        k32.OpenProcess.restype = wintypes.HANDLE
+        k32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+        k32.CloseHandle.argtypes = [wintypes.HANDLE]
+        h = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return None
+        try:
+            made, ended, kernel, user = (wintypes.FILETIME() for _ in range(4))
+            if not k32.GetProcessTimes(
+                h, ctypes.byref(made), ctypes.byref(ended), ctypes.byref(kernel), ctypes.byref(user)
+            ):
+                return None
+            return ((made.dwHighDateTime << 32) | made.dwLowDateTime) / 1e7
+        finally:
+            k32.CloseHandle(h)
     except Exception:
-        return [pid]
+        return None
+
+
+def process_links() -> list[tuple[int, int]]:
+    """Every process of this computer as (PID, parent PID)."""
+    links: list[tuple[int, int]] = []
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        class PE(ctypes.Structure):
+            _fields_ = [
+                ("dwSize", wintypes.DWORD),
+                ("cntUsage", wintypes.DWORD),
+                ("th32ProcessID", wintypes.DWORD),
+                ("th32DefaultHeapID", ctypes.c_size_t),
+                ("th32ModuleID", wintypes.DWORD),
+                ("cntThreads", wintypes.DWORD),
+                ("th32ParentProcessID", wintypes.DWORD),
+                ("pcPriClassBase", ctypes.c_long),
+                ("dwFlags", wintypes.DWORD),
+                ("szExeFile", ctypes.c_char * 260),
+            ]
+
+        k32 = ctypes.WinDLL("kernel32")
+        k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+        snap = k32.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
+        if snap in (None, wintypes.HANDLE(-1).value):
+            return links
+        try:
+            pe = PE()
+            pe.dwSize = ctypes.sizeof(PE)
+            ok = k32.Process32First(snap, ctypes.byref(pe))
+            while ok:
+                links.append((int(pe.th32ProcessID), int(pe.th32ParentProcessID)))
+                ok = k32.Process32Next(snap, ctypes.byref(pe))
+        finally:
+            k32.CloseHandle(snap)
+    else:
+        out = subprocess.run(["ps", "-A", "-o", "pid=,ppid="], capture_output=True, text=True, timeout=5)
+        for line in out.stdout.splitlines():
+            a, b = line.split()
+            links.append((int(a), int(b)))
+    return links
+
+
+#: A child starts after its parent. The slack is for a clock that was set back in between.
+START_TOLERANCE_S = 1.0
+
+
+def descendants(
+    pid: int, links: list[tuple[int, int]], started: Callable[[int], float | None] | None = None
+) -> list[int]:
+    """``pid`` and every process below it in ``links`` (PID, parent PID).
+
+    With ``started`` (when a process started, in seconds; None when unknown) a process counts
+    as a child only when it started no earlier than its parent, ``START_TOLERANCE_S`` allowed.
+    Windows needs that: it never updates a parent PID, so when a parent ends and its PID is given
+    to a new process, the old children still name that PID and the new process would adopt them,
+    and everything below them. A process whose start is unknown is left out with all below it: it
+    has ended, or it is not ours to open, and then its memory cannot be read either."""
     tree = [pid]
+    times = {pid: started(pid)} if started else {}
     k = 0
     while k < len(tree):
-        tree += [c for c, parent in pairs if parent == tree[k] and c not in tree]
+        parent = tree[k]
         k += 1
+        for child, of in links:
+            if of != parent or child in tree:
+                continue
+            if started:
+                t0, t = times[parent], started(child)
+                if t0 is None or t is None or t < t0 - START_TOLERANCE_S:
+                    continue
+                times[child] = t
+            tree.append(child)
     return tree
+
+
+def process_tree(pid: int) -> list[int]:
+    """A process and all its descendants (a Windows venv ``python.exe`` is a launcher whose child
+    does the work). On Windows a parent PID alone does not make a child (``descendants``); other
+    systems re-parent the children of a process that ends, so their links are always live."""
+    try:
+        links = process_links()
+    except Exception:
+        return [pid]
+    return descendants(pid, links, process_started if os.name == "nt" else None)
 
 
 def tree_memory(pid: int) -> int:
