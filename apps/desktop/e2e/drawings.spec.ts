@@ -1,11 +1,14 @@
 /**
  * Drawings as a dataset: a PNG and a PDF made here come in through Add data, show under Drawings
  * as "not placed", open side by side (each PDF page its own entry), take an opacity and "on top"
- * for the 3D view and the map, and are placed by two typed points.
+ * for the 3D view and the map, and are placed by two typed points. A JPEG, a WebP, an SVG and a TIFF
+ * without a georeference come in through Add drawing.
  */
+import { makeTiff } from '@aio/project/builder/testing';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { deflateSync } from 'node:zlib';
 import sharp from 'sharp';
 import { expect, test } from './fixtures';
 
@@ -239,18 +242,37 @@ test('a PNG and a PDF come in as drawings, open side by side, take an opacity an
   await expect(win.locator('.stage')).toHaveAttribute('data-mode', 'split');
   const strip = win.getByTestId('place-strip');
   await expect(strip).toContainText('Click a point on the drawing');
-  await strip.getByRole('button', { name: 'Typed' }).click();
   // the strip took room from the pane: fit the sheet again, so the pane's middle is the sheet's
   await view.getByRole('button', { name: 'Fit the whole raster' }).click();
   const box = await view.boundingBox();
   if (!box) throw new Error('no drawing pane');
+  // Click the sheet's middle row, `fx` of the way across the pane. The strip grows as pairs come
+  // in and pushes the pane down, the sheet with it, so the pane's place is read at every click.
+  const onSheet = async (fx: number) => {
+    const now = await view.boundingBox();
+    if (!now) throw new Error('no drawing pane');
+    await win.mouse.click(now.x + box.width * fx, now.y + box.height * 0.5);
+  };
   const [e0, n0] = m.origin;
+  // a pair from the 3D view: a point on the drawing, then the ground in the scene; taken off again
+  await onSheet(0.5);
+  await expect(view.getByTestId('raster-mark')).toHaveCount(1);
+  await expect(strip).toContainText('Now click the same spot in the 3D view');
+  const scene = await win.locator('[data-scene-view] canvas').boundingBox();
+  if (!scene) throw new Error('no 3D view');
+  await win.mouse.click(scene.x + scene.width * 0.5, scene.y + scene.height * 0.75);
+  await expect(strip.getByTestId('place-pair')).toHaveCount(1);
+  await strip.getByRole('button', { name: 'Remove pair 1' }).click();
+  await expect(strip.getByTestId('place-pair')).toHaveCount(0);
+  await expect(view.getByTestId('raster-mark')).toHaveCount(0);
+  // two pairs typed in project coordinates
+  await strip.getByRole('button', { name: 'Typed' }).click();
   const clicks = [
     { fx: 0.35, e: e0 + 10 },
     { fx: 0.65, e: e0 + 70 },
   ];
   for (const [i, c] of clicks.entries()) {
-    await win.mouse.click(box.x + box.width * c.fx, box.y + box.height * 0.5);
+    await onSheet(c.fx);
     await expect(view.getByTestId('raster-mark')).toHaveCount(i + 1);
     await strip.getByLabel('Site coordinate').fill(`${String(c.e)} ${String(n0 - 5)}`);
     await strip.getByRole('button', { name: 'Add', exact: true }).click();
@@ -291,4 +313,81 @@ test('a PNG and a PDF come in as drawings, open side by side, take an opacity an
       ),
     )
     .toBe(true);
+});
+
+test('a JPEG, a WebP, an SVG and a plain TIFF come in as drawings through Add drawing', async ({
+  app,
+  win,
+  dataRoot,
+}) => {
+  test.setTimeout(120_000);
+  const flat = (width: number, height: number) =>
+    sharp({ create: { width, height, channels: 3, background: '#f4f4f0' } });
+  const jpg = join(dataRoot.base, 'scan.jpg');
+  await writeFile(jpg, await flat(300, 150).jpeg().toBuffer());
+  const webp = join(dataRoot.base, 'mark up.webp');
+  await writeFile(webp, await flat(120, 80).webp().toBuffer());
+  const svg = join(dataRoot.base, 'detail.svg');
+  await writeFile(
+    svg,
+    '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">' +
+      '<rect width="200" height="100" fill="#fff"/>' +
+      '<path d="M10 10L190 90" stroke="#00f" stroke-width="4"/></svg>',
+  );
+  const tif = join(dataRoot.base, 'sheet.tif');
+  await writeFile(
+    tif,
+    makeTiff(
+      { width: 4, height: 2, samples: 3, bits: 8, values: new Array<number>(24).fill(90) },
+      deflateSync,
+    ),
+  );
+
+  await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).first().click();
+  await expect(win.locator('[data-scene-view] canvas')).toBeVisible();
+
+  // no drawing yet, so no Drawings group: the button beside Add data brings them in
+  await expect(win.getByTestId('tree-group-drawings')).toHaveCount(0);
+  await nextOpenDialog(app, [jpg, webp, svg, tif]);
+  await win.getByTestId('add-drawing').click();
+  const panel = win.getByTestId('import-panel');
+  await expect(panel).toContainText('Imported 4 of 4 files', { timeout: 60_000 });
+  await panel.getByRole('button', { name: 'Close' }).click();
+
+  const layers = async () =>
+    (
+      JSON.parse(await readFile(join(dataRoot.projectDir, 'manifest.json'), 'utf8')) as {
+        layers: ManifestLayer[];
+      }
+    ).layers;
+  const first = await layers();
+  // the JPEG is a drawing here, not a photo
+  expect(first.some((l) => l.kind === 'photos')).toBe(false);
+  expect(
+    first.filter((l) => l.id.startsWith('sheet-')).map((l) => [l.id, l.name, l.role, l.format]),
+  ).toEqual([
+    ['sheet-scan', 'scan.jpg', 'plan', 'image'],
+    ['sheet-sheet', 'sheet.tif', 'plan', 'image'],
+    ['sheet-mark-up', 'mark up.webp', 'plan', 'image'],
+    ['sheet-detail', 'detail.svg', 'plan', 'image'],
+  ]);
+  const size = async (stem: string) => {
+    const meta = await sharp(join(dataRoot.projectDir, 'drawings', stem, 'plan.png')).metadata();
+    return [meta.format, meta.width, meta.height];
+  };
+  expect(await size('scan')).toEqual(['png', 300, 150]);
+  expect(await size('sheet')).toEqual(['png', 4, 2]);
+  expect(await size('mark-up')).toEqual(['png', 120, 80]);
+  // line art is drawn large: 200 x 100 pixels are 150 x 75 points, at 600 dpi
+  expect(await size('detail')).toEqual(['png', 1250, 625]);
+  for (const id of ['sheet-scan', 'sheet-sheet', 'sheet-mark-up', 'sheet-detail']) {
+    await expect(win.getByTestId(`tree-row-${id}`)).toContainText('not placed');
+  }
+
+  // the Drawings header adds too; the same file again is a second drawing
+  await nextOpenDialog(app, [jpg]);
+  await win.getByTestId('tree-group-add-drawings').click();
+  await expect(panel).toContainText('Imported 1 of 1 files', { timeout: 30_000 });
+  expect((await layers()).some((l) => l.id === 'sheet-scan-2')).toBe(true);
+  await expect(win.getByTestId('tree-row-sheet-scan-2')).toBeVisible();
 });

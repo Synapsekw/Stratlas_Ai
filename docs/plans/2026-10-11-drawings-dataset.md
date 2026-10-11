@@ -125,9 +125,12 @@ Tests: covered by T9 and by the component tests of T3; the pure parts are tested
 
 ### T9: end to end
 
-File: `apps/desktop/e2e/drawings.spec.ts` (new). A PNG (sharp) and a two page PDF (written by hand in the test) are imported through Add data; both pages are asked for; three rows appear under Drawings marked "not placed"; **Open side by side** shows the PNG in the raster pane; the chooser lists the PDF pages under Drawings and switching shows one; the opacity slider changes the map layer's `raster-opacity` and the 3D material's opacity; the row controls do not cover the 3D view (`elementFromPoint`). Placement by typed points is covered when time allows; the fit itself is unit tested.
+File: `apps/desktop/e2e/drawings.spec.ts` (new), two tests.
 
-Run the CI way: `npx playwright test e2e/drawings.spec.ts --workers=1` with the 1100 x 700 window and the software renderer, then the neighbouring specs named above.
+1. A PNG (sharp) and a two page PDF (written by hand in the test) are imported through Add data; both pages are asked for; three rows appear under Drawings marked "not placed"; **Side by side** shows the PNG in the raster pane; the chooser lists the PDF pages and switching shows one; the opacity slider and **On top in 3D** change the drawing's material in the 3D scene and the layer's `raster-opacity` on the map; the row controls do not cover the 3D view (`elementFromPoint`); the drawing is placed by two typed points (after one pair picked in the 3D view and removed), and the manifest corners and `placement.json` are checked.
+2. A JPEG, a WebP, an SVG and a TIFF without a georeference come in through **Add drawing**, and again through the Drawings header.
+
+Run the CI way: `npx playwright test e2e/drawings.spec.ts --workers=1` with the 1100 x 700 window and the software renderer, then the neighbouring specs named above. Since the rebase onto the CI window fix the window is 1100 x 720 at display scale 1.
 
 ### T10: docs
 
