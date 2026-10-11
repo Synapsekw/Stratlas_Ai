@@ -1114,6 +1114,10 @@ export const en = {
 
   // Road builder (road.build, started from road setup)
   'jobs.chooseFile': 'Choose',
+  'jobs.unsaved.issues':
+    'The latest issue changes could not be saved, so processing was not started. {error}',
+  'jobs.unsaved.detections':
+    'The latest detection changes could not be saved, so processing was not started. {error}',
   'jobs.road.centreline': 'Centreline',
   'jobs.road.centrelineHelp':
     'GeoJSON, KML, DXF or the kit centreline. A line drawn on the map is road/centreline-drawn.geojson.',
