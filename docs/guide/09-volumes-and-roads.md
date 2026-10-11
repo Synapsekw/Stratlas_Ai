@@ -6,7 +6,7 @@ A volumetric project holds one or more survey dates of a yard: an elevation mode
 
 ### Build a stockpile project
 
-1. **New project**, type **Volumetric**. Set the origin and click **Next** twice.
+1. **New project**, type **Survey**. Set the origin and click **Next** twice.
 2. **Survey data**: enter the **Survey date**, pick the **DSM GeoTIFF** (or **Point cloud**) and **Pick orthomosaic**.
 3. **Add a second survey date** for a comparison. Every survey needs a DSM or a point cloud, and no two surveys can share a date.
 4. **Create project**. {product} opens the new project and starts the **Volumetric survey**; the **Processing** drawer opens on it. When it says **Done**, close the drawer.

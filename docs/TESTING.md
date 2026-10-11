@@ -97,11 +97,21 @@ Goal: build a complete deliverable inside Stratlas, from raw data to a reviewed,
 - [ ] The samples are three folders in `E:\Stratlas Data\samples`: the inspection sample (its name starts with `inspection-`, 6 MB), the volumetric sample (`volumetric-`, 29 MB) and the road sample (`road-`, 104 MB). They are copies and crops; your projects and sources were not changed. Pick their files from there; the app only reads them.
 - [ ] Work on new projects or copies. Pipelines and accepted detections write into the open project (always with a backup, never dropping your own issues).
 
+### Project types (11 Oct 2026)
+
+The type picker of **New project** has six cards. What a type sets up is deliberately small for now: tell us what each one should do next.
+
+- [ ] Projects, **New project**. Under **Type**: **Survey**, **Construction**, **Vertical asset inspection** (selected), **Confined space inspection**, **Data fusion** and **Road**, each with one line saying what it is for.
+- [ ] Name `Types check`, pick **Confined space inspection**, **Next**. **Typed coordinate** `25.1000, 55.2000, 12`, **Next**, **Next**. The summary reads **Type** "Confined space inspection". **Create project**.
+- [ ] The empty project says "Confined space inspection" above "Add raw data to Types check", and under **Add first** three lines of data to start with. **Import files** works as before.
+- [ ] A new **Survey** project has the **Survey data** block on the last step, as Volumetric had. A new **Road** project opens in **Road setup**, as before.
+- [ ] A project made before this change opens as before. If it is still empty it shows its older type: **Inspection**, **Survey**, **Road**, **Digital twin** or **Data fusion**.
+
 ### P1 Inspection from raw data (the inspection sample)
 
 Places detections (boxes on posed photos) on the model, groups them into issues, makes contact sheets and the stats for the report. The sample is 20 photos from inside a tank, with GPS and gimbal tags, the tank model and one AI pass with 8 accepted and 9 waiting boxes.
 
-- [ ] Projects, **New project**: name `Tank sample`, type **Inspection** (the default), **Next**.
+- [ ] Projects, **New project**: name `Tank sample`, type **Confined space inspection** (it was **Inspection** before 11 Oct 2026), **Next**.
 - [ ] Origin: **Typed coordinate**: type the origin given in the sample's README. The CRS list selects **WGS 84 / UTM zone 39N**, EPSG:32639, "site zone". **Next**.
 - [ ] Severity model: the lining model that comes from the delivered tank project (5 levels). **Next**, **Create project**. The project opens empty.
 - [ ] **Import files**: the 20 photos in `photos\` and the tank model (the `.glb` file in the sample folder). "Imported 21 of 21 files", no Camera heights card (these photos carry absolute altitude only), **Close**. The cameras sit inside the tank.
@@ -142,7 +152,7 @@ Needs Cloud AI on and a key with a vision model (Settings, AI providers). Use th
 
 Two survey dates (DSM and ortho GeoTIFFs) of a corner of a stockpile yard with two piles.
 
-- [ ] Projects, **New project**: name `Stockpile sample`, type **Volumetric**, **Next**.
+- [ ] Projects, **New project**: name `Stockpile sample`, type **Survey** (it was **Volumetric** before 11 Oct 2026), **Next**.
 - [ ] Origin: **Typed coordinate**: type the origin given in the sample's README; the CRS list selects **WGS 84 / UTM zone 39N**. **Next**, **Next**.
 - [ ] **Survey data**: **Survey date** `2020-12-31`, **DSM GeoTIFF** `2020-12-31_dsm.tif`, **Pick orthomosaic** `2020-12-31_ortho.tif`.
 - [ ] **Add a second survey date** without a surface: "Every survey needs a DSM or a point cloud." and **Create project** stays greyed out. The same date twice: "Two surveys have the same date."
@@ -221,7 +231,7 @@ Measured on this PC: the recorded fly-through of the plant project holds 60 fps 
 
 ### End to end (the M6 exit)
 
-- [ ] One project of each type from the samples (inspection, volumetric, road): built, reviewed (inspection), report text saved, project report exported, and exported as a package that opens in the player.
+- [ ] One project from each sample (inspection, volumetric, road): built, reviewed (inspection), report text saved, project report exported, and exported as a package that opens in the player.
 
 ## Stage M6.1: your M6 feedback, fixed
 

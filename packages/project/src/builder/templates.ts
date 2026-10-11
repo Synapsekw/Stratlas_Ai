@@ -1,8 +1,9 @@
-import type {
-  ClassCatalogue,
-  NewProjectRequest,
-  ProjectManifest,
-  SeverityTemplate,
+import {
+  PURPOSE_TYPE,
+  type ClassCatalogue,
+  type NewProjectRequest,
+  type ProjectManifest,
+  type SeverityTemplate,
 } from '@aio/schema';
 import { ROAD_CATALOGUE, ROAD_SEVERITY_MODEL } from '../import/ringroad-model';
 
@@ -122,7 +123,9 @@ export function newProjectManifest(
     severityModels: [t.model],
     classCatalogues: t.catalogue ? [t.catalogue] : [],
     ...(req.brand ? { brand: req.brand } : {}),
-    type: req.type,
+    // the purpose decides the type, so the two never disagree on disk
+    type: req.purpose ? PURPOSE_TYPE[req.purpose] : req.type,
+    ...(req.purpose ? { purpose: req.purpose } : {}),
     ...(req.verticalDatum ? { verticalDatum: req.verticalDatum } : {}),
   };
 }

@@ -1,4 +1,4 @@
-import { parseManifest, type ProjectManifest } from '@aio/schema';
+import { parseManifest, type NewProjectRequest, type ProjectManifest } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
   GENERAL_TEMPLATE,
@@ -91,6 +91,36 @@ describe('newProjectManifest', () => {
     });
     expect(m.severityModels.map((s) => s.id)).toEqual(['aik-stack']);
     expect(m.classCatalogues).toHaveLength(1);
+  });
+
+  it('writes the purpose the wizard chose, and the type it maps to', () => {
+    const req = (
+      type: NewProjectRequest['type'],
+      purpose: NewProjectRequest['purpose'],
+    ): NewProjectRequest => ({
+      name: 'P',
+      type,
+      epsg: 32640,
+      origin: [1, 2, 3],
+      severityTemplate: null,
+      purpose,
+    });
+    // a stale `type` never reaches the file: the purpose decides it
+    const m = newProjectManifest('p', req('fusion', 'survey'), null);
+    expect(m).toMatchObject({ type: 'volumetric', purpose: 'survey' });
+    expect(parseManifest(m)).toEqual({ ok: true, value: m });
+    const tank = newProjectManifest('p', req('inspection', 'confined-space'), null);
+    expect(tank).toMatchObject({ type: 'inspection', purpose: 'confined-space' });
+  });
+
+  it('writes no purpose for a request without one, and its type as given', () => {
+    const m = newProjectManifest(
+      'p',
+      { name: 'P', type: 'twin', epsg: 32640, origin: [1, 2, 3], severityTemplate: null },
+      null,
+    );
+    expect(m.type).toBe('twin');
+    expect('purpose' in m).toBe(false);
   });
 
   it('falls back to the general template and leaves out empty fields', () => {

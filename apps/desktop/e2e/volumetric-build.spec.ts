@@ -112,7 +112,7 @@ test('a volumetric project from two raw survey dates: wizard, Processing drawer,
     await win.getByTestId('new-project').first().click();
     const wiz = win.getByTestId('new-project-wizard');
     await wiz.getByLabel('Project name').fill('Yard surveys');
-    await wiz.getByRole('button', { name: /Volumetric/ }).click();
+    await wiz.getByRole('button', { name: /^Survey/ }).click();
     await wiz.getByRole('button', { name: 'Next' }).click();
     await wiz.getByRole('button', { name: 'Typed coordinate' }).click();
     await wiz.getByLabel('Origin coordinate').fill('500040 3200040 10');

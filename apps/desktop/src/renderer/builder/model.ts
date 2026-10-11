@@ -1,29 +1,137 @@
 import { crsOption, fromWgs84 } from '@aio/geo';
-import type { Layer, ProjectType, SeverityTemplate, Vec3 } from '@aio/schema';
+import {
+  projectPurpose,
+  type Layer,
+  type ProjectManifest,
+  type ProjectPurpose,
+  type ProjectType,
+  type SeverityTemplate,
+  type Vec3,
+} from '@aio/schema';
 
 /** The new project wizard's form. */
 export interface WizardForm {
   name: string;
   customer: string;
   site: string;
-  type: ProjectType;
+  /** The card picked; the project's `type` is `PURPOSE_TYPE` of it. */
+  purpose: ProjectPurpose;
   epsg: number;
   /** Project CRS (E, N, H), null until chosen. */
   origin: Vec3 | null;
   severityTemplate: string | null;
 }
 
-export const PROJECT_TYPES: { id: ProjectType; label: string; hint: string }[] = [
+/**
+ * The cards of the wizard's type picker. Each writes its id as the manifest's `purpose` and the
+ * older `type` it maps to (`PURPOSE_TYPE`), which keeps deciding every behaviour.
+ */
+export const PROJECT_TYPES: { id: ProjectPurpose; label: string; hint: string }[] = [
   {
-    id: 'inspection',
-    label: 'Inspection',
-    hint: 'Photos, video and a model of one asset, graded defects',
+    id: 'survey',
+    label: 'Survey',
+    hint: 'Stockpiles, earthworks and terrain by survey date, with volumes',
   },
-  { id: 'volumetric', label: 'Volumetric', hint: 'Stockpiles and earthworks by date, volumes' },
+  {
+    id: 'construction',
+    label: 'Construction',
+    hint: 'A building site followed visit by visit, with drawings and designs',
+  },
+  {
+    id: 'vertical-asset',
+    label: 'Vertical asset inspection',
+    hint: 'A stack, tower, flare or facade: photos, video and a model, graded defects',
+  },
+  {
+    id: 'confined-space',
+    label: 'Confined space inspection',
+    hint: 'Inside a tank, vessel or duct: photos and a model or scan, graded defects',
+  },
+  {
+    id: 'data-fusion',
+    label: 'Data fusion',
+    hint: 'A large site with many sensors: any mix of data in one scene',
+  },
   { id: 'road', label: 'Road', hint: 'Corridor orthomosaic, distress mapping, PCI' },
-  { id: 'twin', label: 'Digital twin', hint: 'Plant model, ortho, point cloud, flights' },
-  { id: 'fusion', label: 'Free fusion', hint: 'Any mix of data in one scene' },
 ];
+
+/**
+ * What a project shows as its type: the purpose the wizard wrote, or one of the two older types
+ * that no card writes any more (an inspection of either kind, a digital twin).
+ */
+export type ProjectKind = ProjectPurpose | 'inspection' | 'twin';
+
+/** The older `type` as a kind, for a project without a purpose this build knows. */
+const TYPE_KIND: Record<ProjectType, ProjectKind> = {
+  volumetric: 'survey',
+  road: 'road',
+  fusion: 'data-fusion',
+  inspection: 'inspection',
+  twin: 'twin',
+};
+
+/**
+ * The kind to show for a project: its purpose, else what its `type` says (every project from
+ * before the purpose existed, and one whose purpose a later build wrote); null with neither.
+ */
+export function projectKind(
+  manifest: Pick<ProjectManifest, 'type' | 'purpose'>,
+): ProjectKind | null {
+  return projectPurpose(manifest) ?? (manifest.type ? TYPE_KIND[manifest.type] : null);
+}
+
+export function kindLabel(kind: ProjectKind): string {
+  if (kind === 'inspection') return 'Inspection';
+  if (kind === 'twin') return 'Digital twin';
+  return PROJECT_TYPES.find((c) => c.id === kind)?.label ?? kind;
+}
+
+const ASSET_STARTER = [
+  'Photos of the asset (JPG with GPS and gimbal angles)',
+  'The 3D model of the asset (GLB or OBJ)',
+  'Flight video with its DJI SRT log beside it (MP4 or MOV)',
+];
+const SITE_STARTER = [
+  'The site model (GLB or OBJ) and point clouds (LAS, LAZ, E57 or PLY)',
+  'Orthomosaics and elevation models (GeoTIFF)',
+  'Photos (JPG) and flight video with its DJI SRT log (MP4 or MOV)',
+  'Site drawings (DXF)',
+];
+
+/**
+ * Which data to add first to an empty project of a kind. The lines name only file kinds that
+ * Import files takes (`@aio/project` builder/raw.ts); model.test.ts holds them to that.
+ */
+const STARTERS: Record<ProjectKind, readonly string[]> = {
+  survey: [
+    'The orthomosaic and elevation model (DSM) of each survey date, as GeoTIFF',
+    'Or the drone photos of each date (JPG with GPS), to make the maps here',
+    'A design surface to compare with (LandXML or 12da)',
+  ],
+  construction: [
+    'Drone photos (JPG with GPS) or the orthomosaic (GeoTIFF) of each visit',
+    'The site drawing (DXF) and the design surfaces (LandXML or 12da)',
+    'A model of the works (GLB or OBJ) or a point cloud (LAS, LAZ, E57 or PLY)',
+  ],
+  'vertical-asset': ASSET_STARTER,
+  'confined-space': [
+    'Photos from inside (JPG); without GPS they are listed in Media, not placed',
+    'A model or scan of the space (GLB, OBJ, LAS, LAZ, E57 or PLY)',
+    'Video only with its DJI SRT log beside it (MP4 or MOV)',
+  ],
+  'data-fusion': SITE_STARTER,
+  road: [
+    'The corridor orthomosaic (GeoTIFF)',
+    'Photos along the road, if there are any (JPG with GPS)',
+    'The defect polygons are picked later, in Run the road builder',
+  ],
+  inspection: ASSET_STARTER,
+  twin: SITE_STARTER,
+};
+
+export function starterFor(kind: ProjectKind): readonly string[] {
+  return STARTERS[kind];
+}
 
 /**
  * The severity template a new project of a type starts with: a road survey takes one with a road

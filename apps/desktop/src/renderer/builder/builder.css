@@ -141,6 +141,8 @@
   grid-template-columns: auto 1fr;
   gap: 4px 10px;
   align-items: start;
+  /* a card stretched by a taller neighbour keeps its hint under its name */
+  align-content: start;
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: var(--r-4);
@@ -454,6 +456,29 @@
   color: var(--fg-2);
   font-size: var(--t-12);
   line-height: 1.5;
+}
+/* the project's type above the heading, and which data to add first for it */
+.b-kind {
+  margin-bottom: -4px;
+  font-size: var(--t-11);
+  color: var(--fg-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.b-starter {
+  display: grid;
+  gap: 4px;
+  font-size: var(--t-12);
+  line-height: 1.5;
+}
+.b-starter b {
+  font-weight: 600;
+  color: var(--fg-0);
+}
+.b-starter ul {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--fg-1);
 }
 
 /* ---------- alignment panels ---------- */

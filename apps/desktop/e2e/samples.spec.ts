@@ -145,7 +145,7 @@ test('@realdata inspection-hcl-mini: photos and model imported, the AI pass plac
     const wiz = await wizard(
       win,
       'HCl sample',
-      /^Inspection/,
+      /^Confined space inspection/,
       `${String(s.originLatLon[0])}, ${String(s.originLatLon[1])}, ${String(s.origin[2])}`,
       s.epsg,
     );
@@ -323,7 +323,7 @@ test('@realdata volumetric-masafi-mini: two survey dates, the delivered pile vol
     const wiz = await wizard(
       win,
       'Masafi sample',
-      /^Volumetric/,
+      /^Survey/,
       `${String(s.originLatLon[0])}, ${String(s.originLatLon[1])}, ${String(s.origin[2])}`,
       32639,
     );

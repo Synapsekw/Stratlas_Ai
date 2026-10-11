@@ -6,6 +6,30 @@ import { ClassCatalogue, SeverityModel } from './severity';
 /** What a project is for; picks defaults in the builder and the landing screen. */
 export const ProjectType = z.enum(['inspection', 'volumetric', 'road', 'twin', 'fusion']);
 
+/**
+ * The finer project type the new project wizard offers (11 Oct 2026, additive). `ProjectType` is
+ * closed (an older build refuses a manifest whose `type` it does not know), so the finer choice
+ * is its own optional field, `purpose`, and `type` keeps deciding every behaviour.
+ */
+export const ProjectPurpose = z.enum([
+  'survey',
+  'construction',
+  'vertical-asset',
+  'confined-space',
+  'data-fusion',
+  'road',
+]);
+
+/** The `type` a project of a purpose is written with, so older builds and every default follow. */
+export const PURPOSE_TYPE = {
+  survey: 'volumetric',
+  construction: 'fusion',
+  'vertical-asset': 'inspection',
+  'confined-space': 'inspection',
+  'data-fusion': 'fusion',
+  road: 'road',
+} as const satisfies Record<z.infer<typeof ProjectPurpose>, z.infer<typeof ProjectType>>;
+
 /** A severity model (with its classes) offered by the new project wizard. */
 export const SeverityTemplate = z.object({
   id: z.string().min(1),
@@ -112,6 +136,8 @@ export const NewProjectRequest = z
     customer: z.string().trim().max(120).optional(),
     site: z.string().trim().max(200).optional(),
     type: ProjectType,
+    /** The wizard's finer choice; when given, the manifest's `type` is `PURPOSE_TYPE` of it. */
+    purpose: ProjectPurpose.optional(),
     /** Projected CRS (metres) of the project frame. */
     epsg: z.number().int(),
     /** Project origin in that CRS (E, N, H). */
@@ -202,6 +228,7 @@ export const CapturePatch = z
   });
 
 export type ProjectType = z.infer<typeof ProjectType>;
+export type ProjectPurpose = z.infer<typeof ProjectPurpose>;
 export type SeverityTemplate = z.infer<typeof SeverityTemplate>;
 export type ReportBrand = z.infer<typeof ReportBrand>;
 export type NewProjectRequest = z.infer<typeof NewProjectRequest>;
