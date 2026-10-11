@@ -28,8 +28,14 @@ export interface JobRunnerDeps {
   now?: () => Date;
   /** How long a cancelled job may take to stop before its runtime is killed. */
   cancelGraceMs?: number;
-  /** Extra environment for a job's runtime (the photo jobs' memory cap, M10). */
-  jobEnv?: (job: JobRecord) => Record<string, string>;
+  /**
+   * Extra environment for a job's runtime, worked out when the job starts: the photo jobs' memory
+   * cap (M10) and the GPU add-on that fits the pack the job runs in.
+   */
+  jobEnv?: (
+    job: JobRecord,
+    pack: PackInfo,
+  ) => Record<string, string> | Promise<Record<string, string>>;
 }
 
 interface Live {
@@ -174,8 +180,16 @@ export class JobRunner {
     } catch (e) {
       return { ok: false, error: `Cannot write to ${jobDir(job)}: ${String(e)}` };
     }
+    // what the job's environment adds (the photo memory cap, the GPU add-on); never a reason to
+    // refuse the job: without it the job runs as it would on a computer that has none
+    let extra: Record<string, string>;
+    try {
+      extra = (await this.deps.jobEnv?.(job, pack)) ?? {};
+    } catch {
+      extra = {};
+    }
     this.save(job, true);
-    this.launch(job, pack);
+    this.launch(job, pack, extra);
     return { ok: true, job };
   }
 
@@ -286,10 +300,10 @@ export class JobRunner {
     return out;
   }
 
-  private launch(job: JobRecord, pack: PackInfo): void {
+  private launch(job: JobRecord, pack: PackInfo, extra: Record<string, string>): void {
     const env: NodeJS.ProcessEnv = {
       ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !ENV_DROP.has(k))),
-      ...this.deps.jobEnv?.(job),
+      ...extra,
     };
     const child = this.spawn(pack.python, ['-I', '-u', '-X', 'utf8', '-m', 'aio_pipelines'], {
       cwd: pack.dir,

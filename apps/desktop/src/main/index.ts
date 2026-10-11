@@ -127,6 +127,13 @@ import { CSP_PROBE, GLOBE_PROBE, RENDERER_PROBE, smokeProbe, writeSmokeReport } 
 import { nativeImageOps } from './images';
 import { validated, type Handler } from './ipc';
 import { findPack, findPdal, JobRunner, JobStore, openTarget, safeJobEvent } from './jobs';
+import {
+  AcceleratorProbe,
+  findAddon,
+  PHOTO_GPU_PIPELINES,
+  photoAddonEnv,
+  photoGpuOff,
+} from './jobs/addon';
 import { packArchivePlaces, registerPipelinePackIpc } from './jobs/packInstall';
 import { createKeyVault } from './keys';
 import { addToLibrary, createLibraryStore, listLibrary } from './library';
@@ -627,11 +634,33 @@ const exportJobs = createExportJobs({
 // M11 G8: a survey.qa job that holds a survey is journaled as `survey.hold` when it finishes
 const surveyQaJobs = qaJobEvents({ journal: (root, drafts) => journal.appendEdits(root, drafts) });
 const jobStore = new JobStore(join(app.getPath('userData'), 'jobs.json'));
+// where the graphics card's compiled kernels are kept: the GPU add-on itself is never written to
+const gpuKernelCache = (): string => join(app.getPath('userData'), 'gpu-kernels');
+// the GPU add-on's state on this computer, for the hardware probe (tested in a process of its own)
+const accelerator = new AcceleratorProbe({
+  findPack: () =>
+    findPack({ dataRoot: settings.current().dataRoot, env: process.env, app: packApp }),
+  dataRoot: () => settings.current().dataRoot,
+  cacheDir: gpuKernelCache,
+  env: () => process.env,
+  off: () => photoGpuOff(process.env),
+});
 const jobs = new JobRunner({
   store: jobStore,
   // M10: the photo jobs' memory cap (75 % of this computer's memory; no Settings field in 0.10)
-  jobEnv: (job) => ({
+  jobEnv: async (job, pack) => ({
     ...photoJobEnv(job.pipeline, totalmem(), process.env),
+    // the GPU add-on that fits this pack, when one is installed: the photo job tests the card
+    // itself and uses the CPU when it is not ready
+    ...(PHOTO_GPU_PIPELINES.has(job.pipeline)
+      ? photoAddonEnv(
+          job.pipeline,
+          (await findAddon({ dataRoot: settings.current().dataRoot, env: process.env, pack }))
+            .addon,
+          gpuKernelCache(),
+          photoGpuOff(process.env),
+        )
+      : {}),
     // M11 G1: geoid packs for the site pipeline, and PROJ never on the network
     ...geoidJobEnv(settings.current().dataRoot),
   }),
@@ -1361,6 +1390,7 @@ function registerIpc(): void {
       packVersion: async () =>
         (await findPack({ dataRoot: settings.current().dataRoot, env: process.env, app: packApp }))
           .pack?.version ?? null,
+      accelerator: () => accelerator.state(),
     }),
     trash: (p) => shell.trashItem(p),
   });
