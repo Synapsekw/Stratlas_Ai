@@ -1,4 +1,10 @@
-import { registerAppHooks, registerFrameSource, ToolError } from '@aio/ai';
+import {
+  assetIndex,
+  defaultToolContext,
+  registerAppHooks,
+  registerFrameSource,
+  ToolError,
+} from '@aio/ai';
 import { issueView, registerIssueHistory, setFlightPoses } from '@aio/annotate';
 import {
   configureEngine,
@@ -129,6 +135,21 @@ export function bootstrap(): void {
       mediaView,
       issueView,
       evidence,
+      /**
+       * The bounds of the tagged assets remembered for the open project: the status of the asset
+       * index and how many assets have their box; null without a project (agent tests: the
+       * warm-up of assetWarm.ts has measured). It is the index the warm-up asks for, read without
+       * the 3D view: this measures nothing itself, so it reports what the warm-up or a tool of
+       * the agent has remembered, and asking does not do their work for them.
+       */
+      assetBounds: () => {
+        try {
+          const index = assetIndex({ ...defaultToolContext('scene3d'), scene: () => null });
+          return { status: index.status, boxes: index.boxes.length };
+        } catch {
+          return null;
+        }
+      },
     },
   });
   shareFlightPoses(workspace.getState().project);

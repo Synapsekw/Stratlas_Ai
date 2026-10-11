@@ -78,7 +78,7 @@ Click **Issues** in the sidebar.
 - A photo with findings has a count badge in its worst severity colour, a tinted border and the boxes drawn on the thumbnail. The bar reads, for example, "12 photos with findings".
 - **Only with findings** hides the other photos.
 - **Order**: **As captured**, **Worst first** or **Most findings first**.
-- **Severity**: **Any**, or one level of the project's severity model, worst first (and **Uncertain** when the model has it). Only the photos with a finding of that level stay. When none match, the list reads "No photos match this filter."
+- **Severity**: **Any**, or one level of the project's severity models, worst first (and **Uncertain** when a model has it). A project with several severity models lists the levels of all of them, each value once. Only the photos with a finding of that level stay. When none match, the list reads "No photos match this filter."
 - A chip above the photos, for example `On Tank T-101`, shows a filter the agent set on an asset, an area or one finding. Click its **x** to clear it. See [Show me](07-ai-agent.md#show-me).
 - The filters stay while the app runs. The level and the chip clear when you open another project.
 - Click a photo to open it beside the list; mark issues on it as above.

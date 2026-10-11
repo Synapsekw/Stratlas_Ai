@@ -94,6 +94,7 @@ function tankFarm() {
     nodes: manifest.layers
       .flatMap((l) => (l.id === 'model' ? (l.tags ?? []) : []))
       .map((t) => t.node),
+    tags: manifest.layers.flatMap((l) => l.tags ?? []).map((t) => t.tag),
   };
 }
 
@@ -137,6 +138,7 @@ interface Probe {
       };
     };
     evidence: { getState(): { open: { issueId: string; kind: string } | null } };
+    assetBounds(): { status: 'ready' | 'loading' | 'none'; boxes: number } | null;
   };
 }
 
@@ -257,35 +259,17 @@ async function goTo(win: Page, name: 'Scene' | 'Issues' | 'Media' | 'Detections'
   await onScreen(win, name.toLowerCase());
 }
 
-/** The first visit to Scene of `askOnMediaOnceMeasured`: long enough on a machine that keeps up. */
-const SCENE_VISIT_MS = 2000;
-
-/** Scene for `ms` once the model is there, then Media again. */
-async function visitScene(win: Page, node: string, ms: number) {
-  await goTo(win, 'Scene');
-  await waitForNodes(win, [node]);
-  await win.waitForTimeout(ms);
-  await goTo(win, 'Media');
-}
-
 /**
- * Ask about an asset on Media once the bounds of the assets are known there. They are measured
- * once a second while the 3D view shows the model (assetWarm.ts) and remembered; nothing on
- * screen says when that has happened, and a question asked on Scene would measure them itself.
- * What says it is the answer on Media, where nothing can be measured: while that is "still
- * loading", Scene gets another visit, twice as long each time. A slow machine takes longer; it
- * does not fail.
+ * How many tagged assets of the open project have their bounds remembered; 0 while none have. The
+ * probe reads what is remembered and measures nothing, so the number rises only when the app has
+ * measured: once a second while the 3D view shows the model (assetWarm.ts), or in a tool of the
+ * agent.
  */
-async function askOnMediaOnceMeasured(win: Page, node: string, text: string): Promise<string> {
-  await onScreen(win, 'media');
-  let reply = await send(win, text);
-  for (let ms = SCENE_VISIT_MS * 2; reply.includes('still loading'); ms *= 2) {
-    expect(ms, 'the bounds of the assets were never measured on Scene').toBeLessThan(40_000);
-    await visitScene(win, node, ms);
-    reply = await send(win, text);
-  }
-  return reply;
-}
+const boundsRemembered = (win: Page) =>
+  win.evaluate(() => {
+    const bounds = (window as unknown as Probe).__stratlas.assetBounds();
+    return bounds?.status === 'ready' ? bounds.boxes : 0;
+  });
 
 async function unfold(win: Page) {
   if ((await toggle(win).getAttribute('aria-expanded')) !== 'true') await toggle(win).click();
@@ -879,18 +863,21 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
     const tags = change.layers.flatMap((l) => (l.kind === 'mesh' ? (l.tags ?? []) : []));
     const tank = tags.find((t) => t.tag === 'T-201');
     if (!tank) throw new Error('the change demo has no asset T-201');
-    await visitScene(win, tank.node, SCENE_VISIT_MS);
+    await goTo(win, 'Scene');
+    await waitForNodes(win, [tank.node]);
+    // no request was made in this project yet, so only the warm-up can have measured. Every
+    // asset of this project gets its bounds, and that is all there is: the tank farm had more
+    const assets = new Set(tags.map((t) => t.tag)).size;
+    expect(assets).toBeLessThan(new Set(farm.tags).size);
+    await expect.poll(() => boundsRemembered(win), { timeout: 120_000 }).toBe(assets);
+
+    await goTo(win, 'Media');
     await expect(win.getByTestId('media-scope-chip')).toHaveCount(0);
     await expect(dock(win)).toBeVisible();
     await expect(agent(win).locator('.ag-msg')).toHaveCount(0);
 
-    // an area of the tank farm is no place here: nothing of the old project answers. The first
-    // question about an asset also waits for the bounds measured while Scene showed the model
-    const old = await askOnMediaOnceMeasured(
-      win,
-      tank.node,
-      `photos of the old tank #tool show_photos {"where":"${AREA}"}`,
-    );
+    // an area of the tank farm is no place here: nothing of the old project answers
+    const old = await send(win, `photos of the old tank #tool show_photos {"where":"${AREA}"}`);
     expect(old).toContain('No place matches');
     expect(old).not.toContain(`On ${AREA}`);
     await expect(win.getByTestId('media-scope-chip').filter({ hasText: AREA })).toHaveCount(0);
