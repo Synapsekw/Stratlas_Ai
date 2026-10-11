@@ -490,6 +490,8 @@ Each is one session in its own worktree, handed to the orchestrator as usual. WP
 
 `PhotoAlignParams` does not change: the GPU choice reaches `photo.align` through the job's environment.
 
+> **WP5, first half, as built on 11 Oct 2026** (branch `feat/gpu-app-probe`): main only, nothing the renderer shows changes. `apps/desktop/src/main/jobs/addon.ts` finds the add-on that fits the pack in use, the job runner passes it to `photo.align` and `photo.products` in the job's environment, and the hardware probe gains `accelerator` from the pack's self-test (run in a process of its own, kept for ten minutes). So an add-on folder unpacked into `runtime/` by hand is used by photo jobs without any setting. Left for the second half, which is the part a person sees: installing the add-on from Settings, Processing tools (install from file, remove, test), the wizard's lines, the switch (`processing.json`; until then only `QUADRION_PHOTO_GPU=0`), the estimate with measured factors (`cuda` in the probe stays false until then), the diagnostics bundle, the end to end spec and the guide pages.
+
 ### Tests
 
 - **pytest, every push, no GPU:** the array code on numpy against the existing dense, fusion and chain tests; one process and the pool give the same depth maps; band planning for 4, 8 and 16 GB of card memory; the fake backend's out-of-memory, missing-DLL and device-loss cases end on the CPU with finished photos kept and a warning; the matcher's thresholds against a tiny hand-made descriptor set; `dense: cuda` without an add-on still refuses in words; the self-test's failure answers.

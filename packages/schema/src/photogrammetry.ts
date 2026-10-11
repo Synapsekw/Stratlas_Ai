@@ -157,6 +157,28 @@ export const HardwareProbe = z.looseObject({
   /** The pack's CUDA build is present and works (decision 5: M10.1 at the earliest). */
   cuda: z.boolean(),
   /**
+   * The optional GPU add-on on this computer (`aio.pipeline-addon/1`): `ready` when it is
+   * installed, fits the processing tools and the graphics card passes its test; else why not,
+   * with `reason` in plain words. Absent in builds before the add-on. Photo jobs use the card
+   * when it is `ready`; nothing else changes without it.
+   */
+  accelerator: z
+    .object({
+      state: z.enum([
+        'ready',
+        'not-installed',
+        'failed',
+        'driver-too-old',
+        'unsupported-gpu',
+        'off',
+      ]),
+      version: z.string().max(64).optional(),
+      driver: z.string().max(40).optional(),
+      gpu: z.string().max(200).optional(),
+      reason: z.string().max(500).optional(),
+    })
+    .optional(),
+  /**
    * Whether processing can run here: `available`, or why not (decision 8: Windows x64 and macOS
    * arm64 only; the pack must be 0.4.0 or later).
    */
