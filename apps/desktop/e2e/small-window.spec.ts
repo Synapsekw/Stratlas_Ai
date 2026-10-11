@@ -181,41 +181,52 @@ test('the Projects header keeps every action in view, down to the smallest windo
  * What is wrong at the foot of the main map: the scale bar (left), the note that no map pack is
  * installed and the credits (right) each have a box inside the map, none cut off, and no two of
  * them overlap. Empty when all is well.
+ *
+ * With `maps` 2, the same for both maps of Compare dates, each half as wide: the scale bar and
+ * the credits of each, and its note where it shows one.
  */
-async function footProblems(win: Page): Promise<string[]> {
-  return win.evaluate(() => {
-    const map = document.querySelector('.pane-map .aio-map');
-    if (!map) return ['no map'];
-    const frame = map.getBoundingClientRect();
-    const parts = {
-      scale: map.querySelector('.maplibregl-ctrl-scale'),
-      note: map.querySelector('[data-testid="map-no-packs"]'),
-      credits: map.querySelector('.maplibregl-ctrl-attrib'),
-    };
+async function footProblems(win: Page, maps: 1 | 2 = 1): Promise<string[]> {
+  return win.evaluate((count) => {
+    const found = [...document.querySelectorAll('.pane-map .aio-map')];
+    if (found.length < count) return [`${String(found.length)} of ${String(count)} maps`];
     const out: string[] = [];
-    const boxes: [string, DOMRect][] = [];
-    for (const [name, el] of Object.entries(parts)) {
-      const r = el?.getBoundingClientRect();
-      if (!el || !r || r.width < 1 || r.height < 1) {
-        out.push(`${name} is not shown`);
-        continue;
+    for (const [n, map] of found.slice(0, count).entries()) {
+      const of = count > 1 ? ` of map ${String(n + 1)}` : '';
+      const frame = map.getBoundingClientRect();
+      const note = map.querySelector('[data-testid="map-no-packs"]');
+      const parts = {
+        scale: map.querySelector('.maplibregl-ctrl-scale'),
+        // the main map always has the note here; a compared map is checked with what it shows
+        ...(count === 1 || note ? { note } : {}),
+        credits: map.querySelector('.maplibregl-ctrl-attrib'),
+      };
+      const boxes: [string, DOMRect][] = [];
+      for (const [name, el] of Object.entries(parts)) {
+        const r = el?.getBoundingClientRect();
+        if (!el || !r || r.width < 1 || r.height < 1) {
+          out.push(`${name}${of} is not shown`);
+          continue;
+        }
+        if (
+          r.left < frame.left ||
+          r.right > frame.right ||
+          r.top < frame.top ||
+          r.bottom > frame.bottom
+        )
+          out.push(`${name}${of} runs out of the map`);
+        if (el.scrollWidth > el.clientWidth + 1) out.push(`${name}${of} is cut off`);
+        // the credits stay in the right corner, wherever the scale bar sends them
+        if (name === 'credits' && Math.abs(frame.right - r.right - 10) > 2)
+          out.push(`${name}${of} left the right corner`);
+        boxes.push([name, r]);
       }
-      if (
-        r.left < frame.left ||
-        r.right > frame.right ||
-        r.top < frame.top ||
-        r.bottom > frame.bottom
-      )
-        out.push(`${name} runs out of the map`);
-      if (el.scrollWidth > el.clientWidth + 1) out.push(`${name} is cut off`);
-      boxes.push([name, r]);
+      for (const [i, [a, ra]] of boxes.entries())
+        for (const [b, rb] of boxes.slice(i + 1))
+          if (ra.left < rb.right && rb.left < ra.right && ra.top < rb.bottom && rb.top < ra.bottom)
+            out.push(`${a} and ${b}${of} overlap`);
     }
-    for (const [i, [a, ra]] of boxes.entries())
-      for (const [b, rb] of boxes.slice(i + 1))
-        if (ra.left < rb.right && rb.left < ra.right && ra.top < rb.bottom && rb.top < ra.bottom)
-          out.push(`${a} and ${b} overlap`);
     return out;
-  });
+  }, maps);
 }
 
 /** The credits of the main map, and the button that folds them to an "i" and back. */
@@ -254,6 +265,24 @@ test('the scale bar, the no pack note and the credits keep apart at the foot of 
   await shot(win, info, 'map-foot-no-pack.png');
 });
 
+/** Switch online satellite on in the map type picker: the map draws it, with its long credit. */
+async function switchOnSatellite(win: Page): Promise<void> {
+  const chip = win.getByTestId('basemap-button');
+  await chip.click();
+  await win.getByTestId('basemap-online').click();
+  await win
+    .getByTestId('basemap-pop')
+    .getByTestId('online-satellite-notice')
+    .getByRole('button', { name: 'Switch on' })
+    .click();
+  await expect(chip).toHaveText('Satellite');
+  // the picker's own button closes it again
+  await chip.click();
+  await expect(chip).toHaveAttribute('aria-expanded', 'false');
+  await expect(win.getByTestId('basemap-pop')).toHaveCount(0);
+  await expect(credits(win)).toContainText(ONLINE_SATELLITE.attribution, VIEW_READY);
+}
+
 test.describe('with online satellite', () => {
   // No test reaches the network: main stands in for the service (online-satellite.spec.ts), and
   // the zero-network guard of the fixtures still fails the test on any real request.
@@ -265,22 +294,32 @@ test.describe('with online satellite', () => {
     await openMapWithoutPacks(win);
     await expectFootApart(win, 'online satellite off');
 
-    // switched on in the map type picker: the map draws it, with the service's long credit
-    const chip = win.getByTestId('basemap-button');
-    await chip.click();
-    await win.getByTestId('basemap-online').click();
-    await win
-      .getByTestId('basemap-pop')
-      .getByTestId('online-satellite-notice')
-      .getByRole('button', { name: 'Switch on' })
-      .click();
-    await expect(chip).toHaveText('Satellite');
-    // the picker's own button closes it again
-    await chip.click();
-    await expect(chip).toHaveAttribute('aria-expanded', 'false');
-    await expect(win.getByTestId('basemap-pop')).toHaveCount(0);
-    await expect(credits(win)).toContainText(ONLINE_SATELLITE.attribution, VIEW_READY);
+    await switchOnSatellite(win);
     await expectFootApart(win, 'online satellite on');
     await shot(win, info, 'map-foot-online-satellite.png');
+  });
+
+  test('in Compare dates the open satellite credit keeps clear of each scale bar', async ({
+    twoDateProject,
+    win,
+  }, info) => {
+    expect(twoDateProject.captures).toHaveLength(2);
+    await win.getByTestId('project-card').filter({ hasText: 'E2E two dates' }).click();
+    await expect(win.locator('[data-scene-view] canvas')).toBeVisible(VIEW_READY);
+    await showView(win, 'Map');
+    await expect(win.locator('.maplibregl-canvas')).toBeVisible(VIEW_READY);
+    await switchOnSatellite(win);
+
+    // from the Map, Compare dates shows two maps, each half the stage wide
+    await win.getByTestId('compare-dates').click();
+    await expect(win.locator('.pane-map')).toHaveCount(2);
+    await expect(credits(win)).toHaveCount(2);
+    for (const credit of await credits(win).all()) {
+      // as the maps open, before anything is dragged: the long credit is open in both
+      await expect(credit).toContainText(ONLINE_SATELLITE.attribution, VIEW_READY);
+      await expect(credit).toHaveClass(/maplibregl-compact-show/);
+    }
+    await expect.poll(() => footProblems(win, 2), { message: 'credits open' }).toEqual([]);
+    await shot(win, info, 'compare-foot-online-satellite.png');
   });
 });
