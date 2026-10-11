@@ -98,6 +98,19 @@ async function dragOnto(row: Locator, target: Locator) {
   await row.dragTo(target);
 }
 
+/**
+ * `dragOnto` for a drop while every dataset is dated. Then the "Drop for no date" place is pinned
+ * to the foot of the list for the length of the drag, and a folder that sits at the bottom edge of
+ * the list (where `scrollIntoViewIfNeeded` leaves it) is under that place: the drop would land on
+ * "no date". Centre the folder in the list first, so it is clear of the place.
+ */
+async function dragOntoClear(row: Locator, target: Locator) {
+  await target.evaluate((el) => {
+    el.scrollIntoView({ block: 'center' });
+  });
+  await dragOnto(row, target);
+}
+
 /** Press a row and move far enough for its drag to start, without leaving the row. */
 async function startDrag(win: Page, row: Locator) {
   await row.scrollIntoViewIfNeeded();
@@ -280,6 +293,106 @@ test.describe('survey date folders', () => {
     await expect(win.getByTestId('date-note')).toContainText('4 Sep 2024');
     await expect(sep.getByTestId('tree-row-quad-sep')).toBeVisible();
     await expect(every.getByTestId('tree-row-quad-sep')).toHaveCount(0);
+  });
+
+  test('a group header dragged onto another date moves the whole group, and Undo puts it back', async ({
+    dataRoot,
+    threeDateProject,
+    win,
+  }) => {
+    const id = threeDateProject.id;
+    await openThreeDates(win, id);
+    const files = await dataHashes(dataRoot, id);
+    const nov = win.getByTestId('date-folder-nov');
+    const oct = win.getByTestId('date-folder-oct');
+    const captureOf = async () =>
+      Object.fromEntries(
+        (await savedManifest(dataRoot, id)).layers.map((l) => [l.id, l.capture ?? null]),
+      );
+
+    // two outlines under November: its own and the undated one
+    await dragOnto(
+      win.getByTestId('date-folder-every').getByTestId('tree-row-design'),
+      win.getByTestId('date-name-nov'),
+    );
+    await expect(nov.getByTestId('tree-row-design')).toBeVisible();
+    await expect(win.getByTestId('date-note')).toHaveCount(0);
+    const before = await captureOf();
+    expect(before).toMatchObject({ 'site-nov': 'nov', design: 'nov' });
+
+    // the Maps and rasters heading of November onto October: both outlines go, the model stays
+    await dragOntoClear(nov.getByTestId('tree-group-maps'), win.getByTestId('date-name-oct'));
+    await expect(nov.getByTestId('tree-row-site-nov')).toHaveCount(0);
+    await expect(nov.getByTestId('tree-row-design')).toHaveCount(0);
+    await expect(nov.getByTestId('tree-row-quad-nov')).toBeVisible();
+    await expand(win, 'oct');
+    await expect(oct.getByTestId('tree-row-site-nov')).toBeVisible();
+    await expect(oct.getByTestId('tree-row-design')).toBeVisible();
+    await expect(oct.getByTestId('tree-row-site-oct')).toBeVisible();
+    await expect(win.getByTestId('date-note')).toContainText('2 datasets moved to');
+    expect(await captureOf()).toEqual({ ...before, 'site-nov': 'oct', design: 'oct' });
+    expect(await dataHashes(dataRoot, id)).toEqual(files);
+
+    // Undo: both are back under November, and the note is gone
+    await win.getByTestId('date-undo').click();
+    await expect(win.getByTestId('date-note')).toHaveCount(0);
+    await expect(nov.getByTestId('tree-row-site-nov')).toBeVisible();
+    await expect(nov.getByTestId('tree-row-design')).toBeVisible();
+    await expect(oct.getByTestId('tree-row-site-nov')).toHaveCount(0);
+    expect(await captureOf()).toEqual(before);
+    expect(await dataHashes(dataRoot, id)).toEqual(files);
+
+    // a single dataset still drags on its own, with no note
+    await dragOntoClear(nov.getByTestId('tree-row-quad-nov'), win.getByTestId('date-name-oct'));
+    await expect(oct.getByTestId('tree-row-quad-nov')).toBeVisible();
+    await expect(win.getByTestId('date-note')).toHaveCount(0);
+  });
+
+  test('Move to date on a group header moves the whole group', async ({
+    dataRoot,
+    threeDateProject,
+    win,
+  }) => {
+    const id = threeDateProject.id;
+    await openThreeDates(win, id);
+    const nov = win.getByTestId('date-folder-nov');
+    await dragOnto(
+      win.getByTestId('date-folder-every').getByTestId('tree-row-design'),
+      win.getByTestId('date-name-nov'),
+    );
+    await expect(nov.getByTestId('tree-row-design')).toBeVisible();
+
+    // a context click on the header opens the menu and leaves the group open; a plain click on it
+    // still folds and unfolds the group
+    const header = nov.getByTestId('tree-group-maps');
+    const fold = header.locator('.tgroup-btn');
+    await header.click({ button: 'right' });
+    await expect(win.getByTestId('move-menu')).toBeVisible();
+    await expect(fold).toHaveAttribute('aria-expanded', 'true');
+    await expect(nov.getByTestId('tree-row-site-nov')).toBeVisible();
+    await win.keyboard.press('Escape');
+    await expect(win.getByTestId('move-menu')).toHaveCount(0);
+    await fold.click();
+    await expect(fold).toHaveAttribute('aria-expanded', 'false');
+    await expect(nov.getByTestId('tree-row-site-nov')).toHaveCount(0);
+    await fold.click();
+    await expect(fold).toHaveAttribute('aria-expanded', 'true');
+    await expect(nov.getByTestId('tree-row-site-nov')).toBeVisible();
+
+    await header.click({ button: 'right' });
+    const menu = win.getByTestId('move-menu');
+    await expect(menu).toContainText('Maps and rasters · 2 datasets');
+    await expect(menu.getByTestId('move-to-nov')).toBeDisabled();
+    await menu.getByTestId('move-to-sep').click();
+
+    await expect(nov.getByTestId('tree-row-site-nov')).toHaveCount(0);
+    await expand(win, 'sep');
+    const sep = win.getByTestId('date-folder-sep');
+    await expect(sep.getByTestId('tree-row-site-nov')).toBeVisible();
+    await expect(sep.getByTestId('tree-row-design')).toBeVisible();
+    const saved = await savedManifest(dataRoot, id);
+    const at = Object.fromEntries(saved.layers.map((l) => [l.id, l.capture ?? null]));
+    expect(at).toMatchObject({ 'site-nov': 'sep', design: 'sep', 'quad-nov': 'nov' });
   });
 
   test('a folder is renamed, coloured and given an icon from its menu, and it sticks', async ({
