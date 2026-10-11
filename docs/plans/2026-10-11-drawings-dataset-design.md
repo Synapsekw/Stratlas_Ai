@@ -16,7 +16,7 @@ The scope below is a proposal; the founder has not reviewed it. Choices taken wi
 
 1. **A Drawings group** in the Datasets list (and in every survey date folder): every plan raster stored under `drawings/` and every vector layer stored under `drawings/`. The group header has an **Add drawing** button; the same action sits beside **Add data** at the top of the list, in the command palette and on the empty project hint.
 2. **More file types.** PDF, PNG, JPEG, WebP, SVG and TIFF without a georeference import as drawings. A PDF or PNG that is dropped or picked through **Add data** goes to Drawings by itself. A JPEG stays a photo, and a georeferenced TIFF stays an ortho, unless it comes in through **Add drawing**. DXF keeps its pipeline. DWG stays out, and its message names the formats that work.
-3. **PDF pages.** Each page becomes one drawing. A PDF of one page imports at once. A PDF of several pages asks which pages to bring in (default: all, at most 20 per import; the card says so when the file has more).
+3. **PDF pages.** Each page becomes one drawing. A PDF of one page imports at once. A PDF of several pages asks which pages to bring in (default: the first page; at most 20 per import, and the card says so when the file has more).
 4. **Side by side at once.** A new drawing opens in the split view beside the 3D view or the map without being placed: the **Ortho and plans** pane lists drawings first, under their own heading, and each PDF page is its own entry. **Open side by side** on a drawing row switches to the split with that drawing on the right.
 5. **Not placed.** A picture has no position or scale. It gets a provisional placement (centred on the project origin, north up, 100 m on its long side), is saved hidden, and its row says "not placed". **Place on the site** opens the split (3D left, drawing right): click a point on the drawing, then the same spot in the 3D view, on the map, or type its coordinate. Two or more pairs give a similarity fit (the fit the model alignment uses, level mode); **Place** saves the corners, shows the drawing and clears "not placed".
 6. **Overlay controls** on a drawing row: an opacity slider (3D and map) and **On top in 3D**, which draws the drawing over models and point clouds instead of being hidden by them. Both are remembered per project on this computer.
@@ -44,7 +44,7 @@ PDF pages are drawn at 220 dpi, at least 4096 and at most 8192 pixels on the lon
 - `LayerPatch` gains `{ corners }` for a raster drawn as one image. Saving it on a drawing also sets the layer visible and marks its `placement.json` as placed.
 - `builder:import` request gains the optional `drawings` flag (the **Add drawing** path).
 - `ImportItem` gains the optional `drawing` hint (`stem`, `src`, `name`).
-- New IPC channel `builder:addDrawingPage`.
+- New IPC channels `builder:addDrawingPage` and `builder:closeDrawing`.
 - `aio.drawingplacement/1` gains the optional `sizePx`; `units` may be `"px"`.
 - `@aio/workspace` gains the `layerDisplay` store (opacity and on top per layer, view state only).
 
@@ -65,11 +65,14 @@ PDF pages are drawn at 220 dpi, at least 4096 and at most 8192 pixels on the lon
 1. **Only layers under `drawings/` are in the group.** Plan rasters that older importers wrote elsewhere stay under Maps and rasters, so existing projects and their tests do not move.
 2. **A new picture drawing starts hidden in 3D and on the map** until it is placed. An unplaced 100 m sheet over the site is noise; it is one click away (the eye) and opens side by side at once.
 3. **PDF pages keep their white paper.** That reads correctly side by side; over the site the opacity slider makes it see-through. Turning paper transparent is a follow-up.
-4. **A multi-page PDF asks for pages**, capped at 20 per import.
+4. **A multi-page PDF asks for pages**, proposes the first one and takes at most 20 per import: every page is a drawing that cannot be removed yet.
 5. **Importing the same file again adds a second drawing** (`<stem>-2`); a DXF import still replaces.
 6. **Opacity in 3D defaults to 100 percent**, on the map to 75 percent as before, until the slider is moved; then one value drives both.
 7. **Site points come from the 3D view, the mini map or typed coordinates.** Clicking the main map pane is not wired.
-8. **Cancelling the page question leaves the PDF copy in `drawings/`** with no layer. Nothing lists it; importing again reuses nothing and adds `<stem>-2`.
+8. **Cancelling the page question, or a file that cannot be drawn, leaves nothing behind**: the copy the import made is removed (`builder:closeDrawing`). Only closing the app in the middle of an import leaves the copy.
+9. **A DXF named like a picture drawing comes in under the next free name** through the import; the model builder refuses it instead, because its job cannot take another name there.
+10. **Limits are those of a plain raster import**: 144 megapixels and 300 MB, checked from the header before decoding.
+11. **A hidden drawing is not loaded** in the 3D view or on the map until it is first shown.
 
 ## Out of scope (follow-ups)
 
@@ -80,11 +83,16 @@ PDF pages are drawn at 220 dpi, at least 4096 and at most 8192 pixels on the lon
 - Reordering layers.
 - Paper to transparent for scanned and PDF sheets.
 - Removing a drawing from the project (no layer can be removed in the app today).
+- The rotation a phone camera records (EXIF orientation) for photos brought in as drawings.
+- A PDF row that says "Failed" when earlier pages of the same file were added before the failure: say how many came in.
+- The opacity slider shows 75 percent for a drawing nobody set, while the 3D view draws it solid: one default for both views.
+- Picking up a staged drawing again after the app was closed in the middle of its import.
 
 ## Errors
 
 - A file that cannot be decoded reports on its own import row; the rest of the import goes on.
-- A picture above 400 megapixels is refused before it is decoded, with its size in the message.
+- A picture above 144 megapixels or 300 MB is refused before it is decoded, with its size in the message.
+- A PDF page whose PNG is over the 64 MB hand-over limit is drawn again at 70, 50 and 35 percent; when it still does not fit, its row says so in plain words.
 - A PDF with a password, or one pdf.js cannot open, fails on its row; the copy stays in `drawings/`.
 - Place with fewer than two pairs, or two pairs at one drawing point, keeps the button disabled or says why.
 

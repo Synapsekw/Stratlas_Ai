@@ -82,14 +82,19 @@ Current limits only; each is removed from this list when fixed.
 - A PDF, a picture or a scan is a picture of the drawing: it has no line work to snap to and no parts for the model builder. Only DXF drawings have those.
 - A picture drawing has no position until you place it, so it starts hidden in the 3D view and on the map and marked "not placed". It opens side by side straight away.
 - PDF pages keep their white paper. Over the site, use the opacity slider to see through it.
-- One import takes at most 20 pages of a PDF. Import the file again for more.
-- Pictures above 8192 pixels on the long side are scaled down to it, and pictures above 400 megapixels are refused.
+- A PDF with several pages asks which pages to bring in and proposes the first one. One import takes at most 20 pages; import the file again for more.
+- Pictures above 8192 pixels on the long side are scaled down to it. A picture above 144 megapixels or 300 MB is refused, as a plain raster import refuses it; save it smaller first. A PDF page too detailed to hand over at full size is drawn at 70, 50 or 35 percent, and refused with a message when even that is too heavy.
 - A site point for placing comes from a click in the 3D view, a click on the small map in the place strip, or a typed coordinate. Clicking the main map does not work for it.
 - Side by side, the drawing pans and zooms by itself: it does not follow the 3D view or the map.
 - Opacity and **On top in 3D** are remembered on this computer per project. They do not travel with the project or a package.
 - Until you move the opacity slider, a drawing is solid in the 3D view and at 75 percent on the map; after that one value applies to both.
-- Drawings do not show on the Globe, their order over each other cannot be changed, and a drawing cannot be removed from a project in the app.
-- Importing the same picture or PDF again adds a second drawing; importing a DXF again replaces it.
+- **A drawing cannot be removed from a project in the app yet.** Bring in only the files and pages you need. A PNG picked together with an OBJ model that uses it as a texture is left out of Drawings for that reason.
+- Drawings do not show on the Globe, and their order over each other cannot be changed.
+- **On top in 3D** draws a drawing over models, point clouds and the ground imagery. The selection highlight, outlines, camera symbols, measurement lines and labels still draw over it.
+- A drawing that is hidden is not loaded: its picture is fetched the first time it is shown in the 3D view or on the map, so it appears a moment after its eye is clicked.
+- Importing the same picture or PDF again adds a second drawing; importing a DXF again replaces it. A DXF with the name of a picture drawing comes in under the next free name (`site-2`) through **Add data**; the model builder refuses it and asks for another file name.
+- Closing the app while the pages of a PDF are being drawn leaves the copy of the PDF in the project folder under `drawings/`, without a drawing. Cancelling the page question, or a file that cannot be drawn, leaves nothing.
+- A phone photo brought in as a drawing ignores the rotation its camera recorded, so it can come in on its side.
 
 ### Models from drawings and point clouds
 
