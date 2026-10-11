@@ -1,6 +1,6 @@
 ---
 type: north-star
-last-updated: 2026-10-10
+last-updated: 2026-10-11
 ---
 
 # North star
@@ -24,8 +24,8 @@ The full table, with plans, is [plans/ROADMAP.md](plans/ROADMAP.md). Status and 
 
 ## 3. Now
 
-- **Phase**: M10 integration rounds; round 41 (Globe street map with a Satellite look) is in CI as a draft pull request.
-- **Branch**: `main` at round 39; merging goes through the Orchestrator session, one branch at a time.
-- **In flight**: round 40 (pipeline pack install from Settings), round 41 (Globe street map), `chore/agent-workflow` (this session workflow: `/wrapup`, `/develop`, `/whats-next`, hooks, task scripts).
+- **Phase**: M10 integration rounds; pipeline pack install from Settings (round 40), the Globe street map (round 41) and the session workflow (round 45) are merged.
+- **Branch**: `main` at round 45; merging goes through the Orchestrator session, one branch at a time.
+- **In flight**: `feat/drag-group-to-date` (a group heading in a survey date folder moves its whole group to another date, with Undo) is in integration round 46, in CI as a draft pull request.
 - **Next**: finish M10; then Walks 360 and the timeline.
-- **Owed**: founder decisions on the online map provider and API key, the GPU spike, and the M11 G12 AI helpers; macOS stays parked.
+- **Owed**: founder decisions on the online map provider and API key, the GPU spike, and the M11 G12 AI helpers; client and site names still in `docs/TESTING.md` need a clean-up branch; macOS stays parked.
