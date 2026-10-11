@@ -15,7 +15,7 @@ import { defaultProducts, presetLabel } from './estimate';
 import { GcpPanel } from './GcpTable';
 import { RUN_STATUS, runView, type PhaseState } from './phases';
 import { RefinedPoses } from './RefinedPoses';
-import { captureOfRun } from './surveyDate';
+import { captureOfRun, DATE_NOT_SAVED, dateWarningPlace } from './surveyDate';
 import { jobsOfRun, photoUi, STAGE_WORDS, usePhotoUi, type RunTab } from './store';
 
 const TABS: readonly { id: RunTab; label: string }[] = [
@@ -153,6 +153,7 @@ function Progress({ run, data, jobs }: { run: string; data: PhotoRun | null; job
   const stopped = usePhotoUi((s) => s.stopped[run]);
   const kept = usePhotoUi((s) => s.dates[run]);
   const startError = usePhotoUi((s) => s.startErrors[run]);
+  const dateWarned = usePhotoUi((s) => s.dateWarnings[run] === true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const act = async (p: Promise<string | null>) => {
@@ -193,6 +194,13 @@ function Progress({ run, data, jobs }: { run: string; data: PhotoRun | null; job
   const where = dated
     ? `Added to ${project.manifest.name} under ${formatDate(dated.date)} as new layers:`
     : `Added to ${project.manifest.name} as new layers, under no survey date:`;
+  const warnAt = dateWarningPlace({ warned: dateWarned, dated: Boolean(dated), ready });
+  const dateWarning = (
+    <p className="notice warn small" role="status" data-testid="photo-date-warning">
+      <Icon name="warn" size={14} />
+      <span>{DATE_NOT_SAVED}</span>
+    </p>
+  );
   const show = (mode: 'map' | '3d') => {
     photoUi.getState().close();
     shell.getState().go('scene');
@@ -212,6 +220,7 @@ function Progress({ run, data, jobs }: { run: string; data: PhotoRun | null; job
           <p className="small" data-testid="photo-results-where">
             {where}
           </p>
+          {warnAt === 'results' && dateWarning}
           <ul>
             {layerNames.map((n) => (
               <li key={n}>{n}</li>
@@ -374,6 +383,8 @@ function Progress({ run, data, jobs }: { run: string; data: PhotoRun | null; job
           </div>
         </section>
       )}
+
+      {warnAt === 'progress' && dateWarning}
 
       {startError && (
         <p className="notice danger small" role="alert" data-testid="photo-start-error">

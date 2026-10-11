@@ -29,6 +29,8 @@ export interface PhotoUi {
   dates: Record<string, { capture?: string; captureDate?: string }>;
   /** Why the maps of a run did not start, until a start works (the run panel says it). */
   startErrors: Record<string, string>;
+  /** Runs whose maps were started without the survey date wanted, because it could not be saved. */
+  dateWarnings: Record<string, true>;
   /** Bumped after a write, so open panels read the run again. */
   version: number;
   openWizard: () => void;
@@ -39,6 +41,7 @@ export interface PhotoUi {
   setStopped: (run: string, s: 'paused' | 'cancelled' | null) => void;
   setDate: (run: string, d: { capture?: string; captureDate?: string } | null) => void;
   setStartError: (run: string, error: string | null) => void;
+  setDateWarning: (run: string, on: boolean) => void;
   bump: () => void;
 }
 
@@ -48,6 +51,7 @@ export const photoUi = createStore<PhotoUi>()((set) => ({
   stopped: {},
   dates: {},
   startErrors: {},
+  dateWarnings: {},
   version: 0,
   openWizard: () => {
     set({ view: { kind: 'wizard' } });
@@ -89,6 +93,15 @@ export const photoUi = createStore<PhotoUi>()((set) => ({
       );
       if (error) startErrors[run] = error;
       return { startErrors };
+    });
+  },
+  setDateWarning: (run, on) => {
+    set((s) => {
+      const dateWarnings = Object.fromEntries(
+        Object.entries(s.dateWarnings).filter(([k]) => k !== run),
+      );
+      if (on) dateWarnings[run] = true;
+      return { dateWarnings };
     });
   },
   bump: () => {

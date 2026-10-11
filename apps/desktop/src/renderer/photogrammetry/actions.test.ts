@@ -15,7 +15,7 @@ vi.mock('@aio/workspace', () => ({
 }));
 
 import { startProducts } from './actions';
-import { photoUi } from './store';
+import { photoUi, type PendingProducts } from './store';
 
 const base = { root: 'D:/Projects/site/', preset: 'standard', products: ['ortho'] } as const;
 const started = { ok: true, value: { ok: true } };
@@ -112,6 +112,103 @@ describe('startProducts and the survey date', () => {
     await startProducts('r4', { ...base, products: ['ortho'], captureDate: '2026-04-02' });
     expect(call.mock.calls.map((c) => c[0] as string)).toEqual(['jobs:start']);
     expect(paramsOfStart()).not.toHaveProperty('capture');
+  });
+});
+
+describe('startProducts says when the survey date could not be saved', () => {
+  const dated: PendingProducts = { ...base, products: ['ortho'], captureDate: '2026-04-02' };
+  const ensure = (reply: () => Promise<unknown>) => {
+    call.mockImplementation((channel: string) =>
+      channel === 'builder:ensureCapture' ? reply() : Promise.resolve(started),
+    );
+  };
+  const warned = (run: string) => photoUi.getState().dateWarnings[run];
+
+  it('starts the maps without a date and warns the run when the save is refused', async () => {
+    ensure(() => Promise.resolve({ ok: true, value: { ok: false, error: 'no' } }));
+    expect(await startProducts('d1', dated)).toBeNull();
+    expect(paramsOfStart()).not.toHaveProperty('capture');
+    expect(warned('d1')).toBe(true);
+  });
+
+  it('warns the run when the reply is not ok at all', async () => {
+    ensure(() => Promise.resolve({ ok: false, error: 'busy' }));
+    expect(await startProducts('d2', dated)).toBeNull();
+    expect(paramsOfStart()).not.toHaveProperty('capture');
+    expect(warned('d2')).toBe(true);
+  });
+
+  it('starts the maps without a date and warns the run when the save throws', async () => {
+    ensure(() => Promise.reject(new Error('gone')));
+    expect(await startProducts('d3', dated)).toBeNull();
+    expect(paramsOfStart()).not.toHaveProperty('capture');
+    expect(warned('d3')).toBe(true);
+  });
+
+  it('warns the run when the open project is no longer the run project', async () => {
+    open.project = { id: 'p2', root: 'D:\\Projects\\other' };
+    call.mockResolvedValue(started);
+    expect(await startProducts('d4', dated)).toBeNull();
+    expect(paramsOfStart()).not.toHaveProperty('capture');
+    expect(warned('d4')).toBe(true);
+  });
+
+  it('starts the maps under the date and does not warn when the save works', async () => {
+    ensure(() =>
+      Promise.resolve({
+        ok: true,
+        value: { ok: true, manifest: { captures: [] }, captureId: 'capture-2026-04-02' },
+      }),
+    );
+    expect(await startProducts('d5', dated)).toBeNull();
+    expect(paramsOfStart()).toMatchObject({ capture: 'capture-2026-04-02' });
+    expect(warned('d5')).toBeUndefined();
+  });
+
+  it('does not warn when a date that exists is used or none was wanted', async () => {
+    call.mockResolvedValue(started);
+    await startProducts('d6', { ...base, products: ['ortho'], capture: 'c2' });
+    expect(warned('d6')).toBeUndefined();
+    await startProducts('d7', { ...base, products: ['ortho'] });
+    expect(call.mock.calls.map((c) => c[0] as string)).toEqual(['jobs:start', 'jobs:start']);
+    expect(warned('d7')).toBeUndefined();
+  });
+
+  it('a start that works with a date clears the warning of an earlier try', async () => {
+    ensure(() => Promise.resolve({ ok: true, value: { ok: false, error: 'no' } }));
+    await startProducts('d8', dated);
+    expect(warned('d8')).toBe(true);
+    call.mockReset();
+    call.mockResolvedValue(started);
+    await startProducts('d8', { ...base, products: ['ortho'], capture: 'c2' });
+    expect(warned('d8')).toBeUndefined();
+  });
+
+  it('a start with no date wanted clears the warning of an earlier try', async () => {
+    photoUi.getState().setDateWarning('d9', true);
+    call.mockResolvedValue(started);
+    await startProducts('d9', { ...base, products: ['ortho'] });
+    expect(warned('d9')).toBeUndefined();
+  });
+
+  it('a refused start leaves the warning as it was', async () => {
+    const refused = { ok: true, value: { ok: false, error: 'No pipeline pack is installed.' } };
+    photoUi.getState().setDateWarning('d10', true);
+    call.mockResolvedValue(refused);
+    expect(await startProducts('d10', { ...base, products: ['ortho'], capture: 'c2' })).toBe(
+      'No pipeline pack is installed.',
+    );
+    expect(warned('d10')).toBe(true);
+    photoUi.getState().setDateWarning('d11', false);
+    call.mockImplementation((channel: string) =>
+      Promise.resolve(
+        channel === 'builder:ensureCapture'
+          ? { ok: true, value: { ok: false, error: 'no' } }
+          : refused,
+      ),
+    );
+    await startProducts('d11', dated);
+    expect(warned('d11')).toBeUndefined();
   });
 });
 

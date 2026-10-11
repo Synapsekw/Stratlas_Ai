@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   captureOfRun,
   choiceOf,
+  DATE_NOT_SAVED,
   dateOptions,
   dateSentence,
+  dateWarningPlace,
   daysNote,
   daysOfItems,
   pickFromChoice,
@@ -210,5 +212,31 @@ describe('captureOfRun', () => {
   it('gives nothing when neither has a date', () => {
     expect(captureOfRun(['l3'], layers, undefined)).toBeUndefined();
     expect(captureOfRun([], [], undefined)).toBeUndefined();
+  });
+});
+
+describe('dateWarningPlace', () => {
+  it("says the decision in the owner's words", () => {
+    expect(DATE_NOT_SAVED).toBe(
+      'The survey date could not be saved, so these maps are under no date. Move them to the date in Datasets.',
+    );
+  });
+
+  it('is on the results when the run is ready and its layers are under no date', () => {
+    expect(dateWarningPlace({ warned: true, dated: false, ready: true })).toBe('results');
+  });
+
+  it('is on the progress while the maps are still being built', () => {
+    expect(dateWarningPlace({ warned: true, dated: false, ready: false })).toBe('progress');
+  });
+
+  it('is nowhere once the layers are under a date', () => {
+    expect(dateWarningPlace({ warned: true, dated: true, ready: true })).toBeNull();
+    expect(dateWarningPlace({ warned: true, dated: true, ready: false })).toBeNull();
+  });
+
+  it('is nowhere when the run has no warning', () => {
+    expect(dateWarningPlace({ warned: false, dated: false, ready: true })).toBeNull();
+    expect(dateWarningPlace({ warned: false, dated: false, ready: false })).toBeNull();
   });
 });

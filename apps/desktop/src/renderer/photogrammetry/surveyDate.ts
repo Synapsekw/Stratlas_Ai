@@ -121,6 +121,24 @@ export function pickParams(pick: DatePick): { capture?: string; captureDate?: st
   return {};
 }
 
+/** Said when a run's maps were built without the survey date wanted, because it could not be saved. */
+export const DATE_NOT_SAVED =
+  'The survey date could not be saved, so these maps are under no date. Move them to the date in Datasets.';
+
+/**
+ * Where the run panel says `DATE_NOT_SAVED`, once: with the results when the run is ready and its
+ * layers are under no date, on the progress while the maps are still being built, else nowhere
+ * (no warning, or the layers are under a date).
+ */
+export function dateWarningPlace(s: {
+  warned: boolean;
+  dated: boolean;
+  ready: boolean;
+}): 'results' | 'progress' | null {
+  if (!s.warned || s.dated) return null;
+  return s.ready ? 'results' : 'progress';
+}
+
 /**
  * The survey date the results sentence names: where the run's layers really are (the first output
  * layer that is filed under a date, which may have been moved by hand), else the run file's own.
