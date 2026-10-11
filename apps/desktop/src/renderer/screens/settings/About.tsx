@@ -4,7 +4,8 @@ import { formatBytes, formatDate, Icon, Switch, t } from '@aio/ui';
 import { useEffect, useMemo, useState } from 'react';
 import { build, formatBuildTime } from '../../buildStamp';
 import { bridge, shell, useCall, useShell } from '../../shell';
-import { BrandLockup } from '../../shell/BrandMark';
+import { BrandWordmark } from '../../shell/BrandMark';
+import { BrandMotion } from '../../shell/BrandMotion';
 import { Diagnostics } from './Diagnostics';
 import { ReleaseNotesView } from './ReleaseNotes';
 
@@ -454,7 +455,14 @@ export function About() {
       <div className="sblock">
         <div className="about-hero">
           <div>
-            <BrandLockup />
+            {/* the surface is .about-hero (--bg-1): the lifted plate's halo takes that colour */}
+            <span
+              className="lockup about-lockup"
+              style={{ ['--bm-ground' as string]: 'var(--bg-1)' }}
+            >
+              <BrandMotion className="lockup-mark" motion="sequence" />
+              <BrandWordmark className="lockup-word" />
+            </span>
             <span className="tagline">{brand.tagline}</span>
             <b>
               {brand.productName} <span className="mono">{a?.version ?? ''}</span>
