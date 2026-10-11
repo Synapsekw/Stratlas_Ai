@@ -23,10 +23,10 @@ import { issueEvidence, photoEvidence } from '../issueCard/model';
 import { openLightbox } from '../issueCard/state';
 import { PdfViewer } from '../report/PdfViewer';
 import { useCall } from '../shell';
+import { DrawingPane, RasterOptions } from '../drawings/DrawingPane';
 import { captureLabel, useCaptureIndex, useSplitDates } from './compare';
 import { DateBadge, pickPhotoSet } from './DatesOnScreen';
 import { SameViewButton } from './FramesPane';
-import { RasterView } from './RasterPane';
 import {
   blockedFor,
   chooseCapture,
@@ -409,15 +409,11 @@ function RasterPane({ split, side }: { split: SplitModel; side: Side }) {
               split.set({ ...split.sides, raster: e.target.value });
             }}
           >
-            {rasters.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
-            ))}
+            <RasterOptions rasters={rasters} />
           </select>
         </div>
       )}
-      <RasterView
+      <DrawingPane
         key={layer.id}
         projectId={project.id}
         layer={layer}

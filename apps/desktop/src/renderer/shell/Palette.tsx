@@ -439,6 +439,14 @@ export function Palette() {
           run: () => void builder.getState().pickAndImport(),
         });
         list.push({
+          id: 'builder:add-drawing',
+          title: 'Add a drawing to this project',
+          group: 'Actions',
+          icon: 'drawing',
+          keywords: ['pdf', 'png', 'plan', 'sheet', 'scan', 'dxf', 'layout', 'drawings'],
+          run: () => void builder.getState().pickAndAddDrawing(),
+        });
+        list.push({
           id: 'builder:import-tiles',
           title: 'Import 3D Tiles from another program',
           group: 'Actions',

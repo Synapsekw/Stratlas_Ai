@@ -2,9 +2,11 @@ import {
   addParts,
   applyDimension,
   drawingsOf,
+  dxfStemOf,
   findDrawing,
   newProcModel,
   parsePlacement,
+  pictureOwnsStem,
   readDrawingParts,
   setPartStatus,
   updatePart,
@@ -261,7 +263,9 @@ export function createModeller(deps: ModellerDeps): StoreApi<Modeller> {
           };
         }),
 
-      drawings: () => drawingsOf(project()?.manifest),
+      // DXF drawings only: a picture or a PDF page has no parts and is placed from its row, so
+      // neither the builder nor the assistant's tools ever mean one
+      drawings: () => drawingsOf(project()?.manifest).filter((d) => d.source === 'dxf'),
 
       placement: async (d) => {
         const p = project();
@@ -336,6 +340,13 @@ export function createModeller(deps: ModellerDeps): StoreApi<Modeller> {
 
       importDrawing: async (params) => {
         set({ error: null, notice: null });
+        // the pipeline files into drawings/<stem>/ whatever is there: never over a picture drawing
+        const stem = dxfStemOf(params.src);
+        if (pictureOwnsStem(drawingsOf(project()?.manifest), stem)) {
+          const refused = `A picture drawing is already called ${stem}. Rename the DXF file, then import it.`;
+          set({ error: refused });
+          return refused;
+        }
         const r = await runJob('drawing.import', params, 'Importing the drawing');
         if (typeof r === 'string') {
           set({ error: r });

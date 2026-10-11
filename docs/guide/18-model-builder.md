@@ -13,7 +13,7 @@ The panel opens beside the 3D view. **Close** closes it; your parts are kept.
 
 ## Import a drawing
 
-{product} reads DXF drawings. DWG is not supported: save the drawing as DXF first.
+The model builder reads parts from DXF drawings. DWG is not supported: save the drawing as DXF first. A PDF, a picture or a scan can be added to the project as a drawing to look at and place (see [Building projects](08-building-projects.md), **Drawings**), but it has no parts.
 
 1. Under **Parts come from**, click **Import drawing (DXF)**.
 2. Click **Choose** and pick the DXF file, or type its path.

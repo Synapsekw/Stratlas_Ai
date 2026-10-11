@@ -47,6 +47,9 @@ import { listReports } from './exports/reports';
 import { runInUtility } from './exports/utility';
 import {
   builderAltitudePlan,
+  builderAddDrawingPage,
+  builderCloseDrawing,
+  drawingJobRefusal,
   builderEnsureCapture,
   builderImport,
   builderTemplates,
@@ -1105,13 +1108,16 @@ function registerIpc(): void {
   });
 
   handle('jobs:list', () => jobs.list());
-  handle('jobs:start', (req) => {
+  handle('jobs:start', async (req) => {
     // A package is read-only: pipelines write into a project folder only.
     if ('project' in req && req.project.toLowerCase().endsWith(PACKAGE_EXTENSION))
       return {
         ok: false,
         error: 'Pipelines run on a project folder. A .aio package is read-only.',
       };
+    // a DXF must not be filed over a picture drawing of the same name
+    const refused = await drawingJobRefusal(req);
+    if (refused) return { ok: false, error: refused };
     return jobs.start(req);
   });
   handle('jobs:cancel', ({ jobId }) => jobs.cancel(jobId));
@@ -1249,6 +1255,14 @@ function registerIpc(): void {
   handle(
     'builder:ensureCapture',
     (req) => packageRefusal(req.projectId) ?? builderEnsureCapture(req, registry),
+  );
+  handle(
+    'builder:addDrawingPage',
+    (req) => packageRefusal(req.projectId) ?? builderAddDrawingPage(req, registry),
+  );
+  handle(
+    'builder:closeDrawing',
+    (req) => packageRefusal(req.projectId) ?? builderCloseDrawing(req, registry),
   );
 
   handle('dialog:saveFile', (req) => {

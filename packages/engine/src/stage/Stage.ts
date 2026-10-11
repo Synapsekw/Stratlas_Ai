@@ -904,6 +904,15 @@ export class Stage implements EngineStage {
     this.contentChanged();
   }
 
+  /**
+   * For an adapter whose layer changed what it shows after it was made: a drawing's picture that
+   * is fetched when the drawing is first shown (the raster adapter). The ground, the content
+   * bounds and the shadows then follow, as when a layer loads.
+   */
+  contentUpdated(): void {
+    if (!this.disposed) this.contentChanged();
+  }
+
   /** Called when layers load, unload or change visibility. */
   private contentChanged() {
     const box = this.contentBox();

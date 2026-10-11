@@ -156,6 +156,12 @@ export const ICONS = {
       <path d="M3 7.7h14M3 12.3h14M7.7 3v14M12.3 3v14" />
     </>
   ),
+  drawing: (
+    <>
+      <rect x="2.5" y="4" width="15" height="12" rx="1" />
+      <path d="M5.5 13V7.5h5V10h4v3" />
+    </>
+  ),
   video: (
     <>
       <rect x="2.5" y="5" width="11" height="10" rx="1.5" />

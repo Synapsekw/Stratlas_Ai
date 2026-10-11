@@ -2,6 +2,8 @@ import type { AioBridge, ImportItem } from '@aio/schema';
 import { Icon, type IconName } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useState } from 'react';
+import { PagesCard } from '../drawings/PagesCard';
+import { useDrawings } from '../drawings/store';
 import { PhotoProcessLayer } from '../photogrammetry/PhotoProcessLayer';
 import { useShell } from '../shell';
 import { heightsLine, offsetFromTakeoff, promptChoice, type HeightsPrompt } from './heights';
@@ -81,6 +83,7 @@ export function ImportLayer() {
             <p>
               Photos, video with its SRT, GLB or OBJ models, GeoTIFF orthos and DSMs, point clouds
             </p>
+            <p>Drawings as PDF, PNG or DXF</p>
           </div>
         </div>
       )}
@@ -232,7 +235,10 @@ function ImportStatus() {
   const importing = useBuilder((s) => s.importing);
   const result = useBuilder((s) => s.importResult);
   const prompt = useBuilder((s) => s.heightsPrompt);
+  const pages = useDrawings((s) => s.pagePrompt);
   if (prompt && !importing) return <HeightsCard p={prompt} />;
+  // asked in the middle of an import, which stays busy until its drawings are in
+  if (pages) return <PagesCard key={pages.name} p={pages} />;
   if (!importing && !result) return null;
   const heights = result?.heights ? heightsLine(result.heights) : null;
   const counts = result
@@ -335,6 +341,14 @@ export function EmptyProjectHint() {
         >
           <Icon name="plus" size={14} />
           Import files
+        </button>
+        <button
+          type="button"
+          className="btn ghost sm"
+          onClick={() => void builder.getState().pickAndAddDrawing()}
+        >
+          <Icon name="drawing" size={14} />
+          Add drawing
         </button>
       </div>
     </div>

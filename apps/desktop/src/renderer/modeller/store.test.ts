@@ -22,6 +22,55 @@ describe('model builder store', () => {
     expect(files.get('site-model')?.parts).toHaveLength(3);
   });
 
+  it('sees DXF drawings only: a picture is never the drawing a tool means', async () => {
+    const sheet = {
+      kind: 'raster' as const,
+      id: 'sheet-layout',
+      name: 'layout.pdf',
+      visible: false,
+      src: { path: 'drawings/layout/plan.png' },
+      role: 'plan' as const,
+      format: 'image' as const,
+      corners: {
+        tl: [0, 0, 0] as [number, number, number],
+        tr: [1, 0, 0] as [number, number, number],
+        bl: [0, 0, 1] as [number, number, number],
+      },
+    };
+    // the picture is the newest drawing of the project
+    const { modeller } = setup({ ...manifest, layers: [...manifest.layers, sheet] });
+    expect(
+      modeller
+        .getState()
+        .drawings()
+        .map((d) => d.stem),
+    ).toEqual(['plot']);
+    // no drawing named: the newest DXF, not the picture
+    const r = await modeller.getState().addFromDrawing(undefined, { classes: ['tank'] });
+    expect('added' in r && r.added.map((p) => p.tag)).toEqual(['T-101', 'T-102']);
+    expect(await modeller.getState().addFromDrawing('layout.pdf')).toEqual({
+      error: 'No drawing "layout.pdf". Imported drawings: plot.dxf.',
+    });
+  });
+
+  it('refuses a DXF whose folder a picture drawing has', async () => {
+    const sheet = {
+      kind: 'raster' as const,
+      id: 'sheet-site',
+      name: 'Site.png',
+      visible: false,
+      src: { path: 'drawings/site/plan.png' },
+      role: 'plan' as const,
+      format: 'image' as const,
+    };
+    const { modeller, started } = setup({ ...manifest, layers: [...manifest.layers, sheet] });
+    const error = await modeller.getState().importDrawing({ src: 'C:/in/SITE.dxf' });
+    expect(error).toBe(
+      'A picture drawing is already called SITE. Rename the DXF file, then import it.',
+    );
+    expect(started).toEqual([]);
+  });
+
   it('finds parts by tag, and says when nothing matches', async () => {
     const { modeller } = setup();
     const r = await modeller.getState().addFromDrawing(undefined, { tags: ['t-102'] });

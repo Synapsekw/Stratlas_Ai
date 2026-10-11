@@ -1,4 +1,4 @@
-import { useState, type DragEvent, type MouseEvent } from 'react';
+import { Fragment, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react';
 import { useT } from '../i18n';
 import { Icon } from '../icons/Icon';
 import {
@@ -35,7 +35,17 @@ export interface DatasetTreeProps {
     { shown: (flightId: string) => boolean; onToggle: (flightId: string) => void } | undefined;
   /** A settings button on point cloud rows (colour, size, budget, EDL). */
   onLayerSettings?: ((item: TreeItem) => void) | undefined;
-  /** Groups open at first; defaults to models, maps, video and annotations. */
+  /**
+   * A settings button on the plan rows of drawings (opacity, on top, place, side by side). The
+   * caller shows the controls through `rowExtra`.
+   */
+  onDrawingSettings?: ((item: TreeItem) => void) | undefined;
+  /** A block drawn under a row (the drawing controls of the row that has them open). */
+  rowExtra?: ((item: TreeItem) => ReactNode) | undefined;
+  /** One action on a group header (Add drawing on Drawings); none for a header without one. */
+  groupAction?:
+    ((group: TreeGroup) => { label: string; onClick: () => void } | undefined) | undefined;
+  /** Groups open at first; defaults to models, maps, drawings, video and annotations. */
   defaultOpen?: readonly TreeGroupKind[] | undefined;
   /** Rendered inside a date folder: the root is a group, not a second tree. */
   nested?: boolean | undefined;
@@ -73,7 +83,7 @@ export function menuPoint(e: MouseEvent<HTMLElement>): MenuPoint {
   return { x: r.left + 24, y: r.bottom };
 }
 
-const DEFAULT_OPEN: TreeGroupKind[] = ['models', 'maps', 'video', 'annotations'];
+const DEFAULT_OPEN: TreeGroupKind[] = ['models', 'maps', 'drawings', 'video', 'annotations'];
 /** Rows shown per group before a "more" row; selected and active rows always show. */
 const ROW_LIMIT = 8;
 
@@ -161,7 +171,9 @@ export function DatasetTree(props: DatasetTreeProps) {
   const row = (it: TreeItem, sub: boolean) => {
     const off = it.layerId ? hidden[it.layerId] === true : false;
     const sel = it.id === selectedId;
-    return (
+    const extra = props.rowExtra?.(it) ?? null;
+    const drawingSettings = it.drawing === true ? props.onDrawingSettings : undefined;
+    const line = (
       <div
         key={it.id}
         role="treeitem"
@@ -200,6 +212,22 @@ export function DatasetTree(props: DatasetTreeProps) {
             <Icon name="settings" size={14} />
           </button>
         )}
+        {drawingSettings && (
+          <button
+            type="button"
+            className="eye tact"
+            aria-label={`Drawing display and placement: ${it.name}`}
+            aria-expanded={extra !== null}
+            title="Opacity, on top, place on the site, open side by side"
+            data-testid={`drawing-settings-${it.id}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              drawingSettings(it);
+            }}
+          >
+            <Icon name="settings" size={14} />
+          </button>
+        )}
         {it.layerId ? (
           <button
             type="button"
@@ -218,6 +246,15 @@ export function DatasetTree(props: DatasetTreeProps) {
           <span className="eye-sp" />
         )}
       </div>
+    );
+    if (extra === null) return line;
+    return (
+      <Fragment key={it.id}>
+        {line}
+        <div className="titem-extra" role="none">
+          {extra}
+        </div>
+      </Fragment>
     );
   };
 
@@ -300,6 +337,7 @@ export function DatasetTree(props: DatasetTreeProps) {
         const carried = collapsed ? [] : (props.dragGroupIds?.(g) ?? []);
         const groupMenu = carried.length > 0 ? props.onGroupMenu : undefined;
         const groupDrag = carried.length > 0 && props.onDragItem !== undefined;
+        const action = collapsed ? undefined : props.groupAction?.(g);
         return (
           <div key={g.kind} role="treeitem" aria-expanded={expanded} aria-selected={false}>
             <div
@@ -348,6 +386,21 @@ export function DatasetTree(props: DatasetTreeProps) {
                   {g.label} · {g.count}
                 </span>
               </button>
+              {action && (
+                <button
+                  type="button"
+                  className="eye tgroup-act"
+                  aria-label={action.label}
+                  title={action.label}
+                  data-testid={`tree-group-add-${g.kind}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    action.onClick();
+                  }}
+                >
+                  <Icon name="plus" size={14} />
+                </button>
+              )}
               {props.onSetVisible && !collapsed && (
                 <VisibilityEye
                   layerIds={groupLayerIds(g)}

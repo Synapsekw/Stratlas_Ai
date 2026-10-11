@@ -1,14 +1,18 @@
 import { withExif } from '@aio/project/builder/testing';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  builderAddDrawingPage,
+  builderCloseDrawing,
+  builderImport,
   builderEnsureCapture,
   builderTemplates,
   builderUpdateCapture,
   builderUpdateLayers,
   createBuilderProject,
+  drawingJobRefusal,
   photoGps,
 } from './builder';
 import { ProjectRegistry } from './project';
@@ -100,6 +104,81 @@ describe('builder main handlers', () => {
       registry,
     );
     expect(unknown).toMatchObject({ ok: false });
+  });
+
+  it('a drawing page lands in an open project, after its original was staged', async () => {
+    const dir = join(base, 'projects', 'drawn');
+    await writeProject(dir, sampleManifest());
+    const registry = new ProjectRegistry();
+    // an 8 byte signature and an IHDR saying 30 x 20: all the page check reads
+    const png = new Uint8Array(33);
+    png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+    png[19] = 30;
+    png[23] = 20;
+    const page = { stem: 'sheets', name: 'sheets.pdf', png };
+    const closed = await builderAddDrawingPage({ projectId: 'x', ...page }, registry);
+    expect(closed).toMatchObject({ ok: false });
+    const projectId = registry.register(dir);
+    // a file lying in drawings/ is not a staged drawing: only an import makes one
+    await mkdir(join(dir, 'drawings'), { recursive: true });
+    await writeFile(join(dir, 'drawings', 'sheets.pdf'), '%PDF-1.4');
+    const unstaged = await builderAddDrawingPage({ projectId, ...page }, registry);
+    expect(unstaged).toEqual({
+      ok: false,
+      error: 'The drawing "sheets" is not waiting for pages. Import it again.',
+    });
+    await rm(join(dir, 'drawings'), { recursive: true });
+    const pdf = join(base, 'sheets.pdf');
+    await writeFile(pdf, '%PDF-1.4');
+    const imported = await builderImport(
+      { projectId, paths: [pdf] },
+      { registry, images: { resizeJpeg: () => Promise.resolve() }, emit: () => undefined },
+    );
+    expect(imported.ok && imported.items[0]?.drawing?.stem).toBe('sheets');
+    const r = await builderAddDrawingPage({ projectId, ...page, page: 2, pages: 4 }, registry);
+    expect(r.ok && r.layerId).toBe('sheet-sheets-p2');
+    expect(r.ok && r.manifest.layers.find((l) => l.id === 'sheet-sheets-p2')).toMatchObject({
+      kind: 'raster',
+      name: 'sheets.pdf, page 2',
+      visible: false,
+      role: 'plan',
+      format: 'image',
+      src: { path: 'drawings/sheets-p2/plan.png' },
+    });
+    // closed: no more pages; it got one, so its original stays
+    expect(await builderCloseDrawing({ projectId, stem: 'sheets' }, registry)).toEqual({
+      ok: true,
+      removed: false,
+    });
+    expect(await builderAddDrawingPage({ projectId, ...page }, registry)).toMatchObject({
+      ok: false,
+    });
+    expect(await builderCloseDrawing({ projectId: 'x', stem: 'sheets' }, registry)).toMatchObject({
+      ok: false,
+    });
+  });
+
+  it('a drawing.import job started by hand never lands on a picture drawing', async () => {
+    const dir = join(base, 'projects', 'clash');
+    await writeProject(dir, sampleManifest());
+    const job = (src: string) =>
+      drawingJobRefusal({ pipeline: 'drawing.import', project: dir, params: { src } });
+    expect(await job('C:/in/Layout.dxf')).toBeNull();
+    // a picture drawing called layout: its original lies in drawings/
+    await mkdir(join(dir, 'drawings', 'layout'), { recursive: true });
+    await writeFile(join(dir, 'drawings', 'layout.png'), 'png');
+    expect(await job('C:/in/Layout.dxf')).toBe(
+      'A picture drawing is already called Layout. Rename the DXF file, then import it.',
+    );
+    expect(await job('C:/in/other.dxf')).toBeNull();
+    // other pipelines are not looked at
+    expect(
+      await drawingJobRefusal({
+        pipeline: 'pointcloud.to_copc',
+        project: dir,
+        params: { src: 'C:/in/Layout.dxf' },
+      }),
+    ).toBeNull();
   });
 
   it('ensureCapture adds the survey date of a day once, and refuses a closed project', async () => {

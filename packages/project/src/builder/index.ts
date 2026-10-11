@@ -21,6 +21,22 @@ export {
   type ManifestUpdate,
 } from './create';
 export * from './altitude';
+export * from './drawingPlacement';
+export {
+  DRAWING_ADDED,
+  addDrawingPage,
+  closeDrawing,
+  dxfClash,
+  dxfSource,
+  dxfStem,
+  importDrawingFile,
+  isDrawingFile,
+  type ClaimedStems,
+  type DrawingImages,
+  type DrawingPage,
+} from './drawings';
+export { modelTextures, mtlTextures, type ModelTextures } from './modelTextures';
+export { readTiffHeaderFile } from './tiffFile';
 export {
   NO_PIPELINE,
   importRawFiles,

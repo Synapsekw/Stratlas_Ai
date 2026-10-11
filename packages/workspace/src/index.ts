@@ -319,3 +319,11 @@ export {
   sameItems,
   scopeOnScreen,
 } from './dateVisibility';
+
+export {
+  cleanLayerDisplay,
+  createLayerDisplay,
+  layerDisplay,
+  useLayerDisplay,
+} from './layerDisplay';
+export type { LayerDisplay, LayerDisplayState } from './layerDisplay';

@@ -449,6 +449,8 @@ export const en = {
   // Dataset tree: eyes over all layers and over a group
   'tree.addData': 'Add data',
   'tree.addData.tip': 'Import photos, video with its SRT, models, orthos or point clouds',
+  'tree.addDrawing': 'Add drawing',
+  'tree.addDrawing.tip': 'Add a drawing: PDF, PNG, JPEG, WebP, SVG, TIFF or DXF',
   'tree.dates.label': 'Datasets by survey date',
   'tree.dates.every': 'Every date',
   'tree.dates.expand': 'Expand {date}',
@@ -562,6 +564,8 @@ export const en = {
   'stage.pane.nextPhoto': 'Next photo',
   'stage.pane.photoCount': '{n} of {total}',
   'stage.pane.whichRaster': 'Raster layer',
+  'stage.pane.drawings': 'Drawings',
+  'stage.pane.orthos': 'Orthos and maps',
   'stage.pane.whichReport': 'Report file',
   'stage.pane.loading': 'Loading',
   'stage.pane.rasterError': 'The raster could not be shown ({error}).',

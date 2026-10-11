@@ -347,6 +347,11 @@ export function epsgFromPrj(wkt: string): number | undefined {
   return undefined;
 }
 
+/** Whether the TIFF says where it lies: GeoTIFF tags, or a world file beside it. */
+export function tiffGeoreferenced(t: Pick<TiffImage, 'geo'>, world?: readonly number[]): boolean {
+  return Boolean(world ?? t.geo.transform ?? (t.geo.pixelScale && t.geo.tiepoint));
+}
+
 /**
  * Model coordinates of the image corners (outer pixel edges): top-left, top-right, bottom-left.
  * From the GeoTIFF tags, or a world file when given (it names the centre of the first pixel).

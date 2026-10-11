@@ -36,9 +36,11 @@ export {
 } from './procmodel';
 export {
   drawingsOf,
+  dxfStemOf,
   drawingToLocal,
   findDrawing,
   isDrawingPlan,
+  pictureOwnsStem,
   localToDrawing,
   parsePlacement,
   readDrawingParts,

@@ -2,7 +2,9 @@ import { ProcModel, type Layer, type ProjectManifest } from '@aio/schema';
 
 /**
  * Imported drawings (the `drawing.import` pipeline): what the app needs to list them, read their
- * candidate parts and place them by control points. Files of one drawing `<stem>`:
+ * candidate parts and place them by control points. Pictures and PDF pages are drawings too
+ * (`source: 'image'`): they have the plan and the placement, no DXF and no parts. Files of one
+ * drawing `<stem>`:
  * `drawings/<stem>.dxf` (the copy), `drawings/<stem>/plan.png` (the plan raster layer
  * `plan-<stem>`), `drawings/<stem>/parts.procmodel.json` (candidate parts, `aio.procmodel/1`)
  * and `drawings/<stem>/placement.json` (how drawing coordinates map to the local frame).
@@ -49,6 +51,11 @@ export function parsePlacement(json: unknown): DrawingPlacement {
 
 export interface DrawingInfo {
   stem: string;
+  /**
+   * `dxf`: imported by the pipeline, with line work and candidate parts. `image`: a picture or a
+   * PDF page (layer `sheet-<stem>`), a plan to look at and place, without parts.
+   */
+  source: 'dxf' | 'image';
   /** Display name: the plan layer's name without " plan". */
   name: string;
   planLayer: string;
@@ -71,6 +78,7 @@ export function drawingsOf(
     if (!stem) continue;
     out.push({
       stem,
+      source: l.id.startsWith('sheet-') ? 'image' : 'dxf',
       name: l.name.replace(/ plan$/, ''),
       planLayer: l.id,
       dxf: `drawings/${stem}.dxf`,
@@ -80,6 +88,34 @@ export function drawingsOf(
     });
   }
   return out.reverse();
+}
+
+/**
+ * The folder the DXF pipeline files a drawing under (python `stem_of` of `drawing.import`, also
+ * `@aio/project` `dxfStem`): the file name with every run of other characters as one dash.
+ */
+export function dxfStemOf(file: string): string {
+  const name = file.replace(/\\/g, '/').split('/').pop() ?? '';
+  const dot = name.lastIndexOf('.');
+  const s = (dot > 0 ? name.slice(0, dot) : name)
+    .replace(/[^A-Za-z0-9_-]+/g, '-')
+    .replace(/^[-_]+|[-_]+$/g, '')
+    .slice(0, 80);
+  return s && /^[A-Za-z0-9]/.test(s) ? s : `drawing${s ? `-${s}` : ''}`.slice(0, 80);
+}
+
+/**
+ * Whether a picture drawing (or a page of one, `<stem>-p<N>`) has the folder `stem`, in any case.
+ * The DXF pipeline files into `drawings/<stem>/` whatever is there, so a DXF of that name must
+ * not be imported over it.
+ */
+export function pictureOwnsStem(list: readonly DrawingInfo[], stem: string): boolean {
+  const s = stem.toLowerCase();
+  return list.some((d) => {
+    if (d.source !== 'image') return false;
+    const own = d.stem.toLowerCase();
+    return own === s || (own.startsWith(`${s}-p`) && /^\d+$/.test(own.slice(s.length + 2)));
+  });
 }
 
 /** A drawing by stem or name (case-insensitive), or the newest. */

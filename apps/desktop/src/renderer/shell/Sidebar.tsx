@@ -26,6 +26,8 @@ import { clipStartMs, dateTags, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { openAuditTrail } from '../audit/auditView';
 import { builder } from '../builder/state';
+import { DrawingControls } from '../drawings/DrawingControls';
+import { drawings, unplacedOf, useDrawings } from '../drawings/store';
 import { useMedia } from '../media';
 import { shell, useShell } from '../shell';
 import { PANEL_ID, PanelHandle } from './PanelHandle';
@@ -236,9 +238,13 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   const paths = useFlightPathModel();
   // a package is read-only: nothing is imported into it
   const readOnly = useShell((s) => s.pkg !== null);
+  // drawings that are not placed yet say so on their row
+  const placed = useDrawings((s) => s.placed);
+  const unplaced = useMemo(() => unplacedOf(placed), [placed]);
+  const drawingOpen = useDrawings((s) => s.controls);
   const groups = useMemo(
-    () => (project ? buildDatasetTree(project.manifest, issues, durations) : []),
-    [project, issues, durations],
+    () => (project ? buildDatasetTree(project.manifest, issues, durations, { unplaced }) : []),
+    [project, issues, durations, unplaced],
   );
   const t = useT();
   const index = useCaptureIndex();
@@ -248,12 +254,19 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   const folders = useMemo(
     () =>
       project && index && datesOn
-        ? buildDateTree(project.manifest, issues, durations, index, {
-            every: t('tree.dates.every'),
-            dateLabel: (c) => formatDate(c.date),
-          })
+        ? buildDateTree(
+            project.manifest,
+            issues,
+            durations,
+            index,
+            {
+              every: t('tree.dates.every'),
+              dateLabel: (c) => formatDate(c.date),
+            },
+            { unplaced },
+          )
         : [],
-    [project, index, datesOn, issues, durations, t],
+    [project, index, datesOn, issues, durations, t, unplaced],
   );
   // filing datasets under dates and naming the folders edits the manifest: not in a package,
   // and not for a reviewer who may only look
@@ -364,6 +377,24 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     shell.getState().openCloudPanel();
   };
 
+  // a drawing row opens its controls under itself; the Drawings header adds a drawing
+  const drawingProps = {
+    onDrawingSettings: (it: TreeItem) => {
+      drawings.getState().toggleControls(it.id);
+    },
+    rowExtra: (it: TreeItem) =>
+      it.drawing && it.id === drawingOpen ? (
+        <DrawingControls layerId={it.id} name={it.name} canEdit={canEdit} />
+      ) : null,
+    groupAction: (g: { kind: string }) =>
+      g.kind === 'drawings' && !readOnly
+        ? {
+            label: t('tree.addDrawing'),
+            onClick: () => void builder.getState().pickAndAddDrawing(),
+          }
+        : undefined,
+  };
+
   return (
     <div className="sb-sec sb-tree">
       <div className="tree-h sb-hide">
@@ -383,6 +414,18 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
             >
               <Icon name="import" size={14} />
               {t('tree.addData')}
+            </button>
+          )}
+          {!readOnly && (
+            <button
+              type="button"
+              className="eye"
+              data-testid="add-drawing"
+              aria-label={t('tree.addDrawing')}
+              title={t('tree.addDrawing.tip')}
+              onClick={() => void builder.getState().pickAndAddDrawing()}
+            >
+              <Icon name="drawing" size={14} />
             </button>
           )}
           <VisibilityEye
@@ -448,6 +491,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           onSelect={onSelect}
           flightPath={flightPath}
           onLayerSettings={onLayerSettings}
+          {...drawingProps}
           onFolderMenu={setFolderMenu}
           onMove={canEdit ? onMove : undefined}
           onItemMenu={canEdit ? setItemMenu : undefined}
@@ -469,6 +513,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           onSetVisible={setVisible}
           flightPath={flightPath}
           onLayerSettings={onLayerSettings}
+          {...drawingProps}
           onSelect={onSelect}
           onRailGroup={() => {
             void shell.getState().toggleSidebar();

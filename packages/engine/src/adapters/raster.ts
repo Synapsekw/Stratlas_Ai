@@ -1,4 +1,5 @@
 import type { Layer } from '@aio/schema';
+import { layerDisplay, type LayerDisplay } from '@aio/workspace';
 import type { MeshLambertMaterial } from 'three';
 import {
   BufferAttribute,
@@ -45,6 +46,14 @@ function groundUniforms(scene: SceneHandle): GroundUniforms | undefined {
   return (scene as Partial<{ groundUniforms(): GroundUniforms }>).groundUniforms?.();
 }
 
+/**
+ * Tell the stage that a layer shows something new after it was made (the engine's own stage
+ * listens; other SceneHandle implementations need not).
+ */
+function contentUpdated(scene: SceneHandle): void {
+  (scene as Partial<{ contentUpdated(): void }>).contentUpdated?.();
+}
+
 /** Stacking slot of each raster layer: later layers draw over earlier ones at the same height. */
 const slots = new Map<string, number>();
 
@@ -81,6 +90,79 @@ export function rasterDraw(
     transparent: overlay,
     alphaTest: overlay ? 0 : 0.5,
   };
+}
+
+/**
+ * Render order of a drawing drawn on top: after the models, the point clouds and the ground
+ * imagery (0 and below), and under what is drawn on them: the selection highlight (2), outlines
+ * and camera symbols (3 and up), the measure line (30), pick markers and labels.
+ */
+export const ON_TOP_ORDER = 1;
+
+/**
+ * A picture fetched and decoded when it is first wanted, not when its layer is made: a drawing
+ * that is hidden (every picture drawing is, until it is placed) costs no memory. `apply` gets the
+ * picture once it is there; one that arrives after `dispose` is released instead. A failed load is
+ * told through `fail` and tried again the next time the picture is wanted.
+ */
+export function lazyPicture<T extends { dispose(): void }>(
+  load: () => Promise<T>,
+  apply: (picture: T) => void,
+  fail: (error: unknown) => void = () => undefined,
+): { want(): void; ready(): boolean; dispose(): void } {
+  let state: 'idle' | 'loading' | 'ready' = 'idle';
+  let gone = false;
+  return {
+    want() {
+      if (gone || state !== 'idle') return;
+      state = 'loading';
+      load().then(
+        (picture) => {
+          if (gone) {
+            picture.dispose();
+            return;
+          }
+          state = 'ready';
+          apply(picture);
+        },
+        (error: unknown) => {
+          state = 'idle';
+          if (!gone) fail(error);
+        },
+      );
+    },
+    ready: () => state === 'ready',
+    dispose() {
+      gone = true;
+    },
+  };
+}
+
+/**
+ * How a plan (a drawing) lies over the scene for the person's choice (`layerDisplay`): its
+ * opacity, and "on top", which skips the depth test and draws it after the models and point clouds
+ * so they no longer hide it. No choice draws it as before.
+ */
+export function planDisplay(
+  d: LayerDisplay | undefined,
+  base: { renderOrder: number },
+): { opacity: number; depthTest: boolean; renderOrder: number } {
+  const onTop = d?.onTop === true;
+  return {
+    opacity: d?.opacity ?? 1,
+    depthTest: !onTop,
+    renderOrder: onTop ? ON_TOP_ORDER + (base.renderOrder + 4) * 0.01 : base.renderOrder,
+  };
+}
+
+/** Apply the person's display choice to one plan quad. */
+function showPlan(mesh: Mesh, layerId: string): void {
+  const base = (mesh.userData as { aioOrder?: number }).aioOrder ?? mesh.renderOrder;
+  const d = planDisplay(layerDisplay.getState().byLayer[layerId], { renderOrder: base });
+  const m = mesh.material as MeshBasicMaterial;
+  m.opacity = d.opacity;
+  m.depthTest = d.depthTest;
+  mesh.renderOrder = d.renderOrder;
 }
 
 /**
@@ -127,6 +209,7 @@ function quadMesh(
   // imagery tells the land mask where the sea is
   if (ground) mesh.layers.enable(GROUND_LAYER);
   mesh.renderOrder = draw.renderOrder;
+  mesh.userData.aioOrder = draw.renderOrder;
   mesh.matrixAutoUpdate = false;
   return mesh;
 }
@@ -208,15 +291,10 @@ async function loadTexture(url: string, ctx: AdapterContext): Promise<Texture> {
 /** `format: 'image'`: one textured ground quad from the layer corners. */
 async function imageRaster(layer: RasterLayer, ctx: AdapterContext): Promise<LayerHandle> {
   if (!layer.corners) throw new Error(`Raster "${layer.name}" has no corners`);
-  const tex = await loadTexture(ctx.url(layer.src), ctx);
-  const mesh = quadMesh(
-    layer.corners,
-    tex,
-    ctx,
-    layer.role === 'plan' ? 2 : 0,
-    layer.role === 'plan',
-    rasterSlot(layer.id),
-  );
+  const plan = layer.role === 'plan';
+  // a drawing's picture is fetched when the drawing is first shown (below); an ortho's now
+  const tex = plan ? null : await loadTexture(ctx.url(layer.src), ctx);
+  const mesh = quadMesh(layer.corners, tex, ctx, plan ? 2 : 0, plan, rasterSlot(layer.id));
   mesh.name = `layer:${layer.id}`;
   mesh.userData.aioRaster = true;
   mesh.userData.aioLayer = layer.id;
@@ -228,13 +306,63 @@ async function imageRaster(layer: RasterLayer, ctx: AdapterContext): Promise<Lay
     ctx.scene.addRaycastTarget(mesh, layer.id),
     ...(layer.role === 'plan' ? [] : [ctx.scene.addProjectionReceiver(mesh)]),
   ];
+  // a drawing follows its opacity and on top choice
+  if (layer.role === 'plan') {
+    showPlan(mesh, layer.id);
+    unregister.push(
+      layerDisplay.subscribe((s, prev) => {
+        if (s.byLayer[layer.id] === prev.byLayer[layer.id]) return;
+        showPlan(mesh, layer.id);
+        ctx.scene.requestRender();
+      }),
+    );
+  }
   ctx.scene.requestRender();
+  if (!plan) {
+    return {
+      setVisible(v) {
+        mesh.visible = v;
+        ctx.scene.requestRender();
+      },
+      dispose() {
+        for (const u of unregister) u();
+        ctx.scene.scene.remove(mesh);
+        disposeQuad(mesh);
+        ctx.scene.requestRender();
+      },
+    };
+  }
+  // Without its picture the quad would draw as a white sheet, so it stays out of the scene until
+  // the picture is there; `wanted` is what the layer's eye says meanwhile.
+  let wanted = false;
+  mesh.visible = false;
+  // and whatever else switches the quad on meanwhile draws nothing either
+  (mesh.material as MeshBasicMaterial).visible = false;
+  const picture = lazyPicture(
+    () => loadTexture(ctx.url(layer.src), ctx),
+    (loaded) => {
+      const m = mesh.material as MeshBasicMaterial;
+      m.map = loaded;
+      m.visible = true;
+      m.needsUpdate = true;
+      mesh.visible = wanted;
+      // the drawing is ground content from now on: the fallback ground plane and the bounds follow
+      contentUpdated(ctx.scene);
+      ctx.scene.requestRender();
+    },
+    (error) => {
+      console.warn(`The drawing "${layer.name}" could not be loaded`, error);
+    },
+  );
   return {
     setVisible(v) {
-      mesh.visible = v;
+      wanted = v;
+      if (v) picture.want();
+      mesh.visible = v && picture.ready();
       ctx.scene.requestRender();
     },
     dispose() {
+      picture.dispose();
       for (const u of unregister) u();
       ctx.scene.scene.remove(mesh);
       disposeQuad(mesh);
@@ -309,6 +437,7 @@ async function pyramidRaster(layer: RasterLayer, ctx: AdapterContext): Promise<L
             slot,
           );
           mesh.updateMatrixWorld(true);
+          if (layer.role === 'plan') showPlan(mesh, layer.id);
           arrived.push({ key: k, mesh });
           ctx.scene.requestRender();
         },
@@ -337,6 +466,16 @@ async function pyramidRaster(layer: RasterLayer, ctx: AdapterContext): Promise<L
       }
       update(false);
     }),
+    ...(layer.role === 'plan'
+      ? [
+          layerDisplay.subscribe((s, prev) => {
+            if (s.byLayer[layer.id] === prev.byLayer[layer.id]) return;
+            for (const m of tiles.values()) if (m) showPlan(m, layer.id);
+            for (const a of arrived) showPlan(a.mesh, layer.id);
+            ctx.scene.requestRender();
+          }),
+        ]
+      : []),
   ];
   update(true);
   return {

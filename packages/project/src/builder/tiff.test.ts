@@ -1,6 +1,10 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { makeTiff } from './testing';
+import { readTiffHeaderFile } from './tiffFile';
 import {
   decodeTiff,
   epsgFromPrj,
@@ -138,5 +142,63 @@ describe('rasterToRgba', () => {
     expect(img.range).toEqual([10, 12]);
     expect(img.data[6 * 4 + 3]).toBe(0);
     expect(img.data[3]).toBe(255);
+  });
+});
+
+describe('the header of a TIFF file, wherever its directory lies', () => {
+  let dir: string;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'aio-tiff-'));
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+  // 200 x 120 colour pixels: 72 000 bytes of image, more than the 64 KB read from the start
+  const sheet = (directoryLast: boolean) =>
+    makeTiff(
+      {
+        width: 200,
+        height: 120,
+        samples: 3,
+        bits: 8,
+        values: new Array<number>(200 * 120 * 3).fill(90),
+        directoryLast,
+      },
+      deflateSync,
+    );
+
+  it('reads a directory written after the image data, as libtiff writes it', async () => {
+    const bytes = sheet(true);
+    // the directory really is past what the old read looked at
+    expect(new DataView(bytes.buffer).getUint32(4, true)).toBeGreaterThan(64 * 1024);
+    expect(() => readTiffHeader(bytes.subarray(0, 64 * 1024))).toThrow(RangeError);
+    const file = join(dir, 'last.tif');
+    await writeFile(file, bytes);
+    expect(await readTiffHeaderFile(file)).toEqual({
+      width: 200,
+      height: 120,
+      samples: 3,
+      bits: 8,
+      compression: 1,
+      bigTiff: false,
+    });
+    // and the whole file decodes as before
+    expect(decodeTiff(bytes)).toMatchObject({ width: 200, height: 120, samples: 3 });
+  });
+
+  it('answers what the reader of the file start answers when the directory is there', async () => {
+    const bytes = sheet(false);
+    const file = join(dir, 'first.tif');
+    await writeFile(file, bytes);
+    expect(await readTiffHeaderFile(file)).toEqual(readTiffHeader(bytes.subarray(0, 64 * 1024)));
+  });
+
+  it('says so when the file is no TIFF, or is cut before its directory', async () => {
+    const text = join(dir, 'notes.tif');
+    await writeFile(text, 'not a tiff at all');
+    await expect(readTiffHeaderFile(text)).rejects.toThrow('Not a TIFF file.');
+    const cut = join(dir, 'cut.tif');
+    await writeFile(cut, sheet(true).subarray(0, 70_000));
+    await expect(readTiffHeaderFile(cut)).rejects.toThrow('cut short');
   });
 });

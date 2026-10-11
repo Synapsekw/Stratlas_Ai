@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   drawingsOf,
   drawingToLocal,
+  dxfStemOf,
   findDrawing,
+  isDrawingPlan,
+  pictureOwnsStem,
   localToDrawing,
   parsePlacement,
   readDrawingParts,
@@ -32,6 +35,7 @@ describe('imported drawings', () => {
     expect(list.map((d) => d.stem)).toEqual(['site-2', 'plot']);
     expect(list[1]).toEqual({
       stem: 'plot',
+      source: 'dxf',
       name: 'plot.dxf',
       planLayer: 'plan-plot',
       dxf: 'drawings/plot.dxf',
@@ -76,5 +80,43 @@ describe('imported drawings', () => {
       /Import the drawing again/,
     );
     expect(() => readDrawingParts({ schema: 'x' })).toThrow(/Import it again/);
+  });
+});
+
+describe('drawings from pictures and PDF pages', () => {
+  const sheet: Layer = {
+    ...plan('layout-p2', 'x'),
+    id: 'sheet-layout-p2',
+    name: 'layout.pdf, page 2',
+  };
+
+  it('are drawings too, told apart from DXF drawings by their layer id', () => {
+    const list = drawingsOf({ layers: [plan('plot', 'plot.dxf'), sheet] });
+    expect(list.map((d) => [d.stem, d.source, d.name])).toEqual([
+      ['layout-p2', 'image', 'layout.pdf, page 2'],
+      ['plot', 'dxf', 'plot.dxf'],
+    ]);
+    expect(isDrawingPlan(sheet)).toBe(true);
+  });
+});
+
+describe('a DXF and a picture drawing of one name', () => {
+  const sheet = (stem: string): Layer => ({ ...plan(stem, 'x'), id: `sheet-${stem}`, name: stem });
+
+  it('names the folder a DXF import files under, as the pipeline does', () => {
+    expect(dxfStemOf('C:\\in\\Plot Plan (rev 2).dxf')).toBe('Plot-Plan-rev-2');
+    expect(dxfStemOf('/in/site.DXF')).toBe('site');
+    expect(dxfStemOf('_.dxf')).toBe('drawing');
+  });
+
+  it('knows when a picture drawing has that folder, whatever the case, pages included', () => {
+    const list = drawingsOf({
+      layers: [plan('plot', 'plot.dxf'), sheet('site'), sheet('ga-p2')],
+    });
+    expect(pictureOwnsStem(list, 'Site')).toBe(true);
+    expect(pictureOwnsStem(list, 'GA')).toBe(true);
+    // a DXF's own folder is the DXF's to import again
+    expect(pictureOwnsStem(list, 'plot')).toBe(false);
+    expect(pictureOwnsStem(list, 'other')).toBe(false);
   });
 });

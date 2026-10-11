@@ -94,6 +94,8 @@ const CHANNELS = {
   'builder:updateLayers': true,
   'builder:updateCapture': true,
   'builder:ensureCapture': true,
+  'builder:addDrawingPage': true,
+  'builder:closeDrawing': true,
   // M8
   'change:list': true,
   'change:read': true,

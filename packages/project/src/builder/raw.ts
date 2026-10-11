@@ -11,7 +11,7 @@ import type {
   ProjectManifest,
   Vec3,
 } from '@aio/schema';
-import { open, copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { open, copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import { encodePng } from '../import/png';
 import {
@@ -22,8 +22,17 @@ import {
   type FileAltitudes,
 } from './altitude';
 import { captureForDate, slug, uniqueId, readManifestFile, updateManifestFile } from './create';
+import {
+  dxfSource,
+  importDrawingFile,
+  isDrawingFile,
+  type ClaimedStems,
+  type DrawingImages,
+} from './drawings';
 import { readPhotoMeta } from './exif';
 import { mergeImport } from './importMerge';
+import { modelTextures } from './modelTextures';
+import { readTiffHeaderFile } from './tiffFile';
 import { objToGlb } from './obj';
 import { photoAltitude, photoHeight, photoRef } from './photos';
 import {
@@ -31,12 +40,12 @@ import {
   epsgFromPrj,
   parseWorldFile,
   rasterToRgba,
-  readTiffHeader,
   tiffCorners,
+  tiffGeoreferenced,
 } from './tiff';
 
 /** Review copies of photos. The app uses Electron's image codec; tools may use ffmpeg. */
-export interface ImageOps {
+export interface ImageOps extends DrawingImages {
   /** Write `dst` as a JPEG no larger than `maxPx` on its long side. */
   resizeJpeg(src: string, dst: string, maxPx: number): Promise<void>;
 }
@@ -103,6 +112,11 @@ export interface ImportDeps {
   utcOffsetMin?: number;
   /** How camera heights are made (data-conventions section 3a); default `auto`. */
   altitude?: AltitudeChoice;
+  /**
+   * Add drawing: every picture becomes a drawing (a JPEG is not a photo, a georeferenced TIFF not
+   * an ortho). Without it PDF, PNG, WebP, SVG and TIFF without a georeference do.
+   */
+  drawings?: boolean;
   onProgress?: (done: number, total: number, file: string) => void;
 }
 
@@ -249,6 +263,9 @@ export async function importRawFiles(
   const items: ImportItem[] = [];
   const consumed = new Set<string>();
   const pipeline = await deps.jobs.available().catch(() => false);
+  // drawings: the folder names this import gives out, and the pictures its models use
+  const drawingStems: ClaimedStems = new Set();
+  const textures = await modelTextures(paths);
   const total = paths.length;
   let done = 0;
   const tick = (file: string) => {
@@ -314,7 +331,17 @@ export async function importRawFiles(
     const ext = extname(file).toLowerCase();
     try {
       if (consumed.has(file)) continue;
-      if (PHOTO.has(ext)) {
+      if (isDrawingFile(ext, deps.drawings === true) && textures.has(file)) {
+        // picked with its model: part of the model, not a sheet to look at
+        items.push({
+          file: name,
+          kind: 'unknown',
+          status: 'skipped',
+          message: `A texture of the model ${textures.modelOf(file) ?? ''}, read with it. Not added as a drawing.`,
+        });
+      } else if (isDrawingFile(ext, deps.drawings === true)) {
+        items.push(await importDrawingFile(root, m, file, deps.images, drawingStems));
+      } else if (PHOTO.has(ext)) {
         const meta = readPhotoMeta(await readHead(file, 512 * 1024));
         const layer = photosLayer();
         const id = uniqueId(slug(name.slice(0, -ext.length), 'photo'), (x) =>
@@ -507,7 +534,8 @@ export async function importRawFiles(
         });
       } else if (RASTER.has(ext)) {
         const size = (await stat(file)).size;
-        const head = readTiffHeader(await readHead(file, 64 * 1024));
+        // read where the file keeps its directory: at the start, or after the image data
+        const head = await readTiffHeaderFile(file);
         const role = head.samples === 1 && head.bits >= 16 ? 'dsm' : 'ortho';
         if (head.bigTiff || size > RASTER_BYTES || head.width * head.height > RASTER_PIXELS) {
           items.push({ file: name, kind: 'raster', status: 'error', message: RASTER_TOO_LARGE });
@@ -517,6 +545,11 @@ export async function importRawFiles(
           const tfw = (await sibling(file, '.tfw', [])) ?? (await sibling(file, '.tifw', []));
           const prj = await sibling(file, '.prj', []);
           const world = tfw ? parseWorldFile(await readFile(tfw, 'utf8')) : undefined;
+          // a scan with no position is a drawing, placed by hand
+          if (!tiffGeoreferenced(t, world)) {
+            items.push(await importDrawingFile(root, m, file, deps.images, drawingStems));
+            continue;
+          }
           let src = t.geo.epsg ?? (prj ? epsgFromPrj(await readFile(prj, 'utf8')) : undefined);
           const warn: string[] = [];
           if (src === undefined || !isKnownCrs(src)) {
@@ -575,7 +608,14 @@ export async function importRawFiles(
           out: `clouds/${slug(name.slice(0, -ext.length), 'cloud')}.copc.laz`,
         });
       } else if (DRAWING.has(ext)) {
-        await job(file, 'drawing', 'drawing.import', {});
+        // a picture drawing of the same name keeps its folder: the DXF then comes in from a copy
+        // under a free name (`dxfSource`)
+        const dxf = await dxfSource(root, m, file, drawingStems, pipeline);
+        await job(file, 'drawing', 'drawing.import', dxf.copy ? { src: dxf.src } : {});
+        const started = items[items.length - 1];
+        if (started?.status === 'queued') {
+          if (dxf.note) started.message = `${started.message ?? ''} ${dxf.note}`.trim();
+        } else if (dxf.copy) await rm(dxf.copy, { force: true }).catch(() => undefined);
       } else if (OPF.has(ext)) {
         await job(file, 'opf', 'opf.import', {});
       } else if (
@@ -589,7 +629,8 @@ export async function importRawFiles(
           file: name,
           kind: 'drawing',
           status: 'skipped',
-          message: 'DWG is not supported. Save the drawing as DXF, then import it.',
+          message:
+            'DWG is not supported. Save the drawing as DXF or PDF, or as a PNG picture, then import that.',
         });
       } else {
         items.push({
@@ -619,7 +660,8 @@ export async function importRawFiles(
                       : 'unknown';
       items.push({
         file: name,
-        kind,
+        // a picture that was coming in as a drawing fails as one
+        kind: isDrawingFile(ext, deps.drawings === true) ? 'drawing' : kind,
         status: 'error',
         message: e instanceof Error ? e.message : String(e),
       });

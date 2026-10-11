@@ -82,7 +82,8 @@ export const candidates: ProcModel = {
 };
 
 /** A Model builder store over an in-memory bridge, workspace and jobs (tests only). */
-export function setupModeller() {
+/** A model builder over a fake bridge and job list; `project` replaces the synthetic manifest. */
+export function setupModeller(project: ProjectManifest = manifest) {
   const files = new Map<string, ProcModel>();
   const calls: { channel: string; req: unknown }[] = [];
   const bridge: Bridge = {
@@ -123,7 +124,7 @@ export function setupModeller() {
     },
   };
   const workspace = createWorkspace();
-  workspace.getState().openProject({ id: 'site', root: 'C:/p/site', manifest });
+  workspace.getState().openProject({ id: 'site', root: 'C:/p/site', manifest: project });
   const started: { pipeline: string; params: Record<string, unknown> }[] = [];
   const jobs = createStore<Jobs>()((set) => ({
     runtime: null,

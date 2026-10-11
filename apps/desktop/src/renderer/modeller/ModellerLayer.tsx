@@ -361,7 +361,11 @@ export function ModellerLayer() {
   const [form, setForm] = useState<{ kind: 'import' } | { kind: 'place'; stem: string } | null>(
     null,
   );
-  const drawings = useMemo(() => drawingsOf(project?.manifest), [project?.manifest]);
+  // pictures and PDF pages are placed from their row in the Datasets list and have no parts
+  const drawings = useMemo(
+    () => drawingsOf(project?.manifest).filter((d) => d.source === 'dxf'),
+    [project?.manifest],
+  );
   const clouds = useMemo(
     () =>
       (project?.manifest.layers ?? [])

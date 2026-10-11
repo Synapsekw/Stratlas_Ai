@@ -1,7 +1,7 @@
 import type { Capture, Issue, ProjectManifest } from '@aio/schema';
 import { issuesByCapture } from '@aio/workspace';
 import { ICONS, type IconName } from '../icons/paths';
-import { buildDatasetTree, treeLayerIds, type TreeGroup } from './model';
+import { buildDatasetTree, treeLayerIds, type TreeGroup, type TreeOptions } from './model';
 
 export const EVERY_DATE = 'every';
 
@@ -66,12 +66,18 @@ export function buildDateTree(
   durations: Readonly<Record<string, number>>,
   dates: { captures: readonly Capture[]; of: Readonly<Record<string, string>> },
   labels: { every: string; dateLabel: (c: Capture) => string },
+  opts: TreeOptions = {},
 ): DateFolder[] {
   const folders: DateFolder[] = [];
   const common = manifest.layers.filter((l) => !(l.id in dates.of));
   // an issue sits in the folder of its survey date (the folder eye hides it with the layers)
   const byDate = issuesByCapture(issues, dates);
-  const everyGroups = buildDatasetTree({ ...manifest, layers: common }, byDate.undated, durations);
+  const everyGroups = buildDatasetTree(
+    { ...manifest, layers: common },
+    byDate.undated,
+    durations,
+    opts,
+  );
   if (everyGroups.length > 0) {
     folders.push({
       id: EVERY_DATE,
@@ -89,7 +95,7 @@ export function buildDateTree(
     const own = byDate.dated[c.id] ?? [];
     const groups =
       layers.length > 0 || own.length > 0
-        ? buildDatasetTree({ ...manifest, layers }, own, durations)
+        ? buildDatasetTree({ ...manifest, layers }, own, durations, opts)
         : [];
     const label = labels.dateLabel(c);
     const name = captureName(c, label);

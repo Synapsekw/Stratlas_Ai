@@ -7,6 +7,7 @@ import type { Issue, Layer, PoseSample, Vec3 } from '@aio/schema';
 import {
   assetUrl,
   issuesOnScreen,
+  layerDisplay,
   sameItems,
   type createWorkspace,
   type Workspace,
@@ -27,6 +28,7 @@ import {
 import { Vector3 } from 'three';
 import { drawPreview, isRepeatClick, type MapDrawSeam } from './draw';
 import { frameProjection, type FrameProjection } from './geo';
+import { RASTERS_TOP, loadsWithProject, rasterBefore, rasterOpacity } from './rasterDisplay';
 import {
   ALL_ISSUES,
   footprint,
@@ -213,6 +215,9 @@ export function createMapController(
         clusterProperties: { top: ['max', ['get', 'rank']] },
       });
     }
+    // a mark that draws nothing: orthos and their tiles go under it, drawings above
+    // (`rasterBefore`)
+    map.addLayer({ id: RASTERS_TOP, type: 'background', layout: { visibility: 'none' } });
     map.addLayer({
       id: 'aio-view3d-fill',
       type: 'fill',
@@ -523,9 +528,44 @@ export function createMapController(
     return out;
   }
 
+  /** Hidden drawings whose picture the map has not fetched: added when they are first shown. */
+  const waitingRasters = new Map<string, RasterLayer>();
+
+  function addRasterImages(
+    layer: RasterLayer,
+    images: readonly { url: string; quad: [LonLat, LonLat, LonLat, LonLat] }[],
+  ): void {
+    images.forEach((img, i) => {
+      const sid = `aio-raster-${layer.id}-${i}`;
+      // a reload of the same project that overlapped this one may have added it already
+      if (map.getSource(sid)) return;
+      map.addSource(sid, { type: 'image', url: img.url, coordinates: img.quad });
+      map.addLayer(
+        {
+          id: sid,
+          type: 'raster',
+          source: sid,
+          metadata: { layerId: layer.id },
+          paint: {
+            'raster-opacity': rasterOpacity(layer.role, layerDisplay.getState().byLayer[layer.id]),
+            'raster-fade-duration': 0,
+          },
+        },
+        rasterBefore(layer.role),
+      );
+      rasterIds.push(sid);
+    });
+  }
+
   async function loadRasters(layers: readonly RasterLayer[], p: FrameProjection, id: string) {
     const all: LonLat[] = [];
     for (const layer of layers) {
+      // a hidden drawing is only placed in the bounds; its picture waits for its first show
+      if (!loadsWithProject(layer, store.getState().hidden[layer.id] === true) && layer.corners) {
+        waitingRasters.set(layer.id, layer);
+        all.push(...rasterQuad(layer.corners, p));
+        continue;
+      }
       let images: Awaited<ReturnType<typeof rasterImages>> = [];
       try {
         images = await rasterImages(layer, p, id);
@@ -533,27 +573,22 @@ export function createMapController(
         console.warn(`Map: raster ${layer.id} not shown`, e);
       }
       if (disposed || projectId !== id) return all;
-      images.forEach((img, i) => {
-        const sid = `aio-raster-${layer.id}-${i}`;
-        map.addSource(sid, { type: 'image', url: img.url, coordinates: img.quad });
-        map.addLayer(
-          {
-            id: sid,
-            type: 'raster',
-            source: sid,
-            metadata: { layerId: layer.id },
-            paint: {
-              'raster-opacity': layer.role === 'plan' ? 0.75 : 0.95,
-              'raster-fade-duration': 0,
-            },
-          },
-          'aio-view3d-fill',
-        );
-        rasterIds.push(sid);
-        all.push(...img.quad);
-      });
+      addRasterImages(layer, images);
+      for (const img of images) all.push(...img.quad);
     }
     return all;
+  }
+
+  /** Fetch the picture of every waiting drawing that is shown by now. */
+  function showWaitingRasters(s: Workspace): void {
+    if (!proj || !projectId) return;
+    for (const [id, layer] of waitingRasters) {
+      if (s.hidden[id] === true || !layer.corners) continue;
+      waitingRasters.delete(id);
+      addRasterImages(layer, [
+        { url: assetUrl(projectId, layer.src), quad: rasterQuad(layer.corners, proj) },
+      ]);
+    }
   }
 
   // ----- kit pyramids at full detail: the tiles of the level that matches the view -----
@@ -609,9 +644,16 @@ export function createMapController(
             type: 'raster',
             source: sid,
             metadata: { layerId: layer.id },
-            paint: { 'raster-opacity': 1, 'raster-fade-duration': 0 },
+            paint: {
+              'raster-opacity': rasterOpacity(
+                layer.role,
+                layerDisplay.getState().byLayer[layer.id],
+                true,
+              ),
+              'raster-fade-duration': 0,
+            },
           },
-          'aio-view3d-fill',
+          rasterBefore(layer.role),
         );
         pyrTiles.set(key, { sid, layerId: layer.id, z: t.z });
       }
@@ -636,6 +678,7 @@ export function createMapController(
       if (map.getSource(sid)) map.removeSource(sid);
     }
     rasterIds = [];
+    waitingRasters.clear();
     flights.clear();
     for (const id of Object.values(SRC)) setData(id, EMPTY);
   }
@@ -935,7 +978,25 @@ export function createMapController(
       if (map.getLayer(id)) map.setPaintProperty(id, 'circle-color', color);
   }
 
+  /** Drawings follow the opacity the person chose (`layerDisplay`). */
+  function applyRasterDisplay(): void {
+    const layers = store.getState().project?.manifest.layers ?? [];
+    const set = (sid: string, fine: boolean) => {
+      const layerId = (map.getLayer(sid)?.metadata as { layerId?: string } | undefined)?.layerId;
+      const layer = layers.find((l) => l.id === layerId);
+      if (layer?.kind !== 'raster') return;
+      map.setPaintProperty(
+        sid,
+        'raster-opacity',
+        rasterOpacity(layer.role, layerDisplay.getState().byLayer[layer.id], fine),
+      );
+    };
+    for (const sid of rasterIds) set(sid, false);
+    for (const t of pyrTiles.values()) set(t.sid, true);
+  }
+
   function applyVisibility(s: Workspace): void {
+    showWaitingRasters(s);
     for (const sid of rasterIds) {
       const layerId = (map.getLayer(sid)?.metadata as { layerId?: string } | undefined)?.layerId;
       if (layerId) map.setLayoutProperty(sid, 'visibility', s.hidden[layerId] ? 'none' : 'visible');
@@ -1221,6 +1282,7 @@ export function createMapController(
     let prev = store.getState();
     void openProject(prev);
     let frame = 0;
+    cleanups.push(layerDisplay.subscribe(applyRasterDisplay));
     cleanups.push(
       store.subscribe((s) => {
         const last = prev;

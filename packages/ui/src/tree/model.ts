@@ -4,7 +4,7 @@ import { flightGroups } from '../timeline/model';
 import type { IconName } from '../icons/Icon';
 
 export type TreeGroupKind =
-  'models' | 'pointclouds' | 'maps' | 'video' | 'photos' | 'panoramas' | 'annotations';
+  'models' | 'pointclouds' | 'maps' | 'drawings' | 'video' | 'photos' | 'panoramas' | 'annotations';
 
 export interface TreeItem {
   /** Layer id for layer rows; a fixed id for annotation rows. */
@@ -18,6 +18,8 @@ export interface TreeItem {
   children?: TreeItem[];
   /** A flight row: the flight id (`flightGroups`), for its flight path. */
   flightId?: string;
+  /** The row is a drawing's plan (its picture): it takes the drawing controls. */
+  drawing?: true;
 }
 
 export interface TreeGroup {
@@ -32,6 +34,7 @@ const GROUPS: { kind: TreeGroupKind; label: string; icon: IconName }[] = [
   { kind: 'models', label: 'Models', icon: 'scene' },
   { kind: 'pointclouds', label: 'Point clouds', icon: 'cloud' },
   { kind: 'maps', label: 'Maps and rasters', icon: 'map' },
+  { kind: 'drawings', label: 'Drawings', icon: 'drawing' },
   { kind: 'video', label: 'Video', icon: 'video' },
   { kind: 'photos', label: 'Photos', icon: 'photo' },
   { kind: 'panoramas', label: 'Panoramas', icon: 'pano' },
@@ -50,6 +53,37 @@ const groupOf: Record<Layer['kind'], TreeGroupKind> = {
   photos: 'photos',
   panoramas: 'panoramas',
 };
+
+const slashed = (path: string) => path.replace(/\\/g, '/');
+
+/**
+ * The plan raster of a drawing (`drawings/<stem>/plan.png`, data-conventions section 15): a DXF
+ * drawn as a picture, a PDF page, a scan.
+ */
+export function isDrawingPlanLayer(layer: Layer): boolean {
+  return (
+    layer.kind === 'raster' &&
+    layer.role === 'plan' &&
+    'path' in layer.src &&
+    /^drawings\/[^/]+\/plan\.png$/.test(slashed(layer.src.path))
+  );
+}
+
+/** A layer of a drawing: its plan, or the line work the DXF import wrote beside it. */
+function isDrawingLayer(layer: Layer): boolean {
+  if (isDrawingPlanLayer(layer)) return true;
+  return (
+    layer.kind === 'vector' &&
+    'path' in layer.src &&
+    slashed(layer.src.path).startsWith('drawings/')
+  );
+}
+
+/** What the tree is told beside the manifest. */
+export interface TreeOptions {
+  /** Drawings that lie on a provisional placement (their row says "not placed"). */
+  unplaced?: ReadonlySet<string> | undefined;
+}
 
 function metaOf(layer: Layer, durations: Readonly<Record<string, number>>): string | undefined {
   switch (layer.kind) {
@@ -75,11 +109,15 @@ function metaOf(layer: Layer, durations: Readonly<Record<string, number>>): stri
   }
 }
 
-/** The sidebar dataset tree: layers grouped by kind with counts, plus the project's annotations. */
+/**
+ * The sidebar dataset tree: layers grouped by kind with counts, plus the project's annotations.
+ * Drawings (everything stored under `drawings/`) have their own group.
+ */
 export function buildDatasetTree(
   manifest: ProjectManifest,
   issues: readonly Issue[],
   durations: Readonly<Record<string, number>> = {},
+  opts: TreeOptions = {},
 ): TreeGroup[] {
   const groups = new Map<TreeGroupKind, TreeGroup>(
     GROUPS.map((g) => [g.kind, { ...g, count: 0, items: [] }]),
@@ -93,7 +131,8 @@ export function buildDatasetTree(
   for (const layer of manifest.layers) {
     // A retired delivered viewer stays in older manifests and is never listed.
     if (layer.kind === 'legacy') continue;
-    const g = groups.get(groupOf[layer.kind]);
+    const drawing = isDrawingLayer(layer);
+    const g = groups.get(drawing ? 'drawings' : groupOf[layer.kind]);
     if (!g) continue;
     const flight = flights.get(layer.id);
     if (flight) {
@@ -126,13 +165,14 @@ export function buildDatasetTree(
       });
       continue;
     }
-    const meta = metaOf(layer, durations);
+    const meta = opts.unplaced?.has(layer.id) ? 'not placed' : metaOf(layer, durations);
     g.items.push({
       id: layer.id,
       layerId: layer.id,
       layerKind: layer.kind,
       name: layer.name,
       ...(meta !== undefined ? { meta } : {}),
+      ...(drawing && layer.kind === 'raster' ? { drawing: true as const } : {}),
     });
     g.count += layer.kind === 'photos' || layer.kind === 'panoramas' ? layer.items.length : 1;
   }
