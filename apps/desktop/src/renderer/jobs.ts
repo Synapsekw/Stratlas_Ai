@@ -101,8 +101,11 @@ export const TILESET_WRITERS: ReadonlySet<string> = new Set([
 /** Pipelines that also write issues.json (and road.json): the open project reopens whole. */
 const PROJECT_WRITERS: ReadonlySet<string> = new Set(['road.build']);
 
-const folderKey = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-const sameFolder = (a: string, b: string) => folderKey(a) === folderKey(b);
+/** A project folder as a key: slashes one way, no trailing slash, lower case. */
+export const folderKey = (p: string): string =>
+  p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+/** Two spellings of one project folder. */
+export const sameFolder = (a: string, b: string): boolean => folderKey(a) === folderKey(b);
 
 function justFinished(
   prev: readonly JobRecord[],
