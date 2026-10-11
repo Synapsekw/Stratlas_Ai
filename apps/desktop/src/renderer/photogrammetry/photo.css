@@ -573,6 +573,21 @@
 .ph-sum .notice {
   margin: 0;
 }
+/* the survey date warning: the sentence, the button that files the maps, and why it failed */
+.ph-date-warn {
+  flex-wrap: wrap;
+}
+.ph-date-warn > span:not(.ph-date-err) {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+.ph-date-warn .btn {
+  flex: none;
+}
+.ph-date-err {
+  flex-basis: 100%;
+  color: var(--s5);
+}
 /* one question, asked in line: what it is about, then the choice */
 .ph-q {
   display: grid;

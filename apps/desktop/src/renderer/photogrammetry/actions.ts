@@ -100,9 +100,11 @@ async function requestProducts(
  * Build the maps of a run (`photo.products`). Started or refused, the maps the dialog queued no
  * longer wait: a start that happens by itself when the photos are matched has nobody to answer
  * to, so the reason of a refusal is kept for the run panel, which then offers **Create maps**
- * again. The run's survey date stays until a start works, so that next try files the maps under it.
- * A start that works without the survey date wanted (it could not be saved) is kept for the run
- * (`dateWarnings`) so the panel tells the person; a refused start leaves that as it was.
+ * again. The run's survey date stays until a start works with it, so that next try files the maps
+ * under it. A start that works without the survey date wanted (it could not be saved) is kept for
+ * the run (`dateWarnings`, with the day) so the panel tells the person, and the run keeps its date
+ * too, so **Create maps again** tries to save it again and **File them under** can use it; a
+ * refused start leaves all of that as it was.
  */
 export async function startProducts(run: string, p: PendingProducts): Promise<string | null> {
   const { err, dateFailed } = await requestProducts(run, p);
@@ -110,10 +112,67 @@ export async function startProducts(run: string, p: PendingProducts): Promise<st
   ui.setPending(run, null);
   ui.setStartError(run, err);
   if (!err) {
-    ui.setDate(run, null);
-    ui.setDateWarning(run, dateFailed);
+    if (dateFailed && p.captureDate) {
+      ui.setDate(run, { captureDate: p.captureDate });
+      ui.setDateWarning(run, { date: p.captureDate, root: p.root });
+    } else {
+      ui.setDate(run, null);
+      ui.setDateWarning(run, null);
+    }
   }
   return err;
+}
+
+/**
+ * **File them under <date>** on a run's survey date warning: save the date that could not be saved
+ * (`builder:ensureCapture`, which finds it when it exists) and put the run's layers that are under
+ * no date into it (`builder:updateLayers`). The run's layers are the ones its `run.json` lists
+ * (`outputs.layers`, as the run panel reads them); a layer the person already filed under a date
+ * stays where it is. With no layers yet nothing is saved and a reason is answered, so the warning
+ * never goes while maps are left without a date. On any failure the warning stays (after the date
+ * was saved a second try finds it and files the layers). Answers a reason, or null when it worked.
+ */
+export async function fileUnderDate(run: string): Promise<string | null> {
+  const ui = photoUi.getState();
+  const warning = ui.dateWarnings[run];
+  if (!warning) return 'There is no survey date to file these maps under.';
+  const project = workspace.getState().project;
+  if (!project || folderKey(project.root) !== folderKey(warning.root))
+    return 'Open the project these maps belong to, then try again.';
+  const sameProject = () => workspace.getState().project?.id === project.id;
+  try {
+    const read = await bridge.call('photo:readRun', { projectId: project.id, run });
+    if (!read.ok) return read.error;
+    if (!read.value.ok) return read.value.error;
+    const outputs = read.value.run.outputs.layers;
+    if (outputs.length === 0) return 'The maps are not ready yet. Try again when they are.';
+    if (!sameProject()) return 'Open the project these maps belong to, then try again.';
+    const undated = (workspace.getState().project?.manifest.layers ?? [])
+      .filter((l) => outputs.includes(l.id) && !l.capture)
+      .map((l) => l.id);
+    if (undated.length > 0) {
+      const saved = await bridge.call('builder:ensureCapture', {
+        projectId: project.id,
+        date: warning.date,
+      });
+      if (!saved.ok) return saved.error;
+      if (!saved.value.ok) return saved.value.error;
+      if (sameProject()) workspace.getState().replaceManifest(saved.value.manifest);
+      const filed = await bridge.call('builder:updateLayers', {
+        projectId: project.id,
+        layerIds: undated,
+        patch: { capture: saved.value.captureId },
+      });
+      if (!filed.ok) return filed.error;
+      if (!filed.value.ok) return filed.value.error;
+      if (sameProject()) workspace.getState().replaceManifest(filed.value.manifest);
+    }
+    ui.setDateWarning(run, null);
+    ui.setDate(run, null);
+    return null;
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
 }
 
 /** **Export as OPF**: the run's cameras, calibration and outputs as an OPF project in `out`. */
