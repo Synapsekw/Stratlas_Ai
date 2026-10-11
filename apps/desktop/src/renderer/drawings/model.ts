@@ -15,10 +15,35 @@ export const MAX_DRAWING_PX = 8192;
 
 const PAGES_HELP = 'Type the pages to import, for example 1-3, 7.';
 
-/** The page field's first value: every page, or the first `cap` of a longer file. */
-export function defaultPages(count: number, cap = PAGE_CAP): string {
-  const last = Math.min(count, cap);
-  return last <= 1 ? '1' : `1-${String(last)}`;
+/**
+ * The page field's first value: the first page. Every page becomes a drawing, and a drawing
+ * cannot be removed again, so more pages are something a person types.
+ */
+export function defaultPages(): string {
+  return '1';
+}
+
+/** The most a page may weigh as a PNG (the limit of `builder:addDrawingPage`). */
+export const PAGE_BYTES = 64 * 1024 * 1024;
+/** The scales a page is drawn at, one after the other, until its PNG fits. */
+const SHRINK_STEPS = [1, 0.7, 0.5, 0.35];
+
+/**
+ * Draw a page so that it can be handed over: at full size, and when that PNG is heavier than
+ * `cap` (a large sheet full of colour), again at 70, 50 and 35 percent. Throws, in words for the
+ * import list, when it is still too heavy.
+ */
+export async function drawWithinCap<T extends { byteLength: number }>(
+  draw: (shrink: number) => Promise<T>,
+  cap = PAGE_BYTES,
+): Promise<T> {
+  for (const shrink of SHRINK_STEPS) {
+    const png = await draw(shrink);
+    if (png.byteLength <= cap) return png;
+  }
+  throw new Error(
+    'This page is too detailed to bring in, even at a third of its size. Export it from its program as a smaller picture (PNG or JPEG), then add that.',
+  );
 }
 
 /**
@@ -138,6 +163,16 @@ export function cornersFromPairs(
   size: { width: number; height: number },
 ): PlaceFit | { error: string } {
   if (pairs.length < 2) return { error: 'Give at least two point pairs.' };
+  // The fit refuses drawing points that coincide; site points that do would give a sheet of no
+  // size (scale 0). A millimetre apart on the site is one spot.
+  const spread = Math.max(
+    ...pairs.map((p) =>
+      Math.hypot(p.local[0] - (pairs[0]?.local[0] ?? 0), p.local[2] - (pairs[0]?.local[2] ?? 0)),
+    ),
+  );
+  if (!(spread > 1e-3)) {
+    return { error: 'The site points are too close together. Give spots further apart.' };
+  }
   try {
     const fit = fitSimilarity3D(
       pairs.map((p) => ({
@@ -152,6 +187,9 @@ export function cornersFromPairs(
       const p = applyMat4(fit.matrix, [x, 0, y]);
       return [r6(p[0]), r6(p[1]), r6(p[2])];
     };
+    if (!(fit.scale > 1e-9) || !Number.isFinite(fit.scale)) {
+      return { error: 'These pairs give the drawing no size. Give spots further apart.' };
+    }
     return {
       corners: { tl: at(0, 0), tr: at(size.width, 0), bl: at(0, size.height) },
       metresPerPx: fit.scale,

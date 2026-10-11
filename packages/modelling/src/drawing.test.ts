@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   drawingsOf,
   drawingToLocal,
+  dxfStemOf,
   findDrawing,
   isDrawingPlan,
+  pictureOwnsStem,
   localToDrawing,
   parsePlacement,
   readDrawingParts,
@@ -95,5 +97,26 @@ describe('drawings from pictures and PDF pages', () => {
       ['plot', 'dxf', 'plot.dxf'],
     ]);
     expect(isDrawingPlan(sheet)).toBe(true);
+  });
+});
+
+describe('a DXF and a picture drawing of one name', () => {
+  const sheet = (stem: string): Layer => ({ ...plan(stem, 'x'), id: `sheet-${stem}`, name: stem });
+
+  it('names the folder a DXF import files under, as the pipeline does', () => {
+    expect(dxfStemOf('C:\\in\\Plot Plan (rev 2).dxf')).toBe('Plot-Plan-rev-2');
+    expect(dxfStemOf('/in/site.DXF')).toBe('site');
+    expect(dxfStemOf('_.dxf')).toBe('drawing');
+  });
+
+  it('knows when a picture drawing has that folder, whatever the case, pages included', () => {
+    const list = drawingsOf({
+      layers: [plan('plot', 'plot.dxf'), sheet('site'), sheet('ga-p2')],
+    });
+    expect(pictureOwnsStem(list, 'Site')).toBe(true);
+    expect(pictureOwnsStem(list, 'GA')).toBe(true);
+    // a DXF's own folder is the DXF's to import again
+    expect(pictureOwnsStem(list, 'plot')).toBe(false);
+    expect(pictureOwnsStem(list, 'other')).toBe(false);
   });
 });

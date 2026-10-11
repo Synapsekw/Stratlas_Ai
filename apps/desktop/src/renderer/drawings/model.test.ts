@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  PAGE_BYTES,
   PAGE_CAP,
   cornersFromPairs,
   defaultPages,
+  drawWithinCap,
   fitWithin,
   pageSizePx,
   parsePages,
@@ -31,9 +33,11 @@ describe('which pages of a PDF become drawings', () => {
     expect(parsePages('1-30', 40)).toEqual({
       error: `At most ${String(PAGE_CAP)} pages in one import; 30 are listed.`,
     });
-    expect(defaultPages(3)).toBe('1-3');
-    expect(defaultPages(1)).toBe('1');
-    expect(defaultPages(85)).toBe(`1-${String(PAGE_CAP)}`);
+  });
+
+  it('proposes the first page only: every page is a drawing that stays', () => {
+    expect(defaultPages()).toBe('1');
+    expect(parsePages(defaultPages(), 85)).toEqual({ pages: [1] });
   });
 });
 
@@ -122,6 +126,29 @@ describe('placing a drawing by point pairs', () => {
     expect(r.rms).toBeCloseTo(0, 6);
   });
 
+  it('refuses pairs that put two drawing points on one spot of the site', () => {
+    const spot = truth(100, 100);
+    const r = cornersFromPairs(
+      [
+        { px: [100, 100], local: spot },
+        { px: [900, 400], local: [spot[0], spot[1], spot[2]] },
+      ],
+      size,
+    );
+    expect(r).toEqual({
+      error: 'The site points are too close together. Give spots further apart.',
+    });
+    // a few centimetres apart is still one spot for a sheet hundreds of pixels wide
+    const near = cornersFromPairs(
+      [
+        { px: [100, 100], local: spot },
+        { px: [900, 400], local: [spot[0] + 0.0001, spot[1], spot[2]] },
+      ],
+      size,
+    );
+    expect('error' in near).toBe(true);
+  });
+
   it('reports how far each pair is off when they disagree', () => {
     const off = pair(500, 250);
     off.local = [off.local[0] + 1, off.local[1], off.local[2]];
@@ -163,5 +190,44 @@ describe('open a drawing side by side', () => {
       right: 'raster',
       raster: 'sheet-a',
     });
+  });
+});
+
+describe('a page too heavy to hand over is drawn again, smaller', () => {
+  const bytes = (n: number) => new Uint8Array(n);
+
+  it('keeps the first drawing when it fits', async () => {
+    const asked: number[] = [];
+    const png = await drawWithinCap((shrink) => {
+      asked.push(shrink);
+      return Promise.resolve(bytes(10));
+    }, 100);
+    expect(png.byteLength).toBe(10);
+    expect(asked).toEqual([1]);
+  });
+
+  it('steps the scale down until the page fits', async () => {
+    const asked: number[] = [];
+    const png = await drawWithinCap((shrink) => {
+      asked.push(shrink);
+      return Promise.resolve(bytes(Math.round(400 * shrink * shrink)));
+    }, 100);
+    expect(asked).toEqual([1, 0.7, 0.5]);
+    expect(png.byteLength).toBe(100);
+  });
+
+  it('says so in plain words when even the smallest drawing is too heavy', async () => {
+    const asked: number[] = [];
+    await expect(
+      drawWithinCap((shrink) => {
+        asked.push(shrink);
+        return Promise.resolve(bytes(1000));
+      }, 100),
+    ).rejects.toThrow('too detailed to bring in, even at a third of its size');
+    expect(asked).toEqual([1, 0.7, 0.5, 0.35]);
+  });
+
+  it('the cap is the one the page channel takes', () => {
+    expect(PAGE_BYTES).toBe(64 * 1024 * 1024);
   });
 });

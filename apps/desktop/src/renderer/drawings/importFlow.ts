@@ -1,6 +1,7 @@
 import type { ImportItem, ProjectManifest } from '@aio/schema';
 import { assetUrl, workspace, type OpenProject } from '@aio/workspace';
 import { bridge } from '../shell';
+import { drawWithinCap } from './model';
 import { openDrawing, type OpenDrawing } from './rasterise';
 import { drawings, type DrawingPlaced } from './store';
 
@@ -12,11 +13,15 @@ export const DRAWING_ADDED =
 export interface StagedIo {
   items(): readonly ImportItem[];
   setItem(index: number, patch: Partial<ImportItem>): void;
-  progress(p: { done: number; total: number; file: string } | null): void;
+  /** What is being drawn now; the import that called is busy until this function is done. */
+  progress(p: { done: number; total: number; file: string }): void;
 }
 
 function askPages(name: string, pages: number): Promise<number[] | null> {
   return new Promise((resolve) => {
+    // one question at a time: an import stays busy until its drawings are in, so a question
+    // still open here is a stale one, and it is answered before it is replaced
+    drawings.getState().pagePrompt?.answer(null);
     drawings.setState({
       pagePrompt: {
         name,
@@ -33,7 +38,12 @@ function askPages(name: string, pages: number): Promise<number[] | null> {
 /**
  * Finish the drawings main only copied in (`ImportItem.drawing`: PDF, WebP, SVG): draw their pages
  * here and hand each to `builder:addDrawingPage`. A PDF of several pages asks which pages first.
- * Each drawing reports on its own row; one that fails never stops the next.
+ * Each drawing reports on its own row; one that fails never stops the next. Whatever happens to a
+ * drawing, it is closed (`builder:closeDrawing`): no more pages are taken for it, and a copy that
+ * got none (the question cancelled, a file that cannot be drawn) is removed again.
+ *
+ * The project changes once per file, when its pages are in, not once per page: the manifest each
+ * page answers is the whole project as saved, and the views load what is new from the last one.
  */
 export async function finishStagedDrawings(projectId: string, io: StagedIo): Promise<void> {
   const staged = io
@@ -43,13 +53,15 @@ export async function finishStagedDrawings(projectId: string, io: StagedIo): Pro
   for (const { d, index } of staged) {
     if (!d) continue;
     let open: OpenDrawing | null = null;
+    let saved: ProjectManifest | null = null;
     try {
       open = await openDrawing(assetUrl(projectId, { path: d.src }), d.src);
-      const many = open.pages > 1;
+      const sheet = open;
+      const many = sheet.pages > 1;
       let pages = [1];
       if (many) {
         io.setItem(index, { message: 'Waiting for the pages to import.' });
-        const chosen = await askPages(d.name, open.pages);
+        const chosen = await askPages(d.name, sheet.pages);
         if (!chosen) {
           io.setItem(index, {
             status: 'skipped',
@@ -66,20 +78,20 @@ export async function finishStagedDrawings(projectId: string, io: StagedIo): Pro
           total: pages.length,
           file: many ? `${d.name}, page ${String(n)}` : d.name,
         });
-        const png = await open.png(n);
+        // a page too heavy for the hand-over is drawn again at a lower scale
+        const png = await drawWithinCap((shrink) => sheet.png(n, shrink));
         const r = await bridge.call('builder:addDrawingPage', {
           projectId,
           stem: d.stem,
           name: d.name,
-          ...(many ? { page: n, pages: open.pages } : {}),
+          ...(many ? { page: n, pages: sheet.pages } : {}),
           png,
         });
         if (!r.ok) throw new Error(r.error);
         if (!r.value.ok) throw new Error(r.value.error);
         // the row points at the first page that came in
         layerId ||= r.value.layerId;
-        if (workspace.getState().project?.id === projectId)
-          workspace.getState().replaceManifest(r.value.manifest);
+        saved = r.value.manifest;
       }
       io.setItem(index, {
         status: 'imported',
@@ -93,7 +105,9 @@ export async function finishStagedDrawings(projectId: string, io: StagedIo): Pro
       io.setItem(index, { status: 'error', message: e instanceof Error ? e.message : String(e) });
     } finally {
       open?.close();
-      io.progress(null);
+      await bridge.call('builder:closeDrawing', { projectId, stem: d.stem });
+      if (saved && workspace.getState().project?.id === projectId)
+        workspace.getState().replaceManifest(saved);
     }
   }
 }

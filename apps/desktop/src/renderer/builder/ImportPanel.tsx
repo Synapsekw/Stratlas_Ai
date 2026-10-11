@@ -237,7 +237,8 @@ function ImportStatus() {
   const prompt = useBuilder((s) => s.heightsPrompt);
   const pages = useDrawings((s) => s.pagePrompt);
   if (prompt && !importing) return <HeightsCard p={prompt} />;
-  if (pages && !importing) return <PagesCard key={pages.name} p={pages} />;
+  // asked in the middle of an import, which stays busy until its drawings are in
+  if (pages) return <PagesCard key={pages.name} p={pages} />;
   if (!importing && !result) return null;
   const heights = result?.heights ? heightsLine(result.heights) : null;
   const counts = result

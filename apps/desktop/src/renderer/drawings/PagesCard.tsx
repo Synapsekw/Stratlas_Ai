@@ -8,7 +8,7 @@ import type { PagePrompt } from './store';
  * drawing, so a long document is not brought in by accident. Shown where the import panel is.
  */
 export function PagesCard({ p }: { p: PagePrompt }) {
-  const [text, setText] = useState(() => defaultPages(p.pages));
+  const [text, setText] = useState(defaultPages);
   const parsed = parsePages(text, p.pages);
   const pages = 'pages' in parsed ? parsed.pages : null;
   return (
@@ -25,7 +25,8 @@ export function PagesCard({ p }: { p: PagePrompt }) {
         }}
       >
         <p className="small">
-          This PDF has {String(p.pages)} pages. Each page you import becomes one drawing.
+          This PDF has {String(p.pages)} pages. Each page you import becomes one drawing, and a
+          drawing cannot be removed again, so type only the pages you need.
           {p.pages > PAGE_CAP &&
             ` One import takes at most ${String(PAGE_CAP)} pages; import the file again for more.`}
         </p>

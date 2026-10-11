@@ -10,15 +10,16 @@ import { MAX_DRAWING_PX, fitWithin, pageSizePx, svgSize } from './model';
 /** An opened drawing: how many pages it has and one PNG per page asked for. */
 export interface OpenDrawing {
   pages: number;
-  /** The PNG of a page (1-based). */
-  png(page: number): Promise<Uint8Array<ArrayBuffer>>;
+  /** The PNG of a page (1-based), drawn at `shrink` of its full size (1: full). */
+  png(page: number, shrink?: number): Promise<Uint8Array<ArrayBuffer>>;
   close(): void;
 }
 
+/** A canvas of that size, never above the size a drawing may have on a side. */
 function canvasOf(width: number, height: number): HTMLCanvasElement {
   const c = document.createElement('canvas');
-  c.width = width;
-  c.height = height;
+  c.width = Math.max(1, Math.min(MAX_DRAWING_PX, Math.round(width)));
+  c.height = Math.max(1, Math.min(MAX_DRAWING_PX, Math.round(height)));
   return c;
 }
 
@@ -50,13 +51,13 @@ async function openPdfDrawing(url: string): Promise<OpenDrawing> {
   }
   return {
     pages: doc.numPages,
-    png: async (n) => {
+    png: async (n, shrink = 1) => {
       const page = await doc.getPage(n);
       try {
         const base = page.getViewport({ scale: 1 });
         const size = pageSizePx(base.width, base.height);
-        const viewport = page.getViewport({ scale: size.scale });
-        const canvas = canvasOf(Math.ceil(viewport.width), Math.ceil(viewport.height));
+        const viewport = page.getViewport({ scale: size.scale * shrink });
+        const canvas = canvasOf(viewport.width, viewport.height);
         // the paper stays white: a sheet reads as a sheet side by side
         await page.render({ canvas, viewport }).promise;
         return await pngOf(canvas);
@@ -76,11 +77,11 @@ async function openPicture(url: string, svg: boolean): Promise<OpenDrawing> {
   const data = await res.blob();
   return {
     pages: 1,
-    png: async () => {
+    png: async (_page, shrink = 1) => {
       if (!svg) {
         const bmp = await createImageBitmap(data).catch(() => null);
         if (!bmp) throw new Error('The picture could not be decoded.');
-        const size = fitWithin(bmp.width, bmp.height, MAX_DRAWING_PX);
+        const size = fitWithin(bmp.width, bmp.height, MAX_DRAWING_PX * shrink);
         const canvas = canvasOf(size.width, size.height);
         canvas.getContext('2d')?.drawImage(bmp, 0, 0, size.width, size.height);
         bmp.close();
@@ -103,8 +104,8 @@ async function openPicture(url: string, svg: boolean): Promise<OpenDrawing> {
           };
           img.src = src;
         });
-        const canvas = canvasOf(size.width, size.height);
-        canvas.getContext('2d')?.drawImage(img, 0, 0, size.width, size.height);
+        const canvas = canvasOf(size.width * shrink, size.height * shrink);
+        canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height);
         return await pngOf(canvas);
       } finally {
         URL.revokeObjectURL(src);

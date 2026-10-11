@@ -180,36 +180,41 @@ export const builder = createStore<Builder>()((set, get) => ({
     }
     if (workspace.getState().project?.id === project.id)
       workspace.getState().replaceManifest(r.value.manifest);
+    // the result of this import: its rows are only ever changed in it, never in a later one
+    let result: NonNullable<BuilderState['importResult']> = {
+      items: r.value.items,
+      error: null,
+      ...(r.value.heights ? { heights: r.value.heights } : {}),
+    };
+    const staged = result.items.filter((i) => i.drawing).length;
+    // PDF, WebP and SVG were only copied in, their pages are drawn in this window. The import
+    // stays busy until they are in or cancelled, the page question included, so a pick or a drop
+    // made meanwhile does nothing, as during any import (the guard at the top).
     set({
-      importing: null,
-      importResult: {
-        items: r.value.items,
-        error: null,
-        ...(r.value.heights ? { heights: r.value.heights } : {}),
-      },
+      importing: staged > 0 ? { done: 0, total: staged, file: '' } : null,
+      importResult: result,
     });
     void shell.getState().loadLibrary();
-    // PDF, WebP and SVG were only copied in: their pages are drawn here, row by row
-    if (r.value.items.some((i) => i.drawing)) {
+    if (staged > 0) {
       await finishStagedDrawings(project.id, {
-        items: () => get().importResult?.items ?? [],
+        items: () => result.items,
         setItem: (index, patch) => {
-          const result = get().importResult;
-          if (!result) return;
-          set({
-            importResult: {
-              ...result,
-              items: result.items.map((it, i) => (i === index ? { ...it, ...patch } : it)),
-            },
-          });
+          const shown = get().importResult === result;
+          result = {
+            ...result,
+            items: result.items.map((it, i) => (i === index ? { ...it, ...patch } : it)),
+          };
+          if (shown) set({ importResult: result });
         },
         progress: (importing) => {
           set({ importing });
         },
+      }).finally(() => {
+        set({ importing: null });
       });
     }
     // the first drawing that came in shows its controls: side by side, place on the site
-    const drawn = get().importResult?.items.find(
+    const drawn = result.items.find(
       (i) => i.kind === 'drawing' && i.status === 'imported' && i.layerId,
     );
     if (drawn?.layerId && workspace.getState().project?.id === project.id)
