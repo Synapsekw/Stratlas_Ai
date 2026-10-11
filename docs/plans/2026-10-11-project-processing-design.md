@@ -78,7 +78,7 @@ The chip opens a drawer on the right, over the screen, about 400 px wide. It doe
 From top to bottom:
 
 1. **Header:** `Processing`, and under it the project's name.
-2. **Create maps from photos:** the one start button. It opens the wizard and closes the drawer.
+2. **Create maps from photos:** the one start button. It opens the wizard and closes the drawer. The drawer also closes when a run's panel opens from it.
 3. **Tools missing:** only when the processing tools are missing or too old: "Processing cannot run yet: the processing tools are missing or need an update", with **Update processing tools**, which opens Settings. The version itself is shown in Settings only.
 4. **Running:** this project's running jobs.
 5. **Finished:** this project's finished jobs, newest first. The last 20, then **Show older**.
@@ -166,7 +166,7 @@ No change to the main process, to `@aio/schema` or to the pack.
 | Pipeline names | `renderer/processing/pipelines.ts`                                                                                                                                                                 | `jobTitle` and the pipelines by area, moved from `screens/jobTasks.ts`                                                 |
 | Advanced       | `screens/settings/ProcessingTools.tsx`                                                                                                                                                             | The folded section                                                                                                     |
 | Entry points   | `screens/Detections.tsx`, `road/RoadSetup.tsx`, `builder/NewProjectWizard.tsx`, `processingTools.ts`, `shell/Palette.tsx`                                                                          | As in "Starting work"                                                                                                  |
-| Removed        | `screens/Jobs.tsx`, `screens/jobTaskActions.ts`, the tasks of `screens/jobTasks.ts`, the `jobs` screen in `store.ts`, `App.tsx`, `shell/Sidebar.tsx`, `shell/TitleBar.tsx`, the draft in `jobs.ts` | A saved last screen of `jobs` opens the Scene                                                                          |
+| Removed        | `screens/Jobs.tsx`, `screens/jobTaskActions.ts`, the tasks of `screens/jobTasks.ts`, the `jobs` screen in `store.ts`, `App.tsx`, `shell/Sidebar.tsx`, `shell/TitleBar.tsx`, the draft in `jobs.ts` |                                                                                                                        |
 | Words          | `packages/ui` messages, `screens/FirstStart.tsx`, `ProcessingToolsNotice.tsx`                                                                                                                      | New strings go through the message catalogue; "in Jobs" is reworded                                                    |
 | Guide          | `docs/guide/` chapters 01, 02, 08, 09, 12, 13, 15, 16, 28, 31, 32, 33, 36, 38                                                                                                                      | Every "Jobs" becomes the chip, the drawer or Settings, Advanced; chapter 08's "Run a job" is rewritten as "Processing" |
 
@@ -178,7 +178,7 @@ None. No schema, IPC or pack change, so no row in `docs/architecture/contract-ch
 
 ## Edge cases
 
-- Another project is opened while a job runs: the job carries on. The chip follows the open project and the job shows under **Running in other projects**.
+- Another project is opened while a job runs: the job carries on. The chip follows the open project and the job shows under **Running in other projects**. If that job's details were open, they stay while it runs; once it has stopped, the drawer goes back to the list.
 - No project open and a job running: the chip still shows, so the work is never invisible.
 - The same folder under another spelling (case, slashes, a trailing slash): compared the way the app already compares project folders.
 - A job finishes while the drawer is closed: said aloud as today, and the open project reloads its layers as today. Only a failure or an interruption marks the chip.
@@ -192,7 +192,7 @@ None. No schema, IPC or pack change, so no row in `docs/architecture/contract-ch
 - Renderer: the chip and the drawer against a fake store (the parts and their order, the empty state, the no-project state, Back, the folded sections); the start dialog builds the same parameters the raw form does.
 - Existing `jobs.test.ts` and its M10, M11 and OPF siblings keep covering the forms and the events. The task tests of `jobTasks.test.ts` go with the tasks.
 - End to end, new `processing-drawer.spec.ts`: the chip's states through a real self-test job; start, cancel, resume and finish from the drawer; a job of another project shows only under **Running in other projects**; the Advanced section in Settings starts a pipeline and lists every job; accessibility of the chip, the drawer and the start dialog.
-- End to end, changed, because they reach a feature through the Jobs screen today: `jobs.spec.ts`, `jobs-chooser.spec.ts` (replaced by the new spec), `a11y.spec.ts`, `inspection.spec.ts`, `samples.spec.ts`, `road-builder.spec.ts`, `opf.spec.ts`, `photo-process.spec.ts` and its helper `photoPack.ts`, `processing-tools.spec.ts`, `volumetric-build.spec.ts`, and the helper `openPipelineForm` in `fixtures.ts`.
+- End to end, changed, because they reach a feature through the Jobs screen today: `jobs.spec.ts`, `jobs-chooser.spec.ts` (replaced by the new spec), `a11y.spec.ts`, `inspection.spec.ts`, `samples.spec.ts`, `road-builder.spec.ts`, `opf.spec.ts`, `photo-process.spec.ts` and its helper `photoPack.ts`, `processing-tools.spec.ts`, `volumetric-build.spec.ts`, and the helper `openPipelineForm` in `fixtures.ts`. `gcp-marking.spec.ts` and `photo-real.spec.ts` reach the wizard through `photoPack.ts` only and follow it.
 - Every changed or added spec is run the way CI runs it before the hand-off, one worker at a time.
 
 ## Merge order
