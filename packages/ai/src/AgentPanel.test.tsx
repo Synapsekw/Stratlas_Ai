@@ -20,7 +20,7 @@ import {
 import { OFFLINE_ONLY_MESSAGE } from './errors';
 import { defaultToolContext } from './renderer-tools';
 import { AgentSession } from './session';
-import { fixtureManifest } from './test-fixtures';
+import { fixtureIssue, fixtureManifest } from './test-fixtures';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -174,14 +174,22 @@ describe('AgentPanel', () => {
     expect(el.querySelector('textarea')?.disabled).toBe(false);
   });
 
-  it('shows the binding chip and three suggestions, and sends one', async () => {
-    workspace.getState().openProject({ id: 'p1', root: 'E:/x', manifest: fixtureManifest() }, []);
+  it('shows the binding chip and the suggestions the project can answer, and sends one', async () => {
+    workspace
+      .getState()
+      .openProject({ id: 'p1', root: 'E:/x', manifest: fixtureManifest() }, [fixtureIssue()]);
     workspace.getState().select({ kind: 'asset', id: '20-T-0002' });
     const t = bridge(true);
     const el = await render(t.b);
     expect(el.querySelector('.ag-bind')?.textContent).toBe('3D view, 20-T-0002, 15:11:00');
     const suggestions = el.querySelectorAll<HTMLButtonElement>('.ag-sug');
-    expect(suggestions).toHaveLength(3);
+    // no photos in this project, so the photo request is left out
+    expect([...suggestions].map((b) => b.textContent)).toEqual([
+      'Take me to the most severe finding',
+      'Which asset has the most findings?',
+      'Which clips fly within 40 m of the selected asset?',
+      'Fly to the most severe open issue',
+    ]);
     await act(async () => {
       suggestions[0]?.click();
       await new Promise((r) => setTimeout(r, 0));

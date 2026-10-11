@@ -22,7 +22,7 @@ import {
   type Step,
   type Turn,
 } from './session';
-import { SUGGESTIONS } from './suggestions';
+import { suggestionsFor } from './suggestions';
 import { getToolSpec } from './tools';
 
 /** What the app's fix card gets when a reply failed with an error it can fix in place. */
@@ -101,6 +101,20 @@ export function AgentPanel({
   const state = useSyncExternalStore(session.subscribe, session.getState);
   const binding = useWorkspace((s) => bindingLabel(win, s));
   const projectId = useWorkspace((s) => s.project?.id ?? null);
+  // booleans, so the panel does not render again on every store change
+  const hasPhotos = useWorkspace(
+    (s) =>
+      s.project?.manifest.layers.some((l) => l.kind === 'photos' && l.items.length > 0) ?? false,
+  );
+  const hasIssues = useWorkspace((s) => s.issues.length > 0);
+  const hasAssets = useWorkspace(
+    (s) =>
+      s.project?.manifest.layers.some((l) => l.kind === 'mesh' && (l.tags?.length ?? 0) > 0) ??
+      false,
+  );
+  const hasClips = useWorkspace(
+    (s) => s.project?.manifest.layers.some((l) => l.kind === 'video') ?? false,
+  );
   const [draft, setDraft] = useState('');
   const [attach, setAttach] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -252,7 +266,7 @@ export function AgentPanel({
         ) : state.turns.length === 0 ? (
           <div className="ag-empty">
             <p>Ask about this {WINDOW_LABELS[win].toLowerCase()} or tell the agent what to do.</p>
-            {SUGGESTIONS[win].map((s) => (
+            {suggestionsFor(win, { hasPhotos, hasIssues, hasAssets, hasClips }).map((s) => (
               <button
                 key={s}
                 type="button"

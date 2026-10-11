@@ -7,7 +7,7 @@ import type {
   IpcResponse,
 } from '@aio/schema';
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { RendererToolContext } from './renderer-tools';
+import type { AppHooks, RendererToolContext } from './renderer-tools';
 import { AgentSession, resetPreviewMemory } from './session';
 import { fixtureWorkspace } from './test-fixtures';
 
@@ -108,7 +108,7 @@ beforeEach(() => {
   resetPreviewMemory();
 });
 
-function setup(opts: BridgeOpts = {}) {
+function setup(opts: BridgeOpts = {}, app?: AppHooks) {
   const b = fakeBridge(opts);
   const ws = fixtureWorkspace();
   let n = 0;
@@ -119,6 +119,7 @@ function setup(opts: BridgeOpts = {}) {
     fetchJson: () => Promise.reject(new Error('offline')),
     captureFrame: () => Promise.resolve('data:image/jpeg;base64,AAAA'),
     now: () => new Date('2026-10-03T12:00:00Z'),
+    ...(app ? { app } : {}),
   });
   const session = new AgentSession({
     bridge: b.bridge,
@@ -184,6 +185,25 @@ describe('agent session availability', () => {
 });
 
 describe('agent session conversation', () => {
+  it('sends the screen that is showing and the severity level names', async () => {
+    const t = setup({}, { screen: () => 'media' });
+    await t.session.send('Open the worst photos');
+    const req = t.sent('ai:send')[0]?.req as IpcRequest<'ai:send'>;
+    expect(req.context).toMatchObject({
+      screen: 'media',
+      severityLevels: [
+        { model: 'sev', levels: expect.arrayContaining([{ value: 1, label: 'S1' }]) as unknown },
+      ],
+    });
+  });
+
+  it('sends no screen when the app has no hook for it', async () => {
+    const t = setup();
+    await t.session.send('What is this?');
+    const req = t.sent('ai:send')[0]?.req as IpcRequest<'ai:send'>;
+    expect(req.context).not.toHaveProperty('screen');
+  });
+
   it('sends the window context and history, then streams the reply', async () => {
     const t = setup();
     t.ws.getState().select({ kind: 'asset', id: '20-T-0002' });
