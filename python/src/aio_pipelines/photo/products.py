@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shutil
 import time
@@ -74,8 +75,8 @@ DEFAULT_TRIANGLES = 2_000_000
 IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
 STAGES = ("dense", "fuse", "cloud", "dsm", "dtm", "ortho", "mesh", "texture", "commit", "tiles")
 CUDA_MISSING = (
-    "The GPU accelerator is not in this pipeline pack (decision 5: M10.1 at the earliest); "
-    "use dense: auto or cpu."
+    "The GPU accelerator is not installed: install the GPU add-on in Settings, Processing tools, "
+    "or use dense: auto or cpu."
 )
 PDAL_FOR_CLOUD = (
     "The point cloud needs PDAL, which this pipeline pack does not have. Install the full "
@@ -249,7 +250,7 @@ class PhotoProducts:
         if dense is not None:
             if dense not in ("auto", "cpu", "cuda"):
                 raise JobError("dense must be one of: auto, cpu, cuda.")
-            if dense == "cuda":
+            if dense == "cuda" and not os.environ.get("AIO_PHOTO_ADDON"):
                 raise JobError(CUDA_MISSING)
             out["dense"] = dense
         gsd = params.get("gsdCm")
@@ -438,42 +439,147 @@ class PhotoProducts:
                 replace_over(tmp, dst)
             else:
                 todo.append(v.id)
-        made = len(views) - len(todo)
-
-        def finished(view_id: int, matched: int) -> None:
-            nonlocal made
-            made += 1
-            ctx.progress(made / len(views), f"Depth map {made} of {len(views)}")
-
         cam = views[0].camera.scaled(s["scale"])
-        workers = pool.plan_workers(len(todo), cam.width * cam.height, pool.DENSE_BYTES_PER_PIXEL, budget)
-        if workers > 1:
-            ctx.log(f"Depth maps of {workers} photos at a time.")
-            args = (
+        ran = self._each_photo(
+            ctx,
+            todo=todo,
+            photos=len(views),
+            pixels=cam.width * cam.height,
+            cpu_bytes=pool.DENSE_BYTES_PER_PIXEL,
+            init=pool.init_dense,
+            args=lambda n: (
                 str(ctx.project),
                 ctx.params["run"],
                 s["scale"],
-                budget // workers,
+                budget // n,
                 str(out),
-                pool.worker_threads(workers),
-            )
-            try:
-                pool.run_pool(workers, pool.init_dense, args, pool.dense_task, todo, ctx.check, finished)
-                todo = []
-            except pool.PoolBroken:
-                ctx.log("A worker process stopped; finishing the depth maps one photo at a time.", "warn")
-                todo = [i for i in todo if not (out / f"{i}.npy").exists()]
-                made = len(views) - len(todo)
-        for view_id in todo:
-            ctx.check()
-            finished(view_id, pool.depth_photo(state, view_id, ctx.check))
+                pool.worker_threads(n),
+            ),
+            task=pool.dense_task,
+            here=lambda view_id: pool.depth_photo(state, view_id, ctx.check),
+            is_done=lambda view_id: (out / f"{view_id}.npy").exists(),
+            progress=lambda k, n: ctx.progress(k / n, f"Depth map {k} of {n}"),
+            words=("Depth maps", "Depth maps of", "finishing the depth maps one photo at a time"),
+        )
         return {
             "engine": matcher.name,
             "maps": len(views),
             "resumed": done,
             "pairs": sum(len(x) for x in pairs.values()),
-            "workers": workers,
+            **ran,
         }
+
+    def _card(self, ctx: StepContext) -> dict[str, Any] | None:
+        """The graphics card's state when this job may use it (the GPU add-on is named by the app,
+        the job did not ask for the CPU, and the card passes its test), else None. A job that asked
+        for the card by name is refused, in words, when it cannot have it."""
+        from .. import accel
+
+        want = ctx.params.get("dense", "auto")
+        if want == "cpu":
+            return None
+        addon = os.environ.get(accel.ADDON_ENV)
+        if not addon:
+            if want == "cuda":
+                raise JobError(CUDA_MISSING)
+            return None
+        state = accel.check(Path(addon))
+        if state.get("state") == "ready":
+            return {**state, "addon": addon}
+        reason = state.get("reason") or "The graphics card is not ready."
+        if want == "cuda":
+            raise JobError(f"{reason} Use dense: auto or cpu to process on the CPU.")
+        if not getattr(ctx.job, "_photo_card_said", False):
+            ctx.job._photo_card_said = True  # type: ignore[attr-defined]
+            ctx.log(f"Photo processing uses the CPU. {reason}")
+        return None
+
+    def _each_photo(
+        self,
+        ctx: StepContext,
+        *,
+        todo: list[int],
+        photos: int,
+        pixels: int,
+        cpu_bytes: int,
+        init,
+        args,
+        task,
+        here,
+        is_done,
+        progress,
+        words: tuple[str, str, str],
+    ) -> dict[str, Any]:
+        """Do a stage's per-photo work for ``todo``: with the array code on the graphics card when
+        the job may use it, else in as many CPU worker processes as fit, else in this process.
+        The card is only ever used in worker processes, so a driver fault cannot take the job
+        down: a worker that stops makes the stage finish here, on the CPU.
+
+        Answers ``workers``, ``device`` (``gpu`` when any photo ran on the card) and ``fallbacks``
+        (photos meant for the card that were done on the CPU), with ``accelerator`` and ``gpu``
+        when the card was used."""
+        from . import pool
+
+        what, of, rest = words
+        made = photos - len(todo)
+        on_card = fallbacks = 0
+        said = False
+
+        def finished(view_id: int, res: dict[str, Any]) -> None:
+            nonlocal made, on_card, fallbacks, said
+            made += 1
+            if res.get("device") == "gpu":
+                on_card += 1
+            elif res.get("problem"):
+                fallbacks += 1
+                if not said:
+                    said = True
+                    ctx.log(
+                        f"The graphics card could not be used for a photo ({res['problem']}); "
+                        "it was done on the CPU.",
+                        "warn",
+                    )
+            progress(made, photos)
+
+        budget = native.memory_budget()
+        card = self._card(ctx) if todo else None
+        addon = None
+        workers = 0
+        out: dict[str, Any] = {}
+        if card:
+            free = int(card.get("freeBytes") or 0)
+            workers = pool.plan_card_workers(
+                len(todo), pixels, free, budget, insist=ctx.params.get("dense") == "cuda"
+            )
+            if workers:
+                addon = card["addon"]
+                out = {"accelerator": card.get("version"), "gpu": card.get("gpu")}
+                ctx.log(
+                    f"{what} on {card.get('gpu') or 'the graphics card'}, {free / 1e9:.1f} GB free, "
+                    f"GPU add-on {card.get('version')}; {workers} photos at a time."
+                )
+            elif pixels >= pool.MIN_PIXELS:
+                ctx.log(f"The graphics card has too little free memory ({free / 1e9:.1f} GB); using the CPU.")
+        if not workers:
+            workers = pool.plan_workers(len(todo), pixels, cpu_bytes, budget)
+            if workers > 1:
+                ctx.log(f"{of} {workers} photos at a time.")
+        if addon or workers > 1:
+            try:
+                pool.run_pool(workers, init, (*args(workers), addon), task, todo, ctx.check, finished)
+                todo = []
+            except pool.PoolBroken:
+                ctx.log(f"A worker process stopped; {rest}.", "warn")
+                todo = [i for i in todo if not is_done(i)]
+                made = photos - len(todo)
+                if addon:
+                    fallbacks += len(todo)
+        for view_id in todo:
+            ctx.check()
+            finished(view_id, here(view_id))
+        if fallbacks:
+            ctx.log(f"{fallbacks} photos meant for the graphics card were done on the CPU.", "warn")
+        return {"workers": workers, "device": "gpu" if on_card else "cpu", "fallbacks": fallbacks, **out}
 
     def _fuse(self, ctx: StepContext) -> dict[str, Any]:
         s = self._settings(ctx)
@@ -501,37 +607,29 @@ class PhotoProducts:
         state = pool.fuse_state(run.model, s["scale"], depth_dir, store.root, s["tileM"])
         marks = state["marks"]
         todo = [v.id for v in views if not (marks / str(v.id)).exists()]
-        made = len(views) - len(todo)
-
-        def finished(view_id: int, added: int) -> None:
-            nonlocal made
-            made += 1
-            ctx.progress(0.7 * made / len(views), f"Fusing photo {made} of {len(views)}")
-
         cam = views[0].camera.scaled(s["scale"])
-        budget = native.memory_budget()
-        workers = pool.plan_workers(len(todo), cam.width * cam.height, pool.FUSE_BYTES_PER_PIXEL, budget)
-        if workers > 1:
-            ctx.log(f"Fusing {workers} photos at a time.")
-            args = (
+        ran = self._each_photo(
+            ctx,
+            todo=todo,
+            photos=len(views),
+            pixels=cam.width * cam.height,
+            cpu_bytes=pool.FUSE_BYTES_PER_PIXEL,
+            init=pool.init_fuse,
+            args=lambda n: (
                 str(ctx.project),
                 ctx.params["run"],
                 s["scale"],
                 str(depth_dir),
                 str(store.root),
                 s["tileM"],
-                pool.worker_threads(workers),
-            )
-            try:
-                pool.run_pool(workers, pool.init_fuse, args, pool.fuse_task, todo, ctx.check, finished)
-                todo = []
-            except pool.PoolBroken:
-                ctx.log("A worker process stopped; fusing the rest one photo at a time.", "warn")
-                todo = [i for i in todo if not (marks / str(i)).exists()]
-                made = len(views) - len(todo)
-        for view_id in todo:
-            ctx.check()
-            finished(view_id, pool.fuse_photo(state, view_id))
+                pool.worker_threads(n),
+            ),
+            task=pool.fuse_task,
+            here=lambda view_id: pool.fuse_photo(state, view_id),
+            is_done=lambda view_id: (marks / str(view_id)).exists(),
+            progress=lambda k, n: ctx.progress(0.7 * k / n, f"Fusing photo {k} of {n}"),
+            words=("Fusion", "Fusing", "fusing the rest one photo at a time"),
+        )
         voxel = s["gsd"] / s["scale"]
         info = store.merge(voxel, keep, ctx.check, lambda f: ctx.progress(0.7 + 0.3 * f, "Merging the cloud"))
         if not info["points"]:
@@ -542,7 +640,7 @@ class PhotoProducts:
             "voxel": voxel,
             "bounds": info["bounds"],
             "source": "dense",
-            "workers": workers,
+            **ran,
         }
 
     def _cloud(self, ctx: StepContext) -> dict[str, Any]:
@@ -982,6 +1080,9 @@ class PhotoProducts:
             doc["region"] = p["region"]
         doc.setdefault("versions", {})
         doc["versions"]["pack"] = __version__
+        accelerator = ctx.outputs("dense").get("accelerator") or ctx.outputs("fuse").get("accelerator")
+        if accelerator:
+            doc["versions"]["accelerator"] = str(accelerator)
         if report["engines"].get("dense") == "sgm-opencv":
             import cv2
 
@@ -1004,11 +1105,14 @@ class PhotoProducts:
             if not o:
                 continue
             peak = max(peak, int(o.get("memoryPeakBytes") or 0))
+            ran = ctx.outputs(name)
             stages.append(
                 {
                     "name": name,
                     "state": "done",
                     **{k: o[k] for k in ("startedAt", "finishedAt", "seconds", "memoryPeakBytes")},
+                    # where the stage's array code ran, and how many photos fell back to the CPU
+                    **{k: ran[k] for k in ("device", "fallbacks") if ran.get(k)},
                 }
             )
         stages.append({"name": "commit", "state": "done", "finishedAt": now_iso()})
@@ -1022,6 +1126,11 @@ class PhotoProducts:
         dsm = ctx.outputs("dsm")
         ortho = ctx.outputs("ortho")
         warnings = []
+        fell_back = sum(int(ctx.outputs(n).get("fallbacks") or 0) for n in ("dense", "fuse"))
+        if fell_back:
+            warnings.append(
+                f"The graphics card could not be used for {fell_back} photo steps; they were done on the CPU."
+            )
         if engines["dense"] == "sgm-numpy":
             warnings.append(
                 "Dense matching ran on the pure-Python matcher (slower); the pack's OpenCV build is faster."

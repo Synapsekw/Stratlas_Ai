@@ -12,6 +12,7 @@ memory) breaks the pool, and the stage finishes the rest in its own process.
 
 from __future__ import annotations
 
+import contextlib
 import multiprocessing
 import os
 from collections.abc import Callable
@@ -132,6 +133,81 @@ def run_pool(
         raise
 
 
+# ---------------------------------------------------------------------------- the graphics card
+
+#: Card memory one worker takes: its CUDA context and CuPy's kernels, plus the working arrays per
+#: pixel of the matching size (2.2 GB at 20.9 MP, 1.6 GB at 5.2 MP in the spike of 11 Oct 2026).
+CARD_BASE_BYTES = 1_200_000_000
+CARD_BYTES_PER_PIXEL = 70
+#: Main memory of a worker whose array code runs on the card: the photos and the matcher.
+CARD_HOST_BYTES_PER_PIXEL = 120
+#: The CPU matcher is what is left to wait for, so more workers than this gain little.
+MAX_CARD_WORKERS = 4
+
+
+def plan_card_workers(
+    photos: int, pixels: int, free_card: int, budget: int, cores: int | None = None, insist: bool = False
+) -> int:
+    """How many worker processes share the graphics card; 0 when the card should not be used:
+    too little of its memory is free for one worker, or the photos are small (unless ``insist``,
+    the job asked for the card by name)."""
+    if photos <= 0:
+        return 0
+    forced = forced_workers()
+    if forced is not None:
+        return min(forced, photos)
+    if pixels < MIN_PIXELS and not insist:
+        return 0
+    by_card = int(0.7 * free_card // (CARD_BASE_BYTES + pixels * CARD_BYTES_PER_PIXEL))
+    if by_card < 1:
+        return 0
+    cores = cores or os.cpu_count() or 1
+    by_memory = int(0.8 * budget // max(1, pixels * CARD_HOST_BYTES_PER_PIXEL))
+    return max(1, min(MAX_CARD_WORKERS, cores // 3, by_card, by_memory, photos))
+
+
+def attach_card(state: dict[str, Any], addon: str | None) -> None:
+    """In a worker: load the GPU add-on and keep its backend in ``state``. When that fails the
+    worker works on the CPU and says why with its first photo (``card_problem``)."""
+    if not addon:
+        return
+    try:
+        from pathlib import Path
+
+        from .. import accel
+        from . import card
+
+        accel.activate(Path(addon))
+        b = card.cupy_backend()
+        int(b.xp.arange(4).sum())  # the first call onto the card: a failure shows here
+        state["card"], state["rays"] = b, card.Rays(b)
+    except Exception as e:
+        state["card_problem"] = f"{type(e).__name__}: {e}"[:300]
+
+
+def with_card(state: dict[str, Any], on_card: Callable[[Any], Any], on_cpu: Callable[[], Any]):
+    """One photo's work on the card when this process has it, else on the CPU; and on the CPU
+    when the card fails (out of memory, a driver reset, a lost device). After two failures the
+    process stops trying the card. Answers ``(result, device, problem)``."""
+    from ..runtime import Cancelled, JobError
+
+    b = state.get("card")
+    if b is None:
+        return on_cpu(), "cpu", state.pop("card_problem", None)
+    try:
+        return on_card(b), "gpu", None
+    except (Cancelled, JobError):
+        raise
+    except Exception as e:
+        problem = f"{type(e).__name__}: {e}"[:300]
+        with contextlib.suppress(Exception):  # the card is already in trouble
+            b.release()
+        state["card_failures"] = state.get("card_failures", 0) + 1
+        if state["card_failures"] >= 2:
+            state["card"] = None
+        return on_cpu(), "cpu", problem
+
+
 # ----------------------------------------------------------------------------------- depth maps
 
 _W: dict[str, Any] = {}
@@ -153,24 +229,32 @@ def dense_state(model, scale: float, budget: int, out) -> dict[str, Any]:
     }
 
 
-def depth_photo(state: dict[str, Any], view_id: int, check: Callable[[], None]) -> int:
-    """Make and save one photo's depth map; the pixels matched over its pairs."""
+def depth_photo(state: dict[str, Any], view_id: int, check: Callable[[], None]) -> dict[str, Any]:
+    """Make and save one photo's depth map. Answers ``n`` (the pixels matched over its pairs),
+    ``device`` (``gpu`` or ``cpu``: where the array code ran) and ``problem`` (why the card was
+    not used for it, when it should have been)."""
     import numpy as np
 
     from ..runtime import replace_over
+    from . import card
     from .dense import depth_map
 
     model = state["model"]
     v = model.view(view_id)
     partners = [model.view(j) for j in state["pairs"].get(view_id, [])]
-    d, info = depth_map(v, partners, state["images"], model, state["matcher"], state["settings"], check)
+    args = (v, partners, state["images"], model, state["matcher"], state["settings"], check)
+    (d, info), device, problem = with_card(
+        state, lambda b: card.depth_map(b, *args), lambda: depth_map(*args)
+    )
     tmp = state["out"] / f".{view_id}.tmp.npy"
     np.save(tmp, d)
     replace_over(tmp, state["out"] / f"{view_id}.npy")
-    return sum(p["matched"] for p in info["pairs"])
+    return {"n": sum(p["matched"] for p in info["pairs"]), "device": device, "problem": problem}
 
 
-def init_dense(project: str, run_id: str, scale: float, budget: int, out: str, threads: int) -> None:
+def init_dense(
+    project: str, run_id: str, scale: float, budget: int, out: str, threads: int, addon: str | None = None
+) -> None:
     from pathlib import Path
 
     from .scene import load_run
@@ -178,9 +262,10 @@ def init_dense(project: str, run_id: str, scale: float, budget: int, out: str, t
     cap_threads(threads)
     _W.clear()
     _W.update(dense_state(load_run(Path(project), run_id).model, scale, budget, Path(out)))
+    attach_card(_W, addon)
 
 
-def dense_task(view_id: int) -> int:
+def dense_task(view_id: int) -> dict[str, Any]:
     return depth_photo(_W, view_id, lambda: None)
 
 
@@ -207,11 +292,12 @@ def fuse_state(model, scale: float, depth_dir, store_root, tile_m: float) -> dic
     }
 
 
-def fuse_photo(state: dict[str, Any], view_id: int) -> int:
+def fuse_photo(state: dict[str, Any], view_id: int) -> dict[str, Any]:
     """Keep one photo's points that its neighbours confirm, add them to the tiles and mark the
-    photo done; the points added."""
+    photo done. Answers ``n`` (the points added), ``device`` and ``problem`` as ``depth_photo``."""
     import numpy as np
 
+    from . import card
     from .fuse import consistent, normals_of
     from .scene import load_image
 
@@ -219,22 +305,41 @@ def fuse_photo(state: dict[str, Any], view_id: int) -> int:
     v = model.view(view_id)
     d = np.load(depth / f"{v.id}.npy")
     others = [(model.view(j), cams[j], np.load(depth / f"{j}.npy")) for j in state["near"].get(v.id, [])]
-    pts, agree = consistent(v, cams[v.id], d, others, settings)
-    good = np.isfinite(d) & (agree >= settings.min_agree)
-    added = 0
-    if good.any():
+
+    def on_cpu():
+        pts, agree = consistent(v, cams[v.id], d, others, settings)
+        good = np.isfinite(d) & (agree >= settings.min_agree)
+        if not good.any():
+            return None
         nrm = normals_of(pts, v.centre)
-        img = load_image(v.path, state["scale"])
-        h, w = d.shape
-        rgb = img[:h, :w][good]
         ok = np.isfinite(nrm[good]).all(1)
-        added = state["store"].add(f"v{v.id}", pts[good][ok], rgb[ok], nrm[good][ok].astype(np.float32))
+        keep = np.zeros(d.shape, bool)
+        keep[good] = ok
+        return pts[good][ok], nrm[good][ok].astype(np.float32), keep
+
+    def on_card(b):
+        return card.fuse_arrays(b, v, cams[v.id], d, others, settings, state["rays"])
+
+    kept, device, problem = with_card(state, on_card, on_cpu)
+    added = 0
+    if kept is not None and len(kept[0]):
+        xyz, nrm, keep = kept
+        h, w = d.shape
+        rgb = load_image(v.path, state["scale"])[:h, :w][keep]
+        added = state["store"].add(f"v{v.id}", xyz, rgb, nrm)
     (state["marks"] / str(v.id)).write_text("", "utf-8")
-    return added
+    return {"n": added, "device": device, "problem": problem}
 
 
 def init_fuse(
-    project: str, run_id: str, scale: float, depth_dir: str, store_root: str, tile_m: float, threads: int
+    project: str,
+    run_id: str,
+    scale: float,
+    depth_dir: str,
+    store_root: str,
+    tile_m: float,
+    threads: int,
+    addon: str | None = None,
 ) -> None:
     from pathlib import Path
 
@@ -244,7 +349,8 @@ def init_fuse(
     _W.clear()
     model = load_run(Path(project), run_id).model
     _W.update(fuse_state(model, scale, Path(depth_dir), Path(store_root), tile_m))
+    attach_card(_W, addon)
 
 
-def fuse_task(view_id: int) -> int:
+def fuse_task(view_id: int) -> dict[str, Any]:
     return fuse_photo(_W, view_id)
