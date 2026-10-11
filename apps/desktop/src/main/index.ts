@@ -47,6 +47,7 @@ import { listReports } from './exports/reports';
 import { runInUtility } from './exports/utility';
 import {
   builderAltitudePlan,
+  builderEnsureCapture,
   builderImport,
   builderTemplates,
   builderUpdateCapture,
@@ -1216,6 +1217,10 @@ function registerIpc(): void {
   handle(
     'builder:updateCapture',
     (req) => packageRefusal(req.projectId) ?? builderUpdateCapture(req, registry),
+  );
+  handle(
+    'builder:ensureCapture',
+    (req) => packageRefusal(req.projectId) ?? builderEnsureCapture(req, registry),
   );
 
   handle('dialog:saveFile', (req) => {

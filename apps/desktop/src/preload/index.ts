@@ -93,6 +93,7 @@ const CHANNELS = {
   'builder:altitudePlan': true,
   'builder:updateLayers': true,
   'builder:updateCapture': true,
+  'builder:ensureCapture': true,
   // M8
   'change:list': true,
   'change:read': true,
