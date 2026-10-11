@@ -48,6 +48,13 @@ export interface DatasetTreeProps {
   onDragItem?: ((layerIds: string[] | null) => void) | undefined;
   /** Right-click, or the menu key, on a row: where to put its menu. */
   onItemMenu?: ((item: TreeItem, at: MenuPoint) => void) | undefined;
+  /**
+   * Group headers that can be dragged (onto a survey date folder): the layers a header carries,
+   * none for a header that stays put. A drag is reported through `onDragItem`, like a row's.
+   */
+  dragGroupIds?: ((group: TreeGroup) => string[]) | undefined;
+  /** Right-click, or the menu key, on a group header that carries layers. */
+  onGroupMenu?: ((group: TreeGroup, layerIds: string[], at: MenuPoint) => void) | undefined;
 }
 
 /** Where a context menu opens, in window pixels. */
@@ -289,9 +296,39 @@ export function DatasetTree(props: DatasetTreeProps) {
                 it.children?.some((c) => c.layerId === activeClip || c.id === selectedId),
             );
         const hiddenRows = g.items.length - rows.length;
+        // a header carries its whole group, the rows behind "more" too; never in rail mode
+        const carried = collapsed ? [] : (props.dragGroupIds?.(g) ?? []);
+        const groupMenu = carried.length > 0 ? props.onGroupMenu : undefined;
+        const groupDrag = carried.length > 0 && props.onDragItem !== undefined;
         return (
           <div key={g.kind} role="treeitem" aria-expanded={expanded} aria-selected={false}>
-            <div className="tgroup-row">
+            <div
+              className="tgroup-row"
+              data-testid={`tree-group-${g.kind}`}
+              {...(groupDrag
+                ? {
+                    draggable: true,
+                    onDragStart: (e: DragEvent<HTMLElement>) => {
+                      e.stopPropagation();
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', g.label);
+                      props.onDragItem?.(carried);
+                    },
+                    onDragEnd: () => {
+                      props.onDragItem?.(null);
+                    },
+                  }
+                : {})}
+              {...(groupMenu
+                ? {
+                    onContextMenu: (e: MouseEvent<HTMLElement>) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      groupMenu(g, carried, menuPoint(e));
+                    },
+                  }
+                : {})}
+            >
               <button
                 type="button"
                 className="tgroup-btn"

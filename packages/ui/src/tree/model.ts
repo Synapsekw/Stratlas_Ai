@@ -163,6 +163,11 @@ export function datableLayerIds(it: TreeItem): string[] {
   return [...own, ...(it.children ?? []).flatMap(datableLayerIds)];
 }
 
+/** The layers of a group that can be filed under a survey date, flight clips included. */
+export function groupDatableLayerIds(group: TreeGroup): string[] {
+  return group.items.flatMap(datableLayerIds);
+}
+
 /** Every layer id in a group, flight clips included. */
 export function groupLayerIds(group: TreeGroup): string[] {
   return group.items.flatMap(itemLayerIds);

@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DateTag } from '@aio/workspace';
-import { DateTree, type DateTreeProps } from './DateTree';
+import { DateTree, type DateItemMenuRequest, type DateTreeProps } from './DateTree';
 import type { DateFolder } from './dateModel';
 import type { TreeGroup } from './model';
 
@@ -311,7 +311,7 @@ describe('DateTree: menus and renaming', () => {
     render('nov', {}, vi.fn(), { onItemMenu });
     rightClick(q('tree-row-m-nov'), 12, 34);
     expect(onItemMenu).toHaveBeenCalledWith(
-      expect.objectContaining({ layerIds: ['m-nov'], from: 'nov', x: 12, y: 34 }),
+      expect.objectContaining({ name: 'm-nov', layerIds: ['m-nov'], from: 'nov', x: 12, y: 34 }),
     );
   });
 
@@ -387,5 +387,119 @@ describe('DateTree: menus and renaming', () => {
     expect(q('date-name-oct')?.querySelector('.dtag')).toBeNull();
     // an icon this build does not know falls back to the square
     expect(q('date-name-nov')?.querySelector('.dtag')).not.toBeNull();
+  });
+});
+
+describe('DateTree: a whole group onto a date folder', () => {
+  /** The header of a group inside a folder. */
+  const head = (folder: string, kind = 'models') =>
+    host.querySelector(`[data-testid="date-folder-${folder}"] [data-testid="tree-group-${kind}"]`);
+  const many = Array.from({ length: 12 }, (_, i) => `v${String(i)}`);
+  const maps: TreeGroup = {
+    kind: 'maps',
+    label: 'Maps and rasters',
+    icon: 'map',
+    count: 2,
+    items: [
+      { id: 'ortho', layerId: 'ortho', layerKind: 'raster', name: 'Ortho' },
+      { id: 'base', layerId: 'base', layerKind: 'basemap', name: 'Offline map' },
+    ],
+  };
+  const basemapOnly: TreeGroup = { ...maps, count: 1, items: maps.items.slice(1) };
+  const withNov = (groups: TreeGroup[], layerIds: string[]): DateFolder[] =>
+    folders.map((f) => (f.id === 'nov' ? { ...f, groups, layerIds } : f));
+
+  it('a group header drags every dataset of its group, the rows behind "more" too', () => {
+    const onMove = vi.fn();
+    renderWith({ folders: withNov([group(many)], many), onMove });
+    expect(head('nov')?.getAttribute('draggable')).toBe('true');
+    fire(head('nov'), 'dragstart');
+    expect(q('date-folder-oct')?.className).toContain('drop-can');
+    fire(q('date-folder-oct'), 'dragover');
+    fire(q('date-folder-oct'), 'drop');
+    expect(onMove).toHaveBeenCalledTimes(1);
+    expect(onMove).toHaveBeenCalledWith(many, 'oct');
+  });
+
+  it('a group dropped on Every date takes the date off its datasets', () => {
+    const onMove = vi.fn();
+    render('nov', {}, vi.fn(), { onMove });
+    fire(head('nov'), 'dragstart');
+    fire(q('date-folder-every'), 'drop');
+    expect(onMove).toHaveBeenCalledWith(['m-nov'], null);
+  });
+
+  it('a group dropped on the folder it is in does nothing', () => {
+    const onMove = vi.fn();
+    render('nov', {}, vi.fn(), { onMove });
+    fire(head('nov'), 'dragstart');
+    expect(q('date-folder-nov')?.className).not.toContain('drop-can');
+    fire(q('date-folder-nov'), 'drop');
+    expect(onMove).not.toHaveBeenCalled();
+  });
+
+  it('the highlight goes when the drag of a group ends without a drop', () => {
+    render('nov', {}, vi.fn(), { onMove: vi.fn() });
+    fire(head('nov'), 'dragstart');
+    fire(head('nov'), 'dragend');
+    expect(q('date-folder-oct')?.className).not.toContain('drop-can');
+  });
+
+  it('a mixed group moves what can be dated and leaves the basemap', () => {
+    const onMove = vi.fn();
+    renderWith({ folders: withNov([maps], ['ortho', 'base']), onMove });
+    fire(head('nov', 'maps'), 'dragstart');
+    fire(q('date-folder-oct'), 'drop');
+    expect(onMove).toHaveBeenCalledWith(['ortho'], 'oct');
+  });
+
+  it('a group with nothing that can be dated stays put and has no menu', () => {
+    const onItemMenu = vi.fn();
+    renderWith({ folders: withNov([basemapOnly], ['base']), onMove: vi.fn(), onItemMenu });
+    expect(head('nov', 'maps')?.getAttribute('draggable')).toBeNull();
+    rightClick(head('nov', 'maps'), 12, 34);
+    expect(onItemMenu).not.toHaveBeenCalled();
+  });
+
+  it('group headers do not drag in a read-only project', () => {
+    render('nov', {});
+    expect(head('nov')?.getAttribute('draggable')).toBeNull();
+  });
+
+  it('a right-click on a group header asks for the move menu of the whole group', () => {
+    const onItemMenu = vi.fn();
+    renderWith({ folders: withNov([group(many)], many), onMove: vi.fn(), onItemMenu });
+    rightClick(head('nov'), 12, 34);
+    expect(onItemMenu).toHaveBeenCalledTimes(1);
+    const asked = onItemMenu.mock.calls[0]?.[0] as DateItemMenuRequest;
+    expect(asked).toMatchObject({
+      name: 'Models · 12 datasets',
+      layerIds: many,
+      from: 'nov',
+      x: 12,
+      y: 34,
+    });
+    expect(asked.item).toBeUndefined();
+  });
+
+  it('the menu key on a focused group header opens the same menu', () => {
+    const onItemMenu = vi.fn();
+    renderWith({ folders: withNov([group(many)], many), onMove: vi.fn(), onItemMenu });
+    // the menu key fires `contextmenu` at the focused button, with no pointer position (0, 0)
+    rightClick(head('nov')?.querySelector('.tgroup-btn') ?? null, 0, 0);
+    expect(onItemMenu).toHaveBeenCalledTimes(1);
+    const asked = onItemMenu.mock.calls[0]?.[0] as DateItemMenuRequest;
+    expect(asked).toMatchObject({ layerIds: many, from: 'nov' });
+    expect(typeof asked.x).toBe('number');
+    expect(typeof asked.y).toBe('number');
+  });
+
+  it('names a group of one in the singular', () => {
+    const onItemMenu = vi.fn();
+    render('nov', {}, vi.fn(), { onMove: vi.fn(), onItemMenu });
+    rightClick(head('nov'), 1, 1);
+    expect(onItemMenu).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Models · 1 dataset' }),
+    );
   });
 });

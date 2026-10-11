@@ -1150,8 +1150,9 @@ select.input option {
   padding: 0 6px;
   font-size: var(--t-12);
 }
-/* dragging a dataset row onto a date folder: folders that take the drop, and the one under it */
-.dtree .titem[draggable='true'] {
+/* dragging a dataset row or a group header onto a date folder: folders that take the drop, and the one under it */
+.dtree .titem[draggable='true'],
+.dtree .tgroup-row[draggable='true'] {
   -webkit-user-drag: element;
 }
 .dfolder.drop-can {
@@ -1168,7 +1169,7 @@ select.input option {
   position: sticky;
   bottom: 0;
   z-index: 1;
-  background: var(--bg-chrome, var(--bg-1));
+  background: var(--bg-chrome);
 }
 .dfolder-spare .dname {
   cursor: default;
@@ -1188,10 +1189,15 @@ select.input option {
   background: var(--bg-2);
   font-size: var(--t-12);
   color: var(--fg-1);
+  /* stays at the top of the scrolling sidebar, so a drop far down the list still shows its Undo;
+     the fills are opaque so the rows scrolling under it do not show through */
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 .dtree-note.danger {
   border-color: var(--danger-line);
-  background: var(--s5-a);
+  background: linear-gradient(var(--s5-a), var(--s5-a)), var(--bg-chrome);
 }
 .dtree-note > span {
   flex: 1;
@@ -1211,6 +1217,26 @@ select.input option {
 .dtree-note > button:hover,
 .dtree-note > button:focus-visible {
   color: var(--fg-0);
+  background: var(--bg-3);
+}
+.dtree-note > button:focus-visible {
+  outline: 1.5px solid var(--acc);
+  outline-offset: 1px;
+}
+/* Undo: a text button in the same row, not the square dismiss icon (so it overrides its size) */
+.dtree-note > .dtree-undo {
+  display: block;
+  width: auto;
+  height: auto;
+  padding: 0 4px;
+  color: var(--acc);
+  font-size: inherit;
+  line-height: inherit;
+  white-space: nowrap;
+}
+.dtree-note > .dtree-undo:hover,
+.dtree-note > .dtree-undo:focus-visible {
+  color: var(--acc-strong);
   background: var(--bg-3);
 }
 

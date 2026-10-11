@@ -267,8 +267,8 @@ export interface LayerDateMenuProps {
 }
 
 /**
- * Right-click (or the menu key) on a dataset: file it under another survey date, or under none.
- * The same move as dragging the row onto a date folder, for the keyboard.
+ * Right-click (or the menu key) on a dataset or a group header: file it under another survey date,
+ * or under none. The same move as dragging the row onto a date folder, for the keyboard.
  */
 export function LayerDateMenu({
   menu,
@@ -307,7 +307,7 @@ export function LayerDateMenu({
       ref={list}
       className="dmenu"
       role="menu"
-      aria-label={t('tree.dates.move.label', { name: menu.item.name })}
+      aria-label={t('tree.dates.move.label', { name: menu.name })}
       style={place(menu.x, menu.y, Math.min(60 + (captures.length + 1) * 30, 340))}
       data-testid="move-menu"
       onKeyDown={menuKeys}
@@ -316,7 +316,7 @@ export function LayerDateMenu({
       }}
     >
       <div className="dmenu-h faint">
-        {t('tree.dates.move.title')} · {menu.item.name}
+        {t('tree.dates.move.title')} · {menu.name}
       </div>
       <div className="dmenu-scroll">
         {row(every, null, t('tree.dates.move.none'), <span className="sw none" />)}

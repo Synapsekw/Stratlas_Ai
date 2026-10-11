@@ -475,11 +475,16 @@ export const en = {
   'tree.dates.menu.reset': 'Reset colour and icon',
   'tree.dates.move.title': 'Move to date',
   'tree.dates.move.label': 'Move {name} to a survey date',
+  'tree.dates.move.group_one': '{group} · 1 dataset',
+  'tree.dates.move.group_other': '{group} · {count} datasets',
   'tree.dates.move.none': 'Every date (no date)',
   'tree.dates.move.stays_one':
     '{name} carries {date} in its name, so it stays filed under that date. Move it to another date to override the name.',
   'tree.dates.move.stays_other':
     '{count} datasets carry a date in their names, so they stay filed under it. Move them to another date to override the names.',
+  'tree.dates.move.done': '{count} datasets moved to {date}.',
+  'tree.dates.move.doneNone': '{count} datasets no longer belong to a date.',
+  'tree.dates.move.undo': 'Undo',
   'tree.dates.dismiss': 'Dismiss',
   'tree.eye.all': 'All layers',
   'tree.eye.hideAll': 'Hide all layers',

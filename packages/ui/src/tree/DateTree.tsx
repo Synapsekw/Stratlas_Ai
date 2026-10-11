@@ -10,7 +10,7 @@ import {
   type MenuPoint,
 } from './DatasetTree';
 import { EVERY_DATE, dateIcon, dropCapture, type DateFolder } from './dateModel';
-import { datableLayerIds, type TreeItem } from './model';
+import { datableLayerIds, groupDatableLayerIds, type TreeItem } from './model';
 
 /** A folder's menu was asked for: where, and how the folder stands in the tree right now. */
 export interface DateFolderMenuRequest extends MenuPoint {
@@ -20,30 +20,41 @@ export interface DateFolderMenuRequest extends MenuPoint {
   toggle: () => void;
 }
 
-/** A row's menu was asked for: the row, the layers it can file under a date, and its folder. */
+/** A move menu was asked for: a row's, or a whole group's from its header. */
 export interface DateItemMenuRequest extends MenuPoint {
-  item: TreeItem;
+  /** The heading of the menu: the row's name, or the group with how many datasets it moves. */
+  name: string;
+  /** The row, when the menu is a row's; not set for a group header. */
+  item?: TreeItem | undefined;
+  /** The layers the move files under a date. */
   layerIds: string[];
-  /** The folder the row sits in (`EVERY_DATE` or a capture id). */
+  /** The folder the row or group sits in (`EVERY_DATE` or a capture id). */
   from: string;
 }
 
 export interface DateTreeProps extends Omit<
   DatasetTreeProps,
-  'groups' | 'collapsed' | 'nested' | 'dragIds' | 'onDragItem' | 'onItemMenu'
+  | 'groups'
+  | 'collapsed'
+  | 'nested'
+  | 'dragIds'
+  | 'onDragItem'
+  | 'onItemMenu'
+  | 'dragGroupIds'
+  | 'onGroupMenu'
 > {
   folders: readonly DateFolder[];
   tags: Readonly<Record<string, DateTag>>;
   focus: string | null;
   onFocus: (capture: string) => void;
   /**
-   * File layers under another survey date (null: under none). With it, rows drag onto the date
-   * folders. Left out in a read-only project.
+   * File layers under another survey date (null: under none). With it, rows and group headers
+   * drag onto the date folders. Left out in a read-only project.
    */
   onMove?: ((layerIds: string[], capture: string | null) => void) | undefined;
   /** Right-click, the menu key or the "more" button on a folder. */
   onFolderMenu?: ((m: DateFolderMenuRequest) => void) | undefined;
-  /** Right-click or the menu key on a dataset row that can be filed under a date. */
+  /** Right-click or the menu key on a dataset row or a group header that can be filed under a date. */
   onItemMenu?: ((m: DateItemMenuRequest) => void) | undefined;
   /** The capture whose folder shows its name field. */
   renaming?: string | null | undefined;
@@ -310,6 +321,7 @@ export function DateTree(props: DateTreeProps) {
                 collapsed={false}
                 nested
                 dragIds={onMove ? datableLayerIds : undefined}
+                dragGroupIds={onMove || onItemMenu ? groupDatableLayerIds : undefined}
                 onDragItem={
                   onMove
                     ? (ids) => {
@@ -322,7 +334,23 @@ export function DateTree(props: DateTreeProps) {
                   onItemMenu
                     ? (item, at) => {
                         const layerIds = datableLayerIds(item);
-                        if (layerIds.length > 0) onItemMenu({ item, layerIds, from: f.id, ...at });
+                        if (layerIds.length > 0)
+                          onItemMenu({ name: item.name, item, layerIds, from: f.id, ...at });
+                      }
+                    : undefined
+                }
+                onGroupMenu={
+                  onItemMenu
+                    ? (g, layerIds, at) => {
+                        onItemMenu({
+                          name: t('tree.dates.move.group', {
+                            group: g.label,
+                            count: layerIds.length,
+                          }),
+                          layerIds,
+                          from: f.id,
+                          ...at,
+                        });
                       }
                     : undefined
                 }
