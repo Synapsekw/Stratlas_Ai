@@ -128,8 +128,15 @@ async function surfaceColours(win: Page, name: 'Photo' | 'Elevation' | 'Cut / fi
   const button = win
     .getByRole('group', { name: 'Surface colours' })
     .getByRole('button', { name, exact: true });
-  if (!(await button.isVisible())) await win.getByRole('button', { name: 'More tools' }).click();
-  await button.click();
+  // The toolbar may fold or unfold the group between the look and the click (it measures itself
+  // again when the views change), so both are tried together until the click lands. More tools
+  // is a toggle: a try that closed it opens it again on the next one. Pressing the switch twice
+  // changes nothing.
+  await expect(async () => {
+    if (!(await button.isVisible()))
+      await win.getByRole('button', { name: 'More tools' }).click({ timeout: 2_000 });
+    await button.click({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
   await expect(button).toHaveAttribute('aria-pressed', 'true');
 }
 
@@ -275,17 +282,23 @@ test('a volumetric project from two raw survey dates: wizard, Processing drawer,
         }),
       )
       .toBe(true);
-    // it lies over the view without taking its clicks
-    const under = await legend.evaluate((el) => {
-      const r = el.getBoundingClientRect();
-      const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-      return {
-        tag: at?.tagName ?? null,
-        inPane: at?.closest('[data-testid="pane-3d-compare"]') !== null,
-        inLegend: el.contains(at),
-      };
-    });
-    expect(under).toEqual({ tag: 'CANVAS', inPane: true, inLegend: false });
+    // it lies over the view without taking its clicks (asked again while a popover or a
+    // callout is still settling over that spot)
+    await expect
+      .poll(
+        () =>
+          legend.evaluate((el) => {
+            const r = el.getBoundingClientRect();
+            const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            return {
+              tag: at?.tagName ?? null,
+              inPane: at?.closest('[data-testid="pane-3d-compare"]') !== null,
+              inLegend: el.contains(at),
+            };
+          }),
+        { timeout: 20_000 },
+      )
+      .toEqual({ tag: 'CANVAS', inPane: true, inLegend: false });
     // cut and fill: the change colours on each side's own terrain
     const elevDrape = await win.evaluate(
       () =>

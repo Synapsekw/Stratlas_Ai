@@ -241,8 +241,15 @@ async function surfaceColours(win: Page, name: 'Photo' | 'Elevation' | 'Cut / fi
   const button = win
     .getByRole('group', { name: 'Surface colours' })
     .getByRole('button', { name, exact: true });
-  if (!(await button.isVisible())) await win.getByRole('button', { name: 'More tools' }).click();
-  await button.click();
+  // The toolbar may fold or unfold the group between the look and the click (it measures itself
+  // again when the views change), so both are tried together until the click lands. More tools
+  // is a toggle: a try that closed it opens it again on the next one. Pressing the switch twice
+  // changes nothing.
+  await expect(async () => {
+    if (!(await button.isVisible()))
+      await win.getByRole('button', { name: 'More tools' }).click({ timeout: 2_000 });
+    await button.click({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
   await expect(button).toHaveAttribute('aria-pressed', 'true');
 }
 
@@ -432,25 +439,29 @@ fixtures(
 fixtures(
   'both sides of a comparison draw the saved measurements of the site and of their own date',
   async ({ win, dataRoot }) => {
+    // two 3D views, then two maps, on a software renderer in CI: more than the default minute
+    fixtures.setTimeout(180_000);
     await writeTwoDates(dataRoot.root);
     await win.getByTestId('project-card').filter({ hasText: 'E2E two dates' }).first().click();
-    await expect(win.locator('[data-scene-view=""] canvas')).toBeVisible();
+    await expect(win.locator('[data-scene-view=""] canvas')).toBeVisible({ timeout: 30_000 });
     // one 3D view: the site's measurement and the one of the survey on screen (the latest)
-    await expect.poll(() => measuresDrawn(win)).toEqual({ main: ['m-jun', 'm-site'], second: [] });
+    await expect
+      .poll(() => measuresDrawn(win), { timeout: 30_000 })
+      .toEqual({ main: ['m-jun', 'm-site'], second: [] });
 
     // two 3D views: January on the left, June on the right, each with its own
     await pinTwoViewTier(win);
     await win.getByTestId('compare-dates').click();
-    await expect(win.locator('[data-scene-view] canvas')).toHaveCount(2);
+    await expect(win.locator('[data-scene-view] canvas')).toHaveCount(2, { timeout: 30_000 });
     await expect(win.getByTestId('pane-date-left')).toHaveValue('jan');
     await expect
-      .poll(() => measuresDrawn(win))
+      .poll(() => measuresDrawn(win), { timeout: 30_000 })
       .toEqual({ main: ['m-jan', 'm-site'], second: ['m-jun', 'm-site'] });
     // the right side picks January: the sides swap, and so do the measurements
     await win.getByTestId('pane-date-right').selectOption('jan');
     await expect(win.getByTestId('pane-date-left')).toHaveValue('jun');
     await expect
-      .poll(() => measuresDrawn(win))
+      .poll(() => measuresDrawn(win), { timeout: 30_000 })
       .toEqual({ main: ['m-jun', 'm-site'], second: ['m-jan', 'm-site'] });
     // and back: January on the left, June on the right
     await win.getByTestId('pane-date-left').selectOption('jan');
@@ -459,7 +470,7 @@ fixtures(
     // two maps: the same rule
     await pinTwoViewTier(win);
     await win.getByTestId('compare-dates').click();
-    await expect(win.locator('[data-scene-view] canvas')).toHaveCount(1);
+    await expect(win.locator('[data-scene-view] canvas')).toHaveCount(1, { timeout: 30_000 });
     const modes = win.getByRole('toolbar', { name: 'Stage tools' });
     await modes.getByRole('button', { name: 'Map', exact: true }).click();
     await expect(modes.getByRole('button', { name: 'Map', exact: true })).toHaveAttribute(
@@ -467,11 +478,11 @@ fixtures(
       'true',
     );
     await win.getByTestId('compare-dates').click();
-    await expect(win.locator('.pane-map')).toHaveCount(2);
+    await expect(win.locator('.pane-map')).toHaveCount(2, { timeout: 30_000 });
     await expect(win.getByTestId('pane-date-left')).toHaveValue('jan');
     await expect(win.getByTestId('pane-date-right')).toHaveValue('jun');
     await expect
-      .poll(() => measuresOnMaps(win), { timeout: 30_000 })
+      .poll(() => measuresOnMaps(win), { timeout: 60_000 })
       .toEqual([
         ['m-jan', 'm-site'],
         ['m-jun', 'm-site'],
