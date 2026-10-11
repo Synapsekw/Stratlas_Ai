@@ -73,7 +73,8 @@ function isEstimated(samples: readonly PoseSample[]): boolean {
 
 const KIND: Record<Layer['kind'], { label: string; icon: IconName }> = {
   mesh: { label: 'Model', icon: 'scene' },
-  legacy: { label: 'Legacy viewer', icon: 'scene' },
+  // retired (11 Oct 2026): nothing selects it any more, the entry stays for the type
+  legacy: { label: 'Retired viewer', icon: 'scene' },
   pointcloud: { label: 'Point cloud', icon: 'cloud' },
   basemap: { label: 'Offline basemap', icon: 'map' },
   raster: { label: 'Raster', icon: 'raster' },

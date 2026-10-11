@@ -150,4 +150,22 @@ describe('player helpers', () => {
     expect(tips.some((t) => t.includes('3 issues'))).toBe(true);
     expect(tips.every((t) => !/[\u2013\u2014]/.test(t))).toBe(true);
   });
+
+  it('has no tip for a retired viewer in an older package', () => {
+    const older: ProjectManifest = {
+      ...manifest,
+      layers: [
+        ...manifest.layers,
+        {
+          kind: 'legacy',
+          id: 'viewer',
+          name: 'Tank review',
+          viewer: 'aik',
+          entry: { path: 'legacy/index.html' },
+          visible: true,
+        },
+      ],
+    };
+    expect(welcomeTips(older, 3)).toEqual(welcomeTips(manifest, 3));
+  });
 });

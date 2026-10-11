@@ -23,7 +23,7 @@ import {
 import type { Side } from './splitModel';
 
 /** Layer kinds the second view leaves out: the video plays (and projects) in one view only. */
-const SECOND_VIEW_DROPS = ['video', 'legacy'] as const;
+const SECOND_VIEW_DROPS = ['video'] as const;
 
 function sameSection(a: object, b: object): boolean {
   return JSON.stringify(a) === JSON.stringify(b);

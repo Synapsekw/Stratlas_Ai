@@ -396,7 +396,7 @@ export function nextLabelMode(m: LabelMode): LabelMode {
 }
 
 const KINDS: { kinds: Layer['kind'][]; label: string; icon: IconName }[] = [
-  { kinds: ['mesh', 'legacy'], label: 'Models', icon: 'scene' },
+  { kinds: ['mesh'], label: 'Models', icon: 'scene' },
   { kinds: ['pointcloud'], label: 'Point clouds', icon: 'cloud' },
   { kinds: ['photos'], label: 'Photo cameras', icon: 'photo' },
   { kinds: ['raster', 'basemap'], label: 'Maps and rasters', icon: 'raster' },

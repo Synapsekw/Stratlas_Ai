@@ -1,7 +1,7 @@
 import type { ProjectManifest } from '@aio/schema';
 
-/** Layers drawn as 3D content (or their own viewer): their projects open in the 3D view. */
-const CONTENT_3D = new Set(['mesh', 'pointcloud', 'raster', 'legacy']);
+/** Layers drawn as 3D content: their projects open in the 3D view. */
+const CONTENT_3D = new Set(['mesh', 'pointcloud', 'raster']);
 
 /**
  * A project placed on the Earth whose first data is drone video or located photos, with nothing

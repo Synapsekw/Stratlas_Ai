@@ -22,7 +22,6 @@ import { MediaScreen } from './screens/Media';
 import { DetectionsScreen } from './screens/Detections';
 import { ProjectsScreen } from './screens/Projects';
 import { ReportsScreen } from './screens/Reports';
-import { ReviewScreen } from './screens/Review';
 import { SettingsScreen } from './screens/Settings';
 import { WelcomeScreen } from './screens/Welcome';
 import { initAuthor } from './author';
@@ -196,8 +195,6 @@ function Screen() {
       return <WelcomeScreen />;
     case 'scene':
       return <WorkspaceScreen />;
-    case 'review':
-      return <ReviewScreen />;
     case 'issues':
       return <IssuesScreen />;
     case 'media':

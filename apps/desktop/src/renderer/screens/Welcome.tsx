@@ -2,7 +2,6 @@ import { packageEditAllowed } from '@aio/schema';
 import { formatBytes, formatDate, Icon, t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useState } from 'react';
-import { landingScreen } from '../legacy';
 import { welcomeTips } from '../player';
 import { shell, useShell } from '../shell';
 import { ExtractPackage } from '../shell/ExtractPackage';
@@ -30,7 +29,7 @@ export function WelcomeScreen() {
     ? pkg.header.welcome.tips
     : welcomeTips(m, issueCount);
   const start = () => {
-    shell.getState().go(landingScreen(m));
+    shell.getState().go('scene');
   };
 
   return (

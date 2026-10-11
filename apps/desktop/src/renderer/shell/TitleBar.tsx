@@ -14,7 +14,6 @@ const VIEW_LABEL: Record<Screen, MessageKey> = {
   projects: 'nav.projects',
   welcome: 'nav.welcome',
   scene: 'nav.scene',
-  review: 'nav.review',
   issues: 'nav.issues',
   media: 'nav.media',
   detections: 'nav.detections',

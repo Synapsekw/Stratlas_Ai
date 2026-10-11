@@ -5,17 +5,25 @@ const layers = [
   { id: 'tank', name: 'Tank', kind: 'mesh', bytes: 2_000, files: 1 },
   { id: 'c1', name: 'Cloud 1', kind: 'pointcloud', bytes: 3_000, files: 1 },
   { id: 'c2', name: 'Cloud 2', kind: 'pointcloud', bytes: 4_000, files: 2 },
-  { id: 'legacy', name: 'Original review', kind: 'legacy', bytes: 9_000, files: 40 },
 ];
 
 describe('package export model', () => {
   it('groups layers by kind in a stable order with their bytes', () => {
     const g = groupLayers(layers, new Set(['c2']));
-    expect(g.map((x) => x.kind)).toEqual(['mesh', 'pointcloud', 'legacy']);
+    expect(g.map((x) => x.kind)).toEqual(['mesh', 'pointcloud']);
     const clouds = g[1];
     expect(clouds).toMatchObject({ label: 'Point clouds', bytes: 7_000, count: 2 });
     expect(clouds?.state).toBe('some');
     expect(g[0]?.state).toBe('all');
+  });
+
+  it('offers no group for a retired viewer and counts it nowhere', () => {
+    const viewer = { id: 'legacy', name: 'Old viewer', kind: 'legacy', bytes: 5_000, files: 40 };
+    const g = groupLayers([...layers, viewer], new Set<string>());
+    expect(g.map((x) => x.kind)).toEqual(['mesh', 'pointcloud']);
+    expect(g.reduce((n, x) => n + x.count, 0)).toBe(3);
+    expect(g.reduce((n, x) => n + x.bytes, 0)).toBe(9_000);
+    expect(g.flatMap((x) => x.layers).some((l) => l.id === 'legacy')).toBe(false);
   });
 
   it('turns a whole group off and on', () => {

@@ -79,9 +79,6 @@ export function bootstrap(): void {
   // Agent seams: the map's frame for capture_frame, and screens the agent's tools can open.
   registerFrameSource('map', () => captureMap());
   registerAppHooks({
-    openReview: () => {
-      shell.getState().go('review');
-    },
     // M10 Globe: list_sites and show_on_globe
     listSites: async () => {
       const r = await bridge.call('globe:sites', {});

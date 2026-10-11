@@ -18,7 +18,6 @@ import { pickTileset } from '../builder/ImportTileset';
 import { builder } from '../builder/state';
 import { diagnostics } from '../diagnostics/state';
 import { help } from '../help/store';
-import { legacyLayers } from '../legacy';
 import { openModelBuilder } from '../modeller/ModellerLayer';
 import { processing } from '../processing/store';
 import { openProcessingTools } from '../processingTools';
@@ -35,9 +34,11 @@ import { toggleTimeline } from '../workspace/timelinePref';
 import { panelHandleLabel } from './PanelHandle';
 import { selectClip } from './Sidebar';
 
-const LAYER_ICON: Record<Layer['kind'], IconName> = {
+/** The layer kinds the palette lists: a retired viewer of an older project is not offered. */
+type ListedKind = Exclude<Layer['kind'], 'legacy'>;
+
+const LAYER_ICON: Record<ListedKind, IconName> = {
   mesh: 'scene',
-  legacy: 'scene',
   pointcloud: 'cloud',
   basemap: 'map',
   raster: 'raster',
@@ -47,9 +48,8 @@ const LAYER_ICON: Record<Layer['kind'], IconName> = {
   panoramas: 'pano',
 };
 
-const LAYER_KIND: Record<Layer['kind'], string> = {
+const LAYER_KIND: Record<ListedKind, string> = {
   mesh: 'Model',
-  legacy: 'Original review',
   pointcloud: 'Point cloud',
   basemap: 'Basemap',
   raster: 'Raster',
@@ -177,18 +177,6 @@ export function Palette() {
         'agent',
         () => void s.updateSettings({ cloudAi: !cloudAi }),
       );
-    }
-    if (legacyLayers(project?.manifest).length > 0) {
-      list.push({
-        id: 'go:review',
-        title: 'Open the original review',
-        group: 'Navigate',
-        icon: 'history',
-        keywords: ['legacy', 'viewer', 'original', 'snapshot'],
-        run: () => {
-          s.go('review');
-        },
-      });
     }
     if (project) {
       const scene = (fn: () => void) => () => {
@@ -530,20 +518,7 @@ export function Palette() {
       });
     }
     for (const l of project?.manifest.layers ?? []) {
-      if (l.kind === 'legacy') {
-        list.push({
-          id: `layer:${l.id}`,
-          title: l.name,
-          group: 'Layers',
-          icon: 'history',
-          keywords: [LAYER_KIND[l.kind]],
-          hint: 'Original review',
-          run: () => {
-            s.go('review');
-          },
-        });
-        continue;
-      }
+      if (l.kind === 'legacy') continue;
       list.push({
         id: `layer:${l.id}`,
         title: l.name,

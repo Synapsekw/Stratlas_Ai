@@ -12,7 +12,6 @@ import type { Workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { createBridge, type Bridge } from './bridge';
-import { landingScreen } from './legacy';
 import { browserStorage, readPanelPrefs, writePanelPrefs, type PanelStorage } from './panelPrefs';
 import { isPlayer } from './player';
 import { videoFirst } from './stageDefault';
@@ -21,7 +20,6 @@ export type Screen =
   | 'projects'
   | 'welcome'
   | 'scene'
-  | 'review'
   | 'issues'
   | 'media'
   | 'detections'
@@ -325,7 +323,7 @@ export function createShellStore(
         // A project extracted from a package says where it came from.
         origin: pkg ? null : (r.value.origin ?? null),
         annotating: pkg ? false : get().annotating,
-        screen: get().screen !== from ? get().screen : player ? 'welcome' : landingScreen(manifest),
+        screen: get().screen !== from ? get().screen : player ? 'welcome' : 'scene',
       });
       if (pkg) void get().loadLibrary();
     },
