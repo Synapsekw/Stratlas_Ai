@@ -366,8 +366,16 @@ test('a JPEG, a WebP, an SVG and a plain TIFF come in as drawings through Add dr
   const tif = join(dataRoot.base, 'sheet.tif');
   await writeFile(
     tif,
+    // written as scanner software writes it: the directory after the image data
     makeTiff(
-      { width: 4, height: 2, samples: 3, bits: 8, values: new Array<number>(24).fill(90) },
+      {
+        width: 200,
+        height: 120,
+        samples: 3,
+        bits: 8,
+        values: new Array<number>(200 * 120 * 3).fill(90),
+        directoryLast: true,
+      },
       deflateSync,
     ),
   );
@@ -405,7 +413,7 @@ test('a JPEG, a WebP, an SVG and a plain TIFF come in as drawings through Add dr
     return [meta.format, meta.width, meta.height];
   };
   expect(await size('scan')).toEqual(['png', 300, 150]);
-  expect(await size('sheet')).toEqual(['png', 4, 2]);
+  expect(await size('sheet')).toEqual(['png', 200, 120]);
   expect(await size('mark-up')).toEqual(['png', 120, 80]);
   // line art is drawn large: 200 x 100 pixels are 150 x 75 points, at 600 dpi
   expect(await size('detail')).toEqual(['png', 1250, 625]);

@@ -87,6 +87,13 @@ PDF pages are drawn at 220 dpi, at least 4096 and at most 8192 pixels on the lon
 - A PDF row that says "Failed" when earlier pages of the same file were added before the failure: say how many came in.
 - The opacity slider shows 75 percent for a drawing nobody set, while the 3D view draws it solid: one default for both views.
 - Picking up a staged drawing again after the app was closed in the middle of its import.
+- Stem checks treat a name that ends in `-p<N>` as a page of the name before it, so a drawing really called `site-p2` and a PDF called `site` are kept apart more than they need to be.
+- The note for two DXF files of one name in one pick says "a picture drawing is already called", which is not what happened.
+- Importing a DXF again while a picture drawing has its name makes `-2`, then `-3`, instead of replacing the first copy.
+- A queued DXF job that fails later leaves the copy the import made for it in `drawings/`.
+- A page question still open when another project is opened is answered as cancelled; it should not be able to surface there at all.
+- `restoreOrthos` in the volumetric controller sets `visible` on raster quads directly, which does not fetch the picture of a drawing that was never shown: that drawing stays empty until its eye is used.
+- The plain raster import on main read the TIFF directory from the first 64 KB only; it now uses the same reader as drawings, which also finds a directory written after the image.
 
 ## Errors
 

@@ -588,7 +588,7 @@ Drawings are their own group in **Datasets**. Use an installer built from the dr
 - [ ] There is no way to remove a drawing yet, so use a test project for this stage, and bring in only what you want to keep elsewhere.
 - [ ] Pick an OBJ model together with its MTL and its PNG textures through **Add data**: the model comes in with its textures, and the PNG files read "A texture of the model ..." instead of becoming drawings.
 - [ ] With a picture drawing called `site` in the project, drop a DXF called `site.dxf` (processing tools installed): its row says it comes in as `site-2`, and the picture drawing is untouched when the job ends.
-- [ ] Pick the JPEG with **Add data**: it becomes a photo, as before. Pick it with **Add drawing**: it becomes a drawing.
+- [ ] Pick the JPEG with **Add data**: it becomes a photo, as before. Pick it with **Add drawing**: it becomes a drawing. Pick a TIFF saved by a scanner or an image program with **Add drawing**: it becomes a drawing too.
 - [ ] Drop a DWG file on the window: "DWG is not supported. Save the drawing as DXF or PDF, or as a PNG picture, then import that."
 - [ ] On the PNG's row, click the settings button, then **Side by side**: the view splits, the 3D view (or the map, if you were on it) on the left and the drawing on the right. Drag pans it, the wheel zooms, double-click fits it.
 - [ ] In the list above the drawing, the drawings are under **Drawings**, before **Orthos and maps**. Pick "<file>, page 2": that page shows, sharp when you zoom into the line work.
