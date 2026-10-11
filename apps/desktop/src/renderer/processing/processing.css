@@ -124,3 +124,25 @@
 .proc-dlg .new-job {
   padding: 0;
 }
+
+/* ---------- processing: Settings, Processing tools, Advanced ---------- */
+.proc-adv > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.proc-adv[open] > summary {
+  margin-bottom: 8px;
+}
+.proc-adv .new-job {
+  padding: 0;
+  max-width: 560px;
+}
+.proc-adv .jobs-list {
+  max-height: 320px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+.proc-adv .job-detail {
+  padding: 0;
+  overflow: visible;
+}
