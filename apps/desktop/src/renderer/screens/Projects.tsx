@@ -14,6 +14,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { builder } from '../builder/state';
 import { build, formatBuildTime } from '../buildStamp';
 import { shell, useCall, useShell } from '../shell';
+import { BrandLoader } from '../shell/BrandMotion';
 import { FirstStart, SetupChecklist } from './FirstStart';
 import { ProjectMenu, type MenuAt } from './ProjectMenu';
 
@@ -127,7 +128,7 @@ function ProjectCard({
           {current && <span className="pc-open">Open</span>}
           {opening && (
             <span className="pc-busy">
-              <span className="spin" />
+              <BrandLoader className="pc-loader" />
               Opening
             </span>
           )}
