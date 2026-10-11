@@ -111,8 +111,48 @@ describe('planPackage', () => {
     // The manifest is written fresh by the exporter.
     expect(paths(p)).not.toContain('manifest.json');
     expect(paths(p)).toContain('issues.json');
+    expect(paths(p)).toContain('report/report.pdf');
+    // Every layer but the retired viewer.
+    expect(p.manifest.layers).toHaveLength(7);
+  });
+
+  it('never packs a retired viewer', () => {
+    const p = planPackage(manifest(), files, []);
+    expect(paths(p)).not.toContain('legacy/OPEN Review.html');
+    expect(paths(p)).not.toContain('legacy/data/model.js');
+    expect(p.manifest.layers.some((l) => l.kind === 'legacy')).toBe(false);
+    expect(p.layers.some((l) => l.kind === 'legacy')).toBe(false);
+    expect(p.excluded).toContain('legacy');
+  });
+
+  it('keeps the grids beside a retired stockpile viewer', () => {
+    const m = manifest();
+    const stockpile = {
+      ...m,
+      layers: m.layers.map((l) =>
+        l.kind === 'legacy' ? { ...l, viewer: 'volumetric' as const } : l,
+      ),
+    };
+    const p = planPackage(stockpile, files, []);
     expect(paths(p)).toContain('legacy/data/model.js');
-    expect(p.manifest.layers).toHaveLength(8);
+    expect(paths(p)).not.toContain('legacy/OPEN Review.html');
+    expect(p.manifest.layers.some((l) => l.kind === 'legacy')).toBe(false);
+    // The grids are no layer's files: they count with the base and cannot be left out.
+    expect(p.baseBytes).toBe(100 + 50 + 1000 + 40 + 9000);
+    expect(paths(planPackage(stockpile, files, ['legacy']))).toContain('legacy/data/model.js');
+  });
+
+  it('keeps a file under a retired viewer folder that another layer uses', () => {
+    const m = manifest();
+    const shared = {
+      ...m,
+      layers: m.layers.map((l) =>
+        l.kind === 'mesh' ? { ...l, src: { path: 'legacy/data/model.js' } } : l,
+      ),
+    };
+    const p = planPackage(shared, files, []);
+    expect(paths(p)).toContain('legacy/data/model.js');
+    expect(paths(p)).not.toContain('legacy/OPEN Review.html');
   });
 
   it('drops the files of excluded clouds, including the chunks beside an index', () => {
@@ -121,7 +161,7 @@ describe('planPackage', () => {
     expect(paths(p)).not.toContain('clouds/big/c000.png');
     expect(paths(p)).not.toContain('clouds/big/index.json');
     expect(p.manifest.layers.map((l) => l.id)).not.toContain('c1');
-    expect(p.excluded).toEqual(['c1', 'c2']);
+    expect(p.excluded).toEqual(['c1', 'c2', 'legacy']);
   });
 
   it('keeps a flight file while any clip that uses it stays', () => {
@@ -133,11 +173,10 @@ describe('planPackage', () => {
     expect(paths(both)).not.toContain('flights/f101.json');
   });
 
-  it('drops a tile pyramid folder, photo thumbnails and the whole legacy viewer', () => {
-    const p = planPackage(manifest(), files, ['ortho', 'photos', 'legacy']);
+  it('drops a tile pyramid folder and photo thumbnails', () => {
+    const p = planPackage(manifest(), files, ['ortho', 'photos']);
     expect(paths(p)).not.toContain('rasters/ortho/0/0_0.webp');
     expect(paths(p)).not.toContain('photos/thumbs/p1.jpg');
-    expect(paths(p)).not.toContain('legacy/data/model.js');
     // Issue masks are not a layer's files: they stay with the issues.
     expect(paths(p)).toContain('photos/masks/p1_mask.png');
   });
@@ -150,7 +189,8 @@ describe('planPackage', () => {
     expect(byId.c2?.files).toBe(2);
     // Shared flight file belongs to neither clip alone.
     expect(byId.v1?.bytes).toBe(5007);
-    expect(byId.legacy?.bytes).toBe(9020);
+    // A retired viewer is not offered: it has no share and its files are not base files.
+    expect(byId.legacy).toBeUndefined();
     expect(p.baseBytes).toBe(100 + 50 + 1000 + 40);
     expect(p.totalBytes).toBe(p.members.reduce((n, m) => n + m.size, 0));
     expect(p.totalFiles).toBe(p.members.length);
@@ -158,7 +198,7 @@ describe('planPackage', () => {
 
   it('ignores exclusions that name no layer', () => {
     const p = planPackage(manifest(), files, ['nope']);
-    expect(p.excluded).toEqual([]);
+    expect(p.excluded).toEqual(['legacy']);
   });
 
   it('leaves draft model previews out and carries change sets, models and drawings', () => {
@@ -186,7 +226,7 @@ describe('planPackage', () => {
       { path: 'change/c1-c2-issues.json', size: 16 },
     ];
     const p = planPackage(withModels, [...files, ...extra], []);
-    expect(p.excluded).toEqual(['model-draft-site']);
+    expect(p.excluded).toEqual(['model-draft-site', 'legacy']);
     expect(p.manifest.layers.map((l) => l.id)).not.toContain('model-draft-site');
     expect(p.manifest.layers.map((l) => l.id)).toContain('model-site');
     expect(paths(p)).not.toContain('models/draft-site.glb');

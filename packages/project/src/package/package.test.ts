@@ -144,6 +144,74 @@ describe('exportPackage and openPackage', () => {
     expect(!r.ok && r.error).toMatch(/new copy|export/i);
   });
 
+  describe('a retired viewer layer', () => {
+    const withViewer = (): ProjectManifest => {
+      const m = manifest();
+      return ProjectManifest.parse({
+        ...m,
+        layers: [
+          ...m.layers,
+          {
+            kind: 'legacy',
+            id: 'legacy',
+            name: 'Original review',
+            viewer: 'volumetric',
+            entry: { path: 'legacy/Review.html' },
+          },
+        ],
+      });
+    };
+
+    it('is left out of a new package, which keeps the grids and still opens', async () => {
+      for (const [rel, body] of [
+        ['legacy/Review.html', '<!doctype html>'],
+        ['legacy/lib/viewer.js', 'js'],
+        ['legacy/data/vol.js', 'grid'],
+      ] as const) {
+        await mkdir(dirname(join(root, rel)), { recursive: true });
+        await writeFile(join(root, rel), body);
+      }
+      const out = join(dir, 'tiny.aio');
+      await exportPackage({ root, out, manifest: withViewer(), exclude: [], header: {} });
+
+      const opened = await openPackage(out);
+      if (!opened.ok) throw new Error(opened.error);
+      const { header, manifest: m, archive } = opened.value;
+      expect(m.layers.map((l) => l.id)).toEqual(['tank', 'cloud']);
+      expect(header.excludedLayers).toEqual(['legacy']);
+      expect(archive.entries.has('legacy/Review.html')).toBe(false);
+      expect(archive.entries.has('legacy/lib/viewer.js')).toBe(false);
+      expect(archive.entries.has('legacy/data/vol.js')).toBe(true);
+    });
+
+    it('does not stop a package made before it was retired from opening', async () => {
+      const out = join(dir, 'older.aio');
+      await writeZip(out, [
+        { name: 'manifest.json', data: Buffer.from(JSON.stringify(withViewer())) },
+        { name: 'models/tank.glb', data: Buffer.from('glb') },
+        { name: 'clouds/f101.bin', data: Buffer.from('xyz') },
+        { name: 'legacy/Review.html', data: Buffer.from('<!doctype html>') },
+        { name: 'legacy/data/vol.js', data: Buffer.from('grid') },
+      ]);
+      const r = await openPackage(out);
+      if (!r.ok) throw new Error(r.error);
+      // The entry is kept as it was written; consumers ignore it.
+      expect(r.value.manifest.layers.map((l) => l.id)).toEqual(['tank', 'cloud', 'legacy']);
+      expect(r.value.archive.entries.has('legacy/Review.html')).toBe(true);
+    });
+
+    it('needs no viewer file in the package', async () => {
+      const out = join(dir, 'no-viewer.aio');
+      await writeZip(out, [
+        { name: 'manifest.json', data: Buffer.from(JSON.stringify(withViewer())) },
+        { name: 'models/tank.glb', data: Buffer.from('glb') },
+        { name: 'clouds/f101.bin', data: Buffer.from('xyz') },
+      ]);
+      const r = await openPackage(out);
+      expect(r.ok).toBe(true);
+    });
+  });
+
   it('refuses a target without enough free space before it starts', async () => {
     await expect(
       exportPackage({
