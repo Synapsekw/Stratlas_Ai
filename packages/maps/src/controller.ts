@@ -28,7 +28,7 @@ import {
 import { Vector3 } from 'three';
 import { drawPreview, isRepeatClick, type MapDrawSeam } from './draw';
 import { frameProjection, type FrameProjection } from './geo';
-import { rasterOpacity } from './rasterDisplay';
+import { loadsWithProject, rasterOpacity } from './rasterDisplay';
 import {
   ALL_ISSUES,
   footprint,
@@ -525,9 +525,42 @@ export function createMapController(
     return out;
   }
 
+  /** Hidden drawings whose picture the map has not fetched: added when they are first shown. */
+  const waitingRasters = new Map<string, RasterLayer>();
+
+  function addRasterImages(
+    layer: RasterLayer,
+    images: readonly { url: string; quad: [LonLat, LonLat, LonLat, LonLat] }[],
+  ): void {
+    images.forEach((img, i) => {
+      const sid = `aio-raster-${layer.id}-${i}`;
+      map.addSource(sid, { type: 'image', url: img.url, coordinates: img.quad });
+      map.addLayer(
+        {
+          id: sid,
+          type: 'raster',
+          source: sid,
+          metadata: { layerId: layer.id },
+          paint: {
+            'raster-opacity': rasterOpacity(layer.role, layerDisplay.getState().byLayer[layer.id]),
+            'raster-fade-duration': 0,
+          },
+        },
+        'aio-view3d-fill',
+      );
+      rasterIds.push(sid);
+    });
+  }
+
   async function loadRasters(layers: readonly RasterLayer[], p: FrameProjection, id: string) {
     const all: LonLat[] = [];
     for (const layer of layers) {
+      // a hidden drawing is only placed in the bounds; its picture waits for its first show
+      if (!loadsWithProject(layer, store.getState().hidden[layer.id] === true) && layer.corners) {
+        waitingRasters.set(layer.id, layer);
+        all.push(...rasterQuad(layer.corners, p));
+        continue;
+      }
       let images: Awaited<ReturnType<typeof rasterImages>> = [];
       try {
         images = await rasterImages(layer, p, id);
@@ -535,30 +568,22 @@ export function createMapController(
         console.warn(`Map: raster ${layer.id} not shown`, e);
       }
       if (disposed || projectId !== id) return all;
-      images.forEach((img, i) => {
-        const sid = `aio-raster-${layer.id}-${i}`;
-        map.addSource(sid, { type: 'image', url: img.url, coordinates: img.quad });
-        map.addLayer(
-          {
-            id: sid,
-            type: 'raster',
-            source: sid,
-            metadata: { layerId: layer.id },
-            paint: {
-              'raster-opacity': rasterOpacity(
-                layer.role,
-                layerDisplay.getState().byLayer[layer.id],
-              ),
-              'raster-fade-duration': 0,
-            },
-          },
-          'aio-view3d-fill',
-        );
-        rasterIds.push(sid);
-        all.push(...img.quad);
-      });
+      addRasterImages(layer, images);
+      for (const img of images) all.push(...img.quad);
     }
     return all;
+  }
+
+  /** Fetch the picture of every waiting drawing that is shown by now. */
+  function showWaitingRasters(s: Workspace): void {
+    if (!proj || !projectId) return;
+    for (const [id, layer] of waitingRasters) {
+      if (s.hidden[id] === true || !layer.corners) continue;
+      waitingRasters.delete(id);
+      addRasterImages(layer, [
+        { url: assetUrl(projectId, layer.src), quad: rasterQuad(layer.corners, proj) },
+      ]);
+    }
   }
 
   // ----- kit pyramids at full detail: the tiles of the level that matches the view -----
@@ -648,6 +673,7 @@ export function createMapController(
       if (map.getSource(sid)) map.removeSource(sid);
     }
     rasterIds = [];
+    waitingRasters.clear();
     flights.clear();
     for (const id of Object.values(SRC)) setData(id, EMPTY);
   }
@@ -965,6 +991,7 @@ export function createMapController(
   }
 
   function applyVisibility(s: Workspace): void {
+    showWaitingRasters(s);
     for (const sid of rasterIds) {
       const layerId = (map.getLayer(sid)?.metadata as { layerId?: string } | undefined)?.layerId;
       if (layerId) map.setLayoutProperty(sid, 'visibility', s.hidden[layerId] ? 'none' : 'visible');

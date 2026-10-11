@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ON_TOP_ORDER, planDisplay, rasterDraw, rasterSlot } from './raster';
+import { ON_TOP_ORDER, lazyPicture, planDisplay, rasterDraw, rasterSlot } from './raster';
 
 describe('raster drawing', () => {
   it('cuts the transparent no-data collar of photographic rasters away', () => {
@@ -45,13 +45,75 @@ describe('how a drawing lies over the scene', () => {
     expect(planDisplay({ opacity: 0.35 }, base).opacity).toBe(0.35);
   });
 
-  it('on top: no depth test, after the models and clouds, before the pick markers', () => {
+  it('on top: no depth test, after the models and clouds, under what is drawn on them', () => {
     const top = planDisplay({ onTop: true }, base);
     expect(top.depthTest).toBe(false);
-    expect(top.renderOrder).toBeGreaterThan(ON_TOP_ORDER - 1);
-    expect(top.renderOrder).toBeLessThan(60);
+    // models, clouds and the ground imagery draw at 0 or below
+    expect(top.renderOrder).toBeGreaterThan(0);
+    expect(top.renderOrder).toBeGreaterThanOrEqual(ON_TOP_ORDER);
+    // the selection highlight (2), outlines (3 and up) and the measure line (30) stay above it
+    expect(top.renderOrder).toBeLessThan(2);
     // two drawings on top keep their order
     const later = planDisplay({ onTop: true }, rasterDraw(2, 4, true));
     expect(later.renderOrder).toBeGreaterThan(top.renderOrder);
+  });
+});
+
+describe('a picture that is loaded when it is first shown', () => {
+  const setup = () => {
+    const loads: { resolve: (t: { dispose(): void }) => void; reject: (e: Error) => void }[] = [];
+    const applied: unknown[] = [];
+    const failed: unknown[] = [];
+    const picture = lazyPicture(
+      () =>
+        new Promise<{ dispose(): void }>((resolve, reject) => {
+          loads.push({ resolve, reject });
+        }),
+      (t) => applied.push(t),
+      (e) => failed.push(e),
+    );
+    return { loads, applied, failed, picture };
+  };
+  const texture = () => {
+    const t = { disposed: 0, dispose: () => void (t.disposed += 1) };
+    return t;
+  };
+
+  it('loads nothing until it is wanted, and then once', async () => {
+    const { loads, applied, picture } = setup();
+    expect(loads).toHaveLength(0);
+    expect(picture.ready()).toBe(false);
+    picture.want();
+    picture.want();
+    expect(loads).toHaveLength(1);
+    const t = texture();
+    loads[0]?.resolve(t);
+    await Promise.resolve();
+    expect(applied).toEqual([t]);
+    expect(picture.ready()).toBe(true);
+    picture.want();
+    expect(loads).toHaveLength(1);
+  });
+
+  it('a picture that arrives after its layer went away is released, never shown', async () => {
+    const { loads, applied, picture } = setup();
+    picture.want();
+    picture.dispose();
+    const t = texture();
+    loads[0]?.resolve(t);
+    await Promise.resolve();
+    expect(applied).toEqual([]);
+    expect(t.disposed).toBe(1);
+  });
+
+  it('tries again on the next show after a load failed', async () => {
+    const { loads, failed, picture } = setup();
+    picture.want();
+    loads[0]?.reject(new Error('gone'));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(failed).toHaveLength(1);
+    picture.want();
+    expect(loads).toHaveLength(2);
   });
 });

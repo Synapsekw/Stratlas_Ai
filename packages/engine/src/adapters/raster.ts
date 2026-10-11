@@ -84,8 +84,51 @@ export function rasterDraw(
   };
 }
 
-/** Render order of a drawing drawn on top: after models and point clouds, under pick markers. */
-export const ON_TOP_ORDER = 40;
+/**
+ * Render order of a drawing drawn on top: after the models, the point clouds and the ground
+ * imagery (0 and below), and under what is drawn on them: the selection highlight (2), outlines
+ * and camera symbols (3 and up), the measure line (30), pick markers and labels.
+ */
+export const ON_TOP_ORDER = 1;
+
+/**
+ * A picture fetched and decoded when it is first wanted, not when its layer is made: a drawing
+ * that is hidden (every picture drawing is, until it is placed) costs no memory. `apply` gets the
+ * picture once it is there; one that arrives after `dispose` is released instead. A failed load is
+ * told through `fail` and tried again the next time the picture is wanted.
+ */
+export function lazyPicture<T extends { dispose(): void }>(
+  load: () => Promise<T>,
+  apply: (picture: T) => void,
+  fail: (error: unknown) => void = () => undefined,
+): { want(): void; ready(): boolean; dispose(): void } {
+  let state: 'idle' | 'loading' | 'ready' = 'idle';
+  let gone = false;
+  return {
+    want() {
+      if (gone || state !== 'idle') return;
+      state = 'loading';
+      load().then(
+        (picture) => {
+          if (gone) {
+            picture.dispose();
+            return;
+          }
+          state = 'ready';
+          apply(picture);
+        },
+        (error: unknown) => {
+          state = 'idle';
+          if (!gone) fail(error);
+        },
+      );
+    },
+    ready: () => state === 'ready',
+    dispose() {
+      gone = true;
+    },
+  };
+}
 
 /**
  * How a plan (a drawing) lies over the scene for the person's choice (`layerDisplay`): its
@@ -240,15 +283,10 @@ async function loadTexture(url: string, ctx: AdapterContext): Promise<Texture> {
 /** `format: 'image'`: one textured ground quad from the layer corners. */
 async function imageRaster(layer: RasterLayer, ctx: AdapterContext): Promise<LayerHandle> {
   if (!layer.corners) throw new Error(`Raster "${layer.name}" has no corners`);
-  const tex = await loadTexture(ctx.url(layer.src), ctx);
-  const mesh = quadMesh(
-    layer.corners,
-    tex,
-    ctx,
-    layer.role === 'plan' ? 2 : 0,
-    layer.role === 'plan',
-    rasterSlot(layer.id),
-  );
+  const plan = layer.role === 'plan';
+  // a drawing's picture is fetched when the drawing is first shown (below); an ortho's now
+  const tex = plan ? null : await loadTexture(ctx.url(layer.src), ctx);
+  const mesh = quadMesh(layer.corners, tex, ctx, plan ? 2 : 0, plan, rasterSlot(layer.id));
   mesh.name = `layer:${layer.id}`;
   mesh.userData.aioRaster = true;
   mesh.userData.aioLayer = layer.id;
@@ -272,12 +310,46 @@ async function imageRaster(layer: RasterLayer, ctx: AdapterContext): Promise<Lay
     );
   }
   ctx.scene.requestRender();
+  if (!plan) {
+    return {
+      setVisible(v) {
+        mesh.visible = v;
+        ctx.scene.requestRender();
+      },
+      dispose() {
+        for (const u of unregister) u();
+        ctx.scene.scene.remove(mesh);
+        disposeQuad(mesh);
+        ctx.scene.requestRender();
+      },
+    };
+  }
+  // Without its picture the quad would draw as a white sheet, so it stays out of the scene until
+  // the picture is there; `wanted` is what the layer's eye says meanwhile.
+  let wanted = false;
+  mesh.visible = false;
+  const picture = lazyPicture(
+    () => loadTexture(ctx.url(layer.src), ctx),
+    (loaded) => {
+      const m = mesh.material as MeshBasicMaterial;
+      m.map = loaded;
+      m.needsUpdate = true;
+      mesh.visible = wanted;
+      ctx.scene.requestRender();
+    },
+    (error) => {
+      console.warn(`The drawing "${layer.name}" could not be loaded`, error);
+    },
+  );
   return {
     setVisible(v) {
-      mesh.visible = v;
+      wanted = v;
+      if (v) picture.want();
+      mesh.visible = v && picture.ready();
       ctx.scene.requestRender();
     },
     dispose() {
+      picture.dispose();
       for (const u of unregister) u();
       ctx.scene.scene.remove(mesh);
       disposeQuad(mesh);
