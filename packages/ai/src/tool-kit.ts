@@ -29,6 +29,57 @@ export interface SaveResult {
   error?: string;
 }
 
+/** Screens of an open project the agent can open and be docked on. */
+export type AppScreen = 'scene' | 'issues' | 'media' | 'detections' | 'reports';
+export type SeverityLevel = number | 'uncertain';
+
+/** A set chosen by the agent, shown on the screen as a chip the person can clear. */
+export interface ViewScope {
+  /** Chip text, e.g. "On Tank T-101". */
+  label: string;
+  /** Issue ids (Issues) or photo keys `<layerId>/<photoId>` (Media). */
+  ids: readonly string[];
+}
+export interface PhotoViewFilter {
+  onlyFindings?: boolean;
+  order?: 'file' | 'severity' | 'count';
+  /** One level, "highest" for the highest level present on the photos in scope, null for any. */
+  severity?: SeverityLevel | 'highest' | null;
+  scope?: ViewScope | null;
+}
+export interface PhotoViewResult {
+  shown: number;
+  total: number;
+  /** The level in force after "highest" was resolved; null when none. */
+  severity: SeverityLevel | null;
+  severityLabel: string;
+}
+export interface IssueViewFilter {
+  severity?: SeverityLevel | null;
+  classId?: string | null;
+  status?: 'draft' | 'reviewed' | 'approved' | 'closed' | null;
+  text?: string;
+  sort?: 'code' | 'severity' | 'status' | 'updated' | 'class';
+  dir?: 'asc' | 'desc';
+  scope?: ViewScope | null;
+}
+export interface ViewFilters {
+  photos: {
+    onlyFindings: boolean;
+    order: string;
+    severity: SeverityLevel | null;
+    scope: string | null;
+  };
+  issues: {
+    severity: SeverityLevel | null;
+    classId: string | null;
+    status: string | null;
+    text: string;
+    sort: string;
+    scope: string | null;
+  };
+}
+
 /**
  * Seams to the host app, registered once at startup (apps/desktop). Every hook is optional: a
  * tool that needs a missing one fails with a fixed message.
@@ -44,6 +95,20 @@ export interface AppHooks {
   listSites?: () => Promise<GlobeSite[]>;
   /** Open the Globe and fly to a site (a project id), or over the whole library (null). */
   showOnGlobe?: (projectId: string | null) => void;
+  /** The screen that is showing; "other" for Globe, Settings, the project list. */
+  screen?: () => AppScreen | 'other';
+  /** Open a project screen. Opening a screen with the agent column unfolds the column. */
+  openScreen?: (screen: AppScreen) => void;
+  /** Replace the Media filter (unnamed fields go back to their defaults) and say what it shows. */
+  showPhotos?: (filter: PhotoViewFilter) => PhotoViewResult;
+  /** Replace the Issues filter and say how many it shows. */
+  showIssues?: (filter: IssueViewFilter) => { shown: number };
+  /** Open the issue's photo or video frame beside the 3D view, as a click on its pin does. False: it has none. */
+  showEvidence?: (issueId: string) => boolean;
+  /** Remember the screen, both filters and the stage layout; the returned function puts them back. */
+  captureView?: () => () => void;
+  /** The filters that are on, for the context. */
+  viewFilters?: () => ViewFilters;
 }
 
 export const appHooks: AppHooks = {};

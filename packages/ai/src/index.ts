@@ -35,9 +35,16 @@ export {
   runRendererTool,
   ToolError,
   type AppHooks,
+  type AppScreen,
+  type IssueViewFilter,
+  type PhotoViewFilter,
+  type PhotoViewResult,
   type RendererToolContext,
   type RendererToolRun,
+  type SeverityLevel,
   type ToolRunResult,
+  type ViewFilters,
+  type ViewScope,
 } from './renderer-tools';
 export {
   addProviderUsage,
