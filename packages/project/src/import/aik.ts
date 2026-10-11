@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { basename, join, relative } from 'node:path';
+import { basename, join } from 'node:path';
 import { z } from 'zod';
 import type { Layer, PhotoRef, ProjectManifestInput, Vec3 } from '@aio/schema';
 import {
@@ -119,18 +119,6 @@ async function pool<T>(items: readonly T[], n: number, fn: (t: T) => Promise<unk
     }
   };
   await Promise.all(Array.from({ length: Math.min(n, items.length) }, worker));
-}
-
-function walkFiles(dir: string, skip: (rel: string) => boolean, base = dir): string[] {
-  const out: string[] = [];
-  for (const e of readdirSync(dir, { withFileTypes: true })) {
-    const abs = join(dir, e.name);
-    const rel = relative(base, abs).replace(/\\/g, '/');
-    if (skip(rel)) continue;
-    if (e.isDirectory()) out.push(...walkFiles(abs, skip, base));
-    else out.push(rel);
-  }
-  return out;
 }
 
 /** Import an Asset Inspection Kit offline build (EBSM, DAMAC, ...) as a native project. */
@@ -415,22 +403,6 @@ export async function importAik(opts: AikImportOptions): Promise<AikImportResult
   if (thumbSrc)
     await w.derive('thumbnail.jpg', [thumbSrc], (o) => resizeImage(thumbSrc, o, 960, 3));
 
-  // Legacy viewer --------------------------------------------------------------------------------
-  const legacyFiles = walkFiles(opts.src, (rel) => rel === '_rebuild' || rel.endsWith('.partial'));
-  await pool(legacyFiles, 16, (rel) => w.link(src(rel), `legacy/${rel}`));
-  layers.push({
-    kind: 'legacy',
-    id: 'legacy',
-    name: 'Original kit viewer (offline build)',
-    visible: false,
-    viewer: 'aik',
-    entry: { path: `legacy/${htmlName}` },
-  });
-  rep.count('Legacy viewer files (hard links)', legacyFiles.length);
-  rep.note(
-    'The `legacy` size in the table counts hard links to the source build; on the same volume they take no extra disk space.',
-  );
-
   // Manifest -------------------------------------------------------------------------------------
   const times = present
     .map((p) => exifToIso(p.time, opts.utcOffset))
@@ -457,7 +429,7 @@ export async function importAik(opts: AikImportOptions): Promise<AikImportResult
   const valid = validatePackage(manifestInput, merged);
   w.writeJson('manifest.json', valid.manifest);
   w.writeJson('issues.json', { schema: ISSUES_SCHEMA, issues: valid.issues });
-  for (const d of ['photos', 'models/patches', 'rasters', 'legacy']) w.prune(d);
+  for (const d of ['photos', 'models/patches', 'rasters']) w.prune(d);
 
   // Report ---------------------------------------------------------------------------------------
   const stats = z
@@ -516,7 +488,7 @@ export async function importAik(opts: AikImportOptions): Promise<AikImportResult
       ? '- Issues: one per kit defect (D codes) with every sighting: a box and the photo mask per photo, a surface patch or pin on the model where the kit placed one; severity is the worst sighting.'
       : '- Issues: one per kit finding (F codes) with its box, the photo mask and the surface patch on the model.',
     '- Uncertain issues (U codes): one per photo the kit marked uncertain only, severity `uncertain`, with the uncertain-area mask (or the whole photo when the kit has none); no model position.',
-    '- Report PDF and findings CSV under `report/`; `legacy/` holds the original offline viewer as hard links to the source files.',
+    '- Report PDF and findings CSV under `report/`. The offline viewer itself is not copied.',
   ]);
   w.write('IMPORT-REPORT.md', rep.toMarkdown(opts.out));
 

@@ -454,9 +454,6 @@ export async function importHcl(opts: ImportOptions): Promise<ImportResult> {
   rep.note(
     `${poiCount} POIs logged; ${photoItems.length - frameCount} have photos. POIs without an image are not imported as photos.`,
   );
-  rep.note(
-    'No legacy viewer layer: the kit 3D report HTML is not copied (all its data is converted).',
-  );
   w.write('IMPORT-REPORT.md', rep.toMarkdown(opts.out));
 
   return {

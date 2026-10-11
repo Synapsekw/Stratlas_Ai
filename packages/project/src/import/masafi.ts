@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { z } from 'zod';
 import type { Layer, ProjectManifestInput, Vec3 } from '@aio/schema';
 import { encodeGlb, type GlbMesh, type GlbNode } from './glb';
@@ -70,6 +70,8 @@ const TOE_LIFT_M = 0.15;
 /** Coarsest ortho level kept: the finest level and three below it. */
 const ORTHO_LEVELS = 4;
 const VOLUME_TOLERANCE = 0.005;
+/** Where the kit's grids are kept for the volumetric workspace (`grids` in volumes.json). */
+const GRIDS_DIR = 'volumes/grids';
 
 type En = readonly [number, number];
 
@@ -411,25 +413,39 @@ export async function importMasafi(opts: MasafiImportOptions): Promise<ImportRes
   }
   if (blankTiles) rep.count('Ortho padding tiles (no data)', blankTiles);
 
-  // Legacy viewer, report, register, thumbnail ---------------------------------------------------------
+  // Volume grids, report, register, thumbnail ----------------------------------------------------------
+  // the kit's own 10 cm pile grids, 0.4 m site surfaces and pile masks, copied unchanged: the
+  // volumetric workspace recomputes and edits volumes on them (data-conventions section 10)
+  const jsIn = (dir: string, re: RegExp) =>
+    existsSync(src(dir))
+      ? readdirSync(src(dir))
+          .filter((f) => re.test(f))
+          .sort()
+      : [];
+  const pileGrids = jsIn('data/piles', /\.js$/);
+  const dsmGrids = jsIn('data', /^dsm_.+\.js$/);
+  const hasCoarse = existsSync(src('data/vol.js'));
+  const hasGrids = pileGrids.length > 0 && dsmGrids.length > 0;
+  if (hasGrids) {
+    for (const f of pileGrids) await w.copy(src('data/piles', f), `${GRIDS_DIR}/piles/${f}`);
+    for (const f of dsmGrids) await w.copy(src('data', f), `${GRIDS_DIR}/${f}`);
+    if (hasCoarse) await w.copy(src('data/vol.js'), `${GRIDS_DIR}/vol.js`);
+    rep.count('Volume grid files', pileGrids.length + dsmGrids.length + (hasCoarse ? 1 : 0));
+    const noDsm = EPS.filter((e) => !dsmGrids.includes(`dsm_${e}.js`));
+    if (noDsm.length)
+      rep.warn(
+        `No site surface grid (\`data/dsm_<epoch>.js\`) for ${noDsm.map((e) => epochOf(e).label).join(', ')}: the volumes workspace has no site surface for that survey.`,
+      );
+    if (!hasCoarse)
+      rep.warn('No pile masks (`data/vol.js`) in the source: `volumes.json` names no coarse grid.');
+  } else {
+    rep.warn(
+      'No pile grids (`data/piles/*.js`) with a site surface grid (`data/dsm_<epoch>.js`) in the source: `volumes.json` names no grids, so volumes cannot be recomputed in the app.',
+    );
+  }
   const top = readdirSync(opts.src);
-  const html = top.find((f) => /Stockpile Review\.html$/i.test(f));
   const pdf = top.find((f) => f.toLowerCase().endsWith('.pdf'));
   const csv = top.find((f) => /register\.csv$/i.test(f));
-  if (html) {
-    const files = [html, ...(pdf ? [pdf] : []), ...(csv ? [csv] : [])];
-    for (const d of ['data', 'lib', 'overlays']) files.push(...walk(opts.src, d));
-    for (const f of files) await w.copy(src(f), `legacy/${f}`);
-    rep.count('Legacy viewer files', files.length);
-    layers.push({
-      kind: 'legacy',
-      id: 'volumetric-review',
-      name: 'Stockpile review (offline viewer)',
-      visible: true,
-      viewer: 'volumetric',
-      entry: { path: `legacy/${html}` },
-    });
-  } else rep.warn('No "... Stockpile Review.html" offline viewer in the source: no legacy layer.');
   if (pdf) await w.copy(src(pdf), `report/${pdf}`);
   else rep.warn('No PDF report in the source.');
   if (csv) await w.copy(src(csv), `report/${csv}`);
@@ -459,15 +475,15 @@ export async function importMasafi(opts: MasafiImportOptions): Promise<ImportRes
         .filter((l) => l.id === `terrain-${epochOf(e).date}` || l.id === `ortho-${epochOf(e).date}`)
         .map((l) => l.id),
     })),
-    // the kit's own 10 cm pile grids, 0.4 m DSMs and pile masks, copied unchanged with the viewer:
-    // the volumetric workspace recomputes and edits volumes on them (data-conventions section 10)
-    ...(html
+    // where the grids copied above are; left out when the source has none, and a reader then
+    // looks in the layout of older imports (`legacy/data/`)
+    ...(hasGrids
       ? {
           grids: {
             format: 'vs-kit-js',
-            piles: 'legacy/data/piles/{id}.js',
-            dsm: 'legacy/data/dsm_{epoch}.js',
-            coarse: 'legacy/data/vol.js',
+            piles: `${GRIDS_DIR}/piles/{id}.js`,
+            dsm: `${GRIDS_DIR}/dsm_{epoch}.js`,
+            ...(hasCoarse ? { coarse: `${GRIDS_DIR}/vol.js` } : {}),
           },
         }
       : {}),
@@ -519,7 +535,9 @@ export async function importMasafi(opts: MasafiImportOptions): Promise<ImportRes
     `- Pile nodes: one GLB node per pile and date (\`Pxx_<epoch>\`), the terrain cells within ${buffer} m of the pile's zone (the kit's envelope of both dates) meshed at the finer spacing, plus the kit's toe line for that date as a line primitive ${TOE_LIFT_M} m above the surface. Mesh tags name the node with the pile ID and the default-base (triangulated toe) volume, so every pile shows as a callout. The ground node carries \`extras.type = "terrain"\` (not selectable).`,
     `- Orthomosaic: \`kit-pyramid\` per date (\`rasters/ortho-<epoch>/tiles.json\`) from the kit's \`tiles/<epoch>/<z>\` WebP tiles, the finest ${ORTHO_LEVELS} levels (${(G.ortho_res * 100).toFixed(0)} cm per px at the finest), every level spanning the same whole-tile window from the grid corner. Tiles re-encoded (WebP 82) with the no-data colour ${ORTHO_NODATA_RGB} under alpha 0; tiles the kit does not have (outside the survey) are 64 px no-data tiles. Drawn at local y = ${orthoY} m, under the terrain mesh, so it shows in Map and around the survey in 3D.`,
     '- Volumes: `volumes.json` (`aio.volumes/1`), see below.',
-    `- Legacy: the offline viewer \`legacy/${html ?? '?'}\` with its \`data/\`, \`lib/\`, \`overlays/\`, the PDF and the register CSV, as a \`legacy\` layer (\`viewer: "volumetric"\`): piles, four bases, sections, cut and fill, boundary editor. Its PDF page viewer loads pdf.js from cdnjs (needs network); everything else is offline. Boundary edits made there live in that page's localStorage.`,
+    hasGrids
+      ? `- Grids: the kit's 10 cm pile grids (\`data/piles/*.js\`), 0.4 m site surfaces (\`data/dsm_<epoch>.js\`)${hasCoarse ? ' and pile masks (`data/vol.js`)' : ''}, copied unchanged to \`${GRIDS_DIR}/\` and named in \`volumes.json\` \`grids\`: the volumes workspace recomputes volumes, sections and boundary edits on them. The offline viewer itself is not copied.`
+      : '- Grids: none in the source (see the warnings). The offline viewer itself is not copied.',
     `- Report: \`report/${pdf ?? '-'}\` and \`report/${csv ?? '-'}\`; thumbnail from \`overlays/site_${latest ?? '?'}.jpg\`.`,
     `- Issues: none. Severity model "Stockpile" (1 Low, 2 Medium, 3 High) and classes Spillage, Unsafe slope, Encroachment are in the manifest for later reviews.`,
   ]);
@@ -541,7 +559,7 @@ export async function importMasafi(opts: MasafiImportOptions): Promise<ImportRes
     `Default base ${site.volume.default_base}; density ${site.volume.density_t_m3} t/m³; change deadband ${db} m. Kit totals (tin): ${EPS.map((e) => `${epochOf(e).label} ${formatM3(site.totals[e]?.tin ?? NaN)}`).join(', ')}.`,
   );
   rep.note(
-    "The 3D terrain uses the kit's site texture (about 13.5 cm per px). The full 3 cm ortho is in the raster pyramid; the legacy viewer swaps in 6 cm pile photos.",
+    "The 3D terrain uses the kit's site texture (about 13.5 cm per px). The full 3 cm ortho is in the raster pyramid.",
   );
   w.write('IMPORT-REPORT.md', rep.toMarkdown(opts.out));
 
@@ -690,19 +708,6 @@ function terrainGlb(
     ],
     images: [{ mimeType: 'image/jpeg', data: texture }],
   });
-}
-
-/** Relative paths of every file under `dir` (forward slashes). */
-function walk(root: string, dir: string): string[] {
-  const abs = join(root, dir);
-  if (!existsSync(abs)) return [];
-  const out: string[] = [];
-  for (const f of readdirSync(abs)) {
-    const p = join(abs, f);
-    if (statSync(p).isDirectory()) out.push(...walk(root, relative(root, p)));
-    else out.push(relative(root, p).replace(/\\/g, '/'));
-  }
-  return out.sort();
 }
 
 /**
