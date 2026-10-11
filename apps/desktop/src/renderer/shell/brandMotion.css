@@ -1,0 +1,38 @@
+/* The moving Quarter mark (BrandMotion). Pieces take the theme's foreground and accent through
+   .mark-piece and .mark-tail (styles.css); the stroke rounds the corners. */
+.bm {
+  overflow: visible;
+}
+.bm-shape.mark-piece {
+  stroke: var(--fg-0);
+}
+.bm-shape.mark-tail {
+  stroke: var(--acc);
+}
+/* keeps the lifted plate apart from the cube in the model form; set --bm-ground to the surface */
+.bm-halo {
+  fill: var(--bm-ground, var(--bg-0));
+  stroke: var(--bm-ground, var(--bg-0));
+}
+.brand-loader {
+  width: 24px;
+  height: 24px;
+  flex: none;
+}
+/* a project card while it opens */
+.pc-loader {
+  width: 14px;
+  height: 14px;
+}
+/* the globe before its first frame */
+.globe-loader {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 44px;
+  height: 44px;
+}
+.about-lockup .lockup-mark {
+  width: 32px;
+  height: 32px;
+}
