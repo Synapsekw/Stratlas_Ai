@@ -103,9 +103,6 @@ export interface ChipGroup {
 /** Chips nearer than this, edge to edge, gather: the clear room of two sprites. */
 export const CHIP_GAP = 2 * CHIP.pad;
 
-/** A gathered chip can reach a chip its members did not: this many rounds settle it. */
-const GATHER_ROUNDS = 8;
-
 interface Box {
   left: number;
   top: number;
@@ -152,7 +149,11 @@ export function groupChips(
     b.top < a.bottom + gap;
 
   let groups = [...chips].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)).map((c) => [c]);
-  for (let round = 0; round < GATHER_ROUNDS; round++) {
+  // a gathered chip can reach a chip none of its members did: round after round, until one
+  // joins nothing (a round that joins any leaves fewer groups, so it ends)
+  let before: number;
+  do {
+    before = groups.length;
     const boxes = groups.map(boxOf);
     // every group joins the first group it is tied to, straight or through others
     const first = groups.map((_, i) => i);
@@ -175,9 +176,8 @@ export function groupChips(
       const at = firstOf(i);
       next.set(at, [...(next.get(at) ?? []), ...members]);
     });
-    if (next.size === groups.length) break;
     groups = [...next.values()];
-  }
+  } while (groups.length < before);
   return groups.map((members) => ({ ids: members.map((c) => c.id).sort(), ...middle(members) }));
 }
 

@@ -222,7 +222,12 @@ function chip(
       ctx.fillText(badge, m.badge.x + m.badge.width / 2, mid + TEXT_DROP);
     }
   });
-  const made = { id: `chip/${String(drawing)}/${key}`, canvas, width, height };
+  const id = `chip/${String(drawing)}/${key}`;
+  // CesiumJS names an image by its `src` when it has one, and stores an image it knows by name
+  // once: with it, a chip set again through an entity's `image` is drawn in the same frame and
+  // adds nothing to the texture atlas (a canvas without one is a new image every time)
+  Object.assign(canvas, { src: id });
+  const made = { id, canvas, width, height };
   chips.set(key, made);
   return made;
 }

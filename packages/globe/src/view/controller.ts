@@ -946,9 +946,10 @@ export class GlobeController {
     for (const entity of entities.values) {
       const hide = !alone.has(entity.id);
       if (!entity.billboard || hide === this.hidden.has(entity.id)) continue;
-      // by its colour, not by `show`: CesiumJS gives up the billboard of an entity that is not
-      // shown and loads its image again when it is, so a chip would come back a frame late
-      entity.billboard.color = new ConstantProperty(hide ? Color.TRANSPARENT : Color.WHITE);
+      // by its size, not by `show`: CesiumJS gives up the billboard of an entity that is not
+      // shown and loads its image again when it is, so a chip would come back a frame late.
+      // Nothing else sets a site's scale.
+      entity.billboard.scale = new ConstantProperty(hide ? 0 : 1 / this.g.pixelRatio);
       if (hide) this.hidden.add(entity.id);
       else this.hidden.delete(entity.id);
       changed = true;

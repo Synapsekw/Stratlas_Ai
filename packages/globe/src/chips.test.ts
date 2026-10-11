@@ -138,6 +138,24 @@ describe('groupChips', () => {
     expect(members([c, a, b])).toEqual([['a', 'b', 'c']]);
   });
 
+  it('goes on for as long as a gathered chip reaches another', () => {
+    // a gathered chip that widens by 200 px with every pair it takes in, and narrow chips 100 px
+    // apart on both sides of it: each round it reaches the next one on either side, and no more
+    const widening = (count: number) => ({ width: 100 + 100 * count, height: CHIP.height });
+    const pairs = Array.from({ length: 10 }, (_, k) => 150 + 100 * k);
+    const chips = [
+      chip('a', 0, 100, 20),
+      chip('b', 0, 110, 20),
+      ...pairs.map((x, k) => chip(`left ${String(k)}`, -x, 105, 20)),
+      ...pairs.map((x, k) => chip(`right ${String(k)}`, x, 105, 20)),
+    ];
+    // on their own the narrow chips are apart
+    expect(groupChips(chips.slice(2), widening)).toHaveLength(20);
+    const all = groupChips(chips, widening);
+    expect(all).toHaveLength(1);
+    expect(all[0]?.ids).toHaveLength(22);
+  });
+
   it('gathers the same chips when the view faces the other way', () => {
     const north = [chip('a', 100, 100, 120), chip('b', 160, 100, 80), chip('c', 600, 100)];
     // facing south, what was on the left is on the right; names still run to the right
