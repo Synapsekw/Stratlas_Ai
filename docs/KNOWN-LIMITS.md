@@ -22,6 +22,7 @@ Current limits only; each is removed from this list when fixed.
 - With the right panel open on a 1440 px screen, the Labels and layers buttons move into the **More** menu.
 - No Arabic translation yet; **Right to left** mirrors the panels only.
 - Opening projects again and again from the project list grows the app's window process by about 4 MB per open for the first 80 or so opens, then by under 1 MB per open (one demo project: about 360 MB to 590 MB after 120 opens). The app's own memory, its 3D resources and its WebGL contexts stay flat; the growth is in Chromium's native memory (likely worker heaps or Blink caches) and is not traced further yet. Restarting the app frees it.
+- The 3D view prepares the shaders of a new 3D Tiles tile, and of the view with the section or the cutaway switched on or off, before drawing them, so the view does not freeze. The tile, or the cut, therefore appears a moment later: a few frames with a graphics card; on a computer without one (software rendering) the picture can hold still for up to a few seconds while the rest of the window keeps responding. Opening a project and showing a layer for the first time still prepare their shaders while drawing: without a graphics card the whole window can stop responding for a moment then.
 
 ## Reports, packages and maps
 

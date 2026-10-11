@@ -119,6 +119,19 @@ export function attachTileset(scene: SceneHandle, opts: TilesetOptions): Tileset
   };
   applyBudget(opts.budget);
 
+  let disposed = false;
+  /** Tiles whose shader programs are being made: the model is not in the scene yet. */
+  const compiling = new Map<TileModelTile, Object3D>();
+  /** A tile dropped before it was ever drawn: 3DTilesRendererJS frees only what it took over. */
+  const drop = (tile: TileModelTile) => {
+    const model = compiling.get(tile);
+    if (!model) return;
+    compiling.delete(tile);
+    forMaterials(model, (m) => {
+      m.dispose();
+    });
+  };
+
   tiles.registerPlugin({
     name: PLUGIN_NAME,
     processTileModel(model: Object3D, tile: TileModelTile) {
@@ -134,7 +147,21 @@ export function attachTileset(scene: SceneHandle, opts: TilesetOptions): Tileset
       model.traverse((c) => {
         c.userData.layerId = pickId;
       });
-      return Promise.resolve();
+      // The tile joins the scene once its shader programs are made, so the frame that first draws
+      // it does not wait for them: seconds on a software renderer, with the view frozen.
+      const ready = scene.compileAhead?.(model);
+      if (!ready) return Promise.resolve();
+      compiling.set(tile, model);
+      return ready.then(() => {
+        // dropped meanwhile (and perhaps loading again with another model)
+        if (compiling.get(tile) !== model) return;
+        if (disposed) drop(tile);
+        else compiling.delete(tile);
+      });
+    },
+    /** Also called for a tile that is dropped while it loads. */
+    disposeTile(tile: TileModelTile) {
+      drop(tile);
     },
   });
 
@@ -149,7 +176,6 @@ export function attachTileset(scene: SceneHandle, opts: TilesetOptions): Tileset
   tiles.addEventListener('tiles-load-end', redraw);
   tiles.addEventListener('needs-update', redraw);
 
-  let disposed = false;
   const offFrame = scene.onFrame(() => {
     if (disposed || !tiles.group.visible) return;
     scene.camera.updateMatrixWorld();
@@ -178,6 +204,7 @@ export function attachTileset(scene: SceneHandle, opts: TilesetOptions): Tileset
       offTarget();
       scene.scene.remove(tiles.group);
       tiles.dispose();
+      for (const tile of [...compiling.keys()]) drop(tile);
       scene.requestRender();
     },
   };

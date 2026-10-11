@@ -48,6 +48,8 @@ The Projects screen shows "The project did not open." with the reason:
 
 On **Low**, **Compare dates** shows a swipe or two maps instead of two 3D views. If the picture looks coarse on a strong card, pick **High** or **Ultra**.
 
+On a computer without a graphics card, the 3D picture can hold still for a moment when 3D Tiles first appear or when **Section** or the cutaway is switched on or off. The rest of the window keeps working, and the picture catches up by itself.
+
 ## Video does not line up with the model
 
 Use **Calibrate video** (see [Calibrate video](08-building-projects.md#calibrate-video)). Drone heights are often relative to the take-off point: fix the take-off height or the datum offset when importing (see [Camera heights](08-building-projects.md#camera-heights)).

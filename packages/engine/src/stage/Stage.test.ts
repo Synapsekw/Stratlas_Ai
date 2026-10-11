@@ -5,6 +5,8 @@ import {
   Box3,
   BoxGeometry,
   DataTexture,
+  DoubleSide,
+  FrontSide,
   Group,
   Mesh,
   MeshStandardMaterial,
@@ -14,6 +16,7 @@ import {
 } from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LayerAdapter, LayerHandle } from '../types';
+import { fakeWarmRenderer } from './fakeWarmRenderer';
 import { dampingFor, Stage } from './Stage';
 
 type ROCallback = (entries: { contentRect: { width: number; height: number } }[]) => void;
@@ -423,6 +426,229 @@ describe('Stage', () => {
     stage.setSection({ enabled: false });
     expect(planes).toHaveLength(0);
     stage.dispose();
+  });
+
+  describe('shader programs made ahead of the frame', () => {
+    /** The poll timer of the warm-up (16 ms) has fired. */
+    const polled = () => new Promise((r) => setTimeout(r, 60));
+
+    /**
+     * A stage on a renderer that can make programs ahead, with a mesh that takes the section
+     * planes (as every layer's materials do) and receives projected video (its side follows the
+     * section). `drawn` is what each frame was drawn with.
+     */
+    function makeWarm(parallel: boolean) {
+      const warm = fakeWarmRenderer({ parallel });
+      const { renderer, calls } = fakeRenderer();
+      const drawn: { planes: number; side: number }[] = [];
+      let frame: FrameRequestCallback = () => undefined;
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+        frame = cb;
+        return 1;
+      });
+      const wall = new Mesh(new BoxGeometry(4, 4, 4), new MeshStandardMaterial({ name: 'wall' }));
+      const stage: Stage = new Stage({
+        container,
+        store: createWorkspace(),
+        resolveUrl: (_id, ref) => ('path' in ref ? ref.path : ref.hash),
+        createRenderer: () =>
+          Object.assign(renderer, warm.renderer, {
+            properties: { ...warm.renderer.properties, has: () => false },
+            render: () => {
+              calls.render++;
+              drawn.push({ planes: stage.clippingPlanes.length, side: wall.material.side });
+            },
+          }),
+      });
+      wall.material.clippingPlanes = stage.clippingPlanes;
+      stage.scene.add(wall);
+      stage.addProjectionReceiver(wall);
+      for (const cb of observers) cb([{ contentRect: { width: 800, height: 600 } }]);
+      let now = 0;
+      /** The next animation frame. */
+      const tick = () => {
+        now += 16;
+        frame(now);
+      };
+      return { stage, warm, calls, drawn, wall, tick };
+    }
+
+    it('draws the section it had until the programs of the new one are in', async () => {
+      const { stage, warm, drawn, wall, tick } = makeWarm(true);
+      stage.setSection({ enabled: true, bearingDeg: 45 });
+      // what was asked for holds at once: picking, the tools and the toolbar read it
+      expect(stage.clippingPlanes).toHaveLength(1);
+      expect(stage.section.enabled).toBe(true);
+      expect(wall.material.side).toBe(DoubleSide);
+      expect(stage.compiling).toBe(1);
+      // the new programs were made for the section asked for
+      expect(warm.compiled.at(-1)).toBe(`wall/1/${String(DoubleSide)}`);
+      const plane = stage.clippingPlanes[0];
+      tick();
+      tick();
+      // the view keeps drawing, uncut, while the compiler works
+      expect(drawn.slice(-2)).toEqual([
+        { planes: 0, side: FrontSide },
+        { planes: 0, side: FrontSide },
+      ]);
+      // and between frames the section is the one asked for, the same plane object
+      expect(stage.clippingPlanes[0]).toBe(plane);
+      expect(wall.material.side).toBe(DoubleSide);
+      warm.finish();
+      await polled();
+      expect(stage.compiling).toBe(0);
+      tick();
+      expect(drawn.at(-1)).toEqual({ planes: 1, side: DoubleSide });
+      stage.dispose();
+    });
+
+    it('keeps the cut on screen while the programs without it are made', async () => {
+      const { stage, warm, drawn, tick } = makeWarm(true);
+      stage.setSection({ enabled: true, bearingDeg: 0, offset: 2 });
+      warm.finish();
+      await polled();
+      tick();
+      expect(drawn.at(-1)?.planes).toBe(1);
+      // a layer loaded while the cut was on has no program without it yet
+      const late = new Mesh(new BoxGeometry(), new MeshStandardMaterial({ name: 'late' }));
+      late.material.clippingPlanes = stage.clippingPlanes;
+      stage.scene.add(late);
+      warm.renderer.compile(late, stage.camera, stage.scene);
+      warm.finish();
+      stage.setSection({ enabled: false });
+      expect(stage.clippingPlanes).toHaveLength(0);
+      expect(stage.compiling).toBe(1);
+      tick();
+      expect(drawn.at(-1)).toEqual({ planes: 1, side: DoubleSide });
+      warm.finish();
+      await polled();
+      tick();
+      expect(drawn.at(-1)).toEqual({ planes: 0, side: FrontSide });
+      stage.dispose();
+    });
+
+    it('draws at once when the programs of a section exist already', async () => {
+      const { stage, warm, drawn, tick } = makeWarm(true);
+      // the frames so far made the programs of the uncut view
+      warm.renderer.compile(stage.scene, stage.camera, stage.scene);
+      stage.setSection({ enabled: true });
+      warm.finish();
+      await polled();
+      stage.setSection({ enabled: false });
+      expect(stage.compiling).toBe(0);
+      tick();
+      expect(drawn.at(-1)?.planes).toBe(0);
+      stage.setSection({ enabled: true });
+      expect(stage.compiling).toBe(0);
+      tick();
+      expect(drawn.at(-1)?.planes).toBe(1);
+      stage.dispose();
+    });
+
+    it('follows the last switch when the section is switched again while it waits', async () => {
+      const { stage, warm, drawn, tick } = makeWarm(true);
+      stage.setSection({ enabled: true });
+      // off again before the cut was ever drawn: nothing to wait for, the view stays uncut
+      stage.setSection({ enabled: false });
+      tick();
+      expect(drawn.at(-1)).toEqual({ planes: 0, side: FrontSide });
+      warm.finish();
+      await polled();
+      tick();
+      expect(drawn.at(-1)).toEqual({ planes: 0, side: FrontSide });
+      expect(stage.clippingPlanes).toHaveLength(0);
+      stage.dispose();
+    });
+
+    it('moves the cut freely while it waits: only switching it compiles', () => {
+      const { stage, warm } = makeWarm(true);
+      stage.setSection({ enabled: true });
+      const made = warm.compiled.length;
+      stage.setSection({ bearingDeg: 120, offset: 3 });
+      stage.setSection({ enabled: true, flip: true });
+      expect(warm.compiled).toHaveLength(made);
+      stage.dispose();
+    });
+
+    it('sends no frame while a software renderer catches up, then draws the cut', async () => {
+      const { stage, warm, calls, drawn, tick } = makeWarm(false);
+      tick();
+      const before = calls.render;
+      stage.setSection({ enabled: true });
+      expect(warm.fences).toHaveLength(1);
+      tick();
+      tick();
+      // a frame now would queue in front of the questions the new programs wait for
+      expect(calls.render).toBe(before);
+      // a resize still draws, with the section the view had: the canvas is never left blank
+      for (const cb of observers) cb([{ contentRect: { width: 900, height: 600 } }]);
+      expect(calls.render).toBe(before + 1);
+      expect(drawn.at(-1)?.planes).toBe(0);
+      warm.reach();
+      await polled();
+      tick();
+      expect(calls.render).toBe(before + 2);
+      expect(drawn.at(-1)).toEqual({ planes: 1, side: DoubleSide });
+      stage.dispose();
+    });
+
+    it('resolves compileAhead when the programs are in, drawing meanwhile', async () => {
+      const { stage, warm, calls, tick } = makeWarm(true);
+      const tile = new Mesh(new BoxGeometry(), new MeshStandardMaterial({ name: 'tile' }));
+      let ready = false;
+      void stage.compileAhead(tile).then(() => {
+        ready = true;
+      });
+      const before = calls.render;
+      stage.requestRender();
+      tick();
+      expect(calls.render).toBe(before + 1);
+      await polled();
+      expect(ready).toBe(false);
+      warm.finish();
+      await polled();
+      expect(ready).toBe(true);
+      stage.dispose();
+    });
+
+    it('lets go of what is compiling when the context is lost or the stage disposed', async () => {
+      const { stage, warm, drawn, tick } = makeWarm(true);
+      const done: string[] = [];
+      const tile = new Mesh(new BoxGeometry(), new MeshStandardMaterial({ name: 'tile' }));
+      void stage.compileAhead(tile).then(() => done.push('tile'));
+      stage.setSection({ enabled: true });
+      warm.lost = true;
+      stage.canvas.dispatchEvent(new Event('webglcontextlost'));
+      await flush();
+      expect(done).toEqual(['tile']);
+      expect(stage.compiling).toBe(0);
+      // restored: the section asked for is drawn (three makes every program again)
+      warm.lost = false;
+      stage.canvas.dispatchEvent(new Event('webglcontextrestored'));
+      tick();
+      expect(drawn.at(-1)?.planes).toBe(1);
+
+      const other = new Mesh(new BoxGeometry(), new MeshStandardMaterial({ name: 'other' }));
+      void stage.compileAhead(other).then(() => done.push('other'));
+      stage.setSection({ enabled: false });
+      stage.dispose();
+      await flush();
+      expect(done).toEqual(['tile', 'other']);
+      // nothing compiles for a disposed stage
+      await expect(stage.compileAhead(other)).resolves.toBeUndefined();
+    });
+
+    it('draws at once on a renderer that cannot make programs ahead', async () => {
+      const { stage, calls, resize } = make();
+      resize(800, 600);
+      const before = calls.render;
+      stage.setSection({ enabled: true });
+      expect(stage.compiling).toBe(0);
+      stage.renderNow();
+      expect(calls.render).toBe(before + 1);
+      await expect(stage.compileAhead(new Group())).resolves.toBeUndefined();
+      stage.dispose();
+    });
   });
 
   it('labels component groups by default, every component on demand, none when off', async () => {
