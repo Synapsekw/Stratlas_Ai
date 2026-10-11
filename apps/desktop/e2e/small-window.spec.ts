@@ -175,6 +175,103 @@ test('the Projects header keeps every action in view, down to the smallest windo
   }
 });
 
+// ------------------------------------------------------------------------- the drawing bar
+
+/** The boxes of the drawing bar, the stage and the panels beside it, in page pixels. */
+async function drawBarLayout(win: Page) {
+  return win.evaluate(() => {
+    const box = (sel: string) => {
+      const r = document.querySelector(sel)?.getBoundingClientRect();
+      return r && r.width > 0 && r.height > 0
+        ? { left: r.left, right: r.right, top: r.top, bottom: r.bottom }
+        : null;
+    };
+    const bar = document.querySelector('[data-testid="survey-drawbar"]');
+    const r = bar?.getBoundingClientRect();
+    return {
+      bar: box('[data-testid="survey-drawbar"]'),
+      stage: box('.ws > .stage'),
+      right: box('.ws > aside.right'),
+      left: box('aside.sidebar'),
+      // rows of controls: the parts of one row share a middle line, whatever their heights
+      rows: bar
+        ? [...bar.children]
+            .map((c) => c.getBoundingClientRect())
+            .filter((c) => c.width > 0)
+            .map((c) => (c.top + c.bottom) / 2)
+            .sort((a, b) => a - b)
+            .filter((y, i, all) => i === 0 || y - (all[i - 1] ?? y) > 8).length
+        : 0,
+      middle: r ? (r.left + r.right) / 2 : null,
+      page: innerWidth,
+    };
+  });
+}
+
+/** Start drawing an area: the bar with its Finish and Cancel shows. */
+async function startArea(win: Page) {
+  // Area is in the Survey measurements popover, whose tool is on the bar or under More tools
+  const survey = win.getByRole('button', { name: 'Survey measurements', exact: true });
+  if (!(await survey.isVisible()))
+    await stageBar(win).getByRole('button', { name: 'More tools', exact: true }).click();
+  await survey.click();
+  await win.getByTestId('survey-tool-area').click();
+  const bar = win.getByTestId('survey-drawbar');
+  await expect(bar).toContainText('Area');
+  await expect(bar.getByRole('button', { name: 'Finish' })).toBeVisible();
+  return bar;
+}
+
+test('the bar shown while drawing an area stays inside the main view', async ({
+  app,
+  win,
+}, info) => {
+  await openProject(win);
+  const bar = await startArea(win);
+
+  // the smallest window: the bar lies on the stage, clear of the panel on the right (and of the
+  // sidebar on the left), with every control in view
+  const small = await drawBarLayout(win);
+  expect(small.right, 'the right panel is open').not.toBeNull();
+  expect(small.bar && small.stage && small.right && small.left).toBeTruthy();
+  if (!small.bar || !small.stage || !small.right || !small.left) return;
+  expect(small.bar.right, 'the bar ends before the right panel').toBeLessThanOrEqual(
+    small.right.left,
+  );
+  expect(small.bar.left, 'the bar starts after the sidebar').toBeGreaterThanOrEqual(
+    small.left.right,
+  );
+  expect(small.bar.left).toBeGreaterThanOrEqual(small.stage.left);
+  expect(small.bar.right).toBeLessThanOrEqual(small.stage.right);
+  expect(small.bar.top).toBeGreaterThanOrEqual(small.stage.top);
+  for (const control of await bar.getByRole('button').all())
+    await expect(control).toBeInViewport({ ratio: 1 });
+  await shot(win, info, 'draw-bar-1100.png');
+  // Cancel is what a click on it reaches, and it puts the tool away
+  const cancel = bar.getByRole('button', { name: 'Cancel' });
+  expect(
+    await cancel.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return el === top || el.contains(top);
+    }),
+  ).toBe(true);
+  await cancel.click();
+  await expect(bar).toHaveCount(0);
+
+  // a wide window: one row in the middle of the window, as it always was
+  // (a screen that cannot hold a 1920 window, a CI runner's, leaves this part out)
+  const got = await resize(app, win, 1920, 1000);
+  if (got >= 1900) {
+    await startArea(win);
+    const wide = await drawBarLayout(win);
+    expect(wide.rows, 'rows of the bar at 1920').toBe(1);
+    expect(Math.abs((wide.middle ?? 0) - wide.page / 2)).toBeLessThanOrEqual(1);
+    expect(wide.bar && wide.right && wide.bar.right <= wide.right.left).toBe(true);
+    await shot(win, info, 'draw-bar-1920.png');
+  }
+});
+
 // ------------------------------------------------------------------------- the foot of the map
 
 /**
