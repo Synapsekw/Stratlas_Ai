@@ -10,13 +10,19 @@ from aio_pipelines.photo.align import PhotoAlign, read_sparse
 from aio_pipelines.photo.georef import PhotoGeoref
 from aio_pipelines.runtime import JobError
 from conftest import run_job
-from photo_g2_synth import SyntheticEngine, make_scene, write_gcp_files, write_scene_photos
+from photo_g2_synth import (
+    SyntheticEngine,
+    make_edge_scene,
+    make_scene,
+    write_gcp_files,
+    write_scene_photos,
+)
 
 
-def _aligned(monkeypatch, project, tmp_path, scene, rtk=False, gnss="auto", alt_offset=0.0):
+def _aligned(monkeypatch, project, tmp_path, scene, rtk=False, gnss="auto", alt_offset=0.0, **engine):
     folder = tmp_path / "flight"
     write_scene_photos(scene, folder, rtk=rtk, alt_offset=alt_offset)
-    monkeypatch.setattr(PhotoAlign, "engine_factory", staticmethod(lambda: SyntheticEngine(scene)))
+    monkeypatch.setattr(PhotoAlign, "engine_factory", staticmethod(lambda: SyntheticEngine(scene, **engine)))
     params = {"photos": {"folders": [str(folder)]}, "preset": "standard", "run": "r1", "gnss": gnss}
     run_job(PhotoAlign(), project, params, job_id="align")
 
@@ -76,6 +82,26 @@ def test_control_points_meet_the_checkpoint_targets(monkeypatch, project, tmp_pa
     # the drone's GNSS heights disagree with control by metres: flagged with the number
     flagged = [w for w in rep["warnings"] if w["code"] == "gnss-height"]
     assert flagged and "-1" in flagged[0]["message"]
+
+
+@pytest.mark.parametrize("seed", [9, 21, 1])
+def test_four_control_points_along_two_edges_all_count(monkeypatch, project, tmp_path, seed):
+    # A small block without RTK along two edges of a site: its logged altitudes are 21.7 m below
+    # the survey, the lens is only self-calibrated, and three of the four control points are
+    # close to one line. Every point is marked on its target in three photos.
+    scene = make_edge_scene(seed=seed, points=5000, gnss_sigma=(2.5, 4.0))
+    _aligned(monkeypatch, project, tmp_path, scene, alt_offset=-21.7, distortion_error=0.004)
+    write_gcp_files(scene, project, "r1", noise_px=0.3, marks_per_point=3)
+    _georef(project)
+    rep = _report(project)
+    gsd = rep["gsdCm"] / 100
+    assert [w for w in rep["warnings"] if w["code"] == "gcp-outlier"] == []
+    used = {p["id"] for p in rep["points"] if p["usedInAdjustment"]}
+    assert used == {"GCP1", "GCP2", "GCP3", "GCP5"}
+    assert rep["rmse"]["control"]["n"] == 4 and rep["rmse"]["check"]["n"] == 3
+    # plan targets: checkpoints RMSE horizontal under 1.5 x GSD, vertical under 2.5 x GSD
+    assert rep["rmse"]["check"]["horizontalM"] < 1.5 * gsd, rep["rmse"]
+    assert rep["rmse"]["check"]["verticalM"] < 2.5 * gsd, rep["rmse"]
 
 
 def test_a_gcp_one_metre_off_is_named_and_left_out(monkeypatch, project, tmp_path):

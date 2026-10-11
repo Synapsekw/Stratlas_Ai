@@ -122,3 +122,90 @@ def test_the_one_control_point_that_disagrees_is_named():
     assert [o.id for o in out] == ["G6"] and out[0].distance_m == pytest.approx(1.0, abs=0.1)
     clean = {k: v for k, v in measured.items() if k != "G6"}
     assert G.control_outliers(clean, surveyed, sigma) == []
+
+
+# Four control points along two edges of a small block, three of them close to one line: what the
+# marks of the synthetic mini flight put them at through its GNSS-only alignment by the real
+# engine (no RTK: 22 m low, tilted by 3 degrees, 1.4 % small, heights bent by 0.2 m), against
+# their survey. East, north, up in metres; every mark is on its target.
+L_SURVEYED = {
+    "GCP1": [-89.961, -69.756, -0.246],
+    "GCP2": [52.116, -63.182, 0.305],
+    "GCP3": [50.538, 76.878, -0.070],
+    "GCP5": [-13.614, 35.055, -0.194],
+}
+L_MEASURED = {
+    "GCP1": [-87.752, -69.398, -25.740],
+    "GCP2": [52.099, -62.599, -17.690],
+    "GCP3": [50.370, 75.498, -19.993],
+    "GCP5": [-12.757, 34.113, -22.591],
+}
+
+
+def _before_control(rng, surveyed: np.ndarray, bend_m: float = 0.2) -> np.ndarray:
+    """Accurately marked points as a model shows them before ground control: heights bent by a
+    bowl (the lens is only self-calibrated) and noisy (few marks), then tilted, scaled and tens
+    of metres low (GNSS without RTK)."""
+    xy = surveyed[:, :2]
+    ext = np.abs(xy).max()
+    c = rng.normal(0, 0.3 * ext, 2)
+    bowl = rng.normal(0, bend_m) * (((xy - c) ** 2).sum(axis=1) / ext**2 - 0.5)
+    m = surveyed + np.column_stack([rng.normal(0, 0.02, (len(xy), 2)), bowl + rng.normal(0, 0.08, len(xy))])
+    a, b = np.radians(rng.normal(0, 3.0, 2))
+    rx = np.array([[1, 0, 0], [0, np.cos(a), -np.sin(a)], [0, np.sin(a), np.cos(a)]])
+    ry = np.array([[np.cos(b), 0, np.sin(b)], [0, 1, 0], [-np.sin(b), 0, np.cos(b)]])
+    return 0.986 * m @ (rx @ ry).T + np.array([1.5, -0.8, -25.0])
+
+
+def _points(rng, xy, blunder=None, bend_m=0.2):
+    xy = np.array(xy, dtype=np.float64)
+    truth = np.column_stack([xy, 0.004 * xy[:, 0] - 0.0025 * xy[:, 1] + rng.normal(0, 0.5, len(xy))])
+    ids = [f"G{k + 1}" for k in range(len(xy))]
+    measured = dict(zip(ids, _before_control(rng, truth, bend_m), strict=True))
+    stated = truth.copy()
+    if blunder is not None:
+        stated[0] += blunder  # the survey of G1 is wrong
+    return measured, dict(zip(ids, stated, strict=True)), {i: (0.02, 0.03) for i in ids}
+
+
+def test_an_accurate_point_far_from_the_others_is_kept():
+    surveyed = {k: np.array(v) for k, v in L_SURVEYED.items()}
+    measured = {k: np.array(v) for k, v in L_MEASURED.items()}
+    sigma = {k: (0.02, 0.03) for k in surveyed}
+    # the other three would put GCP2 2.3 m too high, but only because they are close to one line:
+    # their heights say little about the ground 77 m beside them
+    assert G.control_outliers(measured, surveyed, sigma) == []
+
+
+@pytest.mark.parametrize(
+    "xy",
+    [
+        [(-72, -75), (70, -68), (68, 72), (4, 30)],  # two edges of a block
+        [(-70, -70), (70, -70), (70, 70), (-70, 70)],
+        [(-70, -70), (70, -70), (70, 70), (-70, 70), (4, 30)],
+        [(-200, -10), (-100, 12), (0, -8), (100, 10), (200, -12)],  # a corridor
+        [(-70, -70), (70, -70), (70, 70), (-70, 70), (4, 30), (-50, 46), (40, -20), (-20, -45)],
+    ],
+)
+def test_accurate_control_is_not_left_out_before_the_adjustment(xy):
+    rng = np.random.default_rng(5)
+    dropped = sum(bool(G.control_outliers(*_points(rng, xy))) for _ in range(200))
+    assert dropped <= 2, f"{dropped} of 200 sets of accurate points lost one"
+
+
+@pytest.mark.parametrize(
+    "xy",
+    [
+        [(-50, 46), (-70, -70), (70, -70), (70, 70), (-70, 70)],
+        [(-50, 46), (-70, -70), (70, -70), (70, 70), (-70, 70), (4, 30)],
+        [(-180, 5), (-200, -10), (-100, 12), (0, -8), (100, 10), (200, -12)],
+    ],
+)
+def test_a_point_surveyed_one_metre_off_is_named_whatever_the_model_bends(xy):
+    rng = np.random.default_rng(6)
+    found = wrong = 0
+    for _ in range(100):
+        out = [o.id for o in G.control_outliers(*_points(rng, xy, blunder=np.array([0.6, 0.8, 0.0])))]
+        found += "G1" in out
+        wrong += any(i != "G1" for i in out)
+    assert found >= 97 and wrong <= 2, (found, wrong)

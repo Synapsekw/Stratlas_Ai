@@ -7,8 +7,9 @@
 - ``predict_marks`` projects every point into every aligned photo that sees it, with a search
   radius from the cameras' uncertainty: the drafts G4 shows a person (``predicted``).
 - ``control_outliers`` names a control point whose surveyed position disagrees with the others
-  (leave-one-out similarity of the marked positions); it is left out of the adjustment and the
-  report says so. Nothing is hidden: its residual is still listed.
+  (leave-one-out similarity of the marked positions, judged by how well the others can say where
+  it should be); it is left out of the adjustment and the report says so. Nothing is hidden: its
+  residual is still listed.
 
 Mark pixels are in original image pixels with the top-left corner of the image at (0, 0) (x
 right, y down), the same convention as the sparse model (``photo/model.py``).
@@ -257,35 +258,89 @@ class Outlier:
     distance_m: float
 
 
+#: The chance that one round of ``control_outliers`` names a point of accurate control, over all
+#: its tests together.
+OUTLIER_ALPHA = 0.01
+
+
+def _left_out(measured: dict[str, np.ndarray], surveyed: dict[str, np.ndarray], others: list[str], i: str):
+    """Point ``i`` against the similarity fitted to ``others``: how far that fit puts it from its
+    survey (east, north, up), how uncertain that is (the covariance of the difference for points
+    of unit variance, 3 x 3) and what the fit leaves on the others themselves (n x 3).
+
+    The covariance is what makes the difference comparable between points: a fit says little about
+    a place far from its points, or beside points that lie close to one line (the tilt about
+    that line is hardly fixed), and there a large difference means nothing.
+    """
+    src = np.array([measured[j] for j in others])
+    dst = np.array([surveyed[j] for j in others])
+    s, r, t = similarity(src, dst)
+    fitted = s * src @ r.T + t
+    centre = fitted.mean(axis=0)
+
+    def jacobian(p: np.ndarray) -> np.ndarray:  # of a fitted point: shift, small rotation, scale
+        d = p - centre
+        cross = np.array([[0.0, -d[2], d[1]], [d[2], 0.0, -d[0]], [-d[1], d[0], 0.0]])
+        return np.hstack([np.eye(3), -cross, d[:, None]])
+
+    normal = sum(jacobian(p).T @ jacobian(p) for p in fitted)
+    w, v = np.linalg.eigh(normal)
+    w = np.maximum(w, 1e-9 * w.max())  # what the others do not fix at all stays (almost) unknown
+    at = s * r @ measured[i] + t
+    j = jacobian(at)
+    return at - surveyed[i], np.eye(3) + j @ (v / w) @ v.T @ j.T, fitted - dst
+
+
 def control_outliers(
     measured: dict[str, np.ndarray],
     surveyed: dict[str, np.ndarray],
     sigma: dict[str, tuple[float, float]],
     floor_m: float = 0.10,
 ) -> list[Outlier]:
-    """Control points that disagree with the others (leave-one-out similarity, metric frame).
+    """Control points that disagree with the others (leave-one-out similarity; east, north, up).
 
     ``measured`` is where the marks put each point through the current cameras, ``surveyed`` its
-    stated position. A point is an outlier when the similarity fitted to the *other* points puts
-    it further from its survey than ``max(floor_m, 5 sigma, 3 x the median of the others)``.
-    One point at a time, the worst first, while at least three points remain.
+    stated position, ``sigma`` its stated accuracy (horizontal, vertical). Each point is compared
+    with the similarity fitted to the *other* points, horizontally and vertically apart, because
+    the two are not equally good before the adjustment: a model that has not seen ground control
+    is right to centimetres in plan, but its heights are bent by decimetres or more (the lens is
+    only self-calibrated) and say less with every point that is missing.
+
+    The difference of a point is first scaled by how well the others can predict that place
+    (``_left_out``). It is an outlier when it is then more than ``max(floor_m, 5 sigma)`` and
+    more than the scatter of the others about their own fit explains: an F test at
+    ``OUTLIER_ALPHA`` over all the tests of the round, with the scatter never taken smaller than
+    the stated accuracy. Where the others leave nothing to estimate their scatter from, nothing is
+    tested: heights need five points, and of four points only the plan is tested. One point at a
+    time, the clearest first, while at least three points remain.
+
+    ``Outlier.distance_m`` is the plain distance between the point and where the others put it.
     """
+    from scipy.special import fdtri  # the F distribution's quantile
+
     ids = [i for i in measured if i in surveyed]
     out: list[Outlier] = []
     while len(ids) >= 4:
+        m = len(ids) - 1
+        # (the components, the parameters of a similarity they fix, the index into sigma)
+        parts = ((slice(0, 2), 4, 0), (slice(2, 3), 3, 1))
+        alpha = OUTLIER_ALPHA / (len(parts) * len(ids))
         worst: tuple[str, float, float] | None = None
-        dists = {}
         for i in ids:
-            others = [j for j in ids if j != i]
-            sim = similarity(np.array([measured[j] for j in others]), np.array([surveyed[j] for j in others]))
-            s, r, t = sim
-            d = float(np.linalg.norm(s * r @ measured[i] + t - surveyed[i]))
-            dists[i] = d
-        for i in ids:
-            rest = [dists[j] for j in ids if j != i]
-            limit = max(floor_m, 5 * max(sigma.get(i, (0.02, 0.03))), 3 * float(np.median(rest)))
-            if dists[i] > limit and (worst is None or dists[i] / limit > worst[2]):
-                worst = (i, dists[i], dists[i] / limit)
+            diff, cov, rest = _left_out(measured, surveyed, [j for j in ids if j != i], i)
+            for part, fixed, k in parts:
+                n = part.stop - part.start
+                dof = n * m - fixed
+                if dof < 1:
+                    continue
+                stated = float(sigma.get(i, (0.02, 0.03))[k])
+                d2 = float(diff[part] @ np.linalg.solve(cov[part, part], diff[part]))
+                if d2 <= max(floor_m, 5 * stated) ** 2:
+                    continue
+                scatter2 = max(float((rest[:, part] ** 2).sum()) / dof, stated**2)
+                score = (d2 / n) / scatter2 / float(fdtri(n, dof, 1 - alpha))
+                if score > 1 and (worst is None or score > worst[2]):
+                    worst = (i, float(np.linalg.norm(diff)), score)
         if worst is None:
             break
         out.append(Outlier(worst[0], worst[1]))
