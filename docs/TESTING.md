@@ -46,6 +46,7 @@ Only what still needs testing. Each stage lists what to click and what you shoul
 | D           | Drawings: the Drawings group, PDF and picture drawings, side by side, placing by points, opacity and on top                                                                                                                                                                                                                 | Version 0.11.4; any project, a test project is best because a drawing cannot be removed yet (see Stage D)                                                                                                                                                  | Built; not yet tested by the founder                 |
 | M10         | Photos to products: photo processing on the demo and on your own flight, ground control and the accuracy report, OPF, Globe, imagery and terrain packs, 3D Tiles, licence approvals                                                                                                                                         | Version 0.10.0, built 8 Oct 2026 from `integration/m10` at commit `3f07041` or later with the M10 fixes merged (the 24-photo demo), and the processing tools 0.4.0 or later; test it on 0.11.4 with the processing tools 0.5.4 (see M10, Before you start) | Built; not yet tested by the founder                 |
 | M11         | Surveying: site coordinates and calibration, the surface engine, measurement tools and templates, volumes and comparisons, cross-sections and terrain overlays, designs and alignments, survey exports and the interop matrix, QA and cleanup, survey reports and template sets, haul road, hydrology, your three real jobs | Version 0.11.4 with the processing tools 0.5.4 (both carry the local AI helpers), and the survey demos (see M11, Before you start)                                                                                                                         | Built; not yet tested by the founder                 |
+| Walks W1    | 360 video: a 360 camera file or a stitched 360 video comes in and plays beside the 3D view; it is not placed on the site yet                                                                                                                                                                                                | Version 0.11.4, and ffmpeg on the PC (see Walks W1, Before you start)                                                                                                                                                                                      | Built; not yet tested by the founder                 |
 
 ## Stage M5: your M4 feedback, fixed
 
@@ -1030,9 +1031,9 @@ Your three jobs, on this PC only, with Wi-Fi off. Client files stay on this PC: 
 | Landfill   | Compaction from the weighbridge tonnage  |                                          |             |            | 1%     | [ ]  |
 | Landfill   | Checkpoint heights                       |                                          |             |            | 10 mm  | [ ]  |
 
-## 360 video from a 360 camera
+## Stage Walks W1: 360 video from a 360 camera
 
-New on 11 Oct 2026, in the build after branch `feat/insta360-native` is merged. This is the first part of Walks 360: the video comes in and plays; it is not placed on the site yet.
+A 360 camera file needs ffmpeg on the PC, so check that first (Before you start). Test it on 0.11.4. This is the first part of Walks 360: the video comes in and plays; it is not placed on the site yet. A 360 video cannot be removed or renamed yet, so use a copy or a test project.
 
 ### Before you start
 
@@ -1042,8 +1043,8 @@ New on 11 Oct 2026, in the build after branch `feat/insta360-native` is merged. 
 ### Import
 
 - [ ] Open the project, then **Add data** (or drag the files onto the window) and pick the `.insv` and the `.lrv` together. The import panel counts the files ("Importing 1 of 2") and, under the bar, shows the file name with "playback copy" and a percentage that counts up; the bar moves with it.
-- [ ] When it ends the panel reads "Imported 1 of 2 files". The `.insv` line says "Stitched to 3840 x 1920 for playback from two lens streams of 2880 x 2880; the original stays where it is." The `.lrv` line is **Skipped**: "The camera's low resolution copy of VID_..., which is imported in full."
-- [ ] An 80 second clip takes about two minutes on this PC. The app stays usable meanwhile.
+- [ ] When it ends the panel reads "Imported 1 of 2 files". The `.insv` line is **Imported**: "Stitched to 3840 x 1920 for playback from two lens streams of 2880 x 2880; the original stays where it is. Open it under 360 video in the sidebar." The `.lrv` line is **Skipped**: "The camera's low resolution copy of VID_..., which is imported in full."
+- [ ] A minute of footage takes about a minute or two to stitch. The app stays usable meanwhile, but a second import does not start until the first has ended or is cancelled.
 - [ ] Import the clip again and click **Cancel** in the panel while the percentage counts: the header reads "Cancelling the import", then "Imported 0 of 1 files", and the clip's line is **Skipped**: "The import was cancelled while this 360 video was made. Nothing of it was added." The **360 video** list has no new row, and in Task Manager no ffmpeg is left running.
 - [ ] Drop the clip together with a few photos and click **Cancel** while the clip's percentage counts: the photos are kept ("Imported ... files", their lines **Imported**) and show in the scene and the dataset tree, and the clip is **Skipped**. Without Cancel the photos are saved in the project at once, but they show only when the whole import has ended, clip included.
 - [ ] Drop the clip together with a PDF of several pages and click **Cancel** while the clip's percentage counts: no page question appears, the PDF's line is **Skipped** ("The import was cancelled before this drawing was drawn. Nothing of it was added.") and the **Drawings** group has no new row.
@@ -1053,9 +1054,10 @@ New on 11 Oct 2026, in the build after branch `feat/insta360-native` is merged. 
 ### Play
 
 - [ ] Below the datasets there is a **360 video** list with the clip and its length. Click it: the **Scene** switches to **Split**, with **360 video** on the right.
-- [ ] The picture is upright and the horizon is level. Drag in the pane: the view turns with the pointer. Scroll: it zooms in and out. The round arrow in the bar ("Look ahead again") puts the view back.
+- [ ] In the **360 video** list a row shows the video's name and its length, and a click opens it. The row has no eye, no settings button and no menu, and **Ctrl K** has only **Add 360 video**: a 360 video cannot be renamed or removed in the app yet (see KNOWN-LIMITS).
+- [ ] The picture is not levelled or stabilised (see KNOWN-LIMITS): the horizon is level where the camera was held upright. Drag in the pane: the view turns with the pointer. Scroll: it zooms in and out. The round arrow in the bar ("Look ahead again") puts the view back.
 - [ ] The play button plays and pauses; the time counts up ("0:12 / 1:21"); dragging the slider jumps to that moment.
-- [ ] Click in the picture, then use the keys: **Space** plays and pauses, **L** plays faster (the bar shows "2x"), **J** slows down or steps back a second, **K** pauses, comma and period step one frame.
+- [ ] Click in the picture, then use the keys: **Space** plays and pauses, **L** plays and, pressed again while it plays, doubles the speed (the bar shows "2x", then "4x" and "8x"), **J** slows down or steps back a second, **K** pauses, comma and period step one frame.
 - [ ] **Sound** turns the sound on and off.
 - [ ] The small chooser at the top right of the pane still switches the side to **3D view**, **Map** and back to **360 video**.
 - [ ] Faint seams at the quarter lines of the picture, and the person holding the camera at the bottom, are expected (see KNOWN-LIMITS).
@@ -1063,8 +1065,8 @@ New on 11 Oct 2026, in the build after branch `feat/insta360-native` is merged. 
 ### A stitched video
 
 - [ ] **Ctrl K**, **Add 360 video**, pick an equirectangular MP4 (an Insta360 Studio export, 2:1). The panel says "Stored as it is (...)" for an H.264 file up to 3840 wide, or "Playback copy at ..." for a larger one or another codec.
-- [ ] The **360 video** list now has two rows, and the pane has a chooser for them at the top left.
-- [ ] **Ctrl K**, **Add 360 video** with an ordinary drone MP4: **Skipped**, "The frame is ..., not a 2:1 equirectangular picture, and the file has no 360 metadata."
+- [ ] The **360 video** list has one more row, and the pane has a chooser for the videos at the top left.
+- [ ] **Ctrl K**, **Add 360 video** with an ordinary drone MP4: **Skipped**, "The frame is ..., not a 2:1 equirectangular picture, and the file has no 360 metadata. Drone video is imported with Add data, together with its SRT."
 - [ ] **Add data** with the same drone MP4 without its SRT behaves as before ("No DJI SRT telemetry...").
 
 ### The low resolution copy on its own
@@ -1073,7 +1075,7 @@ New on 11 Oct 2026, in the build after branch `feat/insta360-native` is merged. 
 
 ### Without ffmpeg
 
-- [ ] Optional, on a PC without ffmpeg: import an `.insv`. The line is **Failed** with "ffmpeg was not found, and the app needs it to stitch the two lens pictures of a 360 camera file. Install a full ffmpeg build ..." and the project folder has no `walks` folder.
+- [ ] Optional, on a PC without ffmpeg: import an `.insv`. The panel reads "Imported 0 of 1 files" and the line is **Failed** with "ffmpeg was not found, and the app needs it to stitch the two lens pictures of a 360 camera file. Install a full ffmpeg build ..." ending in "Nothing was added to the project." No `walks` folder is made in the project folder (one that was there before gets no new folder).
 
 ### Packages and older builds
 
