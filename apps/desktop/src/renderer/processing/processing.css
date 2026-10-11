@@ -121,8 +121,16 @@
   overflow-y: auto;
   padding: 14px;
 }
-.proc-dlg .new-job {
+/* the form sits plainly in the dialog and in Settings: no box of its own, no side margin */
+.proc-dlg .new-job,
+.proc-adv .new-job {
+  margin: 0;
   padding: 0;
+  border: 0;
+  background: none;
+}
+.proc-dlg .proc-tools {
+  margin-bottom: 12px;
 }
 
 /* ---------- processing: Settings, Processing tools, Advanced ---------- */
@@ -134,8 +142,8 @@
   margin-bottom: 8px;
 }
 .proc-adv .new-job {
-  padding: 0;
   max-width: 560px;
+  margin-bottom: 12px;
 }
 .proc-adv .jobs-list {
   max-height: 320px;
