@@ -351,6 +351,8 @@ export default function GlobeScreen() {
       data-surface="dark"
       data-look={look}
     >
+      {/* the screen's heading, for a screen reader: nothing on the Globe shows its name */}
+      <h1 className="sr-only">{t('globe.nav')}</h1>
       {/* the top edge, in tab order: the field (the read-out while measuring), then Map */}
       {measuring ? (
         <p className="globe-readout" data-testid="globe-readout" aria-live="polite">
