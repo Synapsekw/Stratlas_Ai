@@ -25,6 +25,8 @@ import { join } from 'node:path';
 import { expect, VENV_PYTHON, type DataRoot } from './fixtures';
 
 export const PHOTO_PROJECT = { id: 'e2e-photos', name: 'E2E photo site' } as const;
+/** The day the synthetic photos were taken (EXIF DateTime); the project has no survey date for it. */
+export const PHOTO_DAY = '2026-03-14';
 export const PHOTO_SIZE: [number, number] = [800, 600];
 export const PHOTO_HFOV = 70;
 const ORIGIN: [number, number, number] = [400000, 3250000, 0];
@@ -168,6 +170,9 @@ for i, photo in enumerate(spec["photos"]):
     exif = Image.Exif()
     exif[271] = "Stratlas Synthetic"
     exif[272] = "SYN-20"
+    exif[306] = "2026:03:14 10:00:00"
+    # the head reader looks for the date inside the Exif block, so the block must exist
+    exif.get_ifd(0x8769)[36867] = "2026:03:14 10:00:00"
     lat, lon = photo["lat"], photo["lon"]
     def dms(v):
         v = abs(v); d = int(v); m = int((v - d) * 60); s = (v - d - m / 60) * 3600

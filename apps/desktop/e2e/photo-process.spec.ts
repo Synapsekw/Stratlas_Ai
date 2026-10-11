@@ -23,8 +23,10 @@ import {
   openOptions,
   openPhotoSite,
   openWizard,
+  PHOTO_DAY,
   PHOTO_PLATFORM,
   PHOTO_PLATFORM_ONLY,
+  PHOTO_PROJECT,
   photoFixtures,
   runId,
   startRun,
@@ -46,7 +48,13 @@ interface Probe {
       getState(): {
         project: {
           manifest: {
-            layers: { id: string; kind: string; items?: { id: string; pos?: number[] }[] }[];
+            captures: { id: string; date: string }[];
+            layers: {
+              id: string;
+              kind: string;
+              capture?: string;
+              items?: { id: string; pos?: number[] }[];
+            }[];
           };
         } | null;
       };
@@ -90,6 +98,14 @@ test.describe('on the stand-in pipelines', () => {
       /(About \d|Under a minute).* on this computer/,
     );
     await expect(wizard.getByTestId('photo-needs')).toContainText('of disk space and');
+    // the project by name, and the survey date worked out from the photos
+    await expect(wizard.getByTestId('photo-project')).toHaveText(`Project: ${PHOTO_PROJECT.name}`);
+    await expect(wizard.getByTestId('photo-date')).toContainText('Survey date:');
+    await expect(wizard.getByTestId('photo-date')).toContainText('(new)');
+    await expect(wizard.getByTestId('photo-days')).toHaveCount(0);
+    await expect(wizard.getByTestId('photo-destination')).toHaveText(
+      `The maps are added to ${PHOTO_PROJECT.name}.`,
+    );
     // an ordinary flight on Standard: no question, no warning, nothing blocked, ready to start
     await expect(wizard.getByTestId('photo-blocked')).toHaveCount(0);
     for (const id of ['ask-disk', 'ask-time', 'ask-zone', 'photo-gps', 'photo-none'])
@@ -157,9 +173,20 @@ test.describe('on the stand-in pipelines', () => {
     const panel = win.getByTestId('photo-run');
     await expect(panel).toBeVisible();
     const run = await runId(win);
+    await expect(panel.getByTestId('photo-run-project')).toContainText(PHOTO_PROJECT.name);
     await expect(phase(win, 'match')).toHaveAttribute('data-state', 'running', {
       timeout: 60_000,
     });
+    // the date is not added while the photos are still being matched
+    expect(
+      await win.evaluate(
+        (day) =>
+          (window as unknown as Probe).__stratlas.workspace
+            .getState()
+            .project?.manifest.captures.some((c) => c.date === day),
+        PHOTO_DAY,
+      ),
+    ).toBe(false);
     await expect(phase(win, 'match')).toContainText('Matching photos');
     // the maps are part of the same run from the start
     await expect(phase(win, 'map')).toHaveAttribute('data-state', 'pending');
@@ -189,6 +216,20 @@ test.describe('on the stand-in pipelines', () => {
     await expect
       .poll(async () => (await layers(win))?.map((l) => l.id))
       .toContain(`photo-${run}-mesh`);
+    // the new layer is under the photos' survey date, which the run added
+    const filed = await win.evaluate(
+      ([id, day]) => {
+        const m = (window as unknown as Probe).__stratlas.workspace.getState().project?.manifest;
+        const capture = m?.layers.find((l) => l.id === id)?.capture;
+        return { capture, date: m?.captures.find((c) => c.id === capture)?.date, day };
+      },
+      [`photo-${run}-mesh`, PHOTO_DAY] as const,
+    );
+    expect(filed.capture).toBe(`capture-${PHOTO_DAY}`);
+    expect(filed.date).toBe(PHOTO_DAY);
+    await expect(results.getByTestId('photo-results-where')).toContainText(
+      `Added to ${PHOTO_PROJECT.name} under`,
+    );
     await expectAccessible(win, 'photo run, maps ready', { include: '[data-testid="photo-run"]' });
     await shot(win, 'create-maps-done');
 
