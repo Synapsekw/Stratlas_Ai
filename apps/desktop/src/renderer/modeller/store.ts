@@ -281,6 +281,11 @@ export function createModeller(deps: ModellerDeps): StoreApi<Modeller> {
               : 'No drawing is imported yet. Import a DXF drawing first.',
           };
         }
+        if (d.source === 'image') {
+          return {
+            error: `${d.name} is a picture, so it has no parts to add. Parts come from DXF drawings.`,
+          };
+        }
         let candidates: ProcPart[];
         try {
           candidates = readDrawingParts(await fetchJson(assetUrl(p.id, { path: d.parts }))).parts;

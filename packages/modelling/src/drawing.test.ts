@@ -4,6 +4,7 @@ import {
   drawingsOf,
   drawingToLocal,
   findDrawing,
+  isDrawingPlan,
   localToDrawing,
   parsePlacement,
   readDrawingParts,
@@ -32,6 +33,7 @@ describe('imported drawings', () => {
     expect(list.map((d) => d.stem)).toEqual(['site-2', 'plot']);
     expect(list[1]).toEqual({
       stem: 'plot',
+      source: 'dxf',
       name: 'plot.dxf',
       planLayer: 'plan-plot',
       dxf: 'drawings/plot.dxf',
@@ -76,5 +78,22 @@ describe('imported drawings', () => {
       /Import the drawing again/,
     );
     expect(() => readDrawingParts({ schema: 'x' })).toThrow(/Import it again/);
+  });
+});
+
+describe('drawings from pictures and PDF pages', () => {
+  const sheet: Layer = {
+    ...plan('layout-p2', 'x'),
+    id: 'sheet-layout-p2',
+    name: 'layout.pdf, page 2',
+  };
+
+  it('are drawings too, told apart from DXF drawings by their layer id', () => {
+    const list = drawingsOf({ layers: [plan('plot', 'plot.dxf'), sheet] });
+    expect(list.map((d) => [d.stem, d.source, d.name])).toEqual([
+      ['layout-p2', 'image', 'layout.pdf, page 2'],
+      ['plot', 'dxf', 'plot.dxf'],
+    ]);
+    expect(isDrawingPlan(sheet)).toBe(true);
   });
 });

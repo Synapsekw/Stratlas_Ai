@@ -1,4 +1,5 @@
 import type { Layer } from '@aio/schema';
+import { layerDisplay, type LayerDisplay } from '@aio/workspace';
 import type { MeshLambertMaterial } from 'three';
 import {
   BufferAttribute,
@@ -83,6 +84,36 @@ export function rasterDraw(
   };
 }
 
+/** Render order of a drawing drawn on top: after models and point clouds, under pick markers. */
+export const ON_TOP_ORDER = 40;
+
+/**
+ * How a plan (a drawing) lies over the scene for the person's choice (`layerDisplay`): its
+ * opacity, and "on top", which skips the depth test and draws it after the models and point clouds
+ * so they no longer hide it. No choice draws it as before.
+ */
+export function planDisplay(
+  d: LayerDisplay | undefined,
+  base: { renderOrder: number },
+): { opacity: number; depthTest: boolean; renderOrder: number } {
+  const onTop = d?.onTop === true;
+  return {
+    opacity: d?.opacity ?? 1,
+    depthTest: !onTop,
+    renderOrder: onTop ? ON_TOP_ORDER + (base.renderOrder + 4) * 0.01 : base.renderOrder,
+  };
+}
+
+/** Apply the person's display choice to one plan quad. */
+function showPlan(mesh: Mesh, layerId: string): void {
+  const base = (mesh.userData as { aioOrder?: number }).aioOrder ?? mesh.renderOrder;
+  const d = planDisplay(layerDisplay.getState().byLayer[layerId], { renderOrder: base });
+  const m = mesh.material as MeshBasicMaterial;
+  m.opacity = d.opacity;
+  m.depthTest = d.depthTest;
+  mesh.renderOrder = d.renderOrder;
+}
+
 /**
  * Plot plans are line art with alpha (transparent background): drawn with normal alpha blending
  * over the ortho, without writing depth. Photographic rasters (ortho, dsm) stay opaque where
@@ -127,6 +158,7 @@ function quadMesh(
   // imagery tells the land mask where the sea is
   if (ground) mesh.layers.enable(GROUND_LAYER);
   mesh.renderOrder = draw.renderOrder;
+  mesh.userData.aioOrder = draw.renderOrder;
   mesh.matrixAutoUpdate = false;
   return mesh;
 }
@@ -228,6 +260,17 @@ async function imageRaster(layer: RasterLayer, ctx: AdapterContext): Promise<Lay
     ctx.scene.addRaycastTarget(mesh, layer.id),
     ...(layer.role === 'plan' ? [] : [ctx.scene.addProjectionReceiver(mesh)]),
   ];
+  // a drawing follows its opacity and on top choice
+  if (layer.role === 'plan') {
+    showPlan(mesh, layer.id);
+    unregister.push(
+      layerDisplay.subscribe((s, prev) => {
+        if (s.byLayer[layer.id] === prev.byLayer[layer.id]) return;
+        showPlan(mesh, layer.id);
+        ctx.scene.requestRender();
+      }),
+    );
+  }
   ctx.scene.requestRender();
   return {
     setVisible(v) {
@@ -309,6 +352,7 @@ async function pyramidRaster(layer: RasterLayer, ctx: AdapterContext): Promise<L
             slot,
           );
           mesh.updateMatrixWorld(true);
+          if (layer.role === 'plan') showPlan(mesh, layer.id);
           arrived.push({ key: k, mesh });
           ctx.scene.requestRender();
         },
@@ -337,6 +381,16 @@ async function pyramidRaster(layer: RasterLayer, ctx: AdapterContext): Promise<L
       }
       update(false);
     }),
+    ...(layer.role === 'plan'
+      ? [
+          layerDisplay.subscribe((s, prev) => {
+            if (s.byLayer[layer.id] === prev.byLayer[layer.id]) return;
+            for (const m of tiles.values()) if (m) showPlan(m, layer.id);
+            for (const a of arrived) showPlan(a.mesh, layer.id);
+            ctx.scene.requestRender();
+          }),
+        ]
+      : []),
   ];
   update(true);
   return {

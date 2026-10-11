@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rasterDraw, rasterSlot } from './raster';
+import { ON_TOP_ORDER, planDisplay, rasterDraw, rasterSlot } from './raster';
 
 describe('raster drawing', () => {
   it('cuts the transparent no-data collar of photographic rasters away', () => {
@@ -26,5 +26,32 @@ describe('raster drawing', () => {
     const b = rasterSlot('test-ortho-b');
     expect(b).toBe(a + 1);
     expect(rasterSlot('test-ortho-a')).toBe(a);
+  });
+});
+
+describe('how a drawing lies over the scene', () => {
+  const base = rasterDraw(2, 3, true);
+
+  it('draws as it always did until a choice is made', () => {
+    expect(planDisplay(undefined, base)).toEqual({
+      opacity: 1,
+      depthTest: true,
+      renderOrder: base.renderOrder,
+    });
+    expect(planDisplay({}, base).opacity).toBe(1);
+  });
+
+  it('takes the chosen opacity', () => {
+    expect(planDisplay({ opacity: 0.35 }, base).opacity).toBe(0.35);
+  });
+
+  it('on top: no depth test, after the models and clouds, before the pick markers', () => {
+    const top = planDisplay({ onTop: true }, base);
+    expect(top.depthTest).toBe(false);
+    expect(top.renderOrder).toBeGreaterThan(ON_TOP_ORDER - 1);
+    expect(top.renderOrder).toBeLessThan(60);
+    // two drawings on top keep their order
+    const later = planDisplay({ onTop: true }, rasterDraw(2, 4, true));
+    expect(later.renderOrder).toBeGreaterThan(top.renderOrder);
   });
 });

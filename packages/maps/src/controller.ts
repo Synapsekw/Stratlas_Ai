@@ -7,6 +7,7 @@ import type { Issue, Layer, PoseSample, Vec3 } from '@aio/schema';
 import {
   assetUrl,
   issuesOnScreen,
+  layerDisplay,
   sameItems,
   type createWorkspace,
   type Workspace,
@@ -27,6 +28,7 @@ import {
 import { Vector3 } from 'three';
 import { drawPreview, isRepeatClick, type MapDrawSeam } from './draw';
 import { frameProjection, type FrameProjection } from './geo';
+import { rasterOpacity } from './rasterDisplay';
 import {
   ALL_ISSUES,
   footprint,
@@ -543,7 +545,10 @@ export function createMapController(
             source: sid,
             metadata: { layerId: layer.id },
             paint: {
-              'raster-opacity': layer.role === 'plan' ? 0.75 : 0.95,
+              'raster-opacity': rasterOpacity(
+                layer.role,
+                layerDisplay.getState().byLayer[layer.id],
+              ),
               'raster-fade-duration': 0,
             },
           },
@@ -609,7 +614,14 @@ export function createMapController(
             type: 'raster',
             source: sid,
             metadata: { layerId: layer.id },
-            paint: { 'raster-opacity': 1, 'raster-fade-duration': 0 },
+            paint: {
+              'raster-opacity': rasterOpacity(
+                layer.role,
+                layerDisplay.getState().byLayer[layer.id],
+                true,
+              ),
+              'raster-fade-duration': 0,
+            },
           },
           'aio-view3d-fill',
         );
@@ -935,6 +947,23 @@ export function createMapController(
       if (map.getLayer(id)) map.setPaintProperty(id, 'circle-color', color);
   }
 
+  /** Drawings follow the opacity the person chose (`layerDisplay`). */
+  function applyRasterDisplay(): void {
+    const layers = store.getState().project?.manifest.layers ?? [];
+    const set = (sid: string, fine: boolean) => {
+      const layerId = (map.getLayer(sid)?.metadata as { layerId?: string } | undefined)?.layerId;
+      const layer = layers.find((l) => l.id === layerId);
+      if (layer?.kind !== 'raster') return;
+      map.setPaintProperty(
+        sid,
+        'raster-opacity',
+        rasterOpacity(layer.role, layerDisplay.getState().byLayer[layer.id], fine),
+      );
+    };
+    for (const sid of rasterIds) set(sid, false);
+    for (const t of pyrTiles.values()) set(t.sid, true);
+  }
+
   function applyVisibility(s: Workspace): void {
     for (const sid of rasterIds) {
       const layerId = (map.getLayer(sid)?.metadata as { layerId?: string } | undefined)?.layerId;
@@ -1221,6 +1250,7 @@ export function createMapController(
     let prev = store.getState();
     void openProject(prev);
     let frame = 0;
+    cleanups.push(layerDisplay.subscribe(applyRasterDisplay));
     cleanups.push(
       store.subscribe((s) => {
         const last = prev;
