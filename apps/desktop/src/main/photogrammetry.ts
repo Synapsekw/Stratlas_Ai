@@ -1136,46 +1136,62 @@ export function registerPhotogrammetryIpc({
     }
     const file = parseCamerasFile(raw);
     if (typeof file === 'string') return { ok: false, error: file };
-    const { readManifestFile, writeManifestFile } = await lib();
-    const manifest = await readManifestFile(root);
-    const target = manifest.layers.find((l): l is PhotosLayer => l.id === layer);
-    if (target?.kind !== 'photos')
-      return { ok: false, error: `There is no photos layer "${layer}" in this project.` };
-    const refined = refinedPoses(file, manifest, target.items);
-    if (typeof refined === 'string') return { ok: false, error: refined };
-    const moves = poseMoves(target.items, refined);
-    if (moves.cameras === 0)
-      return {
-        ok: false,
-        error: `None of the run's refined cameras belongs to the layer "${target.name}".`,
-      };
-    if (!apply) return { ok: true, ...moves, applied: false };
-
-    // the poses before, kept in the run folder so the swap can be undone by hand
-    await writeJsonAtomic(
-      runPath(root, run, POSES_BACKUP),
-      {
-        layer: target.id,
-        savedAt: now().toISOString(),
-        cameras: target.items.map((it) => ({
-          id: it.id,
-          ...(it.pos ? { pos: it.pos } : {}),
-          ...(it.q ? { q: it.q } : {}),
-          ...(it.lens ? { lens: it.lens } : {}),
-        })),
-      },
-      { backup: true },
-    );
-    const items = target.items.map((it) => {
-      const r = refined.get(it.id);
-      return r ? { ...it, pos: r.pos, q: r.q, ...(r.lens ? { lens: r.lens } : {}) } : it;
-    });
-    const next: ProjectManifest = {
-      ...manifest,
-      layers: manifest.layers.map((l) => (l.id === target.id ? { ...target, items } : l)),
+    /** What the swap does to a manifest: the refusal, or the layer, its refined poses and moves. */
+    const plan = (manifest: ProjectManifest) => {
+      const target = manifest.layers.find((l): l is PhotosLayer => l.id === layer);
+      if (target?.kind !== 'photos')
+        return {
+          ok: false as const,
+          error: `There is no photos layer "${layer}" in this project.`,
+        };
+      const refined = refinedPoses(file, manifest, target.items);
+      if (typeof refined === 'string') return { ok: false as const, error: refined };
+      const moves = poseMoves(target.items, refined);
+      if (moves.cameras === 0)
+        return {
+          ok: false as const,
+          error: `None of the run's refined cameras belongs to the layer "${target.name}".`,
+        };
+      return { ok: true as const, target, refined, moves };
     };
-    await writeManifestFile(root, next);
-    return { ok: true, ...moves, applied: true };
+    const { readManifestFile, updateManifestFile } = await lib();
+    if (!apply) {
+      const p = plan(await readManifestFile(root));
+      return p.ok ? { ok: true, ...p.moves, applied: false } : p;
+    }
+
+    // decided and written on the manifest as it is when this save's turn comes, so the swap
+    // neither replaces a save made at the same moment nor puts back a layer that has gone
+    const { reply } = await updateManifestFile(root, async (manifest) => {
+      const p = plan(manifest);
+      if (!p.ok) return { manifest: null, reply: p };
+      const { target, refined, moves } = p;
+      // the poses before, kept in the run folder so the swap can be undone by hand
+      await writeJsonAtomic(
+        runPath(root, run, POSES_BACKUP),
+        {
+          layer: target.id,
+          savedAt: now().toISOString(),
+          cameras: target.items.map((it) => ({
+            id: it.id,
+            ...(it.pos ? { pos: it.pos } : {}),
+            ...(it.q ? { q: it.q } : {}),
+            ...(it.lens ? { lens: it.lens } : {}),
+          })),
+        },
+        { backup: true },
+      );
+      const items = target.items.map((it) => {
+        const r = refined.get(it.id);
+        return r ? { ...it, pos: r.pos, q: r.q, ...(r.lens ? { lens: r.lens } : {}) } : it;
+      });
+      const next: ProjectManifest = {
+        ...manifest,
+        layers: manifest.layers.map((l) => (l.id === target.id ? { ...target, items } : l)),
+      };
+      return { manifest: next, reply: { ok: true as const, ...moves, applied: true } };
+    });
+    return reply;
   });
 
   handle('photo:cleanWork', async ({ projectId, run }) => {

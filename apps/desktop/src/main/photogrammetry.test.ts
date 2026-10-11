@@ -1,3 +1,4 @@
+import { updateManifestFile } from '@aio/project/builder';
 import { withExif } from '@aio/project/builder/testing';
 import {
   PhotoEstimate,
@@ -6,6 +7,7 @@ import {
   type PhotoRun,
   type ProjectManifest,
 } from '@aio/schema';
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -837,6 +839,57 @@ describe('photo IPC', () => {
         apply: false,
       }),
     ).toMatchObject({ ok: false });
+  });
+
+  it('applies refined poses onto what a save on its way writes, not over it', async () => {
+    await writeFile(
+      join(root, 'photogrammetry', RUN, 'cameras-sfm.json'),
+      JSON.stringify(g2Cameras([['p1', [0.3, 60.4, 0]]])),
+    );
+    // a slow save of the same project has read the manifest when the swap is asked for
+    const slow = updateManifestFile(root, async (m) => {
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      return { manifest: { ...m, name: 'Renamed meanwhile' } };
+    });
+    const applied = await ipc.call('photo:applyPoses', {
+      projectId: 'p',
+      run: RUN,
+      layer: 'photos',
+      apply: true,
+    });
+    await slow;
+    expect(applied).toMatchObject({ ok: true, applied: true, cameras: 1 });
+    const m = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as ProjectManifest;
+    expect(m.name).toBe('Renamed meanwhile');
+    const items = (m.layers[0] as Extract<ProjectManifest['layers'][number], { kind: 'photos' }>)
+      .items;
+    expect(items[0]?.pos).toEqual([0.3, 60.4, 0]);
+  });
+
+  it('refuses the swap when the layer is gone by the time its turn comes', async () => {
+    await writeFile(
+      join(root, 'photogrammetry', RUN, 'cameras-sfm.json'),
+      JSON.stringify(g2Cameras([['p1', [0.3, 60.4, 0]]])),
+    );
+    const slow = updateManifestFile(root, async (m) => {
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      return { manifest: { ...m, layers: [] } };
+    });
+    const applied = await ipc.call('photo:applyPoses', {
+      projectId: 'p',
+      run: RUN,
+      layer: 'photos',
+      apply: true,
+    });
+    await slow;
+    expect(applied).toEqual({
+      ok: false,
+      error: 'There is no photos layer "photos" in this project.',
+    });
+    // the layer is not written back, and no poses were set aside for a swap that did not happen
+    const m = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as ProjectManifest;
+    expect(m.layers).toEqual([]);
+    expect(existsSync(join(root, 'photogrammetry', RUN, 'cameras.json.bak'))).toBe(false);
   });
 
   it('shifts refined poses to the project origin and refuses another CRS', async () => {

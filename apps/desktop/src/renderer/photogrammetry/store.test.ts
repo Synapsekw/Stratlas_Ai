@@ -21,3 +21,24 @@ describe('why the maps of a run did not start', () => {
     expect(photoUi.getState().startErrors.r3).toBe('second');
   });
 });
+
+describe('a run whose maps were started without the survey date', () => {
+  it('is kept per run until it is cleared', () => {
+    const ui = photoUi.getState();
+    ui.setDateWarning('w1', true);
+    expect(photoUi.getState().dateWarnings).toEqual({ w1: true });
+    ui.setDateWarning('w1', false);
+    expect(photoUi.getState().dateWarnings).toEqual({});
+  });
+
+  it('one run does not touch the warning of another', () => {
+    const ui = photoUi.getState();
+    ui.setDateWarning('w2', true);
+    ui.setDateWarning('w3', true);
+    ui.setDateWarning('w2', false);
+    expect(photoUi.getState().dateWarnings).toEqual({ w3: true });
+    ui.setDateWarning('w4', false);
+    expect(photoUi.getState().dateWarnings).toEqual({ w3: true });
+    ui.setDateWarning('w3', false);
+  });
+});

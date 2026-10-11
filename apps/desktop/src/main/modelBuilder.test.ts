@@ -1,5 +1,5 @@
 import { readGlb } from '@aio/modelling';
-import { readManifestFile, writeManifestFile } from '@aio/project/builder';
+import { readManifestFile, updateManifestFile, writeManifestFile } from '@aio/project/builder';
 import { ProcModel, type ProjectManifest } from '@aio/schema';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -280,5 +280,26 @@ describe('model builder IPC', () => {
     expect((await readManifestFile(root)).aiCloudDrawings).toBe(true);
     await r.call('ai:setCloudDrawings', { projectId: 'site', allow: false });
     expect((await readManifestFile(root)).aiCloudDrawings).toBeUndefined();
+  });
+
+  it('keeps a built layer, the policy and a save on its way made at the same moment', async () => {
+    const r = ipc();
+    await r.call('model:write', { projectId: 'site', model });
+    // a slow save of the same project has read the manifest when the handlers are called
+    const slow = updateManifestFile(root, async (m) => {
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      return { manifest: { ...m, name: 'Renamed meanwhile' } };
+    });
+    const [built, policy] = await Promise.all([
+      r.call('model:build', { projectId: 'site', id: 'plant' }),
+      r.call('ai:setCloudDrawings', { projectId: 'site', allow: true }),
+    ]);
+    await slow;
+    expect(built).toEqual({ ok: true, layer: 'model-plant', glb: 'models/plant.glb' });
+    expect(policy).toEqual({ ok: true });
+    const m = await readManifestFile(root);
+    expect(m.name).toBe('Renamed meanwhile');
+    expect(m.aiCloudDrawings).toBe(true);
+    expect(m.layers.map((l) => l.id)).toEqual(['model-plant']);
   });
 });
