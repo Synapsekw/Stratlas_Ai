@@ -153,6 +153,15 @@ test.describe('with QUADRION_SHOW_GATE=1', () => {
     await win.keyboard.press('Escape');
     await expect(gate(win)).toHaveAttribute('data-instant', '');
     await expect(gate(win)).toHaveAttribute('data-phase', 'ready');
+    // the mark stands complete: the tail has stepped out of the ring (at rest it starts at 36.6,
+    // in the closed ring near 32.6)
+    const tailX = await win.evaluate(
+      () =>
+        document
+          .querySelector<SVGGraphicsElement>('.qg-mark g[data-piece="3"] .bm-shape')
+          ?.getBBox().x ?? 0,
+    );
+    expect(tailX).toBeGreaterThan(36);
     await expect(gate(win)).toBeVisible();
 
     await setViewport(win, 820, 900);

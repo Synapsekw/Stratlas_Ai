@@ -4,14 +4,27 @@
  * dark and light themes and any size. The wordmark is in marks.ts.
  */
 
-import { quarterPieces, quarterSmallPieces } from './quarter';
+import {
+  QUARTER,
+  QUARTER_SMALL,
+  quarterBounds,
+  quarterPieces,
+  quarterSmallPieces,
+  type QuarterCut,
+} from './quarter';
+
+/** The square a cut occupies, as an SVG view box. */
+const viewBoxOf = (cut: QuarterCut): string => {
+  const b = quarterBounds(cut);
+  return [b.x, b.y, b.w, b.h].join(' ');
+};
 
 /** Symbol: three quarters of a ring and the tail, the lit fourth piece. It reads as a Q. */
 export const SYMBOL = {
-  viewBox: '4 4 52 52',
+  viewBox: viewBoxOf(QUARTER),
   /** North-west, north-east and south-west quarters, then the tail. */
   pieces: quarterPieces(),
   /** The small-size cut for 32 px and less: the ring closed into one piece, then the tail. */
-  smallViewBox: '4 4 53 53',
+  smallViewBox: viewBoxOf(QUARTER_SMALL),
   small: quarterSmallPieces(),
 } as const;

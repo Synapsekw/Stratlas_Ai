@@ -21,8 +21,8 @@
 }
 /* a project card while it opens */
 .pc-loader {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 /* the globe before its first frame */
 .globe-loader {
@@ -31,8 +31,4 @@
   margin: auto;
   width: 44px;
   height: 44px;
-}
-.about-lockup .lockup-mark {
-  width: 32px;
-  height: 32px;
 }

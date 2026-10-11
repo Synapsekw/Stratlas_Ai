@@ -72,6 +72,13 @@ describe('BrandMotion', () => {
     expect(container.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
   });
 
+  it('sizes the loader as brand-loader unless the caller gives it a class', () => {
+    const { container, rerender } = render(<BrandLoader />);
+    expect(container.querySelector('svg')?.getAttribute('class')).toBe('bm brand-loader');
+    rerender(<BrandLoader className="pc-loader" />);
+    expect(container.querySelector('svg')?.getAttribute('class')).toBe('bm pc-loader');
+  });
+
   it('stops its frame loop when it unmounts', () => {
     const cancel = vi.spyOn(window, 'cancelAnimationFrame');
     const { unmount } = render(<BrandMotion motion="turns" loop />);
@@ -234,6 +241,21 @@ describe('BrandMotion, frame by frame', () => {
     clock.at(4 * 855);
     expect(shape(3)?.hasAttribute('transform')).toBe(false);
     expect(clock.waiting()).toBe(true);
+  });
+
+  it('does not rewrite an attribute that has not changed from one frame to the next', () => {
+    const clock = frames();
+    render(<BrandLoader />);
+    clock.at(0);
+    // the turns motion only turns the pieces: the outline stays the same from frame to frame
+    const tail = shape(3) as SVGPathElement;
+    const write = vi.spyOn(tail, 'setAttribute');
+    for (const ms of [100, 200, 300]) clock.at(ms);
+    const names = write.mock.calls.map(([name]) => name);
+    // the spy sees the frames (the angle is written) but not a single unchanged outline
+    expect(names).toContain('transform');
+    expect(names).not.toContain('d');
+    expect(tail.getAttribute('d')).toBe(rest(3));
   });
 
   it('shows the halo only where a form has one', () => {

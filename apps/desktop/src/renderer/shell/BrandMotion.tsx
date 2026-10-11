@@ -28,26 +28,47 @@ function reduced(): boolean {
   );
 }
 
-/** Put one frame on the paths of a mark: the halo first, then the shape, per piece. */
-function draw(svg: SVGSVGElement, pieces: readonly PieceFrame[]): void {
-  const halos = svg.querySelectorAll<SVGPathElement>('.bm-halo');
-  const shapes = svg.querySelectorAll<SVGPathElement>('.bm-shape');
-  pieces.forEach((piece, i) => {
-    const halo = halos[i];
-    const shape = shapes[i];
-    if (!halo || !shape) return;
-    const turn = +(piece.rot % 360).toFixed(2);
-    const transform =
-      turn === 0 ? null : `rotate(${String(turn)} ${String(QUARTER.c)} ${String(QUARTER.c)})`;
-    for (const path of [halo, shape]) {
-      path.setAttribute('d', piece.d);
-      if (transform) path.setAttribute('transform', transform);
-      else path.removeAttribute('transform');
-    }
-    shape.setAttribute('opacity', String(+piece.opacity.toFixed(3)));
-    halo.setAttribute('stroke-width', (STROKE + 2 * piece.halo).toFixed(2));
-    halo.style.display = piece.halo > 0.02 ? '' : 'none';
-  });
+/**
+ * Puts frames on the paths of a mark: the halo first, then the shape, per piece. The paths are
+ * found once, and a value is written only when it differs from the last one written to that path
+ * (a turning piece keeps its outline from frame to frame).
+ */
+function painter(svg: SVGSVGElement): (pieces: readonly PieceFrame[]) => void {
+  const halos = [...svg.querySelectorAll<SVGPathElement>('.bm-halo')];
+  const shapes = [...svg.querySelectorAll<SVGPathElement>('.bm-shape')];
+  // per path, what was last written under each name (null: the attribute was removed)
+  const written = new Map<SVGPathElement, Record<string, string | null>>();
+  /** Set an attribute (or remove it, for null) unless it already holds that value. */
+  const put = (path: SVGPathElement, name: string, value: string | null) => {
+    const seen = written.get(path) ?? {};
+    written.set(path, seen);
+    if (seen[name] === value) return;
+    seen[name] = value;
+    if (value === null) path.removeAttribute(name);
+    else path.setAttribute(name, value);
+  };
+  return (pieces) => {
+    pieces.forEach((piece, i) => {
+      const halo = halos[i];
+      const shape = shapes[i];
+      if (!halo || !shape) return;
+      const turn = +(piece.rot % 360).toFixed(2);
+      const transform =
+        turn === 0 ? null : `rotate(${String(turn)} ${String(QUARTER.c)} ${String(QUARTER.c)})`;
+      for (const path of [halo, shape]) {
+        put(path, 'd', piece.d);
+        put(path, 'transform', transform);
+      }
+      put(shape, 'opacity', String(+piece.opacity.toFixed(3)));
+      put(halo, 'stroke-width', (STROKE + 2 * piece.halo).toFixed(2));
+      const display = piece.halo > 0.02 ? '' : 'none';
+      const seen = written.get(halo) ?? {};
+      if (seen.display !== display) {
+        seen.display = display;
+        halo.style.display = display;
+      }
+    });
+  };
 }
 
 export interface BrandMotionProps {
@@ -105,9 +126,10 @@ export function BrandMotion({
     const svg = svgRef.current;
     if (!svg) return;
     const rest = restFrame();
+    const draw = painter(svg);
     const key = `${motion}|${String(loop)}`;
     if (!plays) {
-      draw(svg, rest);
+      draw(rest);
       if (stoodFor.current !== key) {
         stoodFor.current = key;
         onDoneRef.current?.();
@@ -120,7 +142,7 @@ export function BrandMotion({
     const length = motionLength(m);
     const endless = m.loops && loop;
     // from the first frame, whatever an earlier motion left on the paths (a turn, a halo)
-    draw(svg, frameAt(m, 0).pieces);
+    draw(frameAt(m, 0).pieces);
     let raf = 0;
     /** Time of the motion's first frame; unknown until a frame comes, and again after a pause. */
     let start: number | null = null;
@@ -130,7 +152,7 @@ export function BrandMotion({
     let said = false;
     const finish = () => {
       ended = true;
-      draw(svg, rest);
+      draw(rest);
       if (!said) onDoneRef.current?.();
       said = true;
     };
@@ -149,7 +171,7 @@ export function BrandMotion({
       }
       start ??= now - elapsed;
       elapsed = now - start;
-      if (endless || elapsed < length) draw(svg, frameAt(m, elapsed).pieces);
+      if (endless || elapsed < length) draw(frameAt(m, elapsed).pieces);
       else {
         if (!ended) finish();
         if (!loop) return;
@@ -157,7 +179,7 @@ export function BrandMotion({
           start = now;
           elapsed = 0;
           ended = false;
-          draw(svg, frameAt(m, 0).pieces);
+          draw(frameAt(m, 0).pieces);
         }
       }
       raf = window.requestAnimationFrame(tick);
@@ -206,6 +228,12 @@ export function BrandMotion({
 }
 
 /** The loader: the mark turning a quarter at a time, for as long as the work takes. */
-export function BrandLoader(props: { className?: string; label?: string }) {
-  return <BrandMotion motion="turns" loop {...props} />;
+export function BrandLoader({
+  className = 'brand-loader',
+  label,
+}: {
+  className?: string;
+  label?: string;
+}) {
+  return <BrandMotion motion="turns" loop className={className} {...(label ? { label } : {})} />;
 }

@@ -76,6 +76,7 @@ describe('marks', () => {
     expect(SYMBOL.pieces).toHaveLength(4);
     expect(SYMBOL.small).toHaveLength(2);
     expect(SYMBOL.viewBox).toBe('4 4 52 52');
+    expect(SYMBOL.smallViewBox).toBe('4 4 53 53');
     for (const d of [...SYMBOL.pieces, ...SYMBOL.small]) expect(d).toMatch(/^M.*Z$/);
     expect(WORDMARK.quadrion.length).toBeGreaterThan(1000);
     expect(WORDMARK.ai).toMatch(/^M/);

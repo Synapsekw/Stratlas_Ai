@@ -133,12 +133,12 @@ const iconSmall = () =>
 
 // ---------- write SVGs ----------
 const W = (p, s) => writeFileSync(join(kit, p), s);
-const symbolDoc = (ink, acc, bg, name) => svgDoc(MB.w + 8, MB.h + 8,
+const symbolDoc = (ink, acc, bg) => svgDoc(MB.w + 8, MB.h + 8,
   (bg ? `<rect width="${MB.w + 8}" height="${MB.h + 8}" fill="${bg}"/>` : '') + `<g transform="translate(${4 - MB.x} ${4 - MB.y})">${mark(ink, acc)}</g>`, 'Quadrion AI symbol');
-W('symbol/quadrion-symbol-on-dark.svg', symbolDoc(C.ink, C.mint, null, 'a'));
-W('symbol/quadrion-symbol-on-light.svg', symbolDoc(C.inkL, C.mintL, null, 'b'));
-W('symbol/quadrion-symbol-black.svg', symbolDoc('#000', '#000', null, 'c'));
-W('symbol/quadrion-symbol-white.svg', symbolDoc('#fff', '#fff', null, 'd'));
+W('symbol/quadrion-symbol-on-dark.svg', symbolDoc(C.ink, C.mint, null));
+W('symbol/quadrion-symbol-on-light.svg', symbolDoc(C.inkL, C.mintL, null));
+W('symbol/quadrion-symbol-black.svg', symbolDoc('#000', '#000', null));
+W('symbol/quadrion-symbol-white.svg', symbolDoc('#fff', '#fff', null));
 for (const [name, ink, acc, ai] of [
   ['on-dark', C.ink, C.mint, true], ['on-light', C.inkL, C.mintL, true], ['black', '#000', '#000', true], ['white', '#fff', '#fff', true],
   ['no-ai-on-dark', C.ink, C.mint, false], ['no-ai-on-light', C.inkL, C.mintL, false],
@@ -251,7 +251,7 @@ footer{padding-block:24px;font-size:12.5px;color:var(--fg-2)}
 </style>
 </head>
 <body>
-<header class="top"><div class="wrap"><span class="eyebrow">Synapse Solutions · Quadrion AI brand kit · v1 · 7 Oct 2026</span><button class="theme-btn" id="theme-btn" type="button">Theme: auto</button></div></header>
+<header class="top"><div class="wrap"><span class="eyebrow">Synapse Solutions · Quadrion AI brand kit · v2 · 11 Oct 2026</span><button class="theme-btn" id="theme-btn" type="button">Theme: auto</button></div></header>
 <main class="wrap">
 <section>
   <h1>Quadrion AI</h1>

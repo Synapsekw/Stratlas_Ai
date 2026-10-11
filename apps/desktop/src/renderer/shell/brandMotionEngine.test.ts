@@ -1,4 +1,4 @@
-import { QUARTER, quarterBounds } from '@aio/brand';
+import { QUARTER, quarterBounds, SYMBOL } from '@aio/brand';
 import { describe, expect, it } from 'vitest';
 import {
   frameAt,
@@ -85,6 +85,53 @@ describe('the rest pose', () => {
     near(x1 + QUARTER.corner, b.x + b.w);
     near(y1 + QUARTER.corner, b.y + b.h);
     for (const piece of rest) expect(piece).toMatchObject({ opacity: 1, rot: 0, halo: 0 });
+  });
+
+  it('lies on the exact outline of the still mark, piece by piece', () => {
+    /** The end point of every M, L, H, V and A command of an outline. */
+    const endPoints = (d: string): [number, number][] => {
+      const out: [number, number][] = [];
+      let x = 0;
+      let y = 0;
+      for (const [, cmd = '', args = ''] of d.matchAll(/([MLHVAZ])([^MLHVAZ]*)/g)) {
+        const v = (args.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
+        if (cmd === 'H') x = v[0] ?? x;
+        else if (cmd === 'V') y = v[0] ?? y;
+        else if (cmd === 'A') {
+          x = v[5] ?? x;
+          y = v[6] ?? y;
+        } else if (cmd === 'M' || cmd === 'L') {
+          x = v[0] ?? x;
+          y = v[1] ?? y;
+        } else continue;
+        out.push([x, y]);
+      }
+      return out;
+    };
+    /** Distance from a point to the closed polygon `poly`. */
+    const distance = ([px, py]: [number, number], poly: [number, number][]) => {
+      let best = Infinity;
+      poly.forEach(([ax, ay], i) => {
+        const [bx, by] = poly[(i + 1) % poly.length] ?? [ax, ay];
+        const dx = bx - ax;
+        const dy = by - ay;
+        const len2 = dx * dx + dy * dy;
+        const t =
+          len2 === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
+        best = Math.min(best, Math.hypot(px - (ax + t * dx), py - (ay + t * dy)));
+      });
+      return best;
+    };
+    const rest = restFrame();
+    expect(SYMBOL.pieces).toHaveLength(4);
+    SYMBOL.pieces.forEach((still, i) => {
+      const poly = points(rest[i]?.d ?? '');
+      const ends = endPoints(still);
+      expect(ends.length).toBeGreaterThan(8);
+      // the moving mark is the polygon, inset by the corner radius, with a round stroke of
+      // twice that radius: every point of the exact outline is that radius from the polygon
+      for (const p of ends) expect(Math.abs(distance(p, poly) - QUARTER.corner)).toBeLessThan(0.15);
+    });
   });
 });
 

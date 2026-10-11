@@ -127,7 +127,7 @@ function ProjectCard({
           </span>
           {current && <span className="pc-open">Open</span>}
           {opening && (
-            <span className="pc-busy">
+            <span className="pc-busy" data-surface="dark">
               <BrandLoader className="pc-loader" />
               Opening
             </span>
