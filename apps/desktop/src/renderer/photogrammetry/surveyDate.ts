@@ -87,17 +87,21 @@ export function daysNote(days: Days, show: (iso: string) => string): string | nu
   return `The photos are from ${String(days.length)} days. Most are from ${show(days[0].date)}.`;
 }
 
-/** The Options list: None, the project's dates in date order, and the new day when there is one. */
+/**
+ * The Options list: None, the project's dates in date order, then each distinct new day among the
+ * picks to offer (the automatic pick and the person's own), earliest first.
+ */
 export function dateOptions(
-  pick: DatePick,
+  picks: readonly DatePick[],
   captures: readonly CaptureLike[],
   show: (iso: string) => string,
 ): { value: string; label: string }[] {
   const sorted = [...captures].sort((a, b) => a.date.localeCompare(b.date));
+  const newDays = [...new Set(picks.flatMap((p) => (p.kind === 'new' ? [p.date] : [])))].sort();
   return [
     { value: '', label: 'None' },
     ...sorted.map((c) => ({ value: c.id, label: named(c, show) })),
-    ...(pick.kind === 'new' ? [{ value: choiceOf(pick), label: `New: ${show(pick.date)}` }] : []),
+    ...newDays.map((date) => ({ value: `new:${date}`, label: `New: ${show(date)}` })),
   ];
 }
 

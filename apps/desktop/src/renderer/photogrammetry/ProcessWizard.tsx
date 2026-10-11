@@ -770,7 +770,7 @@ export function ProcessWizard() {
                           setDateChoice(e.target.value);
                         }}
                       >
-                        {dateOptions(autoPick, captures, formatDate).map((o) => (
+                        {dateOptions([autoPick, pick], captures, formatDate).map((o) => (
                           <option key={o.value} value={o.value}>
                             {o.label}
                           </option>

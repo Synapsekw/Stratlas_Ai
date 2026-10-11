@@ -98,13 +98,41 @@ describe('the choice in Options', () => {
   });
 
   it('lists None, the dates in date order, and the new day when there is one', () => {
-    expect(dateOptions({ kind: 'new', date: '2026-04-02' }, captures, show)).toEqual([
+    expect(dateOptions([{ kind: 'new', date: '2026-04-02' }], captures, show)).toEqual([
       { value: '', label: 'None' },
       { value: 'c1', label: '<2026-01-10>' },
       { value: 'c2', label: '<2026-03-14> · After the rain' },
       { value: 'new:2026-04-02', label: 'New: <2026-04-02>' },
     ]);
-    expect(dateOptions({ kind: 'none' }, captures, show)).toHaveLength(3);
+    expect(dateOptions([{ kind: 'none' }], captures, show)).toHaveLength(3);
+  });
+
+  it('offers the new day the person chose after the photos changed', () => {
+    const existingC2 = pickSurveyDate([{ date: '2026-03-14', photos: 1 }], captures);
+    const chosen = { kind: 'new', date: '2026-05-05' } as const;
+    expect(dateOptions([existingC2, chosen], captures, show).map((o) => o.value)).toContain(
+      'new:2026-05-05',
+    );
+    const values = dateOptions([{ kind: 'new', date: '2026-04-02' }, chosen], captures, show).map(
+      (o) => o.value,
+    );
+    expect(values.slice(-2)).toEqual(['new:2026-04-02', 'new:2026-05-05']);
+  });
+
+  it('always lists the value the select shows, once', () => {
+    const autos = [
+      { kind: 'none' },
+      pickSurveyDate([{ date: '2026-03-14', photos: 1 }], captures),
+      { kind: 'new', date: '2026-04-02' },
+    ] as const;
+    for (const auto of autos) {
+      for (const choice of ['', 'c1', 'new:2026-05-05', 'new:2026-04-02']) {
+        const pick = pickFromChoice(choice, captures);
+        const values = dateOptions([auto, pick], captures, show).map((o) => o.value);
+        expect(values).toContain(choiceOf(pick));
+        expect(new Set(values).size).toBe(values.length);
+      }
+    }
   });
 });
 
