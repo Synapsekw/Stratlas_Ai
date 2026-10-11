@@ -34,6 +34,15 @@ function ctx(opts: { stage?: boolean; ws?: ReturnType<typeof siteWorkspace> } = 
   return c;
 }
 
+/** A scene that has streamed in one tagged node only. */
+function partial(ws: ReturnType<typeof siteWorkspace>, keep: string): RendererToolContext {
+  const stage = fakeStage(ws);
+  const root = stage.scene.children[0];
+  if (!root) throw new Error('no root');
+  for (const node of [...root.children]) if (node.name !== keep) root.remove(node);
+  return { ...ctx({ ws }), scene: () => stage };
+}
+
 const box = (tag: string, min: Vec3, max: Vec3, area?: string): AssetBox => ({
   tag,
   ...(area ? { area } : {}),
@@ -104,6 +113,50 @@ describe('assetIndex', () => {
     const later = assetIndex({ ...ctx({ ws }), scene: () => null });
     expect(later.status).toBe('ready');
     expect(later.links.get('f5')).toEqual(first.links.get('f5'));
+  });
+
+  it('remembers bounds per project, not in one global entry', () => {
+    const a = siteWorkspace();
+    const first = assetIndex(ctx({ ws: a }));
+    expect(first.status).toBe('ready');
+    // another project with the same number of tags, nothing measured for it
+    const other = createWorkspace();
+    other
+      .getState()
+      .openProject(
+        { id: 'other', root: 'E:/other', manifest: { ...siteManifest(), id: 'other' } },
+        [],
+      );
+    expect(assetIndex({ ...ctx({ ws: other }), scene: () => null }).status).toBe('loading');
+    // and project A is still remembered
+    const again = assetIndex({ ...ctx({ ws: siteWorkspace() }), scene: () => null });
+    expect(again.status).toBe('ready');
+    expect(again.links.get('f5')).toEqual(first.links.get('f5'));
+  });
+
+  it('keeps the remembered bounds of nodes a partial measure lacks', () => {
+    const ws = siteWorkspace();
+    assetIndex(ctx({ ws }));
+    const c = partial(ws, '20-T-0001');
+    const index = assetIndex(c);
+    expect(index.status).toBe('ready');
+    expect(index.boxes.map((b) => b.tag).sort()).toEqual(SITE_NODES.map((n) => n[0]).sort());
+    expect(index.links.get('f5')?.asset).toBe('20-T-0003');
+    expect(issuesOn(c, '20-T-0003').ids).toEqual(['f5']);
+  });
+
+  it('does not answer for an asset whose bounds are not known yet', () => {
+    const c = partial(siteWorkspace(), '20-T-0001');
+    expect(assetIndex(c).status).toBe('ready');
+    const loading =
+      'The 3D model is still loading, so findings cannot be matched to assets yet. Open Scene and try again in a moment.';
+    expect(() => issuesOn(c, '20-T-0003')).toThrow(loading);
+    expect(issuesOn(c, '20-T-0001').ids).toEqual([]);
+    // an area answers from the assets it has bounds for, and refuses when it has none
+    expect(issuesOn(c, '20 · LNG tanks').ids).toEqual([]);
+    expect(() => issuesOn(c, '10 · Jetty & berths')).toThrow(loading);
+    c.workspace.getState().select({ kind: 'asset', id: '20-T-0003' });
+    expect(() => issuesOn(c, 'selection')).toThrow(loading);
   });
 
   it('says loading, never "no findings", when nothing was ever measured', () => {

@@ -140,19 +140,16 @@ export function assetIndex(ctx: RendererToolContext): AssetIndex {
       box: place.box,
     });
   }
-  let boxes: AssetBox[];
-  if (measured.length > 0) {
-    boxes = measured;
-    remembered.set(id, { tagCount, boxes });
-  } else {
-    const kept = remembered.get(id);
-    if (kept?.tagCount === tagCount) {
-      boxes = kept.boxes;
-    } else {
-      remembered.delete(id);
-      return { status: 'loading', boxes: [], links: new Map(), unplaced };
-    }
-  }
+  // a model still streaming in gives boxes for some nodes only: what was measured now wins, the
+  // rest stays as remembered, so a node that has not arrived yet does not look like an empty asset
+  const kept = remembered.get(id);
+  if (kept && kept.tagCount !== tagCount) remembered.delete(id);
+  const merged = new Map<string, AssetBox>();
+  if (kept?.tagCount === tagCount) for (const b of kept.boxes) merged.set(b.tag, b);
+  for (const b of measured) merged.set(b.tag, b);
+  const boxes = [...merged.values()];
+  if (boxes.length === 0) return { status: 'loading', boxes: [], links: new Map(), unplaced };
+  remembered.set(id, { tagCount, boxes });
 
   const links = new Map<string, AssetLink>();
   for (const issue of issues) {
@@ -165,17 +162,18 @@ export function assetIndex(ctx: RendererToolContext): AssetIndex {
 
 // Asking by name -----------------------------------------------------------------------------
 
+const loadingError = () =>
+  new ToolError(
+    'The 3D model is still loading, so findings cannot be matched to assets yet. Open Scene and try again in a moment.',
+  );
+
 /** "selection", a tag or an area name to the issue ids on it. Throws ToolError when loading or unknown. */
 export function issuesOn(
   ctx: RendererToolContext,
   where: string,
 ): { label: string; ids: string[]; unplaced: number } {
   const index = assetIndex(ctx);
-  if (index.status === 'loading') {
-    throw new ToolError(
-      'The 3D model is still loading, so findings cannot be matched to assets yet. Open Scene and try again in a moment.',
-    );
-  }
+  if (index.status === 'loading') throw loadingError();
   if (index.status === 'none') throw new ToolError('This project has no tagged assets.');
 
   let match: (link: AssetLink) => boolean;
@@ -192,10 +190,17 @@ export function issuesOn(
       l.kind === 'mesh' ? (l.tags ?? []) : [],
     );
     label = tags.find((t) => t.tag === sel.id || t.node === sel.id)?.tag ?? sel.id;
+    if (!index.boxes.some((b) => b.tag === label)) throw loadingError();
     match = (link) => link.asset === label;
   } else {
     const place = resolveName(ctx, where, ['asset', 'group']);
     label = place.name;
+    // never answer for bounds that are not known: no box is "not measured yet", not "no findings"
+    const known =
+      place.kind === 'group'
+        ? index.boxes.some((b) => b.area === place.name)
+        : index.boxes.some((b) => b.tag === place.name);
+    if (!known) throw loadingError();
     match =
       place.kind === 'group' ? (link) => link.area === place.name : (link) => link.asset === label;
   }
@@ -247,7 +252,7 @@ export function describeIssue(
     ...issueRow(issue),
     severityLabel: severityLabel(ctx, issue),
     ...(link ? { asset: link.asset, ...(link.area ? { area: link.area } : {}) } : {}),
-    ...(p ? { position: p.map(round1) as Vec3 } : {}),
+    ...(p ? { position: [round1(p[0]), round1(p[1]), round1(p[2])] satisfies Vec3 } : {}),
     photos: photos.size,
     photoOnly: photos.size > 0 && !p,
   };
