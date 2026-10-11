@@ -724,7 +724,7 @@ Most steps use four synthetic demo projects that you generate on this PC. The la
 
 ### Before you start
 
-- [ ] Install `QuadrionAI-0.11.2-win-x64-setup.exe`. **Settings, About and updates** shows "Quadrion AI 0.11.2" and, in the build stamp, the commit it was built from. Every build handed over has its own version number: if the number is the one you already had, it is the same build.
+- [ ] Install `QuadrionAI-0.11.3-win-x64-setup.exe`. **Settings, About and updates** shows "Quadrion AI 0.11.3" and, in the build stamp, the commit it was built from. Every build handed over has its own version number: if the number is the one you already had, it is the same build.
 - [ ] Install the processing tools 0.5.2: **Settings**, **Processing tools**, **Choose file**, and pick `pipeline-pack-0.5.2-win-x64.tar.gz` when I tell you where it is (nothing is copied into `runtime` by hand any more). **Status** then shows **Version** 0.5.2. Every survey job (preparing surfaces, whole-site comparisons, sections, overlays, exports, QA, cleanup, design import, calibration, haul road, hydrology) runs in it.
 - [ ] Build the demos: in a terminal in `E:\Dev\AIO Software`, run `pnpm demo:survey --out "E:\Stratlas Data\survey-demos"`. It ends with "written to ..." and four folders: `demo-survey-earthworks`, `demo-survey-quarry`, `demo-survey-landfill` and `demo-survey-analytic`. Each folder holds a `README.txt` and a `truth.json` with the exact volumes, areas, grades, checkpoints and calibration of every survey.
 - [ ] **Projects**, **Add project folder**, once for each of the four folders: the cards **Earthworks demo**, **Quarry demo**, **Landfill demo** and **Survey analytic demo** appear.
