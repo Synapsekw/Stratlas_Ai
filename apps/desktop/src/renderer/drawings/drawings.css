@@ -1,0 +1,109 @@
+/* Drawings: the controls under a drawing row, and the place strip above its pane. */
+
+/* ---------- row controls (Datasets list) ---------- */
+.dctl {
+  gap: 8px;
+}
+.dctl .pop-row > span:first-child {
+  min-width: 0;
+}
+.dctl .pop-row .mono {
+  min-width: 40px;
+}
+.dctl-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ---------- place strip (above the drawing pane) ---------- */
+.dplace {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--bg-1);
+  font-size: var(--t-12);
+}
+.dplace-say {
+  margin: 0;
+  color: var(--acc);
+  line-height: 1.4;
+}
+.dplace-say.bad {
+  color: var(--s5);
+}
+.dplace-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
+}
+.dplace-typed {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  min-width: 160px;
+}
+.dplace-typed .input {
+  flex: 1;
+  min-width: 0;
+}
+.dplace-map {
+  height: 180px;
+}
+.dplace-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding-inline: 6px 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  font: 400 11px var(--f-mono);
+  color: var(--fg-1);
+}
+.dplace-pair b {
+  color: var(--fg-0);
+}
+.dplace-pair button {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--r-2);
+  color: var(--fg-3);
+}
+.dplace-pair button:hover {
+  color: var(--fg-0);
+  background: var(--bg-3);
+}
+.dplace-end {
+  display: flex;
+  gap: 6px;
+  margin-inline-start: auto;
+}
+
+/* ---------- picking on the picture ---------- */
+.raster-view.picking {
+  cursor: crosshair;
+}
+.raster-mark {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--acc);
+  color: var(--acc-ink);
+  font: 600 11px/1 var(--f-mono);
+  box-shadow: 0 0 0 2px var(--bg-0);
+  pointer-events: none;
+}
+.raster-mark.pending {
+  background: var(--bg-0);
+  color: var(--acc);
+  box-shadow: 0 0 0 2px var(--acc);
+}

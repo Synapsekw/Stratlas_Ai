@@ -51,6 +51,7 @@ import { timeline, useTimelineSync } from './workspace/timeline';
 import { connectVolumeDates } from './workspace/volumeDates';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
 import { BuilderLayer } from './builder/BuilderLayer';
+import { DrawingsLayer } from './drawings/DrawingsLayer';
 import { ModellerLayer } from './modeller/ModellerLayer';
 import { Lightbox } from './issueCard/Lightbox';
 import { CrashNotice } from './diagnostics/CrashNotice';
@@ -425,6 +426,7 @@ export function App() {
       <Toasts />
       <LiveAnnouncer />
       <BuilderLayer />
+      <DrawingsLayer />
       <ModellerLayer />
       <Lightbox />
       <ReportProblemDialog />

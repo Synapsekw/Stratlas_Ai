@@ -229,6 +229,7 @@ export async function builderImport(
       proxy: ffmpegProxy,
       ...(req.utcOffsetMin !== undefined ? { utcOffsetMin: req.utcOffsetMin } : {}),
       ...(req.altitude ? { altitude: req.altitude } : {}),
+      ...(req.drawings ? { drawings: true } : {}),
       onProgress: (done, total, file) => {
         d.emit({ projectId: req.projectId, done, total, file });
       },
@@ -241,6 +242,30 @@ export async function builderImport(
     };
   } catch (e) {
     return { ok: false, error: `Import failed: ${errorText(e)}` };
+  }
+}
+
+/** One page of a staged drawing, drawn by the app window (PDF, WebP, SVG). */
+export async function builderAddDrawingPage(
+  req: IpcRequest<'builder:addDrawingPage'>,
+  registry: ProjectRegistry,
+): Promise<IpcResponse<'builder:addDrawingPage'>> {
+  const root = registry.root(req.projectId);
+  if (root === undefined)
+    return { ok: false, error: `Project "${req.projectId}" is not open. Open it, then import.` };
+  try {
+    const r = await (
+      await lib()
+    ).addDrawingPage(root, {
+      stem: req.stem,
+      name: req.name,
+      page: req.page,
+      pages: req.pages,
+      png: req.png,
+    });
+    return { ok: true, manifest: r.manifest, layerId: r.layerId };
+  } catch (e) {
+    return { ok: false, error: errorText(e) };
   }
 }
 

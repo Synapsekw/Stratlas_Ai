@@ -9,6 +9,8 @@ import type {
 import { workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
+import { finishStagedDrawings } from '../drawings/importFlow';
+import { drawings } from '../drawings/store';
 import { bridge, shell } from '../shell';
 import { heightsPrompt, needsTakeoff, type HeightsPrompt } from './heights';
 import { terrainHeightAt } from './pick';
@@ -35,11 +37,18 @@ export interface BuilderActions {
    * Import raw files. Without `altitude`, files whose camera heights need a take-off height stop
    * at the heights prompt first (data-conventions section 3a).
    */
-  importFiles: (paths: readonly string[], altitude?: AltitudeChoice) => Promise<void>;
+  importFiles: (
+    paths: readonly string[],
+    altitude?: AltitudeChoice,
+    /** `drawings`: every picture becomes a drawing (Add drawing), not a photo or an ortho. */
+    opts?: { drawings?: boolean },
+  ) => Promise<void>;
   /** Run the prompted import with the confirmed heights, or drop it. */
   confirmHeights: (altitude: AltitudeChoice) => Promise<void>;
   cancelHeights: () => void;
   pickAndImport: () => Promise<void>;
+  /** Add drawing: pick PDF, pictures or DXF and bring them in as drawings. */
+  pickAndAddDrawing: () => Promise<void>;
   dismissImport: () => void;
   startAlign: (tool: AlignTool) => void;
   stopAlign: () => void;
@@ -67,7 +76,21 @@ export const IMPORT_FILTERS = [
       'e57',
       'dxf',
       'opf',
+      // drawings (a JPEG or a georeferenced TIFF is a drawing only through Add drawing)
+      'pdf',
+      'png',
+      'webp',
+      'svg',
     ],
+  },
+  { name: 'All files', extensions: ['*'] },
+];
+
+/** What Add drawing offers: every one of them comes in as a drawing. */
+export const DRAWING_FILTERS = [
+  {
+    name: 'Drawings',
+    extensions: ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'svg', 'tif', 'tiff', 'dxf'],
   },
   { name: 'All files', extensions: ['*'] },
 ];
@@ -102,14 +125,15 @@ export const builder = createStore<Builder>()((set, get) => ({
     shell.getState().go('scene');
   },
 
-  importFiles: async (paths, altitude) => {
+  importFiles: async (paths, altitude, opts) => {
     const project = workspace.getState().project;
     if (!project) {
       set({ importResult: { items: [], error: 'Open or create a project first, then import.' } });
       return;
     }
     if (!paths.length || get().importing) return;
-    if (!altitude) {
+    // a drawing has no camera, so Add drawing never asks for camera heights
+    if (!altitude && !opts?.drawings) {
       if (preparing) return;
       preparing = true;
       const plan = await bridge
@@ -143,6 +167,7 @@ export const builder = createStore<Builder>()((set, get) => ({
       projectId: project.id,
       paths: [...paths],
       ...(altitude ? { altitude } : {}),
+      ...(opts?.drawings ? { drawings: true } : {}),
     });
     off?.();
     if (!r.ok) {
@@ -164,6 +189,42 @@ export const builder = createStore<Builder>()((set, get) => ({
       },
     });
     void shell.getState().loadLibrary();
+    // PDF, WebP and SVG were only copied in: their pages are drawn here, row by row
+    if (r.value.items.some((i) => i.drawing)) {
+      await finishStagedDrawings(project.id, {
+        items: () => get().importResult?.items ?? [],
+        setItem: (index, patch) => {
+          const result = get().importResult;
+          if (!result) return;
+          set({
+            importResult: {
+              ...result,
+              items: result.items.map((it, i) => (i === index ? { ...it, ...patch } : it)),
+            },
+          });
+        },
+        progress: (importing) => {
+          set({ importing });
+        },
+      });
+    }
+    // the first drawing that came in shows its controls: side by side, place on the site
+    const drawn = get().importResult?.items.find(
+      (i) => i.kind === 'drawing' && i.status === 'imported' && i.layerId,
+    );
+    if (drawn?.layerId && workspace.getState().project?.id === project.id)
+      drawings.setState({ controls: drawn.layerId });
+  },
+
+  pickAndAddDrawing: async () => {
+    shell.getState().setPalette(false);
+    const pick = await bridge.call('dialog:openFiles', {
+      title: 'Add drawings',
+      filters: DRAWING_FILTERS,
+      multi: true,
+    });
+    if (pick.ok && pick.value.paths.length)
+      await get().importFiles(pick.value.paths, undefined, { drawings: true });
   },
 
   pickAndImport: async () => {

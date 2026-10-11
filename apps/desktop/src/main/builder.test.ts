@@ -1,9 +1,10 @@
 import { withExif } from '@aio/project/builder/testing';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  builderAddDrawingPage,
   builderEnsureCapture,
   builderTemplates,
   builderUpdateCapture,
@@ -100,6 +101,38 @@ describe('builder main handlers', () => {
       registry,
     );
     expect(unknown).toMatchObject({ ok: false });
+  });
+
+  it('a drawing page lands in an open project, after its original was staged', async () => {
+    const dir = join(base, 'projects', 'drawn');
+    await writeProject(dir, sampleManifest());
+    const registry = new ProjectRegistry();
+    // an 8 byte signature and an IHDR saying 30 x 20: all the page check reads
+    const png = new Uint8Array(33);
+    png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+    png[19] = 30;
+    png[23] = 20;
+    const page = { stem: 'sheets', name: 'sheets.pdf', png };
+    const closed = await builderAddDrawingPage({ projectId: 'x', ...page }, registry);
+    expect(closed).toMatchObject({ ok: false });
+    const projectId = registry.register(dir);
+    const unstaged = await builderAddDrawingPage({ projectId, ...page }, registry);
+    expect(unstaged).toEqual({
+      ok: false,
+      error: 'The drawing "sheets" was not imported into this project.',
+    });
+    await mkdir(join(dir, 'drawings'), { recursive: true });
+    await writeFile(join(dir, 'drawings', 'sheets.pdf'), '%PDF-1.4');
+    const r = await builderAddDrawingPage({ projectId, ...page, page: 2, pages: 4 }, registry);
+    expect(r.ok && r.layerId).toBe('sheet-sheets-p2');
+    expect(r.ok && r.manifest.layers.find((l) => l.id === 'sheet-sheets-p2')).toMatchObject({
+      kind: 'raster',
+      name: 'sheets.pdf, page 2',
+      visible: false,
+      role: 'plan',
+      format: 'image',
+      src: { path: 'drawings/sheets-p2/plan.png' },
+    });
   });
 
   it('ensureCapture adds the survey date of a day once, and refuses a closed project', async () => {

@@ -32,6 +32,13 @@ interface Source {
 
 const ZOOM = 1.15;
 
+/** Picking points on the picture (placing a drawing): clicks report pixels, marks show them. */
+export interface RasterPick {
+  /** A click that was not a drag: the pixel under it (x right, y down), inside the picture. */
+  onPick: (px: [number, number]) => void;
+  marks: readonly { x: number; y: number; label: string; pending?: boolean }[];
+}
+
 /** A shared view set by the other pane of this project (`link` is `<project>:<side>`). */
 function othersView(lv: LinkedView | null, link: string | null): lv is LinkedView {
   if (!lv || !link || lv.by === link) return false;
@@ -55,11 +62,13 @@ export function RasterView({
   projectId,
   layer,
   link: side = null,
+  pick,
 }: {
   projectId: string;
   layer: RasterLayer;
   /** Pan and zoom with the other ortho pane (two survey dates): this pane's id, or null. */
   link?: string | null;
+  pick?: RasterPick | undefined;
 }) {
   const t = useT();
   // a view shared in another project is not this project's
@@ -230,7 +239,7 @@ export function RasterView({
   return (
     <div
       ref={host}
-      className="raster-view"
+      className={pick ? 'raster-view picking' : 'raster-view'}
       data-testid="raster-view"
       onPointerDown={(e) => {
         if (e.button !== 0 || !view) return;
@@ -242,8 +251,16 @@ export function RasterView({
         if (d?.id !== e.pointerId) return;
         setView({ ...d.view, x: d.view.x + e.clientX - d.x, y: d.view.y + e.clientY - d.y });
       }}
-      onPointerUp={() => {
+      onPointerUp={(e) => {
+        const d = drag.current;
         drag.current = null;
+        // a click, not a pan: the pixel under it, for the place tool
+        if (!pick || !src || d?.id !== e.pointerId) return;
+        if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return;
+        const r = e.currentTarget.getBoundingClientRect();
+        const x = (e.clientX - r.left - d.view.x) / d.view.scale;
+        const y = (e.clientY - r.top - d.view.y) / d.view.scale;
+        if (x >= 0 && y >= 0 && x <= src.size.width && y <= src.size.height) pick.onPick([x, y]);
       }}
       onPointerCancel={() => {
         drag.current = null;
@@ -263,6 +280,21 @@ export function RasterView({
           }}
         >
           {src.image && <img src={src.image} alt="" draggable={false} />}
+          {pick?.marks.map((m) => (
+            <span
+              key={m.label}
+              className={m.pending ? 'raster-mark pending' : 'raster-mark'}
+              data-testid="raster-mark"
+              style={{
+                left: m.x,
+                top: m.y,
+                // marks keep their size on screen while the picture zooms
+                transform: `translate(-50%, -50%) scale(${String(1 / view.scale)})`,
+              }}
+            >
+              {m.label}
+            </span>
+          ))}
           {tiles.map((tile) => (
             <img
               key={tile.key}

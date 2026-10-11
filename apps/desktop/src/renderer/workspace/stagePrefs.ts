@@ -1,5 +1,6 @@
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import { parseDrawingDisplay, type DrawingDisplay } from '../drawings/display';
 import { parseCutawayPref, type CutawayPref } from './cutaway';
 import { parseSplitPref, type SplitPref } from './splitModel';
 import { parseVideoRect, type VideoRect } from './videoWindow';
@@ -14,6 +15,8 @@ export interface StagePref {
   split?: SplitPref;
   /** Drone telemetry (trace and HUD) while a clip plays or scrubs (absent: on). */
   telemetry?: boolean;
+  /** Opacity and on top of each drawing, by plan layer (absent: as the views draw them). */
+  drawings?: DrawingDisplay;
 }
 
 const KEY = 'stratlas.stagePrefs';
@@ -29,6 +32,8 @@ function parsePref(v: unknown): StagePref {
   const split = parseSplitPref(raw.split);
   if (split) out.split = split;
   if (typeof raw.telemetry === 'boolean') out.telemetry = raw.telemetry;
+  const drawings = parseDrawingDisplay(raw.drawings);
+  if (drawings) out.drawings = drawings;
   return out;
 }
 
