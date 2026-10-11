@@ -37,7 +37,7 @@ export {
   type Volumetric,
   type VolumetricDeps,
 } from './store';
-export { VolumetricScene } from './scene/controller';
+export { VolumetricScene, type VolumetricView } from './scene/controller';
 export { VolumesPanel, BaseSelect } from './components/VolumesPanel';
 export { VolumetricStage } from './components/VolumetricStage';
 export { ProfileChart } from './components/ProfileChart';

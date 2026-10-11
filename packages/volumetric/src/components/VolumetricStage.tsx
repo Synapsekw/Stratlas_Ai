@@ -2,10 +2,12 @@ import type { EngineStage } from '@aio/engine';
 import { Icon, isShortcut, shortcutHint, t } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
+  useSyncExternalStore,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { Raycaster, Vector2, Vector3, type Object3D } from 'three';
@@ -512,26 +514,69 @@ function ElevationControls() {
   );
 }
 
-function Legend() {
-  const surface = useVolumetric((s) => s.surface);
+/** The Elevation surface's ramp and range as the second view of a comparison shows them. */
+function ElevationKey() {
+  const elevation = useVolumetric((s) => s.elevation);
+  const relief = useVolumetric((s) => s.relief);
+  const range = elevation.range ?? relief?.auto;
+  return (
+    <>
+      <b>{t('vol.elev.title')}</b>
+      {range ? (
+        <>
+          <div className="ramp" style={{ background: rampCss(elevation.ramp) }} />
+          <div className="ends">
+            <span>{m1(range[0])}</span>
+            <span>{m1((range[0] + range[1]) / 2)}</span>
+            <span>{m1(range[1])}</span>
+          </div>
+        </>
+      ) : (
+        <span className="vol-elev-note">{t('vol.elev.reading')}</span>
+      )}
+    </>
+  );
+}
+
+/**
+ * The legend of a 3D view. `view` is the second view of a comparison: the same keys read only
+ * (the ramp and range are set on the main view's legend and hold for both), no hint, and one
+ * line when this view could not be coloured.
+ */
+function Legend({ view }: { view?: { refused: boolean } }) {
+  const chosen = useVolumetric((s) => s.surface);
   const body = useVolumetric((s) => s.body);
   const base = useVolumetric((s) => s.file?.bases.find((b) => b.id === s.base)?.label);
   const deadband = useVolumetric((s) => s.file?.deadbandM ?? 0.1);
   const swipe = useVolumetric((s) => s.swipe);
   const anyShown = useVolumetric((s) => s.selected !== null || s.shown.length > 0);
-  if (swipe) return null;
+  // the swipe runs in the main view only
+  if (swipe && !view) return null;
+  // a view left uncoloured shows the photo, whatever the switch says
+  const surface = view?.refused ? 'photo' : chosen;
   const R = CHANGE_RAMP;
   const rgb = (c: readonly number[]) => `rgb(${c.join(',')})`;
-  if (surface === 'photo' && !anyShown)
+  if (surface === 'photo' && !anyShown) {
+    if (view?.refused)
+      return (
+        <div className="vol-legend overlay-box" data-testid="vol-legend-view">
+          <span className="vol-legend-note" role="status" data-testid="vol-no-drape">
+            {t('vol.compare.noDrape')}
+          </span>
+        </div>
+      );
+    if (view) return null;
     return (
       <div className="vol-legend vol-hint overlay-box" data-testid="vol-hint">
         {t('vol.reveal')}
       </div>
     );
+  }
   return (
     <div
-      className={`vol-legend overlay-box${surface === 'elev' ? ' live' : ''}`}
+      className={`vol-legend overlay-box${surface === 'elev' && !view ? ' live' : ''}`}
       aria-label="Legend"
+      {...(view ? { 'data-testid': 'vol-legend-view', 'data-surface-shown': surface } : {})}
     >
       {surface === 'change' && (
         <>
@@ -549,7 +594,7 @@ function Legend() {
           </div>
         </>
       )}
-      {surface === 'elev' && <ElevationControls />}
+      {surface === 'elev' && (view ? <ElevationKey /> : <ElevationControls />)}
       {body !== 'off' &&
         anyShown &&
         (surface === 'change' ? (
@@ -581,6 +626,11 @@ function Legend() {
           Toe line
         </span>
       )}
+      {view?.refused && (
+        <span className="vol-legend-note" role="status" data-testid="vol-no-drape">
+          {t('vol.compare.noDrape')}
+        </span>
+      )}
     </div>
   );
 }
@@ -608,22 +658,56 @@ function Toast() {
  * The volumetric layer of the 3D stage: draws through `VolumetricScene` and adds the boundary
  * handles, the swipe divider, the section and edit bars, the legend and notices. Mount it inside
  * the 3D pane, over the canvas.
+ *
+ * A pane that shows one survey date of several passes its `epoch`. The second view of a
+ * comparison is mounted with `display`: it draws the same bodies, toe lines and surface colours
+ * for its own date and shows the legend read only; editing, the section tool and the swipe stay
+ * with the main view.
  */
-export function VolumetricStage({ stage }: { stage: EngineStage | null }) {
+export function VolumetricStage({
+  stage,
+  epoch = null,
+  display = false,
+  layerVisible,
+  budget,
+}: {
+  stage: EngineStage | null;
+  /** The survey this view shows (null: the one the volumetric store shows). */
+  epoch?: string | null;
+  /** Draw only (the second view of a comparison). */
+  display?: boolean;
+  /** Whether this view shows a layer; defaults to the workspace's layer switches. */
+  layerVisible?: (id: string) => boolean;
+  /** Whether a drape texture of that many bytes fits the graphics memory of the views. */
+  budget?: (bytes: number) => boolean;
+}) {
   const ready = useVolumetric((s) => s.status === 'ready');
   const picking = useVolumetric((s) => s.section.mode === 'picking');
   const scene = useMemo(
     () =>
       stage && ready
-        ? new VolumetricScene(stage, volumetric, (id) => workspace.getState().isLayerVisible(id))
+        ? new VolumetricScene(
+            stage,
+            volumetric,
+            layerVisible ?? ((id) => workspace.getState().isLayerVisible(id)),
+            { display, ...(budget ? { budget } : {}) },
+          )
         : null,
-    [stage, ready],
+    [stage, ready, display, layerVisible, budget],
+  );
+  // the pane's date, before the scene first draws
+  useEffect(() => {
+    scene?.setEpoch(epoch);
+  }, [scene, epoch]);
+  const refused = useSyncExternalStore(
+    useCallback((cb: () => void) => scene?.onDrapeRefused(cb) ?? (() => undefined), [scene]),
+    () => scene?.drapeRefused ?? false,
   );
 
   // Esc: stop picking a section, else hide the revealed pile (not while a boundary is edited);
   // Enter saves a boundary edit.
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || display) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || isTyping(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.target instanceof HTMLElement && e.target.closest('dialog, [role="dialog"]')) return;
@@ -644,7 +728,7 @@ export function VolumetricStage({ stage }: { stage: EngineStage | null }) {
     return () => {
       window.removeEventListener('keydown', onKey);
     };
-  }, [ready]);
+  }, [ready, display]);
 
   useEffect(() => {
     if (!scene) return;
@@ -666,6 +750,8 @@ export function VolumetricStage({ stage }: { stage: EngineStage | null }) {
     const release = stage.claimClicks((e) => {
       if (stage.tool !== 'select') return false;
       const s = volumetric.getState();
+      // a view that only draws takes no section point and guards no edit: it selects a pile
+      if (display && (s.section.mode === 'picking' || s.edit)) return false;
       if (s.section.mode === 'picking') {
         const p = pickGround(stage, e.clientX, e.clientY);
         if (p) void s.addSectionPoint([p[0], p[1]]);
@@ -688,24 +774,30 @@ export function VolumetricStage({ stage }: { stage: EngineStage | null }) {
     // callout plates select on click: not while picking section points or editing a boundary
     const onClick = (e: MouseEvent) => {
       const s = volumetric.getState();
-      if (s.section.mode === 'picking' || s.edit) e.stopPropagation();
+      if (!display && (s.section.mode === 'picking' || s.edit)) e.stopPropagation();
     };
     host.addEventListener('click', onClick, true);
     return () => {
       release();
       host.removeEventListener('click', onClick, true);
     };
-  }, [stage, scene]);
+  }, [stage, scene, display]);
 
   useEffect(() => {
-    if (!stage) return;
+    if (!stage || display) return;
     setCursor(stage, picking ? 'crosshair' : '');
     return () => {
       setCursor(stage, '');
     };
-  }, [stage, picking]);
+  }, [stage, picking, display]);
 
   if (!ready) return null;
+  if (display)
+    return (
+      <div className="vol-stage">
+        <Legend view={{ refused }} />
+      </div>
+    );
   return (
     <div className="vol-stage">
       {scene && stage && <Handles scene={scene} stage={stage} />}

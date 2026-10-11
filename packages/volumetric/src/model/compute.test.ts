@@ -115,6 +115,27 @@ describe('VolumeCompute', () => {
     expect(Math.max(...(b?.d ?? []))).toBeCloseTo(2, 5);
   });
 
+  it('drapes the toe of a change body on the survey the view shows', async () => {
+    const { c } = compute();
+    const toeZ = async (epoch: string) => {
+      const s = await c.scene({
+        epoch,
+        base: 'tin',
+        mode: 'chg',
+        selected: null,
+        piles: [{ id: 'P01', ring, edited: false }],
+      });
+      const toe = s.piles[0]?.toe ?? [];
+      expect(toe.length).toBeGreaterThan(0);
+      return toe.filter((_, i) => i % 3 === 2);
+    };
+    const first = await toeZ('e1');
+    const last = await toeZ('e2');
+    // the synthetic site lies 0.5 m higher on the second survey
+    expect(first.every((z) => Math.abs(z - (first[0] ?? 0)) < 1e-6)).toBe(true);
+    expect((last[0] ?? 0) - (first[0] ?? 0)).toBeCloseTo(0.5, 5);
+  });
+
   it('recomputes an edited toe line with every base refitted, and drapes it', async () => {
     const { c } = compute();
     const e = await c.edit({ pile: 'P01', epoch: 'e2', ring, base: 'low' });
