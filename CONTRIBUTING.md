@@ -43,7 +43,8 @@ git worktree add ../quadrion-wt/s3-engine -b stream/s3-engine
 
 CI runs the end to end specs under conditions a workstation does not have by default, so a spec can pass locally and fail on every CI run:
 
-- **A small window.** The runners' screens give the main window its minimum size, 1100 x 700 (`src/main/windowMode.ts`). At that width the stage toolbar folds groups into **More tools** (`COLLAPSE_ORDER` in `workspace/toolbarFit.ts`), panels are narrower and popovers have less room.
+- **A small window, at display scale 1.** CI asks for no window size (`.github/workflows/ci.yml` sets no `QUADRION_WINDOW_SIZE`). The app asks for its default, 1440 x 900, and the runner's 1024 x 768 screen cuts that down: the width to the app's minimum, 1100, and the height to what the screen has left above the taskbar, about 720 (`src/main/windowMode.ts`). That is not the smallest window, 1100 x 700. The exact size is in the log of every e2e job, in a line the fixtures print with the first window: `[e2e] window 1100 x 720 px at display scale 1`. At that width the stage toolbar folds groups into **More tools** (`COLLAPSE_ORDER` in `workspace/toolbarFit.ts`), panels are narrower and popovers have less room.
+- **A screen at 100 %.** A workstation's screen may be at 150 or 200 %. A CSS pixel is then more than one device pixel and positions round differently: a row that lies a fraction of a pixel across an edge passes a "fully in view" check on one and fails it on the other, in a window of the same size.
 - **A software renderer.** The runners have no GPU.
 - **Every demo built.** CI runs `pnpm demo:build --quick` before the specs, not only the change demo.
 
@@ -51,17 +52,21 @@ Before a hand-off, run every spec you added or changed that way, from `apps/desk
 
 ```bash
 pnpm demo:build --quick
-QUADRION_WINDOW_SIZE=1100x700 QUADRION_E2E_SWGL=1 npx playwright test e2e/<spec>.spec.ts --workers=1
+QUADRION_WINDOW_SIZE=1100x720 QUADRION_E2E_SCALE=1 QUADRION_E2E_SWGL=1 npx playwright test e2e/<spec>.spec.ts --workers=1
 ```
 
-In PowerShell, set `$env:QUADRION_WINDOW_SIZE = '1100x700'` and `$env:QUADRION_E2E_SWGL = '1'` first. `--repeat-each=3` shows a timing problem early.
+In PowerShell, set `$env:QUADRION_WINDOW_SIZE = '1100x720'`, `$env:QUADRION_E2E_SCALE = '1'` and `$env:QUADRION_E2E_SWGL = '1'` first. The run must print `[e2e] window 1100 x 720 px at display scale 1` (with the first window that a spec did not size itself); if a CI log shows another height, use that one. `--repeat-each=3` shows a timing problem early.
+
+`QUADRION_E2E_SCALE` and `QUADRION_E2E_SWGL` are read by the e2e fixtures only (`e2e/fixtures.ts`): they add Chromium's `--force-device-scale-factor` and the SwiftShader switches to every app a spec starts. CI sets neither, and no window size: its runners are like that already.
 
 Write specs so they hold at that size:
 
 - Open a stage tool from the bar, or from **More tools** when it is folded there (`environment.spec.ts`, `designs.spec.ts` and `haul.spec.ts` show how).
 - Click the 3D, Map or Split switch inside the "Stage tools" toolbar, not the first button named "3D" on the page, and wait for its pressed state.
 - Wait for the scene canvas before looking for a tool that only the 3D view has.
-- A new floating control must not cover the view: assert with `document.elementFromPoint` that clicks on the view reach it, at 1100 x 700 as well.
+- A new floating control must not cover the view: assert with `document.elementFromPoint` that clicks on the view reach it, in the smallest window, 1100 x 700, as well.
+- A spec about the smallest window asks for it itself, whatever the run's size: `test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x700' } })` (`small-window.spec.ts`).
+- `scrollIntoViewIfNeeded` moves an element that is partly in view by whole pixels and can leave a fraction of a pixel of it clipped. Before a "fully in view" check or a drag, scroll the list yourself (`showTogether` in `timeline.spec.ts`).
 
 ### End to end on real client data
 

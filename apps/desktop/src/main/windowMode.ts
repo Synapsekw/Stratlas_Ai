@@ -14,8 +14,11 @@ export function windowMode(env: Record<string, string | undefined>): WindowMode 
 }
 
 /**
- * The main window's size: 1440 x 900, or QUADRION_WINDOW_SIZE (`1100x700`) to try a small screen
- * (the CI runners' screens give the main window its minimum, 1100 x 700). Never under the minimum.
+ * The main window's size: 1440 x 900, or QUADRION_WINDOW_SIZE (`1100x700`) to try a small screen.
+ * Never under the minimum, 1100 x 700. Windows then cuts the window to the screen it is on: no
+ * taller than the screen's work area. That is how the CI runners' 1024 x 768 screens, where no
+ * size is asked for, end with a window 1100 wide and about 720 high (CONTRIBUTING.md, "End to end
+ * the way CI runs it").
  */
 export function windowSize(env: Record<string, string | undefined>): {
   width: number;
