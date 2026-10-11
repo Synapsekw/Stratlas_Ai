@@ -196,7 +196,7 @@ Saved ${time}. Nothing in it was sent anywhere: attach it to a support message y
 What is inside
 - system.json      app, Electron, Chrome, Node and OS versions; graphics card and tier
 - settings.json    app settings from an allow-list (no API keys; workspace ID partly masked; addresses without credentials)
-- packs.json       installed map packs and the pipeline pack
+- packs.json       installed map packs and the processing tools
 - jobs.json        recent pipeline jobs: status, steps and errors (no parameters)
 - projects.json    ids and sizes of projects opened in this run (no project content)
 - updates.json     update and rollback state: running version, kept previous version, a pending first start, the last return

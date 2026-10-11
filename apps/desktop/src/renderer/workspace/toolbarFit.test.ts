@@ -123,4 +123,31 @@ describe('stage toolbar fit across the views', () => {
     expect(bar.fit('3d', next, onBar(w, folded), FIXED_3D, BAR)).toEqual([]);
     expect(bar.fit('3d', next, w, FIXED_3D, BAR)).toEqual(['display', 'video', 'view']);
   });
+
+  it('measures again when a folded group gains tools within a view', () => {
+    const bar = createToolbarFit();
+    const folded = bar.fit('3d', ALL, W3D, FIXED_3D, BAR, 'no paths');
+    expect(folded).toEqual(['display', 'video', 'view']);
+    // a video with a flight path arrives: Video and camera, folded, now holds two more tools
+    const wider = new Map(W3D).set('video', 154 + 60);
+    // by the width it was folded with, a 730 px bar would take every group, 54 px too many
+    expect(fitGroups(ALL, W3D, FIXED_3D, 730)).toEqual([]);
+    expect(fitGroups(ALL, wider, FIXED_3D, 730)).toEqual(['display']);
+    // while nothing about the content changes, the folded group keeps the width it had
+    expect(bar.fit('3d', ALL, onBar(W3D, folded), FIXED_3D, BAR, 'no paths')).toEqual(folded);
+    // the content changed: the folded groups come back to be measured, whatever the bar's width
+    expect(bar.fit('3d', ALL, onBar(wider, folded), FIXED_3D, BAR, 'paths')).toEqual([]);
+    expect(bar.fit('3d', ALL, wider, FIXED_3D, BAR, 'paths')).toEqual(folded);
+    // and a wider bar folds by the new width
+    expect(bar.fit('3d', ALL, onBar(wider, folded), FIXED_3D, 730, 'paths')).toEqual(['display']);
+    // the same the other way: the group loses the tools and fits again
+    expect(bar.fit('3d', ALL, onBar(wider, ['display']), FIXED_3D, 730, 'no paths')).toEqual([]);
+    expect(bar.fit('3d', ALL, W3D, FIXED_3D, 730, 'no paths')).toEqual([]);
+  });
+
+  it('keeps the widths when no content is named, as before', () => {
+    const bar = createToolbarFit();
+    const folded = bar.fit('3d', ALL, W3D, FIXED_3D, BAR);
+    expect(bar.fit('3d', ALL, onBar(W3D, folded), FIXED_3D, BAR)).toEqual(folded);
+  });
 });

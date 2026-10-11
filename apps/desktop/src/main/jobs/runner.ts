@@ -160,7 +160,13 @@ export class JobRunner {
     }
 
     const { pack, runtime } = await this.deps.findPack();
-    if (!pack) return { ok: false, error: runtime.problem ?? 'No pipeline pack is installed.' };
+    if (!pack)
+      return {
+        ok: false,
+        error:
+          runtime.problem ??
+          'The processing tools are not installed. Install them in Settings, Processing tools.',
+      };
     job.packVersion = pack.version;
 
     try {
@@ -305,7 +311,7 @@ export class JobRunner {
     this.live.set(job.id, live);
     this.writeLog(job.id, {
       level: 'info',
-      message: `${job.status === 'starting' && job.steps.length ? 'Resuming' : 'Starting'} ${job.pipeline} with pipeline pack ${pack.version}`,
+      message: `${job.status === 'starting' && job.steps.length ? 'Resuming' : 'Starting'} ${job.pipeline} with processing tools ${pack.version}`,
     });
 
     let errBuf = '';

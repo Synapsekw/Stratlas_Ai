@@ -1447,9 +1447,9 @@ function registerIpc(): void {
     chooseFile: async (startDir) => {
       const win = targetWindow();
       const options = {
-        title: 'Choose a pipeline pack (.tar.gz)',
+        title: 'Choose the processing tools file (.tar.gz)',
         properties: ['openFile' as const],
-        filters: [{ name: 'Pipeline pack', extensions: ['gz', 'tgz', 'tar'] }],
+        filters: [{ name: 'Processing tools', extensions: ['gz', 'tgz', 'tar'] }],
         ...(startDir ? { defaultPath: startDir } : {}),
       };
       const r = win

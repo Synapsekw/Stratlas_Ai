@@ -341,7 +341,7 @@ export async function removeGeoidPack(
   id: string,
 ): Promise<IpcResponse<'geoidPacks:remove'>> {
   if (GLOBAL_IDS.has(id.toLowerCase())) {
-    return { ok: false, error: 'The global geoid grids ship with the pipeline pack and stay.' };
+    return { ok: false, error: 'The global geoid grids come with the processing tools and stay.' };
   }
   const dir = geoidPackDir(dataRoot);
   const metaPath = join(dir, `${id}.json`);

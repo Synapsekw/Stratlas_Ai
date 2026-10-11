@@ -55,17 +55,28 @@
   outline: 1px solid #fff;
 }
 
-/* the drawing bar */
+/* The drawing bar: one row in the middle of the window, as long as that keeps it on the stage.
+   Its two insets are the same, the wider of what lies left and right of the stage (the sidebar,
+   the panel on the right) plus 8px, so the middle of the room between them is the middle of the
+   window. Where the row does not fit there, in a small window, the bar has the stage's width
+   instead: centred on the stage, wrapping if it must. It never lies over the panel on the right.
+   On a screen without a stage the insets are 8px from the window's edges. */
+.stage {
+  anchor-name: --sv-stage;
+}
 .sv-drawbar {
   position: fixed;
-  left: 50%;
+  left: calc(max(anchor(--sv-stage left, 0px), 100% - anchor(--sv-stage right, 100%)) + 8px);
+  right: calc(max(anchor(--sv-stage right, 0px), 100% - anchor(--sv-stage left, 100%)) + 8px);
   bottom: 56px;
-  transform: translateX(-50%);
+  width: max-content;
+  justify-self: center;
+  position-try-fallbacks: --sv-drawbar-on-stage;
   z-index: 60;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  max-width: calc(100vw - 32px);
+  gap: 6px 10px;
   padding: 8px 12px;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-6);
@@ -73,6 +84,11 @@
   color: var(--fg-0);
   font-size: var(--t-12);
   box-shadow: 0 12px 32px oklch(0.08 0.01 250 / 0.5);
+}
+@position-try --sv-drawbar-on-stage {
+  left: calc(anchor(--sv-stage left, 0px) + 8px);
+  right: calc(anchor(--sv-stage right, 0px) + 8px);
+  width: fit-content;
 }
 .sv-typed {
   padding: 2px 6px;

@@ -41,7 +41,7 @@ function setup(
     findPack: () =>
       Promise.resolve(
         opts.pack === false
-          ? { pack: null, runtime: { found: false, problem: 'No pipeline pack in X.' } }
+          ? { pack: null, runtime: { found: false, problem: 'No processing tools in X.' } }
           : {
               pack: { dir: base, version: '0.1.0', python: 'python.exe' },
               runtime: { found: true, version: '0.1.0', dir: base },
@@ -183,7 +183,7 @@ describe('JobRunner', () => {
       error: expect.stringContaining('does not exist') as string,
     });
     const nopack = await setup('ok', { pack: false }).runner.start({ ...START, project });
-    expect(nopack).toEqual({ ok: false, error: 'No pipeline pack in X.' });
+    expect(nopack).toEqual({ ok: false, error: 'No processing tools in X.' });
     expect(spawned).toEqual([]);
   });
 

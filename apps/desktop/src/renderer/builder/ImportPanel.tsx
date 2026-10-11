@@ -12,7 +12,7 @@ import { ImportSurveyDate } from './SurveyDate';
 const STATUS: Record<ImportItem['status'], { icon: IconName; label: string }> = {
   imported: { icon: 'check', label: 'Imported' },
   skipped: { icon: 'minus', label: 'Skipped' },
-  'needs-pipeline': { icon: 'warn', label: 'Needs pipeline pack' },
+  'needs-pipeline': { icon: 'warn', label: 'Needs processing tools' },
   queued: { icon: 'clock', label: 'Queued' },
   error: { icon: 'warn', label: 'Failed' },
 };

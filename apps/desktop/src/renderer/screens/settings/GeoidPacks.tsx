@@ -138,7 +138,7 @@ function PackRow({ pack, onRemoved }: { pack: GeoidPackMeta; onRemoved: (e?: str
             {pack.name}
           </b>
           <span className="mono faint">{pack.id}</span>
-          {global && <span className="tag">Pipeline pack</span>}
+          {global && <span className="tag">Processing tools</span>}
           {pack.imported && <span className="tag">Imported</span>}
         </div>
         <div className="faint" dir="auto">
@@ -246,8 +246,8 @@ export function GeoidPacks() {
       </h2>
       <p className="help">
         Orthometric heights on a site come from a geoid grid. EGM96 and EGM2008 come with the
-        pipeline pack; a regional grid (GeoTIFF or GTX, in longitude and latitude) is imported here,
-        and Site settings, Heights then offers it. Nothing is downloaded.
+        processing tools; a regional grid (GeoTIFF or GTX, in longitude and latitude) is imported
+        here, and Site settings, Heights then offers it. Nothing is downloaded.
       </p>
       {error && (
         <p className="notice warn" role="alert">

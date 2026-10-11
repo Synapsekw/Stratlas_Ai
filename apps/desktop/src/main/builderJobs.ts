@@ -37,7 +37,7 @@ export function builderPipelineJobs(runner: JobStarter): PipelineJobs {
       const pipeline = BUILDER_PIPELINES[method];
       if (!pipeline) {
         throw new Error(
-          'The pipeline pack cannot convert this file type yet. Convert it with another tool, then import the result.',
+          'The processing tools cannot convert this file type yet. Convert it with another tool, then import the result.',
         );
       }
       const project = params.projectRoot;

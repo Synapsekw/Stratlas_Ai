@@ -240,6 +240,17 @@ function StageToolbar({
   // again before anything folds (toolbarFit.ts)
   const [fitter] = useState(createToolbarFit);
   const [hidden, setHidden] = useState<GroupId[]>([]);
+  // What decides which tools the groups hold within one view. A folded group cannot be measured,
+  // so when any of this changes the fitter measures every group again: the project, the 3D view
+  // being there (Measure and section), flight paths (Video and camera), a package (no Annotate)
+  // and the survey dates with volumes (a button each).
+  const projectId = useWorkspace((s) => s.project?.id ?? '');
+  const hasPaths = useFlightPathModel() !== null;
+  const inPackage = useShell((s) => Boolean(s.pkg));
+  const volumeDates = useVolumetric((s) => s.file?.captures.length ?? 0);
+  const content = [projectId, stage ? 1 : 0, hasPaths ? 1 : 0, inPackage ? 1 : 0, volumeDates].join(
+    '|',
+  );
 
   const fit = useCallback(() => {
     const bar = barRef.current;
@@ -250,9 +261,9 @@ function StageToolbar({
     let fixed = 0;
     for (const el of bar.querySelectorAll<HTMLElement>('[data-fixed]'))
       fixed += el.offsetWidth + GAP;
-    const next = fitter.fit(mode, groups, shown, fixed, bar.clientWidth);
+    const next = fitter.fit(mode, groups, shown, fixed, bar.clientWidth, content);
     setHidden((prev) => (prev.join() === next.join() ? prev : next));
-  }, [barRef, fitter, groups, mode]);
+  }, [barRef, fitter, groups, mode, content]);
 
   useLayoutEffect(fit);
   useEffect(() => {

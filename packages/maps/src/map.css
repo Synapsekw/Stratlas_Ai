@@ -74,6 +74,22 @@
 .aio-map .maplibregl-ctrl-attrib {
   anchor-name: --aio-map-credits;
 }
+/* The credits' corner ends where the scale bar does (the bar's width and its 10px margin; the
+   credits bring their own 10px), so a long credit that is open in a narrow map wraps onto more
+   lines beside the bar instead of lying over it. Where even its longest word does not fit there,
+   in one of the two maps of Compare dates in a small window, the corner goes above the bar and
+   the credit has the map's width. In a wide map nothing changes: the credit's own 300px is the
+   limit. (fit-content, not auto: a corner that only overflows inside would count as fitting.) */
+.aio-map .maplibregl-ctrl-bottom-right {
+  left: calc(anchor-size(--aio-map-scale width, 0px) + 10px);
+  width: fit-content;
+  justify-self: end;
+  position-try-fallbacks: --aio-map-credits-above;
+}
+@position-try --aio-map-credits-above {
+  left: 0;
+  bottom: anchor(--aio-map-scale top, 0px);
+}
 .aio-map-note {
   --beside: calc(
     max(anchor-size(--aio-map-scale width, 0px), anchor-size(--aio-map-credits width, 0px)) + 20px

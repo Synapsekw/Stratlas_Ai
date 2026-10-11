@@ -213,7 +213,9 @@ describe('importRawFiles', () => {
     await writeFile(las, new Uint8Array([1, 2, 3]));
     const none = await importRawFiles(root, [las], deps());
     expect(none.items[0]).toMatchObject({ kind: 'pointcloud', status: 'needs-pipeline' });
-    expect(none.items[0]?.message).toMatch(/pipeline pack/i);
+    expect(none.items[0]?.message).toMatch(/processing tools/i);
+    expect(none.items[0]?.message).toContain('Settings, Processing tools');
+    expect(none.items[0]?.message).not.toMatch(/pipeline pack/i);
 
     const started: unknown[] = [];
     const jobs: PipelineJobs = {

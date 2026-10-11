@@ -228,7 +228,7 @@ export async function removeModel(
   if (!user.some((m) => m.info.id === id)) {
     const pack = await listIn(dirs.pack, 'pack');
     return pack.some((m) => m.info.id === id)
-      ? { ok: false, error: `"${id}" comes with the pipeline pack and cannot be removed here.` }
+      ? { ok: false, error: `"${id}" comes with the processing tools and cannot be removed here.` }
       : { ok: false, error: `There is no detector model "${id}".` };
   }
   try {

@@ -175,7 +175,7 @@ export function installProblem(e: unknown): {
   ) {
     return {
       error:
-        'This file is not a complete pipeline pack archive: it is damaged or was cut short. Copy or download it again. Nothing was changed.',
+        'This is not a complete processing tools file: it is damaged or was cut short. Copy or download it again. Nothing was changed.',
     };
   }
   return {
@@ -393,7 +393,7 @@ async function unpack(archive: string, tmp: string, o: UnpackOptions): Promise<U
     declared += bytes;
     if (declared > o.limits.maxBytes) {
       throw refused(
-        `The archive unpacks to more than ${mb(o.limits.maxBytes)}, which no pipeline pack does. It was not installed.`,
+        `The archive unpacks to more than ${mb(o.limits.maxBytes)}, which no processing tools file does. It was not installed.`,
       );
     }
   };
@@ -402,7 +402,7 @@ async function unpack(archive: string, tmp: string, o: UnpackOptions): Promise<U
     entries += 1;
     if (entries > o.limits.maxEntries) {
       throw refused(
-        `The archive holds more than ${o.limits.maxEntries.toLocaleString('en-US')} entries, which no pipeline pack does. It was not installed.`,
+        `The archive holds more than ${o.limits.maxEntries.toLocaleString('en-US')} entries, which no processing tools file does. It was not installed.`,
       );
     }
     const path = archiveSegments(entry.path, o.win32);
@@ -414,14 +414,14 @@ async function unpack(archive: string, tmp: string, o: UnpackOptions): Promise<U
       const version = PACK_DIR.exec(first)?.[1];
       if (version === undefined || !VERSION.test(version)) {
         throw refused(
-          `This archive is not a pipeline pack: it starts with ${shown(first)}, not a pipeline-pack-<version> folder.`,
+          `This archive is not a processing tools file: it starts with ${shown(first)}, not a pipeline-pack-<version> folder.`,
         );
       }
       s.top = first;
       await o.onTop(first);
     } else if (first !== s.top) {
       throw refused(
-        `The archive holds ${shown(first)} beside ${s.top}; a pipeline pack is one folder. It was not installed.`,
+        `The archive holds ${shown(first)} beside ${s.top}; the processing tools come as one folder. It was not installed.`,
       );
     }
     const dest = join(tmp, ...rel);
@@ -549,7 +549,9 @@ async function unpack(archive: string, tmp: string, o: UnpackOptions): Promise<U
     await settled();
     if (s.failure) throw s.failure;
     if (s.top === null) {
-      throw refused('This file is not a pipeline pack archive: it holds no pipeline pack folder.');
+      throw refused(
+        'This is not a processing tools file: it holds no pipeline-pack-<version> folder.',
+      );
     }
     return { top: s.top, files, links, entries };
   } finally {
@@ -569,7 +571,7 @@ async function checkUnpacked(
   const listed = u.files.get('manifest.json');
   if (!listed) {
     throw refused(
-      'This archive is not a pipeline pack: it has no manifest.json. It was not installed.',
+      'This archive is not a processing tools file: it has no manifest.json. It was not installed.',
     );
   }
   let raw: unknown;

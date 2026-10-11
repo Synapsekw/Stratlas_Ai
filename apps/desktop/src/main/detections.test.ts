@@ -203,7 +203,8 @@ describe('mask assist seam', () => {
     expect(await none.status()).toEqual({ available: false, reason: 'no-model' });
     expect(await none.segment('p.jpg', [0, 0, 10, 10])).toEqual({
       ok: false,
-      error: 'No mask model is installed in the pipeline pack.',
+      error:
+        'The processing tools on this computer have no mask model. Update them in Settings, Processing tools.',
     });
     const dir = await pack(true);
     const noRuntime = createMaskAssist({

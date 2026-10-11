@@ -158,7 +158,7 @@ test('a new project from the wizard, raw photos and a model, georeferenced by ty
   await win.getByRole('button', { name: 'Import files' }).click();
   const panel = win.getByTestId('import-panel');
   await expect(panel).toContainText('Imported 3 of 4 files', { timeout: 30_000 });
-  await expect(panel).toContainText('Needs pipeline pack');
+  await expect(panel).toContainText('Needs processing tools');
   const m = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as {
     layers: { kind: string; id: string; items?: { pos?: number[]; q?: number[] }[] }[];
   };

@@ -1050,7 +1050,7 @@ export const en = {
   // Diagnostics and support (Settings, About and updates; Help, Report a problem; crash notice)
   'diag.title': 'Diagnostics and support',
   'diag.text':
-    'A diagnostics bundle is a zip with the logs, versions, graphics card, settings without keys, map and pipeline packs, recent jobs and crash reports. It never holds project files, and nothing is sent anywhere: you choose where to save it.',
+    'A diagnostics bundle is a zip with the logs, versions, graphics card, settings without keys, map packs and processing tools, recent jobs and crash reports. It never holds project files, and nothing is sent anywhere: you choose where to save it.',
   'diag.export': 'Export diagnostics',
   'diag.report': 'Report a problem',
   'diag.saving': 'Saving',
@@ -1746,7 +1746,7 @@ export const en = {
   'infer.model.licence': 'Licence: {licence}',
   'infer.model.source': 'Source: {source}',
   'infer.model.where.user': 'Imported',
-  'infer.model.where.pack': 'Pipeline pack',
+  'infer.model.where.pack': 'Processing tools',
   'infer.model.remove': 'Remove',
   'infer.model.removeLabel': 'Remove {name}',
   'infer.import.accept': 'I may use the model I import under the licence on its model card',
@@ -2715,7 +2715,7 @@ export const en = {
   'g7.packs.build': 'Build the pack',
   'g7.packs.cancel': 'Cancel',
   'g7.packs.building':
-    'Building {name} in the pipeline pack. It appears here when the job in Jobs is done.',
+    'Building {name} with the processing tools. It appears here when the job in Jobs is done.',
   'g7.packs.failed': 'The pack was not built. See the job in Jobs for why.',
   'g7.packs.colPack': 'Pack',
   'g7.packs.colZoom': 'Zoom',

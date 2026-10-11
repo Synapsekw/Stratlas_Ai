@@ -191,7 +191,7 @@ export function createMaskAssist(deps: MaskAssistDeps): MaskAssist {
       if (!l.ok) {
         const why =
           l.status.reason === 'no-model'
-            ? 'No mask model is installed in the pipeline pack.'
+            ? 'The processing tools on this computer have no mask model. Update them in Settings, Processing tools.'
             : l.status.reason === 'no-runtime'
               ? 'The ONNX runtime is not installed.'
               : `The mask model could not be loaded: ${l.status.detail ?? ''}`;

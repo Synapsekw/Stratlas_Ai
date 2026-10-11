@@ -158,7 +158,7 @@ describe('import, list and remove', () => {
     ]);
     expect(await removeModel(dirs, 'pack-markers')).toEqual({
       ok: false,
-      error: '"pack-markers" comes with the pipeline pack and cannot be removed here.',
+      error: '"pack-markers" comes with the processing tools and cannot be removed here.',
     });
     expect(await removeModel(dirs, 'marker-test-detector-1.0.0')).toEqual({ ok: true });
     expect(await removeModel(dirs, 'nope')).toEqual({
