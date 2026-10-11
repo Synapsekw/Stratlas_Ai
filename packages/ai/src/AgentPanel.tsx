@@ -11,7 +11,7 @@ import {
 import { bindingLabel } from './context';
 import { PANEL_CSS } from './panel-css';
 import { formatMeter, totalUsage } from './pricing';
-import { WINDOW_LABELS } from './prompt';
+import { WINDOW_LABELS, WINDOW_SUBJECTS } from './prompt';
 import { defaultToolContext } from './renderer-tools';
 import { modelLabel, PROVIDER_LABELS } from './routes';
 import {
@@ -156,7 +156,7 @@ export function AgentPanel({
   useEffect(() => {
     const el = log.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [state.turns, state.steps, state.fix]);
+  }, [state.turns, state.steps, state.fix, state.availability.status]);
 
   const ready = state.availability.status === 'ready';
   const canCapture = CAPTURE_WINDOWS.includes(win);
@@ -265,7 +265,7 @@ export function AgentPanel({
           <Disabled availability={state.availability} onRetry={() => void session.refresh()} />
         ) : state.turns.length === 0 ? (
           <div className="ag-empty">
-            <p>Ask about this {WINDOW_LABELS[win].toLowerCase()} or tell the agent what to do.</p>
+            <p>Ask about {WINDOW_SUBJECTS[win]} or tell the agent what to do.</p>
             {suggestionsFor(win, { hasPhotos, hasIssues, hasAssets, hasClips }).map((s) => (
               <button
                 key={s}
@@ -301,6 +301,9 @@ export function AgentPanel({
                   session.dismissFix();
                 },
               })}
+            {/* a conversation the app kept across screens outlives the agent being on: the reason
+                it is off is said under it, where an empty panel says it instead of the requests */}
+            <Disabled availability={state.availability} onRetry={() => void session.refresh()} />
           </>
         )}
       </div>

@@ -211,6 +211,17 @@ describe('AgentPanel', () => {
     expect(el.textContent).toContain('12.4k tok · $0.04');
     expect(el.textContent).toContain('Claude Sonnet 5.5');
   });
+
+  it('invites a question about the window in words that fit it', async () => {
+    workspace
+      .getState()
+      .openProject({ id: 'p1', root: 'E:/x', manifest: fixtureManifest() }, [fixtureIssue()]);
+    // the agent column of Media is bound to the photos, that of Issues to the issues
+    const el = await render(bridge(true).b, { window: 'photo' });
+    expect(el.querySelector('.ag-empty p')?.textContent).toBe(
+      'Ask about these photos or tell the agent what to do.',
+    );
+  });
 });
 
 describe('AgentPanel fixes in place', () => {
@@ -346,6 +357,28 @@ describe('AgentPanel with a session the app owns', () => {
     expect(setWindow).toHaveBeenLastCalledWith('photo');
     expect(el.textContent).not.toContain('Cloud AI is off');
     expect(el.querySelector('textarea')?.disabled).toBe(false);
+  });
+
+  it('says why the agent is off under a conversation it kept', async () => {
+    workspace.getState().openProject({ id: 'p1', root: 'E:/x', manifest: fixtureManifest() }, []);
+    let current = bridge(true).b;
+    const b: AioBridge = {
+      invoke: (channel, req) => current.invoke(channel, req),
+      on: (event, listener) => current.on(event, listener),
+    };
+    const session = await ownedSession(b);
+    const el = await render(b, { session });
+    expect(el.querySelector('.ag-off')).toBeNull();
+    // cloud AI is switched off past the panel, and the person comes back from another screen: the
+    // conversation is still there, so the reason has to be said beside it, not instead of it
+    current = bridge(false).b;
+    act(() => {
+      root?.unmount();
+    });
+    await remount({ session });
+    expect(el.textContent).toContain('Which clips are open?');
+    expect(el.querySelector('.ag-off')?.textContent).toContain('Cloud AI is off');
+    expect(el.querySelector('textarea')?.disabled).toBe(true);
   });
 
   it('without the prop each mount gets a fresh conversation', async () => {

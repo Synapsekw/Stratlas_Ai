@@ -1,5 +1,5 @@
 import { registerAppHooks, registerFrameSource, ToolError } from '@aio/ai';
-import { registerIssueHistory, setFlightPoses } from '@aio/annotate';
+import { issueView, registerIssueHistory, setFlightPoses } from '@aio/annotate';
 import {
   configureEngine,
   getActiveStage,
@@ -17,8 +17,10 @@ import { registerAgentHooks } from './agent/hooks';
 import { registerAgentPlaces } from './agentPlaces';
 import { IssueHistoryPanel } from './audit/HistoryPanel';
 import { graphics } from './graphics';
+import { evidence } from './issueCard/evidence';
 import { graphicsReport, memoryWatch } from './memoryWatch';
 import { requestGlobe } from './globe/request';
+import { mediaView } from './screens/mediaView';
 import { bridge, shell } from './shell';
 import { COMPARE_GPU_BYTES, compareRuntime } from './workspace/compare';
 import { registerCorrectedPhotos } from './builder/photoPoses';
@@ -122,6 +124,11 @@ export function bootstrap(): void {
         models: meshTemplates.stats(),
         gpuLimit: COMPARE_GPU_BYTES[graphics().getState().tier],
       }),
+      /** The screen, the Media and Issues filters and the evidence beside the 3D view (agent tests). */
+      shell,
+      mediaView,
+      issueView,
+      evidence,
     },
   });
   shareFlightPoses(workspace.getState().project);

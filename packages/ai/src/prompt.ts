@@ -10,6 +10,17 @@ export const WINDOW_LABELS: Record<WindowKind, string> = {
   issues: 'Issues',
 };
 
+/** The window as the thing a question is about: "Ask about these photos". */
+export const WINDOW_SUBJECTS: Record<WindowKind, string> = {
+  scene3d: 'this 3D view',
+  map: 'this map',
+  video: 'this video',
+  photo: 'these photos',
+  pointcloud: 'this point cloud',
+  report: 'this report',
+  issues: 'these issues',
+};
+
 const BASE = `You are the agent inside a desktop app for reviewing drone reality capture of \
 industrial assets: 3D meshes, point clouds, maps, flight videos with their flight paths, photos and \
 inspection issues (findings). You work for an inspection engineer and act in the app through your \
