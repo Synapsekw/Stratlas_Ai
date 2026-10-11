@@ -36,7 +36,7 @@ import { useCaptureIndex } from '../workspace/compare';
 import { flightPathShown, toggleFlightPath } from '../workspace/flightPaths';
 import { updateFlightPaths, useFlightPathModel } from '../workspace/pathModel';
 import { timeline, useTimeline } from '../workspace/timeline';
-import { moveLayersToDate, updateCapture } from './dateFolders';
+import { type MovedLayer, moveLayersToDate, undoDateMove, updateCapture } from './dateFolders';
 import { DateFolderMenu, LayerDateMenu } from './DateMenus';
 
 interface NavDef {
@@ -267,7 +267,9 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   const [folderMenu, setFolderMenu] = useState<DateFolderMenuRequest | null>(null);
   const [itemMenu, setItemMenu] = useState<DateItemMenuRequest | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
-  const [note, setNote] = useState<{ text: string; danger: boolean } | null>(null);
+  const [note, setNote] = useState<{ text: string; danger: boolean; undo?: MovedLayer[] } | null>(
+    null,
+  );
   // menus, the name field and the note belong to the project they were opened in
   const projectId = project?.id;
   const [notedFor, setNotedFor] = useState(projectId);
@@ -285,28 +287,42 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   };
 
   const onMove = (layerIds: string[], capture: string | null) => {
-    void moveLayersToDate(layerIds, capture).then(({ error, stays }) => {
+    void moveLayersToDate(layerIds, capture).then(({ error, stays, moved }) => {
       if (error) {
         failed(error);
         return;
       }
+      const manifest = workspace.getState().project?.manifest;
+      // one dataset is put back by dragging it back; a group or a flight needs Undo
+      const undo = moved.length > 1 ? { undo: moved } : {};
       const kept = Object.entries(stays);
       const [first] = kept;
-      if (!first) {
-        setNote(null);
+      if (first) {
+        const name = manifest?.layers.find((l) => l.id === first[0])?.name ?? first[0];
+        const date = manifest?.captures.find((c) => c.id === first[1])?.date;
+        setNote({
+          text: t('tree.dates.move.stays', {
+            count: kept.length,
+            name,
+            date: date ? formatDate(date) : first[1],
+          }),
+          danger: false,
+          ...undo,
+        });
         return;
       }
-      const manifest = workspace.getState().project?.manifest;
-      const name = manifest?.layers.find((l) => l.id === first[0])?.name ?? first[0];
-      const date = manifest?.captures.find((c) => c.id === first[1])?.date;
-      setNote({
-        text: t('tree.dates.move.stays', {
-          count: kept.length,
-          name,
-          date: date ? formatDate(date) : first[1],
-        }),
-        danger: false,
-      });
+      if (moved.length > 1) {
+        const date = capture ? manifest?.captures.find((c) => c.id === capture)?.date : undefined;
+        setNote({
+          text: date
+            ? t('tree.dates.move.done', { count: moved.length, date: formatDate(date) })
+            : t('tree.dates.move.doneNone', { count: moved.length }),
+          danger: false,
+          undo: moved,
+        });
+        return;
+      }
+      setNote(null);
     });
   };
 
@@ -388,6 +404,18 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           data-testid="date-note"
         >
           <span>{note.text}</span>
+          {note.undo && (
+            <button
+              type="button"
+              className="dtree-undo"
+              data-testid="date-undo"
+              onClick={() => {
+                if (note.undo) void undoDateMove(note.undo).then(failed);
+              }}
+            >
+              {t('tree.dates.move.undo')}
+            </button>
+          )}
           <button
             type="button"
             aria-label={t('tree.dates.dismiss')}

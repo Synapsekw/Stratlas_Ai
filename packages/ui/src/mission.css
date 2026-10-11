@@ -1214,6 +1214,22 @@ select.input option {
   color: var(--fg-0);
   background: var(--bg-3);
 }
+/* Undo: a text button in the same row, not the square dismiss icon (so it overrides its size) */
+.dtree-note > .dtree-undo {
+  display: block;
+  width: auto;
+  height: auto;
+  padding: 0 4px;
+  color: var(--acc);
+  font-size: inherit;
+  line-height: inherit;
+  white-space: nowrap;
+}
+.dtree-note > .dtree-undo:hover,
+.dtree-note > .dtree-undo:focus-visible {
+  color: var(--acc-strong);
+  background: var(--bg-3);
+}
 
 /* ---------- command palette ---------- */
 .cmdk-scrim {
