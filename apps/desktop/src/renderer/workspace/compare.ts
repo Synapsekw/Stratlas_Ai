@@ -71,7 +71,8 @@ export function drapeAllowed(used: number, bytes: number, tier: GpuTier): boolea
 
 /**
  * The volumes survey (epoch) of the date a pane shows, for the volumetric overlay of that pane;
- * null when the pane shows no date of its own or the date has no volumes.
+ * null when the pane shows no date of its own or the date has no volumes. The main view then
+ * draws the survey the volumes panel shows; the second view of a comparison draws no volumes.
  */
 export function useCaptureEpoch(capture: string | undefined): string | null {
   return useVolumetric((s) =>

@@ -198,7 +198,7 @@ describe('VolumetricScene: one view of two', () => {
     const { store, scene, reliefRaster } = await ready();
     const { stage, frame, drapes } = fakeStage();
     store.getState().setAllPilesVisible(true);
-    const v = new VolumetricScene(stage, store, () => true, { display: true });
+    const v = new VolumetricScene(stage, store);
     v.setEpoch('e1');
     v.attach();
     store.getState().setSurface('elev');
@@ -212,12 +212,55 @@ describe('VolumetricScene: one view of two', () => {
     await settle(frame);
     expect(drapes()).toEqual(['drape:e2']);
     expect(scene.mock.calls.at(-1)?.[0]).toMatchObject({ epoch: 'e2' });
-    // and back to the store's rule
+    // the main view without a date of its own goes back to the store's rule
+    store.getState().setEpoch('e1');
     v.setEpoch(null);
     await settle(frame);
-    expect(drapes()).toEqual(['drape:e2']);
+    expect(drapes()).toEqual(['drape:e1']);
     v.detach();
     expect(drapes()).toEqual([]);
+  });
+
+  it('a display view whose date has no volumes draws nothing of another date', async () => {
+    const { store, scene, reliefRaster } = await ready();
+    const { stage, scene: three, frame, drapes } = fakeStage();
+    store.getState().setAllPilesVisible(true);
+    store.getState().setSurface('elev');
+    store.setState({
+      section: {
+        mode: 'done',
+        points: [
+          [1000, 2000],
+          [1010, 2000],
+        ],
+        profile: null,
+        busy: false,
+      },
+    });
+    // no setEpoch: the date this second view shows is not one of the volume surveys
+    const v = new VolumetricScene(stage, store, () => true, { display: true });
+    v.attach();
+    await settle(frame);
+    const group = () => three.getObjectByName('volumetric');
+    expect(drapes()).toEqual([]);
+    expect(group()?.visible).toBe(false);
+    expect(scene).not.toHaveBeenCalled();
+    expect(reliefRaster).not.toHaveBeenCalled();
+    expect(v.drapeRefused).toBe(false);
+    // its pane moves to a survey with volumes: it draws that survey
+    v.setEpoch('e1');
+    await settle(frame);
+    expect(group()?.visible).toBe(true);
+    expect(drapes()).toEqual(['drape:e1']);
+    expect(scene.mock.calls.at(-1)?.[0]).toMatchObject({ epoch: 'e1' });
+    // and away again: everything it drew goes
+    const asked = scene.mock.calls.length;
+    v.setEpoch(null);
+    await settle(frame);
+    expect(group()?.visible).toBe(false);
+    expect(drapes()).toEqual([]);
+    expect(scene.mock.calls.length).toBe(asked);
+    v.detach();
   });
 
   it('cut and fill colours lie on the terrain of each view', async () => {
@@ -323,6 +366,66 @@ describe('VolumetricScene: one view of two', () => {
     await settle(frame);
     expect(v.drapeRefused).toBe(false);
     expect(told.at(-1)).toBe(false);
+    v.detach();
+  });
+
+  it('a restyle of a drape the view already holds is not refused for that memory', async () => {
+    const { store, reliefRaster } = await ready();
+    const { stage, scene: three, frame, drapes } = fakeStage();
+    const asked: number[] = [];
+    // room for one drape only: everything after the first is turned down
+    const v = new VolumetricScene(stage, store, () => true, {
+      display: true,
+      budget: (bytes) => {
+        asked.push(bytes);
+        return asked.length === 1;
+      },
+    });
+    v.setEpoch('e1');
+    v.attach();
+    store.getState().setSurface('elev');
+    await settle(frame);
+    expect(drapes()).toEqual(['drape:e1']);
+    const first = three.getObjectByName('drape:e1')?.uuid;
+    // another ramp: the new texture takes the place of the old one, no more memory than before
+    store.getState().setElevation({ ramp: 'viridis' });
+    await settle(frame);
+    expect(reliefRaster).toHaveBeenCalledTimes(2);
+    expect(asked).toEqual([16]);
+    expect(drapes()).toEqual(['drape:e1']);
+    expect(three.getObjectByName('drape:e1')?.uuid).not.toBe(first);
+    expect(v.drapeRefused).toBe(false);
+    v.detach();
+  });
+
+  it('a refused restyle takes the old colours away: the view shows what its legend says', async () => {
+    const { store, reliefRaster } = await ready();
+    const { stage, frame, drapes } = fakeStage();
+    const asked: number[] = [];
+    const told: boolean[] = [];
+    const v = new VolumetricScene(stage, store, () => true, {
+      display: true,
+      budget: (bytes) => {
+        asked.push(bytes);
+        return asked.length === 1;
+      },
+    });
+    v.setEpoch('e1');
+    v.onDrapeRefused((r) => told.push(r));
+    v.attach();
+    store.getState().setSurface('elev');
+    await settle(frame);
+    expect(drapes()).toEqual(['drape:e1']);
+    // the restyled relief is larger than the one held: only the extra is asked for, and refused
+    reliefRaster.mockImplementation(() =>
+      Promise.resolve({ width: 4, height: 4, data: new Uint8ClampedArray(64).fill(255) }),
+    );
+    store.getState().setElevation({ ramp: 'viridis' });
+    await settle(frame);
+    expect(asked).toEqual([16, 48]);
+    expect(drapes()).toEqual([]);
+    expect(v.drapeRefused).toBe(true);
+    expect(told).toEqual([true]);
     v.detach();
   });
 });

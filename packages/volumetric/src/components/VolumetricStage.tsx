@@ -672,7 +672,10 @@ export function VolumetricStage({
   budget,
 }: {
   stage: EngineStage | null;
-  /** The survey this view shows (null: the one the volumetric store shows). */
+  /**
+   * The survey this view shows. Null: the one the volumetric store shows, or, in a view that
+   * only draws, a date without volumes (nothing is drawn and no legend shows).
+   */
   epoch?: string | null;
   /** Draw only (the second view of a comparison). */
   display?: boolean;
@@ -793,7 +796,8 @@ export function VolumetricStage({
 
   if (!ready) return null;
   if (display)
-    return (
+    // on a date without volumes the view draws none, so there is nothing to explain
+    return epoch === null ? null : (
       <div className="vol-stage">
         <Legend view={{ refused }} />
       </div>

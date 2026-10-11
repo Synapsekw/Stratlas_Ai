@@ -68,7 +68,11 @@ function lineGeometry(pts: number[]): BufferGeometry {
 
 /** How one 3D view draws the volumes when it is not the only view (a split comparing two dates). */
 export interface VolumetricView {
-  /** Draws only: no boundary edit and no swipe (the second view of a comparison). */
+  /**
+   * Draws only: no boundary edit and no swipe (the second view of a comparison). Such a view
+   * draws the survey it is given (`setEpoch`) and nothing at all without one: its pane shows a
+   * date the volumes do not have, and another date's piles would be wrong there.
+   */
   display?: boolean;
   /**
    * Whether a drape texture of `bytes` may be made (the graphics memory two views share).
@@ -178,7 +182,7 @@ export class VolumetricScene {
 
   /**
    * The survey this view shows, when the pane it is in shows one date of several. Null: the
-   * survey the store shows (a single 3D view).
+   * survey the store shows (a single 3D view), or nothing in a view that only draws.
    */
   setEpoch(epoch: string | null): void {
     if (epoch === this.viewEpoch) return;
@@ -189,6 +193,14 @@ export class VolumetricScene {
   /** The survey drawn here: this view's own, else the store's. */
   private epoch(): string {
     return this.viewEpoch ?? this.store.getState().shownEpoch();
+  }
+
+  /**
+   * A view that only draws, on a date without volumes: it draws no bodies, toe lines, section
+   * line or surface colours (the main view falls back to the store's survey instead).
+   */
+  private blank(): boolean {
+    return this.view.display === true && this.viewEpoch === null;
   }
 
   /** Whether a surface colouring is left out here for lack of graphics memory. */
@@ -235,6 +247,17 @@ export class VolumetricScene {
     const s = this.store.getState();
     if (s.status !== 'ready' || !s.service) {
       this.group.visible = false;
+      return;
+    }
+    if (this.blank()) {
+      // forget what was drawn for the last date: asked for again when the view gets a survey
+      this.group.visible = false;
+      this.sceneSeq++;
+      this.sceneKey = '';
+      this.sectionDrawn = null;
+      disposeGroup(this.bodies);
+      disposeGroup(this.sectionG);
+      this.stage.requestRender();
       return;
     }
     this.group.visible = true;
@@ -650,7 +673,7 @@ export class VolumetricScene {
   private wantedDrapes(): Map<string, { mode: SurfaceMode; key: string }> {
     const s = this.store.getState();
     const out = new Map<string, { mode: SurfaceMode; key: string }>();
-    if (this.swiping() || s.surface === 'photo') return out;
+    if (this.blank() || this.swiping() || s.surface === 'photo') return out;
     const epoch = this.epoch();
     if (s.surface === 'change') out.set(epoch, { mode: 'change', key: 'change' });
     else {
@@ -706,10 +729,17 @@ export class VolumetricScene {
     return tex;
   }
 
-  /** The texture of a raster, unless the view's graphics memory budget turns it down. */
-  private admit(raster: Raster): Texture {
-    if (this.view.budget && !this.view.budget(raster.width * raster.height * 4))
-      throw new DrapeRefused();
+  /**
+   * The texture of a raster for the drape of `epoch`, unless the view's graphics memory budget
+   * turns it down. A drape this view already holds for that survey is replaced by the new one, so
+   * only the memory beyond what it holds is asked for: a restyle (ramp, range, hillshade) of the
+   * same size never is.
+   */
+  private admit(raster: Raster, epoch: string): Texture {
+    const held = this.drapes.get(epoch)?.texture?.image as
+      { width?: number; height?: number } | undefined;
+    const extra = raster.width * raster.height * 4 - (held?.width ?? 0) * (held?.height ?? 0) * 4;
+    if (extra > 0 && this.view.budget && !this.view.budget(extra)) throw new DrapeRefused();
     return VolumetricScene.texture(raster);
   }
 
@@ -720,7 +750,7 @@ export class VolumetricScene {
     if (mode === 'photo' || !svc) return Promise.resolve(null);
     if (mode === 'change') {
       if (!this.changeTexture) {
-        const p = svc.changeRaster().then((r) => this.admit(r));
+        const p = svc.changeRaster().then((r) => this.admit(r, epoch));
         p.catch(() => {
           this.changeTexture = null;
         });
@@ -730,7 +760,7 @@ export class VolumetricScene {
     }
     const style = s.reliefStyle();
     if (!style) return Promise.resolve(null);
-    return svc.reliefRaster(epoch, style).then((r) => this.admit(r));
+    return svc.reliefRaster(epoch, style).then((r) => this.admit(r, epoch));
   }
 
   private buildDrape(epoch: string, mode: SurfaceMode, key: string, root: Object3D): void {
@@ -784,9 +814,12 @@ export class VolumetricScene {
       (e: unknown) => {
         this.pendingDrapes.delete(epoch);
         if (e instanceof DrapeRefused) {
-          // the view keeps the survey photo; the pane says why (VolumetricStage)
-          if (this.unsub.length && this.wantedDrapes().get(epoch)?.mode === mode)
+          // the view shows the survey photo and the pane says why (VolumetricStage): colours of
+          // an older style must not stay under a legend that says there are none
+          if (this.unsub.length && this.wantedDrapes().get(epoch)?.mode === mode) {
+            this.removeDrape(epoch);
             this.setRefused(epoch, mode);
+          }
           return;
         }
         this.store.getState().setMessage(e instanceof Error ? e.message : String(e));
