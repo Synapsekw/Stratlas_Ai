@@ -39,7 +39,7 @@ Slash commands in `.claude/commands/` carry the workflow:
 - **`/wrapup`** ends every working block: a note in `docs/sessions/`, section 3 of `docs/NORTH-STAR.md` overwritten, both committed on a branch for the orchestrator.
 - **`/goal`** reports where the current milestone stands; **`/roast <idea>`** has a council of agents stress-test an idea or decision before work starts.
 
-Working agreements for non-trivial work (a typo or one-liner can skip them):
+Working agreements for build sessions doing non-trivial work (a typo or one-liner can skip them). The Orchestrator coordinates (merges, CI, installer rebuilds) and does not use the Superpowers skills; these agreements are for the sessions that build:
 
 1. **Use the Superpowers skills**: `brainstorming` before building, `writing-plans`, `test-driven-development`, `subagent-driven-development`, `dispatching-parallel-agents`, `systematic-debugging`, `verification-before-completion`. UI work loads the design skills (`impeccable`, `frontend-design`) first.
 2. **Every plan has an Execution DAG**: which task depends on which, the parallel batches (no shared files, run at once, each batch dispatched in one message), and the critical path. A plan that is a flat list is not ready to build. It also lists the tests per task, the e2e specs it adds or changes, any contract change and the packages each task touches.
