@@ -340,6 +340,33 @@ describe('photogrammetry files', () => {
     };
     expect(HardwareProbe.safeParse(probe).success).toBe(true);
   });
+
+  it('a hardware probe may say how the optional GPU add-on stands, in words when it is not ready', () => {
+    const probe = {
+      platform: 'win32',
+      arch: 'x64',
+      cpu: { model: 'Test CPU', cores: 8 },
+      memoryBytes: 64 * 2 ** 30,
+      freeDiskBytes: 200 * 2 ** 30,
+      gpus: [{ name: 'NVIDIA GeForce RTX 5070 Ti', vendor: 'NVIDIA', vramBytes: 16 * 2 ** 30 }],
+      cuda: false,
+      processing: 'available',
+    };
+    const ready = { state: 'ready', version: '0.1.0', driver: '591.86', gpu: probe.gpus[0]?.name };
+    expect(HardwareProbe.parse({ ...probe, accelerator: ready }).accelerator).toEqual(ready);
+    const old = {
+      state: 'driver-too-old',
+      version: '0.1.0',
+      reason: 'The GPU add-on needs graphics driver 528.33 or later (found 512.15).',
+    };
+    expect(HardwareProbe.parse({ ...probe, accelerator: old }).accelerator?.reason).toBe(
+      old.reason,
+    );
+    expect(HardwareProbe.parse(probe).accelerator).toBeUndefined();
+    expect(HardwareProbe.safeParse({ ...probe, accelerator: { state: 'warm' } }).success).toBe(
+      false,
+    );
+  });
 });
 
 describe('tilesets.json', () => {

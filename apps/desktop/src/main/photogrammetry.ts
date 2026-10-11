@@ -36,6 +36,7 @@ import { cpus, totalmem } from 'node:os';
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { z } from 'zod';
 import { isChangedOnDisk, readBytesSeen, writeJsonAtomic, writeJsonSeen } from './fsutil';
+import type { AcceleratorState } from './jobs/addon';
 import { compareVersions } from './jobs/pack';
 import type { Handle } from './notYet';
 
@@ -81,6 +82,11 @@ export interface PhotoSystem {
   packVersion(): Promise<string | null>;
   /** Whether the pack's CUDA build is present and passes its self-test (decision 5: M10.1). */
   cuda?(): Promise<boolean>;
+  /**
+   * The optional GPU add-on's state on this computer (`jobs/addon.ts`): installed or not, and
+   * whether the graphics card passes its test. Absent in builds and tests without it.
+   */
+  accelerator?(): Promise<AcceleratorState>;
 }
 
 export interface PhotogrammetryIpcDeps {
@@ -148,6 +154,34 @@ export function gpusFromInfo(info: unknown): ProbeGpu[] {
   return out.slice(0, 16);
 }
 
+/**
+ * The probe's `accelerator` from the add-on's state, and the card's memory on the GPU it names:
+ * Chromium does not report memory, the add-on's test does. A card Chromium did not list (it
+ * lists the one that draws) is added.
+ */
+export function withAccelerator(
+  gpus: HardwareProbe['gpus'],
+  state: AcceleratorState | null,
+): { gpus: HardwareProbe['gpus']; accelerator?: NonNullable<HardwareProbe['accelerator']> } {
+  if (!state) return { gpus };
+  const accelerator = {
+    state: state.state,
+    ...(state.version ? { version: state.version } : {}),
+    ...(state.driver ? { driver: state.driver } : {}),
+    ...(state.gpu ? { gpu: state.gpu } : {}),
+    ...(state.reason ? { reason: state.reason } : {}),
+  };
+  if (!state.gpu || state.vramBytes === undefined) return { gpus, accelerator };
+  const wanted = state.gpu.toLowerCase();
+  const vramBytes = state.vramBytes;
+  const at = gpus.findIndex((g) => g.name.toLowerCase().includes(wanted));
+  const out =
+    at >= 0
+      ? gpus.map((g, i) => (i === at ? { ...g, vramBytes } : g))
+      : [...gpus, { name: state.gpu, vendor: 'NVIDIA', vramBytes }].slice(0, 16);
+  return { gpus: out, accelerator };
+}
+
 async function readProbe(system: PhotoSystem): Promise<HardwareProbe> {
   const [freeDiskBytes, gpus, pack, cuda] = await Promise.all([
     system.freeDiskBytes().catch(() => 0),
@@ -180,8 +214,10 @@ export function nodePhotoSystem(o: {
   gpuInfo: () => Promise<unknown>;
   dataRoot: () => string;
   packVersion: () => Promise<string | null>;
+  accelerator?: () => Promise<AcceleratorState>;
 }): PhotoSystem {
   return {
+    ...(o.accelerator ? { accelerator: o.accelerator } : {}),
     platform: process.platform,
     arch: process.arch,
     cpu: () => {
@@ -943,12 +979,17 @@ export function registerPhotogrammetryIpc({
       probe = null;
       throw e;
     }
-    const [free, pack] = await Promise.all([
+    // the pack and the GPU add-on are read again each time: an install shows without a restart
+    const [free, pack, card] = await Promise.all([
       system.freeDiskBytes().catch(() => p.freeDiskBytes),
       system.packVersion().catch(() => null),
+      system.accelerator ? system.accelerator().catch(() => null) : Promise.resolve(null),
     ]);
+    const { gpus, accelerator } = withAccelerator(p.gpus, card);
     return {
       ...p,
+      gpus,
+      ...(accelerator ? { accelerator } : {}),
       freeDiskBytes: Math.max(0, Math.round(free)),
       processing: processingVerdict(system.platform, system.arch, pack),
     };

@@ -26,7 +26,14 @@ afterEach(async () => {
 
 function setup(
   mode: string,
-  opts: { pack?: boolean; grace?: number; jobEnv?: (j: JobRecord) => Record<string, string> } = {},
+  opts: {
+    pack?: boolean;
+    grace?: number;
+    jobEnv?: (
+      j: JobRecord,
+      pack: { dir: string; version: string },
+    ) => Record<string, string> | Promise<Record<string, string>>;
+  } = {},
 ) {
   const store = new JobStore(join(base, 'jobs.json'));
   stores.push(store);
@@ -164,6 +171,29 @@ describe('JobRunner', () => {
     if (!r.ok) return;
     await finished(runner, r.job.id);
     expect(envs[0]?.AIO_PHOTO_MEMORY_MB).toBe('1234');
+  });
+
+  it('works the job environment out for the pack the job runs in, and waits for it', async () => {
+    const { runner, envs } = setup('ok', {
+      jobEnv: async (_job, pack) => {
+        await new Promise((r) => setTimeout(r, 5));
+        return { AIO_PHOTO_ADDON: `${pack.dir}/pipeline-addon-cuda-${pack.version}` };
+      },
+    });
+    const r = await runner.start({ ...START, project });
+    if (!r.ok) throw new Error(r.error);
+    await finished(runner, r.job.id);
+    expect(envs[0]?.AIO_PHOTO_ADDON).toBe(`${base}/pipeline-addon-cuda-0.1.0`);
+  });
+
+  it('a job environment that cannot be worked out does not stop the job', async () => {
+    const { runner, envs } = setup('ok', {
+      jobEnv: () => Promise.reject(new Error('the runtime folder cannot be read')),
+    });
+    const r = await runner.start({ ...START, project });
+    if (!r.ok) throw new Error(r.error);
+    expect((await finished(runner, r.job.id)).status).toBe('done');
+    expect(envs[0]?.AIO_PHOTO_ADDON).toBeUndefined();
   });
 
   it('refuses bad params, a missing project and a missing pack before spawning', async () => {

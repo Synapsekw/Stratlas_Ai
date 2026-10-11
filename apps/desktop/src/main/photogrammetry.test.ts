@@ -26,6 +26,7 @@ import {
   sniffPhoto,
   summariseRun,
   utmEpsg,
+  withAccelerator,
   type PhotoProjects,
   type PhotoSet,
   type PhotoSystem,
@@ -517,6 +518,69 @@ describe('photo IPC', () => {
     await probed.call('photo:probe', {});
     expect(gpus).toHaveBeenCalledTimes(1);
     expect(free.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('adds the GPU add-on to the probe, read again each time, and the memory of the card it names', async () => {
+    let state: Awaited<ReturnType<NonNullable<PhotoSystem['accelerator']>>> = {
+      state: 'not-installed',
+    };
+    const gpus = () => Promise.resolve([{ name: 'NVIDIA GeForce RTX 5070 Ti', vendor: 'NVIDIA' }]);
+    const probed = collectHandlers((handle) => {
+      registerPhotogrammetryIpc({
+        handle,
+        system: fakeSystem({ gpus, accelerator: () => Promise.resolve(state) }),
+      });
+    });
+    expect(await probed.call('photo:probe', {})).toMatchObject({
+      probe: { accelerator: { state: 'not-installed' }, cuda: false },
+    });
+    state = {
+      state: 'ready',
+      version: '0.1.0',
+      gpu: 'NVIDIA GeForce RTX 5070 Ti',
+      driver: '591.86',
+      vramBytes: 16 * GB,
+      freeBytes: 12 * GB,
+    };
+    expect(await probed.call('photo:probe', {})).toMatchObject({
+      probe: {
+        accelerator: {
+          state: 'ready',
+          version: '0.1.0',
+          driver: '591.86',
+          gpu: 'NVIDIA GeForce RTX 5070 Ti',
+        },
+        gpus: [{ name: 'NVIDIA GeForce RTX 5070 Ti', vendor: 'NVIDIA', vramBytes: 16 * GB }],
+        // the estimate and the wizard's wording do not change with the add-on yet
+        cuda: false,
+      },
+    });
+  });
+
+  it('a card the add-on names that Chromium did not list is added; no add-on probe, no accelerator', async () => {
+    expect(
+      withAccelerator([{ name: 'Intel(R) UHD Graphics', vendor: 'Intel' }], {
+        state: 'ready',
+        gpu: 'NVIDIA GeForce RTX 4070',
+        vramBytes: 12 * GB,
+      }),
+    ).toEqual({
+      gpus: [
+        { name: 'Intel(R) UHD Graphics', vendor: 'Intel' },
+        { name: 'NVIDIA GeForce RTX 4070', vendor: 'NVIDIA', vramBytes: 12 * GB },
+      ],
+      accelerator: { state: 'ready', gpu: 'NVIDIA GeForce RTX 4070' },
+    });
+    expect(withAccelerator([], { state: 'failed', reason: 'It does not fit.' })).toEqual({
+      gpus: [],
+      accelerator: { state: 'failed', reason: 'It does not fit.' },
+    });
+    expect(withAccelerator([{ name: 'x' }], null)).toEqual({ gpus: [{ name: 'x' }] });
+    const probed = collectHandlers((handle) => {
+      registerPhotogrammetryIpc({ handle, system: fakeSystem() });
+    });
+    const r = (await probed.call('photo:probe', {})) as { probe: Record<string, unknown> };
+    expect('accelerator' in r.probe).toBe(false);
   });
 
   it('reads the processing tools again on each probe: an install shows without a restart', async () => {
