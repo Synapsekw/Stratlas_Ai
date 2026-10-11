@@ -207,15 +207,6 @@ describe('road builder form', () => {
     });
     expect(buildParams('road.build', {})).toMatchObject({ ok: false });
   });
-
-  it('a draft fills in the next new job form once', () => {
-    const { bridge } = fakeBridge({});
-    const store = createJobsStore(bridge, undefined);
-    store.getState().prepare({ pipeline: 'road.build', project: 'E:\\p', values: { lanes: '3' } });
-    expect(store.getState().draft?.values.lanes).toBe('3');
-    store.getState().prepare(null);
-    expect(store.getState().draft).toBeNull();
-  });
 });
 
 describe('inspection jobs', () => {

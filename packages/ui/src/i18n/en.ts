@@ -15,7 +15,6 @@ export const en = {
   'nav.media': 'Media',
   'nav.detections': 'Detections',
   'nav.reports': 'Reports',
-  'nav.jobs': 'Jobs',
   'nav.settings': 'Settings',
   'nav.sections': 'Sections',
   'nav.primary': 'Primary',

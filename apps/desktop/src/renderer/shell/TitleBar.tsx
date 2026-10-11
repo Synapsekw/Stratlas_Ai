@@ -5,6 +5,7 @@ import { Fragment } from 'react';
 import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
 import { help } from '../help/store';
+import { ProcessingChip } from '../processing/ProcessingChip';
 import { SyncStatus } from '../team/SyncStatus';
 import { BrandSymbol, BrandWordmark } from './BrandMark';
 import { ConnectionStatus } from './ConnectionStatus';
@@ -18,7 +19,6 @@ const VIEW_LABEL: Record<Screen, MessageKey> = {
   media: 'nav.media',
   detections: 'nav.detections',
   reports: 'nav.reports',
-  jobs: 'nav.jobs',
   settings: 'nav.settings',
   globe: 'globe.nav',
 };
@@ -86,6 +86,7 @@ export function TitleBar() {
         ?
       </button>
       <div className="tb-status">
+        <ProcessingChip />
         {pkg && (
           <span
             className="chip-status ro"

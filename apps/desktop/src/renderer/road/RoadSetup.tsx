@@ -6,7 +6,8 @@ import { useEffect, useMemo } from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { isTyping } from '../keys';
-import { bridge, jobs, shell, useShell } from '../shell';
+import { processing } from '../processing/store';
+import { bridge, shell, useShell } from '../shell';
 import { roadStore, setRoad, useRoad } from './store';
 
 /** The drawn centreline file the road builder reads (main `centreline.ts`). */
@@ -90,17 +91,16 @@ export async function finishDrawing(): Promise<void> {
   }
 }
 
-/** Open a road survey job for the open project in the Jobs panel, the drawn line filled in. */
+/** Open the road survey's start dialog for the open project, the drawn line filled in. */
 export function runRoadBuilder(): void {
   const root = workspace.getState().project?.root;
   if (!root) return;
   const saved = setupStore.getState().saved;
-  jobs.getState().prepare({
+  processing.getState().openDialog({
     pipeline: 'road.build',
     project: root,
     values: saved ? { centreline: DRAWN_CENTRELINE } : {},
   });
-  shell.getState().go('jobs');
 }
 
 const DRAWN_LAYERS: MapOverlay['layers'] = [

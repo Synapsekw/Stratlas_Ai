@@ -16,7 +16,7 @@ import type { Bridge } from './bridge';
 
 const LOG_KEEP = 2000;
 
-/** A new job form filled in elsewhere (the road setup panel), opened by the Jobs screen. */
+/** One pipeline with its form filled in, for the start dialog (`processing/PipelineDialog`). */
 export interface JobDraft {
   pipeline: PipelineName;
   project: string;
@@ -31,7 +31,6 @@ export interface JobsState {
   logs: Record<string, JobLogLine[]>;
   selected: string | null;
   error: string | null;
-  draft: JobDraft | null;
 }
 
 export interface JobsActions {
@@ -43,8 +42,6 @@ export interface JobsActions {
   start: (req: IpcRequest<'jobs:start'>) => Promise<string | null>;
   cancel: (id: string) => Promise<string | null>;
   open: (id: string, what: 'output' | 'log' | 'project') => Promise<string | null>;
-  /** Fill in a new job form for the Jobs screen (null clears it). */
-  prepare: (draft: JobDraft | null) => void;
 }
 
 export type Jobs = JobsState & JobsActions;
@@ -249,11 +246,6 @@ export function createJobsStore(bridge: Bridge, on: AioBridge['on'] | undefined)
     logs: {},
     selected: null,
     error: null,
-    draft: null,
-
-    prepare: (draft) => {
-      set({ draft });
-    },
 
     init: async () => {
       if (!following && on) {

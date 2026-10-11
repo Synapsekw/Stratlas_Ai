@@ -28,8 +28,7 @@ import { openAuditTrail } from '../audit/auditView';
 import { builder } from '../builder/state';
 import { legacyLayers } from '../legacy';
 import { useMedia } from '../media';
-import { isActive } from '../jobs';
-import { shell, useJobs, useShell } from '../shell';
+import { shell, useShell } from '../shell';
 import { PANEL_ID, PanelHandle } from './PanelHandle';
 import type { Screen } from '../store';
 import { useCaptureIndex } from '../workspace/compare';
@@ -55,7 +54,6 @@ const NAV: NavDef[] = [
   { screen: 'media', label: 'nav.media', icon: 'media' },
   { screen: 'detections', label: 'nav.detections', icon: 'target' },
   { screen: 'reports', label: 'nav.reports', icon: 'report' },
-  { screen: 'jobs', label: 'nav.jobs', icon: 'clock' },
 ];
 
 function NavItem({
@@ -520,13 +518,10 @@ export function Sidebar() {
   const collapsed = useShell((s) => s.settings.sidebarCollapsed);
   const libCount = useShell((s) => s.library?.length);
   const issueCount = useWorkspace((s) => (s.project ? s.issues.length : undefined));
-  const runningJobs = useJobs((s) => s.jobs.filter(isActive).length);
   const hasReview = useWorkspace((s) => legacyLayers(s.project?.manifest).length > 0);
   // The original review sits right after Scene when the open project has one.
-  const pkg = useShell((s) => s.pkg);
   const withReview = hasReview ? [...NAV.slice(0, 2), REVIEW, ...NAV.slice(2)] : NAV;
-  // Pipelines write into project folders: a package (player) has no Jobs.
-  const nav = pkg ? withReview.filter((n) => n.screen !== 'jobs') : withReview;
+  const nav = withReview;
 
   return (
     <aside className="sidebar" id={PANEL_ID.left} aria-label={t('nav.primary')}>
@@ -538,13 +533,7 @@ export function Sidebar() {
               def={n}
               current={screen === n.screen}
               count={
-                n.screen === 'projects'
-                  ? libCount
-                  : n.screen === 'issues'
-                    ? issueCount
-                    : n.screen === 'jobs' && runningJobs > 0
-                      ? runningJobs
-                      : undefined
+                n.screen === 'projects' ? libCount : n.screen === 'issues' ? issueCount : undefined
               }
             />
           ))}

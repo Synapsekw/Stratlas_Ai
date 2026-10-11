@@ -15,8 +15,9 @@ import { lazy, Suspense, useEffect } from 'react';
 import { getMedia } from './media';
 import { nextClipInFlight, startPlaybackLoop } from './playback';
 import { IssuesScreen } from './screens/Issues';
-import { JobsScreen } from './screens/Jobs';
-import { jobTitle } from './screens/jobTasks';
+import { jobTitle } from './processing/pipelines';
+import { PipelineDialog } from './processing/PipelineDialog';
+import { ProcessingDrawer } from './processing/ProcessingDrawer';
 import { MediaScreen } from './screens/Media';
 import { DetectionsScreen } from './screens/Detections';
 import { ProjectsScreen } from './screens/Projects';
@@ -204,8 +205,6 @@ function Screen() {
       return <DetectionsScreen />;
     case 'reports':
       return <ReportsScreen />;
-    case 'jobs':
-      return <JobsScreen />;
     case 'globe':
       return (
         <Suspense fallback={null}>
@@ -401,6 +400,8 @@ export function App() {
         <Screen />
       </main>
       <Palette />
+      <ProcessingDrawer />
+      <PipelineDialog />
       <UnlockDialog />
       <PackageExportDialog />
       <Toasts />
