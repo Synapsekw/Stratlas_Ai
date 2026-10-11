@@ -18,6 +18,12 @@ import { readJson, writeJsonAtomic } from './fsutil';
 import type { Handle } from './notYet';
 import { assertWritable } from './realDataGuard';
 
+/**
+ * The builder library loads on first use, as in builder.ts: a static import of it makes the main
+ * bundle come out empty (rolldown, vite 8).
+ */
+const lib = () => import('@aio/project/builder');
+
 const fold = (p: string) => (process.platform === 'win32' ? p.toLowerCase() : p);
 /** The same file or folder by name (case ignored on Windows). */
 export const samePath = (a: string, b: string) => fold(resolve(a)) === fold(resolve(b));
@@ -90,26 +96,32 @@ export async function renameProject(
   const next = name.trim();
   if (next === '') return fail('A project needs a name.');
   const file = join(root, 'manifest.json');
-  let raw: unknown;
-  try {
-    raw = await readJson(file);
-  } catch (e) {
-    return fail(`Could not read ${file}: ${errorText(e)}`);
-  }
-  if (raw === undefined) return fail(`No manifest.json in ${root}.`);
-  const parsed = parseManifest(raw);
-  if (!parsed.ok) return fail(`${file}: ${parsed.error}`);
-  if (parsed.value.name === next) return { ok: true, name: next };
-  try {
-    await writeJsonAtomic(
-      file,
-      { ...(raw as Record<string, unknown>), name: next },
-      { backup: true },
-    );
-  } catch (e) {
-    return fail(`Could not save ${file}: ${errorText(e)}`);
-  }
-  return { ok: true, name: next };
+  // read and written in one turn among the builder's saves of this manifest, so neither a rename
+  // nor a save made at the same moment (a survey date, a layer) replaces the other. The write
+  // stays `writeJsonAtomic` of the file as read: the builder's own save keeps known keys only.
+  const { withManifest } = await lib();
+  return withManifest(root, async (): Promise<IpcResponse<'library:rename'>> => {
+    let raw: unknown;
+    try {
+      raw = await readJson(file);
+    } catch (e) {
+      return fail(`Could not read ${file}: ${errorText(e)}`);
+    }
+    if (raw === undefined) return fail(`No manifest.json in ${root}.`);
+    const parsed = parseManifest(raw);
+    if (!parsed.ok) return fail(`${file}: ${parsed.error}`);
+    if (parsed.value.name === next) return { ok: true, name: next };
+    try {
+      await writeJsonAtomic(
+        file,
+        { ...(raw as Record<string, unknown>), name: next },
+        { backup: true },
+      );
+    } catch (e) {
+      return fail(`Could not save ${file}: ${errorText(e)}`);
+    }
+    return { ok: true, name: next };
+  });
 }
 
 export interface DeleteDeps {

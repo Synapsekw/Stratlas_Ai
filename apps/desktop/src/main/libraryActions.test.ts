@@ -1,3 +1,4 @@
+import { updateManifestFile } from '@aio/project/builder';
 import fs from 'node:fs';
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -148,6 +149,20 @@ describe('renameProject', () => {
     expect(after.aiPolicy).toBe('forbid');
     expect(after.somethingNew).toEqual({ a: 1 });
     expect(after.layers).toContainEqual(future);
+  });
+
+  it('keeps a change the builder saves to the project at the same moment', async () => {
+    const root = await yard();
+    // a slow save of the same project has read the manifest when the rename is asked for
+    const slow = updateManifestFile(root, async (m) => {
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      return { manifest: { ...m, aiCloudDrawings: true } };
+    });
+    expect(await renameProject(root, 'South yard')).toEqual({ ok: true, name: 'South yard' });
+    await slow;
+    const after = await manifestOf(root);
+    expect(after.name).toBe('South yard');
+    expect(after.aiCloudDrawings).toBe(true);
   });
 
   it('writes nothing when the name is the same', async () => {

@@ -27,8 +27,12 @@ type MeshLayer = Extract<Layer, { kind: 'mesh' }>;
  */
 const lib = () => import('@aio/project/builder');
 const readManifestFile = async (root: string) => (await lib()).readManifestFile(root);
-const writeManifestFile = async (root: string, m: ProjectManifest) =>
-  (await lib()).writeManifestFile(root, m);
+/**
+ * Change a project's manifest and save it: read and written in one turn among the saves of the
+ * project, so a save made at the same moment (a survey date, another layer) is not replaced.
+ */
+const updateManifest = async (root: string, change: (m: ProjectManifest) => ProjectManifest) =>
+  (await lib()).updateManifestFile(root, (m) => ({ manifest: change(m) }));
 
 /** The projects main has open: a folder (writable) or a package (read only). */
 export interface ModelProjects {
@@ -265,23 +269,24 @@ export function registerModelBuilderIpc({
         ...(draft ? { draft: true } : {}),
       },
     };
-    const manifest = await readManifestFile(root);
     const draftId = modelLayerId(id, true);
-    let placed = false;
-    const layers: Layer[] = [];
-    for (const l of manifest.layers) {
-      if (l.id === layerId) {
-        layers.push({ ...layer, visible: l.visible });
-        placed = true;
-      } else if (!draft && l.id === draftId) {
-        // the real build replaces the preview
-        continue;
-      } else {
-        layers.push(l);
+    await updateManifest(root, (manifest) => {
+      let placed = false;
+      const layers: Layer[] = [];
+      for (const l of manifest.layers) {
+        if (l.id === layerId) {
+          layers.push({ ...layer, visible: l.visible });
+          placed = true;
+        } else if (!draft && l.id === draftId) {
+          // the real build replaces the preview
+          continue;
+        } else {
+          layers.push(l);
+        }
       }
-    }
-    if (!placed) layers.push(layer);
-    await writeManifestFile(root, { ...manifest, layers });
+      if (!placed) layers.push(layer);
+      return { ...manifest, layers };
+    });
     if (!draft) await rm(join(root, ...modelGlb(id, true).split('/')), { force: true });
     return { ok: true, layer: layerId, glb: glbRel };
   });
@@ -290,11 +295,12 @@ export function registerModelBuilderIpc({
     if (projects.package(projectId)) return READ_ONLY;
     const root = projects.root(projectId);
     if (root === undefined) return notOpen(projectId);
-    const manifest = await readManifestFile(root);
-    const next: ProjectManifest = { ...manifest };
-    if (allow) next.aiCloudDrawings = true;
-    else delete next.aiCloudDrawings;
-    await writeManifestFile(root, next);
+    await updateManifest(root, (manifest) => {
+      const next: ProjectManifest = { ...manifest };
+      if (allow) next.aiCloudDrawings = true;
+      else delete next.aiCloudDrawings;
+      return next;
+    });
     return { ok: true };
   });
 }
