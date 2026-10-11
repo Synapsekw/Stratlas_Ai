@@ -209,9 +209,11 @@ const layerIdTaken = (m: ProjectManifest) => (id: string) => m.layers.some((l) =
  * The manifest is read at the start and saved at the end; only that last save takes a turn among
  * the saves of the project (`writeManifestFile`), so nothing waits behind minutes of copying.
  * Known limit (docs/KNOWN-LIMITS.md, Builder): a change saved to the project while the files are
- * being imported is replaced by this save. The import does more than add (photos join the
- * existing Photos layer, a datum picked at the import is set on the project, the survey dates are
- * put in date order), so the follow-up is to save its additions onto a fresh read at the end.
+ * being imported is replaced by this save, also the layer a conversion job adds when it ends
+ * first (the jobs this import starts are not waited for). The import does more than add (photos
+ * join the existing Photos layer, a datum picked at the import is set on the project, the survey
+ * dates are put in date order), so the follow-up is to save its additions onto a fresh read at
+ * the end.
  */
 export async function importRawFiles(
   root: string,

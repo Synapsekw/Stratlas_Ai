@@ -15,13 +15,14 @@ import {
 } from './create';
 import { NO_PIPELINE, importRawFiles, type ImportDeps } from './raw';
 
-// `rename` passes through unless a test refuses it: a rename Windows refuses for good cannot be
-// made on purpose with real files without waiting out the whole retry
+// `rename` and `rm` pass through unless a test refuses them: a rename Windows refuses for good
+// cannot be made on purpose with real files without waiting out the whole retry
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof FsPromises>();
-  return { ...actual, rename: vi.fn(actual.rename) };
+  return { ...actual, rename: vi.fn(actual.rename), rm: vi.fn(actual.rm) };
 });
-const { rename: realRename } = await vi.importActual<typeof FsPromises>('node:fs/promises');
+const { rename: realRename, rm: realRm } =
+  await vi.importActual<typeof FsPromises>('node:fs/promises');
 
 let dir: string;
 beforeEach(async () => {
@@ -31,10 +32,42 @@ afterEach(async () => {
   vi.useRealTimers();
   vi.mocked(rename).mockReset();
   vi.mocked(rename).mockImplementation(realRename);
+  vi.mocked(rm).mockReset();
+  vi.mocked(rm).mockImplementation(realRm);
   await rm(dir, { recursive: true, force: true });
 });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const refused = (code: string, what: string) =>
+  Object.assign(new Error(`${code}: operation not permitted, ${what}`), { code });
+
+/**
+ * What a save ends with ('saved', or its error), with the waits between the tries of a refused
+ * rename on Windows (about 2.5 s) passing at once. Fails when the save never ends.
+ */
+async function outcomeOf(save: Promise<unknown>): Promise<unknown> {
+  vi.useFakeTimers({ toFake: ['setTimeout'] });
+  const state = { settled: false };
+  const outcome = save
+    .then(
+      () => 'saved' as const,
+      (e: unknown) => e,
+    )
+    .finally(() => {
+      state.settled = true;
+    });
+  // real time (only setTimeout is faked): the file work of a save takes milliseconds
+  const giveUp = performance.now() + 3000;
+  while (!state.settled) {
+    if (performance.now() > giveUp)
+      throw new Error('The save neither finished nor failed, though every retry wait had passed.');
+    await vi.advanceTimersByTimeAsync(5000);
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  vi.useRealTimers();
+  return outcome;
+}
 
 const readManifest = async (root: string): Promise<ProjectManifest> => {
   const r = parseManifest(JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')));
@@ -285,32 +318,36 @@ describe('the temporary file of a save', () => {
     const root = await project();
     const file = join(root, 'manifest.json');
     const before = await readFile(file, 'utf8');
-    const refusal = Object.assign(new Error('EPERM: operation not permitted, rename'), {
-      code: 'EPERM',
-    });
+    const refusal = refused('EPERM', 'rename');
     vi.mocked(rename).mockImplementation(() => Promise.reject(refusal));
-    // the waits between the tries on Windows (about 2.5 s) pass at once
-    vi.useFakeTimers({ toFake: ['setTimeout'] });
-    const state = { settled: false };
-    const outcome = ensureCapture(root, '2026-02-01')
-      .then(
-        () => 'saved' as const,
-        (e: unknown) => e,
-      )
-      .finally(() => {
-        state.settled = true;
-      });
-    while (!state.settled) {
-      await vi.advanceTimersByTimeAsync(5000);
-      await new Promise((resolve) => setImmediate(resolve));
-    }
-    vi.useRealTimers();
-    expect(await outcome).toBe(refusal);
+    expect(await outcomeOf(ensureCapture(root, '2026-02-01'))).toBe(refusal);
     expect(await partials(root)).toEqual([]);
     expect(await readFile(file, 'utf8')).toBe(before);
 
     // the refused save does not stand in the way of the next one
     vi.mocked(rename).mockImplementation(realRename);
+    await ensureCapture(root, '2026-02-01');
+    expect((await readManifest(root)).captures.map((c) => c.id)).toContain('capture-2026-02-01');
+  });
+
+  it('that cannot be removed either leaves the rename error as the one reported', async () => {
+    // a scanner holding the temporary file refuses its removal too: the caller must still learn
+    // why the save failed, not why the cleanup did
+    const root = await project();
+    const file = join(root, 'manifest.json');
+    const before = await readFile(file, 'utf8');
+    const refusal = refused('EPERM', 'rename');
+    vi.mocked(rename).mockImplementation(() => Promise.reject(refusal));
+    vi.mocked(rm).mockImplementation(() => Promise.reject(refused('EBUSY', 'unlink')));
+    expect(await outcomeOf(ensureCapture(root, '2026-02-01'))).toBe(refusal);
+    expect(vi.mocked(rm)).toHaveBeenCalledWith(expect.stringMatching(/\.partial$/), {
+      force: true,
+    });
+    expect(await readFile(file, 'utf8')).toBe(before);
+
+    // and the next save goes through
+    vi.mocked(rename).mockImplementation(realRename);
+    vi.mocked(rm).mockImplementation(realRm);
     await ensureCapture(root, '2026-02-01');
     expect((await readManifest(root)).captures.map((c) => c.id)).toContain('capture-2026-02-01');
   });
@@ -366,7 +403,13 @@ describe('importRawFiles and the queue', () => {
     release(false);
     const r = await imported;
     expect(r.items).toMatchObject([{ status: 'imported', layerId: 'mesh-n' }]);
-    expect((await readManifest(root)).layers.map((l) => l.id)).toEqual(['mesh-m', 'mesh-n']);
+    const after = await readManifest(root);
+    expect(after.layers.map((l) => l.id)).toEqual(['mesh-m', 'mesh-n']);
+    // Known limit (docs/KNOWN-LIMITS.md, Builder, "A change saved while files are being imported
+    // can be lost"): the import saves the manifest it read when it started, so the name given
+    // during the import is gone again. When the import saves its additions onto a fresh read,
+    // this turns into 'Baseline'.
+    expect(after.captures[0]?.label).toBe('First survey');
     expect(await partials(root)).toEqual([]);
   });
 

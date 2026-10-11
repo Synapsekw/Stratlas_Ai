@@ -124,7 +124,9 @@ async function saveManifest(root: string, manifest: ProjectManifest): Promise<st
     await writeFile(tmp, `${JSON.stringify(kept.value, null, 2)}\n`);
     await renameOver(tmp, file);
   } catch (e) {
-    await rm(tmp, { force: true });
+    // best effort: when the removal is refused too (a scanner holding the file on Windows), the
+    // caller still gets the error of the save, not of the cleanup
+    await rm(tmp, { force: true }).catch(() => undefined);
     throw e;
   }
   return backup;
