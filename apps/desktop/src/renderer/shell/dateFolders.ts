@@ -48,14 +48,19 @@ export async function moveLayersToDate(
 }
 
 /**
- * Put the layers of a date move back under the `capture` each had before it. Null when they are
- * back, else why not; a write that is refused stops there and the list shows the manifest as it is.
+ * Put the layers of a date move back under the `capture` each had before it, `target` being what
+ * the move filed them under (null: no date). Only layers still filed there go back; one that was
+ * filed elsewhere since keeps that later choice. Null when they are back, else why not; a write
+ * that is refused stops there and the list shows the manifest as it is.
  */
-export async function undoDateMove(moved: readonly MovedLayer[]): Promise<string | null> {
+export async function undoDateMove(
+  moved: readonly MovedLayer[],
+  target: string | null,
+): Promise<string | null> {
   const project = workspace.getState().project;
   if (!project) return 'No project is open.';
-  const known = new Set(project.manifest.layers.map((l) => l.id));
-  for (const batch of undoBatches(moved, known)) {
+  const now = new Map(project.manifest.layers.map((l) => [l.id, l.capture ?? null]));
+  for (const batch of undoBatches(moved, now, target)) {
     const error = await setLayersCapture(batch.layerIds, batch.capture);
     if (error) return error;
   }

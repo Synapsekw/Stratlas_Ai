@@ -267,9 +267,11 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   const [folderMenu, setFolderMenu] = useState<DateFolderMenuRequest | null>(null);
   const [itemMenu, setItemMenu] = useState<DateItemMenuRequest | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
-  const [note, setNote] = useState<{ text: string; danger: boolean; undo?: MovedLayer[] } | null>(
-    null,
-  );
+  const [note, setNote] = useState<{
+    text: string;
+    danger: boolean;
+    undo?: { moved: MovedLayer[]; target: string | null };
+  } | null>(null);
   // menus, the name field and the note belong to the project they were opened in
   const projectId = project?.id;
   const [notedFor, setNotedFor] = useState(projectId);
@@ -294,7 +296,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
       }
       const manifest = workspace.getState().project?.manifest;
       // one dataset is put back by dragging it back; a group or a flight needs Undo
-      const undo = moved.length > 1 ? { undo: moved } : {};
+      const undo = moved.length > 1 ? { undo: { moved, target: capture } } : {};
       const kept = Object.entries(stays);
       const [first] = kept;
       if (first) {
@@ -318,7 +320,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
             ? t('tree.dates.move.done', { count: moved.length, date: formatDate(date) })
             : t('tree.dates.move.doneNone', { count: moved.length }),
           danger: false,
-          undo: moved,
+          undo: { moved, target: capture },
         });
         return;
       }
@@ -410,7 +412,11 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
               className="dtree-undo"
               data-testid="date-undo"
               onClick={() => {
-                if (note.undo) void undoDateMove(note.undo).then(failed);
+                // the note goes first, so a second quick click has nothing to start again
+                const pending = note.undo;
+                if (!pending) return;
+                setNote(null);
+                void undoDateMove(pending.moved, pending.target).then(failed);
               }}
             >
               {t('tree.dates.move.undo')}

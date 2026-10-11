@@ -25,7 +25,12 @@ describe('priorCaptures', () => {
 });
 
 describe('undoBatches', () => {
-  const known = new Set(['a', 'b', 'named']);
+  // every layer still where the move put it: filed under Oct
+  const now = new Map<string, string | null>([
+    ['a', 'oct'],
+    ['b', 'oct'],
+    ['named', 'oct'],
+  ]);
 
   it('is one write per earlier value, so each layer gets back exactly what it had', () => {
     const moved = [
@@ -33,7 +38,7 @@ describe('undoBatches', () => {
       { id: 'named', capture: null },
       { id: 'b', capture: 'nov' },
     ];
-    expect(undoBatches(moved, known)).toEqual([
+    expect(undoBatches(moved, now, 'oct')).toEqual([
       { capture: 'nov', layerIds: ['a', 'b'] },
       { capture: null, layerIds: ['named'] },
     ]);
@@ -44,10 +49,29 @@ describe('undoBatches', () => {
       { id: 'a', capture: 'nov' },
       { id: 'removed', capture: 'nov' },
     ];
-    expect(undoBatches(moved, known)).toEqual([{ capture: 'nov', layerIds: ['a'] }]);
+    expect(undoBatches(moved, now, 'oct')).toEqual([{ capture: 'nov', layerIds: ['a'] }]);
   });
 
   it('is nothing when every moved layer is gone', () => {
-    expect(undoBatches([{ id: 'removed', capture: 'nov' }], known)).toEqual([]);
+    expect(undoBatches([{ id: 'removed', capture: 'nov' }], now, 'oct')).toEqual([]);
+  });
+
+  it('leaves out a layer that was moved again since', () => {
+    const moved = [
+      { id: 'a', capture: 'nov' },
+      { id: 'b', capture: 'nov' },
+    ];
+    const later = new Map<string, string | null>([
+      ['a', 'oct'],
+      ['b', 'sep'],
+    ]);
+    expect(undoBatches(moved, later, 'oct')).toEqual([{ capture: 'nov', layerIds: ['a'] }]);
+  });
+
+  it('puts back layers a move took the date off', () => {
+    const none = new Map<string, string | null>([['a', null]]);
+    expect(undoBatches([{ id: 'a', capture: 'nov' }], none, null)).toEqual([
+      { capture: 'nov', layerIds: ['a'] },
+    ]);
   });
 });

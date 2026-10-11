@@ -330,6 +330,29 @@ test.describe('survey date folders', () => {
     await expect(oct.getByTestId('tree-row-design')).toBeVisible();
     await expect(oct.getByTestId('tree-row-site-oct')).toBeVisible();
     await expect(win.getByTestId('date-note')).toContainText('2 datasets moved to');
+    // the note and its Undo stay in view when the list is scrolled past them (a long list, a drop
+    // far down). The fixture list is short, so make the sidebar short too, open every folder, and
+    // scroll until the note's own place in the flow is above the top of the sidebar
+    await expand(win, 'sep');
+    const box = win.locator('.sb-scroll');
+    const reach = await box.evaluate((el) => {
+      el.style.flex = 'none';
+      el.style.height = '260px';
+      const note = document.querySelector('[data-testid="date-note"]');
+      const wanted = note
+        ? note.getBoundingClientRect().bottom - el.getBoundingClientRect().top
+        : 0;
+      el.scrollTop += wanted + 12;
+      return { wanted, got: el.scrollTop };
+    });
+    expect(reach.got, 'the list is scrolled past the place of the note').toBeGreaterThanOrEqual(
+      reach.wanted,
+    );
+    await expect(win.getByTestId('date-note')).toBeInViewport({ ratio: 1 });
+    await box.evaluate((el) => {
+      el.style.flex = '';
+      el.style.height = '';
+    });
     expect(await captureOf()).toEqual({ ...before, 'site-nov': 'oct', design: 'oct' });
     expect(await dataHashes(dataRoot, id)).toEqual(files);
 
@@ -345,6 +368,7 @@ test.describe('survey date folders', () => {
     // a single dataset still drags on its own, with no note
     await dragOntoClear(nov.getByTestId('tree-row-quad-nov'), win.getByTestId('date-name-oct'));
     await expect(oct.getByTestId('tree-row-quad-nov')).toBeVisible();
+    expect((await captureOf())['quad-nov']).toBe('oct');
     await expect(win.getByTestId('date-note')).toHaveCount(0);
   });
 
@@ -385,6 +409,8 @@ test.describe('survey date folders', () => {
     await expect(menu.getByTestId('move-to-nov')).toBeDisabled();
     await menu.getByTestId('move-to-sep').click();
 
+    await expect(win.getByTestId('date-note')).toContainText('2 datasets moved to');
+    await expect(win.getByTestId('date-undo')).toBeVisible();
     await expect(nov.getByTestId('tree-row-site-nov')).toHaveCount(0);
     await expand(win, 'sep');
     const sep = win.getByTestId('date-folder-sep');
