@@ -100,6 +100,9 @@ A proposal to react to. None of it is built.
 8. The starter list wording, per type.
 9. The type on the Projects screen card is left out (needs a second contract change).
 10. The table "What each type could set up next".
+11. A road project opens in Road setup, so its starter list is only seen by someone who goes to the Scene while the project is still empty.
+12. The testing document and the samples spec now pick Confined space inspection for the tank sample (photos from inside a tank). It writes `inspection`, as before.
+13. The icons of the cards, taken from the existing set: pile, facade, flare, tank, layers, road.
 
 ## Tests
 
