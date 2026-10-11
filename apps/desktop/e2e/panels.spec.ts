@@ -505,9 +505,9 @@ test('the folded panels are still folded after a restart', async ({ dataRoot }) 
         win.evaluate(() => window.aio.invoke('settings:get', {}).then((s) => s.sidebarCollapsed)),
       )
       .toBe(true);
-    expect(await win.evaluate(() => localStorage.getItem('quadrion.panels'))).toBe(
-      '{"rightCollapsed":true}',
-    );
+    // the stored value holds every folding panel: read the field, not the whole string
+    const stored = await win.evaluate(() => localStorage.getItem('quadrion.panels'));
+    expect(JSON.parse(stored ?? '{}') as unknown).toMatchObject({ rightCollapsed: true });
   } finally {
     await stop(first);
   }

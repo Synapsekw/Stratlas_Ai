@@ -4,6 +4,10 @@
  * (AgentDock) show the same conversation, and a reply keeps running while the person changes
  * screen. `AgentHost` is the panel on it; `startAgentSession` (App) connects it for as long as the
  * app runs.
+ *
+ * The session is a module singleton, bound to the bridge that is there at its first use: a module
+ * instance never gets a second bridge, which is why the app without one is tested in its own file
+ * (sessionNoBridge.test.ts).
  */
 import { AgentSession, defaultToolContext, type RendererToolContext } from '@aio/ai';
 import type { AiTask, AioBridge, WindowKind } from '@aio/schema';

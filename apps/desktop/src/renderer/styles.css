@@ -2332,16 +2332,16 @@ svg.flip {
    main area, the Scene's right panel in look. Unfolded, the screen beside it gives it the room;
    folded, it takes none. It opens and closes at once, so there is no motion to still. */
 .app {
-  --dock-w: min(360px, 33vw);
+  --agent-dock-w: min(360px, 33vw);
 }
 .app[data-agent-dock='open'] .main > .screen {
-  inset-inline-end: var(--dock-w);
+  inset-inline-end: var(--agent-dock-w);
 }
 .agent-dock {
   position: absolute;
   inset-block: 0;
   inset-inline-end: 0;
-  width: var(--dock-w);
+  width: var(--agent-dock-w);
   background: var(--bg-1);
   border-inline-start: 1px solid var(--line-soft);
   display: flex;
