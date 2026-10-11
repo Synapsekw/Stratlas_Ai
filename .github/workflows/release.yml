@@ -436,3 +436,47 @@ jobs:
           path: pipeline-pack-*.tar.gz
           retention-days: 30
           if-no-files-found: error
+
+  # The optional GPU add-on beside the pipeline pack (NVIDIA cards on Windows): its pinned wheels
+  # unpacked, nothing compiled, its own size budget. A separate file; never in the installer or
+  # the pack.
+  gpu-addon:
+    name: GPU add-on (win-x64)
+    runs-on: windows-2025
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+
+      - name: The pipelines' Python (compiles the add-on's Python files)
+        working-directory: python
+        run: uv sync --frozen
+
+      - name: Build the GPU add-on and its archive
+        run: >-
+          node tools/pipeline-pack/accelerator.mjs --out runtime --cache addon-cache
+          --python python/.venv/Scripts/python.exe --archive .
+
+      - name: Size budget
+        run: |
+          node tools/release/budgets.mjs --addon "$(ls -d runtime/pipeline-addon-cuda-* | head -n 1)" --addon-archive "$(ls pipeline-addon-cuda-*.tar.gz)"
+          sha256sum pipeline-addon-cuda-*.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-addon-cuda-win-x64
+          path: pipeline-addon-cuda-*.tar.gz
+          retention-days: 30
+          if-no-files-found: error
