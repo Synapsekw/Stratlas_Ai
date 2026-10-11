@@ -144,7 +144,11 @@ test('a volumetric project from two raw survey dates: wizard, Processing drawer,
   execFileSync(venvPython, ['-c', `import os; os.makedirs(r'${raw}', exist_ok=True)`]);
   execFileSync(venvPython, ['-c', MAKE_SURVEYS, raw]);
 
-  const app = await launchApp(dataRoot, { QUADRION_PIPELINE_PYTHON: venvPython });
+  // the smallest window: the second view's legend (step 4) must leave the view its clicks there
+  const app = await launchApp(dataRoot, {
+    QUADRION_PIPELINE_PYTHON: venvPython,
+    QUADRION_WINDOW_SIZE: '1100x700',
+  });
   await network.attach(app);
   try {
     const win = await app.firstWindow();
