@@ -16,6 +16,8 @@ export interface PendingProducts {
   preset: PhotoPreset;
   products: PhotoProduct[];
   capture?: string;
+  /** A survey date to add for this day just before the maps are built (never with `capture`). */
+  captureDate?: string;
 }
 
 export interface PhotoUi {
@@ -23,6 +25,8 @@ export interface PhotoUi {
   pending: Record<string, PendingProducts>;
   /** Runs the person paused or stopped in this session (their jobs are cancelled, resumable). */
   stopped: Record<string, 'paused' | 'cancelled'>;
+  /** The wizard's survey date pick per run, for a run that builds its maps later (ground control first). */
+  dates: Record<string, { capture?: string; captureDate?: string }>;
   /** Bumped after a write, so open panels read the run again. */
   version: number;
   openWizard: () => void;
@@ -31,6 +35,7 @@ export interface PhotoUi {
   close: () => void;
   setPending: (run: string, p: PendingProducts | null) => void;
   setStopped: (run: string, s: 'paused' | 'cancelled' | null) => void;
+  setDate: (run: string, d: { capture?: string; captureDate?: string } | null) => void;
   bump: () => void;
 }
 
@@ -38,6 +43,7 @@ export const photoUi = createStore<PhotoUi>()((set) => ({
   view: null,
   pending: {},
   stopped: {},
+  dates: {},
   version: 0,
   openWizard: () => {
     set({ view: { kind: 'wizard' } });
@@ -63,6 +69,13 @@ export const photoUi = createStore<PhotoUi>()((set) => ({
       const stopped = Object.fromEntries(Object.entries(s.stopped).filter(([k]) => k !== run));
       if (st) stopped[run] = st;
       return { stopped };
+    });
+  },
+  setDate: (run, d) => {
+    set((s) => {
+      const dates = Object.fromEntries(Object.entries(s.dates).filter(([k]) => k !== run));
+      if (d && (d.capture || d.captureDate)) dates[run] = d;
+      return { dates };
     });
   },
   bump: () => {

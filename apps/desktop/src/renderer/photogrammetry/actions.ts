@@ -45,15 +45,41 @@ export function startGeoref(root: string, run: string): Promise<string | null> {
   return start('photo.georef', root, { run });
 }
 
+const folderKey = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+
+/**
+ * The capture id the maps go under: the one chosen, or the survey date of `captureDate`, found or
+ * added now. Null when there is none or it cannot be made: the maps are then built without a date
+ * rather than not at all.
+ */
+async function captureOf(p: PendingProducts): Promise<string | null> {
+  if (p.capture) return p.capture;
+  if (!p.captureDate) return null;
+  const project = workspace.getState().project;
+  if (!project || folderKey(project.root) !== folderKey(p.root)) return null;
+  const r = await bridge.call('builder:ensureCapture', {
+    projectId: project.id,
+    date: p.captureDate,
+  });
+  if (!r.ok || !r.value.ok) return null;
+  const ws = workspace.getState();
+  if (ws.project?.id === project.id) ws.replaceManifest(r.value.manifest);
+  return r.value.captureId;
+}
+
 export async function startProducts(run: string, p: PendingProducts): Promise<string | null> {
   if (!p.products.length) return 'Choose at least one product.';
+  const capture = await captureOf(p);
   const err = await start('photo.products', p.root, {
     run,
     products: p.products,
     preset: p.preset,
-    ...(p.capture ? { capture: p.capture } : {}),
+    ...(capture ? { capture } : {}),
   });
-  if (!err) photoUi.getState().setPending(run, null);
+  if (!err) {
+    photoUi.getState().setPending(run, null);
+    photoUi.getState().setDate(run, null);
+  }
   return err;
 }
 
