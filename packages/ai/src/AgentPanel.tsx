@@ -50,6 +50,11 @@ export interface AgentPanelProps {
    * route again, as it does when the window gets the focus.
    */
   settingsKey?: string | undefined;
+  /**
+   * A session owned by the app, so the conversation outlives this panel. The owner connects it,
+   * resets it when the project changes and keeps its tool context; the panel only shows it.
+   */
+  session?: AgentSession | undefined;
 }
 
 const CAPTURE_WINDOWS: readonly WindowKind[] = ['video', 'scene3d', 'pointcloud', 'photo', 'map'];
@@ -75,13 +80,17 @@ export function AgentPanel({
   renderFix,
   task,
   settingsKey,
+  session: given,
 }: AgentPanelProps) {
   const taskRef = useRef(task);
   useEffect(() => {
     taskRef.current = task;
   }, [task]);
+  // A given session is not ours to start or stop: leaving this screen must not cancel its run.
+  const shared = given !== undefined;
   const [session] = useState(
     () =>
+      given ??
       new AgentSession({
         bridge: getBridge(),
         window: win,
@@ -103,16 +112,16 @@ export function AgentPanel({
   }, [session, win]);
 
   useEffect(() => {
-    const disconnect = session.connect();
+    const disconnect = shared ? undefined : session.connect();
     const onFocus = () => {
       void session.refresh();
     };
     globalThis.addEventListener('focus', onFocus);
     return () => {
       globalThis.removeEventListener('focus', onFocus);
-      disconnect();
+      disconnect?.();
     };
-  }, [session]);
+  }, [session, shared]);
 
   // The AI settings changed (cloud AI turned on from the palette, a route): check again.
   const seenKey = useRef(settingsKey);
@@ -122,12 +131,13 @@ export function AgentPanel({
     void session.refresh();
   }, [session, settingsKey]);
 
-  // A different project: a fresh conversation, its consent, policy and meter.
+  // A different project: a fresh conversation, its consent, policy and meter. A session the app
+  // owns is reset by the app (mounting a second screen must not wipe it); only the meter is read.
   useEffect(() => {
-    session.reset();
+    if (!shared) session.reset();
     setShowHistory(false);
     void session.refresh();
-  }, [session, projectId]);
+  }, [session, shared, projectId]);
 
   useEffect(() => {
     const el = log.current;
