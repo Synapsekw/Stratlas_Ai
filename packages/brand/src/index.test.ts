@@ -72,8 +72,11 @@ describe('envVar and aliasLegacyEnv', () => {
 });
 
 describe('marks', () => {
-  it('has four symbol plates and a two-part outlined wordmark', () => {
-    expect(SYMBOL.plates).toHaveLength(4);
+  it('has a four-piece symbol, a two-piece small cut and a two-part outlined wordmark', () => {
+    expect(SYMBOL.pieces).toHaveLength(4);
+    expect(SYMBOL.small).toHaveLength(2);
+    expect(SYMBOL.viewBox).toBe('4 4 52 52');
+    for (const d of [...SYMBOL.pieces, ...SYMBOL.small]) expect(d).toMatch(/^M.*Z$/);
     expect(WORDMARK.quadrion.length).toBeGreaterThan(1000);
     expect(WORDMARK.ai).toMatch(/^M/);
   });

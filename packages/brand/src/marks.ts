@@ -1,27 +1,10 @@
 /**
- * The Quadrion AI mark and wordmark as path data, from the outlined brand kit
- * (docs/brand/quadrion/kit: symbol/quadrion-symbol-on-dark.svg, wordmark/quadrion-wordmark-on-dark.svg).
- * Callers choose the colours (the plates and QUADRION take the foreground, the top plate and AI
- * the accent), so one shape serves dark and light themes and any size.
+ * The Quadrion AI wordmark as path data, from the outlined brand kit
+ * (docs/brand/quadrion/kit: wordmark/quadrion-wordmark-on-dark.svg). Callers choose the colours
+ * (QUADRION takes the foreground, AI the accent), so one shape serves dark and light themes and any
+ * size. The symbol is in symbol.ts; this file must stay free of imports because
+ * tools/release/store-assets.mjs loads it directly through Node's type stripping.
  */
-
-/** Symbol: four plates stepping forward as they rise; the last one is the lit top plate. */
-export const SYMBOL = {
-  viewBox: '0 0 62 54',
-  /** Applied to every plate and cut. */
-  transform: 'translate(-1 -8)',
-  /** Bottom to top. Each plate is cut by the plates above it (gaps `cutWidth` wide). */
-  plates: [
-    'M26 42 L47 50 L26 58 L5 50Z',
-    'M30 32 L51 40 L30 48 L9 40Z',
-    'M34 22 L55 30 L34 38 L13 30Z',
-    'M38 12 L59 20 L38 28 L17 20Z',
-  ],
-  /** Stroke width of the cuts between plates at regular sizes (the 16 to 32 px cut is wider). */
-  cutWidth: 5,
-  /** The small-size cut (brand kit icon-small.svg): wider gaps for the symbol at 32 px and less. */
-  smallCutWidth: 7.5,
-} as const;
 
 /** Outlined wordmark (Archivo Expanded Bold): QUADRION, then AI. */
 export const WORDMARK = {
