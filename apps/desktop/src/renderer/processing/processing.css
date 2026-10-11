@@ -34,3 +34,18 @@
 .jd-fold .job-log {
   max-height: 240px;
 }
+
+/* ---------- processing: the title bar chip ---------- */
+.proc-chip {
+  app-region: no-drag;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.proc-chip[data-state='one'],
+.proc-chip[data-state='many'] {
+  color: var(--fg-0);
+}
+.proc-chip[data-state='attention'] {
+  border-color: var(--warn);
+  color: var(--warn);
+}
