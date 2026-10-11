@@ -54,6 +54,7 @@ const photoSet = (o: Partial<PhotoSet> = {}): PhotoSet => ({
   groups: [{ label: 'Stratlas Synthetic SYN-20', widthPx: 5472, heightPx: 3648, photos: 500 }],
   sampled: false,
   noGps: 0,
+  days: [],
   ...o,
 });
 
@@ -340,6 +341,44 @@ describe('photo files', () => {
       'DCIM/100MEDIA/DJI_0002.JPG',
       'ortho.tif',
     ]);
+  });
+
+  it('counts the days the photos were taken, most photos first', async () => {
+    const shot = (dateTimeOriginal?: string) =>
+      withExif({
+        make: 'Stratlas Synthetic',
+        model: 'SYN-20',
+        width: 1600,
+        height: 1200,
+        ...(dateTimeOriginal ? { dateTimeOriginal } : {}),
+      });
+    const files = ['a', 'b', 'c', 'd'].map((n) => join(dir, `${n}.jpg`));
+    await writeFile(files[0] ?? '', shot('2026:03:13 23:58:00'));
+    await writeFile(files[1] ?? '', shot('2026:03:14 00:02:00'));
+    await writeFile(files[2] ?? '', shot('2026:03:14 00:03:00'));
+    await writeFile(files[3] ?? '', shot());
+    const set = await readPhotoSet(files);
+    expect(set.days).toEqual([
+      { date: '2026-03-14', photos: 2 },
+      { date: '2026-03-13', photos: 1 },
+    ]);
+    const hw = { cpu: { model: '', cores: 8 }, memoryBytes: 0, freeDiskBytes: 0, cuda: false };
+    expect(estimateRun(set, 'standard', ['ortho'], hw).photoDays).toEqual(set.days);
+  });
+
+  it('a tie between two days goes to the earlier one, and no dates means no days', async () => {
+    const shot = (dateTimeOriginal?: string) =>
+      withExif({ width: 64, height: 48, ...(dateTimeOriginal ? { dateTimeOriginal } : {}) });
+    const tie = [join(dir, 't1.jpg'), join(dir, 't2.jpg')];
+    await writeFile(tie[0] ?? '', shot('2026:03:15 10:00:00'));
+    await writeFile(tie[1] ?? '', shot('2026:03:14 10:00:00'));
+    expect((await readPhotoSet(tie)).days.map((d) => d.date)).toEqual(['2026-03-14', '2026-03-15']);
+    const none = [join(dir, 'n1.jpg')];
+    await writeFile(none[0] ?? '', shot());
+    const set = await readPhotoSet(none);
+    expect(set.days).toEqual([]);
+    const hw = { cpu: { model: '', cores: 8 }, memoryBytes: 0, freeDiskBytes: 0, cuda: false };
+    expect('photoDays' in estimateRun(set, 'standard', ['ortho'], hw)).toBe(false);
   });
 
   it('reads camera groups, the frame size and GPS from the photo heads', async () => {
