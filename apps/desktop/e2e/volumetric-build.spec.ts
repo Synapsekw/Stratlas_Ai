@@ -1,9 +1,9 @@
 /**
  * A volumetric project built from raw data in the app: two small synthetic survey dates (DSM and
  * ortho GeoTIFFs, a stockyard with two cone piles, one cut down between the dates) picked in the
- * new project wizard, the Volumetric Survey Kit run as a `volumetric.build` job in the Jobs
- * panel, and the project opening in the native volumetric workspace (register, recomputed
- * volumes, pile selection). Needs the development Python with aio_pipelines (`uv sync` in
+ * new project wizard, the Volumetric Survey Kit run as a `volumetric.build` job in the
+ * Processing drawer, and the project opening in the native volumetric workspace (register,
+ * recomputed volumes, pile selection). Needs the development Python with aio_pipelines (`uv sync` in
  * python/) or QUADRION_E2E_PYTHON; skipped without it.
  */
 import type { ElectronApplication, Page } from '@playwright/test';
@@ -11,7 +11,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expect, launchApp, test } from './fixtures';
+import { closeProcessing, expect, launchApp, test } from './fixtures';
 
 const repo = join(import.meta.dirname, '..', '..', '..');
 const venvPython =
@@ -92,7 +92,7 @@ async function recompute(win: Page, pile: string): Promise<Record<string, Record
 
 test.skip(!existsSync(venvPython), `no Python with aio_pipelines at ${venvPython}`);
 
-test('a volumetric project from two raw survey dates: wizard, Jobs panel, volumetric workspace', async ({
+test('a volumetric project from two raw survey dates: wizard, Processing drawer, volumetric workspace', async ({
   dataRoot,
   network,
 }) => {
@@ -138,18 +138,20 @@ test('a volumetric project from two raw survey dates: wizard, Jobs panel, volume
     await expect(wiz.getByRole('button', { name: 'Create project' })).toBeDisabled();
     await pick(1, 'DSM GeoTIFF', 'e2_dsm.tif');
     await pick(1, 'Pick orthomosaic', 'e2_ortho.tif');
-    await expect(wiz.locator('.b-summary')).toContainText('2 survey dates, built in Jobs');
+    await expect(wiz.locator('.b-summary')).toContainText('2 survey dates, built after creating');
     await wiz.getByRole('button', { name: 'Create project' }).click();
 
-    // 2. the kit runs in the Jobs panel
-    const detail = win.locator('.job-detail');
-    await expect(detail.locator('.jd-t')).toContainText('volumetric-build', { timeout: 30_000 });
+    // 2. the new project opens with the Processing drawer on its build
+    const detail = win.getByTestId('processing-drawer').locator('.job-detail');
+    await expect(detail.locator('.jd-h h2')).toHaveText('Volumetric survey', { timeout: 30_000 });
+    expect(await detail.getAttribute('data-job')).toContain('volumetric-build');
     await expect(detail.locator('.jd-h .job-state')).toHaveText('Done', { timeout: 180_000 });
     for (const step of ['DSM of survey 2', 'Detect piles', 'Terrain meshes'])
       await expect(detail.locator('.jd-steps li', { hasText: step })).toHaveAttribute(
         'data-state',
         'done',
       );
+    await closeProcessing(win);
     const root = join(dataRoot.root, 'projects', 'yard-surveys');
     const vols = JSON.parse(await readFile(join(root, 'volumes.json'), 'utf8')) as VolumesJson;
     expect(vols.captures.map((c) => c.date)).toEqual(['2026-01-01', '2026-01-15']);

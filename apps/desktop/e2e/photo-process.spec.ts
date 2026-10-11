@@ -15,7 +15,14 @@ import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
-import { expect, hasPipelinePython, launchApp, test as plain, VENV_PYTHON } from './fixtures';
+import {
+  expect,
+  hasPipelinePython,
+  launchApp,
+  openProcessing,
+  test as plain,
+  VENV_PYTHON,
+} from './fixtures';
 import {
   buildPhotoPack,
   CAMERAS,
@@ -284,11 +291,13 @@ test.describe('on the stand-in pipelines', () => {
       .toBeCloseTo((CAMERAS[0]?.pos[0] ?? 0) + 0.05, 6);
     await expectAccessible(win, 'refined poses', { include: '[data-testid="photo-run"]' });
 
-    // the runs list in Jobs, and from the result straight to the map
+    // the runs list in the Processing drawer, and from the result straight to the map
     await panel.getByRole('button', { name: 'Close' }).click();
-    const runs = win.getByTestId('photo-runs');
+    const drawer = await openProcessing(win);
+    const runs = drawer.getByTestId('photo-runs');
     await expect(runs.locator(`[data-run="${run}"]`)).toContainText('Done');
     await runs.locator(`[data-run="${run}"]`).getByRole('button', { name: 'Open run' }).click();
+    await expect(drawer).toHaveCount(0);
     await panel.getByRole('button', { name: 'Show on map' }).click();
     await expect(panel).toHaveCount(0);
     await expect(
@@ -324,13 +333,15 @@ test.describe('on the stand-in pipelines', () => {
       }),
     ).toHaveAttribute('data-state', /skipped|done/);
 
-    // from the Jobs list: the photo job reads in plain words and opens its run
+    // from the project's processing: the photo job reads in plain words and opens its run
     await panel.getByRole('button', { name: 'Close' }).click();
-    await win
+    const drawer = await openProcessing(win);
+    await drawer
       .locator('.job-row', { hasText: 'Maps from photos: matching the photos' })
       .first()
       .click();
-    await win.getByRole('button', { name: `Open run ${run}` }).click();
+    await drawer.getByTestId('job-open-run').click();
+    await expect(drawer).toHaveCount(0);
     await expect(win.getByTestId('photo-run')).toBeVisible();
     await expect(win.getByTestId('photo-run').getByRole('heading', { level: 2 })).toHaveText(
       `Photo run ${run}`,

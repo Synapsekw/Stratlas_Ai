@@ -17,7 +17,7 @@ import {
 } from './fixtures';
 
 /**
- * OPF interchange (M10 stream G5) from the Jobs panel against the development pipeline runtime:
+ * OPF interchange (M10 stream G5) from Settings, Advanced against the development pipeline runtime:
  * a synthetic OPF project (python/tests/opf_synth.py: six photos, calibrated cameras, control
  * points, a dense point cloud, an orthomosaic and a DSM; no client data) is imported into the tiny
  * project, then the imported run is exported back to OPF. The point cloud layer needs PDAL.
@@ -60,7 +60,6 @@ test.describe('OPF import and export', () => {
       const win = await app.firstWindow();
       await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
       await expect(win.locator('[data-scene-view] canvas')).toBeVisible();
-      await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
       await runJob(win, 'opf.import', dataRoot.projectDir, [[/^OPF project/, opf]]);
 
       const manifest = ProjectManifest.parse(
