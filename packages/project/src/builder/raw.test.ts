@@ -810,6 +810,7 @@ describe('ensureCapture', () => {
     const r = await added;
     expect(r).toMatchObject({ captureId: 'capture-2026-03-14', created: true });
     expect((await readManifest(root)).captures.map((c) => c.id)).toContain('capture-2026-03-14');
-    expect(await readdir(root)).not.toContain('manifest.json.partial');
+    // every save has a temporary file of its own name now: none of them may stay
+    expect((await readdir(root)).filter((n) => n.endsWith('.partial'))).toEqual([]);
   });
 });

@@ -14,7 +14,11 @@ export {
   uniqueId,
   updateCapture,
   updateLayers,
+  updateManifestFile,
+  withManifest,
   writeManifestFile,
+  type ManifestChange,
+  type ManifestUpdate,
 } from './create';
 export * from './altitude';
 export {

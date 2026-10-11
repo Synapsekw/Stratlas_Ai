@@ -70,7 +70,10 @@ alignment saves in the app:
 - `createProject` makes `<dataRoot>/projects/<id>/` (never reusing a folder) with a manifest built
   from a severity template (`severityTemplates` collects the models of the library's projects) and an
   empty `issues.json`. `updateLayers` saves a mesh `transform` or a video `offsetMs` and `lens`;
-  every manifest write is validated with `parseManifest` and keeps `manifest.json.bak`.
+  every manifest write is validated with `parseManifest` and keeps `manifest.json.bak`. Saves of
+  one project's manifest take turns (`withManifest`): `updateManifestFile` reads, changes and
+  saves in one turn, `writeManifestFile` saves a whole manifest; each save goes through a
+  temporary file of its own (`manifest.json.<pid>.<time>.<n>.partial`).
 - `importRawFiles`: JPEG photos (EXIF GPS, DJI XMP gimbal angles, `readPhotoMeta`; review copy
   <= 2560 px and 480 px thumb), MP4/MOV with the DJI SRT of the same name (to `aio.flight/1`,
   frame timing checked), GLB, OBJ (+ MTL and textures, `objToGlb`), small GeoTIFF orthos and DSMs

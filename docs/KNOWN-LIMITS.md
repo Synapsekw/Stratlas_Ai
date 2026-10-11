@@ -37,6 +37,7 @@ Current limits only; each is removed from this list when fixed.
 - The HCl sample's GPS and gimbal tags are written from the delivered camera poses (the Elios 3 logs no GPS in the tank) around the approximate HCl origin; a real photo set brings its own tags.
 - Cloud AI detection needs Cloud AI on and your own key; cost is an estimate from list prices.
 - **Processing history stays on the computer.** The **Processing** drawer lists what this computer ran for a project's folder. A project that is moved or opened on another computer starts with an empty list. Its maps, runs and reports are unaffected.
+- **A change saved while files are being imported can be lost.** An import reads the project when it starts and saves it when the last file is in. A change saved to the project in between (a survey date renamed, a layer placed, a model built) is replaced by the import's own save when it ends. Wait for the import to finish, or make the change again afterwards; the project as it was just before the import's save is in `manifest.json.bak`. Follow-up: the import saves what it added onto a fresh read of the project. The processing tools also write the project from their own process, outside the app's turn taking: a change saved in the same instant as a job's own save can replace it, or be replaced.
 
 ## Release
 

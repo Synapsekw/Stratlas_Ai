@@ -1,18 +1,27 @@
-import {
-  keepUnknownLayers,
-  parseManifest,
-  type CameraOrientation,
-  type Capture,
-  type CapturePatch,
-  type LayerPatch,
-  type NewProjectRequest,
-  type ProjectManifest,
-  type SeverityTemplate,
-  type Vec3,
+import type {
+  CameraOrientation,
+  Capture,
+  CapturePatch,
+  LayerPatch,
+  NewProjectRequest,
+  ProjectManifest,
+  SeverityTemplate,
+  Vec3,
 } from '@aio/schema';
-import { copyFile, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { mkdir, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { updateManifestFile, writeManifestFile } from './manifestFile';
 import { newProjectManifest } from './templates';
+
+// the manifest file itself (read, save in turn) lives in manifestFile.ts
+export {
+  readManifestFile,
+  updateManifestFile,
+  withManifest,
+  writeManifestFile,
+  type ManifestChange,
+  type ManifestUpdate,
+} from './manifestFile';
 
 /** Folders of a native project package (data-conventions section 2). */
 export const PACKAGE_DIRS = [
@@ -53,64 +62,6 @@ async function exists(p: string): Promise<boolean> {
   }
 }
 
-/** Codes Windows gives a rename onto a file that something has open at that moment. */
-const LOCKED = new Set(['EPERM', 'EACCES', 'EBUSY']);
-
-/**
- * Rename `from` over `to`. Windows refuses to replace a file while anything holds it open, even
- * only to read it: the app's own journal reading the manifest when a job ends, a pipeline, a
- * search indexer, antivirus. Such a reader is gone within milliseconds, so there a refused rename
- * is tried again for about 2.5 s before it fails (as the desktop app's `writeJsonAtomic` does).
- */
-async function renameOver(from: string, to: string): Promise<void> {
-  for (let wait = 10; ; wait *= 2) {
-    try {
-      await rename(from, to);
-      return;
-    } catch (e) {
-      const code = (e as NodeJS.ErrnoException).code ?? '';
-      if (process.platform !== 'win32' || !LOCKED.has(code) || wait > 1280) throw e;
-      await new Promise((resolve) => setTimeout(resolve, wait));
-    }
-  }
-}
-
-export async function readManifestFile(root: string): Promise<ProjectManifest> {
-  const file = join(root, 'manifest.json');
-  const r = parseManifest(JSON.parse(await readFile(file, 'utf8')) as unknown);
-  if (!r.ok) throw new Error(`${file}: ${r.error}`);
-  return r.value;
-}
-
-/**
- * Validate with `parseManifest`, keep the previous file as `manifest.json.bak`, then replace
- * `manifest.json` atomically. Layers of kinds this build does not know (written by a newer
- * Stratlas) are carried over from the previous file unchanged (`keepUnknownLayers`, M10). Returns
- * the backup path ('' for a new project).
- */
-export async function writeManifestFile(root: string, manifest: ProjectManifest): Promise<string> {
-  const parsed = parseManifest(manifest);
-  if (!parsed.ok) throw new Error(parsed.error);
-  const file = join(root, 'manifest.json');
-  let backup = '';
-  let previous: unknown;
-  if (await exists(file)) {
-    try {
-      previous = JSON.parse(await readFile(file, 'utf8')) as unknown;
-    } catch {
-      previous = undefined;
-    }
-    backup = `${file}.bak`;
-    await copyFile(file, backup);
-  }
-  const kept = keepUnknownLayers(previous, parsed.value);
-  if (!kept.ok) throw new Error(kept.error);
-  const tmp = `${file}.partial`;
-  await writeFile(tmp, `${JSON.stringify(kept.value, null, 2)}\n`);
-  await renameOver(tmp, file);
-  return backup;
-}
-
 /** Create `<dataRoot>/projects/<id>/` for a new project; never reuses an existing folder. */
 export async function createProject(
   dataRoot: string,
@@ -143,14 +94,24 @@ function roundOrientation(o: CameraOrientation): CameraOrientation {
 /**
  * Apply an alignment to layers and save: a `transform` to mesh layers (georeference), `offsetMs`,
  * `lens`, `orientation` and `positionOffsetM` to video layers (calibration), or the `capture` (survey
- * date) of any layer (`null` clears it). Backs up and validates the manifest first.
+ * date) of any layer (`null` clears it). Backs up and validates the manifest first. The manifest
+ * is read and saved in one turn (`updateManifestFile`), so a save made at the same moment stays.
  */
 export async function updateLayers(
   root: string,
   layerIds: readonly string[],
   patch: LayerPatch,
 ): Promise<{ manifest: ProjectManifest; backup: string }> {
-  const m = await readManifestFile(root);
+  const r = await updateManifestFile(root, (m) => ({ manifest: patchLayers(m, layerIds, patch) }));
+  return { manifest: r.manifest, backup: r.backup };
+}
+
+/** The manifest with `patch` applied to the layers `layerIds`; throws what `updateLayers` refuses. */
+function patchLayers(
+  m: ProjectManifest,
+  layerIds: readonly string[],
+  patch: LayerPatch,
+): ProjectManifest {
   const want = new Set(layerIds);
   for (const id of want)
     if (!m.layers.some((l) => l.id === id))
@@ -185,37 +146,35 @@ export async function updateLayers(
     if (patch.positionOffsetM === null) delete next.positionOffsetM;
     return next;
   });
-  const manifest: ProjectManifest = { ...m, layers };
-  const backup = await writeManifestFile(root, manifest);
-  return { manifest, backup };
+  return { ...m, layers };
 }
 
 /**
  * Rename a survey date or set the colour and icon of its folder (`null` goes back to the automatic
  * one) and save. Only the `captures` entry changes: the date, the layers and every file stay as
- * they are. Backs up and validates the manifest first.
+ * they are. Backs up and validates the manifest first, read and saved in one turn.
  */
 export async function updateCapture(
   root: string,
   captureId: string,
   patch: CapturePatch,
 ): Promise<{ manifest: ProjectManifest; backup: string }> {
-  const m = await readManifestFile(root);
-  if (!m.captures.some((c) => c.id === captureId))
-    throw new Error(`Capture "${captureId}" is not in this project.`);
-  const captures = m.captures.map((c) => {
-    if (c.id !== captureId) return c;
-    const next = { ...c };
-    if (patch.label !== undefined) next.label = patch.label.trim();
-    if (patch.colour === null) delete next.colour;
-    else if (patch.colour !== undefined) next.colour = patch.colour;
-    if (patch.icon === null) delete next.icon;
-    else if (patch.icon !== undefined) next.icon = patch.icon;
-    return next;
+  const r = await updateManifestFile(root, (m) => {
+    if (!m.captures.some((c) => c.id === captureId))
+      throw new Error(`Capture "${captureId}" is not in this project.`);
+    const captures = m.captures.map((c) => {
+      if (c.id !== captureId) return c;
+      const next = { ...c };
+      if (patch.label !== undefined) next.label = patch.label.trim();
+      if (patch.colour === null) delete next.colour;
+      else if (patch.colour !== undefined) next.colour = patch.colour;
+      if (patch.icon === null) delete next.icon;
+      else if (patch.icon !== undefined) next.icon = patch.icon;
+      return next;
+    });
+    return { manifest: { ...m, captures } };
   });
-  const manifest: ProjectManifest = { ...m, captures };
-  const backup = await writeManifestFile(root, manifest);
-  return { manifest, backup };
+  return { manifest: r.manifest, backup: r.backup };
 }
 
 /**
@@ -240,13 +199,16 @@ export function captureForDate(
 
 /**
  * Find the survey date of a day or add it, and save. A date that exists writes nothing; a new one
- * backs up and validates the manifest first. No layer and no file changes.
+ * backs up and validates the manifest first. No layer and no file changes. Looked up and saved in
+ * one turn, so two days asked for at the same moment are both added.
  */
 export async function ensureCapture(
   root: string,
   date: string,
 ): Promise<{ manifest: ProjectManifest; captureId: string; created: boolean }> {
-  const r = captureForDate(await readManifestFile(root), date);
-  if (r.created) await writeManifestFile(root, r.manifest);
-  return r;
+  const r = await updateManifestFile(root, (m) => {
+    const c = captureForDate(m, date);
+    return { manifest: c.created ? c.manifest : null, captureId: c.captureId, created: c.created };
+  });
+  return { manifest: r.manifest, captureId: r.captureId, created: r.created };
 }
