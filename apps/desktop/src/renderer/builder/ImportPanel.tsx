@@ -234,6 +234,8 @@ function HeightsCard({ p }: { p: HeightsPrompt }) {
 
 function ImportStatus() {
   const importing = useBuilder((s) => s.importing);
+  const cancellable = useBuilder((s) => s.cancellable);
+  const cancelling = useBuilder((s) => s.cancelling);
   const result = useBuilder((s) => s.importResult);
   const prompt = useBuilder((s) => s.heightsPrompt);
   const pages = useDrawings((s) => s.pagePrompt);
@@ -253,11 +255,29 @@ function ImportStatus() {
       <header role="none">
         <Icon name="import" size={14} />
         {importing
-          ? `Importing ${String(importing.done)} of ${String(importing.total)}`
+          ? cancelling
+            ? 'Cancelling the import'
+            : `Importing ${String(importing.done)} of ${String(importing.total)}`
           : result?.error
             ? 'Import failed'
             : `Imported ${String(counts.imported ?? 0)} of ${String(result?.items.length ?? 0)} files`}
-        {!importing && (
+        {importing ? (
+          // while main imports the files; drawing pages finished afterwards have their own way out
+          cancellable && (
+            <button
+              type="button"
+              className="btn ghost sm"
+              data-testid="import-cancel"
+              disabled={cancelling}
+              title="Stop this import. Files already imported stay in the project."
+              onClick={() => {
+                void builder.getState().cancelImport();
+              }}
+            >
+              Cancel
+            </button>
+          )
+        ) : (
           <button
             type="button"
             className="btn ghost sm"

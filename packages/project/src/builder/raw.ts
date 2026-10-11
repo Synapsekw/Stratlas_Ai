@@ -43,7 +43,7 @@ import {
   tiffCorners,
   tiffGeoreferenced,
 } from './tiff';
-import { importWalk, type WalkTools } from './walks';
+import { CANCELLED_BEFORE, importWalk, type WalkTools } from './walks';
 import { isWalkFile, proxyOwner } from './walkSource';
 
 /** Review copies of photos. The app uses Electron's image codec; tools may use ffmpeg. */
@@ -129,6 +129,12 @@ export interface ImportDeps {
   as360?: boolean;
   /** Progress inside one long file (a 360 stitch), 0 to 1. */
   onFileProgress?: (file: string, fraction: number) => void;
+  /**
+   * Cancel for the import as a whole: once aborted, a running 360 stitch is stopped and removed,
+   * files whose turn had not come are reported as skipped, and what was already imported is
+   * saved as usual. A file other than a 360 video that is in hand is finished first.
+   */
+  signal?: AbortSignal;
 }
 
 export interface ImportResult {
@@ -374,6 +380,7 @@ export async function importRawFiles(
         const r = await importWalk(root, file, {
           tools,
           onProgress: (f) => deps.onFileProgress?.(name, f),
+          ...(deps.signal ? { signal: deps.signal } : {}),
         });
         item.status = r.ok ? 'imported' : r.status;
         item.message = r.message;
@@ -398,7 +405,18 @@ export async function importRawFiles(
     let later = false;
     try {
       if (consumed.has(file)) continue;
-      if (isWalkFile(name) || (deps.as360 === true && VIDEO.has(ext))) {
+      const is360 = isWalkFile(name) || (deps.as360 === true && VIDEO.has(ext));
+      if (deps.signal?.aborted) {
+        // cancelled: this file's turn had not come
+        const item: ImportItem = {
+          file: name,
+          kind: is360 ? 'video' : 'unknown',
+          status: 'skipped',
+          message: CANCELLED_BEFORE,
+        };
+        if (is360) walkItems.add(item);
+        items.push(item);
+      } else if (is360) {
         later = walk(file);
       } else if (isDrawingFile(ext, deps.drawings === true) && textures.has(file)) {
         // picked with its model: part of the model, not a sheet to look at

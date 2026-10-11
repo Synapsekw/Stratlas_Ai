@@ -410,6 +410,66 @@ describe('importWalk', () => {
     expect(await readdir(root)).toEqual([]);
   });
 
+  // ---- cancel
+
+  /** A copy that writes half a file, then waits until the import is cancelled. */
+  const untilCancelled: WalkTools['copy'] = async (out, o) => {
+    await writeFile(out, 'half a video');
+    await new Promise<never>((_resolve, reject) => {
+      const stop = () => {
+        reject(new Error('Cancelled.'));
+      };
+      if (o.signal?.aborted) stop();
+      else o.signal?.addEventListener('abort', stop, { once: true });
+    });
+    throw new Error('unreachable');
+  };
+
+  it('a cancelled stitch removes its staging folder and says it was cancelled', async () => {
+    const { t } = tools({ tracksBy: { [CLIP]: [vide(2880, 2880), vide(2880, 2880)] } });
+    t.copy = untilCancelled;
+    const stop = new AbortController();
+    const running = importWalk(root, await src(CLIP), { tools: t, signal: stop.signal });
+    await expect
+      .poll(async () => (await readdir(join(root, 'walks')).catch(() => [])).length)
+      .toBe(1);
+    stop.abort();
+    const r = await running;
+    expect(r).toMatchObject({ ok: false, status: 'skipped' });
+    if (!r.ok) expect(r.message).toContain('cancelled');
+    expect(await readdir(join(root, 'walks'))).toEqual([]);
+  });
+
+  it('an import cancelled before it starts does no work at all', async () => {
+    const { t, calls } = tools({ tracksBy: { [CLIP]: [vide(2880, 2880), vide(2880, 2880)] } });
+    let read = 0;
+    const tracks = t.tracks.bind(t);
+    t.tracks = (f) => {
+      read++;
+      return tracks(f);
+    };
+    const stop = new AbortController();
+    stop.abort();
+    const r = await importWalk(root, await src(CLIP), { tools: t, signal: stop.signal });
+    expect(r).toMatchObject({ ok: false, status: 'skipped' });
+    expect(read).toBe(0);
+    expect(calls).toEqual([]);
+    expect(await readdir(root)).toEqual([]);
+  });
+
+  it('a stored-as-is copy that was cancelled is removed too', async () => {
+    const { t } = tools({ tracksBy: { 'tour.mp4': [vide(1920, 960, 'avc1', 30)] } });
+    const stop = new AbortController();
+    // cancelled while the poster is made, after the copy
+    t.poster = () => {
+      stop.abort();
+      return Promise.reject(new Error('no frame'));
+    };
+    const r = await importWalk(root, await src('tour.mp4'), { tools: t, signal: stop.signal });
+    expect(r).toMatchObject({ ok: false, status: 'skipped' });
+    expect(await readdir(join(root, 'walks'))).toEqual([]);
+  });
+
   it('stores a stitched H.264 MP4 as it is, without ffmpeg', async () => {
     let asked = false;
     const { t, calls } = tools({

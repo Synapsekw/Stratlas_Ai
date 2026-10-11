@@ -21,6 +21,14 @@ export interface BuilderState {
   wizardOpen: boolean;
   /** Import in progress (progress from main), or null. */
   importing: { done: number; total: number; file: string; part?: number } | null;
+  /**
+   * Main is importing the files and can be told to stop (`builder:cancelImport`). False while
+   * `importing` only covers the drawings of an import being finished in this window: their page
+   * question has its own way out.
+   */
+  cancellable: boolean;
+  /** Cancel was asked for; the import ends when main has stopped what it was doing. */
+  cancelling: boolean;
   /** Outcome of the last import, shown until dismissed. */
   importResult: { items: ImportItem[]; error: string | null; heights?: ImportHeights } | null;
   /** Camera heights to confirm before the import runs (relative altitude needs a take-off H). */
@@ -40,12 +48,10 @@ export interface BuilderActions {
   importFiles: (
     paths: readonly string[],
     altitude?: AltitudeChoice,
-    /**
-     * `drawings`: every picture becomes a drawing (Add drawing), not a photo or an ortho.
-     * `as360`: MP4 and MOV files are stitched 360 video (Add 360 video), not drone clips.
-     */
-    opts?: { drawings?: boolean; as360?: boolean },
+    opts?: ImportOptions,
   ) => Promise<void>;
+  /** Cancel the running import as a whole (a 360 stitch stops; imported files stay). */
+  cancelImport: () => Promise<void>;
   /** Run the prompted import with the confirmed heights, or drop it. */
   confirmHeights: (altitude: AltitudeChoice) => Promise<void>;
   cancelHeights: () => void;
@@ -59,6 +65,14 @@ export interface BuilderActions {
   stopAlign: () => void;
   /** Save an alignment and swap the open project's manifest. Returns an error text or null. */
   saveLayers: (layerIds: readonly string[], patch: LayerPatch) => Promise<string | null>;
+}
+
+/** How an import treats its files; named, so further options do not become positional flags. */
+export interface ImportOptions {
+  /** Add drawing: every picture becomes a drawing, not a photo or an ortho. */
+  drawings?: boolean;
+  /** "Add 360 video": MP4 and MOV files are stitched 360 video, not drone clips. */
+  as360?: boolean;
 }
 
 export type Builder = BuilderState & BuilderActions;
@@ -117,9 +131,14 @@ export const IMPORT_360_FILTERS = [
  */
 let preparing = false;
 
+/** The project the running import was started in (it stays there when another one is opened). */
+let importingProject: string | null = null;
+
 export const builder = createStore<Builder>()((set, get) => ({
   wizardOpen: false,
   importing: null,
+  cancellable: false,
+  cancelling: false,
   importResult: null,
   heightsPrompt: null,
   align: null,
@@ -166,8 +185,11 @@ export const builder = createStore<Builder>()((set, get) => ({
         return;
       }
     }
+    importingProject = project.id;
     set({
       importing: { done: 0, total: paths.length, file: '' },
+      cancellable: true,
+      cancelling: false,
       importResult: null,
       heightsPrompt: null,
     });
@@ -191,6 +213,9 @@ export const builder = createStore<Builder>()((set, get) => ({
       ...(opts?.as360 ? { as360: true } : {}),
     });
     off?.();
+    // main has answered: what follows (drawing pages) is not main's import any more
+    importingProject = null;
+    set({ cancellable: false, cancelling: false });
     if (!r.ok) {
       set({ importing: null, importResult: { items: [], error: r.error } });
       return;
@@ -272,6 +297,16 @@ export const builder = createStore<Builder>()((set, get) => ({
     });
     if (pick.ok && pick.value.paths.length)
       await get().importFiles(pick.value.paths, undefined, { as360: true });
+  },
+
+  cancelImport: async () => {
+    const projectId = importingProject;
+    if (!get().cancellable || projectId === null || get().cancelling) return;
+    set({ cancelling: true });
+    const r = await bridge.call('builder:cancelImport', { projectId });
+    // nothing was cancelled (the import had just ended, or main could not be reached): the
+    // button works again if the import is somehow still shown
+    if (!(r.ok && r.value.ok) && importingProject === projectId) set({ cancelling: false });
   },
 
   dismissImport: () => {

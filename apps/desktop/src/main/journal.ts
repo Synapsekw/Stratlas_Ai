@@ -222,6 +222,8 @@ const READS: ReadonlySet<IpcChannel> = new Set<IpcChannel>([
   'report:list',
   'report:readNarrative',
   'walks:list',
+  // stops a running import; it writes nothing itself and must never wait behind one
+  'builder:cancelImport',
   'orientation:read',
   'change:list',
   'change:read',

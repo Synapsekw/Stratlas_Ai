@@ -56,6 +56,8 @@ export {
   type ProxyOptions,
 } from '../import/proxy';
 export {
+  CANCELLED_BEFORE,
+  WALK_CANCELLED,
   WALK_JSON_MAX_BYTES,
   importWalk,
   listWalks,

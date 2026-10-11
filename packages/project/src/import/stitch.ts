@@ -377,7 +377,8 @@ export async function makeWalkCopy(out: string, o: WalkCopyOptions): Promise<Wal
       };
     } catch (e) {
       last = e;
-      await rm(out, { force: true }).catch(() => undefined);
+      // ffmpeg may have been stopped a moment ago and still hold the file on Windows
+      await rm(out, { force: true, maxRetries: 5, retryDelay: 200 }).catch(() => undefined);
       if (o.signal?.aborted) break;
     }
   }

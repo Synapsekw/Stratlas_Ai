@@ -1006,6 +1006,9 @@ New on 11 Oct 2026, in the build after branch `feat/insta360-native` is merged. 
 - [ ] Open the project, then **Add data** (or drag the files onto the window) and pick the `.insv` and the `.lrv` together. The import panel counts the files ("Importing 1 of 2") and, under the bar, shows the file name with "playback copy" and a percentage that counts up; the bar moves with it.
 - [ ] When it ends the panel reads "Imported 1 of 2 files". The `.insv` line says "Stitched to 3840 x 1920 for playback from two lens streams of 2880 x 2880; the original stays where it is." The `.lrv` line is **Skipped**: "The camera's low resolution copy of VID_..., which is imported in full."
 - [ ] An 80 second clip takes about two minutes on this PC. The app stays usable meanwhile.
+- [ ] Import the clip again and click **Cancel** in the panel while the percentage counts: the header reads "Cancelling the import", then "Imported 0 of 1 files", and the clip's line is **Skipped**: "The import was cancelled while this 360 video was made. Nothing of it was added." The **360 video** list has no new row, and in Task Manager no ffmpeg is left running.
+- [ ] Drop the clip together with a few photos: the photos show in the scene and the dataset tree while the clip is still being stitched. **Cancel** now keeps the photos ("Imported ... files") and skips the clip.
+- [ ] Start an import of the clip and close the app while the percentage counts. In Task Manager no ffmpeg is left running. Open the app and import any 360 video: the project folder's `walks` folder holds no `.staging-...` folder afterwards.
 - [ ] The dataset count and the layers are as before: a 360 video is not a layer.
 
 ### Play

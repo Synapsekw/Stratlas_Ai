@@ -6,6 +6,7 @@ import { execFile } from 'node:child_process';
 import { open, readdir, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
+import { createImportRuns } from './importRuns';
 import { readManifest, type ProjectRegistry } from './project';
 import { stitchProgress, walkTools } from './walks';
 
@@ -206,6 +207,9 @@ export async function ffmpegProxy(src: string, out: string): Promise<void> {
   await l.makeProxy(out, { inputs: [src], encoder: await proxyEncoder });
 }
 
+/** The imports that are running: cancelled by `builder:cancelImport`, and all when the app quits. */
+export const importRuns = createImportRuns();
+
 export interface BuilderImportDeps {
   registry: ProjectRegistry;
   images: ImageOps;
@@ -220,6 +224,7 @@ export async function builderImport(
   const root = d.registry.root(req.projectId);
   if (root === undefined)
     return { ok: false, error: `Project "${req.projectId}" is not open. Open it, then import.` };
+  const run = importRuns.begin(req.projectId);
   try {
     const { importRawFiles, NO_PIPELINE } = await lib();
     const progress = stitchProgress((e) => {
@@ -235,6 +240,7 @@ export async function builderImport(
       walk: { ...walkTools, poster: ffmpegPoster },
       ...(req.as360 ? { as360: true } : {}),
       onFileProgress: progress.part,
+      signal: run.signal,
       ...(req.utcOffsetMin !== undefined ? { utcOffsetMin: req.utcOffsetMin } : {}),
       ...(req.altitude ? { altitude: req.altitude } : {}),
       ...(req.drawings ? { drawings: true } : {}),
@@ -248,6 +254,8 @@ export async function builderImport(
     };
   } catch (e) {
     return { ok: false, error: `Import failed: ${errorText(e)}` };
+  } finally {
+    run.end();
   }
 }
 

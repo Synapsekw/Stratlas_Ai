@@ -648,6 +648,7 @@ describe('journal service', () => {
       'change:list',
       'report:list',
       'walks:list',
+      'builder:cancelImport',
       'blobs:status',
       'ai:project',
       'library:reveal',

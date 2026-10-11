@@ -83,9 +83,11 @@ this slice adds **no lens model, no layer kind and no value to an existing enum*
    drone path, so nothing changes for drone footage.
 8. **Progress and cancel.** The stitch reports through the existing import panel
    (`builder:progress`, which gains an optional `part`): the file line reads "name.insv, playback
-   copy 42 %" and the bar moves with it. The existing review copy
-   cannot be cancelled, and neither can the stitch in this slice; the runner takes an abort signal
-   so a cancel button can be wired later. A failed stitch leaves no `walks/<id>/` folder behind:
+   copy 42 %" and the bar moves with it. **Cancel** in the import panel
+   (`builder:cancelImport`) stops the import as a whole: ffmpeg is stopped, the staging folder of
+   the walk in hand is removed, files whose turn had not come are listed as skipped and what was
+   already imported stays. Quitting the app cancels the same way, so no ffmpeg is left running.
+   There is no cancel per file, and a drone review copy in hand is finished first. A failed stitch leaves no `walks/<id>/` folder behind:
    the walk is built in a staging folder of its own and moved into place last. In a drop of
    several files the manifest is saved before the first stitch starts, so photos and models do
    not wait for it. A finished stitch is never thrown away because of the move: a refusal by
@@ -197,7 +199,7 @@ so a walk does **not** reach team mates through a hub or the Team Server yet; fo
 
 ## Follow-ups noted, not built
 
-- Cancel for a running stitch, and a quick preview from the `.lrv` while it runs.
+- A quick preview from the `.lrv` while the stitch runs. Cancel per file.
 - Chapter joining (`_001`, `_002` with the same time stamp): each chapter imports as its own walk.
 - Removing or renaming a walk from the app (delete the `walks/<id>/` folder by hand for now).
 - Sync of `walks/` through hubs and the Team Server; a walk list for an open package is built,
@@ -225,6 +227,8 @@ so a walk does **not** reach team mates through a hub or the Team Server yet; fo
 - `builder:import` request gains the optional `as360` (boolean); event `builder:progress` gains
   the optional `part` (0 to 1 inside one long file).
 - New IPC channel `walks:list` (`{ projectId }` to `{ walks: WalkFile[] }`), read only.
+- New IPC channel `builder:cancelImport` (`{ projectId }` to `{ ok }`): cancels the running import
+  of a project as a whole.
 - New project folder `walks/<id>/` (data-conventions section 32).
 
 One row in `docs/architecture/contract-changes.md`, approval "pending founder review".

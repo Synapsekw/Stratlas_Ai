@@ -236,6 +236,76 @@ describe('importRawFiles, 360 video', () => {
     expect(only.manifest.captures.map((c) => c.label)).toContain('Renamed again');
   });
 
+  it('cancel stops the stitch, skips what had not started and keeps what was imported', async () => {
+    const root = await project();
+    const second = 'VID_20260101_130000_00_002.insv';
+    const tools = walkTools({
+      [CLIP]: [vide(128, 128), vide(128, 128)],
+      [second]: [vide(128, 128), vide(128, 128)],
+    });
+    const stop = new AbortController();
+    let started = 0;
+    tools.copy = async (out, o) => {
+      started++;
+      await writeFile(out, 'half a video');
+      // the person clicks Cancel while the first clip is stitched
+      queueMicrotask(() => {
+        stop.abort();
+      });
+      await new Promise<never>((_resolve, reject) => {
+        o.signal?.addEventListener(
+          'abort',
+          () => {
+            reject(new Error('Cancelled.'));
+          },
+          { once: true },
+        );
+      });
+      throw new Error('unreachable');
+    };
+    const r = await importRawFiles(
+      root,
+      [await glbFile('pad.glb'), await src(CLIP), await src(second)],
+      deps({ walk: tools, signal: stop.signal }),
+    );
+    expect(started).toBe(1);
+    expect(r.items.map((i) => [i.file, i.status])).toEqual([
+      ['pad.glb', 'imported'],
+      [CLIP, 'skipped'],
+      [second, 'skipped'],
+    ]);
+    expect(r.items[1]?.message).toContain('cancelled');
+    expect(r.items[2]?.message).toContain('cancelled before');
+    // what was imported before the cancel is saved; nothing of the walk is left
+    expect(await layersOnDisk(root)).toEqual(['mesh']);
+    expect(r.backup).not.toBe('');
+    expect(await readdir(join(root, 'walks'))).toEqual([]);
+  });
+
+  it('files that had not started when the import was cancelled are skipped with the reason', async () => {
+    const root = await project();
+    const stop = new AbortController();
+    stop.abort();
+    const before = await readFile(join(root, 'manifest.json'), 'utf8');
+    const ticks: number[] = [];
+    const r = await importRawFiles(root, [await glbFile('pad.glb'), await src(CLIP)], {
+      ...deps({
+        walk: walkTools({ [CLIP]: [vide(128, 128), vide(128, 128)] }),
+        signal: stop.signal,
+      }),
+      onProgress: (done) => ticks.push(done),
+    });
+    expect(r.items.map((i) => [i.file, i.status])).toEqual([
+      ['pad.glb', 'skipped'],
+      [CLIP, 'skipped'],
+    ]);
+    for (const i of r.items) expect(i.message).toContain('cancelled before');
+    expect(ticks).toEqual([1, 2]);
+    expect(r.backup).toBe('');
+    expect(await readFile(join(root, 'manifest.json'), 'utf8')).toBe(before);
+    expect(await readdir(root)).not.toContain('walks');
+  });
+
   it('keeps importing other files beside a walk, and then saves the manifest once', async () => {
     const root = await project();
     const glb = join(dir, 'pad.glb');

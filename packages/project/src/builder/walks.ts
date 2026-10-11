@@ -42,6 +42,8 @@ export interface WalkCopyRequest {
   audio: boolean;
   durationS: number;
   onProgress?: (fraction: number) => void;
+  /** Aborting stops the copy; `copy` then rejects and removes what it wrote. */
+  signal?: AbortSignal;
 }
 
 /** Video reading and ffmpeg work for a walk import, injected by the app. */
@@ -71,6 +73,11 @@ export interface WalkImportOptions {
   now?: () => Date;
   /** How the finished folder is moved into place (tests hand in a rename that fails). */
   move?: RenameOptions;
+  /**
+   * Cancel: aborting stops a running stitch, removes its staging folder and answers `skipped`
+   * with the reason. A copy that was already finished is still moved into place or kept.
+   */
+  signal?: AbortSignal;
 }
 
 export type WalkImportResult =
@@ -93,6 +100,18 @@ const px = (s: FrameSize) => `${String(s.width)} x ${String(s.height)}`;
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
 
 const OPEN_HINT = 'Open it under 360 video in the sidebar.';
+
+/** What a walk's row says when the import was cancelled while it was made. */
+export const WALK_CANCELLED =
+  'The import was cancelled while this 360 video was made. Nothing of it was added.';
+/** What a file's row says when the import was cancelled before its turn. */
+export const CANCELLED_BEFORE = 'The import was cancelled before this file.';
+
+/** Remove a staging folder; a file ffmpeg held a moment ago is tried a few times on Windows. */
+const removeStaging = (staging: string) =>
+  rm(staging, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(
+    () => undefined,
+  );
 
 async function exists(p: string): Promise<boolean> {
   try {
@@ -222,6 +241,7 @@ export async function importWalk(
 ): Promise<WalkImportResult> {
   const name = basename(file);
   const stem = name.slice(0, name.length - extname(name).length);
+  if (o.signal?.aborted) return { ok: false, status: 'skipped', message: CANCELLED_BEFORE };
   let tracks: WalkTrack[];
   try {
     tracks = await o.tools.tracks(file);
@@ -333,6 +353,7 @@ export async function importWalk(
     let made: Made;
     if (direct) {
       await copyFile(file, video);
+      if (o.signal?.aborted) throw new Error('Cancelled.');
       made = { width: first.width, height: first.height, fps: first.fps };
       o.onProgress?.(1);
     } else {
@@ -344,6 +365,7 @@ export async function importWalk(
         audio: kind.audio,
         durationS,
         ...(o.onProgress ? { onProgress: o.onProgress } : {}),
+        ...(o.signal ? { signal: o.signal } : {}),
       });
     }
     let poster = false;
@@ -356,13 +378,18 @@ export async function importWalk(
       }
     }
     const trailer = o.tools.trailer ? await o.tools.trailer(file).catch(() => false) : undefined;
+    // cancelled while the copy or the poster was made: the walk is not added
+    if (o.signal?.aborted) throw new Error('Cancelled.');
     const extra = { poster, ...(trailer !== undefined ? { trailer } : {}) };
     await writeFile(
       join(staging, 'walk.json'),
       `${JSON.stringify(describe(base, made, extra), null, 2)}\n`,
     );
     finished = true;
-    const walk = await place(walksDir, staging, base, (id) => describe(id, made, extra), o.move);
+    const walk = await place(walksDir, staging, base, (id) => describe(id, made, extra), {
+      ...o.move,
+      ...(o.signal ? { signal: o.signal } : {}),
+    });
 
     const parts: string[] = [];
     if (kind.layout === 'insv-dual-stream')
@@ -397,7 +424,8 @@ export async function importWalk(
         message:
           'The playback copy was made, but it could not be moved into the project: another program (antivirus, a search indexer or a file sync) kept one of its files open. It was kept. Import the file again and it is added without a new stitch.',
       };
-    await rm(staging, { recursive: true, force: true }).catch(() => undefined);
+    await removeStaging(staging);
+    if (o.signal?.aborted) return { ok: false, status: 'skipped', message: WALK_CANCELLED };
     return { ok: false, status: 'error', message: `The 360 video was not added: ${text(e)}` };
   } finally {
     live.delete(liveKey(staging));

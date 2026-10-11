@@ -40,18 +40,23 @@ function ffmpeg(args: string[]): void {
   if (r.status !== 0) throw new Error(`ffmpeg failed: ${r.stderr}`);
 }
 
-const pattern = (name: string, size: string) => ['-f', 'lavfi', '-i', `${name}=s=${size}:r=30:d=3`];
+const pattern = (name: string, size: string, seconds = 3) => [
+  '-f',
+  'lavfi',
+  '-i',
+  `${name}=s=${size}:r=30:d=${String(seconds)}`,
+];
 const h264 = ['-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-g', '15'];
 
 /** A camera clip as an X4 writes it, in small: two square lens streams and sound in one file. */
-function makeClip(out: string): void {
+function makeClip(out: string, size = '128x128', seconds = 3): void {
   ffmpeg([
-    ...pattern('testsrc2', '128x128'),
-    ...pattern('testsrc', '128x128'),
+    ...pattern('testsrc2', size, seconds),
+    ...pattern('testsrc', size, seconds),
     '-f',
     'lavfi',
     '-i',
-    'sine=frequency=440:duration=3',
+    `sine=frequency=440:duration=${String(seconds)}`,
     '-map',
     '0:v',
     '-map',
@@ -252,6 +257,49 @@ test.describe('360 video', () => {
     // the stitched video has no sound, and the pane says so instead of offering it
     await expect(win.getByTestId('walk-sound')).toBeDisabled();
     expect(await readFile(manifestFile, 'utf8')).toBe(manifestBefore);
+  });
+
+  test('Cancel stops a running stitch, adds nothing of it, and the next import works', async ({
+    app,
+    win,
+    dataRoot,
+  }) => {
+    test.setTimeout(300_000);
+    // long and large enough to still be stitching when Cancel is clicked: 40 s of 640 x 640 per
+    // lens is many seconds of work for ffmpeg, and the click comes with the first progress
+    const clip = join(dataRoot.base, 'VID_20260102_090000_00_001.insv');
+    const tour = join(dataRoot.base, 'Site tour.mp4');
+    makeClip(clip, '640x640', 40);
+    makeFlat(tour, '256x128');
+    const walks = join(dataRoot.projectDir, 'walks');
+    const manifestFile = join(dataRoot.projectDir, 'manifest.json');
+    const manifestBefore = await readFile(manifestFile, 'utf8');
+
+    await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).first().click();
+    await expect(win.locator('[data-scene-view] canvas')).toBeVisible();
+    await nextOpenDialog(app, [clip]);
+    await palette(win, 'Import raw data');
+    const panel = win.getByTestId('import-panel');
+    const cancel = panel.getByTestId('import-cancel');
+    await expect(cancel).toBeVisible({ timeout: 60_000 });
+    await expect(panel).toContainText(/playback copy \d+ %/, { timeout: 180_000 });
+    await cancel.click();
+
+    // the import ends with the clip's row saying why, and nothing of the walk is left
+    await expect(panel).toContainText('Imported 0 of 1 files', { timeout: 60_000 });
+    await expect(panel).toContainText('cancelled while this 360 video was made');
+    await expect(panel.getByTestId('import-cancel')).toHaveCount(0);
+    await expect.poll(() => readdir(walks), { timeout: 30_000 }).toEqual([]);
+    await expect(win.getByTestId('walk-list')).toHaveCount(0);
+    expect(await readFile(manifestFile, 'utf8')).toBe(manifestBefore);
+    await panel.getByRole('button', { name: 'Close' }).click();
+
+    // the import is free again: the next one runs and lands
+    await nextOpenDialog(app, [tour]);
+    await palette(win, 'Add 360 video');
+    await expect(panel).toContainText('Imported 1 of 1 files', { timeout: 120_000 });
+    expect(await readdir(walks)).toEqual(['site-tour']);
+    await expect(win.getByTestId('walk-list').locator('.walk-row')).toHaveCount(1);
   });
 
   test('an ordinary MP4 added as 360 video is refused with the reason, and nothing is stored', async ({

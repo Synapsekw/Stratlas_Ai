@@ -105,6 +105,14 @@ describe('walk channels', () => {
     );
   });
 
+  it('builder:cancelImport takes a project and answers whether an import was running', () => {
+    const c = ipc['builder:cancelImport'];
+    expect(c.request.safeParse({ projectId: 'p' }).success).toBe(true);
+    expect(c.request.safeParse({ projectId: 'p', file: 'a.insv' }).success).toBe(false);
+    expect(c.request.safeParse({}).success).toBe(false);
+    expect(c.response.safeParse({ ok: false }).success).toBe(true);
+  });
+
   it('builder:import takes the optional as360 and still reads without it', () => {
     const req = ipc['builder:import'].request;
     expect(req.safeParse({ projectId: 'p', paths: ['a.mp4'] }).success).toBe(true);

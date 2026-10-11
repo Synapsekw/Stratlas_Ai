@@ -2815,6 +2815,16 @@ export const ipc = {
     request: z.object({ projectId: z.string().min(1) }).strict(),
     response: z.object({ walks: z.array(WalkFile) }),
   },
+  /**
+   * Cancel the `builder:import` running for a project, as a whole: a 360 video being stitched is
+   * stopped and removed, files whose turn had not come are answered as skipped, and what was
+   * already imported is saved. `builder:import` itself then answers with the rows. `ok` is false
+   * when no import is running for the project.
+   */
+  'builder:cancelImport': {
+    request: z.object({ projectId: z.string().min(1) }).strict(),
+    response: z.object({ ok: z.boolean() }),
+  },
 } as const satisfies Record<string, { request: z.ZodType; response: z.ZodType }>;
 
 /** Events pushed from main to the renderer. */
