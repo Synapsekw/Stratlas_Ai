@@ -27,8 +27,9 @@ export interface JobStarter {
 
 /**
  * The raw import's pipeline seam over the job runner (`jobs:start`): a LAS/LAZ/E57 file becomes
- * a `pointcloud.to_copc` job in the Jobs panel. Conversions the pack does not offer yet (large
- * rasters, video transcodes) fail with a message the import list shows.
+ * a `pointcloud.to_copc` job in the Jobs panel. A conversion the pack does not offer yet (the
+ * transcode of a video Chromium cannot play, `video.transcode`) fails with a message the import
+ * list shows.
  */
 export function builderPipelineJobs(runner: JobStarter): PipelineJobs {
   return {

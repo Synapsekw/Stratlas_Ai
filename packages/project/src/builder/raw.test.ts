@@ -207,7 +207,7 @@ describe('importRawFiles', () => {
     expect(photos?.kind === 'photos' && photos.items.map((p) => p.id)).toEqual(['p', 'p-2']);
   });
 
-  it('hands point clouds and large rasters to the pipeline pack, or says it is missing', async () => {
+  it('hands a point cloud to the pipeline pack, or says it is missing', async () => {
     const root = await project();
     const las = join(dir, 'site.laz');
     await writeFile(las, new Uint8Array([1, 2, 3]));
@@ -342,6 +342,111 @@ describe('importRawFiles', () => {
       format: 'image',
       src: { path: 'rasters/ortho.png' },
       corners: { tl: [-1, 0, -1], tr: [1, 0, -1], bl: [-1, 0, 0] },
+    });
+  });
+
+  describe('a GeoTIFF over the size limits', () => {
+    const TOO_LARGE =
+      'This GeoTIFF is too large to import yet (over 300 MB, over 12,000 x 12,000 pixels, or a BigTIFF). Reduce or split it in other software, then import the parts.';
+
+    /** A valid 4 x 2 ortho (classic TIFF, Deflate). */
+    const smallTiff = () =>
+      makeTiff(
+        {
+          width: 4,
+          height: 2,
+          samples: 3,
+          bits: 8,
+          values: Array.from({ length: 4 * 2 * 3 }, (_, i) => (i * 40) % 256),
+          epsg: 32639,
+          pixelScale: [0.5, 0.5],
+          tiepoint: [ORIGIN[0] - 1, ORIGIN[1] + 1],
+          compression: 8,
+        },
+        (x) => new Uint8Array(deflateSync(x)),
+      );
+
+    /** The same file with the image size in its first IFD changed to `w` x `h` (header only). */
+    function declareSize(b: Uint8Array, w: number, h: number): Uint8Array {
+      const out = b.slice();
+      const v = new DataView(out.buffer);
+      const at = v.getUint32(4, true);
+      for (let i = 0; i < v.getUint16(at, true); i++) {
+        const e = at + 2 + i * 12;
+        const tag = v.getUint16(e, true);
+        if (tag !== 256 && tag !== 257) continue;
+        const value = tag === 256 ? w : h;
+        if (v.getUint16(e + 2, true) === 3) v.setUint16(e + 8, value, true);
+        else v.setUint32(e + 8, value, true);
+      }
+      return out;
+    }
+
+    /** A job runner that records every start. */
+    function recorder() {
+      const started: string[] = [];
+      const jobs: PipelineJobs = {
+        available: () => Promise.resolve(true),
+        start: (method) => {
+          started.push(method);
+          return Promise.resolve({ jobId: 'job-r' });
+        },
+      };
+      return { started, jobs };
+    }
+
+    async function expectRefused(file: string) {
+      const root = await project();
+      const { started, jobs } = recorder();
+      const r = await importRawFiles(root, [file], deps({ jobs }));
+      expect(r.items).toEqual([
+        { file: 'big.tif', kind: 'raster', status: 'error', message: TOO_LARGE },
+      ]);
+      expect(started).toEqual([]);
+      expect((await readManifest(root)).layers.filter((l) => l.kind === 'raster')).toEqual([]);
+      expect(await readdir(join(root, 'rasters'))).toEqual([]);
+    }
+
+    it('refuses a file over the byte limit, with no job and no layer', async () => {
+      const tif = join(dir, 'big.tif');
+      await writeFile(tif, smallTiff());
+      const fh = await open(tif, 'r+');
+      await fh.truncate(300 * 1024 * 1024 + 1);
+      await fh.close();
+      await expectRefused(tif);
+    });
+
+    it('refuses a file over the pixel limit, with no job and no layer', async () => {
+      const tif = join(dir, 'big.tif');
+      await writeFile(tif, declareSize(smallTiff(), 12_001, 12_000));
+      await expectRefused(tif);
+    });
+
+    it('refuses a BigTIFF, with no job and no layer', async () => {
+      const tif = join(dir, 'big.tif');
+      const b = new Uint8Array(64);
+      new DataView(b.buffer).setUint16(0, 0x4949);
+      new DataView(b.buffer).setUint16(2, 43, true);
+      await writeFile(tif, b);
+      await expectRefused(tif);
+    });
+
+    it('says the same when the processing tools are not installed', async () => {
+      const root = await project();
+      const tif = join(dir, 'big.tif');
+      await writeFile(tif, declareSize(smallTiff(), 13_000, 13_000));
+      const r = await importRawFiles(root, [tif], deps());
+      expect(r.items[0]).toMatchObject({ status: 'error', message: TOO_LARGE });
+    });
+
+    it('still imports a small file as a layer, with no job', async () => {
+      const root = await project();
+      const tif = join(dir, 'ok.tif');
+      await writeFile(tif, smallTiff());
+      const { started, jobs } = recorder();
+      const r = await importRawFiles(root, [tif], deps({ jobs }));
+      expect(r.items[0]).toMatchObject({ kind: 'raster', status: 'imported' });
+      expect(started).toEqual([]);
     });
   });
 
