@@ -43,7 +43,7 @@ Only what still needs testing. Each stage lists what to click and what you shoul
 | R           | The rename to Quadrion AI: name, icon, title bar, installer, settings carried over from Stratlas                                                                                                                                                                                                                            | The installer built from the rename branch (QuadrionAI-0.9.0-win-x64-setup.exe)                                                                                                                                                                            | Built; not yet tested by the founder                 |
 | Timeline T1 | Survey dates: one folder per date in Datasets, the date bar and calendar, survey commands in Ctrl K, dates in the viewers and compare split                                                                                                                                                                                 | Main at commit `2fe069e` or later (in version 0.10.0), and a project of yours with two survey dates or more, such as the stockpile project (see Timeline T1, Before you start)                                                                             | Built; not yet tested by the founder                 |
 | L           | The launch screen: welcome with your name, Enter, Esc, the Settings switch                                                                                                                                                                                                                                                  | An installer built from the launch-screen branch (after the rename), or later                                                                                                                                                                              | Built; not yet tested by the founder                 |
-| D           | Drawings: the Drawings group, PDF and picture drawings, side by side, placing by points, opacity and on top                                                                                                                                                                                                                 | An installer built from the drawings branch (`feat/drawings-dataset`), or later                                                                                                                                                                            | Built, waiting for your test                         |
+| D           | Drawings: the Drawings group, PDF and picture drawings, side by side, placing by points, opacity and on top                                                                                                                                                                                                                 | Version 0.11.4; any project, a test project is best because a drawing cannot be removed yet (see Stage D)                                                                                                                                                  | Built; not yet tested by the founder                 |
 | M10         | Photos to products: photo processing on the demo and on your own flight, ground control and the accuracy report, OPF, Globe, imagery and terrain packs, 3D Tiles, licence approvals                                                                                                                                         | Version 0.10.0, built 8 Oct 2026 from `integration/m10` at commit `3f07041` or later with the M10 fixes merged (the 24-photo demo), and the processing tools 0.4.0 or later; test it on 0.11.4 with the processing tools 0.5.4 (see M10, Before you start) | Built; not yet tested by the founder                 |
 | M11         | Surveying: site coordinates and calibration, the surface engine, measurement tools and templates, volumes and comparisons, cross-sections and terrain overlays, designs and alignments, survey exports and the interop matrix, QA and cleanup, survey reports and template sets, haul road, hydrology, your three real jobs | Version 0.11.4 with the processing tools 0.5.4 (both carry the local AI helpers), and the survey demos (see M11, Before you start)                                                                                                                         | Built; not yet tested by the founder                 |
 
@@ -103,9 +103,11 @@ Goal: build a complete deliverable inside Stratlas, from raw data to a reviewed,
 The type picker of **New project** has six cards. What a type sets up is deliberately small for now: tell us what each one should do next.
 
 - [ ] Projects, **New project**. Under **Type**: **Survey**, **Construction**, **Vertical asset inspection** (selected), **Confined space inspection**, **Data fusion** and **Road**, each with one line saying what it is for.
+- [ ] Before you type, the grey example texts are neutral: **Name** shows "Tank farm inspection", **Customer** "Customer name" and **Site** "City, country". On the next step, the empty **Typed coordinate** box shows the examples "25.1000, 55.2000, 12" and "318490.6 2777230.4 12" with "or" between them.
 - [ ] Name `Types check`, pick **Confined space inspection**, **Next**. **Typed coordinate** `25.1000, 55.2000, 12`, **Next**, **Next**. The summary reads **Type** "Confined space inspection". **Create project**.
 - [ ] The empty project says "Confined space inspection" above "Add raw data to Types check", and under **Add first** three lines of data to start with. **Import files** works as before.
 - [ ] A new **Survey** project has the **Survey data** block on the last step, as Volumetric had. A new **Road** project opens in **Road setup**, as before.
+- [ ] A new **Construction** or **Data fusion** project has no **Survey data** block on the last step. Its empty project shows that type above the heading. Under **Add first** it lists three lines for **Construction** and four for **Data fusion**.
 - [ ] A project made before this change opens as before. If it is still empty it shows its older type: **Inspection**, **Survey**, **Road**, **Digital twin** or **Data fusion**.
 
 ### P1 Inspection from raw data (the inspection sample)
@@ -134,6 +136,8 @@ One detections contract: every pass (yours, AI, model) is a file in `<project>\d
 - [ ] Accept or link the rest: "0 waiting · 16 accepted · 1 rejected" (when you accept each box on its own). The save state reads **Saved**; the AI pass file in `detections\` now holds your decisions.
 - [ ] **Ctrl+Z** and **Ctrl+Y** undo and redo review changes. **Ctrl**+click selects several tiles; **Clear selection** empties it. The confidence slider hides proposals under "Confidence N% and up".
 - [ ] Run **Turn detections into issues** again: the log says "Not counted: 1 rejected" and "8 accepted in the review (8 placed on the model)", "0 new ... 4 unchanged". The issues you accepted get their pin on the shell joints; none is made twice.
+- [ ] **Reopen** the rejected box, **Accept** it and, within a second, click **Turn detections into issues**, **Start**: the save state reads **Saved** before the job appears, and the log counts the box you just accepted in "accepted in the review".
+- [ ] Only if a save fails (the save state reads **Not saved**): **Start** shows "The latest detection changes could not be saved, so processing was not started." with the reason, and no job starts.
 - [ ] Select a box on a photo: its details have **Outline** (**M**), which outlines the object in the box. With older processing tools that have no mask model, **Outline** is not there.
 - [ ] Flare project (299 photos): the contact sheet scrolls smoothly. In a package opened in the player the screen says **Read only**.
 
@@ -205,6 +209,9 @@ Use the tank sample project or a new empty one.
 - [ ] Drag in a DJI video with its `.SRT`: a clip with its flight path appears and plays in sync.
 - [ ] Drag in a GLB, then **Georeference** it by clicking 3 point pairs; residuals show.
 - [ ] Drag in a small LAS or LAZ: a job under **Processing** converts it (progress, log); the cloud appears when done.
+- [ ] Drag in a few hundred photos together with a small LAS or LAZ: the panel reads "Importing N of M", the cloud's row reads **Queued** and its job runs under **Processing**. When the import ends, the photos and the point cloud are both in **Datasets**, also when the cloud was converted before the last photo was in.
+- [ ] In a project with a survey date, drag in a few hundred photos. While the panel reads "Importing N of M", right-click the date folder in **Datasets**, **Rename**, type a new name and press Enter. Then right-click a group heading and pick another date under **Move to date**. When the import ends, the new name and the move are still there, and the photos are in.
+- [ ] **Import files**, pick a GeoTIFF over 300 MB (or over 12,000 x 12,000 pixels, or saved as a BigTIFF): the panel reads "Imported 0 of 1 files" and the file's row reads **Failed** with "This GeoTIFF is too large to import yet (over 300 MB, over 12,000 x 12,000 pixels, or a BigTIFF). Reduce or split it in other software, then import the parts." No job starts. In a batch, the other files still come in.
 
 ### Camera heights in Import
 
@@ -219,6 +226,8 @@ Use the tank sample project or a new empty one.
 - [ ] **Start exploring**, press **2** for the map: streets draw. **Settings, Offline maps** lists the region as **In open package**. Best check: on a PC or data folder without the regional map pack, the map still draws from the package.
 - [ ] **Reports**, **Edit a copy**, **Extract to edit**: progress, then a new project opens with "Copy of <file>.aio" in the title bar and no "Read-only package" chip. Annotate the copy: the issue is saved in the new project; the `.aio` file is unchanged.
 - [ ] A package exported without the allow switch: "The sender did not allow editing this package ...".
+- [ ] Stockpile project, **Reports**, **Export package**: under **Layers** there is no "Original review viewer" row. **Export**, then open the `.aio`: the welcome screen has no tip about the original review, the sidebar has no **Original review**, and the piles and their volumes show as in the project.
+- [ ] If you have a package (`.aio`) of the stockpile or road project exported before 0.11.4: it still opens, "Read-only package", with no **Original review** in the sidebar and nothing about it on the welcome screen.
 - [ ] Resumable download (only if you agree to a download from build.protomaps.com): **Settings, Offline maps**, **Add a region**, a small country, start, quit Stratlas mid-download. Reopen: **Interrupted**, "The download stopped at ... Resume continues from there ...". **Resume**: it finishes and the pack shows as downloaded.
 
 ### X2 Point cloud streaming smoothness
@@ -259,6 +268,7 @@ Build: the M6.1 installer, 5 Oct 2026, from main at commit `c0fda90` or later. A
 
 - [ ] Tank project, **Media**: a photo with findings has a count badge in its worst severity colour, a tinted border and the boxes drawn on the thumbnail. The bar reads "N photos with findings".
 - [ ] **Only with findings** hides the other photos. **Order**: **As captured**, **Worst first**, **Most findings first**.
+- [ ] **Severity** (next to **Order**) works without the agent and with **Cloud AI** off: choose a level and only photos with a finding of that level show. **Any** shows them all again. A level that no photo has: "No photos match this filter."
 
 ### Tank project
 
@@ -290,6 +300,24 @@ Build: the M6.1 installer, 5 Oct 2026, from main at commit `c0fda90` or later. A
 - [ ] An ambiguous name: the agent lists the candidates and asks which one.
 - [ ] Only if you remove the Workspace ID to try it: the "not scoped to a workspace" error shows a **Workspace ID needed** card in the agent panel with **Anthropic workspace ID**, **Test and retry** (sends your last message again, once) and **Open AI settings**.
 
+### The agent shows you things (12 Oct 2026)
+
+Needs **Cloud AI** on and a saved provider key. These steps were checked with a scripted test model only: no real model has been tried yet. If the agent does something else, write down the request and what it did. Use **Demo tank farm**.
+
+- [ ] **Settings**, **AI providers**: a key is saved. **Settings**, **Privacy and cloud**: switch on **Cloud AI**. The title bar chip reads **Cloud AI**. Open **Demo tank farm**.
+- [ ] On **Scene** the agent is at the bottom of the right panel, as before. An empty conversation offers up to four requests as buttons, for example **Take me to the most severe finding**. A click on one sends it.
+- [ ] With nothing selected, type "Take me to the most severe point on this asset" and press **Enter**. The first message in a project asks "Send to <provider>?": click **Send**. Finding F04 is selected, the 3D view flies to it and its photo opens beside the 3D view. The answer should name F04, its severity (Severe) and its asset.
+- [ ] Type "Open up images with the highest level of severity". **Media** opens with **Severity** on "Severe", **Only with findings** pressed, **Order** on **Worst first** and one photo. The agent column is open on the right with both requests in it.
+- [ ] In **Severity** choose **Any**: every photo with a finding shows again. Click **Only with findings**: all photos show.
+- [ ] Type "Show the photos on Tank T-101". A chip "On Tank T-101" shows above the photos, and only photos of that tank show. Click the x on the chip: the chip goes.
+- [ ] Type "Show me the findings in the Tank T-101 area". **Issues** opens with a chip "On Tank T-101" above the list, and every row is a finding on that tank. Click the x on the chip: the chip goes.
+- [ ] Press **Undo** on the last step in the agent column: the screen and its filters go back to what they were before that step.
+- [ ] From **Media**, type "Show me finding F01": **Scene** opens, F01 is selected, the camera flies to it and its photo opens beside the 3D view. The same conversation is now in the right panel.
+- [ ] On **Issues**, click **Agent** in the title bar: the column folds. Click it again: it unfolds. **Ctrl+Alt+B** does the same. Go to **Media** and back: the column is as you left it, with the same conversation. **Detections** and **Reports** have the same column. On **Scene** there is no **Agent** button.
+- [ ] Go to **Settings** and back to **Issues**: the conversation is still there. Open **Demo change site (2 dates)**: the conversation is empty and the chips are gone.
+- [ ] On **Issues**, pick a severity in the filter row above the list, go to **Media** and back: the filter is still set. It is cleared when you open another project.
+- [ ] In a window about 1100 px wide with the column open, **Media**, **Issues**, **Detections** and **Reports** stay usable and nothing scrolls sideways. Below 1280 px the **Agent** button shows only its icon.
+
 ### Stockpile project
 
 - [ ] No frame around the orthos in 3D; the plant project's ortho and the road project's edges are clean too.
@@ -298,19 +326,23 @@ Build: the M6.1 installer, 5 Oct 2026, from main at commit `c0fda90` or later. A
 - [ ] Click a pile on the terrain or in **Volumes**: the camera flies to it and shows its outline, body and a callout like "11,379 m³ · 18,206 t · 11.3 m high". Hover a pile: only its name. **Esc** or a click on empty ground hides it.
 - [ ] The eye on a row keeps that pile visible; the eye at the top shows every pile (remembered per project). The pile's detail shows **Fill**, **Cut**, **Net**, the base and **Last edit**.
 - [ ] **Elevation**: **Colour ramp** Turbo (the default), Spectral, Viridis, Terrain, Inferno, Greyscale; **Low** and **High** sliders in metres and **Auto**; **Hillshade** (on by default). The legend reads in metres.
-- [ ] A project opens in 3D on the street map (also one with its own ortho, model or point cloud): sharp under the site, out to the horizon. The street map button in the stage toolbar (under **More tools** in a narrow window) turns it off and on, and the choice is still there after reopening the project. With **Imagery around the site** or **Terrain around the site** on, the street map gives way and the button is greyed out with the reason.
+- [ ] A project that an installed street map pack covers opens in 3D on the street map (also one with its own ortho, model or point cloud): sharp under the site, out to the horizon. The street map button in the stage toolbar (under **More tools** in a narrow window) reads "Hide the street map under the site". Click it: the street map goes and the button reads "Show the street map under the site". The choice is still there after reopening the project. With **Imagery around the site** or **Terrain around the site** ticked in **Layers and issue pins**, the street map gives way and the button is greyed out: "The street map is hidden while imagery or terrain around the site is on (Layers)". **Layers and issue pins** has no street map row.
+- [ ] Open a project whose site no installed street map pack covers (**Settings, Offline maps** lists the packs): there is no street map under the site, and the street map button is greyed out and reads "No installed map pack covers this site".
+- [ ] Open the stockpile project and the road project: each opens on **Scene**. The sidebar lists **Projects**, **Globe**, **Scene**, **Issues**, **Media**, **Detections** and **Reports**, with no **Original review**. **Datasets** has no row for the old viewer.
+- [ ] **Ctrl+K**, type "original review": nothing is offered, no command and no layer.
 
 ### Compare dates (stockpile project)
 
 - [ ] **Compare dates** sits next to **3D**, **Map** and **Split**. From 3D or Split it opens two 3D views, from **Map** two maps: the first date on the left, the last on the right. Remembered per project; **Stop comparing dates** leaves it.
 - [ ] Each side has a date selector; picking the other side's date swaps the two. With **Link the two views** on, orbit, pan and zoom move both sides.
 - [ ] Click P05 on one side: P05 is outlined on both, and both sides draw its toe line and volume body for their own date.
-- [ ] With two 3D views, click **Elevation** in the stage toolbar: both views are coloured by elevation, each on its own survey. The left view has the legend with the ramp and range controls, the right view the same legend without controls. Move a range slider on the left: both views and both legends follow.
+- [ ] With two 3D views, click **Elevation** in the stage toolbar (under **More tools** in a narrow window): both views are coloured by elevation, each on its own survey. The left view has the legend with the ramp and range controls, the right view the same legend without controls. Move a range slider on the left: both views and both legends follow.
 - [ ] Click **Cut / fill**: both views show the height change colours and the legend. Click **Photo**: both go back to the photo.
 - [ ] Save a survey measurement (**Survey measurements**, a distance, **Save measurements**), then **Compare dates**: the line and its label are drawn on both 3D views. Choose **Map** on both sides: it is drawn on both maps. A measurement that belongs to one survey date shows only on the side with that date.
 - [ ] In the ordinary **Split** (3D beside the map) on a project with two or more survey dates, set the two sides to different dates: a measurement that belongs to one survey is drawn only on the pane that shows that date; a measurement of the whole site is drawn on both.
 - [ ] Still left view only: drawing a measurement, editing a pile boundary, picking a section line, the swipe.
 - [ ] **Split** with **Ortho and plans** on both sides shows two orthos side by side.
+- [ ] With the street map on, click **Compare dates**: both 3D views show the same street map under the site. Click the street map button: it goes from both views.
 
 ### Dates and report branding
 
@@ -368,6 +400,8 @@ Everything here runs offline on the new bundled demo **Demo change site (2 dates
 
 - [ ] In **Changes**, click **Run cloud change**: a layer "Cloud change ..." appears under Point clouds, and the clouds switch to **Colour by: Change** on their own. Moved and new objects are amber or red, the rest grey. The legend reads 0.00 m to 0.30 m.
 - [ ] Drag **Hide changes under** to about 0.10 m: the grey points disappear. Point at a red point: "Under the pointer: 0.xx m".
+- [ ] While comparing dates, the change legend is in each 3D view that shows the change cloud. A view that does not show it has no change legend. "Under the pointer" reads the view you point at.
+- [ ] While comparing dates, colour the point clouds by **Elevation** (**Colour by**): each 3D view has its own legend, with the automatic range of its own cloud.
 - [ ] Click **Run volume change** in the legend: fill, cut and net volume appear in the legend.
 - [ ] Click **Run model change**: parts are listed as moved, added, removed and changed (the dented tank). Clicking a row outlines the part on both dates. Switch on the hidden layer "Model change ...": the dent is amber to red.
 
@@ -578,28 +612,29 @@ Each start now shows a short launch screen before your projects (the design you 
 
 ## Stage D: drawings
 
-Drawings are their own group in **Datasets**. Use an installer built from the drawings branch or later. Any project works; the demo change site is fine. Have a PDF with two or more pages, a PNG or a screenshot of a plan, and a JPEG scan ready.
+Drawings are their own group in **Datasets**. Test it on 0.11.4. A drawing cannot be removed yet, and each PDF page you import becomes one drawing, so use a test project for this stage. Any project works; the demo change site is fine. Have a PDF with two or more pages, a PNG or a screenshot of a plan, and a JPEG scan ready.
 
 - [ ] **Datasets**: beside **Add data** there is a small **Add drawing** button (its tip lists PDF, PNG, JPEG, WebP, SVG, TIFF and DXF). **Ctrl K**, type "drawing": **Add a drawing to this project** is there too.
-- [ ] Click **Add drawing** and pick the PNG. The import panel says "Imported 1 of 1 files" and "Added to Drawings, not placed yet." A **Drawings** group appears in **Datasets** (inside **Every date** when the project has survey dates) with the file, marked "not placed", and its controls open under the row.
+- [ ] A new project with nothing in it: the empty stage offers **Import files** and, under it, **Add drawing**.
+- [ ] Click **Add drawing** and pick the PNG. The import panel says "Imported 1 of 1 files" and "Added to Drawings, not placed yet. Open it side by side, or place it on the site to lay it over the model." A **Drawings** group appears in **Datasets** (inside **Every date** when the project has survey dates) with the file, marked "not placed". Its controls open under the row and start with "Not placed yet, so it is hidden in 3D and on the map. It opens side by side as it is."
 - [ ] Nothing new shows in the 3D view or on the map yet: the row's eye is crossed out. Click the eye: the drawing appears at the project origin a moment later (its picture is only loaded now). Click it again to hide it.
-- [ ] Click **Add data** and pick the PDF. A card asks **Pages**, says how many pages the file has and proposes `1`. Type `1-2` and click **Import 2 pages**. Two drawings appear, named "<file>, page 1" and "<file>, page 2". While the card is open, dropping another file on the window does nothing.
-- [ ] Drop the PDF on the window, type `99` in **Pages**: "This file has pages 1 to <n>." and **Import** is greyed out. Click **Cancel**: the panel says "No pages were imported.", and the project folder has no new file under `drawings`.
-- [ ] There is no way to remove a drawing yet, so use a test project for this stage, and bring in only what you want to keep elsewhere.
+- [ ] Click **Add data** and pick the PDF. A card "Pages of <file>" says "This PDF has <n> pages. Each page you import becomes one drawing, and a drawing cannot be removed again, so type only the pages you need." Its **Pages** field proposes `1`. Type `1-2` and click **Import 2 pages**. Two drawings appear, named "<file>, page 1" and "<file>, page 2". While the card is open, dropping another file on the window does nothing.
+- [ ] Drop the PDF on the window, type `99` in **Pages**: "This file has pages 1 to <n>." and **Import** is greyed out. Click **Cancel**: the panel says "Imported 0 of 1 files" and "No pages were imported. Import the file again to choose pages.", and the project folder has no new file under `drawings`.
+- [ ] A drawing cannot be removed yet: its row has only the settings button and the eye, and its controls have no remove button. Use a test project for this stage, and import only the files and pages you need.
 - [ ] Pick an OBJ model together with its MTL and its PNG textures through **Add data**: the model comes in with its textures, and the PNG files read "A texture of the model ..." instead of becoming drawings.
 - [ ] With a picture drawing called `site` in the project, drop a DXF called `site.dxf` (processing tools installed): its row says it comes in as `site-2`, and the picture drawing is untouched when the job ends.
 - [ ] Pick the JPEG with **Add data**: it becomes a photo, as before. Pick it with **Add drawing**: it becomes a drawing. Pick a TIFF saved by a scanner or an image program with **Add drawing**: it becomes a drawing too.
 - [ ] Drop a DWG file on the window: "DWG is not supported. Save the drawing as DXF or PDF, or as a PNG picture, then import that."
 - [ ] On the PNG's row, click the settings button, then **Side by side**: the view splits, the 3D view (or the map, if you were on it) on the left and the drawing on the right. Drag pans it, the wheel zooms, double-click fits it.
-- [ ] In the list above the drawing, the drawings are under **Drawings**, before **Orthos and maps**. Pick "<file>, page 2": that page shows, sharp when you zoom into the line work.
+- [ ] In the list above the drawing, the drawings are under **Drawings**, before **Orthos and maps** (the two headings show only when the project also has an ortho or another raster). Pick "<file>, page 2": that page shows, sharp when you zoom into the line work.
 - [ ] **Place on the site**: the split shows the 3D view on the left and a strip above the drawing: "Click a point on the drawing that you can find on the site." Click a corner you recognise on the drawing: a numbered mark appears. Click the same corner in the 3D view: the strip shows pair 1. Do the same for a second corner far from the first: it shows how far each pair is off, in metres, and the scale in millimetres per pixel.
 - [ ] Click **Place**: the strip closes, the drawing lies on the site in the 3D view at the right place, size and turn, and "not placed" is gone from its row. Close and open the project: it is still placed and still showing.
-- [ ] **Place again** and give the same site point for two different drawing points (type the same coordinate twice): "The site points are too close together. Give spots further apart." and **Place** stays greyed out.
+- [ ] **Place again**, choose **Typed**. Click a point on the drawing, type a coordinate, **Add**. Click another point, type the same coordinate, **Add**: "The site points are too close together. Give spots further apart." and **Place** stays greyed out.
 - [ ] **Place again**, choose **Map**, click a point on the drawing, then the same spot on the small map: a pair is added. Choose **Typed**, click another point and type its easting and northing, **Add**: a pair is added. **Cancel** leaves the drawing where it was.
-- [ ] Move **Opacity** on a placed drawing: it fades in the 3D view. Switch the stage to **Map**: it has the same opacity there. A drawing you never touched is at 75 percent on the map, as before.
+- [ ] Move **Opacity** on a placed drawing: it fades in the 3D view. Switch the stage to **Map**: it has the same opacity there. A drawing you never touched reads "75 %" on the slider: it is at 75 percent on the map, as before, and solid in the 3D view until you move the slider.
 - [ ] In a project with a model or a point cloud standing on the drawing: the model hides the part of the drawing under it. Switch **On top in 3D** on: the whole drawing shows over the model, and a measurement line drawn across it still shows over the drawing. Switch it off: the model hides it again.
 - [ ] Close the app and open the project again: opacity and **On top in 3D** are as you left them.
-- [ ] A project with a DXF drawing from the model builder: its plan and its line work are now under **Drawings**, not **Maps and rasters**. Its row has the settings button with **Opacity**, **On top in 3D** and **Side by side**, and no **Place** (a DXF is placed in the model builder).
+- [ ] A project with a DXF drawing from the model builder: its plan and its line work are now under **Drawings**, not **Maps and rasters**. The plan's row has the settings button with **Opacity**, **On top in 3D** and **Side by side**, and no **Place** (a DXF is placed in the model builder). The line work rows have only the eye.
 - [ ] Open a read-only package that holds drawings: they are listed under **Drawings** and open side by side; there is no **Add drawing** and no **Place**.
 
 ## Stage M10: photos to products, Globe and 3D Tiles
@@ -707,7 +742,7 @@ Use a real drone flight of yours. The photos stay in their folder and are only r
 - [ ] Open **Processing**, the job "Maps from photos: building the maps", then **Log**: it has the lines "Depth maps of N photos at a time." and "Fusing N photos at a time.", with N at most 8.
 - [ ] **Accuracy**: "GNSS only, no ground control: the absolute accuracy is that of the drone's GNSS; N of … photos aligned." At least 95% of the photos are aligned, and the mean reprojection error is about 1 px.
 - [ ] **Progress**: the photos left out are listed, each with its reason.
-- [ ] When the maps are ready, the panel reads "Added to <project name> under <date> as new layers:", with the date the wizard showed. In **Datasets** the new layers are in that date's folder. It reads "under no survey date" only if you set **Survey date** to **None** under **Options**.
+- [ ] When the maps are ready, the panel reads "Added to <project name> under <date> as new layers:", with the date the wizard showed. In **Datasets** the new layers are in that date's folder. It reads "Added to <project name> as new layers, under no survey date:" if you set **Survey date** to **None** under **Options**. It reads the same, with the warning "The survey date could not be saved, so these maps are under no date. Move them to the date in Datasets.", when the survey date could not be saved.
 - [ ] The two photos' **Date modified** is unchanged, and nothing new is in the flight folder.
 - [ ] If the flight has ground control: **Ground control**, **GCP file**, your CSV or TXT; check the columns, the coordinate system and the points on the map; **Save N points**. **Mark** opens the photos straight from the flight folder, and the loupe's cross hair sits on the target anywhere in the photo, also near the edges. **Adjust**: every accurately marked control point is used (none is "left out"); with five control points or more, a point whose coordinates are wrong in plan is named in the warnings.
 - [ ] If the project also has this flight as a photos layer: **Refined poses** offers **Photos layer of the same flight** (photos are matched by file name); **Use refined poses**, **Move the cameras**.
@@ -724,18 +759,21 @@ Use a real drone flight of yours. The photos stay in their folder and are only r
 
 ### Globe
 
-- [ ] Turn Wi-Fi off. Sidebar **Globe**: the Earth as the dark street map over the whole screen, and a chip per project with its name (a mint dot, or an amber dot and the number of open issues). No panel at the left: **Find a site** at the top, **Map** at the top right, four buttons at the lower right. With no street map pack the footer reads "Natural Earth (public domain)" and "CesiumJS (Apache-2.0)".
+- [ ] Turn Wi-Fi off. Sidebar **Globe**: the Earth as the dark street map over the whole screen, and a chip per project with its name (a mint dot, or an amber dot and the number of open issues on amber, "99+" above 99). A long name is cut with "…". No panel at the left: **Find a site** at the top, **Map** at the top right, four buttons at the lower right. With no street map pack the Globe shows land and borders only, and the footer reads "Natural Earth (public domain)" and "CesiumJS (Apache-2.0)".
 - [ ] Zoom out until two chips would overlap: they become one chip, for example "2 sites". Click it: the Globe flies to its sites and each has its own chip again, after one click even when they are only a street apart. With two projects at the same place: their chip stays one at any zoom, and a click on it lists just those two in **Find a site**; pick one and its card opens.
-- [ ] Click **Find a site**: every site is listed with its last capture and open issues. Type part of a name: the list shortens. Rest the pointer on a row: its chip lights up on the Globe. Click the row (or Down and Enter): the Globe flies there and a card opens beside the chip with the name, last capture, open issues and tilesets, **Fly to** and **Open site here**. Clicking a chip opens the same card.
+- [ ] Click **Find a site**: every site is listed with its last capture and open issues. Type part of a name: the list shortens. Rest the pointer on a row: its chip lights up on the Globe. Click the row (or Down and Enter): the Globe flies there and a card opens under the chip (above it when there is no room below) with the name, last capture, open issues and tilesets, **Fly to** and **Open site here**. Clicking a chip opens the same card.
+- [ ] In **Find a site**, type a name no site has: "No site with that name". Clear the field: the whole list is back.
 - [ ] Drag the Globe so the selected site goes to each edge: the card stays inside the Globe and keeps clear of **Find a site**, **Map** and the four buttons. **Close** closes it; so does Esc with the focus in the card, or in **Find a site** once its list is shut. Closed with the keyboard, the focus is back in **Find a site** with its list shut. Click a chip, then click **Close**: the field does not get the focus, and its list does not open. Switch to another window and back with the focus resting in the field: its list does not open by itself.
-- [ ] **Map**: the settings open under the button with **Map type** (**Street map**, **Satellite**, **Natural Earth**), **Terrain**, **Show issues of the open project** and the two chip colours. Choose **Natural Earth**: the Earth changes and the settings stay open. Esc closes them. Leave the Globe and come back: the look is remembered.
+- [ ] The four buttons at the lower right are **Measure on the ellipsoid**, **Zoom in**, **Zoom out** and **Show all sites**. Click **Show all sites**: an open card closes and the Globe flies out until every chip is in view, none cut by the window edge.
+- [ ] **Map**: the settings open under the button with **Map type** (**Street map**, **Satellite**, **Natural Earth**), **Terrain**, **Show issues of the open project** and the key of the chip colours ("No open issues", "Open issues"). Choose **Natural Earth**: the Earth changes, an **Imagery** menu appears and the settings stay open. Esc or a click outside closes them. Leave the Globe and come back: the look is remembered.
+- [ ] With no street map pack installed and **Street map** chosen, **Map** says "No street map pack is installed, so the Globe shows land and borders only. Add packs in Settings, Offline maps."
 - [ ] **Open site here**: the site view opens looking the same way. Click **Globe** in the sidebar again: the Globe is where you left it.
 - [ ] With a project open and **Show issues of the open project** ticked (in **Map**): its issues show as pins in their severity colours. Click one: a card at the pin shows the code and title, "Severity N · <status>" and **Open issue**, which opens the site view with the issue card.
 - [ ] **Measure on the ellipsoid** (the first button at the lower right): "Click points on the ground. Measuring and editing are in the site view." takes the place of **Find a site**. Two points: "Distance on the ellipsoid: …"; a third adds "area: …".
 - [ ] After the imagery pack below: reopen the Globe, **Map**, **Satellite**. The pack is in the **Imagery** menu, the site is sharper, and the footer names its attribution.
 - [ ] After the terrain pack below, on **Medium** graphics or higher: **Map**, **Terrain**, **Best available** shows relief. On **Low**: "Terrain is off on the Low graphics preset."
 - [ ] Open and leave the Globe ten times: Task Manager shows the memory not climbing.
-- [ ] With cloud AI or the offline agent on, ask "list my sites": the agent lists your projects. Ask "show the demo on the globe": the agent panel closes, the Globe opens and flies there.
+- [ ] With cloud AI or the offline agent on, ask "list my sites": the agent lists your projects. Ask "show the demo on the globe": the agent panel closes, the Globe opens, flies there and opens the card of that site.
 
 ### Imagery and terrain packs (building needs pack 0.4.0)
 
@@ -749,7 +787,7 @@ Use a real drone flight of yours. The photos stay in their folder and are only r
 
 ### 3D Tiles
 
-- [ ] (needs pack 0.4.0) **Demo tank farm**, **Settings**, **Processing tools**, **Advanced: run a pipeline directly**, **Mesh to 3D Tiles**, **Mesh layer id** `model`, **Start job**. When it is done, the tiles stream into the 3D view (hide the **model** layer in **Datasets** to see them alone). Clicking, measuring and **Inside the asset**, **Cut** work on them. Its Globe card reads "1 tileset".
+- [ ] (needs pack 0.4.0) **Demo tank farm**, **Settings**, **Processing tools**, **Advanced: run a pipeline directly**, **Mesh to 3D Tiles**, **Mesh layer id** `model`, **Start job**. When it is done, the tiles stream into the 3D view (hide the **model** layer in **Datasets** to see them alone). Clicking, measuring and **Inside the asset**, **Cut** work on them. On the **Globe**, click its chip: the card reads "1 tileset".
 - [ ] Open another project, **Ctrl+K**, **Import 3D Tiles from another program**, and pick `tileset.json` in `%APPDATA%\Quadrion AI\demo\demo-tank-farm\tiles\model\`. The card **Import 3D Tiles** has **Name** and **Credit line**. **Import**: "Imported …" and "It is placed by its own georeference and shows in the 3D view."
 - [ ] Back in **Demo tank farm**, import that same `tileset.json`: "That folder holds this project. Pick the folder of the 3D Tiles export." Nothing is copied.
 - [ ] Optional, with a 3D Tiles export from another program (DJI Terra, Pix4D): a georeferenced one shows in place; one without a georeference says "It has no georeference of its own, so it is kept hidden: placing it on the map is not built yet."
