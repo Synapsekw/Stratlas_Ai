@@ -319,6 +319,15 @@ def test_a_cancelled_tool_is_killed(tmp_path, monkeypatch):
     assert time.monotonic() - t0 < 5
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="only Windows keeps the parent PID of an ended process")
+def test_a_tool_is_not_stopped_for_the_memory_of_an_older_process_that_names_its_pid(tmp_path, reused_pid):
+    from aio_pipelines.photo.native import run_tool
+
+    exe = ps.fake_tool(tmp_path, "brief", "import time\ntime.sleep(1.5)\nprint('done')\n")
+    out = run_tool(_ctx(tmp_path), [str(exe)], "Brief", tmp_path / "w", memory_limit=400 * 2**20)
+    assert "done" in out
+
+
 def test_texrecon_cameras_are_in_the_local_frame(tmp_path):
     v = ps.scene().views[0]
     o = np.array(ps.ORIGIN)

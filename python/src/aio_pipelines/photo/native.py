@@ -15,8 +15,9 @@ points at, and the mesh's primary engine is MeshLab (``pymeshlab``, ``mesh.py``)
 | ``pdal``      | ``AIO_PDAL``          | ``tools/pdal/`` (shipped)  | BSD-3 (conda-forge build, GPL/LGPL deps) |
 
 ``run_tool`` runs one cancellably: output to files (a full pipe would block the child), stdin
-closed, no console window, and on cancel the whole process tree is killed (``taskkill /T`` on
-Windows), so no orphan keeps running after the job stops.
+closed, no console window, and on cancel the whole process tree is killed (on Windows
+``colmap_io.end_tree``: the tool's own descendants and nothing else), so no orphan keeps running
+after the job stops.
 
 Memory: ``AIO_PHOTO_MEMORY_MB`` is the one memory cap of the photo jobs (the app sets it from
 Settings). ``photo.products`` plans within it (``memory_budget``; without it 40 % of the physical
@@ -61,13 +62,9 @@ def find_tool(name: str) -> str | None:
 
 def _kill_tree(proc: subprocess.Popen) -> None:
     if os.name == "nt":
-        subprocess.run(
-            ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            check=False,
-        )
+        from .colmap_io import end_tree
+
+        end_tree(proc)
     else:
         try:
             os.killpg(proc.pid, 9)
