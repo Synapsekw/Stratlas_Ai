@@ -1,6 +1,6 @@
 # GPU acceleration for photo processing
 
-> 10 Oct 2026. Status: accepted by the founder on 10 Oct 2026 with every recommendation as written (see "Decisions needed from the founder"); written as a proposal. Nothing was installed, downloaded, built or changed to write it; the pack, the pipelines and the app are as they were. It supersedes the "deferred to M10.1" part of decision 5 in `docs/architecture/adr/0008-photogrammetry-engine.md` once the founder has decided the points under "Decisions needed". Every fact below carries one of three labels: **measured** (read from this workstation, the installed pack or the repository), **documented** (read from a named source on 10 Oct 2026) or **my estimate**.
+> 10 Oct 2026. Status: accepted by the founder on 10 Oct 2026 with every recommendation as written (see "Decisions needed from the founder"); written as a proposal. Step 0, the spike, ran on 11 Oct 2026: its measurements and what they change are in "Spike results", which is newer than the rest of this file. Nothing was installed, downloaded, built or changed to write it; the pack, the pipelines and the app are as they were. It supersedes the "deferred to M10.1" part of decision 5 in `docs/architecture/adr/0008-photogrammetry-engine.md` once the founder has decided the points under "Decisions needed". Every fact below carries one of three labels: **measured** (read from this workstation, the installed pack or the repository), **documented** (read from a named source on 10 Oct 2026) or **my estimate**.
 
 ## Summary for the founder
 
@@ -15,6 +15,169 @@
 1. There is no official GPU build of COLMAP's Python package for Windows (the `pycolmap-cuda12` wheels are Linux only). A prebuilt GPU COLMAP for Windows does exist on conda-forge, the channel PDAL already comes from. It would add GPU bundle adjustment and COLMAP's own dense matcher, but it is about 1.5 GB of downloads, changes the method, and contains GPU SIFT code whose licence allows "educational, research and non-profit purposes" only. I recommend not starting there; the spike measures it so you can decide with numbers.
 2. Part of the slowness has nothing to do with the GPU. Depth maps are made one photo at a time in a single Python process, and most of that time is our own array code around the matcher, not the matcher. Running that on several cores helps every computer, Macs included, and I recommend doing it first.
 3. By NVIDIA's documentation your RTX 5070 Ti is supported by the runtime I propose, and its driver (591.86) is new enough; running it is the spike's first check. No registry or system setting has to change.
+
+## Spike results (11 Oct 2026)
+
+> Step 0 ran on 11 Oct 2026 on the founder's workstation (RTX 5070 Ti, driver 591.86, 64 GB). Everything it installed or wrote went to a scratch folder outside the repository and the data folder; the pack, the pipelines and the app were not changed. Every number here is **measured** unless it says **my estimate**. The sections below this one are the plan as written on 10 Oct and are not rewritten: where they disagree with this section, this section is the newer one, and "What this changes" lists the differences for the founder to decide.
+
+**The data.** The synthetic full set: 63 photos of 20.9 MP (5280 x 3960), of which 60 align at Standard and 59 at High, with 1,394 photo pairs. No real flight was timed.
+
+**How far to trust the timings.** Other sessions were using the machine. The Standard baseline ran with about half the CPU busy elsewhere; the rows marked "quiet" ran with the CPU at 0 to 27% before each step. The founder asked for short runs, so the High baseline was stopped after fusion and the second run that would have measured how far two CPU runs differ was dropped.
+
+### Verdict by stage
+
+| Stage                                                            | Verdict                     | Measured                                                                                                                        |
+| ---------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| The runtime on the RTX 5070 Ti                                   | Works                       | CuPy 14.2.0 with the CUDA 12.9 runtime ran from wheels alone, no CUDA Toolkit on the system, no driver reset in the whole spike |
+| Pair matching on the card                                        | **Go, but it needs cuBLAS** | Matching stage 12.9 s against 255 s at Standard, 37 s against 673 s at High; 99.7% of COLMAP's matches; the same verified pairs |
+| Depth maps: the matcher itself on the card                       | **No-go**                   | 5.8 s per photo against 6.4 s on the CPU at Standard with array operations only; fewer pixels filled than today's matcher       |
+| Depth maps: our array code on the card, today's CPU matcher kept | **Go**                      | 0.93 s per photo against 6.4 s at Standard, 7.2 s against 32.0 s at High; 0.40 s and 5.7 s with several photos at once          |
+| Fusion's per-photo check on the card                             | **Go**                      | 0.14 s per photo against 9.7 s at Standard, 0.57 s against 40.1 s at High; the same pixels kept                                 |
+| CPU process pool for depth maps                                  | **Go, smaller than hoped**  | 3.6 times with 8 processes at Standard, 2.3 times with 4 at High (6.2 GB per process); results identical to one process         |
+| COLMAP's GPU build from conda-forge (option B)                   | **No-go**                   | No GPU bundle adjustment in that build; PatchMatch slower than today's CPU chain; 5.5 GB installed; does not start as installed |
+
+Against the plan's pass or fail table:
+
+| Check              | Result                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| The runtime starts | **Pass.**                                                                                                                                                                                                                                                                                                                                                                      |
+| Size               | **Pass without cuBLAS** (336 MB installed against 600 MB). **Fail with cuBLAS** (1,072 MB), which matching needs.                                                                                                                                                                                                                                                              |
+| Matching           | **Pass** on speed (18 times on the stage at High; 19 times at Standard, against a baseline taken on a loaded machine) and on results (same photos registered, tolerances held). "Every pair COLMAP verified is still verified" held at High and in one of two Standard runs; in the other, one pair of 1,038 differed, which is the verification's own randomness (see below). |
+| Depth maps         | **Fail as written** (the matcher on the card). **Pass in the other form** (card around the CPU matcher): 6.8 times one process at Standard and 4.5 times at High with one photo at a time, 5.6 times at High with four at once, and 2.4 times faster than four CPU processes at High.                                                                                          |
+| Card memory        | **Pass** for the form that is a go: about 2.2 GB of card memory at High, one photo at a time. The matcher on the card took 9 GB against a budget of 8 GB.                                                                                                                                                                                                                      |
+| Go for the add-on  | **Go**: matching passes, and depth maps pass in the changed form.                                                                                                                                                                                                                                                                                                              |
+| Information only   | GPU bundle adjustment could not be measured: the conda-forge build has none.                                                                                                                                                                                                                                                                                                   |
+
+### Where the time goes
+
+One whole Standard run, CPU only, about half the CPU busy elsewhere: 67 minutes.
+
+| Stage                 | Seconds   | Share of its job | The code's planning weight |
+| --------------------- | --------- | ---------------- | -------------------------- |
+| Reading the photos    | 2.7       | 1%               |                            |
+| Feature extraction    | 27.1      | 7%               |                            |
+| Matching              | 255.2     | 65%              |                            |
+| Sparse model          | 84.2      | 21%              |                            |
+| Georeference, report  | 25.4      | 6%               |                            |
+| **Alignment**         | **395**   |                  |                            |
+| Depth maps (`dense`)  | 504.4     | 14%              | 29%                        |
+| Fusion (`fuse`)       | 1,023.2   | 28%              | 9%                         |
+| Point cloud (`cloud`) | 970.5     | 27%              | 6%                         |
+| DSM                   | 129.4     | 4%               | 9% with the DTM            |
+| DTM                   | 125.2     | 3%               |                            |
+| Orthomosaic           | 749.2     | 21%              | 18%                        |
+| Mesh                  | 43.1      | 1%               | 12%                        |
+| Texture               | 84.1      | 2%               | 9%                         |
+| **Products**          | **3,631** |                  |                            |
+
+High, the stages that were timed before the run was stopped (started on a quiet machine): feature extraction 165.7 s, matching 672.8 s (68% of the alignment), sparse model 119.8 s, the whole alignment 16.4 minutes; depth maps 1,437 s; fusion 3,027 s with a memory peak of 33.5 GB. The stages after fusion were not timed at High.
+
+So the share `s` of depth maps and fusion that finding 8 could only guess is 42% of the products at Standard on this set, and two stages the plan left alone, the point cloud (PDAL) and the orthomosaic, are another 47%.
+
+**Inside one depth map** (Standard, three photos, quiet, 6.96 s per photo): rectifying the photos 3.2 s (46%, of which the lens model about 1.1 s), the medians that merge the pairs and fill pinholes 1.6 s (23%), back-projection 0.75 s (11%), OpenCV's matcher 0.54 s (8%). The plan's guess that the matcher is "perhaps a fifth" was too high: it is under a tenth.
+
+**Inside fusing one photo** (Standard, three photos, quiet, 10.9 s per photo): working out the direction through every pixel 5.6 s (51%), projecting into the six neighbours 2.2 s, normals 0.6 s. The pixel directions depend only on the camera, and the code works them out again for every photo (`fuse.world_points` calls `Camera.pixel_rays`). Keeping them per camera is a change on the CPU with the same result, and it halves this stage's per-photo time on every computer.
+
+### Depth maps and fusion, engine by engine
+
+Seconds per photo, quiet machine, ten photos at Standard and four at High (the pools on sixteen and eight):
+
+| Engine                                                    | Standard | Against today | High    | Against today |
+| --------------------------------------------------------- | -------- | ------------- | ------- | ------------- |
+| Today: one process on the CPU                             | 6.36     | 1             | 32.0    | 1             |
+| CPU pool, 4 processes                                     | 2.19     | 2.9           | 13.76   | 2.3           |
+| CPU pool, 8 processes                                     | 1.79     | 3.6           | not run |               |
+| Card for our array code, CPU matcher, one photo at a time | 0.93     | 6.8           | 7.17    | 4.5           |
+| The same, 4 photos at once (threads)                      | 0.51     | 12.5          | 5.74    | 5.6           |
+| The same, 8 photos at once                                | 0.40     | 15.9          | not run |               |
+| Matcher on the card, array operations only                | 5.82     | 1.1           | not run |               |
+| Matcher on the card, with one small hand-written kernel   | 4.39     | 1.4           | 25.2    | 1.3           |
+
+- **Why the matcher on the card does not pay.** Semi-global matching walks the image one column or row at a time. As array operations that is tens of thousands of small steps per pair, and the time goes into starting them, not into the arithmetic (aggregation is 3.6 s of the 5.8 s). A full GPU matcher would need hand-written kernels throughout, which the plan's risk table reserves as its own question for the founder, and it would follow our numpy matcher, not the OpenCV matcher production uses.
+- **Where the card does pay.** Everything around the matcher: rectification 2.16 s on the CPU against 0.07 s on the card for one pair, and the same for back-projection and the medians. With that on the card, the CPU matcher becomes almost all that is left (about nine tenths of the time per photo at High), which is why several photos at once help less at High than at Standard.
+- **The pool's limits.** OpenCV's matcher already uses several cores, so eight processes give 3.6 times, not eight. At High each process peaks at 6.2 GB, so the pool has to be sized by memory, and eight of them were not run on this 64 GB machine.
+- **Fusion.** Per photo, the consistency check and normals: 9.7 s on the CPU and 0.14 s on the card at Standard (69 times); 40.1 s and 0.57 s at High (70 times).
+
+**Are the results the same?**
+
+| Compared with today's CPU depth maps  | Pixels filled | Within 3 x GSD of the truth surface | Pixels with the identical value | Within 0.1% of the depth, where both filled |
+| ------------------------------------- | ------------- | ----------------------------------- | ------------------------------- | ------------------------------------------- |
+| Standard: today                       | 97.02%        | 72.85%                              |                                 |                                             |
+| Standard: CPU pool                    | 97.02%        | 72.85%                              | 100%                            | 100%                                        |
+| Standard: card around the CPU matcher | 97.03%        | 72.84%                              | 98.27%                          | 99.54%                                      |
+| Standard: matcher on the card         | 95.66%        | 72.20%                              | 2.8%                            | 91.32%                                      |
+| High: today                           | 93.68%        | 86.44%                              |                                 |                                             |
+| High: CPU pool                        | 93.68%        | 86.44%                              | 100%                            | 100%                                        |
+| High: card around the CPU matcher     | 93.82%        | 86.34%                              | 95.73%                          | 99.82%                                      |
+| High: matcher on the card             | 87.27%        | 80.06%                              | 5.8%                            | 94.28%                                      |
+
+The truth surface is a 25 cm grid, coarser than the 1.7 cm GSD, so the "within 3 x GSD" column understates every engine alike; it is there to compare engines, and it is not the plan's product target, which is measured on the fused cloud. No whole products run was made with the card, so the product targets of "Correctness" part 1 are still to be shown (the tests of the depth-map work package).
+
+- **The card around the CPU matcher** differs from today only by rounding: the rectified photos differ by at most 0.006 of a grey level in 255, and 77.8% of their pixels are bit-identical.
+- **The card's own matcher** equals our numpy matcher exactly, as "Correctness" part 3 expected: on a real rectified pair (2283 x 2858, 175 disparities) 100% of pixels are equal with the same bands, in 10.1 s against numpy's 102.8 s; fed by the card's own rectification, 99.904% are equal. It is the numpy matcher that fills fewer pixels than OpenCV's, which is the other reason not to switch to it.
+- **Fusion** keeps exactly the same pixels (the same counts on every photo tested); the points differ by 2 micrometres at most, because the card keeps the pixel directions in double precision.
+
+### Pair matching
+
+|                                                             | Standard                 | High                    |
+| ----------------------------------------------------------- | ------------------------ | ----------------------- |
+| Pairs                                                       | 1,394                    | 1,394                   |
+| COLMAP on the CPU, matching stage                           | 255.2 s (loaded)         | 672.8 s (quiet)         |
+| Card with cuBLAS: comparing descriptors                     | 8.6 s                    | 31.5 s                  |
+| COLMAP's geometric verification of the card's matches (CPU) | 3.7 s                    | 5.9 s                   |
+| Card, the whole stage                                       | 12.9 s                   | 37.4 s                  |
+| COLMAP's matches that the card also finds                   | 99.73%                   | 99.75%                  |
+| Matches in total, COLMAP and card                           | 2,167,903 and 2,178,136  | 3,284,597 and 3,299,320 |
+| Verified pairs (15 inliers or more), COLMAP and card        | 1,038 and 1,037 or 1,039 | 1,033 and 1,034         |
+
+- The card's matcher compares every descriptor with every other and applies COLMAP's own tests (ratio 0.8, distance 0.7, cross check), then COLMAP verifies the matches as it does today. It finds slightly more matches than COLMAP's default search, as "Correctness" expected.
+- Two verifications of the same card matches at Standard gave 1,039 and 1,037 verified pairs: the verification draws random samples and is not seeded. So "every pair COLMAP verified is still verified" cannot hold strictly from run to run; a tolerance of a few pairs in a thousand is the honest test.
+- **A whole alignment with the card's matcher** (Standard): the same 60 photos registered; mean reprojection error 0.5715 px against 0.5687 px; camera centres differ by 0.25 cm at the median and 1.52 cm at most, under one GSD. The tolerances of "Correctness" part 2 for alignment held. The alignment took 113.5 s (quiet) against 394.7 s (loaded).
+- **cuBLAS is not optional for this.** CuPy 14.2 refuses every matrix product (`dot`, `matmul`, `tensordot`, `einsum`, integer or floating point) unless NVIDIA's cuBLAS library is present. Without it, one pair's products took 400 ms as a loop of array operations and 34 to 63 ms with a hand-written kernel, against 2.6 ms with cuBLAS; a whole matching run with the kernel was no faster than the CPU (5.8 pairs per second).
+- Not looked into: the first photo holds 16,800 descriptors at Standard and 16,406 at High, more than the 8,192 and 12,288 the presets ask for.
+
+### Sizes and memory
+
+| Parts                                                    | Installed (measured) |
+| -------------------------------------------------------- | -------------------- |
+| CuPy 14.2.0                                              | 147 MB               |
+| NVIDIA runtime compiler 12.9.86 and CUDA runtime 12.9.79 | 189 MB               |
+| **Lean add-on** (depth maps and fusion)                  | **336 MB**           |
+| cuBLAS 12.9.2.10                                         | 736 MB               |
+| **With matching**                                        | **1,072 MB**         |
+
+- The three lean wheels are 170 MB to download. The plan's 0.4 to 0.6 GB estimate for the lean add-on was high; its 1.2 to 1.5 GB estimate with cuBLAS was also high.
+- Card memory for the form that is a go: 1.6 GB at Standard and 2.2 GB at High with one photo at a time, so the 4 GB floor holds with room to spare.
+- CuPy reported 15.5 GB of the card free while `nvidia-smi` showed 7 GB in use by desktop programs. Windows shares the card's memory between programs, so "free memory" as CuPy sees it is not a safe budget on its own.
+- Not recorded: which NVIDIA libraries each prototype loaded.
+
+### COLMAP's GPU build from conda-forge (option B, information only)
+
+- `colmap` 4.2.1 `cuda_129` solved to 134 packages, 5.3 GB installed (6.9 GB of downloads kept in the cache). It did not start: `colmap.exe` needs OpenImageIO, which the package does not pull in. With `openimageio` added (which brings FFmpeg) it starts and reports "with CUDA"; the environment is then 5.5 GB.
+- **There is no GPU bundle adjustment in it.** Asked for the GPU, it answers "Ceres was compiled without cuDSS support. Falling back to CPU-based sparse solvers". On the 59-photo High model, bundle adjustment took 9.3 s on the CPU and 11.7 s when asked for the GPU, with the same final cost.
+- **PatchMatch** made the first (photometric) pass of a depth map in 16 s per photo at half size and 37 s at full size; the default also runs a second pass of about the same work, which my cut-down photo list could not complete. That is slower than today's CPU chain at High (32 s per photo) and far slower than the card around the CPU matcher (7 s).
+- So option B offers nothing here: the reason to consider it was GPU bundle adjustment, and it has none.
+
+### What this changes in the plan
+
+For the founder to decide; nothing below has been started.
+
+1. **Depth maps on the card keep today's CPU matcher.** WP3 becomes "our array code on the card" (rectification, back-projection, merging, pinholes), not "a CuPy backend for the matcher". It is simpler than planned: no band planning for the card, no question of hand-written kernels, about 2 GB of card memory, and results that differ from today's by rounding only.
+2. **Fusion's per-photo check goes on the card in the same package**, not "later". It takes twice as long as depth maps today and gains about 70 times.
+3. **WP1 gains a first item that needs no card:** keep the pixel directions per camera in fusion. Then the process pool, sized by memory (6.2 GB per process at High), with the gain the spike measured (2.3 to 3.6 times), not the 4 to 6 times of finding 1. On a computer with the add-on, several photos at once through the card take the pool's place.
+4. **A new decision: how the add-on carries cuBLAS.** Matching on the card needs it, and it lifts the add-on from 336 MB to 1,072 MB installed, over the 600 MB proposed in decision 3. Options: (a) one add-on of about 1.1 GB; (b) a lean add-on for depth maps and fusion and a second, optional part for matching; (c) matching stays on the CPU. **Recommended: (a)**, with the add-on's budget set at 1,200 MB installed. Matching is two thirds of an alignment and gains 18 times, and one add-on is one thing to build, version and explain.
+5. **Option B and WP7 are dropped.** The sparse model stays on the CPU; nothing prebuilt for Windows moves it to the card today.
+6. **Expected gain, revised (my estimate from the measured parts).** For this Standard run of 67 minutes: matching 255 s to about 13 s, depth maps 504 s to about 45 s, fusion 1,023 s to about 190 s (its final merge stays on the CPU). That is about 42 minutes, 1.6 times overall, at the low end of the plan's "1.5 to 3 times for Standard". What is left is then dominated by the point cloud stage and the orthomosaic (1,720 of about 2,500 seconds), which this plan lists as out of scope. A second look at those two stages would be worth more than any further GPU work on depth maps.
+7. **The wizard's reference times** (`REF`) can now be replaced by rates measured on a small set: at High, 63 photos took 16.4 minutes to align, 24 minutes for depth maps and 50 minutes for fusion on the CPU. How those scale to a thousand photos was not measured.
+
+### Not done
+
+- **A real flight was not timed** (decision 9 allows it). It would take many hours on the CPU, so it waits for a time the founder picks; the shares of a large flight, and the sparse model's share in particular, are still only known from the G2 comparison.
+- **How far two CPU runs differ** was not measured, so the tolerances of "Correctness" part 2 are still proposals. Only the alignment tolerances were checked, and they held.
+- **The stages after fusion at High** were not timed.
+- **No fallback behaviour was tried** (out of memory, missing library, device lost), and no whole products run was made with the card.
+- **PatchMatch's second pass** and its accuracy on a fused cloud.
+- The scratch folder (`E:\Scratch\gpu-spike`, 116 GB with the photo set, the runs and the conda environment) is kept until the founder has read these results, then deleted as the plan says.
 
 ## Where things stand today
 
@@ -199,7 +362,7 @@ On your workstation, for the measured flight shape (about 1,000 photos of 20 MP)
 
 ## Decisions needed from the founder
 
-> **Decided, 10 Oct 2026.** The founder accepted every recommendation below as written ("go with the GPU plan recommendations"). In short: the prebuilt-only rule stays (1); NVIDIA on Windows x64 first (2); a separate add-on with its own budget (3); tested on numpy in CI plus a recorded bench on the founder's workstation (4); the lean add-on first, with COLMAP's GPU build decided later on the spike's numbers and a licence read (5); NVIDIA's runtime licence accepted for the add-on only (6); the CUDA 12.9 runtime (7); the CPU process pool for depth maps is part of this item and is the first work package (8); the spike may time a copy of one real flight (9); the GPU is on by default with a switch (10). The M10 Build stream takes the spike and the CPU process pool, since the photo pipelines and the pack build are its stream. The spike starts once the branches in flight on 10 Oct have landed: its timings need a quiet machine.
+> **Decided, 10 Oct 2026.** The founder accepted every recommendation below as written ("go with the GPU plan recommendations"). In short: the prebuilt-only rule stays (1); NVIDIA on Windows x64 first (2); a separate add-on with its own budget (3); tested on numpy in CI plus a recorded bench on the founder's workstation (4); the lean add-on first, with COLMAP's GPU build decided later on the spike's numbers and a licence read (5); NVIDIA's runtime licence accepted for the add-on only (6); the CUDA 12.9 runtime (7); the CPU process pool for depth maps is part of this item and is the first work package (8); the spike may time a copy of one real flight (9); the GPU is on by default with a switch (10). The M10 Build stream was to take the spike and the CPU process pool, since the photo pipelines and the pack build are its stream. On 11 Oct 2026 the founder gave the plan to the session "GPU support for photo map processing" instead, which ran the spike that day (see "Spike results"); M10 Build still owns the rest of the photo pipeline, so the work packages that touch `photo/dense.py`, `fuse.py` or `products.py` are agreed with it first.
 
 1. **May any native component be built from source if a stage has no prebuilt GPU path?** This would unlock Caspar bundle adjustment and OpenCV's CUDA matchers, and brings back a native build stage in CI. Options: keep the rule; allow one named component. **Recommended: keep the rule.** By default: kept; the sparse model stays on the CPU.
 2. **NVIDIA on Windows x64 first?** Options: yes; wait for a route that covers every card. **Recommended: yes.** By default: yes, with the CPU process pool for everyone else.
