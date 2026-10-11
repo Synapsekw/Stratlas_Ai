@@ -117,12 +117,9 @@ import {
 import { VolumeTools } from './VolumeTools';
 import { MeasureMount, MeasureToolbar } from '../survey/MeasureToolbar';
 import { SurveyQaMount } from '../survey/Qa';
-import {
-  siteBasemapDefault,
-  siteBasemapOn,
-  useSiteBasemap,
-  useSiteBasemapLayer,
-} from './siteBasemap';
+import { useSiteBasemapLayer, wantsSiteBasemap } from './siteBasemap';
+import { useStreetMap3d } from './streetMap3d';
+import { StreetMapTool } from './StreetMapTool';
 import { BasemapPicker } from './BasemapPicker';
 import { useSiteTiles } from './siteTiles';
 
@@ -248,9 +245,18 @@ function StageToolbar({
   const hasPaths = useFlightPathModel() !== null;
   const inPackage = useShell((s) => Boolean(s.pkg));
   const volumeDates = useVolumetric((s) => s.file?.captures.length ?? 0);
-  const content = [projectId, stage ? 1 : 0, hasPaths ? 1 : 0, inPackage ? 1 : 0, volumeDates].join(
-    '|',
+  // the street map button comes and goes with the project's place on the Earth
+  const streetMapTool = useWorkspace((s) =>
+    s.project && wantsSiteBasemap(s.project.manifest) ? 1 : 0,
   );
+  const content = [
+    projectId,
+    stage ? 1 : 0,
+    hasPaths ? 1 : 0,
+    inPackage ? 1 : 0,
+    volumeDates,
+    streetMapTool,
+  ].join('|');
 
   const fit = useCallback(() => {
     const bar = barRef.current;
@@ -286,7 +292,12 @@ function StageToolbar({
         // measurements popover
         return map ? <MeasureToolbar /> : <MeasureTools stage={stage} />;
       case 'display':
-        return <DisplayTools stage={stage} map={map} />;
+        return (
+          <>
+            <DisplayTools stage={stage} map={map} />
+            {!map && <StreetMapTool />}
+          </>
+        );
       case 'clouds':
         return <CloudTools />;
       case 'volumes':
@@ -678,13 +689,8 @@ export function Stage() {
   useStageEnvironment(engine);
   // the offline street map under the site in 3D
   const project = useWorkspace((s) => s.project);
-  const hasVolumes = useVolumetric((s) => s.status === 'ready');
-  const streetMap = useSiteBasemap((s) =>
-    project
-      ? siteBasemapOn(s.choices, project.id, siteBasemapDefault(project.manifest, hasVolumes))
-      : false,
-  );
-  useSiteBasemapLayer(engine, project, streetMap);
+  const streetMap = useStreetMap3d();
+  useSiteBasemapLayer(engine, project, streetMap.shown);
   // M10 G7: 3D Tiles, terrain and imagery around the site, the Satellite map
   useSiteTiles(engine, project, maps[0], maps[1]);
 

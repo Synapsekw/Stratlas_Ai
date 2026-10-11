@@ -29,7 +29,7 @@ Imagery and terrain come from packs on your disk. The one exception is **Online 
 
 In 3D, **Layers and issue pins** has the ground around the site:
 
-- **Street map under the site** lays the street map on the ground around the site. It is on by default for stockpile projects. It is greyed out when no installed pack covers the site.
+- **The street map under the site in 3D** is on for every project a pack covers. Turn it off and on with the street map button in the stage toolbar (under **More tools** in a narrow window); the choice is remembered for the project on this computer. The button is greyed out when no installed pack covers the site, and while **Imagery around the site** or **Terrain around the site** is on: that landscape follows the terrain and takes the street map's place.
 - **Imagery around the site** and **Terrain around the site** drape the imagery packs and the relief on the land around the site. They need Medium graphics or higher and a pack that covers the site.
 
 ## Offline map packs

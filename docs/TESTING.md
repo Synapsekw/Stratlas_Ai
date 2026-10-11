@@ -287,7 +287,7 @@ Build: the M6.1 installer, 5 Oct 2026, from main at commit `c0fda90` or later. A
 - [ ] Click a pile on the terrain or in **Volumes**: the camera flies to it and shows its outline, body and a callout like "11,379 m³ · 18,206 t · 11.3 m high". Hover a pile: only its name. **Esc** or a click on empty ground hides it.
 - [ ] The eye on a row keeps that pile visible; the eye at the top shows every pile (remembered per project). The pile's detail shows **Fill**, **Cut**, **Net**, the base and **Last edit**.
 - [ ] **Elevation**: **Colour ramp** Turbo (the default), Spectral, Viridis, Terrain, Inferno, Greyscale; **Low** and **High** sliders in metres and **Auto**; **Hillshade** (on by default). The legend reads in metres.
-- [ ] The street map lies under the site in 3D. **Layers and issue pins**, **Street map under the site** turns it off; on by default for stockpile projects.
+- [ ] A project opens in 3D on the street map (also one with its own ortho, model or point cloud): sharp under the site, out to the horizon. The street map button in the stage toolbar (under **More tools** in a narrow window) turns it off and on, and the choice is still there after reopening the project. With **Imagery around the site** or **Terrain around the site** on, the street map gives way and the button is greyed out with the reason.
 
 ### Compare dates (stockpile project)
 

@@ -27,7 +27,8 @@ Projects with more than one survey date also have **Compare dates**. See [Compar
 ## Show and hide layers
 
 - In the sidebar, **Datasets** has an eye per layer, one per group (Models, Point clouds, Maps, Video) and one at the top for everything. A half-filled eye means some layers in the group are hidden.
-- In the stage toolbar, **Layers and issue pins** turns kinds on and off: **Models**, **Point clouds**, **Photo cameras**, **Maps and rasters**, **Video clips**, and **Street map under the site** in 3D.
+- In the stage toolbar, **Layers and issue pins** turns kinds on and off: **Models**, **Point clouds**, **Photo cameras**, **Maps and rasters** and **Video clips**.
+- The 3D view sits on the offline street map wherever an installed map pack covers the site: sharp under the site and running out to the horizon. The street map button in the same toolbar group (**Hide the street map under the site**) takes it away and brings it back; the choice is remembered for the project on this computer. In a narrow window the button is under **More tools**. See [Maps](06-maps.md).
 - **I** or the pin button turns the issue tags off and back on. **Issue pins** in the same popover shows **All**, only issues at or above a severity, or **Off**, and the **Severity heat map**.
 - **L** or **Labels** cycles the component labels: **Off**, **Key** (one per group) and **All**.
 
