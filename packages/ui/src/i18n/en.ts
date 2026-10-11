@@ -1594,6 +1594,10 @@ export const en = {
   'media.findings.tile_other': '{count} findings, worst {severity}',
   'media.findings.tileUngraded_one': '{count} finding',
   'media.findings.tileUngraded_other': '{count} findings',
+  'media.findings.severity': 'Severity',
+  'media.findings.severity.any': 'Any',
+  'media.findings.severity.uncertain': 'Uncertain',
+  'view.scope.clear': 'Clear the filter {label}',
   'media.photoLimit': 'Showing the first {limit} of {total}. Use {keys} to find a photo by name.',
   // User guide (F1): help panel and the "?" links
   'help.title': 'User guide',

@@ -1,7 +1,13 @@
 import type { Detection } from '@aio/annotate/detections';
 import type { Issue, ProjectManifest } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { findingsIndex, orderPhotos, photoKey, shapesInPhoto } from './mediaFindings';
+import {
+  findingsIndex,
+  orderPhotos,
+  photoKey,
+  rankOfSeverity,
+  shapesInPhoto,
+} from './mediaFindings';
 
 const manifest: Pick<ProjectManifest, 'severityModels' | 'classCatalogues'> = {
   severityModels: [
@@ -113,6 +119,13 @@ describe('findings per photo', () => {
     expect(p1?.shapes).toHaveLength(2);
   });
 
+  it('lists the distinct levels on a photo, worst first', () => {
+    // a level 3 issue and a level 1 issue on p1; the ungraded detection on p3 has no level
+    expect(index.get('photos/p1')?.levels).toEqual([3, 1]);
+    expect(index.get('photos/p2')?.levels).toEqual([0.5]);
+    expect(index.get('photos/p3')?.levels).toEqual([1, 0.25]);
+  });
+
   it('ranks uncertain below graded levels with its own colour', () => {
     expect(index.get('photos/p2')).toMatchObject({ rank: 0.5, color: '#b68ef8', count: 1 });
   });
@@ -137,6 +150,14 @@ describe('findings per photo', () => {
     expect(s?.grid).toBeNull();
     const [kept] = shapesInPhoto(index.get('photos/p1')?.shapes ?? [], [400, 300]);
     expect(kept?.geom).toEqual(box);
+  });
+});
+
+describe('rank of a severity', () => {
+  it('puts uncertain and ungraded below every level', () => {
+    expect(rankOfSeverity(3)).toBe(3);
+    expect(rankOfSeverity('uncertain')).toBe(0.5);
+    expect(rankOfSeverity(null)).toBe(0.25);
   });
 });
 

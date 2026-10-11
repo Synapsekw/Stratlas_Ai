@@ -29,6 +29,8 @@ export interface PhotoFindings {
   count: number;
   /** Worst severity rank: a level's value; uncertain 0.5; a detection without a grade 0.25. */
   rank: number;
+  /** Ranks present on the photo, distinct, worst first (the filter by level reads this). */
+  levels: number[];
   /** Colour of the worst finding. */
   color: string;
   /** Severity label of the worst finding (empty when not graded). */
@@ -41,7 +43,8 @@ export interface PhotoFindings {
 
 export const photoKey = (layer: string, photo: string) => `${layer}/${photo}`;
 
-function rankOf(sev: number | 'uncertain' | null): number {
+/** Worst-first rank of a severity: a level's value; uncertain 0.5; no grade 0.25. */
+export function rankOfSeverity(sev: number | 'uncertain' | null): number {
   if (sev === null) return 0.25;
   return sev === 'uncertain' ? 0.5 : sev;
 }
@@ -64,7 +67,10 @@ export function findingsIndex(
   const classes = new Map(
     manifest.classCatalogues.flatMap((c) => c.classes).map((k) => [k.id, k] as const),
   );
-  const out = new Map<string, PhotoFindings & { ranked: { id: string; rank: number }[] }>();
+  const out = new Map<
+    string,
+    Omit<PhotoFindings, 'levels'> & { ranked: { id: string; rank: number }[]; ranks: Set<number> }
+  >();
   const entry = (key: string) => {
     let e = out.get(key);
     if (!e) {
@@ -79,17 +85,19 @@ export function findingsIndex(
         issueIds: [],
         shapes: [],
         ranked: [],
+        ranks: new Set(),
       };
       out.set(key, e);
     }
     return e;
   };
   const worse = (
-    e: PhotoFindings,
+    e: { rank: number; color: string; label: string; ranks: Set<number> },
     rank: number,
     lv: { color: string; label: string } | null,
     fallback: string,
   ) => {
+    e.ranks.add(rank);
     if (rank <= e.rank) return;
     e.rank = rank;
     e.color = lv?.color ?? fallback;
@@ -110,8 +118,8 @@ export function findingsIndex(
         seen.add(key);
         onPhoto.add(`${issue.id}@${key}`);
         e.issues += 1;
-        e.ranked.push({ id: issue.id, rank: rankOf(issue.severity) });
-        worse(e, rankOf(issue.severity), lv, color);
+        e.ranked.push({ id: issue.id, rank: rankOfSeverity(issue.severity) });
+        worse(e, rankOfSeverity(issue.severity), lv, color);
       }
       if (s.geom.type !== 'mask')
         e.shapes.push({ geom: s.geom, grid: null, color, draft: issue.status === 'draft' });
@@ -130,14 +138,15 @@ export function findingsIndex(
     const e = entry(key);
     e.detections += 1;
     if (d.status === 'draft') e.drafts += 1;
-    worse(e, rankOf(sev), lv, color);
+    worse(e, rankOfSeverity(sev), lv, color);
     e.shapes.push({ geom: d.geom, grid: d.size, color, draft: d.status === 'draft' });
   }
 
   const done = new Map<string, PhotoFindings>();
-  for (const [key, { ranked, ...e }] of out) {
+  for (const [key, { ranked, ranks, ...e }] of out) {
     done.set(key, {
       ...e,
+      levels: [...ranks].sort((a, b) => b - a),
       count: e.issues + e.detections,
       issueIds: ranked.sort((a, b) => b.rank - a.rank).map((r) => r.id),
     });
