@@ -39,7 +39,69 @@ const onTank3 = (p: Vec3) => [
 describe('the view context', () => {
   it('reports the screen and the filters that are on', () => {
     const c = ctx({ screen: () => 'media', viewFilters: () => FILTERS });
-    expect(viewContext(c)).toEqual({ screen: 'media', filters: FILTERS });
+    expect(viewContext(c)).toEqual({
+      screen: 'media',
+      filters: {
+        photos: FILTERS.photos,
+        issues: {
+          severity: null,
+          classId: null,
+          status: null,
+          sort: 'code',
+          scope: null,
+          textFilter: false,
+        },
+      },
+    });
+  });
+
+  it('never sends the words typed into the Issues search, only that a search is on', () => {
+    const typed: ViewFilters = { ...FILTERS, issues: { ...FILTERS.issues, text: 'some words' } };
+    const out = viewContext(ctx({ viewFilters: () => typed }));
+    expect(JSON.stringify(out)).not.toContain('some words');
+    expect(out.filters).toMatchObject({ issues: { textFilter: true, sort: 'code' } });
+    expect(out.filters).not.toHaveProperty('issues.text');
+  });
+
+  it('keeps the screen when the filters hook throws', () => {
+    const c = ctx({
+      screen: () => 'issues',
+      viewFilters: () => {
+        throw new Error('boom');
+      },
+    });
+    expect(viewContext(c)).toEqual({ screen: 'issues' });
+  });
+
+  it('keeps the screen and the filters when the asset index fails', () => {
+    const c = ctx({ screen: () => 'scene', viewFilters: () => FILTERS });
+    c.scene = () => {
+      throw new Error('no scene');
+    };
+    c.workspace.getState().select({ kind: 'asset', id: '20-T-0003' });
+    const out = viewContext(c);
+    expect(out.screen).toBe('scene');
+    expect(out).toHaveProperty('filters');
+    expect(out).not.toHaveProperty('selectedAsset');
+  });
+
+  it('reports an asset whose findings are all closed with no worst level', () => {
+    const c = ctx();
+    c.workspace.getState().upsertIssue(
+      fixtureIssue({
+        id: 'f5',
+        code: 'F05',
+        status: 'closed',
+        sightings: onTank3([300, 50, -50]),
+      }),
+    );
+    c.workspace.getState().select({ kind: 'asset', id: '20-T-0003' });
+    expect(viewContext(c).selectedAsset).toEqual({
+      name: '20-T-0003',
+      findings: 1,
+      open: 0,
+      worst: null,
+    });
   });
 
   it('is empty without the hooks', () => {

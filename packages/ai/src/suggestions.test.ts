@@ -64,6 +64,16 @@ describe('suggested requests', () => {
     for (const w of WINDOWS) expect(suggestionsFor(w, facts).length, w).toBeGreaterThan(0);
   });
 
+  it('returns a list, possibly empty, and does not throw for a project with nothing in it', () => {
+    const nothing: SuggestionFacts = {
+      hasPhotos: false,
+      hasIssues: false,
+      hasAssets: false,
+      hasClips: false,
+    };
+    for (const w of WINDOWS) expect(Array.isArray(suggestionsFor(w, nothing)), w).toBe(true);
+  });
+
   it('never repeats a request', () => {
     for (const w of WINDOWS) {
       const s = suggestionsFor(w, ALL);

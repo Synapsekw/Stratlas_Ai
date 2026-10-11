@@ -4,7 +4,7 @@
  * belong to the host app and may be absent or fail, so this never throws.
  */
 import { assetIndex, severityLabel } from './asset-index';
-import { project, severityRank, type RendererToolContext } from './tool-kit';
+import { assetRef, severityRank, type RendererToolContext, type ViewFilters } from './tool-kit';
 
 interface SelectedAsset {
   name: string;
@@ -22,11 +22,9 @@ function selectedAsset(ctx: RendererToolContext): SelectedAsset | null {
   const index = assetIndex(ctx);
   if (index.status !== 'ready') return null;
   // the selection carries the tag, or the model node the tag sits on
-  const tags = project(ctx).manifest.layers.flatMap((l) =>
-    l.kind === 'mesh' ? (l.tags ?? []) : [],
-  );
-  const name = tags.find((t) => t.tag === sel.id || t.node === sel.id)?.tag ?? sel.id;
-  if (!index.boxes.some((b) => b.tag === name)) return null;
+  const ref = assetRef(ctx, sel.id);
+  const name = ref?.layer.tags?.find((t) => t.node === ref.node)?.tag;
+  if (!name || !index.boxes.some((b) => b.tag === name)) return null;
   const here = state.issues.filter((i) => index.links.get(i.id)?.asset === name);
   const open = here.filter((i) => i.status !== 'closed');
   let worst = open[0] ?? null;
@@ -40,17 +38,28 @@ function selectedAsset(ctx: RendererToolContext): SelectedAsset | null {
   };
 }
 
+/** The filters as they are, minus the words typed into the search: only that a search is on. */
+function filtersOf(f: ViewFilters) {
+  const { text, ...issues } = f.issues;
+  return { ...f, issues: { ...issues, textFilter: text !== '' } };
+}
+
 export function viewContext(ctx: RendererToolContext): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  // the app's hooks and the asset index fail apart: one failing keeps what the other gave
   try {
-    const out: Record<string, unknown> = {};
     const screen = ctx.app?.screen?.();
     if (screen) out.screen = screen;
     const filters = ctx.app?.viewFilters?.();
-    if (filters) out.filters = filters;
+    if (filters) out.filters = filtersOf(filters);
+  } catch {
+    // the screen and the filters are optional context
+  }
+  try {
     const asset = selectedAsset(ctx);
     if (asset) out.selectedAsset = asset;
-    return out;
   } catch {
-    return {};
+    // so is the selected asset
   }
+  return out;
 }
