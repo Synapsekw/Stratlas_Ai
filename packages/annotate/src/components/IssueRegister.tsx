@@ -1,6 +1,6 @@
 import { MineFilter, useMineIssueIds } from '@aio/collab/ui';
 import type { Issue, IssueStatus } from '@aio/schema';
-import { shortcutHint } from '@aio/ui';
+import { Icon, shortcutHint } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import {
   useDeferredValue,
@@ -12,9 +12,8 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from 'react';
-import { STATUS_ORDER, type Severity } from '../model/ops';
+import { STATUS_ORDER } from '../model/ops';
 import {
-  filterIssues,
   issueDatasets,
   severityCounts,
   sortIssues,
@@ -29,6 +28,7 @@ import {
   type IssueGroupKey,
   type RegisterRow,
 } from '../model/register';
+import { filterInView, setIssueView, useIssueView } from '../model/view';
 import {
   focusIssue,
   issueEditor,
@@ -141,16 +141,18 @@ export function IssueRegister({ className }: { className?: string }) {
   const editor = useIssueEditorState();
   const readOnly = useAnnotateReadOnly();
   const initialsOf = useAuthorInitials();
-  const [text, setText] = useState('');
+  // the filters live in a store so the agent can open this screen with one set
+  const text = useIssueView((s) => s.text);
   const query = useDeferredValue(text);
-  const [sev, setSev] = useState<Severity | null>(null);
-  const [classId, setClassId] = useState('');
-  const [status, setStatus] = useState<IssueStatus | ''>('');
-  const [dataset, setDataset] = useState<DatasetKind | ''>('');
+  const sev = useIssueView((s) => s.sev);
+  const classId = useIssueView((s) => s.classId);
+  const status = useIssueView((s) => s.status);
+  const dataset = useIssueView((s) => s.dataset);
   const mine = useMineIssueIds();
-  const [sort, setSort] = useState<IssueSortKey>('code');
-  const [dir, setDir] = useState<'asc' | 'desc'>('asc');
-  const [groupBy, setGroupBy] = useState<IssueGroupKey>('none');
+  const sort = useIssueView((s) => s.sort);
+  const dir = useIssueView((s) => s.dir);
+  const groupBy = useIssueView((s) => s.groupBy);
+  const scope = useIssueView((s) => s.scope);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const [anchor, setAnchor] = useState<string | null>(null);
@@ -174,18 +176,23 @@ export function IssueRegister({ className }: { className?: string }) {
     () =>
       sortIssues(
         search(
-          filterIssues(mine ? issues.filter((i) => mine.has(i.id)) : issues, {
-            ...(sev !== null ? { severities: [sev] } : {}),
-            ...(classId ? { classIds: [classId] } : {}),
-            ...(status ? { statuses: [status] } : {}),
-            ...(dataset ? { datasets: [dataset] } : {}),
+          filterInView(mine ? issues.filter((i) => mine.has(i.id)) : issues, {
+            text,
+            sev,
+            classId,
+            status,
+            dataset,
+            sort,
+            dir,
+            groupBy,
+            scope,
           }),
           query,
         ),
         sort,
         dir,
       ),
-    [issues, mine, search, query, sev, classId, status, dataset, sort, dir],
+    [issues, mine, search, query, text, sev, classId, status, dataset, sort, dir, groupBy, scope],
   );
   const groups = useMemo(
     () => groupIssues(shown, groupBy, (id) => classById.get(id)?.label ?? id),
@@ -389,13 +396,29 @@ export function IssueRegister({ className }: { className?: string }) {
           )}
         </div>
       </div>
+      {scope && (
+        <div className="ann-filter">
+          <span className="scope-chip" data-testid="issue-scope-chip">
+            {scope.label}
+            <button
+              type="button"
+              aria-label={`Clear the filter ${scope.label}`}
+              onClick={() => {
+                setIssueView({ scope: null });
+              }}
+            >
+              <Icon name="x" size={12} />
+            </button>
+          </span>
+        </div>
+      )}
       <div className="ann-filter">
         <div className="ann-seg" role="group" aria-label="Severity filter">
           <button
             type="button"
             aria-pressed={sev === null}
             onClick={() => {
-              setSev(null);
+              setIssueView({ sev: null });
             }}
           >
             All
@@ -407,7 +430,7 @@ export function IssueRegister({ className }: { className?: string }) {
               aria-pressed={sev === k}
               title={k === 'uncertain' ? 'Uncertain' : `Severity ${k}`}
               onClick={() => {
-                setSev(sev === k ? null : k);
+                setIssueView({ sev: sev === k ? null : k });
               }}
             >
               <span className="ann-dot" style={sevStyle(severityColor(firstModel, k))} />
@@ -422,7 +445,7 @@ export function IssueRegister({ className }: { className?: string }) {
           aria-label="Search issues"
           value={text}
           onChange={(e) => {
-            setText(e.target.value);
+            setIssueView({ text: e.target.value });
           }}
         />
       </div>
@@ -432,7 +455,7 @@ export function IssueRegister({ className }: { className?: string }) {
           aria-label="Class"
           value={classId}
           onChange={(e) => {
-            setClassId(e.target.value);
+            setIssueView({ classId: e.target.value });
           }}
         >
           <option value="">All classes</option>
@@ -447,7 +470,7 @@ export function IssueRegister({ className }: { className?: string }) {
           aria-label="Status"
           value={status}
           onChange={(e) => {
-            setStatus(e.target.value as IssueStatus | '');
+            setIssueView({ status: e.target.value as IssueStatus | '' });
           }}
         >
           <option value="">Any status</option>
@@ -462,7 +485,7 @@ export function IssueRegister({ className }: { className?: string }) {
           aria-label="Dataset"
           value={dataset}
           onChange={(e) => {
-            setDataset(e.target.value as DatasetKind | '');
+            setIssueView({ dataset: e.target.value as DatasetKind | '' });
           }}
         >
           <option value="">Any dataset</option>
@@ -478,7 +501,7 @@ export function IssueRegister({ className }: { className?: string }) {
           aria-label="Sort"
           value={sort}
           onChange={(e) => {
-            setSort(e.target.value as IssueSortKey);
+            setIssueView({ sort: e.target.value as IssueSortKey });
           }}
         >
           <option value="code">Code</option>
@@ -494,7 +517,7 @@ export function IssueRegister({ className }: { className?: string }) {
           title={dir === 'asc' ? 'Reverse the sort order' : 'Natural sort order'}
           aria-pressed={dir === 'desc'}
           onClick={() => {
-            setDir(dir === 'asc' ? 'desc' : 'asc');
+            setIssueView({ dir: dir === 'asc' ? 'desc' : 'asc' });
           }}
         >
           {dir === 'asc' ? '↓' : '↑'}
@@ -504,7 +527,7 @@ export function IssueRegister({ className }: { className?: string }) {
           aria-label="Group"
           value={groupBy}
           onChange={(e) => {
-            setGroupBy(e.target.value as IssueGroupKey);
+            setIssueView({ groupBy: e.target.value as IssueGroupKey });
             setCollapsed(new Set());
           }}
         >

@@ -4,6 +4,7 @@ import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
+import { setIssueView, issueView } from '../model/view';
 import { issueEditor, setAnnotateReadOnly } from '../runtime';
 import { catalogue, makeIssue, strictModel, tankModel } from '../testing';
 import { IssueRegister } from './IssueRegister';
@@ -147,6 +148,34 @@ describe('IssueRegister at scale', () => {
     ui.click('button[aria-label="Merge selected"]');
     expect(workspace.getState().issues).toHaveLength(6);
     ui.unmount();
+  });
+
+  it('shows a chip for a scope set from outside and clears it with the chip button', () => {
+    workspace.getState().openProject({ id: 'big', root: 'r', manifest }, many(20));
+    const ui = mount();
+    expect(ui.q('[data-testid="issue-scope-chip"]')).toBeNull();
+    act(() => {
+      setIssueView({ scope: { label: 'Three findings', ids: ['i1', 'i2', 'i3'] } });
+    });
+    expect(ui.rows()).toBe(3);
+    const chip = ui.q('[data-testid="issue-scope-chip"]');
+    expect(chip?.textContent).toContain('Three findings');
+    ui.click('button[aria-label="Clear the filter Three findings"]');
+    expect(ui.q('[data-testid="issue-scope-chip"]')).toBeNull();
+    expect(ui.rows()).toBeGreaterThan(5);
+    ui.unmount();
+  });
+
+  it('keeps a filter when the register is left and opened again', () => {
+    workspace.getState().openProject({ id: 'big', root: 'r', manifest }, many(20));
+    const first = mount();
+    first.change('Group', 'severity');
+    first.unmount();
+    expect(issueView.getState().groupBy).toBe('severity');
+    const second = mount();
+    const group = second.q('select[aria-label="Group"]');
+    expect(group instanceof HTMLSelectElement && group.value).toBe('severity');
+    second.unmount();
   });
 
   it('only browses in a read-only package: no checkboxes, bulk actions or undo', () => {

@@ -5,6 +5,7 @@ export { validateIssueAgainstModel } from '@aio/schema';
 export * from './model/ops';
 export * from './model/query';
 export * from './model/register';
+export * from './model/view';
 export { History, applyChange, invert, type Change } from './model/history';
 export {
   createIssueEditor,
