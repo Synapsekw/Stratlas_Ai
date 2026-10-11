@@ -8,7 +8,6 @@ const SCREENS: Record<Screen, boolean> = {
   welcome: false,
   // the Scene keeps the agent in its own right panel
   scene: false,
-  review: false,
   issues: true,
   media: true,
   detections: true,

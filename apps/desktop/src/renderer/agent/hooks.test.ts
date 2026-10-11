@@ -153,7 +153,7 @@ describe('the screen', () => {
       shell.setState({ screen });
       expect(hook('screen')()).toBe(screen);
     }
-    const others: Screen[] = ['projects', 'welcome', 'review', 'settings', 'globe'];
+    const others: Screen[] = ['projects', 'welcome', 'settings', 'globe'];
     for (const screen of others) {
       shell.setState({ screen });
       expect(hook('screen')(), screen).toBe('other');

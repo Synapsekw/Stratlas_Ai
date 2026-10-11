@@ -457,7 +457,7 @@ const BUILT_IN: ToolSpec[] = [
   }),
   spec('summarize_issues', {
     description:
-      'Counts of issues by severity, status and class, plus the most severe ones, for writing a summary.',
+      'Counts of issues by severity, status and class, plus the most severe open ones (the closed ones when status is closed), for writing a summary.',
     scope: 'project',
     risk: 'read',
   }),
