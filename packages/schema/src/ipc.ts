@@ -943,9 +943,9 @@ export const ipc = {
     response: z.object({ path: z.string().nullable() }),
   },
   /**
-   * Ask where to save a file with the native dialog, then write it. Used by the legacy viewer
-   * host for `window.claude.use('downloads')`. `path` is null when the person cancels; `error`
-   * says why a chosen file could not be written.
+   * Ask where to save a file with the native dialog, then write it. Used by the exports, the
+   * assistant and the accuracy report. `path` is null when the person cancels; `error` says why
+   * a chosen file could not be written.
    */
   'dialog:saveFile': {
     request: z

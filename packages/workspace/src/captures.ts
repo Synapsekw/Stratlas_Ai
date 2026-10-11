@@ -7,7 +7,7 @@ import type { Selection, Workspace } from './index';
  * (data-conventions section 13). Generic over captures: nothing here knows a project.
  */
 
-/** Layer kinds that can belong to one survey date. Basemaps and legacy viewers never do. */
+/** Layer kinds that can belong to one survey date. Basemaps and retired viewers never do. */
 const DATED_KINDS: ReadonlySet<Layer['kind']> = new Set([
   'mesh',
   'pointcloud',
