@@ -489,6 +489,20 @@ Model weights the pipeline pack carries, from `tools/pipeline-pack/sam.mjs`: fet
 | --------- | ------- | ---------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | MobileSAM | 1.0     | Apache-2.0 | Suggest boundaries, snapping cut and fill regions and the Review mask assist (`models/sam`) | MobileSAM (https://github.com/ChaoningZhang/MobileSAM, Apache-2.0), ONNX export https://huggingface.co/PulpCut/mobilesam-onnx at 1e774d85 | `encoder.onnx` 28.2 MB, SHA-256 `4125037c5e24d6ea...`; `decoder.onnx` 16.5 MB, SHA-256 `b0735abf07c7affd...` |
 
+## GPU add-on (optional)
+
+The GPU add-on 0.1.0 is a separate file for computers with an NVIDIA graphics card. It is not part of the installer or of the pipeline pack, and nothing here applies to a computer without it. Generated from `tools/pipeline-pack/accelerator-lock.json`: ready-made wheels from PyPI, each refused unless its SHA-256 matches; nothing is compiled.
+
+CuPy is MIT. NVIDIA's CUDA 12.9 runtime, runtime compiler and cuBLAS are proprietary: they are redistributed unchanged under NVIDIA's CUDA end user licence agreement (https://docs.nvidia.com/cuda/eula/), for use by this software only, and each keeps its licence file in its folder of the add-on. They are loaded only in the processes that use the graphics card.
+
+| Package                  | Version   | Licence                       |
+| ------------------------ | --------- | ----------------------------- |
+| cuda-pathfinder          | 1.8.3     | Apache-2.0                    |
+| cupy-cuda12x             | 14.2.0    | MIT                           |
+| nvidia-cublas-cu12       | 12.9.2.10 | LicenseRef-NVIDIA-Proprietary |
+| nvidia-cuda-nvrtc-cu12   | 12.9.86   | LicenseRef-NVIDIA-Proprietary |
+| nvidia-cuda-runtime-cu12 | 12.9.79   | LicenseRef-NVIDIA-Proprietary |
+
 ## Map and imagery data
 
 From `tools/release/data-sources.json`; every imagery and terrain pack we build carries its licence, attribution and provenance, checked by `tools/release/data-licences.mjs`. The attribution shows in the Globe, the map and every export that contains the data. Imagery a customer imports under their own licence is never redistributed by us.
