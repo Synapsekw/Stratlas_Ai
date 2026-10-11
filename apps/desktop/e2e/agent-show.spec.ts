@@ -316,6 +316,30 @@ const sidewaysScrollers = (win: Page) =>
     return found;
   });
 
+/**
+ * How far the first photo card shown lies outside the visible part of the Media list, in px: 0
+ * when the whole card is in view, -1 when no photo card is shown.
+ */
+const firstPhotoOutside = (win: Page) =>
+  win.evaluate(() => {
+    const main = document.querySelector('.media-main');
+    const card = main?.querySelector('.m-card.sq[data-photo]');
+    if (!main || !card) return -1;
+    const m = main.getBoundingClientRect();
+    const c = card.getBoundingClientRect();
+    const top = m.top + main.clientTop;
+    const left = m.left + main.clientLeft;
+    return Math.max(
+      0,
+      top - c.top,
+      c.bottom - Math.min(top + main.clientHeight, window.innerHeight),
+      left - c.left,
+      c.right - (left + main.clientWidth),
+    );
+  });
+
+const mediaScrollTop = (win: Page) => win.locator('.media-main').evaluate((el) => el.scrollTop);
+
 async function shot(win: Page, name: string) {
   if (SHOTS) await win.screenshot({ path: join(SHOTS, `${name}.png`) });
 }
@@ -516,7 +540,10 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
     const list = await mediaOverflow(win);
     expect(list.out, `the Media list is ${String(list.width)} px wide`).toEqual([]);
     expect(await sidewaysScrollers(win)).toEqual([]);
-    await photoCards(win).first().scrollIntoViewIfNeeded();
+    // what was asked for is in view without a scroll: the photos sit below the videos, and the
+    // list brought the first one shown into view when the agent set the filter
+    await expect.poll(() => firstPhotoOutside(win)).toBe(0);
+    expect(await mediaScrollTop(win)).toBeGreaterThan(0);
     expect((await photoCards(win).first().boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(120);
     expect(
       await win.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
@@ -526,20 +553,39 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
 
   test('the person clears the level; an area shows as a chip that its x clears', async () => {
     await onScreen(win, 'media');
+    // the person scrolls back to the top and works the controls: the list stays where they put it
+    await win.locator('.media-main').evaluate((el) => {
+      el.scrollTop = 0;
+    });
     // the person's own change stands: Any brings back every photo with a finding (Only with
     // findings is still pressed, as the agent left it), and that switch brings back the rest
     await win.getByTestId('media-severity').selectOption('');
     await expect(photoCards(win)).toHaveCount(farm.photosWithFindings.length);
+    expect(await mediaScrollTop(win)).toBe(0);
+    expect(await firstPhotoOutside(win)).toBeGreaterThan(0);
     await expect(win.getByTestId('media-only-findings')).toHaveAttribute('aria-pressed', 'true');
     await win.getByTestId('media-only-findings').click();
     await expect(photoCards(win)).toHaveCount(farm.photos);
     expect((await appState(win)).media).toMatchObject({ severity: null, onlyFindings: false });
+
+    // a filter of the agent that no photo passes: the screen says so, and nothing scrolls
+    const none = await ask(
+      win,
+      'minor ones on the bund #tool show_photos {"severity":1,"where":"Bund"}',
+    );
+    expect(shownIn(none)).toBe(0);
+    await expect(win.getByTestId('media-no-match')).toBeVisible();
+    await expect(win.getByTestId('media-scope-chip')).toHaveText('On Bund');
+    await expect(photoCards(win)).toHaveCount(0);
+    expect(await mediaScrollTop(win)).toBe(0);
 
     // asked on Media, where there is no 3D view: the bounds of the assets are remembered
     const reply = await ask(win, `photos of the tank #tool show_photos {"where":"${AREA}"}`);
     await onScreen(win, 'media');
     const chip = win.getByTestId('media-scope-chip');
     await expect(chip).toHaveText(`On ${AREA}`);
+    // and the photos it shows come into view, this time with Media already showing
+    await expect.poll(() => firstPhotoOutside(win)).toBe(0);
     expect(reply).toContain(`"scope":"On ${AREA}"`);
     const shown = shownIn(reply);
     expect(shown).toBeGreaterThan(0);
@@ -845,7 +891,60 @@ test.describe('the agent column in the smallest window', () => {
       };
     });
 
-  async function expectTitleBarFits(win: Page) {
+  /**
+   * The Agent chip as drawn, and the last breadcrumb (the name of the screen) with how much of it
+   * its row cuts off.
+   */
+  const chipAndCrumb = (win: Page) =>
+    win.evaluate(() => {
+      const chip = document.querySelector('[data-testid="agent-toggle"]');
+      const label = chip?.querySelector('.lbl')?.getBoundingClientRect();
+      const crumbs = document.querySelector('.crumbs');
+      const last = crumbs?.querySelector('b');
+      const row = crumbs?.getBoundingClientRect();
+      const name = last?.getBoundingClientRect();
+      return {
+        width: window.innerWidth,
+        chipWidth: chip?.getBoundingClientRect().width ?? 0,
+        // the label is in the button at every width; drawn in a pixel it shows nothing
+        labelWidth: label?.width ?? 0,
+        icon: chip?.querySelector('svg')?.getBoundingClientRect().width ?? 0,
+        crumb: last?.textContent ?? '',
+        crumbCut: row && name ? Math.max(0, name.right - row.right, row.left - name.left) : -1,
+        crumbEllipsis: last ? getComputedStyle(last).textOverflow === 'ellipsis' : false,
+      };
+    });
+
+  /**
+   * Below 1280 px the chip is its icon alone, still named "Agent", and the breadcrumbs keep the
+   * name of the screen: whole, or ending in an ellipsis, never cut mid letter.
+   */
+  async function expectNarrowChip(win: Page, screen?: string) {
+    await expect(toggle(win)).toHaveAccessibleName('Agent');
+    await expect(toggle(win)).toHaveAttribute('title', 'Show or hide the agent');
+    await expect(toggle(win)).toHaveAttribute('aria-controls', 'agent-dock');
+    const now = await chipAndCrumb(win);
+    expect(now.width).toBeLessThan(1280);
+    expect(now.labelWidth).toBeLessThanOrEqual(1);
+    expect(now.icon).toBeGreaterThanOrEqual(12);
+    expect(now.chipWidth).toBeLessThanOrEqual(32);
+    if (screen === undefined) return;
+    expect(now.crumb).toBe(screen);
+    if (!now.crumbEllipsis) expect(now.crumbCut, `"${screen}" is cut off`).toBeLessThanOrEqual(0.5);
+  }
+
+  /**
+   * Give the page an exact width (as connection.spec.ts does for its smallest window): the window
+   * itself lands some pixels off the size asked for on a scaled display, and the chip changes at
+   * one exact width.
+   */
+  async function setWidth(win: Page, width: number) {
+    await win.setViewportSize({ width, height: 700 });
+    await expect.poll(() => win.evaluate(() => window.innerWidth)).toBe(width);
+  }
+
+  async function expectTitleBarFits(win: Page, screen?: string) {
+    if ((await win.evaluate(() => innerWidth)) < 1280) await expectNarrowChip(win, screen);
     const bar = await titleBar(win);
     expect(bar.statusRight).toBeLessThanOrEqual(bar.room + 0.5);
     expect(bar.searchWidth).toBeGreaterThanOrEqual(140);
@@ -927,9 +1026,9 @@ test.describe('the agent column in the smallest window', () => {
     await goTo(win, 'Media');
     await expect(dock(win)).toBeHidden();
     await expect(photoCards(win).first()).toBeVisible();
-    await expectTitleBarFits(win);
+    await expectTitleBarFits(win, 'Media');
     await unfold(win);
-    await expectTitleBarFits(win);
+    await expectTitleBarFits(win, 'Media');
     await expectRoom(win);
     expect(await sidewaysScrollers(win)).toEqual([]);
     const card = await photoCards(win).first().boundingBox();
@@ -945,7 +1044,7 @@ test.describe('the agent column in the smallest window', () => {
     await photoCards(win).first().click();
     await expect(win.locator('.media.with-viewer')).toBeVisible();
     await expectRoom(win);
-    await expectTitleBarFits(win);
+    await expectTitleBarFits(win, 'Media');
     const list = await mediaOverflow(win);
     expect(list.out, `the Media list is ${String(list.width)} px wide`).toEqual([]);
     expect(await sidewaysScrollers(win)).toEqual([]);
@@ -957,7 +1056,7 @@ test.describe('the agent column in the smallest window', () => {
     await expect(dock(win)).toBeVisible();
     await expect(issueRows(win).first()).toBeVisible();
     await expectRoom(win);
-    await expectTitleBarFits(win);
+    await expectTitleBarFits(win, 'Issues');
     await expectInside(
       win,
       { 'the first finding': '.issues-screen [data-issue-list] .ann-row' },
@@ -982,7 +1081,7 @@ test.describe('the agent column in the smallest window', () => {
     await goTo(win, 'Detections');
     await expect(dock(win)).toBeVisible();
     await expectRoom(win);
-    await expectTitleBarFits(win);
+    await expectTitleBarFits(win, 'Detections');
     await expectInside(win, { 'the detections screen': '.det-body' }, 400);
     expect(await sidewaysScrollers(win)).toEqual([]);
     await shot(win, 'agent-show-08-small-detections');
@@ -992,7 +1091,7 @@ test.describe('the agent column in the smallest window', () => {
     await expect(dock(win)).toBeVisible();
     await expect(win.locator('.rep-side-in')).toBeVisible();
     await expectRoom(win);
-    await expectTitleBarFits(win);
+    await expectTitleBarFits(win, 'Reports');
     await expectInside(
       win,
       { 'the report controls': '.rep-side', 'the preview': '.rep-view' },
@@ -1019,5 +1118,19 @@ test.describe('the agent column in the smallest window', () => {
     expect(
       await win.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);
+
+    // from 1280 px the chip reads "Agent" beside its icon
+    await setWidth(win, 1280);
+    await expect(toggle(win)).toHaveText('Agent');
+    await expect(toggle(win)).toHaveAccessibleName('Agent');
+    const wide = await chipAndCrumb(win);
+    expect(wide.labelWidth).toBeGreaterThan(20);
+    expect(wide.chipWidth).toBeGreaterThan(50);
+    expect(wide.crumb).toBe('Reports');
+    await expectTitleBarFits(win);
+    await shot(win, 'agent-show-09-chip-at-1280');
+    // and one pixel narrower it is the icon again
+    await setWidth(win, 1279);
+    await expectNarrowChip(win);
   });
 });

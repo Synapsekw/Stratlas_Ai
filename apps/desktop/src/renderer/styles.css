@@ -2386,6 +2386,18 @@ svg.flip {
     padding: 0 6px;
   }
 }
+/* narrower than 1280 px: the icon alone, so the breadcrumbs keep the name of the screen. The
+   label stays in the button for its accessible name, drawn in no room (as .sr-only is). */
+@media (max-width: 1279px) {
+  .agent-toggle > .lbl {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
 
 /* ---------- issues ---------- */
 .issues-screen {
@@ -2463,6 +2475,11 @@ svg.flip {
 }
 .m-card.on {
   border-color: var(--acc);
+}
+/* a photo brought into view (the selected one, the first the agent's filter shows) keeps clear of
+   the edge of the list */
+.m-card.sq {
+  scroll-margin-block: 12px;
 }
 .m-thumb {
   aspect-ratio: 16 / 9;

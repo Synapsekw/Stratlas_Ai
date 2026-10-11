@@ -7,7 +7,7 @@ import { workspace } from '@aio/workspace';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { detections } from '../detections/store';
 import { evidence } from '../issueCard/evidence';
-import { DEFAULT_MEDIA_VIEW, mediaView, setMediaView } from '../screens/mediaView';
+import { DEFAULT_MEDIA_VIEW, mediaView, setMediaView, takeMediaReveal } from '../screens/mediaView';
 import { shell } from '../shell';
 import type { Screen } from '../store';
 import { stagePrefs } from '../workspace/stagePrefs';
@@ -206,6 +206,7 @@ beforeEach(async () => {
   // the hooks read the review of a project that opens: every test starts with that done
   await read('p1');
   mediaView.setState(DEFAULT_MEDIA_VIEW);
+  takeMediaReveal();
   resetIssueView();
 });
 afterEach(async () => {
@@ -321,6 +322,22 @@ describe('showing photos', () => {
     });
     // p2 and p3 carry a Severe finding; seven photos in the two sets
     expect(view).toEqual({ shown: 2, total: 7, severity: 3, severityLabel: 'Severe' });
+  });
+
+  it('asks Media to bring the photos into view, once per request', () => {
+    expect(takeMediaReveal()).toBe(false);
+    hook('showPhotos')({ severity: 'highest' });
+    expect(takeMediaReveal()).toBe(true);
+    expect(takeMediaReveal()).toBe(false);
+  });
+
+  it('does not ask for it when the view is put back', () => {
+    const restore = hook('captureView')();
+    hook('showPhotos')({ severity: 'highest' });
+    takeMediaReveal();
+    restore();
+    // undo puts the filter back; it is not a request to look at photos
+    expect(takeMediaReveal()).toBe(false);
   });
 
   it('replaces the filter: what is not named goes back to its default', () => {

@@ -25,7 +25,13 @@ import { workspace, type OpenProject } from '@aio/workspace';
 import { detections, loadDetections } from '../detections/store';
 import { closeEvidence, evidence, openEvidence } from '../issueCard/evidence';
 import { findingsIndex } from '../screens/mediaFindings';
-import { highestLevel, mediaView, photosInView, setMediaView } from '../screens/mediaView';
+import {
+  highestLevel,
+  mediaView,
+  photosInView,
+  requestMediaReveal,
+  setMediaView,
+} from '../screens/mediaView';
 import { shell } from '../shell';
 import { stagePrefs } from '../workspace/stagePrefs';
 import { isDockScreen } from './dockScreens';
@@ -91,6 +97,9 @@ function showPhotos(filter: PhotoViewFilter): PhotoViewResult {
     severity,
     scope,
   });
+  // the photos sit below the videos on Media: what the person asked to see is brought into view,
+  // once, after the filter is set (the screen may only mount when the tool opens it)
+  requestMediaReveal();
   const view = mediaView.getState();
   let shown = 0;
   let total = 0;

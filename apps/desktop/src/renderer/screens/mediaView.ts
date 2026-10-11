@@ -46,6 +46,34 @@ export function useMediaView<T>(selector: (s: MediaViewState) => T): T {
   return useStore(mediaView, selector);
 }
 
+/**
+ * A request to bring the photos the view shows into view: the agent set the filter, and what it
+ * was asked to show sits below the videos. It is asked for once and taken once by the Media
+ * screen, which may only show after the request was made. It is not part of the view: a filter
+ * changed by hand, or put back by Undo, asks for nothing.
+ */
+export const mediaReveal: StoreApi<{ asked: number; taken: number }> = createStore<{
+  asked: number;
+  taken: number;
+}>(() => ({ asked: 0, taken: 0 }));
+
+export function requestMediaReveal(): void {
+  mediaReveal.setState((s) => ({ asked: s.asked + 1 }));
+}
+
+/** True once per request (several made before it is taken are one): the screen scrolls then. */
+export function takeMediaReveal(): boolean {
+  const { asked, taken } = mediaReveal.getState();
+  if (asked === taken) return false;
+  mediaReveal.setState({ taken: asked });
+  return true;
+}
+
+/** How many times it was asked for: a change tells the screen to look. */
+export function useMediaRevealAsked(): number {
+  return useStore(mediaReveal, (s) => s.asked);
+}
+
 /** The photos of a set the view shows, in order: scope, then level, then only-with-findings, then order. */
 export function photosInView<T extends { id: string }>(
   items: readonly T[],
@@ -101,4 +129,6 @@ workspace.subscribe((ws, prev) => {
   if ((ws.project?.id ?? null) === (prev.project?.id ?? null)) return;
   const { scope, severity } = mediaView.getState();
   if (scope || severity !== null) mediaView.setState({ scope: null, severity: null });
+  // a request for the photos of the project that was open is not one for this project's
+  takeMediaReveal();
 });

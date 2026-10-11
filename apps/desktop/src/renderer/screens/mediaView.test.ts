@@ -5,10 +5,13 @@ import { findingsIndex, photoKey } from './mediaFindings';
 import {
   DEFAULT_MEDIA_VIEW,
   highestLevel,
+  mediaReveal,
   mediaView,
   noPhotoMatches,
   photosInView,
+  requestMediaReveal,
   setMediaView,
+  takeMediaReveal,
 } from './mediaView';
 
 const manifest = {
@@ -62,6 +65,7 @@ const view = (patch: Partial<typeof DEFAULT_MEDIA_VIEW>) => ({ ...DEFAULT_MEDIA_
 beforeEach(() => {
   workspace.setState({ project: null });
   mediaView.setState(DEFAULT_MEDIA_VIEW);
+  takeMediaReveal();
 });
 afterEach(() => {
   workspace.setState({ project: null });
@@ -211,6 +215,53 @@ describe('the view store', () => {
     >[0]);
     expect(mediaView.getState().scope).not.toBeNull();
     expect(mediaView.getState().severity).toBe(2);
+  });
+});
+
+describe('bringing the photos into view', () => {
+  const open = (id: string) => {
+    workspace.setState({ project: { id } } as unknown as Parameters<typeof workspace.setState>[0]);
+  };
+
+  it('is asked for once and taken once', () => {
+    expect(takeMediaReveal()).toBe(false);
+    const before = mediaReveal.getState().asked;
+    requestMediaReveal();
+    // the number changes, so a screen that is showing hears of it
+    expect(mediaReveal.getState().asked).toBe(before + 1);
+    expect(takeMediaReveal()).toBe(true);
+    expect(takeMediaReveal()).toBe(false);
+  });
+
+  it('waits for the screen: a request made before Media shows is still there to take', () => {
+    requestMediaReveal();
+    requestMediaReveal();
+    // two requests before the screen showed are one scroll
+    expect(takeMediaReveal()).toBe(true);
+    expect(takeMediaReveal()).toBe(false);
+  });
+
+  it('is not asked for by a change of the filter: that is the person at the controls', () => {
+    setMediaView({ severity: 3, onlyFindings: true, order: 'severity' });
+    setMediaView({ scope: { label: 'Some', ids: ['photos/p1'] } });
+    setMediaView({ severity: null });
+    expect(takeMediaReveal()).toBe(false);
+  });
+
+  it('is dropped when another project opens', () => {
+    open('a');
+    requestMediaReveal();
+    open('b');
+    expect(takeMediaReveal()).toBe(false);
+  });
+
+  it('is kept while the same project reloads', () => {
+    open('a');
+    requestMediaReveal();
+    workspace.setState({ project: { id: 'a', root: 'x' } } as unknown as Parameters<
+      typeof workspace.setState
+    >[0]);
+    expect(takeMediaReveal()).toBe(true);
   });
 });
 

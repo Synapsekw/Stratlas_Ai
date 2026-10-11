@@ -28,7 +28,14 @@ import {
   type PhotoOrder,
 } from './mediaFindings';
 import { flightCards, flightOf, type FlightCard } from './mediaModel';
-import { noPhotoMatches, photosInView, setMediaView, useMediaView } from './mediaView';
+import {
+  noPhotoMatches,
+  photosInView,
+  setMediaView,
+  takeMediaReveal,
+  useMediaRevealAsked,
+  useMediaView,
+} from './mediaView';
 import { NoProject } from './NoProject';
 
 const PHOTO_LIMIT = 600;
@@ -212,6 +219,14 @@ export function MediaScreen() {
       ?.querySelector(`[data-photo="${CSS.escape(photoId)}"]`)
       ?.scrollIntoView({ block: 'nearest' });
   }, [photoId]);
+  // The agent set a photo filter: the first photo it shows comes into view (the photos are below
+  // the videos), once per request. The effect runs after the filtered sets are drawn, also when
+  // the request was made before this screen showed. No photo matches: there is nothing to find.
+  const revealAsked = useMediaRevealAsked();
+  useEffect(() => {
+    if (!takeMediaReveal()) return;
+    photoRef.current?.querySelector('.m-card.sq[data-photo]')?.scrollIntoView({ block: 'nearest' });
+  }, [revealAsked]);
   if (!project) return <NoProject view="Media" />;
 
   const clips = layers.filter((l): l is Extract<Layer, { kind: 'video' }> => l.kind === 'video');
