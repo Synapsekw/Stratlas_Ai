@@ -163,22 +163,75 @@ const PROBE_SCRIPT = [
   '[pscustomobject]@{ status = [string]$s.Status; signer = $signer; product = $v.ProductVersion; file = $v.FileVersion } | ConvertTo-Json -Compress',
 ].join('; ');
 
+/** How long PowerShell gets to answer. */
+const PROBE_TIMEOUT_MS = 30_000;
+
+/** What `execFile` reports of a call that failed. */
+export interface ProbeError {
+  message: string;
+  /** The exit code, or the system's code when the process could not be started (`ENOENT`). */
+  code?: string | number | null | undefined;
+  /** Node stopped the process: it ran past the time limit. */
+  killed?: boolean | undefined;
+  signal?: string | null | undefined;
+}
+
+/** What PowerShell itself said (the first line of stderr), never its echo of the script. */
+function saidByPowerShell(stderr: string): string {
+  const line = stderr
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .find((l) => l && !/^(At line:|\+)/.test(l) && !/\$env:|powershell\.exe/i.test(l));
+  return (line ?? '').slice(0, 300);
+}
+
+/**
+ * Why the probe failed, as the rest of the sentence "The installer could not be checked: ...".
+ * Node's own message for a failed command is "Command failed: " and the whole command line (the
+ * probe script), which is never shown to the person.
+ */
+export function probeFailure(
+  err: ProbeError,
+  stderr = '',
+  timeoutMs: number = PROBE_TIMEOUT_MS,
+): string {
+  if (err.killed) {
+    return `Windows did not answer within ${Math.round(timeoutMs / 1000)} seconds. Try again.`;
+  }
+  if (err.signal) return 'Windows PowerShell was stopped before it answered. Try again.';
+  if (err.code === 'ENOENT') return 'Windows PowerShell was not found on this computer.';
+  if (typeof err.code === 'number') {
+    const said = saidByPowerShell(stderr);
+    return said
+      ? `Windows PowerShell reported an error (code ${err.code}): ${said}`
+      : `Windows PowerShell reported an error (code ${err.code}).`;
+  }
+  const own = err.message.split(/\r?\n/)[0]?.trim() ?? '';
+  return own && !/^Command failed|powershell\.exe/i.test(own)
+    ? own
+    : 'Windows PowerShell could not be run.';
+}
+
 /** Ask Windows (PowerShell) for the Authenticode status and version of a file. */
 export function probeWithPowerShell(path: string): Promise<Probe> {
   return new Promise((resolve, reject) => {
     execFile(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', PROBE_SCRIPT],
-      { env: { ...process.env, AIO_INSTALLER: path }, windowsHide: true, timeout: 30_000 },
-      (err, stdout) => {
+      {
+        env: { ...process.env, AIO_INSTALLER: path },
+        windowsHide: true,
+        timeout: PROBE_TIMEOUT_MS,
+      },
+      (err, stdout, stderr) => {
         if (err) {
-          reject(new Error(err.message));
+          reject(new Error(probeFailure(err, stderr)));
           return;
         }
         try {
           resolve(parseProbe(stdout.trim()));
-        } catch (e) {
-          reject(e instanceof Error ? e : new Error(String(e)));
+        } catch {
+          reject(new Error('Windows gave an answer the app could not read. Try again.'));
         }
       },
     );
