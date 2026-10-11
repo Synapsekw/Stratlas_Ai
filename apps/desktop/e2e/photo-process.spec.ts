@@ -11,7 +11,7 @@
  * states, which run nothing. Synthetic photos only; zero network.
  */
 import type { Page } from '@playwright/test';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
@@ -35,6 +35,8 @@ import {
 } from './photoPack';
 
 const test = plain.extend<PhotoFixtures, PhotoWorkerFixtures>(photoFixtures);
+/** PHOTO_DAY the way the app writes a date. */
+const DAY_WORDS = '14 Mar 2026';
 
 /** Screenshots for a person to look at: only with QUADRION_E2E_SHOTS set to a folder. */
 const SHOTS = process.env.QUADRION_E2E_SHOTS;
@@ -79,6 +81,7 @@ test.describe('on the stand-in pipelines', () => {
 
   test('choose photos and start: one screen, one run, and the maps come back as layers', async ({
     win,
+    photoSite,
   }) => {
     test.setTimeout(180_000);
     await openPhotoSite(win);
@@ -100,8 +103,7 @@ test.describe('on the stand-in pipelines', () => {
     await expect(wizard.getByTestId('photo-needs')).toContainText('of disk space and');
     // the project by name, and the survey date worked out from the photos
     await expect(wizard.getByTestId('photo-project')).toHaveText(`Project: ${PHOTO_PROJECT.name}`);
-    await expect(wizard.getByTestId('photo-date')).toContainText('Survey date:');
-    await expect(wizard.getByTestId('photo-date')).toContainText('(new)');
+    await expect(wizard.getByTestId('photo-date')).toHaveText(`Survey date: ${DAY_WORDS} (new)`);
     await expect(wizard.getByTestId('photo-days')).toHaveCount(0);
     await expect(wizard.getByTestId('photo-destination')).toHaveText(
       `The maps are added to ${PHOTO_PROJECT.name}.`,
@@ -187,6 +189,12 @@ test.describe('on the stand-in pipelines', () => {
         PHOTO_DAY,
       ),
     ).toBe(false);
+    // nor is it written to the project's manifest on disk
+    const onDisk = JSON.parse(await readFile(join(photoSite.dir, 'manifest.json'), 'utf8')) as {
+      captures: { id: string; date: string }[];
+    };
+    expect(onDisk.captures.some((c) => c.date === PHOTO_DAY)).toBe(false);
+    expect(onDisk.captures.some((c) => c.id === `capture-${PHOTO_DAY}`)).toBe(false);
     await expect(phase(win, 'match')).toContainText('Matching photos');
     // the maps are part of the same run from the start
     await expect(phase(win, 'map')).toHaveAttribute('data-state', 'pending');
@@ -227,8 +235,8 @@ test.describe('on the stand-in pipelines', () => {
     );
     expect(filed.capture).toBe(`capture-${PHOTO_DAY}`);
     expect(filed.date).toBe(PHOTO_DAY);
-    await expect(results.getByTestId('photo-results-where')).toContainText(
-      `Added to ${PHOTO_PROJECT.name} under`,
+    await expect(results.getByTestId('photo-results-where')).toHaveText(
+      `Added to ${PHOTO_PROJECT.name} under ${DAY_WORDS} as new layers:`,
     );
     await expectAccessible(win, 'photo run, maps ready', { include: '[data-testid="photo-run"]' });
     await shot(win, 'create-maps-done');

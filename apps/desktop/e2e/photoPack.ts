@@ -25,7 +25,10 @@ import { join } from 'node:path';
 import { expect, VENV_PYTHON, type DataRoot } from './fixtures';
 
 export const PHOTO_PROJECT = { id: 'e2e-photos', name: 'E2E photo site' } as const;
-/** The day the synthetic photos were taken (EXIF DateTime); the project has no survey date for it. */
+/**
+ * The day the synthetic photos were taken (the date the app reads is DateTimeOriginal in the Exif
+ * block; DateTime is the fallback); the project has no survey date for it.
+ */
 export const PHOTO_DAY = '2026-03-14';
 export const PHOTO_SIZE: [number, number] = [800, 600];
 export const PHOTO_HFOV = 70;

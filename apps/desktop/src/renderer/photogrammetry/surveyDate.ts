@@ -41,9 +41,18 @@ export function pickSurveyDate(
   return found ? existing(found) : { kind: 'new', date: day };
 }
 
+/** True for a day that is on the calendar (not 0000-00-00 or 2026-02-30). */
+function isCalendarDay(day: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
+  const [y = 0, m = 0, d = 0] = day.split('-').map(Number);
+  const t = new Date(0);
+  t.setUTCFullYear(y, m - 1, d);
+  return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
+}
+
 /**
  * The days of a photos layer's items, from each item's `takenAt` (its first ten characters, the
- * local date), most photos first and a tie to the earlier day. Items without a date are skipped.
+ * local date), most photos first and a tie to the earlier day. Items without a real date are skipped.
  */
 export function daysOfItems(
   items: readonly { takenAt?: string | undefined }[],
@@ -51,7 +60,7 @@ export function daysOfItems(
   const counts = new Map<string, number>();
   for (const item of items) {
     const day = item.takenAt?.slice(0, 10);
-    if (day && /^\d{4}-\d{2}-\d{2}$/.test(day)) counts.set(day, (counts.get(day) ?? 0) + 1);
+    if (day && isCalendarDay(day)) counts.set(day, (counts.get(day) ?? 0) + 1);
   }
   return [...counts]
     .map(([date, photos]) => ({ date, photos }))
@@ -110,4 +119,20 @@ export function pickParams(pick: DatePick): { capture?: string; captureDate?: st
   if (pick.kind === 'existing') return { capture: pick.captureId };
   if (pick.kind === 'new') return { captureDate: pick.date };
   return {};
+}
+
+/**
+ * The survey date the results sentence names: where the run's layers really are (the first output
+ * layer that is filed under a date, which may have been moved by hand), else the run file's own.
+ */
+export function captureOfRun(
+  outputLayerIds: readonly string[],
+  layers: readonly { id: string; capture?: string | undefined }[],
+  runCapture: string | undefined,
+): string | undefined {
+  for (const id of outputLayerIds) {
+    const capture = layers.find((l) => l.id === id)?.capture;
+    if (capture) return capture;
+  }
+  return runCapture;
 }

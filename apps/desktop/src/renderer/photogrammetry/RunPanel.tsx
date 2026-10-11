@@ -15,6 +15,7 @@ import { defaultProducts, presetLabel } from './estimate';
 import { GcpPanel } from './GcpTable';
 import { RUN_STATUS, runView, type PhaseState } from './phases';
 import { RefinedPoses } from './RefinedPoses';
+import { captureOfRun } from './surveyDate';
 import { jobsOfRun, photoUi, STAGE_WORDS, usePhotoUi, type RunTab } from './store';
 
 const TABS: readonly { id: RunTab; label: string }[] = [
@@ -179,9 +180,8 @@ function Progress({ run, data, jobs }: { run: string; data: PhotoRun | null; job
       : job
         ? JOB_WORDS[job.status]
         : '';
-  const dated = data?.capture
-    ? project.manifest.captures.find((c) => c.id === data.capture)
-    : undefined;
+  const datedId = captureOfRun(data?.outputs.layers ?? [], project.manifest.layers, data?.capture);
+  const dated = datedId ? project.manifest.captures.find((c) => c.id === datedId) : undefined;
   const where = dated
     ? `Added to ${project.manifest.name} under ${formatDate(dated.date)} as new layers:`
     : `Added to ${project.manifest.name} as new layers, under no survey date:`;

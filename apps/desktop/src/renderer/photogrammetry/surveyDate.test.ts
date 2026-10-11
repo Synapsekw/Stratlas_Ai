@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  captureOfRun,
   choiceOf,
   dateOptions,
   dateSentence,
@@ -82,6 +83,17 @@ describe('daysOfItems', () => {
     expect(daysOfItems([])).toEqual([]);
     expect(daysOfItems([{}, { takenAt: undefined }])).toEqual([]);
     expect(daysOfItems([{ takenAt: 'yesterday' }, { takenAt: '14/03/2026 10:00' }])).toEqual([]);
+  });
+
+  it('skips a date that is not on the calendar', () => {
+    expect(
+      daysOfItems([
+        { takenAt: '2026-99-99T00:00:00' },
+        { takenAt: '2026-02-30T10:00:00' },
+        { takenAt: '0000-00-00T00:00:00' },
+        { takenAt: '2026-03-14T10:00:00' },
+      ]),
+    ).toEqual([{ date: '2026-03-14', photos: 1 }]);
   });
 });
 
@@ -173,5 +185,30 @@ describe('pickParams', () => {
     ).toEqual({ capture: 'c2' });
     expect(pickParams({ kind: 'new', date: '2026-04-02' })).toEqual({ captureDate: '2026-04-02' });
     expect(pickParams({ kind: 'none' })).toEqual({});
+  });
+});
+
+describe('captureOfRun', () => {
+  const layers = [
+    { id: 'l1', capture: 'by-hand' },
+    { id: 'l2', capture: 'from-run' },
+    { id: 'l3' },
+  ];
+
+  it('the date a layer is filed under wins over the one in the run file', () => {
+    expect(captureOfRun(['l1', 'l2'], layers, 'from-run')).toBe('by-hand');
+  });
+
+  it('falls back to the run file when no layer has a date', () => {
+    expect(captureOfRun(['l3', 'gone'], layers, 'from-run')).toBe('from-run');
+  });
+
+  it('skips a layer without a date and takes the first that has one', () => {
+    expect(captureOfRun(['l3', 'l2'], layers, undefined)).toBe('from-run');
+  });
+
+  it('gives nothing when neither has a date', () => {
+    expect(captureOfRun(['l3'], layers, undefined)).toBeUndefined();
+    expect(captureOfRun([], [], undefined)).toBeUndefined();
   });
 });

@@ -11,7 +11,7 @@
 
 That is all. Everything else is chosen for you: **Standard** quality, the photo map, the surface models (DSM and DTM), the point cloud and the 3D model, in the project's coordinate system.
 
-The survey date is chosen for you too: the day the photos were taken. If the project has no survey date for that day, a new one is added when the maps are built, and the screen says "(new)" beside it. Photos from several days go under the day most of them were taken. Photos that carry no date go under no survey date; choose one in **Options**, or file the layers from the Datasets list afterwards.
+The survey date is chosen for you too: the day the photos were taken. If the project has no survey date for that day, a new one is added when the maps are built, and the screen says "(new)" beside it. Photos from several days go under the day most of them were taken. Photos that are already a layer of the project under a survey date keep that date. Photos that carry no date go under no survey date; choose one in **Options**, or file the layers from the Datasets list afterwards.
 
 ### When {product} asks a question
 
@@ -41,7 +41,7 @@ A question only shows when your photos raise it:
 - **Coordinate system:** the project's, the UTM zone the photos are in, or another you search for.
 - **Camera positions (GNSS)** and **Heights:** how far the photos' positions are trusted, and where heights come from.
 - **Survey date:** the date the new layers belong to. It starts on the day the photos were taken; choose another of the project's dates, or **None**.
-- **I have ground control points:** the run stops after matching the photos, so you can mark the points before the maps are built.
+- **I have ground control points:** the run stops after matching the photos, so you can mark the points before the maps are built. The survey date picked here is kept until the maps are built, and is lost if the app is closed in between; then file the layers from the Datasets list.
 - **This computer and the cameras:** the processor, memory and free disk, and the cameras found, for example "SYN-20, 1600 × 1200 (58 photos)".
 
 Processing runs on the processor. Graphics card acceleration is not available yet.

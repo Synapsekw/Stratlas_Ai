@@ -14,6 +14,7 @@ import {
   AccuracyReport,
   GcpFile,
   HardwareProbe,
+  IsoDate,
   LensModel,
   PHOTO_RUN_FILES,
   PhotoCamerasFile,
@@ -475,7 +476,7 @@ export async function readPhotoSet(files: readonly string[]): Promise<PhotoSet> 
     g.photos += 1;
     groups.set(key, g);
     const day = meta.takenAt?.slice(0, 10);
-    if (day && /^\d{4}-\d{2}-\d{2}$/.test(day)) days.set(day, (days.get(day) ?? 0) + 1);
+    if (day && IsoDate.safeParse(day).success) days.set(day, (days.get(day) ?? 0) + 1);
     if (meta.width && meta.height) mps.push((meta.width * meta.height) / 1e6);
     const gps = meta.gps ?? (meta.dji?.lat !== undefined ? meta.dji : undefined);
     if (gps?.lat !== undefined && gps.lon !== undefined) {

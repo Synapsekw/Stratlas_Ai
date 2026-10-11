@@ -1,5 +1,11 @@
 import { withExif } from '@aio/project/builder/testing';
-import type { GcpFile, HardwareProbe, PhotoRun, ProjectManifest } from '@aio/schema';
+import {
+  PhotoEstimate,
+  type GcpFile,
+  type HardwareProbe,
+  type PhotoRun,
+  type ProjectManifest,
+} from '@aio/schema';
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -379,6 +385,23 @@ describe('photo files', () => {
     expect(set.days).toEqual([]);
     const hw = { cpu: { model: '', cores: 8 }, memoryBytes: 0, freeDiskBytes: 0, cuda: false };
     expect('photoDays' in estimateRun(set, 'standard', ['ortho'], hw)).toBe(false);
+  });
+
+  it('counts only real calendar days, so an unset camera clock never breaks the estimate', async () => {
+    const shot = (dateTimeOriginal: string) =>
+      withExif({ width: 64, height: 48, dateTimeOriginal });
+    const hw = { cpu: { model: '', cores: 8 }, memoryBytes: 0, freeDiskBytes: 0, cuda: false };
+    const bad = [join(dir, 'z1.jpg'), join(dir, 'z2.jpg')];
+    await writeFile(bad[0] ?? '', shot('0000:00:00 00:00:00'));
+    await writeFile(bad[1] ?? '', shot('2026:02:30 10:00:00'));
+    const none = await readPhotoSet(bad);
+    expect(none.days).toEqual([]);
+    expect(() => PhotoEstimate.parse(estimateRun(none, 'standard', ['ortho'], hw))).not.toThrow();
+    const good = join(dir, 'z3.jpg');
+    await writeFile(good, shot('2026:03:14 10:00:00'));
+    const mixed = await readPhotoSet([...bad, good]);
+    expect(mixed.days).toEqual([{ date: '2026-03-14', photos: 1 }]);
+    expect(() => PhotoEstimate.parse(estimateRun(mixed, 'standard', ['ortho'], hw))).not.toThrow();
   });
 
   it('reads camera groups, the frame size and GPS from the photo heads', async () => {

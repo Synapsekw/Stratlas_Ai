@@ -305,8 +305,9 @@ export function ProcessWizard() {
     }
     const ui = photoUi.getState();
     const date = pickParams(pick);
+    // kept for every run: a cancelled run that is resumed later still builds its maps under it
+    ui.setDate(run, date);
     if (!gcpFirst) ui.setPending(run, { root: project.root, preset, products, ...date });
-    else ui.setDate(run, date);
     ui.openRun(run, 'progress');
   };
 

@@ -57,14 +57,18 @@ async function captureOf(p: PendingProducts): Promise<string | null> {
   if (!p.captureDate) return null;
   const project = workspace.getState().project;
   if (!project || folderKey(project.root) !== folderKey(p.root)) return null;
-  const r = await bridge.call('builder:ensureCapture', {
-    projectId: project.id,
-    date: p.captureDate,
-  });
-  if (!r.ok || !r.value.ok) return null;
-  const ws = workspace.getState();
-  if (ws.project?.id === project.id) ws.replaceManifest(r.value.manifest);
-  return r.value.captureId;
+  try {
+    const r = await bridge.call('builder:ensureCapture', {
+      projectId: project.id,
+      date: p.captureDate,
+    });
+    if (!r.ok || !r.value.ok) return null;
+    const ws = workspace.getState();
+    if (ws.project?.id === project.id) ws.replaceManifest(r.value.manifest);
+    return r.value.captureId;
+  } catch {
+    return null;
+  }
 }
 
 export async function startProducts(run: string, p: PendingProducts): Promise<string | null> {

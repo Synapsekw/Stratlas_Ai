@@ -83,6 +83,26 @@ describe('startProducts and the survey date', () => {
       captureDate: '2026-04-02',
     });
     expect(err).toBeNull();
+    expect(call.mock.calls.map((c) => c[0] as string)).toEqual([
+      'builder:ensureCapture',
+      'jobs:start',
+    ]);
+    expect(paramsOfStart()).not.toHaveProperty('capture');
+  });
+
+  it('builds the maps without a date when adding the date throws', async () => {
+    call.mockImplementation((channel: string) =>
+      channel === 'builder:ensureCapture'
+        ? Promise.reject(new Error('gone'))
+        : Promise.resolve(started),
+    );
+    const err = await startProducts('r5', {
+      ...base,
+      products: ['ortho'],
+      captureDate: '2026-04-02',
+    });
+    expect(err).toBeNull();
+    expect(call).toHaveBeenCalledWith('jobs:start', expect.anything());
     expect(paramsOfStart()).not.toHaveProperty('capture');
   });
 

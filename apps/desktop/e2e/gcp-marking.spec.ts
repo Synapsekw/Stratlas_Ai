@@ -25,6 +25,7 @@ import {
   openOptions,
   openPhotoSite,
   openWizard,
+  PHOTO_DAY,
   PHOTO_PLATFORM,
   PHOTO_PLATFORM_ONLY,
   photoFixtures,
@@ -129,6 +130,27 @@ test('import GCPs, mark them with the keyboard, adjust, read an honest report an
   );
   await expect(report).toContainText('Checkpoints are measured only');
   await expectAccessible(win, 'accuracy report', { include: '[data-testid="photo-run"]' });
+
+  // the date picked in the wizard was kept while the points were marked: the maps go under it
+  await panel.getByRole('tab', { name: 'Progress' }).click();
+  await panel.getByRole('button', { name: 'Create maps' }).click();
+  await expect(panel.getByTestId('photo-results')).toContainText('Your maps are ready', {
+    timeout: 90_000,
+  });
+  const meshCapture = await win.evaluate((id) => {
+    const probe = window as unknown as {
+      __stratlas: {
+        workspace: {
+          getState(): {
+            project: { manifest: { layers: { id: string; capture?: string }[] } } | null;
+          };
+        };
+      };
+    };
+    return probe.__stratlas.workspace.getState().project?.manifest.layers.find((l) => l.id === id)
+      ?.capture;
+  }, `photo-${run}-mesh`);
+  expect(meshCapture).toBe(`capture-${PHOTO_DAY}`);
 
   // Export, Processing accuracy report (PDF): the latest run's report through the save dialog
   const out = join(photoSite.dir, '..', '..', 'out');
