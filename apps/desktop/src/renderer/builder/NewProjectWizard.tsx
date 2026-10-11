@@ -1,6 +1,6 @@
 import { crsOption, fromWgs84, searchCrs, toWgs84, utmEpsgFor } from '@aio/geo';
 import { LocationPicker } from '@aio/maps';
-import type { SeverityTemplate, Vec3 } from '@aio/schema';
+import { PURPOSE_TYPE, type SeverityTemplate, type Vec3 } from '@aio/schema';
 import { Icon, t, useFocusTrap, type IconName } from '@aio/ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { processing } from '../processing/store';
@@ -16,12 +16,13 @@ import { builder, useBuilder } from './state';
 import { buildParams, emptySurvey, noSurveys, surveyProblem, type SurveyInput } from './surveys';
 import { VolumetricSurveys } from './VolumetricSurveys';
 
-const TYPE_ICON: Record<WizardForm['type'], IconName> = {
-  inspection: 'flare',
-  volumetric: 'pile',
+const TYPE_ICON: Record<WizardForm['purpose'], IconName> = {
+  survey: 'pile',
+  construction: 'facade',
+  'vertical-asset': 'flare',
+  'confined-space': 'tank',
+  'data-fusion': 'layers',
   road: 'road',
-  twin: 'plant',
-  fusion: 'layers',
 };
 
 const STEPS = ['Project', 'Place', 'Standards', 'Review'] as const;
@@ -69,7 +70,8 @@ function Wizard() {
     name: '',
     customer: '',
     site: '',
-    type: 'inspection',
+    // writes `inspection`, the type the wizard has always started on
+    purpose: 'vertical-asset',
     epsg: 32639,
     severityTemplate: null,
   });
@@ -101,7 +103,8 @@ function Wizard() {
       setTemplates(r.value.severity);
       setForm((f) => ({
         ...f,
-        severityTemplate: f.severityTemplate ?? defaultTemplateFor(f.type, r.value.severity),
+        severityTemplate:
+          f.severityTemplate ?? defaultTemplateFor(PURPOSE_TYPE[f.purpose], r.value.severity),
       }));
     });
   }, []);
@@ -208,8 +211,10 @@ function Wizard() {
     setSource({ ...source, h });
   };
 
+  // the older `type` the card writes; it, not the card, decides what the project does
+  const type = PURPOSE_TYPE[form.purpose];
   // a volumetric project can start from its survey data: the kit runs as a job once it exists
-  const volumetric = form.type === 'volumetric';
+  const volumetric = type === 'volumetric';
   const surveyBlock = volumetric ? surveyProblem(surveys) : null;
 
   const create = async () => {
@@ -222,7 +227,8 @@ function Wizard() {
       name: form.name.trim(),
       ...(customer ? { customer } : {}),
       ...(site ? { site } : {}),
-      type: form.type,
+      type,
+      purpose: form.purpose,
       epsg: form.epsg,
       origin,
       severityTemplate: form.severityTemplate,
@@ -354,15 +360,15 @@ function Wizard() {
                       key={t.id}
                       type="button"
                       className="b-card"
-                      aria-pressed={form.type === t.id}
+                      aria-pressed={form.purpose === t.id}
                       onClick={() => {
                         setForm({
                           ...form,
-                          type: t.id,
+                          purpose: t.id,
                           // the grading follows the type until the person picks one
                           severityTemplate: sevTouched
                             ? form.severityTemplate
-                            : defaultTemplateFor(t.id, templates),
+                            : defaultTemplateFor(PURPOSE_TYPE[t.id], templates),
                         });
                       }}
                     >
@@ -585,7 +591,7 @@ function Wizard() {
                 <dt>Customer, site</dt>
                 <dd>{[form.customer, form.site].filter(Boolean).join(' · ') || '-'}</dd>
                 <dt>Type</dt>
-                <dd>{PROJECT_TYPES.find((t) => t.id === form.type)?.label}</dd>
+                <dd>{PROJECT_TYPES.find((t) => t.id === form.purpose)?.label}</dd>
                 <dt>CRS</dt>
                 <dd className="mono">
                   EPSG:{form.epsg} {crs ? `· ${crs.name}` : ''}

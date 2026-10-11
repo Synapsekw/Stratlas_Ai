@@ -6,6 +6,7 @@ import { PhotoProcessLayer } from '../photogrammetry/PhotoProcessLayer';
 import { useShell } from '../shell';
 import { heightsLine, offsetFromTakeoff, promptChoice, type HeightsPrompt } from './heights';
 import { TilesetImportCard } from './ImportTileset';
+import { ProjectKindTag, ProjectStarter } from './ProjectStarter';
 import { builder, useBuilder } from './state';
 import { ImportSurveyDate } from './SurveyDate';
 
@@ -320,11 +321,13 @@ export function EmptyProjectHint() {
     <div className="b-empty" data-testid="empty-project">
       <div>
         <Icon name="import" size={20} />
+        <ProjectKindTag manifest={project.manifest} />
         <h3>Add raw data to {project.manifest.name}</h3>
         <p>
           Drop files anywhere on the window, or pick them. Photos are placed by their GPS and gimbal
           angles, video by its DJI SRT telemetry, models and orthos where you align them.
         </p>
+        <ProjectStarter manifest={project.manifest} />
         <button
           type="button"
           className="btn primary"

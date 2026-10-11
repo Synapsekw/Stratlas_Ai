@@ -1,13 +1,18 @@
 import { fromWgs84 } from '@aio/geo';
-import type { Layer, SeverityTemplate } from '@aio/schema';
+import { PURPOSE_TYPE, type Layer, type SeverityTemplate } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
   clipVideoTime,
   defaultTemplateFor,
   invertMat4,
+  kindLabel,
   modelPoint,
   parseCoordinate,
+  PROJECT_TYPES,
+  projectKind,
+  starterFor,
   wizardProblems,
+  type ProjectKind,
   type WizardForm,
 } from './model';
 
@@ -25,6 +30,108 @@ describe('defaultTemplateFor', () => {
     expect(defaultTemplateFor('inspection', list)).toBe('aik-stack');
     expect(defaultTemplateFor('road', [tpl('general')])).toBe('general');
     expect(defaultTemplateFor('road', [])).toBeNull();
+  });
+
+  it('follows the type a card writes: only the Road card takes the road catalogue', () => {
+    for (const card of PROJECT_TYPES)
+      expect(defaultTemplateFor(PURPOSE_TYPE[card.id], list), card.label).toBe(
+        card.id === 'road' ? 'road-astm-d6433' : 'aik-stack',
+      );
+  });
+});
+
+describe('the project type cards', () => {
+  it('are the six the wizard offers, in order, each with one plain line', () => {
+    expect(PROJECT_TYPES.map((c) => [c.id, c.label])).toEqual([
+      ['survey', 'Survey'],
+      ['construction', 'Construction'],
+      ['vertical-asset', 'Vertical asset inspection'],
+      ['confined-space', 'Confined space inspection'],
+      ['data-fusion', 'Data fusion'],
+      ['road', 'Road'],
+    ]);
+    for (const card of PROJECT_TYPES) {
+      expect(card.hint.length, card.label).toBeGreaterThan(20);
+      expect(card.hint.length, card.label).toBeLessThan(80);
+      expect(card.hint, card.label).not.toMatch(/[\u2013\u2014\n]/);
+    }
+  });
+
+  it('can each be picked by the start of their name (the end to end specs do)', () => {
+    const names = PROJECT_TYPES.map((c) => `${c.label} ${c.hint}`);
+    const starts = [/^Survey/, /^Construction/, /^Vertical asset/, /^Confined space/, /^Data/];
+    for (const start of [...starts, /^Road/])
+      expect(
+        names.filter((n) => start.test(n)),
+        String(start),
+      ).toHaveLength(1);
+  });
+});
+
+describe('projectKind', () => {
+  it('is the purpose the wizard wrote', () => {
+    for (const card of PROJECT_TYPES)
+      expect(projectKind({ type: PURPOSE_TYPE[card.id], purpose: card.id })).toBe(card.id);
+    expect(kindLabel('confined-space')).toBe('Confined space inspection');
+  });
+
+  it('comes from the older type for a project without a purpose', () => {
+    expect(projectKind({ type: 'volumetric' })).toBe('survey');
+    expect(projectKind({ type: 'road' })).toBe('road');
+    expect(projectKind({ type: 'fusion' })).toBe('data-fusion');
+    // either kind of inspection: the older type cannot tell
+    expect(projectKind({ type: 'inspection' })).toBe('inspection');
+    expect(projectKind({ type: 'twin' })).toBe('twin');
+    expect(kindLabel('inspection')).toBe('Inspection');
+    expect(kindLabel('twin')).toBe('Digital twin');
+  });
+
+  it('is nothing for a project with neither (an imported kit project)', () => {
+    expect(projectKind({})).toBeNull();
+  });
+
+  it('falls back to the type for a purpose this build does not know', () => {
+    expect(projectKind({ type: 'inspection', purpose: 'tunnel' })).toBe('inspection');
+    expect(projectKind({ purpose: 'tunnel' })).toBeNull();
+  });
+});
+
+describe('starterFor', () => {
+  const kinds: ProjectKind[] = [...PROJECT_TYPES.map((c) => c.id), 'inspection', 'twin'];
+  /** What Import files takes (`@aio/project` builder/raw.ts), by the names the lines use. */
+  const importable = new Set([
+    ...['JPG', 'MP4', 'MOV', 'SRT', 'GLB', 'OBJ', 'GeoTIFF', 'LAS', 'LAZ', 'E57', 'PLY', 'DXF'],
+    ...['LandXML', '12da'],
+  ]);
+  /** Abbreviations that are not file kinds. */
+  const words = new Set(['GPS', 'DSM', 'DJI', '3D']);
+
+  it('gives every kind three or four short lines', () => {
+    for (const kind of kinds) {
+      const lines = starterFor(kind);
+      expect(lines.length, kind).toBeGreaterThanOrEqual(3);
+      expect(lines.length, kind).toBeLessThanOrEqual(4);
+      for (const line of lines) {
+        expect(line.length, line).toBeLessThanOrEqual(84);
+        expect(line, line).not.toMatch(/[\u2013\u2014]/);
+      }
+    }
+  });
+
+  it('names only file kinds the import takes today', () => {
+    for (const kind of kinds) {
+      const named = starterFor(kind)
+        .join(' ')
+        .match(/\b(?:[A-Z][A-Z0-9]+|[0-9]+[A-Za-z]+|[A-Z][a-z]+[A-Z]{2,})\b/g);
+      expect(named?.length, kind).toBeGreaterThan(0);
+      for (const name of named ?? [])
+        expect(importable.has(name) || words.has(name), `${kind}: ${name}`).toBe(true);
+    }
+  });
+
+  it('gives the older kinds the list of their nearest card', () => {
+    expect(starterFor('inspection')).toEqual(starterFor('vertical-asset'));
+    expect(starterFor('twin')).toEqual(starterFor('data-fusion'));
   });
 });
 
@@ -54,7 +161,7 @@ describe('wizardProblems', () => {
     name: 'EBSM flare',
     customer: '',
     site: '',
-    type: 'inspection',
+    purpose: 'vertical-asset',
     epsg: 32639,
     origin: [221029, 3214462, 31.7],
     severityTemplate: 'aik-stack',

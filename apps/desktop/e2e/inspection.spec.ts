@@ -299,7 +299,7 @@ async function buildTower(
   await win.getByTestId('new-project').first().click();
   const wiz = win.getByTestId('new-project-wizard');
   await wiz.getByLabel('Project name').fill('Tower inspection');
-  await expect(wiz.getByRole('button', { name: /Inspection/ })).toHaveAttribute(
+  await expect(wiz.getByRole('button', { name: /^Vertical asset inspection/ })).toHaveAttribute(
     'aria-pressed',
     'true',
   );
