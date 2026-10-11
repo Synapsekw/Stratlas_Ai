@@ -58,7 +58,9 @@ export interface ToolbarFit {
   /**
    * The groups to fold under More tools. `view` is the stage view the tools work on, `groups`
    * its groups, `shown` the widths of the groups that are on the bar right now; `fixed` and
-   * `available` as in `fitGroups`.
+   * `available` as in `fitGroups`. `content` stands for what the groups hold within this view
+   * (any text that changes when a group gains or loses a tool): when it changes, every group is
+   * measured again.
    */
   fit(
     view: string,
@@ -66,6 +68,7 @@ export interface ToolbarFit {
     shown: ReadonlyMap<GroupId, number>,
     fixed: number,
     available: number,
+    content?: string,
   ): GroupId[];
 }
 
@@ -73,17 +76,20 @@ export interface ToolbarFit {
  * The fit of one toolbar across its views. A folded group cannot be measured, so its width is
  * remembered from when it was on the bar. That width holds for one view only: a group's tools
  * differ from view to view (Labels and layers is wider on the 3D view than on the map), and the
- * map kept its groups folded by the widths they had on the 3D view. So when the view or its set
- * of groups changes, the remembered widths are dropped, and while a group of this view has no
- * width yet nothing is folded: every group goes on the bar and is measured, and the next fit (the
- * caller fits again after each layout) folds what does not fit.
+ * map kept its groups folded by the widths they had on the 3D view. Nor does it hold when a
+ * group's tools change within a view (a video with a flight path arrives while Video and camera
+ * is folded): the bar would stay folded when it fits, or unfold when it does not. So when the
+ * view, its set of groups or what they hold (`content`) changes, the remembered widths are
+ * dropped, and while a group of this view has no width yet nothing is folded: every group goes on
+ * the bar and is measured, and the next fit (the caller fits again after each layout) folds what
+ * does not fit.
  */
 export function createToolbarFit(): ToolbarFit {
   const widths = new Map<GroupId, number>();
   let measuredFor = '';
   return {
-    fit(view, groups, shown, fixed, available) {
-      const key = `${view}:${groups.join()}`;
+    fit(view, groups, shown, fixed, available, content = '') {
+      const key = `${view}:${groups.join()}:${content}`;
       if (key !== measuredFor) {
         widths.clear();
         measuredFor = key;
