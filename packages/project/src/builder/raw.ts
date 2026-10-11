@@ -2,7 +2,6 @@ import { fromWgs84, isKnownCrs, toWgs84, type HeightRule, type HeightSource } fr
 import type {
   AltitudeChoice,
   AltitudePlan,
-  Capture,
   FlightHeights,
   ImportHeights,
   ImportItem,
@@ -22,7 +21,7 @@ import {
   resolveHeights,
   type FileAltitudes,
 } from './altitude';
-import { slug, uniqueId, readManifestFile, writeManifestFile } from './create';
+import { captureForDate, slug, uniqueId, readManifestFile, writeManifestFile } from './create';
 import { readPhotoMeta } from './exif';
 import { objToGlb } from './obj';
 import { photoAltitude, photoHeight, photoRef } from './photos';
@@ -196,13 +195,7 @@ function defaultUtcOffset(m: ProjectManifest): number {
 
 function addCapture(m: ProjectManifest, date: string | undefined): void {
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
-  if (m.captures.some((c) => c.date === date)) return;
-  const c: Capture = {
-    id: uniqueId(`capture-${date}`, (x) => m.captures.some((k) => k.id === x)),
-    label: 'Survey',
-    date,
-  };
-  m.captures = [...m.captures, c].sort((a, b) => a.date.localeCompare(b.date));
+  m.captures = captureForDate(m, date).manifest.captures;
 }
 
 const layerIdTaken = (m: ProjectManifest) => (id: string) => m.layers.some((l) => l.id === id);

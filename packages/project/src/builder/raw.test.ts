@@ -5,7 +5,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createProject, updateCapture, updateLayers, writeManifestFile } from './create';
+import {
+  createProject,
+  ensureCapture,
+  updateCapture,
+  updateLayers,
+  writeManifestFile,
+} from './create';
 import {
   NO_PIPELINE,
   importRawFiles,
@@ -735,5 +741,59 @@ describe('updateCapture', () => {
   it('refuses a date the project does not have', async () => {
     const root = await dated();
     await expect(updateCapture(root, 'c9', { label: 'Nope' })).rejects.toThrow(/c9/);
+  });
+});
+
+describe('ensureCapture', () => {
+  const dated = async () => {
+    const root = await project();
+    const m = await readManifest(root);
+    await writeManifestFile(root, {
+      ...m,
+      captures: [
+        { id: 'c1', label: 'First survey', date: '2026-01-10' },
+        { id: 'c2', label: 'Second survey', date: '2026-03-10' },
+      ],
+    });
+    return root;
+  };
+
+  it('adds a survey date for a new day, in date order, named Survey', async () => {
+    const root = await dated();
+    const r = await ensureCapture(root, '2026-02-10');
+    expect(r.created).toBe(true);
+    expect(r.captureId).toBe('capture-2026-02-10');
+    expect(r.manifest.captures.map((c) => c.date)).toEqual([
+      '2026-01-10',
+      '2026-02-10',
+      '2026-03-10',
+    ]);
+    expect(r.manifest.captures[1]).toEqual({
+      id: 'capture-2026-02-10',
+      label: 'Survey',
+      date: '2026-02-10',
+    });
+    expect((await readManifest(root)).captures).toEqual(r.manifest.captures);
+  });
+
+  it('finds the date that is already there and writes nothing', async () => {
+    const root = await dated();
+    const before = await readFile(join(root, 'manifest.json'), 'utf8');
+    const r = await ensureCapture(root, '2026-03-10');
+    expect(r).toMatchObject({ captureId: 'c2', created: false });
+    expect(await readFile(join(root, 'manifest.json'), 'utf8')).toBe(before);
+  });
+
+  it('asked twice for the same new day, makes one date', async () => {
+    const root = await dated();
+    const a = await ensureCapture(root, '2026-05-01');
+    const b = await ensureCapture(root, '2026-05-01');
+    expect(b).toMatchObject({ captureId: a.captureId, created: false });
+    expect(b.manifest.captures.filter((c) => c.date === '2026-05-01')).toHaveLength(1);
+  });
+
+  it('refuses a day that is not a date', async () => {
+    const root = await dated();
+    await expect(ensureCapture(root, '10 March')).rejects.toThrow('is not a date');
   });
 });

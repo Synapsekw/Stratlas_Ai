@@ -6,7 +6,9 @@ export * from './tiff';
 export * from './obj';
 export {
   PACKAGE_DIRS,
+  captureForDate,
   createProject,
+  ensureCapture,
   readManifestFile,
   slug,
   uniqueId,
