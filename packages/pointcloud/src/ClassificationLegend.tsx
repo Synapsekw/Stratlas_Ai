@@ -94,13 +94,17 @@ export function ClassificationLegend({
 }
 
 /** Legend data while the clouds are coloured by classification (null otherwise). */
-export function useClassificationLegend(store: StoreApi<PointcloudSettings> = pointcloudSettings): {
+export function useClassificationLegend(
+  store: StoreApi<PointcloudSettings> = pointcloudSettings,
+  /** One 3D view of several: the classes of its own clouds (see `usePointcloudCounts`). */
+  view?: object | null,
+): {
   counts: Readonly<Record<number, number>> | null;
   hidden: readonly number[];
 } {
   const mode = useStore(store, (x) => x.colourMode);
   const hidden = useStore(store, (x) => x.hiddenClasses);
-  const counts = usePointcloudCounts();
+  const counts = usePointcloudCounts(view);
   return {
     counts: mode === 'classification' && counts.loaded > 0 ? (counts.classes ?? null) : null,
     hidden,

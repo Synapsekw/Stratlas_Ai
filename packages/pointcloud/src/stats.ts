@@ -143,7 +143,21 @@ export function totalCounts(byScene: Map<object, CloudCounts>): CloudCounts {
   return out;
 }
 
-export function usePointcloudCounts(): CloudCounts {
+/**
+ * The counts of one 3D view (`view`: its scene handle; null while it is not there yet), or of
+ * every view together when none is named.
+ */
+export function countsOf(byScene: Map<object, CloudCounts>, view?: object | null): CloudCounts {
+  if (view === undefined) return totalCounts(byScene);
+  const own = view ? byScene.get(view) : undefined;
+  return totalCounts(new Map(own && view ? [[view, own]] : []));
+}
+
+/**
+ * Live counts for the controls and legends. A legend drawn on one view of several (two survey
+ * dates side by side) names its `view` and reads that view's clouds only.
+ */
+export function usePointcloudCounts(view?: object | null): CloudCounts {
   const byScene = useStore(pointcloudStats, (s) => s.byScene);
-  return useMemo(() => totalCounts(byScene), [byScene]);
+  return useMemo(() => countsOf(byScene, view), [byScene, view]);
 }
