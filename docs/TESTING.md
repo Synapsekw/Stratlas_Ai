@@ -660,7 +660,7 @@ Use a real drone flight of yours. The photos stay in their folder and are only r
 - [ ] **Accuracy**: "GNSS only, no ground control: the absolute accuracy is that of the drone's GNSS; N of … photos aligned." At least 95% of the photos are aligned, and the mean reprojection error is about 1 px.
 - [ ] **Progress**: the photos left out are listed, each with its reason.
 - [ ] The two photos' **Date modified** is unchanged, and nothing new is in the flight folder.
-- [ ] If the flight has ground control: **Ground control**, **GCP file**, your CSV or TXT; check the columns, the coordinate system and the points on the map; **Save N points**. **Mark** opens the photos straight from the flight folder, and the loupe's cross hair sits on the target anywhere in the photo, also near the edges. **Adjust**: a bad point is named in the warnings.
+- [ ] If the flight has ground control: **Ground control**, **GCP file**, your CSV or TXT; check the columns, the coordinate system and the points on the map; **Save N points**. **Mark** opens the photos straight from the flight folder, and the loupe's cross hair sits on the target anywhere in the photo, also near the edges. **Adjust**: every accurately marked control point is used (none is "left out"); with five control points or more, a point whose coordinates are wrong in plan is named in the warnings.
 - [ ] If the project also has this flight as a photos layer: **Refined poses** offers **Photos layer of the same flight** (photos are matched by file name); **Use refined poses**, **Move the cameras**.
 - [ ] Optional: **Create maps** on **Standard**; note the time and the peak memory, and compare the ortho with one from Pix4D or DJI Terra.
 
