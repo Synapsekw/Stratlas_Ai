@@ -1,5 +1,6 @@
 import type { Issue, Vec3 } from '@aio/schema';
 import { createWorkspace } from '@aio/workspace';
+import { BoxGeometry, Group, Mesh } from 'three';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   ASSET_NEAR_M,
@@ -179,6 +180,52 @@ describe('assetIndex', () => {
     expect(assetIndex({ ...ctx({ ws }), scene: () => null }).status).toBe('loading');
   });
 
+  /** The site with its bounds measured, then one tag renamed: as many tags as before. */
+  function renamed() {
+    const ws = siteWorkspace();
+    assetIndex(ctx({ ws }));
+    const m = siteManifest();
+    const layers = m.layers.map((l) =>
+      l.kind === 'mesh'
+        ? { ...l, tags: l.tags?.map((t) => (t.tag === '10-B-11' ? { ...t, tag: 'B-11' } : t)) }
+        : l,
+    );
+    ws.getState().replaceManifest({ ...m, layers });
+    return ws;
+  }
+
+  it('leaves no asset by the old name when a tag is renamed, the number of tags the same', () => {
+    // measured again: the box goes by the new name, and the old one is gone
+    const tags = assetIndex(ctx({ ws: renamed() })).boxes.map((b) => b.tag);
+    expect(tags.sort()).toEqual([
+      '10-A-0004',
+      '20-P-0003A',
+      '20-T-0001',
+      '20-T-0002',
+      '20-T-0003',
+      'B-11',
+    ]);
+  });
+
+  it('discards remembered bounds when a tag is renamed and nothing can be measured', () => {
+    // on Media: what was remembered was measured for other tags
+    expect(assetIndex({ ...ctx({ ws: renamed() }), scene: () => null }).status).toBe('loading');
+  });
+
+  it('keeps the remembered bounds when the manifest is saved again with the same tags', () => {
+    const ws = siteWorkspace();
+    assetIndex(ctx({ ws }));
+    const m = siteManifest();
+    // the same tags in another order, and something else changed
+    const layers = m.layers.map((l) =>
+      l.kind === 'mesh' ? { ...l, tags: [...(l.tags ?? [])].reverse() } : l,
+    );
+    ws.getState().replaceManifest({ ...m, name: 'Plant, renamed', layers });
+    const later = assetIndex({ ...ctx({ ws }), scene: () => null });
+    expect(later.status).toBe('ready');
+    expect(later.boxes).toHaveLength(SITE_NODES.length);
+  });
+
   it('is none for a project without tagged assets', () => {
     const ws = createWorkspace();
     const m = siteManifest();
@@ -249,6 +296,29 @@ describe('issuesOn', () => {
     expect(area.ids).toEqual(['f5']);
     expect(area.label).toBe('20 · LNG tanks');
     expect(issuesOn(c, '10 · Jetty & berths').ids).toEqual([]);
+  });
+
+  it('says that a named part of the model without a tag is not an asset, not that it loads', () => {
+    const ws = siteWorkspace();
+    const stage = fakeStage(ws);
+    // a node of the model that nobody tagged: a place with a name, but no asset
+    const part = new Group();
+    part.name = 'Flare stack';
+    part.userData.aioNode = true;
+    const mesh = new Mesh(new BoxGeometry(4, 60, 4));
+    mesh.position.set(298, 30, -52);
+    part.add(mesh);
+    stage.scene.children[0]?.add(part);
+    stage.scene.updateMatrixWorld(true);
+    const c: RendererToolContext = { ...ctx({ ws }), scene: () => stage };
+    const failed = () => issuesOn(c, 'Flare stack');
+    expect(failed).toThrow(ToolError);
+    expect(failed).toThrow(
+      new ToolError('Flare stack is not a tagged asset, so findings are not matched to it.'),
+    );
+    // a tagged asset and an area still answer, with that part in the model
+    expect(issuesOn(c, '20-T-0003').ids).toEqual(['f5']);
+    expect(issuesOn(c, 'LNG tanks').ids).toEqual(['f5']);
   });
 });
 

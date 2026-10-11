@@ -10,7 +10,6 @@ import {
   type IssueViewFilter,
   type PhotoViewFilter,
   type PhotoViewResult,
-  type SeverityLevel,
   type ViewFilters,
 } from '@aio/ai';
 import {
@@ -20,13 +19,13 @@ import {
   issuesInView,
   setIssueView,
 } from '@aio/annotate';
-import type { ProjectManifest } from '@aio/schema';
 import { workspace, type OpenProject } from '@aio/workspace';
 import { detections, loadDetections } from '../detections/store';
 import { closeEvidence, evidence, openEvidence } from '../issueCard/evidence';
 import { findingsIndex } from '../screens/mediaFindings';
 import {
   highestLevel,
+  levelLabel,
   mediaView,
   photosInView,
   requestMediaReveal,
@@ -48,26 +47,6 @@ function openScreen(to: AppScreen): void {
   sh.go(to);
   // the person is brought here by the agent: the conversation comes along, unfolded
   if (isDockScreen(to)) sh.setAgentDock(false);
-}
-
-/**
- * The name of a level: from the first severity model that has it. That is not always the model
- * Media's Severity select lists (the project's first): a level only a later model has is named
- * here, while the select has no entry for it.
- */
-function levelLabel(
-  manifest: Pick<ProjectManifest, 'severityModels'>,
-  level: SeverityLevel | null,
-): string {
-  if (level === null) return '';
-  for (const model of manifest.severityModels) {
-    const label =
-      level === 'uncertain'
-        ? model.uncertain?.label
-        : model.levels.find((l) => l.value === level)?.label;
-    if (label) return label;
-  }
-  return '';
 }
 
 function showPhotos(filter: PhotoViewFilter): PhotoViewResult {
@@ -108,6 +87,7 @@ function showPhotos(filter: PhotoViewFilter): PhotoViewResult {
     total += layer.items.length;
     shown += photosInView(layer.items, layer.id, index, view).length;
   }
+  // the level by the name Media's Severity select gives it: the screen confirms what is said
   return { shown, total, severity, severityLabel: levelLabel(project.manifest, severity) };
 }
 

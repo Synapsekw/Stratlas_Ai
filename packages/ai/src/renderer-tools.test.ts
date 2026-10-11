@@ -125,7 +125,7 @@ describe('read tools', () => {
     const r = await runRendererTool('list_issues', { where: 'selection' }, ctx());
     expect(r.result).toMatchObject({ total: 3, where: null });
     const note = (r.result as { note: string }).note;
-    expect(note).toContain('Nothing is selected, so this covers the whole project.');
+    expect(note).toContain('No tagged asset is selected, so this covers the whole project.');
     expect(note).toContain('The 3D model has not loaded yet');
   });
 

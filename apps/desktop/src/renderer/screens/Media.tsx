@@ -32,6 +32,7 @@ import {
   noPhotoMatches,
   photosInView,
   setMediaView,
+  severityOptions,
   takeMediaReveal,
   useMediaRevealAsked,
   useMediaView,
@@ -200,6 +201,16 @@ export function MediaScreen() {
   const { durations } = useMedia(project);
   const layers = useMemo(() => project?.manifest.layers ?? [], [project]);
   const flights = useMemo(() => flightCards(layers, durations), [layers, durations]);
+  const photoSets = useMemo(
+    () => layers.filter((l): l is Extract<Layer, { kind: 'photos' }> => l.kind === 'photos'),
+    [layers],
+  );
+  // a second filter and sort of every photo set: done when the sets, the findings or the view
+  // change, not on every render (each selection, each clip duration that is read)
+  const noMatch = useMemo(
+    () => noPhotoMatches(photoSets, findings, view),
+    [photoSets, findings, view],
+  );
   const [openFlight, setOpenFlight] = useState<string | null>(null);
   const shownFlight = flights.find((f) => f.id === openFlight) ?? flightOf(flights, activeClip);
   // The photo viewer follows the selection: a photo picked here, in 3D or from an issue.
@@ -230,14 +241,12 @@ export function MediaScreen() {
   if (!project) return <NoProject view="Media" />;
 
   const clips = layers.filter((l): l is Extract<Layer, { kind: 'video' }> => l.kind === 'video');
-  const photoSets = layers.filter(
-    (l): l is Extract<Layer, { kind: 'photos' }> => l.kind === 'photos',
-  );
   const panoSets = layers.filter(
     (l): l is Extract<Layer, { kind: 'panoramas' }> => l.kind === 'panoramas',
   );
-  const severityModel = project.manifest.severityModels[0];
-  const noMatch = noPhotoMatches(photoSets, findings, view);
+  // every level of every severity model, and always the one that is on: a level the agent set
+  // shows in the select and can be cleared there, whichever model it is from
+  const severityChoices = severityOptions(project.manifest.severityModels, severity);
   const empty = clips.length + photoSets.length + panoSets.length === 0;
   const withFindings = photoSets.reduce(
     (n, set) => n + set.items.filter((p) => findings.has(photoKey(set.id, p.id))).length,
@@ -291,7 +300,7 @@ export function MediaScreen() {
                   <option value="count">{t('media.findings.sort.count')}</option>
                 </select>
               </label>
-              {severityModel && (
+              {severityChoices && (
                 <label className="m-order">
                   <span>{t('media.findings.severity')}</span>
                   <select
@@ -306,15 +315,16 @@ export function MediaScreen() {
                     }}
                   >
                     <option value="">{t('media.findings.severity.any')}</option>
-                    {[...severityModel.levels]
-                      .sort((a, b) => b.value - a.value)
-                      .map((l) => (
-                        <option key={l.value} value={String(l.value)}>
-                          {l.label}
+                    {severityChoices.map((o) =>
+                      o === 'uncertain' ? (
+                        <option key={o} value={o}>
+                          {t('media.findings.severity.uncertain')}
                         </option>
-                      ))}
-                    {severityModel.uncertain && (
-                      <option value="uncertain">{t('media.findings.severity.uncertain')}</option>
+                      ) : (
+                        <option key={o.value} value={String(o.value)}>
+                          {o.label || String(o.value)}
+                        </option>
+                      ),
                     )}
                   </select>
                 </label>

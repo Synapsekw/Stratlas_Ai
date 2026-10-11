@@ -171,6 +171,26 @@ async function lookingAt(win: Page, want: V3): Promise<number> {
   return v ? Math.round(dist(v.target, want) * 100) / 100 : 9999;
 }
 
+/**
+ * How many readings in a row the 3D camera has stood still: 0 while it moves, and while there is
+ * no 3D view. Polled, it says when a flight and whatever the view does as it mounts are over.
+ */
+function cameraRest(win: Page): () => Promise<number> {
+  let last: { position: V3; target: V3 } | null = null;
+  let still = 0;
+  return async () => {
+    const now = await camera(win);
+    const same =
+      now !== null &&
+      last !== null &&
+      dist(now.position, last.position) < 0.01 &&
+      dist(now.target, last.target) < 0.01;
+    still = same ? still + 1 : 0;
+    last = now;
+    return still;
+  };
+}
+
 /** Wait until every named node of the model is in the 3D scene. */
 async function waitForNodes(win: Page, names: string[]) {
   await expect
@@ -235,6 +255,36 @@ const shownIn = (reply: string) => Number(/"shown":(\d+)/.exec(reply)?.[1] ?? Na
 async function goTo(win: Page, name: 'Scene' | 'Issues' | 'Media' | 'Detections' | 'Reports') {
   await win.locator('.sb-nav .nav-item', { hasText: name }).first().click();
   await onScreen(win, name.toLowerCase());
+}
+
+/** The first visit to Scene of `askOnMediaOnceMeasured`: long enough on a machine that keeps up. */
+const SCENE_VISIT_MS = 2000;
+
+/** Scene for `ms` once the model is there, then Media again. */
+async function visitScene(win: Page, node: string, ms: number) {
+  await goTo(win, 'Scene');
+  await waitForNodes(win, [node]);
+  await win.waitForTimeout(ms);
+  await goTo(win, 'Media');
+}
+
+/**
+ * Ask about an asset on Media once the bounds of the assets are known there. They are measured
+ * once a second while the 3D view shows the model (assetWarm.ts) and remembered; nothing on
+ * screen says when that has happened, and a question asked on Scene would measure them itself.
+ * What says it is the answer on Media, where nothing can be measured: while that is "still
+ * loading", Scene gets another visit, twice as long each time. A slow machine takes longer; it
+ * does not fail.
+ */
+async function askOnMediaOnceMeasured(win: Page, node: string, text: string): Promise<string> {
+  await onScreen(win, 'media');
+  let reply = await send(win, text);
+  for (let ms = SCENE_VISIT_MS * 2; reply.includes('still loading'); ms *= 2) {
+    expect(ms, 'the bounds of the assets were never measured on Scene').toBeLessThan(40_000);
+    await visitScene(win, node, ms);
+    reply = await send(win, text);
+  }
+  return reply;
 }
 
 async function unfold(win: Page) {
@@ -650,7 +700,10 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
     await expect
       .poll(() => lookingAt(win, farm.point('F01')), { timeout: 15_000 })
       .toBeLessThan(0.5);
-    await win.waitForTimeout(2000);
+    // settled: the camera has not moved for five readings (two seconds, more on a slow machine)
+    await expect
+      .poll(cameraRest(win), { timeout: 60_000, intervals: [400] })
+      .toBeGreaterThanOrEqual(5);
     expect(await lookingAt(win, farm.point('F01'))).toBeLessThan(0.5);
     const view = await camera(win);
     expect(dist(view?.position ?? [], view?.target ?? [9999])).toBeLessThan(15);
@@ -826,18 +879,18 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
     const tags = change.layers.flatMap((l) => (l.kind === 'mesh' ? (l.tags ?? []) : []));
     const tank = tags.find((t) => t.tag === 'T-201');
     if (!tank) throw new Error('the change demo has no asset T-201');
-    await goTo(win, 'Scene');
-    await waitForNodes(win, [tank.node]);
-    // measured once a second while the 3D view is there (assetWarm.ts)
-    await win.waitForTimeout(2500);
-
-    await goTo(win, 'Media');
+    await visitScene(win, tank.node, SCENE_VISIT_MS);
     await expect(win.getByTestId('media-scope-chip')).toHaveCount(0);
     await expect(dock(win)).toBeVisible();
     await expect(agent(win).locator('.ag-msg')).toHaveCount(0);
 
-    // an area of the tank farm is no place here: nothing of the old project answers
-    const old = await send(win, `photos of the old tank #tool show_photos {"where":"${AREA}"}`);
+    // an area of the tank farm is no place here: nothing of the old project answers. The first
+    // question about an asset also waits for the bounds measured while Scene showed the model
+    const old = await askOnMediaOnceMeasured(
+      win,
+      tank.node,
+      `photos of the old tank #tool show_photos {"where":"${AREA}"}`,
+    );
     expect(old).toContain('No place matches');
     expect(old).not.toContain(`On ${AREA}`);
     await expect(win.getByTestId('media-scope-chip').filter({ hasText: AREA })).toHaveCount(0);

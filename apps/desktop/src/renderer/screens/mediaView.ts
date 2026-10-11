@@ -7,6 +7,7 @@
  * The only-with-findings switch and the order last while the app runs; the scope and the level
  * belong to the open project and clear when another one opens.
  */
+import type { ProjectManifest } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
@@ -111,6 +112,57 @@ export function highestLevel(
   const worst = photos.reduce((m, f) => Math.max(m, f.levels[0] ?? 0), 0);
   if (worst > rankOfSeverity('uncertain')) return worst;
   return worst === rankOfSeverity('uncertain') ? 'uncertain' : null;
+}
+
+/**
+ * The name of a level: from the first severity model that has it. Empty for no level and for a
+ * level no model has. The Severity select and the answer of the agent both name a level with
+ * this, so the person reads on the screen the word the agent said.
+ */
+export function levelLabel(
+  manifest: Pick<ProjectManifest, 'severityModels'>,
+  level: MediaViewState['severity'],
+): string {
+  if (level === null) return '';
+  for (const model of manifest.severityModels) {
+    const label =
+      level === 'uncertain'
+        ? model.uncertain?.label
+        : model.levels.find((l) => l.value === level)?.label;
+    if (label) return label;
+  }
+  return '';
+}
+
+/**
+ * An entry of the Severity select: a level with its name (empty for a level no model names: the
+ * screen shows its value), or uncertain, which the select names with the app's own word.
+ */
+export type SeverityOption = { value: number; label: string } | 'uncertain';
+
+/**
+ * The entries of the Severity select below "Any": every level of every severity model of the
+ * project, one per value, worst first, then uncertain when a model has it. A project can have
+ * several models, and "the highest present" is taken over all of them, so the first model alone
+ * would leave a level the agent set without an entry. The level that is on always has one, also
+ * when no model has it: a select with no entry for its value reads "Any" while it filters.
+ *
+ * Null when there is nothing to choose and nothing on: the select is not drawn.
+ */
+export function severityOptions(
+  models: ProjectManifest['severityModels'],
+  current: MediaViewState['severity'],
+): SeverityOption[] | null {
+  if (models.length === 0 && current === null) return null;
+  const values = new Set(models.flatMap((m) => m.levels.map((l) => l.value)));
+  if (typeof current === 'number') values.add(current);
+  const options: SeverityOption[] = [...values]
+    .sort((a, b) => b - a)
+    .map((value) => ({ value, label: levelLabel({ severityModels: models }, value) }));
+  if (current === 'uncertain' || models.some((m) => m.uncertain !== undefined)) {
+    options.push('uncertain');
+  }
+  return options;
 }
 
 /** A level or a scope is set and no photo of any set passes it: the screen says so. */

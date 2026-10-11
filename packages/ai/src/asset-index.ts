@@ -96,8 +96,11 @@ export function assetOfPoint(p: Vec3, boxes: readonly AssetBox[]): AssetLink | n
 // The cache ----------------------------------------------------------------------------------
 
 interface Remembered {
-  /** How many tags the project had when the boxes were measured; a different count drops them. */
-  tagCount: number;
+  /**
+   * The tag names the project had when the boxes were measured; other names drop them. The names
+   * and not their number: a tag that is renamed would otherwise stay behind as an asset.
+   */
+  tags: string;
   boxes: AssetBox[];
 }
 
@@ -108,10 +111,11 @@ export function clearAssetCache(): void {
   remembered.clear();
 }
 
-function tagCountOf(ctx: RendererToolContext): number {
-  let n = 0;
-  for (const l of project(ctx).manifest.layers) if (l.kind === 'mesh') n += l.tags?.length ?? 0;
-  return n;
+/** The tag names of the open project, every model's. */
+function tagNames(ctx: RendererToolContext): string[] {
+  return project(ctx).manifest.layers.flatMap((l) =>
+    l.kind === 'mesh' ? (l.tags ?? []).map((t) => t.tag) : [],
+  );
 }
 
 /** The point an issue sits at: the centre of the box around its 3D sightings. */
@@ -123,10 +127,12 @@ function pointOf(issue: Issue): Vec3 | null {
 /** The index of the open project. Bounds are measured in the scene when it is there and remembered per project. */
 export function assetIndex(ctx: RendererToolContext): AssetIndex {
   const { id } = project(ctx);
-  const tagCount = tagCountOf(ctx);
+  const names = tagNames(ctx);
+  // the same key whatever the order of the tags in the manifest
+  const tags = JSON.stringify([...names].sort());
   const issues = ctx.workspace.getState().issues;
   const unplaced = issues.filter((i) => issuePoints(i).length === 0).map((i) => i.id);
-  if (tagCount === 0) {
+  if (names.length === 0) {
     remembered.delete(id);
     return { status: 'none', boxes: [], links: new Map(), unplaced };
   }
@@ -143,13 +149,13 @@ export function assetIndex(ctx: RendererToolContext): AssetIndex {
   // a model still streaming in gives boxes for some nodes only: what was measured now wins, the
   // rest stays as remembered, so a node that has not arrived yet does not look like an empty asset
   const kept = remembered.get(id);
-  if (kept && kept.tagCount !== tagCount) remembered.delete(id);
+  if (kept && kept.tags !== tags) remembered.delete(id);
   const merged = new Map<string, AssetBox>();
-  if (kept?.tagCount === tagCount) for (const b of kept.boxes) merged.set(b.tag, b);
+  if (kept?.tags === tags) for (const b of kept.boxes) merged.set(b.tag, b);
   for (const b of measured) merged.set(b.tag, b);
   const boxes = [...merged.values()];
   if (boxes.length === 0) return { status: 'loading', boxes: [], links: new Map(), unplaced };
-  remembered.set(id, { tagCount, boxes });
+  remembered.set(id, { tags, boxes });
 
   const links = new Map<string, AssetLink>();
   for (const issue of issues) {
@@ -195,6 +201,13 @@ export function issuesOn(
   } else {
     const place = resolveName(ctx, where, ['asset', 'group']);
     label = place.name;
+    // a named part of the model that carries no tag is a place too, but findings are matched to
+    // tagged assets only: its bounds are never measured, so "still loading" would never end
+    if (place.kind === 'asset' && !tagNames(ctx).includes(place.name)) {
+      throw new ToolError(
+        `${place.name} is not a tagged asset, so findings are not matched to it.`,
+      );
+    }
     // never answer for bounds that are not known: no box is "not measured yet", not "no findings"
     const known =
       place.kind === 'group'

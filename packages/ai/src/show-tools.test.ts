@@ -131,6 +131,14 @@ const near = (a: readonly number[], b: readonly number[], tol = 0.01) =>
 const photoOnly = (over: Partial<Issue>, photo: string) =>
   fixtureIssue({ sightings: [onPhoto(photo)], ...over });
 
+/** M01, marked on the map and nowhere else. */
+const onMapOnly = () =>
+  fixtureIssue({
+    id: 'm1',
+    code: 'M01',
+    sightings: [{ on: 'map', layer: 'plant', geojson: { type: 'Point', coordinates: [48, 29] } }],
+  });
+
 describe('the catalogue', () => {
   it('offers the five tools in every window as view changes or reads', () => {
     const names = toolsForWindow('photo').map((s) => s.meta.name);
@@ -239,7 +247,7 @@ describe('show_issue', () => {
     const whole = {
       issue: { code: 'F05' },
       where: null,
-      note: 'Nothing is selected, so this covers the whole project.',
+      note: 'No tagged asset is selected, so this covers the whole project.',
     };
     const { c, ws } = ctx();
     const nothing = await runRendererTool('show_issue', { where: 'selection' }, c);
@@ -262,14 +270,36 @@ describe('show_issue', () => {
   it('says so when the asset has no open findings, and changes nothing', async () => {
     const { c, ws, log } = ctx();
     await expect(runRendererTool('show_issue', { where: '10-B-11' }, c)).rejects.toThrow(
-      'No open findings on 10-B-11.',
+      new ToolError('No open findings on 10-B-11.'),
     );
     // tank 1 has a finding, but it is closed
     const closedOnly = runRendererTool('show_issue', { where: '20-T-0001' }, c);
     await expect(closedOnly).rejects.toBeInstanceOf(ToolError);
-    await expect(closedOnly).rejects.toThrow('No open findings on 20-T-0001.');
+    await expect(closedOnly).rejects.toThrow(new ToolError('No open findings on 20-T-0001.'));
     expect(ws.getState().selection).toBeNull();
     expect(log).toEqual([]);
+  });
+
+  it('an asset without open findings: says when findings are on photos or the map only', async () => {
+    // a project graded from photos: no finding has a place in the model, so no asset has any
+    const one = ctx({ ws: workspace([photoOnly({ id: 'p1', code: 'P01' }, 'DJI_0661')]) });
+    const failed = runRendererTool('show_issue', { where: '10-B-11' }, one.c);
+    await expect(failed).rejects.toBeInstanceOf(ToolError);
+    await expect(failed).rejects.toThrow(
+      new ToolError(
+        'No open findings on 10-B-11. 1 finding is marked on photos or the map only and is not matched to assets.',
+      ),
+    );
+    const two = ctx({
+      ws: workspace([photoOnly({ id: 'p1', code: 'P01' }, 'DJI_0661'), onMapOnly()]),
+    });
+    await expect(runRendererTool('show_issue', { where: 'Jetty & berths' }, two.c)).rejects.toThrow(
+      new ToolError(
+        'No open findings on 10 · Jetty & berths. 2 findings are marked on photos or the map only and are not matched to assets.',
+      ),
+    );
+    expect(two.ws.getState().selection).toBeNull();
+    expect(two.log).toEqual([]);
   });
 
   it('says so when the project has no open findings', async () => {
@@ -365,12 +395,11 @@ describe('show_issue', () => {
   });
 
   it('a finding marked on the map only: the map shows it, and it says so', async () => {
-    const onMap = fixtureIssue({
-      id: 'm1',
-      code: 'M01',
-      sightings: [{ on: 'map', layer: 'plant', geojson: { type: 'Point', coordinates: [48, 29] } }],
+    const stage = { stageView: () => ({ show3d: true, showMap: true }) };
+    const { c, ws } = ctx({
+      ws: workspace([onMapOnly()]),
+      app: { ...recordingApp().app, ...stage },
     });
-    const { c, ws } = ctx({ ws: workspace([onMap]) });
     const r = await runRendererTool('show_issue', { issue: 'M01' }, c);
     expect(r.result).toMatchObject({
       issue: { code: 'M01' },
@@ -378,6 +407,23 @@ describe('show_issue', () => {
       note: 'This finding is marked on the map only. The map shows it.',
     });
     expect(ws.getState().lastCamera?.target).toEqual({
+      kind: 'selection',
+      selection: { kind: 'issue', id: 'm1' },
+    });
+  });
+
+  it('a finding marked on the map only, with no map on the stage: says to open the map', async () => {
+    const said = 'This finding is marked on the map only. Open the map to see it.';
+    const stage = { stageView: () => ({ show3d: true, showMap: false }) };
+    const only3d = ctx({ ws: workspace([onMapOnly()]), app: { ...recordingApp().app, ...stage } });
+    const r = await runRendererTool('show_issue', { issue: 'M01' }, only3d.c);
+    expect(r.result).toMatchObject({ issue: { code: 'M01' }, note: said });
+    // a host that cannot say what the stage shows does not claim the map shows it
+    const unknown = ctx({ ws: workspace([onMapOnly()]) });
+    const blind = await runRendererTool('show_issue', { issue: 'M01' }, unknown.c);
+    expect(blind.result).toMatchObject({ note: said });
+    // the map still gets the request: it pans there once it is opened
+    expect(unknown.ws.getState().lastCamera?.target).toEqual({
       kind: 'selection',
       selection: { kind: 'issue', id: 'm1' },
     });
@@ -610,7 +656,7 @@ describe('show_photos', () => {
       severity: 'S4',
       scope: null,
       where: null,
-      note: 'Nothing is selected, so this covers the whole project.',
+      note: 'No tagged asset is selected, so this covers the whole project.',
     });
   });
 
@@ -703,7 +749,7 @@ describe('show_issues', () => {
       severity: 'S4',
       scope: null,
       where: null,
-      note: 'Nothing is selected, so this covers the whole project.',
+      note: 'No tagged asset is selected, so this covers the whole project.',
     });
   });
 
@@ -746,6 +792,7 @@ describe('list_assets', () => {
       total: 3,
       shown: 3,
       unplaced: 0,
+      noAsset: 0,
       rows: [
         {
           name: '20-T-0003',
@@ -776,6 +823,7 @@ describe('list_assets', () => {
       total: 1,
       shown: 1,
       unplaced: 1,
+      noAsset: 0,
       rows: [{ name: '20 · LNG tanks', findings: 3, open: 2, worst: { level: 4, label: 'S4' } }],
     });
     expect(r.summary).toBe('1 area');
@@ -784,6 +832,86 @@ describe('list_assets', () => {
   it('keeps to the limit and says how many there are', async () => {
     const r = await runRendererTool('list_assets', { limit: 1 }, ctx().c);
     expect(r.result).toMatchObject({ total: 3, shown: 1, rows: [{ name: '20-T-0003' }] });
+  });
+
+  /** Tank 1 with the most findings (three, two of them open, S1), tank 3 with the worst (one, S4). */
+  const busyTank = () =>
+    workspace(
+      ['g1', 'g2'].map((id) =>
+        fixtureIssue({
+          id,
+          code: id.toUpperCase(),
+          severity: 1,
+          sightings: [onModel([100, 50, -50])],
+        }),
+      ),
+    );
+  const names = (r: { result: unknown }) =>
+    (r.result as { rows: { name: string }[] }).rows.map((row) => row.name);
+
+  it('orders by the worst open level unless asked, and cuts to the limit after ordering', async () => {
+    const { c } = ctx({ ws: busyTank() });
+    for (const input of [{}, { sort: 'worst' }]) {
+      const all = await runRendererTool('list_assets', input, c);
+      expect(names(all)).toEqual(['20-T-0003', '20-T-0002', '20-T-0001']);
+      const one = await runRendererTool('list_assets', { ...input, limit: 1 }, c);
+      expect(one.result).toMatchObject({ total: 3, shown: 1 });
+      expect(names(one)).toEqual(['20-T-0003']);
+    }
+  });
+
+  it('sort findings: the asset with the most findings first, also past the limit', async () => {
+    const { c } = ctx({ ws: busyTank() });
+    const all = await runRendererTool('list_assets', { sort: 'findings' }, c);
+    // tank 1 has three; tanks 2 and 3 one each, both open: the name decides
+    expect(names(all)).toEqual(['20-T-0001', '20-T-0002', '20-T-0003']);
+    expect(all.result).toMatchObject({
+      rows: [{ name: '20-T-0001', findings: 3, open: 2, worst: { level: 1, label: 'S1' } }, {}, {}],
+    });
+    // more assets than the limit: the cut comes after the order, so the one asked for is there
+    const one = await runRendererTool('list_assets', { sort: 'findings', limit: 1 }, c);
+    expect(one.result).toMatchObject({ total: 3, shown: 1 });
+    expect(names(one)).toEqual(['20-T-0001']);
+    await expect(runRendererTool('list_assets', { sort: 'count' }, c)).rejects.toThrow(
+      /^Invalid input at sort/,
+    );
+  });
+
+  it('sort findings: with as many findings, the one with more of them open comes first', async () => {
+    // tank 2 and tank 3 get a second finding each; the one of tank 2 is closed
+    const closed = fixtureIssue({
+      id: 'c1',
+      code: 'C01',
+      status: 'closed',
+      sightings: [onModel([200, 50, -50])],
+    });
+    const open = fixtureIssue({ id: 'o1', code: 'O01', sightings: [onModel([300, 50, -50])] });
+    const r = await runRendererTool(
+      'list_assets',
+      { sort: 'findings' },
+      ctx({ ws: workspace([closed, open]) }).c,
+    );
+    expect(r.result).toMatchObject({
+      rows: [
+        { name: '20-T-0003', findings: 2, open: 2 },
+        { name: '20-T-0002', findings: 2, open: 1 },
+        { name: '20-T-0001', findings: 1, open: 0 },
+      ],
+    });
+  });
+
+  it('counts the findings that have a place in the model but no asset within reach', async () => {
+    // far from every tagged asset; and one on a photo only, which is counted apart
+    const far = fixtureIssue({ id: 'x1', code: 'X01', sightings: [onModel([5000, 0, 5000])] });
+    const ws = workspace([far, photoOnly({ id: 'p1', code: 'P01' }, 'DJI_0661')]);
+    const r = await runRendererTool('list_assets', {}, ctx({ ws }).c);
+    expect(r.result).toMatchObject({ total: 3, unplaced: 1, noAsset: 1 });
+  });
+
+  it('says in its description which order answers which question', () => {
+    const said = getToolSpec('list_assets')?.meta.description ?? '';
+    expect(said).toContain("Use it for 'which asset is in the worst shape'.");
+    expect(said).toContain("Use sort findings for 'which asset has the most findings'.");
   });
 
   it('says the model is still loading when the bounds were never measured', async () => {
@@ -838,7 +966,7 @@ describe('issue rows', () => {
     expect(r.result).toMatchObject({
       total: 3,
       where: null,
-      note: 'Nothing is selected, so this covers the whole project.',
+      note: 'No tagged asset is selected, so this covers the whole project.',
     });
     ws.getState().select({ kind: 'asset', id: '20-T-0002' });
     const tank = await runRendererTool('list_issues', { where: 'selection' }, c);

@@ -77,11 +77,11 @@ An empty conversation offers up to four suggested requests as buttons, picked fo
 
 On **Issues**, **Media**, **Detections** and **Reports** the column starts folded, so nothing moves if you do not use the agent.
 
-- Click **Agent** in the title bar to unfold or fold it. **Ctrl Alt B** does the same on these screens (on **Scene** it folds the right panel).
+- Click **Agent** in the title bar to unfold or fold it. On a narrow window the button shows only its icon. **Ctrl Alt B** does the same on these screens (on **Scene** it folds the right panel).
 - It unfolds by itself when the agent takes you to one of these screens. {product} remembers on this machine whether you left it open.
 - In the smallest window the column takes at most a third of the width, and the screen beside it stays usable.
-- The conversation is kept while you move between screens. It ends when you open another project or click **New conversation**. A reply under way carries on when you change screen.
-- There is no agent column on the globe, **Settings** or the project list. With cloud AI off, blocked by a package or offline-only, the column shows the same messages as the panel on **Scene**.
+- The conversation is kept while you move between screens. It ends when you open another project or click **New conversation**. A reply under way carries on while you move between **Scene** and these screens.
+- There is no agent column on the globe, **Settings** or the project list, and a reply under way stops when you go there. With cloud AI off, blocked by a package or offline-only, the column shows the same messages as the panel on **Scene**.
 
 ### Move the camera
 
@@ -108,7 +108,7 @@ Ask to see something and the agent does it, then says in a sentence or two what 
 | "Which asset has the most findings?"                | Lists the assets or areas with their findings, how many are open and the worst open level.                                                           |
 | "Open the reports"                                  | Opens that screen. **Scene**, **Issues**, **Media**, **Detections** and **Reports** work the same way.                                               |
 
-- "This asset" means the asset or area you have selected. With nothing selected it means the whole project.
+- "This asset" means the asset you have selected. With nothing selected it means the whole project.
 - "The highest severity" means the highest level present in the findings in question, not the top of the scale. The agent says severity by its name in your model (for example Severe). If you use a word that is not a level of the project, it says which level it used.
 - If several findings share the worst level, the agent shows the first by code, says how many share it and names them, so you can ask for the next.
 - A finding marked only on a photo has no point in the 3D view. The agent puts the camera where the photo was taken, opens the photo and says the finding is on a photo only. Such findings are not counted per asset.

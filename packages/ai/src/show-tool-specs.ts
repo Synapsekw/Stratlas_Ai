@@ -66,6 +66,12 @@ export const showToolInputs = {
   list_assets: z
     .object({
       by: z.enum(['asset', 'area']).default('asset'),
+      sort: z
+        .enum(['worst', 'findings'])
+        .default('worst')
+        .describe(
+          '"worst": the worst open level first. "findings": the most findings first, then the most open ones',
+        ),
       limit: z.number().int().positive().max(100).default(20),
     })
     .strict(),
@@ -121,7 +127,7 @@ export const SHOW_TOOL_SPECS: ToolSpec[] = [
     meta: {
       name: 'list_assets',
       description:
-        "Per tagged asset or per area: how many findings, how many open, and the worst open severity. Use it for 'which asset is in the worst shape'.",
+        "Per tagged asset or per area: how many findings, how many open, and the worst open severity. Use it for 'which asset is in the worst shape'. Use sort findings for 'which asset has the most findings'.",
       scope: 'project',
       risk: 'read',
     },

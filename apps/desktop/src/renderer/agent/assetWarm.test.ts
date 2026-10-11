@@ -154,10 +154,34 @@ describe('warming the asset bounds', () => {
     expect(c.running()).toBe(0);
     c.tick(10);
     expect(i.calls()).toBe(60);
-    // nothing was measured, so the next time the 3D view mounts the minute starts again
-    setActiveScene(null);
-    setActiveScene(scene);
+  });
+
+  it('does not start the minute again for a project whose assets never got their bounds', () => {
+    const c = clock();
+    // the tagged model is hidden, or its tags name nodes it does not have: nothing to measure
+    const i = index();
+    stop = startAssetWarm({ ...c, index: i.index });
+    open('a');
+    c.tick(60);
+    expect(i.calls()).toBe(60);
+    expect(c.running()).toBe(0);
+    // every return to Scene would walk the whole model once a second for another minute
+    for (let visit = 0; visit < 3; visit++) {
+      setActiveScene(null);
+      setActiveScene(scene);
+      expect(c.running()).toBe(0);
+    }
+    workspace.getState().replaceManifest(manifest('a', TANKS));
+    expect(c.running()).toBe(0);
+    c.tick(5);
+    expect(i.calls()).toBe(60);
+    // tagged anew, or another project: that is something else to measure
+    workspace.getState().replaceManifest(manifest('a', [...TANKS, 'T-103']));
     expect(c.running()).toBe(1);
+    open('b');
+    expect(c.running()).toBe(1);
+    c.tick();
+    expect(i.calls()).toBe(61);
   });
 
   it('keeps asking while only some of the assets have their bounds', () => {
@@ -279,6 +303,24 @@ describe('warming the asset bounds', () => {
     expect(c.running()).toBe(1);
     c.tick();
     expect(i.calls()).toBe(2);
+    expect(c.running()).toBe(0);
+  });
+
+  it('asks again when a tag is renamed: the bounds remembered were for other names', () => {
+    const c = clock();
+    const i = index((call) => (call >= 2 ? ['T-101', 'T-102A'] : TANKS));
+    stop = startAssetWarm({ ...c, index: i.index });
+    open('a');
+    c.tick();
+    expect(c.running()).toBe(0);
+    // as many tags as before, one of them by another name
+    workspace.getState().replaceManifest(manifest('a', ['T-101', 'T-102A']));
+    expect(c.running()).toBe(1);
+    c.tick();
+    expect(i.calls()).toBe(2);
+    expect(c.running()).toBe(0);
+    // the same tags in another order are the same assets
+    workspace.getState().replaceManifest(manifest('a', ['T-102A', 'T-101']));
     expect(c.running()).toBe(0);
   });
 

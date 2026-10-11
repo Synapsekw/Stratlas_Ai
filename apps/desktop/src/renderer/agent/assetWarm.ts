@@ -35,8 +35,8 @@ const APP_DEPS: AssetWarmDeps<ReturnType<typeof globalThis.setInterval>> = {
 
 interface WarmTarget {
   /**
-   * The project and how many tags it has: what the remembered bounds are good for (the index
-   * drops them when the count changes).
+   * The project and the names of its tags: what the remembered bounds are good for (the index
+   * drops them when the names change).
    */
   key: string;
   /** How many assets there are to measure: the index has one box per tag name. */
@@ -46,16 +46,15 @@ interface WarmTarget {
 /** What there is to warm; null without a project or without a tagged asset. */
 function warmTarget(project: OpenProject | null): WarmTarget | null {
   if (!project) return null;
-  let tags = 0;
-  const names = new Set<string>();
+  const tags: string[] = [];
   for (const l of project.manifest.layers) {
-    if (l.kind !== 'mesh') continue;
-    for (const t of l.tags ?? []) {
-      tags += 1;
-      names.add(t.tag);
-    }
+    if (l.kind === 'mesh') for (const t of l.tags ?? []) tags.push(t.tag);
   }
-  return tags > 0 ? { key: `${project.id}/${String(tags)}`, assets: names.size } : null;
+  if (tags.length === 0) return null;
+  return {
+    key: JSON.stringify([project.id, ...tags.sort()]),
+    assets: new Set(tags).size,
+  };
 }
 
 function warm<Timer>(deps: AssetWarmDeps<Timer>): () => void {
@@ -84,12 +83,13 @@ function warm<Timer>(deps: AssetWarmDeps<Timer>): () => void {
         stop();
         return;
       }
-      const ready = index.status === 'ready';
-      const all = ready && index.boxes.length >= target.assets;
+      const all = index.status === 'ready' && index.boxes.length >= target.assets;
       const last = tries >= MAX_TRIES;
-      // some bounds after the whole minute: a tag whose node is in no model never gets its box,
-      // and must not start the minute again on every return to Scene
-      if (all || (ready && last)) known = target.key;
+      // the whole minute is over, with some bounds or with none: a tag whose node is in no model
+      // never gets its box, and a tagged model that is hidden is not measured at all. Neither may
+      // start the minute again on every return to Scene, a walk of the whole model once a second
+      // for people who never use the agent; the asset tools still measure when they are used
+      if (all || last) known = target.key;
       if (all || last || index.status === 'none') stop();
     }, EVERY_MS);
     timer = { id };

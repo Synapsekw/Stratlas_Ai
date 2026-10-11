@@ -13,6 +13,24 @@ describe('the system prompt', () => {
     expect(p.indexOf('Showing things:')).toBeLessThan(p.indexOf('Rules:'));
   });
 
+  it('says "this asset" is the selected asset: an area cannot be selected', () => {
+    const p = systemPrompt('scene3d');
+    expect(p).toContain(
+      '- "This asset" means the selected asset (where: "selection"). With nothing selected it means the whole project: leave where out.',
+    );
+    expect(p).not.toContain('selected asset or area');
+  });
+
+  it('says why a photo count and a finding count can differ', () => {
+    const p = systemPrompt('photo');
+    const line =
+      '- Photo counts in Media include detections that are not accepted yet. Findings do not. Say so when the two numbers differ.';
+    expect(p.split('\n')).toContain(line);
+    // inside the block on showing things
+    expect(p.indexOf('Showing things:')).toBeLessThan(p.indexOf(line));
+    expect(p.indexOf(line)).toBeLessThan(p.indexOf('Rules:'));
+  });
+
   it('has no en or em dash in any profile', () => {
     for (const profile of ['full', 'compact', 'answer-only'] as const) {
       expect(systemPrompt('scene3d', profile)).not.toMatch(/[–—]/);

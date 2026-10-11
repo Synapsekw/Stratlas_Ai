@@ -48,7 +48,8 @@ const isOpen = (i: Issue) => i.status !== 'closed';
 
 // What the issue tools share (list_issues and summarize_issues use these too) ------------------
 
-export const WHOLE_PROJECT = 'Nothing is selected, so this covers the whole project.';
+// said also with a finding or an untagged part of the model selected: neither is an asset
+export const WHOLE_PROJECT = 'No tagged asset is selected, so this covers the whole project.';
 
 /**
  * The findings `where` names: on a tagged asset, in an area, or on the selection. "This asset"
@@ -163,7 +164,17 @@ function pick(
   const ids = there ? new Set(there.ids) : null;
   const among = ids ? open.filter((i) => ids.has(i.id)) : open;
   const issue = [...among].sort(worstFirst)[0];
-  if (!issue) throw new ToolError(`No open findings${there ? ` on ${there.label}` : ''}.`);
+  if (!issue) {
+    if (!there) throw new ToolError('No open findings.');
+    // in a project graded from photos no asset has a finding: "none" alone would read as "clean"
+    const n = there.unplaced;
+    const be = n === 1 ? 'is' : 'are';
+    const apart =
+      n > 0
+        ? ` ${plural(n, 'finding')} ${be} marked on photos or the map only and ${be} not matched to assets.`
+        : '';
+    throw new ToolError(`No open findings on ${there.label}.${apart}`);
+  }
   return { issue, among, whole };
 }
 
@@ -197,9 +208,13 @@ define('show_issue', async (input, ctx) => {
       // nothing for the 3D camera, but the map pans to a finding that is marked on it
       ctx.workspace.getState().flyTo({ kind: 'selection', selection });
       const mapOnly = issue.sightings.length > 0 && issue.sightings.every((s) => s.on === 'map');
-      nowhere = mapOnly
-        ? 'This finding is marked on the map only. The map shows it.'
-        : 'This finding has no position to fly to.';
+      // the stage can show the 3D view alone: the map then shows nothing until it is opened
+      const mapShows = app.stageView?.().showMap === true;
+      nowhere = !mapOnly
+        ? 'This finding has no position to fly to.'
+        : mapShows
+          ? 'This finding is marked on the map only. The map shows it.'
+          : 'This finding is marked on the map only. Open the map to see it.';
     }
   }
 
@@ -366,7 +381,7 @@ define('open_screen', ({ screen }, ctx) => {
 
 // Findings per asset -------------------------------------------------------------------------
 
-define('list_assets', ({ by, limit }, ctx) => {
+define('list_assets', ({ by, sort, limit }, ctx) => {
   const index = assetIndex(ctx);
   if (index.status === 'loading') throw new ToolError(MODEL_LOADING);
   if (index.status === 'none') throw new ToolError(NO_ASSETS);
@@ -401,15 +416,22 @@ define('list_assets', ({ by, limit }, ctx) => {
       };
     })
     .sort(
-      (a, b) => b.rank - a.rank || b.row.open - a.row.open || a.row.name.localeCompare(b.row.name),
+      (a, b) =>
+        (sort === 'findings' ? b.row.findings - a.row.findings : b.rank - a.rank) ||
+        b.row.open - a.row.open ||
+        a.row.name.localeCompare(b.row.name),
     );
+  // the cut comes after the order: the asset asked for is in the rows however many there are
   const rows = all.slice(0, limit).map((r) => r.row);
+  const issues = ctx.workspace.getState().issues;
   return {
     result: {
       by,
       total: all.length,
       shown: rows.length,
       unplaced: index.unplaced.length,
+      // a place in the model, but no asset within reach: in no row, like the unplaced ones
+      noAsset: issues.length - index.unplaced.length - index.links.size,
       rows,
     },
     summary: plural(rows.length, by),

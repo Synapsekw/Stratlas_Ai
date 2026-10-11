@@ -9,6 +9,7 @@ import type {
 } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { shell } from '../shell';
 import { appAgentSession, setAgentTask, setAgentWindow, startAgentSession } from './session';
 
 interface Call {
@@ -80,6 +81,7 @@ const ready = () =>
 let stop: (() => void) | undefined;
 beforeEach(() => {
   b.forget();
+  shell.getState().go('scene');
 });
 afterEach(async () => {
   stop?.();
@@ -116,6 +118,49 @@ describe('the one agent session of the app', () => {
     setAgentWindow('issues');
     expect(session.getState().turns).toHaveLength(2);
     expect(session.getState().busy).toBe(true);
+    expect(b.sent('ai:cancel')).toHaveLength(0);
+  });
+
+  it('lets a reply run on while the screen changes to one that shows the agent', async () => {
+    await talking();
+    for (const screen of ['media', 'issues', 'detections', 'reports', 'scene'] as const) {
+      shell.getState().go(screen);
+      expect(b.sent('ai:cancel'), screen).toHaveLength(0);
+      expect(session.getState().busy, screen).toBe(true);
+    }
+  });
+
+  it('stops a reply when the screen changes to one with no agent and no Stop', async () => {
+    await talking();
+    // from Scene and from a screen with the agent column alike
+    const leaving = [
+      ['scene', 'settings'],
+      ['media', 'globe'],
+      ['issues', 'projects'],
+      ['reports', 'welcome'],
+    ] as const;
+    for (const [n, [from, to]] of leaving.entries()) {
+      shell.getState().go(from);
+      if (!session.getState().busy) await session.send('And the next one');
+      expect(session.getState().busy, from).toBe(true);
+      expect(b.sent('ai:cancel'), from).toHaveLength(n);
+
+      shell.getState().go(to);
+
+      expect(b.sent('ai:cancel'), to).toHaveLength(n + 1);
+      expect(session.getState().busy, to).toBe(false);
+    }
+    // the conversation is kept: the person finds it when they come back
+    expect(session.getState().turns).toHaveLength(2 * leaving.length);
+    expect(session.getState().turns.at(-1)).toMatchObject({ kind: 'assistant', status: 'stopped' });
+  });
+
+  it('leaves a quiet conversation alone on those screens', async () => {
+    stop = startAgentSession();
+    workspace.getState().openProject(project('a'));
+    await ready();
+    shell.getState().go('settings');
+    shell.getState().go('scene');
     expect(b.sent('ai:cancel')).toHaveLength(0);
   });
 
@@ -206,5 +251,10 @@ describe('the one agent session of the app', () => {
     workspace.getState().openProject(project('b'));
     window.dispatchEvent(new Event('focus'));
     expect(b.sent('ai:status')).toHaveLength(asked);
+    // nor does it follow the screen any more
+    await session.send('Show the worst finding');
+    expect(session.getState().busy).toBe(true);
+    shell.getState().go('settings');
+    expect(b.sent('ai:cancel')).toHaveLength(0);
   });
 });
