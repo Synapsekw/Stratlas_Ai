@@ -521,7 +521,7 @@ Survey dates become folders in the sidebar, with a date bar and calendar above t
 - [ ] Switch dates again: the layer from the third date stays on.
 - [ ] Hide one layer of the viewed date, switch away and back: it is still hidden.
 - [ ] A project with a single survey date still shows its date folder and the date bar (without arrows). A project with no survey dates shows the old list grouped by type and no date bar.
-- [ ] Drag a group heading (for example **Video**) from one date folder onto another: every dataset of the group is now in that folder, and the note under the list says how many moved.
+- [ ] Drag a group heading (for example **Video**) from one date folder onto another: every dataset of the group is now in that folder, and the note at the top of the list says how many moved.
 - [ ] Click **Undo** in the note: the datasets are back in the folder they came from.
 - [ ] Right-click a group heading, pick a date under **Move to date**: the whole group moves, the same as the drag.
 - [ ] A single dataset still drags on its own, as before.

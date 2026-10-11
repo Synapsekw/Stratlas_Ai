@@ -22,7 +22,7 @@ Drop a dataset on **Every date** to take its date off. When every dataset has a 
 
 Without dragging: right-click a dataset or a group heading (or focus it and press the menu key or **Shift+F10**), then pick a date or **Every date (no date)** under **Move to date**. The **Belongs to date...** box in the Selection panel does the same for one dataset.
 
-After a move of more than one dataset, a note under the list says how many were moved and offers **Undo**, which puts them back under the date they had. Undo covers the last move only, until you dismiss the note, make another move or close the project.
+After a move of more than one dataset, a note at the top of the list says how many were moved and offers **Undo**, which puts them back under the date they had. Undo covers the last move only, until you dismiss the note, make another move or close the project. A dataset you filed under a different date since stays where you put it.
 
 Moving a dataset only changes which survey date it is filed under. Its files stay where they are, with the same names and contents, and the layer's own settings (position, colours, calibration) are not touched. A few things to know:
 
