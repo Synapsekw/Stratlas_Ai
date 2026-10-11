@@ -4,7 +4,7 @@ One note per working block, written by `/wrapup` (`.claude/commands/wrapup.md`) 
 
 `_draft-*.md` files are left by the Stop hook (`tools/agent/session-draft.mjs`) after a substantial session in the main checkout; the next `/wrapup` folds them into a note and deletes them. They are never committed.
 
-The repository is public: no client, site, tester or person names, no paths to client data, no screenshots of client projects. `/wrapup` checks each note with `tools/demo/check-no-client-data.mjs` before committing it.
+The repository is public: no client, site, tester or person names, no paths to client data, no screenshots of client projects. `/wrapup` checks each note with `tools/agent/check-public-text.mjs` before committing it.
 
 ## Template
 
