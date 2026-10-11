@@ -258,6 +258,35 @@ def selftest(addon: Path | None = None) -> dict[str, Any]:
     return done("ready")
 
 
+def check(addon: Path | None = None, timeout: float = 120.0) -> dict[str, Any]:
+    """``selftest`` in a process of its own, as a job asks before it uses the card: a driver
+    fault or a hang there cannot take the job down. Never raises."""
+    cmd = [sys.executable, *subprocess._args_from_interpreter_flags(), "-m", "aio_pipelines.accel"]
+    cmd.append("--selftest")
+    if addon is not None:
+        cmd += ["--addon", str(addon)]
+    try:
+        p = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            stdin=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        out = json.loads(p.stdout.strip().splitlines()[-1])
+        if isinstance(out, dict) and isinstance(out.get("state"), str):
+            return out
+        raise ValueError("no state in the answer")
+    except subprocess.TimeoutExpired:
+        return {
+            "state": "failed",
+            "reason": f"The graphics card did not answer its test within {timeout:.0f} s.",
+        }
+    except (OSError, ValueError, IndexError) as e:
+        return {"state": "failed", "reason": f"The graphics card's test could not run ({e})."}
+
+
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     if "--selftest" not in args:

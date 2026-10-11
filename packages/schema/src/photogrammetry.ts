@@ -76,6 +76,13 @@ export const PhotoStage = z.looseObject({
   /** Peak resident memory of the stage, bytes. */
   memoryPeakBytes: z.number().int().nonnegative().optional(),
   message: z.string().max(2000).optional(),
+  /**
+   * Where the stage's array code ran: `gpu` when the GPU add-on's graphics card did any of it.
+   * Written for depth maps and fusion; absent in runs of older packs, which means the CPU.
+   */
+  device: z.enum(['cpu', 'gpu']).optional(),
+  /** Photos meant for the graphics card that were done on the CPU instead (absent: none). */
+  fallbacks: z.number().int().nonnegative().optional(),
 });
 
 /** One calibration group: photos from one camera body and lens. */

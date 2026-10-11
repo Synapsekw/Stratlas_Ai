@@ -111,6 +111,8 @@ def test_run_json_lists_what_the_run_made(processed):
     )
     dense = next(s for s in doc["stages"] if s["name"] == "dense")
     assert dense["seconds"] > 0 and dense["memoryPeakBytes"] > 0
+    # no GPU add-on here: the array code ran on the CPU and nothing fell back
+    assert dense["device"] == "cpu" and "fallbacks" not in dense and "accelerator" not in doc["versions"]
     assert doc["capture"] == "c1" and doc["versions"]["pack"]
     assert all(isinstance(v, str) and len(v) <= 80 for v in doc["versions"].values())
 

@@ -259,6 +259,28 @@ describe('photogrammetry files', () => {
     ).toBe(false);
   });
 
+  it('reads where a stage ran and how many photos fell back to the CPU, and a run without either', () => {
+    const stages = [
+      { name: 'dense', state: 'done', seconds: 39.4, device: 'gpu', fallbacks: 2 },
+      { name: 'fuse', state: 'done', seconds: 148.5, device: 'cpu' },
+    ];
+    const r = PhotoRun.parse({
+      ...RUN,
+      stages,
+      versions: { ...RUN.versions, accelerator: '0.1.0' },
+    });
+    expect(r.stages.map((s) => [s.device, s.fallbacks])).toEqual([
+      ['gpu', 2],
+      ['cpu', undefined],
+    ]);
+    expect(r.versions.accelerator).toBe('0.1.0');
+    expect(PhotoRun.parse(RUN).stages[0]?.device).toBeUndefined();
+    expect(
+      PhotoRun.safeParse({ ...RUN, stages: [{ name: 'dense', state: 'done', device: 'metal' }] })
+        .success,
+    ).toBe(false);
+  });
+
   it('reads gcp.json, refuses duplicate points and keeps draft, confirmed and skipped marks', () => {
     const point = (id: string, role: 'control' | 'check') => ({
       id,
