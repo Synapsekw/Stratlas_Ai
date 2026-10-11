@@ -76,3 +76,51 @@
   margin: 0;
   font-size: 12px;
 }
+
+/* ---------- processing: the drawer ---------- */
+.proc-drawer {
+  position: fixed;
+  inset-block: var(--tb-h) 0;
+  inset-inline-end: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  width: min(400px, calc(100vw - 56px));
+  border-inline-start: 1px solid var(--line);
+  background: var(--bg-1);
+  box-shadow: -8px 0 24px rgb(0 0 0 / 25%);
+}
+.proc-h {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.proc-t {
+  flex: 1;
+  min-width: 0;
+}
+.proc-t h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.proc-t h2:focus {
+  outline: none;
+}
+.proc-t p {
+  margin: 2px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.proc-b {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
+}
+.proc-dlg .new-job {
+  padding: 0;
+}
