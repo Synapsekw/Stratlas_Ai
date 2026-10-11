@@ -30,7 +30,7 @@ The Projects screen shows "The project did not open." with the reason:
 
 ## Processing does not start
 
-- "Processing cannot run yet: the processing tools are missing or need an update" (in the **Processing** drawer), or "No pipeline pack in ..." under **Details**: the processing tools are not installed. Click **Update processing tools** (or open **Settings**, **Processing tools**), click **Choose file** under **Install or update from file** and pick the pipeline pack file that came with the installer. The page then shows the version, and processing uses it from then on.
+- "Processing cannot run yet: the processing tools are missing or need an update" (in the **Processing** drawer), the processing tools are not installed. The reason shows in **Settings**, **Processing tools**, under **Status**, for example "No pipeline pack in ...". Click **Update processing tools** (or open **Settings**, **Processing tools**), click **Choose file** under **Install or update from file** and pick the pipeline pack file that came with the installer. The page then shows the version, and processing uses it from then on.
 - "There is no pipeline called ...", or "The processing tools need an update": the pack is older than the app, which happens after an update of {product}. Install the pack that came with this version the same way; {product} uses the newest pack it has.
 - "These processing tools are for ..., and this computer is ...": the file is for another kind of computer. Pick the one for this computer.
 - "This file is damaged" or "This file is incomplete": the file did not copy whole. Copy or download it again.

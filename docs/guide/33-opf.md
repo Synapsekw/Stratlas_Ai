@@ -17,7 +17,7 @@ The job log lists what was not imported. If the OPF project names its photos by 
 
 ## Export a run as OPF
 
-Open **Processing**, and on the run under **Maps from photos** click **Export as OPF**. (Or **Settings**, **Processing tools**, **Advanced: run a pipeline directly**, **OPF export**, where you give the run id.) Choose an empty folder. {product} writes `project.opf` with the cameras, calibration, control points and sparse cloud, and the orthophoto and DSM in `outputs/`. A folder that is not empty is refused, so nothing is overwritten.
+Open **Processing**, and on the run under **Maps from photos** click **Export as OPF** and choose an empty folder. (Or **Settings**, **Processing tools**, **Advanced: run a pipeline directly**, **OPF export**, where you give the run id.) {product} writes `project.opf` with the cameras, calibration, control points and sparse cloud, and the orthophoto and DSM in `outputs/`. A folder that is not empty is refused, so nothing is overwritten.
 
 ## What OPF does not carry here
 

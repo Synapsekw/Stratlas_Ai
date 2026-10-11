@@ -83,7 +83,7 @@ Detections are boxes or outlines on photos and video frames, from you, a model o
 
 **Ctrl Z** and **Ctrl Y** undo and redo. **Ctrl**+click selects several tiles; **Clear selection** empties it. The state reads **Saved** once your decisions are written into the detection file.
 
-On an inspection project, **Turn detections into issues** on the **Detections** screen places the accepted detections on the model and groups them into issues. It asks only for the inspection's own options, then runs for the open project; the **Processing** drawer opens on it. It never makes a second issue for the same box.
+On an inspection project, **Turn detections into issues** on the **Detections** screen places the accepted detections on the model and groups them into issues. It asks only for the inspection's own options, then runs for the open project; the **Processing** drawer opens on it. **Turn detections into issues** never makes a second issue for the same box.
 
 ## Detect with AI
 

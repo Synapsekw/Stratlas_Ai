@@ -56,9 +56,10 @@ The palette also has the screens (**Go to Issues**, **Go to Settings**, ...) and
 ## The sidebar
 
 - **Projects**, **Scene**, **Issues**, **Media**, **Detections** and **Reports**. **Original review** appears after Scene when the project has one.
-- **Processing**, in the title bar: what the open project is processing. See [Processing](08-building-projects.md#processing).
 - **Datasets** lists the layers of the open project with an eye to show or hide each one.
 - The small tab on the sidebar's right edge, halfway down, folds the sidebar to a rail of icons and brings it back. **Ctrl B** and **Collapse** at the bottom do the same. The arrow on the tab points the way the edge will move.
+
+What the open project is processing is not in the sidebar: it is the **Processing** chip in the title bar. See [Processing](08-building-projects.md#processing).
 
 ### Folding the side panels away
 
