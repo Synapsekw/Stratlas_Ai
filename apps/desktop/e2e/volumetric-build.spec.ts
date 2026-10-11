@@ -260,6 +260,21 @@ test('a volumetric project from two raw survey dates: wizard, Processing drawer,
     await expect(legend.getByRole('radio')).toHaveCount(0);
     await expect(legend.getByRole('slider')).toHaveCount(0);
     await expect(second.getByTestId('vol-no-drape')).toHaveCount(0);
+    // with the colours on, both views still agree on the ground under the site (one choice
+    // drives the street map of both)
+    await expect
+      .poll(() =>
+        win.evaluate(() => {
+          const w = window as unknown as Views;
+          const of = (s: { scene: Obj3 } | null) =>
+            JSON.stringify([
+              s?.scene.getObjectByName('basemap:site-street-map')?.visible ?? false,
+              s?.scene.getObjectByName('env:ground')?.visible ?? null,
+            ]);
+          return of(w.__stratlas.stage()) === of(w.__stratlas.compare().second);
+        }),
+      )
+      .toBe(true);
     // it lies over the view without taking its clicks
     const under = await legend.evaluate((el) => {
       const r = el.getBoundingClientRect();

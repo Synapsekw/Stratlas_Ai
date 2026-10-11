@@ -261,6 +261,24 @@ function drapes(win: Page) {
   );
 }
 
+/**
+ * The street map under the site in each 3D view: whether its group shows, and whether the plain
+ * ground is drawn instead. Both views follow one choice, so they must agree.
+ */
+function streetGround(win: Page) {
+  return inspect(
+    win,
+    ({ w }) => {
+      const of = (s: StageLike | null) => ({
+        map: s?.scene.getObjectByName('basemap:site-street-map')?.visible ?? false,
+        plain: s?.scene.getObjectByName('env:ground')?.visible ?? null,
+      });
+      return { main: of(w.__stratlas.stage()), second: of(w.__stratlas.compare().second) };
+    },
+    null,
+  );
+}
+
 /* ----------------------------------------------------------------------- synthetic project */
 
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
@@ -714,6 +732,14 @@ real.describe('@realdata Masafi', () => {
       await expect(legend).toHaveAttribute('data-surface-shown', 'elev');
       await expect(legend.locator('.ends')).toContainText(' m');
       await expect(second.getByTestId('vol-no-drape')).toHaveCount(0);
+      // with the colours on, both views still agree on the street ground under the site
+      await expect
+        .poll(async () => {
+          const g = await streetGround(win);
+          return JSON.stringify(g.main) === JSON.stringify(g.second);
+        })
+        .toBe(true);
+      await report(testInfo, 'masafi-street-ground', await streetGround(win));
       // the same range on both sides: the left legend sets it for both
       const ends = (await legend.locator('.ends').innerText()).replace(/\s+/g, ' ');
       expect(
