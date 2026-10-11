@@ -128,8 +128,8 @@ export async function startProducts(run: string, p: PendingProducts): Promise<st
  * (`builder:ensureCapture`, which finds it when it exists) and put the run's layers that are under
  * no date into it (`builder:updateLayers`). The run's layers are the ones its `run.json` lists
  * (`outputs.layers`, as the run panel reads them); a layer the person already filed under a date
- * stays where it is. With no layers yet nothing is saved and a reason is answered, so the warning
- * never goes while maps are left without a date. On any failure the warning stays (after the date
+ * stays where it is. With no layers yet, or layers the project has not been reloaded with, nothing
+ * is saved and a reason is answered, so the warning never goes while maps are left without a date. On any failure the warning stays (after the date
  * was saved a second try finds it and files the layers). Answers a reason, or null when it worked.
  */
 export async function fileUnderDate(run: string): Promise<string | null> {
@@ -147,9 +147,11 @@ export async function fileUnderDate(run: string): Promise<string | null> {
     const outputs = read.value.run.outputs.layers;
     if (outputs.length === 0) return 'The maps are not ready yet. Try again when they are.';
     if (!sameProject()) return 'Open the project these maps belong to, then try again.';
-    const undated = (workspace.getState().project?.manifest.layers ?? [])
-      .filter((l) => outputs.includes(l.id) && !l.capture)
-      .map((l) => l.id);
+    // run.json can list layers before the project is reloaded with them: nothing to file yet
+    const layers = workspace.getState().project?.manifest.layers ?? [];
+    if (outputs.some((id) => !layers.some((l) => l.id === id)))
+      return 'The maps are not loaded yet. Try again in a moment.';
+    const undated = layers.filter((l) => outputs.includes(l.id) && !l.capture).map((l) => l.id);
     if (undated.length > 0) {
       const saved = await bridge.call('builder:ensureCapture', {
         projectId: project.id,
@@ -157,7 +159,9 @@ export async function fileUnderDate(run: string): Promise<string | null> {
       });
       if (!saved.ok) return saved.error;
       if (!saved.value.ok) return saved.value.error;
-      if (sameProject()) workspace.getState().replaceManifest(saved.value.manifest);
+      // the date is saved: a second try, in the run's project, files the layers
+      if (!sameProject()) return 'Open the project these maps belong to, then try again.';
+      workspace.getState().replaceManifest(saved.value.manifest);
       const filed = await bridge.call('builder:updateLayers', {
         projectId: project.id,
         layerIds: undated,
@@ -167,8 +171,11 @@ export async function fileUnderDate(run: string): Promise<string | null> {
       if (!filed.value.ok) return filed.value.error;
       if (sameProject()) workspace.getState().replaceManifest(filed.value.manifest);
     }
-    ui.setDateWarning(run, null);
-    ui.setDate(run, null);
+    // a start for the same run, meanwhile, may have replaced the warning: leave that one alone
+    if (photoUi.getState().dateWarnings[run] === warning) {
+      ui.setDateWarning(run, null);
+      ui.setDate(run, null);
+    }
     return null;
   } catch (e) {
     return e instanceof Error ? e.message : String(e);

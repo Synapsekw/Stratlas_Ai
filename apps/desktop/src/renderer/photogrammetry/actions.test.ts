@@ -335,6 +335,21 @@ describe('a warned start keeps the run date for the next try', () => {
     expect(photoUi.getState().dates.k3).toBeUndefined();
   });
 
+  it('Create maps again whose save fails again keeps the date and the warning', async () => {
+    call.mockImplementation((channel: string) =>
+      Promise.resolve(channel === 'builder:ensureCapture' ? refusedSave : started),
+    );
+    await startProducts('k5', dated);
+    const again: PendingProducts = { ...base, products: ['ortho'], ...photoUi.getState().dates.k5 };
+    expect(await startProducts('k5', again)).toBeNull();
+    expect(channelsOf().filter((c) => c === 'builder:ensureCapture')).toHaveLength(2);
+    expect(photoUi.getState().dates.k5).toEqual({ captureDate: '2026-04-02' });
+    expect(photoUi.getState().dateWarnings.k5).toEqual({
+      date: '2026-04-02',
+      root: 'D:/Projects/site/',
+    });
+  });
+
   it('a start that works with a date clears the kept date and the warning', async () => {
     photoUi.getState().setDate('k4', { captureDate: '2026-04-02' });
     photoUi.getState().setDateWarning('k4', { date: '2026-04-02', root: 'D:/Projects/site/' });
@@ -511,5 +526,94 @@ describe('fileUnderDate', () => {
     answer({ 'photo:readRun': { ok: true, value: { ok: false, error: 'No such run.' } } });
     expect(await fileUnderDate('f9')).toBe('No such run.');
     expect(photoUi.getState().dateWarnings.f9).toBeDefined();
+  });
+
+  // the run file lists layers the project manifest has not been reloaded with yet
+  it('waits, and sends nothing, when the layers of the run are not in the manifest yet', async () => {
+    layersOpen();
+    warn('g1');
+    answer({ 'photo:readRun': readRun(['new-ortho', 'new-dsm']) });
+    expect(await fileUnderDate('g1')).toBe('The maps are not loaded yet. Try again in a moment.');
+    expect(channelsOf()).toEqual(['photo:readRun']);
+    expect(replaceManifest).not.toHaveBeenCalled();
+    expect(photoUi.getState().dateWarnings.g1).toEqual({ date: '2026-04-02', root });
+    expect(photoUi.getState().dates.g1).toEqual({ captureDate: '2026-04-02' });
+  });
+
+  it('waits when only some layers of the run are in the manifest', async () => {
+    layersOpen();
+    warn('g2');
+    answer({ 'photo:readRun': readRun(['ortho-1', 'new-dsm']) });
+    expect(await fileUnderDate('g2')).toBe('The maps are not loaded yet. Try again in a moment.');
+    expect(channelsOf()).toEqual(['photo:readRun']);
+    expect(photoUi.getState().dateWarnings.g2).toBeDefined();
+    expect(photoUi.getState().dates.g2).toBeDefined();
+  });
+
+  describe('when the open project changes during the call', () => {
+    const switchTo = (reply: unknown) => () => {
+      open.project = otherProject;
+      return Promise.resolve(reply);
+    };
+
+    it('stops after the run is read and replaces no manifest', async () => {
+      layersOpen();
+      warn('h1');
+      answer({ 'photo:readRun': switchTo(readRun(['ortho-1'])) });
+      expect(await fileUnderDate('h1')).toMatch(/Open the project/);
+      expect(channelsOf()).toEqual(['photo:readRun']);
+      expect(replaceManifest).not.toHaveBeenCalled();
+      expect(photoUi.getState().dateWarnings.h1).toEqual({ date: '2026-04-02', root });
+      expect(photoUi.getState().dates.h1).toEqual({ captureDate: '2026-04-02' });
+    });
+
+    it('stops after the date is saved: no layer is written, no manifest replaced', async () => {
+      layersOpen();
+      warn('h2');
+      answer({
+        'photo:readRun': readRun(['ortho-1']),
+        'builder:ensureCapture': switchTo(goodSave),
+        'builder:updateLayers': updated,
+      });
+      expect(await fileUnderDate('h2')).toMatch(/Open the project/);
+      expect(channelsOf()).toEqual(['photo:readRun', 'builder:ensureCapture']);
+      expect(replaceManifest).not.toHaveBeenCalled();
+      expect(photoUi.getState().dateWarnings.h2).toEqual({ date: '2026-04-02', root });
+      expect(photoUi.getState().dates.h2).toEqual({ captureDate: '2026-04-02' });
+    });
+
+    it('replaces no manifest of the other project once the layers are filed', async () => {
+      layersOpen();
+      warn('h3');
+      answer({
+        'photo:readRun': readRun(['ortho-1']),
+        'builder:ensureCapture': goodSave,
+        'builder:updateLayers': switchTo(updated),
+      });
+      // the layers were filed in the run's project, so the warning goes
+      expect(await fileUnderDate('h3')).toBeNull();
+      expect(replaceManifest).toHaveBeenCalledTimes(1);
+      expect(replaceManifest).not.toHaveBeenCalledWith(manifestWith(['filed']));
+      expect(photoUi.getState().dateWarnings.h3).toBeUndefined();
+    });
+  });
+
+  it('leaves a newer warning of the run alone when the call ends', async () => {
+    layersOpen();
+    warn('i1');
+    const newer = { date: '2026-05-01', root };
+    answer({
+      'photo:readRun': readRun(['ortho-1']),
+      'builder:ensureCapture': goodSave,
+      'builder:updateLayers': () => {
+        // a start for the same run, meanwhile, warned about another day
+        photoUi.getState().setDate('i1', { captureDate: '2026-05-01' });
+        photoUi.getState().setDateWarning('i1', newer);
+        return Promise.resolve(updated);
+      },
+    });
+    expect(await fileUnderDate('i1')).toBeNull();
+    expect(photoUi.getState().dateWarnings.i1).toBe(newer);
+    expect(photoUi.getState().dates.i1).toEqual({ captureDate: '2026-05-01' });
   });
 });

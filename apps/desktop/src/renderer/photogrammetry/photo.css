@@ -577,16 +577,16 @@
 .ph-date-warn {
   flex-wrap: wrap;
 }
-.ph-date-warn > span:not(.ph-date-err) {
+.ph-date-warn > span {
   flex: 1 1 16rem;
   min-width: 0;
 }
 .ph-date-warn .btn {
   flex: none;
 }
-.ph-date-err {
-  flex-basis: 100%;
-  color: var(--s5);
+/* why filing failed: directly under the warning, so it is read with it */
+.ph-date-warn + .ph-date-err {
+  margin-top: -6px;
 }
 /* one question, asked in line: what it is about, then the choice */
 .ph-q {

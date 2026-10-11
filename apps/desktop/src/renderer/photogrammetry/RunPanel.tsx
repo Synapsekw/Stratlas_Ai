@@ -225,26 +225,33 @@ function Progress({ run, data, jobs }: { run: string; data: PhotoRun | null; job
       });
   };
   const dateWarningNotice = (
-    <p className="notice warn small ph-date-warn" role="status" data-testid="photo-date-warning">
-      <Icon name="warn" size={14} />
-      <span>{words.sentence}</span>
-      {words.button && (
-        <button
-          type="button"
-          className="btn sm"
-          data-testid="photo-date-file"
-          disabled={filing}
-          onClick={fileUnder}
-        >
-          {words.button}
-        </button>
-      )}
+    <>
+      <p className="notice warn small ph-date-warn" role="status" data-testid="photo-date-warning">
+        <Icon name="warn" size={14} />
+        <span>{words.sentence}</span>
+        {words.button && (
+          <button
+            type="button"
+            className="btn sm"
+            data-testid="photo-date-file"
+            disabled={filing}
+            onClick={fileUnder}
+          >
+            {words.button}
+          </button>
+        )}
+      </p>
       {fileReason && (
-        <span className="ph-date-err" role="alert" data-testid="photo-date-file-error">
-          {fileReason}
-        </span>
+        <p
+          className="notice danger small ph-date-err"
+          role="alert"
+          data-testid="photo-date-file-error"
+        >
+          <Icon name="warn" size={14} />
+          <span>{fileReason}</span>
+        </p>
       )}
-    </p>
+    </>
   );
   const show = (mode: 'map' | '3d') => {
     photoUi.getState().close();
