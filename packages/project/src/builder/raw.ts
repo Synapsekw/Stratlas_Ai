@@ -22,6 +22,7 @@ import {
   type FileAltitudes,
 } from './altitude';
 import { captureForDate, slug, uniqueId, readManifestFile, updateManifestFile } from './create';
+import { importDrawingFile, isDrawingFile, type DrawingImages } from './drawings';
 import { readPhotoMeta } from './exif';
 import { mergeImport } from './importMerge';
 import { objToGlb } from './obj';
@@ -33,10 +34,11 @@ import {
   rasterToRgba,
   readTiffHeader,
   tiffCorners,
+  tiffGeoreferenced,
 } from './tiff';
 
 /** Review copies of photos. The app uses Electron's image codec; tools may use ffmpeg. */
-export interface ImageOps {
+export interface ImageOps extends DrawingImages {
   /** Write `dst` as a JPEG no larger than `maxPx` on its long side. */
   resizeJpeg(src: string, dst: string, maxPx: number): Promise<void>;
 }
@@ -103,6 +105,11 @@ export interface ImportDeps {
   utcOffsetMin?: number;
   /** How camera heights are made (data-conventions section 3a); default `auto`. */
   altitude?: AltitudeChoice;
+  /**
+   * Add drawing: every picture becomes a drawing (a JPEG is not a photo, a georeferenced TIFF not
+   * an ortho). Without it PDF, PNG, WebP, SVG and TIFF without a georeference do.
+   */
+  drawings?: boolean;
   onProgress?: (done: number, total: number, file: string) => void;
 }
 
@@ -314,7 +321,9 @@ export async function importRawFiles(
     const ext = extname(file).toLowerCase();
     try {
       if (consumed.has(file)) continue;
-      if (PHOTO.has(ext)) {
+      if (isDrawingFile(ext, deps.drawings === true)) {
+        items.push(await importDrawingFile(root, m, file, deps.images));
+      } else if (PHOTO.has(ext)) {
         const meta = readPhotoMeta(await readHead(file, 512 * 1024));
         const layer = photosLayer();
         const id = uniqueId(slug(name.slice(0, -ext.length), 'photo'), (x) =>
@@ -517,6 +526,11 @@ export async function importRawFiles(
           const tfw = (await sibling(file, '.tfw', [])) ?? (await sibling(file, '.tifw', []));
           const prj = await sibling(file, '.prj', []);
           const world = tfw ? parseWorldFile(await readFile(tfw, 'utf8')) : undefined;
+          // a scan with no position is a drawing, placed by hand
+          if (!tiffGeoreferenced(t, world)) {
+            items.push(await importDrawingFile(root, m, file, deps.images));
+            continue;
+          }
           let src = t.geo.epsg ?? (prj ? epsgFromPrj(await readFile(prj, 'utf8')) : undefined);
           const warn: string[] = [];
           if (src === undefined || !isKnownCrs(src)) {
@@ -589,7 +603,8 @@ export async function importRawFiles(
           file: name,
           kind: 'drawing',
           status: 'skipped',
-          message: 'DWG is not supported. Save the drawing as DXF, then import it.',
+          message:
+            'DWG is not supported. Save the drawing as DXF or PDF, or as a PNG picture, then import that.',
         });
       } else {
         items.push({
@@ -619,7 +634,8 @@ export async function importRawFiles(
                       : 'unknown';
       items.push({
         file: name,
-        kind,
+        // a picture that was coming in as a drawing fails as one
+        kind: isDrawingFile(ext, deps.drawings === true) ? 'drawing' : kind,
         status: 'error',
         message: e instanceof Error ? e.message : String(e),
       });

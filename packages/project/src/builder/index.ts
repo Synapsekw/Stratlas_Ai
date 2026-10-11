@@ -21,6 +21,15 @@ export {
   type ManifestUpdate,
 } from './create';
 export * from './altitude';
+export * from './drawingPlacement';
+export {
+  DRAWING_ADDED,
+  addDrawingPage,
+  importDrawingFile,
+  isDrawingFile,
+  type DrawingImages,
+  type DrawingPage,
+} from './drawings';
 export {
   NO_PIPELINE,
   importRawFiles,

@@ -10,6 +10,7 @@ import type {
 } from '@aio/schema';
 import { mkdir, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { drawingStemOf, markDrawingPlaced, type PlacedDrawing } from './drawingPlacement';
 import { updateManifestFile, writeManifestFile } from './manifestFile';
 import { newProjectManifest } from './templates';
 
@@ -93,8 +94,9 @@ function roundOrientation(o: CameraOrientation): CameraOrientation {
 
 /**
  * Apply an alignment to layers and save: a `transform` to mesh layers (georeference), `offsetMs`,
- * `lens`, `orientation` and `positionOffsetM` to video layers (calibration), or the `capture` (survey
- * date) of any layer (`null` clears it). Backs up and validates the manifest first. The manifest
+ * `lens`, `orientation` and `positionOffsetM` to video layers (calibration), the `capture` (survey
+ * date) of any layer (`null` clears it), or the `corners` of a picture laid on the ground (placing
+ * a drawing, which also shows it and marks its placement file as placed). Backs up and validates the manifest first. The manifest
  * is read and saved in one turn (`updateManifestFile`), so a save made at the same moment stays.
  */
 export async function updateLayers(
@@ -102,20 +104,30 @@ export async function updateLayers(
   layerIds: readonly string[],
   patch: LayerPatch,
 ): Promise<{ manifest: ProjectManifest; backup: string }> {
-  const r = await updateManifestFile(root, (m) => ({ manifest: patchLayers(m, layerIds, patch) }));
+  const r = await updateManifestFile(root, async (m) => {
+    const { manifest, placed } = patchLayers(m, layerIds, patch);
+    // a drawing this patch places: its placement file follows before the manifest is saved
+    for (const d of placed) await markDrawingPlaced(root, d.stem, d.name, d.corners);
+    return { manifest };
+  });
   return { manifest: r.manifest, backup: r.backup };
 }
 
-/** The manifest with `patch` applied to the layers `layerIds`; throws what `updateLayers` refuses. */
+/**
+ * The manifest with `patch` applied to the layers `layerIds`, and the drawings the patch places;
+ * throws what `updateLayers` refuses.
+ */
 function patchLayers(
   m: ProjectManifest,
   layerIds: readonly string[],
   patch: LayerPatch,
-): ProjectManifest {
+): { manifest: ProjectManifest; placed: PlacedDrawing[] } {
   const want = new Set(layerIds);
   for (const id of want)
     if (!m.layers.some((l) => l.id === id))
       throw new Error(`Layer "${id}" is not in this project.`);
+  const placed: PlacedDrawing[] = [];
+  const r6 = (v: number) => Math.round(v * 1e6) / 1e6;
   const layers = m.layers.map((l) => {
     if (!want.has(l.id)) return l;
     if ('capture' in patch) {
@@ -130,6 +142,20 @@ function patchLayers(
       if (l.kind !== 'mesh')
         throw new Error(`"${l.name}" is not a model; only models take a transform.`);
       return { ...l, transform: [...patch.transform] };
+    }
+    if ('corners' in patch) {
+      if (l.kind !== 'raster' || l.format !== 'image')
+        throw new Error(
+          `"${l.name}" is not a picture; only a picture laid on the ground takes corners.`,
+        );
+      const round = (p: Vec3): Vec3 => [r6(p[0]), r6(p[1]), r6(p[2])];
+      const { tl, tr, bl } = patch.corners;
+      const corners = { tl: round(tl), tr: round(tr), bl: round(bl) };
+      // a drawing that is placed shows (it was saved hidden while it had no place)
+      const stem = drawingStemOf(l);
+      if (stem === null) return { ...l, corners };
+      placed.push({ stem, name: l.name, corners });
+      return { ...l, corners, visible: true };
     }
     if (l.kind !== 'video')
       throw new Error(`"${l.name}" is not a video; time offset and lens belong to video layers.`);
@@ -146,7 +172,7 @@ function patchLayers(
     if (patch.positionOffsetM === null) delete next.positionOffsetM;
     return next;
   });
-  return { ...m, layers };
+  return { manifest: { ...m, layers }, placed };
 }
 
 /**
