@@ -99,10 +99,10 @@ T1 (schema: purpose) ──┬──> T2 (project: write it) ──────�
 
 ### Task 5: the empty project says what to add first (`@aio/desktop` renderer)
 
-**Files:** `apps/desktop/src/renderer/builder/ImportPanel.tsx`, `apps/desktop/src/renderer/builder/builder.css`, new `apps/desktop/src/renderer/builder/ProjectStarter.test.tsx`.
+**Files:** new `apps/desktop/src/renderer/builder/ProjectStarter.tsx` and `ProjectStarter.test.tsx`, `apps/desktop/src/renderer/builder/ImportPanel.tsx` (three lines), `apps/desktop/src/renderer/builder/builder.css`.
 
-- [ ] Test first (jsdom): `ProjectStarter` renders the type label and the starter lines for a manifest with a purpose, the older label for one with only a `type`, and nothing for one with neither.
-- [ ] `ImportPanel.tsx`: export `ProjectStarter({ manifest })` and render it inside `EmptyProjectHint` (type above the heading, the list under the paragraph, before the button). `builder.css`: the two small rules it needs, in the tokens the hint already uses.
+- [ ] Test first (jsdom): `ProjectKindTag` and `ProjectStarter` render the type label and the starter lines for a manifest with a purpose, the older label for one with only a `type`, the type's label for a purpose this build does not know, and nothing for one with neither.
+- [ ] `ProjectStarter.tsx`: the two small components, in their own file so `ImportPanel.tsx` (which other branches edit) changes by three lines. `EmptyProjectHint` renders them: the type above the heading, the list under the paragraph, before the button. `builder.css`: the two small rules it needs, in the tokens the hint already uses.
 - [ ] Run: `ProjectStarter.test.tsx`.
 
 ### Task 6: end to end, the way CI runs it
@@ -111,8 +111,9 @@ T1 (schema: purpose) ──┬──> T2 (project: write it) ──────�
 
 - [ ] `project-types.spec.ts`:
   1. the wizard shows the six cards, Vertical asset inspection pressed; pick Confined space inspection; the review step names it; create; `manifest.json` has `type: 'inspection'` and `purpose: 'confined-space'`; the empty project shows the type and its starter list, and Import files is still the button a click reaches;
-  2. three projects written by hand into the data folder open: one of type `twin` without a purpose (shows Digital twin), one with a purpose this build does not know (opens, shows what its type says), one without a type (the hint as before, no list).
-- [ ] `inspection.spec.ts`: the default card is `/^Vertical asset inspection/`. `volumetric-build.spec.ts`: `/^Survey/`. `samples.spec.ts`: `/^Vertical asset inspection/` and `/^Survey/`.
+  2. a Survey project has the survey data block on the last step and is written as `volumetric` with `purpose: 'survey'`;
+  3. three projects written by hand into the data folder open: one of type `twin` without a purpose (shows Digital twin), one with a purpose this build does not know (opens, shows what its type says, and keeps the value in `manifest.json` after a save by this build), one without a type (the hint as before, no list).
+- [ ] `inspection.spec.ts`: the default card is `/^Vertical asset inspection/`. `volumetric-build.spec.ts`: `/^Survey/`. `samples.spec.ts`: `/^Confined space inspection/` (its inspection sample is the inside of a tank) and `/^Survey/`.
 - [ ] Build the demos (`pnpm demo:build --quick`), then run each of the four specs at 1100 x 700 on the software renderer with `--workers=1`, one at a time. Also run `a11y.spec.ts` (it checks the wizard's first step) and `road-builder.spec.ts` (it picks the Road card).
 
 ### Task 7: docs and the contract row

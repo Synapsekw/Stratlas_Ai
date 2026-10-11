@@ -6,11 +6,14 @@ Build a project from raw data: photos, video with its flight log, models, orthos
 
 1. On **Projects**, click **New project** (or **Ctrl K**, **New project**).
 2. **What is the project?** Enter the **Name**, **Customer** and **Site**, and pick the type:
-   - **Inspection**: photos, video and a model of one asset, graded defects.
-   - **Volumetric**: stockpiles and earthworks by date, volumes.
+   - **Survey**: stockpiles, earthworks and terrain by survey date, with volumes.
+   - **Construction**: a building site followed visit by visit, with drawings and designs.
+   - **Vertical asset inspection** (selected at first): a stack, tower, flare or facade, with photos, video and a model, and graded defects.
+   - **Confined space inspection**: inside a tank, vessel or duct, with photos and a model or scan, and graded defects.
+   - **Data fusion**: a large site with many sensors, any mix of data in one scene.
    - **Road**: corridor orthomosaic, distress mapping, PCI.
-   - **Digital twin**: plant model, ortho, point cloud, flights.
-   - **Free fusion**: any mix of data in one scene.
+
+   The type sets the starting point: the severity model proposed in step 4, the **Survey data** block of a survey (see [Volumes and roads](09-volumes-and-roads.md)), the road workspace of a road, and the list of what to add first in the empty project. Every tool works in every type, and any kind of data can be added to any project.
 
    Click **Next**.
 
@@ -22,7 +25,9 @@ Build a project from raw data: photos, video with its flight log, models, orthos
    The **Coordinate reference system** list then selects the matching UTM zone, marked "site zone". Search by zone, country or EPSG code to pick another. Click **Next**.
 
 4. **How are findings graded?** Pick the **Severity model**: **General inspection (1 to 3)**, **Road distress (ASTM D6433)** (preselected for roads), or the model of one of your projects. Click **Next**.
-5. **Create the project**: check the summary and click **Create project**. The project opens empty.
+5. **Create the project**: check the summary and click **Create project**. The project opens empty, names its type and lists under **Add first** which data to start with.
+
+Projects made before the types above keep working as they are. An empty one shows what its older type says: **Inspection**, **Survey** (was Volumetric), **Road**, **Digital twin** or **Data fusion** (was Free fusion).
 
 ![The new project wizard](images/new-project.png)
 
