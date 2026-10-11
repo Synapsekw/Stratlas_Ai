@@ -16,9 +16,11 @@ import { join } from 'node:path';
 import sharp from 'sharp';
 import { expectAccessible, expectFocusMeaningful, focusInfo } from './a11y';
 import {
+  closeProcessing,
   expect,
   launchApp,
   NetworkGuard,
+  openProcessing,
   realProject,
   test,
   tinyGlb,
@@ -430,11 +432,17 @@ test.describe('a synthetic project', () => {
     }
     await bar.getByRole('button', { name: '3D' }).click();
 
-    for (const screen of ['Issues', 'Media', 'Detections', 'Reports', 'Jobs']) {
+    for (const screen of ['Issues', 'Media', 'Detections', 'Reports']) {
       await nav(win, screen);
       await expect(win.locator('.crumbs b')).toHaveText(screen);
       await expectAccessible(win, screen);
     }
+
+    // the open project's processing: the chip and the drawer over the screen
+    const processingDrawer = await openProcessing(win);
+    await expect(processingDrawer.getByTestId('create-maps')).toBeVisible();
+    await expectAccessible(win, 'Processing drawer');
+    await closeProcessing(win);
 
     // Issues: the export menu by keyboard
     await nav(win, 'Issues');
@@ -507,13 +515,13 @@ test('a package opens in player mode and is accessible', async ({ app, win, data
 test('focus never falls into the page when the control that had it goes away', async ({ win }) => {
   await win.getByTestId('project-card').first().click();
   await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible();
-  // a nav button that disappears with its screen: leaving the project removes Jobs-only UI
-  await nav(win, 'Jobs');
-  const newJob = win.getByRole('button', { name: /New job/ }).first();
-  if (await newJob.count()) {
-    await newJob.focus();
-    await nav(win, 'Issues');
-  }
+  // a control that goes away with its panel: the Processing drawer closed from its own button
+  const processingDrawer = await openProcessing(win);
+  await processingDrawer.getByTestId('proc-close').focus();
+  await win.keyboard.press('Enter');
+  await expect(processingDrawer).toHaveCount(0);
+  const afterDrawer = await expectFocusMeaningful(win, 'closing the Processing drawer');
+  expect(afterDrawer.lost).toBe(false);
   // closing the project from the switcher removes the menu item that had focus
   await win.locator('.proj-switch').focus();
   await win.keyboard.press('Enter');

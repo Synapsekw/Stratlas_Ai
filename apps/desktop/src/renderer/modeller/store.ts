@@ -148,7 +148,7 @@ export function createModeller(deps: ModellerDeps): StoreApi<Modeller> {
     const job = await waitForJob(jobs, id);
     store.setState({ busy: null });
     if (job.status !== 'done') {
-      return job.error ?? `The job stopped (${job.status}). See Jobs for its log.`;
+      return job.error ?? `The job stopped (${job.status}). Processing lists it with its log.`;
     }
     return job;
   }
@@ -411,7 +411,7 @@ export function createModeller(deps: ModellerDeps): StoreApi<Modeller> {
     };
   });
 
-  // an import or fit started anywhere (the Jobs screen too) adds drawings and parts: list them
+  // an import or fit started anywhere (from Processing, Settings, Advanced too) adds drawings and parts: list them
   // (the app reloads the manifest itself, MANIFEST_WRITERS in jobs.ts)
   const key = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
   jobs.subscribe((s, prev) => {

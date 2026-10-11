@@ -368,6 +368,9 @@ describe('library action channels', () => {
     const { registry, ipc, trash } = setup({ jobRunningIn: (p) => p === root });
     const r = await ipc.call('library:delete', { projectId: registry.register(root) });
     expect(errorOf(r)).toContain('A job is running in this project');
+    // the Jobs screen is gone: the words point to Processing, in the title bar
+    expect(errorOf(r)).toContain('Processing');
+    expect(errorOf(r)).not.toContain('Jobs');
     expect(trash).not.toHaveBeenCalled();
     expect(fs.existsSync(root)).toBe(true);
   });

@@ -1,0 +1,159 @@
+/* ---------- processing: the kind tag of a job row ---------- */
+.jr-sub .jr-kind {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--fg-2);
+  font-size: 11px;
+  line-height: 16px;
+}
+.job-row[data-kind='ai'] .jr-kind {
+  border-color: var(--line-strong);
+  color: var(--fg-0);
+}
+
+/* ---------- processing: a job's details, folded (the drawer) ---------- */
+.job-detail[data-form='folded'] {
+  padding: 0;
+  overflow: visible;
+}
+.jd-fold {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.jd-fold > summary {
+  cursor: pointer;
+  color: var(--fg-1);
+  font-size: 12px;
+}
+.jd-fold[open] > summary {
+  margin-bottom: 8px;
+}
+.jd-fold .job-log {
+  max-height: 240px;
+}
+
+/* ---------- processing: the title bar chip ---------- */
+.proc-chip {
+  app-region: no-drag;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.proc-chip[data-state='one'],
+.proc-chip[data-state='many'] {
+  color: var(--fg-0);
+}
+.proc-chip[data-state='attention'] {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+/* ---------- processing: the drawer's list ---------- */
+.proc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.proc-list h3 {
+  margin: 0 0 6px;
+}
+.proc-go {
+  justify-content: center;
+}
+.proc-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.proc-empty {
+  margin: 0;
+  font-size: 12px;
+}
+
+/* ---------- processing: the drawer ----------
+ * Floating tool panels (model builder, alignment, survey bars: 60, 61) < this drawer (62) < toasts
+ * and the user guide (63) < the align bar, drone menu and import panel (70, 80) < modal sheets,
+ * which include the photo wizard and a run's panel (90) < command palette (100) < dialogs (110). */
+.proc-drawer {
+  position: fixed;
+  inset-block: var(--tb-h) 0;
+  inset-inline-end: 0;
+  z-index: 62;
+  display: flex;
+  flex-direction: column;
+  width: min(400px, calc(100vw - 56px));
+  border-inline-start: 1px solid var(--line);
+  background: var(--bg-1);
+  box-shadow: -8px 0 24px rgb(0 0 0 / 25%);
+}
+.proc-h {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.proc-t {
+  flex: 1;
+  min-width: 0;
+}
+.proc-t h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.proc-t h2:focus {
+  outline: none;
+}
+.proc-t p {
+  margin: 2px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.proc-b {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
+}
+/* the form sits plainly in the dialog and in Settings: no box of its own, no side margin */
+.proc-dlg .new-job,
+.proc-adv .new-job {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.proc-dlg .proc-tools {
+  margin-bottom: 12px;
+}
+
+/* ---------- processing: Settings, Processing tools, Advanced ---------- */
+.proc-adv > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.proc-adv[open] > summary {
+  margin-bottom: 8px;
+}
+.proc-adv .new-job {
+  max-width: 560px;
+  margin-bottom: 12px;
+}
+.proc-adv .jobs-list {
+  max-height: 320px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+.proc-adv .job-detail {
+  padding: 0;
+  overflow: visible;
+}

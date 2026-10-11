@@ -350,7 +350,7 @@ export function waitForJob(id: string): Promise<Ended> {
   const aio = (globalThis as { aio?: AioBridge }).aio;
   return new Promise((done) => {
     if (!aio) {
-      done({ ok: false, error: 'Jobs are not available here.' });
+      done({ ok: false, error: 'Processing is not available here.' });
       return;
     }
     let settled = false;

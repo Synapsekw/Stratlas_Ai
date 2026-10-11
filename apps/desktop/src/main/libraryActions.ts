@@ -209,7 +209,7 @@ export function registerLibraryActionsIpc(deps: LibraryActionsDeps): void {
     if (!m.ok) return m;
     if (deps.jobRunningIn?.(m.root))
       return fail(
-        'A job is running in this project. Cancel it on the Jobs screen or wait for it to finish, then delete the project.',
+        'A job is running in this project. Cancel it in Processing (the title bar chip; a project that is not open shows it under Running in other projects) or wait for it to finish, then delete the project.',
       );
     return deleteProject(m.root, {
       trash: deps.trash,

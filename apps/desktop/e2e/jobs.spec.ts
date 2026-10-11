@@ -3,12 +3,12 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, rmdirSync, symlinkSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expect, launchApp, openPipelineForm, test } from './fixtures';
+import { expect, launchApp, openPipelineForm, processingChip, test } from './fixtures';
 
 /**
- * The Jobs panel against the real pipeline runtime. It needs a Python with aio_pipelines: the
- * development venv (`uv sync` in python/) or QUADRION_E2E_PYTHON. Without one, only the
- * "no pack" case runs.
+ * Processing against the real pipeline runtime (Settings, Advanced). It needs a Python with
+ * aio_pipelines: the development venv (`uv sync` in python/) or QUADRION_E2E_PYTHON. Without one,
+ * only the "no pack" case runs.
  */
 const repo = join(import.meta.dirname, '..', '..', '..');
 const venvPython =
@@ -47,10 +47,11 @@ async function smallLaz(dir: string): Promise<string> {
   return laz;
 }
 
-test('without a pipeline pack the Jobs panel says where it looked', async ({ win, dataRoot }) => {
-  await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
-  await expect(win.locator('.jobs-rt.missing')).toContainText(join(dataRoot.root, 'runtime'));
+test('without a pipeline pack Settings says where it looked', async ({ win, dataRoot }) => {
   await openPipelineForm(win);
+  await expect(win.getByTestId('tools-state')).toHaveAttribute('data-state', 'missing');
+  // the Location row prints `status.dir ?? status.runtimeDir` (ProcessingTools.tsx)
+  await expect(win.getByTestId('tools-info')).toContainText(join(dataRoot.root, 'runtime'));
   await expect(win.getByTestId('job-start')).toBeDisabled();
 });
 
@@ -100,9 +101,8 @@ test.describe('with an installed runtime folder', () => {
     await network.attach(app);
     try {
       const win = await app.firstWindow();
-      await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
-      await expect(win.locator('.jobs-rt')).toContainText(`Processing tools ${newest}`);
       await openPipelineForm(win);
+      await expect(win.getByTestId('tools-version')).toHaveText(newest);
       await win.getByLabel('Pipeline', { exact: true }).selectOption('system.selftest');
       await win.getByLabel(/^Project folder/).fill(dataRoot.projectDir);
       await win.getByLabel('Wait (s)').fill('0');
@@ -123,7 +123,7 @@ test.describe('with an installed runtime folder', () => {
 test.describe('with the runtime', () => {
   test.skip(!hasPython, `no Python with aio_pipelines at ${venvPython}`);
 
-  test('start, cancel, resume and finish a job from the Jobs panel', async ({
+  test('start, cancel, resume and finish a job from Settings, Advanced', async ({
     dataRoot,
     network,
   }) => {
@@ -132,8 +132,8 @@ test.describe('with the runtime', () => {
     await network.attach(app);
     try {
       const win = await app.firstWindow();
-      await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
-      await expect(win.locator('.jobs-rt')).toContainText('Processing tools dev');
+      await openPipelineForm(win);
+      await expect(win.getByTestId('tools-state')).toHaveAttribute('data-state', 'dev');
 
       const startSelftest = async (seconds: string) => {
         await openPipelineForm(win);
@@ -148,9 +148,8 @@ test.describe('with the runtime', () => {
       const detail = win.locator('.job-detail');
       const waitStep = detail.locator('.jd-steps li', { hasText: 'Wait' });
       await expect(waitStep).toHaveAttribute('data-state', 'running', { timeout: 60_000 });
-      await expect(
-        win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).locator('.count'),
-      ).toHaveText('1');
+      // no project is open: the title bar says something is running, elsewhere
+      await expect(processingChip(win)).toHaveText('Processing · 1 running elsewhere');
       await detail.getByRole('button', { name: 'Cancel' }).click();
       await expect(detail.locator('.jd-h .job-state')).toHaveText('Cancelled', { timeout: 15_000 });
       await expect(waitStep).toHaveAttribute('data-state', 'cancelled');
@@ -213,8 +212,6 @@ test.describe('with the runtime', () => {
       expect(item).toMatchObject({ kind: 'pointcloud', status: 'queued' });
       const jobId = item?.jobId ?? '';
 
-      // The job runs in the Jobs panel to the end.
-      await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
       await expect
         .poll(
           async () => {

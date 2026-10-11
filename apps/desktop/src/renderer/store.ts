@@ -26,7 +26,6 @@ export type Screen =
   | 'media'
   | 'detections'
   | 'reports'
-  | 'jobs'
   | 'settings'
   | 'globe';
 export type StageMode = '3d' | 'map' | 'split';

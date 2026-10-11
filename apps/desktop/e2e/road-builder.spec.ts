@@ -4,12 +4,13 @@ import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pmtilesFile } from '../src/main/testing';
-import { expect, launchApp, test } from './fixtures';
+import { expectAccessible } from './a11y';
+import { closeProcessing, expect, launchApp, test } from './fixtures';
 import { copyRealData, hasRealData } from './realData';
 
 /**
  * A road survey built in the app from raw inputs: the wizard (type Road), the ortho imported,
- * the centreline drawn on the map, the road builder run from the Jobs panel (road.build in the
+ * the centreline drawn on the map, the road builder started from road setup (road.build in the
  * pipeline runtime), and the project open in the road workspace. Needs a Python with
  * aio_pipelines (the development venv, or QUADRION_E2E_PYTHON). Synthetic data only.
  */
@@ -216,18 +217,29 @@ test('a road survey from raw inputs: wizard, drawn centreline, road builder job,
     expect(Math.abs((a?.[0] ?? 0) - (fx.line[0]?.[0] ?? 0))).toBeLessThan(3e-5);
     expect(Math.abs((b?.[1] ?? 0) - (fx.line[1]?.[1] ?? 0))).toBeLessThan(3e-5);
 
-    // 4. The road builder from the Jobs panel, the drawn centreline filled in.
+    // 4. The road builder started from road setup, the drawn centreline filled in.
     await setup.getByRole('button', { name: 'Run the road builder' }).click();
-    await expect(win.getByLabel('Pipeline', { exact: true })).toHaveValue('road.build');
-    await expect(win.locator('#job-f-centreline')).toHaveValue('road/centreline-drawn.geojson');
-    await expect(win.locator('#job-f-project')).toHaveValue(root);
-    await win.locator('#job-f-ortho').fill(fx.ortho);
-    await win.locator('#job-f-defects').fill(fx.defects);
-    await win.locator('#job-f-unitLength').fill('30');
-    await win.getByTestId('job-start').click();
-    const detail = win.locator('.job-detail');
+    const dialog = win.getByTestId('pipeline-dialog');
+    await expect(dialog.getByRole('heading', { level: 2 })).toHaveText('Road survey');
+    await expect(dialog).toContainText('Runs in Road e2e.');
+    // one pipeline for the open project: neither is asked for, the drawn line is filled in
+    await expect(dialog.locator('#job-pipeline')).toHaveCount(0);
+    await expect(dialog.locator('#job-f-project')).toHaveCount(0);
+    await expect(dialog.locator('#job-f-centreline')).toHaveValue('road/centreline-drawn.geojson');
+    await dialog.locator('#job-f-ortho').fill(fx.ortho);
+    await dialog.locator('#job-f-defects').fill(fx.defects);
+    await dialog.locator('#job-f-unitLength').fill('30');
+    await expectAccessible(win, 'Start dialog', { include: '[data-testid="pipeline-dialog"]' });
+    // for a person to look at: only with QUADRION_E2E_SHOTS set to a folder
+    if (process.env.QUADRION_E2E_SHOTS)
+      await win.screenshot({ path: join(process.env.QUADRION_E2E_SHOTS, 'start-dialog.png') });
+    await dialog.getByTestId('job-start').click();
+    // the Processing drawer opens on the job
+    const detail = win.getByTestId('processing-drawer').locator('.job-detail');
     await expect(detail.locator('.jd-h .job-state')).toHaveText('Done', { timeout: 240_000 });
+    await detail.getByTestId('job-log-fold').locator('summary').click();
     await expect(detail.locator('.job-log')).toContainText('network PCI');
+    await closeProcessing(win);
 
     const road = JSON.parse(await readFile(join(root, 'road.json'), 'utf8')) as {
       centreline: { lengthKm: number };

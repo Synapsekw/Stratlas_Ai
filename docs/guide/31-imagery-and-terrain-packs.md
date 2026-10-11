@@ -8,7 +8,7 @@ Imagery packs put aerial or satellite imagery under the street map, on the Globe
 2. Choose the **File**: a GeoTIFF or Cloud Optimized GeoTIFF in any coordinate system.
 3. Give the **Pack name**, the **Licence** (for example CC-BY-4.0, public-domain, or the words of your licence) and the **Attribution**: the credit line the provider asks for.
 4. If the imagery is licensed to you or your customer and must not be passed on, tick **Customer licence, not for redistribution (left out of packages)**.
-5. Click **Build the pack**. The pack builds as a job in the pipeline pack; **Jobs** shows its progress.
+5. Click **Build the pack**. The pack builds as a job in the pipeline pack. The page shows its progress.
 
 The list shows each pack with its zoom levels, size, date, licence and attribution, and a **Customer licence** tag where it applies. **Remove** deletes a pack after asking.
 

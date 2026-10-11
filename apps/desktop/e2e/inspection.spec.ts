@@ -7,11 +7,11 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
-import { expect, launchApp, openPipelineForm, test } from './fixtures';
+import { closeProcessing, expect, launchApp, openPipelineForm, test } from './fixtures';
 import { copyRealData, hasRealProject, missingRealProject, realProjectDir } from './realData';
 
 /**
- * The inspection pipeline (Asset Inspection Kit) run from the Jobs panel against the real pipeline
+ * The inspection pipeline (Asset Inspection Kit) run from Detections against the real pipeline
  * runtime: on a project built in the app from raw photos and a model, and on a temporary copy of
  * the HCl project. Needs the development venv (`uv sync` in python/) or QUADRION_E2E_PYTHON.
  */
@@ -200,21 +200,41 @@ interface Inspect {
 const workspaceIssues = (win: Page) =>
   win.evaluate(() => (window as unknown as Inspect).__stratlas.workspace.getState().issues);
 
-/** Start the inspection pipeline from the Jobs panel and wait for it to finish. */
-async function runInspection(win: Page, expectDefault: boolean): Promise<string> {
-  await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
-  await expect(win.locator('.jobs-rt')).toContainText('Processing tools dev');
-  await openPipelineForm(win);
-  const pick = win.getByLabel('Pipeline', { exact: true });
-  if (expectDefault) await expect(pick).toHaveValue('inspection.run');
-  else await pick.selectOption('inspection.run');
-  await expect(win.getByLabel('Detections', { exact: true })).toBeVisible();
-  await win.getByTestId('job-start').click();
+/**
+ * Start the inspection pipeline and wait for it to finish; the job's id. On an inspection
+ * project, the way a person does it: Detections, **Turn detections into issues**. Otherwise from
+ * Settings, Advanced.
+ */
+async function runInspection(win: Page, inspectionProject: boolean): Promise<string> {
+  if (inspectionProject) {
+    await win.locator('.sb-nav .nav-item', { hasText: 'Detections' }).click();
+    await win.getByTestId('det-to-issues').click();
+    const dialog = win.getByTestId('pipeline-dialog');
+    await expect(dialog.getByRole('heading', { level: 2 })).toHaveText(
+      'Inspection: detections to issues',
+    );
+    await expect(dialog).toContainText('Runs in');
+    // one pipeline for the open project: neither is asked for
+    await expect(dialog.locator('#job-pipeline')).toHaveCount(0);
+    await expect(dialog.locator('#job-f-project')).toHaveCount(0);
+    await expect(dialog.getByLabel('Detections', { exact: true })).toBeVisible();
+    await dialog.getByTestId('job-start').click();
+    await expect(dialog).toHaveCount(0);
+  } else {
+    await openPipelineForm(win);
+    await expect(win.getByTestId('tools-state')).toHaveAttribute('data-state', 'dev');
+    await win.getByLabel('Pipeline', { exact: true }).selectOption('inspection.run');
+    await expect(win.getByLabel('Detections', { exact: true })).toBeVisible();
+    await win.getByTestId('job-start').click();
+  }
+  // the drawer (from Detections) or the Advanced section shows the job that was started
   const detail = win.locator('.job-detail');
   await expect(detail.locator('.jd-h h2')).toHaveText('Inspection: detections to issues');
   await expect(detail.locator('.jd-h .job-state')).toHaveText('Done', { timeout: 180_000 });
   await expect(detail.locator('.jd-steps li[data-state="done"]')).toHaveCount(6);
-  return (await detail.locator('.jd-t .mono').textContent()) ?? '';
+  const id = (await detail.getAttribute('data-job')) ?? '';
+  await closeProcessing(win);
+  return id;
 }
 
 /**
@@ -328,7 +348,7 @@ async function buildTower(
 test.describe('inspection pipeline', () => {
   test.skip(!hasPython, `no Python with aio_pipelines at ${venvPython}`);
 
-  test('a project built in the app runs the kit from the Jobs panel; issues land where the boxes are', async ({
+  test('a project built in the app runs the kit from Detections; issues land where the boxes are', async ({
     dataRoot,
     network,
   }) => {
@@ -420,7 +440,7 @@ test.describe('inspection pipeline', () => {
       );
       expect(w.ok).toBe(true);
 
-      // 4. the Jobs panel offers the inspection pipeline for an inspection project
+      // 4. Detections offers Turn detections into issues for an inspection project
       const jobId = await runInspection(win, true);
       const log = await readFile(join(root, 'jobs', jobId, 'job.log'), 'utf8');
       expect(log).toContain('1 draft, not reviewed');

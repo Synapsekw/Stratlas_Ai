@@ -16,7 +16,7 @@ import type { Bridge } from './bridge';
 
 const LOG_KEEP = 2000;
 
-/** A new job form filled in elsewhere (the road setup panel), opened by the Jobs screen. */
+/** One pipeline with its form filled in, for the start dialog (`processing/PipelineDialog`). */
 export interface JobDraft {
   pipeline: PipelineName;
   project: string;
@@ -31,7 +31,6 @@ export interface JobsState {
   logs: Record<string, JobLogLine[]>;
   selected: string | null;
   error: string | null;
-  draft: JobDraft | null;
 }
 
 export interface JobsActions {
@@ -43,8 +42,6 @@ export interface JobsActions {
   start: (req: IpcRequest<'jobs:start'>) => Promise<string | null>;
   cancel: (id: string) => Promise<string | null>;
   open: (id: string, what: 'output' | 'log' | 'project') => Promise<string | null>;
-  /** Fill in a new job form for the Jobs screen (null clears it). */
-  prepare: (draft: JobDraft | null) => void;
 }
 
 export type Jobs = JobsState & JobsActions;
@@ -101,8 +98,11 @@ export const TILESET_WRITERS: ReadonlySet<string> = new Set([
 /** Pipelines that also write issues.json (and road.json): the open project reopens whole. */
 const PROJECT_WRITERS: ReadonlySet<string> = new Set(['road.build']);
 
-const folderKey = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-const sameFolder = (a: string, b: string) => folderKey(a) === folderKey(b);
+/** A project folder as a key: slashes one way, no trailing slash, lower case. */
+export const folderKey = (p: string): string =>
+  p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+/** Two spellings of one project folder. */
+export const sameFolder = (a: string, b: string): boolean => folderKey(a) === folderKey(b);
 
 function justFinished(
   prev: readonly JobRecord[],
@@ -246,11 +246,6 @@ export function createJobsStore(bridge: Bridge, on: AioBridge['on'] | undefined)
     logs: {},
     selected: null,
     error: null,
-    draft: null,
-
-    prepare: (draft) => {
-      set({ draft });
-    },
 
     init: async () => {
       if (!following && on) {

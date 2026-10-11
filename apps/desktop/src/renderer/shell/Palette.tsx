@@ -20,6 +20,7 @@ import { diagnostics } from '../diagnostics/state';
 import { help } from '../help/store';
 import { legacyLayers } from '../legacy';
 import { openModelBuilder } from '../modeller/ModellerLayer';
+import { processing } from '../processing/store';
 import { openProcessingTools } from '../processingTools';
 import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
@@ -65,7 +66,6 @@ const SCREENS: { screen: Screen; title: string; icon: IconName }[] = [
   { screen: 'media', title: 'Media', icon: 'media' },
   { screen: 'detections', title: t('nav.detections'), icon: 'target' },
   { screen: 'reports', title: 'Reports', icon: 'report' },
-  { screen: 'jobs', title: 'Jobs', icon: 'clock' },
   { screen: 'settings', title: 'Settings', icon: 'settings' },
 ];
 
@@ -112,6 +112,17 @@ export function Palette() {
       icon: 'download',
       keywords: ['pipeline pack', 'update', 'install', 'tools', 'python', 'jobs'],
       run: openProcessingTools,
+    });
+    // the open project's processing (the title bar chip opens the same drawer)
+    list.push({
+      id: 'open:processing',
+      title: t('processing.title'),
+      group: 'Navigate',
+      icon: 'clock',
+      keywords: ['jobs', 'running', 'progress', 'log', 'maps from photos'],
+      run: () => {
+        processing.getState().openDrawer();
+      },
     });
     const action = (id: string, title: string, icon: IconName, run: () => void, hint?: string) => {
       list.push({ id, title, group: 'Actions', icon, run, ...(hint ? { hint } : {}) });

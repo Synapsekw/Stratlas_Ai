@@ -3,7 +3,8 @@ import { LocationPicker } from '@aio/maps';
 import type { SeverityTemplate, Vec3 } from '@aio/schema';
 import { Icon, t, useFocusTrap, type IconName } from '@aio/ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { bridge, jobs, shell } from '../shell';
+import { processing } from '../processing/store';
+import { bridge, jobs } from '../shell';
 import {
   defaultTemplateFor,
   PROJECT_TYPES,
@@ -250,9 +251,12 @@ function Wizard() {
           .getState()
           .start({ pipeline: 'volumetric.build', project: r.value.path, params: build })
       : null;
+    // the store selects the job it has just started: take its id before `created` reads the list
+    const startedId = jobError ? undefined : (jobs.getState().selected ?? undefined);
     await builder.getState().created(r.value.path);
     if (build) {
-      shell.getState().go('jobs');
+      // the new project is open on the Scene (`created`): show its build, the job just started
+      processing.getState().openDrawer(startedId);
       if (jobError)
         builder.setState({
           importResult: { items: [], error: t('builder.surveys.startFailed', { error: jobError }) },

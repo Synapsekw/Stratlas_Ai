@@ -81,6 +81,29 @@ async function reopen(win: Page, id: string) {
 }
 
 /**
+ * Scroll the list so the row and the folder it is dragged onto sit in view together, centred as a
+ * pair. `scrollIntoViewIfNeeded` is no help here: an element that is only partly in view is moved
+ * to the nearest edge by a whole number of pixels, which leaves a fraction of a pixel of it clipped
+ * (a folder name 0.47 px under the foot of the list, ratio 0.973), and it does so whenever the
+ * window height puts the folder across that edge (720 to 732 px high today, 752 to 764 px before
+ * the Jobs item left the sidebar's navigation).
+ */
+async function showTogether(row: Locator, target: Locator) {
+  const targetEl = await target.elementHandle();
+  await row.evaluate((rowEl, other) => {
+    let list: HTMLElement | null = rowEl.parentElement;
+    while (list && !/(auto|scroll)/.test(getComputedStyle(list).overflowY))
+      list = list.parentElement;
+    if (!list) return;
+    const a = rowEl.getBoundingClientRect();
+    const b = other.getBoundingClientRect();
+    const mid = (Math.min(a.top, b.top) + Math.max(a.bottom, b.bottom)) / 2;
+    const box = list.getBoundingClientRect();
+    list.scrollTop += mid - (box.top + box.height / 2);
+  }, targetEl);
+}
+
+/**
  * Drag a dataset row onto a date folder the way a person can: with both ends in view before the
  * press. `dragTo` alone brings the target into view after pressing, and in a short window (CI runs
  * at 1100 x 700, where the list is taller than the sidebar) that scroll slides the pressed row from
@@ -89,8 +112,7 @@ async function reopen(win: Page, id: string) {
  * window tests below).
  */
 async function dragOnto(row: Locator, target: Locator) {
-  await target.scrollIntoViewIfNeeded();
-  await row.scrollIntoViewIfNeeded();
+  await showTogether(row, target);
   await expect(target, 'the drop target is in view together with the row').toBeInViewport({
     ratio: 1,
   });

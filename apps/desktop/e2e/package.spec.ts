@@ -11,7 +11,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { mkdir, mkdtemp, open, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, launchApp, NetworkGuard, test, type DataRoot } from './fixtures';
+import { expect, launchApp, NetworkGuard, processingChip, test, type DataRoot } from './fixtures';
 import { copyRealProjects, hasRealProject, missingRealProject, realProjectDir } from './realData';
 
 const SHOTS = process.env.QUADRION_SHOTS;
@@ -103,6 +103,8 @@ test('an encrypted package of the tiny project opens with its passphrase in play
     await c.win.getByRole('dialog').getByRole('button', { name: 'Open package' }).click();
     await expect(c.win.getByTestId('welcome')).toContainText('E2E tiny project');
     await expect(c.win.getByTestId('readonly-chip')).toHaveText('Read-only package');
+    // a read-only package has no processing of its own: no chip while nothing runs elsewhere
+    await expect(processingChip(c.win)).toHaveCount(0);
     // The opened package stays in the customer's library.
     await c.win.locator('.nav-item', { hasText: 'Projects' }).first().click();
     await expect(c.win.getByTestId('project-card')).toContainText('Encrypted package');

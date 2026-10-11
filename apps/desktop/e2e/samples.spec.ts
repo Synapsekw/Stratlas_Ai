@@ -2,8 +2,10 @@
  * The builder sample datasets end to end (outside the CI suite): each sample folder in
  * QUADRION_SAMPLES (`<real data root>/samples`, written by python/scripts/make_samples.py from
  * client projects, so @realdata) is built into a new project in a temporary data root the way its
- * README says, its pipeline runs from the Jobs panel, and the result is checked against the
- * numbers in its `sample.json`. The samples are only read.
+ * README says, and the result is checked against the numbers in its `sample.json`. The samples are
+ * only read. The inspection and road samples run their pipeline from Settings, Processing tools,
+ * Advanced; the volumetric sample builds from the new project wizard, and its build shows in the
+ * Processing drawer.
  *
  * The pipelines run in the development venv, or in a pipeline pack with QUADRION_E2E_PACK
  * (e.g. `<real data root>/runtime/pipeline-pack-0.2.0`). The inspection sample takes the HCl
@@ -17,7 +19,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expect, launchApp, openPipelineForm, test } from './fixtures';
+import { closeProcessing, expect, launchApp, openPipelineForm, test } from './fixtures';
 import { realProjectDir } from './realData';
 
 const SAMPLES = process.env.QUADRION_SAMPLES ?? '';
@@ -178,14 +180,13 @@ test('@realdata inspection-hcl-mini: photos and model imported, the AI pass plac
       expect(Math.abs(dot)).toBeGreaterThan(0.99999);
     }
 
-    // the AI pass into <project>\detections\, then Jobs, New job, Start job
+    // the AI pass into <project>\detections\, then from Settings, Advanced
     await mkdir(join(root, 'detections'), { recursive: true });
     await copyFile(
       join(dir, 'detections', 'hcl-ai-pass.json'),
       join(root, 'detections', 'hcl-ai-pass.json'),
     );
     const run = async () => {
-      await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
       await openPipelineForm(win);
       await expect(win.getByLabel('Pipeline', { exact: true })).toHaveValue('inspection.run');
       return runJob(win, () => win.getByTestId('job-start').click(), 180_000);
@@ -328,8 +329,10 @@ test('@realdata volumetric-masafi-mini: two survey dates, the delivered pile vol
       await pick(i, 'DSM GeoTIFF', sv.dsm);
       await pick(i, 'Pick orthomosaic', sv.ortho);
     }
-    await expect(wiz.locator('.b-summary')).toContainText('2 survey dates, built in Jobs');
+    await expect(wiz.locator('.b-summary')).toContainText('2 survey dates, built after creating');
     await runJob(win, () => wiz.getByRole('button', { name: 'Create project' }).click(), 240_000);
+    // the new project opens with the Processing drawer on its build
+    await closeProcessing(win);
 
     const root = join(dataRoot.root, 'projects', 'masafi-sample');
     const vols = await readJson<{
@@ -402,13 +405,12 @@ test('@realdata road-ringroad-mini: ortho, centreline and defects; the delivered
     await expect(setup).toBeVisible({ timeout: 30_000 });
     const root = join(dataRoot.root, 'projects', 'ring-road-sample');
 
-    // the ortho as raw data, then the road builder from Jobs with the sample's files
+    // the ortho as raw data, then the road builder from Settings, Advanced with the sample's files
     await nextOpenDialog(app, [join(dir, s.ortho)]);
     await win.getByRole('button', { name: 'Import files' }).click();
     const panel = win.getByTestId('import-panel');
     await expect(panel).toContainText('Imported 1 of 1 files', { timeout: 120_000 });
     await panel.getByRole('button', { name: 'Close' }).click();
-    await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
     await openPipelineForm(win);
     await win.getByLabel('Pipeline', { exact: true }).selectOption('road.build');
     await win.locator('#job-f-centreline').fill(join(dir, 'centreline.geojson'));

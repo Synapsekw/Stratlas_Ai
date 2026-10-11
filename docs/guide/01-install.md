@@ -23,7 +23,7 @@ The tools that build maps and models from your data come as one more file beside
 
 1. Start {product} and open **Settings**, **Processing tools**.
 2. Click **Choose file** under **Install or update from file** and pick that file. If the file is in Downloads or beside the app, {product} offers it: click **Install version ... found in Downloads**.
-3. When it says the tools are installed, **Jobs** shows "Processing tools" and the version.
+3. When it says the tools are installed, the page shows the version, and processing uses it from then on.
 
 Do this again with the new file after each update of {product}. See [Processing tools](12-settings.md#processing-tools).
 

@@ -15,7 +15,6 @@ export const en = {
   'nav.media': 'Media',
   'nav.detections': 'Detections',
   'nav.reports': 'Reports',
-  'nav.jobs': 'Jobs',
   'nav.settings': 'Settings',
   'nav.sections': 'Sections',
   'nav.primary': 'Primary',
@@ -673,7 +672,7 @@ export const en = {
   'tools.replace.text': 'Replace it with the one in this file?',
   'tools.replace.yes': 'Replace version {version}',
   'tools.replace.no': 'Keep it',
-  'tools.installed': 'Processing tools {version} are installed. Jobs use them from now on.',
+  'tools.installed': 'Processing tools {version} are installed. Processing uses them from now on.',
   'tools.resume.createMaps': 'Create maps from photos',
   'tools.removed': '{name} was moved to the bin.',
   'tools.others.title': 'Versions no longer in use',
@@ -691,7 +690,7 @@ export const en = {
   'tools.notice.missing':
     'Building maps and models from your data needs them. Viewing, measuring and reports work without.',
   'tools.notice.incompatible':
-    'The processing tools on this computer are not made for this version of {product}. Jobs do not start until they are updated.',
+    'The processing tools on this computer are not made for this version of {product}. Processing does not start until they are updated.',
   'tools.notice.update': 'Update processing tools',
   'tools.notice.dismiss': 'Dismiss',
   'settings.severity.text':
@@ -906,8 +905,8 @@ export const en = {
   'builder.surveys.needSurface': 'Every survey needs a DSM or a point cloud.',
   'builder.surveys.sameDate': 'Two surveys have the same date.',
   'builder.surveys.none': 'None, add data later',
-  'builder.surveys.count_one': '{count} survey date, built in Jobs after creating',
-  'builder.surveys.count_other': '{count} survey dates, built in Jobs after creating',
+  'builder.surveys.count_one': '{count} survey date, built after creating (see Processing)',
+  'builder.surveys.count_other': '{count} survey dates, built after creating (see Processing)',
   'builder.surveys.startFailed':
     'The project was created, but the volumetric build did not start: {error}',
 
@@ -1032,7 +1031,46 @@ export const en = {
   'settings.about.previous': 'Previous version',
   'settings.about.returnTo': 'Return to {version}',
   'settings.about.whatsNew': "What's new in {version}",
-  // Jobs: inspection pipeline form
+  // Processing: the open project's chip and drawer (renderer/processing)
+  'processing.title': 'Processing',
+  'processing.chip.one': 'Processing {pct}%',
+  'processing.chip.many': 'Processing · {count} running',
+  'processing.chip.attention_one': '{count} needs attention',
+  'processing.chip.attention_other': '{count} need attention',
+  'processing.chip.elsewhere': 'Processing · {count} running elsewhere',
+  'processing.chip.label': 'Processing: {state}',
+  'processing.chip.tip': 'What is processing, and what finished',
+  'processing.close': 'Close',
+  'processing.createMaps': 'Create maps from photos',
+  'processing.toolsMissing':
+    'Processing cannot run yet: the processing tools are missing or need an update.',
+  'processing.toolsUpdate': 'Update processing tools',
+  'processing.running': 'Running',
+  'processing.finished': 'Finished',
+  'processing.older': 'Show older',
+  'processing.elsewhere': 'Running in other projects',
+  'processing.empty': 'Nothing is processing in {name} and nothing has finished yet.',
+  'processing.noProject': 'No project is open.',
+  'processing.noPackage': 'A read-only package has no processing of its own.',
+  'processing.back': 'Back',
+  'processing.kind.maps': 'Maps and models',
+  'processing.kind.survey': 'Survey',
+  'processing.kind.ai': 'AI analysis',
+  'processing.kind.files': 'Files',
+  'processing.kind.system': 'System',
+  'processing.detail.settings': 'Settings used',
+  'processing.detail.log': 'Log',
+  'processing.detail.openRun': 'Open run',
+  'processing.detail.jobId': 'Job id',
+  'processing.dialog.runsIn': 'Runs in {name}.',
+  'processing.dialog.start': 'Start',
+  'processing.advanced.title': 'Advanced: run a pipeline directly',
+  'processing.advanced.help':
+    'Every pipeline of the processing tools with its own parameters, and every job on this computer. For support.',
+  'processing.advanced.all': 'All jobs on this computer',
+  'processing.advanced.none': 'No job has run on this computer yet.',
+  'det.toIssues': 'Turn detections into issues',
+  // Inspection pipeline form (Detections, Turn detections into issues)
   'jobs.inspection.detections': 'Detections',
   'jobs.inspection.detectionsHelp':
     'aio.detections/1 files or folders, from review, AI or a local model. Empty: the project detections folder.',
@@ -1073,7 +1111,7 @@ export const en = {
   'diag.crash.save': 'Save a report',
   'diag.crash.dismiss': 'Dismiss',
 
-  // Road builder (road.build in the Jobs panel)
+  // Road builder (road.build, started from road setup)
   'jobs.chooseFile': 'Choose',
   'jobs.road.centreline': 'Centreline',
   'jobs.road.centrelineHelp':
@@ -2715,8 +2753,9 @@ export const en = {
   'g7.packs.build': 'Build the pack',
   'g7.packs.cancel': 'Cancel',
   'g7.packs.building':
-    'Building {name} with the processing tools. It appears here when the job in Jobs is done.',
-  'g7.packs.failed': 'The pack was not built. See the job in Jobs for why.',
+    'Building {name} with the processing tools. It appears here when it is done.',
+  'g7.packs.failed':
+    'The pack was not built. Settings, Processing tools, Advanced lists the job and its log.',
   'g7.packs.colPack': 'Pack',
   'g7.packs.colZoom': 'Zoom',
   'g7.packs.colSize': 'Size',

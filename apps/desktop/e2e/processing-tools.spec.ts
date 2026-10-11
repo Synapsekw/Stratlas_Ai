@@ -5,7 +5,7 @@
  * fake pack archive (every pipeline the app knows, checksums in its manifest), both a few
  * kilobytes (`packArchive.fakes.ts`; never the real 400 MB pack). The start notice shows once a
  * project is open, Settings says the pack is too old, installing the archive flips it to up to
- * date, and the Jobs header shows the new version without a restart. The native file dialog and
+ * date, and processing uses the new version without a restart. The native file dialog and
  * the Recycle Bin are stubbed in main; the launch asks for the notice (QUADRION_PACK_NOTICE=1),
  * which an automated run otherwise never shows.
  */
@@ -14,7 +14,14 @@ import { existsSync } from 'node:fs';
 import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fakePackArchive, fakePackFiles } from '../src/main/jobs/packArchive.fakes';
-import { expect, launchApp, test, type DataRoot } from './fixtures';
+import {
+  closeProcessing,
+  expect,
+  launchApp,
+  openProcessing,
+  test,
+  type DataRoot,
+} from './fixtures';
 import { PHOTO_PLATFORM, PHOTO_PLATFORM_ONLY } from './photoPack';
 
 /** This computer as a pack manifest and a pack archive name it. */
@@ -77,7 +84,14 @@ async function openTinyProject(win: Page): Promise<void> {
   await expect(win.locator('.crumbs')).toContainText('E2E tiny project');
 }
 
-test('the start notice leads to Settings, where a pack file installs and Jobs follows', async ({
+/** The version of the processing tools the job runner would use, or null. */
+const runtimeVersion = (win: Page) =>
+  win.evaluate(async () => {
+    const r = await window.aio.invoke('jobs:list', {});
+    return r.runtime.found ? r.runtime.version : null;
+  });
+
+test('the start notice leads to Settings, where a pack file installs and processing follows', async ({
   dataRoot,
   network,
 }, testInfo) => {
@@ -140,9 +154,12 @@ test('the start notice leads to Settings, where a pack file installs and Jobs fo
     await replace.getByRole('button', { name: 'Keep it' }).click();
     await expect(replace).toHaveCount(0);
 
-    // Jobs shows the new pack without a restart, and the notice is gone
-    await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
-    await expect(win.locator('.jobs-rt')).toContainText('0.5.0');
+    // processing follows without a restart: nothing says the tools are missing, the notice is gone
+    await expect.poll(() => runtimeVersion(win)).toBe('0.5.0');
+    await win.locator('.sb-nav .nav-item', { hasText: 'Scene' }).click();
+    const drawer = await openProcessing(win);
+    await expect(drawer.getByTestId('proc-tools')).toHaveCount(0);
+    await closeProcessing(win);
     await expect(win.getByTestId('tools-notice')).toHaveCount(0);
 
     // back in Settings: remove the old pack, with a confirmation
@@ -185,9 +202,9 @@ test('a newer pack file in the data folder is offered, and a dismissed notice st
     await win.reload();
     await win.waitForLoadState('domcontentloaded');
     await openTinyProject(win);
-    // the pack has been read again (Jobs shows it) and the notice still stays away
-    await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
-    await expect(win.locator('.jobs-rt')).toContainText('0.2.0');
+    // the pack has been read again and the notice still stays away
+    await win.locator('.sb-nav .nav-item', { hasText: 'Scene' }).click();
+    await expect.poll(() => runtimeVersion(win)).toBe('0.2.0');
     await win.waitForTimeout(500);
     await expect(win.getByTestId('tools-notice')).toHaveCount(0);
 
@@ -206,8 +223,7 @@ test('a newer pack file in the data folder is offered, and a dismissed notice st
     );
     await expect(win.getByTestId('tools-state')).toHaveAttribute('data-state', 'ok');
     await expect(win.getByTestId('tools-offer')).toHaveCount(0);
-    await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
-    await expect(win.locator('.jobs-rt')).toContainText('99.1.0');
+    await expect.poll(() => runtimeVersion(win)).toBe('99.1.0');
     expect(await network.outbound()).toEqual([]);
   } finally {
     await app.close();
@@ -251,7 +267,7 @@ test('an automated run never shows the notice, and a broken file changes nothing
   }
 });
 
-test('Update processing tools is one way in from Create maps and from Jobs, and leads back', async ({
+test('Update processing tools is one way in from Create maps and from the Processing drawer, and leads back', async ({
   dataRoot,
   network,
 }) => {
@@ -268,13 +284,13 @@ test('Update processing tools is one way in from Create maps and from Jobs, and 
     const notice = win.getByTestId('tools-notice');
     await expect(notice).toContainText('The processing tools are not installed');
 
-    // Jobs says it itself ("Jobs cannot run yet"): the notice does not say it a second time there
-    await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
-    const panel = win.locator('.jobs-rt-fix');
+    // the drawer says it itself ("Processing cannot run yet"): the notice does not say it twice
+    const drawer = await openProcessing(win);
+    const panel = drawer.getByTestId('proc-tools');
     await expect(panel).toContainText('the processing tools are missing or need an update');
     await expect(notice).toHaveCount(0);
     // nor over the Create maps dialog, which has the same button
-    await win.getByTestId('create-maps').click();
+    await drawer.getByTestId('create-maps').click();
     const wizard = win.getByRole('dialog', { name: 'Create maps from photos' });
     const blocked = wizard.getByTestId('photo-blocked');
     await expect(blocked).toContainText('The processing tools are not installed');
@@ -296,8 +312,10 @@ test('Update processing tools is one way in from Create maps and from Jobs, and 
     await expect(wizard.getByTestId('photo-blocked')).toHaveCount(0);
     await expect(wizard.getByTestId('photo-drop')).toBeVisible();
     await wizard.getByRole('button', { name: 'Close' }).first().click();
-    await expect(win.locator('.jobs-rt')).toContainText('Processing tools 0.5.0');
-    await expect(win.locator('.jobs-rt-fix')).toHaveCount(0);
+    await expect.poll(() => runtimeVersion(win)).toBe('0.5.0');
+    const after = await openProcessing(win);
+    await expect(after.getByTestId('proc-tools')).toHaveCount(0);
+    await closeProcessing(win);
 
     expect(await network.outbound()).toEqual([]);
   } finally {
@@ -305,16 +323,16 @@ test('Update processing tools is one way in from Create maps and from Jobs, and 
   }
 });
 
-test('the Jobs panel opens the same page', async ({ dataRoot, network }) => {
+test('the Processing drawer opens the same page', async ({ dataRoot, network }) => {
   const app = await launchApp(dataRoot, ENV);
   await network.attach(app);
   try {
     const win = await app.firstWindow();
     await win.waitForLoadState('domcontentloaded');
     await openTinyProject(win);
-    await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
-    await win
-      .locator('.jobs-rt-fix')
+    const drawer = await openProcessing(win);
+    await drawer
+      .getByTestId('proc-tools')
       .getByRole('button', { name: 'Update processing tools' })
       .click();
     await expect(win.getByRole('heading', { level: 1, name: 'Processing tools' })).toBeVisible();

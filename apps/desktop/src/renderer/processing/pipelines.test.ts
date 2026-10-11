@@ -2,16 +2,14 @@ import { PipelineName, PIPELINES } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
   groupedPipelines,
-  JOB_TASK_SECTIONS,
-  JOB_TASKS,
+  JOB_KIND,
+  jobKind,
   jobTitle,
+  KIND_LABEL,
   PIPELINE_GROUP,
   PIPELINE_GROUPS,
-  PRIMARY_TASK,
-  taskBlocked,
-  tasksOf,
   ungroupedPipelines,
-} from './jobTasks';
+} from './pipelines';
 
 describe('pipelines by area (the Advanced list)', () => {
   it('gives every pipeline of the schema exactly one area', () => {
@@ -69,54 +67,6 @@ describe('pipelines by area (the Advanced list)', () => {
   });
 });
 
-describe('the tasks of New job', () => {
-  const known = new Set<string>(PIPELINES.map((p) => p.name));
-
-  it('starts with Create maps from photos, the primary task', () => {
-    expect(JOB_TASKS[0]?.id).toBe(PRIMARY_TASK);
-    expect(JOB_TASKS[0]?.title).toBe('Create maps from photos');
-    expect(JOB_TASKS[0]?.pipelines).toEqual(['photo.align', 'photo.georef', 'photo.products']);
-  });
-
-  it('is a short list under three headings, every task in one of them', () => {
-    expect(JOB_TASKS.length).toBeLessThanOrEqual(10);
-    expect(JOB_TASK_SECTIONS.map((s) => s.label)).toEqual([
-      'Maps and models',
-      'Measure and compare',
-      'Import and convert',
-    ]);
-    const placed = JOB_TASK_SECTIONS.flatMap((s) => tasksOf(s.id));
-    expect(placed.map((t) => t.id).sort()).toEqual(JOB_TASKS.map((t) => t.id).sort());
-    for (const s of JOB_TASK_SECTIONS) expect(tasksOf(s.id).length).toBeGreaterThan(0);
-  });
-
-  it('has unique tasks that name real pipelines and speak plainly', () => {
-    expect(new Set(JOB_TASKS.map((t) => t.id)).size).toBe(JOB_TASKS.length);
-    expect(new Set(JOB_TASKS.map((t) => t.title)).size).toBe(JOB_TASKS.length);
-    for (const t of JOB_TASKS) {
-      expect(t.pipelines.length).toBeGreaterThan(0);
-      for (const p of t.pipelines) expect(known.has(p)).toBe(true);
-      // no engine-room words, no em or en dashes in what a person reads
-      expect(`${t.title} ${t.hint}`).not.toMatch(/pipeline|photogrammetry|[–—]/i);
-    }
-  });
-
-  it('says what a task needs before it can open', () => {
-    const maps = JOB_TASKS.find((t) => t.id === 'photo-maps');
-    const changes = JOB_TASKS.find((t) => t.id === 'changes');
-    const stockpiles = JOB_TASKS.find((t) => t.id === 'stockpiles');
-    if (!maps || !changes || !stockpiles) throw new Error('a task is missing');
-    expect(taskBlocked(maps, { project: false, surveyDates: 0 })).toBe('Open a project first.');
-    expect(taskBlocked(maps, { project: true, surveyDates: 0 })).toBeNull();
-    expect(taskBlocked(changes, { project: true, surveyDates: 1 })).toBe(
-      'This project needs two survey dates.',
-    );
-    expect(taskBlocked(changes, { project: true, surveyDates: 2 })).toBeNull();
-    // a new project needs nothing open
-    expect(taskBlocked(stockpiles, { project: false, surveyDates: 0 })).toBeNull();
-  });
-});
-
 describe('job titles', () => {
   it('reads the photo jobs as one activity and leaves the rest as the schema names them', () => {
     expect(jobTitle('photo.align')).toBe('Maps from photos: matching the photos');
@@ -124,5 +74,32 @@ describe('job titles', () => {
     expect(jobTitle('photo.georef')).toBe('Maps from photos: ground control');
     expect(jobTitle('system.selftest')).toBe('Check the pipeline pack');
     expect(jobTitle('road.build')).toBe('Road survey');
+  });
+});
+
+describe('the kind of a job', () => {
+  it('gives every pipeline of the schema exactly one kind', () => {
+    expect(Object.keys(JOB_KIND).sort()).toEqual(PIPELINES.map((p) => p.name).sort());
+  });
+
+  it('tells map processing from AI analysis', () => {
+    expect(jobKind('photo.products')).toBe('maps');
+    expect(jobKind('model.fit_cloud')).toBe('maps');
+    expect(jobKind('inspection.run')).toBe('ai');
+    expect(jobKind('aik.cameras')).toBe('ai');
+    expect(jobKind('survey.compare')).toBe('survey');
+    expect(jobKind('road.build')).toBe('survey');
+    expect(jobKind('survey.export')).toBe('files');
+    expect(jobKind('tiles.mesh')).toBe('files');
+    expect(jobKind('packs.imagery')).toBe('system');
+    expect(jobKind('system.selftest')).toBe('system');
+  });
+
+  it('files a pipeline it does not know under System', () => {
+    expect(jobKind('later.pipeline')).toBe('system');
+  });
+
+  it('has a label for every kind', () => {
+    expect(Object.keys(KIND_LABEL).sort()).toEqual(['ai', 'files', 'maps', 'survey', 'system']);
   });
 });

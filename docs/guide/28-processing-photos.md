@@ -4,7 +4,7 @@
 
 ## Create maps
 
-1. Open a project, then click **Create maps from photos**. The button is at the top of **Jobs**, first under **New job**, and beside **Import files** on an empty project.
+1. Open a project, then click **Create maps from photos**. The button is at the top of the **Processing** drawer (click **Processing** in the title bar), and beside **Import files** on an empty project.
 2. Choose the photos: drop a folder of photos on the window, or click **Choose a folder**. On a project that already has photos, **Photos in this project** is chosen for you. Folders inside the folder are read too.
 3. Read the summary, for example "248 photos, 1 camera, GPS on all", the time on this computer underneath, and the survey date the new layers will go under. The top of the screen names the project they are added to.
 4. Click **Create maps**.
@@ -26,7 +26,7 @@ A question only shows when your photos raise it:
 
 {product} checks this the moment you click **Create maps from photos**, before you choose anything:
 
-- **The processing tools are not installed**, or **The processing tools need an update**: click **Update processing tools**. It opens **Settings**, **Processing tools**: install the processing tools file there (**Install or update from file**, see [Processing tools](12-settings.md#processing-tools)), then click **Create maps from photos** in the message to come back. Maps from photos need version 0.4.0 or later. **Jobs** shows "Processing tools" and their version at the top.
+- **The processing tools are not installed**, or **The processing tools need an update**: click **Update processing tools**. It opens **Settings**, **Processing tools**: install the processing tools file there (**Install or update from file**, see [Processing tools](12-settings.md#processing-tools)), then click **Create maps from photos** in the message to come back. Maps from photos need version 0.4.0 or later.
 - **This computer cannot create maps from photos**: processing runs on Windows x64 and on Macs with Apple silicon. Other computers can open the results.
 
 ## Options
@@ -64,7 +64,7 @@ When the run is done it says **Your maps are ready**, names the project and the 
 
 ## Runs and their files
 
-**Jobs** lists each run under **Maps from photos**. **Open run** shows one; **Create maps again** rebuilds its maps; **Export as OPF** writes it for other programs.
+**Maps from photos** in the **Processing** drawer lists each run. **Open run** shows one; **Create maps again** rebuilds its maps; **Export as OPF** writes it for other programs.
 
 Each run lives in the project in `photogrammetry/<run>/`: its settings, steps and timings, the accuracy reports, the camera model and the outputs. A run's working files take the most space; **Delete work files** moves them to the recycle bin after asking, and shows the space freed. The outputs stay.
 

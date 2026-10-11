@@ -9,7 +9,7 @@ A volumetric project holds one or more survey dates of a yard: an elevation mode
 1. **New project**, type **Volumetric**. Set the origin and click **Next** twice.
 2. **Survey data**: enter the **Survey date**, pick the **DSM GeoTIFF** (or **Point cloud**) and **Pick orthomosaic**.
 3. **Add a second survey date** for a comparison. Every survey needs a DSM or a point cloud, and no two surveys can share a date.
-4. **Create project**. {product} starts the **Volumetric survey** job and shows **Jobs**. When it is **Done**, open **Scene**.
+4. **Create project**. {product} opens the new project and starts the **Volumetric survey**; the **Processing** drawer opens on it. When it says **Done**, close the drawer.
 
 ### Read the volumes
 
@@ -50,8 +50,8 @@ A road survey maps pavement distresses along a centreline and rates the road wit
 
 1. **New project**, type **Road**. The severity step preselects **Road distress (ASTM D6433)**. **Create project**: it opens in **Road setup**.
 2. **Import files**: the orthomosaic GeoTIFF.
-3. Optional, **Draw centreline**: the stage switches to the map. Click along the road from its start (km 0); **Backspace** removes the last point; **Finish** saves it. **Run the road builder** opens the job with it filled in.
-4. **Jobs**, **New job**, **Advanced: run a pipeline directly**, **Road survey**: pick the **Centreline**, the **Orthomosaic GeoTIFF**, the **Defect polygons**, the **Sample units** (**Along the road** or **Square grid**) and, optionally, the **Pavement raster**. **Start job**.
+3. Optional, **Draw centreline**: the stage switches to the map. Click along the road from its start (km 0); **Backspace** removes the last point; **Finish** saves it.
+4. In the road setup panel, click **Run the road builder**. A small dialog opens, with the drawn centreline filled in. Pick the **Centreline**, the **Orthomosaic GeoTIFF**, the **Defect polygons**, the **Sample units** (**Along the road** or **Square grid**) and, optionally, the **Pavement raster**. **Start**.
 
 ### Work along the road
 

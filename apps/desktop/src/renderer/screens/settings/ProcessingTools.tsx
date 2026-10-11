@@ -11,6 +11,7 @@ import { brand } from '@aio/brand';
 import type { InstalledPack, PackInstallProgress, PipelinePackStatus } from '@aio/schema';
 import { formatBytes, Icon, t, type IconName, type MessageKey } from '@aio/ui';
 import { useEffect, useRef, useState } from 'react';
+import { AdvancedPipelines } from '../../processing/AdvancedPipelines';
 import { processingTools, resumeAfterTools, useProcessingTools } from '../../processingTools';
 import { useShell } from '../../shell';
 import './processingTools.css';
@@ -353,6 +354,7 @@ export function ProcessingTools() {
       {status && status.state !== 'dev' && (
         <OtherPacks packs={status.others} disabled={installing} />
       )}
+      <AdvancedPipelines />
     </>
   );
 }

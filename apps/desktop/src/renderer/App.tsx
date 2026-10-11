@@ -15,8 +15,9 @@ import { lazy, Suspense, useEffect } from 'react';
 import { getMedia } from './media';
 import { nextClipInFlight, startPlaybackLoop } from './playback';
 import { IssuesScreen } from './screens/Issues';
-import { JobsScreen } from './screens/Jobs';
-import { jobTitle } from './screens/jobTasks';
+import { jobTitle } from './processing/pipelines';
+import { PipelineDialog } from './processing/PipelineDialog';
+import { ProcessingDrawer } from './processing/ProcessingDrawer';
 import { MediaScreen } from './screens/Media';
 import { DetectionsScreen } from './screens/Detections';
 import { ProjectsScreen } from './screens/Projects';
@@ -25,6 +26,7 @@ import { ReviewScreen } from './screens/Review';
 import { SettingsScreen } from './screens/Settings';
 import { WelcomeScreen } from './screens/Welcome';
 import { initAuthor } from './author';
+import { detections, loadDetections } from './detections/store';
 import { roadStore, startRoadSync } from './road/store';
 import { Toasts } from './exports/Toasts';
 import { spaceIsPlayPause } from './keys';
@@ -204,8 +206,6 @@ function Screen() {
       return <DetectionsScreen />;
     case 'reports':
       return <ReportsScreen />;
-    case 'jobs':
-      return <JobsScreen />;
     case 'globe':
       return (
         <Suspense fallback={null}>
@@ -278,6 +278,11 @@ export function App() {
         const merged = mergeDiskIssues(ws.issues, r.value.issues);
         workspace.setState({ issues: merged.issues });
         if (merged.unsaved) issueSaver.schedule(project.id, merged.issues);
+        // the review keeps its own copy of the passes (the pipeline wrote the issue of each
+        // accepted detection into them): read them again if it has this project loaded, so a
+        // person who started the run from Detections sees the result and never saves over it.
+        // (A review edit saved while the run was in progress is not repaired by this reload.)
+        if (detections.getState().projectId === project.id) void loadDetections(project.id, true);
       });
     });
     // a job that ends is said aloud wherever the person is
@@ -401,6 +406,8 @@ export function App() {
         <Screen />
       </main>
       <Palette />
+      <ProcessingDrawer />
+      <PipelineDialog />
       <UnlockDialog />
       <PackageExportDialog />
       <Toasts />

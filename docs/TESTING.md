@@ -93,7 +93,7 @@ Goal: build a complete deliverable inside Stratlas, from raw data to a reviewed,
 ### Before you start
 
 - [ ] The build stamp shows commit `4624bf2` or later (4 Oct 2026).
-- [ ] **Jobs** shows "Processing tools 0.2.0" at the top. The pack is `E:\Stratlas Data\runtime\pipeline-pack-0.2.0`; the app takes the newest pack in that folder, so the old `pipeline-pack-0.1.0` can stay. If a job stops at once with "There is no pipeline called ...", the app is using an older pack.
+- [ ] **Settings**, **Processing tools**, under **Status**, shows **Version** 0.2.0. The pack is `E:\Stratlas Data\runtime\pipeline-pack-0.2.0`; the app takes the newest pack in that folder, so the old `pipeline-pack-0.1.0` can stay. If a job stops at once with "There is no pipeline called ...", the app is using an older pack.
 - [ ] The samples are three folders in `E:\Stratlas Data\samples`: the inspection sample (its name starts with `inspection-`, 6 MB), the volumetric sample (`volumetric-`, 29 MB) and the road sample (`road-`, 104 MB). They are copies and crops; your projects and sources were not changed. Pick their files from there; the app only reads them.
 - [ ] Work on new projects or copies. Pipelines and accepted detections write into the open project (always with a backup, never dropping your own issues).
 
@@ -106,10 +106,10 @@ Places detections (boxes on posed photos) on the model, groups them into issues,
 - [ ] Severity model: the lining model that comes from the delivered tank project (5 levels). **Next**, **Create project**. The project opens empty.
 - [ ] **Import files**: the 20 photos in `photos\` and the tank model (the `.glb` file in the sample folder). "Imported 21 of 21 files", no Camera heights card (these photos carry absolute altitude only), **Close**. The cameras sit inside the tank.
 - [ ] Copy the AI pass (the `.json` file in the sample's `detections\` folder) into `E:\Stratlas Data\projects\tank-sample\detections\` (make the folder). Detection passes always live in `<project>\detections\`.
-- [ ] **Jobs**, **New job**, **Advanced: run a pipeline directly**: **Pipeline** is already **Inspection: detections to issues**; **Unreviewed AI detections** is **Leave out until a person accepts them**. **Start job**.
+- [ ] Sidebar **Detections**, **Turn detections into issues**: the dialog is titled **Inspection: detections to issues** and says "Runs in Tank sample." It asks for the inspection's options only, never a project folder. **Unreviewed AI detections** is **Leave out until a person accepts them**. **Start**: the **Processing** drawer opens on the new job.
 - [ ] Six steps: Read the project, Contact sheets, Read detections, Place detections on the model, Group into issues and stats, Write to the project. Then **Done**. The log says "Not counted: 9 draft, not reviewed" and "Issues: 4 new".
 - [ ] **Issues**: D01 Coating blister, D02 Corrosion, D03 Patch damage (severity 4), D04 Coating blister, all "Lining Roof", pinned on the tank roof where the findings F04, F05, F02 and F06 of the delivered tank project are.
-- [ ] Run the job again: "Issues: 0 new, 0 updated, 4 unchanged". Nothing duplicated. Contact sheets are in `<project>\inspection\contact\`.
+- [ ] Run it again (**Turn detections into issues**): "Issues: 0 new, 0 updated, 4 unchanged". Nothing duplicated. Contact sheets are in `<project>\inspection\contact\`.
 
 ### R1 Detections review (same project)
 
@@ -122,7 +122,7 @@ One detections contract: every pass (yours, AI, model) is a file in `<project>\d
 - [ ] A second box on the same spot: **Link** (**L**), find the issue by code or title: the box becomes a sighting of it.
 - [ ] Accept or link the rest: "0 waiting · 16 accepted · 1 rejected" (when you accept each box on its own). The save state reads **Saved**; the AI pass file in `detections\` now holds your decisions.
 - [ ] **Ctrl+Z** and **Ctrl+Y** undo and redo review changes. **Ctrl**+click selects several tiles; **Clear selection** empties it. The confidence slider hides proposals under "Confidence N% and up".
-- [ ] Run the inspection job again: the log says "Not counted: 1 rejected" and "8 accepted in the review (8 placed on the model)", "0 new ... 4 unchanged". The issues you accepted get their pin on the shell joints; none is made twice.
+- [ ] Run **Turn detections into issues** again: the log says "Not counted: 1 rejected" and "8 accepted in the review (8 placed on the model)", "0 new ... 4 unchanged". The issues you accepted get their pin on the shell joints; none is made twice.
 - [ ] **Outline** (**M**): "No mask model is installed in the pipeline pack." (none ships yet).
 - [ ] Flare project (299 photos): the contact sheet scrolls smoothly. In a package opened in the player the screen says **Read only**.
 
@@ -146,11 +146,11 @@ Two survey dates (DSM and ortho GeoTIFFs) of a corner of a stockpile yard with t
 - [ ] Origin: **Typed coordinate**: type the origin given in the sample's README; the CRS list selects **WGS 84 / UTM zone 39N**. **Next**, **Next**.
 - [ ] **Survey data**: **Survey date** `2020-12-31`, **DSM GeoTIFF** `2020-12-31_dsm.tif`, **Pick orthomosaic** `2020-12-31_ortho.tif`.
 - [ ] **Add a second survey date** without a surface: "Every survey needs a DSM or a point cloud." and **Create project** stays greyed out. The same date twice: "Two surveys have the same date."
-- [ ] Second date `2021-01-10` with `2021-01-10_dsm.tif` and `2021-01-10_ortho.tif`. The summary reads "2 survey dates, built in Jobs after creating". **Create project**.
-- [ ] **Jobs** runs **Volumetric survey** (about 20 s): Read the surveys and set the grid, DSM of survey 1 and 2, Ortho tiles of survey 1 and 2, Detect piles, toe lines, bases and volumes, Package the kit grids, Terrain meshes, ortho pyramids and volumes, Write to the project. **Done**.
+- [ ] Second date `2021-01-10` with `2021-01-10_dsm.tif` and `2021-01-10_ortho.tif`. The summary reads "2 survey dates, built after creating (see Processing)". **Create project**.
+- [ ] The **Processing** drawer opens by itself on **Volumetric survey** (about 20 s): Read the surveys and set the grid, DSM of survey 1 and 2, Ortho tiles of survey 1 and 2, Detect piles, toe lines, bases and volumes, Package the kit grids, Terrain meshes, ortho pyramids and volumes, Write to the project. **Done**.
 - [ ] **Scene**: two textured terrains and the **Volumes** register with 2 piles (P06 and P07 of the delivered stockpile project, numbered P01 and P02 here). Triangulated toe: P01 1,612.6 m³ (31 Dec) and 1,446.7 m³ (10 Jan), P02 262.4 and 309.7 m³; change -342.3 and +89.2 m³. These are the delivered figures; the README lists all four bases.
 - [ ] Switch dates and bases, click a pile, **Swipe** between the dates.
-- [ ] Quit Stratlas during a run and reopen: the job shows **Interrupted** with **Resume**; Resume carries on from the next step.
+- [ ] Quit Stratlas during a run and reopen: the **Processing** chip reads "1 needs attention", and in the drawer, under **Finished**, the job shows **Interrupted** with **Resume**. Once the drawer has been opened the chip goes back to **Processing** and stays so at the next start. Resume carries on from the next step.
 
 ### P3 Road survey from raw data (the road sample)
 
@@ -160,8 +160,8 @@ A 250 m stretch of the delivered road project, km 3.00 to 3.25: ortho, centrelin
 - [ ] Origin: **Typed coordinate**: type the origin given in the sample's README; the CRS list selects **WGS 84 / UTM zone 38N**, EPSG:32638. **Next**.
 - [ ] The severity step preselects **Road distress (ASTM D6433)**. **Next**, **Create project**. The project opens in **Road setup**: "This road survey has no road model yet ...".
 - [ ] **Import files**: the ortho GeoTIFF of the sample (the file ending in `-ortho.tif`). "Imported 1 of 1 files".
-- [ ] Optional: **Draw centreline**: the stage switches to the map; click along the road; **Backspace** removes the last point; **Finish**: "Centreline saved as road/centreline-drawn.geojson." **Run the road builder** opens Jobs with it filled in.
-- [ ] **Jobs**, **New job**, **Advanced: run a pipeline directly**, **Road survey**: **Centreline** `centreline.geojson` (the delivered chainage 3.00 to 3.25 km), **Orthomosaic GeoTIFF** the ortho, **Defect polygons** `defects.geojson`, **Sample units**: the **Square grid** option (as delivered for the road project), **Pavement raster** `pavement.tif`. **Start job**.
+- [ ] Optional: **Draw centreline**: the stage switches to the map; click along the road; **Backspace** removes the last point; **Finish**: "Centreline saved as road/centreline-drawn.geojson." **Run the road builder** opens the start dialog with the drawn centreline filled in.
+- [ ] In the road setup panel, **Run the road builder** opens the **Road survey** dialog, which says "Runs in Road sample." It asks for: **Centreline** `centreline.geojson` (the delivered chainage 3.00 to 3.25 km), **Orthomosaic GeoTIFF** the ortho, **Defect polygons** `defects.geojson`, **Sample units**: the **Square grid** option (as delivered for the road project), **Pavement raster** `pavement.tif`. **Start**.
 - [ ] **Done** in about 20 s. The log: "78 defects: 52 Transverse cracking, 10 Longitudinal cracking, 8 Raveling, 6 Bleeding, 1 Rutting, 1 Block cracking" and "73 sample units (grid), network PCI 95.6 / 88.3 / 77.4".
 - [ ] The 50 grid units wholly inside the stretch have exactly the PCI of the delivered road project (click one in the PCI grid and compare with the same cell in that project).
 - [ ] **Scene**: the road workspace as in the delivered road project: chainage ruler, "78 of 78 defects", **P** for the PCI grid with its legend, click a defect row for its **Close-up**.
@@ -193,7 +193,7 @@ Use the tank sample project or a new empty one.
 
 - [ ] Drag in a DJI video with its `.SRT`: a clip with its flight path appears and plays in sync.
 - [ ] Drag in a GLB, then **Georeference** it by clicking 3 point pairs; residuals show.
-- [ ] Drag in a small LAS or LAZ: a **Jobs** entry converts it (progress, log); the cloud appears when done.
+- [ ] Drag in a small LAS or LAZ: a job under **Processing** converts it (progress, log); the cloud appears when done.
 
 ### Camera heights in Import
 
@@ -317,7 +317,7 @@ Everything here runs offline on the new bundled demo **Demo change site (2 dates
 ### Before you start
 
 - [ ] Install `QuadrionAI-0.10.0-win-x64-setup.exe` (M8 was built in 0.8.0; 0.10.0 contains it). **Settings, About and updates** shows version 0.10.0.
-- [ ] Copy the folder `E:\Dev\AIO Software\apps\desktop\dist\pipeline-pack-0.3.0` into `E:\Stratlas Data\runtime\`. **Jobs** then shows "Processing tools 0.3.0" at the top. The change, drawing and fitting jobs need it.
+- [ ] Copy the folder `E:\Dev\AIO Software\apps\desktop\dist\pipeline-pack-0.3.0` into `E:\Stratlas Data\runtime\`. **Settings**, **Processing tools** then shows **Version** 0.3.0 under **Status**. The change, drawing and fitting jobs need it.
 - [ ] **Projects** shows three demo cards, one named **Demo change site (2 dates)**. The first-start welcome still opens the 0.7.0 demo.
 
 ### The change demo
@@ -342,7 +342,7 @@ Everything here runs offline on the new bundled demo **Demo change site (2 dates
 
 ### Imagery and surface change
 
-- [ ] In **Changes**, click **Run imagery change**. The job finishes in **Jobs**, and two layers appear: "Imagery change heat map ..." and "Imagery change areas". The new building and the removed container are outlined; the cloud shadow and the colour tint are not.
+- [ ] In **Changes**, click **Run imagery change**. The job runs under **Processing** and finishes there, and two layers appear: "Imagery change heat map ..." and "Imagery change areas". The new building and the removed container are outlined; the cloud shadow and the colour tint are not.
 - [ ] Click **Run surface change**: the grown stockpile shows fill, the new pit shows cut, with site totals. Blue is cut, red is fill; the legend reads in metres.
 - [ ] While comparing dates, open the compare bar from the stage toolbar (next to **Compare dates** and **Show changes**). **Swipe**: drag the divider across the site, earlier date left, later right. The arrow keys move it, and Shift+arrow moves it by 10%.
 - [ ] **Blend**: the slider fades the later date in. **Side by side** restores the normal split.
@@ -568,7 +568,7 @@ M10 turns drone photos into an aligned, georeferenced survey inside Quadrion AI,
 - [ ] Install `QuadrionAI-0.10.0-win-x64-setup.exe`, built from `integration/m10` at commit `3f07041` or later with the M10 fixes merged (the photo demo has 24 photos). **Settings, About and updates** shows "Quadrion AI 0.10.0" and that commit in the build stamp.
 - Pipeline pack 0.4.0 is not built on this PC yet (since 8 Oct 2026 it is built from prebuilt wheels and PDAL in about a minute: `node tools/pipeline-pack/build.mjs`). Wait for the pack 0.4.0 build; until then the photo steps that need COLMAP are marked (needs pack 0.4.0). The other new M10 jobs (adjusting with ground control, OPF, imagery and terrain packs, Mesh to 3D Tiles) run in pack 0.4.0 too and carry the same mark.
 - [ ] With pack 0.3.0 still installed, the earlier jobs run on 0.10.0 as before (for example **Run imagery change** on **Demo change site (2 dates)**).
-- [ ] (needs pack 0.4.0) When I tell you where it is, copy the folder `pipeline-pack-0.4.0` into `E:\Stratlas Data\runtime\`. **Jobs** shows "Processing tools 0.4.0" at the top. The pack's `tools` folder holds `pdal` (conda-forge's build, with `conda-packages.json` and `licenses`).
+- [ ] (needs pack 0.4.0) When I tell you where it is, copy the folder `pipeline-pack-0.4.0` into `E:\Stratlas Data\runtime\`. **Settings**, **Processing tools** shows **Version** 0.4.0 under **Status**. The pack's `tools` folder holds `pdal` (conda-forge's build, with `conda-packages.json` and `licenses`).
 - [ ] **Projects** shows four demo cards, one named **Photo processing demo**.
 - Opening a demo makes a working copy in `%APPDATA%\Quadrion AI\demo\`; the bundled demo never changes. Your own photos are only read, never changed.
 
@@ -576,23 +576,27 @@ M10 turns drone photos into an aligned, georeferenced survey inside Quadrion AI,
 
 - [ ] Open **Photo processing demo**. **Datasets** has one layer, "Drone photos (synthetic)", with 24 photos at 960 × 720 of a made-up desert site: 20 straight down, plus a blurred one, a duplicate, one of another place and one without GPS.
 - [ ] Nothing in the demo names a client, a real site or a real camera.
-- [ ] The demo already holds a finished alignment, run `20260314-1000`, so ground control and the accuracy report work without pack 0.4.0. **Jobs**, section **Maps from photos**: the run reads "Photos matched" and "Standard · 24 photos".
+- [ ] The demo already holds a finished alignment, run `20260314-1000`, so ground control and the accuracy report work without pack 0.4.0. Open the **Processing** drawer, section **Maps from photos**: the run reads "Photos matched" and "Standard · 24 photos".
 - [ ] **Open run** on it: the panel "Photo run 20260314-1000" with the tabs **Progress**, **Ground control**, **Accuracy** and **Refined poses**. **Progress** says "The photos are matched. Mark ground control points for survey accuracy, or create the maps now." Open "3 photos left out": motion blur, a duplicate of SYN_0023.JPG, and "another place: matches no other photo".
 
-### Jobs: tasks first
+### Processing
 
-- [ ] **Jobs** reads "Processing that runs on this computer." The big button is **Create maps from photos**; **New job** is beside the title.
-- [ ] **New job**: a short list of tasks under **Maps and models**, **Measure and compare** and **Import and convert**, with **Create maps from photos** first and highlighted. No list of pipelines in sight.
-- [ ] A task that cannot open says why, for example "This project needs two survey dates." on **Compare two survey dates**.
-- [ ] **Advanced: run a pipeline directly**, at the bottom: the **Pipeline** list as before, now grouped (Photos to maps, Inspection, Stockpiles and volumes, Change between dates, Survey tools, Water and haul roads, Import and convert, Map packs, Road survey, System), with the same forms and **Start job**.
-- [ ] On **Demo change site (2 dates)**: **Compare two survey dates** opens the **Changes** tab, **Cut and fill for the whole site** its dialog, **Check a survey** the **Check against points** panel, **Contours, slope and relief** the **Terrain overlays** panel, **Export survey data** its dialog.
+- [ ] Open **Photo processing demo**. In the title bar, next to the sync and connection chips, there is a **Processing** chip. The sidebar has no **Jobs**.
+- [ ] Click **Processing**. A drawer opens on the right with the project's name, **Create maps from photos** and **Maps from photos**. In a project that has not processed anything yet (a new one) it says "Nothing is processing in <name> and nothing has finished yet." **Esc** or **Close** closes the drawer and the focus goes back to the chip.
+- [ ] (needs pack 0.4.0) Click **Create maps from photos**. The wizard opens and the drawer closes. Start a run. The chip changes to "Processing 12%" and counts up.
+- [ ] (needs pack 0.4.0) Click the chip again. The run is under **Running** with the tag **Maps and models**. Click it: steps, **Cancel**, **Open run**. **Back** returns to the list.
+- [ ] (needs pack 0.4.0) Open another project while it runs. The chip reads "Processing · 1 running elsewhere"; the drawer shows it under **Running in other projects** with the first project's name. Opening it shows that project's name at the top, with **Cancel** but no **Open run**.
+- [ ] With the processing tools missing, the drawer says "Processing cannot run yet: the processing tools are missing or need an update." with **Update processing tools**, which opens **Settings**, **Processing tools**.
+- [ ] On an inspection project, open **Detections**. **Turn detections into issues** asks for the inspection's options only and says "Runs in <name>."
+- [ ] On a road survey in setup, **Run the road builder** opens the same kind of dialog with the drawn centreline filled in.
+- [ ] **Settings**, **Processing tools**, scroll down: **Advanced: run a pipeline directly** holds the raw forms (the **Pipeline** list, grouped: Photos to maps, Inspection, Stockpiles and volumes, Change between dates, Survey tools, Water and haul roads, Import and convert, Map packs, Road survey, System, each with its form and **Start job**) and **All jobs on this computer**.
 
 ### Create maps from photos: one screen
 
-- [ ] Without pack 0.4.0, **Jobs**, **Create maps from photos**: no form, only "The processing tools are not installed" (or "The processing tools need an update" with an older pack), one sentence, and **Update processing tools**, which opens **Settings**, **Processing tools**. The message shows once.
-- [ ] On that page, **Status** reads "Not installed" (or "Too old for this version of Quadrion AI" with the lines that say what the installed version lacks). **Choose file**, pick `pipeline-pack-0.5.1-win-x64.tar.gz` (beside the installer): a progress bar with **Cancel**, then "Processing tools 0.5.1 are installed. Jobs use them from now on." and a **Create maps from photos** button that opens the dialog again, now with its form. With the file in Downloads the page offers **Install version 0.5.1 found in Downloads** instead. About a minute; no restart.
-- [ ] The same file again: "Version 0.5.2 is already installed. Replace it with the one in this file?" with **Keep it** and **Replace version 0.5.2**. **Versions no longer in use** lists the older ones with their sizes; **Remove**, then **Move version 0.2.0 to the bin**, puts one in the Recycle Bin. **Jobs** shows "Processing tools 0.5.2" at the top.
-- [ ] (needs pack 0.4.0) **Jobs**, **Create maps from photos**: one screen. **Photos in this project** is chosen, with "Drone photos (synthetic) (24 photos)". The other choice is **Folders of photos**.
+- [ ] Without pack 0.4.0, **Processing**, **Create maps from photos**: no form, only "The processing tools are not installed" (or "The processing tools need an update" with an older pack), one sentence, and **Update processing tools**, which opens **Settings**, **Processing tools**. The message shows once.
+- [ ] On that page, **Status** reads "Not installed" (or "Too old for this version of Quadrion AI" with the lines that say what the installed version lacks). **Choose file**, pick `pipeline-pack-0.5.1-win-x64.tar.gz` (beside the installer): a progress bar with **Cancel**, then "Processing tools 0.5.1 are installed. Processing uses them from now on." and a **Create maps from photos** button that opens the dialog again, now with its form. With the file in Downloads the page offers **Install version 0.5.1 found in Downloads** instead. About a minute; no restart.
+- [ ] The same file again: "Version 0.5.2 is already installed. Replace it with the one in this file?" with **Keep it** and **Replace version 0.5.2**. **Versions no longer in use** lists the older ones with their sizes; **Remove**, then **Move version 0.2.0 to the bin**, puts one in the Recycle Bin. **Status** then shows **Version** 0.5.2.
+- [ ] (needs pack 0.4.0) **Processing**, **Create maps from photos**: one screen. **Photos in this project** is chosen, with "Drone photos (synthetic) (24 photos)". The other choice is **Folders of photos**.
 - [ ] (needs pack 0.4.0) The summary reads "24 photos, 1 camera, 1 without GPS", the time "About … on this computer", and one line with the disk space and memory. Under it: "1 photo has no GPS position. It is placed by matching the other photos." No other warning, and **Create maps** can be clicked.
 - [ ] (needs pack 0.4.0) **Options** is closed. Open it: **Quality** has **Quick**, **Standard** (chosen) and **High**. **What to create**: **Orthomosaic**, **Surface model (DSM)**, **Terrain model (DTM)**, **Point cloud** and **Textured mesh** ticked, **3D Tiles** not. **Quick** ticks only the orthomosaic and DSM.
 - [ ] (needs pack 0.4.0) **Options**, **Coordinate system**: "WGS 84 / UTM zone 39N" with "EPSG:32639 · project · photos", and under it "The photos are in UTM zone 39N (EPSG:32639)." **Camera positions (GNSS)** offers **Read each photo** (chosen), **RTK on every photo**, **Standard GNSS** and **Ignore GNSS**. **Heights** names the project's vertical datum (+21.70 m). Also **Survey date** and **I have ground control points**.
@@ -605,7 +609,7 @@ M10 turns drone photos into an aligned, georeferenced survey inside Quadrion AI,
 - [ ] **Pause** while it matches the photos: the run reads "Paused". **Resume**: the finished steps say "kept from before" and the run carries on.
 - [ ] Start another run and click **Cancel**: "Cancelled. The work so far is kept; resume it to continue from the stage it stopped at." Click **resume it**: it carries on.
 - [ ] When the photos are matched, the maps start by themselves in the same list. When it is done: "Your maps are ready", "Added to the project as new layers:" with the ortho, DSM, DTM, point cloud and mesh, and the buttons **Show on map**, **Show in 3D** and **Improve accuracy with ground control points**. The layers show in **Datasets** without reopening the project.
-- [ ] In **Jobs**, the two jobs of the run read "Maps from photos: matching the photos" and "Maps from photos: building the maps".
+- [ ] In **Processing**, under **Finished**, the two jobs of the run read "Maps from photos: matching the photos" and "Maps from photos: building the maps".
 - [ ] A run never uses more than 75% of this PC's memory (Task Manager).
 
 ### Maps of the demo run (needs pack 0.4.0)
@@ -613,7 +617,7 @@ M10 turns drone photos into an aligned, georeferenced survey inside Quadrion AI,
 - [ ] On run `20260314-1000`, **Progress**, **Create maps**: the steps Building the map, Building the 3D model and Adding to the project; **Every step** shows Depth maps, Fuse points, Point cloud, Surface model, Terrain model, Orthomosaic, Mesh, Texture, Add layers.
 - [ ] **Cancel** while it builds the map, then **resume it**: it continues from there.
 - [ ] Done: the new layers are added and the photos layer is unchanged. In 3D the textured mesh sits upright on the site; in **Map** the ortho lies on the site.
-- [ ] **Jobs**, **New job**, **Advanced: run a pipeline directly**, **Create products from photos**: **Run id** `20260314-1000`; **Products** is a checklist and needs at least one tick. Tick **3D Tiles**, **Start job**: the mesh also streams into the 3D view as tiles.
+- [ ] **Settings**, **Processing tools**, **Advanced: run a pipeline directly**, **Create products from photos**: **Run id** `20260314-1000`; **Products** is a checklist and needs at least one tick. Tick **3D Tiles**, **Start job**: the mesh also streams into the 3D view as tiles.
 - [ ] In the demo's working copy, `photogrammetry\20260314-1000\report\products.json` names the engines used, the time and the peak memory.
 
 ### Ground control on the demo run
@@ -641,7 +645,7 @@ M10 turns drone photos into an aligned, georeferenced survey inside Quadrion AI,
 
 - [ ] Run `20260314-1000`, **Refined poses**: "This run has no refined cameras yet (…). Align the photos first." (the demo run is precomputed).
 - [ ] (needs pack 0.4.0) On a run you processed from the demo's photos layer: "N cameras move by … (median), at most …". **Use refined poses**: "Move N cameras of the layer? The manifest keeps a backup." **Move the cameras**: "The refined poses are in use for N cameras. The poses before are kept in the run folder as cameras.json.bak."
-- [ ] **Jobs**, **Maps from photos**, **Delete work files** on run `20260314-1000`: it asks "Move this run's work files to the recycle bin? Its layers and reports stay."; **Delete work files** again: "Run 20260314-1000 has no work files."
+- [ ] **Processing**, **Maps from photos**, **Delete work files** on run `20260314-1000`: it asks "Move this run's work files to the recycle bin? Its layers and reports stay."; **Delete work files** again: "Run 20260314-1000 has no work files."
 - [ ] (needs pack 0.4.0) The same on a run you processed: **Keep** leaves it; **Delete work files**: "Moved … of work files of <run> to the recycle bin." The layers and the accuracy report stay, and the Recycle Bin has the files.
 
 ### Processing your own photos (needs pack 0.4.0)
@@ -666,11 +670,11 @@ Use a real drone flight of yours. The photos stay in their folder and are only r
 
 ### OPF (needs pack 0.4.0)
 
-- [ ] **Jobs**, **Maps from photos**, **Export as OPF** on run `20260314-1000`, choose an empty folder: "Exporting run 20260314-1000 as OPF to … The job is in the list." When **OPF export** is done, the folder holds `project.opf` (and the ortho and DSM under `outputs` for a run with products).
+- [ ] **Processing**, **Maps from photos**, **Export as OPF** on run `20260314-1000`, choose an empty folder: "Exporting run 20260314-1000 as OPF to … The job is in the list." When **OPF export** is done, the folder holds `project.opf` (and the ortho and DSM under `outputs` for a run with products).
 - [ ] Export again into a folder with other files in it: the job fails with "… is not empty. Choose an empty folder, or an earlier Quadrion AI OPF export."
 - [ ] **New project**, then **Import files** and pick that `project.opf`: an **OPF import** job runs. When it is done, a layer "… photos (OPF)" (plus ortho, DSM and point cloud when the OPF has them), with the photos on their camera positions. The job log lists anything not imported.
-- [ ] **Jobs**, **Maps from photos** lists the imported run (`opf-…`); **Create maps again** makes the maps from it.
-- [ ] **Jobs**, **New job**, **Advanced: run a pipeline directly**, **OPF import**: **OPF project**, **Bring in** (leave all unticked for everything) and **Photos folder**.
+- [ ] **Processing**, **Maps from photos** lists the imported run (`opf-…`); **Create maps again** makes the maps from it.
+- [ ] **Settings**, **Processing tools**, **Advanced: run a pipeline directly**, **OPF import**: **OPF project**, **Bring in** (leave all unticked for everything) and **Photos folder**.
 - [ ] Optional, with a Pix4D OPF that names its photos by full paths: without **Photos folder** the job says none of the photos were found and asks for the photos folder; with it, the photos come in.
 
 ### Globe
@@ -689,7 +693,7 @@ Use a real drone flight of yours. The photos stay in their folder and are only r
 
 - [ ] **Settings, Offline maps**, section **Imagery and terrain**: **Import imagery**, **Import terrain** and four switches.
 - [ ] **Import imagery**, pick a GeoTIFF you may use (for example `2020-12-31_ortho.tif` in the volumetric sample folder under `E:\Stratlas Data\samples`). The form: **Pack name**, **Licence**, **Attribution** and "Customer licence, not for redistribution (left out of packages)", ticked.
-- [ ] Fill in a licence and an attribution, **Build the pack**: "Building … in the pipeline pack. It appears here when the job in Jobs is done." Then a row with the name, the **Customer licence** tag, the attribution, the licence, the zoom levels, the size and the date.
+- [ ] Fill in a licence and an attribution, **Build the pack**: "Building … with the processing tools. It appears here when it is done." Then a row with the name, the **Customer licence** tag, the attribution, the licence, the zoom levels, the size and the date.
 - [ ] Open the stockpile sample project (M6, P2), **Map**: the imagery lies under the streets, with its attribution. Untick **Satellite: imagery packs under the streets on the map**: streets only.
 - [ ] **Import terrain**, `2020-12-31_dsm.tif`: the same form plus **Heights measured from** (EGM2008, EGM96 or the WGS84 ellipsoid), and **Customer licence** ticked. Build: the row shows the datum and the tag. The **Map** shows relief shading while **Relief shading from terrain packs on the map** is on.
 - [ ] Tick **Terrain around the site in 3D (Medium graphics and up)** and **Imagery around the site in 3D (Medium graphics and up)**. In the 3D view the ground around the site follows the terrain and carries the imagery.
@@ -697,7 +701,7 @@ Use a real drone flight of yours. The photos stay in their folder and are only r
 
 ### 3D Tiles
 
-- [ ] (needs pack 0.4.0) **Demo tank farm**, **Jobs**, **New job**, **Advanced: run a pipeline directly**, **Mesh to 3D Tiles**, **Mesh layer id** `model`, **Start job**. When it is done, the tiles stream into the 3D view (hide the **model** layer in **Datasets** to see them alone). Clicking, measuring and **Inside the asset**, **Cut** work on them. Its Globe card reads "1 tileset".
+- [ ] (needs pack 0.4.0) **Demo tank farm**, **Settings**, **Processing tools**, **Advanced: run a pipeline directly**, **Mesh to 3D Tiles**, **Mesh layer id** `model`, **Start job**. When it is done, the tiles stream into the 3D view (hide the **model** layer in **Datasets** to see them alone). Clicking, measuring and **Inside the asset**, **Cut** work on them. Its Globe card reads "1 tileset".
 - [ ] Open another project, **Ctrl+K**, **Import 3D Tiles from another program**, and pick `tileset.json` in `%APPDATA%\Quadrion AI\demo\demo-tank-farm\tiles\model\`. The card **Import 3D Tiles** has **Name** and **Credit line**. **Import**: "Imported …" and "It is placed by its own georeference and shows in the 3D view."
 - [ ] Back in **Demo tank farm**, import that same `tileset.json`: "That folder holds this project. Pick the folder of the 3D Tiles export." Nothing is copied.
 - [ ] Optional, with a 3D Tiles export from another program (DJI Terra, Pix4D): a georeferenced one shows in place; one without a georeference says "It has no georeference of its own, so it is kept hidden: placing it on the map is not built yet."
@@ -721,7 +725,7 @@ Most steps use four synthetic demo projects that you generate on this PC. The la
 ### Before you start
 
 - [ ] Install `QuadrionAI-0.11.2-win-x64-setup.exe`. **Settings, About and updates** shows "Quadrion AI 0.11.2" and, in the build stamp, the commit it was built from. Every build handed over has its own version number: if the number is the one you already had, it is the same build.
-- [ ] Install the processing tools 0.5.2: **Settings**, **Processing tools**, **Choose file**, and pick `pipeline-pack-0.5.2-win-x64.tar.gz` when I tell you where it is (nothing is copied into `runtime` by hand any more). **Jobs** shows "Processing tools 0.5.2" at the top. Every survey job (preparing surfaces, whole-site comparisons, sections, overlays, exports, QA, cleanup, design import, calibration, haul road, hydrology) runs in it.
+- [ ] Install the processing tools 0.5.2: **Settings**, **Processing tools**, **Choose file**, and pick `pipeline-pack-0.5.2-win-x64.tar.gz` when I tell you where it is (nothing is copied into `runtime` by hand any more). **Status** then shows **Version** 0.5.2. Every survey job (preparing surfaces, whole-site comparisons, sections, overlays, exports, QA, cleanup, design import, calibration, haul road, hydrology) runs in it.
 - [ ] Build the demos: in a terminal in `E:\Dev\AIO Software`, run `pnpm demo:survey --out "E:\Stratlas Data\survey-demos"`. It ends with "written to ..." and four folders: `demo-survey-earthworks`, `demo-survey-quarry`, `demo-survey-landfill` and `demo-survey-analytic`. Each folder holds a `README.txt` and a `truth.json` with the exact volumes, areas, grades, checkpoints and calibration of every survey.
 - [ ] **Projects**, **Add project folder**, once for each of the four folders: the cards **Earthworks demo**, **Quarry demo**, **Landfill demo** and **Survey analytic demo** appear.
 - [ ] Make a synthetic geoid grid and a CSV of calibration point pairs: in a terminal in `E:\Dev\AIO Software\python\tests`, run `..\.venv\Scripts\python -c "from pathlib import Path; from survey_synth import write_geoid_grid, site_calibration, FIXTURE_CRS; o = Path(r'E:\Stratlas Data\survey-demos'); write_geoid_grid(o / 'synthetic-geoid.tif', FIXTURE_CRS['utm39n'].lonlat); c = site_calibration(); (o / 'site-pairs.csv').write_text('name,grid N,grid E,grid Z,local N,local E,local Z,H,V\n' + ''.join(','.join([p['name'], *map(repr, p['grid']), *map(repr, p['local']), '1', '1']) + '\n' for p in c['pairs'])); print(round(c['rmsH'] * 1000, 1), round(c['rmsV'] * 1000, 1))"`. It prints the two RMS values in mm (8.3 and 4.9) and writes `synthetic-geoid.tif` and `site-pairs.csv` beside the demos.
@@ -801,8 +805,8 @@ Most steps use four synthetic demo projects that you generate on this PC. The la
 - [ ] **Earthworks demo**, **Designs**: "Pad and road design (synthetic)" with its layers (**Surface**, **Linework**, **Points**, **Alignment**), counts like "n triangles, n vertices", **Fly to**, and the source file as a download.
 - [ ] The design is drawn in the 3D view and on the map: the pad and road surfaces translucent (on the map their outline), the linework, the control points, and the road alignment on the terrain with a tick and a station label every 20 m. Untick a layer: it leaves both views; tick it again. **Clamp to terrain** on a linework layer drapes it on the survey. **Vertical offset** moves a surface up or down in the 3D view. An archived layer is not drawn.
 - [ ] **Import design** and pick the DXF in `survey\design-files\` of the demo folder: the options open under the button with **Name** (the file's name), **Format** "Automatic (DXF)", **Coordinate system of the file** ("The file's own, else the project's (EPSG:...)", and a search by name, place or EPSG code), **Units** (the file's own when it states them) and **Layers to import**, each ticked. Untick one layer, **Import**: a second design without that layer. Do the same with the 12da and the CSV. In a cross-section, each imported pad surface lies on the original one.
-- [ ] A DXF without drawing units: **Units** says "As the file states (metres if it states none)"; left so, the import is refused with "... has no drawing units ($INSUNITS). Choose the units ..."; with **Units** set to millimetres it goes through, scaled. With the site calibration applied, **Place it through the site calibration** is offered and hides the coordinate system. A file over 64 MB asks for the layer names as typed text. **Jobs**, **New job**, **Advanced: run a pipeline directly**, **Import design** still works as before.
-- [ ] **Jobs**, **New job**, **Advanced: run a pipeline directly**, **Import design** with a `.ttm` file: "... is a Trimble TIN (TTM), which this import cannot read: there is no published specification. Export the surface as LandXML from Trimble Business Center and import that."
+- [ ] A DXF without drawing units: **Units** says "As the file states (metres if it states none)"; left so, the import is refused with "... has no drawing units ($INSUNITS). Choose the units ..."; with **Units** set to millimetres it goes through, scaled. With the site calibration applied, **Place it through the site calibration** is offered and hides the coordinate system. A file over 64 MB asks for the layer names as typed text. **Settings**, **Processing tools**, **Advanced: run a pipeline directly**, **Import design** still works as before.
+- [ ] **Settings**, **Processing tools**, **Advanced: run a pipeline directly**, **Import design** with a `.ttm` file: "... is a Trimble TIN (TTM), which this import cannot read: there is no published specification. Export the surface as LandXML from Trimble Business Center and import that."
 - [ ] Select **Pad to design**, then **Designs**, **Compliance to design**: it says "Adds to the selected polygon, "Pad to design"." Pick the pad layer, tolerance 50 mm, **Cut/Fill to design**: "Cut/Fill to design added to "Pad to design"". The comparison is computed in the measurement's panel, with a line under its results like "12.3% in tolerance (plus or minus 0.050 m)" and the areas cut and fill beyond it.
 - [ ] **Remaining to design** the same way: one more comparison, with **Use deadband in calculations** ticked at 0.05 m; its cut and fill are what is still to move.
 - [ ] With no polygon selected (Esc), **Cut/Fill to design**: the drawing bar says "Draw the area to compare to the design: click its corners, then Finish (or double-click)." Draw it: the new **Volume** polygon gets the comparison, computed, and the drawing tool stops after one shape.
@@ -851,7 +855,7 @@ Use the exports above (Earthworks demo, latest survey and the pad and road desig
 - [ ] **Parked excavator**: its volume changes only when its comparison picks the cleaned surface; the delivered surface is unchanged.
 - [ ] **Copy as crop** and **Crop to another survey's extent**, **Add crop**: a cropped surface the same way.
 - [ ] **Cleanup and crop**, **DTM from a point cloud**: on the demos (no point cloud) **Make a DTM** is greyed out with "The DTM filter works on a point cloud, and this project has none."
-- [ ] A project with a point cloud layer (a 0.10 project with LAS or COPC, or one you import in **Jobs**): pick the **Point cloud**, **Remove** **Equipment and vegetation**, **Make a DTM**: "The DTM is ready as a new surface; pick it in a comparison to use it." **Surveys**, **Show hidden** lists the `-dtm` surface. Without PDAL in the pipeline pack, the button says "The DTM filter runs in PDAL, which the pipeline pack here does not have. ..."
+- [ ] A project with a point cloud layer (a 0.10 project with LAS or COPC, or one you import, whose job runs under **Processing**): pick the **Point cloud**, **Remove** **Equipment and vegetation**, **Make a DTM**: "The DTM is ready as a new surface; pick it in a comparison to use it." **Surveys**, **Show hidden** lists the `-dtm` surface. Without PDAL in the pipeline pack, the button says "The DTM filter runs in PDAL, which the pipeline pack here does not have. ..."
 - [ ] **Surveys**: grouped by year and month, newest first, with "surface" and QA pills. **Show hidden (n)** lists the cleaned surface ("from ...").
 - [ ] **Elevation history**: select a point measurement, **Use the selected point**, **Show the history**: a chart and a table **Survey**, **Height**, **Change**.
 
@@ -914,7 +918,7 @@ Needs version 0.11.1 and pipeline pack 0.5.1: the pack's folder has `models\sam\
 - [ ] **Measurements**: every measurement is listed with its value and drawn in the 3D view and on the map; the list ends with "Read-only package: measurements are shown only." and has no **Save**.
 - [ ] Click a measurement: its properties show without **Delete measurement** or **Edit vertices in the view**; a section measurement opens its chart, without **Download**.
 - [ ] **Terrain overlays**, **Designs** and **Survey QA and cleanup** show what the project had, with their run and import buttons hidden or greyed out. **Site settings** reads "Read-only package: the site settings and the calibration are shown only." with no **Save** and no calibration buttons.
-- [ ] **Jobs** stays empty the whole time.
+- [ ] The **Processing** chip is not in the title bar the whole time (a read-only package has no processing of its own), unless another project is running something: then it reads "Processing · 1 running elsewhere".
 
 ### Real-data parity (decision 9)
 

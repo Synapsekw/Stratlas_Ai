@@ -22,7 +22,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, VENV_PYTHON, type DataRoot } from './fixtures';
+import { expect, openProcessing, VENV_PYTHON, type DataRoot } from './fixtures';
 
 export const PHOTO_PROJECT = { id: 'e2e-photos', name: 'E2E photo site' } as const;
 /**
@@ -315,10 +315,10 @@ export const PHOTO_PLATFORM =
   (process.platform === 'darwin' && process.arch === 'arm64');
 export const PHOTO_PLATFORM_ONLY = `maps from photos run on Windows x64 and Apple silicon only, not on ${process.platform} ${process.arch}`;
 
-/** Jobs, **Create maps from photos**: the one-screen dialog. */
+/** The Processing drawer's **Create maps from photos**: the one-screen dialog. */
 export async function openWizard(win: Page) {
-  await win.locator('.sb-nav .nav-item', { hasText: 'Jobs' }).click();
-  await win.getByTestId('create-maps').click();
+  const drawer = await openProcessing(win);
+  await drawer.getByTestId('create-maps').click();
   const wizard = win.getByRole('dialog', { name: 'Create maps from photos' });
   await expect(wizard).toBeVisible();
   return wizard;

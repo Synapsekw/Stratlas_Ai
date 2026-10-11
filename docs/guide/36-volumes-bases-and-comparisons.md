@@ -6,7 +6,7 @@ Every polygon can hold one or more comparisons, each from one surface to another
 
 A comparison takes the height difference **To** minus **From** over the polygon. Where **To** is higher it is fill, where it is lower it is cut. **Net** is fill minus cut and **Total** is fill plus cut. Cells at the polygon's edge count by the share of the cell inside it. Where either surface has no data, the area shows as **Not covered**: a comparison that is partly outside the survey says so, and one mostly outside it is refused.
 
-Surveys are prepared once as height tiles. If a comparison says "No survey surface is prepared yet", click **Prepare surfaces** and wait for the job in **Jobs**.
+Surveys are prepared once as height tiles. If a comparison says "No survey surface is prepared yet", click **Prepare surfaces** and wait for it under **Processing**.
 
 ## Add a comparison
 

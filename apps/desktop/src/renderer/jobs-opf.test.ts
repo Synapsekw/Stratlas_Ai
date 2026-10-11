@@ -2,7 +2,7 @@ import type { JobRecord } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { buildParams, FORMS, finishedManifestJob } from './jobs';
 
-/** The OPF job forms (M10 stream G5): opf.import and opf.export from the Jobs panel. */
+/** The OPF job forms (M10 stream G5): opf.import and opf.export from Settings, Advanced. */
 const job = (over: Partial<JobRecord> = {}): JobRecord => ({
   id: 'o1',
   pipeline: 'opf.import',

@@ -92,7 +92,7 @@ test('a mesh becomes 3D Tiles that stream, pick and cut in the site view, and im
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
   await expect(win.locator('[data-scene-view] canvas')).toBeVisible();
 
-  // tiles.mesh through the app's job runner (the Jobs panel's channel)
+  // tiles.mesh through the app's job runner (the job runner's channel)
   const started = (await win.evaluate(
     ({ project }) =>
       (window as unknown as Probe).aio.invoke('jobs:start', {

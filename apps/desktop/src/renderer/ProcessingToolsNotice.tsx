@@ -11,6 +11,7 @@ import {
   processingTools,
   useProcessingTools,
 } from './processingTools';
+import { useProcessing } from './processing/store';
 import { useShell } from './shell';
 
 /**
@@ -19,8 +20,8 @@ import { useShell } from './shell';
  * opens Settings, Processing tools. Dismissed, it stays away for that pack (kept per profile), and
  * comes back only when another pack, or none, is the problem. Never in a read-only package (it
  * runs no jobs), never in an automated run, and never beside a panel that says the same: Settings,
- * the Create maps from photos dialog, the Jobs screen's "Jobs cannot run yet". Lives in the toast
- * stack, bottom right.
+ * the Create maps from photos dialog, the Processing drawer's "Processing cannot run yet". Lives
+ * in the toast stack, bottom right.
  */
 export function ProcessingToolsNotice() {
   const open = useWorkspace((s) => s.project !== null);
@@ -31,15 +32,17 @@ export function ProcessingToolsNotice() {
   const status = useProcessingTools((s) => s.status);
   const dismissed = useProcessingTools((s) => s.dismissed);
   const installing = useProcessingTools((s) => s.installing);
+  // the Processing drawer says it itself when no tools can be used at all
+  const drawerOpen = useProcessing((s) => s.open);
   useEffect(() => {
     if (open) void processingTools.getState().load();
   }, [open]);
   const key = packNoticeKey(status);
   if (!open || player || installing || !status || key === null || key === dismissed) return null;
-  // not where the same thing is already said: Settings, the Create maps dialog, and Jobs, whose
-  // own panel shows when no tools can be used at all
-  const jobsSaysIt = screen === 'jobs' && status.state !== 'too-old';
-  if (screen === 'settings' || photoOpen || jobsSaysIt) return null;
+  // not where the same thing is already said: Settings, the Create maps dialog, and the
+  // Processing drawer, which shows when no tools can be used at all
+  const drawerSaysIt = drawerOpen && status.state !== 'too-old';
+  if (screen === 'settings' || photoOpen || drawerSaysIt) return null;
   const product = brand.productName;
   const missing = status.state === 'missing';
   return (

@@ -35,6 +35,7 @@ import '../detections/detections.css';
 import { FocusZone } from '../FocusZone';
 import { useMedia } from '../media';
 import { bridge, shell, useCall } from '../shell';
+import { processing } from '../processing/store';
 import { findingsIndex, photoKey, type PhotoFindings } from './mediaFindings';
 import { NoProject } from './NoProject';
 
@@ -482,6 +483,22 @@ export function DetectionsScreen() {
             ? t('det.ai.openSelected', { count: selected.size })
             : t('det.ai.open')}
         </button>
+        {project.manifest.type === 'inspection' && (
+          <button
+            type="button"
+            className="btn sm"
+            data-testid="det-to-issues"
+            disabled={readOnly}
+            onClick={() => {
+              processing
+                .getState()
+                .openDialog({ pipeline: 'inspection.run', project: project.root, values: {} });
+            }}
+          >
+            <Icon name="issues" size={14} />
+            {t('det.toIssues')}
+          </button>
+        )}
       </header>
 
       <div className="det-sub">
