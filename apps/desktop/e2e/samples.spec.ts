@@ -249,8 +249,22 @@ test('@realdata inspection-hcl-mini: photos and model imported, the AI pass plac
       )
       .toBe(0);
     await expect(win.getByTestId('det-save')).toHaveText('Saved');
-    const reviewed = (await readJson<{ issues: Issue[] }>(join(root, 'issues.json'))).issues;
-    expect(reviewed).toHaveLength(issues.length + draft - 1);
+    // "Saved" is the pass file. The issues have their own saver: it starts 0.6 s after the last
+    // accepted box and writes issues.json once per accepted box, one after another, so the file
+    // read at once holds only some of them. Wait for the write that holds them all.
+    let reviewed: Issue[] = [];
+    await expect
+      .poll(
+        async () => {
+          reviewed = await readJson<{ issues: Issue[] }>(join(root, 'issues.json')).then(
+            (f) => f.issues,
+            () => [], // read between the temporary file and its rename
+          );
+          return reviewed.length;
+        },
+        { message: 'every accepted box is an issue in issues.json', timeout: 30_000 },
+      )
+      .toBe(issues.length + draft - 1);
 
     // run again: the reviewed boxes are placed on their own issues, nothing duplicated
     const again = await run();
