@@ -40,6 +40,7 @@ T2 pool module ──► T3 depth maps ──► T4 fusion ──► T5 docs and
 - **Batch C:** T4 (`pool.py`, `products.py::_fuse`, `test_photo_pool.py`), after T1 and T3 (same files as T3).
 - **Batch D:** T5 (docs), after T4.
 - **Critical path:** T2, T3, T4, T5.
+- **As built (11 Oct 2026):** the tests stop a job after a step by cancelling on that step's last progress message (`_after`), not on the next step's first, because the job looks at a cancel between steps. On the 63-photo synthetic set at Standard (20.9 MP photos matched at half size, eight workers, below-normal priority): depth maps 98.7 s against 504 s, fusion 183.8 s against 1,023 s including its merge; all 60 depth maps and all 16 fused tiles identical to the single-process run.
 - **Packages touched:** `python/` only, plus `docs/`. **E2E specs added or changed:** none (no app code changes; `photo-process.spec.ts` covers Pause and is run before hand-off). **Contract changes:** none.
 
 ---
