@@ -24,7 +24,7 @@ The full table, with plans, is [plans/ROADMAP.md](plans/ROADMAP.md). Status and 
 
 ## 3. Now
 
-- **Phase**: M10 integration rounds; app 0.11.1 with pipeline pack 0.5.1. Pipeline pack install from Settings (round 40), the Globe street map (round 41), the session workflow (round 45), moving a whole group to another survey date (round 46), maps from photos landing under the photos' survey date with the project named (round 49) and a photo run saying why its maps could not start (round 50) are merged.
+- **Phase**: M10 integration rounds; app 0.11.2 with pipeline pack 0.5.1. Pipeline pack install from Settings (round 40), the Globe street map (round 41), the session workflow (round 45), moving a whole group to another survey date (round 46), maps from photos landing under the photos' survey date with the project named (round 49) and a photo run saying why its maps could not start (round 50) are merged.
 - **Branch**: `main` at round 51; merging goes through the Orchestrator session, one branch at a time. CI is Windows-only with six e2e shards; macOS is parked in CI, the nightly and the release.
 - **In flight**: a redesign of the Jobs screen, where jobs belong to the open project, is being designed in its own session.
 - **Next**: finish M10; then Walks 360 and the timeline.
