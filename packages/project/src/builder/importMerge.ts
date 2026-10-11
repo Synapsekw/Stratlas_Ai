@@ -43,9 +43,12 @@ const sameFile = (a: Layer, b: Layer) =>
  *   `clip-`, `raster-` and the file name) are ones only an import chooses: the processing tools
  *   file their layers as `cloud-`, `plan-`, `drawing-`, `ortho-`, `dsm-` and `photos-<run>`, so
  *   the import's own conversion jobs never take one. What does is a second import into the same
- *   project at the same time (the import panel runs one at a time, so it takes another caller)
- *   that brought a file of the same name: it chose the same id and, since the path in the
- *   project comes from the id, wrote the same file.
+ *   project that overlapped this one and brought a file of the same name: it chose the same id
+ *   and, since the path in the project comes from the id, wrote to the same path. Two imports
+ *   can overlap (main runs every `builder:import` it is sent). When both brought the same file,
+ *   the rules below end clean: one layer, one file. When they brought different files of the
+ *   same name, the later copy had replaced the earlier one on disk before either merge ran;
+ *   the merge keeps the one layer for the file that is left and cannot bring the other back.
  *   - Both are photos layers: the import's photos are appended to the one in `fresh`, as below.
  *   - Same kind and same file: the layer in `fresh` stays as it is and the import's is not filed;
  *     it would show the one file on disk a second time.

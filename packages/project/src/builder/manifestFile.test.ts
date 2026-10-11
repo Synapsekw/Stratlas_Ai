@@ -678,6 +678,34 @@ describe('importRawFiles saves what it added onto the project as it is at its en
     expect(renamed.manifest).toEqual(await readManifest(root));
   });
 
+  it('still reports its files when it saved nothing and the project cannot be read at its end', async () => {
+    const root = await project();
+    const file = join(root, 'manifest.json');
+    const atStart = await readManifest(root);
+    await writeFile(join(dir, 'site.laz'), new Uint8Array([1, 2, 3]));
+    await writeFile(join(dir, 'notes.txt'), 'not a file the builder imports');
+    const r = await importRawFiles(
+      root,
+      [join(dir, 'site.laz'), join(dir, 'notes.txt')],
+      deps({
+        jobs: pack(async () => {
+          // the job is started; then the manifest is, for this moment, not a manifest
+          await writeFile(file, '{ "schema": ');
+          return { jobId: 'job-1' };
+        }),
+      }),
+    );
+    // the job runs and the person must learn of it: the import does not fail on a file it only
+    // meant to read, and hands back the project as it read it at its start
+    expect(r.items).toMatchObject([
+      { file: 'site.laz', status: 'queued', jobId: 'job-1' },
+      { file: 'notes.txt', status: 'skipped' },
+    ]);
+    expect(r.backup).toBe('');
+    expect(r.manifest).toEqual(atStart);
+    expect(await readFile(file, 'utf8')).toBe('{ "schema": ');
+  });
+
   it('saves what it always saved when nothing else changed the project meanwhile', async () => {
     const root = await project();
     const file = join(root, 'manifest.json');
